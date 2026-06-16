@@ -82,8 +82,8 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-chev { font-size:14px; color:var(--cc-stone); margin-left:auto; flex-shrink:0;
   transition:transform .2s cubic-bezier(.32,.72,0,1); }
 .tn-card.open .tn-chev { transform:rotate(90deg); }
-.tn-hdr-mid { display:flex; align-items:center; gap:8px; margin-top:5px; flex-wrap:wrap; }
-.tn-tenant-name { font-size:15px; font-weight:500; color:var(--cc-ink); }
+.tn-hdr-mid { display:flex; align-items:baseline; gap:8px; margin-top:4px; flex-wrap:wrap; }
+.tn-tenant-name { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400; color:var(--cc-ink); line-height:1.1; }
 .tn-tenant-dates { font-size:11px; color:var(--cc-taupe); }
 .tn-hdr-bot { display:flex; align-items:center; gap:5px; margin-top:5px; flex-wrap:wrap; }
 .tn-warm { font-size:13px; font-weight:500; color:var(--cc-ink); }
