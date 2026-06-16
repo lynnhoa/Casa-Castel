@@ -1137,7 +1137,6 @@ function _tnCurrentTenantHTML(room, rec) {
       </div>
       <div class="tn-fin-note">${isFormer ? 'Frozen at move-out — edit to correct.' : 'Placeholders from rooms tab. Set agreed values here to override.'}</div>
 
-      </div>
     </div>
   </div>
 
