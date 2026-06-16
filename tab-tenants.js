@@ -910,6 +910,11 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
       : `<span class="tnp tnp-gray">Not uploaded</span>`;
     const viewBtn = `<button class="tn-doc-btn${signed?'':' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}')` : ''}" title="View">
       <i class="ti ti-eye"></i></button>`;
+    const delBtn = signed
+      ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
+           onclick="_tnDeleteDoc('${tid}','${type}','${esc(doc.id)}')" title="Delete">
+           <i class="ti ti-trash"></i></button>`
+      : '';
     const upBtn = tid
       ? `<button class="tn-doc-btn" onclick="_tnTriggerUpload('${tid}','${type}')" title="Upload">
            <i class="ti ti-upload"></i></button>`
@@ -917,7 +922,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     return `<div class="tn-doc-row">
       <span class="tn-doc-name">${esc(label)}</span>
       ${pill}
-      <div class="tn-doc-btns">${viewBtn}${upBtn}</div>
+      <div class="tn-doc-btns">${viewBtn}${delBtn}${upBtn}</div>
     </div>`;
   };
 
@@ -1197,12 +1202,18 @@ function _tnModalBodyHTML(rec) {
   const docRow = (type, label) => {
     const doc    = getDoc(type);
     const signed = !!doc?.file_url;
+    const delBtn = signed
+      ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
+           onclick="_tnDeleteDoc('${tid}','${type}','${esc(doc.id)}')" title="Delete">
+           <i class="ti ti-trash"></i></button>`
+      : '';
     return `<div class="tn-doc-row">
       <span class="tn-doc-name">${esc(label)}</span>
       <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'Signed' : 'Not uploaded'}</span>
       <div class="tn-doc-btns">
         <button class="tn-doc-btn${signed ? '' : ' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}')` : ''}">
           <i class="ti ti-eye"></i></button>
+        ${delBtn}
         <button class="tn-doc-btn" onclick="_tnTriggerUpload('${tid}','${type}')">
           <i class="ti ti-upload"></i></button>
       </div>
@@ -1809,6 +1820,19 @@ async function _tnHandleUpload(file) {
   else          _tnDocs[_tnUploadTid].push(docData);
 
   if (_tnModalTid === _tnUploadTid) { _tnOpenModal(_tnUploadTid); } else { _tnRender(); }
+}
+
+async function _tnDeleteDoc(tid, type, docId) {
+  if (!sbL) return;
+  if (!confirm('Delete this document? This cannot be undone.')) return;
+  const doc = (_tnDocs[tid] || []).find(d => d.id === docId);
+  if (doc?.file_url) {
+    await sbL.storage.from('tenant-documents').remove([doc.file_url]);
+  }
+  const { error } = await sbL.from('tenant_documents').delete().eq('id', docId);
+  if (error) { console.warn('[tenants] delete doc:', error.message); return; }
+  if (_tnDocs[tid]) _tnDocs[tid] = _tnDocs[tid].filter(d => d.id !== docId);
+  if (_tnModalTid === tid) { _tnOpenModal(tid); } else { _tnRender(); }
 }
 
 
