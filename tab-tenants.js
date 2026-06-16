@@ -811,51 +811,62 @@ function _tnCardHTML(room) {
 function _tnCurrentTenantHTML(room, rec) {
   const rid = esc(room.name.replace(/\s+/g,'_').toLowerCase());
 
+  // Is record effectively empty? (no key fields filled yet)
+  const isEmpty = !rec || (!rec.first_name && !rec.last_name && !rec.email && !rec.mietbeginn);
+
+  // No record yet — show blank edit form, save creates the record
   if (!rec) {
     return `
-    <div class="tn-sec tn-sec-gold no-tenant" id="cursec-${rid}">
-      <span class="tn-slbl" style="color:var(--cc-stone)">Current tenant</span>
-      <p class="tn-empty" style="margin-bottom:8px">Vacant — no active tenant</p>
-      <button class="tn-act tn-act-add"
-        style="height:30px;border-radius:var(--cc-r-sm);padding:0 12px"
-        onclick="_tnAddTenant('${esc(room.name)}')">
-        <i class="ti ti-user-plus" style="font-size:11px"></i> Add tenant
-      </button>
-    </div>`;
+  <div class="tn-sec tn-sec-gold editing" id="cursec-${rid}" data-tenant-id="">
+    <span class="tn-slbl tn-slbl-gold">Current tenant</span>
+    <div class="tn-profile-read" style="display:none"></div>
+    <div class="tn-profile-edit">
+      <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="" placeholder="Full name"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-f="email" type="email" value="" placeholder="tenant@mail.de"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="" placeholder="+49 ..."/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="" placeholder="DD.MM.YYYY"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="" placeholder="Street, City"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="" placeholder="DD.MM.YYYY"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="" placeholder="DD.MM.YYYY — sets tenant as Former"/></div>
+      <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
+      <div class="tn-save-row">
+        <button class="tn-btn-save" onclick="_tnSaveNewTenant('${rid}','${esc(room.name)}')">Save</button>
+      </div>
+    </div>
+  </div>`;
   }
 
-  const email    = esc(rec.email    || '');
-  const mietendeDisplay = rec.mietende
-    ? _tnFmtDate(rec.mietende)
-    : null;
+  const email           = esc(rec.email || '');
+  const fullName        = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
+  const mietendeDisplay = rec.mietende ? _tnFmtDate(rec.mietende) : null;
+  // Auto-open edit if all key fields are blank
+  const autoEdit = isEmpty ? ' editing' : '';
 
   return `
-  <div class="tn-sec tn-sec-gold" id="cursec-${rid}" data-tenant-id="${rec.id}">
+  <div class="tn-sec tn-sec-gold${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
     <span class="tn-slbl tn-slbl-gold">Current tenant</span>
 
-    <!-- Read view -->
     <div class="tn-profile-read">
-      <div class="tn-kv"><span class="tn-kv-k">Name</span><span class="tn-kv-v">${esc([rec.first_name,rec.last_name].filter(Boolean).join(' ')) || '—'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Email</span><span class="tn-kv-v">${email || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Phone</span><span class="tn-kv-v">${esc(rec.phone || '') || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Birthday</span><span class="tn-kv-v">${esc(rec.birthday || '') || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Address</span><span class="tn-kv-v">${esc(rec.address || '') || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Move in</span><span class="tn-kv-v">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Name</span><span class="tn-kv-v">${esc(fullName) || '<span class=\"muted\">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Email</span><span class="tn-kv-v">${email || '<span class=\"muted\">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Phone</span><span class="tn-kv-v">${esc(rec.phone||'') || '<span class=\"muted\">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Birthday</span><span class="tn-kv-v">${esc(rec.birthday||'') || '<span class=\"muted\">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Address</span><span class="tn-kv-v">${esc(rec.address||'') || '<span class=\"muted\">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Move in</span><span class="tn-kv-v">${_tnFmtDate(rec.mietbeginn) || '<span class=\"muted\">Not set</span>'}</span></div>
       <div class="tn-kv"><span class="tn-kv-k">Move out</span><span class="tn-kv-v ${mietendeDisplay ? '' : 'muted'}">${mietendeDisplay || 'Not set — still active'}</span></div>
     </div>
 
-    <!-- Edit view -->
     <div class="tn-profile-edit">
-      <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="${esc([rec.first_name,rec.last_name].filter(Boolean).join(' '))}" placeholder="Full name"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="${esc(fullName)}" placeholder="Full name"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 …"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 ..."/></div>
       <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="${esc(rec.address||'')}" placeholder="Street, City"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="DD.MM.YYYY"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY — sets tenant as Former"/></div>
       <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
       <div class="tn-save-row">
-        <button class="tn-btn-cancel-sm" onclick="_tnCancelEdit('${rid}')">Cancel</button>
+        ${isEmpty ? '' : `<button class=\"tn-btn-cancel-sm\" onclick=\"_tnCancelEdit('${rid}')\">Cancel</button>`}
         <button class="tn-btn-save" onclick="_tnSaveProfile('${rid}','${rec.id}')">Save</button>
       </div>
     </div>
@@ -874,6 +885,7 @@ function _tnCurrentTenantHTML(room, rec) {
     </button>
   </div>`;
 }
+
 
 
 /* ── DOCUMENTS SECTION (Pattern A — external sig + upload) ── */
@@ -1245,6 +1257,61 @@ function _tnToggleSettled(toggleId, listId) {
 /* ══════════════════════════════════════════════════════════════
    11. PROFILE SAVE
 ══════════════════════════════════════════════════════════════ */
+
+// Save a brand new tenant record (no existing id — called from blank form)
+async function _tnSaveNewTenant(rid, roomName) {
+  if (!sbL) return;
+  const sec = document.getElementById('cursec-' + rid);
+  if (!sec) return;
+
+  const btn = sec.querySelector('.tn-btn-save');
+  const orig = btn.innerHTML; btn.innerHTML = '…'; btn.disabled = true;
+
+  const nameVal    = sec.querySelector('[data-f="name"]')?.value.trim()       || '';
+  const emailVal   = sec.querySelector('[data-f="email"]')?.value.trim()      || '';
+  const phoneVal   = sec.querySelector('[data-f="phone"]')?.value.trim()      || '';
+  const bdayVal    = sec.querySelector('[data-f="birthday"]')?.value.trim()   || '';
+  const addrVal    = sec.querySelector('[data-f="address"]')?.value.trim()    || '';
+  const beginVal   = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || '';
+  const endeVal    = sec.querySelector('[data-f="mietende"]')?.value.trim()   || '';
+
+  const nameParts = nameVal.split(/\s+/);
+  const firstName = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
+  const lastName  = nameParts.length > 1 ? nameParts[nameParts.length-1] : '';
+  const mietbeginn = _tnParseDate(beginVal);
+  const mietende   = _tnParseDate(endeVal);
+  const status     = mietende ? 'former' : 'active';
+  const contractType = mietende ? _tnRoomContractType(roomName) : null;
+
+  const { data, error } = await sbL.from('tenant_records')
+    .insert({
+      room: roomName, status, contract_type: contractType,
+      first_name: firstName, last_name: lastName,
+      email: emailVal, phone: phoneVal, birthday: bdayVal,
+      address: addrVal, mietbeginn, mietende,
+    })
+    .select().single();
+
+  if (error) {
+    console.warn('[tenants] create error:', error.message);
+    btn.innerHTML = 'Error'; btn.disabled = false;
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+    return;
+  }
+
+  await _tnEnsureKaution(data.id);
+  // Write default password so tenant can log in
+  if (status === 'active') {
+    const defaultPw = roomName.toLowerCase().replace(/\s+/g,'') + '2026';
+    const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(defaultPw));
+    const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+    await sbL.from('lounge_data').upsert({ type: 'password', room: roomName, body: hash },
+      { onConflict: 'type,room' });
+  }
+
+  btn.innerHTML = orig; btn.disabled = false;
+  await _tnLoad();
+}
 
 async function _tnSaveProfile(rid, tenantId) {
   const sec = document.getElementById('cursec-' + rid);
