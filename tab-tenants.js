@@ -154,7 +154,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tb-kz  { background: #E8D9C4; color: #7A5820; border: .5px solid #C4A06A; }
 
 /* ── SECTIONS ── */
-.tn-sec { padding: 12px 14px; border-bottom: var(--cc-border); }
+.tn-sec { padding: 9px 14px; border-bottom: var(--cc-border); }
 .tn-sec:last-child { border-bottom: none; }
 .tn-sec-gold { border-left: 3px solid var(--cc-gold); padding-left: 13px; }
 .tn-sec-gold.no-tenant { border-left-color: var(--cc-rule); }
@@ -228,11 +228,11 @@ document.getElementById('tab-tenants').innerHTML = `
 /* ── DOCUMENT ROWS — Pattern A (external sig) ── */
 .tn-doc-row {
   display: flex; align-items: center; gap: 7px;
-  padding: 7px 0; border-bottom: .5px solid #F0EDE8;
+  padding: 3px 0; border-bottom: .5px solid #F0EDE8;
 }
 .tn-doc-row:last-child { border-bottom: none; }
-.tn-doc-name { font-size: 12px; color: var(--cc-charcoal); flex: 1; min-width: 0; }
-.tn-doc-name-sm { font-size: 11px; color: var(--cc-taupe); flex: 1; min-width: 0; }
+.tn-doc-name { font-size: 11px; color: var(--cc-charcoal); flex: 1; min-width: 0; }
+.tn-doc-name-sm { font-size: 10px; color: var(--cc-taupe); flex: 1; min-width: 0; }
 
 /* doc status pills */
 .tn-ds {
@@ -260,7 +260,7 @@ document.getElementById('tab-tenants').innerHTML = `
 /* ── KAUTION ── */
 .tn-k-grid {
   display: grid; grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px; align-items: end; margin-bottom: 10px;
+  gap: 6px; align-items: end; margin-bottom: 0;
 }
 .tn-k-col { display: flex; flex-direction: column; gap: 4px; }
 .tn-k-lbl {
@@ -284,7 +284,8 @@ document.getElementById('tab-tenants').innerHTML = `
   border-radius: var(--cc-r-sm); padding: 6px 8px;
   font-size: 13px; font-weight: 500; color: var(--cc-gold);
 }
-.tn-k-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tn-k-status-row { display: none; }
+.tn-msec .tn-k-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .tn-k-settle {
   font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   padding: 4px 11px; border-radius: var(--cc-r-pill); cursor: pointer;
@@ -295,8 +296,8 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* ── NK ROWS ── */
 .tn-nk-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0; border-bottom: .5px solid #F0EDE8;
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0; border-bottom: .5px solid #F0EDE8;
 }
 .tn-nk-row:last-of-type { border-bottom: none; }
 .tn-nk-yr { font-size: 12px; font-weight: 600; color: var(--cc-charcoal); min-width: 52px; flex-shrink: 0; }
@@ -342,7 +343,7 @@ document.getElementById('tab-tenants').innerHTML = `
 /* add NK */
 .tn-add-nk {
   display: flex; align-items: center; gap: 6px;
-  padding: 8px 0 2px; background: none; border: none;
+  padding: 5px 0 1px; background: none; border: none;
   border-top: .5px solid #F0EDE8;
   font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   color: var(--cc-stone); cursor: pointer; font-family: inherit;
@@ -355,7 +356,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-former-rows { border-top: var(--cc-border); }
 .tn-former-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 9px 14px; border-bottom: var(--cc-border);
+  padding: 6px 14px; border-bottom: var(--cc-border);
   cursor: pointer; -webkit-tap-highlight-color: transparent;
   user-select: none; transition: background .12s;
 }
@@ -371,7 +372,7 @@ document.getElementById('tab-tenants').innerHTML = `
 }
 .tn-add-former-btn {
   display: flex; align-items: center; gap: 5px; width: 100%;
-  padding: 9px 14px; background: none; border: none; border-top: var(--cc-border);
+  padding: 6px 14px; background: none; border: none; border-top: var(--cc-border);
   font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   color: var(--cc-taupe); cursor: pointer; font-family: inherit; transition: color .15s;
   -webkit-tap-highlight-color: transparent;
@@ -1209,10 +1210,10 @@ function _tnDocumentsHTML(room, activeRec) {
       : `<span class="tn-ds tn-ds-none">Not uploaded</span>`;
     const viewBtn = signed
       ? `<button class="tn-doc-btn tn-doc-btn-ghost" onclick="_tnViewDoc('${doc.file_url}')">
-           <i class="ti ti-eye" style="font-size:10px"></i> View
+           <i class="ti ti-eye" style="font-size:10px"></i>
          </button>`
       : `<button class="tn-doc-btn tn-doc-btn-ghost off">
-           <i class="ti ti-eye" style="font-size:10px"></i> View
+           <i class="ti ti-eye" style="font-size:10px"></i>
          </button>`;
     const uploadBtn = tid
       ? `<button class="tn-doc-btn tn-doc-btn-ghost"
@@ -1233,7 +1234,7 @@ function _tnDocumentsHTML(room, activeRec) {
 
   return `
   <div class="tn-sec">
-    <span class="tn-slbl">Documents<span class="tn-slbl-note"> · generated in rooms tab · upload signed copy here</span></span>
+    <span class="tn-slbl">Documents<span class="tn-slbl-note"> · upload signed copy here</span></span>
     ${types.includes('mietvertrag')  ? docRow('mietvertrag',        'Mietvertrag')         : ''}
     ${types.includes('kurzzeit')     ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
     ${docRow('einzug', 'Übergabe Einzug')}
@@ -1257,7 +1258,14 @@ function _tnKautionHTML(tenantId, context) {
   const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
   const lbl = context === 'modal'
     ? `<span class="tn-slbl tn-slbl-gold">Kaution</span>`
-    : `<span class="tn-slbl">Kaution</span>`;
+    : `<div class="tn-slbl" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+        <span>Kaution <span class="tb ${st.cls}" id="ks-${prefix}" style="margin-left:5px;vertical-align:middle">${st.label}</span></span>
+        <button class="tn-k-settle${k.settled ? ' on' : ''}" id="kset-${prefix}"
+          ${disabled}
+          onclick="_tnToggleSettle('${prefix}','${tenantId}')">
+          ${k.settled ? 'Settled' : 'Mark settled'}
+        </button>
+      </div>`;
 
   return `
   <div class="${cls}" style="${opacity}">
@@ -1696,7 +1704,7 @@ function _tnModalDocsHTML(rec) {
 
   return `
   <div class="tn-msec">
-    <span class="tn-slbl">Documents<span class="tn-slbl-note"> · generated in rooms tab · upload signed copy here</span></span>
+    <span class="tn-slbl">Documents<span class="tn-slbl-note"> · upload signed copy here</span></span>
     ${ctype === 'mietvertrag'  ? docRow('mietvertrag',        'Mietvertrag')          : ''}
     ${ctype === 'kurzzeit'     ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag')  : ''}
     ${!ctype                   ? docRow('mietvertrag',        'Mietvertrag')          : ''}
