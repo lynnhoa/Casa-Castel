@@ -533,6 +533,17 @@ function _tnDaysToMoveOut(rec) {
   return days;
 }
 
+// True if dateStr (ISO or DD.MM.YYYY) is today or in the past
+function _tnIsPast(dateStr) {
+  if (!dateStr) return false;
+  const iso = _tnParseDate(dateStr);
+  if (!iso) return false;
+  const d = new Date(iso);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d <= today;
+}
+
 function _tnStatusPill(room, activeRec) {
   if (!activeRec) return '';
   const days = _tnDaysToMoveOut(activeRec);
@@ -845,7 +856,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
     <div class="tn-field"><span class="tn-flbl">Move in</span>
       <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="DD.MM.YYYY"/></div>
     <div class="tn-field"><span class="tn-flbl">Move out</span>
-      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 sets as Former"/></div>
+      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 becomes Former when reached"/></div>
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <input data-f="address" type="text" value="${esc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
   </div>`;
@@ -1382,7 +1393,9 @@ async function _tnSaveNewTenant(rid, roomName) {
   }
 
   const mietende  = p.mietende;
-  const status    = mietende ? 'former' : 'active';
+  // Only transition to former if mietende is actually reached (today or past)
+  // A future move-out date keeps the tenant active
+  const status    = (mietende && _tnIsPast(mietende)) ? 'former' : 'active';
   const liveP     = _tnRoomPricing(roomName);
   const ctype     = _tnRoomContractType(roomName);
 
@@ -1424,7 +1437,9 @@ async function _tnSaveProfile(rid, tid, roomName) {
     return;
   }
 
-  const toFormer = !!(p.mietende && rec?.status === 'active');
+  const toFormer = !!(p.mietende && _tnIsPast(p.mietende) && rec?.status === 'active');
+  // Reverse: former tenant whose mietende is cleared or set to future → back to active
+  const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
   const liveP    = _tnRoomPricing(roomName);
   const update   = {
     first_name: p.first_name, last_name: p.last_name,
@@ -1439,6 +1454,11 @@ async function _tnSaveProfile(rid, tid, roomName) {
     update.contract_type = _tnRoomContractType(roomName);
     if (!p.kaltmiete)   update.kaltmiete   = liveP.kaltmiete   ?? null;
     if (!p.nebenkosten) update.nebenkosten = liveP.nebenkosten ?? null;
+  }
+  if (toActive) {
+    update.status        = 'active';
+    update.contract_type = null;
+    update.done          = false;
   }
 
   const { error } = await sbL.from('tenant_records').update(update).eq('id', tid);
@@ -1479,9 +1499,17 @@ async function _tnModalSaveProfile(tid) {
     kaution_soll:p.kaution_soll ?? null,
   };
 
+  const rec = _tnRecords.find(r => r.id === tid);
+  // Move back to active if mietende is cleared or set to a future date
+  const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
+  if (toActive) {
+    update.status        = 'active';
+    update.contract_type = null;
+    update.done          = false;
+  }
+
   const { error } = await sbL.from('tenant_records').update(update).eq('id', tid);
   if (error) { console.warn('[tenants] modal save:', error.message); }
-  const rec = _tnRecords.find(r => r.id === tid);
   if (rec) Object.assign(rec, update);
   if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Saved'; btn.disabled = false;
     setTimeout(() => { btn.innerHTML = '<i class="ti ti-check"></i> Save info'; }, 1500); }
@@ -1489,6 +1517,9 @@ async function _tnModalSaveProfile(tid) {
   const newName = [p.first_name, p.last_name].filter(Boolean).join(' ') || '\u2014';
   const el = document.getElementById('tnModalName');
   if (el) el.textContent = newName;
+
+  // If moved back to active, close modal and fully reload
+  if (toActive) { _tnCloseModal(); }
   _tnRender();
 }
 
