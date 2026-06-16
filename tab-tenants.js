@@ -101,8 +101,9 @@ document.getElementById('tab-tenants').innerHTML = `
 /* card header */
 .tc-hdr {
   display: flex; align-items: flex-start; gap: 10px;
-  padding: 12px 14px 11px 13px;
-  cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+  padding: 13px 15px 11px 13px;
+  cursor: pointer; user-select: none;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .tc-hdr-info { flex: 1; min-width: 0; }
 .tc-namerow  { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
@@ -140,10 +141,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tb-occ { background: #EAF3DE; color: #27500A; border: .5px solid #9AC87A; }
 .tb-vac { background: #F5F0EB; color: #8C6A3A; border: .5px solid #D4A87A; }
 .tb-kit { background: #E6F1FB; color: #0C447C; border: .5px solid #85B7EB; }
-.tb-price {
-  background: none; color: var(--cc-stone); border: .5px solid var(--cc-rule);
-  font-weight: 500; letter-spacing: .04em;
-}
+.tb-price { background: none; color: var(--cc-stone); border: .5px solid var(--cc-rule); font-weight: 500; letter-spacing: .04em; }
 .tb-nko { background: #FAEEDA; color: #854F0B; border: .5px solid #EF9F27; }
 .tb-nkd { background: #EAF3DE; color: #3B6D11; border: .5px solid #97C459; }
 .tb-kop { background: #FAEEDA; color: #854F0B; border: .5px solid #EF9F27; }
@@ -154,136 +152,182 @@ document.getElementById('tab-tenants').innerHTML = `
 .tb-kz  { background: #E8D9C4; color: #7A5820; border: .5px solid #C4A06A; }
 
 /* ── SECTIONS ── */
-.tn-sec { padding: 8px 13px 8px 10px; border-bottom: var(--cc-border); }
-.tn-sec:last-child { border-bottom: none; }
-.tn-sec-gold { border-left: 3px solid var(--cc-gold); padding-left: 11px; }
-.tn-sec-gold.no-tenant { border-left-color: var(--cc-rule); }
+.tn-sec { padding: 10px 14px 12px 11px; border-top: var(--cc-border); border-left: 3px solid var(--cc-gold); }
+.tn-sec.tn-sec-plain { border-left-color: transparent; padding-left: 14px; }
+.tn-sec.tn-sec-new-tenant { border-left-color: var(--cc-rule); }
 
-/* ── SECTION HEADER ROW (label + inline edit button) ── */
+/* editing state — profile surface + other sections dim */
+.tn-sec.editing { background: #FDFAF6; }
+.tn-sec.editing ~ .tn-sec { opacity: .45; pointer-events: none; }
+.tn-sec.editing ~ .tn-acts { opacity: .45; pointer-events: none; }
+
+/* ── SECTION HEADER ROW ── */
 .tn-sec-hdr {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 9px;
 }
-
-/* ── SECTION LABEL ── */
 .tn-slbl {
   font-size: 9px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase;
-  color: var(--cc-stone); display: block;
+  color: var(--cc-gold);
 }
-.tn-slbl-gold { color: var(--cc-gold); }
+.tn-slbl-neutral { color: var(--cc-stone); }
 .tn-slbl-note { font-size: 9px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--cc-stone); margin-left: 4px; }
 
-/* inline edit button inside section header */
+/* edit button in section header */
 .tn-sec-edit-btn {
-  height: 24px; padding: 0 9px; display: flex; align-items: center; gap: 3px;
+  height: 26px; padding: 0 10px; display: flex; align-items: center; gap: 4px;
   background: none; border: var(--cc-border); border-radius: var(--cc-r-sm);
   font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   color: var(--cc-taupe); cursor: pointer; font-family: inherit; flex-shrink: 0;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-  min-width: 44px; min-height: 44px; /* iOS tap target */
-  display: flex; align-items: center; justify-content: center;
+  min-height: 44px;
 }
 .tn-sec-edit-btn:active { opacity: .7; }
 
-/* ── COMPACT PROFILE GRID (2-col) ── */
-.tn-pf-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px;
+/* ── PROFILE SURFACE (layered card inside section) ── */
+.tn-pf-surface {
+  background: var(--cc-surface); border: var(--cc-border);
+  border-radius: var(--cc-r-md); overflow: hidden; margin-bottom: 9px;
 }
-.tn-pf-full { grid-column: 1 / -1; }
-.tn-pf-row {
-  padding: 3px 0; display: flex; flex-direction: column; gap: 1px;
-  border-bottom: .5px solid #F3EFE9;
+.tn-sec.editing .tn-pf-surface {
+  border-color: #EF9F27;
 }
-.tn-pf-row:last-child { border-bottom: none; }
-/* last two cells in the grid (right+left of last row) lose their border */
-.tn-pf-grid .tn-pf-row:nth-last-child(-n+2):not(.tn-pf-full) { border-bottom: none; }
-.tn-pf-k { font-size: 9.5px; color: var(--cc-stone); }
-.tn-pf-v { font-size: 11px; color: var(--cc-charcoal); }
-.tn-pf-v.muted { color: var(--cc-stone); font-style: italic; }
-/* name+dates full-width header row */
-.tn-pf-namerow {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
-  padding: 2px 0 4px; border-bottom: .5px solid #F3EFE9; margin-bottom: 1px;
-}
-.tn-pf-name { font-size: 12px; font-weight: 500; color: var(--cc-charcoal); }
-.tn-pf-dates { font-size: 10px; color: var(--cc-taupe); text-align: right; flex-shrink: 0; }
 
-/* ── FINANCE STRIP (4-cell inline bar) ── */
-.tn-fin-strip {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  border: var(--cc-border); border-radius: var(--cc-r-sm);
-  overflow: hidden; margin-top: 7px;
+/* name + dates header row — tinted */
+.tn-pf-top {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 8px 11px 7px; background: #F0EAE1; border-bottom: var(--cc-border);
 }
-.tn-fin-strip-cell {
-  padding: 5px 7px; display: flex; flex-direction: column; gap: 1px;
-  border-right: var(--cc-border);
-}
-.tn-fin-strip-cell:last-child { border-right: none; }
-.tn-fin-strip-lbl {
-  font-size: 8.5px; font-weight: 600; letter-spacing: .07em;
-  text-transform: uppercase; color: var(--cc-stone);
-}
-.tn-fin-strip-val { font-size: 12px; font-weight: 500; color: var(--cc-charcoal); }
-.tn-fin-strip-val.gold { color: var(--cc-gold); }
-/* on very narrow screens collapse to 2×2 */
-@media (max-width: 400px) {
-  .tn-fin-strip { grid-template-columns: repeat(2, 1fr); }
-  .tn-fin-strip-cell:nth-child(2) { border-right: none; }
-  .tn-fin-strip-cell:nth-child(3) { border-top: var(--cc-border); }
-  .tn-fin-strip-cell:nth-child(4) { border-top: var(--cc-border); border-right: none; }
-}
-.tn-staf-note { font-size: 10px; color: var(--cc-stone); margin-top: 5px; }
+.tn-sec.editing .tn-pf-top { background: #FAEEDA; border-bottom-color: #EF9F27; }
+.tn-pf-name { font-size: 13px; font-weight: 500; color: var(--cc-ink); }
+.tn-pf-dates { font-size: 10.5px; color: var(--cc-taupe); flex-shrink: 0; }
+.tn-pf-dates b { color: var(--cc-charcoal); font-weight: 500; }
 
-/* ── EDIT FORM ROWS (unchanged) ── */
-.tn-ef   { display: flex; gap: 10px; padding: 3px 0; align-items: center; }
-.tn-ef-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; line-height: 1.4; }
-.tn-ef input {
-  flex: 1; background: var(--cc-surface); border: var(--cc-border);
-  border-radius: var(--cc-r-sm); padding: 5px 8px;
-  font-family: 'Inter', inherit; font-size: 11px; font-weight: 300;
-  color: var(--cc-charcoal); line-height: 1.4;
-  outline: none; transition: border-color .15s; min-width: 0;
+/* inline inputs in name row — underline style, no box jump */
+.tn-pf-name-input {
+  font-size: 13px; font-weight: 500; color: var(--cc-ink);
+  background: none; border: none; border-bottom: 1px solid #EF9F27;
+  padding: 0 0 1px; width: 52%; font-family: inherit; outline: none;
   -webkit-appearance: none; -webkit-text-size-adjust: 100%;
 }
-.tn-ef input:focus { border-color: var(--cc-gold); background: var(--cc-white); }
-.tn-ef input::placeholder { color: var(--cc-stone); font-style: normal; font-weight: 300; }
-.tn-ef-note { font-size: 10px; color: var(--cc-taupe); margin-top: 4px; padding-left: 98px; }
+.tn-pf-name-input:focus { border-bottom-color: var(--cc-gold); }
+.tn-pf-date-group { display: flex; align-items: baseline; gap: 5px; }
+.tn-pf-date-input {
+  font-size: 10.5px; color: var(--cc-charcoal); background: none; border: none;
+  border-bottom: 1px solid #EF9F27; padding: 0 0 1px; width: 88px; text-align: right;
+  font-family: inherit; outline: none; -webkit-appearance: none; -webkit-text-size-adjust: 100%;
+}
+.tn-pf-date-input:focus { border-bottom-color: var(--cc-gold); }
+.tn-pf-date-input::placeholder { color: var(--cc-stone); font-size: 9.5px; }
+.tn-pf-date-sep { font-size: 10px; color: var(--cc-stone); }
 
-/* profile read/edit toggle */
-.tn-sec-gold.editing .tn-profile-read { display: none; }
-.tn-sec-gold.editing .tn-profile-edit { display: block; }
-.tn-profile-read { display: block; }
-.tn-profile-edit { display: none; }
+/* read values hidden in edit, shown in read */
+.tn-pf-name-read { display: block; }
+.tn-pf-dates-read { display: flex; }
+.tn-pf-name-input { display: none; }
+.tn-pf-date-group { display: none; }
+.tn-sec.editing .tn-pf-name-read { display: none; }
+.tn-sec.editing .tn-pf-dates-read { display: none; }
+.tn-sec.editing .tn-pf-name-input { display: block; }
+.tn-sec.editing .tn-pf-date-group { display: flex; }
 
-.tn-save-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+/* 2-col grid inside surface */
+.tn-pf-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.tn-pf-cell {
+  padding: 6px 11px; border-right: var(--cc-border); border-bottom: var(--cc-border);
+}
+.tn-pf-cell:nth-child(even) { border-right: none; }
+.tn-pf-cell:nth-last-child(-n+2) { border-bottom: none; }
+.tn-pf-k { font-size: 9px; color: var(--cc-stone); margin-bottom: 2px; }
+.tn-pf-v { font-size: 11.5px; color: var(--cc-charcoal); }
+.tn-pf-v.empty { color: var(--cc-stone); font-style: italic; }
+
+/* in-cell inputs — hidden in read, shown in edit */
+.tn-pf-input {
+  display: none; width: 100%; background: var(--cc-white);
+  border: .5px solid #D4C9B8; border-radius: var(--cc-r-sm);
+  padding: 4px 7px; font-size: 11px; color: var(--cc-charcoal);
+  font-family: inherit; outline: none;
+  -webkit-appearance: none; -webkit-text-size-adjust: 100%;
+  transition: border-color .15s;
+}
+.tn-pf-input:focus { border-color: var(--cc-gold); box-shadow: 0 0 0 2px #FAEEDA80; }
+.tn-pf-input::placeholder { color: var(--cc-stone); }
+.tn-sec.editing .tn-pf-v { display: none; }
+.tn-sec.editing .tn-pf-input { display: block; }
+
+/* ── FINANCE STRIP ── */
+.tn-fin-strip {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  border: var(--cc-border); border-radius: var(--cc-r-md);
+  overflow: hidden; margin-bottom: 9px;
+}
+.tn-sec.editing .tn-fin-strip { border-color: #EF9F27; }
+.tn-fsc { padding: 6px 9px; border-right: var(--cc-border); }
+.tn-fsc:last-child { border-right: none; }
+.tn-fsc-kalt { background: var(--cc-surface); }
+.tn-fsc-nk   { background: var(--cc-surface); }
+.tn-fsc-warm { background: #F3EDE3; }
+.tn-fsc-kaut { background: #FAEEDA; }
+.tn-fsl {
+  font-size: 8px; font-weight: 600; letter-spacing: .09em;
+  text-transform: uppercase; margin-bottom: 3px;
+}
+.tn-fsl-kalt, .tn-fsl-nk { color: var(--cc-taupe); }
+.tn-fsl-warm { color: #9A7A3A; }
+.tn-fsl-kaut { color: #854F0B; }
+.tn-fsv { font-size: 13px; font-weight: 500; color: var(--cc-charcoal); }
+.tn-fsv-warm { color: var(--cc-gold); }
+.tn-fsv-kaut { color: #854F0B; }
+
+/* finance inputs — hidden in read, shown in edit */
+.tn-fsi {
+  display: none; width: 100%; background: var(--cc-white);
+  border: .5px solid #D4C9B8; border-radius: var(--cc-r-sm);
+  padding: 3px 6px; font-size: 12px; font-weight: 500; color: var(--cc-charcoal);
+  font-family: inherit; outline: none; -webkit-appearance: none;
+}
+.tn-fsi::-webkit-inner-spin-button, .tn-fsi::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.tn-fsi[type=number] { -moz-appearance: textfield; }
+.tn-fsi:focus { border-color: var(--cc-gold); }
+.tn-sec.editing .tn-fsv { display: none; }
+.tn-sec.editing .tn-fsi { display: block; }
+/* Warm is always derived — never an input */
+.tn-fsc-warm .tn-fsi { display: none !important; }
+.tn-fsc-warm .tn-fsv { display: block !important; }
+.tn-warm-sub { font-size: 8px; color: var(--cc-stone); font-weight: 400; margin-left: 3px; }
+
+/* move-out hint */
+.tn-moveout-hint {
+  display: none; font-size: 9.5px; color: #854F0B;
+  background: #FAEEDA; border: .5px solid #EF9F27;
+  border-radius: var(--cc-r-sm); padding: 4px 9px; margin-bottom: 8px;
+  align-items: center; gap: 5px;
+}
+.tn-moveout-hint.show { display: flex; }
+
+/* src note + save row */
+.tn-src-note { font-size: 9px; color: var(--cc-stone); margin-bottom: 8px; }
+.tn-save-row { display: flex; align-items: center; gap: 6px; }
 .tn-btn-save {
-  height: 32px; padding: 0 14px; background: var(--cc-ink); color: var(--cc-white);
+  height: 32px; padding: 0 16px; background: var(--cc-ink); color: var(--cc-white);
   border: none; border-radius: var(--cc-r-sm); font-size: 10px; font-weight: 500;
   letter-spacing: .06em; text-transform: uppercase; cursor: pointer; font-family: inherit;
-  transition: opacity .15s;
+  display: flex; align-items: center; gap: 5px; transition: opacity .15s;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .tn-btn-save:active { opacity: .85; }
 .tn-btn-cancel-sm {
-  height: 32px; padding: 0 10px; background: none; color: var(--cc-taupe);
-  border: none; font-size: 13px; cursor: pointer; font-family: inherit;
+  height: 32px; padding: 0 8px; background: none; color: var(--cc-stone);
+  border: none; font-size: 11px; cursor: pointer; font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* ── ACTIONS STRIP ── */
-.tn-acts {
-  display: flex; gap: 6px; padding: 7px 13px;
-  border-top: var(--cc-border); align-items: center;
-}
-.tn-act {
-  height: 28px; display: flex; align-items: center; gap: 4px;
-  padding: 0 11px; border-radius: var(--cc-r-pill);
-  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
-  cursor: pointer; font-family: inherit; background: none; white-space: nowrap;
-  -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: opacity .15s;
-}
-.tn-act:active { opacity: .7; }
-.tn-act-email { color: #0C447C; border: .5px solid #85B7EB; }
-.tn-act-reset { color: var(--cc-taupe); border: var(--cc-border); }
-.tn-act-edit  { color: var(--cc-taupe); border: var(--cc-border); margin-left: auto; }
-.tn-act-add   { color: var(--cc-taupe); border: var(--cc-border); }
+/* hide edit-only content in read mode, show in editing */
+.tn-edit-only { display: none; }
+.tn-sec.editing .tn-edit-only { display: block; }
+.tn-read-only { display: block; }
+.tn-sec.editing .tn-read-only { display: none; }
 
 /* ── DOCUMENT CHIPS ── */
 .tn-doc-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
@@ -296,55 +340,35 @@ document.getElementById('tab-tenants').innerHTML = `
 }
 .tn-doc-chip:active { background: var(--cc-surface); }
 .tn-doc-chip.unsigned { color: var(--cc-stone); }
-.tn-doc-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-}
+.tn-doc-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .tn-doc-dot-signed { background: #639922; }
 .tn-doc-dot-none   { background: #D4CFC9; }
 .tn-doc-chip-icon  { font-size: 11px; color: var(--cc-stone); margin-left: 1px; }
 
-/* keep old doc row classes for modal (former tenant sheet uses them) */
-.tn-doc-row {
-  display: flex; align-items: center; gap: 7px;
-  padding: 3px 0; border-bottom: .5px solid #F0EDE8;
-}
+/* keep legacy doc row classes for modal */
+.tn-doc-row { display: flex; align-items: center; gap: 7px; padding: 3px 0; border-bottom: .5px solid #F0EDE8; }
 .tn-doc-row:last-child { border-bottom: none; }
 .tn-doc-name { font-size: 11px; color: var(--cc-charcoal); flex: 1; min-width: 0; }
 .tn-doc-name-sm { font-size: 10px; color: var(--cc-taupe); flex: 1; min-width: 0; }
-.tn-ds {
-  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  padding: 2px 7px; border-radius: var(--cc-r-pill); flex-shrink: 0; white-space: nowrap;
-}
+.tn-ds { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--cc-r-pill); flex-shrink: 0; white-space: nowrap; }
 .tn-ds-none    { background: #EDE8E0; color: #9A8E7E; border: .5px solid #E0DAD0; }
 .tn-ds-pending { background: #FAEEDA; color: #854F0B; border: .5px solid #EF9F27; }
 .tn-ds-signed  { background: #EAF3DE; color: #3B6D11; border: .5px solid #9AC87A; }
 .tn-ds-done    { background: #EAF3DE; color: #3B6D11; border: .5px solid #9AC87A; }
-.tn-doc-btn {
-  height: 26px; display: flex; align-items: center; gap: 3px;
-  padding: 0 9px; border-radius: var(--cc-r-sm);
-  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  cursor: pointer; font-family: inherit; white-space: nowrap;
-  flex-shrink: 0; transition: opacity .15s; border: none;
-}
+.tn-doc-btn { height: 26px; display: flex; align-items: center; gap: 3px; padding: 0 9px; border-radius: var(--cc-r-sm); font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; font-family: inherit; white-space: nowrap; flex-shrink: 0; transition: opacity .15s; border: none; }
 .tn-doc-btn:active { opacity: .7; }
 .tn-doc-btn-dark  { background: var(--cc-ink); color: var(--cc-white); }
 .tn-doc-btn-ghost { background: none; color: var(--cc-taupe); border: var(--cc-border); }
 .tn-doc-btn-ghost.off { opacity: .3; pointer-events: none; }
 
-/* ── KAUTION — inline row ── */
-.tn-k-row {
-  display: flex; align-items: flex-end; gap: 6px; margin-top: 6px;
-}
+/* ── KAUTION INLINE ROW ── */
+.tn-k-row { display: flex; align-items: flex-end; gap: 6px; margin-top: 6px; }
 .tn-k-col { display: flex; flex-direction: column; gap: 3px; flex: 1; }
-.tn-k-lbl {
-  font-size: 8.5px; font-weight: 600; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--cc-taupe);
-}
+.tn-k-lbl { font-size: 8.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cc-taupe); }
 .tn-k-input {
   width: 100%; background: var(--cc-surface); border: var(--cc-border);
   border-radius: var(--cc-r-sm); padding: 5px 7px;
-  font-family: 'Inter', inherit; font-size: 12px; font-weight: 400;
-  color: var(--cc-charcoal); line-height: 1.4;
+  font-family: inherit; font-size: 12px; font-weight: 400; color: var(--cc-charcoal);
   outline: none; transition: border-color .15s;
   -webkit-appearance: none; -webkit-text-size-adjust: 100%;
 }
@@ -352,14 +376,12 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-k-input[type=number]::-webkit-inner-spin-button,
 .tn-k-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .tn-k-input[type=number] { -moz-appearance: textfield; }
-/* Kept display — same dimensions as input */
 .tn-k-kept {
   width: 100%; background: var(--cc-surface); border: var(--cc-border);
-  border-radius: var(--cc-r-sm); padding: 5px 7px;
-  font-size: 12px; font-weight: 500; color: var(--cc-gold); line-height: 1.4;
+  border-radius: var(--cc-r-sm); padding: 5px 7px; font-size: 12px; font-weight: 500; color: var(--cc-gold);
 }
 .tn-k-settle-col { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
-.tn-k-settle-spacer { height: 15px; } /* aligns button to input bottom */
+.tn-k-settle-spacer { height: 15px; }
 .tn-k-settle {
   font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   padding: 5px 11px; border-radius: var(--cc-r-pill); cursor: pointer;
@@ -368,11 +390,8 @@ document.getElementById('tab-tenants').innerHTML = `
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .tn-k-settle.on { background: #EAF3DE; color: #27500A; border-color: #9AC87A; }
-/* keep old grid classes for modal */
-.tn-k-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px; align-items: end; margin-bottom: 0;
-}
+/* modal kaution — keep grid layout */
+.tn-k-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; align-items: end; }
 .tn-k-status-row { display: none; }
 .tn-msec .tn-k-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 
@@ -391,11 +410,7 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* three dots */
 .tn-dots { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
-.tn-dot {
-  width: 20px; height: 20px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  transition: all .15s; flex-shrink: 0;
-}
+.tn-dot { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
 .tn-dot.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .tn-dot.tap:active { transform: scale(.88); }
 .tn-dot i { font-size: 10px; }
@@ -410,12 +425,32 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-dot-done { background: #EAF3DE; border: 1.5px solid #9AC87A; opacity: .4; }
 .tn-dot-done i { color: #3B6D11; }
 
-/* settled section */
-.tn-settled-toggle {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 0 2px; cursor: pointer; user-select: none;
-  -webkit-tap-highlight-color: transparent;
+/* NK action buttons */
+.tn-nk-btns { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+.tn-nb {
+  height: 26px; display: flex; align-items: center; gap: 3px;
+  padding: 0 8px; border-radius: var(--cc-r-sm);
+  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  cursor: pointer; font-family: inherit; white-space: nowrap;
+  flex-shrink: 0; transition: opacity .15s; border: none;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
+.tn-nb:active { opacity: .7; }
+.tn-nb-dark  { background: var(--cc-ink); color: var(--cc-white); }
+.tn-nb-ghost { background: none; color: var(--cc-taupe); border: var(--cc-border); }
+/* delete NK — red ghost, icon only */
+.tn-nb-del {
+  height: 26px; width: 28px; display: flex; align-items: center; justify-content: center;
+  padding: 0; border-radius: var(--cc-r-sm);
+  background: none; color: #C4705A; border: .5px solid #EAC4BB;
+  cursor: pointer; font-family: inherit; flex-shrink: 0;
+  transition: all .15s;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.tn-nb-del:active { background: #FCEBEB; }
+
+/* settled section */
+.tn-settled-toggle { display: flex; align-items: center; gap: 6px; padding: 8px 0 2px; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
 .tn-settled-lbl { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--cc-stone); }
 .tn-settled-chev { color: var(--cc-stone); font-size: 12px; transition: transform .2s; }
 .tn-settled-toggle.open .tn-settled-chev { transform: rotate(90deg); }
@@ -438,7 +473,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-former-rows { border-top: var(--cc-border); }
 .tn-former-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 13px; border-bottom: var(--cc-border);
+  padding: 6px 14px; border-bottom: var(--cc-border);
   cursor: pointer; -webkit-tap-highlight-color: transparent;
   user-select: none; touch-action: manipulation; transition: background .12s;
 }
@@ -448,13 +483,10 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-fr-name { font-size: 13px; font-weight: 500; color: var(--cc-charcoal); }
 .tn-fr-period { font-size: 10px; color: var(--cc-taupe); margin-top: 1px; }
 .tn-fr-badges { display: flex; gap: 4px; flex-shrink: 0; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
-.tn-fr-arr {
-  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; border: var(--cc-border); color: var(--cc-taupe); font-size: 12px; flex-shrink: 0;
-}
+.tn-fr-arr { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: var(--cc-border); color: var(--cc-taupe); font-size: 12px; flex-shrink: 0; }
 .tn-add-former-btn {
   display: flex; align-items: center; gap: 5px; width: 100%;
-  padding: 6px 13px; background: none; border: none; border-top: var(--cc-border);
+  padding: 6px 14px; background: none; border: none; border-top: var(--cc-border);
   font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   color: var(--cc-taupe); cursor: pointer; font-family: inherit; transition: color .15s;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -462,163 +494,74 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-add-former-btn:active { color: var(--cc-charcoal); }
 
 /* archived */
-.tn-arc-toggle {
-  display: flex; align-items: center; gap: 6px; padding: 9px 13px;
-  cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--cc-stone); border-top: var(--cc-border);
-  user-select: none; -webkit-tap-highlight-color: transparent;
-}
+.tn-arc-toggle { display: flex; align-items: center; gap: 6px; padding: 9px 14px; cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cc-stone); border-top: var(--cc-border); user-select: none; -webkit-tap-highlight-color: transparent; }
 .tn-arc-body { display: none; background: var(--cc-surface); }
 .tn-arc-body.open { display: block; }
-.tn-arc-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 13px; border-top: var(--cc-border); opacity: .55;
-}
+.tn-arc-row { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-top: var(--cc-border); opacity: .55; }
 .tn-arc-info { flex: 1; }
 .tn-arc-name { font-size: 12px; color: var(--cc-taupe); }
 .tn-arc-period { font-size: 10px; color: var(--cc-stone); }
-.tn-btn-reopen {
-  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  padding: 3px 9px; border-radius: var(--cc-r-pill);
-  color: var(--cc-taupe); border: var(--cc-border); background: none;
-  cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent;
+.tn-btn-reopen { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: var(--cc-r-pill); color: var(--cc-taupe); border: var(--cc-border); background: none; cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent; }
+
+/* ── ACTIONS BAR (email + reset pw — bottom of card) ── */
+.tn-acts {
+  display: flex; gap: 6px; padding: 7px 14px;
+  border-top: var(--cc-border); align-items: center;
 }
+.tn-act {
+  height: 28px; display: flex; align-items: center; gap: 4px;
+  padding: 0 11px; border-radius: var(--cc-r-pill);
+  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  cursor: pointer; font-family: inherit; background: none; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: opacity .15s;
+}
+.tn-act:active { opacity: .7; }
+.tn-act-email { color: #0C447C; border: .5px solid #85B7EB; }
+.tn-act-reset { color: var(--cc-taupe); border: var(--cc-border); }
 
 /* ── MODAL OVERLAY ── */
-.tn-overlay {
-  display: none; position: fixed; inset: 0; z-index: 400;
-  background: rgba(30,27,24,.22); backdrop-filter: blur(2px);
-  align-items: flex-end; justify-content: center;
-}
+.tn-overlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(30,27,24,.22); backdrop-filter: blur(2px); align-items: flex-end; justify-content: center; }
 .tn-overlay.open { display: flex; }
 .tn-overlay--confirm { align-items: center; padding: 24px; z-index: 500; }
 
 /* ── MODAL SHEET ── */
-.tn-sheet {
-  width: 100%; max-width: 500px; max-height: 90vh;
-  background: var(--cc-white); border-radius: 20px 20px 0 0;
-  display: flex; flex-direction: column;
-  animation: tnSheetUp .26s cubic-bezier(.32,.72,0,1);
-}
-@keyframes tnSheetUp {
-  from { transform: translateY(40px); opacity: 0; }
-  to   { transform: none; opacity: 1; }
-}
-.tn-sheet-hdr {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  padding: 18px 20px 14px; border-bottom: var(--cc-border); flex-shrink: 0;
-}
-.tn-sheet-title {
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  font-size: 22px; font-weight: 400; color: var(--cc-ink); line-height: 1.15; margin-bottom: 4px;
-}
+.tn-sheet { width: 100%; max-width: 500px; max-height: 90vh; background: var(--cc-white); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; animation: tnSheetUp .26s cubic-bezier(.32,.72,0,1); }
+@keyframes tnSheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.tn-sheet-hdr { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 20px 14px; border-bottom: var(--cc-border); flex-shrink: 0; }
+.tn-sheet-title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 400; color: var(--cc-ink); line-height: 1.15; margin-bottom: 4px; }
 .tn-sheet-sub { font-size: 11px; color: var(--cc-taupe); display: flex; align-items: center; gap: 6px; }
-.tn-sheet-close {
-  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
-  background: var(--cc-surface); border: var(--cc-border); border-radius: 50%;
-  color: var(--cc-taupe); font-size: 13px; cursor: pointer; font-family: inherit; flex-shrink: 0;
-  -webkit-tap-highlight-color: transparent;
-}
+.tn-sheet-close { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: var(--cc-surface); border: var(--cc-border); border-radius: 50%; color: var(--cc-taupe); font-size: 13px; cursor: pointer; font-family: inherit; flex-shrink: 0; -webkit-tap-highlight-color: transparent; }
 .tn-sheet-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-
-/* modal sections — same visual as card sections */
 .tn-msec { padding: 14px 20px; border-bottom: var(--cc-border); }
 .tn-msec:last-child { border-bottom: none; }
-
-.tn-sheet-footer {
-  padding: 12px 16px;
-  padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
-  border-top: var(--cc-border); flex-shrink: 0;
-  display: flex; align-items: center; gap: 10px;
-}
-.tn-btn-done {
-  flex: 1; height: 44px; background: var(--cc-ink); color: var(--cc-white); border: none;
-  border-radius: var(--cc-r-md); font-size: 12px; font-weight: 500;
-  cursor: pointer; font-family: inherit;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  transition: opacity .15s; -webkit-tap-highlight-color: transparent;
-}
+.tn-sheet-footer { padding: 12px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom, 16px)); border-top: var(--cc-border); flex-shrink: 0; display: flex; align-items: center; gap: 10px; }
+.tn-btn-done { flex: 1; height: 44px; background: var(--cc-ink); color: var(--cc-white); border: none; border-radius: var(--cc-r-md); font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity .15s; -webkit-tap-highlight-color: transparent; }
 .tn-btn-done:active { opacity: .85; }
-.tn-btn-del {
-  height: 44px; padding: 0 16px; background: none; color: #C4705A;
-  border: .5px solid #EAC4BB; border-radius: var(--cc-r-md);
-  font-size: 12px; cursor: pointer; font-family: inherit; opacity: .3; pointer-events: none;
-  transition: opacity .15s; -webkit-tap-highlight-color: transparent;
-}
+.tn-btn-del { height: 44px; padding: 0 16px; background: none; color: #C4705A; border: .5px solid #EAC4BB; border-radius: var(--cc-r-md); font-size: 12px; cursor: pointer; font-family: inherit; opacity: .3; pointer-events: none; transition: opacity .15s; -webkit-tap-highlight-color: transparent; }
 .tn-btn-del.on { opacity: 1; pointer-events: auto; }
 
 /* ── CONFIRM DELETE ── */
-.tn-confirm-box {
-  background: var(--cc-white); border-radius: var(--cc-r-lg);
-  padding: 28px 24px 24px; max-width: 320px; width: 100%;
-  box-shadow: 0 24px 60px rgba(30,27,24,.18);
-  animation: tnConfirmPop .2s cubic-bezier(.32,.72,0,1);
-}
+.tn-confirm-box { background: var(--cc-white); border-radius: var(--cc-r-lg); padding: 28px 24px 24px; max-width: 320px; width: 100%; box-shadow: 0 24px 60px rgba(30,27,24,.18); animation: tnConfirmPop .2s cubic-bezier(.32,.72,0,1); }
 @keyframes tnConfirmPop { from { transform: scale(.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .tn-confirm-icon { font-size: 28px; color: #C4705A; margin-bottom: 12px; }
 .tn-confirm-title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; font-weight: 400; color: var(--cc-ink); margin-bottom: 6px; }
 .tn-confirm-body { font-size: 13px; color: var(--cc-taupe); line-height: 1.6; margin-bottom: 20px; }
 .tn-confirm-btns { display: flex; align-items: center; gap: 10px; }
-.tn-btn-cancel {
-  flex-shrink: 0; height: 48px; padding: 0 16px; background: none; border: none;
-  color: var(--cc-stone); font-size: 13px; cursor: pointer; font-family: inherit;
-}
-.tn-btn-danger {
-  flex: 1; height: 48px; background: #C4705A; color: var(--cc-white); border: none;
-  border-radius: var(--cc-r-md); font-size: 13px; font-weight: 500;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  cursor: pointer; font-family: inherit;
-}
+.tn-btn-cancel { flex-shrink: 0; height: 48px; padding: 0 16px; background: none; border: none; color: var(--cc-stone); font-size: 13px; cursor: pointer; font-family: inherit; }
+.tn-btn-danger { flex: 1; height: 48px; background: #C4705A; color: var(--cc-white); border: none; border-radius: var(--cc-r-md); font-size: 13px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; font-family: inherit; }
 
+/* modal form elements */
 .tn-ctype-toggle { display: flex; gap: 4px; flex-wrap: wrap; }
-.tn-ctype-btn {
-  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
-  padding: 4px 11px; border-radius: var(--cc-r-pill); cursor: pointer;
-  font-family: inherit; background: none; color: var(--cc-taupe);
-  border: var(--cc-border); transition: all .15s;
-  -webkit-tap-highlight-color: transparent;
-}
+.tn-ctype-btn { font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; padding: 4px 11px; border-radius: var(--cc-r-pill); cursor: pointer; font-family: inherit; background: none; color: var(--cc-taupe); border: var(--cc-border); transition: all .15s; -webkit-tap-highlight-color: transparent; }
 .tn-ctype-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
-
-/* ── FINANCIAL STAT CELLS (kept for edit form / modal context) ── */
-.tn-fin-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px; margin: 10px 0 8px;
-}
-.tn-fin-cell {
-  background: var(--cc-surface); border-radius: var(--cc-r-sm);
-  padding: 8px 10px;
-}
-.tn-fin-lbl {
-  font-size: 9px; font-weight: 600; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--cc-taupe); margin-bottom: 3px;
-}
-.tn-fin-val {
-  font-size: 15px; font-weight: 500; color: var(--cc-charcoal); line-height: 1.2;
-}
-.tn-fin-val.gold { color: var(--cc-gold); }
-.tn-fin-src {
-  font-size: 9px; color: var(--cc-stone); margin-top: 2px;
-}
-.tn-fin-divider {
-  height: 0.5px; background: var(--cc-rule); margin: 10px 0;
-}
-.tn-fin-note {
-  font-size: 10px; color: var(--cc-taupe); margin-top: 8px;
-  padding: 5px 9px; background: var(--cc-surface);
-  border-radius: var(--cc-r-sm); border-left: 2px solid var(--cc-gold);
-}
-
-/* staffelmiete toggle */
-.tn-staf-toggle { display: flex; gap: 4px; }
-.tn-staf-btn {
-  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
-  padding: 3px 10px; border-radius: var(--cc-r-pill); cursor: pointer;
-  font-family: inherit; background: none; color: var(--cc-taupe);
-  border: var(--cc-border); transition: all .15s;
-  -webkit-tap-highlight-color: transparent;
-}
-.tn-staf-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+.tn-ef   { display: flex; gap: 10px; padding: 3px 0; align-items: center; }
+.tn-ef-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; line-height: 1.4; }
+.tn-ef input { flex: 1; background: var(--cc-surface); border: var(--cc-border); border-radius: var(--cc-r-sm); padding: 5px 8px; font-family: inherit; font-size: 11px; font-weight: 300; color: var(--cc-charcoal); line-height: 1.4; outline: none; transition: border-color .15s; min-width: 0; -webkit-appearance: none; -webkit-text-size-adjust: 100%; }
+.tn-ef input:focus { border-color: var(--cc-gold); background: var(--cc-white); }
+.tn-ef input::placeholder { color: var(--cc-stone); font-style: normal; font-weight: 300; }
+.tn-ef-note { font-size: 10px; color: var(--cc-taupe); margin-top: 4px; padding-left: 98px; }
+.tn-fin-divider { height: 0.5px; background: var(--cc-rule); margin: 10px 0; }
+.tn-fin-note { font-size: 10px; color: var(--cc-taupe); margin-top: 8px; padding: 5px 9px; background: var(--cc-surface); border-radius: var(--cc-r-sm); border-left: 2px solid var(--cc-gold); }
 
 /* ── EMPTY STATE ── */
 .tn-empty { font-size: 12px; color: var(--cc-stone); font-style: italic; padding: 3px 0; }
@@ -630,11 +573,10 @@ document.getElementById('tab-tenants').innerHTML = `
   .tn-sheet-footer { padding-bottom: 16px; }
   .tn-former-row:hover { background: #F9F7F4; }
   .tn-add-former-btn:hover { color: var(--cc-charcoal); }
-  /* Cards full width — matches rooms tab .rp-list behavior */
   .tn-list { max-width: none; margin: 0; }
 }
 
-/* ── PWA iOS bottom safe area on card list ── */
+/* ── PWA iOS safe area ── */
 #tab-tenants .tn-list {
   padding-bottom: max(40px, env(safe-area-inset-bottom, 40px));
 }
@@ -670,7 +612,8 @@ let _tnUploadTenantId  = null;
 let _tnUploadDocType   = null;
 
 // Delete state
-let _tnDeleteId = null;
+let _tnDeleteId   = null;
+let _tnDeleteType = 'tenant'; // 'tenant' | 'nk'
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -1080,69 +1023,67 @@ function _tnCurrentTenantHTML(room, rec) {
 
   // No record yet — show blank edit form, save creates the record
   if (!rec) {
-    const liveP0 = _tnRoomPricing(room.name);
+    const liveP0  = _tnRoomPricing(room.name);
     const dKalt0  = liveP0.kaltmiete   ?? null;
-    const dNk0    = liveP0.nebenkosten  ?? null;
+    const dNk0    = liveP0.nebenkosten ?? null;
     const dKSoll0 = _tnKautionSoll(room.name, null, null);
     const dWarm0  = (dKalt0 != null && dNk0 != null) ? dKalt0 + dNk0 : dKalt0;
 
     return `
-  <div class="tn-sec tn-sec-gold editing" id="cursec-${rid}" data-tenant-id="">
+  <div class="tn-sec tn-sec-new-tenant editing" id="cursec-${rid}" data-tenant-id="">
     <div class="tn-sec-hdr">
-      <span class="tn-slbl tn-slbl-gold">New tenant</span>
+      <span class="tn-slbl">New tenant</span>
     </div>
-    <div class="tn-profile-read" style="display:none"></div>
-    <div class="tn-profile-edit">
-      <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="" placeholder="Full name"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-f="email" type="email" value="" placeholder="tenant@mail.de"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="" placeholder="+49 ..."/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="" placeholder="DD.MM.YYYY"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="" placeholder="Street, City"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="" placeholder="DD.MM.YYYY" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="" placeholder="DD.MM.YYYY \u2014 sets tenant as Former" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
-      <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
 
-      <div class="tn-fin-divider"></div>
-      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
+    <div class="tn-pf-surface">
+      <div class="tn-pf-top">
+        <input class="tn-pf-name-input" data-f="name" value="" placeholder="Full name"/>
+        <div class="tn-pf-date-group">
+          <input class="tn-pf-date-input" data-f="mietbeginn" placeholder="Move in" oninput="_tnUpdateKautionSoll('${rid}')"/>
+          <span class="tn-pf-date-sep">→</span>
+          <input class="tn-pf-date-input" data-f="mietende" placeholder="Move out" oninput="_tnMoveoutHint('${rid}');_tnUpdateKautionSoll('${rid}')"/>
+        </div>
+      </div>
+      <div class="tn-pf-grid">
+        <div class="tn-pf-cell"><div class="tn-pf-k">Email</div><input class="tn-pf-input" data-f="email" type="email" placeholder="tenant@mail.de"/></div>
+        <div class="tn-pf-cell"><div class="tn-pf-k">Phone</div><input class="tn-pf-input" data-f="phone" type="tel" placeholder="+49 …"/></div>
+        <div class="tn-pf-cell"><div class="tn-pf-k">Birthday</div><input class="tn-pf-input" data-f="birthday" placeholder="DD.MM.YYYY"/></div>
+        <div class="tn-pf-cell"><div class="tn-pf-k">Address</div><input class="tn-pf-input" data-f="address" placeholder="Street, City"/></div>
+      </div>
+    </div>
 
-      <div class="tn-ef">
-        <span class="tn-ef-k">Kaltmiete</span>
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaltmiete" type="number" value="${dKalt0 ?? ''}" placeholder="${dKalt0 ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
-        </div>
-      </div>
-      <div class="tn-ef">
-        <span class="tn-ef-k">Nebenkosten</span>
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="nebenkosten" type="number" value="${dNk0 ?? ''}" placeholder="${dNk0 ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
-        </div>
-      </div>
-      <div class="tn-ef" style="padding-bottom:2px">
-        <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
-        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm0 != null ? _tnFmtEUR(dWarm0) : '\u2014'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
-      </div>
-      <div class="tn-ef">
-        <span class="tn-ef-k">Kaution soll</span>
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaution_soll" type="number" value="${dKSoll0 ?? ''}" placeholder="${dKSoll0 ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac</span>
-        </div>
-      </div>
-      <div class="tn-ef-note tn-kaution-rule-hint" style="padding-left:0;color:var(--cc-stone);font-size:10px"></div>
-      <div class="tn-ef">
-        <span class="tn-ef-k">Staffelmiete</span>
-        <div class="tn-staf-toggle">
-          <button class="tn-staf-btn" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
-          <button class="tn-staf-btn on" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
-        </div>
-      </div>
-      <div class="tn-fin-note">Pre-filled from rooms tab. Edit to set this tenant's actual agreed terms.</div>
+    <div class="tn-moveout-hint" id="moh-${rid}">
+      <i class="ti ti-info-circle" style="font-size:11px"></i>
+      Setting move out marks this tenant as Former on save.
+    </div>
 
-      <div class="tn-save-row">
-        <button class="tn-btn-save" onclick="_tnSaveNewTenant('${rid}','${esc(room.name)}')">Save</button>
+    <div class="tn-fin-strip">
+      <div class="tn-fsc tn-fsc-kalt">
+        <div class="tn-fsl tn-fsl-kalt">Kalt</div>
+        <div class="tn-fsv">${dKalt0 != null ? _tnFmtEUR(dKalt0) : '\u2014'}</div>
+        <input class="tn-fsi" data-f="kaltmiete" type="number" value="${dKalt0 ?? ''}" placeholder="${liveP0.kaltmiete ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
       </div>
+      <div class="tn-fsc tn-fsc-nk">
+        <div class="tn-fsl tn-fsl-nk">NK</div>
+        <div class="tn-fsv">${dNk0 != null ? _tnFmtEUR(dNk0) : '\u2014'}</div>
+        <input class="tn-fsi" data-f="nebenkosten" type="number" value="${dNk0 ?? ''}" placeholder="${liveP0.nebenkosten ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+      </div>
+      <div class="tn-fsc tn-fsc-warm">
+        <div class="tn-fsl tn-fsl-warm">Warm</div>
+        <div class="tn-fsv tn-fsv-warm" id="warm-${rid}">${dWarm0 != null ? _tnFmtEUR(dWarm0) : '\u2014'}<span class="tn-warm-sub">auto</span></div>
+      </div>
+      <div class="tn-fsc tn-fsc-kaut">
+        <div class="tn-fsl tn-fsl-kaut">Kaution soll</div>
+        <div class="tn-fsv tn-fsv-kaut">${dKSoll0 != null ? _tnFmtEUR(dKSoll0) : '\u2014'}</div>
+        <input class="tn-fsi tn-kaution-rule-hint" data-f="kaution_soll" type="number" value="${dKSoll0 ?? ''}" placeholder="${dKSoll0 ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
+      </div>
+    </div>
+
+    <div class="tn-src-note">Pre-filled from rooms tab · set agreed values to override</div>
+    <div class="tn-save-row">
+      <button class="tn-btn-save" onclick="_tnSaveNewTenant('${rid}','${esc(room.name)}')">
+        <i class="ti ti-check" style="font-size:11px"></i> Save
+      </button>
     </div>
   </div>`;
   }
@@ -1167,113 +1108,98 @@ function _tnCurrentTenantHTML(room, rec) {
   const dSrc   = (rec.kaltmiete != null) ? 'agreed' : 'live · rooms tab';
 
   return `
-  <div class="tn-sec tn-sec-gold${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
+  <div class="tn-sec${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
     <div class="tn-sec-hdr">
-      <span class="tn-slbl tn-slbl-gold">Current tenant</span>
-      <button class="tn-sec-edit-btn" id="editbtn-${rid}" onclick="_tnEditOrSave('${rid}','${rec.id}')">
+      <span class="tn-slbl">Current tenant</span>
+      <button class="tn-sec-edit-btn tn-read-only" id="editbtn-${rid}" onclick="_tnEditOrSave('${rid}','${rec.id}')">
         <i class="ti ti-pencil" style="font-size:10px"></i> Edit
       </button>
     </div>
-    <div class="tn-profile-read">
-      <div class="tn-pf-namerow">
-        <span class="tn-pf-name">${esc(fullName) || '<span style="color:var(--cc-stone);font-style:italic">Name not set</span>'}</span>
-        <span class="tn-pf-dates">${_tnFmtDate(rec.mietbeginn) || '—'} &rarr; ${mietendeDisplay || 'active'}</span>
+
+    <!-- PROFILE SURFACE — same container in both modes -->
+    <div class="tn-pf-surface">
+      <!-- name + dates: read values / underline inputs same position -->
+      <div class="tn-pf-top">
+        <span class="tn-pf-name tn-pf-name-read">${esc(fullName) || '<span style="color:var(--cc-stone);font-style:italic">No name</span>'}</span>
+        <input class="tn-pf-name-input" data-f="name" value="${esc(fullName)}" placeholder="Full name"/>
+        <span class="tn-pf-dates tn-pf-dates-read">
+          <b>${_tnFmtDate(rec.mietbeginn) || '—'}</b>&nbsp;→&nbsp;${mietendeDisplay || 'active'}
+        </span>
+        <div class="tn-pf-date-group">
+          <input class="tn-pf-date-input" data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="Move in" oninput="_tnUpdateKautionSoll('${rid}')"/>
+          <span class="tn-pf-date-sep">→</span>
+          <input class="tn-pf-date-input" data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="Move out" oninput="_tnMoveoutHint('${rid}');_tnUpdateKautionSoll('${rid}')"/>
+        </div>
       </div>
+      <!-- 2-col grid: read values / inputs in same cells -->
       <div class="tn-pf-grid">
-        <div class="tn-pf-row">
-          <span class="tn-pf-k">Email</span>
-          <span class="tn-pf-v ${email ? '' : 'muted'}">${email || 'Not set'}</span>
+        <div class="tn-pf-cell">
+          <div class="tn-pf-k">Email</div>
+          <div class="tn-pf-v${email ? '' : ' empty'}">${email || 'Not set'}</div>
+          <input class="tn-pf-input" data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/>
         </div>
-        <div class="tn-pf-row">
-          <span class="tn-pf-k">Phone</span>
-          <span class="tn-pf-v ${rec.phone ? '' : 'muted'}">${esc(rec.phone||'') || 'Not set'}</span>
+        <div class="tn-pf-cell">
+          <div class="tn-pf-k">Phone</div>
+          <div class="tn-pf-v${rec.phone ? '' : ' empty'}">${esc(rec.phone||'') || 'Not set'}</div>
+          <input class="tn-pf-input" data-f="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 …"/>
         </div>
-        <div class="tn-pf-row">
-          <span class="tn-pf-k">Birthday</span>
-          <span class="tn-pf-v ${rec.birthday ? '' : 'muted'}">${esc(rec.birthday||'') || 'Not set'}</span>
+        <div class="tn-pf-cell">
+          <div class="tn-pf-k">Birthday</div>
+          <div class="tn-pf-v${rec.birthday ? '' : ' empty'}">${esc(rec.birthday||'') || 'Not set'}</div>
+          <input class="tn-pf-input" data-f="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/>
         </div>
-        <div class="tn-pf-row">
-          <span class="tn-pf-k">Address</span>
-          <span class="tn-pf-v ${rec.address ? '' : 'muted'}">${esc(rec.address||'') || 'Not set'}</span>
-        </div>
-      </div>
-      <div class="tn-fin-strip">
-        <div class="tn-fin-strip-cell">
-          <div class="tn-fin-strip-lbl">Kalt</div>
-          <div class="tn-fin-strip-val">${dKalt != null ? _tnFmtEUR(dKalt) : '\u2014'}</div>
-        </div>
-        <div class="tn-fin-strip-cell">
-          <div class="tn-fin-strip-lbl">NK</div>
-          <div class="tn-fin-strip-val">${dNk != null ? _tnFmtEUR(dNk) : '\u2014'}</div>
-        </div>
-        <div class="tn-fin-strip-cell">
-          <div class="tn-fin-strip-lbl">Warm</div>
-          <div class="tn-fin-strip-val gold">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'}</div>
-        </div>
-        <div class="tn-fin-strip-cell">
-          <div class="tn-fin-strip-lbl">Kaution soll</div>
-          <div class="tn-fin-strip-val">${dKSoll != null ? _tnFmtEUR(dKSoll) : '\u2014'}</div>
+        <div class="tn-pf-cell">
+          <div class="tn-pf-k">Address</div>
+          <div class="tn-pf-v${rec.address ? '' : ' empty'}">${esc(rec.address||'') || 'Not set'}</div>
+          <input class="tn-pf-input" data-f="address" value="${esc(rec.address||'')}" placeholder="Street, City"/>
         </div>
       </div>
-      <div class="tn-staf-note">Staffelmiete: ${staf ? 'Ja' : 'Nein'} &middot; <span style="color:var(--cc-stone)">${dSrc}</span></div>
     </div>
 
-    <!-- EDIT VIEW -->
-    <div class="tn-profile-edit">
-      <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="${esc(fullName)}" placeholder="Full name"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 ..."/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="${esc(rec.address||'')}" placeholder="Street, City"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="DD.MM.YYYY" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY \u2014 sets tenant as Former" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
-      <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
+    <!-- move-out hint (edit only, appears when move-out field has value) -->
+    <div class="tn-moveout-hint tn-edit-only${mietendeDisplay ? ' show' : ''}" id="moh-${rid}">
+      <i class="ti ti-info-circle" style="font-size:11px"></i>
+      Setting move out marks this tenant as Former on save.
+    </div>
 
+    <!-- FINANCE STRIP — same 4-col, read display / inputs swap per mode -->
+    <div class="tn-fin-strip">
+      <div class="tn-fsc tn-fsc-kalt">
+        <div class="tn-fsl tn-fsl-kalt">Kalt</div>
+        <div class="tn-fsv">${dKalt != null ? _tnFmtEUR(dKalt) : '\u2014'}</div>
+        <input class="tn-fsi" data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+      </div>
+      <div class="tn-fsc tn-fsc-nk">
+        <div class="tn-fsl tn-fsl-nk">NK</div>
+        <div class="tn-fsv">${dNk != null ? _tnFmtEUR(dNk) : '\u2014'}</div>
+        <input class="tn-fsi" data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+      </div>
+      <div class="tn-fsc tn-fsc-warm">
+        <div class="tn-fsl tn-fsl-warm">Warm</div>
+        <div class="tn-fsv tn-fsv-warm" id="warm-${rid}">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'}<span class="tn-warm-sub">auto</span></div>
+      </div>
+      <div class="tn-fsc tn-fsc-kaut">
+        <div class="tn-fsl tn-fsl-kaut">Kaution soll</div>
+        <div class="tn-fsv tn-fsv-kaut">${dKSoll != null ? _tnFmtEUR(dKSoll) : '\u2014'}</div>
+        <input class="tn-fsi" data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${_tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null) ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
+      </div>
+    </div>
+    <div class="tn-kaution-rule-hint tn-edit-only" id="krh-${rid}" style="font-size:9px;color:var(--cc-stone);margin-bottom:6px"></div>
 
-      <div class="tn-fin-divider"></div>
-      <div class="tn-slbl" style="margin-bottom:8px">Rent &amp; kaution</div>
-
-      <div class="tn-ef">
-        <span class="tn-ef-k">Kaltmiete</span>
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? '—'}" oninput="_tnUpdateWarm('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
-        </div>
+    <!-- src note + save/cancel — edit only -->
+    <div class="tn-edit-only">
+      <div class="tn-src-note">${isFormer ? 'Frozen at move-out · edit to correct' : 'Placeholders from rooms tab · set agreed values to override'}</div>
+      <div class="tn-save-row">
+        <button class="tn-btn-save" onclick="_tnEditOrSave('${rid}','${rec.id}')">
+          <i class="ti ti-check" style="font-size:11px"></i> Save
+        </button>
+        <button class="tn-btn-cancel-sm" onclick="_tnCancelEdit('${rid}')">Cancel</button>
       </div>
-      <div class="tn-ef">
-        <span class="tn-ef-k">Nebenkosten</span>
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? '—'}" oninput="_tnUpdateWarm('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
-        </div>
-      </div>
-      <div class="tn-ef" style="padding-bottom:2px">
-        <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
-        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '—'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
-      </div>
-      <div class="tn-ef">
-        <span class="tn-ef-k">Kaution soll</span>
-        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${_tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null) ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€</span>
-        </div>
-      </div>
-      <div class="tn-ef-note tn-kaution-rule-hint" style="padding-left:0;color:var(--cc-stone);font-size:10px"></div>
-      <div class="tn-ef">
-        <span class="tn-ef-k">Staffelmiete</span>
-        <div class="tn-staf-toggle">
-          <button class="tn-staf-btn${staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
-          <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
-        </div>
-      </div>
-      <div class="tn-fin-note">${isFormer ? 'Frozen at move-out — edit to correct.' : 'Placeholders from rooms tab. Set agreed values here to override.'}</div>
-
     </div>
   </div>
 
   <div class="tn-acts">
-    ${email ? `<button class="tn-act tn-act-email"
-      onclick="window.location.href=buildMailto('${email}','Message from Casa Castel','')">
+    ${email ? `<button class="tn-act tn-act-email" onclick="window.location.href=buildMailto('${email}','Message from Casa Castel','')">
       <i class="ti ti-mail" style="font-size:11px"></i> Email
     </button>` : ''}
     <button class="tn-act tn-act-reset" onclick="_tnResetPw('${esc(room.name)}')">
@@ -1297,19 +1223,21 @@ function _tnDocumentsHTML(room, activeRec) {
     const signed = !!doc?.file_url;
     const action = signed
       ? `onclick="_tnViewDoc('${doc.file_url}')"`
-      : tid ? `onclick="_tnTriggerUpload('${tid}','${type}')"` : `disabled`;
+      : tid ? `onclick="_tnTriggerUpload('${tid}','${type}')"` : 'disabled';
     const icon = signed
       ? `<i class="ti ti-eye tn-doc-chip-icon" aria-hidden="true"></i>`
       : `<i class="ti ti-upload tn-doc-chip-icon" aria-hidden="true"></i>`;
-    return `<button class="tn-doc-chip ${signed ? '' : 'unsigned'}" ${action}>
+    return `<button class="tn-doc-chip${signed ? '' : ' unsigned'}" ${action}>
       <span class="tn-doc-dot ${signed ? 'tn-doc-dot-signed' : 'tn-doc-dot-none'}"></span>
       ${esc(label)}${icon}
     </button>`;
   };
 
   return `
-  <div class="tn-sec">
-    <span class="tn-slbl" style="margin-bottom:5px;display:block">Documents<span class="tn-slbl-note"> · tap to view or upload</span></span>
+  <div class="tn-sec tn-sec-plain">
+    <div class="tn-sec-hdr" style="margin-bottom:5px">
+      <span class="tn-slbl tn-slbl-neutral">Documents</span>
+    </div>
     <div class="tn-doc-chips">
       ${types.includes('mietvertrag')  ? docChip('mietvertrag',        'Mietvertrag')         : ''}
       ${types.includes('kurzzeit')     ? docChip('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
@@ -1333,12 +1261,10 @@ function _tnKautionHTML(tenantId, context) {
   const opacity  = tenantId ? '' : 'opacity:.45;pointer-events:none;';
 
   if (context === 'modal') {
-    // Modal keeps the original grid layout
-    const cls = 'tn-msec';
     return `
-  <div class="${cls}" style="${opacity}">
+  <div class="tn-msec" style="${opacity}">
     <span class="tn-slbl tn-slbl-gold">Kaution</span>
-    <div class="tn-k-grid">
+    <div class="tn-k-grid" style="margin-top:8px">
       <div class="tn-k-col">
         <span class="tn-k-lbl">Received</span>
         <input class="tn-k-input" type="number" id="kr-${prefix}"
@@ -1368,11 +1294,11 @@ function _tnKautionHTML(tenantId, context) {
   </div>`;
   }
 
-  // Card context — compact inline row
+  // Card context — inline row
   return `
-  <div class="tn-sec" style="${opacity}">
+  <div class="tn-sec tn-sec-plain" style="${opacity}">
     <div class="tn-sec-hdr" style="margin-bottom:5px">
-      <span class="tn-slbl">Kaution <span class="tb ${st.cls}" id="ks-${prefix}" style="margin-left:4px;vertical-align:middle">${st.label}</span></span>
+      <span class="tn-slbl tn-slbl-neutral">Kaution <span class="tb ${st.cls}" id="ks-${prefix}" style="margin-left:4px;vertical-align:middle">${st.label}</span></span>
     </div>
     <div class="tn-k-row">
       <div class="tn-k-col">
@@ -1396,7 +1322,7 @@ function _tnKautionHTML(tenantId, context) {
         <button class="tn-k-settle${k.settled ? ' on' : ''}" id="kset-${prefix}"
           ${disabled}
           onclick="_tnToggleSettle('${prefix}','${tenantId}')">
-          ${k.settled ? 'Settled ✓' : 'Mark settled'}
+          ${k.settled ? 'Settled \u2713' : 'Mark settled'}
         </button>
       </div>
     </div>
@@ -1407,20 +1333,19 @@ function _tnKautionHTML(tenantId, context) {
 
 /* ── NK SECTION (Pattern B — internal create/view) ── */
 function _tnNKHTML(tenantId, context) {
-  // If no tenantId yet — show section with disabled state
   if (!tenantId) {
-    const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
+    const cls = context === 'modal' ? 'tn-msec' : 'tn-sec tn-sec-plain';
     return `
     <div class="${cls}" style="opacity:.45;pointer-events:none;">
-      <span class="tn-slbl">NK Abrechnungen<span class="tn-slbl-note"> · create and manage here</span></span>
-      <p class="tn-empty">Save tenant profile first to track NK periods.</p>
+      <span class="tn-slbl tn-slbl-neutral">NK Abrechnungen</span>
+      <p class="tn-empty" style="margin-top:4px">Save tenant profile first to track NK periods.</p>
     </div>`;
   }
 
   const entries = (_tnNK[tenantId] || []).slice().sort((a,b) => b.period.localeCompare(a.period));
   const openEntries    = entries.filter(e => !e.paid);
   const settledEntries = entries.filter(e => e.paid);
-  const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
+  const cls = context === 'modal' ? 'tn-msec' : 'tn-sec tn-sec-plain';
 
   const nkRowHTML = (e) => {
     const created = !!e.amount || !!e.document_url;
@@ -1428,29 +1353,23 @@ function _tnNKHTML(tenantId, context) {
     const dotS = e.sent   ? 'tn-dot tn-dot-s'     : (created ? 'tn-dot tn-dot-empty tap' : 'tn-dot tn-dot-empty');
     const dotP = e.paid   ? 'tn-dot tn-dot-p'     : (e.sent  ? 'tn-dot tn-dot-empty tap' : 'tn-dot tn-dot-empty');
 
-    const dirArrow = e.direction === 'you_pay' ? '↓ You pay' : '↑ Tenant pays';
+    const dirArrow = e.direction === 'you_pay' ? '\u2193 You pay' : '\u2191 Tenant pays';
     let infoHtml = '';
     if (!created) {
       infoHtml = `<span style="color:var(--cc-stone);font-style:italic">Not created yet</span>`;
     } else {
-      infoHtml = `<span class="amt">${esc(dirArrow)} · ${_tnFmtEUR(e.amount)}</span>`;
-      if (e.sent && !e.paid) infoHtml += ` · <span class="unpaid">Unpaid</span>`;
+      infoHtml = `<span class="amt">${esc(dirArrow)} \u00b7 ${_tnFmtEUR(e.amount)}</span>`;
+      if (e.sent && !e.paid) infoHtml += ` \u00b7 <span class="unpaid">Unpaid</span>`;
     }
 
-    const createBtn = !created
-      ? `<button class="tn-doc-btn tn-doc-btn-dark"
-           data-action="nk-create" data-tenant-id="${e.tenant_id}" data-period="${esc(e.period)}"
-           data-nk-id="${e.id}"
-           onclick="_tnNkCreate('${e.id}')">
+    const actionBtns = !created
+      ? `<button class="tn-nb tn-nb-dark" onclick="_tnNkCreate('${e.id}')">
            <i class="ti ti-calculator" style="font-size:10px"></i> Create
          </button>`
-      : `<button class="tn-doc-btn tn-doc-btn-ghost" style="margin-right:3px"
-           data-action="nk-edit" data-nk-id="${e.id}"
-           onclick="_tnNkCreate('${e.id}')">
+      : `<button class="tn-nb tn-nb-ghost" onclick="_tnNkCreate('${e.id}')">
            <i class="ti ti-calculator" style="font-size:10px"></i>
          </button>
-         <button class="tn-doc-btn tn-doc-btn-dark"
-           onclick="_tnNkView('${e.id}')">
+         <button class="tn-nb tn-nb-dark" onclick="_tnNkView('${e.id}')">
            <i class="ti ti-eye" style="font-size:10px"></i> View
          </button>`;
 
@@ -1467,12 +1386,17 @@ function _tnNKHTML(tenantId, context) {
         <div class="${dotP}" title="Paid"    ${onDotP}><i class="ti ti-check"></i></div>
       </div>
       <span class="tn-nk-info" id="nkinfo-${e.id}">${infoHtml}</span>
-      ${createBtn}
+      <div class="tn-nk-btns">
+        ${actionBtns}
+        <button class="tn-nb-del" onclick="_tnNkDelete('${e.id}')" title="Delete this NK period">
+          <i class="ti ti-trash" style="font-size:11px"></i>
+        </button>
+      </div>
     </div>`;
   };
 
   const settledRowHTML = (e) => {
-    const dirArrow = e.direction === 'you_pay' ? '↓ Paid' : '↑ Paid';
+    const dirArrow = e.direction === 'you_pay' ? '\u2193 Paid' : '\u2191 Paid';
     return `
     <div class="tn-nk-row">
       <span class="tn-nk-yr done">${esc(e.period)}</span>
@@ -1482,12 +1406,17 @@ function _tnNKHTML(tenantId, context) {
         <div class="tn-dot tn-dot-done"><i class="ti ti-check"></i></div>
       </div>
       <span class="tn-nk-info" style="color:var(--cc-stone)">
-        <span style="color:var(--cc-taupe)">${esc(dirArrow)} · ${_tnFmtEUR(e.amount)}</span>
-        · <span class="paidlbl" style="opacity:.6">Paid ✓</span>
+        <span style="color:var(--cc-taupe)">${esc(dirArrow)} \u00b7 ${_tnFmtEUR(e.amount)}</span>
+        \u00b7 <span class="paidlbl" style="opacity:.6">Paid \u2713</span>
       </span>
-      <button class="tn-doc-btn tn-doc-btn-ghost" onclick="_tnNkView('${e.id}')">
-        <i class="ti ti-eye" style="font-size:10px"></i> View
-      </button>
+      <div class="tn-nk-btns">
+        <button class="tn-nb tn-nb-ghost" onclick="_tnNkView('${e.id}')">
+          <i class="ti ti-eye" style="font-size:10px"></i> View
+        </button>
+        <button class="tn-nb-del" onclick="_tnNkDelete('${e.id}')" title="Delete this NK period">
+          <i class="ti ti-trash" style="font-size:11px"></i>
+        </button>
+      </div>
     </div>`;
   };
 
@@ -1498,7 +1427,9 @@ function _tnNKHTML(tenantId, context) {
 
   return `
   <div class="${cls}">
-    <span class="tn-slbl">NK Abrechnungen<span class="tn-slbl-note"> · create and manage here</span></span>
+    <div class="tn-sec-hdr" style="margin-bottom:6px">
+      <span class="tn-slbl tn-slbl-neutral">NK Abrechnungen</span>
+    </div>
 
     ${openEntries.length ? openEntries.map(nkRowHTML).join('') : ''}
     ${!openEntries.length && !settledEntries.length
@@ -1556,11 +1487,13 @@ function _tnFormerSectionHTML(roomName, formerRecs, archivedRecs) {
   };
 
   return `
-  <div class="tn-sec" style="padding:10px 0 0;border-bottom:none">
-    <span class="tn-slbl" style="padding:0 14px;margin-bottom:6px">Former tenants</span>
+  <div class="tn-sec tn-sec-plain" style="padding-bottom:0">
+    <div class="tn-sec-hdr" style="margin-bottom:4px">
+      <span class="tn-slbl tn-slbl-neutral">Former tenants</span>
+    </div>
     ${visibleFormers.length
       ? `<div class="tn-former-rows">${visibleFormers.map(formerRowHTML).join('')}</div>`
-      : `<p class="tn-empty" style="padding:0 14px 6px">None with open business</p>`}
+      : `<p class="tn-empty" style="padding:0 0 4px">None with open business</p>`}
   </div>
   <button class="tn-add-former-btn" onclick="_tnAddFormer('${esc(roomName)}')">
     <i class="ti ti-plus" style="font-size:12px"></i> Add former tenant
@@ -1853,18 +1786,17 @@ function _tnToggleEdit(secId) {
 function _tnEditOrSave(rid, tenantId) {
   const sec = document.getElementById('cursec-' + rid);
   const btn = document.getElementById('editbtn-' + rid);
-  if (!sec || !btn) return;
+  if (!sec) return;
   const isEditing = sec.classList.contains('editing');
   if (isEditing) {
-    // Currently in edit mode — trigger save
     _tnSaveProfile(rid, tenantId);
   } else {
-    // Enter edit mode
     sec.classList.add('editing');
-    btn.innerHTML = '<i class="ti ti-check" style="font-size:10px"></i> Save';
-    btn.style.color = 'var(--cc-ink)';
-    btn.style.borderColor = 'var(--cc-ink)';
-    // Pre-fill kaution placeholder based on existing dates
+    if (btn) {
+      btn.innerHTML = '<i class="ti ti-check" style="font-size:10px"></i> Save';
+      btn.style.color = 'var(--cc-ink)';
+      btn.style.borderColor = 'var(--cc-ink)';
+    }
     _tnUpdateKautionSoll(rid);
   }
 }
@@ -1879,8 +1811,18 @@ function _tnResetEditBtn(rid) {
 }
 
 function _tnCancelEdit(rid) {
-  document.getElementById('cursec-' + rid)?.classList.remove('editing');
+  const sec = document.getElementById('cursec-' + rid);
+  if (sec) sec.classList.remove('editing');
   _tnResetEditBtn(rid);
+  // Hide move-out hint
+  document.getElementById('moh-' + rid)?.classList.remove('show');
+}
+
+function _tnMoveoutHint(rid) {
+  const sec = document.getElementById('cursec-' + rid);
+  if (!sec) return;
+  const val = sec.querySelector('[data-f="mietende"]')?.value.trim() || '';
+  document.getElementById('moh-' + rid)?.classList.toggle('show', val.length > 0);
 }
 
 function _tnToggleArc(id) {
@@ -1896,9 +1838,9 @@ function _tnUpdateWarm(rid) {
   const el   = document.getElementById('warm-' + rid);
   if (!el) return;
   if (kalt || nk) {
-    el.innerHTML = _tnFmtEUR(kalt + nk) + ' <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>';
+    el.innerHTML = _tnFmtEUR(kalt + nk) + '<span class="tn-warm-sub">auto</span>';
   } else {
-    el.innerHTML = '\u2014 <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>';
+    el.innerHTML = '\u2014<span class="tn-warm-sub">auto</span>';
   }
 }
 
@@ -1910,36 +1852,28 @@ function _tnUpdateKautionSoll(rid) {
   if (!room) return;
   const inp  = sec.querySelector('[data-f="kaution_soll"]');
   if (!inp) return;
-  // Don't overwrite if user manually typed a value
   if (inp.value.trim() !== '') return;
   const begin = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || null;
   const ende  = sec.querySelector('[data-f="mietende"]')?.value.trim()   || null;
   const soll  = _tnKautionSoll(room, begin, ende);
   if (soll != null) {
     inp.placeholder = String(soll);
-    // Show rule hint
-    const hint = sec.querySelector('.tn-kaution-rule-hint');
+    const hint = document.getElementById('krh-' + rid);
     if (hint) {
       const r = appRooms?.find(x => x.name === room);
       if (r?.kaution_override && r?.kaution_default) {
         hint.textContent = 'Fixed override';
       } else if (begin && ende) {
         const months = Math.round((new Date(ende.includes('.') ? ende.split('.').reverse().join('-') : ende) - new Date(begin.includes('.') ? begin.split('.').reverse().join('-') : begin)) / (30.44*24*3600*1000));
-        hint.textContent = months <= 3 ? `${months} Mon. → 1× Kaltmiete` : `${months} Mon. → 3× Kaltmiete`;
+        hint.textContent = months <= 3 ? `${months} Mon. \u2192 1\u00d7 Kaltmiete` : `${months} Mon. \u2192 3\u00d7 Kaltmiete`;
       } else {
         const ctype = _tnRoomContractType(room);
-        hint.textContent = ctype === 'kurzzeit' ? 'KZ default → 1× Kaltmiete' : 'MV default → 3× Kaltmiete';
+        hint.textContent = ctype === 'kurzzeit' ? 'KZ default \u2192 1\u00d7 Kaltmiete' : 'MV default \u2192 3\u00d7 Kaltmiete';
       }
     }
   }
 }
 
-// Staffelmiete toggle
-function _tnSetStaf(rid, val, btn) {
-  btn.closest('.tn-staf-toggle').querySelectorAll('.tn-staf-btn')
-    .forEach(b => b.classList.remove('on'));
-  btn.classList.add('on');
-}
 
 function _tnToggleSettled(toggleId, listId) {
   document.getElementById(toggleId)?.classList.toggle('open');
@@ -1958,7 +1892,7 @@ async function _tnSaveNewTenant(rid, roomName) {
   if (!sec) return;
 
   const btn = sec.querySelector('.tn-btn-save');
-  const orig = btn.innerHTML; btn.innerHTML = '…'; btn.disabled = true;
+  const orig = btn?.innerHTML; if (btn) { btn.innerHTML = '\u2026'; btn.disabled = true; }
 
   const nameVal    = sec.querySelector('[data-f="name"]')?.value.trim()       || '';
   const emailVal   = sec.querySelector('[data-f="email"]')?.value.trim()      || '';
@@ -2017,21 +1951,22 @@ async function _tnSaveNewTenant(rid, roomName) {
     await sbL.from('lounge_data').insert({ type: 'password', room: roomName, body: hash });
   }
 
-  btn.innerHTML = orig; btn.disabled = false;
+  if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+  const cardId = 'tc-' + rid;
   await _tnLoad();
+  document.getElementById(cardId)?.classList.add('open');
 }
 
 async function _tnSaveProfile(rid, tenantId) {
   const sec = document.getElementById('cursec-' + rid);
   if (!sec) return;
 
-  // Button may be editbtn- (from tn-acts) or .tn-btn-save (from save row)
+  // Button is the inline edit btn in section header
   const btn = document.getElementById('editbtn-' + rid) || sec.querySelector('.tn-btn-save');
   if (!btn) return;
   const orig = btn.innerHTML;
-  btn.innerHTML = '…'; btn.disabled = true;
+  btn.innerHTML = '\u2026'; btn.disabled = true;
 
-  // Collect fields
   const nameVal    = sec.querySelector('[data-f="name"]')?.value.trim()       || '';
   const emailVal   = sec.querySelector('[data-f="email"]')?.value.trim()      || '';
   const phoneVal   = sec.querySelector('[data-f="phone"]')?.value.trim()      || '';
@@ -2040,7 +1975,6 @@ async function _tnSaveProfile(rid, tenantId) {
   const beginVal   = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || '';
   const endeVal    = sec.querySelector('[data-f="mietende"]')?.value.trim()   || '';
 
-  // Require at least name or email
   if (!nameVal && !emailVal) {
     const nameInp = sec.querySelector('[data-f="name"]');
     if (nameInp) { nameInp.style.borderColor = '#C4705A'; nameInp.focus(); }
@@ -2055,18 +1989,13 @@ async function _tnSaveProfile(rid, tenantId) {
   const mietbeginn = _tnParseDate(beginVal);
   const mietende   = _tnParseDate(endeVal);
 
-  // Financial fields from edit form
-  const sec2      = document.getElementById('cursec-' + rid);
   const rec    = _tnRecords.find(r => r.id === tenantId);
   const room   = rec?.room;
   const isTransitioningToFormer = !!(mietende && rec?.status === 'active');
 
-  // Financial fields — always read from form (same edit view for all statuses)
-  const stafBtn  = sec?.querySelector('.tn-staf-btn.on');
-  const stafVal  = stafBtn ? stafBtn.textContent.trim() === 'Ja' : !!rec?.staffelmiete;
-  const kaltVal  = parseFloat(sec?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
-  const nkVal    = parseFloat(sec?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
-  const kSollVal = parseFloat(sec?.querySelector('[data-f="kaution_soll"]')?.value)
+  const kaltVal  = parseFloat(sec.querySelector('[data-f="kaltmiete"]')?.value)   || null;
+  const nkVal    = parseFloat(sec.querySelector('[data-f="nebenkosten"]')?.value)  || null;
+  const kSollVal = parseFloat(sec.querySelector('[data-f="kaution_soll"]')?.value)
     || _tnKautionSoll(room, beginVal || null, endeVal || null)
     || null;
 
@@ -2079,8 +2008,6 @@ async function _tnSaveProfile(rid, tenantId) {
     address:      addrVal,
     mietbeginn:   mietbeginn,
     mietende:     mietende,
-    staffelmiete: stafVal,
-    // Store whatever the user typed (null = empty = falls back to live rooms tab in display)
     kaltmiete:    kaltVal,
     nebenkosten:  nkVal,
     kaution_soll: kSollVal,
@@ -2124,12 +2051,16 @@ async function _tnSaveProfile(rid, tenantId) {
   btn.innerHTML = orig; btn.disabled = false;
   sec.classList.remove('editing');
   _tnResetEditBtn(rid);
+  // Hide move-out hint
+  document.getElementById('moh-' + rid)?.classList.remove('show');
 
   // Ensure kaution row exists for this tenant
   await _tnEnsureKaution(tenantId);
 
-  // Re-render
+  // Re-render but keep card open
+  const cardId = 'tc-' + rid;
   await _tnLoad();
+  document.getElementById(cardId)?.classList.add('open');
 }
 
 
@@ -2359,12 +2290,22 @@ async function _tnNkMarkPaid(nkId) {
   if (_tnModalTenantId === entry.tenant_id) {
     document.getElementById('tnModalDel')?.classList.toggle('on', _tnIsAllDone(entry.tenant_id));
   }
-  // Full re-render to move row to settled section
   if (_tnModalTenantId === entry.tenant_id) {
     _tnOpenModal(entry.tenant_id);
   } else {
     _tnRender();
   }
+}
+
+function _tnNkDelete(nkId) {
+  const entry = Object.values(_tnNK).flat().find(e => e.id === nkId);
+  if (!entry) return;
+  const period = entry.period || 'this period';
+  document.getElementById('tnConfirmBody').innerHTML =
+    `This will permanently delete the NK record for <strong>${esc(period)}</strong>. This cannot be undone.`;
+  _tnDeleteId = nkId;
+  _tnDeleteType = 'nk';
+  document.getElementById('tnConfirm').classList.add('open');
 }
 
 
@@ -2476,7 +2417,22 @@ async function _tnConfirmDelete() {
   const btn = document.getElementById('tnConfirmOk');
   btn.disabled = true;
 
-  // Supabase cascade deletes kaution, nk_entries, tenant_documents via FK
+  if (_tnDeleteType === 'nk') {
+    // Delete NK entry
+    const entry = Object.values(_tnNK).flat().find(e => e.id === _tnDeleteId);
+    const { error } = await sbL.from('nk_entries').delete().eq('id', _tnDeleteId);
+    document.getElementById('tnConfirm').classList.remove('open');
+    if (!error && entry) {
+      const tid = entry.tenant_id;
+      _tnNK[tid] = (_tnNK[tid] || []).filter(e => e.id !== _tnDeleteId);
+      _tnRefreshFormerBadges(tid);
+    }
+    _tnDeleteId = null; _tnDeleteType = 'tenant'; btn.disabled = false;
+    if (_tnModalTenantId) _tnOpenModal(_tnModalTenantId); else _tnRender();
+    return;
+  }
+
+  // Delete tenant record (Supabase cascade deletes kaution, nk_entries, tenant_documents via FK)
   const { error } = await sbL.from('tenant_records').delete().eq('id', _tnDeleteId);
 
   document.getElementById('tnConfirm').classList.remove('open');
@@ -2486,8 +2442,7 @@ async function _tnConfirmDelete() {
     delete _tnNK[_tnDeleteId];
     delete _tnDocs[_tnDeleteId];
   }
-  _tnDeleteId = null;
-  btn.disabled = false;
+  _tnDeleteId = null; _tnDeleteType = 'tenant'; btn.disabled = false;
   _tnCloseModal();
   _tnRender();
 }
