@@ -180,6 +180,7 @@ document.getElementById('tab-tenants').innerHTML = `
 /* profile read/edit toggle */
 .tn-sec-gold.editing .tn-profile-read { display: none; }
 .tn-sec-gold.editing .tn-profile-edit { display: block; }
+.tn-profile-read { display: block; }
 .tn-profile-edit { display: none; }
 
 .tn-save-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
@@ -883,6 +884,12 @@ function _tnCardHTML(room) {
     ? ([activeRec.first_name, activeRec.last_name].filter(Boolean).join(' ') || null)
     : null;
 
+  // Warmmiete for collapsed header — live from rooms tab
+  const _hdrP    = _tnRoomPricing(room.name);
+  const _hdrWarm = (_hdrP.kaltmiete != null && _hdrP.nebenkosten != null)
+    ? _tnFmtEUR(_hdrP.kaltmiete + _hdrP.nebenkosten)
+    : (_hdrP.kaltmiete != null ? _tnFmtEUR(_hdrP.kaltmiete) : null);
+
   const rid = esc(room.name.replace(/\s+/g,'_').toLowerCase());
 
   return `
@@ -899,7 +906,7 @@ function _tnCardHTML(room) {
         </div>
         <div class="tc-meta">${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''}${room.floor ? ' · ' + esc(room.floor) : ''}</div>
         <div class="tc-tenant-line ${tenantName ? '' : 'vacant'}">
-          ${tenantName ? esc(tenantName) : 'No current tenant'}
+          ${tenantName ? esc(tenantName) : 'No current tenant'}${_hdrWarm && tenantName ? ` <span style="color:var(--cc-stone);font-size:11px;font-weight:400">· ${_hdrWarm}</span>` : ''}
         </div>
       </div>
       <i class="ti ti-chevron-right tc-chev" aria-hidden="true"></i>
