@@ -76,7 +76,8 @@ document.getElementById('tab-tenants').innerHTML = `
    2. STYLES
 ══════════════════════════════════════════════════════════════ */
 (function () {
-  if (document.getElementById('tn-styles')) return;
+  const existing = document.getElementById('tn-styles');
+  if (existing) existing.remove();
   const s = document.createElement('style');
   s.id = 'tn-styles';
   s.textContent = `
