@@ -471,6 +471,16 @@ document.getElementById('tab-tenants').innerHTML = `
   cursor: pointer; font-family: inherit;
 }
 
+.tn-ctype-toggle { display: flex; gap: 4px; flex-wrap: wrap; }
+.tn-ctype-btn {
+  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  padding: 4px 11px; border-radius: var(--cc-r-pill); cursor: pointer;
+  font-family: inherit; background: none; color: var(--cc-taupe);
+  border: var(--cc-border); transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tn-ctype-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+
 /* ── EMPTY STATE ── */
 .tn-empty { font-size: 12px; color: var(--cc-stone); font-style: italic; padding: 3px 0; }
 
@@ -1185,14 +1195,118 @@ function _tnOpenModal(tenantId) {
   const delBtn = document.getElementById('tnModalDel');
   delBtn.classList.toggle('on', _tnIsAllDone(tenantId));
 
-  // Build modal body
+  // Build modal body — profile first, then documents, kaution, NK
   document.getElementById('tnModalBody').innerHTML =
+    _tnModalProfileHTML(rec) +
     _tnModalDocsHTML(rec) +
     _tnKautionHTML(tenantId, 'modal') +
     _tnNKHTML(tenantId, 'modal');
 
   document.getElementById('tnModal').classList.add('open');
   document.body.style.overflow = 'hidden';
+}
+
+function _tnModalProfileHTML(rec) {
+  const fullName = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
+  const ctype    = rec.contract_type;
+
+  const ctypeToggle = (type, label, cls) => `
+    <button class="tn-ctype-btn ${ctype === type ? 'on' : ''}"
+      data-ctype="${type}"
+      onclick="_tnModalSetCtype('${rec.id}','${type}',this)">
+      ${label}
+    </button>`;
+
+  return `
+  <div class="tn-msec">
+    <span class="tn-slbl tn-slbl-gold">Tenant info</span>
+    <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-mf="name" value="${esc(fullName)}" placeholder="Full name"/></div>
+    <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-mf="email" type="email" value="${esc(rec.email||'')}" placeholder="tenant@mail.de"/></div>
+    <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-mf="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 …"/></div>
+    <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-mf="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
+    <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-mf="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="DD.MM.YYYY"/></div>
+    <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-mf="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY"/></div>
+    <div class="tn-ef" style="align-items:flex-start;padding-top:4px">
+      <span class="tn-ef-k" style="padding-top:4px">Contract</span>
+      <div class="tn-ctype-toggle">
+        ${ctypeToggle('mietvertrag','Mietvertrag')}
+        ${ctypeToggle('kurzzeit','Kurzzeit')}
+      </div>
+    </div>
+    <div class="tn-save-row" style="margin-top:10px">
+      <button class="tn-btn-save" onclick="_tnModalSaveProfile('${rec.id}')">Save info</button>
+    </div>
+  </div>`;
+}
+
+async function _tnModalSaveProfile(tenantId) {
+  if (!sbL) return;
+  const body = document.getElementById('tnModalBody');
+  const btn  = body.querySelector('.tn-btn-save');
+  const orig = btn.innerHTML; btn.innerHTML = '…'; btn.disabled = true;
+
+  const nameVal  = body.querySelector('[data-mf="name"]')?.value.trim()     || '';
+  const emailVal = body.querySelector('[data-mf="email"]')?.value.trim()    || '';
+  const phoneVal = body.querySelector('[data-mf="phone"]')?.value.trim()    || '';
+  const bdayVal  = body.querySelector('[data-mf="birthday"]')?.value.trim() || '';
+  const beginVal = body.querySelector('[data-mf="mietbeginn"]')?.value.trim() || '';
+  const endeVal  = body.querySelector('[data-mf="mietende"]')?.value.trim()   || '';
+  const ctypeBtn = body.querySelector('.tn-ctype-btn.on');
+  const ctype    = ctypeBtn?.dataset.ctype || null;
+
+  if (!nameVal && !emailVal) {
+    const inp = body.querySelector('[data-mf="name"]');
+    if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
+    btn.innerHTML = orig; btn.disabled = false;
+    return;
+  }
+
+  const nameParts = nameVal.split(/\s+/);
+  const firstName = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
+  const lastName  = nameParts.length > 1 ? nameParts[nameParts.length-1] : '';
+
+  const update = {
+    first_name:    firstName,
+    last_name:     lastName,
+    email:         emailVal,
+    phone:         phoneVal,
+    birthday:      bdayVal,
+    mietbeginn:    _tnParseDate(beginVal),
+    mietende:      _tnParseDate(endeVal),
+    contract_type: ctype,
+  };
+
+  const { error } = await sbL.from('tenant_records').update(update).eq('id', tenantId);
+  if (error) {
+    console.warn('[tenants] modal save error:', error.message);
+    btn.innerHTML = 'Error'; btn.disabled = false;
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2000);
+    return;
+  }
+
+  // Update local cache
+  const rec = _tnRecords.find(r => r.id === tenantId);
+  if (rec) Object.assign(rec, update);
+
+  btn.innerHTML = '✓ Saved'; btn.disabled = false;
+  setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 1500);
+
+  // Update modal title + sub
+  const newName = [firstName, lastName].filter(Boolean).join(' ') || '—';
+  const period  = [_tnFmtDate(update.mietbeginn), _tnFmtDate(update.mietende)].filter(Boolean).join(' – ');
+  document.getElementById('tnModalTitle').textContent = newName;
+  const ctLabel = _tnContractLabel(ctype);
+  document.getElementById('tnModalSub').innerHTML = esc(period) +
+    (ctLabel ? ` <span class="tb ${ctype === 'mietvertrag' ? 'tb-mv' : 'tb-kz'}">${esc(ctLabel)}</span>` : '');
+
+  // Refresh former row badges on card
+  _tnRender();
+}
+
+function _tnModalSetCtype(tenantId, type, btn) {
+  btn.closest('.tn-ctype-toggle').querySelectorAll('.tn-ctype-btn')
+    .forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
 }
 
 function _tnModalDocsHTML(rec) {
