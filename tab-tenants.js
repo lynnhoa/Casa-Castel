@@ -775,7 +775,7 @@ function _tnCardHTML(room) {
 
   // Collapsed header info
   const tenantName = activeRec
-    ? [activeRec.first_name, activeRec.last_name].filter(Boolean).join(' ') || '—'
+    ? ([activeRec.first_name, activeRec.last_name].filter(Boolean).join(' ') || null)
     : null;
 
   const rid = esc(room.name.replace(/\s+/g,'_').toLowerCase());
