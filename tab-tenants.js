@@ -120,7 +120,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-rent-form { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
   padding:10px 14px 12px; border-bottom:var(--cc-border); }
 .tn-rf { display:flex; flex-direction:column; gap:3px; }
-.tn-rf input { width:100%; font-size:12px; padding:5px 8px;
+.tn-rf input { width:100%; font-size:16px; padding:5px 8px;
   border-radius:var(--cc-r-sm); border:var(--cc-border);
   background:var(--cc-surface); color:var(--cc-charcoal);
   font-family:inherit; outline:none; -webkit-appearance:none; }
@@ -150,7 +150,7 @@ document.getElementById('tab-tenants').innerHTML = `
   text-transform:uppercase; color:var(--cc-taupe); }
 .tn-fval { font-size:13px; color:var(--cc-charcoal); }
 .tn-fval.muted { color:var(--cc-stone); font-style:italic; }
-.tn-field input { width:100%; font-size:12px; padding:5px 8px;
+.tn-field input { width:100%; font-size:16px; padding:5px 8px;
   border-radius:var(--cc-r-sm); border:var(--cc-border);
   background:var(--cc-surface); color:var(--cc-charcoal);
   font-family:inherit; outline:none; -webkit-appearance:none;
@@ -204,7 +204,7 @@ document.getElementById('tab-tenants').innerHTML = `
   text-transform:uppercase; color:var(--cc-taupe); margin-bottom:3px; }
 .tn-kc-val { font-size:13px; font-weight:500; color:var(--cc-charcoal); }
 .tn-kc-val.gold { color:var(--cc-gold); }
-.tn-kc-input { width:100%; font-size:13px; font-weight:500; padding:3px 5px;
+.tn-kc-input { width:100%; font-size:16px; font-weight:500; padding:3px 5px;
   border-radius:4px; border:.5px solid var(--cc-rule);
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; margin-top:1px;
@@ -246,7 +246,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-add-nk-btn i { font-size:12px; }
 .tn-nk-add-form { display:flex; align-items:center; gap:6px;
   padding-top:8px; border-top:var(--cc-border); margin-top:4px; }
-.tn-nk-add-form input { flex:1; font-size:12px; padding:5px 8px;
+.tn-nk-add-form input { flex:1; font-size:16px; padding:5px 8px;
   border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold);
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; }
@@ -345,6 +345,9 @@ document.getElementById('tab-tenants').innerHTML = `
   .tn-sheet { border-radius:var(--cc-r-lg); max-height:82vh; }
   .tn-sheet-footer { padding-bottom:12px; }
   .tn-former-row:hover { background:var(--cc-surface); }
+  /* On desktop no iOS zoom risk — tighten input text size */
+  .tn-field input, .tn-rf input, .tn-nk-add-form input { font-size:13px; }
+  .tn-kc-input { font-size:13px; }
 }
 
   `;
@@ -684,10 +687,15 @@ function _tnHeaderHTML(rid, room, activeRec) {
   let midLine = '';
   let botLine = '';
 
-  if (vacant && !activeRec) {
+  // Bug 1 fix: Occupied/Vacant badge comes purely from rooms.vacant (Supabase rooms table).
+  // activeRec presence is independent — a room can be marked occupied in rooms tab
+  // but not yet have a tenant record entered here.
+  if (vacant) {
+    // rooms.vacant = true → always Vacant regardless of tenant records
     midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>
                <span class="tnp tnp-gray">Vacant</span>`;
   } else if (activeRec) {
+    // rooms.vacant = false AND has active tenant record → Occupied with full info
     midLine = `
       <span class="tn-tenant-name">${esc(fullName || 'Unnamed tenant')}</span>
       <span class="tnp tnp-green">Occupied</span>
@@ -700,8 +708,9 @@ function _tnHeaderHTML(rid, room, activeRec) {
         ${statusPill ? `<div class="tn-dot-sep"></div>${statusPill}` : ''}
       </div>`;
   } else {
-    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>
-               <span class="tnp tnp-gray">Vacant</span>`;
+    // rooms.vacant = false but no tenant record yet → Occupied (room is assigned) but no tenant added
+    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No tenant added</span>
+               <span class="tnp tnp-green">Occupied</span>`;
   }
 
   return `
