@@ -1210,12 +1210,36 @@ function _tnModalBodyHTML(rec) {
 
   return `
   <!-- PROFILE -->
-  <div class="tn-msec">
-    <div class="tn-msec-hdr" style="margin-bottom:8px">
-      <span class="tn-msec-lbl">Profile</span>
-    </div>
-    <div class="tn-msec-body">
-      <div class="tn-fg">
+  <div class="tn-msec" id="mprof-sec-${tid}">
+    <div class="tn-msec-body" style="padding-top:10px">
+      <div style="margin-bottom:8px"><span class="tn-msec-lbl">Profile</span></div>
+
+      <!-- READ -->
+      <div class="tn-fg" id="mprof-read-${tid}">
+        <div class="tn-field"><span class="tn-flbl">Name</span>
+          <span class="tn-fval">${esc(full) || '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Birthday</span>
+          <span class="tn-fval">${esc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Email</span>
+          <span class="tn-fval">${esc(rec.email||'') || '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Phone</span>
+          <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move in</span>
+          <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move out</span>
+          <span class="tn-fval">${_tnFmtDate(rec.mietende) || '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
+          <span class="tn-fval">${dK != null ? _tnFmtEUR(dK) : '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
+          <span class="tn-fval">${dNK != null ? _tnFmtEUR(dNK) : '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
+          <span class="tn-fval">${dKS != null ? _tnFmtEUR(dKS) : '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Contract</span>
+          <span class="tn-fval">${ct ? _tnContractLabel(ct) : '<span class="muted">Not set</span>'}</span></div>
+      </div>
+
+      <!-- EDIT -->
+      <div class="tn-fg" id="mprof-edit-${tid}" style="display:none">
         <div class="tn-field"><span class="tn-flbl">Name</span>
           <input data-mf="name" type="text" value="${esc(full)}" placeholder="Full name"/></div>
         <div class="tn-field"><span class="tn-flbl">Birthday</span>
@@ -1227,11 +1251,11 @@ function _tnModalBodyHTML(rec) {
         <div class="tn-field"><span class="tn-flbl">Move in</span>
           <input data-mf="mietbeginn" type="text" value="${_tnFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move out</span>
-          <input data-mf="mietende" type="text" value="${_tnFmtDate(rec.mietende)}"/></div>
+          <input data-mf="mietende" type="text" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY"/></div>
         <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
-          <input data-mf="kaltmiete" type="number" value="${dK ?? ''}" oninput="_tnModalUpdateWarm()"/></div>
+          <input data-mf="kaltmiete" type="number" value="${dK ?? ''}"/></div>
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
-          <input data-mf="nebenkosten" type="number" value="${dNK ?? ''}" oninput="_tnModalUpdateWarm()"/></div>
+          <input data-mf="nebenkosten" type="number" value="${dNK ?? ''}"/></div>
         <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
           <input data-mf="kaution_soll" type="number" value="${dKS ?? ''}"/></div>
         <div class="tn-field">
@@ -1245,7 +1269,14 @@ function _tnModalBodyHTML(rec) {
         </div>
       </div>
     </div>
-    <div class="tn-msec-footer">
+
+    <!-- FOOTER: read = Edit btn · edit = Cancel + Save -->
+    <div class="tn-msec-footer" id="mprof-foot-read-${tid}">
+      <button class="tn-btn tn-btn-sm" onclick="_tnToggleModalProfile('${tid}')">
+        <i class="ti ti-pencil"></i> Edit</button>
+    </div>
+    <div class="tn-msec-footer" id="mprof-foot-edit-${tid}" style="display:none">
+      <button class="tn-btn tn-btn-sm" onclick="_tnToggleModalProfile('${tid}')">Cancel</button>
       <button class="tn-btn tn-btn-primary" onclick="_tnModalSaveProfile('${tid}')">
         <i class="ti ti-check"></i> Save info</button>
     </div>
@@ -1283,6 +1314,19 @@ function _tnModalFooterHTML(rec, allDone) {
       onclick="_tnDeleteFormer('${rec.id}')">
       <i class="ti ti-trash"></i> Delete</button>
     <span style="font-size:10px;color:var(--cc-stone)">When all closed</span>`;
+}
+
+function _tnToggleModalProfile(tid) {
+  const read  = document.getElementById('mprof-read-' + tid);
+  const edit  = document.getElementById('mprof-edit-' + tid);
+  const fread = document.getElementById('mprof-foot-read-' + tid);
+  const fedit = document.getElementById('mprof-foot-edit-' + tid);
+  if (!read || !edit) return;
+  const isEditing = read.style.display === 'none';
+  read.style.display  = isEditing ? '' : 'none';
+  edit.style.display  = isEditing ? 'none' : '';
+  if (fread) fread.style.display = isEditing ? '' : 'none';
+  if (fedit) fedit.style.display = isEditing ? 'none' : '';
 }
 
 function _tnModalSetCt(type, btn) {
@@ -1513,6 +1557,35 @@ async function _tnModalSaveProfile(tid) {
 
   // Update local cache immediately — instant UI
   if (rec) Object.assign(rec, update);
+
+  // Switch back to read mode and refresh read fields
+  const readEl = document.getElementById('mprof-read-' + tid);
+  const editEl = document.getElementById('mprof-edit-' + tid);
+  const freadEl = document.getElementById('mprof-foot-read-' + tid);
+  const feditEl = document.getElementById('mprof-foot-edit-' + tid);
+  if (readEl && editEl) {
+    // Refresh read view values
+    const vals = readEl.querySelectorAll('.tn-fval');
+    const labels = [
+      [p.first_name, p.last_name].filter(Boolean).join(' '),
+      rec?.birthday || '',
+      rec?.email || '',
+      rec?.phone || '',
+      _tnFmtDate(p.mietbeginn),
+      _tnFmtDate(p.mietende),
+      p.kaltmiete != null ? _tnFmtEUR(p.kaltmiete) : '',
+      p.nebenkosten != null ? _tnFmtEUR(p.nebenkosten) : '',
+      p.kaution_soll != null ? _tnFmtEUR(p.kaution_soll) : '',
+      ctype ? _tnContractLabel(ctype) : '',
+    ];
+    vals.forEach((el, i) => {
+      el.innerHTML = labels[i] || '<span class="muted">Not set</span>';
+    });
+    readEl.style.display = '';
+    editEl.style.display = 'none';
+    if (freadEl) freadEl.style.display = '';
+    if (feditEl) feditEl.style.display = 'none';
+  }
 
   // Update modal header name instantly
   const newName = [p.first_name, p.last_name].filter(Boolean).join(' ') || '\u2014';
