@@ -896,7 +896,8 @@ function _tnProfileSectionHTML(rid, room, rec) {
 
 /* ── DOCUMENTS SECTION ── */
 function _tnDocumentsSectionHTML(rid, room, rec) {
-  const types = _tnRoomContractTypes(room.name);
+  // Use the single active contract type from rooms tab — not all configured types
+  const activeType = _tnRoomContractType(room.name);
   const docs  = rec ? (_tnDocs[rec.id] || []) : [];
   const tid   = rec ? rec.id : '';
   const getDoc = type => docs.find(d => d.type === type);
@@ -924,9 +925,9 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
 <div class="tn-sec">
   <div class="tn-sec-body" style="padding-top:10px;padding-bottom:11px">
     <div style="margin-bottom:8px"><span class="tn-sec-lbl">Documents</span></div>
-    ${!types.length ? `<p class="tn-empty">No contract type set in rooms tab.</p>` : ''}
-    ${types.includes('mietvertrag') ? row('mietvertrag','Mietvertrag') : ''}
-    ${types.includes('kurzzeit')    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
+    ${!activeType ? `<p class="tn-empty">No contract type set in rooms tab.</p>` : ''}
+    ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
+    ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
     ${row('einzug','Übergabe Einzug')}
   </div>
 </div>`;
@@ -1288,9 +1289,16 @@ function _tnModalBodyHTML(rec) {
       <span class="tn-msec-lbl">Documents</span>
     </div>
     <div class="tn-msec-body" style="padding-bottom:11px">
-      ${ct === 'mietvertrag'  ? docRow('mietvertrag','Mietvertrag') : ''}
-      ${ct === 'kurzzeit'     ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
-      ${!ct                   ? docRow('mietvertrag','Mietvertrag') + docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
+      ${(() => {
+        // Active type from rooms tab takes priority.
+        // Fall back to stored contract_type for former tenants
+        // (room config may have changed since they lived there).
+        const roomType = _tnRoomContractType(rec.room);
+        const effectiveCt = roomType || ct;
+        if (effectiveCt === 'mietvertrag')  return docRow('mietvertrag','Mietvertrag');
+        if (effectiveCt === 'kurzzeit')     return docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
+        return docRow('mietvertrag','Mietvertrag') + docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
+      })()}
       ${docRow('einzug','Übergabe Einzug')}
       ${docRow('auszug','Übergabe Auszug')}
     </div>
