@@ -109,8 +109,18 @@ document.getElementById('tab-tenants').innerHTML = `
 .tc-name     { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 400; color: var(--cc-ink); line-height: 1.1; }
 .tc-badges   { display: flex; gap: 4px; flex-shrink: 0; align-items: center; flex-wrap: wrap; }
 .tc-meta     { font-size: 11px; color: var(--cc-taupe); margin-top: 2px; }
-.tc-tenant-line { font-size: 12px; color: var(--cc-charcoal); margin-top: 3px; }
+.tc-tenant-line { font-size: 12px; color: var(--cc-charcoal); margin-top: 3px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .tc-tenant-line.vacant { color: var(--cc-stone); font-style: italic; }
+.tc-hdr-pill {
+  font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none;
+  padding: 1px 7px; border-radius: var(--cc-r-pill);
+  background: var(--cc-surface); border: .5px solid var(--cc-rule);
+  color: var(--cc-taupe); white-space: nowrap; flex-shrink: 0;
+}
+.tc-hdr-pill-warm { color: var(--cc-charcoal); font-weight: 500; }
+.tc-hdr-pill-k-pending { background: #FAEEDA; border-color: #EF9F27; color: #854F0B; }
+.tc-hdr-pill-k-holding { background: #E6F1FB; border-color: #85B7EB; color: #0C447C; }
+.tc-hdr-pill-k-settled { background: #EAF3DE; border-color: #9AC87A; color: #27500A; }
 .tc-chev {
   color: var(--cc-stone); font-size: 17px; flex-shrink: 0; margin-top: 5px;
   transition: transform .22s cubic-bezier(.32,.72,0,1);
@@ -885,11 +895,27 @@ function _tnCardHTML(room) {
     ? ([activeRec.first_name, activeRec.last_name].filter(Boolean).join(' ') || null)
     : null;
 
-  // Warmmiete for collapsed header — live from rooms tab
+  // Warmmiete + Kaltmiete for collapsed header — live from rooms tab
   const _hdrP    = _tnRoomPricing(room.name);
+  const _hdrKalt = _hdrP.kaltmiete != null ? _tnFmtEUR(_hdrP.kaltmiete) : null;
   const _hdrWarm = (_hdrP.kaltmiete != null && _hdrP.nebenkosten != null)
     ? _tnFmtEUR(_hdrP.kaltmiete + _hdrP.nebenkosten)
     : (_hdrP.kaltmiete != null ? _tnFmtEUR(_hdrP.kaltmiete) : null);
+
+  // Kaution pill for collapsed header
+  const _hdrK = activeRec ? (_tnKaution[activeRec.id] || null) : null;
+  const _hdrKSoll = _hdrP.kaution_soll ?? (_hdrP.kaltmiete ? _hdrP.kaltmiete * 3 : null);
+  const _hdrKPill = (function() {
+    if (!activeRec) return '';
+    if (!_hdrK || _hdrK.received === 0) {
+      const amt = _hdrKSoll ? _tnFmtEUR(_hdrKSoll) + ' ' : '';
+      return `<span class="tc-hdr-pill tc-hdr-pill-k-pending">${amt}Kaution pending</span>`;
+    }
+    if (_hdrK.settled) {
+      return `<span class="tc-hdr-pill tc-hdr-pill-k-settled">Kaution settled</span>`;
+    }
+    return `<span class="tc-hdr-pill tc-hdr-pill-k-holding">${_tnFmtEUR(_hdrK.received)} holding</span>`;
+  })();
 
   const rid = esc(room.name.replace(/\s+/g,'_').toLowerCase());
 
@@ -907,7 +933,10 @@ function _tnCardHTML(room) {
         </div>
         <div class="tc-meta">${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''}${room.floor ? ' · ' + esc(room.floor) : ''}</div>
         <div class="tc-tenant-line ${tenantName ? '' : 'vacant'}">
-          ${tenantName ? esc(tenantName) : 'No current tenant'}${_hdrWarm && tenantName ? ` <span style="color:var(--cc-stone);font-size:11px;font-weight:400">· ${_hdrWarm}</span>` : ''}
+          ${tenantName ? esc(tenantName) : 'No current tenant'}${tenantName ? `
+            ${_hdrKalt ? `<span class="tc-hdr-pill">${_hdrKalt} Kalt</span>` : ''}
+            ${_hdrWarm ? `<span class="tc-hdr-pill tc-hdr-pill-warm">${_hdrWarm} Warm</span>` : ''}
+            ${_hdrKPill}` : ''}
         </div>
       </div>
       <i class="ti ti-chevron-right tc-chev" aria-hidden="true"></i>
