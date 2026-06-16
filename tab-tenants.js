@@ -481,8 +481,8 @@ document.getElementById('tab-tenants').innerHTML = `
   .tn-sheet-footer { padding-bottom: 16px; }
   .tn-former-row:hover { background: #F9F7F4; }
   .tn-add-former-btn:hover { color: var(--cc-charcoal); }
-  /* Cards max width on wide screens */
-  .tn-list { max-width: 620px; }
+  /* Cards full width — matches rooms tab .rp-list behavior */
+  .tn-list { max-width: none; margin: 0; }
 }
 
 /* ── PWA iOS bottom safe area on card list ── */
