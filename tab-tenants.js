@@ -1099,8 +1099,9 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
     const period = [_tnFmtDate(rec.mietbeginn), _tnFmtDate(rec.mietende)].filter(Boolean).join(' \u2013 ');
     const nkDone = !_tnNkHasOpen(rec.id);
     const kDone  = !_tnKautionOpen(rec.id);
-    return `<div class="tn-former-row" onclick="_tnOpenModal('${rec.id}')">
-      <div class="tn-former-info">
+    const canHide = nkDone && kDone; // only offer Hide when all business closed
+    return `<div class="tn-former-row" style="gap:6px">
+      <div class="tn-former-info" onclick="_tnOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
         <div class="tn-former-name">${esc(name)}</div>
         <div class="tn-former-period">${esc(period)}</div>
       </div>
@@ -1108,7 +1109,10 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
         <span class="tnp ${nkDone ? 'tnp-green' : 'tnp-amber'}">${nkDone ? 'NK done' : 'NK open'}</span>
         <span class="tnp ${kDone  ? 'tnp-green' : 'tnp-amber'}">${kDone  ? 'Settled' : 'Kaution open'}</span>
       </div>
-      <i class="ti ti-chevron-right" style="font-size:13px;color:var(--cc-stone);margin-left:6px"></i>
+      ${canHide
+        ? `<button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Archive this tenant">
+             <i class="ti ti-eye-off" style="font-size:11px"></i></button>`
+        : `<i class="ti ti-chevron-right" onclick="_tnOpenModal('${rec.id}')" style="font-size:13px;color:var(--cc-stone);cursor:pointer"></i>`}
     </div>`;
   };
 
@@ -1121,6 +1125,8 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
         <div class="tn-arc-period">${esc(period)}</div>
       </div>
       <button class="tn-btn tn-btn-sm" onclick="_tnReopen('${rec.id}')">Reopen</button>
+      <button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Keep archived">
+        <i class="ti ti-eye-off" style="font-size:11px"></i></button>
     </div>`;
   };
 
@@ -1482,10 +1488,8 @@ async function _tnModalSaveProfile(tid) {
   if (!sbL) return;
   const body = document.getElementById('tnModalBody');
   if (!body) return;
-  const btn = body.querySelector('.tn-msec-footer .tn-btn-primary');
-  if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
 
-  const p   = _tnCollectProfile(body, 'data-mf');
+  const p     = _tnCollectProfile(body, 'data-mf');
   const ctBtn = body.querySelector('.tn-contract-toggle .tn-btn-primary');
   const ctype = ctBtn?.dataset?.ct || null;
 
@@ -1500,7 +1504,6 @@ async function _tnModalSaveProfile(tid) {
   };
 
   const rec = _tnRecords.find(r => r.id === tid);
-  // Move back to active if mietende is cleared or set to a future date
   const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
   if (toActive) {
     update.status        = 'active';
@@ -1508,17 +1511,18 @@ async function _tnModalSaveProfile(tid) {
     update.done          = false;
   }
 
-  const { error } = await sbL.from('tenant_records').update(update).eq('id', tid);
-  if (error) { console.warn('[tenants] modal save:', error.message); }
+  // Update local cache immediately — instant UI
   if (rec) Object.assign(rec, update);
-  if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Saved'; btn.disabled = false;
-    setTimeout(() => { btn.innerHTML = '<i class="ti ti-check"></i> Save info'; }, 1500); }
 
+  // Update modal header name instantly
   const newName = [p.first_name, p.last_name].filter(Boolean).join(' ') || '\u2014';
   const el = document.getElementById('tnModalName');
   if (el) el.textContent = newName;
 
-  // If moved back to active, close modal and fully reload
+  // Fire to Supabase in background
+  sbL.from('tenant_records').update(update).eq('id', tid)
+    .then(({ error }) => { if (error) console.warn('[tenants] modal save:', error.message); });
+
   if (toActive) { _tnCloseModal(); }
   _tnRender();
 }
@@ -1562,9 +1566,13 @@ async function _tnSaveKaution(tid, received, returned) {
 async function _tnToggleSettle(pfx, tid) {
   if (!sbL || !tid) return;
   if (!_tnKaution[tid]) await _tnEnsureKaution(tid);
-  const k  = _tnKaution[tid];
+  const k = _tnKaution[tid];
   if (!k?.id) return;
+
+  // Toggle immediately in local cache
   k.settled = !k.settled;
+
+  // Update DOM instantly
   const btn = document.getElementById('kset-' + pfx);
   if (btn) {
     btn.innerHTML = `<i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}`;
@@ -1575,7 +1583,11 @@ async function _tnToggleSettle(pfx, tid) {
   const st   = _tnKautionStatus(recv, ret, k.settled);
   const pill = document.querySelector(`#kset-${pfx}`)?.closest('.tn-sec,.tn-msec')?.querySelector('.tnp');
   if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
-  await sbL.from('kaution').update({ settled: k.settled }).eq('id', k.id);
+
+  // Fire to Supabase in background
+  sbL.from('kaution').update({ settled: k.settled }).eq('id', k.id)
+    .then(({ error }) => { if (error) console.warn('[tenants] settle:', error.message); });
+
   _tnRefreshFormerBadges(tid);
 }
 
@@ -1741,19 +1753,31 @@ async function _tnAddFormer(roomName) {
 
 async function _tnMarkDone(tid) {
   if (!sbL) return;
-  await sbL.from('tenant_records').update({ done:true, status:'archived' }).eq('id', tid);
   const rec = _tnRecords.find(r => r.id === tid);
   if (rec) { rec.done = true; rec.status = 'archived'; }
   _tnCloseModal();
   _tnRender();
+  // Fire to Supabase in background
+  sbL.from('tenant_records').update({ done:true, status:'archived' }).eq('id', tid)
+    .then(({ error }) => { if (error) console.warn('[tenants] archive:', error.message); });
 }
 
 async function _tnReopen(tid) {
   if (!sbL) return;
-  await sbL.from('tenant_records').update({ done:false, status:'former' }).eq('id', tid);
   const rec = _tnRecords.find(r => r.id === tid);
   if (rec) { rec.done = false; rec.status = 'former'; }
   _tnRender();
+  sbL.from('tenant_records').update({ done:false, status:'former' }).eq('id', tid)
+    .then(({ error }) => { if (error) console.warn('[tenants] reopen:', error.message); });
+}
+
+async function _tnHideFormer(tid) {
+  if (!sbL) return;
+  const rec = _tnRecords.find(r => r.id === tid);
+  if (rec) { rec.done = true; rec.status = 'archived'; }
+  _tnRender();
+  sbL.from('tenant_records').update({ done:true, status:'archived' }).eq('id', tid)
+    .then(({ error }) => { if (error) console.warn('[tenants] hide:', error.message); });
 }
 
 function _tnDeleteFormer(tid) {
