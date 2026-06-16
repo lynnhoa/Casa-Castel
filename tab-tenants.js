@@ -120,7 +120,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-rent-form { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
   padding:10px 14px 12px; border-bottom:var(--cc-border); }
 .tn-rf { display:flex; flex-direction:column; gap:3px; }
-.tn-rf input { width:100%; font-size:13px; padding:5px 8px;
+.tn-rf input { width:100%; font-size:13px; padding:3px 8px;
   border-radius:var(--cc-r-sm); border:var(--cc-border);
   background:var(--cc-surface); color:var(--cc-charcoal);
   font-family:inherit; outline:none; -webkit-appearance:none; }
@@ -157,6 +157,10 @@ document.getElementById('tab-tenants').innerHTML = `
   -webkit-text-size-adjust:100%; }
 .tn-field input:focus { border-color:var(--cc-gold); background:var(--cc-white); }
 .tn-field input::placeholder { color:var(--cc-stone); }
+#tab-tenants .tn-field input { font-size:13px !important; }
+#tab-tenants .tn-rf input { font-size:13px !important; }
+#tab-tenants .tn-kc-input { font-size:13px !important; }
+#tab-tenants .tn-nk-add-form input { font-size:13px !important; }
 .tn-contract-toggle { display:flex; gap:4px; margin-top:4px; }
 
 /* ── BUTTONS ── */
