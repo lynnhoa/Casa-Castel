@@ -896,6 +896,12 @@ function _tnCurrentTenantHTML(room, rec) {
 
   // No record yet — show blank edit form, save creates the record
   if (!rec) {
+    const liveP0 = _tnRoomPricing(room.name);
+    const dKalt0  = liveP0.kaltmiete   ?? null;
+    const dNk0    = liveP0.nebenkosten  ?? null;
+    const dKSoll0 = liveP0.kaution_soll ?? null;
+    const dWarm0  = (dKalt0 != null && dNk0 != null) ? dKalt0 + dNk0 : dKalt0;
+
     return `
   <div class="tn-sec tn-sec-gold editing" id="cursec-${rid}" data-tenant-id="">
     <span class="tn-slbl tn-slbl-gold">Current tenant</span>
@@ -907,14 +913,53 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="" placeholder="DD.MM.YYYY"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="" placeholder="Street, City"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="" placeholder="DD.MM.YYYY"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="" placeholder="DD.MM.YYYY — sets tenant as Former"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="" placeholder="DD.MM.YYYY \u2014 sets tenant as Former"/></div>
       <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
+
+      <div class="tn-fin-divider"></div>
+      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
+
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaltmiete</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaltmiete" type="number" value="${dKalt0 ?? ''}" placeholder="${dKalt0 ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
+        </div>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Nebenkosten</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="nebenkosten" type="number" value="${dNk0 ?? ''}" placeholder="${dNk0 ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
+        </div>
+      </div>
+      <div class="tn-ef" style="padding-bottom:2px">
+        <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
+        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm0 != null ? _tnFmtEUR(dWarm0) : '\u2014'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaution soll</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaution_soll" type="number" value="${dKSoll0 ?? ''}" placeholder="${dKSoll0 ?? ''}"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac</span>
+        </div>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Staffelmiete</span>
+        <div class="tn-staf-toggle">
+          <button class="tn-staf-btn" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
+          <button class="tn-staf-btn on" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
+        </div>
+      </div>
+      <div class="tn-fin-note">Pre-filled from rooms tab. Edit to set this tenant's actual agreed terms.</div>
+
       <div class="tn-save-row">
         <button class="tn-btn-save" onclick="_tnSaveNewTenant('${rid}','${esc(room.name)}')">Save</button>
       </div>
     </div>
   </div>`;
   }
+
 
   const email           = esc(rec.email || '');
   const fullName        = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
