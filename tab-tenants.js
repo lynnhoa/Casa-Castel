@@ -160,16 +160,18 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* ── EDIT FORM ROWS ── */
 .tn-ef   { display: flex; gap: 10px; padding: 3px 0; align-items: center; }
-.tn-ef-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; }
+.tn-ef-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; line-height: 1.4; }
 .tn-ef input {
   flex: 1; background: var(--cc-surface); border: var(--cc-border);
   border-radius: var(--cc-r-sm); padding: 5px 8px;
-  font-family: inherit; font-size: 12px; color: var(--cc-charcoal);
+  font-family: 'Inter', inherit; font-size: 11px; font-weight: 300;
+  color: var(--cc-charcoal); line-height: 1.4;
   outline: none; transition: border-color .15s; min-width: 0;
+  -webkit-appearance: none; -webkit-text-size-adjust: 100%;
 }
 .tn-ef input:focus { border-color: var(--cc-gold); background: var(--cc-white); }
-.tn-ef input::placeholder { color: var(--cc-stone); font-style: italic; }
-.tn-ef-note { font-size: 10px; color: var(--cc-taupe); margin-top: 4px; padding-left: 98px; font-style: italic; }
+.tn-ef input::placeholder { color: var(--cc-stone); font-style: normal; font-weight: 300; }
+.tn-ef-note { font-size: 10px; color: var(--cc-taupe); margin-top: 4px; padding-left: 98px; }
 
 /* profile read/edit toggle */
 .tn-sec-gold.editing .tn-profile-read { display: none; }
@@ -252,9 +254,10 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-k-input {
   width: 100%; background: var(--cc-surface); border: var(--cc-border);
   border-radius: var(--cc-r-sm); padding: 6px 8px;
-  font-family: inherit; font-size: 13px; font-weight: 500;
-  color: var(--cc-charcoal); outline: none; transition: border-color .15s;
-  -webkit-appearance: none;
+  font-family: 'Inter', inherit; font-size: 12px; font-weight: 400;
+  color: var(--cc-charcoal); line-height: 1.4;
+  outline: none; transition: border-color .15s;
+  -webkit-appearance: none; -webkit-text-size-adjust: 100%;
 }
 .tn-k-input:focus { border-color: var(--cc-gold); background: var(--cc-white); }
 .tn-k-input[type=number]::-webkit-inner-spin-button,
@@ -1511,8 +1514,8 @@ async function _tnAddNkPeriod(tenantId) {
   wrap.innerHTML = `
     <input id="tn-nk-period-inp"
       style="flex:1;background:var(--cc-surface);border:var(--cc-border);border-radius:var(--cc-r-sm);
-             padding:5px 8px;font-family:inherit;font-size:12px;color:var(--cc-charcoal);
-             outline:none;border-color:var(--cc-gold);background:var(--cc-white);"
+             padding:5px 8px;font-family:'Inter',inherit;font-size:11px;font-weight:300;color:var(--cc-charcoal);line-height:1.4;
+             outline:none;border-color:var(--cc-gold);background:var(--cc-white);-webkit-appearance:none;-webkit-text-size-adjust:100%;"
       placeholder="e.g. 2024/25" maxlength="10"/>
     <button style="height:28px;padding:0 11px;background:var(--cc-ink);color:var(--cc-white);
                    border:none;border-radius:var(--cc-r-sm);font-size:9px;font-weight:600;
