@@ -1148,7 +1148,7 @@ function _tnCurrentTenantHTML(room, rec) {
     <button class="tn-act tn-act-reset" onclick="_tnResetPw('${esc(room.name)}')">
       <i class="ti ti-key" style="font-size:11px"></i> Reset pw
     </button>
-    <button class="tn-act tn-act-edit" onclick="_tnToggleEdit('cursec-${rid}')">
+    <button class="tn-act tn-act-edit" id="editbtn-${rid}" onclick="_tnEditOrSave('${rid}','${rec.id}')">
       <i class="ti ti-pencil" style="font-size:11px"></i> Edit
     </button>
   </div>`;
@@ -1701,8 +1701,35 @@ function _tnToggleEdit(secId) {
   document.getElementById(secId)?.classList.toggle('editing');
 }
 
+function _tnEditOrSave(rid, tenantId) {
+  const sec = document.getElementById('cursec-' + rid);
+  const btn = document.getElementById('editbtn-' + rid);
+  if (!sec || !btn) return;
+  const isEditing = sec.classList.contains('editing');
+  if (isEditing) {
+    // Currently in edit mode — trigger save
+    _tnSaveProfile(rid, tenantId);
+  } else {
+    // Enter edit mode
+    sec.classList.add('editing');
+    btn.innerHTML = '<i class="ti ti-check" style="font-size:11px"></i> Save';
+    btn.style.color = 'var(--cc-ink)';
+    btn.style.borderColor = 'var(--cc-ink)';
+  }
+}
+
+// Called after save completes to reset the button
+function _tnResetEditBtn(rid) {
+  const btn = document.getElementById('editbtn-' + rid);
+  if (!btn) return;
+  btn.innerHTML = '<i class="ti ti-pencil" style="font-size:11px"></i> Edit';
+  btn.style.color = '';
+  btn.style.borderColor = '';
+}
+
 function _tnCancelEdit(rid) {
   document.getElementById('cursec-' + rid)?.classList.remove('editing');
+  _tnResetEditBtn(rid);
 }
 
 function _tnToggleArc(id) {
@@ -1907,6 +1934,7 @@ async function _tnSaveProfile(rid, tenantId) {
 
   btn.innerHTML = orig; btn.disabled = false;
   sec.classList.remove('editing');
+  _tnResetEditBtn(rid);
 
   // Ensure kaution row exists for this tenant
   await _tnEnsureKaution(tenantId);
