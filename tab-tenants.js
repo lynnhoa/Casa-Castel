@@ -1290,11 +1290,9 @@ function _tnModalBodyHTML(rec) {
     </div>
     <div class="tn-msec-body" style="padding-bottom:11px">
       ${(() => {
-        // Active type from rooms tab takes priority.
-        // Fall back to stored contract_type for former tenants
-        // (room config may have changed since they lived there).
-        const roomType = _tnRoomContractType(rec.room);
-        const effectiveCt = roomType || ct;
+        // For former tenants: stored contract_type is the snapshot — use it.
+        // For active tenants (ct=null): use rooms tab active toggle.
+        const effectiveCt = ct || _tnRoomContractType(rec.room);
         if (effectiveCt === 'mietvertrag')  return docRow('mietvertrag','Mietvertrag');
         if (effectiveCt === 'kurzzeit')     return docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
         return docRow('mietvertrag','Mietvertrag') + docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
