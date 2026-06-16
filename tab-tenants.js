@@ -995,23 +995,18 @@ function _tnCurrentTenantHTML(room, rec) {
   const mietendeDisplay = rec.mietende ? _tnFmtDate(rec.mietende) : null;
   const autoEdit        = isEmpty ? ' editing' : '';
 
-  // Financial values:
-  // ACTIVE → always live from appRooms (price changes reflect immediately)
-  // FORMER → frozen snapshot stored in tenant_records (editable override)
+  // Financial values — stored override takes priority, live rooms tab as fallback
+  // Active: null in DB = live from rooms tab. Stored value = agreed override.
+  // Former: always stored snapshot (set at move-out). Editable correction.
   const isFormer = rec.status === 'former' || rec.status === 'archived';
   const liveP  = _tnRoomPricing(room.name);
-  const dKalt  = isFormer
-    ? (rec.kaltmiete    != null ? Number(rec.kaltmiete)    : null)
-    : (liveP.kaltmiete  ?? null);
-  const dNk    = isFormer
-    ? (rec.nebenkosten  != null ? Number(rec.nebenkosten)  : null)
-    : (liveP.nebenkosten ?? null);
-  const dKSoll = isFormer
-    ? (rec.kaution_soll != null ? Number(rec.kaution_soll) : null)
-    : (liveP.kaution_soll ?? null);
+  const dKalt  = rec.kaltmiete    != null ? Number(rec.kaltmiete)    : (liveP.kaltmiete   ?? null);
+  const dNk    = rec.nebenkosten  != null ? Number(rec.nebenkosten)  : (liveP.nebenkosten  ?? null);
+  const dKSoll = rec.kaution_soll != null ? Number(rec.kaution_soll) : (liveP.kaution_soll ?? null);
   const dWarm  = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
   const staf   = !!rec.staffelmiete;
-  const dSrc   = isFormer ? 'snapshot at move-out' : 'live · rooms tab';
+  // Source label: show where current display value comes from
+  const dSrc   = (rec.kaltmiete != null) ? 'agreed' : 'live · rooms tab';
 
   return `
   <div class="tn-sec tn-sec-gold${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
@@ -1067,46 +1062,33 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY \u2014 sets tenant as Former"/></div>
       <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
 
+
       <div class="tn-fin-divider"></div>
       <div class="tn-slbl" style="margin-bottom:8px">Rent &amp; kaution</div>
 
-      ${!isFormer ? `
-      <div class="tn-kv"><span class="tn-kv-k">Kaltmiete</span><span class="tn-kv-v">${dKalt != null ? _tnFmtEUR(dKalt) : '<span class="muted">&mdash;</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Nebenkosten</span><span class="tn-kv-v">${dNk != null ? _tnFmtEUR(dNk) : '<span class="muted">&mdash;</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Warmmiete</span><span class="tn-kv-v" style="color:var(--cc-gold)">${dWarm != null ? _tnFmtEUR(dWarm) : '<span class="muted">&mdash;</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Kaution soll</span><span class="tn-kv-v">${dKSoll != null ? _tnFmtEUR(dKSoll) : '<span class="muted">&mdash;</span>'}</span></div>
-      <div class="tn-fin-note">Pricing is live from rooms tab. To change rates, edit in the Rooms tab.</div>
-      <div class="tn-ef" style="margin-top:4px">
-        <span class="tn-ef-k">Staffelmiete</span>
-        <div class="tn-staf-toggle">
-          <button class="tn-staf-btn${staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
-          <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
-        </div>
-      </div>
-      ` : `
       <div class="tn-ef">
         <span class="tn-ef-k">Kaltmiete</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="0" oninput="_tnUpdateWarm('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
+          <input data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? '—'}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
         </div>
       </div>
       <div class="tn-ef">
         <span class="tn-ef-k">Nebenkosten</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="0" oninput="_tnUpdateWarm('${rid}')"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
+          <input data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? '—'}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
         </div>
       </div>
       <div class="tn-ef" style="padding-bottom:2px">
         <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
-        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
+        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '—'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
       </div>
       <div class="tn-ef">
         <span class="tn-ef-k">Kaution soll</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="0"/>
-          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac</span>
+          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${liveP.kaution_soll ?? '—'}"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€</span>
         </div>
       </div>
       <div class="tn-ef">
@@ -1116,12 +1098,8 @@ function _tnCurrentTenantHTML(room, rec) {
           <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
         </div>
       </div>
-      <div class="tn-fin-note">Frozen at move-out. Edit to correct historical values.</div>
-      `}
+      <div class="tn-fin-note">${isFormer ? 'Frozen at move-out — edit to correct.' : 'Placeholders from rooms tab. Set agreed values here to override.'}</div>
 
-      <div class="tn-save-row">
-        ${isEmpty ? '' : `<button class="tn-btn-cancel-sm" onclick="_tnCancelEdit('${rid}')">Cancel</button>`}
-        <button class="tn-btn-save" onclick="_tnSaveProfile('${rid}','${rec.id}')">Save</button>
       </div>
     </div>
   </div>
@@ -1833,41 +1811,38 @@ async function _tnSaveProfile(rid, tenantId) {
   const room   = rec?.room;
   const isTransitioningToFormer = !!(mietende && rec?.status === 'active');
 
-  // Financial fields: only collect if this is former or transitioning to former
-  // Active tenants always read live from rooms tab — never store
+  // Financial fields — always read from form (same edit view for all statuses)
   const stafBtn  = sec?.querySelector('.tn-staf-btn.on');
   const stafVal  = stafBtn ? stafBtn.textContent.trim() === 'Ja' : !!rec?.staffelmiete;
+  const kaltVal  = parseFloat(sec?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
+  const nkVal    = parseFloat(sec?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
+  const kSollVal = parseFloat(sec?.querySelector('[data-f="kaution_soll"]')?.value) || null;
 
   const update = {
-    first_name: firstName,
-    last_name:  lastName,
-    email:      emailVal,
-    phone:      phoneVal,
-    birthday:   bdayVal,
-    address:    addrVal,
-    mietbeginn: mietbeginn,
-    mietende:   mietende,
+    first_name:   firstName,
+    last_name:    lastName,
+    email:        emailVal,
+    phone:        phoneVal,
+    birthday:     bdayVal,
+    address:      addrVal,
+    mietbeginn:   mietbeginn,
+    mietende:     mietende,
     staffelmiete: stafVal,
+    // Store whatever the user typed (null = empty = falls back to live rooms tab in display)
+    kaltmiete:    kaltVal,
+    nebenkosten:  nkVal,
+    kaution_soll: kSollVal,
   };
 
   if (isTransitioningToFormer) {
-    // Snapshot financial values from rooms tab at this moment
+    // Transitioning to former: snapshot rooms tab values if user left fields empty
     const snap = _tnRoomPricing(room);
     update.status        = 'former';
     update.contract_type = _tnRoomContractType(room);
-    update.kaltmiete     = snap.kaltmiete    ?? null;
-    update.nebenkosten   = snap.nebenkosten  ?? null;
-    update.kaution_soll  = snap.kaution_soll ?? null;
-  } else if (rec?.status === 'former' || rec?.status === 'archived') {
-    // Former tenant: save editable overrides from form
-    const kaltVal  = parseFloat(sec?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
-    const nkVal    = parseFloat(sec?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
-    const kSollVal = parseFloat(sec?.querySelector('[data-f="kaution_soll"]')?.value) || null;
-    update.kaltmiete    = kaltVal;
-    update.nebenkosten  = nkVal;
-    update.kaution_soll = kSollVal;
+    if (!kaltVal)  update.kaltmiete    = snap.kaltmiete    ?? null;
+    if (!nkVal)    update.nebenkosten  = snap.nebenkosten  ?? null;
+    if (!kSollVal) update.kaution_soll = snap.kaution_soll ?? null;
   }
-  // Active tenants: do NOT write kaltmiete/nebenkosten/kaution_soll — stays null in DB, reads live
 
   if (!sbL) { btn.innerHTML = orig; btn.disabled = false; return; }
 
