@@ -681,12 +681,39 @@ function _tnRoomPricing(roomName) {
     nebenkosten = Number(r.kurzzeit_nk)        || null;
   }
 
-  // Kaution: kaution_override → kaution_default, else 3 × kaltmiete
-  const kaution_soll = (r.kaution_override && r.kaution_default)
-    ? Number(r.kaution_default)
-    : (kaltmiete ? Math.round(kaltmiete * 3) : null);
+  // kaution_override wins; otherwise caller uses _tnKautionSoll() with dates
+  const kaution_override = !!(r.kaution_override && r.kaution_default);
+  const kaution_fixed    = kaution_override ? Number(r.kaution_default) : null;
 
-  return { kaltmiete, nebenkosten, kaution_soll };
+  return { kaltmiete, nebenkosten, kaution_override, kaution_fixed };
+}
+
+// Duration-aware kaution_soll — mirrors rooms tab contract modal logic exactly
+// mietbeginn / mietende: ISO strings or DD.MM.YYYY or null
+function _tnKautionSoll(roomName, mietbeginn, mietende) {
+  const p = _tnRoomPricing(roomName);
+  if (p.kaution_override) return p.kaution_fixed;
+  if (!p.kaltmiete) return null;
+  // Parse either ISO or DD.MM.YYYY
+  function _parseD(s) {
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s);
+    const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    return m ? new Date(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`) : null;
+  }
+  const start = _parseD(mietbeginn);
+  const end   = _parseD(mietende);
+  if (start && end && end > start) {
+    const months = Math.round((end - start) / (30.44 * 24 * 3600 * 1000));
+    return months <= 3
+      ? Math.round(p.kaltmiete * 1)
+      : Math.round(p.kaltmiete * 3);
+  }
+  // No dates: KZ defaults to 1×, MV defaults to 3×
+  const ctype = _tnRoomContractType(roomName);
+  return ctype === 'kurzzeit'
+    ? Math.round(p.kaltmiete * 1)
+    : Math.round(p.kaltmiete * 3);
 }
 
 // Short pricing label for card header badge
@@ -904,7 +931,9 @@ function _tnCardHTML(room) {
 
   // Kaution pill for collapsed header
   const _hdrK = activeRec ? (_tnKaution[activeRec.id] || null) : null;
-  const _hdrKSoll = _hdrP.kaution_soll ?? (_hdrP.kaltmiete ? _hdrP.kaltmiete * 3 : null);
+  const _hdrKSoll = activeRec?.kaution_soll != null
+    ? Number(activeRec.kaution_soll)
+    : _tnKautionSoll(room.name, activeRec?.mietbeginn || null, activeRec?.mietende || null);
   const _hdrKPill = (function() {
     if (!activeRec) return '';
     if (!_hdrK || _hdrK.received === 0) {
@@ -965,7 +994,7 @@ function _tnCurrentTenantHTML(room, rec) {
     const liveP0 = _tnRoomPricing(room.name);
     const dKalt0  = liveP0.kaltmiete   ?? null;
     const dNk0    = liveP0.nebenkosten  ?? null;
-    const dKSoll0 = liveP0.kaution_soll ?? null;
+    const dKSoll0 = _tnKautionSoll(room.name, null, null);
     const dWarm0  = (dKalt0 != null && dNk0 != null) ? dKalt0 + dNk0 : dKalt0;
 
     return `
@@ -978,8 +1007,8 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="" placeholder="+49 ..."/></div>
       <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="" placeholder="DD.MM.YYYY"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="" placeholder="Street, City"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="" placeholder="DD.MM.YYYY"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="" placeholder="DD.MM.YYYY \u2014 sets tenant as Former"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="" placeholder="DD.MM.YYYY" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="" placeholder="DD.MM.YYYY \u2014 sets tenant as Former" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
       <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
 
       <div class="tn-fin-divider"></div>
@@ -1039,7 +1068,7 @@ function _tnCurrentTenantHTML(room, rec) {
   const liveP  = _tnRoomPricing(room.name);
   const dKalt  = rec.kaltmiete    != null ? Number(rec.kaltmiete)    : (liveP.kaltmiete   ?? null);
   const dNk    = rec.nebenkosten  != null ? Number(rec.nebenkosten)  : (liveP.nebenkosten  ?? null);
-  const dKSoll = rec.kaution_soll != null ? Number(rec.kaution_soll) : (liveP.kaution_soll ?? null);
+  const dKSoll = rec.kaution_soll != null ? Number(rec.kaution_soll) : _tnKautionSoll(room.name, rec.mietbeginn || null, rec.mietende || null);
   const dWarm  = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
   const staf   = !!rec.staffelmiete;
   // Source label: show where current display value comes from
@@ -1095,8 +1124,8 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 ..."/></div>
       <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="${esc(rec.address||'')}" placeholder="Street, City"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="DD.MM.YYYY"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY \u2014 sets tenant as Former"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="DD.MM.YYYY" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY \u2014 sets tenant as Former" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
       <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
 
 
@@ -1124,7 +1153,7 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef">
         <span class="tn-ef-k">Kaution soll</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${liveP.kaution_soll ?? '—'}"/>
+          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${_tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null) ?? ''}"/>
           <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€</span>
         </div>
       </div>
@@ -1751,6 +1780,24 @@ function _tnUpdateWarm(rid) {
   }
 }
 
+// Live-update Kaution soll when dates or kaltmiete change
+function _tnUpdateKautionSoll(rid) {
+  const sec  = document.getElementById('cursec-' + rid);
+  if (!sec) return;
+  const room = sec.closest('.tc')?.dataset.room;
+  if (!room) return;
+  const inp  = sec.querySelector('[data-f="kaution_soll"]');
+  if (!inp) return;
+  // Only auto-update if user hasn't manually typed a value
+  if (inp.dataset.manual === '1') return;
+  const begin = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || '';
+  const ende  = sec.querySelector('[data-f="mietende"]')?.value.trim()   || '';
+  const kalt  = parseFloat(sec.querySelector('[data-f="kaltmiete"]')?.value) || null;
+  // Temporarily override kaltmiete in pricing with form value if typed
+  const soll = _tnKautionSoll(room, begin || null, ende || null);
+  if (soll != null) inp.placeholder = String(soll);
+}
+
 // Staffelmiete toggle
 function _tnSetStaf(rid, val, btn) {
   btn.closest('.tn-staf-toggle').querySelectorAll('.tn-staf-btn')
@@ -1808,9 +1855,11 @@ async function _tnSaveNewTenant(rid, roomName) {
       first_name: firstName, last_name: lastName,
       email: emailVal, phone: phoneVal, birthday: bdayVal,
       address: addrVal, mietbeginn, mietende,
-      kaltmiete:    finSnap.kaltmiete    ?? null,
-      nebenkosten:  finSnap.nebenkosten  ?? null,
-      kaution_soll: finSnap.kaution_soll ?? null,
+      kaltmiete:    finSnap.kaltmiete   ?? null,
+      nebenkosten:  finSnap.nebenkosten ?? null,
+      kaution_soll: (parseFloat(sec.querySelector('[data-f="kaution_soll"]')?.value) || null)
+                    ?? _tnKautionSoll(roomName, mietbeginn, mietende)
+                    ?? null,
       staffelmiete: false,
     })
     .select().single();
@@ -1879,7 +1928,9 @@ async function _tnSaveProfile(rid, tenantId) {
   const stafVal  = stafBtn ? stafBtn.textContent.trim() === 'Ja' : !!rec?.staffelmiete;
   const kaltVal  = parseFloat(sec?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
   const nkVal    = parseFloat(sec?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
-  const kSollVal = parseFloat(sec?.querySelector('[data-f="kaution_soll"]')?.value) || null;
+  const kSollVal = parseFloat(sec?.querySelector('[data-f="kaution_soll"]')?.value)
+    || _tnKautionSoll(room, beginVal || null, endeVal || null)
+    || null;
 
   const update = {
     first_name:   firstName,
