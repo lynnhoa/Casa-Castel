@@ -892,6 +892,12 @@ function _tnRender() {
 
   list.innerHTML = rooms.map(r => _tnCardHTML(r)).join('');
   _tnBindCards();
+  // Pre-fill kaution on any blank forms (vacant rooms rendered in edit mode)
+  rooms.forEach(r => {
+    const rid = r.name.replace(/\s+/g,'_').toLowerCase();
+    const sec = document.getElementById('cursec-' + rid);
+    if (sec && sec.classList.contains('editing')) _tnUpdateKautionSoll(rid);
+  });
 }
 
 
@@ -1035,10 +1041,11 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef">
         <span class="tn-ef-k">Kaution soll</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaution_soll" type="number" value="${dKSoll0 ?? ''}" placeholder="${dKSoll0 ?? ''}"/>
+          <input data-f="kaution_soll" type="number" value="${dKSoll0 ?? ''}" placeholder="${dKSoll0 ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
           <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac</span>
         </div>
       </div>
+      <div class="tn-ef-note tn-kaution-rule-hint" style="padding-left:0;color:var(--cc-stone);font-size:10px"></div>
       <div class="tn-ef">
         <span class="tn-ef-k">Staffelmiete</span>
         <div class="tn-staf-toggle">
@@ -1153,10 +1160,11 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef">
         <span class="tn-ef-k">Kaution soll</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${_tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null) ?? ''}"/>
+          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${_tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null) ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
           <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€</span>
         </div>
       </div>
+      <div class="tn-ef-note tn-kaution-rule-hint" style="padding-left:0;color:var(--cc-stone);font-size:10px"></div>
       <div class="tn-ef">
         <span class="tn-ef-k">Staffelmiete</span>
         <div class="tn-staf-toggle">
@@ -1744,6 +1752,8 @@ function _tnEditOrSave(rid, tenantId) {
     btn.innerHTML = '<i class="ti ti-check" style="font-size:11px"></i> Save';
     btn.style.color = 'var(--cc-ink)';
     btn.style.borderColor = 'var(--cc-ink)';
+    // Pre-fill kaution placeholder based on existing dates
+    _tnUpdateKautionSoll(rid);
   }
 }
 
@@ -1788,14 +1798,28 @@ function _tnUpdateKautionSoll(rid) {
   if (!room) return;
   const inp  = sec.querySelector('[data-f="kaution_soll"]');
   if (!inp) return;
-  // Only auto-update if user hasn't manually typed a value
-  if (inp.dataset.manual === '1') return;
-  const begin = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || '';
-  const ende  = sec.querySelector('[data-f="mietende"]')?.value.trim()   || '';
-  const kalt  = parseFloat(sec.querySelector('[data-f="kaltmiete"]')?.value) || null;
-  // Temporarily override kaltmiete in pricing with form value if typed
-  const soll = _tnKautionSoll(room, begin || null, ende || null);
-  if (soll != null) inp.placeholder = String(soll);
+  // Don't overwrite if user manually typed a value
+  if (inp.value.trim() !== '') return;
+  const begin = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || null;
+  const ende  = sec.querySelector('[data-f="mietende"]')?.value.trim()   || null;
+  const soll  = _tnKautionSoll(room, begin, ende);
+  if (soll != null) {
+    inp.placeholder = String(soll);
+    // Show rule hint
+    const hint = sec.querySelector('.tn-kaution-rule-hint');
+    if (hint) {
+      const r = appRooms?.find(x => x.name === room);
+      if (r?.kaution_override && r?.kaution_default) {
+        hint.textContent = 'Fixed override';
+      } else if (begin && ende) {
+        const months = Math.round((new Date(ende.includes('.') ? ende.split('.').reverse().join('-') : ende) - new Date(begin.includes('.') ? begin.split('.').reverse().join('-') : begin)) / (30.44*24*3600*1000));
+        hint.textContent = months <= 3 ? `${months} Mon. → 1× Kaltmiete` : `${months} Mon. → 3× Kaltmiete`;
+      } else {
+        const ctype = _tnRoomContractType(room);
+        hint.textContent = ctype === 'kurzzeit' ? 'KZ default → 1× Kaltmiete' : 'MV default → 3× Kaltmiete';
+      }
+    }
+  }
 }
 
 // Staffelmiete toggle
@@ -1889,7 +1913,9 @@ async function _tnSaveProfile(rid, tenantId) {
   const sec = document.getElementById('cursec-' + rid);
   if (!sec) return;
 
-  const btn = sec.querySelector('.tn-btn-save');
+  // Button may be editbtn- (from tn-acts) or .tn-btn-save (from save row)
+  const btn = document.getElementById('editbtn-' + rid) || sec.querySelector('.tn-btn-save');
+  if (!btn) return;
   const orig = btn.innerHTML;
   btn.innerHTML = '…'; btn.disabled = true;
 
