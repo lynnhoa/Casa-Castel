@@ -481,6 +481,46 @@ document.getElementById('tab-tenants').innerHTML = `
 }
 .tn-ctype-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
 
+/* ── FINANCIAL STAT CELLS ── */
+.tn-fin-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px; margin: 10px 0 8px;
+}
+.tn-fin-cell {
+  background: var(--cc-surface); border-radius: var(--cc-r-sm);
+  padding: 8px 10px;
+}
+.tn-fin-lbl {
+  font-size: 9px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--cc-taupe); margin-bottom: 3px;
+}
+.tn-fin-val {
+  font-size: 15px; font-weight: 500; color: var(--cc-charcoal); line-height: 1.2;
+}
+.tn-fin-val.gold { color: var(--cc-gold); }
+.tn-fin-src {
+  font-size: 9px; color: var(--cc-stone); margin-top: 2px;
+}
+.tn-fin-divider {
+  height: 0.5px; background: var(--cc-rule); margin: 10px 0;
+}
+.tn-fin-note {
+  font-size: 10px; color: var(--cc-taupe); margin-top: 8px;
+  padding: 5px 9px; background: var(--cc-surface);
+  border-radius: var(--cc-r-sm); border-left: 2px solid var(--cc-gold);
+}
+
+/* staffelmiete toggle */
+.tn-staf-toggle { display: flex; gap: 4px; }
+.tn-staf-btn {
+  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  padding: 3px 10px; border-radius: var(--cc-r-pill); cursor: pointer;
+  font-family: inherit; background: none; color: var(--cc-taupe);
+  border: var(--cc-border); transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tn-staf-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+
 /* ── EMPTY STATE ── */
 .tn-empty { font-size: 12px; color: var(--cc-stone); font-style: italic; padding: 3px 0; }
 
@@ -597,6 +637,33 @@ function _tnRoomContractTypes(roomName) {
   if (hasMv) types.push('mietvertrag');
   if (hasKz) types.push('kurzzeit');
   return types;
+}
+
+// Pull live pricing from rooms tab for snapshot on first save
+function _tnRoomPricing(roomName) {
+  if (typeof appRooms === 'undefined') return {};
+  const r = appRooms.find(x => x.name === roomName);
+  if (!r) return {};
+  const ctype = _tnRoomContractType(roomName);
+  let kaltmiete   = null;
+  let nebenkosten = null;
+  if (ctype === 'mietvertrag') {
+    if (r.mietvertrag_pricing === 'kalt_nk') {
+      kaltmiete   = Number(r.kaltmiete)    || null;
+      nebenkosten = Number(r.nk_pauschale) || null;
+    } else {
+      kaltmiete   = Number(r.mietvertrag_miete) || null;
+      nebenkosten = null;
+    }
+  } else if (ctype === 'kurzzeit') {
+    kaltmiete   = Number(r.kurzzeit_kaltmiete) || null;
+    nebenkosten = Number(r.nk_pauschale)       || null;
+  }
+  // Kaution default: kaution_override → kaution_default, else 3 × kaltmiete
+  const kaution_soll = (r.kaution_override && r.kaution_default)
+    ? Number(r.kaution_default)
+    : (kaltmiete ? kaltmiete * 3 : null);
+  return { kaltmiete, nebenkosten, kaution_soll };
 }
 
 // Kaution status derived from numbers + settled flag
@@ -852,23 +919,61 @@ function _tnCurrentTenantHTML(room, rec) {
   const email           = esc(rec.email || '');
   const fullName        = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
   const mietendeDisplay = rec.mietende ? _tnFmtDate(rec.mietende) : null;
-  // Auto-open edit if all key fields are blank
-  const autoEdit = isEmpty ? ' editing' : '';
+  const autoEdit        = isEmpty ? ' editing' : '';
+
+  // Financial — from saved record or live from rooms tab
+  const dKalt  = rec.kaltmiete    != null ? Number(rec.kaltmiete)    : (_tnRoomPricing(room.name).kaltmiete   ?? null);
+  const dNk    = rec.nebenkosten  != null ? Number(rec.nebenkosten)  : (_tnRoomPricing(room.name).nebenkosten  ?? null);
+  const dKSoll = rec.kaution_soll != null ? Number(rec.kaution_soll) : (_tnRoomPricing(room.name).kaution_soll ?? null);
+  const dWarm  = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
+  const staf   = !!rec.staffelmiete;
+  const dSrc   = rec.kaltmiete != null ? 'saved' : 'rooms tab';
+  const liveP  = _tnRoomPricing(room.name);
 
   return `
   <div class="tn-sec tn-sec-gold${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
     <span class="tn-slbl tn-slbl-gold">Current tenant</span>
 
+    <!-- READ VIEW -->
     <div class="tn-profile-read">
-      <div class="tn-kv"><span class="tn-kv-k">Name</span><span class="tn-kv-v">${esc(fullName) || '<span class=\"muted\">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Email</span><span class="tn-kv-v">${email || '<span class=\"muted\">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Phone</span><span class="tn-kv-v">${esc(rec.phone||'') || '<span class=\"muted\">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Birthday</span><span class="tn-kv-v">${esc(rec.birthday||'') || '<span class=\"muted\">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Address</span><span class="tn-kv-v">${esc(rec.address||'') || '<span class=\"muted\">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Move in</span><span class="tn-kv-v">${_tnFmtDate(rec.mietbeginn) || '<span class=\"muted\">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Move out</span><span class="tn-kv-v ${mietendeDisplay ? '' : 'muted'}">${mietendeDisplay || 'Not set — still active'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Name</span><span class="tn-kv-v">${esc(fullName) || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Email</span><span class="tn-kv-v">${email || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Phone</span><span class="tn-kv-v">${esc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Birthday</span><span class="tn-kv-v">${esc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Address</span><span class="tn-kv-v">${esc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Move in</span><span class="tn-kv-v">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Move out</span><span class="tn-kv-v ${mietendeDisplay ? '' : 'muted'}">${mietendeDisplay || 'Not set \u2014 still active'}</span></div>
+
+      <div class="tn-fin-divider"></div>
+      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
+
+      <div class="tn-fin-grid">
+        <div class="tn-fin-cell">
+          <div class="tn-fin-lbl">Kaltmiete</div>
+          <div class="tn-fin-val">${dKalt != null ? _tnFmtEUR(dKalt) : '<span class="muted">\u2014</span>'}</div>
+          <div class="tn-fin-src">${dSrc}</div>
+        </div>
+        <div class="tn-fin-cell">
+          <div class="tn-fin-lbl">Nebenkosten</div>
+          <div class="tn-fin-val">${dNk != null ? _tnFmtEUR(dNk) : '<span class="muted">\u2014</span>'}</div>
+          <div class="tn-fin-src">${dSrc}</div>
+        </div>
+        <div class="tn-fin-cell">
+          <div class="tn-fin-lbl">Warmmiete</div>
+          <div class="tn-fin-val gold">${dWarm != null ? _tnFmtEUR(dWarm) : '<span class="muted">\u2014</span>'}</div>
+          <div class="tn-fin-src">derived</div>
+        </div>
+      </div>
+
+      <div class="tn-kv">
+        <span class="tn-kv-k">Kaution soll</span>
+        <span class="tn-kv-v">${dKSoll != null ? _tnFmtEUR(dKSoll) : '<span class="muted">Not set</span>'}${dKSoll && dKalt ? ` <span style="color:var(--cc-stone);font-size:10px">\u00b7 ${Math.round(dKSoll/dKalt*10)/10}\u00d7 Kaltmiete</span>` : ''}</span>
+      </div>
+      <div class="tn-kv"><span class="tn-kv-k">Staffelmiete</span><span class="tn-kv-v">${staf ? 'Ja' : 'Nein'}</span></div>
+      <div class="tn-fin-note">Values from rooms tab. Edit to override for this tenant.</div>
     </div>
 
+    <!-- EDIT VIEW -->
     <div class="tn-profile-edit">
       <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="${esc(fullName)}" placeholder="Full name"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/></div>
@@ -876,10 +981,48 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="${esc(rec.address||'')}" placeholder="Street, City"/></div>
       <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="DD.MM.YYYY"/></div>
-      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY — sets tenant as Former"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY \u2014 sets tenant as Former"/></div>
       <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
+
+      <div class="tn-fin-divider"></div>
+      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
+
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaltmiete</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
+        </div>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Nebenkosten</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
+        </div>
+      </div>
+      <div class="tn-ef" style="padding-bottom:2px">
+        <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
+        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaution soll</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${liveP.kaution_soll ?? ''}"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac</span>
+        </div>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Staffelmiete</span>
+        <div class="tn-staf-toggle">
+          <button class="tn-staf-btn${staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
+          <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
+        </div>
+      </div>
+      <div class="tn-fin-note">Pre-filled from rooms tab. Edit to set this tenant's actual agreed terms.</div>
+
       <div class="tn-save-row">
-        ${isEmpty ? '' : `<button class=\"tn-btn-cancel-sm\" onclick=\"_tnCancelEdit('${rid}')\">Cancel</button>`}
+        ${isEmpty ? '' : `<button class="tn-btn-cancel-sm" onclick="_tnCancelEdit('${rid}')">Cancel</button>`}
         <button class="tn-btn-save" onclick="_tnSaveProfile('${rid}','${rec.id}')">Save</button>
       </div>
     </div>
@@ -898,6 +1041,7 @@ function _tnCurrentTenantHTML(room, rec) {
     </button>
   </div>`;
 }
+
 
 
 
@@ -1209,8 +1353,13 @@ function _tnOpenModal(tenantId) {
 function _tnModalProfileHTML(rec) {
   const fullName = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
   const ctype    = rec.contract_type;
+  const staf     = !!rec.staffelmiete;
+  const dKalt    = rec.kaltmiete    != null ? Number(rec.kaltmiete)    : null;
+  const dNk      = rec.nebenkosten  != null ? Number(rec.nebenkosten)  : null;
+  const dKSoll   = rec.kaution_soll != null ? Number(rec.kaution_soll) : null;
+  const dWarm    = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
 
-  const ctypeToggle = (type, label, cls) => `
+  const ctypeToggle = (type, label) => `
     <button class="tn-ctype-btn ${ctype === type ? 'on' : ''}"
       data-ctype="${type}"
       onclick="_tnModalSetCtype('${rec.id}','${type}',this)">
@@ -1233,6 +1382,43 @@ function _tnModalProfileHTML(rec) {
         ${ctypeToggle('kurzzeit','Kurzzeit')}
       </div>
     </div>
+
+    <div class="tn-fin-divider"></div>
+    <div class="tn-slbl" style="margin-bottom:8px">Rent &amp; kaution</div>
+
+    <div class="tn-ef">
+      <span class="tn-ef-k">Kaltmiete</span>
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+        <input data-mf="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="0" oninput="_tnModalUpdateWarm()"/>
+        <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
+      </div>
+    </div>
+    <div class="tn-ef">
+      <span class="tn-ef-k">Nebenkosten</span>
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+        <input data-mf="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="0" oninput="_tnModalUpdateWarm()"/>
+        <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
+      </div>
+    </div>
+    <div class="tn-ef" style="padding-bottom:2px">
+      <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
+      <span id="tn-modal-warm" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '—'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
+    </div>
+    <div class="tn-ef">
+      <span class="tn-ef-k">Kaution soll</span>
+      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+        <input data-mf="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="0"/>
+        <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€</span>
+      </div>
+    </div>
+    <div class="tn-ef">
+      <span class="tn-ef-k">Staffelmiete</span>
+      <div class="tn-staf-toggle">
+        <button class="tn-staf-btn${staf ? ' on' : ''}" onclick="_tnModalStaf(true,this)">Ja</button>
+        <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnModalStaf(false,this)">Nein</button>
+      </div>
+    </div>
+
     <div class="tn-save-row" style="margin-top:10px">
       <button class="tn-btn-save" onclick="_tnModalSaveProfile('${rec.id}')">Save info</button>
     </div>
@@ -1265,6 +1451,13 @@ async function _tnModalSaveProfile(tenantId) {
   const firstName = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
   const lastName  = nameParts.length > 1 ? nameParts[nameParts.length-1] : '';
 
+  // Financial from modal (modal profile section has these fields)
+  const kaltMVal  = parseFloat(body.querySelector('[data-mf="kaltmiete"]')?.value)   || null;
+  const nkMVal    = parseFloat(body.querySelector('[data-mf="nebenkosten"]')?.value)  || null;
+  const kSollMVal = parseFloat(body.querySelector('[data-mf="kaution_soll"]')?.value) || null;
+  const stafMBtn  = body.querySelector('.tn-staf-btn.on');
+  const stafMVal  = stafMBtn ? stafMBtn.textContent.trim() === 'Ja' : false;
+
   const update = {
     first_name:    firstName,
     last_name:     lastName,
@@ -1274,6 +1467,10 @@ async function _tnModalSaveProfile(tenantId) {
     mietbeginn:    _tnParseDate(beginVal),
     mietende:      _tnParseDate(endeVal),
     contract_type: ctype,
+    kaltmiete:     kaltMVal,
+    nebenkosten:   nkMVal,
+    kaution_soll:  kSollMVal,
+    staffelmiete:  stafMVal,
   };
 
   const { error } = await sbL.from('tenant_records').update(update).eq('id', tenantId);
@@ -1305,6 +1502,24 @@ async function _tnModalSaveProfile(tenantId) {
 
 function _tnModalSetCtype(tenantId, type, btn) {
   btn.closest('.tn-ctype-toggle').querySelectorAll('.tn-ctype-btn')
+    .forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+function _tnModalUpdateWarm() {
+  const body = document.getElementById('tnModalBody');
+  if (!body) return;
+  const kalt = parseFloat(body.querySelector('[data-mf="kaltmiete"]')?.value)   || 0;
+  const nk   = parseFloat(body.querySelector('[data-mf="nebenkosten"]')?.value)  || 0;
+  const el   = document.getElementById('tn-modal-warm');
+  if (!el) return;
+  el.innerHTML = (kalt || nk)
+    ? _tnFmtEUR(kalt + nk) + ' <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>'
+    : '\u2014 <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>';
+}
+
+function _tnModalStaf(val, btn) {
+  btn.closest('.tn-staf-toggle').querySelectorAll('.tn-staf-btn')
     .forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
 }
@@ -1382,6 +1597,28 @@ function _tnToggleArc(id) {
   document.getElementById(id)?.classList.toggle('open');
 }
 
+// Live-update Warmmiete derived display in edit form
+function _tnUpdateWarm(rid) {
+  const sec  = document.getElementById('cursec-' + rid);
+  if (!sec) return;
+  const kalt = parseFloat(sec.querySelector('[data-f="kaltmiete"]')?.value)   || 0;
+  const nk   = parseFloat(sec.querySelector('[data-f="nebenkosten"]')?.value) || 0;
+  const el   = document.getElementById('warm-' + rid);
+  if (!el) return;
+  if (kalt || nk) {
+    el.innerHTML = _tnFmtEUR(kalt + nk) + ' <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>';
+  } else {
+    el.innerHTML = '\u2014 <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>';
+  }
+}
+
+// Staffelmiete toggle
+function _tnSetStaf(rid, val, btn) {
+  btn.closest('.tn-staf-toggle').querySelectorAll('.tn-staf-btn')
+    .forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
 function _tnToggleSettled(toggleId, listId) {
   document.getElementById(toggleId)?.classList.toggle('open');
   document.getElementById(listId)?.classList.toggle('open');
@@ -1423,12 +1660,19 @@ async function _tnSaveNewTenant(rid, roomName) {
   const status     = mietende ? 'former' : 'active';
   const contractType = mietende ? _tnRoomContractType(roomName) : null;
 
+  // Snapshot financial fields from rooms tab on first save
+  const liveP2 = _tnRoomPricing(roomName);
+
   const { data, error } = await sbL.from('tenant_records')
     .insert({
       room: roomName, status, contract_type: contractType,
       first_name: firstName, last_name: lastName,
       email: emailVal, phone: phoneVal, birthday: bdayVal,
       address: addrVal, mietbeginn, mietende,
+      kaltmiete:    liveP2.kaltmiete    ?? null,
+      nebenkosten:  liveP2.nebenkosten  ?? null,
+      kaution_soll: liveP2.kaution_soll ?? null,
+      staffelmiete: false,
     })
     .select().single();
 
@@ -1485,22 +1729,34 @@ async function _tnSaveProfile(rid, tenantId) {
   const mietbeginn = _tnParseDate(beginVal);
   const mietende   = _tnParseDate(endeVal);
 
-  // If mietende is set → transition to former (snapshot contract_type now)
+  // Financial fields from edit form
+  const sec2      = document.getElementById('cursec-' + rid);
+  const kaltVal   = parseFloat(sec2?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
+  const nkVal     = parseFloat(sec2?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
+  const kSollVal  = parseFloat(sec2?.querySelector('[data-f="kaution_soll"]')?.value) || null;
+  const stafBtn   = sec2?.querySelector('.tn-staf-btn.on');
+  const stafVal   = stafBtn ? stafBtn.textContent.trim() === 'Ja' : false;
+
+  // If first save and no financial values typed, snapshot from rooms tab
   const rec    = _tnRecords.find(r => r.id === tenantId);
   const room   = rec?.room;
+  const liveP  = _tnRoomPricing(room);
   const update = {
-    first_name: firstName,
-    last_name:  lastName,
-    email:      emailVal,
-    phone:      phoneVal,
-    birthday:   bdayVal,
-    address:    addrVal,
-    mietbeginn: mietbeginn,
-    mietende:   mietende,
+    first_name:    firstName,
+    last_name:     lastName,
+    email:         emailVal,
+    phone:         phoneVal,
+    birthday:      bdayVal,
+    address:       addrVal,
+    mietbeginn:    mietbeginn,
+    mietende:      mietende,
+    kaltmiete:     kaltVal   ?? (rec?.kaltmiete    != null ? rec.kaltmiete    : (liveP.kaltmiete   ?? null)),
+    nebenkosten:   nkVal     ?? (rec?.nebenkosten   != null ? rec.nebenkosten  : (liveP.nebenkosten  ?? null)),
+    kaution_soll:  kSollVal  ?? (rec?.kaution_soll  != null ? rec.kaution_soll : (liveP.kaution_soll ?? null)),
+    staffelmiete:  stafVal,
   };
 
   if (mietende && rec?.status === 'active') {
-    // Snapshot contract_type from rooms tab at move-out
     update.status        = 'former';
     update.contract_type = _tnRoomContractType(room);
   }
