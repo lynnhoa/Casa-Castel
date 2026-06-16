@@ -802,8 +802,8 @@ function _tnCardHTML(room) {
     <div class="tc-body">
       ${_tnCurrentTenantHTML(room, activeRec)}
       ${_tnDocumentsHTML(room, activeRec)}
-      ${activeRec ? _tnKautionHTML(activeRec.id, 'card') : ''}
-      ${activeRec ? _tnNKHTML(activeRec.id, 'card') : ''}
+      ${_tnKautionHTML(activeRec?.id || null, 'card')}
+      ${_tnNKHTML(activeRec?.id || null, 'card')}
       ${_tnFormerSectionHTML(room.name, formerRecs, archivedRecs)}
     </div>
   </div>`;
@@ -893,11 +893,10 @@ function _tnCurrentTenantHTML(room, rec) {
 
 /* ── DOCUMENTS SECTION (Pattern A — external sig + upload) ── */
 function _tnDocumentsHTML(room, activeRec) {
-  if (!activeRec) return '';
-
-  const types   = _tnRoomContractTypes(room.name);
-  const docs    = _tnDocs[activeRec.id] || [];
-  const getDoc  = (type) => docs.find(d => d.type === type);
+  const types  = _tnRoomContractTypes(room.name);
+  const docs   = activeRec ? (_tnDocs[activeRec.id] || []) : [];
+  const tid    = activeRec?.id || null;
+  const getDoc = (type) => docs.find(d => d.type === type);
 
   const docRow = (type, label) => {
     const doc    = getDoc(type);
@@ -912,26 +911,28 @@ function _tnDocumentsHTML(room, activeRec) {
       : `<button class="tn-doc-btn tn-doc-btn-ghost off">
            <i class="ti ti-eye" style="font-size:10px"></i> View
          </button>`;
+    const uploadBtn = tid
+      ? `<button class="tn-doc-btn tn-doc-btn-ghost"
+           onclick="_tnTriggerUpload('${tid}','${type}')">
+           <i class="ti ti-upload" style="font-size:10px"></i>
+         </button>`
+      : `<button class="tn-doc-btn tn-doc-btn-ghost off" title="Save tenant profile first">
+           <i class="ti ti-upload" style="font-size:10px"></i>
+         </button>`;
     return `
     <div class="tn-doc-row">
       <span class="tn-doc-name">${esc(label)}</span>
       ${status}
       ${viewBtn}
-      <button class="tn-doc-btn tn-doc-btn-ghost"
-        onclick="_tnTriggerUpload('${activeRec.id}','${type}')">
-        <i class="ti ti-upload" style="font-size:10px"></i>
-      </button>
+      ${uploadBtn}
     </div>`;
   };
-
-  const einzugDoc = getDoc('einzug');
-  const einzugSigned = !!einzugDoc?.file_url;
 
   return `
   <div class="tn-sec">
     <span class="tn-slbl">Documents<span class="tn-slbl-note"> · generated in rooms tab · upload signed copy here</span></span>
-    ${types.includes('mietvertrag')   ? docRow('mietvertrag',       'Mietvertrag')           : ''}
-    ${types.includes('kurzzeit')      ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag')   : ''}
+    ${types.includes('mietvertrag')  ? docRow('mietvertrag',        'Mietvertrag')         : ''}
+    ${types.includes('kurzzeit')     ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
     ${docRow('einzug', 'Übergabe Einzug')}
     ${!types.length ? `<p class="tn-empty">No contract type set — configure in rooms tab.</p>` : ''}
   </div>`;
@@ -940,13 +941,15 @@ function _tnDocumentsHTML(room, activeRec) {
 
 /* ── KAUTION SECTION ── */
 function _tnKautionHTML(tenantId, context) {
-  const k = _tnKaution[tenantId] || { received: 0, returned: 0, settled: false };
+  const k = (tenantId && _tnKaution[tenantId]) || { received: 0, returned: 0, settled: false };
   const recv    = Number(k.received)  || 0;
   const ret     = Number(k.returned)  || 0;
   const kept    = recv - ret;
   const st      = _tnKautionStatus(recv, ret, k.settled);
   const keptClr = kept === 0 ? '#3B6D11' : 'var(--cc-gold)';
-  const prefix  = context + '_' + tenantId.replace(/-/g,'').slice(0,8);
+  const prefix  = context + '_' + (tenantId || 'none').replace(/-/g,'').slice(0,8);
+  const disabled = tenantId ? '' : 'disabled title="Save tenant profile first"';
+  const opacity  = tenantId ? '' : 'opacity:.45;pointer-events:none;';
 
   const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
   const lbl = context === 'modal'
@@ -954,19 +957,19 @@ function _tnKautionHTML(tenantId, context) {
     : `<span class="tn-slbl">Kaution</span>`;
 
   return `
-  <div class="${cls}">
+  <div class="${cls}" style="${opacity}">
     ${lbl}
     <div class="tn-k-grid">
       <div class="tn-k-col">
         <span class="tn-k-lbl">Received</span>
         <input class="tn-k-input" type="number" id="kr-${prefix}"
-          value="${recv}"
+          value="${recv}" ${disabled}
           oninput="_tnCalcKaution('${prefix}','${tenantId}')"/>
       </div>
       <div class="tn-k-col">
         <span class="tn-k-lbl">Returned</span>
         <input class="tn-k-input" type="number" id="kret-${prefix}"
-          value="${ret}"
+          value="${ret}" ${disabled}
           oninput="_tnCalcKaution('${prefix}','${tenantId}')"/>
       </div>
       <div class="tn-k-col">
@@ -977,16 +980,28 @@ function _tnKautionHTML(tenantId, context) {
     <div class="tn-k-status-row">
       <span class="tb ${st.cls}" id="ks-${prefix}">${st.label}</span>
       <button class="tn-k-settle${k.settled ? ' on' : ''}" id="kset-${prefix}"
+        ${disabled}
         onclick="_tnToggleSettle('${prefix}','${tenantId}')">
         ${k.settled ? 'Settled' : 'Mark settled'}
       </button>
     </div>
+    ${!tenantId ? `<p class="tn-empty" style="margin-top:6px">Save tenant profile first to track kaution.</p>` : ''}
   </div>`;
 }
 
 
 /* ── NK SECTION (Pattern B — internal create/view) ── */
 function _tnNKHTML(tenantId, context) {
+  // If no tenantId yet — show section with disabled state
+  if (!tenantId) {
+    const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
+    return `
+    <div class="${cls}" style="opacity:.45;pointer-events:none;">
+      <span class="tn-slbl">NK Abrechnungen<span class="tn-slbl-note"> · create and manage here</span></span>
+      <p class="tn-empty">Save tenant profile first to track NK periods.</p>
+    </div>`;
+  }
+
   const entries = (_tnNK[tenantId] || []).slice().sort((a,b) => b.period.localeCompare(a.period));
   const openEntries    = entries.filter(e => !e.paid);
   const settledEntries = entries.filter(e => e.paid);
@@ -1204,8 +1219,10 @@ function _tnModalDocsHTML(rec) {
   return `
   <div class="tn-msec">
     <span class="tn-slbl">Documents<span class="tn-slbl-note"> · generated in rooms tab · upload signed copy here</span></span>
-    ${ctype === 'mietvertrag'   ? docRow('mietvertrag',        'Mietvertrag')          : ''}
-    ${ctype === 'kurzzeit'      ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag')  : ''}
+    ${ctype === 'mietvertrag'  ? docRow('mietvertrag',        'Mietvertrag')          : ''}
+    ${ctype === 'kurzzeit'     ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag')  : ''}
+    ${!ctype                   ? docRow('mietvertrag',        'Mietvertrag')          : ''}
+    ${!ctype                   ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag')  : ''}
     ${docRow('einzug',  'Übergabe Einzug')}
     ${docRow('auszug',  'Übergabe Auszug')}
   </div>`;
@@ -1278,6 +1295,12 @@ async function _tnSaveNewTenant(rid, roomName) {
   const beginVal   = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || '';
   const endeVal    = sec.querySelector('[data-f="mietende"]')?.value.trim()   || '';
 
+  if (!nameVal && !emailVal) {
+    const nameInp = sec.querySelector('[data-f="name"]');
+    if (nameInp) { nameInp.style.borderColor = '#C4705A'; nameInp.focus(); }
+    btn.innerHTML = orig; btn.disabled = false;
+    return;
+  }
   const nameParts = nameVal.split(/\s+/);
   const firstName = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
   const lastName  = nameParts.length > 1 ? nameParts[nameParts.length-1] : '';
@@ -1332,6 +1355,14 @@ async function _tnSaveProfile(rid, tenantId) {
   const addrVal    = sec.querySelector('[data-f="address"]')?.value.trim()    || '';
   const beginVal   = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || '';
   const endeVal    = sec.querySelector('[data-f="mietende"]')?.value.trim()   || '';
+
+  // Require at least name or email
+  if (!nameVal && !emailVal) {
+    const nameInp = sec.querySelector('[data-f="name"]');
+    if (nameInp) { nameInp.style.borderColor = '#C4705A'; nameInp.focus(); }
+    btn.innerHTML = orig; btn.disabled = false;
+    return;
+  }
 
   const nameParts  = nameVal.split(/\s+/);
   const firstName  = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
@@ -1504,15 +1535,18 @@ async function _tnToggleSettle(prefix, tenantId) {
 
 async function _tnAddNkPeriod(tenantId) {
   if (!sbL) return;
-  // Find the add button and replace with inline input
-  const btn = document.querySelector(`.tn-add-nk[onclick*="${tenantId}"]`);
+  // Scope to modal body if open, else document
+  const scope = (_tnModalTenantId === tenantId && document.getElementById('tnModal')?.classList.contains('open'))
+    ? document.getElementById('tnModalBody')
+    : document;
+  const btn = scope?.querySelector(`.tn-add-nk[onclick*="${tenantId}"]`);
   if (!btn) return;
 
   // Build inline period input
   const wrap = document.createElement('div');
   wrap.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 0 4px;border-top:.5px solid #F0EDE8;margin-top:4px;';
   wrap.innerHTML = `
-    <input id="tn-nk-period-inp"
+    <input data-nk-period="1"
       style="flex:1;background:var(--cc-surface);border:var(--cc-border);border-radius:var(--cc-r-sm);
              padding:5px 8px;font-family:'Inter',inherit;font-size:11px;font-weight:300;color:var(--cc-charcoal);line-height:1.4;
              outline:none;border-color:var(--cc-gold);background:var(--cc-white);-webkit-appearance:none;-webkit-text-size-adjust:100%;"
@@ -1520,19 +1554,18 @@ async function _tnAddNkPeriod(tenantId) {
     <button style="height:28px;padding:0 11px;background:var(--cc-ink);color:var(--cc-white);
                    border:none;border-radius:var(--cc-r-sm);font-size:9px;font-weight:600;
                    letter-spacing:.06em;text-transform:uppercase;cursor:pointer;font-family:inherit;"
-      onclick="_tnConfirmAddNk('${tenantId}')">Add</button>
+      onclick="_tnConfirmAddNk('${tenantId}',this.parentNode.querySelector('[data-nk-period]'))">Add</button>
     <button style="height:28px;padding:0 8px;background:none;color:var(--cc-stone);
                    border:var(--cc-border);border-radius:var(--cc-r-sm);font-size:9px;
                    font-weight:600;letter-spacing:.06em;text-transform:uppercase;
                    cursor:pointer;font-family:inherit;"
-      onclick="_tnCancelAddNk('${tenantId}')">Cancel</button>`;
+      onclick="_tnCancelAddNk(this.parentNode,'${tenantId}')">Cancel</button>`;
   btn.style.display = 'none';
   btn.parentNode.insertBefore(wrap, btn);
   wrap.querySelector('input').focus();
 }
 
-async function _tnConfirmAddNk(tenantId) {
-  const inp = document.getElementById('tn-nk-period-inp');
+async function _tnConfirmAddNk(tenantId, inp) {
   if (!inp) return;
   const period = inp.value.trim();
   if (!period) { inp.focus(); return; }
@@ -1554,13 +1587,11 @@ async function _tnConfirmAddNk(tenantId) {
   }
 }
 
-function _tnCancelAddNk(tenantId) {
-  // Remove inline input wrap, show button again
-  const inp = document.getElementById('tn-nk-period-inp');
-  if (!inp) return;
-  const wrap = inp.closest('div');
+function _tnCancelAddNk(wrap, tenantId) {
   if (!wrap) return;
-  const btn = document.querySelector(`.tn-add-nk[onclick*="${tenantId}"]`);
+  const scope = (_tnModalTenantId === tenantId && document.getElementById('tnModal')?.classList.contains('open'))
+    ? document.getElementById('tnModalBody') : document;
+  const btn = scope?.querySelector(`.tn-add-nk[onclick*="${tenantId}"]`);
   if (btn) btn.style.display = '';
   wrap.remove();
 }
