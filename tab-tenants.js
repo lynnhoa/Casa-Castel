@@ -154,233 +154,81 @@ document.getElementById('tab-tenants').innerHTML = `
 .tb-kz  { background: #E8D9C4; color: #7A5820; border: .5px solid #C4A06A; }
 
 /* ── SECTIONS ── */
-.tn-sec { border-top: var(--cc-border); border-left: 3px solid var(--cc-gold); }
-.tn-sec.tn-sec-plain { border-left-color: transparent; }
-.tn-sec.tn-sec-new { border-left-color: var(--cc-rule); }
-
-/* section label row — label only, no button */
-.tn-sec-lbl-row {
-  display: flex; align-items: center;
-  padding: 9px 14px 8px 11px;
-}
+.tn-sec { padding: 10px 14px 12px; border-bottom: var(--cc-border); }
+.tn-sec:last-child { border-bottom: none; }
+.tn-sec-gold { border-left: 3px solid var(--cc-gold); padding-left: 13px; }
+.tn-sec-gold.no-tenant { border-left-color: var(--cc-rule); }
 
 /* ── SECTION LABEL ── */
 .tn-slbl {
   font-size: 9px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase;
-  color: var(--cc-stone); display: block;
+  color: var(--cc-stone); margin-bottom: 9px; display: block;
 }
 .tn-slbl-gold { color: var(--cc-gold); }
 .tn-slbl-note { font-size: 9px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--cc-stone); margin-left: 4px; }
 
-/* ── PROFILE SURFACE (layered card inside section) ── */
-.tn-pf-surface {
-  margin: 0 11px;
-  background: var(--cc-surface);
-  border: var(--cc-border);
-  border-radius: var(--cc-r-md);
-  overflow: hidden;
-}
-.tn-sec.editing .tn-pf-surface { border-color: #EF9F27; }
+/* ── KV READ ROWS ── */
+.tn-kv   { display: flex; gap: 10px; padding: 3px 0; align-items: baseline; }
+.tn-kv-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; }
+.tn-kv-v { font-size: 12px; color: var(--cc-charcoal); flex: 1; }
+.tn-kv-v.muted { color: var(--cc-stone); font-style: italic; }
 
-/* name + dates header — tinted, same height both modes */
-.tn-pf-top {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 11px; background: #EEE7DC; border-bottom: var(--cc-border);
-  min-height: 38px;
-}
-.tn-sec.editing .tn-pf-top { background: #FAEEDA; border-bottom-color: #EF9F27; }
-
-/* read name+dates */
-.tn-pf-name-r  { font-size: 13px; font-weight: 500; color: var(--cc-ink); }
-.tn-pf-dates-r { font-size: 10.5px; color: var(--cc-taupe); flex-shrink: 0; }
-.tn-pf-dates-r b { color: var(--cc-charcoal); font-weight: 500; }
-
-/* edit name+dates — underline inputs, same visual weight */
-.tn-pf-name-e {
-  font-size: 13px; font-weight: 500; color: var(--cc-ink);
-  background: none; border: none; border-bottom: 1px solid #EF9F27;
-  padding: 0 0 1px; width: 48%; font-family: inherit; outline: none;
+/* ── EDIT FORM ROWS ── */
+.tn-ef   { display: flex; gap: 10px; padding: 3px 0; align-items: center; }
+.tn-ef-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; line-height: 1.4; }
+.tn-ef input {
+  flex: 1; background: var(--cc-surface); border: var(--cc-border);
+  border-radius: var(--cc-r-sm); padding: 5px 8px;
+  font-family: 'Inter', inherit; font-size: 11px; font-weight: 300;
+  color: var(--cc-charcoal); line-height: 1.4;
+  outline: none; transition: border-color .15s; min-width: 0;
   -webkit-appearance: none; -webkit-text-size-adjust: 100%;
 }
-.tn-pf-name-e:focus { border-bottom-color: var(--cc-gold); }
-.tn-pf-dates-grp { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
-.tn-pf-date-e {
-  font-size: 10.5px; color: var(--cc-charcoal);
-  background: none; border: none; border-bottom: 1px solid #EF9F27;
-  padding: 0 0 1px; width: 85px; text-align: right;
-  font-family: inherit; outline: none;
-  -webkit-appearance: none; -webkit-text-size-adjust: 100%;
-}
-.tn-pf-date-e:focus { border-bottom-color: var(--cc-gold); }
-.tn-pf-date-e::placeholder { color: var(--cc-stone); font-size: 9.5px; }
-.tn-pf-date-sep { font-size: 10px; color: var(--cc-stone); }
+.tn-ef input:focus { border-color: var(--cc-gold); background: var(--cc-white); }
+.tn-ef input::placeholder { color: var(--cc-stone); font-style: normal; font-weight: 300; }
+.tn-ef-note { font-size: 10px; color: var(--cc-taupe); margin-top: 4px; padding-left: 98px; }
 
-/* show/hide read vs edit elements */
-.tn-pf-name-r  { display: block; }
-.tn-pf-dates-r { display: flex; align-items: center; }
-.tn-pf-name-e  { display: none; }
-.tn-pf-dates-grp { display: none; }
-.tn-sec.editing .tn-pf-name-r  { display: none; }
-.tn-sec.editing .tn-pf-dates-r { display: none; }
-.tn-sec.editing .tn-pf-name-e  { display: block; }
-.tn-sec.editing .tn-pf-dates-grp { display: flex; }
+/* profile read/edit toggle */
+.tn-sec-gold.editing .tn-profile-read { display: none; }
+.tn-sec-gold.editing .tn-profile-edit { display: block; }
+.tn-profile-read { display: block; }
+.tn-profile-edit { display: none; }
 
-/* 2-col field grid */
-.tn-pf-grid { display: grid; grid-template-columns: 1fr 1fr; }
-.tn-pf-cell {
-  padding: 6px 11px;
-  border-right: var(--cc-border); border-bottom: var(--cc-border);
-}
-.tn-pf-cell:nth-child(even) { border-right: none; }
-.tn-pf-cell:nth-last-child(-n+2) { border-bottom: none; }
-.tn-pf-k { font-size: 9px; color: var(--cc-stone); margin-bottom: 2px; }
-.tn-pf-v { font-size: 11.5px; color: var(--cc-charcoal); }
-.tn-pf-v.empty { color: var(--cc-stone); font-style: italic; }
-
-/* in-cell inputs */
-.tn-pf-inp {
-  display: none; width: 100%;
-  background: var(--cc-white); border: .5px solid #D0C8BC;
-  border-radius: var(--cc-r-sm); padding: 4px 7px;
-  font-size: 11px; color: var(--cc-charcoal); font-family: inherit; outline: none;
-  -webkit-appearance: none; -webkit-text-size-adjust: 100%;
-  transition: border-color .15s;
-}
-.tn-pf-inp:focus { border-color: var(--cc-gold); }
-.tn-pf-inp::placeholder { color: var(--cc-stone); }
-.tn-sec.editing .tn-pf-v   { display: none; }
-.tn-sec.editing .tn-pf-inp { display: block; }
-
-/* ── FINANCE STRIP ── */
-.tn-fin-strip {
-  display: grid; grid-template-columns: repeat(4,1fr);
-  margin: 9px 11px 0;
-  border: var(--cc-border); border-radius: var(--cc-r-md); overflow: hidden;
-}
-.tn-sec.editing .tn-fin-strip { border-color: #EF9F27; }
-.tn-fsc { padding: 6px 9px; border-right: var(--cc-border); }
-.tn-fsc:last-child { border-right: none; }
-.tn-fsc-kalt { background: var(--cc-surface); }
-.tn-fsc-nk   { background: var(--cc-surface); }
-.tn-fsc-warm { background: #F2ECE2; }
-.tn-fsc-kaut { background: #FAEEDA; }
-.tn-fsl {
-  font-size: 8px; font-weight: 600; letter-spacing: .09em;
-  text-transform: uppercase; margin-bottom: 3px;
-}
-.tn-fsl-kalt, .tn-fsl-nk { color: var(--cc-taupe); }
-.tn-fsl-warm { color: #9A7A3A; }
-.tn-fsl-kaut { color: #854F0B; }
-.tn-fsv { font-size: 13px; font-weight: 500; color: var(--cc-charcoal); }
-.tn-fsv-warm { color: var(--cc-gold); }
-.tn-fsv-kaut { color: #854F0B; }
-.tn-fsv-note { font-size: 9px; font-weight: 400; color: var(--cc-stone); margin-left: 2px; }
-/* finance inputs — hidden in read, shown in edit */
-.tn-fsi {
-  display: none; width: 100%;
-  background: var(--cc-white); border: .5px solid #D0C8BC;
-  border-radius: 4px; padding: 3px 6px;
-  font-size: 12px; font-weight: 500; color: var(--cc-charcoal);
-  font-family: inherit; outline: none; -webkit-appearance: none;
-}
-.tn-fsi::-webkit-inner-spin-button, .tn-fsi::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.tn-fsi[type=number] { -moz-appearance: textfield; }
-.tn-fsi:focus { border-color: var(--cc-gold); }
-/* Warm is always derived — never editable */
-.tn-fsc-warm .tn-fsv { display: block !important; }
-.tn-fsc-warm .tn-fsi { display: none !important; }
-.tn-sec.editing .tn-fsv { display: none; }
-.tn-sec.editing .tn-fsi { display: block; }
-
-/* ── SECTION FOOTER — the fixed anchor ── */
-/* Same element in read and edit. Read: Edit right-aligned. Edit: note left + Cancel·Save right. */
-.tn-sec-footer {
-  display: flex; align-items: center; justify-content: flex-end;
-  padding: 8px 14px 10px 11px; gap: 6px;
-  /* dimmed siblings during edit */
-}
-.tn-sec.editing .tn-sec-footer { justify-content: space-between; }
-.tn-sec-footer-note {
-  font-size: 9.5px; color: var(--cc-stone);
-  display: none;
-}
-.tn-sec.editing .tn-sec-footer-note { display: block; }
-.tn-sec-footer-btns { display: flex; align-items: center; gap: 6px; }
-
-/* Edit button (read mode) */
-.tn-btn-edit {
-  height: 26px; padding: 0 11px; display: flex; align-items: center; gap: 4px;
-  background: none; border: var(--cc-border); border-radius: var(--cc-r-sm);
-  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--cc-taupe); cursor: pointer; font-family: inherit;
-  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-}
-.tn-btn-edit:active { opacity: .7; }
-/* Hide in edit mode */
-.tn-sec.editing .tn-btn-edit { display: none; }
-
-/* Save button (edit mode) */
+.tn-save-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
 .tn-btn-save {
-  height: 26px; padding: 0 13px; display: none; align-items: center; gap: 4px;
-  background: var(--cc-ink); color: var(--cc-white); border: none;
-  border-radius: var(--cc-r-sm);
-  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  cursor: pointer; font-family: inherit; transition: opacity .15s;
-  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  height: 32px; padding: 0 14px; background: var(--cc-ink); color: var(--cc-white);
+  border: none; border-radius: var(--cc-r-sm); font-size: 10px; font-weight: 500;
+  letter-spacing: .06em; text-transform: uppercase; cursor: pointer; font-family: inherit;
+  transition: opacity .15s;
 }
 .tn-btn-save:active { opacity: .85; }
-.tn-sec.editing .tn-btn-save { display: flex; }
-
-/* Cancel button (edit mode) */
 .tn-btn-cancel-sm {
-  height: 26px; padding: 0 10px; display: none; align-items: center;
-  background: none; color: var(--cc-stone); border: var(--cc-border);
-  border-radius: var(--cc-r-sm);
-  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-  cursor: pointer; font-family: inherit;
-  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  height: 32px; padding: 0 10px; background: none; color: var(--cc-taupe);
+  border: none; font-size: 13px; cursor: pointer; font-family: inherit;
 }
-.tn-sec.editing .tn-btn-cancel-sm { display: flex; }
 
-/* kaution rule hint (below strip in edit) */
-.tn-k-hint {
-  font-size: 9.5px; color: var(--cc-stone);
-  padding: 4px 11px 0; display: none;
-}
-.tn-sec.editing .tn-k-hint { display: block; }
-
-/* move-out hint (inside pf-top, edit only) */
-.tn-mo-hint {
-  font-size: 9.5px; color: #854F0B;
-  display: none; align-items: center; gap: 4px; flex-shrink: 0;
-}
-.tn-mo-hint.show { display: flex; }
-
-/* dim sibling sections while current tenant is editing */
-.tn-sec.editing ~ .tn-sec,
-.tn-sec.editing ~ .tn-acts { opacity: .4; pointer-events: none; }
-
-/* ── ACTIONS BAR ── */
+/* ── ACTIONS STRIP ── */
 .tn-acts {
-  display: flex; gap: 6px; padding: 7px 14px;
-  border-top: var(--cc-border); align-items: center;
+  display: flex; gap: 6px; padding: 8px 14px;
+  border-bottom: var(--cc-border); align-items: center;
 }
 .tn-act {
   height: 28px; display: flex; align-items: center; gap: 4px;
   padding: 0 11px; border-radius: var(--cc-r-pill);
   font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   cursor: pointer; font-family: inherit; background: none; white-space: nowrap;
-  -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: opacity .15s;
+  -webkit-tap-highlight-color: transparent; transition: opacity .15s;
 }
 .tn-act:active { opacity: .7; }
 .tn-act-email { color: #0C447C; border: .5px solid #85B7EB; }
 .tn-act-reset { color: var(--cc-taupe); border: var(--cc-border); }
+.tn-act-edit  { color: var(--cc-taupe); border: var(--cc-border); margin-left: auto; }
 .tn-act-add   { color: var(--cc-taupe); border: var(--cc-border); }
 
 /* ── DOCUMENT ROWS — Pattern A (external sig) ── */
 .tn-doc-row {
   display: flex; align-items: center; gap: 7px;
-  padding: 3px 0; border-bottom: .5px solid #F0EDE8;
+  padding: 5px 0; border-bottom: .5px solid #F0EDE8;
 }
 .tn-doc-row:last-child { border-bottom: none; }
 .tn-doc-name { font-size: 11px; color: var(--cc-charcoal); flex: 1; min-width: 0; }
@@ -412,7 +260,7 @@ document.getElementById('tab-tenants').innerHTML = `
 /* ── KAUTION ── */
 .tn-k-grid {
   display: grid; grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px; align-items: end; margin-bottom: 0;
+  gap: 6px; align-items: end; margin-bottom: 0; width: 100%;
 }
 .tn-k-col { display: flex; flex-direction: column; gap: 4px; }
 .tn-k-lbl {
@@ -449,7 +297,7 @@ document.getElementById('tab-tenants').innerHTML = `
 /* ── NK ROWS ── */
 .tn-nk-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 3px 0; border-bottom: .5px solid #F0EDE8;
+  padding: 5px 0; border-bottom: .5px solid #F0EDE8;
 }
 .tn-nk-row:last-of-type { border-bottom: none; }
 .tn-nk-yr { font-size: 12px; font-weight: 600; color: var(--cc-charcoal); min-width: 52px; flex-shrink: 0; }
@@ -650,22 +498,45 @@ document.getElementById('tab-tenants').innerHTML = `
 }
 .tn-ctype-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
 
-/* ── FINANCIAL STAT CELLS (modal context only) ── */
+/* ── FINANCIAL STAT CELLS ── */
 .tn-fin-grid {
   display: grid; grid-template-columns: 1fr 1fr 1fr;
   gap: 8px; margin: 10px 0 8px;
 }
-.tn-fin-cell { background: var(--cc-surface); border-radius: var(--cc-r-sm); padding: 8px 10px; }
-.tn-fin-lbl { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--cc-taupe); margin-bottom: 3px; }
-.tn-fin-val { font-size: 15px; font-weight: 500; color: var(--cc-charcoal); line-height: 1.2; }
+.tn-fin-cell {
+  background: var(--cc-surface); border-radius: var(--cc-r-sm);
+  padding: 8px 10px;
+}
+.tn-fin-lbl {
+  font-size: 9px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--cc-taupe); margin-bottom: 3px;
+}
+.tn-fin-val {
+  font-size: 15px; font-weight: 500; color: var(--cc-charcoal); line-height: 1.2;
+}
 .tn-fin-val.gold { color: var(--cc-gold); }
-.tn-fin-src { font-size: 9px; color: var(--cc-stone); margin-top: 2px; }
-.tn-fin-divider { height: 0.5px; background: var(--cc-rule); margin: 10px 0; }
+.tn-fin-src {
+  font-size: 9px; color: var(--cc-stone); margin-top: 2px;
+}
+.tn-fin-divider {
+  height: 0.5px; background: var(--cc-rule); margin: 10px 0;
+}
 .tn-fin-note {
   font-size: 10px; color: var(--cc-taupe); margin-top: 8px;
   padding: 5px 9px; background: var(--cc-surface);
   border-radius: var(--cc-r-sm); border-left: 2px solid var(--cc-gold);
 }
+
+/* staffelmiete toggle */
+.tn-staf-toggle { display: flex; gap: 4px; }
+.tn-staf-btn {
+  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  padding: 3px 10px; border-radius: var(--cc-r-pill); cursor: pointer;
+  font-family: inherit; background: none; color: var(--cc-taupe);
+  border: var(--cc-border); transition: all .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tn-staf-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
 
 /* ── EMPTY STATE ── */
 .tn-empty { font-size: 12px; color: var(--cc-stone); font-style: italic; padding: 3px 0; }
@@ -677,6 +548,7 @@ document.getElementById('tab-tenants').innerHTML = `
   .tn-sheet-footer { padding-bottom: 16px; }
   .tn-former-row:hover { background: #F9F7F4; }
   .tn-add-former-btn:hover { color: var(--cc-charcoal); }
+  /* Cards full width — matches rooms tab .rp-list behavior */
   .tn-list { max-width: none; margin: 0; }
 }
 
@@ -1120,176 +992,202 @@ function _tnCardHTML(room) {
 /* ── CURRENT TENANT SECTION ── */
 function _tnCurrentTenantHTML(room, rec) {
   const rid = esc(room.name.replace(/\s+/g,'_').toLowerCase());
+
+  // Is record effectively empty? (no key fields filled yet)
   const isEmpty = !rec || (!rec.first_name && !rec.last_name && !rec.email && !rec.mietbeginn);
 
-  /* ── NEW TENANT (no record yet) ── */
+  // No record yet — show blank edit form, save creates the record
   if (!rec) {
-    const liveP  = _tnRoomPricing(room.name);
-    const dKalt  = liveP.kaltmiete   ?? null;
-    const dNk    = liveP.nebenkosten ?? null;
-    const dKSoll = _tnKautionSoll(room.name, null, null);
-    const dWarm  = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
+    const liveP0 = _tnRoomPricing(room.name);
+    const dKalt0  = liveP0.kaltmiete   ?? null;
+    const dNk0    = liveP0.nebenkosten  ?? null;
+    const dKSoll0 = _tnKautionSoll(room.name, null, null);
+    const dWarm0  = (dKalt0 != null && dNk0 != null) ? dKalt0 + dNk0 : dKalt0;
 
     return `
-  <div class="tn-sec tn-sec-new editing" id="cursec-${rid}" data-tenant-id="">
-    <div class="tn-sec-lbl-row">
-      <span class="tn-slbl tn-slbl-gold">New tenant</span>
-    </div>
+  <div class="tn-sec tn-sec-gold editing" id="cursec-${rid}" data-tenant-id="">
+    <span class="tn-slbl tn-slbl-gold">Current tenant</span>
+    <div class="tn-profile-read" style="display:none"></div>
+    <div class="tn-profile-edit">
+      <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="" placeholder="Full name"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-f="email" type="email" value="" placeholder="tenant@mail.de"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="" placeholder="+49 ..."/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="" placeholder="DD.MM.YYYY"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="" placeholder="Street, City"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="" placeholder="DD.MM.YYYY" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="" placeholder="DD.MM.YYYY \u2014 sets tenant as Former" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
+      <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
 
-    <div class="tn-pf-surface">
-      <div class="tn-pf-top">
-        <input class="tn-pf-name-e" data-f="name" placeholder="Full name"/>
-        <div class="tn-pf-dates-grp">
-          <input class="tn-pf-date-e" data-f="mietbeginn" placeholder="Move in" oninput="_tnUpdateKautionSoll('${rid}')"/>
-          <span class="tn-pf-date-sep">\u2192</span>
-          <input class="tn-pf-date-e" data-f="mietende" placeholder="Move out" oninput="_tnMoHint('${rid}');_tnUpdateKautionSoll('${rid}')"/>
-          <span class="tn-mo-hint" id="moh-${rid}"><i class="ti ti-info-circle" style="font-size:11px"></i> Becomes Former</span>
+      <div class="tn-fin-divider"></div>
+      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
+
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaltmiete</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaltmiete" type="number" value="${dKalt0 ?? ''}" placeholder="${dKalt0 ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
         </div>
       </div>
-      <div class="tn-pf-grid">
-        <div class="tn-pf-cell"><div class="tn-pf-k">Email</div><input class="tn-pf-inp" data-f="email" type="email" placeholder="tenant@mail.de"/></div>
-        <div class="tn-pf-cell"><div class="tn-pf-k">Phone</div><input class="tn-pf-inp" data-f="phone" type="tel" placeholder="+49 \u2026"/></div>
-        <div class="tn-pf-cell"><div class="tn-pf-k">Birthday</div><input class="tn-pf-inp" data-f="birthday" placeholder="DD.MM.YYYY"/></div>
-        <div class="tn-pf-cell"><div class="tn-pf-k">Address</div><input class="tn-pf-inp" data-f="address" placeholder="Street, City"/></div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Nebenkosten</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="nebenkosten" type="number" value="${dNk0 ?? ''}" placeholder="${dNk0 ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
+        </div>
       </div>
-    </div>
+      <div class="tn-ef" style="padding-bottom:2px">
+        <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
+        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm0 != null ? _tnFmtEUR(dWarm0) : '\u2014'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaution soll</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaution_soll" type="number" value="${dKSoll0 ?? ''}" placeholder="${dKSoll0 ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac</span>
+        </div>
+      </div>
+      <div class="tn-ef-note tn-kaution-rule-hint" style="padding-left:0;color:var(--cc-stone);font-size:10px"></div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Staffelmiete</span>
+        <div class="tn-staf-toggle">
+          <button class="tn-staf-btn" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
+          <button class="tn-staf-btn on" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
+        </div>
+      </div>
+      <div class="tn-fin-note">Pre-filled from rooms tab. Edit to set this tenant's actual agreed terms.</div>
 
-    <div class="tn-fin-strip">
-      <div class="tn-fsc tn-fsc-kalt">
-        <div class="tn-fsl tn-fsl-kalt">Kalt</div>
-        <div class="tn-fsv">${dKalt != null ? _tnFmtEUR(dKalt) : '\u2014'}</div>
-        <input class="tn-fsi" data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
-      </div>
-      <div class="tn-fsc tn-fsc-nk">
-        <div class="tn-fsl tn-fsl-nk">NK</div>
-        <div class="tn-fsv">${dNk != null ? _tnFmtEUR(dNk) : '\u2014'}</div>
-        <input class="tn-fsi" data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
-      </div>
-      <div class="tn-fsc tn-fsc-warm">
-        <div class="tn-fsl tn-fsl-warm">Warm</div>
-        <div class="tn-fsv tn-fsv-warm" id="warm-${rid}">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'}<span class="tn-fsv-note">derived</span></div>
-      </div>
-      <div class="tn-fsc tn-fsc-kaut">
-        <div class="tn-fsl tn-fsl-kaut">Kaution soll</div>
-        <div class="tn-fsv tn-fsv-kaut">${dKSoll != null ? _tnFmtEUR(dKSoll) : '\u2014'}</div>
-        <input class="tn-fsi" data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${dKSoll ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
-      </div>
-    </div>
-    <div class="tn-k-hint" id="krh-${rid}"></div>
-
-    <div class="tn-sec-footer">
-      <span class="tn-sec-footer-note">Pre-filled from rooms tab \u00b7 set agreed values to override</span>
-      <div class="tn-sec-footer-btns">
-        <button class="tn-btn-save" onclick="_tnSaveNewTenant('${rid}','${esc(room.name)}')">
-          <i class="ti ti-check" style="font-size:10px"></i> Save
-        </button>
+      <div class="tn-save-row">
+        <button class="tn-btn-save" onclick="_tnSaveNewTenant('${rid}','${esc(room.name)}')">Save</button>
       </div>
     </div>
   </div>`;
   }
 
-  /* ── EXISTING TENANT ── */
-  const email    = esc(rec.email || '');
-  const fullName = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
+
+  const email           = esc(rec.email || '');
+  const fullName        = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
   const mietendeDisplay = rec.mietende ? _tnFmtDate(rec.mietende) : null;
-  const autoEdit = isEmpty ? ' editing' : '';
+  const autoEdit        = isEmpty ? ' editing' : '';
+
+  // Financial values — stored override takes priority, live rooms tab as fallback
+  // Active: null in DB = live from rooms tab. Stored value = agreed override.
+  // Former: always stored snapshot (set at move-out). Editable correction.
   const isFormer = rec.status === 'former' || rec.status === 'archived';
-  const liveP    = _tnRoomPricing(room.name);
-  const dKalt    = rec.kaltmiete    != null ? Number(rec.kaltmiete)    : (liveP.kaltmiete   ?? null);
-  const dNk      = rec.nebenkosten  != null ? Number(rec.nebenkosten)  : (liveP.nebenkosten  ?? null);
-  const dKSoll   = rec.kaution_soll != null ? Number(rec.kaution_soll) : _tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null);
-  const dWarm    = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
-  const dSrc     = (rec.kaltmiete != null) ? 'agreed' : 'live \u00b7 rooms tab';
+  const liveP  = _tnRoomPricing(room.name);
+  const dKalt  = rec.kaltmiete    != null ? Number(rec.kaltmiete)    : (liveP.kaltmiete   ?? null);
+  const dNk    = rec.nebenkosten  != null ? Number(rec.nebenkosten)  : (liveP.nebenkosten  ?? null);
+  const dKSoll = rec.kaution_soll != null ? Number(rec.kaution_soll) : _tnKautionSoll(room.name, rec.mietbeginn || null, rec.mietende || null);
+  const dWarm  = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
+  const staf   = !!rec.staffelmiete;
+  // Source label: show where current display value comes from
+  const dSrc   = (rec.kaltmiete != null) ? 'agreed' : 'live · rooms tab';
 
   return `
-  <div class="tn-sec${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
-    <div class="tn-sec-lbl-row">
-      <span class="tn-slbl tn-slbl-gold">Current tenant</span>
+  <div class="tn-sec tn-sec-gold${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
+    <span class="tn-slbl tn-slbl-gold">Current tenant</span>
+
+    <!-- READ VIEW -->
+    <div class="tn-profile-read">
+      <div class="tn-kv"><span class="tn-kv-k">Name</span><span class="tn-kv-v">${esc(fullName) || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Email</span><span class="tn-kv-v">${email || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Phone</span><span class="tn-kv-v">${esc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Birthday</span><span class="tn-kv-v">${esc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Address</span><span class="tn-kv-v">${esc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Move in</span><span class="tn-kv-v">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Move out</span><span class="tn-kv-v ${mietendeDisplay ? '' : 'muted'}">${mietendeDisplay || 'Not set \u2014 still active'}</span></div>
+
+      <div class="tn-fin-divider"></div>
+      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
+
+      <div class="tn-fin-grid">
+        <div class="tn-fin-cell">
+          <div class="tn-fin-lbl">Kaltmiete</div>
+          <div class="tn-fin-val">${dKalt != null ? _tnFmtEUR(dKalt) : '<span class="muted">\u2014</span>'}</div>
+          <div class="tn-fin-src">${dSrc}</div>
+        </div>
+        <div class="tn-fin-cell">
+          <div class="tn-fin-lbl">Nebenkosten</div>
+          <div class="tn-fin-val">${dNk != null ? _tnFmtEUR(dNk) : '<span class="muted">\u2014</span>'}</div>
+          <div class="tn-fin-src">${dSrc}</div>
+        </div>
+        <div class="tn-fin-cell">
+          <div class="tn-fin-lbl">Warmmiete</div>
+          <div class="tn-fin-val gold">${dWarm != null ? _tnFmtEUR(dWarm) : '<span class="muted">\u2014</span>'}</div>
+          <div class="tn-fin-src">derived</div>
+        </div>
+      </div>
+
+      <div class="tn-kv">
+        <span class="tn-kv-k">Kaution soll</span>
+        <span class="tn-kv-v">${dKSoll != null ? _tnFmtEUR(dKSoll) : '<span class="muted">Not set</span>'}${dKSoll && dKalt ? ` <span style="color:var(--cc-stone);font-size:10px">\u00b7 ${Math.round(dKSoll/dKalt*10)/10}\u00d7 Kaltmiete</span>` : ''}</span>
+      </div>
+      <div class="tn-kv"><span class="tn-kv-k">Staffelmiete</span><span class="tn-kv-v">${staf ? 'Ja' : 'Nein'}</span></div>
+      <div class="tn-fin-note">Values from rooms tab. Edit to override for this tenant.</div>
     </div>
 
-    <div class="tn-pf-surface">
-      <!-- name + dates: read values swap to underline inputs in edit -->
-      <div class="tn-pf-top">
-        <span class="tn-pf-name-r">${esc(fullName) || '<span style="color:var(--cc-stone);font-style:italic">No name</span>'}</span>
-        <input class="tn-pf-name-e" data-f="name" value="${esc(fullName)}" placeholder="Full name"/>
-        <span class="tn-pf-dates-r"><b>${_tnFmtDate(rec.mietbeginn) || '\u2014'}</b>&nbsp;\u2192&nbsp;${mietendeDisplay || 'active'}</span>
-        <div class="tn-pf-dates-grp">
-          <input class="tn-pf-date-e" data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="Move in" oninput="_tnUpdateKautionSoll('${rid}')"/>
-          <span class="tn-pf-date-sep">\u2192</span>
-          <input class="tn-pf-date-e" data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="Move out" oninput="_tnMoHint('${rid}');_tnUpdateKautionSoll('${rid}')"/>
-          <span class="tn-mo-hint${mietendeDisplay ? ' show' : ''}" id="moh-${rid}"><i class="ti ti-info-circle" style="font-size:11px"></i> Becomes Former</span>
-        </div>
-      </div>
-      <!-- 2-col grid: read values / inputs in same cells -->
-      <div class="tn-pf-grid">
-        <div class="tn-pf-cell">
-          <div class="tn-pf-k">Email</div>
-          <div class="tn-pf-v${email ? '' : ' empty'}">${email || 'Not set'}</div>
-          <input class="tn-pf-inp" data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/>
-        </div>
-        <div class="tn-pf-cell">
-          <div class="tn-pf-k">Phone</div>
-          <div class="tn-pf-v${rec.phone ? '' : ' empty'}">${esc(rec.phone||'') || 'Not set'}</div>
-          <input class="tn-pf-inp" data-f="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 \u2026"/>
-        </div>
-        <div class="tn-pf-cell">
-          <div class="tn-pf-k">Birthday</div>
-          <div class="tn-pf-v${rec.birthday ? '' : ' empty'}">${esc(rec.birthday||'') || 'Not set'}</div>
-          <input class="tn-pf-inp" data-f="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/>
-        </div>
-        <div class="tn-pf-cell">
-          <div class="tn-pf-k">Address</div>
-          <div class="tn-pf-v${rec.address ? '' : ' empty'}">${esc(rec.address||'') || 'Not set'}</div>
-          <input class="tn-pf-inp" data-f="address" value="${esc(rec.address||'')}" placeholder="Street, City"/>
-        </div>
-      </div>
-    </div>
+    <!-- EDIT VIEW -->
+    <div class="tn-profile-edit">
+      <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="${esc(fullName)}" placeholder="Full name"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Email</span><input data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Phone</span><input data-f="phone" type="tel" value="${esc(rec.phone||'')}" placeholder="+49 ..."/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Birthday</span><input data-f="birthday" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Address</span><input data-f="address" value="${esc(rec.address||'')}" placeholder="Street, City"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move in</span><input data-f="mietbeginn" value="${_tnFmtDate(rec.mietbeginn)}" placeholder="DD.MM.YYYY" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
+      <div class="tn-ef"><span class="tn-ef-k">Move out</span><input data-f="mietende" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY \u2014 sets tenant as Former" oninput="_tnUpdateKautionSoll('${rid}')"/></div>
+      <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
 
-    <!-- Finance strip: read values / inputs in same cells, Warm always derived -->
-    <div class="tn-fin-strip">
-      <div class="tn-fsc tn-fsc-kalt">
-        <div class="tn-fsl tn-fsl-kalt">Kalt</div>
-        <div class="tn-fsv">${dKalt != null ? _tnFmtEUR(dKalt) : '\u2014'}</div>
-        <input class="tn-fsi" data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
-      </div>
-      <div class="tn-fsc tn-fsc-nk">
-        <div class="tn-fsl tn-fsl-nk">NK</div>
-        <div class="tn-fsv">${dNk != null ? _tnFmtEUR(dNk) : '\u2014'}</div>
-        <input class="tn-fsi" data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
-      </div>
-      <div class="tn-fsc tn-fsc-warm">
-        <div class="tn-fsl tn-fsl-warm">Warm</div>
-        <div class="tn-fsv tn-fsv-warm" id="warm-${rid}">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'}<span class="tn-fsv-note">derived</span></div>
-      </div>
-      <div class="tn-fsc tn-fsc-kaut">
-        <div class="tn-fsl tn-fsl-kaut">Kaution soll</div>
-        <div class="tn-fsv tn-fsv-kaut">${dKSoll != null ? _tnFmtEUR(dKSoll) : '\u2014'}</div>
-        <input class="tn-fsi" data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${_tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null) ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
-      </div>
-    </div>
-    <div class="tn-k-hint" id="krh-${rid}"></div>
 
-    <!-- FIXED ANCHOR: bottom-right — Edit in read mode, Cancel+Save in edit mode -->
-    <div class="tn-sec-footer">
-      <span class="tn-sec-footer-note">${isFormer ? 'Frozen at move-out \u00b7 edit to correct' : 'Placeholders from rooms tab \u00b7 set agreed values to override'}</span>
-      <div class="tn-sec-footer-btns">
-        <button class="tn-btn-edit" id="editbtn-${rid}" onclick="_tnEnterEdit('${rid}','${rec.id}')">
-          <i class="ti ti-pencil" style="font-size:10px"></i> Edit
-        </button>
-        <button class="tn-btn-cancel-sm" onclick="_tnCancelEdit('${rid}')">Cancel</button>
-        <button class="tn-btn-save" onclick="_tnSaveProfile('${rid}','${rec.id}')">
-          <i class="ti ti-check" style="font-size:10px"></i> Save
-        </button>
+      <div class="tn-fin-divider"></div>
+      <div class="tn-slbl" style="margin-bottom:8px">Rent &amp; kaution</div>
+
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaltmiete</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? '—'}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
+        </div>
       </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Nebenkosten</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? '—'}" oninput="_tnUpdateWarm('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
+        </div>
+      </div>
+      <div class="tn-ef" style="padding-bottom:2px">
+        <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
+        <span id="warm-${rid}" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '—'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
+      </div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Kaution soll</span>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${_tnKautionSoll(room.name, rec.mietbeginn||null, rec.mietende||null) ?? ''}" oninput="_tnUpdateKautionSoll('${rid}')"/>
+          <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€</span>
+        </div>
+      </div>
+      <div class="tn-ef-note tn-kaution-rule-hint" style="padding-left:0;color:var(--cc-stone);font-size:10px"></div>
+      <div class="tn-ef">
+        <span class="tn-ef-k">Staffelmiete</span>
+        <div class="tn-staf-toggle">
+          <button class="tn-staf-btn${staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
+          <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
+        </div>
+      </div>
+      <div class="tn-fin-note">${isFormer ? 'Frozen at move-out — edit to correct.' : 'Placeholders from rooms tab. Set agreed values here to override.'}</div>
+
     </div>
   </div>
 
   <div class="tn-acts">
-    ${email ? `<button class="tn-act tn-act-email" onclick="window.location.href=buildMailto('${email}','Message from Casa Castel','')">
+    ${email ? `<button class="tn-act tn-act-email"
+      onclick="window.location.href=buildMailto('${email}','Message from Casa Castel','')">
       <i class="ti ti-mail" style="font-size:11px"></i> Email
     </button>` : ''}
     <button class="tn-act tn-act-reset" onclick="_tnResetPw('${esc(room.name)}')">
       <i class="ti ti-key" style="font-size:11px"></i> Reset pw
+    </button>
+    <button class="tn-act tn-act-edit" id="editbtn-${rid}" onclick="_tnEditOrSave('${rid}','${rec.id}')">
+      <i class="ti ti-pencil" style="font-size:11px"></i> Edit
     </button>
   </div>`;
 }
@@ -1304,31 +1202,43 @@ function _tnDocumentsHTML(room, activeRec) {
   const tid    = activeRec?.id || null;
   const getDoc = (type) => docs.find(d => d.type === type);
 
-  const docChip = (type, label) => {
+  const docRow = (type, label) => {
     const doc    = getDoc(type);
     const signed = !!doc?.file_url;
-    const dotCls = signed ? 'background:#639922' : 'background:#D4CFC9';
-    const icon   = signed ? 'ti-eye' : 'ti-upload';
-    const action = signed
-      ? `onclick="_tnViewDoc('${doc.file_url}')"`
-      : tid ? `onclick="_tnTriggerUpload('${tid}','${type}')"` : 'disabled';
-    return `<button style="display:flex;align-items:center;gap:5px;padding:4px 9px 4px 7px;border:var(--cc-border);border-radius:var(--cc-r-pill);font-size:10.5px;cursor:pointer;background:none;font-family:inherit;color:${signed ? 'var(--cc-charcoal)' : 'var(--cc-stone)'};-webkit-tap-highlight-color:transparent" ${action}>
-      <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;${dotCls}"></span>
-      ${esc(label)}<i class="ti ${icon}" style="font-size:11px;color:var(--cc-stone);margin-left:3px" aria-hidden="true"></i>
-    </button>`;
+    const status = signed
+      ? `<span class="tn-ds tn-ds-signed">Signed</span>`
+      : `<span class="tn-ds tn-ds-none">Not uploaded</span>`;
+    const viewBtn = signed
+      ? `<button class="tn-doc-btn tn-doc-btn-ghost" onclick="_tnViewDoc('${doc.file_url}')">
+           <i class="ti ti-eye" style="font-size:10px"></i>
+         </button>`
+      : `<button class="tn-doc-btn tn-doc-btn-ghost off">
+           <i class="ti ti-eye" style="font-size:10px"></i>
+         </button>`;
+    const uploadBtn = tid
+      ? `<button class="tn-doc-btn tn-doc-btn-ghost"
+           onclick="_tnTriggerUpload('${tid}','${type}')">
+           <i class="ti ti-upload" style="font-size:10px"></i>
+         </button>`
+      : `<button class="tn-doc-btn tn-doc-btn-ghost off" title="Save tenant profile first">
+           <i class="ti ti-upload" style="font-size:10px"></i>
+         </button>`;
+    return `
+    <div class="tn-doc-row">
+      <span class="tn-doc-name">${esc(label)}</span>
+      ${status}
+      ${viewBtn}
+      ${uploadBtn}
+    </div>`;
   };
 
   return `
-  <div class="tn-sec tn-sec-plain">
-    <div class="tn-sec-lbl-row" style="margin-bottom:5px">
-      <span class="tn-slbl">Documents<span class="tn-slbl-note"> · tap to view or upload</span></span>
-    </div>
-    <div style="display:flex;gap:5px;flex-wrap:wrap">
-      ${types.includes('mietvertrag')  ? docChip('mietvertrag',        'Mietvertrag')         : ''}
-      ${types.includes('kurzzeit')     ? docChip('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
-      ${docChip('einzug', '\u00dcbergabe Einzug')}
-      ${!types.length ? `<p class="tn-empty">No contract type set.</p>` : ''}
-    </div>
+  <div class="tn-sec">
+    <span class="tn-slbl">Documents<span class="tn-slbl-note"> · upload signed copy here</span></span>
+    ${types.includes('mietvertrag')  ? docRow('mietvertrag',        'Mietvertrag')         : ''}
+    ${types.includes('kurzzeit')     ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
+    ${docRow('einzug', 'Übergabe Einzug')}
+    ${!types.length ? `<p class="tn-empty">No contract type set — configure in rooms tab.</p>` : ''}
   </div>`;
 }
 
@@ -1345,11 +1255,11 @@ function _tnKautionHTML(tenantId, context) {
   const disabled = tenantId ? '' : 'disabled title="Save tenant profile first"';
   const opacity  = tenantId ? '' : 'opacity:.45;pointer-events:none;';
 
-  const cls = context === 'modal' ? 'tn-msec' : 'tn-sec tn-sec-plain';
+  const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
   const lbl = context === 'modal'
     ? `<span class="tn-slbl tn-slbl-gold">Kaution</span>`
-    : `<div class="tn-sec-lbl-row" style="margin-bottom:6px">
-        <span class="tn-slbl">Kaution <span class="tb ${st.cls}" id="ks-${prefix}" style="margin-left:5px;vertical-align:middle">${st.label}</span></span>
+    : `<div class="tn-slbl" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+        <span>Kaution <span class="tb ${st.cls}" id="ks-${prefix}" style="margin-left:5px;vertical-align:middle">${st.label}</span></span>
         <button class="tn-k-settle${k.settled ? ' on' : ''}" id="kset-${prefix}"
           ${disabled}
           onclick="_tnToggleSettle('${prefix}','${tenantId}')">
@@ -1395,10 +1305,10 @@ function _tnKautionHTML(tenantId, context) {
 function _tnNKHTML(tenantId, context) {
   // If no tenantId yet — show section with disabled state
   if (!tenantId) {
-    const cls = context === 'modal' ? 'tn-msec' : 'tn-sec tn-sec-plain';
+    const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
     return `
     <div class="${cls}" style="opacity:.45;pointer-events:none;">
-      <div class="tn-sec-lbl-row"><span class="tn-slbl">NK Abrechnungen</span></div>
+      <span class="tn-slbl">NK Abrechnungen<span class="tn-slbl-note"> · create and manage here</span></span>
       <p class="tn-empty">Save tenant profile first to track NK periods.</p>
     </div>`;
   }
@@ -1406,7 +1316,7 @@ function _tnNKHTML(tenantId, context) {
   const entries = (_tnNK[tenantId] || []).slice().sort((a,b) => b.period.localeCompare(a.period));
   const openEntries    = entries.filter(e => !e.paid);
   const settledEntries = entries.filter(e => e.paid);
-  const cls = context === 'modal' ? 'tn-msec' : 'tn-sec tn-sec-plain';
+  const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
 
   const nkRowHTML = (e) => {
     const created = !!e.amount || !!e.document_url;
@@ -1484,9 +1394,7 @@ function _tnNKHTML(tenantId, context) {
 
   return `
   <div class="${cls}">
-    <div class="tn-sec-lbl-row" style="margin-bottom:6px">
-      <span class="tn-slbl">NK Abrechnungen</span>
-    </div>
+    <span class="tn-slbl">NK Abrechnungen<span class="tn-slbl-note"> · create and manage here</span></span>
 
     ${openEntries.length ? openEntries.map(nkRowHTML).join('') : ''}
     ${!openEntries.length && !settledEntries.length
@@ -1544,13 +1452,11 @@ function _tnFormerSectionHTML(roomName, formerRecs, archivedRecs) {
   };
 
   return `
-  <div class="tn-sec tn-sec-plain" style="padding-bottom:0">
-    <div class="tn-sec-lbl-row" style="margin-bottom:4px">
-      <span class="tn-slbl">Former tenants</span>
-    </div>
+  <div class="tn-sec" style="padding:10px 0 0;border-bottom:none">
+    <span class="tn-slbl" style="padding:0 14px;margin-bottom:6px">Former tenants</span>
     ${visibleFormers.length
       ? `<div class="tn-former-rows">${visibleFormers.map(formerRowHTML).join('')}</div>`
-      : `<p class="tn-empty" style="padding:0 0 4px">None with open business</p>`}
+      : `<p class="tn-empty" style="padding:0 14px 6px">None with open business</p>`}
   </div>
   <button class="tn-add-former-btn" onclick="_tnAddFormer('${esc(roomName)}')">
     <i class="ti ti-plus" style="font-size:12px"></i> Add former tenant
@@ -1639,35 +1545,22 @@ function _tnModalProfileHTML(rec) {
 
     <div class="tn-ef">
       <span class="tn-ef-k">Kaltmiete</span>
-      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-        <input data-mf="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="0" oninput="_tnModalUpdateWarm()"/>
-        <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
-      </div>
+      <input data-mf="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="0" oninput="_tnModalUpdateWarm()"/>
+      <span style="font-size:11px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
     </div>
     <div class="tn-ef">
       <span class="tn-ef-k">Nebenkosten</span>
-      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-        <input data-mf="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="0" oninput="_tnModalUpdateWarm()"/>
-        <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
-      </div>
+      <input data-mf="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="0" oninput="_tnModalUpdateWarm()"/>
+      <span style="font-size:11px;color:var(--cc-taupe);flex-shrink:0">€/mo</span>
     </div>
     <div class="tn-ef" style="padding-bottom:2px">
-      <span class="tn-ef-k" style="color:var(--cc-stone);font-size:10px">Warmmiete</span>
-      <span id="tn-modal-warm" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '—'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
+      <span class="tn-ef-k" style="color:var(--cc-stone)">Warmmiete</span>
+      <span id="tn-modal-warm" style="font-size:11px;color:var(--cc-gold);font-weight:500">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'} <span style="color:var(--cc-stone);font-size:9px">auto-derived</span></span>
     </div>
     <div class="tn-ef">
       <span class="tn-ef-k">Kaution soll</span>
-      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-        <input data-mf="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="0"/>
-        <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">€</span>
-      </div>
-    </div>
-    <div class="tn-ef">
-      <span class="tn-ef-k">Staffelmiete</span>
-      <div class="tn-staf-toggle">
-        <button class="tn-staf-btn${staf ? ' on' : ''}" onclick="_tnModalStaf(true,this)">Ja</button>
-        <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnModalStaf(false,this)">Nein</button>
-      </div>
+      <input data-mf="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="0"/>
+      <span style="font-size:11px;color:var(--cc-taupe);flex-shrink:0">€</span>
     </div>
 
     <div class="tn-save-row" style="margin-top:10px">
@@ -1702,12 +1595,10 @@ async function _tnModalSaveProfile(tenantId) {
   const firstName = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
   const lastName  = nameParts.length > 1 ? nameParts[nameParts.length-1] : '';
 
-  // Financial from modal (modal profile section has these fields)
+  // Financial from modal
   const kaltMVal  = parseFloat(body.querySelector('[data-mf="kaltmiete"]')?.value)   || null;
   const nkMVal    = parseFloat(body.querySelector('[data-mf="nebenkosten"]')?.value)  || null;
   const kSollMVal = parseFloat(body.querySelector('[data-mf="kaution_soll"]')?.value) || null;
-  const stafMBtn  = body.querySelector('.tn-staf-btn.on');
-  const stafMVal  = stafMBtn ? stafMBtn.textContent.trim() === 'Ja' : false;
 
   const update = {
     first_name:    firstName,
@@ -1721,7 +1612,6 @@ async function _tnModalSaveProfile(tenantId) {
     kaltmiete:     kaltMVal,
     nebenkosten:   nkMVal,
     kaution_soll:  kSollMVal,
-    staffelmiete:  stafMVal,
   };
 
   const { error } = await sbL.from('tenant_records').update(update).eq('id', tenantId);
@@ -1840,33 +1730,37 @@ function _tnToggleEdit(secId) {
   document.getElementById(secId)?.classList.toggle('editing');
 }
 
-function _tnEnterEdit(rid, tenantId) {
-  const sec = document.getElementById('cursec-' + rid);
-  if (!sec) return;
-  sec.classList.add('editing');
-  _tnUpdateKautionSoll(rid);
-}
-
 function _tnEditOrSave(rid, tenantId) {
-  _tnEnterEdit(rid, tenantId);
+  const sec = document.getElementById('cursec-' + rid);
+  const btn = document.getElementById('editbtn-' + rid);
+  if (!sec || !btn) return;
+  const isEditing = sec.classList.contains('editing');
+  if (isEditing) {
+    // Currently in edit mode — trigger save
+    _tnSaveProfile(rid, tenantId);
+  } else {
+    // Enter edit mode
+    sec.classList.add('editing');
+    btn.innerHTML = '<i class="ti ti-check" style="font-size:11px"></i> Save';
+    btn.style.color = 'var(--cc-ink)';
+    btn.style.borderColor = 'var(--cc-ink)';
+    // Pre-fill kaution placeholder based on existing dates
+    _tnUpdateKautionSoll(rid);
+  }
 }
 
+// Called after save completes to reset the button
 function _tnResetEditBtn(rid) {
-  // No-op — button state is now driven entirely by CSS .editing class
+  const btn = document.getElementById('editbtn-' + rid);
+  if (!btn) return;
+  btn.innerHTML = '<i class="ti ti-pencil" style="font-size:11px"></i> Edit';
+  btn.style.color = '';
+  btn.style.borderColor = '';
 }
 
 function _tnCancelEdit(rid) {
-  const sec = document.getElementById('cursec-' + rid);
-  if (sec) sec.classList.remove('editing');
-  const hint = document.getElementById('moh-' + rid);
-  if (hint) hint.classList.remove('show');
-}
-
-function _tnMoHint(rid) {
-  const sec = document.getElementById('cursec-' + rid);
-  if (!sec) return;
-  const val = sec.querySelector('[data-f="mietende"]')?.value.trim() || '';
-  document.getElementById('moh-' + rid)?.classList.toggle('show', val.length > 0);
+  document.getElementById('cursec-' + rid)?.classList.remove('editing');
+  _tnResetEditBtn(rid);
 }
 
 function _tnToggleArc(id) {
@@ -1882,9 +1776,9 @@ function _tnUpdateWarm(rid) {
   const el   = document.getElementById('warm-' + rid);
   if (!el) return;
   if (kalt || nk) {
-    el.innerHTML = _tnFmtEUR(kalt + nk) + '<span class="tn-fsv-note">derived</span>';
+    el.innerHTML = _tnFmtEUR(kalt + nk) + ' <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>';
   } else {
-    el.innerHTML = '\u2014<span class="tn-fsv-note">derived</span>';
+    el.innerHTML = '\u2014 <span style="color:var(--cc-stone);font-size:9px">auto-derived</span>';
   }
 }
 
@@ -1896,28 +1790,36 @@ function _tnUpdateKautionSoll(rid) {
   if (!room) return;
   const inp  = sec.querySelector('[data-f="kaution_soll"]');
   if (!inp) return;
+  // Don't overwrite if user manually typed a value
   if (inp.value.trim() !== '') return;
   const begin = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || null;
   const ende  = sec.querySelector('[data-f="mietende"]')?.value.trim()   || null;
   const soll  = _tnKautionSoll(room, begin, ende);
   if (soll != null) {
     inp.placeholder = String(soll);
-    const hint = document.getElementById('krh-' + rid);
+    // Show rule hint
+    const hint = sec.querySelector('.tn-kaution-rule-hint');
     if (hint) {
       const r = appRooms?.find(x => x.name === room);
       if (r?.kaution_override && r?.kaution_default) {
         hint.textContent = 'Fixed override';
       } else if (begin && ende) {
         const months = Math.round((new Date(ende.includes('.') ? ende.split('.').reverse().join('-') : ende) - new Date(begin.includes('.') ? begin.split('.').reverse().join('-') : begin)) / (30.44*24*3600*1000));
-        hint.textContent = months <= 3 ? `${months} Mon. \u2192 1\u00d7 Kaltmiete` : `${months} Mon. \u2192 3\u00d7 Kaltmiete`;
+        hint.textContent = months <= 3 ? `${months} Mon. → 1× Kaltmiete` : `${months} Mon. → 3× Kaltmiete`;
       } else {
         const ctype = _tnRoomContractType(room);
-        hint.textContent = ctype === 'kurzzeit' ? 'KZ default \u2192 1\u00d7 Kaltmiete' : 'MV default \u2192 3\u00d7 Kaltmiete';
+        hint.textContent = ctype === 'kurzzeit' ? 'KZ default → 1× Kaltmiete' : 'MV default → 3× Kaltmiete';
       }
     }
   }
 }
 
+// Staffelmiete toggle
+function _tnSetStaf(rid, val, btn) {
+  btn.closest('.tn-staf-toggle').querySelectorAll('.tn-staf-btn')
+    .forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
 
 function _tnToggleSettled(toggleId, listId) {
   document.getElementById(toggleId)?.classList.toggle('open');
@@ -1974,6 +1876,7 @@ async function _tnSaveNewTenant(rid, roomName) {
       kaution_soll: (parseFloat(sec.querySelector('[data-f="kaution_soll"]')?.value) || null)
                     ?? _tnKautionSoll(roomName, mietbeginn, mietende)
                     ?? null,
+      staffelmiete: false,
     })
     .select().single();
 
@@ -1985,6 +1888,7 @@ async function _tnSaveNewTenant(rid, roomName) {
   }
 
   await _tnEnsureKaution(data.id);
+  // Write default password so tenant can log in (delete+insert — lounge_data has no unique constraint)
   if (status === 'active') {
     const defaultPw = roomName.toLowerCase().replace(/\s+/g,'') + '2026';
     const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(defaultPw));
@@ -1994,20 +1898,20 @@ async function _tnSaveNewTenant(rid, roomName) {
   }
 
   btn.innerHTML = orig; btn.disabled = false;
-  const cardId = 'tc-' + rid;
   await _tnLoad();
-  document.getElementById(cardId)?.classList.add('open');
 }
 
 async function _tnSaveProfile(rid, tenantId) {
   const sec = document.getElementById('cursec-' + rid);
   if (!sec) return;
 
-  const btn = sec.querySelector('.tn-btn-save');
+  // Button may be editbtn- (from tn-acts) or .tn-btn-save (from save row)
+  const btn = document.getElementById('editbtn-' + rid) || sec.querySelector('.tn-btn-save');
   if (!btn) return;
   const orig = btn.innerHTML;
-  btn.innerHTML = '\u2026'; btn.disabled = true;
+  btn.innerHTML = '…'; btn.disabled = true;
 
+  // Collect fields
   const nameVal    = sec.querySelector('[data-f="name"]')?.value.trim()       || '';
   const emailVal   = sec.querySelector('[data-f="email"]')?.value.trim()      || '';
   const phoneVal   = sec.querySelector('[data-f="phone"]')?.value.trim()      || '';
@@ -2016,27 +1920,33 @@ async function _tnSaveProfile(rid, tenantId) {
   const beginVal   = sec.querySelector('[data-f="mietbeginn"]')?.value.trim() || '';
   const endeVal    = sec.querySelector('[data-f="mietende"]')?.value.trim()   || '';
 
+  // Require at least name or email
   if (!nameVal && !emailVal) {
     const nameInp = sec.querySelector('[data-f="name"]');
-    if (nameInp) { nameInp.style.borderBottomColor = '#C4705A'; nameInp.focus(); }
+    if (nameInp) { nameInp.style.borderColor = '#C4705A'; nameInp.focus(); }
     btn.innerHTML = orig; btn.disabled = false;
     return;
   }
 
-  const nameParts = nameVal.split(/\s+/);
-  const firstName = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
-  const lastName  = nameParts.length > 1 ? nameParts[nameParts.length-1] : '';
+  const nameParts  = nameVal.split(/\s+/);
+  const firstName  = nameParts.slice(0,-1).join(' ') || nameParts[0] || '';
+  const lastName   = nameParts.length > 1 ? nameParts[nameParts.length-1] : '';
 
   const mietbeginn = _tnParseDate(beginVal);
   const mietende   = _tnParseDate(endeVal);
 
-  const rec  = _tnRecords.find(r => r.id === tenantId);
-  const room = rec?.room;
+  // Financial fields from edit form
+  const sec2      = document.getElementById('cursec-' + rid);
+  const rec    = _tnRecords.find(r => r.id === tenantId);
+  const room   = rec?.room;
   const isTransitioningToFormer = !!(mietende && rec?.status === 'active');
 
-  const kaltVal  = parseFloat(sec.querySelector('[data-f="kaltmiete"]')?.value)   || null;
-  const nkVal    = parseFloat(sec.querySelector('[data-f="nebenkosten"]')?.value)  || null;
-  const kSollVal = parseFloat(sec.querySelector('[data-f="kaution_soll"]')?.value)
+  // Financial fields — always read from form (same edit view for all statuses)
+  const stafBtn  = sec?.querySelector('.tn-staf-btn.on');
+  const stafVal  = stafBtn ? stafBtn.textContent.trim() === 'Ja' : !!rec?.staffelmiete;
+  const kaltVal  = parseFloat(sec?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
+  const nkVal    = parseFloat(sec?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
+  const kSollVal = parseFloat(sec?.querySelector('[data-f="kaution_soll"]')?.value)
     || _tnKautionSoll(room, beginVal || null, endeVal || null)
     || null;
 
@@ -2049,12 +1959,15 @@ async function _tnSaveProfile(rid, tenantId) {
     address:      addrVal,
     mietbeginn:   mietbeginn,
     mietende:     mietende,
+    staffelmiete: stafVal,
+    // Store whatever the user typed (null = empty = falls back to live rooms tab in display)
     kaltmiete:    kaltVal,
     nebenkosten:  nkVal,
     kaution_soll: kSollVal,
   };
 
   if (isTransitioningToFormer) {
+    // Transitioning to former: snapshot rooms tab values if user left fields empty
     const snap = _tnRoomPricing(room);
     update.status        = 'former';
     update.contract_type = _tnRoomContractType(room);
@@ -2074,11 +1987,14 @@ async function _tnSaveProfile(rid, tenantId) {
     return;
   }
 
+  // Update local record
   if (rec) Object.assign(rec, update);
 
+  // Update profile cache
   if (update.status !== 'former') {
     _tnProfileCache[room] = {
-      firstName, lastName, email: emailVal, phone: phoneVal,
+      firstName: firstName, lastName: lastName,
+      email: emailVal, phone: phoneVal,
       birthday: bdayVal, address: addrVal,
     };
   } else {
@@ -2087,14 +2003,13 @@ async function _tnSaveProfile(rid, tenantId) {
 
   btn.innerHTML = orig; btn.disabled = false;
   sec.classList.remove('editing');
-  document.getElementById('moh-' + rid)?.classList.remove('show');
+  _tnResetEditBtn(rid);
 
+  // Ensure kaution row exists for this tenant
   await _tnEnsureKaution(tenantId);
 
-  // Re-render then reopen card
-  const cardId = 'tc-' + rid;
+  // Re-render
   await _tnLoad();
-  document.getElementById(cardId)?.classList.add('open');
 }
 
 
