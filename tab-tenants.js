@@ -101,14 +101,14 @@ document.getElementById('tab-tenants').innerHTML = `
 /* card header */
 .tc-hdr {
   display: flex; align-items: flex-start; gap: 10px;
-  padding: 15px 16px 13px 13px;
+  padding: 12px 14px 11px 13px;
   cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
 }
 .tc-hdr-info { flex: 1; min-width: 0; }
 .tc-namerow  { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
 .tc-name     { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 400; color: var(--cc-ink); line-height: 1.1; }
 .tc-badges   { display: flex; gap: 4px; flex-shrink: 0; align-items: center; flex-wrap: wrap; }
-.tc-meta     { font-size: 11px; color: var(--cc-taupe); margin-top: 2px; }
+.tc-meta     { font-size: 11px; color: var(--cc-taupe); margin-top: 1px; }
 .tc-tenant-line { font-size: 12px; color: var(--cc-charcoal); margin-top: 3px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .tc-tenant-line.vacant { color: var(--cc-stone); font-style: italic; }
 .tc-hdr-pill {
@@ -122,7 +122,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tc-hdr-pill-k-holding { background: #E6F1FB; border-color: #85B7EB; color: #0C447C; }
 .tc-hdr-pill-k-settled { background: #EAF3DE; border-color: #9AC87A; color: #27500A; }
 .tc-chev {
-  color: var(--cc-stone); font-size: 17px; flex-shrink: 0; margin-top: 5px;
+  color: var(--cc-stone); font-size: 17px; flex-shrink: 0; margin-top: 4px;
   transition: transform .22s cubic-bezier(.32,.72,0,1);
 }
 .tc.open .tc-chev { transform: rotate(90deg); }
@@ -154,26 +154,86 @@ document.getElementById('tab-tenants').innerHTML = `
 .tb-kz  { background: #E8D9C4; color: #7A5820; border: .5px solid #C4A06A; }
 
 /* ── SECTIONS ── */
-.tn-sec { padding: 9px 14px; border-bottom: var(--cc-border); }
+.tn-sec { padding: 8px 13px 8px 10px; border-bottom: var(--cc-border); }
 .tn-sec:last-child { border-bottom: none; }
-.tn-sec-gold { border-left: 3px solid var(--cc-gold); padding-left: 13px; }
+.tn-sec-gold { border-left: 3px solid var(--cc-gold); padding-left: 11px; }
 .tn-sec-gold.no-tenant { border-left-color: var(--cc-rule); }
+
+/* ── SECTION HEADER ROW (label + inline edit button) ── */
+.tn-sec-hdr {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px;
+}
 
 /* ── SECTION LABEL ── */
 .tn-slbl {
   font-size: 9px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase;
-  color: var(--cc-stone); margin-bottom: 9px; display: block;
+  color: var(--cc-stone); display: block;
 }
 .tn-slbl-gold { color: var(--cc-gold); }
 .tn-slbl-note { font-size: 9px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--cc-stone); margin-left: 4px; }
 
-/* ── KV READ ROWS ── */
-.tn-kv   { display: flex; gap: 10px; padding: 3px 0; align-items: baseline; }
-.tn-kv-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; }
-.tn-kv-v { font-size: 12px; color: var(--cc-charcoal); flex: 1; }
-.tn-kv-v.muted { color: var(--cc-stone); font-style: italic; }
+/* inline edit button inside section header */
+.tn-sec-edit-btn {
+  height: 24px; padding: 0 9px; display: flex; align-items: center; gap: 3px;
+  background: none; border: var(--cc-border); border-radius: var(--cc-r-sm);
+  font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--cc-taupe); cursor: pointer; font-family: inherit; flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  min-width: 44px; min-height: 44px; /* iOS tap target */
+  display: flex; align-items: center; justify-content: center;
+}
+.tn-sec-edit-btn:active { opacity: .7; }
 
-/* ── EDIT FORM ROWS ── */
+/* ── COMPACT PROFILE GRID (2-col) ── */
+.tn-pf-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px;
+}
+.tn-pf-full { grid-column: 1 / -1; }
+.tn-pf-row {
+  padding: 3px 0; display: flex; flex-direction: column; gap: 1px;
+  border-bottom: .5px solid #F3EFE9;
+}
+.tn-pf-row:last-child { border-bottom: none; }
+/* last two cells in the grid (right+left of last row) lose their border */
+.tn-pf-grid .tn-pf-row:nth-last-child(-n+2):not(.tn-pf-full) { border-bottom: none; }
+.tn-pf-k { font-size: 9.5px; color: var(--cc-stone); }
+.tn-pf-v { font-size: 11px; color: var(--cc-charcoal); }
+.tn-pf-v.muted { color: var(--cc-stone); font-style: italic; }
+/* name+dates full-width header row */
+.tn-pf-namerow {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  padding: 2px 0 4px; border-bottom: .5px solid #F3EFE9; margin-bottom: 1px;
+}
+.tn-pf-name { font-size: 12px; font-weight: 500; color: var(--cc-charcoal); }
+.tn-pf-dates { font-size: 10px; color: var(--cc-taupe); text-align: right; flex-shrink: 0; }
+
+/* ── FINANCE STRIP (4-cell inline bar) ── */
+.tn-fin-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border: var(--cc-border); border-radius: var(--cc-r-sm);
+  overflow: hidden; margin-top: 7px;
+}
+.tn-fin-strip-cell {
+  padding: 5px 7px; display: flex; flex-direction: column; gap: 1px;
+  border-right: var(--cc-border);
+}
+.tn-fin-strip-cell:last-child { border-right: none; }
+.tn-fin-strip-lbl {
+  font-size: 8.5px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--cc-stone);
+}
+.tn-fin-strip-val { font-size: 12px; font-weight: 500; color: var(--cc-charcoal); }
+.tn-fin-strip-val.gold { color: var(--cc-gold); }
+/* on very narrow screens collapse to 2×2 */
+@media (max-width: 400px) {
+  .tn-fin-strip { grid-template-columns: repeat(2, 1fr); }
+  .tn-fin-strip-cell:nth-child(2) { border-right: none; }
+  .tn-fin-strip-cell:nth-child(3) { border-top: var(--cc-border); }
+  .tn-fin-strip-cell:nth-child(4) { border-top: var(--cc-border); border-right: none; }
+}
+.tn-staf-note { font-size: 10px; color: var(--cc-stone); margin-top: 5px; }
+
+/* ── EDIT FORM ROWS (unchanged) ── */
 .tn-ef   { display: flex; gap: 10px; padding: 3px 0; align-items: center; }
 .tn-ef-k { font-size: 11px; color: var(--cc-taupe); min-width: 88px; flex-shrink: 0; line-height: 1.4; }
 .tn-ef input {
@@ -209,15 +269,15 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* ── ACTIONS STRIP ── */
 .tn-acts {
-  display: flex; gap: 6px; padding: 8px 14px;
-  border-bottom: var(--cc-border); align-items: center;
+  display: flex; gap: 6px; padding: 7px 13px;
+  border-top: var(--cc-border); align-items: center;
 }
 .tn-act {
   height: 28px; display: flex; align-items: center; gap: 4px;
   padding: 0 11px; border-radius: var(--cc-r-pill);
   font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   cursor: pointer; font-family: inherit; background: none; white-space: nowrap;
-  -webkit-tap-highlight-color: transparent; transition: opacity .15s;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: opacity .15s;
 }
 .tn-act:active { opacity: .7; }
 .tn-act-email { color: #0C447C; border: .5px solid #85B7EB; }
@@ -225,7 +285,25 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-act-edit  { color: var(--cc-taupe); border: var(--cc-border); margin-left: auto; }
 .tn-act-add   { color: var(--cc-taupe); border: var(--cc-border); }
 
-/* ── DOCUMENT ROWS — Pattern A (external sig) ── */
+/* ── DOCUMENT CHIPS ── */
+.tn-doc-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+.tn-doc-chip {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px 4px 7px; border: var(--cc-border); border-radius: var(--cc-r-pill);
+  font-size: 10.5px; color: var(--cc-charcoal); cursor: pointer;
+  background: none; font-family: inherit;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: background .12s;
+}
+.tn-doc-chip:active { background: var(--cc-surface); }
+.tn-doc-chip.unsigned { color: var(--cc-stone); }
+.tn-doc-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.tn-doc-dot-signed { background: #639922; }
+.tn-doc-dot-none   { background: #D4CFC9; }
+.tn-doc-chip-icon  { font-size: 11px; color: var(--cc-stone); margin-left: 1px; }
+
+/* keep old doc row classes for modal (former tenant sheet uses them) */
 .tn-doc-row {
   display: flex; align-items: center; gap: 7px;
   padding: 3px 0; border-bottom: .5px solid #F0EDE8;
@@ -233,8 +311,6 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-doc-row:last-child { border-bottom: none; }
 .tn-doc-name { font-size: 11px; color: var(--cc-charcoal); flex: 1; min-width: 0; }
 .tn-doc-name-sm { font-size: 10px; color: var(--cc-taupe); flex: 1; min-width: 0; }
-
-/* doc status pills */
 .tn-ds {
   font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
   padding: 2px 7px; border-radius: var(--cc-r-pill); flex-shrink: 0; white-space: nowrap;
@@ -243,8 +319,6 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-ds-pending { background: #FAEEDA; color: #854F0B; border: .5px solid #EF9F27; }
 .tn-ds-signed  { background: #EAF3DE; color: #3B6D11; border: .5px solid #9AC87A; }
 .tn-ds-done    { background: #EAF3DE; color: #3B6D11; border: .5px solid #9AC87A; }
-
-/* doc buttons */
 .tn-doc-btn {
   height: 26px; display: flex; align-items: center; gap: 3px;
   padding: 0 9px; border-radius: var(--cc-r-sm);
@@ -257,19 +331,18 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-doc-btn-ghost { background: none; color: var(--cc-taupe); border: var(--cc-border); }
 .tn-doc-btn-ghost.off { opacity: .3; pointer-events: none; }
 
-/* ── KAUTION ── */
-.tn-k-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px; align-items: end; margin-bottom: 0;
+/* ── KAUTION — inline row ── */
+.tn-k-row {
+  display: flex; align-items: flex-end; gap: 6px; margin-top: 6px;
 }
-.tn-k-col { display: flex; flex-direction: column; gap: 4px; }
+.tn-k-col { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 .tn-k-lbl {
-  font-size: 9px; font-weight: 600; letter-spacing: .08em;
+  font-size: 8.5px; font-weight: 600; letter-spacing: .08em;
   text-transform: uppercase; color: var(--cc-taupe);
 }
 .tn-k-input {
   width: 100%; background: var(--cc-surface); border: var(--cc-border);
-  border-radius: var(--cc-r-sm); padding: 6px 8px;
+  border-radius: var(--cc-r-sm); padding: 5px 7px;
   font-family: 'Inter', inherit; font-size: 12px; font-weight: 400;
   color: var(--cc-charcoal); line-height: 1.4;
   outline: none; transition: border-color .15s;
@@ -279,28 +352,37 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-k-input[type=number]::-webkit-inner-spin-button,
 .tn-k-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .tn-k-input[type=number] { -moz-appearance: textfield; }
+/* Kept display — same dimensions as input */
 .tn-k-kept {
   width: 100%; background: var(--cc-surface); border: var(--cc-border);
-  border-radius: var(--cc-r-sm); padding: 6px 8px;
-  font-size: 13px; font-weight: 500; color: var(--cc-gold);
+  border-radius: var(--cc-r-sm); padding: 5px 7px;
+  font-size: 12px; font-weight: 500; color: var(--cc-gold); line-height: 1.4;
+}
+.tn-k-settle-col { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
+.tn-k-settle-spacer { height: 15px; } /* aligns button to input bottom */
+.tn-k-settle {
+  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  padding: 5px 11px; border-radius: var(--cc-r-pill); cursor: pointer;
+  border: .5px solid #EF9F27; background: #FAEEDA; color: #854F0B;
+  font-family: inherit; transition: all .15s; flex-shrink: 0; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.tn-k-settle.on { background: #EAF3DE; color: #27500A; border-color: #9AC87A; }
+/* keep old grid classes for modal */
+.tn-k-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px; align-items: end; margin-bottom: 0;
 }
 .tn-k-status-row { display: none; }
 .tn-msec .tn-k-status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
-.tn-k-settle {
-  font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
-  padding: 4px 11px; border-radius: var(--cc-r-pill); cursor: pointer;
-  border: .5px solid #EF9F27; background: #FAEEDA; color: #854F0B;
-  font-family: inherit; transition: all .15s; flex-shrink: 0;
-}
-.tn-k-settle.on { background: #EAF3DE; color: #27500A; border-color: #9AC87A; }
 
 /* ── NK ROWS ── */
 .tn-nk-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 3px 0; border-bottom: .5px solid #F0EDE8;
+  padding: 4px 0; border-bottom: .5px solid #F0EDE8;
 }
 .tn-nk-row:last-of-type { border-bottom: none; }
-.tn-nk-yr { font-size: 12px; font-weight: 600; color: var(--cc-charcoal); min-width: 52px; flex-shrink: 0; }
+.tn-nk-yr { font-size: 12px; font-weight: 600; color: var(--cc-charcoal); min-width: 48px; flex-shrink: 0; }
 .tn-nk-yr.done { color: var(--cc-stone); }
 .tn-nk-info { flex: 1; font-size: 11px; color: var(--cc-taupe); min-width: 0; line-height: 1.4; }
 .tn-nk-info .amt { color: var(--cc-charcoal); font-weight: 500; }
@@ -314,7 +396,7 @@ document.getElementById('tab-tenants').innerHTML = `
   display: flex; align-items: center; justify-content: center;
   transition: all .15s; flex-shrink: 0;
 }
-.tn-dot.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.tn-dot.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .tn-dot.tap:active { transform: scale(.88); }
 .tn-dot i { font-size: 10px; }
 .tn-dot-empty { background: none; border: 1.5px solid #E0DAD0; }
@@ -348,7 +430,7 @@ document.getElementById('tab-tenants').innerHTML = `
   font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   color: var(--cc-stone); cursor: pointer; font-family: inherit;
   margin-top: 4px; width: 100%; transition: color .15s;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .tn-add-nk:hover { color: var(--cc-taupe); }
 
@@ -356,9 +438,9 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-former-rows { border-top: var(--cc-border); }
 .tn-former-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 14px; border-bottom: var(--cc-border);
+  padding: 6px 13px; border-bottom: var(--cc-border);
   cursor: pointer; -webkit-tap-highlight-color: transparent;
-  user-select: none; transition: background .12s;
+  user-select: none; touch-action: manipulation; transition: background .12s;
 }
 .tn-former-row:active { background: #F9F7F4; }
 .tn-former-row:last-of-type { border-bottom: none; }
@@ -372,16 +454,16 @@ document.getElementById('tab-tenants').innerHTML = `
 }
 .tn-add-former-btn {
   display: flex; align-items: center; gap: 5px; width: 100%;
-  padding: 6px 14px; background: none; border: none; border-top: var(--cc-border);
+  padding: 6px 13px; background: none; border: none; border-top: var(--cc-border);
   font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
   color: var(--cc-taupe); cursor: pointer; font-family: inherit; transition: color .15s;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .tn-add-former-btn:active { color: var(--cc-charcoal); }
 
 /* archived */
 .tn-arc-toggle {
-  display: flex; align-items: center; gap: 6px; padding: 9px 14px;
+  display: flex; align-items: center; gap: 6px; padding: 9px 13px;
   cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: .08em;
   text-transform: uppercase; color: var(--cc-stone); border-top: var(--cc-border);
   user-select: none; -webkit-tap-highlight-color: transparent;
@@ -390,7 +472,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-arc-body.open { display: block; }
 .tn-arc-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 14px; border-top: var(--cc-border); opacity: .55;
+  padding: 7px 13px; border-top: var(--cc-border); opacity: .55;
 }
 .tn-arc-info { flex: 1; }
 .tn-arc-name { font-size: 12px; color: var(--cc-taupe); }
@@ -498,7 +580,7 @@ document.getElementById('tab-tenants').innerHTML = `
 }
 .tn-ctype-btn.on { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
 
-/* ── FINANCIAL STAT CELLS ── */
+/* ── FINANCIAL STAT CELLS (kept for edit form / modal context) ── */
 .tn-fin-grid {
   display: grid; grid-template-columns: 1fr 1fr 1fr;
   gap: 8px; margin: 10px 0 8px;
@@ -1006,7 +1088,9 @@ function _tnCurrentTenantHTML(room, rec) {
 
     return `
   <div class="tn-sec tn-sec-gold editing" id="cursec-${rid}" data-tenant-id="">
-    <span class="tn-slbl tn-slbl-gold">Current tenant</span>
+    <div class="tn-sec-hdr">
+      <span class="tn-slbl tn-slbl-gold">New tenant</span>
+    </div>
     <div class="tn-profile-read" style="display:none"></div>
     <div class="tn-profile-edit">
       <div class="tn-ef"><span class="tn-ef-k">Name</span><input data-f="name" value="" placeholder="Full name"/></div>
@@ -1084,45 +1168,54 @@ function _tnCurrentTenantHTML(room, rec) {
 
   return `
   <div class="tn-sec tn-sec-gold${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
-    <span class="tn-slbl tn-slbl-gold">Current tenant</span>
-
-    <!-- READ VIEW -->
+    <div class="tn-sec-hdr">
+      <span class="tn-slbl tn-slbl-gold">Current tenant</span>
+      <button class="tn-sec-edit-btn" id="editbtn-${rid}" onclick="_tnEditOrSave('${rid}','${rec.id}')">
+        <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+      </button>
+    </div>
     <div class="tn-profile-read">
-      <div class="tn-kv"><span class="tn-kv-k">Name</span><span class="tn-kv-v">${esc(fullName) || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Email</span><span class="tn-kv-v">${email || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Phone</span><span class="tn-kv-v">${esc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Birthday</span><span class="tn-kv-v">${esc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Address</span><span class="tn-kv-v">${esc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Move in</span><span class="tn-kv-v">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
-      <div class="tn-kv"><span class="tn-kv-k">Move out</span><span class="tn-kv-v ${mietendeDisplay ? '' : 'muted'}">${mietendeDisplay || 'Not set \u2014 still active'}</span></div>
-
-      <div class="tn-fin-divider"></div>
-      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
-
-      <div class="tn-fin-grid">
-        <div class="tn-fin-cell">
-          <div class="tn-fin-lbl">Kaltmiete</div>
-          <div class="tn-fin-val">${dKalt != null ? _tnFmtEUR(dKalt) : '<span class="muted">\u2014</span>'}</div>
-          <div class="tn-fin-src">${dSrc}</div>
+      <div class="tn-pf-namerow">
+        <span class="tn-pf-name">${esc(fullName) || '<span style="color:var(--cc-stone);font-style:italic">Name not set</span>'}</span>
+        <span class="tn-pf-dates">${_tnFmtDate(rec.mietbeginn) || '—'} &rarr; ${mietendeDisplay || 'active'}</span>
+      </div>
+      <div class="tn-pf-grid">
+        <div class="tn-pf-row">
+          <span class="tn-pf-k">Email</span>
+          <span class="tn-pf-v ${email ? '' : 'muted'}">${email || 'Not set'}</span>
         </div>
-        <div class="tn-fin-cell">
-          <div class="tn-fin-lbl">Nebenkosten</div>
-          <div class="tn-fin-val">${dNk != null ? _tnFmtEUR(dNk) : '<span class="muted">\u2014</span>'}</div>
-          <div class="tn-fin-src">${dSrc}</div>
+        <div class="tn-pf-row">
+          <span class="tn-pf-k">Phone</span>
+          <span class="tn-pf-v ${rec.phone ? '' : 'muted'}">${esc(rec.phone||'') || 'Not set'}</span>
         </div>
-        <div class="tn-fin-cell">
-          <div class="tn-fin-lbl">Warmmiete</div>
-          <div class="tn-fin-val gold">${dWarm != null ? _tnFmtEUR(dWarm) : '<span class="muted">\u2014</span>'}</div>
-          <div class="tn-fin-src">derived</div>
+        <div class="tn-pf-row">
+          <span class="tn-pf-k">Birthday</span>
+          <span class="tn-pf-v ${rec.birthday ? '' : 'muted'}">${esc(rec.birthday||'') || 'Not set'}</span>
+        </div>
+        <div class="tn-pf-row">
+          <span class="tn-pf-k">Address</span>
+          <span class="tn-pf-v ${rec.address ? '' : 'muted'}">${esc(rec.address||'') || 'Not set'}</span>
         </div>
       </div>
-
-      <div class="tn-kv">
-        <span class="tn-kv-k">Kaution soll</span>
-        <span class="tn-kv-v">${dKSoll != null ? _tnFmtEUR(dKSoll) : '<span class="muted">Not set</span>'}${dKSoll && dKalt ? ` <span style="color:var(--cc-stone);font-size:10px">\u00b7 ${Math.round(dKSoll/dKalt*10)/10}\u00d7 Kaltmiete</span>` : ''}</span>
+      <div class="tn-fin-strip">
+        <div class="tn-fin-strip-cell">
+          <div class="tn-fin-strip-lbl">Kalt</div>
+          <div class="tn-fin-strip-val">${dKalt != null ? _tnFmtEUR(dKalt) : '\u2014'}</div>
+        </div>
+        <div class="tn-fin-strip-cell">
+          <div class="tn-fin-strip-lbl">NK</div>
+          <div class="tn-fin-strip-val">${dNk != null ? _tnFmtEUR(dNk) : '\u2014'}</div>
+        </div>
+        <div class="tn-fin-strip-cell">
+          <div class="tn-fin-strip-lbl">Warm</div>
+          <div class="tn-fin-strip-val gold">${dWarm != null ? _tnFmtEUR(dWarm) : '\u2014'}</div>
+        </div>
+        <div class="tn-fin-strip-cell">
+          <div class="tn-fin-strip-lbl">Kaution soll</div>
+          <div class="tn-fin-strip-val">${dKSoll != null ? _tnFmtEUR(dKSoll) : '\u2014'}</div>
+        </div>
       </div>
-      <div class="tn-kv"><span class="tn-kv-k">Staffelmiete</span><span class="tn-kv-v">${staf ? 'Ja' : 'Nein'}</span></div>
-      <div class="tn-fin-note">Values from rooms tab. Edit to override for this tenant.</div>
+      <div class="tn-staf-note">Staffelmiete: ${staf ? 'Ja' : 'Nein'} &middot; <span style="color:var(--cc-stone)">${dSrc}</span></div>
     </div>
 
     <!-- EDIT VIEW -->
@@ -1186,9 +1279,6 @@ function _tnCurrentTenantHTML(room, rec) {
     <button class="tn-act tn-act-reset" onclick="_tnResetPw('${esc(room.name)}')">
       <i class="ti ti-key" style="font-size:11px"></i> Reset pw
     </button>
-    <button class="tn-act tn-act-edit" id="editbtn-${rid}" onclick="_tnEditOrSave('${rid}','${rec.id}')">
-      <i class="ti ti-pencil" style="font-size:11px"></i> Edit
-    </button>
   </div>`;
 }
 
@@ -1202,43 +1292,30 @@ function _tnDocumentsHTML(room, activeRec) {
   const tid    = activeRec?.id || null;
   const getDoc = (type) => docs.find(d => d.type === type);
 
-  const docRow = (type, label) => {
+  const docChip = (type, label) => {
     const doc    = getDoc(type);
     const signed = !!doc?.file_url;
-    const status = signed
-      ? `<span class="tn-ds tn-ds-signed">Signed</span>`
-      : `<span class="tn-ds tn-ds-none">Not uploaded</span>`;
-    const viewBtn = signed
-      ? `<button class="tn-doc-btn tn-doc-btn-ghost" onclick="_tnViewDoc('${doc.file_url}')">
-           <i class="ti ti-eye" style="font-size:10px"></i>
-         </button>`
-      : `<button class="tn-doc-btn tn-doc-btn-ghost off">
-           <i class="ti ti-eye" style="font-size:10px"></i>
-         </button>`;
-    const uploadBtn = tid
-      ? `<button class="tn-doc-btn tn-doc-btn-ghost"
-           onclick="_tnTriggerUpload('${tid}','${type}')">
-           <i class="ti ti-upload" style="font-size:10px"></i>
-         </button>`
-      : `<button class="tn-doc-btn tn-doc-btn-ghost off" title="Save tenant profile first">
-           <i class="ti ti-upload" style="font-size:10px"></i>
-         </button>`;
-    return `
-    <div class="tn-doc-row">
-      <span class="tn-doc-name">${esc(label)}</span>
-      ${status}
-      ${viewBtn}
-      ${uploadBtn}
-    </div>`;
+    const action = signed
+      ? `onclick="_tnViewDoc('${doc.file_url}')"`
+      : tid ? `onclick="_tnTriggerUpload('${tid}','${type}')"` : `disabled`;
+    const icon = signed
+      ? `<i class="ti ti-eye tn-doc-chip-icon" aria-hidden="true"></i>`
+      : `<i class="ti ti-upload tn-doc-chip-icon" aria-hidden="true"></i>`;
+    return `<button class="tn-doc-chip ${signed ? '' : 'unsigned'}" ${action}>
+      <span class="tn-doc-dot ${signed ? 'tn-doc-dot-signed' : 'tn-doc-dot-none'}"></span>
+      ${esc(label)}${icon}
+    </button>`;
   };
 
   return `
   <div class="tn-sec">
-    <span class="tn-slbl">Documents<span class="tn-slbl-note"> · upload signed copy here</span></span>
-    ${types.includes('mietvertrag')  ? docRow('mietvertrag',        'Mietvertrag')         : ''}
-    ${types.includes('kurzzeit')     ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
-    ${docRow('einzug', 'Übergabe Einzug')}
-    ${!types.length ? `<p class="tn-empty">No contract type set — configure in rooms tab.</p>` : ''}
+    <span class="tn-slbl" style="margin-bottom:5px;display:block">Documents<span class="tn-slbl-note"> · tap to view or upload</span></span>
+    <div class="tn-doc-chips">
+      ${types.includes('mietvertrag')  ? docChip('mietvertrag',        'Mietvertrag')         : ''}
+      ${types.includes('kurzzeit')     ? docChip('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
+      ${docChip('einzug', 'Übergabe Einzug')}
+      ${!types.length ? `<p class="tn-empty">No contract type set.</p>` : ''}
+    </div>
   </div>`;
 }
 
@@ -1255,21 +1332,12 @@ function _tnKautionHTML(tenantId, context) {
   const disabled = tenantId ? '' : 'disabled title="Save tenant profile first"';
   const opacity  = tenantId ? '' : 'opacity:.45;pointer-events:none;';
 
-  const cls = context === 'modal' ? 'tn-msec' : 'tn-sec';
-  const lbl = context === 'modal'
-    ? `<span class="tn-slbl tn-slbl-gold">Kaution</span>`
-    : `<div class="tn-slbl" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
-        <span>Kaution <span class="tb ${st.cls}" id="ks-${prefix}" style="margin-left:5px;vertical-align:middle">${st.label}</span></span>
-        <button class="tn-k-settle${k.settled ? ' on' : ''}" id="kset-${prefix}"
-          ${disabled}
-          onclick="_tnToggleSettle('${prefix}','${tenantId}')">
-          ${k.settled ? 'Settled' : 'Mark settled'}
-        </button>
-      </div>`;
-
-  return `
+  if (context === 'modal') {
+    // Modal keeps the original grid layout
+    const cls = 'tn-msec';
+    return `
   <div class="${cls}" style="${opacity}">
-    ${lbl}
+    <span class="tn-slbl tn-slbl-gold">Kaution</span>
     <div class="tn-k-grid">
       <div class="tn-k-col">
         <span class="tn-k-lbl">Received</span>
@@ -1295,6 +1363,42 @@ function _tnKautionHTML(tenantId, context) {
         onclick="_tnToggleSettle('${prefix}','${tenantId}')">
         ${k.settled ? 'Settled' : 'Mark settled'}
       </button>
+    </div>
+    ${!tenantId ? `<p class="tn-empty" style="margin-top:6px">Save tenant profile first to track kaution.</p>` : ''}
+  </div>`;
+  }
+
+  // Card context — compact inline row
+  return `
+  <div class="tn-sec" style="${opacity}">
+    <div class="tn-sec-hdr" style="margin-bottom:5px">
+      <span class="tn-slbl">Kaution <span class="tb ${st.cls}" id="ks-${prefix}" style="margin-left:4px;vertical-align:middle">${st.label}</span></span>
+    </div>
+    <div class="tn-k-row">
+      <div class="tn-k-col">
+        <span class="tn-k-lbl">Received</span>
+        <input class="tn-k-input" type="number" id="kr-${prefix}"
+          value="${recv}" ${disabled}
+          oninput="_tnCalcKaution('${prefix}','${tenantId}')"/>
+      </div>
+      <div class="tn-k-col">
+        <span class="tn-k-lbl">Returned</span>
+        <input class="tn-k-input" type="number" id="kret-${prefix}"
+          value="${ret}" ${disabled}
+          oninput="_tnCalcKaution('${prefix}','${tenantId}')"/>
+      </div>
+      <div class="tn-k-col">
+        <span class="tn-k-lbl">Kept</span>
+        <div class="tn-k-kept" id="kk-${prefix}" style="color:${keptClr}">${_tnFmtEUR(kept)}</div>
+      </div>
+      <div class="tn-k-settle-col">
+        <span class="tn-k-settle-spacer"></span>
+        <button class="tn-k-settle${k.settled ? ' on' : ''}" id="kset-${prefix}"
+          ${disabled}
+          onclick="_tnToggleSettle('${prefix}','${tenantId}')">
+          ${k.settled ? 'Settled ✓' : 'Mark settled'}
+        </button>
+      </div>
     </div>
     ${!tenantId ? `<p class="tn-empty" style="margin-top:6px">Save tenant profile first to track kaution.</p>` : ''}
   </div>`;
@@ -1757,7 +1861,7 @@ function _tnEditOrSave(rid, tenantId) {
   } else {
     // Enter edit mode
     sec.classList.add('editing');
-    btn.innerHTML = '<i class="ti ti-check" style="font-size:11px"></i> Save';
+    btn.innerHTML = '<i class="ti ti-check" style="font-size:10px"></i> Save';
     btn.style.color = 'var(--cc-ink)';
     btn.style.borderColor = 'var(--cc-ink)';
     // Pre-fill kaution placeholder based on existing dates
@@ -1769,7 +1873,7 @@ function _tnEditOrSave(rid, tenantId) {
 function _tnResetEditBtn(rid) {
   const btn = document.getElementById('editbtn-' + rid);
   if (!btn) return;
-  btn.innerHTML = '<i class="ti ti-pencil" style="font-size:11px"></i> Edit';
+  btn.innerHTML = '<i class="ti ti-pencil" style="font-size:10px"></i> Edit';
   btn.style.color = '';
   btn.style.borderColor = '';
 }
