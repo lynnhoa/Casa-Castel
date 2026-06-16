@@ -129,6 +129,10 @@ document.getElementById('tab-tenants').innerHTML = `
 .tb-occ { background: #EAF3DE; color: #27500A; border: .5px solid #9AC87A; }
 .tb-vac { background: #F5F0EB; color: #8C6A3A; border: .5px solid #D4A87A; }
 .tb-kit { background: #E6F1FB; color: #0C447C; border: .5px solid #85B7EB; }
+.tb-price {
+  background: none; color: var(--cc-stone); border: .5px solid var(--cc-rule);
+  font-weight: 500; letter-spacing: .04em;
+}
 .tb-nko { background: #FAEEDA; color: #854F0B; border: .5px solid #EF9F27; }
 .tb-nkd { background: #EAF3DE; color: #3B6D11; border: .5px solid #97C459; }
 .tb-kop { background: #FAEEDA; color: #854F0B; border: .5px solid #EF9F27; }
@@ -639,34 +643,58 @@ function _tnRoomContractTypes(roomName) {
   return types;
 }
 
-// Pull live pricing from rooms tab for snapshot on first save
+// Pull live pricing from rooms tab — mirrors _getRentInfo() from tab-rooms.js exactly
 function _tnRoomPricing(roomName) {
   if (typeof appRooms === 'undefined') return {};
   const r = appRooms.find(x => x.name === roomName);
   if (!r) return {};
   const ctype = _tnRoomContractType(roomName);
+
   let kaltmiete   = null;
   let nebenkosten = null;
+
   if (ctype === 'mietvertrag') {
-    if (r.mietvertrag_pricing === 'kalt_nk') {
+    if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
+      // Kalt + NK mode: kaltmiete and NK are separate fields
       kaltmiete   = Number(r.kaltmiete)    || null;
       nebenkosten = Number(r.nk_pauschale) || null;
-    } else {
-      kaltmiete   = Number(r.mietvertrag_miete) || null;
-      nebenkosten = null;
+    } else if (r.mietvertrag_miete) {
+      // Pauschal mode: mietvertrag_miete is the warm total, NK is still in nk_pauschale
+      nebenkosten = Number(r.nk_pauschale)    || null;
+      kaltmiete   = Number(r.mietvertrag_miete) - (nebenkosten || 0) || null;
     }
-  } else if (ctype === 'kurzzeit') {
+  } else if (ctype === 'kurzzeit' && r.kurzzeit_kaltmiete) {
+    // Kurzzeit: kurzzeit_kaltmiete is always kalt, kurzzeit_nk is NK
     kaltmiete   = Number(r.kurzzeit_kaltmiete) || null;
-    nebenkosten = Number(r.nk_pauschale)       || null;
+    nebenkosten = Number(r.kurzzeit_nk)        || null;
   }
-  // Kaution default: kaution_override → kaution_default, else 3 × kaltmiete
+
+  // Kaution: kaution_override → kaution_default, else 3 × kaltmiete
   const kaution_soll = (r.kaution_override && r.kaution_default)
     ? Number(r.kaution_default)
-    : (kaltmiete ? kaltmiete * 3 : null);
+    : (kaltmiete ? Math.round(kaltmiete * 3) : null);
+
   return { kaltmiete, nebenkosten, kaution_soll };
 }
 
-// Kaution status derived from numbers + settled flag
+// Short pricing label for card header badge
+// e.g. "MV · Kalt+NK", "MV · Pauschal", "KZ · Kalt+NK", "KZ · Pauschal"
+function _tnPriceLabel(roomName) {
+  if (typeof appRooms === 'undefined') return null;
+  const r = appRooms.find(x => x.name === roomName);
+  if (!r) return null;
+  const ctype = _tnRoomContractType(roomName);
+  if (!ctype) return null;
+  if (ctype === 'mietvertrag') {
+    const mode = (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) ? 'Kalt+NK' : 'Pauschal';
+    return 'MV \u00b7 ' + mode;
+  }
+  if (ctype === 'kurzzeit') {
+    const mode = (r.kurzzeit_pricing === 'kalt_nk') ? 'Kalt+NK' : 'Pauschal';
+    return 'KZ \u00b7 ' + mode;
+  }
+  return null;
+}
 function _tnKautionStatus(received, returned, settled) {
   if (settled) {
     if (returned === received) return { label: 'Fully returned', cls: 'tb-kst' };
@@ -866,6 +894,7 @@ function _tnCardHTML(room) {
           <div class="tc-badges">
             <span class="tb ${vacant ? 'tb-vac' : 'tb-occ'}">${vacant ? 'Vacant' : 'Occupied'}</span>
             ${hasKitchen ? `<span class="tb tb-kit">Kitchen</span>` : ''}
+            ${(function(){ const pl = _tnPriceLabel(room.name); return pl ? `<span class="tb tb-price">${esc(pl)}</span>` : ''; })()}
           </div>
         </div>
         <div class="tc-meta">${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''}${room.floor ? ' · ' + esc(room.floor) : ''}</div>
@@ -966,14 +995,23 @@ function _tnCurrentTenantHTML(room, rec) {
   const mietendeDisplay = rec.mietende ? _tnFmtDate(rec.mietende) : null;
   const autoEdit        = isEmpty ? ' editing' : '';
 
-  // Financial — from saved record or live from rooms tab
-  const dKalt  = rec.kaltmiete    != null ? Number(rec.kaltmiete)    : (_tnRoomPricing(room.name).kaltmiete   ?? null);
-  const dNk    = rec.nebenkosten  != null ? Number(rec.nebenkosten)  : (_tnRoomPricing(room.name).nebenkosten  ?? null);
-  const dKSoll = rec.kaution_soll != null ? Number(rec.kaution_soll) : (_tnRoomPricing(room.name).kaution_soll ?? null);
+  // Financial values:
+  // ACTIVE → always live from appRooms (price changes reflect immediately)
+  // FORMER → frozen snapshot stored in tenant_records (editable override)
+  const isFormer = rec.status === 'former' || rec.status === 'archived';
+  const liveP  = _tnRoomPricing(room.name);
+  const dKalt  = isFormer
+    ? (rec.kaltmiete    != null ? Number(rec.kaltmiete)    : null)
+    : (liveP.kaltmiete  ?? null);
+  const dNk    = isFormer
+    ? (rec.nebenkosten  != null ? Number(rec.nebenkosten)  : null)
+    : (liveP.nebenkosten ?? null);
+  const dKSoll = isFormer
+    ? (rec.kaution_soll != null ? Number(rec.kaution_soll) : null)
+    : (liveP.kaution_soll ?? null);
   const dWarm  = (dKalt != null && dNk != null) ? dKalt + dNk : dKalt;
   const staf   = !!rec.staffelmiete;
-  const dSrc   = rec.kaltmiete != null ? 'saved' : 'rooms tab';
-  const liveP  = _tnRoomPricing(room.name);
+  const dSrc   = isFormer ? 'snapshot at move-out' : 'live · rooms tab';
 
   return `
   <div class="tn-sec tn-sec-gold${autoEdit}" id="cursec-${rid}" data-tenant-id="${rec.id}">
@@ -1030,19 +1068,33 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef-note">Setting move out date moves this tenant to Former on save.</div>
 
       <div class="tn-fin-divider"></div>
-      <div class="tn-slbl" style="margin-bottom:8px">Agreed rent &amp; kaution</div>
+      <div class="tn-slbl" style="margin-bottom:8px">Rent &amp; kaution</div>
 
+      ${!isFormer ? `
+      <div class="tn-kv"><span class="tn-kv-k">Kaltmiete</span><span class="tn-kv-v">${dKalt != null ? _tnFmtEUR(dKalt) : '<span class="muted">&mdash;</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Nebenkosten</span><span class="tn-kv-v">${dNk != null ? _tnFmtEUR(dNk) : '<span class="muted">&mdash;</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Warmmiete</span><span class="tn-kv-v" style="color:var(--cc-gold)">${dWarm != null ? _tnFmtEUR(dWarm) : '<span class="muted">&mdash;</span>'}</span></div>
+      <div class="tn-kv"><span class="tn-kv-k">Kaution soll</span><span class="tn-kv-v">${dKSoll != null ? _tnFmtEUR(dKSoll) : '<span class="muted">&mdash;</span>'}</span></div>
+      <div class="tn-fin-note">Pricing is live from rooms tab. To change rates, edit in the Rooms tab.</div>
+      <div class="tn-ef" style="margin-top:4px">
+        <span class="tn-ef-k">Staffelmiete</span>
+        <div class="tn-staf-toggle">
+          <button class="tn-staf-btn${staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',true,this)">Ja</button>
+          <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
+        </div>
+      </div>
+      ` : `
       <div class="tn-ef">
         <span class="tn-ef-k">Kaltmiete</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="${liveP.kaltmiete ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <input data-f="kaltmiete" type="number" value="${dKalt ?? ''}" placeholder="0" oninput="_tnUpdateWarm('${rid}')"/>
           <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
         </div>
       </div>
       <div class="tn-ef">
         <span class="tn-ef-k">Nebenkosten</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="${liveP.nebenkosten ?? ''}" oninput="_tnUpdateWarm('${rid}')"/>
+          <input data-f="nebenkosten" type="number" value="${dNk ?? ''}" placeholder="0" oninput="_tnUpdateWarm('${rid}')"/>
           <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac/mo</span>
         </div>
       </div>
@@ -1053,7 +1105,7 @@ function _tnCurrentTenantHTML(room, rec) {
       <div class="tn-ef">
         <span class="tn-ef-k">Kaution soll</span>
         <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="${liveP.kaution_soll ?? ''}"/>
+          <input data-f="kaution_soll" type="number" value="${dKSoll ?? ''}" placeholder="0"/>
           <span style="font-size:10px;color:var(--cc-taupe);flex-shrink:0">\u20ac</span>
         </div>
       </div>
@@ -1064,7 +1116,8 @@ function _tnCurrentTenantHTML(room, rec) {
           <button class="tn-staf-btn${!staf ? ' on' : ''}" onclick="_tnSetStaf('${rid}',false,this)">Nein</button>
         </div>
       </div>
-      <div class="tn-fin-note">Pre-filled from rooms tab. Edit to set this tenant's actual agreed terms.</div>
+      <div class="tn-fin-note">Frozen at move-out. Edit to correct historical values.</div>
+      `}
 
       <div class="tn-save-row">
         ${isEmpty ? '' : `<button class="tn-btn-cancel-sm" onclick="_tnCancelEdit('${rid}')">Cancel</button>`}
@@ -1705,8 +1758,8 @@ async function _tnSaveNewTenant(rid, roomName) {
   const status     = mietende ? 'former' : 'active';
   const contractType = mietende ? _tnRoomContractType(roomName) : null;
 
-  // Snapshot financial fields from rooms tab on first save
-  const liveP2 = _tnRoomPricing(roomName);
+  // Snapshot financial only if creating as former (has mietende)
+  const finSnap = mietende ? _tnRoomPricing(roomName) : {};
 
   const { data, error } = await sbL.from('tenant_records')
     .insert({
@@ -1714,9 +1767,9 @@ async function _tnSaveNewTenant(rid, roomName) {
       first_name: firstName, last_name: lastName,
       email: emailVal, phone: phoneVal, birthday: bdayVal,
       address: addrVal, mietbeginn, mietende,
-      kaltmiete:    liveP2.kaltmiete    ?? null,
-      nebenkosten:  liveP2.nebenkosten  ?? null,
-      kaution_soll: liveP2.kaution_soll ?? null,
+      kaltmiete:    finSnap.kaltmiete    ?? null,
+      nebenkosten:  finSnap.nebenkosten  ?? null,
+      kaution_soll: finSnap.kaution_soll ?? null,
       staffelmiete: false,
     })
     .select().single();
@@ -1776,35 +1829,45 @@ async function _tnSaveProfile(rid, tenantId) {
 
   // Financial fields from edit form
   const sec2      = document.getElementById('cursec-' + rid);
-  const kaltVal   = parseFloat(sec2?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
-  const nkVal     = parseFloat(sec2?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
-  const kSollVal  = parseFloat(sec2?.querySelector('[data-f="kaution_soll"]')?.value) || null;
-  const stafBtn   = sec2?.querySelector('.tn-staf-btn.on');
-  const stafVal   = stafBtn ? stafBtn.textContent.trim() === 'Ja' : false;
-
-  // If first save and no financial values typed, snapshot from rooms tab
   const rec    = _tnRecords.find(r => r.id === tenantId);
   const room   = rec?.room;
-  const liveP  = _tnRoomPricing(room);
+  const isTransitioningToFormer = !!(mietende && rec?.status === 'active');
+
+  // Financial fields: only collect if this is former or transitioning to former
+  // Active tenants always read live from rooms tab — never store
+  const stafBtn  = sec?.querySelector('.tn-staf-btn.on');
+  const stafVal  = stafBtn ? stafBtn.textContent.trim() === 'Ja' : !!rec?.staffelmiete;
+
   const update = {
-    first_name:    firstName,
-    last_name:     lastName,
-    email:         emailVal,
-    phone:         phoneVal,
-    birthday:      bdayVal,
-    address:       addrVal,
-    mietbeginn:    mietbeginn,
-    mietende:      mietende,
-    kaltmiete:     kaltVal   ?? (rec?.kaltmiete    != null ? rec.kaltmiete    : (liveP.kaltmiete   ?? null)),
-    nebenkosten:   nkVal     ?? (rec?.nebenkosten   != null ? rec.nebenkosten  : (liveP.nebenkosten  ?? null)),
-    kaution_soll:  kSollVal  ?? (rec?.kaution_soll  != null ? rec.kaution_soll : (liveP.kaution_soll ?? null)),
-    staffelmiete:  stafVal,
+    first_name: firstName,
+    last_name:  lastName,
+    email:      emailVal,
+    phone:      phoneVal,
+    birthday:   bdayVal,
+    address:    addrVal,
+    mietbeginn: mietbeginn,
+    mietende:   mietende,
+    staffelmiete: stafVal,
   };
 
-  if (mietende && rec?.status === 'active') {
+  if (isTransitioningToFormer) {
+    // Snapshot financial values from rooms tab at this moment
+    const snap = _tnRoomPricing(room);
     update.status        = 'former';
     update.contract_type = _tnRoomContractType(room);
+    update.kaltmiete     = snap.kaltmiete    ?? null;
+    update.nebenkosten   = snap.nebenkosten  ?? null;
+    update.kaution_soll  = snap.kaution_soll ?? null;
+  } else if (rec?.status === 'former' || rec?.status === 'archived') {
+    // Former tenant: save editable overrides from form
+    const kaltVal  = parseFloat(sec?.querySelector('[data-f="kaltmiete"]')?.value)   || null;
+    const nkVal    = parseFloat(sec?.querySelector('[data-f="nebenkosten"]')?.value)  || null;
+    const kSollVal = parseFloat(sec?.querySelector('[data-f="kaution_soll"]')?.value) || null;
+    update.kaltmiete    = kaltVal;
+    update.nebenkosten  = nkVal;
+    update.kaution_soll = kSollVal;
   }
+  // Active tenants: do NOT write kaltmiete/nebenkosten/kaution_soll — stays null in DB, reads live
 
   if (!sbL) { btn.innerHTML = orig; btn.disabled = false; return; }
 
