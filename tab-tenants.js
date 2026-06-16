@@ -1326,13 +1326,13 @@ async function _tnSaveNewTenant(rid, roomName) {
   }
 
   await _tnEnsureKaution(data.id);
-  // Write default password so tenant can log in
+  // Write default password so tenant can log in (delete+insert — lounge_data has no unique constraint)
   if (status === 'active') {
     const defaultPw = roomName.toLowerCase().replace(/\s+/g,'') + '2026';
     const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(defaultPw));
     const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-    await sbL.from('lounge_data').upsert({ type: 'password', room: roomName, body: hash },
-      { onConflict: 'type,room' });
+    await sbL.from('lounge_data').delete().eq('type','password').eq('room', roomName);
+    await sbL.from('lounge_data').insert({ type: 'password', room: roomName, body: hash });
   }
 
   btn.innerHTML = orig; btn.disabled = false;
