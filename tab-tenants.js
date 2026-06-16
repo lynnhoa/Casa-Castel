@@ -1788,13 +1788,17 @@ function _tnTriggerUpload(tid, type) {
   if (inp) { inp.value = ''; inp.click(); }
 }
 
-function _tnViewDoc(fileUrl) {
-  if (!fileUrl) return;
-  if (sbL) {
-    const { data } = sbL.storage.from('tenant-documents').getPublicUrl(fileUrl);
-    if (data?.publicUrl) { window.open(data.publicUrl, '_blank'); return; }
-  }
-  window.open(fileUrl, '_blank');
+async function _tnViewDoc(fileUrl) {
+  if (!fileUrl || !sbL) return;
+  // Try signed URL first (works for private buckets — 60s expiry)
+  const { data, error } = await sbL.storage
+    .from('tenant-documents').createSignedUrl(fileUrl, 60);
+  if (data?.signedUrl) { window.open(data.signedUrl, '_blank'); return; }
+  // Fallback: try public URL (works if bucket is set to public)
+  const { data: pub } = sbL.storage.from('tenant-documents').getPublicUrl(fileUrl);
+  if (pub?.publicUrl) { window.open(pub.publicUrl, '_blank'); return; }
+  console.warn('[tenants] view doc error:', error?.message);
+  _tnToast('Could not open document', true);
 }
 
 async function _tnHandleUpload(file) {
@@ -1806,7 +1810,7 @@ async function _tnHandleUpload(file) {
 
   const { error: upErr } = await sbL.storage
     .from('tenant-documents').upload(path, file, { upsert:true, contentType:file.type });
-  if (upErr) { console.warn('[tenants] upload:', upErr.message); return; }
+  if (upErr) { console.warn('[tenants] upload:', upErr.message); _tnToast('Upload failed', true); return; }
 
   const { data: docData, error: docErr } = await sbL.from('tenant_documents')
     .upsert({ tenant_id: _tnUploadTid, type: _tnUploadType, file_url: path,
@@ -1819,7 +1823,48 @@ async function _tnHandleUpload(file) {
   if (idx >= 0) _tnDocs[_tnUploadTid][idx] = docData;
   else          _tnDocs[_tnUploadTid].push(docData);
 
-  if (_tnModalTid === _tnUploadTid) { _tnOpenModal(_tnUploadTid); } else { _tnRender(); }
+  // Bug 1 fix: targeted update — don't collapse cards
+  const tid  = _tnUploadTid;
+  if (_tnModalTid === tid) {
+    _tnOpenModal(tid); // modal re-open is fine, no card collapse
+  } else {
+    _tnRefreshDocSection(tid); // swap only the doc section in-place
+  }
+  _tnToast('Document uploaded \u2713');
+}
+
+function _tnRefreshDocSection(tid) {
+  const rec = _tnRecords.find(r => r.id === tid);
+  if (!rec) return;
+  const rid  = rec.room.replace(/\s+/g,'_').toLowerCase();
+  const body = document.getElementById('tb-' + rid);
+  if (!body) return;
+  // Find the sec containing doc-rows and replace it
+  const secs = body.querySelectorAll('.tn-sec');
+  secs.forEach(sec => {
+    if (sec.querySelector('.tn-doc-row')) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = _tnDocumentsSectionHTML(rid, { name: rec.room }, rec);
+      const newSec = tmp.firstElementChild;
+      if (newSec) sec.replaceWith(newSec);
+    }
+  });
+}
+
+function _tnToast(msg, isError) {
+  const ex = document.getElementById('tn-toast');
+  if (ex) ex.remove();
+  const t = document.createElement('div');
+  t.id = 'tn-toast';
+  t.textContent = msg;
+  t.style.cssText = `position:fixed;bottom:max(28px,env(safe-area-inset-bottom,28px));
+    left:50%;transform:translateX(-50%);
+    background:${isError ? '#A32D2D' : 'var(--cc-ink)'};color:var(--cc-white);
+    font-family:inherit;font-size:12px;font-weight:500;letter-spacing:.02em;
+    padding:8px 18px;border-radius:var(--cc-r-pill);z-index:600;
+    white-space:nowrap;pointer-events:none;transition:opacity .3s`;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2200);
 }
 
 async function _tnDeleteDoc(tid, type, docId) {
