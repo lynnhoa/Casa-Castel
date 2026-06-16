@@ -636,13 +636,16 @@ function _tnIsAllDone(tenantId) {
 
 // Visibility: show former tenant if open business OR < 12 months since move-out OR !done
 function _tnFormerVisible(rec) {
+  // Always hide if manually marked done
   if (rec.done) return false;
+  // Always show if not done (covers newly added records with no mietende)
+  if (!rec.mietende) return true;
+  // Show if open business
   if (_tnNkHasOpen(rec.id)) return true;
   if (_tnKautionOpen(rec.id)) return true;
-  if (rec.mietende) {
-    const monthsAgo = (Date.now() - new Date(rec.mietende)) / (30.44 * 24 * 3600 * 1000);
-    if (monthsAgo < 12) return true;
-  }
+  // Show if within 12-month grace period
+  const monthsAgo = (Date.now() - new Date(rec.mietende)) / (30.44 * 24 * 3600 * 1000);
+  if (monthsAgo < 12) return true;
   return false;
 }
 
@@ -1389,8 +1392,10 @@ function _tnCalcKaution(prefix, tenantId) {
 
 async function _tnSaveKaution(tenantId, received, returned) {
   if (!sbL) return;
+  // Create kaution row if it doesn't exist yet
+  if (!_tnKaution[tenantId]) await _tnEnsureKaution(tenantId);
   const k = _tnKaution[tenantId];
-  if (!k) return;
+  if (!k?.id) return;
   k.received = received; k.returned = returned;
   await sbL.from('kaution').update({ received, returned }).eq('id', k.id);
   // Refresh former badge if visible
@@ -1402,8 +1407,10 @@ async function _tnSaveKaution(tenantId, received, returned) {
 }
 
 async function _tnToggleSettle(prefix, tenantId) {
-  const k  = _tnKaution[tenantId];
-  if (!k || !sbL) return;
+  if (!sbL) return;
+  if (!_tnKaution[tenantId]) await _tnEnsureKaution(tenantId);
+  const k = _tnKaution[tenantId];
+  if (!k?.id) return;
   const on = !k.settled;
   k.settled = on;
   const btn = document.getElementById('kset-' + prefix);
@@ -1426,12 +1433,43 @@ async function _tnToggleSettle(prefix, tenantId) {
 ══════════════════════════════════════════════════════════════ */
 
 async function _tnAddNkPeriod(tenantId) {
-  const period = prompt('NK period (e.g. 2024/25 or 2024):');
-  if (!period) return;
+  if (!sbL) return;
+  // Find the add button and replace with inline input
+  const btn = document.querySelector(`.tn-add-nk[onclick*="${tenantId}"]`);
+  if (!btn) return;
+
+  // Build inline period input
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 0 4px;border-top:.5px solid #F0EDE8;margin-top:4px;';
+  wrap.innerHTML = `
+    <input id="tn-nk-period-inp"
+      style="flex:1;background:var(--cc-surface);border:var(--cc-border);border-radius:var(--cc-r-sm);
+             padding:5px 8px;font-family:inherit;font-size:12px;color:var(--cc-charcoal);
+             outline:none;border-color:var(--cc-gold);background:var(--cc-white);"
+      placeholder="e.g. 2024/25" maxlength="10"/>
+    <button style="height:28px;padding:0 11px;background:var(--cc-ink);color:var(--cc-white);
+                   border:none;border-radius:var(--cc-r-sm);font-size:9px;font-weight:600;
+                   letter-spacing:.06em;text-transform:uppercase;cursor:pointer;font-family:inherit;"
+      onclick="_tnConfirmAddNk('${tenantId}')">Add</button>
+    <button style="height:28px;padding:0 8px;background:none;color:var(--cc-stone);
+                   border:var(--cc-border);border-radius:var(--cc-r-sm);font-size:9px;
+                   font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+                   cursor:pointer;font-family:inherit;"
+      onclick="_tnCancelAddNk('${tenantId}')">Cancel</button>`;
+  btn.style.display = 'none';
+  btn.parentNode.insertBefore(wrap, btn);
+  wrap.querySelector('input').focus();
+}
+
+async function _tnConfirmAddNk(tenantId) {
+  const inp = document.getElementById('tn-nk-period-inp');
+  if (!inp) return;
+  const period = inp.value.trim();
+  if (!period) { inp.focus(); return; }
   if (!sbL) return;
 
   const { data, error } = await sbL.from('nk_entries')
-    .insert({ tenant_id: tenantId, period: period.trim(), sent: false, paid: false })
+    .insert({ tenant_id: tenantId, period, sent: false, paid: false })
     .select().single();
   if (error) { console.warn('[tenants] add NK error:', error.message); return; }
 
@@ -1440,10 +1478,21 @@ async function _tnAddNkPeriod(tenantId) {
 
   // Re-render relevant section
   if (_tnModalTenantId === tenantId) {
-    _tnOpenModal(tenantId); // refresh modal
+    _tnOpenModal(tenantId);
   } else {
-    await _tnLoad(); // re-render cards
+    _tnRender();
   }
+}
+
+function _tnCancelAddNk(tenantId) {
+  // Remove inline input wrap, show button again
+  const inp = document.getElementById('tn-nk-period-inp');
+  if (!inp) return;
+  const wrap = inp.closest('div');
+  if (!wrap) return;
+  const btn = document.querySelector(`.tn-add-nk[onclick*="${tenantId}"]`);
+  if (btn) btn.style.display = '';
+  wrap.remove();
 }
 
 // Placeholder — will open NK calculator when built
@@ -1745,6 +1794,10 @@ function _tnWireRealtime() {
 ══════════════════════════════════════════════════════════════ */
 
 async function loadTenants() {
+  // Ensure rooms data is loaded first (appRooms needed for card render)
+  if (typeof appRooms !== 'undefined' && !appRooms.length && typeof loadRoomsData === 'function') {
+    await loadRoomsData();
+  }
   _tnWireRealtime();
   await _tnLoad();
   checkBirthdays();
