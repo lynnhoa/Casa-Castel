@@ -873,8 +873,9 @@ function _tnRentFormHTML(rid, room, rec) {
   const nk   = (rec && rec.nebenkosten != null) ? Number(rec.nebenkosten) : (liveP.nebenkosten ?? '');
   const warm = (kalt !== '' && nk !== '') ? Number(kalt) + Number(nk) : (kalt !== '' ? kalt : '');
   const tid  = rec ? rec.id : '';
-  const ksoll = (rec && rec.kaution_soll != null) ? Number(rec.kaution_soll)
-    : (_tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null) ?? '');
+  // Always use live calc from rooms tab as the displayed kaution soll.
+  // Stored rec.kaution_soll is only an override value (used as input pre-fill when toggle is on).
+  const ksoll = _tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null) ?? '';
   const ctype = _tnRoomContractType(room.name);
   const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
 
@@ -898,7 +899,7 @@ function _tnRentFormHTML(rid, room, rec) {
     <div class="tn-kaut-override-row">
       <span class="tn-kaut-override-lbl">Kaution soll · ${_tnFmtEUR(ksoll) || '—'} (${rule})</span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
-        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null ? 'checked' : ''}
+        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null && rec.kaution_soll !== (_tnKautionSoll(room.name, rec.mietbeginn, rec.mietende) ?? rec.kaution_soll) ? 'checked' : ''}
           onchange="_tnToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
         <span class="tn-kaut-ovr-sw__t"></span>
       </label>
@@ -1059,9 +1060,9 @@ function _tnKautionHTML(rid, tid, ctx) {
   const footer  = ctx === 'modal' ? 'tn-msec-footer' : 'tn-sec-footer';
 
   let rec = tid ? _tnRecords.find(r => r.id === tid) : null;
-  let soll = rec && rec.kaution_soll != null
-    ? Number(rec.kaution_soll)
-    : (rec ? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) : null);
+  // Always show live-computed kaution soll (rooms tab is source of truth).
+  // rec.kaution_soll is a stored override; only relevant when user explicitly enables override toggle.
+  let soll = rec ? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) : null;
   const ctype = rec ? _tnRoomContractType(rec.room) : null;
   const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ' : '3\u00d7 Kaltmiete \u00b7 MV';
 
