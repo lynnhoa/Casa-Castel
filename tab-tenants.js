@@ -1626,7 +1626,9 @@ async function _tnSaveNewTenant(rid, roomName) {
     address: p.address, mietbeginn: p.mietbeginn, mietende,
     kaltmiete:    p.kaltmiete   ?? (mietende ? liveP.kaltmiete   : null) ?? null,
     nebenkosten:  p.nebenkosten ?? (mietende ? liveP.nebenkosten : null) ?? null,
-    kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende) ?? null,
+    // kaution_soll stays NULL for active tenants — rooms tab is source of truth.
+    // Only write a value when user explicitly overrides via the kaution_soll input.
+    kaution_soll: p.kaution_soll ?? null,
   };
 
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
