@@ -76,6 +76,7 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* ── HEADER ── */
 .tn-hdr-wrap { padding:11px 14px; cursor:pointer; user-select:none;
+  border-radius:var(--cc-r-lg) var(--cc-r-lg) 0 0; overflow:hidden;
   -webkit-tap-highlight-color:transparent; }
 .tn-hdr-top { display:flex; align-items:center; gap:8px; }
 .tn-room-lbl { font-size:10px; font-weight:500; letter-spacing:.09em;
@@ -104,7 +105,7 @@ document.getElementById('tab-tenants').innerHTML = `
   border:.5px solid var(--cc-rule); }
 
 /* ── CARD BODY ── */
-.tn-body { border-top:var(--cc-border); display:none; }
+.tn-body { border-top:var(--cc-border); display:none; border-radius:0 0 var(--cc-r-lg) var(--cc-r-lg); overflow:hidden; }
 .tn-card.open .tn-body { display:block; }
 
 /* ── RENT BAR ── */
