@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="robots" content="noindex, nofollow"/>
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="Rentals"/>
+  <meta name="theme-color" content="#F5F2ED"/>
+
+  <title>Rentals — Management</title>
+  <link rel="manifest" href="rentals-manifest.json"/>
+
+  <!-- Reuse Casa Castel design system — same tokens, same components -->
+  <link rel="stylesheet" href="casa-castel.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
+</head>
+<body class="is-landlord">
+
+  <!-- ══ LOGIN ══ -->
+  <div class="login-screen" id="loginScreen">
+    <p class="login-logo">Rentals</p>
+    <p class="login-sub">Property Management</p>
+    <div class="login-box">
+      <p class="login-title">Landlord access</p>
+      <div class="login-error" id="loginError">Incorrect password.</div>
+      <div class="cc-input-wrap cc-mb-16">
+        <label class="cc-input-label" for="landlordPass">Password</label>
+        <input class="cc-input" id="landlordPass" type="password" placeholder="Enter your password" autocomplete="current-password"/>
+      </div>
+      <button class="cc-btn cc-btn--primary" id="landlordLoginBtn">Enter</button>
+    </div>
+  </div>
+
+  <!-- ══ APP SHELL ══ -->
+  <div class="app-shell" id="appShell">
+
+    <!-- Sticky header: nav + tabs -->
+    <div class="cc-header">
+      <nav class="cc-nav">
+        <a class="cc-nav__logo" href="#">Rentals</a>
+        <div class="nav-actions">
+          <div class="nav-profile" id="navProfile">
+            <button class="cc-nav__icon" onclick="toggleProfileMenu()" aria-haspopup="true" aria-label="Menu" title="Menu">
+              <i class="ti ti-user"></i>
+            </button>
+            <div class="nav-profile-menu" id="navProfileMenu">
+              <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
+            </div>
+          </div>
+        </div>
+      </nav>
+      <div class="cc-tabs" id="appTabs">
+        <button class="cc-tab active" data-tab="rooms">Rooms</button>
+        <button class="cc-tab"        data-tab="tenants">Tenants</button>
+      </div>
+    </div>
+
+    <div class="cc-layout" id="appLayout">
+      <div class="cc-main" id="appMain">
+        <div class="tab-content" id="tab-rooms"></div>
+        <div class="tab-content" id="tab-tenants" style="display:none;"></div>
+      </div>
+    </div>
+
+  </div><!-- /.app-shell -->
+
+  <!-- ══ SCRIPTS ══ -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="rentals-constants.js"></script>
+  <script src="rentals-auth.js"></script>
+  <script src="rentals-nav.js"></script>
+  <script>
+    /* ── MINIMAL LAYOUT (no lounge/kitchen complexity) ── */
+    function switchTab(tabName) {
+      try { localStorage.setItem('rentals_last_tab', tabName); } catch(e) {}
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      const tabEl = document.getElementById('tab-' + tabName);
+      if (tabEl) tabEl.style.display = 'block';
+      document.querySelectorAll('.cc-tab[data-tab]').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tabName);
+      });
+      if (tabName === 'rooms')   loadRooms?.();
+      if (tabName === 'tenants') loadTenants?.();
+    }
+
+    function initTabs() {
+      document.querySelectorAll('.cc-tab[data-tab]').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+      });
+    }
+
+    function showApp() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appShell').classList.add('visible');
+      window.scrollTo(0, 0);
+      const saved = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
+      const available = new Set(['rooms', 'tenants']);
+      switchTab((saved && available.has(saved)) ? saved : 'rooms');
+    }
+
+    initTabs();
+    initNav();
+    initLandlordLogin();
+  </script>
+
+  <!-- Tab modules loaded after shell scripts -->
+  <!-- <script src="rentals-tab-rooms.js"></script>   -->
+  <!-- <script src="rentals-tab-tenants.js"></script> -->
+
+</body>
+</html>
