@@ -1069,19 +1069,34 @@ function _roomCardHTML(r) {
   const invCount = Array.isArray(r.inventar) ? r.inventar.length : 0;
 
   // Rent display
+  // Kaution helper — base depends on pricing mode, override wins
+  function _kautionForType(base, multiplier) {
+    if (r.kaution_override && r.kaution_default) return Number(r.kaution_default);
+    return Math.round(base * multiplier);
+  }
+
   let rentRead = '';
   if (r.kurzzeit_kaltmiete) {
     const kalt = Number(r.kurzzeit_kaltmiete)||0;
     const nk   = Number(r.kurzzeit_nk)||0;
     const isPauschal = (r.kurzzeit_pricing||'pauschal') === 'pauschal';
     const display = isPauschal ? fmtEUR(kalt+nk)+' pauschal inkl. NK' : fmtEUR(kalt)+' kalt + '+fmtEUR(nk)+' NK';
+    const kzBase = isPauschal ? kalt + nk : kalt;
+    const kzKaution = _kautionForType(kzBase, 1);
     rentRead += `<div class="rc-row"><span class="rc-row__k">Kurzzeit</span><span class="rc-row__v">${display} / Monat</span></div>`;
+    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(kzKaution)} · 1× ${isPauschal ? 'Pauschal' : 'Kalt'}${r.kaution_override ? ' (override)' : ''}</span></div>`;
   }
   if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
-    rentRead += `<div class="rc-row"><span class="rc-row__k">Mietvertrag</span><span class="rc-row__v">${fmtEUR(r.kaltmiete)} kalt + ${fmtEUR(r.nk_pauschale||0)} NK</span></div>`;
+    const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
+    const mvKaution = _kautionForType(kalt, 3);
+    rentRead += `<div class="rc-row"><span class="rc-row__k">Mietvertrag</span><span class="rc-row__v">${fmtEUR(kalt)} kalt + ${fmtEUR(nk)} NK</span></div>`;
+    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · 3× Kalt${r.kaution_override ? ' (override)' : ''}</span></div>`;
   } else if (r.kaltmiete) {
-    const tot = (Number(r.kaltmiete)||0) + (Number(r.nk_pauschale)||0);
+    const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
+    const tot = kalt + nk;
+    const mvKaution = _kautionForType(tot, 3);
     rentRead += `<div class="rc-row"><span class="rc-row__k">Mietvertrag</span><span class="rc-row__v">${fmtEUR(tot)} pauschal inkl. NK</span></div>`;
+    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · 3× Pauschal${r.kaution_override ? ' (override)' : ''}</span></div>`;
   }
 
   // Shared space chips (edit)
