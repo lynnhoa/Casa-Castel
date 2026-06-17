@@ -159,7 +159,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-field input::placeholder { color:var(--cc-stone); }
 #tab-tenants .tn-field input { font-size:12px !important; }
 #tab-tenants .tn-rf input { font-size:12px !important; }
-#tab-tenants .tn-kc-input { font-size:12px !important; }
+#tab-tenants .tn-kc-input { font-size:11px !important; }
 #tab-tenants .tn-nk-add-form input { font-size:12px !important; }
 .tn-contract-toggle { display:flex; gap:4px; margin-top:4px; }
 
@@ -191,7 +191,7 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* ── DOCS ── */
 .tn-doc-row { display:flex; align-items:center; gap:8px; padding:4px 0; }
-.tn-doc-name { flex:1; font-size:13px; color:var(--cc-charcoal); }
+.tn-doc-name { flex:1; font-size:11px; color:var(--cc-charcoal); }
 .tn-doc-btns { display:flex; gap:4px; margin-left:4px; }
 .tn-doc-btn { display:inline-flex; align-items:center; gap:3px; height:24px;
   padding:0 8px; border-radius:var(--cc-r-sm); font-size:10px; font-weight:500;
@@ -206,9 +206,9 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-kc { background:var(--cc-surface); border-radius:var(--cc-r-sm); padding:7px 9px; }
 .tn-kc-lbl { font-size:10px; font-weight:500; letter-spacing:.09em;
   text-transform:uppercase; color:var(--cc-taupe); margin-bottom:3px; }
-.tn-kc-val { font-size:12px; font-weight:400; color:var(--cc-charcoal); }
+.tn-kc-val { font-size:11px; font-weight:400; color:var(--cc-charcoal); }
 .tn-kc-val.gold { color:var(--cc-gold); }
-.tn-kc-input { width:100%; font-size:12px; font-weight:400; padding:3px 5px;
+.tn-kc-input { width:100%; font-size:11px; font-weight:400; padding:3px 5px;
   border-radius:4px; border:.5px solid var(--cc-rule);
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; margin-top:1px;
