@@ -16,6 +16,7 @@ document.getElementById('tab-tenants').innerHTML = `
   <div class="tn-hdr">
     <h1 class="cc-h1">Tenants</h1>
   </div>
+  <div id="tn-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:11px;color:#BA7517;padding:0 4px 12px;"></div>
   <div class="tn-list" id="tenantsList"></div>
 
   <input type="file" id="tnFileInput" accept="application/pdf,image/*"
@@ -270,6 +271,12 @@ document.getElementById('tab-tenants').innerHTML = `
   border:none; font-family:inherit; width:100%;
   border-top:var(--cc-border); -webkit-tap-highlight-color:transparent; }
 .tn-show-older i { font-size:12px; }
+.tn-kaution-nudge { display:flex; align-items:center; gap:8px; padding:6px 14px;
+  background:#FAEEDA55; border-top:0.5px solid #EF9F2760; cursor:pointer; }
+.tn-kaution-nudge i { color:#BA7517; }
+.tn-nudge-name { font-size:10px; color:#854F0B; flex:1; }
+.tn-nudge-kept { font-size:10px; font-weight:600; color:#633806; }
+.tn-nudge-status { font-size:9px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:#BA7517; }
 .tn-add-former-btn { display:flex; align-items:center; gap:5px; padding:7px 14px;
   font-size:11px; color:var(--cc-taupe); cursor:pointer; background:none;
   border:none; border-top:var(--cc-border); font-family:inherit; width:100%;
@@ -515,6 +522,12 @@ function _tnKautionOpen(tid) {
   return k && k.received > 0 && !k.settled;
 }
 
+function _tnKautionKept(tid) {
+  const k = _tnKaution[tid];
+  if (!k) return 0;
+  return Math.max(0, (k.received || 0) - (k.returned || 0));
+}
+
 function _tnIsAllDone(tid) {
   return !_tnNkHasOpen(tid) && !_tnKautionOpen(tid);
 }
@@ -640,6 +653,24 @@ function _tnRender() {
   // Snapshot any cards currently open in the DOM before wiping
   document.querySelectorAll('.tn-card.open').forEach(el => _tnOpenCards.add(el.id));
 
+  // Summary line: former tenants with kaution refund pending
+  const pendingRefunds = _tnRecords
+    .filter(r => r.status === 'former')
+    .filter(r => { const k = _tnKaution[r.id]; return k && k.received > 0 && !k.settled; })
+    .map(r => {
+      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
+      return `${esc(name)} (${esc(r.room)})`;
+    });
+  const summaryEl = document.getElementById('tn-kaution-summary');
+  if (summaryEl) {
+    if (pendingRefunds.length) {
+      summaryEl.innerHTML = `<i class="ti ti-alert-circle" style="font-size:12px"></i> Kaution to return: ${pendingRefunds.join(' · ')}`;
+      summaryEl.style.display = 'flex';
+    } else {
+      summaryEl.style.display = 'none';
+    }
+  }
+
   list.innerHTML = rooms.map(r => _tnCardHTML(r)).join('');
 
   // Restore open state (read mode is the default after re-render — no extra work needed)
@@ -664,9 +695,26 @@ function _tnCardHTML(room) {
 
   const isOpen = false;
 
+  // Collapsed nudge: former tenants with unsettled kaution
+  const formerNudges = formerRecs
+    .filter(r => { const k = _tnKaution[r.id]; return k && k.received > 0 && !k.settled; })
+    .map(r => {
+      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
+      const kept = _tnKautionKept(r.id);
+      const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
+      return `<div class="tn-kaution-nudge" onclick="_tnOpenModal('${r.id}')">
+        <i class="ti ti-user" style="font-size:11px"></i>
+        <span class="tn-nudge-name">${esc(name)} · former</span>
+        <span class="tn-nudge-kept">${keptStr}</span>
+        <span class="tn-nudge-status">Refund pending</span>
+        <i class="ti ti-chevron-right" style="font-size:11px"></i>
+      </div>`;
+    }).join('');
+
   return `
 <div class="tn-card${isOpen?' open':''}" id="tc-${rid}" data-room="${esc(room.name)}">
   ${_tnHeaderHTML(rid, room, activeRec)}
+  ${formerNudges}
   <div class="tn-body" id="tb-${rid}">
     ${activeRec || room.vacant
       ? _tnRentBarHTML(rid, room, activeRec) + _tnRentFormHTML(rid, room, activeRec)
@@ -1108,20 +1156,23 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
   const toShow   = showOld ? [...visible, ...hidden] : visible;
 
   const formerRow = rec => {
-    const name   = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || '\u2014';
-    const period = [_tnFmtDate(rec.mietbeginn), _tnFmtDate(rec.mietende)].filter(Boolean).join(' \u2013 ');
-    const nkDone = !_tnNkHasOpen(rec.id);
-    const kDone  = !_tnKautionOpen(rec.id);
-    const canHide = nkDone && kDone; // only offer Hide when all business closed
+    const name    = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || '\u2014';
+    const period  = [_tnFmtDate(rec.mietbeginn), _tnFmtDate(rec.mietende)].filter(Boolean).join(' \u2013 ');
+    const k       = _tnKaution[rec.id];
+    const settled = k?.settled || false;
+    const kept    = _tnKautionKept(rec.id);
+    const hasK    = k && k.received > 0;
+    const canHide = settled; // only offer Hide when kaution settled
+    const kPill   = !hasK ? '' :
+      settled
+        ? `<span class="tnp tnp-green">Settled</span>`
+        : `<span class="tnp tnp-amber">Refund pending</span>`;
     return `<div class="tn-former-row" style="gap:6px">
       <div class="tn-former-info" onclick="_tnOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
         <div class="tn-former-name">${esc(name)}</div>
         <div class="tn-former-period">${esc(period)}</div>
       </div>
-      <div class="tn-former-pills">
-        <span class="tnp ${nkDone ? 'tnp-green' : 'tnp-amber'}">${nkDone ? 'NK done' : 'NK open'}</span>
-        <span class="tnp ${kDone  ? 'tnp-green' : 'tnp-amber'}">${kDone  ? 'Settled' : 'Kaution open'}</span>
-      </div>
+      <div class="tn-former-pills">${kPill}</div>
       ${canHide
         ? `<button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Archive this tenant">
              <i class="ti ti-eye-off" style="font-size:11px"></i></button>`
