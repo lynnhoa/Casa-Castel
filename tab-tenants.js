@@ -38,6 +38,21 @@ document.getElementById('tab-tenants').innerHTML = `
     </div>
   </div>
 
+  <div class="tn-overlay" id="tnNKVorausModal" onclick="_tnNKVorausModalOutside(event)">
+    <div class="tn-sheet" id="tnNKVorausSheet" style="max-height:70vh">
+      <div class="tn-sheet-hdr">
+        <div style="flex:1;min-width:0">
+          <div class="tn-sheet-name" id="tnNKVorausModalTitle">Nebenkostenerhöhungen</div>
+          <div class="tn-sheet-sub" id="tnNKVorausModalSub"></div>
+        </div>
+        <button class="tn-icon-btn" onclick="_tnNKVorausModalClose()" aria-label="Close">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+      <div class="tn-sheet-body" id="tnNKVorausModalBody"></div>
+    </div>
+  </div>
+
   <div class="tn-confirm-overlay" id="tnConfirm">
     <div class="tn-confirm-box">
       <div class="tn-confirm-icon"><i class="ti ti-alert-triangle"></i></div>
@@ -265,6 +280,43 @@ document.getElementById('tab-tenants').innerHTML = `
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; }
 
+/* ── NK VORAUSZAHLUNG ── */
+.tn-nkv-current { display:flex; align-items:center; gap:8px;
+  padding:7px 10px; background:var(--cc-surface);
+  border-radius:var(--cc-r-sm); margin-bottom:10px; }
+.tn-nkv-cur-amount { font-size:13px; font-weight:500;
+  color:var(--cc-charcoal); flex:1; }
+.tn-nkv-cur-since { font-size:10px; color:var(--cc-stone); white-space:nowrap; }
+.tn-nkv-row { display:flex; flex-direction:column; gap:6px;
+  padding:8px 0; border-bottom:var(--cc-border); }
+.tn-nkv-row:last-of-type { border-bottom:none; }
+.tn-nkv-top { display:flex; align-items:center; gap:8px; }
+.tn-nkv-date { font-size:11px; color:var(--cc-taupe); flex:1; }
+.tn-nkv-amount { font-size:13px; font-weight:500; color:var(--cc-charcoal); }
+.tn-nkv-amount.past { font-weight:400; color:var(--cc-stone); }
+.tn-nkv-pills { display:flex; gap:5px; flex-wrap:wrap; padding-left:20px; }
+.tn-nkv-pill { display:inline-flex; align-items:center; gap:3px;
+  font-size:10px; font-weight:500; padding:2px 8px;
+  border-radius:var(--cc-r-pill); white-space:nowrap;
+  cursor:default; font-family:inherit; border:none; }
+.tn-nkv-pill.done { background:#EAF3DE; color:#27500A; }
+.tn-nkv-pill.pending { background:var(--cc-surface); color:var(--cc-stone);
+  border:.5px solid var(--cc-rule); cursor:pointer;
+  -webkit-tap-highlight-color:transparent; }
+.tn-nkv-pill.pending:active { opacity:.7; }
+.tn-nkv-pill i { font-size:10px; }
+.tn-nkv-add-form { display:flex; align-items:center; gap:6px;
+  padding-top:8px; border-top:var(--cc-border); margin-top:4px; flex-wrap:wrap; }
+.tn-nkv-add-form input { font-size:12px; padding:5px 8px;
+  border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold);
+  background:var(--cc-white); color:var(--cc-charcoal);
+  font-family:inherit; outline:none; width:120px; }
+.tn-nkv-add-form input[type=number] { width:90px; }
+.tn-nkv-verlauf-btn { font-size:10px; color:var(--cc-stone);
+  text-decoration:underline; text-underline-offset:2px;
+  background:none; border:none; cursor:pointer; font-family:inherit;
+  padding:0; -webkit-tap-highlight-color:transparent; }
+
 /* ── FORMER ── */
 .tn-former-row { display:flex; align-items:center; gap:10px;
   padding:7px 14px; border-bottom:var(--cc-border); cursor:pointer;
@@ -390,6 +442,7 @@ let _tnUploadTid    = null;
 let _tnUploadType   = null;
 let _tnDeleteId     = null;
 let _tnKautTimers   = {};
+let _tnNKVoraus     = {}; // room → [{id, room, effective_date, amount, tenant_notified, notified_date, tenant_adjusted, adjusted_date}]
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -591,6 +644,16 @@ function _tnIsPast(dateStr) {
   return d <= today;
 }
 
+/* ── NK VORAUSZAHLUNG HELPERS ── */
+function _tnNKVorausCurrent(room) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  return (_tnNKVoraus[room] || []).find(e => new Date(e.effective_date) <= today) || null;
+}
+function _tnNKVorausHasOpen(room) {
+  // true if any entry is not yet fully adjusted
+  return (_tnNKVoraus[room] || []).some(e => !e.tenant_adjusted);
+}
+
 function _tnStatusPill(room, activeRec) {
   if (!activeRec) return '';
   const pills = [];
@@ -601,6 +664,9 @@ function _tnStatusPill(room, activeRec) {
   // NK open
   if (_tnNkHasOpen(activeRec.id))
     pills.push(`<span class="tnp tnp-red">NK open</span>`);
+  // NK-Erhöhung offen — tenant has pending rate adjustment
+  if (_tnNKVorausHasOpen(room.name))
+    pills.push(`<span class="tnp tnp-amber"><i class="ti ti-alert-triangle" aria-hidden="true"></i> NK-Erhöhung offen</span>`);
   // Kaution: show held amount when received > 0 and not settled
   const k = _tnKaution[activeRec.id];
   const recv = k ? Number(k.received) : 0;
@@ -633,10 +699,11 @@ async function _tnLoad() {
   const tids = _tnRecords.map(r => r.id);
   if (!tids.length) { _tnRender(); return; }
 
-  const [kRes, nkRes, docRes] = await Promise.all([
+  const [kRes, nkRes, docRes, vorausRes] = await Promise.all([
     sbL.from('kaution').select('*').in('tenant_id', tids),
     sbL.from('nk_entries').select('*').in('tenant_id', tids).order('period', { ascending: false }),
     sbL.from('tenant_documents').select('*').in('tenant_id', tids),
+    sbL.from('nk_vorauszahlung_history').select('*').in('room', rooms).order('effective_date', { ascending: false }),
   ]);
 
   _tnKaution = {};
@@ -652,6 +719,12 @@ async function _tnLoad() {
   (docRes.data || []).forEach(d => {
     if (!_tnDocs[d.tenant_id]) _tnDocs[d.tenant_id] = [];
     _tnDocs[d.tenant_id].push(d);
+  });
+
+  _tnNKVoraus = {};
+  (vorausRes.data || []).forEach(e => {
+    if (!_tnNKVoraus[e.room]) _tnNKVoraus[e.room] = [];
+    _tnNKVoraus[e.room].push(e); // already ordered effective_date DESC from DB
   });
 
   _tnProfileCache = {};
@@ -762,6 +835,7 @@ function _tnCardHTML(room) {
     ${_tnDocumentsSectionHTML(rid, room, activeRec)}
     ${_tnKautionHTML(rid, activeRec ? activeRec.id : null, 'card')}
     ${_tnNKHTML(rid, activeRec ? activeRec.id : null, 'card')}
+    ${_tnNKVorausHTML(rid, activeRec ? activeRec.room : null, 'card')}
     ${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs)}
   </div>
 </div>`;
@@ -1201,6 +1275,229 @@ function _tnNKHTML(rid, tid, ctx) {
 </div>`;
 }
 
+/* ── NK VORAUSZAHLUNG SECTION (card + modal) ── */
+function _tnNKVorausHTML(rid, room, ctx) {
+  if (!room) return '';
+  const sec  = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
+  const pad  = ctx === 'modal' ? '16px' : '14px';
+  const entries = _tnNKVoraus[room] || [];
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
+  // show only entries that are pending (not yet fully adjusted)
+  const pending = entries.filter(e => !e.tenant_adjusted);
+
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const [y,m,day] = d.split('-');
+    return `${day}.${m}.${y}`;
+  };
+
+  const pillHTML = (e) => {
+    const notDone = !e.tenant_notified;
+    const adjDone = e.tenant_adjusted;
+    const notPill = e.tenant_notified
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informiert</span>`
+      : `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkNotified('${e.id}','${room}','${rid}')" title="Als informiert markieren">
+           <i class="ti ti-mail" aria-hidden="true"></i> Informiert?
+         </button>`;
+    const adjPill = e.tenant_adjusted
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst</span>`
+      : (e.tenant_notified
+          ? `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkAdjusted('${e.id}','${room}','${rid}')" title="Als angepasst markieren">
+               <i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?
+             </button>`
+          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?</span>`);
+    return notPill + adjPill;
+  };
+
+  const isFuture = (e) => new Date(e.effective_date) > today;
+  const rowIcon  = (e) => isFuture(e)
+    ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>`
+    : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`;
+
+  const pendingRows = pending.map(e => `
+    <div class="tn-nkv-row" id="nkv-row-${e.id}">
+      <div class="tn-nkv-top">
+        ${rowIcon(e)}
+        <span class="tn-nkv-date">${isFuture(e) ? 'ab ' : ''}${fmtDate(e.effective_date)}</span>
+        <span class="tn-nkv-amount">${_tnFmtEUR(e.amount)}</span>
+      </div>
+      <div class="tn-nkv-pills">${pillHTML(e)}</div>
+    </div>`).join('');
+
+  return `
+<div class="${sec}" id="nkv-sec-${rid}">
+  <div class="tn-sec-body" style="padding-top:10px;padding-left:${pad};padding-right:${pad}">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span class="tn-sec-lbl" style="flex:1">NK Vorauszahlung</span>
+      ${entries.length > 1 ? `<button class="tn-nkv-verlauf-btn" onclick="_tnNKVorausOpenModal('${room}')">Verlauf</button>` : ''}
+      <button class="tn-btn tn-btn-sm" style="height:24px;padding:0 9px;font-size:10px"
+        onclick="_tnNKVorausAdd('${room}','${rid}','${ctx}')">
+        <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
+      </button>
+    </div>
+    ${current ? `
+    <div class="tn-nkv-current">
+      <i class="ti ti-coin-euro" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
+      <span class="tn-nkv-cur-amount">${_tnFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+      <span class="tn-nkv-cur-since">seit ${fmtDate(current.effective_date)}</span>
+    </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`}
+    ${pendingRows}
+    ${!pendingRows && current ? '' : ''}
+  </div>
+</div>`;
+}
+
+/* ── NK VORAUSZAHLUNG VERLAUF MODAL ── */
+function _tnNKVorausOpenModal(room) {
+  const entries = (_tnNKVoraus[room] || []).slice(); // already DESC
+  const today = new Date(); today.setHours(0,0,0,0);
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const [y,m,day] = d.split('-');
+    return `${day}.${m}.${y}`;
+  };
+  const isFuture = (e) => new Date(e.effective_date) > today;
+
+  const pillHTML = (e) => {
+    const notPill = e.tenant_notified
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informiert</span>`
+      : `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkNotified('${e.id}','${room}','m')" title="Als informiert markieren">
+           <i class="ti ti-mail" aria-hidden="true"></i> Informiert?
+         </button>`;
+    const adjPill = e.tenant_adjusted
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst</span>`
+      : (e.tenant_notified
+          ? `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkAdjusted('${e.id}','${room}','m')" title="Als angepasst markieren">
+               <i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?
+             </button>`
+          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?</span>`);
+    return notPill + adjPill;
+  };
+
+  const rows = entries.map(e => `
+    <div class="tn-nkv-row" id="nkv-row-${e.id}" style="padding-left:16px;padding-right:16px">
+      <div class="tn-nkv-top">
+        ${isFuture(e)
+          ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>`
+          : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`}
+        <span class="tn-nkv-date">${isFuture(e) ? 'ab ' : ''}${fmtDate(e.effective_date)}</span>
+        <span class="tn-nkv-amount ${e.tenant_adjusted && !isFuture(e) ? 'past' : ''}">${_tnFmtEUR(e.amount)}</span>
+      </div>
+      <div class="tn-nkv-pills">${pillHTML(e)}</div>
+    </div>`).join('');
+
+  document.getElementById('tnNKVorausModalSub').textContent = room.charAt(0).toUpperCase() + room.slice(1);
+  document.getElementById('tnNKVorausModalBody').innerHTML = rows || `<p class="tn-empty" style="padding:12px 16px">Noch keine Einträge.</p>`;
+  document.getElementById('tnNKVorausModal').classList.add('open');
+}
+
+function _tnNKVorausModalClose() {
+  document.getElementById('tnNKVorausModal').classList.remove('open');
+}
+function _tnNKVorausModalOutside(e) {
+  if (e.target === document.getElementById('tnNKVorausModal')) _tnNKVorausModalClose();
+}
+
+/* ── NK VORAUSZAHLUNG ADD ── */
+function _tnNKVorausAdd(room, rid, ctx) {
+  const sec = document.getElementById(`nkv-sec-${rid}`);
+  if (!sec) return;
+  const existing = sec.querySelector('.tn-nkv-add-form');
+  if (existing) { existing.querySelector('input[type=date]')?.focus(); return; }
+
+  const body = sec.querySelector('.tn-sec-body');
+  const form = document.createElement('div');
+  form.className = 'tn-nkv-add-form';
+  form.innerHTML = `
+    <input type="date" id="nkv-add-date-${rid}" style="width:130px" />
+    <input type="number" id="nkv-add-amount-${rid}" placeholder="Betrag €" step="0.01" min="0" />
+    <button class="tn-btn tn-btn-primary" style="height:30px;font-size:11px;padding:0 10px"
+      onclick="_tnNKVorausConfirmAdd('${room}','${rid}')">
+      <i class="ti ti-check" aria-hidden="true"></i>
+    </button>
+    <button class="tn-btn tn-btn-sm" style="height:30px;font-size:11px;padding:0 10px"
+      onclick="this.closest('.tn-nkv-add-form').remove()">
+      <i class="ti ti-x" aria-hidden="true"></i>
+    </button>`;
+  body.appendChild(form);
+  form.querySelector('input[type=date]').focus();
+}
+
+async function _tnNKVorausConfirmAdd(room, rid) {
+  const dateInp   = document.getElementById(`nkv-add-date-${rid}`);
+  const amountInp = document.getElementById(`nkv-add-amount-${rid}`);
+  const date   = dateInp?.value?.trim();
+  const amount = parseFloat(amountInp?.value);
+  if (!date || isNaN(amount) || amount <= 0) {
+    dateInp?.focus();
+    return;
+  }
+  if (!sbL) return;
+  const { data, error } = await sbL.from('nk_vorauszahlung_history')
+    .insert({ room, effective_date: date, amount,
+              tenant_notified: false, tenant_adjusted: false })
+    .select().single();
+  if (error) { console.warn('[tenants] nkv add:', error.message); return; }
+  if (!_tnNKVoraus[room]) _tnNKVoraus[room] = [];
+  _tnNKVoraus[room].unshift(data);
+  _tnNKVoraus[room].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+  _tnRender();
+}
+
+/* ── NK VORAUSZAHLUNG MARK NOTIFIED ── */
+async function _tnNKVorausMarkNotified(id, room, rid) {
+  if (!sbL) return;
+  const today = new Date().toISOString().slice(0,10);
+  const { error } = await sbL.from('nk_vorauszahlung_history')
+    .update({ tenant_notified: true, notified_date: today })
+    .eq('id', id);
+  if (error) { console.warn('[tenants] nkv notified:', error.message); return; }
+  const entry = (_tnNKVoraus[room] || []).find(e => e.id === id);
+  if (entry) { entry.tenant_notified = true; entry.notified_date = today; }
+  _tnRenderNKVorausRow(id, room, rid);
+}
+
+/* ── NK VORAUSZAHLUNG MARK ADJUSTED ── */
+async function _tnNKVorausMarkAdjusted(id, room, rid) {
+  if (!sbL) return;
+  const today = new Date().toISOString().slice(0,10);
+  const { error } = await sbL.from('nk_vorauszahlung_history')
+    .update({ tenant_adjusted: true, adjusted_date: today })
+    .eq('id', id);
+  if (error) { console.warn('[tenants] nkv adjusted:', error.message); return; }
+  const entry = (_tnNKVoraus[room] || []).find(e => e.id === id);
+  if (entry) { entry.tenant_adjusted = true; entry.adjusted_date = today; }
+  // full re-render: header pill may disappear, row moves to history
+  _tnRender();
+}
+
+/* ── NK VORAUSZAHLUNG LIGHTWEIGHT ROW REFRESH ── */
+function _tnRenderNKVorausRow(id, room, rid) {
+  // refresh just the pill state within an existing row — avoids full re-render
+  const row = document.getElementById('nkv-row-' + id);
+  if (!row) { _tnRender(); return; }
+  const entry = (_tnNKVoraus[room] || []).find(e => e.id === id);
+  if (!entry) { _tnRender(); return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  const isFuture = new Date(entry.effective_date) > today;
+  const notPill = entry.tenant_notified
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informiert</span>`
+    : `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkNotified('${id}','${room}','${rid}')">
+         <i class="ti ti-mail" aria-hidden="true"></i> Informiert?
+       </button>`;
+  const adjPill = entry.tenant_adjusted
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst</span>`
+    : (entry.tenant_notified
+        ? `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkAdjusted('${id}','${room}','${rid}')">
+             <i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?
+           </button>`
+        : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?</span>`);
+  const pillsEl = row.querySelector('.tn-nkv-pills');
+  if (pillsEl) pillsEl.innerHTML = notPill + adjPill;
+}
+
 /* ── FORMER SECTION ── */
 function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
   const visible  = formerRecs.filter(r => _tnFormerVisible(r));
@@ -1451,6 +1748,9 @@ function _tnModalBodyHTML(rec) {
 
   <!-- NK -->
   ${_tnNKHTML('m', tid, 'modal')}
+
+  <!-- NK VORAUSZAHLUNG -->
+  ${_tnNKVorausHTML('m', rec.room, 'modal')}
   `;
 }
 
