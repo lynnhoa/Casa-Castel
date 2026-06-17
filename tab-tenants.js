@@ -204,7 +204,7 @@ document.getElementById('tab-tenants').innerHTML = `
   color:var(--cc-taupe); cursor:pointer; font-family:inherit; white-space:nowrap; }
 
 /* ── DOCS ── */
-.tn-doc-row { display:flex; align-items:center; gap:8px; padding:4px 0; }
+.tn-doc-row { display:flex; align-items:center; gap:8px; padding:6px 0; }
 .tn-doc-name { flex:1; font-size:11px; color:var(--cc-charcoal); }
 .tn-doc-btns { display:flex; gap:4px; margin-left:4px; }
 .tn-doc-btn { display:inline-flex; align-items:center; gap:3px; height:24px;
@@ -949,8 +949,8 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
 
   return `
 <div class="tn-sec">
-  <div class="tn-sec-body" style="padding-top:10px;padding-bottom:11px">
-    <div style="margin-bottom:8px"><span class="tn-sec-lbl">Documents</span></div>
+  <div class="tn-sec-body" style="padding-top:16px;padding-bottom:14px">
+    <div style="margin-bottom:10px"><span class="tn-sec-lbl">Documents</span></div>
     ${!activeType ? `<p class="tn-empty">No contract type set in rooms tab.</p>` : ''}
     ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
     ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
