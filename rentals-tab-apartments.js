@@ -1384,9 +1384,7 @@ function _aptOpenContract(type, aptId) {
         const endVal      = document.getElementById('apt-cm-end')?.value;
         const sigVal      = document.getElementById('apt-cm-sig')?.value;
         const kautionVal  = document.getElementById('apt-cm-kaution')?.value;
-        if (!mieterName) { alert('Bitte Mietername eingeben.');  return; }
-        if (!startVal)   { alert('Bitte Mietbeginn auswählen.'); return; }
-        if (!endVal)     { alert('Bitte Mietende angeben.');     return; }
+        if (!startVal || !endVal) { alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
         const btn = document.getElementById('aptKzPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
@@ -1403,7 +1401,8 @@ function _aptOpenContract(type, aptId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          const filename = `Kurzzeitmiete_${apt2.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
+          const safeName = mieterName ? mieterName.replace(/\s+/g,'_') : apt2.name;
+          const filename = `Kurzzeitmiete_${apt2.name}_${safeName}.pdf`;
           await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[Kurzzeit PDF]', err);
@@ -1435,9 +1434,8 @@ function _aptOpenContract(type, aptId) {
         const endVal            = befristet ? document.getElementById('apt-mv-end')?.value : null;
         const grundVal          = befristet ? (document.querySelector('input[name="apt-mv-grund"]:checked')?.value || '') : '';
         const eigenbedarfPerson = grundVal === 'eigenbedarf' ? document.getElementById('apt-mv-eigenbedarf-person')?.value.trim() : '';
-        if (!mieterName) { alert('Bitte Mietername eingeben.'); return; }
-        if (!startVal)   { alert('Bitte Mietbeginn auswählen.'); return; }
-        if (befristet && !endVal) { alert('Bitte Mietende angeben.'); return; }
+        if (!startVal) { alert('Bitte Mietbeginn ausfüllen.'); return; }
+        if (befristet && !endVal) { alert('Bitte Mietende ausfüllen.'); return; }
         if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) {
           alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
         }
@@ -1472,7 +1470,8 @@ function _aptOpenContract(type, aptId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          const filename = `Mietvertrag_${apt2.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
+          const safeName = mieterName ? mieterName.replace(/\s+/g,'_') : apt2.name;
+          const filename = `Mietvertrag_${apt2.name}_${safeName}.pdf`;
           await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[Mietvertrag PDF]', err);
