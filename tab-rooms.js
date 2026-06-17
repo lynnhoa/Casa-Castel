@@ -924,11 +924,6 @@ function _renderRoomsList() {
   const list = document.getElementById('roomsList');
   if (!list) return;
 
-  // Snapshot expanded card IDs before clobbering DOM (realtime re-renders must not collapse cards)
-  const expandedIds = new Set(
-    [...list.querySelectorAll('.rc--expanded')].map(c => c.dataset.id)
-  );
-
   const rooms = appRooms.slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   if (!rooms.length) {
@@ -938,13 +933,6 @@ function _renderRoomsList() {
   }
 
   list.innerHTML = rooms.map(r => _roomCardHTML(r)).join('');
-
-  // Restore expanded state after re-render
-  expandedIds.forEach(id => {
-    const card = list.querySelector(`.rc[data-id="${id}"]`);
-    if (card) card.classList.add('rc--expanded');
-  });
-
   _updateRoomsSummary(rooms);
   _bindAllCards();
 }
@@ -1554,13 +1542,6 @@ async function _saveCard(card) {
   card.remove();
   _bindAllCards();
   _initSortable();
-  // Scroll to top of saved card, below sticky nav (same pattern as _toggleCard)
-  requestAnimationFrame(() => {
-    const cardTop = newCard.getBoundingClientRect().top + window.scrollY;
-    const navH    = document.querySelector('.cc-nav')?.offsetHeight    || 56;
-    const headerH = document.querySelector('.cc-header')?.offsetHeight || 52;
-    window.scrollTo({ top: cardTop - navH - headerH - 8, behavior: 'smooth' });
-  });
 }
 
 
@@ -1900,7 +1881,8 @@ function _openContract(type, roomId) {
       const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
       if (!startVal || !endVal) { alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
       const s    = appSettings;
-      const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll });
+      const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
+      const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz });
       const html = _renderKurzzeitHTML(data);
       // Pre-render into hidden container so preview can read it
       let container = document.getElementById('_pdfRenderContainer');
@@ -1951,9 +1933,11 @@ function _openContract(type, roomId) {
       if (!startVal) { alert('Bitte Mietbeginn ausfüllen.'); return; }
       if (befristet && !endVal) { alert('Bitte Mietende ausfüllen.'); return; }
       const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
+      const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
       const data = _buildMietvertragOnlyData(room2, appSettings, {
         mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
         befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
+        kautionOverride: kautionOverrideMv,
       });
       const html = _renderMietvertragHTML(data);
       let container = document.getElementById('_pdfRenderContainer');
@@ -2176,9 +2160,8 @@ function _updateMonatToggles() {
   const endVal   = document.getElementById('cm-end')?.value;
 
   // — Kaution display update —
-  const kautionValEl  = document.getElementById('cm-kaution-val');
   const kautionRuleEl = document.getElementById('cm-kaution-rule');
-  if (kautionValEl && startVal && endVal) {
+  if (startVal && endVal) {
     const room = getRoomById(_contractRoomId);
     if (room) {
       const kzKalt = Number(room.kurzzeit_kaltmiete) || 0;
@@ -2199,8 +2182,13 @@ function _updateMonatToggles() {
         kaution   = rent * 3;
         ruleText  = `> 3 Monate → 3× (${totalMonths} Mon.)`;
       }
-      kautionValEl.textContent  = fmtEUR(kaution);
-      kautionRuleEl.textContent = ruleText;
+      // Update editable kaution input — only if user hasn't manually changed it
+      const kautionInp = document.getElementById('cm-kaution');
+      if (kautionInp) {
+        kautionInp.value = kaution;
+        kautionInp.placeholder = fmtEUR(kaution);
+      }
+      if (kautionRuleEl) kautionRuleEl.textContent = ruleText;
     }
   }
 
@@ -2306,12 +2294,14 @@ function _contractBodyKurzzeit(room) {
       <div class="rm-pre-row"><span>Schlüssel</span><span>${esc(schluessel)}</span></div>
     </div>
 
-    <div class="rm-kaution-row">
-      <div>
-        <div class="rm-kaution-lbl">Kaution (auto)</div>
+    <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
+      <div style="flex:1">
+        <div class="rm-kaution-lbl">Kaution</div>
         <div class="rm-kaution-rule" id="cm-kaution-rule">${kautionRule}</div>
       </div>
-      <div class="rm-kaution-val" id="cm-kaution-val">${kautionVal}</div>
+      <input class="rm-input" id="cm-kaution" type="number" style="width:120px;text-align:right;font-size:14px;"
+        value="${room.kaution_override && room.kaution_default ? Number(room.kaution_default) : kzBase}"
+        placeholder="€ Kaution"/>
     </div>
 
     <div class="rm-fields-title">Tenant details — enter manually</div>
@@ -2395,7 +2385,8 @@ async function _generateKurzzeitPDF() {
   if (pdfBtn) { pdfBtn.innerHTML = '<i class="ti ti-loader"></i> Generating…'; pdfBtn.disabled = true; }
 
   const s    = appSettings;
-  const data = _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll });
+  const kautionOverridePreview = parseFloat(document.getElementById('cm-kaution')?.value) || null;
+  const data = _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverridePreview });
   const html = _renderKurzzeitHTML(data);
 
   // Render template in hidden div
@@ -2484,7 +2475,7 @@ async function _generateKurzzeitPDF() {
 
 
 /* ── BUILD MIETVERTRAG DATA ──────────────────────────────── */
-function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '', startVal, endVal, sigVal, ersterMonatVoll = false, letzterMonatVoll = false }) {
+function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '', startVal, endVal, sigVal, ersterMonatVoll = false, letzterMonatVoll = false, kautionOverride = null }) {
   const fmt = d => {
     const dt = new Date(d);
     return String(dt.getDate()).padStart(2,'0') + '.' +
@@ -2548,7 +2539,9 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
   const kzIsPauschalForKaution = (room.kurzzeit_pricing || 'pauschal') !== 'kalt_nk';
   const kautionBase = kzIsPauschalForKaution ? kzKalt + kzNk : kzKalt;
   let kaution;
-  if (room.kaution_override && room.kaution_default) {
+  if (kautionOverride != null) {
+    kaution = kautionOverride;
+  } else if (room.kaution_override && room.kaution_default) {
     kaution = Number(room.kaution_default);
   } else {
     kaution = totalMonths <= 3 ? kautionBase : kautionBase * 3;
@@ -3657,6 +3650,7 @@ function _buildMietvertragOnlyData(room, s, {
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
   ersterMonatVoll = false,
+  kautionOverride = null,
 }) {
   const fmt = d => {
     const dt = new Date(d);
@@ -3702,9 +3696,11 @@ function _buildMietvertragOnlyData(room, s, {
   const kautionBase = pricingMode === 'pauschal'
     ? kaltmiete + nkVorauszahlung
     : kaltmiete;
-  const kaution = room.kaution_override && room.kaution_default
-    ? Number(room.kaution_default)
-    : kautionBase * 3;
+  const kaution = kautionOverride != null
+    ? kautionOverride
+    : room.kaution_override && room.kaution_default
+      ? Number(room.kaution_default)
+      : kautionBase * 3;
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
@@ -3804,12 +3800,13 @@ function _contractBodyMietvertrag(room) {
       <div class="rm-pre-row"><span>Schlüssel</span><span>${esc(schluessel)}</span></div>
     </div>
 
-    <div class="rm-kaution-row">
-      <div>
+    <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
+      <div style="flex:1">
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
-        <div class="rm-kaution-rule">3 \u00d7 Kaltmiete \u00b7 Treuhandkonto</div>
+        <div class="rm-kaution-rule">3 \u00d7 Kaltmiete · Treuhandkonto</div>
       </div>
-      <div class="rm-kaution-val">${fmtEUR(kaution)}</div>
+      <input class="rm-input" id="mv-kaution" type="number" style="width:120px;text-align:right;font-size:14px;"
+        value="${kaution}" placeholder="€ Kaution"/>
     </div>
 
     <div class="rm-fields-title" style="margin-top:2px;">Mieterdaten</div>
