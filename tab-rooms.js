@@ -1531,11 +1531,14 @@ async function _saveCard(card) {
     return;
   }
 
-  // Re-render
-  const wasExpanded = card.classList.contains('rc--expanded');
-  card.outerHTML = _roomCardHTML(result.room);
-  const newCard = document.querySelector(`.rc[data-id="${result.room.id}"]`);
-  if (wasExpanded && newCard) newCard.classList.add('rc--expanded');
+  // Re-render — use insertBefore/remove (more reliable than outerHTML on iOS)
+  const newDiv = document.createElement('div');
+  newDiv.innerHTML = _roomCardHTML(result.room);
+  const newCard = newDiv.firstElementChild;
+  // Always restore expanded + read mode (never re-enter edit after save)
+  newCard.classList.add('rc--expanded');
+  card.parentNode.insertBefore(newCard, card);
+  card.remove();
   _bindAllCards();
   _initSortable();
 }
