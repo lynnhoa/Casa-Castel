@@ -11,11 +11,15 @@
   <title>Rentals — Management</title>
   <link rel="stylesheet" href="casa-castel.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
+  <style>
+    /* show login by default; showApp() hides it */
+    #loginScreen { display: flex; }
+  </style>
 </head>
 <body class="is-landlord">
 
   <!-- ══ LOGIN ══ -->
-  <div class="login-screen" id="loginScreen" style="display:none">
+  <div class="login-screen" id="loginScreen">
     <p class="login-logo">Rentals</p>
     <p class="login-sub">Property Management</p>
     <div class="login-box">
@@ -54,12 +58,12 @@
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
         <div class="tab-content" id="tab-apartments"></div>
-        <div class="tab-content" id="tab-parking"    style="display:none;"></div>
-        <div class="tab-content" id="tab-tenants"    style="display:none;"></div>
+        <div class="tab-content" id="tab-parking"  style="display:none;"></div>
+        <div class="tab-content" id="tab-tenants"  style="display:none;"></div>
       </div>
     </div>
 
-  </div><!-- /.app-shell -->
+  </div>
 
   <!-- ══ SCRIPTS ══ -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -70,7 +74,6 @@
   <script src="rentals-nav.js"></script>
   <script src="rentals-tab-apartments.js"></script>
   <script>
-    /* ── TAB SWITCHING ── */
     function switchTab(tabName) {
       try { localStorage.setItem('rentals_last_tab', tabName); } catch(e) {}
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
@@ -92,8 +95,8 @@
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('appShell').classList.add('visible');
       window.scrollTo(0, 0);
-      const saved    = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
-      const available = new Set(['apartments', 'parking', 'tenants']);
+      const saved     = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
+      const available = new Set(['apartments','parking','tenants']);
       switchTab((saved && available.has(saved)) ? saved : 'apartments');
     }
 

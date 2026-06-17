@@ -43,10 +43,9 @@ function initLandlordLogin() {
     ?.addEventListener('click', doLandlordLogin);
   document.getElementById('landlordPass')
     ?.addEventListener('keydown', e => { if (e.key === 'Enter') doLandlordLogin(); });
+  // Auto-login if already authenticated
   if (localStorage.getItem('rentals_role') === 'landlord') {
     showApp();
-  } else {
-    document.getElementById('loginScreen').style.display = 'flex';
   }
 }
 
