@@ -1196,7 +1196,7 @@ function _tnOpenModal(tid) {
 }
 
 function _tnModalBodyHTML(rec) {
-  const tid  = rec.id;
+  const tid  = rec.id || '_draft';
   const full = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
   const ct   = rec.contract_type;
   const dK   = rec.kaltmiete   != null ? Number(rec.kaltmiete)   : null;
@@ -1385,7 +1385,9 @@ function _tnCloseModal() {
       if (fedit) fedit.style.display = 'none';
     }
   }
-  document.getElementById('tnModal').classList.remove('open');
+  const modal = document.getElementById('tnModal');
+  modal._draft = null;
+  modal.classList.remove('open');
   document.body.style.overflow = '';
   _tnModalTid = null;
 }
@@ -1989,17 +1991,92 @@ async function _tnDeleteDoc(tid, type, docId) {
 /* ══════════════════════════════════════════════════════════════
    17. FORMER TENANT MANAGEMENT
 ══════════════════════════════════════════════════════════════ */
-async function _tnAddFormer(roomName) {
+function _tnAddFormer(roomName) {
+  // Open modal with a local draft — nothing written to DB until Save
+  const draft = {
+    id: null,
+    room: roomName,
+    status: 'former',
+    contract_type: _tnRoomContractType(roomName),
+    first_name: null, last_name: null, email: null, phone: null,
+    birthday: null, address: null, mietbeginn: null, mietende: null,
+    kaltmiete: null, nebenkosten: null, kaution_soll: null,
+  };
+  _tnOpenModalDraft(draft);
+}
+
+function _tnOpenModalDraft(draft) {
+  _tnModalTid = null; // null signals draft mode
+
+  document.getElementById('tnModalName').textContent = 'New former tenant';
+  document.getElementById('tnModalSub').innerHTML =
+    `<span class="tnp tnp-gray">${esc(draft.room)}</span>`;
+
+  document.getElementById('tnModalBody').innerHTML = _tnModalBodyHTML(draft);
+  // Footer: just Save + Cancel for draft
+  document.getElementById('tnModalFooter').innerHTML = `
+    <div class="tn-sheet-spacer"></div>
+    <button class="tn-btn tn-btn-sm" onclick="_tnCloseModal()">Cancel</button>
+    <button class="tn-btn tn-btn-primary" onclick="_tnModalSaveDraft()">
+      <i class="ti ti-check"></i> Save</button>`;
+
+  // Store draft data for save
+  document.getElementById('tnModal')._draft = draft;
+
+  // Open in edit mode immediately
+  const body = document.getElementById('tnModalBody');
+  const read  = body.querySelector('[id^="mprof-read-"]');
+  const edit  = body.querySelector('[id^="mprof-edit-"]');
+  const fread = body.querySelector('[id^="mprof-foot-read-"]');
+  const fedit = body.querySelector('[id^="mprof-foot-edit-"]');
+  if (read)  read.style.display  = 'none';
+  if (edit)  edit.style.display  = '';
+  if (fread) fread.style.display = 'none';
+  if (fedit) fedit.style.display = 'none';
+
+  document.getElementById('tnModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+async function _tnModalSaveDraft() {
   if (!sbL) return;
+  const modal = document.getElementById('tnModal');
+  const draft = modal._draft;
+  if (!draft) return;
+
+  const body = document.getElementById('tnModalBody');
+  const p    = _tnCollectProfile(body, 'data-mf');
+  const ctBtn = body.querySelector('.tn-contract-toggle .tn-btn-primary');
+  const ctype = ctBtn?.dataset?.ct || draft.contract_type || null;
+
+  const btn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-primary');
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+
   const { data, error } = await sbL.from('tenant_records')
-    .insert({ room: roomName, status:'former',
-              contract_type: _tnRoomContractType(roomName) })
+    .insert({
+      room: draft.room, status: 'former', contract_type: ctype,
+      first_name: p.first_name, last_name: p.last_name,
+      email: p.email, phone: p.phone, birthday: p.birthday,
+      address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
+      kaltmiete: p.kaltmiete ?? null,
+      nebenkosten: p.nebenkosten ?? null,
+      kaution_soll: p.kaution_soll ?? null,
+    })
     .select().single();
-  if (error) { console.warn('[tenants] add former:', error.message); return; }
+
+  if (error) {
+    console.warn('[tenants] add former:', error.message);
+    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
+    return;
+  }
+
   await _tnEnsureKaution(data.id);
   _tnRecords.push(data);
   _tnNK[data.id]   = [];
   _tnDocs[data.id] = [];
+  modal._draft = null;
+
+  _tnCloseModal();
   _tnOpenModal(data.id);
   _tnRender();
 }
