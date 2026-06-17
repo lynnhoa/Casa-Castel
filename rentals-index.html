@@ -25,6 +25,7 @@
             <i class="ti ti-user"></i>
           </button>
           <div class="nav-profile-menu" id="navProfileMenu">
+            <button class="nav-profile-menu-item" id="rpProfileBtn">Profile</button>
             <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
           </div>
         </div>
@@ -53,6 +54,7 @@
   <!-- Shared constants & Supabase client (defines SB_URL, SB_KEY, sbL) -->
   <script src="constants.js"></script>
   <script src="supabase-client.js"></script>
+  <script src="settings.js"></script>
 
   <!-- Nav helpers -->
   <script>
@@ -70,10 +72,15 @@
         localStorage.removeItem('rentals_role');
         location.reload();
       });
+      document.getElementById('rpProfileBtn')?.addEventListener('click', () => {
+        document.getElementById('navProfileMenu')?.classList.remove('open');
+        openRentalsProfile();
+      });
     }
   </script>
 
   <script src="rentals-tab-apartments.js"></script>
+  <script src="rentals-profile.js"></script>
 
   <script>
     function switchTab(tabName) {
