@@ -86,7 +86,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-tenant-name { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400; color:var(--cc-ink); line-height:1.1; }
 .tn-tenant-dates { font-size:11px; color:var(--cc-taupe); }
 .tn-hdr-bot { display:flex; align-items:center; gap:5px; margin-top:5px; flex-wrap:wrap; }
-.tn-warm { font-size:14px; font-weight:500; color:var(--cc-charcoal); letter-spacing:-.01em; }
+.tn-warm { font-size:11px; font-weight:500; color:var(--cc-charcoal); }
 .tn-dim { font-size:10px; font-weight:300; color:var(--cc-stone); }
 .tn-dot-sep { width:3px; height:3px; border-radius:50%;
   background:var(--cc-rule); flex-shrink:0; }
@@ -121,12 +121,12 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-rent-form { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
   padding:10px 14px 12px; border-bottom:var(--cc-border); }
 .tn-rf { display:flex; flex-direction:column; gap:3px; }
-.tn-rf input { width:100%; font-size:13px; padding:3px 8px;
+.tn-rf input { width:100%; font-size:12px; padding:3px 8px;
   border-radius:var(--cc-r-sm); border:var(--cc-border);
   background:var(--cc-surface); color:var(--cc-charcoal);
   font-family:inherit; outline:none; -webkit-appearance:none; }
 .tn-rf input:focus { border-color:var(--cc-gold); background:var(--cc-white); }
-.tn-rf-derived { font-size:12px; font-weight:500; color:var(--cc-charcoal);
+.tn-rf-derived { font-size:11px; font-weight:400; color:var(--cc-charcoal);
   padding:5px 8px; background:var(--cc-surface); border-radius:var(--cc-r-sm);
   border:var(--cc-border); }
 .tn-rf-hint { font-size:10px; color:var(--cc-stone); grid-column:1/-1; }
@@ -150,17 +150,17 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-flbl { font-size:11px; font-weight:400; color:var(--cc-taupe); }
 .tn-fval { font-size:12px; color:var(--cc-charcoal); }
 .tn-fval.muted { color:var(--cc-stone); font-style:italic; }
-.tn-field input { width:100%; font-size:13px; min-height:38px; padding:8px 10px;
+.tn-field input { width:100%; font-size:12px; min-height:38px; padding:8px 10px;
   border-radius:var(--cc-r-sm); border:var(--cc-border);
   background:var(--cc-bg); color:var(--cc-charcoal); font-weight:300;
   font-family:inherit; outline:none; -webkit-appearance:none;
   -webkit-text-size-adjust:100%; transition:border-color .15s; }
 .tn-field input:focus { border-color:var(--cc-gold); background:var(--cc-white); }
 .tn-field input::placeholder { color:var(--cc-stone); }
-#tab-tenants .tn-field input { font-size:13px !important; }
-#tab-tenants .tn-rf input { font-size:13px !important; }
-#tab-tenants .tn-kc-input { font-size:13px !important; }
-#tab-tenants .tn-nk-add-form input { font-size:13px !important; }
+#tab-tenants .tn-field input { font-size:12px !important; }
+#tab-tenants .tn-rf input { font-size:12px !important; }
+#tab-tenants .tn-kc-input { font-size:12px !important; }
+#tab-tenants .tn-nk-add-form input { font-size:12px !important; }
 .tn-contract-toggle { display:flex; gap:4px; margin-top:4px; }
 
 /* ── BUTTONS ── */
@@ -206,9 +206,9 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-kc { background:var(--cc-surface); border-radius:var(--cc-r-sm); padding:7px 9px; }
 .tn-kc-lbl { font-size:10px; font-weight:500; letter-spacing:.09em;
   text-transform:uppercase; color:var(--cc-taupe); margin-bottom:3px; }
-.tn-kc-val { font-size:13px; font-weight:500; color:var(--cc-charcoal); }
+.tn-kc-val { font-size:12px; font-weight:400; color:var(--cc-charcoal); }
 .tn-kc-val.gold { color:var(--cc-gold); }
-.tn-kc-input { width:100%; font-size:13px; font-weight:500; padding:3px 5px;
+.tn-kc-input { width:100%; font-size:12px; font-weight:400; padding:3px 5px;
   border-radius:4px; border:.5px solid var(--cc-rule);
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; margin-top:1px;
@@ -222,7 +222,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-nk-row { display:flex; align-items:center; gap:9px; padding:5px 0;
   border-bottom:var(--cc-border); }
 .tn-nk-row:last-of-type { border-bottom:none; }
-.tn-nk-period { font-size:12px; font-weight:500; min-width:50px;
+.tn-nk-period { font-size:11px; font-weight:400; min-width:50px;
   color:var(--cc-charcoal); flex-shrink:0; }
 .tn-nk-dots { display:flex; gap:3px; flex-shrink:0; }
 .tn-nd { width:18px; height:18px; border-radius:50%; display:flex;
@@ -250,7 +250,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-add-nk-btn i { font-size:12px; }
 .tn-nk-add-form { display:flex; align-items:center; gap:6px;
   padding-top:8px; border-top:var(--cc-border); margin-top:4px; }
-.tn-nk-add-form input { flex:1; font-size:13px; padding:5px 8px;
+.tn-nk-add-form input { flex:1; font-size:12px; padding:5px 8px;
   border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold);
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; }
