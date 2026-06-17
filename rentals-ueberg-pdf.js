@@ -25,20 +25,20 @@
   if (document.getElementById('aptUebergPreviewOverlay')) return;
   const el = document.createElement('div');
   el.id = 'aptUebergPreviewOverlay';
-  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:800;background:rgba(30,27,24,.55);backdrop-filter:blur(3px);flex-direction:column;align-items:center;';
+  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:900;background:#F5F2ED;flex-direction:column;align-items:center;';
   el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:860px;padding:14px 20px 10px;flex-shrink:0;">
-      <span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;font-weight:300;color:#fff;">Übergabeprotokoll</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:860px;padding:14px 20px 10px;flex-shrink:0;background:#F5F2ED;border-bottom:.5px solid #e0dbd4;">
+      <span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;font-weight:300;color:#1a1a1a;">Übergabeprotokoll</span>
       <div style="display:flex;gap:10px;align-items:center;">
-        <button id="aptUebergSaveBtn" style="height:36px;padding:0 18px;background:#fff;color:#1E1B18;border:none;border-radius:8px;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;">
+        <button id="aptUebergSaveBtn" style="height:36px;padding:0 18px;background:#1E1B18;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;">
           <i class="ti ti-download"></i> Save PDF
         </button>
-        <button id="aptUebergPreviewClose" style="width:32px;height:32px;background:rgba(255,255,255,.15);border:none;border-radius:50%;color:#fff;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+        <button id="aptUebergPreviewClose" style="width:32px;height:32px;background:var(--cc-surface);border:.5px solid var(--cc-rule);border-radius:50%;color:var(--cc-charcoal);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
           <i class="ti ti-x"></i>
         </button>
       </div>
     </div>
-    <div id="aptUebergPreviewBody" style="flex:1;overflow-y:auto;width:100%;display:flex;flex-direction:column;align-items:center;padding:0 16px 32px;gap:12px;-webkit-overflow-scrolling:touch;"></div>
+    <div id="aptUebergPreviewBody" style="flex:1;overflow-y:auto;width:100%;display:flex;flex-direction:column;align-items:center;padding:16px 16px 32px;gap:12px;-webkit-overflow-scrolling:touch;background:#F5F2ED;"></div>
   `;
   el.style.display = 'none';
   document.getElementById('appShell')?.appendChild(el);
@@ -46,6 +46,7 @@
   document.getElementById('aptUebergPreviewClose').addEventListener('click', e => {
     e.stopPropagation();
     el.style.display = 'none';
+    document.getElementById('aptContractOverlay')?.classList.add('open');
   });
 })();
 
@@ -177,6 +178,7 @@ async function _aptOpenUebergPreview(d, container) {
     freshSave.innerHTML = '<i class="ti ti-download"></i> Save PDF';
     freshSave.disabled = false;
     document.getElementById('aptUebergPreviewOverlay').style.display = 'none';
+    document.getElementById('aptContractOverlay')?.classList.add('open');
   });
 
   // Re-enable modal button
