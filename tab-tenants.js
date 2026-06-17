@@ -80,7 +80,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-hdr-top { display:flex; align-items:center; gap:8px; }
 .tn-room-lbl { font-size:10px; font-weight:500; letter-spacing:.09em;
   text-transform:uppercase; color:var(--cc-taupe); }
-.tn-chev { font-size:18px; color:var(--cc-stone); margin-left:auto; flex-shrink:0;
+.tn-chev { font-size:18px; color:var(--cc-stone); flex-shrink:0;
   transition:transform .2s cubic-bezier(.32,.72,0,1); }
 .tn-card.open .tn-chev { transform:rotate(90deg); }
 .tn-hdr-mid { display:flex; align-items:baseline; gap:8px; margin-top:4px; flex-wrap:wrap; }
@@ -592,16 +592,20 @@ function _tnIsPast(dateStr) {
 
 function _tnStatusPill(room, activeRec) {
   if (!activeRec) return '';
+  // Move-out: always alone, highest priority
   const days = _tnDaysToMoveOut(activeRec);
   if (days !== null && days >= 0 && days <= 60)
     return `<span class="tnp tnp-red">Move-out in ${days} day${days===1?'':'s'}</span>`;
   const k = _tnKaution[activeRec.id];
   const recv = k ? Number(k.received) : 0;
   const settled = k ? k.settled : false;
-  if (recv === 0)   return `<span class="tnp tnp-amber">Kaution pending</span>`;
-  if (!settled)     return `<span class="tnp tnp-blue">Kaution holding</span>`;
-  if (_tnNkHasOpen(activeRec.id)) return `<span class="tnp tnp-amber">NK open</span>`;
-  return `<span class="tnp tnp-green">All good</span>`;
+  // Collect actionable pills in priority order
+  const pills = [];
+  if (recv === 0)                        pills.push(`<span class="tnp tnp-amber">Kaution pending</span>`);
+  if (_tnNkHasOpen(activeRec.id))        pills.push(`<span class="tnp tnp-red">NK open</span>`);
+  if (recv > 0 && !settled && !pills.length) pills.push(`<span class="tnp tnp-blue">Kaution holding</span>`);
+  // Max 2 pills; silence when nothing actionable
+  return pills.slice(0, 2).join('');
 }
 
 
@@ -810,7 +814,6 @@ function _tnHeaderHTML(rid, room, activeRec) {
         ${warm != null ? `<span class="tn-warm">${_tnFmtEUR(warm)}</span><span class="tn-dim">${isKaltNK ? 'warm' : 'pauschal'}</span>` : ''}
         ${(kalt != null && nk != null && isKaltNK) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_tnFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_tnFmtEUR(nk).replace('\u00a0\u20ac','')} kalt+NK</span>` : ''}
         ${priceLabel ? `<div class="tn-dot-sep"></div><span class="tnp tnp-gray">${esc(priceLabel)}</span>` : ''}
-        ${statusPill ? `<div class="tn-dot-sep"></div>${statusPill}` : ''}
       </div>`;
   } else {
     // rooms.vacant = false but no tenant record yet → Occupied (room is assigned) but no tenant added
@@ -822,7 +825,8 @@ function _tnHeaderHTML(rid, room, activeRec) {
 <div class="tn-hdr-wrap" onclick="_tnToggleCard('tc-${rid}')">
   <div class="tn-hdr-top">
     <span class="tn-room-lbl">${esc(room.name)}</span>
-    <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
+    ${statusPill ? `<div style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${statusPill}</div>` : ''}
+    <i class="ti ti-chevron-right tn-chev" style="${statusPill ? '' : 'margin-left:auto'}" aria-hidden="true"></i>
   </div>
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
@@ -2329,13 +2333,10 @@ function _tnRefreshFormerBadges(tid) {
 
   // Refresh collapsed nudge strip
   const kept = _tnKautionKept(tid);
-  let nudgeFound = false;
   document.querySelectorAll('.tn-kaution-nudge').forEach(el => {
     if (el.getAttribute('onclick')?.includes(tid)) {
-      nudgeFound = true;
       if (settled || !hasK) {
         el.remove();
-        nudgeFound = false;
       } else {
         const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
         const keptEl  = el.querySelector('.tn-nudge-kept');
@@ -2343,33 +2344,6 @@ function _tnRefreshFormerBadges(tid) {
       }
     }
   });
-  // If nudge doesn't exist yet but should (e.g. received was just entered for first time),
-  // create it and insert it after the card header
-  if (!nudgeFound && hasK && !settled) {
-    const rec = _tnRecords.find(r => r.id === tid);
-    if (rec) {
-      const card = document.querySelector(`.tn-card[data-room="${CSS.escape(rec.room)}"]`);
-      if (card) {
-        const name = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || '\u2014';
-        const kk2 = _tnKaution[tid];
-        const allReturned2 = kk2 && kk2.returned >= kk2.received;
-        const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : allReturned2 ? 'fully returned' : 'full refund';
-        const statusStr = allReturned2 ? 'Mark settled' : 'Refund pending';
-        const nudgeEl = document.createElement('div');
-        nudgeEl.className = 'tn-kaution-nudge';
-        nudgeEl.setAttribute('onclick', `_tnOpenModal('${tid}')`);
-        nudgeEl.innerHTML = `<i class="ti ti-user" style="font-size:11px"></i>
-          <span class="tn-nudge-name">${esc(name)} · former</span>
-          <span class="tn-nudge-kept">${keptStr}</span>
-          <span class="tn-nudge-status">${statusStr}</span>
-          <i class="ti ti-chevron-right" style="font-size:11px"></i>`;
-        // Insert after the header (first child of card)
-        const header = card.querySelector('.tn-hdr');
-        if (header) header.after(nudgeEl);
-        else card.prepend(nudgeEl);
-      }
-    }
-  }
 
   // Refresh summary line
   const summaryEl = document.getElementById('tn-kaution-summary');
