@@ -3,143 +3,103 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
-  <title>Rentals</title>
+  <meta name="robots" content="noindex, nofollow"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="Rentals"/>
+  <meta name="theme-color" content="#F5F2ED"/>
+  <title>Rentals — Management</title>
+  <link rel="stylesheet" href="casa-castel.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=Inter:wght@300;400;500&display=swap');
-
-    :root {
-      --cc-bg:      #F5F2ED;
-      --cc-surface: #EDE8E0;
-      --cc-white:   #FDFCFA;
-      --cc-rule:    #E0DAD0;
-      --cc-ink:     #1E1B18;
-      --cc-charcoal:#3A3530;
-      --cc-taupe:   #9A8E7E;
-      --cc-stone:   #C8BFB0;
-      --cc-border:  0.5px solid #E0DAD0;
-      --cc-r-md:    8px;
-      --cc-sp-12:   12px;
-      --cc-sp-16:   16px;
-      --cc-sp-20:   20px;
-    }
-
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; }
-    body { font-family: 'Inter', system-ui, sans-serif; background: var(--cc-bg); min-height: 100vh; }
-
-    /* NAV */
-    .cc-nav {
-      background: var(--cc-bg);
-      border-bottom: var(--cc-border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: var(--cc-sp-20) var(--cc-sp-20) var(--cc-sp-16);
-      padding-top: calc(var(--cc-sp-20) + env(safe-area-inset-top, 0px));
-    }
-    .cc-nav__logo {
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 20px;
-      font-weight: 300;
-      color: var(--cc-ink);
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      text-decoration: none;
-    }
-    .cc-nav__icon {
-      width: 34px; height: 34px;
-      display: flex; align-items: center; justify-content: center;
-      color: var(--cc-taupe); font-size: 16px;
-      border-radius: 50%;
-      border: 0.5px solid var(--cc-rule);
-      background: var(--cc-surface);
-      transition: background 0.18s, border-color 0.18s, color 0.18s;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .cc-nav__icon:hover { background: var(--cc-white); border-color: var(--cc-stone); color: var(--cc-ink); }
-    .cc-nav__icon:active { transform: scale(0.90); background: var(--cc-rule); }
-
-    /* PROFILE DROPDOWN */
-    .nav-profile { position: relative; display: inline-block; }
-    .nav-profile-menu {
-      display: none; position: absolute; top: calc(100% + 5px); right: 0;
-      background: var(--cc-surface); border: var(--cc-border);
-      border-radius: var(--cc-r-md); box-shadow: 0 4px 12px rgba(30,27,24,0.1);
-      min-width: 110px; z-index: 9999;
-    }
-    .nav-profile-menu.open { display: block; }
-    .nav-profile-menu-item {
-      display: block; width: 100%; padding: 9px 14px;
-      font-size: 11px; font-weight: 500; letter-spacing: 0.04em;
-      color: var(--cc-taupe); background: none; border: none;
-      cursor: pointer; text-align: left; font-family: inherit;
-    }
-    .nav-profile-menu-item:active { color: var(--cc-ink); }
-
-    /* TABS */
-    .cc-tabs {
-      display: flex;
-      border-bottom: var(--cc-border);
-      padding: 0 var(--cc-sp-20);
-      background: var(--cc-bg);
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-    .cc-tabs::-webkit-scrollbar { display: none; }
-    .cc-tab {
-      flex-shrink: 0;
-      padding: 11px var(--cc-sp-12) 10px;
-      font-family: 'Inter', system-ui, sans-serif;
-      font-size: 11px; font-weight: 400;
-      letter-spacing: 0.09em; text-transform: uppercase;
-      color: var(--cc-stone);
-      border: none; border-bottom: 2px solid transparent;
-      background: none; cursor: pointer; white-space: nowrap;
-      transition: color 0.15s, border-color 0.15s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .cc-tab:hover { color: var(--cc-charcoal); }
-    .cc-tab.active { color: var(--cc-ink); border-bottom-color: var(--cc-ink); }
-  </style>
 </head>
-<body>
+<body class="is-landlord">
 
-  <nav class="cc-nav">
-    <a class="cc-nav__logo" href="#">Rentals</a>
-    <div class="nav-profile" id="navProfile">
-      <button class="cc-nav__icon" onclick="toggleProfileMenu()" aria-label="Menu">
-        <i class="ti ti-user"></i>
-      </button>
-      <div class="nav-profile-menu" id="navProfileMenu">
-        <button class="nav-profile-menu-item">Log out</button>
+  <!-- ══ LOGIN ══ -->
+  <div class="login-screen" id="loginScreen" style="display:none">
+    <p class="login-logo">Rentals</p>
+    <p class="login-sub">Property Management</p>
+    <div class="login-box">
+      <p class="login-title">Landlord access</p>
+      <div class="login-error" id="loginError">Incorrect password.</div>
+      <div class="cc-input-wrap cc-mb-16">
+        <label class="cc-input-label" for="landlordPass">Password</label>
+        <input class="cc-input" id="landlordPass" type="password" placeholder="Enter your password" autocomplete="current-password"/>
       </div>
+      <button class="cc-btn cc-btn--primary" id="landlordLoginBtn">Enter</button>
     </div>
-  </nav>
-
-  <div class="cc-tabs">
-    <button class="cc-tab active" data-tab="apartments">Apartments</button>
-    <button class="cc-tab"        data-tab="parking">Parking</button>
-    <button class="cc-tab"        data-tab="tenants">Tenants</button>
   </div>
 
+  <!-- ══ APP SHELL ══ -->
+  <div class="app-shell" id="appShell">
+
+    <div class="cc-header">
+      <nav class="cc-nav">
+        <a class="cc-nav__logo" href="#">Rentals</a>
+        <div class="nav-profile" id="navProfile">
+          <button class="cc-nav__icon" onclick="toggleProfileMenu()" aria-label="Menu">
+            <i class="ti ti-user"></i>
+          </button>
+          <div class="nav-profile-menu" id="navProfileMenu">
+            <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
+          </div>
+        </div>
+      </nav>
+      <div class="cc-tabs" id="appTabs">
+        <button class="cc-tab active" data-tab="apartments">Apartments</button>
+        <button class="cc-tab"        data-tab="parking">Parking</button>
+        <button class="cc-tab"        data-tab="tenants">Tenants</button>
+      </div>
+    </div>
+
+    <div class="cc-layout" id="appLayout">
+      <div class="cc-main" id="appMain">
+        <div class="tab-content" id="tab-apartments"></div>
+        <div class="tab-content" id="tab-parking"    style="display:none;"></div>
+        <div class="tab-content" id="tab-tenants"    style="display:none;"></div>
+      </div>
+    </div>
+
+  </div><!-- /.app-shell -->
+
+  <!-- ══ SCRIPTS ══ -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script src="rentals-constants.js"></script>
+  <script src="rentals-supabase-client.js"></script>
+  <script src="rentals-auth.js"></script>
+  <script src="rentals-nav.js"></script>
+  <script src="rentals-tab-apartments.js"></script>
   <script>
-    function toggleProfileMenu() {
-      document.getElementById('navProfileMenu').classList.toggle('open');
-    }
-    document.addEventListener('click', e => {
-      if (!document.getElementById('navProfile').contains(e.target)) {
-        document.getElementById('navProfileMenu').classList.remove('open');
-      }
-    });
-    document.querySelectorAll('.cc-tab').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.cc-tab').forEach(t => t.classList.remove('active'));
-        btn.classList.add('active');
+    /* ── TAB SWITCHING ── */
+    function switchTab(tabName) {
+      try { localStorage.setItem('rentals_last_tab', tabName); } catch(e) {}
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      const tabEl = document.getElementById('tab-' + tabName);
+      if (tabEl) tabEl.style.display = 'block';
+      document.querySelectorAll('.cc-tab[data-tab]').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tabName);
       });
-    });
+      if (tabName === 'apartments') loadApartments?.();
+    }
+
+    function initTabs() {
+      document.querySelectorAll('.cc-tab[data-tab]').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+      });
+    }
+
+    function showApp() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appShell').classList.add('visible');
+      window.scrollTo(0, 0);
+      const saved    = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
+      const available = new Set(['apartments', 'parking', 'tenants']);
+      switchTab((saved && available.has(saved)) ? saved : 'apartments');
+    }
+
+    initTabs();
+    initNav();
+    initLandlordLogin();
   </script>
 
 </body>
