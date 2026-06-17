@@ -634,10 +634,8 @@ function _tnRender() {
   const list = document.getElementById('tenantsList');
   if (!list) return;
 
-  // Preserve which cards are currently open
-  const openIds = new Set(
-    [...list.querySelectorAll('.tn-card.open')].map(c => c.id)
-  );
+  // Preserve which cards are open before re-render
+  const openIds = new Set([...list.querySelectorAll('.tn-card.open')].map(c => c.id));
 
   const rooms = (typeof appRooms !== 'undefined' && appRooms.length)
     ? appRooms.filter(r => r.active).sort((a,b) => (a.sort_order||0) - (b.sort_order||0))
@@ -835,9 +833,24 @@ function _tnProfileSectionHTML(rid, room, rec) {
   const tid = rec ? rec.id : '';
   const editingCls = startEdit ? ' editing' : '';
 
-  const fv = (val, cls) => val
-    ? `<span class="tn-fval${cls ? ' '+cls : ''}">${val}</span>`
+  // No nested backticks — use string concat for span values
+  const fv = (val) => val
+    ? '<span class="tn-fval">' + val + '</span>'
     : '<span class="tn-fval muted">Not set</span>';
+
+  const moveOutVal = (rec && rec.mietende)
+    ? '<span class="tn-fval">' + _tnFmtDate(rec.mietende) + '</span>'
+    : '<span class="tn-fval muted">Not set \u2014 active</span>';
+
+  const emailBtn = email
+    ? '<button class="tn-btn tn-btn-sm" onclick="window.location.href=buildMailto(\'' + email + '\',\'Message from Casa Castel\',\'\')"><i class="ti ti-mail"></i> Email</button>'
+    : '';
+  const cancelBtn = rec
+    ? '<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile(\'' + rid + '\',\'' + tid + '\',\'' + esc(room.name) + '\')">Cancel</button>'
+    : '';
+  const saveOnclick = tid
+    ? '_tnSaveProfile(\'' + rid + '\',\'' + tid + '\',\'' + esc(room.name) + '\')'
+    : '_tnSaveNewTenant(\'' + rid + '\',\'' + esc(room.name) + '\')';
 
   const grid = `
   <div class="tn-fg${editingCls}" id="pfg-${rid}">
@@ -868,8 +881,8 @@ function _tnProfileSectionHTML(rid, room, rec) {
     </div>
     <div class="tn-field">
       <span class="tn-flbl">Move out</span>
-      <span class="tn-fval${rec && rec.mietende ? '' : ' muted'}">${_tnFmtDate(rec ? rec.mietende : '') || 'Not set — active'}</span>
-      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY — becomes Former when reached"/>
+      ${moveOutVal}
+      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 becomes Former when reached"/>
     </div>
     <div class="tn-field tn-field-full">
       <span class="tn-flbl">Address</span>
@@ -878,33 +891,25 @@ function _tnProfileSectionHTML(rid, room, rec) {
     </div>
   </div>`;
 
-  const footerRead = `
-  <div class="tn-sec-footer-split" id="pfoot-read-${rid}" ${startEdit ? 'style="display:none"' : ''}>
-    ${email ? `<button class="tn-btn tn-btn-sm" onclick="window.location.href=buildMailto('${email}','Message from Casa Castel','')">
-      <i class="ti ti-mail"></i> Email</button>` : ''}
-    <button class="tn-btn tn-btn-sm" onclick="_tnResetPw('${esc(room.name)}')">
-      <i class="ti ti-key"></i> Reset pw</button>
-    <div class="tn-spacer"></div>
-    <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">
-      <i class="ti ti-pencil"></i> Edit</button>
-  </div>`;
-
-  const footerEdit = `
-  <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
-    ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
-    <button class="tn-btn tn-btn-primary"
-      onclick="${rec ? `_tnSaveProfile('${rid}','${tid}','${esc(room.name)}')` : `_tnSaveNewTenant('${rid}','${esc(room.name)}')`}">
-      <i class="ti ti-check"></i> Save</button>
-  </div>`;
-
   return `
 <div class="tn-sec" id="psec-${rid}">
   <div class="tn-sec-body" style="padding-top:10px">
     <div style="margin-bottom:8px"><span class="tn-sec-lbl">Profile</span></div>
     ${grid}
   </div>
-  ${footerRead}
-  ${footerEdit}
+  <div class="tn-sec-footer-split" id="pfoot-read-${rid}" ${startEdit ? 'style="display:none"' : ''}>
+    ${emailBtn}
+    <button class="tn-btn tn-btn-sm" onclick="_tnResetPw('${esc(room.name)}')">
+      <i class="ti ti-key"></i> Reset pw</button>
+    <div class="tn-spacer"></div>
+    <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">
+      <i class="ti ti-pencil"></i> Edit</button>
+  </div>
+  <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
+    ${cancelBtn}
+    <button class="tn-btn tn-btn-primary" onclick="${saveOnclick}">
+      <i class="ti ti-check"></i> Save</button>
+  </div>
 </div>`;
 }
 /* ── DOCUMENTS SECTION ── */
@@ -1498,10 +1503,13 @@ async function _tnSaveNewTenant(rid, roomName) {
   if (status === 'active') await _tnWriteDefaultPw(roomName);
   await _tnLoad();
 }
+
+async function _tnSaveProfile(rid, tid, roomName) {
+  if (!sbL) return;
   const sec = document.getElementById('pfg-' + rid);
   if (!sec) return;
   const btn = document.getElementById('pfoot-edit-' + rid)?.querySelector('.tn-btn-primary');
-  if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
 
   const p   = _tnCollectProfile(sec, 'data-f');
   const rec = _tnRecords.find(r => r.id === tid);
@@ -1543,38 +1551,36 @@ async function _tnSaveNewTenant(rid, roomName) {
   }
   await _tnEnsureKaution(tid);
 
-  // If status changed (active↔former), a full re-render is needed
+  // Status change requires full re-render (card re-builds), open state preserved by _tnRender
   if (toFormer || toActive) { await _tnLoad(); return; }
 
   // Update local cache
   if (rec) Object.assign(rec, update);
 
-  // Update fval spans in-place
+  // Patch fval spans in-place — order matches grid: name,birthday,email,phone,movein,moveout,address
   const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ');
   const fvals = sec.querySelectorAll('.tn-fval');
-  const setFv = (el, val, muteIfEmpty) => {
+  const setFv = (el, val) => {
     if (!el) return;
-    if (val) { el.textContent = val; el.classList.remove('muted'); }
-    else if (muteIfEmpty) { el.textContent = 'Not set'; el.classList.add('muted'); }
+    if (val) { el.textContent = val; el.classList.remove('muted'); el.innerHTML = val; }
+    else     { el.textContent = 'Not set'; el.classList.add('muted'); }
   };
-  // Order matches grid: name, birthday, email, phone, movein, moveout, address
-  if (fvals[0]) setFv(fvals[0], fullName, true);
-  if (fvals[1]) setFv(fvals[1], p.birthday || '', true);
-  if (fvals[2]) setFv(fvals[2], p.email || '', true);
-  if (fvals[3]) setFv(fvals[3], p.phone || '', true);
-  if (fvals[4]) setFv(fvals[4], _tnFmtDate(p.mietbeginn) || '', true);
+  if (fvals[0]) setFv(fvals[0], fullName);
+  if (fvals[1]) setFv(fvals[1], p.birthday || '');
+  if (fvals[2]) setFv(fvals[2], p.email || '');
+  if (fvals[3]) setFv(fvals[3], p.phone || '');
+  if (fvals[4]) setFv(fvals[4], _tnFmtDate(p.mietbeginn) || '');
   if (fvals[5]) {
     const mo = _tnFmtDate(p.mietende);
-    fvals[5].textContent = mo || 'Not set \u2014 active';
+    fvals[5].textContent = mo || 'Not set — active';
     fvals[5].classList.toggle('muted', !mo);
   }
-  if (fvals[6]) setFv(fvals[6], p.address || '', true);
+  if (fvals[6]) setFv(fvals[6], p.address || '');
 
-  // Flip back to read mode — keep card open
+  // Flip back to read mode — card stays open
   _tnToggleProfile(rid, tid, roomName);
   if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
 }
-
 async function _tnSaveRent(rid, tid, roomName) {
   if (!sbL || !tid) return;
   const kalt  = parseFloat(document.getElementById('rf-kalt-'  + rid)?.value) || null;
@@ -1588,31 +1594,21 @@ async function _tnSaveRent(rid, tid, roomName) {
   const rec = _tnRecords.find(r => r.id === tid);
   if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
 
-  // Update rent bar read values in-place
+  // Update rent bar in-place
   const liveP = _tnRoomPricing(roomName);
   const resolvedKalt = kalt ?? liveP?.kaltmiete ?? null;
   const resolvedNk   = nk   ?? liveP?.nebenkosten ?? null;
   const resolvedWarm = (resolvedKalt != null && resolvedNk != null) ? resolvedKalt + resolvedNk : null;
-
   const bar = document.getElementById('rbar-' + rid);
   if (bar) {
     const vals = bar.querySelectorAll('.tn-rval');
-    if (vals[0]) vals[0].textContent = resolvedKalt != null ? _tnFmtEUR(resolvedKalt) : '\u2014';
-    if (vals[1]) vals[1].textContent = resolvedNk   != null ? _tnFmtEUR(resolvedNk)   : '\u2014';
-    if (vals[2]) vals[2].textContent = resolvedWarm != null ? _tnFmtEUR(resolvedWarm) : '\u2014';
+    if (vals[0]) vals[0].textContent = resolvedKalt != null ? _tnFmtEUR(resolvedKalt) : '—';
+    if (vals[1]) vals[1].textContent = resolvedNk   != null ? _tnFmtEUR(resolvedNk)   : '—';
+    if (vals[2]) vals[2].textContent = resolvedWarm != null ? _tnFmtEUR(resolvedWarm) : '—';
     const subs = bar.querySelectorAll('.tn-rsub');
     if (subs[0]) subs[0].textContent = kalt != null ? 'agreed' : 'from rooms tab';
     if (subs[1]) subs[1].textContent = nk   != null ? 'agreed' : 'per month';
   }
-
-  // Update kaution hint if visible
-  const kautHint = document.querySelector('#tab-tenants .tn-kaut-hint');
-  if (kautHint && ksoll != null) {
-    const ctype = _tnRoomContractType(roomName);
-    const rule = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
-    kautHint.textContent = `Soll: ${_tnFmtEUR(ksoll)} \u00b7 ${rule}`;
-  }
-
   // Switch back to read bar, keep card open
   _tnToggleRentEdit(rid);
 }
