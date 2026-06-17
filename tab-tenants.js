@@ -13,10 +13,10 @@
    1. HTML INJECT
 ══════════════════════════════════════════════════════════════ */
 document.getElementById('tab-tenants').innerHTML = `
-  <div class="tn-hdr">
+  <div class="tn-hdr" style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
     <h1 class="cc-h1">Tenants</h1>
+    <div id="tn-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--cc-stone);"></div>
   </div>
-  <div id="tn-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--cc-stone);padding:0 4px 14px;"></div>
   <div class="tn-list" id="tenantsList"></div>
 
   <input type="file" id="tnFileInput" accept="application/pdf,image/*"
@@ -1071,7 +1071,7 @@ function _tnKautionHTML(rid, tid, ctx) {
   <div class="${body}" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
-      <span class="tnp ${st.cls}" id="kstat-${pfx}">${st.label}</span>
+
     </div>
     ${soll != null ? `<div class="tn-kaut-hint">Soll: ${_tnFmtEUR(soll)} \u00b7 ${rule}</div>` : ''}
     <div class="tn-kaut-grid">
@@ -1096,6 +1096,10 @@ function _tnKautionHTML(rid, tid, ctx) {
       ${dis} onclick="_tnToggleSettle('${pfx}','${tid||''}')">
       <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
     </button>` : ''}
+    <button class="tn-btn tn-btn-sm" id="ksave-${pfx}"
+      ${dis} onclick="_tnSaveKautionBtn('${pfx}','${tid||''}')">
+      Save
+    </button>
   </div>
 </div>`;
 }
