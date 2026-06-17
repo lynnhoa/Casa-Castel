@@ -58,6 +58,8 @@ async function aptGenerateUebergPDF(isEinzug) {
   if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating…'; btn.disabled = true; }
 
   try {
+    // Ensure profile data is loaded before building PDF
+    if (typeof loadSettings === 'function') await loadSettings();
     const d = _aptCollectUebergData(apt, isEinzug);
     const html = _aptRenderUebergHTML(d);
 
