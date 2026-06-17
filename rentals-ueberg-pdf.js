@@ -42,8 +42,9 @@
   `;
   el.style.display = 'none';
   document.getElementById('appShell')?.appendChild(el);
-
-  document.getElementById('aptUebergPreviewClose').addEventListener('click', () => {
+  el.addEventListener('click', e => e.stopPropagation());
+  document.getElementById('aptUebergPreviewClose').addEventListener('click', e => {
+    e.stopPropagation();
     el.style.display = 'none';
   });
 })();
@@ -168,7 +169,8 @@ async function _aptOpenUebergPreview(d, container) {
   const saveBtn = document.getElementById('aptUebergSaveBtn');
   const freshSave = saveBtn.cloneNode(true);
   saveBtn.parentNode.replaceChild(freshSave, saveBtn);
-  freshSave.addEventListener('click', async () => {
+  freshSave.addEventListener('click', async e => {
+    e.stopPropagation();
     freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving…';
     freshSave.disabled = true;
     await _aptSaveUebergPDFFromData(d);

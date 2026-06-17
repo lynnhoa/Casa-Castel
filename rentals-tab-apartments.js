@@ -1514,8 +1514,9 @@ document.getElementById('aptContractClose')?.addEventListener('click', () => {
 });
 document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
   if (e.target === document.getElementById('aptContractOverlay')) {
-    const pdfPreview = document.getElementById('aptContractPdfPreviewOverlay');
-    if (pdfPreview && pdfPreview.style.display !== 'none') return;
+    const p1 = document.getElementById('aptContractPdfPreviewOverlay');
+    const p2 = document.getElementById('aptUebergPreviewOverlay');
+    if ((p1 && p1.style.display !== 'none') || (p2 && p2.style.display !== 'none')) return;
     document.getElementById('aptContractOverlay').classList.remove('open');
   }
 });
@@ -1878,7 +1879,9 @@ function _aptReadKautionFael(prefix) {
     <div id="aptCPdfPreviewBody" style="flex:1;overflow-y:auto;width:100%;display:flex;flex-direction:column;align-items:center;padding:0 16px 32px;gap:12px;-webkit-overflow-scrolling:touch;"></div>
   `;
   document.getElementById('appShell')?.appendChild(el);
-  document.getElementById('aptCPdfPreviewClose').addEventListener('click', () => {
+  el.addEventListener('click', e => e.stopPropagation());
+  document.getElementById('aptCPdfPreviewClose').addEventListener('click', e => {
+    e.stopPropagation();
     el.style.display = 'none';
   });
 })();
@@ -1920,7 +1923,8 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
     // Wire save from stored canvases (no re-render needed)
     const freshSave = saveBtn.cloneNode(true);
     saveBtn.parentNode.replaceChild(freshSave, saveBtn);
-    freshSave.addEventListener('click', async () => {
+    freshSave.addEventListener('click', async e => {
+      e.stopPropagation();
       freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving\u2026'; freshSave.disabled = true;
       const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
       canvases.forEach((c, i) => {
