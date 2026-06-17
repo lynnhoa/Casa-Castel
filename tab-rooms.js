@@ -2299,9 +2299,9 @@ function _contractBodyKurzzeit(room) {
         <div class="rm-kaution-lbl">Kaution</div>
         <div class="rm-kaution-rule" id="cm-kaution-rule">${kautionRule}</div>
       </div>
-      <input class="rm-input" id="cm-kaution" type="number" style="width:120px;text-align:right;font-size:14px;"
+      <input class="rm-input" id="cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
         value="${room.kaution_override && room.kaution_default ? Number(room.kaution_default) : kzBase}"
-        placeholder="€ Kaution"/>
+        placeholder="€"/>
     </div>
 
     <div class="rm-fields-title">Tenant details — enter manually</div>
@@ -3805,8 +3805,8 @@ function _contractBodyMietvertrag(room) {
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
         <div class="rm-kaution-rule">3 \u00d7 Kaltmiete · Treuhandkonto</div>
       </div>
-      <input class="rm-input" id="mv-kaution" type="number" style="width:120px;text-align:right;font-size:14px;"
-        value="${kaution}" placeholder="€ Kaution"/>
+      <input class="rm-input" id="mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
+        value="${kaution}" placeholder="€"/>
     </div>
 
     <div class="rm-fields-title" style="margin-top:2px;">Mieterdaten</div>
