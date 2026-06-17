@@ -1,0 +1,1673 @@
+/* ─────────────────────────────────────────────────────────────
+   RENTALS — APARTMENTS TAB
+   rentals-tab-apartments.js
+
+   Full apartment management:
+   - Card list with expand/collapse, drag-to-sort (SortableJS)
+   - Per-section inline edit (Identity, Miete, Verwaltung, Zähler, Schlüssel)
+   - Vacant / occupied toggle
+   - Inventar modal (Anlage A)
+   - Contract modals: Kurzzeitmiete, Mietvertrag, Übergabeprotokoll
+     (PDF generation — coming next build)
+   - Delete with confirmation
+
+   Depends on: rentals-constants.js, rentals-supabase-client.js
+   ───────────────────────────────────────────────────────────── */
+
+
+/* ── INJECT HTML ─────────────────────────────────────────── */
+document.getElementById('tab-apartments').innerHTML = `
+
+  <div class="rp-hdr">
+    <h1 class="rp-title">Apartments</h1>
+    <button class="rp-add-btn" id="aptAddBtn">
+      <i class="ti ti-plus"></i> Add
+    </button>
+  </div>
+
+  <div class="rp-summary" id="aptSummary" style="display:none">
+    <div>
+      <div class="rp-summary__label">Gesamtkaltmiete / Monat</div>
+      <div class="rp-summary__breakdown" id="aptSummaryBreakdown"></div>
+    </div>
+    <div>
+      <div class="rp-summary__total" id="aptSummaryTotal"></div>
+      <div class="rp-summary__sub">nur belegte Wohnungen</div>
+    </div>
+  </div>
+
+  <div class="rp-list" id="aptList"></div>
+
+  <!-- ══ INVENTAR MODAL ══ -->
+  <div class="rm-overlay" id="aptInventarOverlay">
+    <div class="rm-sheet">
+      <div class="rm-sheet__hdr">
+        <div>
+          <div class="rm-sheet__title">Inventar</div>
+          <div class="rm-sheet__sub" id="aptInventarSubtitle"></div>
+        </div>
+        <button class="rm-sheet__close" id="aptInventarClose"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="rm-sheet__body">
+        <div class="inv-list" id="aptInventarList"></div>
+        <button class="inv-add-btn" id="aptInventarAddRow">
+          <i class="ti ti-plus"></i> Add item
+        </button>
+      </div>
+      <div class="rm-sheet__footer">
+        <button class="rm-btn--ghost" id="aptInventarCancel">Cancel</button>
+        <button class="rm-btn--primary" id="aptInventarSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CONTRACT MODAL ══ -->
+  <div class="rm-overlay" id="aptContractOverlay">
+    <div class="rm-sheet rm-sheet--tall">
+      <div class="rm-sheet__hdr">
+        <div>
+          <div class="rm-contract-type" id="aptContractTypeLbl"></div>
+          <div class="rm-sheet__title" id="aptContractTitleLbl"></div>
+          <div class="rm-sheet__sub" id="aptContractSubLbl"></div>
+        </div>
+        <button class="rm-sheet__close" id="aptContractClose"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="rm-sheet__body" id="aptContractBody"></div>
+      <div class="rm-sheet__footer" id="aptContractFooter"></div>
+    </div>
+  </div>
+
+  <!-- ══ CONFIRM DELETE ══ -->
+  <div class="rm-confirm-overlay" id="aptConfirmOverlay">
+    <div class="rm-confirm-box">
+      <div class="rm-confirm-icon"><i class="ti ti-alert-triangle"></i></div>
+      <div class="rm-confirm-title">Delete apartment</div>
+      <div class="rm-confirm-body" id="aptConfirmBody"></div>
+      <div class="rm-confirm-btns">
+        <button class="rm-btn--cancel" id="aptConfirmCancel">Cancel</button>
+        <button class="rm-btn--danger" id="aptConfirmOk"><i class="ti ti-trash"></i> Delete</button>
+      </div>
+    </div>
+  </div>
+`;
+
+
+/* ── STYLES ──────────────────────────────────────────────── */
+(function() {
+  if (document.getElementById('apt-tab-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'apt-tab-styles';
+  s.textContent = `
+/* Page header */
+.rp-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-top:24px; }
+.rp-title { font-family:'Cormorant Garamond',Georgia,serif; font-size:32px; font-weight:300; color:var(--cc-ink); }
+.rp-add-btn {
+  display:flex; align-items:center; gap:6px; padding:8px 14px; min-height:34px;
+  background:var(--cc-ink); color:var(--cc-white); border:none; border-radius:var(--cc-r-md);
+  font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase;
+  font-family:inherit; cursor:pointer;
+}
+
+/* Summary */
+.rp-summary { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:12px; background:var(--cc-white); border:var(--cc-border); border-radius:var(--cc-r-lg); }
+.rp-summary__label { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-taupe); margin-bottom:2px; }
+.rp-summary__breakdown { font-size:11px; color:var(--cc-stone); }
+.rp-summary__total { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400; color:var(--cc-ink); text-align:right; }
+.rp-summary__sub { font-size:10px; color:var(--cc-stone); text-align:right; }
+
+/* Card list */
+.rp-list { display:flex; flex-direction:column; gap:8px; padding-bottom:40px; }
+
+/* SortableJS */
+.sortable-ghost  { opacity:.3; background:var(--cc-surface)!important; border:1px dashed var(--cc-stone)!important; }
+.sortable-chosen { box-shadow:0 8px 32px rgba(30,27,24,.16)!important; z-index:10; position:relative; }
+
+/* ── CARD ── */
+.apt-card {
+  background:var(--cc-white); border:var(--cc-border); border-radius:var(--cc-r-lg);
+  overflow:hidden; transition:box-shadow .2s;
+}
+.apt-card.apt--open { box-shadow:0 4px 24px rgba(30,27,24,.08); }
+
+/* Header */
+.apt-hdr {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:14px 16px; cursor:pointer; user-select:none;
+}
+.apt-drag {
+  color:var(--cc-stone); font-size:14px; flex-shrink:0; opacity:.4;
+  margin-top:4px; cursor:grab; touch-action:none;
+}
+.apt-drag:hover { opacity:.9; }
+.apt-hdr__info { flex:1; min-width:0; }
+.apt-hdr__namerow { display:flex; align-items:center; gap:8px; margin-bottom:3px; flex-wrap:wrap; }
+.apt-hdr__name { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400; color:var(--cc-ink); line-height:1.1; }
+.apt-status-badge { font-size:9px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; padding:3px 9px; border-radius:var(--cc-r-pill); flex-shrink:0; }
+.apt-status--occupied { background:#EAF3DE; color:#27500A; border:.5px solid #9AC87A; }
+.apt-status--vacant   { background:#F5F0EB; color:#8C6A3A; border:.5px solid #D4A87A; }
+.apt-hdr__addr { font-size:10px; color:var(--cc-stone); margin-bottom:3px; }
+.apt-hdr__tags { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:5px; }
+.apt-tag { font-size:9px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px; border-radius:20px; }
+.apt-tag--apt { background:var(--cc-surface); color:var(--cc-taupe); border:.5px solid var(--cc-rule); }
+.apt-tag--gew { background:#E6F1FB; color:#0C447C; border:.5px solid #85B7EB; }
+.apt-hdr__rent { font-size:12px; color:var(--cc-charcoal); margin-top:2px; }
+.apt-hdr__rent strong { color:var(--cc-gold); font-weight:500; }
+.apt-hdr__rent--vacant { color:var(--cc-stone); font-style:italic; font-size:12px; }
+.apt-chevron { color:var(--cc-stone); font-size:16px; transition:transform .22s cubic-bezier(.32,.72,0,1); flex-shrink:0; margin-top:4px; }
+.apt--open .apt-chevron { transform:rotate(90deg); }
+
+/* Body */
+.apt-body { display:none; border-top:var(--cc-border); }
+.apt--open .apt-body { display:block; }
+
+/* Actions strip */
+.apt-actions { display:flex; gap:6px; padding:8px 14px; border-bottom:var(--cc-border); }
+.apt-act {
+  height:28px; display:flex; align-items:center; gap:4px; padding:0 12px;
+  border-radius:var(--cc-r-pill); font-size:9px; font-weight:600; letter-spacing:.07em;
+  text-transform:uppercase; cursor:pointer; font-family:inherit; background:none;
+  -webkit-tap-highlight-color:transparent; white-space:nowrap;
+}
+.apt-act:active { opacity:.7; }
+.apt-act--mark-vacant   { color:#8C6A3A; border:.5px solid #D4A87A; }
+.apt-act--mark-occupied { color:#27500A; border:.5px solid #9AC87A; }
+
+/* Sections */
+.apt-section { padding:11px 14px; border-bottom:var(--cc-border); position:relative; }
+.apt-section--miete { padding:11px 14px 11px 12px; border-bottom:var(--cc-border); border-left:3px solid var(--cc-gold); position:relative; }
+.apt-stitle { font-size:9px; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--cc-stone); margin-bottom:7px; }
+.apt-row { display:flex; justify-content:space-between; align-items:baseline; padding:3px 0; gap:12px; }
+.apt-row__k { font-size:11px; color:var(--cc-taupe); flex-shrink:0; }
+.apt-row__v { font-size:12px; color:var(--cc-charcoal); text-align:right; }
+.apt-row__v--gold { color:var(--cc-gold); font-weight:500; }
+.apt-row__v--muted { color:var(--cc-stone); font-size:11px; }
+.apt-row__v--mono { font-family:'Courier New',monospace; font-size:11px; color:var(--cc-charcoal); }
+
+/* Meter groups */
+.apt-meter-group { margin-bottom:8px; }
+.apt-meter-group:last-of-type { margin-bottom:0; }
+.apt-meter-group__title {
+  font-size:9px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--cc-taupe); margin-bottom:4px; display:flex; align-items:center; gap:4px;
+}
+
+/* Section edit button */
+.apt-section-edit { display:flex; justify-content:flex-end; margin-top:10px; }
+.apt-sec-edit-btn {
+  display:flex; align-items:center; gap:4px; height:26px; padding:0 10px;
+  background:none; border:.5px solid var(--cc-rule); border-radius:6px;
+  font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--cc-taupe); cursor:pointer; font-family:inherit;
+}
+.apt-sec-edit-btn:hover { border-color:var(--cc-stone); }
+
+/* Edit field styles */
+.apt-edit-active { background:var(--cc-white); }
+.apt-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+.apt-field:last-child { margin-bottom:0; }
+.apt-field__label { font-size:10px; font-weight:500; letter-spacing:.09em; text-transform:uppercase; color:var(--cc-taupe); }
+.apt-input {
+  width:100%; min-height:38px; padding:8px 10px; background:var(--cc-bg);
+  border:var(--cc-border); border-radius:var(--cc-r-md); font-family:inherit;
+  font-size:13px; font-weight:300; color:var(--cc-charcoal); outline:none;
+  transition:border-color .15s; -webkit-appearance:none;
+}
+.apt-input:focus { border-color:var(--cc-charcoal); }
+.apt-input::placeholder { color:var(--cc-stone); }
+.apt-input--mono { font-family:'Courier New',monospace; font-size:12px; }
+.apt-field-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+.apt-field-row .apt-field { margin-bottom:0; }
+
+/* Save/cancel row */
+.apt-save-row { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.apt-btn--cancel {
+  height:36px; padding:0 16px; background:none; border:.5px solid var(--cc-rule);
+  border-radius:var(--cc-r-md); font-size:11px; font-weight:500; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--cc-taupe); cursor:pointer; font-family:inherit;
+}
+.apt-btn--save {
+  height:36px; padding:0 20px; background:var(--cc-ink); color:var(--cc-white);
+  border:none; border-radius:var(--cc-r-md); font-size:11px; font-weight:500;
+  letter-spacing:.07em; text-transform:uppercase; cursor:pointer; font-family:inherit;
+}
+.apt-btn--save:disabled { opacity:.5; cursor:not-allowed; }
+
+/* Stepper */
+.apt-stepper { display:flex; align-items:center; border:var(--cc-border); border-radius:var(--cc-r-md); overflow:hidden; width:fit-content; }
+.apt-stepper button { width:34px; height:34px; background:var(--cc-surface); border:none; font-size:16px; color:var(--cc-charcoal); cursor:pointer; font-family:inherit; display:flex; align-items:center; justify-content:center; }
+.apt-stepper__v { min-width:36px; text-align:center; font-size:13px; padding:0 4px; color:var(--cc-charcoal); }
+
+/* Kaution toggle */
+.apt-toggle-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.apt-tlabel { font-size:13px; color:var(--cc-charcoal); }
+.cc-sw { position:relative; width:40px; height:24px; flex-shrink:0; }
+.cc-sw input { opacity:0; width:0; height:0; }
+.cc-sw__t { position:absolute; inset:0; background:var(--cc-rule); border-radius:12px; transition:background .2s; cursor:pointer; }
+.cc-sw__t::after { content:''; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:white; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+.cc-sw input:checked + .cc-sw__t { background:var(--cc-ink); }
+.cc-sw input:checked + .cc-sw__t::after { transform:translateX(16px); }
+
+/* Pricing toggle */
+.apt-pricing-toggle { display:flex; border:var(--cc-border); border-radius:var(--cc-r-pill); overflow:hidden; background:var(--cc-surface); width:fit-content; margin-bottom:10px; }
+.apt-pricing-toggle button { padding:7px 16px; font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; border:none; background:transparent; color:var(--cc-stone); cursor:pointer; font-family:inherit; transition:background .15s,color .15s; }
+.apt-pricing-toggle button.active { background:var(--cc-ink); color:var(--cc-white); }
+
+/* Keys */
+.apt-keys { display:flex; flex-wrap:wrap; gap:8px; }
+.apt-key { display:flex; align-items:center; gap:4px; font-size:11px; color:var(--cc-taupe); background:var(--cc-surface); padding:4px 10px; border-radius:20px; border:.5px solid var(--cc-rule); }
+
+/* Inventar row */
+.apt-inv-row { display:flex; align-items:center; justify-content:space-between; padding:11px 16px; border-bottom:var(--cc-border); }
+.apt-inv-label { font-size:11px; font-weight:500; color:var(--cc-charcoal); }
+.apt-inv-count { font-size:10px; color:var(--cc-taupe); margin-top:1px; }
+.apt-inv-btn {
+  font-size:10px; font-weight:500; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--cc-taupe); background:none; border:.5px solid var(--cc-rule);
+  border-radius:var(--cc-r-md); padding:5px 12px; cursor:pointer; font-family:inherit;
+  display:flex; align-items:center; gap:4px;
+}
+
+/* Contracts */
+.apt-contracts { padding:11px 14px; }
+.apt-contracts-title { font-size:9px; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--cc-stone); margin-bottom:8px; }
+.apt-doc-row { display:flex; align-items:center; gap:7px; margin-bottom:6px; }
+.apt-doc-row:last-child { margin-bottom:0; }
+.apt-doc-btn {
+  flex:1; height:40px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 13px; background:#F5EFE6; color:#5C3D1E; border:.5px solid #D4B896;
+  border-radius:var(--cc-r-md); font-family:inherit; font-size:13px; font-weight:500; cursor:pointer;
+}
+.apt-doc-btn i { font-size:13px; color:#B8956A; opacity:.8; }
+.apt-doc-toggle {
+  display:flex; background:var(--cc-surface); border:.5px solid var(--cc-rule);
+  border-radius:var(--cc-r-pill); padding:3px; gap:2px; height:40px; align-items:center; flex-shrink:0;
+}
+.apt-doc-toggle button {
+  height:100%; padding:0 10px; font-size:9px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; border:none; cursor:pointer; font-family:inherit;
+  color:var(--cc-taupe); background:none; border-radius:var(--cc-r-pill); transition:all .15s;
+}
+.apt-doc-toggle button.active { background:var(--cc-white); color:var(--cc-charcoal); box-shadow:0 1px 3px rgba(30,27,24,.10); }
+
+/* Card footer delete */
+.apt-card-footer { display:flex; justify-content:flex-end; padding:10px 14px; border-top:var(--cc-border); background:var(--cc-surface); }
+.apt-delete-btn {
+  display:flex; align-items:center; gap:5px; padding:6px 12px; background:transparent;
+  border:.5px solid #EAC4BB; border-radius:var(--cc-r-md); color:#C4705A;
+  font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  cursor:pointer; font-family:inherit;
+}
+
+/* HV link */
+.apt-hv-link { font-size:12px; color:var(--cc-gold); text-decoration:none; }
+
+/* ── OVERLAYS ── */
+.rm-overlay { display:none; position:fixed; inset:0; z-index:400; background:rgba(30,27,24,.22); backdrop-filter:blur(2px); align-items:flex-end; justify-content:center; }
+.rm-overlay.open { display:flex; }
+@media(min-width:701px){ .rm-overlay { align-items:center; } .rm-sheet { border-radius:var(--cc-r-lg)!important; max-height:78vh!important; } }
+.rm-sheet { width:100%; max-width:500px; max-height:90vh; background:var(--cc-white); border-radius:20px 20px 0 0; display:flex; flex-direction:column; animation:rmSheetUp .26s cubic-bezier(.32,.72,0,1); }
+.rm-sheet--tall { max-height:94vh; }
+@keyframes rmSheetUp { from{transform:translateY(40px);opacity:0;} to{transform:none;opacity:1;} }
+.rm-sheet__hdr { display:flex; align-items:flex-start; justify-content:space-between; padding:20px 20px 14px; border-bottom:var(--cc-border); flex-shrink:0; }
+.rm-contract-type { font-size:9px; font-weight:500; letter-spacing:.11em; text-transform:uppercase; color:var(--cc-gold); margin-bottom:3px; }
+.rm-sheet__title { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:300; color:var(--cc-ink); }
+.rm-sheet__sub { font-size:12px; color:var(--cc-taupe); margin-top:2px; }
+.rm-sheet__close { width:30px; height:30px; display:flex; align-items:center; justify-content:center; background:var(--cc-surface); border:var(--cc-border); border-radius:50%; color:var(--cc-taupe); font-size:13px; cursor:pointer; flex-shrink:0; }
+.rm-sheet__body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 20px; }
+.rm-sheet__footer { padding:12px 16px; padding-bottom:max(16px,env(safe-area-inset-bottom,16px)); border-top:var(--cc-border); flex-shrink:0; display:flex; align-items:center; gap:10px; }
+.rm-btn--ghost { flex-shrink:0; height:48px; padding:0 16px; background:none; border:none; color:var(--cc-stone); font-size:13px; cursor:pointer; font-family:inherit; }
+.rm-btn--primary { flex:1; height:48px; background:var(--cc-ink); color:var(--cc-white); border:none; border-radius:var(--cc-r-md); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; font-family:inherit; }
+.rm-btn--primary:disabled { opacity:.45; cursor:not-allowed; }
+.rm-btn--cancel { flex-shrink:0; height:48px; padding:0 16px; background:none; border:none; color:var(--cc-stone); font-size:13px; cursor:pointer; font-family:inherit; }
+.rm-btn--pdf { flex:1; height:48px; background:var(--cc-ink); color:var(--cc-white); border:none; border-radius:var(--cc-r-md); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; font-family:inherit; }
+.rm-btn--pdf:disabled { opacity:.45; cursor:not-allowed; }
+
+/* Contract body elements */
+.rm-prefilled { background:var(--cc-bg); border:var(--cc-border); border-radius:var(--cc-r-md); padding:12px 14px; margin-bottom:14px; }
+.rm-prefilled__title { font-size:9px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-stone); margin-bottom:8px; }
+.rm-pre-row { display:flex; gap:8px; padding:3px 0; font-size:12px; }
+.rm-pre-row span:first-child { color:var(--cc-stone); min-width:100px; flex-shrink:0; }
+.rm-kaution-row { display:flex; align-items:flex-end; justify-content:space-between; padding:10px 14px; background:var(--cc-gold-lt); border-radius:var(--cc-r-md); margin-bottom:14px; gap:12px; }
+.rm-kaution-lbl { font-size:9px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:#9A6A2A; margin-bottom:2px; }
+.rm-kaution-rule { font-size:11px; color:#7A5A2A; }
+.rm-fields-title { font-size:9px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-taupe); margin-bottom:10px; margin-top:6px; }
+.rm-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+.rm-field:last-child { margin-bottom:0; }
+.rm-field label { font-size:10px; font-weight:500; letter-spacing:.09em; text-transform:uppercase; color:var(--cc-taupe); }
+.rm-input { width:100%; min-height:40px; padding:9px 12px; background:var(--cc-bg); border:var(--cc-border); border-radius:var(--cc-r-md); font-family:inherit; font-size:14px; font-weight:300; color:var(--cc-charcoal); outline:none; }
+.rm-input:focus { border-color:var(--cc-charcoal); }
+.rm-input::placeholder { color:var(--cc-stone); }
+.rm-field-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.rm-field-row .rm-field { margin-bottom:0; }
+.rm-field--toggle { background:var(--cc-bg); border:var(--cc-border); border-radius:var(--cc-r-md); padding:10px 12px; margin-bottom:10px; }
+.rm-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.rm-toggle-label { font-size:10px; font-weight:500; letter-spacing:.09em; text-transform:uppercase; color:var(--cc-taupe); margin-bottom:2px; }
+.rm-toggle-sub { font-size:12px; color:var(--cc-stone); }
+.rm-pill-toggle { display:flex; align-items:center; gap:8px; background:none; border:none; cursor:pointer; padding:0; flex-shrink:0; }
+.rm-pill-toggle__track { position:relative; width:40px; height:22px; background:var(--cc-stone); border-radius:11px; transition:background .2s; flex-shrink:0; }
+.rm-pill-toggle[data-mode="voll"] .rm-pill-toggle__track,
+.rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__track { background:var(--cc-charcoal); }
+.rm-pill-toggle__knob { position:absolute; top:3px; left:3px; width:16px; height:16px; background:#fff; border-radius:50%; transition:transform .2s; }
+.rm-pill-toggle[data-mode="voll"] .rm-pill-toggle__knob,
+.rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__knob { transform:translateX(18px); }
+.rm-pill-toggle__lbl { font-size:12px; font-weight:500; color:var(--cc-charcoal); min-width:52px; }
+
+/* Zähler table in modal */
+.rm-zaehler-table { width:100%; border-collapse:collapse; margin-bottom:14px; }
+.rm-zaehler-table th { font-size:9px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-stone); border-bottom:.5px solid var(--cc-rule); padding:3px 0 6px; text-align:left; }
+.rm-zaehler-table td { font-size:12px; color:var(--cc-charcoal); padding:6px 0; border-bottom:.5px solid var(--cc-surface); vertical-align:middle; }
+.rm-zaehler-table tr:last-child td { border-bottom:none; }
+.rm-zaehler-nr { font-family:'Courier New',monospace; font-size:10px; color:var(--cc-stone); }
+.rm-zaehler-input { width:100%; min-height:34px; padding:6px 10px; background:var(--cc-bg); border:var(--cc-border); border-radius:6px; font-family:inherit; font-size:13px; color:var(--cc-charcoal); outline:none; }
+.rm-zaehler-input:focus { border-color:var(--cc-charcoal); }
+.rm-zaehler-input::placeholder { color:var(--cc-stone); }
+
+/* Kaution fälligkeit pills */
+.rm-fael-btn { font-size:11px; padding:4px 10px; border-radius:20px; border:.5px solid var(--cc-rule); background:none; cursor:pointer; font-family:inherit; color:var(--cc-charcoal); }
+.rm-fael-btn.active { border-color:var(--cc-charcoal); background:var(--cc-charcoal); color:#fff; }
+
+/* Inventar modal */
+.inv-list { display:flex; flex-direction:column; border:var(--cc-border); border-radius:var(--cc-r-md); overflow:hidden; margin-bottom:8px; }
+.inv-row { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:.5px solid var(--cc-rule); background:var(--cc-bg); }
+.inv-row:last-child { border-bottom:none; }
+.inv-name { flex:1; min-height:32px; background:transparent; border:none; font-family:inherit; font-size:13px; color:var(--cc-charcoal); outline:none; }
+.inv-qty { width:48px; min-height:32px; background:var(--cc-white); border:var(--cc-border); border-radius:6px; text-align:center; font-family:inherit; font-size:13px; color:var(--cc-charcoal); outline:none; }
+.inv-rm { width:24px; height:24px; display:flex; align-items:center; justify-content:center; background:none; border:none; color:var(--cc-stone); font-size:13px; flex-shrink:0; cursor:pointer; }
+.inv-rm:hover { color:#C4705A; }
+.inv-add-btn { display:flex; align-items:center; gap:6px; width:100%; min-height:36px; padding:0 12px; background:var(--cc-white); border:.5px dashed var(--cc-rule); border-radius:var(--cc-r-md); font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--cc-taupe); cursor:pointer; font-family:inherit; }
+
+/* Confirm dialog */
+.rm-confirm-overlay { display:none; position:fixed; inset:0; z-index:600; background:rgba(30,27,24,.3); backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:24px; }
+.rm-confirm-overlay.open { display:flex; }
+.rm-confirm-box { background:var(--cc-white); border-radius:var(--cc-r-lg); padding:28px 24px 24px; max-width:320px; width:100%; box-shadow:0 24px 60px rgba(30,27,24,.18); animation:confirmPop .2s cubic-bezier(.32,.72,0,1); }
+@keyframes confirmPop { from{transform:scale(.94);opacity:0;} to{transform:scale(1);opacity:1;} }
+.rm-confirm-icon { font-size:28px; color:#C4705A; margin-bottom:12px; }
+.rm-confirm-title { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:400; color:var(--cc-ink); margin-bottom:6px; }
+.rm-confirm-body { font-size:13px; color:var(--cc-taupe); line-height:1.6; margin-bottom:20px; }
+.rm-confirm-btns { display:flex; align-items:center; gap:10px; }
+.rm-btn--danger { flex:1; height:48px; background:#C4705A; color:var(--cc-white); border:none; border-radius:var(--cc-r-md); font-size:13px; font-weight:500; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; font-family:inherit; }
+
+/* Coming soon placeholder */
+.rm-coming-soon { display:flex; flex-direction:column; align-items:center; text-align:center; padding:32px 20px; }
+.rm-coming-soon i { font-size:36px; color:var(--cc-stone); margin-bottom:12px; }
+.rm-coming-soon h3 { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:300; color:var(--cc-ink); margin-bottom:6px; }
+.rm-coming-soon p { font-size:13px; color:var(--cc-taupe); line-height:1.6; }
+
+@media(min-width:701px){
+  .rp-list { max-width:none; }
+  .apt-hdr { padding:16px 18px; }
+  .apt-actions { padding:10px 16px; }
+}
+  `;
+  document.head.appendChild(s);
+})();
+
+
+/* ── HELPERS ─────────────────────────────────────────────── */
+function aptEsc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function aptFmtEUR(n) {
+  const num = Number(n);
+  if (!num && num !== 0) return '—';
+  return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
+function aptFmtEURCompact(n) {
+  const num = Number(n);
+  if (!num && num !== 0) return '—';
+  // No decimals if whole number
+  return num.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €';
+}
+
+
+/* ── DATA STORE ──────────────────────────────────────────── */
+let appApartments = [];     // array of apartment objects (joined from all tables)
+let _aptSbClient  = null;   // set below after Supabase is confirmed
+
+
+/* ── LOAD ────────────────────────────────────────────────── */
+async function loadApartments() {
+  _aptSbClient = typeof sbL !== 'undefined' ? sbL : null;
+  if (!_aptSbClient) { console.warn('[apartments] No Supabase client'); _renderAptList(); return; }
+
+  try {
+    const [
+      { data: apts },
+      { data: pricing },
+      { data: verwaltung },
+      { data: zaehler },
+      { data: schlussel },
+      { data: inventar },
+    ] = await Promise.all([
+      _aptSbClient.from('rentals_apartments').select('*').order('sort_order'),
+      _aptSbClient.from('rentals_pricing').select('*'),
+      _aptSbClient.from('rentals_verwaltung').select('*'),
+      _aptSbClient.from('rentals_zaehler').select('*').order('sort_order'),
+      _aptSbClient.from('rentals_schlussel').select('*'),
+      _aptSbClient.from('rentals_inventar').select('*').order('sort_order'),
+    ]);
+
+    // Join all tables by apartment_id
+    appApartments = (apts || []).map(a => ({
+      ...a,
+      pricing:    (pricing    || []).find(p => p.apartment_id === a.id) || {},
+      verwaltung: (verwaltung || []).find(v => v.apartment_id === a.id) || {},
+      zaehler:    (zaehler    || []).filter(z => z.apartment_id === a.id),
+      schlussel:  (schlussel  || []).find(s => s.apartment_id === a.id) || {},
+      inventar:   (inventar   || []).filter(i => i.apartment_id === a.id),
+    }));
+  } catch(e) {
+    console.error('[apartments] Load failed:', e);
+  }
+
+  _renderAptList();
+  _aptInitSortable();
+}
+
+
+/* ── RENDER LIST ─────────────────────────────────────────── */
+function _updateAptSummary() {
+  const bar = document.getElementById('aptSummary');
+  const bd  = document.getElementById('aptSummaryBreakdown');
+  const tot = document.getElementById('aptSummaryTotal');
+  if (!bar) return;
+  if (!appApartments.length) { bar.style.display = 'none'; return; }
+
+  let kalt = 0, nk = 0, occupied = 0;
+  appApartments.forEach(a => {
+    if (a.vacant) return;
+    occupied++;
+    kalt += Number(a.pricing?.kaltmiete) || 0;
+    nk   += Number(a.pricing?.nk_pauschale) || 0;
+  });
+
+  bar.style.display = 'flex';
+  bd.textContent  = occupied + ' / ' + appApartments.length + ' belegt · ' + aptFmtEURCompact(nk) + ' NK separat';
+  tot.textContent = aptFmtEURCompact(kalt);
+}
+
+function _renderAptList() {
+  const list = document.getElementById('aptList');
+  if (!list) return;
+  if (!appApartments.length) {
+    list.innerHTML = `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0">No apartments yet. Add your first apartment.</p>`;
+    _updateAptSummary();
+    return;
+  }
+  list.innerHTML = appApartments.map(a => _aptCardHTML(a)).join('');
+  _updateAptSummary();
+}
+
+
+/* ── CARD HTML ───────────────────────────────────────────── */
+function _aptCardHTML(a) {
+  const p  = a.pricing    || {};
+  const v  = a.verwaltung || {};
+  const sk = a.schlussel  || {};
+  const zaehler  = a.zaehler  || [];
+  const inventar = a.inventar || [];
+  const vacant   = a.vacant;
+
+  // Header rent line
+  const kalt = Number(p.kaltmiete) || 0;
+  const nk   = Number(p.nk_pauschale) || 0;
+  const warm = kalt + nk;
+  const rentHTML = (kalt || nk)
+    ? `<strong>${aptFmtEURCompact(warm)}</strong> warm · ${aptFmtEURCompact(kalt)} + ${aptFmtEURCompact(nk)} NK`
+    : `<span class="apt-hdr__rent--vacant">No pricing set</span>`;
+
+  // Kaution
+  const kautionAmt = p.kaution_override && p.kaution_default
+    ? Number(p.kaution_default)
+    : kalt * 3;
+
+  // Kurzzeit
+  const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
+  const kzNk   = Number(p.kurzzeit_nk) || 0;
+  const kzWarm = kzKalt + kzNk;
+  const kzKaution = p.kaution_override && p.kaution_default ? Number(p.kaution_default) : kzKalt;
+
+  // Zähler grouped by type category
+  const meterGroups = _groupZaehler(zaehler);
+
+  // Inventar count
+  const invCount = inventar.length;
+
+  return `
+<div class="apt-card${vacant ? '' : ''}" data-id="${a.id}" data-name="${aptEsc(a.name)}">
+
+  <!-- HEADER -->
+  <div class="apt-hdr" onclick="if(!event.target.closest('.apt-drag'))_aptToggle(this.closest('.apt-card'))">
+    <i class="ti ti-grip-vertical apt-drag"></i>
+    <div class="apt-hdr__info">
+      <div class="apt-hdr__namerow">
+        <span class="apt-hdr__name">${aptEsc(a.name)}</span>
+        <span class="apt-status-badge ${vacant ? 'apt-status--vacant' : 'apt-status--occupied'}">
+          ${vacant ? 'Vacant' : 'Occupied'}
+        </span>
+      </div>
+      ${a.adresse ? `<div class="apt-hdr__addr">${aptEsc(a.adresse)}</div>` : ''}
+      <div class="apt-hdr__tags">
+        ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
+      </div>
+      <div class="apt-hdr__rent">${rentHTML}</div>
+    </div>
+    <i class="ti ti-chevron-right apt-chevron"></i>
+  </div>
+
+  <!-- BODY -->
+  <div class="apt-body">
+
+    <!-- Status action -->
+    <div class="apt-actions">
+      <button class="apt-act ${vacant ? 'apt-act--mark-occupied' : 'apt-act--mark-vacant'}"
+        onclick="_aptToggleVacant('${a.id}',this)">
+        <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:11px"></i>
+        ${vacant ? 'Mark as Occupied' : 'Mark as Vacant'}
+      </button>
+    </div>
+
+    <!-- 1. IDENTITY -->
+    <div class="apt-section" id="apt-identity-${a.id}">
+      <div class="apt-stitle">Identity</div>
+      <!-- READ -->
+      <div class="apt-sec-read">
+        <div class="apt-row"><span class="apt-row__k">Name</span><span class="apt-row__v">${aptEsc(a.name)}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Adresse</span><span class="apt-row__v">${aptEsc(a.adresse || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Heizungsart</span><span class="apt-row__v">${aptEsc(a.heizungsart || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Rooms</span><span class="apt-row__v">${aptEsc(a.zimmer_type || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Floor</span><span class="apt-row__v">${aptEsc(a.floor || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Size</span><span class="apt-row__v">${a.flaeche_m2 ? a.flaeche_m2 + ' m²' : '—'}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Energieklasse</span><span class="apt-row__v">${aptEsc(a.energieklasse || '—')}</span></div>
+        <div class="apt-section-edit">
+          <button class="apt-sec-edit-btn" onclick="_aptEnterSection('identity','${a.id}')">
+            <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+          </button>
+        </div>
+      </div>
+      <!-- EDIT (hidden) -->
+      <div class="apt-sec-edit" style="display:none">
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Name</div><input class="apt-input" data-f="name" value="${aptEsc(a.name)}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Floor</div><input class="apt-input" data-f="floor" value="${aptEsc(a.floor||'')}"/></div>
+        </div>
+        <div class="apt-field"><div class="apt-field__label">Adresse</div><input class="apt-input" data-f="adresse" value="${aptEsc(a.adresse||'')}"/></div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Size m²</div><input class="apt-input" type="number" data-f="flaeche_m2" value="${a.flaeche_m2||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Rooms</div>
+            <select class="apt-input" data-f="zimmer_type">
+              ${['1 Zimmer','2 Zimmer','3 Zimmer','4 Zimmer','Gewerbefläche'].map(t =>
+                `<option ${a.zimmer_type===t?'selected':''}>${t}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="apt-field"><div class="apt-field__label">Heizungsart</div>
+          <select class="apt-input" data-f="heizungsart">
+            ${['Zentralheizung','Fernwärme','Etagenheizung'].map(t =>
+              `<option ${a.heizungsart===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Energieklasse</div><input class="apt-input" data-f="energieklasse" value="${aptEsc(a.energieklasse||'')}" placeholder="z.B. C"/></div>
+          <div class="apt-field"><div class="apt-field__label">Endenergiebedarf</div><input class="apt-input" data-f="endenergiebedarf" value="${aptEsc(a.endenergiebedarf||'')}" placeholder="kWh/m²·a"/></div>
+        </div>
+        <div class="apt-field"><div class="apt-field__label">Energieausweisart</div><input class="apt-input" data-f="energieausweisart" value="${aptEsc(a.energieausweisart||'')}" placeholder="Bedarfsausweis / Verbrauchsausweis"/></div>
+        <div class="apt-save-row">
+          <button class="apt-btn--cancel" onclick="_aptCancelSection('identity','${a.id}')">Cancel</button>
+          <button class="apt-btn--save" onclick="_aptSaveIdentity('${a.id}')">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. MIETE -->
+    <div class="apt-section--miete" id="apt-miete-${a.id}">
+      <div class="apt-stitle">Miete</div>
+      <!-- READ -->
+      <div class="apt-sec-read">
+        ${kalt || nk ? `
+        <div class="apt-row"><span class="apt-row__k">Mietvertrag</span><span class="apt-row__v apt-row__v--gold">${aptFmtEURCompact(kalt)} kalt + ${aptFmtEURCompact(nk)} NK</span></div>
+        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kautionAmt)} · 3× Kalt${p.kaution_override ? ' (override)' : ''}</span></div>
+        ` : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
+        ${kzKalt ? `
+        <div class="apt-row" style="margin-top:6px"><span class="apt-row__k">Kurzzeit</span><span class="apt-row__v">${aptFmtEURCompact(kzWarm)} / Monat</span></div>
+        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kzKaution)} · 1× Kalt</span></div>
+        ` : ''}
+        <div class="apt-section-edit">
+          <button class="apt-sec-edit-btn" onclick="_aptEnterSection('miete','${a.id}')">
+            <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+          </button>
+        </div>
+      </div>
+      <!-- EDIT -->
+      <div class="apt-sec-edit" style="display:none">
+        <div class="apt-stitle" style="margin-top:2px">Mietvertrag</div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-f="kaltmiete" value="${p.kaltmiete||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-f="nk_pauschale" value="${p.nk_pauschale||''}"/></div>
+        </div>
+        <div class="apt-toggle-row">
+          <span class="apt-tlabel">Custom Kaution</span>
+          <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${p.kaution_override?'checked':''} onchange="_aptToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
+        </div>
+        <div data-kautionfield style="${p.kaution_override?'':'display:none'}">
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${p.kaution_default||''}"/></div>
+        </div>
+        <div class="apt-stitle" style="margin-top:10px">Kurzzeit</div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-f="kurzzeit_kaltmiete" value="${p.kurzzeit_kaltmiete||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-f="kurzzeit_nk" value="${p.kurzzeit_nk||''}"/></div>
+        </div>
+        <div class="apt-save-row">
+          <button class="apt-btn--cancel" onclick="_aptCancelSection('miete','${a.id}')">Cancel</button>
+          <button class="apt-btn--save" onclick="_aptSaveMiete('${a.id}')">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. VERWALTUNG -->
+    <div class="apt-section" id="apt-verwaltung-${a.id}">
+      <div class="apt-stitle">Verwaltung & Kosten</div>
+      <!-- READ -->
+      <div class="apt-sec-read">
+        ${v.hausverwaltung ? `<div class="apt-row"><span class="apt-row__k">Hausverwaltung</span><span class="apt-row__v">${aptEsc(v.hausverwaltung)}</span></div>` : ''}
+        ${v.hv_email ? `<div class="apt-row"><span class="apt-row__k">E-Mail</span><span class="apt-row__v"><a class="apt-hv-link" href="mailto:${aptEsc(v.hv_email)}">${aptEsc(v.hv_email)}</a></span></div>` : ''}
+        ${v.hv_telefon ? `<div class="apt-row"><span class="apt-row__k">Telefon</span><span class="apt-row__v">${aptEsc(v.hv_telefon)}</span></div>` : ''}
+        ${v.hausgeld_mtl ? `<div class="apt-row" style="margin-top:6px"><span class="apt-row__k">Hausgeld</span><span class="apt-row__v">${aptFmtEURCompact(v.hausgeld_mtl)} / mtl.</span></div>` : ''}
+        ${v.grundsteuer_mtl ? `<div class="apt-row"><span class="apt-row__k">Grundsteuer</span><span class="apt-row__v">${aptFmtEURCompact(v.grundsteuer_mtl)} / mtl.</span></div>` : ''}
+        ${(v.abrechnung_von && v.abrechnung_bis) ? `<div class="apt-row"><span class="apt-row__k">Abrechnung</span><span class="apt-row__v">${aptEsc(v.abrechnung_von)} – ${aptEsc(v.abrechnung_bis)}${v.abrechnungsmonat ? ' · ' + aptEsc(v.abrechnungsmonat) : ''}</span></div>` : ''}
+        ${v.strom_provider ? `<div class="apt-row"><span class="apt-row__k">Strom Provider</span><span class="apt-row__v">${aptEsc(v.strom_provider)}</span></div>` : ''}
+        ${!v.hausverwaltung && !v.hausgeld_mtl ? `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>` : ''}
+        <div class="apt-section-edit">
+          <button class="apt-sec-edit-btn" onclick="_aptEnterSection('verwaltung','${a.id}')">
+            <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+          </button>
+        </div>
+      </div>
+      <!-- EDIT -->
+      <div class="apt-sec-edit" style="display:none">
+        <div class="apt-field"><div class="apt-field__label">Hausverwaltung</div><input class="apt-input" data-vf="hausverwaltung" value="${aptEsc(v.hausverwaltung||'')}"/></div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">E-Mail</div><input class="apt-input" type="email" data-vf="hv_email" value="${aptEsc(v.hv_email||'')}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Telefon</div><input class="apt-input" type="tel" data-vf="hv_telefon" value="${aptEsc(v.hv_telefon||'')}"/></div>
+        </div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Hausgeld (€/mtl)</div><input class="apt-input" type="number" data-vf="hausgeld_mtl" value="${v.hausgeld_mtl||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/mtl)</div><input class="apt-input" type="number" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
+        </div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Abrechnung von</div><input class="apt-input" data-vf="abrechnung_von" value="${aptEsc(v.abrechnung_von||'')}" placeholder="01.01."/></div>
+          <div class="apt-field"><div class="apt-field__label">Abrechnung bis</div><input class="apt-input" data-vf="abrechnung_bis" value="${aptEsc(v.abrechnung_bis||'')}" placeholder="31.12."/></div>
+        </div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">Abrechnungsmonat</div><input class="apt-input" data-vf="abrechnungsmonat" value="${aptEsc(v.abrechnungsmonat||'')}" placeholder="März"/></div>
+          <div class="apt-field"><div class="apt-field__label">Strom Provider</div><input class="apt-input" data-vf="strom_provider" value="${aptEsc(v.strom_provider||'')}"/></div>
+        </div>
+        <div class="apt-save-row">
+          <button class="apt-btn--cancel" onclick="_aptCancelSection('verwaltung','${a.id}')">Cancel</button>
+          <button class="apt-btn--save" onclick="_aptSaveVerwaltung('${a.id}')">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. ZÄHLER -->
+    <div class="apt-section" id="apt-zaehler-${a.id}">
+      <div class="apt-stitle">Zähler</div>
+      <!-- READ -->
+      <div class="apt-sec-read">
+        ${meterGroups.length ? meterGroups.map(g => `
+          <div class="apt-meter-group">
+            <div class="apt-meter-group__title"><i class="ti ${g.icon}"></i> ${g.label}</div>
+            ${g.meters.map(m => `
+              <div class="apt-row">
+                <span class="apt-row__k">${aptEsc(m.subLabel || 'Nr.')}</span>
+                <span class="apt-row__v apt-row__v--mono">${aptEsc(m.zaehler_nr || '—')}</span>
+              </div>`).join('')}
+          </div>`).join('')
+        : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
+        <div class="apt-section-edit">
+          <button class="apt-sec-edit-btn" onclick="_aptEnterSection('zaehler','${a.id}')">
+            <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+          </button>
+        </div>
+      </div>
+      <!-- EDIT -->
+      <div class="apt-sec-edit" style="display:none">
+        <div id="apt-zaehler-edit-rows-${a.id}">
+          ${zaehler.map(z => `
+            <div class="apt-field-row" data-zaehler-id="${z.id}">
+              <div class="apt-field">
+                <div class="apt-field__label">${aptEsc(z.typ)}</div>
+                <input class="apt-input apt-input--mono" data-zf="zaehler_nr" value="${aptEsc(z.zaehler_nr||'')}"/>
+              </div>
+              <div class="apt-field" style="justify-content:flex-end;padding-top:18px">
+                <button onclick="this.closest('[data-zaehler-id]').remove()" style="width:32px;height:32px;background:none;border:.5px solid var(--cc-rule);border-radius:6px;cursor:pointer;color:var(--cc-stone);display:flex;align-items:center;justify-content:center">
+                  <i class="ti ti-trash" style="font-size:12px"></i>
+                </button>
+              </div>
+            </div>`).join('')}
+        </div>
+        <button onclick="_aptAddZaehlerRow('${a.id}')" style="display:flex;align-items:center;gap:6px;width:100%;min-height:36px;padding:0 12px;background:var(--cc-white);border:.5px dashed var(--cc-rule);border-radius:var(--cc-r-md);font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--cc-taupe);cursor:pointer;font-family:inherit;margin-top:8px;">
+          <i class="ti ti-plus"></i> Add meter
+        </button>
+        <div class="apt-save-row">
+          <button class="apt-btn--cancel" onclick="_aptCancelSection('zaehler','${a.id}')">Cancel</button>
+          <button class="apt-btn--save" onclick="_aptSaveZaehler('${a.id}')">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. SCHLÜSSEL -->
+    <div class="apt-section" id="apt-schlussel-${a.id}">
+      <div class="apt-stitle">Schlüssel</div>
+      <!-- READ -->
+      <div class="apt-sec-read">
+        <div class="apt-keys">
+          <div class="apt-key"><i class="ti ti-home"></i> Haustür ×${sk.haustuerschluessel ?? 1}</div>
+          <div class="apt-key"><i class="ti ti-key"></i> Wohnung ×${sk.wohnungsschluessel ?? 1}</div>
+          ${(sk.briefkastenschluessel > 0) ? `<div class="apt-key"><i class="ti ti-mail"></i> Briefkasten ×${sk.briefkastenschluessel}</div>` : ''}
+        </div>
+        <div class="apt-section-edit">
+          <button class="apt-sec-edit-btn" onclick="_aptEnterSection('schlussel','${a.id}')">
+            <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+          </button>
+        </div>
+      </div>
+      <!-- EDIT -->
+      <div class="apt-sec-edit" style="display:none">
+        <div class="apt-field-row">
+          <div class="apt-field">
+            <div class="apt-field__label">Haustür</div>
+            <div class="apt-stepper">
+              <button onclick="_aptStep(this,-1)">−</button>
+              <span class="apt-stepper__v" data-sf="haustuerschluessel">${sk.haustuerschluessel ?? 1}</span>
+              <button onclick="_aptStep(this,1)">+</button>
+            </div>
+          </div>
+          <div class="apt-field">
+            <div class="apt-field__label">Wohnung</div>
+            <div class="apt-stepper">
+              <button onclick="_aptStep(this,-1)">−</button>
+              <span class="apt-stepper__v" data-sf="wohnungsschluessel">${sk.wohnungsschluessel ?? 1}</span>
+              <button onclick="_aptStep(this,1)">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="apt-field">
+          <div class="apt-field__label">Briefkasten</div>
+          <div class="apt-stepper">
+            <button onclick="_aptStep(this,-1)">−</button>
+            <span class="apt-stepper__v" data-sf="briefkastenschluessel">${sk.briefkastenschluessel ?? 0}</span>
+            <button onclick="_aptStep(this,1)">+</button>
+          </div>
+        </div>
+        <div class="apt-save-row">
+          <button class="apt-btn--cancel" onclick="_aptCancelSection('schlussel','${a.id}')">Cancel</button>
+          <button class="apt-btn--save" onclick="_aptSaveSchlussel('${a.id}')">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. INVENTAR -->
+    <div class="apt-inv-row">
+      <div>
+        <div class="apt-inv-label">Inventar · Anlage A</div>
+        <div class="apt-inv-count">${invCount} ${invCount === 1 ? 'Gegenstand' : 'Gegenstände'}</div>
+      </div>
+      <button class="apt-inv-btn" onclick="_aptOpenInventar('${a.id}')">
+        <i class="ti ti-list"></i> Edit
+      </button>
+    </div>
+
+    <!-- 7. CONTRACTS -->
+    <div class="apt-contracts">
+      <div class="apt-contracts-title">Contracts</div>
+      <div class="apt-doc-row">
+        <button class="apt-doc-btn" onclick="_aptOpenContract('kurzzeit','${a.id}')">
+          Kurzzeitmiete <i class="ti ti-chevron-right"></i>
+        </button>
+      </div>
+      <div class="apt-doc-row">
+        <button class="apt-doc-btn" onclick="_aptOpenContract('mietvertrag','${a.id}')">
+          Mietvertrag <i class="ti ti-chevron-right"></i>
+        </button>
+      </div>
+      <div class="apt-doc-row">
+        <button class="apt-doc-btn" onclick="_aptOpenContract('ueberg','${a.id}')">
+          Übergabeprotokoll <i class="ti ti-chevron-right"></i>
+        </button>
+        <div class="apt-doc-toggle" id="apt-eu-${a.id}">
+          <button class="active" onclick="event.stopPropagation();_aptSetEU('${a.id}',0,this)">Einzug</button>
+          <button onclick="event.stopPropagation();_aptSetEU('${a.id}',1,this)">Auszug</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER: delete -->
+    <div class="apt-card-footer">
+      <button class="apt-delete-btn" onclick="_aptConfirmDelete('${a.id}','${aptEsc(a.name)}')">
+        <i class="ti ti-trash"></i> Delete apartment
+      </button>
+    </div>
+
+  </div>
+</div>`;
+}
+
+
+/* ── METER GROUPING HELPER ───────────────────────────────── */
+function _groupZaehler(zaehler) {
+  const categories = [
+    { key: 'Strom',       icon: 'ti-bolt',          label: 'Strom',       types: ['Strom'] },
+    { key: 'Gas',         icon: 'ti-flame',          label: 'Gas',         types: ['Gas'] },
+    { key: 'Heizung',     icon: 'ti-flame',          label: 'Heizung',     types: ['Heizung Bad','Heizung 1','Heizung 2','Heizung 3'] },
+    { key: 'Warmwasser',  icon: 'ti-droplet',        label: 'Warmwasser',  types: ['Warmwasser','Warmwasser Bad','Warmwasser Küche'] },
+    { key: 'Kaltwasser',  icon: 'ti-droplet-half-2', label: 'Kaltwasser',  types: ['Kaltwasser','Kaltwasser Bad','Kaltwasser Küche'] },
+    { key: 'Wasser',      icon: 'ti-droplet',        label: 'Wasser',      types: ['Wasser'] },
+  ];
+
+  const groups = [];
+  categories.forEach(cat => {
+    const meters = zaehler.filter(z => cat.types.includes(z.typ));
+    if (!meters.length) return;
+    groups.push({
+      label: cat.label,
+      icon:  cat.icon,
+      meters: meters.map(m => ({
+        ...m,
+        subLabel: meters.length === 1 ? 'Nr.' : m.typ,
+      })),
+    });
+  });
+  return groups;
+}
+
+
+/* ── CARD INTERACTIONS ───────────────────────────────────── */
+function _aptToggle(card) {
+  card.classList.toggle('apt--open');
+  if (card.classList.contains('apt--open')) {
+    requestAnimationFrame(() => {
+      const top    = card.getBoundingClientRect().top + window.scrollY;
+      const header = document.querySelector('.cc-header')?.offsetHeight || 100;
+      window.scrollTo({ top: top - header - 8, behavior: 'smooth' });
+    });
+  }
+}
+
+function _aptSetEU(aptId, idx, btn) {
+  const tog = document.getElementById('apt-eu-' + aptId);
+  if (!tog) return;
+  tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+}
+
+
+/* ── SECTION EDIT ────────────────────────────────────────── */
+function _aptEnterSection(section, aptId) {
+  const el = document.getElementById(`apt-${section}-${aptId}`);
+  if (!el) return;
+  el.querySelector('.apt-sec-read').style.display = 'none';
+  el.querySelector('.apt-sec-edit').style.display = '';
+  el.classList.add('apt-edit-active');
+  el.querySelector('.apt-input, .apt-stepper__v')?.focus?.();
+}
+
+function _aptCancelSection(section, aptId) {
+  const el = document.getElementById(`apt-${section}-${aptId}`);
+  if (!el) return;
+  // Re-render just this card from memory to discard edits
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) return;
+  const card = document.querySelector(`.apt-card[data-id="${aptId}"]`);
+  if (!card) return;
+  const wasOpen = card.classList.contains('apt--open');
+  card.outerHTML = _aptCardHTML(apt);
+  const newCard = document.querySelector(`.apt-card[data-id="${aptId}"]`);
+  if (wasOpen && newCard) newCard.classList.add('apt--open');
+}
+
+
+/* ── SAVE: IDENTITY ──────────────────────────────────────── */
+async function _aptSaveIdentity(aptId) {
+  const el  = document.getElementById(`apt-identity-${aptId}`);
+  const btn = el?.querySelector('.apt-btn--save');
+  if (!btn) return;
+  btn.textContent = '…'; btn.disabled = true;
+
+  const data = {};
+  el.querySelectorAll('[data-f]').forEach(inp => {
+    const k = inp.dataset.f;
+    data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+  });
+
+  if (_aptSbClient) {
+    const { error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId);
+    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+  }
+
+  // Update in-memory
+  const apt = appApartments.find(a => a.id === aptId);
+  if (apt) Object.assign(apt, data);
+
+  _aptRerenderCard(aptId);
+}
+
+
+/* ── SAVE: MIETE ─────────────────────────────────────────── */
+async function _aptSaveMiete(aptId) {
+  const el  = document.getElementById(`apt-miete-${aptId}`);
+  const btn = el?.querySelector('.apt-btn--save');
+  if (!btn) return;
+  btn.textContent = '…'; btn.disabled = true;
+
+  const data = {};
+  el.querySelectorAll('[data-f]').forEach(inp => {
+    const k = inp.dataset.f;
+    if (inp.type === 'checkbox') data[k] = inp.checked;
+    else if (inp.type === 'number') data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
+    else data[k] = inp.value;
+  });
+
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) return;
+
+  if (_aptSbClient) {
+    // Upsert pricing row
+    const pricingId = apt.pricing?.id;
+    let error;
+    if (pricingId) {
+      ({ error } = await _aptSbClient.from('rentals_pricing').update(data).eq('id', pricingId));
+    } else {
+      const res = await _aptSbClient.from('rentals_pricing').insert({ apartment_id: aptId, ...data }).select().single();
+      error = res.error;
+      if (!error) apt.pricing = res.data;
+    }
+    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+  }
+
+  if (apt.pricing) Object.assign(apt.pricing, data);
+  else apt.pricing = data;
+
+  _aptRerenderCard(aptId);
+}
+
+
+/* ── SAVE: VERWALTUNG ────────────────────────────────────── */
+async function _aptSaveVerwaltung(aptId) {
+  const el  = document.getElementById(`apt-verwaltung-${aptId}`);
+  const btn = el?.querySelector('.apt-btn--save');
+  if (!btn) return;
+  btn.textContent = '…'; btn.disabled = true;
+
+  const data = {};
+  el.querySelectorAll('[data-vf]').forEach(inp => {
+    const k = inp.dataset.vf;
+    data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+  });
+
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) return;
+
+  if (_aptSbClient) {
+    const vId = apt.verwaltung?.id;
+    let error;
+    if (vId) {
+      ({ error } = await _aptSbClient.from('rentals_verwaltung').update(data).eq('id', vId));
+    } else {
+      const res = await _aptSbClient.from('rentals_verwaltung').insert({ apartment_id: aptId, ...data }).select().single();
+      error = res.error;
+      if (!error) apt.verwaltung = res.data;
+    }
+    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+  }
+
+  if (apt.verwaltung) Object.assign(apt.verwaltung, data);
+  else apt.verwaltung = { apartment_id: aptId, ...data };
+
+  _aptRerenderCard(aptId);
+}
+
+
+/* ── SAVE: ZÄHLER ────────────────────────────────────────── */
+async function _aptSaveZaehler(aptId) {
+  const el  = document.getElementById(`apt-zaehler-${aptId}`);
+  const btn = el?.querySelector('.apt-btn--save');
+  if (!btn) return;
+  btn.textContent = '…'; btn.disabled = true;
+
+  // Collect current rows from DOM
+  const rows = el.querySelectorAll('[data-zaehler-id]');
+  const newMeters = [];
+  rows.forEach((row, i) => {
+    const nr  = row.querySelector('[data-zf="zaehler_nr"]')?.value?.trim();
+    const typ = row.querySelector('.apt-field__label')?.textContent?.trim();
+    if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: i });
+  });
+
+  // Also handle rows added via "Add meter" (no data-zaehler-id)
+  const newRows = el.querySelectorAll('[data-new-zaehler]');
+  newRows.forEach((row, i) => {
+    const typ = row.querySelector('[data-zf="typ"]')?.value?.trim();
+    const nr  = row.querySelector('[data-zf="zaehler_nr"]')?.value?.trim();
+    if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: rows.length + i });
+  });
+
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) return;
+
+  if (_aptSbClient) {
+    // Delete all existing and re-insert
+    const { error: delErr } = await _aptSbClient.from('rentals_zaehler').delete().eq('apartment_id', aptId);
+    if (delErr) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    if (newMeters.length) {
+      const { error: insErr } = await _aptSbClient.from('rentals_zaehler').insert(newMeters);
+      if (insErr) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    }
+  }
+
+  apt.zaehler = newMeters.map((m, i) => ({ ...m, id: `local-${i}` }));
+  _aptRerenderCard(aptId);
+}
+
+
+/* ── ADD ZÄHLER ROW ──────────────────────────────────────── */
+const _APT_METER_TYPES = ['Strom','Gas','Wasser','Warmwasser','Warmwasser Bad','Warmwasser Küche','Kaltwasser','Kaltwasser Bad','Kaltwasser Küche','Heizung Bad','Heizung 1','Heizung 2','Heizung 3'];
+
+function _aptAddZaehlerRow(aptId) {
+  const container = document.getElementById(`apt-zaehler-edit-rows-${aptId}`);
+  if (!container) return;
+  const div = document.createElement('div');
+  div.setAttribute('data-new-zaehler', '1');
+  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;';
+  div.innerHTML = `
+    <div class="apt-field">
+      <div class="apt-field__label">Typ</div>
+      <select class="apt-input" data-zf="typ">
+        ${_APT_METER_TYPES.map(t => `<option>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="apt-field">
+      <div class="apt-field__label">Zählernummer</div>
+      <input class="apt-input apt-input--mono" data-zf="zaehler_nr" placeholder="Nr…"/>
+    </div>`;
+  container.appendChild(div);
+  div.querySelector('input').focus();
+}
+
+
+/* ── SAVE: SCHLÜSSEL ─────────────────────────────────────── */
+async function _aptSaveSchlussel(aptId) {
+  const el  = document.getElementById(`apt-schlussel-${aptId}`);
+  const btn = el?.querySelector('.apt-btn--save');
+  if (!btn) return;
+  btn.textContent = '…'; btn.disabled = true;
+
+  const data = {};
+  el.querySelectorAll('[data-sf]').forEach(span => {
+    data[span.dataset.sf] = parseInt(span.textContent, 10) || 0;
+  });
+
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) return;
+
+  if (_aptSbClient) {
+    const skId = apt.schlussel?.id;
+    let error;
+    if (skId) {
+      ({ error } = await _aptSbClient.from('rentals_schlussel').update(data).eq('id', skId));
+    } else {
+      const res = await _aptSbClient.from('rentals_schlussel').insert({ apartment_id: aptId, ...data }).select().single();
+      error = res.error;
+      if (!error) apt.schlussel = res.data;
+    }
+    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+  }
+
+  if (apt.schlussel) Object.assign(apt.schlussel, data);
+  else apt.schlussel = { apartment_id: aptId, ...data };
+
+  _aptRerenderCard(aptId);
+}
+
+
+/* ── STEPPER ─────────────────────────────────────────────── */
+function _aptStep(btn, delta) {
+  const val = btn.parentElement.querySelector('.apt-stepper__v');
+  let n = parseInt(val.textContent) + delta;
+  if (n < 0) n = 0;
+  val.textContent = n;
+}
+
+
+/* ── KAUTION OVERRIDE TOGGLE ─────────────────────────────── */
+function _aptToggleKautionOverride(chk) {
+  const field = chk.closest('[id^="apt-miete-"]').querySelector('[data-kautionfield]');
+  if (field) field.style.display = chk.checked ? '' : 'none';
+}
+
+
+/* ── RERENDER CARD ───────────────────────────────────────── */
+function _aptRerenderCard(aptId) {
+  const apt  = appApartments.find(a => a.id === aptId);
+  const card = document.querySelector(`.apt-card[data-id="${aptId}"]`);
+  if (!apt || !card) return;
+  const newDiv = document.createElement('div');
+  newDiv.innerHTML = _aptCardHTML(apt);
+  const newCard = newDiv.firstElementChild;
+  newCard.classList.add('apt--open');
+  card.parentNode.insertBefore(newCard, card);
+  card.remove();
+  _aptInitSortable();
+  _updateAptSummary();
+}
+
+
+/* ── TOGGLE VACANT ───────────────────────────────────────── */
+async function _aptToggleVacant(aptId, btn) {
+  btn.disabled = true;
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) { btn.disabled = false; return; }
+
+  const newVacant = !apt.vacant;
+
+  if (_aptSbClient) {
+    const { error } = await _aptSbClient.from('rentals_apartments').update({ vacant: newVacant }).eq('id', aptId);
+    if (error) { btn.disabled = false; return; }
+  }
+
+  apt.vacant = newVacant;
+  _aptRerenderCard(aptId);
+  _updateAptSummary();
+}
+
+
+/* ── INVENTAR MODAL ──────────────────────────────────────── */
+let _aptInventarId = null;
+
+function _aptOpenInventar(aptId) {
+  _aptInventarId = aptId;
+  const apt = appApartments.find(a => a.id === aptId);
+  document.getElementById('aptInventarSubtitle').textContent = (apt?.name || '') + ' · Anlage A';
+
+  const list  = document.getElementById('aptInventarList');
+  const items = apt?.inventar || [];
+  list.innerHTML = items.map(i => `
+    <div class="inv-row">
+      <input class="inv-name" value="${aptEsc(i.name)}"/>
+      <input class="inv-qty" type="number" value="${i.anzahl ?? 1}" min="1"/>
+      <button class="inv-rm" onclick="this.closest('.inv-row').remove()"><i class="ti ti-trash"></i></button>
+    </div>`).join('');
+
+  document.getElementById('aptInventarOverlay').classList.add('open');
+}
+
+document.getElementById('aptInventarClose')?.addEventListener('click', () => {
+  document.getElementById('aptInventarOverlay').classList.remove('open');
+  _aptInventarId = null;
+});
+
+document.getElementById('aptInventarCancel')?.addEventListener('click', () => {
+  document.getElementById('aptInventarOverlay').classList.remove('open');
+  _aptInventarId = null;
+});
+
+document.getElementById('aptInventarOverlay')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('aptInventarOverlay')) {
+    document.getElementById('aptInventarOverlay').classList.remove('open');
+    _aptInventarId = null;
+  }
+});
+
+document.getElementById('aptInventarAddRow')?.addEventListener('click', () => {
+  const list = document.getElementById('aptInventarList');
+  const row  = document.createElement('div');
+  row.className = 'inv-row';
+  row.innerHTML = `<input class="inv-name" placeholder="Gegenstand…"/><input class="inv-qty" type="number" value="1" min="1"/><button class="inv-rm" onclick="this.closest('.inv-row').remove()"><i class="ti ti-trash"></i></button>`;
+  list.appendChild(row);
+  row.querySelector('input').focus();
+});
+
+document.getElementById('aptInventarSave')?.addEventListener('click', async () => {
+  if (!_aptInventarId) return;
+  const rows    = document.querySelectorAll('#aptInventarList .inv-row');
+  const inventar = [];
+  rows.forEach(row => {
+    const name   = row.querySelector('.inv-name').value.trim();
+    const anzahl = parseInt(row.querySelector('.inv-qty').value, 10) || 1;
+    if (name) inventar.push({ name, anzahl, apartment_id: _aptInventarId });
+  });
+
+  const btn = document.getElementById('aptInventarSave');
+  btn.textContent = '…'; btn.disabled = true;
+
+  if (_aptSbClient) {
+    // Delete + reinsert
+    await _aptSbClient.from('rentals_inventar').delete().eq('apartment_id', _aptInventarId);
+    if (inventar.length) {
+      inventar.forEach((item, i) => { item.sort_order = i; });
+      await _aptSbClient.from('rentals_inventar').insert(inventar);
+    }
+  }
+
+  const apt = appApartments.find(a => a.id === _aptInventarId);
+  if (apt) apt.inventar = inventar;
+
+  btn.textContent = 'Save'; btn.disabled = false;
+  document.getElementById('aptInventarOverlay').classList.remove('open');
+  _aptRerenderCard(_aptInventarId);
+  _aptInventarId = null;
+});
+
+
+/* ── CONTRACT MODAL ──────────────────────────────────────── */
+let _aptContractId   = null;
+let _aptContractType = null;
+
+function _aptOpenContract(type, aptId) {
+  _aptContractId   = aptId;
+  _aptContractType = type;
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) return;
+
+  const p  = apt.pricing    || {};
+  const sk = apt.schlussel  || {};
+
+  const typeLbl  = document.getElementById('aptContractTypeLbl');
+  const titleLbl = document.getElementById('aptContractTitleLbl');
+  const subLbl   = document.getElementById('aptContractSubLbl');
+  const body     = document.getElementById('aptContractBody');
+  const footer   = document.getElementById('aptContractFooter');
+
+  const aptInfo = [apt.zimmer_type, apt.heizungsart, apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : ''].filter(Boolean).join(' · ');
+  subLbl.textContent = aptInfo;
+
+  if (type === 'kurzzeit') {
+    typeLbl.textContent  = 'Kurzzeitmiete';
+    titleLbl.textContent = apt.name;
+    const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
+    const kzNk   = Number(p.kurzzeit_nk) || 0;
+    const kzBase = kzKalt + kzNk || Number(p.kaltmiete) || 0;
+    body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase);
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" disabled><i class="ti ti-printer"></i> PDF — coming soon</button>`;
+
+  } else if (type === 'mietvertrag') {
+    typeLbl.textContent  = 'Mietvertrag';
+    titleLbl.textContent = apt.name;
+    const kalt   = Number(p.kaltmiete) || 0;
+    const nk     = Number(p.nk_pauschale) || 0;
+    const kaution = p.kaution_override && p.kaution_default ? Number(p.kaution_default) : kalt * 3;
+    body.innerHTML = _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution);
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" disabled><i class="ti ti-printer"></i> PDF — coming soon</button>`;
+    setTimeout(() => { document.getElementById('apt-mv-start')?.addEventListener('input', _aptUpdateMvMonatToggle); }, 50);
+
+  } else if (type === 'ueberg') {
+    const isEinzug = document.getElementById('apt-eu-' + aptId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    typeLbl.textContent  = 'Übergabeprotokoll';
+    titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + apt.name;
+    body.innerHTML = _aptBodyUeberg(apt, sk, isEinzug);
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" disabled><i class="ti ti-printer"></i> PDF — coming soon</button>`;
+  }
+
+  // Wire cancel
+  setTimeout(() => {
+    document.getElementById('aptContractCancelBtn')?.addEventListener('click', () => {
+      document.getElementById('aptContractOverlay').classList.remove('open');
+    });
+  }, 0);
+
+  document.getElementById('aptContractOverlay').classList.add('open');
+}
+
+document.getElementById('aptContractClose')?.addEventListener('click', () => {
+  document.getElementById('aptContractOverlay').classList.remove('open');
+});
+document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('aptContractOverlay'))
+    document.getElementById('aptContractOverlay').classList.remove('open');
+});
+
+
+/* ── CONTRACT BODY: KURZZEIT ─────────────────────────────── */
+function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase) {
+  const rentDisplay = kzKalt
+    ? `${aptFmtEURCompact(kzKalt)} kalt + ${aptFmtEURCompact(kzNk)} NK / Monat`
+    : `${aptFmtEURCompact(p.kaltmiete || 0)} kalt + ${aptFmtEURCompact(p.nk_pauschale || 0)} NK / Monat`;
+
+  return `
+    <div class="rm-prefilled">
+      <div class="rm-prefilled__title">Pre-filled from apartment</div>
+      <div class="rm-pre-row"><span>Apartment</span><span>${aptEsc(apt.name)}</span></div>
+      <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse || '—')}</span></div>
+      <div class="rm-pre-row"><span>Size</span><span>${apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : '—'}</span></div>
+      <div class="rm-pre-row"><span>Miete</span><span>${rentDisplay}</span></div>
+      <div class="rm-pre-row"><span>Schlüssel</span><span>Haustür ×${sk.haustuerschluessel ?? 1} · Wohnung ×${sk.wohnungsschluessel ?? 1}</span></div>
+    </div>
+
+    <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
+      <div>
+        <div class="rm-kaution-lbl">Kaution</div>
+        <div class="rm-kaution-rule" id="apt-cm-kaution-rule">≤ 3 Monate → 1× · > 3 Monate → 3×</div>
+      </div>
+      <input class="rm-input" id="apt-cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kzBase}" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
+    </div>
+    <div style="margin-bottom:20px">
+      <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','sofort',this)">Sofort</button>
+        <button class="rm-fael-btn active" data-prefix="cm" onclick="_aptKfSelect('cm','5',this)">5 Tage</button>
+        <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','custom',this)">Individuell</button>
+        <input type="number" id="apt-cm-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
+      </div>
+    </div>
+
+    <div class="rm-fields-title">Tenant details</div>
+    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="apt-cm-name" placeholder="Full name…"/></div>
+    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="apt-cm-adr" placeholder="Current address…"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-cm-dob" placeholder="TT.MM.JJJJ"/></div>
+    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-cm-email" type="email" placeholder="mieter@beispiel.de"/></div>
+    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="apt-cm-tel" type="tel" placeholder="+49 …"/></div>
+    <div class="rm-field-row" style="margin-bottom:10px">
+      <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="apt-cm-start" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
+      <div class="rm-field"><label>Mietende *</label><input class="rm-input" id="apt-cm-end" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
+    </div>
+    <div class="rm-field"><label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="apt-cm-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>`;
+}
+
+
+/* ── CONTRACT BODY: MIETVERTRAG ──────────────────────────── */
+function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution) {
+  return `
+    <div class="rm-prefilled">
+      <div class="rm-prefilled__title">Pre-filled from apartment</div>
+      <div class="rm-pre-row"><span>Apartment</span><span>${aptEsc(apt.name)}</span></div>
+      <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse || '—')}</span></div>
+      <div class="rm-pre-row"><span>Miete</span><span>${aptFmtEURCompact(kalt)} kalt + ${aptFmtEURCompact(nk)} NK</span></div>
+      <div class="rm-pre-row"><span>Gesamtmiete</span><span>${aptFmtEURCompact(kalt + nk)} / Monat</span></div>
+      <div class="rm-pre-row"><span>Schlüssel</span><span>Haustür ×${sk.haustuerschluessel ?? 1} · Wohnung ×${sk.wohnungsschluessel ?? 1}</span></div>
+    </div>
+
+    <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
+      <div>
+        <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
+        <div class="rm-kaution-rule">3 × Kaltmiete · Treuhandkonto</div>
+      </div>
+      <input class="rm-input" id="apt-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}"/>
+    </div>
+    <div style="margin-bottom:20px">
+      <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="rm-fael-btn" onclick="_aptKfSelect('mv','sofort',this)">Sofort</button>
+        <button class="rm-fael-btn active" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
+        <button class="rm-fael-btn" onclick="_aptKfSelect('mv','custom',this)">Individuell</button>
+        <input type="number" id="apt-mv-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
+      </div>
+    </div>
+
+    <div class="rm-fields-title">Mieterdaten</div>
+    <div class="rm-field"><label>Name</label><input class="rm-input" id="apt-mv-name" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-mv-adr" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-mv-dob" placeholder="TT.MM.JJJJ"/></div>
+    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-mv-email" type="email" placeholder="mieter@beispiel.de"/></div>
+    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="apt-mv-tel" type="tel" placeholder="+49 …"/></div>
+
+    <div class="rm-fields-title" style="margin-top:6px">Mietzeit</div>
+    <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="apt-mv-start" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
+
+    <div class="rm-field--toggle">
+      <div class="rm-toggle-row">
+        <div>
+          <div class="rm-toggle-label">Befristung</div>
+          <div class="rm-toggle-sub" id="apt-mv-befristung-sub">Unbefristet</div>
+        </div>
+        <button type="button" class="rm-pill-toggle" id="apt-mv-befristung-btn" data-mode="unbefristet" onclick="_aptToggleMvBefristung()">
+          <span class="rm-pill-toggle__track"><span class="rm-pill-toggle__knob"></span></span>
+          <span class="rm-pill-toggle__lbl" id="apt-mv-befristung-lbl">Nein</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="apt-mv-befristung-details" style="display:none">
+      <div class="rm-field"><label>Mietende *</label><input class="rm-input" id="apt-mv-end" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
+      <div class="rm-field">
+        <label>Befristungsgrund (§ 575 BGB — Pflicht)</label>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:300;color:var(--cc-charcoal);text-transform:none;letter-spacing:0">
+            <input type="radio" name="apt-mv-grund" value="eigenbedarf" checked style="accent-color:var(--cc-ink)" onchange="_aptUpdateMvGrundDetail()"/> Eigenbedarf
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:300;color:var(--cc-charcoal);text-transform:none;letter-spacing:0">
+            <input type="radio" name="apt-mv-grund" value="abriss" style="accent-color:var(--cc-ink)" onchange="_aptUpdateMvGrundDetail()"/> Abriss / wesentliche Umbaumaßnahmen
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:300;color:var(--cc-charcoal);text-transform:none;letter-spacing:0">
+            <input type="radio" name="apt-mv-grund" value="dienst" style="accent-color:var(--cc-ink)" onchange="_aptUpdateMvGrundDetail()"/> Dienstwohnung
+          </label>
+        </div>
+      </div>
+      <div class="rm-field" id="apt-mv-eigenbedarf-wrap">
+        <label>Eigenbedarfsperson * <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;font-weight:400">(Pflicht nach BGH)</span></label>
+        <input class="rm-input" id="apt-mv-eigenbedarf-person" placeholder="z.B. Tochter des Vermieters…"/>
+      </div>
+    </div>
+
+    <div class="rm-field" style="margin-top:4px">
+      <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input class="rm-input" id="apt-mv-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
+    </div>`;
+}
+
+function _aptToggleMvBefristung() {
+  const btn     = document.getElementById('apt-mv-befristung-btn');
+  const lbl     = document.getElementById('apt-mv-befristung-lbl');
+  const sub     = document.getElementById('apt-mv-befristung-sub');
+  const details = document.getElementById('apt-mv-befristung-details');
+  if (!btn) return;
+  const on = btn.dataset.mode === 'unbefristet';
+  btn.dataset.mode      = on ? 'befristet'  : 'unbefristet';
+  lbl.textContent       = on ? 'Ja'         : 'Nein';
+  sub.textContent       = on ? 'Befristet'  : 'Unbefristet';
+  details.style.display = on ? ''           : 'none';
+}
+
+function _aptUpdateMvGrundDetail() {
+  const val  = document.querySelector('input[name="apt-mv-grund"]:checked')?.value;
+  const wrap = document.getElementById('apt-mv-eigenbedarf-wrap');
+  if (wrap) wrap.style.display = val === 'eigenbedarf' ? '' : 'none';
+}
+
+function _aptUpdateMvMonatToggle() {
+  // placeholder — erster Monat logic in PDF build
+}
+
+
+/* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */
+function _aptBodyUeberg(apt, sk, isEinzug) {
+  const zaehler = apt.zaehler || [];
+
+  const zaehlerRows = zaehler.map(z => `
+    <tr>
+      <td>${aptEsc(z.typ)}</td>
+      <td class="rm-zaehler-nr">${aptEsc(z.zaehler_nr || '—')}</td>
+      <td><input class="rm-zaehler-input" id="apt-ub-z-${z.id}" placeholder="Stand…"/></td>
+    </tr>`).join('');
+
+  return `
+    <div class="rm-fields-title">Mieter</div>
+    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="apt-ub-mieter-name" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="apt-ub-mieter-adr" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>Übergabedatum</label><input class="rm-input" id="apt-ub-datum" type="text" placeholder="TT.MM.JJJJ"/></div>
+    ${!isEinzug ? `
+    <div class="rm-field"><label>Neue Adresse des Mieters</label><input class="rm-input" id="apt-ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/></div>` : ''}
+
+    <div class="rm-field" style="margin-top:4px">
+      <label>Mängelbeschreibung / Zustand</label>
+      <textarea class="rm-input" id="apt-ub-maengel" rows="3" style="resize:vertical;line-height:1.5" placeholder="Zustand der Wohnung bei Übergabe…"></textarea>
+    </div>
+
+    <div class="rm-fields-title" style="margin-top:6px">Zählerstände</div>
+    ${zaehler.length ? `
+    <table class="rm-zaehler-table">
+      <thead><tr><th style="width:28%">Art</th><th style="width:36%">Nummer</th><th>Stand</th></tr></thead>
+      <tbody>${zaehlerRows}</tbody>
+    </table>` : `<p style="font-size:12px;color:var(--cc-stone);font-style:italic;margin-bottom:14px">Keine Zähler hinterlegt — in Identität Zähler hinzufügen</p>`}
+
+    <div class="rm-fields-title">Schlüsselübergabe</div>
+    <div class="rm-field-row" style="margin-bottom:10px">
+      <div class="rm-field"><label>Haustür</label><input class="rm-input" id="apt-ub-haustur" type="number" value="${sk.haustuerschluessel ?? 1}" min="0"/></div>
+      <div class="rm-field"><label>Wohnungstür</label><input class="rm-input" id="apt-ub-wohnungtur" type="number" value="${sk.wohnungsschluessel ?? 1}" min="0"/></div>
+    </div>
+
+    <div class="rm-field">
+      <label>Allgemeine Bemerkungen</label>
+      <textarea class="rm-input" id="apt-ub-bemerkungen" rows="3" style="resize:vertical;line-height:1.5" placeholder="Sonstige Anmerkungen…"></textarea>
+    </div>
+    <div class="rm-field" style="margin-top:4px">
+      <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input class="rm-input" id="apt-ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
+    </div>`;
+}
+
+
+/* ── KAUTION FÄLLIGKEIT HELPER ───────────────────────────── */
+function _aptKfSelect(prefix, val, clickedBtn) {
+  const parent = clickedBtn.closest('div');
+  parent.querySelectorAll('.rm-fael-btn').forEach(b => b.classList.remove('active'));
+  clickedBtn.classList.add('active');
+  const custom = document.getElementById(`apt-${prefix}-fael-custom`);
+  if (custom) custom.style.display = val === 'custom' ? '' : 'none';
+}
+
+
+/* ── ADD APARTMENT ───────────────────────────────────────── */
+document.getElementById('aptAddBtn')?.addEventListener('click', () => {
+  const list   = document.getElementById('aptList');
+  const tempId = 'new-' + Date.now();
+
+  const blank = {
+    id: tempId, name: '', adresse: '', zimmer_type: '1 Zimmer', heizungsart: 'Zentralheizung',
+    floor: '', flaeche_m2: null, energieklasse: '', endenergiebedarf: '', energieausweisart: '',
+    vacant: false, active: true,
+    pricing: {}, verwaltung: {}, zaehler: [], schlussel: {}, inventar: [],
+  };
+
+  const div = document.createElement('div');
+  div.innerHTML = _aptCardHTML(blank);
+  const card = div.firstElementChild;
+  card.classList.add('apt--open');
+  list.insertBefore(card, list.firstChild);
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Open identity section for editing immediately
+  const identitySection = card.querySelector(`#apt-identity-${tempId}`);
+  if (identitySection) {
+    identitySection.querySelector('.apt-sec-read').style.display = 'none';
+    identitySection.querySelector('.apt-sec-edit').style.display = '';
+    identitySection.querySelector('.apt-input')?.focus();
+  }
+
+  // Override save for new card
+  const saveBtn = identitySection?.querySelector('.apt-btn--save');
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      const name = identitySection.querySelector('[data-f="name"]')?.value.trim();
+      if (!name) { alert('Name is required.'); return; }
+
+      const data = { vacant: false, active: true, sort_order: appApartments.length };
+      identitySection.querySelectorAll('[data-f]').forEach(inp => {
+        const k = inp.dataset.f;
+        data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+      });
+
+      saveBtn.textContent = '…'; saveBtn.disabled = true;
+
+      if (_aptSbClient) {
+        const { data: newApt, error } = await _aptSbClient.from('rentals_apartments').insert(data).select().single();
+        if (error || !newApt) { saveBtn.textContent = 'Error'; saveBtn.disabled = false; return; }
+        // Create linked rows
+        await Promise.all([
+          _aptSbClient.from('rentals_pricing').insert({ apartment_id: newApt.id }),
+          _aptSbClient.from('rentals_verwaltung').insert({ apartment_id: newApt.id }),
+          _aptSbClient.from('rentals_schlussel').insert({ apartment_id: newApt.id }),
+        ]);
+        appApartments.push({ ...newApt, pricing: {}, verwaltung: {}, zaehler: [], schlussel: {}, inventar: [] });
+      }
+
+      card.remove();
+      _renderAptList();
+      _aptInitSortable();
+    };
+  }
+
+  // Cancel for new card
+  const cancelBtn = identitySection?.querySelector('.apt-btn--cancel');
+  if (cancelBtn) {
+    cancelBtn.onclick = () => {
+      card.style.transition = 'opacity .15s';
+      card.style.opacity = '0';
+      setTimeout(() => card.remove(), 150);
+    };
+  }
+});
+
+
+/* ── DELETE ──────────────────────────────────────────────── */
+let _aptPendingDeleteId = null;
+
+function _aptConfirmDelete(aptId, name) {
+  _aptPendingDeleteId = aptId;
+  document.getElementById('aptConfirmBody').innerHTML =
+    `This will permanently delete <strong>${aptEsc(name)}</strong> and all linked data. This cannot be undone.`;
+  document.getElementById('aptConfirmOverlay').classList.add('open');
+}
+
+document.getElementById('aptConfirmCancel')?.addEventListener('click', () => {
+  document.getElementById('aptConfirmOverlay').classList.remove('open');
+  _aptPendingDeleteId = null;
+});
+
+document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
+  if (!_aptPendingDeleteId) return;
+  const btn = document.getElementById('aptConfirmOk');
+  btn.disabled = true;
+
+  if (_aptSbClient) {
+    // Cascade deletes via FK on delete cascade
+    await _aptSbClient.from('rentals_apartments').delete().eq('id', _aptPendingDeleteId);
+  }
+
+  appApartments = appApartments.filter(a => a.id !== _aptPendingDeleteId);
+  document.getElementById('aptConfirmOverlay').classList.remove('open');
+  _aptPendingDeleteId = null;
+  btn.disabled = false;
+
+  _renderAptList();
+  _aptInitSortable();
+});
+
+
+/* ── SORTABLE ────────────────────────────────────────────── */
+function _aptInitSortable() {
+  if (typeof Sortable === 'undefined') return;
+  const list = document.getElementById('aptList');
+  if (!list || list._sortable) return;
+
+  list._sortable = Sortable.create(list, {
+    animation: 180,
+    handle: '.apt-drag',
+    delay: 150,
+    delayOnTouchOnly: true,
+    touchStartThreshold: 5,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd(evt) {
+      const ids = [...evt.to.querySelectorAll('.apt-card[data-id]')]
+        .map(c => c.dataset.id).filter(Boolean);
+      if (_aptSbClient) {
+        ids.forEach((id, i) => {
+          _aptSbClient.from('rentals_apartments').update({ sort_order: i }).eq('id', id);
+          const a = appApartments.find(x => x.id === id);
+          if (a) a.sort_order = i;
+        });
+      }
+    }
+  });
+}
