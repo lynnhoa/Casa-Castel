@@ -2351,14 +2351,17 @@ function _tnRefreshFormerBadges(tid) {
       const card = document.querySelector(`.tn-card[data-room="${CSS.escape(rec.room)}"]`);
       if (card) {
         const name = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || '\u2014';
-        const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
+        const kk2 = _tnKaution[tid];
+        const allReturned2 = kk2 && kk2.returned >= kk2.received;
+        const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : allReturned2 ? 'fully returned' : 'full refund';
+        const statusStr = allReturned2 ? 'Mark settled' : 'Refund pending';
         const nudgeEl = document.createElement('div');
         nudgeEl.className = 'tn-kaution-nudge';
         nudgeEl.setAttribute('onclick', `_tnOpenModal('${tid}')`);
         nudgeEl.innerHTML = `<i class="ti ti-user" style="font-size:11px"></i>
           <span class="tn-nudge-name">${esc(name)} · former</span>
           <span class="tn-nudge-kept">${keptStr}</span>
-          <span class="tn-nudge-status">Refund pending</span>
+          <span class="tn-nudge-status">${statusStr}</span>
           <i class="ti ti-chevron-right" style="font-size:11px"></i>`;
         // Insert after the header (first child of card)
         const header = card.querySelector('.tn-hdr');
