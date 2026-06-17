@@ -39,15 +39,18 @@ function _buildMietvertragOnlyData(room, s, {
     gesamtmiete     = kaltmiete + nkVorauszahlung;
     pricingMode     = 'kalt_nk';
   } else {
-    kaltmiete       = Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
-    nkVorauszahlung = 0;
-    gesamtmiete     = kaltmiete;
+    kaltmiete       = Number(room.kaltmiete) || Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
+    nkVorauszahlung = Number(room.nk_pauschale) || 0;
+    gesamtmiete     = kaltmiete + nkVorauszahlung;
     pricingMode     = 'pauschal';
   }
 
+  // Pauschal: kaution base = full monthly charge (kaltmiete + NK)
+  // Kalt+NK:  kaution base = kaltmiete only (§ 551 BGB)
+  const kautionBase = pricingMode === 'pauschal' ? kaltmiete + nkVorauszahlung : kaltmiete;
   const kaution = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
-    : kaltmiete * 3;
+    : kautionBase * 3;
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
