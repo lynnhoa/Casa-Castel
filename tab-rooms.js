@@ -965,7 +965,7 @@ function _getRentInfo(r, type) {
 }
 
 function _getActiveType(r) {
-  const hasMv = (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) || !!r.mietvertrag_miete;
+  const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
   const hasKz = !!r.kurzzeit_kaltmiete;
 
   // Only honour persisted type if that type actually has data
@@ -1014,7 +1014,7 @@ async function _toggleRentType(btn) {
 }
 
 function _rentRowHTML(r) {
-  const hasMv = (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) || r.mietvertrag_miete;
+  const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
   const hasKz = !!r.kurzzeit_kaltmiete;
   const hasBoth = hasMv && hasKz;
   const activeType = _getActiveType(r);

@@ -398,7 +398,7 @@ function _tnRoomContractType(room) {
   if (typeof appRooms === 'undefined') return null;
   const r = appRooms.find(x => x.name === room);
   if (!r) return null;
-  const hasMv = (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) || !!r.mietvertrag_miete;
+  const hasMv = !!(r.kaltmiete || r.mietvertrag_miete); // Pauschal or Kalt+NK
   const hasKz = !!r.kurzzeit_kaltmiete;
   if (r.active_price_type === 'mietvertrag' && hasMv) return 'mietvertrag';
   if (r.active_price_type === 'kurzzeit'    && hasKz) return 'kurzzeit';
@@ -412,7 +412,7 @@ function _tnRoomContractTypes(room) {
   const r = appRooms.find(x => x.name === room);
   if (!r) return [];
   const types = [];
-  const hasMv = (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) || !!r.mietvertrag_miete;
+  const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
   const hasKz = !!r.kurzzeit_kaltmiete;
   if (hasMv) types.push('mietvertrag');
   if (hasKz) types.push('kurzzeit');
