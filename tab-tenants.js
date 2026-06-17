@@ -1047,8 +1047,6 @@ function _tnKautionHTML(rid, tid, ctx) {
     </div>
   </div>
   <div class="${footer}" style="gap:6px">
-    <button class="tn-btn tn-btn-sm" id="ksave-${pfx}"
-      ${dis} onclick="_tnSaveKautionBtn('${pfx}','${tid||''}')">Save</button>
     ${recv > 0 ? `<button class="tn-btn tn-btn-sm" id="kset-${pfx}"
       ${dis} onclick="_tnToggleSettle('${pfx}','${tid||''}')">
       <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
@@ -1674,7 +1672,7 @@ async function _tnModalSaveProfile(tid) {
     const recv = parseFloat(document.getElementById('kr-'   + kPfx)?.value);
     const ret  = parseFloat(document.getElementById('kret-' + kPfx)?.value);
     if (!isNaN(recv) && !isNaN(ret)) await _tnSaveKaution(tid, recv, ret);
-    _tnToast('Saved');
+    _tnCloseModal();
     return;
   }
 
@@ -1741,7 +1739,7 @@ async function _tnModalSaveProfile(tid) {
   sbL.from('tenant_records').update(update).eq('id', tid)
     .then(({ error }) => { if (error) console.warn('[tenants] modal save:', error.message); });
 
-  if (toActive) { _tnCloseModal(); }
+  _tnCloseModal();
   _tnRender();
 }
 
