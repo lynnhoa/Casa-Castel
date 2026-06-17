@@ -1554,6 +1554,10 @@ async function _saveCard(card) {
   card.remove();
   _bindAllCards();
   _initSortable();
+  // Scroll saved card back into view (async save can drift the viewport)
+  requestAnimationFrame(() => {
+    newCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
 }
 
 
