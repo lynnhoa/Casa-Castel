@@ -421,7 +421,12 @@ function _tnRoomPricing(room) {
     if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
       kaltmiete   = Number(r.kaltmiete)    || null;
       nebenkosten = Number(r.nk_pauschale) || null;
+    } else if (r.kaltmiete) {
+      // Pauschal with direct kaltmiete field (standard setup)
+      kaltmiete   = Number(r.kaltmiete)    || null;
+      nebenkosten = Number(r.nk_pauschale) || null;
     } else if (r.mietvertrag_miete) {
+      // Legacy: total in mietvertrag_miete, derive kaltmiete by subtracting NK
       nebenkosten = Number(r.nk_pauschale)      || null;
       kaltmiete   = Number(r.mietvertrag_miete) - (nebenkosten || 0) || null;
     }
@@ -438,6 +443,16 @@ function _tnKautionSoll(room, mietbeginn, mietende) {
   const p = _tnRoomPricing(room);
   if (p.kaution_override) return p.kaution_fixed;
   if (!p.kaltmiete) return null;
+
+  // Pauschal: kaution base = kaltmiete + NK (full monthly charge)
+  // Kalt+NK:  kaution base = kaltmiete only (legal standard § 551 BGB)
+  const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === room) : null;
+  const ctype = _tnRoomContractType(room);
+  const isPauschal = ctype === 'kurzzeit'
+    ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+    : r?.mietvertrag_pricing !== 'kalt_nk';
+  const base = isPauschal ? (p.kaltmiete + (p.nebenkosten || 0)) : p.kaltmiete;
+
   function pd(s) {
     if (!s) return null;
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s);
@@ -447,10 +462,9 @@ function _tnKautionSoll(room, mietbeginn, mietende) {
   const start = pd(mietbeginn), end = pd(mietende);
   if (start && end && end > start) {
     const months = Math.round((end - start) / (30.44 * 24 * 3600 * 1000));
-    return months <= 3 ? Math.round(p.kaltmiete * 1) : Math.round(p.kaltmiete * 3);
+    return months <= 3 ? Math.round(base * 1) : Math.round(base * 3);
   }
-  const ctype = _tnRoomContractType(room);
-  return ctype === 'kurzzeit' ? Math.round(p.kaltmiete * 1) : Math.round(p.kaltmiete * 3);
+  return ctype === 'kurzzeit' ? Math.round(base * 1) : Math.round(base * 3);
 }
 
 function _tnPriceLabel(room) {
