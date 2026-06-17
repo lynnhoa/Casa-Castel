@@ -21,20 +21,6 @@ document.getElementById('tab-tenants').innerHTML = `
   <input type="file" id="tnFileInput" accept="application/pdf,image/*"
          style="display:none" aria-hidden="true"/>
 
-  <!-- ══ DOC VIEWER OVERLAY ══ -->
-  <div id="tnDocViewer" style="display:none;position:fixed;inset:0;z-index:700;background:var(--cc-surface);flex-direction:column;overflow:hidden;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:max(14px,env(safe-area-inset-top,14px)) 12px 12px;background:var(--cc-white);border-bottom:0.5px solid var(--cc-rule);flex-shrink:0;">
-      <button id="tnDocViewerClose" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:50%;cursor:pointer;color:var(--cc-stone);font-size:16px;font-family:inherit;">✕</button>
-      <span id="tnDocViewerTitle" style="flex:1;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
-      <button id="tnDocViewerDownload" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 16px;background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;">
-        <i class="ti ti-download" style="font-size:14px;"></i> PDF
-      </button>
-    </div>
-    <div style="flex:1;overflow:hidden;">
-      <iframe id="tnDocViewerFrame" src="" style="width:100%;height:100%;border:none;display:block;"></iframe>
-    </div>
-  </div>
-
   <div class="tn-overlay" id="tnModal" onclick="_tnModalOutside(event)">
     <div class="tn-sheet" id="tnSheet">
       <div class="tn-sheet-hdr">
