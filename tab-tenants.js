@@ -21,6 +21,20 @@ document.getElementById('tab-tenants').innerHTML = `
   <input type="file" id="tnFileInput" accept="application/pdf,image/*"
          style="display:none" aria-hidden="true"/>
 
+  <!-- ══ DOC VIEWER OVERLAY ══ -->
+  <div id="tnDocViewer" style="display:none;position:fixed;inset:0;z-index:700;background:var(--cc-surface);flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:max(14px,env(safe-area-inset-top,14px)) 12px 12px;background:var(--cc-white);border-bottom:0.5px solid var(--cc-rule);flex-shrink:0;">
+      <button id="tnDocViewerClose" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:50%;cursor:pointer;color:var(--cc-stone);font-size:16px;font-family:inherit;">✕</button>
+      <span id="tnDocViewerTitle" style="flex:1;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+      <button id="tnDocViewerDownload" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 16px;background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;">
+        <i class="ti ti-download" style="font-size:14px;"></i> PDF
+      </button>
+    </div>
+    <div style="flex:1;overflow:hidden;">
+      <iframe id="tnDocViewerFrame" src="" style="width:100%;height:100%;border:none;display:block;"></iframe>
+    </div>
+  </div>
+
   <div class="tn-overlay" id="tnModal" onclick="_tnModalOutside(event)">
     <div class="tn-sheet" id="tnSheet">
       <div class="tn-sheet-hdr">
@@ -915,7 +929,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     const pill   = signed
       ? `<span class="tnp tnp-green">Signed</span>`
       : `<span class="tnp tnp-gray">Not uploaded</span>`;
-    const viewBtn = `<button class="tn-doc-btn${signed?'':' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}')` : ''}" title="View">
+    const viewBtn = `<button class="tn-doc-btn${signed?'':' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}','${esc(label)}','${esc(room.name)}')` : ''}" title="View">
       <i class="ti ti-eye"></i></button>`;
     const delBtn = signed
       ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
@@ -1218,7 +1232,7 @@ function _tnModalBodyHTML(rec) {
       <span class="tn-doc-name">${esc(label)}</span>
       <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'Signed' : 'Not uploaded'}</span>
       <div class="tn-doc-btns">
-        <button class="tn-doc-btn${signed ? '' : ' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}')` : ''}">
+        <button class="tn-doc-btn${signed ? '' : ' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}','${esc(label)}','${esc(rec.room)}')` : ''}">
           <i class="ti ti-eye"></i></button>
         ${delBtn}
         <button class="tn-doc-btn" onclick="_tnTriggerUpload('${tid}','${type}')">
@@ -1829,17 +1843,65 @@ function _tnTriggerUpload(tid, type) {
   if (inp) { inp.value = ''; inp.click(); }
 }
 
-async function _tnViewDoc(fileUrl) {
+async function _tnViewDoc(fileUrl, label, roomName) {
   if (!fileUrl || !sbL) return;
-  // Try signed URL first (works for private buckets — 60s expiry)
+
+  // Get a signed URL (60s is enough — we load it immediately into the iframe)
   const { data, error } = await sbL.storage
-    .from('tenant-documents').createSignedUrl(fileUrl, 60);
-  if (data?.signedUrl) { window.open(data.signedUrl, '_blank'); return; }
-  // Fallback: try public URL (works if bucket is set to public)
-  const { data: pub } = sbL.storage.from('tenant-documents').getPublicUrl(fileUrl);
-  if (pub?.publicUrl) { window.open(pub.publicUrl, '_blank'); return; }
-  console.warn('[tenants] view doc error:', error?.message);
-  _tnToast('Could not open document', true);
+    .from('tenant-documents').createSignedUrl(fileUrl, 300);
+  const url = data?.signedUrl;
+  if (!url) {
+    console.warn('[tenants] view doc error:', error?.message);
+    _tnToast('Could not open document', true);
+    return;
+  }
+
+  // Derive clean filename: e.g. "Mietvertrag_Paris.pdf"
+  const ext      = fileUrl.split('.').pop().split('?')[0].toLowerCase() || 'pdf';
+  const safeName = (label || 'Dokument').replace(/\s+/g, '_');
+  const safeRoom = (roomName || '').replace(/\s+/g, '_');
+  const filename = safeRoom ? `${safeName}_${safeRoom}.${ext}` : `${safeName}.${ext}`;
+
+  // Show overlay
+  const overlay  = document.getElementById('tnDocViewer');
+  const frame    = document.getElementById('tnDocViewerFrame');
+  const titleEl  = document.getElementById('tnDocViewerTitle');
+  const closeBtn = document.getElementById('tnDocViewerClose');
+  const dlBtn    = document.getElementById('tnDocViewerDownload');
+  if (!overlay || !frame) { window.open(url, '_blank'); return; }
+
+  titleEl.textContent = label ? `${label}${roomName ? ' · ' + roomName : ''}` : 'Dokument';
+  frame.src = url;
+  overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  // Close
+  const close = () => {
+    overlay.style.display = 'none';
+    frame.src = '';
+    document.body.style.overflow = '';
+    closeBtn.onclick = null;
+    dlBtn.onclick    = null;
+  };
+  closeBtn.onclick = close;
+
+  // Download — fetch blob so we can force a clean filename cross-origin
+  dlBtn.onclick = async () => {
+    try {
+      const res  = await fetch(url);
+      const blob = await res.blob();
+      const bUrl = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = bUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(bUrl); a.remove(); }, 1000);
+    } catch (e) {
+      // Fallback: open in new tab
+      window.open(url, '_blank');
+    }
+  };
 }
 
 async function _tnHandleUpload(file) {
