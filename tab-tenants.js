@@ -873,18 +873,10 @@ function _tnRentFormHTML(rid, room, rec) {
   const nk   = (rec && rec.nebenkosten != null) ? Number(rec.nebenkosten) : (liveP.nebenkosten ?? '');
   const warm = (kalt !== '' && nk !== '') ? Number(kalt) + Number(nk) : (kalt !== '' ? kalt : '');
   const tid  = rec ? rec.id : '';
-  // Always use live calc from rooms tab as the displayed kaution soll.
-  // Stored rec.kaution_soll is only an override value (used as input pre-fill when toggle is on).
-  const ksoll = _tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null) ?? '';
+  const ksoll = (rec && rec.kaution_soll != null) ? Number(rec.kaution_soll)
+    : (_tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null) ?? '');
   const ctype = _tnRoomContractType(room.name);
-  const _ruleRoom1 = appRooms?.find(x => x.name === room.name);
-  const _isPauschal1 = ctype === 'kurzzeit'
-    ? (_ruleRoom1?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
-    : _ruleRoom1?.mietvertrag_pricing !== 'kalt_nk';
-  const _base1 = _isPauschal1 ? 'Pauschal' : 'Kaltmiete';
-  const _mult1 = ctype === 'kurzzeit' ? '1' : '3';
-  const _tag1  = ctype === 'kurzzeit' ? 'KZ' : 'MV';
-  const rule  = `${_mult1}\u00d7 ${_base1} \u00b7 ${_tag1} rule`;
+  const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
 
   return `
 <div class="tn-rent-form" id="rform-${rid}" style="display:none">
@@ -906,7 +898,7 @@ function _tnRentFormHTML(rid, room, rec) {
     <div class="tn-kaut-override-row">
       <span class="tn-kaut-override-lbl">Kaution soll · ${_tnFmtEUR(ksoll) || '—'} (${rule})</span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
-        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null && rec.kaution_soll !== (_tnKautionSoll(room.name, rec.mietbeginn, rec.mietende) ?? rec.kaution_soll) ? 'checked' : ''}
+        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null ? 'checked' : ''}
           onchange="_tnToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
         <span class="tn-kaut-ovr-sw__t"></span>
       </label>
@@ -1067,18 +1059,11 @@ function _tnKautionHTML(rid, tid, ctx) {
   const footer  = ctx === 'modal' ? 'tn-msec-footer' : 'tn-sec-footer';
 
   let rec = tid ? _tnRecords.find(r => r.id === tid) : null;
-  // Always show live-computed kaution soll (rooms tab is source of truth).
-  // rec.kaution_soll is a stored override; only relevant when user explicitly enables override toggle.
-  let soll = rec ? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) : null;
+  let soll = rec && rec.kaution_soll != null
+    ? Number(rec.kaution_soll)
+    : (rec ? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) : null);
   const ctype = rec ? _tnRoomContractType(rec.room) : null;
-  const _ruleRoom2 = rec ? appRooms?.find(x => x.name === rec.room) : null;
-  const _isPauschal2 = ctype === 'kurzzeit'
-    ? (_ruleRoom2?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
-    : _ruleRoom2?.mietvertrag_pricing !== 'kalt_nk';
-  const _base2 = _isPauschal2 ? 'Pauschal' : 'Kaltmiete';
-  const _mult2 = ctype === 'kurzzeit' ? '1' : '3';
-  const _tag2  = ctype === 'kurzzeit' ? 'KZ' : 'MV';
-  const rule  = `${_mult2}\u00d7 ${_base2} \u00b7 ${_tag2}`;
+  const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ' : '3\u00d7 Kaltmiete \u00b7 MV';
 
   return `
 <div class="${sec}" style="${opac}">
@@ -1641,9 +1626,7 @@ async function _tnSaveNewTenant(rid, roomName) {
     address: p.address, mietbeginn: p.mietbeginn, mietende,
     kaltmiete:    p.kaltmiete   ?? (mietende ? liveP.kaltmiete   : null) ?? null,
     nebenkosten:  p.nebenkosten ?? (mietende ? liveP.nebenkosten : null) ?? null,
-    // kaution_soll stays NULL for active tenants — rooms tab is source of truth.
-    // Only write a value when user explicitly overrides via the kaution_soll input.
-    kaution_soll: p.kaution_soll ?? null,
+    kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende) ?? null,
   };
 
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
@@ -1740,14 +1723,7 @@ async function _tnSaveRent(rid, tid, roomName) {
   const kautHint = document.querySelector('#tab-tenants .tn-kaut-hint');
   if (kautHint && ksoll != null) {
     const ctype = _tnRoomContractType(roomName);
-    const _ruleRoom3 = appRooms?.find(x => x.name === roomName);
-    const _isPauschal3 = ctype === 'kurzzeit'
-      ? (_ruleRoom3?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
-      : _ruleRoom3?.mietvertrag_pricing !== 'kalt_nk';
-    const _base3 = _isPauschal3 ? 'Pauschal' : 'Kaltmiete';
-    const _mult3 = ctype === 'kurzzeit' ? '1' : '3';
-    const _tag3  = ctype === 'kurzzeit' ? 'KZ' : 'MV';
-    const rule = `${_mult3}\u00d7 ${_base3} \u00b7 ${_tag3} rule`;
+    const rule = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
     kautHint.textContent = `Soll: ${_tnFmtEUR(ksoll)} \u00b7 ${rule}`;
   }
 
@@ -2353,10 +2329,13 @@ function _tnRefreshFormerBadges(tid) {
 
   // Refresh collapsed nudge strip
   const kept = _tnKautionKept(tid);
+  let nudgeFound = false;
   document.querySelectorAll('.tn-kaution-nudge').forEach(el => {
     if (el.getAttribute('onclick')?.includes(tid)) {
+      nudgeFound = true;
       if (settled || !hasK) {
         el.remove();
+        nudgeFound = false;
       } else {
         const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
         const keptEl  = el.querySelector('.tn-nudge-kept');
@@ -2364,6 +2343,30 @@ function _tnRefreshFormerBadges(tid) {
       }
     }
   });
+  // If nudge doesn't exist yet but should (e.g. received was just entered for first time),
+  // create it and insert it after the card header
+  if (!nudgeFound && hasK && !settled) {
+    const rec = _tnRecords.find(r => r.id === tid);
+    if (rec) {
+      const card = document.querySelector(`.tn-card[data-room="${CSS.escape(rec.room)}"]`);
+      if (card) {
+        const name = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || '\u2014';
+        const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
+        const nudgeEl = document.createElement('div');
+        nudgeEl.className = 'tn-kaution-nudge';
+        nudgeEl.setAttribute('onclick', `_tnOpenModal('${tid}')`);
+        nudgeEl.innerHTML = `<i class="ti ti-user" style="font-size:11px"></i>
+          <span class="tn-nudge-name">${esc(name)} · former</span>
+          <span class="tn-nudge-kept">${keptStr}</span>
+          <span class="tn-nudge-status">Refund pending</span>
+          <i class="ti ti-chevron-right" style="font-size:11px"></i>`;
+        // Insert after the header (first child of card)
+        const header = card.querySelector('.tn-hdr');
+        if (header) header.after(nudgeEl);
+        else card.prepend(nudgeEl);
+      }
+    }
+  }
 
   // Refresh summary line
   const summaryEl = document.getElementById('tn-kaution-summary');
