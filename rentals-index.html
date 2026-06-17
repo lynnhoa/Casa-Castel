@@ -47,6 +47,35 @@
 
   </div>
 
+  </div>
+
+  <!-- ══ CONTRACT PDF PREVIEW (Mietvertrag / Kurzzeit) ══ -->
+  <div id="aptContractPdfPreviewOverlay" style="display:none;position:fixed;inset:0;z-index:600;background:var(--cc-surface);flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:max(14px,env(safe-area-inset-top,14px)) 12px 12px;background:var(--cc-white);border-bottom:0.5px solid var(--cc-rule);flex-shrink:0;">
+      <button id="aptCPdfPreviewClose" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:50%;cursor:pointer;color:var(--cc-stone);font-size:16px;flex-shrink:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>
+      <span id="aptCPdfPreviewTitle" style="flex:1;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+      <button id="aptCPdfSaveBtn" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 16px;background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">
+        <i class="ti ti-printer" style="font-size:14px;"></i> PDF
+      </button>
+    </div>
+    <div id="aptCPdfPreviewBody" style="flex:1;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:24px 16px 40px;display:flex;flex-direction:column;align-items:center;background:var(--cc-surface);">
+      <div id="aptCPdfPreviewDoc" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;"></div>
+    </div>
+  </div>
+
+  <!-- ══ ÜBERGABE PDF PREVIEW ══ -->
+  <div id="aptUebergPreviewOverlay" style="display:none;position:fixed;inset:0;z-index:600;background:var(--cc-surface);flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:max(14px,env(safe-area-inset-top,14px)) 12px 12px;background:var(--cc-white);border-bottom:0.5px solid var(--cc-rule);flex-shrink:0;">
+      <button id="aptUebergPreviewClose" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:50%;cursor:pointer;color:var(--cc-stone);font-size:16px;flex-shrink:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>
+      <span style="flex:1;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe);">Übergabeprotokoll</span>
+      <button id="aptUebergSaveBtn" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 16px;background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;">
+        <i class="ti ti-printer" style="font-size:14px;"></i> PDF
+      </button>
+    </div>
+    <div id="aptUebergPreviewBody" style="flex:1;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:24px 16px 40px;display:flex;flex-direction:column;align-items:center;background:var(--cc-surface);">
+    </div>
+  </div>
+
   <!-- ══ SCRIPTS ══ -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>

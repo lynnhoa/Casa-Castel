@@ -21,34 +21,11 @@
 
 
 /* ── PDF PREVIEW OVERLAY ─────────────────────────────────── */
-(function _buildRentalsUebergPreview() {
-  if (document.getElementById('aptUebergPreviewOverlay')) return;
-  const el = document.createElement('div');
-  el.id = 'aptUebergPreviewOverlay';
-  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:900;background:#F5F2ED;flex-direction:column;align-items:center;';
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:860px;padding:14px 20px 10px;flex-shrink:0;background:#F5F2ED;border-bottom:.5px solid #e0dbd4;">
-      <span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;font-weight:300;color:#1a1a1a;">Übergabeprotokoll</span>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <button id="aptUebergSaveBtn" style="height:36px;padding:0 18px;background:#1E1B18;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;">
-          <i class="ti ti-download"></i> Save PDF
-        </button>
-        <button id="aptUebergPreviewClose" style="width:32px;height:32px;background:var(--cc-surface);border:.5px solid var(--cc-rule);border-radius:50%;color:var(--cc-charcoal);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-          <i class="ti ti-x"></i>
-        </button>
-      </div>
-    </div>
-    <div id="aptUebergPreviewBody" style="flex:1;overflow-y:auto;width:100%;display:flex;flex-direction:column;align-items:center;padding:16px 16px 32px;gap:12px;-webkit-overflow-scrolling:touch;background:#F5F2ED;"></div>
-  `;
-  el.style.display = 'none';
-  document.getElementById('appShell')?.appendChild(el);
-  el.addEventListener('click', e => e.stopPropagation());
-  document.getElementById('aptUebergPreviewClose').addEventListener('click', e => {
-    e.stopPropagation();
-    el.style.display = 'none';
-    document.getElementById('aptContractOverlay')?.classList.add('open');
-  });
-})();
+/* ── ÜBERGABE PDF PREVIEW — close wiring (overlay is static in index.html) ── */
+document.getElementById('aptUebergPreviewClose')?.addEventListener('click', () => {
+  document.getElementById('aptUebergPreviewOverlay').style.display = 'none';
+  document.getElementById('aptContractOverlay')?.classList.add('open');
+});
 
 
 /* ── ENTRY POINT — called from _aptOpenContract ──────────── */
@@ -148,34 +125,34 @@ function _aptCollectUebergData(apt, isEinzug) {
 async function _aptOpenUebergPreview(d, container) {
   const overlay = document.getElementById('aptUebergPreviewOverlay');
   const body    = document.getElementById('aptUebergPreviewBody');
+  body.innerHTML = '';
   overlay.style.display = 'flex';
-  body.innerHTML = '<div style="color:#fff;font-size:13px;padding:40px;">Rendering…</div>';
 
   const pages = container.querySelectorAll('.pdf-page');
   const bodyW = body.clientWidth - 32;
   const scale = Math.min(1, bodyW / 794);
-  body.innerHTML = '';
 
   for (const pg of pages) {
     const canvas = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, windowWidth: 794 });
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
     const img = document.createElement('img');
     img.src = canvas.toDataURL('image/jpeg', 0.95);
-    img.style.cssText = `width:${794 * scale}px;height:${1123 * scale}px;display:block;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.3);`;
-    body.appendChild(img);
+    img.style.cssText = `width:${794 * scale}px;height:${1123 * scale}px;display:block;`;
+    wrapper.appendChild(img);
+    body.appendChild(wrapper);
   }
-
   container.remove();
 
   // Wire save button
   const saveBtn = document.getElementById('aptUebergSaveBtn');
   const freshSave = saveBtn.cloneNode(true);
   saveBtn.parentNode.replaceChild(freshSave, saveBtn);
-  freshSave.addEventListener('click', async e => {
-    e.stopPropagation();
+  freshSave.addEventListener('click', async () => {
     freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving…';
     freshSave.disabled = true;
     await _aptSaveUebergPDFFromData(d);
-    freshSave.innerHTML = '<i class="ti ti-download"></i> Save PDF';
+    freshSave.innerHTML = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF';
     freshSave.disabled = false;
     document.getElementById('aptUebergPreviewOverlay').style.display = 'none';
     document.getElementById('aptContractOverlay')?.classList.add('open');

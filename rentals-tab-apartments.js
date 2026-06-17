@@ -1513,12 +1513,8 @@ document.getElementById('aptContractClose')?.addEventListener('click', () => {
   document.getElementById('aptContractOverlay').classList.remove('open');
 });
 document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('aptContractOverlay')) {
-    const p1 = document.getElementById('aptContractPdfPreviewOverlay');
-    const p2 = document.getElementById('aptUebergPreviewOverlay');
-    if ((p1 && p1.style.display !== 'none') || (p2 && p2.style.display !== 'none')) return;
+  if (e.target === document.getElementById('aptContractOverlay'))
     document.getElementById('aptContractOverlay').classList.remove('open');
-  }
 });
 
 
@@ -1858,34 +1854,11 @@ function _aptReadKautionFael(prefix) {
 }
 
 
-/* ── GENERIC PDF PREVIEW OVERLAY ─────────────────────────── */
-(function _buildAptContractPdfPreview() {
-  if (document.getElementById('aptContractPdfPreviewOverlay')) return;
-  const el = document.createElement('div');
-  el.id = 'aptContractPdfPreviewOverlay';
-  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:900;background:#F5F2ED;flex-direction:column;align-items:center;';
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:860px;padding:14px 20px 10px;flex-shrink:0;background:#F5F2ED;border-bottom:.5px solid #e0dbd4;">
-      <span id="aptCPdfPreviewTitle" style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;font-weight:300;color:#1a1a1a;"></span>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <button id="aptCPdfSaveBtn" style="height:36px;padding:0 18px;background:#1E1B18;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;">
-          <i class="ti ti-download"></i> Save PDF
-        </button>
-        <button id="aptCPdfPreviewClose" style="width:32px;height:32px;background:var(--cc-surface);border:.5px solid var(--cc-rule);border-radius:50%;color:var(--cc-charcoal);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-          <i class="ti ti-x"></i>
-        </button>
-      </div>
-    </div>
-    <div id="aptCPdfPreviewBody" style="flex:1;overflow-y:auto;width:100%;display:flex;flex-direction:column;align-items:center;padding:16px 16px 32px;gap:12px;-webkit-overflow-scrolling:touch;background:#F5F2ED;"></div>
-  `;
-  document.getElementById('appShell')?.appendChild(el);
-  el.addEventListener('click', e => e.stopPropagation());
-  document.getElementById('aptCPdfPreviewClose').addEventListener('click', e => {
-    e.stopPropagation();
-    el.style.display = 'none';
-    document.getElementById('aptContractOverlay')?.classList.add('open');
-  });
-})();
+/* ── CONTRACT PDF PREVIEW — close wiring (overlay is static in index.html) ── */
+document.getElementById('aptCPdfPreviewClose')?.addEventListener('click', () => {
+  document.getElementById('aptContractPdfPreviewOverlay').style.display = 'none';
+  document.getElementById('aptContractOverlay')?.classList.add('open');
+});
 
 /* Shared helper — renders all .pdf-page nodes from container into jsPDF,
    shows desktop preview overlay or saves directly on mobile.
@@ -1897,31 +1870,34 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
   if (window.innerWidth >= 701) {
     // ── Desktop: show preview overlay ───────────────────────
     const overlay   = document.getElementById('aptContractPdfPreviewOverlay');
-    const body      = document.getElementById('aptCPdfPreviewBody');
+    const doc       = document.getElementById('aptCPdfPreviewDoc');
     const titleEl   = document.getElementById('aptCPdfPreviewTitle');
     const saveBtn   = document.getElementById('aptCPdfSaveBtn');
     titleEl.textContent = filename.replace(/_/g,' ').replace('.pdf','');
+    doc.innerHTML = '';
     overlay.style.display = 'flex';
-    body.innerHTML = '<div style="color:#fff;font-size:13px;padding:40px;">Rendering\u2026</div>';
 
-    const bodyW = body.clientWidth - 32;
-    const scale = Math.min(1, bodyW / 794);
-    body.innerHTML = '';
+    const bodyEl = document.getElementById('aptCPdfPreviewBody');
+    const bodyW  = (bodyEl?.clientWidth || 400) - 32;
+    const scale  = Math.min(1, bodyW / 794);
     const canvases = [];
     for (const pg of pages) {
       const canvas = await html2canvas(pg, { scale:2, useCORS:true, backgroundColor:'#ffffff', width:794, windowWidth:794 });
       canvases.push(canvas);
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
       const img = document.createElement('img');
       img.src = canvas.toDataURL('image/jpeg', 0.95);
-      img.style.cssText = `width:${794*scale}px;height:${1123*scale}px;display:block;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.3);`;
-      body.appendChild(img);
+      img.style.cssText = `width:${794*scale}px;height:${1123*scale}px;display:block;`;
+      wrapper.appendChild(img);
+      doc.appendChild(wrapper);
     }
     container.remove();
 
     // Re-enable trigger button
     if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
 
-    // Wire save from stored canvases (no re-render needed)
+    // Wire save button
     const freshSave = saveBtn.cloneNode(true);
     saveBtn.parentNode.replaceChild(freshSave, saveBtn);
     freshSave.addEventListener('click', async e => {
@@ -1933,7 +1909,7 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
         pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
       });
       pdf.save(filename);
-      freshSave.innerHTML = '<i class="ti ti-download"></i> Save PDF'; freshSave.disabled = false;
+      freshSave.innerHTML = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF'; freshSave.disabled = false;
       overlay.style.display = 'none';
       document.getElementById('aptContractOverlay')?.classList.add('open');
     });
