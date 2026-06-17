@@ -1388,6 +1388,7 @@ function _aptOpenContract(type, aptId) {
         const btn = document.getElementById('aptKzPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
+          if (typeof loadSettings === 'function') await loadSettings();
           const data = _buildRentalKurzzeitData(apt2, appSettings, {
             mieterName, mieterAdr, mieterDob, mieterEmail, startVal, endVal, sigVal, kautionVal,
           });
@@ -1442,6 +1443,7 @@ function _aptOpenContract(type, aptId) {
         const btn = document.getElementById('aptMvPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
+          if (typeof loadSettings === 'function') await loadSettings();
           const aptRoom = {
             ...apt2,
             name:               apt2.name,
