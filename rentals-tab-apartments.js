@@ -363,7 +363,7 @@ document.getElementById('tab-apartments').innerHTML = `
 .rm-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
 .rm-field:last-child { margin-bottom:0; }
 .rm-field label { font-size:10px; font-weight:500; letter-spacing:.09em; text-transform:uppercase; color:var(--cc-taupe); }
-.rm-input { width:100%; min-height:32px; padding:5px 11px; background:var(--cc-bg); border:var(--cc-border); border-radius:var(--cc-r-md); font-family:inherit; font-size:10px; font-weight:300; color:var(--cc-charcoal); outline:none; box-sizing:border-box; -webkit-appearance:none; }
+.rm-input { width:100%; min-height:30px; padding:4px 10px; background:var(--cc-bg); border:var(--cc-border); border-radius:var(--cc-r-md); font-family:inherit; font-size:16px; font-weight:300; color:var(--cc-charcoal); outline:none; box-sizing:border-box; -webkit-appearance:none; }
 .rm-input:focus { border-color:var(--cc-charcoal); }
 .rm-input::placeholder { color:var(--cc-stone); }
 .rm-field-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
