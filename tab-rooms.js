@@ -1842,6 +1842,17 @@ function _openPdfPreview(title, saveFn) {
   });
 }
 
+function _kfSelect(prefix, val) {
+  document.querySelectorAll('.' + prefix + '-fael-opt').forEach(b => {
+    const active = b.dataset.val === val;
+    b.style.background = active ? 'var(--cc-charcoal)' : 'none';
+    b.style.color       = active ? '#fff' : 'var(--cc-charcoal)';
+    b.style.borderColor = active ? 'var(--cc-charcoal)' : 'var(--cc-rule)';
+  });
+  const customInp = document.getElementById(prefix + '-faelligkeit-custom');
+  if (customInp) customInp.style.display = val === 'custom' ? '' : 'none';
+}
+
 function _openContract(type, roomId) {
   _contractRoomId = roomId;
   _contractType   = type;
@@ -1882,7 +1893,13 @@ function _openContract(type, roomId) {
       if (!startVal || !endVal) { alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
       const s    = appSettings;
       const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
-      const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz });
+      const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
+      let _cmFaelVal = '5';
+      _cmFaelOpts.forEach(b => { if (b.style.background.includes('charcoal') || b.classList.contains('active-fael')) _cmFaelVal = b.dataset.val; });
+      const kautionFaelligkeitKz = _cmFaelVal === 'custom'
+        ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
+        : _cmFaelVal === 'sofort' ? 'sofort' : 5;
+      const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz, kautionFaelligkeit: kautionFaelligkeitKz });
       const html = _renderKurzzeitHTML(data);
       // Pre-render into hidden container so preview can read it
       let container = document.getElementById('_pdfRenderContainer');
@@ -1934,10 +1951,17 @@ function _openContract(type, roomId) {
       if (befristet && !endVal) { alert('Bitte Mietende ausfüllen.'); return; }
       const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
       const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
+      const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
+      let _mvFaelVal = '5';
+      _mvFaelOpts.forEach(b => { if (b.style.background.includes('charcoal') || b.classList.contains('active-fael')) _mvFaelVal = b.dataset.val; });
+      const kautionFaelligkeitMv = _mvFaelVal === 'custom'
+        ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
+        : _mvFaelVal === 'sofort' ? 'sofort' : 5;
       const data = _buildMietvertragOnlyData(room2, appSettings, {
         mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
         befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
         kautionOverride: kautionOverrideMv,
+        kautionFaelligkeit: kautionFaelligkeitMv,
       });
       const html = _renderMietvertragHTML(data);
       let container = document.getElementById('_pdfRenderContainer');
@@ -2303,6 +2327,23 @@ function _contractBodyKurzzeit(room) {
         value="${room.kaution_override && room.kaution_default ? Number(room.kaution_default) : kzBase}"
         placeholder="€"/>
     </div>
+    <div style="margin-top:8px">
+      <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="sofort"
+          onclick="_kfSelect('cm','sofort')"
+          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
+        <button type="button" class="rm-btn rm-btn--sm cm-fael-opt active-fael" data-val="5"
+          onclick="_kfSelect('cm','5')"
+          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
+        <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="custom"
+          onclick="_kfSelect('cm','custom')"
+          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
+        <input type="number" id="cm-faelligkeit-custom"
+          style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit;-webkit-appearance:textfield;appearance:textfield"
+          placeholder="Tage" min="1"/>
+      </div>
+    </div>
 
     <div class="rm-fields-title">Tenant details — enter manually</div>
     <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="cm-name" placeholder="Full name…"/></div>
@@ -2475,7 +2516,7 @@ async function _generateKurzzeitPDF() {
 
 
 /* ── BUILD MIETVERTRAG DATA ──────────────────────────────── */
-function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '', startVal, endVal, sigVal, ersterMonatVoll = false, letzterMonatVoll = false, kautionOverride = null }) {
+function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '', startVal, endVal, sigVal, ersterMonatVoll = false, letzterMonatVoll = false, kautionOverride = null, kautionFaelligkeit = 5 }) {
   const fmt = d => {
     const dt = new Date(d);
     return String(dt.getDate()).padStart(2,'0') + '.' +
@@ -2546,6 +2587,15 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
   } else {
     kaution = totalMonths <= 3 ? kautionBase : kautionBase * 3;
   }
+
+  // Kaution Fälligkeit text
+  const _kf = kautionFaelligkeit;
+  const kautionFaelligkeitShort = _kf === 'sofort'
+    ? 'sofort fällig nach Vertragsunterzeichnung'
+    : `fällig binnen ${_kf} Tagen nach Vertragsunterzeichnung`;
+  const kautionFaelligkeitLong = _kf === 'sofort'
+    ? 'sofort nach Vertragsunterzeichnung'
+    : `binnen ${_kf} Tagen nach Vertragsunterzeichnung`;
 
   // Zahlungsplan
   const firstPayDate = new Date(start.getFullYear(), start.getMonth(), 1);
@@ -2648,6 +2698,10 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
     letzteZahlungFaellig: zlFaellig,
     // Kaution
     kaution,
+    kautionFaelligkeitShort,
+    kautionFaelligkeitLong,
+    kautionFaelligkeitShort,
+    kautionFaelligkeitLong,
     // Schlüssel
     hausstuerschluessel: room.haustuerschluessel || 1,
     zimmerschluessel:    room.zimmerschluessel || 1,
@@ -3019,7 +3073,7 @@ function _renderKurzzeitHTML(d) {
     ${kv('1. Zahlung', eur(d.zahlung1Betrag) + ' (' + d.zahlung1Beschreibung + '), fällig am ' + d.zahlung1Faellig)}
     ${d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + ' monatlich, jeweils fällig 3. Werktag') : ''}
     ${d.letzteZahlungNoetig ? kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + ' (' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig) : ''}
-    ${kv('Kaution', eur(d.kaution) + ' (fällig 5 Tage nach Unterzeichnung)')}
+    ${kv('Kaution', eur(d.kaution) + ' (' + d.kautionFaelligkeitShort + ')')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber', d.kontoinhaber)}
     ${kv('IBAN', d.iban)}
@@ -3070,7 +3124,7 @@ function _renderKurzzeitHTML(d) {
       }
     })()}
     ${clause('3', 'Fälligkeit der Mietzahlungen', 'Die Miete ist jeweils spätestens bis zum dritten Werktag des fälligen Monats zu überweisen (§ 556b BGB). Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß § 288 BGB geltend zu machen.', false)}
-    ${clause('4', 'Kaution', 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' spätestens 5 Tage nach Unterzeichnung. Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Kleinreparaturen bis 100 € pro Schadensfall gehen zu Lasten des Mieters (§ 535 BGB). Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', false)}
+    ${clause('4', 'Kaution', 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelligkeitLong + ' nach Vertragsunterzeichnung. Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Kleinreparaturen bis 100 € pro Schadensfall gehen zu Lasten des Mieters (§ 535 BGB). Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', false)}
     ${clause('5', 'Schlüsselübergabe', 'Der Mieter erhält bei Einzug ' + d.hausstuerschluessel + ' Haustürschlüssel und ' + d.zimmerschluessel + ' Zimmerschlüssel. Alle Schlüssel sind bei Auszug an den Vermieter zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten für den Schlossaustausch.', false)}
     ${clause('6', 'Zustand &amp; Übergabe', 'Das Zimmer wird möbliert und in vertragsgemäßem Zustand übergeben. Ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Das Zimmer ist in gleichem Zustand zurückzugeben.', false)}
     ${clause('7', 'Haftpflichtversicherung', 'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.', false)}
@@ -3651,6 +3705,7 @@ function _buildMietvertragOnlyData(room, s, {
   grundVal = '', eigenbedarfPerson = '',
   ersterMonatVoll = false,
   kautionOverride = null,
+  kautionFaelligkeit = 5,
 }) {
   const fmt = d => {
     const dt = new Date(d);
@@ -3701,6 +3756,16 @@ function _buildMietvertragOnlyData(room, s, {
     : room.kaution_override && room.kaution_default
       ? Number(room.kaution_default)
       : kautionBase * 3;
+
+  // Kaution Fälligkeit text
+  const _kf = kautionFaelligkeit;
+  const kautionFaelligkeitShort = _kf === 'sofort'
+    ? 'sofort fällig nach Vertragsunterzeichnung'
+    : `fällig binnen ${_kf} Tagen nach Vertragsunterzeichnung`;
+  const kautionFaelligkeitLong = _kf === 'sofort'
+    ? 'sofort nach Vertragsunterzeichnung'
+    : `binnen ${_kf} Tagen nach Vertragsunterzeichnung`;
+
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
@@ -3807,6 +3872,23 @@ function _contractBodyMietvertrag(room) {
       </div>
       <input class="rm-input" id="mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
         value="${kaution}" placeholder="€"/>
+    </div>
+    <div style="margin-top:8px">
+      <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="sofort"
+          onclick="_kfSelect('mv','sofort')"
+          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
+        <button type="button" class="rm-btn rm-btn--sm mv-fael-opt active-fael" data-val="5"
+          onclick="_kfSelect('mv','5')"
+          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
+        <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="custom"
+          onclick="_kfSelect('mv','custom')"
+          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
+        <input type="number" id="mv-faelligkeit-custom"
+          style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit;-webkit-appearance:textfield;appearance:textfield"
+          placeholder="Tage" min="1"/>
+      </div>
     </div>
 
     <div class="rm-fields-title" style="margin-top:2px;">Mieterdaten</div>
@@ -4044,7 +4126,7 @@ function _renderMietvertragHTML(d) {
     }
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
-    ${kv('Kaution',eur(d.kaution)+'\u2002(fällig binnen 5 Tagen nach Vertragsunterschrift, \u00a7\u00a0551 BGB)')}
+    ${kv('Kaution',eur(d.kaution)+'\u2002(' + d.kautionFaelligkeitShort + ', \u00a7\u00a0551 BGB)')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
@@ -4084,7 +4166,7 @@ function _renderMietvertragHTML(d) {
     ${cl('5','Schlüsselübergabe',
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
     ${cl('6','Kaution',
-      `Der Mieter überweist die Kaution von ${eur(d.kaution)} binnen 5 Tagen nach Unterzeichnung dieses Vertrages auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
+      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelligkeitLong} dieses Vertrages auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
     ${cl('7','Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl('8','Tierhaltung',
