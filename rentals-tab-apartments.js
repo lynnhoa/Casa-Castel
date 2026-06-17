@@ -1394,7 +1394,6 @@ function _aptOpenContract(type, aptId) {
       });
     }, 0);
   }
-  }
 
   // Wire cancel
   setTimeout(() => {
