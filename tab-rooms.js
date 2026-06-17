@@ -1554,9 +1554,12 @@ async function _saveCard(card) {
   card.remove();
   _bindAllCards();
   _initSortable();
-  // Scroll saved card back into view (async save can drift the viewport)
+  // Scroll to top of saved card, below sticky nav (same pattern as _toggleCard)
   requestAnimationFrame(() => {
-    newCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const cardTop = newCard.getBoundingClientRect().top + window.scrollY;
+    const navH    = document.querySelector('.cc-nav')?.offsetHeight    || 56;
+    const headerH = document.querySelector('.cc-header')?.offsetHeight || 52;
+    window.scrollTo({ top: cardTop - navH - headerH - 8, behavior: 'smooth' });
   });
 }
 
