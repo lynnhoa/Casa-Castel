@@ -649,6 +649,9 @@ function _aptCardHTML(a) {
       <div class="apt-sec-read">
         <div class="apt-row"><span class="apt-row__k">Name</span><span class="apt-row__v">${aptEsc(a.name)}</span></div>
         <div class="apt-row"><span class="apt-row__k">Adresse</span><span class="apt-row__v">${aptEsc(a.adresse || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">PLZ / Ort</span><span class="apt-row__v">${aptEsc(a.plz_ort || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Gerichtsstand</span><span class="apt-row__v">${aptEsc(a.gerichtsstand || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Unterzeichnung</span><span class="apt-row__v">${aptEsc(a.unterschrift_ort || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Heizungsart</span><span class="apt-row__v">${aptEsc(a.heizungsart || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Rooms</span><span class="apt-row__v">${aptEsc(a.zimmer_type || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Floor</span><span class="apt-row__v">${aptEsc(a.floor || '—')}</span></div>
@@ -667,6 +670,11 @@ function _aptCardHTML(a) {
           <div class="apt-field"><div class="apt-field__label">Floor</div><input class="apt-input" data-f="floor" value="${aptEsc(a.floor||'')}"/></div>
         </div>
         <div class="apt-field"><div class="apt-field__label">Adresse</div><input class="apt-input" data-f="adresse" value="${aptEsc(a.adresse||'')}"/></div>
+        <div class="apt-field-row">
+          <div class="apt-field"><div class="apt-field__label">PLZ / Ort</div><input class="apt-input" data-f="plz_ort" value="${aptEsc(a.plz_ort||'')}" placeholder="55246 Mainz-Kostheim"/></div>
+          <div class="apt-field"><div class="apt-field__label">Gerichtsstand</div><input class="apt-input" data-f="gerichtsstand" value="${aptEsc(a.gerichtsstand||'')}" placeholder="z.B. Wiesbaden"/></div>
+        </div>
+        <div class="apt-field"><div class="apt-field__label">Unterzeichnungsort</div><input class="apt-input" data-f="unterschrift_ort" value="${aptEsc(a.unterschrift_ort||'')}" placeholder="z.B. Wiesbaden"/></div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">Size m²</div><input class="apt-input" type="number" data-f="flaeche_m2" value="${a.flaeche_m2||''}"/></div>
           <div class="apt-field"><div class="apt-field__label">Rooms</div>
@@ -1412,6 +1420,9 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase) {
       <div class="rm-prefilled__title">Pre-filled from apartment</div>
       <div class="rm-pre-row"><span>Apartment</span><span>${aptEsc(apt.name)}</span></div>
       <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse || '—')}</span></div>
+      <div class="rm-pre-row"><span>PLZ / Ort</span><span>${aptEsc(apt.plz_ort || '—')}</span></div>
+      <div class="rm-pre-row"><span>Gerichtsstand</span><span>${aptEsc(apt.gerichtsstand || '—')}</span></div>
+      <div class="rm-pre-row"><span>Unterzeichnung</span><span>${aptEsc(apt.unterschrift_ort || '—')}</span></div>
       <div class="rm-pre-row"><span>Size</span><span>${apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : '—'}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${rentDisplay}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Haustür ×${sk.haustuerschluessel ?? 1} · Wohnung ×${sk.wohnungsschluessel ?? 1}</span></div>
@@ -1455,6 +1466,9 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution) {
       <div class="rm-prefilled__title">Pre-filled from apartment</div>
       <div class="rm-pre-row"><span>Apartment</span><span>${aptEsc(apt.name)}</span></div>
       <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse || '—')}</span></div>
+      <div class="rm-pre-row"><span>PLZ / Ort</span><span>${aptEsc(apt.plz_ort || '—')}</span></div>
+      <div class="rm-pre-row"><span>Gerichtsstand</span><span>${aptEsc(apt.gerichtsstand || '—')}</span></div>
+      <div class="rm-pre-row"><span>Unterzeichnung</span><span>${aptEsc(apt.unterschrift_ort || '—')}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${aptFmtEURCompact(kalt)} kalt + ${aptFmtEURCompact(nk)} NK</span></div>
       <div class="rm-pre-row"><span>Gesamtmiete</span><span>${aptFmtEURCompact(kalt + nk)} / Monat</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Haustür ×${sk.haustuerschluessel ?? 1} · Wohnung ×${sk.wohnungsschluessel ?? 1}</span></div>

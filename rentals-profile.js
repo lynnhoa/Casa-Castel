@@ -306,31 +306,12 @@ const _RP_SECTIONS = [
     ],
   },
   {
-    key:    'objekt',
-    title:  'Objekt',
-    fields: [
-      { key: 'objekt_adresse',   label: 'Adresse',        placeholder: 'Straße und Hausnummer…' },
-      { key: 'objekt_plz_ort',   label: 'PLZ / Ort',      placeholder: '55246 Mainz-Kostheim…' },
-      { key: 'gerichtsstand',    label: 'Gerichtsstand',  placeholder: 'z. B. Mainz' },
-      { key: 'unterschrift_ort', label: 'Unterzeichnung', placeholder: 'z. B. Mainz' },
-    ],
-  },
-  {
     key:    'bank',
     title:  'Bankverbindung',
     fields: [
       { key: 'kontoinhaber', label: 'Kontoinhaber', placeholder: 'Name des Kontoinhabers…' },
       { key: 'iban',         label: 'IBAN',         placeholder: 'DE00 0000 0000 0000 0000 00', mono: true },
       { key: 'bic',          label: 'BIC',          placeholder: 'XXXXXXXX' },
-    ],
-  },
-  {
-    key:    'energieausweis',
-    title:  'Energieausweis',
-    fields: [
-      { key: 'energieklasse',     label: 'Effizienzklasse',   placeholder: 'z. B. D' },
-      { key: 'energieausweisart', label: 'Art des Ausweises', placeholder: 'Verbrauchsausweis' },
-      { key: 'endenergiebedarf',  label: 'Endenergiebedarf',  placeholder: '142 kWh/(m²·a)' },
     ],
   },
 ];
@@ -347,7 +328,7 @@ function _buildRentalsProfileShell() {
       <div class="rp-prf-hdr">
         <div>
           <div class="rp-prf-hdr__title">Profile</div>
-          <div class="rp-prf-hdr__sub">Rentals · shared with Casa Castel</div>
+          <div class="rp-prf-hdr__sub">Vermieter · Bank · shared with Casa Castel</div>
         </div>
         <button class="rp-prf-hdr__close" id="rpPrfClose" aria-label="Close">
           <i class="ti ti-x"></i>
