@@ -1593,9 +1593,9 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution) {
     <div style="margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="rm-fael-btn" onclick="_aptKfSelect('mv','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn active" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
-        <button class="rm-fael-btn" onclick="_aptKfSelect('mv','custom',this)">Individuell</button>
+        <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','sofort',this)">Sofort</button>
+        <button class="rm-fael-btn active" data-prefix="mv" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
+        <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','custom',this)">Individuell</button>
         <input type="number" id="apt-mv-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
       </div>
     </div>
