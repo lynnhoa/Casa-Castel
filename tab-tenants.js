@@ -368,6 +368,7 @@ let _tnNK           = {};
 let _tnDocs         = {};
 let _tnProfileCache = {};
 let _tnShowOlder    = {};
+let _tnOpenCards    = new Set();
 let _tnModalTid     = null;
 let _tnUploadTid    = null;
 let _tnUploadType   = null;
@@ -636,7 +637,14 @@ function _tnRender() {
 
   if (!rooms.length) { list.innerHTML = `<p class="tn-empty">No rooms configured.</p>`; return; }
 
+  // Snapshot any cards currently open in the DOM before wiping
+  document.querySelectorAll('.tn-card.open').forEach(el => _tnOpenCards.add(el.id));
+
   list.innerHTML = rooms.map(r => _tnCardHTML(r)).join('');
+
+  // Restore open state (read mode is the default after re-render — no extra work needed)
+  _tnOpenCards.forEach(id => document.getElementById(id)?.classList.add('open'));
+
   _tnBindCards();
 }
 
@@ -1379,11 +1387,14 @@ function _tnToggleCard(id) {
   if (!card) return;
   card.classList.toggle('open');
   if (card.classList.contains('open')) {
+    _tnOpenCards.add(id);
     requestAnimationFrame(() => {
       const top  = card.getBoundingClientRect().top + window.scrollY;
       const navH = document.querySelector('.cc-header')?.offsetHeight || 100;
       window.scrollTo({ top: top - navH - 8, behavior:'smooth' });
     });
+  } else {
+    _tnOpenCards.delete(id);
   }
 }
 
