@@ -1370,7 +1370,48 @@ function _aptOpenContract(type, aptId) {
     const kzNk   = Number(p.kurzzeit_nk) || 0;
     const kzBase = kzKalt + kzNk || Number(p.kaltmiete) || 0;
     body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase);
-    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" disabled><i class="ti ti-printer"></i> PDF — coming soon</button>`;
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+
+    setTimeout(() => {
+      document.getElementById('aptKzPdfBtn')?.addEventListener('click', async () => {
+        const apt2        = appApartments.find(a => a.id === _aptContractId);
+        if (!apt2) return;
+        const mieterName  = document.getElementById('apt-cm-name')?.value.trim();
+        const mieterAdr   = document.getElementById('apt-cm-adr')?.value.trim();
+        const mieterDob   = document.getElementById('apt-cm-dob')?.value.trim();
+        const mieterEmail = document.getElementById('apt-cm-email')?.value.trim();
+        const startVal    = document.getElementById('apt-cm-start')?.value;
+        const endVal      = document.getElementById('apt-cm-end')?.value;
+        const sigVal      = document.getElementById('apt-cm-sig')?.value;
+        const kautionVal  = document.getElementById('apt-cm-kaution')?.value;
+        if (!mieterName) { alert('Bitte Mietername eingeben.');  return; }
+        if (!startVal)   { alert('Bitte Mietbeginn auswählen.'); return; }
+        if (!endVal)     { alert('Bitte Mietende angeben.');     return; }
+        const btn = document.getElementById('aptKzPdfBtn');
+        if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
+        try {
+          const data = _buildRentalKurzzeitData(apt2, appSettings, {
+            mieterName, mieterAdr, mieterDob, mieterEmail, startVal, endVal, sigVal, kautionVal,
+          });
+          const html = _renderRentalKurzzeitHTML(data);
+          let container = document.getElementById('_pdfRenderContainer');
+          if (container) container.remove();
+          container = document.createElement('div');
+          container.id = '_pdfRenderContainer';
+          container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#ffffff;z-index:-1;font-size:11.33px;';
+          container.innerHTML = html;
+          document.body.appendChild(container);
+          await document.fonts.ready;
+          await new Promise(r => setTimeout(r, 300));
+          const filename = `Kurzzeitmiete_${apt2.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
+          await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
+        } catch(err) {
+          console.error('[Kurzzeit PDF]', err);
+          alert('PDF generation failed. Please try again.');
+          if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+        }
+      });
+    }, 0);
 
   } else if (type === 'mietvertrag') {
     typeLbl.textContent  = 'Mietvertrag';
@@ -1379,8 +1420,68 @@ function _aptOpenContract(type, aptId) {
     const nk     = Number(p.nk_pauschale) || 0;
     const kaution = p.kaution_override && p.kaution_default ? Number(p.kaution_default) : kalt * 3;
     body.innerHTML = _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution);
-    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" disabled><i class="ti ti-printer"></i> PDF — coming soon</button>`;
-    setTimeout(() => { document.getElementById('apt-mv-start')?.addEventListener('input', _aptUpdateMvMonatToggle); }, 50);
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+    setTimeout(() => {
+      document.getElementById('aptMvPdfBtn')?.addEventListener('click', async () => {
+        const apt2              = appApartments.find(a => a.id === _aptContractId);
+        if (!apt2) return;
+        const mieterName        = document.getElementById('apt-mv-name')?.value.trim();
+        const mieterAdr         = document.getElementById('apt-mv-adr')?.value.trim();
+        const mieterDob         = document.getElementById('apt-mv-dob')?.value.trim();
+        const mieterEmail       = document.getElementById('apt-mv-email')?.value.trim();
+        const startVal          = document.getElementById('apt-mv-start')?.value;
+        const sigVal            = document.getElementById('apt-mv-sig')?.value;
+        const befristet         = document.getElementById('apt-mv-befristung-btn')?.dataset.mode === 'befristet';
+        const endVal            = befristet ? document.getElementById('apt-mv-end')?.value : null;
+        const grundVal          = befristet ? (document.querySelector('input[name="apt-mv-grund"]:checked')?.value || '') : '';
+        const eigenbedarfPerson = grundVal === 'eigenbedarf' ? document.getElementById('apt-mv-eigenbedarf-person')?.value.trim() : '';
+        if (!mieterName) { alert('Bitte Mietername eingeben.'); return; }
+        if (!startVal)   { alert('Bitte Mietbeginn auswählen.'); return; }
+        if (befristet && !endVal) { alert('Bitte Mietende angeben.'); return; }
+        if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) {
+          alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
+        }
+        const btn = document.getElementById('aptMvPdfBtn');
+        if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
+        try {
+          const aptRoom = {
+            ...apt2,
+            name:               apt2.name,
+            flaeche_m2:         apt2.flaeche_m2,
+            gemeinschaftsraeume: [],
+            haustuerschluessel:  apt2.schlussel?.haustuerschluessel ?? 1,
+            zimmerschluessel:    apt2.schlussel?.wohnungsschluessel ?? 1,
+            kaltmiete:           apt2.pricing?.kaltmiete,
+            nk_pauschale:        apt2.pricing?.nk_pauschale,
+            mietvertrag_pricing: 'kalt_nk',
+            kaution_override:    apt2.pricing?.kaution_override,
+            kaution_default:     apt2.pricing?.kaution_default,
+            inventar:            apt2.inventar || [],
+          };
+          const data = _buildRentalMietvertragData(aptRoom, appSettings, {
+            mieterName, mieterAdr, mieterDob, mieterEmail, startVal, sigVal,
+            befristet, endVal, grundVal, eigenbedarfPerson,
+          });
+          const html = _renderRentalMietvertragHTML(data);
+          let container = document.getElementById('_pdfRenderContainer');
+          if (container) container.remove();
+          container = document.createElement('div');
+          container.id = '_pdfRenderContainer';
+          container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#ffffff;z-index:-1;font-size:11.33px;';
+          container.innerHTML = html;
+          document.body.appendChild(container);
+          await document.fonts.ready;
+          await new Promise(r => setTimeout(r, 300));
+          const filename = `Mietvertrag_${apt2.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
+          await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
+        } catch(err) {
+          console.error('[Mietvertrag PDF]', err);
+          alert('PDF generation failed. Please try again.');
+          if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+        }
+      });
+      document.getElementById('apt-mv-start')?.addEventListener('input', _aptUpdateMvMonatToggle);
+    }, 0);
 
   } else if (type === 'ueberg') {
     const isEinzug = document.getElementById('apt-eu-' + aptId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
@@ -1734,6 +1835,96 @@ document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
   _renderAptList();
   _aptInitSortable();
 });
+
+
+/* ── GENERIC PDF PREVIEW OVERLAY ─────────────────────────── */
+(function _buildAptContractPdfPreview() {
+  if (document.getElementById('aptContractPdfPreviewOverlay')) return;
+  const el = document.createElement('div');
+  el.id = 'aptContractPdfPreviewOverlay';
+  el.style.cssText = 'display:none;position:fixed;inset:0;z-index:800;background:rgba(30,27,24,.55);backdrop-filter:blur(3px);flex-direction:column;align-items:center;';
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:860px;padding:14px 20px 10px;flex-shrink:0;">
+      <span id="aptCPdfPreviewTitle" style="font-family:'Cormorant Garamond',Georgia,serif;font-size:18px;font-weight:300;color:#fff;"></span>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button id="aptCPdfSaveBtn" style="height:36px;padding:0 18px;background:#fff;color:#1E1B18;border:none;border-radius:8px;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;">
+          <i class="ti ti-download"></i> Save PDF
+        </button>
+        <button id="aptCPdfPreviewClose" style="width:32px;height:32px;background:rgba(255,255,255,.15);border:none;border-radius:50%;color:#fff;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+    </div>
+    <div id="aptCPdfPreviewBody" style="flex:1;overflow-y:auto;width:100%;display:flex;flex-direction:column;align-items:center;padding:0 16px 32px;gap:12px;-webkit-overflow-scrolling:touch;"></div>
+  `;
+  document.getElementById('appShell')?.appendChild(el);
+  document.getElementById('aptCPdfPreviewClose').addEventListener('click', () => {
+    el.style.display = 'none';
+  });
+})();
+
+/* Shared helper — renders all .pdf-page nodes from container into jsPDF,
+   shows desktop preview overlay or saves directly on mobile.
+   Resets btnEl to resetHtml when done. */
+async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
+  const { jsPDF } = window.jspdf;
+  const pages = container.querySelectorAll('.pdf-page');
+
+  if (window.innerWidth >= 701) {
+    // ── Desktop: show preview overlay ───────────────────────
+    const overlay   = document.getElementById('aptContractPdfPreviewOverlay');
+    const body      = document.getElementById('aptCPdfPreviewBody');
+    const titleEl   = document.getElementById('aptCPdfPreviewTitle');
+    const saveBtn   = document.getElementById('aptCPdfSaveBtn');
+    titleEl.textContent = filename.replace(/_/g,' ').replace('.pdf','');
+    overlay.style.display = 'flex';
+    body.innerHTML = '<div style="color:#fff;font-size:13px;padding:40px;">Rendering\u2026</div>';
+
+    const bodyW = body.clientWidth - 32;
+    const scale = Math.min(1, bodyW / 794);
+    body.innerHTML = '';
+    const canvases = [];
+    for (const pg of pages) {
+      const canvas = await html2canvas(pg, { scale:2, useCORS:true, backgroundColor:'#ffffff', width:794, windowWidth:794 });
+      canvases.push(canvas);
+      const img = document.createElement('img');
+      img.src = canvas.toDataURL('image/jpeg', 0.95);
+      img.style.cssText = `width:${794*scale}px;height:${1123*scale}px;display:block;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.3);`;
+      body.appendChild(img);
+    }
+    container.remove();
+
+    // Re-enable trigger button
+    if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+
+    // Wire save from stored canvases (no re-render needed)
+    const freshSave = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(freshSave, saveBtn);
+    freshSave.addEventListener('click', async () => {
+      freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving\u2026'; freshSave.disabled = true;
+      const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+      canvases.forEach((c, i) => {
+        if (i > 0) pdf.addPage();
+        pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+      });
+      pdf.save(filename);
+      freshSave.innerHTML = '<i class="ti ti-download"></i> Save PDF'; freshSave.disabled = false;
+      overlay.style.display = 'none';
+    });
+
+  } else {
+    // ── Mobile: generate + save directly ────────────────────
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    for (let i = 0; i < pages.length; i++) {
+      if (i > 0) pdf.addPage();
+      const canvas = await html2canvas(pages[i], { scale:3, useCORS:true, backgroundColor:'#ffffff', width:794, windowWidth:794 });
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+    }
+    pdf.save(filename);
+    container.remove();
+    if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+  }
+}
 
 
 /* ── SORTABLE ────────────────────────────────────────────── */
