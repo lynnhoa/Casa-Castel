@@ -1333,6 +1333,8 @@ function _tnModalFooterHTML(rec, allDone) {
     <button class="tn-btn tn-btn-ghost" onclick="_tnMarkDone('${rec.id}')">
       <i class="ti ti-archive"></i> Archive</button>
     <div class="tn-sheet-spacer"></div>
+    <button class="tn-btn tn-btn-primary" onclick="_tnModalSaveProfile('${rec.id}')">
+      <i class="ti ti-check"></i> Save</button>
     <button class="tn-btn tn-btn-danger${allDone ? '' : ''}"
       style="${allDone ? '' : 'opacity:.35;pointer-events:none'}"
       onclick="_tnDeleteFormer('${rec.id}')">
@@ -1369,6 +1371,20 @@ function _tnModalUpdateWarm() {
 }
 
 function _tnCloseModal() {
+  // If profile is in edit mode, cancel it first (x = cancel, not save)
+  if (_tnModalTid) {
+    const read  = document.getElementById('mprof-read-'      + _tnModalTid);
+    const edit  = document.getElementById('mprof-edit-'      + _tnModalTid);
+    const fread = document.getElementById('mprof-foot-read-' + _tnModalTid);
+    const fedit = document.getElementById('mprof-foot-edit-' + _tnModalTid);
+    if (edit && edit.style.display !== 'none') {
+      // Restore read mode
+      if (read)  read.style.display  = '';
+      if (edit)  edit.style.display  = 'none';
+      if (fread) fread.style.display = '';
+      if (fedit) fedit.style.display = 'none';
+    }
+  }
   document.getElementById('tnModal').classList.remove('open');
   document.body.style.overflow = '';
   _tnModalTid = null;
