@@ -94,9 +94,9 @@ document.getElementById('tab-apartments').innerHTML = `
 
 /* ── STYLES ──────────────────────────────────────────────── */
 (function() {
-  if (document.getElementById('apt-tab-styles')) return;
+  if (document.getElementById('apt-tab-styles-v2')) return;
   const s = document.createElement('style');
-  s.id = 'apt-tab-styles';
+  s.id = 'apt-tab-styles-v2';
   s.textContent = `
 /* Page header */
 .rp-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-top:24px; }
