@@ -203,6 +203,14 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* ── KAUTION ── */
 .tn-kaut-hint { font-size:10px; color:var(--cc-stone); margin-bottom:6px; }
+.tn-kaut-override-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.tn-kaut-override-lbl { font-size:10px; color:var(--cc-stone); flex:1; }
+.tn-kaut-ovr-sw { position:relative; width:32px; height:18px; flex-shrink:0; }
+.tn-kaut-ovr-sw input { opacity:0; width:0; height:0; position:absolute; }
+.tn-kaut-ovr-sw__t { position:absolute; inset:0; background:var(--cc-rule); border-radius:9px; transition:background .2s; cursor:pointer; }
+.tn-kaut-ovr-sw__t::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:white; transition:transform .2s; box-shadow:0 1px 2px rgba(0,0,0,.15); }
+.tn-kaut-ovr-sw input:checked+.tn-kaut-ovr-sw__t { background:var(--cc-ink); }
+.tn-kaut-ovr-sw input:checked+.tn-kaut-ovr-sw__t::after { transform:translateX(14px); }
 .tn-kaut-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
 .tn-kc { background:var(--cc-surface); border-radius:var(--cc-r-sm); padding:7px 9px; }
 .tn-kc-lbl { font-size:10px; font-weight:500; letter-spacing:.09em;
@@ -437,6 +445,14 @@ function _tnRoomPricing(room) {
   const kaution_override = !!(r.kaution_override && r.kaution_default);
   const kaution_fixed    = kaution_override ? Number(r.kaution_default) : null;
   return { kaltmiete, nebenkosten, kaution_override, kaution_fixed };
+}
+
+function _tnToggleKautionOverride(el, inputId, hintId) {
+  const on = el.checked;
+  const inp = document.getElementById(inputId);
+  const hint = document.getElementById(hintId);
+  if (inp) { inp.disabled = !on; inp.style.opacity = on ? '1' : '.4'; if (on) inp.focus(); }
+  if (hint) hint.style.display = on ? 'none' : '';
 }
 
 function _tnKautionSoll(room, mietbeginn, mietende) {
@@ -878,12 +894,26 @@ function _tnRentFormHTML(rid, room, rec) {
     <span class="tn-flbl">Warmmiete</span>
     <div class="tn-rf-derived" id="rf-warm-${rid}">${warm !== '' ? _tnFmtEUR(warm) : '\u2014'}</div>
   </div>
-  <div class="tn-rf">
-    <span class="tn-flbl">Kaution soll</span>
-    <input type="number" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
+  <div class="tn-rf" style="grid-column:1/-1">
+    <div class="tn-kaut-override-row">
+      <span class="tn-kaut-override-lbl">Kaution soll · ${_tnFmtEUR(ksoll) || '—'} (${rule})</span>
+      <label class="tn-kaut-ovr-sw" title="Override kaution">
+        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null ? 'checked' : ''}
+          onchange="_tnToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
+        <span class="tn-kaut-ovr-sw__t"></span>
+      </label>
+      <span style="font-size:10px;color:var(--cc-stone)">Override</span>
+    </div>
+    <span id="rf-ksoll-hint-${rid}" class="tn-kaut-hint" style="${rec && rec.kaution_soll != null ? 'display:none' : ''}">
+      Auto from rooms tab · clear override to re-sync
+    </span>
+    <input type="number" id="rf-ksoll-${rid}"
+      value="${rec && rec.kaution_soll != null ? ksoll : ''}"
+      placeholder="${ksoll}"
+      ${rec && rec.kaution_soll != null ? '' : 'disabled style="opacity:.4"'}/>
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
-    <span class="tn-rf-hint" style="margin:0">${rule} \u00b7 Pre-filled from rooms tab. Edit to override. Frozen at move-out.</span>
+    <span class="tn-rf-hint" style="margin:0">Frozen at move-out for former tenants.</span>
     <div style="display:flex;gap:6px">
       <button class="tn-btn tn-btn-sm" onclick="_tnToggleRentEdit('${rid}')">Cancel</button>
       <button class="tn-btn tn-btn-primary" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
@@ -1321,7 +1351,12 @@ function _tnModalBodyHTML(rec) {
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
           <span class="tn-fval">${dNK != null ? _tnFmtEUR(dNK) : '<span class="muted">Not set</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
-          <span class="tn-fval">${dKS != null ? _tnFmtEUR(dKS) : '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${(() => {
+            const live = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende);
+            if (dKS != null) return _tnFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(override)</span>';
+            if (live != null) return _tnFmtEUR(live) + ' <span style="font-size:10px;color:var(--cc-stone)">(auto)</span>';
+            return '<span class="muted">Not set</span>';
+          })()}</span></div>
         <div class="tn-field"><span class="tn-flbl">Contract</span>
           <span class="tn-fval">${ct ? _tnContractLabel(ct) : '<span class="muted">Not set</span>'}</span></div>
       </div>
@@ -1344,8 +1379,23 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="kaltmiete" type="number" value="${dK ?? ''}"/></div>
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
           <input data-mf="nebenkosten" type="number" value="${dNK ?? ''}"/></div>
-        <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
-          <input data-mf="kaution_soll" type="number" value="${dKS ?? ''}"/></div>
+        <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
+          <div class="tn-kaut-override-row">
+            <span class="tn-kaut-override-lbl">Kaution soll · ${_tnFmtEUR(_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende)) || '—'} (auto)</span>
+            <label class="tn-kaut-ovr-sw" title="Override kaution">
+              <input type="checkbox" id="mkaut-ovr-${tid}" ${dKS != null ? 'checked' : ''}
+                onchange="_tnToggleKautionOverride(this,'mkaut-inp-${tid}','mkaut-hint-${tid}')"/>
+              <span class="tn-kaut-ovr-sw__t"></span>
+            </label>
+            <span style="font-size:10px;color:var(--cc-stone)">Override</span>
+          </div>
+          <span id="mkaut-hint-${tid}" class="tn-kaut-hint" style="${dKS != null ? 'display:none' : ''}">
+            Auto from rooms tab · toggle to set a fixed amount
+          </span>
+          <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number"
+            value="${dKS ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) ?? ''}"
+            ${dKS != null ? '' : 'disabled style="opacity:.4"'}/>
+        </div>
         <div class="tn-field">
           <span class="tn-flbl">Contract</span>
           <div class="tn-contract-toggle">
@@ -1537,7 +1587,13 @@ function _tnCollectProfile(container, selector) {
     mietende:   _tnParseDate(get('mietende')),
     kaltmiete:     parseFloat(container.querySelector(`[${selector}="kaltmiete"]`)?.value)    || null,
     nebenkosten:   parseFloat(container.querySelector(`[${selector}="nebenkosten"]`)?.value)  || null,
-    kaution_soll:  parseFloat(container.querySelector(`[${selector}="kaution_soll"]`)?.value) || null,
+    kaution_soll:  (() => {
+      const inp = container.querySelector(`[${selector}="kaution_soll"]`);
+      if (!inp) return null;
+      // Only save when override is explicitly enabled (input is enabled)
+      if (inp.disabled) return null;
+      return parseFloat(inp.value) || null;
+    })(),
   };
 }
 
@@ -1635,7 +1691,9 @@ async function _tnSaveRent(rid, tid, roomName) {
   if (!sbL || !tid) return;
   const kalt  = parseFloat(document.getElementById('rf-kalt-'  + rid)?.value) || null;
   const nk    = parseFloat(document.getElementById('rf-nk-'    + rid)?.value) || null;
-  const ksoll = parseFloat(document.getElementById('rf-ksoll-' + rid)?.value) || null;
+  const ksollOvr = document.getElementById('rf-ksoll-ovr-' + rid);
+  const ksollInp = document.getElementById('rf-ksoll-' + rid);
+  const ksoll = (ksollOvr?.checked && ksollInp) ? (parseFloat(ksollInp.value) || null) : null;
   const { error } = await sbL.from('tenant_records')
     .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid);
   if (error) { console.warn('[tenants] save rent:', error.message); return; }
