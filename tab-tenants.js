@@ -1667,8 +1667,8 @@ async function _tnModalSaveProfile(tid) {
   if (!body) return;
 
   // If profile is not in edit mode, only save kaution and return
-  const editEl = document.getElementById('mprof-edit-' + tid);
-  if (!editEl || editEl.style.display === 'none') {
+  const editGuard = document.getElementById('mprof-edit-' + tid);
+  if (!editGuard || editGuard.style.display === 'none') {
     // Save kaution if inputs exist in modal
     const kPfx = `modal_${(tid||'none').replace(/-/g,'').slice(0,8)}`;
     const recv = parseFloat(document.getElementById('kr-'   + kPfx)?.value);
