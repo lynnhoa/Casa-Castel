@@ -924,6 +924,11 @@ function _renderRoomsList() {
   const list = document.getElementById('roomsList');
   if (!list) return;
 
+  // Snapshot expanded card IDs before clobbering DOM (realtime re-renders must not collapse cards)
+  const expandedIds = new Set(
+    [...list.querySelectorAll('.rc--expanded')].map(c => c.dataset.id)
+  );
+
   const rooms = appRooms.slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   if (!rooms.length) {
@@ -933,6 +938,13 @@ function _renderRoomsList() {
   }
 
   list.innerHTML = rooms.map(r => _roomCardHTML(r)).join('');
+
+  // Restore expanded state after re-render
+  expandedIds.forEach(id => {
+    const card = list.querySelector(`.rc[data-id="${id}"]`);
+    if (card) card.classList.add('rc--expanded');
+  });
+
   _updateRoomsSummary(rooms);
   _bindAllCards();
 }
