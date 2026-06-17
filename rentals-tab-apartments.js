@@ -1925,6 +1925,7 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
     pdf.save(filename);
     container.remove();
     if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+    document.getElementById('aptContractOverlay')?.classList.add('open');
   }
 }
 

@@ -170,6 +170,7 @@ async function _aptSaveUebergPDF(d, container) {
   container?.remove();
   const btn = document.getElementById('aptUebergPdfBtn');
   if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  document.getElementById('aptContractOverlay')?.classList.add('open');
 }
 
 
