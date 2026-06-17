@@ -1021,15 +1021,12 @@ function _tnKautionHTML(rid, tid, ctx) {
   const ctype = rec ? _tnRoomContractType(rec.room) : null;
   const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ' : '3\u00d7 Kaltmiete \u00b7 MV';
 
-  const settleLabel = k.settled ? 'Settled' : 'Mark settled';
-  const settleCls   = k.settled ? 'tn-btn-primary' : 'tn-btn-sm';
-
   return `
 <div class="${sec}" style="${opac}">
   <div class="${body}" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
-      <span class="tnp ${st.cls}">${st.label}</span>
+      <span class="tnp ${st.cls}" id="kstat-${pfx}">${st.label}</span>
     </div>
     ${soll != null ? `<div class="tn-kaut-hint">Soll: ${_tnFmtEUR(soll)} \u00b7 ${rule}</div>` : ''}
     <div class="tn-kaut-grid">
@@ -1049,11 +1046,13 @@ function _tnKautionHTML(rid, tid, ctx) {
       </div>
     </div>
   </div>
-  <div class="${footer}">
-    <button class="tn-btn ${settleCls}" id="kset-${pfx}"
+  <div class="${footer}" style="gap:6px">
+    <button class="tn-btn tn-btn-sm" id="ksave-${pfx}"
+      ${dis} onclick="_tnSaveKautionBtn('${pfx}','${tid||''}')">Save</button>
+    ${recv > 0 ? `<button class="tn-btn tn-btn-sm" id="kset-${pfx}"
       ${dis} onclick="_tnToggleSettle('${pfx}','${tid||''}')">
-      <i class="ti ti-check"></i> ${settleLabel}
-    </button>
+      <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
+    </button>` : ''}
   </div>
 </div>`;
 }
@@ -1744,12 +1743,32 @@ function _tnCalcKaution(pfx, tid) {
   const kept = recv - ret;
   const el   = document.getElementById('kk-' + pfx);
   if (el) {
-    el.textContent = _tnFmtEUR(kept);
+    el.textContent = _tnFmtEUR(Math.max(0, kept));
     el.className   = 'tn-kc-val' + (kept > 0 ? ' gold' : '');
   }
-  if (!tid) return;
-  clearTimeout(_tnKautTimers[pfx]);
-  _tnKautTimers[pfx] = setTimeout(() => _tnSaveKaution(tid, recv, ret), 800);
+  // Mark save button as dirty
+  const saveBtn = document.getElementById('ksave-' + pfx);
+  if (saveBtn) saveBtn.classList.add('tn-btn-primary');
+}
+
+async function _tnSaveKautionBtn(pfx, tid) {
+  if (!sbL || !tid) return;
+  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
+  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
+  const saveBtn = document.getElementById('ksave-' + pfx);
+  if (saveBtn) { saveBtn.textContent = '…'; saveBtn.disabled = true; }
+  await _tnSaveKaution(tid, recv, ret);
+  // Update status pill
+  const k    = _tnKaution[tid];
+  const st   = _tnKautionStatus(recv, ret, k?.settled || false);
+  const pill = document.getElementById('kstat-' + pfx);
+  if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
+  if (saveBtn) {
+    saveBtn.innerHTML = '<i class="ti ti-check"></i> Saved';
+    saveBtn.disabled  = false;
+    saveBtn.classList.remove('tn-btn-primary');
+    setTimeout(() => { if (saveBtn) saveBtn.innerHTML = 'Save'; }, 1500);
+  }
 }
 
 async function _tnSaveKaution(tid, received, returned) {
@@ -1788,7 +1807,7 @@ async function _tnToggleSettle(pfx, tid) {
   const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
   const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
   const st   = _tnKautionStatus(recv, ret, k.settled);
-  const pill = document.querySelector(`#kset-${pfx}`)?.closest('.tn-sec,.tn-msec')?.querySelector('.tnp');
+  const pill = document.getElementById('kstat-' + pfx);
   if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
 
   // Fire to Supabase in background
