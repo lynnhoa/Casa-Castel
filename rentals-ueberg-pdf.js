@@ -315,7 +315,7 @@ function _aptRenderUebergHTML(d) {
 
   const hdr = (n) => `
     <div class="hdr">
-      <span class="hdr__wordmark">Rentals</span>
+      <span class="hdr__wordmark"></span>
       <div class="hdr__apt">
         <span class="hdr__apt-label">Wohnung</span>
         <span class="hdr__apt-name">${esc(d.aptName)}</span>
