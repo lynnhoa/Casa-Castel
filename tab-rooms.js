@@ -994,12 +994,13 @@ async function _toggleRentType(btn) {
   if (!r) return;
   r.active_price_type = type;
 
-  // Persist to Supabase
+  // Persist to Supabase + notify all tabs (tenants re-renders with correct kaution)
   if (sbL) {
     sbL.from('rooms').update({ active_price_type: type }).eq('id', rid).then(({ error }) => {
       if (error) console.warn('[rooms] active_price_type save error:', error.message);
     });
   }
+  if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', r);
 
   // Update amount + detail in card
   const info = _getRentInfo(r, type);
