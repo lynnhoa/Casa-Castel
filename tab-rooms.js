@@ -3651,9 +3651,12 @@ function _buildMietvertragOnlyData(room, s, {
     pricingMode     = 'pauschal';
   }
 
+  const kautionBase = pricingMode === 'pauschal'
+    ? kaltmiete + nkVorauszahlung
+    : kaltmiete;
   const kaution = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
-    : kaltmiete * 3;
+    : kautionBase * 3;
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
@@ -3733,10 +3736,12 @@ function _contractBodyMietvertrag(room) {
     gesamtDisplay = fmtEUR(m);
   }
 
-  const kaltBase = Number(room.kaltmiete || room.mietvertrag_miete || room.monatl_miete) || 0;
-  const kaution  = room.kaution_override && room.kaution_default
+  const kaltBase   = Number(room.kaltmiete || room.mietvertrag_miete || room.monatl_miete) || 0;
+  const isPauschal = room.mietvertrag_pricing !== 'kalt_nk';
+  const nkBase     = isPauschal ? (Number(room.nk_pauschale) || 0) : 0;
+  const kaution    = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
-    : kaltBase * 3;
+    : (kaltBase + nkBase) * 3;
 
   return `
     <div class="rm-prefilled">
