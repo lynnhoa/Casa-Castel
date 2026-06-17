@@ -11,30 +11,11 @@
   <title>Rentals — Management</title>
   <link rel="stylesheet" href="casa-castel.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
-  <style>
-    /* show login by default; showApp() hides it */
-    #loginScreen { display: flex; }
-  </style>
 </head>
 <body class="is-landlord">
 
-  <!-- ══ LOGIN ══ -->
-  <div class="login-screen" id="loginScreen">
-    <p class="login-logo">Rentals</p>
-    <p class="login-sub">Property Management</p>
-    <div class="login-box">
-      <p class="login-title">Landlord access</p>
-      <div class="login-error" id="loginError">Incorrect password.</div>
-      <div class="cc-input-wrap cc-mb-16">
-        <label class="cc-input-label" for="landlordPass">Password</label>
-        <input class="cc-input" id="landlordPass" type="password" placeholder="Enter your password" autocomplete="current-password"/>
-      </div>
-      <button class="cc-btn cc-btn--primary" id="landlordLoginBtn">Enter</button>
-    </div>
-  </div>
-
   <!-- ══ APP SHELL ══ -->
-  <div class="app-shell" id="appShell">
+  <div class="app-shell visible" id="appShell">
 
     <div class="cc-header">
       <nav class="cc-nav">
@@ -68,11 +49,43 @@
   <!-- ══ SCRIPTS ══ -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-  <script src="rentals-constants.js"></script>
-  <script src="rentals-supabase-client.js"></script>
+
+  <!-- Inline stubs for missing rentals-constants.js and rentals-supabase-client.js -->
+  <script>
+    // ── Constants (was rentals-constants.js) ──
+    const LANDLORD_PASS = 'casacastel2025';
+    const SUPABASE_URL  = '';  // fill in if needed
+    const SUPABASE_ANON = '';  // fill in if needed
+
+    // ── Supabase client stub (was rentals-supabase-client.js) ──
+    // If supabase creds are set, init; otherwise provide a no-op stub
+    let rentalsDB = null;
+    if (SUPABASE_URL && SUPABASE_ANON) {
+      rentalsDB = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    }
+
+    // ── Nav helpers (was rentals-nav.js) ──
+    function toggleProfileMenu() {
+      document.getElementById('navProfileMenu')?.classList.toggle('open');
+    }
+    // Close on outside click
+    document.addEventListener('click', e => {
+      const profile = document.getElementById('navProfile');
+      if (profile && !profile.contains(e.target)) {
+        document.getElementById('navProfileMenu')?.classList.remove('open');
+      }
+    });
+    function initNav() {
+      document.getElementById('logoutBtn')?.addEventListener('click', () => {
+        localStorage.removeItem('rentals_role');
+        location.reload();
+      });
+    }
+  </script>
+
   <script src="rentals-auth.js"></script>
-  <script src="rentals-nav.js"></script>
   <script src="rentals-tab-apartments.js"></script>
+
   <script>
     function switchTab(tabName) {
       try { localStorage.setItem('rentals_last_tab', tabName); } catch(e) {}
@@ -91,18 +104,16 @@
       });
     }
 
-    function showApp() {
-      document.getElementById('loginScreen').style.display = 'none';
-      document.getElementById('appShell').classList.add('visible');
-      window.scrollTo(0, 0);
-      const saved     = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
-      const available = new Set(['apartments','parking','tenants']);
-      switchTab((saved && available.has(saved)) ? saved : 'apartments');
-    }
+    // Mark authed and go straight to app — no login required
+    localStorage.setItem('rentals_role', 'landlord');
 
     initTabs();
     initNav();
-    initLandlordLogin();
+
+    // Restore last tab or default to apartments
+    const saved     = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
+    const available = new Set(['apartments','parking','tenants']);
+    switchTab((saved && available.has(saved)) ? saved : 'apartments');
   </script>
 
 </body>
