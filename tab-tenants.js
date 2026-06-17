@@ -508,9 +508,11 @@ function _tnParseDate(s) {
    6. STATUS HELPERS
 ══════════════════════════════════════════════════════════════ */
 function _tnKautionStatus(recv, ret, settled) {
-  if (settled)      return { label:'Settled',  cls:'tnp-green' };
-  if (recv === 0)   return { label:'Pending',  cls:'tnp-amber' };
-  return                   { label:'Holding',  cls:'tnp-blue'  };
+  if (settled)             return { label:'Settled',        cls:'tnp-green' };
+  if (recv === 0)          return { label:'Pending',        cls:'tnp-amber' };
+  if (ret > 0 && ret < recv) return { label:'Refund pending', cls:'tnp-amber' };
+  if (ret >= recv)         return { label:'Refund pending', cls:'tnp-amber' };
+  return                          { label:'Holding',        cls:'tnp-blue'  };
 }
 
 function _tnNkHasOpen(tid) {
@@ -699,14 +701,19 @@ function _tnCardHTML(room) {
   const formerNudges = formerRecs
     .filter(r => { const k = _tnKaution[r.id]; return k && k.received > 0 && !k.settled; })
     .map(r => {
-      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
-      const kept = _tnKautionKept(r.id);
-      const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
+      const name  = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
+      const kk    = _tnKaution[r.id];
+      const kept  = _tnKautionKept(r.id);
+      const allReturned = kk && kk.returned >= kk.received;
+      const keptStr = kept > 0
+        ? _tnFmtEUR(kept) + ' kept'
+        : allReturned ? 'fully returned' : 'full refund';
+      const statusStr = allReturned ? 'Mark settled' : 'Refund pending';
       return `<div class="tn-kaution-nudge" onclick="_tnOpenModal('${r.id}')">
         <i class="ti ti-user" style="font-size:11px"></i>
         <span class="tn-nudge-name">${esc(name)} · former</span>
         <span class="tn-nudge-kept">${keptStr}</span>
-        <span class="tn-nudge-status">Refund pending</span>
+        <span class="tn-nudge-status">${statusStr}</span>
         <i class="ti ti-chevron-right" style="font-size:11px"></i>
       </div>`;
     }).join('');
@@ -2199,18 +2206,57 @@ async function _tnConfirmDelete() {
    18. BADGE REFRESH
 ══════════════════════════════════════════════════════════════ */
 function _tnRefreshFormerBadges(tid) {
+  const k        = _tnKaution[tid];
+  const settled  = k?.settled || false;
+  const hasK     = k && k.received > 0;
+
+  // Refresh expanded former row pill
   document.querySelectorAll('.tn-former-row').forEach(row => {
-    if (row.getAttribute('onclick')?.includes(tid)) {
+    const onclick = row.getAttribute('onclick') || '';
+    const infoDiv = row.querySelector('.tn-former-info');
+    if (onclick.includes(tid) || infoDiv?.getAttribute('onclick')?.includes(tid)) {
       const pills = row.querySelector('.tn-former-pills');
       if (pills) {
-        const nkDone = !_tnNkHasOpen(tid);
-        const kDone  = !_tnKautionOpen(tid);
-        pills.innerHTML =
-          `<span class="tnp ${nkDone ? 'tnp-green' : 'tnp-amber'}">${nkDone ? 'NK done' : 'NK open'}</span>
-           <span class="tnp ${kDone  ? 'tnp-green' : 'tnp-amber'}">${kDone  ? 'Settled' : 'Kaution open'}</span>`;
+        const kPill = !hasK ? '' :
+          settled
+            ? `<span class="tnp tnp-green">Settled</span>`
+            : `<span class="tnp tnp-amber">Refund pending</span>`;
+        pills.innerHTML = kPill;
       }
     }
   });
+
+  // Refresh collapsed nudge strip
+  const kept = _tnKautionKept(tid);
+  document.querySelectorAll('.tn-kaution-nudge').forEach(el => {
+    if (el.getAttribute('onclick')?.includes(tid)) {
+      if (settled || !hasK) {
+        el.remove();
+      } else {
+        const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
+        const keptEl  = el.querySelector('.tn-nudge-kept');
+        if (keptEl) keptEl.textContent = keptStr;
+      }
+    }
+  });
+
+  // Refresh summary line
+  const summaryEl = document.getElementById('tn-kaution-summary');
+  if (summaryEl) {
+    const pending = _tnRecords
+      .filter(r => r.status === 'former')
+      .filter(r => { const kk = _tnKaution[r.id]; return kk && kk.received > 0 && !kk.settled; })
+      .map(r => {
+        const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '—';
+        return `${esc(name)} (${esc(r.room)})`;
+      });
+    if (pending.length) {
+      summaryEl.innerHTML = `<i class="ti ti-alert-circle" style="font-size:12px"></i> Kaution to return: ${pending.join(' · ')}`;
+      summaryEl.style.display = 'flex';
+    } else {
+      summaryEl.style.display = 'none';
+    }
+  }
 }
 
 
