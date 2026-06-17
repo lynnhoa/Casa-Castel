@@ -877,7 +877,14 @@ function _tnRentFormHTML(rid, room, rec) {
   // Stored rec.kaution_soll is only an override value (used as input pre-fill when toggle is on).
   const ksoll = _tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null) ?? '';
   const ctype = _tnRoomContractType(room.name);
-  const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
+  const _ruleRoom1 = appRooms?.find(x => x.name === room.name);
+  const _isPauschal1 = ctype === 'kurzzeit'
+    ? (_ruleRoom1?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+    : _ruleRoom1?.mietvertrag_pricing !== 'kalt_nk';
+  const _base1 = _isPauschal1 ? 'Pauschal' : 'Kaltmiete';
+  const _mult1 = ctype === 'kurzzeit' ? '1' : '3';
+  const _tag1  = ctype === 'kurzzeit' ? 'KZ' : 'MV';
+  const rule  = `${_mult1}\u00d7 ${_base1} \u00b7 ${_tag1} rule`;
 
   return `
 <div class="tn-rent-form" id="rform-${rid}" style="display:none">
@@ -1064,7 +1071,14 @@ function _tnKautionHTML(rid, tid, ctx) {
   // rec.kaution_soll is a stored override; only relevant when user explicitly enables override toggle.
   let soll = rec ? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) : null;
   const ctype = rec ? _tnRoomContractType(rec.room) : null;
-  const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ' : '3\u00d7 Kaltmiete \u00b7 MV';
+  const _ruleRoom2 = rec ? appRooms?.find(x => x.name === rec.room) : null;
+  const _isPauschal2 = ctype === 'kurzzeit'
+    ? (_ruleRoom2?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+    : _ruleRoom2?.mietvertrag_pricing !== 'kalt_nk';
+  const _base2 = _isPauschal2 ? 'Pauschal' : 'Kaltmiete';
+  const _mult2 = ctype === 'kurzzeit' ? '1' : '3';
+  const _tag2  = ctype === 'kurzzeit' ? 'KZ' : 'MV';
+  const rule  = `${_mult2}\u00d7 ${_base2} \u00b7 ${_tag2}`;
 
   return `
 <div class="${sec}" style="${opac}">
@@ -1726,7 +1740,14 @@ async function _tnSaveRent(rid, tid, roomName) {
   const kautHint = document.querySelector('#tab-tenants .tn-kaut-hint');
   if (kautHint && ksoll != null) {
     const ctype = _tnRoomContractType(roomName);
-    const rule = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
+    const _ruleRoom3 = appRooms?.find(x => x.name === roomName);
+    const _isPauschal3 = ctype === 'kurzzeit'
+      ? (_ruleRoom3?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+      : _ruleRoom3?.mietvertrag_pricing !== 'kalt_nk';
+    const _base3 = _isPauschal3 ? 'Pauschal' : 'Kaltmiete';
+    const _mult3 = ctype === 'kurzzeit' ? '1' : '3';
+    const _tag3  = ctype === 'kurzzeit' ? 'KZ' : 'MV';
+    const rule = `${_mult3}\u00d7 ${_base3} \u00b7 ${_tag3} rule`;
     kautHint.textContent = `Soll: ${_tnFmtEUR(ksoll)} \u00b7 ${rule}`;
   }
 
