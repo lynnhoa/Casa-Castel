@@ -1848,6 +1848,8 @@ function _kfSelect(prefix, val) {
     b.style.background = active ? 'var(--cc-charcoal)' : 'none';
     b.style.color       = active ? '#fff' : 'var(--cc-charcoal)';
     b.style.borderColor = active ? 'var(--cc-charcoal)' : 'var(--cc-rule)';
+    // Toggle class so PDF handler can reliably detect active state
+    b.classList.toggle('active-fael', active);
   });
   const customInp = document.getElementById(prefix + '-faelligkeit-custom');
   if (customInp) customInp.style.display = val === 'custom' ? '' : 'none';
@@ -1895,7 +1897,7 @@ function _openContract(type, roomId) {
       const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
       const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
       let _cmFaelVal = '5';
-      _cmFaelOpts.forEach(b => { if (b.style.background.includes('charcoal') || b.classList.contains('active-fael')) _cmFaelVal = b.dataset.val; });
+      _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael')) _cmFaelVal = b.dataset.val; });
       const kautionFaelligkeitKz = _cmFaelVal === 'custom'
         ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
         : _cmFaelVal === 'sofort' ? 'sofort' : 5;
@@ -1953,7 +1955,7 @@ function _openContract(type, roomId) {
       const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
       const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
       let _mvFaelVal = '5';
-      _mvFaelOpts.forEach(b => { if (b.style.background.includes('charcoal') || b.classList.contains('active-fael')) _mvFaelVal = b.dataset.val; });
+      _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael')) _mvFaelVal = b.dataset.val; });
       const kautionFaelligkeitMv = _mvFaelVal === 'custom'
         ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
         : _mvFaelVal === 'sofort' ? 'sofort' : 5;
@@ -2206,9 +2208,9 @@ function _updateMonatToggles() {
         kaution   = rent * 3;
         ruleText  = `> 3 Monate → 3× (${totalMonths} Mon.)`;
       }
-      // Update editable kaution input — only if user hasn't manually changed it
+      // Update editable kaution input — only when user hasn't manually overridden it
       const kautionInp = document.getElementById('cm-kaution');
-      if (kautionInp) {
+      if (kautionInp && kautionInp.hasAttribute('data-auto')) {
         kautionInp.value = kaution;
         kautionInp.placeholder = fmtEUR(kaution);
       }
@@ -2325,9 +2327,9 @@ function _contractBodyKurzzeit(room) {
       </div>
       <input class="rm-input" id="cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
         value="${room.kaution_override && room.kaution_default ? Number(room.kaution_default) : kzBase}"
-        placeholder="€"/>
+        placeholder="€" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
     </div>
-    <div style="margin-top:8px">
+    <div style="margin-top:8px;margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="sofort"
@@ -3873,7 +3875,7 @@ function _contractBodyMietvertrag(room) {
       <input class="rm-input" id="mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
         value="${kaution}" placeholder="€"/>
     </div>
-    <div style="margin-top:8px">
+    <div style="margin-top:8px;margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="sofort"
