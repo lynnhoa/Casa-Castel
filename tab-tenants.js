@@ -80,7 +80,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-hdr-top { display:flex; align-items:center; gap:8px; }
 .tn-room-lbl { font-size:10px; font-weight:500; letter-spacing:.09em;
   text-transform:uppercase; color:var(--cc-taupe); }
-.tn-chev { font-size:18px; color:var(--cc-stone); flex-shrink:0;
+.tn-chev { font-size:18px; color:var(--cc-stone); flex-shrink:0; margin-left:0;
   transition:transform .2s cubic-bezier(.32,.72,0,1); }
 .tn-card.open .tn-chev { transform:rotate(90deg); }
 .tn-hdr-mid { display:flex; align-items:baseline; gap:8px; margin-top:4px; flex-wrap:wrap; }
@@ -822,8 +822,8 @@ function _tnHeaderHTML(rid, room, activeRec) {
 <div class="tn-hdr-wrap" onclick="_tnToggleCard('tc-${rid}')">
   <div class="tn-hdr-top">
     <span class="tn-room-lbl">${esc(room.name)}</span>
-    ${statusPill ? `<div style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${statusPill}</div>` : ''}
-    <i class="ti ti-chevron-right tn-chev" style="${statusPill ? '' : 'margin-left:auto'}" aria-hidden="true"></i>
+    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${statusPill}</div>
+    <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
@@ -1216,10 +1216,11 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
     const kept    = _tnKautionKept(rec.id);
     const hasK    = k && k.received > 0;
     const canHide = settled; // only offer Hide when kaution settled
+    const recv2   = k ? Number(k.received) : 0;
     const kPill   = !hasK ? '' :
       settled
-        ? `<span class="tnp tnp-green">Settled</span>`
-        : `<span class="tnp tnp-amber">Refund pending</span>`;
+        ? `<span class="tnp tnp-green">${_tnFmtEUR(recv2)} settled</span>`
+        : `<span class="tnp tnp-amber">${_tnFmtEUR(recv2)} refund due</span>`;
     return `<div class="tn-former-row" style="gap:6px">
       <div class="tn-former-info" onclick="_tnOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
         <div class="tn-former-name">${esc(name)}</div>
@@ -1866,11 +1867,29 @@ async function _tnSaveKautionBtn(pfx, tid) {
   const saveBtn = document.getElementById('ksave-' + pfx);
   if (saveBtn) { saveBtn.textContent = '…'; saveBtn.disabled = true; }
   await _tnSaveKaution(tid, recv, ret);
-  // Update status pill
+  // Update section status pill
   const k    = _tnKaution[tid];
   const st   = _tnKautionStatus(recv, ret, k?.settled || false);
   const pill = document.getElementById('kstat-' + pfx);
   if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
+  // Update card header pill — find rid from tenant record
+  const _rec = _tnRecords.find(r => r.id === tid);
+  if (_rec) {
+    const _rid = _rec.room.replace(/\s+/g,'_').toLowerCase();
+    const hdrPill = document.getElementById('hdr-kpill-' + _rid);
+    if (hdrPill) {
+      const settled2 = k?.settled || false;
+      const newPills = [];
+      const days2 = _tnDaysToMoveOut(_rec);
+      if (days2 !== null && days2 >= 0 && days2 <= 60)
+        newPills.push(`<span class="tnp tnp-red">Move-out in ${days2} day${days2===1?'':'s'}</span>`);
+      if (_tnNkHasOpen(tid))
+        newPills.push(`<span class="tnp tnp-red">NK open</span>`);
+      if (recv > 0 && !settled2)
+        newPills.push(`<span class="tnp tnp-blue">${_tnFmtEUR(recv)} Kaution</span>`);
+      hdrPill.innerHTML = newPills.slice(0,2).join('');
+    }
+  }
   if (saveBtn) {
     saveBtn.innerHTML = '<i class="ti ti-check"></i> Saved';
     saveBtn.disabled  = false;
