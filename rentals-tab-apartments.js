@@ -1387,7 +1387,13 @@ function _aptOpenContract(type, aptId) {
     typeLbl.textContent  = 'Übergabeprotokoll';
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + apt.name;
     body.innerHTML = _aptBodyUeberg(apt, sk, isEinzug);
-    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" disabled><i class="ti ti-printer"></i> PDF — coming soon</button>`;
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+    setTimeout(() => {
+      document.getElementById('aptUebergPdfBtn')?.addEventListener('click', () => {
+        aptGenerateUebergPDF(isEinzug);
+      });
+    }, 0);
+  }
   }
 
   // Wire cancel
