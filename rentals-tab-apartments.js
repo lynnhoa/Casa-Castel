@@ -756,7 +756,7 @@ function _aptCardHTML(a) {
         ${v.hv_email ? `<div class="apt-row"><span class="apt-row__k">E-Mail</span><span class="apt-row__v"><a class="apt-hv-link" href="mailto:${aptEsc(v.hv_email)}">${aptEsc(v.hv_email)}</a></span></div>` : ''}
         ${v.hv_telefon ? `<div class="apt-row"><span class="apt-row__k">Telefon</span><span class="apt-row__v">${aptEsc(v.hv_telefon)}</span></div>` : ''}
         ${v.hausgeld_mtl ? `<div class="apt-row" style="margin-top:6px"><span class="apt-row__k">Hausgeld</span><span class="apt-row__v">${aptFmtEURCompact(v.hausgeld_mtl)} / mtl.</span></div>` : ''}
-        ${v.grundsteuer_mtl ? `<div class="apt-row"><span class="apt-row__k">Grundsteuer</span><span class="apt-row__v">${aptFmtEURCompact(v.grundsteuer_mtl)} / mtl.</span></div>` : ''}
+        ${v.grundsteuer_mtl ? `<div class="apt-row"><span class="apt-row__k">Grundsteuer</span><span class="apt-row__v">${aptFmtEURCompact(v.grundsteuer_mtl)} / Quartal</span></div>` : ''}
         ${(v.abrechnung_von && v.abrechnung_bis) ? `<div class="apt-row"><span class="apt-row__k">Abrechnung</span><span class="apt-row__v">${aptEsc(v.abrechnung_von)} – ${aptEsc(v.abrechnung_bis)}${v.abrechnungsmonat ? ' · ' + aptEsc(v.abrechnungsmonat) : ''}</span></div>` : ''}
         ${v.strom_provider ? `<div class="apt-row"><span class="apt-row__k">Strom Provider</span><span class="apt-row__v">${aptEsc(v.strom_provider)}</span></div>` : ''}
         ${!v.hausverwaltung && !v.hausgeld_mtl ? `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>` : ''}
@@ -775,7 +775,7 @@ function _aptCardHTML(a) {
         </div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">Hausgeld (€/mtl)</div><input class="apt-input" type="number" data-vf="hausgeld_mtl" value="${v.hausgeld_mtl||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/mtl)</div><input class="apt-input" type="number" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
         </div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">Abrechnung von</div><input class="apt-input" data-vf="abrechnung_von" value="${aptEsc(v.abrechnung_von||'')}" placeholder="01.01."/></div>
