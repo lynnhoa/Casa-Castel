@@ -1666,6 +1666,18 @@ async function _tnModalSaveProfile(tid) {
   const body = document.getElementById('tnModalBody');
   if (!body) return;
 
+  // If profile is not in edit mode, only save kaution and return
+  const editEl = document.getElementById('mprof-edit-' + tid);
+  if (!editEl || editEl.style.display === 'none') {
+    // Save kaution if inputs exist in modal
+    const kPfx = `modal_${(tid||'none').replace(/-/g,'').slice(0,8)}`;
+    const recv = parseFloat(document.getElementById('kr-'   + kPfx)?.value);
+    const ret  = parseFloat(document.getElementById('kret-' + kPfx)?.value);
+    if (!isNaN(recv) && !isNaN(ret)) await _tnSaveKaution(tid, recv, ret);
+    _tnToast('Saved');
+    return;
+  }
+
   const p     = _tnCollectProfile(body, 'data-mf');
   const ctBtn = body.querySelector('.tn-contract-toggle .tn-btn-primary');
   const ctype = ctBtn?.dataset?.ct || null;
