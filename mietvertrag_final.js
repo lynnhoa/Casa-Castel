@@ -115,18 +115,22 @@ function _contractBodyMietvertrag(room) {
 
   let kaltDisplay, gesamtDisplay;
   if (room.mietvertrag_pricing === 'kalt_nk' && room.kaltmiete) {
-    kaltDisplay   = `${fmtEUR(room.kaltmiete)} kalt + ${fmtEUR(room.nk_pauschale || 0)} NK`;
-    gesamtDisplay = fmtEUR((Number(room.kaltmiete) || 0) + (Number(room.nk_pauschale) || 0));
+    const kalt = Number(room.kaltmiete) || 0;
+    const nk   = Number(room.nk_pauschale) || 0;
+    kaltDisplay   = `${fmtEUR(kalt)} kalt + ${fmtEUR(nk)} NK`;
+    gesamtDisplay = fmtEUR(kalt + nk);
   } else {
-    const m = room.mietvertrag_miete || room.monatl_miete || 0;
-    kaltDisplay   = `${fmtEUR(m)} pauschal inkl. NK`;
-    gesamtDisplay = fmtEUR(m);
+    const kalt = Number(room.kaltmiete) || Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
+    const nk   = Number(room.nk_pauschale) || 0;
+    kaltDisplay   = `${fmtEUR(kalt + nk)} pauschal inkl. NK`;
+    gesamtDisplay = fmtEUR(kalt + nk);
   }
 
   const kaltBase = Number(room.kaltmiete || room.mietvertrag_miete || room.monatl_miete) || 0;
+  const nkBase   = room.mietvertrag_pricing !== 'kalt_nk' ? (Number(room.nk_pauschale) || 0) : 0;
   const kaution  = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
-    : kaltBase * 3;
+    : (kaltBase + nkBase) * 3;
 
   return `
     <div class="rm-prefilled">
@@ -363,7 +367,7 @@ function _renderMietvertragHTML(d) {
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
-      : kv('Pauschalmiete',eur(d.kaltmiete)+'\u2002/ Monat (inkl. NK)')
+      : kv('Pauschalmiete',eur(d.gesamtmiete)+'\u2002/ Monat (inkl. NK)')
     }
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}

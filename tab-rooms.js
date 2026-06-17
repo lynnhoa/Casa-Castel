@@ -2158,7 +2158,10 @@ function _updateMonatToggles() {
   if (kautionValEl && startVal && endVal) {
     const room = getRoomById(_contractRoomId);
     if (room) {
-      const rent = Number(room.monatl_miete) || 0;
+      const kzKalt = Number(room.kurzzeit_kaltmiete) || 0;
+      const kzNk   = Number(room.kurzzeit_nk) || 0;
+      const kzIsPauschal = (room.kurzzeit_pricing || 'pauschal') !== 'kalt_nk';
+      const rent   = kzIsPauschal ? kzKalt + kzNk : kzKalt;
       const totalMonths = Math.round(
         (new Date(endVal) - new Date(startVal)) / (30.44 * 24 * 3600 * 1000)
       );
@@ -2254,12 +2257,17 @@ function _toggleMvErsterMonat() {
 function _contractBodyKurzzeit(room) {
   const s         = appSettings;
   const gemStr    = _parseArr(room.gemeinschaftsraeume).join(', ') || '—';
-  const rent      = room.monatl_miete ? fmtEUR(room.monatl_miete) : '—';
+  const kzKalt    = Number(room.kurzzeit_kaltmiete) || 0;
+  const kzNk      = Number(room.kurzzeit_nk) || 0;
+  const kzIsPauschal = (room.kurzzeit_pricing || 'pauschal') !== 'kalt_nk';
+  const kzTotal   = kzKalt + kzNk;
+  const kzBase    = kzIsPauschal ? kzTotal : kzKalt;
+  const rentDisplay = kzIsPauschal ? fmtEUR(kzTotal) + ' pauschal inkl. NK' : fmtEUR(kzKalt) + ' kalt + ' + fmtEUR(kzNk) + ' NK';
   const schluessel= `Haustür ×${room.haustuerschluessel||1} · Zimmer ×${room.zimmerschluessel||1}`;
   const kautionRule = '≤ 3 Monate → 1×  ·  > 3 Monate → 3×';
   const kautionVal  = room.kaution_override && room.kaution_default
     ? fmtEUR(room.kaution_default)
-    : fmtEUR(room.monatl_miete);
+    : fmtEUR(kzBase);
 
   return `
     <div class="rm-prefilled">
@@ -2267,7 +2275,7 @@ function _contractBodyKurzzeit(room) {
       <div class="rm-pre-row"><span>Room</span><span>${esc(room.name)}</span></div>
       <div class="rm-pre-row"><span>Size</span><span>ca. ${room.flaeche_m2||'—'} m²</span></div>
       <div class="rm-pre-row"><span>Shared</span><span>${esc(gemStr)}</span></div>
-      <div class="rm-pre-row"><span>Rent</span><span>${rent} / Monat (pauschal inkl. NK)</span></div>
+      <div class="rm-pre-row"><span>Rent</span><span>${rentDisplay} / Monat</span></div>
       <div class="rm-pre-row"><span>Vermieter</span><span>${esc(s.vermieter_name||'—')}</span></div>
       <div class="rm-pre-row"><span>Vermieter E-Mail</span><span>${esc(s.vermieter_email||'—')}</span></div>
       <div class="rm-pre-row"><span>IBAN</span><span>${esc(s.iban||'—')}</span></div>
@@ -2512,13 +2520,15 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
     (ersterBetrag + fullMonths * rent + letzterBetrag) * 100
   ) / 100;
 
-  // Kaution
+  // Kaution — base: Pauschal = full total, Kalt+NK = kaltmiete only
   const totalMonths = Math.round((end - start) / (30.44 * 24 * 3600 * 1000));
+  const kzIsPauschalForKaution = (room.kurzzeit_pricing || 'pauschal') !== 'kalt_nk';
+  const kautionBase = kzIsPauschalForKaution ? kzKalt + kzNk : kzKalt;
   let kaution;
   if (room.kaution_override && room.kaution_default) {
     kaution = Number(room.kaution_default);
   } else {
-    kaution = totalMonths <= 3 ? rent : rent * 3;
+    kaution = totalMonths <= 3 ? kautionBase : kautionBase * 3;
   }
 
   // Zahlungsplan
