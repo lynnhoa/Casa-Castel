@@ -1513,8 +1513,11 @@ document.getElementById('aptContractClose')?.addEventListener('click', () => {
   document.getElementById('aptContractOverlay').classList.remove('open');
 });
 document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('aptContractOverlay'))
+  if (e.target === document.getElementById('aptContractOverlay')) {
+    const pdfPreview = document.getElementById('aptContractPdfPreviewOverlay');
+    if (pdfPreview && pdfPreview.style.display !== 'none') return;
     document.getElementById('aptContractOverlay').classList.remove('open');
+  }
 });
 
 
