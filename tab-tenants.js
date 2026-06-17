@@ -16,7 +16,7 @@ document.getElementById('tab-tenants').innerHTML = `
   <div class="tn-hdr">
     <h1 class="cc-h1">Tenants</h1>
   </div>
-  <div id="tn-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:11px;color:#BA7517;padding:0 4px 12px;"></div>
+  <div id="tn-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--cc-stone);padding:0 4px 14px;"></div>
   <div class="tn-list" id="tenantsList"></div>
 
   <input type="file" id="tnFileInput" accept="application/pdf,image/*"
@@ -80,7 +80,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-hdr-top { display:flex; align-items:center; gap:8px; }
 .tn-room-lbl { font-size:10px; font-weight:500; letter-spacing:.09em;
   text-transform:uppercase; color:var(--cc-taupe); }
-.tn-chev { font-size:18px; color:var(--cc-stone); margin-left:auto; flex-shrink:0;
+.tn-chev { font-size:18px; color:var(--cc-stone); flex-shrink:0;
   transition:transform .2s cubic-bezier(.32,.72,0,1); }
 .tn-card.open .tn-chev { transform:rotate(90deg); }
 .tn-hdr-mid { display:flex; align-items:baseline; gap:8px; margin-top:4px; flex-wrap:wrap; }
@@ -592,16 +592,21 @@ function _tnIsPast(dateStr) {
 
 function _tnStatusPill(room, activeRec) {
   if (!activeRec) return '';
+  const pills = [];
+  // Move-out: time-critical, always first
   const days = _tnDaysToMoveOut(activeRec);
   if (days !== null && days >= 0 && days <= 60)
-    return `<span class="tnp tnp-red">Move-out in ${days} day${days===1?'':'s'}</span>`;
+    pills.push(`<span class="tnp tnp-red">Move-out in ${days} day${days===1?'':'s'}</span>`);
+  // NK open
+  if (_tnNkHasOpen(activeRec.id))
+    pills.push(`<span class="tnp tnp-red">NK open</span>`);
+  // Kaution: show held amount when received > 0 and not settled
   const k = _tnKaution[activeRec.id];
   const recv = k ? Number(k.received) : 0;
   const settled = k ? k.settled : false;
-  if (recv === 0)   return `<span class="tnp tnp-amber">Kaution pending</span>`;
-  if (!settled)     return `<span class="tnp tnp-blue">Kaution holding</span>`;
-  if (_tnNkHasOpen(activeRec.id)) return `<span class="tnp tnp-amber">NK open</span>`;
-  return `<span class="tnp tnp-green">All good</span>`;
+  if (recv > 0 && !settled)
+    pills.push(`<span class="tnp tnp-blue">${_tnFmtEUR(recv)} Kaution</span>`);
+  return pills.slice(0, 2).join('');
 }
 
 
@@ -685,18 +690,14 @@ function _tnRender() {
   // Snapshot any cards currently open in the DOM before wiping
   document.querySelectorAll('.tn-card.open').forEach(el => _tnOpenCards.add(el.id));
 
-  // Summary line: former tenants with kaution refund pending
-  const pendingRefunds = _tnRecords
-    .filter(r => r.status === 'former')
+  // Summary: total kaution held across all tenants (active + unsettled former)
+  const totalHeld = _tnRecords
     .filter(r => { const k = _tnKaution[r.id]; return k && k.received > 0 && !k.settled; })
-    .map(r => {
-      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
-      return `${esc(name)} (${esc(r.room)})`;
-    });
+    .reduce((sum, r) => sum + Number(_tnKaution[r.id].received), 0);
   const summaryEl = document.getElementById('tn-kaution-summary');
   if (summaryEl) {
-    if (pendingRefunds.length) {
-      summaryEl.innerHTML = `<i class="ti ti-alert-circle" style="font-size:12px"></i> Kaution to return: ${pendingRefunds.join(' · ')}`;
+    if (totalHeld > 0) {
+      summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_tnFmtEUR(totalHeld)}</strong>`;
       summaryEl.style.display = 'flex';
     } else {
       summaryEl.style.display = 'none';
@@ -810,7 +811,6 @@ function _tnHeaderHTML(rid, room, activeRec) {
         ${warm != null ? `<span class="tn-warm">${_tnFmtEUR(warm)}</span><span class="tn-dim">${isKaltNK ? 'warm' : 'pauschal'}</span>` : ''}
         ${(kalt != null && nk != null && isKaltNK) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_tnFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_tnFmtEUR(nk).replace('\u00a0\u20ac','')} kalt+NK</span>` : ''}
         ${priceLabel ? `<div class="tn-dot-sep"></div><span class="tnp tnp-gray">${esc(priceLabel)}</span>` : ''}
-        ${statusPill ? `<div class="tn-dot-sep"></div>${statusPill}` : ''}
       </div>`;
   } else {
     // rooms.vacant = false but no tenant record yet → Occupied (room is assigned) but no tenant added
@@ -822,7 +822,8 @@ function _tnHeaderHTML(rid, room, activeRec) {
 <div class="tn-hdr-wrap" onclick="_tnToggleCard('tc-${rid}')">
   <div class="tn-hdr-top">
     <span class="tn-room-lbl">${esc(room.name)}</span>
-    <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
+    ${statusPill ? `<div style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${statusPill}</div>` : ''}
+    <i class="ti ti-chevron-right tn-chev" style="${statusPill ? '' : 'margin-left:auto'}" aria-hidden="true"></i>
   </div>
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
@@ -2365,15 +2366,11 @@ function _tnRefreshFormerBadges(tid) {
   // Refresh summary line
   const summaryEl = document.getElementById('tn-kaution-summary');
   if (summaryEl) {
-    const pending = _tnRecords
-      .filter(r => r.status === 'former')
+    const totalHeld2 = _tnRecords
       .filter(r => { const kk = _tnKaution[r.id]; return kk && kk.received > 0 && !kk.settled; })
-      .map(r => {
-        const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '—';
-        return `${esc(name)} (${esc(r.room)})`;
-      });
-    if (pending.length) {
-      summaryEl.innerHTML = `<i class="ti ti-alert-circle" style="font-size:12px"></i> Kaution to return: ${pending.join(' · ')}`;
+      .reduce((sum, r) => sum + Number(_tnKaution[r.id].received), 0);
+    if (totalHeld2 > 0) {
+      summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_tnFmtEUR(totalHeld2)}</strong>`;
       summaryEl.style.display = 'flex';
     } else {
       summaryEl.style.display = 'none';
