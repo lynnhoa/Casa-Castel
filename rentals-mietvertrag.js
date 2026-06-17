@@ -29,6 +29,7 @@ function _buildRentalMietvertragData(room, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
+  kautionFael = '5',
 }) {
   const fmt = d => {
     const dt = new Date(d);
@@ -96,6 +97,7 @@ function _buildRentalMietvertragData(room, s, {
     nkVorauszahlung,
     gesamtmiete,
     kaution,
+    kautionFaelText: kautionFael === 'sofort' ? 'sofort' : `binnen ${kautionFael}\u00a0Tagen`,
     hausstuerschluessel: room.haustuerschluessel || 1,
     zimmerschluessel:    room.zimmerschluessel    || 1,
     inventar: Array.isArray(room.inventar) ? room.inventar : [],
@@ -158,7 +160,7 @@ function _contractBodyRentalMietvertrag(room) {
     <div class="rm-kaution-row">
       <div>
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
-        <div class="rm-kaution-rule">3 \u00d7 Kaltmiete \u00b7 Treuhandkonto</div>
+        <div class="rm-kaution-rule">3 \u00d7 Kaltmiete</div>
       </div>
       <div class="rm-kaution-val">${_fmtEUR(kaution)}</div>
     </div>
@@ -400,7 +402,7 @@ function _renderRentalMietvertragHTML(d) {
     }
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
-    ${kv('Kaution',eur(d.kaution)+'\u2002(fällig binnen 5 Tagen nach Vertragsunterschrift, \u00a7\u00a0551 BGB)')}
+    ${kv('Kaution',eur(d.kaution)+'\u2002(fällig '+d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
@@ -427,7 +429,7 @@ function _renderRentalMietvertragHTML(d) {
     ${cl('4','Schlüsselübergabe',
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
     ${cl('5','Kaution',
-      `Der Mieter überweist die Kaution von ${eur(d.kaution)} binnen 5 Tagen nach Unterzeichnung dieses Vertrages auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
+      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText} nach Unterzeichnung dieses Vertrages auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
     ${cl('6','Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl('7','Tierhaltung',

@@ -1384,13 +1384,14 @@ function _aptOpenContract(type, aptId) {
         const endVal      = document.getElementById('apt-cm-end')?.value;
         const sigVal      = document.getElementById('apt-cm-sig')?.value;
         const kautionVal  = document.getElementById('apt-cm-kaution')?.value;
+        const kautionFael = _aptReadKautionFael('cm');
         if (!startVal || !endVal) { alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
         const btn = document.getElementById('aptKzPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
           if (typeof loadSettings === 'function') await loadSettings();
           const data = _buildRentalKurzzeitData(apt2, appSettings, {
-            mieterName, mieterAdr, mieterDob, mieterEmail, startVal, endVal, sigVal, kautionVal,
+            mieterName, mieterAdr, mieterDob, mieterEmail, startVal, endVal, sigVal, kautionVal, kautionFael,
           });
           const html = _renderRentalKurzzeitHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
@@ -1431,6 +1432,7 @@ function _aptOpenContract(type, aptId) {
         const mieterEmail       = document.getElementById('apt-mv-email')?.value.trim();
         const startVal          = document.getElementById('apt-mv-start')?.value;
         const sigVal            = document.getElementById('apt-mv-sig')?.value;
+        const kautionFael       = _aptReadKautionFael('mv');
         const befristet         = document.getElementById('apt-mv-befristung-btn')?.dataset.mode === 'befristet';
         const endVal            = befristet ? document.getElementById('apt-mv-end')?.value : null;
         const grundVal          = befristet ? (document.querySelector('input[name="apt-mv-grund"]:checked')?.value || '') : '';
@@ -1460,7 +1462,7 @@ function _aptOpenContract(type, aptId) {
           };
           const data = _buildRentalMietvertragData(aptRoom, appSettings, {
             mieterName, mieterAdr, mieterDob, mieterEmail, startVal, sigVal,
-            befristet, endVal, grundVal, eigenbedarfPerson,
+            befristet, endVal, grundVal, eigenbedarfPerson, kautionFael,
           });
           const html = _renderRentalMietvertragHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
@@ -1584,7 +1586,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution) {
     <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
       <div>
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
-        <div class="rm-kaution-rule">3 × Kaltmiete · Treuhandkonto</div>
+        <div class="rm-kaution-rule">3 × Kaltmiete</div>
       </div>
       <input class="rm-input" id="apt-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}"/>
     </div>
@@ -1836,6 +1838,20 @@ document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
   _renderAptList();
   _aptInitSortable();
 });
+
+
+/* ── KAUTION FÄLLIGKEIT READER ───────────────────────────── */
+function _aptReadKautionFael(prefix) {
+  const active = document.querySelector(`.rm-fael-btn.active[data-prefix="${prefix}"]`);
+  const val    = active ? active.textContent.trim() : null;
+  if (!val || val === '5 Tage') return '5';
+  if (val === 'Sofort')         return 'sofort';
+  if (val === 'Individuell') {
+    const custom = document.getElementById(`apt-${prefix}-fael-custom`)?.value.trim();
+    return custom && !isNaN(custom) ? custom : '5';
+  }
+  return '5';
+}
 
 
 /* ── GENERIC PDF PREVIEW OVERLAY ─────────────────────────── */

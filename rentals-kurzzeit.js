@@ -23,7 +23,7 @@
 function _buildRentalKurzzeitData(apt, s, {
   mieterName, mieterAdr, mieterDob, mieterEmail,
   startVal, endVal, sigVal,
-  kautionVal,
+  kautionVal, kautionFael = '5',
 }) {
   const fmt = d => {
     const dt = new Date(d);
@@ -160,6 +160,7 @@ function _buildRentalKurzzeitData(apt, s, {
     letzteZahlungBeschreibung,
     letzteZahlungFaellig,
     kaution:              Number(kautionVal) || monatlMiete,
+    kautionFaelText:      kautionFael === 'sofort' ? 'sofort' : `binnen ${kautionFael}\u00a0Tagen`,
     hausstuerschluessel:  sk.haustuerschluessel  || 1,
     wohnungsschluessel:   sk.wohnungsschluessel   || 1,
     inventar,
@@ -306,7 +307,7 @@ function _renderRentalKurzzeitHTML(d) {
       ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils fällig 3.\u00a0Werktag')
       : ''}
     ${kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig)}
-    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig 5 Tage nach Unterzeichnung)')}
+    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + ' nach Unterzeichnung)')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>
@@ -329,7 +330,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${cl('3','Fälligkeit der Mietzahlungen',
       'Die Miete ist jeweils spätestens bis zum dritten Werktag des fälligen Monats zu überweisen (\u00a7\u00a0556b BGB). Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß \u00a7\u00a0288 BGB geltend zu machen.')}
     ${cl('4','Kaution',
-      'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' spätestens 5 Tage nach Unterzeichnung. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden von der Kaution abgezogen. Kleinreparaturen bis 100\u202f\u20ac pro Schadensfall gehen zu Lasten des Mieters (\u00a7\u00a0535 BGB). Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.')}
+      'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelText + ' nach Unterzeichnung. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden von der Kaution abgezogen. Kleinreparaturen bis 100\u202f\u20ac pro Schadensfall gehen zu Lasten des Mieters (\u00a7\u00a0535 BGB). Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.')}
     ${cl('5','Schlüsselübergabe',
       'Der Mieter erhält bei Einzug ' + d.hausstuerschluessel + '\u00a0Haustürschlüssel und ' + d.wohnungsschluessel + '\u00a0Wohnungsschlüssel. Alle Schlüssel sind bei Auszug zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs.')}
     ${cl('6','Zustand &amp; Übergabe',
