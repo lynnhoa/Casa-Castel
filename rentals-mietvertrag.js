@@ -37,7 +37,8 @@ function _buildRentalMietvertragData(room, s, {
            dt.getFullYear();
   };
 
-  const gemStr = _parseArr(room.gemeinschaftsraeume).join(', ');
+  const _gem = room.gemeinschaftsraeume;
+  const gemStr = Array.isArray(_gem) ? _gem.join(', ') : (typeof _gem === 'string' ? _gem : '');
 
   let kaltmiete, nkVorauszahlung, gesamtmiete, pricingMode;
   if (room.mietvertrag_pricing === 'kalt_nk' && room.kaltmiete) {
@@ -117,20 +118,22 @@ function _contractBodyRentalMietvertrag(room) {
     tenantDob = `${day}.${m}.${y}`;
   }
 
-  const gemStr = _parseArr(room.gemeinschaftsraeume).join(', ') || '—';
+  const _gem2 = room.gemeinschaftsraeume;
+  const gemStr = (Array.isArray(_gem2) ? _gem2.join(', ') : (typeof _gem2 === 'string' ? _gem2 : '')) || '—';
+  const _fmtEUR = n => Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
   const schluessel = `Haustür \u00d7${room.haustuerschluessel || 1} \u00b7 Zimmer \u00d7${room.zimmerschluessel || 1}`;
 
   let kaltDisplay, gesamtDisplay;
   if (room.mietvertrag_pricing === 'kalt_nk' && room.kaltmiete) {
     const kalt = Number(room.kaltmiete) || 0;
     const nk   = Number(room.nk_pauschale) || 0;
-    kaltDisplay   = `${fmtEUR(kalt)} kalt + ${fmtEUR(nk)} NK`;
-    gesamtDisplay = fmtEUR(kalt + nk);
+    kaltDisplay   = `${_fmtEUR(kalt)} kalt + ${_fmtEUR(nk)} NK`;
+    gesamtDisplay = _fmtEUR(kalt + nk);
   } else {
     const kalt = Number(room.kaltmiete) || Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
     const nk   = Number(room.nk_pauschale) || 0;
-    kaltDisplay   = `${fmtEUR(kalt + nk)} pauschal inkl. NK`;
-    gesamtDisplay = fmtEUR(kalt + nk);
+    kaltDisplay   = `${_fmtEUR(kalt + nk)} pauschal inkl. NK`;
+    gesamtDisplay = _fmtEUR(kalt + nk);
   }
 
   const kaltBase = Number(room.kaltmiete || room.mietvertrag_miete || room.monatl_miete) || 0;
@@ -157,7 +160,7 @@ function _contractBodyRentalMietvertrag(room) {
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
         <div class="rm-kaution-rule">3 \u00d7 Kaltmiete \u00b7 Treuhandkonto</div>
       </div>
-      <div class="rm-kaution-val">${fmtEUR(kaution)}</div>
+      <div class="rm-kaution-val">${_fmtEUR(kaution)}</div>
     </div>
 
     <div class="rm-fields-title" style="margin-top:2px;">Mieterdaten</div>
