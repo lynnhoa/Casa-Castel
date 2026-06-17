@@ -118,7 +118,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-rsub { font-size:10px; font-weight:300; color:var(--cc-stone); }
 
 /* ── RENT FORM ── */
-.tn-rent-form { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
+.tn-rent-form { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px;
   padding:10px 14px 12px; border-bottom:var(--cc-border); }
 .tn-rf { display:flex; flex-direction:column; gap:3px; }
 .tn-rf input { width:100%; font-size:12px; padding:3px 8px;
@@ -805,15 +805,14 @@ function _tnRentFormHTML(rid, room, rec) {
     <span class="tn-flbl">Kaution soll</span>
     <input type="number" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
   </div>
-  <div class="tn-rf" style="grid-column:2/4;flex-direction:row;align-items:flex-end;justify-content:flex-end">
-    <span class="tn-rf-hint" style="padding-bottom:7px">${rule}</span>
-  </div>
-  <span class="tn-rf-hint">Pre-filled from rooms tab. Edit to set agreed values. Frozen at move-out.</span>
-  <div class="tn-rf-save-row">
-    <button class="tn-btn tn-btn-sm" onclick="_tnToggleRentEdit('${rid}')">Cancel</button>
-    <button class="tn-btn tn-btn-primary" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
-      <i class="ti ti-check"></i> Save rent
-    </button>
+  <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
+    <span class="tn-rf-hint" style="margin:0">${rule} \u00b7 Pre-filled from rooms tab. Edit to override. Frozen at move-out.</span>
+    <div style="display:flex;gap:6px">
+      <button class="tn-btn tn-btn-sm" onclick="_tnToggleRentEdit('${rid}')">Cancel</button>
+      <button class="tn-btn tn-btn-primary" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
+        <i class="ti ti-check"></i> Save rent
+      </button>
+    </div>
   </div>
 </div>`;
 }
@@ -1542,7 +1541,38 @@ async function _tnSaveRent(rid, tid, roomName) {
   const { error } = await sbL.from('tenant_records')
     .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid);
   if (error) { console.warn('[tenants] save rent:', error.message); return; }
-  await _tnLoad();
+
+  // Update local cache
+  const rec = _tnRecords.find(r => r.id === tid);
+  if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
+
+  // Update rent bar read values in-place
+  const liveP = _tnRoomPricing(roomName);
+  const resolvedKalt = kalt ?? liveP?.kaltmiete ?? null;
+  const resolvedNk   = nk   ?? liveP?.nebenkosten ?? null;
+  const resolvedWarm = (resolvedKalt != null && resolvedNk != null) ? resolvedKalt + resolvedNk : null;
+
+  const bar = document.getElementById('rbar-' + rid);
+  if (bar) {
+    const vals = bar.querySelectorAll('.tn-rval');
+    if (vals[0]) vals[0].textContent = resolvedKalt != null ? _tnFmtEUR(resolvedKalt) : '\u2014';
+    if (vals[1]) vals[1].textContent = resolvedNk   != null ? _tnFmtEUR(resolvedNk)   : '\u2014';
+    if (vals[2]) vals[2].textContent = resolvedWarm != null ? _tnFmtEUR(resolvedWarm) : '\u2014';
+    const subs = bar.querySelectorAll('.tn-rsub');
+    if (subs[0]) subs[0].textContent = kalt != null ? 'agreed' : 'from rooms tab';
+    if (subs[1]) subs[1].textContent = nk   != null ? 'agreed' : 'per month';
+  }
+
+  // Update kaution hint if visible
+  const kautHint = document.querySelector('#tab-tenants .tn-kaut-hint');
+  if (kautHint && ksoll != null) {
+    const ctype = _tnRoomContractType(roomName);
+    const rule = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
+    kautHint.textContent = `Soll: ${_tnFmtEUR(ksoll)} \u00b7 ${rule}`;
+  }
+
+  // Switch back to read bar, keep card open
+  _tnToggleRentEdit(rid);
 }
 
 async function _tnModalSaveProfile(tid) {
