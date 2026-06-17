@@ -1857,7 +1857,7 @@ async function _tnViewDoc(fileUrl, label, roomName) {
   if (!overlay || !frame) { window.open(url, '_blank'); return; }
 
   titleEl.textContent = label ? `${label}${roomName ? ' · ' + roomName : ''}` : 'Dokument';
-  frame.src = url;
+  frame.src = `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(url)}`;
   overlay.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 
