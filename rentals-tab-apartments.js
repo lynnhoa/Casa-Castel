@@ -1811,7 +1811,7 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase) {
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn active" data-prefix="cm" onclick="_aptKfSelect('cm','5',this)">5 Tage</button>
+        <button class="rm-fael-btn active" data-prefix="cm" data-val="5" onclick="_aptKfSelect('cm','5',this)">5 Tage</button>
         <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','custom',this)">Individuell</button>
         <input type="number" id="apt-cm-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
       </div>
@@ -1857,7 +1857,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution) {
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn active" data-prefix="mv" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
+        <button class="rm-fael-btn active" data-prefix="mv" data-val="5" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
         <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','custom',this)">Individuell</button>
         <input type="number" id="apt-mv-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
       </div>
@@ -1989,8 +1989,9 @@ function _aptBodyUeberg(apt, sk, isEinzug) {
 /* ── KAUTION FÄLLIGKEIT HELPER ───────────────────────────── */
 function _aptKfSelect(prefix, val, clickedBtn) {
   const parent = clickedBtn.closest('div');
-  parent.querySelectorAll('.rm-fael-btn').forEach(b => b.classList.remove('active'));
+  parent.querySelectorAll('.rm-fael-btn').forEach(b => { b.classList.remove('active'); delete b.dataset.val; });
   clickedBtn.classList.add('active');
+  clickedBtn.dataset.val = val;
   const custom = document.getElementById(`apt-${prefix}-fael-custom`);
   if (custom) custom.style.display = val === 'custom' ? '' : 'none';
 }
@@ -2106,10 +2107,10 @@ document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
 /* ── KAUTION FÄLLIGKEIT READER ───────────────────────────── */
 function _aptReadKautionFael(prefix) {
   const active = document.querySelector(`.rm-fael-btn.active[data-prefix="${prefix}"]`);
-  const val    = active ? active.textContent.trim() : null;
-  if (!val || val === '5 Tage') return '5';
-  if (val === 'Sofort')         return 'sofort';
-  if (val === 'Individuell') {
+  const val    = active ? (active.dataset.val || active.textContent.trim()) : null;
+  if (!val || val === '5' || val === '5 Tage') return '5';
+  if (val === 'sofort' || val === 'Sofort')    return 'sofort';
+  if (val === 'custom' || val === 'Individuell') {
     const custom = document.getElementById(`apt-${prefix}-fael-custom`)?.value.trim();
     return custom && !isNaN(custom) ? custom : '5';
   }
@@ -2512,7 +2513,7 @@ function _renderRentalKurzzeitHTML(d) {
       ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils fällig 3.\u00a0Werktag')
       : ''}
     ${kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig)}
-    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)')))}
+    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Vertragsunterzeichnung)')))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>
@@ -2535,7 +2536,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${cl('3','Fälligkeit der Mietzahlungen',
       'Die Miete ist jeweils spätestens bis zum dritten Werktag des fälligen Monats zu überweisen (\u00a7\u00a0556b BGB). Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß \u00a7\u00a0288 BGB geltend zu machen.')}
     ${cl('4','Kaution',
-      'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? '' : ' nach Unterzeichnung') + '. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden von der Kaution abgezogen. Kleinreparaturen bis 100\u202f\u20ac pro Schadensfall gehen zu Lasten des Mieters (\u00a7\u00a0535 BGB). Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.')}
+      'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? '' : ' nach Vertragsunterzeichnung') + '. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden von der Kaution abgezogen. Kleinreparaturen bis 100\u202f\u20ac pro Schadensfall gehen zu Lasten des Mieters (\u00a7\u00a0535 BGB). Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.')}
     ${cl('5','Schlüsselübergabe',
       'Der Mieter erhält bei Einzug ' + d.hausstuerschluessel + '\u00a0Haustürschlüssel und ' + d.wohnungsschluessel + '\u00a0Wohnungsschlüssel. Alle Schlüssel sind bei Auszug zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs.')}
     ${cl('6','Zustand &amp; Übergabe',
@@ -2982,7 +2983,7 @@ function _renderRentalMietvertragHTML(d) {
     }
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
-    ${kv('Kaution',eur(d.kaution)+'\u2002(fällig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)'))}
+    ${kv('Kaution',eur(d.kaution)+'\u2002(fällig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterzeichnung, \u00a7\u00a0551 BGB)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
@@ -3009,7 +3010,7 @@ function _renderRentalMietvertragHTML(d) {
     ${cl('4','Schlüsselübergabe',
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
     ${cl('5','Kaution',
-      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Unterzeichnung dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
+      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Vertragsunterzeichnung dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
     ${cl('6','Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl('7','Tierhaltung',
