@@ -2484,51 +2484,18 @@ function _contractBodyComingSoon(name) {
 
 /* ── PDF GENERATION — KURZZEITMIETVERTRAG ────────────────── */
 async function _generateKurzzeitPDF() {
-  const room = getRoomById(_contractRoomId);
-  if (!room) return;
-
-  const mieterName = document.getElementById('cm-name')?.value.trim();
-  const mieterAdr  = document.getElementById('cm-adr')?.value.trim();
-  const mieterDob  = document.getElementById('cm-dob')?.value.trim();
-  const mieterEmail= document.getElementById('cm-email')?.value.trim();
-  const mieterTel  = document.getElementById('cm-tel')?.value.trim();
-  const startVal   = document.getElementById('cm-start')?.value;
-  const endVal     = document.getElementById('cm-end')?.value;
-  const sigVal     = document.getElementById('cm-sig')?.value;
-  const ersterMonatVoll = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
-  const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
-
-  if (!startVal || !endVal) {
-    alert('Bitte Mietbeginn und Mietende ausfüllen.');
-    return;
-  }
+  const container = document.getElementById('_pdfRenderContainer');
+  if (!container) return;
 
   // Show loading state on button
   const pdfBtn = document.getElementById('contractPdfBtn');
   const origHTML = pdfBtn?.innerHTML;
   if (pdfBtn) { pdfBtn.innerHTML = '<i class="ti ti-loader"></i> Generating…'; pdfBtn.disabled = true; }
 
-  const s    = appSettings;
-  const kautionOverridePreview = parseFloat(document.getElementById('cm-kaution')?.value) || null;
-  const data = _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverridePreview });
-  const html = _renderKurzzeitHTML(data);
+  const room = getRoomById(_contractRoomId);
+  const mieterName = (document.getElementById('cm-name')?.value.trim()) ||
+    container.querySelector('.kv__v')?.textContent?.trim() || 'Mieter';
 
-  // Render template in hidden div
-  let container = document.getElementById('_pdfRenderContainer');
-  if (container) container.remove();
-  container = document.createElement('div');
-  container.id = '_pdfRenderContainer';
-  container.style.cssText = [
-    'position:fixed',
-    'top:0',
-    'left:-9999px',
-    'width:794px',        // A4 at 96dpi
-    'background:#faf9f7',
-    'z-index:-1',
-    'font-size:11.33px',  // 8.5pt at 96dpi
-  ].join(';');
-  container.innerHTML = html;
-  document.body.appendChild(container);
 
   // Wait for fonts to load
   await document.fonts.ready;
@@ -2781,8 +2748,6 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
     letzteZahlungFaellig: zlFaellig,
     // Kaution
     kaution,
-    kautionFaelligkeitShort,
-    kautionFaelligkeitLong,
     kautionFaelligkeitShort,
     kautionFaelligkeitLong,
     // Schlüssel
