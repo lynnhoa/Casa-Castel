@@ -2513,7 +2513,7 @@ function _renderRentalKurzzeitHTML(d) {
       ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils fällig 3.\u00a0Werktag')
       : ''}
     ${kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig)}
-    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Vertragsunterzeichnung)')))}
+    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Vertragsunterzeichnung)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>
