@@ -390,6 +390,7 @@ function _pkCardHTML(p) {
           ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
              <div class="pk-row"><span class="pk-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="pk-row__v pk-row__v--muted">${pkFmtEURCompact(kautionAmt)} · 1×${pr.kaution_override ? ' (override)' : ''}</span></div>`
           : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
+        ${pr.einzug ? `<div class="pk-row"><span class="pk-row__k">Einzug</span><span class="pk-row__v">${pkFmtDate(pr.einzug)}</span></div>` : ''}
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -406,6 +407,7 @@ function _pkCardHTML(p) {
         <div data-pk-kautionfield style="${pr.kaution_override?'':'display:none'}">
           <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
         </div>
+        <div class="apt-field"><div class="apt-field__label">Einzug</div><input class="apt-input" type="date" data-f="einzug" value="${pr.einzug||''}"/></div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('miete','${p.id}')">Cancel</button>
           <button class="apt-btn--save" onclick="_pkSaveMiete('${p.id}')">Save</button>
@@ -701,6 +703,7 @@ function _pkBodyMietvertrag(spot, pr, sk) {
       <div class="rm-pre-row"><span>PLZ / Ort</span><span>${pkEsc(spot.plz_ort || '—')}</span></div>
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${pkEsc(spot.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${pkFmtEURCompact(miete)} / mo</span></div>
+      <div class="rm-pre-row"><span>Einzug</span><span>${pkFmtDate(pr.einzug) || '—'}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Parking ×${sk.parking_schluessel ?? 1}${sk.haustuerschluessel > 0 ? ' · Haustür ×' + sk.haustuerschluessel : ''}</span></div>
     </div>
 
