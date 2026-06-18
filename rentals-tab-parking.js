@@ -297,11 +297,6 @@ function _pkCardHTML(p) {
     ? `<strong>${pkFmtEURCompact(miete)}</strong> / mo`
     : `<span class="pk-hdr__rent--vacant">No pricing set</span>`;
 
-  // Kaution — 1× miete default
-  const kautionAmt = pr.kaution_override && pr.kaution_default
-    ? Number(pr.kaution_default)
-    : miete;
-
   return `
 <div class="pk-card${vacant ? '' : ''}" data-id="${p.id}" data-name="${pkEsc(p.name)}">
 
@@ -387,10 +382,8 @@ function _pkCardHTML(p) {
       <!-- READ -->
       <div class="pk-sec-read">
         ${miete
-          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
-             <div class="pk-row"><span class="pk-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="pk-row__v pk-row__v--muted">${pkFmtEURCompact(kautionAmt)} · 1×${pr.kaution_override ? ' (override)' : ''}</span></div>`
+          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>`
           : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
-        ${pr.einzug ? `<div class="pk-row"><span class="pk-row__k">Einzug</span><span class="pk-row__v">${pkFmtDate(pr.einzug)}</span></div>` : ''}
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -400,14 +393,6 @@ function _pkCardHTML(p) {
       <!-- EDIT -->
       <div class="pk-sec-edit" style="display:none">
         <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-f="miete" value="${pr.miete||''}"/></div>
-        <div class="apt-toggle-row">
-          <span class="apt-tlabel">Custom Kaution</span>
-          <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${pr.kaution_override?'checked':''} onchange="_pkToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
-        </div>
-        <div data-pk-kautionfield style="${pr.kaution_override?'':'display:none'}">
-          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
-        </div>
-        <div class="apt-field"><div class="apt-field__label">Einzug</div><input class="apt-input" type="date" data-f="einzug" value="${pr.einzug||''}"/></div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('miete','${p.id}')">Cancel</button>
           <button class="apt-btn--save" onclick="_pkSaveMiete('${p.id}')">Save</button>
@@ -461,9 +446,18 @@ function _pkCardHTML(p) {
     <div class="pk-contracts">
       <div class="pk-contracts-title">Contract</div>
       <div class="pk-doc-row">
-        <button class="pk-doc-btn" onclick="_pkOpenContract('${p.id}')">
+        <button class="pk-doc-btn" onclick="_pkOpenContract('mietvertrag','${p.id}')">
           Mietvertrag <i class="ti ti-chevron-right"></i>
         </button>
+      </div>
+      <div class="pk-doc-row">
+        <button class="pk-doc-btn" onclick="_pkOpenContract('ueberg','${p.id}')">
+          Übergabeprotokoll <i class="ti ti-chevron-right"></i>
+        </button>
+        <div class="apt-doc-toggle" id="pk-eu-${p.id}">
+          <button class="active" onclick="event.stopPropagation();_pkSetEU('${p.id}',0,this)">Einzug</button>
+          <button onclick="event.stopPropagation();_pkSetEU('${p.id}',1,this)">Auszug</button>
+        </div>
       </div>
     </div>
 
@@ -608,13 +602,6 @@ async function _pkSaveSchlussel(pkId) {
 }
 
 
-/* ── KAUTION OVERRIDE TOGGLE ─────────────────────────────── */
-function _pkToggleKautionOverride(chk) {
-  const field = chk.closest('[id^="pk-miete-"]').querySelector('[data-pk-kautionfield]');
-  if (field) field.style.display = chk.checked ? '' : 'none';
-}
-
-
 /* ── RERENDER CARD ───────────────────────────────────────── */
 function _pkRerenderCard(pkId) {
   const spot = appParking.find(p => p.id === pkId);
@@ -653,7 +640,13 @@ async function _pkToggleVacant(pkId, btn) {
 /* ── CONTRACT MODAL ──────────────────────────────────────── */
 let _pkContractId = null;
 
-function _pkOpenContract(pkId) {
+function _pkSetEU(pkId, idx, btn) {
+  const tog = document.getElementById('pk-eu-' + pkId);
+  if (!tog) return;
+  tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+}
+
+function _pkOpenContract(type, pkId) {
   _pkContractId = pkId;
   const spot = appParking.find(p => p.id === pkId);
   if (!spot) return;
@@ -661,21 +654,35 @@ function _pkOpenContract(pkId) {
   const pr = spot.pricing   || {};
   const sk = spot.schlussel || {};
 
-  document.getElementById('pkContractTypeLbl').textContent  = 'Mietvertrag';
+  document.getElementById('pkContractTypeLbl').textContent  = type === 'mietvertrag' ? 'Mietvertrag' : 'Übergabeprotokoll';
   document.getElementById('pkContractTitleLbl').textContent = spot.name;
   document.getElementById('pkContractSubLbl').textContent   = spot.parking_type || '';
 
-  document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk);
-  document.getElementById('pkContractFooter').innerHTML =
-    `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
-     <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+  if (type === 'mietvertrag') {
+    document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk);
+    document.getElementById('pkContractFooter').innerHTML =
+      `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
+       <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+    setTimeout(() => {
+      document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
+        document.getElementById('pkContractOverlay').classList.remove('open');
+      });
+      document.getElementById('pk-mv-befristung-btn')?.addEventListener('click', _pkToggleMvBefristung);
+    }, 0);
 
-  setTimeout(() => {
-    document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
-      document.getElementById('pkContractOverlay').classList.remove('open');
-    });
-    document.getElementById('pk-mv-befristung-btn')?.addEventListener('click', _pkToggleMvBefristung);
-  }, 0);
+  } else if (type === 'ueberg') {
+    const isEinzug = document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    document.getElementById('pkContractTitleLbl').textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + spot.name;
+    document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug);
+    document.getElementById('pkContractFooter').innerHTML =
+      `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
+       <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+    setTimeout(() => {
+      document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
+        document.getElementById('pkContractOverlay').classList.remove('open');
+      });
+    }, 0);
+  }
 
   document.getElementById('pkContractOverlay').classList.add('open');
 }
@@ -691,8 +698,7 @@ document.getElementById('pkContractOverlay')?.addEventListener('click', e => {
 
 /* ── CONTRACT BODY: MIETVERTRAG ──────────────────────────── */
 function _pkBodyMietvertrag(spot, pr, sk) {
-  const miete   = Number(pr.miete) || 0;
-  const kaution = pr.kaution_override && pr.kaution_default ? Number(pr.kaution_default) : miete;
+  const miete = Number(pr.miete) || 0;
 
   return `
     <div class="rm-prefilled">
@@ -703,16 +709,7 @@ function _pkBodyMietvertrag(spot, pr, sk) {
       <div class="rm-pre-row"><span>PLZ / Ort</span><span>${pkEsc(spot.plz_ort || '—')}</span></div>
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${pkEsc(spot.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${pkFmtEURCompact(miete)} / mo</span></div>
-      <div class="rm-pre-row"><span>Einzug</span><span>${pkFmtDate(pr.einzug) || '—'}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Parking ×${sk.parking_schluessel ?? 1}${sk.haustuerschluessel > 0 ? ' · Haustür ×' + sk.haustuerschluessel : ''}</span></div>
-    </div>
-
-    <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
-      <div>
-        <div class="rm-kaution-lbl">Kaution</div>
-        <div class="rm-kaution-rule">1 × Miete</div>
-      </div>
-      <input class="rm-input" id="pk-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}"/>
     </div>
 
     <div class="rm-fields-title">Mieterdaten</div>
@@ -759,6 +756,38 @@ function _pkToggleMvBefristung() {
   lbl.textContent       = on ? 'Ja'         : 'Nein';
   sub.textContent       = on ? 'Befristet'  : 'Unbefristet';
   details.style.display = on ? ''           : 'none';
+}
+
+
+/* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */
+function _pkBodyUeberg(spot, sk, isEinzug) {
+  return `
+    <div class="rm-fields-title">Mieter</div>
+    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="pk-ub-mieter-name" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="pk-ub-mieter-adr" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>Übergabedatum</label><input class="rm-input" id="pk-ub-datum" type="text" placeholder="TT.MM.JJJJ"/></div>
+    ${!isEinzug ? `
+    <div class="rm-field"><label>Neue Adresse des Mieters</label><input class="rm-input" id="pk-ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/></div>` : ''}
+
+    <div class="rm-field" style="margin-top:4px">
+      <label>Zustand / Bemerkungen</label>
+      <textarea class="rm-input" id="pk-ub-zustand" rows="3" style="resize:vertical;line-height:1.5" placeholder="Zustand des Stellplatzes / der Tiefgarage bei Übergabe…"></textarea>
+    </div>
+
+    <div class="rm-fields-title" style="margin-top:6px">Schlüsselübergabe</div>
+    <div class="rm-field-row" style="margin-bottom:10px">
+      <div class="rm-field"><label>Parking key</label><input class="rm-input" id="pk-ub-pkschluessel" type="number" value="${sk.parking_schluessel ?? 1}" min="0"/></div>
+      ${(sk.haustuerschluessel > 0) ? `<div class="rm-field"><label>Haustür</label><input class="rm-input" id="pk-ub-haustur" type="number" value="${sk.haustuerschluessel}" min="0"/></div>` : ''}
+    </div>
+
+    <div class="rm-field">
+      <label>Allgemeine Bemerkungen</label>
+      <textarea class="rm-input" id="pk-ub-bemerkungen" rows="2" style="resize:vertical;line-height:1.5" placeholder="Sonstige Anmerkungen…"></textarea>
+    </div>
+    <div class="rm-field" style="margin-top:4px">
+      <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input class="rm-input" id="pk-ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
+    </div>`;
 }
 
 
@@ -917,8 +946,6 @@ CREATE TABLE rentals_parking_pricing (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   parking_id       uuid NOT NULL REFERENCES rentals_parking(id) ON DELETE CASCADE,
   miete            numeric(10,2),
-  kaution_override boolean NOT NULL DEFAULT false,
-  kaution_default  numeric(10,2),
   created_at       timestamptz DEFAULT now()
 );
 ALTER TABLE rentals_parking_pricing ENABLE ROW LEVEL SECURITY;
