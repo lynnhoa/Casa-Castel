@@ -1855,11 +1855,14 @@ function _kfSelect(prefix, val) {
   if (customInp) customInp.style.display = val === 'custom' ? '' : 'none';
 }
 
-function _openContract(type, roomId) {
+async function _openContract(type, roomId) {
   _contractRoomId = roomId;
   _contractType   = type;
   const room = getRoomById(roomId);
   if (!room) return;
+
+  // Ensure tenant cache is populated before modal renders
+  if (typeof loadTenants === 'function') await loadTenants();
 
   document.getElementById('contractOverlay').classList.add('open');
 
@@ -2034,8 +2037,7 @@ document.getElementById('contractOverlay')?.addEventListener('click', e => {
 /* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */
 function _contractBodyUeberg(room, isEinzug) {
   const s = appSettings;
-  // Load tenant from localStorage
-  const profile   = (typeof S !== 'undefined') ? S.get('room_profile_' + room.name, {}) : {};
+  const profile   = (typeof _getProfile === 'function') ? _getProfile(room.name) : {};
   const tenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
 
   const zaehler = _parseArr(s.zaehler);
@@ -2127,10 +2129,26 @@ function _contractBodyUeberg(room, isEinzug) {
 function _initUebergMieterToggle(room) {
   // Pill toggle is handled by _toggleUebergMieter via onclick
   // Just store tenant name on the pill for reference
-  const profile    = (typeof S !== 'undefined') ? S.get('room_profile_' + room.name, {}) : {};
+  const profile    = (typeof _getProfile === 'function') ? _getProfile(room.name) : {};
   const tenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   const pill = document.getElementById('uebergMieterPill');
-  if (pill) pill.dataset.tenantName = tenantName;
+  if (pill) {
+    pill.dataset.tenantName  = tenantName;
+    pill.dataset.tenantEmail = profile.email   || '';
+    pill.dataset.tenantAdr   = profile.address || '';
+    pill.dataset.tenantDob   = (() => {
+      let dob = profile.birthday || '';
+      if (dob && dob.includes('-') && dob.length === 10) {
+        const [y,m,d] = dob.split('-'); dob = d+'.'+m+'.'+y;
+      }
+      return dob;
+    })();
+    // Also update name field if pill is still in room state
+    if (pill.dataset.state === 'room') {
+      const nameInput = document.getElementById('ub-mieter-name');
+      if (nameInput) nameInput.value = tenantName;
+    }
+  }
 }
 
 function _toggleUebergMieter(roomId) {
