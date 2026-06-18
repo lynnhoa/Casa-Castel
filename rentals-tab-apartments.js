@@ -439,13 +439,7 @@ document.getElementById('tab-apartments').innerHTML = `
     max-height:88vh !important;
     max-height:88dvh !important;
   }
-  /* Card list: 2-column grid on iPad/desktop */
-  .rp-list {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:10px;
-    align-items:start;
-  }
+  /* Card list: single column on all screens (matches rooms tab) */
   /* Summary bar wider */
   .rp-summary { margin-bottom:16px; }
   /* Card headers */
@@ -455,11 +449,8 @@ document.getElementById('tab-apartments').innerHTML = `
   .rm-field-row { grid-template-columns:1fr 1fr; }
 }
 
-/* Desktop (1024px+): wider modal, single-column list again for readability */
+/* Desktop (1024px+): wider modal */
 @media(min-width:1024px) {
-  .rp-list {
-    grid-template-columns:1fr 1fr 1fr;
-  }
   .rm-sheet {
     max-width:600px;
   }
