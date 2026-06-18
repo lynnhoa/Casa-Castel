@@ -1848,8 +1848,8 @@ function _kfSelect(prefix, val) {
     b.style.background = active ? 'var(--cc-charcoal)' : 'none';
     b.style.color       = active ? '#fff' : 'var(--cc-charcoal)';
     b.style.borderColor = active ? 'var(--cc-charcoal)' : 'var(--cc-rule)';
-    // Toggle class so PDF handler can reliably detect active state
-    b.classList.toggle('active-fael', active);
+    if (active) { b.classList.add('active-fael'); b.dataset.active = '1'; }
+    else        { b.classList.remove('active-fael'); delete b.dataset.active; }
   });
   const customInp = document.getElementById(prefix + '-faelligkeit-custom');
   if (customInp) customInp.style.display = val === 'custom' ? '' : 'none';
@@ -1900,7 +1900,7 @@ async function _openContract(type, roomId) {
       const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
       const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
       let _cmFaelVal = '5';
-      _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael')) _cmFaelVal = b.dataset.val; });
+      _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _cmFaelVal = b.dataset.val; });
       const kautionFaelligkeitKz = _cmFaelVal === 'custom'
         ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
         : _cmFaelVal === 'sofort' ? 'sofort' : 5;
@@ -1958,7 +1958,7 @@ async function _openContract(type, roomId) {
       const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
       const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
       let _mvFaelVal = '5';
-      _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael')) _mvFaelVal = b.dataset.val; });
+      _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _mvFaelVal = b.dataset.val; });
       const kautionFaelligkeitMv = _mvFaelVal === 'custom'
         ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
         : _mvFaelVal === 'sofort' ? 'sofort' : 5;
@@ -3207,7 +3207,7 @@ function _renderKurzzeitHTML(d) {
       }
     })()}
     ${clause('3', 'Fälligkeit der Mietzahlungen', 'Die Miete ist jeweils spätestens bis zum dritten Werktag des fälligen Monats zu überweisen (§ 556b BGB). Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß § 288 BGB geltend zu machen.', false)}
-    ${clause('4', 'Kaution', 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelligkeitLong + ' nach Vertragsunterzeichnung. Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Kleinreparaturen bis 100 € pro Schadensfall gehen zu Lasten des Mieters (§ 535 BGB). Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', false)}
+    ${clause('4', 'Kaution', 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelligkeitLong + '. Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Kleinreparaturen bis 100 € pro Schadensfall gehen zu Lasten des Mieters (§ 535 BGB). Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', false)}
     ${clause('5', 'Schlüsselübergabe', 'Der Mieter erhält bei Einzug ' + d.hausstuerschluessel + ' Haustürschlüssel und ' + d.zimmerschluessel + ' Zimmerschlüssel. Alle Schlüssel sind bei Auszug an den Vermieter zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten für den Schlossaustausch.', false)}
     ${clause('6', 'Zustand &amp; Übergabe', 'Das Zimmer wird möbliert und in vertragsgemäßem Zustand übergeben. Ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Das Zimmer ist in gleichem Zustand zurückzugeben.', false)}
     ${clause('7', 'Haftpflichtversicherung', 'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.', false)}
@@ -4255,7 +4255,7 @@ function _renderMietvertragHTML(d) {
     ${cl('5','Schlüsselübergabe',
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
     ${cl('6','Kaution',
-      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelligkeitLong} dieses Vertrages auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
+      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelligkeitLong.startsWith('sofort') ? d.kautionFaelligkeitLong : d.kautionFaelligkeitLong + ' dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
     ${cl('7','Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl('8','Tierhaltung',
