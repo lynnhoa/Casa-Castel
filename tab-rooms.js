@@ -2155,6 +2155,52 @@ function _toggleUebergMieter(roomId) {
   }
 }
 
+function _toggleCmMieter() {
+  const pill      = document.getElementById('cmMieterPill');
+  const manualLbl = document.getElementById('cmMieterManualLbl');
+  if (!pill) return;
+  const isRoom = pill.dataset.state === 'room';
+  if (isRoom) {
+    pill.dataset.state = 'manual';
+    document.getElementById('cm-name').value  = '';
+    document.getElementById('cm-adr').value   = '';
+    document.getElementById('cm-dob').value   = '';
+    document.getElementById('cm-email').value = '';
+    document.getElementById('cm-name').focus();
+    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
+  } else {
+    pill.dataset.state = 'room';
+    document.getElementById('cm-name').value  = pill.dataset.tenantName  || '';
+    document.getElementById('cm-adr').value   = pill.dataset.tenantAdr   || '';
+    document.getElementById('cm-dob').value   = pill.dataset.tenantDob   || '';
+    document.getElementById('cm-email').value = pill.dataset.tenantEmail || '';
+    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
+  }
+}
+
+function _toggleMvMieter() {
+  const pill      = document.getElementById('mvMieterPill');
+  const manualLbl = document.getElementById('mvMieterManualLbl');
+  if (!pill) return;
+  const isRoom = pill.dataset.state === 'room';
+  if (isRoom) {
+    pill.dataset.state = 'manual';
+    document.getElementById('mv-name').value  = '';
+    document.getElementById('mv-adr').value   = '';
+    document.getElementById('mv-dob').value   = '';
+    document.getElementById('mv-email').value = '';
+    document.getElementById('mv-name').focus();
+    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
+  } else {
+    pill.dataset.state = 'room';
+    document.getElementById('mv-name').value  = pill.dataset.tenantName  || '';
+    document.getElementById('mv-adr').value   = pill.dataset.tenantAdr   || '';
+    document.getElementById('mv-dob').value   = pill.dataset.tenantDob   || '';
+    document.getElementById('mv-email').value = pill.dataset.tenantEmail || '';
+    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
+  }
+}
+
 
 /* ── CONTRACT BODY: KURZZEIT ─────────────────────────────── */
 /* Auto-insert dots while typing a German date: 13011992 → 13.01.1992 */
@@ -2293,6 +2339,16 @@ function _toggleMvErsterMonat() {
 
 function _contractBodyKurzzeit(room) {
   const s         = appSettings;
+  const profile   = (typeof _getProfile === 'function') ? _getProfile(room.name)
+                  : (typeof S !== 'undefined') ? S.get('room_profile_' + room.name, {}) : {};
+  const tenantName    = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
+  const tenantEmail   = profile.email   || '';
+  const tenantAddress = profile.address || '';
+  let   tenantDob     = profile.birthday || '';
+  if (tenantDob && tenantDob.includes('-') && tenantDob.length === 10) {
+    const [y, m, day] = tenantDob.split('-');
+    tenantDob = `${day}.${m}.${y}`;
+  }
   const gemStr    = _parseArr(room.gemeinschaftsraeume).join(', ') || '—';
   const kzKalt    = Number(room.kurzzeit_kaltmiete) || 0;
   const kzNk      = Number(room.kurzzeit_nk) || 0;
@@ -2347,11 +2403,18 @@ function _contractBodyKurzzeit(room) {
       </div>
     </div>
 
-    <div class="rm-fields-title">Tenant details — enter manually</div>
-    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="cm-name" placeholder="Full name…"/></div>
-    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="cm-adr" placeholder="Current address…"/></div>
-    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="cm-dob" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
-    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="cm-email" type="email" placeholder="mieter@beispiel.de"/></div>
+    <div class="rm-fields-title" style="margin-bottom:10px;">Mieter</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="cmMieterRoomLbl">${esc(room.name)} Mieter</span>
+      <div class="ub-mieter-pill" id="cmMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" onclick="_toggleCmMieter()">
+        <div class="ub-mieter-pill__knob"></div>
+      </div>
+      <span style="font-size:11px;color:var(--cc-stone);" id="cmMieterManualLbl">Manuell</span>
+    </div>
+    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="cm-name" value="${esc(tenantName)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="cm-adr" value="${esc(tenantAddress)}" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="cm-dob" value="${esc(tenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
+    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="cm-email" type="email" value="${esc(tenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="cm-tel" type="tel" placeholder="+49 …"/></div>
     <div class="rm-field-row">
       <div class="rm-field"><label>Mietbeginn <span style="color:#c0392b;font-weight:700;">*</span></label><input class="rm-input" id="cm-start" type="date" onclick="try{this.showPicker()}catch(e){}" /></div>
@@ -3893,8 +3956,14 @@ function _contractBodyMietvertrag(room) {
       </div>
     </div>
 
-    <div class="rm-fields-title" style="margin-top:2px;">Mieterdaten</div>
-
+    <div class="rm-fields-title" style="margin-top:2px;margin-bottom:10px;">Mieter</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="mvMieterRoomLbl">${esc(room.name)} Mieter</span>
+      <div class="ub-mieter-pill" id="mvMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" onclick="_toggleMvMieter()">
+        <div class="ub-mieter-pill__knob"></div>
+      </div>
+      <span style="font-size:11px;color:var(--cc-stone);" id="mvMieterManualLbl">Manuell</span>
+    </div>
     <div class="rm-field">
       <label>Name</label>
       <input class="rm-input" id="mv-name" value="${esc(tenantName)}" placeholder="Vor- und Nachname\u2026"/>
