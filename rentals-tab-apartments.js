@@ -77,6 +77,20 @@ document.getElementById('tab-apartments').innerHTML = `
     </div>
   </div>
 
+  <!-- ══ HAUSGELD HISTORY MODAL ══ -->
+  <div class="rm-overlay" id="aptHGModal" onclick="_aptHGModalOutside(event)">
+    <div class="rm-sheet" style="max-height:70vh">
+      <div class="rm-sheet__hdr">
+        <div style="flex:1;min-width:0">
+          <div class="rm-sheet__title">Hausgeld History</div>
+          <div class="rm-sheet__sub" id="aptHGModalSub"></div>
+        </div>
+        <button class="rm-sheet__close" onclick="_aptHGModalClose()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="rm-sheet__body" id="aptHGModalBody"></div>
+    </div>
+  </div>
+
   <!-- ══ CONFIRM DELETE ══ -->
   <div class="rm-confirm-overlay" id="aptConfirmOverlay">
     <div class="rm-confirm-box">
@@ -462,6 +476,33 @@ document.getElementById('tab-apartments').innerHTML = `
     padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 }
+
+/* ── HAUSGELD HISTORY ── */
+.apt-hg-sec { border-bottom:var(--cc-border); }
+.apt-hg-body { padding:10px 14px 0; }
+.apt-hg-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.apt-hg-lbl { font-size:9px; font-weight:500; letter-spacing:.11em; text-transform:uppercase; color:var(--cc-taupe); flex:1; }
+.apt-hg-verlauf-btn { font-size:10px; color:var(--cc-stone); text-decoration:underline; text-underline-offset:2px; background:none; border:none; cursor:pointer; font-family:inherit; padding:0; -webkit-tap-highlight-color:transparent; }
+.apt-hg-add-btn { display:inline-flex; align-items:center; gap:4px; border-radius:var(--cc-r-pill); font-weight:500; font-family:inherit; cursor:pointer; height:24px; padding:0 9px; font-size:10px; border:.5px solid var(--cc-rule); background:none; color:var(--cc-taupe); }
+.apt-hg-current { display:flex; align-items:center; gap:8px; padding:7px 10px; background:var(--cc-surface); border-radius:var(--cc-r-sm); margin-bottom:10px; }
+.apt-hg-cur-amount { font-size:13px; font-weight:500; color:var(--cc-charcoal); flex:1; }
+.apt-hg-cur-since { font-size:10px; color:var(--cc-stone); white-space:nowrap; }
+.apt-hg-row { display:flex; flex-direction:column; gap:6px; padding:8px 0; border-bottom:var(--cc-border); }
+.apt-hg-row:last-of-type { border-bottom:none; }
+.apt-hg-row-top { display:flex; align-items:center; gap:8px; }
+.apt-hg-date { font-size:11px; color:var(--cc-taupe); flex:1; }
+.apt-hg-amount { font-size:13px; font-weight:500; color:var(--cc-charcoal); }
+.apt-hg-amount.past { font-weight:400; color:var(--cc-stone); }
+.apt-hg-pills { display:flex; gap:5px; flex-wrap:wrap; padding-left:20px; }
+.apt-hg-pill { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:500; padding:2px 8px; border-radius:var(--cc-r-pill); white-space:nowrap; cursor:default; font-family:inherit; border:none; }
+.apt-hg-pill.done { background:#EAF3DE; color:#27500A; }
+.apt-hg-pill.pending { background:var(--cc-surface); color:var(--cc-stone); border:.5px solid var(--cc-rule); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.apt-hg-pill.pending:active { opacity:.7; }
+.apt-hg-pill i { font-size:10px; }
+.apt-hg-add-form { display:flex; align-items:center; gap:6px; padding-top:8px; border-top:var(--cc-border); margin-top:4px; flex-wrap:wrap; padding-bottom:10px; }
+.apt-hg-add-form input { font-size:12px; padding:5px 8px; border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold); background:var(--cc-white); color:var(--cc-charcoal); font-family:inherit; outline:none; width:120px; }
+.apt-hg-add-form input[type=number] { width:90px; }
+.apt-hg-status-pill { display:inline-flex; align-items:center; gap:3px; font-size:9px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:var(--cc-r-pill); background:#FAEEDA; color:#633806; border:.5px solid #EF9F27; }
   `;
   document.head.appendChild(s);
 })();
@@ -489,6 +530,7 @@ function aptFmtEURCompact(n) {
 /* ── DATA STORE ──────────────────────────────────────────── */
 let appApartments = [];     // array of apartment objects (joined from all tables)
 let _aptSbClient  = null;   // set below after Supabase is confirmed
+let _aptHausgeld  = {};     // apt_id → [{id, apt_id, effective_date, amount, weg_notified, notified_date, hv_adjusted, adjusted_date}]
 
 
 /* ── LOAD ────────────────────────────────────────────────── */
@@ -504,6 +546,7 @@ async function loadApartments() {
       { data: zaehler },
       { data: schlussel },
       { data: inventar },
+      { data: hausgeld },
     ] = await Promise.all([
       _aptSbClient.from('rentals_apartments').select('*').order('sort_order'),
       _aptSbClient.from('rentals_pricing').select('*'),
@@ -511,6 +554,7 @@ async function loadApartments() {
       _aptSbClient.from('rentals_zaehler').select('*').order('sort_order'),
       _aptSbClient.from('rentals_schlussel').select('*'),
       _aptSbClient.from('rentals_inventar').select('*').order('sort_order'),
+      _aptSbClient.from('rentals_hausgeld_history').select('*').order('effective_date', { ascending: false }),
     ]);
 
     // Join all tables by apartment_id
@@ -522,6 +566,13 @@ async function loadApartments() {
       schlussel:  (schlussel  || []).find(s => s.apartment_id === a.id) || {},
       inventar:   (inventar   || []).filter(i => i.apartment_id === a.id),
     }));
+
+    // Build hausgeld store keyed by apt_id, already DESC from DB
+    _aptHausgeld = {};
+    (hausgeld || []).forEach(e => {
+      if (!_aptHausgeld[e.apt_id]) _aptHausgeld[e.apt_id] = [];
+      _aptHausgeld[e.apt_id].push(e);
+    });
   } catch(e) {
     console.error('[apartments] Load failed:', e);
   }
@@ -599,6 +650,10 @@ function _aptCardHTML(a) {
   // Inventar count
   const invCount = inventar.length;
 
+  // Hausgeld helpers
+  const hgEntries = _aptHausgeld[a.id] || [];
+  const hgHasOpen = hgEntries.some(e => !e.hv_adjusted);
+
   return `
 <div class="apt-card${vacant ? '' : ''}" data-id="${a.id}" data-name="${aptEsc(a.name)}">
 
@@ -617,6 +672,7 @@ function _aptCardHTML(a) {
         ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
       </div>
       <div class="apt-hdr__rent">${rentHTML}</div>
+      ${hgHasOpen ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld increase pending</span></div>` : ''}
     </div>
     <i class="ti ti-chevron-right apt-chevron"></i>
   </div>
@@ -782,6 +838,9 @@ function _aptCardHTML(a) {
         </div>
       </div>
     </div>
+
+    <!-- 3b. HAUSGELD HISTORY -->
+    ${_aptHGSectionHTML(a.id)}
 
     <!-- 4. ZÄHLER -->
     <div class="apt-section" id="apt-zaehler-${a.id}">
@@ -1232,6 +1291,219 @@ function _aptRerenderCard(aptId) {
   card.remove();
   _aptInitSortable();
   _updateAptSummary();
+}
+
+
+/* ── HAUSGELD HISTORY ────────────────────────────────────── */
+
+function _aptHGSectionHTML(aptId) {
+  const entries = _aptHausgeld[aptId] || [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
+  const pending = entries.filter(e => !e.hv_adjusted);
+
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const [y,m,day] = d.split('-');
+    return `${day}.${m}.${y}`;
+  };
+
+  const isFuture = (e) => new Date(e.effective_date) > today;
+
+  const rowIcon = (e) => isFuture(e)
+    ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>`
+    : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`;
+
+  const pillHTML = (e) => {
+    const notPill = e.weg_notified
+      ? `<span class="apt-hg-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Notified</span>`
+      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as notified">
+           <i class="ti ti-mail" aria-hidden="true"></i> Notified?
+         </button>`;
+    const adjPill = e.hv_adjusted
+      ? `<span class="apt-hg-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
+      : (e.weg_notified
+          ? `<button class="apt-hg-pill pending" onclick="_aptHGMarkAdjusted('${e.id}','${aptId}')" title="Mark as adjusted">
+               <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
+             </button>`
+          : `<span class="apt-hg-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
+    return notPill + adjPill;
+  };
+
+  const pendingRows = pending.map(e => `
+    <div class="apt-hg-row" id="apt-hg-row-${e.id}">
+      <div class="apt-hg-row-top">
+        ${rowIcon(e)}
+        <span class="apt-hg-date">${isFuture(e) ? 'from ' : ''}${fmtDate(e.effective_date)}</span>
+        <span class="apt-hg-amount">${aptFmtEUR(e.amount)}</span>
+      </div>
+      <div class="apt-hg-pills">${pillHTML(e)}</div>
+    </div>`).join('');
+
+  return `
+<div class="apt-hg-sec" id="apt-hg-sec-${aptId}">
+  <div class="apt-hg-body">
+    <div class="apt-hg-header">
+      <span class="apt-hg-lbl">Hausgeld increase</span>
+      ${entries.length > 1 ? `<button class="apt-hg-verlauf-btn" onclick="_aptHGOpenModal('${aptId}')">History</button>` : ''}
+      <button class="apt-hg-add-btn" onclick="_aptHGAdd('${aptId}')">
+        <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
+      </button>
+    </div>
+    ${current
+      ? `<div class="apt-hg-current">
+           <i class="ti ti-building-estate" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
+           <span class="apt-hg-cur-amount">${aptFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+           <span class="apt-hg-cur-since">since ${fmtDate(current.effective_date)}</span>
+         </div>`
+      : `<p class="apt-empty" style="padding:3px 0 10px;font-size:12px;color:var(--cc-stone);font-style:italic">No rate entered yet.</p>`}
+    ${pendingRows}
+  </div>
+</div>`;
+}
+
+function _aptHGOpenModal(aptId) {
+  const entries = (_aptHausgeld[aptId] || []).slice();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const apt = appApartments.find(a => a.id === aptId);
+
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const [y,m,day] = d.split('-');
+    return `${day}.${m}.${y}`;
+  };
+  const isFuture = (e) => new Date(e.effective_date) > today;
+
+  const pillHTML = (e) => {
+    const notPill = e.weg_notified
+      ? `<span class="apt-hg-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Notified</span>`
+      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as notified">
+           <i class="ti ti-mail" aria-hidden="true"></i> Notified?
+         </button>`;
+    const adjPill = e.hv_adjusted
+      ? `<span class="apt-hg-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
+      : (e.weg_notified
+          ? `<button class="apt-hg-pill pending" onclick="_aptHGMarkAdjusted('${e.id}','${aptId}')" title="Mark as adjusted">
+               <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
+             </button>`
+          : `<span class="apt-hg-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
+    return notPill + adjPill;
+  };
+
+  const rows = entries.map(e => `
+    <div class="apt-hg-row" id="apt-hg-row-${e.id}" style="padding-left:16px;padding-right:16px">
+      <div class="apt-hg-row-top">
+        ${isFuture(e)
+          ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>`
+          : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`}
+        <span class="apt-hg-date">${isFuture(e) ? 'from ' : ''}${fmtDate(e.effective_date)}</span>
+        <span class="apt-hg-amount ${e.hv_adjusted && !isFuture(e) ? 'past' : ''}">${aptFmtEUR(e.amount)}</span>
+      </div>
+      <div class="apt-hg-pills">${pillHTML(e)}</div>
+    </div>`).join('');
+
+  document.getElementById('aptHGModalSub').textContent = apt ? apt.name : '';
+  document.getElementById('aptHGModalBody').innerHTML = rows || `<p style="padding:12px 16px;font-size:12px;color:var(--cc-stone);font-style:italic">No entries yet.</p>`;
+  document.getElementById('aptHGModal').classList.add('open');
+}
+
+function _aptHGModalClose() {
+  document.getElementById('aptHGModal').classList.remove('open');
+}
+function _aptHGModalOutside(e) {
+  if (e.target === document.getElementById('aptHGModal')) _aptHGModalClose();
+}
+
+function _aptHGAdd(aptId) {
+  const sec = document.getElementById(`apt-hg-sec-${aptId}`);
+  if (!sec) return;
+  const existing = sec.querySelector('.apt-hg-add-form');
+  if (existing) { existing.querySelector('input[type=date]')?.focus(); return; }
+
+  const body = sec.querySelector('.apt-hg-body');
+  const form = document.createElement('div');
+  form.className = 'apt-hg-add-form';
+  form.innerHTML = `
+    <input type="date" id="apt-hg-date-${aptId}" />
+    <input type="number" id="apt-hg-amount-${aptId}" placeholder="Amount €" step="0.01" min="0" />
+    <button class="apt-btn--save" style="height:30px;font-size:11px;padding:0 10px"
+      onclick="_aptHGConfirmAdd('${aptId}')">
+      <i class="ti ti-check" aria-hidden="true"></i>
+    </button>
+    <button class="apt-btn--cancel" style="height:30px;font-size:11px;padding:0 10px"
+      onclick="this.closest('.apt-hg-add-form').remove()">
+      <i class="ti ti-x" aria-hidden="true"></i>
+    </button>`;
+  body.appendChild(form);
+  form.querySelector('input[type=date]').focus();
+}
+
+async function _aptHGConfirmAdd(aptId) {
+  const dateInp   = document.getElementById(`apt-hg-date-${aptId}`);
+  const amountInp = document.getElementById(`apt-hg-amount-${aptId}`);
+  const date   = dateInp?.value?.trim();
+  const amount = parseFloat(amountInp?.value);
+  if (!date || isNaN(amount) || amount <= 0) { dateInp?.focus(); return; }
+  if (!_aptSbClient) return;
+
+  const { data, error } = await _aptSbClient.from('rentals_hausgeld_history')
+    .insert({ apt_id: aptId, effective_date: date, amount,
+              weg_notified: false, hv_adjusted: false })
+    .select().single();
+  if (error) { console.warn('[apartments] hg add:', error.message); return; }
+
+  if (!_aptHausgeld[aptId]) _aptHausgeld[aptId] = [];
+  _aptHausgeld[aptId].unshift(data);
+  _aptHausgeld[aptId].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+  _aptRerenderCard(aptId);
+}
+
+async function _aptHGMarkNotified(id, aptId) {
+  if (!_aptSbClient) return;
+  const today = new Date().toISOString().slice(0,10);
+  const { error } = await _aptSbClient.from('rentals_hausgeld_history')
+    .update({ weg_notified: true, notified_date: today })
+    .eq('id', id);
+  if (error) { console.warn('[apartments] hg notified:', error.message); return; }
+  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
+  if (entry) { entry.weg_notified = true; entry.notified_date = today; }
+  _aptHGRenderRow(id, aptId);
+}
+
+async function _aptHGMarkAdjusted(id, aptId) {
+  if (!_aptSbClient) return;
+  const today = new Date().toISOString().slice(0,10);
+  const { error } = await _aptSbClient.from('rentals_hausgeld_history')
+    .update({ hv_adjusted: true, adjusted_date: today })
+    .eq('id', id);
+  if (error) { console.warn('[apartments] hg adjusted:', error.message); return; }
+  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
+  if (entry) { entry.hv_adjusted = true; entry.adjusted_date = today; }
+  // Full rerender — amber pill on header may need to disappear
+  _aptRerenderCard(aptId);
+}
+
+function _aptHGRenderRow(id, aptId) {
+  const row = document.getElementById('apt-hg-row-' + id);
+  if (!row) { _aptRerenderCard(aptId); return; }
+  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
+  if (!entry) { _aptRerenderCard(aptId); return; }
+
+  const notPill = entry.weg_notified
+    ? `<span class="apt-hg-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Notified</span>`
+    : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${id}','${aptId}')">
+         <i class="ti ti-mail" aria-hidden="true"></i> Notified?
+       </button>`;
+  const adjPill = entry.hv_adjusted
+    ? `<span class="apt-hg-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
+    : (entry.weg_notified
+        ? `<button class="apt-hg-pill pending" onclick="_aptHGMarkAdjusted('${id}','${aptId}')">
+             <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
+           </button>`
+        : `<span class="apt-hg-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
+
+  const pillsEl = row.querySelector('.apt-hg-pills');
+  if (pillsEl) pillsEl.innerHTML = notPill + adjPill;
 }
 
 
@@ -1948,3 +2220,38 @@ function _aptInitSortable() {
     }
   });
 }
+
+
+/* ── HAUSGELD PREFILL SQL ────────────────────────────────────
+   Run once in Supabase SQL editor after creating the table.
+   Replace apt_id values with actual UUIDs from rentals_apartments.
+
+CREATE TABLE rentals_hausgeld_history (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  apt_id           uuid NOT NULL REFERENCES rentals_apartments(id) ON DELETE CASCADE,
+  effective_date   date NOT NULL,
+  amount           numeric(10,2) NOT NULL,
+  weg_notified     boolean NOT NULL DEFAULT false,
+  notified_date    date,
+  hv_adjusted      boolean NOT NULL DEFAULT false,
+  adjusted_date    date,
+  created_at       timestamptz DEFAULT now()
+);
+CREATE INDEX ON rentals_hausgeld_history(apt_id, effective_date DESC);
+ALTER TABLE rentals_hausgeld_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "anon_all" ON rentals_hausgeld_history FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- Prefill: Kostheim → 293 € from 01.07.2026
+INSERT INTO rentals_hausgeld_history (apt_id, effective_date, amount, weg_notified, hv_adjusted)
+VALUES (
+  (SELECT id FROM rentals_apartments WHERE name = 'Kostheim' LIMIT 1),
+  '2026-07-01', 293.00, false, false
+);
+
+-- Prefill: Kaiser-W-R 17 → 187 € from 01.08.2026
+INSERT INTO rentals_hausgeld_history (apt_id, effective_date, amount, weg_notified, hv_adjusted)
+VALUES (
+  (SELECT id FROM rentals_apartments WHERE name = 'Kaiser-W-R 17' LIMIT 1),
+  '2026-08-01', 187.00, false, false
+);
+   ──────────────────────────────────────────────────────────── */
