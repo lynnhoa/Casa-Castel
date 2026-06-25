@@ -310,6 +310,7 @@ const _RP_SECTIONS = [
     title:  'Bankverbindung',
     fields: [
       { key: 'kontoinhaber', label: 'Kontoinhaber', placeholder: 'Name des Kontoinhabers…' },
+      { key: 'bankname',     label: 'Bank',         placeholder: 'z.B. DKB' },
       { key: 'iban',         label: 'IBAN',         placeholder: 'DE00 0000 0000 0000 0000 00', mono: true },
       { key: 'bic',          label: 'BIC',          placeholder: 'XXXXXXXX' },
     ],
@@ -510,3 +511,8 @@ function _rpShowToast(msg) {
 function _rpEsc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+
+/* ── SUPABASE PREFILL (run once in SQL editor) ───────────────
+   UPDATE settings SET bankname = 'DKB' WHERE id = (SELECT id FROM settings LIMIT 1);
+   ─────────────────────────────────────────────────────────── */
