@@ -282,6 +282,14 @@ function _renderPkList() {
   }
   list.innerHTML = appParking.map(p => _pkCardHTML(p)).join('');
   _updatePkSummary();
+  // Populate tenant name labels from rentals-tab-tenants.js
+  appParking.forEach(p => {
+    const el = document.getElementById('pk-tenant-lbl-' + p.id);
+    if (!el || p.vacant) return;
+    const prof = (typeof _rntGetParkingProfile === 'function') ? _rntGetParkingProfile(p.id) : {};
+    const name = [prof.firstName, prof.lastName].filter(Boolean).join(' ');
+    if (name) el.textContent = name;
+  });
 }
 
 
@@ -316,6 +324,7 @@ function _pkCardHTML(p) {
         ${p.level_position ? `<span class="pk-tag pk-tag--sp">${pkEsc(p.level_position)}</span>` : ''}
       </div>
       <div class="pk-hdr__rent">${rentHTML}</div>
+      <div class="pk-hdr__tenant" id="pk-tenant-lbl-${p.id}" style="font-size:11px;color:var(--cc-taupe);margin-top:2px"></div>
     </div>
     <i class="ti ti-chevron-right pk-chevron"></i>
   </div>

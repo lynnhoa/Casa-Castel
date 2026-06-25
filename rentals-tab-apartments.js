@@ -2691,7 +2691,7 @@ function _buildRentalMietvertragData(room, s, {
 
 function _contractBodyRentalMietvertrag(room) {
   const s       = appSettings;
-  const profile = (typeof _getProfile === 'function') ? _getProfile(room.name) : {};
+  const profile = (typeof _rntGetProfile === 'function') ? _rntGetProfile(room.id) : {};
 
   const tenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   const tenantEmail = profile.email || '';
