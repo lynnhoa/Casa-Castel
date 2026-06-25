@@ -201,9 +201,7 @@ function _renderPkMietvertragHTML(d) {
       </div>
     </div>`;
 
-  const subtitle = d.befristet
-    ? 'Befristetes Mietverhältnis \u00b7 Stellplatzvermietung'
-    : 'Unbefristetes Mietverhältnis \u00b7 Stellplatzvermietung';
+  const subtitle = 'Mietvertrag \u00b7 Stellplatzvermietung';
 
   /* ── PAGE 1 ── */
   const page1 = `<div class="pdf-page page">
@@ -230,10 +228,9 @@ function _renderPkMietvertragHTML(d) {
 
     ${sec('Mietzeit', false, false)}
     ${kv('Mietbeginn', d.mietbeginn || '\u2014')}
-    ${d.befristet
-      ? kv('Mietende', d.mietende) +
-        kv('Mindestlaufzeit', 'Befristet bis ' + d.mietende + ' \u00b7 keine Kündigung vor Ende')
-      : kv('Kündigung', '3\u00a0Monate zum Quartalsende \u00b7 § 580a BGB \u00b7 Schriftform')}
+    ${kv('Mindestlaufzeit', '1\u00a0Jahr ab Mietbeginn \u00b7 keine Kündigung vor Ende')}
+    ${d.mietende ? kv('Festes Mietende', d.mietende) : ''}
+    ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
     ${sec('Miete &amp; Bankverbindung', true, false)}
     ${kv('Monatliche Miete', fmtEUR(d.miete))}
@@ -259,9 +256,8 @@ function _renderPkMietvertragHTML(d) {
   /* ── PAGE 2 ── */
   const mietbeginnText = d.mietbeginn ? ` am ${d.mietbeginn}` : '';
 
-  const laufzeitClause = d.befristet
-    ? `Das Mietverhältnis beginnt${mietbeginnText} und ist fest abgeschlossen bis zum ${d.mietende} (Mindestlaufzeit). Eine Kündigung während der Mindestlaufzeit ist ausgeschlossen. Nach Ablauf der Mindestlaufzeit läuft der Vertrag auf unbestimmte Zeit weiter und kann von beiden Parteien ohne Angabe von Gründen mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gekündigt werden (§\u00a0580a BGB).`
-    : `Das Mietverhältnis beginnt${mietbeginnText} und läuft auf unbestimmte Zeit. Es kann von beiden Parteien ohne Angabe von Gründen mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gekündigt werden (§\u00a0580a BGB).`;
+  const mindestEnd = d.mietende || '(1\u00a0Jahr nach Mietbeginn)';
+  const laufzeitClause = `Das Mietverhältnis beginnt${mietbeginnText} und ist fest abgeschlossen bis zum ${mindestEnd} (Mindestlaufzeit). Eine Kündigung während der Mindestlaufzeit ist ausgeschlossen. Nach Ablauf der Mindestlaufzeit l\u00e4uft der Vertrag auf unbestimmte Zeit weiter und kann von beiden Parteien ohne Angabe von Gr\u00fcnden mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gek\u00fcndigt werden (§\u00a0580a BGB).`;
 
   const page2 = `<div class="pdf-page page">
   ${hdr()}${ftr(2)}
