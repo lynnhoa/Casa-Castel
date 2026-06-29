@@ -7,7 +7,7 @@
  *
  *  Contains:
  *    _buildPkMietvertragData()    — data builder
- *    _renderPkMietvertragHTML()   — 2-page PDF HTML
+ *    _renderPkMietvertragHTML()   — 3-page PDF HTML (p3 = Anlage 1 Stellplatzordnung)
  *    _generatePkMietvertragPDF()  — wires pkMvPdfBtn, renders + saves
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -151,6 +151,18 @@ function _renderPkMietvertragHTML(d) {
     .anlage-note { font-family:'Lato',sans-serif; font-size:10px; font-weight:300;
       color:#6a6560; margin-top:20px; line-height:1.55;
       border-top:0.5px solid #e8dbc5; padding-top:10px; }
+    .anlage-title { font-family:'Playfair Display',serif; font-size:16px; font-weight:400;
+      color:#1a1a1a; margin-bottom:3px; }
+    .anlage-subtitle { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
+      letter-spacing:0.1em; text-transform:uppercase; color:#aaa59e; margin-bottom:22px; }
+    .ordnung-par { margin-top:10px; }
+    .ordnung-par__title { font-family:'Lato',sans-serif; font-size:10px; font-weight:700;
+      color:#4a4540; margin-bottom:2px; }
+    .ordnung-par__body { font-family:'Lato',sans-serif; font-size:10px; font-weight:300;
+      color:#3a3530; line-height:1.6; }
+    .ordnung-footer { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
+      font-style:italic; color:#aaa59e; margin-top:18px; padding-top:10px;
+      border-top:0.5px solid #e8dbc5; }
   `;
 
   const hdr = () => `
@@ -294,11 +306,59 @@ function _renderPkMietvertragHTML(d) {
   </div>
 </div>`;
 
+  const page3 = `<div class="pdf-page page">
+  ${hdr()}${ftr(3)}
+  <div class="content">
+    <div class="anlage-title">Anlage 1</div>
+    <div class="anlage-subtitle">Stellplatz- und Garagenordnung</div>
+
+    <div class="ordnung-par">
+      <div class="ordnung-par__title">§ 1 Nutzung</div>
+      <div class="ordnung-par__body">Der Stellplatz darf ausschließlich zum Abstellen eines zugelassenen privaten Kraftfahrzeugs genutzt werden. Das Abstellen von Fahrrädern, Motorrädern, Anhängern oder sonstigen Gegenständen ist nur mit ausdrücklicher schriftlicher Genehmigung des Vermieters gestattet. Eine Nutzung als Lager- oder Werkstattfläche ist untersagt.</div>
+    </div>
+
+    <div class="ordnung-par">
+      <div class="ordnung-par__title">§ 2 Fahrzeuge</div>
+      <div class="ordnung-par__body">Es darf nur das im Mietvertrag eingetragene Fahrzeug abgestellt werden. Fahrzeuge ohne gültige Zulassung, Wracks sowie nicht verkehrssichere Fahrzeuge sind nicht gestattet. Der Mieter hat sicherzustellen, dass abgestellte Fahrzeuge keine Betriebsstoffe verlieren. Entstehende Reinigungskosten trägt der Mieter.</div>
+    </div>
+
+    <div class="ordnung-par">
+      <div class="ordnung-par__title">§ 3 Ordnung und Sauberkeit</div>
+      <div class="ordnung-par__body">Der Mieter hält seinen Stellplatz sauber und frei von Müll. Gemeinschaftsflächen, Zufahrten und Feuerwehrzufahrten sind jederzeit freizuhalten. Das Waschen von Fahrzeugen auf dem Stellplatz ist untersagt.</div>
+    </div>
+
+    <div class="ordnung-par">
+      <div class="ordnung-par__title">§ 4 Brandschutz und Sicherheit</div>
+      <div class="ordnung-par__body">Das Lagern von Kraftstoff, brennbaren Materialien oder sonstigen gefährlichen Stoffen ist verboten. Elektrische Betriebsmittel (z.\u00a0B. Ladekabel) dürfen nur mit Genehmigung des Vermieters dauerhaft installiert werden. Türen, Tore und Schranken sind nach Benutzung stets zu schließen.</div>
+    </div>
+
+    <div class="ordnung-par">
+      <div class="ordnung-par__title">§ 5 Schlüssel und Zugang</div>
+      <div class="ordnung-par__body">Schlüssel, Fernbedienungen und Zugangscodes dürfen nicht an Dritte weitergegeben werden. Bei Verlust ist der Vermieter unverzüglich zu informieren. Die Kosten für Ersatz trägt der Mieter.</div>
+    </div>
+
+    <div class="ordnung-par">
+      <div class="ordnung-par__title">§ 6 Haftung</div>
+      <div class="ordnung-par__body">Der Vermieter haftet nicht für Schäden an abgestellten Fahrzeugen oder darin befindlichen Gegenständen, insbesondere nicht für Diebstahl, Vandalismus oder Witterungsschäden. Der Mieter wird empfohlen, eine Kaskoversicherung abzuschließen.</div>
+    </div>
+
+    <div class="ordnung-par">
+      <div class="ordnung-par__title">§ 7 Verstöße</div>
+      <div class="ordnung-par__body">Bei wiederholten oder schwerwiegenden Verstößen gegen diese Ordnung ist der Vermieter berechtigt, das Mietverhältnis fristlos zu kündigen. Unberechtigt abgestellte Fahrzeuge können auf Kosten des Veranlassers entfernt werden.</div>
+    </div>
+
+    <div class="ordnung-footer">
+      Diese Ordnung ist Bestandteil des Mietvertrages und für den Mieter verbindlich. ·
+      Stellplatz ${d.stellplatzNr} · ${d.spotAdresse}
+    </div>
+  </div>
+</div>`;
+
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Parkplatz Mietvertrag \u2014 ${d.stellplatzNr}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page2}</body></html>`;
+<body>${page1}${page2}${page3}</body></html>`;
 }
 
 
