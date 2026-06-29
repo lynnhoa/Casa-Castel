@@ -714,7 +714,8 @@ function _aptCardHTML(a) {
 
   // Hausgeld helpers
   const hgEntries = _aptHausgeld[a.id] || [];
-  const hgHasOpen = hgEntries.some(e => !e.hv_adjusted);
+  const hgHasOpen = hgEntries.some(e => !e.weg_notified);
+  const hgPendingEntry = hgHasOpen ? hgEntries.find(e => !e.weg_notified) : null;
 
   return `
 <div class="apt-card${vacant ? '' : ''}" data-id="${a.id}" data-name="${aptEsc(a.name)}">
@@ -734,7 +735,7 @@ function _aptCardHTML(a) {
         ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
       </div>
       <div class="apt-hdr__rent">${rentHTML}</div>
-      ${hgHasOpen ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld increase pending</span></div>` : ''}
+      ${hgHasOpen && hgPendingEntry ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld +${aptFmtEURCompact(hgPendingEntry.amount)}</span></div>` : ''}
     </div>
     <i class="ti ti-chevron-right apt-chevron"></i>
   </div>
@@ -1364,7 +1365,7 @@ function _aptHGSectionHTML(aptId) {
   const entries = _aptHausgeld[aptId] || [];
   const today = new Date(); today.setHours(0,0,0,0);
   const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  const pending = entries.filter(e => !e.hv_adjusted);
+  const pending = entries.filter(e => !e.weg_notified);
 
   const fmtDate = (d) => {
     if (!d) return '';
@@ -1379,19 +1380,11 @@ function _aptHGSectionHTML(aptId) {
     : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`;
 
   const pillHTML = (e) => {
-    const notPill = e.weg_notified
-      ? `<span class="apt-hg-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Notified</span>`
-      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as notified">
-           <i class="ti ti-mail" aria-hidden="true"></i> Notified?
+    return e.weg_notified
+      ? `<span class="apt-hg-pill done"><i class="ti ti-check" aria-hidden="true"></i> Noted${e.notified_date ? ' · ' + e.notified_date.split('-').reverse().join('.') : ''}</span>`
+      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as noted">
+           <i class="ti ti-check" aria-hidden="true"></i> Noted?
          </button>`;
-    const adjPill = e.hv_adjusted
-      ? `<span class="apt-hg-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
-      : (e.weg_notified
-          ? `<button class="apt-hg-pill pending" onclick="_aptHGMarkAdjusted('${e.id}','${aptId}')" title="Mark as adjusted">
-               <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
-             </button>`
-          : `<span class="apt-hg-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
-    return notPill + adjPill;
   };
 
   const pendingRows = pending.map(e => `
@@ -1439,19 +1432,11 @@ function _aptHGOpenModal(aptId) {
   const isFuture = (e) => new Date(e.effective_date) > today;
 
   const pillHTML = (e) => {
-    const notPill = e.weg_notified
-      ? `<span class="apt-hg-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Notified</span>`
-      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as notified">
-           <i class="ti ti-mail" aria-hidden="true"></i> Notified?
+    return e.weg_notified
+      ? `<span class="apt-hg-pill done"><i class="ti ti-check" aria-hidden="true"></i> Noted${e.notified_date ? ' · ' + e.notified_date.split('-').reverse().join('.') : ''}</span>`
+      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as noted">
+           <i class="ti ti-check" aria-hidden="true"></i> Noted?
          </button>`;
-    const adjPill = e.hv_adjusted
-      ? `<span class="apt-hg-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
-      : (e.weg_notified
-          ? `<button class="apt-hg-pill pending" onclick="_aptHGMarkAdjusted('${e.id}','${aptId}')" title="Mark as adjusted">
-               <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
-             </button>`
-          : `<span class="apt-hg-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
-    return notPill + adjPill;
   };
 
   const rows = entries.map(e => `
@@ -1554,20 +1539,13 @@ function _aptHGRenderRow(id, aptId) {
   if (!entry) { _aptRerenderCard(aptId); return; }
 
   const notPill = entry.weg_notified
-    ? `<span class="apt-hg-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Notified</span>`
+    ? `<span class="apt-hg-pill done"><i class="ti ti-check" aria-hidden="true"></i> Noted${entry.notified_date ? ' · ' + entry.notified_date.split('-').reverse().join('.') : ''}</span>`
     : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${id}','${aptId}')">
-         <i class="ti ti-mail" aria-hidden="true"></i> Notified?
+         <i class="ti ti-check" aria-hidden="true"></i> Noted?
        </button>`;
-  const adjPill = entry.hv_adjusted
-    ? `<span class="apt-hg-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
-    : (entry.weg_notified
-        ? `<button class="apt-hg-pill pending" onclick="_aptHGMarkAdjusted('${id}','${aptId}')">
-             <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
-           </button>`
-        : `<span class="apt-hg-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
 
   const pillsEl = row.querySelector('.apt-hg-pills');
-  if (pillsEl) pillsEl.innerHTML = notPill + adjPill;
+  if (pillsEl) pillsEl.innerHTML = notPill;
 }
 
 
