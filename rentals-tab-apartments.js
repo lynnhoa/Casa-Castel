@@ -508,6 +508,8 @@ document.getElementById('tab-apartments').innerHTML = `
 .ub-mieter-pill[data-state="manual"] { background:var(--cc-rule); }
 .ub-mieter-pill__knob { position:absolute; top:3px; left:3px; width:20px; height:20px; background:#ffffff; border-radius:50%; box-shadow:0 1px 4px rgba(0,0,0,0.18); transition:transform .25s cubic-bezier(.32,.72,0,1); }
 .ub-mieter-pill[data-state="manual"] .ub-mieter-pill__knob { transform:translateX(18px); }
+.rnt-group-hdr { font-size:9px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-stone); padding:4px 2px 6px; margin-top:8px; }
+.rnt-group-hdr:first-child { margin-top:0; }
   `;
   document.head.appendChild(s);
 })();
@@ -659,7 +661,19 @@ function _renderAptList() {
     _updateAptSummary();
     return;
   }
-  list.innerHTML = appApartments.map(a => _aptCardHTML(a)).join('');
+  const wohnungen  = appApartments.filter(a => a.zimmer_type !== 'Gewerbefläche');
+  const gewerbe    = appApartments.filter(a => a.zimmer_type === 'Gewerbefläche');
+  const bothExist  = wohnungen.length && gewerbe.length;
+  let html = '';
+  if (wohnungen.length) {
+    if (bothExist) html += `<div class="rnt-group-hdr">Wohnungen</div>`;
+    html += wohnungen.map(a => _aptCardHTML(a)).join('');
+  }
+  if (gewerbe.length) {
+    if (bothExist) html += `<div class="rnt-group-hdr" style="margin-top:16px;">Gewerbeflächen</div>`;
+    html += gewerbe.map(a => _aptCardHTML(a)).join('');
+  }
+  list.innerHTML = html;
   _updateAptSummary();
 }
 
