@@ -99,7 +99,7 @@
     function initNav() {
       document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('rentals_role');
-        location.reload();
+        location.replace('rentals-login.html');
       });
       document.getElementById('rpProfileBtn')?.addEventListener('click', () => {
         document.getElementById('navProfileMenu')?.classList.remove('open');
@@ -140,8 +140,10 @@
       });
     }
 
-    // Mark authed — no login required
-    localStorage.setItem('rentals_role', 'landlord');
+    // Auth gate — redirect to login if not authenticated
+    if (!localStorage.getItem('rentals_role')) {
+      location.replace('rentals-login.html');
+    }
 
     initTabs();
     initNav();
