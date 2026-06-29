@@ -1002,14 +1002,15 @@ function _aptCardHTML(a) {
     <!-- 7. CONTRACTS -->
     <div class="apt-contracts">
       <div class="apt-contracts-title">Contracts</div>
+      ${a.zimmer_type !== 'Gewerbefläche' ? `
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('kurzzeit','${a.id}')">
           Kurzzeitmiete <i class="ti ti-chevron-right"></i>
         </button>
-      </div>
+      </div>` : ''}
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('mietvertrag','${a.id}')">
-          Mietvertrag <i class="ti ti-chevron-right"></i>
+          ${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemietvertrag' : 'Mietvertrag'} <i class="ti ti-chevron-right"></i>
         </button>
       </div>
       <div class="apt-doc-row">
@@ -1727,12 +1728,115 @@ async function _aptOpenContract(type, aptId) {
     }, 0);
 
   } else if (type === 'mietvertrag') {
-    typeLbl.textContent  = 'Mietvertrag';
+    const isGewerbe = apt.zimmer_type === 'Gewerbefläche';
+    typeLbl.textContent  = isGewerbe ? 'Gewerbemietvertrag' : 'Mietvertrag';
     titleLbl.textContent = apt.name;
     const kalt   = Number(p.kaltmiete) || 0;
     const nk     = Number(p.nk_pauschale) || 0;
     const kaution = p.kaution_override && p.kaution_default ? Number(p.kaution_default) : kalt * 3;
     const _mvProfile = await _aptResolveTenantProfile(apt.id);
+
+    if (isGewerbe) {
+      body.innerHTML = _aptBodyGewerbe(apt, p, sk, kalt, nk, _mvProfile);
+      footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptGwPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+      setTimeout(() => {
+        _aptGwInitInteractions();
+        document.getElementById('aptGwPdfBtn')?.addEventListener('click', async () => {
+          const apt2 = appApartments.find(a => a.id === _aptContractId);
+          if (!apt2) return;
+
+          // Read all fields
+          const szenario       = document.querySelector('.apt-gw-szenario-btn.active')?.dataset.s || 'S1';
+          const nutzungSelect  = document.getElementById('apt-gw-nutzung-select')?.value;
+          const nutzungFrei    = document.getElementById('apt-gw-nutzung-frei')?.value.trim();
+          const nutzungszweck  = nutzungSelect === 'Sonstige' ? nutzungFrei : nutzungSelect;
+          const etage          = document.getElementById('apt-gw-etage')?.value.trim();
+          const moebliert      = document.getElementById('apt-gw-moebliert-btn')?.dataset.mode === 'ja';
+          const mieterName     = document.getElementById('apt-gw-name')?.value.trim();
+          const mieterAdr      = document.getElementById('apt-gw-adr')?.value.trim();
+          const mieterDob      = document.getElementById('apt-gw-dob')?.value.trim();
+          const mieterEmail    = document.getElementById('apt-gw-email')?.value.trim();
+          const mieterTel      = document.getElementById('apt-gw-tel')?.value.trim();
+          const startVal       = document.getElementById('apt-gw-start')?.value;
+          const festNum        = parseInt(document.getElementById('apt-gw-fest-num')?.value) || 0;
+          const festUnit       = document.getElementById('apt-gw-fest-unit')?.value || 'Jahre';
+          const kaltmiete      = parseFloat(document.getElementById('apt-gw-kalt')?.value) || 0;
+          const nkVZ           = parseFloat(document.getElementById('apt-gw-nk')?.value) || 0;
+          const kautionVal     = parseFloat(document.getElementById('apt-gw-kaution')?.value) || 0;
+          const kautionFael    = _aptReadKautionFael('gw');
+          const sigVal         = document.getElementById('apt-gw-sig')?.value;
+
+          // Validate
+          if (!nutzungszweck) { alert('Bitte Nutzungszweck ausfüllen.'); return; }
+          if (!mieterName)    { alert('Bitte Mieter Name ausfüllen.'); return; }
+          if (!startVal)      { alert('Bitte Mietbeginn ausfüllen.'); return; }
+          if (!festNum)       { alert('Bitte Festlaufzeit ausfüllen.'); return; }
+          if (!kaltmiete)     { alert('Bitte Kaltmiete ausfüllen.'); return; }
+
+          // S1 fields
+          let kuendigungsfrist = 6;
+          let staffeln = [];
+          let staffelAn = false;
+          if (szenario === 'S1') {
+            kuendigungsfrist = parseInt(document.getElementById('apt-gw-kuendfrist')?.value) || 6;
+            staffelAn = document.getElementById('apt-gw-staffel-btn')?.dataset.mode === 'ja';
+            if (staffelAn) {
+              if (!kaltmiete) { alert('Bitte Anfangsmiete ausfüllen.'); return; }
+              const rows = document.querySelectorAll('.apt-gw-staffel-row');
+              for (const row of rows) {
+                const betrag = parseFloat(row.querySelector('.apt-gw-staffel-betrag')?.value);
+                if (!betrag) { alert('Bitte alle Staffelbeträge ausfüllen.'); return; }
+                const datum = row.querySelector('.apt-gw-staffel-datum')?.textContent?.trim();
+                staffeln.push({ datum, betrag });
+              }
+            }
+          }
+
+          // S3 fields
+          let verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0, verlaengerungBis = '';
+          if (szenario === 'S3') {
+            verlaengerungJahre  = parseInt(document.getElementById('apt-gw-verl-jahre')?.value) || 0;
+            ankuendigungMonate  = parseInt(document.getElementById('apt-gw-ankuend')?.value) || 6;
+            neueKaltmiete       = parseFloat(document.getElementById('apt-gw-neue-kalt')?.value) || 0;
+            verlaengerungBis    = document.getElementById('apt-gw-verl-bis-display')?.textContent?.replace('Verlängerung bis: ','').trim();
+            if (!verlaengerungJahre) { alert('Bitte Verlängerungsdauer ausfüllen.'); return; }
+            if (!neueKaltmiete)      { alert('Bitte neue Kaltmiete ausfüllen.'); return; }
+          }
+
+          const btn = document.getElementById('aptGwPdfBtn');
+          if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
+          try {
+            if (typeof loadSettings === 'function') await loadSettings();
+            const data = _buildGewerbeMietvertragData(apt2, appSettings, {
+              szenario, nutzungszweck, etage, moebliert,
+              mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
+              startVal, festNum, festUnit, kaltmiete, nkVZ,
+              kautionVal, kautionFael, sigVal,
+              kuendigungsfrist, staffelAn, staffeln,
+              verlaengerungJahre, ankuendigungMonate, neueKaltmiete, verlaengerungBis,
+            });
+            const html = _renderGewerbeMietvertragHTML(data);
+            let container = document.getElementById('_pdfRenderContainer');
+            if (container) container.remove();
+            container = document.createElement('div');
+            container.id = '_pdfRenderContainer';
+            container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#ffffff;z-index:-1;font-size:11.33px;';
+            container.innerHTML = html;
+            document.body.appendChild(container);
+            await document.fonts.ready;
+            await new Promise(r => setTimeout(r, 300));
+            const safeName = mieterName ? mieterName.replace(/\s+/g,'_') : apt2.name;
+            const filename = `Gewerbemietvertrag_${apt2.name}_${safeName}.pdf`;
+            await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
+          } catch(err) {
+            console.error('[Gewerbe PDF]', err);
+            alert('PDF generation failed. Please try again.');
+            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+          }
+        });
+      }, 0);
+
+    } else {
     body.innerHTML = _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, _mvProfile);
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
     setTimeout(() => {
@@ -1798,6 +1902,7 @@ async function _aptOpenContract(type, aptId) {
       });
       document.getElementById('apt-mv-start')?.addEventListener('input', _aptUpdateMvMonatToggle);
     }, 0);
+    } // end Wohnraum else
 
   } else if (type === 'ueberg') {
     const isEinzug = document.getElementById('apt-eu-' + aptId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
@@ -2007,6 +2112,477 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
       <input class="rm-input" id="apt-mv-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
     </div>`;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   GEWERBEMIETVERTRAG — MODAL BODY + INTERACTIONS
+══════════════════════════════════════════════════════════════ */
+
+function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
+  let _gwTenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
+  let _gwTenantEmail = profile.email   || '';
+  let _gwTenantAdr   = profile.address || '';
+  let _gwTenantDob   = profile.birthday || '';
+  if (_gwTenantDob && _gwTenantDob.includes('-') && _gwTenantDob.length === 10) {
+    const [_y,_m,_d] = _gwTenantDob.split('-');
+    _gwTenantDob = `${_d}.${_m}.${_y}`;
+  }
+  const kaltFmt = n => Number(n||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  const schluessel = `Haustür \u00d7${sk.haustuerschluessel??1} \u00b7 Wohnung \u00d7${sk.wohnungsschluessel??1}`;
+
+  return `
+    <div class="rm-prefilled">
+      <div class="rm-prefilled__title">Pre-filled from apartment</div>
+      <div class="rm-pre-row"><span>Apartment</span><span>${aptEsc(apt.name)}</span></div>
+      <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse||'—')}</span></div>
+      <div class="rm-pre-row"><span>PLZ / Ort</span><span>${aptEsc(apt.plz_ort||'—')}</span></div>
+      <div class="rm-pre-row"><span>Fläche</span><span>${apt.flaeche_m2?apt.flaeche_m2+' m²':'—'}</span></div>
+      <div class="rm-pre-row"><span>Kaltmiete</span><span>${kaltFmt(kalt)}</span></div>
+      <div class="rm-pre-row"><span>Gerichtsstand</span><span>${aptEsc(apt.gerichtsstand||'—')}</span></div>
+      <div class="rm-pre-row"><span>Schlüssel</span><span>${aptEsc(schluessel)}</span></div>
+    </div>
+
+    <div class="rm-fields-title">Vertragsmodell</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+      <button type="button" class="apt-gw-szenario-btn active" data-s="S1"
+        onclick="_aptGwSetSzenario('S1')"
+        style="font-size:11px;padding:5px 12px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);color:#fff;cursor:pointer;font-family:inherit;">
+        S1 · Mindestlaufzeit
+      </button>
+      <button type="button" class="apt-gw-szenario-btn" data-s="S2"
+        onclick="_aptGwSetSzenario('S2')"
+        style="font-size:11px;padding:5px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-charcoal);cursor:pointer;font-family:inherit;">
+        S2 · Befristet Ende
+      </button>
+      <button type="button" class="apt-gw-szenario-btn" data-s="S3"
+        onclick="_aptGwSetSzenario('S3')"
+        style="font-size:11px;padding:5px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-charcoal);cursor:pointer;font-family:inherit;">
+        S3 · Verlängerungsoption
+      </button>
+    </div>
+
+    <div class="rm-fields-title">Mietobjekt</div>
+    <div class="rm-field">
+      <label>Nutzungszweck <span style="color:#c0392b;font-weight:700;">*</span></label>
+      <select class="rm-input" id="apt-gw-nutzung-select" onchange="_aptGwNutzungChange()">
+        <option value="">— bitte wählen —</option>
+        <option>Büro / Bürofläche</option>
+        <option>Praxis / Gesundheitswesen</option>
+        <option>Einzelhandel</option>
+        <option>Lager / Logistik</option>
+        <option>Gastronomie</option>
+        <option>Ausstellungsfläche</option>
+        <option>Produktion / Werkstatt</option>
+        <option>Sonstige</option>
+      </select>
+    </div>
+    <div class="rm-field" id="apt-gw-nutzung-frei-wrap" style="display:none;">
+      <label>Nutzungszweck (Freitext) <span style="color:#c0392b;font-weight:700;">*</span></label>
+      <input class="rm-input" id="apt-gw-nutzung-frei" placeholder="z.B. Kosmetikstudio…"/>
+    </div>
+    <div class="rm-field">
+      <label>Etage / Einheit <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label>
+      <input class="rm-input" id="apt-gw-etage" placeholder="z.B. 2. OG links…"/>
+    </div>
+    <div class="rm-field--toggle">
+      <div class="rm-toggle-row">
+        <div>
+          <div class="rm-toggle-label">Möbliert</div>
+          <div class="rm-toggle-sub" id="apt-gw-moebliert-sub">Ohne Inventar</div>
+        </div>
+        <button type="button" class="rm-pill-toggle" id="apt-gw-moebliert-btn" data-mode="nein" onclick="_aptGwToggleMoebliert()">
+          <span class="rm-pill-toggle__track"><span class="rm-pill-toggle__knob"></span></span>
+          <span class="rm-pill-toggle__lbl" id="apt-gw-moebliert-lbl">Nein</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="rm-fields-title">Mieterdaten</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="aptGwMieterRoomLbl">${aptEsc(apt.name)} Mieter</span>
+      <div class="ub-mieter-pill" id="aptGwMieterPill"
+        data-state="room"
+        data-tenant-name="${aptEsc(_gwTenantName)}"
+        data-tenant-email="${aptEsc(_gwTenantEmail)}"
+        data-tenant-adr="${aptEsc(_gwTenantAdr)}"
+        data-tenant-dob="${aptEsc(_gwTenantDob)}"
+        onclick="_toggleAptGwMieter()">
+        <div class="ub-mieter-pill__knob"></div>
+      </div>
+      <span style="font-size:11px;color:var(--cc-stone);" id="aptGwMieterManualLbl">Manuell</span>
+    </div>
+    <div class="rm-field"><label>Name <span style="color:#c0392b;font-weight:700;">*</span></label><input class="rm-input" id="apt-gw-name" value="${aptEsc(_gwTenantName)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-gw-adr" value="${aptEsc(_gwTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-gw-dob" value="${aptEsc(_gwTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
+    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-gw-email" type="email" value="${aptEsc(_gwTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
+    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="apt-gw-tel" type="tel" placeholder="+49 …"/></div>
+
+    <div class="rm-fields-title" style="margin-top:6px;">Mietzeit</div>
+    <div class="rm-field"><label>Mietbeginn <span style="color:#c0392b;font-weight:700;">*</span></label><input class="rm-input" id="apt-gw-start" type="date" onclick="try{this.showPicker()}catch(e){}" oninput="_aptGwCalcDates()"/></div>
+    <div class="rm-field-row">
+      <div class="rm-field">
+        <label>Festlaufzeit <span style="color:#c0392b;font-weight:700;">*</span></label>
+        <input class="rm-input" id="apt-gw-fest-num" type="number" min="1" placeholder="2" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcDates()"/>
+      </div>
+      <div class="rm-field">
+        <label>&nbsp;</label>
+        <select class="rm-input" id="apt-gw-fest-unit" onchange="_aptGwCalcDates()">
+          <option value="Jahre">Jahre</option>
+          <option value="Monate">Monate</option>
+        </select>
+      </div>
+    </div>
+    <div id="apt-gw-enddatum-display" style="font-size:12px;color:var(--cc-taupe);margin-bottom:12px;display:none;">
+      Endet am: <strong id="apt-gw-enddatum-val"></strong>
+    </div>
+
+    <div id="apt-gw-s1-fields">
+      <div class="rm-field">
+        <label>Kündigungsfrist danach</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input class="rm-input" id="apt-gw-kuendfrist" type="number" min="1" value="6" style="width:70px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <span style="font-size:12px;color:var(--cc-stone);">Monate zum Quartalsende</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="apt-gw-s3-fields" style="display:none;">
+      <div class="rm-field-row">
+        <div class="rm-field">
+          <label>Verlängerung um</label>
+          <input class="rm-input" id="apt-gw-verl-jahre" type="number" min="1" placeholder="2" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcDates()"/>
+        </div>
+        <div class="rm-field">
+          <label>&nbsp;</label>
+          <input class="rm-input" value="Jahre" disabled style="color:var(--cc-stone);background:var(--cc-bg);"/>
+        </div>
+      </div>
+      <div class="rm-field">
+        <label>Ankündigungsfrist</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input class="rm-input" id="apt-gw-ankuend" type="number" min="1" value="6" style="width:70px;-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcDates()"/>
+          <span style="font-size:12px;color:var(--cc-stone);">Monate vor Ende</span>
+        </div>
+      </div>
+      <div id="apt-gw-s3-dates-display" style="display:none;margin-bottom:12px;background:var(--cc-bg);border:var(--cc-border);border-radius:var(--cc-r-sm);padding:10px 12px;">
+        <div style="font-size:11px;color:var(--cc-stone);margin-bottom:4px;">Mieter muss bis: <strong id="apt-gw-ankuend-display"></strong> mitteilen</div>
+        <div style="font-size:11px;color:var(--cc-stone);">Verlängerung bis: <strong id="apt-gw-verl-bis-display"></strong></div>
+      </div>
+      <div class="rm-field-row">
+        <div class="rm-field">
+          <label>Neue Kaltmiete <span style="color:#c0392b;font-weight:700;">*</span></label>
+          <input class="rm-input" id="apt-gw-neue-kalt" type="number" step="0.01" placeholder="950,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcVerl('kalt')"/>
+        </div>
+        <div class="rm-field">
+          <label>oder Erhöhung %</label>
+          <input class="rm-input" id="apt-gw-erhöhung-pct" type="number" step="0.1" placeholder="5" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcVerl('pct')"/>
+        </div>
+      </div>
+      <div id="apt-gw-neue-kalt-display" style="font-size:12px;color:var(--cc-taupe);margin-bottom:12px;display:none;">
+        Neue Gesamtmiete ab Verlängerung: <strong id="apt-gw-neue-gesamt-val"></strong>
+      </div>
+    </div>
+
+    <div id="apt-gw-staffel-wrap">
+      <div class="rm-field--toggle" style="margin-top:6px;">
+        <div class="rm-toggle-row">
+          <div>
+            <div class="rm-toggle-label">Staffelmiete</div>
+            <div class="rm-toggle-sub" id="apt-gw-staffel-sub">Aktiv</div>
+          </div>
+          <button type="button" class="rm-pill-toggle" id="apt-gw-staffel-btn" data-mode="ja" onclick="_aptGwToggleStaffel()">
+            <span class="rm-pill-toggle__track"><span class="rm-pill-toggle__knob"></span></span>
+            <span class="rm-pill-toggle__lbl" id="apt-gw-staffel-lbl">Ja</span>
+          </button>
+        </div>
+      </div>
+      <div id="apt-gw-staffel-body">
+        <div class="rm-field-row" style="margin-bottom:8px;">
+          <div class="rm-field">
+            <label>Intervall</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input class="rm-input" id="apt-gw-staffel-intervall" type="number" min="1" value="1" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcDates()"/>
+              <span style="font-size:12px;color:var(--cc-stone);">Jahr(e)</span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete (während Festlaufzeit)</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <input class="rm-input" id="apt-gw-staffel-anfang" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
+          <span style="font-size:11px;color:var(--cc-taupe);" id="apt-gw-staffel-anfang-ab">ab Mietbeginn</span>
+        </div>
+        <div id="apt-gw-staffel-rows"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button type="button" onclick="_aptGwAddStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal);">+ Staffel</button>
+          <button type="button" onclick="_aptGwRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-stone);">− Staffel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rm-fields-title" style="margin-top:10px;">Miete &amp; Kaution</div>
+    <div class="rm-field-row">
+      <div class="rm-field">
+        <label>Kaltmiete <span style="color:#c0392b;font-weight:700;">*</span></label>
+        <input class="rm-input" id="apt-gw-kalt" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcGesamt()"/>
+      </div>
+      <div class="rm-field">
+        <label>Nebenkosten VZ</label>
+        <input class="rm-input" id="apt-gw-nk" type="number" step="0.01" value="${nk||''}" placeholder="150,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcGesamt()"/>
+      </div>
+    </div>
+    <div id="apt-gw-gesamt-display" style="font-size:12px;color:var(--cc-taupe);margin-bottom:12px;">
+      Gesamtmiete: <strong id="apt-gw-gesamt-val">${kalt||nk ? aptFmtEURCompact((kalt||0)+(nk||0)) : '—'}</strong> / Monat
+    </div>
+    <div class="rm-field">
+      <label>Kaution</label>
+      <input class="rm-input" id="apt-gw-kaution" type="number" step="0.01" value="${kalt ? Math.round(kalt*3) : ''}" placeholder="2400,00" style="-webkit-appearance:textfield;appearance:textfield;"/>
+    </div>
+    <div style="margin-bottom:16px;">
+      <div class="rm-kaution-lbl" style="margin-bottom:6px;">Kaution Fälligkeit</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="rm-fael-btn" data-prefix="gw" onclick="_aptKfSelect('gw','sofort',this)">Sofort</button>
+        <button class="rm-fael-btn active" data-prefix="gw" data-val="5" onclick="_aptKfSelect('gw','5',this)">5 Tage</button>
+        <button class="rm-fael-btn" data-prefix="gw" onclick="_aptKfSelect('gw','custom',this)">Individuell</button>
+        <input type="number" id="apt-gw-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit;-webkit-appearance:textfield;appearance:textfield;" placeholder="Tage"/>
+      </div>
+    </div>
+
+    <div class="rm-field" style="margin-top:4px;">
+      <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label>
+      <input class="rm-input" id="apt-gw-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
+    </div>`;
+}
+
+/* ── GEWERBE: Szenario Switch ─────────────────────────── */
+function _aptGwSetSzenario(s) {
+  document.querySelectorAll('.apt-gw-szenario-btn').forEach(btn => {
+    const active = btn.dataset.s === s;
+    btn.style.background    = active ? 'var(--cc-charcoal)' : 'none';
+    btn.style.color         = active ? '#fff' : 'var(--cc-charcoal)';
+    btn.style.borderColor   = active ? 'var(--cc-charcoal)' : 'var(--cc-rule)';
+  });
+  const s1 = document.getElementById('apt-gw-s1-fields');
+  const s3 = document.getElementById('apt-gw-s3-fields');
+  const sw = document.getElementById('apt-gw-staffel-wrap');
+  if (s1) s1.style.display = s === 'S1' ? '' : 'none';
+  if (s3) s3.style.display = s === 'S3' ? '' : 'none';
+  if (sw) sw.style.display = s === 'S1' ? '' : 'none';
+  _aptGwCalcDates();
+}
+
+/* ── GEWERBE: Nutzungszweck Freifeld ──────────────────── */
+function _aptGwNutzungChange() {
+  const sel  = document.getElementById('apt-gw-nutzung-select')?.value;
+  const wrap = document.getElementById('apt-gw-nutzung-frei-wrap');
+  if (wrap) wrap.style.display = sel === 'Sonstige' ? '' : 'none';
+}
+
+/* ── GEWERBE: Möbliert Toggle ─────────────────────────── */
+function _aptGwToggleMoebliert() {
+  const btn = document.getElementById('apt-gw-moebliert-btn');
+  const lbl = document.getElementById('apt-gw-moebliert-lbl');
+  const sub = document.getElementById('apt-gw-moebliert-sub');
+  if (!btn) return;
+  const on = btn.dataset.mode === 'nein';
+  btn.dataset.mode  = on ? 'ja'  : 'nein';
+  lbl.textContent   = on ? 'Ja' : 'Nein';
+  sub.textContent   = on ? 'Inventar wird als Anlage A eingefügt' : 'Ohne Inventar';
+}
+
+/* ── GEWERBE: Staffelmiete Toggle ─────────────────────── */
+function _aptGwToggleStaffel() {
+  const btn  = document.getElementById('apt-gw-staffel-btn');
+  const lbl  = document.getElementById('apt-gw-staffel-lbl');
+  const sub  = document.getElementById('apt-gw-staffel-sub');
+  const body = document.getElementById('apt-gw-staffel-body');
+  if (!btn) return;
+  const on = btn.dataset.mode === 'nein';
+  btn.dataset.mode   = on ? 'ja'   : 'nein';
+  lbl.textContent    = on ? 'Ja'   : 'Nein';
+  sub.textContent    = on ? 'Aktiv': 'Keine Staffelung';
+  if (body) body.style.display = on ? '' : 'none';
+}
+
+/* ── GEWERBE: Date calculations ───────────────────────── */
+function _aptGwCalcDates() {
+  const startVal  = document.getElementById('apt-gw-start')?.value;
+  const festNum   = parseInt(document.getElementById('apt-gw-fest-num')?.value) || 0;
+  const festUnit  = document.getElementById('apt-gw-fest-unit')?.value || 'Jahre';
+  const intervall = parseInt(document.getElementById('apt-gw-staffel-intervall')?.value) || 1;
+
+  const fmtDt = dt => {
+    return String(dt.getDate()).padStart(2,'0') + '.' +
+           String(dt.getMonth()+1).padStart(2,'0') + '.' + dt.getFullYear();
+  };
+
+  // Calculate Mietende
+  let mietende = null;
+  if (startVal && festNum) {
+    const d = new Date(startVal);
+    if (festUnit === 'Jahre') d.setFullYear(d.getFullYear() + festNum);
+    else d.setMonth(d.getMonth() + festNum);
+    d.setDate(d.getDate() - 1); // last day before new period
+    mietende = d;
+    const endDisp = document.getElementById('apt-gw-enddatum-display');
+    const endVal  = document.getElementById('apt-gw-enddatum-val');
+    if (endDisp && endVal) { endDisp.style.display = ''; endVal.textContent = fmtDt(d); }
+  }
+
+  // Staffel dates — start from mietende + 1 day
+  if (mietende) {
+    const rows = document.querySelectorAll('.apt-gw-staffel-row');
+    rows.forEach((row, i) => {
+      const dateLbl = row.querySelector('.apt-gw-staffel-datum');
+      if (dateLbl) {
+        const d2 = new Date(mietende);
+        d2.setDate(d2.getDate() + 1); // day after mietende
+        d2.setFullYear(d2.getFullYear() + i * intervall);
+        if (i > 0) {
+          // each staffel is intervall years after the previous
+          const base = new Date(mietende);
+          base.setDate(base.getDate() + 1);
+          base.setFullYear(base.getFullYear() + i * intervall);
+          dateLbl.textContent = fmtDt(base);
+        } else {
+          dateLbl.textContent = fmtDt(d2);
+        }
+      }
+    });
+  }
+
+  // S3 dates
+  const szenario = document.querySelector('.apt-gw-szenario-btn.active')?.dataset.s;
+  if (szenario === 'S3' && mietende) {
+    const verlJahre   = parseInt(document.getElementById('apt-gw-verl-jahre')?.value) || 0;
+    const ankuendMon  = parseInt(document.getElementById('apt-gw-ankuend')?.value) || 0;
+    const s3disp      = document.getElementById('apt-gw-s3-dates-display');
+    const ankuendDisp = document.getElementById('apt-gw-ankuend-display');
+    const verlBisDisp = document.getElementById('apt-gw-verl-bis-display');
+
+    if (verlJahre && ankuendMon && s3disp) {
+      const ankuendDt = new Date(mietende);
+      ankuendDt.setMonth(ankuendDt.getMonth() - ankuendMon);
+      const verlBisDt = new Date(mietende);
+      verlBisDt.setFullYear(verlBisDt.getFullYear() + verlJahre);
+      s3disp.style.display = '';
+      if (ankuendDisp) ankuendDisp.textContent = fmtDt(ankuendDt);
+      if (verlBisDisp) verlBisDisp.textContent = fmtDt(verlBisDt);
+    } else if (s3disp) {
+      s3disp.style.display = 'none';
+    }
+  }
+}
+
+/* ── GEWERBE: Staffel add / remove ───────────────────── */
+function _aptGwAddStaffel() {
+  const container = document.getElementById('apt-gw-staffel-rows');
+  if (!container) return;
+  const count = container.querySelectorAll('.apt-gw-staffel-row').length;
+  if (count >= 4) return;
+  const row = document.createElement('div');
+  row.className = 'apt-gw-staffel-row';
+  row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+  row.innerHTML = `
+    <input class="rm-input apt-gw-staffel-betrag" type="number" step="0.01"
+      placeholder="${850 + count*50}.00"
+      style="width:120px;-webkit-appearance:textfield;appearance:textfield;"
+      oninput="_aptGwCalcGesamt()"/>
+    <span style="font-size:11px;color:var(--cc-stone);">€ ab</span>
+    <span class="apt-gw-staffel-datum" style="font-size:11px;font-weight:500;color:var(--cc-charcoal);">—</span>`;
+  container.appendChild(row);
+  _aptGwCalcDates();
+}
+
+function _aptGwRemoveStaffel() {
+  const container = document.getElementById('apt-gw-staffel-rows');
+  if (!container) return;
+  const rows = container.querySelectorAll('.apt-gw-staffel-row');
+  if (rows.length > 0) rows[rows.length - 1].remove();
+}
+
+/* ── GEWERBE: Gesamt live ────────────────────────────── */
+function _aptGwCalcGesamt() {
+  const kalt = parseFloat(document.getElementById('apt-gw-kalt')?.value) || 0;
+  const nk   = parseFloat(document.getElementById('apt-gw-nk')?.value)   || 0;
+  const el   = document.getElementById('apt-gw-gesamt-val');
+  if (el) el.textContent = (kalt || nk)
+    ? (kalt + nk).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €'
+    : '—';
+  // Also sync Anfangsmiete if staffel is on
+  const anfang = document.getElementById('apt-gw-staffel-anfang');
+  if (anfang && !anfang.dataset.edited) anfang.value = kalt || '';
+}
+
+/* ── GEWERBE: S3 Prozent ↔ Betrag ───────────────────── */
+function _aptGwCalcVerl(source) {
+  const kalt    = parseFloat(document.getElementById('apt-gw-kalt')?.value) || 0;
+  const nk      = parseFloat(document.getElementById('apt-gw-nk')?.value)   || 0;
+  const pctEl   = document.getElementById('apt-gw-erhöhung-pct');
+  const kaltEl  = document.getElementById('apt-gw-neue-kalt');
+  const dispEl  = document.getElementById('apt-gw-neue-kalt-display');
+  const gestEl  = document.getElementById('apt-gw-neue-gesamt-val');
+  if (!pctEl || !kaltEl) return;
+
+  let neueKalt = 0;
+  if (source === 'pct') {
+    const pct = parseFloat(pctEl.value) || 0;
+    neueKalt = kalt * (1 + pct / 100);
+    kaltEl.value = neueKalt ? neueKalt.toFixed(2) : '';
+  } else {
+    neueKalt = parseFloat(kaltEl.value) || 0;
+    const pct = kalt ? ((neueKalt - kalt) / kalt * 100) : 0;
+    pctEl.value = pct ? pct.toFixed(1) : '';
+  }
+  if (dispEl && gestEl && neueKalt) {
+    dispEl.style.display = '';
+    gestEl.textContent = (neueKalt + nk).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  } else if (dispEl) {
+    dispEl.style.display = 'none';
+  }
+}
+
+/* ── GEWERBE: Mieter prefill toggle ─────────────────── */
+function _toggleAptGwMieter() {
+  const pill      = document.getElementById('aptGwMieterPill');
+  const manualLbl = document.getElementById('aptGwMieterManualLbl');
+  if (!pill) return;
+  const isRoom = pill.dataset.state === 'room';
+  if (isRoom) {
+    pill.dataset.state = 'manual';
+    document.getElementById('apt-gw-name').value  = '';
+    document.getElementById('apt-gw-adr').value   = '';
+    document.getElementById('apt-gw-dob').value   = '';
+    document.getElementById('apt-gw-email').value = '';
+    document.getElementById('apt-gw-name').focus();
+    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
+  } else {
+    pill.dataset.state = 'room';
+    document.getElementById('apt-gw-name').value  = pill.dataset.tenantName  || '';
+    document.getElementById('apt-gw-adr').value   = pill.dataset.tenantAdr   || '';
+    document.getElementById('apt-gw-dob').value   = pill.dataset.tenantDob   || '';
+    document.getElementById('apt-gw-email').value = pill.dataset.tenantEmail || '';
+    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
+  }
+}
+
+/* ── GEWERBE: Init all interactions after body inject ── */
+function _aptGwInitInteractions() {
+  // Start with S1 active
+  _aptGwSetSzenario('S1');
+  // Add first staffel row by default
+  _aptGwAddStaffel();
+  // Sync Anfangsmiete with kaltmiete field
+  document.getElementById('apt-gw-kalt')?.addEventListener('input', () => {
+    const anfang = document.getElementById('apt-gw-staffel-anfang');
+    if (anfang && !anfang.dataset.edited) {
+      anfang.value = document.getElementById('apt-gw-kalt')?.value || '';
+    }
+  });
+  document.getElementById('apt-gw-staffel-anfang')?.addEventListener('input', function() {
+    this.dataset.edited = '1';
+  });
 }
 
 function _aptToggleMvBefristung() {
