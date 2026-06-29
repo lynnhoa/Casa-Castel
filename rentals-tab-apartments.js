@@ -803,7 +803,7 @@ function _aptCardHTML(a) {
       <!-- READ -->
       <div class="apt-sec-read">
         ${kalt || nk ? `
-        <div class="apt-row"><span class="apt-row__k">Mietvertrag</span><span class="apt-row__v apt-row__v--gold">${aptFmtEURCompact(kalt)} kalt + ${aptFmtEURCompact(nk)} NK</span></div>
+        <div class="apt-row"><span class="apt-row__k">${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemiete' : 'Mietvertrag'}</span><span class="apt-row__v apt-row__v--gold">${aptFmtEURCompact(kalt)} kalt + ${aptFmtEURCompact(nk)} NK</span></div>
         <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kautionAmt)} · 3× Kalt${p.kaution_override ? ' (override)' : ''}</span></div>
         ` : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
         ${kzKalt ? `
@@ -830,11 +830,12 @@ function _aptCardHTML(a) {
         <div data-kautionfield style="${p.kaution_override?'':'display:none'}">
           <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${p.kaution_default||''}"/></div>
         </div>
+        ${a.zimmer_type !== 'Gewerbefläche' ? `
         <div class="apt-stitle" style="margin-top:10px">Kurzzeit</div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-f="kurzzeit_kaltmiete" value="${p.kurzzeit_kaltmiete||''}"/></div>
           <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-f="kurzzeit_nk" value="${p.kurzzeit_nk||''}"/></div>
-        </div>
+        </div>` : ''}
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('miete','${a.id}')">Cancel</button>
           <button class="apt-btn--save" onclick="_aptSaveMiete('${a.id}')">Save</button>
@@ -944,7 +945,7 @@ function _aptCardHTML(a) {
       <div class="apt-sec-read">
         <div class="apt-keys">
           <div class="apt-key"><i class="ti ti-home"></i> Haustür ×${sk.haustuerschluessel ?? 1}</div>
-          <div class="apt-key"><i class="ti ti-key"></i> Wohnung ×${sk.wohnungsschluessel ?? 1}</div>
+          <div class="apt-key"><i class="ti ti-key"></i> ${a.zimmer_type === 'Gewerbefläche' ? 'Mietfläche' : 'Wohnung'} ×${sk.wohnungsschluessel ?? 1}</div>
           ${(sk.briefkastenschluessel > 0) ? `<div class="apt-key"><i class="ti ti-mail"></i> Briefkasten ×${sk.briefkastenschluessel}</div>` : ''}
         </div>
         <div class="apt-section-edit">
@@ -965,7 +966,7 @@ function _aptCardHTML(a) {
             </div>
           </div>
           <div class="apt-field">
-            <div class="apt-field__label">Wohnung</div>
+            <div class="apt-field__label">${a.zimmer_type === 'Gewerbefläche' ? 'Mietfläche' : 'Wohnung'}</div>
             <div class="apt-stepper">
               <button onclick="_aptStep(this,-1)">−</button>
               <span class="apt-stepper__v" data-sf="wohnungsschluessel">${sk.wohnungsschluessel ?? 1}</span>
@@ -1027,7 +1028,7 @@ function _aptCardHTML(a) {
     <!-- FOOTER: delete -->
     <div class="apt-card-footer">
       <button class="apt-delete-btn" onclick="_aptConfirmDelete('${a.id}','${aptEsc(a.name)}')">
-        <i class="ti ti-trash"></i> Delete apartment
+        <i class="ti ti-trash"></i> ${a.zimmer_type === 'Gewerbefläche' ? 'Delete Gewerbefläche' : 'Delete apartment'}
       </button>
     </div>
 
