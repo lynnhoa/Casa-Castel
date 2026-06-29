@@ -2117,7 +2117,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
   return `
     <div class="rm-prefilled">
       <div class="rm-prefilled__title">Pre-filled from apartment</div>
-      <div class="rm-pre-row"><span>Apartment</span><span>${aptEsc(apt.name)}</span></div>
+      <div class="rm-pre-row"><span>Name</span><span>${aptEsc(apt.name)}</span></div>
       <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse||'—')}</span></div>
       <div class="rm-pre-row"><span>PLZ / Ort</span><span>${aptEsc(apt.plz_ort||'—')}</span></div>
       <div class="rm-pre-row"><span>Fläche</span><span>${apt.flaeche_m2?apt.flaeche_m2+' m²':'—'}</span></div>
