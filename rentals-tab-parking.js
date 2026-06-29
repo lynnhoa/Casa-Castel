@@ -659,7 +659,8 @@ function _pkOpenContract(type, pkId) {
   document.getElementById('pkContractSubLbl').textContent   = spot.parking_type || '';
 
   if (type === 'mietvertrag') {
-    document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk);
+    const _pkMvProfile = (typeof _rntGetParkingProfile === 'function') ? _rntGetParkingProfile(pkId) : {};
+    document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk, _pkMvProfile);
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
        <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
@@ -673,7 +674,8 @@ function _pkOpenContract(type, pkId) {
   } else if (type === 'ueberg') {
     const isEinzug = document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
     document.getElementById('pkContractTitleLbl').textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + spot.name;
-    document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug);
+    const _pkUbProfile = (typeof _rntGetParkingProfile === 'function') ? _rntGetParkingProfile(pkId) : {};
+    document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug, _pkUbProfile);
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
        <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
@@ -697,7 +699,16 @@ document.getElementById('pkContractOverlay')?.addEventListener('click', e => {
 
 
 /* ── CONTRACT BODY: MIETVERTRAG ──────────────────────────── */
-function _pkBodyMietvertrag(spot, pr, sk) {
+function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
+  let _pkMvTenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
+  let _pkMvTenantEmail = profile.email   || '';
+  let _pkMvTenantAdr   = profile.address || '';
+  let _pkMvTenantDob   = profile.birthday || '';
+  if (_pkMvTenantDob && _pkMvTenantDob.includes('-') && _pkMvTenantDob.length === 10) {
+    const [_y,_m,_d] = _pkMvTenantDob.split('-');
+    _pkMvTenantDob = `${_d}.${_m}.${_y}`;
+  }
+  const _pkMvHasTenant = !!_pkMvTenantName;
   const miete = Number(pr.miete) || 0;
 
   return `
@@ -713,10 +724,24 @@ function _pkBodyMietvertrag(spot, pr, sk) {
     </div>
 
     <div class="rm-fields-title">Mieterdaten</div>
-    <div class="rm-field"><label>Name</label><input class="rm-input" id="pk-mv-name" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Adresse</label><input class="rm-input" id="pk-mv-adr" placeholder="Aktuelle Adresse…"/></div>
-    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob" placeholder="TT.MM.JJJJ"/></div>
-    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="pk-mv-email" type="email" placeholder="mieter@beispiel.de"/></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="pkMvMieterRoomLbl">${pkEsc(spot.name)} Mieter</span>
+      <div class="ub-mieter-pill" id="pkMvMieterPill"
+        data-state="${_pkMvHasTenant ? 'room' : 'manual'}"
+        data-tenant-name="${pkEsc(_pkMvTenantName)}"
+        data-tenant-email="${pkEsc(_pkMvTenantEmail)}"
+        data-tenant-adr="${pkEsc(_pkMvTenantAdr)}"
+        data-tenant-dob="${pkEsc(_pkMvTenantDob)}"
+        onclick="_togglePkMvMieter()"
+        style="${_pkMvHasTenant ? '' : 'opacity:.4;pointer-events:none;'}">
+        <div class="ub-mieter-pill__knob"></div>
+      </div>
+      <span style="font-size:11px;color:var(--cc-stone);" id="pkMvMieterManualLbl">Manuell</span>
+    </div>
+    <div class="rm-field"><label>Name</label><input class="rm-input" id="pk-mv-name" value="${pkEsc(_pkMvTenantName)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Adresse</label><input class="rm-input" id="pk-mv-adr" value="${pkEsc(_pkMvTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob" value="${pkEsc(_pkMvTenantDob)}" placeholder="TT.MM.JJJJ"/></div>
+    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="pk-mv-email" type="email" value="${pkEsc(_pkMvTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-tel" type="tel" placeholder="+49 …"/></div>
 
     <div class="rm-fields-title" style="margin-top:6px">Mietzeit</div>
@@ -764,13 +789,70 @@ function _pkToggleMvBefristung() {
   details.style.display = on ? ''           : 'none';
 }
 
+function _togglePkMvMieter() {
+  const pill      = document.getElementById('pkMvMieterPill');
+  const manualLbl = document.getElementById('pkMvMieterManualLbl');
+  if (!pill) return;
+  const isRoom = pill.dataset.state === 'room';
+  if (isRoom) {
+    pill.dataset.state = 'manual';
+    document.getElementById('pk-mv-name').value  = '';
+    document.getElementById('pk-mv-adr').value   = '';
+    document.getElementById('pk-mv-dob').value   = '';
+    document.getElementById('pk-mv-email').value = '';
+    document.getElementById('pk-mv-name').focus();
+    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
+  } else {
+    pill.dataset.state = 'room';
+    document.getElementById('pk-mv-name').value  = pill.dataset.tenantName  || '';
+    document.getElementById('pk-mv-adr').value   = pill.dataset.tenantAdr   || '';
+    document.getElementById('pk-mv-dob').value   = pill.dataset.tenantDob   || '';
+    document.getElementById('pk-mv-email').value = pill.dataset.tenantEmail || '';
+    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
+  }
+}
+
+function _togglePkUbMieter() {
+  const pill      = document.getElementById('pkUbMieterPill');
+  const manualLbl = document.getElementById('pkUbMieterManualLbl');
+  if (!pill) return;
+  const isRoom = pill.dataset.state === 'room';
+  if (isRoom) {
+    pill.dataset.state = 'manual';
+    document.getElementById('pk-ub-mieter-name').value = '';
+    document.getElementById('pk-ub-mieter-adr').value  = '';
+    document.getElementById('pk-ub-mieter-name').focus();
+    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
+  } else {
+    pill.dataset.state = 'room';
+    document.getElementById('pk-ub-mieter-name').value = pill.dataset.tenantName || '';
+    document.getElementById('pk-ub-mieter-adr').value  = pill.dataset.tenantAdr  || '';
+    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
+  }
+}
+
 
 /* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */
-function _pkBodyUeberg(spot, sk, isEinzug) {
+function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
+  const _pkUbTenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
+  const _pkUbTenantAdr  = profile.address || '';
+  const _pkUbHasTenant  = !!_pkUbTenantName;
   return `
     <div class="rm-fields-title">Mieter</div>
-    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="pk-ub-mieter-name" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="pk-ub-mieter-adr" placeholder="Aktuelle Adresse…"/></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="pkUbMieterRoomLbl">${pkEsc(spot.name)} Mieter</span>
+      <div class="ub-mieter-pill" id="pkUbMieterPill"
+        data-state="${_pkUbHasTenant ? 'room' : 'manual'}"
+        data-tenant-name="${pkEsc(_pkUbTenantName)}"
+        data-tenant-adr="${pkEsc(_pkUbTenantAdr)}"
+        onclick="_togglePkUbMieter()"
+        style="${_pkUbHasTenant ? '' : 'opacity:.4;pointer-events:none;'}">
+        <div class="ub-mieter-pill__knob"></div>
+      </div>
+      <span style="font-size:11px;color:var(--cc-stone);" id="pkUbMieterManualLbl">Manuell</span>
+    </div>
+    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="pk-ub-mieter-name" value="${pkEsc(_pkUbTenantName)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="pk-ub-mieter-adr" value="${pkEsc(_pkUbTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
     <div class="rm-field"><label>Übergabedatum</label><input class="rm-input" id="pk-ub-datum" type="text" placeholder="TT.MM.JJJJ"/></div>
     ${!isEinzug ? `
     <div class="rm-field"><label>Neue Adresse des Mieters</label><input class="rm-input" id="pk-ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/></div>` : ''}
