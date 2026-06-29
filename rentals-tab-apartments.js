@@ -503,6 +503,11 @@ document.getElementById('tab-apartments').innerHTML = `
 .apt-hg-add-form input { font-size:12px; padding:5px 8px; border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold); background:var(--cc-white); color:var(--cc-charcoal); font-family:inherit; outline:none; width:120px; }
 .apt-hg-add-form input[type=number] { width:90px; }
 .apt-hg-status-pill { display:inline-flex; align-items:center; gap:3px; font-size:9px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:var(--cc-r-pill); background:#FAEEDA; color:#633806; border:.5px solid #EF9F27; }
+/* Mieter prefill pill toggle (shared with Casa Castel pattern) */
+.ub-mieter-pill { position:relative; width:44px; height:26px; background:var(--cc-ink); border-radius:13px; cursor:pointer; transition:background .25s; flex-shrink:0; }
+.ub-mieter-pill[data-state="manual"] { background:var(--cc-rule); }
+.ub-mieter-pill__knob { position:absolute; top:3px; left:3px; width:20px; height:20px; background:#ffffff; border-radius:50%; box-shadow:0 1px 4px rgba(0,0,0,0.18); transition:transform .25s cubic-bezier(.32,.72,0,1); }
+.ub-mieter-pill[data-state="manual"] .ub-mieter-pill__knob { transform:translateX(18px); }
   `;
   document.head.appendChild(s);
 })();
@@ -511,6 +516,35 @@ document.getElementById('tab-apartments').innerHTML = `
 /* ── HELPERS ─────────────────────────────────────────────── */
 function aptEsc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* Resolve active tenant profile for an apartment — checks cache first,
+   falls back to a direct Supabase query if tenants tab hasn't loaded yet. */
+async function _aptResolveTenantProfile(aptId) {
+  if (typeof _rntGetProfile === 'function') {
+    const cached = _rntGetProfile(aptId);
+    if (cached && (cached.firstName || cached.lastName)) return cached;
+  }
+  if (typeof sbL === 'undefined') return {};
+  try {
+    const { data } = await sbL
+      .from('rnt_tenant_records')
+      .select('first_name,last_name,email,phone,birthday,address')
+      .eq('apartment_id', aptId)
+      .eq('status', 'active')
+      .order('mietbeginn', { ascending: false })
+      .limit(1)
+      .single();
+    if (!data) return {};
+    return {
+      firstName: data.first_name || '',
+      lastName:  data.last_name  || '',
+      email:     data.email      || '',
+      phone:     data.phone      || '',
+      birthday:  data.birthday   || '',
+      address:   data.address    || '',
+    };
+  } catch { return {}; }
 }
 
 function aptFmtEUR(n) {
@@ -1608,7 +1642,7 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
 let _aptContractId   = null;
 let _aptContractType = null;
 
-function _aptOpenContract(type, aptId) {
+async function _aptOpenContract(type, aptId) {
   _aptContractId   = aptId;
   _aptContractType = type;
   const apt = appApartments.find(a => a.id === aptId);
@@ -1632,7 +1666,7 @@ function _aptOpenContract(type, aptId) {
     const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
     const kzNk   = Number(p.kurzzeit_nk) || 0;
     const kzBase = kzKalt + kzNk || Number(p.kaltmiete) || 0;
-    const _kzProfile = (typeof _rntGetProfile === 'function') ? _rntGetProfile(apt.id) : {};
+    const _kzProfile = await _aptResolveTenantProfile(apt.id);
     body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, _kzProfile);
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
 
@@ -1684,7 +1718,7 @@ function _aptOpenContract(type, aptId) {
     const kalt   = Number(p.kaltmiete) || 0;
     const nk     = Number(p.nk_pauschale) || 0;
     const kaution = p.kaution_override && p.kaution_default ? Number(p.kaution_default) : kalt * 3;
-    const _mvProfile = (typeof _rntGetProfile === 'function') ? _rntGetProfile(apt.id) : {};
+    const _mvProfile = await _aptResolveTenantProfile(apt.id);
     body.innerHTML = _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, _mvProfile);
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
     setTimeout(() => {
@@ -1755,7 +1789,7 @@ function _aptOpenContract(type, aptId) {
     const isEinzug = document.getElementById('apt-eu-' + aptId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
     typeLbl.textContent  = 'Übergabeprotokoll';
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + apt.name;
-    const _ubProfile = (typeof _rntGetProfile === 'function') ? _rntGetProfile(apt.id) : {};
+    const _ubProfile = await _aptResolveTenantProfile(apt.id);
     body.innerHTML = _aptBodyUeberg(apt, sk, isEinzug, _ubProfile);
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
     setTimeout(() => {

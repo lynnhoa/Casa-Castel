@@ -179,6 +179,11 @@ document.getElementById('tab-parking').innerHTML = `
   .pk-hdr { padding:16px 18px; }
   .pk-actions { padding:10px 16px; }
 }
+/* Mieter prefill pill toggle (shared with Casa Castel pattern) */
+.ub-mieter-pill { position:relative; width:44px; height:26px; background:var(--cc-ink); border-radius:13px; cursor:pointer; transition:background .25s; flex-shrink:0; }
+.ub-mieter-pill[data-state="manual"] { background:var(--cc-rule); }
+.ub-mieter-pill__knob { position:absolute; top:3px; left:3px; width:20px; height:20px; background:#ffffff; border-radius:50%; box-shadow:0 1px 4px rgba(0,0,0,0.18); transition:transform .25s cubic-bezier(.32,.72,0,1); }
+.ub-mieter-pill[data-state="manual"] .ub-mieter-pill__knob { transform:translateX(18px); }
   `;
   document.head.appendChild(s);
 })();
@@ -187,6 +192,34 @@ document.getElementById('tab-parking').innerHTML = `
 /* ── HELPERS ─────────────────────────────────────────────── */
 function pkEsc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* Resolve active tenant profile for a parking space — cache first, Supabase fallback. */
+async function _pkResolveTenantProfile(pkId) {
+  if (typeof _rntGetParkingProfile === 'function') {
+    const cached = _rntGetParkingProfile(pkId);
+    if (cached && (cached.firstName || cached.lastName)) return cached;
+  }
+  if (typeof sbL === 'undefined') return {};
+  try {
+    const { data } = await sbL
+      .from('rnt_tenant_records')
+      .select('first_name,last_name,email,phone,birthday,address')
+      .eq('parking_id', pkId)
+      .eq('status', 'active')
+      .order('mietbeginn', { ascending: false })
+      .limit(1)
+      .single();
+    if (!data) return {};
+    return {
+      firstName: data.first_name || '',
+      lastName:  data.last_name  || '',
+      email:     data.email      || '',
+      phone:     data.phone      || '',
+      birthday:  data.birthday   || '',
+      address:   data.address    || '',
+    };
+  } catch { return {}; }
 }
 
 function pkFmtEUR(n) {
@@ -646,7 +679,7 @@ function _pkSetEU(pkId, idx, btn) {
   tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
 }
 
-function _pkOpenContract(type, pkId) {
+async function _pkOpenContract(type, pkId) {
   _pkContractId = pkId;
   const spot = appParking.find(p => p.id === pkId);
   if (!spot) return;
@@ -659,7 +692,7 @@ function _pkOpenContract(type, pkId) {
   document.getElementById('pkContractSubLbl').textContent   = spot.parking_type || '';
 
   if (type === 'mietvertrag') {
-    const _pkMvProfile = (typeof _rntGetParkingProfile === 'function') ? _rntGetParkingProfile(pkId) : {};
+    const _pkMvProfile = await _pkResolveTenantProfile(pkId);
     document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk, _pkMvProfile);
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
@@ -674,7 +707,7 @@ function _pkOpenContract(type, pkId) {
   } else if (type === 'ueberg') {
     const isEinzug = document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
     document.getElementById('pkContractTitleLbl').textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + spot.name;
-    const _pkUbProfile = (typeof _rntGetParkingProfile === 'function') ? _rntGetParkingProfile(pkId) : {};
+    const _pkUbProfile = await _pkResolveTenantProfile(pkId);
     document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug, _pkUbProfile);
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
