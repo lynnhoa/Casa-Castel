@@ -1760,12 +1760,6 @@ async function _aptOpenContract(type, aptId) {
           const sigVal         = document.getElementById('apt-gw-sig')?.value;
 
           // Validate
-          if (!nutzungszweck) { alert('Bitte Nutzungszweck ausfüllen.'); return; }
-          if (!mieterName)    { alert('Bitte Mieter Name ausfüllen.'); return; }
-          if (!startVal)      { alert('Bitte Mietbeginn ausfüllen.'); return; }
-          if (!festNum)       { alert('Bitte Festlaufzeit ausfüllen.'); return; }
-          if (!kaltmiete)     { alert('Bitte Kaltmiete ausfüllen.'); return; }
-
           // S1 fields
           let kuendigungsfrist = 6;
           let staffeln = [];
@@ -1774,11 +1768,9 @@ async function _aptOpenContract(type, aptId) {
             kuendigungsfrist = parseInt(document.getElementById('apt-gw-kuendfrist')?.value) || 6;
             staffelAn = document.getElementById('apt-gw-staffel-btn')?.dataset.mode === 'ja';
             if (staffelAn) {
-              if (!kaltmiete) { alert('Bitte Anfangsmiete ausfüllen.'); return; }
               const rows = document.querySelectorAll('.apt-gw-staffel-row');
               for (const row of rows) {
-                const betrag = parseFloat(row.querySelector('.apt-gw-staffel-betrag')?.value);
-                if (!betrag) { alert('Bitte alle Staffelbeträge ausfüllen.'); return; }
+                const betrag = parseFloat(row.querySelector('.apt-gw-staffel-betrag')?.value) || 0;
                 const datum = row.querySelector('.apt-gw-staffel-datum')?.textContent?.trim();
                 staffeln.push({ datum, betrag });
               }
@@ -1792,8 +1784,6 @@ async function _aptOpenContract(type, aptId) {
             ankuendigungMonate  = parseInt(document.getElementById('apt-gw-ankuend')?.value) || 6;
             neueKaltmiete       = parseFloat(document.getElementById('apt-gw-neue-kalt')?.value) || 0;
             verlaengerungBis    = document.getElementById('apt-gw-verl-bis-display')?.textContent?.replace('Verlängerung bis: ','').trim();
-            if (!verlaengerungJahre) { alert('Bitte Verlängerungsdauer ausfüllen.'); return; }
-            if (!neueKaltmiete)      { alert('Bitte neue Kaltmiete ausfüllen.'); return; }
           }
 
           const btn = document.getElementById('aptGwPdfBtn');
@@ -2157,7 +2147,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
 
     <div class="rm-fields-title">Mietobjekt</div>
     <div class="rm-field">
-      <label>Nutzungszweck <span style="color:#c0392b;font-weight:700;">*</span></label>
+      <label>Nutzungszweck</label>
       <select class="rm-input" id="apt-gw-nutzung-select" onchange="_aptGwNutzungChange()">
         <option value="">— bitte wählen —</option>
         <option>Büro / Bürofläche</option>
@@ -2201,17 +2191,17 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="aptGwMieterManualLbl">Manuell</span>
     </div>
-    <div class="rm-field"><label>Name <span style="color:#c0392b;font-weight:700;">*</span></label><input class="rm-input" id="apt-gw-name" value="${aptEsc(_gwTenantName)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Name</label><input class="rm-input" id="apt-gw-name" value="${aptEsc(_gwTenantName)}" placeholder="Vor- und Nachname…"/></div>
     <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-gw-adr" value="${aptEsc(_gwTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
     <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-gw-dob" value="${aptEsc(_gwTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-gw-email" type="email" value="${aptEsc(_gwTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="apt-gw-tel" type="tel" placeholder="+49 …"/></div>
 
     <div class="rm-fields-title" style="margin-top:6px;">Mietzeit</div>
-    <div class="rm-field"><label>Mietbeginn <span style="color:#c0392b;font-weight:700;">*</span></label><input class="rm-input" id="apt-gw-start" type="date" onclick="try{this.showPicker()}catch(e){}" oninput="_aptGwCalcDates()"/></div>
+    <div class="rm-field"><label>Mietbeginn</label><input class="rm-input" id="apt-gw-start" type="date" onclick="try{this.showPicker()}catch(e){}" oninput="_aptGwCalcDates()"/></div>
     <div class="rm-field-row">
       <div class="rm-field">
-        <label>Festlaufzeit <span style="color:#c0392b;font-weight:700;">*</span></label>
+        <label>Festlaufzeit</label>
         <input class="rm-input" id="apt-gw-fest-num" type="number" min="1" placeholder="2" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcDates()"/>
       </div>
       <div class="rm-field">
@@ -2260,7 +2250,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
       </div>
       <div class="rm-field-row">
         <div class="rm-field">
-          <label>Neue Kaltmiete <span style="color:#c0392b;font-weight:700;">*</span></label>
+          <label>Neue Kaltmiete</label>
           <input class="rm-input" id="apt-gw-neue-kalt" type="number" step="0.01" placeholder="950,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcVerl('kalt')"/>
         </div>
         <div class="rm-field">
@@ -2313,7 +2303,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
     <div class="rm-fields-title" style="margin-top:10px;">Miete &amp; Kaution</div>
     <div class="rm-field-row">
       <div class="rm-field">
-        <label>Kaltmiete <span style="color:#c0392b;font-weight:700;">*</span></label>
+        <label>Kaltmiete</label>
         <input class="rm-input" id="apt-gw-kalt" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcGesamt()"/>
       </div>
       <div class="rm-field">
