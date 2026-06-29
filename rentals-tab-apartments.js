@@ -547,6 +547,20 @@ async function _aptResolveTenantProfile(aptId) {
   } catch { return {}; }
 }
 
+
+/* Auto-insert dots while typing a German date: 13011992 → 13.01.1992
+   Shared by apartments and parking tabs (apartments loads first). */
+function _autoFormatGermanDate(e) {
+  const input  = e.target;
+  const digits = input.value.replace(/\D/g, '').slice(0, 8);
+  let out = digits;
+  if (digits.length > 4) out = digits.slice(0,2) + '.' + digits.slice(2,4) + '.' + digits.slice(4);
+  else if (digits.length > 2) out = digits.slice(0,2) + '.' + digits.slice(2);
+  if (input.value !== out) {
+    input.value = out;
+    try { input.setSelectionRange(out.length, out.length); } catch(_) {}
+  }
+}
 function aptFmtEUR(n) {
   const num = Number(n);
   if (!num && num !== 0) return '—';
@@ -1867,20 +1881,19 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, profile = {}) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="aptCmMieterRoomLbl">${aptEsc(apt.name)} Mieter</span>
       <div class="ub-mieter-pill" id="aptCmMieterPill"
-        data-state="${_aptCmHasTenant ? 'room' : 'manual'}"
+        data-state="room"
         data-tenant-name="${aptEsc(_aptCmTenantName)}"
         data-tenant-email="${aptEsc(_aptCmTenantEmail)}"
         data-tenant-adr="${aptEsc(_aptCmTenantAdr)}"
         data-tenant-dob="${aptEsc(_aptCmTenantDob)}"
-        onclick="_toggleAptCmMieter()"
-        style="${_aptCmHasTenant ? '' : 'opacity:.4;pointer-events:none;'}">
+        onclick="_toggleAptCmMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="aptCmMieterManualLbl">Manuell</span>
     </div>
     <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="apt-cm-name" value="${aptEsc(_aptCmTenantName)}" placeholder="Full name…"/></div>
     <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="apt-cm-adr" value="${aptEsc(_aptCmTenantAdr)}" placeholder="Current address…"/></div>
-    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-cm-dob" value="${aptEsc(_aptCmTenantDob)}" placeholder="TT.MM.JJJJ"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-cm-dob" value="${aptEsc(_aptCmTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-cm-email" type="email" value="${aptEsc(_aptCmTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="apt-cm-tel" type="tel" placeholder="+49 …"/></div>
     <div class="rm-field-row" style="margin-bottom:10px">
@@ -1936,20 +1949,19 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="aptMvMieterRoomLbl">${aptEsc(apt.name)} Mieter</span>
       <div class="ub-mieter-pill" id="aptMvMieterPill"
-        data-state="${_aptMvHasTenant ? 'room' : 'manual'}"
+        data-state="room"
         data-tenant-name="${aptEsc(_aptMvTenantName)}"
         data-tenant-email="${aptEsc(_aptMvTenantEmail)}"
         data-tenant-adr="${aptEsc(_aptMvTenantAdr)}"
         data-tenant-dob="${aptEsc(_aptMvTenantDob)}"
-        onclick="_toggleAptMvMieter()"
-        style="${_aptMvHasTenant ? '' : 'opacity:.4;pointer-events:none;'}">
+        onclick="_toggleAptMvMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="aptMvMieterManualLbl">Manuell</span>
     </div>
     <div class="rm-field"><label>Name</label><input class="rm-input" id="apt-mv-name" value="${aptEsc(_aptMvTenantName)}" placeholder="Vor- und Nachname…"/></div>
     <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-mv-adr" value="${aptEsc(_aptMvTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
-    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-mv-dob" value="${aptEsc(_aptMvTenantDob)}" placeholder="TT.MM.JJJJ"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-mv-dob" value="${aptEsc(_aptMvTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-mv-email" type="email" value="${aptEsc(_aptMvTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="apt-mv-tel" type="tel" placeholder="+49 …"/></div>
 
@@ -2105,11 +2117,10 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="aptUbMieterRoomLbl">${aptEsc(apt.name)} Mieter</span>
       <div class="ub-mieter-pill" id="aptUbMieterPill"
-        data-state="${_aptUbHasTenant ? 'room' : 'manual'}"
+        data-state="room"
         data-tenant-name="${aptEsc(_aptUbTenantName)}"
         data-tenant-adr="${aptEsc(_aptUbTenantAdr)}"
-        onclick="_toggleAptUbMieter()"
-        style="${_aptUbHasTenant ? '' : 'opacity:.4;pointer-events:none;'}">
+        onclick="_toggleAptUbMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="aptUbMieterManualLbl">Manuell</span>

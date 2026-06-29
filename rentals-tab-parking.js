@@ -760,20 +760,19 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="pkMvMieterRoomLbl">${pkEsc(spot.name)} Mieter</span>
       <div class="ub-mieter-pill" id="pkMvMieterPill"
-        data-state="${_pkMvHasTenant ? 'room' : 'manual'}"
+        data-state="room"
         data-tenant-name="${pkEsc(_pkMvTenantName)}"
         data-tenant-email="${pkEsc(_pkMvTenantEmail)}"
         data-tenant-adr="${pkEsc(_pkMvTenantAdr)}"
         data-tenant-dob="${pkEsc(_pkMvTenantDob)}"
-        onclick="_togglePkMvMieter()"
-        style="${_pkMvHasTenant ? '' : 'opacity:.4;pointer-events:none;'}">
+        onclick="_togglePkMvMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="pkMvMieterManualLbl">Manuell</span>
     </div>
     <div class="rm-field"><label>Name</label><input class="rm-input" id="pk-mv-name" value="${pkEsc(_pkMvTenantName)}" placeholder="Vor- und Nachname…"/></div>
     <div class="rm-field"><label>Adresse</label><input class="rm-input" id="pk-mv-adr" value="${pkEsc(_pkMvTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
-    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob" value="${pkEsc(_pkMvTenantDob)}" placeholder="TT.MM.JJJJ"/></div>
+    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob" value="${pkEsc(_pkMvTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="pk-mv-email" type="email" value="${pkEsc(_pkMvTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-tel" type="tel" placeholder="+49 …"/></div>
 
@@ -875,11 +874,10 @@ function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="pkUbMieterRoomLbl">${pkEsc(spot.name)} Mieter</span>
       <div class="ub-mieter-pill" id="pkUbMieterPill"
-        data-state="${_pkUbHasTenant ? 'room' : 'manual'}"
+        data-state="room"
         data-tenant-name="${pkEsc(_pkUbTenantName)}"
         data-tenant-adr="${pkEsc(_pkUbTenantAdr)}"
-        onclick="_togglePkUbMieter()"
-        style="${_pkUbHasTenant ? '' : 'opacity:.4;pointer-events:none;'}">
+        onclick="_togglePkUbMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="pkUbMieterManualLbl">Manuell</span>
