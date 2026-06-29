@@ -99,7 +99,7 @@
     function initNav() {
       document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('rentals_role');
-        location.replace('rentals-login.html');
+        location.replace('login.html');
       });
       document.getElementById('rpProfileBtn')?.addEventListener('click', () => {
         document.getElementById('navProfileMenu')?.classList.remove('open');
@@ -142,7 +142,7 @@
 
     // Auth gate — redirect to login if not authenticated
     if (!localStorage.getItem('rentals_role')) {
-      location.replace('rentals-login.html');
+      location.replace('login.html');
     }
 
     initTabs();
