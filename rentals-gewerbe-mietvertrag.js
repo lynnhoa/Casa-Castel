@@ -89,6 +89,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     vermieterSig:     s.vermieter_name    || '',
     // Bank
     kontoinhaber:  s.kontoinhaber || '',
+    bankname:      s.bankname     || '',
     iban:          s.iban         || '',
     bic:           s.bic          || '',
     // Objekt
@@ -193,7 +194,7 @@ function _renderGewerbeMietvertragHTML(d) {
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
   `;
 
-  const hdr = name => `<div class="hdr"><span class="hdr__wordmark">${d.vermieterName || 'Vermieter'}</span><div class="hdr__room"><span class="hdr__room-label">Gewerbefläche</span><span class="hdr__room-name">${name}</span></div></div>`;
+  const hdr = name => `<div class="hdr"><span class="hdr__wordmark"></span><div class="hdr__room"><span class="hdr__room-label">Gewerbefläche</span><span class="hdr__room-name">${name}</span></div></div>`;
   const ftr = n    => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${d.footerAdresse}</span><span>${n}</span></div></div>`;
   const kv  = (k,v)=> `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
   const sec = (t,lg,first) => `<div class="sec${lg?' sec--lg':''}${first?' sec--first':''}">${t}</div>`;
@@ -312,7 +313,7 @@ function _renderGewerbeMietvertragHTML(d) {
     ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats')}
     ${kv('Kaution',eur(d.kautionVal)+'\u2002(f\u00e4llig '+d.kautionFaelText+')')}
     <div class="kv-gap"></div>
-    ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
+    ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.aptName} \u2013 Miete Monat Jahr / Kaution.</p>
   </div>
 </div>`;
