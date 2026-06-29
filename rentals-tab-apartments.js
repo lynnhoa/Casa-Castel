@@ -1751,7 +1751,7 @@ async function _aptOpenContract(type, aptId) {
           const nutzungSelect  = document.getElementById('apt-gw-nutzung-select')?.value;
           const nutzungFrei    = document.getElementById('apt-gw-nutzung-frei')?.value.trim();
           const nutzungszweck  = nutzungSelect === 'Sonstige' ? nutzungFrei : nutzungSelect;
-          const etage          = document.getElementById('apt-gw-etage')?.value.trim();
+          const etage          = apt2.floor || '';
           const moebliert      = document.getElementById('apt-gw-moebliert-btn')?.dataset.mode === 'ja';
           const mieterName     = document.getElementById('apt-gw-name')?.value.trim();
           const mieterAdr      = document.getElementById('apt-gw-adr')?.value.trim();
@@ -2181,10 +2181,6 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
     <div class="rm-field" id="apt-gw-nutzung-frei-wrap" style="display:none;">
       <label>Nutzungszweck (Freitext) <span style="color:#c0392b;font-weight:700;">*</span></label>
       <input class="rm-input" id="apt-gw-nutzung-frei" placeholder="z.B. Kosmetikstudio…"/>
-    </div>
-    <div class="rm-field">
-      <label>Etage / Einheit <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label>
-      <input class="rm-input" id="apt-gw-etage" placeholder="z.B. 2. OG links…"/>
     </div>
     <div class="rm-field--toggle">
       <div class="rm-toggle-row">
