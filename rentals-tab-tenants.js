@@ -691,7 +691,9 @@ function _rntRender() {
   const list = document.getElementById('rntTenantsList');
   if (!list) return;
 
-  const apts    = [...(appApartments || [])].sort((a,b) => (a.sort_order||0) - (b.sort_order||0));
+  const aptsAll = [...(appApartments || [])].sort((a,b) => (a.sort_order||0) - (b.sort_order||0));
+  const apts    = aptsAll.filter(a => a.zimmer_type !== 'Gewerbefläche');
+  const gewerbe = aptsAll.filter(a => a.zimmer_type === 'Gewerbefläche');
   const parking = [...(appParking    || [])].sort((a,b) => (a.sort_order||0) - (b.sort_order||0));
 
   if (!apts.length && !parking.length) {
@@ -721,8 +723,12 @@ function _rntRender() {
     html += `<div class="rnt-group-hdr">Wohnungen</div>`;
     html += apts.map(a => _rntCardHTML({ type: 'apt', unit: a })).join('');
   }
+  if (gewerbe.length) {
+    html += `<div class="rnt-group-hdr" style="margin-top:${apts.length ? '16px' : '0'}">Gewerbeflächen</div>`;
+    html += gewerbe.map(a => _rntCardHTML({ type: 'apt', unit: a })).join('');
+  }
   if (parking.length) {
-    html += `<div class="rnt-group-hdr" style="margin-top:${apts.length ? '16px' : '0'}">Stellplätze</div>`;
+    html += `<div class="rnt-group-hdr" style="margin-top:${(apts.length || gewerbe.length) ? '16px' : '0'}">Stellplätze</div>`;
     html += parking.map(p => _rntCardHTML({ type: 'parking', unit: p })).join('');
   }
   list.innerHTML = html;
