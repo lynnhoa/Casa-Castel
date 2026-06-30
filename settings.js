@@ -31,6 +31,7 @@ let appSettings = {
 
   // Bank
   kontoinhaber:       '',
+  bankname:           '',
   iban:               '',
   bic:                '',
 
@@ -157,6 +158,7 @@ function _applyToCache(row) {
   appSettings.gerichtsstand       = row.gerichtsstand       ?? appSettings.gerichtsstand;
   appSettings.unterschrift_ort    = row.unterschrift_ort    ?? appSettings.unterschrift_ort;
   appSettings.kontoinhaber        = row.kontoinhaber        ?? appSettings.kontoinhaber;
+  appSettings.bankname            = row.bankname            ?? appSettings.bankname;
   appSettings.iban                = row.iban                ?? appSettings.iban;
   appSettings.bic                 = row.bic                 ?? appSettings.bic;
   appSettings.gemeinschaftsraeume = Array.isArray(row.gemeinschaftsraeume) ? row.gemeinschaftsraeume : appSettings.gemeinschaftsraeume;
