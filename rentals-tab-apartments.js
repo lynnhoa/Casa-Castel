@@ -1141,6 +1141,7 @@ async function _aptSaveIdentity(aptId) {
     const { error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId);
     if (error) {
       console.error('[apartments] Save identity failed:', error, data);
+      alert('Save failed: ' + (error.message || JSON.stringify(error)));
       btn.textContent = 'Error'; btn.disabled = false;
       setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
       return;
