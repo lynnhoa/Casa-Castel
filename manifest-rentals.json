@@ -1,7 +1,7 @@
 {
-  "name": "LT Real Estate Management",
-  "short_name": "LT Real Estate",
-  "start_url": "/landlord.html",
+  "name": "LT Rentals",
+  "short_name": "LT Rentals",
+  "start_url": "/rentals-index.html",
   "display": "standalone",
   "background_color": "#f5f2ee",
   "theme_color": "#f5f2ee",
