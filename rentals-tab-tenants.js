@@ -1685,23 +1685,25 @@ function _rntStaffelOpenAdd(aptId, rid) {
   const label = apt ? (apt.name || apt.adresse || 'Wohnung') : 'Wohnung';
   document.getElementById('rntStaffelModalSub').textContent = label;
   document.getElementById('rntStaffelModalBody').innerHTML = `
-    <div style="padding:14px 16px">
-      <div style="margin-bottom:12px">
-        <label style="display:block;font-size:11px;color:var(--cc-stone);margin-bottom:4px">Gültig ab</label>
-        <input type="date" id="sf-add-date" style="width:100%;font-size:13px"/>
-        <p style="font-size:10px;color:var(--cc-stone);margin:3px 0 0">Datum, ab dem die neue Kaltmiete gilt</p>
+    <div class="tn-msec-body" style="padding-top:14px;padding-bottom:4px">
+      <div class="tn-fg" style="margin-bottom:14px">
+        <div class="tn-field tn-field-full">
+          <span class="tn-flbl">Gültig ab</span>
+          <input type="date" id="sf-add-date"/>
+          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Datum, ab dem die neue Kaltmiete gilt</span>
+        </div>
+        <div class="tn-field tn-field-full">
+          <span class="tn-flbl">Neue Kaltmiete (€)</span>
+          <input type="number" id="sf-add-amount" placeholder="z.B. 1250" step="0.01" min="0"/>
+          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Betrag aus dem Staffelmietvertrag entnehmen</span>
+        </div>
       </div>
-      <div style="margin-bottom:16px">
-        <label style="display:block;font-size:11px;color:var(--cc-stone);margin-bottom:4px">Neue Kaltmiete (€)</label>
-        <input type="number" id="sf-add-amount" placeholder="z.B. 1250" step="0.01" min="0" style="width:100%;font-size:13px"/>
-        <p style="font-size:10px;color:var(--cc-stone);margin:3px 0 0">Betrag aus dem Staffelmietvertrag entnehmen</p>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="tn-btn tn-btn-ghost" style="flex:1" onclick="_rntStaffelModalClose()">Abbrechen</button>
-        <button class="tn-btn tn-btn-primary" style="flex:1" onclick="_rntStaffelConfirmAdd('${aptId}','${rid}')">
-          <i class="ti ti-check"></i> Speichern
-        </button>
-      </div>
+    </div>
+    <div class="tn-sheet-footer">
+      <button class="tn-btn tn-btn-ghost" style="flex:1" onclick="_rntStaffelModalClose()">Abbrechen</button>
+      <button class="tn-btn tn-btn-primary" style="flex:1" onclick="_rntStaffelConfirmAdd('${aptId}','${rid}')">
+        <i class="ti ti-check"></i> Speichern
+      </button>
     </div>`;
   document.getElementById('rntStaffelModal').classList.add('open');
   setTimeout(() => document.getElementById('sf-add-date')?.focus(), 80);
@@ -1734,6 +1736,15 @@ async function _rntStaffelMarkAdjusted(id, aptId, rid) {
   _rntRender();
 }
 
+async function _rntStaffelDelete(id, aptId, rid) {
+  if (!sbL) return;
+  const { error } = await sbL.from('rnt_staffelmiete_history').delete().eq('id', id);
+  if (error) { console.warn('[rnt-tenants] staffel delete:', error.message); return; }
+  if (_rntStaffel[aptId]) _rntStaffel[aptId] = _rntStaffel[aptId].filter(e => e.id !== id);
+  _rntStaffelOpenVerlauf(aptId, rid);
+  _rntRender();
+}
+
 function _rntStaffelOpenVerlauf(aptId, rid) {
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
   const label = apt ? (apt.name || apt.adresse || 'Wohnung') : 'Wohnung';
@@ -1744,17 +1755,22 @@ function _rntStaffelOpenVerlauf(aptId, rid) {
   const rows = entries.map(e => {
     const isFuture = new Date(e.effective_date) > today;
     const adjTag = e.tenant_adjusted
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-check"></i> Angepasst</span>`
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
       : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','m')">
-           <i class="ti ti-check"></i> Angepasst?</button>`;
-    const amtColor = e.tenant_adjusted ? 'color:var(--cc-stone);font-weight:400'
-                   : isFuture ? 'color:var(--cc-blue,#185FA5)' : '';
+           <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
+    const amtCls = e.tenant_adjusted ? 'tn-nkv-amount past' : 'tn-nkv-amount';
     return `
-      <div style="display:flex;align-items:center;gap:8px;padding:7px 16px;border-bottom:0.5px solid var(--cc-rule)">
-        <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-blue,#185FA5)' : 'var(--cc-green,#27500A)'};flex-shrink:0"></i>
-        <span class="tn-nk-info">${isFuture ? 'ab' : 'seit'} ${fmtD(e.effective_date)}</span>
-        <span class="tn-nkv-amount" style="${amtColor}">${_rntFmtEUR(e.amount)}</span>
-        ${adjTag}
+      <div class="tn-nkv-row" style="padding:7px 16px">
+        <div class="tn-nkv-top">
+          <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-gold)' : 'var(--cc-green,#3B6D11)'};flex-shrink:0" aria-hidden="true"></i>
+          <span class="tn-nkv-date">${isFuture ? 'ab' : 'seit'} ${fmtD(e.effective_date)}</span>
+          <span class="${amtCls}">${_rntFmtEUR(e.amount)}</span>
+          <button class="tn-icon-btn" style="margin-left:4px;color:var(--cc-stone)" aria-label="Löschen"
+            onclick="_rntStaffelDelete('${e.id}','${aptId}','${rid}')">
+            <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="tn-nkv-pills">${adjTag}</div>
       </div>`;
   }).join('');
 
