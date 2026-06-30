@@ -704,7 +704,9 @@ function _aptCardHTML(a) {
   const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
   const kzNk   = Number(p.kurzzeit_nk) || 0;
   const kzWarm = kzKalt + kzNk;
-  const kzKaution = p.kaution_override && p.kaution_default ? Number(p.kaution_default) : kzKalt;
+  const kzKaution = (p.kaution_default !== null && p.kaution_default !== undefined && p.kaution_default !== '')
+    ? Number(p.kaution_default)
+    : kzKalt;
 
   // Zähler grouped by type category
   const meterGroups = _groupZaehler(zaehler);
@@ -3436,7 +3438,7 @@ function _buildRentalMietvertragData(room, s, {
   // Pauschal: kaution base = full monthly charge (kaltmiete + NK)
   // Kalt+NK:  kaution base = kaltmiete only (§ 551 BGB)
   const kautionBase = pricingMode === 'pauschal' ? kaltmiete + nkVorauszahlung : kaltmiete;
-  const kaution = room.kaution_override && room.kaution_default
+  const kaution = (room.kaution_default !== null && room.kaution_default !== undefined && room.kaution_default !== '')
     ? Number(room.kaution_default)
     : kautionBase * 3;
 
@@ -3520,7 +3522,7 @@ function _contractBodyRentalMietvertrag(room) {
 
   const kaltBase = Number(room.kaltmiete || room.mietvertrag_miete || room.monatl_miete) || 0;
   const nkBase   = room.mietvertrag_pricing !== 'kalt_nk' ? (Number(room.nk_pauschale) || 0) : 0;
-  const kaution  = room.kaution_override && room.kaution_default
+  const kaution  = (room.kaution_default !== null && room.kaution_default !== undefined && room.kaution_default !== '')
     ? Number(room.kaution_default)
     : (kaltBase + nkBase) * 3;
 
