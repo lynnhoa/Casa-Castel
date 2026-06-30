@@ -88,6 +88,9 @@ document.getElementById('tab-apartments').innerHTML = `
         <button class="rm-sheet__close" onclick="_aptHGModalClose()"><i class="ti ti-x"></i></button>
       </div>
       <div class="rm-sheet__body" id="aptHGModalBody"></div>
+      <div class="rm-sheet__footer">
+        <button class="rm-btn--ghost" onclick="_aptHGModalClose()">Close</button>
+      </div>
     </div>
   </div>
 
@@ -470,12 +473,6 @@ document.getElementById('tab-apartments').innerHTML = `
   }
 }
 
-/* iOS PWA safe areas — handle notch/home-indicator */
-@supports (padding: env(safe-area-inset-bottom)) {
-  .rm-sheet__footer {
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
-  }
-}
 
 /* ── HAUSGELD HISTORY ── */
 .apt-hg-sec { border-bottom:var(--cc-border); }
