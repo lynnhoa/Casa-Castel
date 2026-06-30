@@ -1751,7 +1751,6 @@ async function _rntStaffelDelete(id, aptId, rid) {
   const { error } = await sbL.from('rnt_staffelmiete_history').delete().eq('id', id);
   if (error) { console.warn('[rnt-tenants] staffel delete:', error.message); return; }
   if (_rntStaffel[aptId]) _rntStaffel[aptId] = _rntStaffel[aptId].filter(e => e.id !== id);
-  _rntStaffelOpenVerlauf(aptId, rid);
   _rntRender();
 }
 
