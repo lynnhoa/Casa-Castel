@@ -2324,9 +2324,10 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
           <span style="font-size:11px;color:var(--cc-taupe);" id="apt-gw-staffel-anfang-ab">ab Mietbeginn</span>
         </div>
         <div id="apt-gw-staffel-rows"></div>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-          <button type="button" onclick="_aptGwAddStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal);">+ Staffel</button>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <button type="button" id="apt-gw-staffel-add-btn" onclick="_aptGwAddStaffel()" disabled style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">+ Staffel</button>
           <button type="button" onclick="_aptGwRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-stone);">− Staffel</button>
+          <span id="apt-gw-staffel-add-hint" style="font-size:10.5px;color:var(--cc-stone);font-style:italic;">Bitte zuerst Mietbeginn &amp; Festlaufzeit ausfüllen</span>
         </div>
       </div>
     </div>
@@ -2440,6 +2441,17 @@ function _aptGwCalcDates() {
     if (endDisp && endVal) { endDisp.style.display = ''; endVal.textContent = fmtDt(d); }
   }
 
+  // Gate "+ Staffel" button until Mietbeginn & Festlaufzeit are known
+  const addBtn  = document.getElementById('apt-gw-staffel-add-btn');
+  const addHint = document.getElementById('apt-gw-staffel-add-hint');
+  if (addBtn) {
+    addBtn.disabled = !mietende;
+    addBtn.style.cursor   = mietende ? 'pointer' : 'not-allowed';
+    addBtn.style.color    = mietende ? 'var(--cc-charcoal)' : 'var(--cc-stone)';
+    addBtn.style.opacity  = mietende ? '1' : '.5';
+  }
+  if (addHint) addHint.style.display = mietende ? 'none' : '';
+
   // Staffel dates — start from mietende + 1 day
   if (mietende) {
     const rows = document.querySelectorAll('.apt-gw-staffel-row');
@@ -2487,6 +2499,9 @@ function _aptGwCalcDates() {
 
 /* ── GEWERBE: Staffel add / remove ───────────────────── */
 function _aptGwAddStaffel() {
+  const startVal = document.getElementById('apt-gw-start')?.value;
+  const festNum  = parseInt(document.getElementById('apt-gw-fest-num')?.value) || 0;
+  if (!startVal || !festNum) return; // need Mietbeginn & Festlaufzeit to compute Staffel dates
   const container = document.getElementById('apt-gw-staffel-rows');
   if (!container) return;
   const count = container.querySelectorAll('.apt-gw-staffel-row').length;
