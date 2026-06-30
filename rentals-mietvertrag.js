@@ -76,6 +76,7 @@ function _buildRentalMietvertragData(room, s, {
     objektPLZOrt:     s.objekt_plz_ort    || '',
     footerAdresse:    s.objekt_adresse ? s.objekt_adresse + ' \u00b7 ' + (s.objekt_plz_ort || '') : '',
     kontoinhaber:     s.kontoinhaber      || '',
+    bankname:         s.bankname          || '',
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    s.gerichtsstand     || 'Wiesbaden',
@@ -404,7 +405,7 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
     ${kv('Kaution',eur(d.kaution)+'\u2002(fällig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)'))}
     <div class="kv-gap"></div>
-    ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
+    ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
   </div>
 </div>`;
