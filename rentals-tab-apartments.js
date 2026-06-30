@@ -1285,7 +1285,7 @@ async function _aptSaveIdentity(aptId) {
     const { error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId);
     if (error) {
       console.error('[apartments] Save identity failed:', error, data);
-      alert('Save failed: ' + (error.message || JSON.stringify(error)));
+      _aptToast('Save failed: ' + (error.message || error.code || 'Unknown error'), true);
       btn.textContent = 'Error'; btn.disabled = false;
       setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
       return;
@@ -1296,6 +1296,7 @@ async function _aptSaveIdentity(aptId) {
   const apt = appApartments.find(a => a.id === aptId);
   if (apt) Object.assign(apt, data);
 
+  _aptToast('Saved');
   _aptRerenderCard(aptId);
 }
 
@@ -1340,6 +1341,7 @@ async function _aptSaveMiete(aptId) {
   if (apt.pricing) Object.assign(apt.pricing, data);
   else apt.pricing = data;
 
+  _aptToast('Saved');
   _aptRerenderCard(aptId);
 }
 
@@ -1381,6 +1383,7 @@ async function _aptSaveVerwaltung(aptId) {
   if (apt.verwaltung) Object.assign(apt.verwaltung, data);
   else apt.verwaltung = { apartment_id: aptId, ...data };
 
+  _aptToast('Saved');
   _aptRerenderCard(aptId);
 }
 
@@ -1433,6 +1436,7 @@ async function _aptSaveZaehler(aptId) {
   }
 
   apt.zaehler = newMeters.map((m, i) => ({ ...m, id: `local-${i}` }));
+  _aptToast('Saved');
   _aptRerenderCard(aptId);
 }
 
@@ -1498,7 +1502,21 @@ async function _aptSaveSchlussel(aptId) {
   if (apt.schlussel) Object.assign(apt.schlussel, data);
   else apt.schlussel = { apartment_id: aptId, ...data };
 
+  _aptToast('Saved');
   _aptRerenderCard(aptId);
+}
+
+
+/* ── TOAST ───────────────────────────────────────────────── */
+function _aptToast(msg, isError) {
+  const ex = document.getElementById('apt-toast');
+  if (ex) ex.remove();
+  const t = document.createElement('div');
+  t.id = 'apt-toast';
+  t.textContent = msg;
+  t.style.cssText = `position:fixed;bottom:max(28px,env(safe-area-inset-bottom,28px));left:50%;transform:translateX(-50%);background:${isError ? '#A32D2D' : 'var(--cc-ink)'};color:var(--cc-white);font-family:inherit;font-size:12px;font-weight:500;letter-spacing:.02em;padding:8px 18px;border-radius:var(--cc-r-pill);z-index:600;white-space:nowrap;pointer-events:none;transition:opacity .3s`;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2200);
 }
 
 
