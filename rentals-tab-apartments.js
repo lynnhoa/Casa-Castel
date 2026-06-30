@@ -696,7 +696,7 @@ function _aptCardHTML(a) {
     : `<span class="apt-hdr__rent--vacant">No pricing set</span>`;
 
   // Kaution
-  const kautionAmt = p.kaution_override && p.kaution_default
+  const kautionAmt = (p.kaution_default !== null && p.kaution_default !== undefined && p.kaution_default !== '')
     ? Number(p.kaution_default)
     : kalt * 3;
 
@@ -1767,7 +1767,9 @@ async function _aptOpenContract(type, aptId) {
     titleLbl.textContent = apt.name;
     const kalt   = Number(p.kaltmiete) || 0;
     const nk     = Number(p.nk_pauschale) || 0;
-    const kaution = p.kaution_override && p.kaution_default ? Number(p.kaution_default) : kalt * 3;
+    const kaution = (p.kaution_default !== null && p.kaution_default !== undefined && p.kaution_default !== '')
+      ? Number(p.kaution_default)
+      : kalt * 3;
     const _mvProfile = await _aptResolveTenantProfile(apt.id);
 
     if (isGewerbe) {
