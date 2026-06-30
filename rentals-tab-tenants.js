@@ -1708,9 +1708,11 @@ function _rntStaffelOpenAdd(aptId, rid) {
       </div>
     </div>
     <div class="tn-sheet-footer">
-      <button class="tn-btn tn-btn-ghost" style="flex:1" onclick="_rntStaffelModalClose()">Abbrechen</button>
-      <button class="tn-btn tn-btn-primary" style="flex:1" onclick="_rntStaffelConfirmAdd('${aptId}','${rid}')">
-        <i class="ti ti-check"></i> Speichern
+      <button class="tn-btn tn-btn-ghost" style="flex:1;height:44px;font-size:13px"
+        onclick="_rntStaffelModalClose()">Cancel</button>
+      <button class="tn-btn tn-btn-primary" style="flex:1;height:44px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:var(--cc-r)"
+        onclick="_rntStaffelConfirmAdd('${aptId}','${rid}')">
+        <i class="ti ti-check" style="font-size:14px" aria-hidden="true"></i> Save
       </button>
     </div>`;
   document.getElementById('rntStaffelModal').classList.add('open');
