@@ -3253,7 +3253,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${kv('Geburtsdatum',d.mieterGeburtsdatum)}
     ${d.mieterEmail?kv('E-Mail',d.mieterEmail):''}
     ${sec('Mietobjekt',false,false)}
-    ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.wohnungName)}
+    ${kv('Adresse',d.objektAdresse + (d.objektPLZOrt ? ', ' + d.objektPLZOrt : ''))}${kv('Bezeichnung',d.wohnungName)}
     ${kv('Wohnungsgröße','ca.\u00a0'+d.wohnungFlaeche+'\u00a0m\u00b2')}
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit &amp; Mietzins',false,false)}
@@ -3724,7 +3724,7 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('Geburtsdatum',d.mieterGeburtsdatum)}
     ${d.mieterEmail?kv('E-Mail',d.mieterEmail):''}
     ${sec('Mietobjekt',false,false)}
-    ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
+    ${kv('Adresse',d.objektAdresse + (d.objektPLZOrt ? ', ' + d.objektPLZOrt : ''))}${kv('Bezeichnung',d.zimmerName)}
     ${kv('Wohnungsgröße','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
     ${kv('Mitgenutzte Räume',d.gemeinschaftsraeume||'—')}
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
