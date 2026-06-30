@@ -22,6 +22,7 @@ function _buildGewerbeMietvertragData(apt, s, {
   moebliert = false,
   mieterName = '', mieterAdr = '', mieterDob = '', mieterEmail = '', mieterTel = '',
   mieterName2 = '', mieterAdr2 = '', mieterDob2 = '', mieterEmail2 = '', mieterTel2 = '',
+  mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal = '', festNum = 0, festUnit = 'Jahre',
   kaltmiete = 0, nkVZ = 0,
   kautionVal = 0, kautionFael = '5', sigVal = '',
@@ -113,6 +114,10 @@ function _buildGewerbeMietvertragData(apt, s, {
     hasMieter2: !!(mieterName2 && mieterName2.trim()),
     mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2,
     mieterEmail2, mieterTel2,
+    // Mieter 3 (optional)
+    hasMieter3: !!(mieterName3 && mieterName3.trim()),
+    mieterName3, mieterAdresse3: mieterAdr3, mieterGeburtsdatum3: mieterDob3,
+    mieterEmail3, mieterTel3,
     // Mietzeit
     szenario,
     mietbeginn:   startVal ? fmtDt(new Date(startVal)) : '',
@@ -214,10 +219,14 @@ function _renderGewerbeMietvertragHTML(d) {
     <div class="sig-col">
       ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
       <div class="sig-write-gap"></div><hr class="sig-line"/>
-      <div class="sig-role">Mieter${d.hasMieter2?' 1':''}</div><div class="sig-name">${d.mieterName}</div>
+      <div class="sig-role">Mieter${(d.hasMieter2||d.hasMieter3)?' 1':''}</div><div class="sig-name">${d.mieterName}</div>
       ${d.hasMieter2 ? `
       <div class="sig-write-gap"></div><hr class="sig-line"/>
       <div class="sig-role">Mieter 2</div><div class="sig-name">${d.mieterName2}</div>
+      ` : ''}
+      ${d.hasMieter3 ? `
+      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <div class="sig-role">Mieter 3</div><div class="sig-name">${d.mieterName3}</div>
       ` : ''}
     </div>
   </div>`;
@@ -293,6 +302,22 @@ function _renderGewerbeMietvertragHTML(d) {
     ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend einer laufenden Staffel ist eine Mietererh\u00f6hung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`
   ) : '';
 
+  // Whenever more than one Mieter is present, the tenant section grows enough
+  // that Miete & Bankverbindung risks being clipped on a fixed-height page —
+  // so it gets pushed onto its own page instead of being squeezed in.
+  const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
+
+  const mieteBankBlock = `
+    ${sec('Miete &amp; Bankverbindung',true,hasMultiMieter)}
+    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a03':''))}
+    ${d.nkVZ?kv('Betriebskosten VZ',eur(d.nkVZ)+'\u2002/ Monat (Vorauszahlung)'):''}
+    <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
+    ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats')}
+    ${kv('Kaution',eur(d.kautionVal)+'\u2002(f\u00e4llig '+d.kautionFaelText+')')}
+    <div class="kv-gap"></div>
+    ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
+    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.aptName} \u2013 Miete Monat Jahr / Kaution.</p>`;
+
   // PAGE 1
   const page1 = `<div class="pdf-page page">
   ${hdr(d.aptName)}${ftr(1)}
@@ -302,7 +327,7 @@ function _renderGewerbeMietvertragHTML(d) {
     ${sec('Vermieter',false,true)}
     ${kv('Name',d.vermieterName)}${kv('Adresse',d.vermieterAdresse)}
     ${d.vermieterEmail?kv('E-Mail',d.vermieterEmail):''}
-    ${sec('Mieter'+(d.hasMieter2?' 1':''),false,false)}
+    ${sec('Mieter'+((d.hasMieter2||d.hasMieter3)?' 1':''),false,false)}
     ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
     ${d.mieterGeburtsdatum?kv('Geburtsdatum',d.mieterGeburtsdatum):''}
     ${d.mieterEmail?kv('E-Mail',d.mieterEmail):''}
@@ -313,6 +338,13 @@ function _renderGewerbeMietvertragHTML(d) {
     ${d.mieterGeburtsdatum2?kv('Geburtsdatum',d.mieterGeburtsdatum2):''}
     ${d.mieterEmail2?kv('E-Mail',d.mieterEmail2):''}
     ${d.mieterTel2?kv('Telefon',d.mieterTel2):''}
+    ` : ''}
+    ${d.hasMieter3 ? `
+    ${sec('Mieter 3',false,false)}
+    ${kv('Name',d.mieterName3)}${kv('Adresse',d.mieterAdresse3)}
+    ${d.mieterGeburtsdatum3?kv('Geburtsdatum',d.mieterGeburtsdatum3):''}
+    ${d.mieterEmail3?kv('E-Mail',d.mieterEmail3):''}
+    ${d.mieterTel3?kv('Telefon',d.mieterTel3):''}
     ` : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}
@@ -334,21 +366,23 @@ function _renderGewerbeMietvertragHTML(d) {
           + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
         : kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
     }
-    ${sec('Miete &amp; Bankverbindung',true,false)}
-    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a03':''))}
-    ${d.nkVZ?kv('Betriebskosten VZ',eur(d.nkVZ)+'\u2002/ Monat (Vorauszahlung)'):''}
-    <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
-    ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats')}
-    ${kv('Kaution',eur(d.kautionVal)+'\u2002(f\u00e4llig '+d.kautionFaelText+')')}
-    <div class="kv-gap"></div>
-    ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
-    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.aptName} \u2013 Miete Monat Jahr / Kaution.</p>
+    ${hasMultiMieter ? '' : mieteBankBlock}
   </div>
 </div>`;
 
+  // PAGE 1B — only inserted when 2 or 3 Mieter pushed Miete & Bankverbindung off page 1
+  const page1b = hasMultiMieter ? `<div class="pdf-page page">
+  ${hdr(d.aptName)}${ftr(2)}
+  <div class="content">
+    ${mieteBankBlock}
+  </div>
+</div>` : '';
+
+  const pageOffset = hasMultiMieter ? 1 : 0;
+
   // PAGE 2
   const page2 = `<div class="pdf-page page">
-  ${hdr(d.aptName)}${ftr(2)}
+  ${hdr(d.aptName)}${ftr(2+pageOffset)}
   <div class="content">
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
     <p class="nk-intro">Neben der Nettokaltmiete tr\u00e4gt der Mieter anteilig folgende Betriebskosten gem\u00e4\u00df \u00a7\u00a7\u00a01,\u00a02 BetrKV. Umlageschl\u00fcssel: Nutzfl\u00e4che der Mietfl\u00e4che im Verh\u00e4ltnis zur Gesamtnutzfl\u00e4che des Geb\u00e4udes. Verwaltungskosten sind im Gewerbemietverh\u00e4ltnis umlagef\u00e4hig. Abrechnung erfolgt j\u00e4hrlich; der Mieter erh\u00e4lt die Abrechnung sp\u00e4testens 12\u00a0Monate nach Ende des Abrechnungszeitraums.</p>
@@ -366,7 +400,7 @@ function _renderGewerbeMietvertragHTML(d) {
 
   // PAGE 3
   const page3 = `<div class="pdf-page page">
-  ${hdr(d.aptName)}${ftr(3)}
+  ${hdr(d.aptName)}${ftr(3+pageOffset)}
   <div class="content">
     ${cl(String(pNum(5)),'Sch\u00f6nheitsreparaturen und R\u00fcckgabe',
       'Der Mieter ist verpflichtet, die Mietsache bei Beendigung des Mietverh\u00e4ltnisses im selben Zustand zur\u00fcckzugeben, in dem sie ihm \u00fcbergeben wurde, unter Ber\u00fccksichtigung der durch vertragsgem\u00e4\u00dfen Gebrauch entstandenen Abnutzung. Insbesondere sind s\u00e4mtliche vom Mieter angebrachten Einrichtungen, Einbauten, Beschriftungen, Anstriche und sonstige Ver\u00e4nderungen auf eigene Kosten zu entfernen und der urspr\u00fcngliche Zustand wiederherzustellen, sofern keine andere schriftliche Vereinbarung mit dem Vermieter getroffen wurde. Sch\u00f6nheitsreparaturen w\u00e4hrend der Mietzeit obliegen dem Mieter, soweit sie durch dessen Nutzung erforderlich werden.',true)}
@@ -383,7 +417,7 @@ function _renderGewerbeMietvertragHTML(d) {
 
   // PAGE 4
   const page4 = `<div class="pdf-page page">
-  ${hdr(d.aptName)}${ftr(4)}
+  ${hdr(d.aptName)}${ftr(4+pageOffset)}
   <div class="content">
     ${cl(String(pNum(10)),'R\u00fcckgabe bei Vertragsende',
       'Die Mietfl\u00e4che ist bei Vertragsende vollst\u00e4ndig ger\u00e4umt, gereinigt und in vertragsm\u00e4\u00dfigem Zustand zur\u00fcckzugeben. S\u00e4mtliche Schl\u00fcssel sind zur\u00fcckzugeben. Vom Mieter vorgenommene bauliche Ver\u00e4nderungen und Einbauten sind auf Verlangen des Vermieters fachgerecht zur\u00fcckzubauen, sofern nichts anderes schriftlich vereinbart wurde. Ein \u00dcbergabeprotokoll wird erstellt und von beiden Parteien unterzeichnet.',true)}
@@ -410,5 +444,5 @@ function _renderGewerbeMietvertragHTML(d) {
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Gewerbemietvertrag \u2014 ${d.aptName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page2}${page3}${page4}</body></html>`;
+<body>${page1}${page1b}${page2}${page3}${page4}</body></html>`;
 }
