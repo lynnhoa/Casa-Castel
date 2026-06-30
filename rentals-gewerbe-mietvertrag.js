@@ -271,8 +271,11 @@ function _renderGewerbeMietvertragHTML(d) {
 
   // § 3 Staffelmiete (only S1 with staffel)
   const staffelClause = hasStaffel ? cl(3, 'Staffelmiete',
-    `Die monatliche Nettokaltmiete ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Anfangsmiete ab ${d.mietbeginn}: ${eur(d.anfangsmiete)}.` +
-    d.staffeln.map(st => ` Ab ${st.datum}: ${eur(st.betrag)}.`).join('') +
+    (d.szenario === 'S3'
+      ? `Die monatliche Nettokaltmiete w\u00e4hrend der Verl\u00e4ngerungsperiode ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Erste Staffel ab ${d.staffeln[0]?.datum || d.mietende}: ${eur(d.staffeln[0]?.betrag || 0)}.`
+      : `Die monatliche Nettokaltmiete ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Anfangsmiete ab ${d.mietbeginn}: ${eur(d.anfangsmiete)}.`
+    ) +
+    (d.szenario === 'S3' ? d.staffeln.slice(1) : d.staffeln).map(st => ` Ab ${st.datum}: ${eur(st.betrag)}.`).join('') +
     ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend einer laufenden Staffel ist eine Mietererh\u00f6hung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`
   ) : '';
 
@@ -311,7 +314,7 @@ function _renderGewerbeMietvertragHTML(d) {
         : kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
     }
     ${sec('Miete &amp; Bankverbindung',true,false)}
-    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':''))}
+    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a03':''))}
     ${d.nkVZ?kv('Betriebskosten VZ',eur(d.nkVZ)+'\u2002/ Monat (Vorauszahlung)'):''}
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats')}
