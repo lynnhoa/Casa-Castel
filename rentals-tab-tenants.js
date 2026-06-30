@@ -489,6 +489,16 @@ function _rntToggleKautionOverride(el, inputId, hintId) {
 /* ══════════════════════════════════════════════════════════════
    5. FORMAT HELPERS
 ══════════════════════════════════════════════════════════════ */
+function _rntFullTenantNames(rec) {
+  if (!rec) return '';
+  const names = [
+    [rec.first_name, rec.last_name].filter(Boolean).join(' '),
+    [rec.first_name_2, rec.last_name_2].filter(Boolean).join(' '),
+    [rec.first_name_3, rec.last_name_3].filter(Boolean).join(' '),
+  ].filter(Boolean);
+  return names.join(', ');
+}
+
 function _rntFmtEUR(n) {
   const v = Number(n) || 0;
   return v.toLocaleString('de-DE', { minimumFractionDigits:0, maximumFractionDigits:2 }) + '\u00a0\u20ac';
@@ -763,7 +773,7 @@ function _rntCardHTML({ type, unit }) {
   const formerNudges = formerRecs
     .filter(r => { const k = _rntKaution[r.id]; return k && k.received > 0 && !k.settled; })
     .map(r => {
-      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
+      const name = _rntFullTenantNames(r) || '\u2014';
       const kk   = _rntKaution[r.id];
       const kept = _rntKautionKept(r.id);
       const allReturned = kk && kk.returned >= kk.received;
@@ -804,9 +814,7 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
   const isApt  = type === 'apt';
   const vacant = !!unit.vacant;
 
-  const fullName = activeRec
-    ? [activeRec.first_name, activeRec.last_name].filter(Boolean).join(' ')
-    : null;
+  const fullName = activeRec ? _rntFullTenantNames(activeRec) : null;
 
   // Pricing for header summary
   let warm = null, kalt = null, nk = null, miete = null;
@@ -1022,6 +1030,11 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const fullName = rec ? [rec.first_name, rec.last_name].filter(Boolean).join(' ') : '';
   const tid      = rec ? rec.id : '';
 
+  const has2 = !!(rec && (rec.first_name_2 || rec.last_name_2));
+  const has3 = !!(rec && (rec.first_name_3 || rec.last_name_3));
+  const fullName2 = rec ? [rec.first_name_2, rec.last_name_2].filter(Boolean).join(' ') : '';
+  const fullName3 = rec ? [rec.first_name_3, rec.last_name_3].filter(Boolean).join(' ') : '';
+
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
     <div class="tn-field"><span class="tn-flbl">Name</span>
@@ -1032,6 +1045,28 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <span class="tn-fval">${email || '<span class="muted">Not set</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
+    ${has2 ? `
+    <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Mieter 2</span></div>
+    <div class="tn-field"><span class="tn-flbl">Name</span>
+      <span class="tn-fval">${_rntEsc(fullName2) || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Birthday</span>
+      <span class="tn-fval">${_rntEsc(rec.birthday_2||'') || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Email</span>
+      <span class="tn-fval">${_rntEsc(rec.email_2||'') || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Phone</span>
+      <span class="tn-fval">${_rntEsc(rec.phone_2||'') || '<span class="muted">Not set</span>'}</span></div>
+    ` : ''}
+    ${has3 ? `
+    <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Mieter 3</span></div>
+    <div class="tn-field"><span class="tn-flbl">Name</span>
+      <span class="tn-fval">${_rntEsc(fullName3) || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Birthday</span>
+      <span class="tn-fval">${_rntEsc(rec.birthday_3||'') || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Email</span>
+      <span class="tn-fval">${_rntEsc(rec.email_3||'') || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Phone</span>
+      <span class="tn-fval">${_rntEsc(rec.phone_3||'') || '<span class="muted">Not set</span>'}</span></div>
+    ` : ''}
     <div class="tn-field"><span class="tn-flbl">Move in</span>
       <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Move out</span>
@@ -1039,6 +1074,44 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <span class="tn-fval">${_rntEsc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
   </div>`;
+
+  const tenant2Block = `
+  <div id="p2wrap-${rid}" style="display:${has2 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
+    <div class="tn-field tn-field-full" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="tn-flbl">Mieter 2</span>
+      <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',2)">Entfernen</button>
+    </div>
+    <div class="tn-field"><span class="tn-flbl">Name</span>
+      <input data-f="name_2" type="text" value="${_rntEsc(fullName2)}" placeholder="Full name"/></div>
+    <div class="tn-field"><span class="tn-flbl">Birthday</span>
+      <input data-f="birthday_2" type="text" value="${_rntEsc(rec ? rec.birthday_2||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+    <div class="tn-field"><span class="tn-flbl">Email</span>
+      <input data-f="email_2" type="email" value="${_rntEsc(rec ? rec.email_2||'' : '')}" placeholder="mieter@mail.de"/></div>
+    <div class="tn-field"><span class="tn-flbl">Phone</span>
+      <input data-f="phone_2" type="tel" value="${_rntEsc(rec ? rec.phone_2||'' : '')}" placeholder="+49 ..."/></div>
+  </div>`;
+
+  const tenant3Block = `
+  <div id="p3wrap-${rid}" style="display:${has3 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
+    <div class="tn-field tn-field-full" style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="tn-flbl">Mieter 3</span>
+      <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',3)">Entfernen</button>
+    </div>
+    <div class="tn-field"><span class="tn-flbl">Name</span>
+      <input data-f="name_3" type="text" value="${_rntEsc(fullName3)}" placeholder="Full name"/></div>
+    <div class="tn-field"><span class="tn-flbl">Birthday</span>
+      <input data-f="birthday_3" type="text" value="${_rntEsc(rec ? rec.birthday_3||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+    <div class="tn-field"><span class="tn-flbl">Email</span>
+      <input data-f="email_3" type="email" value="${_rntEsc(rec ? rec.email_3||'' : '')}" placeholder="mieter@mail.de"/></div>
+    <div class="tn-field"><span class="tn-flbl">Phone</span>
+      <input data-f="phone_3" type="tel" value="${_rntEsc(rec ? rec.phone_3||'' : '')}" placeholder="+49 ..."/></div>
+  </div>`;
+
+  const addTenantBtn = `
+  <button type="button" id="paddco-${rid}" class="tn-btn tn-btn-sm" onclick="_rntAddCoTenant('${rid}')"
+    style="margin-top:8px;display:${has3 ? 'none' : ''}">
+    <i class="ti ti-plus"></i> Mieter hinzuf\u00fcgen
+  </button>`;
 
   const editView = `
   <div class="tn-fg" id="pedit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
@@ -1050,7 +1123,10 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <input data-f="email" type="email" value="${email}" placeholder="mieter@mail.de"/></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <input data-f="phone" type="tel" value="${_rntEsc(rec ? rec.phone||'' : '')}" placeholder="+49 ..."/></div>
-    <div class="tn-field"><span class="tn-flbl">Move in</span>
+    ${tenant2Block}
+    ${tenant3Block}
+    ${addTenantBtn}
+    <div class="tn-field" style="margin-top:8px;"><span class="tn-flbl">Move in</span>
       <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="DD.MM.YYYY"/></div>
     <div class="tn-field"><span class="tn-flbl">Move out</span>
       <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 becomes Former when reached"/></div>
@@ -1806,6 +1882,31 @@ function _rntToggleProfile(rid, tid) {
   if (fedit) fedit.style.display = editing ? 'none' : '';
 }
 
+/* ── CO-TENANT (Mieter 2/3) ADD/REMOVE ── */
+function _rntAddCoTenant(rid) {
+  const w2 = document.getElementById('p2wrap-' + rid);
+  const w3 = document.getElementById('p3wrap-' + rid);
+  const addBtn = document.getElementById('paddco-' + rid);
+  if (!w2) return;
+  if (w2.style.display === 'none') {
+    w2.style.display = '';
+    document.querySelector(`#p2wrap-${rid} [data-f="name_2"]`)?.focus();
+  } else if (w3 && w3.style.display === 'none') {
+    w3.style.display = '';
+    document.querySelector(`#p3wrap-${rid} [data-f="name_3"]`)?.focus();
+  }
+  if (w3 && w3.style.display !== 'none' && addBtn) addBtn.style.display = 'none';
+}
+
+function _rntRemoveCoTenant(rid, n) {
+  const w = document.getElementById(`p${n}wrap-` + rid);
+  if (!w) return;
+  w.style.display = 'none';
+  w.querySelectorAll('input').forEach(inp => inp.value = '');
+  const addBtn = document.getElementById('paddco-' + rid);
+  if (addBtn) addBtn.style.display = '';
+}
+
 function _rntToggleOlder(rid) {
   _rntShowOlder[rid] = !_rntShowOlder[rid];
   _rntRender();
@@ -1821,12 +1922,27 @@ function _rntCollectProfile(container, selector) {
   const parts     = nameVal.split(/\s+/);
   const firstName = parts.slice(0,-1).join(' ') || parts[0] || '';
   const lastName  = parts.length > 1 ? parts[parts.length-1] : '';
+
+  const splitName = raw => {
+    const p = raw.split(/\s+/).filter(Boolean);
+    if (!p.length) return { first: '', last: '' };
+    return { first: p.slice(0,-1).join(' ') || p[0] || '', last: p.length > 1 ? p[p.length-1] : '' };
+  };
+  const name2Raw = get('name_2');
+  const name3Raw = get('name_3');
+  const n2 = splitName(name2Raw);
+  const n3 = splitName(name3Raw);
+
   return {
     first_name: firstName, last_name: lastName,
     email: get('email'), phone: get('phone'),
     birthday: get('birthday'), address: get('address'),
     mietbeginn: _rntParseDate(get('mietbeginn')),
     mietende:   _rntParseDate(get('mietende')),
+    first_name_2: n2.first, last_name_2: n2.last,
+    email_2: get('email_2'), phone_2: get('phone_2'), birthday_2: get('birthday_2'),
+    first_name_3: n3.first, last_name_3: n3.last,
+    email_3: get('email_3'), phone_3: get('phone_3'), birthday_3: get('birthday_3'),
     kaltmiete:   parseFloat(container.querySelector(`[${selector}="kaltmiete"]`)?.value)   || null,
     nebenkosten: parseFloat(container.querySelector(`[${selector}="nebenkosten"]`)?.value) || null,
     kaution_soll: (() => {
@@ -1866,6 +1982,10 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende,
+    first_name_2: p.first_name_2 || null, last_name_2: p.last_name_2 || null,
+    email_2: p.email_2 || null, phone_2: p.phone_2 || null, birthday_2: p.birthday_2 || null,
+    first_name_3: p.first_name_3 || null, last_name_3: p.last_name_3 || null,
+    email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null,
     kaltmiete:   p.kaltmiete   ?? (mietende ? liveKalt : null) ?? null,
     nebenkosten: isApt ? (p.nebenkosten ?? (mietende ? liveNK : null) ?? null) : null,
     kaution_soll: p.kaution_soll ?? null,
@@ -1919,6 +2039,10 @@ async function _rntSaveProfile(rid, tid, unitType, unitId) {
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
+    first_name_2: p.first_name_2 || null, last_name_2: p.last_name_2 || null,
+    email_2: p.email_2 || null, phone_2: p.phone_2 || null, birthday_2: p.birthday_2 || null,
+    first_name_3: p.first_name_3 || null, last_name_3: p.last_name_3 || null,
+    email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null,
     kaltmiete:    p.kaltmiete   ?? null,
     nebenkosten:  isApt ? (p.nebenkosten ?? null) : null,
     kaution_soll: p.kaution_soll ?? null,
