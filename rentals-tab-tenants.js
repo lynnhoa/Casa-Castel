@@ -1637,46 +1637,45 @@ function _rntStaffelHTML(rid, aptId) {
   const next    = entries.find(e => new Date(e.effective_date) > today)  || null;
 
   const adjBtn = (e) => e.tenant_adjusted
-    ? `<span class="tn-nkv-pill done" style="margin-left:auto"><i class="ti ti-check"></i> Angepasst</span>`
-    : `<button class="tn-nkv-pill pending" style="margin-left:auto" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','${rid}')">
-         <i class="ti ti-check"></i> Angepasst?</button>`;
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
+    : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','${rid}')">
+         <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
 
   const nextRow = next ? `
-    <div class="tn-nkv-row" id="sf-row-${next.id}" style="display:flex;align-items:center;gap:8px">
-      <i class="ti ti-clock" style="font-size:13px;color:var(--cc-blue,#185FA5);flex-shrink:0"></i>
-      <span class="tn-nk-info">ab ${fmtD(next.effective_date)}</span>
-      <span class="tn-nkv-amount" style="color:var(--cc-blue,#185FA5)">${_rntFmtEUR(next.amount)}</span>
-      ${adjBtn(next)}
+    <div class="tn-nkv-row" id="sf-row-${next.id}">
+      <div class="tn-nkv-top">
+        <i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>
+        <span class="tn-nkv-date">ab ${fmtD(next.effective_date)}</span>
+        <span class="tn-nkv-amount">${_rntFmtEUR(next.amount)}</span>
+      </div>
+      <div class="tn-nkv-pills">${adjBtn(next)}</div>
     </div>` : '';
 
-  const curRow = current ? `
-    <div class="tn-nkv-row" style="display:flex;align-items:center;gap:8px">
-      <i class="ti ti-circle-check" style="font-size:13px;color:var(--cc-green,#27500A);flex-shrink:0"></i>
-      <span class="tn-nk-info">seit ${fmtD(current.effective_date)} · aktuelle Stufe</span>
-      <span class="tn-nkv-amount">${_rntFmtEUR(current.amount)}</span>
-    </div>` : '';
+  const curDisplay = current
+    ? `<div class="tn-nkv-current">
+        <i class="ti ti-stairs-up" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
+        <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+        <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
+      </div>`
+    : `<p class="tn-empty">Noch keine Staffelstufen eingetragen.</p>`;
 
   const verlaufLink = entries.length > 1
     ? `<button class="tn-nkv-verlauf-btn" onclick="_rntStaffelOpenVerlauf('${aptId}','${rid}')">Verlauf</button>`
     : '';
 
-  const emptyHint = (!current && !next)
-    ? `<p style="font-size:11px;color:var(--cc-stone);margin:0 0 4px">Noch keine Staffelstufen eingetragen.</p>`
-    : '';
-
   return `
 <div class="tn-sec" id="sf-sec-${rid}">
-  <div class="tn-sec-hdr">
-    <span class="tn-sec-label">Staffelmiete</span>
-    ${verlaufLink}
-  </div>
-  <div class="tn-sec-body">
-    ${emptyHint}
+  <div class="tn-sec-body" style="padding-top:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span class="tn-sec-lbl" style="flex:1">Staffelmiete</span>
+      ${verlaufLink}
+      <button class="tn-btn tn-btn-sm" style="height:24px;padding:0 9px;font-size:10px"
+        onclick="_rntStaffelOpenAdd('${aptId}','${rid}')">
+        <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
+      </button>
+    </div>
+    ${curDisplay}
     ${nextRow}
-    ${curRow}
-    <button class="tn-add-nk-btn" onclick="_rntStaffelOpenAdd('${aptId}','${rid}')">
-      <i class="ti ti-plus"></i> Stufe hinzufügen
-    </button>
   </div>
 </div>`;
 }
