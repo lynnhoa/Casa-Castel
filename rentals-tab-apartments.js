@@ -2699,6 +2699,9 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
     </tr>`).join('');
 
   return `
+    ${apt.zimmer_type === 'Gewerbefläche' ? `
+    <div class="rm-field"><label>Nutzungszweck</label><input class="rm-input" id="apt-ub-nutzungszweck" placeholder="z.B. Büro, Lagerfläche…"/></div>
+    ` : ''}
     <div class="rm-fields-title">Mieter</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="aptUbMieterRoomLbl">${aptEsc(apt.name)} Mieter</span>

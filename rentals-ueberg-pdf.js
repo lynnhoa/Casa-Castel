@@ -98,6 +98,7 @@ function _aptCollectUebergData(apt, isEinzug) {
     plzOrt:          apt.plz_ort || '',
     flaeche:         apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : '',
     zimmerType:      apt.zimmer_type || '',
+    nutzungszweck:   document.getElementById('apt-ub-nutzungszweck')?.value.trim() || '',
     // Vermieter from shared settings
     vermieter:       s.vermieter_name || '',
     vermieterAdresse: s.vermieter_adresse || '',
@@ -297,12 +298,13 @@ function _aptRenderUebergHTML(d) {
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
   `;
 
+  const isGewerbe = d.zimmerType === 'Gewerbefläche';
   const hdr = (n) => `
     <div class="hdr">
-      <span class="hdr__wordmark"></span>
+      <span class="hdr__wordmark">${isGewerbe ? esc(d.aptName) : ''}</span>
       <div class="hdr__apt">
-        <span class="hdr__apt-label">Wohnung</span>
-        <span class="hdr__apt-name">${esc(d.aptName)}</span>
+        <span class="hdr__apt-label">${isGewerbe ? 'Übergabeprotokoll' : 'Wohnung'}</span>
+        <span class="hdr__apt-name">${isGewerbe ? esc(d.nutzungszweck) : esc(d.aptName)}</span>
       </div>
     </div>`;
 
