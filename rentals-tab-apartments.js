@@ -1795,6 +1795,12 @@ async function _aptOpenContract(type, aptId) {
           const mieterDob      = document.getElementById('apt-gw-dob')?.value.trim();
           const mieterEmail    = document.getElementById('apt-gw-email')?.value.trim();
           const mieterTel      = document.getElementById('apt-gw-tel')?.value.trim();
+          const mieter2Active  = document.getElementById('apt-gw2-wrap')?.style.display !== 'none';
+          const mieterName2    = mieter2Active ? document.getElementById('apt-gw2-name')?.value.trim()  : '';
+          const mieterAdr2     = mieter2Active ? document.getElementById('apt-gw2-adr')?.value.trim()   : '';
+          const mieterDob2     = mieter2Active ? document.getElementById('apt-gw2-dob')?.value.trim()   : '';
+          const mieterEmail2   = mieter2Active ? document.getElementById('apt-gw2-email')?.value.trim() : '';
+          const mieterTel2     = mieter2Active ? document.getElementById('apt-gw2-tel')?.value.trim()   : '';
           const startVal       = document.getElementById('apt-gw-start')?.value;
           const festNum        = parseInt(document.getElementById('apt-gw-fest-num')?.value) || 0;
           const festUnit       = document.getElementById('apt-gw-fest-unit')?.value || 'Jahre';
@@ -1840,6 +1846,7 @@ async function _aptOpenContract(type, aptId) {
             const data = _buildGewerbeMietvertragData(apt2, appSettings, {
               szenario, nutzungszweck, etage, moebliert,
               mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
+              mieterName2, mieterAdr2, mieterDob2, mieterEmail2, mieterTel2,
               startVal, festNum, festUnit, kaltmiete, nkVZ,
               kautionVal, kautionFael, sigVal,
               kuendigungsfrist, staffelAn, staffeln,
@@ -2249,6 +2256,22 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-gw-email" type="email" value="${aptEsc(_gwTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="apt-gw-tel" type="tel" placeholder="+49 …"/></div>
 
+    <button type="button" id="apt-gw2-add-btn" onclick="_toggleAptGw2Mieter()"
+      style="font-size:11px;padding:6px 12px;border-radius:6px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-taupe);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;margin-top:4px;margin-bottom:10px;">
+      <i class="ti ti-plus" style="font-size:13px;"></i> 2. Mieter hinzufügen
+    </button>
+    <div id="apt-gw2-wrap" style="display:none;">
+      <div class="rm-fields-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Mieterdaten — 2. Mieter</span>
+        <button type="button" onclick="_toggleAptGw2Mieter()" style="font-size:11px;color:var(--cc-stone);background:none;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;">Entfernen</button>
+      </div>
+      <div class="rm-field"><label>Name</label><input class="rm-input" id="apt-gw2-name" placeholder="Vor- und Nachname…"/></div>
+      <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-gw2-adr" placeholder="Aktuelle Adresse…"/></div>
+      <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-gw2-dob" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
+      <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-gw2-email" type="email" placeholder="mieter@beispiel.de"/></div>
+      <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="apt-gw2-tel" type="tel" placeholder="+49 …"/></div>
+    </div>
+
     <div class="rm-fields-title" style="margin-top:6px;">Mietzeit</div>
     <div class="rm-field"><label>Mietbeginn</label><input class="rm-input" id="apt-gw-start" type="date" onclick="try{this.showPicker()}catch(e){}" oninput="_aptGwCalcDates()"/></div>
     <div class="rm-field-row">
@@ -2610,6 +2633,27 @@ function _toggleAptGwMieter() {
     document.getElementById('apt-gw-dob').value   = pill.dataset.tenantDob   || '';
     document.getElementById('apt-gw-email').value = pill.dataset.tenantEmail || '';
     if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
+  }
+}
+
+/* ── GEWERBE: 2. Mieter add/remove toggle ─────────────── */
+function _toggleAptGw2Mieter() {
+  const wrap   = document.getElementById('apt-gw2-wrap');
+  const addBtn = document.getElementById('apt-gw2-add-btn');
+  if (!wrap) return;
+  const isOpen = wrap.style.display !== 'none';
+  if (isOpen) {
+    wrap.style.display = 'none';
+    document.getElementById('apt-gw2-name').value  = '';
+    document.getElementById('apt-gw2-adr').value   = '';
+    document.getElementById('apt-gw2-dob').value   = '';
+    document.getElementById('apt-gw2-email').value = '';
+    document.getElementById('apt-gw2-tel').value   = '';
+    if (addBtn) addBtn.style.display = '';
+  } else {
+    wrap.style.display = '';
+    if (addBtn) addBtn.style.display = 'none';
+    document.getElementById('apt-gw2-name')?.focus();
   }
 }
 
