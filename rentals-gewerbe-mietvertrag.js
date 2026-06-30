@@ -225,25 +225,30 @@ function _renderGewerbeMietvertragHTML(d) {
   // NK items — Gewerbe version (includes Verwaltungskosten)
   const NK_ITEMS = [
     'Laufende \u00f6ffentliche Lasten (Grundsteuer)',
-    'Wasserversorgung',
-    'Entw\u00e4sserung / Abwasser',
-    'Betrieb der zentralen Heizungsanlage inkl. Abgasanlage',
-    'Betrieb der zentralen Warmwasserversorgungsanlage',
-    'Verbundene Heizungs- &amp; Warmwasserversorgungsanlage',
-    'Personen- oder Lastenaufzug',
-    'Stra\u00dfenreinigung &amp; M\u00fcllbeseitigung',
-    'Geb\u00e4udereinigung &amp; Ungezieferbek\u00e4mpfung',
-    'Gartenpflege',
+    'Heizung',
+    'Wasser',
+    'Kanal',
+    'Niederschlagswasser',
+    'Allgemein-Strom',
     'Beleuchtung (Gemeinschaftsfl\u00e4chen)',
+    'Verwalter-Verg\u00fctung',
+    'Hausmeister',
+    'M\u00fcllbeseitigung',
+    'Stra\u00dfenreinigung',
+    'Haushaftpflichtversicherung',
+    'Geb\u00e4udeversicherung',
+    'Aufzugskosten',
+    'Antennenanlage',
+    'Erhaltung Allgemein',
+    'Kontof\u00fchrungsgeb\u00fchren',
     'Schornsteinreinigung',
-    'Sach- &amp; Haftpflichtversicherung',
-    'Hauswart',
-    'Gemeinschaftsantennenanlage / Breitbandkabelnetz',
+    'Gartenpflege',
     'Winterdienst',
-    'Verwaltungskosten (im Gewerbe umlagef\u00e4hig)',
+    'Geb\u00e4udereinigung',
+    'Ungezieferbek\u00e4mpfung',
   ];
   const nkRows = NK_ITEMS.map(i => `<div class="nk-item">${i}</div>`).join('') +
-    `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fs.\u202fd. \u00a7\u00a02 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Entw\u00e4sserungsanlagen, sonstige Anlagen)</div>`;
+    `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fs.\u202fd. \u00a7\u00a02 Nr.\u00a017 BetrKV (insbes. Wartung von Anlagen, soweit nicht vorstehend einzeln aufgef\u00fchrt)</div>`;
 
   // Staffel table (S1)
   const hasStaffel = (d.szenario === 'S1' || d.szenario === 'S3') && d.staffelAn && d.staffeln.length > 0;
