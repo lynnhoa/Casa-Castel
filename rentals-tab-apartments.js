@@ -1139,7 +1139,12 @@ async function _aptSaveIdentity(aptId) {
 
   if (_aptSbClient) {
     const { error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId);
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    if (error) {
+      console.error('[apartments] Save identity failed:', error, data);
+      btn.textContent = 'Error'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+      return;
+    }
   }
 
   // Update in-memory
@@ -1179,7 +1184,12 @@ async function _aptSaveMiete(aptId) {
       error = res.error;
       if (!error) apt.pricing = res.data;
     }
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    if (error) {
+      console.error('[apartments] Save miete failed:', error, data);
+      btn.textContent = 'Error'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+      return;
+    }
   }
 
   if (apt.pricing) Object.assign(apt.pricing, data);
@@ -1215,7 +1225,12 @@ async function _aptSaveVerwaltung(aptId) {
       error = res.error;
       if (!error) apt.verwaltung = res.data;
     }
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    if (error) {
+      console.error('[apartments] Save verwaltung failed:', error, data);
+      btn.textContent = 'Error'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+      return;
+    }
   }
 
   if (apt.verwaltung) Object.assign(apt.verwaltung, data);
@@ -1255,10 +1270,20 @@ async function _aptSaveZaehler(aptId) {
   if (_aptSbClient) {
     // Delete all existing and re-insert
     const { error: delErr } = await _aptSbClient.from('rentals_zaehler').delete().eq('apartment_id', aptId);
-    if (delErr) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    if (delErr) {
+      console.error('[apartments] Save zaehler delete failed:', delErr);
+      btn.textContent = 'Error'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+      return;
+    }
     if (newMeters.length) {
       const { error: insErr } = await _aptSbClient.from('rentals_zaehler').insert(newMeters);
-      if (insErr) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+      if (insErr) {
+        console.error('[apartments] Save zaehler insert failed:', insErr, newMeters);
+        btn.textContent = 'Error'; btn.disabled = false;
+        setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+        return;
+      }
     }
   }
 
@@ -1317,7 +1342,12 @@ async function _aptSaveSchlussel(aptId) {
       error = res.error;
       if (!error) apt.schlussel = res.data;
     }
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    if (error) {
+      console.error('[apartments] Save schlussel failed:', error, data);
+      btn.textContent = 'Error'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+      return;
+    }
   }
 
   if (apt.schlussel) Object.assign(apt.schlussel, data);
