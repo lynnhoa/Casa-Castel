@@ -346,7 +346,7 @@ function _renderGewerbeMietvertragHTML(d) {
   ${hdr(d.aptName)}${ftr(2)}
   <div class="content">
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
-    <p class="nk-intro">Neben der Nettokaltmiete tr\u00e4gt der Mieter anteilig folgende Betriebskosten gem\u00e4\u00df \u00a7\u00a7\u00a01,\u00a02 BetrKV. Umlageschl\u00fcssel: Nutzfl\u00e4che der Mietfl\u00e4che im Verh\u00e4ltnis zur Gesamtnutzfl\u00e4che des Geb\u00e4udes. Verwaltungskosten sind im Gewerbemietverh\u00e4ltnis umlagef\u00e4hig. Abrechnung erfolgt j\u00e4hrlich; der Mieter erh\u00e4lt die Abrechnung sp\u00e4testens 12\u00a0Monate nach Ende des Abrechnungszeitraums. Nachzahlungen sind binnen 30\u00a0Tagen f\u00e4llig; Guthaben werden verrechnet oder erstattet.</p>
+    <p class="nk-intro">Neben der Nettokaltmiete tr\u00e4gt der Mieter anteilig folgende Betriebskosten gem\u00e4\u00df \u00a7\u00a7\u00a01,\u00a02 BetrKV. Umlageschl\u00fcssel: Nutzfl\u00e4che der Mietfl\u00e4che im Verh\u00e4ltnis zur Gesamtnutzfl\u00e4che des Geb\u00e4udes. Verwaltungskosten sind im Gewerbemietverh\u00e4ltnis umlagef\u00e4hig. Abrechnung erfolgt j\u00e4hrlich; der Mieter erh\u00e4lt die Abrechnung sp\u00e4testens 12\u00a0Monate nach Ende des Abrechnungszeitraums.</p>
     <div class="nk-grid">${nkRows}</div>
     ${cl('1','Mietzeit und Beendigung',p1Body,true)}
     ${cl('2','Nutzungszweck',
@@ -355,7 +355,7 @@ function _renderGewerbeMietvertragHTML(d) {
     ${cl(String(pNum(3)),'Kaution',
       `Der Mieter leistet eine Mietsicherheit in H\u00f6he von ${eur(d.kautionVal)}, f\u00e4llig ${d.kautionFaelText}. Die Sicherheit ist als Barkaution auf das oben genannte Konto zu \u00fcberweisen. R\u00fcckzahlung etwaiger Restbetr\u00e4ge erfolgt nach Beendigung des Mietverh\u00e4ltnisses und abschlie\u00dfender Pr\u00fcfung aller gegenseitigen Anspr\u00fcche.`)}
     ${cl(String(pNum(4)),'Nebenkosten und Abrechnung',
-      `Neben der Nettokaltmiete zahlt der Mieter monatliche Betriebskostenvorauszahlungen in H\u00f6he von ${eur(d.nkVZ)}. Die Abrechnung erfolgt j\u00e4hrlich auf Grundlage der tats\u00e4chlich angefallenen Kosten. Nachzahlungen sind binnen 30\u00a0Tagen nach Zugang der Abrechnung f\u00e4llig; Guthaben werden verrechnet oder binnen 30\u00a0Tagen erstattet. Die umlagef\u00e4higen Betriebskosten sind in der Aufstellung auf Seite\u00a02 abschlie\u00dfend aufgef\u00fchrt.`)}
+      `Neben der Nettokaltmiete zahlt der Mieter monatliche Betriebskostenvorauszahlungen in H\u00f6he von ${eur(d.nkVZ)}. Die Abrechnung erfolgt j\u00e4hrlich auf Grundlage der tats\u00e4chlich angefallenen Kosten. Die umlagef\u00e4higen Betriebskosten sind in der Aufstellung auf Seite\u00a02 abschlie\u00dfend aufgef\u00fchrt.`)}
   </div>
 </div>`;
 
