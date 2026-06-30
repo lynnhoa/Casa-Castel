@@ -402,15 +402,17 @@ function _renderGewerbeMietvertragHTML(d) {
   const page3 = `<div class="pdf-page page">
   ${hdr(d.aptName)}${ftr(3+pageOffset)}
   <div class="content">
-    ${cl(String(pNum(5)),'Sch\u00f6nheitsreparaturen und R\u00fcckgabe',
-      'Der Mieter ist verpflichtet, die Mietsache bei Beendigung des Mietverh\u00e4ltnisses im selben Zustand zur\u00fcckzugeben, in dem sie ihm \u00fcbergeben wurde, unter Ber\u00fccksichtigung der durch vertragsgem\u00e4\u00dfen Gebrauch entstandenen Abnutzung. Insbesondere sind s\u00e4mtliche vom Mieter angebrachten Einrichtungen, Einbauten, Beschriftungen, Anstriche und sonstige Ver\u00e4nderungen auf eigene Kosten zu entfernen und der urspr\u00fcngliche Zustand wiederherzustellen, sofern keine andere schriftliche Vereinbarung mit dem Vermieter getroffen wurde. Sch\u00f6nheitsreparaturen w\u00e4hrend der Mietzeit obliegen dem Mieter, soweit sie durch dessen Nutzung erforderlich werden.',true)}
+    ${cl(String(pNum(5)),'Sch\u00f6nheitsreparaturen',
+      'Sch\u00f6nheitsreparaturen w\u00e4hrend der Mietzeit obliegen dem Mieter, soweit sie durch dessen vertragsgem\u00e4\u00dfen Gebrauch der Mietfl\u00e4che erforderlich werden. Hierzu z\u00e4hlen insbesondere das Tapezieren, Anstreichen oder Kalken der W\u00e4nde und Decken sowie das Streichen der Heizk\u00f6rper, Innent\u00fcren, Fenster und Au\u00dfent\u00fcren von innen. Die Ausf\u00fchrung hat fachgerecht und in einem dem Zustand der Mietfl\u00e4che bei \u00dcbergabe entsprechenden Standard zu erfolgen.',true)}
     ${cl(String(pNum(6)),'Kleinreparaturen',
-      'Der Mieter tr\u00e4gt die Kosten kleinerer Instandhaltungsma\u00dfnahmen an Installationsgegenst\u00e4nden f\u00fcr Elektrizit\u00e4t, Wasser und Gas, an Heizungs- und Kocheinrichtungen sowie an Fenster- und T\u00fcrverschl\u00fcssen, soweit diese seinem direkten Zugriff unterliegen, bis zu einem Betrag von 300,00\u00a0\u20ac je Einzelfall. Die Gesamtbelastung des Mieters f\u00fcr Kleinreparaturen ist auf 8\u00a0% der Jahresnettokaltmiete begrenzt. \u00dcbersteigt eine Reparatur den vorgenannten Einzelbetrag, tr\u00e4gt der Vermieter die vollst\u00e4ndigen Kosten.')}
-    ${cl(String(pNum(7)),'Instandhaltung und Instandsetzung',
+      'Der Mieter tr\u00e4gt die Kosten kleinerer Instandhaltungsma\u00dfnahmen an Installationsgegenst\u00e4nden f\u00fcr Elektrizit\u00e4t, Wasser und Gas, an Heizungs- und Kocheinrichtungen sowie an Fenster- und T\u00fcrverschl\u00fcssen, soweit diese seinem direkten Zugriff unterliegen, bis zu einem Betrag von 200,00\u00a0\u20ac je Einzelfall. Die Gesamtbelastung des Mieters f\u00fcr Kleinreparaturen ist auf 8\u00a0% der Jahresnettokaltmiete begrenzt. \u00dcbersteigt eine Reparatur den vorgenannten Einzelbetrag, tr\u00e4gt der Vermieter die vollst\u00e4ndigen Kosten.')}
+    ${cl(String(pNum(7)),'Gewerbehaftpflichtversicherung',
+      'Der Mieter ist verpflichtet, f\u00fcr die Dauer des Mietverh\u00e4ltnisses eine Betriebshaftpflichtversicherung mit einer Mindestdeckungssumme von 3.000.000,00\u00a0\u20ac pauschal f\u00fcr Personen- und Sachsch\u00e4den zu unterhalten, die s\u00e4mtliche aus dem Betrieb der Mietfl\u00e4che resultierenden Haftpflichtrisiken abdeckt. Der Nachweis des Versicherungsschutzes ist dem Vermieter auf Verlangen, sp\u00e4testens jedoch bei Mietbeginn, durch Vorlage einer entsprechenden Bescheinigung zu erbringen. Eine Unterbrechung oder Beendigung des Versicherungsschutzes ist dem Vermieter unverz\u00fcglich in Textform anzuzeigen. Kommt der Mieter dieser Verpflichtung nicht nach, ist der Vermieter berechtigt, nach vorheriger Fristsetzung eine entsprechende Versicherung auf Kosten des Mieters abzuschlie\u00dfen.')}
+    ${cl(String(pNum(8)),'Instandhaltung und Instandsetzung',
       'Der Vermieter tr\u00e4gt die Kosten f\u00fcr Instandhaltung und Instandsetzung der Geb\u00e4udestruktur, insbesondere Dach, tragende Bauteile, Au\u00dfenfassade und Gemeinschaftsanlagen. Der Mieter tr\u00e4gt die Kosten f\u00fcr Instandhaltung der von ihm genutzten Einrichtungen, Installationen und Ausstattung innerhalb der Mietfl\u00e4che. Sch\u00e4den sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen. Eigenmächtige bauliche Ver\u00e4nderungen bed\u00fcrfen der vorherigen schriftlichen Zustimmung des Vermieters.')}
-    ${cl(String(pNum(8)),'Schl\u00fcsselübergabe',
+    ${cl(String(pNum(9)),'Schl\u00fcsselübergabe',
       `Der Mieter erh\u00e4lt bei Einzug ${d.schluessel}. Weitere Schl\u00fcssel bed\u00fcrfen der vorherigen Zustimmung (Textform). Bei Verlust tr\u00e4gt der Mieter die vollst\u00e4ndigen Kosten des Schlossaustauschs. Alle Schl\u00fcssel sind bei Auszug zur\u00fcckzugeben.`)}
-    ${cl(String(pNum(9)),'Betreten des Mietobjekts',
+    ${cl(String(pNum(10)),'Betreten des Mietobjekts',
       'Bei Gefahr im Verzug ist der Vermieter jederzeit zum Betreten berechtigt. Im \u00dcbrigen ist das Betreten zur Vorbereitung von Verkauf oder Weitervermietung werktags zwischen 9:00 und 18:00\u202fUhr gestattet, sofern mind. zwei Werktage vorher in Textform angek\u00fcndigt wurde.')}
   </div>
 </div>`;
@@ -419,13 +421,13 @@ function _renderGewerbeMietvertragHTML(d) {
   const page4 = `<div class="pdf-page page">
   ${hdr(d.aptName)}${ftr(4+pageOffset)}
   <div class="content">
-    ${cl(String(pNum(10)),'R\u00fcckgabe bei Vertragsende',
-      'Die Mietfl\u00e4che ist bei Vertragsende vollst\u00e4ndig ger\u00e4umt, gereinigt und in vertragsm\u00e4\u00dfigem Zustand zur\u00fcckzugeben. S\u00e4mtliche Schl\u00fcssel sind zur\u00fcckzugeben. Vom Mieter vorgenommene bauliche Ver\u00e4nderungen und Einbauten sind auf Verlangen des Vermieters fachgerecht zur\u00fcckzubauen, sofern nichts anderes schriftlich vereinbart wurde. Ein \u00dcbergabeprotokoll wird erstellt und von beiden Parteien unterzeichnet.',true)}
-    ${cl(String(pNum(11)),'Umsatzsteuer',
+    ${cl(String(pNum(11)),'R\u00fcckgabe bei Vertragsende',
+      'Die Mietfl\u00e4che ist bei Vertragsende vollst\u00e4ndig ger\u00e4umt, gereinigt und in vertragsm\u00e4\u00dfigem Zustand zur\u00fcckzugeben, unter Ber\u00fccksichtigung der durch vertragsgem\u00e4\u00dfen Gebrauch entstandenen Abnutzung. S\u00e4mtliche vom Mieter angebrachten Einrichtungen, Einbauten, Beschriftungen, Anstriche und sonstige bauliche Ver\u00e4nderungen sind auf eigene Kosten zu entfernen und der urspr\u00fcngliche Zustand wiederherzustellen, sofern nichts anderes schriftlich vereinbart wurde. S\u00e4mtliche Schl\u00fcssel sind zur\u00fcckzugeben. Ein \u00dcbergabeprotokoll wird erstellt und von beiden Parteien unterzeichnet.',true)}
+    ${cl(String(pNum(12)),'Umsatzsteuer',
       'Die vereinbarte Miete versteht sich zuz\u00fcglich der gesetzlichen Umsatzsteuer, sofern der Vermieter gegen\u00fcber dem Finanzamt zur Umsatzsteuer optiert hat (\u00a7\u00a09 UStG) und der Mieter das Mietobjekt ausschlie\u00dflich f\u00fcr umsatzsteuerpflichtige Umsätze verwendet. Ohne ausdr\u00fcckliche schriftliche Erkl\u00e4rung des Vermieters gilt die Miete als umsatzsteuerfrei.')}
-    ${cl(String(pNum(12)),'Datenschutz',
+    ${cl(String(pNum(13)),'Datenschutz',
       'Personenbezogene Daten werden gem\u00e4\u00df Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und zehn Jahre nach Vertragsende gel\u00f6scht.')}
-    ${cl(String(pNum(13)),'Sonstige Vereinbarungen',
+    ${cl(String(pNum(14)),'Sonstige Vereinbarungen',
       `M\u00fcndliche Nebenabreden bestehen nicht. \u00c4nderungen und Erg\u00e4nzungen dieses Vertrages bed\u00fcrfen der Schriftform; dies gilt auch f\u00fcr die Abbedingung dieses Schriftformerfordernisses (\u00a7\u00a0550 BGB). Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im \u00dcbrigen wirksam. Gerichtsstand f\u00fcr alle Streitigkeiten aus diesem Vertrag ist ${d.gerichtsstand}.`)}
     ${d.moebliert ? `
     ${sec('Anlage A \u2014 Inventar',true,false)}
