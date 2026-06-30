@@ -55,6 +55,21 @@ document.getElementById('tab-tenants').innerHTML = `
     </div>
   </div>
 
+  <div class="tn-overlay" id="rntStaffelModal" onclick="_rntStaffelModalOutside(event)">
+    <div class="tn-sheet" id="rntStaffelSheet" style="max-height:70vh">
+      <div class="tn-sheet-hdr">
+        <div style="flex:1;min-width:0">
+          <div class="tn-sheet-name">Stufe hinzufügen</div>
+          <div class="tn-sheet-sub" id="rntStaffelModalSub"></div>
+        </div>
+        <button class="tn-icon-btn" onclick="_rntStaffelModalClose()" aria-label="Close">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+      <div class="tn-sheet-body" id="rntStaffelModalBody"></div>
+    </div>
+  </div>
+
   <div class="tn-confirm-overlay" id="rntConfirm">
     <div class="tn-confirm-box">
       <div class="tn-confirm-icon"><i class="ti ti-alert-triangle"></i></div>
@@ -442,6 +457,7 @@ let _rntUploadTid    = null;
 let _rntUploadType   = null;
 let _rntDeleteId     = null;
 let _rntNKVoraus     = {};   // apartment_id → [{...}]
+let _rntStaffel      = {};   // apartment_id → [{...}] sorted effective_date desc
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -590,6 +606,29 @@ function _rntNKVorausHasOpen(aptId) {
   return (_rntNKVoraus[aptId] || []).some(e => !e.tenant_adjusted);
 }
 
+function _rntStaffelNext(aptId) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  return (_rntStaffel[aptId] || []).find(e => new Date(e.effective_date) > today) || null;
+}
+function _rntStaffelCurrent(aptId) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  return (_rntStaffel[aptId] || []).find(e => new Date(e.effective_date) <= today) || null;
+}
+function _rntStaffelPillState(aptId) {
+  // Returns null (no pill), 'reminder' (amber, ≤30 days), or 'overdue' (red, past + not adjusted)
+  const today = new Date(); today.setHours(0,0,0,0);
+  const entries = _rntStaffel[aptId] || [];
+  for (const e of entries) {
+    if (e.tenant_adjusted) continue;
+    const eff = new Date(e.effective_date);
+    const diffDays = Math.ceil((eff - today) / (24 * 3600 * 1000));
+    if (diffDays > 30) continue;
+    if (diffDays >= 0) return { state: 'reminder', entry: e, days: diffDays };
+    return { state: 'overdue', entry: e, days: Math.abs(diffDays) };
+  }
+  return null;
+}
+
 function _rntStatusPill(unitId, isApt, activeRec) {
   if (!activeRec) return '';
   const pills = [];
@@ -600,6 +639,13 @@ function _rntStatusPill(unitId, isApt, activeRec) {
     pills.push(`<span class="tnp tnp-red">NK open</span>`);
   if (isApt && _rntNKVorausHasOpen(unitId))
     pills.push(`<span class="tnp tnp-amber"><i class="ti ti-alert-triangle" aria-hidden="true"></i> NK-Erhöhung offen</span>`);
+  const sf = isApt ? _rntStaffelPillState(unitId) : null;
+  if (sf && sf.state === 'reminder') {
+    const fmtD = (d) => { const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
+    pills.push(`<span class="tnp tnp-amber"><i class="ti ti-stairs-up" aria-hidden="true"></i> Staffel ab ${fmtD(sf.entry.effective_date)}</span>`);
+  }
+  if (sf && sf.state === 'overdue')
+    pills.push(`<span class="tnp tnp-red"><i class="ti ti-stairs-up" aria-hidden="true"></i> Staffel ${sf.days} Tage fällig</span>`);
   const k = _rntKaution[activeRec.id];
   const recv = k ? Number(k.received) : 0;
   if (recv > 0 && !k?.settled)
@@ -636,12 +682,16 @@ async function _rntLoad() {
   const tids = _rntRecords.map(r => r.id);
   if (!tids.length) { _rntRender(); return; }
 
-  const [kRes, nkRes, docRes, vorausRes] = await Promise.all([
+  const [kRes, nkRes, docRes, vorausRes, staffelRes] = await Promise.all([
     sbL.from('rnt_kaution').select('*').in('tenant_id', tids),
     sbL.from('rnt_nk_entries').select('*').in('tenant_id', tids).order('period', { ascending: false }),
     sbL.from('rnt_tenant_documents').select('*').in('tenant_id', tids),
     aptIds.length
       ? sbL.from('rnt_nk_vorauszahlung_history').select('*')
+           .in('apartment_id', aptIds).order('effective_date', { ascending: false })
+      : Promise.resolve({ data: [] }),
+    aptIds.length
+      ? sbL.from('rnt_staffelmiete_history').select('*')
            .in('apartment_id', aptIds).order('effective_date', { ascending: false })
       : Promise.resolve({ data: [] }),
   ]);
@@ -665,6 +715,12 @@ async function _rntLoad() {
   (vorausRes.data || []).forEach(e => {
     if (!_rntNKVoraus[e.apartment_id]) _rntNKVoraus[e.apartment_id] = [];
     _rntNKVoraus[e.apartment_id].push(e);
+  });
+
+  _rntStaffel = {};
+  (staffelRes.data || []).forEach(e => {
+    if (!_rntStaffel[e.apartment_id]) _rntStaffel[e.apartment_id] = [];
+    _rntStaffel[e.apartment_id].push(e);
   });
 
   // Build profile cache
@@ -813,6 +869,7 @@ function _rntCardHTML({ type, unit }) {
     ${_rntKautionHTML(rid, activeRec ? activeRec.id : null, 'card', activeRec)}
     ${isApt ? _rntNKHTML(rid, activeRec ? activeRec.id : null, 'card') : ''}
     ${isApt ? _rntNKVorausHTML(rid, activeRec ? unit.id : null, 'card') : ''}
+    ${isApt ? _rntStaffelHTML(rid, activeRec ? unit.id : null) : ''}
     ${_rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs)}
   </div>
 </div>`;
@@ -1567,6 +1624,149 @@ function _rntRenderNKVorausRow(id, aptId, rid) {
   const pillsEl = row.querySelector('.tn-nkv-pills');
   if (pillsEl) pillsEl.innerHTML = notPill + adjPill;
 }
+
+
+/* ── STAFFELMIETE SECTION (apartments only) ── */
+function _rntStaffelHTML(rid, aptId) {
+  if (!aptId) return '';
+  const entries = _rntStaffel[aptId] || [];
+  const today   = new Date(); today.setHours(0,0,0,0);
+  const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
+
+  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
+  const next    = entries.find(e => new Date(e.effective_date) > today)  || null;
+
+  const adjBtn = (e) => e.tenant_adjusted
+    ? `<span class="tn-nkv-pill done" style="margin-left:auto"><i class="ti ti-check"></i> Angepasst</span>`
+    : `<button class="tn-nkv-pill pending" style="margin-left:auto" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','${rid}')">
+         <i class="ti ti-check"></i> Angepasst?</button>`;
+
+  const nextRow = next ? `
+    <div class="tn-nkv-row" id="sf-row-${next.id}" style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-clock" style="font-size:13px;color:var(--cc-blue,#185FA5);flex-shrink:0"></i>
+      <span class="tn-nk-info">ab ${fmtD(next.effective_date)}</span>
+      <span class="tn-nkv-amount" style="color:var(--cc-blue,#185FA5)">${_rntFmtEUR(next.amount)}</span>
+      ${adjBtn(next)}
+    </div>` : '';
+
+  const curRow = current ? `
+    <div class="tn-nkv-row" style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-circle-check" style="font-size:13px;color:var(--cc-green,#27500A);flex-shrink:0"></i>
+      <span class="tn-nk-info">seit ${fmtD(current.effective_date)} · aktuelle Stufe</span>
+      <span class="tn-nkv-amount">${_rntFmtEUR(current.amount)}</span>
+    </div>` : '';
+
+  const verlaufLink = entries.length > 1
+    ? `<button class="tn-nkv-verlauf-btn" onclick="_rntStaffelOpenVerlauf('${aptId}','${rid}')">Verlauf</button>`
+    : '';
+
+  const emptyHint = (!current && !next)
+    ? `<p style="font-size:11px;color:var(--cc-stone);margin:0 0 4px">Noch keine Staffelstufen eingetragen.</p>`
+    : '';
+
+  return `
+<div class="tn-sec" id="sf-sec-${rid}">
+  <div class="tn-sec-hdr">
+    <span class="tn-sec-label">Staffelmiete</span>
+    ${verlaufLink}
+  </div>
+  <div class="tn-sec-body">
+    ${emptyHint}
+    ${nextRow}
+    ${curRow}
+    <button class="tn-add-nk-btn" onclick="_rntStaffelOpenAdd('${aptId}','${rid}')">
+      <i class="ti ti-plus"></i> Stufe hinzufügen
+    </button>
+  </div>
+</div>`;
+}
+
+function _rntStaffelOpenAdd(aptId, rid) {
+  const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
+  const label = apt ? (apt.name || apt.adresse || 'Wohnung') : 'Wohnung';
+  document.getElementById('rntStaffelModalSub').textContent = label;
+  document.getElementById('rntStaffelModalBody').innerHTML = `
+    <div style="padding:14px 16px">
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:11px;color:var(--cc-stone);margin-bottom:4px">Gültig ab</label>
+        <input type="date" id="sf-add-date" style="width:100%;font-size:13px"/>
+        <p style="font-size:10px;color:var(--cc-stone);margin:3px 0 0">Datum, ab dem die neue Kaltmiete gilt</p>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-size:11px;color:var(--cc-stone);margin-bottom:4px">Neue Kaltmiete (€)</label>
+        <input type="number" id="sf-add-amount" placeholder="z.B. 1250" step="0.01" min="0" style="width:100%;font-size:13px"/>
+        <p style="font-size:10px;color:var(--cc-stone);margin:3px 0 0">Betrag aus dem Staffelmietvertrag entnehmen</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="tn-btn tn-btn-ghost" style="flex:1" onclick="_rntStaffelModalClose()">Abbrechen</button>
+        <button class="tn-btn tn-btn-primary" style="flex:1" onclick="_rntStaffelConfirmAdd('${aptId}','${rid}')">
+          <i class="ti ti-check"></i> Speichern
+        </button>
+      </div>
+    </div>`;
+  document.getElementById('rntStaffelModal').classList.add('open');
+  setTimeout(() => document.getElementById('sf-add-date')?.focus(), 80);
+}
+
+async function _rntStaffelConfirmAdd(aptId, rid) {
+  const date   = document.getElementById('sf-add-date')?.value?.trim();
+  const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
+  if (!date || isNaN(amount) || amount <= 0) return;
+  if (!sbL) return;
+  const { data, error } = await sbL.from('rnt_staffelmiete_history')
+    .insert({ apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false })
+    .select().single();
+  if (error) { console.warn('[rnt-tenants] staffel add:', error.message); return; }
+  if (!_rntStaffel[aptId]) _rntStaffel[aptId] = [];
+  _rntStaffel[aptId].push(data);
+  _rntStaffel[aptId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+  _rntStaffelModalClose();
+  _rntRender();
+}
+
+async function _rntStaffelMarkAdjusted(id, aptId, rid) {
+  if (!sbL) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const { error } = await sbL.from('rnt_staffelmiete_history')
+    .update({ tenant_adjusted: true, adjusted_date: today }).eq('id', id);
+  if (error) { console.warn('[rnt-tenants] staffel adjusted:', error.message); return; }
+  const entry = (_rntStaffel[aptId] || []).find(e => e.id === id);
+  if (entry) { entry.tenant_adjusted = true; entry.adjusted_date = today; }
+  _rntRender();
+}
+
+function _rntStaffelOpenVerlauf(aptId, rid) {
+  const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
+  const label = apt ? (apt.name || apt.adresse || 'Wohnung') : 'Wohnung';
+  const entries = (_rntStaffel[aptId] || []).slice();
+  const today   = new Date(); today.setHours(0,0,0,0);
+  const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
+
+  const rows = entries.map(e => {
+    const isFuture = new Date(e.effective_date) > today;
+    const adjTag = e.tenant_adjusted
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-check"></i> Angepasst</span>`
+      : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','m')">
+           <i class="ti ti-check"></i> Angepasst?</button>`;
+    const amtColor = e.tenant_adjusted ? 'color:var(--cc-stone);font-weight:400'
+                   : isFuture ? 'color:var(--cc-blue,#185FA5)' : '';
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 16px;border-bottom:0.5px solid var(--cc-rule)">
+        <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-blue,#185FA5)' : 'var(--cc-green,#27500A)'};flex-shrink:0"></i>
+        <span class="tn-nk-info">${isFuture ? 'ab' : 'seit'} ${fmtD(e.effective_date)}</span>
+        <span class="tn-nkv-amount" style="${amtColor}">${_rntFmtEUR(e.amount)}</span>
+        ${adjTag}
+      </div>`;
+  }).join('');
+
+  document.getElementById('rntStaffelModalSub').textContent = label;
+  document.getElementById('rntStaffelModalBody').innerHTML = rows ||
+    `<p style="padding:14px 16px;font-size:12px;color:var(--cc-stone)">Keine Einträge.</p>`;
+  document.getElementById('rntStaffelModal').classList.add('open');
+}
+
+function _rntStaffelModalClose() { document.getElementById('rntStaffelModal').classList.remove('open'); }
+function _rntStaffelModalOutside(e) { if (e.target === document.getElementById('rntStaffelModal')) _rntStaffelModalClose(); }
 
 
 /* ── FORMER SECTION ── */
