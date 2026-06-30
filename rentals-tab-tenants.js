@@ -675,6 +675,16 @@ async function _rntLoad() {
       firstName: r.first_name || '', lastName: r.last_name || '',
       email: r.email || '', phone: r.phone || '',
       birthday: r.birthday || '', address: r.address || '',
+      tenant2: (r.first_name_2 || r.last_name_2) ? {
+        firstName: r.first_name_2 || '', lastName: r.last_name_2 || '',
+        email: r.email_2 || '', phone: r.phone_2 || '',
+        birthday: r.birthday_2 || '', address: r.address || '',
+      } : null,
+      tenant3: (r.first_name_3 || r.last_name_3) ? {
+        firstName: r.first_name_3 || '', lastName: r.last_name_3 || '',
+        email: r.email_3 || '', phone: r.phone_3 || '',
+        birthday: r.birthday_3 || '', address: r.address || '',
+      } : null,
     };
   });
 
@@ -1076,42 +1086,47 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   </div>`;
 
   const tenant2Block = `
-  <div id="p2wrap-${rid}" style="display:${has2 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
-    <div class="tn-field tn-field-full" style="display:flex;align-items:center;justify-content:space-between;">
+  <div id="p2wrap-${rid}" class="tn-field-full" style="display:${has2 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <span class="tn-flbl">Mieter 2</span>
       <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',2)">Entfernen</button>
     </div>
-    <div class="tn-field"><span class="tn-flbl">Name</span>
-      <input data-f="name_2" type="text" value="${_rntEsc(fullName2)}" placeholder="Full name"/></div>
-    <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <input data-f="birthday_2" type="text" value="${_rntEsc(rec ? rec.birthday_2||'' : '')}" placeholder="DD.MM.YYYY"/></div>
-    <div class="tn-field"><span class="tn-flbl">Email</span>
-      <input data-f="email_2" type="email" value="${_rntEsc(rec ? rec.email_2||'' : '')}" placeholder="mieter@mail.de"/></div>
-    <div class="tn-field"><span class="tn-flbl">Phone</span>
-      <input data-f="phone_2" type="tel" value="${_rntEsc(rec ? rec.phone_2||'' : '')}" placeholder="+49 ..."/></div>
+    <div class="tn-fg">
+      <div class="tn-field"><span class="tn-flbl">Name</span>
+        <input data-f="name_2" type="text" value="${_rntEsc(fullName2)}" placeholder="Full name"/></div>
+      <div class="tn-field"><span class="tn-flbl">Birthday</span>
+        <input data-f="birthday_2" type="text" value="${_rntEsc(rec ? rec.birthday_2||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+      <div class="tn-field"><span class="tn-flbl">Email</span>
+        <input data-f="email_2" type="email" value="${_rntEsc(rec ? rec.email_2||'' : '')}" placeholder="mieter@mail.de"/></div>
+      <div class="tn-field"><span class="tn-flbl">Phone</span>
+        <input data-f="phone_2" type="tel" value="${_rntEsc(rec ? rec.phone_2||'' : '')}" placeholder="+49 ..."/></div>
+    </div>
   </div>`;
 
   const tenant3Block = `
-  <div id="p3wrap-${rid}" style="display:${has3 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
-    <div class="tn-field tn-field-full" style="display:flex;align-items:center;justify-content:space-between;">
+  <div id="p3wrap-${rid}" class="tn-field-full" style="display:${has3 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <span class="tn-flbl">Mieter 3</span>
       <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',3)">Entfernen</button>
     </div>
-    <div class="tn-field"><span class="tn-flbl">Name</span>
-      <input data-f="name_3" type="text" value="${_rntEsc(fullName3)}" placeholder="Full name"/></div>
-    <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <input data-f="birthday_3" type="text" value="${_rntEsc(rec ? rec.birthday_3||'' : '')}" placeholder="DD.MM.YYYY"/></div>
-    <div class="tn-field"><span class="tn-flbl">Email</span>
-      <input data-f="email_3" type="email" value="${_rntEsc(rec ? rec.email_3||'' : '')}" placeholder="mieter@mail.de"/></div>
-    <div class="tn-field"><span class="tn-flbl">Phone</span>
-      <input data-f="phone_3" type="tel" value="${_rntEsc(rec ? rec.phone_3||'' : '')}" placeholder="+49 ..."/></div>
+    <div class="tn-fg">
+      <div class="tn-field"><span class="tn-flbl">Name</span>
+        <input data-f="name_3" type="text" value="${_rntEsc(fullName3)}" placeholder="Full name"/></div>
+      <div class="tn-field"><span class="tn-flbl">Birthday</span>
+        <input data-f="birthday_3" type="text" value="${_rntEsc(rec ? rec.birthday_3||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+      <div class="tn-field"><span class="tn-flbl">Email</span>
+        <input data-f="email_3" type="email" value="${_rntEsc(rec ? rec.email_3||'' : '')}" placeholder="mieter@mail.de"/></div>
+      <div class="tn-field"><span class="tn-flbl">Phone</span>
+        <input data-f="phone_3" type="tel" value="${_rntEsc(rec ? rec.phone_3||'' : '')}" placeholder="+49 ..."/></div>
+    </div>
   </div>`;
 
   const addTenantBtn = `
-  <button type="button" id="paddco-${rid}" class="tn-btn tn-btn-sm" onclick="_rntAddCoTenant('${rid}')"
-    style="margin-top:8px;display:${has3 ? 'none' : ''}">
-    <i class="ti ti-plus"></i> Mieter hinzuf\u00fcgen
-  </button>`;
+  <div class="tn-field-full" style="display:${has3 ? 'none' : ''};margin-top:4px;margin-bottom:4px;">
+    <button type="button" id="paddco-${rid}" class="tn-btn tn-btn-sm" onclick="_rntAddCoTenant('${rid}')">
+      <i class="ti ti-plus"></i> Mieter hinzuf\u00fcgen
+    </button>
+  </div>`;
 
   const editView = `
   <div class="tn-fg" id="pedit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
@@ -1886,7 +1901,7 @@ function _rntToggleProfile(rid, tid) {
 function _rntAddCoTenant(rid) {
   const w2 = document.getElementById('p2wrap-' + rid);
   const w3 = document.getElementById('p3wrap-' + rid);
-  const addBtn = document.getElementById('paddco-' + rid);
+  const addBtnWrap = document.getElementById('paddco-' + rid)?.parentElement;
   if (!w2) return;
   if (w2.style.display === 'none') {
     w2.style.display = '';
@@ -1895,7 +1910,7 @@ function _rntAddCoTenant(rid) {
     w3.style.display = '';
     document.querySelector(`#p3wrap-${rid} [data-f="name_3"]`)?.focus();
   }
-  if (w3 && w3.style.display !== 'none' && addBtn) addBtn.style.display = 'none';
+  if (w3 && w3.style.display !== 'none' && addBtnWrap) addBtnWrap.style.display = 'none';
 }
 
 function _rntRemoveCoTenant(rid, n) {
@@ -1903,8 +1918,8 @@ function _rntRemoveCoTenant(rid, n) {
   if (!w) return;
   w.style.display = 'none';
   w.querySelectorAll('input').forEach(inp => inp.value = '');
-  const addBtn = document.getElementById('paddco-' + rid);
-  if (addBtn) addBtn.style.display = '';
+  const addBtnWrap = document.getElementById('paddco-' + rid)?.parentElement;
+  if (addBtnWrap) addBtnWrap.style.display = '';
 }
 
 function _rntToggleOlder(rid) {
