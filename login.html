@@ -272,15 +272,10 @@
   }
 
   function attempt() {
-    // Rentals bypasses password — goes straight through
-    if (selectedDest === 'rentals-index.html') {
-      localStorage.setItem('rentals_role', 'landlord');
-      window.location.href = selectedDest;
-      return;
-    }
     if (isAuthed() || loginPass.value === PASS) {
       clearError();
       markAuth();
+      if (selectedDest === 'rentals-index.html') localStorage.setItem('rentals_role', 'landlord');
       if (selectedTab) sessionStorage.setItem('cc_open_tab', selectedTab);
       window.location.href = selectedDest;
     } else {

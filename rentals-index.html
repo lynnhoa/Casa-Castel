@@ -99,6 +99,7 @@
     function initNav() {
       document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('rentals_role');
+        localStorage.removeItem('cc_role');
         location.replace('login.html');
       });
       document.getElementById('rpProfileBtn')?.addEventListener('click', () => {
@@ -142,7 +143,7 @@
     }
 
     // Auth gate — redirect to login if not authenticated
-    if (!localStorage.getItem('rentals_role')) {
+    if (!localStorage.getItem('rentals_role') && localStorage.getItem('cc_role') !== 'landlord') {
       location.replace('login.html');
     }
 
