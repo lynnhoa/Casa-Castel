@@ -1771,7 +1771,7 @@ async function _aptOpenContract(type, aptId) {
     const _mvProfile = await _aptResolveTenantProfile(apt.id);
 
     if (isGewerbe) {
-      body.innerHTML = _aptBodyGewerbe(apt, p, sk, kalt, nk, _mvProfile);
+      body.innerHTML = _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, _mvProfile);
       footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptGwPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
       setTimeout(() => {
         _aptGwInitInteractions();
@@ -2148,7 +2148,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
    GEWERBEMIETVERTRAG — MODAL BODY + INTERACTIONS
 ══════════════════════════════════════════════════════════════ */
 
-function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
+function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
   let _gwTenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   let _gwTenantEmail = profile.email   || '';
   let _gwTenantAdr   = profile.address || '';
@@ -2363,7 +2363,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, profile = {}) {
     </div>
     <div class="rm-field">
       <label>Kaution</label>
-      <input class="rm-input" id="apt-gw-kaution" type="number" step="0.01" value="${kalt ? Math.round(kalt*3) : ''}" placeholder="2400,00" style="-webkit-appearance:textfield;appearance:textfield;"/>
+      <input class="rm-input" id="apt-gw-kaution" type="number" step="0.01" value="${kaution ? Math.round(kaution) : (kalt ? Math.round(kalt*3) : '')}" placeholder="2400,00" style="-webkit-appearance:textfield;appearance:textfield;"/>
     </div>
     <div style="margin-bottom:16px;">
       <div class="rm-kaution-lbl" style="margin-bottom:6px;">Kaution Fälligkeit</div>
