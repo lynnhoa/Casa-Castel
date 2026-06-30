@@ -529,8 +529,8 @@ async function _aptResolveTenantProfile(aptId) {
       return {
         ...cached,
         tenant1: { firstName: cached.firstName, lastName: cached.lastName, email: cached.email, phone: cached.phone, birthday: cached.birthday, address: cached.address },
-        tenant2: cached.tenant2 || null,
-        tenant3: cached.tenant3 || null,
+        tenant2: cached.tenant2 ? { ...cached.tenant2, address: cached.tenant2.address || '' } : null,
+        tenant3: cached.tenant3 ? { ...cached.tenant3, address: cached.tenant3.address || '' } : null,
       };
     }
   }
@@ -538,7 +538,7 @@ async function _aptResolveTenantProfile(aptId) {
   try {
     const { data } = await sbL
       .from('rnt_tenant_records')
-      .select('first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,first_name_3,last_name_3,email_3,phone_3,birthday_3')
+      .select('first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3')
       .eq('apartment_id', aptId)
       .eq('status', 'active')
       .order('mietbeginn', { ascending: false })
@@ -553,12 +553,12 @@ async function _aptResolveTenantProfile(aptId) {
     const tenant2 = (data.first_name_2 || data.last_name_2) ? {
       firstName: data.first_name_2 || '', lastName: data.last_name_2 || '',
       email: data.email_2 || '', phone: data.phone_2 || '',
-      birthday: data.birthday_2 || '', address: data.address || '',
+      birthday: data.birthday_2 || '', address: data.address_2 || '',
     } : null;
     const tenant3 = (data.first_name_3 || data.last_name_3) ? {
       firstName: data.first_name_3 || '', lastName: data.last_name_3 || '',
       email: data.email_3 || '', phone: data.phone_3 || '',
-      birthday: data.birthday_3 || '', address: data.address || '',
+      birthday: data.birthday_3 || '', address: data.address_3 || '',
     } : null;
     return { ...tenant1, tenant1, tenant2, tenant3 };
   } catch { return {}; }

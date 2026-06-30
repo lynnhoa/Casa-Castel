@@ -678,12 +678,12 @@ async function _rntLoad() {
       tenant2: (r.first_name_2 || r.last_name_2) ? {
         firstName: r.first_name_2 || '', lastName: r.last_name_2 || '',
         email: r.email_2 || '', phone: r.phone_2 || '',
-        birthday: r.birthday_2 || '', address: r.address || '',
+        birthday: r.birthday_2 || '', address: r.address_2 || '',
       } : null,
       tenant3: (r.first_name_3 || r.last_name_3) ? {
         firstName: r.first_name_3 || '', lastName: r.last_name_3 || '',
         email: r.email_3 || '', phone: r.phone_3 || '',
-        birthday: r.birthday_3 || '', address: r.address || '',
+        birthday: r.birthday_3 || '', address: r.address_3 || '',
       } : null,
     };
   });
@@ -1105,7 +1105,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <div class="tn-field"><span class="tn-flbl">Phone</span>
         <input data-f="phone_2" type="tel" value="${_rntEsc(rec ? rec.phone_2||'' : '')}" placeholder="+49 ..."/></div>
       <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
-        <input data-f="address_2" type="text" value="${_rntEsc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
+        <input data-f="address_2" type="text" value="${_rntEsc(rec ? rec.address_2||'' : '')}" placeholder="Street, City"/></div>
     </div>
   </div>`;
 
@@ -1125,7 +1125,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <div class="tn-field"><span class="tn-flbl">Phone</span>
         <input data-f="phone_3" type="tel" value="${_rntEsc(rec ? rec.phone_3||'' : '')}" placeholder="+49 ..."/></div>
       <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
-        <input data-f="address_3" type="text" value="${_rntEsc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
+        <input data-f="address_3" type="text" value="${_rntEsc(rec ? rec.address_3||'' : '')}" placeholder="Street, City"/></div>
     </div>
   </div>`;
 
@@ -1967,9 +1967,9 @@ function _rntCollectProfile(container, selector) {
     mietbeginn: _rntParseDate(get('mietbeginn')),
     mietende:   _rntParseDate(get('mietende')),
     first_name_2: n2.first, last_name_2: n2.last,
-    email_2: get('email_2'), phone_2: get('phone_2'), birthday_2: get('birthday_2'),
+    email_2: get('email_2'), phone_2: get('phone_2'), birthday_2: get('birthday_2'), address_2: get('address_2'),
     first_name_3: n3.first, last_name_3: n3.last,
-    email_3: get('email_3'), phone_3: get('phone_3'), birthday_3: get('birthday_3'),
+    email_3: get('email_3'), phone_3: get('phone_3'), birthday_3: get('birthday_3'), address_3: get('address_3'),
     kaltmiete:   parseFloat(container.querySelector(`[${selector}="kaltmiete"]`)?.value)   || null,
     nebenkosten: parseFloat(container.querySelector(`[${selector}="nebenkosten"]`)?.value) || null,
     kaution_soll: (() => {
@@ -2010,9 +2010,9 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende,
     first_name_2: p.first_name_2 || null, last_name_2: p.last_name_2 || null,
-    email_2: p.email_2 || null, phone_2: p.phone_2 || null, birthday_2: p.birthday_2 || null,
+    email_2: p.email_2 || null, phone_2: p.phone_2 || null, birthday_2: p.birthday_2 || null, address_2: p.address_2 || null,
     first_name_3: p.first_name_3 || null, last_name_3: p.last_name_3 || null,
-    email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null,
+    email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null, address_3: p.address_3 || null,
     kaltmiete:   p.kaltmiete   ?? (mietende ? liveKalt : null) ?? null,
     nebenkosten: isApt ? (p.nebenkosten ?? (mietende ? liveNK : null) ?? null) : null,
     kaution_soll: p.kaution_soll ?? null,
@@ -2067,9 +2067,9 @@ async function _rntSaveProfile(rid, tid, unitType, unitId) {
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
     first_name_2: p.first_name_2 || null, last_name_2: p.last_name_2 || null,
-    email_2: p.email_2 || null, phone_2: p.phone_2 || null, birthday_2: p.birthday_2 || null,
+    email_2: p.email_2 || null, phone_2: p.phone_2 || null, birthday_2: p.birthday_2 || null, address_2: p.address_2 || null,
     first_name_3: p.first_name_3 || null, last_name_3: p.last_name_3 || null,
-    email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null,
+    email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null, address_3: p.address_3 || null,
     kaltmiete:    p.kaltmiete   ?? null,
     nebenkosten:  isApt ? (p.nebenkosten ?? null) : null,
     kaution_soll: p.kaution_soll ?? null,
