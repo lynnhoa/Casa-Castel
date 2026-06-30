@@ -1636,6 +1636,12 @@ function _rntStaffelHTML(rid, aptId) {
   const current = entries.find(e => new Date(e.effective_date) <= today) || null;
   const next    = entries.find(e => new Date(e.effective_date) > today)  || null;
 
+  const delBtn = (e) =>
+    `<button class="tn-icon-btn" style="color:var(--cc-stone);flex-shrink:0" aria-label="Löschen"
+       onclick="_rntStaffelDelete('${e.id}','${aptId}','${rid}')">
+       <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
+     </button>`;
+
   const adjBtn = (e) => e.tenant_adjusted
     ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
     : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','${rid}')">
@@ -1647,6 +1653,7 @@ function _rntStaffelHTML(rid, aptId) {
         <i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>
         <span class="tn-nkv-date">ab ${fmtD(next.effective_date)}</span>
         <span class="tn-nkv-amount">${_rntFmtEUR(next.amount)}</span>
+        ${delBtn(next)}
       </div>
       <div class="tn-nkv-pills">${adjBtn(next)}</div>
     </div>` : '';
@@ -1656,8 +1663,9 @@ function _rntStaffelHTML(rid, aptId) {
         <i class="ti ti-stairs-up" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
         <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
         <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
+        ${delBtn(current)}
       </div>`
-    : `<p class="tn-empty">Noch keine Staffelstufen eingetragen.</p>`;
+    : (entries.length ? '' : `<p class="tn-empty">Noch keine Staffelstufen eingetragen.</p>`);
 
   const verlaufLink = entries.length > 1
     ? `<button class="tn-nkv-verlauf-btn" onclick="_rntStaffelOpenVerlauf('${aptId}','${rid}')">Verlauf</button>`
