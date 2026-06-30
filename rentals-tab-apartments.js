@@ -1932,23 +1932,24 @@ async function _aptOpenContract(type, aptId) {
           const nutzungszweck  = nutzungSelect === 'Sonstige' ? nutzungFrei : nutzungSelect;
           const etage          = apt2.floor || '';
           const moebliert      = document.getElementById('apt-gw-moebliert-btn')?.dataset.mode === 'ja';
-          const mieterName     = document.getElementById('apt-gw-name')?.value.trim();
-          const mieterAdr      = document.getElementById('apt-gw-adr')?.value.trim();
-          const mieterDob      = document.getElementById('apt-gw-dob')?.value.trim();
-          const mieterEmail    = document.getElementById('apt-gw-email')?.value.trim();
-          const mieterTel      = document.getElementById('apt-gw-tel')?.value.trim();
-          const mieter2Active  = document.getElementById('apt-gw2-wrap')?.style.display !== 'none';
-          const mieterName2    = mieter2Active ? document.getElementById('apt-gw2-name')?.value.trim()  : '';
-          const mieterAdr2     = mieter2Active ? document.getElementById('apt-gw2-adr')?.value.trim()   : '';
-          const mieterDob2     = mieter2Active ? document.getElementById('apt-gw2-dob')?.value.trim()   : '';
-          const mieterEmail2   = mieter2Active ? document.getElementById('apt-gw2-email')?.value.trim() : '';
-          const mieterTel2     = mieter2Active ? document.getElementById('apt-gw2-tel')?.value.trim()   : '';
-          const mieter3Active  = document.getElementById('apt-gw3-wrap')?.style.display !== 'none';
-          const mieterName3    = mieter3Active ? document.getElementById('apt-gw3-name')?.value.trim()  : '';
-          const mieterAdr3     = mieter3Active ? document.getElementById('apt-gw3-adr')?.value.trim()   : '';
-          const mieterDob3     = mieter3Active ? document.getElementById('apt-gw3-dob')?.value.trim()   : '';
-          const mieterEmail3   = mieter3Active ? document.getElementById('apt-gw3-email')?.value.trim() : '';
-          const mieterTel3     = mieter3Active ? document.getElementById('apt-gw3-tel')?.value.trim()   : '';
+          const t1 = _aptReadTenantBlock('gw', 1);
+          const mieterName     = t1.name;
+          const mieterAdr      = t1.adr;
+          const mieterDob      = t1.dob;
+          const mieterEmail    = t1.email;
+          const mieterTel      = t1.tel;
+          const t2 = _aptReadTenantBlock('gw', 2);
+          const mieterName2    = t2.name;
+          const mieterAdr2     = t2.adr;
+          const mieterDob2     = t2.dob;
+          const mieterEmail2   = t2.email;
+          const mieterTel2     = t2.tel;
+          const t3 = _aptReadTenantBlock('gw', 3);
+          const mieterName3    = t3.name;
+          const mieterAdr3     = t3.adr;
+          const mieterDob3     = t3.dob;
+          const mieterEmail3   = t3.email;
+          const mieterTel3     = t3.tel;
           const startVal       = document.getElementById('apt-gw-start')?.value;
           const festNum        = parseInt(document.getElementById('apt-gw-fest-num')?.value) || 0;
           const festUnit       = document.getElementById('apt-gw-fest-unit')?.value || 'Jahre';
@@ -2294,14 +2295,6 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
 ══════════════════════════════════════════════════════════════ */
 
 function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
-  let _gwTenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
-  let _gwTenantEmail = profile.email   || '';
-  let _gwTenantAdr   = profile.address || '';
-  let _gwTenantDob   = profile.birthday || '';
-  if (_gwTenantDob && _gwTenantDob.includes('-') && _gwTenantDob.length === 10) {
-    const [_y,_m,_d] = _gwTenantDob.split('-');
-    _gwTenantDob = `${_d}.${_m}.${_y}`;
-  }
   const kaltFmt = n => Number(n||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
   const schluessel = `Haustür \u00d7${sk.haustuerschluessel??1} \u00b7 Wohnung \u00d7${sk.wohnungsschluessel??1}`;
 
@@ -2368,53 +2361,10 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
       </div>
     </div>
 
-    <div class="rm-fields-title">Mieterdaten</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="aptGwMieterRoomLbl">${aptEsc(apt.name)} Mieter</span>
-      <div class="ub-mieter-pill" id="aptGwMieterPill"
-        data-state="room"
-        data-tenant-name="${aptEsc(_gwTenantName)}"
-        data-tenant-email="${aptEsc(_gwTenantEmail)}"
-        data-tenant-adr="${aptEsc(_gwTenantAdr)}"
-        data-tenant-dob="${aptEsc(_gwTenantDob)}"
-        onclick="_toggleAptGwMieter()">
-        <div class="ub-mieter-pill__knob"></div>
-      </div>
-      <span style="font-size:11px;color:var(--cc-stone);" id="aptGwMieterManualLbl">Manuell</span>
-    </div>
-    <div class="rm-field"><label>Name</label><input class="rm-input" id="apt-gw-name" value="${aptEsc(_gwTenantName)}" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-gw-adr" value="${aptEsc(_gwTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
-    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-gw-dob" value="${aptEsc(_gwTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
-    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-gw-email" type="email" value="${aptEsc(_gwTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
-    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="apt-gw-tel" type="tel" placeholder="+49 …"/></div>
-
-    <button type="button" id="apt-gw2-add-btn" onclick="_aptGwAddCoTenant()"
-      style="font-size:11px;padding:6px 12px;border-radius:6px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-taupe);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;margin-top:4px;margin-bottom:10px;">
-      <i class="ti ti-plus" style="font-size:13px;"></i> Mieter hinzufügen
-    </button>
-    <div id="apt-gw2-wrap" style="display:none;">
-      <div class="rm-fields-title" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>Mieterdaten — 2. Mieter</span>
-        <button type="button" onclick="_aptGwRemoveCoTenant(2)" style="font-size:11px;color:var(--cc-stone);background:none;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;">Entfernen</button>
-      </div>
-      <div class="rm-field"><label>Name</label><input class="rm-input" id="apt-gw2-name" placeholder="Vor- und Nachname…"/></div>
-      <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-gw2-adr" placeholder="Aktuelle Adresse…"/></div>
-      <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-gw2-dob" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
-      <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-gw2-email" type="email" placeholder="mieter@beispiel.de"/></div>
-      <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="apt-gw2-tel" type="tel" placeholder="+49 …"/></div>
-    </div>
-    <div id="apt-gw3-wrap" style="display:none;">
-      <div class="rm-fields-title" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>Mieterdaten — 3. Mieter</span>
-        <button type="button" onclick="_aptGwRemoveCoTenant(3)" style="font-size:11px;color:var(--cc-stone);background:none;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;">Entfernen</button>
-      </div>
-      <div class="rm-field"><label>Name</label><input class="rm-input" id="apt-gw3-name" placeholder="Vor- und Nachname…"/></div>
-      <div class="rm-field"><label>Adresse</label><input class="rm-input" id="apt-gw3-adr" placeholder="Aktuelle Adresse…"/></div>
-      <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-gw3-dob" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
-      <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-gw3-email" type="email" placeholder="mieter@beispiel.de"/></div>
-      <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="apt-gw3-tel" type="tel" placeholder="+49 …"/></div>
-    </div>
-
+    ${_aptTenantBlockHTML('gw', 1, profile.tenant1 || { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone, birthday: profile.birthday, address: profile.address }, { required: true, aptName: apt.name })}
+    ${_aptTenantBlockHTML('gw', 2, profile.tenant2 || null, { required: false })}
+    ${_aptTenantBlockHTML('gw', 3, profile.tenant3 || null, { required: false })}
+    ${_aptAddTenantBtnHTML('gw', profile.tenant2, profile.tenant3)}
     <div class="rm-fields-title" style="margin-top:6px;">Mietzeit</div>
     <div class="rm-field"><label>Mietbeginn</label><input class="rm-input" id="apt-gw-start" type="date" onclick="try{this.showPicker()}catch(e){}" oninput="_aptGwCalcDates()"/></div>
     <div class="rm-field-row">
@@ -2753,55 +2703,6 @@ function _aptGwCalcVerl(source) {
   } else if (dispEl) {
     dispEl.style.display = 'none';
   }
-}
-
-/* ── GEWERBE: Mieter prefill toggle ─────────────────── */
-function _toggleAptGwMieter() {
-  const pill      = document.getElementById('aptGwMieterPill');
-  const manualLbl = document.getElementById('aptGwMieterManualLbl');
-  if (!pill) return;
-  const isRoom = pill.dataset.state === 'room';
-  if (isRoom) {
-    pill.dataset.state = 'manual';
-    document.getElementById('apt-gw-name').value  = '';
-    document.getElementById('apt-gw-adr').value   = '';
-    document.getElementById('apt-gw-dob').value   = '';
-    document.getElementById('apt-gw-email').value = '';
-    document.getElementById('apt-gw-name').focus();
-    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
-  } else {
-    pill.dataset.state = 'room';
-    document.getElementById('apt-gw-name').value  = pill.dataset.tenantName  || '';
-    document.getElementById('apt-gw-adr').value   = pill.dataset.tenantAdr   || '';
-    document.getElementById('apt-gw-dob').value   = pill.dataset.tenantDob   || '';
-    document.getElementById('apt-gw-email').value = pill.dataset.tenantEmail || '';
-    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
-  }
-}
-
-/* ── GEWERBE: 2./3. Mieter add/remove (cycling) ───────── */
-function _aptGwAddCoTenant() {
-  const wrap2 = document.getElementById('apt-gw2-wrap');
-  const wrap3 = document.getElementById('apt-gw3-wrap');
-  const addBtn = document.getElementById('apt-gw2-add-btn');
-  if (!wrap2) return;
-  if (wrap2.style.display === 'none') {
-    wrap2.style.display = '';
-    document.getElementById('apt-gw2-name')?.focus();
-  } else if (wrap3 && wrap3.style.display === 'none') {
-    wrap3.style.display = '';
-    document.getElementById('apt-gw3-name')?.focus();
-  }
-  if (wrap3 && wrap3.style.display !== 'none' && addBtn) addBtn.style.display = 'none';
-}
-
-function _aptGwRemoveCoTenant(n) {
-  const wrap = document.getElementById(`apt-gw${n}-wrap`);
-  if (!wrap) return;
-  wrap.style.display = 'none';
-  wrap.querySelectorAll('input').forEach(inp => inp.value = '');
-  const addBtn = document.getElementById('apt-gw2-add-btn');
-  if (addBtn) addBtn.style.display = '';
 }
 
 /* ── GEWERBE: Init all interactions after body inject ── */
