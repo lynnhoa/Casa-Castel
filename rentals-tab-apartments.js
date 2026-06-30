@@ -2743,7 +2743,7 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
       <textarea class="rm-input" id="apt-ub-bemerkungen" rows="3" style="resize:vertical;line-height:1.5" placeholder="Sonstige Anmerkungen…"></textarea>
     </div>
     <div class="rm-field" style="margin-top:4px">
-      <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
+      <label>Unterzeichnungsdatum</label>
       <input class="rm-input" id="apt-ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
     </div>`;
 }
