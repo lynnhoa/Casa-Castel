@@ -1432,12 +1432,12 @@ function _rntNKHTML(rid, tid, ctx) {
       <span class="tn-sec-lbl" style="flex:1">NK Abrechnungen</span>
       ${openCount > 0
         ? `<span class="tnp tnp-amber">${openCount} open</span>`
-        : '<span class="tnp tnp-green">All done</span>'}
+        : (settled.length > 0 ? '<span class="tnp tnp-green">All done</span>' : '')}
     </div>
     ${open.map(nkRow).join('')}
     ${settled.map(settledRow).join('')}
     ${!open.length && !settled.length ? `<p class="tn-empty">No NK periods yet.</p>` : ''}
-    <button class="tn-add-nk-btn" onclick="_rntAddNkPeriod('${tid}','${ctx}')">
+    <button class="tn-add-nk-btn" style="margin-top:8px" onclick="_rntAddNkPeriod('${tid}','${ctx}')">
       <i class="ti ti-plus"></i> Add NK period
     </button>
   </div>
