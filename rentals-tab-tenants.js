@@ -1055,6 +1055,8 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <span class="tn-fval">${email || '<span class="muted">Not set</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+      <span class="tn-fval">${_rntEsc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
     ${has2 ? `
     <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Mieter 2</span></div>
     <div class="tn-field"><span class="tn-flbl">Name</span>
@@ -1077,16 +1079,18 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <span class="tn-fval">${_rntEsc(rec.phone_3||'') || '<span class="muted">Not set</span>'}</span></div>
     ` : ''}
-    <div class="tn-field"><span class="tn-flbl">Move in</span>
-      <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
-    <div class="tn-field"><span class="tn-flbl">Move out</span>
-      <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_rntFmtDate(rec.mietende) || 'Not set \u2014 active'}</span></div>
-    <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
-      <span class="tn-fval">${_rntEsc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
+    <div class="tn-field tn-field-full" style="border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
+      <div class="tn-fg">
+        <div class="tn-field"><span class="tn-flbl">Move in</span>
+          <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move out</span>
+          <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_rntFmtDate(rec.mietende) || 'Not set \u2014 active'}</span></div>
+      </div>
+    </div>
   </div>`;
 
   const tenant2Block = `
-  <div id="p2wrap-${rid}" class="tn-field-full" style="display:${has2 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
+  <div id="p2wrap-${rid}" class="tn-field-full" style="display:${has2 ? 'block' : 'none'};grid-column:1/-1;margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <span class="tn-flbl">Mieter 2</span>
       <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',2)">Entfernen</button>
@@ -1100,11 +1104,13 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
         <input data-f="email_2" type="email" value="${_rntEsc(rec ? rec.email_2||'' : '')}" placeholder="mieter@mail.de"/></div>
       <div class="tn-field"><span class="tn-flbl">Phone</span>
         <input data-f="phone_2" type="tel" value="${_rntEsc(rec ? rec.phone_2||'' : '')}" placeholder="+49 ..."/></div>
+      <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+        <input data-f="address_2" type="text" value="${_rntEsc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
     </div>
   </div>`;
 
   const tenant3Block = `
-  <div id="p3wrap-${rid}" class="tn-field-full" style="display:${has3 ? '' : 'none'};margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
+  <div id="p3wrap-${rid}" class="tn-field-full" style="display:${has3 ? 'block' : 'none'};grid-column:1/-1;margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <span class="tn-flbl">Mieter 3</span>
       <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',3)">Entfernen</button>
@@ -1118,11 +1124,13 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
         <input data-f="email_3" type="email" value="${_rntEsc(rec ? rec.email_3||'' : '')}" placeholder="mieter@mail.de"/></div>
       <div class="tn-field"><span class="tn-flbl">Phone</span>
         <input data-f="phone_3" type="tel" value="${_rntEsc(rec ? rec.phone_3||'' : '')}" placeholder="+49 ..."/></div>
+      <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+        <input data-f="address_3" type="text" value="${_rntEsc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
     </div>
   </div>`;
 
   const addTenantBtn = `
-  <div class="tn-field-full" style="display:${has3 ? 'none' : ''};margin-top:4px;margin-bottom:4px;">
+  <div class="tn-field-full" style="display:${has3 ? 'none' : 'block'};grid-column:1/-1;margin-top:4px;margin-bottom:4px;">
     <button type="button" id="paddco-${rid}" class="tn-btn tn-btn-sm" onclick="_rntAddCoTenant('${rid}')">
       <i class="ti ti-plus"></i> Mieter hinzuf\u00fcgen
     </button>
@@ -1138,15 +1146,19 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <input data-f="email" type="email" value="${email}" placeholder="mieter@mail.de"/></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <input data-f="phone" type="tel" value="${_rntEsc(rec ? rec.phone||'' : '')}" placeholder="+49 ..."/></div>
+    <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+      <input data-f="address" type="text" value="${_rntEsc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
     ${tenant2Block}
     ${tenant3Block}
     ${addTenantBtn}
-    <div class="tn-field" style="margin-top:8px;"><span class="tn-flbl">Move in</span>
-      <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="DD.MM.YYYY"/></div>
-    <div class="tn-field"><span class="tn-flbl">Move out</span>
-      <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 becomes Former when reached"/></div>
-    <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
-      <input data-f="address" type="text" value="${_rntEsc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
+    <div class="tn-field-full" style="grid-column:1/-1;border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
+      <div class="tn-fg">
+        <div class="tn-field"><span class="tn-flbl">Move in</span>
+          <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="DD.MM.YYYY"/></div>
+        <div class="tn-field"><span class="tn-flbl">Move out</span>
+          <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 becomes Former when reached"/></div>
+      </div>
+    </div>
   </div>`;
 
   const unitId   = type === 'apt' ? unit.id : unit.id;
@@ -1904,10 +1916,10 @@ function _rntAddCoTenant(rid) {
   const addBtnWrap = document.getElementById('paddco-' + rid)?.parentElement;
   if (!w2) return;
   if (w2.style.display === 'none') {
-    w2.style.display = '';
+    w2.style.display = 'block';
     document.querySelector(`#p2wrap-${rid} [data-f="name_2"]`)?.focus();
   } else if (w3 && w3.style.display === 'none') {
-    w3.style.display = '';
+    w3.style.display = 'block';
     document.querySelector(`#p3wrap-${rid} [data-f="name_3"]`)?.focus();
   }
   if (w3 && w3.style.display !== 'none' && addBtnWrap) addBtnWrap.style.display = 'none';
@@ -1919,7 +1931,7 @@ function _rntRemoveCoTenant(rid, n) {
   w.style.display = 'none';
   w.querySelectorAll('input').forEach(inp => inp.value = '');
   const addBtnWrap = document.getElementById('paddco-' + rid)?.parentElement;
-  if (addBtnWrap) addBtnWrap.style.display = '';
+  if (addBtnWrap) addBtnWrap.style.display = 'block';
 }
 
 function _rntToggleOlder(rid) {
