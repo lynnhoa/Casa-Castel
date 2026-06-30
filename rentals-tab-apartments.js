@@ -1809,6 +1809,8 @@ async function _aptOpenContract(type, aptId) {
           let staffelAn = false;
           if (szenario === 'S1') {
             kuendigungsfrist = parseInt(document.getElementById('apt-gw-kuendfrist')?.value) || 6;
+          }
+          if (szenario === 'S1' || szenario === 'S3') {
             staffelAn = document.getElementById('apt-gw-staffel-btn')?.dataset.mode === 'ja';
             if (staffelAn) {
               const rows = document.querySelectorAll('.apt-gw-staffel-row');
@@ -2396,7 +2398,7 @@ function _aptGwSetSzenario(s) {
   const sw = document.getElementById('apt-gw-staffel-wrap');
   if (s1) s1.style.display = s === 'S1' ? '' : 'none';
   if (s3) s3.style.display = s === 'S3' ? '' : 'none';
-  if (sw) sw.style.display = s === 'S1' ? '' : 'none';
+  if (sw) sw.style.display = (s === 'S1' || s === 'S3') ? '' : 'none';
   _aptGwCalcDates();
 }
 

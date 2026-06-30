@@ -49,9 +49,9 @@ function _buildGewerbeMietvertragData(apt, s, {
     mietende = fmtDt(d);
   }
 
-  // Staffel dates (S1)
+  // Staffel dates (S1 + S3)
   const staffelnBuilt = [];
-  if (szenario === 'S1' && staffelAn && mietendeRaw) {
+  if ((szenario === 'S1' || szenario === 'S3') && staffelAn && mietendeRaw) {
     const intervall = 1; // from staffeln data or default
     staffeln.forEach((st, i) => {
       staffelnBuilt.push({ datum: st.datum || '', betrag: Number(st.betrag) || 0 });
@@ -237,7 +237,7 @@ function _renderGewerbeMietvertragHTML(d) {
     `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fs.\u202fd. \u00a7\u00a02 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Entw\u00e4sserungsanlagen, sonstige Anlagen)</div>`;
 
   // Staffel table (S1)
-  const hasStaffel = d.szenario === 'S1' && d.staffelAn && d.staffeln.length > 0;
+  const hasStaffel = (d.szenario === 'S1' || d.szenario === 'S3') && d.staffelAn && d.staffeln.length > 0;
   const staffelTable = hasStaffel ? `
     <table class="staffel-table">
       <thead><tr><th>Zeitraum ab</th><th>Nettokaltmiete / Monat</th></tr></thead>
@@ -261,7 +261,11 @@ function _renderGewerbeMietvertragHTML(d) {
 
   const p1_S2 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und endet am ${d.mietende} automatisch, ohne dass es einer K\u00fcndigung bedarf. Eine ordentliche K\u00fcndigung ist w\u00e4hrend der vereinbarten Mietzeit f\u00fcr beide Parteien ausgeschlossen. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
 
-  const p1_S3 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und endet am ${d.mietende} automatisch, ohne dass es einer K\u00fcndigung bedarf. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt. Der Mieter ist berechtigt, das Mietverh\u00e4ltnis einmalig um ${d.verlaengerungJahre}\u00a0Jahr${d.verlaengerungJahre===1?'':'e'} zu verl\u00e4ngern. Die Verl\u00e4ngerung muss dem Vermieter sp\u00e4testens ${d.ankuendigungMonate}\u00a0Monate vor Ablauf der Mietzeit, d.\u202fh. bis zum ${d.ankuendigungBis}, schriftlich mitgeteilt werden. Bei fristgerechter Aus\u00fcbung verl\u00e4ngert sich das Mietverh\u00e4ltnis bis zum ${d.verlBis} und endet sodann automatisch ohne K\u00fcndigung. Wird die Option nicht fristgerecht ausge\u00fcbt, erlischt sie ersatzlos. Die monatliche Nettokaltmiete betr\u00e4gt ab dem ersten Tag der Verl\u00e4ngerungsperiode ${eur(d.neueKaltmiete)}.`;
+  const p1_S3_miete = (d.szenario === 'S3' && d.staffelAn && d.staffeln.length > 0)
+    ? `Die monatliche Nettokaltmiete w\u00e4hrend der Verl\u00e4ngerungsperiode ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt; die Einzelbetr\u00e4ge und Termine ergeben sich aus \u00a7\u00a03 (Staffelmiete).`
+    : `Die monatliche Nettokaltmiete betr\u00e4gt ab dem ersten Tag der Verl\u00e4ngerungsperiode ${eur(d.neueKaltmiete)}.`;
+
+  const p1_S3 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und endet am ${d.mietende} automatisch, ohne dass es einer K\u00fcndigung bedarf. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt. Der Mieter ist berechtigt, das Mietverh\u00e4ltnis einmalig um ${d.verlaengerungJahre}\u00a0Jahr${d.verlaengerungJahre===1?'':'e'} zu verl\u00e4ngern. Die Verl\u00e4ngerung muss dem Vermieter sp\u00e4testens ${d.ankuendigungMonate}\u00a0Monate vor Ablauf der Mietzeit, d.\u202fh. bis zum ${d.ankuendigungBis}, schriftlich mitgeteilt werden. Bei fristgerechter Aus\u00fcbung verl\u00e4ngert sich das Mietverh\u00e4ltnis bis zum ${d.verlBis} und endet sodann automatisch ohne K\u00fcndigung. Wird die Option nicht fristgerecht ausge\u00fcbt, erlischt sie ersatzlos. W\u00e4hrend der Verl\u00e4ngerungsperiode ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen; das Mietverh\u00e4ltnis ist auch in diesem Zeitraum fest gebunden und endet automatisch mit Ablauf der Verl\u00e4ngerung, ohne dass es einer K\u00fcndigung bedarf. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt. ${p1_S3_miete}`;
 
   const p1Body = d.szenario === 'S1' ? p1_S1 : d.szenario === 'S3' ? p1_S3 : p1_S2;
 
