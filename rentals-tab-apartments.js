@@ -1490,8 +1490,13 @@ function _aptHGOpenModal(aptId) {
 function _aptHGModalClose() {
   document.getElementById('aptHGModal').classList.remove('open');
 }
+let _aptHGMouseDownOnOverlay = false;
+document.getElementById('aptHGModal')?.addEventListener('mousedown', e => {
+  _aptHGMouseDownOnOverlay = (e.target === document.getElementById('aptHGModal'));
+});
 function _aptHGModalOutside(e) {
-  if (e.target === document.getElementById('aptHGModal')) _aptHGModalClose();
+  if (_aptHGMouseDownOnOverlay && e.target === document.getElementById('aptHGModal')) _aptHGModalClose();
+  _aptHGMouseDownOnOverlay = false;
 }
 
 function _aptHGAdd(aptId) {
@@ -1629,11 +1634,16 @@ document.getElementById('aptInventarCancel')?.addEventListener('click', () => {
   _aptInventarId = null;
 });
 
+let _aptInventarMouseDownOnOverlay = false;
+document.getElementById('aptInventarOverlay')?.addEventListener('mousedown', e => {
+  _aptInventarMouseDownOnOverlay = (e.target === document.getElementById('aptInventarOverlay'));
+});
 document.getElementById('aptInventarOverlay')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('aptInventarOverlay')) {
+  if (_aptInventarMouseDownOnOverlay && e.target === document.getElementById('aptInventarOverlay')) {
     document.getElementById('aptInventarOverlay').classList.remove('open');
     _aptInventarId = null;
   }
+  _aptInventarMouseDownOnOverlay = false;
 });
 
 document.getElementById('aptInventarAddRow')?.addEventListener('click', () => {
@@ -1945,9 +1955,14 @@ async function _aptOpenContract(type, aptId) {
 document.getElementById('aptContractClose')?.addEventListener('click', () => {
   document.getElementById('aptContractOverlay').classList.remove('open');
 });
+let _aptContractMouseDownOnOverlay = false;
+document.getElementById('aptContractOverlay')?.addEventListener('mousedown', e => {
+  _aptContractMouseDownOnOverlay = (e.target === document.getElementById('aptContractOverlay'));
+});
 document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('aptContractOverlay'))
+  if (_aptContractMouseDownOnOverlay && e.target === document.getElementById('aptContractOverlay'))
     document.getElementById('aptContractOverlay').classList.remove('open');
+  _aptContractMouseDownOnOverlay = false;
 });
 
 
