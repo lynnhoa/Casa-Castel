@@ -1696,7 +1696,8 @@ async function _aptHGMarkNotified(id, aptId) {
   if (error) { console.warn('[apartments] hg notified:', error.message); return; }
   const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
   if (entry) { entry.weg_notified = true; entry.notified_date = today; }
-  _aptHGRenderRow(id, aptId);
+  // Full rerender — amber pill on header must disappear when all entries are notified
+  _aptRerenderCard(aptId);
 }
 
 async function _aptHGMarkAdjusted(id, aptId) {
