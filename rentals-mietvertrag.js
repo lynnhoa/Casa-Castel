@@ -453,11 +453,6 @@ function _renderRentalMietvertragHTML(d) {
       'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
     ${cl('13','Sonstige Vereinbarungen',
       'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.')}
-    ${sec('Anlage A \u2014 Inventar',true,false)}
-    <table class="inv-table">
-      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
-      <tbody>${invRows}</tbody>
-    </table>
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>
@@ -465,11 +460,22 @@ function _renderRentalMietvertragHTML(d) {
   </div>
 </div>`;
 
+  const page4 = `<div class="pdf-page page">
+  ${hdr(d.zimmerName)}${ftr(4)}
+  <div class="content">
+    ${sec('Anlage A \u2014 Inventar',true,false)}
+    <table class="inv-table">
+      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
+      <tbody>${invRows}</tbody>
+    </table>
+  </div>
+</div>`;
+
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Mietvertrag \u2014 ${d.zimmerName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page2}${page3}</body></html>`;
+<body>${page1}${page2}${page3}${page4}</body></html>`;
 }
 
 

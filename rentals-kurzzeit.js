@@ -340,18 +340,18 @@ function _renderRentalKurzzeitHTML(d) {
       'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.')}
     ${cl('8','Hausordnung',
       'Rauchen ist im gesamten Gebäude nicht gestattet. Haustiere sind ohne schriftliche Zustimmung nicht erlaubt. Untervermietung ist untersagt. Nachtruhe gilt von 22:00–07:00\u202fUhr.')}
-    ${cl('9','Datenschutz',
-      'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.')}
-    ${cl('10','Salvatorische Klausel &amp; Gerichtsstand',
-      'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
   </div>
 </div>`;
 
-  // ── PAGE 3: Inventar, Anmerkungen, Unterschriften ──────────────────────────
+  // ── PAGE 3: §9–§10, Anmerkungen, Unterschriften ─────────────────────────────
 
   const page3 = `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(3)}
   <div class="content">
+    ${cl('9','Datenschutz',
+      'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.',true)}
+    ${cl('10','Salvatorische Klausel &amp; Gerichtsstand',
+      'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>
