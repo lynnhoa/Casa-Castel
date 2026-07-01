@@ -1848,46 +1848,45 @@ async function _openContract(type, roomId) {
     setTimeout(() => {
       document.getElementById('contractPdfBtn')?.addEventListener('click', async () => {
         const btn = document.getElementById('contractPdfBtn');
-        const room2 = getRoomById(_contractRoomId); if (!room2) return;
-        const mieterName = document.getElementById('cm-name')?.value.trim();
-        const mieterAdr  = document.getElementById('cm-adr')?.value.trim();
-        const mieterDob  = document.getElementById('cm-dob')?.value.trim();
-        const mieterEmail= document.getElementById('cm-email')?.value.trim();
-        const mieterTel  = document.getElementById('cm-tel')?.value.trim();
-        const startVal   = document.getElementById('cm-start')?.value;
-        const endVal     = document.getElementById('cm-end')?.value;
-        const sigVal     = document.getElementById('cm-sig')?.value;
-        const ersterMonatVoll  = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
-        const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
-        if (!startVal || !endVal) { alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
-        const s    = appSettings;
-        const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
-        const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
-        let _cmFaelVal = '5';
-        _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _cmFaelVal = b.dataset.val; });
-        const kautionFaelligkeitKz = _cmFaelVal === 'custom'
-          ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
-          : _cmFaelVal === 'sofort' ? 'sofort' : 5;
-        const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz, kautionFaelligkeit: kautionFaelligkeitKz });
-        const html = _renderKurzzeitHTML(data);
-        let container = document.getElementById('_pdfRenderContainer');
-        if (container) container.remove();
-        container = document.createElement('div');
-        container.id = '_pdfRenderContainer';
-        container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#faf9f7;z-index:-1;font-size:11.33px;';
-        container.innerHTML = html;
-        document.body.appendChild(container);
-        await document.fonts.ready;
-        await new Promise(r => setTimeout(r, 300));
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
-        const safeName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
-        const filename = `Kurzzeitmietvertrag_${room2.name}_${safeName}.pdf`;
         try {
+          const room2 = getRoomById(_contractRoomId); if (!room2) return;
+          const mieterName = document.getElementById('cm-name')?.value.trim();
+          const mieterAdr  = document.getElementById('cm-adr')?.value.trim();
+          const mieterDob  = document.getElementById('cm-dob')?.value.trim();
+          const mieterEmail= document.getElementById('cm-email')?.value.trim();
+          const mieterTel  = document.getElementById('cm-tel')?.value.trim();
+          const startVal   = document.getElementById('cm-start')?.value;
+          const endVal     = document.getElementById('cm-end')?.value;
+          const sigVal     = document.getElementById('cm-sig')?.value;
+          const ersterMonatVoll  = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
+          const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
+          if (!startVal || !endVal) { if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
+          const s    = appSettings;
+          const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
+          const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
+          let _cmFaelVal = '5';
+          _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _cmFaelVal = b.dataset.val; });
+          const kautionFaelligkeitKz = _cmFaelVal === 'custom'
+            ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
+            : _cmFaelVal === 'sofort' ? 'sofort' : 5;
+          const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz, kautionFaelligkeit: kautionFaelligkeitKz });
+          const html = _renderKurzzeitHTML(data);
+          let container = document.getElementById('_pdfRenderContainer');
+          if (container) container.remove();
+          container = document.createElement('div');
+          container.id = '_pdfRenderContainer';
+          container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#faf9f7;z-index:-1;font-size:11.33px;';
+          container.innerHTML = html;
+          document.body.appendChild(container);
+          await document.fonts.ready;
+          await new Promise(r => setTimeout(r, 300));
+          const safeName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
+          const filename = `Kurzzeitmietvertrag_${room2.name}_${safeName}.pdf`;
           await _roomGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[KZ PDF]', err);
           alert('PDF generation failed. Please try again.');
-          if (container.parentNode) container.remove();
           if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
         }
       });
@@ -1906,57 +1905,63 @@ async function _openContract(type, roomId) {
     setTimeout(() => {
       document.getElementById('contractPdfBtn')?.addEventListener('click', async () => {
         const btn = document.getElementById('contractPdfBtn');
-        const room2   = getRoomById(_contractRoomId); if (!room2) return;
-        const mieterName  = document.getElementById('mv-name')?.value.trim();
-        const mieterAdr   = document.getElementById('mv-adr')?.value.trim();
-        const mieterDob   = document.getElementById('mv-dob')?.value.trim();
-        const mieterEmail = document.getElementById('mv-email')?.value.trim();
-        const mieterTel   = document.getElementById('mv-tel')?.value.trim();
-        const startVal    = document.getElementById('mv-start')?.value;
-        const sigVal      = document.getElementById('mv-sig')?.value;
-        const befristet   = document.getElementById('mv-befristung-btn')?.dataset.mode === 'befristet';
-        const endVal      = befristet ? document.getElementById('mv-end')?.value : null;
-        const grundVal    = befristet ? (document.querySelector('input[name=\'mv-grund\']:checked')?.value || '') : '';
-        const eigenbedarfPerson = grundVal === 'eigenbedarf'
-          ? document.getElementById('mv-eigenbedarf-person')?.value.trim() : '';
-        if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) {
-          alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
-        }
-        if (!startVal) { alert('Bitte Mietbeginn ausfüllen.'); return; }
-        if (befristet && !endVal) { alert('Bitte Mietende ausfüllen.'); return; }
-        const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
-        const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
-        const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
-        let _mvFaelVal = '5';
-        _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _mvFaelVal = b.dataset.val; });
-        const kautionFaelligkeitMv = _mvFaelVal === 'custom'
-          ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
-          : _mvFaelVal === 'sofort' ? 'sofort' : 5;
-        const data = _buildMietvertragOnlyData(room2, appSettings, {
-          mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
-          befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
-          kautionOverride: kautionOverrideMv,
-          kautionFaelligkeit: kautionFaelligkeitMv,
-        });
-        const html = _renderMietvertragHTML(data);
-        let container = document.getElementById('_pdfRenderContainer');
-        if (container) container.remove();
-        container = document.createElement('div');
-        container.id = '_pdfRenderContainer';
-        container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#ffffff;z-index:-1;font-size:11.33px;';
-        container.innerHTML = html;
-        document.body.appendChild(container);
-        await document.fonts.ready;
-        await new Promise(r => setTimeout(r, 300));
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
-        const safeMvName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
-        const filenameMv = `Mietvertrag_${room2.name}_${safeMvName}.pdf`;
         try {
+          const room2   = getRoomById(_contractRoomId); if (!room2) return;
+          const mieterName  = document.getElementById('mv-name')?.value.trim();
+          const mieterAdr   = document.getElementById('mv-adr')?.value.trim();
+          const mieterDob   = document.getElementById('mv-dob')?.value.trim();
+          const mieterEmail = document.getElementById('mv-email')?.value.trim();
+          const mieterTel   = document.getElementById('mv-tel')?.value.trim();
+          const startVal    = document.getElementById('mv-start')?.value;
+          const sigVal      = document.getElementById('mv-sig')?.value;
+          const befristet   = document.getElementById('mv-befristung-btn')?.dataset.mode === 'befristet';
+          const endVal      = befristet ? document.getElementById('mv-end')?.value : null;
+          const grundVal    = befristet ? (document.querySelector('input[name=\'mv-grund\']:checked')?.value || '') : '';
+          const eigenbedarfPerson = grundVal === 'eigenbedarf'
+            ? document.getElementById('mv-eigenbedarf-person')?.value.trim() : '';
+          if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) {
+            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+            alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
+          }
+          if (!startVal) {
+            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+            alert('Bitte Mietbeginn ausfüllen.'); return;
+          }
+          if (befristet && !endVal) {
+            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+            alert('Bitte Mietende ausfüllen.'); return;
+          }
+          const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
+          const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
+          const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
+          let _mvFaelVal = '5';
+          _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _mvFaelVal = b.dataset.val; });
+          const kautionFaelligkeitMv = _mvFaelVal === 'custom'
+            ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
+            : _mvFaelVal === 'sofort' ? 'sofort' : 5;
+          const data = _buildMietvertragOnlyData(room2, appSettings, {
+            mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
+            befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
+            kautionOverride: kautionOverrideMv,
+            kautionFaelligkeit: kautionFaelligkeitMv,
+          });
+          const html = _renderMietvertragHTML(data);
+          let container = document.getElementById('_pdfRenderContainer');
+          if (container) container.remove();
+          container = document.createElement('div');
+          container.id = '_pdfRenderContainer';
+          container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#ffffff;z-index:-1;font-size:11.33px;';
+          container.innerHTML = html;
+          document.body.appendChild(container);
+          await document.fonts.ready;
+          await new Promise(r => setTimeout(r, 300));
+          const safeMvName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
+          const filenameMv = `Mietvertrag_${room2.name}_${safeMvName}.pdf`;
           await _roomGenericPdfAction(container, filenameMv, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[MV PDF]', err);
           alert('PDF generation failed. Please try again.');
-          if (container.parentNode) container.remove();
           if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
         }
       });
