@@ -85,27 +85,6 @@ document.getElementById('tab-rooms').innerHTML = `
     </div>
   </div>
 
-  <!-- ══ PDF PREVIEW OVERLAY ══ -->
-  <div id="pdfPreviewOverlay" style="display:none;position:fixed;inset:0;z-index:600;background:var(--cc-surface);flex-direction:column;overflow:hidden;">
-    <!-- Sticky header bar -->
-    <div id="pdfPreviewHdr" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:max(14px,env(safe-area-inset-top,14px)) 12px 12px;background:var(--cc-white);border-bottom:0.5px solid var(--cc-rule);flex-shrink:0;z-index:10;">
-      <button id="pdfPreviewClose" style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:50%;cursor:pointer;color:var(--cc-stone);font-size:16px;flex-shrink:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">✕</button>
-      <span id="pdfPreviewTitle" style="flex:1;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-        <button id="pdfZoomOut" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:8px;cursor:pointer;color:var(--cc-charcoal);font-size:15px;font-family:inherit;font-weight:300;">−</button>
-        <span id="pdfZoomLabel" style="font-size:12px;font-weight:500;color:var(--cc-taupe);min-width:38px;text-align:center;">100%</span>
-        <button id="pdfZoomIn" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:8px;cursor:pointer;color:var(--cc-charcoal);font-size:15px;font-family:inherit;font-weight:300;">+</button>
-        <button id="pdfPreviewSaveBtn" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 16px;background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:8px;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;margin-left:4px;">
-          <i class="ti ti-printer" style="font-size:14px;"></i> PDF
-        </button>
-      </div>
-    </div>
-    <!-- Scrollable preview body -->
-    <div id="pdfPreviewBody" style="flex:1;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:24px 16px 40px;display:flex;flex-direction:column;align-items:center;background:var(--cc-surface);">
-      <div id="pdfPreviewDoc" style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;"></div>
-    </div>
-  </div>
-
   <!-- ══ CONFIRM DELETE ══ -->
   <div class="rm-confirm-overlay" id="confirmOverlay">
     <div class="rm-confirm-box">
@@ -1740,106 +1719,94 @@ let _contractRoomId = null;
 let _contractType   = null;
 
 /* ── PDF PREVIEW MODAL ─────────────────────────────────────── */
-function _openPdfPreview(title, saveFn) {
-  const overlay  = document.getElementById('pdfPreviewOverlay');
-  const titleEl  = document.getElementById('pdfPreviewTitle');
-  const saveBtn  = document.getElementById('pdfPreviewSaveBtn');
-  const closeBtn = document.getElementById('pdfPreviewClose');
-  const doc      = document.getElementById('pdfPreviewDoc');
-  if (!overlay) return;
+/* Shared helper — renders all .pdf-page nodes via html2canvas,
+   shows desktop preview overlay or saves directly on mobile.
+   Resets btnEl to resetHtml when done. saveFn is called on overlay Save. */
+async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, saveFn) {
+  const { jsPDF } = window.jspdf;
+  const pages = container.querySelectorAll('.pdf-page');
 
-  // Build preview from hidden render container
-  const renderSrc = document.getElementById('_pdfRenderContainer');
-  doc.innerHTML = '';
-  let _previewStyle = null;
-  let _previewPages = [];
+  if (window.innerWidth >= 701) {
+    // ── Desktop: show preview overlay ───────────────────────
+    const overlay  = document.getElementById('pdfPreviewOverlay');
+    const doc      = document.getElementById('pdfPreviewDoc');
+    const titleEl  = document.getElementById('pdfPreviewTitle');
+    const saveBtn  = document.getElementById('pdfPreviewSaveBtn');
+    const closeBtn = document.getElementById('pdfPreviewClose');
+    titleEl.textContent = filename.replace(/_/g, ' ').replace('.pdf', '');
+    doc.innerHTML = '';
+    overlay.style.display = 'flex';
 
-  if (renderSrc) {
-    const styleEl = renderSrc.querySelector('style');
-    if (styleEl) {
-      _previewStyle = document.createElement('style');
-      _previewStyle.textContent = styleEl.textContent;
-      doc.appendChild(_previewStyle);
-    }
-    renderSrc.querySelectorAll('.pdf-page').forEach(pg => {
+    const bodyEl = document.getElementById('pdfPreviewBody');
+    const bodyW  = (bodyEl?.clientWidth || 400) - 32;
+    const scale  = Math.min(1, bodyW / 794);
+    const canvases = [];
+    for (const pg of pages) {
+      const canvas = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
+      canvases.push(canvas);
       const wrapper = document.createElement('div');
       wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
-      const clone = pg.cloneNode(true);
-      clone.style.display = 'block';
-      wrapper.appendChild(clone);
+      const img = document.createElement('img');
+      img.src = canvas.toDataURL('image/jpeg', 0.95);
+      img.style.cssText = `width:${794 * scale}px;height:${1123 * scale}px;display:block;`;
+      wrapper.appendChild(img);
       doc.appendChild(wrapper);
-      _previewPages.push({ wrapper, clone });
+    }
+    container.remove();
+
+    // Re-enable trigger button
+    if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+
+    // Wire save button
+    const freshSave = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(freshSave, saveBtn);
+    freshSave.addEventListener('click', async e => {
+      e.stopPropagation();
+      freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving\u2026'; freshSave.disabled = true;
+      if (saveFn) {
+        // saveFn rebuilds its own container and saves (Übergabe path)
+        overlay.style.display = 'none';
+        await saveFn();
+      } else {
+        // Standard path: build PDF from canvases already captured
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        canvases.forEach((c, i) => {
+          if (i > 0) pdf.addPage();
+          pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+        });
+        pdf.save(filename);
+        freshSave.innerHTML = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF'; freshSave.disabled = false;
+        overlay.style.display = 'none';
+        document.getElementById('contractOverlay')?.classList.add('open');
+      }
     });
+
+    // Wire close button
+    const freshClose = closeBtn.cloneNode(true);
+    closeBtn.parentNode.replaceChild(freshClose, closeBtn);
+    freshClose.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      document.getElementById('contractOverlay')?.classList.add('open');
+    });
+
   } else {
-    doc.innerHTML = '<p style="padding:24px;color:var(--cc-stone);font-size:12px;text-align:center;">Generating preview…</p>';
+    // ── Mobile: generate + save directly ────────────────────
+    if (saveFn) {
+      container.remove();
+      if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+      await saveFn();
+    } else {
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      for (let i = 0; i < pages.length; i++) {
+        if (i > 0) pdf.addPage();
+        const canvas = await html2canvas(pages[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+      }
+      pdf.save(filename);
+      container.remove();
+      if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+    }
   }
-
-  // Zoom state
-  let _zoom = null; // null = auto-fit
-  const PAGE_W = 794;
-
-  const applyZoom = (zoom) => {
-    const bodyW   = document.getElementById('pdfPreviewBody').clientWidth - 32;
-    const autoFit = Math.min(1, bodyW / PAGE_W);
-    const scale   = zoom !== null ? zoom : autoFit;
-    const label   = document.getElementById('pdfZoomLabel');
-    if (label) label.textContent = Math.round(scale * 100) + '%';
-    _previewPages.forEach(({ wrapper, clone }) => {
-      clone.style.transform       = `scale(${scale})`;
-      clone.style.transformOrigin = 'top left';
-      clone.style.width           = PAGE_W + 'px';
-      // wrapper must be sized to the scaled height so scroll works
-      const scaledH = 1122.52 * scale; // A4 height in px
-      wrapper.style.width  = Math.ceil(PAGE_W * scale) + 'px';
-      wrapper.style.height = Math.ceil(scaledH) + 'px';
-    });
-    doc.style.width = Math.ceil(PAGE_W * scale) + 'px';
-  };
-
-  setTimeout(() => applyZoom(null), 60);
-
-  // Zoom buttons
-  const zoomIn  = document.getElementById('pdfZoomIn');
-  const zoomOut = document.getElementById('pdfZoomOut');
-  if (zoomIn) {
-    const freshIn = zoomIn.cloneNode(true); zoomIn.parentNode.replaceChild(freshIn, zoomIn);
-    freshIn.addEventListener('click', () => {
-      const bodyW   = document.getElementById('pdfPreviewBody').clientWidth - 32;
-      const autoFit = Math.min(1, bodyW / PAGE_W);
-      const cur = _zoom !== null ? _zoom : autoFit;
-      _zoom = Math.min(2, Math.round((cur + 0.1) * 10) / 10);
-      applyZoom(_zoom);
-    });
-  }
-  if (zoomOut) {
-    const freshOut = zoomOut.cloneNode(true); zoomOut.parentNode.replaceChild(freshOut, zoomOut);
-    freshOut.addEventListener('click', () => {
-      const bodyW   = document.getElementById('pdfPreviewBody').clientWidth - 32;
-      const autoFit = Math.min(1, bodyW / PAGE_W);
-      const cur = _zoom !== null ? _zoom : autoFit;
-      _zoom = Math.max(0.3, Math.round((cur - 0.1) * 10) / 10);
-      applyZoom(_zoom);
-    });
-  }
-  window.addEventListener('resize', () => { if (_zoom === null) applyZoom(null); }, { once: true });
-
-  titleEl.innerHTML = `<span style="color:var(--cc-stone);margin-right:4px;">Vorschau ·</span>${title}`;
-  overlay.style.display = 'flex';
-
-  // Wire save button — calls original generate function unchanged
-  const newSave = saveBtn.cloneNode(true);
-  saveBtn.parentNode.replaceChild(newSave, saveBtn);
-  document.getElementById('pdfPreviewSaveBtn').addEventListener('click', async () => {
-    document.getElementById('pdfPreviewOverlay').style.display = 'none';
-    await saveFn();
-  });
-
-  // Wire close
-  const newClose = closeBtn.cloneNode(true);
-  closeBtn.parentNode.replaceChild(newClose, closeBtn);
-  document.getElementById('pdfPreviewClose').addEventListener('click', () => {
-    document.getElementById('pdfPreviewOverlay').style.display = 'none';
-  });
 }
 
 function _kfSelect(prefix, val) {
@@ -1915,10 +1882,18 @@ async function _openContract(type, roomId) {
       container.innerHTML = html;
       document.body.appendChild(container);
       await document.fonts.ready;
-      if (window.innerWidth >= 701) {
-        _openPdfPreview('Kurzzeitmiete', _generateKurzzeitPDF);
-      } else {
-        await _generateKurzzeitPDF();
+      await new Promise(r => setTimeout(r, 300));
+      const btn = _kzPdfBtn;
+      btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true;
+      const safeName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
+      const filename = `Kurzzeitmietvertrag_${room2.name}_${safeName}.pdf`;
+      try {
+        await _roomGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
+      } catch(err) {
+        console.error('[KZ PDF]', err);
+        alert('PDF generation failed. Please try again.');
+        if (container.parentNode) container.remove();
+        btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false;
       }
     });
     document.getElementById('cm-start')?.addEventListener('change', _updateMonatToggles);
@@ -1977,10 +1952,18 @@ async function _openContract(type, roomId) {
       container.innerHTML = html;
       document.body.appendChild(container);
       await document.fonts.ready;
-      if (window.innerWidth >= 701) {
-        _openPdfPreview('Mietvertrag', _generateMietvertragPDF);
-      } else {
-        await _generateMietvertragPDF();
+      await new Promise(r => setTimeout(r, 300));
+      const btn = _mvPdfBtn;
+      btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true;
+      const safeMvName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
+      const filenameMv = `Mietvertrag_${room2.name}_${safeMvName}.pdf`;
+      try {
+        await _roomGenericPdfAction(container, filenameMv, btn, '<i class="ti ti-printer"></i> Generate PDF');
+      } catch(err) {
+        console.error('[MV PDF]', err);
+        alert('PDF generation failed. Please try again.');
+        if (container.parentNode) container.remove();
+        btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false;
       }
     });
 
@@ -1997,16 +1980,20 @@ async function _openContract(type, roomId) {
     const _ubPdfBtn = _ubRawBtn.cloneNode(true);
     _ubRawBtn.parentNode.replaceChild(_ubPdfBtn, _ubRawBtn);
     _ubPdfBtn.addEventListener('click', async () => {
-      // Validate required fields first
-      const mieterName2 = document.getElementById('ub-mieter-name')?.value.trim();
-      const datum2      = document.getElementById('ub-datum')?.value;
-      // Pre-render into hidden container so preview reads from it
-      // _generateUebergPDF will re-render anyway when PDF is actually saved
-      await _generateUebergPreviewContainer(isEinzug);
-      if (window.innerWidth >= 701) {
-        _openPdfPreview('Übergabeprotokoll', () => _generateUebergPDF(isEinzug));
-      } else {
-        await _generateUebergPDF(isEinzug);
+      const btn = _ubPdfBtn;
+      btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true;
+      try {
+        // Pre-render into hidden container so preview reads from it
+        await _generateUebergPreviewContainer(isEinzug);
+        const container = document.getElementById('_pdfRenderContainer');
+        const room3 = getRoomById(_contractRoomId);
+        const mieterNameUb = document.getElementById('ub-mieter-name')?.value.trim() || 'Mieter';
+        const filenameUb = `Übergabeprotokoll_${room3?.name || 'Zimmer'}_${mieterNameUb.replace(/\s+/g,'_')}.pdf`;
+        await _roomGenericPdfAction(container, filenameUb, btn, '<i class="ti ti-printer"></i> Generate PDF', () => _generateUebergPDF(isEinzug));
+      } catch(err) {
+        console.error('[Übergabe PDF]', err);
+        alert('PDF generation failed. Please try again.');
+        btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false;
       }
     });
     // Init toggle after DOM renders
