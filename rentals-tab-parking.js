@@ -330,6 +330,11 @@ function _pkCardHTML(p) {
     ? `<strong>${pkFmtEURCompact(miete)}</strong> / mo`
     : `<span class="pk-hdr__rent--vacant">No pricing set</span>`;
 
+  // Kaution
+  const kaution = (pr.kaution_default !== null && pr.kaution_default !== undefined && pr.kaution_default !== '')
+    ? Number(pr.kaution_default)
+    : miete * 3;
+
   return `
 <div class="pk-card${vacant ? '' : ''}" data-id="${p.id}" data-name="${pkEsc(p.name)}">
 
@@ -415,7 +420,8 @@ function _pkCardHTML(p) {
       <!-- READ -->
       <div class="pk-sec-read">
         ${miete
-          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>`
+          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
+             <div class="pk-row"><span class="pk-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="pk-row__v pk-row__v--muted">${pkFmtEURCompact(kaution)} · 3× Miete${pr.kaution_override ? ' (override)' : ''}</span></div>`
           : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">
@@ -426,6 +432,13 @@ function _pkCardHTML(p) {
       <!-- EDIT -->
       <div class="pk-sec-edit" style="display:none">
         <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-f="miete" value="${pr.miete||''}"/></div>
+        <div class="apt-toggle-row">
+          <span class="apt-tlabel">Custom Kaution</span>
+          <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${pr.kaution_override?'checked':''} onchange="_pkToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
+        </div>
+        <div data-kautionfield style="${pr.kaution_override?'':'display:none'}">
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
+        </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('miete','${p.id}')">Cancel</button>
           <button class="apt-btn--save" onclick="_pkSaveMiete('${p.id}')">Save</button>
@@ -601,6 +614,38 @@ async function _pkSaveMiete(pkId) {
 }
 
 
+/* ── KAUTION OVERRIDE TOGGLE (PARKING) ───────────────────── */
+function _pkToggleKautionOverride(chk) {
+  const field = chk.closest('[id^="pk-miete-"]').querySelector('[data-kautionfield]');
+  if (field) field.style.display = chk.checked ? '' : 'none';
+}
+
+
+/* ── KAUTION FÄLLIGKEIT HELPER (PARKING) ─────────────────── */
+function _pkKfSelect(prefix, val, clickedBtn) {
+  const parent = clickedBtn.closest('div');
+  parent.querySelectorAll('.rm-fael-btn').forEach(b => { b.classList.remove('active'); delete b.dataset.val; });
+  clickedBtn.classList.add('active');
+  clickedBtn.dataset.val = val;
+  const custom = document.getElementById(`${prefix}-fael-custom`);
+  if (custom) custom.style.display = val === 'custom' ? '' : 'none';
+}
+
+
+/* ── KAUTION FÄLLIGKEIT READER (PARKING) ─────────────────── */
+function _pkReadKautionFael() {
+  const active = document.querySelector('.rm-fael-btn.active[data-prefix="pk-mv"]');
+  const val    = active ? (active.dataset.val || active.textContent.trim()) : null;
+  if (!val || val === '5' || val === '5 Tage') return '5';
+  if (val === 'sofort' || val === 'Sofort')    return 'sofort';
+  if (val === 'custom' || val === 'Individuell') {
+    const custom = document.getElementById('pk-mv-fael-custom-val')?.value.trim();
+    return custom && !isNaN(custom) ? custom : '5';
+  }
+  return '5';
+}
+
+
 /* ── SAVE: SCHLÜSSEL ─────────────────────────────────────── */
 async function _pkSaveSchlussel(pkId) {
   const el  = document.getElementById(`pk-schlussel-${pkId}`);
@@ -742,7 +787,10 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     _pkMvTenantDob = `${_d}.${_m}.${_y}`;
   }
   const _pkMvHasTenant = !!_pkMvTenantName;
-  const miete = Number(pr.miete) || 0;
+  const miete   = Number(pr.miete) || 0;
+  const kaution = (pr.kaution_default !== null && pr.kaution_default !== undefined && pr.kaution_default !== '')
+    ? Number(pr.kaution_default)
+    : miete * 3;
 
   return `
     <div class="rm-prefilled">
@@ -753,6 +801,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
       <div class="rm-pre-row"><span>PLZ / Ort</span><span>${pkEsc(spot.plz_ort || '—')}</span></div>
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${pkEsc(spot.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${pkFmtEURCompact(miete)} / mo</span></div>
+      <div class="rm-pre-row"><span>Kaution</span><span>${pkFmtEURCompact(kaution)}${pr.kaution_override ? ' (override)' : ' · 3× Miete'}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Parking ×${sk.parking_schluessel ?? 1}${sk.haustuerschluessel > 0 ? ' · Haustür ×' + sk.haustuerschluessel : ''}</span></div>
     </div>
 
@@ -805,6 +854,27 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-field-row">
       <div class="rm-field"><label>Kennzeichen <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-kennzeichen" placeholder="z.B. MZ-AB 123"/></div>
       <div class="rm-field"><label>Fahrzeugtyp <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-fahrzeug" placeholder="z.B. Skoda Fabia"/></div>
+    </div>
+
+    <div class="rm-fields-title" style="margin-top:6px">Kaution</div>
+    <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
+      <div>
+        <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
+        <div class="rm-kaution-rule">3 × Monatsmiete</div>
+      </div>
+      <input class="rm-input" id="pk-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}"/>
+    </div>
+    <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="rm-fael-btn active" data-prefix="pk-mv" data-val="5" onclick="_pkKfSelect('pk-mv','5',this)">5 Tage</button>
+      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','sofort',this)">Sofort</button>
+      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','custom',this)">Individuell</button>
+    </div>
+    <div id="pk-mv-fael-custom" style="display:none">
+      <div class="rm-field">
+        <label>Tage nach Unterzeichnung</label>
+        <input class="rm-input" id="pk-mv-fael-custom-val" type="number" placeholder="z.B. 14"/>
+      </div>
     </div>`;
 }
 

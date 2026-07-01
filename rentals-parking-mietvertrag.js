@@ -19,6 +19,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   kennzeichen = '', fahrzeug = '',
+  kautionVal = null, kautionFael = '5',
 }) {
   const fmt = d => {
     if (!d) return '';
@@ -82,6 +83,10 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     kennzeichen: kennzeichen || '',
     fahrzeug:    fahrzeug    || '',
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
+    kaution:         kautionVal !== null && kautionVal !== '' ? Number(kautionVal) : miete * 3,
+    kautionFaelText: kautionFael === 'sofort'
+      ? 'sofort nach Vertragsunterzeichnung'
+      : `binnen ${kautionFael}\u00a0Tagen nach Vertragsunterzeichnung`,
   };
 }
 
@@ -251,6 +256,7 @@ function _renderPkMietvertragHTML(d) {
       <span class="total-box__value">${fmtEUR(d.miete)}</span>
     </div>
     ${kv('Fälligkeit',   'Spätestens 3.\u00a0Werktag des Monats')}
+    ${kv('Kaution', fmtEUR(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + ')')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber', d.kontoinhaber)}
     ${kv('Bank',         d.bankname)}
@@ -289,13 +295,16 @@ function _renderPkMietvertragHTML(d) {
     ${cl('5', 'Haftung',
       'Vom Vermieter wird für eventuelle Beschädigungen an dem abgestellten PKW oder Diebstahl keine Haftung übernommen. Der Mieter wird gebeten, eine Fahrzeughaftpflichtversicherung bzw. Kaskoversicherung zu unterhalten.')}
 
-    ${cl('6', 'Zahlungsweise',
+    ${cl('6', 'Kaution',
+      `Der Mieter leistet eine Kaution von ${fmtEUR(d.kaution)} ${d.kautionFaelText}. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Die Kaution wird nach Beendigung des Mietverhältnisses und Prüfung des Zustands des Stellplatzes zurückerstattet. Schäden, die der Mieter zu vertreten hat, können von der Kaution abgezogen werden.`)}
+
+    ${cl('7', 'Zahlungsweise',
       'Die Miete ist im Voraus, spätestens am 3.\u00a0Werktag des Monats, durch Überweisung auf das oben genannte Konto zu entrichten. Verwendungszweck: Stellplatz ' + d.stellplatzNr + ' \u2013 Miete Monat/Jahr.')}
 
-    ${cl('7', 'Schriftform',
+    ${cl('8', 'Schriftform',
       'Änderungen und Ergänzungen dieses Vertrages bedürfen der Schriftform. Mündliche Nebenabreden bestehen nicht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
 
-    ${cl('8', 'Sonstige Vereinbarungen',
+    ${cl('9', 'Sonstige Vereinbarungen',
       'Sollten einzelne Bestimmungen dieses Vertrages unwirksam sein, bleibt der Vertrag im Übrigen wirksam.')}
 
     <div class="anlage-note">
@@ -388,6 +397,8 @@ function _wirePkMvPdfBtn() {
     const endVal      = befristet ? (document.getElementById('pk-mv-end')?.value || '') : '';
     const kennzeichen = document.getElementById('pk-mv-kennzeichen')?.value.trim() || '';
     const fahrzeug    = document.getElementById('pk-mv-fahrzeug')?.value.trim()    || '';
+    const kautionVal  = document.getElementById('pk-mv-kaution')?.value || null;
+    const kautionFael = typeof _pkReadKautionFael === 'function' ? _pkReadKautionFael() : '5';
 
     // Load latest settings if available
     if (typeof loadSettings === 'function') await loadSettings();
@@ -400,6 +411,7 @@ function _wirePkMvPdfBtn() {
       const data = _buildPkMietvertragData(spot, pr, sk, s, {
         mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
         startVal, sigVal, befristet, endVal, kennzeichen, fahrzeug,
+        kautionVal, kautionFael,
       });
 
       const html = _renderPkMietvertragHTML(data);
