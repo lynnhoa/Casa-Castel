@@ -35,6 +35,13 @@
    ───────────────────────────────────────────────────────────── */
 
 
+/* ── PREVIEW CLOSE BUTTON ────────────────────────────────── */
+document.getElementById('pkUebergPreviewClose')?.addEventListener('click', () => {
+  document.getElementById('pkUebergPreviewOverlay').style.display = 'none';
+  document.getElementById('pkContractOverlay')?.classList.add('open');
+});
+
+
 /* ── ENTRY POINT — called from _pkOpenContract / pkUebergPdfBtn ── */
 async function pkGenerateUebergPDF(isEinzug) {
   const spot = appParking.find(p => p.id === _pkContractId);
