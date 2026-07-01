@@ -418,11 +418,11 @@ function _renderRentalMietvertragHTML(d) {
     ${sec('Mieter'+(hasMultiMieter?' 1':''),false,false)}
     ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
     ${kv('Geburtsdatum',d.mieterGeburtsdatum)}
-    ${d.mieterEmail?kv('E-Mail',d.mieterEmail):''}
+    ${hasMultiMieter ? kv('E-Mail',d.mieterEmail||'') : (d.mieterEmail?kv('E-Mail',d.mieterEmail):'')}
     ${d.hasMieter2 ? sec('Mieter 2',false,false) : ''}
-    ${d.hasMieter2 ? kv('Name',d.mieterName2)+kv('Adresse',d.mieterAdresse2)+(d.mieterGeburtsdatum2?kv('Geburtsdatum',d.mieterGeburtsdatum2):'')+(d.mieterEmail2?kv('E-Mail',d.mieterEmail2):'') : ''}
+    ${d.hasMieter2 ? kv('Name',d.mieterName2)+kv('Adresse',d.mieterAdresse2)+kv('Geburtsdatum',d.mieterGeburtsdatum2||'')+kv('E-Mail',d.mieterEmail2||'') : ''}
     ${d.hasMieter3 ? sec('Mieter 3',false,false) : ''}
-    ${d.hasMieter3 ? kv('Name',d.mieterName3)+kv('Adresse',d.mieterAdresse3)+(d.mieterGeburtsdatum3?kv('Geburtsdatum',d.mieterGeburtsdatum3):'')+(d.mieterEmail3?kv('E-Mail',d.mieterEmail3):'') : ''}
+    ${d.hasMieter3 ? kv('Name',d.mieterName3)+kv('Adresse',d.mieterAdresse3)+kv('Geburtsdatum',d.mieterGeburtsdatum3||'')+kv('E-Mail',d.mieterEmail3||'') : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}

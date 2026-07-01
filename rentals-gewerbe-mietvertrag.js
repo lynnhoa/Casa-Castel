@@ -328,24 +328,23 @@ function _renderGewerbeMietvertragHTML(d) {
     ${kv('Name',d.vermieterName)}${kv('Adresse',d.vermieterAdresse)}
     ${d.vermieterEmail?kv('E-Mail',d.vermieterEmail):''}
     ${sec('Mieter'+((d.hasMieter2||d.hasMieter3)?' 1':''),false,false)}
-    ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
+    ${kv('Name',d.mieterName)}
+    ${kv('Adresse',d.mieterAdresse||'')}
     ${kv('Geburtsdatum',d.mieterGeburtsdatum||'')}
-    ${(d.hasMieter2||d.hasMieter3) ? kv('E-Mail',d.mieterEmail||'') : (d.mieterEmail?kv('E-Mail',d.mieterEmail):'')}
-    ${(d.hasMieter2||d.hasMieter3) ? kv('Telefon',d.mieterTel||'') : (d.mieterTel?kv('Telefon',d.mieterTel):'')}
-    ${d.hasMieter2 ? `
-    ${sec('Mieter 2',false,false)}
-    ${kv('Name',d.mieterName2)}${kv('Adresse',d.mieterAdresse2)}
-    ${kv('Geburtsdatum',d.mieterGeburtsdatum2||'')}
-    ${kv('E-Mail',d.mieterEmail2||'')}
-    ${kv('Telefon',d.mieterTel2||'')}
-    ` : ''}
-    ${d.hasMieter3 ? `
-    ${sec('Mieter 3',false,false)}
-    ${kv('Name',d.mieterName3)}${kv('Adresse',d.mieterAdresse3)}
-    ${kv('Geburtsdatum',d.mieterGeburtsdatum3||'')}
-    ${kv('E-Mail',d.mieterEmail3||'')}
-    ${kv('Telefon',d.mieterTel3||'')}
-    ` : ''}
+    ${kv('E-Mail',d.mieterEmail||'')}
+    ${kv('Telefon',d.mieterTel||'')}
+    ${d.hasMieter2 ? sec('Mieter 2',false,false) : ''}
+    ${d.hasMieter2 ? kv('Name',d.mieterName2) : ''}
+    ${d.hasMieter2 ? kv('Adresse',d.mieterAdresse2||'') : ''}
+    ${d.hasMieter2 ? kv('Geburtsdatum',d.mieterGeburtsdatum2||'') : ''}
+    ${d.hasMieter2 ? kv('E-Mail',d.mieterEmail2||'') : ''}
+    ${d.hasMieter2 ? kv('Telefon',d.mieterTel2||'') : ''}
+    ${d.hasMieter3 ? sec('Mieter 3',false,false) : ''}
+    ${d.hasMieter3 ? kv('Name',d.mieterName3) : ''}
+    ${d.hasMieter3 ? kv('Adresse',d.mieterAdresse3||'') : ''}
+    ${d.hasMieter3 ? kv('Geburtsdatum',d.mieterGeburtsdatum3||'') : ''}
+    ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
+    ${d.hasMieter3 ? kv('Telefon',d.mieterTel3||'') : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}
     ${kv('PLZ / Ort',d.objektPLZOrt)}
