@@ -22,6 +22,8 @@
 
 function _buildRentalKurzzeitData(apt, s, {
   mieterName, mieterAdr, mieterDob, mieterEmail,
+  mieterName2 = '', mieterAdr2 = '', mieterDob2 = '', mieterEmail2 = '', mieterTel2 = '',
+  mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal, endVal, sigVal,
   kautionVal, kautionFael = '5',
 }) {
@@ -166,6 +168,10 @@ function _buildRentalKurzzeitData(apt, s, {
     wohnungsschluessel:   sk.wohnungsschluessel   || 1,
     inventar,
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
+    hasMieter2: !!(mieterName2 && mieterName2.trim()),
+    mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2, mieterEmail2,
+    hasMieter3: !!(mieterName3 && mieterName3.trim()),
+    mieterName3, mieterAdresse3: mieterAdr3, mieterGeburtsdatum3: mieterDob3, mieterEmail3,
   };
 }
 
@@ -233,17 +239,33 @@ function _renderRentalKurzzeitHTML(d) {
   const sec = (t,lg,first) => `<div class="sec${lg?' sec--lg':''}${first?' sec--first':''}">${t}</div>`;
   const cl  = (num,title,body,first) => `<div class="clause${first?' clause--first':''}"><div class="clause__title">\u00a7\u00a0${num}\u2002${title}</div><div class="clause__body">${body}</div></div>`;
 
+  const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
+
+  const sigDate = d.unterzeichnungsDatum
+    ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>`
+    : '<div class="sig-date-label">Datum, Ort</div>';
+
   const sigBlock = () => `<div class="sig-block">
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
+      ${sigDate}
       <div class="sig-write-gap"></div><hr class="sig-line"/>
       <div class="sig-role">Vermieter</div><div class="sig-name">${d.vermieterSig}</div>
     </div>
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
+      ${sigDate}
       <div class="sig-write-gap"></div><hr class="sig-line"/>
-      <div class="sig-role">Mieter</div><div class="sig-name">${d.mieterName}</div>
+      <div class="sig-role">Mieter${hasMultiMieter ? ' 1' : ''}</div><div class="sig-name">${d.mieterName}</div>
     </div>
+    ${d.hasMieter2 ? `<div class="sig-col" style="margin-top:28px;width:44%;">
+      ${sigDate}
+      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <div class="sig-role">Mieter 2</div><div class="sig-name">${d.mieterName2}</div>
+    </div>` : ''}
+    ${d.hasMieter3 ? `<div class="sig-col" style="margin-top:28px;width:44%;">
+      ${sigDate}
+      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <div class="sig-role">Mieter 3</div><div class="sig-name">${d.mieterName3}</div>
+    </div>` : ''}
   </div>`;
 
   // Full §§ 1, 2 BetrKV list — same as Mietvertrag, broad / Hausverwaltung-safe
@@ -283,39 +305,61 @@ function _renderRentalKurzzeitHTML(d) {
     ${sec('Vermieter',false,true)}
     ${kv('Name',d.vermieterName)}${kv('Adresse',d.vermieterAdresse)}
     ${d.vermieterEmail?kv('E-Mail',d.vermieterEmail):''}
-    ${sec('Mieter',false,false)}
+    ${sec('Mieter'+(hasMultiMieter?' 1':''),false,false)}
     ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
     ${kv('Geburtsdatum',d.mieterGeburtsdatum)}
     ${d.mieterEmail?kv('E-Mail',d.mieterEmail):''}
+    ${!hasMultiMieter ? sec('Mietobjekt',false,false) : ''}
+    ${!hasMultiMieter ? kv('Adresse',d.objektAdresse)+kv('Bezeichnung',d.wohnungName)+kv('Wohnungsgröße','ca.\u00a0'+d.wohnungFlaeche+'\u00a0m\u00b2')+kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A') : ''}
+    ${!hasMultiMieter ? sec('Mietzeit &amp; Mietzins',false,false) : ''}
+    ${!hasMultiMieter ? kv('Mietbeginn',d.mietbeginn||'—')+kv('Mietende',d.mietende||'—') : ''}
+    ${!hasMultiMieter && d.ersterMonatAnteilig ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage \u00d7 ' + eur(d.ersterMonatTagespreis) + '/Tag)') : ''}
+    ${!hasMultiMieter ? kv('Monatliche Miete', eur(d.monatlMiete) + '\u2002/ Monat (Vollmonat, pauschal inkl. NK)') : ''}
+    ${!hasMultiMieter && d.letzterMonatAnteilig ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage \u00d7 ' + eur(d.letzterMonatTagespreis) + '/Tag)') : ''}
+    ${!hasMultiMieter ? `<div class="total-box"><span class="total-box__label">Gesamtmiete:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>` : ''}
+    ${!hasMultiMieter ? sec('Zahlungsplan &amp; Bankverbindung',true,false) : ''}
+    ${!hasMultiMieter ? kv('1. Zahlung', eur(d.zahlung1Betrag) + '\u2002(' + d.zahlung1Beschreibung + '), fällig am ' + d.zahlung1Faellig) : ''}
+    ${!hasMultiMieter && d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils fällig 3.\u00a0Werktag') : ''}
+    ${!hasMultiMieter ? kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig) : ''}
+    ${!hasMultiMieter ? kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)')) : ''}
+    ${!hasMultiMieter ? `<div class="kv-gap"></div>${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}<p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>` : ''}
+  </div>
+</div>`;
+
+  const mieteBankBlock = `
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.wohnungName)}
     ${kv('Wohnungsgröße','ca.\u00a0'+d.wohnungFlaeche+'\u00a0m\u00b2')}
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit &amp; Mietzins',false,false)}
-    ${kv('Mietbeginn',d.mietbeginn||'—')}
-    ${kv('Mietende',  d.mietende  ||'—')}
-    ${d.ersterMonatAnteilig
-      ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage \u00d7 ' + eur(d.ersterMonatTagespreis) + '/Tag)')
-      : ''}
+    ${kv('Mietbeginn',d.mietbeginn||'—')}${kv('Mietende',d.mietende||'—')}
+    ${d.ersterMonatAnteilig ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage \u00d7 ' + eur(d.ersterMonatTagespreis) + '/Tag)') : ''}
     ${kv('Monatliche Miete', eur(d.monatlMiete) + '\u2002/ Monat (Vollmonat, pauschal inkl. NK)')}
-    ${d.letzterMonatAnteilig
-      ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage \u00d7 ' + eur(d.letzterMonatTagespreis) + '/Tag)')
-      : ''}
+    ${d.letzterMonatAnteilig ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage \u00d7 ' + eur(d.letzterMonatTagespreis) + '/Tag)') : ''}
     <div class="total-box"><span class="total-box__label">Gesamtmiete:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${sec('Zahlungsplan &amp; Bankverbindung',true,false)}
     ${kv('1. Zahlung', eur(d.zahlung1Betrag) + '\u2002(' + d.zahlung1Beschreibung + '), fällig am ' + d.zahlung1Faellig)}
-    ${d.weitereZahlungen
-      ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils fällig 3.\u00a0Werktag')
-      : ''}
+    ${d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils fällig 3.\u00a0Werktag') : ''}
     ${kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig)}
-    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)')))}
+    ${kv('Kaution', eur(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
-    <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>
-  </div>
-</div>`;
+    <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>`;
 
-  // ── PAGE 2: NK-Liste + Klauseln §1–§10 ────────────────────────────────────
+  const page1b = hasMultiMieter ? `<div class="pdf-page page">
+  ${hdr(d.wohnungName)}${ftr(2+pageOffset)}
+  <div class="content">
+    ${d.hasMieter2 ? sec('Mieter 2',false,true) : ''}
+    ${d.hasMieter2 ? kv('Name',d.mieterName2)+kv('Adresse',d.mieterAdresse2)+kv('Geburtsdatum',d.mieterGeburtsdatum2)+(d.mieterEmail2?kv('E-Mail',d.mieterEmail2):'') : ''}
+    ${d.hasMieter3 ? sec('Mieter 3',false,false) : ''}
+    ${d.hasMieter3 ? kv('Name',d.mieterName3)+kv('Adresse',d.mieterAdresse3)+kv('Geburtsdatum',d.mieterGeburtsdatum3)+(d.mieterEmail3?kv('E-Mail',d.mieterEmail3):'') : ''}
+    ${mieteBankBlock}
+  </div>
+</div>` : '';
+
+  const pageOffset = hasMultiMieter ? 1 : 0;
+
+  // ── PAGE 2: NK-Liste + Klauseln §1–§8 ─────────────────────────────────────
 
   const page2 = `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(2)}
@@ -346,7 +390,7 @@ function _renderRentalKurzzeitHTML(d) {
   // ── PAGE 3: §9–§10, Anmerkungen, Unterschriften ─────────────────────────────
 
   const page3 = `<div class="pdf-page page">
-  ${hdr(d.wohnungName)}${ftr(3)}
+  ${hdr(d.wohnungName)}${ftr(3+pageOffset)}
   <div class="content">
     ${cl('9','Datenschutz',
       'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.',true)}
@@ -361,7 +405,7 @@ function _renderRentalKurzzeitHTML(d) {
 </div>`;
 
   const page4 = `<div class="pdf-page page">
-  ${hdr(d.wohnungName)}${ftr(4)}
+  ${hdr(d.wohnungName)}${ftr(4+pageOffset)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,true)}
     <table class="inv-table">
@@ -375,7 +419,7 @@ function _renderRentalKurzzeitHTML(d) {
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Kurzzeitmiete \u2014 ${d.wohnungName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page2}${page3}${page4}</body></html>`;
+<body>${page1}${page1b}${page2}${page3}${page4}</body></html>`;
 }
 
 

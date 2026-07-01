@@ -26,6 +26,8 @@
 
 function _buildRentalMietvertragData(room, s, {
   mieterName, mieterAdr, mieterDob, mieterEmail,
+  mieterName2 = '', mieterAdr2 = '', mieterDob2 = '', mieterEmail2 = '', mieterTel2 = '',
+  mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal, sigVal,
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
@@ -103,6 +105,10 @@ function _buildRentalMietvertragData(room, s, {
     zimmerschluessel:    room.zimmerschluessel    || 1,
     inventar: Array.isArray(room.inventar) ? room.inventar : [],
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
+    hasMieter2: !!(mieterName2 && mieterName2.trim()),
+    mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2, mieterEmail2,
+    hasMieter3: !!(mieterName3 && mieterName3.trim()),
+    mieterName3, mieterAdresse3: mieterAdr3, mieterGeburtsdatum3: mieterDob3, mieterEmail3,
   };
 }
 
@@ -327,17 +333,31 @@ function _renderRentalMietvertragHTML(d) {
   const sec = (t,lg,first) => `<div class="sec${lg?' sec--lg':''}${first?' sec--first':''}">${t}</div>`;
   const cl  = (num,title,body,first) => `<div class="clause${first?' clause--first':''}"><div class="clause__title">\u00a7\u00a0${num}\u2002${title}</div><div class="clause__body">${body}</div></div>`;
 
+  const sigDate = d.unterzeichnungsDatum
+    ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>`
+    : '<div class="sig-date-label">Datum, Ort</div>';
+
   const sigBlock = () => `<div class="sig-block">
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
+      ${sigDate}
       <div class="sig-write-gap"></div><hr class="sig-line"/>
       <div class="sig-role">Vermieter</div><div class="sig-name">${d.vermieterSig}</div>
     </div>
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
+      ${sigDate}
       <div class="sig-write-gap"></div><hr class="sig-line"/>
-      <div class="sig-role">Mieter</div><div class="sig-name">${d.mieterName}</div>
+      <div class="sig-role">Mieter${hasMultiMieter ? ' 1' : ''}</div><div class="sig-name">${d.mieterName}</div>
     </div>
+    ${d.hasMieter2 ? `<div class="sig-col" style="margin-top:28px;width:44%;">
+      ${sigDate}
+      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <div class="sig-role">Mieter 2</div><div class="sig-name">${d.mieterName2}</div>
+    </div>` : ''}
+    ${d.hasMieter3 ? `<div class="sig-col" style="margin-top:28px;width:44%;">
+      ${sigDate}
+      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <div class="sig-role">Mieter 3</div><div class="sig-name">${d.mieterName3}</div>
+    </div>` : ''}
   </div>`;
 
   // Full §§ 1, 2 BetrKV list — broad / Hausverwaltung-safe for apartment rentals
@@ -367,6 +387,8 @@ function _renderRentalMietvertragHTML(d) {
     ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
     : `<tr><td colspan="2" style="color:#aaa59e;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
 
+  const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
+
   const subtitle = d.befristet
     ? 'Befristetes Mietverhältnis \u00b7 Wohnungsvermietung'
     : 'Unbefristetes Mietverhältnis \u00b7 Wohnungsvermietung';
@@ -379,10 +401,34 @@ function _renderRentalMietvertragHTML(d) {
     ${sec('Vermieter',false,true)}
     ${kv('Name',d.vermieterName)}${kv('Adresse',d.vermieterAdresse)}
     ${d.vermieterEmail?kv('E-Mail',d.vermieterEmail):''}
-    ${sec('Mieter',false,false)}
+    ${sec('Mieter'+(hasMultiMieter?' 1':''),false,false)}
     ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
     ${kv('Geburtsdatum',d.mieterGeburtsdatum)}
     ${d.mieterEmail?kv('E-Mail',d.mieterEmail):''}
+    ${!hasMultiMieter ? sec('Mietobjekt',false,false) : ''}
+    ${!hasMultiMieter ? kv('Adresse',d.objektAdresse)+kv('Bezeichnung',d.zimmerName)
+      + kv('Wohnungsgröße','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')
+      + kv('Mitgenutzte Räume',d.gemeinschaftsraeume||'—')
+      + kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A') : ''}
+    ${!hasMultiMieter ? sec('Mietzeit',false,false) : ''}
+    ${!hasMultiMieter ? kv('Mietbeginn',d.mietbeginn||'—') : ''}
+    ${!hasMultiMieter && !d.befristet
+      ? kv('Kündigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
+        + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verlängerung')
+      : ''}
+    ${!hasMultiMieter ? sec('Miete &amp; Bankverbindung',true,false) : ''}
+    ${!hasMultiMieter ? (d.pricingMode==='kalt_nk'
+      ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
+        + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
+      : kv('Pauschalmiete',eur(d.gesamtmiete)+'\u2002/ Monat (inkl. NK)')) : ''}
+    ${!hasMultiMieter ? `<div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>` : ''}
+    ${!hasMultiMieter ? kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)') : ''}
+    ${!hasMultiMieter ? kv('Kaution',eur(d.kaution)+'\u2002(fällig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)')) : ''}
+    ${!hasMultiMieter ? `<div class="kv-gap"></div>${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}<p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>` : ''}
+  </div>
+</div>`;
+
+  const mieteBankBlock = `
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
     ${kv('Wohnungsgröße','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
@@ -390,11 +436,10 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit',false,false)}
     ${kv('Mietbeginn',d.mietbeginn||'—')}
-    ${d.befristet
-      ? ''
-      : kv('Kündigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
+    ${!d.befristet
+      ? kv('Kündigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verlängerung')
-    }
+      : ''}
     ${sec('Miete &amp; Bankverbindung',true,false)}
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
@@ -406,12 +451,23 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('Kaution',eur(d.kaution)+'\u2002(fällig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
-    <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
+    <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>`;
+
+  const page1b = hasMultiMieter ? `<div class="pdf-page page">
+  ${hdr(d.zimmerName)}${ftr(2)}
+  <div class="content">
+    ${d.hasMieter2 ? sec('Mieter 2',false,true) : ''}
+    ${d.hasMieter2 ? kv('Name',d.mieterName2)+kv('Adresse',d.mieterAdresse2)+kv('Geburtsdatum',d.mieterGeburtsdatum2)+(d.mieterEmail2?kv('E-Mail',d.mieterEmail2):'') : ''}
+    ${d.hasMieter3 ? sec('Mieter 3',false,false) : ''}
+    ${d.hasMieter3 ? kv('Name',d.mieterName3)+kv('Adresse',d.mieterAdresse3)+kv('Geburtsdatum',d.mieterGeburtsdatum3)+(d.mieterEmail3?kv('E-Mail',d.mieterEmail3):'') : ''}
+    ${mieteBankBlock}
   </div>
-</div>`;
+</div>` : '';
+
+  const pageOffset = hasMultiMieter ? 1 : 0;
 
   const page2 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(2)}
+  ${hdr(d.zimmerName)}${ftr(2+pageOffset)}
   <div class="content">
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
     <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV in ihrer jeweils geltenden Fassung. Umlageschlüssel: Wohnfläche der Mietwohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.</p>
@@ -437,16 +493,16 @@ function _renderRentalMietvertragHTML(d) {
       'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
     ${cl('8','Betreten des Mietobjekts',
       'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).')}
-    ${cl('9','Rückgabe bei Vertragsende',
-      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
   </div>
 </div>`;
 
   const page3 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(3)}
+  ${hdr(d.zimmerName)}${ftr(3+pageOffset)}
   <div class="content">
+    ${cl('9','Rückgabe bei Vertragsende',
+      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.',true)}
     ${cl('10','Haftpflichtversicherung',
-      'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.',true)}
+      'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.')}
     ${cl('11','Hausordnung',
       'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr. Die Hausordnung ist Bestandteil dieses Vertrages (Anlage\u00a0B).')}
     ${cl('12','Datenschutz',
@@ -461,7 +517,7 @@ function _renderRentalMietvertragHTML(d) {
 </div>`;
 
   const page4 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(4)}
+  ${hdr(d.zimmerName)}${ftr(4+pageOffset)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,false)}
     <table class="inv-table">
@@ -475,7 +531,7 @@ function _renderRentalMietvertragHTML(d) {
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Mietvertrag \u2014 ${d.zimmerName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page2}${page3}${page4}</body></html>`;
+<body>${page1}${page1b}${page2}${page3}${page4}</body></html>`;
 }
 
 

@@ -1883,10 +1883,13 @@ async function _aptOpenContract(type, aptId) {
       document.getElementById('aptKzPdfBtn')?.addEventListener('click', async () => {
         const apt2        = appApartments.find(a => a.id === _aptContractId);
         if (!apt2) return;
-        const mieterName  = document.getElementById('apt-cm-name')?.value.trim();
-        const mieterAdr   = document.getElementById('apt-cm-adr')?.value.trim();
-        const mieterDob   = document.getElementById('apt-cm-dob')?.value.trim();
-        const mieterEmail = document.getElementById('apt-cm-email')?.value.trim();
+        const t1cm        = _aptReadTenantBlock('cm', 1);
+        const mieterName  = t1cm.name;
+        const mieterAdr   = t1cm.adr;
+        const mieterDob   = t1cm.dob;
+        const mieterEmail = t1cm.email;
+        const t2cm        = _aptReadTenantBlock('cm', 2);
+        const t3cm        = _aptReadTenantBlock('cm', 3);
         const startVal    = document.getElementById('apt-cm-start')?.value;
         const endVal      = document.getElementById('apt-cm-end')?.value;
         const sigVal      = document.getElementById('apt-cm-sig')?.value;
@@ -1898,7 +1901,10 @@ async function _aptOpenContract(type, aptId) {
         try {
           if (typeof loadSettings === 'function') await loadSettings();
           const data = _buildRentalKurzzeitData(apt2, appSettings, {
-            mieterName, mieterAdr, mieterDob, mieterEmail, startVal, endVal, sigVal, kautionVal, kautionFael,
+            mieterName, mieterAdr, mieterDob, mieterEmail,
+            mieterName2: t2cm.name, mieterAdr2: t2cm.adr, mieterDob2: t2cm.dob, mieterEmail2: t2cm.email, mieterTel2: t2cm.tel,
+            mieterName3: t3cm.name, mieterAdr3: t3cm.adr, mieterDob3: t3cm.dob, mieterEmail3: t3cm.email, mieterTel3: t3cm.tel,
+            startVal, endVal, sigVal, kautionVal, kautionFael,
           });
           const html = _renderRentalKurzzeitHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
@@ -2151,15 +2157,9 @@ document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
 
 /* ── CONTRACT BODY: KURZZEIT ─────────────────────────────── */
 function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, profile = {}) {
-  let _aptCmTenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
-  let _aptCmTenantEmail = profile.email   || '';
-  let _aptCmTenantAdr   = profile.address || '';
-  let _aptCmTenantDob   = profile.birthday || '';
-  if (_aptCmTenantDob && _aptCmTenantDob.includes('-') && _aptCmTenantDob.length === 10) {
-    const [_y,_m,_d] = _aptCmTenantDob.split('-');
-    _aptCmTenantDob = `${_d}.${_m}.${_y}`;
-  }
-  const _aptCmHasTenant = !!_aptCmTenantName;
+  const tenant1 = profile.tenant1 || { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone, birthday: profile.birthday, address: profile.address };
+  const tenant2 = profile.tenant2 || null;
+  const tenant3 = profile.tenant3 || null;
   const rentDisplay = kzKalt
     ? `${aptFmtEURCompact(kzKalt)} kalt + ${aptFmtEURCompact(kzNk)} NK / Monat`
     : `${aptFmtEURCompact(p.kaltmiete || 0)} kalt + ${aptFmtEURCompact(p.nk_pauschale || 0)} NK / Monat`;
@@ -2194,25 +2194,10 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, profile = {}) {
       </div>
     </div>
 
-    <div class="rm-fields-title">Mieterdaten</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="aptCmMieterRoomLbl">${aptEsc(apt.name)} Mieter</span>
-      <div class="ub-mieter-pill" id="aptCmMieterPill"
-        data-state="room"
-        data-tenant-name="${aptEsc(_aptCmTenantName)}"
-        data-tenant-email="${aptEsc(_aptCmTenantEmail)}"
-        data-tenant-adr="${aptEsc(_aptCmTenantAdr)}"
-        data-tenant-dob="${aptEsc(_aptCmTenantDob)}"
-        onclick="_toggleAptCmMieter()">
-        <div class="ub-mieter-pill__knob"></div>
-      </div>
-      <span style="font-size:11px;color:var(--cc-stone);" id="aptCmMieterManualLbl">Manuell</span>
-    </div>
-    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="apt-cm-name" value="${aptEsc(_aptCmTenantName)}" placeholder="Full name…"/></div>
-    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="apt-cm-adr" value="${aptEsc(_aptCmTenantAdr)}" placeholder="Current address…"/></div>
-    <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="apt-cm-dob" value="${aptEsc(_aptCmTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
-    <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="apt-cm-email" type="email" value="${aptEsc(_aptCmTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
-    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="apt-cm-tel" type="tel" placeholder="+49 …"/></div>
+    ${_aptTenantBlockHTML('cm', 1, tenant1, { required: true, aptName: apt.name })}
+    ${_aptTenantBlockHTML('cm', 2, tenant2, { required: false })}
+    ${_aptTenantBlockHTML('cm', 3, tenant3, { required: false })}
+    ${_aptAddTenantBtnHTML('cm', tenant2, tenant3)}
     <div class="rm-field-row" style="margin-bottom:10px">
       <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="apt-cm-start" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
       <div class="rm-field"><label>Mietende *</label><input class="rm-input" id="apt-cm-end" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
