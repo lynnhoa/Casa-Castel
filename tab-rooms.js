@@ -1831,8 +1831,6 @@ async function _openContract(type, roomId) {
   // Ensure tenant cache is populated before modal renders
   if (typeof loadTenants === 'function') await loadTenants();
 
-  document.getElementById('contractOverlay').classList.add('open');
-
   const typeLbl  = document.getElementById('contractTypeLbl');
   const titleLbl = document.getElementById('contractTitleLbl');
   const subLbl   = document.getElementById('contractSubLbl');
@@ -2004,6 +2002,8 @@ async function _openContract(type, roomId) {
       document.getElementById('contractOverlay').classList.remove('open');
     });
   }
+
+  document.getElementById('contractOverlay').classList.add('open');
 }
 
 document.getElementById('contractClose')?.addEventListener('click', () => {
