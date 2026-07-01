@@ -830,17 +830,16 @@ async function _pkOpenContract(type, pkId) {
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
        <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
-    setTimeout(() => {
-      document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
-        document.getElementById('pkContractOverlay').classList.remove('open');
-      });
-      document.getElementById('pk-mv-befristung-btn')?.addEventListener('click', _pkToggleMvBefristung);
-      document.getElementById('pk-mv-start')?.addEventListener('change', _pkCalcStaffelDates);
-      // Sync Anfangsmiete with Miete
-      const _pkSafang = document.getElementById('pk-mv-staffel-anfang');
-      if (_pkSafang && !_pkSafang.dataset.edited) _pkSafang.value = String(miete || '');
-      document.getElementById('pk-mv-staffel-anfang')?.addEventListener('input', function() { this.dataset.edited = '1'; });
-    }, 0);
+
+    document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
+      document.getElementById('pkContractOverlay').classList.remove('open');
+    });
+    if (typeof _wirePkMvPdfBtn === 'function') _wirePkMvPdfBtn();
+    document.getElementById('pk-mv-befristung-btn')?.addEventListener('click', _pkToggleMvBefristung);
+    document.getElementById('pk-mv-start')?.addEventListener('change', _pkCalcStaffelDates);
+    const _pkSafang = document.getElementById('pk-mv-staffel-anfang');
+    if (_pkSafang && !_pkSafang.dataset.edited) _pkSafang.value = String(pr.miete || '');
+    document.getElementById('pk-mv-staffel-anfang')?.addEventListener('input', function() { this.dataset.edited = '1'; });
 
   } else if (type === 'ueberg') {
     const isEinzug = document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
@@ -850,14 +849,19 @@ async function _pkOpenContract(type, pkId) {
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
        <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
-    setTimeout(() => {
-      document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
-        document.getElementById('pkContractOverlay').classList.remove('open');
-      });
-      document.getElementById('pkUebergPdfBtn')?.addEventListener('click', () => {
-        pkGenerateUebergPDF(isEinzug);
-      });
-    }, 0);
+
+    document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
+      document.getElementById('pkContractOverlay').classList.remove('open');
+    });
+    document.getElementById('pkUebergPdfBtn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('pkUebergPdfBtn');
+      if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
+      try {
+        await pkGenerateUebergPDF(isEinzug);
+      } finally {
+        if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+      }
+    });
   }
 
   document.getElementById('pkContractOverlay').classList.add('open');
