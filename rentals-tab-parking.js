@@ -646,6 +646,94 @@ function _pkReadKautionFael() {
 }
 
 
+/* ── STAFFELMIETE TOGGLE ──────────────────────────────────── */
+function _pkToggleStaffel() {
+  const btn  = document.getElementById('pk-mv-staffel-btn');
+  const lbl  = document.getElementById('pk-mv-staffel-lbl');
+  const sub  = document.getElementById('pk-mv-staffel-sub');
+  const body = document.getElementById('pk-mv-staffel-body');
+  if (!btn) return;
+  const on = btn.dataset.mode === 'nein';
+  btn.dataset.mode = on ? 'ja'   : 'nein';
+  lbl.textContent  = on ? 'Ja'   : 'Nein';
+  sub.textContent  = on ? 'Aktiv': 'Keine Staffelung';
+  if (body) body.style.display = on ? '' : 'none';
+}
+
+
+/* ── STAFFELMIETE CALC DATES ──────────────────────────────── */
+function _pkCalcStaffelDates() {
+  const startVal  = document.getElementById('pk-mv-start')?.value;
+  const intervall = parseInt(document.getElementById('pk-mv-staffel-intervall')?.value) || 1;
+
+  const fmtDt = dt =>
+    String(dt.getDate()).padStart(2,'0') + '.' +
+    String(dt.getMonth()+1).padStart(2,'0') + '.' + dt.getFullYear();
+
+  // Parking Mindestlaufzeit is always 1 year — Staffel starts after that
+  let staffelStart = null;
+  if (startVal) {
+    const d = new Date(startVal);
+    d.setFullYear(d.getFullYear() + 1); // 1 year after Mietbeginn
+    staffelStart = d;
+  }
+
+  // Gate + Staffel button
+  const addBtn  = document.getElementById('pk-mv-staffel-add-btn');
+  const addHint = document.getElementById('pk-mv-staffel-add-hint');
+  if (addBtn) {
+    addBtn.disabled       = !staffelStart;
+    addBtn.style.cursor   = staffelStart ? 'pointer'        : 'not-allowed';
+    addBtn.style.color    = staffelStart ? 'var(--cc-charcoal)' : 'var(--cc-stone)';
+    addBtn.style.opacity  = staffelStart ? '1'              : '.5';
+  }
+  if (addHint) addHint.style.display = staffelStart ? 'none' : '';
+
+  // Update row date labels
+  if (staffelStart) {
+    const rows = document.querySelectorAll('.pk-mv-staffel-row');
+    rows.forEach((row, i) => {
+      const dateLbl = row.querySelector('.pk-mv-staffel-datum');
+      if (dateLbl) {
+        const d2 = new Date(staffelStart);
+        d2.setFullYear(d2.getFullYear() + i * intervall);
+        dateLbl.textContent = fmtDt(d2);
+      }
+    });
+  }
+}
+
+
+/* ── STAFFELMIETE ADD / REMOVE ────────────────────────────── */
+function _pkAddStaffel() {
+  const startVal = document.getElementById('pk-mv-start')?.value;
+  if (!startVal) return;
+  const container = document.getElementById('pk-mv-staffel-rows');
+  if (!container) return;
+  const count = container.querySelectorAll('.pk-mv-staffel-row').length;
+  if (count >= 4) return;
+  const miete = Number(document.getElementById('pk-mv-staffel-anfang')?.value) || 0;
+  const row = document.createElement('div');
+  row.className = 'pk-mv-staffel-row';
+  row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+  row.innerHTML = `
+    <input class="rm-input pk-mv-staffel-betrag" type="number" step="0.01"
+      placeholder="${miete ? (miete + (count+1)*5).toFixed(2) : (85 + count*5) + '.00'}"
+      style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+    <span style="font-size:11px;color:var(--cc-stone);">€ ab</span>
+    <span class="pk-mv-staffel-datum" style="font-size:11px;font-weight:500;color:var(--cc-charcoal);">—</span>`;
+  container.appendChild(row);
+  _pkCalcStaffelDates();
+}
+
+function _pkRemoveStaffel() {
+  const container = document.getElementById('pk-mv-staffel-rows');
+  if (!container) return;
+  const rows = container.querySelectorAll('.pk-mv-staffel-row');
+  if (rows.length > 0) rows[rows.length - 1].remove();
+}
+
+
 /* ── SAVE: SCHLÜSSEL ─────────────────────────────────────── */
 async function _pkSaveSchlussel(pkId) {
   const el  = document.getElementById(`pk-schlussel-${pkId}`);
@@ -747,6 +835,11 @@ async function _pkOpenContract(type, pkId) {
         document.getElementById('pkContractOverlay').classList.remove('open');
       });
       document.getElementById('pk-mv-befristung-btn')?.addEventListener('click', _pkToggleMvBefristung);
+      document.getElementById('pk-mv-start')?.addEventListener('change', _pkCalcStaffelDates);
+      // Sync Anfangsmiete with Miete
+      const _pkSafang = document.getElementById('pk-mv-staffel-anfang');
+      if (_pkSafang && !_pkSafang.dataset.edited) _pkSafang.value = String(miete || '');
+      document.getElementById('pk-mv-staffel-anfang')?.addEventListener('input', function() { this.dataset.edited = '1'; });
     }, 0);
 
   } else if (type === 'ueberg') {
@@ -854,6 +947,44 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-field-row">
       <div class="rm-field"><label>Kennzeichen <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-kennzeichen" placeholder="z.B. MZ-AB 123"/></div>
       <div class="rm-field"><label>Fahrzeugtyp <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-fahrzeug" placeholder="z.B. Skoda Fabia"/></div>
+    </div>
+
+    <div id="pk-mv-staffel-wrap" style="margin-top:6px;">
+      <div class="rm-field--toggle">
+        <div class="rm-toggle-row">
+          <div>
+            <div class="rm-toggle-label">Staffelmiete</div>
+            <div class="rm-toggle-sub" id="pk-mv-staffel-sub">Keine Staffelung</div>
+          </div>
+          <button type="button" class="rm-pill-toggle" id="pk-mv-staffel-btn" data-mode="nein" onclick="_pkToggleStaffel()">
+            <span class="rm-pill-toggle__track"><span class="rm-pill-toggle__knob"></span></span>
+            <span class="rm-pill-toggle__lbl" id="pk-mv-staffel-lbl">Nein</span>
+          </button>
+        </div>
+      </div>
+      <div id="pk-mv-staffel-body" style="display:none">
+        <div class="rm-field-row" style="margin-bottom:8px;">
+          <div class="rm-field">
+            <label>Intervall</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input class="rm-input" id="pk-mv-staffel-intervall" type="number" min="1" value="1" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_pkCalcStaffelDates()"/>
+              <span style="font-size:12px;color:var(--cc-stone);">Jahr(e)</span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete (während Mindestlaufzeit)</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <input class="rm-input" id="pk-mv-staffel-anfang" type="number" step="0.01" value="${miete||''}" placeholder="80,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
+          <span style="font-size:11px;color:var(--cc-taupe);" id="pk-mv-staffel-anfang-ab">ab Mietbeginn</span>
+        </div>
+        <div id="pk-mv-staffel-rows"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <button type="button" id="pk-mv-staffel-add-btn" onclick="_pkAddStaffel()" disabled style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">+ Staffel</button>
+          <button type="button" onclick="_pkRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-stone);">− Staffel</button>
+          <span id="pk-mv-staffel-add-hint" style="font-size:10.5px;color:var(--cc-stone);font-style:italic;">Bitte zuerst Mietbeginn ausfüllen</span>
+        </div>
+      </div>
     </div>
 
     <div class="rm-fields-title" style="margin-top:6px">Kaution</div>

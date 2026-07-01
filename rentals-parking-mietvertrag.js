@@ -20,6 +20,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
   befristet = false, endVal = null,
   kennzeichen = '', fahrzeug = '',
   kautionVal = null, kautionFael = '5',
+  staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
     if (!d) return '';
@@ -87,6 +88,9 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     kautionFaelText: kautionFael === 'sofort'
       ? 'sofort nach Vertragsunterzeichnung'
       : `binnen ${kautionFael}\u00a0Tagen nach Vertragsunterzeichnung`,
+    staffelAn,
+    staffeln:     staffeln.map(s => ({ datum: s.datum || '', betrag: Number(s.betrag) || 0 })),
+    anfangsmiete: anfangsmiete !== null ? Number(anfangsmiete) : miete,
   };
 }
 
@@ -131,6 +135,9 @@ function _renderPkMietvertragHTML(d) {
     .kv__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a;
       flex:1; line-height:1.55; }
     .kv-gap { height:8px; }
+    .staffel-table { width:100%; border-collapse:collapse; margin-top:6px; margin-bottom:14px; }
+    .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
+    .staffel-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px;
       display:flex; justify-content:space-between; align-items:center;
       margin-top:10px; margin-bottom:16px; }
@@ -250,11 +257,17 @@ function _renderPkMietvertragHTML(d) {
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
     ${sec('Miete &amp; Bankverbindung', true, false)}
-    ${kv('Monatliche Miete', fmtEUR(d.miete))}
+    ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
+    ${d.staffelAn && d.staffeln.length ? `
+    <table class="staffel-table">
+      <tr><th>Ab Datum</th><th>Miete / Monat</th></tr>
+      <tr><td>ab ${d.mietbeginn || 'Mietbeginn'}</td><td>${fmtEUR(d.anfangsmiete)}</td></tr>
+      ${d.staffeln.map(st => `<tr><td>ab ${st.datum}</td><td>${fmtEUR(st.betrag)}</td></tr>`).join('')}
+    </table>` : `
     <div class="total-box">
       <span class="total-box__label">Monatliche Miete:</span>
       <span class="total-box__value">${fmtEUR(d.miete)}</span>
-    </div>
+    </div>`}
     ${kv('Fälligkeit',   'Spätestens 3.\u00a0Werktag des Monats')}
     ${kv('Kaution', fmtEUR(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + ')')}
     <div class="kv-gap"></div>
@@ -295,17 +308,29 @@ function _renderPkMietvertragHTML(d) {
     ${cl('5', 'Haftung',
       'Vom Vermieter wird für eventuelle Beschädigungen an dem abgestellten PKW oder Diebstahl keine Haftung übernommen. Der Mieter wird gebeten, eine Fahrzeughaftpflichtversicherung bzw. Kaskoversicherung zu unterhalten.')}
 
-    ${cl('6', 'Kaution',
+    ${(() => {
+      const hasStaffel = d.staffelAn && d.staffeln.length > 0;
+      const pKaution   = hasStaffel ? 7 : 6;
+      const pZahlung   = hasStaffel ? 8 : 7;
+      const pSchrift   = hasStaffel ? 9 : 8;
+      const pSonstige  = hasStaffel ? 10 : 9;
+      const staffelRows = d.staffeln.map(st => ` Ab ${st.datum}: ${fmtEUR(st.betrag)}.`).join('');
+      return `
+    ${hasStaffel ? cl('6', 'Staffelmiete',
+      `Die monatliche Miete ist gemäß \u00a7\u00a0557a BGB gestaffelt. Anfangsmiete ab ${d.mietbeginn || 'Mietbeginn'}: ${fmtEUR(d.anfangsmiete)}.${staffelRows} Jede Staffel gilt für mindestens zwölf Monate. Während einer laufenden Staffel ist eine Mieterhöhung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel fällig.`) : ''}
+
+    ${cl(String(pKaution), 'Kaution',
       `Der Mieter leistet eine Kaution von ${fmtEUR(d.kaution)} ${d.kautionFaelText}. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Die Kaution wird nach Beendigung des Mietverhältnisses und Prüfung des Zustands des Stellplatzes zurückerstattet. Schäden, die der Mieter zu vertreten hat, können von der Kaution abgezogen werden.`)}
 
-    ${cl('7', 'Zahlungsweise',
+    ${cl(String(pZahlung), 'Zahlungsweise',
       'Die Miete ist im Voraus, spätestens am 3.\u00a0Werktag des Monats, durch Überweisung auf das oben genannte Konto zu entrichten. Verwendungszweck: Stellplatz ' + d.stellplatzNr + ' \u2013 Miete Monat/Jahr.')}
 
-    ${cl('8', 'Schriftform',
+    ${cl(String(pSchrift), 'Schriftform',
       'Änderungen und Ergänzungen dieses Vertrages bedürfen der Schriftform. Mündliche Nebenabreden bestehen nicht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
 
-    ${cl('9', 'Sonstige Vereinbarungen',
-      'Sollten einzelne Bestimmungen dieses Vertrages unwirksam sein, bleibt der Vertrag im Übrigen wirksam.')}
+    ${cl(String(pSonstige), 'Sonstige Vereinbarungen',
+      'Sollten einzelne Bestimmungen dieses Vertrages unwirksam sein, bleibt der Vertrag im Übrigen wirksam.')}`;
+    })()}
 
     <div class="anlage-note">
       1\u00a0Anlage: ${d.anlageText} ist Bestandteil dieses Mietvertrages.
@@ -399,6 +424,16 @@ function _wirePkMvPdfBtn() {
     const fahrzeug    = document.getElementById('pk-mv-fahrzeug')?.value.trim()    || '';
     const kautionVal  = document.getElementById('pk-mv-kaution')?.value || null;
     const kautionFael = typeof _pkReadKautionFael === 'function' ? _pkReadKautionFael() : '5';
+    const staffelAn   = document.getElementById('pk-mv-staffel-btn')?.dataset.mode === 'ja';
+    const anfangsmiete = parseFloat(document.getElementById('pk-mv-staffel-anfang')?.value) || null;
+    const staffeln = [];
+    if (staffelAn) {
+      document.querySelectorAll('.pk-mv-staffel-row').forEach(row => {
+        const betrag = parseFloat(row.querySelector('.pk-mv-staffel-betrag')?.value) || 0;
+        const datum  = row.querySelector('.pk-mv-staffel-datum')?.textContent?.trim();
+        if (betrag && datum && datum !== '—') staffeln.push({ datum, betrag });
+      });
+    }
 
     // Load latest settings if available
     if (typeof loadSettings === 'function') await loadSettings();
@@ -412,6 +447,7 @@ function _wirePkMvPdfBtn() {
         mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
         startVal, sigVal, befristet, endVal, kennzeichen, fahrzeug,
         kautionVal, kautionFael,
+        staffelAn, staffeln, anfangsmiete,
       });
 
       const html = _renderPkMietvertragHTML(data);
