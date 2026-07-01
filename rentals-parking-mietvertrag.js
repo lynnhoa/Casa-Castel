@@ -260,10 +260,13 @@ function _renderPkMietvertragHTML(d) {
     ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
     ${d.staffelAn && d.staffeln.length ? `
     <table class="staffel-table">
-      <tr><th>Ab Datum</th><th>Miete / Monat</th></tr>
-      <tr><td>ab ${d.mietbeginn || 'Mietbeginn'}</td><td>${fmtEUR(d.anfangsmiete)}</td></tr>
-      ${d.staffeln.map(st => `<tr><td>ab ${st.datum}</td><td>${fmtEUR(st.betrag)}</td></tr>`).join('')}
-    </table>` : `
+      <thead><tr><th>Zeitraum ab</th><th>Miete / Monat</th></tr></thead>
+      <tbody>
+        <tr><td>${d.mietbeginn || 'Mietbeginn'}</td><td>${fmtEUR(d.anfangsmiete)} (Anfangsmiete)</td></tr>
+        ${d.staffeln.map(st => `<tr><td>${st.datum}</td><td>${fmtEUR(st.betrag)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="total-box"><span class="total-box__label">Monatliche Miete (Staffelbeginn):</span><span class="total-box__value">${fmtEUR(d.anfangsmiete)}</span></div>` : `
     <div class="total-box">
       <span class="total-box__label">Monatliche Miete:</span>
       <span class="total-box__value">${fmtEUR(d.miete)}</span>
@@ -314,10 +317,13 @@ function _renderPkMietvertragHTML(d) {
       const pZahlung   = hasStaffel ? 8 : 7;
       const pSchrift   = hasStaffel ? 9 : 8;
       const pSonstige  = hasStaffel ? 10 : 9;
-      const staffelRows = d.staffeln.map(st => ` Ab ${st.datum}: ${fmtEUR(st.betrag)}.`).join('');
+      const staffelClause = hasStaffel ? cl('6', 'Staffelmiete',
+        `Die monatliche Miete ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Anfangsmiete ab ${d.mietbeginn || 'Mietbeginn'}: ${fmtEUR(d.anfangsmiete)}.` +
+        d.staffeln.map(st => ` Ab ${st.datum}: ${fmtEUR(st.betrag)}.`).join('') +
+        ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend einer laufenden Staffel ist eine Mieterh\u00f6hung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`
+      ) : '';
       return `
-    ${hasStaffel ? cl('6', 'Staffelmiete',
-      `Die monatliche Miete ist gemäß \u00a7\u00a0557a BGB gestaffelt. Anfangsmiete ab ${d.mietbeginn || 'Mietbeginn'}: ${fmtEUR(d.anfangsmiete)}.${staffelRows} Jede Staffel gilt für mindestens zwölf Monate. Während einer laufenden Staffel ist eine Mieterhöhung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel fällig.`) : ''}
+    ${staffelClause}
 
     ${cl(String(pKaution), 'Kaution',
       `Der Mieter leistet eine Kaution von ${fmtEUR(d.kaution)} ${d.kautionFaelText}. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Die Kaution wird nach Beendigung des Mietverhältnisses und Prüfung des Zustands des Stellplatzes zurückerstattet. Schäden, die der Mieter zu vertreten hat, können von der Kaution abgezogen werden.`)}
