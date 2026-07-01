@@ -4264,20 +4264,36 @@ async function _generateMietvertragPDF() {
   if (!container) return;
   const pages = container.querySelectorAll('.pdf-page');
   if (!pages.length) return;
-  const { jsPDF } = window.jspdf;
-  const pdf  = new jsPDF({ unit:'px', format:'a4', orientation:'portrait' });
-  const pdfW = pdf.internal.pageSize.getWidth();
-  const pdfH = pdf.internal.pageSize.getHeight();
-  for (let i = 0; i < pages.length; i++) {
-    const canvas = await html2canvas(pages[i], { scale:2, useCORS:true, backgroundColor:'#ffffff', logging:false });
-    if (i > 0) pdf.addPage();
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
+
+  const pdfBtn   = document.getElementById('contractPdfBtn');
+  const origHTML = pdfBtn?.innerHTML;
+  if (pdfBtn) { pdfBtn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; pdfBtn.disabled = true; }
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+
+    for (let i = 0; i < pages.length; i++) {
+      if (i > 0) pdf.addPage();
+      const canvas = await html2canvas(pages[i], {
+        scale: 3, useCORS: true, backgroundColor: '#ffffff',
+        width: 794, height: 1123, windowWidth: 794,
+      });
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+    }
+
+    const roomName   = container.querySelector('.hdr__room-name')?.textContent?.trim() || 'Zimmer';
+    const mieterName = [...(container.querySelectorAll('.kv__v') || [])]
+      .find(el => el.previousElementSibling?.textContent?.includes('Name'))
+      ?.textContent?.trim() || 'Mieter';
+    pdf.save(`Mietvertrag_${roomName}_${mieterName.replace(/\s+/g,'_')}.pdf`);
+  } catch(err) {
+    console.error('[PDF] Mietvertrag failed:', err);
+    alert('PDF generation failed. Please try again.');
+  } finally {
+    container.remove();
+    if (pdfBtn) { pdfBtn.innerHTML = origHTML || '<i class="ti ti-printer"></i> Generate PDF'; pdfBtn.disabled = false; }
   }
-  const roomName   = container.querySelector('.hdr__room-name')?.textContent?.trim() || 'Zimmer';
-  const mieterName = [...(container.querySelectorAll('.kv__v')||[])]
-    .find(el => el.previousElementSibling?.textContent?.includes('Name'))
-    ?.textContent?.trim() || 'Mieter';
-  pdf.save(`Mietvertrag_${roomName}_${mieterName.replace(/\s+/g,'_')}.pdf`);
 }
 
 
