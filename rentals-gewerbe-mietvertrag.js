@@ -429,12 +429,6 @@ function _renderGewerbeMietvertragHTML(d) {
       'Personenbezogene Daten werden gem\u00e4\u00df Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und zehn Jahre nach Vertragsende gel\u00f6scht.')}
     ${cl(String(pNum(14)),'Sonstige Vereinbarungen',
       `M\u00fcndliche Nebenabreden bestehen nicht. \u00c4nderungen und Erg\u00e4nzungen dieses Vertrages bed\u00fcrfen der Schriftform; dies gilt auch f\u00fcr die Abbedingung dieses Schriftformerfordernisses (\u00a7\u00a0550 BGB). Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im \u00dcbrigen wirksam. Gerichtsstand f\u00fcr alle Streitigkeiten aus diesem Vertrag ist ${d.gerichtsstand}.`)}
-    ${d.moebliert ? `
-    ${sec('Anlage A \u2014 Inventar',true,false)}
-    <table class="inv-table">
-      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
-      <tbody>${invRows}</tbody>
-    </table>` : ''}
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div>
@@ -442,9 +436,20 @@ function _renderGewerbeMietvertragHTML(d) {
   </div>
 </div>`;
 
+  const page5 = d.moebliert ? `<div class="pdf-page page">
+  ${hdr(d.aptName)}${ftr(5+pageOffset)}
+  <div class="content">
+    ${sec('Anlage A \u2014 Inventar',true,false)}
+    <table class="inv-table">
+      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
+      <tbody>${invRows}</tbody>
+    </table>
+  </div>
+</div>` : '';
+
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Gewerbemietvertrag \u2014 ${d.aptName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page1b}${page2}${page3}${page4}</body></html>`;
+<body>${page1}${page1b}${page2}${page3}${page4}${page5}</body></html>`;
 }

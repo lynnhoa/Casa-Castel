@@ -352,11 +352,6 @@ function _renderRentalKurzzeitHTML(d) {
   const page3 = `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(3)}
   <div class="content">
-    ${sec('Anlage A \u2014 Inventar',true,true)}
-    <table class="inv-table">
-      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
-      <tbody>${invRows}</tbody>
-    </table>
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>
@@ -365,11 +360,22 @@ function _renderRentalKurzzeitHTML(d) {
   </div>
 </div>`;
 
+  const page4 = `<div class="pdf-page page">
+  ${hdr(d.wohnungName)}${ftr(4)}
+  <div class="content">
+    ${sec('Anlage A \u2014 Inventar',true,true)}
+    <table class="inv-table">
+      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
+      <tbody>${invRows}</tbody>
+    </table>
+  </div>
+</div>`;
+
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Kurzzeitmiete \u2014 ${d.wohnungName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page2}${page3}</body></html>`;
+<body>${page1}${page2}${page3}${page4}</body></html>`;
 }
 
 
