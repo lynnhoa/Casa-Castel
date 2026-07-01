@@ -854,6 +854,9 @@ async function _pkOpenContract(type, pkId) {
       document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
         document.getElementById('pkContractOverlay').classList.remove('open');
       });
+      document.getElementById('pkUebergPdfBtn')?.addEventListener('click', () => {
+        pkGenerateUebergPDF(isEinzug);
+      });
     }, 0);
   }
 
