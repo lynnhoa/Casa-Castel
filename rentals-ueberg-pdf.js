@@ -134,7 +134,7 @@ async function _aptOpenUebergPreview(d, container) {
   const scale = Math.min(1, bodyW / 794);
 
   for (const pg of pages) {
-    const canvas = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, windowWidth: 794 });
+    const canvas = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
     const img = document.createElement('img');
@@ -194,7 +194,7 @@ async function _aptSaveUebergPDFFromData(d, existingContainer) {
 
   for (let i = 0; i < pages.length; i++) {
     if (i > 0) pdf.addPage();
-    const canvas = await html2canvas(pages[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, windowWidth: 794 });
+    const canvas = await html2canvas(pages[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
   }
 
@@ -241,7 +241,7 @@ function _aptRenderUebergHTML(d) {
     .type-toggle { display:flex; align-items:center; gap:24px; margin-bottom:36px;
       padding:9px 12px; background:#f7f4f0; border-radius:3px; border:0.5px solid #e8e2d8; height:36px; }
     .type-option { display:inline-flex; align-items:center; gap:8px;
-      font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a;
+      font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a;
       line-height:13px; height:13px; }
     .type-box { display:inline-block; width:13px; height:13px; border:1px solid #888780;
       border-radius:2px; flex-shrink:0; vertical-align:middle; position:relative; }
@@ -250,7 +250,7 @@ function _aptRenderUebergHTML(d) {
       width:7px; height:4px; border-left:1.5px solid white; border-bottom:1.5px solid white;
       transform:rotate(-45deg); display:block; }
     .type-date { margin-left:auto; font-family:'Lato',sans-serif; font-size:10px;
-      font-weight:300; color:#6a6560; display:inline-flex; align-items:center;
+      font-weight:300; color:#3a3530; display:inline-flex; align-items:center;
       gap:10px; line-height:13px; height:13px; }
     .type-date-val { font-weight:400; color:#1a1a1a; }
 
@@ -260,20 +260,20 @@ function _aptRenderUebergHTML(d) {
     .sec--first { margin-top:12px; }
 
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#6a6560;
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530;
       min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
-    .kv__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a;
+    .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a;
       flex:1; line-height:1.55; }
 
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
-    .write-area { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
+    .write-area { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#1a1a1a; line-height:1.55; padding-top:3px; white-space:pre-wrap; word-break:break-word; }
 
     .zaehler-table { width:100%; border-collapse:collapse; margin-top:16px; }
     .zaehler-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700;
       letter-spacing:0.12em; text-transform:uppercase; color:#888780;
       border-bottom:0.5px solid #d8d3cc; padding:3px 0 5px; text-align:left; }
-    .zaehler-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
+    .zaehler-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#1a1a1a; padding:5px 0; border-bottom:0.5px solid #f0ece6; }
     .zaehler-table tr:last-child td { border-bottom:none; }
     .stand-val { font-weight:400; }
@@ -281,9 +281,9 @@ function _aptRenderUebergHTML(d) {
 
     .schluessel-row { display:flex; gap:36px; margin-top:22px; }
     .schluessel-item { display:flex; align-items:flex-end; gap:8px; }
-    .schluessel-item__label { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
-      color:#6a6560; white-space:nowrap; padding-bottom:2px; }
-    .schluessel-item__val { font-family:'Lato',sans-serif; font-size:11px; font-weight:400;
+    .schluessel-item__label { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
+      color:#3a3530; white-space:nowrap; padding-bottom:2px; }
+    .schluessel-item__val { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
       color:#1a1a1a; padding-bottom:2px; }
 
     .sig-block { margin-top:100px; display:flex; justify-content:space-between; }

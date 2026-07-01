@@ -130,14 +130,14 @@ function _renderPkMietvertragHTML(d) {
     .sec--first { margin-top:0; }
     .sec--lg { font-size:8.5px; margin-top:22px; }
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#6a6560;
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530;
       min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
-    .kv__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a;
+    .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a;
       flex:1; line-height:1.55; }
     .kv-gap { height:8px; }
     .staffel-table { width:100%; border-collapse:collapse; margin-top:6px; margin-bottom:14px; }
     .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .staffel-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .staffel-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px;
       display:flex; justify-content:space-between; align-items:center;
       margin-top:10px; margin-bottom:16px; }
@@ -145,9 +145,9 @@ function _renderPkMietvertragHTML(d) {
       font-size:10.5px; font-weight:700; color:#8a6535; line-height:1; }
     .clause { margin-top:10px; }
     .clause--first { margin-top:0; }
-    .clause__title { font-family:'Lato',sans-serif; font-size:11px; font-weight:700;
+    .clause__title { font-family:'Lato',sans-serif; font-size:12px; font-weight:700;
       color:#4a4540; margin-bottom:2px; line-height:1.4; }
-    .clause__body { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
+    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#3a3530; line-height:1.6; }
     .sig-block { margin-top:48px; display:flex; justify-content:space-between; }
     .sig-col { width:44%; }
@@ -161,7 +161,7 @@ function _renderPkMietvertragHTML(d) {
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
       color:#3a3530; margin-top:4px; }
     .anlage-note { font-family:'Lato',sans-serif; font-size:10px; font-weight:300;
-      color:#6a6560; margin-top:20px; line-height:1.55;
+      color:#3a3530; margin-top:20px; line-height:1.55;
       border-top:0.5px solid #e8dbc5; padding-top:10px; }
     .anlage-title { font-family:'Playfair Display',serif; font-size:16px; font-weight:400;
       color:#1a1a1a; margin-bottom:3px; }

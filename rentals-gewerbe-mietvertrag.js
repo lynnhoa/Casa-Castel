@@ -172,26 +172,26 @@ function _renderGewerbeMietvertragHTML(d) {
     .sec--lg { font-size:8.5px; margin-top:22px; }
     .sec--lg.sec--first { margin-top:0; }
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#6a6560; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
-    .kv__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
+    .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
     .kv-gap { height:10px; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px; display:flex; justify-content:space-between; align-items:center; margin-top:10px; margin-bottom:16px; }
     .total-box__label, .total-box__value { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:700; color:#8a6535; line-height:1; }
     .staffel-table { width:100%; border-collapse:collapse; margin-top:6px; margin-bottom:14px; }
     .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .staffel-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
-    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#6a6560; margin-top:10px; line-height:1.55; }
-    .nk-intro { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#3a3530; line-height:1.55; margin-top:7px; margin-bottom:10px; }
+    .staffel-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; margin-top:10px; line-height:1.55; }
+    .nk-intro { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; margin-top:7px; margin-bottom:10px; }
     .nk-grid { display:grid; grid-template-columns:1fr 1fr; column-gap:24px; }
     .nk-item { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; padding:2.5px 0; line-height:1.4; }
     .nk-item--full { grid-column:1/-1; }
     .clause { margin-top:8px; }
     .clause--first { margin-top:40px; }
-    .clause__title { font-family:'Lato',sans-serif; font-size:11px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
-    .clause__body { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#3a3530; line-height:1.55; }
+    .clause__title { font-family:'Lato',sans-serif; font-size:12px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
+    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; }
     .inv-table { width:100%; border-collapse:collapse; margin-top:6px; }
     .inv-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .inv-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .inv-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
     .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:32px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
     .comment-line { border-bottom:0.5px solid #e0dbd4; height:26px; margin-top:2px; }
     .sig-block { margin-top:40px; display:flex; justify-content:space-between; }
