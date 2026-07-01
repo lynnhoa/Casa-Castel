@@ -115,8 +115,7 @@ function _pkCollectUebergData(spot, isEinzug) {
     mieterName:  document.getElementById('pk-ub-mieter-name')?.value?.trim() || '',
     mieterAdr:   document.getElementById('pk-ub-mieter-adr')?.value?.trim()  || '',
     neueAdr:     document.getElementById('pk-ub-neue-adr')?.value?.trim()    || '',
-    // Zustand replaces Mängel
-    zustand:     document.getElementById('pk-ub-zustand')?.value?.trim()     || '',
+    // Zustand removed — not on one-pager
     bemerkungen: document.getElementById('pk-ub-bemerkungen')?.value?.trim() || '',
     // Schlüssel — parking-specific
     parkingSchluessel: parseInt(document.getElementById('pk-ub-pkschluessel')?.value  || sk.parking_schluessel  || 1),
@@ -385,23 +384,13 @@ function _pkRenderUebergHTML(d) {
     ${kv('Adresse Mieter',       d.mieterAdr)}
     ${!d.isEinzug && d.neueAdr ? kv('Neue Adresse', d.neueAdr) : ''}
 
-    <div class="sec">Zustand des Stellplatzes bei Übergabe</div>
-    <div style="margin-top:4px;">${writeField(d.zustand, 8)}</div>
-  </div>
-</div>
+    <div class="sec">Allgemeine Anmerkungen</div>
+    <div style="margin-top:4px;">${writeField(d.bemerkungen, 5)}</div>
 
-<!-- PAGE 2 -->
-<div class="pdf-page">
-  ${hdr(2)}
-  ${ftr(2)}
-  <div class="content">
-    <div class="sec sec--first">Allgemeine Bemerkungen</div>
-    <div style="margin-top:4px;">${writeField(d.bemerkungen, 9)}</div>
-
-    <div class="sec" style="margin-top:64px;">Schlüsselübergabe</div>
+    <div class="sec" style="margin-top:28px;">Schlüsselübergabe</div>
     ${schluesselHTML}
 
-    <div class="sig-block">
+    <div class="sig-block" style="margin-top:52px;">
       <div class="sig-col">
         ${sigDate}
         <div class="sig-write-gap"></div>
