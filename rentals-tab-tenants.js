@@ -457,7 +457,7 @@ let _rntUploadTid    = null;
 let _rntUploadType   = null;
 let _rntDeleteId     = null;
 let _rntNKVoraus     = {};   // apartment_id → [{...}]
-let _rntStaffel      = {};   // apartment_id → [{...}] sorted effective_date desc
+let _rntStaffel      = {};   // apartment_id OR parking_id → [{...}] sorted effective_date desc
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -639,7 +639,7 @@ function _rntStatusPill(unitId, isApt, activeRec) {
     pills.push(`<span class="tnp tnp-red">NK open</span>`);
   if (isApt && _rntNKVorausHasOpen(unitId))
     pills.push(`<span class="tnp tnp-amber"><i class="ti ti-alert-triangle" aria-hidden="true"></i> NK-Erhöhung offen</span>`);
-  const sf = isApt ? _rntStaffelPillState(unitId) : null;
+  const sf = _rntStaffelPillState(unitId);
   if (sf && sf.state === 'reminder') {
     const fmtD = (d) => { const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
     pills.push(`<span class="tnp tnp-amber"><i class="ti ti-stairs-up" aria-hidden="true"></i> Staffel ab ${fmtD(sf.entry.effective_date)}</span>`);
@@ -690,9 +690,17 @@ async function _rntLoad() {
       ? sbL.from('rnt_nk_vorauszahlung_history').select('*')
            .in('apartment_id', aptIds).order('effective_date', { ascending: false })
       : Promise.resolve({ data: [] }),
-    aptIds.length
-      ? sbL.from('rnt_staffelmiete_history').select('*')
-           .in('apartment_id', aptIds).order('effective_date', { ascending: false })
+    (aptIds.length || pkIds.length)
+      ? (() => {
+          let q = sbL.from('rnt_staffelmiete_history').select('*');
+          if (aptIds.length && pkIds.length)
+            q = q.or(`apartment_id.in.(${aptIds.join(',')}),parking_id.in.(${pkIds.join(',')})`);
+          else if (aptIds.length)
+            q = q.in('apartment_id', aptIds);
+          else
+            q = q.in('parking_id', pkIds);
+          return q.order('effective_date', { ascending: false });
+        })()
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -719,8 +727,10 @@ async function _rntLoad() {
 
   _rntStaffel = {};
   (staffelRes.data || []).forEach(e => {
-    if (!_rntStaffel[e.apartment_id]) _rntStaffel[e.apartment_id] = [];
-    _rntStaffel[e.apartment_id].push(e);
+    const key = e.apartment_id || e.parking_id;
+    if (!key) return;
+    if (!_rntStaffel[key]) _rntStaffel[key] = [];
+    _rntStaffel[key].push(e);
   });
 
   // Build profile cache
@@ -869,7 +879,7 @@ function _rntCardHTML({ type, unit }) {
     ${_rntKautionHTML(rid, activeRec ? activeRec.id : null, 'card', activeRec)}
     ${isApt ? _rntNKHTML(rid, activeRec ? activeRec.id : null, 'card') : ''}
     ${isApt ? _rntNKVorausHTML(rid, activeRec ? unit.id : null, 'card') : ''}
-    ${isApt ? _rntStaffelHTML(rid, activeRec ? unit.id : null) : ''}
+    ${_rntStaffelHTML(rid, activeRec ? unit.id : null)}
     ${_rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs)}
   </div>
 </div>`;
@@ -1626,7 +1636,7 @@ function _rntRenderNKVorausRow(id, aptId, rid) {
 }
 
 
-/* ── STAFFELMIETE SECTION (apartments only) ── */
+/* ── STAFFELMIETE SECTION (apartments + parking) ── */
 function _rntStaffelHTML(rid, aptId) {
   if (!aptId) return '';
   const entries = _rntStaffel[aptId] || [];
@@ -1690,7 +1700,8 @@ function _rntStaffelHTML(rid, aptId) {
 
 function _rntStaffelOpenAdd(aptId, rid) {
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
-  const label = apt ? (apt.name || apt.adresse || 'Wohnung') : 'Wohnung';
+  const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
+  const label = apt ? (apt.name || apt.adresse || 'Wohnung') : pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Einheit';
   document.getElementById('rntStaffelModalSub').textContent = label;
   document.getElementById('rntStaffelModalBody').innerHTML = `
     <div class="tn-msec-body" style="padding-top:14px;padding-bottom:4px">
@@ -1724,8 +1735,10 @@ async function _rntStaffelConfirmAdd(aptId, rid) {
   const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
   if (!date || isNaN(amount) || amount <= 0) return;
   if (!sbL) return;
+  const isAptUnit = !!(typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
+  const fkCol     = isAptUnit ? 'apartment_id' : 'parking_id';
   const { data, error } = await sbL.from('rnt_staffelmiete_history')
-    .insert({ apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false })
+    .insert({ [fkCol]: aptId, effective_date: date, amount, tenant_adjusted: false })
     .select().single();
   if (error) { console.warn('[rnt-tenants] staffel add:', error.message); return; }
   if (!_rntStaffel[aptId]) _rntStaffel[aptId] = [];
@@ -1756,7 +1769,8 @@ async function _rntStaffelDelete(id, aptId, rid) {
 
 function _rntStaffelOpenVerlauf(aptId, rid) {
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
-  const label = apt ? (apt.name || apt.adresse || 'Wohnung') : 'Wohnung';
+  const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
+  const label = apt ? (apt.name || apt.adresse || 'Wohnung') : pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Einheit';
   const entries = (_rntStaffel[aptId] || []).slice();
   const today   = new Date(); today.setHours(0,0,0,0);
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
