@@ -297,13 +297,15 @@ function _renderRentalKurzzeitHTML(d) {
 
   // ── PAGE 1: Parteien, Mietobjekt, Mietzeit & Mietzins, Zahlungsplan ───────
 
-  const mieteBankBlock = `
-    ${sec('Mietzeit &amp; Mietzins',true,hasMultiMieter)}
+  const mieteTopBlock = `
+    ${sec('Mietzeit &amp; Mietzins',true,false)}
     ${kv('Mietbeginn',d.mietbeginn||'\u2014')}${kv('Mietende',d.mietende||'\u2014')}
     ${d.ersterMonatAnteilig ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage \u00d7 ' + eur(d.ersterMonatTagespreis) + '/Tag)') : ''}
     ${kv('Monatliche Miete', eur(d.monatlMiete) + '\u2002/ Monat (Vollmonat, pauschal inkl. NK)')}
     ${d.letzterMonatAnteilig ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage \u00d7 ' + eur(d.letzterMonatTagespreis) + '/Tag)') : ''}
-    <div class="total-box"><span class="total-box__label">Gesamtmiete:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
+    <div class="total-box"><span class="total-box__label">Gesamtmiete:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>`;
+
+  const mieteRestBlock = `
     ${sec('Zahlungsplan &amp; Bankverbindung',true,false)}
     ${kv('1. Zahlung', eur(d.zahlung1Betrag) + '\u2002(' + d.zahlung1Beschreibung + '), f\u00e4llig am ' + d.zahlung1Faellig)}
     ${d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils f\u00e4llig 3.\u00a0Werktag') : ''}
@@ -340,15 +342,15 @@ function _renderRentalKurzzeitHTML(d) {
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.wohnungName)}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.wohnungFlaeche+'\u00a0m\u00b2')}
     ${kv('M\u00f6blierung','M\u00f6bliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
-    ${hasMultiMieter ? '' : mieteBankBlock}
+    ${hasMultiMieter ? mieteTopBlock : mieteTopBlock + mieteRestBlock}
   </div>
 </div>`;
 
-  // PAGE 1B — only inserted when 2 or 3 Mieter push Mietzeit & Bank off page 1
+  // PAGE 1B — only when multi-tenant: Zahlungsplan & Bankverbindung
   const page1b = hasMultiMieter ? `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(2)}
   <div class="content">
-    ${mieteBankBlock}
+    ${mieteRestBlock}
   </div>
 </div>` : '';
 

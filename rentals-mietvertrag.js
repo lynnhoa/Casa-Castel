@@ -393,14 +393,16 @@ function _renderRentalMietvertragHTML(d) {
     ? 'Befristetes Mietverhältnis \u00b7 Wohnungsvermietung'
     : 'Unbefristetes Mietverhältnis \u00b7 Wohnungsvermietung';
 
-  const mieteBankBlock = `
-    ${sec('Miete &amp; Bankverbindung',true,hasMultiMieter)}
+  const mieteTopBlock = `
+    ${sec('Miete &amp; Bankverbindung',true,false)}
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
       : kv('Pauschalmiete',eur(d.gesamtmiete)+'\u2002/ Monat (inkl. NK)')
     }
-    <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
+    <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>`;
+
+  const mieteRestBlock = `
     ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
     ${kv('Kaution',eur(d.kaution)+'\u2002(f\u00e4llig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)'))}
     <div class="kv-gap"></div>
@@ -416,13 +418,20 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('Name',d.vermieterName)}${kv('Adresse',d.vermieterAdresse)}
     ${d.vermieterEmail?kv('E-Mail',d.vermieterEmail):''}
     ${sec('Mieter'+(hasMultiMieter?' 1':''),false,false)}
-    ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
-    ${kv('Geburtsdatum',d.mieterGeburtsdatum)}
-    ${hasMultiMieter ? kv('E-Mail',d.mieterEmail||'') : (d.mieterEmail?kv('E-Mail',d.mieterEmail):'')}
+    ${kv('Name',d.mieterName)}
+    ${kv('Adresse',d.mieterAdresse)}
+    ${kv('Geburtsdatum',d.mieterGeburtsdatum||'')}
+    ${kv('E-Mail',d.mieterEmail||'')}
     ${d.hasMieter2 ? sec('Mieter 2',false,false) : ''}
-    ${d.hasMieter2 ? kv('Name',d.mieterName2)+kv('Adresse',d.mieterAdresse2)+kv('Geburtsdatum',d.mieterGeburtsdatum2||'')+kv('E-Mail',d.mieterEmail2||'') : ''}
+    ${d.hasMieter2 ? kv('Name',d.mieterName2) : ''}
+    ${d.hasMieter2 ? kv('Adresse',d.mieterAdresse2||'') : ''}
+    ${d.hasMieter2 ? kv('Geburtsdatum',d.mieterGeburtsdatum2||'') : ''}
+    ${d.hasMieter2 ? kv('E-Mail',d.mieterEmail2||'') : ''}
     ${d.hasMieter3 ? sec('Mieter 3',false,false) : ''}
-    ${d.hasMieter3 ? kv('Name',d.mieterName3)+kv('Adresse',d.mieterAdresse3)+kv('Geburtsdatum',d.mieterGeburtsdatum3||'')+kv('E-Mail',d.mieterEmail3||'') : ''}
+    ${d.hasMieter3 ? kv('Name',d.mieterName3) : ''}
+    ${d.hasMieter3 ? kv('Adresse',d.mieterAdresse3||'') : ''}
+    ${d.hasMieter3 ? kv('Geburtsdatum',d.mieterGeburtsdatum3||'') : ''}
+    ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
@@ -434,15 +443,15 @@ function _renderRentalMietvertragHTML(d) {
       ? kv('K\u00fcndigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
       : ''}
-    ${hasMultiMieter ? '' : mieteBankBlock}
+    ${hasMultiMieter ? mieteTopBlock : mieteTopBlock + mieteRestBlock}
   </div>
 </div>`;
 
-  // PAGE 1B — only inserted when 2 or 3 Mieter push Miete & Bankverbindung off page 1
+  // PAGE 1B — only when multi-tenant: Fälligkeit, Kaution, Bankverbindung
   const page1b = hasMultiMieter ? `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(2)}
   <div class="content">
-    ${mieteBankBlock}
+    ${mieteRestBlock}
   </div>
 </div>` : '';
 
