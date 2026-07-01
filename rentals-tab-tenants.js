@@ -879,7 +879,7 @@ function _rntCardHTML({ type, unit }) {
     ${_rntKautionHTML(rid, activeRec ? activeRec.id : null, 'card', activeRec)}
     ${isApt ? _rntNKHTML(rid, activeRec ? activeRec.id : null, 'card') : ''}
     ${isApt ? _rntNKVorausHTML(rid, activeRec ? unit.id : null, 'card') : ''}
-    ${_rntStaffelHTML(rid, activeRec ? unit.id : null)}
+    ${isApt ? _rntStaffelHTML(rid, activeRec ? unit.id : null) : _rntPkStaffelHTML(rid, activeRec ? unit.id : null)}
     ${_rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs)}
   </div>
 </div>`;
@@ -1735,10 +1735,8 @@ async function _rntStaffelConfirmAdd(aptId, rid) {
   const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
   if (!date || isNaN(amount) || amount <= 0) return;
   if (!sbL) return;
-  const isAptUnit = !!(typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
-  const fkCol     = isAptUnit ? 'apartment_id' : 'parking_id';
   const { data, error } = await sbL.from('rnt_staffelmiete_history')
-    .insert({ [fkCol]: aptId, effective_date: date, amount, tenant_adjusted: false })
+    .insert({ apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false })
     .select().single();
   if (error) { console.warn('[rnt-tenants] staffel add:', error.message); return; }
   if (!_rntStaffel[aptId]) _rntStaffel[aptId] = [];
@@ -1746,6 +1744,151 @@ async function _rntStaffelConfirmAdd(aptId, rid) {
   _rntStaffel[aptId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
   _rntStaffelModalClose();
   _rntRender();
+}
+
+async function _rntPkStaffelConfirmAdd(pkId, rid) {
+  const date   = document.getElementById('sf-add-date')?.value?.trim();
+  const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
+  if (!date || isNaN(amount) || amount <= 0) return;
+  if (!sbL) return;
+  const { data, error } = await sbL.from('rnt_staffelmiete_history')
+    .insert({ parking_id: pkId, effective_date: date, amount, tenant_adjusted: false })
+    .select().single();
+  if (error) { console.warn('[rnt-tenants] pk staffel add:', error.message); return; }
+  if (!_rntStaffel[pkId]) _rntStaffel[pkId] = [];
+  _rntStaffel[pkId].push(data);
+  _rntStaffel[pkId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
+  _rntStaffelModalClose();
+  _rntRender();
+}
+
+
+/* ── STAFFELMIETE SECTION (parking clone) ── */
+function _rntPkStaffelHTML(rid, pkId) {
+  if (!pkId) return '';
+  const entries = _rntStaffel[pkId] || [];
+  const today   = new Date(); today.setHours(0,0,0,0);
+  const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
+
+  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
+  const next    = entries.find(e => new Date(e.effective_date) > today)  || null;
+
+  const delBtn = (e) =>
+    `<button class="tn-icon-btn" style="color:var(--cc-stone);flex-shrink:0" aria-label="Löschen"
+       onclick="_rntStaffelDelete('${e.id}','${pkId}','${rid}')">
+       <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
+     </button>`;
+
+  const adjBtn = (e) => e.tenant_adjusted
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
+    : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${pkId}','${rid}')">
+         <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
+
+  const nextRow = next ? `
+    <div class="tn-nkv-row" id="sf-row-${next.id}">
+      <div class="tn-nkv-top">
+        <i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>
+        <span class="tn-nkv-date">ab ${fmtD(next.effective_date)}</span>
+        <span class="tn-nkv-amount">${_rntFmtEUR(next.amount)}</span>
+        ${delBtn(next)}
+      </div>
+      <div class="tn-nkv-pills">${adjBtn(next)}</div>
+    </div>` : '';
+
+  const curDisplay = current
+    ? `<div class="tn-nkv-current">
+        <i class="ti ti-stairs-up" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
+        <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+        <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
+        ${delBtn(current)}
+      </div>`
+    : (entries.length ? '' : `<p class="tn-empty">Noch keine Staffelstufen eingetragen.</p>`);
+
+  const verlaufLink = entries.length > 1
+    ? `<button class="tn-nkv-verlauf-btn" onclick="_rntPkStaffelOpenVerlauf('${pkId}','${rid}')">Verlauf</button>`
+    : '';
+
+  return `
+<div class="tn-sec" id="sf-sec-${rid}">
+  <div class="tn-sec-body" style="padding-top:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <span class="tn-sec-lbl" style="flex:1">Staffelmiete</span>
+      ${verlaufLink}
+      <button class="tn-btn tn-btn-sm" style="height:24px;padding:0 9px;font-size:10px"
+        onclick="_rntPkStaffelOpenAdd('${pkId}','${rid}')">
+        <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
+      </button>
+    </div>
+    ${curDisplay}
+    ${nextRow}
+  </div>
+</div>`;
+}
+
+function _rntPkStaffelOpenAdd(pkId, rid) {
+  const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);
+  const label = pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Stellplatz';
+  document.getElementById('rntStaffelModalSub').textContent = label;
+  document.getElementById('rntStaffelModalBody').innerHTML = `
+    <div class="tn-msec-body" style="padding-top:14px;padding-bottom:4px">
+      <div class="tn-fg" style="margin-bottom:14px">
+        <div class="tn-field tn-field-full">
+          <span class="tn-flbl">Gültig ab</span>
+          <input type="date" id="sf-add-date" value="${new Date(Date.now()+31536e6).toISOString().slice(0,10)}"/>
+          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Datum, ab dem die neue Kaltmiete gilt</span>
+        </div>
+        <div class="tn-field tn-field-full">
+          <span class="tn-flbl">Neue Kaltmiete (€)</span>
+          <input type="number" id="sf-add-amount" placeholder="z.B. 110" step="0.01" min="0"/>
+          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Betrag aus dem Staffelmietvertrag entnehmen</span>
+        </div>
+      </div>
+    </div>
+    <div class="tn-sheet-footer">
+      <button class="tn-btn tn-btn-ghost" style="flex:1;height:44px;font-size:13px"
+        onclick="_rntStaffelModalClose()">Cancel</button>
+      <button class="tn-btn tn-btn-primary" style="flex:1;height:44px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:var(--cc-r)"
+        onclick="_rntPkStaffelConfirmAdd('${pkId}','${rid}')">
+        <i class="ti ti-check" style="font-size:14px" aria-hidden="true"></i> Save
+      </button>
+    </div>`;
+  document.getElementById('rntStaffelModal').classList.add('open');
+  setTimeout(() => document.getElementById('sf-add-date')?.focus(), 80);
+}
+
+function _rntPkStaffelOpenVerlauf(pkId, rid) {
+  const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);
+  const label = pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Stellplatz';
+  const entries = (_rntStaffel[pkId] || []).slice();
+  const today   = new Date(); today.setHours(0,0,0,0);
+  const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
+
+  const rows = entries.map(e => {
+    const isFuture = new Date(e.effective_date) > today;
+    const adjTag = e.tenant_adjusted
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
+      : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${pkId}','m')">
+           <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
+    const amtCls = e.tenant_adjusted ? 'tn-nkv-amount past' : 'tn-nkv-amount';
+    return `
+      <div class="tn-nkv-row" style="padding:7px 16px">
+        <div class="tn-nkv-top">
+          <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-gold)' : 'var(--cc-green,#3B6D11)'};flex-shrink:0" aria-hidden="true"></i>
+          <span class="tn-nkv-date">${isFuture ? 'ab' : 'seit'} ${fmtD(e.effective_date)}</span>
+          <span class="${amtCls}">${_rntFmtEUR(e.amount)}</span>
+          <button class="tn-icon-btn" style="margin-left:4px;color:var(--cc-stone)" aria-label="Löschen"
+            onclick="_rntStaffelDelete('${e.id}','${pkId}','${rid}')">
+            <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="tn-nkv-pills">${adjTag}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('rntStaffelModalSub').textContent = label;
+  document.getElementById('rntStaffelModalBody').innerHTML = rows ||
+    `<p style="padding:14px 16px;font-size:12px;color:var(--cc-stone)">Keine Einträge.</p>`;
+  document.getElementById('rntStaffelModal').classList.add('open');
 }
 
 async function _rntStaffelMarkAdjusted(id, aptId, rid) {
