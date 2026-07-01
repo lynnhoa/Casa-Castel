@@ -3053,7 +3053,7 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
     const scale  = Math.min(1, bodyW / 794);
     const canvases = [];
     for (const pg of pages) {
-      const canvas = await html2canvas(pg, { scale:2, useCORS:true, backgroundColor:'#ffffff', width:794, windowWidth:794 });
+      const canvas = await html2canvas(pg, { scale:2, useCORS:true, backgroundColor:'#ffffff', width:794, height:1123, windowWidth:794 });
       canvases.push(canvas);
       const wrapper = document.createElement('div');
       wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
@@ -3090,7 +3090,7 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     for (let i = 0; i < pages.length; i++) {
       if (i > 0) pdf.addPage();
-      const canvas = await html2canvas(pages[i], { scale:3, useCORS:true, backgroundColor:'#ffffff', width:794, windowWidth:794 });
+      const canvas = await html2canvas(pages[i], { scale:3, useCORS:true, backgroundColor:'#ffffff', width:794, height:1123, windowWidth:794 });
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
     }
     pdf.save(filename);

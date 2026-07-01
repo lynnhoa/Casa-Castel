@@ -2521,6 +2521,7 @@ async function _generateKurzzeitPDF() {
           useCORS: true,
           backgroundColor: '#faf9f7',
           width: 794,
+          height: 1123,
           windowWidth: 794,
         });
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -3373,7 +3374,7 @@ async function _generateUebergPDF(isEinzug) {
     for (let i = 0; i < pages.length; i++) {
       if (i > 0) pdf.addPage();
       const canvas = await html2canvas(pages[i], {
-        scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, windowWidth: 794,
+        scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794,
       });
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
     }
