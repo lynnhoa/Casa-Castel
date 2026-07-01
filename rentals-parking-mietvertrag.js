@@ -258,19 +258,10 @@ function _renderPkMietvertragHTML(d) {
 
     ${sec('Miete &amp; Bankverbindung', true, false)}
     ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
-    ${d.staffelAn && d.staffeln.length ? `
-    <table class="staffel-table">
-      <thead><tr><th>Zeitraum ab</th><th>Miete / Monat</th></tr></thead>
-      <tbody>
-        <tr><td>${d.mietbeginn || 'Mietbeginn'}</td><td>${fmtEUR(d.anfangsmiete)} (Anfangsmiete)</td></tr>
-        ${d.staffeln.map(st => `<tr><td>${st.datum}</td><td>${fmtEUR(st.betrag)}</td></tr>`).join('')}
-      </tbody>
-    </table>
-    <div class="total-box"><span class="total-box__label">Monatliche Miete (Staffelbeginn):</span><span class="total-box__value">${fmtEUR(d.anfangsmiete)}</span></div>` : `
     <div class="total-box">
       <span class="total-box__label">Monatliche Miete:</span>
-      <span class="total-box__value">${fmtEUR(d.miete)}</span>
-    </div>`}
+      <span class="total-box__value">${fmtEUR(d.anfangsmiete)}</span>
+    </div>
     ${kv('Fälligkeit',   'Spätestens 3.\u00a0Werktag des Monats')}
     ${kv('Kaution', fmtEUR(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + ')')}
     <div class="kv-gap"></div>
