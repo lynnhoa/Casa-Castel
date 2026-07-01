@@ -329,22 +329,22 @@ function _renderGewerbeMietvertragHTML(d) {
     ${d.vermieterEmail?kv('E-Mail',d.vermieterEmail):''}
     ${sec('Mieter'+((d.hasMieter2||d.hasMieter3)?' 1':''),false,false)}
     ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
-    ${d.mieterGeburtsdatum?kv('Geburtsdatum',d.mieterGeburtsdatum):''}
-    ${d.mieterEmail?kv('E-Mail',d.mieterEmail):''}
-    ${d.mieterTel?kv('Telefon',d.mieterTel):''}
+    ${kv('Geburtsdatum',d.mieterGeburtsdatum||'')}
+    ${(d.hasMieter2||d.hasMieter3) ? kv('E-Mail',d.mieterEmail||'') : (d.mieterEmail?kv('E-Mail',d.mieterEmail):'')}
+    ${(d.hasMieter2||d.hasMieter3) ? kv('Telefon',d.mieterTel||'') : (d.mieterTel?kv('Telefon',d.mieterTel):'')}
     ${d.hasMieter2 ? `
     ${sec('Mieter 2',false,false)}
     ${kv('Name',d.mieterName2)}${kv('Adresse',d.mieterAdresse2)}
-    ${d.mieterGeburtsdatum2?kv('Geburtsdatum',d.mieterGeburtsdatum2):''}
-    ${d.mieterEmail2?kv('E-Mail',d.mieterEmail2):''}
-    ${d.mieterTel2?kv('Telefon',d.mieterTel2):''}
+    ${kv('Geburtsdatum',d.mieterGeburtsdatum2||'')}
+    ${kv('E-Mail',d.mieterEmail2||'')}
+    ${kv('Telefon',d.mieterTel2||'')}
     ` : ''}
     ${d.hasMieter3 ? `
     ${sec('Mieter 3',false,false)}
     ${kv('Name',d.mieterName3)}${kv('Adresse',d.mieterAdresse3)}
-    ${d.mieterGeburtsdatum3?kv('Geburtsdatum',d.mieterGeburtsdatum3):''}
-    ${d.mieterEmail3?kv('E-Mail',d.mieterEmail3):''}
-    ${d.mieterTel3?kv('Telefon',d.mieterTel3):''}
+    ${kv('Geburtsdatum',d.mieterGeburtsdatum3||'')}
+    ${kv('E-Mail',d.mieterEmail3||'')}
+    ${kv('Telefon',d.mieterTel3||'')}
     ` : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}
