@@ -876,7 +876,7 @@ function _aptCardHTML(a) {
         ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
       </div>
       <div class="apt-hdr__rent">${rentHTML}</div>
-      ${hgHasOpen && hgPendingEntry ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld +${aptFmtEURCompact(hgPendingEntry.amount)}</span></div>` : ''}
+      ${hgHasOpen && hgPendingEntry ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld ${aptFmtEURCompact(hgPendingEntry.amount)}</span></div>` : ''}
     </div>
     <i class="ti ti-chevron-right apt-chevron"></i>
   </div>
