@@ -3068,15 +3068,7 @@ function _renderKurzzeitHTML(d) {
       <div class="clause__body">${body}</div>
     </div>`;
 
-  return `<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="UTF-8"/>
-<title>Kurzzeitmietvertrag — ${d.zimmerName}</title>
-<style>${CSS}</style>
-</head>
-<body>
-
+  return `<style>${CSS}</style>
 <!-- PAGE 1 -->
 <div class="pdf-page page">
   ${hdr(d.zimmerName)}
@@ -3232,9 +3224,7 @@ function _renderKurzzeitHTML(d) {
     </table>
   </div>
 </div>
-
-</body>
-</html>`;
+`;
 }
 
 /* ── PDF GENERATION — ÜBERGABEPROTOKOLL ─────────────────── */
@@ -3560,10 +3550,7 @@ function _renderUebergHTML(d) {
     return Array(lines).fill('<div class="write-line"></div>').join('');
   };
 
-  return `<!DOCTYPE html>
-<html lang="de">
-<head><meta charset="UTF-8"/><style>${CSS}</style></head>
-<body>
+  return `<style>${CSS}</style>
 
 <!-- PAGE 1 -->
 <div class="pdf-page">
@@ -3658,7 +3645,7 @@ function _renderUebergHTML(d) {
   </div>
 </div>
 
-</body></html>`;
+`;
 }
 
 
@@ -4266,11 +4253,7 @@ function _renderMietvertragHTML(d) {
   </div>
 </div>`;
 
-  return `<!DOCTYPE html>
-<html lang="de"><head><meta charset="UTF-8"/>
-<title>Mietvertrag \u2014 ${d.zimmerName}</title>
-<style>${CSS}</style></head>
-<body>${page1}${page2}${page3}${page4}</body></html>`;
+  return `<style>${CSS}</style>${page1}${page2}${page3}${page4}`;
 }
 
 
