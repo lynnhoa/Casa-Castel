@@ -257,8 +257,7 @@
   });
 
   function isAuthed() {
-    return sessionStorage.getItem(SESS_KEY) === '1'
-        || localStorage.getItem('cc_role') === 'landlord';
+    return sessionStorage.getItem(SESS_KEY) === '1';
   }
 
   function markAuth() {
