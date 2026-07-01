@@ -1708,7 +1708,7 @@ function _rntStaffelOpenAdd(aptId, rid) {
       <div class="tn-fg" style="margin-bottom:14px">
         <div class="tn-field tn-field-full">
           <span class="tn-flbl">Gültig ab</span>
-          <input type="date" id="sf-add-date"/>
+          <input type="date" id="sf-add-date" value="${new Date(Date.now()+31536e6).toISOString().slice(0,10)}"/>
           <span class="tn-flbl" style="font-weight:300;margin-top:2px">Datum, ab dem die neue Kaltmiete gilt</span>
         </div>
         <div class="tn-field tn-field-full">
