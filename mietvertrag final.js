@@ -39,15 +39,18 @@ function _buildMietvertragOnlyData(room, s, {
     gesamtmiete     = kaltmiete + nkVorauszahlung;
     pricingMode     = 'kalt_nk';
   } else {
-    kaltmiete       = Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
-    nkVorauszahlung = 0;
-    gesamtmiete     = kaltmiete;
+    kaltmiete       = Number(room.kaltmiete) || Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
+    nkVorauszahlung = Number(room.nk_pauschale) || 0;
+    gesamtmiete     = kaltmiete + nkVorauszahlung;
     pricingMode     = 'pauschal';
   }
 
+  // Pauschal: kaution base = full monthly charge (kaltmiete + NK)
+  // Kalt+NK:  kaution base = kaltmiete only (§ 551 BGB)
+  const kautionBase = pricingMode === 'pauschal' ? kaltmiete + nkVorauszahlung : kaltmiete;
   const kaution = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
-    : kaltmiete * 3;
+    : kautionBase * 3;
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
@@ -112,18 +115,22 @@ function _contractBodyMietvertrag(room) {
 
   let kaltDisplay, gesamtDisplay;
   if (room.mietvertrag_pricing === 'kalt_nk' && room.kaltmiete) {
-    kaltDisplay   = `${fmtEUR(room.kaltmiete)} kalt + ${fmtEUR(room.nk_pauschale || 0)} NK`;
-    gesamtDisplay = fmtEUR((Number(room.kaltmiete) || 0) + (Number(room.nk_pauschale) || 0));
+    const kalt = Number(room.kaltmiete) || 0;
+    const nk   = Number(room.nk_pauschale) || 0;
+    kaltDisplay   = `${fmtEUR(kalt)} kalt + ${fmtEUR(nk)} NK`;
+    gesamtDisplay = fmtEUR(kalt + nk);
   } else {
-    const m = room.mietvertrag_miete || room.monatl_miete || 0;
-    kaltDisplay   = `${fmtEUR(m)} pauschal inkl. NK`;
-    gesamtDisplay = fmtEUR(m);
+    const kalt = Number(room.kaltmiete) || Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
+    const nk   = Number(room.nk_pauschale) || 0;
+    kaltDisplay   = `${fmtEUR(kalt + nk)} pauschal inkl. NK`;
+    gesamtDisplay = fmtEUR(kalt + nk);
   }
 
   const kaltBase = Number(room.kaltmiete || room.mietvertrag_miete || room.monatl_miete) || 0;
+  const nkBase   = room.mietvertrag_pricing !== 'kalt_nk' ? (Number(room.nk_pauschale) || 0) : 0;
   const kaution  = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
-    : kaltBase * 3;
+    : (kaltBase + nkBase) * 3;
 
   return `
     <div class="rm-prefilled">
@@ -272,23 +279,23 @@ function _renderMietvertragHTML(d) {
     .sec--lg { font-size:8.5px; margin-top:22px; }
     .sec--lg.sec--first { margin-top:0; }
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#6a6560; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
-    .kv__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
+    .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
     .kv-gap { height:10px; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px; display:flex; justify-content:space-between; align-items:center; margin-top:10px; margin-bottom:24px; }
     .total-box__label, .total-box__value { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:700; color:#8a6535; line-height:1; }
-    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#6a6560; margin-top:10px; line-height:1.55; }
-    .nk-intro { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#3a3530; line-height:1.55; margin-top:7px; margin-bottom:10px; }
+    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; margin-top:10px; line-height:1.55; }
+    .nk-intro { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; margin-top:7px; margin-bottom:10px; }
     .nk-grid { display:grid; grid-template-columns:1fr 1fr; column-gap:24px; }
     .nk-item { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; padding:2.5px 0; line-height:1.4; }
     .nk-item--full { grid-column:1/-1; border-bottom:none; }
     .clause { margin-top:8px; }
     .clause--first { margin-top:52px; }
-    .clause__title { font-family:'Lato',sans-serif; font-size:11px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
-    .clause__body { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#3a3530; line-height:1.55; }
+    .clause__title { font-family:'Lato',sans-serif; font-size:12px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
+    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; }
     .inv-table { width:100%; border-collapse:collapse; margin-top:6px; }
     .inv-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .inv-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .inv-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
     .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:48px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
     .comment-line { border-bottom:0.5px solid #e0dbd4; height:26px; margin-top:2px; }
     .sig-block { margin-top:52px; display:flex; justify-content:space-between; }
@@ -328,7 +335,9 @@ function _renderMietvertragHTML(d) {
     ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
     : `<tr><td colspan="2" style="color:#aaa59e;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
 
-  const subtitle = 'Zimmervermietung';
+  const subtitle = d.befristet
+    ? 'Befristetes Mietverhältnis \u00b7 Zimmervermietung'
+    : 'Unbefristetes Mietverhältnis \u00b7 Zimmervermietung';
 
   const page1 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(1)}
@@ -351,14 +360,14 @@ function _renderMietvertragHTML(d) {
     ${kv('Mietbeginn',d.mietbeginn||'—')}
     ${d.befristet
       ? ''
-      : kv('Kündigungsfrist','3\u00a0Monate \u00b7 Schriftform (\u00a7\u00a0573c BGB)')
+      : kv('Kündigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verlängerung')
     }
     ${sec('Miete &amp; Bankverbindung',true,false)}
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
-      : kv('Pauschalmiete',eur(d.kaltmiete)+'\u2002/ Monat (inkl. NK)')
+      : kv('Pauschalmiete',eur(d.gesamtmiete)+'\u2002/ Monat (inkl. NK)')
     }
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
@@ -375,10 +384,10 @@ function _renderMietvertragHTML(d) {
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
     <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.</p>
     <div class="nk-grid">${nkRows}</div>
-    ${cl('1',d.befristet?'Befristung und Beendigung':'Mietzeit',
+    ${cl('1',d.befristet?'Befristung und Beendigung':'Nutzung des Mietobjekts',
       d.befristet
         ? `Das Mietverhältnis ist gemäß \u00a7\u00a0575 Abs.\u00a01 BGB befristet und endet am ${d.mietende} automatisch ohne Kündigung (\u00a7\u00a0545 BGB findet keine Anwendung). Das Zimmer darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden.`
-        : 'Das Mietverhältnis ist unbefristet. Das Zimmer darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden. Der Mieter ist verpflichtet, das Zimmer und die Gemeinschaftsflächen schonend, sauber und ordnungsgemäß zu behandeln, ausreichend zu heizen, zu lüften und von Ungeziefer freizuhalten. Mängel sind dem Vermieter unverzüglich in Textform anzuzeigen.',
+        : 'Das Zimmer darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden. Der Mieter ist verpflichtet, das Zimmer und die Gemeinschaftsflächen schonend, sauber und ordnungsgemäß zu behandeln, ausreichend zu heizen, zu lüften und von Ungeziefer freizuhalten. Mängel sind dem Vermieter unverzüglich in Textform anzuzeigen.',
       true)}
     ${cl('2','Kündigung',
       d.befristet
@@ -398,24 +407,20 @@ function _renderMietvertragHTML(d) {
       'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).')}
     ${cl('9','Rückgabe bei Vertragsende',
       'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
-    ${cl('10','Aufrechnung &amp; Zurückbehaltungsrecht',
-      'Der Mieter kann gegen Forderungen des Vermieters nur mit unbestrittenen oder rechtskräftig festgestellten Gegenforderungen aufrechnen. Das Zurückbehaltungsrecht ist auf Mängelrechte nach \u00a7\u00a7\u00a0536\u00a0ff. BGB beschränkt und setzt eine mindestens einmonatige vorherige Ankündigung in Textform voraus.')}
   </div>
 </div>`;
 
   const page3 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(3)}
   <div class="content">
-    ${cl('11','Haftpflichtversicherung',
+    ${cl('10','Haftpflichtversicherung',
       'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.',true)}
-    ${cl('12','Hausordnung',
+    ${cl('11','Hausordnung',
       'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr. Die Hausordnung ist Bestandteil dieses Vertrages (Anlage\u00a0B).')}
-    ${cl('13','Datenschutz',
+    ${cl('12','Datenschutz',
       'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
-    ${cl('14','Sonstige Vereinbarungen',
+    ${cl('13','Sonstige Vereinbarungen',
       'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.')}
-    ${cl('15','Energieausweis (\u00a7\u00a016a GEG)',
-      'Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Energieeffizienzklasse: '+(d.energieklasse||'___')+'. Endenergiebedarf: '+(d.endenergiebedarf||'___')+' kWh/(m\u00b2\u00b7a). Art: '+(d.energieausweisart||'Verbrauchsausweis')+'.')}
     ${sec('Anlage A \u2014 Inventar',true,false)}
     <table class="inv-table">
       <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>

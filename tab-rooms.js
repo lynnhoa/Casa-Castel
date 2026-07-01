@@ -93,9 +93,9 @@ document.getElementById('tab-rooms').innerHTML = `
       <span id="pdfPreviewTitle" style="flex:1;text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
         <button id="pdfZoomOut" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:8px;cursor:pointer;color:var(--cc-charcoal);font-size:15px;font-family:inherit;font-weight:300;">−</button>
-        <span id="pdfZoomLabel" style="font-size:11px;font-weight:500;color:var(--cc-taupe);min-width:38px;text-align:center;">100%</span>
+        <span id="pdfZoomLabel" style="font-size:12px;font-weight:500;color:var(--cc-taupe);min-width:38px;text-align:center;">100%</span>
         <button id="pdfZoomIn" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:none;border:0.5px solid var(--cc-rule);border-radius:8px;cursor:pointer;color:var(--cc-charcoal);font-size:15px;font-family:inherit;font-weight:300;">+</button>
-        <button id="pdfPreviewSaveBtn" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 16px;background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;margin-left:4px;">
+        <button id="pdfPreviewSaveBtn" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 16px;background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:8px;font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;margin-left:4px;">
           <i class="ti ti-printer" style="font-size:14px;"></i> PDF
         </button>
       </div>
@@ -131,7 +131,7 @@ document.getElementById('tab-rooms').innerHTML = `
 .rp-add-btn {
   display:flex; align-items:center; gap:6px; padding:8px 14px; min-height:36px;
   background:var(--cc-ink); color:var(--cc-white); border:none; border-radius:var(--cc-r-sm);
-  font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; white-space:nowrap;
+  font-size:12px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; white-space:nowrap;
 }
 .rp-add-btn i { font-size:14px; }
 
@@ -172,7 +172,7 @@ document.getElementById('tab-rooms').innerHTML = `
   color:var(--cc-ink); line-height:1.1;
 }
 .rc-hdr__name--inactive { color:var(--cc-stone); }
-.rc-hdr__meta { font-size:11px; color:var(--cc-taupe); margin-top:3px; }
+.rc-hdr__meta { font-size:12px; color:var(--cc-taupe); margin-top:3px; }
 
 /* Status badge — inline with name */
 .rc-status-badge {
@@ -206,7 +206,7 @@ document.getElementById('tab-rooms').innerHTML = `
 .rc-hdr__rent-info { min-width:0; }
 .rp-summary { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:4px; background:var(--cc-white); border:var(--cc-border); border-radius:var(--cc-r-lg); }
 .rp-summary__label { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-taupe); margin-bottom:2px; }
-.rp-summary__breakdown { font-size:11px; font-weight:300; color:var(--cc-stone); }
+.rp-summary__breakdown { font-size:12px; font-weight:300; color:var(--cc-stone); }
 .rp-summary__total { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400; color:var(--cc-ink); line-height:1; text-align:right; }
 .rp-summary__sub { font-size:10px; font-weight:300; color:var(--cc-stone); text-align:right; }
 .rc-chevron { color:var(--cc-stone); font-size:18px; flex-shrink:0; margin-top:4px; transition:transform .22s cubic-bezier(.32,.72,0,1); }
@@ -243,12 +243,12 @@ document.getElementById('tab-rooms').innerHTML = `
 }
 .rc-rows { display:flex; flex-direction:column; }
 .rc-row { display:flex; gap:10px; padding:3px 0; align-items:baseline; }
-.rc-row__k { font-size:11px; color:var(--cc-taupe); min-width:88px; flex-shrink:0; }
+.rc-row__k { font-size:12px; color:var(--cc-taupe); min-width:88px; flex-shrink:0; }
 .rc-row__v { font-size:12px; color:var(--cc-charcoal); flex:1; }
 /* Keys inline */
 .rc-keys { display:flex; gap:14px; flex-wrap:wrap; }
 .rc-key  { display:flex; align-items:center; gap:4px; font-size:12px; color:var(--cc-charcoal); }
-.rc-key i{ font-size:11px; color:var(--cc-stone); }
+.rc-key i{ font-size:12px; color:var(--cc-stone); }
 
 /* Inventar row */
 .rc-inv-row {
@@ -392,7 +392,7 @@ document.getElementById('tab-rooms').innerHTML = `
 .rm-btn--delete {
   width:100%; min-height:40px; background:transparent;
   border:.5px solid #EAC4BB; border-radius:var(--cc-r-sm);
-  color:#C4705A; font-size:11px; font-weight:500;
+  color:#C4705A; font-size:12px; font-weight:500;
   letter-spacing:.06em; text-transform:uppercase;
   display:flex; align-items:center; justify-content:center; gap:6px;
   cursor:pointer; font-family:inherit;
@@ -409,7 +409,7 @@ document.getElementById('tab-rooms').innerHTML = `
 
 /* iPad touch — action buttons larger tap target */
 @media(hover:none) {
-  .rc-act { height:40px; font-size:11px; }
+  .rc-act { height:40px; font-size:12px; }
   .rc-doc-row:active { background:var(--cc-surface); }
 }
 
@@ -498,7 +498,7 @@ document.getElementById('tab-rooms').innerHTML = `
   margin-bottom:14px;
 }
 .rm-kaution-lbl { font-size:9px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:#9A6A2A; margin-bottom:2px; }
-.rm-kaution-rule { font-size:11px; color:#7A5A2A; }
+.rm-kaution-rule { font-size:12px; color:#7A5A2A; }
 .rm-kaution-val { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:400; color:#7A5A2A; }
 
 .rm-fields-title {
@@ -583,7 +583,7 @@ document.getElementById('tab-rooms').innerHTML = `
 .inv-add-btn {
   display:flex; align-items:center; gap:6px; width:100%; min-height:36px; padding:0 12px;
   background:var(--cc-white); border:.5px dashed var(--cc-rule); border-radius:var(--cc-r-sm);
-  font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--cc-taupe);
+  font-size:12px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--cc-taupe);
 }
 
 /* Confirm dialog */
@@ -616,7 +616,7 @@ document.getElementById('tab-rooms').innerHTML = `
 .inv-add-btn {
   display:flex; align-items:center; gap:6px; width:100%; min-height:36px; padding:0 12px;
   background:var(--cc-white); border:.5px dashed var(--cc-rule); border-radius:var(--cc-r-sm);
-  font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--cc-taupe);
+  font-size:12px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--cc-taupe);
 }
 
 /* Confirm dialog */
@@ -693,7 +693,7 @@ document.getElementById('tab-rooms').innerHTML = `
   padding: 0 18px;
   border-radius: 4px;
   font-family: 'Lato', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1154,13 +1154,13 @@ function _roomCardHTML(r) {
         <button class="rc-act ${vacant ? 'rc-act--mark-occupied' : 'rc-act--mark-vacant'}"
           data-vacantbtn="${r.id}"
           onclick="_toggleVacant('${r.id}',this)">
-          <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:11px;"></i>
+          <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:12px;"></i>
           ${vacant ? t('rooms_mark_occupied') : t('rooms_mark_vacant')}
         </button>
         <button class="rc-act ${hasKitchen ? 'rc-act--kitchen-on' : 'rc-act--kitchen-off'}"
           data-kitchenbtn="${esc(r.name)}"
           onclick="_toggleKitchenRoom('${esc(r.name)}',this)">
-          <i class="ti ti-tool-kitchen-2" style="font-size:11px;"></i>
+          <i class="ti ti-tool-kitchen-2" style="font-size:12px;"></i>
           ${hasKitchen ? 'Kitchen: On' : 'Kitchen: Off'}
         </button>
       </div>
@@ -2049,11 +2049,11 @@ function _contractBodyUeberg(room, isEinzug) {
     <!-- Mieter toggle — iOS-style pill -->
     <div class="rm-fields-title" style="margin-bottom:10px;">Mieter</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;">${esc(room.name)} Mieter</span>
+      <span style="font-size:12px;color:var(--cc-taupe);font-weight:400;">${esc(room.name)} Mieter</span>
       <div class="ub-mieter-pill" id="uebergMieterPill" data-state="room" onclick="_toggleUebergMieter('${room.id}')">
         <div class="ub-mieter-pill__knob"></div>
       </div>
-      <span style="font-size:11px;color:var(--cc-stone);" id="uebergMieterManualLbl">Manuell</span>
+      <span style="font-size:12px;color:var(--cc-stone);" id="uebergMieterManualLbl">Manuell</span>
     </div>
     <div class="rm-field" id="uebergMieterNameWrap">
       <label>Mieter Name</label>
@@ -2408,13 +2408,13 @@ function _contractBodyKurzzeit(room) {
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="sofort"
           onclick="_kfSelect('cm','sofort')"
-          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
         <button type="button" class="rm-btn rm-btn--sm cm-fael-opt active-fael" data-val="5"
           onclick="_kfSelect('cm','5')"
-          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
         <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="custom"
           onclick="_kfSelect('cm','custom')"
-          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
         <input type="number" id="cm-faelligkeit-custom"
           style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit;-webkit-appearance:textfield;appearance:textfield"
           placeholder="Tage" min="1"/>
@@ -2423,11 +2423,11 @@ function _contractBodyKurzzeit(room) {
 
     <div class="rm-fields-title" style="margin-bottom:10px;">Mieter</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="cmMieterRoomLbl">${esc(room.name)} Mieter</span>
+      <span style="font-size:12px;color:var(--cc-taupe);font-weight:400;" id="cmMieterRoomLbl">${esc(room.name)} Mieter</span>
       <div class="ub-mieter-pill" id="cmMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" onclick="_toggleCmMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
-      <span style="font-size:11px;color:var(--cc-stone);" id="cmMieterManualLbl">Manuell</span>
+      <span style="font-size:12px;color:var(--cc-stone);" id="cmMieterManualLbl">Manuell</span>
     </div>
     <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="cm-name" value="${esc(tenantName)}" placeholder="Vor- und Nachname…"/></div>
     <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="cm-adr" value="${esc(tenantAddress)}" placeholder="Aktuelle Adresse…"/></div>
@@ -2899,9 +2899,9 @@ function _renderKurzzeitHTML(d) {
     .kv { display: flex; padding: 3.5px 0; align-items: baseline; }
     .kv__k {
       font-family: 'Lato', sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 300;
-      color: #6a6560;
+      color: #3a3530;
       min-width: 140px;
       flex-shrink: 0;
       line-height: 1.55;
@@ -2909,7 +2909,7 @@ function _renderKurzzeitHTML(d) {
     }
     .kv__v {
       font-family: 'Lato', sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 400;
       color: #1a1a1a;
       flex: 1;
@@ -2941,7 +2941,7 @@ function _renderKurzzeitHTML(d) {
       font-family: 'Lato', sans-serif;
       font-size: 10.5px;
       font-weight: 300;
-      color: #6a6560;
+      color: #3a3530;
       margin-top: 10px;
       line-height: 1.55;
     }
@@ -2951,7 +2951,7 @@ function _renderKurzzeitHTML(d) {
     .clause--first { margin-top: 16px; }
     .clause__title {
       font-family: 'Lato', sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 700;
       color: #4a4540;
       margin-bottom: 3px;
@@ -2959,7 +2959,7 @@ function _renderKurzzeitHTML(d) {
     }
     .clause__body {
       font-family: 'Lato', sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 300;
       color: #3a3530;
       line-height: 1.55;
@@ -2968,7 +2968,7 @@ function _renderKurzzeitHTML(d) {
     /* NUTZUNG */
     .nutzung {
       font-family: 'Lato', sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 300;
       color: #3a3530;
       line-height: 1.55;
@@ -2991,7 +2991,7 @@ function _renderKurzzeitHTML(d) {
     }
     .inv-table td {
       font-family: 'Lato', sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 300;
       color: #1a1a1a;
       padding: 3.5px 0;
@@ -3439,7 +3439,7 @@ function _renderUebergHTML(d) {
       align-items: center;
       gap: 8px;
       font-family: 'Lato', sans-serif;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 400;
       color: #1a1a1a;
       line-height: 13px;
@@ -3473,7 +3473,7 @@ function _renderUebergHTML(d) {
       font-family: 'Lato', sans-serif;
       font-size: 10px;
       font-weight: 300;
-      color: #6a6560;
+      color: #3a3530;
       display: inline-flex;
       align-items: center;
       gap: 10px;
@@ -3488,33 +3488,33 @@ function _renderUebergHTML(d) {
     .sec--first { margin-top:12px; }
 
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#6a6560;
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530;
       min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
-    .kv__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
+    .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
 
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
-    .write-text { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
+    .write-text { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#1a1a1a; padding-top:2px; line-height:1.5; }
 
     .zaehler-table { width:100%; border-collapse:collapse; margin-top:16px; }
     .zaehler-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700;
       letter-spacing:0.12em; text-transform:uppercase; color:#888780;
       border-bottom:0.5px solid #d8d3cc; padding:3px 0 5px; text-align:left; }
-    .zaehler-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
+    .zaehler-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#1a1a1a; padding:5px 0; }
     .stand-val { font-weight:400; }
     .stand-empty { border-bottom:0.5px solid #b8b3ac; display:inline-block; width:80%; height:18px; }
 
     .schluessel-row { display:flex; gap:36px; margin-top:22px; }
     .schluessel-item { display:flex; align-items:flex-end; gap:8px; }
-    .schluessel-item__label { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
-      color:#6a6560; white-space:nowrap; padding-bottom:2px; }
-    .schluessel-item__val { font-family:'Lato',sans-serif; font-size:11px; font-weight:400;
+    .schluessel-item__label { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
+      color:#3a3530; white-space:nowrap; padding-bottom:2px; }
+    .schluessel-item__val { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
       color:#1a1a1a; padding-bottom:2px; }
     .sonstiges-row { display:flex; align-items:flex-end; gap:8px; margin-top:16px; }
-    .sonstiges-label { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
-      color:#6a6560; white-space:nowrap; flex-shrink:0; padding-bottom:2px; }
-    .sonstiges-val { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
+    .sonstiges-label { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
+      color:#3a3530; white-space:nowrap; flex-shrink:0; padding-bottom:2px; }
+    .sonstiges-val { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#1a1a1a; flex:1; padding-bottom:2px; border-bottom:0.5px solid #b8b3ac; min-height:18px; }
 
     .sig-block { margin-top:120px; display:flex; justify-content:space-between; }
@@ -3528,7 +3528,7 @@ function _renderUebergHTML(d) {
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
 
     /* Multiline text in write area */
-    .write-area { font-family:'Lato',sans-serif; font-size:11px; font-weight:300;
+    .write-area { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#1a1a1a; line-height:1.55; padding-top:3px; white-space:pre-wrap; word-break:break-word; }
   `;
 
@@ -3927,13 +3927,13 @@ function _contractBodyMietvertrag(room) {
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="sofort"
           onclick="_kfSelect('mv','sofort')"
-          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
         <button type="button" class="rm-btn rm-btn--sm mv-fael-opt active-fael" data-val="5"
           onclick="_kfSelect('mv','5')"
-          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
         <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="custom"
           onclick="_kfSelect('mv','custom')"
-          style="font-size:11px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
         <input type="number" id="mv-faelligkeit-custom"
           style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit;-webkit-appearance:textfield;appearance:textfield"
           placeholder="Tage" min="1"/>
@@ -3942,11 +3942,11 @@ function _contractBodyMietvertrag(room) {
 
     <div class="rm-fields-title" style="margin-top:2px;margin-bottom:10px;">Mieter</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <span style="font-size:11px;color:var(--cc-taupe);font-weight:400;" id="mvMieterRoomLbl">${esc(room.name)} Mieter</span>
+      <span style="font-size:12px;color:var(--cc-taupe);font-weight:400;" id="mvMieterRoomLbl">${esc(room.name)} Mieter</span>
       <div class="ub-mieter-pill" id="mvMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" onclick="_toggleMvMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
-      <span style="font-size:11px;color:var(--cc-stone);" id="mvMieterManualLbl">Manuell</span>
+      <span style="font-size:12px;color:var(--cc-stone);" id="mvMieterManualLbl">Manuell</span>
     </div>
     <div class="rm-field">
       <label>Name</label>
@@ -4089,23 +4089,23 @@ function _renderMietvertragHTML(d) {
     .sec--lg { font-size:8.5px; margin-top:22px; }
     .sec--lg.sec--first { margin-top:0; }
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#6a6560; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
-    .kv__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
+    .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
     .kv-gap { height:10px; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px; display:flex; justify-content:space-between; align-items:center; margin-top:10px; margin-bottom:24px; }
     .total-box__label, .total-box__value { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:700; color:#8a6535; line-height:1; }
-    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#6a6560; margin-top:10px; line-height:1.55; }
+    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; margin-top:10px; line-height:1.55; }
     .nk-intro { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; line-height:1.55; margin-top:7px; margin-bottom:10px; }
     .nk-grid { display:grid; grid-template-columns:1fr 1fr; column-gap:24px; }
     .nk-item { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; padding:2.5px 0; line-height:1.4; }
     .nk-item--full { grid-column:1/-1; border-bottom:none; }
     .clause { margin-top:8px; }
     .clause--first { margin-top:10px; }
-    .clause__title { font-family:'Lato',sans-serif; font-size:11px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
-    .clause__body { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#3a3530; line-height:1.55; }
+    .clause__title { font-family:'Lato',sans-serif; font-size:12px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
+    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; }
     .inv-table { width:100%; border-collapse:collapse; margin-top:6px; }
     .inv-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .inv-table td { font-family:'Lato',sans-serif; font-size:11px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .inv-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
     .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:48px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
     .comment-line { border-bottom:0.5px solid #e0dbd4; height:26px; margin-top:2px; }
     .sig-block { margin-top:70px; display:flex; justify-content:space-between; }
@@ -4194,7 +4194,7 @@ function _renderMietvertragHTML(d) {
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
     <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.</p>
     <div class="nk-grid">${nkRows}</div>
-    <p class="nk-intro" style="margin-top:6px;border-top:0.5px solid #e8dbc5;padding-top:5px;color:#6a6560;font-style:italic;">Winterdienst wird grundsätzlich vom Mieter erledigt. Unter Umständen wird dieser gelegentlich organisiert, sofern nicht erledigt, wird dieser in den Nebenkosten berücksichtigt.</p>
+    <p class="nk-intro" style="margin-top:6px;border-top:0.5px solid #e8dbc5;padding-top:5px;color:#3a3530;font-style:italic;">Winterdienst wird grundsätzlich vom Mieter erledigt. Unter Umständen wird dieser gelegentlich organisiert, sofern nicht erledigt, wird dieser in den Nebenkosten berücksichtigt.</p>
     <div style="margin-top:24px;">${cl('1',d.befristet?'Befristung und Beendigung':'Mietzeit',
       d.befristet
         ? `Das Mietverhältnis ist gemäß \u00a7\u00a0575 Abs.\u00a01 BGB befristet und endet am ${d.mietende} automatisch ohne Kündigung (\u00a7\u00a0545 BGB findet keine Anwendung). Das Zimmer darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden.`
