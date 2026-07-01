@@ -179,7 +179,7 @@ function _renderPkMietvertragHTML(d) {
 
   const hdr = () => `
     <div class="hdr">
-      <span class="hdr__wordmark">Casa Castel</span>
+      <span class="hdr__wordmark">${d.isTG ? 'Garagenmietvertrag' : 'Stellplatzmietvertrag'}</span>
       <div class="hdr__unit">
         <span class="hdr__unit-label">${d.isTG ? 'Tiefgarage' : 'Stellplatz'}</span>
         <span class="hdr__unit-name">${d.stellplatzNr}</span>
@@ -225,13 +225,13 @@ function _renderPkMietvertragHTML(d) {
       </div>
     </div>`;
 
-  const subtitle = 'Mietvertrag \u00b7 Stellplatzvermietung';
+  const subtitle = d.isTG ? 'Garagenmietvertrag \u00b7 Tiefgaragenstellplatz' : 'Stellplatzmietvertrag \u00b7 Stellplatzvermietung';
 
   /* ── PAGE 1 ── */
   const page1 = `<div class="pdf-page page">
   ${hdr()}${ftr(1)}
   <div class="content">
-    <div class="doc-title">Mietvertrag</div>
+    <div class="doc-title">${d.isTG ? 'Garagenmietvertrag' : 'Stellplatzmietvertrag'}</div>
     <div class="doc-subtitle">${subtitle}</div>
 
     ${sec('Vermieter', false, true)}
