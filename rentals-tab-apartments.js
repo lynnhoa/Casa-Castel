@@ -2325,7 +2325,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
         </div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <input class="rm-input" id="apt-mv-staffel-anfang" type="number" step="0.01" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <input class="rm-input" id="apt-mv-staffel-anfang" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
           <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
           <span style="font-size:11px;color:var(--cc-taupe);" id="apt-mv-staffel-anfang-ab">ab Mietbeginn</span>
         </div>
@@ -3632,6 +3632,7 @@ function _buildRentalMietvertragData(room, s, {
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
   kautionFael = '5',
+  staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
     const dt = new Date(d);
@@ -3709,6 +3710,9 @@ function _buildRentalMietvertragData(room, s, {
     zimmerschluessel:    room.zimmerschluessel    || 1,
     inventar: Array.isArray(room.inventar) ? room.inventar : [],
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
+    staffelAn,
+    staffeln: staffeln.map(s => ({ datum: s.datum || '', betrag: Number(s.betrag) || 0 })),
+    anfangsmiete: anfangsmiete !== null ? Number(anfangsmiete) : null,
   };
 }
 
@@ -3982,6 +3986,9 @@ function _renderRentalMietvertragHTML(d) {
   const subtitle = d.befristet
     ? 'Befristetes Mietverhältnis \u00b7 Wohnungsvermietung'
     : 'Unbefristetes Mietverhältnis \u00b7 Wohnungsvermietung';
+  const hasStaffel = d.staffelAn && d.staffeln && d.staffeln.length > 0;
+  const pOff = hasStaffel ? 1 : 0;
+  const eur2 = n => Number(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
 
   const page1 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(1)}
@@ -4021,7 +4028,7 @@ function _renderRentalMietvertragHTML(d) {
     }
     ${sec('Miete &amp; Bankverbindung',true,false)}
     ${d.pricingMode==='kalt_nk'
-      ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
+      ? kv('Kaltmiete',eur(d.anfangsmiete||d.kaltmiete)+'\u2002/ Monat'+(hasStaffel?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':''))
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
       : kv('Pauschalmiete',eur(d.gesamtmiete)+'\u2002/ Monat (inkl. NK)')
     }
@@ -4049,19 +4056,23 @@ function _renderRentalMietvertragHTML(d) {
       d.befristet
         ? 'Das befristete Mietverhältnis endet am '+d.mietende+' automatisch ohne Kündigung (\u00a7\u00a0575 BGB). Befristungsgrund: '+d.grundLabel+(d.eigenbedarfPerson?' \u2014 '+d.eigenbedarfPerson:'')+'. Eine ordentliche Kündigung ist ausgeschlossen; die außerordentliche Kündigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unberührt. Im Falle einer Verlängerung beträgt die Kündigungsfrist für den Mieter 3\u00a0Monate zum Monatsende.'
         : 'Die ordentliche Kündigung richtet sich nach \u00a7\u00a0573c BGB. Kündigungsfrist für den Mieter: 3\u00a0Monate zum Monatsende. Für den Vermieter gilt die gesetzlich gestaffelte Frist. Die Kündigung bedarf der Schriftform. Eine stillschweigende Verlängerung nach \u00a7\u00a0545 BGB ist ausgeschlossen. Die außerordentliche Kündigung aus wichtigem Grund bleibt unberührt.')}
-    ${cl('3','Untervermietung',
+    ${hasStaffel ? cl(String(3),'Staffelmiete',
+        `Die monatliche Nettokaltmiete ist gemäß § 557a BGB gestaffelt und beträgt: Anfangsmiete ab ${d.mietbeginn}: ${eur2(d.anfangsmiete||d.kaltmiete)}.` +
+        d.staffeln.map(st => ` Ab ${st.datum}: ${eur2(st.betrag)}.`).join('') +
+        ` Jede Staffel gilt für mindestens zwölf Monate. Während einer laufenden Staffel ist eine Mietererhöhung nach §§ 558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3. Werktag des ersten Monats der neuen Staffel fällig.`) : ''}
+    ${cl(String(3+pOff),'Untervermietung',
       'Eine Untervermietung oder sonstige Überlassung des Mietobjekts an Dritte ist nicht gestattet.')}
-    ${cl('4','Schlüsselübergabe',
+    ${cl(String(4+pOff),'Schlüsselübergabe',
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
-    ${cl('5','Kaution',
+    ${cl(String(5+pOff),'Kaution',
       `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Vertragsunterzeichnung dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
-    ${cl('6','Schönheitsreparaturen &amp; Kleinreparaturen',
+    ${cl(String(6+pOff),'Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
-    ${cl('7','Tierhaltung',
+    ${cl(String(7+pOff),'Tierhaltung',
       'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
-    ${cl('8','Betreten des Mietobjekts',
+    ${cl(String(8+pOff),'Betreten des Mietobjekts',
       'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).')}
-    ${cl('9','Rückgabe bei Vertragsende',
+    ${cl(String(9+pOff),'Rückgabe bei Vertragsende',
       'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
   </div>
 </div>`;
@@ -4069,13 +4080,13 @@ function _renderRentalMietvertragHTML(d) {
   const page3 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(3)}
   <div class="content">
-    ${cl('10','Haftpflichtversicherung',
+    ${cl(String(10+pOff),'Haftpflichtversicherung',
       'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.',true)}
-    ${cl('11','Hausordnung',
+    ${cl(String(11+pOff),'Hausordnung',
       'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr. Die Hausordnung ist Bestandteil dieses Vertrages (Anlage\u00a0B).')}
-    ${cl('12','Datenschutz',
+    ${cl(String(12+pOff),'Datenschutz',
       'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
-    ${cl('13','Sonstige Vereinbarungen',
+    ${cl(String(13+pOff),'Sonstige Vereinbarungen',
       'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.')}
     ${sec('Anlage A \u2014 Inventar',true,false)}
     <table class="inv-table">
