@@ -1644,7 +1644,8 @@ function _rntStaffelHTML(rid, aptId) {
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
   const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  const next    = entries.find(e => new Date(e.effective_date) > today)  || null;
+  const futureEntries = entries.filter(e => new Date(e.effective_date) > today);
+  const next    = futureEntries.length ? futureEntries[futureEntries.length - 1] : null;
 
   const delBtn = (e) =>
     `<button class="tn-icon-btn" style="color:var(--cc-stone);flex-shrink:0" aria-label="Löschen"
@@ -1771,7 +1772,8 @@ function _rntPkStaffelHTML(rid, pkId) {
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
   const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  const next    = entries.find(e => new Date(e.effective_date) > today)  || null;
+  const futureEntries = entries.filter(e => new Date(e.effective_date) > today);
+  const next    = futureEntries.length ? futureEntries[futureEntries.length - 1] : null;
 
   const delBtn = (e) =>
     `<button class="tn-icon-btn" style="color:var(--cc-stone);flex-shrink:0" aria-label="Löschen"
