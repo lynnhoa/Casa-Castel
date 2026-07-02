@@ -54,11 +54,10 @@
         document.body.appendChild(container);
         await document.fonts.ready;
 
-        if (window.innerWidth >= 701) {
-          _openPdfPreview('Kurzzeitmiete', _generateRentalKurzzeitPDF);
-        } else {
-          await _generateRentalKurzzeitPDF();
-        }
+        const btn = document.getElementById('aptKzPdfBtn');
+        if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating…'; btn.disabled = true; }
+        const filename = `Kurzzeitmiete_${apt2.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
+        await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
       });
     }, 0);
 
@@ -129,11 +128,10 @@
         document.body.appendChild(container);
         await document.fonts.ready;
 
-        if (window.innerWidth >= 701) {
-          _openPdfPreview('Mietvertrag', _generateRentalMietvertragPDF);
-        } else {
-          await _generateRentalMietvertragPDF();
-        }
+        const btn = document.getElementById('aptMvPdfBtn');
+        if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating…'; btn.disabled = true; }
+        const filename = `Mietvertrag_${apt2Room.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
+        await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
       });
 
       document.getElementById('apt-mv-start')?.addEventListener('input', _aptUpdateMvMonatToggle);
