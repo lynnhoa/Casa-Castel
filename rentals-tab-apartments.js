@@ -2120,7 +2120,7 @@ async function _aptOpenContract(type, aptId) {
           await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[Mietvertrag PDF]', err);
-          alert('PDF generation failed. Please try again.');
+          alert('PDF error: ' + (err && err.message ? err.message : String(err)));
           if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
         }
       });
