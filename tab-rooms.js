@@ -3827,6 +3827,8 @@ function _buildMietvertragOnlyData(room, s, {
     nkVorauszahlung,
     gesamtmiete,
     kaution,
+    kautionFaelligkeitShort,
+    kautionFaelligkeitLong,
     hausstuerschluessel: room.haustuerschluessel || 1,
     zimmerschluessel:    room.zimmerschluessel    || 1,
     inventar: Array.isArray(room.inventar) ? room.inventar : [],
