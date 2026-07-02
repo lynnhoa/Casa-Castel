@@ -899,6 +899,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
       <div class="rm-pre-row"><span>Type</span><span>${pkEsc(spot.parking_type || '—')}</span></div>
       <div class="rm-pre-row"><span>Address</span><span>${pkEsc(spot.adresse || '—')}</span></div>
       <div class="rm-pre-row"><span>PLZ / Ort</span><span>${pkEsc(spot.plz_ort || '—')}</span></div>
+      ${spot.level_position ? `<div class="rm-pre-row"><span>Position</span><span>${pkEsc(spot.level_position)}</span></div>` : ''}
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${pkEsc(spot.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${pkFmtEURCompact(miete)} / mo</span></div>
       <div class="rm-pre-row"><span>Kaution</span><span>${pkFmtEURCompact(kaution)}${pr.kaution_override ? ' (override)' : ' · 3× Miete'}</span></div>
