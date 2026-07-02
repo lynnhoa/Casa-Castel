@@ -1861,7 +1861,7 @@ function _rntPkStaffelOpenAdd(pkId, rid) {
 function _rntPkStaffelOpenVerlauf(pkId, rid) {
   const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);
   const label = pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Stellplatz';
-  const entries = (_rntStaffel[pkId] || []).slice();
+  const entries = (_rntStaffel[pkId] || []).slice().reverse();
   const today   = new Date(); today.setHours(0,0,0,0);
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
@@ -1916,7 +1916,7 @@ function _rntStaffelOpenVerlauf(aptId, rid) {
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
   const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
   const label = apt ? (apt.name || apt.adresse || 'Wohnung') : pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Einheit';
-  const entries = (_rntStaffel[aptId] || []).slice();
+  const entries = (_rntStaffel[aptId] || []).slice().reverse();
   const today   = new Date(); today.setHours(0,0,0,0);
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
