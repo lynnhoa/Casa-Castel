@@ -393,6 +393,16 @@ function _renderRentalMietvertragHTML(d) {
 
   const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
 
+  const hasStaffel    = d.staffelAn && d.staffeln && d.staffeln.length > 0;
+  const pOff          = hasStaffel ? 1 : 0;
+  const staffelClause = hasStaffel
+    ? cl('3', 'Staffelmiete',
+        `Die monatliche Kaltmiete ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Anfangsmiete ab ${d.mietbeginn || 'Mietbeginn'}: ${eur(d.anfangsmiete)}.` +
+        d.staffeln.map(st => ` Ab ${st.datum}: ${eur(st.betrag)}.`).join('') +
+        ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend einer laufenden Staffel ist eine Mieterh\u00f6hung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen.`
+      )
+    : '';
+
   const subtitle = d.befristet
     ? 'Befristetes Mietverhältnis \u00b7 Wohnungsvermietung'
     : 'Unbefristetes Mietverhältnis \u00b7 Wohnungsvermietung';
