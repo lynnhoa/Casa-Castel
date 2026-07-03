@@ -275,18 +275,29 @@ async function handleLogout() {
 /* ── BOOT ── */
 async function boot() {
   showLoading(true);
+
+  // Session check — only a MISSING session redirects to login.
+  let session = null;
+  try { session = await getSession(); } catch(e) { /* treat as no session */ }
+  if (!session) {
+    showLoading(false);
+    location.replace('login.html');
+    return;
+  }
+
+  // Data load — a failure here must NOT redirect (would cause a
+  // login ↔ properties redirect loop while the session is valid).
   try {
-    const session = await getSession();
-    if (!session) {
-      location.replace('login.html');
-      return;
-    }
     window._props = await fetchAll();
     document.getElementById('appShell').style.display = 'block';
     setTimeout(renderAll, 0);
   } catch(e) {
-    location.replace('login.html');
-    return;
+    console.error('[properties] data load failed:', e);
+    document.getElementById('appShell').style.display = 'block';
+    const alerts = document.getElementById('dash-alerts');
+    if (alerts) alerts.innerHTML =
+      '<p class="cc-note" style="padding:12px 0;">Could not load data. ' +
+      '<a href="#" onclick="location.reload();return false;" style="color:var(--cc-gold);text-decoration:underline;">Retry</a></p>';
   } finally {
     showLoading(false);
   }
