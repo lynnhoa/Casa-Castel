@@ -109,33 +109,32 @@
 .nav-profile-menu {
   display: none;
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 5px);
   right: 0;
-  background: var(--cc-white);
-  border: var(--cc-border);
-  border-radius: var(--cc-r-lg);
-  box-shadow: 0 4px 16px rgba(30,27,24,.12);
+  background: var(--cc-surface);
+  border: 0.5px solid var(--cc-rule);
+  border-radius: var(--cc-r-md);
+  box-shadow: 0 4px 12px rgba(30,27,24,0.1);
   min-width: 130px;
-  overflow: hidden;
   z-index: 300;
 }
 .nav-profile-menu.open { display: block; }
 .nav-profile-menu-item {
   display: block;
   width: 100%;
-  padding: 11px 16px;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--cc-charcoal);
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--cc-taupe);
   background: none;
   border: none;
-  border-bottom: var(--cc-border);
   text-align: left;
   cursor: pointer;
   font-family: 'Inter', system-ui, sans-serif;
 }
-.nav-profile-menu-item:last-child { border-bottom: none; }
-.nav-profile-menu-item:hover { background: var(--cc-surface); }
+.nav-profile-menu-item:hover { color: var(--cc-ink); }
+.nav-profile-menu-item:active { color: var(--cc-ink); }
 
 /* ── SHARED PILLS ── */
 .zb-pill {

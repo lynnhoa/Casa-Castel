@@ -14,6 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="casa-castel.css"/>
 <link rel="stylesheet" href="properties.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
@@ -26,13 +27,13 @@
     <nav class="cc-nav">
       <a class="cc-nav__logo" href="#">Properties</a>
       <div class="nav-actions">
-<button class="cc-nav__icon" title="Alerts" style="position:relative">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <button class="cc-nav__icon" title="Alerts" style="position:relative">
+          <i class="ti ti-bell" aria-hidden="true"></i>
           <span class="nav-dot" id="navDot"></span>
         </button>
         <div class="nav-profile">
           <button class="cc-nav__icon" onclick="toggleProfileMenu()" title="Profile">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            <i class="ti ti-user" aria-hidden="true"></i>
           </button>
           <div class="nav-profile-menu" id="profileMenu">
             <button class="nav-profile-menu-item" onclick="location.href='rentals-index.html'">Rentals</button>
