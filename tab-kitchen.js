@@ -468,7 +468,7 @@ async function _kRenderFeed(weekRow) {
 }
 
 /* ── ROTATION STRIP ─────────────────────────────────────── */
-async function _kRenderRotation(weekRow, absData) {
+async function _kRenderRotation(weekRow, absData, preRows) {
   const el = document.getElementById('k-mob-rot-strip'); if (!el) return;
   const rooms = _kGetRoomList();
   if (!rooms.length) { el.innerHTML = ''; return; }
@@ -478,8 +478,17 @@ async function _kRenderRotation(weekRow, absData) {
   const pad = n => String(n).padStart(2, '0');
   const fmt = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
 
-  // Fetch all cycle rows — weekRow for current is already loaded, fetch others
-  const dbRows = await Promise.all(rooms.map((_, i) => _kGetWeek(cycleStart + i)));
+  // Cycle rows: use rows prefetched by loadKitchen(); otherwise one ranged
+  // query — never one round-trip per room. Missing weeks map to null,
+  // exactly like _kGetWeek()'s maybeSingle() did.
+  let _rows = preRows;
+  if (!_rows) {
+    if (!sbL) return;
+    const { data } = await sbL.from('kitchen_weeks').select('*')
+      .gte('week_index', cycleStart).lte('week_index', cycleStart + rooms.length - 1);
+    _rows = data || [];
+  }
+  const dbRows = rooms.map((_, i) => _rows.find(r => r.week_index === cycleStart + i) || null);
 
   let approvedCount = 0;
   for (let i = 0; i < cyclePos; i++) { if (dbRows[i] && dbRows[i].status === 'approved') approvedCount++; }
@@ -938,10 +947,12 @@ function _kSubscribe() {
    Fetches everything fresh, renders everything, no state deps.
    ─────────────────────────────────────────────────────────── */
 async function loadKitchen() {
-  if (typeof appRooms !== 'undefined' && appRooms.length === 0 && typeof loadRoomsData === 'function') {
-    await loadRoomsData();
-  }
-  await loadKitchenRoomsFromSupabase();
+  // Stage 1 — rooms master data + kitchen config in parallel (was sequential)
+  const _needRooms = (typeof appRooms !== 'undefined' && appRooms.length === 0 && typeof loadRoomsData === 'function');
+  await Promise.all([
+    _needRooms ? loadRoomsData() : Promise.resolve(),
+    loadKitchenRoomsFromSupabase(),
+  ]);
   _kRefreshNudgeRoomButtons();
 
   const idx  = kWeekIdx();
@@ -954,26 +965,41 @@ async function loadKitchen() {
     return;
   }
 
-  // Fetch week row + absences in parallel
-  let [weekRow, absData] = await Promise.all([
-    _kGetWeek(idx),
+  // Stage 2 — ONE ranged query fetches the current week AND every rotation
+  // slot of the cycle (previously: 1 query for the week + 1 query per room).
+  const _rotRooms   = _kGetRoomList();
+  const _cyclePos   = _rotRooms.length ? ((idx % _rotRooms.length) + _rotRooms.length) % _rotRooms.length : 0;
+  const _cycleStart = idx - _cyclePos;
+  const _cycleEnd   = _rotRooms.length ? _cycleStart + _rotRooms.length - 1 : idx;
+
+  let [cycleRows, absData] = await Promise.all([
+    sbL.from('kitchen_weeks').select('*')
+      .gte('week_index', Math.min(_cycleStart, idx))
+      .lte('week_index', Math.max(_cycleEnd, idx))
+      .then(r => r.data || []),
     sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || [])
   ]);
 
-  // Create row if missing
+  let weekRow = cycleRows.find(r => r.week_index === idx) || null;
+
+  // Create row if missing (first visit of a new week only)
   if (!weekRow) {
     const { data } = await sbL.from('kitchen_weeks')
       .insert({ week_index: idx, room: info.room, status: 'pending' })
       .select().single();
     weekRow = data || (await _kGetWeek(idx));
+    if (weekRow) cycleRows = cycleRows.concat([weekRow]);
   }
   _kWeekRow = weekRow;
 
-  // Render everything
+  // Render everything — week card is sync; the three async renderers are
+  // independent (different DOM targets, no shared writes) → run in parallel.
   _kRenderWeekCard(weekRow, absData);
-  await _kRenderFeed(weekRow);
-  await _kRenderRotation(weekRow, absData);
-  await _kLoadNudgeBanner(weekRow);
+  await Promise.all([
+    _kRenderFeed(weekRow),
+    _kRenderRotation(weekRow, absData, cycleRows),
+    _kLoadNudgeBanner(weekRow),
+  ]);
 
   // Start realtime only once — channel must stay alive permanently
   if (!_kChannel) _kSubscribe();
