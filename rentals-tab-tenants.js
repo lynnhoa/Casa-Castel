@@ -215,6 +215,9 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-btn-primary { height:36px; padding:0 12px; font-size:11px;
   background:var(--cc-ink); color:var(--cc-white); border:none; }
 .tn-btn-primary i { font-size:12px; }
+.tn-btn-done { height:36px; padding:0 12px; font-size:11px;
+  border:.5px solid #97C459; background:#EAF3DE; color:#27500A; }
+.tn-btn-done i { font-size:12px; }
 .tn-btn-ghost { height:48px; padding:0 16px; font-size:13px; font-weight:400;
   border:none; background:none; color:var(--cc-stone); }
 .tn-btn-danger { height:48px; padding:0 16px; font-size:13px; font-weight:400;
@@ -1350,7 +1353,7 @@ function _rntKautionHTML(rid, tid, ctx, rec) {
     </div>
   </div>
   <div class="${footer}" style="gap:6px">
-    ${recv > 0 ? `<button class="tn-btn tn-btn-sm" id="kset-${pfx}"
+    ${recv > 0 ? `<button class="tn-btn ${k.settled ? 'tn-btn-done' : 'tn-btn-sm'}" id="kset-${pfx}"
       ${dis} onclick="_rntToggleSettle('${pfx}','${tid||''}')">
       <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
     </button>` : ''}
@@ -1967,9 +1970,11 @@ function _rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs) {
     const kept    = _rntKautionKept(rec.id);
     const hasK    = k && k.received > 0;
     const recv2   = k ? Number(k.received) : 0;
+    const ret2    = k ? Number(k.returned) : 0;
+    const sdate   = k?.settled_at ? _rntFmtDate(k.settled_at) : '';
     const kPill   = !hasK ? '' :
       settled
-        ? `<span class="tnp tnp-green">${_rntFmtEUR(recv2)} settled</span>`
+        ? `<span class="tnp tnp-green">${_rntFmtEUR(ret2)} returned${sdate ? ' \u00b7 ' + sdate : ''}</span>`
         : `<span class="tnp tnp-amber">${_rntFmtEUR(recv2)} refund due</span>`;
     return `<div class="tn-former-row" style="gap:6px">
       <div class="tn-former-info" onclick="_rntOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
@@ -2641,17 +2646,32 @@ async function _rntToggleSettle(pfx, tid) {
   const k = _rntKaution[tid];
   if (!k?.id) return;
   k.settled = !k.settled;
+
+  // Snapshot the amounts the user typed at the moment of settling.
+  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
+  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
+
+  const upd = { settled: k.settled };
+  if (k.settled) {
+    // Record what was returned and the date it was settled.
+    k.received = recv; k.returned = ret;
+    k.settled_at = new Date().toISOString();
+    upd.received = recv; upd.returned = ret; upd.settled_at = k.settled_at;
+  } else {
+    // Un-settling: clear the date, keep the amounts as-is.
+    k.settled_at = null;
+    upd.settled_at = null;
+  }
+
   const btn = document.getElementById('kset-' + pfx);
   if (btn) {
     btn.innerHTML = `<i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}`;
-    btn.className = `tn-btn ${k.settled ? 'tn-btn-primary' : 'tn-btn-sm'}`;
+    btn.className = `tn-btn ${k.settled ? 'tn-btn-done' : 'tn-btn-sm'}`;
   }
-  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
-  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
   const st   = _rntKautionStatus(recv, ret, k.settled);
   const pill = document.getElementById('kstat-' + pfx);
   if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
-  sbL.from('rnt_kaution').update({ settled: k.settled }).eq('id', k.id)
+  sbL.from('rnt_kaution').update(upd).eq('id', k.id)
     .then(({ error }) => { if (error) console.warn('[rnt-tenants] settle:', error.message); });
   _rntRefreshFormerBadges(tid);
 }
@@ -3022,10 +3042,11 @@ function _rntRefreshFormerBadges(tid) {
     if (infoDiv?.getAttribute('onclick')?.includes(tid)) {
       const pills = row.querySelector('.tn-former-pills');
       if (pills) {
-        const recv2  = k ? Number(k.received) : 0;
+        const ret2   = k ? Number(k.returned) : 0;
+        const sdate  = k?.settled_at ? _rntFmtDate(k.settled_at) : '';
         const kPill  = !hasK ? '' :
           settled
-            ? `<span class="tnp tnp-green">Settled</span>`
+            ? `<span class="tnp tnp-green">${_rntFmtEUR(ret2)} returned${sdate ? ' \u00b7 ' + sdate : ''}</span>`
             : `<span class="tnp tnp-amber">Refund pending</span>`;
         pills.innerHTML = kPill;
       }
