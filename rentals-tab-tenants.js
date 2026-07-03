@@ -679,32 +679,38 @@ async function _rntLoad() {
         .in('parking_id', pkIds).order('mietbeginn', { ascending: false })
     : Promise.resolve({ data: [] });
 
-  const [aptRes, pkRes] = await Promise.all([aptQuery, pkQuery]);
+  // Vorauszahlung + Staffelmiete only need apartment/parking ids — they do
+  // NOT depend on tenant ids, so they run in the same round-trip as the
+  // records instead of waiting for them.
+  const vorausQuery = aptIds.length
+    ? sbL.from('rnt_nk_vorauszahlung_history').select('*')
+         .in('apartment_id', aptIds).order('effective_date', { ascending: false })
+    : Promise.resolve({ data: [] });
+
+  const staffelQuery = (aptIds.length || pkIds.length)
+    ? (() => {
+        let q = sbL.from('rnt_staffelmiete_history').select('*');
+        if (aptIds.length && pkIds.length)
+          q = q.or(`apartment_id.in.(${aptIds.join(',')}),parking_id.in.(${pkIds.join(',')})`);
+        else if (aptIds.length)
+          q = q.in('apartment_id', aptIds);
+        else
+          q = q.in('parking_id', pkIds);
+        return q.order('effective_date', { ascending: false });
+      })()
+    : Promise.resolve({ data: [] });
+
+  const [aptRes, pkRes, vorausRes, staffelRes] =
+    await Promise.all([aptQuery, pkQuery, vorausQuery, staffelQuery]);
   _rntRecords = [...(aptRes.data || []), ...(pkRes.data || [])];
 
   const tids = _rntRecords.map(r => r.id);
   if (!tids.length) { _rntRender(); return; }
 
-  const [kRes, nkRes, docRes, vorausRes, staffelRes] = await Promise.all([
+  const [kRes, nkRes, docRes] = await Promise.all([
     sbL.from('rnt_kaution').select('*').in('tenant_id', tids),
     sbL.from('rnt_nk_entries').select('*').in('tenant_id', tids).order('period', { ascending: false }),
     sbL.from('rnt_tenant_documents').select('*').in('tenant_id', tids),
-    aptIds.length
-      ? sbL.from('rnt_nk_vorauszahlung_history').select('*')
-           .in('apartment_id', aptIds).order('effective_date', { ascending: false })
-      : Promise.resolve({ data: [] }),
-    (aptIds.length || pkIds.length)
-      ? (() => {
-          let q = sbL.from('rnt_staffelmiete_history').select('*');
-          if (aptIds.length && pkIds.length)
-            q = q.or(`apartment_id.in.(${aptIds.join(',')}),parking_id.in.(${pkIds.join(',')})`);
-          else if (aptIds.length)
-            q = q.in('apartment_id', aptIds);
-          else
-            q = q.in('parking_id', pkIds);
-          return q.order('effective_date', { ascending: false });
-        })()
-      : Promise.resolve({ data: [] }),
   ]);
 
   _rntKaution = {};
@@ -3098,7 +3104,10 @@ function _rntBindCards() {
    20. ENTRY POINT
 ══════════════════════════════════════════════════════════════ */
 async function loadRntTenants() {
-  if (!appApartments?.length) await loadApartments?.();
-  if (!appParking?.length)    await loadParking?.();
+  // Load missing prerequisites in parallel (was: apartments, THEN parking)
+  await Promise.all([
+    !appApartments?.length ? loadApartments?.() : Promise.resolve(),
+    !appParking?.length    ? loadParking?.()    : Promise.resolve(),
+  ]);
   await _rntLoad();
 }
