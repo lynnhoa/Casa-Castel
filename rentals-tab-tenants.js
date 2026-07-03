@@ -1353,10 +1353,10 @@ function _rntKautionHTML(rid, tid, ctx, rec) {
     </div>
   </div>
   <div class="${footer}" style="gap:6px">
-    ${recv > 0 ? `<button class="tn-btn ${k.settled ? 'tn-btn-done' : 'tn-btn-sm'}" id="kset-${pfx}"
-      ${dis} onclick="_rntToggleSettle('${pfx}','${tid||''}')">
+    <button class="tn-btn ${k.settled ? 'tn-btn-done' : 'tn-btn-sm'}" id="kset-${pfx}"
+      ${dis} style="${recv > 0 ? '' : 'display:none'}" onclick="_rntToggleSettle('${pfx}','${tid||''}')">
       <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
-    </button>` : ''}
+    </button>
     <button class="tn-btn tn-btn-sm" id="ksave-${pfx}"
       ${dis} onclick="_rntSaveKautionBtn('${pfx}','${tid||''}')">
       Save
@@ -2593,6 +2593,8 @@ function _rntCalcKaution(pfx, tid) {
   if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
   const saveBtn = document.getElementById('ksave-' + pfx);
   if (saveBtn) saveBtn.classList.add('tn-btn-primary');
+  const setBtn = document.getElementById('kset-' + pfx);
+  if (setBtn) setBtn.style.display = (recv > 0 && tid) ? '' : 'none';
 }
 
 async function _rntSaveKautionBtn(pfx, tid) {
