@@ -66,7 +66,9 @@ function switchTab(tabName) {
 
 /* ── SHOW APP (after login) ─────────────────────────────── */
 function showApp(room) {
-  document.getElementById('loginScreen').style.display = 'none';
+  // loginScreen only exists in tenant.html — landlord.html gates via login.html
+  const _ls = document.getElementById('loginScreen');
+  if (_ls) _ls.style.display = 'none';
 
   const shell = document.getElementById('appShell');
   shell?.classList.add('visible');

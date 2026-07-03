@@ -30,27 +30,29 @@ function detectPWAMode() {
   return isPWA();
 }
 
-/* ── LANDLORD AUTH ──────────────────────────────────────── */
-function doLandlordLogin() {
-  const input = document.getElementById('landlordPass');
-  if (!input) return;
-  if (input.value === LANDLORD_PASS) {
-    localStorage.setItem('cc_role', 'landlord');
-    document.getElementById('loginError')?.classList.remove('visible');
-    showApp();
-  } else {
-    document.getElementById('loginError')?.classList.add('visible');
-    input.value = '';
-    input.focus();
+/* ── LANDLORD AUTH ──────────────────────────────────────────
+   All landlord authentication happens on login.html via
+   Supabase email + password. This gate only verifies it:
+   1. Sync check on the cc_role flag (set by login.html) so the
+      app shows instantly with no flash.
+   2. Background verification of the actual Supabase session —
+      if it's missing or expired, flags are cleared and the
+      user is bounced back to login.html.                      */
+function initLandlordAuth() {
+  if (localStorage.getItem('cc_role') !== 'landlord') {
+    location.replace('login.html');
+    return;
   }
-}
-
-function initLandlordLogin() {
-  document.getElementById('landlordLoginBtn')
-    ?.addEventListener('click', doLandlordLogin);
-  document.getElementById('landlordPass')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter') doLandlordLogin(); });
-  if (localStorage.getItem('cc_role') === 'landlord') { showApp(); } else { location.href = 'login.html'; }
+  showApp();
+  if (sbL) {
+    sbL.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        localStorage.removeItem('cc_role');
+        localStorage.removeItem('rentals_role');
+        location.replace('login.html');
+      }
+    }).catch(() => { /* offline — keep app open, flag already checked */ });
+  }
 }
 
 /* ── TENANT AUTH — room + password (matches v1 exactly) ─── */
@@ -165,8 +167,10 @@ function logout() {
   const wasTenant = localStorage.getItem('cc_role') === 'tenant';
   localStorage.removeItem('cc_role');
   localStorage.removeItem('cc_room');
-  if (!wasTenant) localStorage.removeItem('rentals_role');
+  if (!wasTenant) {
+    localStorage.removeItem('rentals_role');
+    if (sbL) sbL.auth.signOut().catch(() => {});
+  }
   sessionStorage.removeItem('cc_preview_room');
-  if (sbL) sbL.auth.signOut().catch(() => {});
   location.href = wasTenant ? 'tenant.html' : 'login.html';
 }

@@ -113,6 +113,7 @@
       document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('rentals_role');
         localStorage.removeItem('cc_role');
+        if (typeof sbL !== 'undefined' && sbL) sbL.auth.signOut().catch(() => {});
         location.replace('login.html');
       });
       document.getElementById('rpProfileBtn')?.addEventListener('click', () => {
@@ -156,9 +157,18 @@
       });
     }
 
-    // Auth gate — redirect to login if not authenticated
+    // Auth gate — login happens on login.html (Supabase email + password).
+    // Sync flag check first (no flash), then verify the real session.
     if (!localStorage.getItem('rentals_role') && localStorage.getItem('cc_role') !== 'landlord') {
       location.replace('login.html');
+    } else if (typeof sbL !== 'undefined' && sbL) {
+      sbL.auth.getSession().then(({ data }) => {
+        if (!data.session) {
+          localStorage.removeItem('rentals_role');
+          localStorage.removeItem('cc_role');
+          location.replace('login.html');
+        }
+      }).catch(() => {});
     }
 
     initTabs();

@@ -11,7 +11,8 @@ const SB_URL  = 'https://nqxsonmmcnmdastcpiff.supabase.co';
 const SB_KEY  = 'sb_publishable_t2gaxYkyyGS32sEJJuCAnA_qk_G7sYM';
 
 /* ── AUTH ───────────────────────────────────────────────── */
-const LANDLORD_PASS = 'casacastel2025';
+/* Landlord auth = Supabase email + password on login.html.
+   No hardcoded landlord password anymore.                    */
 
 /* ── ROOMS ──────────────────────────────────────────────── */
 const ALL_ROOMS     = ['Paris','Copenhagen','Stockholm','Oslo','London','New York','Los Angeles'];

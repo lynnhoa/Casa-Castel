@@ -18,17 +18,7 @@
 </head>
 <body>
 
-<!-- AUTH SCREEN -->
-<div class="p-auth" id="authScreen">
-  <div class="p-auth__logo">Properties</div>
-  <div class="p-auth__sub">Private access</div>
-  <div class="p-auth__form">
-    <input class="cc-input" id="authEmail" type="email" placeholder="Email" autocomplete="email"/>
-    <input class="cc-input" id="authPass" type="password" placeholder="Password" autocomplete="current-password"/>
-    <div class="p-auth__error" id="authError">Incorrect email or password.</div>
-    <button class="cc-btn--primary" id="authBtn" onclick="handleLogin()">Enter</button>
-  </div>
-</div>
+<!-- AUTH: handled centrally on login.html (Supabase session is shared) -->
 
 <!-- APP SHELL -->
 <div id="appShell" style="display:none">
@@ -208,11 +198,6 @@ async function getSession() {
   if (error) throw error;
   return data.session;
 }
-async function signIn(email, password) {
-  const { data, error } = await _supa.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data.session;
-}
 async function signOut() { await _supa.auth.signOut(); }
 async function fetchAll() {
   const { data, error } = await _supa.from('properties').select('*').order('sort_order', { ascending: true });
@@ -270,38 +255,16 @@ function toggleProfileMenu() { document.getElementById('profileMenu').classList.
 function closeProfileMenu() { document.getElementById('profileMenu').classList.remove('open'); }
 document.addEventListener('click', e => { if (!e.target.closest('.nav-profile')) closeProfileMenu(); });
 
-/* ── AUTH ── */
-async function handleLogin() {
-  const email = document.getElementById('authEmail').value.trim();
-  const pass  = document.getElementById('authPass').value;
-  const errEl = document.getElementById('authError');
-  const btn   = document.getElementById('authBtn');
-  errEl.classList.remove('show');
-  btn.textContent = '...';
-  btn.disabled = true;
-  try {
-    await signIn(email, pass);
-    window._props = await fetchAll();
-    document.getElementById('authScreen').classList.remove('show');
-    document.getElementById('appShell').style.display = 'block';
-    setTimeout(renderAll, 0);
-    btn.textContent = 'Enter';
-    btn.disabled = false;
-  } catch(e) {
-    errEl.classList.add('show');
-    btn.textContent = 'Enter';
-    btn.disabled = false;
-  }
-}
-
-document.getElementById('authPass').addEventListener('keydown', e => {
-  if (e.key === 'Enter') handleLogin();
-});
-
+/* ── AUTH ──
+   Login lives on login.html (Supabase email + password).
+   The session persists in localStorage and is shared with this
+   page's client, so no second login is needed here.           */
 async function handleLogout() {
   closeProfileMenu();
   showLoading(true);
   try { await signOut(); } catch(e) {}
+  localStorage.removeItem('cc_role');
+  localStorage.removeItem('rentals_role');
   showLoading(false);
   window.location.href = 'login.html';
 }
@@ -312,16 +275,15 @@ async function boot() {
   try {
     const session = await getSession();
     if (!session) {
-      document.getElementById('authScreen').classList.add('show');
-      showLoading(false);
+      location.replace('login.html');
       return;
     }
     window._props = await fetchAll();
-    document.getElementById('authScreen').classList.remove('show');
     document.getElementById('appShell').style.display = 'block';
     setTimeout(renderAll, 0);
   } catch(e) {
-    document.getElementById('authScreen').classList.add('show');
+    location.replace('login.html');
+    return;
   } finally {
     showLoading(false);
   }

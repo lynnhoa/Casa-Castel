@@ -17,6 +17,9 @@
   <link rel="icon" type="image/png" sizes="32x32" href="mgmt-favicon-32.png"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="constants.js"></script>
+
   <style>
     :root {
       --cream:   #F5F2ED;
@@ -140,7 +143,7 @@
     .role-tab.active i { color: var(--gold-dk); }
     .role-tab.active span { color: var(--gold-dk); }
 
-    /* ── PASSWORD ── */
+    /* ── INPUTS ── */
     .cc-input {
       width: 100%;
       height: 46px;
@@ -156,6 +159,7 @@
       transition: border-color .15s;
       -webkit-appearance: none;
     }
+    .cc-input + .cc-input { margin-top: 8px; }
     .cc-input::placeholder { color: var(--stone); }
     .cc-input:focus { border-color: var(--gold); }
     .cc-input.error { border-color: var(--error); }
@@ -168,6 +172,42 @@
       padding-left: 1px;
     }
     .login-error.visible { display: block; }
+
+    /* ── SIGNED-IN STATE ── */
+    .signed-in {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #fff;
+      border: 0.5px solid var(--rule);
+      border-radius: 6px;
+    }
+    .signed-in.visible { display: flex; }
+    .signed-in__email {
+      font-size: 12px;
+      color: var(--body);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .signed-in__out {
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--taupe);
+      cursor: pointer;
+      flex-shrink: 0;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .signed-in__out:hover { color: var(--gold-dk); }
 
     /* ── ENTER ── */
     .enter-btn {
@@ -184,11 +224,12 @@
       text-transform: uppercase;
       color: var(--body);
       cursor: pointer;
-      transition: background .15s, border-color .15s, transform .1s;
+      transition: background .15s, border-color .15s, transform .1s, opacity .15s;
       -webkit-tap-highlight-color: transparent;
     }
     .enter-btn:hover  { background: var(--rule); border-color: var(--taupe); }
     .enter-btn:active { transform: scale(.99); }
+    .enter-btn:disabled { opacity: .55; cursor: default; }
 
     @media (min-width: 600px) {
       .wordmark { font-size: 46px; }
@@ -225,8 +266,21 @@
       </button>
     </div>
 
-    <input class="cc-input" id="loginPass" type="password" placeholder="Password" autocomplete="current-password"/>
-    <div class="login-error" id="loginError">Incorrect password.</div>
+    <!-- Shown when a Supabase session already exists -->
+    <div class="signed-in" id="signedInBox">
+      <span class="signed-in__email" id="signedInEmail"></span>
+      <button class="signed-in__out" id="signOutBtn" type="button">Sign out</button>
+    </div>
+
+    <!-- Shown when no session exists -->
+    <div id="credBox">
+      <input class="cc-input" id="loginEmail" type="email" placeholder="Email"
+             autocomplete="email" autocapitalize="none" spellcheck="false" inputmode="email"/>
+      <input class="cc-input" id="loginPass" type="password" placeholder="Password"
+             autocomplete="current-password"/>
+    </div>
+
+    <div class="login-error" id="loginError">Incorrect email or password.</div>
 
     <button class="enter-btn" id="enterBtn">Enter</button>
 
@@ -235,16 +289,29 @@
 </div>
 
 <script>
-  const PASS     = 'casacastel2025';
-  const SESS_KEY = 'studio_authed';
+  'use strict';
 
-  const loginPass  = document.getElementById('loginPass');
-  const loginError = document.getElementById('loginError');
-  const enterBtn   = document.getElementById('enterBtn');
-  const tabs       = document.querySelectorAll('.role-tab');
+  /* ── SUPABASE ──
+     Same project + key as all four apps (from constants.js).
+     persistSession is on by default → the session lands in
+     localStorage and is picked up by properties.html, landlord.html,
+     rentals-index.html and controlling.html without a second login. */
+  const _supa = supabase.createClient(SB_URL, SB_KEY, {
+    auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: false }
+  });
+
+  const loginEmail  = document.getElementById('loginEmail');
+  const loginPass   = document.getElementById('loginPass');
+  const loginError  = document.getElementById('loginError');
+  const enterBtn    = document.getElementById('enterBtn');
+  const credBox     = document.getElementById('credBox');
+  const signedInBox = document.getElementById('signedInBox');
+  const signedInEl  = document.getElementById('signedInEmail');
+  const tabs        = document.querySelectorAll('.role-tab');
 
   let selectedDest = 'landlord.html';
   let selectedTab  = 'rooms';
+  let hasSession   = false;
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -256,40 +323,95 @@
     });
   });
 
-  function isAuthed() {
-    return sessionStorage.getItem(SESS_KEY) === '1';
-  }
-
-  function markAuth() {
-    sessionStorage.setItem(SESS_KEY, '1');
-    localStorage.setItem('cc_role', 'landlord');
-  }
-
   function clearError() {
     loginError.classList.remove('visible');
+    loginEmail.classList.remove('error');
     loginPass.classList.remove('error');
   }
 
-  function attempt() {
-    if (isAuthed() || loginPass.value === PASS) {
-      clearError();
-      markAuth();
-      if (selectedDest === 'rentals-index.html') localStorage.setItem('rentals_role', 'landlord');
-      if (selectedTab) sessionStorage.setItem('cc_open_tab', selectedTab);
-      window.location.href = selectedDest;
-    } else {
-      loginError.classList.add('visible');
-      loginPass.classList.add('error');
+  function showError(msg) {
+    loginError.textContent = msg || 'Incorrect email or password.';
+    loginError.classList.add('visible');
+    loginEmail.classList.add('error');
+    loginPass.classList.add('error');
+  }
+
+  /* Legacy gate flags — kept as fast synchronous glue for the
+     existing page gates. Single source of truth is the Supabase
+     session; these are set on login and cleared on logout. */
+  function setGateFlags() {
+    localStorage.setItem('cc_role', 'landlord');
+    localStorage.setItem('rentals_role', 'landlord');
+  }
+  function clearGateFlags() {
+    localStorage.removeItem('cc_role');
+    localStorage.removeItem('rentals_role');
+  }
+
+  function go() {
+    setGateFlags();
+    if (selectedTab) sessionStorage.setItem('cc_open_tab', selectedTab);
+    window.location.href = selectedDest;
+  }
+
+  async function attempt() {
+    clearError();
+
+    if (hasSession) { go(); return; }
+
+    const email = loginEmail.value.trim();
+    const pass  = loginPass.value;
+    if (!email || !pass) { showError('Enter email and password.'); return; }
+
+    enterBtn.disabled = true;
+    enterBtn.textContent = '...';
+    try {
+      const { error } = await _supa.auth.signInWithPassword({ email, password: pass });
+      if (error) throw error;
+      go();
+    } catch (e) {
+      showError();
       loginPass.value = '';
       loginPass.focus();
+    } finally {
+      enterBtn.disabled = false;
+      enterBtn.textContent = 'Enter';
     }
   }
 
-  enterBtn.addEventListener('click', attempt);
-  loginPass.addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
-  loginPass.addEventListener('input', clearError);
+  async function signOutHere() {
+    try { await _supa.auth.signOut(); } catch (e) {}
+    clearGateFlags();
+    hasSession = false;
+    signedInBox.classList.remove('visible');
+    credBox.style.display = '';
+    setTimeout(() => loginEmail.focus(), 50);
+  }
 
-  setTimeout(() => loginPass.focus(), 100);
+  /* ── BOOT: reuse an existing session → no password needed ── */
+  (async () => {
+    try {
+      const { data } = await _supa.auth.getSession();
+      if (data.session) {
+        hasSession = true;
+        signedInEl.textContent = data.session.user?.email || 'Signed in';
+        signedInBox.classList.add('visible');
+        credBox.style.display = 'none';
+      } else {
+        clearGateFlags(); // stale flags without a session must not open gated pages
+        setTimeout(() => loginEmail.focus(), 100);
+      }
+    } catch (e) {
+      setTimeout(() => loginEmail.focus(), 100);
+    }
+  })();
+
+  enterBtn.addEventListener('click', attempt);
+  document.getElementById('signOutBtn').addEventListener('click', signOutHere);
+  loginEmail.addEventListener('keydown', e => { if (e.key === 'Enter') loginPass.focus(); });
+  loginPass.addEventListener('keydown',  e => { if (e.key === 'Enter') attempt(); });
+  loginEmail.addEventListener('input', clearError);
+  loginPass.addEventListener('input', clearError);
 </script>
 
 </body>

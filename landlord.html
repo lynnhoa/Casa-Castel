@@ -30,24 +30,12 @@
     </div>
   </div>
 
-  <!-- ══ LOGIN ══ -->
-  <script>if(localStorage.getItem("cc_role")==="landlord"){document.write("<style>#loginScreen{display:none}</style>");}</script>
-  <div class="login-screen" id="loginScreen">
-    <p class="login-logo">Casa Castel</p>
-    <p class="login-sub">Management · Alsenstraße 60 · 55252 Mainz-Kastel</p>
-    <div class="login-box">
-      <p class="login-title">Landlord access</p>
-      <div class="login-error" id="loginError">Incorrect password.</div>
-      <div class="cc-input-wrap cc-mb-16">
-        <label class="cc-input-label" for="landlordPass">Password</label>
-        <input class="cc-input" id="landlordPass" type="password" placeholder="Enter your password" autocomplete="current-password"/>
-      </div>
-      <button class="cc-btn cc-btn--primary" id="landlordLoginBtn">Enter</button>
-    </div>
-    <p class="cc-note cc-mt-24" style="text-align:center;">
-      Tenant? <a href="tenant.html" style="color:var(--cc-gold);text-decoration:underline;text-underline-offset:2px;">Go to tenant login ›</a>
-    </p>
-  </div>
+  <!-- ══ AUTH GATE ══
+       Login happens on login.html (Supabase email + password).
+       Sync flag check here prevents any content flash for
+       unauthenticated visitors; initLandlordAuth() verifies the
+       real Supabase session in the background. -->
+  <script>if(localStorage.getItem("cc_role")!=="landlord"){location.replace("login.html");}</script>
 
   <!-- ══ APP SHELL ══ -->
   <div class="app-shell" id="appShell">
@@ -166,7 +154,7 @@
     initTabs();
     initNav();
     initPreviewTenant();
-    initLandlordLogin();
+    initLandlordAuth();
   </script>
   <!-- ══ TENANT DOC VIEWER OVERLAY ══ -->
   <div id="tnDocViewer" style="display:none;position:fixed;inset:0;z-index:700;background:var(--cc-surface);flex-direction:column;overflow:hidden;">
