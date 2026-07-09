@@ -246,8 +246,6 @@ function _renderGewerbeMietvertragHTML(d) {
     'Stra\u00dfenreinigung',
     'Haushaftpflichtversicherung',
     'Geb\u00e4udeversicherung',
-    'Aufzugskosten',
-    'Antennenanlage',
     'Erhaltung Allgemein',
     'Kontof\u00fchrungsgeb\u00fchren',
     'Schornsteinreinigung',
@@ -269,6 +267,16 @@ function _renderGewerbeMietvertragHTML(d) {
         ${d.staffeln.map(st => `<tr><td>${st.datum}</td><td>${eur(st.betrag)}</td></tr>`).join('')}
       </tbody>
     </table>` : '';
+
+  // Paragraph numbering (adapts to Staffelmiete presence)
+  let _pn = 2;
+  const NX = () => (++_pn);
+  const P = {};
+  if (hasStaffel) P.staffel = NX();
+  P.kaution = NX(); P.nebenkosten = NX(); P.schoenheit = NX(); P.klein = NX();
+  P.haftpflicht = NX(); P.instand = NX(); P.aussenwerbung = NX(); P.unterverm = NX();
+  P.schluessel = NX(); P.betreten = NX(); P.rueckgabe = NX(); P.umsatzsteuer = NX();
+  P.datenschutz = NX(); P.sonstige = NX();
 
   // Inventar table
   const invRows = d.inventar.length
@@ -308,8 +316,8 @@ function _renderGewerbeMietvertragHTML(d) {
   const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
 
   const mieteBankBlock = `
-    ${sec('Miete &amp; Bankverbindung',true,hasMultiMieter)}
-    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a03':''))}
+    ${sec('Miete &amp; Bankverbindung',true,true)}
+    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a03':'')+' \u00b7 umsatzsteuerfrei (Option \u00a7\u00a0'+P.umsatzsteuer+' vorbehalten)')}
     ${d.nkVZ?kv('Betriebskosten VZ',eur(d.nkVZ)+'\u2002/ Monat (Vorauszahlung)'):''}
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats')}
@@ -365,90 +373,166 @@ function _renderGewerbeMietvertragHTML(d) {
           + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
         : kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
     }
-    ${hasMultiMieter ? '' : mieteBankBlock}
   </div>
 </div>`;
 
-  // PAGE 1B — only inserted when 2 or 3 Mieter pushed Miete & Bankverbindung off page 1
-  const page1b = hasMultiMieter ? `<div class="pdf-page page">
+  // PAGE 1B — Miete & Bankverbindung always gets its own page (keeps page 1 from clipping)
+  const page1b = `<div class="pdf-page page">
   ${hdr(d.aptName)}${ftr(2)}
   <div class="content">
     ${mieteBankBlock}
   </div>
-</div>` : '';
+</div>`;
 
-  const pageOffset = hasMultiMieter ? 1 : 0;
+  // ═══ CLAUSES (full corrected text) ═══════════════════════════════════════
+  const liList = items => items.map(i => `<span style="display:block;padding-left:13px;text-indent:-9px">\u2013\u00a0${i}</span>`).join('');
+  const nz = d.nutzungszweck || 'gewerbliche Nutzung';
 
-  // PAGE 2
-  const page2 = `<div class="pdf-page page">
-  ${hdr(d.aptName)}${ftr(2+pageOffset)}
-  <div class="content">
-    ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
+  const clauses = [];
+  clauses.push({ n:'1', t:'Mietzeit und Beendigung', paras:[ p1Body ] });
+  clauses.push({ n:'2', t:'Nutzungszweck', paras:[
+    `(1)\u00a0Die Vermietung erfolgt zur Nutzung als ${nz}. Die Mietr\u00e4ume sind f\u00fcr diese Nutzung \u00f6ffentlich-rechtlich genehmigt.`,
+    `(2)\u00a0Eine \u00fcber den vereinbarten Nutzungszweck hinausgehende oder hiervon abweichende Nutzung (nachfolgend \u201eweitere Nutzung\u201c) bedarf der vorherigen schriftlichen Zustimmung des Vermieters. Eine erteilte Zustimmung stellt ausschlie\u00dflich eine Erweiterung des vertraglich zul\u00e4ssigen Nutzungszwecks dar; der vereinbarte Nutzungszweck bleibt hiervon sowie von einer etwaig erteilten beh\u00f6rdlichen Nutzungs\u00e4nderung oder sonstigen \u00f6ffentlich-rechtlichen Genehmigung unber\u00fchrt und besteht unver\u00e4ndert fort.`,
+    `(3)\u00a0Dem Mieter ist bekannt, dass f\u00fcr eine weitere Nutzung m\u00f6glicherweise eine \u00f6ffentlich-rechtliche Genehmigung (insbesondere eine Nutzungs\u00e4nderung) erforderlich ist. Die Einholung und Aufrechterhaltung s\u00e4mtlicher f\u00fcr seinen Betrieb erforderlicher Genehmigungen obliegt ausschlie\u00dflich dem Mieter auf eigene Kosten und eigenes Risiko. Der Vermieter unterst\u00fctzt den Mieter in zumutbarem Umfang durch Unterzeichnung erforderlicher Vollmachten sowie durch Bereitstellung der ihm vorliegenden Objektunterlagen (soweit vorhanden); eine Verpflichtung zur Beschaffung weiterer Unterlagen oder zur Tragung von Kosten besteht nicht.`,
+    `(4)\u00a0Der Vermieter \u00fcbernimmt keine Gew\u00e4hr oder Garantie f\u00fcr die Erteilung einer beh\u00f6rdlichen Genehmigung einer weiteren Nutzung. Die Versagung, Verz\u00f6gerung oder mit Auflagen verbundene Erteilung einer solchen Genehmigung \u2013 gleich aus welchem Grund, einschlie\u00dflich objektbezogener Umst\u00e4nde \u2013 l\u00e4sst die Pflichten des Mieters aus diesem Vertrag, insbesondere die Mietzahlungspflicht, unber\u00fchrt und berechtigt den Mieter weder zur Mietminderung noch zur au\u00dferordentlichen K\u00fcndigung, zum R\u00fccktritt oder zu Schadensersatzanspr\u00fcchen, sofern die vertragsgem\u00e4\u00dfe Nutzung als ${nz} weiterhin zul\u00e4ssig und m\u00f6glich ist. Die gesetzliche Haftung des Vermieters f\u00fcr Vorsatz und grobe Fahrl\u00e4ssigkeit sowie f\u00fcr Sch\u00e4den an Leben, K\u00f6rper und Gesundheit bleibt unber\u00fchrt.`,
+    `(5)\u00a0Das Risiko der Verwendbarkeit der Mietr\u00e4ume f\u00fcr \u00fcber den vereinbarten Nutzungszweck hinausgehende Zwecke des Mieters tr\u00e4gt ausschlie\u00dflich der Mieter. Eine Anpassung oder Beendigung des Vertrages wegen St\u00f6rung der Gesch\u00e4ftsgrundlage (\u00a7\u00a0313 BGB) ist insoweit ausgeschlossen.`,
+    `(6)\u00a0Eine \u00c4nderung des vertraglichen Nutzungszwecks bedarf in jedem Fall einer gesonderten schriftlichen Vereinbarung; sie tritt insbesondere nicht allein durch beh\u00f6rdliche Genehmigung, Zustimmung des Vermieters zu einer weiteren Nutzung oder deren tats\u00e4chliche Aus\u00fcbung ein. M\u00e4ngel am Mietobjekt sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen.`,
+  ]});
+  if (hasStaffel) {
+    const staffelLines = (d.szenario === 'S3'
+      ? `Die monatliche Nettokaltmiete (umsatzsteuerfrei) w\u00e4hrend der Verl\u00e4ngerungsperiode ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Erste Staffel ab ${d.staffeln[0]?.datum || d.mietende}: ${eur(d.staffeln[0]?.betrag || 0)}.`
+      : `Die monatliche Nettokaltmiete (umsatzsteuerfrei) ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Anfangsmiete ab ${d.mietbeginn}: ${eur(d.anfangsmiete)}.`)
+      + (d.szenario === 'S3' ? d.staffeln.slice(1) : d.staffeln).map(st => ` Ab ${st.datum}: ${eur(st.betrag)}.`).join('')
+      + ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend der Geltung einer Staffel ist eine weitergehende Erh\u00f6hung der Nettokaltmiete ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`;
+    clauses.push({ n:String(P.staffel), t:'Staffelmiete', paras:[ staffelLines ] });
+  }
+  clauses.push({ n:String(P.kaution), t:'Kaution', paras:[
+    `(1)\u00a0Der Mieter leistet eine Mietsicherheit in H\u00f6he von ${eur(d.kautionVal)}, f\u00e4llig ${d.kautionFaelText}. Die Sicherheit ist als Barkaution auf das oben genannte Konto zu \u00fcberweisen.`,
+    `(2)\u00a0Die Kaution wird vom Vermieter getrennt von seinem sonstigen Verm\u00f6gen verwahrt. Eine Verzinsung der Kaution erfolgt nicht. Etwaige gesetzliche Vorschriften zur Verzinsung von Mietkautionen bei Wohnraummietverh\u00e4ltnissen finden auf dieses Gewerbemietverh\u00e4ltnis keine Anwendung.`,
+    `(3)\u00a0Nach Beendigung des Mietverh\u00e4ltnisses und vollst\u00e4ndiger Erf\u00fcllung s\u00e4mtlicher Verpflichtungen des Mieters wird die Kaution nach angemessener Pr\u00fcfungs- und Abrechnungsfrist an den Mieter zur\u00fcckgezahlt, soweit keine Anspr\u00fcche des Vermieters entgegenstehen.`,
+  ]});
+  clauses.push({ n:String(P.nebenkosten), t:'Nebenkosten und Abrechnung', paras:[
+    `(1)\u00a0Neben der Nettokaltmiete zahlt der Mieter monatliche Betriebskostenvorauszahlungen in H\u00f6he von ${eur(d.nkVZ)}. Die Abrechnung erfolgt j\u00e4hrlich auf Grundlage der tats\u00e4chlich angefallenen Kosten. Die umlagef\u00e4higen Betriebskosten sind in der vorstehenden Aufstellung abschlie\u00dfend aufgef\u00fchrt.`,
+    `(2)\u00a0Die Gewerbeeinheit ist nicht an die gemeinschaftliche Antennenanlage angeschlossen. Die hierf\u00fcr anfallenden Kosten werden daher nicht auf den Mieter umgelegt. Da die Gewerbeeinheit keinen Zugang zum Wohngeb\u00e4ude und zum Personenaufzug hat, werden die Kosten f\u00fcr den Personenaufzug ebenfalls nicht auf den Mieter umgelegt. Umlagef\u00e4hig sind ausschlie\u00dflich diejenigen Betriebskosten, die die Gewerbeeinheit tats\u00e4chlich betreffen bzw. ihr zugutekommen.`,
+    `(3)\u00a0Verteilerschl\u00fcssel: Verbrauchsabh\u00e4ngige Kosten werden nach den jeweiligen Z\u00e4hlerst\u00e4nden abgerechnet. Die \u00fcbrigen Betriebskosten werden nach dem Verh\u00e4ltnis der Nutzfl\u00e4che der Mietfl\u00e4che zur Gesamtnutzfl\u00e4che des Geb\u00e4udes umgelegt, soweit nicht im Einzelfall ein anderer sachgerechter Umlageschl\u00fcssel vereinbart oder in einer Anlage zum Mietvertrag ausgewiesen ist.`,
+    `(4)\u00a0Heizkosten: F\u00fcr die Gewerbeeinheit ist ein separater Heizkostenz\u00e4hler vorhanden. Die Abrechnung der Heizkosten erfolgt entsprechend den gesetzlichen Vorgaben und auf Basis der erfassten Verbrauchswerte.`,
+    `(5)\u00a0Kalt- und Warmwasser: F\u00fcr die Gewerbeeinheit sind separate Wasserz\u00e4hler vorhanden. Die Abrechnung des Kalt- und Warmwasserverbrauchs erfolgt auf Grundlage der tats\u00e4chlichen Verbrauchswerte der Gewerbeeinheit.`,
+  ]});
+  clauses.push({ n:String(P.schoenheit), t:'Sch\u00f6nheitsreparaturen', paras:[
+    `Sch\u00f6nheitsreparaturen w\u00e4hrend der Mietzeit obliegen dem Mieter, soweit sie durch dessen vertragsgem\u00e4\u00dfen Gebrauch der Mietfl\u00e4che erforderlich werden. Hierzu z\u00e4hlen insbesondere das Tapezieren, Anstreichen oder Kalken der W\u00e4nde und Decken sowie das Streichen der Heizk\u00f6rper, Innent\u00fcren, Fenster und Au\u00dfent\u00fcren von innen. Die Ausf\u00fchrung hat fachgerecht und in einem dem Zustand der Mietfl\u00e4che bei \u00dcbergabe entsprechenden Standard zu erfolgen.`,
+  ]});
+  clauses.push({ n:String(P.klein), t:'Kleinreparaturen', paras:[
+    `Der Mieter tr\u00e4gt die Kosten kleinerer Instandhaltungsma\u00dfnahmen an Installationsgegenst\u00e4nden f\u00fcr Elektrizit\u00e4t, Wasser und Gas, an Heizungs- und Kocheinrichtungen sowie an Fenster- und T\u00fcrverschl\u00fcssen, soweit diese seinem direkten Zugriff unterliegen, bis zu einem Betrag von 200,00\u00a0\u20ac je Einzelfall. Die Gesamtbelastung des Mieters f\u00fcr Kleinreparaturen ist auf 8\u00a0% der Jahresnettokaltmiete begrenzt. \u00dcbersteigt eine Reparatur den vorgenannten Einzelbetrag, tr\u00e4gt der Vermieter die vollst\u00e4ndigen Kosten.`,
+  ]});
+  clauses.push({ n:String(P.haftpflicht), t:'Gewerbehaftpflichtversicherung', paras:[
+    `Der Mieter ist verpflichtet, f\u00fcr die Dauer des Mietverh\u00e4ltnisses eine Betriebshaftpflichtversicherung mit einer Mindestdeckungssumme von 3.000.000,00\u00a0\u20ac pauschal f\u00fcr Personen- und Sachsch\u00e4den zu unterhalten, die s\u00e4mtliche aus dem Betrieb der Mietfl\u00e4che resultierenden Haftpflichtrisiken abdeckt. Der Nachweis des Versicherungsschutzes ist dem Vermieter auf Verlangen, sp\u00e4testens jedoch bei Mietbeginn, durch Vorlage einer entsprechenden Bescheinigung zu erbringen. Eine Unterbrechung oder Beendigung des Versicherungsschutzes ist dem Vermieter unverz\u00fcglich in Textform anzuzeigen. Kommt der Mieter dieser Verpflichtung nicht nach, ist der Vermieter berechtigt, nach vorheriger Fristsetzung eine entsprechende Versicherung auf Kosten des Mieters abzuschlie\u00dfen.`,
+  ]});
+  clauses.push({ n:String(P.instand), t:'Instandhaltung und Instandsetzung', paras:[
+    `(1)\u00a0Der Mieter tr\u00e4gt auf eigene Kosten die Instandhaltung und Instandsetzung innerhalb der Mietfl\u00e4che, insbesondere von:` + liList(['Innenanstrichen und Wandbel\u00e4gen','Bodenbel\u00e4gen','Innent\u00fcren einschlie\u00dflich Beschl\u00e4gen','Fensterbeschl\u00e4gen und Fenstergriffen','Verglasungen und Glasbruchsch\u00e4den',`kleineren Reparaturen an den vom Mieter genutzten Einrichtungen und Ausstattungen nach Ma\u00dfgabe des \u00a7\u00a0${P.klein} (Kleinreparaturen)`]),
+    `(2)\u00a0Der Vermieter tr\u00e4gt die Instandhaltung und Instandsetzung folgender Geb\u00e4udebestandteile:` + liList(['Dach','Au\u00dfenfassade','tragende W\u00e4nde','Versorgungs- und Entsorgungsleitungen au\u00dferhalb der Mietfl\u00e4che','sonstige konstruktive Geb\u00e4udeteile, soweit diese nicht ausdr\u00fccklich dem Verantwortungsbereich des Mieters zugeordnet sind']),
+    `(3)\u00a0Sch\u00e4den sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen. Eigenm\u00e4chtige bauliche Ver\u00e4nderungen bed\u00fcrfen der vorherigen schriftlichen Zustimmung des Vermieters.`,
+    `(4)\u00a0Der Mieter verpflichtet sich, sp\u00e4testens zum Mietbeginn eine ausreichende Glasversicherung f\u00fcr s\u00e4mtliche zur Mietsache geh\u00f6renden Schaufenster, Fenster- und Glaselemente auf eigene Kosten abzuschlie\u00dfen und w\u00e4hrend der gesamten Mietdauer aufrechtzuerhalten. Der Nachweis des Versicherungsschutzes ist dem Vermieter auf Verlangen vorzulegen.`,
+  ]});
+  clauses.push({ n:String(P.aussenwerbung), t:'Au\u00dfenwerbung', paras:[
+    `(1)\u00a0Dem Mieter wird widerruflich gestattet, auf eigene Kosten Werbeanlagen an den Au\u00dfenwandfl\u00e4chen zwischen den Schaufenstern und dem dar\u00fcberliegenden Balkon anzubringen. Der Widerruf ist nur aus sachlichem Grund zul\u00e4ssig (insbesondere bei baulichen Ma\u00dfnahmen am Geb\u00e4ude, beh\u00f6rdlichen Anordnungen oder Verst\u00f6\u00dfen des Mieters gegen diese Regelung).`,
+    `(2)\u00a0Alle hierf\u00fcr erforderlichen beh\u00f6rdlichen Genehmigungen hat der Mieter eigenverantwortlich einzuholen. Der Mieter tr\u00e4gt s\u00e4mtliche Kosten f\u00fcr Errichtung, Betrieb, Wartung, Instandhaltung, Instandsetzung, Versicherung sowie den R\u00fcckbau der Werbeanlagen. Nach Beendigung des Mietverh\u00e4ltnisses ist der urspr\u00fcngliche Zustand auf Verlangen des Vermieters wiederherzustellen.`,
+  ]});
+  clauses.push({ n:String(P.unterverm), t:'Untervermietung und Nachmieter', paras:[
+    `(1)\u00a0Eine vollst\u00e4ndige oder teilweise Untervermietung bzw. Gebrauchs\u00fcberlassung der Mietr\u00e4ume an Dritte \u2013 gleich zu welchem Zweck \u2013 bedarf der vorherigen schriftlichen Zustimmung des Vermieters. Ein Anspruch auf Erteilung der Zustimmung besteht nicht. Die Zustimmung kann mit sachlich gerechtfertigten Auflagen oder Bedingungen verbunden werden.`,
+    `(2)\u00a0Die Erteilung einer Zustimmung zur Untervermietung entbindet den Mieter nicht von seinen vertraglichen Verpflichtungen. Der Mieter bleibt gegen\u00fcber dem Vermieter f\u00fcr s\u00e4mtliche Pflichten aus diesem Mietvertrag, insbesondere f\u00fcr die Zahlung der Miete sowie f\u00fcr Sch\u00e4den, die durch den Untermieter verursacht werden, uneingeschr\u00e4nkt verantwortlich.`,
+    `(3)\u00a0Der Mieter hat keinen Anspruch auf eine vorzeitige Beendigung des Mietverh\u00e4ltnisses durch Stellung eines Nachmieters. Der Vermieter ist nicht verpflichtet, einen vom Mieter vorgeschlagenen Nachmieter zu akzeptieren oder den Mietvertrag vor Ablauf der vereinbarten Mietzeit aufzuheben. Eine Vertrags\u00fcbernahme oder ein Mieterwechsel bed\u00fcrfen ausschlie\u00dflich einer gesonderten schriftlichen Vereinbarung mit dem Vermieter.`,
+  ]});
+  clauses.push({ n:String(P.schluessel), t:'Schl\u00fcssel\u00fcbergabe', paras:[
+    `Der Mieter erh\u00e4lt bei Einzug ${d.schluessel}. Weitere Schl\u00fcssel bed\u00fcrfen der vorherigen Zustimmung (Textform). Bei Verlust tr\u00e4gt der Mieter die vollst\u00e4ndigen Kosten des Schlossaustauschs. Alle Schl\u00fcssel sind bei Auszug zur\u00fcckzugeben.`,
+  ]});
+  clauses.push({ n:String(P.betreten), t:'Betreten des Mietobjekts', paras:[
+    `Bei Gefahr im Verzug ist der Vermieter jederzeit zum Betreten berechtigt. Im \u00dcbrigen ist das Betreten zur Vorbereitung von Verkauf oder Weitervermietung werktags zwischen 9:00 und 18:00\u202fUhr gestattet, sofern mind. zwei Werktage vorher in Textform angek\u00fcndigt wurde.`,
+  ]});
+  clauses.push({ n:String(P.rueckgabe), t:'R\u00fcckgabe bei Vertragsende', paras:[
+    `Die Mietfl\u00e4che ist bei Vertragsende vollst\u00e4ndig ger\u00e4umt, gereinigt und in vertragsm\u00e4\u00dfigem Zustand zur\u00fcckzugeben, unter Ber\u00fccksichtigung der durch vertragsgem\u00e4\u00dfen Gebrauch entstandenen Abnutzung. S\u00e4mtliche vom Mieter angebrachten Einrichtungen, Einbauten, Beschriftungen, Anstriche und sonstige bauliche Ver\u00e4nderungen sind auf eigene Kosten zu entfernen und der urspr\u00fcngliche Zustand wiederherzustellen, sofern nichts anderes schriftlich vereinbart wurde. S\u00e4mtliche Schl\u00fcssel sind zur\u00fcckzugeben. Ein \u00dcbergabeprotokoll wird erstellt und von beiden Parteien unterzeichnet.`,
+  ]});
+  clauses.push({ n:String(P.umsatzsteuer), t:'Umsatzsteuer', paras:[
+    `Die Vermietung erfolgt umsatzsteuerfrei (\u00a7\u00a04 Nr.\u00a012 UStG). S\u00e4mtliche Betr\u00e4ge aus diesem Vertrag verstehen sich ohne Umsatzsteuer, solange der Vermieter keine Erkl\u00e4rung zur Aus\u00fcbung der Option zur Umsatzsteuer in Textform abgegeben hat.`,
+    `Der Vermieter beh\u00e4lt sich vor, gem\u00e4\u00df \u00a7\u00a09 UStG zur Umsatzsteuer zu optieren. \u00dcbt er die Option aus, teilt er dies dem Mieter in Textform unter Angabe des Zeitpunkts mit, ab dem die Umsatzsteuer zus\u00e4tzlich geschuldet wird. Ab diesem Zeitpunkt schuldet der Mieter die gesetzliche Umsatzsteuer (\u00a7\u00a012 UStG) zus\u00e4tzlich zur Miete und zu den Betriebskostenvorauszahlungen. Voraussetzung der Option ist, dass der Mieter das Mietobjekt ausschlie\u00dflich f\u00fcr Ums\u00e4tze verwendet, die den Vorsteuerabzug nicht ausschlie\u00dfen (\u00a7\u00a09 Abs.\u00a02 UStG).`,
+    `Der Mieter teilt dem Vermieter unverz\u00fcglich in Textform mit, sobald diese Voraussetzungen erstmals vorliegen oder wieder entfallen, und weist seinen umsatzsteuerlichen Status auf Verlangen nach. Entfallen die Voraussetzungen, entf\u00e4llt die Umsatzsteuer ab diesem Zeitpunkt.`,
+  ]});
+  clauses.push({ n:String(P.datenschutz), t:'Datenschutz', paras:[
+    `Personenbezogene Daten werden gem\u00e4\u00df Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und zehn Jahre nach Vertragsende gel\u00f6scht.`,
+  ]});
+  clauses.push({ n:String(P.sonstige), t:'Sonstige Vereinbarungen', paras:[
+    `M\u00fcndliche Nebenabreden bestehen nicht. \u00c4nderungen und Erg\u00e4nzungen dieses Vertrages bed\u00fcrfen der Schriftform; dies gilt auch f\u00fcr die Abbedingung dieses Schriftformerfordernisses (\u00a7\u00a0550 BGB). Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im \u00dcbrigen wirksam. Gerichtsstand f\u00fcr alle Streitigkeiten aus diesem Vertrag ist ${d.gerichtsstand}.`,
+  ]});
+
+  // ═══ FLOW BLOCKS (title stays with first paragraph; later paras may break) ══
+  const CPL = 82, LH = 18.6;
+  const estH = html => {
+    const segs = html.split(/<span style="display:block[^>]*>/);
+    let lines = 0;
+    segs.forEach(s => {
+      const t = s.replace(/<[^>]*>/g, '').trim();
+      lines += Math.max(1, Math.ceil(t.length / CPL));
+    });
+    return lines * LH;
+  };
+  const blocks = [];
+  clauses.forEach(c => {
+    c.paras.forEach((p, i) => {
+      if (i === 0) {
+        blocks.push({
+          html: `<div class="clause"><div class="clause__title">\u00a7\u00a0${c.n}\u2002${c.t}</div><div class="clause__body">${p}</div></div>`,
+          h: 26 + estH(p),
+        });
+      } else {
+        blocks.push({
+          html: `<div class="clause" style="margin-top:5px"><div class="clause__body">${p}</div></div>`,
+          h: 11 + estH(p),
+        });
+      }
+    });
+  });
+
+  // Betriebskosten intro block (leads clause pages, kept together)
+  const bkHtml = `${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
     <p class="nk-intro">Neben der Nettokaltmiete tr\u00e4gt der Mieter anteilig folgende Betriebskosten gem\u00e4\u00df \u00a7\u00a7\u00a01,\u00a02 BetrKV. Umlageschl\u00fcssel: Nutzfl\u00e4che der Mietfl\u00e4che im Verh\u00e4ltnis zur Gesamtnutzfl\u00e4che des Geb\u00e4udes. Verwaltungskosten sind im Gewerbemietverh\u00e4ltnis umlagef\u00e4hig. Abrechnung erfolgt j\u00e4hrlich; der Mieter erh\u00e4lt die Abrechnung sp\u00e4testens 12\u00a0Monate nach Ende des Abrechnungszeitraums.</p>
-    <div class="nk-grid">${nkRows}</div>
-    ${cl('1','Mietzeit und Beendigung',p1Body,true)}
-    ${cl('2','Nutzungszweck',
-      `Die Mietfl\u00e4che darf ausschlie\u00dflich als ${d.nutzungszweck} genutzt werden. Eine \u00c4nderung des Nutzungszwecks bedarf der vorherigen schriftlichen Zustimmung des Vermieters. Der Mieter ist verpflichtet, alle f\u00fcr den Betrieb erforderlichen beh\u00f6rdlichen Genehmigungen auf eigene Kosten einzuholen und f\u00fcr die Dauer des Mietverh\u00e4ltnisses aufrechtzuerhalten. M\u00e4ngel am Mietobjekt sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen.`)}
-    ${staffelClause}
-    ${cl(String(pNum(3)),'Kaution',
-      `Der Mieter leistet eine Mietsicherheit in H\u00f6he von ${eur(d.kautionVal)}, f\u00e4llig ${d.kautionFaelText}. Die Sicherheit ist als Barkaution auf das oben genannte Konto zu \u00fcberweisen. R\u00fcckzahlung etwaiger Restbetr\u00e4ge erfolgt nach Beendigung des Mietverh\u00e4ltnisses und abschlie\u00dfender Pr\u00fcfung aller gegenseitigen Anspr\u00fcche.`)}
-    ${cl(String(pNum(4)),'Nebenkosten und Abrechnung',
-      `Neben der Nettokaltmiete zahlt der Mieter monatliche Betriebskostenvorauszahlungen in H\u00f6he von ${eur(d.nkVZ)}. Die Abrechnung erfolgt j\u00e4hrlich auf Grundlage der tats\u00e4chlich angefallenen Kosten. Die umlagef\u00e4higen Betriebskosten sind in der Aufstellung auf Seite\u00a02 abschlie\u00dfend aufgef\u00fchrt.`)}
+    <div class="nk-grid">${nkRows}</div>`;
+  const bkHeight = 40 + 100 + Math.ceil((NK_ITEMS.length) / 2) * 19 + 44;
+
+  // Signature block (trails, kept together)
+  const sigHtml = `<div class="comment-label">Sonstige Anmerkungen</div>
+    <div class="comment-line"></div><div class="comment-line"></div><div class="comment-line"></div>
+    ${sigBlock()}`;
+  const sigHeight = 90 + 84 + ((d.hasMieter2 || d.hasMieter3) ? 250 : 150);
+
+  // ═══ GREEDY PAGINATION ═════════════════════════════════════════════════════
+  const AVAIL = 892;
+  const pageBlocks = [];
+  let cur = [bkHtml], curH = bkHeight;
+  blocks.forEach(b => {
+    if (curH + b.h > AVAIL) { pageBlocks.push(cur); cur = []; curH = 0; }
+    cur.push(b.html); curH += b.h;
+  });
+  if (curH + sigHeight > AVAIL) { pageBlocks.push(cur); cur = []; curH = 0; }
+  cur.push(sigHtml);
+  pageBlocks.push(cur);
+
+  // ═══ ASSEMBLE PAGES (sequential footer numbers) ════════════════════════════
+  let pageNo = 3;
+  const wrapPage = inner => `<div class="pdf-page page">
+  ${hdr(d.aptName)}${ftr(pageNo++)}
+  <div class="content">
+    ${inner}
   </div>
 </div>`;
-
-  // PAGE 3
-  const page3 = `<div class="pdf-page page">
-  ${hdr(d.aptName)}${ftr(3+pageOffset)}
-  <div class="content">
-    ${cl(String(pNum(5)),'Sch\u00f6nheitsreparaturen',
-      'Sch\u00f6nheitsreparaturen w\u00e4hrend der Mietzeit obliegen dem Mieter, soweit sie durch dessen vertragsgem\u00e4\u00dfen Gebrauch der Mietfl\u00e4che erforderlich werden. Hierzu z\u00e4hlen insbesondere das Tapezieren, Anstreichen oder Kalken der W\u00e4nde und Decken sowie das Streichen der Heizk\u00f6rper, Innent\u00fcren, Fenster und Au\u00dfent\u00fcren von innen. Die Ausf\u00fchrung hat fachgerecht und in einem dem Zustand der Mietfl\u00e4che bei \u00dcbergabe entsprechenden Standard zu erfolgen.',true)}
-    ${cl(String(pNum(6)),'Kleinreparaturen',
-      'Der Mieter tr\u00e4gt die Kosten kleinerer Instandhaltungsma\u00dfnahmen an Installationsgegenst\u00e4nden f\u00fcr Elektrizit\u00e4t, Wasser und Gas, an Heizungs- und Kocheinrichtungen sowie an Fenster- und T\u00fcrverschl\u00fcssen, soweit diese seinem direkten Zugriff unterliegen, bis zu einem Betrag von 200,00\u00a0\u20ac je Einzelfall. Die Gesamtbelastung des Mieters f\u00fcr Kleinreparaturen ist auf 8\u00a0% der Jahresnettokaltmiete begrenzt. \u00dcbersteigt eine Reparatur den vorgenannten Einzelbetrag, tr\u00e4gt der Vermieter die vollst\u00e4ndigen Kosten.')}
-    ${cl(String(pNum(7)),'Gewerbehaftpflichtversicherung',
-      'Der Mieter ist verpflichtet, f\u00fcr die Dauer des Mietverh\u00e4ltnisses eine Betriebshaftpflichtversicherung mit einer Mindestdeckungssumme von 3.000.000,00\u00a0\u20ac pauschal f\u00fcr Personen- und Sachsch\u00e4den zu unterhalten, die s\u00e4mtliche aus dem Betrieb der Mietfl\u00e4che resultierenden Haftpflichtrisiken abdeckt. Der Nachweis des Versicherungsschutzes ist dem Vermieter auf Verlangen, sp\u00e4testens jedoch bei Mietbeginn, durch Vorlage einer entsprechenden Bescheinigung zu erbringen. Eine Unterbrechung oder Beendigung des Versicherungsschutzes ist dem Vermieter unverz\u00fcglich in Textform anzuzeigen. Kommt der Mieter dieser Verpflichtung nicht nach, ist der Vermieter berechtigt, nach vorheriger Fristsetzung eine entsprechende Versicherung auf Kosten des Mieters abzuschlie\u00dfen.')}
-    ${cl(String(pNum(8)),'Instandhaltung und Instandsetzung',
-      'Der Vermieter tr\u00e4gt die Kosten f\u00fcr Instandhaltung und Instandsetzung der Geb\u00e4udestruktur, insbesondere Dach, tragende Bauteile, Au\u00dfenfassade und Gemeinschaftsanlagen. Der Mieter tr\u00e4gt die Kosten f\u00fcr Instandhaltung der von ihm genutzten Einrichtungen, Installationen und Ausstattung innerhalb der Mietfl\u00e4che. Sch\u00e4den sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen. Eigenmächtige bauliche Ver\u00e4nderungen bed\u00fcrfen der vorherigen schriftlichen Zustimmung des Vermieters.')}
-    ${cl(String(pNum(9)),'Schl\u00fcsselübergabe',
-      `Der Mieter erh\u00e4lt bei Einzug ${d.schluessel}. Weitere Schl\u00fcssel bed\u00fcrfen der vorherigen Zustimmung (Textform). Bei Verlust tr\u00e4gt der Mieter die vollst\u00e4ndigen Kosten des Schlossaustauschs. Alle Schl\u00fcssel sind bei Auszug zur\u00fcckzugeben.`)}
-    ${cl(String(pNum(10)),'Betreten des Mietobjekts',
-      'Bei Gefahr im Verzug ist der Vermieter jederzeit zum Betreten berechtigt. Im \u00dcbrigen ist das Betreten zur Vorbereitung von Verkauf oder Weitervermietung werktags zwischen 9:00 und 18:00\u202fUhr gestattet, sofern mind. zwei Werktage vorher in Textform angek\u00fcndigt wurde.')}
-  </div>
-</div>`;
-
-  // PAGE 4
-  const page4 = `<div class="pdf-page page">
-  ${hdr(d.aptName)}${ftr(4+pageOffset)}
-  <div class="content">
-    ${cl(String(pNum(11)),'R\u00fcckgabe bei Vertragsende',
-      'Die Mietfl\u00e4che ist bei Vertragsende vollst\u00e4ndig ger\u00e4umt, gereinigt und in vertragsm\u00e4\u00dfigem Zustand zur\u00fcckzugeben, unter Ber\u00fccksichtigung der durch vertragsgem\u00e4\u00dfen Gebrauch entstandenen Abnutzung. S\u00e4mtliche vom Mieter angebrachten Einrichtungen, Einbauten, Beschriftungen, Anstriche und sonstige bauliche Ver\u00e4nderungen sind auf eigene Kosten zu entfernen und der urspr\u00fcngliche Zustand wiederherzustellen, sofern nichts anderes schriftlich vereinbart wurde. S\u00e4mtliche Schl\u00fcssel sind zur\u00fcckzugeben. Ein \u00dcbergabeprotokoll wird erstellt und von beiden Parteien unterzeichnet.',true)}
-    ${cl(String(pNum(12)),'Umsatzsteuer',
-      'Die Vermietung erfolgt umsatzsteuerfrei (\u00a7\u00a04 Nr.\u00a012 UStG). S\u00e4mtliche Betr\u00e4ge aus diesem Vertrag verstehen sich ohne Umsatzsteuer, solange der Vermieter keine Erkl\u00e4rung zur Aus\u00fcbung der Option zur Umsatzsteuer in Textform abgegeben hat.<span style="display:block;height:6px"></span>Der Vermieter beh\u00e4lt sich vor, gem\u00e4\u00df \u00a7\u00a09 UStG zur Umsatzsteuer zu optieren. \u00dcbt er die Option aus, teilt er dies dem Mieter in Textform unter Angabe des Zeitpunkts mit, ab dem die Umsatzsteuer zus\u00e4tzlich geschuldet wird. Ab diesem Zeitpunkt schuldet der Mieter die gesetzliche Umsatzsteuer (\u00a7\u00a012 UStG) zus\u00e4tzlich zur Miete und zu den Betriebskostenvorauszahlungen. Voraussetzung der Option ist, dass der Mieter das Mietobjekt ausschlie\u00dflich f\u00fcr Ums\u00e4tze verwendet, die den Vorsteuerabzug nicht ausschlie\u00dfen (\u00a7\u00a09 Abs.\u00a02 UStG).<span style="display:block;height:6px"></span>Der Mieter teilt dem Vermieter unverz\u00fcglich in Textform mit, sobald diese Voraussetzungen erstmals vorliegen oder wieder entfallen, und weist seinen umsatzsteuerlichen Status auf Verlangen nach. Entfallen die Voraussetzungen, entf\u00e4llt die Umsatzsteuer ab diesem Zeitpunkt.')}
-    ${cl(String(pNum(13)),'Datenschutz',
-      'Personenbezogene Daten werden gem\u00e4\u00df Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und zehn Jahre nach Vertragsende gel\u00f6scht.')}
-    ${cl(String(pNum(14)),'Sonstige Vereinbarungen',
-      `M\u00fcndliche Nebenabreden bestehen nicht. \u00c4nderungen und Erg\u00e4nzungen dieses Vertrages bed\u00fcrfen der Schriftform; dies gilt auch f\u00fcr die Abbedingung dieses Schriftformerfordernisses (\u00a7\u00a0550 BGB). Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im \u00dcbrigen wirksam. Gerichtsstand f\u00fcr alle Streitigkeiten aus diesem Vertrag ist ${d.gerichtsstand}.`)}
-    <div class="comment-label">Sonstige Anmerkungen</div>
-    <div class="comment-line"></div><div class="comment-line"></div>
-    <div class="comment-line"></div>
-    ${sigBlock()}
-  </div>
-</div>`;
-
-  const page5 = d.moebliert ? `<div class="pdf-page page">
-  ${hdr(d.aptName)}${ftr(5+pageOffset)}
-  <div class="content">
-    ${sec('Anlage A \u2014 Inventar',true,false)}
+  const clausePagesHtml = pageBlocks.map(bl => wrapPage(bl.join('\n    '))).join('');
+  const inventarPage = d.moebliert ? wrapPage(`${sec('Anlage A \u2014 Inventar',true,false)}
     <table class="inv-table">
       <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
       <tbody>${invRows}</tbody>
-    </table>
-  </div>
-</div>` : '';
+    </table>`) : '';
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Gewerbemietvertrag \u2014 ${d.aptName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page1b}${page2}${page3}${page4}${page5}</body></html>`;
+<body>${page1}${page1b}${clausePagesHtml}${inventarPage}</body></html>`;
 }
