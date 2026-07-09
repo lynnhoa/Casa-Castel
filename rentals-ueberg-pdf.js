@@ -405,7 +405,7 @@ function _aptRenderUebergHTML(d) {
         <span class="schluessel-item__val">${d.haustur}</span>
       </div>
       <div class="schluessel-item">
-        <span class="schluessel-item__label">Wohnungstür</span>
+        <span class="schluessel-item__label">${isGewerbe ? 'Mietfläche' : 'Wohnungstür'}</span>
         <span class="schluessel-item__val">${d.wohnungtur}</span>
       </div>
     </div>

@@ -2422,7 +2422,7 @@ function _aptMvRemoveStaffel() {
 
 function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
   const kaltFmt = n => Number(n||0).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
-  const schluessel = `Haustür \u00d7${sk.haustuerschluessel??1} \u00b7 Wohnung \u00d7${sk.wohnungsschluessel??1}`;
+  const schluessel = `Haustür \u00d7${sk.haustuerschluessel??1} \u00b7 Mietfläche \u00d7${sk.wohnungsschluessel??1}`;
 
   return `
     <div class="rm-prefilled">
@@ -2977,7 +2977,7 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
 
     <div class="rm-field" style="margin-top:4px">
       <label>Mängelbeschreibung / Zustand</label>
-      <textarea class="rm-input" id="apt-ub-maengel" rows="3" style="resize:vertical;line-height:1.5" placeholder="Zustand der Wohnung bei Übergabe…"></textarea>
+      <textarea class="rm-input" id="apt-ub-maengel" rows="3" style="resize:vertical;line-height:1.5" placeholder="${apt.zimmer_type === 'Gewerbefläche' ? 'Zustand der Mietfläche bei Übergabe…' : 'Zustand der Wohnung bei Übergabe…'}"></textarea>
     </div>
 
     <div class="rm-fields-title" style="margin-top:6px">Zählerstände</div>
@@ -2990,7 +2990,7 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
     <div class="rm-fields-title">Schlüsselübergabe</div>
     <div class="rm-field-row" style="margin-bottom:10px">
       <div class="rm-field"><label>Haustür</label><input class="rm-input" id="apt-ub-haustur" type="number" value="${sk.haustuerschluessel ?? 1}" min="0"/></div>
-      <div class="rm-field"><label>Wohnungstür</label><input class="rm-input" id="apt-ub-wohnungtur" type="number" value="${sk.wohnungsschluessel ?? 1}" min="0"/></div>
+      <div class="rm-field"><label>${apt.zimmer_type === 'Gewerbefläche' ? 'Mietfläche' : 'Wohnungstür'}</label><input class="rm-input" id="apt-ub-wohnungtur" type="number" value="${sk.wohnungsschluessel ?? 1}" min="0"/></div>
     </div>
 
     <div class="rm-field">

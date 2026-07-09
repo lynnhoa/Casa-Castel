@@ -81,7 +81,7 @@ function _buildGewerbeMietvertragData(apt, s, {
 
   // Schlüssel
   const sk = apt.schlussel || {};
-  const schluessel = `Haustür\u00a0\u00d7${sk.haustuerschluessel??1}\u00a0\u00b7\u00a0Wohnung\u00a0\u00d7${sk.wohnungsschluessel??1}`;
+  const schluessel = `Haustür\u00a0\u00d7${sk.haustuerschluessel??1}\u00a0\u00b7\u00a0Mietfläche\u00a0\u00d7${sk.wohnungsschluessel??1}`;
 
   return {
     // Vermieter
