@@ -272,8 +272,9 @@ function _renderGewerbeMietvertragHTML(d) {
   let _pn = 2;
   const NX = () => (++_pn);
   const P = {};
-  if (hasStaffel) P.staffel = NX();
-  P.kaution = NX(); P.aufrechnung = NX(); P.nebenkosten = NX(); P.klein = NX();
+  P.kaution = NX();
+  if (hasStaffel) P.staffel = NX();   // § 4 — direkt nach der Kaution
+  P.aufrechnung = NX(); P.nebenkosten = NX(); P.klein = NX();
   P.haftpflicht = NX(); P.instand = NX(); P.aussenwerbung = NX(); P.unterverm = NX();
   P.schluessel = NX(); P.betreten = NX(); P.rueckgabe = NX(); P.umsatzsteuer = NX();
   P.datenschutz = NX(); P.sonstige = NX();
@@ -283,9 +284,6 @@ function _renderGewerbeMietvertragHTML(d) {
     ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
     : `<tr><td colspan="2" style="color:#aaa59e;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
 
-  // Paragraph numbering — shifts if Staffelmiete present
-  const pBase = hasStaffel ? 1 : 0; // offset for §§ after Staffelmiete
-  const pNum  = n => n + pBase;
 
   // § 1 — Mietzeit (three variants)
   const p1_S1 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und wird f\u00fcr eine Mindestlaufzeit von ${d.festlaufzeit} fest abgeschlossen. W\u00e4hrend der Mindestlaufzeit ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen. Das Mietverh\u00e4ltnis endet nicht automatisch mit Ablauf der Mindestlaufzeit, sondern l\u00e4uft anschlie\u00dfend auf unbestimmte Zeit weiter. Es kann danach von jeder Partei mit einer Frist von ${d.kuendigungsfrist}\u00a0Monaten zum Quartalsende ordentlich gek\u00fcndigt werden (\u00a7\u00a0580a Abs.\u00a02 BGB). Die K\u00fcndigung bedarf der Schriftform. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
@@ -293,7 +291,7 @@ function _renderGewerbeMietvertragHTML(d) {
   const p1_S2 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und endet am ${d.mietende} automatisch, ohne dass es einer K\u00fcndigung bedarf. Eine ordentliche K\u00fcndigung ist w\u00e4hrend der vereinbarten Mietzeit f\u00fcr beide Parteien ausgeschlossen. \u00a7\u00a0545 BGB findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
 
   const p1_S3_miete = (d.szenario === 'S3' && d.staffelAn && d.staffeln.length > 0)
-    ? `die Nettokaltmiete ist ab dem ersten Tag der Verl\u00e4ngerung gem\u00e4\u00df \u00a7\u00a03 (Staffelmiete) gestaffelt`
+    ? `die Nettokaltmiete ist ab dem ersten Tag der Verl\u00e4ngerung gem\u00e4\u00df \u00a7\u00a0${P.staffel} (Staffelmiete) gestaffelt`
     : `die Nettokaltmiete betr\u00e4gt ab dem ersten Tag der Verl\u00e4ngerung ${eur(d.neueKaltmiete)}`;
 
   const p1_S3 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und wird f\u00fcr eine Mindestlaufzeit von ${d.festlaufzeit} fest abgeschlossen. W\u00e4hrend der Mindestlaufzeit ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen. Der Mieter ist berechtigt, das Mietverh\u00e4ltnis einmalig um ${d.verlaengerungJahre}\u00a0Jahr${d.verlaengerungJahre===1?'':'e'} zu verl\u00e4ngern. Die Verl\u00e4ngerung muss dem Vermieter sp\u00e4testens ${d.ankuendigungMonate}\u00a0Monate vor Ablauf, d.\u202fh. bis zum ${d.ankuendigungBis}, schriftlich mitgeteilt werden. Bei fristgerechter Aus\u00fcbung verl\u00e4ngert sich die Mindestlaufzeit bis zum ${d.verlBis}; w\u00e4hrend der Verl\u00e4ngerungsperiode ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen, und ${p1_S3_miete}. Wird die Option nicht fristgerecht ausge\u00fcbt, erlischt sie ersatzlos. Das Mietverh\u00e4ltnis endet nicht automatisch mit Ablauf der Mindestlaufzeit bzw. der Verl\u00e4ngerungsperiode, sondern l\u00e4uft anschlie\u00dfend auf unbestimmte Zeit weiter. Es kann danach von jeder Partei mit einer Frist von ${d.kuendigungsfrist}\u00a0Monaten zum Quartalsende ordentlich gek\u00fcndigt werden (\u00a7\u00a0580a Abs.\u00a02 BGB). Die K\u00fcndigung bedarf der Schriftform. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
@@ -307,7 +305,7 @@ function _renderGewerbeMietvertragHTML(d) {
 
   const mieteBankBlock = `
     ${sec('Miete &amp; Bankverbindung',true,true)}
-    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a03':'')+' \u00b7 umsatzsteuerfrei (Option \u00a7\u00a0'+P.umsatzsteuer+' vorbehalten)')}
+    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a0'+P.staffel+')':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a0'+P.staffel:'')+' \u00b7 umsatzsteuerfrei (Option \u00a7\u00a0'+P.umsatzsteuer+' vorbehalten)')}
     ${d.nkVZ?kv('Betriebskosten VZ',eur(d.nkVZ)+'\u2002/ Monat (Vorauszahlung)'):''}
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats')}
@@ -388,6 +386,11 @@ function _renderGewerbeMietvertragHTML(d) {
     `(5)\u00a0Das Risiko der Verwendbarkeit der Mietr\u00e4ume f\u00fcr \u00fcber den vereinbarten Nutzungszweck hinausgehende Zwecke des Mieters tr\u00e4gt ausschlie\u00dflich der Mieter. Eine Anpassung oder Beendigung des Vertrages wegen St\u00f6rung der Gesch\u00e4ftsgrundlage (\u00a7\u00a0313 BGB) ist insoweit ausgeschlossen.`,
     `(6)\u00a0Eine \u00c4nderung des vertraglichen Nutzungszwecks bedarf in jedem Fall einer gesonderten schriftlichen Vereinbarung; sie tritt insbesondere nicht allein durch beh\u00f6rdliche Genehmigung, durch Zustimmung des Vermieters zu einer weiteren Nutzung oder durch deren tats\u00e4chliche Aus\u00fcbung ein. M\u00e4ngel am Mietobjekt sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen.`,
   ]});
+  clauses.push({ n:String(P.kaution), t:'Kaution', paras:[
+    `(1)\u00a0Der Mieter leistet eine Mietsicherheit in H\u00f6he von ${eur(d.kautionVal)}, f\u00e4llig ${d.kautionFaelText}. Die Sicherheit ist als Barkaution auf das oben genannte Konto zu \u00fcberweisen.`,
+    `(2)\u00a0Eine Verzinsung der Kaution erfolgt nicht. Die gesetzlichen Vorschriften zur Verzinsung von Mietkautionen bei Wohnraummietverh\u00e4ltnissen finden auf dieses Gewerbemietverh\u00e4ltnis keine Anwendung.`,
+    `(3)\u00a0Nach Beendigung des Mietverh\u00e4ltnisses und vollst\u00e4ndiger Erf\u00fcllung s\u00e4mtlicher Verpflichtungen des Mieters wird die Kaution nach angemessener Pr\u00fcfungs- und Abrechnungsfrist an den Mieter zur\u00fcckgezahlt, soweit keine Anspr\u00fcche des Vermieters entgegenstehen.`,
+  ]});
   if (hasStaffel) {
     const staffelLines = (d.szenario === 'S3'
       ? `Die monatliche Nettokaltmiete (umsatzsteuerfrei) w\u00e4hrend der Verl\u00e4ngerungsperiode ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Erste Staffel ab ${d.staffeln[0]?.datum || d.mietende}: ${eur(d.staffeln[0]?.betrag || 0)}.`
@@ -396,11 +399,6 @@ function _renderGewerbeMietvertragHTML(d) {
       + ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend der Geltung einer Staffel ist eine weitergehende Erh\u00f6hung ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`;
     clauses.push({ n:String(P.staffel), t:'Staffelmiete', paras:[ staffelLines ] });
   }
-  clauses.push({ n:String(P.kaution), t:'Kaution', paras:[
-    `(1)\u00a0Der Mieter leistet eine Mietsicherheit in H\u00f6he von ${eur(d.kautionVal)}, f\u00e4llig ${d.kautionFaelText}. Die Sicherheit ist als Barkaution auf das oben genannte Konto zu \u00fcberweisen.`,
-    `(2)\u00a0Eine Verzinsung der Kaution erfolgt nicht. Die gesetzlichen Vorschriften zur Verzinsung von Mietkautionen bei Wohnraummietverh\u00e4ltnissen finden auf dieses Gewerbemietverh\u00e4ltnis keine Anwendung.`,
-    `(3)\u00a0Nach Beendigung des Mietverh\u00e4ltnisses und vollst\u00e4ndiger Erf\u00fcllung s\u00e4mtlicher Verpflichtungen des Mieters wird die Kaution nach angemessener Pr\u00fcfungs- und Abrechnungsfrist an den Mieter zur\u00fcckgezahlt, soweit keine Anspr\u00fcche des Vermieters entgegenstehen.`,
-  ]});
   clauses.push({ n:String(P.aufrechnung), t:'Aufrechnung, Zur\u00fcckbehaltung, Minderung', paras:[
     `Der Mieter kann gegen die Miete und die Betriebskostenvorauszahlungen nur mit unbestrittenen oder rechtskr\u00e4ftig festgestellten Forderungen aufrechnen oder ein Zur\u00fcckbehaltungsrecht aus\u00fcben. Die Miete darf der Mieter wegen eines Mangels nur mindern, wenn der Minderungsanspruch unbestritten oder rechtskr\u00e4ftig festgestellt ist; andernfalls hat er die Miete zun\u00e4chst ungek\u00fcrzt weiterzuzahlen und kann zu viel Gezahltes zur\u00fcckfordern. Unber\u00fchrt bleiben Forderungen des Mieters aus \u00a7\u00a0536a BGB sowie aus ungerechtfertigter Bereicherung wegen zu viel gezahlter Miete.`,
   ]});
