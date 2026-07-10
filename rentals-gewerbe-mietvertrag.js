@@ -272,9 +272,8 @@ function _renderGewerbeMietvertragHTML(d) {
   let _pn = 2;
   const NX = () => (++_pn);
   const P = {};
-  P.kaution = NX();
-  if (hasStaffel) P.staffel = NX();   // § 4 — direkt nach der Kaution
-  P.aufrechnung = NX(); P.nebenkosten = NX(); P.klein = NX();
+  if (hasStaffel) P.staffel = NX();
+  P.kaution = NX(); P.aufrechnung = NX(); P.nebenkosten = NX(); P.klein = NX();
   P.haftpflicht = NX(); P.instand = NX(); P.aussenwerbung = NX(); P.unterverm = NX();
   P.schluessel = NX(); P.betreten = NX(); P.rueckgabe = NX(); P.umsatzsteuer = NX();
   P.datenschutz = NX(); P.sonstige = NX();
@@ -284,6 +283,9 @@ function _renderGewerbeMietvertragHTML(d) {
     ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
     : `<tr><td colspan="2" style="color:#aaa59e;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
 
+  // Paragraph numbering — shifts if Staffelmiete present
+  const pBase = hasStaffel ? 1 : 0; // offset for §§ after Staffelmiete
+  const pNum  = n => n + pBase;
 
   // § 1 — Mietzeit (three variants)
   const p1_S1 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und wird f\u00fcr eine Mindestlaufzeit von ${d.festlaufzeit} fest abgeschlossen. W\u00e4hrend der Mindestlaufzeit ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen. Das Mietverh\u00e4ltnis endet nicht automatisch mit Ablauf der Mindestlaufzeit, sondern l\u00e4uft anschlie\u00dfend auf unbestimmte Zeit weiter. Es kann danach von jeder Partei mit einer Frist von ${d.kuendigungsfrist}\u00a0Monaten zum Quartalsende ordentlich gek\u00fcndigt werden (\u00a7\u00a0580a Abs.\u00a02 BGB). Die K\u00fcndigung bedarf der Schriftform. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
@@ -291,7 +293,7 @@ function _renderGewerbeMietvertragHTML(d) {
   const p1_S2 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und endet am ${d.mietende} automatisch, ohne dass es einer K\u00fcndigung bedarf. Eine ordentliche K\u00fcndigung ist w\u00e4hrend der vereinbarten Mietzeit f\u00fcr beide Parteien ausgeschlossen. \u00a7\u00a0545 BGB findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
 
   const p1_S3_miete = (d.szenario === 'S3' && d.staffelAn && d.staffeln.length > 0)
-    ? `die Nettokaltmiete ist ab dem ersten Tag der Verl\u00e4ngerung gem\u00e4\u00df \u00a7\u00a0${P.staffel} (Staffelmiete) gestaffelt`
+    ? `die Nettokaltmiete ist ab dem ersten Tag der Verl\u00e4ngerung gem\u00e4\u00df \u00a7\u00a03 (Staffelmiete) gestaffelt`
     : `die Nettokaltmiete betr\u00e4gt ab dem ersten Tag der Verl\u00e4ngerung ${eur(d.neueKaltmiete)}`;
 
   const p1_S3 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und wird f\u00fcr eine Mindestlaufzeit von ${d.festlaufzeit} fest abgeschlossen. W\u00e4hrend der Mindestlaufzeit ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen. Der Mieter ist berechtigt, das Mietverh\u00e4ltnis einmalig um ${d.verlaengerungJahre}\u00a0Jahr${d.verlaengerungJahre===1?'':'e'} zu verl\u00e4ngern. Die Verl\u00e4ngerung muss dem Vermieter sp\u00e4testens ${d.ankuendigungMonate}\u00a0Monate vor Ablauf, d.\u202fh. bis zum ${d.ankuendigungBis}, schriftlich mitgeteilt werden. Bei fristgerechter Aus\u00fcbung verl\u00e4ngert sich die Mindestlaufzeit bis zum ${d.verlBis}; w\u00e4hrend der Verl\u00e4ngerungsperiode ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen, und ${p1_S3_miete}. Wird die Option nicht fristgerecht ausge\u00fcbt, erlischt sie ersatzlos. Das Mietverh\u00e4ltnis endet nicht automatisch mit Ablauf der Mindestlaufzeit bzw. der Verl\u00e4ngerungsperiode, sondern l\u00e4uft anschlie\u00dfend auf unbestimmte Zeit weiter. Es kann danach von jeder Partei mit einer Frist von ${d.kuendigungsfrist}\u00a0Monaten zum Quartalsende ordentlich gek\u00fcndigt werden (\u00a7\u00a0580a Abs.\u00a02 BGB). Die K\u00fcndigung bedarf der Schriftform. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
@@ -305,7 +307,7 @@ function _renderGewerbeMietvertragHTML(d) {
 
   const mieteBankBlock = `
     ${sec('Miete &amp; Bankverbindung',true,true)}
-    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a0'+P.staffel+')':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a0'+P.staffel:'')+' \u00b7 umsatzsteuerfrei (Option \u00a7\u00a0'+P.umsatzsteuer+' vorbehalten)')}
+    ${kv('Nettokaltmiete',eur(d.kaltmiete)+'\u2002/ Monat'+(hasStaffel && d.szenario==='S1'?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':'')+(hasStaffel && d.szenario==='S3'?' \u00b7 ab Verl\u00e4ngerung gestaffelt, siehe \u00a7\u00a03':'')+' \u00b7 umsatzsteuerfrei (Option \u00a7\u00a0'+P.umsatzsteuer+' vorbehalten)')}
     ${d.nkVZ?kv('Betriebskosten VZ',eur(d.nkVZ)+'\u2002/ Monat (Vorauszahlung)'):''}
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
     ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats')}
@@ -386,11 +388,6 @@ function _renderGewerbeMietvertragHTML(d) {
     `(5)\u00a0Das Risiko der Verwendbarkeit der Mietr\u00e4ume f\u00fcr \u00fcber den vereinbarten Nutzungszweck hinausgehende Zwecke des Mieters tr\u00e4gt ausschlie\u00dflich der Mieter. Eine Anpassung oder Beendigung des Vertrages wegen St\u00f6rung der Gesch\u00e4ftsgrundlage (\u00a7\u00a0313 BGB) ist insoweit ausgeschlossen.`,
     `(6)\u00a0Eine \u00c4nderung des vertraglichen Nutzungszwecks bedarf in jedem Fall einer gesonderten schriftlichen Vereinbarung; sie tritt insbesondere nicht allein durch beh\u00f6rdliche Genehmigung, durch Zustimmung des Vermieters zu einer weiteren Nutzung oder durch deren tats\u00e4chliche Aus\u00fcbung ein. M\u00e4ngel am Mietobjekt sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen.`,
   ]});
-  clauses.push({ n:String(P.kaution), t:'Kaution', paras:[
-    `(1)\u00a0Der Mieter leistet eine Mietsicherheit in H\u00f6he von ${eur(d.kautionVal)}, f\u00e4llig ${d.kautionFaelText}. Die Sicherheit ist als Barkaution auf das oben genannte Konto zu \u00fcberweisen.`,
-    `(2)\u00a0Eine Verzinsung der Kaution erfolgt nicht. Die gesetzlichen Vorschriften zur Verzinsung von Mietkautionen bei Wohnraummietverh\u00e4ltnissen finden auf dieses Gewerbemietverh\u00e4ltnis keine Anwendung.`,
-    `(3)\u00a0Nach Beendigung des Mietverh\u00e4ltnisses und vollst\u00e4ndiger Erf\u00fcllung s\u00e4mtlicher Verpflichtungen des Mieters wird die Kaution nach angemessener Pr\u00fcfungs- und Abrechnungsfrist an den Mieter zur\u00fcckgezahlt, soweit keine Anspr\u00fcche des Vermieters entgegenstehen.`,
-  ]});
   if (hasStaffel) {
     const staffelLines = (d.szenario === 'S3'
       ? `Die monatliche Nettokaltmiete (umsatzsteuerfrei) w\u00e4hrend der Verl\u00e4ngerungsperiode ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Erste Staffel ab ${d.staffeln[0]?.datum || d.mietende}: ${eur(d.staffeln[0]?.betrag || 0)}.`
@@ -399,6 +396,11 @@ function _renderGewerbeMietvertragHTML(d) {
       + ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend der Geltung einer Staffel ist eine weitergehende Erh\u00f6hung ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`;
     clauses.push({ n:String(P.staffel), t:'Staffelmiete', paras:[ staffelLines ] });
   }
+  clauses.push({ n:String(P.kaution), t:'Kaution', paras:[
+    `(1)\u00a0Der Mieter leistet eine Mietsicherheit in H\u00f6he von ${eur(d.kautionVal)}, f\u00e4llig ${d.kautionFaelText}. Die Sicherheit ist als Barkaution auf das oben genannte Konto zu \u00fcberweisen.`,
+    `(2)\u00a0Eine Verzinsung der Kaution erfolgt nicht. Die gesetzlichen Vorschriften zur Verzinsung von Mietkautionen bei Wohnraummietverh\u00e4ltnissen finden auf dieses Gewerbemietverh\u00e4ltnis keine Anwendung.`,
+    `(3)\u00a0Nach Beendigung des Mietverh\u00e4ltnisses und vollst\u00e4ndiger Erf\u00fcllung s\u00e4mtlicher Verpflichtungen des Mieters wird die Kaution nach angemessener Pr\u00fcfungs- und Abrechnungsfrist an den Mieter zur\u00fcckgezahlt, soweit keine Anspr\u00fcche des Vermieters entgegenstehen.`,
+  ]});
   clauses.push({ n:String(P.aufrechnung), t:'Aufrechnung, Zur\u00fcckbehaltung, Minderung', paras:[
     `Der Mieter kann gegen die Miete und die Betriebskostenvorauszahlungen nur mit unbestrittenen oder rechtskr\u00e4ftig festgestellten Forderungen aufrechnen oder ein Zur\u00fcckbehaltungsrecht aus\u00fcben. Die Miete darf der Mieter wegen eines Mangels nur mindern, wenn der Minderungsanspruch unbestritten oder rechtskr\u00e4ftig festgestellt ist; andernfalls hat er die Miete zun\u00e4chst ungek\u00fcrzt weiterzuzahlen und kann zu viel Gezahltes zur\u00fcckfordern. Unber\u00fchrt bleiben Forderungen des Mieters aus \u00a7\u00a0536a BGB sowie aus ungerechtfertigter Bereicherung wegen zu viel gezahlter Miete.`,
   ]});
@@ -419,7 +421,7 @@ function _renderGewerbeMietvertragHTML(d) {
     `(1)\u00a0Der Vermieter tr\u00e4gt die Kosten der Instandhaltung und Instandsetzung von Dach und Fach, Fundament, tragenden Geb\u00e4udeteilen, Fenstern und Verglasungen als Bauteil sowie der au\u00dferhalb der Mietfl\u00e4che verlaufenden Ver- und Entsorgungsleitungen.`,
     `(2)\u00a0Der Mieter tr\u00e4gt die Kosten der laufenden Wartung und Pflege der ausschlie\u00dflich den Mietr\u00e4umen dienenden sanit\u00e4ren Einrichtungen, Armaturen, Waschbecken, Toiletten, Sp\u00fclk\u00e4sten sowie sonstiger Installationen innerhalb der Mietfl\u00e4che. An den Kosten ihrer Instandhaltung und Instandsetzung beteiligt sich der Mieter ausschlie\u00dflich im Rahmen und in den Grenzen der Kleinreparaturenregelung (\u00a7\u00a0${P.klein}); dar\u00fcber hinausgehende Instandhaltungs- und Instandsetzungskosten tr\u00e4gt der Vermieter, soweit der Schaden nicht durch den Mieter, dessen Mitarbeiter, Beauftragte, Kunden oder Besucher verursacht wurde.`,
     `(3)\u00a0Der Mieter ist verpflichtet, w\u00e4hrend der gesamten Mietdauer auf eigene Kosten eine Glasversicherung f\u00fcr s\u00e4mtliche Verglasungen der Mietr\u00e4ume einschlie\u00dflich Schaufenstern, Fensterverglasungen, Glast\u00fcren und sonstigen fest eingebauten Glasfl\u00e4chen abzuschlie\u00dfen und aufrechtzuerhalten. Die Glasversicherung hat Sch\u00e4den durch Glasbruch unabh\u00e4ngig von der Schadensursache abzudecken; hierzu z\u00e4hlen insbesondere Sch\u00e4den durch Dritte, Kunden, Besucher, Passanten, Vandalismus, Fahrl\u00e4ssigkeit sowie sonstige von au\u00dfen auf die Verglasung einwirkende Ereignisse. Der Ersatz zu Bruch gegangener Glasfl\u00e4chen erfolgt \u00fcber diese Versicherung. Der Nachweis des Versicherungsschutzes ist dem Vermieter auf Verlangen, sp\u00e4testens bei Mietbeginn, vorzulegen. Unterh\u00e4lt der Mieter den Versicherungsschutz nicht, ist der Vermieter berechtigt, nach vorheriger Fristsetzung eine entsprechende Versicherung auf Kosten des Mieters abzuschlie\u00dfen. Nicht von der Glasversicherung erfasste Instandhaltungs- und Instandsetzungskosten aufgrund normaler Abnutzung, altersbedingten Verschlei\u00dfes, Materialerm\u00fcdung oder technischer Defekte an Fensterrahmen, Beschl\u00e4gen, Dichtungen und sonstigen Bauteilen der Fenster tr\u00e4gt der Vermieter, soweit der Schaden nicht durch den Mieter, dessen Mitarbeiter, Beauftragte, Kunden oder Besucher verursacht wurde. Verursacht der Mieter, dessen Mitarbeiter, Beauftragte, Kunden oder Besucher schuldhaft Sch\u00e4den an Fenstern, Verglasungen oder sonstigen Bestandteilen der Mietsache, hat der Mieter die hierdurch entstehenden Kosten zu tragen, soweit diese nicht von einer Versicherung \u00fcbernommen werden.`,
-    `(4)\u00a0Von der Kostentragung des Mieters ausgenommen sind Sch\u00e4den an der Bausubstanz, anf\u00e4ngliche und verdeckte M\u00e4ngel sowie Sch\u00e4den durch normale Alterung \u2013 unabh\u00e4ngig vom Betrag. Das Vorhandensein eines anf\u00e4nglichen oder verdeckten Mangels bei \u00dcbergabe hat der Mieter nachzuweisen; ma\u00dfgeblich ist der im Einzugs\u00fcbergabeprotokoll (Anlage\u00a0B) dokumentierte Zustand.`,
+    `(4)\u00a0Von der Kostentragung des Mieters ausgenommen sind Sch\u00e4den an der Bausubstanz, anf\u00e4ngliche und verdeckte M\u00e4ngel sowie Sch\u00e4den durch normale Alterung \u2013 unabh\u00e4ngig vom Betrag. Das Vorhandensein eines anf\u00e4nglichen oder verdeckten Mangels bei \u00dcbergabe hat der Mieter nachzuweisen; ma\u00dfgeblich ist der Zustand, der in dem bei \u00dcbergabe gemeinsam erstellten und von beiden Parteien unterzeichneten Einzugs\u00fcbergabeprotokoll dokumentiert ist.`,
     `(5)\u00a0Die Wartung von Anlagen, die ausschlie\u00dflich der Mietfl\u00e4che dienen, obliegt dem Mieter auf eigene Kosten.`,
     `(6)\u00a0Sch\u00e4den sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen.`,
   ]});
@@ -466,21 +468,19 @@ function _renderGewerbeMietvertragHTML(d) {
     });
     return lines * LH;
   };
+  // ═══ CLAUSE-ATOMIC BLOCKS (whole § stays together; page breaks only between §§) ══
   const blocks = [];
   clauses.forEach(c => {
-    c.paras.forEach((p, i) => {
+    let h = 0;
+    const parts = c.paras.map((p, i) => {
       if (i === 0) {
-        blocks.push({
-          html: `<div class="clause"><div class="clause__title">\u00a7\u00a0${c.n}\u2002${c.t}</div><div class="clause__body">${p}</div></div>`,
-          h: 26 + estH(p),
-        });
-      } else {
-        blocks.push({
-          html: `<div class="clause" style="margin-top:5px"><div class="clause__body">${p}</div></div>`,
-          h: 11 + estH(p),
-        });
+        h += 26 + estH(p);
+        return `<div class="clause"><div class="clause__title">\u00a7\u00a0${c.n}\u2002${c.t}</div><div class="clause__body">${p}</div></div>`;
       }
+      h += 11 + estH(p);
+      return `<div class="clause" style="margin-top:5px"><div class="clause__body">${p}</div></div>`;
     });
+    blocks.push({ html: parts.join('\n    '), h });
   });
 
   // Betriebskosten intro block (leads clause pages, kept together)
