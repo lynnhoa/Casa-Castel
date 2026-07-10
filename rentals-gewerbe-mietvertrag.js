@@ -458,7 +458,7 @@ function _renderGewerbeMietvertragHTML(d) {
   ]});
 
   // ═══ FLOW BLOCKS (title stays with first paragraph; later paras may break) ══
-  const CPL = 82, LH = 18.6;
+  const CPL = 100, LH = 18.6; // kalibriert am gerenderten PDF (~115 Zeichen/Zeile, 100 = Sicherheitsmarge)
   const estH = html => {
     const segs = html.split(/<span style="display:block[^>]*>/);
     let lines = 0;
@@ -492,20 +492,29 @@ function _renderGewerbeMietvertragHTML(d) {
   // Signature block (trails, kept together)
   const sigHtml = `<div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div><div class="comment-line"></div>
+    <div class="comment-line"></div><div class="comment-line"></div><div class="comment-line"></div>
     ${sigBlock()}`;
   const sigHeight = 90 + 84 + ((d.hasMieter2 || d.hasMieter3) ? 250 : 150);
 
-  // ═══ GREEDY PAGINATION ═════════════════════════════════════════════════════
-  const AVAIL = 892;
-  const pageBlocks = [];
-  let cur = [bkHtml], curH = bkHeight;
-  blocks.forEach(b => {
-    if (curH + b.h > AVAIL) { pageBlocks.push(cur); cur = []; curH = 0; }
-    cur.push(b.html); curH += b.h;
+  // ═══ FIXED PAGE PLAN (title-based; robust gegen §-Nummern-Shift) ═══════════
+  const PAGE_PLAN = [
+    ['Mietzeit und Beendigung', 'Nutzungszweck'],
+    ['Staffelmiete', 'Kaution', 'Aufrechnung, Zur\u00fcckbehaltung, Minderung', 'Nebenkosten und Abrechnung', 'Kleinreparaturen'],
+    ['Gewerbehaftpflichtversicherung', 'Instandhaltung und Instandsetzung'],
+    ['Au\u00dfenwerbung', 'Untervermietung und Nachmieter', 'Schl\u00fcssel\u00fcbergabe', 'Betreten des Mietobjekts'],
+    ['R\u00fcckgabe bei Vertragsende', 'Umsatzsteuer', 'Datenschutz', 'Sonstige Vereinbarungen'],
+  ];
+  const pageBlocks = [[bkHtml]]; // Seite 3: Betriebskosten-\u00dcbersicht allein
+  const planPages = PAGE_PLAN.map(() => []);
+  let lastIdx = 0;
+  clauses.forEach((c, i) => {
+    const idx = PAGE_PLAN.findIndex(g => g.includes(c.t));
+    const target = idx >= 0 ? idx : lastIdx; // unbekannte Klausel: zur Seite der vorherigen
+    if (idx >= 0) lastIdx = idx;
+    planPages[target].push(blocks[i].html);
   });
-  if (curH + sigHeight > AVAIL) { pageBlocks.push(cur); cur = []; curH = 0; }
-  cur.push(sigHtml);
-  pageBlocks.push(cur);
+  planPages.forEach(p => { if (p.length) pageBlocks.push(p); });
+  pageBlocks.push([sigHtml]); // eigene Seite: Sonstige Anmerkungen + Unterschriften
 
   // ═══ ASSEMBLE PAGES (sequential footer numbers) ════════════════════════════
   let pageNo = 3;
