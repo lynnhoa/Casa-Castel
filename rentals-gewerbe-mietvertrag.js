@@ -516,9 +516,10 @@ function _renderGewerbeMietvertragHTML(d) {
 
   // ═══ FIXED PAGE PLAN (title-based; robust gegen §-Nummern-Shift) ═══════════
   const PAGE_PLAN = [
-    // Mit §2 Abs. 7 (Sonderkündigungsrecht) wird §2 zu lang für eine geteilte Seite → eigene Seite
+    // Mit §2 Abs. 7 (Sonderkündigungsrecht): §2 zu lang für geteilte Seite → eigene Seite;
+    // §1 wandert unter die Betriebskosten-Übersicht (sonst stünde §1 allein auf einer Seite)
     ...(d.sonderkAn
-      ? [['Mietzeit und Beendigung'], ['Nutzungszweck']]
+      ? [['Nutzungszweck']]
       : [['Mietzeit und Beendigung', 'Nutzungszweck']]),
     ['Staffelmiete', 'Kaution', 'Aufrechnung, Zur\u00fcckbehaltung, Minderung', 'Nebenkosten und Abrechnung', 'Kleinreparaturen'],
     ['Gewerbehaftpflichtversicherung', 'Instandhaltung und Instandsetzung'],
@@ -526,9 +527,15 @@ function _renderGewerbeMietvertragHTML(d) {
     ['R\u00fcckgabe bei Vertragsende', 'Umsatzsteuer', 'Datenschutz', 'Sonstige Vereinbarungen'],
   ];
   const pageBlocks = [[bkHtml]]; // Seite 3: Betriebskosten-\u00dcbersicht allein
+  // Mit Sonderkündigungsrecht: §1 direkt unter die Betriebskosten-Übersicht
+  if (d.sonderkAn) {
+    const i1 = clauses.findIndex(c => c.t === 'Mietzeit und Beendigung');
+    if (i1 >= 0) pageBlocks[0].push(blocks[i1].html);
+  }
   const planPages = PAGE_PLAN.map(() => []);
   let lastIdx = 0;
   clauses.forEach((c, i) => {
+    if (d.sonderkAn && c.t === 'Mietzeit und Beendigung') return; // bereits auf Betriebskosten-Seite
     const idx = PAGE_PLAN.findIndex(g => g.includes(c.t));
     const target = idx >= 0 ? idx : lastIdx; // unbekannte Klausel: zur Seite der vorherigen
     if (idx >= 0) lastIdx = idx;
