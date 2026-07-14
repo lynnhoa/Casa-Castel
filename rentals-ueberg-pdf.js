@@ -102,8 +102,8 @@ function _aptCollectUebergData(apt, isEinzug) {
     // Vermieter from shared settings
     vermieter:       s.vermieter_name || '',
     vermieterAdresse: s.vermieter_adresse || '',
-    // Unterzeichnungsort from card
-    unterschriftOrt: apt.unterschrift_ort || '',
+    // Unterzeichnungsort from card → shared settings → default (same chain as Mietvertrag)
+    unterschriftOrt: apt.unterschrift_ort || s.unterschrift_ort || 'Wiesbaden',
     unterzeichnungsDatum: fmtDate(sigVal),
     // Mieter from form
     mieterName:   document.getElementById('apt-ub-mieter-name')?.value.trim() || '',
@@ -293,6 +293,9 @@ function _aptRenderUebergHTML(d) {
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
       color:#aaa59e; margin-bottom:4px; }
     .sig-write-gap { height:74px; }
+    .sig-write-gap--short { height:40px; }
+    .sig-ort-gap { height:22px; }
+    .sig-ort-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
@@ -334,9 +337,15 @@ function _aptRenderUebergHTML(d) {
         </tr>`).join('')
     : `<tr><td colspan="3" style="font-style:italic;color:#aaa59e;font-size:10px;">Keine Zähler hinterlegt</td></tr>`;
 
-  const sigDate = d.unterzeichnungsDatum && d.unterschriftOrt
-    ? `<div class="sig-prefill">${esc(d.unterschriftOrt)}, ${esc(d.unterzeichnungsDatum)}</div>`
-    : `<div class="sig-date-label">Datum, Ort</div>`;
+  // Prefill needs only the date (Ort always resolves via fallback chain) — same as Mietvertrag.
+  // Without a date: blank write line ABOVE the "Ort, Datum" caption for manual fill-in.
+  const sigDate = d.unterzeichnungsDatum
+    ? `<div class="sig-prefill">${esc(d.unterschriftOrt)}, ${esc(d.unterzeichnungsDatum)}</div>
+        <div class="sig-write-gap"></div>`
+    : `<div class="sig-ort-gap"></div>
+        <hr class="sig-ort-line"/>
+        <div class="sig-date-label">Ort, Datum</div>
+        <div class="sig-write-gap sig-write-gap--short"></div>`;
 
   const objektLine = [d.adresse, d.plzOrt].filter(Boolean).join(', ');
 
@@ -413,14 +422,12 @@ function _aptRenderUebergHTML(d) {
     <div class="sig-block">
       <div class="sig-col">
         ${sigDate}
-        <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Vermieter</div>
         <div class="sig-name">${esc(d.vermieter)}</div>
       </div>
       <div class="sig-col">
         ${sigDate}
-        <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Mieter</div>
         <div class="sig-name">${esc(d.mieterName)}</div>
