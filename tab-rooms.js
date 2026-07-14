@@ -3499,8 +3499,8 @@ function _renderUebergHTML(d) {
     .sig-top-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:7px; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#aaa59e; margin-bottom:4px; }
-    .sig-write-gap { height:74px; }
-    .sig-write-gap--short { height:40px; }
+    .sig-write-gap { height:92px; }
+    .sig-write-gap--short { height:58px; }
     .sig-ort-gap { height:22px; }
     .sig-ort-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:7px; }
