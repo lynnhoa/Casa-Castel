@@ -1980,8 +1980,14 @@ async function _aptOpenContract(type, aptId) {
           const kautionVal     = parseFloat(document.getElementById('apt-gw-kaution')?.value) || 0;
           const kautionFael    = _aptReadKautionFael('gw');
           const sigVal         = document.getElementById('apt-gw-sig')?.value;
+          const sonderkAn      = document.getElementById('apt-gw-sonderk-btn')?.dataset.mode === 'ja';
+          const sonderkEnde    = document.getElementById('apt-gw-sonderk-ende')?.value || '';
 
           // Validate
+          if (sonderkAn && !sonderkEnde) {
+            alert('Bitte Datum für das vorzeitige Vertragsende wählen (§ 2 Abs. 7).');
+            return;
+          }
           // S1 fields
           let kuendigungsfrist = 6;
           let staffeln = [];
@@ -2021,6 +2027,7 @@ async function _aptOpenContract(type, aptId) {
               mieterName3, mieterAdr3, mieterDob3, mieterEmail3, mieterTel3,
               startVal, festNum, festUnit, kaltmiete, nkVZ,
               kautionVal, kautionFael, sigVal,
+              sonderkAn, sonderkEnde,
               kuendigungsfrist, staffelAn, staffeln,
               verlaengerungJahre, ankuendigungMonate, neueKaltmiete, verlaengerungBis,
             });
@@ -2623,6 +2630,23 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
       </div>
     </div>
 
+    <div class="rm-field--toggle">
+      <div class="rm-toggle-row">
+        <div>
+          <div class="rm-toggle-label">Sonderkündigungsrecht (§ 2 Abs. 7)</div>
+          <div class="rm-toggle-sub" id="apt-gw-sonderk-sub">Ohne Klausel Nutzungserweiterung</div>
+        </div>
+        <button type="button" class="rm-pill-toggle" id="apt-gw-sonderk-btn" data-mode="nein" onclick="_aptGwToggleSonderk()">
+          <span class="rm-pill-toggle__track"><span class="rm-pill-toggle__knob"></span></span>
+          <span class="rm-pill-toggle__lbl" id="apt-gw-sonderk-lbl">Nein</span>
+        </button>
+      </div>
+    </div>
+    <div class="rm-field" id="apt-gw-sonderk-ende-wrap" style="display:none;">
+      <label>Vorzeitiges Vertragsende bei Versagung <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(z.B. 31.07.2027)</span></label>
+      <input class="rm-input" id="apt-gw-sonderk-ende" type="date" onclick="try{this.showPicker()}catch(e){}"/>
+    </div>
+
     <div class="rm-field" style="margin-top:4px;">
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label>
       <input class="rm-input" id="apt-gw-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
@@ -2663,6 +2687,20 @@ function _aptGwToggleMoebliert() {
   btn.dataset.mode  = on ? 'ja'  : 'nein';
   lbl.textContent   = on ? 'Ja' : 'Nein';
   sub.textContent   = on ? 'Inventar wird als Anlage A eingefügt' : 'Ohne Inventar';
+}
+
+/* ── GEWERBE: Sonderkündigungsrecht Toggle (§2 Abs. 7) ── */
+function _aptGwToggleSonderk() {
+  const btn  = document.getElementById('apt-gw-sonderk-btn');
+  const lbl  = document.getElementById('apt-gw-sonderk-lbl');
+  const sub  = document.getElementById('apt-gw-sonderk-sub');
+  const wrap = document.getElementById('apt-gw-sonderk-ende-wrap');
+  if (!btn) return;
+  const on = btn.dataset.mode === 'nein';
+  btn.dataset.mode  = on ? 'ja'  : 'nein';
+  lbl.textContent   = on ? 'Ja' : 'Nein';
+  sub.textContent   = on ? 'Kündigungsrecht bei Versagung der Nutzungserweiterung' : 'Ohne Klausel Nutzungserweiterung';
+  if (wrap) wrap.style.display = on ? '' : 'none';
 }
 
 /* ── GEWERBE: Staffelmiete Toggle ─────────────────────── */

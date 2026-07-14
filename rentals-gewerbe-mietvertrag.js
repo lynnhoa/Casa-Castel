@@ -26,6 +26,8 @@ function _buildGewerbeMietvertragData(apt, s, {
   startVal = '', festNum = 0, festUnit = 'Jahre',
   kaltmiete = 0, nkVZ = 0,
   kautionVal = 0, kautionFael = '5', sigVal = '',
+  // §2 Abs. 7 — Sonderkündigungsrecht Nutzungserweiterung (optional)
+  sonderkAn = false, sonderkEnde = '',
   // S1
   kuendigungsfrist = 6, staffelAn = false, staffeln = [],
   // S3
@@ -78,6 +80,16 @@ function _buildGewerbeMietvertragData(apt, s, {
     : `binnen\u00a0${kautionFael}\u00a0Tagen nach Unterzeichnung`;
 
   const gesamtmiete = Number(kaltmiete) + Number(nkVZ);
+
+  // §2 Abs. 7 — vorzeitiges Vertragsende + Stichtag (ein Monat davor, tagesgenau geklemmt)
+  const skDt = sonderkEnde ? new Date(sonderkEnde) : null;
+  const sonderkOn = !!(sonderkAn && skDt && !isNaN(skDt));
+  let sonderkEndeFmt = '', sonderkStichtagFmt = '';
+  if (sonderkOn) {
+    sonderkEndeFmt = fmtDt(skDt);
+    const lastPrev = new Date(skDt.getFullYear(), skDt.getMonth(), 0).getDate();
+    sonderkStichtagFmt = fmtDt(new Date(skDt.getFullYear(), skDt.getMonth() - 1, Math.min(skDt.getDate(), lastPrev)));
+  }
 
   // Schlüssel
   const sk = apt.schlussel || {};
@@ -141,6 +153,10 @@ function _buildGewerbeMietvertragData(apt, s, {
     kautionFaelText,
     // Meta
     unterzeichnungsDatum: sigVal ? fmtDt(new Date(sigVal)) : '',
+    // §2 Abs. 7 — Sonderkündigungsrecht Nutzungserweiterung
+    sonderkAn: sonderkOn,
+    sonderkEnde: sonderkEndeFmt,
+    sonderkStichtag: sonderkStichtagFmt,
   };
 }
 
@@ -387,7 +403,9 @@ function _renderGewerbeMietvertragHTML(d) {
     `(4)\u00a0Der Vermieter \u00fcbernimmt keine Gew\u00e4hr oder Garantie f\u00fcr die Erteilung einer beh\u00f6rdlichen Genehmigung einer weiteren Nutzung. Die Versagung, Verz\u00f6gerung oder mit Auflagen verbundene Erteilung einer solchen Genehmigung \u2013 gleich aus welchem Grund, einschlie\u00dflich objektbezogener Umst\u00e4nde \u2013 l\u00e4sst die Pflichten des Mieters aus diesem Vertrag, insbesondere die Mietzahlungspflicht, unber\u00fchrt und berechtigt den Mieter weder zur Mietminderung noch zur au\u00dferordentlichen K\u00fcndigung, zum R\u00fccktritt oder zu Schadensersatzanspr\u00fcchen, sofern die vertragsgem\u00e4\u00dfe Nutzung weiterhin zul\u00e4ssig und m\u00f6glich ist.`,
     `(5)\u00a0Das Risiko der Verwendbarkeit der Mietr\u00e4ume f\u00fcr \u00fcber den vereinbarten Nutzungszweck hinausgehende Zwecke des Mieters tr\u00e4gt ausschlie\u00dflich der Mieter. Eine Anpassung oder Beendigung des Vertrages wegen St\u00f6rung der Gesch\u00e4ftsgrundlage (\u00a7\u00a0313 BGB) ist insoweit ausgeschlossen.`,
     `(6)\u00a0Eine \u00c4nderung des vertraglichen Nutzungszwecks bedarf in jedem Fall einer gesonderten schriftlichen Vereinbarung; sie tritt insbesondere nicht allein durch beh\u00f6rdliche Genehmigung, durch Zustimmung des Vermieters zu einer weiteren Nutzung oder durch deren tats\u00e4chliche Aus\u00fcbung ein. M\u00e4ngel am Mietobjekt sind dem Vermieter unverz\u00fcglich in Textform anzuzeigen.`,
-  ]});
+  ].concat(d.sonderkAn ? [
+    `(7)\u00a0Abweichend von den Abs\u00e4tzen\u00a04 und\u00a05 gilt: Hat der Vermieter einer Nutzungserweiterung (weitere Nutzung im Sinne des Absatzes\u00a02) schriftlich zugestimmt und beantragt der Mieter die hierf\u00fcr erforderliche beh\u00f6rdliche Nutzungs\u00e4nderung innerhalb von sechs Monaten ab dem Datum der Zustimmungserkl\u00e4rung ordnungsgem\u00e4\u00df und vollst\u00e4ndig, so kann der Mieter das Mietverh\u00e4ltnis vorzeitig zum Ablauf des ${d.sonderkEnde} k\u00fcndigen, wenn die Nutzungs\u00e4nderung versagt oder nur unter Auflagen erteilt wird, deren voraussichtliche Kosten drei Monatsnettokaltmieten \u00fcbersteigen. Die K\u00fcndigung ist innerhalb von vier Wochen nach Zugang des beh\u00f6rdlichen Bescheids schriftlich und unter Beif\u00fcgung des Bescheids sowie eines Kostenvoranschlags eines Fachbetriebs zu erkl\u00e4ren; nach Fristablauf oder bei nicht fristgerechter Antragstellung erlischt das K\u00fcndigungsrecht. Geht der Bescheid dem Mieter erst nach dem ${d.sonderkStichtag} zu, endet das Mietverh\u00e4ltnis abweichend mit Ablauf von drei Monaten zum Monatsende nach Zugang der K\u00fcndigung. Bis zur Beendigung schuldet der Mieter die vereinbarte Miete nebst Nebenkostenvorauszahlungen; weitergehende wechselseitige Anspr\u00fcche wegen der vorzeitigen Beendigung sind ausgeschlossen. Die Abs\u00e4tze\u00a02 bis\u00a06 bleiben im \u00dcbrigen unber\u00fchrt.`,
+  ] : []) });
   if (hasStaffel) {
     const staffelLines = (d.szenario === 'S3'
       ? `Die monatliche Nettokaltmiete (umsatzsteuerfrei) w\u00e4hrend der Verl\u00e4ngerungsperiode ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Erste Staffel ab ${d.staffeln[0]?.datum || d.mietende}: ${eur(d.staffeln[0]?.betrag || 0)}.`
@@ -498,7 +516,10 @@ function _renderGewerbeMietvertragHTML(d) {
 
   // ═══ FIXED PAGE PLAN (title-based; robust gegen §-Nummern-Shift) ═══════════
   const PAGE_PLAN = [
-    ['Mietzeit und Beendigung', 'Nutzungszweck'],
+    // Mit §2 Abs. 7 (Sonderkündigungsrecht) wird §2 zu lang für eine geteilte Seite → eigene Seite
+    ...(d.sonderkAn
+      ? [['Mietzeit und Beendigung'], ['Nutzungszweck']]
+      : [['Mietzeit und Beendigung', 'Nutzungszweck']]),
     ['Staffelmiete', 'Kaution', 'Aufrechnung, Zur\u00fcckbehaltung, Minderung', 'Nebenkosten und Abrechnung', 'Kleinreparaturen'],
     ['Gewerbehaftpflichtversicherung', 'Instandhaltung und Instandsetzung'],
     ['Au\u00dfenwerbung', 'Untervermietung und Nachmieter', 'Schl\u00fcssel\u00fcbergabe', 'Betreten des Mietobjekts'],
