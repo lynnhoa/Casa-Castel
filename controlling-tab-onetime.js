@@ -48,13 +48,13 @@ document.getElementById('tab-onetime').innerHTML = `
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px;">
-      <select class="ct-input" id="ctOtFiltMonth" style="text-align:left;"></select>
-      <input  class="ct-input" id="ctOtSearch" type="search" style="text-align:left;" placeholder="Suchen (Firma, Beschreibung)…"/>
+      <select class="ct-input ct-input--filter" id="ctOtFiltMonth" style="text-align:left;"></select>
+      <input  class="ct-input ct-input--filter" id="ctOtSearch" type="search" style="text-align:left;" placeholder="Suchen (Firma, Beschreibung)…"/>
     </div>
 
     <div class="ct-section" style="margin-bottom:16px;">
       <div style="text-align:center;padding:6px 0;">
-        <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:8px;">Gesamt Portfolio</div>
+        <div style="font-size:10px;font-weight:500;letter-spacing:.11em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:8px;">Gesamt Portfolio</div>
         <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;color:var(--cc-ink);font-feature-settings:'lnum' 1,'tnum' 1;font-variant-numeric:lining-nums tabular-nums;" id="ctOtPortfolioTotal">0,00 €</div>
         <div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;" id="ctOtPortfolioSub">—</div>
       </div>
@@ -188,7 +188,7 @@ function renderOtDrawerBody(pid) {
   const summaryHtml =
     '<div class="ct-section" style="margin-bottom:14px;">' +
       '<div style="text-align:center;padding:4px 0;">' +
-        '<div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:6px;">Summe · ' + scopeLbl + '</div>' +
+        '<div style="font-size:10px;font-weight:500;letter-spacing:.11em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:6px;">Summe · ' + scopeLbl + '</div>' +
         '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:28px;color:var(--cc-ink);font-feature-settings:\'lnum\' 1,\'tnum\' 1;font-variant-numeric:lining-nums tabular-nums;">' + ctlEur(total) + '</div>' +
         '<div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;">' + (entries.length === 1 ? '1 Eintrag' : entries.length + ' Einträge') + '</div>' +
       '</div>' +

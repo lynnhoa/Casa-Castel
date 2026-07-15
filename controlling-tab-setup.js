@@ -22,7 +22,7 @@ document.getElementById('tab-setup').innerHTML = `
       </div>
       <div>
         <label style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);display:block;text-align:right;margin-bottom:4px;">Jahr</label>
-        <select id="ctYearSel" class="ct-input" style="width:100px;text-align:center;">
+        <select id="ctYearSel" class="ct-input ct-input--filter" style="width:100px;text-align:center;">
         </select>
       </div>
     </div>
