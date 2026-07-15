@@ -115,20 +115,23 @@ function ctlPropertyMonth(pid, month) {
 
 /* ── Portfolio + annual rollups ─────────────────────────────── */
 function ctlPortfolioMonth(month) {
-  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, gesamt:0, netto_kalt:0 };
+  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, gesamt:0, netto_kalt:0 };
   for (const p of window._ctrl.properties.filter(x => x.active)) {
     const m = ctlPropertyMonth(p.id, month);
-    for (const k in acc) acc[k] += m[k];
+    for (const k of Object.keys(m)) {
+      acc[k] = (Number(acc[k]) || 0) + (Number(m[k]) || 0);
+    }
   }
   return acc;
 }
 function ctlPortfolioYear() {
-  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, gesamt:0, netto_kalt:0, recon:0 };
+  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, gesamt:0, netto_kalt:0, recon:0 };
   for (let m = 1; m <= 12; m++) {
     const p = ctlPortfolioMonth(m);
-    for (const k of Object.keys(p)) acc[k] += p[k];
+    for (const k of Object.keys(p)) {
+      acc[k] = (Number(acc[k]) || 0) + (Number(p[k]) || 0);
+    }
   }
-  // one-time already included in ctlPropertyMonth — do NOT double-count here
   for (const r of window._ctrl.recon) acc.recon += Number(r.hausgeld_ausgleich || 0) + Number(r.nebenkosten_ausgleich || 0);
   acc.gesamt     += acc.recon;
   acc.netto_kalt += acc.recon;

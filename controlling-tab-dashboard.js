@@ -127,14 +127,16 @@ document.querySelectorAll('#tab-dashboard [data-ot]').forEach(btn => {
 });
 
 /* ── Mode-aware pickers ─────────────────────────────────────── */
-function pickMiete(s) { return _ctlDashMode === 'warm' ? s.warm : s.kalt; }
+function pickMiete(s) { return _ctlDashMode === 'warm' ? (Number(s.warm) || 0) : (Number(s.kalt) || 0); }
 function pickExp(s) {
-  const base = _ctlDashMode === 'warm' ? s.exp_total : s.exp_net;
-  return _ctlDashOneTime ? base + s.one_time : base;
+  const base = _ctlDashMode === 'warm' ? (Number(s.exp_total) || 0) : (Number(s.exp_net) || 0);
+  const ot   = Number(s.one_time) || 0;
+  return _ctlDashOneTime ? base + ot : base;
 }
 function pickCash(s) {
-  const base = _ctlDashMode === 'warm' ? s.gesamt : s.netto_kalt;
-  return _ctlDashOneTime ? base - s.one_time : base;
+  const base = _ctlDashMode === 'warm' ? (Number(s.gesamt) || 0) : (Number(s.netto_kalt) || 0);
+  const ot   = Number(s.one_time) || 0;
+  return _ctlDashOneTime ? base - ot : base;
 }
 
 /* ── Public entrypoint ──────────────────────────────────────── */
