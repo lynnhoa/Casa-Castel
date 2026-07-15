@@ -203,9 +203,10 @@ function statusIcon(pid, month) {
   const isFuture = (y > now.getFullYear()) || (y === now.getFullYear() && month > now.getMonth() + 1);
   if (isFuture) return '<span style="color:var(--cc-stone);">—</span>';
   const filled = typeof hasEntriesFor === 'function' && hasEntriesFor(pid, month);
+  // Desktop shows just the icon (narrow column); mobile expanded card also shows a word via .ct-statusword
   return filled
-    ? '<i class="ti ti-check" style="color:var(--cc-gold-dk,#7A5A2A);"></i>'
-    : '<i class="ti ti-point-filled" style="color:var(--cc-gold);"></i>';
+    ? '<span class="ct-statusword" style="color:var(--cc-avail-text);">erfasst</span><i class="ti ti-check" style="color:var(--cc-avail-text);"></i>'
+    : '<span class="ct-statusword" style="color:var(--cc-notice-text);">offen</span><i class="ti ti-point-filled" style="color:var(--cc-gold);"></i>';
 }
 
 /* ── Year view ──────────────────────────────────────────────── */
@@ -230,14 +231,14 @@ function renderYear() {
   let html = '';
   for (const { p, pMiete, pExp, pCash } of rows) {
     const mLbl = _ctlDashMode === 'warm' ? 'Warmmiete' : 'Kaltmiete';
-    const aLbl = _ctlDashMode === 'warm' ? 'Ausgaben' : 'Ausg. o. HG';
+    const aLbl = _ctlDashMode === 'warm' ? 'Ausgaben' : 'Ausgaben (ohne Hausgeld)';
     html +=
       '<tr class="ct-proprow" onclick="ctlPropRowExpand(event)">' +
         '<td data-label="#">' + p.id + '</td>' +
         '<td data-label="Immobilie" class="ct-cell-name">' + p.name + '</td>' +
         '<td class="num" data-label="' + mLbl + '">' + ctlEur0(pMiete) + '</td>' +
         '<td class="num" data-label="' + aLbl + '">' + ctlEur0(pExp)   + '</td>' +
-        '<td class="num ct-cell-cash ' + (pCash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(pCash) + '</td>' +
+        '<td class="num ct-cell-cash ' + (pCash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0Signed(pCash) + '</td>' +
       '</tr>';
   }
   html +=
@@ -301,14 +302,14 @@ function renderMonth(m) {
     const miete = pickMiete(s), exp = pickExp(s), cash = pickCash(s);
     tMiete += miete; tExp += exp; tCash += cash;
     const mLbl = _ctlDashMode === 'warm' ? 'Warmmiete' : 'Kaltmiete';
-    const aLbl = _ctlDashMode === 'warm' ? 'Ausgaben' : 'Ausg. o. HG';
+    const aLbl = _ctlDashMode === 'warm' ? 'Ausgaben' : 'Ausgaben (ohne Hausgeld)';
     html +=
       '<tr class="ct-proprow" data-pid="' + p.id + '" data-month="' + m + '" onclick="ctlPropRowClick(event, ' + p.id + ',' + m + ')">' +
         '<td data-label="#">' + p.id + '</td>' +
         '<td data-label="Immobilie" class="ct-cell-name">' + p.name + '</td>' +
         '<td class="num" data-label="' + mLbl + '">' + ctlEur0(miete) + '</td>' +
         '<td class="num" data-label="' + aLbl + '">' + ctlEur0(exp)   + '</td>' +
-        '<td class="num ct-cell-cash ' + (cash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(cash) + '</td>' +
+        '<td class="num ct-cell-cash ' + (cash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0Signed(cash) + '</td>' +
         '<td class="ctr" data-label="Status">' + statusIcon(p.id, m) + '</td>' +
       '</tr>';
   }

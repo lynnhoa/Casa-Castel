@@ -228,4 +228,12 @@ async function ctlUpdateCategoryDefault(cat_id, default_amount) {
 /* ── Format helpers ─────────────────────────────────────────── */
 const ctlEur = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
 const ctlEur0 = v => Math.round(Number(v) || 0).toLocaleString('de-DE') + '\u202f€';
+/* Signed variant for cashflow: +170 €, −340 €, 0 € */
+const ctlEur0Signed = v => {
+  const n = Math.round(Number(v) || 0);
+  const s = Math.abs(n).toLocaleString('de-DE') + '\u202f€';
+  if (n > 0) return '+\u202f' + s;
+  if (n < 0) return '\u2212\u202f' + s;   // real minus sign
+  return s;
+};
 const ctlMonthName = m => ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][m-1];
