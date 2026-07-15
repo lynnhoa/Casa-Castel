@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="Controlling"/>
+  <meta name="theme-color" content="#F5F2ED"/>
+  <title>Controlling — Management</title>
+  <link rel="stylesheet" href="casa-castel.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="constants.js"></script>
+  <style>
+    /* ══ CONTROLLING-SPECIFIC ══ */
+    .ct-page       { padding: 16px 16px 60px; max-width: 1100px; margin: 0 auto; }
+    .ct-hdr        { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .ct-title      { font-family:'Cormorant Garamond',Georgia,serif; font-weight:300; font-size:32px; letter-spacing:.02em; color:var(--cc-ink); }
+    .ct-sub        { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); margin-top:2px; }
+
+    .ct-yr-switch  { display:flex; gap:0; border:0.5px solid var(--cc-rule); border-radius:20px; overflow:hidden; background:var(--cc-white); }
+    .ct-yr-switch button { padding:6px 14px; background:none; border:0; font:inherit; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-taupe); cursor:pointer; }
+    .ct-yr-switch button.active { background:var(--cc-ink); color:var(--cc-white); }
+
+    /* KPI cards */
+    .ct-kpis       { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px; }
+    .ct-kpi        { padding:14px 16px; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:10px; }
+    .ct-kpi__label { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); margin-bottom:6px; }
+    .ct-kpi__val   { font-family:'Cormorant Garamond',Georgia,serif; font-weight:400; font-size:24px; color:var(--cc-ink); }
+    .ct-kpi__val.neg { color:var(--cc-notice-text); }
+    .ct-kpi__sub   { font-size:10px; color:var(--cc-taupe); margin-top:4px; letter-spacing:.06em; }
+
+    /* Month tile strip */
+    .ct-months     { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:24px; }
+    @media (min-width:700px){ .ct-months { grid-template-columns:repeat(12,1fr); } }
+    .ct-month      { padding:10px 4px; text-align:center; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .ct-month__lbl { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); }
+    .ct-month__val { font-size:12px; font-weight:500; color:var(--cc-ink); margin-top:4px; }
+    .ct-month.done { background:var(--cc-surface); }
+    .ct-month.done .ct-month__lbl { color:var(--cc-gold-dk, #7A5A2A); }
+    .ct-month.pending .ct-month__val { color:var(--cc-notice-text); }
+    .ct-month.future { opacity:0.35; }
+    .ct-month.active { border-color:var(--cc-ink); border-width:1px; }
+
+    /* Property table */
+    .ct-tbl        { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:20px; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; overflow:hidden; }
+    .ct-tbl th     { text-align:left; padding:10px 12px; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-taupe); font-weight:500; background:var(--cc-surface); border-bottom:0.5px solid var(--cc-rule); }
+    .ct-tbl td     { padding:10px 12px; border-bottom:0.5px solid var(--cc-rule); color:var(--cc-charcoal); }
+    .ct-tbl tr:last-child td { border-bottom:0; }
+    .ct-tbl td.num, .ct-tbl th.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .ct-tbl tr.total td { font-weight:600; color:var(--cc-ink); background:var(--cc-surface); }
+    .ct-tbl td.neg { color:var(--cc-notice-text); }
+
+    /* Entry drawer */
+    .ct-drawer     { position:fixed; inset:0; z-index:500; background:var(--cc-bg); display:none; flex-direction:column; overflow:hidden; }
+    .ct-drawer.open { display:flex; }
+    .ct-drawer__hdr { display:flex; align-items:center; gap:10px; padding:max(14px,env(safe-area-inset-top,14px)) 14px 12px; background:var(--cc-white); border-bottom:0.5px solid var(--cc-rule); flex-shrink:0; }
+    .ct-drawer__close { width:36px; height:36px; display:flex; align-items:center; justify-content:center; background:none; border:0.5px solid var(--cc-rule); border-radius:50%; cursor:pointer; color:var(--cc-charcoal); }
+    .ct-drawer__ttl { flex:1; font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; color:var(--cc-ink); }
+    .ct-drawer__body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 14px calc(40px + env(safe-area-inset-bottom,0px)); }
+
+    .ct-section    { background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:10px; padding:14px; margin-bottom:14px; }
+    .ct-section__ttl { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+    .ct-section__actions { display:flex; gap:6px; }
+    .ct-btn-sm     { padding:5px 10px; font-size:10px; letter-spacing:.08em; text-transform:uppercase; border:0.5px solid var(--cc-rule); background:var(--cc-white); color:var(--cc-charcoal); border-radius:14px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .ct-btn-sm.primary { background:var(--cc-ink); color:var(--cc-white); border-color:var(--cc-ink); }
+
+    .ct-row        { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; padding:6px 0; border-bottom:0.5px solid var(--cc-rule); }
+    .ct-row:last-child { border-bottom:0; }
+    .ct-row__lbl   { font-size:13px; color:var(--cc-charcoal); }
+    .ct-row__lbl small { display:block; font-size:10px; color:var(--cc-taupe); letter-spacing:.06em; margin-top:1px; }
+    .ct-input      { width:100%; padding:7px 8px; font:inherit; font-size:13px; text-align:right; border:0.5px solid var(--cc-rule); border-radius:6px; background:var(--cc-white); font-variant-numeric:tabular-nums; color:var(--cc-ink); }
+    .ct-input:focus { outline:none; border-color:var(--cc-ink); }
+    .ct-input.dirty { background:#FFF9E8; }
+    .ct-input.zero  { color:var(--cc-stone); }
+
+    .ct-col-hdr    { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; margin-bottom:6px; }
+    .ct-col-hdr div { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); text-align:right; }
+    .ct-col-hdr div:first-child { text-align:left; }
+
+    /* Toast */
+    .ct-toast      { position:fixed; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); padding:8px 16px; background:var(--cc-ink); color:var(--cc-white); border-radius:16px; font-size:12px; letter-spacing:.06em; opacity:0; transition:opacity .2s; pointer-events:none; z-index:600; }
+    .ct-toast.show { opacity:1; }
+
+    /* Loading */
+    .ct-loading    { position:fixed; inset:0; background:rgba(245,242,237,0.7); display:none; align-items:center; justify-content:center; z-index:700; }
+    .ct-loading.show { display:flex; }
+    .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:ct-spin .8s linear infinite; }
+    @keyframes ct-spin { to { transform:rotate(360deg); } }
+
+    /* Setup tab lists */
+    .ct-list-row   { display:grid; grid-template-columns:24px 1fr auto; gap:10px; align-items:center; padding:10px 0; border-bottom:0.5px solid var(--cc-rule); }
+    .ct-list-row:last-child { border-bottom:0; }
+    .ct-list-row__no { font-size:11px; color:var(--cc-taupe); }
+    .ct-list-row__name { font-size:13px; color:var(--cc-ink); }
+    .ct-list-row__meta { font-size:11px; color:var(--cc-taupe); }
+  </style>
+</head>
+<body class="is-landlord">
+
+  <div class="app-shell visible" id="appShell" style="display:none;">
+    <div class="cc-header">
+      <nav class="cc-nav">
+        <a class="cc-nav__logo" href="#">Controlling</a>
+        <div class="nav-profile" id="navProfile">
+          <button class="cc-nav__icon" onclick="toggleProfileMenu()" aria-label="Menu">
+            <i class="ti ti-user"></i>
+          </button>
+          <div class="nav-profile-menu" id="navProfileMenu">
+            <button class="nav-profile-menu-item" onclick="location.href='properties.html'">Properties</button>
+            <button class="nav-profile-menu-item" onclick="location.href='rentals-index.html'">Rentals</button>
+            <button class="nav-profile-menu-item" onclick="location.href='landlord.html'">Casa Castel</button>
+            <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
+            <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
+          </div>
+        </div>
+      </nav>
+      <div class="cc-tabs" id="appTabs">
+        <button class="cc-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="cc-tab"        data-tab="entry">Monthly Entry</button>
+        <button class="cc-tab"        data-tab="setup">Setup</button>
+      </div>
+    </div>
+
+    <div class="cc-layout" id="appLayout">
+      <div class="cc-main" id="appMain">
+        <div class="tab-content" id="tab-dashboard"></div>
+        <div class="tab-content" id="tab-entry"    style="display:none;"></div>
+        <div class="tab-content" id="tab-setup"    style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monthly entry drawer -->
+  <div class="ct-drawer" id="ctDrawer">
+    <div class="ct-drawer__hdr">
+      <button class="ct-drawer__close" id="ctDrawerClose" aria-label="Close"><i class="ti ti-x"></i></button>
+      <div class="ct-drawer__ttl" id="ctDrawerTitle">—</div>
+    </div>
+    <div class="ct-drawer__body" id="ctDrawerBody"></div>
+  </div>
+
+  <!-- Toast + loading -->
+  <div class="ct-toast" id="ctToast"></div>
+  <div class="ct-loading" id="ctLoading"><div class="ct-loading__spinner"></div></div>
+
+  <script>
+    'use strict';
+    /* Profile menu (shared with other sub-apps) */
+    function toggleProfileMenu() {
+      document.getElementById('navProfileMenu')?.classList.toggle('open');
+    }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.nav-profile')) {
+        document.getElementById('navProfileMenu')?.classList.remove('open');
+      }
+    });
+    /* Tab switching */
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+      const el = document.getElementById('tab-' + tab);
+      if (el) el.style.display = 'block';
+      document.querySelectorAll('.cc-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      window.scrollTo(0, 0);
+      if (tab === 'dashboard') window.renderDashboard?.();
+      if (tab === 'entry')     window.renderEntry?.();
+      if (tab === 'setup')     window.renderSetup?.();
+    }
+    document.getElementById('appTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.cc-tab[data-tab]');
+      if (btn) switchTab(btn.dataset.tab);
+    });
+  </script>
+
+  <script src="controlling-auth.js"></script>
+  <script src="controlling-data.js"></script>
+  <script src="controlling-tab-dashboard.js"></script>
+  <script src="controlling-tab-entry.js"></script>
+  <script src="controlling-tab-setup.js"></script>
+  <script>
+    /* Kick off boot() defined in controlling-auth.js */
+    boot();
+  </script>
+</body>
+</html>
