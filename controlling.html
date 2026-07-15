@@ -124,6 +124,107 @@
     .ct-list-row__no { font-size:11px; color:var(--cc-taupe); }
     .ct-list-row__name { font-size:13px; color:var(--cc-ink); }
     .ct-list-row__meta { font-size:11px; color:var(--cc-taupe); }
+
+    /* ══ MOBILE — property tables become condensed cards ══ */
+    @media (max-width: 640px) {
+      .ct-page { padding:12px 12px 60px; }
+      .ct-title { font-size:26px; }
+      .ct-kpi__val { font-size:21px; }
+      .ct-toolbar { gap:6px 8px; }
+      .ct-yr-switch button { padding:6px 11px; font-size:10px; }
+
+      /* Hide the table header; each row is now a card */
+      #ctPropTbl thead { display:none; }
+      #ctPropTbl, #ctPropTbl tbody, #ctPropTbl tr, #ctPropTbl td { display:block; width:auto; }
+      #ctPropTbl { border:0; background:transparent; }
+
+      .ct-proprow, #ctPropTbl tr.total {
+        position:relative;
+        background:var(--cc-white);
+        border:0.5px solid var(--cc-rule);
+        border-radius:10px;
+        margin-bottom:8px;
+        padding:12px 14px;
+      }
+      #ctPropTbl tr.total { background:var(--cc-surface); }
+
+      /* Collapsed card: show only name (left) + cashflow (right) on the header line */
+      .ct-proprow td, #ctPropTbl tr.total td { border:0 !important; padding:0; }
+
+      /* Hide the # cell entirely on mobile */
+      .ct-proprow td[data-label="#"], #ctPropTbl tr.total td[data-label="#"] { display:none; }
+
+      /* Name = card title */
+      .ct-cell-name {
+        font-size:15px; font-weight:500; color:var(--cc-ink);
+        padding-right:90px !important;   /* room for the cashflow pinned right */
+        min-height:20px;
+      }
+
+      /* Cashflow pinned top-right of the card */
+      .ct-cell-cash {
+        position:absolute !important;
+        top:12px; right:36px;
+        font-size:15px; font-weight:600;
+        font-variant-numeric:tabular-nums;
+      }
+      #ctPropTbl tr.total .ct-cell-cash { right:14px; }
+
+      /* Chevron affordance on data rows (not the total) */
+      .ct-proprow::after {
+        content:'\25BE';                 /* ▾ unicode down-triangle, no icon font needed */
+        position:absolute; top:12px; right:13px;
+        color:var(--cc-taupe); font-size:13px;
+        transition:transform .2s;
+      }
+      .ct-proprow.expanded::after { transform:rotate(180deg); }
+
+      /* The supporting cells (Miete, Ausgaben, Status): hidden until expanded */
+      .ct-proprow td.num:not(.ct-cell-cash),
+      .ct-proprow td.ctr {
+        display:none;
+        padding:6px 0 0 !important;
+        font-size:13px; color:var(--cc-charcoal);
+        text-align:left;
+      }
+      .ct-proprow.expanded td.num:not(.ct-cell-cash),
+      .ct-proprow.expanded td.ctr {
+        display:flex; justify-content:space-between; align-items:center;
+      }
+      /* Label each revealed cell using its data-label */
+      .ct-proprow.expanded td.num:not(.ct-cell-cash)::before,
+      .ct-proprow.expanded td.ctr::before {
+        content:attr(data-label);
+        color:var(--cc-taupe); font-size:11px;
+        letter-spacing:.04em; font-variant-numeric:normal;
+      }
+      .ct-proprow.expanded td.num:not(.ct-cell-cash) { border-top:0.5px solid var(--cc-rule) !important; margin-top:4px; }
+
+      /* Total row on mobile: show its miete/ausgaben stacked, no chevron */
+      #ctPropTbl tr.total td.num:not(.ct-cell-cash) {
+        display:flex; justify-content:space-between;
+        padding:6px 0 0 !important; font-size:12px; color:var(--cc-taupe);
+      }
+      #ctPropTbl tr.total td.num:not(.ct-cell-cash)::before {
+        content:attr(data-label); font-size:11px; letter-spacing:.04em;
+      }
+      #ctPropTbl tr.total td.ct-cell-name { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-taupe); padding-right:90px !important; }
+
+      /* Erfassen button row inside an expanded month card */
+      .ct-erfassen-row { display:block !important; padding:0 !important; }
+
+      /* ── Einmalig property list → cards ── */
+      #ctOtPropList { display:block; }
+      #ctOtPropList tr { display:block; position:relative; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:10px; margin-bottom:8px; padding:12px 40px 12px 14px; }
+      #ctOtPropList td { display:inline; border:0 !important; padding:0; }
+      #ctOtPropList td:first-child { font-size:15px; font-weight:500; color:var(--cc-ink); }         /* name */
+      #ctOtPropList td:nth-child(2) { display:none; }                                                /* count — hide */
+      #ctOtPropList td:nth-child(3) { position:absolute; top:12px; right:34px; font-size:14px; font-variant-numeric:tabular-nums; } /* sum */
+      #ctOtPropList td:nth-child(4) { position:absolute; top:13px; right:12px; }                     /* chevron */
+
+      /* Any Setup table with horizontal scroll: let it scroll but tighten */
+      #tab-setup table { min-width:0 !important; }
+    }
   </style>
 </head>
 <body class="is-landlord">

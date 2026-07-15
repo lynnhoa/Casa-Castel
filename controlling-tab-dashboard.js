@@ -229,26 +229,70 @@ function renderYear() {
 
   let html = '';
   for (const { p, pMiete, pExp, pCash } of rows) {
+    const mLbl = _ctlDashMode === 'warm' ? 'Warmmiete' : 'Kaltmiete';
+    const aLbl = _ctlDashMode === 'warm' ? 'Ausgaben' : 'Ausg. o. HG';
     html +=
-      '<tr>' +
-        '<td>' + p.id + '</td>' +
-        '<td>' + p.name + '</td>' +
-        '<td class="num">' + ctlEur0(pMiete) + '</td>' +
-        '<td class="num">' + ctlEur0(pExp)   + '</td>' +
-        '<td class="num ' + (pCash < 0 ? 'neg' : '') + '">' + ctlEur0(pCash) + '</td>' +
+      '<tr class="ct-proprow" onclick="ctlPropRowExpand(event)">' +
+        '<td data-label="#">' + p.id + '</td>' +
+        '<td data-label="Immobilie" class="ct-cell-name">' + p.name + '</td>' +
+        '<td class="num" data-label="' + mLbl + '">' + ctlEur0(pMiete) + '</td>' +
+        '<td class="num" data-label="' + aLbl + '">' + ctlEur0(pExp)   + '</td>' +
+        '<td class="num ct-cell-cash ' + (pCash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(pCash) + '</td>' +
       '</tr>';
   }
   html +=
     '<tr class="total">' +
-      '<td></td><td>Gesamt</td>' +
-      '<td class="num">' + ctlEur0(tMiete) + '</td>' +
-      '<td class="num">' + ctlEur0(tExp)   + '</td>' +
-      '<td class="num ' + (tCash < 0 ? 'neg' : '') + '">' + ctlEur0(tCash) + '</td>' +
+      '<td data-label="#"></td><td data-label="Immobilie" class="ct-cell-name">Gesamt</td>' +
+      '<td class="num" data-label="Miete">' + ctlEur0(tMiete) + '</td>' +
+      '<td class="num" data-label="Ausgaben">' + ctlEur0(tExp)   + '</td>' +
+      '<td class="num ct-cell-cash ' + (tCash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(tCash) + '</td>' +
     '</tr>';
   document.getElementById('ctPropTblBody').innerHTML = html;
 }
 
+/* Year-view row: mobile tap just expands the breakdown (no drawer). */
+window.ctlPropRowExpand = function (ev) {
+  if (!window.matchMedia('(max-width: 640px)').matches) return;
+  const row = ev.currentTarget;
+  const was = row.classList.contains('expanded');
+  document.querySelectorAll('#ctPropTblBody .ct-proprow.expanded').forEach(r => { if (r !== row) r.classList.remove('expanded'); });
+  row.classList.toggle('expanded', !was);
+};
+
 /* ── Month view ─────────────────────────────────────────────── */
+/* Row click behavior differs by viewport:
+   · Desktop (>640px): open the entry drawer directly
+   · Mobile (<=640px): first tap expands the card; the revealed
+     "Erfassen" button opens the drawer                          */
+window.ctlPropRowClick = function (ev, pid, month) {
+  const isMobile = window.matchMedia('(max-width: 640px)').matches;
+  if (!isMobile) { ctlOpenEntry(pid, month); return; }
+  // Don't toggle if the Erfassen button itself was tapped
+  if (ev.target.closest('.ct-erfassen-btn')) return;
+  const row = ev.currentTarget;
+  const wasExpanded = row.classList.contains('expanded');
+  // Collapse siblings for a clean accordion feel
+  document.querySelectorAll('#ctPropTblBody .ct-proprow.expanded').forEach(r => {
+    if (r !== row) { r.classList.remove('expanded'); r.querySelector('.ct-erfassen-row')?.remove(); }
+  });
+  if (wasExpanded) {
+    row.classList.remove('expanded');
+    row.querySelector('.ct-erfassen-row')?.remove();
+  } else {
+    row.classList.add('expanded');
+    if (!row.querySelector('.ct-erfassen-row')) {
+      const td = document.createElement('td');
+      td.className = 'ct-erfassen-row';
+      td.setAttribute('colspan', '6');
+      td.innerHTML = '<button class="ct-btn-sm primary ct-erfassen-btn" ' +
+        'onclick="ctlOpenEntry(' + pid + ',' + month + ')" ' +
+        'style="width:100%;margin-top:10px;padding:9px;display:flex;align-items:center;justify-content:center;gap:6px;">' +
+        '<i class="ti ti-pencil"></i> Erfassen</button>';
+      row.appendChild(td);
+    }
+  }
+};
+
 function renderMonth(m) {
   let tMiete = 0, tExp = 0, tCash = 0;
   let html = '';
@@ -256,25 +300,27 @@ function renderMonth(m) {
     const s     = ctlPropertyMonth(p.id, m);
     const miete = pickMiete(s), exp = pickExp(s), cash = pickCash(s);
     tMiete += miete; tExp += exp; tCash += cash;
+    const mLbl = _ctlDashMode === 'warm' ? 'Warmmiete' : 'Kaltmiete';
+    const aLbl = _ctlDashMode === 'warm' ? 'Ausgaben' : 'Ausg. o. HG';
     html +=
-      '<tr style="cursor:pointer;" onclick="ctlOpenEntry(' + p.id + ',' + m + ')">' +
-        '<td>' + p.id + '</td>' +
-        '<td>' + p.name + '</td>' +
-        '<td class="num">' + ctlEur0(miete) + '</td>' +
-        '<td class="num">' + ctlEur0(exp)   + '</td>' +
-        '<td class="num ' + (cash < 0 ? 'neg' : '') + '">' + ctlEur0(cash) + '</td>' +
-        '<td class="ctr">' + statusIcon(p.id, m) + '</td>' +
+      '<tr class="ct-proprow" data-pid="' + p.id + '" data-month="' + m + '" onclick="ctlPropRowClick(event, ' + p.id + ',' + m + ')">' +
+        '<td data-label="#">' + p.id + '</td>' +
+        '<td data-label="Immobilie" class="ct-cell-name">' + p.name + '</td>' +
+        '<td class="num" data-label="' + mLbl + '">' + ctlEur0(miete) + '</td>' +
+        '<td class="num" data-label="' + aLbl + '">' + ctlEur0(exp)   + '</td>' +
+        '<td class="num ct-cell-cash ' + (cash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(cash) + '</td>' +
+        '<td class="ctr" data-label="Status">' + statusIcon(p.id, m) + '</td>' +
       '</tr>';
   }
   document.getElementById('ctKpiVal').textContent = ctlEur(tCash);
   document.getElementById('ctKpiVal').classList.toggle('neg', tCash < 0);
   html +=
     '<tr class="total">' +
-      '<td></td><td>Gesamt</td>' +
-      '<td class="num">' + ctlEur0(tMiete) + '</td>' +
-      '<td class="num">' + ctlEur0(tExp)   + '</td>' +
-      '<td class="num ' + (tCash < 0 ? 'neg' : '') + '">' + ctlEur0(tCash) + '</td>' +
-      '<td></td>' +
+      '<td data-label="#"></td><td data-label="Immobilie" class="ct-cell-name">Gesamt</td>' +
+      '<td class="num" data-label="Miete">' + ctlEur0(tMiete) + '</td>' +
+      '<td class="num" data-label="Ausgaben">' + ctlEur0(tExp)   + '</td>' +
+      '<td class="num ct-cell-cash ' + (tCash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(tCash) + '</td>' +
+      '<td data-label="Status"></td>' +
     '</tr>';
   document.getElementById('ctPropTblBody').innerHTML = html;
 }
