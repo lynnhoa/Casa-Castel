@@ -148,7 +148,7 @@
         border:0.5px solid var(--cc-rule);
         border-radius:14px;
         margin-bottom:10px;
-        padding:16px 18px;
+        padding:18px 20px;
         box-shadow:0 1px 3px rgba(60,50,40,0.03);
       }
       #ctPropTbl tr.total { background:var(--cc-surface); box-shadow:none; }
@@ -168,15 +168,17 @@
         letter-spacing:0;
       }
 
-      /* Cashflow — Cormorant serif to match the KPI number, signed + colored */
+      /* Cashflow — Cormorant serif with LINING figures (not oldstyle) */
       #ctPropTbl .ct-cell-cash {
         display:block;
-        position:absolute; top:15px; right:36px;
+        position:absolute; top:14px; right:38px;
         font-family:'Cormorant Garamond',Georgia,serif;
-        font-size:22px; font-weight:500;
-        font-variant-numeric:tabular-nums;
+        font-size:23px; font-weight:500;
+        font-feature-settings:'lnum' 1, 'tnum' 1;   /* lining + tabular */
+        font-variant-numeric:lining-nums tabular-nums;
         color:var(--cc-avail-text);
-        letter-spacing:.01em;
+        letter-spacing:.02em;
+        white-space:nowrap;
       }
       #ctPropTbl .ct-cell-cash.neg { color:var(--cc-notice-text); }
       #ctPropTbl tr.total .ct-cell-cash { right:18px; }
@@ -198,14 +200,14 @@
       #ctPropTbl .ct-proprow.expanded td.num:not(.ct-cell-cash),
       #ctPropTbl .ct-proprow.expanded td.ctr {
         display:flex; justify-content:space-between; align-items:baseline;
-        padding:10px 0 0;
+        padding:11px 0 0;
         font-family:'Inter',system-ui,sans-serif;
         font-size:14px; font-weight:400; color:var(--cc-ink);
-        font-variant-numeric:tabular-nums;
+        font-variant-numeric:lining-nums tabular-nums;
       }
       #ctPropTbl .ct-proprow.expanded td.num:not(.ct-cell-cash):first-of-type {
-        margin-top:14px; border-top:0.5px solid var(--cc-rule);
-        padding-top:14px;
+        margin-top:16px; border-top:0.5px solid var(--cc-rule);
+        padding-top:16px;
       }
       #ctPropTbl .ct-proprow.expanded td.num:not(.ct-cell-cash)::before,
       #ctPropTbl .ct-proprow.expanded td.ctr::before {
