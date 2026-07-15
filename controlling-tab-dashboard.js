@@ -76,6 +76,11 @@ document.getElementById('tab-dashboard').innerHTML = `
 
     <div class="ct-months" id="ctMonths"></div>
 
+    <div class="ct-cardhead" aria-hidden="true">
+      <span>Immobilie</span>
+      <span>Cashflow</span>
+    </div>
+
     <table class="ct-tbl" id="ctPropTbl">
       <thead>
         <tr>
