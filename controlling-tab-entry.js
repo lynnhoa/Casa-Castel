@@ -200,7 +200,7 @@ function renderDrawerBody(pid, month) {
         '<div style="font-size:13px; color:var(--cc-charcoal);">' +
           (otCount === 0
             ? '<span style="color:var(--cc-stone);">Keine Einträge</span>'
-            : otCount + ' Eintrag' + (otCount === 1 ? '' : 'e') + ' · <strong style="font-variant-numeric:tabular-nums;">' + ctlEur(otTotal) + '</strong>') +
+            : (otCount === 1 ? '1 Eintrag' : otCount + ' Einträge') + ' · <strong style="font-variant-numeric:tabular-nums;">' + ctlEur(otTotal) + '</strong>') +
         '</div>' +
         '<small style="font-size:10px; letter-spacing:.08em; color:var(--cc-taupe);">Erfassung im Einmalig-Tab</small>' +
       '</div>' +

@@ -189,8 +189,8 @@ function renderOtDrawerBody(pid) {
     '<div class="ct-section" style="margin-bottom:14px;">' +
       '<div style="text-align:center;padding:4px 0;">' +
         '<div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:6px;">Summe · ' + scopeLbl + '</div>' +
-        '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:28px;color:var(--cc-ink);font-variant-numeric:tabular-nums;">' + ctlEur(total) + '</div>' +
-        '<div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;">' + entries.length + ' Eintrag' + (entries.length === 1 ? '' : 'e') + '</div>' +
+        '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:28px;color:var(--cc-ink);font-feature-settings:\'lnum\' 1,\'tnum\' 1;font-variant-numeric:lining-nums tabular-nums;">' + ctlEur(total) + '</div>' +
+        '<div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;">' + (entries.length === 1 ? '1 Eintrag' : entries.length + ' Einträge') + '</div>' +
       '</div>' +
     '</div>';
 
