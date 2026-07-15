@@ -246,17 +246,19 @@
         font-feature-settings:'lnum' 1,'tnum' 1;
         font-variant-numeric:lining-nums tabular-nums;
       }
-      #ctPropTbl tr.total td.num:not(.ct-cell-cash) {
-        display:flex !important; justify-content:space-between;
+      #ctPropTbl tr.total td.ct-total-detail {
+        display:flex; justify-content:space-between;
         font-family:'Inter',system-ui,sans-serif !important;
         padding:9px 0 0; font-size:13px; color:var(--cc-taupe);
+        font-feature-settings:'lnum' 1,'tnum' 1 !important;
         font-variant-numeric:lining-nums tabular-nums !important;
+        font-weight:400;
       }
-      #ctPropTbl tr.total td.num:not(.ct-cell-cash)::before {
+      #ctPropTbl tr.total td.ct-total-detail::before {
         content:attr(data-label); font-size:12px; letter-spacing:.01em;
-        font-family:'Inter',system-ui,sans-serif;
+        font-family:'Inter',system-ui,sans-serif !important;
       }
-      #ctPropTbl tr.total td.num:not(.ct-cell-cash):first-of-type {
+      #ctPropTbl tr.total td[data-label="Miete"] {
         margin-top:12px; border-top:0.5px solid var(--cc-rule); padding-top:12px;
       }
 

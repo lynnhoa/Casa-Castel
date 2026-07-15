@@ -249,8 +249,8 @@ function renderYear() {
   html +=
     '<tr class="total">' +
       '<td data-label="#"></td><td data-label="Immobilie" class="ct-cell-name">Gesamt</td>' +
-      '<td class="num" data-label="Miete">' + ctlEur0(tMiete) + '</td>' +
-      '<td class="num" data-label="Ausgaben">' + ctlEur0(tExp)   + '</td>' +
+      '<td class="num ct-total-detail" data-label="Miete">' + ctlEur0(tMiete) + '</td>' +
+      '<td class="num ct-total-detail" data-label="Ausgaben">' + ctlEur0(tExp)   + '</td>' +
       '<td class="num ct-cell-cash ' + (tCash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(tCash) + '</td>' +
     '</tr>';
   document.getElementById('ctPropTblBody').innerHTML = html;
@@ -323,8 +323,8 @@ function renderMonth(m) {
   html +=
     '<tr class="total">' +
       '<td data-label="#"></td><td data-label="Immobilie" class="ct-cell-name">Gesamt</td>' +
-      '<td class="num" data-label="Miete">' + ctlEur0(tMiete) + '</td>' +
-      '<td class="num" data-label="Ausgaben">' + ctlEur0(tExp)   + '</td>' +
+      '<td class="num ct-total-detail" data-label="Miete">' + ctlEur0(tMiete) + '</td>' +
+      '<td class="num ct-total-detail" data-label="Ausgaben">' + ctlEur0(tExp)   + '</td>' +
       '<td class="num ct-cell-cash ' + (tCash < 0 ? 'neg' : '') + '" data-label="Cashflow">' + ctlEur0(tCash) + '</td>' +
       '<td data-label="Status"></td>' +
     '</tr>';
