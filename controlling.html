@@ -91,6 +91,10 @@
     .ct-btn-sm     { padding:5px 10px; font-size:10px; letter-spacing:.08em; text-transform:uppercase; border:0.5px solid var(--cc-rule); background:var(--cc-white); color:var(--cc-charcoal); border-radius:14px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .ct-btn-sm.primary { background:var(--cc-ink); color:var(--cc-white); border-color:var(--cc-ink); }
 
+    /* Suggestion chip — tap to fill an open field with a proposed value */
+    .ct-chip       { text-transform:none; letter-spacing:0; font-size:11px; color:var(--cc-avail-text); border-color:var(--cc-avail-bdr); background:var(--cc-avail-bg); border-radius:12px; white-space:nowrap; }
+    .ct-chip:active { background:var(--cc-avail-bdr); }
+
     .ct-row        { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; padding:6px 0; border-bottom:0.5px solid var(--cc-rule); }
     .ct-row:last-child { border-bottom:0; }
     .ct-row__lbl   { font-size:13px; color:var(--cc-charcoal); }

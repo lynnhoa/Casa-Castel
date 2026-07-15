@@ -76,45 +76,88 @@ function renderDrawerBody(pid, month) {
   const units = ctlUnitsOf(pid);
   const isCasa = pid === CASA_PROP_ID;
 
-  /* Income section — one row per unit */
-  let incomeHtml = '';
-  incomeHtml += '<div class="ct-col-hdr"><div>Einheit</div><div>Kaltmiete</div><div>Nebenkosten</div></div>';
+  const fmtChip = v => (Number(v) % 1 === 0 ? String(Number(v)) : Number(v).toFixed(2).replace('.', ','));
+
+  /* One entry row: input shows ONLY the saved value; suggestions are chips outside. */
+  function entryRow(lbl, sub, isOpen, val, chips, dataAttrs) {
+    const openTag = isOpen
+      ? (sub ? ' · ' : '') + '<span style="color:var(--cc-notice-text);font-weight:600;">offen</span>'
+      : '';
+    const savedMark = !isOpen
+      ? '<i class="ti ti-check" style="color:var(--cc-avail-text);font-size:14px;"></i>'
+      : '';
+    let chipsHtml = '';
+    if (isOpen && chips.length) {
+      chipsHtml = chips.map(c =>
+        '<button class="ct-btn-sm ct-chip" ' + dataAttrs + ' data-chip-amt="' + c.amount + '" ' +
+          'style="font-variant-numeric:tabular-nums;padding:4px 8px;">' + c.label + '</button>'
+      ).join('');
+    }
+    return (
+      '<div class="ct-row" style="grid-template-columns:1fr 88px minmax(56px,auto);">' +
+        '<div class="ct-row__lbl">' + lbl + (sub || openTag ? '<small>' + (sub || '') + openTag + '</small>' : '') + '</div>' +
+        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
+          dataAttrs + ' value="' + (val === '' ? '' : val) + '" placeholder=""/>' +
+        '<div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">' +
+          savedMark + chipsHtml +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  /* ── Einnahmen ──────────────────────────────────────────────── */
+  let incomeFilled = 0;
+  let incomeHtml = '<div class="ct-col-hdr" style="grid-template-columns:1fr 88px minmax(56px,auto);"><div>Einheit</div><div>Betrag</div><div></div></div>';
   for (const u of units) {
     const row  = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month);
     const prev = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month - 1);
-    const kalt  = row?.kaltmiete   ?? '';
-    const neben = row?.nebenkosten ?? '';
-    const defK  = row?.kaltmiete   ?? prev?.kaltmiete   ?? u.def_kaltmiete   ?? '';
-    const defN  = row?.nebenkosten ?? prev?.nebenkosten ?? u.def_nebenkosten ?? '';
-    incomeHtml +=
-      '<div class="ct-row">' +
-        '<div class="ct-row__lbl">' + u.name + '<small>' + (u.unit_type || '') + '</small></div>' +
-        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
-          'data-kind="income-kalt" data-unit="' + u.id + '" ' +
-          'value="' + (kalt === '' ? '' : kalt) + '" placeholder="' + (defK === '' ? '0' : defK) + '"/>' +
-        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
-          'data-kind="income-neben" data-unit="' + u.id + '" ' +
-          'value="' + (neben === '' ? '' : neben) + '" placeholder="' + (defN === '' ? '0' : defN) + '"/>' +
-      '</div>';
+    if (row) incomeFilled++;
+
+    const kOpen  = !row || row.kaltmiete === null || row.kaltmiete === undefined;
+    const kChips = [];
+    if (kOpen) {
+      const s = prev?.kaltmiete ?? u.def_kaltmiete;
+      if (s !== null && s !== undefined) kChips.push({ amount: s, label: fmtChip(s) });
+      if (Number(s) !== 0) kChips.push({ amount: 0, label: '0' });
+    }
+    incomeHtml += entryRow(u.name, 'Kaltmiete', kOpen, row?.kaltmiete ?? '', kChips.slice(0,2), 'data-kind="income-kalt" data-unit="' + u.id + '"');
+
+    const nOpen  = !row || row.nebenkosten === null || row.nebenkosten === undefined;
+    const nChips = [];
+    if (nOpen) {
+      const s = prev?.nebenkosten ?? u.def_nebenkosten;
+      if (s !== null && s !== undefined) nChips.push({ amount: s, label: fmtChip(s) });
+      if (Number(s) !== 0) nChips.push({ amount: 0, label: '0' });
+    }
+    incomeHtml += entryRow('&nbsp;', 'Nebenkosten', nOpen, row?.nebenkosten ?? '', nChips.slice(0,2), 'data-kind="income-neben" data-unit="' + u.id + '"');
   }
 
-  /* Expense section */
-  let expenseHtml = '';
+  /* ── Ausgaben ───────────────────────────────────────────────── */
+  let expenseHtml = '', expFilled = 0, expTotalRows = 0;
   if (isCasa) {
-    expenseHtml += '<div class="ct-col-hdr"><div>Kategorie</div><div>Betrag</div><div></div></div>';
+    expTotalRows = window._ctrl.categories.length;
+    expenseHtml += '<div class="ct-col-hdr" style="grid-template-columns:1fr 88px minmax(56px,auto);"><div>Kategorie</div><div>Betrag</div><div></div></div>';
     for (const c of window._ctrl.categories) {
       const row  = window._ctrl.castel_expenses.find(r => r.category_id === c.id && r.year === y && r.month === month);
       const prev = window._ctrl.castel_expenses.find(r => r.category_id === c.id && r.year === y && r.month === month - 1);
-      const val  = row?.amount ?? '';
-      const def  = row?.amount ?? prev?.amount ?? c.default_amount ?? '';
-      expenseHtml +=
-        '<div class="ct-row">' +
-          '<div class="ct-row__lbl">' + c.name + '<small>' + (c.frequency || '') + '</small></div>' +
-          '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
-            'data-kind="castel" data-cat="' + c.id + '" ' +
-            'value="' + (val === '' ? '' : val) + '" placeholder="' + (def === '' ? '0' : def) + '"/>' +
-          '<div></div>' +
-        '</div>';
+      if (row) expFilled++;
+      const isOpen = !row;
+      const chips  = [];
+      if (isOpen) {
+        const isDue = Array.isArray(c.due_months) && c.due_months.includes(month);
+        if (isDue && c.default_amount !== null && c.default_amount !== undefined) {
+          chips.push({ amount: c.default_amount, label: fmtChip(c.default_amount) });
+          if (Number(c.default_amount) !== 0) chips.push({ amount: 0, label: '0' });
+        } else if (!isDue && Array.isArray(c.due_months) && c.due_months.length) {
+          chips.push({ amount: 0, label: '0' });
+          if (c.default_amount) chips.push({ amount: c.default_amount, label: fmtChip(c.default_amount) });
+        } else {
+          const s = prev?.amount;
+          if (s !== null && s !== undefined && Number(s) !== 0) chips.push({ amount: s, label: fmtChip(s) });
+          chips.push({ amount: 0, label: '0' });
+        }
+      }
+      expenseHtml += entryRow(c.name, c.frequency || '', isOpen, row?.amount ?? '', chips.slice(0,2), 'data-kind="castel" data-cat="' + c.id + '"');
     }
   } else {
     const p = ctlProp(pid);
@@ -124,26 +167,26 @@ function renderDrawerBody(pid, month) {
       { key: 'rate',        lbl: 'Rate',        sub: 'Zinsen + Tilgung' },
       { key: 'zinsen',      lbl: 'Zinsen',      sub: '' },
       { key: 'tilgung',     lbl: 'Tilgung',     sub: '' },
-      { key: 'hausgeld',    lbl: 'Hausgeld',    sub: 'passthrough' },
+      { key: 'hausgeld',    lbl: 'Hausgeld',    sub: 'durchlaufend' },
       { key: 'grundsteuer', lbl: 'Grundsteuer', sub: '' },
       { key: 'strom',       lbl: 'Strom',       sub: '' },
     ];
-    expenseHtml += '<div class="ct-col-hdr"><div></div><div>Aktuell</div><div></div></div>';
+    expTotalRows = fields.length;
+    expenseHtml += '<div class="ct-col-hdr" style="grid-template-columns:1fr 88px minmax(56px,auto);"><div></div><div>Betrag</div><div></div></div>';
     for (const f of fields) {
-      const val = row?.[f.key] ?? '';
-      const def = row?.[f.key] ?? prev?.[f.key] ?? p['def_' + f.key] ?? '';
-      expenseHtml +=
-        '<div class="ct-row">' +
-          '<div class="ct-row__lbl">' + f.lbl + (f.sub ? '<small>' + f.sub + '</small>' : '') + '</div>' +
-          '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
-            'data-kind="apt" data-field="' + f.key + '" ' +
-            'value="' + (val === '' ? '' : val) + '" placeholder="' + (def === '' ? '0' : def) + '"/>' +
-          '<div></div>' +
-        '</div>';
+      const isOpen = !row || row[f.key] === null || row[f.key] === undefined;
+      if (!isOpen) expFilled++;
+      const chips = [];
+      if (isOpen) {
+        const s = prev?.[f.key] ?? p['def_' + f.key];
+        if (s !== null && s !== undefined && Number(s) !== 0) chips.push({ amount: s, label: fmtChip(s) });
+        chips.push({ amount: 0, label: '0' });
+      }
+      expenseHtml += entryRow(f.lbl, f.sub, isOpen, row?.[f.key] ?? '', chips.slice(0,2), 'data-kind="apt" data-field="' + f.key + '"');
     }
   }
 
-  /* One-time section — read-only summary + deep-link to Einmalig tab */
+  /* ── One-time summary ───────────────────────────────────────── */
   const ots = window._ctrl.one_time.filter(o => {
     if (o.property_id !== pid) return false;
     const d = ctlParseDate(o.invoice_date);
@@ -166,26 +209,30 @@ function renderDrawerBody(pid, month) {
       '</button>' +
     '</div>';
 
+  const hint = '<div style="font-size:10px;color:var(--cc-taupe);margin:-4px 0 10px;letter-spacing:.03em;">Füllt nur offene Felder — gespeicherte Werte bleiben unverändert.</div>';
+
   return `
     <div class="ct-section">
       <div class="ct-section__ttl">
-        <span>Income</span>
+        <span>Einnahmen · ${incomeFilled}/${units.length} erfasst</span>
         <div class="ct-section__actions">
-          <button class="ct-btn-sm" id="ctFillIncomeDefaults">Confirm as expected</button>
-          <button class="ct-btn-sm" id="ctFillIncomePrev">Copy previous</button>
+          <button class="ct-btn-sm" id="ctFillIncomeDefaults" title="Offene Felder aus Standardplan füllen">Plan übernehmen</button>
+          <button class="ct-btn-sm" id="ctFillIncomePrev" title="Offene Felder aus Vormonat füllen">Wie Vormonat</button>
         </div>
       </div>
+      ${hint}
       ${incomeHtml}
     </div>
 
     <div class="ct-section">
       <div class="ct-section__ttl">
-        <span>${isCasa ? 'Casa Castel — Kosten' : 'Ausgaben'}</span>
+        <span>${isCasa ? 'Kosten' : 'Ausgaben'} · ${expFilled}/${expTotalRows} erfasst</span>
         <div class="ct-section__actions">
-          <button class="ct-btn-sm" id="ctFillExpDefaults">Confirm as expected</button>
-          <button class="ct-btn-sm" id="ctFillExpPrev">Copy previous</button>
+          <button class="ct-btn-sm" id="ctFillExpDefaults" title="Offene Felder aus Standardplan füllen">Plan übernehmen</button>
+          <button class="ct-btn-sm" id="ctFillExpPrev" title="Offene Felder aus Vormonat füllen">Wie Vormonat</button>
         </div>
       </div>
+      ${hint}
       ${expenseHtml}
     </div>
 
@@ -198,13 +245,32 @@ function renderDrawerBody(pid, month) {
   `;
 }
 
-/* ── Wire drawer inputs (save on blur) and action buttons ───── */
+/* ── Wire drawer inputs (save on blur), chips, and action buttons ── */
 function wireDrawerActions() {
   const body = document.getElementById('ctDrawerBody');
 
   body.querySelectorAll('input.ct-input').forEach(inp => {
     inp.addEventListener('focus', () => inp.classList.add('dirty'));
     inp.addEventListener('blur',  () => saveOne(inp));
+  });
+
+  // Suggestion chips: write the value into the matching input, then save
+  body.querySelectorAll('button.ct-chip').forEach(chip => {
+    chip.addEventListener('click', async () => {
+      const amt = Number(chip.dataset.chipAmt);
+      // find the sibling input in the same row by matching data attributes
+      let sel = 'input.ct-input[data-kind="' + chip.dataset.kind + '"]';
+      if (chip.dataset.unit)  sel += '[data-unit="'  + chip.dataset.unit  + '"]';
+      if (chip.dataset.cat)   sel += '[data-cat="'   + chip.dataset.cat   + '"]';
+      if (chip.dataset.field) sel += '[data-field="' + chip.dataset.field + '"]';
+      const inp = body.querySelector(sel);
+      if (!inp) return;
+      inp.value = amt;
+      await saveOne(inp);
+      // re-render so the row flips from "offen" to saved with ✓ and progress count updates
+      document.getElementById('ctDrawerBody').innerHTML = renderDrawerBody(_ctlDrawer.pid, _ctlDrawer.month);
+      wireDrawerActions();
+    });
   });
 
   document.getElementById('ctFillIncomeDefaults')?.addEventListener('click', () => fillIncome('defaults'));
@@ -280,7 +346,17 @@ async function fillExpense(mode) {
       if (cur) continue;
       let amt = null;
       if (mode === 'defaults') {
-        if (c.frequency === 'monatlich' || c.frequency === 'sporadisch') amt = c.default_amount ?? null;
+        const hasSchedule = Array.isArray(c.due_months) && c.due_months.length;
+        const isDue       = hasSchedule && c.due_months.includes(month);
+        if (isDue) {
+          amt = c.default_amount ?? null;            // due this month → standing amount
+        } else if (hasSchedule) {
+          amt = 0;                                   // scheduled but not due → explicit 0
+        } else if (c.frequency === 'monatlich') {
+          amt = c.default_amount ?? null;            // monatlich w/o schedule → default
+        } else {
+          amt = null;                                // sporadisch → leave open
+        }
       } else {
         const prev = window._ctrl.castel_expenses.find(r => r.category_id === c.id && r.year === y && r.month === month - 1);
         amt = prev?.amount ?? null;
