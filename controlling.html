@@ -50,6 +50,7 @@
     .ct-tbl td     { padding:10px 12px; border-bottom:0.5px solid var(--cc-rule); color:var(--cc-charcoal); }
     .ct-tbl tr:last-child td { border-bottom:0; }
     .ct-tbl td.num, .ct-tbl th.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .ct-tbl td.ctr, .ct-tbl th.ctr { text-align:center; }
     .ct-tbl tr.total td { font-weight:600; color:var(--cc-ink); background:var(--cc-surface); }
     .ct-tbl td.neg { color:var(--cc-notice-text); }
 
@@ -119,7 +120,6 @@
       </nav>
       <div class="cc-tabs" id="appTabs">
         <button class="cc-tab active" data-tab="dashboard">Dashboard</button>
-        <button class="cc-tab"        data-tab="entry">Monthly Entry</button>
         <button class="cc-tab"        data-tab="setup">Setup</button>
       </div>
     </div>
@@ -127,13 +127,12 @@
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
         <div class="tab-content" id="tab-dashboard"></div>
-        <div class="tab-content" id="tab-entry"    style="display:none;"></div>
         <div class="tab-content" id="tab-setup"    style="display:none;"></div>
       </div>
     </div>
   </div>
 
-  <!-- Monthly entry drawer -->
+  <!-- Monthly entry drawer (available from Dashboard Month-view row clicks) -->
   <div class="ct-drawer" id="ctDrawer">
     <div class="ct-drawer__hdr">
       <button class="ct-drawer__close" id="ctDrawerClose" aria-label="Close"><i class="ti ti-x"></i></button>
@@ -165,7 +164,6 @@
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
       window.scrollTo(0, 0);
       if (tab === 'dashboard') window.renderDashboard?.();
-      if (tab === 'entry')     window.renderEntry?.();
       if (tab === 'setup')     window.renderSetup?.();
     }
     document.getElementById('appTabs').addEventListener('click', e => {

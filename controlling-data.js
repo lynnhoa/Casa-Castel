@@ -2,18 +2,11 @@
    CONTROLLING — DATA LAYER
    controlling-data.js
 
-   Fetches all Controlling tables into window._ctrl, provides
-   derived KPI helpers, and writes updates back to Supabase.
-
    Kalt view logic:
      · Apartments:  Ausgaben o. Hausgeld  (Hausgeld = passthrough)
-     · Casa Castel: only Rate stays; every other category (Wasser,
-                    Strom, Gas, Internet, Grundsteuer, Versicherung,
-                    Wartung, Gärtner, etc.) is a Betriebskosten
-                    passthrough covered by tenant Nebenkosten.
-
-   window._ctrl = { year, properties, units, categories, income,
-                    apt_expenses, castel_expenses, one_time, recon }
+     · Casa Castel: only Rate stays; every other category is a
+                    Betriebskosten passthrough covered by tenant
+                    Nebenkosten.
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -59,8 +52,6 @@ function ctlCat(cid)    { return window._ctrl.categories.find(c => c.id === cid)
 function ctlUnitsOf(pid){ return window._ctrl.units.filter(u => u.property_id === pid); }
 
 /* ── Per-property monthly aggregation ───────────────────────── */
-/* Returns { kalt, neben, warm, exp_total, exp_passthru, exp_net,
-             gesamt, netto_kalt } for one property in one month.  */
 function ctlPropertyMonth(pid, month) {
   const y = window._ctrl.year;
   const unitIds = ctlUnitsOf(pid).map(u => u.id);
@@ -74,8 +65,6 @@ function ctlPropertyMonth(pid, month) {
 
   let expTotal = 0, expPassthru = 0;
   if (pid === CASA_PROP_ID) {
-    // Casa: only categories in CASA_KALT_CODES are owner costs (kept in Kalt).
-    // Every other Casa category is a Betriebskosten passthrough.
     for (const row of window._ctrl.castel_expenses) {
       if (row.year !== y || row.month !== month) continue;
       const cat = ctlCat(row.category_id);
@@ -84,7 +73,6 @@ function ctlPropertyMonth(pid, month) {
       if (!cat || !CASA_KALT_CODES.includes(cat.code)) expPassthru += amt;
     }
   } else {
-    // Apartments: Hausgeld is the passthrough aggregator.
     for (const row of window._ctrl.apt_expenses) {
       if (row.year !== y || row.month !== month) continue;
       if (row.property_id !== pid) continue;
@@ -92,7 +80,6 @@ function ctlPropertyMonth(pid, month) {
       const hausgeld = Number(row.hausgeld   || 0);
       const grund    = Number(row.grundsteuer|| 0);
       const strom    = Number(row.strom      || 0);
-      // Rate already = Zinsen + Tilgung; do NOT add zinsen/tilgung again
       expTotal    += rate + hausgeld + grund + strom;
       expPassthru += hausgeld;
     }
@@ -130,8 +117,6 @@ function ctlPortfolioYear() {
   return acc;
 }
 
-/* Helper: is a given month "filled" for the whole portfolio?
-   True if at least one Income row exists that month. */
 function ctlMonthStatus(month) {
   const y = window._ctrl.year;
   const now = new Date();
@@ -179,9 +164,9 @@ async function ctlUpsertCastel(category_id, month, amount) {
   return data;
 }
 
-async function ctlInsertOneTime(property_id, invoice_date, item, amount) {
+async function ctlInsertOneTime(property_id, invoice_date, item, amount, company) {
   const { data, error } = await _ctlSupa.from('ctrl_expense_one_time')
-    .insert({ property_id, invoice_date, item, amount }).select().single();
+    .insert({ property_id, invoice_date, item, amount, company: company ?? null }).select().single();
   if (error) throw error;
   window._ctrl.one_time.push(data);
   return data;

@@ -1,92 +1,22 @@
 /* ─────────────────────────────────────────────────────────────
-   CONTROLLING — MONTHLY ENTRY TAB + DRAWER
+   CONTROLLING — ENTRY DRAWER
    controlling-tab-entry.js
 
-   Landing: property list × month picker. Tap a cell → drawer.
-   Drawer sections:
+   Drawer opens from the Dashboard Month-view row click. No tab
+   shell anymore — the Monthly Entry tab was consolidated into
+   the Dashboard's Month view (status column).
+
+   Sections in the drawer:
      · Income (per unit)
      · Expenses (apartment cols OR Casa categories)
-     · One-Time (list + add)
-   Two big actions:
-     · Confirm as expected  — fills empty fields from defaults
-     · Copy from previous   — fills empty fields from last month
-   All inputs save on blur.
+     · Einmalige Ausgaben (Datum · Firma · Beschreibung · Betrag)
 
    Depends on: controlling-data.js
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
 
-let _ctlEntryMonth = new Date().getMonth() + 1;
-
-document.getElementById('tab-entry').innerHTML = `
-  <div class="ct-page">
-    <div class="ct-hdr">
-      <div>
-        <h1 class="ct-title">Monthly Entry</h1>
-        <div class="ct-sub" id="ctEntrySub">— · Tippe eine Immobilie</div>
-      </div>
-    </div>
-
-    <!-- Month picker -->
-    <div class="ct-months" id="ctEntryMonths" style="margin-bottom:16px;"></div>
-
-    <!-- Property list — same table as dashboard, but every row opens the drawer -->
-    <table class="ct-tbl">
-      <thead>
-        <tr>
-          <th style="width:20px;">#</th>
-          <th>Immobilie</th>
-          <th class="num">Kaltmiete</th>
-          <th class="num">Ausgaben</th>
-          <th class="num">Status</th>
-        </tr>
-      </thead>
-      <tbody id="ctEntryTblBody"></tbody>
-    </table>
-  </div>
-`;
-
-window.renderEntry = function () {
-  document.getElementById('ctEntrySub').textContent =
-    ctlMonthName(_ctlEntryMonth) + ' ' + window._ctrl.year + ' · Tippe eine Immobilie';
-  // month strip
-  const strip = document.getElementById('ctEntryMonths');
-  strip.innerHTML = '';
-  for (let m = 1; m <= 12; m++) {
-    const status = ctlMonthStatus(m);
-    const tile = document.createElement('div');
-    tile.className = 'ct-month ' + status + (m === _ctlEntryMonth ? ' active' : '');
-    tile.innerHTML =
-      '<div class="ct-month__lbl">' + ctlMonthName(m) + '</div>' +
-      '<div class="ct-month__val">' +
-        (status === 'done' ? '<i class="ti ti-check"></i>' :
-         status === 'pending' ? '<i class="ti ti-point-filled" style="color:var(--cc-gold);"></i>' :
-         '—') +
-      '</div>';
-    tile.addEventListener('click', () => { _ctlEntryMonth = m; window.renderEntry(); });
-    strip.appendChild(tile);
-  }
-  // property table
-  const tbody = document.getElementById('ctEntryTblBody');
-  let rows = '';
-  for (const p of window._ctrl.properties.filter(x => x.active)) {
-    const s = ctlPropertyMonth(p.id, _ctlEntryMonth);
-    const filled = hasEntriesFor(p.id, _ctlEntryMonth);
-    rows +=
-      '<tr style="cursor:pointer;" onclick="ctlOpenEntry(' + p.id + ',' + _ctlEntryMonth + ')">' +
-        '<td>' + p.id + '</td>' +
-        '<td>' + p.name + '</td>' +
-        '<td class="num">' + ctlEur0(s.kalt) + '</td>' +
-        '<td class="num">' + ctlEur0(s.exp_total) + '</td>' +
-        '<td class="num" style="color:' + (filled ? 'var(--cc-gold-dk,#7A5A2A)' : 'var(--cc-taupe)') + ';">' +
-          (filled ? '<i class="ti ti-check"></i>' : '<i class="ti ti-pencil"></i>') +
-        '</td>' +
-      '</tr>';
-  }
-  tbody.innerHTML = rows;
-};
-
+/* Used by dashboard to draw the Status icon per property row. */
 function hasEntriesFor(pid, month) {
   const y = window._ctrl.year;
   const unitIds = ctlUnitsOf(pid).map(u => u.id);
@@ -114,9 +44,7 @@ window.ctlOpenEntry = function (pid, month) {
 
 document.getElementById('ctDrawerClose').addEventListener('click', () => {
   document.getElementById('ctDrawer').classList.remove('open');
-  // Refresh dashboard + entry view because numbers likely changed
   window.renderDashboard?.();
-  window.renderEntry?.();
 });
 
 function renderDrawerBody(pid, month) {
@@ -128,7 +56,7 @@ function renderDrawerBody(pid, month) {
   let incomeHtml = '';
   incomeHtml += '<div class="ct-col-hdr"><div>Einheit</div><div>Kaltmiete</div><div>Nebenkosten</div></div>';
   for (const u of units) {
-    const row = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month);
+    const row  = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month);
     const prev = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month - 1);
     const kalt  = row?.kaltmiete   ?? '';
     const neben = row?.nebenkosten ?? '';
@@ -191,26 +119,31 @@ function renderDrawerBody(pid, month) {
     }
   }
 
-  /* One-time section */
+  /* One-time section — list existing + add form */
   const ots = window._ctrl.one_time
     .filter(o => o.property_id === pid && new Date(o.invoice_date).getMonth() + 1 === month && new Date(o.invoice_date).getFullYear() === y)
     .sort((a, b) => (a.invoice_date < b.invoice_date ? -1 : 1));
   let oneTimeHtml = '';
   if (ots.length) {
-    oneTimeHtml += '<div class="ct-col-hdr"><div>Datum · Item</div><div>Betrag</div><div></div></div>';
+    oneTimeHtml += '<div class="ct-col-hdr"><div>Beschreibung</div><div>Betrag</div><div></div></div>';
     for (const o of ots) {
+      const sub = [o.company, o.invoice_date].filter(Boolean).join(' · ');
       oneTimeHtml +=
         '<div class="ct-row">' +
-          '<div class="ct-row__lbl">' + o.invoice_date + '<small>' + (o.item || '') + '</small></div>' +
+          '<div class="ct-row__lbl">' + (o.item || '—') + '<small>' + sub + '</small></div>' +
           '<div class="ct-row__lbl" style="text-align:right;font-variant-numeric:tabular-nums;">' + ctlEur(o.amount) + '</div>' +
           '<div style="text-align:right;"><button class="ct-btn-sm" onclick="ctlRemoveOneTime(' + o.id + ')"><i class="ti ti-trash"></i></button></div>' +
         '</div>';
     }
   }
+  // Add form: row 1 = Date + Firma, row 2 = Beschreibung + Betrag + Add
   oneTimeHtml +=
-    '<div style="display:grid;grid-template-columns:110px 1fr 90px 40px;gap:6px;margin-top:10px;align-items:center;">' +
-      '<input class="ct-input" type="date"   id="ctOtDate" style="text-align:left;" value="' + window._ctrl.year + '-' + String(month).padStart(2,'0') + '-01"/>' +
-      '<input class="ct-input" type="text"   id="ctOtItem" style="text-align:left;" placeholder="Item"/>' +
+    '<div style="display:grid;grid-template-columns:120px 1fr;gap:6px;margin-top:10px;">' +
+      '<input class="ct-input" type="date" id="ctOtDate" style="text-align:left;" value="' + window._ctrl.year + '-' + String(month).padStart(2,'0') + '-01"/>' +
+      '<input class="ct-input" type="text" id="ctOtCompany" style="text-align:left;" placeholder="Firma"/>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 90px 40px;gap:6px;margin-top:6px;align-items:center;">' +
+      '<input class="ct-input" type="text"   id="ctOtItem" style="text-align:left;" placeholder="Beschreibung"/>' +
       '<input class="ct-input" type="number" id="ctOtAmt"  step="0.01" inputmode="decimal" placeholder="0,00"/>' +
       '<button class="ct-btn-sm primary" id="ctOtAdd"><i class="ti ti-plus"></i></button>' +
     '</div>';
@@ -252,6 +185,7 @@ function wireDrawerActions() {
   const body = document.getElementById('ctDrawerBody');
 
   body.querySelectorAll('input.ct-input').forEach(inp => {
+    if (inp.id === 'ctOtDate' || inp.id === 'ctOtCompany' || inp.id === 'ctOtItem' || inp.id === 'ctOtAmt') return;
     inp.addEventListener('focus', () => inp.classList.add('dirty'));
     inp.addEventListener('blur',  () => saveOne(inp));
   });
@@ -271,7 +205,6 @@ async function saveOne(inp) {
   try {
     if (kind === 'income-kalt' || kind === 'income-neben') {
       const unitId = Number(inp.dataset.unit);
-      // read the OTHER field from DOM
       const kaltInp  = document.querySelector('input[data-kind="income-kalt"][data-unit="' + unitId + '"]');
       const nebenInp = document.querySelector('input[data-kind="income-neben"][data-unit="' + unitId + '"]');
       const kalt  = kaltInp.value  === '' ? null : Number(kaltInp.value);
@@ -279,7 +212,6 @@ async function saveOne(inp) {
       await ctlUpsertIncome(unitId, month, kalt, neben);
     }
     else if (kind === 'apt') {
-      const field  = inp.dataset.field;
       const fields = {};
       document.querySelectorAll('input[data-kind="apt"]').forEach(x => {
         fields[x.dataset.field] = x.value === '' ? null : Number(x.value);
@@ -297,14 +229,14 @@ async function saveOne(inp) {
   }
 }
 
-/* Fill helpers — write to inputs then trigger the save flow */
+/* Fill helpers */
 async function fillIncome(mode) {
   const { pid, month } = _ctlDrawer;
   const y = window._ctrl.year;
   const units = ctlUnitsOf(pid);
   for (const u of units) {
-    const cur    = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month);
-    if (cur) continue;  // don't overwrite existing entries
+    const cur = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month);
+    if (cur) continue;
     let k = null, n = null;
     if (mode === 'defaults') {
       k = u.def_kaltmiete   ?? null;
@@ -334,7 +266,6 @@ async function fillExpense(mode) {
       let amt = null;
       if (mode === 'defaults') {
         if (c.frequency === 'monatlich' || c.frequency === 'sporadisch') amt = c.default_amount ?? null;
-        // quarterly / annual — skip in default fill; user handles manually
       } else {
         const prev = window._ctrl.castel_expenses.find(r => r.category_id === c.id && r.year === y && r.month === month - 1);
         amt = prev?.amount ?? null;
@@ -363,12 +294,13 @@ async function fillExpense(mode) {
 }
 
 async function addOneTime() {
-  const date = document.getElementById('ctOtDate').value;
-  const item = document.getElementById('ctOtItem').value.trim();
-  const amt  = Number(document.getElementById('ctOtAmt').value);
-  if (!date || !item || !amt) { ctlToast('Datum · Item · Betrag'); return; }
+  const date    = document.getElementById('ctOtDate').value;
+  const company = document.getElementById('ctOtCompany').value.trim() || null;
+  const item    = document.getElementById('ctOtItem').value.trim();
+  const amt     = Number(document.getElementById('ctOtAmt').value);
+  if (!date || !item || !amt) { ctlToast('Datum · Beschreibung · Betrag'); return; }
   try {
-    await ctlInsertOneTime(_ctlDrawer.pid, date, item, amt);
+    await ctlInsertOneTime(_ctlDrawer.pid, date, item, amt, company);
     ctlToast('Hinzugefügt');
     document.getElementById('ctDrawerBody').innerHTML = renderDrawerBody(_ctlDrawer.pid, _ctlDrawer.month);
     wireDrawerActions();

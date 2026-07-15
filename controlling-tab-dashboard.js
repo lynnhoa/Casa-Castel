@@ -4,13 +4,12 @@
 
    Two toggles:
      · Year / Month
-     · Warm / Kalt   ← this is the fix
-   One KPI at a time, labels + table columns adapt to mode.
+     · Warm / Kalt
+   Month view now shows a Status column per property row (✓ done /
+   • pending), replacing the old separate Monthly Entry tab.
 
-   Warm view : Warmmiete − alle Ausgaben (inkl. Hausgeld)
-   Kalt view : Kaltmiete − Ausgaben OHNE Hausgeld
-
-   Depends on: controlling-data.js
+   Depends on: controlling-data.js, controlling-tab-entry.js (for
+               ctlOpenEntry + hasEntriesFor)
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -56,6 +55,7 @@ document.getElementById('tab-dashboard').innerHTML = `
           <th class="num" id="ctThMiete">Warmmiete</th>
           <th class="num" id="ctThAusg">Ausgaben</th>
           <th class="num">Cashflow</th>
+          <th class="ctr" id="ctThStatus" style="width:32px; display:none;"></th>
         </tr>
       </thead>
       <tbody id="ctPropTblBody"></tbody>
@@ -81,7 +81,7 @@ document.querySelectorAll('#tab-dashboard [data-mode]').forEach(btn => {
   });
 });
 
-/* ── Mode-aware pickers (single source of truth) ────────────── */
+/* ── Mode-aware pickers ─────────────────────────────────────── */
 function pickMiete(s) { return _ctlDashMode === 'warm' ? s.warm      : s.kalt; }
 function pickExp(s)   { return _ctlDashMode === 'warm' ? s.exp_total : s.exp_net; }
 function pickCash(s)  { return _ctlDashMode === 'warm' ? s.gesamt    : s.netto_kalt; }
@@ -102,6 +102,9 @@ window.renderDashboard = function () {
 
   document.getElementById('ctThMiete').textContent = _ctlDashMode === 'warm' ? 'Warmmiete'   : 'Kaltmiete';
   document.getElementById('ctThAusg').textContent  = _ctlDashMode === 'warm' ? 'Ausgaben'    : 'Ausg. o. HG';
+
+  // Show Status column only in Month view
+  document.getElementById('ctThStatus').style.display = (_ctlDashView === 'month') ? '' : 'none';
 
   renderMonthStrip();
   if (_ctlDashView === 'year') renderYear();
@@ -135,6 +138,18 @@ function renderMonthStrip() {
   }
 }
 
+/* ── Status icon per property row ───────────────────────────── */
+function statusIcon(pid, month) {
+  const now  = new Date();
+  const y    = window._ctrl.year;
+  const isFuture = (y > now.getFullYear()) || (y === now.getFullYear() && month > now.getMonth() + 1);
+  if (isFuture) return '<span style="color:var(--cc-stone);">—</span>';
+  const filled = typeof hasEntriesFor === 'function' && hasEntriesFor(pid, month);
+  return filled
+    ? '<i class="ti ti-check" style="color:var(--cc-gold-dk,#7A5A2A);"></i>'
+    : '<i class="ti ti-point-filled" style="color:var(--cc-gold);"></i>';
+}
+
 /* ── Year view ──────────────────────────────────────────────── */
 function renderYear() {
   let tMiete = 0, tExp = 0, tCash = 0;
@@ -146,7 +161,6 @@ function renderYear() {
       pExp   += pickExp(s);
       pCash  += pickCash(s);
     }
-    // one-time expenses subtract from cashflow, add to expense column
     const ot = window._ctrl.one_time
       .filter(o => o.property_id === p.id)
       .reduce((s, o) => s + Number(o.amount || 0), 0);
@@ -195,6 +209,7 @@ function renderMonth(m) {
         '<td class="num">' + ctlEur0(miete) + '</td>' +
         '<td class="num">' + ctlEur0(exp)   + '</td>' +
         '<td class="num ' + (cash < 0 ? 'neg' : '') + '">' + ctlEur0(cash) + '</td>' +
+        '<td class="ctr">' + statusIcon(p.id, m) + '</td>' +
       '</tr>';
   }
   document.getElementById('ctKpiVal').textContent = ctlEur(tCash);
@@ -205,6 +220,7 @@ function renderMonth(m) {
       '<td class="num">' + ctlEur0(tMiete) + '</td>' +
       '<td class="num">' + ctlEur0(tExp)   + '</td>' +
       '<td class="num ' + (tCash < 0 ? 'neg' : '') + '">' + ctlEur0(tCash) + '</td>' +
+      '<td></td>' +
     '</tr>';
   document.getElementById('ctPropTblBody').innerHTML = html;
 }
