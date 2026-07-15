@@ -51,6 +51,14 @@ function ctlUnit(uid)   { return window._ctrl.units.find(u => u.id === uid); }
 function ctlCat(cid)    { return window._ctrl.categories.find(c => c.id === cid); }
 function ctlUnitsOf(pid){ return window._ctrl.units.filter(u => u.property_id === pid); }
 
+/* Timezone-safe date parser for invoice_date strings.
+   Splits "YYYY-MM-DD..." directly — avoids new Date() shifting the day
+   across the UTC boundary in negative timezones.                       */
+function ctlParseDate(dateStr) {
+  const parts = String(dateStr).slice(0, 10).split('-');
+  return { year: Number(parts[0]), month: Number(parts[1]), day: Number(parts[2]) };
+}
+
 /* ── Per-property monthly aggregation ───────────────────────── */
 function ctlPropertyMonth(pid, month) {
   const y = window._ctrl.year;
@@ -84,6 +92,16 @@ function ctlPropertyMonth(pid, month) {
       expPassthru += hausgeld;
     }
   }
+
+  // One-time expenses for this property × month.
+  // Owner cost (NOT passthrough) — hits Warm and Kalt views equally.
+  for (const ot of window._ctrl.one_time) {
+    if (ot.property_id !== pid) continue;
+    const d = ctlParseDate(ot.invoice_date);
+    if (d.year !== y || d.month !== month) continue;
+    expTotal += Number(ot.amount || 0);
+  }
+
   const expNet = expTotal - expPassthru;
   return {
     kalt, neben, warm: kalt + neben,
@@ -103,15 +121,13 @@ function ctlPortfolioMonth(month) {
   return acc;
 }
 function ctlPortfolioYear() {
-  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, gesamt:0, netto_kalt:0, one_time:0, recon:0 };
+  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, gesamt:0, netto_kalt:0, recon:0 };
   for (let m = 1; m <= 12; m++) {
     const p = ctlPortfolioMonth(m);
     for (const k of Object.keys(p)) acc[k] += p[k];
   }
-  for (const ot of window._ctrl.one_time) acc.one_time += Number(ot.amount || 0);
-  for (const r  of window._ctrl.recon)    acc.recon    += Number(r.hausgeld_ausgleich || 0) + Number(r.nebenkosten_ausgleich || 0);
-  acc.gesamt     -= acc.one_time;
-  acc.netto_kalt -= acc.one_time;
+  // one-time already included in ctlPropertyMonth — do NOT double-count here
+  for (const r of window._ctrl.recon) acc.recon += Number(r.hausgeld_ausgleich || 0) + Number(r.nebenkosten_ausgleich || 0);
   acc.gesamt     += acc.recon;
   acc.netto_kalt += acc.recon;
   return acc;

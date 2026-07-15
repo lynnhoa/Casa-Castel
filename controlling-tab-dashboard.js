@@ -161,11 +161,7 @@ function renderYear() {
       pExp   += pickExp(s);
       pCash  += pickCash(s);
     }
-    const ot = window._ctrl.one_time
-      .filter(o => o.property_id === p.id)
-      .reduce((s, o) => s + Number(o.amount || 0), 0);
-    pExp  += ot;
-    pCash -= ot;
+    // one-time is already inside ctlPropertyMonth — no manual addition here
     return { p, pMiete, pExp, pCash };
   });
   rows.forEach(r => { tMiete += r.pMiete; tExp += r.pExp; tCash += r.pCash; });

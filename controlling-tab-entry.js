@@ -121,7 +121,11 @@ function renderDrawerBody(pid, month) {
 
   /* One-time section — list existing + add form */
   const ots = window._ctrl.one_time
-    .filter(o => o.property_id === pid && new Date(o.invoice_date).getMonth() + 1 === month && new Date(o.invoice_date).getFullYear() === y)
+    .filter(o => {
+      if (o.property_id !== pid) return false;
+      const d = ctlParseDate(o.invoice_date);
+      return d.year === y && d.month === month;
+    })
     .sort((a, b) => (a.invoice_date < b.invoice_date ? -1 : 1));
   let oneTimeHtml = '';
   if (ots.length) {
