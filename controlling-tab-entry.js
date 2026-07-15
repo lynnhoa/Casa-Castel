@@ -138,37 +138,27 @@ function renderDrawerBody(pid, month) {
     }
   }
 
-  /* One-time section — list existing + add form */
-  const ots = window._ctrl.one_time
-    .filter(o => {
-      if (o.property_id !== pid) return false;
-      const d = ctlParseDate(o.invoice_date);
-      return d.year === y && d.month === month;
-    })
-    .sort((a, b) => (a.invoice_date < b.invoice_date ? -1 : 1));
-  let oneTimeHtml = '';
-  if (ots.length) {
-    oneTimeHtml += '<div class="ct-col-hdr"><div>Beschreibung</div><div>Betrag</div><div></div></div>';
-    for (const o of ots) {
-      const sub = [o.company, o.invoice_date].filter(Boolean).join(' · ');
-      oneTimeHtml +=
-        '<div class="ct-row">' +
-          '<div class="ct-row__lbl">' + (o.item || '—') + '<small>' + sub + '</small></div>' +
-          '<div class="ct-row__lbl" style="text-align:right;font-variant-numeric:tabular-nums;">' + ctlEur(o.amount) + '</div>' +
-          '<div style="text-align:right;"><button class="ct-btn-sm" onclick="ctlRemoveOneTime(' + o.id + ')"><i class="ti ti-trash"></i></button></div>' +
-        '</div>';
-    }
-  }
-  // Add form: row 1 = Date + Firma, row 2 = Beschreibung + Betrag + Add
-  oneTimeHtml +=
-    '<div style="display:grid;grid-template-columns:120px 1fr;gap:6px;margin-top:10px;">' +
-      '<input class="ct-input" type="date" id="ctOtDate" style="text-align:left;" value="' + window._ctrl.year + '-' + String(month).padStart(2,'0') + '-01"/>' +
-      '<input class="ct-input" type="text" id="ctOtCompany" style="text-align:left;" placeholder="Firma"/>' +
-    '</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 90px 40px;gap:6px;margin-top:6px;align-items:center;">' +
-      '<input class="ct-input" type="text"   id="ctOtItem" style="text-align:left;" placeholder="Beschreibung"/>' +
-      '<input class="ct-input" type="number" id="ctOtAmt"  step="0.01" inputmode="decimal" placeholder="0,00"/>' +
-      '<button class="ct-btn-sm primary" id="ctOtAdd"><i class="ti ti-plus"></i></button>' +
+  /* One-time section — read-only summary + deep-link to Einmalig tab */
+  const ots = window._ctrl.one_time.filter(o => {
+    if (o.property_id !== pid) return false;
+    const d = ctlParseDate(o.invoice_date);
+    return d.year === y && d.month === month;
+  });
+  const otCount = ots.length;
+  const otTotal = ots.reduce((s, o) => s + Number(o.amount || 0), 0);
+  const oneTimeSummary =
+    '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">' +
+      '<div>' +
+        '<div style="font-size:13px; color:var(--cc-charcoal);">' +
+          (otCount === 0
+            ? '<span style="color:var(--cc-stone);">Keine Einträge</span>'
+            : otCount + ' Eintrag' + (otCount === 1 ? '' : 'e') + ' · <strong style="font-variant-numeric:tabular-nums;">' + ctlEur(otTotal) + '</strong>') +
+        '</div>' +
+        '<small style="font-size:10px; letter-spacing:.08em; color:var(--cc-taupe);">Erfassung im Einmalig-Tab</small>' +
+      '</div>' +
+      '<button class="ct-btn-sm primary" onclick="ctlOpenEinmalig(' + pid + ',' + month + ')" style="display:flex; align-items:center; gap:4px;">' +
+        'Öffnen <i class="ti ti-arrow-right"></i>' +
+      '</button>' +
     '</div>';
 
   return `
@@ -198,7 +188,7 @@ function renderDrawerBody(pid, month) {
       <div class="ct-section__ttl">
         <span>Einmalige Ausgaben</span>
       </div>
-      ${oneTimeHtml}
+      ${oneTimeSummary}
     </div>
   `;
 }
@@ -208,7 +198,6 @@ function wireDrawerActions() {
   const body = document.getElementById('ctDrawerBody');
 
   body.querySelectorAll('input.ct-input').forEach(inp => {
-    if (inp.id === 'ctOtDate' || inp.id === 'ctOtCompany' || inp.id === 'ctOtItem' || inp.id === 'ctOtAmt') return;
     inp.addEventListener('focus', () => inp.classList.add('dirty'));
     inp.addEventListener('blur',  () => saveOne(inp));
   });
@@ -217,8 +206,6 @@ function wireDrawerActions() {
   document.getElementById('ctFillIncomePrev')    ?.addEventListener('click', () => fillIncome('prev'));
   document.getElementById('ctFillExpDefaults')   ?.addEventListener('click', () => fillExpense('defaults'));
   document.getElementById('ctFillExpPrev')       ?.addEventListener('click', () => fillExpense('prev'));
-
-  document.getElementById('ctOtAdd')?.addEventListener('click', addOneTime);
 }
 
 async function saveOne(inp) {
@@ -316,29 +303,9 @@ async function fillExpense(mode) {
   wireDrawerActions();
 }
 
-async function addOneTime() {
-  const date    = document.getElementById('ctOtDate').value;
-  const company = document.getElementById('ctOtCompany').value.trim() || null;
-  const item    = document.getElementById('ctOtItem').value.trim();
-  const amt     = Number(document.getElementById('ctOtAmt').value);
-  if (!date || !item || !amt) { ctlToast('Datum · Beschreibung · Betrag'); return; }
-  try {
-    await ctlInsertOneTime(_ctlDrawer.pid, date, item, amt, company);
-    ctlToast('Hinzugefügt');
-    document.getElementById('ctDrawerBody').innerHTML = renderDrawerBody(_ctlDrawer.pid, _ctlDrawer.month);
-    wireDrawerActions();
-  } catch (e) {
-    console.error(e); ctlToast('Fehler');
-  }
-}
-
-window.ctlRemoveOneTime = async function (id) {
-  if (!confirm('Löschen?')) return;
-  try {
-    await ctlDeleteOneTime(id);
-    document.getElementById('ctDrawerBody').innerHTML = renderDrawerBody(_ctlDrawer.pid, _ctlDrawer.month);
-    wireDrawerActions();
-  } catch (e) {
-    console.error(e); ctlToast('Fehler');
-  }
+/* Deep-link from drawer's Einmalig section → Einmalig tab, scrolled to this property */
+window.ctlOpenEinmalig = function (pid, month) {
+  document.getElementById('ctDrawer').classList.remove('open');
+  window.ctlOtDeepLink?.(pid, month);
+  switchTab('onetime');
 };

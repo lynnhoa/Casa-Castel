@@ -23,6 +23,14 @@ function _ctlOtSave() {
   try { localStorage.setItem('ctl_ot_month', String(_ctlOtFilterMonth)); } catch(e){}
 }
 
+/* Called by the drawer's "Öffnen" button to jump here with month pre-set
+   and a specific property card scrolled into view.                        */
+window.ctlOtDeepLink = function (pid, month) {
+  _ctlOtFilterMonth = month;
+  _ctlOtSave();
+  window._ctlOtScrollToPid = pid;
+};
+
 document.getElementById('tab-onetime').innerHTML = `
   <div class="ct-page">
     <div class="ct-hdr">
@@ -165,7 +173,7 @@ function renderOtProperties() {
       '</div>';
 
     html +=
-      '<div class="ct-section" style="margin-bottom:10px;">' +
+      '<div class="ct-section" id="ctOtProp-' + p.id + '" style="margin-bottom:10px; transition:box-shadow .3s;">' +
         headerHtml +
         entriesHtml +
         addFormHtml +
@@ -190,6 +198,20 @@ function renderOtProperties() {
       }
     });
   });
+
+  // Deep-link scroll target: scroll the requested property card into view + brief flash
+  if (window._ctlOtScrollToPid) {
+    const el = document.getElementById('ctOtProp-' + window._ctlOtScrollToPid);
+    if (el) {
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      el.style.boxShadow = '0 0 0 2px var(--cc-gold)';
+      setTimeout(() => { el.style.boxShadow = ''; }, 1400);
+      // Focus the Firma input so she can start typing immediately
+      const firma = el.querySelector('input.ct-ot-inp[data-field="company"]');
+      setTimeout(() => firma?.focus(), 400);
+    }
+    window._ctlOtScrollToPid = null;
+  }
 }
 
 function fmtOtDate(iso) {
