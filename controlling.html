@@ -159,19 +159,21 @@
       /* Hide # cell */
       #ctPropTbl td[data-label="#"] { display:none; }
 
-      /* Card title = property name (matches #-prefixed specificity) */
+      /* Card title = property name — Inter, light-medium, refined */
       #ctPropTbl .ct-cell-name {
         display:block;
-        font-size:16px; font-weight:500; color:var(--cc-ink);
-        padding-right:92px; line-height:1.3;
-        letter-spacing:.01em;
+        font-family:'Inter',system-ui,sans-serif;
+        font-size:16px; font-weight:400; color:var(--cc-ink);
+        padding-right:96px; line-height:1.3;
+        letter-spacing:0;
       }
 
-      /* Cashflow — pinned top-right, signed + colored */
+      /* Cashflow — Cormorant serif to match the KPI number, signed + colored */
       #ctPropTbl .ct-cell-cash {
         display:block;
-        position:absolute; top:16px; right:34px;
-        font-size:18px; font-weight:600;
+        position:absolute; top:15px; right:36px;
+        font-family:'Cormorant Garamond',Georgia,serif;
+        font-size:22px; font-weight:500;
         font-variant-numeric:tabular-nums;
         color:var(--cc-avail-text);
         letter-spacing:.01em;
@@ -182,7 +184,7 @@
       /* Chevron */
       #ctPropTbl .ct-proprow::after {
         content:'\25BE';
-        position:absolute; top:19px; right:16px;
+        position:absolute; top:21px; right:16px;
         color:var(--cc-stone); font-size:11px;
         transition:transform .2s;
       }
@@ -196,8 +198,9 @@
       #ctPropTbl .ct-proprow.expanded td.num:not(.ct-cell-cash),
       #ctPropTbl .ct-proprow.expanded td.ctr {
         display:flex; justify-content:space-between; align-items:baseline;
-        padding:9px 0 0;
-        font-size:15px; color:var(--cc-ink);
+        padding:10px 0 0;
+        font-family:'Inter',system-ui,sans-serif;
+        font-size:14px; font-weight:400; color:var(--cc-ink);
         font-variant-numeric:tabular-nums;
       }
       #ctPropTbl .ct-proprow.expanded td.num:not(.ct-cell-cash):first-of-type {
@@ -219,11 +222,13 @@
 
       /* Total card */
       #ctPropTbl tr.total td.ct-cell-name {
+        font-family:'Inter',system-ui,sans-serif;
         font-size:11px; letter-spacing:.16em; text-transform:uppercase;
-        color:var(--cc-taupe); padding-right:92px;
+        color:var(--cc-taupe); padding-right:96px;
       }
       #ctPropTbl tr.total td.num:not(.ct-cell-cash) {
         display:flex; justify-content:space-between;
+        font-family:'Inter',system-ui,sans-serif;
         padding:9px 0 0; font-size:13px; color:var(--cc-taupe);
         font-variant-numeric:tabular-nums;
       }
@@ -238,9 +243,9 @@
       #ctOtPropList { display:block; }
       #ctOtPropList tr { display:block; position:relative; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:14px; margin-bottom:10px; padding:16px 44px 16px 18px; box-shadow:0 1px 3px rgba(60,50,40,0.03); }
       #ctOtPropList td { display:inline; border:0 !important; padding:0; }
-      #ctOtPropList td:first-child { font-size:16px; font-weight:500; color:var(--cc-ink); }
+      #ctOtPropList td:first-child { font-family:'Inter',system-ui,sans-serif; font-size:16px; font-weight:400; color:var(--cc-ink); }
       #ctOtPropList td:nth-child(2) { display:none; }
-      #ctOtPropList td:nth-child(3) { position:absolute; top:17px; right:38px; font-size:15px; font-variant-numeric:tabular-nums; color:var(--cc-ink); font-weight:500; }
+      #ctOtPropList td:nth-child(3) { position:absolute; top:14px; right:40px; font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:500; font-variant-numeric:tabular-nums; color:var(--cc-ink); }
       #ctOtPropList td:nth-child(4) { position:absolute; top:18px; right:16px; color:var(--cc-stone); }
 
       #tab-setup table { min-width:0 !important; }
