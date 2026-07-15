@@ -14,31 +14,55 @@
 
 'use strict';
 
-let _ctlDashView    = 'year';                        // 'year' | 'month'
-let _ctlDashMode    = 'warm';                        // 'warm' | 'kalt'
-let _ctlDashOneTime = false;                         // false = Laufend, true = +Einmalig
-let _ctlDashMonth   = new Date().getMonth() + 1;
+/* ── Persistent state (localStorage) ────────────────────────── */
+function _ctlLoadDash() {
+  try {
+    return {
+      view:    localStorage.getItem('ctl_view')  || 'year',
+      mode:    localStorage.getItem('ctl_mode')  || 'warm',
+      oneTime: localStorage.getItem('ctl_ot')    === '1',
+      month:   Number(localStorage.getItem('ctl_month')) || (new Date().getMonth() + 1),
+    };
+  } catch (e) {
+    return { view: 'year', mode: 'warm', oneTime: false, month: new Date().getMonth() + 1 };
+  }
+}
+function _ctlSaveDash() {
+  try {
+    localStorage.setItem('ctl_view',  _ctlDashView);
+    localStorage.setItem('ctl_mode',  _ctlDashMode);
+    localStorage.setItem('ctl_ot',    _ctlDashOneTime ? '1' : '0');
+    localStorage.setItem('ctl_month', String(_ctlDashMonth));
+  } catch (e) {}
+}
+
+const _saved = _ctlLoadDash();
+let _ctlDashView    = _saved.view;
+let _ctlDashMode    = _saved.mode;
+let _ctlDashOneTime = _saved.oneTime;
+let _ctlDashMonth   = _saved.month;
 
 document.getElementById('tab-dashboard').innerHTML = `
   <div class="ct-page">
     <div class="ct-hdr">
       <div>
         <h1 class="ct-title">Controlling</h1>
-        <div class="ct-sub" id="ctDashSub">Portfolio · 2026 · Warm · Laufend</div>
+        <div class="ct-sub" id="ctDashSub">Portfolio · 2026</div>
       </div>
-      <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
-        <div class="ct-yr-switch" role="group" aria-label="Zeitraum">
-          <button data-view="year"  class="active">Year</button>
-          <button data-view="month">Month</button>
-        </div>
-        <div class="ct-yr-switch" role="group" aria-label="Miete">
-          <button data-mode="warm"  class="active">Warm</button>
-          <button data-mode="kalt">Kalt</button>
-        </div>
-        <div class="ct-yr-switch" role="group" aria-label="Einmalige">
-          <button data-ot="off" class="active">Laufend</button>
-          <button data-ot="on">+ Einmalig</button>
-        </div>
+    </div>
+
+    <div class="ct-toolbar" role="toolbar" aria-label="Ansicht">
+      <div class="ct-yr-switch" role="group" aria-label="Zeitraum">
+        <button data-view="year">Year</button>
+        <button data-view="month">Month</button>
+      </div>
+      <div class="ct-yr-switch" role="group" aria-label="Miete">
+        <button data-mode="warm">Warm</button>
+        <button data-mode="kalt">Kalt</button>
+      </div>
+      <div class="ct-yr-switch" role="group" aria-label="Einmalige">
+        <button data-ot="off">Laufend</button>
+        <button data-ot="on">+ Einmalig</button>
       </div>
     </div>
 
@@ -68,12 +92,18 @@ document.getElementById('tab-dashboard').innerHTML = `
   </div>
 `;
 
+/* Apply active state from persisted preferences */
+document.querySelectorAll('#tab-dashboard [data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === _ctlDashView));
+document.querySelectorAll('#tab-dashboard [data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === _ctlDashMode));
+document.querySelectorAll('#tab-dashboard [data-ot]  ').forEach(b => b.classList.toggle('active', (b.dataset.ot === 'on') === _ctlDashOneTime));
+
 /* ── Toggle wiring ──────────────────────────────────────────── */
 document.querySelectorAll('#tab-dashboard [data-view]').forEach(btn => {
   btn.addEventListener('click', () => {
     _ctlDashView = btn.dataset.view;
     document.querySelectorAll('#tab-dashboard [data-view]')
       .forEach(b => b.classList.toggle('active', b.dataset.view === _ctlDashView));
+    _ctlSaveDash();
     window.renderDashboard();
   });
 });
@@ -82,6 +112,7 @@ document.querySelectorAll('#tab-dashboard [data-mode]').forEach(btn => {
     _ctlDashMode = btn.dataset.mode;
     document.querySelectorAll('#tab-dashboard [data-mode]')
       .forEach(b => b.classList.toggle('active', b.dataset.mode === _ctlDashMode));
+    _ctlSaveDash();
     window.renderDashboard();
   });
 });
@@ -90,6 +121,7 @@ document.querySelectorAll('#tab-dashboard [data-ot]').forEach(btn => {
     _ctlDashOneTime = btn.dataset.ot === 'on';
     document.querySelectorAll('#tab-dashboard [data-ot]')
       .forEach(b => b.classList.toggle('active', (b.dataset.ot === 'on') === _ctlDashOneTime));
+    _ctlSaveDash();
     window.renderDashboard();
   });
 });
@@ -112,8 +144,7 @@ window.renderDashboard = function () {
   const otLbl   = _ctlDashOneTime ? '+Einmalig' : 'Laufend';
 
   document.getElementById('ctDashSub').textContent =
-    'Portfolio · ' + y + ' · ' + modeLbl + ' · ' + otLbl +
-    (_ctlDashView === 'month' ? ' · ' + ctlMonthName(_ctlDashMonth) : '');
+    'Portfolio · ' + (_ctlDashView === 'month' ? ctlMonthName(_ctlDashMonth) + ' ' + y : y);
 
   document.getElementById('ctKpiLbl').textContent = 'Cashflow (' + modeLbl + ' · ' + otLbl + ')';
 
@@ -156,6 +187,7 @@ function renderMonthStrip() {
           .forEach(b => b.classList.toggle('active', b.dataset.view === 'month'));
       }
       _ctlDashMonth = m;
+      _ctlSaveDash();
       window.renderDashboard();
     });
     strip.appendChild(tile);

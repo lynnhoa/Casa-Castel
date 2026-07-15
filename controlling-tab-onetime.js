@@ -12,8 +12,16 @@
 
 'use strict';
 
-let _ctlOtFilterMonth = 'all';       // 'all' | 1..12
+let _ctlOtFilterMonth = (function(){
+  try { const v = localStorage.getItem('ctl_ot_month');
+        return v === null ? 'all' : (v === 'all' ? 'all' : Number(v)); }
+  catch(e){ return 'all'; }
+})();
 let _ctlOtSearch      = '';
+
+function _ctlOtSave() {
+  try { localStorage.setItem('ctl_ot_month', String(_ctlOtFilterMonth)); } catch(e){}
+}
 
 document.getElementById('tab-onetime').innerHTML = `
   <div class="ct-page">
@@ -59,6 +67,7 @@ window.renderOneTime = function () {
 
   monthSel.onchange = () => {
     _ctlOtFilterMonth = monthSel.value === 'all' ? 'all' : Number(monthSel.value);
+    _ctlOtSave();
     renderOtProperties();
   };
   searchInp.oninput = e => {
