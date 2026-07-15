@@ -16,17 +16,36 @@
 
 'use strict';
 
-/* Used by dashboard to draw the Status icon per property row. */
+/* Used by dashboard to draw the Status icon per property row.
+   ✓ done requires all recurring items to be filled, not just any one row. */
 function hasEntriesFor(pid, month) {
   const y = window._ctrl.year;
-  const unitIds = ctlUnitsOf(pid).map(u => u.id);
-  const inc = window._ctrl.income.some(r => r.year === y && r.month === month && unitIds.includes(r.unit_id));
+  const units = ctlUnitsOf(pid);
+  const unitIds = units.map(u => u.id);
+
+  // Income check — at least one income row for this month, OR the property has
+  // no rentable units at all (edge case: all def_kaltmiete = 0, permanently vacant).
+  const hasRentable = units.some(u => Number(u.def_kaltmiete || 0) > 0);
+  const hasIncome   = window._ctrl.income.some(r => r.year === y && r.month === month && unitIds.includes(r.unit_id));
+  const incomeOk    = !hasRentable || hasIncome;
+  if (!incomeOk) return false;
+
+  // Expense check — every recurring line item must be present.
   if (pid === CASA_PROP_ID) {
-    const cst = window._ctrl.castel_expenses.some(r => r.year === y && r.month === month);
-    return inc && cst;
+    // All monatlich Casa categories must have a row for this month.
+    // Vierteljährlich / jährlich / sporadisch are excluded — they don't apply every month.
+    const monatlichCats = window._ctrl.categories.filter(c => c.frequency === 'monatlich');
+    if (!monatlichCats.length) return true;   // no categories configured yet — don't block
+    return monatlichCats.every(c =>
+      window._ctrl.castel_expenses.some(r => r.category_id === c.id && r.year === y && r.month === month)
+    );
   }
-  const apt = window._ctrl.apt_expenses.some(r => r.year === y && r.month === month && r.property_id === pid);
-  return inc && apt;
+
+  // Apartments: single row must have rate AND hausgeld populated (0 counts as filled).
+  const row = window._ctrl.apt_expenses.find(r => r.property_id === pid && r.year === y && r.month === month);
+  if (!row) return false;
+  return row.rate !== null && row.rate !== undefined
+      && row.hausgeld !== null && row.hausgeld !== undefined;
 }
 
 /* ══ DRAWER ═══════════════════════════════════════════════════ */
