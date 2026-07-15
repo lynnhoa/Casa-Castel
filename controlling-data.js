@@ -5,24 +5,24 @@
    Fetches all Controlling tables into window._ctrl, provides
    derived KPI helpers, and writes updates back to Supabase.
 
-   window._ctrl = {
-     year: 2026,
-     properties:      [{id, name, def_rate, ...}],
-     units:           [{id, property_id, name, def_kaltmiete, def_nebenkosten, ...}],
-     categories:      [{id, code, name, frequency, default_amount, ...}],
-     income:          [{unit_id, year, month, kaltmiete, nebenkosten}],
-     apt_expenses:    [{property_id, year, month, rate, zinsen, tilgung, hausgeld, grundsteuer, strom}],
-     castel_expenses: [{category_id, year, month, amount}],
-     one_time:        [{id, property_id, invoice_date, item, amount}],
-     recon:           [{property_id, year, hausgeld_ausgleich, nebenkosten_ausgleich}],
-   }
+   Kalt view logic:
+     · Apartments:  Ausgaben o. Hausgeld  (Hausgeld = passthrough)
+     · Casa Castel: only Rate stays; every other category (Wasser,
+                    Strom, Gas, Internet, Grundsteuer, Versicherung,
+                    Wartung, Gärtner, etc.) is a Betriebskosten
+                    passthrough covered by tenant Nebenkosten.
+
+   window._ctrl = { year, properties, units, categories, income,
+                    apt_expenses, castel_expenses, one_time, recon }
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
 
 const CASA_PROP_ID = 7;
-const PASSTHROUGH_APT = ['hausgeld'];                    // apartment expense cols excluded from Netto-Kalt
-const PASSTHROUGH_CAT_CODES = [];                        // Casa category codes excluded from Netto-Kalt (none — see note below)
+
+/* Casa: only these category codes count toward Kalt-view expenses.
+   Everything else is treated as a Nebenkosten-passthrough.        */
+const CASA_KALT_CODES = ['RATE'];
 
 window._ctrl = {
   year: new Date().getFullYear(),
@@ -74,22 +74,25 @@ function ctlPropertyMonth(pid, month) {
 
   let expTotal = 0, expPassthru = 0;
   if (pid === CASA_PROP_ID) {
+    // Casa: only categories in CASA_KALT_CODES are owner costs (kept in Kalt).
+    // Every other Casa category is a Betriebskosten passthrough.
     for (const row of window._ctrl.castel_expenses) {
       if (row.year !== y || row.month !== month) continue;
       const cat = ctlCat(row.category_id);
       const amt = Number(row.amount || 0);
       expTotal += amt;
-      if (cat && PASSTHROUGH_CAT_CODES.includes(cat.code)) expPassthru += amt;
+      if (!cat || !CASA_KALT_CODES.includes(cat.code)) expPassthru += amt;
     }
   } else {
+    // Apartments: Hausgeld is the passthrough aggregator.
     for (const row of window._ctrl.apt_expenses) {
       if (row.year !== y || row.month !== month) continue;
       if (row.property_id !== pid) continue;
-      const rate       = Number(row.rate       || 0);
-      const hausgeld   = Number(row.hausgeld   || 0);
-      const grund      = Number(row.grundsteuer|| 0);
-      const strom      = Number(row.strom      || 0);
-      // Rate = Zinsen + Tilgung already; do NOT double-count zinsen/tilgung
+      const rate     = Number(row.rate       || 0);
+      const hausgeld = Number(row.hausgeld   || 0);
+      const grund    = Number(row.grundsteuer|| 0);
+      const strom    = Number(row.strom      || 0);
+      // Rate already = Zinsen + Tilgung; do NOT add zinsen/tilgung again
       expTotal    += rate + hausgeld + grund + strom;
       expPassthru += hausgeld;
     }
@@ -146,7 +149,6 @@ async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten) {
   const { data, error } = await _ctlSupa.from('ctrl_income_months')
     .upsert(payload, { onConflict: 'unit_id,year,month' }).select().single();
   if (error) throw error;
-  // update local cache
   const idx = window._ctrl.income.findIndex(r => r.unit_id === unit_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.income[idx] = data;
   else window._ctrl.income.push(data);
