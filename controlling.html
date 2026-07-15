@@ -38,7 +38,7 @@
     /* Month tile strip */
     .ct-months     { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:24px; }
     @media (min-width:700px){ .ct-months { grid-template-columns:repeat(12,1fr); } }
-    .ct-month      { padding:10px 4px; text-align:center; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background .12s, border-color .12s; }
+    .ct-month      { padding:10px 4px; text-align:center; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background .12s, border-color .12s, box-shadow .18s, transform .18s; }
     .ct-month__lbl { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); }
     .ct-month__val { font-size:12px; font-weight:500; color:var(--cc-ink); margin-top:4px; }
 
@@ -58,7 +58,14 @@
     .ct-month.future .ct-month__val  { color:var(--cc-stone); font-weight:400; }
 
     /* Active — currently selected in Month view */
-    .ct-month.active { outline:2px solid var(--cc-ink); outline-offset:-2px; }
+    .ct-month.active {
+      border-color: var(--cc-avail-text);
+      border-style: solid;
+      box-shadow: 0 3px 10px -2px rgba(122, 90, 42, 0.22);
+      transform: translateY(-1px);
+      opacity: 1;
+      z-index: 1;
+    }
 
     /* Property table */
     .ct-tbl        { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:20px; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; overflow:hidden; }
