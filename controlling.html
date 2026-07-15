@@ -263,13 +263,41 @@
       }
 
       /* ── Einmalig property list → cards ── */
+      #tab-onetime .ct-tbl thead { display:none; }
+      #tab-onetime .ct-tbl { display:block; border:0; background:transparent; }
+      #tab-onetime .ct-tbl tbody { display:block; }
       #ctOtPropList { display:block; }
-      #ctOtPropList tr { display:block; position:relative; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:14px; margin-bottom:10px; padding:16px 44px 16px 18px; box-shadow:0 1px 3px rgba(60,50,40,0.03); }
-      #ctOtPropList td { display:inline; border:0 !important; padding:0; }
-      #ctOtPropList td:first-child { font-family:'Inter',system-ui,sans-serif; font-size:16px; font-weight:400; color:var(--cc-ink); }
+      #ctOtPropList tr {
+        display:block; position:relative;
+        background:var(--cc-white); border:0.5px solid var(--cc-rule);
+        border-radius:14px; margin-bottom:10px;
+        padding:18px 46px 18px 20px;
+        box-shadow:0 1px 3px rgba(60,50,40,0.03);
+        min-height:24px;
+      }
+      #ctOtPropList td { display:block; border:0 !important; padding:0; }
+      /* name */
+      #ctOtPropList td:nth-child(1) {
+        font-family:'Inter',system-ui,sans-serif;
+        font-size:16px; font-weight:400; color:var(--cc-ink);
+        line-height:1.35; padding-right:70px;
+      }
+      /* count — hidden on mobile */
       #ctOtPropList td:nth-child(2) { display:none; }
-      #ctOtPropList td:nth-child(3) { position:absolute; top:14px; right:40px; font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:500; font-variant-numeric:tabular-nums; color:var(--cc-ink); }
-      #ctOtPropList td:nth-child(4) { position:absolute; top:18px; right:16px; color:var(--cc-stone); }
+      /* sum — pinned right, Cormorant */
+      #ctOtPropList td:nth-child(3) {
+        position:absolute; top:50%; right:42px; transform:translateY(-50%);
+        font-family:'Cormorant Garamond',Georgia,serif;
+        font-size:20px; font-weight:500;
+        font-feature-settings:'lnum' 1,'tnum' 1;
+        font-variant-numeric:lining-nums tabular-nums;
+        color:var(--cc-ink); white-space:nowrap;
+      }
+      /* chevron — pinned far right */
+      #ctOtPropList td:nth-child(4) {
+        position:absolute; top:50%; right:18px; transform:translateY(-50%);
+        color:var(--cc-stone);
+      }
 
       #tab-setup table { min-width:0 !important; }
     }

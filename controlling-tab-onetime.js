@@ -55,9 +55,14 @@ document.getElementById('tab-onetime').innerHTML = `
     <div class="ct-section" style="margin-bottom:16px;">
       <div style="text-align:center;padding:6px 0;">
         <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:8px;">Gesamt Portfolio</div>
-        <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;color:var(--cc-ink);font-variant-numeric:tabular-nums;" id="ctOtPortfolioTotal">0,00 €</div>
+        <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;color:var(--cc-ink);font-feature-settings:'lnum' 1,'tnum' 1;font-variant-numeric:lining-nums tabular-nums;" id="ctOtPortfolioTotal">0,00 €</div>
         <div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;" id="ctOtPortfolioSub">—</div>
       </div>
+    </div>
+
+    <div class="ct-cardhead ct-cardhead-ot" aria-hidden="true">
+      <span>Immobilie</span>
+      <span>Summe</span>
     </div>
 
     <table class="ct-tbl">
