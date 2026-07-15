@@ -2,40 +2,47 @@
    CONTROLLING — DASHBOARD TAB
    controlling-tab-dashboard.js
 
-   M/Y toggle · KPI cards (Gesamt + Netto-Kaltcashflow) ·
-   month tile strip · per-property table.
+   Two toggles:
+     · Year / Month
+     · Warm / Kalt   ← this is the fix
+   One KPI at a time, labels + table columns adapt to mode.
+
+   Warm view : Warmmiete − alle Ausgaben (inkl. Hausgeld)
+   Kalt view : Kaltmiete − Ausgaben OHNE Hausgeld
 
    Depends on: controlling-data.js
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
 
-let _ctlDashView  = 'year';       // 'year' | 'month'
-let _ctlDashMonth = new Date().getMonth() + 1;  // 1..12
+let _ctlDashView  = 'year';                        // 'year' | 'month'
+let _ctlDashMode  = 'warm';                        // 'warm' | 'kalt'
+let _ctlDashMonth = new Date().getMonth() + 1;
 
 document.getElementById('tab-dashboard').innerHTML = `
   <div class="ct-page">
     <div class="ct-hdr">
       <div>
-        <h1 class="ct-title" id="ctDashTitle">Controlling</h1>
-        <div class="ct-sub" id="ctDashSub">Portfolio · 2026</div>
+        <h1 class="ct-title">Controlling</h1>
+        <div class="ct-sub" id="ctDashSub">Portfolio · 2026 · Warm</div>
       </div>
-      <div class="ct-yr-switch" role="group">
-        <button data-view="year"  class="active">Year</button>
-        <button data-view="month">Month</button>
+      <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
+        <div class="ct-yr-switch" role="group" aria-label="Zeitraum">
+          <button data-view="year"  class="active">Year</button>
+          <button data-view="month">Month</button>
+        </div>
+        <div class="ct-yr-switch" role="group" aria-label="Miete">
+          <button data-mode="warm"  class="active">Warm</button>
+          <button data-mode="kalt">Kalt</button>
+        </div>
       </div>
     </div>
 
-    <div class="ct-kpis">
+    <div class="ct-kpis" style="grid-template-columns:1fr;">
       <div class="ct-kpi">
-        <div class="ct-kpi__label">Gesamt-Cashflow</div>
-        <div class="ct-kpi__val"   id="ctKpiGesamt">—</div>
-        <div class="ct-kpi__sub">Warmmiete − alle Ausgaben</div>
-      </div>
-      <div class="ct-kpi">
-        <div class="ct-kpi__label">Netto-Kaltcashflow</div>
-        <div class="ct-kpi__val"   id="ctKpiNetto">—</div>
-        <div class="ct-kpi__sub">Kaltmiete − Ausgaben ohne Hausgeld</div>
+        <div class="ct-kpi__label" id="ctKpiLbl">Cashflow (Warm)</div>
+        <div class="ct-kpi__val"   id="ctKpiVal">—</div>
+        <div class="ct-kpi__sub"   id="ctKpiSub">Warmmiete − alle Ausgaben (inkl. Hausgeld)</div>
       </div>
     </div>
 
@@ -46,10 +53,9 @@ document.getElementById('tab-dashboard').innerHTML = `
         <tr>
           <th style="width:20px;">#</th>
           <th>Immobilie</th>
-          <th class="num">Kaltmiete</th>
-          <th class="num">Ausgaben</th>
-          <th class="num">Gesamt</th>
-          <th class="num">Netto-Kalt</th>
+          <th class="num" id="ctThMiete">Warmmiete</th>
+          <th class="num" id="ctThAusg">Ausgaben</th>
+          <th class="num">Cashflow</th>
         </tr>
       </thead>
       <tbody id="ctPropTblBody"></tbody>
@@ -57,46 +63,69 @@ document.getElementById('tab-dashboard').innerHTML = `
   </div>
 `;
 
-/* View toggle */
-document.querySelectorAll('#tab-dashboard .ct-yr-switch button').forEach(btn => {
+/* ── Toggle wiring ──────────────────────────────────────────── */
+document.querySelectorAll('#tab-dashboard [data-view]').forEach(btn => {
   btn.addEventListener('click', () => {
     _ctlDashView = btn.dataset.view;
-    document.querySelectorAll('#tab-dashboard .ct-yr-switch button')
+    document.querySelectorAll('#tab-dashboard [data-view]')
       .forEach(b => b.classList.toggle('active', b.dataset.view === _ctlDashView));
     window.renderDashboard();
   });
 });
+document.querySelectorAll('#tab-dashboard [data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _ctlDashMode = btn.dataset.mode;
+    document.querySelectorAll('#tab-dashboard [data-mode]')
+      .forEach(b => b.classList.toggle('active', b.dataset.mode === _ctlDashMode));
+    window.renderDashboard();
+  });
+});
 
-/* Public entrypoint */
+/* ── Mode-aware pickers (single source of truth) ────────────── */
+function pickMiete(s) { return _ctlDashMode === 'warm' ? s.warm      : s.kalt; }
+function pickExp(s)   { return _ctlDashMode === 'warm' ? s.exp_total : s.exp_net; }
+function pickCash(s)  { return _ctlDashMode === 'warm' ? s.gesamt    : s.netto_kalt; }
+
+/* ── Public entrypoint ──────────────────────────────────────── */
 window.renderDashboard = function () {
-  const y = window._ctrl.year;
+  const y       = window._ctrl.year;
+  const modeLbl = _ctlDashMode === 'warm' ? 'Warm' : 'Kalt';
+
   document.getElementById('ctDashSub').textContent =
-    'Portfolio · ' + y + (_ctlDashView === 'month' ? ' · ' + ctlMonthName(_ctlDashMonth) : '');
+    'Portfolio · ' + y + ' · ' + modeLbl +
+    (_ctlDashView === 'month' ? ' · ' + ctlMonthName(_ctlDashMonth) : '');
+
+  document.getElementById('ctKpiLbl').textContent = 'Cashflow (' + modeLbl + ')';
+  document.getElementById('ctKpiSub').textContent = _ctlDashMode === 'warm'
+    ? 'Warmmiete − alle Ausgaben (inkl. Hausgeld)'
+    : 'Kaltmiete − Ausgaben ohne Hausgeld';
+
+  document.getElementById('ctThMiete').textContent = _ctlDashMode === 'warm' ? 'Warmmiete'   : 'Kaltmiete';
+  document.getElementById('ctThAusg').textContent  = _ctlDashMode === 'warm' ? 'Ausgaben'    : 'Ausg. o. HG';
 
   renderMonthStrip();
   if (_ctlDashView === 'year') renderYear();
   else renderMonth(_ctlDashMonth);
 };
 
-/* ── Month strip ────────────────────────────────────────────── */
+/* ── Month tile strip ───────────────────────────────────────── */
 function renderMonthStrip() {
   const strip = document.getElementById('ctMonths');
-  const showValues = _ctlDashView === 'month';
   strip.innerHTML = '';
   for (let m = 1; m <= 12; m++) {
     const status = ctlMonthStatus(m);
-    const tile = document.createElement('div');
+    const tile   = document.createElement('div');
     tile.className = 'ct-month ' + status + (_ctlDashView === 'month' && m === _ctlDashMonth ? ' active' : '');
-    const g = ctlPortfolioMonth(m).gesamt;
+    const val = pickCash(ctlPortfolioMonth(m));
     tile.innerHTML =
       '<div class="ct-month__lbl">' + ctlMonthName(m) + '</div>' +
       (status === 'future'
         ? '<div class="ct-month__val" style="color:var(--cc-taupe);">—</div>'
-        : '<div class="ct-month__val">' + ctlEur0(g) + '</div>');
+        : '<div class="ct-month__val">' + ctlEur0(val) + '</div>');
     tile.addEventListener('click', () => {
       if (_ctlDashView === 'year') {
         _ctlDashView = 'month';
-        document.querySelectorAll('#tab-dashboard .ct-yr-switch button')
+        document.querySelectorAll('#tab-dashboard [data-view]')
           .forEach(b => b.classList.toggle('active', b.dataset.view === 'month'));
       }
       _ctlDashMonth = m;
@@ -108,83 +137,74 @@ function renderMonthStrip() {
 
 /* ── Year view ──────────────────────────────────────────────── */
 function renderYear() {
-  const y = ctlPortfolioYear();
-  document.getElementById('ctKpiGesamt').textContent = ctlEur(y.gesamt);
-  document.getElementById('ctKpiGesamt').classList.toggle('neg', y.gesamt < 0);
-  document.getElementById('ctKpiNetto').textContent  = ctlEur(y.netto_kalt);
-  document.getElementById('ctKpiNetto').classList.toggle('neg', y.netto_kalt < 0);
-
-  const tbody = document.getElementById('ctPropTblBody');
-  let rows = '';
-  let tKalt = 0, tExp = 0, tG = 0, tN = 0;
-  for (const p of window._ctrl.properties.filter(x => x.active)) {
-    let pKalt = 0, pExp = 0, pG = 0, pN = 0;
+  let tMiete = 0, tExp = 0, tCash = 0;
+  const rows = window._ctrl.properties.filter(x => x.active).map(p => {
+    let pMiete = 0, pExp = 0, pCash = 0;
     for (let m = 1; m <= 12; m++) {
       const s = ctlPropertyMonth(p.id, m);
-      pKalt += s.kalt;
-      pExp  += s.exp_total;
-      pG    += s.gesamt;
-      pN    += s.netto_kalt;
+      pMiete += pickMiete(s);
+      pExp   += pickExp(s);
+      pCash  += pickCash(s);
     }
-    // subtract this property's one-time expenses from Gesamt + Netto-Kalt
+    // one-time expenses subtract from cashflow, add to expense column
     const ot = window._ctrl.one_time
       .filter(o => o.property_id === p.id)
       .reduce((s, o) => s + Number(o.amount || 0), 0);
-    pG -= ot; pN -= ot; pExp += ot;
+    pExp  += ot;
+    pCash -= ot;
+    return { p, pMiete, pExp, pCash };
+  });
+  rows.forEach(r => { tMiete += r.pMiete; tExp += r.pExp; tCash += r.pCash; });
 
-    tKalt += pKalt; tExp += pExp; tG += pG; tN += pN;
-    rows +=
+  document.getElementById('ctKpiVal').textContent = ctlEur(tCash);
+  document.getElementById('ctKpiVal').classList.toggle('neg', tCash < 0);
+
+  let html = '';
+  for (const { p, pMiete, pExp, pCash } of rows) {
+    html +=
       '<tr>' +
         '<td>' + p.id + '</td>' +
         '<td>' + p.name + '</td>' +
-        '<td class="num">' + ctlEur0(pKalt) + '</td>' +
-        '<td class="num">' + ctlEur0(pExp) + '</td>' +
-        '<td class="num ' + (pG < 0 ? 'neg' : '') + '">' + ctlEur0(pG) + '</td>' +
-        '<td class="num ' + (pN < 0 ? 'neg' : '') + '">' + ctlEur0(pN) + '</td>' +
+        '<td class="num">' + ctlEur0(pMiete) + '</td>' +
+        '<td class="num">' + ctlEur0(pExp)   + '</td>' +
+        '<td class="num ' + (pCash < 0 ? 'neg' : '') + '">' + ctlEur0(pCash) + '</td>' +
       '</tr>';
   }
-  rows +=
+  html +=
     '<tr class="total">' +
       '<td></td><td>Gesamt</td>' +
-      '<td class="num">' + ctlEur0(tKalt) + '</td>' +
-      '<td class="num">' + ctlEur0(tExp)  + '</td>' +
-      '<td class="num ' + (tG < 0 ? 'neg' : '') + '">' + ctlEur0(tG) + '</td>' +
-      '<td class="num ' + (tN < 0 ? 'neg' : '') + '">' + ctlEur0(tN) + '</td>' +
+      '<td class="num">' + ctlEur0(tMiete) + '</td>' +
+      '<td class="num">' + ctlEur0(tExp)   + '</td>' +
+      '<td class="num ' + (tCash < 0 ? 'neg' : '') + '">' + ctlEur0(tCash) + '</td>' +
     '</tr>';
-  tbody.innerHTML = rows;
+  document.getElementById('ctPropTblBody').innerHTML = html;
 }
 
 /* ── Month view ─────────────────────────────────────────────── */
 function renderMonth(m) {
-  const p = ctlPortfolioMonth(m);
-  document.getElementById('ctKpiGesamt').textContent = ctlEur(p.gesamt);
-  document.getElementById('ctKpiGesamt').classList.toggle('neg', p.gesamt < 0);
-  document.getElementById('ctKpiNetto').textContent  = ctlEur(p.netto_kalt);
-  document.getElementById('ctKpiNetto').classList.toggle('neg', p.netto_kalt < 0);
-
-  const tbody = document.getElementById('ctPropTblBody');
-  let rows = '';
-  let tKalt = 0, tExp = 0, tG = 0, tN = 0;
-  for (const pr of window._ctrl.properties.filter(x => x.active)) {
-    const s = ctlPropertyMonth(pr.id, m);
-    tKalt += s.kalt; tExp += s.exp_total; tG += s.gesamt; tN += s.netto_kalt;
-    rows +=
-      '<tr style="cursor:pointer;" onclick="ctlOpenEntry(' + pr.id + ',' + m + ')">' +
-        '<td>' + pr.id + '</td>' +
-        '<td>' + pr.name + '</td>' +
-        '<td class="num">' + ctlEur0(s.kalt) + '</td>' +
-        '<td class="num">' + ctlEur0(s.exp_total) + '</td>' +
-        '<td class="num ' + (s.gesamt < 0 ? 'neg' : '') + '">' + ctlEur0(s.gesamt) + '</td>' +
-        '<td class="num ' + (s.netto_kalt < 0 ? 'neg' : '') + '">' + ctlEur0(s.netto_kalt) + '</td>' +
+  let tMiete = 0, tExp = 0, tCash = 0;
+  let html = '';
+  for (const p of window._ctrl.properties.filter(x => x.active)) {
+    const s     = ctlPropertyMonth(p.id, m);
+    const miete = pickMiete(s), exp = pickExp(s), cash = pickCash(s);
+    tMiete += miete; tExp += exp; tCash += cash;
+    html +=
+      '<tr style="cursor:pointer;" onclick="ctlOpenEntry(' + p.id + ',' + m + ')">' +
+        '<td>' + p.id + '</td>' +
+        '<td>' + p.name + '</td>' +
+        '<td class="num">' + ctlEur0(miete) + '</td>' +
+        '<td class="num">' + ctlEur0(exp)   + '</td>' +
+        '<td class="num ' + (cash < 0 ? 'neg' : '') + '">' + ctlEur0(cash) + '</td>' +
       '</tr>';
   }
-  rows +=
+  document.getElementById('ctKpiVal').textContent = ctlEur(tCash);
+  document.getElementById('ctKpiVal').classList.toggle('neg', tCash < 0);
+  html +=
     '<tr class="total">' +
       '<td></td><td>Gesamt</td>' +
-      '<td class="num">' + ctlEur0(tKalt) + '</td>' +
-      '<td class="num">' + ctlEur0(tExp)  + '</td>' +
-      '<td class="num ' + (tG < 0 ? 'neg' : '') + '">' + ctlEur0(tG) + '</td>' +
-      '<td class="num ' + (tN < 0 ? 'neg' : '') + '">' + ctlEur0(tN) + '</td>' +
+      '<td class="num">' + ctlEur0(tMiete) + '</td>' +
+      '<td class="num">' + ctlEur0(tExp)   + '</td>' +
+      '<td class="num ' + (tCash < 0 ? 'neg' : '') + '">' + ctlEur0(tCash) + '</td>' +
     '</tr>';
-  tbody.innerHTML = rows;
+  document.getElementById('ctPropTblBody').innerHTML = html;
 }
