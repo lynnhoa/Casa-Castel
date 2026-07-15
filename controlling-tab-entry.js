@@ -56,14 +56,19 @@ window.ctlOpenEntry = function (pid, month) {
   _ctlDrawer = { pid, month };
   const prop = ctlProp(pid);
   document.getElementById('ctDrawerTitle').textContent = prop.name + ' · ' + ctlMonthName(month) + ' ' + window._ctrl.year;
+  document.getElementById('ctDrawer').dataset.opener = 'dashboard';
   document.getElementById('ctDrawerBody').innerHTML = renderDrawerBody(pid, month);
   document.getElementById('ctDrawer').classList.add('open');
   wireDrawerActions();
 };
 
 document.getElementById('ctDrawerClose').addEventListener('click', () => {
-  document.getElementById('ctDrawer').classList.remove('open');
-  window.renderDashboard?.();
+  const drawer = document.getElementById('ctDrawer');
+  const opener = drawer.dataset.opener || 'dashboard';
+  drawer.classList.remove('open');
+  // Refresh whichever tab opened it — its aggregate numbers likely changed
+  if (opener === 'onetime') window.renderOneTime?.();
+  else                       window.renderDashboard?.();
 });
 
 function renderDrawerBody(pid, month) {
@@ -303,9 +308,10 @@ async function fillExpense(mode) {
   wireDrawerActions();
 }
 
-/* Deep-link from drawer's Einmalig section → Einmalig tab, scrolled to this property */
+/* Deep-link from drawer's Einmalig section → Einmalig tab, property drawer opens */
 window.ctlOpenEinmalig = function (pid, month) {
   document.getElementById('ctDrawer').classList.remove('open');
-  window.ctlOtDeepLink?.(pid, month);
-  switchTab('onetime');
+  window.ctlOtDeepLink?.(pid, month);   // sets month filter
+  switchTab('onetime');                 // renders surface with new filter
+  window.ctlOtOpenProperty?.(pid);      // then opens the property drawer
 };

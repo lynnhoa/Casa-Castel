@@ -1,11 +1,18 @@
 /* ─────────────────────────────────────────────────────────────
-   CONTROLLING — EINMALIG TAB (per-property cards)
+   CONTROLLING — EINMALIG TAB
    controlling-tab-onetime.js
 
-   Each active property gets its own card. Entries filtered by
-   month + search show inside the card. Add form embedded per
-   card, so property_id is implicit. Portfolio summary at the
-   bottom.
+   Two-level structure:
+     · Surface  = portfolio overview
+                  · Filters (month + search)
+                  · Portfolio Gesamt card
+                  · Property list (one compact row per property)
+     · Drawer   = per-property drilldown
+                  · Summe card on top
+                  · Add-form
+                  · Entries list (scrolls freely — works for 100s)
+   Reuses the shared #ctDrawer element (same used by Dashboard's
+   monthly-entry drawer).
 
    Depends on: controlling-data.js
    ───────────────────────────────────────────────────────────── */
@@ -18,17 +25,17 @@ let _ctlOtFilterMonth = (function(){
   catch(e){ return 'all'; }
 })();
 let _ctlOtSearch      = '';
+let _ctlOtDrawerPid   = null;
 
 function _ctlOtSave() {
   try { localStorage.setItem('ctl_ot_month', String(_ctlOtFilterMonth)); } catch(e){}
 }
 
-/* Called by the drawer's "Öffnen" button to jump here with month pre-set
-   and a specific property card scrolled into view.                        */
+/* Deep-link entry point used by monthly-entry drawer's "Öffnen" button.
+   Sets filter, then caller (controlling-tab-entry.js) switches tab + opens drawer. */
 window.ctlOtDeepLink = function (pid, month) {
   _ctlOtFilterMonth = month;
   _ctlOtSave();
-  window._ctlOtScrollToPid = pid;
 };
 
 document.getElementById('tab-onetime').innerHTML = `
@@ -45,24 +52,29 @@ document.getElementById('tab-onetime').innerHTML = `
       <input  class="ct-input" id="ctOtSearch" type="search" style="text-align:left;" placeholder="Suchen (Firma, Beschreibung)…"/>
     </div>
 
-    <div id="ctOtProperties"></div>
-
-    <div class="ct-section" style="margin-top:6px;">
-      <div class="ct-section__ttl"><span>Zusammenfassung</span></div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;">
-        <span style="font-size:13px;color:var(--cc-charcoal);" id="ctOtSumFilterLbl">Gesamt (Filter)</span>
-        <span style="font-family:'Cormorant Garamond',Georgia,serif;font-size:22px;color:var(--cc-ink);font-variant-numeric:tabular-nums;" id="ctOtSumFilterVal">0,00 €</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:0.5px solid var(--cc-rule);">
-        <span style="font-size:11px;letter-spacing:.06em;color:var(--cc-taupe);">Ganzes Jahr</span>
-        <span style="font-size:13px;color:var(--cc-taupe);font-variant-numeric:tabular-nums;" id="ctOtSumYearVal">0,00 €</span>
+    <div class="ct-section" style="margin-bottom:16px;">
+      <div style="text-align:center;padding:6px 0;">
+        <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:8px;">Gesamt Portfolio</div>
+        <div style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;color:var(--cc-ink);font-variant-numeric:tabular-nums;" id="ctOtPortfolioTotal">0,00 €</div>
+        <div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;" id="ctOtPortfolioSub">—</div>
       </div>
     </div>
+
+    <table class="ct-tbl">
+      <thead>
+        <tr>
+          <th>Immobilie</th>
+          <th class="num" style="width:80px;">Einträge</th>
+          <th class="num" style="width:100px;">Summe</th>
+          <th style="width:24px;"></th>
+        </tr>
+      </thead>
+      <tbody id="ctOtPropList"></tbody>
+    </table>
   </div>
 `;
 
 window.renderOneTime = function () {
-  // Month dropdown
   const monthSel = document.getElementById('ctOtFiltMonth');
   monthSel.innerHTML = '<option value="all">Alle Monate</option>';
   for (let m = 1; m <= 12; m++) {
@@ -76,14 +88,14 @@ window.renderOneTime = function () {
   monthSel.onchange = () => {
     _ctlOtFilterMonth = monthSel.value === 'all' ? 'all' : Number(monthSel.value);
     _ctlOtSave();
-    renderOtProperties();
+    renderOtSurface();
   };
   searchInp.oninput = e => {
     _ctlOtSearch = e.target.value.toLowerCase();
-    renderOtProperties();
+    renderOtSurface();
   };
 
-  renderOtProperties();
+  renderOtSurface();
 };
 
 function matchesFilter(o, y) {
@@ -98,120 +110,142 @@ function matchesFilter(o, y) {
   return true;
 }
 
-function renderOtProperties() {
+function renderOtSurface() {
   const y = window._ctrl.year;
-  const props = window._ctrl.properties.filter(p => p.active);
+  let portfolioTotal = 0;
+  let propsWithEntries = 0;
 
+  const rows = window._ctrl.properties.filter(p => p.active).map(p => {
+    const entries = window._ctrl.one_time.filter(o => o.property_id === p.id && matchesFilter(o, y));
+    const total   = entries.reduce((s, o) => s + Number(o.amount || 0), 0);
+    if (entries.length > 0) propsWithEntries++;
+    portfolioTotal += total;
+    return { p, count: entries.length, total };
+  });
+
+  // Portfolio Gesamt card
+  document.getElementById('ctOtPortfolioTotal').textContent = ctlEur(portfolioTotal);
+  const subParts = [];
+  if (_ctlOtFilterMonth !== 'all') subParts.push(ctlMonthName(_ctlOtFilterMonth));
+  subParts.push(y);
+  subParts.push(propsWithEntries + ' Immobilie' + (propsWithEntries === 1 ? '' : 'n') + ' mit Einträgen');
+  document.getElementById('ctOtPortfolioSub').textContent = subParts.join(' · ');
+
+  // Header sub-line
   const scopeParts = [];
   if (_ctlOtFilterMonth !== 'all') scopeParts.push(ctlMonthName(_ctlOtFilterMonth));
   if (_ctlOtSearch)                scopeParts.push('"' + _ctlOtSearch + '"');
-  const scopeLbl = scopeParts.length ? scopeParts.join(' · ') : 'Alle Monate';
-  document.getElementById('ctOtSub').textContent = scopeLbl + ' · ' + y;
+  document.getElementById('ctOtSub').textContent =
+    (scopeParts.length ? scopeParts.join(' · ') : 'Alle Monate') + ' · ' + y;
 
-  const defDate = new Date().toISOString().slice(0, 10);
+  // Property list
   let html = '';
-  let filterTotal = 0;
-  let yearTotal   = 0;
+  for (const { p, count, total } of rows) {
+    const muted = count === 0;
+    const numStyle = muted ? ' style="color:var(--cc-stone);"' : '';
+    html +=
+      '<tr style="cursor:pointer;" onclick="ctlOtOpenProperty(' + p.id + ')">' +
+        '<td>' + p.name + '</td>' +
+        '<td class="num"' + numStyle + '>' + count + '</td>' +
+        '<td class="num"' + numStyle + '>' + (total > 0 ? ctlEur(total) : '—') + '</td>' +
+        '<td style="text-align:right;color:var(--cc-taupe);"><i class="ti ti-chevron-right"></i></td>' +
+      '</tr>';
+  }
+  document.getElementById('ctOtPropList').innerHTML = html;
+}
 
-  for (const p of props) {
-    // filtered entries for this property
-    const entries = window._ctrl.one_time
-      .filter(o => o.property_id === p.id && matchesFilter(o, y))
-      .sort((a, b) => (a.invoice_date < b.invoice_date ? 1 : -1));
-    const propFilterTotal = entries.reduce((s, o) => s + Number(o.amount || 0), 0);
-    filterTotal += propFilterTotal;
+/* ══ PROPERTY DRAWER ══════════════════════════════════════════ */
 
-    // whole-year total for this property (unfiltered by month/search but restricted to y)
-    const propYearTotal = window._ctrl.one_time
-      .filter(o => o.property_id === p.id && ctlParseDate(o.invoice_date).year === y)
-      .reduce((s, o) => s + Number(o.amount || 0), 0);
-    yearTotal += propYearTotal;
+window.ctlOtOpenProperty = function (pid) {
+  _ctlOtDrawerPid = pid;
+  const prop = ctlProp(pid);
+  document.getElementById('ctDrawerTitle').textContent = prop.name + ' · Einmalige Ausgaben';
+  document.getElementById('ctDrawer').dataset.opener = 'onetime';
+  document.getElementById('ctDrawerBody').innerHTML = renderOtDrawerBody(pid);
+  document.getElementById('ctDrawer').classList.add('open');
+  wireOtDrawer();
+};
 
-    // entries HTML
-    let entriesHtml;
-    if (entries.length) {
-      entriesHtml = '';
-      for (const o of entries) {
-        const cmp  = o.company ? String(o.company) : '';
-        const itm  = o.item    ? String(o.item)    : '';
-        const desc = cmp && itm ? '<strong>' + cmp + '</strong> · ' + itm
-                                : (cmp || itm || '—');
-        entriesHtml +=
-          '<div class="ct-row">' +
-            '<div class="ct-row__lbl" style="font-size:12px;">' + desc + '<small>' + fmtOtDate(o.invoice_date) + '</small></div>' +
-            '<div class="ct-row__lbl" style="text-align:right;font-variant-numeric:tabular-nums;font-size:13px;">' + ctlEur(o.amount) + '</div>' +
-            '<div style="text-align:right;"><button class="ct-btn-sm" onclick="ctlOtDelete(' + o.id + ')" title="Löschen"><i class="ti ti-trash"></i></button></div>' +
-          '</div>';
-      }
-    } else {
-      entriesHtml =
-        '<div style="padding:10px 0;font-size:12px;color:var(--cc-stone);text-align:center;">' +
-          (scopeParts.length ? 'Keine Einträge für diesen Filter' : 'Keine Einträge') +
+function renderOtDrawerBody(pid) {
+  const y = window._ctrl.year;
+  const entries = window._ctrl.one_time
+    .filter(o => o.property_id === pid && matchesFilter(o, y))
+    .sort((a, b) => (a.invoice_date < b.invoice_date ? 1 : -1));
+  const total = entries.reduce((s, o) => s + Number(o.amount || 0), 0);
+  const defDate = new Date().toISOString().slice(0, 10);
+
+  const filterScope = [];
+  if (_ctlOtFilterMonth !== 'all') filterScope.push(ctlMonthName(_ctlOtFilterMonth));
+  if (_ctlOtSearch)                filterScope.push('"' + _ctlOtSearch + '"');
+  const scopeLbl = filterScope.length ? filterScope.join(' · ') : 'Ganzes Jahr';
+
+  // Summary card
+  const summaryHtml =
+    '<div class="ct-section" style="margin-bottom:14px;">' +
+      '<div style="text-align:center;padding:4px 0;">' +
+        '<div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:6px;">Summe · ' + scopeLbl + '</div>' +
+        '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:28px;color:var(--cc-ink);font-variant-numeric:tabular-nums;">' + ctlEur(total) + '</div>' +
+        '<div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;">' + entries.length + ' Eintrag' + (entries.length === 1 ? '' : 'e') + '</div>' +
+      '</div>' +
+    '</div>';
+
+  // Add form
+  const addFormHtml =
+    '<div class="ct-section" style="margin-bottom:14px;">' +
+      '<div class="ct-section__ttl"><span>Neuer Eintrag</span></div>' +
+      '<div style="display:grid;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px;">' +
+        '<input class="ct-input ct-otd-inp" data-field="date" type="date" style="text-align:left;" value="' + defDate + '"/>' +
+        '<input class="ct-input ct-otd-inp" data-field="company" type="text" style="text-align:left;" placeholder="Firma"/>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 90px 44px;gap:6px;align-items:center;">' +
+        '<input class="ct-input ct-otd-inp" data-field="item" type="text" style="text-align:left;" placeholder="Beschreibung"/>' +
+        '<input class="ct-input ct-otd-inp" data-field="amt"  type="number" step="0.01" inputmode="decimal" placeholder="0,00"/>' +
+        '<button class="ct-btn-sm primary" onclick="ctlOtDrawerAdd()" title="Hinzufügen"><i class="ti ti-plus"></i></button>' +
+      '</div>' +
+    '</div>';
+
+  // Entries list
+  let listHtml = '<div class="ct-section">' +
+    '<div class="ct-section__ttl"><span>Einträge</span></div>';
+  if (!entries.length) {
+    listHtml += '<div style="padding:20px 0;text-align:center;color:var(--cc-stone);font-size:12px;">' +
+      (filterScope.length ? 'Keine Einträge für diesen Filter' : 'Noch keine Einträge') +
+      '</div>';
+  } else {
+    for (const o of entries) {
+      const cmp  = o.company ? String(o.company) : '';
+      const itm  = o.item    ? String(o.item)    : '';
+      const desc = cmp && itm ? '<strong>' + cmp + '</strong> · ' + itm
+                              : (cmp || itm || '—');
+      listHtml +=
+        '<div class="ct-row">' +
+          '<div class="ct-row__lbl" style="font-size:12px;">' + desc + '<small>' + fmtOtDate(o.invoice_date) + '</small></div>' +
+          '<div class="ct-row__lbl" style="text-align:right;font-variant-numeric:tabular-nums;font-size:13px;">' + ctlEur(o.amount) + '</div>' +
+          '<div style="text-align:right;"><button class="ct-btn-sm" onclick="ctlOtDelete(' + o.id + ')" title="Löschen"><i class="ti ti-trash"></i></button></div>' +
         '</div>';
     }
-
-    // add form
-    const addFormHtml =
-      '<div style="margin-top:8px;padding-top:10px;border-top:0.5px solid var(--cc-rule);">' +
-        '<div style="display:grid;grid-template-columns:120px 1fr;gap:6px;margin-bottom:6px;">' +
-          '<input class="ct-input ct-ot-inp" data-pid="' + p.id + '" data-field="date" type="date" style="text-align:left;" value="' + defDate + '"/>' +
-          '<input class="ct-input ct-ot-inp" data-pid="' + p.id + '" data-field="company" type="text" style="text-align:left;" placeholder="Firma"/>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:1fr 90px 44px;gap:6px;align-items:center;">' +
-          '<input class="ct-input ct-ot-inp" data-pid="' + p.id + '" data-field="item" type="text" style="text-align:left;" placeholder="Beschreibung"/>' +
-          '<input class="ct-input ct-ot-inp" data-pid="' + p.id + '" data-field="amt"  type="number" step="0.01" inputmode="decimal" placeholder="0,00"/>' +
-          '<button class="ct-btn-sm primary" onclick="ctlOtAddFor(' + p.id + ')" title="Hinzufügen"><i class="ti ti-plus"></i></button>' +
-        '</div>' +
-      '</div>';
-
-    // property header — total badge changes color based on value
-    const totalColor = propFilterTotal > 0 ? 'var(--cc-ink)' : 'var(--cc-stone)';
-    const headerHtml =
-      '<div class="ct-section__ttl" style="margin-bottom:10px;">' +
-        '<span>' + p.name + '</span>' +
-        '<span style="font-variant-numeric:tabular-nums;font-family:\'Cormorant Garamond\',Georgia,serif;font-size:16px;letter-spacing:0;text-transform:none;color:' + totalColor + ';">' + ctlEur(propFilterTotal) + '</span>' +
-      '</div>';
-
-    html +=
-      '<div class="ct-section" id="ctOtProp-' + p.id + '" style="margin-bottom:10px; transition:box-shadow .3s;">' +
-        headerHtml +
-        entriesHtml +
-        addFormHtml +
-      '</div>';
   }
+  listHtml += '</div>';
 
-  document.getElementById('ctOtProperties').innerHTML = html;
+  return summaryHtml + addFormHtml + listHtml;
+}
 
-  // Summary at the bottom
-  document.getElementById('ctOtSumFilterLbl').textContent =
-    'Gesamt · ' + scopeLbl;
-  document.getElementById('ctOtSumFilterVal').textContent = ctlEur(filterTotal);
-  document.getElementById('ctOtSumYearVal').textContent   = ctlEur(yearTotal);
+function wireOtDrawer() {
+  // Focus Firma input for rapid entry
+  setTimeout(() => {
+    const firma = document.querySelector('#ctDrawerBody input.ct-otd-inp[data-field="company"]');
+    firma?.focus();
+  }, 100);
 
-  // Wire Enter-to-add on all text/number inputs
-  document.querySelectorAll('#ctOtProperties input.ct-ot-inp').forEach(inp => {
+  // Enter key on any input submits
+  document.querySelectorAll('#ctDrawerBody input.ct-otd-inp').forEach(inp => {
     inp.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        const pid = Number(inp.dataset.pid);
-        window.ctlOtAddFor(pid);
+        window.ctlOtDrawerAdd();
       }
     });
   });
-
-  // Deep-link scroll target: scroll the requested property card into view + brief flash
-  if (window._ctlOtScrollToPid) {
-    const el = document.getElementById('ctOtProp-' + window._ctlOtScrollToPid);
-    if (el) {
-      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-      el.style.boxShadow = '0 0 0 2px var(--cc-gold)';
-      setTimeout(() => { el.style.boxShadow = ''; }, 1400);
-      // Focus the Firma input so she can start typing immediately
-      const firma = el.querySelector('input.ct-ot-inp[data-field="company"]');
-      setTimeout(() => firma?.focus(), 400);
-    }
-    window._ctlOtScrollToPid = null;
-  }
 }
 
 function fmtOtDate(iso) {
@@ -219,9 +253,10 @@ function fmtOtDate(iso) {
   return String(d.day).padStart(2,'0') + '.' + String(d.month).padStart(2,'0') + '.' + String(d.year).slice(2);
 }
 
-window.ctlOtAddFor = async function (pid) {
+window.ctlOtDrawerAdd = async function () {
+  if (!_ctlOtDrawerPid) return;
   const inps = {};
-  document.querySelectorAll('#ctOtProperties input.ct-ot-inp[data-pid="' + pid + '"]').forEach(inp => {
+  document.querySelectorAll('#ctDrawerBody input.ct-otd-inp').forEach(inp => {
     inps[inp.dataset.field] = inp.value;
   });
   const date    = inps.date;
@@ -230,13 +265,11 @@ window.ctlOtAddFor = async function (pid) {
   const amt     = Number(inps.amt);
   if (!date || !item || !amt) { ctlToast('Datum · Beschreibung · Betrag'); return; }
   try {
-    await ctlInsertOneTime(pid, date, item, amt, company);
+    await ctlInsertOneTime(_ctlOtDrawerPid, date, item, amt, company);
     ctlToast('Hinzugefügt');
-    renderOtProperties();
-    window.renderDashboard?.();
-    // After re-render, refocus the Firma field of this property for rapid next entry
-    const firma = document.querySelector('#ctOtProperties input.ct-ot-inp[data-pid="' + pid + '"][data-field="company"]');
-    firma?.focus();
+    document.getElementById('ctDrawerBody').innerHTML = renderOtDrawerBody(_ctlOtDrawerPid);
+    wireOtDrawer();
+    window.renderDashboard?.();  // dashboard totals depend on this
   } catch (e) {
     console.error(e); ctlToast('Fehler beim Speichern');
   }
@@ -246,7 +279,10 @@ window.ctlOtDelete = async function (id) {
   if (!confirm('Eintrag löschen?')) return;
   try {
     await ctlDeleteOneTime(id);
-    renderOtProperties();
+    if (_ctlOtDrawerPid) {
+      document.getElementById('ctDrawerBody').innerHTML = renderOtDrawerBody(_ctlOtDrawerPid);
+      wireOtDrawer();
+    }
     window.renderDashboard?.();
     ctlToast('Gelöscht');
   } catch (e) {
