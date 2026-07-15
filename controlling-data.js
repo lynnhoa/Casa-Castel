@@ -118,13 +118,12 @@ function ctlPortfolioYear() {
 }
 
 function ctlMonthStatus(month) {
-  const y = window._ctrl.year;
-  const now = new Date();
-  const isFuture = (y > now.getFullYear()) || (y === now.getFullYear() && month > now.getMonth() + 1);
-  const hasIncome = window._ctrl.income.some(r => r.year === y && r.month === month);
-  if (isFuture && !hasIncome) return 'future';
-  if (hasIncome) return 'done';
-  return 'pending';
+  const y  = window._ctrl.year;
+  const cy = new Date().getFullYear();
+  const cm = new Date().getMonth() + 1;
+  // Future is strictly calendar-based — prefilled forecast rows don't count.
+  if (y > cy || (y === cy && month > cm)) return 'future';
+  return window._ctrl.income.some(r => r.year === y && r.month === month) ? 'done' : 'pending';
 }
 
 /* ── Writes (upsert) ────────────────────────────────────────── */
