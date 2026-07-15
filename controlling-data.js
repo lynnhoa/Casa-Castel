@@ -93,21 +93,23 @@ function ctlPropertyMonth(pid, month) {
     }
   }
 
-  // One-time expenses for this property × month.
-  // Owner cost (NOT passthrough) — hits Warm and Kalt views equally.
+  // One-time expenses returned SEPARATELY. Dashboard toggle decides
+  // whether to include them in the totals shown to the user.
+  let oneTime = 0;
   for (const ot of window._ctrl.one_time) {
     if (ot.property_id !== pid) continue;
     const d = ctlParseDate(ot.invoice_date);
     if (d.year !== y || d.month !== month) continue;
-    expTotal += Number(ot.amount || 0);
+    oneTime += Number(ot.amount || 0);
   }
 
   const expNet = expTotal - expPassthru;
   return {
     kalt, neben, warm: kalt + neben,
     exp_total: expTotal, exp_passthru: expPassthru, exp_net: expNet,
-    gesamt:     (kalt + neben) - expTotal,
-    netto_kalt: kalt - expNet,
+    one_time: oneTime,
+    gesamt:     (kalt + neben) - expTotal,   // recurring only
+    netto_kalt: kalt - expNet,               // recurring only
   };
 }
 

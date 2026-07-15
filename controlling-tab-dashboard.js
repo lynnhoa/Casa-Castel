@@ -14,16 +14,17 @@
 
 'use strict';
 
-let _ctlDashView  = 'year';                        // 'year' | 'month'
-let _ctlDashMode  = 'warm';                        // 'warm' | 'kalt'
-let _ctlDashMonth = new Date().getMonth() + 1;
+let _ctlDashView    = 'year';                        // 'year' | 'month'
+let _ctlDashMode    = 'warm';                        // 'warm' | 'kalt'
+let _ctlDashOneTime = false;                         // false = Laufend, true = +Einmalig
+let _ctlDashMonth   = new Date().getMonth() + 1;
 
 document.getElementById('tab-dashboard').innerHTML = `
   <div class="ct-page">
     <div class="ct-hdr">
       <div>
         <h1 class="ct-title">Controlling</h1>
-        <div class="ct-sub" id="ctDashSub">Portfolio · 2026 · Warm</div>
+        <div class="ct-sub" id="ctDashSub">Portfolio · 2026 · Warm · Laufend</div>
       </div>
       <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-end;">
         <div class="ct-yr-switch" role="group" aria-label="Zeitraum">
@@ -34,14 +35,18 @@ document.getElementById('tab-dashboard').innerHTML = `
           <button data-mode="warm"  class="active">Warm</button>
           <button data-mode="kalt">Kalt</button>
         </div>
+        <div class="ct-yr-switch" role="group" aria-label="Einmalige">
+          <button data-ot="off" class="active">Laufend</button>
+          <button data-ot="on">+ Einmalig</button>
+        </div>
       </div>
     </div>
 
     <div class="ct-kpis" style="grid-template-columns:1fr;">
       <div class="ct-kpi">
-        <div class="ct-kpi__label" id="ctKpiLbl">Cashflow (Warm)</div>
+        <div class="ct-kpi__label" id="ctKpiLbl">Cashflow (Warm · Laufend)</div>
         <div class="ct-kpi__val"   id="ctKpiVal">—</div>
-        <div class="ct-kpi__sub"   id="ctKpiSub">Warmmiete − alle Ausgaben (inkl. Hausgeld)</div>
+        <div class="ct-kpi__sub"   id="ctKpiSub">Warmmiete − laufende Ausgaben</div>
       </div>
     </div>
 
@@ -80,30 +85,49 @@ document.querySelectorAll('#tab-dashboard [data-mode]').forEach(btn => {
     window.renderDashboard();
   });
 });
+document.querySelectorAll('#tab-dashboard [data-ot]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _ctlDashOneTime = btn.dataset.ot === 'on';
+    document.querySelectorAll('#tab-dashboard [data-ot]')
+      .forEach(b => b.classList.toggle('active', (b.dataset.ot === 'on') === _ctlDashOneTime));
+    window.renderDashboard();
+  });
+});
 
 /* ── Mode-aware pickers ─────────────────────────────────────── */
-function pickMiete(s) { return _ctlDashMode === 'warm' ? s.warm      : s.kalt; }
-function pickExp(s)   { return _ctlDashMode === 'warm' ? s.exp_total : s.exp_net; }
-function pickCash(s)  { return _ctlDashMode === 'warm' ? s.gesamt    : s.netto_kalt; }
+function pickMiete(s) { return _ctlDashMode === 'warm' ? s.warm : s.kalt; }
+function pickExp(s) {
+  const base = _ctlDashMode === 'warm' ? s.exp_total : s.exp_net;
+  return _ctlDashOneTime ? base + s.one_time : base;
+}
+function pickCash(s) {
+  const base = _ctlDashMode === 'warm' ? s.gesamt : s.netto_kalt;
+  return _ctlDashOneTime ? base - s.one_time : base;
+}
 
 /* ── Public entrypoint ──────────────────────────────────────── */
 window.renderDashboard = function () {
   const y       = window._ctrl.year;
   const modeLbl = _ctlDashMode === 'warm' ? 'Warm' : 'Kalt';
+  const otLbl   = _ctlDashOneTime ? '+Einmalig' : 'Laufend';
 
   document.getElementById('ctDashSub').textContent =
-    'Portfolio · ' + y + ' · ' + modeLbl +
+    'Portfolio · ' + y + ' · ' + modeLbl + ' · ' + otLbl +
     (_ctlDashView === 'month' ? ' · ' + ctlMonthName(_ctlDashMonth) : '');
 
-  document.getElementById('ctKpiLbl').textContent = 'Cashflow (' + modeLbl + ')';
-  document.getElementById('ctKpiSub').textContent = _ctlDashMode === 'warm'
-    ? 'Warmmiete − alle Ausgaben (inkl. Hausgeld)'
-    : 'Kaltmiete − Ausgaben ohne Hausgeld';
+  document.getElementById('ctKpiLbl').textContent = 'Cashflow (' + modeLbl + ' · ' + otLbl + ')';
+
+  // Sub-label matrix
+  let sub;
+  if (_ctlDashMode === 'warm' && !_ctlDashOneTime) sub = 'Warmmiete − laufende Ausgaben';
+  else if (_ctlDashMode === 'warm' &&  _ctlDashOneTime) sub = 'Warmmiete − laufende + einmalige Ausgaben';
+  else if (_ctlDashMode === 'kalt' && !_ctlDashOneTime) sub = 'Kaltmiete − laufende Ausgaben ohne Hausgeld';
+  else                                                  sub = 'Kaltmiete − laufende + einmalige Ausgaben ohne Hausgeld';
+  document.getElementById('ctKpiSub').textContent = sub;
 
   document.getElementById('ctThMiete').textContent = _ctlDashMode === 'warm' ? 'Warmmiete'   : 'Kaltmiete';
   document.getElementById('ctThAusg').textContent  = _ctlDashMode === 'warm' ? 'Ausgaben'    : 'Ausg. o. HG';
 
-  // Show Status column only in Month view
   document.getElementById('ctThStatus').style.display = (_ctlDashView === 'month') ? '' : 'none';
 
   renderMonthStrip();

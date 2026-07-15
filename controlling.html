@@ -133,6 +133,7 @@
       </nav>
       <div class="cc-tabs" id="appTabs">
         <button class="cc-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="cc-tab"        data-tab="onetime">Einmalig</button>
         <button class="cc-tab"        data-tab="setup">Setup</button>
       </div>
     </div>
@@ -140,6 +141,7 @@
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
         <div class="tab-content" id="tab-dashboard"></div>
+        <div class="tab-content" id="tab-onetime"  style="display:none;"></div>
         <div class="tab-content" id="tab-setup"    style="display:none;"></div>
       </div>
     </div>
@@ -177,6 +179,7 @@
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
       window.scrollTo(0, 0);
       if (tab === 'dashboard') window.renderDashboard?.();
+      if (tab === 'onetime')   window.renderOneTime?.();
       if (tab === 'setup')     window.renderSetup?.();
     }
     document.getElementById('appTabs').addEventListener('click', e => {
@@ -189,6 +192,7 @@
   <script src="controlling-data.js"></script>
   <script src="controlling-tab-dashboard.js"></script>
   <script src="controlling-tab-entry.js"></script>
+  <script src="controlling-tab-onetime.js"></script>
   <script src="controlling-tab-setup.js"></script>
   <script>
     /* Kick off boot() defined in controlling-auth.js */
