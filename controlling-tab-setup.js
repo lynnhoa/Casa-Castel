@@ -15,6 +15,15 @@
 
 'use strict';
 
+/* German money formatting for setup inputs */
+const fmtDe = v => (v === null || v === undefined || v === '') ? '' : String(v).replace('.', ',');
+const parseDe = s => {
+  s = String(s).trim();
+  if (!s) return null;
+  if (s.includes(',')) return Number(s.replace(/\./g, '').replace(',', '.'));
+  return Number(s);
+};
+
 document.getElementById('tab-setup').innerHTML = `
   <div class="ct-page">
     <div class="ct-hdr">
@@ -52,12 +61,12 @@ window.renderSetup = function () {
       rows +=
         '<div class="ct-row">' +
           '<div class="ct-row__lbl">' + u.name + sub + '</div>' +
-          '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
+          '<span class="ct-money"><input class="ct-input ct-input--setup" type="text" inputmode="decimal" ' +
             'data-setup="unit" data-id="' + u.id + '" data-field="def_kaltmiete" ' +
-            'value="' + (u.def_kaltmiete ?? '') + '"/>' +
-          '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
+            'value="' + fmtDe(u.def_kaltmiete) + '"/></span>' +
+          '<span class="ct-money"><input class="ct-input ct-input--setup" type="text" inputmode="decimal" ' +
             'data-setup="unit" data-id="' + u.id + '" data-field="def_nebenkosten" ' +
-            'value="' + (u.def_nebenkosten ?? '') + '"/>' +
+            'value="' + fmtDe(u.def_nebenkosten) + '"/></span>' +
         '</div>';
     }
     html +=
@@ -88,9 +97,9 @@ window.renderSetup = function () {
         '<div class="ct-setup-field' + (isQuarterly ? ' ct-setup-field--q' : '') + '">' +
           '<div class="ct-setup-field__lbl">' + f.lbl +
             '<span class="ct-setup-field__freq">' + f.freq + '</span></div>' +
-          '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
+          '<span class="ct-money"><input class="ct-input ct-input--setup" type="text" inputmode="decimal" ' +
             'data-setup="prop" data-id="' + p.id + '" data-field="' + f.key + '" ' +
-            'value="' + (p[f.key] ?? '') + '"/>' +
+            'value="' + fmtDe(p[f.key]) + '"/></span>' +
         '</div>';
     }
     ph +=
@@ -110,9 +119,9 @@ window.renderSetup = function () {
     ch +=
       '<div class="ct-row">' +
         '<div class="ct-row__lbl">' + c.name + '<small' + freqStyle + '>' + (c.frequency || '') + '</small></div>' +
-        '<input class="ct-input ct-input--setup' + (isQ ? ' ct-input--q' : '') + '" type="number" step="0.01" inputmode="decimal" ' +
+        '<span class="ct-money"><input class="ct-input ct-input--setup' + (isQ ? ' ct-input--q' : '') + '" type="text" inputmode="decimal" ' +
           'data-setup="cat" data-id="' + c.id + '" data-field="default_amount" ' +
-          'value="' + (c.default_amount ?? '') + '"/>' +
+          'value="' + fmtDe(c.default_amount) + '"/></span>' +
         '<div></div>' +
       '</div>';
   }
@@ -132,7 +141,7 @@ async function saveSetupField(e) {
   const kind  = inp.dataset.setup;
   const id    = Number(inp.dataset.id);
   const field = inp.dataset.field;
-  const val   = inp.value === '' ? null : Number(inp.value);
+  const val   = parseDe(inp.value);
   try {
     if (kind === 'unit') {
       const u = ctlUnit(id);
@@ -146,6 +155,7 @@ async function saveSetupField(e) {
     else if (kind === 'cat') {
       await ctlUpdateCategoryDefault(id, val);
     }
+    inp.value = fmtDe(val);          // normalize display to German comma
     inp.classList.remove('dirty');
     ctlToast('Gespeichert');
   } catch (err) {

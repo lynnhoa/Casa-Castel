@@ -121,6 +121,15 @@
     .ct-setup-field--q .ct-setup-field__freq { color:var(--cc-avail-text); font-weight:500; }
     .ct-setup-field--q .ct-input--setup { border-color:var(--cc-avail-bdr); background:var(--cc-avail-bg); }
     .ct-input--q { border-color:var(--cc-avail-bdr) !important; background:var(--cc-avail-bg) !important; }
+
+    /* € suffix wrapper for money inputs */
+    .ct-money { position:relative; display:block; }
+    .ct-money .ct-input { padding-right:24px; width:100%; }
+    .ct-money::after {
+      content:'€';
+      position:absolute; right:9px; top:50%; transform:translateY(-50%);
+      font-size:12px; color:var(--cc-stone); pointer-events:none;
+    }
     .ct-input:focus { outline:none; border-color:var(--cc-ink); }
     .ct-input.dirty { background:#FFF9E8; }
     .ct-input.zero  { color:var(--cc-stone); }
