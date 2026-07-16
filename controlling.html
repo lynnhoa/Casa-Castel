@@ -160,8 +160,8 @@
         background:var(--cc-white);
         border:var(--cc-border);
         border-radius:var(--cc-r-lg);
-        margin-bottom:10px;
-        padding:16px 20px;
+        margin-bottom:8px;
+        padding:14px 18px;
         box-shadow:0 1px 3px rgba(60,50,40,0.03);
       }
       #ctPropTbl tr.total { background:var(--cc-surface); box-shadow:none; }
@@ -184,9 +184,9 @@
       /* Cashflow — Cormorant, lining figures, w400 like rp-summary__total */
       #ctPropTbl .ct-cell-cash {
         display:block;
-        position:absolute; top:16px; right:36px;
+        position:absolute; top:14px; right:34px;
         font-family:'Cormorant Garamond',Georgia,serif;
-        font-size:19px; font-weight:400;
+        font-size:18px; font-weight:400;
         font-feature-settings:'lnum' 1, 'tnum' 1;
         font-variant-numeric:lining-nums tabular-nums;
         color:var(--cc-avail-text);
@@ -271,8 +271,8 @@
       #ctOtPropList tr {
         display:block; position:relative;
         background:var(--cc-white); border:var(--cc-border);
-        border-radius:var(--cc-r-lg); margin-bottom:10px;
-        padding:16px 46px 16px 20px;
+        border-radius:var(--cc-r-lg); margin-bottom:8px;
+        padding:14px 44px 14px 18px;
         box-shadow:0 1px 3px rgba(60,50,40,0.03);
         min-height:24px;
       }
@@ -301,6 +301,23 @@
       }
 
       #tab-setup table { min-width:0 !important; }
+
+      /* ── Setup rows: name on top, paired inputs below ── */
+      #tab-setup .ct-row {
+        grid-template-columns:1fr 1fr;
+        gap:6px 8px;
+        padding:12px 0;
+      }
+      #tab-setup .ct-row .ct-row__lbl {
+        grid-column:1 / -1;
+        font-size:14px; line-height:1.35;
+      }
+      #tab-setup .ct-col-hdr {
+        grid-template-columns:1fr 1fr;
+        gap:8px; margin-bottom:2px;
+      }
+      #tab-setup .ct-col-hdr div:first-child { display:none; }
+      #tab-setup .ct-col-hdr div { text-align:right; }
     }
   </style>
 </head>

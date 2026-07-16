@@ -18,7 +18,7 @@ document.getElementById('tab-setup').innerHTML = `
     <div class="ct-hdr">
       <div>
         <h1 class="ct-title">Setup</h1>
-        <div class="ct-sub">Standing plan · Vorbelegungen für „Confirm as expected"</div>
+        <div class="ct-sub">Standardwerte · Vorbelegung für „Plan übernehmen"</div>
       </div>
       <div>
         <label style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);display:block;text-align:right;margin-bottom:4px;">Jahr</label>
@@ -72,7 +72,7 @@ window.renderSetup = function () {
     const p = ctlProp(u.property_id);
     uh +=
       '<div class="ct-row">' +
-        '<div class="ct-row__lbl">' + (p?.name || '?') + ' · ' + u.name + '<small>' + (u.unit_type || '') + '</small></div>' +
+        '<div class="ct-row__lbl">' + (p?.name || '?') + ' · ' + u.name + ((u.unit_type && u.unit_type !== u.name) ? '<small>' + u.unit_type + '</small>' : '') + '</div>' +
         '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
           'data-setup="unit" data-id="' + u.id + '" data-field="def_kaltmiete" ' +
           'value="' + (u.def_kaltmiete ?? '') + '"/>' +
