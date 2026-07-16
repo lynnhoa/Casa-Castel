@@ -2,11 +2,13 @@
    CONTROLLING — SETUP TAB
    controlling-tab-setup.js
 
-   Edit standing-plan values (used by "Confirm as expected"):
-     · Unit default rents (Kalt/Neben)
-     · Property expense defaults (Rate/Zinsen/Tilgung/Hausgeld/Grundsteuer/Strom)
+   Standing-plan defaults, grouped by property:
+     · One card per property; its units listed inside
+     · Wohnungen expense defaults (table)
      · Casa Castel category defaults
-   Plus the active year selector.
+   No year selector — defaults are "current truth". Every change
+   is logged to ctrl_setup_history; the "Historie" link opens the
+   shared drawer with the change log.
 
    Depends on: controlling-data.js
    ───────────────────────────────────────────────────────────── */
@@ -20,17 +22,12 @@ document.getElementById('tab-setup').innerHTML = `
         <h1 class="ct-title">Setup</h1>
         <div class="ct-sub">Standardwerte · Vorbelegung für „Plan übernehmen"</div>
       </div>
-      <div>
-        <label style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--cc-taupe);display:block;text-align:right;margin-bottom:4px;">Jahr</label>
-        <select id="ctYearSel" class="ct-input ct-input--filter" style="width:100px;text-align:center;">
-        </select>
-      </div>
+      <button class="ct-btn-sm" id="ctSetupHistory" style="display:flex;align-items:center;gap:5px;">
+        <i class="ti ti-history"></i> Historie
+      </button>
     </div>
 
-    <div class="ct-section">
-      <div class="ct-section__ttl"><span>Mieteinheiten — Standardmiete</span></div>
-      <div id="ctSetupUnits"></div>
-    </div>
+    <div id="ctSetupUnits"></div>
 
     <div class="ct-section">
       <div class="ct-section__ttl"><span>Wohnungen — Ausgaben-Standardwerte</span></div>
@@ -45,45 +42,35 @@ document.getElementById('tab-setup').innerHTML = `
 `;
 
 window.renderSetup = function () {
-  /* Year selector */
-  const yrSel = document.getElementById('ctYearSel');
-  const now = new Date().getFullYear();
-  yrSel.innerHTML = '';
-  for (let y = 2026; y <= now + 1; y++) {
-    const opt = document.createElement('option');
-    opt.value = y; opt.textContent = y;
-    if (y === window._ctrl.year) opt.selected = true;
-    yrSel.appendChild(opt);
-  }
-  yrSel.onchange = async () => {
-    ctlShowLoading(true);
-    try {
-      await ctlLoadAll(Number(yrSel.value));
-      window.renderSetup();
-      window.renderDashboard?.();
-    } catch (e) { console.error(e); ctlToast('Fehler beim Jahr laden'); }
-    finally { ctlShowLoading(false); }
-  };
-
-  /* Units */
+  /* ── Units, grouped per property ──────────────────────────── */
   const uHost = document.getElementById('ctSetupUnits');
-  let uh = '<div class="ct-col-hdr"><div>Einheit</div><div>Kaltmiete</div><div>Nebenkosten</div></div>';
-  for (const u of window._ctrl.units) {
-    const p = ctlProp(u.property_id);
-    uh +=
-      '<div class="ct-row">' +
-        '<div class="ct-row__lbl">' + (p?.name || '?') + ' · ' + u.name + ((u.unit_type && u.unit_type !== u.name) ? '<small>' + u.unit_type + '</small>' : '') + '</div>' +
-        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
-          'data-setup="unit" data-id="' + u.id + '" data-field="def_kaltmiete" ' +
-          'value="' + (u.def_kaltmiete ?? '') + '"/>' +
-        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
-          'data-setup="unit" data-id="' + u.id + '" data-field="def_nebenkosten" ' +
-          'value="' + (u.def_nebenkosten ?? '') + '"/>' +
+  let html = '';
+  for (const p of window._ctrl.properties.filter(x => x.active)) {
+    const units = ctlUnitsOf(p.id);
+    if (!units.length) continue;
+    let rows = '<div class="ct-col-hdr"><div>Einheit</div><div>Kaltmiete</div><div>Nebenkosten</div></div>';
+    for (const u of units) {
+      const sub = (u.unit_type && u.unit_type !== u.name) ? '<small>' + u.unit_type + '</small>' : '';
+      rows +=
+        '<div class="ct-row">' +
+          '<div class="ct-row__lbl">' + u.name + sub + '</div>' +
+          '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
+            'data-setup="unit" data-id="' + u.id + '" data-field="def_kaltmiete" ' +
+            'value="' + (u.def_kaltmiete ?? '') + '"/>' +
+          '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
+            'data-setup="unit" data-id="' + u.id + '" data-field="def_nebenkosten" ' +
+            'value="' + (u.def_nebenkosten ?? '') + '"/>' +
+        '</div>';
+    }
+    html +=
+      '<div class="ct-section ct-setup-group">' +
+        '<div class="ct-setup-group__name">' + p.name + '</div>' +
+        rows +
       '</div>';
   }
-  uHost.innerHTML = uh;
+  uHost.innerHTML = html;
 
-  /* Properties (apartment-style only — Casa uses categories below) */
+  /* ── Wohnungen — expense defaults (scrollable table) ───────── */
   const pHost = document.getElementById('ctSetupProps');
   let ph = '<div style="overflow-x:auto;"><table class="ct-tbl" style="min-width:640px;">' +
     '<thead><tr>' +
@@ -92,27 +79,27 @@ window.renderSetup = function () {
       '<th class="num">Hausgeld</th><th class="num">Grundst.</th><th class="num">Strom</th>' +
     '</tr></thead><tbody>';
   for (const p of window._ctrl.properties) {
-    if (p.id === CASA_PROP_ID) continue;
+    if (p.id === CASA_PROP_ID || !p.active) continue;
     ph += '<tr><td>' + p.name + '</td>';
     for (const f of ['def_rate','def_zinsen','def_tilgung','def_hausgeld','def_grundsteuer','def_strom']) {
       ph += '<td class="num" style="padding:4px 4px;">' +
-        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
+        '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
           'data-setup="prop" data-id="' + p.id + '" data-field="' + f + '" ' +
-          'style="max-width:80px;" value="' + (p[f] ?? '') + '"/></td>';
+          'style="max-width:84px;" value="' + (p[f] ?? '') + '"/></td>';
     }
     ph += '</tr>';
   }
   ph += '</tbody></table></div>';
   pHost.innerHTML = ph;
 
-  /* Casa categories */
+  /* ── Casa Castel categories ────────────────────────────────── */
   const cHost = document.getElementById('ctSetupCats');
   let ch = '<div class="ct-col-hdr"><div>Kategorie</div><div>Standard</div><div></div></div>';
   for (const c of window._ctrl.categories) {
     ch +=
       '<div class="ct-row">' +
         '<div class="ct-row__lbl">' + c.name + '<small>' + (c.frequency || '') + '</small></div>' +
-        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
+        '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
           'data-setup="cat" data-id="' + c.id + '" data-field="default_amount" ' +
           'value="' + (c.default_amount ?? '') + '"/>' +
         '<div></div>' +
@@ -120,11 +107,13 @@ window.renderSetup = function () {
   }
   cHost.innerHTML = ch;
 
-  /* Wire save-on-blur for all setup inputs */
+  /* ── Save on blur ──────────────────────────────────────────── */
   document.querySelectorAll('#tab-setup input.ct-input[data-setup]').forEach(inp => {
     inp.addEventListener('focus', () => inp.classList.add('dirty'));
     inp.addEventListener('blur',  saveSetupField);
   });
+
+  document.getElementById('ctSetupHistory').onclick = ctlOpenHistory;
 };
 
 async function saveSetupField(e) {
@@ -151,4 +140,70 @@ async function saveSetupField(e) {
   } catch (err) {
     console.error(err); ctlToast('Fehler');
   }
+}
+
+/* ── Historie drawer ─────────────────────────────────────────── */
+
+const FIELD_NAMES = {
+  def_kaltmiete: 'Kaltmiete', def_nebenkosten: 'Nebenkosten',
+  def_rate: 'Rate', def_zinsen: 'Zinsen', def_tilgung: 'Tilgung',
+  def_hausgeld: 'Hausgeld', def_grundsteuer: 'Grundsteuer', def_strom: 'Strom',
+  default_amount: 'Standardbetrag',
+};
+
+function historyEntityName(h) {
+  if (h.entity_type === 'unit') {
+    const u = ctlUnit(h.entity_id);
+    if (!u) return 'Einheit #' + h.entity_id;
+    const p = ctlProp(u.property_id);
+    return (p ? p.name + ' · ' : '') + u.name;
+  }
+  if (h.entity_type === 'property') return ctlProp(h.entity_id)?.name || 'Immobilie #' + h.entity_id;
+  if (h.entity_type === 'category') return ctlCat(h.entity_id)?.name || 'Kategorie #' + h.entity_id;
+  return '#' + h.entity_id;
+}
+
+async function ctlOpenHistory() {
+  document.getElementById('ctDrawerTitle').textContent = 'Historie · Standardwerte';
+  document.getElementById('ctDrawer').dataset.opener = 'setup';
+  document.getElementById('ctDrawerBody').innerHTML =
+    '<div style="padding:30px 0;text-align:center;color:var(--cc-taupe);font-size:13px;">Lade…</div>';
+  document.getElementById('ctDrawer').classList.add('open');
+
+  let rows = [];
+  try { rows = await ctlFetchHistory(200); }
+  catch (e) {
+    document.getElementById('ctDrawerBody').innerHTML =
+      '<div style="padding:30px 0;text-align:center;color:var(--cc-notice-text);font-size:13px;">Historie konnte nicht geladen werden.</div>';
+    return;
+  }
+
+  if (!rows.length) {
+    document.getElementById('ctDrawerBody').innerHTML =
+      '<div class="ct-section"><div style="padding:24px 0;text-align:center;color:var(--cc-stone);font-size:13px;">' +
+      'Noch keine Änderungen protokolliert.<br><small style="font-size:11px;">Jede Änderung an Standardwerten erscheint hier automatisch.</small></div></div>';
+    return;
+  }
+
+  const fmtVal = v => v === null || v === undefined ? '—' : ctlEur(v);
+  const fmtDate = ts => {
+    const d = new Date(ts);
+    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getFullYear()).slice(2) +
+           ' · ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  };
+
+  let html = '<div class="ct-section">';
+  for (const h of rows) {
+    html +=
+      '<div class="ct-row" style="grid-template-columns:1fr auto;">' +
+        '<div class="ct-row__lbl">' + historyEntityName(h) +
+          '<small>' + (FIELD_NAMES[h.field] || h.field) + ' · ' + fmtDate(h.changed_at) + '</small></div>' +
+        '<div style="font-size:13px;font-variant-numeric:lining-nums tabular-nums;color:var(--cc-ink);white-space:nowrap;">' +
+          '<span style="color:var(--cc-stone);text-decoration:line-through;">' + fmtVal(h.old_value) + '</span>' +
+          ' <span style="color:var(--cc-taupe);">→</span> ' + fmtVal(h.new_value) +
+        '</div>' +
+      '</div>';
+  }
+  html += '</div>';
+  document.getElementById('ctDrawerBody').innerHTML = html;
 }

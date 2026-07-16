@@ -198,28 +198,54 @@ async function ctlDeleteOneTime(id) {
   window._ctrl.one_time = window._ctrl.one_time.filter(r => r.id !== id);
 }
 
+
+/* ── Setup history ──────────────────────────────────────────── */
+async function ctlLogHistory(entity_type, entity_id, field, oldV, newV) {
+  const a = oldV === null || oldV === undefined ? null : Number(oldV);
+  const b = newV === null || newV === undefined ? null : Number(newV);
+  if (a === b) return;
+  try {
+    await _ctlSupa.from('ctrl_setup_history').insert({ entity_type, entity_id, field, old_value: a, new_value: b });
+  } catch (e) { console.warn('[controlling] history log failed', e); }
+}
+async function ctlFetchHistory(limit) {
+  const { data, error } = await _ctlSupa.from('ctrl_setup_history')
+    .select('*').order('changed_at', { ascending: false }).limit(limit || 100);
+  if (error) throw error;
+  return data || [];
+}
+
 async function ctlUpdateUnitDefaults(unit_id, def_kaltmiete, def_nebenkosten) {
+  const prev = ctlUnit(unit_id);
   const { data, error } = await _ctlSupa.from('ctrl_units')
     .update({ def_kaltmiete, def_nebenkosten }).eq('id', unit_id).select().single();
   if (error) throw error;
+  if (prev) {
+    ctlLogHistory('unit', unit_id, 'def_kaltmiete',   prev.def_kaltmiete,   def_kaltmiete);
+    ctlLogHistory('unit', unit_id, 'def_nebenkosten', prev.def_nebenkosten, def_nebenkosten);
+  }
   const idx = window._ctrl.units.findIndex(u => u.id === unit_id);
   if (idx >= 0) window._ctrl.units[idx] = data;
   return data;
 }
 
 async function ctlUpdatePropertyDefaults(pid, fields) {
+  const prev = ctlProp(pid);
   const { data, error } = await _ctlSupa.from('ctrl_properties')
     .update(fields).eq('id', pid).select().single();
   if (error) throw error;
+  if (prev) for (const k of Object.keys(fields)) ctlLogHistory('property', pid, k, prev[k], fields[k]);
   const idx = window._ctrl.properties.findIndex(p => p.id === pid);
   if (idx >= 0) window._ctrl.properties[idx] = data;
   return data;
 }
 
 async function ctlUpdateCategoryDefault(cat_id, default_amount) {
+  const prev = ctlCat(cat_id);
   const { data, error } = await _ctlSupa.from('ctrl_castel_categories')
     .update({ default_amount }).eq('id', cat_id).select().single();
   if (error) throw error;
+  if (prev) ctlLogHistory('category', cat_id, 'default_amount', prev.default_amount, default_amount);
   const idx = window._ctrl.categories.findIndex(c => c.id === cat_id);
   if (idx >= 0) window._ctrl.categories[idx] = data;
   return data;

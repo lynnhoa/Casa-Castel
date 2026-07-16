@@ -67,8 +67,9 @@ document.getElementById('ctDrawerClose').addEventListener('click', () => {
   const opener = drawer.dataset.opener || 'dashboard';
   drawer.classList.remove('open');
   // Refresh whichever tab opened it — its aggregate numbers likely changed
-  if (opener === 'onetime') window.renderOneTime?.();
-  else                       window.renderDashboard?.();
+  if (opener === 'onetime')     window.renderOneTime?.();
+  else if (opener === 'setup')  window.renderSetup?.();
+  else                          window.renderDashboard?.();
 });
 
 function renderDrawerBody(pid, month) {
@@ -94,7 +95,7 @@ function renderDrawerBody(pid, month) {
       ).join('');
     }
     return (
-      '<div class="ct-row" style="grid-template-columns:1fr 88px minmax(56px,auto);">' +
+      '<div class="ct-row" style="grid-template-columns:1fr 96px minmax(52px,auto);">' +
         '<div class="ct-row__lbl">' + lbl + (sub || openTag ? '<small>' + (sub || '') + openTag + '</small>' : '') + '</div>' +
         '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
           dataAttrs + ' value="' + (val === '' ? '' : val) + '" placeholder=""/>' +
@@ -107,7 +108,7 @@ function renderDrawerBody(pid, month) {
 
   /* ── Einnahmen ──────────────────────────────────────────────── */
   let incomeFilled = 0;
-  let incomeHtml = '<div class="ct-col-hdr" style="grid-template-columns:1fr 88px minmax(56px,auto);"><div>Einheit</div><div>Betrag</div><div></div></div>';
+  let incomeHtml = '<div class="ct-col-hdr" style="grid-template-columns:1fr 96px minmax(52px,auto);"><div>Einheit</div><div>Betrag</div><div></div></div>';
   for (const u of units) {
     const row  = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month);
     const prev = window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === month - 1);
@@ -136,7 +137,7 @@ function renderDrawerBody(pid, month) {
   let expenseHtml = '', expFilled = 0, expTotalRows = 0;
   if (isCasa) {
     expTotalRows = window._ctrl.categories.length;
-    expenseHtml += '<div class="ct-col-hdr" style="grid-template-columns:1fr 88px minmax(56px,auto);"><div>Kategorie</div><div>Betrag</div><div></div></div>';
+    expenseHtml += '<div class="ct-col-hdr" style="grid-template-columns:1fr 96px minmax(52px,auto);"><div>Kategorie</div><div>Betrag</div><div></div></div>';
     for (const c of window._ctrl.categories) {
       const row  = window._ctrl.castel_expenses.find(r => r.category_id === c.id && r.year === y && r.month === month);
       const prev = window._ctrl.castel_expenses.find(r => r.category_id === c.id && r.year === y && r.month === month - 1);
@@ -172,7 +173,7 @@ function renderDrawerBody(pid, month) {
       { key: 'strom',       lbl: 'Strom',       sub: '' },
     ];
     expTotalRows = fields.length;
-    expenseHtml += '<div class="ct-col-hdr" style="grid-template-columns:1fr 88px minmax(56px,auto);"><div></div><div>Betrag</div><div></div></div>';
+    expenseHtml += '<div class="ct-col-hdr" style="grid-template-columns:1fr 96px minmax(52px,auto);"><div></div><div>Betrag</div><div></div></div>';
     for (const f of fields) {
       const isOpen = !row || row[f.key] === null || row[f.key] === undefined;
       if (!isOpen) expFilled++;
