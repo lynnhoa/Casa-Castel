@@ -29,10 +29,8 @@ document.getElementById('tab-setup').innerHTML = `
 
     <div id="ctSetupUnits"></div>
 
-    <div class="ct-section">
-      <div class="ct-section__ttl"><span>Wohnungen — Ausgaben-Standardwerte</span></div>
-      <div id="ctSetupProps"></div>
-    </div>
+    <div class="ct-section__ttl" style="margin:20px 4px 10px;"><span>Wohnungen — Ausgaben-Standardwerte</span></div>
+    <div id="ctSetupProps"></div>
 
     <div class="ct-section">
       <div class="ct-section__ttl"><span>Casa Castel — Kategorien</span></div>
@@ -70,36 +68,49 @@ window.renderSetup = function () {
   }
   uHost.innerHTML = html;
 
-  /* ── Wohnungen — expense defaults (scrollable table) ───────── */
+  /* ── Wohnungen — expense defaults (grouped cards) ──────────── */
+  const APT_FIELDS = [
+    { key: 'def_rate',        lbl: 'Rate',        freq: 'monatlich' },
+    { key: 'def_zinsen',      lbl: 'Zinsen',      freq: 'monatlich' },
+    { key: 'def_tilgung',     lbl: 'Tilgung',     freq: 'monatlich' },
+    { key: 'def_hausgeld',    lbl: 'Hausgeld',    freq: 'monatlich' },
+    { key: 'def_grundsteuer', lbl: 'Grundsteuer', freq: 'vierteljährlich' },
+    { key: 'def_strom',       lbl: 'Strom',       freq: 'monatlich' },
+  ];
   const pHost = document.getElementById('ctSetupProps');
-  let ph = '<div style="overflow-x:auto;"><table class="ct-tbl" style="min-width:640px;">' +
-    '<thead><tr>' +
-      '<th>Immobilie</th>' +
-      '<th class="num">Rate</th><th class="num">Zinsen</th><th class="num">Tilgung</th>' +
-      '<th class="num">Hausgeld</th><th class="num">Grundst.</th><th class="num">Strom</th>' +
-    '</tr></thead><tbody>';
+  let ph = '';
   for (const p of window._ctrl.properties) {
     if (p.id === CASA_PROP_ID || !p.active) continue;
-    ph += '<tr><td>' + p.name + '</td>';
-    for (const f of ['def_rate','def_zinsen','def_tilgung','def_hausgeld','def_grundsteuer','def_strom']) {
-      ph += '<td class="num" style="padding:4px 4px;">' +
-        '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
-          'data-setup="prop" data-id="' + p.id + '" data-field="' + f + '" ' +
-          'style="max-width:84px;" value="' + (p[f] ?? '') + '"/></td>';
+    let fields = '';
+    for (const f of APT_FIELDS) {
+      const isQuarterly = f.freq !== 'monatlich';
+      fields +=
+        '<div class="ct-setup-field' + (isQuarterly ? ' ct-setup-field--q' : '') + '">' +
+          '<div class="ct-setup-field__lbl">' + f.lbl +
+            '<span class="ct-setup-field__freq">' + f.freq + '</span></div>' +
+          '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
+            'data-setup="prop" data-id="' + p.id + '" data-field="' + f.key + '" ' +
+            'value="' + (p[f.key] ?? '') + '"/>' +
+        '</div>';
     }
-    ph += '</tr>';
+    ph +=
+      '<div class="ct-section ct-setup-group">' +
+        '<div class="ct-setup-group__name">' + p.name + '</div>' +
+        '<div class="ct-setup-fields">' + fields + '</div>' +
+      '</div>';
   }
-  ph += '</tbody></table></div>';
   pHost.innerHTML = ph;
 
   /* ── Casa Castel categories ────────────────────────────────── */
   const cHost = document.getElementById('ctSetupCats');
   let ch = '<div class="ct-col-hdr"><div>Kategorie</div><div>Standard</div><div></div></div>';
   for (const c of window._ctrl.categories) {
+    const isQ = c.frequency && c.frequency !== 'monatlich' && c.frequency !== 'sporadisch';
+    const freqStyle = isQ ? ' style="color:var(--cc-avail-text);font-weight:500;"' : '';
     ch +=
       '<div class="ct-row">' +
-        '<div class="ct-row__lbl">' + c.name + '<small>' + (c.frequency || '') + '</small></div>' +
-        '<input class="ct-input ct-input--setup" type="number" step="0.01" inputmode="decimal" ' +
+        '<div class="ct-row__lbl">' + c.name + '<small' + freqStyle + '>' + (c.frequency || '') + '</small></div>' +
+        '<input class="ct-input ct-input--setup' + (isQ ? ' ct-input--q' : '') + '" type="number" step="0.01" inputmode="decimal" ' +
           'data-setup="cat" data-id="' + c.id + '" data-field="default_amount" ' +
           'value="' + (c.default_amount ?? '') + '"/>' +
         '<div></div>' +

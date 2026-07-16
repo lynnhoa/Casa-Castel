@@ -103,6 +103,24 @@
     .ct-input--filter { font-size:14px; padding:7px 10px; color:var(--cc-charcoal); }
     .ct-input--setup  { font-size:14px; padding:7px 9px; }
     .ct-setup-group__name { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:400; color:var(--cc-ink); margin-bottom:10px; }
+
+    /* Setup expense-default field grid */
+    .ct-setup-fields { display:grid; grid-template-columns:repeat(3,1fr); gap:12px 10px; }
+    @media (max-width:640px){ .ct-setup-fields { grid-template-columns:repeat(2,1fr); } }
+    .ct-setup-field__lbl {
+      font-family:'Inter',system-ui,sans-serif;
+      font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+      color:var(--cc-taupe); margin-bottom:4px;
+      display:flex; flex-direction:column; gap:1px;
+    }
+    .ct-setup-field__freq {
+      font-size:9px; font-weight:400; letter-spacing:.04em; text-transform:none;
+      color:var(--cc-stone);
+    }
+    /* Non-monthly frequency stands out in the gold accent */
+    .ct-setup-field--q .ct-setup-field__freq { color:var(--cc-avail-text); font-weight:500; }
+    .ct-setup-field--q .ct-input--setup { border-color:var(--cc-avail-bdr); background:var(--cc-avail-bg); }
+    .ct-input--q { border-color:var(--cc-avail-bdr) !important; background:var(--cc-avail-bg) !important; }
     .ct-input:focus { outline:none; border-color:var(--cc-ink); }
     .ct-input.dirty { background:#FFF9E8; }
     .ct-input.zero  { color:var(--cc-stone); }
