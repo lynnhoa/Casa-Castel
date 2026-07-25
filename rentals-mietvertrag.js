@@ -75,15 +75,17 @@ function _buildRentalMietvertragData(room, s, {
     vermieterAdresse: s.vermieter_adresse || '',
     vermieterEmail:   s.vermieter_email   || '',
     vermieterSig:     s.vermieter_name    || '',
-    objektAdresse:    s.objekt_adresse    || '',
-    objektPLZOrt:     s.objekt_plz_ort    || '',
-    footerAdresse:    s.objekt_adresse ? s.objekt_adresse + ' \u00b7 ' + (s.objekt_plz_ort || '') : '',
+    objektAdresse:    room.adresse         || s.objekt_adresse    || '',
+    objektPLZOrt:     room.plz_ort         || s.objekt_plz_ort    || '',
+    footerAdresse:    (room.adresse || s.objekt_adresse)
+                        ? (room.adresse || s.objekt_adresse) + ((room.plz_ort || s.objekt_plz_ort) ? ' \u00b7 ' + (room.plz_ort || s.objekt_plz_ort) : '')
+                        : '',
     kontoinhaber:     s.kontoinhaber      || '',
     bankname:         s.bankname          || '',
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    s.gerichtsstand     || 'Wiesbaden',
-    unterschriftOrt:  s.unterschrift_ort  || 'Wiesbaden',
+    unterschriftOrt:  room.unterschrift_ort || s.unterschrift_ort || 'Wiesbaden',
     mieterName,
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
@@ -433,7 +435,7 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('Kaution',eur(d.kaution)+'\u2002(f\u00e4llig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
-    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>`;
+    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>`;
 
   const page1 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(1)}

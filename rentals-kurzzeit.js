@@ -134,7 +134,7 @@ function _buildRentalKurzzeitData(apt, s, {
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    s.gerichtsstand     || 'Wiesbaden',
-    unterschriftOrt:  s.unterschrift_ort  || 'Wiesbaden',
+    unterschriftOrt:  apt.unterschrift_ort || s.unterschrift_ort  || 'Wiesbaden',
     mieterName,
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
@@ -313,7 +313,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${kv('Kaution', eur(d.kaution) + '\u2002(f\u00e4llig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
-    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: Casa Castel \u2013 ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>`;
+    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>`;
 
   const page1 = `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(1)}
