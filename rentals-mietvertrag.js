@@ -75,23 +75,24 @@ function _buildRentalMietvertragData(room, s, {
     vermieterAdresse: s.vermieter_adresse || '',
     vermieterEmail:   s.vermieter_email   || '',
     vermieterSig:     s.vermieter_name    || '',
-    objektAdresse:    room.adresse         || s.objekt_adresse    || '',
-    objektPLZOrt:     room.plz_ort         || s.objekt_plz_ort    || '',
-    footerAdresse:    (room.adresse || s.objekt_adresse)
-                        ? (room.adresse || s.objekt_adresse) + ((room.plz_ort || s.objekt_plz_ort) ? ' \u00b7 ' + (room.plz_ort || s.objekt_plz_ort) : '')
-                        : '',
+    objektAdresse:    room.adresse          || '',
+    objektPLZOrt:     room.plz_ort          || '',
+    footerAdresse:    room.adresse
+                        ? room.adresse + (room.plz_ort ? ' \u00b7 ' + room.plz_ort : '')
+                        : (room.plz_ort || ''),
     kontoinhaber:     s.kontoinhaber      || '',
     bankname:         s.bankname          || '',
     iban:             s.iban              || '',
     bic:              s.bic               || '',
-    gerichtsstand:    s.gerichtsstand     || 'Wiesbaden',
-    unterschriftOrt:  room.unterschrift_ort || s.unterschrift_ort || 'Wiesbaden',
+    gerichtsstand:    room.gerichtsstand    || '',
+    unterschriftOrt:  room.unterschrift_ort || '',
     mieterName,
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
     mieterEmail:        mieterEmail || '',
     zimmerName:          room.name,
     zimmerFlaeche:       room.flaeche_m2 || 0,
+    etage:               room.floor || '',
     gemeinschaftsraeume: gemStr,
     mietbeginn: startVal ? fmt(new Date(startVal)) : '',
     befristet,
@@ -462,6 +463,7 @@ function _renderRentalMietvertragHTML(d) {
     ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
+    ${d.etage ? kv('Etage',d.etage) : ''}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
     ${kv('Mitgenutzte R\u00e4ume',d.gemeinschaftsraeume||'\u2014')}
     ${kv('M\u00f6blierung','M\u00f6bliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
@@ -471,19 +473,19 @@ function _renderRentalMietvertragHTML(d) {
       ? kv('K\u00fcndigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
       : ''}
-    ${hasMultiMieter ? mieteTopBlock : mieteTopBlock + mieteRestBlock}
+    ${mieteTopBlock}
   </div>
 </div>`;
 
-  // PAGE 1B — only when multi-tenant: Fälligkeit, Kaution, Bankverbindung
-  const page1b = hasMultiMieter ? `<div class="pdf-page page">
+  // PAGE 1B — always: Fälligkeit, Kaution, Bankverbindung
+  const page1b = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(2)}
   <div class="content">
     ${mieteRestBlock}
   </div>
-</div>` : '';
+</div>`;
 
-  const pageOffset = hasMultiMieter ? 1 : 0;
+  const pageOffset = 1;
 
   const page2 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(2+pageOffset)}
@@ -528,7 +530,7 @@ function _renderRentalMietvertragHTML(d) {
     ${cl(String(12+pOff),'Datenschutz',
       'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
     ${cl(String(13+pOff),'Sonstige Vereinbarungen',
-      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.')}
+      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+(d.gerichtsstand || '______________')+'.')}
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>

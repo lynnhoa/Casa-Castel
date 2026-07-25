@@ -126,21 +126,24 @@ function _buildRentalKurzzeitData(apt, s, {
     vermieterAdresse: s.vermieter_adresse || '',
     vermieterEmail:   s.vermieter_email   || '',
     vermieterSig:     s.vermieter_name    || '',
-    objektAdresse:    apt.adresse         || s.objekt_adresse || '',
-    objektPLZOrt:     apt.plz_ort         || s.objekt_plz_ort || '',
-    footerAdresse:    (apt.adresse || s.objekt_adresse || '') + (apt.plz_ort || s.objekt_plz_ort ? ' \u00b7 ' + (apt.plz_ort || s.objekt_plz_ort || '') : ''),
+    objektAdresse:    apt.adresse         || '',
+    objektPLZOrt:     apt.plz_ort         || '',
+    footerAdresse:    apt.adresse
+                        ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '')
+                        : (apt.plz_ort || ''),
     kontoinhaber:     s.kontoinhaber      || '',
     bankname:         s.bankname          || '',
     iban:             s.iban              || '',
     bic:              s.bic               || '',
-    gerichtsstand:    s.gerichtsstand     || 'Wiesbaden',
-    unterschriftOrt:  apt.unterschrift_ort || s.unterschrift_ort  || 'Wiesbaden',
+    gerichtsstand:    apt.gerichtsstand    || '',
+    unterschriftOrt:  apt.unterschrift_ort || '',
     mieterName,
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
     mieterEmail:        mieterEmail || '',
     wohnungName:        apt.name,
     wohnungFlaeche:     apt.flaeche_m2 || 0,
+    etage:              apt.floor || '',
     gemeinschaftsraeume: '',   // apartments don't have shared-room lists
     mietbeginn:  startVal ? fmt(new Date(startVal)) : '',
     mietende:    endVal   ? fmt(new Date(endVal))   : '',
@@ -340,26 +343,27 @@ function _renderRentalKurzzeitHTML(d) {
     ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.wohnungName)}
+    ${d.etage ? kv('Etage',d.etage) : ''}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.wohnungFlaeche+'\u00a0m\u00b2')}
     ${kv('M\u00f6blierung','M\u00f6bliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
-    ${hasMultiMieter ? mieteTopBlock : mieteTopBlock + mieteRestBlock}
+    ${mieteTopBlock}
   </div>
 </div>`;
 
-  // PAGE 1B — only when multi-tenant: Zahlungsplan & Bankverbindung
-  const page1b = hasMultiMieter ? `<div class="pdf-page page">
+  // PAGE 1B — always: Zahlungsplan & Bankverbindung
+  const page1b = `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(2)}
   <div class="content">
     ${mieteRestBlock}
   </div>
-</div>` : '';
+</div>`;
 
-  const pageOffset = hasMultiMieter ? 1 : 0;
+  const pageOffset = 1;
 
   // ── PAGE 2: NK-Liste + Klauseln §1–§8 ─────────────────────────────────────
 
   const page2 = `<div class="pdf-page page">
-  ${hdr(d.wohnungName)}${ftr(2)}
+  ${hdr(d.wohnungName)}${ftr(2+pageOffset)}
   <div class="content">
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
     <p class="nk-intro">Die monatliche Miete versteht sich als Warmmiete pauschal inkl. aller nachfolgenden Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV. Umlageschlüssel: Wohnfläche der Mietwohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.</p>
@@ -392,7 +396,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${cl('9','Datenschutz',
       'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.',true)}
     ${cl('10','Salvatorische Klausel &amp; Gerichtsstand',
-      'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
+      'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + (d.gerichtsstand || '______________') + '.')}
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>

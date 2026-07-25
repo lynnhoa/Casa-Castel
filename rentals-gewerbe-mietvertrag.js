@@ -107,11 +107,13 @@ function _buildGewerbeMietvertragData(apt, s, {
     iban:          s.iban         || '',
     bic:           s.bic          || '',
     // Objekt
-    objektAdresse:   apt.adresse     || s.objekt_adresse  || '',
-    objektPLZOrt:    apt.plz_ort     || s.objekt_plz_ort  || '',
-    gerichtsstand:   apt.gerichtsstand || s.gerichtsstand || 'Mainz',
-    unterschriftOrt: apt.unterschrift_ort || s.unterschrift_ort || 'Mainz',
-    footerAdresse:   (apt.adresse || s.objekt_adresse || '') + (apt.plz_ort || s.objekt_plz_ort ? ' \u00b7 ' + (apt.plz_ort || s.objekt_plz_ort) : ''),
+    objektAdresse:   apt.adresse     || '',
+    objektPLZOrt:    apt.plz_ort     || '',
+    gerichtsstand:   apt.gerichtsstand || '',
+    unterschriftOrt: apt.unterschrift_ort || '',
+    footerAdresse:   apt.adresse
+                       ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '')
+                       : (apt.plz_ort || ''),
     aptName:         apt.name || '',
     flaeche:         apt.flaeche_m2 || '',
     etage,
@@ -472,7 +474,7 @@ function _renderGewerbeMietvertragHTML(d) {
     `Personenbezogene Daten werden gem\u00e4\u00df Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und zehn Jahre nach Vertragsende gel\u00f6scht.`,
   ]});
   clauses.push({ n:String(P.sonstige), t:'Sonstige Vereinbarungen', paras:[
-    `M\u00fcndliche Nebenabreden bestehen nicht. \u00c4nderungen und Erg\u00e4nzungen dieses Vertrages bed\u00fcrfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im \u00dcbrigen wirksam. Gerichtsstand f\u00fcr alle Streitigkeiten aus diesem Vertrag ist ${d.gerichtsstand}, soweit der Mieter Kaufmann, juristische Person des \u00f6ffentlichen Rechts oder \u00f6ffentlich-rechtliches Sonderverm\u00f6gen ist oder nach Vertragsschluss wird. Im \u00dcbrigen gilt der gesetzliche Gerichtsstand.`,
+    `M\u00fcndliche Nebenabreden bestehen nicht. \u00c4nderungen und Erg\u00e4nzungen dieses Vertrages bed\u00fcrfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im \u00dcbrigen wirksam. Gerichtsstand f\u00fcr alle Streitigkeiten aus diesem Vertrag ist ${d.gerichtsstand || '______________'}, soweit der Mieter Kaufmann, juristische Person des \u00f6ffentlichen Rechts oder \u00f6ffentlich-rechtliches Sonderverm\u00f6gen ist oder nach Vertragsschluss wird. Im \u00dcbrigen gilt der gesetzliche Gerichtsstand.`,
   ]});
 
   // ═══ FLOW BLOCKS (title stays with first paragraph; later paras may break) ══
