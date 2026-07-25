@@ -104,7 +104,12 @@ function _buildRentalMietvertragData(room, s, {
     kautionFaelText: kautionFael === 'sofort' ? 'sofort nach Vertragsunterzeichnung' : `binnen ${kautionFael}\u00a0Tagen`,
     hausstuerschluessel: room.haustuerschluessel || 1,
     zimmerschluessel:    room.zimmerschluessel    || 1,
-    inventar: Array.isArray(room.inventar) ? room.inventar : [],
+    inventar: (Array.isArray(room.inventar) ? room.inventar : [])
+      .map(i => ({
+        gegenstand: (i.gegenstand || i.name || '').toString().trim(),
+        anzahl:     Number(i.anzahl) > 0 ? Number(i.anzahl) : 1,
+      }))
+      .filter(i => i.gegenstand),
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
     hasMieter2: !!(mieterName2 && mieterName2.trim()),
     mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2, mieterEmail2,
@@ -316,6 +321,13 @@ function _renderRentalMietvertragHTML(d) {
     .clause--first { margin-top:52px; }
     .clause__title { font-family:'Lato',sans-serif; font-size:12px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
     .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; }
+    .inv-list { margin-top:6px; }
+    .inv-list__hdr { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; }
+    .inv-list__row { display:flex; justify-content:space-between; align-items:baseline; gap:14px; font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; line-height:1.55; padding:3.5px 0; border-bottom:0.5px solid #f0ede8; }
+    .inv-list__row:last-child { border-bottom:none; }
+    .inv-list__name { flex:1 1 auto; }
+    .inv-list__qty { flex:0 0 auto; font-variant-numeric:tabular-nums; color:#4a4540; }
+    .inv-list__empty { font-family:'Lato',sans-serif; font-size:10px; color:#aaa59e; padding-top:6px; }
     .inv-table { width:100%; border-collapse:collapse; margin-top:6px; }
     .inv-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
     .inv-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
@@ -388,8 +400,8 @@ function _renderRentalMietvertragHTML(d) {
     `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fs.\u202fd. \u00a7\u00a72 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Enthärtungsanlage, sonstige Anlagen)</div>`;
 
   const invRows = d.inventar.length
-    ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
-    : `<tr><td colspan="2" style="color:#aaa59e;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
+    ? d.inventar.map(i => `<div class="inv-list__row"><span class="inv-list__name">${i.gegenstand}</span><span class="inv-list__qty">${i.anzahl}\u00d7</span></div>`).join('')
+    : `<div class="inv-list__empty">Kein Inventar hinterlegt</div>`;
 
   const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
 
@@ -526,10 +538,10 @@ function _renderRentalMietvertragHTML(d) {
   ${hdr(d.zimmerName)}${ftr(4+pageOffset)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,false)}
-    <table class="inv-table">
-      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
-      <tbody>${invRows}</tbody>
-    </table>
+    <div class="inv-list">
+      <div class="inv-list__hdr"><span>Gegenstand</span><span>Anzahl</span></div>
+      ${invRows}
+    </div>
   </div>
 </div>`;
 
