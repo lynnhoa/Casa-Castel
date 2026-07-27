@@ -568,7 +568,14 @@ async function _pkSaveIdentity(pkId) {
 
   if (_pkSbClient) {
     const { error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId);
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
+    if (error) {
+      console.error('[parking] identity save failed:', error);
+      alert('Konnte nicht speichern:\n' + (error.message || 'Unbekannter Fehler') +
+            (error.hint ? '\n\n' + error.hint : ''));
+      btn.textContent = 'Error'; btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+      return;
+    }
   }
 
   const spot = appParking.find(p => p.id === pkId);
