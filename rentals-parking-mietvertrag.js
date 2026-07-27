@@ -296,6 +296,13 @@ function _renderPkMietvertragHTML(d) {
     ${d.mietende ? kv('Festes Mietende', d.mietende) : ''}
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
+    ${sec('Miete', false, false)}
+    ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
+    <div class="total-box">
+      <span class="total-box__label">Monatliche Miete:</span>
+      <span class="total-box__value">${fmtEUR(d.anfangsmiete)}</span>
+    </div>
+
     ${d.kennzeichen || d.fahrzeug ? `
     ${sec('Fahrzeug', false, false)}
     ${d.kennzeichen ? kv('Kennzeichen', d.kennzeichen) : ''}
@@ -316,12 +323,7 @@ function _renderPkMietvertragHTML(d) {
     ${d.hasMieter3 && d.mieterEmail3 ? kv('E-Mail',       d.mieterEmail3) : ''}
     ${d.hasMieter3 && d.mieterTel3   ? kv('Telefon',      d.mieterTel3)   : ''}
 
-    ${sec('Miete &amp; Bankverbindung', true, !d.hasMieter3)}
-    ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
-    <div class="total-box">
-      <span class="total-box__label">Monatliche Miete:</span>
-      <span class="total-box__value">${fmtEUR(d.anfangsmiete)}</span>
-    </div>
+    ${sec('Zahlung &amp; Bankverbindung', true, !d.hasMieter3)}
     ${kv('Fälligkeit',   'Spätestens 3.\u00a0Werktag des Monats')}
     ${kv('Kaution', fmtEUR(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + ')')}
     <div class="kv-gap"></div>
