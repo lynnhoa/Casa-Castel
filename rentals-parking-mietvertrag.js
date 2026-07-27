@@ -218,44 +218,26 @@ function _renderPkMietvertragHTML(d) {
       <div class="clause__body">${body}</div>
     </div>`;
 
+  const sigDate = d.unterzeichnungsDatum
+    ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
+    : '<div class="sig-date-label">Datum, Ort</div>';
+  const mieterNamesList = [d.mieterName, d.hasMieter2 ? d.mieterName2 : '', d.hasMieter3 ? d.mieterName3 : ''].filter(Boolean);
   const sigBlock = () => `
     <div class="sig-block">
       <div class="sig-col">
-        ${d.unterzeichnungsDatum
-          ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
-          : '<div class="sig-date-label">Datum, Ort</div>'}
+        ${sigDate}
         <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Vermieter</div>
         <div class="sig-name">${d.vermieterSig}</div>
       </div>
       <div class="sig-col">
-        ${d.unterzeichnungsDatum
-          ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
-          : '<div class="sig-date-label">Datum, Ort</div>'}
+        ${sigDate}
         <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
-        <div class="sig-role">Mieter${hasMultiMieter ? '\u00a01' : ''}</div>
-        <div class="sig-name">${d.mieterName}</div>
+        <div class="sig-role">Mieter</div>
+        <div class="sig-name">${mieterNamesList.join('<br/>')}</div>
       </div>
-      ${d.hasMieter2 ? `<div class="sig-col" style="margin-top:28px;">
-        ${d.unterzeichnungsDatum
-          ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
-          : '<div class="sig-date-label">Datum, Ort</div>'}
-        <div class="sig-write-gap"></div>
-        <hr class="sig-line"/>
-        <div class="sig-role">Mieter\u00a02</div>
-        <div class="sig-name">${d.mieterName2}</div>
-      </div>` : ''}
-      ${d.hasMieter3 ? `<div class="sig-col" style="margin-top:28px;">
-        ${d.unterzeichnungsDatum
-          ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
-          : '<div class="sig-date-label">Datum, Ort</div>'}
-        <div class="sig-write-gap"></div>
-        <hr class="sig-line"/>
-        <div class="sig-role">Mieter\u00a03</div>
-        <div class="sig-name">${d.mieterName3}</div>
-      </div>` : ''}
     </div>`;
 
   const subtitle = d.isTG ? 'Garagenmietvertrag \u00b7 Tiefgaragenstellplatz' : 'Stellplatzmietvertrag \u00b7 Stellplatzvermietung';
