@@ -884,6 +884,29 @@ document.getElementById('pkContractOverlay')?.addEventListener('click', e => {
 
 
 /* ── CONTRACT BODY: MIETVERTRAG ──────────────────────────── */
+function _pkAddMieterBlock() {
+  const b2 = document.getElementById('pk-mv-mieter2');
+  const b3 = document.getElementById('pk-mv-mieter3');
+  const addBtn = document.getElementById('pk-mv-addbtn');
+  if (b2 && b2.style.display === 'none') {
+    b2.style.display = '';
+    document.getElementById('pk-mv-name2')?.focus();
+  } else if (b3 && b3.style.display === 'none') {
+    b3.style.display = '';
+    document.getElementById('pk-mv-name3')?.focus();
+  }
+  if (b3 && b3.style.display !== 'none' && addBtn) addBtn.style.display = 'none';
+}
+
+function _pkRemoveMieterBlock(n) {
+  const b = document.getElementById(`pk-mv-mieter${n}`);
+  if (!b) return;
+  b.style.display = 'none';
+  b.querySelectorAll('input').forEach(inp => inp.value = '');
+  const addBtn = document.getElementById('pk-mv-addbtn');
+  if (addBtn) addBtn.style.display = '';
+}
+
 function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
   let _pkMvTenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   let _pkMvTenantEmail = profile.email   || '';
@@ -932,6 +955,26 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob" value="${pkEsc(_pkMvTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="pk-mv-email" type="email" value="${pkEsc(_pkMvTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
     <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-tel" type="tel" placeholder="+49 …"/></div>
+
+    <div id="pk-mv-mieter2" style="display:none">
+      <div class="rm-fields-title" style="display:flex;align-items:center;gap:10px;margin-top:6px"><span>Mieterdaten — Mieter 2</span><button type="button" onclick="_pkRemoveMieterBlock(2)" style="font-size:11px;color:var(--cc-stone);background:none;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;margin-left:auto">Entfernen</button></div>
+      <div class="rm-field"><label>Name</label><input class="rm-input" id="pk-mv-name2" placeholder="Vor- und Nachname…"/></div>
+      <div class="rm-field"><label>Adresse</label><input class="rm-input" id="pk-mv-adr2" placeholder="Aktuelle Adresse…"/></div>
+      <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob2" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
+      <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="pk-mv-email2" type="email" placeholder="mieter@beispiel.de"/></div>
+      <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-tel2" type="tel" placeholder="+49 …"/></div>
+    </div>
+
+    <div id="pk-mv-mieter3" style="display:none">
+      <div class="rm-fields-title" style="display:flex;align-items:center;gap:10px;margin-top:6px"><span>Mieterdaten — Mieter 3</span><button type="button" onclick="_pkRemoveMieterBlock(3)" style="font-size:11px;color:var(--cc-stone);background:none;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;margin-left:auto">Entfernen</button></div>
+      <div class="rm-field"><label>Name</label><input class="rm-input" id="pk-mv-name3" placeholder="Vor- und Nachname…"/></div>
+      <div class="rm-field"><label>Adresse</label><input class="rm-input" id="pk-mv-adr3" placeholder="Aktuelle Adresse…"/></div>
+      <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob3" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
+      <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="pk-mv-email3" type="email" placeholder="mieter@beispiel.de"/></div>
+      <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-tel3" type="tel" placeholder="+49 …"/></div>
+    </div>
+
+    <button type="button" id="pk-mv-addbtn" onclick="_pkAddMieterBlock()" style="font-size:11px;padding:6px 12px;border-radius:6px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-taupe);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;margin-top:4px;margin-bottom:4px"><i class="ti ti-plus" style="font-size:13px"></i> Mieter hinzufügen</button>
 
     <div class="rm-fields-title" style="margin-top:6px">Mietzeit</div>
     <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="pk-mv-start" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>

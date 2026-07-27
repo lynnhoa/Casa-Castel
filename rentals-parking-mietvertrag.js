@@ -16,6 +16,8 @@
 
 function _buildPkMietvertragData(spot, pr, sk, s, {
   mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
+  mieterName2 = '', mieterAdr2 = '', mieterDob2 = '', mieterEmail2 = '', mieterTel2 = '',
+  mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal, sigVal,
   befristet = false, endVal = null,
   kennzeichen = '', fahrzeug = '',
@@ -68,6 +70,18 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     mieterDob:        mieterDob   || '',
     mieterEmail:      mieterEmail || '',
     mieterTel:        mieterTel   || '',
+    hasMieter2:       !!(mieterName2 && mieterName2.trim()),
+    mieterName2:      mieterName2 || '',
+    mieterAdresse2:   mieterAdr2  || '',
+    mieterDob2:       mieterDob2  || '',
+    mieterEmail2:     mieterEmail2 || '',
+    mieterTel2:       mieterTel2  || '',
+    hasMieter3:       !!(mieterName3 && mieterName3.trim()),
+    mieterName3:      mieterName3 || '',
+    mieterAdresse3:   mieterAdr3  || '',
+    mieterDob3:       mieterDob3  || '',
+    mieterEmail3:     mieterEmail3 || '',
+    mieterTel3:       mieterTel3  || '',
     stellplatzNr:     spot.name   || '',
     stellplatzLabel,
     inAnText,
@@ -99,6 +113,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
 
 function _renderPkMietvertragHTML(d) {
 
+  const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
   const fmtEUR = n => Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
 
   const CSS = `
@@ -149,7 +164,7 @@ function _renderPkMietvertragHTML(d) {
       color:#4a4540; margin-bottom:2px; line-height:1.4; }
     .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
       color:#3a3530; line-height:1.6; }
-    .sig-block { margin-top:48px; display:flex; justify-content:space-between; }
+    .sig-block { margin-top:48px; display:flex; flex-wrap:wrap; justify-content:space-between; row-gap:8px; }
     .sig-col { width:44%; }
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
       color:#aaa59e; margin-bottom:4px; }
@@ -220,9 +235,27 @@ function _renderPkMietvertragHTML(d) {
           : '<div class="sig-date-label">Datum, Ort</div>'}
         <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
-        <div class="sig-role">Mieter</div>
+        <div class="sig-role">Mieter${hasMultiMieter ? '\u00a01' : ''}</div>
         <div class="sig-name">${d.mieterName}</div>
       </div>
+      ${d.hasMieter2 ? `<div class="sig-col" style="margin-top:28px;">
+        ${d.unterzeichnungsDatum
+          ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
+          : '<div class="sig-date-label">Datum, Ort</div>'}
+        <div class="sig-write-gap"></div>
+        <hr class="sig-line"/>
+        <div class="sig-role">Mieter\u00a02</div>
+        <div class="sig-name">${d.mieterName2}</div>
+      </div>` : ''}
+      ${d.hasMieter3 ? `<div class="sig-col" style="margin-top:28px;">
+        ${d.unterzeichnungsDatum
+          ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
+          : '<div class="sig-date-label">Datum, Ort</div>'}
+        <div class="sig-write-gap"></div>
+        <hr class="sig-line"/>
+        <div class="sig-role">Mieter\u00a03</div>
+        <div class="sig-name">${d.mieterName3}</div>
+      </div>` : ''}
     </div>`;
 
   const subtitle = d.isTG ? 'Garagenmietvertrag \u00b7 Tiefgaragenstellplatz' : 'Stellplatzmietvertrag \u00b7 Stellplatzvermietung';
@@ -239,12 +272,19 @@ function _renderPkMietvertragHTML(d) {
     ${kv('Adresse', d.vermieterAdresse)}
     ${d.vermieterEmail ? kv('E-Mail', d.vermieterEmail) : ''}
 
-    ${sec('Mieter', false, false)}
+    ${sec('Mieter' + (hasMultiMieter ? '\u00a01' : ''), false, false)}
     ${kv('Name',    d.mieterName)}
     ${kv('Adresse', d.mieterAdresse)}
     ${d.mieterDob   ? kv('Geburtsdatum', d.mieterDob)   : ''}
     ${d.mieterEmail ? kv('E-Mail',       d.mieterEmail) : ''}
     ${d.mieterTel   ? kv('Telefon',      d.mieterTel)   : ''}
+
+    ${d.hasMieter2 ? sec('Mieter\u00a02', false, false) : ''}
+    ${d.hasMieter2 ? kv('Name',    d.mieterName2) : ''}
+    ${d.hasMieter2 ? kv('Adresse', d.mieterAdresse2) : ''}
+    ${d.hasMieter2 && d.mieterDob2   ? kv('Geburtsdatum', d.mieterDob2)   : ''}
+    ${d.hasMieter2 && d.mieterEmail2 ? kv('E-Mail',       d.mieterEmail2) : ''}
+    ${d.hasMieter2 && d.mieterTel2   ? kv('Telefon',      d.mieterTel2)   : ''}
 
     ${sec('Mietobjekt', false, false)}
     ${kv('Bezeichnung', d.stellplatzLabel + '\u00a0Nr.\u00a0' + d.stellplatzNr)}
@@ -256,7 +296,27 @@ function _renderPkMietvertragHTML(d) {
     ${d.mietende ? kv('Festes Mietende', d.mietende) : ''}
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
-    ${sec('Miete &amp; Bankverbindung', true, false)}
+    ${d.kennzeichen || d.fahrzeug ? `
+    ${sec('Fahrzeug', false, false)}
+    ${d.kennzeichen ? kv('Kennzeichen', d.kennzeichen) : ''}
+    ${d.fahrzeug    ? kv('Fahrzeugtyp', d.fahrzeug)    : ''}
+    ` : ''}
+  </div>
+</div>`;
+
+  /* ── PAGE 2 (Daten-Fortsetzung: Mieter 3 + Bankverbindung) ── */
+  const pageData = `<div class="pdf-page page">
+  ${hdr()}${ftr(2)}
+  <div class="content">
+
+    ${d.hasMieter3 ? sec('Mieter\u00a03', false, true) : ''}
+    ${d.hasMieter3 ? kv('Name',    d.mieterName3) : ''}
+    ${d.hasMieter3 ? kv('Adresse', d.mieterAdresse3) : ''}
+    ${d.hasMieter3 && d.mieterDob3   ? kv('Geburtsdatum', d.mieterDob3)   : ''}
+    ${d.hasMieter3 && d.mieterEmail3 ? kv('E-Mail',       d.mieterEmail3) : ''}
+    ${d.hasMieter3 && d.mieterTel3   ? kv('Telefon',      d.mieterTel3)   : ''}
+
+    ${sec('Miete &amp; Bankverbindung', true, !d.hasMieter3)}
     ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
     <div class="total-box">
       <span class="total-box__label">Monatliche Miete:</span>
@@ -270,22 +330,17 @@ function _renderPkMietvertragHTML(d) {
     ${kv('IBAN',         d.iban)}
     ${kv('BIC',          d.bic)}
 
-    ${d.kennzeichen || d.fahrzeug ? `
-    ${sec('Fahrzeug', false, false)}
-    ${d.kennzeichen ? kv('Kennzeichen', d.kennzeichen) : ''}
-    ${d.fahrzeug    ? kv('Fahrzeugtyp', d.fahrzeug)    : ''}
-    ` : ''}
   </div>
 </div>`;
 
-  /* ── PAGE 2 ── */
+  /* ── PAGE 3 (Klauseln + Unterschriften) ── */
   const mietbeginnText = d.mietbeginn ? ` am ${d.mietbeginn}` : '';
 
   const mindestEnd = d.mietende || '(1\u00a0Jahr nach Mietbeginn)';
   const laufzeitClause = `Das Mietverhältnis beginnt${mietbeginnText} und ist fest abgeschlossen bis zum ${mindestEnd} (Mindestlaufzeit). Eine Kündigung während der Mindestlaufzeit ist ausgeschlossen. Nach Ablauf der Mindestlaufzeit l\u00e4uft der Vertrag auf unbestimmte Zeit weiter und kann von beiden Parteien ohne Angabe von Gr\u00fcnden mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gek\u00fcndigt werden (§\u00a0580a BGB).`;
 
   const page2 = `<div class="pdf-page page">
-  ${hdr()}${ftr(2)}
+  ${hdr()}${ftr(3)}
   <div class="content">
 
     ${cl('1', 'Mietdauer und Kündigung', laufzeitClause, true)}
@@ -338,7 +393,7 @@ function _renderPkMietvertragHTML(d) {
 </div>`;
 
   const page3 = `<div class="pdf-page page">
-  ${hdr()}${ftr(3)}
+  ${hdr()}${ftr(4)}
   <div class="content">
     <div class="anlage-title">Anlage 1</div>
     <div class="anlage-subtitle">Stellplatz- und Garagenordnung</div>
@@ -389,11 +444,28 @@ function _renderPkMietvertragHTML(d) {
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Parkplatz Mietvertrag \u2014 ${d.stellplatzNr}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page2}${page3}</body></html>`;
+<body>${page1}${pageData}${page2}${page3}</body></html>`;
 }
 
 
 /* ── PDF GENERATOR + BUTTON WIRING ───────────────────────────────────────── */
+
+function _pkReadMieter(n) {
+  if (n > 1) {
+    const wrap = document.getElementById(`pk-mv-mieter${n}`);
+    if (!wrap || wrap.style.display === 'none') {
+      return { name: '', adr: '', dob: '', email: '', tel: '' };
+    }
+  }
+  const sfx = n > 1 ? n : '';
+  return {
+    name:  document.getElementById(`pk-mv-name${sfx}`)?.value.trim()  || '',
+    adr:   document.getElementById(`pk-mv-adr${sfx}`)?.value.trim()   || '',
+    dob:   document.getElementById(`pk-mv-dob${sfx}`)?.value.trim()   || '',
+    email: document.getElementById(`pk-mv-email${sfx}`)?.value.trim() || '',
+    tel:   document.getElementById(`pk-mv-tel${sfx}`)?.value.trim()   || '',
+  };
+}
 
 function _wirePkMvPdfBtn() {
   const btn = document.getElementById('pkMvPdfBtn');
@@ -408,11 +480,14 @@ function _wirePkMvPdfBtn() {
     const sk = spot.schlussel || {};
     const s  = (typeof appSettings !== 'undefined') ? appSettings : {};
 
-    const mieterName  = document.getElementById('pk-mv-name')?.value.trim()  || '';
-    const mieterAdr   = document.getElementById('pk-mv-adr')?.value.trim()   || '';
-    const mieterDob   = document.getElementById('pk-mv-dob')?.value.trim()   || '';
-    const mieterEmail = document.getElementById('pk-mv-email')?.value.trim() || '';
-    const mieterTel   = document.getElementById('pk-mv-tel')?.value.trim()   || '';
+    const t1 = _pkReadMieter(1);
+    const mieterName  = t1.name;
+    const mieterAdr   = t1.adr;
+    const mieterDob   = t1.dob;
+    const mieterEmail = t1.email;
+    const mieterTel   = t1.tel;
+    const t2 = _pkReadMieter(2);
+    const t3 = _pkReadMieter(3);
     const startVal    = document.getElementById('pk-mv-start')?.value        || '';
     const sigVal      = document.getElementById('pk-mv-sig')?.value          || '';
     const befristet   = document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet';
@@ -442,6 +517,8 @@ function _wirePkMvPdfBtn() {
     try {
       const data = _buildPkMietvertragData(spot, pr, sk, s, {
         mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
+        mieterName2: t2.name, mieterAdr2: t2.adr, mieterDob2: t2.dob, mieterEmail2: t2.email, mieterTel2: t2.tel,
+        mieterName3: t3.name, mieterAdr3: t3.adr, mieterDob3: t3.dob, mieterEmail3: t3.email, mieterTel3: t3.tel,
         startVal, sigVal, befristet, endVal, kennzeichen, fahrzeug,
         kautionVal, kautionFael,
         staffelAn, staffeln, anfangsmiete,
