@@ -124,8 +124,8 @@ document.getElementById('tab-parking').innerHTML = `
   -webkit-tap-highlight-color:transparent; white-space:nowrap;
 }
 .pk-act:active { opacity:.7; }
-.pk-act--mark-vacant   { color:#8C6A3A; border:.5px solid #D4A87A; }
-.pk-act--mark-occupied { color:#27500A; border:.5px solid #9AC87A; }
+.pk-act--mark-vacant   { color:#8C6A3A; border:1px solid #D4A87A; }
+.pk-act--mark-occupied { color:#27500A; border:1px solid #9AC87A; }
 
 /* Sections */
 .pk-section { padding:11px 14px; border-bottom:var(--cc-border); position:relative; }
