@@ -1090,8 +1090,8 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     </div>
     <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-      <button class="rm-fael-btn active" data-prefix="pk-mv" data-val="5" onclick="_pkKfSelect('pk-mv','5',this)">5 Tage</button>
-      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','sofort',this)">Sofort</button>
+      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','5',this)">5 Tage</button>
+      <button class="rm-fael-btn active" data-prefix="pk-mv" data-val="sofort" onclick="_pkKfSelect('pk-mv','sofort',this)">Sofort</button>
       <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','custom',this)">Individuell</button>
     </div>
     <div id="pk-mv-fael-custom" style="display:none">
