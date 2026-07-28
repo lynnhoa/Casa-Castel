@@ -2104,6 +2104,7 @@ async function _aptOpenContract(type, aptId) {
             gemeinschaftsraeume: [],
             haustuerschluessel:  apt2.schlussel?.haustuerschluessel ?? 1,
             zimmerschluessel:    apt2.schlussel?.wohnungsschluessel ?? 1,
+            briefkastenschluessel: apt2.schlussel?.briefkastenschluessel ?? 0,
             kaltmiete:           apt2.pricing?.kaltmiete,
             nk_pauschale:        apt2.pricing?.nk_pauschale,
             mietvertrag_pricing: 'kalt_nk',
@@ -3047,6 +3048,7 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
     <div class="rm-field-row" style="margin-bottom:10px">
       <div class="rm-field"><label>Haustür</label><input class="rm-input" id="apt-ub-haustur" type="number" value="${sk.haustuerschluessel ?? 1}" min="0"/></div>
       <div class="rm-field"><label>${apt.zimmer_type === 'Gewerbefläche' ? 'Mietfläche' : 'Wohnungstür'}</label><input class="rm-input" id="apt-ub-wohnungtur" type="number" value="${sk.wohnungsschluessel ?? 1}" min="0"/></div>
+      <div class="rm-field"><label>Briefkasten</label><input class="rm-input" id="apt-ub-briefkasten" type="number" value="${sk.briefkastenschluessel ?? 0}" min="0"/></div>
     </div>
 
     <div class="rm-field">
