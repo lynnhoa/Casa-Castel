@@ -1865,7 +1865,7 @@ async function _openContract(type, roomId) {
           const s    = appSettings;
           const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
           const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
-          let _cmFaelVal = '5';
+          let _cmFaelVal = 'sofort';
           _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _cmFaelVal = b.dataset.val; });
           const kautionFaelligkeitKz = _cmFaelVal === 'custom'
             ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
@@ -1935,7 +1935,7 @@ async function _openContract(type, roomId) {
           const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
           const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
           const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
-          let _mvFaelVal = '5';
+          let _mvFaelVal = 'sofort';
           _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _mvFaelVal = b.dataset.val; });
           const kautionFaelligkeitMv = _mvFaelVal === 'custom'
             ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
@@ -2393,12 +2393,12 @@ function _contractBodyKurzzeit(room) {
     <div style="margin-top:8px;margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="sofort"
+        <button type="button" class="rm-btn rm-btn--sm cm-fael-opt active-fael" data-val="sofort"
           onclick="_kfSelect('cm','sofort')"
-          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
-        <button type="button" class="rm-btn rm-btn--sm cm-fael-opt active-fael" data-val="5"
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">Sofort</button>
+        <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="5"
           onclick="_kfSelect('cm','5')"
-          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">5 Tage</button>
         <button type="button" class="rm-btn rm-btn--sm cm-fael-opt" data-val="custom"
           onclick="_kfSelect('cm','custom')"
           style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
@@ -3902,12 +3902,12 @@ function _contractBodyMietvertrag(room) {
     <div style="margin-top:8px;margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="sofort"
+        <button type="button" class="rm-btn rm-btn--sm mv-fael-opt active-fael" data-val="sofort"
           onclick="_kfSelect('mv','sofort')"
-          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Sofort</button>
-        <button type="button" class="rm-btn rm-btn--sm mv-fael-opt active-fael" data-val="5"
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">Sofort</button>
+        <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="5"
           onclick="_kfSelect('mv','5')"
-          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-charcoal);background:var(--cc-charcoal);cursor:pointer;font-family:inherit;color:#fff">5 Tage</button>
+          style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">5 Tage</button>
         <button type="button" class="rm-btn rm-btn--sm mv-fael-opt" data-val="custom"
           onclick="_kfSelect('mv','custom')"
           style="font-size:12px;padding:4px 10px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-charcoal)">Individuell</button>
