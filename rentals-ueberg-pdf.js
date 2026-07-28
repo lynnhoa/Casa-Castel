@@ -108,6 +108,10 @@ function _aptCollectUebergData(apt, isEinzug) {
     // Mieter from form
     mieterName:   document.getElementById('apt-ub-mieter-name')?.value.trim() || '',
     mieterAdr:    document.getElementById('apt-ub-mieter-adr')?.value.trim() || '',
+    mieterName2:  document.getElementById('apt-ub-mieter-name2')?.value.trim() || '',
+    mieterAdr2:   document.getElementById('apt-ub-mieter-adr2')?.value.trim() || '',
+    mieterName3:  document.getElementById('apt-ub-mieter-name3')?.value.trim() || '',
+    mieterAdr3:   document.getElementById('apt-ub-mieter-adr3')?.value.trim() || '',
     neueAdr:      document.getElementById('apt-ub-neue-adr')?.value.trim() || '',
     maengel:      document.getElementById('apt-ub-maengel')?.value.trim() || '',
     bemerkungen:  document.getElementById('apt-ub-bemerkungen')?.value.trim() || '',
@@ -300,6 +304,9 @@ function _aptRenderUebergHTML(d) {
     .sig-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
+    .sig-grid { margin-top:24px; }
+    .sig-grid .sig-block { margin-top:0; }
+    .sig-grid .sig-block + .sig-block { margin-top:56px; }
   `;
 
   const isGewerbe = d.zimmerType === 'Gewerbefläche';
@@ -350,16 +357,33 @@ function _aptRenderUebergHTML(d) {
 
   const objektLine = [d.adresse, d.plzOrt].filter(Boolean).join(', ');
 
-  return `<!DOCTYPE html>
-<html lang="de">
-<head><meta charset="UTF-8"/><style>${CSS}</style></head>
-<body>
+  const hasMieter2 = !!d.mieterName2;
+  const hasMieter3 = !!d.mieterName3;
+  const hasExtra   = hasMieter2 || hasMieter3;
+  const mieter1Lbl = hasExtra ? 'Mieter 1' : 'Mieter';
 
-<!-- PAGE 1 -->
-<div class="pdf-page">
-  ${hdr(1)}
-  ${ftr(1)}
-  <div class="content">
+  // Signature column + rows
+  const sigCol = (role, name) => `
+      <div class="sig-col">
+        ${sigDate}
+        <hr class="sig-line"/>
+        <div class="sig-role">${role}</div>
+        <div class="sig-name">${esc(name)}</div>
+      </div>`;
+  const sigColEmpty = `<div class="sig-col"></div>`;
+
+  // Extra signers (Mieter 2 / 3) paired into further rows below Vermieter + Mieter 1
+  const extraSigners = [];
+  if (hasMieter2) extraSigners.push(['Mieter 2', d.mieterName2]);
+  if (hasMieter3) extraSigners.push(['Mieter 3', d.mieterName3]);
+  let sigExtraRows = '';
+  for (let i = 0; i < extraSigners.length; i += 2) {
+    const a = extraSigners[i], b = extraSigners[i + 1];
+    sigExtraRows += `<div class="sig-block">${sigCol(a[0], a[1])}${b ? sigCol(b[0], b[1]) : sigColEmpty}</div>`;
+  }
+
+  // ── Reusable content blocks ──
+  const titleBlock = `
     <div class="doc-title">Übergabeprotokoll</div>
     <div class="doc-subtitle">${esc(d.zimmerType)} · ${esc(objektLine)}</div>
 
@@ -375,20 +399,27 @@ function _aptRenderUebergHTML(d) {
       <div class="type-date">
         Übergabedatum&nbsp;<span class="type-date-val">${esc(d.datum)}</span>
       </div>
-    </div>
+    </div>`;
 
+  const parteienBlock = `
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Adresse', objektLine)}
     ${d.flaeche ? kv('Wohnfläche', d.flaeche) : ''}
     ${kv('Vermieter', d.vermieter)}
-    ${kv('Mieter', d.mieterName)}
-    ${kv('Adresse Mieter', d.mieterAdr)}
-    ${!d.isEinzug && d.neueAdr ? kv('Neue Adresse', d.neueAdr) : ''}
+    ${kv(mieter1Lbl, d.mieterName)}
+    ${kv(hasExtra ? 'Adresse Mieter 1' : 'Adresse Mieter', d.mieterAdr)}
+    ${hasMieter2 ? kv('Mieter 2', d.mieterName2) : ''}
+    ${hasMieter2 && d.mieterAdr2 ? kv('Adresse Mieter 2', d.mieterAdr2) : ''}
+    ${hasMieter3 ? kv('Mieter 3', d.mieterName3) : ''}
+    ${hasMieter3 && d.mieterAdr3 ? kv('Adresse Mieter 3', d.mieterAdr3) : ''}
+    ${!d.isEinzug && d.neueAdr ? kv('Neue Adresse', d.neueAdr) : ''}`;
 
+  const maengelBlock = `
     <div class="sec">Mängelbeschreibung / Zustand</div>
-    <div style="margin-top:4px;">${writeField(d.maengel, 6)}</div>
+    <div style="margin-top:4px;">${writeField(d.maengel, 6)}</div>`;
 
-    <div class="sec">Zählerstände</div>
+  const zaehlerBlock = (first) => `
+    <div class="sec${first ? ' sec--first' : ''}">Zählerstände</div>
     <table class="zaehler-table">
       <thead><tr>
         <th style="width:22%">Art</th>
@@ -396,18 +427,13 @@ function _aptRenderUebergHTML(d) {
         <th>Stand</th>
       </tr></thead>
       <tbody>${zaehlerRows}</tbody>
-    </table>
-  </div>
-</div>
+    </table>`;
 
-<!-- PAGE 2 -->
-<div class="pdf-page">
-  ${hdr(2)}
-  ${ftr(2)}
-  <div class="content">
-    <div class="sec sec--first">Allgemeine Bemerkungen</div>
-    <div style="margin-top:4px;">${writeField(d.bemerkungen, 9)}</div>
+  const bemerkungenBlock = (first) => `
+    <div class="sec${first ? ' sec--first' : ''}">Allgemeine Bemerkungen</div>
+    <div style="margin-top:4px;">${writeField(d.bemerkungen, 9)}</div>`;
 
+  const schluesselBlock = `
     <div class="sec" style="margin-top:64px;">Schlüsselübergabe</div>
     <div class="schluessel-row">
       <div class="schluessel-item">
@@ -422,24 +448,36 @@ function _aptRenderUebergHTML(d) {
         <span class="schluessel-item__label">Briefkasten</span>
         <span class="schluessel-item__val">${d.briefkasten}</span>
       </div>
-    </div>
+    </div>`;
 
-    <div class="sig-block">
-      <div class="sig-col">
-        ${sigDate}
-        <hr class="sig-line"/>
-        <div class="sig-role">Vermieter</div>
-        <div class="sig-name">${esc(d.vermieter)}</div>
-      </div>
-      <div class="sig-col">
-        ${sigDate}
-        <hr class="sig-line"/>
-        <div class="sig-role">Mieter</div>
-        <div class="sig-name">${esc(d.mieterName)}</div>
-      </div>
-    </div>
+  const page = (n, inner) => `
+<div class="pdf-page">
+  ${hdr(n)}
+  ${ftr(n)}
+  <div class="content">${inner}
   </div>
-</div>
+</div>`;
 
+  let pagesHTML;
+  if (!hasExtra) {
+    // Single tenant → original 2-page layout (signatures under Schlüsselübergabe)
+    pagesHTML =
+      page(1, `${titleBlock}${parteienBlock}${maengelBlock}${zaehlerBlock(false)}`) +
+      page(2, `${bemerkungenBlock(true)}${schluesselBlock}
+    <div class="sig-block">${sigCol('Vermieter', d.vermieter)}${sigCol('Mieter', d.mieterName)}</div>`);
+  } else {
+    // 2+ tenants → Zähler moves to page 2, signatures get their own page 3 (no cutoff)
+    pagesHTML =
+      page(1, `${titleBlock}${parteienBlock}${maengelBlock}`) +
+      page(2, `${zaehlerBlock(true)}${bemerkungenBlock(false)}${schluesselBlock}`) +
+      page(3, `<div class="sec sec--first">Unterschriften</div>
+    <div class="sig-grid"><div class="sig-block">${sigCol('Vermieter', d.vermieter)}${sigCol('Mieter 1', d.mieterName)}</div>${sigExtraRows}</div>`);
+  }
+
+  return `<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="UTF-8"/><style>${CSS}</style></head>
+<body>
+${pagesHTML}
 </body></html>`;
 }

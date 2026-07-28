@@ -3001,6 +3001,12 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
   const _aptUbTenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   const _aptUbTenantAdr  = profile.address || '';
   const _aptUbHasTenant  = !!_aptUbTenantName;
+  const _ubT2 = profile.tenant2 || null;
+  const _ubT3 = profile.tenant3 || null;
+  const _ubT2Name = _ubT2 ? [_ubT2.firstName, _ubT2.lastName].filter(Boolean).join(' ') : '';
+  const _ubT2Adr  = _ubT2 ? (_ubT2.address || '') : '';
+  const _ubT3Name = _ubT3 ? [_ubT3.firstName, _ubT3.lastName].filter(Boolean).join(' ') : '';
+  const _ubT3Adr  = _ubT3 ? (_ubT3.address || '') : '';
   const zaehler = apt.zaehler || [];
 
   const zaehlerRows = zaehler.map(z => `
@@ -3026,8 +3032,14 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="aptUbMieterManualLbl">Manuell</span>
     </div>
-    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="apt-ub-mieter-name" value="${aptEsc(_aptUbTenantName)}" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="apt-ub-mieter-adr" value="${aptEsc(_aptUbTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>${(_ubT2 || _ubT3) ? 'Mieter 1 Name' : 'Mieter Name'}</label><input class="rm-input" id="apt-ub-mieter-name" value="${aptEsc(_aptUbTenantName)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>${(_ubT2 || _ubT3) ? 'Mieter 1 Adresse' : 'Mieter Adresse'}</label><input class="rm-input" id="apt-ub-mieter-adr" value="${aptEsc(_aptUbTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
+    ${_ubT2 ? `
+    <div class="rm-field"><label>Mieter 2 Name</label><input class="rm-input" id="apt-ub-mieter-name2" value="${aptEsc(_ubT2Name)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter 2 Adresse</label><input class="rm-input" id="apt-ub-mieter-adr2" value="${aptEsc(_ubT2Adr)}" placeholder="Aktuelle Adresse…"/></div>` : ''}
+    ${_ubT3 ? `
+    <div class="rm-field"><label>Mieter 3 Name</label><input class="rm-input" id="apt-ub-mieter-name3" value="${aptEsc(_ubT3Name)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter 3 Adresse</label><input class="rm-input" id="apt-ub-mieter-adr3" value="${aptEsc(_ubT3Adr)}" placeholder="Aktuelle Adresse…"/></div>` : ''}
     <div class="rm-field"><label>Übergabedatum</label><input class="rm-input" id="apt-ub-datum" type="text" placeholder="TT.MM.JJJJ"/></div>
     ${!isEinzug ? `
     <div class="rm-field"><label>Neue Adresse des Mieters</label><input class="rm-input" id="apt-ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/></div>` : ''}
