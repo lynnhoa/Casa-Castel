@@ -230,7 +230,7 @@ function _renderRentalKurzzeitHTML(d) {
     .sig-col { width:44%; }
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#aaa59e; margin-bottom:4px; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
-    .sig-write-gap { height:60px; }
+    .sig-write-gap { height:80px; }
     .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
@@ -383,8 +383,6 @@ function _renderRentalKurzzeitHTML(d) {
       'Die Wohnung wird möbliert und in vertragsgemäßem Zustand übergeben. Ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Die Wohnung ist in gleichem Zustand zurückzugeben.')}
     ${cl('7','Haftpflichtversicherung',
       'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.')}
-    ${cl('8','Hausordnung',
-      'Rauchen ist im gesamten Gebäude nicht gestattet. Haustiere sind ohne schriftliche Zustimmung nicht erlaubt. Untervermietung ist untersagt. Nachtruhe gilt von 22:00–07:00\u202fUhr.')}
   </div>
 </div>`;
 
@@ -393,8 +391,10 @@ function _renderRentalKurzzeitHTML(d) {
   const page3 = `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(3+pageOffset)}
   <div class="content">
+    ${cl('8','Hausordnung',
+      'Rauchen ist im gesamten Gebäude nicht gestattet. Haustiere sind ohne schriftliche Zustimmung nicht erlaubt. Untervermietung ist untersagt. Nachtruhe gilt von 22:00–07:00\u202fUhr.',true)}
     ${cl('9','Datenschutz',
-      'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.',true)}
+      'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.')}
     ${cl('10','Salvatorische Klausel &amp; Gerichtsstand',
       'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + (d.gerichtsstand || '______________') + '.')}
     <div class="comment-label">Sonstige Anmerkungen</div>
