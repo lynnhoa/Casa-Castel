@@ -2286,7 +2286,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
     ${_aptAddTenantBtnHTML('mv', tenant2, tenant3)}
 
     <div class="rm-fields-title" style="margin-top:6px">Mietzeit</div>
-    <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="apt-mv-start" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
+    <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="apt-mv-start" type="date" onclick="try{this.showPicker()}catch(e){}" oninput="_aptMvCalcStaffelDates()"/></div>
 
     <div class="rm-field--toggle">
       <div class="rm-toggle-row">
@@ -2360,7 +2360,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
         <div id="apt-mv-staffel-rows"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" id="apt-mv-staffel-add-btn" onclick="_aptMvAddStaffel()" disabled style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">+ Staffel</button>
-          <button type="button" onclick="_aptMvRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-stone);">− Staffel</button>
+          <button type="button" id="apt-mv-staffel-remove-btn" onclick="_aptMvRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">− Staffel</button>
           <span id="apt-mv-staffel-add-hint" style="font-size:10.5px;color:var(--cc-stone);font-style:italic;">Bitte zuerst Mietbeginn ausfüllen</span>
         </div>
       </div>
@@ -2380,6 +2380,10 @@ function _aptMvToggleStaffel() {
   lbl.textContent  = on ? 'Ja'   : 'Nein';
   sub.textContent  = on ? 'Aktiv': 'Keine Staffelung';
   if (body) body.style.display = on ? '' : 'none';
+  if (on) {
+    // Ensure 4 staffel rows are open by default (add() caps at 4, so this tops up)
+    for (let i = 0; i < 4; i++) _aptMvAddStaffel(true);
+  }
 }
 
 function _aptMvCalcStaffelDates() {
@@ -2403,6 +2407,13 @@ function _aptMvCalcStaffelDates() {
     addBtn.style.opacity = staffelStart ? '1'                  : '.5';
   }
   if (addHint) addHint.style.display = staffelStart ? 'none' : '';
+  const remBtn = document.getElementById('apt-mv-staffel-remove-btn');
+  if (remBtn) {
+    const canRemove = document.querySelectorAll('.apt-mv-staffel-row').length > 0;
+    remBtn.style.color   = canRemove ? 'var(--cc-charcoal)' : 'var(--cc-stone)';
+    remBtn.style.cursor  = canRemove ? 'pointer'            : 'not-allowed';
+    remBtn.style.opacity = canRemove ? '1'                  : '.5';
+  }
   if (staffelStart) {
     document.querySelectorAll('.apt-mv-staffel-row').forEach((row, i) => {
       const dateLbl = row.querySelector('.apt-mv-staffel-datum');
@@ -2415,9 +2426,9 @@ function _aptMvCalcStaffelDates() {
   }
 }
 
-function _aptMvAddStaffel() {
+function _aptMvAddStaffel(force) {
   const startVal = document.getElementById('apt-mv-start')?.value;
-  if (!startVal) return;
+  if (!force && !startVal) return;
   const container = document.getElementById('apt-mv-staffel-rows');
   if (!container) return;
   const count = container.querySelectorAll('.apt-mv-staffel-row').length;
@@ -2441,6 +2452,7 @@ function _aptMvRemoveStaffel() {
   if (!container) return;
   const rows = container.querySelectorAll('.apt-mv-staffel-row');
   if (rows.length > 0) rows[rows.length - 1].remove();
+  _aptMvCalcStaffelDates();
 }
 
 
@@ -2617,7 +2629,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
         <div id="apt-gw-staffel-rows"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" id="apt-gw-staffel-add-btn" onclick="_aptGwAddStaffel()" disabled style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">+ Staffel</button>
-          <button type="button" onclick="_aptGwRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-stone);">− Staffel</button>
+          <button type="button" id="apt-gw-staffel-remove-btn" onclick="_aptGwRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">− Staffel</button>
           <span id="apt-gw-staffel-add-hint" style="font-size:10.5px;color:var(--cc-stone);font-style:italic;">Bitte zuerst Mietbeginn &amp; Festlaufzeit ausfüllen</span>
         </div>
       </div>
@@ -2736,6 +2748,10 @@ function _aptGwToggleStaffel() {
   lbl.textContent    = on ? 'Ja'   : 'Nein';
   sub.textContent    = on ? 'Aktiv': 'Keine Staffelung';
   if (body) body.style.display = on ? '' : 'none';
+  if (on) {
+    // Ensure 4 staffel rows are open by default (add() caps at 4, so this tops up)
+    for (let i = 0; i < 4; i++) _aptGwAddStaffel(true);
+  }
 }
 
 /* ── GEWERBE: Date calculations ───────────────────────── */
@@ -2773,6 +2789,13 @@ function _aptGwCalcDates() {
     addBtn.style.opacity  = mietende ? '1' : '.5';
   }
   if (addHint) addHint.style.display = mietende ? 'none' : '';
+  const remBtn = document.getElementById('apt-gw-staffel-remove-btn');
+  if (remBtn) {
+    const canRemove = document.querySelectorAll('.apt-gw-staffel-row').length > 0;
+    remBtn.style.color   = canRemove ? 'var(--cc-charcoal)' : 'var(--cc-stone)';
+    remBtn.style.cursor  = canRemove ? 'pointer'            : 'not-allowed';
+    remBtn.style.opacity = canRemove ? '1'                  : '.5';
+  }
 
   // Staffel dates — start from mietende + 1 day
   if (mietende) {
@@ -2820,10 +2843,10 @@ function _aptGwCalcDates() {
 }
 
 /* ── GEWERBE: Staffel add / remove ───────────────────── */
-function _aptGwAddStaffel() {
+function _aptGwAddStaffel(force) {
   const startVal = document.getElementById('apt-gw-start')?.value;
   const festNum  = parseInt(document.getElementById('apt-gw-fest-num')?.value) || 0;
-  if (!startVal || !festNum) return; // need Mietbeginn & Festlaufzeit to compute Staffel dates
+  if (!force && (!startVal || !festNum)) return; // need Mietbeginn & Festlaufzeit to compute Staffel dates
   const container = document.getElementById('apt-gw-staffel-rows');
   if (!container) return;
   const count = container.querySelectorAll('.apt-gw-staffel-row').length;
@@ -2847,6 +2870,7 @@ function _aptGwRemoveStaffel() {
   if (!container) return;
   const rows = container.querySelectorAll('.apt-gw-staffel-row');
   if (rows.length > 0) rows[rows.length - 1].remove();
+  _aptGwCalcDates();
 }
 
 /* ── GEWERBE: Gesamt live ────────────────────────────── */
@@ -2894,8 +2918,8 @@ function _aptGwCalcVerl(source) {
 function _aptGwInitInteractions() {
   // Start with S1 active
   _aptGwSetSzenario('S1');
-  // Add first staffel row by default
-  _aptGwAddStaffel();
+  // Add 4 staffel rows by default
+  for (let i = 0; i < 4; i++) _aptGwAddStaffel(true);
   // Sync Anfangsmiete with kaltmiete field
   document.getElementById('apt-gw-kalt')?.addEventListener('input', () => {
     const anfang = document.getElementById('apt-gw-staffel-anfang');

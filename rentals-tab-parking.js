@@ -694,10 +694,8 @@ function _pkToggleStaffel() {
   sub.textContent  = on ? 'Aktiv': 'Keine Staffelung';
   if (body) body.style.display = on ? '' : 'none';
   if (on) {
-    const rows = document.getElementById('pk-mv-staffel-rows');
-    if (rows && rows.querySelectorAll('.pk-mv-staffel-row').length === 0) {
-      for (let i = 0; i < 4; i++) _pkAddStaffel(true);
-    }
+    // Ensure 4 staffel rows are open by default (add() caps at 4, so this tops up)
+    for (let i = 0; i < 4; i++) _pkAddStaffel(true);
   }
 }
 
@@ -729,6 +727,13 @@ function _pkCalcStaffelDates() {
     addBtn.style.opacity  = staffelStart ? '1'              : '.5';
   }
   if (addHint) addHint.style.display = staffelStart ? 'none' : '';
+  const remBtn = document.getElementById('pk-mv-staffel-remove-btn');
+  if (remBtn) {
+    const canRemove = document.querySelectorAll('.pk-mv-staffel-row').length > 0;
+    remBtn.style.color   = canRemove ? 'var(--cc-charcoal)' : 'var(--cc-stone)';
+    remBtn.style.cursor  = canRemove ? 'pointer'            : 'not-allowed';
+    remBtn.style.opacity = canRemove ? '1'                  : '.5';
+  }
 
   // Update row date labels
   if (staffelStart) {
@@ -772,6 +777,7 @@ function _pkRemoveStaffel() {
   if (!container) return;
   const rows = container.querySelectorAll('.pk-mv-staffel-row');
   if (rows.length > 0) rows[rows.length - 1].remove();
+  _pkCalcStaffelDates();
 }
 
 
@@ -1091,7 +1097,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
         <div id="pk-mv-staffel-rows"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
           <button type="button" id="pk-mv-staffel-add-btn" onclick="_pkAddStaffel()" disabled style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">+ Staffel</button>
-          <button type="button" onclick="_pkRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:pointer;font-family:inherit;color:var(--cc-stone);">− Staffel</button>
+          <button type="button" id="pk-mv-staffel-remove-btn" onclick="_pkRemoveStaffel()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:.5px solid var(--cc-rule);background:none;cursor:not-allowed;font-family:inherit;color:var(--cc-stone);opacity:.5;">− Staffel</button>
           <span id="pk-mv-staffel-add-hint" style="font-size:10.5px;color:var(--cc-stone);font-style:italic;">Bitte zuerst Mietbeginn ausfüllen</span>
         </div>
       </div>
