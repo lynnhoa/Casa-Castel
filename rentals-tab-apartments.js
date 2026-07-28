@@ -1817,32 +1817,48 @@ document.getElementById('aptInventarAddRow')?.addEventListener('click', () => {
 
 document.getElementById('aptInventarSave')?.addEventListener('click', async () => {
   if (!_aptInventarId) return;
-  const rows    = document.querySelectorAll('#aptInventarList .inv-row');
+  const aptId    = _aptInventarId;
+  const rows     = document.querySelectorAll('#aptInventarList .inv-row');
   const inventar = [];
-  rows.forEach(row => {
+  rows.forEach((row, i) => {
     const name   = row.querySelector('.inv-name').value.trim();
     const anzahl = parseInt(row.querySelector('.inv-qty').value, 10) || 1;
-    if (name) inventar.push({ name, anzahl, apartment_id: _aptInventarId });
+    if (name) inventar.push({ name, anzahl, sort_order: i, apartment_id: aptId });
   });
 
   const btn = document.getElementById('aptInventarSave');
   btn.textContent = '…'; btn.disabled = true;
 
+  let saved = inventar;
   if (_aptSbClient) {
-    // Delete + reinsert
-    await _aptSbClient.from('rentals_inventar').delete().eq('apartment_id', _aptInventarId);
+    // Delete + reinsert (same pattern as zaehler). Guard both writes:
+    // if the DB rejects the write, keep the modal open and surface the error
+    // instead of silently dropping the data.
+    const { error: delErr } = await _aptSbClient.from('rentals_inventar').delete().eq('apartment_id', aptId);
+    if (delErr) {
+      console.error('[apartments] Save inventar delete failed:', delErr);
+      _aptToast('Save failed: ' + (delErr.message || delErr.code || 'Unknown error'), true);
+      btn.textContent = 'Save'; btn.disabled = false;
+      return;
+    }
     if (inventar.length) {
-      inventar.forEach((item, i) => { item.sort_order = i; });
-      await _aptSbClient.from('rentals_inventar').insert(inventar);
+      const { data, error: insErr } = await _aptSbClient.from('rentals_inventar').insert(inventar).select();
+      if (insErr) {
+        console.error('[apartments] Save inventar insert failed:', insErr, inventar);
+        _aptToast('Save failed: ' + (insErr.message || insErr.code || 'Unknown error'), true);
+        btn.textContent = 'Save'; btn.disabled = false;
+        return;
+      }
+      if (data) saved = data;
     }
   }
 
-  const apt = appApartments.find(a => a.id === _aptInventarId);
-  if (apt) apt.inventar = inventar;
+  const apt = appApartments.find(a => a.id === aptId);
+  if (apt) apt.inventar = saved;
 
   btn.textContent = 'Save'; btn.disabled = false;
   document.getElementById('aptInventarOverlay').classList.remove('open');
-  _aptRerenderCard(_aptInventarId);
+  _aptRerenderCard(aptId);
   _aptInventarId = null;
 });
 
