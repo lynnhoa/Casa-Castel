@@ -693,6 +693,12 @@ function _pkToggleStaffel() {
   lbl.textContent  = on ? 'Ja'   : 'Nein';
   sub.textContent  = on ? 'Aktiv': 'Keine Staffelung';
   if (body) body.style.display = on ? '' : 'none';
+  if (on) {
+    const rows = document.getElementById('pk-mv-staffel-rows');
+    if (rows && rows.querySelectorAll('.pk-mv-staffel-row').length === 0) {
+      for (let i = 0; i < 4; i++) _pkAddStaffel(true);
+    }
+  }
 }
 
 
@@ -740,9 +746,9 @@ function _pkCalcStaffelDates() {
 
 
 /* ── STAFFELMIETE ADD / REMOVE ────────────────────────────── */
-function _pkAddStaffel() {
+function _pkAddStaffel(force) {
   const startVal = document.getElementById('pk-mv-start')?.value;
-  if (!startVal) return;
+  if (!force && !startVal) return;
   const container = document.getElementById('pk-mv-staffel-rows');
   if (!container) return;
   const count = container.querySelectorAll('.pk-mv-staffel-row').length;
@@ -1023,7 +1029,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <button type="button" id="pk-mv-addbtn" onclick="_pkAddMieterBlock()" style="font-size:11px;padding:6px 12px;border-radius:6px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-taupe);cursor:pointer;font-family:inherit;display:${(_t2 && _t3) ? 'none' : 'flex'};align-items:center;gap:6px;margin-top:4px;margin-bottom:4px"><i class="ti ti-plus" style="font-size:13px"></i> Mieter hinzufügen</button>
 
     <div class="rm-fields-title" style="margin-top:6px">Mietzeit</div>
-    <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="pk-mv-start" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
+    <div class="rm-field"><label>Mietbeginn *</label><input class="rm-input" id="pk-mv-start" type="date" onclick="try{this.showPicker()}catch(e){}" oninput="_pkCalcStaffelDates()"/></div>
 
     <div class="rm-field--toggle">
       <div class="rm-toggle-row">
