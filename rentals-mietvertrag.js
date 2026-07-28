@@ -462,7 +462,7 @@ function _renderRentalMietvertragHTML(d) {
     ${d.hasMieter3 ? kv('Geburtsdatum',d.mieterGeburtsdatum3||'') : ''}
     ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
     ${sec('Mietobjekt',false,false)}
-    ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
+    ${kv('Adresse',d.objektAdresse)}${kv('PLZ / Ort',d.objektPLZOrt)}${kv('Bezeichnung',d.zimmerName)}
     ${d.etage ? kv('Etage',d.etage) : ''}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
     ${kv('Mitgenutzte R\u00e4ume',d.gemeinschaftsraeume||'\u2014')}
