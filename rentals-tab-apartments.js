@@ -2223,8 +2223,8 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, profile = {}) {
     <div style="margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn active" data-prefix="cm" data-val="5" onclick="_aptKfSelect('cm','5',this)">5 Tage</button>
+        <button class="rm-fael-btn active" data-prefix="cm" data-val="sofort" onclick="_aptKfSelect('cm','sofort',this)">Sofort</button>
+        <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','5',this)">5 Tage</button>
         <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','custom',this)">Individuell</button>
         <input type="number" id="apt-cm-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
       </div>
@@ -2271,8 +2271,8 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div style="margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn active" data-prefix="mv" data-val="5" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
+        <button class="rm-fael-btn active" data-prefix="mv" data-val="sofort" onclick="_aptKfSelect('mv','sofort',this)">Sofort</button>
+        <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
         <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','custom',this)">Individuell</button>
         <input type="number" id="apt-mv-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
       </div>
@@ -2344,7 +2344,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
           <div class="rm-field">
             <label>Intervall</label>
             <div style="display:flex;align-items:center;gap:8px;">
-              <input class="rm-input" id="apt-mv-staffel-intervall" type="number" min="1" value="1" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_aptMvCalcStaffelDates()"/>
+              <input class="rm-input" id="apt-mv-staffel-intervall" type="number" min="1" value="2" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_aptMvCalcStaffelDates()"/>
               <span style="font-size:12px;color:var(--cc-stone);">Jahr(e)</span>
             </div>
           </div>
@@ -2601,7 +2601,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
           <div class="rm-field">
             <label>Intervall</label>
             <div style="display:flex;align-items:center;gap:8px;">
-              <input class="rm-input" id="apt-gw-staffel-intervall" type="number" min="1" value="1" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcDates()"/>
+              <input class="rm-input" id="apt-gw-staffel-intervall" type="number" min="1" value="2" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcDates()"/>
               <span style="font-size:12px;color:var(--cc-stone);">Jahr(e)</span>
             </div>
           </div>
@@ -2642,8 +2642,8 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div style="margin-bottom:16px;">
       <div class="rm-kaution-lbl" style="margin-bottom:6px;">Kaution Fälligkeit</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="rm-fael-btn" data-prefix="gw" onclick="_aptKfSelect('gw','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn active" data-prefix="gw" data-val="5" onclick="_aptKfSelect('gw','5',this)">5 Tage</button>
+        <button class="rm-fael-btn active" data-prefix="gw" data-val="sofort" onclick="_aptKfSelect('gw','sofort',this)">Sofort</button>
+        <button class="rm-fael-btn" data-prefix="gw" onclick="_aptKfSelect('gw','5',this)">5 Tage</button>
         <button class="rm-fael-btn" data-prefix="gw" onclick="_aptKfSelect('gw','custom',this)">Individuell</button>
         <input type="number" id="apt-gw-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit;-webkit-appearance:textfield;appearance:textfield;" placeholder="Tage"/>
       </div>

@@ -1060,7 +1060,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
           <div class="rm-field">
             <label>Intervall</label>
             <div style="display:flex;align-items:center;gap:8px;">
-              <input class="rm-input" id="pk-mv-staffel-intervall" type="number" min="1" value="1" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_pkCalcStaffelDates()"/>
+              <input class="rm-input" id="pk-mv-staffel-intervall" type="number" min="1" value="2" style="width:60px;-webkit-appearance:textfield;appearance:textfield;" oninput="_pkCalcStaffelDates()"/>
               <span style="font-size:12px;color:var(--cc-stone);">Jahr(e)</span>
             </div>
           </div>
