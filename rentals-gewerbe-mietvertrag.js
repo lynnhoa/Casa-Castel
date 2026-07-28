@@ -120,7 +120,12 @@ function _buildGewerbeMietvertragData(apt, s, {
     nutzungszweck,
     moebliert,
     schluessel,
-    inventar: Array.isArray(apt.inventar) ? apt.inventar : [],
+    inventar: (Array.isArray(apt.inventar) ? apt.inventar : [])
+      .map(i => ({
+        gegenstand: (i.gegenstand || i.name || '').toString().trim(),
+        anzahl:     Number(i.anzahl) > 0 ? Number(i.anzahl) : 1,
+      }))
+      .filter(i => i.gegenstand),
     // Mieter
     mieterName, mieterAdresse: mieterAdr, mieterGeburtsdatum: mieterDob,
     mieterEmail, mieterTel,
