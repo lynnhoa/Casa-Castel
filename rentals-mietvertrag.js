@@ -513,16 +513,16 @@ function _renderRentalMietvertragHTML(d) {
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl(String(7+pOff),'Tierhaltung',
       'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
-    ${cl(String(8+pOff),'Betreten des Mietobjekts',
-      'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).')}
   </div>
 </div>`;
 
   const page3 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(3+pageOffset)}
   <div class="content">
+    ${cl(String(8+pOff),'Betreten des Mietobjekts',
+      'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).',true)}
     ${cl(String(9+pOff),'Rückgabe bei Vertragsende',
-      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.',true)}
+      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
     ${cl(String(10+pOff),'Haftpflichtversicherung',
       'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.')}
     ${cl(String(11+pOff),'Hausordnung',
