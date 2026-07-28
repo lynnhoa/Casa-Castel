@@ -2372,7 +2372,7 @@ function _aptMvCalcStaffelDates() {
   let staffelStart = null;
   if (startVal) {
     const d = new Date(startVal);
-    d.setFullYear(d.getFullYear() + 1);
+    d.setFullYear(d.getFullYear() + intervall);
     staffelStart = d;
   }
   const addBtn  = document.getElementById('apt-mv-staffel-add-btn');
