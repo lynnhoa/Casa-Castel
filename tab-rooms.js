@@ -3157,8 +3157,6 @@ function _renderKurzzeitHTML(d) {
     ${clause('6', 'Zustand &amp; Übergabe', 'Das Zimmer wird möbliert und in vertragsgemäßem Zustand übergeben. Ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Das Zimmer ist in gleichem Zustand zurückzugeben.', false)}
     ${clause('7', 'Haftpflichtversicherung', 'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.', false)}
     ${clause('8', 'Hausordnung', 'Rauchen ist im gesamten Gebäude nicht gestattet. Haustiere sind nicht erlaubt. Untervermietung ist ohne schriftliche Zustimmung des Vermieters untersagt. Nachtruhe gilt von 22:00 bis 07:00 Uhr.', false)}
-    ${clause('9', 'Datenschutz', 'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art. 6 Abs. 1 lit. b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.', false)}
-    ${clause('10', 'Salvatorische Klausel &amp; Gerichtsstand', 'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.', false)}
   </div>
 </div>
 
@@ -3167,8 +3165,11 @@ function _renderKurzzeitHTML(d) {
   ${hdr(d.zimmerName)}
   ${ftr(3)}
   <div class="content">
+    ${clause('9', 'Datenschutz', 'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art. 6 Abs. 1 lit. b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.', true)}
+    ${clause('10', 'Salvatorische Klausel &amp; Gerichtsstand', 'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.', false)}
+
     ${(d.energieklasse || d.endenergiebedarf || d.energieausweisart) ? `
-    <div class="sec sec--lg sec--first">Energieausweis (\u00a7\u00a016a GEG)</div>
+    <div class="sec sec--lg">Energieausweis (\u00a7\u00a016a GEG)</div>
     <p class="nutzung" style="margin-top:6px;font-size:10.5px;line-height:1.55;color:#3a3530;">Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Effizienzklasse: ${d.energieklasse||'\u2014'}. Endenergiebedarf: ${d.endenergiebedarf ? d.endenergiebedarf+' kWh/(m\u00b2\u00b7a)' : '\u2014'}. Art: ${d.energieausweisart||'\u2014'}.</p>` : ''}
 
     <div class="comment-label">Sonstige Anmerkungen</div>
@@ -4203,16 +4204,16 @@ function _renderMietvertragHTML(d) {
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl('8','Tierhaltung',
       'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
-    ${cl('9','Betreten des Mietobjekts',
-      'Das Zimmer wird nur nach vorheriger Ankündigung (mind. 2\u00a0Werktage in Textform) betreten, z.\u202fB. zur Besichtigung bei Verkauf oder Weitervermietung sowie für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.')}
   </div>
 </div>`;
 
   const page3 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(3)}
   <div class="content">
+    ${cl('9','Betreten des Mietobjekts',
+      'Das Zimmer wird nur nach vorheriger Ankündigung (mind. 2\u00a0Werktage in Textform) betreten, z.\u202fB. zur Besichtigung bei Verkauf oder Weitervermietung sowie für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.',true)}
     ${cl('10','Rückgabe bei Vertragsende',
-      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.',true)}
+      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
     ${cl('11','Aufrechnung &amp; Zurückbehaltungsrecht',
       'Der Mieter kann gegen Forderungen des Vermieters nur mit unbestrittenen oder rechtskräftig festgestellten Gegenforderungen aufrechnen. Das Zurückbehaltungsrecht ist auf Mängelrechte nach \u00a7\u00a7\u00a0536\u00a0ff. BGB beschränkt und setzt eine mindestens einmonatige vorherige Ankündigung in Textform voraus.')}
     ${cl('12','Haftpflichtversicherung',
