@@ -341,7 +341,7 @@ function _renderRentalMietvertragHTML(d) {
     .sig-col { width:44%; }
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#aaa59e; margin-bottom:4px; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
-    .sig-write-gap { height:60px; }
+    .sig-write-gap { height:80px; }
     .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
@@ -512,16 +512,16 @@ function _renderRentalMietvertragHTML(d) {
       `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Unterzeichnung dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
     ${cl(String(6+pOff),'Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
-    ${cl(String(7+pOff),'Tierhaltung',
-      'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
   </div>
 </div>`;
 
   const page3 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(3+pageOffset)}
   <div class="content">
+    ${cl(String(7+pOff),'Tierhaltung',
+      'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).',true)}
     ${cl(String(8+pOff),'Betreten des Mietobjekts',
-      'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).',true)}
+      'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).')}
     ${cl(String(9+pOff),'Rückgabe bei Vertragsende',
       'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
     ${cl(String(10+pOff),'Haftpflichtversicherung',
