@@ -105,9 +105,9 @@ function _buildRentalMietvertragData(room, s, {
     gesamtmiete,
     kaution,
     kautionFaelText: kautionFael === 'sofort' ? 'sofort nach Vertragsunterzeichnung' : `binnen ${kautionFael}\u00a0Tagen`,
-    hausstuerschluessel: room.haustuerschluessel || 1,
-    zimmerschluessel:    room.zimmerschluessel    || 1,
-    briefkastenschluessel: room.briefkastenschluessel || 0,
+    hausstuerschluessel: room.haustuerschluessel ?? 1,
+    zimmerschluessel:    room.zimmerschluessel    ?? 1,
+    briefkastenschluessel: room.briefkastenschluessel ?? 0,
     inventar: (Array.isArray(room.inventar) ? room.inventar : [])
       .map(i => ({
         gegenstand: (i.gegenstand || i.name || '').toString().trim(),
@@ -404,8 +404,8 @@ function _renderRentalMietvertragHTML(d) {
     `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fs.\u202fd. \u00a7\u00a72 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Enthärtungsanlage, sonstige Anlagen)</div>`;
 
   const invRows = d.inventar.length
-    ? d.inventar.map(i => `<div class="inv-list__row"><span class="inv-list__name">${i.gegenstand}</span><span class="inv-list__qty">${i.anzahl}\u00d7</span></div>`).join('')
-    : `<div class="inv-list__empty">Kein Inventar hinterlegt</div>`;
+    ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
+    : `<tr><td colspan="2" style="color:#aaa59e;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
 
   const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
 
@@ -543,10 +543,10 @@ function _renderRentalMietvertragHTML(d) {
   ${hdr(d.zimmerName)}${ftr(4+pageOffset)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,false)}
-    <div class="inv-list">
-      <div class="inv-list__hdr"><span>Gegenstand</span><span>Anzahl</span></div>
-      ${invRows}
-    </div>
+    <table class="inv-table">
+      <thead><tr><th>Gegenstand</th><th>Anzahl</th></tr></thead>
+      <tbody>${invRows}</tbody>
+    </table>
   </div>
 </div>`;
 
