@@ -4191,8 +4191,8 @@ function _renderMietvertragHTML(d) {
         proRataText = ' Der erste Monat wird als voller Monat berechnet.';
       }
       return d.pricingMode === 'kalt_nk'
-        ? cl('3','Mietzins','Die monatliche Kaltmiete beträgt '+eur(d.kaltmiete)+', zuzüglich einer NK-Vorauszahlung von '+eur(d.nkVorauszahlung)+'.'+proRataText)
-        : cl('3','Mietzins','Die monatliche Pauschalmiete beträgt '+eur(d.gesamtmiete)+'. Alle Nebenkosten (Strom, Wasser, Heizung, WLAN) sind in der Pauschale enthalten.'+proRataText);
+        ? cl('3','Miete','Die monatliche Kaltmiete beträgt '+eur(d.kaltmiete)+', zuzüglich einer NK-Vorauszahlung von '+eur(d.nkVorauszahlung)+'.'+proRataText)
+        : cl('3','Miete','Die monatliche Pauschalmiete beträgt '+eur(d.gesamtmiete)+'. Alle Nebenkosten (Strom, Wasser, Heizung, WLAN) sind in der Pauschale enthalten.'+proRataText);
     })()}
     ${cl('4','Untervermietung',
       'Eine Untervermietung oder sonstige Überlassung des Mietobjekts an Dritte ist nicht gestattet.')}
