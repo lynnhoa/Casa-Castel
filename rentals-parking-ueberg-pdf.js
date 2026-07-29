@@ -296,6 +296,9 @@ function _pkRenderUebergHTML(d) {
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
       color:#aaa59e; margin-bottom:4px; }
     .sig-write-gap { height:74px; }
+    .sig-write-gap--short { height:48px; }
+    .sig-ort-gap { height:20px; }
+    .sig-ort-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
@@ -330,8 +333,8 @@ function _pkRenderUebergHTML(d) {
   const objektLine = [d.adresse, d.plzOrt].filter(Boolean).join(', ');
 
   const sigDate = d.unterzeichnungsDatum && d.unterschriftOrt
-    ? `<div class="sig-prefill">${esc(d.unterschriftOrt)}, ${esc(d.unterzeichnungsDatum)}</div>`
-    : `<div class="sig-date-label">Datum, Ort</div>`;
+    ? `<div class="sig-prefill">${esc(d.unterschriftOrt)}, ${esc(d.unterzeichnungsDatum)}</div><div class="sig-write-gap"></div>`
+    : `<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>`;
 
   /* ── Schlüssel section — parking has Parkschlüssel instead of Wohnungstür ── */
   const schluesselHTML = `
@@ -393,14 +396,12 @@ function _pkRenderUebergHTML(d) {
     <div class="sig-block" style="margin-top:52px;">
       <div class="sig-col">
         ${sigDate}
-        <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Vermieter</div>
         <div class="sig-name">${esc(d.vermieter)}</div>
       </div>
       <div class="sig-col">
         ${sigDate}
-        <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Mieter</div>
         <div class="sig-name">${esc(d.mieterName)}</div>
