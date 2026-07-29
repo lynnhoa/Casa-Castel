@@ -2530,16 +2530,15 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     }
   }
 
-  try {
-    const { error } = await sbL.from('rnt_tenant_records').update(update).eq('id', tid);
-    if (error) throw error;
-    await _rntEnsureKaution(tid);
-    await _rntLoad();
-  } catch (e) {
-    console.warn('[rnt-tenants] save profile:', e?.message || e);
-    _rntToast('Speichern fehlgeschlagen', true);
-    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
-  }
+  // Optimistic: apply in memory and re-render instantly (no network wait); persist in the background
+  if (rec) Object.assign(rec, update);
+  _rntEnsureKaution(tid);   // background; no-op when the tenant already has a kaution row
+  _rntRender();
+
+  sbL.from('rnt_tenant_records').update(update).eq('id', tid)
+    .then(({ error }) => {
+      if (error) { console.warn('[rnt-tenants] save profile:', error.message); _rntToast('Speichern fehlgeschlagen', true); }
+    });
 }
 
 async function _rntSaveRent(rid, tid, unitType, unitId) {
