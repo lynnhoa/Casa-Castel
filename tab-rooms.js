@@ -2688,6 +2688,7 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
     objektPLZOrt:     s.objekt_plz_ort || '',
     // Bank
     kontoinhaber:     s.kontoinhaber || '',
+    bankname:         s.bankname || '',
     iban:             s.iban || '',
     bic:              s.bic || '',
     // Gerichtsstand
@@ -3013,6 +3014,9 @@ function _renderKurzzeitHTML(d) {
       margin-bottom: 4px;
     }
     .sig-write-gap { height: 88px; }
+    .sig-write-gap--short { height: 54px; }
+    .sig-ort-gap { height: 20px; }
+    .sig-ort-line { border: none; border-top: 0.6px solid #3a3530; margin-bottom: 5px; }
     .sig-line { border: none; border-top: 0.6px solid #3a3530; margin-bottom: 7px; }
     .sig-role {
       font-family: 'Lato', sans-serif;
@@ -3104,6 +3108,7 @@ function _renderKurzzeitHTML(d) {
     ${kv('Kaution', eur(d.kaution) + ' (' + d.kautionFaelligkeitShort + ')')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber', d.kontoinhaber)}
+    ${kv('Bank', d.bankname)}
     ${kv('IBAN', d.iban)}
     ${kv('BIC', d.bic)}
 
@@ -3181,15 +3186,13 @@ function _renderKurzzeitHTML(d) {
 
     <div class="sig-block">
       <div class="sig-col">
-        ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
-        <div class="sig-write-gap"></div>
+        ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
         <hr class="sig-line"/>
         <div class="sig-role">Vermieter</div>
         <div class="sig-name">${d.vermieterName}</div>
       </div>
       <div class="sig-col">
-        ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
-        <div class="sig-write-gap"></div>
+        ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
         <hr class="sig-line"/>
         <div class="sig-role">Mieter</div>
         <div class="sig-name">${d.mieterName}</div>
@@ -3807,6 +3810,7 @@ function _buildMietvertragOnlyData(room, s, {
     objektPLZOrt:     s.objekt_plz_ort    || '',
     footerAdresse:    s.objekt_adresse ? (s.objekt_plz_ort && s.objekt_adresse.includes(s.objekt_plz_ort) ? s.objekt_adresse : s.objekt_adresse + ' \u00b7 ' + (s.objekt_plz_ort || '')) : '',
     kontoinhaber:     s.kontoinhaber      || '',
+    bankname:         s.bankname          || '',
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    s.gerichtsstand     || 'Wiesbaden',
@@ -4091,6 +4095,9 @@ function _renderMietvertragHTML(d) {
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#aaa59e; margin-bottom:4px; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:60px; }
+    .sig-write-gap--short { height:40px; }
+    .sig-ort-gap { height:16px; }
+    .sig-ort-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
@@ -4104,13 +4111,13 @@ function _renderMietvertragHTML(d) {
 
   const sigBlock = () => `<div class="sig-block">
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
-      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
+      <hr class="sig-line"/>
       <div class="sig-role">Vermieter</div><div class="sig-name">${d.vermieterSig}</div>
     </div>
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>` : '<div class="sig-date-label">Datum, Ort</div>'}
-      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
+      <hr class="sig-line"/>
       <div class="sig-role">Mieter</div><div class="sig-name">${d.mieterName}</div>
     </div>
   </div>`;
@@ -4161,7 +4168,7 @@ function _renderMietvertragHTML(d) {
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
     ${kv('Kaution',eur(d.kaution)+'\u2002(' + d.kautionFaelligkeitShort + ', \u00a7\u00a0551 BGB)')}
     <div class="kv-gap"></div>
-    ${kv('Kontoinhaber',d.kontoinhaber)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
+    ${kv('Kontoinhaber',d.kontoinhaber)}${kv('Bank',d.bankname)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
   </div>
 </div>`;
