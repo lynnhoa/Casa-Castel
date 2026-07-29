@@ -3067,13 +3067,13 @@ function _renderKurzzeitHTML(d) {
     ${sec('Vermieter', false, true)}
     ${kv('Name', d.vermieterName)}
     ${kv('Adresse', d.vermieterAdresse)}
-    ${kv('E-Mail', d.vermieterEmail || '—')}
+    ${kv('E-Mail', d.vermieterEmail)}
 
     ${sec('Mieter', false, false)}
     ${kv('Name', d.mieterName)}
     ${kv('Adresse', d.mieterAdresse)}
     ${kv('Geburtsdatum', d.mieterGeburtsdatum)}
-    ${kv('E-Mail', d.mieterEmail || '—')}
+    ${kv('E-Mail', d.mieterEmail)}
     ${d.mieterTelefon ? kv('Telefon', d.mieterTelefon) : ''}
 
     ${sec('Mietobjekt', false, false)}
@@ -4132,11 +4132,11 @@ function _renderMietvertragHTML(d) {
     <div class="doc-subtitle">${subtitle}</div>
     ${sec('Vermieter',false,true)}
     ${kv('Name',d.vermieterName)}${kv('Adresse',d.vermieterAdresse)}
-    ${kv('E-Mail',d.vermieterEmail||'—')}
+    ${kv('E-Mail',d.vermieterEmail)}
     ${sec('Mieter',false,false)}
     ${kv('Name',d.mieterName)}${kv('Adresse',d.mieterAdresse)}
     ${kv('Geburtsdatum',d.mieterGeburtsdatum)}
-    ${kv('E-Mail',d.mieterEmail||'—')}
+    ${kv('E-Mail',d.mieterEmail)}
     ${d.mieterTelefon?kv('Telefon',d.mieterTelefon):''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
