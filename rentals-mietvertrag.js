@@ -77,6 +77,7 @@ function _buildRentalMietvertragData(room, s, {
     vermieterSig:     s.vermieter_name    || '',
     objektAdresse:    room.adresse          || '',
     objektPLZOrt:     room.plz_ort          || '',
+    wohnungsnummer:   room.wohnungsnummer    || '',
     footerAdresse:    room.adresse
                         ? room.adresse + (room.plz_ort ? ' \u00b7 ' + room.plz_ort : '')
                         : (room.plz_ort || ''),
@@ -354,7 +355,7 @@ function _renderRentalMietvertragHTML(d) {
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
   `;
 
-  const hdr = room => `<div class="hdr"><span class="hdr__wordmark"></span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${room}</span></div></div>`;
+  const hdr = room => `<div class="hdr"><span class="hdr__wordmark">${room}</span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${d.wohnungsnummer || ''}</span></div></div>`;
   const ftr = n    => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${d.footerAdresse}</span><span>${n}</span></div></div>`;
   const kv  = (k,v)=> `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
   const sec = (t,lg,first) => `<div class="sec${lg?' sec--lg':''}${first?' sec--first':''}">${t}</div>`;
@@ -532,7 +533,7 @@ function _renderRentalMietvertragHTML(d) {
     ${d.hasMieter3 ? kv('Geburtsdatum',d.mieterGeburtsdatum3||'') : ''}
     ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
     ${sec('Mietobjekt',false,false)}
-    ${kv('Adresse',d.objektAdresse)}${kv('PLZ / Ort',d.objektPLZOrt)}${kv('Bezeichnung',d.zimmerName)}
+    ${kv('Adresse',d.objektAdresse)}${kv('Wohnungsnummer',d.wohnungsnummer||'')}${kv('PLZ / Ort',d.objektPLZOrt)}${kv('Bezeichnung',d.zimmerName)}
     ${d.etage ? kv('Etage',d.etage) : ''}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
     ${kv('Mitgenutzte R\u00e4ume',d.gemeinschaftsraeume||'\u2014')}

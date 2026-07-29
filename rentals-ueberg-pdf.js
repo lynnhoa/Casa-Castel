@@ -95,6 +95,7 @@ function _aptCollectUebergData(apt, isEinzug) {
     // Objekt from card
     aptName:         apt.name || '',
     adresse:         apt.adresse || '',
+    wohnungsnummer:  apt.wohnungsnummer || '',
     plzOrt:          apt.plz_ort || '',
     flaeche:         apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : '',
     zimmerType:      apt.zimmer_type || '',
@@ -404,6 +405,7 @@ function _aptRenderUebergHTML(d) {
   const parteienBlock = `
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Adresse', objektLine)}
+    ${kv('Wohnungsnummer', d.wohnungsnummer || '')}
     ${d.flaeche ? kv('Wohnfläche', d.flaeche) : ''}
     ${kv('Vermieter', d.vermieter)}
     ${kv(mieter1Lbl, d.mieterName)}

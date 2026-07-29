@@ -142,6 +142,7 @@ function _buildRentalKurzzeitData(apt, s, {
     mieterGeburtsdatum: mieterDob   || '',
     mieterEmail:        mieterEmail || '',
     wohnungName:        apt.name,
+    wohnungsnummer:     apt.wohnungsnummer || '',
     wohnungFlaeche:     apt.flaeche_m2 || 0,
     etage:              apt.floor || '',
     gemeinschaftsraeume: '',   // apartments don't have shared-room lists
@@ -239,7 +240,7 @@ function _renderRentalKurzzeitHTML(d) {
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
   `;
 
-  const hdr = name => `<div class="hdr"><span class="hdr__wordmark"></span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${name}</span></div></div>`;
+  const hdr = name => `<div class="hdr"><span class="hdr__wordmark">${name}</span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${d.wohnungsnummer || ''}</span></div></div>`;
   const ftr = n    => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${d.footerAdresse}</span><span>${n}</span></div></div>`;
   const kv  = (k,v)=> `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
   const sec = (t,lg,first) => `<div class="sec${lg?' sec--lg':''}${first?' sec--first':''}">${t}</div>`;
@@ -345,7 +346,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${d.hasMieter3 ? kv('Geburtsdatum',d.mieterGeburtsdatum3||'') : ''}
     ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
     ${sec('Mietobjekt',false,false)}
-    ${kv('Adresse',d.objektAdresse)}${kv('PLZ / Ort',d.objektPLZOrt)}${kv('Bezeichnung',d.wohnungName)}
+    ${kv('Adresse',d.objektAdresse)}${kv('Wohnungsnummer',d.wohnungsnummer||'')}${kv('PLZ / Ort',d.objektPLZOrt)}${kv('Bezeichnung',d.wohnungName)}
     ${d.etage ? kv('Etage',d.etage) : ''}
     ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.wohnungFlaeche+'\u00a0m\u00b2')}
     ${kv('M\u00f6blierung','M\u00f6bliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
