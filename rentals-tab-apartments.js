@@ -902,6 +902,7 @@ function _aptCardHTML(a) {
       <div class="apt-sec-read">
         <div class="apt-row"><span class="apt-row__k">Name</span><span class="apt-row__v">${aptEsc(a.name)}</span></div>
         <div class="apt-row"><span class="apt-row__k">Adresse</span><span class="apt-row__v">${aptEsc(a.adresse || '—')}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Wohnungsnummer</span><span class="apt-row__v">${aptEsc(a.wohnungsnummer || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">PLZ / Ort</span><span class="apt-row__v">${aptEsc(a.plz_ort || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Gerichtsstand</span><span class="apt-row__v">${aptEsc(a.gerichtsstand || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Unterzeichnung</span><span class="apt-row__v">${aptEsc(a.unterschrift_ort || '—')}</span></div>
@@ -923,6 +924,7 @@ function _aptCardHTML(a) {
           <div class="apt-field"><div class="apt-field__label">Floor</div><input class="apt-input" data-f="floor" value="${aptEsc(a.floor||'')}"/></div>
         </div>
         <div class="apt-field"><div class="apt-field__label">Adresse</div><input class="apt-input" data-f="adresse" value="${aptEsc(a.adresse||'')}"/></div>
+        <div class="apt-field"><div class="apt-field__label">Wohnungsnummer</div><input class="apt-input" data-f="wohnungsnummer" value="${aptEsc(a.wohnungsnummer||'')}" placeholder="z.B. 3 / WE 12"/></div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">PLZ / Ort</div><input class="apt-input" data-f="plz_ort" value="${aptEsc(a.plz_ort||'')}" placeholder="55246 Mainz-Kostheim"/></div>
           <div class="apt-field"><div class="apt-field__label">Gerichtsstand</div><input class="apt-input" data-f="gerichtsstand" value="${aptEsc(a.gerichtsstand||'')}" placeholder="z.B. Wiesbaden"/></div>
@@ -3118,7 +3120,7 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
 
   const blank = {
     id: tempId, name: '', adresse: '', zimmer_type: '1 Zimmer', heizungsart: 'Zentralheizung',
-    floor: '', flaeche_m2: null, energieklasse: '', endenergiebedarf: '', energieausweisart: '',
+    floor: '', flaeche_m2: null, wohnungsnummer: '', energieklasse: '', endenergiebedarf: '', energieausweisart: '',
     vacant: false, active: true,
     pricing: {}, verwaltung: {}, zaehler: [], schlussel: {}, inventar: [],
   };
