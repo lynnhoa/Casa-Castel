@@ -1311,8 +1311,8 @@ function _rntDocumentsSectionHTML(rid, type, unit, rec) {
   <div class="tn-sec-body" style="padding-top:16px;padding-bottom:14px">
     <div style="margin-bottom:10px"><span class="tn-sec-lbl">Documents</span></div>
     ${isApt
-      ? row('mietvertrag','Mietvertrag') + row('uebergabeprotokoll','Übergabeprotokoll')
-      : row('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + row('uebergabeprotokoll','Übergabeprotokoll')}
+      ? row('mietvertrag','Mietvertrag') + row('uebergabeprotokoll','Übergabeprotokoll') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')
+      : row('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + row('uebergabeprotokoll','Übergabeprotokoll') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')}
   </div>
 </div>`;
 }
@@ -2188,8 +2188,8 @@ function _rntModalBodyHTML(rec, isApt) {
     <div class="tn-msec-hdr"><span class="tn-msec-lbl">Documents</span></div>
     <div class="tn-msec-body" style="padding-bottom:11px">
       ${isApt
-        ? docRow('mietvertrag','Mietvertrag') + docRow('uebergabeprotokoll','Übergabeprotokoll')
-        : docRow('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + docRow('uebergabeprotokoll','Übergabeprotokoll')}
+        ? docRow('mietvertrag','Mietvertrag') + docRow('uebergabeprotokoll','Übergabeprotokoll') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')
+        : docRow('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + docRow('uebergabeprotokoll','Übergabeprotokoll') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')}
     </div>
   </div>
 
