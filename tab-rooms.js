@@ -505,9 +505,11 @@ document.getElementById('tab-rooms').innerHTML = `
 .rm-pill-toggle { display:flex; align-items:center; gap:8px; background:none; border:none; cursor:pointer; padding:0; flex-shrink:0; }
 .rm-pill-toggle__track { position:relative; width:40px; height:22px; background:var(--cc-stone); border-radius:11px; transition:background .2s; flex-shrink:0; }
 .rm-pill-toggle[data-mode="voll"] .rm-pill-toggle__track,
+.rm-pill-toggle[data-mode="ja"] .rm-pill-toggle__track,
 .rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__track { background:var(--cc-charcoal); }
 .rm-pill-toggle__knob { position:absolute; top:3px; left:3px; width:16px; height:16px; background:#fff; border-radius:50%; transition:transform .2s; }
 .rm-pill-toggle[data-mode="voll"] .rm-pill-toggle__knob,
+.rm-pill-toggle[data-mode="ja"] .rm-pill-toggle__knob,
 .rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__knob { transform:translateX(18px); }
 .rm-pill-toggle__lbl { font-size:12px; font-weight:500; color:var(--cc-charcoal); min-width:52px; }
 
@@ -1940,11 +1942,24 @@ async function _openContract(type, roomId) {
           const kautionFaelligkeitMv = _mvFaelVal === 'custom'
             ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
             : _mvFaelVal === 'sofort' ? 'sofort' : 5;
+          // Mindestlaufzeit (Kündigungsverzicht) — unbefristet only, cap 4 Jahre (BGH)
+          let mindestlaufzeitJahre = 0;
+          if (!befristet && document.getElementById('mv-mindest-btn')?.dataset.mode === 'ja') {
+            const selMl = document.querySelector('.mv-mindest-opt.active-mindest');
+            mindestlaufzeitJahre = selMl ? Math.min(4, Math.max(1, Number(selMl.dataset.val))) : 1;
+          }
+          // Persist choice to the room when unbefristet (0 = explicit off).
+          // Befristet contracts don't alter the room's stored Mindestlaufzeit.
+          if (!befristet && (room2.mindestlaufzeit_jahre ?? 0) !== mindestlaufzeitJahre) {
+            try { await saveRoom({ ...room2, mindestlaufzeit_jahre: mindestlaufzeitJahre }); }
+            catch (e) { console.warn('[MV] Mindestlaufzeit save failed:', e); }
+          }
           const data = _buildMietvertragOnlyData(room2, appSettings, {
             mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
             befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
             kautionOverride: kautionOverrideMv,
             kautionFaelligkeit: kautionFaelligkeitMv,
+            mindestlaufzeitJahre,
           });
           const html = _renderMietvertragHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
@@ -3014,7 +3029,7 @@ function _renderKurzzeitHTML(d) {
       margin-bottom: 4px;
     }
     .sig-write-gap { height: 88px; }
-    .sig-write-gap--short { height: 54px; }
+    .sig-write-gap--short { height: 84px; }
     .sig-ort-gap { height: 20px; }
     .sig-ort-line { border: none; border-top: 0.6px solid #3a3530; margin-bottom: 5px; }
     .sig-line { border: none; border-top: 0.6px solid #3a3530; margin-bottom: 7px; }
@@ -3734,6 +3749,7 @@ function _buildMietvertragOnlyData(room, s, {
   ersterMonatVoll = false,
   kautionOverride = null,
   kautionFaelligkeit = 5,
+  mindestlaufzeitJahre = 0,
 }) {
   const fmt = d => {
     const dt = new Date(d);
@@ -3840,6 +3856,16 @@ function _buildMietvertragOnlyData(room, s, {
     inventar: Array.isArray(room.inventar) ? room.inventar : [],
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
     ersterMonatNote,
+    // Mindestlaufzeit (Kündigungsverzicht) — unbefristet only, max 4 Jahre (BGH)
+    hasMindestlaufzeit:   !befristet && Number(mindestlaufzeitJahre) >= 1,
+    mindestlaufzeitJahre: (!befristet && Number(mindestlaufzeitJahre) >= 1) ? Math.min(4, Number(mindestlaufzeitJahre)) : 0,
+    mindestlaufzeitBis:   (() => {
+      const n = (!befristet && Number(mindestlaufzeitJahre) >= 1) ? Math.min(4, Number(mindestlaufzeitJahre)) : 0;
+      if (!n || !sigVal) return '';
+      const sd = new Date(sigVal);
+      if (isNaN(sd)) return '';
+      return fmt(new Date(sd.getFullYear() + n, sd.getMonth(), sd.getDate()));
+    })(),
     // Energieausweis — house-level, from appSettings
     energieklasse:     s.energieklasse     || '',
     endenergiebedarf:  s.endenergiebedarf  || '',
@@ -3882,6 +3908,12 @@ function _contractBodyMietvertrag(room) {
   const kaution    = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
     : (kaltBase + nkBase) * 3;
+
+  // Mindestlaufzeit (Kündigungsverzicht) prefill — null = never set → default Ja/1 Jahr
+  const _mlSaved        = room.mindestlaufzeit_jahre;
+  const mlOn            = (_mlSaved == null) ? true : Number(_mlSaved) >= 1;
+  const mlVal           = (_mlSaved != null && Number(_mlSaved) >= 1) ? Math.min(4, Number(_mlSaved)) : 1;
+  const befristetPrefill = false; // modal always opens unbefristet
 
   return `
     <div class="rm-prefilled">
@@ -4017,6 +4049,26 @@ function _contractBodyMietvertrag(room) {
       </div>
     </div>
 
+    <div class="rm-field--toggle" id="mv-mindest-wrap" style="margin-bottom:10px;display:${befristetPrefill ? 'none' : 'block'};">
+      <div class="rm-toggle-row">
+        <div>
+          <div class="rm-toggle-label">Mindestlaufzeit</div>
+          <div class="rm-toggle-sub" id="mv-mindest-sub">${mlOn ? mlVal + ' Jahr' + (mlVal > 1 ? 'e' : '') + ' \u00b7 K\u00fcndigungsverzicht' : 'Keine'}</div>
+        </div>
+        <button type="button" class="rm-pill-toggle" id="mv-mindest-btn"
+          data-mode="${mlOn ? 'ja' : 'nein'}" onclick="_toggleMvMindest()">
+          <span class="rm-pill-toggle__track"><span class="rm-pill-toggle__knob"></span></span>
+          <span class="rm-pill-toggle__lbl" id="mv-mindest-lbl">${mlOn ? 'Ja' : 'Nein'}</span>
+        </button>
+      </div>
+      <div id="mv-mindest-details" style="display:${mlOn ? 'block' : 'none'};margin-top:8px;">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          ${[1,2,3,4].map(n => `<button type="button" class="rm-btn rm-btn--sm mv-mindest-opt${n === mlVal ? ' active-mindest' : ''}" data-val="${n}"${n === mlVal ? ' data-active="1"' : ''} onclick="_mlSelect(${n})" style="font-size:12px;padding:4px 12px;border-radius:20px;border:.5px solid ${n === mlVal ? 'var(--cc-charcoal)' : 'var(--cc-rule)'};background:${n === mlVal ? 'var(--cc-charcoal)' : 'none'};cursor:pointer;font-family:inherit;color:${n === mlVal ? '#fff' : 'var(--cc-charcoal)'}">${n} Jahr${n > 1 ? 'e' : ''}</button>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--cc-stone);margin-top:7px;line-height:1.45;">Wechselseitiger K\u00fcndigungsverzicht \u00b7 ordentliche K\u00fcndigung erst zum Ablauf \u00b7 au\u00dferordentliche K\u00fcndigung (\u00a7\u00a0543 BGB) bleibt m\u00f6glich. Max. 4\u00a0Jahre (BGH).</div>
+      </div>
+    </div>
+
     <div class="rm-field" style="margin-top:4px;">
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;font-weight:400;">(optional)</span></label>
       <input class="rm-input" id="mv-sig" type="date" onclick="try{this.showPicker()}catch(e){}" />
@@ -4034,6 +4086,41 @@ function _toggleMvBefristung() {
   lbl.textContent     = on ? 'Ja'          : 'Nein';
   sub.textContent     = on ? 'Befristet'   : 'Unbefristet';
   details.style.display = on ? '' : 'none';
+  // Mindestlaufzeit (Kündigungsverzicht) only applies to unbefristete Verträge
+  const mindest = document.getElementById('mv-mindest-wrap');
+  if (mindest) mindest.style.display = on ? 'none' : 'block';
+}
+
+function _toggleMvMindest() {
+  const btn     = document.getElementById('mv-mindest-btn');
+  const lbl     = document.getElementById('mv-mindest-lbl');
+  const sub     = document.getElementById('mv-mindest-sub');
+  const details = document.getElementById('mv-mindest-details');
+  if (!btn) return;
+  const turningOn = btn.dataset.mode === 'nein';
+  btn.dataset.mode      = turningOn ? 'ja' : 'nein';
+  lbl.textContent       = turningOn ? 'Ja' : 'Nein';
+  details.style.display = turningOn ? 'block' : 'none';
+  if (turningOn) {
+    const sel = document.querySelector('.mv-mindest-opt.active-mindest');
+    const n   = sel ? Number(sel.dataset.val) : 1;
+    sub.textContent = n + ' Jahr' + (n > 1 ? 'e' : '') + ' \u00b7 K\u00fcndigungsverzicht';
+  } else {
+    sub.textContent = 'Keine';
+  }
+}
+
+function _mlSelect(n) {
+  document.querySelectorAll('.mv-mindest-opt').forEach(b => {
+    const active = Number(b.dataset.val) === n;
+    b.classList.toggle('active-mindest', active);
+    b.style.background  = active ? 'var(--cc-charcoal)' : 'none';
+    b.style.color       = active ? '#fff' : 'var(--cc-charcoal)';
+    b.style.borderColor = active ? 'var(--cc-charcoal)' : 'var(--cc-rule)';
+    if (active) b.dataset.active = '1'; else delete b.dataset.active;
+  });
+  const sub = document.getElementById('mv-mindest-sub');
+  if (sub) sub.textContent = n + ' Jahr' + (n > 1 ? 'e' : '') + ' \u00b7 K\u00fcndigungsverzicht';
 }
 
 function _updateMvGrundDetail() {
@@ -4095,7 +4182,7 @@ function _renderMietvertragHTML(d) {
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#aaa59e; margin-bottom:4px; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:60px; }
-    .sig-write-gap--short { height:40px; }
+    .sig-write-gap--short { height:72px; }
     .sig-ort-gap { height:16px; }
     .sig-ort-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
@@ -4152,6 +4239,7 @@ function _renderMietvertragHTML(d) {
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit',false,false)}
     ${kv('Mietbeginn',d.mietbeginn||'—')}
+    ${d.hasMindestlaufzeit ? kv('Mindestlaufzeit', d.mindestlaufzeitJahre + '\u00a0Jahr' + (d.mindestlaufzeitJahre > 1 ? 'e' : '') + ' ab Vertragsschluss' + (d.mindestlaufzeitBis ? ' (bis ' + d.mindestlaufzeitBis + ')' : '')) : ''}
     ${d.ersterMonatNote ? kv('Erster Monat',d.ersterMonatNote) : ''}
     ${d.befristet
       ? ''
@@ -4188,7 +4276,11 @@ function _renderMietvertragHTML(d) {
     ${cl('2','Kündigung',
       d.befristet
         ? 'Das befristete Mietverhältnis endet am '+d.mietende+' automatisch ohne Kündigung (\u00a7\u00a0575 BGB). Befristungsgrund: '+d.grundLabel+(d.eigenbedarfPerson?' \u2014 '+d.eigenbedarfPerson:'')+'. Eine ordentliche Kündigung ist ausgeschlossen; die außerordentliche Kündigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unberührt. Im Falle einer Verlängerung beträgt die Kündigungsfrist für den Mieter 3\u00a0Monate zum Monatsende.'
-        : 'Die ordentliche Kündigung richtet sich nach \u00a7\u00a0573c BGB. Kündigungsfrist für den Mieter: 3\u00a0Monate zum Monatsende. Für den Vermieter gilt die gesetzlich gestaffelte Frist. Die Kündigung bedarf der Schriftform. Eine stillschweigende Verlängerung nach \u00a7\u00a0545 BGB ist ausgeschlossen. Die außerordentliche Kündigung aus wichtigem Grund bleibt unberührt.')}
+        : 'Die ordentliche Kündigung richtet sich nach \u00a7\u00a0573c BGB. Kündigungsfrist für den Mieter: 3\u00a0Monate zum Monatsende. Für den Vermieter gilt die gesetzlich gestaffelte Frist. Die Kündigung bedarf der Schriftform. Eine stillschweigende Verlängerung nach \u00a7\u00a0545 BGB ist ausgeschlossen. '
+          + (d.hasMindestlaufzeit
+              ? 'Beide Vertragsparteien verzichten wechselseitig für die Dauer von ' + (d.mindestlaufzeitJahre === 1 ? 'einem Jahr' : d.mindestlaufzeitJahre + ' Jahren') + ' ab Vertragsschluss auf ihr Recht zur ordentlichen Kündigung dieses Mietvertrags (Mindestlaufzeit). Eine ordentliche Kündigung ist erstmals zum Ablauf dieses Zeitraums mit der gesetzlichen Frist zulässig; sie kann bereits innerhalb des Zeitraums so erklärt werden, dass sie zu dessen Ablauf wirksam wird. '
+              : '')
+          + 'Das Recht zur außerordentlichen Kündigung aus wichtigem Grund (\u00a7\u00a7\u00a0543, 569 BGB) bleibt hiervon unberührt.')}
     ${(() => {
       const istVoll = d.ersterMonatNote && d.ersterMonatNote.includes('voller Monat');
       let proRataText = '';
