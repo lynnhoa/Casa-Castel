@@ -173,10 +173,12 @@ function _renderPkMietvertragHTML(d) {
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic;
       font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:56px; }
-    .sig-write-gap--short { height:38px; }
+    .sig-write-gap--short { height:56px; }
     .sig-ort-gap { height:20px; }
     .sig-ort-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
+    .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:#4a4540; margin-top:40px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
+    .comment-line { border-bottom:0.5px solid #e0dbd4; height:26px; margin-top:2px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
       color:#3a3530; margin-top:4px; }
@@ -248,8 +250,9 @@ function _renderPkMietvertragHTML(d) {
         3 Mieter → Miete onto page 2 alongside Mieter 3 + Bankverbindung. ── */
   const bankOnPage1  = !hasMultiMieter;   // only 1 Mieter
   const mieteOnPage2 = d.hasMieter3;      // only 3 Mieter
-  const nClauses = bankOnPage1 ? 2 : 3;   // footer no. of the Klauseln+Unterschriften page
-  const nOrdnung = bankOnPage1 ? 3 : 4;   // footer no. of the Anlage/Ordnung page
+  const nClausesA = bankOnPage1 ? 2 : 3;   // clauses page A (§1 … Zahlungsweise)
+  const nClausesB = bankOnPage1 ? 3 : 4;   // clauses page B (Schriftform, Sonstige, Unterschriften)
+  const nOrdnung  = bankOnPage1 ? 4 : 5;   // Anlage / Garagenordnung page
 
   const mieteBlock = `
     ${sec('Miete', false, false)}
@@ -342,54 +345,63 @@ function _renderPkMietvertragHTML(d) {
   const mindestEnd = d.mietende || '(1\u00a0Jahr nach Mietbeginn)';
   const laufzeitClause = `Das Mietverhältnis beginnt${mietbeginnText} und ist fest abgeschlossen bis zum ${mindestEnd} (Mindestlaufzeit). Eine Kündigung während der Mindestlaufzeit ist ausgeschlossen. Nach Ablauf der Mindestlaufzeit l\u00e4uft der Vertrag auf unbestimmte Zeit weiter und kann von beiden Parteien ohne Angabe von Gr\u00fcnden mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gek\u00fcndigt werden (§\u00a0580a BGB).`;
 
+  // Clause numbering (staffel-aware) — shared across the two clause pages
+  const hasStaffel = d.staffelAn && d.staffeln.length > 0;
+  const pKaution   = hasStaffel ? 7 : 6;
+  const pZahlung   = hasStaffel ? 8 : 7;
+  const pSchrift   = hasStaffel ? 9 : 8;
+  const pSonstige  = hasStaffel ? 10 : 9;
+  const staffelClause = hasStaffel ? cl('6', 'Staffelmiete',
+    `Die monatliche Miete ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Anfangsmiete ab ${d.mietbeginn || 'Mietbeginn'}: ${fmtEUR(d.anfangsmiete)}.` +
+    d.staffeln.map(st => ` Ab ${st.datum}: ${fmtEUR(st.betrag)}.`).join('') +
+    ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend einer laufenden Staffel ist eine Mieterh\u00f6hung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`
+  ) : '';
+
   const page2 = `<div class="pdf-page page">
-  ${hdr()}${ftr(nClauses)}
+  ${hdr()}${ftr(nClausesA)}
   <div class="content">
 
-    ${cl('1', 'Mietdauer und Kündigung', laufzeitClause, true)}
+    ${cl('1', 'Mietdauer und K\u00fcndigung', laufzeitClause, true)}
 
-    ${cl('2', 'Fristlose Kündigung',
-      'Der Vermieter kann das Mietverhältnis fristlos kündigen, wenn der Mieter mit 2\u00a0Monatsmieten im Rückstand ist (§\u00a0543 Abs.\u00a02 Nr.\u00a03 BGB).')}
+    ${cl('2', 'Fristlose K\u00fcndigung',
+      'Der Vermieter kann das Mietverh\u00e4ltnis fristlos k\u00fcndigen, wenn der Mieter mit 2\u00a0Monatsmieten im R\u00fcckstand ist (\u00a7\u00a0543 Abs.\u00a02 Nr.\u00a03 BGB).')}
 
     ${cl('3', 'Nutzung des Stellplatzes',
-      `Der ${d.stellplatzLabel} darf ausschließlich zum Abstellen eines privaten Kraftfahrzeugs genutzt werden. Eine Untervermietung oder Überlassung an Dritte ist nicht gestattet. ${d.waschText}`)}
+      `Der ${d.stellplatzLabel} darf ausschlie\u00dflich zum Abstellen eines privaten Kraftfahrzeugs genutzt werden. Eine Untervermietung oder \u00dcberlassung an Dritte ist nicht gestattet. ${d.waschText}`)}
 
-    ${cl('4', 'Schlüsselübergabe',
-      `${d.schlusselText} Die Schlüssel sind bei Mietende zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs.`)}
+    ${cl('4', 'Schl\u00fcssel\u00fcbergabe',
+      `${d.schlusselText} Die Schl\u00fcssel sind bei Mietende zur\u00fcckzugeben. Bei Verlust tr\u00e4gt der Mieter die vollst\u00e4ndigen Kosten des Schlossaustauschs.`)}
 
     ${cl('5', 'Haftung',
-      'Vom Vermieter wird für eventuelle Beschädigungen an dem abgestellten PKW oder Diebstahl keine Haftung übernommen.')}
+      'Vom Vermieter wird f\u00fcr eventuelle Besch\u00e4digungen an dem abgestellten PKW oder Diebstahl keine Haftung \u00fcbernommen.')}
 
-    ${(() => {
-      const hasStaffel = d.staffelAn && d.staffeln.length > 0;
-      const pKaution   = hasStaffel ? 7 : 6;
-      const pZahlung   = hasStaffel ? 8 : 7;
-      const pSchrift   = hasStaffel ? 9 : 8;
-      const pSonstige  = hasStaffel ? 10 : 9;
-      const staffelClause = hasStaffel ? cl('6', 'Staffelmiete',
-        `Die monatliche Miete ist gem\u00e4\u00df \u00a7\u00a0557a BGB gestaffelt und betr\u00e4gt: Anfangsmiete ab ${d.mietbeginn || 'Mietbeginn'}: ${fmtEUR(d.anfangsmiete)}.` +
-        d.staffeln.map(st => ` Ab ${st.datum}: ${fmtEUR(st.betrag)}.`).join('') +
-        ` Jede Staffel gilt f\u00fcr mindestens zw\u00f6lf Monate. W\u00e4hrend einer laufenden Staffel ist eine Mieterh\u00f6hung nach \u00a7\u00a7\u00a0558, 559 BGB ausgeschlossen. Die jeweils geltende Staffelmiete ist zum 3.\u00a0Werktag des ersten Monats der neuen Staffel f\u00e4llig.`
-      ) : '';
-      return `
     ${staffelClause}
 
     ${cl(String(pKaution), 'Kaution',
-      `Der Mieter leistet eine Kaution von ${fmtEUR(d.kaution)} ${d.kautionFaelText}. Die Kaution wird nach Beendigung des Mietverhältnisses und Prüfung des Zustands des Stellplatzes zurückerstattet. Schäden, die der Mieter zu vertreten hat, können von der Kaution abgezogen werden.`)}
+      `Der Mieter leistet eine Kaution von ${fmtEUR(d.kaution)} ${d.kautionFaelText}. Die Kaution wird nach Beendigung des Mietverh\u00e4ltnisses und Pr\u00fcfung des Zustands des Stellplatzes zur\u00fcckerstattet. Sch\u00e4den, die der Mieter zu vertreten hat, k\u00f6nnen von der Kaution abgezogen werden.`)}
 
     ${cl(String(pZahlung), 'Zahlungsweise',
-      'Die Miete ist im Voraus, spätestens am 3.\u00a0Werktag des Monats, durch Überweisung auf das oben genannte Konto zu entrichten.')}
+      'Die Miete ist im Voraus, sp\u00e4testens am 3.\u00a0Werktag des Monats, durch \u00dcberweisung auf das oben genannte Konto zu entrichten.')}
+  </div>
+</div>`;
+
+  const page2b = `<div class="pdf-page page">
+  ${hdr()}${ftr(nClausesB)}
+  <div class="content">
 
     ${cl(String(pSchrift), 'Schriftform',
-      'Änderungen und Ergänzungen dieses Vertrages bedürfen der Schriftform. Mündliche Nebenabreden bestehen nicht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
+      '\u00c4nderungen und Erg\u00e4nzungen dieses Vertrages bed\u00fcrfen der Schriftform. M\u00fcndliche Nebenabreden bestehen nicht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
 
     ${cl(String(pSonstige), 'Sonstige Vereinbarungen',
-      'Sollten einzelne Bestimmungen dieses Vertrages unwirksam sein, bleibt der Vertrag im Übrigen wirksam.')}`;
-    })()}
+      'Sollten einzelne Bestimmungen dieses Vertrages unwirksam sein, bleibt der Vertrag im \u00dcbrigen wirksam.')}
 
     <div class="anlage-note">
       1\u00a0Anlage: ${d.anlageText} ist Bestandteil dieses Mietvertrages.
     </div>
+
+    <div class="comment-label">Sonstige Anmerkungen</div>
+    <div class="comment-line"></div><div class="comment-line"></div>
+    <div class="comment-line"></div>
 
     ${sigBlock()}
   </div>
@@ -447,7 +459,7 @@ function _renderPkMietvertragHTML(d) {
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Parkplatz Mietvertrag \u2014 ${d.stellplatzNr}</title>
 <style>${CSS}</style></head>
-<body>${page1}${bankOnPage1 ? '' : pageData}${page2}${page3}</body></html>`;
+<body>${page1}${bankOnPage1 ? '' : pageData}${page2}${page2b}${page3}</body></html>`;
 }
 
 
