@@ -441,8 +441,11 @@ function _renderRentalMietvertragHTML(d) {
     ? 'Befristetes Mietverhältnis \u00b7 Wohnungsvermietung'
     : 'Unbefristetes Mietverhältnis \u00b7 Wohnungsvermietung';
 
-  const mieteTopBlock = `
-    ${sec('Miete',true,false)}
+  // With 3 Mieter, page 1 can't hold the Miete block too — relocate it to the top of page 2.
+  const mieteOnPage2 = d.hasMieter3;
+
+  const mieteBlock = (first) => `
+    ${sec('Miete',true,first)}
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.anfangsmiete||d.kaltmiete)+'\u2002/ Monat'+(hasStaffel?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':''))
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
@@ -540,7 +543,7 @@ function _renderRentalMietvertragHTML(d) {
       ? kv('K\u00fcndigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
       : ''}
-    ${mieteTopBlock}
+    ${mieteOnPage2 ? '' : mieteBlock(false)}
   </div>
 </div>`;
 
@@ -548,7 +551,8 @@ function _renderRentalMietvertragHTML(d) {
   const page2 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(2)}
   <div class="content">
-    ${sec('Bankverbindung',true,true)}
+    ${mieteOnPage2 ? mieteBlock(true) + '\n    <div class="section-gap"></div>' : ''}
+    ${sec('Bankverbindung',true,!mieteOnPage2)}
     ${mieteRestBlock}
     <div class="section-gap"></div>
     ${betriebskostenBlock}
