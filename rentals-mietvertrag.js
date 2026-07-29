@@ -342,6 +342,9 @@ function _renderRentalMietvertragHTML(d) {
     .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#aaa59e; margin-bottom:4px; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:80px; }
+    .sig-write-gap--short { height:54px; }
+    .sig-ort-gap { height:20px; }
+    .sig-ort-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
@@ -354,28 +357,28 @@ function _renderRentalMietvertragHTML(d) {
   const cl  = (num,title,body,first) => `<div class="clause${first?' clause--first':''}"><div class="clause__title">\u00a7\u00a0${num}\u2002${title}</div><div class="clause__body">${body}</div></div>`;
 
   const sigDate = d.unterzeichnungsDatum
-    ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div>`
-    : '<div class="sig-date-label">Datum, Ort</div>';
+    ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>`
+    : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>';
 
   const sigBlock = () => `<div class="sig-block">
     <div class="sig-col">
       ${sigDate}
-      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <hr class="sig-line"/>
       <div class="sig-role">Vermieter</div><div class="sig-name">${d.vermieterSig}</div>
     </div>
     <div class="sig-col">
       ${sigDate}
-      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <hr class="sig-line"/>
       <div class="sig-role">Mieter${hasMultiMieter ? ' 1' : ''}</div><div class="sig-name">${d.mieterName}</div>
     </div>
     ${d.hasMieter2 ? `<div class="sig-col" style="margin-top:28px;width:44%;">
       ${sigDate}
-      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <hr class="sig-line"/>
       <div class="sig-role">Mieter 2</div><div class="sig-name">${d.mieterName2}</div>
     </div>` : ''}
     ${d.hasMieter3 ? `<div class="sig-col" style="margin-top:28px;width:44%;">
       ${sigDate}
-      <div class="sig-write-gap"></div><hr class="sig-line"/>
+      <hr class="sig-line"/>
       <div class="sig-role">Mieter 3</div><div class="sig-name">${d.mieterName3}</div>
     </div>` : ''}
   </div>`;

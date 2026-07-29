@@ -171,6 +171,9 @@ function _renderPkMietvertragHTML(d) {
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic;
       font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:56px; }
+    .sig-write-gap--short { height:38px; }
+    .sig-ort-gap { height:20px; }
+    .sig-ort-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
@@ -219,21 +222,19 @@ function _renderPkMietvertragHTML(d) {
     </div>`;
 
   const sigDate = d.unterzeichnungsDatum
-    ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div>`
-    : '<div class="sig-date-label">Datum, Ort</div>';
+    ? `<div class="sig-prefill">${d.gerichtsstand}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>`
+    : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>';
   const mieterNamesList = [d.mieterName, d.hasMieter2 ? d.mieterName2 : '', d.hasMieter3 ? d.mieterName3 : ''].filter(Boolean);
   const sigBlock = () => `
     <div class="sig-block">
       <div class="sig-col">
         ${sigDate}
-        <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Vermieter</div>
         <div class="sig-name">${d.vermieterSig}</div>
       </div>
       <div class="sig-col">
         ${sigDate}
-        <div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Mieter</div>
         <div class="sig-name">${mieterNamesList.join('<br/>')}</div>
