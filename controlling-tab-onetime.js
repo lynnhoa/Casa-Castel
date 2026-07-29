@@ -204,7 +204,7 @@ function renderOtDrawerBody(pid) {
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 90px 44px;gap:6px;align-items:center;">' +
         '<input class="ct-input ct-otd-inp" data-field="item" type="text" style="text-align:left;" placeholder="Beschreibung"/>' +
-        '<input class="ct-input ct-otd-inp" data-field="amt"  type="number" step="0.01" inputmode="decimal" placeholder="0,00"/>' +
+        '<input class="ct-input ct-otd-inp" data-field="amt"  type="text" inputmode="decimal" placeholder="0,00"/>' +
         '<button class="ct-btn-sm primary" onclick="ctlOtDrawerAdd()" title="Hinzufügen"><i class="ti ti-plus"></i></button>' +
       '</div>' +
     '</div>';
@@ -267,7 +267,8 @@ window.ctlOtDrawerAdd = async function () {
   const date    = inps.date;
   const company = (inps.company || '').trim() || null;
   const item    = (inps.item    || '').trim();
-  const amt     = Number(inps.amt);
+  const amtRaw  = String(inps.amt || '').trim();
+  const amt     = amtRaw.includes(',') ? Number(amtRaw.replace(/\./g, '').replace(',', '.')) : Number(amtRaw);
   if (!date || !item || !amt) { ctlToast('Datum · Beschreibung · Betrag'); return; }
   try {
     await ctlInsertOneTime(_ctlOtDrawerPid, date, item, amt, company);

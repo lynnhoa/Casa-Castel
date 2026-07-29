@@ -97,8 +97,8 @@ function renderDrawerBody(pid, month) {
     return (
       '<div class="ct-row" style="grid-template-columns:1fr 96px minmax(52px,auto);">' +
         '<div class="ct-row__lbl">' + lbl + (sub || openTag ? '<small>' + (sub || '') + openTag + '</small>' : '') + '</div>' +
-        '<input class="ct-input" type="number" step="0.01" inputmode="decimal" ' +
-          dataAttrs + ' value="' + (val === '' ? '' : val) + '" placeholder=""/>' +
+        '<input class="ct-input" type="text" inputmode="decimal" ' +
+          dataAttrs + ' value="' + (val === '' ? '' : String(val).replace('.', ',')) + '" placeholder=""/>' +
         '<div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">' +
           savedMark + chipsHtml +
         '</div>' +
@@ -266,7 +266,7 @@ function wireDrawerActions() {
       if (chip.dataset.field) sel += '[data-field="' + chip.dataset.field + '"]';
       const inp = body.querySelector(sel);
       if (!inp) return;
-      inp.value = amt;
+      inp.value = String(amt).replace('.', ',');
       await saveOne(inp);
       // re-render so the row flips from "offen" to saved with ✓ and progress count updates
       document.getElementById('ctDrawerBody').innerHTML = renderDrawerBody(_ctlDrawer.pid, _ctlDrawer.month);
@@ -280,23 +280,29 @@ function wireDrawerActions() {
   document.getElementById('ctFillExpPrev')       ?.addEventListener('click', () => fillExpense('prev'));
 }
 
+// Parse a user-entered amount, accepting the German decimal comma (e.g. "263,51")
+function _ctlNum(el) {
+  const v = ((el && el.value) || '').trim();
+  return v === '' ? null : Number(v.replace(',', '.'));
+}
+
 async function saveOne(inp) {
   const { pid, month } = _ctlDrawer;
   const kind = inp.dataset.kind;
-  const val  = inp.value === '' ? null : Number(inp.value);
+  const val  = _ctlNum(inp);
   try {
     if (kind === 'income-kalt' || kind === 'income-neben') {
       const unitId = Number(inp.dataset.unit);
       const kaltInp  = document.querySelector('input[data-kind="income-kalt"][data-unit="' + unitId + '"]');
       const nebenInp = document.querySelector('input[data-kind="income-neben"][data-unit="' + unitId + '"]');
-      const kalt  = kaltInp.value  === '' ? null : Number(kaltInp.value);
-      const neben = nebenInp.value === '' ? null : Number(nebenInp.value);
+      const kalt  = _ctlNum(kaltInp);
+      const neben = _ctlNum(nebenInp);
       await ctlUpsertIncome(unitId, month, kalt, neben);
     }
     else if (kind === 'apt') {
       const fields = {};
       document.querySelectorAll('input[data-kind="apt"]').forEach(x => {
-        fields[x.dataset.field] = x.value === '' ? null : Number(x.value);
+        fields[x.dataset.field] = _ctlNum(x);
       });
       await ctlUpsertApt(pid, month, fields);
     }
