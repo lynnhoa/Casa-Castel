@@ -4299,18 +4299,18 @@ function _renderMietvertragHTML(d) {
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
     ${cl('6','Kaution',
       `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelligkeitLong.startsWith('sofort') ? d.kautionFaelligkeitLong : d.kautionFaelligkeitLong + ' dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
-    ${cl('7','Schönheitsreparaturen &amp; Kleinreparaturen',
-      'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
-    ${cl('8','Tierhaltung',
-      'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
   </div>
 </div>`;
 
   const page3 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(4)}
   <div class="content">
+    ${cl('7','Schönheitsreparaturen &amp; Kleinreparaturen',
+      'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.',true)}
+    ${cl('8','Tierhaltung',
+      'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
     ${cl('9','Betreten des Mietobjekts',
-      'Das Zimmer wird nur nach vorheriger Ankündigung (mind. 2\u00a0Werktage in Textform) betreten, z.\u202fB. zur Besichtigung bei Verkauf oder Weitervermietung sowie für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.',true)}
+      'Das Zimmer wird nur nach vorheriger Ankündigung (mind. 2\u00a0Werktage in Textform) betreten, z.\u202fB. zur Besichtigung bei Verkauf oder Weitervermietung sowie für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.')}
     ${cl('10','Rückgabe bei Vertragsende',
       'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
     ${cl('11','Aufrechnung &amp; Zurückbehaltungsrecht',
@@ -4321,8 +4321,14 @@ function _renderMietvertragHTML(d) {
       'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr. Die Hausordnung ist Bestandteil dieses Vertrages (Anlage\u00a0B).')}
     ${cl('14','Datenschutz',
       'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
+  </div>
+</div>`;
+
+  const pageSig = `<div class="pdf-page page">
+  ${hdr(d.zimmerName)}${ftr(5)}
+  <div class="content">
     ${cl('15','Sonstige Vereinbarungen',
-      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.')}
+      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.',true)}
     ${cl('16','Energieausweis (\u00a7\u00a016a GEG)',
       'Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Energieeffizienzklasse: '+(d.energieklasse||'—')+'. Endenergiebedarf: '+(d.endenergiebedarf ? d.endenergiebedarf+' kWh/(m\u00b2\u00b7a)' : '—')+'. Art des Ausweises: '+(d.energieausweisart||'—')+'.')}
     <div class="comment-label">Sonstige Anmerkungen</div>
@@ -4333,7 +4339,7 @@ function _renderMietvertragHTML(d) {
 </div>`;
 
   const page4 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(5)}
+  ${hdr(d.zimmerName)}${ftr(6)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,true)}
     <table class="inv-table">
@@ -4343,7 +4349,8 @@ function _renderMietvertragHTML(d) {
   </div>
 </div>`;
 
-  return `<style>${CSS}</style>${page1}${pageBank}${page2}${page3}${page4}`;
+  const hasInventar = Array.isArray(d.inventar) && d.inventar.length > 0;
+  return `<style>${CSS}</style>${page1}${pageBank}${page2}${page3}${pageSig}${hasInventar ? page4 : ''}`;
 }
 
 
