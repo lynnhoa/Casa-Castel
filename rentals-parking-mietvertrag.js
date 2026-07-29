@@ -358,7 +358,7 @@ function _renderPkMietvertragHTML(d) {
       `${d.schlusselText} Die Schlüssel sind bei Mietende zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs.`)}
 
     ${cl('5', 'Haftung',
-      'Vom Vermieter wird für eventuelle Beschädigungen an dem abgestellten PKW oder Diebstahl keine Haftung übernommen. Der Mieter wird gebeten, eine Fahrzeughaftpflichtversicherung bzw. Kaskoversicherung zu unterhalten.')}
+      'Vom Vermieter wird für eventuelle Beschädigungen an dem abgestellten PKW oder Diebstahl keine Haftung übernommen.')}
 
     ${(() => {
       const hasStaffel = d.staffelAn && d.staffeln.length > 0;
@@ -375,10 +375,10 @@ function _renderPkMietvertragHTML(d) {
     ${staffelClause}
 
     ${cl(String(pKaution), 'Kaution',
-      `Der Mieter leistet eine Kaution von ${fmtEUR(d.kaution)} ${d.kautionFaelText}. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Die Kaution wird nach Beendigung des Mietverhältnisses und Prüfung des Zustands des Stellplatzes zurückerstattet. Schäden, die der Mieter zu vertreten hat, können von der Kaution abgezogen werden.`)}
+      `Der Mieter leistet eine Kaution von ${fmtEUR(d.kaution)} ${d.kautionFaelText}. Die Kaution wird nach Beendigung des Mietverhältnisses und Prüfung des Zustands des Stellplatzes zurückerstattet. Schäden, die der Mieter zu vertreten hat, können von der Kaution abgezogen werden.`)}
 
     ${cl(String(pZahlung), 'Zahlungsweise',
-      'Die Miete ist im Voraus, spätestens am 3.\u00a0Werktag des Monats, durch Überweisung auf das oben genannte Konto zu entrichten. Verwendungszweck: Stellplatz ' + d.stellplatzNr + ' \u2013 Miete Monat Jahr / Kaution.')}
+      'Die Miete ist im Voraus, spätestens am 3.\u00a0Werktag des Monats, durch Überweisung auf das oben genannte Konto zu entrichten.')}
 
     ${cl(String(pSchrift), 'Schriftform',
       'Änderungen und Ergänzungen dieses Vertrages bedürfen der Schriftform. Mündliche Nebenabreden bestehen nicht. Gerichtsstand ist ' + d.gerichtsstand + '.')}
