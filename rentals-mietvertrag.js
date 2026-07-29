@@ -86,6 +86,9 @@ function _buildRentalMietvertragData(room, s, {
     bic:              s.bic               || '',
     gerichtsstand:    room.gerichtsstand    || '',
     unterschriftOrt:  room.unterschrift_ort || '',
+    energieklasse:     room.energieklasse     || '',
+    endenergiebedarf:  room.endenergiebedarf  || '',
+    energieausweisart: room.energieausweisart || '',
     mieterName,
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
@@ -422,6 +425,17 @@ function _renderRentalMietvertragHTML(d) {
       )
     : '';
 
+  // Energieausweis (§ 16a GEG) — per-apartment. Each filled field renders as its own
+  // sentence; empty fields are skipped entirely. Whole clause omitted if none are filled.
+  const _energieParts = [];
+  if (d.energieklasse)     _energieParts.push('Energieeffizienzklasse: ' + d.energieklasse + '.');
+  if (d.endenergiebedarf)  _energieParts.push('Endenergiebedarf: ' + d.endenergiebedarf + '\u00a0kWh/(m\u00b2\u00b7a).');
+  if (d.energieausweisart) _energieParts.push('Art des Ausweises: ' + d.energieausweisart + '.');
+  const energieClause = _energieParts.length
+    ? cl(String(14 + pOff), 'Energieausweis (\u00a7\u00a016a GEG)',
+        'Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. ' + _energieParts.join(' '))
+    : '';
+
   const subtitle = d.befristet
     ? 'Befristetes Mietverhältnis \u00b7 Wohnungsvermietung'
     : 'Unbefristetes Mietverhältnis \u00b7 Wohnungsvermietung';
@@ -535,6 +549,7 @@ function _renderRentalMietvertragHTML(d) {
       'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
     ${cl(String(13+pOff),'Sonstige Vereinbarungen',
       'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+(d.gerichtsstand || '______________')+'.')}
+    ${energieClause}
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>
