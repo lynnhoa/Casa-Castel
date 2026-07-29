@@ -321,12 +321,11 @@ document.getElementById('tab-apartments').innerHTML = `
 /* ── OVERLAYS ── */
 .rm-overlay {
   display:none; position:fixed; inset:0; z-index:400;
-  background:rgba(30,27,24,.22); backdrop-filter:blur(2px);
   align-items:flex-end; justify-content:center;
   /* prevent overlay itself from scrolling horizontally */
   overflow:hidden;
 }
-.rm-overlay.open { display:flex; }
+.rm-overlay.open { display:flex; background:rgba(30,27,24,.22); backdrop-filter:blur(2px); }
 .rm-sheet {
   width:100%; max-width:500px;
   /* iOS: use dvh so address bar doesn't cut off footer */
@@ -425,8 +424,8 @@ document.getElementById('tab-apartments').innerHTML = `
 .inv-add-btn { display:flex; align-items:center; gap:6px; width:100%; min-height:36px; padding:0 12px; background:var(--cc-white); border:.5px dashed var(--cc-rule); border-radius:var(--cc-r-md); font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--cc-taupe); cursor:pointer; font-family:inherit; }
 
 /* Confirm dialog */
-.rm-confirm-overlay { display:none; position:fixed; inset:0; z-index:600; background:rgba(30,27,24,.3); backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:24px; }
-.rm-confirm-overlay.open { display:flex; }
+.rm-confirm-overlay { display:none; position:fixed; inset:0; z-index:600; align-items:center; justify-content:center; padding:24px; }
+.rm-confirm-overlay.open { display:flex; background:rgba(30,27,24,.3); backdrop-filter:blur(3px); }
 .rm-confirm-box { background:var(--cc-white); border-radius:var(--cc-r-lg); padding:28px 24px 24px; max-width:320px; width:100%; box-shadow:0 24px 60px rgba(30,27,24,.18); animation:confirmPop .2s cubic-bezier(.32,.72,0,1); }
 @keyframes confirmPop { from{transform:scale(.94);opacity:0;} to{transform:scale(1);opacity:1;} }
 .rm-confirm-icon { font-size:28px; color:#C4705A; margin-bottom:12px; }

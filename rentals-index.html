@@ -143,6 +143,11 @@
   <script>
     function switchTab(tabName) {
       try { localStorage.setItem('rentals_last_tab', tabName); } catch(e) {}
+      // Close any open sheets / preview overlays so none flash or carry across tabs
+      document.querySelectorAll('.rm-overlay.open, .rm-confirm-overlay.open')
+        .forEach(o => o.classList.remove('open'));
+      ['aptContractPdfPreviewOverlay','pkUebergPreviewOverlay','aptUebergPreviewOverlay']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
       const tabEl = document.getElementById('tab-' + tabName);
       if (tabEl) tabEl.style.display = 'block';
