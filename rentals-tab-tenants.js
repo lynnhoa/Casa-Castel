@@ -160,8 +160,8 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-rsub { font-size:10px; font-weight:300; color:var(--cc-stone); }
 
 /* ── RENT FORM ── */
-.tn-rent-form { display:grid; grid-template-columns:1fr 1fr 1fr 1fr;
-  gap:6px; padding:10px 14px 12px; border-bottom:var(--cc-border); }
+.tn-rent-form { display:grid; grid-template-columns:1fr 1fr 1fr;
+  gap:6px; padding:10px 14px 12px; border-bottom:var(--cc-border); align-items:end; }
 .tn-rf { display:flex; flex-direction:column; gap:3px; }
 .tn-rf input { width:100%; font-size:12px; padding:3px 8px;
   border-radius:var(--cc-r-sm); border:var(--cc-border);
@@ -2516,10 +2516,7 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   const ksollInp = document.getElementById('rf-ksoll-' + rid);
   const ksoll = (ksollOvr?.checked && ksollInp) ? (parseFloat(ksollInp.value) || null) : null;
 
-  const { error } = await sbL.from('rnt_tenant_records')
-    .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid);
-  if (error) { console.warn('[rnt-tenants] save rent:', error.message); return; }
-
+  // Optimistic: apply locally and refresh the summary bar immediately, persist in the background
   const rec = _rntRecords.find(r => r.id === tid);
   if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
 
@@ -2541,6 +2538,10 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   }
 
   _rntToggleRentEdit(rid);
+
+  sbL.from('rnt_tenant_records')
+    .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid)
+    .then(({ error }) => { if (error) console.warn('[rnt-tenants] save rent:', error.message); });
 }
 
 async function _rntModalSaveProfile(tid) {
