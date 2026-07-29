@@ -317,6 +317,7 @@ function _renderRentalMietvertragHTML(d) {
     .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
     .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
     .kv-gap { height:10px; }
+    .section-gap { height:30px; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px; display:flex; justify-content:space-between; align-items:center; margin-top:10px; margin-bottom:24px; }
     .total-box__label, .total-box__value { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:700; color:#8a6535; line-height:1; }
     .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; margin-top:10px; line-height:1.55; }
@@ -441,7 +442,7 @@ function _renderRentalMietvertragHTML(d) {
     : 'Unbefristetes Mietverhältnis \u00b7 Wohnungsvermietung';
 
   const mieteTopBlock = `
-    ${sec('Miete &amp; Bankverbindung',true,false)}
+    ${sec('Miete',true,false)}
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.anfangsmiete||d.kaltmiete)+'\u2002/ Monat'+(hasStaffel?' (Staffelmiete \u2014 siehe \u00a7\u00a03)':''))
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
@@ -455,6 +456,54 @@ function _renderRentalMietvertragHTML(d) {
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>`;
+
+  // Betriebskosten — now sits on page 2, below Bankverbindung (visually separated)
+  const betriebskostenBlock = `
+    ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,false)}
+    <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV in ihrer jeweils geltenden Fassung. Umlageschlüssel: Wohnfläche der Mietwohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.</p>
+    <div class="nk-grid">${nkRows}</div>`;
+
+  // All numbered clauses, in order. §§ 1–10 → page 3, remainder → page 4.
+  const clauses = [
+    cl('1',d.befristet?'Befristung und Beendigung':'Nutzung des Mietobjekts',
+      d.befristet
+        ? `Das Mietverhältnis ist gemäß \u00a7\u00a0575 Abs.\u00a01 BGB befristet und endet am ${d.mietende} automatisch ohne Kündigung (\u00a7\u00a0545 BGB findet keine Anwendung). Die Wohnung darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden.`
+        : 'Die Wohnung darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden. Der Mieter ist verpflichtet, die Wohnung und die Gemeinschaftsflächen schonend, sauber und ordnungsgemäß zu behandeln, ausreichend zu heizen, zu lüften und von Ungeziefer freizuhalten. Mängel sind dem Vermieter unverzüglich in Textform anzuzeigen.'),
+    cl('2','Kündigung',
+      d.befristet
+        ? 'Das befristete Mietverhältnis endet am '+d.mietende+' automatisch ohne Kündigung (\u00a7\u00a0575 BGB). Befristungsgrund: '+d.grundLabel+(d.eigenbedarfPerson?' \u2014 '+d.eigenbedarfPerson:'')+'. Eine ordentliche Kündigung ist ausgeschlossen; die außerordentliche Kündigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unberührt. Im Falle einer Verlängerung beträgt die Kündigungsfrist für den Mieter 3\u00a0Monate zum Monatsende.'
+        : 'Die ordentliche Kündigung richtet sich nach \u00a7\u00a0573c BGB. Kündigungsfrist für den Mieter: 3\u00a0Monate zum Monatsende. Für den Vermieter gilt die gesetzlich gestaffelte Frist. Die Kündigung bedarf der Schriftform. Eine stillschweigende Verlängerung nach \u00a7\u00a0545 BGB ist ausgeschlossen. Die außerordentliche Kündigung aus wichtigem Grund bleibt unberührt.'),
+    ...(staffelClause ? [staffelClause] : []),
+    cl(String(3+pOff),'Untervermietung',
+      'Eine Untervermietung oder sonstige Überlassung des Mietobjekts an Dritte ist nicht gestattet.'),
+    cl(String(4+pOff),'Schlüsselübergabe',
+      `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel${(d.briefkastenschluessel > 0) ? ` sowie ${d.briefkastenschluessel}\u00a0Briefkastenschlüssel` : ''}. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`),
+    cl(String(5+pOff),'Kaution',
+      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Unterzeichnung dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`),
+    cl(String(6+pOff),'Schönheitsreparaturen &amp; Kleinreparaturen',
+      'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.'),
+    cl(String(7+pOff),'Tierhaltung',
+      'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).'),
+    cl(String(8+pOff),'Betreten des Mietobjekts',
+      'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).'),
+    cl(String(9+pOff),'Rückgabe bei Vertragsende',
+      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.'),
+    cl(String(10+pOff),'Haftpflichtversicherung',
+      'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.'),
+    cl(String(11+pOff),'Hausordnung',
+      'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr. Die Hausordnung ist Bestandteil dieses Vertrages (Anlage\u00a0B).'),
+    cl(String(12+pOff),'Datenschutz',
+      'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.'),
+    cl(String(13+pOff),'Sonstige Vereinbarungen',
+      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+(d.gerichtsstand || '______________')+'.'),
+    ...(energieClause ? [energieClause] : []),
+  ];
+
+  const _markFirst = arr => arr
+    .map((c,i) => i === 0 ? c.replace('class="clause"','class="clause clause--first"') : c)
+    .join('\n    ');
+  const page3Clauses = _markFirst(clauses.slice(0,10));
+  const page4Clauses = _markFirst(clauses.slice(10));
 
   const page1 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(1)}
@@ -495,61 +544,30 @@ function _renderRentalMietvertragHTML(d) {
   </div>
 </div>`;
 
-  // PAGE 1B — always: Fälligkeit, Kaution, Bankverbindung
-  const page1b = `<div class="pdf-page page">
+  // PAGE 2 — Bankverbindung, then Betriebskosten below it (separated by a gap)
+  const page2 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(2)}
   <div class="content">
+    ${sec('Bankverbindung',true,true)}
     ${mieteRestBlock}
+    <div class="section-gap"></div>
+    ${betriebskostenBlock}
   </div>
 </div>`;
 
-  const pageOffset = 1;
-
-  const page2 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(2+pageOffset)}
-  <div class="content">
-    ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
-    <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV in ihrer jeweils geltenden Fassung. Umlageschlüssel: Wohnfläche der Mietwohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.</p>
-    <div class="nk-grid">${nkRows}</div>
-    ${cl('1',d.befristet?'Befristung und Beendigung':'Nutzung des Mietobjekts',
-      d.befristet
-        ? `Das Mietverhältnis ist gemäß \u00a7\u00a0575 Abs.\u00a01 BGB befristet und endet am ${d.mietende} automatisch ohne Kündigung (\u00a7\u00a0545 BGB findet keine Anwendung). Die Wohnung darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden.`
-        : 'Die Wohnung darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden. Der Mieter ist verpflichtet, die Wohnung und die Gemeinschaftsflächen schonend, sauber und ordnungsgemäß zu behandeln, ausreichend zu heizen, zu lüften und von Ungeziefer freizuhalten. Mängel sind dem Vermieter unverzüglich in Textform anzuzeigen.',
-      true)}
-    ${cl('2','Kündigung',
-      d.befristet
-        ? 'Das befristete Mietverhältnis endet am '+d.mietende+' automatisch ohne Kündigung (\u00a7\u00a0575 BGB). Befristungsgrund: '+d.grundLabel+(d.eigenbedarfPerson?' \u2014 '+d.eigenbedarfPerson:'')+'. Eine ordentliche Kündigung ist ausgeschlossen; die außerordentliche Kündigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unberührt. Im Falle einer Verlängerung beträgt die Kündigungsfrist für den Mieter 3\u00a0Monate zum Monatsende.'
-        : 'Die ordentliche Kündigung richtet sich nach \u00a7\u00a0573c BGB. Kündigungsfrist für den Mieter: 3\u00a0Monate zum Monatsende. Für den Vermieter gilt die gesetzlich gestaffelte Frist. Die Kündigung bedarf der Schriftform. Eine stillschweigende Verlängerung nach \u00a7\u00a0545 BGB ist ausgeschlossen. Die außerordentliche Kündigung aus wichtigem Grund bleibt unberührt.')}
-    ${staffelClause}
-    ${cl(String(3+pOff),'Untervermietung',
-      'Eine Untervermietung oder sonstige Überlassung des Mietobjekts an Dritte ist nicht gestattet.')}
-    ${cl(String(4+pOff),'Schlüsselübergabe',
-      `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel${(d.briefkastenschluessel > 0) ? ` sowie ${d.briefkastenschluessel}\u00a0Briefkastenschlüssel` : ''}. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
-    ${cl(String(5+pOff),'Kaution',
-      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Unterzeichnung dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
-    ${cl(String(6+pOff),'Schönheitsreparaturen &amp; Kleinreparaturen',
-      'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
-  </div>
-</div>`;
-
+  // PAGE 3 — §§ 1–10
   const page3 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(3+pageOffset)}
+  ${hdr(d.zimmerName)}${ftr(3)}
   <div class="content">
-    ${cl(String(7+pOff),'Tierhaltung',
-      'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).',true)}
-    ${cl(String(8+pOff),'Betreten des Mietobjekts',
-      'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).')}
-    ${cl(String(9+pOff),'Rückgabe bei Vertragsende',
-      'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
-    ${cl(String(10+pOff),'Haftpflichtversicherung',
-      'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.')}
-    ${cl(String(11+pOff),'Hausordnung',
-      'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr. Die Hausordnung ist Bestandteil dieses Vertrages (Anlage\u00a0B).')}
-    ${cl(String(12+pOff),'Datenschutz',
-      'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
-    ${cl(String(13+pOff),'Sonstige Vereinbarungen',
-      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+(d.gerichtsstand || '______________')+'.')}
-    ${energieClause}
+    ${page3Clauses}
+  </div>
+</div>`;
+
+  // PAGE 4 — remaining §§ up to the signature block
+  const page4 = `<div class="pdf-page page">
+  ${hdr(d.zimmerName)}${ftr(4)}
+  <div class="content">
+    ${page4Clauses}
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>
@@ -557,8 +575,9 @@ function _renderRentalMietvertragHTML(d) {
   </div>
 </div>`;
 
-  const page4 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(4+pageOffset)}
+  // PAGE 5 — Anlage A (Inventar), only when inventory exists
+  const page5 = d.inventar.length ? `<div class="pdf-page page">
+  ${hdr(d.zimmerName)}${ftr(5)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,false)}
     <table class="inv-table">
@@ -566,13 +585,13 @@ function _renderRentalMietvertragHTML(d) {
       <tbody>${invRows}</tbody>
     </table>
   </div>
-</div>`;
+</div>` : '';
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Mietvertrag \u2014 ${d.zimmerName}</title>
 <style>${CSS}</style></head>
-<body>${page1}${page1b}${page2}${page3}${page4}</body></html>`;
+<body>${page1}${page2}${page3}${page4}${page5}</body></html>`;
 }
 
 
