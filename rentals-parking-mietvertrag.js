@@ -150,6 +150,7 @@ function _renderPkMietvertragHTML(d) {
     .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a;
       flex:1; line-height:1.55; }
     .kv-gap { height:8px; }
+    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; margin-top:10px; line-height:1.55; }
     .staffel-table { width:100%; border-collapse:collapse; margin-top:6px; margin-bottom:14px; }
     .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
     .staffel-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
@@ -314,6 +315,7 @@ function _renderPkMietvertragHTML(d) {
     ${kv('Bank',         d.bankname)}
     ${kv('IBAN',         d.iban)}
     ${kv('BIC',          d.bic)}
+    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.mieterName} \u2013 ${d.stellplatzNr} \u2013 Miete Monat Jahr / Kaution.</p>
 
   </div>
 </div>`;
