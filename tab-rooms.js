@@ -1948,12 +1948,6 @@ async function _openContract(type, roomId) {
             const selMl = document.querySelector('.mv-mindest-opt.active-mindest');
             mindestlaufzeitJahre = selMl ? Math.min(4, Math.max(1, Number(selMl.dataset.val))) : 1;
           }
-          // Persist choice to the room when unbefristet (0 = explicit off).
-          // Befristet contracts don't alter the room's stored Mindestlaufzeit.
-          if (!befristet && (room2.mindestlaufzeit_jahre ?? 0) !== mindestlaufzeitJahre) {
-            try { await saveRoom({ ...room2, mindestlaufzeit_jahre: mindestlaufzeitJahre }); }
-            catch (e) { console.warn('[MV] Mindestlaufzeit save failed:', e); }
-          }
           const data = _buildMietvertragOnlyData(room2, appSettings, {
             mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
             befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
@@ -3909,10 +3903,9 @@ function _contractBodyMietvertrag(room) {
     ? Number(room.kaution_default)
     : (kaltBase + nkBase) * 3;
 
-  // Mindestlaufzeit (Kündigungsverzicht) prefill — null = never set → default Ja/1 Jahr
-  const _mlSaved        = room.mindestlaufzeit_jahre;
-  const mlOn            = (_mlSaved == null) ? true : Number(_mlSaved) >= 1;
-  const mlVal           = (_mlSaved != null && Number(_mlSaved) >= 1) ? Math.min(4, Number(_mlSaved)) : 1;
+  // Mindestlaufzeit (Kündigungsverzicht) — default Ja / 1 Jahr, editable per contract (not persisted)
+  const mlOn             = true;
+  const mlVal            = 1;
   const befristetPrefill = false; // modal always opens unbefristet
 
   return `
@@ -4246,13 +4239,20 @@ function _renderMietvertragHTML(d) {
       : kv('Kündigungsfrist','3\u00a0Monate \u00b7 Schriftform (\u00a7\u00a0573c BGB)')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verlängerung')
     }
-    ${sec('Miete &amp; Bankverbindung',true,false)}
+    ${sec('Miete',true,false)}
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
       : kv('Pauschalmiete',eur(d.kaltmiete)+'\u2002/ Monat (inkl. NK)')
     }
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
+  </div>
+</div>`;
+
+  const pageBank = `<div class="pdf-page page">
+  ${hdr(d.zimmerName)}${ftr(2)}
+  <div class="content">
+    ${sec('Bankverbindung',true,true)}
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
     ${kv('Kaution',eur(d.kaution)+'\u2002(' + d.kautionFaelligkeitShort + ', \u00a7\u00a0551 BGB)')}
     <div class="kv-gap"></div>
@@ -4262,7 +4262,7 @@ function _renderMietvertragHTML(d) {
 </div>`;
 
   const page2 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(2)}
+  ${hdr(d.zimmerName)}${ftr(3)}
   <div class="content">
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
     <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.</p>
@@ -4307,7 +4307,7 @@ function _renderMietvertragHTML(d) {
 </div>`;
 
   const page3 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(3)}
+  ${hdr(d.zimmerName)}${ftr(4)}
   <div class="content">
     ${cl('9','Betreten des Mietobjekts',
       'Das Zimmer wird nur nach vorheriger Ankündigung (mind. 2\u00a0Werktage in Textform) betreten, z.\u202fB. zur Besichtigung bei Verkauf oder Weitervermietung sowie für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.',true)}
@@ -4333,7 +4333,7 @@ function _renderMietvertragHTML(d) {
 </div>`;
 
   const page4 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(4)}
+  ${hdr(d.zimmerName)}${ftr(5)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,true)}
     <table class="inv-table">
@@ -4343,7 +4343,7 @@ function _renderMietvertragHTML(d) {
   </div>
 </div>`;
 
-  return `<style>${CSS}</style>${page1}${page2}${page3}${page4}`;
+  return `<style>${CSS}</style>${page1}${pageBank}${page2}${page3}${page4}`;
 }
 
 
