@@ -212,6 +212,8 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-btn-sm { height:36px; padding:0 12px; font-size:11px;
   border:.5px solid var(--cc-rule); background:none; color:var(--cc-taupe); }
 .tn-btn-sm i { font-size:12px; }
+.tn-btn-former { color:var(--cc-stone); }
+.tn-btn-armed { background:#FBEFD6 !important; border-color:var(--cc-gold) !important; color:#8a6535 !important; }
 .tn-btn-primary { height:36px; padding:0 12px; font-size:11px;
   background:var(--cc-ink); color:var(--cc-white); border:none; }
 .tn-btn-primary i { font-size:12px; }
@@ -1251,6 +1253,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
 
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
+    ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_rntMoveToFormerConfirm(this,'${rid}','${tid}','${unitType}','${unitId}')"><i class="ti ti-user-off"></i> To former</button><div style="flex:1"></div>` : ''}
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntToggleProfile('${rid}','${tid}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary"
       onclick="${rec
@@ -2420,23 +2423,49 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
   }
 
   // Flip vacant flag on unit
-  if (status === 'active') {
-    if (isApt) {
-      await sbL.from('rentals_apartments').update({ vacant: false }).eq('id', unitId);
-      const a = appApartments?.find(a => a.id === unitId);
-      if (a) { a.vacant = false; _aptRerenderCard?.(unitId); }
-    } else {
-      await sbL.from('rentals_parking').update({ vacant: false }).eq('id', unitId);
-      const p = appParking?.find(p => p.id === unitId);
-      if (p) p.vacant = false;
+  try {
+    if (status === 'active') {
+      if (isApt) {
+        await sbL.from('rentals_apartments').update({ vacant: false }).eq('id', unitId);
+        const a = appApartments?.find(a => a.id === unitId);
+        if (a) { a.vacant = false; _aptRerenderCard?.(unitId); }
+      } else {
+        await sbL.from('rentals_parking').update({ vacant: false }).eq('id', unitId);
+        const p = appParking?.find(p => p.id === unitId);
+        if (p) p.vacant = false;
+      }
     }
-  }
 
-  await _rntEnsureKaution(data.id);
-  await _rntLoad();
+    await _rntEnsureKaution(data.id);
+    await _rntLoad();
+  } catch (e) {
+    console.warn('[rnt-tenants] create (post-insert):', e?.message || e);
+    _rntToast('Gespeichert — bitte aktualisieren', true);
+    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
+  }
 }
 
-async function _rntSaveProfile(rid, tid, unitType, unitId) {
+// Manual "move to former": two-tap confirm on the button, then force status→former
+// (keeps whatever move-out date is entered — even a future one — so the unit frees up now)
+function _rntMoveToFormerConfirm(btn, rid, tid, unitType, unitId) {
+  if (btn.dataset.armed === '1') {
+    _rntSaveProfile(rid, tid, unitType, unitId, true);
+    return;
+  }
+  const orig = btn.innerHTML;
+  btn.dataset.armed = '1';
+  btn.classList.add('tn-btn-armed');
+  btn.innerHTML = '<i class="ti ti-check"></i> Confirm';
+  setTimeout(() => {
+    if (btn && btn.dataset.armed === '1') {
+      btn.dataset.armed = '0';
+      btn.classList.remove('tn-btn-armed');
+      btn.innerHTML = orig;
+    }
+  }, 3500);
+}
+
+async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
   if (!sec) return;
@@ -2453,7 +2482,7 @@ async function _rntSaveProfile(rid, tid, unitType, unitId) {
   }
 
   const isApt    = unitType === 'apt';
-  const toFormer = !!(p.mietende && _rntIsPast(p.mietende) && rec?.status === 'active');
+  const toFormer = !!forceFormer || !!(p.mietende && _rntIsPast(p.mietende) && rec?.status === 'active');
   const toActive = rec?.status === 'former' && (!p.mietende || !_rntIsPast(p.mietende));
 
   const update = {
@@ -2501,10 +2530,16 @@ async function _rntSaveProfile(rid, tid, unitType, unitId) {
     }
   }
 
-  const { error } = await sbL.from('rnt_tenant_records').update(update).eq('id', tid);
-  if (error) { console.warn('[rnt-tenants] save profile:', error.message); }
-  await _rntEnsureKaution(tid);
-  await _rntLoad();
+  try {
+    const { error } = await sbL.from('rnt_tenant_records').update(update).eq('id', tid);
+    if (error) throw error;
+    await _rntEnsureKaution(tid);
+    await _rntLoad();
+  } catch (e) {
+    console.warn('[rnt-tenants] save profile:', e?.message || e);
+    _rntToast('Speichern fehlgeschlagen', true);
+    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
+  }
 }
 
 async function _rntSaveRent(rid, tid, unitType, unitId) {
