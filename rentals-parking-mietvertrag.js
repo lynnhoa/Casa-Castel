@@ -83,6 +83,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     mieterEmail3:     mieterEmail3 || '',
     mieterTel3:       mieterTel3  || '',
     stellplatzNr:     spot.name   || '',
+    propertyName:     spot.property_ref || '',
     stellplatzLabel,
     inAnText,
     spotAdresse:      (spot.adresse || '') + (spot.plz_ort ? ', ' + spot.plz_ort : ''),
@@ -198,9 +199,8 @@ function _renderPkMietvertragHTML(d) {
 
   const hdr = () => `
     <div class="hdr">
-      <span class="hdr__wordmark">${d.isTG ? 'Garagenmietvertrag' : 'Stellplatzmietvertrag'}</span>
+      <span class="hdr__wordmark">${d.propertyName || (d.isTG ? 'Garagenmietvertrag' : 'Stellplatzmietvertrag')}</span>
       <div class="hdr__unit">
-        <span class="hdr__unit-label">${d.isTG ? 'Tiefgarage' : 'Stellplatz'}</span>
         <span class="hdr__unit-name">${d.stellplatzNr}</span>
       </div>
     </div>`;
