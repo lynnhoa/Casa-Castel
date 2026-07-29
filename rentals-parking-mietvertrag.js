@@ -244,6 +244,40 @@ function _renderPkMietvertragHTML(d) {
 
   const subtitle = d.isTG ? 'Garagenmietvertrag \u00b7 Tiefgaragenstellplatz' : 'Stellplatzmietvertrag \u00b7 Stellplatzvermietung';
 
+  /* ── Multi-tenant paging: 1 Mieter → Bankverbindung onto page 1 (drop data page);
+        3 Mieter → Miete onto page 2 alongside Mieter 3 + Bankverbindung. ── */
+  const bankOnPage1  = !hasMultiMieter;   // only 1 Mieter
+  const mieteOnPage2 = d.hasMieter3;      // only 3 Mieter
+  const nClauses = bankOnPage1 ? 2 : 3;   // footer no. of the Klauseln+Unterschriften page
+  const nOrdnung = bankOnPage1 ? 3 : 4;   // footer no. of the Anlage/Ordnung page
+
+  const mieteBlock = `
+    ${sec('Miete', false, false)}
+    ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
+    <div class="total-box">
+      <span class="total-box__label">Monatliche Miete:</span>
+      <span class="total-box__value">${fmtEUR(d.anfangsmiete)}</span>
+    </div>`;
+
+  const bankBlock = (first) => `
+    ${sec('Zahlung &amp; Bankverbindung', true, first)}
+    ${kv('Fälligkeit',   'Spätestens 3.\u00a0Werktag des Monats')}
+    ${kv('Kaution', fmtEUR(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + ')')}
+    <div class="kv-gap"></div>
+    ${kv('Kontoinhaber', d.kontoinhaber)}
+    ${kv('Bank',         d.bankname)}
+    ${kv('IBAN',         d.iban)}
+    ${kv('BIC',          d.bic)}
+    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.mieterName} \u2013 ${d.stellplatzNr} \u2013 Miete Monat Jahr / Kaution.</p>`;
+
+  const mieter3Block = `
+    ${sec('Mieter\u00a03', false, true)}
+    ${kv('Name',    d.mieterName3)}
+    ${kv('Adresse', d.mieterAdresse3)}
+    ${d.mieterDob3   ? kv('Geburtsdatum', d.mieterDob3)   : ''}
+    ${d.mieterEmail3 ? kv('E-Mail',       d.mieterEmail3) : ''}
+    ${d.mieterTel3   ? kv('Telefon',      d.mieterTel3)   : ''}`;
+
   /* ── PAGE 1 ── */
   const page1 = `<div class="pdf-page page">
   ${hdr()}${ftr(1)}
@@ -280,18 +314,15 @@ function _renderPkMietvertragHTML(d) {
     ${d.mietende ? kv('Festes Mietende', d.mietende) : ''}
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
-    ${sec('Miete', false, false)}
-    ${kv('Monatliche Miete', fmtEUR(d.anfangsmiete) + (d.staffelAn && d.staffeln.length ? '\u2002(Staffelmiete \u2014 siehe \u00a7\u00a06)' : ''))}
-    <div class="total-box">
-      <span class="total-box__label">Monatliche Miete:</span>
-      <span class="total-box__value">${fmtEUR(d.anfangsmiete)}</span>
-    </div>
+    ${mieteOnPage2 ? '' : mieteBlock}
 
     ${d.kennzeichen || d.fahrzeug ? `
     ${sec('Fahrzeug', false, false)}
     ${d.kennzeichen ? kv('Kennzeichen', d.kennzeichen) : ''}
     ${d.fahrzeug    ? kv('Fahrzeugtyp', d.fahrzeug)    : ''}
     ` : ''}
+
+    ${bankOnPage1 ? bankBlock(false) : ''}
   </div>
 </div>`;
 
@@ -299,24 +330,9 @@ function _renderPkMietvertragHTML(d) {
   const pageData = `<div class="pdf-page page">
   ${hdr()}${ftr(2)}
   <div class="content">
-
-    ${d.hasMieter3 ? sec('Mieter\u00a03', false, true) : ''}
-    ${d.hasMieter3 ? kv('Name',    d.mieterName3) : ''}
-    ${d.hasMieter3 ? kv('Adresse', d.mieterAdresse3) : ''}
-    ${d.hasMieter3 && d.mieterDob3   ? kv('Geburtsdatum', d.mieterDob3)   : ''}
-    ${d.hasMieter3 && d.mieterEmail3 ? kv('E-Mail',       d.mieterEmail3) : ''}
-    ${d.hasMieter3 && d.mieterTel3   ? kv('Telefon',      d.mieterTel3)   : ''}
-
-    ${sec('Zahlung &amp; Bankverbindung', true, !d.hasMieter3)}
-    ${kv('Fälligkeit',   'Spätestens 3.\u00a0Werktag des Monats')}
-    ${kv('Kaution', fmtEUR(d.kaution) + '\u2002(fällig ' + d.kautionFaelText + ')')}
-    <div class="kv-gap"></div>
-    ${kv('Kontoinhaber', d.kontoinhaber)}
-    ${kv('Bank',         d.bankname)}
-    ${kv('IBAN',         d.iban)}
-    ${kv('BIC',          d.bic)}
-    <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.mieterName} \u2013 ${d.stellplatzNr} \u2013 Miete Monat Jahr / Kaution.</p>
-
+    ${d.hasMieter3 ? mieter3Block : ''}
+    ${mieteOnPage2 ? mieteBlock : ''}
+    ${bankBlock(!d.hasMieter3)}
   </div>
 </div>`;
 
@@ -327,7 +343,7 @@ function _renderPkMietvertragHTML(d) {
   const laufzeitClause = `Das Mietverhältnis beginnt${mietbeginnText} und ist fest abgeschlossen bis zum ${mindestEnd} (Mindestlaufzeit). Eine Kündigung während der Mindestlaufzeit ist ausgeschlossen. Nach Ablauf der Mindestlaufzeit l\u00e4uft der Vertrag auf unbestimmte Zeit weiter und kann von beiden Parteien ohne Angabe von Gr\u00fcnden mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gek\u00fcndigt werden (§\u00a0580a BGB).`;
 
   const page2 = `<div class="pdf-page page">
-  ${hdr()}${ftr(3)}
+  ${hdr()}${ftr(nClauses)}
   <div class="content">
 
     ${cl('1', 'Mietdauer und Kündigung', laufzeitClause, true)}
@@ -380,7 +396,7 @@ function _renderPkMietvertragHTML(d) {
 </div>`;
 
   const page3 = `<div class="pdf-page page">
-  ${hdr()}${ftr(4)}
+  ${hdr()}${ftr(nOrdnung)}
   <div class="content">
     <div class="anlage-title">Anlage 1</div>
     <div class="anlage-subtitle">Stellplatz- und Garagenordnung</div>
@@ -431,7 +447,7 @@ function _renderPkMietvertragHTML(d) {
 <html lang="de"><head><meta charset="UTF-8"/>
 <title>Parkplatz Mietvertrag \u2014 ${d.stellplatzNr}</title>
 <style>${CSS}</style></head>
-<body>${page1}${pageData}${page2}${page3}</body></html>`;
+<body>${page1}${bankOnPage1 ? '' : pageData}${page2}${page3}</body></html>`;
 }
 
 
