@@ -1119,6 +1119,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
     ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
     ${row('einzug','Übergabe Einzug')}
+    ${row('auszug','Übergabe Auszug')}
   </div>
 </div>`;
 }
