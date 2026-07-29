@@ -4258,21 +4258,21 @@ function _renderMietvertragHTML(d) {
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('Bank',d.bankname)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
+    ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,false)}
+    <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.</p>
+    <div class="nk-grid">${nkRows}</div>
+    <p class="nk-intro" style="margin-top:6px;border-top:0.5px solid #e8dbc5;padding-top:5px;color:#3a3530;font-style:italic;">Winterdienst wird grundsätzlich vom Mieter erledigt. Unter Umständen wird dieser gelegentlich organisiert, sofern nicht erledigt, wird dieser in den Nebenkosten berücksichtigt.</p>
   </div>
 </div>`;
 
   const page2 = `<div class="pdf-page page">
   ${hdr(d.zimmerName)}${ftr(3)}
   <div class="content">
-    ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
-    <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.</p>
-    <div class="nk-grid">${nkRows}</div>
-    <p class="nk-intro" style="margin-top:6px;border-top:0.5px solid #e8dbc5;padding-top:5px;color:#3a3530;font-style:italic;">Winterdienst wird grundsätzlich vom Mieter erledigt. Unter Umständen wird dieser gelegentlich organisiert, sofern nicht erledigt, wird dieser in den Nebenkosten berücksichtigt.</p>
-    <div style="margin-top:24px;">${cl('1',d.befristet?'Befristung und Beendigung':'Mietzeit',
+    ${cl('1',d.befristet?'Befristung und Beendigung':'Mietzeit',
       d.befristet
         ? `Das Mietverhältnis ist gemäß \u00a7\u00a0575 Abs.\u00a01 BGB befristet und endet am ${d.mietende} automatisch ohne Kündigung (\u00a7\u00a0545 BGB findet keine Anwendung). Das Zimmer darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden.`
         : 'Das Mietverhältnis ist unbefristet. Das Zimmer darf ausschließlich zu Wohnzwecken durch den namentlich genannten Mieter genutzt werden. Der Mieter ist verpflichtet, das Zimmer und die Gemeinschaftsflächen schonend, sauber und ordnungsgemäß zu behandeln, ausreichend zu heizen, zu lüften und von Ungeziefer freizuhalten. Mängel sind dem Vermieter unverzüglich in Textform anzuzeigen.',
-      true)}</div>
+      true)}
     ${cl('2','Kündigung',
       d.befristet
         ? 'Das befristete Mietverhältnis endet am '+d.mietende+' automatisch ohne Kündigung (\u00a7\u00a0575 BGB). Befristungsgrund: '+d.grundLabel+(d.eigenbedarfPerson?' \u2014 '+d.eigenbedarfPerson:'')+'. Eine ordentliche Kündigung ist ausgeschlossen; die außerordentliche Kündigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unberührt. Im Falle einer Verlängerung beträgt die Kündigungsfrist für den Mieter 3\u00a0Monate zum Monatsende.'
@@ -4299,38 +4299,32 @@ function _renderMietvertragHTML(d) {
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
     ${cl('6','Kaution',
       `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelligkeitLong.startsWith('sofort') ? d.kautionFaelligkeitLong : d.kautionFaelligkeitLong + ' dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
-  </div>
-</div>`;
-
-  const page3 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(4)}
-  <div class="content">
     ${cl('7','Schönheitsreparaturen &amp; Kleinreparaturen',
-      'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.',true)}
+      'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl('8','Tierhaltung',
       'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).')}
     ${cl('9','Betreten des Mietobjekts',
       'Das Zimmer wird nur nach vorheriger Ankündigung (mind. 2\u00a0Werktage in Textform) betreten, z.\u202fB. zur Besichtigung bei Verkauf oder Weitervermietung sowie für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.')}
     ${cl('10','Rückgabe bei Vertragsende',
       'Vollständig geräumt, gereinigt, in vertragsgemäßem Zustand, alle Schlüssel. Bauliche Änderungen sind rückzubauen. Ein Übergabeprotokoll wird erstellt und beidseitig unterzeichnet.')}
+  </div>
+</div>`;
+
+  const page3 = `<div class="pdf-page page">
+  ${hdr(d.zimmerName)}${ftr(4)}
+  <div class="content">
     ${cl('11','Aufrechnung &amp; Zurückbehaltungsrecht',
-      'Der Mieter kann gegen Forderungen des Vermieters nur mit unbestrittenen oder rechtskräftig festgestellten Gegenforderungen aufrechnen. Das Zurückbehaltungsrecht ist auf Mängelrechte nach \u00a7\u00a7\u00a0536\u00a0ff. BGB beschränkt und setzt eine mindestens einmonatige vorherige Ankündigung in Textform voraus.')}
+      'Der Mieter kann gegen Forderungen des Vermieters nur mit unbestrittenen oder rechtskräftig festgestellten Gegenforderungen aufrechnen. Das Zurückbehaltungsrecht ist auf Mängelrechte nach \u00a7\u00a7\u00a0536\u00a0ff. BGB beschränkt und setzt eine mindestens einmonatige vorherige Ankündigung in Textform voraus.',true)}
     ${cl('12','Haftpflichtversicherung',
       'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.')}
     ${cl('13','Hausordnung',
       'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr. Die Hausordnung ist Bestandteil dieses Vertrages (Anlage\u00a0B).')}
     ${cl('14','Datenschutz',
       'Personenbezogene Daten werden gem. Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO zur Vertragsabwicklung verarbeitet, nicht an Dritte weitergegeben und 11\u00a0Jahre nach Vertragsende gelöscht.')}
-  </div>
-</div>`;
-
-  const pageSig = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(5)}
-  <div class="content">
     ${cl('15','Sonstige Vereinbarungen',
-      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.',true)}
-    ${cl('16','Energieausweis (\u00a7\u00a016a GEG)',
-      'Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Energieeffizienzklasse: '+(d.energieklasse||'—')+'. Endenergiebedarf: '+(d.endenergiebedarf ? d.endenergiebedarf+' kWh/(m\u00b2\u00b7a)' : '—')+'. Art des Ausweises: '+(d.energieausweisart||'—')+'.')}
+      'Mündliche Nebenabreden bestehen nicht. Änderungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Gerichtsstand ist '+d.gerichtsstand+'.')}
+    ${(d.energieklasse || d.endenergiebedarf || d.energieausweisart) ? cl('16','Energieausweis (\u00a7\u00a016a GEG)',
+      'Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Energieeffizienzklasse: '+(d.energieklasse||'—')+'. Endenergiebedarf: '+(d.endenergiebedarf ? d.endenergiebedarf+' kWh/(m\u00b2\u00b7a)' : '—')+'. Art des Ausweises: '+(d.energieausweisart||'—')+'.') : ''}
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div><div class="comment-line"></div>
     <div class="comment-line"></div><div class="comment-line"></div>
@@ -4339,7 +4333,7 @@ function _renderMietvertragHTML(d) {
 </div>`;
 
   const page4 = `<div class="pdf-page page">
-  ${hdr(d.zimmerName)}${ftr(6)}
+  ${hdr(d.zimmerName)}${ftr(5)}
   <div class="content">
     ${sec('Anlage A \u2014 Inventar',true,true)}
     <table class="inv-table">
@@ -4350,7 +4344,7 @@ function _renderMietvertragHTML(d) {
 </div>`;
 
   const hasInventar = Array.isArray(d.inventar) && d.inventar.length > 0;
-  return `<style>${CSS}</style>${page1}${pageBank}${page2}${page3}${pageSig}${hasInventar ? page4 : ''}`;
+  return `<style>${CSS}</style>${page1}${pageBank}${page2}${page3}${hasInventar ? page4 : ''}`;
 }
 
 
