@@ -709,13 +709,8 @@ function _pkCalcStaffelDates() {
     String(dt.getDate()).padStart(2,'0') + '.' +
     String(dt.getMonth()+1).padStart(2,'0') + '.' + dt.getFullYear();
 
-  // Parking Mindestlaufzeit is always 1 year — Staffel starts after that
-  let staffelStart = null;
-  if (startVal) {
-    const d = new Date(startVal);
-    d.setFullYear(d.getFullYear() + 1); // 1 year after Mietbeginn
-    staffelStart = d;
-  }
+  // Staffel steps count every <intervall> years from Mietbeginn (first staffel = Mietbeginn + intervall)
+  let staffelStart = startVal ? new Date(startVal) : null;
 
   // Gate + Staffel button
   const addBtn  = document.getElementById('pk-mv-staffel-add-btn');
@@ -742,7 +737,7 @@ function _pkCalcStaffelDates() {
       const dateLbl = row.querySelector('.pk-mv-staffel-datum');
       if (dateLbl) {
         const d2 = new Date(staffelStart);
-        d2.setFullYear(d2.getFullYear() + i * intervall);
+        d2.setFullYear(d2.getFullYear() + (i + 1) * intervall);
         dateLbl.textContent = fmtDt(d2);
       }
     });
