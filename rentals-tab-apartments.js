@@ -1282,7 +1282,12 @@ async function _aptSaveIdentity(aptId) {
   });
 
   if (_aptSbClient) {
-    const { error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId);
+    let { error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId);
+    if (error) {
+      // First attempt can fail on a cold connection / momentary schema-cache lag — retry once
+      await new Promise(r => setTimeout(r, 400));
+      ({ error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId));
+    }
     if (error) {
       console.error('[apartments] Save identity failed:', error, data);
       _aptToast('Save failed: ' + (error.message || error.code || 'Unknown error'), true);

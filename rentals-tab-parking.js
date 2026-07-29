@@ -595,7 +595,12 @@ async function _pkSaveIdentity(pkId) {
   });
 
   if (_pkSbClient) {
-    const { error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId);
+    let { error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId);
+    if (error) {
+      // First attempt can fail on a cold connection / momentary schema-cache lag — retry once
+      await new Promise(r => setTimeout(r, 400));
+      ({ error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId));
+    }
     if (error) {
       console.error('[parking] identity save failed:', error);
       alert('Konnte nicht speichern:\n' + (error.message || 'Unbekannter Fehler') +
