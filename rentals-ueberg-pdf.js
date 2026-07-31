@@ -121,7 +121,6 @@ function _aptCollectUebergData(apt, isEinzug) {
     // Schlüssel from card
     haustur:      parseInt(document.getElementById('apt-ub-haustur')?.value || sk.haustuerschluessel || 1),
     wohnungtur:   parseInt(document.getElementById('apt-ub-wohnungtur')?.value || sk.wohnungsschluessel || 1),
-    briefkasten:  parseInt(document.getElementById('apt-ub-briefkasten')?.value || sk.briefkastenschluessel || 0),
     // Footer
     footerAdresse: [apt.adresse, apt.plz_ort].filter(Boolean).join(', '),
   };
@@ -444,10 +443,6 @@ function _aptRenderUebergHTML(d) {
       <div class="schluessel-item">
         <span class="schluessel-item__label">${isGewerbe ? 'Mietfläche' : 'Wohnungstür'}</span>
         <span class="schluessel-item__val">${d.wohnungtur}</span>
-      </div>
-      <div class="schluessel-item">
-        <span class="schluessel-item__label">Briefkasten</span>
-        <span class="schluessel-item__val">${d.briefkasten}</span>
       </div>
     </div>`;
 
