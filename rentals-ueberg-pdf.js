@@ -373,14 +373,13 @@ function _aptRenderUebergHTML(d) {
       </div>`;
   const sigColEmpty = `<div class="sig-col"></div>`;
 
-  // Extra signers (Mieter 2 / 3) paired into further rows below Vermieter + Mieter 1
+  // Extra signers (Mieter 2 / 3) stacked in the RIGHT column, directly below Mieter 1
   const extraSigners = [];
   if (hasMieter2) extraSigners.push(['Mieter 2', d.mieterName2]);
   if (hasMieter3) extraSigners.push(['Mieter 3', d.mieterName3]);
   let sigExtraRows = '';
-  for (let i = 0; i < extraSigners.length; i += 2) {
-    const a = extraSigners[i], b = extraSigners[i + 1];
-    sigExtraRows += `<div class="sig-block">${sigCol(a[0], a[1])}${b ? sigCol(b[0], b[1]) : sigColEmpty}</div>`;
+  for (const s of extraSigners) {
+    sigExtraRows += `<div class="sig-block">${sigColEmpty}${sigCol(s[0], s[1])}</div>`;
   }
 
   // ── Reusable content blocks ──
