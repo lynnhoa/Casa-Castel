@@ -199,15 +199,17 @@ async function _pkSaveUebergPDFFromData(d, existingContainer) {
   }
 
   const { jsPDF } = window.jspdf;
-  const pdf   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pdf   = new jsPDF({ unit: 'px', format: 'a4', orientation: 'portrait' });
+  const pdfW  = pdf.internal.pageSize.getWidth();
+  const pdfH  = pdf.internal.pageSize.getHeight();
   const pages = container.querySelectorAll('.pdf-page');
 
   for (let i = 0; i < pages.length; i++) {
-    if (i > 0) pdf.addPage();
     const canvas = await html2canvas(pages[i], {
-      scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, windowWidth: 794
+      scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false
     });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+    if (i > 0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
   }
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
