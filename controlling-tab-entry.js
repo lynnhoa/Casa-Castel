@@ -67,9 +67,11 @@ document.getElementById('ctDrawerClose').addEventListener('click', () => {
   const opener = drawer.dataset.opener || 'dashboard';
   drawer.classList.remove('open');
   // Refresh whichever tab opened it — its aggregate numbers likely changed
-  if (opener === 'onetime')     window.renderOneTime?.();
-  else if (opener === 'setup')  window.renderSetup?.();
-  else                          window.renderDashboard?.();
+  if (opener === 'onetime')      window.renderOneTime?.();
+  else if (opener === 'setup')   window.renderSetup?.();
+  else if (opener === 'income')  window.renderIncome?.();
+  else if (opener === 'expenses')window.renderExpenses?.();
+  else                           window.renderDashboard?.();
 });
 
 function renderDrawerBody(pid, month) {

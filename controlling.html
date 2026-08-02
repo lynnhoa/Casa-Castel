@@ -331,6 +331,43 @@
       }
 
       #tab-setup table { min-width:0 !important; }
+
+      /* ── Einnahmen / Ausgaben surface lists → cards ── */
+      .ct-listtbl thead { display:none; }
+      .ct-listtbl { display:block; border:0; background:transparent; }
+      .ct-listtbl tbody, .ct-listtbl tr { display:block; }
+      .ct-listtbl tr {
+        position:relative; background:var(--cc-white); border:var(--cc-border);
+        border-radius:var(--cc-r-lg); margin-bottom:8px;
+        padding:14px 44px 14px 18px; box-shadow:0 1px 3px rgba(60,50,40,0.03);
+        min-height:24px;
+      }
+      .ct-listtbl tr.total { background:var(--cc-surface); box-shadow:none; }
+      .ct-listtbl td { display:block; border:0 !important; padding:0; }
+      .ct-listtbl td[data-label="#"] { display:none; }
+      /* intermediate detail columns live in the drawer, not the surface card */
+      .ct-listtbl .ct-proprow td.num:not(.ct-cell-head),
+      .ct-listtbl tr.total td.ct-total-detail { display:none; }
+      .ct-listtbl .ct-cell-name {
+        font-family:'Cormorant Garamond',Georgia,serif; font-size:18px; font-weight:400;
+        color:var(--cc-ink); line-height:1.25; padding-right:76px;
+      }
+      .ct-listtbl .ct-cell-head {
+        position:absolute; top:50%; right:38px; transform:translateY(-50%);
+        font-family:'Cormorant Garamond',Georgia,serif; font-size:18px; font-weight:400;
+        font-feature-settings:'lnum' 1,'tnum' 1; font-variant-numeric:lining-nums tabular-nums;
+        color:var(--cc-ink); white-space:nowrap;
+      }
+      .ct-listtbl tr > td:last-child {
+        position:absolute; top:50%; right:16px; transform:translateY(-50%);
+        color:var(--cc-stone);
+      }
+      .ct-listtbl tr.total > td:last-child { display:none; }
+      .ct-listtbl tr.total .ct-cell-head { right:18px; }
+      .ct-listtbl tr.total .ct-cell-name {
+        font-family:'Inter',system-ui,sans-serif; font-size:11px; letter-spacing:.16em;
+        text-transform:uppercase; color:var(--cc-taupe); font-weight:500; padding-right:100px;
+      }
     }
   </style>
 </head>
@@ -356,6 +393,8 @@
       </nav>
       <div class="cc-tabs" id="appTabs">
         <button class="cc-tab active" data-tab="dashboard">Dashboard</button>
+        <button class="cc-tab"        data-tab="income">Einnahmen</button>
+        <button class="cc-tab"        data-tab="expenses">Ausgaben</button>
         <button class="cc-tab"        data-tab="onetime">Einmalig</button>
       </div>
     </div>
@@ -363,6 +402,8 @@
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
         <div class="tab-content" id="tab-dashboard"></div>
+        <div class="tab-content" id="tab-income"   style="display:none;"></div>
+        <div class="tab-content" id="tab-expenses" style="display:none;"></div>
         <div class="tab-content" id="tab-onetime"  style="display:none;"></div>
         <div class="tab-content" id="tab-setup"    style="display:none;"></div>
       </div>
@@ -401,6 +442,8 @@
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
       window.scrollTo(0, 0);
       if (tab === 'dashboard') window.renderDashboard?.();
+      if (tab === 'income')    window.renderIncome?.();
+      if (tab === 'expenses')  window.renderExpenses?.();
       if (tab === 'onetime')   window.renderOneTime?.();
       if (tab === 'setup')     window.renderSetup?.();
     }
@@ -413,6 +456,8 @@
   <script src="controlling-auth.js"></script>
   <script src="controlling-data.js"></script>
   <script src="controlling-tab-dashboard.js"></script>
+  <script src="controlling-tab-income.js"></script>
+  <script src="controlling-tab-expenses.js"></script>
   <script src="controlling-tab-entry.js"></script>
   <script src="controlling-tab-onetime.js"></script>
   <script src="controlling-tab-setup.js"></script>
