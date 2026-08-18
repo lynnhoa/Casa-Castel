@@ -949,11 +949,12 @@ function _getActiveType(r) {
   const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
   const hasKz = !!r.kurzzeit_kaltmiete;
 
-  // Only honour persisted type if that type actually has data
-  if (r.active_price_type === 'mietvertrag' && hasMv) return 'mietvertrag';
-  if (r.active_price_type === 'kurzzeit'    && hasKz) return 'kurzzeit';
+  // Honour the persisted toggle choice as the source of truth — even if that
+  // type's price isn't filled in yet (room freshly switched to Kurzzeit).
+  if (r.active_price_type === 'mietvertrag') return 'mietvertrag';
+  if (r.active_price_type === 'kurzzeit')    return 'kurzzeit';
 
-  // Fallback: mietvertrag first, then kurzzeit
+  // No explicit choice yet: fall back to whichever price exists.
   if (hasMv) return 'mietvertrag';
   if (hasKz) return 'kurzzeit';
   return null;
@@ -985,11 +986,15 @@ async function _toggleRentType(btn) {
 
   // Update amount + detail in card
   const info = _getRentInfo(r, type);
+  const amountEl = card.querySelector('.rc-rent-amount');
+  const detailEl = card.querySelector('.rc-rent-detail');
   if (info) {
-    const amountEl = card.querySelector('.rc-rent-amount');
-    const detailEl = card.querySelector('.rc-rent-detail');
     if (amountEl) amountEl.textContent = fmtEUR(info.total);
     if (detailEl) detailEl.textContent = info.detail;
+  } else {
+    // Switched to a contract type whose price isn't set yet
+    if (amountEl) amountEl.textContent = '';
+    if (detailEl) detailEl.textContent = 'Preis nicht gesetzt';
   }
 
   _updateRoomsSummary(appRooms);
@@ -998,7 +1003,6 @@ async function _toggleRentType(btn) {
 function _rentRowHTML(r) {
   const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
   const hasKz = !!r.kurzzeit_kaltmiete;
-  const hasBoth = hasMv && hasKz;
   const activeType = _getActiveType(r);
   const info = activeType ? _getRentInfo(r, activeType) : null;
 
@@ -1006,30 +1010,22 @@ function _rentRowHTML(r) {
     return `<div class="rc-hdr__rent"><div class="rc-hdr__rent-left"><div class="rc-hdr__rent-top"><span class="rc-rent-badge rc-rent-badge--none">Nicht gesetzt</span></div></div></div>`;
   }
 
-  const amountHTML = info ? `<span class="rc-rent-amount">${fmtEUR(info.total)}</span>` : '';
-  const detailHTML = info ? `<span class="rc-rent-detail">${info.detail}</span>` : '';
+  // Always keep both spans present so _toggleRentType can update them in place,
+  // even when the selected contract type has no price yet.
+  const amountHTML = `<span class="rc-rent-amount">${info ? fmtEUR(info.total) : ''}</span>`;
+  const detailText = info ? info.detail : 'Preis nicht gesetzt';
 
-  if (hasBoth) {
-    const mvActive = activeType === 'mietvertrag' ? ' active--mietvertrag' : '';
-    const kzActive = activeType === 'kurzzeit'    ? ' active--kurzzeit'    : '';
-    return `<div class="rc-hdr__rent">
-      <div class="rc-hdr__rent-left">
-        <div class="rc-price-toggle">
-          <button class="rc-price-toggle__opt${mvActive}" data-type="mietvertrag" onclick="event.stopPropagation();_toggleRentType(this)">Mietvertrag</button>
-          <button class="rc-price-toggle__opt${kzActive}"  data-type="kurzzeit"    onclick="event.stopPropagation();_toggleRentType(this)">Kurzzeit</button>
-        </div>
-        <div class="rc-hdr__rent-info">${detailHTML}</div>
-      </div>
-      ${amountHTML}
-    </div>`;
-  }
-
-  const badgeClass = activeType === 'mietvertrag' ? 'rc-rent-badge--mietvertrag' : 'rc-rent-badge--kurzzeit';
-  const badgeLabel = activeType === 'mietvertrag' ? 'Mietvertrag' : 'Kurzzeit';
+  // Toggle shows on every priced room now (not only when both prices exist),
+  // so any room can be switched between Mietvertrag and Kurzzeit.
+  const mvActive = activeType === 'mietvertrag' ? ' active--mietvertrag' : '';
+  const kzActive = activeType === 'kurzzeit'    ? ' active--kurzzeit'    : '';
   return `<div class="rc-hdr__rent">
     <div class="rc-hdr__rent-left">
-      <div class="rc-hdr__rent-top"><span class="rc-rent-badge ${badgeClass}">${badgeLabel}</span></div>
-      <div class="rc-hdr__rent-info">${detailHTML}</div>
+      <div class="rc-price-toggle">
+        <button class="rc-price-toggle__opt${mvActive}" data-type="mietvertrag" onclick="event.stopPropagation();_toggleRentType(this)">Mietvertrag</button>
+        <button class="rc-price-toggle__opt${kzActive}"  data-type="kurzzeit"    onclick="event.stopPropagation();_toggleRentType(this)">Kurzzeit</button>
+      </div>
+      <div class="rc-hdr__rent-info"><span class="rc-rent-detail">${detailText}</span></div>
     </div>
     ${amountHTML}
   </div>`;
@@ -2932,6 +2928,10 @@ function _renderKurzzeitHTML(d) {
       color: #8a6535;
       line-height: 1;
     }
+    .nk-intro { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; line-height:1.55; margin-top:7px; margin-bottom:10px; }
+    .nk-grid { display:grid; grid-template-columns:1fr 1fr; column-gap:24px; }
+    .nk-item { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; padding:2.5px 0; line-height:1.4; }
+    .nk-item--full { grid-column:1/-1; border-bottom:none; }
 
     /* NOTE */
     .note {
@@ -3068,6 +3068,16 @@ function _renderKurzzeitHTML(d) {
       <div class="clause__body">${body}</div>
     </div>`;
 
+  // Betriebskostenauflistung (ported from the normal Mietvertrag). For a pauschal
+  // Kurzzeit these costs are already included in the Pauschale; for kalt_nk they are
+  // apportioned — the intro adapts accordingly.
+  const KZ_NK_ITEMS = ['Grundsteuer','Entsorgungsbetriebe','Wasserversorgung &amp; Entwässerung','Strom','Gas / Heizung (zentrale Heizungsanlage)','Internet (Gemeinschaftsanschluss)','Wohngebäudeversicherung','Haus- &amp; Grundbesitzerhaftpflicht','Wartung Heizungsanlage','Wartung Enthärtungsanlage inkl. Regeneriersalz','Schornsteinfeger','Gartenpflege','Gebäudereinigung / Putzdienst','Winterdienst'];
+  const kzNkRows = KZ_NK_ITEMS.map(i => `<div class="nk-item">${i}</div>`).join('') +
+    `<div class="nk-item nk-item--full">Hauswart / sonstige anfallende Betriebskosten i.\u202fs.\u202fv. \u00a7\u00a02 Nr.\u00a017 BetrKV</div>`;
+  const kzBetriebskostenIntro = d.kzPricing === 'kalt_nk'
+    ? 'Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.'
+    : 'In der monatlichen Pauschalmiete sind sämtliche nachfolgenden Betriebskosten (\u00a7\u00a7\u00a01, 2 BetrKV) bereits enthalten. Eine gesonderte Umlage oder Nachforderung erfolgt nicht; die Auflistung dient der Transparenz.';
+
   return `<style>${CSS}</style>
 <!-- PAGE 1 -->
 <div class="pdf-page page">
@@ -3109,8 +3119,15 @@ function _renderKurzzeitHTML(d) {
       <span class="total-box__label">Gesamtmiete:</span>
       <span class="total-box__value">${eur(d.gesamtmiete)}</span>
     </div>
+  </div>
+</div>
 
-    ${sec('Zahlungsplan &amp; Bankverbindung', true, false)}
+<!-- PAGE 2 — Zahlungsplan & Bankverbindung + Betriebskosten -->
+<div class="pdf-page page">
+  ${hdr(d.zimmerName)}
+  ${ftr(2)}
+  <div class="content">
+    ${sec('Zahlungsplan &amp; Bankverbindung', true, true)}
     ${kv('1. Zahlung', eur(d.zahlung1Betrag) + ' (' + d.zahlung1Beschreibung + '), fällig am ' + d.zahlung1Faellig)}
     ${d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + ' monatlich, jeweils fällig 3. Werktag') : ''}
     ${d.letzteZahlungNoetig ? kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + ' (' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig) : ''}
@@ -3122,13 +3139,18 @@ function _renderKurzzeitHTML(d) {
     ${kv('BIC', d.bic)}
 
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel – ${d.zimmerName} – Miete Monat Jahr / Kaution.</p>
+
+    ${sec('Betriebskosten gem. §§ 1, 2 BetrKV', true, false)}
+    <p class="nk-intro">${kzBetriebskostenIntro}</p>
+    <div class="nk-grid">${kzNkRows}</div>
+    <p class="nk-intro" style="margin-top:6px;border-top:0.5px solid #e8dbc5;padding-top:5px;color:#3a3530;font-style:italic;">Winterdienst wird grundsätzlich vom Mieter erledigt. Unter Umständen wird dieser gelegentlich organisiert, sofern nicht erledigt, wird dieser in den Nebenkosten berücksichtigt.</p>
   </div>
 </div>
 
-<!-- PAGE 2 -->
+<!-- PAGE 3 -->
 <div class="pdf-page page">
   ${hdr(d.zimmerName)}
-  ${ftr(2)}
+  ${ftr(3)}
   <div class="content">
     ${sec('Nutzungsrechte Gemeinschaftsbereiche', true, true)}
     <p class="nutzung">Ab Mietbeginn steht dem Mieter die Mitnutzung folgender Gemeinschaftsbereiche zu: ${d.gemeinschaftsraeume}. Die Nutzung erfolgt schonend und rücksichtsvoll. Eine Reinigungspflicht nach jeder Nutzung wird ausdrücklich vereinbart.</p>
@@ -3174,10 +3196,10 @@ function _renderKurzzeitHTML(d) {
   </div>
 </div>
 
-<!-- PAGE 3 -->
+<!-- PAGE 4 -->
 <div class="pdf-page page">
   ${hdr(d.zimmerName)}
-  ${ftr(3)}
+  ${ftr(4)}
   <div class="content">
     ${clause('9', 'Datenschutz', 'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art. 6 Abs. 1 lit. b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.', true)}
     ${clause('10', 'Salvatorische Klausel &amp; Gerichtsstand', 'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.', false)}
@@ -3210,10 +3232,10 @@ function _renderKurzzeitHTML(d) {
   </div>
 </div>
 
-<!-- PAGE 4 -->
+<!-- PAGE 5 -->
 <div class="pdf-page page">
   ${hdr(d.zimmerName)}
-  ${ftr(4)}
+  ${ftr(5)}
   <div class="content">
     ${sec('Anlage A — Inventar', true, true)}
     <table class="inv-table">
