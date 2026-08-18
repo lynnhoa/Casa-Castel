@@ -2642,8 +2642,10 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
   fullMonths = (me.getFullYear() - ms.getFullYear()) * 12 + (me.getMonth() - ms.getMonth());
   if (fullMonths < 0) fullMonths = 0;
 
+  // Box value = sum of the Mietzins line items shown directly above it:
+  // Anteil erster Monat (if any) + eine Monatsmiete. (Equals the first payment.)
   const gesamtmiete = Math.round(
-    (ersterBetrag + fullMonths * rent + letzterBetrag) * 100
+    (ersterBetrag + rent) * 100
   ) / 100;
 
   // Kaution — base: Pauschal = full total, Kalt+NK = kaltmiete only
