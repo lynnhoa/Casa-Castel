@@ -506,10 +506,12 @@ document.getElementById('tab-rooms').innerHTML = `
 .rm-pill-toggle__track { position:relative; width:40px; height:22px; background:var(--cc-stone); border-radius:11px; transition:background .2s; flex-shrink:0; }
 .rm-pill-toggle[data-mode="voll"] .rm-pill-toggle__track,
 .rm-pill-toggle[data-mode="ja"] .rm-pill-toggle__track,
+.rm-pill-toggle[data-mode="kalt_nk"] .rm-pill-toggle__track,
 .rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__track { background:var(--cc-charcoal); }
 .rm-pill-toggle__knob { position:absolute; top:3px; left:3px; width:16px; height:16px; background:#fff; border-radius:50%; transition:transform .2s; }
 .rm-pill-toggle[data-mode="voll"] .rm-pill-toggle__knob,
 .rm-pill-toggle[data-mode="ja"] .rm-pill-toggle__knob,
+.rm-pill-toggle[data-mode="kalt_nk"] .rm-pill-toggle__knob,
 .rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__knob { transform:translateX(18px); }
 .rm-pill-toggle__lbl { font-size:12px; font-weight:500; color:var(--cc-charcoal); min-width:52px; }
 
@@ -1859,6 +1861,7 @@ async function _openContract(type, roomId) {
           const sigVal     = document.getElementById('cm-sig')?.value;
           const ersterMonatVoll  = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
           const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
+          const kzPricingOverride = document.getElementById('cm-nk-btn')?.dataset.mode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
           if (!startVal || !endVal) { if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
           const s    = appSettings;
           const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
@@ -1868,7 +1871,7 @@ async function _openContract(type, roomId) {
           const kautionFaelligkeitKz = _cmFaelVal === 'custom'
             ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
             : _cmFaelVal === 'sofort' ? 'sofort' : 5;
-          const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz, kautionFaelligkeit: kautionFaelligkeitKz });
+          const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz, kautionFaelligkeit: kautionFaelligkeitKz, kzPricingOverride });
           const html = _renderKurzzeitHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
           if (container) container.remove();
@@ -2347,6 +2350,17 @@ function _toggleMvErsterMonat() {
   sub.textContent  = isVoll ? 'Voller Monat — pauschal' : 'Anteilig — wird berechnet';
 }
 
+function _toggleKzNk() {
+  const btn = document.getElementById('cm-nk-btn');
+  const lbl = document.getElementById('cm-nk-lbl');
+  const sub = document.getElementById('cm-nk-sub');
+  if (!btn) return;
+  const toKaltNk = btn.dataset.mode !== 'kalt_nk';
+  btn.dataset.mode = toKaltNk ? 'kalt_nk' : 'pauschal';
+  if (lbl) lbl.textContent = toKaltNk ? 'Kalt + NK' : 'Pauschal';
+  if (sub) sub.textContent = toKaltNk ? 'Vorauszahlung, separat ausgewiesen' : 'In Pauschale enthalten';
+}
+
 function _contractBodyKurzzeit(room) {
   const s         = appSettings;
   const profile   = (typeof _getProfile === 'function') ? _getProfile(room.name)
@@ -2433,6 +2447,20 @@ function _contractBodyKurzzeit(room) {
     <div class="rm-field">
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label>
       <input class="rm-input" id="cm-sig" type="date" onclick="try{this.showPicker()}catch(e){}" />
+    </div>
+    <div class="rm-field rm-field--toggle" id="cm-nk-wrap">
+      <div class="rm-toggle-row">
+        <div>
+          <div class="rm-toggle-label">Nebenkosten</div>
+          <div class="rm-toggle-sub" id="cm-nk-sub">${(room.kurzzeit_pricing||'pauschal')==='kalt_nk' ? 'Vorauszahlung, separat ausgewiesen' : 'In Pauschale enthalten'}</div>
+        </div>
+        <button type="button" class="rm-pill-toggle" id="cm-nk-btn" data-mode="${(room.kurzzeit_pricing||'pauschal')==='kalt_nk' ? 'kalt_nk' : 'pauschal'}" onclick="_toggleKzNk()">
+          <span class="rm-pill-toggle__track">
+            <span class="rm-pill-toggle__knob"></span>
+          </span>
+          <span class="rm-pill-toggle__lbl" id="cm-nk-lbl">${(room.kurzzeit_pricing||'pauschal')==='kalt_nk' ? 'Kalt + NK' : 'Pauschal'}</span>
+        </button>
+      </div>
     </div>
     <div class="rm-field rm-field--toggle" id="cm-erster-wrap" style="display:none">
       <div class="rm-toggle-row">
@@ -2559,7 +2587,7 @@ async function _generateKurzzeitPDF() {
 
 
 /* ── BUILD MIETVERTRAG DATA ──────────────────────────────── */
-function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '', startVal, endVal, sigVal, ersterMonatVoll = false, letzterMonatVoll = false, kautionOverride = null, kautionFaelligkeit = 5 }) {
+function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '', startVal, endVal, sigVal, ersterMonatVoll = false, letzterMonatVoll = false, kautionOverride = null, kautionFaelligkeit = 5, kzPricingOverride = null }) {
   const fmt = d => {
     const dt = new Date(d);
     return String(dt.getDate()).padStart(2,'0') + '.' +
@@ -2571,7 +2599,7 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
   const end       = new Date(endVal);
   const kzKalt    = Number(room.kurzzeit_kaltmiete) || 0;
   const kzNk      = Number(room.kurzzeit_nk) || 0;
-  const kzPricing = room.kurzzeit_pricing || 'pauschal';
+  const kzPricing = kzPricingOverride || room.kurzzeit_pricing || 'pauschal';
   const rent      = kzKalt + kzNk;  // full total used for all pro-rata math
   const gemStr    = _parseArr(room.gemeinschaftsraeume).join(', ');
 
@@ -3111,7 +3139,7 @@ function _renderKurzzeitHTML(d) {
     ${kv('Mietende', d.mietende)}
     ${d.ersterMonatAnteilig ? kv(d.ersterMonatVoll ? 'Erster Monat (voll)' : 'Anteil erster Monat', eur(d.ersterMonatBetrag) + (d.ersterMonatVoll ? '' : ' (' + d.ersterMonatTage + ' Tage, Basis ' + new Date(d.mietbeginn.split('.').reverse().join('-')).toLocaleString('de-DE', {month:'long'}).replace(/\w+/, m => m[0].toUpperCase() + m.slice(1)) + ')')) : ''}
     ${d.kzPricing === 'kalt_nk'
-      ? kv('Kaltmiete', eur(d.kzKaltmiete)) + kv('Nebenkosten', eur(d.kzNk))
+      ? kv('Kaltmiete', eur(d.kzKaltmiete) + ' / Monat') + kv('Nebenkosten VZ', eur(d.kzNk) + ' / Monat (Vorauszahlung)')
       : kv('Monatliche Miete', eur(d.monatlMiete) + ' (pauschal inkl. NK)')
     }
 
