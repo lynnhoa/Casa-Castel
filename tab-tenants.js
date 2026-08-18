@@ -188,6 +188,8 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-btn-sm { height:36px; padding:0 12px; font-size:11px;
   border:.5px solid var(--cc-rule); background:none; color:var(--cc-taupe); }
 .tn-btn-sm i { font-size:12px; }
+.tn-btn-former { color:var(--cc-stone); }
+.tn-btn-armed { background:#FBEFD6 !important; border-color:var(--cc-gold) !important; color:#8a6535 !important; }
 .tn-btn-primary { height:36px; padding:0 12px; font-size:11px;
   background:var(--cc-ink); color:var(--cc-white); border:none; }
 .tn-btn-primary i { font-size:12px; }
@@ -1061,6 +1063,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
 
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
+    ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_tnMoveToFormerConfirm(this,'${rid}','${tid}','${esc(room.name)}')"><i class="ti ti-user-off"></i> To former</button><div style="flex:1"></div>` : ''}
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary"
       onclick="${rec ? `_tnSaveProfile('${rid}','${tid}','${esc(room.name)}')` : `_tnSaveNewTenant('${rid}','${esc(room.name)}')`}">
@@ -1954,7 +1957,7 @@ async function _tnSaveNewTenant(rid, roomName) {
   await _tnLoad();
 }
 
-async function _tnSaveProfile(rid, tid, roomName) {
+async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
   if (!sec) return;
@@ -1970,7 +1973,9 @@ async function _tnSaveProfile(rid, tid, roomName) {
     return;
   }
 
-  const toFormer = !!(p.mietende && _tnIsPast(p.mietende) && rec?.status === 'active');
+  // Manual "To former" (forceFormer) demotes even when mietende is today/future,
+  // so the room frees up now; auto-demote on a past move-out date still applies.
+  const toFormer = !!forceFormer || !!(p.mietende && _tnIsPast(p.mietende) && rec?.status === 'active');
   // Reverse: former tenant whose mietende is cleared or set to future → back to active
   const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
   const liveP    = _tnRoomPricing(roomName);
