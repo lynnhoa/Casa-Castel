@@ -3186,6 +3186,7 @@ function _renderKurzzeitHTML(d) {
     <p class="nutzung">Ab Mietbeginn steht dem Mieter die Mitnutzung folgender Gemeinschaftsbereiche zu: ${d.gemeinschaftsraeume}. Die Nutzung erfolgt schonend und rücksichtsvoll. Eine Reinigungspflicht nach jeder Nutzung wird ausdrücklich vereinbart.</p>
 
     ${clause('1', 'Befristung und Beendigung', 'Das Mietverhältnis ist gemäß § 575 Abs. 1 Nr. 3 BGB auf ausdrücklichen Wunsch des Mieters befristet. Der Mieter hat erklärt, das Mietobjekt nur für den vereinbarten Zeitraum zu benötigen. Das Mietverhältnis endet automatisch ohne Kündigung. Eine stillschweigende Verlängerung nach § 545 BGB wird ausdrücklich ausgeschlossen. Ein Anspruch auf Verlängerung besteht nicht.', true)}
+    ${clause('2', 'Kündigung', 'Da das Mietverhältnis befristet ist, ist die ordentliche Kündigung ausgeschlossen. Das Recht beider Parteien zur außerordentlichen Kündigung aus wichtigem Grund (§§ 543, 569 BGB) bleibt unberührt.', false)}
     ${(() => {
       const hatPartiell = d.ersterMonatAnteilig || d.letzterMonatAnteilig;
       const vollParts = [
@@ -3195,7 +3196,6 @@ function _renderKurzzeitHTML(d) {
       const alleVoll = hatPartiell && vollParts.length > 0 &&
         (!d.ersterMonatAnteilig || d.ersterMonatVoll) &&
         (!d.letzterMonatAnteilig || d.letzterMonatVoll);
-
       let proRataText;
       if (!hatPartiell) {
         proRataText = '';
@@ -3204,25 +3204,21 @@ function _renderKurzzeitHTML(d) {
       } else {
         proRataText = ' Zieht der Mieter nicht zum ersten eines Monats ein oder zum letzten eines Monats aus, werden die Tage anteilig berechnet. Der Tagespreis ergibt sich aus der Monatsmiete geteilt durch die tatsächliche Anzahl der Kalendertage des jeweiligen Monats.';
       }
-
+      const faellig = ' Die Miete ist jeweils spätestens bis zum dritten Werktag des Monats zu überweisen (§ 556b BGB); bei Zahlungsverzug kann der Vermieter Verzugszinsen gemäß § 288 BGB geltend machen.';
       if (d.kzPricing === 'kalt_nk') {
         const base = 'Die monatliche Kaltmiete beträgt ' + eur(d.kzKaltmiete) + ', zuzüglich einer NK-Vorauszahlung von ' + eur(d.kzNk) + '.';
         const proRataKalt = !hatPartiell ? '' : alleVoll
           ? ' Der ' + vollParts + ' wird als voller Monat berechnet.'
           : ' Zieht der Mieter nicht zum ersten eines Monats ein oder zum letzten eines Monats aus, werden die Tage anteilig berechnet. Der Tagespreis ergibt sich aus der Gesamtmiete (' + eur(d.monatlMiete) + ') geteilt durch die tatsächliche Anzahl der Kalendertage des jeweiligen Monats.';
-        return clause('2', 'Mietzins &amp; Anteilige Berechnung', base + proRataKalt, false);
+        return clause('3', 'Miete', base + proRataKalt + faellig, false);
       } else {
         const base = 'Die monatliche Pauschalmiete beträgt ' + eur(d.monatlMiete) + '.';
         const nkText = ' Alle Nebenkosten (Strom, Wasser, Heizung, WLAN) sind in der Pauschale enthalten.';
-        return clause('2', 'Mietzins &amp; Anteilige Berechnung', base + proRataText + nkText, false);
+        return clause('3', 'Miete', base + proRataText + nkText + faellig, false);
       }
     })()}
-    ${clause('3', 'Fälligkeit der Mietzahlungen', 'Die Miete ist jeweils spätestens bis zum dritten Werktag des fälligen Monats zu überweisen (§ 556b BGB). Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß § 288 BGB geltend zu machen.', false)}
-    ${clause('4', 'Kaution', 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelligkeitLong + '. Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Kleinreparaturen bis 100 € pro Schadensfall gehen zu Lasten des Mieters (§ 535 BGB). Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', false)}
+    ${clause('4', 'Untervermietung', 'Eine Untervermietung oder sonstige Überlassung des Zimmers an Dritte ist ohne vorherige schriftliche Zustimmung des Vermieters nicht gestattet.', false)}
     ${clause('5', 'Schlüsselübergabe', 'Der Mieter erhält bei Einzug ' + d.hausstuerschluessel + ' Haustürschlüssel und ' + d.zimmerschluessel + ' Zimmerschlüssel. Alle Schlüssel sind bei Auszug an den Vermieter zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten für den Schlossaustausch.', false)}
-    ${clause('6', 'Zustand &amp; Übergabe', 'Das Zimmer wird möbliert und in vertragsgemäßem Zustand übergeben. Ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Das Zimmer ist in gleichem Zustand zurückzugeben.', false)}
-    ${clause('7', 'Haftpflichtversicherung', 'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.', false)}
-    ${clause('8', 'Hausordnung', 'Rauchen ist im gesamten Gebäude nicht gestattet. Haustiere sind nicht erlaubt. Untervermietung ist ohne schriftliche Zustimmung des Vermieters untersagt. Nachtruhe gilt von 22:00 bis 07:00 Uhr.', false)}
   </div>
 </div>
 
@@ -3231,12 +3227,25 @@ function _renderKurzzeitHTML(d) {
   ${hdr(d.zimmerName)}
   ${ftr(4)}
   <div class="content">
-    ${clause('9', 'Datenschutz', 'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art. 6 Abs. 1 lit. b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.', true)}
-    ${clause('10', 'Salvatorische Klausel &amp; Gerichtsstand', 'Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.', false)}
+    ${clause('6', 'Kaution', 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelligkeitLong + '. Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', true)}
+    ${clause('7', 'Kleinreparaturen', 'Kleinreparaturen an Gegenständen, die dem häufigen Zugriff des Mieters unterliegen, trägt der Mieter bis 150 € pro Einzelfall, höchstens jedoch 8 % der Jahresmiete pro Jahr. Übersteigen die Kosten einer einzelnen Reparatur 150 €, trägt der Mieter keinen Anteil.', false)}
+    ${clause('8', 'Tierhaltung', 'Die Haltung von Tieren ist nicht gestattet.', false)}
+    ${clause('9', 'Betreten des Mietobjekts', 'Das Zimmer wird nur nach vorheriger Ankündigung (mindestens 2 Werktage in Textform) betreten, etwa zur Besichtigung bei Weitervermietung oder für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.', false)}
+    ${clause('10', 'Rückgabe bei Vertragsende', 'Das Zimmer wird möbliert und in vertragsgemäßem Zustand übergeben; ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Bei Vertragsende ist das Zimmer vollständig geräumt, gereinigt und in vertragsgemäßem Zustand zurückzugeben; alle Schlüssel sind auszuhändigen. Bauliche Änderungen sind zurückzubauen.', false)}
+    ${clause('11', 'Aufrechnung &amp; Zurückbehaltungsrecht', 'Der Mieter kann gegen Forderungen des Vermieters nur mit unbestrittenen oder rechtskräftig festgestellten Gegenforderungen aufrechnen. Ein Zurückbehaltungsrecht steht dem Mieter nur wegen Mängeln nach §§ 536 ff. BGB und nach mindestens einmonatiger vorheriger Ankündigung in Textform zu.', false)}
+  </div>
+</div>
 
-    ${(d.energieklasse || d.endenergiebedarf || d.energieausweisart) ? `
-    <div class="sec sec--lg">Energieausweis (\u00a7\u00a016a GEG)</div>
-    <p class="nutzung" style="margin-top:6px;font-size:10.5px;line-height:1.55;color:#3a3530;">Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Effizienzklasse: ${d.energieklasse||'\u2014'}. Endenergiebedarf: ${d.endenergiebedarf ? d.endenergiebedarf+' kWh/(m\u00b2\u00b7a)' : '\u2014'}. Art: ${d.energieausweisart||'\u2014'}.</p>` : ''}
+<!-- PAGE 5 -->
+<div class="pdf-page page">
+  ${hdr(d.zimmerName)}
+  ${ftr(5)}
+  <div class="content">
+    ${clause('12', 'Haftpflichtversicherung', 'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.', true)}
+    ${clause('13', 'Hausordnung', 'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00 bis 07:00 Uhr.', false)}
+    ${clause('14', 'Datenschutz', 'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung gespeichert (Art. 6 Abs. 1 lit. b DSGVO) und nach Ablauf der gesetzlichen Aufbewahrungsfrist gelöscht.', false)}
+    ${clause('15', 'Sonstige Vereinbarungen', 'Mündliche Nebenabreden bestehen nicht. Änderungen und Ergänzungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ' + d.gerichtsstand + '.', false)}
+    ${(d.energieklasse || d.endenergiebedarf || d.energieausweisart) ? clause('16', 'Energieausweis (§ 16a GEG)', 'Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Energieeffizienzklasse: ' + (d.energieklasse||'—') + '. Endenergiebedarf: ' + (d.endenergiebedarf ? d.endenergiebedarf+' kWh/(m²·a)' : '—') + '. Art des Ausweises: ' + (d.energieausweisart||'—') + '.', false) : ''}
 
     <div class="comment-label">Sonstige Anmerkungen</div>
     <div class="comment-line"></div>
@@ -3262,10 +3271,10 @@ function _renderKurzzeitHTML(d) {
   </div>
 </div>
 
-<!-- PAGE 5 -->
+<!-- PAGE 6 -->
 <div class="pdf-page page">
   ${hdr(d.zimmerName)}
-  ${ftr(5)}
+  ${ftr(6)}
   <div class="content">
     ${sec('Anlage A — Inventar', true, true)}
     <table class="inv-table">
