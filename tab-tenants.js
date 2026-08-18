@@ -1957,6 +1957,26 @@ async function _tnSaveNewTenant(rid, roomName) {
   await _tnLoad();
 }
 
+// Manual "move to former": two-tap confirm on the button, then force status→former
+// (keeps whatever move-out date is entered — even a future one — so the room frees up now)
+function _tnMoveToFormerConfirm(btn, rid, tid, roomName) {
+  if (btn.dataset.armed === '1') {
+    _tnSaveProfile(rid, tid, roomName, true);
+    return;
+  }
+  const orig = btn.innerHTML;
+  btn.dataset.armed = '1';
+  btn.classList.add('tn-btn-armed');
+  btn.innerHTML = '<i class="ti ti-check"></i> Confirm';
+  setTimeout(() => {
+    if (btn && btn.dataset.armed === '1') {
+      btn.dataset.armed = '0';
+      btn.classList.remove('tn-btn-armed');
+      btn.innerHTML = orig;
+    }
+  }, 3500);
+}
+
 async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
