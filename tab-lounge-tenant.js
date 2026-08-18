@@ -160,7 +160,7 @@ async function loadLounge(room) {
 function _msgHtml(m, currentRoom) {
   const isCC  = m.room === 'Casa Castel';
   const isMe  = m.room === currentRoom;
-  return `<div class="msg-row">
+  return `<div class="msg-row" data-id="${m.id}">
     <div class="msg-avatar${isCC ? ' msg-avatar--mgmt' : ''}">${roomInitials(m.room)}</div>
     <div class="msg-content">
       <div class="msg-meta">
