@@ -1,6 +1,7 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/login.html" }
+    { "source": "/", "destination": "/tenant.html" },
+    { "source": "/management", "destination": "/login.html" }
   ],
   "headers": [
     {
