@@ -1726,8 +1726,8 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
   const { jsPDF } = window.jspdf;
   const pages = container.querySelectorAll('.pdf-page');
 
-  if (window.innerWidth >= 701) {
-    // ── Desktop: show preview overlay ───────────────────────
+  {
+    // ── In-app preview overlay (desktop + mobile) ──
     const overlay  = document.getElementById('pdfPreviewOverlay');
     const doc      = document.getElementById('pdfPreviewDoc');
     const titleEl  = document.getElementById('pdfPreviewTitle');
@@ -1789,23 +1789,6 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
       document.getElementById('contractOverlay')?.classList.add('open');
     });
 
-  } else {
-    // ── Mobile: generate + save directly ────────────────────
-    if (saveFn) {
-      container.remove();
-      if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
-      await saveFn();
-    } else {
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      for (let i = 0; i < pages.length; i++) {
-        if (i > 0) pdf.addPage();
-        const canvas = await html2canvas(pages[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
-      }
-      pdf.save(filename);
-      container.remove();
-      if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
-    }
   }
 }
 
