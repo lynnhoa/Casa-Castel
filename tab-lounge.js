@@ -468,6 +468,29 @@ async function loadLounge() {
   _renderMsgs(data || []);
 }
 
+/* Mobile compose bar markup — kept in one place so it can be
+   re-inserted if any chat operation ever removes it. */
+const _MOBILE_COMPOSE_HTML = `
+    <div class="l-compose">
+      <button class="l-action-btn" onclick="loungeOpenModal('actions')" title="Actions">⊕</button>
+      <input class="l-compose-input" id="lounge-input" type="text" placeholder="Message as Casa Castel…"/>
+      <button class="l-compose-send" id="lounge-send">↑</button>
+    </div>`;
+
+/* Guarantees the mobile compose bar is present + wired. Safe to call
+   any number of times: it does nothing if the bar already exists, and
+   only ever ADDS it back — it never removes anything. */
+function _ensureMobileCompose() {
+  const chat = document.querySelector('#tab-lounge .l-chat');
+  if (!chat || chat.querySelector('.l-compose')) return;   // already there → no-op
+  chat.insertAdjacentHTML('beforeend', _MOBILE_COMPOSE_HTML);
+  document.getElementById('lounge-send')
+    ?.addEventListener('click', sendLounge);
+  document.getElementById('lounge-input')
+    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLounge(); }});
+  if (typeof wireComposeBlur === 'function') wireComposeBlur(document.getElementById('lounge-input'));
+}
+
 function _renderMsgs(msgs) {
   const feed    = document.getElementById('lounge-feed');
   const feedDsk = document.getElementById('lounge-feed-desktop');
@@ -478,6 +501,7 @@ function _renderMsgs(msgs) {
   if (feedDsk) feedDsk.innerHTML = html;
   scrollToBottom(feed);
   scrollToBottom(feedDsk);
+  _ensureMobileCompose();   // re-show the compose bar if a render ever dropped it
 }
 
 function _msgHtml(m, canDelete) {
@@ -554,6 +578,7 @@ async function resetChat() {
   if (!confirm('Delete all chat messages? This cannot be undone.')) return;
   _renderMsgs([]);
   await sbL.from('lounge_data').delete().eq('type','message');
+  _ensureMobileCompose();   // realtime delete events can re-render — keep the bar
 }
 
 /* ── REALTIME ───────────────────────────────────────────── */
