@@ -36,23 +36,41 @@ function detectPWAMode() {
    1. Sync check on the cc_role flag (set by login.html) so the
       app shows instantly with no flash.
    2. Background verification of the actual Supabase session —
-      if it's missing or expired, flags are cleared and the
-      user is bounced back to login.html.                      */
+      if it's genuinely missing or expired, flags are cleared
+      and the user is bounced back to login.html.
+
+   The session check is retried once before anything is cleared.
+   Reason: on a cold start (e.g. iOS relaunching the PWA after a
+   PDF was handed to the system viewer) the client still has to
+   refresh an expired access token over the network. A single
+   slow or failed refresh used to resolve with no session, which
+   wiped the flags and logged the user out mid-work. Only two
+   consecutive confirmed "no session" results end the session;
+   a thrown error means network trouble and keeps the app open. */
 function initLandlordAuth() {
   if (localStorage.getItem('cc_role') !== 'landlord') {
     location.replace('login.html');
     return;
   }
   showApp();
-  if (sbL) {
-    sbL.auth.getSession().then(({ data }) => {
-      if (!data.session) {
-        localStorage.removeItem('cc_role');
-        localStorage.removeItem('rentals_role');
-        location.replace('login.html');
-      }
-    }).catch(() => { /* offline — keep app open, flag already checked */ });
-  }
+  if (!sbL) return;
+
+  const endSession = () => {
+    localStorage.removeItem('cc_role');
+    localStorage.removeItem('rentals_role');
+    location.replace('login.html');
+  };
+
+  // Throws on network failure — caller treats that as "keep app open"
+  const hasSession = () => sbL.auth.getSession().then(({ data }) => !!data.session);
+
+  hasSession().then(ok => {
+    if (ok) return;
+    // First check came back empty — give the token refresh a moment, then re-check
+    return new Promise(r => setTimeout(r, 1200))
+      .then(hasSession)
+      .then(ok2 => { if (!ok2) endSession(); });
+  }).catch(() => { /* offline / refresh failed — keep app open, flag already checked */ });
 }
 
 /* ── TENANT AUTH — room + password (matches v1 exactly) ─── */
