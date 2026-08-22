@@ -1729,9 +1729,26 @@ document.getElementById('pdfPreviewClose')?.addEventListener('click', () => {
 });
 
 /* ── PDF PREVIEW MODAL ─────────────────────────────────────── */
-/* Shared helper — renders all .pdf-page nodes via html2canvas,
-   shows desktop preview overlay or saves directly on mobile.
-   Resets btnEl to resetHtml when done. saveFn is called on overlay Save. */
+
+/* Delivers a finished jsPDF as a file WITHOUT navigating the app window.
+   jsPDF's own save() opens a popup on iOS; when the popup is blocked (any
+   slow render eats the tap-gesture window) it falls back to navigating the
+   PWA itself to the blob — unloading landlord.html and forcing a relaunch
+   through the login gate. This helper uses a hidden <a download> click on a
+   blob URL instead — the same proven pattern as the Tenants tab document
+   download (tab-tenants.js) — so the app never loses its page. */
+function _roomDeliverPdf(pdf, filename) {
+  const blob = pdf.output('blob');
+  const bUrl = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = bUrl;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(bUrl); a.remove(); }, 1000);
+}
+
 /* Renders every .pdf-page of `srcHtml` into a fresh offscreen container at full
    quality (scale 3) and saves it as a real A4 PDF — identical settings to the
    Apartments tab (_aptGenericPdfAction). One page is captured at a time so the
@@ -1756,12 +1773,16 @@ async function _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename) {
       const canvas = await html2canvas(pgs[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
     }
-    pdf.save(filename);
+    _roomDeliverPdf(pdf, filename);
   } finally {
     tmp.remove();
   }
 }
 
+/* Shared helper — captures all .pdf-page nodes, shows the in-app preview
+   overlay (all screen sizes — the preview never leaves the app), and saves a
+   full-quality A4 PDF via _roomDeliverPdf when the user taps the PDF button.
+   Resets btnEl to resetHtml when done. saveFn is called on Save (Übergabe). */
 async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, saveFn) {
   const pages = container.querySelectorAll('.pdf-page');
 
@@ -1778,30 +1799,7 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
   const srcHtml        = container.innerHTML;
   const containerStyle = container.style.cssText;
 
-  // ── Mobile: save the file directly, no preview (matches Apartments tab) ──
-  if (window.innerWidth < 701) {
-    try {
-      if (saveFn) {
-        // Übergabe path: saveFn rebuilds its own container and saves
-        container.remove();
-        if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
-        await saveFn();
-        return;
-      }
-      container.remove();
-      await _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename);
-    } catch (err) {
-      console.error('[PDF] save failed:', err);
-      alert('PDF generation failed. Please try again.');
-    } finally {
-      document.getElementById('_pdfRenderContainer')?.remove();
-      if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
-      document.getElementById('contractOverlay')?.classList.add('open');
-    }
-    return;
-  }
-
-  // ── Desktop: in-app preview overlay, then save on confirm ──
+  // ── In-app preview overlay, then save on confirm ──
   const overlay  = document.getElementById('pdfPreviewOverlay');
   const doc      = document.getElementById('pdfPreviewDoc');
   const titleEl  = document.getElementById('pdfPreviewTitle');
@@ -3375,7 +3373,7 @@ async function _generateUebergPDF(isEinzug) {
     }
 
     const safeMieter = (mieterName || 'Mieter').replace(/\s+/g,'_');
-    pdf.save(`Übergabeprotokoll_${room.name}_${safeMieter}.pdf`);
+    _roomDeliverPdf(pdf, `Übergabeprotokoll_${room.name}_${safeMieter}.pdf`);
   } catch(err) {
     console.error('[PDF] Übergabe failed:', err);
     alert('PDF generation failed. Please try again.');
