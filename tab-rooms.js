@@ -1722,74 +1722,137 @@ let _contractType   = null;
 /* Shared helper — renders all .pdf-page nodes via html2canvas,
    shows desktop preview overlay or saves directly on mobile.
    Resets btnEl to resetHtml when done. saveFn is called on overlay Save. */
-async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, saveFn) {
+/* Renders every .pdf-page of `srcHtml` into a fresh offscreen container at full
+   quality (scale 3) and saves it as a real A4 PDF — identical settings to the
+   Apartments tab (_aptGenericPdfAction). One page is captured at a time so the
+   canvases are released as we go. */
+async function _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename) {
   const { jsPDF } = window.jspdf;
+  let tmp = document.getElementById('_pdfRenderContainer');
+  if (tmp) tmp.remove();
+  tmp = document.createElement('div');
+  tmp.id = '_pdfRenderContainer';
+  tmp.style.cssText = containerStyle;
+  tmp.innerHTML = srcHtml;
+  document.body.appendChild(tmp);
+  try {
+    await document.fonts.ready;
+    await new Promise(r => setTimeout(r, 200));
+    const pgs = tmp.querySelectorAll('.pdf-page');
+    if (!pgs.length) throw new Error('no .pdf-page nodes rendered');
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    for (let i = 0; i < pgs.length; i++) {
+      if (i > 0) pdf.addPage();
+      const canvas = await html2canvas(pgs[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+    }
+    pdf.save(filename);
+  } finally {
+    tmp.remove();
+  }
+}
+
+async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, saveFn) {
   const pages = container.querySelectorAll('.pdf-page');
 
-  {
-    // ── In-app preview overlay (desktop + mobile) ──
-    const overlay  = document.getElementById('pdfPreviewOverlay');
-    const doc      = document.getElementById('pdfPreviewDoc');
-    const titleEl  = document.getElementById('pdfPreviewTitle');
-    const saveBtn  = document.getElementById('pdfPreviewSaveBtn');
-    const closeBtn = document.getElementById('pdfPreviewClose');
-    titleEl.textContent = filename.replace(/_/g, ' ').replace('.pdf', '');
-    doc.innerHTML = '';
-    overlay.style.display = 'flex';
-
-    const bodyEl = document.getElementById('pdfPreviewBody');
-    const bodyW  = (bodyEl?.clientWidth || 400) - 32;
-    const scale  = Math.min(1, bodyW / 794);
-    const canvases = [];
-    for (const pg of pages) {
-      const canvas = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
-      canvases.push(canvas);
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
-      const img = document.createElement('img');
-      img.src = canvas.toDataURL('image/jpeg', 0.95);
-      img.style.cssText = `width:${794 * scale}px;height:${1123 * scale}px;display:block;`;
-      wrapper.appendChild(img);
-      doc.appendChild(wrapper);
-    }
+  // ── Guard: nothing rendered → fail loudly instead of saving a blank page ──
+  if (!pages.length) {
     container.remove();
-
-    // Re-enable trigger button
     if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+    console.error('[PDF] no .pdf-page nodes rendered for', filename);
+    alert('PDF konnte nicht erstellt werden — es wurden keine Seiten gerendert. Bitte erneut versuchen.');
+    return;
+  }
 
-    // Wire save button
-    const freshSave = saveBtn.cloneNode(true);
-    saveBtn.parentNode.replaceChild(freshSave, saveBtn);
-    freshSave.addEventListener('click', async e => {
-      e.stopPropagation();
-      freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving\u2026'; freshSave.disabled = true;
+  // Snapshot the rendered document so the save step can re-render at full quality
+  const srcHtml        = container.innerHTML;
+  const containerStyle = container.style.cssText;
+
+  // ── Mobile: save the file directly, no preview (matches Apartments tab) ──
+  if (window.innerWidth < 701) {
+    try {
+      if (saveFn) {
+        // Übergabe path: saveFn rebuilds its own container and saves
+        container.remove();
+        if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+        await saveFn();
+        return;
+      }
+      container.remove();
+      await _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename);
+    } catch (err) {
+      console.error('[PDF] save failed:', err);
+      alert('PDF generation failed. Please try again.');
+    } finally {
+      document.getElementById('_pdfRenderContainer')?.remove();
+      if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+      document.getElementById('contractOverlay')?.classList.add('open');
+    }
+    return;
+  }
+
+  // ── Desktop: in-app preview overlay, then save on confirm ──
+  const overlay  = document.getElementById('pdfPreviewOverlay');
+  const doc      = document.getElementById('pdfPreviewDoc');
+  const titleEl  = document.getElementById('pdfPreviewTitle');
+  const saveBtn  = document.getElementById('pdfPreviewSaveBtn');
+  const closeBtn = document.getElementById('pdfPreviewClose');
+  titleEl.textContent = filename.replace(/_/g, ' ').replace('.pdf', '');
+  doc.innerHTML = '';
+  overlay.style.display = 'flex';
+
+  const bodyEl = document.getElementById('pdfPreviewBody');
+  const bodyW  = (bodyEl?.clientWidth || 400) - 32;
+  const scale  = Math.min(1, bodyW / 794);
+  for (const pg of pages) {
+    const canvas = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
+    const img = document.createElement('img');
+    img.src = canvas.toDataURL('image/jpeg', 0.95);
+    img.style.cssText = `width:${794 * scale}px;height:${1123 * scale}px;display:block;`;
+    wrapper.appendChild(img);
+    doc.appendChild(wrapper);
+  }
+  container.remove();
+
+  // Re-enable trigger button
+  if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
+
+  const SAVE_LABEL = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF';
+
+  // Wire save button
+  const freshSave = saveBtn.cloneNode(true);
+  saveBtn.parentNode.replaceChild(freshSave, saveBtn);
+  freshSave.addEventListener('click', async e => {
+    e.stopPropagation();
+    freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving\u2026'; freshSave.disabled = true;
+    try {
       if (saveFn) {
         // saveFn rebuilds its own container and saves (Übergabe path)
         overlay.style.display = 'none';
         await saveFn();
       } else {
-        // Standard path: build PDF from canvases already captured
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        canvases.forEach((c, i) => {
-          if (i > 0) pdf.addPage();
-          pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
-        });
-        pdf.save(filename);
-        freshSave.innerHTML = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF'; freshSave.disabled = false;
+        // Re-render at full quality instead of reusing the low-res preview canvases
+        await _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename);
         overlay.style.display = 'none';
-        document.getElementById('contractOverlay')?.classList.add('open');
       }
-    });
-
-    // Wire close button
-    const freshClose = closeBtn.cloneNode(true);
-    closeBtn.parentNode.replaceChild(freshClose, closeBtn);
-    freshClose.addEventListener('click', () => {
-      overlay.style.display = 'none';
+    } catch (err) {
+      console.error('[PDF] save failed:', err);
+      alert('PDF generation failed. Please try again.');
+    } finally {
+      freshSave.innerHTML = SAVE_LABEL; freshSave.disabled = false;
       document.getElementById('contractOverlay')?.classList.add('open');
-    });
+    }
+  });
 
-  }
+  // Wire close button
+  const freshClose = closeBtn.cloneNode(true);
+  closeBtn.parentNode.replaceChild(freshClose, closeBtn);
+  freshClose.addEventListener('click', () => {
+    overlay.style.display = 'none';
+    document.getElementById('contractOverlay')?.classList.add('open');
+  });
 }
 
 function _kfSelect(prefix, val) {
@@ -1974,6 +2037,7 @@ async function _openContract(type, roomId) {
         try {
           await _generateUebergPreviewContainer(isEinzug);
           const container = document.getElementById('_pdfRenderContainer');
+          if (!container) throw new Error('Übergabe render container missing');
           const room3 = getRoomById(_contractRoomId);
           const mieterNameUb = document.getElementById('ub-mieter-name')?.value.trim() || 'Mieter';
           const filenameUb = `Übergabeprotokoll_${room3?.name || 'Zimmer'}_${mieterNameUb.replace(/\s+/g,'_')}.pdf`;
@@ -2486,87 +2550,7 @@ function _contractBodyComingSoon(name) {
 
 
 /* ── PDF GENERATION — KURZZEITMIETVERTRAG ────────────────── */
-async function _generateKurzzeitPDF() {
-  const container = document.getElementById('_pdfRenderContainer');
-  if (!container) return;
-
-  // Show loading state on button
-  const pdfBtn = document.getElementById('contractPdfBtn');
-  const origHTML = pdfBtn?.innerHTML;
-  if (pdfBtn) { pdfBtn.innerHTML = '<i class="ti ti-loader"></i> Generating…'; pdfBtn.disabled = true; }
-
-  const room = getRoomById(_contractRoomId);
-  const mieterName = (document.getElementById('cm-name')?.value.trim()) ||
-    container.querySelector('.kv__v')?.textContent?.trim() || 'Mieter';
-
-
-  // Wait for fonts to load
-  await document.fonts.ready;
-  await new Promise(r => setTimeout(r, 400));
-
-  try {
-    const { jsPDF } = window.jspdf;
-
-    // A4 dimensions in mm
-    const A4_W = 210;
-    const A4_H = 297;
-    const pdf  = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    // Find page break elements
-    const pages = container.querySelectorAll('.pdf-page');
-
-    if (pages.length > 0) {
-      // Render each page separately
-      for (let i = 0; i < pages.length; i++) {
-        if (i > 0) pdf.addPage();
-        const canvas = await html2canvas(pages[i], {
-          scale: 3,
-          useCORS: true,
-          backgroundColor: '#faf9f7',
-          width: 794,
-          height: 1123,
-          windowWidth: 794,
-        });
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        pdf.addImage(imgData, 'JPEG', 0, 0, A4_W, A4_H);
-      }
-    } else {
-      // Fallback: render full container and split into A4 pages
-      const canvas = await html2canvas(container, {
-        scale: 3,
-        useCORS: true,
-        backgroundColor: '#faf9f7',
-        width: 794,
-        windowWidth: 794,
-      });
-      const imgData    = canvas.toDataURL('image/jpeg', 0.95);
-      const imgW       = A4_W;
-      const imgH       = (canvas.height * A4_W) / canvas.width;
-      let   heightLeft = imgH;
-      let   position   = 0;
-
-      pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
-      heightLeft -= A4_H;
-      while (heightLeft > 0) {
-        position -= A4_H;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, imgW, imgH);
-        heightLeft -= A4_H;
-      }
-    }
-
-    // Save directly — no dialog
-    const filename = `Kurzzeitmietvertrag_${room.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
-    pdf.save(filename);
-
-  } catch(err) {
-    console.error('[PDF] Generation failed:', err);
-    alert('PDF generation failed. Please try again.');
-  } finally {
-    container.remove();
-    if (pdfBtn) { pdfBtn.innerHTML = origHTML; pdfBtn.disabled = false; }
-  }
-}
+/* removed: orphaned direct-save generator (superseded by _roomGenericPdfAction) */
 
 
 /* ── BUILD MIETVERTRAG DATA ──────────────────────────────── */
@@ -3272,11 +3256,14 @@ function _renderKurzzeitHTML(d) {
 }
 
 /* ── PDF GENERATION — ÜBERGABEPROTOKOLL ─────────────────── */
-async function _generateUebergPreviewContainer(isEinzug) {
-  // Collects current form values and renders Übergabe HTML into _pdfRenderContainer
-  // so _openPdfPreview can display it. _generateUebergPDF remains unchanged.
-  const room = getRoomById(_contractRoomId); if (!room) return;
+/* Single source of truth for the Übergabeprotokoll data — used by BOTH the
+   preview and the saved PDF, so what you see on screen is what lands in the
+   file. Field names must match exactly what _renderUebergHTML() reads. */
+function _buildUebergData(isEinzug) {
+  const room = getRoomById(_contractRoomId);
+  if (!room) return null;
   const s = appSettings;
+
   const mieterName  = document.getElementById('ub-mieter-name')?.value.trim() || '';
   const mieterAdr   = document.getElementById('ub-mieter-adr')?.value.trim() || '';
   const datum       = document.getElementById('ub-datum')?.value || '';
@@ -3289,33 +3276,49 @@ async function _generateUebergPreviewContainer(isEinzug) {
   const wasserStand = document.getElementById('ub-wasser')?.value.trim() || '';
   const haustur     = document.getElementById('ub-haustur')?.value || '1';
   const zimmertur   = document.getElementById('ub-zimmertur')?.value || '1';
+
   const zaehler = _parseArr(s.zaehler);
   const strom   = zaehler.find(z => z.type === 'Strom');
   const gas     = zaehler.find(z => z.type === 'Gas');
   const wasser  = zaehler.find(z => z.type === 'Wasser');
-  const fmtDate = v => { if (!v) return ''; if (/^\d{2}\.\d{2}\.\d{4}$/.test(v)) return v; const dd = new Date(v); return String(dd.getDate()).padStart(2,'0') + '.' + String(dd.getMonth()+1).padStart(2,'0') + '.' + dd.getFullYear(); };
-  const inventar = Array.isArray(room.inventar) ? room.inventar : [];
-  const d = {
-    isEinzug, datum: fmtDate(datum),
-    objekt: s.objekt_adresse || '', zimmer: room.name, zimmerName: room.name,
-    flaeche: room.zimmerFlaeche || room.flaeche_m2 || '',
-    zimmerFlaeche: room.flaeche_m2 || '',
-    gemeinschaftsraeume: _parseArr(room.gemeinschaftsraeume).join(', ') || '',
-    mieterName, mieterAdresse: mieterAdr, mieterGeburtsdatum: '', mieterEmail: '',
-    vermieterName: s.vermieter_name || s.landlord_name || '',
-    vermieterAdresse: s.vermieter_adresse || s.landlord_address || '',
-    vermieterEmail: s.vermieter_email || '',
-    objektAdresse: s.objekt_adresse || '',
-    unterschriftOrt: s.unterschrift_ort || 'Wiesbaden',
-    unterzeichnungsDatum: fmtDate(sigVal),
-    neueAdresseMieter: neueAdr, maengel, bemerkungen,
-    strom:   { nummer: strom?.nummer || '', stand: stromStand },
-    gas:     { nummer: gas?.nummer || '', stand: gasStand },
-    wasser:  { nummer: wasser?.nummer || '', stand: wasserStand },
-    haustur: parseInt(haustur), zimmertur: parseInt(zimmertur),
-    footerAdresse: s.footer_adresse || s.objekt_adresse || '',
-    inventar,
+
+  const fmtDate = v => {
+    if (!v) return '';
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(v)) return v;
+    const dd = new Date(v);
+    if (isNaN(dd)) return '';
+    return String(dd.getDate()).padStart(2,'0') + '.' + String(dd.getMonth()+1).padStart(2,'0') + '.' + dd.getFullYear();
   };
+
+  return {
+    isEinzug,
+    datum:         fmtDate(datum),
+    objekt:        s.objekt_adresse || '',
+    zimmer:        room.name,
+    flaeche:       room.flaeche_m2 || '',
+    floor:         room.floor || '',
+    vermieter:     s.vermieter_name || '',
+    mieterName,
+    mieterAdr,
+    neueAdr,
+    maengel,
+    bemerkungen,
+    strom:         { nummer: strom?.nummer || '', stand: stromStand },
+    gas:           { nummer: gas?.nummer || '', stand: gasStand },
+    wasser:        { nummer: wasser?.nummer || '', stand: wasserStand },
+    haustur:       parseInt(haustur),
+    zimmertur:     parseInt(zimmertur),
+    footerAdresse: s.footer_adresse || s.objekt_adresse || '',
+    unterschriftOrt:      s.unterschrift_ort || 'Wiesbaden',
+    unterzeichnungsDatum: fmtDate(sigVal),
+  };
+}
+
+async function _generateUebergPreviewContainer(isEinzug) {
+  // Renders Übergabe HTML into _pdfRenderContainer so the preview can display it.
+  // Uses the SAME data builder as _generateUebergPDF — preview == saved file.
+  const d = _buildUebergData(isEinzug);
+  if (!d) return;
   const html = _renderUebergHTML(d);
   let container = document.getElementById('_pdfRenderContainer');
   if (container) container.remove();
@@ -3331,57 +3334,10 @@ async function _generateUebergPDF(isEinzug) {
   const room = getRoomById(_contractRoomId);
   if (!room) return;
 
-  const mieterName  = document.getElementById('ub-mieter-name')?.value.trim();
-  const mieterAdr   = document.getElementById('ub-mieter-adr')?.value.trim();
-  const datum       = document.getElementById('ub-datum')?.value;
-  const sigVal      = document.getElementById('ub-sig')?.value;
-  const neueAdr     = document.getElementById('ub-neue-adr')?.value.trim() || '';
-  const maengel     = document.getElementById('ub-maengel')?.value.trim() || '';
-  const bemerkungen = document.getElementById('ub-bemerkungen')?.value.trim() || '';
-  const stromStand  = document.getElementById('ub-strom')?.value.trim() || '';
-  const gasStand    = document.getElementById('ub-gas')?.value.trim() || '';
-  const wasserStand = document.getElementById('ub-wasser')?.value.trim() || '';
-  const haustur     = document.getElementById('ub-haustur')?.value || '1';
-  const zimmertur   = document.getElementById('ub-zimmertur')?.value || '1';
-
-
-  const s = appSettings;
-  const zaehler = _parseArr(s.zaehler);
-  const strom   = zaehler.find(z => z.type === 'Strom');
-  const gas     = zaehler.find(z => z.type === 'Gas');
-  const wasser  = zaehler.find(z => z.type === 'Wasser');
-
-  const fmtDate = v => {
-    if (!v) return '';
-    // Already formatted as TT.MM.JJJJ from text input
-    if (/^\d{2}\.\d{2}\.\d{4}$/.test(v)) return v;
-    // Fallback: parse ISO date from old data
-    const d = new Date(v);
-    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
-  };
-
-  const d = {
-    isEinzug,
-    datum:        fmtDate(datum),
-    objekt:       s.objekt_adresse || '',
-    zimmer:       room.name,
-    flaeche:      room.flaeche_m2 || '',
-    floor:        room.floor || '',
-    vermieter:    s.vermieter_name || '',
-    mieterName,
-    mieterAdr,
-    neueAdr,
-    maengel,
-    bemerkungen,
-    strom:        { nummer: strom?.nummer || '', stand: stromStand },
-    gas:          { nummer: gas?.nummer || '', stand: gasStand },
-    wasser:       { nummer: wasser?.nummer || '', stand: wasserStand },
-    haustur:      parseInt(haustur),
-    zimmertur:    parseInt(zimmertur),
-    footerAdresse: s.footer_adresse || s.objekt_adresse || '',
-    unterschriftOrt:    s.unterschrift_ort || 'Wiesbaden',
-    unterzeichnungsDatum: sigVal ? fmtDate(sigVal.includes('.') ? sigVal : new Date(sigVal).toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'numeric'})) : '',
-  };
+  // Same data as the preview — single source of truth
+  const d = _buildUebergData(isEinzug);
+  if (!d) return;
+  const mieterName = d.mieterName;
 
   const pdfBtn = document.getElementById('contractPdfBtn');
   const origHTML = pdfBtn?.innerHTML;
@@ -3402,9 +3358,10 @@ async function _generateUebergPDF(isEinzug) {
 
   try {
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     const pages = container.querySelectorAll('.pdf-page');
+    if (!pages.length) throw new Error('no .pdf-page nodes rendered');
 
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     for (let i = 0; i < pages.length; i++) {
       if (i > 0) pdf.addPage();
       const canvas = await html2canvas(pages[i], {
@@ -3413,14 +3370,14 @@ async function _generateUebergPDF(isEinzug) {
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
     }
 
-    const filename = `Übergabeprotokoll_${room.name}_${mieterName.replace(/\s+/g,'_')}.pdf`;
-    pdf.save(filename);
+    const safeMieter = (mieterName || 'Mieter').replace(/\s+/g,'_');
+    pdf.save(`Übergabeprotokoll_${room.name}_${safeMieter}.pdf`);
   } catch(err) {
     console.error('[PDF] Übergabe failed:', err);
     alert('PDF generation failed. Please try again.');
   } finally {
     container.remove();
-    if (pdfBtn) { pdfBtn.innerHTML = origHTML; pdfBtn.disabled = false; }
+    if (pdfBtn) { pdfBtn.innerHTML = origHTML || '<i class="ti ti-printer"></i> Generate PDF'; pdfBtn.disabled = false; }
   }
 }
 
@@ -4394,42 +4351,7 @@ function _renderMietvertragHTML(d) {
 
 /* ── PDF GENERATOR ────────────────────────────────────────────────────────── */
 
-async function _generateMietvertragPDF() {
-  const container = document.getElementById('_pdfRenderContainer');
-  if (!container) return;
-  const pages = container.querySelectorAll('.pdf-page');
-  if (!pages.length) return;
-
-  const pdfBtn   = document.getElementById('contractPdfBtn');
-  const origHTML = pdfBtn?.innerHTML;
-  if (pdfBtn) { pdfBtn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; pdfBtn.disabled = true; }
-
-  try {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-
-    for (let i = 0; i < pages.length; i++) {
-      if (i > 0) pdf.addPage();
-      const canvas = await html2canvas(pages[i], {
-        scale: 3, useCORS: true, backgroundColor: '#ffffff',
-        width: 794, height: 1123, windowWidth: 794,
-      });
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
-    }
-
-    const roomName   = container.querySelector('.hdr__room-name')?.textContent?.trim() || 'Zimmer';
-    const mieterName = [...(container.querySelectorAll('.kv__v') || [])]
-      .find(el => el.previousElementSibling?.textContent?.includes('Name'))
-      ?.textContent?.trim() || 'Mieter';
-    pdf.save(`Mietvertrag_${roomName}_${mieterName.replace(/\s+/g,'_')}.pdf`);
-  } catch(err) {
-    console.error('[PDF] Mietvertrag failed:', err);
-    alert('PDF generation failed. Please try again.');
-  } finally {
-    container.remove();
-    if (pdfBtn) { pdfBtn.innerHTML = origHTML || '<i class="ti ti-printer"></i> Generate PDF'; pdfBtn.disabled = false; }
-  }
-}
+/* removed: orphaned direct-save generator (superseded by _roomGenericPdfAction) */
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
