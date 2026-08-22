@@ -1718,6 +1718,16 @@ document.getElementById('inventarSave')?.addEventListener('click', async () => {
 let _contractRoomId = null;
 let _contractType   = null;
 
+/* ── PDF PREVIEW — close wiring (overlay is static in landlord.html) ──
+   Mirrors the Apartments tab (_aptCPdfPreviewClose). Attached ONCE at file
+   load so closing always returns to the contract form with the typed values
+   still in place, even if PDF generation failed halfway. */
+document.getElementById('pdfPreviewClose')?.addEventListener('click', () => {
+  const ov = document.getElementById('pdfPreviewOverlay');
+  if (ov) ov.style.display = 'none';
+  document.getElementById('contractOverlay')?.classList.add('open');
+});
+
 /* ── PDF PREVIEW MODAL ─────────────────────────────────────── */
 /* Shared helper — renders all .pdf-page nodes via html2canvas,
    shows desktop preview overlay or saves directly on mobile.
@@ -1796,7 +1806,6 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
   const doc      = document.getElementById('pdfPreviewDoc');
   const titleEl  = document.getElementById('pdfPreviewTitle');
   const saveBtn  = document.getElementById('pdfPreviewSaveBtn');
-  const closeBtn = document.getElementById('pdfPreviewClose');
   titleEl.textContent = filename.replace(/_/g, ' ').replace('.pdf', '');
   doc.innerHTML = '';
   overlay.style.display = 'flex';
@@ -1846,13 +1855,8 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
     }
   });
 
-  // Wire close button
-  const freshClose = closeBtn.cloneNode(true);
-  closeBtn.parentNode.replaceChild(freshClose, closeBtn);
-  freshClose.addEventListener('click', () => {
-    overlay.style.display = 'none';
-    document.getElementById('contractOverlay')?.classList.add('open');
-  });
+  // Close button is wired statically once at file load (see the listener above
+  // this function) — do not clone/replace it here, that would destroy it.
 }
 
 function _kfSelect(prefix, val) {
