@@ -769,6 +769,7 @@ async function loadApartments() {
 
   _renderAptList();
   _aptInitSortable();
+  _aptRestoreContractDraft();
 }
 
 
@@ -1872,6 +1873,162 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
 
 
 /* ── CONTRACT MODAL ──────────────────────────────────────── */
+/* ═══ CONTRACT DRAFT — survives the iOS PDF hand-off ═══════════════════════
+   On iPhone, pdf.save() hands the file to the system viewer; iOS may unload
+   and relaunch the app when the user taps X. The auth gate keeps the session
+   alive, but the open contract form lived only in page memory. So: the exact
+   moment Generate PDF is tapped, the whole form is snapshotted to
+   localStorage; after the next apartments load, the contract is reopened and
+   refilled so the user lands back on the PDF generator with everything typed.
+   Draft is cleared on any deliberate close (Cancel / ✕ / backdrop) and
+   expires after 30 minutes. Failure of save or restore is always silent and
+   never blocks the app. */
+const _APT_DRAFT_KEY    = 'rnt_apt_contract_draft';
+const _APT_DRAFT_MAX_MS = 30 * 60 * 1000;
+
+function _aptSaveContractDraft() {
+  try {
+    const body = document.getElementById('aptContractBody');
+    if (!body || !_aptContractId || !_aptContractType) return;
+
+    const fields = {};
+    body.querySelectorAll('input[id], textarea[id], select[id]').forEach(el => {
+      if (el.type === 'radio') return;                       // radios saved by name below
+      if (el.type === 'checkbox') { fields[el.id] = el.checked ? '__on__' : '__off__'; }
+      else fields[el.id] = el.value;
+    });
+    const radios = {};
+    body.querySelectorAll('input[type=radio]:checked').forEach(r => { if (r.name) radios[r.name] = r.value; });
+    const modes = {};
+    body.querySelectorAll('[id][data-mode]').forEach(el => { modes[el.id] = el.dataset.mode; });
+    const pills = {};
+    body.querySelectorAll('[id][data-state]').forEach(el => { pills[el.id] = el.dataset.state; });
+    const fael = {};
+    body.querySelectorAll('.rm-fael-btn.active[data-prefix]').forEach(b => {
+      fael[b.dataset.prefix] = b.dataset.val || b.textContent.trim();
+    });
+    const wraps = {};
+    ['cm','mv','gw'].forEach(pre => [2,3].forEach(n => {
+      const w = document.getElementById(`apt-${pre}${n}-wrap`);
+      if (w) wraps[`${pre}${n}`] = (w.style.display !== 'none');
+    }));
+    const staffel = {};
+    ['mv','gw'].forEach(pre => {
+      const rows = body.querySelectorAll(`.apt-${pre}-staffel-row`);
+      if (rows.length) staffel[pre] = [...rows].map(r => r.querySelector(`.apt-${pre}-staffel-betrag`)?.value || '');
+    });
+    // Übergabe: Einzug/Auszug is chosen on the card, not in the sheet
+    let euLabel = null;
+    if (_aptContractType === 'ueberg') {
+      euLabel = document.getElementById('apt-eu-' + _aptContractId)
+        ?.querySelector('.active')?.textContent?.trim() || null;
+    }
+
+    localStorage.setItem(_APT_DRAFT_KEY, JSON.stringify({
+      ts: Date.now(), aptId: _aptContractId, type: _aptContractType,
+      fields, radios, modes, pills, fael, wraps, staffel, euLabel,
+    }));
+  } catch (e) { console.warn('[apt draft] save skipped:', e); }
+}
+
+function _aptClearContractDraft() {
+  try { localStorage.removeItem(_APT_DRAFT_KEY); } catch (e) {}
+}
+
+let _aptDraftRestoreTried = false;
+async function _aptRestoreContractDraft() {
+  if (_aptDraftRestoreTried) return;
+  _aptDraftRestoreTried = true;
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(_APT_DRAFT_KEY) || 'null'); } catch (e) {}
+  if (!d || !d.aptId || !d.type) return;
+  if (Date.now() - (d.ts || 0) > _APT_DRAFT_MAX_MS) { _aptClearContractDraft(); return; }
+  if (!appApartments.find(a => a.id === d.aptId)) { _aptClearContractDraft(); return; }
+
+  try {
+    // Übergabe: restore the card's Einzug/Auszug choice BEFORE opening,
+    // because _aptOpenContract reads it from the card
+    if (d.type === 'ueberg' && d.euLabel) {
+      const eu = document.getElementById('apt-eu-' + d.aptId);
+      eu?.querySelectorAll('button, span, div').forEach(el => {
+        if (el.textContent?.trim() === d.euLabel && !el.classList.contains('active')) el.click?.();
+      });
+    }
+
+    await _aptOpenContract(d.type, d.aptId);
+    await new Promise(r => setTimeout(r, 80));   // let setTimeout(0) wiring inside _aptOpenContract run
+
+    // 1) Tenant blocks 2/3 — mirror _aptAddTenantBlock without stealing focus
+    ['cm','mv','gw'].forEach(pre => {
+      const w2 = document.getElementById(`apt-${pre}2-wrap`);
+      const w3 = document.getElementById(`apt-${pre}3-wrap`);
+      const addBtn = document.getElementById(`apt-${pre}-addbtn`);
+      if (d.wraps?.[`${pre}2`] && w2) w2.style.display = '';
+      if (d.wraps?.[`${pre}3`] && w3) { w3.style.display = ''; if (addBtn) addBtn.style.display = 'none'; }
+    });
+
+    // 2) Pill toggles (data-mode) — replay via their own click handlers
+    Object.entries(d.modes || {}).forEach(([id, mode]) => {
+      const btn = document.getElementById(id);
+      if (!btn || btn.dataset.mode === mode) return;
+      btn.click();
+      if (btn.dataset.mode !== mode) btn.dataset.mode = mode;   // fallback
+    });
+
+    // 3) Mieter source pills (data-state room/manual)
+    Object.entries(d.pills || {}).forEach(([id, state]) => {
+      const el = document.getElementById(id);
+      if (!el || el.dataset.state === state) return;
+      el.click?.();
+      if (el.dataset.state !== state) el.dataset.state = state;
+    });
+
+    // 4) Kaution-Fälligkeit pills
+    Object.entries(d.fael || {}).forEach(([prefix, val]) => {
+      document.querySelectorAll(`.rm-fael-btn[data-prefix="${prefix}"]`).forEach(b => {
+        const v = b.dataset.val || b.textContent.trim();
+        if (v === val && !b.classList.contains('active')) b.click();
+      });
+    });
+
+    // 5) All field values (start date must be in before staffel rows are added)
+    Object.entries(d.fields || {}).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = (val === '__on__');
+      else el.value = val;
+    });
+    Object.entries(d.radios || {}).forEach(([name, val]) => {
+      const r = document.querySelector(`input[name="${CSS.escape(name)}"][value="${CSS.escape(val)}"]`);
+      if (r) r.checked = true;
+    });
+
+    // 6) Staffel rows — recreate via the app's own add functions, then refill
+    Object.entries(d.staffel || {}).forEach(([pre, betraege]) => {
+      const addFn = pre === 'mv' ? (typeof _aptMvAddStaffel === 'function' && _aptMvAddStaffel)
+                                 : (typeof _aptGwAddStaffel === 'function' && _aptGwAddStaffel);
+      const container = document.getElementById(`apt-${pre}-staffel-rows`);
+      if (!container || !addFn) return;
+      let guard = 0;
+      while (container.querySelectorAll(`.apt-${pre}-staffel-row`).length < betraege.length && guard++ < 6) {
+        const before = container.querySelectorAll(`.apt-${pre}-staffel-row`).length;
+        addFn(true);
+        if (container.querySelectorAll(`.apt-${pre}-staffel-row`).length === before) break;
+      }
+      container.querySelectorAll(`.apt-${pre}-staffel-betrag`).forEach((inp, i) => {
+        if (betraege[i] !== undefined) inp.value = betraege[i];
+      });
+    });
+
+    // 7) Dependent recalculations
+    if (typeof _aptUpdateMvGrundDetail === 'function') _aptUpdateMvGrundDetail();
+    if (typeof _aptMvCalcStaffelDates  === 'function') _aptMvCalcStaffelDates();
+  } catch (e) {
+    console.warn('[apt draft] restore failed, discarding:', e);
+    _aptClearContractDraft();
+  }
+}
+
 let _aptContractId   = null;
 let _aptContractType = null;
 
@@ -1905,6 +2062,7 @@ async function _aptOpenContract(type, aptId) {
 
     setTimeout(() => {
       document.getElementById('aptKzPdfBtn')?.addEventListener('click', async () => {
+        _aptSaveContractDraft();
         const apt2        = appApartments.find(a => a.id === _aptContractId);
         if (!apt2) return;
         const t1cm        = _aptReadTenantBlock('cm', 1);
@@ -1968,6 +2126,7 @@ async function _aptOpenContract(type, aptId) {
       setTimeout(() => {
         _aptGwInitInteractions();
         document.getElementById('aptGwPdfBtn')?.addEventListener('click', async () => {
+          _aptSaveContractDraft();
           const apt2 = appApartments.find(a => a.id === _aptContractId);
           if (!apt2) return;
 
@@ -2081,6 +2240,7 @@ async function _aptOpenContract(type, aptId) {
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
     setTimeout(() => {
       document.getElementById('aptMvPdfBtn')?.addEventListener('click', async () => {
+        _aptSaveContractDraft();
         const apt2              = appApartments.find(a => a.id === _aptContractId);
         if (!apt2) return;
         const mieterName        = document.getElementById('apt-mv-name')?.value.trim();
@@ -2169,6 +2329,7 @@ async function _aptOpenContract(type, aptId) {
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
     setTimeout(() => {
       document.getElementById('aptUebergPdfBtn')?.addEventListener('click', () => {
+        _aptSaveContractDraft();
         aptGenerateUebergPDF(isEinzug);
       });
     }, 0);
@@ -2177,6 +2338,7 @@ async function _aptOpenContract(type, aptId) {
   // Wire cancel
   setTimeout(() => {
     document.getElementById('aptContractCancelBtn')?.addEventListener('click', () => {
+      _aptClearContractDraft();
       document.getElementById('aptContractOverlay').classList.remove('open');
     });
   }, 0);
@@ -2185,6 +2347,7 @@ async function _aptOpenContract(type, aptId) {
 }
 
 document.getElementById('aptContractClose')?.addEventListener('click', () => {
+  _aptClearContractDraft();
   document.getElementById('aptContractOverlay').classList.remove('open');
 });
 let _aptContractMouseDownOnOverlay = false;
@@ -2192,8 +2355,10 @@ document.getElementById('aptContractOverlay')?.addEventListener('mousedown', e =
   _aptContractMouseDownOnOverlay = (e.target === document.getElementById('aptContractOverlay'));
 });
 document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
-  if (_aptContractMouseDownOnOverlay && e.target === document.getElementById('aptContractOverlay'))
+  if (_aptContractMouseDownOnOverlay && e.target === document.getElementById('aptContractOverlay')) {
+    _aptClearContractDraft();
     document.getElementById('aptContractOverlay').classList.remove('open');
+  }
   _aptContractMouseDownOnOverlay = false;
 });
 
