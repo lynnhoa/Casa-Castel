@@ -167,16 +167,26 @@
 
     // Auth gate — login happens on login.html (Supabase email + password).
     // Sync flag check first (no flash), then verify the real session.
+    // The session check is retried once before anything is cleared: after a
+    // PDF hand-off iOS may relaunch/reload this page while the client is
+    // still refreshing an expired token — a single empty result must not
+    // wipe the flags and log the user out (mirrors initLandlordAuth).
     if (!localStorage.getItem('rentals_role') && localStorage.getItem('cc_role') !== 'landlord') {
       location.replace('login.html');
     } else if (typeof sbL !== 'undefined' && sbL) {
-      sbL.auth.getSession().then(({ data }) => {
-        if (!data.session) {
-          localStorage.removeItem('rentals_role');
-          localStorage.removeItem('cc_role');
-          location.replace('login.html');
-        }
-      }).catch(() => {});
+      const rntHasSession = () => sbL.auth.getSession().then(({ data }) => !!data.session);
+      rntHasSession().then(ok => {
+        if (ok) return;
+        return new Promise(r => setTimeout(r, 1200))
+          .then(rntHasSession)
+          .then(ok2 => {
+            if (!ok2) {
+              localStorage.removeItem('rentals_role');
+              localStorage.removeItem('cc_role');
+              location.replace('login.html');
+            }
+          });
+      }).catch(() => { /* offline / refresh failed — keep app open */ });
     }
 
     initTabs();
