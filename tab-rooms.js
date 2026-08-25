@@ -1737,16 +1737,36 @@ document.getElementById('pdfPreviewClose')?.addEventListener('click', () => {
    through the login gate. This helper uses a hidden <a download> click on a
    blob URL instead — the same proven pattern as the Tenants tab document
    download (tab-tenants.js) — so the app never loses its page. */
+
+/* WebKit does not reliably honour a non-ASCII `download` attribute on a blob
+   URL. When it doesn't, the anchor click stops being a download and becomes a
+   NAVIGATION to the blob — which unloads landlord.html and forces a relaunch
+   through the login gate. Every filename is therefore ASCII-folded first
+   (Übergabeprotokoll → Uebergabeprotokoll, umlauts in tenant names too). */
+function _pdfSafeName(name) {
+  return String(name || 'document.pdf')
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
+    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')
+    .replace(/ß/g, 'ss')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/_{2,}/g, '_');
+}
+
 function _roomDeliverPdf(pdf, filename) {
   const blob = pdf.output('blob');
   const bUrl = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = bUrl;
-  a.download = filename;
+  a.download = _pdfSafeName(filename);
   a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
-  setTimeout(() => { URL.revokeObjectURL(bUrl); a.remove(); }, 1000);
+  // Revoking after 1s could pull the blob away while iOS is still opening it.
+  // Keep it alive until the page is actually hidden, with a long backstop.
+  const cleanup = () => { URL.revokeObjectURL(bUrl); a.remove(); };
+  window.addEventListener('pagehide', cleanup, { once: true });
+  setTimeout(cleanup, 60000);
 }
 
 /* Renders every .pdf-page of `srcHtml` into a fresh offscreen container at full
@@ -2043,7 +2063,13 @@ async function _openContract(type, roomId) {
           const room3 = getRoomById(_contractRoomId);
           const mieterNameUb = document.getElementById('ub-mieter-name')?.value.trim() || 'Mieter';
           const filenameUb = `Übergabeprotokoll_${room3?.name || 'Zimmer'}_${mieterNameUb.replace(/\s+/g,'_')}.pdf`;
-          await _roomGenericPdfAction(container, filenameUb, btn, '<i class="ti ti-printer"></i> Generate PDF', () => _generateUebergPDF(isEinzug));
+          // No saveFn: take the identical path as the Mietvertrag flow —
+          // _roomGenericPdfAction re-renders the snapshotted preview HTML at
+          // full quality and delivers it. Passing _generateUebergPDF here used
+          // to rebuild the document a second time from the live form and hide
+          // the overlay before rendering, which is the only step Mietvertrag
+          // never took.
+          await _roomGenericPdfAction(container, filenameUb, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[Übergabe PDF]', err);
           alert('PDF generation failed. Please try again.');
