@@ -21,6 +21,9 @@
       Phones and browsers only allow opening directly from a tap — creating
       the PDF takes a few seconds, so waiting would get it blocked.
       (A "PDF ready" sheet is only a last resort if even that is blocked.)
+      Installed app (home-screen icon): the app page is never replaced; after
+      creating, the Generate button becomes "Open PDF" (iPhone viewer on top of
+      the app, X brings you back) + "Save / Share" (real file name).
    4. If the temporary storage is not reachable, the iPhone share menu
       (or a normal download on the computer) is used instead.
    5. Generator drafts: what you type in a generator is kept for 2 hours
@@ -36,8 +39,8 @@
    ───────────────────────────────────────────────────────────── */
 
 const CC_PDF_BUCKET        = 'pdf-temp';
-const CC_PDF_LINK_SECONDS  = 600;            // the opening link works for 10 minutes
-const CC_PDF_KEEP_MINUTES  = 15;             // older temporary PDFs are deleted
+const CC_PDF_LINK_SECONDS  = 1800;           // the opening link works for 30 minutes
+const CC_PDF_KEEP_MINUTES  = 40;             // older temporary PDFs are deleted (after the link has expired)
 const CC_DRAFT_MAX_MS      = 2 * 60 * 60 * 1000;   // generator drafts: 2 hours
 const CC_DRAFT_PREFIX      = 'cc_draft_';
 const CC_APT_DRAFT_KEY     = 'rnt_apt_contract_draft';   // existing Rentals apartments draft
@@ -102,20 +105,22 @@ const CC_WAITING_PAGE =
   '</body></html>';
 let _ccPending = null;   // { win, timer } — the tab opened at the tap, waiting for its PDF
 
-/* Installed app (home-screen icon): a new tab would open INSIDE the app with no
-   Share / Save to Files. There the finished PDF is handed to the iPhone's own
-   viewer instead (see ccOpenUrl); closing it brings you back to the generator. */
+/* Installed app (home-screen icon): the app page is NEVER replaced (that made the
+   iPhone restart the app at the login page when the viewer was closed). Instead the
+   Generate button turns into "Open PDF" + "Save / Share" — see _ccShowReady. */
+let _ccLastTrigger = null;   // the Generate button that was tapped
 const CC_STANDALONE = (() => {
   try { return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches; }
   catch (e) { return false; }
 })();
 const CC_PDF_RETURN_KEY = 'cc_pdf_return';   // set while the PDF viewer is open (installed app)
-const CC_PDF_RETURN_MS  = 30 * 60 * 1000;
+const CC_PDF_RETURN_MS  = 15 * 60 * 1000;
 
 document.addEventListener('click', e => {
   const t = e.target && e.target.closest ? e.target.closest(CC_PDF_TRIGGERS) : null;
   if (!t || t.disabled || t.classList.contains('off')) return;
-  if (CC_STANDALONE) return;                             // installed app: see ccOpenUrl
+  _ccLastTrigger = t;
+  if (CC_STANDALONE) return;                             // installed app: see _ccShowReady
   _ccOpenWaitingTab();
 }, true);   // capture: runs before the button's own handler, still inside the tap
 
@@ -149,19 +154,92 @@ async function ccOpenPdf(pdfOrBlob, filename) {
   const blob = (pdfOrBlob && typeof pdfOrBlob.output === 'function')
     ? pdfOrBlob.output('blob') : pdfOrBlob;
   const url = await _ccUploadTempPdf(blob, name);
+  if (CC_STANDALONE) return _ccShowReady(url, blob, name);
   if (url) return ccOpenUrl(url, name);
   return _ccFallbackDeliver(blob, name);
+}
+
+/* ── INSTALLED APP: "Open PDF" + "Save / Share" in place of Generate ──
+   The iPhone only opens its viewer ON TOP of the app from a tap, so the ready
+   PDF gets one button: tap → viewer over the app → X → generator untouched. */
+function _ccShowReady(url, blob, name) {
+  const trigger = (_ccLastTrigger && document.contains(_ccLastTrigger)) ? _ccLastTrigger : null;
+  _ccLastTrigger = null;
+  const footer = trigger && trigger.parentElement;
+  if (!footer) {                                        // no generator footer (should not happen)
+    if (url) { _ccShowSheet({ title: 'PDF ready', name, href: url, action: 'Open PDF' }); return 'sheet'; }
+    return _ccFallbackDeliver(blob, name);
+  }
+  _ccClearReady(footer);
+  const box = document.createElement('div');
+  box.className = 'cc-pdf-ready';
+  box.style.cssText = 'display:flex;gap:8px;flex:1;justify-content:flex-end;align-items:center;';
+  if (url) {
+    const open = document.createElement('a');
+    open.className = 'cc-pdf-ready__open';
+    open.href = url; open.target = '_blank'; open.rel = 'noopener';
+    open.textContent = 'Open PDF';
+    // Safety net: if the iPhone ever reloads the app while the viewer is open,
+    // you still come back into this generator (marker is dropped on normal return).
+    open.addEventListener('click', () => {
+      try { sessionStorage.setItem(CC_PDF_RETURN_KEY, String(Date.now())); } catch (e) {}
+      const back = () => {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', back);
+        try { sessionStorage.removeItem(CC_PDF_RETURN_KEY); } catch (e) {}
+      };
+      setTimeout(() => document.addEventListener('visibilitychange', back), 500);
+    });
+    open.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;padding:11px 16px;border-radius:10px;' +
+      'background:#B8976A;color:#fff;font-weight:600;font-size:14px;text-decoration:none;white-space:nowrap;';
+    box.appendChild(open);
+  }
+  const share = document.createElement('button');
+  share.type = 'button';
+  share.className = 'cc-pdf-ready__share';
+  share.textContent = url ? 'Save / Share' : 'Save / Share PDF';
+  share.style.cssText = 'padding:11px 14px;border-radius:10px;border:1px solid #D9CFC2;background:#fff;color:#3A3530;' +
+    'font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;';
+  share.onclick = () => _ccSharePdf(blob, name);
+  box.appendChild(share);
+  trigger.style.display = 'none';
+  footer.appendChild(box);
+  // Anything changed in the generator → this PDF is outdated → Generate button back
+  const sheet = footer.closest('.rm-sheet') || footer.parentElement;
+  const reset = e => {
+    if (e && box.contains(e.target)) return;
+    sheet.removeEventListener('input', reset, true);
+    sheet.removeEventListener('change', reset, true);
+    _ccClearReady(footer);
+  };
+  sheet.addEventListener('input', reset, true);
+  sheet.addEventListener('change', reset, true);
+  setTimeout(() => { if (box.isConnected) reset(); }, 25 * 60 * 1000);   // link valid 30 min
+  return 'ready';
+}
+function _ccClearReady(footer) {
+  footer.querySelectorAll('.cc-pdf-ready').forEach(b => b.remove());
+  footer.querySelectorAll(CC_PDF_TRIGGERS).forEach(b => { if (b.style.display === 'none') b.style.display = ''; });
+}
+// iPhone share menu with the real file name (Save to Files, Mail, Print); computer: download
+async function _ccSharePdf(blob, name) {
+  let file = null;
+  try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) { file = null; }
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); } catch (e) { /* closed */ }
+    return;
+  }
+  const bUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = bUrl; a.download = name; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(bUrl); a.remove(); }, 60000);
 }
 
 /* ── OPEN A LINK (new tab / iPhone viewer on top of the app) ── */
 function ccOpenUrl(url, label) {
   const waiting = _ccTakeWaitingTab();                 // opened at the tap → just load the PDF into it
   if (waiting) { try { waiting.location.replace(url); return 'opened'; } catch (e) {} }
-  if (CC_STANDALONE) {                                   // installed app → iPhone's own PDF viewer
-    try { sessionStorage.setItem(CC_PDF_RETURN_KEY, String(Date.now())); } catch (e) {}
-    window.location.href = url;                          // opens in the iPhone viewer (Share → Save to Files);
-    return 'opened';                                     // "Done" brings you back to the generator
-  }
   let win = null;
   try { win = window.open(url, '_blank'); } catch (e) { win = null; }
   if (win) return 'opened';
@@ -401,3 +479,23 @@ function ccDismissDraftOffer() { document.getElementById('ccDraftOffer')?.remove
 
 // Temporary PDFs are also cleaned up whenever the app opens (not only on the next PDF).
 setTimeout(() => { try { _ccCleanupTempPdfs(); } catch (e) {} }, 6000);
+
+
+/* ── GENERATOR SHEETS: stable size, page behind stays still ──
+   The iPhone reports the screen height inconsistently in the installed app
+   (first open, keyboard, returning from the viewer), which made a generator
+   briefly fill the whole screen. Sheets use the dynamic screen height, and the
+   page behind an open sheet is locked so it cannot move along. */
+(function () {
+  const css = document.createElement('style');
+  css.textContent =
+    'html.cc-sheet-open, html.cc-sheet-open body { overflow:hidden !important; overscroll-behavior:none; }' +
+    '.rm-sheet__body { overscroll-behavior:contain; }';
+  document.head.appendChild(css);
+  const sync = () => document.documentElement.classList.toggle('cc-sheet-open', !!document.querySelector('.rm-overlay.open'));
+  const start = () => {
+    new MutationObserver(sync).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
+    sync();
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();

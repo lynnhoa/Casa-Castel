@@ -428,15 +428,15 @@ document.getElementById('tab-rooms').innerHTML = `
 .rm-overlay.open { display:flex; }
 @media(min-width:701px){
   .rm-overlay { align-items:center; }
-  .rm-sheet { border-radius:var(--cc-r-lg)!important; max-height:78vh!important; }
+  .rm-sheet { border-radius:var(--cc-r-lg)!important; max-height:78vh!important; max-height:78dvh!important; }
 }
 .rm-sheet {
-  width:100%; max-width:500px; max-height:88vh;
+  width:100%; max-width:500px; max-height:88vh; max-height:calc(88dvh - env(safe-area-inset-top, 0px));
   background:var(--cc-white); border-radius:20px 20px 0 0;
   display:flex; flex-direction:column;
   animation:rmSheetUp .26s cubic-bezier(.32,.72,0,1);
 }
-.rm-sheet--tall { max-height:92vh; }
+.rm-sheet--tall { max-height:92vh; max-height:calc(92dvh - env(safe-area-inset-top, 0px)); }
 @keyframes rmSheetUp { from{transform:translateY(40px);opacity:0;} to{transform:none;opacity:1;} }
 
 .rm-sheet__hdr {

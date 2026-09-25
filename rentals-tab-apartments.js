@@ -328,15 +328,16 @@ document.getElementById('tab-apartments').innerHTML = `
 .rm-overlay.open { display:flex; background:rgba(30,27,24,.22); backdrop-filter:blur(2px); }
 .rm-sheet {
   width:100%; max-width:500px;
-  /* iOS: use dvh so address bar doesn't cut off footer */
-  max-height:90dvh; max-height:90vh;
+  /* iOS: dynamic screen height (dvh) must come AFTER the vh fallback, else vh wins
+     and the sheet can briefly fill the whole screen in the installed app */
+  max-height:90vh; max-height:calc(90dvh - env(safe-area-inset-top, 0px));
   background:var(--cc-white); border-radius:20px 20px 0 0;
   display:flex; flex-direction:column;
   animation:rmSheetUp .26s cubic-bezier(.32,.72,0,1);
   /* prevent sheet itself from causing horizontal scroll */
   overflow:hidden;
 }
-.rm-sheet--tall { max-height:96dvh; max-height:96vh; }
+.rm-sheet--tall { max-height:92vh; max-height:calc(92dvh - env(safe-area-inset-top, 0px)); }
 @keyframes rmSheetUp { from{transform:translateY(40px);opacity:0;} to{transform:none;opacity:1;} }
 .rm-sheet__hdr { display:flex; align-items:flex-start; justify-content:space-between; padding:20px 20px 14px; border-bottom:var(--cc-border); flex-shrink:0; }
 .rm-contract-type { font-size:9px; font-weight:500; letter-spacing:.11em; text-transform:uppercase; color:var(--cc-gold); margin-bottom:3px; }
