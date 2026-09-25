@@ -2126,8 +2126,7 @@ async function _aptOpenContract(type, aptId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          const safeName = mieterName ? mieterName.replace(/\s+/g,'_') : apt2.name;
-          const filename = `Kurzzeitmiete_${apt2.name}_${safeName}.pdf`;
+          const filename = ccPdfFileName('Mietvertrag_befristet', apt2.name, mieterName);
           await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[Kurzzeit PDF]', err);
@@ -2252,8 +2251,7 @@ async function _aptOpenContract(type, aptId) {
             document.body.appendChild(container);
             await document.fonts.ready;
             await new Promise(r => setTimeout(r, 300));
-            const safeName = mieterName ? mieterName.replace(/\s+/g,'_') : apt2.name;
-            const filename = `Gewerbemietvertrag_${apt2.name}_${safeName}.pdf`;
+            const filename = ccPdfFileName('Gewerbemietvertrag', apt2.name, mieterName);
             await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
           } catch(err) {
             console.error('[Gewerbe PDF]', err);
@@ -2336,8 +2334,7 @@ async function _aptOpenContract(type, aptId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          const safeName = mieterName ? mieterName.replace(/\s+/g,'_') : apt2.name;
-          const filename = `Mietvertrag_${apt2.name}_${safeName}.pdf`;
+          const filename = ccPdfFileName('Mietvertrag', apt2.name, mieterName);
           await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[Mietvertrag PDF]', err);

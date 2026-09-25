@@ -1889,8 +1889,7 @@ async function _openContract(type, roomId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          const safeName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
-          const filename = `Kurzzeitmietvertrag_${room2.name}_${safeName}.pdf`;
+          const filename = ccPdfFileName('Mietvertrag_befristet', room2.name, mieterName);
           await _roomGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[KZ PDF]', err);
@@ -1971,8 +1970,7 @@ async function _openContract(type, roomId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          const safeMvName = mieterName ? mieterName.replace(/\s+/g, '_') : room2.name;
-          const filenameMv = `Mietvertrag_${room2.name}_${safeMvName}.pdf`;
+          const filenameMv = ccPdfFileName('Mietvertrag', room2.name, mieterName);
           await _roomGenericPdfAction(container, filenameMv, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
           console.error('[MV PDF]', err);
@@ -2000,8 +1998,8 @@ async function _openContract(type, roomId) {
           const container = document.getElementById('_pdfRenderContainer');
           if (!container) throw new Error('Übergabe render container missing');
           const room3 = getRoomById(_contractRoomId);
-          const mieterNameUb = document.getElementById('ub-mieter-name')?.value.trim() || 'Mieter';
-          const filenameUb = `Übergabeprotokoll_${room3?.name || 'Zimmer'}_${mieterNameUb.replace(/\s+/g,'_')}.pdf`;
+          const mieterNameUb = document.getElementById('ub-mieter-name')?.value.trim() || '';
+          const filenameUb = ccPdfFileName('Übergabeprotokoll', isEinzug ? 'Einzug' : 'Auszug', room3?.name || 'Zimmer', mieterNameUb);
           // No saveFn: take the identical path as the Mietvertrag flow —
           // _roomGenericPdfAction re-renders the snapshotted preview HTML at
           // full quality and delivers it. Passing _generateUebergPDF here used
@@ -3428,8 +3426,7 @@ async function _generateUebergPDF(isEinzug) {
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
     }
 
-    const safeMieter = (mieterName || 'Mieter').replace(/\s+/g,'_');
-    _roomDeliverPdf(pdf, `Übergabeprotokoll_${room.name}_${safeMieter}.pdf`);
+    _roomDeliverPdf(pdf, ccPdfFileName('Übergabeprotokoll', isEinzug ? 'Einzug' : 'Auszug', room.name, mieterName));
   } catch(err) {
     console.error('[PDF] Übergabe failed:', err);
     alert('PDF generation failed. Please try again.');

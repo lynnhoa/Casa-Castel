@@ -203,9 +203,8 @@ async function _pkSaveUebergPDFFromData(d, existingContainer) {
   const pdf = await ccRenderPagesToPdf(container);
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
-  const safeName = (d.mieterName || d.spotName).replace(/\s+/g, '_');
   // Phase 1: opened on top of the app instead of replacing it (pdf-open.js)
-  await ccOpenPdf(pdf, `Übergabeprotokoll_Stellplatz_${typ}_${safeName}.pdf`);
+  await ccOpenPdf(pdf, ccPdfFileName('Übergabeprotokoll', typ, d.spotName, d.mieterName));
 
   if (!existingContainer) container.remove();
 }

@@ -48,6 +48,13 @@ const CC_APT_DRAFT_KEY     = 'rnt_apt_contract_draft';   // existing Rentals apa
 /* ── FILE NAME ──────────────────────────────────────────────
    ASCII only (Übergabeprotokoll → Uebergabeprotokoll): iOS and some
    browsers mishandle umlauts in file names.                      */
+/* Uniform file name for every generated PDF:
+     Dokument _ [Einzug|Auszug] _ Objekt _ [Mieter] .pdf
+   Empty parts are left out (no "Los_Angeles_Los_Angeles" when no tenant is typed).
+   ccPdfSafeName() then turns umlauts/spaces into iPhone-safe characters.   */
+function ccPdfFileName(...parts) {
+  return parts.map(p => String(p == null ? '' : p).trim()).filter(Boolean).join('_') + '.pdf';
+}
 function ccPdfSafeName(name) {
   let n = String(name || 'document.pdf')
     .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')

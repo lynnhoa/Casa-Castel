@@ -551,7 +551,7 @@ function _wirePkMvPdfBtn() {
       document.body.appendChild(container);
       await document.fonts.ready;
 
-      const filename = `Parkplatz_Mietvertrag_${(spot.name||'').replace(/\s+/g,'_')}_${(mieterName||'Mieter').replace(/\s+/g,'_')}.pdf`;
+      const filename = ccPdfFileName(data.isTG ? 'Garagenmietvertrag' : 'Stellplatzmietvertrag', spot.name, mieterName);   // = the PDF's own title
 
       await _aptGenericPdfAction(container, filename, btn, resetHtml);
 

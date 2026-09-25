@@ -195,8 +195,7 @@ async function _aptSaveUebergPDFFromData(d, existingContainer) {
   const pdf = await ccRenderPagesToPdf(container);
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
-  const safeName = (d.mieterName || d.aptName).replace(/\s+/g, '_');
-  await ccOpenPdf(pdf, `Übergabeprotokoll_${typ}_${safeName}.pdf`);
+  await ccOpenPdf(pdf, ccPdfFileName('Übergabeprotokoll', typ, d.aptName, d.mieterName));
 
   if (!existingContainer) container.remove();
 }
