@@ -286,6 +286,34 @@ document.getElementById('tab-rooms').innerHTML = `
   font-family:inherit; cursor:pointer;
 }
 .rc-edit-open-btn:hover { border-color:var(--cc-stone); }
+.rc-delete-btn {
+  display:flex; align-items:center; gap:5px; padding:6px 12px; background:transparent;
+  border:.5px solid #EAC4BB; border-radius:var(--cc-r-md); color:#C4705A;
+  font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  cursor:pointer; font-family:inherit;
+}
+
+/* Per-section edit (same pattern as the Apartments cards) */
+.rc-section-edit { display:flex; justify-content:flex-end; margin-top:10px; }
+.rc-sec-edit-btn {
+  display:flex; align-items:center; gap:4px; height:26px; padding:0 10px;
+  background:none; border:.5px solid var(--cc-rule); border-radius:6px;
+  font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--cc-taupe); cursor:pointer; font-family:inherit;
+}
+.rc-sec-edit-btn:hover { border-color:var(--cc-stone); }
+.rc-sec--editing { background:var(--cc-white); }
+.rc-sec-save-row { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+.rc-btn--cancel {
+  height:36px; padding:0 16px; background:none; border:.5px solid var(--cc-rule);
+  border-radius:var(--cc-r-md); font-size:11px; font-weight:500; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--cc-taupe); cursor:pointer; font-family:inherit;
+}
+.rc-btn--save {
+  height:36px; padding:0 20px; background:var(--cc-ink); color:var(--cc-white);
+  border:none; border-radius:var(--cc-r-md); font-size:11px; font-weight:500;
+  letter-spacing:.07em; text-transform:uppercase; cursor:pointer; font-family:inherit;
+}
 
 /* Edit body */
 .rc-edit { display:none; border-top:2px solid var(--cc-gold); background:var(--cc-white); }
@@ -856,6 +884,7 @@ async function loadRooms() {
 
   _renderRoomsList();
   _initSortable();
+  if (typeof tnWarmTenants === 'function') tnWarmTenants();   // preload tenant names for the generators
   _roomRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
   // Re-render if settings change (bathrooms / shared spaces lists update)
   if (!loadRooms._settingsWired) { loadRooms._settingsWired = true; onSettingsChange(() => _renderRoomsList()); }
@@ -919,7 +948,21 @@ function _renderRoomsList() {
     return;
   }
 
+  // Keep open cards open, and keep any card you are editing exactly as it is
+  // (a background refresh — e.g. the echo of your own save — must not wipe it)
+  const openIds = new Set([...list.querySelectorAll('.rc.rc--expanded')].map(c => c.dataset.id));
+  const editing = [...list.querySelectorAll('.rc')]
+    .filter(c => c.classList.contains('rc--editing') || c.querySelector('.rc-sec--editing'));
+
   list.innerHTML = rooms.map(r => _roomCardHTML(r)).join('');
+
+  list.querySelectorAll('.rc').forEach(c => { if (openIds.has(c.dataset.id)) c.classList.add('rc--expanded'); });
+  editing.forEach(old => {
+    const fresh = list.querySelector(`.rc[data-id="${old.dataset.id}"]`);
+    if (fresh) fresh.replaceWith(old);
+    else list.insertBefore(old, list.firstChild);   // a new room not saved yet
+  });
+
   _updateRoomsSummary(rooms);
   _bindAllCards();
 }
@@ -1053,11 +1096,8 @@ function _roomCardHTML(r) {
   const invCount = Array.isArray(r.inventar) ? r.inventar.length : 0;
 
   // Rent display
-  // Kaution helper — base depends on pricing mode, override wins
-  function _kautionForType(base, multiplier) {
-    if (r.kaution_override && r.kaution_default) return Number(r.kaution_default);
-    return Math.round(base * multiplier);
-  }
+  // Kaution — shared rule (kaution.js): override while toggle ON, else base × multiplier
+  const _kLbl = k => k.source === 'override' ? 'Individuell' : null;
 
   let rentRead = '';
   if (r.kurzzeit_kaltmiete) {
@@ -1065,22 +1105,24 @@ function _roomCardHTML(r) {
     const nk   = Number(r.kurzzeit_nk)||0;
     const isPauschal = (r.kurzzeit_pricing||'pauschal') === 'pauschal';
     const display = isPauschal ? fmtEUR(kalt+nk)+' pauschal inkl. NK' : fmtEUR(kalt)+' kalt + '+fmtEUR(nk)+' NK';
-    const kzBase = isPauschal ? kalt + nk : kalt;
-    const kzKaution = _kautionForType(kzBase, 1);
+    const _kKz = ccKaution({ contract: 'kurzzeit', mode: isPauschal ? 'pauschal' : 'kalt_nk', kalt, nk, rec: r });
+    const kzKaution = _kKz.amount;
     rentRead += `<div class="rc-row"><span class="rc-row__k">Kurzzeit</span><span class="rc-row__v">${display} / Monat</span></div>`;
-    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(kzKaution)} · 1× ${isPauschal ? 'Pauschal' : 'Kalt'}${r.kaution_override ? ' (override)' : ''}</span></div>`;
+    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(kzKaution)} · ${_kLbl(_kKz) || '1× ' + (isPauschal ? 'Pauschal' : 'Kalt') + ' · > 3 Mon. 3×'}</span></div>`;
   }
   if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
     const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
-    const mvKaution = _kautionForType(kalt, 3);
+    const _kMv = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: r });
+    const mvKaution = _kMv.amount;
     rentRead += `<div class="rc-row"><span class="rc-row__k">Mietvertrag</span><span class="rc-row__v">${fmtEUR(kalt)} kalt + ${fmtEUR(nk)} NK</span></div>`;
-    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · 3× Kalt${r.kaution_override ? ' (override)' : ''}</span></div>`;
+    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · ${_kLbl(_kMv) || '3× Kalt'}</span></div>`;
   } else if (r.kaltmiete) {
     const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
     const tot = kalt + nk;
-    const mvKaution = _kautionForType(tot, 3);
+    const _kMv = ccKaution({ contract: 'mietvertrag', mode: 'pauschal', kalt, nk, rec: r });
+    const mvKaution = _kMv.amount;
     rentRead += `<div class="rc-row"><span class="rc-row__k">Mietvertrag</span><span class="rc-row__v">${fmtEUR(tot)} pauschal inkl. NK</span></div>`;
-    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · 3× Pauschal${r.kaution_override ? ' (override)' : ''}</span></div>`;
+    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · ${_kLbl(_kMv) || '3× Pauschal'}</span></div>`;
   }
 
   // Shared space chips (edit)
@@ -1106,6 +1148,101 @@ function _roomCardHTML(r) {
   // Pricing toggles
   const mvIsPauschal = r.mietvertrag_pricing === 'pauschal';
   const kzIsPauschal = (r.kurzzeit_pricing || 'pauschal') === 'pauschal';
+
+  // ── Edit fragments — reused by the per-section editors and the new-room form
+  const isNew = !r.id;
+  const editIdentity = `
+        <div class="rc-field-row">
+          <div class="rc-field"><label class="rc-field__label">Name</label><input class="rc-input" data-f="name" value="${esc(r.name)}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Floor</label><input class="rc-input" data-f="floor" value="${esc(r.floor||'')}"/></div>
+        </div>
+        <div class="rc-field-row">
+          <div class="rc-field"><label class="rc-field__label">Size m²</label><input class="rc-input" type="number" data-f="flaeche_m2" value="${r.flaeche_m2||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Type</label>
+            <select class="rc-input" data-f="room_type">
+              <option ${r.room_type==='WG Zimmer'?'selected':''}>WG Zimmer</option>
+              <option ${r.room_type==='Zimmer mit eigener Küche'?'selected':''}>Zimmer mit eigener Küche</option>
+              <option ${r.room_type==='2-Zimmer mit eigener Küche'?'selected':''}>2-Zimmer mit eigener Küche</option>
+            </select>
+          </div>
+        </div>
+        <div class="rc-toggle-row">
+          <span class="rc-tlabel" data-i18n="rooms_vacant">${t('rooms_vacant')}</span>
+          <label class="cc-sw"><input type="checkbox" data-f="vacant" ${r.vacant?'checked':''}/><span class="cc-sw__t"></span></label>
+        </div>`;
+  const editMietobjekt = `
+        <div class="rc-field">
+          <label class="rc-field__label">Kitchen</label>
+          <select class="rc-input" data-f="kitchen_type">
+            <option value="Eigene Küche"    ${r.kitchen_type==='Eigene Küche'   ?'selected':''}>Eigene Küche</option>
+            <option value="Geteilte Küche" ${r.kitchen_type==='Geteilte Küche'?'selected':''}>Geteilte Küche</option>
+            <option value="Keine Küche"   ${r.kitchen_type==='Keine Küche'  ?'selected':''}>Keine Küche</option>
+          </select>
+        </div>
+        <div class="rc-field">
+          <label class="rc-field__label">Bathroom</label>
+          <div class="rc-chips" data-chipgroup="badezimmer">${badChips || '<span style="font-size:12px;color:var(--cc-stone);">Add bathrooms in Profile first</span>'}</div>
+        </div>
+        <div class="rc-field">
+          <label class="rc-field__label">Shared spaces</label>
+          <div class="rc-chips" data-chipgroup="gemeinschaftsraeume">${spaceChips || '<span style="font-size:12px;color:var(--cc-stone);">Add shared spaces in Profile first</span>'}</div>
+        </div>`;
+  const editPricing = `
+        <div class="rc-edit-stitle">Kurzzeit Pricing</div>
+        <div class="rc-toggle-row">
+          <span class="rc-tlabel">${kzIsPauschal ? 'Pauschal' : 'Kalt + NK'}</span>
+          <label class="cc-sw"><input type="checkbox" data-kztoggle ${kzIsPauschal?'':'checked'} onchange="_onKzToggle(this)"/><span class="cc-sw__t"></span></label>
+        </div>
+        <div class="rc-field-row">
+          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kurzzeit_kaltmiete" value="${r.kurzzeit_kaltmiete||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="kurzzeit_nk" value="${r.kurzzeit_nk||''}"/></div>
+        </div>
+        <div class="rc-edit-stitle" style="margin-top:14px">Mietvertrag Pricing</div>
+        <div class="rc-toggle-row">
+          <span class="rc-tlabel">${mvIsPauschal ? 'Pauschal' : 'Kalt + NK'}</span>
+          <label class="cc-sw"><input type="checkbox" data-mvtoggle ${mvIsPauschal?'checked':''} onchange="_onMvToggle(this)"/><span class="cc-sw__t"></span></label>
+        </div>
+        <div class="rc-field-row">
+          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kaltmiete" value="${r.kaltmiete||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="nk_pauschale" value="${r.nk_pauschale||''}"/></div>
+        </div>
+        <div class="rc-toggle-row" style="margin-top:6px;">
+          <span class="rc-tlabel">Custom Kaution</span>
+          <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${r.kaution_override?'checked':''} onchange="_toggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
+        </div>
+        <div data-kautionoverridefield style="${r.kaution_override?'':'display:none;'}">
+          <div class="rc-field"><label class="rc-field__label">Kaution (€)</label><input class="rc-input" type="number" data-f="kaution_default" value="${r.kaution_default||''}"/></div>
+        </div>`;
+  const editKeys = `
+        <div class="rc-field-row">
+          <div class="rc-field">
+            <label class="rc-field__label">Haustür</label>
+            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="haustuerschluessel">${r.haustuerschluessel||1}</span><button onclick="_step(this,1)">+</button></div>
+          </div>
+          <div class="rc-field">
+            <label class="rc-field__label">Zimmer</label>
+            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="zimmerschluessel">${r.zimmerschluessel||1}</span><button onclick="_step(this,1)">+</button></div>
+          </div>
+        </div>
+        <div class="rc-field">
+          <label class="rc-field__label">Briefkasten</label>
+          <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="briefkastenschluessel">${r.briefkastenschluessel||0}</span><button onclick="_step(this,1)">+</button></div>
+        </div>`;
+  // Per-section Edit button + editor (existing rooms only)
+  const _secBtn = sec => isNew ? '' : `
+          <div class="rc-section-edit">
+            <button class="rc-sec-edit-btn" onclick="_roomEnterSection('${sec}','${r.id}')">
+              <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+            </button>
+          </div>`;
+  const _secEdit = (sec, inner) => isNew ? '' : `
+        <div class="rc-sec-edit" style="display:none">
+          ${inner}
+          <div class="rc-sec-save-row">
+            <button class="rc-btn--cancel" onclick="_roomCancelSection('${sec}','${r.id}')">${t('rooms_cancel')}</button>
+            <button class="rc-btn--save" onclick="_roomSaveSection('${sec}','${r.id}')">${t('rooms_save')}</button>
+          </div>
+        </div>`;
 
   return `
   <div class="rc" data-id="${r.id}" data-room="${esc(r.name)}">
@@ -1148,32 +1285,59 @@ function _roomCardHTML(r) {
         </button>
       </div>
 
-      <!-- Mietobjekt -->
-      <div class="rc-section">
-        <div class="rc-stitle">Mietobjekt</div>
-        <div class="rc-rows">
-          <div class="rc-row"><span class="rc-row__k">Küche</span><span class="rc-row__v">${esc(r.kitchen_type||'—')}</span></div>
-          <div class="rc-row"><span class="rc-row__k">Bad</span><span class="rc-row__v">${esc(badStr)}</span></div>
-          <div class="rc-row"><span class="rc-row__k">Shared Spaces</span><span class="rc-row__v">${esc(gemStr)}</span></div>
+      <!-- Identity -->
+      <div class="rc-section" id="rc-identity-${r.id}">
+        <div class="rc-stitle">Identity</div>
+        <div class="rc-sec-read">
+          <div class="rc-rows">
+            <div class="rc-row"><span class="rc-row__k">Name</span><span class="rc-row__v">${esc(r.name||'—')}</span></div>
+            <div class="rc-row"><span class="rc-row__k">Floor</span><span class="rc-row__v">${esc(r.floor||'—')}</span></div>
+            <div class="rc-row"><span class="rc-row__k">Size</span><span class="rc-row__v">${r.flaeche_m2 ? r.flaeche_m2 + ' m²' : '—'}</span></div>
+            <div class="rc-row"><span class="rc-row__k">Type</span><span class="rc-row__v">${esc(r.room_type||'—')}</span></div>
+          </div>
+          ${_secBtn('identity')}
         </div>
+        ${_secEdit('identity', editIdentity)}
+      </div>
+
+      <!-- Mietobjekt -->
+      <div class="rc-section" id="rc-mietobjekt-${r.id}">
+        <div class="rc-stitle">Mietobjekt</div>
+        <div class="rc-sec-read">
+          <div class="rc-rows">
+            <div class="rc-row"><span class="rc-row__k">Küche</span><span class="rc-row__v">${esc(r.kitchen_type||'—')}</span></div>
+            <div class="rc-row"><span class="rc-row__k">Bad</span><span class="rc-row__v">${esc(badStr)}</span></div>
+            <div class="rc-row"><span class="rc-row__k">Shared Spaces</span><span class="rc-row__v">${esc(gemStr)}</span></div>
+          </div>
+          ${_secBtn('mietobjekt')}
+        </div>
+        ${_secEdit('mietobjekt', editMietobjekt)}
       </div>
 
       <!-- Miete — gold left border accent -->
-      <div class="rc-section--miete">
+      <div class="rc-section--miete" id="rc-miete-${r.id}">
         <div class="rc-stitle">Miete</div>
-        <div class="rc-rows">
-          ${rentRead || '<div class="rc-row"><span class="rc-row__v" style="color:var(--cc-stone);font-style:italic;">Not set</span></div>'}
+        <div class="rc-sec-read">
+          <div class="rc-rows">
+            ${rentRead || '<div class="rc-row"><span class="rc-row__v" style="color:var(--cc-stone);font-style:italic;">Not set</span></div>'}
+          </div>
+          ${_secBtn('miete')}
         </div>
+        ${_secEdit('miete', editPricing)}
       </div>
 
       <!-- Schlüssel — inline icons -->
-      <div class="rc-section">
+      <div class="rc-section" id="rc-schluessel-${r.id}">
         <div class="rc-stitle">Schlüssel</div>
-        <div class="rc-keys">
-          <div class="rc-key"><i class="ti ti-home"></i> Haustür ×${r.haustuerschluessel||1}</div>
-          <div class="rc-key"><i class="ti ti-key"></i> Zimmer ×${r.zimmerschluessel||1}</div>
-          ${r.briefkastenschluessel ? `<div class="rc-key"><i class="ti ti-mail"></i> Briefkasten ×${r.briefkastenschluessel}</div>` : ''}
+        <div class="rc-sec-read">
+          <div class="rc-keys">
+            <div class="rc-key"><i class="ti ti-home"></i> Haustür ×${r.haustuerschluessel||1}</div>
+            <div class="rc-key"><i class="ti ti-key"></i> Zimmer ×${r.zimmerschluessel||1}</div>
+            ${r.briefkastenschluessel ? `<div class="rc-key"><i class="ti ti-mail"></i> Briefkasten ×${r.briefkastenschluessel}</div>` : ''}
+          </div>
+          ${_secBtn('schluessel')}
         </div>
+        ${_secEdit('schluessel', editKeys)}
       </div>
 
       <!-- Inventar -->
@@ -1215,124 +1379,39 @@ function _roomCardHTML(r) {
 
       </div>
 
-      <!-- Footer: edit -->
+      <!-- Footer: delete (editing now happens per section above) -->
       <div class="rc-card-footer">
-        <button class="rc-edit-open-btn" onclick="_enterEdit(this.closest('.rc'))">
-          <i class="ti ti-pencil"></i> Edit room details
+        <button class="rc-delete-btn" onclick="_confirmDelete(this.closest('.rc'))">
+          <i class="ti ti-trash"></i> <span data-i18n="rooms_delete">${t('rooms_delete')}</span>
         </button>
       </div>
     </div>
 
-    <!-- EDIT MODE -->
+    <!-- EDIT MODE — only for a NEW room (existing rooms edit per section) -->
+    ${isNew ? `
     <div class="rc-edit">
       <div class="rc-edit-section">
         <div class="rc-edit-stitle">Identity</div>
-        <div class="rc-field-row">
-          <div class="rc-field"><label class="rc-field__label">Name</label><input class="rc-input" data-f="name" value="${esc(r.name)}"/></div>
-          <div class="rc-field"><label class="rc-field__label">Floor</label><input class="rc-input" data-f="floor" value="${esc(r.floor||'')}"/></div>
-        </div>
-        <div class="rc-field-row">
-          <div class="rc-field"><label class="rc-field__label">Size m²</label><input class="rc-input" type="number" data-f="flaeche_m2" value="${r.flaeche_m2||''}"/></div>
-          <div class="rc-field"><label class="rc-field__label">Type</label>
-            <select class="rc-input" data-f="room_type">
-              <option ${r.room_type==='WG Zimmer'?'selected':''}>WG Zimmer</option>
-              <option ${r.room_type==='Zimmer mit eigener Küche'?'selected':''}>Zimmer mit eigener Küche</option>
-              <option ${r.room_type==='2-Zimmer mit eigener Küche'?'selected':''}>2-Zimmer mit eigener Küche</option>
-            </select>
-          </div>
-        </div>
-        <div class="rc-toggle-row">
-          <span class="rc-tlabel" data-i18n="rooms_vacant">${t('rooms_vacant')}</span>
-          <label class="cc-sw"><input type="checkbox" data-f="vacant" ${r.vacant?'checked':''}/><span class="cc-sw__t"></span></label>
-        </div>
-
+        ${editIdentity}
       </div>
-
       <div class="rc-edit-section">
         <div class="rc-edit-stitle">Mietobjekt</div>
-        <div class="rc-field">
-          <label class="rc-field__label">Kitchen</label>
-          <select class="rc-input" data-f="kitchen_type">
-            <option value="Eigene Küche"    ${r.kitchen_type==='Eigene Küche'   ?'selected':''}>Eigene Küche</option>
-            <option value="Geteilte Küche" ${r.kitchen_type==='Geteilte Küche'?'selected':''}>Geteilte Küche</option>
-            <option value="Keine Küche"   ${r.kitchen_type==='Keine Küche'  ?'selected':''}>Keine Küche</option>
-          </select>
-        </div>
-        <div class="rc-field">
-          <label class="rc-field__label">Bathroom</label>
-          <div class="rc-chips" data-chipgroup="badezimmer">${badChips || '<span style="font-size:12px;color:var(--cc-stone);">Add bathrooms in Profile first</span>'}</div>
-        </div>
-        <div class="rc-field">
-          <label class="rc-field__label">Shared spaces</label>
-          <div class="rc-chips" data-chipgroup="gemeinschaftsraeume">${spaceChips || '<span style="font-size:12px;color:var(--cc-stone);">Add shared spaces in Profile first</span>'}</div>
-        </div>
+        ${editMietobjekt}
       </div>
-
       <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Kurzzeit Pricing</div>
-        <div class="rc-toggle-row">
-          <span class="rc-tlabel">${kzIsPauschal ? 'Pauschal' : 'Kalt + NK'}</span>
-          <label class="cc-sw"><input type="checkbox" data-kztoggle ${kzIsPauschal?'':'checked'} onchange="_onKzToggle(this)"/><span class="cc-sw__t"></span></label>
-        </div>
-        <div class="rc-field-row">
-          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kurzzeit_kaltmiete" value="${r.kurzzeit_kaltmiete||''}"/></div>
-          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="kurzzeit_nk" value="${r.kurzzeit_nk||''}"/></div>
-        </div>
+        ${editPricing}
       </div>
-
-      <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Mietvertrag Pricing</div>
-        <div class="rc-toggle-row">
-          <span class="rc-tlabel">${mvIsPauschal ? 'Pauschal' : 'Kalt + NK'}</span>
-          <label class="cc-sw"><input type="checkbox" data-mvtoggle ${mvIsPauschal?'checked':''} onchange="_onMvToggle(this)"/><span class="cc-sw__t"></span></label>
-        </div>
-        <div class="rc-field-row">
-          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kaltmiete" value="${r.kaltmiete||''}"/></div>
-          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="nk_pauschale" value="${r.nk_pauschale||''}"/></div>
-        </div>
-        <div class="rc-toggle-row" style="margin-top:6px;">
-          <span class="rc-tlabel">Custom Kaution</span>
-          <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${r.kaution_override?'checked':''} onchange="_toggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
-        </div>
-        <div data-kautionoverridefield style="${r.kaution_override?'':'display:none;'}">
-          <div class="rc-field"><label class="rc-field__label">Kaution (€)</label><input class="rc-input" type="number" data-f="kaution_default" value="${r.kaution_default||''}"/></div>
-        </div>
-      </div>
-
       <div class="rc-edit-section">
         <div class="rc-edit-stitle">Schlüssel</div>
-        <div class="rc-field-row">
-          <div class="rc-field">
-            <label class="rc-field__label">Haustür</label>
-            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="haustuerschluessel">${r.haustuerschluessel||1}</span><button onclick="_step(this,1)">+</button></div>
-          </div>
-          <div class="rc-field">
-            <label class="rc-field__label">Zimmer</label>
-            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="zimmerschluessel">${r.zimmerschluessel||1}</span><button onclick="_step(this,1)">+</button></div>
-          </div>
-        </div>
-        <div class="rc-field">
-          <label class="rc-field__label">Briefkasten</label>
-          <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="briefkastenschluessel">${r.briefkastenschluessel||0}</span><button onclick="_step(this,1)">+</button></div>
-        </div>
+        ${editKeys}
       </div>
-
-      <div class="rc-edit-section" style="border-bottom:none;">
-        <button class="rc-inv-btn" onclick="_openInventar('${r.id}')">
-          <i class="ti ti-list"></i> Edit Inventar →
-        </button>
-      </div>
-
       <div class="rc-edit-footer">
         <div class="rc-save-row">
           <button class="rm-btn rm-btn--ghost" onclick="_cancelEdit(this.closest('.rc'))" data-i18n="rooms_cancel">${t('rooms_cancel')}</button>
           <button class="rm-btn rm-btn--primary" onclick="_saveCard(this.closest('.rc'))" data-i18n="rooms_save">${t('rooms_save')}</button>
         </div>
-        <button class="rm-btn rm-btn--delete" onclick="_confirmDelete(this.closest('.rc'))">
-          <i class="ti ti-trash"></i> <span data-i18n="rooms_delete">${t('rooms_delete')}</span>
-        </button>
       </div>
-    </div>
+    </div>` : ''}
   </div>`;
 }
 
@@ -1381,6 +1460,88 @@ function _cancelEdit(card) {
   _initSortable();
 }
 
+/* ── PER-SECTION EDIT (existing rooms) ─────────────────────── */
+function _roomEnterSection(sec, id) {
+  const el = document.getElementById(`rc-${sec}-${id}`);
+  if (!el) return;
+  el.querySelector('.rc-sec-read').style.display = 'none';
+  el.querySelector('.rc-sec-edit').style.display = '';
+  el.classList.add('rc-sec--editing');
+}
+
+function _roomCancelSection(sec, id) {
+  _roomRerenderCard(id);   // discard edits: redraw this card from memory
+}
+
+/* Fields of one section (or a whole card) → update object */
+function _roomCollectFields(scope) {
+  const data = {};
+  scope.querySelectorAll('[data-f]').forEach(el => {
+    const key = el.dataset.f;
+    if (el.tagName === 'INPUT' && el.type === 'checkbox')      data[key] = el.checked;
+    else if (el.tagName === 'INPUT' && el.type === 'number')   data[key] = el.value !== '' ? parseFloat(el.value) : null;
+    else if (el.classList.contains('rc-stepper__v'))           data[key] = parseInt(el.textContent, 10);
+    else                                                       data[key] = el.value;
+  });
+  // Chip groups — only when chips exist (an empty list in Profile must not wipe the room)
+  const sp = scope.querySelector('[data-chipgroup="gemeinschaftsraeume"]');
+  if (sp && sp.querySelector('.rc-chip')) data.gemeinschaftsraeume = [...sp.querySelectorAll('.rc-chip.on')].map(c => c.dataset.space);
+  const bd = scope.querySelector('[data-chipgroup="badezimmer"]');
+  if (bd && bd.querySelector('.rc-chip')) data.badezimmer = [...bd.querySelectorAll('.rc-chip.on')].map(c => c.dataset.bad);
+  const kz = scope.querySelector('[data-kztoggle]');
+  if (kz) data.kurzzeit_pricing = kz.checked ? 'kalt_nk' : 'pauschal';
+  const mv = scope.querySelector('[data-mvtoggle]');
+  if (mv) data.mietvertrag_pricing = mv.checked ? 'pauschal' : 'kalt_nk';
+  return data;
+}
+
+/* Redraw one card from memory, keeping it open */
+function _roomRerenderCard(id) {
+  const room = getRoomById(id);
+  const card = document.querySelector(`.rc[data-id="${id}"]`);
+  if (!room || !card) return;
+  const div = document.createElement('div');
+  div.innerHTML = _roomCardHTML(room);
+  const newCard = div.firstElementChild;
+  newCard.classList.add('rc--expanded');
+  card.parentNode.insertBefore(newCard, card);
+  card.remove();
+  _bindAllCards();
+  _initSortable();
+}
+
+/* Direct save of one section: card first, database in the background (direct-save.js) */
+function _roomSaveSection(sec, id) {
+  const el   = document.getElementById(`rc-${sec}-${id}`);
+  const room = getRoomById(id);
+  if (!el || !room) return;
+  const data = _roomCollectFields(el.querySelector('.rc-sec-edit'));
+  if (sec === 'identity' && !String(data.name || '').trim()) {
+    const inp = el.querySelector('[data-f="name"]');
+    if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
+    return;
+  }
+
+  const before = {};
+  Object.keys(data).forEach(k => { before[k] = room[k]; });
+  Object.assign(room, data);
+  _roomRerenderCard(id);
+  if (typeof _updateRoomsSummary === 'function') _updateRoomsSummary(appRooms);
+  if (!sbL) return;
+
+  ccQueueWrite('room-' + id, () => sbL.from('rooms').update(data).eq('id', id))
+    .then(({ error }) => {
+      if (error) {
+        Object.assign(room, before);
+        _roomRerenderCard(id);
+        ccSaveFailed(error, 'room ' + sec);
+        return;
+      }
+      // Let the other tabs (Tenants, Kitchen, generators) know the room changed
+      if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', room);
+    });
+}
+
 function _onKzToggle(chk) {
   const label = chk.closest('.rc-toggle-row').querySelector('.rc-tlabel');
   label.textContent = chk.checked ? 'Kalt + NK' : 'Pauschal';
@@ -1392,7 +1553,7 @@ function _onMvToggle(chk) {
 }
 
 function _toggleKautionOverride(chk) {
-  const field = chk.closest('.rc-edit-section').querySelector('[data-kautionoverridefield]');
+  const field = chk.closest('.rc-edit-section, .rc-sec-edit')?.querySelector('[data-kautionoverridefield]');
   if (field) field.style.display = chk.checked ? '' : 'none';
 }
 
@@ -1838,8 +1999,10 @@ async function _openContract(type, roomId) {
   const room = getRoomById(roomId);
   if (!room) return;
 
-  // Ensure tenant cache is populated before modal renders
-  if (typeof loadTenants === 'function') await loadTenants();
+  // Tenant names come from the preloaded tenant data (started when the Rooms tab
+  // loads) — no full reload here, so the generator opens instantly. Only if you
+  // tap before the preload has ever finished do we wait for it once.
+  if (typeof tnTenantsLoaded === 'function' && !tnTenantsLoaded()) await tnWarmTenants();
 
   const typeLbl  = document.getElementById('contractTypeLbl');
   const titleLbl = document.getElementById('contractTitleLbl');
@@ -1874,7 +2037,7 @@ async function _openContract(type, roomId) {
           const kzPricingOverride = document.getElementById('cm-nk-btn')?.dataset.mode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
           if (!startVal || !endVal) { if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
           const s    = appSettings;
-          const kautionOverrideKz = parseFloat(document.getElementById('cm-kaution')?.value) || null;
+          const kautionOverrideKz = ccKautionManual(document.getElementById('cm-kaution')?.value);
           const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
           let _cmFaelVal = 'sofort';
           _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _cmFaelVal = b.dataset.val; });
@@ -1943,7 +2106,7 @@ async function _openContract(type, roomId) {
             alert('Bitte Mietende ausfüllen.'); return;
           }
           const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
-          const kautionOverrideMv = parseFloat(document.getElementById('mv-kaution')?.value) || null;
+          const kautionOverrideMv = ccKautionManual(document.getElementById('mv-kaution')?.value);
           const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
           let _mvFaelVal = 'sofort';
           _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _mvFaelVal = b.dataset.val; });
@@ -2323,37 +2486,7 @@ function _updateMonatToggles() {
   const endVal   = document.getElementById('cm-end')?.value;
 
   // — Kaution display update —
-  const kautionRuleEl = document.getElementById('cm-kaution-rule');
-  if (startVal && endVal) {
-    const room = getRoomById(_contractRoomId);
-    if (room) {
-      const kzKalt = Number(room.kurzzeit_kaltmiete) || 0;
-      const kzNk   = Number(room.kurzzeit_nk) || 0;
-      const kzIsPauschal = (room.kurzzeit_pricing || 'pauschal') !== 'kalt_nk';
-      const rent   = kzIsPauschal ? kzKalt + kzNk : kzKalt;
-      const totalMonths = Math.round(
-        (new Date(endVal) - new Date(startVal)) / (30.44 * 24 * 3600 * 1000)
-      );
-      let kaution, ruleText;
-      if (room.kaution_override && room.kaution_default) {
-        kaution   = Number(room.kaution_default);
-        ruleText  = 'Individuelle Kaution';
-      } else if (totalMonths <= 3) {
-        kaution   = rent;
-        ruleText  = `≤ 3 Monate → 1× (${totalMonths} Mon.)`;
-      } else {
-        kaution   = rent * 3;
-        ruleText  = `> 3 Monate → 3× (${totalMonths} Mon.)`;
-      }
-      // Update editable kaution input — only when user hasn't manually overridden it
-      const kautionInp = document.getElementById('cm-kaution');
-      if (kautionInp && kautionInp.hasAttribute('data-auto')) {
-        kautionInp.value = kaution;
-        kautionInp.placeholder = fmtEUR(kaution);
-      }
-      if (kautionRuleEl) kautionRuleEl.textContent = ruleText;
-    }
-  }
+  _roomKzUpdateKaution();
 
   // — Erster Monat toggle —
   const ersterWrap = document.getElementById('cm-erster-wrap');
@@ -2428,6 +2561,28 @@ function _toggleMvErsterMonat() {
   sub.textContent  = isVoll ? 'Voller Monat — pauschal' : 'Anteilig — wird berechnet';
 }
 
+/* Kurzzeit Kaution: follows dates + Pauschal/Kalt+NK toggle until you type your own value */
+function _roomKzKautionOpts(room, manual = null) {
+  const mode = document.getElementById('cm-nk-btn')?.dataset.mode === 'kalt_nk' ? 'kalt_nk'
+             : (document.getElementById('cm-nk-btn') ? 'pauschal'
+             : ((room.kurzzeit_pricing || 'pauschal') === 'kalt_nk' ? 'kalt_nk' : 'pauschal'));
+  return {
+    contract: 'kurzzeit', mode,
+    kalt: Number(room.kurzzeit_kaltmiete) || 0, nk: Number(room.kurzzeit_nk) || 0, rec: room,
+    start: document.getElementById('cm-start')?.value, end: document.getElementById('cm-end')?.value,
+    manual,
+  };
+}
+function _roomKzUpdateKaution() {
+  const room = getRoomById(_contractRoomId);
+  if (!room) return;
+  const k   = ccKaution(_roomKzKautionOpts(room));
+  const inp = document.getElementById('cm-kaution');
+  if (inp && inp.hasAttribute('data-auto')) { inp.value = k.amount; inp.placeholder = fmtEUR(k.amount); }
+  const ruleEl = document.getElementById('cm-kaution-rule');
+  if (ruleEl) ruleEl.textContent = k.rule;
+}
+
 function _toggleKzNk() {
   const btn = document.getElementById('cm-nk-btn');
   const lbl = document.getElementById('cm-nk-lbl');
@@ -2437,6 +2592,7 @@ function _toggleKzNk() {
   btn.dataset.mode = toKaltNk ? 'kalt_nk' : 'pauschal';
   if (lbl) lbl.textContent = toKaltNk ? 'Kalt + NK' : 'Pauschal';
   if (sub) sub.textContent = toKaltNk ? 'Vorauszahlung, separat ausgewiesen' : 'In Pauschale enthalten';
+  _roomKzUpdateKaution();   // Kaution base follows the pricing mode
 }
 
 function _contractBodyKurzzeit(room) {
@@ -2460,10 +2616,8 @@ function _contractBodyKurzzeit(room) {
   const kzBase    = kzIsPauschal ? kzTotal : kzKalt;
   const rentDisplay = kzIsPauschal ? fmtEUR(kzTotal) + ' pauschal inkl. NK' : fmtEUR(kzKalt) + ' kalt + ' + fmtEUR(kzNk) + ' NK';
   const schluessel= `Haustür ×${room.haustuerschluessel||1} · Zimmer ×${room.zimmerschluessel||1}`;
-  const kautionRule = '≤ 3 Monate → 1×  ·  > 3 Monate → 3×';
-  const kautionVal  = room.kaution_override && room.kaution_default
-    ? fmtEUR(room.kaution_default)
-    : fmtEUR(kzBase);
+  const _kzK = ccKaution({ contract: 'kurzzeit', mode: kzIsPauschal ? 'pauschal' : 'kalt_nk', kalt: kzKalt, nk: kzNk, rec: room });
+  const kautionRule = _kzK.rule;
 
   return `
     <div class="rm-prefilled">
@@ -2485,7 +2639,7 @@ function _contractBodyKurzzeit(room) {
         <div class="rm-kaution-rule" id="cm-kaution-rule">${kautionRule}</div>
       </div>
       <input class="rm-input" id="cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
-        value="${room.kaution_override && room.kaution_default ? Number(room.kaution_default) : kzBase}"
+        value="${_kzK.amount}"
         placeholder="€" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
     </div>
     <div style="margin-top:8px;margin-bottom:20px">
@@ -2661,18 +2815,11 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
   // its own line ("Anteil erster Monat") and in the Zahlungsplan — never in the box.
   const gesamtmiete = Math.round(rent * 100) / 100;
 
-  // Kaution — base: Pauschal = full total, Kalt+NK = kaltmiete only
-  const totalMonths = Math.round((end - start) / (30.44 * 24 * 3600 * 1000));
-  const kzIsPauschalForKaution = (room.kurzzeit_pricing || 'pauschal') !== 'kalt_nk';
-  const kautionBase = kzIsPauschalForKaution ? kzKalt + kzNk : kzKalt;
-  let kaution;
-  if (kautionOverride != null) {
-    kaution = kautionOverride;
-  } else if (room.kaution_override && room.kaution_default) {
-    kaution = Number(room.kaution_default);
-  } else {
-    kaution = totalMonths <= 3 ? kautionBase : kautionBase * 3;
-  }
+  // Kaution — shared rule (kaution.js). Base follows the pricing mode of THIS
+  // contract (generator toggle wins over the card): Pauschal → Pauschal, Kalt+NK → Kalt
+  const _kzMode = (kzPricingOverride || room.kurzzeit_pricing || 'pauschal') === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
+  const kaution = ccKaution({ contract: 'kurzzeit', mode: _kzMode, kalt: kzKalt, nk: kzNk, rec: room,
+                              start: startVal, end: endVal, manual: kautionOverride }).amount;
 
   // Kaution Fälligkeit text
   const _kf = kautionFaelligkeit;
@@ -3840,14 +3987,9 @@ function _buildMietvertragOnlyData(room, s, {
     }
   }
 
-  const kautionBase = pricingMode === 'pauschal'
-    ? kaltmiete + nkVorauszahlung
-    : kaltmiete;
-  const kaution = kautionOverride != null
-    ? kautionOverride
-    : room.kaution_override && room.kaution_default
-      ? Number(room.kaution_default)
-      : kautionBase * 3;
+  // Kaution — shared rule (kaution.js): generator value → override (toggle ON) → 3× base
+  const kaution = ccKaution({ contract: 'mietvertrag', mode: pricingMode, kalt: kaltmiete,
+                              nk: nkVorauszahlung, rec: room, manual: kautionOverride }).amount;
 
   // Kaution Fälligkeit text
   const _kf = kautionFaelligkeit;
@@ -3947,10 +4089,9 @@ function _contractBodyMietvertrag(room) {
     : `${fmtEUR(_mvp.total)} pauschal inkl. NK`;
   const gesamtDisplay = fmtEUR(_mvp.total);
 
-  // Kaution base: Pauschal = full rent, Kalt+NK = Kaltmiete (same rule as the PDF)
-  const kaution    = room.kaution_override && room.kaution_default
-    ? Number(room.kaution_default)
-    : (_mvp.mode === 'pauschal' ? _mvp.total : _mvp.kalt) * 3;
+  // Kaution base: Pauschal = full rent, Kalt+NK = Kaltmiete (same rule as the PDF, kaution.js)
+  const _mvK       = ccKaution({ contract: 'mietvertrag', mode: _mvp.mode, kalt: _mvp.kalt, nk: _mvp.nk, rec: room });
+  const kaution    = _mvK.amount;
 
   // Mindestlaufzeit (Kündigungsverzicht) — default Ja / 1 Jahr, editable per contract (not persisted)
   const mlOn             = true;
@@ -3973,7 +4114,7 @@ function _contractBodyMietvertrag(room) {
     <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
       <div style="flex:1">
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
-        <div class="rm-kaution-rule">3 \u00d7 Kaltmiete · Treuhandkonto</div>
+        <div class="rm-kaution-rule">${_mvK.source === 'override' ? 'Individuelle Kaution (Karte)' : (_mvp.mode === 'pauschal' ? '3 \u00d7 Pauschalmiete' : '3 \u00d7 Kaltmiete')} · Treuhandkonto</div>
       </div>
       <input class="rm-input" id="mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
         value="${kaution}" placeholder="€"/>

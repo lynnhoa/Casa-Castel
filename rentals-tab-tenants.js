@@ -501,17 +501,22 @@ function _rntPkPricing(pkId) {
   return { miete: Number(p.pricing?.miete) || null };
 }
 
-// Kaution soll: always 3× kaltmiete (or parkmiete) for rentals
+// Kaution soll: the tenant's own agreed amount if saved, otherwise the card
+// rule (override while its toggle is ON, else 3× Kaltmiete / 3× Parkmiete)
 function _rntKautionSoll(rec) {
   if (!rec) return null;
   if (rec.kaution_soll != null) return Number(rec.kaution_soll);
   if (rec.apartment_id) {
-    const p = _rntAptPricing(rec.apartment_id);
-    return p.kaltmiete ? Math.round(p.kaltmiete * 3) : null;
+    const a  = appApartments?.find(x => x.id === rec.apartment_id);
+    const pr = a?.pricing || {};
+    if (ccKautionOverride(pr) === null && !Number(pr.kaltmiete)) return null;
+    return ccKaution({ contract: 'mietvertrag', kalt: pr.kaltmiete, rec: pr }).amount;
   }
   if (rec.parking_id) {
-    const p = _rntPkPricing(rec.parking_id);
-    return p.miete ? Math.round(p.miete * 3) : null;
+    const s  = appParking?.find(x => x.id === rec.parking_id);
+    const pr = s?.pricing || {};
+    if (ccKautionOverride(pr) === null && !Number(pr.miete)) return null;
+    return ccKaution({ contract: 'parking', kalt: pr.miete, rec: pr }).amount;
   }
   return null;
 }
@@ -725,7 +730,7 @@ async function _rntLoad() {
   _rntRecords = [...(aptRes.data || []), ...(pkRes.data || [])];
 
   const tids = _rntRecords.map(r => r.id);
-  if (!tids.length) { _rntRender(); return; }
+  if (!tids.length) { _rntProfileCache = {}; _rntLoadedOnce = true; _rntRender(); return; }
 
   const [kRes, nkRes, docRes] = await Promise.all([
     sbL.from('rnt_kaution').select('*').in('tenant_id', tids),
@@ -782,6 +787,7 @@ async function _rntLoad() {
       } : null,
     };
   });
+  _rntLoadedOnce = true;
 
   _rntRender();
 }
@@ -2487,15 +2493,11 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
   if (!sec) return;
-  const btn = document.getElementById('pfoot-edit-' + rid)?.querySelector('.tn-btn-primary');
-  if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
-
   const p   = _rntCollectProfile(sec, 'data-f');
   const rec = _rntRecords.find(r => r.id === tid);
   if (!p.first_name && !p.last_name && !p.email) {
     const inp = sec.querySelector('[data-f="name"]');
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
-    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
 
@@ -2523,11 +2525,11 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     if (!p.nebenkosten && isApt) update.nebenkosten = _rntAptPricing(unitId).nebenkosten ?? null;
     // flip unit back to vacant
     if (isApt) {
-      sbL.from('rentals_apartments').update({ vacant: true }).eq('id', unitId);
+      ccPersist(() => sbL.from('rentals_apartments').update({ vacant: true }).eq('id', unitId));   // (was never sent: query had no .then)
       const a = appApartments?.find(a => a.id === unitId);
       if (a) { a.vacant = true; _aptRerenderCard?.(unitId); }
     } else {
-      sbL.from('rentals_parking').update({ vacant: true }).eq('id', unitId);
+      ccPersist(() => sbL.from('rentals_parking').update({ vacant: true }).eq('id', unitId));   // (was never sent: query had no .then)
       const pp = appParking?.find(p => p.id === unitId);
       if (pp) pp.vacant = true;
     }
@@ -2538,24 +2540,28 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     update.done = false;
     // flip unit back to occupied
     if (isApt) {
-      sbL.from('rentals_apartments').update({ vacant: false }).eq('id', unitId);
+      ccPersist(() => sbL.from('rentals_apartments').update({ vacant: false }).eq('id', unitId));   // (was never sent: query had no .then)
       const a = appApartments?.find(a => a.id === unitId);
       if (a) { a.vacant = false; _aptRerenderCard?.(unitId); }
     } else {
-      sbL.from('rentals_parking').update({ vacant: false }).eq('id', unitId);
+      ccPersist(() => sbL.from('rentals_parking').update({ vacant: false }).eq('id', unitId));   // (was never sent: query had no .then)
       const pp = appParking?.find(p => p.id === unitId);
       if (pp) pp.vacant = false;
     }
   }
 
-  // Optimistic: apply in memory and re-render instantly (no network wait); persist in the background
+  // Direct save: apply in memory and re-render instantly; persist in the background (1 retry)
+  const before = rec ? { ...rec } : null;
   if (rec) Object.assign(rec, update);
   _rntEnsureKaution(tid);   // background; no-op when the tenant already has a kaution row
   _rntRender();
 
-  sbL.from('rnt_tenant_records').update(update).eq('id', tid)
+  ccQueueWrite('rnt-' + tid, () => sbL.from('rnt_tenant_records').update(update).eq('id', tid))
     .then(({ error }) => {
-      if (error) { console.warn('[rnt-tenants] save profile:', error.message); _rntToast('Speichern fehlgeschlagen', true); }
+      if (!error) return;
+      if (rec && before) Object.keys(update).forEach(k => { rec[k] = before[k]; });
+      _rntRender();
+      ccSaveFailed(error, 'rentals tenant profile');
     });
 }
 
@@ -2570,6 +2576,7 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
 
   // Optimistic: apply locally and refresh the summary bar immediately, persist in the background
   const rec = _rntRecords.find(r => r.id === tid);
+  const beforeRent = rec ? { kaltmiete: rec.kaltmiete, nebenkosten: rec.nebenkosten, kaution_soll: rec.kaution_soll } : null;   // undo if the save fails
   if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
 
   const bar = document.getElementById('rbar-' + rid);
@@ -2591,9 +2598,14 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
 
   _rntToggleRentEdit(rid);
 
-  sbL.from('rnt_tenant_records')
-    .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[rnt-tenants] save rent:', error.message); });
+  ccQueueWrite('rnt-' + tid, () => sbL.from('rnt_tenant_records')
+      .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid))
+    .then(({ error }) => {
+      if (!error) return;
+      if (rec && beforeRent) { rec.kaltmiete = beforeRent.kaltmiete; rec.nebenkosten = beforeRent.nebenkosten; rec.kaution_soll = beforeRent.kaution_soll; }
+      _rntRender();
+      ccSaveFailed(error, 'rentals tenant rent');
+    });
 }
 
 async function _rntModalSaveProfile(tid) {
@@ -2661,8 +2673,7 @@ async function _rntSaveKautionBtn(pfx, tid) {
   const recv    = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
   const ret     = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
   const saveBtn = document.getElementById('ksave-' + pfx);
-  if (saveBtn) { saveBtn.textContent = '\u2026'; saveBtn.disabled = true; }
-  await _rntSaveKaution(tid, recv, ret);
+  _rntSaveKaution(tid, recv, ret);   // memory now, database in the background
   const k   = _rntKaution[tid];
   const st  = _rntKautionStatus(recv, ret, k?.settled || false);
   const pill = document.getElementById('kstat-' + pfx);
@@ -2683,22 +2694,27 @@ async function _rntSaveKautionBtn(pfx, tid) {
       hdrPill.innerHTML = newPills.slice(0,2).join('');
     }
   }
-  if (saveBtn) {
-    saveBtn.innerHTML = '<i class="ti ti-check"></i> Saved';
-    saveBtn.disabled  = false;
-    saveBtn.classList.remove('tn-btn-primary');
-    setTimeout(() => { if (saveBtn) saveBtn.innerHTML = 'Save'; }, 1500);
-  }
+  if (saveBtn) saveBtn.classList.remove('tn-btn-primary');   // not highlighted = nothing unsaved
 }
 
 async function _rntSaveKaution(tid, received, returned) {
   if (!sbL) return;
+  // Memory first (synchronously), so the card can update at once
+  const k0 = _rntKaution[tid];
+  const before = k0 ? { received: k0.received, returned: k0.returned } : null;
+  if (k0) { k0.received = received; k0.returned = returned; }
+  _rntRefreshFormerBadges(tid);
+  // Then the database (row created first if this tenant has none yet)
   if (!_rntKaution[tid]) await _rntEnsureKaution(tid);
   const k = _rntKaution[tid];
   if (!k?.id) return;
   k.received = received; k.returned = returned;
-  await sbL.from('rnt_kaution').update({ received, returned }).eq('id', k.id);
-  _rntRefreshFormerBadges(tid);
+  const { error } = await ccQueueWrite('rntk-' + tid, () => sbL.from('rnt_kaution').update({ received, returned }).eq('id', k.id));
+  if (error) {
+    if (before) { k.received = before.received; k.returned = before.returned; }
+    _rntRefreshFormerBadges(tid);
+    ccSaveFailed(error, 'rentals kaution');
+  }
 }
 
 async function _rntToggleSettle(pfx, tid) {
@@ -3127,6 +3143,53 @@ function _rntBindCards() {
 /* ══════════════════════════════════════════════════════════════
    20. ENTRY POINT
 ══════════════════════════════════════════════════════════════ */
+/* Preload for the contract generators (Apartments / Parking): ONE light query
+   for the active tenant records, fetched in the background so a generator opens
+   instantly. Deliberately not loadRntTenants() — that would also load the other
+   units' tab (and its draft restore) behind your back. */
+let _rntLoadedOnce  = false;   // full Tenants-tab load done (_rntRecords is current)
+let _rntActiveRecs  = null;    // preloaded active records (until the full load)
+let _rntWarmPromise = null;
+function rntWarmTenants() {
+  if (_rntLoadedOnce || _rntActiveRecs) return Promise.resolve();
+  if (typeof sbL === 'undefined' || !sbL) return Promise.resolve();
+  if (!_rntWarmPromise) {
+    _rntWarmPromise = sbL.from('rnt_tenant_records')
+      .select('apartment_id,parking_id,status,mietbeginn,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3')
+      .eq('status', 'active')
+      .then(({ data, error }) => {
+        if (error) { console.warn('[rentals tenants] preload:', error.message); return; }
+        if (!_rntLoadedOnce) _rntActiveRecs = data || [];
+      })
+      .catch(e => console.warn('[rentals tenants] preload:', e))
+      .finally(() => { _rntWarmPromise = null; });
+  }
+  return _rntWarmPromise;
+}
+
+/* Active tenant of a unit, read from the loaded records — the same record the
+   database lookup returns (active, newest Mietbeginn), incl. Mieter 2 and 3.
+   Returns null while records are not loaded yet (caller then asks the database). */
+function rntProfileFromRecords(kind, id) {
+  const src = _rntLoadedOnce ? _rntRecords : _rntActiveRecs;
+  if (!src) return null;
+  const col = kind === 'apt' ? 'apartment_id' : 'parking_id';
+  const rec = (src || [])
+    .filter(r => r[col] === id && r.status === 'active')
+    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
+  if (!rec || !(rec.first_name || rec.last_name)) return {};
+  const mk = (fn, ln, em, ph, bd, ad) => ({
+    firstName: fn || '', lastName: ln || '', email: em || '',
+    phone: ph || '', birthday: bd || '', address: ad || '',
+  });
+  const tenant1 = mk(rec.first_name, rec.last_name, rec.email, rec.phone, rec.birthday, rec.address);
+  const tenant2 = (rec.first_name_2 || rec.last_name_2)
+    ? mk(rec.first_name_2, rec.last_name_2, rec.email_2, rec.phone_2, rec.birthday_2, rec.address_2) : null;
+  const tenant3 = (rec.first_name_3 || rec.last_name_3)
+    ? mk(rec.first_name_3, rec.last_name_3, rec.email_3, rec.phone_3, rec.birthday_3, rec.address_3) : null;
+  return { ...tenant1, tenant1, tenant2, tenant3 };
+}
+
 async function loadRntTenants() {
   // Load missing prerequisites in parallel (was: apartments, THEN parking)
   await Promise.all([

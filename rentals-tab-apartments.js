@@ -523,6 +523,9 @@ function aptEsc(s) {
 /* Resolve active tenant profile for an apartment — checks cache first,
    falls back to a direct Supabase query if tenants tab hasn't loaded yet. */
 async function _aptResolveTenantProfile(aptId) {
+  // Preloaded tenant records → instant, no database round-trip
+  const fromRec = typeof rntProfileFromRecords === 'function' ? rntProfileFromRecords('apt', aptId) : null;
+  if (fromRec) return fromRec;
   if (typeof _rntGetProfile === 'function') {
     const cached = _rntGetProfile(aptId);
     if (cached && (cached.firstName || cached.lastName)) {
@@ -564,6 +567,40 @@ async function _aptResolveTenantProfile(aptId) {
   } catch { return {}; }
 }
 
+
+/* ── KAUTION (shared rule in kaution.js) ─────────────────────
+   Kurzzeit prices exactly as the Kurzzeit PDF uses them: the Kurzzeit
+   prices when set, otherwise the normal ones. NK shown separately → base
+   Kaltmiete; no NK → pauschal (same amount). */
+function _aptKzKautionOpts(p, start = null, end = null, manual = null) {
+  p = p || {};
+  const hasKz = Number(p.kurzzeit_kaltmiete) > 0;
+  const kalt  = hasKz ? Number(p.kurzzeit_kaltmiete) : (Number(p.kaltmiete) || 0);
+  const nk    = hasKz ? (Number(p.kurzzeit_nk) || 0) : (Number(p.nk_pauschale) || 0);
+  return { contract: 'kurzzeit', mode: nk > 0 ? 'kalt_nk' : 'pauschal', kalt, nk, rec: p, start, end, manual };
+}
+
+/* Kurzzeit generator: Kaution follows the dates until you type your own value */
+function _aptKzUpdateKaution() {
+  const apt = appApartments.find(a => a.id === _aptContractId);
+  if (!apt) return;
+  const start = document.getElementById('apt-cm-start')?.value;
+  const end   = document.getElementById('apt-cm-end')?.value;
+  const k     = ccKaution(_aptKzKautionOpts(apt.pricing, start, end));
+  const inp   = document.getElementById('apt-cm-kaution');
+  if (inp && inp.hasAttribute('data-auto')) inp.value = k.amount;
+  const ruleEl = document.getElementById('apt-cm-kaution-rule');
+  if (ruleEl) ruleEl.textContent = k.rule;
+}
+
+/* Gewerbe generator: Kaution follows the Kaltmiete field until you type your own value */
+function _aptGwUpdateKaution() {
+  const inp = document.getElementById('apt-gw-kaution');
+  if (!inp || !inp.hasAttribute('data-auto')) return;
+  const apt  = appApartments.find(a => a.id === _aptContractId);
+  const kalt = parseFloat(document.getElementById('apt-gw-kalt')?.value) || 0;
+  inp.value = ccKaution({ contract: 'gewerbe', kalt, rec: apt?.pricing }).amount || '';
+}
 
 /* ── SHARED: Tenant block with prefill toggle (N=1,2,3) ──────────
    prefix: 'mv' | 'gw' | 'cm' — distinguishes modal field IDs
@@ -775,6 +812,7 @@ async function loadApartments() {
 
   _renderAptList();
   _aptInitSortable();
+  if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _aptRestoreContractDraft();
 }
 
@@ -843,17 +881,15 @@ function _aptCardHTML(a) {
     : `<span class="apt-hdr__rent--vacant">No pricing set</span>`;
 
   // Kaution
-  const kautionAmt = (p.kaution_default !== null && p.kaution_default !== undefined && p.kaution_default !== '')
-    ? Number(p.kaution_default)
-    : kalt * 3;
+  const _kMv = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: p });
+  const kautionAmt = _kMv.amount;
 
   // Kurzzeit
   const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
   const kzNk   = Number(p.kurzzeit_nk) || 0;
   const kzWarm = kzKalt + kzNk;
-  const kzKaution = (p.kaution_default !== null && p.kaution_default !== undefined && p.kaution_default !== '')
-    ? Number(p.kaution_default)
-    : kzKalt;
+  const _kKz = ccKaution(_aptKzKautionOpts(p));
+  const kzKaution = _kKz.amount;
 
   // Zähler grouped by type category
   const meterGroups = _groupZaehler(zaehler);
@@ -970,11 +1006,11 @@ function _aptCardHTML(a) {
       <div class="apt-sec-read">
         ${kalt || nk ? `
         <div class="apt-row"><span class="apt-row__k">${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemiete' : 'Mietvertrag'}</span><span class="apt-row__v apt-row__v--gold">${aptFmtEURCompact(kalt)} kalt + ${aptFmtEURCompact(nk)} NK</span></div>
-        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kautionAmt)} · 3× Kalt${p.kaution_override ? ' (override)' : ''}</span></div>
+        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kautionAmt)} · ${_kMv.source === 'override' ? 'Individuell' : '3× Kalt'}</span></div>
         ` : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
         ${kzKalt ? `
         <div class="apt-row" style="margin-top:6px"><span class="apt-row__k">Kurzzeit</span><span class="apt-row__v">${aptFmtEURCompact(kzWarm)} / Monat</span></div>
-        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kzKaution)} · 1× Kalt</span></div>
+        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kzKaution)} · ${_kKz.source === 'override' ? 'Individuell' : '1× Kalt · > 3 Mon. 3×'}</span></div>
         ` : ''}
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('miete','${a.id}')">
@@ -1278,9 +1314,8 @@ function _aptCancelSection(section, aptId) {
 /* ── SAVE: IDENTITY ──────────────────────────────────────── */
 async function _aptSaveIdentity(aptId) {
   const el  = document.getElementById(`apt-identity-${aptId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!el || !apt) return;
 
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
@@ -1288,38 +1323,54 @@ async function _aptSaveIdentity(aptId) {
     data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
   });
 
-  if (_aptSbClient) {
-    let { error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId);
-    if (error) {
-      // First attempt can fail on a cold connection / momentary schema-cache lag — retry once
-      await new Promise(r => setTimeout(r, 400));
-      ({ error } = await _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId));
-    }
-    if (error) {
-      console.error('[apartments] Save identity failed:', error, data);
-      _aptToast('Save failed: ' + (error.message || error.code || 'Unknown error'), true);
-      btn.textContent = 'Error'; btn.disabled = false;
-      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+  // Direct save: card first, database in the background (direct-save.js)
+  const before = {};
+  Object.keys(data).forEach(k => { before[k] = apt[k]; });
+  Object.assign(apt, data);
+  _aptRerenderCard(aptId);
+  if (!_aptSbClient) return;
+  ccQueueWrite('apt-' + aptId, () => _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId))
+    .then(({ error }) => {
+      if (!error) return;
+      Object.assign(apt, before);
+      _aptRerenderCard(aptId);
+      ccSaveFailed(error, 'apartment identity');
+    });
+}
+
+
+/* ── DIRECT SAVE for a 1:1 row (pricing / verwaltung / schlüssel) ──
+   Card updates at once; the write runs in the background (queued per row,
+   one retry). A missing row is inserted once; later saves wait for it. */
+function _aptDirectSaveRow(aptId, key, table, data) {
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!apt) return;
+  const hadRow = !!(apt[key] && Object.keys(apt[key]).length);
+  const before = hadRow ? { ...apt[key] } : null;
+  if (hadRow) Object.assign(apt[key], data); else apt[key] = { apartment_id: aptId, ...data };
+  _aptRerenderCard(aptId);
+  if (!_aptSbClient) return;
+  ccQueueWrite('apt-' + key + '-' + aptId, () => {
+    const rowId = apt[key]?.id;     // read at write time: an earlier insert may have set it
+    return rowId
+      ? _aptSbClient.from(table).update(data).eq('id', rowId)
+      : _aptSbClient.from(table).insert({ apartment_id: aptId, ...data }).select().single();
+  }).then(res => {
+    if (res.error) {
+      apt[key] = before || {};
+      _aptRerenderCard(aptId);
+      ccSaveFailed(res.error, 'apartment ' + key);
       return;
     }
-  }
-
-  // Update in-memory
-  const apt = appApartments.find(a => a.id === aptId);
-  if (apt) Object.assign(apt, data);
-
-  _aptToast('Saved');
-  _aptRerenderCard(aptId);
+    if (res.data && res.data.id && !apt[key].id) apt[key].id = res.data.id;
+  });
 }
 
 
 /* ── SAVE: MIETE ─────────────────────────────────────────── */
 async function _aptSaveMiete(aptId) {
-  const el  = document.getElementById(`apt-miete-${aptId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
-
+  const el = document.getElementById(`apt-miete-${aptId}`);
+  if (!el) return;
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
@@ -1327,85 +1378,28 @@ async function _aptSaveMiete(aptId) {
     else if (inp.type === 'number') data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
     else data[k] = inp.value;
   });
-
-  const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) return;
-
-  if (_aptSbClient) {
-    // Upsert pricing row
-    const pricingId = apt.pricing?.id;
-    let error;
-    if (pricingId) {
-      ({ error } = await _aptSbClient.from('rentals_pricing').update(data).eq('id', pricingId));
-    } else {
-      const res = await _aptSbClient.from('rentals_pricing').insert({ apartment_id: aptId, ...data }).select().single();
-      error = res.error;
-      if (!error) apt.pricing = res.data;
-    }
-    if (error) {
-      console.error('[apartments] Save miete failed:', error, data);
-      btn.textContent = 'Error'; btn.disabled = false;
-      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
-      return;
-    }
-  }
-
-  if (apt.pricing) Object.assign(apt.pricing, data);
-  else apt.pricing = data;
-
-  _aptToast('Saved');
-  _aptRerenderCard(aptId);
+  _aptDirectSaveRow(aptId, 'pricing', 'rentals_pricing', data);
 }
 
 
 /* ── SAVE: VERWALTUNG ────────────────────────────────────── */
 async function _aptSaveVerwaltung(aptId) {
-  const el  = document.getElementById(`apt-verwaltung-${aptId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
-
+  const el = document.getElementById(`apt-verwaltung-${aptId}`);
+  if (!el) return;
   const data = {};
   el.querySelectorAll('[data-vf]').forEach(inp => {
     const k = inp.dataset.vf;
     data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
   });
-
-  const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) return;
-
-  if (_aptSbClient) {
-    const vId = apt.verwaltung?.id;
-    let error;
-    if (vId) {
-      ({ error } = await _aptSbClient.from('rentals_verwaltung').update(data).eq('id', vId));
-    } else {
-      const res = await _aptSbClient.from('rentals_verwaltung').insert({ apartment_id: aptId, ...data }).select().single();
-      error = res.error;
-      if (!error) apt.verwaltung = res.data;
-    }
-    if (error) {
-      console.error('[apartments] Save verwaltung failed:', error, data);
-      btn.textContent = 'Error'; btn.disabled = false;
-      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
-      return;
-    }
-  }
-
-  if (apt.verwaltung) Object.assign(apt.verwaltung, data);
-  else apt.verwaltung = { apartment_id: aptId, ...data };
-
-  _aptToast('Saved');
-  _aptRerenderCard(aptId);
+  _aptDirectSaveRow(aptId, 'verwaltung', 'rentals_verwaltung', data);
 }
 
 
 /* ── SAVE: ZÄHLER ────────────────────────────────────────── */
 async function _aptSaveZaehler(aptId) {
   const el  = document.getElementById(`apt-zaehler-${aptId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
+  const apt = appApartments.find(a => a.id === aptId);
+  if (!el || !apt) return;
 
   // Collect current rows from DOM
   const rows = el.querySelectorAll('[data-zaehler-id]');
@@ -1415,41 +1409,28 @@ async function _aptSaveZaehler(aptId) {
     const typ = row.querySelector('.apt-field__label')?.textContent?.trim();
     if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: i });
   });
-
-  // Also handle rows added via "Add meter" (no data-zaehler-id)
-  const newRows = el.querySelectorAll('[data-new-zaehler]');
-  newRows.forEach((row, i) => {
+  // Also rows added via "Add meter" (no data-zaehler-id)
+  el.querySelectorAll('[data-new-zaehler]').forEach((row, i) => {
     const typ = row.querySelector('[data-zf="typ"]')?.value?.trim();
     const nr  = row.querySelector('[data-zf="zaehler_nr"]')?.value?.trim();
     if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: rows.length + i });
   });
 
-  const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) return;
-
-  if (_aptSbClient) {
-    // Delete all existing and re-insert
-    const { error: delErr } = await _aptSbClient.from('rentals_zaehler').delete().eq('apartment_id', aptId);
-    if (delErr) {
-      console.error('[apartments] Save zaehler delete failed:', delErr);
-      btn.textContent = 'Error'; btn.disabled = false;
-      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
-      return;
-    }
-    if (newMeters.length) {
-      const { error: insErr } = await _aptSbClient.from('rentals_zaehler').insert(newMeters);
-      if (insErr) {
-        console.error('[apartments] Save zaehler insert failed:', insErr, newMeters);
-        btn.textContent = 'Error'; btn.disabled = false;
-        setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
-        return;
-      }
-    }
-  }
-
+  // Direct save: card first; database replaces the meter list in the background
+  const before = apt.zaehler;
   apt.zaehler = newMeters.map((m, i) => ({ ...m, id: `local-${i}` }));
-  _aptToast('Saved');
   _aptRerenderCard(aptId);
+  if (!_aptSbClient) return;
+  ccQueueWrite('apt-zaehler-' + aptId, async () => {
+    const del = await _aptSbClient.from('rentals_zaehler').delete().eq('apartment_id', aptId);
+    if (del.error || !newMeters.length) return del;
+    return await _aptSbClient.from('rentals_zaehler').insert(newMeters);
+  }).then(({ error }) => {
+    if (!error) return;
+    apt.zaehler = before;
+    _aptRerenderCard(aptId);
+    ccSaveFailed(error, 'apartment zaehler');
+  });
 }
 
 
@@ -1480,42 +1461,13 @@ function _aptAddZaehlerRow(aptId) {
 
 /* ── SAVE: SCHLÜSSEL ─────────────────────────────────────── */
 async function _aptSaveSchlussel(aptId) {
-  const el  = document.getElementById(`apt-schlussel-${aptId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
-
+  const el = document.getElementById(`apt-schlussel-${aptId}`);
+  if (!el) return;
   const data = {};
   el.querySelectorAll('[data-sf]').forEach(span => {
     data[span.dataset.sf] = parseInt(span.textContent, 10) || 0;
   });
-
-  const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) return;
-
-  if (_aptSbClient) {
-    const skId = apt.schlussel?.id;
-    let error;
-    if (skId) {
-      ({ error } = await _aptSbClient.from('rentals_schlussel').update(data).eq('id', skId));
-    } else {
-      const res = await _aptSbClient.from('rentals_schlussel').insert({ apartment_id: aptId, ...data }).select().single();
-      error = res.error;
-      if (!error) apt.schlussel = res.data;
-    }
-    if (error) {
-      console.error('[apartments] Save schlussel failed:', error, data);
-      btn.textContent = 'Error'; btn.disabled = false;
-      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
-      return;
-    }
-  }
-
-  if (apt.schlussel) Object.assign(apt.schlussel, data);
-  else apt.schlussel = { apartment_id: aptId, ...data };
-
-  _aptToast('Saved');
-  _aptRerenderCard(aptId);
+  _aptDirectSaveRow(aptId, 'schlussel', 'rentals_schlussel', data);
 }
 
 
@@ -2025,6 +1977,10 @@ async function _aptReopenContractDraft(d) {
       if (el.type === 'checkbox') el.checked = (val === '__on__');
       else el.value = val;
     });
+    // A restored Kaution stays exactly as it was (no auto-recalculation afterwards)
+    ['apt-cm-kaution', 'apt-gw-kaution'].forEach(id => {
+      if (d.fields && id in d.fields) document.getElementById(id)?.removeAttribute('data-auto');
+    });
     Object.entries(d.radios || {}).forEach(([name, val]) => {
       const r = document.querySelector(`input[name="${CSS.escape(name)}"][value="${CSS.escape(val)}"]`);
       if (r) r.checked = true;
@@ -2083,12 +2039,17 @@ async function _aptOpenContract(type, aptId) {
     titleLbl.textContent = apt.name;
     const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
     const kzNk   = Number(p.kurzzeit_nk) || 0;
-    const kzBase = kzKalt + kzNk || Number(p.kaltmiete) || 0;
+    const kzK = ccKaution(_aptKzKautionOpts(p));
     const _kzProfile = await _aptResolveTenantProfile(apt.id);
-    body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, _kzProfile);
+    body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, _kzProfile);
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
 
     setTimeout(() => {
+      ['apt-cm-start', 'apt-cm-end'].forEach(id => {
+        const el = document.getElementById(id);
+        el?.addEventListener('change', _aptKzUpdateKaution);
+        el?.addEventListener('input',  _aptKzUpdateKaution);
+      });
       document.getElementById('aptKzPdfBtn')?.addEventListener('click', async () => {
         _aptSaveContractDraft();
         const apt2        = appApartments.find(a => a.id === _aptContractId);
@@ -2143,9 +2104,8 @@ async function _aptOpenContract(type, aptId) {
     titleLbl.textContent = apt.name;
     const kalt   = Number(p.kaltmiete) || 0;
     const nk     = Number(p.nk_pauschale) || 0;
-    const kaution = (p.kaution_default !== null && p.kaution_default !== undefined && p.kaution_default !== '')
-      ? Number(p.kaution_default)
-      : kalt * 3;
+    const _mvK    = ccKaution({ contract: isGewerbe ? 'gewerbe' : 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: p });
+    const kaution = _mvK.amount;
     const _mvProfile = await _aptResolveTenantProfile(apt.id);
 
     if (isGewerbe) {
@@ -2188,7 +2148,8 @@ async function _aptOpenContract(type, aptId) {
           const festUnit       = document.getElementById('apt-gw-fest-unit')?.value || 'Jahre';
           const kaltmiete      = parseFloat(document.getElementById('apt-gw-kalt')?.value) || 0;
           const nkVZ           = parseFloat(document.getElementById('apt-gw-nk')?.value) || 0;
-          const kautionVal     = parseFloat(document.getElementById('apt-gw-kaution')?.value) || 0;
+          const kautionVal     = ccKaution({ contract: 'gewerbe', kalt: kaltmiete, rec: apt2.pricing,
+                                   manual: document.getElementById('apt-gw-kaution')?.value }).amount;
           const kautionFael    = _aptReadKautionFael('gw');
           const sigVal         = document.getElementById('apt-gw-sig')?.value;
           const sonderkAn      = document.getElementById('apt-gw-sonderk-btn')?.dataset.mode === 'ja';
@@ -2323,6 +2284,7 @@ async function _aptOpenContract(type, aptId) {
             mieterName2: t2.name, mieterAdr2: t2.adr, mieterDob2: t2.dob, mieterEmail2: t2.email, mieterTel2: t2.tel,
             mieterName3: t3.name, mieterAdr3: t3.adr, mieterDob3: t3.dob, mieterEmail3: t3.email, mieterTel3: t3.tel,
             befristet, endVal, grundVal, eigenbedarfPerson, kautionFael,
+            kautionVal: document.getElementById('apt-mv-kaution')?.value,
             staffelAn, staffeln, anfangsmiete,
           });
           const html = _renderRentalMietvertragHTML(data);
@@ -2391,7 +2353,7 @@ document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
 
 
 /* ── CONTRACT BODY: KURZZEIT ─────────────────────────────── */
-function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, profile = {}) {
+function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
   const tenant1 = profile.tenant1 || { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone, birthday: profile.birthday, address: profile.address };
   const tenant2 = profile.tenant2 || null;
   const tenant3 = profile.tenant3 || null;
@@ -2416,9 +2378,9 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzBase, profile = {}) {
     <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
       <div>
         <div class="rm-kaution-lbl">Kaution</div>
-        <div class="rm-kaution-rule" id="apt-cm-kaution-rule">≤ 3 Monate → 1× · > 3 Monate → 3×</div>
+        <div class="rm-kaution-rule" id="apt-cm-kaution-rule">${aptEsc(kzK.rule)}</div>
       </div>
-      <input class="rm-input" id="apt-cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kzBase}" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
+      <input class="rm-input" id="apt-cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kzK.amount}" placeholder="€" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
     </div>
     <div style="margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
@@ -2464,9 +2426,9 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
       <div>
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
-        <div class="rm-kaution-rule">3 × Kaltmiete</div>
+        <div class="rm-kaution-rule">${ccKautionOverride(p) !== null ? 'Individuelle Kaution (Karte)' : '3 × Kaltmiete'}</div>
       </div>
-      <input class="rm-input" id="apt-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}"/>
+      <input class="rm-input" id="apt-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
     </div>
     <div style="margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
@@ -2849,7 +2811,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
     </div>
     <div class="rm-field">
       <label>Kaution</label>
-      <input class="rm-input" id="apt-gw-kaution" type="number" step="0.01" value="${kaution ? Math.round(kaution) : (kalt ? Math.round(kalt*3) : '')}" placeholder="2400,00" style="-webkit-appearance:textfield;appearance:textfield;"/>
+      <input class="rm-input" id="apt-gw-kaution" type="number" step="0.01" value="${kaution || ''}" placeholder="3 × Kaltmiete" data-auto="1" oninput="this.removeAttribute('data-auto')" style="-webkit-appearance:textfield;appearance:textfield;"/>
     </div>
     <div style="margin-bottom:16px;">
       <div class="rm-kaution-lbl" style="margin-bottom:6px;">Kaution Fälligkeit</div>
@@ -3082,6 +3044,7 @@ function _aptGwCalcGesamt() {
   // Also sync Anfangsmiete if staffel is on
   const anfang = document.getElementById('apt-gw-staffel-anfang');
   if (anfang && !anfang.dataset.edited) anfang.value = kalt || '';
+  _aptGwUpdateKaution();   // Kaution follows Kaltmiete until typed by hand
 }
 
 /* ── GEWERBE: S3 Prozent ↔ Betrag ───────────────────── */

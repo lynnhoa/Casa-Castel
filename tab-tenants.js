@@ -544,20 +544,13 @@ function _tnKautionSoll(room, mietbeginn, mietende) {
   const isPauschal = ctype === 'kurzzeit'
     ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
     : r?.mietvertrag_pricing !== 'kalt_nk';
-  const base = isPauschal ? (p.kaltmiete + (p.nebenkosten || 0)) : p.kaltmiete;
-
-  function pd(s) {
-    if (!s) return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s);
-    const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-    return m ? new Date(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`) : null;
-  }
-  const start = pd(mietbeginn), end = pd(mietende);
-  if (start && end && end > start) {
-    const months = Math.round((end - start) / (30.44 * 24 * 3600 * 1000));
-    return months <= 3 ? Math.round(base * 1) : Math.round(base * 3);
-  }
-  return ctype === 'kurzzeit' ? Math.round(base * 1) : Math.round(base * 3);
+  // Shared rule (kaution.js): Mietvertrag 3× · Kurzzeit ≤ 3 Monate 1×, > 3 Monate 3×
+  return ccKaution({
+    contract: ctype === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag',
+    mode: isPauschal ? 'pauschal' : 'kalt_nk',
+    kalt: p.kaltmiete, nk: p.nebenkosten || 0,
+    start: mietbeginn, end: mietende,
+  }).amount;
 }
 
 function _tnPriceLabel(room) {
@@ -720,7 +713,7 @@ async function _tnLoad() {
   _tnRecords = records || [];
 
   const tids = _tnRecords.map(r => r.id);
-  if (!tids.length) { _tnRender(); return; }
+  if (!tids.length) { _tnProfileCache = {}; _tnLoadedOnce = true; _tnRender(); return; }
 
   const [kRes, nkRes, docRes, vorausRes] = await Promise.all([
     sbL.from('kaution').select('*').in('tenant_id', tids),
@@ -758,6 +751,7 @@ async function _tnLoad() {
       birthday: r.birthday || '', address: r.address || '',
     };
   });
+  _tnLoadedOnce = true;
 
   _tnRender();
 }
@@ -1999,15 +1993,11 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
   if (!sec) return;
-  const btn = document.getElementById('pfoot-edit-' + rid)?.querySelector('.tn-btn-primary');
-  if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
-
   const p   = _tnCollectProfile(sec, 'data-f');
   const rec = _tnRecords.find(r => r.id === tid);
   if (!p.first_name && !p.last_name && !p.email) {
     const inp = sec.querySelector('[data-f="name"]');
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
-    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
 
@@ -2037,10 +2027,36 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     update.done          = false;
   }
 
-  const { error } = await sbL.from('tenant_records').update(update).eq('id', tid);
-  if (error) { console.warn('[tenants] save:', error.message); }
-  await _tnEnsureKaution(tid);
-  await _tnLoad();
+  // Direct save: card first, database in the background (direct-save.js)
+  const before = rec ? { ...rec } : null;
+  if (rec) Object.assign(rec, update);
+  _tnRebuildProfileCache();
+  _tnRender();
+
+  ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(update).eq('id', tid))
+    .then(async ({ error }) => {
+      if (error) {
+        if (rec && before) { Object.keys(update).forEach(k => { rec[k] = before[k]; }); }
+        _tnRebuildProfileCache();
+        _tnRender();
+        ccSaveFailed(error, 'tenant profile');
+        return;
+      }
+      await _tnEnsureKaution(tid);
+      if (toFormer || toActive) await _tnLoad();   // tenant moved between active / former: quiet full refresh
+    });
+}
+
+/* Profile cache (names for the contract generators) from the records in memory */
+function _tnRebuildProfileCache() {
+  _tnProfileCache = {};
+  _tnRecords.filter(r => r.status === 'active').forEach(r => {
+    _tnProfileCache[r.room] = {
+      firstName: r.first_name || '', lastName: r.last_name || '',
+      email: r.email || '', phone: r.phone || '',
+      birthday: r.birthday || '', address: r.address || '',
+    };
+  });
 }
 
 async function _tnSaveRent(rid, tid, roomName) {
@@ -2050,13 +2066,19 @@ async function _tnSaveRent(rid, tid, roomName) {
   const ksollOvr = document.getElementById('rf-ksoll-ovr-' + rid);
   const ksollInp = document.getElementById('rf-ksoll-' + rid);
   const ksoll = (ksollOvr?.checked && ksollInp) ? (parseFloat(ksollInp.value) || null) : null;
-  const { error } = await sbL.from('tenant_records')
-    .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid);
-  if (error) { console.warn('[tenants] save rent:', error.message); return; }
 
-  // Update local cache
+  // Direct save: local values + bar first, database in the background (direct-save.js)
   const rec = _tnRecords.find(r => r.id === tid);
+  const before = rec ? { kaltmiete: rec.kaltmiete, nebenkosten: rec.nebenkosten, kaution_soll: rec.kaution_soll } : null;
   if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
+  ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records')
+      .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid))
+    .then(({ error }) => {
+      if (!error) return;
+      if (rec && before) Object.assign(rec, before);
+      _tnRender();
+      ccSaveFailed(error, 'tenant rent');
+    });
 
   // Update rent bar read values in-place
   const liveP = _tnRoomPricing(roomName);
@@ -2215,8 +2237,7 @@ async function _tnSaveKautionBtn(pfx, tid) {
   const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
   const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
   const saveBtn = document.getElementById('ksave-' + pfx);
-  if (saveBtn) { saveBtn.textContent = '…'; saveBtn.disabled = true; }
-  await _tnSaveKaution(tid, recv, ret);
+  _tnSaveKaution(tid, recv, ret);   // memory now, database in the background
   // Update section status pill
   const k    = _tnKaution[tid];
   const st   = _tnKautionStatus(recv, ret, k?.settled || false);
@@ -2240,21 +2261,15 @@ async function _tnSaveKautionBtn(pfx, tid) {
       hdrPill.innerHTML = newPills.slice(0,2).join('');
     }
   }
-  if (saveBtn) {
-    saveBtn.innerHTML = '<i class="ti ti-check"></i> Saved';
-    saveBtn.disabled  = false;
-    saveBtn.classList.remove('tn-btn-primary');
-    setTimeout(() => { if (saveBtn) saveBtn.innerHTML = 'Save'; }, 1500);
-  }
+  if (saveBtn) saveBtn.classList.remove('tn-btn-primary');   // not highlighted = nothing unsaved
 }
 
 async function _tnSaveKaution(tid, received, returned) {
   if (!sbL) return;
-  if (!_tnKaution[tid]) await _tnEnsureKaution(tid);
-  const k = _tnKaution[tid];
-  if (!k?.id) return;
-  k.received = received; k.returned = returned;
-  await sbL.from('kaution').update({ received, returned }).eq('id', k.id);
+  // Memory first (synchronously), so the card can update at once
+  const k0 = _tnKaution[tid];
+  const before = k0 ? { received: k0.received, returned: k0.returned } : null;
+  if (k0) { k0.received = received; k0.returned = returned; }
   _tnRefreshFormerBadges(tid);
   if (_tnModalTid === tid) {
     const delBtn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-danger');
@@ -2263,6 +2278,17 @@ async function _tnSaveKaution(tid, received, returned) {
       delBtn.style.opacity        = done ? '1' : '.35';
       delBtn.style.pointerEvents  = done ? 'auto' : 'none';
     }
+  }
+  // Then the database (row created first if this tenant has none yet)
+  if (!_tnKaution[tid]) await _tnEnsureKaution(tid);
+  const k = _tnKaution[tid];
+  if (!k?.id) return;
+  k.received = received; k.returned = returned;
+  const { error } = await ccQueueWrite('tnk-' + tid, () => sbL.from('kaution').update({ received, returned }).eq('id', k.id));
+  if (error) {
+    if (before) { k.received = before.received; k.returned = before.returned; }
+    _tnRefreshFormerBadges(tid);
+    ccSaveFailed(error, 'kaution');
   }
 }
 
@@ -2794,6 +2820,21 @@ function _tnWireRealtime() {
 /* ══════════════════════════════════════════════════════════════
    23. ENTRY POINT
 ══════════════════════════════════════════════════════════════ */
+/* Preload for the contract generators (Rooms tab): tenant data is fetched once
+   in the background so a generator opens instantly with the names already known. */
+let _tnLoadedOnce  = false;
+let _tnWarmPromise = null;
+function tnTenantsLoaded() { return _tnLoadedOnce; }
+function tnWarmTenants() {
+  if (_tnLoadedOnce) return Promise.resolve();
+  if (!_tnWarmPromise) {
+    _tnWarmPromise = loadTenants()
+      .catch(e => console.warn('[tenants] preload:', e))
+      .finally(() => { _tnWarmPromise = null; });
+  }
+  return _tnWarmPromise;
+}
+
 async function loadTenants() {
   if (typeof appRooms !== 'undefined' && !appRooms.length && typeof loadRoomsData === 'function') {
     await loadRoomsData();

@@ -207,6 +207,9 @@ function pkEsc(s) {
 
 /* Resolve active tenant profile for a parking space — cache first, Supabase fallback. */
 async function _pkResolveTenantProfile(pkId) {
+  // Preloaded tenant records (same row the database read returns) → instant
+  const fromRec = typeof rntProfileFromRecords === 'function' ? rntProfileFromRecords('pk', pkId) : null;
+  if (fromRec) return fromRec;
   // DB is the source of truth for co-tenants: first_name_2 / first_name_3 live
   // on the SAME record row as Mieter 1, so reading the row directly makes
   // Mieter 2/3 resolve exactly like Mieter 1 (the cache can hold a hollow
@@ -310,6 +313,7 @@ async function loadParking() {
 
   _renderPkList();
   _pkInitSortable();
+  if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _pkRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
 }
 
@@ -359,10 +363,9 @@ function _pkCardHTML(p) {
     ? `<strong>${pkFmtEURCompact(miete)}</strong> / mo`
     : `<span class="pk-hdr__rent--vacant">No pricing set</span>`;
 
-  // Kaution
-  const kaution = (pr.kaution_default !== null && pr.kaution_default !== undefined && pr.kaution_default !== '')
-    ? Number(pr.kaution_default)
-    : miete * 3;
+  // Kaution (shared rule, kaution.js)
+  const _pkK    = ccKaution({ contract: 'parking', kalt: miete, rec: pr });
+  const kaution = _pkK.amount;
 
   return `
 <div class="pk-card${vacant ? '' : ''}" data-id="${p.id}" data-name="${pkEsc(p.name)}">
@@ -450,7 +453,7 @@ function _pkCardHTML(p) {
       <div class="pk-sec-read">
         ${miete
           ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
-             <div class="pk-row"><span class="pk-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="pk-row__v pk-row__v--muted">${pkFmtEURCompact(kaution)} · 3× Miete${pr.kaution_override ? ' (override)' : ''}</span></div>`
+             <div class="pk-row"><span class="pk-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="pk-row__v pk-row__v--muted">${pkFmtEURCompact(kaution)} · ${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</span></div>`
           : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">
@@ -584,10 +587,9 @@ function _pkCancelSection(section, pkId) {
 
 /* ── SAVE: IDENTITY ──────────────────────────────────────── */
 async function _pkSaveIdentity(pkId) {
-  const el  = document.getElementById(`pk-identity-${pkId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
+  const el   = document.getElementById(`pk-identity-${pkId}`);
+  const spot = appParking.find(p => p.id === pkId);
+  if (!el || !spot) return;
 
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
@@ -595,36 +597,51 @@ async function _pkSaveIdentity(pkId) {
     data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
   });
 
-  if (_pkSbClient) {
-    let { error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId);
-    if (error) {
-      // First attempt can fail on a cold connection / momentary schema-cache lag — retry once
-      await new Promise(r => setTimeout(r, 400));
-      ({ error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId));
-    }
-    if (error) {
-      console.error('[parking] identity save failed:', error);
-      alert('Konnte nicht speichern:\n' + (error.message || 'Unbekannter Fehler') +
-            (error.hint ? '\n\n' + error.hint : ''));
-      btn.textContent = 'Error'; btn.disabled = false;
-      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+  // Direct save: card first, database in the background (direct-save.js)
+  const before = {};
+  Object.keys(data).forEach(k => { before[k] = spot[k]; });
+  Object.assign(spot, data);
+  _pkRerenderCard(pkId);
+  if (!_pkSbClient) return;
+  ccQueueWrite('pk-' + pkId, () => _pkSbClient.from('rentals_parking').update(data).eq('id', pkId))
+    .then(({ error }) => {
+      if (!error) return;
+      Object.assign(spot, before);
+      _pkRerenderCard(pkId);
+      ccSaveFailed(error, 'parking identity');
+    });
+}
+
+/* ── DIRECT SAVE for a 1:1 row (pricing / schlüssel) — same as apartments ── */
+function _pkDirectSaveRow(pkId, key, table, data) {
+  const spot = appParking.find(p => p.id === pkId);
+  if (!spot) return;
+  const hadRow = !!(spot[key] && Object.keys(spot[key]).length);
+  const before = hadRow ? { ...spot[key] } : null;
+  if (hadRow) Object.assign(spot[key], data); else spot[key] = { parking_id: pkId, ...data };
+  _pkRerenderCard(pkId);
+  if (!_pkSbClient) return;
+  ccQueueWrite('pk-' + key + '-' + pkId, () => {
+    const rowId = spot[key]?.id;
+    return rowId
+      ? _pkSbClient.from(table).update(data).eq('id', rowId)
+      : _pkSbClient.from(table).insert({ parking_id: pkId, ...data }).select().single();
+  }).then(res => {
+    if (res.error) {
+      spot[key] = before || {};
+      _pkRerenderCard(pkId);
+      ccSaveFailed(res.error, 'parking ' + key);
       return;
     }
-  }
-
-  const spot = appParking.find(p => p.id === pkId);
-  if (spot) Object.assign(spot, data);
-  _pkRerenderCard(pkId);
+    if (res.data && res.data.id && !spot[key].id) spot[key].id = res.data.id;
+  });
 }
 
 
 /* ── SAVE: MIETE ─────────────────────────────────────────── */
 async function _pkSaveMiete(pkId) {
-  const el  = document.getElementById(`pk-miete-${pkId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
-
+  const el = document.getElementById(`pk-miete-${pkId}`);
+  if (!el) return;
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
@@ -632,26 +649,7 @@ async function _pkSaveMiete(pkId) {
     else if (inp.type === 'number') data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
     else data[k] = inp.value;
   });
-
-  const spot = appParking.find(p => p.id === pkId);
-  if (!spot) return;
-
-  if (_pkSbClient) {
-    const prId = spot.pricing?.id;
-    let error;
-    if (prId) {
-      ({ error } = await _pkSbClient.from('rentals_parking_pricing').update(data).eq('id', prId));
-    } else {
-      const res = await _pkSbClient.from('rentals_parking_pricing').insert({ parking_id: pkId, ...data }).select().single();
-      error = res.error;
-      if (!error) spot.pricing = res.data;
-    }
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
-  }
-
-  if (spot.pricing) Object.assign(spot.pricing, data);
-  else spot.pricing = data;
-  _pkRerenderCard(pkId);
+  _pkDirectSaveRow(pkId, 'pricing', 'rentals_parking_pricing', data);
 }
 
 
@@ -784,35 +782,13 @@ function _pkRemoveStaffel() {
 
 /* ── SAVE: SCHLÜSSEL ─────────────────────────────────────── */
 async function _pkSaveSchlussel(pkId) {
-  const el  = document.getElementById(`pk-schlussel-${pkId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
-
+  const el = document.getElementById(`pk-schlussel-${pkId}`);
+  if (!el) return;
   const data = {};
   el.querySelectorAll('[data-sf]').forEach(span => {
     data[span.dataset.sf] = parseInt(span.textContent, 10) || 0;
   });
-
-  const spot = appParking.find(p => p.id === pkId);
-  if (!spot) return;
-
-  if (_pkSbClient) {
-    const skId = spot.schlussel?.id;
-    let error;
-    if (skId) {
-      ({ error } = await _pkSbClient.from('rentals_parking_schlussel').update(data).eq('id', skId));
-    } else {
-      const res = await _pkSbClient.from('rentals_parking_schlussel').insert({ parking_id: pkId, ...data }).select().single();
-      error = res.error;
-      if (!error) spot.schlussel = res.data;
-    }
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
-  }
-
-  if (spot.schlussel) Object.assign(spot.schlussel, data);
-  else spot.schlussel = { parking_id: pkId, ...data };
-  _pkRerenderCard(pkId);
+  _pkDirectSaveRow(pkId, 'schlussel', 'rentals_parking_schlussel', data);
 }
 
 
@@ -1030,9 +1006,8 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
   const _t3Tel   = _t3?.phone || '';
 
   const miete   = Number(pr.miete) || 0;
-  const kaution = (pr.kaution_default !== null && pr.kaution_default !== undefined && pr.kaution_default !== '')
-    ? Number(pr.kaution_default)
-    : miete * 3;
+  const _pkK    = ccKaution({ contract: 'parking', kalt: miete, rec: pr });
+  const kaution = _pkK.amount;
 
   return `
     <div class="rm-prefilled">
@@ -1044,7 +1019,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
       ${spot.level_position ? `<div class="rm-pre-row"><span>Position</span><span>${pkEsc(spot.level_position)}</span></div>` : ''}
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${pkEsc(spot.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${pkFmtEURCompact(miete)} / mo</span></div>
-      <div class="rm-pre-row"><span>Kaution</span><span>${pkFmtEURCompact(kaution)}${pr.kaution_override ? ' (override)' : ' · 3× Miete'}</span></div>
+      <div class="rm-pre-row"><span>Kaution</span><span>${pkFmtEURCompact(kaution)}${_pkK.source === 'override' ? ' · Individuell' : ' · 3× Miete'}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Parking ×${sk.parking_schluessel ?? 1}${sk.haustuerschluessel > 0 ? ' · Haustür ×' + sk.haustuerschluessel : ''}</span></div>
     </div>
 
@@ -1162,9 +1137,9 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
       <div>
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
-        <div class="rm-kaution-rule">3 × Monatsmiete</div>
+        <div class="rm-kaution-rule">${_pkK.source === 'override' ? 'Individuelle Kaution (Karte)' : '3 × Monatsmiete'}</div>
       </div>
-      <input class="rm-input" id="pk-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}"/>
+      <input class="rm-input" id="pk-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
     </div>
     <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
