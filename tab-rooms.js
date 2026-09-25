@@ -1578,13 +1578,8 @@ document.getElementById('roomAddBtn')?.addEventListener('click', () => {
 
     const result = await saveRoom(data);
     if (!result.ok) { alert('Save failed: ' + result.error); return; }
-    // Write default password hash so tenant can log in immediately
-    if (sbL && name) {
-      const defaultPw = name.toLowerCase().replace(/\s+/g, '') + '2026';
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(defaultPw));
-      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-      await sbL.from('lounge_data').insert({ type: 'password', room: name, body: hash });
-    }
+    // New room gets a strong random password (shown once to the landlord)
+    if (sbL && name) await ccSetNewRoomPassword(name, 'Login password');
     card.remove();
     _renderRoomsList();
     _initSortable();

@@ -1953,7 +1953,7 @@ async function _tnSaveNewTenant(rid, roomName) {
   }
 
   await _tnEnsureKaution(data.id);
-  if (status === 'active') await _tnWriteDefaultPw(roomName);
+  if (status === 'active') await ccSetNewRoomPassword(roomName, 'Login password');
   await _tnLoad();
 }
 
@@ -2751,21 +2751,10 @@ function _tnRefreshFormerBadges(tid) {
 /* ══════════════════════════════════════════════════════════════
    19. PASSWORD RESET
 ══════════════════════════════════════════════════════════════ */
-async function _tnWriteDefaultPw(room) {
-  if (!sbL) return;
-  const defaultPw = room.toLowerCase().replace(/\s+/g,'') + '2026';
-  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(defaultPw));
-  const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-  await sbL.from('lounge_data').delete().eq('type','password').eq('room', room);
-  await sbL.from('lounge_data').insert({ type:'password', room, body:hash });
-}
-
 async function _tnResetPw(room) {
   if (!sbL) { alert('No database connection.'); return; }
-  if (!confirm(`Reset password for ${room}?`)) return;
-  await _tnWriteDefaultPw(room);
-  const pw = room.toLowerCase().replace(/\s+/g,'') + '2026';
-  alert(`Password reset for ${room}.\nDefault: ${pw}`);
+  if (!confirm(`Reset password for ${room}? The old password stops working.`)) return;
+  await ccSetNewRoomPassword(room, 'New password');
 }
 
 

@@ -52,37 +52,75 @@ function initLandlordAuth() {
     location.replace('login.html');
     return;
   }
-  showApp();
   if (!sbL) return;
-
   const endSession = () => {
     localStorage.removeItem('cc_role');
     localStorage.removeItem('rentals_role');
     location.replace('login.html');
   };
-
-  // Throws on network failure — caller treats that as "keep app open"
+  // A Supabase login from this device is stored in the browser
+  const hasStoredLogin = () => {
+    for (let i = 0; i < localStorage.length; i++) {
+      if (/^sb-.+-auth-token$/.test(localStorage.key(i) || '')) return true;
+    }
+    return false;
+  };
+  // Throws on network failure
   const hasSession = () => sbL.auth.getSession().then(({ data }) => !!data.session);
-
+  // SECURITY: the landlord app is shown only AFTER the login is confirmed (a browser flag alone is not enough)
   hasSession().then(ok => {
-    if (ok) return;
+    if (ok) { showApp(); return; }
     // First check came back empty — give the token refresh a moment, then re-check
     return new Promise(r => setTimeout(r, 1200))
       .then(hasSession)
-      .then(ok2 => { if (!ok2) endSession(); });
-  }).catch(() => { /* offline / refresh failed — keep app open, flag already checked */ });
+      .then(ok2 => { if (ok2) showApp(); else endSession(); });
+  }).catch(() => {
+    // Offline / refresh failed: open only if this device has a stored landlord login
+    // (every data request still needs a valid login, so a fake flag shows no data)
+    if (hasStoredLogin()) showApp(); else endSession();
+  });
 }
 
-/* ── TENANT AUTH — room + password (matches v1 exactly) ─── */
-const ROOM_PASSWORDS = {
-  'Paris':       'paris2026',
-  'Copenhagen':  'copenhagen2026',
-  'Stockholm':   'stockholm2026',
-  'Oslo':        'oslo2026',
-  'London':      'london2026',
-  'New York':    'newyork2026',
-  'Los Angeles': 'losangeles2026'
-};
+/* ── TENANT AUTH — room + password ─────────────────────────
+   SECURITY: no passwords in this file and no "room2026" rule any more.
+   A room logs in only with the password the landlord set (Tenants tab →
+   Reset pw) or the tenant chose. "Casa Castel" is never a tenant room. */
+const CC_LANDLORD_NAME = 'Casa Castel';
+
+// Active tenant room names from the rooms table (null = could not check, e.g. offline)
+async function _ccActiveRooms() {
+  if (!sbL) return null;
+  try {
+    const { data, error } = await sbL.from('rooms').select('name').eq('active', true);
+    if (error || !data) return null;
+    return data.map(r => r.name).filter(n => n && n !== CC_LANDLORD_NAME);
+  } catch (e) { return null; }
+}
+
+// Preview is view-only: every write from this page is refused before it reaches the database
+function _ccMakeReadOnly() {
+  if (!sbL || sbL.__ccReadOnly) return;
+  const denied = { data: null, error: { message: 'Preview is view-only' } };
+  const deny = () => {
+    const b = { select: () => b, eq: () => b, neq: () => b, in: () => b, match: () => b,
+                single: () => b, maybeSingle: () => b,
+                then: (ok, bad) => Promise.resolve(denied).then(ok, bad) };
+    return b;
+  };
+  const from = sbL.from.bind(sbL);
+  sbL.from = table => {
+    const q = from(table);
+    ['insert', 'update', 'upsert', 'delete'].forEach(m => { q[m] = deny; });
+    return q;
+  };
+  const storageFrom = sbL.storage.from.bind(sbL.storage);
+  sbL.storage.from = bucket => {
+    const s = storageFrom(bucket);
+    ['upload', 'update', 'remove', 'move', 'copy'].forEach(m => { s[m] = async () => denied; });
+    return s;
+  };
+  sbL.__ccReadOnly = true;
+}
 
 async function _hashPassword(pw) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
@@ -93,31 +131,28 @@ async function doTenantLogin() {
   const room = document.getElementById('tenantRoom')?.value;
   const pass = document.getElementById('tenantPass')?.value;
   const err  = document.getElementById('loginError');
-  if (!room || !pass) { err?.classList.add('visible'); return; }
-
-  let valid = false;
-  // Check Supabase for a custom (changed) password first
+  const showErr = msg => {
+    if (!err) return;
+    if (err.dataset.defaultText === undefined) err.dataset.defaultText = err.textContent;
+    err.textContent = msg || err.dataset.defaultText;
+    err.classList.add('visible');
+  };
+  if (!room || !pass || room === CC_LANDLORD_NAME) { showErr(); return; }
+  let valid = false, noPassword = false;
   try {
-    if (sbL) {
+    const rooms = await _ccActiveRooms();
+    if (rooms && rooms.includes(room)) {
       const { data } = await sbL.from('lounge_data').select('body')
         .eq('type','password').eq('room', room)
         .order('created_at',{ascending:false}).limit(1).maybeSingle();
       if (data && data.body) {
         const h = await _hashPassword(pass);
         valid = (h === data.body);
+      } else {
+        noPassword = true;
       }
     }
-  } catch(e) { /* fall through */ }
-
-  // Fall back to hardcoded room password (existing rooms)
-  if (!valid && ROOM_PASSWORDS[room] && pass === ROOM_PASSWORDS[room]) valid = true;
-
-  // Final fallback: default formula roomname2026 (new rooms added via rooms tab)
-  if (!valid) {
-    const defaultPw = room.toLowerCase().replace(/\s+/g, '') + '2026';
-    if (pass === defaultPw) valid = true;
-  }
-
+  } catch(e) { /* no connection → login not possible */ }
   if (valid) {
     localStorage.setItem('cc_role', 'tenant');
     localStorage.setItem('cc_room', room);
@@ -125,7 +160,7 @@ async function doTenantLogin() {
     showApp(room);
     if (typeof loadRoomsData === 'function') loadRoomsData();
   } else {
-    err?.classList.add('visible');
+    showErr(noPassword ? 'No password set for this room yet — please ask Casa Castel.' : undefined);
     document.getElementById('tenantPass').value = '';
     document.getElementById('tenantPass').focus();
   }
@@ -161,21 +196,33 @@ function initTenantLogin() {
     ?.addEventListener('keydown', e => { if (e.key === 'Enter') doTenantLogin(); });
 
   // Preview mode (landlord previewing as tenant)
+  // SECURITY: only with a confirmed landlord login, only for real rooms, and view-only.
   const previewRoom = new URLSearchParams(window.location.search).get('preview');
   if (previewRoom) {
     document.getElementById('loginScreen').style.display = 'none';
-    showApp(previewRoom);
+    (async () => {
+      let isLandlord = false;
+      try { const { data } = await sbL.auth.getUser(); isLandlord = !!(data && data.user); } catch (e) {}
+      const rooms = isLandlord ? await _ccActiveRooms() : null;
+      if (!isLandlord || !rooms || !rooms.includes(previewRoom)) {
+        document.getElementById('loginScreen').style.display = '';   // back to the normal login
+        _populateTenantRoomDropdown();
+        return;
+      }
+      _ccMakeReadOnly();
+      showApp(previewRoom);
+    })();
     return;
   }
-
   // Auto-login if session exists — check synchronously before any async work
   // so the login screen is hidden immediately on refresh, eliminating the flash.
   const savedRoom = localStorage.getItem('cc_room');
-  if (localStorage.getItem('cc_role') === 'tenant' && savedRoom) {
+  if (localStorage.getItem('cc_role') === 'tenant' && savedRoom && savedRoom !== CC_LANDLORD_NAME) {
     document.getElementById('loginScreen').style.display = 'none';
     showApp(savedRoom);
+    // SECURITY: the saved room must still be a real room (removed rooms / edited storage → logged out)
+    _ccActiveRooms().then(rooms => { if (rooms && !rooms.includes(savedRoom)) logout(); });
   }
-
   // Populate room dropdown from DB (runs in background — no longer blocks auto-login)
   _populateTenantRoomDropdown();
 }

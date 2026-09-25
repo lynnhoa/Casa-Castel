@@ -65,6 +65,32 @@ function currentMonthRoomIdx() {
   return ((months % ALL_ROOMS.length) + ALL_ROOMS.length) % ALL_ROOMS.length;
 }
 
+/* ── ROOM PASSWORDS (set by the landlord) ─────────────────── */
+// Strong random password for a room, e.g. "k7Qm-9xKp-3TzR" (no look-alike characters).
+function ccGeneratePassword() {
+  const abc = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  let pw = '';
+  bytes.forEach((b, i) => { pw += abc[b % abc.length]; if (i === 3 || i === 7) pw += '-'; });
+  return pw;
+}
+async function ccHashPassword(pw) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+// Stores a new random password for a room and shows it to the landlord once.
+async function ccSetNewRoomPassword(room, reason) {
+  if (!sbL || !room) return null;
+  const pw   = ccGeneratePassword();
+  const hash = await ccHashPassword(pw);
+  await sbL.from('lounge_data').delete().eq('type', 'password').eq('room', room);
+  const { error } = await sbL.from('lounge_data').insert({ type: 'password', room, body: hash });
+  if (error) { alert('Could not save the password for ' + room + ': ' + error.message); return null; }
+  try { navigator.clipboard && navigator.clipboard.writeText(pw); } catch (e) {}
+  alert((reason || 'New password') + ' for ' + room + ':\n\n' + pw + '\n\nGive it to the tenant. It is shown only this once (also copied to the clipboard).');
+  return pw;
+}
+
 /* ── TENANT CONTACT ─────────────────────────────────────── */
 function tenantEmail(room) {
   try {
