@@ -16,8 +16,11 @@
                     the app (Share → Save to Files / Mail, Done → back)
         · Computer → the browser's PDF viewer opens in a new tab
       The app page is never replaced, so everything you typed stays.
-   3. If the phone/browser blocks the automatic opening (PDFs take a few
-      seconds), a small "PDF ready → Open PDF" sheet appears: one tap.
+   3. The PDF tab / viewer is opened AT THE MOMENT you tap "Generate PDF"
+      (showing "Creating PDF…"), and the finished PDF is loaded into it.
+      Phones and browsers only allow opening directly from a tap — creating
+      the PDF takes a few seconds, so waiting would get it blocked.
+      (A "PDF ready" sheet is only a last resort if even that is blocked.)
    4. If the temporary storage is not reachable, the iPhone share menu
       (or a normal download on the computer) is used instead.
    5. Generator drafts: what you type in a generator is kept for 2 hours
@@ -61,7 +64,11 @@ function ccPdfSafeName(name) {
    straight away — the old code rendered twice at up to 3×.       */
 async function ccRenderPagesToPdf(container, opts = {}) {
   const pages = container ? container.querySelectorAll('.pdf-page') : [];
-  if (!pages.length) throw new Error('no .pdf-page nodes rendered');
+  if (!pages.length) { _ccCloseWaitingTab(); throw new Error('no .pdf-page nodes rendered'); }
+  try { return await _ccRender(pages, opts); }
+  catch (e) { _ccCloseWaitingTab(); throw e; }
+}
+async function _ccRender(pages, opts) {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   for (let i = 0; i < pages.length; i++) {
@@ -76,6 +83,55 @@ async function ccRenderPagesToPdf(container, opts = {}) {
   return pdf;
 }
 
+/* ── OPEN THE PDF TAB RIGHT AT THE TAP ───────────────────────
+   Every "Generate PDF" button and every document "View" button opens its
+   tab/viewer immediately (a tap is the only moment phones allow it). The
+   tab shows "Creating PDF…" until the finished PDF is loaded into it. */
+const CC_PDF_TRIGGERS = '#contractPdfBtn, #aptKzPdfBtn, #aptGwPdfBtn, #aptMvPdfBtn, #aptUebergPdfBtn, '
+                      + '#pkMvPdfBtn, #pkUebergPdfBtn, [onclick*="ViewDoc("]';
+const CC_WAITING_PAGE =
+  '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<title>Creating PDF…</title></head>' +
+  '<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#F5F2ED;' +
+  'font-family:-apple-system,BlinkMacSystemFont,Inter,Helvetica,Arial,sans-serif;color:#3A3530;">' +
+  '<div style="text-align:center;padding:24px;"><p style="font-size:17px;margin:0 0 6px;">Creating PDF…</p>' +
+  '<p style="font-size:13px;margin:0;color:#9A8E7E;">It opens here in a moment.</p>' +
+  '<p id="slow" style="display:none;font-size:13px;margin:14px 0 0;color:#9A8E7E;">Taking longer than usual? ' +
+  'Switch back to the app for a moment — the PDF then opens here.</p></div>' +
+  '<script>setTimeout(function(){var e=document.getElementById("slow");if(e)e.style.display="block";},20000);<\/script>' +
+  '</body></html>';
+let _ccPending = null;   // { win, timer } — the tab opened at the tap, waiting for its PDF
+
+document.addEventListener('click', e => {
+  const t = e.target && e.target.closest ? e.target.closest(CC_PDF_TRIGGERS) : null;
+  if (!t || t.disabled || t.classList.contains('off')) return;
+  _ccOpenWaitingTab();
+}, true);   // capture: runs before the button's own handler, still inside the tap
+
+function _ccOpenWaitingTab() {
+  if (_ccPending && _ccPending.win && !_ccPending.win.closed) return;
+  let win = null;
+  try { win = window.open('', '_blank'); } catch (e) { win = null; }
+  if (!win) { _ccPending = null; return; }
+  try { win.document.open(); win.document.write(CC_WAITING_PAGE); win.document.close(); } catch (e) {}
+  _ccPending = { win, timer: setTimeout(_ccCloseWaitingTab, 3 * 60 * 1000) };   // never leave it hanging
+}
+function _ccTakeWaitingTab() {
+  const p = _ccPending; _ccPending = null;
+  if (p) clearTimeout(p.timer);
+  return (p && p.win && !p.win.closed) ? p.win : null;
+}
+function _ccCloseWaitingTab() {
+  const w = _ccTakeWaitingTab();
+  if (w) { try { w.close(); } catch (e) {} }
+}
+// A generator that stops (missing field, error message) → close the waiting tab first,
+// so you land back in the app where the message is shown.
+(function () {
+  const nativeAlert = window.alert;
+  window.alert = function (msg) { _ccCloseWaitingTab(); return nativeAlert.call(window, msg); };
+})();
+
 /* ── OPEN A FINISHED PDF ─────────────────────────────────── */
 async function ccOpenPdf(pdfOrBlob, filename) {
   const name = ccPdfSafeName(filename);
@@ -88,11 +144,13 @@ async function ccOpenPdf(pdfOrBlob, filename) {
 
 /* ── OPEN A LINK (new tab / iPhone viewer on top of the app) ── */
 function ccOpenUrl(url, label) {
+  const waiting = _ccTakeWaitingTab();                 // opened at the tap → just load the PDF into it
+  if (waiting) { try { waiting.location.replace(url); return 'opened'; } catch (e) {} }
   let win = null;
   try { win = window.open(url, '_blank'); } catch (e) { win = null; }
   if (win) return 'opened';
-  // Blocked (too long since the tap) — or iPhone opened it but did not
-  // report back. If the app page went to the background, it opened.
+  // Last resort (the tap-time tab could not be opened, e.g. pop-ups fully
+  // disabled): one-tap sheet. If the app page went to the background, it opened.
   setTimeout(() => {
     if (document.visibilityState === 'hidden' || document.hidden) return;
     _ccShowSheet({ title: 'PDF ready', name: label, href: url, action: 'Open PDF' });
@@ -140,6 +198,10 @@ async function _ccCleanupTempPdfs() {
 
 /* ── FALLBACK (temporary storage not reachable) ──────────── */
 async function _ccFallbackDeliver(blob, name) {
+  const waiting = _ccTakeWaitingTab();                 // show the local copy in the tab opened at the tap
+  if (waiting) {
+    try { waiting.location.replace(URL.createObjectURL(blob)); return 'opened'; } catch (e) {}
+  }
   let file = null;
   try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) { file = null; }
   // iPhone / iPad: the iPhone share menu (Save to Files, Mail, …)
