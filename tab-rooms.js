@@ -1372,12 +1372,14 @@ function _roomCardHTML(r) {
             Kurzzeitmiete <i class="ti ti-chevron-right"></i>
           </button>
         </div>
+        ${typeof ccTplSlot === 'function' ? ccTplSlot('room', r.id, 'kurzzeit') : ''}
 
         <div class="rc-doc-row">
           <button class="rc-doc-btn" onclick="_openContract('mietvertrag','${r.id}')">
             Mietvertrag <i class="ti ti-chevron-right"></i>
           </button>
         </div>
+        ${typeof ccTplSlot === 'function' ? ccTplSlot('room', r.id, 'mietvertrag') : ''}
 
         <div class="rc-doc-row">
           <button class="rc-doc-btn" onclick="_openContract('ueberg','${r.id}')">
@@ -2216,6 +2218,9 @@ async function _openContract(type, roomId) {
       document.getElementById('contractOverlay')?.classList.contains('open') ? { type, roomId, euLabel } : null);
   }
 
+  // Req 3: "Save as template" (Kurzzeit + Mietvertrag only)
+  if (typeof ccTplAttach === 'function') ccTplAttach({ kind: 'room', unitId: roomId, type, footer });
+
   document.getElementById('contractOverlay').classList.add('open');
 }
 
@@ -2271,6 +2276,27 @@ async function _roomReopenContractDraft(d) {
     await ccDraftApply(document.getElementById('contractBody'), d);
   } catch (e) { console.warn('[rooms draft] restore skipped:', e); }
 }
+
+
+/* ── CONTRACT TEMPLATES (Req 3) — Rooms adapter ─────────────
+   Template = the same field snapshot the draft safety net uses.
+   Renew opens the generator and refills it the same way a draft is restored. */
+if (typeof ccTplRegister === 'function') ccTplRegister('room', {
+  body:     () => document.getElementById('contractBody'),
+  snapshot: body => ccDraftSnapshot(body),
+  prefix:   type => (type === 'kurzzeit' ? 'cm-' : 'mv-'),
+  openType: type => type,
+  currentTenant: id => {
+    const room = getRoomById(id);
+    return room && typeof _getProfile === 'function' ? _getProfile(room.name) : null;
+  },
+  renew: async (type, id, snap) => {
+    if (typeof ccDraftClear === 'function') ccDraftClear(_ROOM_DRAFT_KEY);
+    await _openContract(type, id);
+    await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
+    await ccDraftApply(document.getElementById('contractBody'), snap);
+  },
+});
 
 
 /* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */

@@ -1219,12 +1219,14 @@ function _aptCardHTML(a) {
         <button class="apt-doc-btn" onclick="_aptOpenContract('kurzzeit','${a.id}')">
           Kurzzeitmiete <i class="ti ti-chevron-right"></i>
         </button>
-      </div>` : ''}
+      </div>
+      ${typeof ccTplSlot === 'function' ? ccTplSlot('apartment', a.id, 'kurzzeit') : ''}` : ''}
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('mietvertrag','${a.id}')">
           ${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemietvertrag' : 'Mietvertrag'} <i class="ti ti-chevron-right"></i>
         </button>
       </div>
+      ${typeof ccTplSlot === 'function' ? ccTplSlot('apartment', a.id, a.zimmer_type === 'Gewerbefläche' ? 'gewerbe' : 'mietvertrag') : ''}
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('ueberg','${a.id}')">
           Übergabeprotokoll <i class="ti ti-chevron-right"></i>
@@ -1854,11 +1856,9 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
 const _APT_DRAFT_KEY    = 'rnt_apt_contract_draft';
 const _APT_DRAFT_MAX_MS = 2 * 60 * 60 * 1000;   // Phase 1: kept for 2 hours
 
-function _aptSaveContractDraft() {
-  try {
+/* Every generator field (used by the draft safety net AND by contract templates) */
+function _aptContractSnapshot() {
     const body = document.getElementById('aptContractBody');
-    if (!body || !_aptContractId || !_aptContractType) return;
-
     const fields = {};
     body.querySelectorAll('input[id], textarea[id], select[id]').forEach(el => {
       if (el.type === 'radio') return;                       // radios saved by name below
@@ -1885,6 +1885,14 @@ function _aptSaveContractDraft() {
       const rows = body.querySelectorAll(`.apt-${pre}-staffel-row`);
       if (rows.length) staffel[pre] = [...rows].map(r => r.querySelector(`.apt-${pre}-staffel-betrag`)?.value || '');
     });
+    return { fields, radios, modes, pills, fael, wraps, staffel };
+}
+
+function _aptSaveContractDraft() {
+  try {
+    const body = document.getElementById('aptContractBody');
+    if (!body || !_aptContractId || !_aptContractType) return;
+    const snap = _aptContractSnapshot();
     // Übergabe: Einzug/Auszug is chosen on the card, not in the sheet
     let euLabel = null;
     if (_aptContractType === 'ueberg') {
@@ -1894,7 +1902,7 @@ function _aptSaveContractDraft() {
 
     localStorage.setItem(_APT_DRAFT_KEY, JSON.stringify({
       ts: Date.now(), aptId: _aptContractId, type: _aptContractType,
-      fields, radios, modes, pills, fael, wraps, staffel, euLabel,
+      ...snap, euLabel,
     }));
   } catch (e) { console.warn('[apt draft] save skipped:', e); }
 }
@@ -2341,8 +2349,29 @@ async function _aptOpenContract(type, aptId) {
     });
   }, 0);
 
+  // Req 3: "Save as template" (Kurzzeit, Mietvertrag, Gewerbe)
+  if (typeof ccTplAttach === 'function') {
+    const _tplType = (type === 'mietvertrag' && apt.zimmer_type === 'Gewerbefläche') ? 'gewerbe' : type;
+    ccTplAttach({ kind: 'apartment', unitId: aptId, type: _tplType, footer });
+  }
+
   document.getElementById('aptContractOverlay').classList.add('open');
 }
+
+/* ── CONTRACT TEMPLATES (Req 3) — Apartments adapter ─────────
+   Template = the same snapshot the draft safety net uses; Renew refills
+   the generator through the same restore path. */
+if (typeof ccTplRegister === 'function') ccTplRegister('apartment', {
+  body:     () => document.getElementById('aptContractBody'),
+  snapshot: () => _aptContractSnapshot(),
+  prefix:   type => ({ kurzzeit: 'apt-cm-', mietvertrag: 'apt-mv-', gewerbe: 'apt-gw-' })[type],
+  openType: type => (type === 'gewerbe' ? 'mietvertrag' : type),
+  currentTenant: id => (typeof rntProfileFromRecords === 'function' ? rntProfileFromRecords('apt', id) : null),
+  renew: async (type, id, snap) => {
+    _aptClearContractDraft();
+    await _aptReopenContractDraft({ ...snap, aptId: id, type });
+  },
+});
 
 document.getElementById('aptContractClose')?.addEventListener('click', () => {
   _aptClearContractDraft();
@@ -3376,6 +3405,7 @@ document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
   if (_aptSbClient) {
     // Cascade deletes via FK on delete cascade
     await _aptSbClient.from('rentals_apartments').delete().eq('id', _aptPendingDeleteId);
+    if (typeof ccTplDeleteUnit === 'function') ccTplDeleteUnit('apartment', _aptPendingDeleteId);   // its contract templates go too
   }
 
   appApartments = appApartments.filter(a => a.id !== _aptPendingDeleteId);
