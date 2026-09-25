@@ -2397,8 +2397,9 @@ function _tnTriggerUpload(tid, type) {
 
 async function _tnViewDoc(fileUrl, label, roomName) {
   if (!fileUrl || !sbL) return;
-
-  // Get a signed URL (60s is enough — we load it immediately into the iframe)
+  // Temporary private link (5 min) → opens in the iPhone's own viewer / a new
+  // browser tab on top of the app (Phase 1). No in-app viewer, no "PDF" step,
+  // and the document is no longer passed through Google's online viewer.
   const { data, error } = await sbL.storage
     .from('tenant-documents').createSignedUrl(fileUrl, 300);
   const url = data?.signedUrl;
@@ -2407,53 +2408,9 @@ async function _tnViewDoc(fileUrl, label, roomName) {
     _tnToast('Could not open document', true);
     return;
   }
-
-  // Derive clean filename: e.g. "Mietvertrag_Paris.pdf"
-  const ext      = fileUrl.split('.').pop().split('?')[0].toLowerCase() || 'pdf';
-  const safeName = (label || 'Dokument').replace(/\s+/g, '_');
-  const safeRoom = (roomName || '').replace(/\s+/g, '_');
-  const filename = safeRoom ? `${safeName}_${safeRoom}.${ext}` : `${safeName}.${ext}`;
-
-  // Show overlay
-  const overlay  = document.getElementById('tnDocViewer');
-  const frame    = document.getElementById('tnDocViewerFrame');
-  const titleEl  = document.getElementById('tnDocViewerTitle');
-  const closeBtn = document.getElementById('tnDocViewerClose');
-  const dlBtn    = document.getElementById('tnDocViewerDownload');
-  if (!overlay || !frame) { window.open(url, '_blank'); return; }
-
-  titleEl.textContent = label ? `${label}${roomName ? ' · ' + roomName : ''}` : 'Dokument';
-  frame.src = `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(url)}`;
-  overlay.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-
-  // Close
-  const close = () => {
-    overlay.style.display = 'none';
-    frame.src = '';
-    document.body.style.overflow = '';
-    closeBtn.onclick = null;
-    dlBtn.onclick    = null;
-  };
-  closeBtn.onclick = close;
-
-  // Download — fetch blob so we can force a clean filename cross-origin
-  dlBtn.onclick = async () => {
-    try {
-      const res  = await fetch(url);
-      const blob = await res.blob();
-      const bUrl = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = bUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { URL.revokeObjectURL(bUrl); a.remove(); }, 1000);
-    } catch (e) {
-      // Fallback: open in new tab
-      window.open(url, '_blank');
-    }
-  };
+  const title = label ? `${label}${roomName ? ' – ' + roomName : ''}` : 'Dokument';
+  if (typeof ccOpenUrl === 'function') ccOpenUrl(url, title);
+  else window.open(url, '_blank');
 }
 
 async function _tnHandleUpload(file) {

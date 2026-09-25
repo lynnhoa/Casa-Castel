@@ -2819,45 +2819,16 @@ function _rntTriggerUpload(tid, type) {
 
 async function _rntViewDoc(fileUrl, label, unitLabel) {
   if (!fileUrl || !sbL) return;
+  // Temporary private link (5 min) → opens in the iPhone's own viewer / a new
+  // browser tab on top of the app (Phase 1). No in-app viewer, no "PDF" step,
+  // and the document is no longer passed through Google's online viewer.
   const { data, error } = await sbL.storage
     .from('rnt-tenant-documents').createSignedUrl(fileUrl, 300);
   const url = data?.signedUrl;
   if (!url) { _rntToast('Could not open document', true); return; }
-
-  const ext      = fileUrl.split('.').pop().split('?')[0].toLowerCase() || 'pdf';
-  const safeName = (label || 'Dokument').replace(/\s+/g, '_');
-  const safeUnit = (unitLabel || '').replace(/\s+/g, '_');
-  const filename = safeUnit ? `${safeName}_${safeUnit}.${ext}` : `${safeName}.${ext}`;
-
-  const overlay  = document.getElementById('tnDocViewer');
-  const frame    = document.getElementById('tnDocViewerFrame');
-  if (!overlay || !frame) { window.open(url, '_blank'); return; }
-
-  document.getElementById('tnDocViewerTitle').textContent = label
-    ? `${label}${unitLabel ? ' · ' + unitLabel : ''}` : 'Dokument';
-  frame.src = `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(url)}`;
-  overlay.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-
-  const close = () => {
-    overlay.style.display = 'none';
-    frame.src = '';
-    document.body.style.overflow = '';
-    document.getElementById('tnDocViewerClose').onclick = null;
-    document.getElementById('tnDocViewerDownload').onclick = null;
-  };
-  document.getElementById('tnDocViewerClose').onclick = close;
-  document.getElementById('tnDocViewerDownload').onclick = async () => {
-    try {
-      const res  = await fetch(url);
-      const blob = await res.blob();
-      const bUrl = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = bUrl; a.download = filename;
-      document.body.appendChild(a); a.click();
-      setTimeout(() => { URL.revokeObjectURL(bUrl); a.remove(); }, 1000);
-    } catch { window.open(url, '_blank'); }
-  };
+  const title = label ? `${label}${unitLabel ? ' – ' + unitLabel : ''}` : 'Dokument';
+  if (typeof ccOpenUrl === 'function') ccOpenUrl(url, title);
+  else window.open(url, '_blank');
 }
 
 async function _rntHandleUpload(file) {

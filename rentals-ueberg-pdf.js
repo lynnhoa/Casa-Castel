@@ -53,11 +53,8 @@ async function aptGenerateUebergPDF(isEinzug) {
     await document.fonts.ready;
     await new Promise(r => setTimeout(r, 300));
 
-    if (window.innerWidth >= 701) {
-      await _aptOpenUebergPreview(d, container);
-    } else {
-      await _aptSaveUebergPDF(d, container);
-    }
+    // Phase 1: no preview step on any screen — the PDF opens directly
+    await _aptSaveUebergPDF(d, container);
   } catch(err) {
     console.error('[Übergabe PDF]', err);
     alert('PDF generation failed. Please try again.');
@@ -194,19 +191,12 @@ async function _aptSaveUebergPDFFromData(d, existingContainer) {
     await new Promise(r => setTimeout(r, 300));
   }
 
-  const { jsPDF } = window.jspdf;
-  const pdf   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pages = container.querySelectorAll('.pdf-page');
-
-  for (let i = 0; i < pages.length; i++) {
-    if (i > 0) pdf.addPage();
-    const canvas = await html2canvas(pages[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
-  }
+  // Phase 1: one render at print quality, opened on top of the app (pdf-open.js)
+  const pdf = await ccRenderPagesToPdf(container);
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
   const safeName = (d.mieterName || d.aptName).replace(/\s+/g, '_');
-  pdf.save(`Übergabeprotokoll_${typ}_${safeName}.pdf`);
+  await ccOpenPdf(pdf, `Übergabeprotokoll_${typ}_${safeName}.pdf`);
 
   if (!existingContainer) container.remove();
 }

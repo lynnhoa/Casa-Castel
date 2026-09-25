@@ -310,6 +310,7 @@ async function loadParking() {
 
   _renderPkList();
   _pkInitSortable();
+  _pkRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
 }
 
 
@@ -879,6 +880,7 @@ async function _pkOpenContract(type, pkId) {
        <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
 
     document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
+      if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
       document.getElementById('pkContractOverlay').classList.remove('open');
     });
     if (typeof _wirePkMvPdfBtn === 'function') _wirePkMvPdfBtn();
@@ -898,6 +900,7 @@ async function _pkOpenContract(type, pkId) {
        <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
 
     document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
+      if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
       document.getElementById('pkContractOverlay').classList.remove('open');
     });
     document.getElementById('pkUebergPdfBtn')?.addEventListener('click', async () => {
@@ -911,16 +914,49 @@ async function _pkOpenContract(type, pkId) {
     });
   }
 
+  // Keep what is typed for 2 hours (restored if the app ever has to restart)
+  if (typeof ccDraftAutoSave === 'function') {
+    const euLabel = type === 'ueberg'
+      ? (document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() || null)
+      : null;
+    ccDraftAutoSave(_PK_DRAFT_KEY, document.getElementById('pkContractBody'), () =>
+      document.getElementById('pkContractOverlay')?.classList.contains('open') ? { type, pkId, euLabel } : null);
+  }
+
   document.getElementById('pkContractOverlay').classList.add('open');
 }
 
 document.getElementById('pkContractClose')?.addEventListener('click', () => {
+  if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
   document.getElementById('pkContractOverlay').classList.remove('open');
 });
 document.getElementById('pkContractOverlay')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('pkContractOverlay'))
+  if (e.target === document.getElementById('pkContractOverlay')) {
+    if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
     document.getElementById('pkContractOverlay').classList.remove('open');
+  }
 });
+
+/* ── CONTRACT DRAFT RESTORE (Phase 1 safety net) ───────────── */
+const _PK_DRAFT_KEY = 'cc_draft_parking_contract';
+let _pkDraftRestoreTried = false;
+async function _pkRestoreContractDraft() {
+  if (_pkDraftRestoreTried || typeof ccDraftGet !== 'function') return;
+  _pkDraftRestoreTried = true;
+  const d = ccDraftGet(_PK_DRAFT_KEY);
+  if (!d || !d.meta) return;
+  if (!appParking.find(p => p.id === d.meta.pkId)) { ccDraftClear(_PK_DRAFT_KEY); return; }
+  try {
+    if (d.meta.type === 'ueberg' && d.meta.euLabel) {
+      document.getElementById('pk-eu-' + d.meta.pkId)?.querySelectorAll('button, span, div').forEach(el => {
+        if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
+      });
+    }
+    await _pkOpenContract(d.meta.type, d.meta.pkId);
+    await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
+    await ccDraftApply(document.getElementById('pkContractBody'), d);
+  } catch (e) { console.warn('[parking draft] restore skipped:', e); }
+}
 
 
 /* ── CONTRACT BODY: MIETVERTRAG ──────────────────────────── */

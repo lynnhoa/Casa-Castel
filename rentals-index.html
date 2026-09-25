@@ -99,6 +99,7 @@
   <!-- Shared constants & Supabase client (defines SB_URL, SB_KEY, sbL) -->
   <script src="constants.js"></script>
   <script src="supabase-client.js"></script>
+  <script src="pdf-open.js"></script>
   <script src="settings.js"></script>
 
   <!-- Nav helpers -->
@@ -114,6 +115,7 @@
     });
     function initNav() {
       document.getElementById('logoutBtn')?.addEventListener('click', () => {
+        if (typeof ccDraftClearAll === 'function') ccDraftClearAll();   // generator drafts
         localStorage.removeItem('rentals_role');
         localStorage.removeItem('cc_role');
         if (typeof sbL !== 'undefined' && sbL) sbL.auth.signOut().catch(() => {});

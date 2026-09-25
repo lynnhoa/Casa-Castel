@@ -1874,7 +1874,8 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
 
 /* ── CONTRACT MODAL ──────────────────────────────────────── */
 /* ═══ CONTRACT DRAFT — survives the iOS PDF hand-off ═══════════════════════
-   On iPhone, pdf.save() hands the file to the system viewer; iOS may unload
+   (Phase 1: PDFs now open ON TOP of the app, so this draft is a safety net.)
+   On iPhone, pdf.save() handed the file to the system viewer; iOS may unload
    and relaunch the app when the user taps X. The auth gate keeps the session
    alive, but the open contract form lived only in page memory. So: the exact
    moment Generate PDF is tapped, the whole form is snapshotted to
@@ -1884,7 +1885,7 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
    expires after 30 minutes. Failure of save or restore is always silent and
    never blocks the app. */
 const _APT_DRAFT_KEY    = 'rnt_apt_contract_draft';
-const _APT_DRAFT_MAX_MS = 30 * 60 * 1000;
+const _APT_DRAFT_MAX_MS = 2 * 60 * 60 * 1000;   // Phase 1: kept for 2 hours
 
 function _aptSaveContractDraft() {
   try {
@@ -3413,68 +3414,17 @@ document.getElementById('aptCPdfPreviewClose')?.addEventListener('click', () => 
    shows desktop preview overlay or saves directly on mobile.
    Resets btnEl to resetHtml when done. */
 async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
-  const { jsPDF } = window.jspdf;
-  const pages = container.querySelectorAll('.pdf-page');
-
-  if (window.innerWidth >= 701) {
-    // ── Desktop: show preview overlay ───────────────────────
-    const overlay   = document.getElementById('aptContractPdfPreviewOverlay');
-    const doc       = document.getElementById('aptCPdfPreviewDoc');
-    const titleEl   = document.getElementById('aptCPdfPreviewTitle');
-    const saveBtn   = document.getElementById('aptCPdfSaveBtn');
-    titleEl.textContent = filename.replace(/_/g,' ').replace('.pdf','');
-    doc.innerHTML = '';
-    overlay.style.display = 'flex';
-
-    const bodyEl = document.getElementById('aptCPdfPreviewBody');
-    const bodyW  = (bodyEl?.clientWidth || 400) - 32;
-    const scale  = Math.min(1, bodyW / 794);
-    const canvases = [];
-    for (const pg of pages) {
-      const canvas = await html2canvas(pg, { scale:2, useCORS:true, backgroundColor:'#ffffff', width:794, height:1123, windowWidth:794 });
-      canvases.push(canvas);
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
-      const img = document.createElement('img');
-      img.src = canvas.toDataURL('image/jpeg', 0.95);
-      img.style.cssText = `width:${794*scale}px;height:${1123*scale}px;display:block;`;
-      wrapper.appendChild(img);
-      doc.appendChild(wrapper);
-    }
-    container.remove();
-
-    // Re-enable trigger button
-    if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
-
-    // Wire save button
-    const freshSave = saveBtn.cloneNode(true);
-    saveBtn.parentNode.replaceChild(freshSave, saveBtn);
-    freshSave.addEventListener('click', async e => {
-      e.stopPropagation();
-      freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving\u2026'; freshSave.disabled = true;
-      const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-      canvases.forEach((c, i) => {
-        if (i > 0) pdf.addPage();
-        pdf.addImage(c.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
-      });
-      pdf.save(filename);
-      freshSave.innerHTML = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF'; freshSave.disabled = false;
-      overlay.style.display = 'none';
-      document.getElementById('aptContractOverlay')?.classList.add('open');
-    });
-
-  } else {
-    // ── Mobile: generate + save directly ────────────────────
-    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-    for (let i = 0; i < pages.length; i++) {
-      if (i > 0) pdf.addPage();
-      const canvas = await html2canvas(pages[i], { scale:3, useCORS:true, backgroundColor:'#ffffff', width:794, height:1123, windowWidth:794 });
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
-    }
-    pdf.save(filename);
+  // Phase 1: one render at print quality, then the PDF opens on top of the app
+  // (iPhone PDF viewer / new browser tab) — no preview, no pdf.save() that
+  // replaced the app page. The contract sheet (apartment OR parking) simply
+  // stays open underneath with everything typed.
+  try {
+    const pdf = await ccRenderPagesToPdf(container);
+    if (btnEl) btnEl.innerHTML = '<i class="ti ti-loader"></i> Opening PDF\u2026';
+    await ccOpenPdf(pdf, filename);
+  } finally {
     container.remove();
     if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
-    document.getElementById('aptContractOverlay')?.classList.add('open');
   }
 }
 
@@ -3554,3 +3504,22 @@ VALUES (
   '2026-08-01', 187.00, false, false
 );
    ──────────────────────────────────────────────────────────── */
+
+
+/* ── DRAFT AUTOSAVE WHILE TYPING (Phase 1) ─────────────────────
+   The draft used to be written only when "Generate PDF" was tapped.
+   Now it is kept up to date while typing (debounced), so nothing is
+   lost even if the app restarts before a PDF was generated. */
+(function _aptWireDraftAutosave() {
+  const body = document.getElementById('aptContractBody');
+  if (!body || body._aptDraftWired) return;
+  body._aptDraftWired = true;
+  let timer = null;
+  const save = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (document.getElementById('aptContractOverlay')?.classList.contains('open')) _aptSaveContractDraft();
+    }, 400);
+  };
+  ['input', 'change', 'click'].forEach(ev => body.addEventListener(ev, save, true));
+})();

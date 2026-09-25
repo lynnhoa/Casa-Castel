@@ -853,6 +853,7 @@ async function loadRooms() {
 
   _renderRoomsList();
   _initSortable();
+  _roomRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
   // Re-render if settings change (bathrooms / shared spaces lists update)
   if (!loadRooms._settingsWired) { loadRooms._settingsWired = true; onSettingsChange(() => _renderRoomsList()); }
 
@@ -1749,19 +1750,9 @@ function _pdfSafeName(name) {
 }
 
 function _roomDeliverPdf(pdf, filename) {
-  const blob = pdf.output('blob');
-  const bUrl = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = bUrl;
-  a.download = _pdfSafeName(filename);
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  // Revoking after 1s could pull the blob away while iOS is still opening it.
-  // Keep it alive until the page is actually hidden, with a long backstop.
-  const cleanup = () => { URL.revokeObjectURL(bUrl); a.remove(); };
-  window.addEventListener('pagehide', cleanup, { once: true });
-  setTimeout(cleanup, 60000);
+  // Phase 1: opens the PDF on top of the app (iPhone viewer / new browser tab)
+  // instead of moving the app page to it — see pdf-open.js.
+  return ccOpenPdf(pdf, _pdfSafeName(filename));
 }
 
 /* Renders every .pdf-page of `srcHtml` into a fresh offscreen container at full
@@ -1799,6 +1790,10 @@ async function _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename) {
    full-quality A4 PDF via _roomDeliverPdf when the user taps the PDF button.
    Resets btnEl to resetHtml when done. saveFn is called on Save (Übergabe). */
 async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, saveFn) {
+  // Phase 1: no in-app preview and no second "PDF" tap any more. The PDF is
+  // rendered ONCE at print quality and opened straight in the iPhone's PDF
+  // viewer / a new browser tab (pdf-open.js). The contract form stays open
+  // underneath with everything typed. (saveFn kept for compatibility, unused.)
   const pages = container.querySelectorAll('.pdf-page');
 
   // ── Guard: nothing rendered → fail loudly instead of saving a blank page ──
@@ -1806,70 +1801,18 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
     container.remove();
     if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
     console.error('[PDF] no .pdf-page nodes rendered for', filename);
-    alert('PDF konnte nicht erstellt werden — es wurden keine Seiten gerendert. Bitte erneut versuchen.');
+    alert('PDF konnte nicht erstellt werden – es wurden keine Seiten gerendert. Bitte erneut versuchen.');
     return;
   }
 
-  // Snapshot the rendered document so the save step can re-render at full quality
-  const srcHtml        = container.innerHTML;
-  const containerStyle = container.style.cssText;
-
-  // ── In-app preview overlay, then save on confirm ──
-  const overlay  = document.getElementById('pdfPreviewOverlay');
-  const doc      = document.getElementById('pdfPreviewDoc');
-  const titleEl  = document.getElementById('pdfPreviewTitle');
-  const saveBtn  = document.getElementById('pdfPreviewSaveBtn');
-  titleEl.textContent = filename.replace(/_/g, ' ').replace('.pdf', '');
-  doc.innerHTML = '';
-  overlay.style.display = 'flex';
-
-  const bodyEl = document.getElementById('pdfPreviewBody');
-  const bodyW  = (bodyEl?.clientWidth || 400) - 32;
-  const scale  = Math.min(1, bodyW / 794);
-  for (const pg of pages) {
-    const canvas = await html2canvas(pg, { scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
-    const img = document.createElement('img');
-    img.src = canvas.toDataURL('image/jpeg', 0.95);
-    img.style.cssText = `width:${794 * scale}px;height:${1123 * scale}px;display:block;`;
-    wrapper.appendChild(img);
-    doc.appendChild(wrapper);
+  try {
+    const pdf = await ccRenderPagesToPdf(container);
+    if (btnEl) btnEl.innerHTML = '<i class="ti ti-loader"></i> Opening PDF\u2026';
+    await ccOpenPdf(pdf, _pdfSafeName(filename));
+  } finally {
+    container.remove();
+    if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
   }
-  container.remove();
-
-  // Re-enable trigger button
-  if (btnEl) { btnEl.innerHTML = resetHtml; btnEl.disabled = false; }
-
-  const SAVE_LABEL = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF';
-
-  // Wire save button
-  const freshSave = saveBtn.cloneNode(true);
-  saveBtn.parentNode.replaceChild(freshSave, saveBtn);
-  freshSave.addEventListener('click', async e => {
-    e.stopPropagation();
-    freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving\u2026'; freshSave.disabled = true;
-    try {
-      if (saveFn) {
-        // saveFn rebuilds its own container and saves (Übergabe path)
-        overlay.style.display = 'none';
-        await saveFn();
-      } else {
-        // Re-render at full quality instead of reusing the low-res preview canvases
-        await _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename);
-        overlay.style.display = 'none';
-      }
-    } catch (err) {
-      console.error('[PDF] save failed:', err);
-      alert('PDF generation failed. Please try again.');
-    } finally {
-      freshSave.innerHTML = SAVE_LABEL; freshSave.disabled = false;
-      document.getElementById('contractOverlay')?.classList.add('open');
-    }
-  });
-
-  // Close button is wired statically once at file load (see the listener above
-  // this function) — do not clone/replace it here, that would destroy it.
 }
 
 function _kfSelect(prefix, val) {
@@ -2082,21 +2025,60 @@ async function _openContract(type, roomId) {
     const freshCancel = cancelBtn.cloneNode(true);
     cancelBtn.parentNode.replaceChild(freshCancel, cancelBtn);
     freshCancel.addEventListener('click', () => {
+      if (typeof ccDraftClear === 'function') ccDraftClear(_ROOM_DRAFT_KEY);
       document.getElementById('contractOverlay').classList.remove('open');
     });
+  }
+
+  // Keep what is typed for 2 hours (restored if the app ever has to restart)
+  if (typeof ccDraftAutoSave === 'function') {
+    const euLabel = type === 'ueberg'
+      ? (document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() || null)
+      : null;
+    ccDraftAutoSave(_ROOM_DRAFT_KEY, body, () =>
+      document.getElementById('contractOverlay')?.classList.contains('open') ? { type, roomId, euLabel } : null);
   }
 
   document.getElementById('contractOverlay').classList.add('open');
 }
 
 document.getElementById('contractClose')?.addEventListener('click', () => {
+  if (typeof ccDraftClear === 'function') ccDraftClear(_ROOM_DRAFT_KEY);
   document.getElementById('contractOverlay').classList.remove('open');
 });
 
 document.getElementById('contractOverlay')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('contractOverlay'))
+  if (e.target === document.getElementById('contractOverlay')) {
+    if (typeof ccDraftClear === 'function') ccDraftClear(_ROOM_DRAFT_KEY);
     document.getElementById('contractOverlay').classList.remove('open');
+  }
 });
+
+/* ── CONTRACT DRAFT RESTORE (Phase 1 safety net) ──────────────
+   If iOS ever restarts the app while a PDF is open, the generator is
+   reopened with everything that was typed (kept for 2 hours). */
+const _ROOM_DRAFT_KEY = 'cc_draft_room_contract';
+let _roomDraftRestoreTried = false;
+async function _roomRestoreContractDraft() {
+  if (_roomDraftRestoreTried || typeof ccDraftGet !== 'function') return;
+  _roomDraftRestoreTried = true;
+  const d = ccDraftGet(_ROOM_DRAFT_KEY);
+  if (!d || !d.meta) return;
+  if (!getRoomById(d.meta.roomId)) { ccDraftClear(_ROOM_DRAFT_KEY); return; }
+  try {
+    const tabEl = document.getElementById('tab-rooms');
+    if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('rooms');
+    // Übergabe: restore the card's Einzug/Auszug choice before opening
+    if (d.meta.type === 'ueberg' && d.meta.euLabel) {
+      document.getElementById('eu-' + d.meta.roomId)?.querySelectorAll('button, span, div').forEach(el => {
+        if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
+      });
+    }
+    await _openContract(d.meta.type, d.meta.roomId);
+    await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
+    await ccDraftApply(document.getElementById('contractBody'), d);
+  } catch (e) { console.warn('[rooms draft] restore skipped:', e); }
+}
 
 
 /* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */

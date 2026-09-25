@@ -620,7 +620,7 @@ async function _generateRentalMietvertragPDF() {
   const mieterName = [...(container.querySelectorAll('.kv__v')||[])]
     .find(el => el.previousElementSibling?.textContent?.includes('Name'))
     ?.textContent?.trim() || 'Mieter';
-  pdf.save(`Mietvertrag_${roomName}_${mieterName.replace(/\s+/g,'_')}.pdf`);
+  await ccOpenPdf(pdf, `Mietvertrag_${roomName}_${mieterName.replace(/\s+/g,'_')}.pdf`);   // Phase 1
 }
 
 

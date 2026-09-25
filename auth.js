@@ -233,6 +233,7 @@ function logout() {
   localStorage.removeItem('cc_role');
   localStorage.removeItem('cc_room');
   if (!wasTenant) {
+    if (typeof ccDraftClearAll === 'function') ccDraftClearAll();   // generator drafts
     localStorage.removeItem('rentals_role');
     if (sbL) sbL.auth.signOut().catch(() => {});
   }
