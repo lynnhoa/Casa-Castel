@@ -13,18 +13,33 @@ const _ctlSupa = window.supabase.createClient(SB_URL, SB_KEY, {
   auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: false }
 });
 
-async function ctlGetSession() {
+/* Returns the session, null when there really is none, or 'offline' when the
+   check failed twice but a login is stored on this device (connection hiccup
+   ≠ logout — the app stays open and the data load shows "Retry"). */
+function _ctlHasStoredLogin() {
   try {
-    const { data } = await _ctlSupa.auth.getSession();
+    for (let i = 0; i < localStorage.length; i++) {
+      if (/^sb-.+-auth-token$/.test(localStorage.key(i) || '')) return true;
+    }
+  } catch (e) {}
+  return false;
+}
+async function ctlGetSession() {
+  const once = async () => {
+    const { data, error } = await _ctlSupa.auth.getSession();
+    if (error) throw error;
     return data.session;
-  } catch (e) { return null; }
+  };
+  try { return await once(); } catch (e) {}
+  await new Promise(r => setTimeout(r, 1200));
+  try { return await once(); } catch (e) { return _ctlHasStoredLogin() ? 'offline' : null; }
 }
 
 async function ctlSignOut() {
   try { await _ctlSupa.auth.signOut(); } catch(e) {}
   localStorage.removeItem('cc_role');
   localStorage.removeItem('rentals_role');
-  location.href = 'login.html';
+  location.href = 'login.html?logout=1';
 }
 
 /* ── UI helpers ─────────────────────────────────────────────── */
@@ -50,6 +65,7 @@ async function boot() {
     location.replace('login.html');
     return;
   }
+  try { localStorage.setItem('mgmt_last_app', 'controlling.html'); } catch (e) {}
 
   try {
     await ctlLoadAll();                             // → controlling-data.js

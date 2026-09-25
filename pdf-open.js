@@ -66,6 +66,7 @@ function ccPdfSafeName(name) {
    page at 2× (≈190 dpi, sharp in print) and each canvas is released
    straight away — the old code rendered twice at up to 3×.       */
 async function ccRenderPagesToPdf(container, opts = {}) {
+  try { await ccFlowPages(container); } catch (e) { console.warn('[pdf] page flow skipped:', e); }
   const pages = container ? container.querySelectorAll('.pdf-page') : [];
   if (!pages.length) { _ccCloseWaitingTab(); throw new Error('no .pdf-page nodes rendered'); }
   try { return await _ccRender(pages, opts); }
@@ -84,6 +85,122 @@ async function _ccRender(pages, opts) {
     canvas.width = 0; canvas.height = 0;   // free the memory right away
   }
   return pdf;
+}
+
+/* ── AUTOMATIC PAGE FLOW (nothing is cut off) ──────────────
+   Every PDF page is a fixed A4 block; text that does not fit used to be cut
+   off at the bottom (Verwendungszweck, rent lines, Mietzeit with 2–3 tenants,
+   long inventory lists). Before rendering, each page is measured:
+   · what does not fit moves on — to the top of the next page if it fits there,
+     otherwise onto a new page with the same header and footer;
+   · a section moves together with its heading (never a heading alone at the
+     bottom), so bank details or signatures are not torn apart;
+   · long tables (inventory, meters) continue on the next page, header repeated;
+   · page numbers in the footer are renumbered afterwards.            */
+const CC_FLOW_HEADINGS = '.sec, .doc-title, .doc-subtitle';
+function _ccFlowKids(content) {
+  return [...content.children].filter(k => {
+    const cs = getComputedStyle(k);
+    return cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed';
+  });
+}
+function _ccFlowLimit(content) {
+  const r = content.getBoundingClientRect();
+  return r.top + content.clientHeight;
+}
+function _ccOverflowing(content) {
+  const limit = _ccFlowLimit(content);
+  return _ccFlowKids(content).some(k => k.getBoundingClientRect().bottom > limit + 0.5);
+}
+// Splits a table (or a block holding one table) at the first row that does not
+// fit. Returns the continuation block (header rows kept), or null.
+function _ccSplitTable(el, limit) {
+  const table = el.tagName === 'TABLE' ? el : el.querySelector('table');
+  if (!table) return null;
+  const dataRows = t => [...t.querySelectorAll('tr')].filter(tr => !tr.closest('thead') && !tr.querySelector('th'));
+  const rows = dataRows(table);
+  const r = rows.findIndex(tr => tr.getBoundingClientRect().bottom > limit + 0.5);
+  if (r <= 0) return null;
+  const clone = el.cloneNode(true);
+  const cTable = clone.tagName === 'TABLE' ? clone : clone.querySelector('table');
+  // continuation keeps only the table (no repeated title text around it)
+  if (clone !== cTable) {
+    let n = cTable;
+    while (n && n !== clone) {
+      [...n.parentElement.children].forEach(sib => { if (sib !== n && !sib.contains(cTable)) sib.remove(); });
+      n = n.parentElement;
+    }
+  }
+  dataRows(cTable).slice(0, r).forEach(tr => tr.remove());
+  rows.slice(r).forEach(tr => tr.remove());
+  clone.setAttribute('data-cc-continued', '1');
+  return clone;
+}
+function _ccCanReceive(content) {
+  const first = _ccFlowKids(content)[0];
+  if (!first) return true;
+  if (first.matches('.doc-title')) return false;                         // a new document part
+  return !/^\s*Anlage/i.test(first.textContent || '');                  // an annex starts its own page
+}
+function _ccPlaceAfter(container, pg, moved) {
+  const pages = [...container.querySelectorAll('.pdf-page')];
+  const next = pages[pages.indexOf(pg) + 1];
+  const nextContent = next && next.querySelector(':scope > .content');
+  if (nextContent && _ccCanReceive(nextContent)) {
+    const anchor = nextContent.firstChild;
+    moved.forEach(m => nextContent.insertBefore(m, anchor));
+    if (!_ccOverflowing(nextContent)) return;
+    moved.forEach(m => m.remove());                                      // does not fit there → new page
+  }
+  const np = pg.cloneNode(true);
+  const npc = np.querySelector(':scope > .content');
+  npc.innerHTML = '';
+  moved.forEach(m => npc.appendChild(m));
+  pg.after(np);
+}
+function _ccRenumberPages(container) {
+  const spans = [...container.querySelectorAll('.pdf-page')].map(p => p.querySelector('.ftr__row > span:last-child'));
+  if (spans.length && spans.every(sp => sp && /^\s*\d+\s*$/.test(sp.textContent)))
+    spans.forEach((sp, i) => { sp.textContent = String(i + 1); });
+}
+async function ccFlowPages(container) {
+  if (!container) return;
+  try { if (document.fonts) await document.fonts.ready; } catch (e) {}
+  let guard = 0;
+  for (let i = 0; i < container.querySelectorAll('.pdf-page').length && guard < 200; i++) {
+    const pg = container.querySelectorAll('.pdf-page')[i];
+    const content = pg.querySelector(':scope > .content');
+    if (!content) continue;
+    for (let round = 0; round < 40 && guard < 200; round++, guard++) {
+      const limit = _ccFlowLimit(content);
+      const kids = _ccFlowKids(content);
+      const idx = kids.findIndex(k => k.getBoundingClientRect().bottom > limit + 0.5);
+      if (idx < 0) break;
+      const el = kids[idx];
+      let moved = null;
+      // 1) a table that partly fits → continue its rows on the next page
+      if (el.getBoundingClientRect().top < limit - 30) {
+        const cont = _ccSplitTable(el, limit);
+        if (cont) moved = [cont, ...kids.slice(idx + 1)];
+      }
+      if (!moved) {
+        // 2) move the whole section (from its heading) — unless it is very long
+        let start = idx;
+        for (let s = idx; s >= 0; s--) { if (kids[s].matches(CC_FLOW_HEADINGS)) { start = s; break; } }
+        const pageH = content.clientHeight;
+        if (start === 0 || (limit - kids[start].getBoundingClientRect().top) > pageH * 0.5) start = idx;
+        while (start > 0 && kids[start - 1].matches(CC_FLOW_HEADINGS)) start--;   // never leave a heading alone
+        if (start === 0) {
+          if (kids.length > 1 && idx > 0) start = idx;                       // page starts with this section
+          else break;                                                        // one block taller than a page
+        }
+        moved = kids.slice(start);
+      }
+      if (!moved.length) break;
+      _ccPlaceAfter(container, pg, moved);
+    }
+  }
+  _ccRenumberPages(container);
 }
 
 /* ── OPEN THE PDF TAB RIGHT AT THE TAP ───────────────────────

@@ -65,8 +65,9 @@ function initLandlordAuth() {
     }
     return false;
   };
-  // Throws on network failure
-  const hasSession = () => sbL.auth.getSession().then(({ data }) => !!data.session);
+  // A failed check (connection) throws → handled below as offline, never as a logout
+  const hasSession = () => sbL.auth.getSession().then(({ data, error }) => { if (error) throw error; return !!data.session; });
+  try { localStorage.setItem('mgmt_last_app', 'landlord.html'); } catch (e) {}
   // SECURITY: the landlord app is shown only AFTER the login is confirmed (a browser flag alone is not enough)
   hasSession().then(ok => {
     if (ok) { showApp(); return; }
@@ -238,5 +239,5 @@ function logout() {
     if (sbL) sbL.auth.signOut().catch(() => {});
   }
   sessionStorage.removeItem('cc_preview_room');
-  location.href = wasTenant ? 'tenant.html' : 'login.html';
+  location.href = wasTenant ? 'tenant.html' : 'login.html?logout=1';
 }
