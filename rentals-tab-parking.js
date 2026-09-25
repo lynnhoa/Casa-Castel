@@ -195,6 +195,9 @@ document.getElementById('tab-parking').innerHTML = `
 .rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__knob,
 .rm-pill-toggle[data-mode="ja"] .rm-pill-toggle__knob { transform:translateX(18px); }
 .rm-pill-toggle__lbl { font-size:12px; font-weight:500; color:var(--cc-charcoal); min-width:52px; }
+
+/* ── 3.5 FIELD ALIGNMENT — Miete content in line with other sections ── */
+.pk-section--miete { padding-left:11px; }
   `;
   document.head.appendChild(s);
 })();
@@ -570,6 +573,7 @@ function _pkEnterSection(section, pkId) {
   if (!el) return;
   el.querySelector('.pk-sec-read').style.display = 'none';
   el.querySelector('.pk-sec-edit').style.display = '';
+  el.classList.add('apt-edit-active');   // same editing highlight as Apartments
   el.querySelector('.apt-input, .apt-stepper__v')?.focus?.();
 }
 

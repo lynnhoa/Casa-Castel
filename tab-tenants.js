@@ -442,6 +442,19 @@ document.getElementById('tab-tenants').innerHTML = `
   .tn-former-row:hover { background:var(--cc-surface); }
 }
 
+
+/* ── 3.5 FIELD ALIGNMENT — same standard as Rooms / Apartments / Parking ──
+   Edit fields: 8 px corners, same background + weight everywhere, 10 px rows,
+   small uppercase labels. Saved profile labels stay as they are. */
+.tn-fg, .tn-rent-form { gap:10px 8px; }
+.tn-field, .tn-rf { gap:4px; }
+.tn-field input, .tn-rf input { border-radius:var(--cc-r-md); background:var(--cc-bg); font-weight:300; }
+.tn-rf-derived { border-radius:var(--cc-r-md); font-weight:300; }
+.tn-rf .tn-flbl, .tn-field:has(input) .tn-flbl {
+  font-size:10px; font-weight:500; letter-spacing:.09em; text-transform:uppercase; }
+.tn-rf-save-row .tn-btn { white-space:nowrap; }
+.tn-rf-save-row .tn-rf-hint { flex:1; min-width:0; }
+.tn-edit-rent-btn { border-radius:6px; letter-spacing:.06em; text-transform:uppercase; }
   `;
   document.head.appendChild(s);
 })();

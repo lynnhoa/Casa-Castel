@@ -738,6 +738,18 @@ document.getElementById('tab-rooms').innerHTML = `
   cursor:pointer; font-family:inherit; -webkit-tap-highlight-color:transparent;
 }
 .rm-btn--danger:active { opacity:.85; }
+
+/* ── 3.5 FIELD ALIGNMENT — same standard as Apartments / Parking ──
+   Edit: 10 px between rows, 8 px corners, 34 px key steppers.
+   Saved: 11 px keys, values right-aligned. Miete content in line with other sections. */
+.rc-field-row { margin-bottom:10px; }
+.rc-input { border-radius:var(--cc-r-md); }
+.rc-stepper { border-radius:var(--cc-r-md); }
+.rc-stepper button { width:34px; height:34px; }
+.rc-row { justify-content:space-between; gap:12px; }
+.rc-row__k { font-size:11px; min-width:0; }
+.rc-row__v { text-align:right; }
+.rc-section--miete { padding-left:11px; }
   `;
   document.head.appendChild(s);
 })();

@@ -510,6 +510,15 @@ document.getElementById('tab-apartments').innerHTML = `
 .ub-mieter-pill[data-state="manual"] .ub-mieter-pill__knob { transform:translateX(18px); }
 .rnt-group-hdr { font-size:9px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-stone); padding:4px 2px 6px; margin-top:8px; }
 .rnt-group-hdr:first-child { margin-top:0; }
+
+/* ── 3.5 FIELD ALIGNMENT ──
+   No up/down arrows in number fields (same as Rooms), Zähler delete button
+   as tall as its field, Miete content in line with other sections. */
+.apt-input[type=number]::-webkit-inner-spin-button,
+.apt-input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.apt-input[type=number] { -moz-appearance:textfield; }
+[data-zaehler-id] > .apt-field:last-child > button { width:38px !important; height:38px !important; border-radius:var(--cc-r-md) !important; }
+.apt-section--miete { padding-left:11px; }
   `;
   document.head.appendChild(s);
 })();
