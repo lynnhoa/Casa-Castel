@@ -31,7 +31,7 @@ function _buildRentalMietvertragData(room, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
-  kautionFael = '5',
+  kautionFael = '5', kautionVal = null,
   staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
@@ -79,10 +79,9 @@ function _buildRentalMietvertragData(room, s, {
         (pricingMode === 'kalt_nk' ? ` (${e(kaltA)} Kaltmiete + ${e(nkA)} NK).` : ' (pauschal inkl. NK).');
     }
   }
-  const kautionBase = pricingMode === 'pauschal' ? kaltmiete + nkVorauszahlung : kaltmiete;
-  const kaution = room.kaution_override && room.kaution_default
-    ? Number(room.kaution_default)
-    : kautionBase * 3;
+  // Kaution: generator value → card override (toggle ON) → 3× base (kaution.js)
+  const kaution = ccKaution({ contract: 'mietvertrag', mode: pricingMode, kalt: kaltmiete,
+                              nk: nkVorauszahlung, rec: room, manual: kautionVal }).amount;
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',

@@ -42,6 +42,7 @@
             <button class="nav-profile-menu-item" onclick="location.href='landlord.html'">Casa Castel</button>
             <button class="nav-profile-menu-item" onclick="location.href='controlling.html'">Controlling</button>
             <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
+            <button class="nav-profile-menu-item" onclick="closeProfileMenu(); openRentalsProfile();">Profile</button>
             <button class="nav-profile-menu-item" onclick="handleLogout()">Log out</button>
           </div>
         </div>
@@ -321,6 +322,11 @@ boot();
 
 <script src="properties-dashboard.js"></script>
 <script src="properties-portfolio.js"></script>
+<!-- Profile panel (same one as Rentals). Reuses this page's Supabase client
+     instead of creating a second one, so the login session is shared safely. -->
+<script>var sbL = _supa;</script>
+<script src="settings.js"></script>
+<script src="rentals-profile.js"></script>
 
 </body>
 </html>

@@ -270,36 +270,78 @@ async function _kDeleteComments(weekId) {
   await sbL.from('kitchen_comments').delete().eq('week_id', weekId);
 }
 let _kAutoResetRanFor = null;
+const K_HISTORY_WEEKS = 8;    // history keeps the last 8 weeks (current week included)
+const K_NUDGE_LOG_MAX = 20;   // nudge log keeps the newest 20 nudges
+
+/* Storage paths of one week's proof photos (week row + its chat comments) */
+function _kWeekPhotoPaths(row, comments) {
+  const paths = [];
+  if (row.photo_path) paths.push(row.photo_path);
+  if (Array.isArray(row.photos)) row.photos.forEach(p => { if (p && p.path) paths.push(p.path); });
+  (comments || []).forEach(c => {
+    if (!c.text) return;
+    if (c.text.startsWith('[submission] ')) {
+      try { const d = JSON.parse(c.text.replace('[submission] ', '')); (d.photos || []).forEach(p => { if (p && p.path) paths.push(p.path); }); } catch (e) {}
+    } else if (c.text.startsWith('[photo] ')) {
+      const url = c.text.replace('[photo] ', '').trim();
+      const mi = url.indexOf('kitchen-proofs/');
+      if (mi !== -1) paths.push(decodeURIComponent(url.slice(mi + 'kitchen-proofs/'.length)));
+    }
+  });
+  return paths;
+}
+
+/* History cap: delete weeks older than the last K_HISTORY_WEEKS — never a week
+   of the current rotation cycle (the rotation view reads those rows). Photos and
+   chat of the deleted weeks go with them. Nudge log trimmed to the newest 20. */
+async function _kTrimHistory(currentIdx) {
+  if (!sbL) return;
+  const rooms      = _kGetRoomList();
+  const cyclePos   = rooms.length ? ((currentIdx % rooms.length) + rooms.length) % rooms.length : 0;
+  const cycleStart = currentIdx - cyclePos;
+  const keepFrom   = Math.min(currentIdx - (K_HISTORY_WEEKS - 1), cycleStart);
+
+  const { data: old, error } = await sbL.from('kitchen_weeks').select('*').lt('week_index', keepFrom);
+  if (error) { console.warn('[kitchen] history trim read:', error.message); }
+  else if (old && old.length) {
+    const ids   = old.map(r => r.id);
+    const paths = [];
+    for (const row of old) paths.push(..._kWeekPhotoPaths(row, await _kGetComments(row.id)));
+    if (paths.length) { try { await sbL.storage.from('kitchen-proofs').remove(paths); } catch (e) { console.warn('Storage cleanup error', e); } }
+    const { error: cErr } = await sbL.from('kitchen_comments').delete().in('week_id', ids);
+    if (cErr) console.warn('[kitchen] history trim comments:', cErr.message);
+    const { error: wErr } = await sbL.from('kitchen_weeks').delete().in('id', ids);
+    if (wErr) console.warn('[kitchen] history trim weeks:', wErr.message);
+  }
+
+  const { data: extra } = await sbL.from('lounge_data').select('id')
+    .eq('type', 'kitchen_nudge').order('created_at', { ascending: false })
+    .range(K_NUDGE_LOG_MAX, K_NUDGE_LOG_MAX + 999);
+  if (extra && extra.length) {
+    const { error: nErr } = await sbL.from('lounge_data').delete().in('id', extra.map(n => n.id));
+    if (nErr) console.warn('[kitchen] nudge log trim:', nErr.message);
+  }
+}
+
 async function _kAutoReset(currentIdx) {
-  // K8: remove proof photos + chat of weeks older than 30 days (runs once per week per landlord session)
+  // K8: remove proof photos + chat of weeks older than 30 days, then trim history to 8 weeks (runs once per week per landlord session)
   if (!sbL || _kAutoResetRanFor === currentIdx) return;
   _kAutoResetRanFor = currentIdx;
   const THIRTY = 30 * 24 * 60 * 60 * 1000;
   const { data } = await sbL.from('kitchen_weeks').select('*').lt('week_index', currentIdx).order('week_index', { ascending: false });
-  if (!data || !data.length) return;
+  if (!data || !data.length) { await _kTrimHistory(currentIdx); return; }
   const cutoff = Date.now() - THIRTY;
   for (const row of data) {
     const ts = row.submitted_at || row.closed_at || row.created_at;
     if (!ts || new Date(ts).getTime() > cutoff) continue;
     if (!row.photos && !row.photo_path && !row.photo_url && row.closed_at) continue; // already cleaned
-    const paths = [];
-    if (row.photo_path) paths.push(row.photo_path);
-    if (Array.isArray(row.photos)) row.photos.forEach(p => { if (p && p.path) paths.push(p.path); });
     const comments = await _kGetComments(row.id);
-    comments.forEach(c => {
-      if (!c.text) return;
-      if (c.text.startsWith('[submission] ')) {
-        try { const d = JSON.parse(c.text.replace('[submission] ', '')); (d.photos || []).forEach(p => { if (p && p.path) paths.push(p.path); }); } catch (e) {}
-      } else if (c.text.startsWith('[photo] ')) {
-        const url = c.text.replace('[photo] ', '').trim();
-        const mi = url.indexOf('kitchen-proofs/');
-        if (mi !== -1) paths.push(decodeURIComponent(url.slice(mi + 'kitchen-proofs/'.length)));
-      }
-    });
+    const paths = _kWeekPhotoPaths(row, comments);
     if (paths.length) { try { await sbL.storage.from('kitchen-proofs').remove(paths); } catch (e) { console.warn('Storage cleanup error', e); } }
     if (comments.length) await sbL.from('kitchen_comments').delete().eq('week_id', row.id);
     await sbL.from('kitchen_weeks').update({ photos: null, photo_path: null, photo_url: null, closed_at: row.closed_at || new Date().toISOString() }).eq('id', row.id);
   }
+  await _kTrimHistory(currentIdx);   // history cap: last 8 weeks + newest 20 nudges
 }
 
 /* ── ROOM LIST + WEEK INFO ──────────────────────────────── */
@@ -741,7 +783,7 @@ async function _populateKHistory() {
   const el = document.getElementById('k-mob-history-body');
   if (!sbL) { el.innerHTML = '<p class="cc-note">Connect Supabase.</p>'; return; }
   const idx = kWeekIdx();
-  const { data } = await sbL.from('kitchen_weeks').select('*').lte('week_index', idx).order('week_index', { ascending: false }).limit(12);
+  const { data } = await sbL.from('kitchen_weeks').select('*').lte('week_index', idx).order('week_index', { ascending: false }).limit(K_HISTORY_WEEKS);
   if (!data || !data.length) { el.innerHTML = '<p class="cc-note">No past weeks yet.</p>'; return; }
   el.innerHTML = data.map(w => {
     const dateStr = kWeekDateRange(w.week_index);

@@ -389,6 +389,7 @@
             <button class="nav-profile-menu-item" onclick="location.href='landlord.html'">Casa Castel</button>
             <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
             <button class="nav-profile-menu-item" onclick="switchTab('setup'); document.getElementById('navProfileMenu').classList.remove('open');">Setup</button>
+            <button class="nav-profile-menu-item" onclick="document.getElementById('navProfileMenu').classList.remove('open'); openRentalsProfile();">Profile</button>
             <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
           </div>
         </div>
@@ -463,6 +464,11 @@
   <script src="controlling-tab-entry.js"></script>
   <script src="controlling-tab-onetime.js"></script>
   <script src="controlling-tab-setup.js"></script>
+  <!-- Profile panel (same one as Rentals). Reuses this page's Supabase client
+       instead of creating a second one, so the login session is shared safely. -->
+  <script>var sbL = _ctlSupa;</script>
+  <script src="settings.js"></script>
+  <script src="rentals-profile.js"></script>
   <script>
     /* Kick off boot() defined in controlling-auth.js */
     boot();

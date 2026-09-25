@@ -99,7 +99,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     kennzeichen: kennzeichen || '',
     fahrzeug:    fahrzeug    || '',
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
-    kaution:         kautionVal !== null && kautionVal !== '' ? Number(kautionVal) : miete * 3,
+    kaution:         ccKaution({ contract: 'parking', kalt: miete, rec: pr, manual: kautionVal }).amount,
     kautionFaelText: kautionFael === 'sofort'
       ? 'sofort nach Vertragsunterzeichnung'
       : `binnen ${kautionFael}\u00a0Tagen nach Vertragsunterzeichnung`,
