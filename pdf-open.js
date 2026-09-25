@@ -77,7 +77,7 @@ async function _ccRender(pages, opts) {
       scale: opts.scale || 2, useCORS: true, backgroundColor: '#ffffff',
       width: 794, height: 1123, windowWidth: 794,
     });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);
     canvas.width = 0; canvas.height = 0;   // free the memory right away
   }
   return pdf;
@@ -102,9 +102,20 @@ const CC_WAITING_PAGE =
   '</body></html>';
 let _ccPending = null;   // { win, timer } — the tab opened at the tap, waiting for its PDF
 
+/* Installed app (home-screen icon): a new tab would open INSIDE the app with no
+   Share / Save to Files. There the finished PDF is handed to the iPhone's own
+   viewer instead (see ccOpenUrl); closing it brings you back to the generator. */
+const CC_STANDALONE = (() => {
+  try { return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches; }
+  catch (e) { return false; }
+})();
+const CC_PDF_RETURN_KEY = 'cc_pdf_return';   // set while the PDF viewer is open (installed app)
+const CC_PDF_RETURN_MS  = 30 * 60 * 1000;
+
 document.addEventListener('click', e => {
   const t = e.target && e.target.closest ? e.target.closest(CC_PDF_TRIGGERS) : null;
   if (!t || t.disabled || t.classList.contains('off')) return;
+  if (CC_STANDALONE) return;                             // installed app: see ccOpenUrl
   _ccOpenWaitingTab();
 }, true);   // capture: runs before the button's own handler, still inside the tap
 
@@ -146,6 +157,11 @@ async function ccOpenPdf(pdfOrBlob, filename) {
 function ccOpenUrl(url, label) {
   const waiting = _ccTakeWaitingTab();                 // opened at the tap → just load the PDF into it
   if (waiting) { try { waiting.location.replace(url); return 'opened'; } catch (e) {} }
+  if (CC_STANDALONE) {                                   // installed app → iPhone's own PDF viewer
+    try { sessionStorage.setItem(CC_PDF_RETURN_KEY, String(Date.now())); } catch (e) {}
+    window.location.href = url;                          // opens in the iPhone viewer (Share → Save to Files);
+    return 'opened';                                     // "Done" brings you back to the generator
+  }
   let win = null;
   try { win = window.open(url, '_blank'); } catch (e) { win = null; }
   if (win) return 'opened';
@@ -342,3 +358,46 @@ async function ccDraftApply(root, d) {
     } catch (e) {}
   });
 }
+
+
+/* ── HELPERS FOR THE GENERATORS ──────────────────────────── */
+// A generator that stops without creating a PDF → close the waiting tab.
+function ccCancelPdf() { _ccCloseWaitingTab(); }
+
+// True once, right after the PDF viewer was closed (installed app).
+function ccCameBackFromPdf() {
+  let ts = 0;
+  try { ts = +sessionStorage.getItem(CC_PDF_RETURN_KEY) || 0; sessionStorage.removeItem(CC_PDF_RETURN_KEY); } catch (e) {}
+  return ts > 0 && Date.now() - ts < CC_PDF_RETURN_MS;
+}
+
+/* Unfinished contract: never forced open. A small bar offers it; the
+   generator only opens when you tap "Continue". */
+function ccOfferDraft({ label, ts, onContinue, onDiscard }) {
+  document.getElementById('ccDraftOffer')?.remove();
+  const mins = ts ? Math.max(1, Math.round((Date.now() - ts) / 60000)) : 0;
+  const bar = document.createElement('div');
+  bar.id = 'ccDraftOffer';
+  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:9000;' +
+    'max-width:520px;margin:0 auto;background:#fff;border:1px solid #E5DFD6;border-radius:12px;' +
+    'box-shadow:0 6px 24px rgba(58,53,48,.14);padding:12px 14px;display:flex;align-items:center;gap:10px;' +
+    'font-family:inherit;font-size:13px;color:#3A3530;';
+  const txt = document.createElement('div');
+  txt.style.cssText = 'flex:1;min-width:0;line-height:1.35;';
+  txt.innerHTML = '<div style="font-weight:600;">Unfinished contract</div><div style="color:#9A8E7E;font-size:12px;"></div>';
+  txt.lastChild.textContent = label + (mins ? ' · ' + mins + ' min ago' : '');
+  const btnGo = document.createElement('button');
+  btnGo.type = 'button'; btnGo.textContent = 'Continue';
+  btnGo.style.cssText = 'border:0;border-radius:8px;background:#B8976A;color:#fff;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer;';
+  const btnX = document.createElement('button');
+  btnX.type = 'button'; btnX.textContent = 'Discard';
+  btnX.style.cssText = 'border:0;background:none;color:#9A8E7E;padding:8px 4px;font:inherit;cursor:pointer;';
+  btnGo.onclick = () => { bar.remove(); try { onContinue && onContinue(); } catch (e) {} };
+  btnX.onclick  = () => { bar.remove(); try { onDiscard && onDiscard(); } catch (e) {} };
+  bar.append(txt, btnGo, btnX);
+  document.body.appendChild(bar);
+}
+function ccDismissDraftOffer() { document.getElementById('ccDraftOffer')?.remove(); }
+
+// Temporary PDFs are also cleaned up whenever the app opens (not only on the next PDF).
+setTimeout(() => { try { _ccCleanupTempPdfs(); } catch (e) {} }, 6000);

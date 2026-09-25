@@ -6,8 +6,10 @@
   <meta name="robots" content="noindex, nofollow"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  <meta name="apple-mobile-web-app-title" content="Rentals"/>
+  <meta name="apple-mobile-web-app-title" content="LT Real Estate"/>
   <meta name="theme-color" content="#F5F2ED"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="mgmt-apple-touch-icon.png"/>
   <title>Rentals — Management</title>
   <link rel="stylesheet" href="casa-castel.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
@@ -119,7 +121,7 @@
         localStorage.removeItem('rentals_role');
         localStorage.removeItem('cc_role');
         if (typeof sbL !== 'undefined' && sbL) sbL.auth.signOut().catch(() => {});
-        location.replace('login.html');
+        location.replace('login.html?logout=1');
       });
       document.getElementById('rpProfileBtn')?.addEventListener('click', () => {
         document.getElementById('navProfileMenu')?.classList.remove('open');
@@ -176,7 +178,9 @@
     if (!localStorage.getItem('rentals_role') && localStorage.getItem('cc_role') !== 'landlord') {
       location.replace('login.html');
     } else if (typeof sbL !== 'undefined' && sbL) {
-      const rntHasSession = () => sbL.auth.getSession().then(({ data }) => !!data.session);
+      try { localStorage.setItem('mgmt_last_app', 'rentals-index.html'); } catch (e) {}
+      // A failed check (connection) throws → caught below: app stays open
+      const rntHasSession = () => sbL.auth.getSession().then(({ data, error }) => { if (error) throw error; return !!data.session; });
       rntHasSession().then(ok => {
         if (ok) return;
         return new Promise(r => setTimeout(r, 1200))

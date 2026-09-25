@@ -861,6 +861,7 @@ function _pkSetEU(pkId, idx, btn) {
 }
 
 async function _pkOpenContract(type, pkId) {
+  if (typeof ccDismissDraftOffer === 'function') ccDismissDraftOffer();   // you opened a generator yourself
   _pkContractId = pkId;
   const spot = appParking.find(p => p.id === pkId);
   if (!spot) return;
@@ -940,13 +941,29 @@ document.getElementById('pkContractOverlay')?.addEventListener('click', e => {
 /* ── CONTRACT DRAFT RESTORE (Phase 1 safety net) ───────────── */
 const _PK_DRAFT_KEY = 'cc_draft_parking_contract';
 let _pkDraftRestoreTried = false;
+/* Unfinished generator: land on the tab; the generator only opens right after
+   closing the PDF viewer (installed app) or when you tap "Continue". */
 async function _pkRestoreContractDraft() {
   if (_pkDraftRestoreTried || typeof ccDraftGet !== 'function') return;
   _pkDraftRestoreTried = true;
   const d = ccDraftGet(_PK_DRAFT_KEY);
   if (!d || !d.meta) return;
-  if (!appParking.find(p => p.id === d.meta.pkId)) { ccDraftClear(_PK_DRAFT_KEY); return; }
+  const pk = appParking.find(p => p.id === d.meta.pkId);
+  if (!pk) { ccDraftClear(_PK_DRAFT_KEY); return; }
+  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf()) return _pkReopenContractDraft(d);
+  if (typeof ccOfferDraft !== 'function') return;
+  ccOfferDraft({
+    label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + (pk.name || 'Parking'),
+    ts: d.ts,
+    onContinue: () => _pkReopenContractDraft(ccDraftGet(_PK_DRAFT_KEY) || d),
+    onDiscard:  () => ccDraftClear(_PK_DRAFT_KEY),
+  });
+}
+async function _pkReopenContractDraft(d) {
+  if (!d || !d.meta || !appParking.find(p => p.id === d.meta.pkId)) return;
   try {
+    const tabEl = document.getElementById('tab-parking');
+    if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('parking');
     if (d.meta.type === 'ueberg' && d.meta.euLabel) {
       document.getElementById('pk-eu-' + d.meta.pkId)?.querySelectorAll('button, span, div').forEach(el => {
         if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
@@ -986,6 +1003,7 @@ function _pkRemoveMieterBlock(n) {
 function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
   let _pkMvTenantName  = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   let _pkMvTenantEmail = profile.email   || '';
+  let _pkMvTenantTel   = profile.phone   || '';
   let _pkMvTenantAdr   = profile.address || '';
   let _pkMvTenantDob   = profile.birthday || '';
   if (_pkMvTenantDob && _pkMvTenantDob.includes('-') && _pkMvTenantDob.length === 10) {
@@ -1039,6 +1057,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
         data-tenant-email="${pkEsc(_pkMvTenantEmail)}"
         data-tenant-adr="${pkEsc(_pkMvTenantAdr)}"
         data-tenant-dob="${pkEsc(_pkMvTenantDob)}"
+        data-tenant-tel="${pkEsc(_pkMvTenantTel)}"
         onclick="_togglePkMvMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
@@ -1048,7 +1067,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-field"><label>Adresse</label><input class="rm-input" id="pk-mv-adr" value="${pkEsc(_pkMvTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
     <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="pk-mv-dob" value="${pkEsc(_pkMvTenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="pk-mv-email" type="email" value="${pkEsc(_pkMvTenantEmail)}" placeholder="mieter@beispiel.de"/></div>
-    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-tel" type="tel" placeholder="+49 …"/></div>
+    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label><input class="rm-input" id="pk-mv-tel" type="tel" value="${pkEsc(_pkMvTenantTel)}" placeholder="+49 …"/></div>
 
     <div id="pk-mv-mieter2" style="display:${_t2 ? '' : 'none'}">
       <div class="rm-fields-title" style="display:flex;align-items:center;gap:10px;margin-top:6px"><span>Mieterdaten — Mieter 2</span><button type="button" onclick="_pkRemoveMieterBlock(2)" style="font-size:11px;color:var(--cc-stone);background:none;border:none;cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;margin-left:auto">Entfernen</button></div>
@@ -1185,6 +1204,7 @@ function _togglePkMvMieter() {
     document.getElementById('pk-mv-adr').value   = '';
     document.getElementById('pk-mv-dob').value   = '';
     document.getElementById('pk-mv-email').value = '';
+    { const el = document.getElementById('pk-mv-tel'); if (el) el.value = ''; }
     document.getElementById('pk-mv-name').focus();
     if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
   } else {
@@ -1193,6 +1213,7 @@ function _togglePkMvMieter() {
     document.getElementById('pk-mv-adr').value   = pill.dataset.tenantAdr   || '';
     document.getElementById('pk-mv-dob').value   = pill.dataset.tenantDob   || '';
     document.getElementById('pk-mv-email').value = pill.dataset.tenantEmail || '';
+    { const el = document.getElementById('pk-mv-tel'); if (el) el.value = pill.dataset.tenantTel || ''; }
     if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
   }
 }

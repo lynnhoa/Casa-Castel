@@ -559,6 +559,7 @@ function _wirePkMvPdfBtn() {
       console.error('[pk-mv-pdf]', err);
       btn.innerHTML = resetHtml;
       btn.disabled  = false;
+      alert('PDF could not be created. Please try again.');   // also closes the waiting tab
     }
   });
 }

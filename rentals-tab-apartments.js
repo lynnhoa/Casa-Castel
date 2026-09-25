@@ -597,6 +597,7 @@ function _aptTenantBlockHTML(prefix, n, profile, { required = false, aptName = '
         data-tenant-email="${aptEsc(tEmail)}"
         data-tenant-adr="${aptEsc(tAdr)}"
         data-tenant-dob="${aptEsc(tDob)}"
+        data-tenant-tel="${aptEsc(profile?.phone||'')}"
         onclick="_toggleAptTenantPill('${prefix}',${n})">
         <div class="ub-mieter-pill__knob"></div>
       </div>
@@ -630,6 +631,7 @@ function _toggleAptTenantPill(prefix, n) {
   const adrEl   = document.getElementById(`apt-${prefix}-adr${sfx}`);
   const dobEl   = document.getElementById(`apt-${prefix}-dob${sfx}`);
   const emailEl = document.getElementById(`apt-${prefix}-email${sfx}`);
+  const telEl   = document.getElementById(`apt-${prefix}-tel${sfx}`);
   const isRoom = pill.dataset.state === 'room';
   if (isRoom) {
     pill.dataset.state = 'manual';
@@ -637,6 +639,7 @@ function _toggleAptTenantPill(prefix, n) {
     if (adrEl)   adrEl.value   = '';
     if (dobEl)   dobEl.value   = '';
     if (emailEl) emailEl.value = '';
+    if (telEl)   telEl.value   = '';
     nameEl?.focus();
     if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
   } else {
@@ -645,6 +648,7 @@ function _toggleAptTenantPill(prefix, n) {
     if (adrEl)   adrEl.value   = pill.dataset.tenantAdr   || '';
     if (dobEl)   dobEl.value   = pill.dataset.tenantDob   || '';
     if (emailEl) emailEl.value = pill.dataset.tenantEmail || '';
+    if (telEl)   telEl.value   = pill.dataset.tenantTel   || '';
     if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
   }
 }
@@ -1937,16 +1941,36 @@ function _aptClearContractDraft() {
 }
 
 let _aptDraftRestoreTried = false;
+/* Unfinished generator: land on the tab; the generator only opens right after
+   closing the PDF viewer (installed app) or when you tap "Continue". */
 async function _aptRestoreContractDraft() {
   if (_aptDraftRestoreTried) return;
   _aptDraftRestoreTried = true;
+  const d = _aptReadContractDraft();
+  if (!d) return;
+  const apt = appApartments.find(a => a.id === d.aptId);
+  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf()) return _aptReopenContractDraft(d);
+  if (typeof ccOfferDraft !== 'function') return;
+  ccOfferDraft({
+    label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.type] || 'Contract') + ' · ' + (apt?.name || 'Apartment'),
+    ts: d.ts,
+    onContinue: () => _aptReopenContractDraft(_aptReadContractDraft() || d),
+    onDiscard:  () => _aptClearContractDraft(),
+  });
+}
+function _aptReadContractDraft() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(_APT_DRAFT_KEY) || 'null'); } catch (e) {}
-  if (!d || !d.aptId || !d.type) return;
-  if (Date.now() - (d.ts || 0) > _APT_DRAFT_MAX_MS) { _aptClearContractDraft(); return; }
-  if (!appApartments.find(a => a.id === d.aptId)) { _aptClearContractDraft(); return; }
-
+  if (!d || !d.aptId || !d.type) return null;
+  if (Date.now() - (d.ts || 0) > _APT_DRAFT_MAX_MS) { _aptClearContractDraft(); return null; }
+  if (!appApartments.find(a => a.id === d.aptId)) { _aptClearContractDraft(); return null; }
+  return d;
+}
+async function _aptReopenContractDraft(d) {
+  if (!d) return;
   try {
+    const tabEl = document.getElementById('tab-apartments');
+    if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('apartments');
     // Übergabe: restore the card's Einzug/Auszug choice BEFORE opening,
     // because _aptOpenContract reads it from the card
     if (d.type === 'ueberg' && d.euLabel) {
@@ -2034,6 +2058,7 @@ let _aptContractId   = null;
 let _aptContractType = null;
 
 async function _aptOpenContract(type, aptId) {
+  if (typeof ccDismissDraftOffer === 'function') ccDismissDraftOffer();   // you opened a generator yourself
   _aptContractId   = aptId;
   _aptContractType = type;
   const apt = appApartments.find(a => a.id === aptId);
@@ -2065,12 +2090,13 @@ async function _aptOpenContract(type, aptId) {
       document.getElementById('aptKzPdfBtn')?.addEventListener('click', async () => {
         _aptSaveContractDraft();
         const apt2        = appApartments.find(a => a.id === _aptContractId);
-        if (!apt2) return;
+        if (!apt2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); return; }
         const t1cm        = _aptReadTenantBlock('cm', 1);
         const mieterName  = t1cm.name;
         const mieterAdr   = t1cm.adr;
         const mieterDob   = t1cm.dob;
         const mieterEmail = t1cm.email;
+        const mieterTel   = t1cm.tel;
         const t2cm        = _aptReadTenantBlock('cm', 2);
         const t3cm        = _aptReadTenantBlock('cm', 3);
         const startVal    = document.getElementById('apt-cm-start')?.value;
@@ -2084,7 +2110,7 @@ async function _aptOpenContract(type, aptId) {
         try {
           if (typeof loadSettings === 'function') await loadSettings();
           const data = _buildRentalKurzzeitData(apt2, appSettings, {
-            mieterName, mieterAdr, mieterDob, mieterEmail,
+            mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
             mieterName2: t2cm.name, mieterAdr2: t2cm.adr, mieterDob2: t2cm.dob, mieterEmail2: t2cm.email, mieterTel2: t2cm.tel,
             mieterName3: t3cm.name, mieterAdr3: t3cm.adr, mieterDob3: t3cm.dob, mieterEmail3: t3cm.email, mieterTel3: t3cm.tel,
             startVal, endVal, sigVal, kautionVal, kautionFael,
@@ -2129,7 +2155,7 @@ async function _aptOpenContract(type, aptId) {
         document.getElementById('aptGwPdfBtn')?.addEventListener('click', async () => {
           _aptSaveContractDraft();
           const apt2 = appApartments.find(a => a.id === _aptContractId);
-          if (!apt2) return;
+          if (!apt2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); return; }
 
           // Read all fields
           const szenario       = document.querySelector('.apt-gw-szenario-btn.active')?.dataset.s || 'S1';
@@ -2243,11 +2269,12 @@ async function _aptOpenContract(type, aptId) {
       document.getElementById('aptMvPdfBtn')?.addEventListener('click', async () => {
         _aptSaveContractDraft();
         const apt2              = appApartments.find(a => a.id === _aptContractId);
-        if (!apt2) return;
+        if (!apt2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); return; }
         const mieterName        = document.getElementById('apt-mv-name')?.value.trim();
         const mieterAdr         = document.getElementById('apt-mv-adr')?.value.trim();
         const mieterDob         = document.getElementById('apt-mv-dob')?.value.trim();
         const mieterEmail       = document.getElementById('apt-mv-email')?.value.trim();
+        const mieterTel         = document.getElementById('apt-mv-tel')?.value.trim() || '';
         const t2 = _aptReadTenantBlock('mv', 2);
         const t3 = _aptReadTenantBlock('mv', 3);
         const startVal          = document.getElementById('apt-mv-start')?.value;
@@ -2292,7 +2319,7 @@ async function _aptOpenContract(type, aptId) {
             });
           }
           const data = _buildRentalMietvertragData(aptRoom, appSettings, {
-            mieterName, mieterAdr, mieterDob, mieterEmail, startVal, sigVal,
+            mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
             mieterName2: t2.name, mieterAdr2: t2.adr, mieterDob2: t2.dob, mieterEmail2: t2.email, mieterTel2: t2.tel,
             mieterName3: t3.name, mieterAdr3: t3.adr, mieterDob3: t3.dob, mieterEmail3: t3.email, mieterTel3: t3.tel,
             befristet, endVal, grundVal, eigenbedarfPerson, kautionFael,

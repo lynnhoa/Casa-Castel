@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-<meta name="apple-mobile-web-app-title" content="Properties"/>
+<meta name="apple-mobile-web-app-title" content="LT Real Estate"/>
 <meta name="theme-color" content="#F5F2ED"/>
+<link rel="manifest" href="manifest.json"/>
+<link rel="apple-touch-icon" href="mgmt-apple-touch-icon.png"/>
 <meta name="robots" content="noindex,nofollow"/>
 <title>Properties</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -271,7 +273,7 @@ async function handleLogout() {
   localStorage.removeItem('cc_role');
   localStorage.removeItem('rentals_role');
   showLoading(false);
-  window.location.href = 'login.html';
+  window.location.href = 'login.html?logout=1';
 }
 
 /* ── BOOT ── */
@@ -279,13 +281,22 @@ async function boot() {
   showLoading(true);
 
   // Session check — only a MISSING session redirects to login.
-  let session = null;
-  try { session = await getSession(); } catch(e) { /* treat as no session */ }
-  if (!session) {
+  // A connection hiccup is not a logout: retry once; if it still fails but a
+  // login is stored on this device, stay (the data load then offers Retry).
+  let session = null, failed = false;
+  try { session = await getSession(); }
+  catch(e) {
+    failed = true;
+    await new Promise(r => setTimeout(r, 1200));
+    try { session = await getSession(); failed = false; } catch(e2) { failed = true; }
+  }
+  const storedLogin = (() => { try { for (let i = 0; i < localStorage.length; i++) { if (/^sb-.+-auth-token$/.test(localStorage.key(i) || '')) return true; } } catch(e) {} return false; })();
+  if (!session && !(failed && storedLogin)) {
     showLoading(false);
     location.replace('login.html');
     return;
   }
+  try { localStorage.setItem('mgmt_last_app', 'properties.html'); } catch(e) {}
 
   // Data load — a failure here must NOT redirect (would cause a
   // login ↔ properties redirect loop while the session is valid).

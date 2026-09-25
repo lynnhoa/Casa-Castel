@@ -10,7 +10,7 @@ Property management app — Alsenstraße 60, 55252 Mainz-Kastel.
 casa-castel-v2/
 ├── landlord.html         ← Landlord PWA (Management)
 ├── tenant.html           ← Tenant PWA
-├── manifest.json         ← Landlord PWA manifest
+├── manifest.json         ← Management app "LT Real Estate" (all 4 management apps)
 ├── manifest-tenant.json  ← Tenant PWA manifest
 ├── icon-192.png
 ├── icon-512.png
@@ -72,7 +72,7 @@ Add to Vercel environment variables (or fill directly in `js/constants.js` for p
 
 ## iOS PWA — Add to Home Screen
 
-**Landlord:** Open `landlord.html` in Safari → Share → Add to Home Screen  
+**Management ("LT Real Estate"):** delete the old icon first, then open `https://<domain>/management` in Safari → Share → Add to Home Screen ("Open as Web App" on). Log in once. From then on the app opens straight in the last app and tab you used; the login form only appears after Logout.
 **Tenant:** Open `tenant.html` in Safari → Share → Add to Home Screen
 
-Both have separate manifests with correct `start_url`.
+The two apps have separate manifests with their own `id`, so they never merge.

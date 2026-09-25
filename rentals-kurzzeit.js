@@ -21,7 +21,7 @@
 /* ── DATA BUILDER ─────────────────────────────────────────────────────────── */
 
 function _buildRentalKurzzeitData(apt, s, {
-  mieterName, mieterAdr, mieterDob, mieterEmail,
+  mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '',
   mieterName2 = '', mieterAdr2 = '', mieterDob2 = '', mieterEmail2 = '', mieterTel2 = '',
   mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal, endVal, sigVal,
@@ -141,6 +141,7 @@ function _buildRentalKurzzeitData(apt, s, {
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
     mieterEmail:        mieterEmail || '',
+    mieterTel:          mieterTel   || '',
     wohnungName:        apt.name,
     wohnungsnummer:     apt.wohnungsnummer || '',
     wohnungFlaeche:     apt.flaeche_m2 || 0,
@@ -173,9 +174,9 @@ function _buildRentalKurzzeitData(apt, s, {
     inventar,
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
     hasMieter2: !!(mieterName2 && mieterName2.trim()),
-    mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2, mieterEmail2,
+    mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2, mieterEmail2, mieterTel2,
     hasMieter3: !!(mieterName3 && mieterName3.trim()),
-    mieterName3, mieterAdresse3: mieterAdr3, mieterGeburtsdatum3: mieterDob3, mieterEmail3,
+    mieterName3, mieterAdresse3: mieterAdr3, mieterGeburtsdatum3: mieterDob3, mieterEmail3, mieterTel3,
   };
 }
 
@@ -335,16 +336,19 @@ function _renderRentalKurzzeitHTML(d) {
     ${kv('Adresse',d.mieterAdresse||'')}
     ${kv('Geburtsdatum',d.mieterGeburtsdatum||'')}
     ${kv('E-Mail',d.mieterEmail||'')}
+    ${d.mieterTel ? kv('Telefon',d.mieterTel) : ''}
     ${d.hasMieter2 ? sec('Mieter 2',false,false) : ''}
     ${d.hasMieter2 ? kv('Name',d.mieterName2) : ''}
     ${d.hasMieter2 ? kv('Adresse',d.mieterAdresse2||'') : ''}
     ${d.hasMieter2 ? kv('Geburtsdatum',d.mieterGeburtsdatum2||'') : ''}
     ${d.hasMieter2 ? kv('E-Mail',d.mieterEmail2||'') : ''}
+    ${d.hasMieter2 && d.mieterTel2 ? kv('Telefon',d.mieterTel2) : ''}
     ${d.hasMieter3 ? sec('Mieter 3',false,false) : ''}
     ${d.hasMieter3 ? kv('Name',d.mieterName3) : ''}
     ${d.hasMieter3 ? kv('Adresse',d.mieterAdresse3||'') : ''}
     ${d.hasMieter3 ? kv('Geburtsdatum',d.mieterGeburtsdatum3||'') : ''}
     ${d.hasMieter3 ? kv('E-Mail',d.mieterEmail3||'') : ''}
+    ${d.hasMieter3 && d.mieterTel3 ? kv('Telefon',d.mieterTel3) : ''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Wohnungsnummer',d.wohnungsnummer||'')}${kv('PLZ / Ort',d.objektPLZOrt)}${kv('Bezeichnung',d.wohnungName)}
     ${d.etage ? kv('Etage',d.etage) : ''}

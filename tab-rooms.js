@@ -1829,6 +1829,7 @@ function _kfSelect(prefix, val) {
 }
 
 async function _openContract(type, roomId) {
+  if (typeof ccDismissDraftOffer === 'function') ccDismissDraftOffer();   // you opened a generator yourself
   _contractRoomId = roomId;
   _contractType   = type;
   const room = getRoomById(roomId);
@@ -1856,7 +1857,7 @@ async function _openContract(type, roomId) {
         const btn = document.getElementById('contractPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
-          const room2 = getRoomById(_contractRoomId); if (!room2) return;
+          const room2 = getRoomById(_contractRoomId); if (!room2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } return; }
           const mieterName = document.getElementById('cm-name')?.value.trim();
           const mieterAdr  = document.getElementById('cm-adr')?.value.trim();
           const mieterDob  = document.getElementById('cm-dob')?.value.trim();
@@ -1914,7 +1915,7 @@ async function _openContract(type, roomId) {
         const btn = document.getElementById('contractPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
-          const room2   = getRoomById(_contractRoomId); if (!room2) return;
+          const room2   = getRoomById(_contractRoomId); if (!room2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } return; }
           const mieterName  = document.getElementById('mv-name')?.value.trim();
           const mieterAdr   = document.getElementById('mv-adr')?.value.trim();
           const mieterDob   = document.getElementById('mv-dob')?.value.trim();
@@ -2059,12 +2060,27 @@ document.getElementById('contractOverlay')?.addEventListener('click', e => {
    reopened with everything that was typed (kept for 2 hours). */
 const _ROOM_DRAFT_KEY = 'cc_draft_room_contract';
 let _roomDraftRestoreTried = false;
+/* Unfinished generator: you land on the tab, never inside the generator.
+   - Just closed the PDF viewer (installed app) → back into the generator.
+   - Any other start / login → a small "Continue unfinished contract" bar. */
 async function _roomRestoreContractDraft() {
   if (_roomDraftRestoreTried || typeof ccDraftGet !== 'function') return;
   _roomDraftRestoreTried = true;
   const d = ccDraftGet(_ROOM_DRAFT_KEY);
   if (!d || !d.meta) return;
-  if (!getRoomById(d.meta.roomId)) { ccDraftClear(_ROOM_DRAFT_KEY); return; }
+  const room = getRoomById(d.meta.roomId);
+  if (!room) { ccDraftClear(_ROOM_DRAFT_KEY); return; }
+  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf()) return _roomReopenContractDraft(d);
+  if (typeof ccOfferDraft !== 'function') return;
+  ccOfferDraft({
+    label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + room.name,
+    ts: d.ts,
+    onContinue: () => _roomReopenContractDraft(ccDraftGet(_ROOM_DRAFT_KEY) || d),
+    onDiscard:  () => ccDraftClear(_ROOM_DRAFT_KEY),
+  });
+}
+async function _roomReopenContractDraft(d) {
+  if (!d || !d.meta || !getRoomById(d.meta.roomId)) return;
   try {
     const tabEl = document.getElementById('tab-rooms');
     if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('rooms');
@@ -2086,6 +2102,7 @@ function _contractBodyUeberg(room, isEinzug) {
   const s = appSettings;
   const profile   = (typeof _getProfile === 'function') ? _getProfile(room.name) : {};
   const tenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
+  const tenantAdr  = profile.address || '';
 
   const zaehler = _parseArr(s.zaehler);
   const strom   = zaehler.find(z => z.type === 'Strom');
@@ -2108,7 +2125,7 @@ function _contractBodyUeberg(room, isEinzug) {
     </div>
     <div class="rm-field">
       <label>Mieter Adresse <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(frei eingeben)</span></label>
-      <input class="rm-input" id="ub-mieter-adr" placeholder="Aktuelle Adresse…"/>
+      <input class="rm-input" id="ub-mieter-adr" value="${esc(tenantAdr)}" placeholder="Aktuelle Adresse…"/>
     </div>
 
     <!-- Übergabedatum -->
@@ -2194,6 +2211,8 @@ function _initUebergMieterToggle(room) {
     if (pill.dataset.state === 'room') {
       const nameInput = document.getElementById('ub-mieter-name');
       if (nameInput) nameInput.value = tenantName;
+      const adrInput = document.getElementById('ub-mieter-adr');
+      if (adrInput && !adrInput.value) adrInput.value = profile.address || '';
     }
   }
 }
@@ -2210,12 +2229,14 @@ function _toggleUebergMieter(roomId) {
     // Switch to manual
     pill.dataset.state = 'manual';
     nameInput.value = '';
+    { const el = document.getElementById('ub-mieter-adr'); if (el) el.value = ''; }
     nameInput.focus();
     if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
   } else {
     // Switch back to room tenant
     pill.dataset.state = 'room';
     nameInput.value = pill.dataset.tenantName || '';
+    { const el = document.getElementById('ub-mieter-adr'); if (el) el.value = pill.dataset.tenantAdr || ''; }
     if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
   }
 }
@@ -2231,6 +2252,7 @@ function _toggleCmMieter() {
     document.getElementById('cm-adr').value   = '';
     document.getElementById('cm-dob').value   = '';
     document.getElementById('cm-email').value = '';
+    { const el = document.getElementById('cm-tel'); if (el) el.value = ''; }
     document.getElementById('cm-name').focus();
     if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
   } else {
@@ -2239,6 +2261,7 @@ function _toggleCmMieter() {
     document.getElementById('cm-adr').value   = pill.dataset.tenantAdr   || '';
     document.getElementById('cm-dob').value   = pill.dataset.tenantDob   || '';
     document.getElementById('cm-email').value = pill.dataset.tenantEmail || '';
+    { const el = document.getElementById('cm-tel'); if (el) el.value = pill.dataset.tenantTel || ''; }
     if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
   }
 }
@@ -2254,6 +2277,7 @@ function _toggleMvMieter() {
     document.getElementById('mv-adr').value   = '';
     document.getElementById('mv-dob').value   = '';
     document.getElementById('mv-email').value = '';
+    { const el = document.getElementById('mv-tel'); if (el) el.value = ''; }
     document.getElementById('mv-name').focus();
     if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
   } else {
@@ -2262,6 +2286,7 @@ function _toggleMvMieter() {
     document.getElementById('mv-adr').value   = pill.dataset.tenantAdr   || '';
     document.getElementById('mv-dob').value   = pill.dataset.tenantDob   || '';
     document.getElementById('mv-email').value = pill.dataset.tenantEmail || '';
+    { const el = document.getElementById('mv-tel'); if (el) el.value = pill.dataset.tenantTel || ''; }
     if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
   }
 }
@@ -2419,6 +2444,7 @@ function _contractBodyKurzzeit(room) {
                   : (typeof S !== 'undefined') ? S.get('room_profile_' + room.name, {}) : {};
   const tenantName    = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   const tenantEmail   = profile.email   || '';
+  const tenantPhone   = profile.phone   || '';
   const tenantAddress = profile.address || '';
   let   tenantDob     = profile.birthday || '';
   if (tenantDob && tenantDob.includes('-') && tenantDob.length === 10) {
@@ -2482,7 +2508,7 @@ function _contractBodyKurzzeit(room) {
     <div class="rm-fields-title" style="margin-bottom:10px;">Mieter</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:12px;color:var(--cc-taupe);font-weight:400;" id="cmMieterRoomLbl">${esc(room.name)} Mieter</span>
-      <div class="ub-mieter-pill" id="cmMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" onclick="_toggleCmMieter()">
+      <div class="ub-mieter-pill" id="cmMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" data-tenant-tel="${esc(tenantPhone)}" onclick="_toggleCmMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
       <span style="font-size:12px;color:var(--cc-stone);" id="cmMieterManualLbl">Manuell</span>
@@ -2491,7 +2517,7 @@ function _contractBodyKurzzeit(room) {
     <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="cm-adr" value="${esc(tenantAddress)}" placeholder="Aktuelle Adresse…"/></div>
     <div class="rm-field"><label>Geburtsdatum</label><input class="rm-input" id="cm-dob" value="${esc(tenantDob)}" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/></div>
     <div class="rm-field"><label>E-Mail</label><input class="rm-input" id="cm-email" type="email" value="${esc(tenantEmail)}" placeholder="mieter@beispiel.de"/></div>
-    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="cm-tel" type="tel" placeholder="+49 …"/></div>
+    <div class="rm-field"><label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label><input class="rm-input" id="cm-tel" type="tel" value="${esc(tenantPhone)}" placeholder="+49 …"/></div>
     <div class="rm-field-row">
       <div class="rm-field"><label>Mietbeginn <span style="color:#c0392b;font-weight:700;">*</span></label><input class="rm-input" id="cm-start" type="date" onclick="try{this.showPicker()}catch(e){}" /></div>
       <div class="rm-field"><label>Mietende <span style="color:#c0392b;font-weight:700;">*</span></label><input class="rm-input" id="cm-end" type="date" onclick="try{this.showPicker()}catch(e){}" /></div>
@@ -3882,6 +3908,7 @@ function _contractBodyMietvertrag(room) {
 
   const tenantName    = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   const tenantEmail   = profile.email   || '';
+  const tenantPhone   = profile.phone   || '';
   const tenantAddress = profile.address || '';
   let   tenantDob     = profile.birthday || '';
   if (tenantDob && tenantDob.includes('-') && tenantDob.length === 10) {
@@ -3956,7 +3983,7 @@ function _contractBodyMietvertrag(room) {
     <div class="rm-fields-title" style="margin-top:2px;margin-bottom:10px;">Mieter</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
       <span style="font-size:12px;color:var(--cc-taupe);font-weight:400;" id="mvMieterRoomLbl">${esc(room.name)} Mieter</span>
-      <div class="ub-mieter-pill" id="mvMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" onclick="_toggleMvMieter()">
+      <div class="ub-mieter-pill" id="mvMieterPill" data-state="room" data-tenant-name="${esc(tenantName)}" data-tenant-email="${esc(tenantEmail)}" data-tenant-adr="${esc(tenantAddress)}" data-tenant-dob="${esc(tenantDob)}" data-tenant-tel="${esc(tenantPhone)}" onclick="_toggleMvMieter()">
         <div class="ub-mieter-pill__knob"></div>
       </div>
       <span style="font-size:12px;color:var(--cc-stone);" id="mvMieterManualLbl">Manuell</span>
@@ -3979,7 +4006,7 @@ function _contractBodyMietvertrag(room) {
     </div>
     <div class="rm-field">
       <label>Telefon <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;font-weight:400;">(optional)</span></label>
-      <input class="rm-input" id="mv-tel" type="tel" placeholder="+49 …"/>
+      <input class="rm-input" id="mv-tel" type="tel" value="${esc(tenantPhone)}" placeholder="+49 …"/>
     </div>
 
     <div class="rm-fields-title" style="margin-top:6px;">Mietzeit</div>

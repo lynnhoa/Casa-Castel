@@ -6,8 +6,9 @@
   <meta name="robots" content="noindex, nofollow"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  <meta name="apple-mobile-web-app-title" content="Real Estate"/>
+  <meta name="apple-mobile-web-app-title" content="LT Real Estate"/>
   <meta name="theme-color" content="#F5F2ED"/>
+  <link rel="manifest" href="manifest.json"/>
   <title>Real Estate — Login</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -309,16 +310,23 @@
   const signedInEl  = document.getElementById('signedInEmail');
   const tabs        = document.querySelectorAll('.role-tab');
 
-  let selectedDest = 'landlord.html';
-  let selectedTab  = 'rooms';
+  /* The app you were last in (each app stores it when it opens). You are
+     always sent back there — and that app reopens its own last tab. */
+  const MGMT_APPS = ['landlord.html', 'rentals-index.html', 'controlling.html', 'properties.html'];
+  const lastApp   = (() => { try { return localStorage.getItem('mgmt_last_app'); } catch (e) { return null; } })();
+  let selectedDest = MGMT_APPS.includes(lastApp) ? lastApp : 'landlord.html';
+  let selectedTab  = null;     // null = the app opens its own last tab
+  let tileChosen   = false;    // true only when you tap an app tile yourself
   let hasSession   = false;
 
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.dest === selectedDest));
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       selectedDest = tab.dataset.dest;
       selectedTab  = tab.dataset.tab || null;
+      tileChosen   = true;
       clearError();
     });
   });
@@ -350,8 +358,8 @@
 
   function go() {
     setGateFlags();
-    if (selectedTab) sessionStorage.setItem('cc_open_tab', selectedTab);
-    window.location.href = selectedDest;
+    if (tileChosen && selectedTab) sessionStorage.setItem('cc_open_tab', selectedTab);
+    window.location.replace(selectedDest);
   }
 
   async function attempt() {
@@ -388,22 +396,60 @@
     setTimeout(() => loginEmail.focus(), 50);
   }
 
-  /* ── BOOT: reuse an existing session → no password needed ── */
-  (async () => {
+  /* ── BOOT ──
+     Logged in  → straight back to the last app + its last tab (no "Enter").
+     Logged out → login form. A short connection hiccup is NOT a logout:
+     the check is retried, and a login stored on this device is kept. */
+  const hasStoredLogin = () => {
     try {
-      const { data } = await _supa.auth.getSession();
-      if (data.session) {
-        hasSession = true;
-        signedInEl.textContent = data.session.user?.email || 'Signed in';
-        signedInBox.classList.add('visible');
-        credBox.style.display = 'none';
-      } else {
-        clearGateFlags(); // stale flags without a session must not open gated pages
-        setTimeout(() => loginEmail.focus(), 100);
+      for (let i = 0; i < localStorage.length; i++) {
+        if (/^sb-.+-auth-token$/.test(localStorage.key(i) || '')) return true;
       }
-    } catch (e) {
-      setTimeout(() => loginEmail.focus(), 100);
+    } catch (e) {}
+    return false;
+  };
+  const checkSession = async () => {
+    const { data, error } = await _supa.auth.getSession();
+    if (error) throw error;
+    return data.session;
+  };
+  const showForm = () => setTimeout(() => loginEmail.focus(), 100);
+  (async () => {
+    // Came here by tapping "Logout" → really log out, never forward.
+    if (new URLSearchParams(location.search).has('logout')) {
+      try { await _supa.auth.signOut(); } catch (e) {}
+      clearGateFlags();
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+      showForm();
+      return;
     }
+    // Safety net: forwarded a moment ago and landed here again → stop, don't loop.
+    let justForwarded = false;
+    try { justForwarded = Date.now() - (+sessionStorage.getItem('mgmt_fwd_ts') || 0) < 15000; } catch (e) {}
+
+    let session = null, failed = false;
+    try { session = await checkSession(); }
+    catch (e) {
+      failed = true;
+      await new Promise(r => setTimeout(r, 1200));
+      try { session = await checkSession(); failed = false; } catch (e2) { failed = true; }
+    }
+
+    const canForward = !!session || (failed && hasStoredLogin());
+    if (canForward && !justForwarded) {
+      try { sessionStorage.setItem('mgmt_fwd_ts', String(Date.now())); } catch (e) {}
+      go();
+      return;
+    }
+    if (session) {                               // loop guard hit: one-tap "Enter"
+      hasSession = true;
+      signedInEl.textContent = session.user?.email || 'Signed in';
+      signedInBox.classList.add('visible');
+      credBox.style.display = 'none';
+      return;
+    }
+    if (!failed) clearGateFlags();                // really logged out
+    showForm();
   })();
 
   enterBtn.addEventListener('click', attempt);
