@@ -269,8 +269,11 @@ async function _kDeleteComments(weekId) {
   if (!sbL || !weekId) return;
   await sbL.from('kitchen_comments').delete().eq('week_id', weekId);
 }
+let _kAutoResetRanFor = null;
 async function _kAutoReset(currentIdx) {
-  if (!sbL) return;
+  // K8: remove proof photos + chat of weeks older than 30 days (runs once per week per landlord session)
+  if (!sbL || _kAutoResetRanFor === currentIdx) return;
+  _kAutoResetRanFor = currentIdx;
   const THIRTY = 30 * 24 * 60 * 60 * 1000;
   const { data } = await sbL.from('kitchen_weeks').select('*').lt('week_index', currentIdx).order('week_index', { ascending: false });
   if (!data || !data.length) return;
@@ -278,10 +281,24 @@ async function _kAutoReset(currentIdx) {
   for (const row of data) {
     const ts = row.submitted_at || row.closed_at || row.created_at;
     if (!ts || new Date(ts).getTime() > cutoff) continue;
-    if (row.photo_path) await sbL.storage.from('kitchen-proofs').remove([row.photo_path]);
-    await sbL.from('kitchen_comments').delete().eq('week_id', row.id);
-    if (row.photo_path || row.photo_url || row.photos)
-      await sbL.from('kitchen_weeks').update({ photos: null, photo_path: null, photo_url: null, closed_at: row.closed_at || new Date().toISOString() }).eq('id', row.id);
+    if (!row.photos && !row.photo_path && !row.photo_url && row.closed_at) continue; // already cleaned
+    const paths = [];
+    if (row.photo_path) paths.push(row.photo_path);
+    if (Array.isArray(row.photos)) row.photos.forEach(p => { if (p && p.path) paths.push(p.path); });
+    const comments = await _kGetComments(row.id);
+    comments.forEach(c => {
+      if (!c.text) return;
+      if (c.text.startsWith('[submission] ')) {
+        try { const d = JSON.parse(c.text.replace('[submission] ', '')); (d.photos || []).forEach(p => { if (p && p.path) paths.push(p.path); }); } catch (e) {}
+      } else if (c.text.startsWith('[photo] ')) {
+        const url = c.text.replace('[photo] ', '').trim();
+        const mi = url.indexOf('kitchen-proofs/');
+        if (mi !== -1) paths.push(decodeURIComponent(url.slice(mi + 'kitchen-proofs/'.length)));
+      }
+    });
+    if (paths.length) { try { await sbL.storage.from('kitchen-proofs').remove(paths); } catch (e) { console.warn('Storage cleanup error', e); } }
+    if (comments.length) await sbL.from('kitchen_comments').delete().eq('week_id', row.id);
+    await sbL.from('kitchen_weeks').update({ photos: null, photo_path: null, photo_url: null, closed_at: row.closed_at || new Date().toISOString() }).eq('id', row.id);
   }
 }
 
@@ -310,17 +327,24 @@ function _kWeekInfo(idx) {
   return { room, start, end, daysLeft, i: idx, dateRange: fmt(start) + ' – ' + fmt(end) };
 }
 
+/* Local calendar helpers: a kitchen week is Monday 00:00 to Sunday 23:59 (German time) */
+function _kYmd(dt) {
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+function _kAddDays(dt, n) { return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + n); }
+
 /* ── ROTATION STATE ─────────────────────────────────────── */
 function _kRotState(opts) {
   const { isNow, isPast, isNext, dbStatus, room, weekStart, absenceRows } = opts;
   if (absenceRows && weekStart) {
-    const wStart = weekStart.toISOString().slice(0, 10);
-    const wEnd   = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const wStart = _kYmd(weekStart);
+    const wEnd   = _kYmd(_kAddDays(weekStart, 6));
     if (absenceRows.some(a => a.room === room && a.from_date <= wEnd && a.to_date >= wStart)) return 'absent';
   }
   if (isVacant(room)) return 'skipped';
   if (isNow) {
     if (dbStatus === 'approved') return 'done';
+    if (dbStatus === 'missed')   return 'missed';   // landlord marked the current week as missed
     return 'now';
   }
   if (!isPast) return isNext ? 'next' : 'upcoming';
@@ -331,9 +355,31 @@ function _kRotState(opts) {
   return 'missed';
 }
 
+/* ── FEED SAFETY HELPERS (K2/K3) ────────────────────────── */
+// Only real proof-storage URLs are rendered as images; anything else is shown as plain text.
+function _kProofUrl(u) {
+  if (typeof u !== 'string') return '';
+  const s = u.trim();
+  return /^https:\/\/[^"'<>\s]+\/storage\/v1\/object\/public\/kitchen-proofs\/[^"'<>]+$/.test(s) ? s : '';
+}
+// Typed chat text must never look like a system marker ([photo] / [submission] / [system] / ✓ / ↩).
+function _kSafeChatText(t) {
+  return /^(\[(photo|submission|system)\]|✓|↩)/.test(t) ? '\u200B' + t : t;
+}
+
+/* ── SENDER DISPLAY (K14) ───────────────────────────────── */
+// Shows the real sender: the tenant's room, or "Casa Castel" (landlord) — same look as the tenant app.
+function _kSenderHtml(room) {
+  const isCC = room === 'Casa Castel';
+  return {
+    avatar: `<div class="k-chat-avatar${isCC ? ' k-chat-avatar--me' : ''}"${isCC ? ' style="background:var(--cc-ink);color:var(--cc-white);"' : ''}>${esc(roomInitials(room || ''))}</div>`,
+    name:   `<span class="k-chat-name"${isCC ? ' style="color:var(--cc-gold);"' : ''}>${esc(room || '')}</span>`
+  };
+}
+
 /* ── FEED HTML BUILDER ──────────────────────────────────── */
 function _kBuildFeedHtml(comments, weekRow) {
-  const labels = { trash:'Trash', geschirr:'Geschirr', overview:'Kitchen' };
+  const labels = { trash:'Trash', geschirr:'Dishes', overview:'Overview' };
   const lbl    = t => labels[t] || t;
   const events = [];
   const hasSub = comments.some(c => c.text && c.text.startsWith('[submission] '));
@@ -361,10 +407,10 @@ function _kBuildFeedHtml(comments, weekRow) {
       const isRe = flagSeen; flagSeen = false;
       const photoStrip = ev.photos && ev.photos.length
         ? '<div style="display:flex;gap:4px;margin-top:8px;">'
-          + ev.photos.filter(p => p.url).map(p =>
-              `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" onclick="openPhotoModal('${p.url}','${lbl(p.type)}')">`
-              + `<img src="${p.url}" alt="${p.type}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/>`
-              + `<span style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);font-size:8px;font-weight:500;color:#fff;letter-spacing:0.05em;text-transform:uppercase;padding:3px 4px;text-align:center;">${lbl(p.type)}</span>`
+          + ev.photos.filter(p => p && _kProofUrl(p.url)).map(p =>
+              `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" data-url="${esc(_kProofUrl(p.url))}" data-label="${esc(lbl(p.type))}" onclick="openPhotoModal(this.dataset.url,this.dataset.label)">`
+              + `<img src="${esc(_kProofUrl(p.url))}" alt="${esc(p.type)}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/>`
+              + `<span style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);font-size:8px;font-weight:500;color:#fff;letter-spacing:0.05em;text-transform:uppercase;padding:3px 4px;text-align:center;">${esc(lbl(p.type))}</span>`
               + `</div>`
             ).join('') + '</div>'
         : '';
@@ -408,12 +454,13 @@ function _kBuildFeedHtml(comments, weekRow) {
         <span class="k-sys-event__text k-sys-event__text--done">${esc(ev.text)} · ${fmtTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
-    if (ev.text && ev.text.startsWith('[photo] ')) {
-      const pUrl = ev.text.slice(8).trim();
+    if (ev.text && ev.text.startsWith('[photo] ') && _kProofUrl(ev.text.slice(8))) {
+      const pUrl = esc(_kProofUrl(ev.text.slice(8)));
+      const who  = _kSenderHtml(ev.room);
       return `<div class="k-chat-row" data-comment-id="${ev.id}">
-        <div class="k-chat-avatar k-chat-avatar--me" style="background:var(--cc-ink);color:var(--cc-white);">MG</div>
+        ${who.avatar}
         <div style="flex:1;min-width:0;"><div class="k-chat-meta">
-          <span class="k-chat-name" style="color:var(--cc-gold);">Casa Castel</span>
+          ${who.name}
           <span class="k-chat-time">${fmtTs(ev._ts)}</span></div>
           <div style="margin-top:5px;"><img src="${pUrl}" alt="photo"
             style="max-width:100%;border-radius:6px;display:block;object-fit:contain;cursor:pointer;"
@@ -421,10 +468,11 @@ function _kBuildFeedHtml(comments, weekRow) {
         </div>
         <button class="k-delete-btn" title="Delete">✕</button></div>`;
     }
+    const who = _kSenderHtml(ev.room);
     return `<div class="k-chat-row" data-comment-id="${ev.id}">
-      <div class="k-chat-avatar">${roomInitials(ev.room)}</div>
+      ${who.avatar}
       <div style="flex:1;min-width:0;"><div class="k-chat-meta">
-        <span class="k-chat-name">${esc(ev.room)}</span>
+        ${who.name}
         <span class="k-chat-time">${fmtTs(ev._ts)}</span></div>
         <p class="k-chat-text">${esc(ev.text)}</p>
       </div>
@@ -500,24 +548,23 @@ async function _kRenderRotation(weekRow, absData, preRows) {
     const slot   = cycleStart + cyclePos + offset;
     const nRoom  = rooms[ni];
     const nStart = new Date(K_START.getTime() + slot * 7 * 24 * 60 * 60 * 1000);
-    const nEnd   = new Date(nStart.getTime() + 6 * 24 * 60 * 60 * 1000);
-    const nWs = nStart.toISOString().slice(0, 10);
-    const nWe = nEnd.toISOString().slice(0, 10);
+    const nWs = _kYmd(nStart);
+    const nWe = _kYmd(_kAddDays(nStart, 6));
     if (!absData.some(a => a.room === nRoom && a.from_date <= nWe && a.to_date >= nWs) && !isVacant(nRoom)) {
       trueNextI = ni; break;
     }
   }
 
   const items = rooms.map((room, i) => {
-    const slotIdx = (i === trueNextI && trueNextI < cyclePos)
-      ? cycleStart + rooms.length + i
-      : cycleStart + i;
+    // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
+    const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
+    const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
     const info    = kWeekInfo(Math.max(0, slotIdx));
     const dateStr = info ? fmt(info.start) + '–' + fmt(info.end) : '—';
-    const dbRow   = dbRows[i];
+    const dbRow   = inNextRound ? null : dbRows[i];
     const state   = _kRotState({
       isNow:       i === cyclePos,
-      isPast:      i < cyclePos,
+      isPast:      !inNextRound && i < cyclePos,
       isNext:      i === trueNextI,
       dbStatus:    dbRow ? dbRow.status : null,
       room,
@@ -534,13 +581,13 @@ async function _kRenderRotation(weekRow, absData, preRows) {
   const elDsk = document.getElementById('k-dsk-rot-list');
   if (elDsk) {
     elDsk.innerHTML = '<div class="rot-tl">' + rooms.map((room, i) => {
-      const slotIdx = (i === trueNextI && trueNextI < cyclePos)
-        ? cycleStart + rooms.length + i
-        : cycleStart + i;
+      // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
+      const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
+      const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
       const info    = kWeekInfo(Math.max(0, slotIdx));
       const dateStr = info ? fmt(info.start) + ' – ' + fmt(info.end) : '—';
-      const dbRow   = dbRows[i];
-      const state   = _kRotState({ isNow:i===cyclePos, isPast:i<cyclePos, isNext:i===trueNextI, dbStatus:dbRow?dbRow.status:null, room, weekStart:info?info.start:null, absenceRows:absData });
+      const dbRow   = inNextRound ? null : dbRows[i];
+      const state   = _kRotState({ isNow:i===cyclePos, isPast:!inNextRound && i<cyclePos, isNext:i===trueNextI, dbStatus:dbRow?dbRow.status:null, room, weekStart:info?info.start:null, absenceRows:absData });
       const dotClass = { done:'rot-dot--done', now:'rot-dot--now', missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent' }[state] || 'rot-dot--next';
       const topLine  = state === 'done' || state === 'now' ? 'rot-line-done'
                      : state === 'skipped' ? 'rot-line-skipped'
@@ -667,7 +714,7 @@ async function _kLoadNudgeBanner(weekRow) {
   if (textDsk) textDsk.textContent = `${data.body}${note} → ${to}`;
   const _setStatus = (el, weekRow, data) => {
     if (!el) return;
-    if (weekRow && data.room !== 'All') {
+    if (weekRow && data.room !== 'All' && data.room === weekRow.room) {
       const statusMap = { pending:'Pending', submitted:'Submitted', approved:'Approved', flagged:'Flagged', missed:'Missed', skipped:'Skipped' };
       el.textContent = statusMap[weekRow.status] || '';
       el.style.display = el.textContent ? '' : 'none';
@@ -752,12 +799,12 @@ async function _kSendMsg() {
   const feed = document.getElementById('k-feed-mob');
   if (feed) {
     const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-mob-optimistic';
-    tmp.innerHTML = '<div class="k-chat-avatar k-chat-avatar--me" style="background:var(--cc-ink);color:var(--cc-white);">MG</div>'
+    tmp.innerHTML = '<div class="k-chat-avatar k-chat-avatar--me" style="background:var(--cc-ink);color:var(--cc-white);">CC</div>'
       + '<div style="flex:1;min-width:0;"><div class="k-chat-meta"><span class="k-chat-name" style="color:var(--cc-gold);">Casa Castel</span>'
       + '<span class="k-chat-time" style="opacity:0.5;">sending…</span></div><p class="k-chat-text">' + esc(text) + '</p></div>';
     feed.appendChild(tmp); scrollToBottom(feed);
   }
-  _kAddComment(_kWeekRow.id, 'Casa Castel', text, false).finally(() => { _kMobSending = false; });
+  _kAddComment(_kWeekRow.id, 'Casa Castel', _kSafeChatText(text), false).finally(() => { _kMobSending = false; });
 }
 
 /* ── PHOTO UPLOAD ───────────────────────────────────────── */
@@ -784,7 +831,7 @@ async function _kSendPhoto(file) {
   const localUrl = URL.createObjectURL(compressed);
   if (feed) {
     const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-landlord-photo-optimistic';
-    tmp.innerHTML = '<div class="k-chat-avatar k-chat-avatar--me" style="background:var(--cc-ink);color:var(--cc-white);">MG</div>'
+    tmp.innerHTML = '<div class="k-chat-avatar k-chat-avatar--me" style="background:var(--cc-ink);color:var(--cc-white);">CC</div>'
       + '<div style="flex:1;min-width:0;"><div class="k-chat-meta"><span class="k-chat-name" style="color:var(--cc-gold);">Casa Castel</span>'
       + '<span class="k-chat-time" style="opacity:0.5;">sending…</span></div>'
       + '<div style="margin-top:5px;"><img src="' + localUrl + '" style="max-width:100%;border-radius:6px;display:block;object-fit:contain;opacity:0.7;"/></div></div>';
@@ -934,7 +981,7 @@ function _kSubscribe() {
       }
     })
     .on('postgres_changes', { event: '*',      schema: 'public', table: 'kitchen_absences' }, async () => { await loadKitchen(); })
-    .on('postgres_changes', { event: '*',      schema: 'public', table: 'lounge_data' },      async payload => { const t = payload.new?.type || payload.old?.type; const isDelete = payload.eventType === 'DELETE' || (!payload.new?.id && payload.old?.id); if (t === 'kitchen_nudge' || (isDelete && payload.old?.type === 'kitchen_nudge')) { await _kLoadNudgeBanner(_kWeekRow); } else if (t === 'hc_done') { await loadKitchen(); } })
+    .on('postgres_changes', { event: '*',      schema: 'public', table: 'lounge_data' },      async payload => { const t = payload.new?.type || payload.old?.type; const isDelete = payload.eventType === 'DELETE' || (!payload.new?.id && payload.old?.id); if (t === 'kitchen_nudge' || isDelete) { await _kLoadNudgeBanner(_kWeekRow); } else if (t === 'hc_done') { await loadKitchen(); } })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms' }, async () => {
       if (typeof loadRoomsData === 'function') await loadRoomsData();
       await loadKitchen();
@@ -991,6 +1038,7 @@ async function loadKitchen() {
     if (weekRow) cycleRows = cycleRows.concat([weekRow]);
   }
   _kWeekRow = weekRow;
+  _kAutoReset(idx).catch(e => console.warn('[kitchen] auto cleanup', e)); // K8: background, once per week
 
   // Render everything — week card is sync; the three async renderers are
   // independent (different DOM targets, no shared writes) → run in parallel.
@@ -1032,16 +1080,15 @@ async function _kSendNudge(typeBtn, toBtn, noteEl, sendBtn, afterSend) {
   // Call afterSend immediately (optimistic) so UI closes/resets without waiting for DB
   if (afterSend) afterSend();
   try {
-    // Run delete and insert in parallel — avoids two sequential round-trips
-    await Promise.all([
-      sbL.from('lounge_data').delete().eq('type', 'kitchen_nudge'),
-      sbL.from('lounge_data').insert({
-        type: 'kitchen_nudge',
-        room: toBtn.dataset.to,
-        body: typeBtn.dataset.type,
-        title: note || null
-      })
-    ]);
+    // Delete the old nudge FIRST, then insert the new one (K5: run in parallel, the delete
+    // could be processed after the insert and remove the new nudge straight away)
+    await sbL.from('lounge_data').delete().eq('type', 'kitchen_nudge');
+    await sbL.from('lounge_data').insert({
+      type: 'kitchen_nudge',
+      room: toBtn.dataset.to,
+      body: typeBtn.dataset.type,
+      title: note || null
+    });
   } finally {
     sendBtn.disabled = false;
   }

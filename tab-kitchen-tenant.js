@@ -228,6 +228,17 @@ function _kTenOpenPhoto(url, label) {
   overlay.style.display = 'flex';
 }
 
+/* ── WEEK GUARD (K1) ────────────────────────────────────── */
+// The open tab must always work on the CURRENT week. If a new week started while the
+// app was open, reload the kitchen tab first (returns false when it had to reload).
+let _kTenReloading = null;
+async function _kTenEnsureCurrentWeek() {
+  if (!_kTenWeekRow || _kTenWeekRow.week_index === kWeekIdx()) return true;
+  if (!_kTenReloading) _kTenReloading = initKitchenMobile().finally(() => { _kTenReloading = null; });
+  await _kTenReloading;
+  return false;
+}
+
 /* ── SUPABASE HELPERS (identical to landlord) ───────────── */
 async function _kTenGetWeek(idx) {
   if (!sbL) return null;
@@ -244,19 +255,26 @@ async function _kTenAddComment(weekId, room, text, isFlag) {
   await sbL.from('kitchen_comments').insert({ week_id: weekId, room, text, is_flag: !!isFlag });
 }
 
+/* Local calendar helpers: a kitchen week is Monday 00:00 to Sunday 23:59 (German time) */
+function _kYmd(dt) {
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+function _kAddDays(dt, n) { return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + n); }
+
 /* ── ROTATION STATE HELPER (mirrors landlord) ───────────── */
 function _kRotState(opts) {
   const { isNow, isPast, isNext, dbStatus, room, weekStart, absenceRows } = opts;
   // Absence first — explicit absence overrides vacancy, now, next, missed
   if (absenceRows && weekStart) {
-    const wStart = weekStart.toISOString().slice(0, 10);
-    const wEnd   = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const wStart = _kYmd(weekStart);
+    const wEnd   = _kYmd(_kAddDays(weekStart, 6));
     const absent = absenceRows.some(a => a.room === room && a.from_date <= wEnd && a.to_date >= wStart);
     if (absent) return 'absent';
   }
   if (isVacant(room)) return 'skipped';
   if (isNow) {
     if (dbStatus === 'approved') return 'done';
+    if (dbStatus === 'missed')   return 'missed';   // landlord marked the current week as missed
     return 'now';
   }
   if (!isPast) return isNext ? 'next' : 'upcoming';
@@ -386,11 +404,16 @@ function _kTenWizNext() {
 async function _kTenWizSubmit() {
   if (_kWizSubmitting) return;
   if (!sbL || !_kTenWeekRow) { alert('No connection. Please refresh.'); return; }
+  if (!(await _kTenEnsureCurrentWeek())) {
+    document.getElementById('k-ten-wizard').style.display = 'none';
+    alert("A new week has started, so the kitchen tab was refreshed. Please check this week's status.");
+    return;
+  }
 
   const room = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
   _kWizSubmitting = true;
 
-  const submitBtn = document.getElementById('k-ten-wiz-submit-btn');
+  const submitBtn = document.getElementById('k-ten-wiz-next-btn');
   if (submitBtn) { submitBtn.textContent = 'Uploading 1/3…'; submitBtn.style.pointerEvents = 'none'; }
 
   try {
@@ -660,23 +683,22 @@ async function _kTenRenderMobRotation() {
     const slot   = cycleStart + cyclePos + offset;
     const nRoom  = rooms[ni];
     const nStart = new Date(K_START.getTime() + slot * 7 * 24 * 60 * 60 * 1000);
-    const nEnd   = new Date(nStart.getTime() + 6 * 24 * 60 * 60 * 1000);
-    const nWs = nStart.toISOString().slice(0,10);
-    const nWe = nEnd.toISOString().slice(0,10);
+    const nWs = _kYmd(nStart);
+    const nWe = _kYmd(_kAddDays(nStart, 6));
     const nAbsent  = absData.some(a => a.room === nRoom && a.from_date <= nWe && a.to_date >= nWs);
     const nSkipped = isVacant(nRoom);
     if (!nAbsent && !nSkipped) { trueNextI = ni; break; }
   }
   const items = rooms.map((room, i) => {
-    const slotIdx = (i === trueNextI && trueNextI < cyclePos)
-      ? cycleStart + rooms.length + i
-      : cycleStart + i;
+    // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
+    const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
+    const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
     const info    = kWeekInfo(Math.max(0, slotIdx));
     const dateStr = info ? fmt(info.start) + '–' + fmt(info.end) : '—';
-    const dbRow   = dbRows[i];
+    const dbRow   = inNextRound ? null : dbRows[i];
     const state   = _kRotState({
       isNow:       i === cyclePos,
-      isPast:      i < cyclePos,
+      isPast:      !inNextRound && i < cyclePos,
       isNext:      i === trueNextI,
       dbStatus:    dbRow ? dbRow.status : null,
       room,
@@ -693,14 +715,14 @@ async function _kTenRenderMobRotation() {
   const dskRot = document.getElementById('k-ten-dsk-rot');
   if (dskRot) {
     dskRot.innerHTML = '<div class="rot-tl">' + rooms.map((room, i) => {
-      const slotIdx  = (i === trueNextI && trueNextI < cyclePos)
-        ? cycleStart + rooms.length + i
-        : cycleStart + i;
+      // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
+      const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
+      const slotIdx  = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
       const start    = new Date(K_START.getTime() + slotIdx * 7 * 24 * 60 * 60 * 1000);
       const end      = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
       const dateStr  = fmt(start) + ' – ' + fmt(end);
-      const dbRow    = dbRows[i];
-      const state    = _kRotState({ isNow: i === cyclePos, isPast: i < cyclePos, isNext: i === trueNextI, dbStatus: dbRow ? dbRow.status : null, room, weekStart: start, absenceRows: absData });
+      const dbRow    = inNextRound ? null : dbRows[i];
+      const state    = _kRotState({ isNow: i === cyclePos, isPast: !inNextRound && i < cyclePos, isNext: i === trueNextI, dbStatus: dbRow ? dbRow.status : null, room, weekStart: start, absenceRows: absData });
       const dotClass = { done:'rot-dot--done', now:'rot-dot--now', missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent' }[state] || 'rot-dot--next';
       const topLine  = state === 'done' || state === 'now' ? 'rot-line-done'
                      : state === 'skipped' ? 'rot-line-skipped'
@@ -741,9 +763,21 @@ async function _kTenRenderDskHistory() {
   }).join('');
 }
 
+/* ── FEED SAFETY HELPERS (K2/K3) ────────────────────────── */
+// Only real proof-storage URLs are rendered as images; anything else is shown as plain text.
+function _kProofUrl(u) {
+  if (typeof u !== 'string') return '';
+  const s = u.trim();
+  return /^https:\/\/[^"'<>\s]+\/storage\/v1\/object\/public\/kitchen-proofs\/[^"'<>]+$/.test(s) ? s : '';
+}
+// Typed chat text must never look like a system marker ([photo] / [submission] / [system] / ✓ / ↩).
+function _kSafeChatText(t) {
+  return /^(\[(photo|submission|system)\]|✓|↩)/.test(t) ? '\u200B' + t : t;
+}
+
 /* ── FEED RENDERER (identical to landlord, no delete buttons) */
 function _kTenBuildFeedHtml(comments, weekRow) {
-  const labels = { trash: 'Trash', geschirr: 'Geschirr', overview: 'Kitchen' };
+  const labels = { trash: 'Trash', geschirr: 'Dishes', overview: 'Overview' };
   const lbl    = t => labels[t] || t;
   const events = [];
 
@@ -776,10 +810,10 @@ function _kTenBuildFeedHtml(comments, weekRow) {
       const isRe = flagSeen; flagSeen = false;
       const photoStrip = ev.photos && ev.photos.length
         ? '<div style="display:flex;gap:4px;margin-top:8px;">'
-          + ev.photos.filter(p => p.url).map(p =>
-              `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" onclick="_kTenOpenPhoto('${p.url}','${lbl(p.type)}')">`
-              + `<img src="${p.url}" alt="${p.type}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/>`
-              + `<span style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);font-size:8px;font-weight:500;color:#fff;letter-spacing:0.05em;text-transform:uppercase;padding:3px 4px;text-align:center;">${lbl(p.type)}</span>`
+          + ev.photos.filter(p => p && _kProofUrl(p.url)).map(p =>
+              `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" data-url="${esc(_kProofUrl(p.url))}" data-label="${esc(lbl(p.type))}" onclick="_kTenOpenPhoto(this.dataset.url,this.dataset.label)">`
+              + `<img src="${esc(_kProofUrl(p.url))}" alt="${esc(p.type)}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/>`
+              + `<span style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);font-size:8px;font-weight:500;color:#fff;letter-spacing:0.05em;text-transform:uppercase;padding:3px 4px;text-align:center;">${esc(lbl(p.type))}</span>`
               + `</div>`
             ).join('') + '</div>'
         : '';
@@ -822,8 +856,8 @@ function _kTenBuildFeedHtml(comments, weekRow) {
         <div class="k-sys-event__line"></div></div>`;
     }
 
-    if (ev.text && ev.text.startsWith('[photo] ')) {
-      const pUrl = ev.text.slice(8).trim();
+    if (ev.text && ev.text.startsWith('[photo] ') && _kProofUrl(ev.text.slice(8))) {
+      const pUrl = esc(_kProofUrl(ev.text.slice(8)));
       const isCC = ev.room === 'Casa Castel';
       return `<div class="k-chat-row">
         <div class="k-chat-avatar${isCC?' k-chat-avatar--me':''}" ${isCC?'style="background:var(--cc-ink);color:var(--cc-white);"':''}>${_kTenRoomInitials(ev.room)}</div>
@@ -892,6 +926,7 @@ async function _kTenMobSendMsg() {
   const inp  = document.getElementById('k-mob-msg-input');
   const text = inp.value.trim();
   if (!text || !_kTenWeekRow || _kTenMobSending) return;
+  await _kTenEnsureCurrentWeek();
   _kTenMobSending = true; inp.value = '';
   const room = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
   const feed = document.getElementById('k-feed-mob');
@@ -904,13 +939,14 @@ async function _kTenMobSendMsg() {
       + `<p class="k-chat-text">${esc(text)}</p></div>`;
     feed.appendChild(tmp); scrollToBottom(feed);
   }
-  _kTenAddComment(_kTenWeekRow.id, room, text, false)
+  _kTenAddComment(_kTenWeekRow.id, room, _kSafeChatText(text), false)
     .finally(() => { _kTenMobSending = false; });
 }
 
 /* ── SEND — camera photo in chat ────────────────────────── */
 async function _kTenSendPhoto(file, feedId) {
   if (!file || !_kTenWeekRow) { alert('No active week.'); return; }
+  await _kTenEnsureCurrentWeek();
   if (file.size > 30 * 1024 * 1024) { alert('Max 30MB.'); return; }
   const room       = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
   const compressed = await _kTenCompressImage(file);
@@ -940,7 +976,8 @@ function _kTenSubscribe(idx) {
   _kTenChannel = sbL.channel('kitchen-tenant-rt')
     .on('postgres_changes', { event:'UPDATE', schema:'public', table:'kitchen_weeks' }, async payload => {
       if (!_kTenWeekRow) return;
-      const fresh = await _kTenGetWeek(idx);
+      if (!(await _kTenEnsureCurrentWeek())) return;   // K1: new week → tab was reloaded
+      const fresh = await _kTenGetWeek(kWeekIdx());
       if (!fresh) return;
       _kTenWeekRow = fresh;
 
@@ -950,6 +987,7 @@ function _kTenSubscribe(idx) {
     })
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'kitchen_comments' }, async payload => {
       if (!payload.new || !_kTenWeekRow) return;
+      if (!(await _kTenEnsureCurrentWeek())) return;   // K1
       if (payload.new.week_id && payload.new.week_id !== _kTenWeekRow.id) return;
       document.getElementById('k-mob-optimistic')?.remove();
       document.getElementById('k-ten-dsk-optimistic')?.remove();
@@ -957,6 +995,7 @@ function _kTenSubscribe(idx) {
     })
     .on('postgres_changes', { event:'DELETE', schema:'public', table:'kitchen_comments' }, async () => {
       if (!_kTenWeekRow) return;
+      if (!(await _kTenEnsureCurrentWeek())) return;   // K1
       await _kTenRenderFeed();
     })
     .on('postgres_changes', { event:'*', schema:'public', table:'lounge_data' }, async payload => {
@@ -1121,6 +1160,7 @@ async function _kTenDskSendMsg() {
   const inp  = document.getElementById('k-ten-dsk-msg-input');
   const text = inp ? inp.value.trim() : '';
   if (!text || !_kTenWeekRow || _kTenMobSending) return;
+  await _kTenEnsureCurrentWeek();
   _kTenMobSending = true; inp.value = '';
   const room = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
   const feed = document.getElementById('k-ten-dsk-feed');
@@ -1133,7 +1173,7 @@ async function _kTenDskSendMsg() {
       + `<p class="k-chat-text">${esc(text)}</p></div>`;
     feed.appendChild(tmp); scrollToBottom(feed);
   }
-  _kTenAddComment(_kTenWeekRow.id, room, text, false)
+  _kTenAddComment(_kTenWeekRow.id, room, _kSafeChatText(text), false)
     .finally(() => { _kTenMobSending = false; });
 }
 
@@ -1156,6 +1196,10 @@ function _kTenShowTabIfEligible() {
   await loadKitchenRoomsFromSupabase();
   _kTenShowTabIfEligible();
 })();
+
+/* ── WEEK CHANGE WHILE OPEN (K1) ───────────────────────── */
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _kTenEnsureCurrentWeek(); });
+setInterval(() => { if (document.visibilityState === 'visible') _kTenEnsureCurrentWeek(); }, 60 * 1000);
 
 /* ── NAV ALIAS ──────────────────────────────────────────── */
 var initKitchenMobExtend = initKitchenMobile;
