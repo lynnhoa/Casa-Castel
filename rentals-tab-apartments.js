@@ -234,6 +234,7 @@ document.getElementById('tab-apartments').innerHTML = `
 .apt-input--mono { font-family:'Courier New',monospace; font-size:12px; }
 .apt-field-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
 .apt-field-row .apt-field { margin-bottom:0; }
+.apt-field-row { align-items:end; }   /* fields stay on one line when a label wraps (e.g. Grundsteuer) */
 
 /* Save/cancel row */
 .apt-save-row { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }

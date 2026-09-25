@@ -299,6 +299,9 @@ document.getElementById('tab-rooms').innerHTML = `
 .rc-field { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
 .rc-field:last-child { margin-bottom:0; }
 .rc-field-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+.rc-field-row { align-items:end; }    /* fields stay on one line when a label wraps */
+.rc-field-row .rc-field { margin-bottom:0; }
+.rc-field-row { margin-bottom:20px; }  /* same spacing as before (field 10 + row 10) */
 .rc-field__label {
   font-size:10px; font-weight:500; letter-spacing:.09em; text-transform:uppercase; color:var(--cc-taupe);
 }

@@ -149,6 +149,24 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-rf-hint { font-size:10px; color:var(--cc-stone); grid-column:1/-1; }
 .tn-rf-save-row { display:flex; gap:6px; justify-content:flex-end; grid-column:1/-1; }
 
+/* ── H-fixes (layout): one straight rent row + no iPhone zoom ─────────────
+   Rent row: three equal columns; fields and the Warmmiete box share one
+   height and line up at the bottom, even when a label wraps.            */
+.tn-rent-form { grid-template-columns:1fr 1fr 1fr; align-items:end; }
+.tn-rf > input, .tn-rf-derived { box-sizing:border-box; height:38px; }
+.tn-rf > input { padding:0 10px; }
+.tn-rf-derived { display:flex; align-items:center; padding:0 10px; font-size:12px; }
+.tn-fg { align-items:end; }
+/* iPhone/iPad: a field with text under 16 px makes iOS zoom into the page
+   on every tap. On touch devices all fields in this tab use 16 px.       */
+@media (hover:none) and (pointer:coarse) {
+  #tab-tenants input:not([type=checkbox]):not([type=radio]):not([type=file]),
+  #tab-tenants select,
+  #tab-tenants textarea { font-size:16px !important; }
+  #tab-tenants .tn-kc-input { min-height:34px; }
+  .tn-rf-derived { font-size:16px; }
+}
+
 /* ── SECTION ── */
 .tn-sec { border-bottom:var(--cc-border); }
 .tn-sec:last-child { border-bottom:none; }
