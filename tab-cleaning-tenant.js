@@ -1,9 +1,9 @@
 /* ─────────────────────────────────────────────────────────────
    CASA CASTEL v2 — ABSENCE MANAGEMENT
-   js/tab-absence.js
+   (formerly js/tab-absence.js, now embedded here)
 
-   Single source of truth for all absence functionality.
-   Loaded in both landlord.html and tenant.html.
+   Absence functionality. The same block exists in tab-cleaning.js
+   (landlord) and tab-cleaning-tenant.js (tenant): keep both in sync.
    Writes to kitchen_absences table — shared by kitchen and
    cleaning tabs for rotation strip state.
 
@@ -100,7 +100,7 @@ function absOpenModal(name) {
     const daysToMon = day === 0 ? 1 : 8 - day;
     const nextMon = new Date(today); nextMon.setDate(today.getDate() + daysToMon);
     const nextSun = new Date(nextMon); nextSun.setDate(nextMon.getDate() + 6);
-    const fmt = d => d.toISOString().slice(0,10);
+    const fmt = d => _hcYmd(d);
     const today10 = fmt(today);
     const fromEl = document.getElementById('abs-from');
     const toEl   = document.getElementById('abs-to');
@@ -131,8 +131,8 @@ async function _absPopulateList() {
   // Current cleaning week dates for "this week" indicator
   const curIdx = typeof _hcWeekIndex === 'function' ? _hcWeekIndex(new Date()) : -1;
   const curInfo = curIdx >= 0 && typeof _hcWeekInfo === 'function' ? _hcWeekInfo(curIdx) : null;
-  const curStart = curInfo ? curInfo.start.toISOString().slice(0,10) : null;
-  const curEnd   = curInfo ? curInfo.end.toISOString().slice(0,10)   : null;
+  const curStart = curInfo ? _hcYmd(curInfo.start) : null;
+  const curEnd   = curInfo ? _hcYmd(curInfo.end)   : null;
   const badge = `<span style="font-size:9px;font-weight:500;padding:2px 8px;border-radius:8px;background:#F5EEE8;border:0.5px solid #D4A87A;color:#8C5A30;white-space:nowrap;flex-shrink:0;">Away</span>`;
   el.innerHTML = data.map(a => {
     const overlaps = curStart && a.from_date <= curEnd && a.to_date >= curStart;
@@ -162,7 +162,7 @@ async function absSaveAbsence() {
     const errEl   = document.getElementById('abs-error');
     const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = ''; } };
     if (!fromVal || !toVal) { showErr('Please select both dates.'); return; }
-    const today = new Date().toISOString().slice(0,10);
+    const today = _hcYmd(new Date());
     if (fromVal < today) { showErr('From date must be today or later.'); return; }
     if (toVal < fromVal) { showErr('To date must be on or after from date.'); return; }
     const saveBtn = document.getElementById('abs-save');
@@ -175,8 +175,9 @@ async function absSaveAbsence() {
       return;
     }
     // Merge overlapping/adjacent
-    const dayAfter  = d => { const x = new Date(d); x.setDate(x.getDate()+1); return x.toISOString().slice(0,10); };
-    const dayBefore = d => { const x = new Date(d); x.setDate(x.getDate()-1); return x.toISOString().slice(0,10); };
+    const _shift    = (d, n) => { const [y, m, dd] = d.split('-').map(Number); return _hcYmd(new Date(y, m - 1, dd + n)); };
+    const dayAfter  = d => _shift(d, 1);
+    const dayBefore = d => _shift(d, -1);
     const overlapping = (existing||[]).filter(a => a.from_date <= dayAfter(toVal) && a.to_date >= dayBefore(fromVal));
     const allFrom = [fromVal, ...overlapping.map(a=>a.from_date)];
     const allTo   = [toVal,   ...overlapping.map(a=>a.to_date)];
@@ -238,6 +239,12 @@ document.getElementById('tab-cleaning').innerHTML = `
 const HC_ROTATION = ['Copenhagen','Paris','Los Angeles','New York','London','Oslo','Stockholm'];
 const HC_W1_START = new Date('2026-01-05T00:00:00');
 
+/* Local calendar helpers: a cleaning week is Monday 00:00 to Sunday 23:59 (German time) */
+function _hcYmd(dt) {
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+function _hcAddDays(dt, n) { return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + n); }
+
 
 function _hcGetRoomList() {
   // Always use appRooms as source of truth — same logic as kitchen.
@@ -255,8 +262,11 @@ function _hcGetRoomList() {
 
 function _hcWeekIndex(d) {
   const now = d || new Date();
-  if (now < HC_W1_START) return -1;
-  return Math.floor((now - HC_W1_START) / (7 * 24 * 60 * 60 * 1000));
+  // Count calendar days (not milliseconds) so summer/winter time never shifts the week change
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const w1    = Date.UTC(HC_W1_START.getFullYear(), HC_W1_START.getMonth(), HC_W1_START.getDate());
+  if (today < w1) return -1;
+  return Math.floor((today - w1) / (7 * 24 * 60 * 60 * 1000));
 }
 
 function _hcWeekInfo(idx) {
@@ -265,8 +275,8 @@ function _hcWeekInfo(idx) {
   const room  = rot[idx % rot.length];
   const pad   = n => String(n).padStart(2, '0');
   const fmtD  = dt => pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear();
-  const start = new Date(HC_W1_START.getTime() + idx * 7 * 24 * 60 * 60 * 1000);
-  const end   = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const start = _hcAddDays(HC_W1_START, idx * 7);
+  const end   = _hcAddDays(start, 6);
   end.setHours(23, 59, 59, 999);
   const daysLeft = Math.max(0, Math.ceil((end - new Date()) / (24 * 60 * 60 * 1000)));
   return { room, start, end, daysLeft, dateRange: fmtD(start) + ' – ' + fmtD(end), idx };
@@ -306,7 +316,7 @@ async function loadHouseCleaning(room) {
   if (sbL) {
     const [doneRes, absRes] = await Promise.all([
       sbL.from('cleaning_weeks').select('week_index,room,status,done_at,done_by').eq('status','done'),
-      sbL.from('kitchen_absences').select('room,from_date,to_date')
+      sbL.from('kitchen_absences').select('*')
     ]);
     if (doneRes.data) doneRes.data.forEach(row => {
       const key = row.week_index + '_' + row.room;
@@ -326,20 +336,22 @@ async function loadHouseCleaning(room) {
   const isMyTurn = curInfo?.room === room;
 
   // Absences covering this week
-  const curWStart = curInfo ? curInfo.start.toISOString().slice(0,10) : null;
-  const curWEnd   = curInfo ? curInfo.end.toISOString().slice(0,10)   : null;
+  const curWStart = curInfo ? _hcYmd(curInfo.start) : null;
+  const curWEnd   = curInfo ? _hcYmd(curInfo.end)   : null;
   const weekAbsences = curWStart ? absRows.filter(a => a.from_date <= curWEnd && a.to_date >= curWStart) : [];
   // Is the current week's assigned room itself absent?
   const isCurrentRoomAbsent = curInfo ? weekAbsences.some(a => a.room === curInfo.room) : false;
 
   /* ── "Your next turn" lookahead ── */
   let nextTurnHtml = '';
-  if (!isMyTurn && curInfo) {
+  if (curInfo && (!isMyTurn || isCurrentRoomAbsent)) {
     // Find the next slot belonging to this room — search up to 2 full cycles ahead
     for (let offset = 1; offset <= rot.length * 2; offset++) {
       const futureIdx  = curIdx + offset;
       const futureInfo = _hcWeekInfo(futureIdx);
-      if (futureInfo && futureInfo.room === room) {
+      // Skip future turns in weeks the tenant has registered as away
+      const futureAway = futureInfo && absRows.some(a => a.room === room && a.from_date <= _hcYmd(futureInfo.end) && a.to_date >= _hcYmd(futureInfo.start));
+      if (futureInfo && futureInfo.room === room && !futureAway) {
         const pad  = n => String(n).padStart(2, '0');
         const fmtD = dt => pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1);
         const rangeStr = fmtD(futureInfo.start) + ' – ' + fmtD(futureInfo.end) + '.' + futureInfo.end.getFullYear();
@@ -375,7 +387,7 @@ async function loadHouseCleaning(room) {
             <span class="k-mob-week-room">${esc(curInfo.room)}</span>
             <span class="k-mob-week-dates-sm">${curInfo.dateRange} · ${curInfo.daysLeft} day${curInfo.daysLeft !== 1 ? 's' : ''} left</span>
           </div>
-          ${isMyTurn && !isDone
+          ${isMyTurn && !isDone && !isCurrentRoomAbsent
             ? `<button class="k-mob-wact blue" id="hc-done-btn" aria-label="Mark as done">
                  <i class="ti ti-check"></i><span>Done</span>
                </button>`
@@ -408,7 +420,7 @@ async function loadHouseCleaning(room) {
       }).join('') + `</div>` : ''}`;
 
     /* Wire mark-done button */
-    if (isMyTurn && !isDone) {
+    if (isMyTurn && !isDone && !isCurrentRoomAbsent) {
       document.getElementById('hc-done-btn')?.addEventListener('click', async () => {
         const ts = Date.now();
         const btn = document.getElementById('hc-done-btn');
@@ -442,8 +454,8 @@ async function loadHouseCleaning(room) {
 function _hcRotState({ isNow, isPast, isNext, slotDone, room, weekStart, absRows }) {
   // 1. Absence — overrides everything including now/next
   if (absRows && weekStart) {
-    const wStart = weekStart.toISOString().slice(0, 10);
-    const wEnd   = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const wStart = _hcYmd(weekStart);
+    const wEnd   = _hcYmd(_hcAddDays(weekStart, 6));
     if (absRows.some(a => a.room === room && a.from_date <= wEnd && a.to_date >= wStart)) return 'absent';
   }
   // 2. Vacant room
@@ -472,26 +484,25 @@ function _renderHcRotation(cycleStart, cyclePos, hcDoneMap, absRows, myRoom, rot
     const candidateI    = (cyclePos + offset) % rot.length;
     const candidateSlot = cycleStart + cyclePos + offset;
     const candidateRoom = rot[candidateI];
-    const candidateWs   = new Date(HC_W1_START.getTime() + candidateSlot * 7 * 24 * 60 * 60 * 1000);
-    const candidateWe   = new Date(candidateWs.getTime() + 6 * 24 * 60 * 60 * 1000);
-    const cwStart = candidateWs.toISOString().slice(0, 10);
-    const cwEnd   = candidateWe.toISOString().slice(0, 10);
+    const candidateWs   = _hcAddDays(HC_W1_START, candidateSlot * 7);
+    const cwStart = _hcYmd(candidateWs);
+    const cwEnd   = _hcYmd(_hcAddDays(candidateWs, 6));
     const isAbsent  = (absRows || []).some(a => a.room === candidateRoom && a.from_date <= cwEnd && a.to_date >= cwStart);
     const isSkipped = isVacant(candidateRoom);
     if (!isAbsent && !isSkipped) { trueNextI = candidateI; break; }
   }
 
   rotEl.innerHTML = '<div class="rot-tl">' + rot.map((r, i) => {
-    const slotIdx  = (i === trueNextI && trueNextI < cyclePos)
-      ? cycleStart + rot.length + i
-      : cycleStart + i;
-    const ws       = new Date(HC_W1_START.getTime() + slotIdx * 7 * 24 * 60 * 60 * 1000);
-    const we       = new Date(ws.getTime() + 6 * 24 * 60 * 60 * 1000);
+    // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
+    const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
+    const slotIdx  = inNextRound ? cycleStart + rot.length + i : cycleStart + i;
+    const ws       = _hcAddDays(HC_W1_START, slotIdx * 7);
+    const we       = _hcAddDays(ws, 6);
     const dateStr  = fmtD(ws) + ' – ' + fmtD(we);
-    const isPast   = i < cyclePos;
+    const isPast   = !inNextRound && i < cyclePos;
     const isNow    = i === cyclePos;
     const isNext   = i === trueNextI;
-    const slotDone = hcDoneMap[(cycleStart + i) + '_' + r] || null;
+    const slotDone = hcDoneMap[slotIdx + '_' + r] || null;
 
     const state = _hcRotState({ isNow, isPast, isNext, slotDone, room: r, weekStart: ws, absRows: absRows || [] });
 

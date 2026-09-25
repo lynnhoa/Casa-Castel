@@ -40,8 +40,11 @@ const _K_DAY = 24 * 60 * 60 * 1000;
 
 function kWeekIdx(d) {
   const now = d || new Date();
-  if (now < K_START) return -1;
-  return Math.floor((now - K_START) / (7 * _K_DAY));
+  // Count calendar days (not milliseconds) so summer/winter time never shifts the week change
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const k1    = Date.UTC(K_START.getFullYear(), K_START.getMonth(), K_START.getDate());
+  if (today < k1) return -1;
+  return Math.floor((today - k1) / (7 * _K_DAY));
 }
 
 function kWeekInfo(i) {
