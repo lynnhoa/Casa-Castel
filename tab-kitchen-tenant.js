@@ -705,7 +705,7 @@ async function _kTenRenderMobRotation() {
       weekStart:   info ? info.start : null,
       absenceRows: absData,
     });
-    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'away', now:'Now', none:'—', next:'Next', upcoming:'—' }[state] || '—';
+    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'Away', now:'Now', none:'—', next:'Next', upcoming:'—' }[state] || '—';
     return `<div class="k-mob-rot-item ${state}"><span class="k-mob-rot-badge ${state}">${badgeText}</span><span class="k-mob-rot-room">${esc(room)}</span><span class="k-mob-rot-dates">${dateStr}</span></div>`;
   }).join('');
 
