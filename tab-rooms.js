@@ -2603,7 +2603,7 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
 
   // Partial first month
   const firstDayOfMonth = new Date(start.getFullYear(), start.getMonth(), 1);
-  const ersterAnteilig  = start.getDate() !== 1;
+  let   ersterAnteilig  = start.getDate() !== 1;
   let ersterTage = 0, ersterBetrag = 0, ersterTagespreis = 0;
   if (ersterAnteilig) {
     const daysInFirstMonth = new Date(start.getFullYear(), start.getMonth()+1, 0).getDate();
@@ -2618,7 +2618,7 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
 
   // Partial last month
   const lastDayOfMonth  = new Date(end.getFullYear(), end.getMonth()+1, 0);
-  const letzterAnteilig = end.getDate() !== lastDayOfMonth.getDate();
+  let   letzterAnteilig = end.getDate() !== lastDayOfMonth.getDate();
   const sameCalendarMonth = end.getFullYear() === start.getFullYear() && end.getMonth() === start.getMonth();
   const letzteZahlungNoetig = !sameCalendarMonth;
   let letzterTage = 0, letzterBetrag = 0, letzterTagespreis = 0;
@@ -2633,6 +2633,22 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
     }
   }
 
+  // Stay inside ONE calendar month (e.g. 01.–14.11. or 10.–25.11.): exactly the
+  // days of the stay are charged, once — never a full month on top.
+  if (sameCalendarMonth) {
+    const dim  = lastDayOfMonth.getDate();
+    const stay = end.getDate() - start.getDate() + 1;
+    letzterAnteilig = false; letzterTage = 0; letzterBetrag = 0;
+    if (stay === dim) {
+      ersterAnteilig = false; ersterTage = 0; ersterBetrag = 0;          // a whole month = normal month
+    } else {
+      ersterAnteilig   = true;
+      ersterTage       = stay;
+      ersterTagespreis = rent / dim;
+      ersterBetrag     = ersterMonatVoll ? rent : Math.round(ersterTagespreis * stay * 100) / 100;
+    }
+  }
+
   // Count full months between
   let fullMonths = 0;
   const ms = new Date(ersterAnteilig ? new Date(start.getFullYear(), start.getMonth()+1, 1) : start);
@@ -2640,11 +2656,9 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
   fullMonths = (me.getFullYear() - ms.getFullYear()) * 12 + (me.getMonth() - ms.getMonth());
   if (fullMonths < 0) fullMonths = 0;
 
-  // Box value = sum of the Mietzins line items shown directly above it:
-  // Anteil erster Monat (if any) + eine Monatsmiete. (Equals the first payment.)
-  const gesamtmiete = Math.round(
-    (ersterBetrag + rent) * 100
-  ) / 100;
+  // Beige box = the normal full-month Miete + NK. A move-in mid-month is shown in
+  // its own line ("Anteil erster Monat") and in the Zahlungsplan — never in the box.
+  const gesamtmiete = Math.round(rent * 100) / 100;
 
   // Kaution — base: Pauschal = full total, Kalt+NK = kaltmiete only
   const totalMonths = Math.round((end - start) / (30.44 * 24 * 3600 * 1000));
@@ -2786,6 +2800,19 @@ function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, miet
   };
 }
 
+
+/* ── MIETVERTRAG RENT (one rule for PDF, form and Kaution) ──
+   Kalt+NK : Kaltmiete + NK-Vorauszahlung.
+   Pauschal: Kaltmiete + NK fields as saved by the room editor; rooms that still
+             carry only the old "Mietvertrag-Miete" field use it as the total. */
+function _roomMvPricing(room) {
+  const kalt = Number(room.kaltmiete) || 0;
+  const nk   = Number(room.nk_pauschale) || 0;
+  if (room.mietvertrag_pricing === 'kalt_nk' && kalt) return { mode: 'kalt_nk', kalt, nk, total: kalt + nk };
+  if (kalt) return { mode: 'pauschal', kalt, nk, total: kalt + nk };
+  const old = Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
+  return { mode: 'pauschal', kalt: Math.max(0, old - nk), nk: old ? nk : 0, total: old };
+}
 
 /* ── RENDER KURZZEIT HTML FOR PRINT ──────────────────────── */
 function _renderKurzzeitHTML(d) {
@@ -3112,7 +3139,7 @@ function _renderKurzzeitHTML(d) {
   ${hdr(d.zimmerName)}
   ${ftr(1)}
   <div class="content">
-    <div class="doc-title">Kurzzeitmietvertrag</div>
+    <div class="doc-title">Mietvertrag</div>
     <div class="doc-subtitle">Befristetes Mietverhältnis · Zimmervermietung</div>
 
     ${sec('Vermieter', false, true)}
@@ -3144,7 +3171,7 @@ function _renderKurzzeitHTML(d) {
     }
 
     <div class="total-box">
-      <span class="total-box__label">Gesamtmiete:</span>
+      <span class="total-box__label">Gesamtmiete monatlich:</span>
       <span class="total-box__value">${eur(d.gesamtmiete)}</span>
     </div>
   </div>
@@ -3786,36 +3813,31 @@ function _buildMietvertragOnlyData(room, s, {
 
   const gemStr = _parseArr(room.gemeinschaftsraeume).join(', ');
 
-  // First partial month note
+  // Rent: one rule for Kalt+NK, Pauschal and rooms that still use the old field
+  const _mv = _roomMvPricing(room);
+  const kaltmiete       = _mv.kalt;
+  const nkVorauszahlung = _mv.nk;
+  const gesamtmiete     = _mv.total;
+  const pricingMode     = _mv.mode;
+
+  // First partial month: always the share of the FULL monthly rent (Miete + NK)
   let ersterMonatNote = '';
   if (startVal) {
     const start = new Date(startVal);
     if (start.getDate() !== 1) {
       const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
       const tage = daysInMonth - start.getDate() + 1;
-      const mvKalt = Number(room.kaltmiete) || 0;
-      const mvNk   = Number(room.nk_pauschale) || 0;
-      const isKaltNk = room.mietvertrag_pricing === 'kalt_nk' && room.kaltmiete;
-      const rentForNote = isKaltNk ? mvKalt : mvKalt + mvNk;
-      const suffix      = isKaltNk ? ' (Kaltmiete-Anteil)' : ' (pauschal inkl. NK)';
-      const betrag = rentForNote ? fmtEUR(Math.round(rentForNote / daysInMonth * tage * 100) / 100) : '';
+      const r2 = v => Math.round(v * 100) / 100;
+      const anteil     = r2(gesamtmiete / daysInMonth * tage);
+      const kaltAnteil = r2(kaltmiete / daysInMonth * tage);
+      const nkAnteil   = r2(anteil - kaltAnteil);
+      const detail = pricingMode === 'kalt_nk'
+        ? ` (${fmtEUR(kaltAnteil)} Kaltmiete + ${fmtEUR(nkAnteil)} NK)`
+        : ' (pauschal inkl. NK)';
       ersterMonatNote = ersterMonatVoll
         ? `Erster Monat (${start.toLocaleString('de-DE',{month:'long'})}) wird als voller Monat berechnet.`
-        : `Erster Monat anteilig: ${tage} von ${daysInMonth} Tagen${betrag ? ' = ' + betrag + suffix : ''}.`;
+        : `Erster Monat anteilig: ${tage} von ${daysInMonth} Tagen${gesamtmiete ? ' = ' + fmtEUR(anteil) + detail : ''}.`;
     }
-  }
-
-  let kaltmiete, nkVorauszahlung, gesamtmiete, pricingMode;
-  if (room.mietvertrag_pricing === 'kalt_nk' && room.kaltmiete) {
-    kaltmiete       = Number(room.kaltmiete);
-    nkVorauszahlung = Number(room.nk_pauschale) || 0;
-    gesamtmiete     = kaltmiete + nkVorauszahlung;
-    pricingMode     = 'kalt_nk';
-  } else {
-    kaltmiete       = Number(room.kaltmiete) || 0;
-    nkVorauszahlung = Number(room.nk_pauschale) || 0;
-    gesamtmiete     = kaltmiete + nkVorauszahlung;
-    pricingMode     = 'pauschal';
   }
 
   const kautionBase = pricingMode === 'pauschal'
@@ -3919,22 +3941,16 @@ function _contractBodyMietvertrag(room) {
   const gemStr = _parseArr(room.gemeinschaftsraeume).join(', ') || '—';
   const schluessel = `Haustür \u00d7${room.haustuerschluessel || 1} \u00b7 Zimmer \u00d7${room.zimmerschluessel || 1}`;
 
-  let kaltDisplay, gesamtDisplay;
-  if (room.mietvertrag_pricing === 'kalt_nk' && room.kaltmiete) {
-    kaltDisplay   = `${fmtEUR(room.kaltmiete)} kalt + ${fmtEUR(room.nk_pauschale || 0)} NK`;
-    gesamtDisplay = fmtEUR((Number(room.kaltmiete) || 0) + (Number(room.nk_pauschale) || 0));
-  } else {
-    const m = room.mietvertrag_miete || room.monatl_miete || 0;
-    kaltDisplay   = `${fmtEUR(m)} pauschal inkl. NK`;
-    gesamtDisplay = fmtEUR(m);
-  }
+  const _mvp = _roomMvPricing(room);
+  const kaltDisplay   = _mvp.mode === 'kalt_nk'
+    ? `${fmtEUR(_mvp.kalt)} kalt + ${fmtEUR(_mvp.nk)} NK`
+    : `${fmtEUR(_mvp.total)} pauschal inkl. NK`;
+  const gesamtDisplay = fmtEUR(_mvp.total);
 
-  const kaltBase   = Number(room.kaltmiete || room.mietvertrag_miete || room.monatl_miete) || 0;
-  const isPauschal = room.mietvertrag_pricing !== 'kalt_nk';
-  const nkBase     = isPauschal ? (Number(room.nk_pauschale) || 0) : 0;
+  // Kaution base: Pauschal = full rent, Kalt+NK = Kaltmiete (same rule as the PDF)
   const kaution    = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
-    : (kaltBase + nkBase) * 3;
+    : (_mvp.mode === 'pauschal' ? _mvp.total : _mvp.kalt) * 3;
 
   // Mindestlaufzeit (Kündigungsverzicht) — default Ja / 1 Jahr, editable per contract (not persisted)
   const mlOn             = true;
@@ -4276,7 +4292,7 @@ function _renderMietvertragHTML(d) {
     ${d.pricingMode==='kalt_nk'
       ? kv('Kaltmiete',eur(d.kaltmiete)+'\u2002/ Monat')
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
-      : kv('Pauschalmiete',eur(d.kaltmiete)+'\u2002/ Monat (inkl. NK)')
+      : kv('Pauschalmiete',eur(d.gesamtmiete)+'\u2002/ Monat (inkl. NK)')
     }
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>
   </div>

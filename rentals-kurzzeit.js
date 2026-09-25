@@ -37,83 +37,85 @@ function _buildRentalKurzzeitData(apt, s, {
   const p  = apt.pricing   || {};
   const sk = apt.schlussel || {};
 
-  // Pricing: use kurzzeit-specific rates if set, else fall back to standard
-  const kzKalt = Number(p.kurzzeit_kaltmiete) || Number(p.kaltmiete) || 0;
-  const kzNk   = Number(p.kurzzeit_nk)        || Number(p.nk_pauschale) || 0;
-  const monatlMiete = kzKalt + kzNk;
+  const r2 = v => Math.round(v * 100) / 100;
+  // Pricing: the Kurzzeit prices when set (exactly as the generator shows them),
+  // otherwise the normal ones. A Kurzzeit NK of 0 € stays 0 € (no fallback).
+  const hasKzPrice = Number(p.kurzzeit_kaltmiete) > 0;
+  const kzKalt = hasKzPrice ? Number(p.kurzzeit_kaltmiete) : (Number(p.kaltmiete) || 0);
+  const kzNk   = hasKzPrice ? (Number(p.kurzzeit_nk) || 0) : (Number(p.nk_pauschale) || 0);
+  const monatlMiete = r2(kzKalt + kzNk);
 
   // Date maths
   const start   = new Date(startVal);
   const end     = new Date(endVal);
+  const dimOf   = d => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const daysInFirstMonth = dimOf(start);
+  const daysInLastMonth  = dimOf(end);
+  const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
 
-  // Days in first and last month
-  const daysInFirstMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-  const daysInLastMonth  = new Date(end.getFullYear(),   end.getMonth()   + 1, 0).getDate();
-
-  const ersterMonatAnteilig  = start.getDate() !== 1;
-  const letzterMonatAnteilig = end.getDate()   !== daysInLastMonth;
-
-  const ersterMonatTage      = ersterMonatAnteilig  ? daysInFirstMonth  - start.getDate() + 1 : null;
-  const letzterMonatTage     = letzterMonatAnteilig ? end.getDate()                           : null;
+  let ersterMonatAnteilig, letzterMonatAnteilig, ersterMonatTage = null, letzterMonatTage = null;
+  if (sameMonth) {
+    // Stay inside ONE calendar month: only the days of the stay, charged once
+    const stay = end.getDate() - start.getDate() + 1;
+    ersterMonatAnteilig  = stay !== daysInFirstMonth;
+    ersterMonatTage      = ersterMonatAnteilig ? stay : null;
+    letzterMonatAnteilig = false;
+  } else {
+    ersterMonatAnteilig  = start.getDate() !== 1;
+    letzterMonatAnteilig = end.getDate()   !== daysInLastMonth;
+    ersterMonatTage      = ersterMonatAnteilig  ? daysInFirstMonth - start.getDate() + 1 : null;
+    letzterMonatTage     = letzterMonatAnteilig ? end.getDate() : null;
+  }
   const ersterMonatTagespreis  = ersterMonatAnteilig  ? monatlMiete / daysInFirstMonth : null;
   const letzterMonatTagespreis = letzterMonatAnteilig ? monatlMiete / daysInLastMonth  : null;
-  const ersterMonatBetrag    = ersterMonatAnteilig  ? ersterMonatTagespreis  * ersterMonatTage  : null;
-  const letzterMonatBetrag   = letzterMonatAnteilig ? letzterMonatTagespreis * letzterMonatTage : null;
+  const ersterMonatBetrag  = ersterMonatAnteilig  ? r2(ersterMonatTagespreis  * ersterMonatTage)  : null;
+  const letzterMonatBetrag = letzterMonatAnteilig ? r2(letzterMonatTagespreis * letzterMonatTage) : null;
 
-  // Count full months between (exclusive of partial first/last)
-  let fullMonthStart = new Date(start);
-  if (ersterMonatAnteilig) {
-    fullMonthStart = new Date(start.getFullYear(), start.getMonth() + 1, 1);
-  }
-  let fullMonthEnd = new Date(end);
-  if (letzterMonatAnteilig) {
-    fullMonthEnd = new Date(end.getFullYear(), end.getMonth(), 0);
-  }
-  const fullMonths = Math.max(0,
-    (fullMonthEnd.getFullYear() - fullMonthStart.getFullYear()) * 12 +
-    (fullMonthEnd.getMonth()    - fullMonthStart.getMonth()) + 1
-  );
-  const weitereZahlungen = fullMonths > 1;
+  // Full calendar months inside the stay
+  const fullMonthStart = new Date(start.getFullYear(), start.getMonth() + (ersterMonatAnteilig ? 1 : 0), 1);
+  const fullMonthEndEx = new Date(end.getFullYear(),   end.getMonth()   + (letzterMonatAnteilig ? 0 : 1), 1);
+  const fullMonths = sameMonth
+    ? (ersterMonatAnteilig ? 0 : 1)
+    : Math.max(0, (fullMonthEndEx.getFullYear() - fullMonthStart.getFullYear()) * 12 + (fullMonthEndEx.getMonth() - fullMonthStart.getMonth()));
 
-  // Gesamtmiete
-  const gesamtmiete =
-    (ersterMonatBetrag  || (!ersterMonatAnteilig  ? monatlMiete : 0)) +
-    (letzterMonatBetrag || (!letzterMonatAnteilig ? monatlMiete : 0)) +
-    Math.max(0, fullMonths - (ersterMonatAnteilig ? 0 : 1) - (letzterMonatAnteilig ? 0 : 1)) * monatlMiete;
+  // Beige box = normal full-month Miete + NK; the whole stay is its own line
+  const gesamtmiete = monatlMiete;
+  const gesamtbetragMietzeit = r2((ersterMonatBetrag || 0) + (letzterMonatBetrag || 0) + fullMonths * monatlMiete);
 
   // Zahlungsplan
   const monthName = d => d.toLocaleString('de-DE', { month: 'long', year: 'numeric' });
   const fmtDate   = d => fmt(d);
 
-  let zahlung1Betrag, zahlung1Beschreibung, zahlung1Faellig;
-  let weitereZahlungenBetrag = null;
-  let letzteZahlungBetrag, letzteZahlungBeschreibung, letzteZahlungFaellig;
-
+  let zahlung1Betrag, zahlung1Beschreibung, usedFull;
   if (ersterMonatAnteilig) {
-    zahlung1Betrag       = ersterMonatBetrag + (fullMonths >= 1 ? monatlMiete : 0);
-    zahlung1Beschreibung = ersterMonatBetrag !== null
-      ? `Anteil ${monthName(start)}` + (fullMonths >= 1 ? ` + ${monthName(fullMonthStart)}` : '')
-      : monthName(start);
-    zahlung1Faellig = fmtDate(start);
+    usedFull             = fullMonths >= 1 ? 1 : 0;
+    zahlung1Betrag       = r2(ersterMonatBetrag + usedFull * monatlMiete);
+    zahlung1Beschreibung = `Anteil ${monthName(start)}` + (usedFull ? ` + ${monthName(fullMonthStart)}` : '');
   } else {
+    usedFull             = 1;
     zahlung1Betrag       = monatlMiete;
     zahlung1Beschreibung = monthName(start);
-    zahlung1Faellig      = fmtDate(start);
   }
+  const zahlung1Faellig = fmtDate(start);
 
-  if (weitereZahlungen) {
-    weitereZahlungenBetrag = monatlMiete;
-  }
-
+  let letzteZahlungNoetig, letzteZahlungBetrag = null, letzteZahlungBeschreibung = '', lastUsesFull = 0;
   if (letzterMonatAnteilig) {
+    letzteZahlungNoetig       = true;
     letzteZahlungBetrag       = letzterMonatBetrag;
     letzteZahlungBeschreibung = `Anteil ${monthName(end)}`;
-    letzteZahlungFaellig      = fmtDate(new Date(end.getFullYear(), end.getMonth(), 1));
   } else {
-    letzteZahlungBetrag       = monatlMiete;
-    letzteZahlungBeschreibung = monthName(end);
-    letzteZahlungFaellig      = fmtDate(new Date(end.getFullYear(), end.getMonth(), 1));
+    letzteZahlungNoetig = fullMonths - usedFull >= 1;
+    if (letzteZahlungNoetig) {
+      letzteZahlungBetrag       = monatlMiete;
+      letzteZahlungBeschreibung = monthName(end);
+      lastUsesFull              = 1;
+    }
   }
+  const letzteZahlungFaellig = fmtDate(new Date(end.getFullYear(), end.getMonth(), 1));
+
+  const weitereAnzahl          = Math.max(0, fullMonths - usedFull - lastUsesFull);
+  const weitereZahlungen       = weitereAnzahl > 0;
+  const weitereZahlungenBetrag = weitereZahlungen ? monatlMiete : null;
 
   // Inventar
   const inventar = (apt.inventar || []).map(i => ({
@@ -150,7 +152,11 @@ function _buildRentalKurzzeitData(apt, s, {
     mietbeginn:  startVal ? fmt(new Date(startVal)) : '',
     mietende:    endVal   ? fmt(new Date(endVal))   : '',
     monatlMiete,
+    kzKaltmiete: kzKalt,
+    kzNk,
     gesamtmiete,
+    gesamtbetragMietzeit,
+    letzteZahlungNoetig,
     ersterMonatAnteilig,
     letzterMonatAnteilig,
     ersterMonatTage,
@@ -309,15 +315,18 @@ function _renderRentalKurzzeitHTML(d) {
     ${sec('Mietzeit &amp; Mietzins',true,false)}
     ${kv('Mietbeginn',d.mietbeginn||'\u2014')}${kv('Mietende',d.mietende||'\u2014')}
     ${d.ersterMonatAnteilig ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage \u00d7 ' + eur(d.ersterMonatTagespreis) + '/Tag)') : ''}
-    ${kv('Monatliche Miete', eur(d.monatlMiete) + '\u2002/ Monat (Vollmonat, pauschal inkl. NK)')}
+    ${d.kzNk > 0
+      ? kv('Kaltmiete', eur(d.kzKaltmiete) + '\u2002/ Monat') + kv('Nebenkostenpauschale', eur(d.kzNk) + '\u2002/ Monat')
+      : kv('Monatliche Miete', eur(d.monatlMiete) + '\u2002/ Monat (pauschal inkl. NK)')}
     ${d.letzterMonatAnteilig ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage \u00d7 ' + eur(d.letzterMonatTagespreis) + '/Tag)') : ''}
-    <div class="total-box"><span class="total-box__label">Gesamtmiete:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>`;
+    <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>`;
 
   const mieteRestBlock = `
     ${sec('Zahlungsplan &amp; Bankverbindung',true,false)}
     ${kv('1. Zahlung', eur(d.zahlung1Betrag) + '\u2002(' + d.zahlung1Beschreibung + '), f\u00e4llig am ' + d.zahlung1Faellig)}
     ${d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils f\u00e4llig 3.\u00a0Werktag') : ''}
-    ${kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), f\u00e4llig am ' + d.letzteZahlungFaellig)}
+    ${d.letzteZahlungNoetig ? kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), f\u00e4llig am ' + d.letzteZahlungFaellig) : ''}
+    ${kv('Gesamtbetrag Mietzeit', eur(d.gesamtbetragMietzeit) + '\u2002(' + d.mietbeginn + ' \u2013 ' + d.mietende + ')')}
     ${kv('Kaution', eur(d.kaution) + '\u2002(f\u00e4llig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
@@ -326,7 +335,7 @@ function _renderRentalKurzzeitHTML(d) {
   const page1 = `<div class="pdf-page page">
   ${hdr(d.wohnungName)}${ftr(1)}
   <div class="content">
-    <div class="doc-title">Kurzzeitmiete</div>
+    <div class="doc-title">Mietvertrag</div>
     <div class="doc-subtitle">Befristetes Mietverh\u00e4ltnis \u00b7 Wohnungsvermietung</div>
     ${sec('Vermieter',false,true)}
     ${kv('Name',d.vermieterName)}${kv('Adresse',d.vermieterAdresse)}
@@ -426,7 +435,7 @@ function _renderRentalKurzzeitHTML(d) {
 
   return `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8"/>
-<title>Kurzzeitmiete \u2014 ${d.wohnungName}</title>
+<title>Mietvertrag \u2014 ${d.wohnungName}</title>
 <style>${CSS}</style></head>
 <body>${page1}${page1b}${page2}${page3}${page4}</body></html>`;
 }

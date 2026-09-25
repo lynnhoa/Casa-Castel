@@ -59,6 +59,26 @@ function _buildRentalMietvertragData(room, s, {
 
   // Pauschal: kaution base = full monthly charge (kaltmiete + NK)
   // Kalt+NK:  kaution base = kaltmiete only (§ 551 BGB)
+  // Staffelmiete: the first Staffel (Anfangsmiete) is the Kaltmiete that is printed,
+  // so the monthly Summe must use it too.
+  if (staffelAn && anfangsmiete !== null && anfangsmiete !== '' && Number(anfangsmiete) > 0) {
+    gesamtmiete = Number(anfangsmiete) + nkVorauszahlung;
+  }
+  // First partial month (move-in not on the 1st): share of the full Miete + NK
+  let ersterMonatNote = '';
+  if (startVal) {
+    const st = new Date(startVal);
+    if (!isNaN(st) && st.getDate() !== 1) {
+      const dim  = new Date(st.getFullYear(), st.getMonth() + 1, 0).getDate();
+      const tage = dim - st.getDate() + 1;
+      const r2   = v => Math.round(v * 100) / 100;
+      const kaltM = gesamtmiete - nkVorauszahlung;
+      const anteil = r2(gesamtmiete / dim * tage), kaltA = r2(kaltM / dim * tage), nkA = r2(anteil - kaltA);
+      const e = v => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
+      ersterMonatNote = `Erster Monat anteilig: ${tage} von ${dim} Tagen = ${e(anteil)}` +
+        (pricingMode === 'kalt_nk' ? ` (${e(kaltA)} Kaltmiete + ${e(nkA)} NK).` : ' (pauschal inkl. NK).');
+    }
+  }
   const kautionBase = pricingMode === 'pauschal' ? kaltmiete + nkVorauszahlung : kaltmiete;
   const kaution = room.kaution_override && room.kaution_default
     ? Number(room.kaution_default)
@@ -108,6 +128,7 @@ function _buildRentalMietvertragData(room, s, {
     kaltmiete,
     nkVorauszahlung,
     gesamtmiete,
+    ersterMonatNote,
     kaution,
     kautionFaelText: kautionFael === 'sofort' ? 'sofort nach Vertragsunterzeichnung' : `binnen ${kautionFael}\u00a0Tagen`,
     hausstuerschluessel: room.haustuerschluessel ?? 1,
@@ -544,6 +565,7 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('M\u00f6blierung','M\u00f6bliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit',false,false)}
     ${kv('Mietbeginn',d.mietbeginn||'\u2014')}
+    ${d.ersterMonatNote ? kv('Erster Monat', d.ersterMonatNote) : ''}
     ${!d.befristet
       ? kv('K\u00fcndigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
