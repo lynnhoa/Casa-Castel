@@ -145,6 +145,17 @@ function ccFmtTs(ts) {
   return `${parts.day}.${parts.month}. · ${parts.hour}:${parts.minute}`;
 }
 
+/* While typing a date: 2609 → 26.09 · 26092026 → 26.09.2026.
+   Dots the person typed themselves (1.10.2026) are left alone.
+   dm = day + month only (01.01.) */
+function ccDateTyping(value, dm = false) {
+  if (!/^(\d{2}\.){0,2}\d*$/.test(value)) return value;   // own dots (e.g. 1.10.) → keep as typed
+  const digits = value.replace(/\D/g, '').slice(0, dm ? 4 : 8);
+  if (!dm && digits.length > 4) return digits.slice(0, 2) + '.' + digits.slice(2, 4) + '.' + digits.slice(4);
+  if (digits.length > 2) return digits.slice(0, 2) + '.' + digits.slice(2) + (dm && digits.length === 4 ? '.' : '');
+  return digits;
+}
+
 /* Is this input a (converted) number field? Used by the save functions. */
 function ccIsNumInput(el) {
   return !!el && (el.type === 'number' || el.hasAttribute('data-cc-num'));
@@ -231,12 +242,7 @@ function ccIsNumInput(el) {
     if (!el || !el._ccDate) return;
     if (e.inputType && !e.inputType.startsWith('insert')) return;   // deleting: leave alone
     const cur = nget(el);
-    if (!/^[\d.]*$/.test(cur)) return;
-    const digits = cur.replace(/\D/g, '').slice(0, 8);
-    let out = digits;
-    if (digits.length > 4)      out = digits.slice(0, 2) + '.' + digits.slice(2, 4) + '.' + digits.slice(4);
-    else if (digits.length > 2) out = digits.slice(0, 2) + '.' + digits.slice(2);
-    if (cur.includes('.')) return;                      // person types the dots themselves
+    const out = ccDateTyping(cur);
     if (out !== cur) { nset(el, out); try { el.setSelectionRange(out.length, out.length); } catch (_) {} }
   }, true);
 
@@ -280,10 +286,10 @@ function ccIsNumInput(el) {
 })();
 
 /* ── GERMAN CALENDAR ─────────────────────────────────────────
-   Every date field in the 4 management apps gets a calendar icon.
-   Tap the icon → German calendar (September 2026, Mo–So, Heute).
-   Always German, whatever language the phone is set to.
-   Typing stays possible (tap the field itself).
+   Every date field in the 4 management apps opens a German calendar when
+   you tap it (September 2026, Mo–So, Heute) — no keyboard. Always German,
+   whatever language the phone is set to. For quick typing, the calendar
+   has its own field at the top ("Eintippen").
 
    Which fields:
      • converted date pickers (input.cc-date — Mietbeginn, Mietende,
@@ -305,7 +311,6 @@ function ccIsNumInput(el) {
     'input[data-f^="birthday"]', 'input[data-mf^="birthday"]', '#e-kaufdatum', '#a-kaufdatum',
   ].join(',');
   const DAY_MONTH = 'input[data-vf="abrechnung_von"], input[data-vf="abrechnung_bis"]';
-  const ZONE = 44;                                        // px on the right of the field = the calendar icon
 
   function kindOf(el) {
     if (el._ccDate) return 'iso';
@@ -318,6 +323,7 @@ function ccIsNumInput(el) {
   }
   function mark(el) {
     if (el._ccCal || el.type === 'hidden' || el.type === 'checkbox') return;
+    if (el.closest('.cccal')) return;                    // the calendar's own typing field
     const k = kindOf(el); if (!k) return;
     el._ccCal = k;
     el.classList.add('cc-cal');
@@ -373,6 +379,11 @@ function ccIsNumInput(el) {
           <span class="cccal__ttl">${label.replace(/</g, '&lt;')}</span>
           <button type="button" class="cccal__x" aria-label="Schließen" data-a="close"><i class="ti ti-x"></i></button>
         </div>
+        <div class="cccal__type">
+          <input class="cccal__typein" type="text" inputmode="numeric" autocomplete="off"
+            placeholder="${dm ? 'TT.MM.' : 'TT.MM.JJJJ'}" aria-label="Datum eintippen"/>
+          <button type="button" class="cccal__typeok" data-a="typeok">OK</button>
+        </div>
         <div class="cccal__nav">
           <button type="button" class="cccal__arw" data-a="prev" aria-label="Vorheriger Monat"><i class="ti ti-chevron-left"></i></button>
           <select class="cccal__sel" data-a="month" aria-label="Monat">${MONTHS.map((n, i) => `<option value="${i + 1}">${n}</option>`).join('')}</select>
@@ -394,7 +405,32 @@ function ccIsNumInput(el) {
       draw();
     });
     document.addEventListener('keydown', onKey);
+    const tin = ov.querySelector('.cccal__typein');
+    if (v) tin.value = dm ? `${String(v.d).padStart(2, '0')}.${String(v.m).padStart(2, '0')}.` : ccFmtDate(`${v.y}-${String(v.m).padStart(2, '0')}-${String(v.d).padStart(2, '0')}`);
+    tin.addEventListener('input', e => {                   // 2609 → 26.09 · 26092026 → 26.09.2026
+      tin.removeAttribute('aria-invalid');
+      if (e.inputType && !e.inputType.startsWith('insert')) return;
+      const out = ccDateTyping(tin.value, dm);
+      if (out !== tin.value) tin.value = out;
+    });
+    tin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyTyped(); } });
     draw();
+  }
+  function applyTyped() {
+    const ov = document.getElementById('ccCal'); if (!ov || !cur) return;
+    const tin = ov.querySelector('.cccal__typein');
+    const t = tin.value.trim();
+    if (!t) { writeVal(cur.el, null, null, null); close(); return; }
+    if (cur.dm) {
+      const m = t.match(/^(\d{1,2})\.(\d{1,2})\.?$/);
+      const ok = m && +m[2] >= 1 && +m[2] <= 12 && +m[1] >= 1 && +m[1] <= new Date(2024, +m[2], 0).getDate();
+      if (!ok) { tin.setAttribute('aria-invalid', 'true'); return; }
+      writeVal(cur.el, null, +m[2], +m[1]); close(); return;
+    }
+    const iso = ccParseDate(t);
+    if (!iso) { tin.setAttribute('aria-invalid', 'true'); return; }
+    const [y, m, d] = iso.split('-').map(Number);
+    writeVal(cur.el, y, m, d); close();
   }
   function close() {
     document.getElementById('ccCal')?.remove();
@@ -406,6 +442,7 @@ function ccIsNumInput(el) {
     if (b.dataset.d) { writeVal(cur.el, cur.dm ? null : cur.y, cur.m, +b.dataset.d); close(); return; }
     const a = b.dataset.a;
     if (a === 'close') close();
+    else if (a === 'typeok') applyTyped();
     else if (a === 'prev') { cur.m--; if (cur.m < 1) { cur.m = 12; if (!cur.dm) cur.y--; } draw(); }
     else if (a === 'next') { cur.m++; if (cur.m > 12) { cur.m = 1; if (!cur.dm) cur.y++; } draw(); }
     else if (a === 'today') { const t = cur.today; writeVal(cur.el, t[0], t[1], t[2]); close(); }
@@ -438,8 +475,8 @@ function ccIsNumInput(el) {
     ov.querySelector('.cccal__grid').innerHTML = h;
   }
 
-  /* tap on the icon (right edge) → calendar; tap elsewhere → type as before */
-  const inZone = (el, x) => { const r = el.getBoundingClientRect(); return x >= r.right - ZONE && x <= r.right + 2; };
+  /* tap on a date field → calendar (the field itself never gets the keyboard) */
+  const isCal = el => !!(el && el._ccCal && !el.disabled && !el.readOnly);
   let t0 = null;                                          // a swipe that starts on the icon is a scroll, not a tap
   document.addEventListener('touchstart', e => {
     const t = e.touches && e.touches[0]; t0 = t ? { x: t.clientX, y: t.clientY } : null;
@@ -448,13 +485,13 @@ function ccIsNumInput(el) {
     const el = e.target; if (!el || !el._ccCal) return;
     const t = e.changedTouches && e.changedTouches[0];
     if (!t || (t0 && Math.hypot(t.clientX - t0.x, t.clientY - t0.y) > 10)) return;
-    if (inZone(el, t.clientX)) { e.preventDefault(); open(el); }
+    if (isCal(el)) { e.preventDefault(); open(el); }
   }, { capture: true, passive: false });
   document.addEventListener('mousedown', e => {
-    const el = e.target; if (el && el._ccCal && inZone(el, e.clientX)) e.preventDefault();
+    if (isCal(e.target)) e.preventDefault();
   }, true);
   document.addEventListener('click', e => {
-    const el = e.target; if (el && el._ccCal && inZone(el, e.clientX)) { e.preventDefault(); open(el); }
+    if (isCal(e.target)) { e.preventDefault(); open(e.target); }
   }, true);
 
   window.ccOpenCalendar = open;                           // e.g. for tests
@@ -472,6 +509,14 @@ html input.cc-cal { background-image:url("${ICON}") !important; background-repea
 .cccal__ttl { font-size:10px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-taupe, #9A8E7E); }
 .cccal__x { width:36px; height:36px; border-radius:50%; border:.5px solid var(--cc-rule, #E0DAD0); background:none; color:var(--cc-stone, #C8BFB0);
   display:flex; align-items:center; justify-content:center; font-size:15px; cursor:pointer; }
+.cccal__type { display:flex; gap:8px; margin-bottom:10px; }
+.cccal__typein { flex:1; min-width:0; height:42px; padding:0 12px; box-sizing:border-box; font-family:inherit; font-size:16px;
+  border:.5px solid var(--cc-rule, #E0DAD0); border-radius:8px; background:var(--cc-surface, #EDE8E0); color:var(--cc-charcoal, #3A3530);
+  font-variant-numeric:tabular-nums; }
+.cccal__typein[aria-invalid="true"] { border-color:#C0392B; box-shadow:0 0 0 1px #C0392B; }
+.cccal__typeok { height:42px; padding:0 16px; border:.5px solid var(--cc-rule, #E0DAD0); border-radius:8px; background:var(--cc-white, #FDFCFA);
+  color:var(--cc-ink, #1E1B18); font-family:inherit; font-size:13px; font-weight:500; cursor:pointer; }
+html input.cc-cal { cursor:pointer; caret-color:transparent; }
 .cccal__nav { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
 .cccal__arw { width:40px; height:40px; flex-shrink:0; border:.5px solid var(--cc-rule, #E0DAD0); border-radius:8px; background:var(--cc-white, #FDFCFA);
   color:var(--cc-charcoal, #3A3530); display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer; }
