@@ -204,6 +204,8 @@ async function _pkSaveUebergPDFFromData(d, existingContainer) {
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
   // Phase 1: opened on top of the app instead of replacing it (pdf-open.js)
+  // Optional photo pages at the end (cc-ueberg-photos.js) — only when the toggle is on
+  if (typeof ccUbAppendPhotos === 'function') ccUbAppendPhotos(pdf, 'pk-ub', { isEinzug: d.isEinzug, objekt: d.spotName, mieter: d.mieterName });
   await ccOpenPdf(pdf, ccPdfFileName('Übergabeprotokoll', typ, d.spotName, d.mieterName));
 
   if (!existingContainer) container.remove();

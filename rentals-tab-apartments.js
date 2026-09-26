@@ -3349,6 +3349,7 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
       <label>Allgemeine Bemerkungen</label>
       <textarea class="rm-input" id="apt-ub-bemerkungen" rows="3" style="resize:vertical;line-height:1.5" placeholder="Sonstige Anmerkungen…"></textarea>
     </div>
+    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('apt-ub') : ''}
     <div class="rm-field" style="margin-top:4px">
       <label>Unterzeichnungsdatum</label>
       <input class="rm-input" id="apt-ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>

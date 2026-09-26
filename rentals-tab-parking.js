@@ -1294,6 +1294,7 @@ function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
       <label>Allgemeine Bemerkungen</label>
       <textarea class="rm-input" id="pk-ub-bemerkungen" rows="2" style="resize:vertical;line-height:1.5" placeholder="Sonstige Anmerkungen…"></textarea>
     </div>
+    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('pk-ub') : ''}
     <div class="rm-field" style="margin-top:4px">
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
       <input class="rm-input" id="pk-ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>

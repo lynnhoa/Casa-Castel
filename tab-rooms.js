@@ -2052,7 +2052,7 @@ async function _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename) {
    overlay (all screen sizes — the preview never leaves the app), and saves a
    full-quality A4 PDF via _roomDeliverPdf when the user taps the PDF button.
    Resets btnEl to resetHtml when done. saveFn is called on Save (Übergabe). */
-async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, saveFn) {
+async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, saveFn, opts) {
   // Phase 1: no in-app preview and no second "PDF" tap any more. The PDF is
   // rendered ONCE at print quality and opened straight in the iPhone's PDF
   // viewer / a new browser tab (pdf-open.js). The contract form stays open
@@ -2070,6 +2070,8 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
 
   try {
     const pdf = await ccRenderPagesToPdf(container);
+    // Optional photo pages at the end (Übergabe only, cc-ueberg-photos.js)
+    if (opts && opts.photosKey && typeof ccUbAppendPhotos === 'function') ccUbAppendPhotos(pdf, opts.photosKey, opts.meta || {});
     if (btnEl) btnEl.innerHTML = '<i class="ti ti-loader"></i> Opening PDF\u2026';
     await ccOpenPdf(pdf, _pdfSafeName(filename));
   } finally {
@@ -2269,7 +2271,8 @@ async function _openContract(type, roomId) {
           // to rebuild the document a second time from the live form and hide
           // the overlay before rendering, which is the only step Mietvertrag
           // never took.
-          await _roomGenericPdfAction(container, filenameUb, btn, '<i class="ti ti-printer"></i> Generate PDF');
+          await _roomGenericPdfAction(container, filenameUb, btn, '<i class="ti ti-printer"></i> Generate PDF', null,
+            { photosKey: 'room-ub', meta: { isEinzug, objekt: room3?.name || 'Zimmer', mieter: mieterNameUb } });
         } catch(err) {
           console.error('[Übergabe PDF]', err);
           alert('PDF generation failed. Please try again.');
@@ -2467,6 +2470,8 @@ function _contractBodyUeberg(room, isEinzug) {
       <textarea class="rm-input" id="ub-bemerkungen" rows="3" style="resize:vertical;line-height:1.5;" placeholder="Sonstige Anmerkungen…"></textarea>
     </div>
 
+    <!-- Fotos (optional, cc-ueberg-photos.js) -->
+    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('room-ub') : ''}
     <!-- Unterzeichnungsdatum — at end -->
     <div class="rm-field" style="margin-top:4px;">
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label>
