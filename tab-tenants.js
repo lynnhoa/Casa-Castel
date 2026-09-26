@@ -669,13 +669,7 @@ function _tnParseDate(s) {
 /* ══════════════════════════════════════════════════════════════
    6. STATUS HELPERS
 ══════════════════════════════════════════════════════════════ */
-function _tnKautionStatus(recv, ret, settled) {
-  if (settled)             return { label:'Settled',        cls:'tnp-green' };
-  if (recv === 0)          return { label:'Pending',        cls:'tnp-amber' };
-  if (ret > 0 && ret < recv) return { label:'Refund pending', cls:'tnp-amber' };
-  if (ret >= recv)         return { label:'Refund pending', cls:'tnp-amber' };
-  return                          { label:'Holding',        cls:'tnp-blue'  };
-}
+function _tnKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
 
 function _tnNkHasOpen(tid) {
   return (_tnNK[tid] || []).some(e => !e.paid);
@@ -732,26 +726,26 @@ function _tnNKVorausHasOpen(room) {
   return (_tnNKVoraus[room] || []).some(e => !e.tenant_adjusted);
 }
 
-function _tnStatusPill(room, activeRec) {
-  if (!activeRec) return '';
-  const pills = [];
-  // Move-out: time-critical, always first
-  const days = _tnDaysToMoveOut(activeRec);
-  if (days !== null && days >= 0 && days <= 60)
-    pills.push(`<span class="tnp tnp-red">Move-out in ${days} day${days===1?'':'s'}</span>`);
-  // NK open
-  if (_tnNkHasOpen(activeRec.id))
-    pills.push(`<span class="tnp tnp-red">NK open</span>`);
-  // NK-Erhöhung offen — tenant has pending rate adjustment
-  if (_tnNKVorausHasOpen(room.name))
-    pills.push(`<span class="tnp tnp-amber"><i class="ti ti-alert-triangle" aria-hidden="true"></i> NK-Erhöhung offen</span>`);
-  // Kaution: show held amount when received > 0 and not settled
-  const k = _tnKaution[activeRec.id];
-  const recv = k ? Number(k.received) : 0;
-  const settled = k ? k.settled : false;
-  if (recv > 0 && !settled)
-    pills.push(`<span class="tnp tnp-blue">${_tnFmtEUR(recv)} Kaution</span>`);
-  return pills.slice(0, 2).join('');
+/* Card pills (row 1 state + row 4 to-dos) — ONE function, used for the first render
+   and for every refresh after a save. Rules/wording/colours: cc-tenant-status.js */
+function _tnCardPills(room, activeRec) {
+  const vacant = !!room.vacant;
+  const todos = [];
+  if (activeRec) {
+    todos.push(ccTnMoveOutTodo(activeRec));
+    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'red', text: 'NK open' });   // NK: unchanged for now
+    todos.push(ccTnStillActiveTodo(vacant, activeRec));
+  }
+  const kPill = (!vacant && activeRec)
+    ? ccTnKautionPill(_tnKaution[activeRec.id], (_tnKautionSollInfo(activeRec) || {}).amount, _tnFmtEUR) : '';
+  return { row1: ccTnRow1(vacant, kPill), todo: ccTnTodoRow(todos) };
+}
+function _tnRefreshCardPills(roomName) {
+  const room = (typeof appRooms !== 'undefined' ? appRooms : []).find(r => r.name === roomName);
+  if (!room) return;
+  const rec = _tnRecords.find(r => r.room === roomName && r.status === 'active');
+  const p = _tnCardPills(room, rec);
+  ccTnApplyPills(esc(roomName.replace(/\s+/g,'_').toLowerCase()), p.row1, p.todo);
 }
 
 
@@ -861,9 +855,7 @@ function _tnRender() {
   document.querySelectorAll('.tn-card.open').forEach(el => _tnOpenCards.add(el.id));
 
   // Summary: total kaution held across all tenants (active + unsettled former)
-  const totalHeld = _tnRecords
-    .filter(r => { const k = _tnKaution[r.id]; return k && k.received > 0 && !k.settled; })
-    .reduce((sum, r) => sum + Number(_tnKaution[r.id].received), 0);
+  const totalHeld = ccTnHeldTotal(_tnRecords, _tnKaution);   // received − returned, unsettled
   const summaryEl = document.getElementById('tn-kaution-summary');
   if (summaryEl) {
     if (totalHeld > 0) {
@@ -959,7 +951,8 @@ function _tnHeaderHTML(rid, room, activeRec) {
     ? `${mietbeginn} \u2013 ${mietende}`
     : mietbeginn ? `since ${mietbeginn}` : '';
 
-  const statusPill = _tnStatusPill(room.name, activeRec);
+  const pills = _tnCardPills(room, activeRec);
+  const ctLabel = ({ mietvertrag: 'Mietvertrag', kurzzeit: 'Kurzzeit' })[_tnRoomContractType(room.name)] || '';
 
   let midLine = '';
   let botLine = '';
@@ -969,35 +962,33 @@ function _tnHeaderHTML(rid, room, activeRec) {
   // but not yet have a tenant record entered here.
   if (vacant) {
     // rooms.vacant = true → always Vacant regardless of tenant records
-    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>
-               <span class="tnp tnp-gray">Vacant</span>`;
+    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>`;
   } else if (activeRec) {
     // rooms.vacant = false AND has active tenant record → Occupied with full info
     midLine = `
       <span class="tn-tenant-name">${esc(fullName || 'Unnamed tenant')}</span>
-      <span class="tnp tnp-green">Occupied</span>
       ${dateStr ? `<span class="tn-tenant-dates">${esc(dateStr)}</span>` : ''}`;
     botLine = `
       <div class="tn-hdr-bot">
         ${warm != null ? `<span class="tn-warm">${_tnFmtEUR(warm)}</span><span class="tn-dim">${isKaltNK ? 'warm' : 'pauschal'}</span>` : ''}
-        ${(kalt != null && nk != null && isKaltNK) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_tnFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_tnFmtEUR(nk).replace('\u00a0\u20ac','')} kalt+NK</span>` : ''}
-        ${priceLabel ? `<div class="tn-dot-sep"></div><span class="tnp tnp-gray">${esc(priceLabel)}</span>` : ''}
+        ${(kalt != null && nk != null && isKaltNK) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_tnFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_tnFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
+        ${ctLabel ? `<div class="tn-dot-sep"></div><span class="tn-dim">${ctLabel}</span>` : ''}
       </div>`;
   } else {
     // rooms.vacant = false but no tenant record yet → Occupied (room is assigned) but no tenant added
-    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No tenant added</span>
-               <span class="tnp tnp-green">Occupied</span>`;
+    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No tenant added</span>`;
   }
 
   return `
 <div class="tn-hdr-wrap" onclick="_tnToggleCard('tc-${rid}')">
   <div class="tn-hdr-top">
     <span class="tn-room-lbl">${esc(room.name)}</span>
-    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${statusPill}</div>
+    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
+  <div class="tn-todo-row" id="hdr-todo-${rid}" style="${pills.todo ? '' : 'display:none'}">${pills.todo}</div>
 </div>`;
 }
 
@@ -1239,7 +1230,7 @@ function _tnKautionHTML(rid, tid, ctx) {
   <div class="${body}" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
-
+      <span class="tnp ${st.cls}" id="kstat-${pfx}">${st.label}</span>
     </div>
     <div class="tn-kaut-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${sInfo ? '' : 'display:none'}">${sInfo ? `Soll: ${_tnFmtEUR(sInfo.amount)} \u00b7 ${sInfo.text}` : ''}</div>
     <div class="tn-kaut-grid">
@@ -1610,10 +1601,7 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
     const recv2   = k ? Number(k.received) : 0;
     const ret2    = k ? Number(k.returned) : 0;
     const sdate   = k?.settled_at ? _tnFmtDate(k.settled_at) : '';
-    const kPill   = !hasK ? '' :
-      settled
-        ? `<span class="tnp tnp-green">${_tnFmtEUR(ret2)} returned${sdate ? ' \u00b7 ' + sdate : ''}</span>`
-        : `<span class="tnp tnp-amber">${_tnFmtEUR(recv2)} refund due</span>`;
+    const kPill   = ccTnFormerKautionPill(k, _tnFmtEUR, _tnFmtDate);   // shared: remaining amount, not received
     return `<div class="tn-former-row" style="gap:6px">
       <div class="tn-former-info" onclick="_tnOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
         <div class="tn-former-name">${esc(name)}</div>
@@ -1684,7 +1672,7 @@ function _tnOpenModal(tid) {
   document.getElementById('tnModalSub').innerHTML =
     esc(period) +
     (ctLabel ? ` <span class="tnp tnp-gray">${esc(ctLabel)}</span>` : '') +
-    (allDone  ? ` <span class="tnp tnp-green">All closed</span>` : ` <span class="tnp tnp-amber">Open items</span>`);
+    (allDone  ? ` <span class="tnp tnp-green">All done</span>` : ` <span class="tnp tnp-amber">Open items</span>`);
 
   document.getElementById('tnModalBody').innerHTML = _tnModalBodyHTML(rec);
   document.getElementById('tnModalFooter').innerHTML = _tnModalFooterHTML(rec, allDone);
@@ -2172,6 +2160,7 @@ async function _tnSaveRent(rid, tid, roomName) {
 
   // Kaution Soll lines of THIS tenant show the new value at once (Kaution section + rent form + pop-up)
   _tnRefreshKautionSoll(tid);
+  _tnRefreshCardPills(roomName);
 
   // Switch back to read bar, keep card open
   _tnToggleRentEdit(rid);
@@ -2315,19 +2304,7 @@ async function _tnSaveKautionBtn(pfx, tid) {
   const _rec = _tnRecords.find(r => r.id === tid);
   if (_rec) {
     const _rid = _rec.room.replace(/\s+/g,'_').toLowerCase();
-    const hdrPill = document.getElementById('hdr-kpill-' + _rid);
-    if (hdrPill) {
-      const settled2 = k?.settled || false;
-      const newPills = [];
-      const days2 = _tnDaysToMoveOut(_rec);
-      if (days2 !== null && days2 >= 0 && days2 <= 60)
-        newPills.push(`<span class="tnp tnp-red">Move-out in ${days2} day${days2===1?'':'s'}</span>`);
-      if (_tnNkHasOpen(tid))
-        newPills.push(`<span class="tnp tnp-red">NK open</span>`);
-      if (recv > 0 && !settled2)
-        newPills.push(`<span class="tnp tnp-blue">${_tnFmtEUR(recv)} Kaution</span>`);
-      hdrPill.innerHTML = newPills.slice(0,2).join('');
-    }
+    _tnRefreshCardPills(_rec.room);   // same rules as the first render — nothing gets dropped
   }
   if (saveBtn) ccSaveSet(saveBtn, 'saved');     // saved → grey ✓ SAVED until the next change
 }
@@ -2396,6 +2373,7 @@ async function _tnToggleSettle(pfx, tid) {
   // Fire to Supabase in background
   sbL.from('kaution').update(upd).eq('id', k.id)
     .then(({ error }) => { if (error) console.warn('[tenants] settle:', error.message); });
+  { const _r = _tnRecords.find(r => r.id === tid); if (_r) _tnRefreshCardPills(_r.room); }
 
   _tnRefreshFormerBadges(tid);
 }
@@ -2804,9 +2782,7 @@ function _tnRefreshFormerBadges(tid) {
   // Refresh summary line
   const summaryEl = document.getElementById('tn-kaution-summary');
   if (summaryEl) {
-    const totalHeld2 = _tnRecords
-      .filter(r => { const kk = _tnKaution[r.id]; return kk && kk.received > 0 && !kk.settled; })
-      .reduce((sum, r) => sum + Number(_tnKaution[r.id].received), 0);
+    const totalHeld2 = ccTnHeldTotal(_tnRecords, _tnKaution);
     if (totalHeld2 > 0) {
       summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_tnFmtEUR(totalHeld2)}</strong>`;
       summaryEl.style.display = 'flex';

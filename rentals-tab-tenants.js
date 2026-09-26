@@ -651,13 +651,7 @@ function _rntEsc(s) {
 /* ══════════════════════════════════════════════════════════════
    6. STATUS HELPERS
 ══════════════════════════════════════════════════════════════ */
-function _rntKautionStatus(recv, ret, settled) {
-  if (settled)               return { label:'Settled',        cls:'tnp-green' };
-  if (recv === 0)            return { label:'Pending',        cls:'tnp-amber' };
-  if (ret > 0 && ret < recv) return { label:'Refund pending', cls:'tnp-amber' };
-  if (ret >= recv)           return { label:'Refund pending', cls:'tnp-amber' };
-  return                            { label:'Holding',        cls:'tnp-blue'  };
-}
+function _rntKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
 
 function _rntNkHasOpen(tid) {
   return (_rntNK[tid] || []).some(e => !e.paid);
@@ -724,28 +718,30 @@ function _rntStaffelPillState(aptId) {
   return null;
 }
 
-function _rntStatusPill(unitId, isApt, activeRec) {
-  if (!activeRec) return '';
-  const pills = [];
-  const days = _rntDaysToMoveOut(activeRec);
-  if (days !== null && days >= 0 && days <= 60)
-    pills.push(`<span class="tnp tnp-red">Move-out in ${days} day${days===1?'':'s'}</span>`);
-  if (isApt && _rntNkHasOpen(activeRec.id))
-    pills.push(`<span class="tnp tnp-red">NK open</span>`);
-  if (isApt && _rntNKVorausHasOpen(unitId))
-    pills.push(`<span class="tnp tnp-amber"><i class="ti ti-alert-triangle" aria-hidden="true"></i> NK-Erhöhung offen</span>`);
-  const sf = _rntStaffelPillState(unitId);
-  if (sf && sf.state === 'reminder') {
-    const fmtD = (d) => { const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
-    pills.push(`<span class="tnp tnp-amber"><i class="ti ti-stairs-up" aria-hidden="true"></i> Staffel ab ${fmtD(sf.entry.effective_date)}</span>`);
+/* Card pills (row 1 state + row 4 to-dos) — ONE function, used for the first render
+   and for every refresh after a save. Rules/wording/colours: cc-tenant-status.js */
+function _rntCardPills(unit, isApt, activeRec) {
+  const vacant = !!unit.vacant;
+  const todos = [];
+  if (activeRec) {
+    todos.push(ccTnMoveOutTodo(activeRec));
+    todos.push(ccTnStaffelTodo(_rntStaffelPillState(unit.id), d => { const [y, m, day] = d.split('-'); return `${day}.${m}.`; }));
+    if (isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'red', text: 'NK open' });                     // NK: unchanged for now
+    if (isApt && _rntNKVorausHasOpen(unit.id)) todos.push({ level: 'amber', text: 'NK-Erhöhung offen' });        // NK: unchanged for now
+    todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }
-  if (sf && sf.state === 'overdue')
-    pills.push(`<span class="tnp tnp-red"><i class="ti ti-stairs-up" aria-hidden="true"></i> Staffel ${sf.days} Tage fällig</span>`);
-  const k = _rntKaution[activeRec.id];
-  const recv = k ? Number(k.received) : 0;
-  if (recv > 0 && !k?.settled)
-    pills.push(`<span class="tnp tnp-blue">${_rntFmtEUR(recv)} Kaution</span>`);
-  return pills.slice(0,2).join('');
+  const kPill = (!vacant && activeRec)
+    ? ccTnKautionPill(_rntKaution[activeRec.id], (_rntKautionSollInfo(activeRec) || {}).amount, _rntFmtEUR) : '';
+  return { row1: ccTnRow1(vacant, kPill), todo: ccTnTodoRow(todos) };
+}
+function _rntRefreshCardPills(unitId) {
+  const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === unitId);
+  const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === unitId);
+  const unit = apt || pk; if (!unit) return;
+  const isApt = !!apt;
+  const rec = (_rntRecords || []).find(r => (isApt ? r.apartment_id : r.parking_id) === unitId && r.status === 'active');
+  const p = _rntCardPills(unit, isApt, rec);
+  ccTnApplyPills((isApt ? 'apt_' : 'pk_') + String(unitId).replace(/-/g, '').slice(0, 12), p.row1, p.todo);
 }
 
 
@@ -910,9 +906,7 @@ function _rntRender() {
   document.querySelectorAll('.tn-card.open').forEach(el => _rntOpenCards.add(el.id));
 
   // Kaution held summary
-  const totalHeld = _rntRecords
-    .filter(r => { const k = _rntKaution[r.id]; return k && k.received > 0 && !k.settled; })
-    .reduce((sum, r) => sum + Number(_rntKaution[r.id].received), 0);
+  const totalHeld = ccTnHeldTotal(_rntRecords, _rntKaution);   // received − returned, unsettled
   const summaryEl = document.getElementById('rnt-kaution-summary');
   if (summaryEl) {
     if (totalHeld > 0) {
@@ -1034,43 +1028,44 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
     ? unit.name
     : `${unit.name} \u00b7 ${unit.parking_type || 'Stellplatz'}`;
 
-  const statusPill = _rntStatusPill(unit.id, isApt, activeRec);
+  const pills = _rntCardPills(unit, isApt, activeRec);
+  const ctLabel = !isApt ? '' : (unit.zimmer_type === 'Gewerbefläche' ? 'Gewerbe'
+    : ((activeRec && activeRec.mietbeginn && activeRec.mietende && ccKzIsLong(activeRec.mietbeginn, activeRec.mietende) === false) ? 'Kurzzeit' : 'Mietvertrag'));
 
   let midLine = '', botLine = '';
 
   if (vacant) {
-    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>
-               <span class="tnp tnp-gray">Vacant</span>`;
+    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>`;
   } else if (activeRec) {
     midLine = `
       <span class="tn-tenant-name">${_rntEsc(fullName || 'Unnamed tenant')}</span>
-      <span class="tnp tnp-green">Occupied</span>
       ${dateStr ? `<span class="tn-tenant-dates">${_rntEsc(dateStr)}</span>` : ''}`;
     if (isApt) {
       botLine = `<div class="tn-hdr-bot">
         ${warm != null ? `<span class="tn-warm">${_rntFmtEUR(warm)}</span><span class="tn-dim">warm</span>` : ''}
-        ${(kalt != null && nk != null) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} kalt+NK</span>` : ''}
+        ${(kalt != null && nk != null) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
+        ${ctLabel ? `<div class="tn-dot-sep"></div><span class="tn-dim">${ctLabel}</span>` : ''}
       </div>`;
     } else {
       botLine = `<div class="tn-hdr-bot">
-        ${miete != null ? `<span class="tn-warm">${_rntFmtEUR(miete)}</span><span class="tn-dim">/ Monat</span>` : ''}
+        ${miete != null ? `<span class="tn-warm">${_rntFmtEUR(miete)}</span><span class="tn-dim">Miete</span>` : ''}
       </div>`;
     }
   } else {
-    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No tenant added</span>
-               <span class="tnp tnp-green">Occupied</span>`;
+    midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No tenant added</span>`;
   }
 
   return `
 <div class="tn-hdr-wrap" onclick="_rntToggleCard('${rid}')">
   <div class="tn-hdr-top">
     <span class="tn-room-lbl">${_rntEsc(unitLabel)}</span>
-    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${statusPill}</div>
+    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
   ${isApt && unit.adresse ? `<div class="tn-hdr-addr">${_rntEsc(unit.adresse)}</div>` : ''}
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
+  <div class="tn-todo-row" id="hdr-todo-${rid}" style="${pills.todo ? '' : 'display:none'}">${pills.todo}</div>
 </div>`;
 }
 
@@ -2052,7 +2047,7 @@ function _rntStaffelAdjPill(e, unitId) {
   const on = !!e.tenant_adjusted;
   return `<button type="button" class="tn-nkv-pill ${on ? 'done' : 'pending'}" data-sf-adj="${e.id}"
     aria-pressed="${on}" onclick="_rntStaffelToggleAdjusted('${e.id}','${unitId}')">
-    <i class="ti ti-check" aria-hidden="true"></i> ${on ? 'Angepasst' : 'Angepasst?'}</button>`;
+    <i class="ti ti-check" aria-hidden="true"></i> ${on ? 'Adjusted' : 'Adjusted?'}</button>`;
 }
 
 function _rntStaffelRefreshUI(id, unitId) {
@@ -2073,7 +2068,7 @@ function _rntStaffelRefreshUI(id, unitId) {
   const rec   = (_rntRecords || []).find(r => (isApt ? r.apartment_id : r.parking_id) === unitId && r.status === 'active');
   const rid   = (isApt ? 'apt_' : 'pk_') + String(unitId).replace(/-/g, '').slice(0, 12);
   const hdr   = document.getElementById('hdr-kpill-' + rid);
-  if (hdr && rec) hdr.innerHTML = _rntStatusPill(unitId, isApt, rec);
+  if (hdr && rec) _rntRefreshCardPills(unitId);
 }
 
 function _rntStaffelToggleAdjusted(id, unitId) {
@@ -2166,10 +2161,7 @@ function _rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs) {
     const recv2   = k ? Number(k.received) : 0;
     const ret2    = k ? Number(k.returned) : 0;
     const sdate   = k?.settled_at ? _rntFmtDate(k.settled_at) : '';
-    const kPill   = !hasK ? '' :
-      settled
-        ? `<span class="tnp tnp-green">${_rntFmtEUR(ret2)} returned${sdate ? ' \u00b7 ' + sdate : ''}</span>`
-        : `<span class="tnp tnp-amber">${_rntFmtEUR(recv2)} refund due</span>`;
+    const kPill   = ccTnFormerKautionPill(k, _rntFmtEUR, _rntFmtDate);   // shared: remaining amount, not received
     return `<div class="tn-former-row" style="gap:6px">
       <div class="tn-former-info" onclick="_rntOpenModal('${rec.id}')" style="cursor:pointer;flex:1">
         <div class="tn-former-name">${_rntEsc(name)}</div>
@@ -2240,7 +2232,7 @@ function _rntOpenModal(tid) {
   document.getElementById('rntModalName').textContent = name;
   document.getElementById('rntModalSub').innerHTML =
     _rntEsc(period) +
-    (allDone ? ` <span class="tnp tnp-green">All closed</span>` : ` <span class="tnp tnp-amber">Open items</span>`);
+    (allDone ? ` <span class="tnp tnp-green">All done</span>` : ` <span class="tnp tnp-amber">Open items</span>`);
 
   document.getElementById('rntModalBody').innerHTML   = _rntModalBodyHTML(rec, isApt);
   document.getElementById('rntModalFooter').innerHTML = _rntModalFooterHTML(rec, allDone);
@@ -2739,6 +2731,7 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   const beforeRent = rec ? { kaltmiete: rec.kaltmiete, nebenkosten: rec.nebenkosten, kaution_soll: rec.kaution_soll } : null;   // undo if the save fails
   if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
   _rntRefreshKautionSoll(tid);   // this tenant's Soll lines show the new value at once
+  if (rec) _rntRefreshCardPills(rec.apartment_id || rec.parking_id);
 
   const bar = document.getElementById('rbar-' + rid);
   if (bar && isApt) {
@@ -2842,18 +2835,7 @@ async function _rntSaveKautionBtn(pfx, tid) {
   const _rec = _rntRecords.find(r => r.id === tid);
   if (_rec) {
     const _rid   = (_rec.apartment_id ? 'apt_' : 'pk_') + (_rec.apartment_id || _rec.parking_id).replace(/-/g,'').slice(0,12);
-    const hdrPill = document.getElementById('hdr-kpill-' + _rid);
-    if (hdrPill) {
-      const newPills = [];
-      const days2 = _rntDaysToMoveOut(_rec);
-      if (days2 !== null && days2 >= 0 && days2 <= 60)
-        newPills.push(`<span class="tnp tnp-red">Move-out in ${days2} day${days2===1?'':'s'}</span>`);
-      if (_rntNkHasOpen(tid))
-        newPills.push(`<span class="tnp tnp-red">NK open</span>`);
-      if (recv > 0 && !k?.settled)
-        newPills.push(`<span class="tnp tnp-blue">${_rntFmtEUR(recv)} Kaution</span>`);
-      hdrPill.innerHTML = newPills.slice(0,2).join('');
-    }
+    _rntRefreshCardPills(_rec.apartment_id || _rec.parking_id);   // same rules as the first render — nothing gets dropped
   }
   if (saveBtn) ccSaveSet(saveBtn, 'saved');     // saved → grey ✓ SAVED until the next change
 }
@@ -2912,6 +2894,7 @@ async function _rntToggleSettle(pfx, tid) {
   sbL.from('rnt_kaution').update(upd).eq('id', k.id)
     .then(({ error }) => { if (error) console.warn('[rnt-tenants] settle:', error.message); });
   _rntRefreshFormerBadges(tid);
+  { const _r = _rntRecords.find(r => r.id === tid); if (_r) _rntRefreshCardPills(_r.apartment_id || _r.parking_id); }
 }
 
 async function _rntEnsureKaution(tid) {
@@ -3253,10 +3236,7 @@ function _rntRefreshFormerBadges(tid) {
       if (pills) {
         const ret2   = k ? Number(k.returned) : 0;
         const sdate  = k?.settled_at ? _rntFmtDate(k.settled_at) : '';
-        const kPill  = !hasK ? '' :
-          settled
-            ? `<span class="tnp tnp-green">${_rntFmtEUR(ret2)} returned${sdate ? ' \u00b7 ' + sdate : ''}</span>`
-            : `<span class="tnp tnp-amber">Refund pending</span>`;
+        const kPill  = ccTnFormerKautionPill(k, _rntFmtEUR, _rntFmtDate);
         pills.innerHTML = kPill;
       }
     }
@@ -3276,9 +3256,7 @@ function _rntRefreshFormerBadges(tid) {
 
   const summaryEl = document.getElementById('rnt-kaution-summary');
   if (summaryEl) {
-    const totalHeld = _rntRecords
-      .filter(r => { const kk = _rntKaution[r.id]; return kk && kk.received > 0 && !kk.settled; })
-      .reduce((sum, r) => sum + Number(_rntKaution[r.id].received), 0);
+    const totalHeld = ccTnHeldTotal(_rntRecords, _rntKaution);
     if (totalHeld > 0) {
       summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_rntFmtEUR(totalHeld)}</strong>`;
       summaryEl.style.display = 'flex';
