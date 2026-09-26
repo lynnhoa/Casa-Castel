@@ -150,9 +150,56 @@ async function saveRoomOrder(orderedIds) {
   appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 }
 
-// Delete a room
+/* ── ROOM NAME = LINK KEY ─────────────────────────────────────
+   Tenant records, NK-Vorauszahlungen, the tenant login password, lounge
+   messages, Kitchen and Cleaning are stored under the room NAME.
+   Renaming a room moves all of them to the new name (safe to repeat:
+   it only touches rows that still carry the old name). */
+const CC_ROOM_NAME_LINKS = [
+  ['tenant_records',           'room'],
+  ['nk_vorauszahlung_history', 'room'],
+  ['lounge_data',              'room'],      // login password, messages, kitchen nudge
+  ['kitchen_weeks',            'room'],
+  ['kitchen_comments',         'room'],
+  ['kitchen_absences',         'room'],
+  ['cleaning_weeks',           'room'],
+  ['cleaning_weeks',           'done_by'],
+];
+async function renameRoomLinks(oldName, newName) {
+  if (!sbL || !oldName || !newName || oldName === newName) return { error: null };
+  const results = await Promise.all(CC_ROOM_NAME_LINKS.map(([table, col]) =>
+    sbL.from(table).update({ [col]: newName }).eq(col, oldName)
+      .then(r => ({ table, col, error: r && r.error }), e => ({ table, col, error: e }))));
+  const failed = results.filter(r => r.error).map(r => r.table + '.' + r.col);
+  // Kitchen rotation list (kept as a list of names)
+  try {
+    if (typeof getKitchenRooms === 'function' && typeof syncKitchenRoomsToSupabase === 'function'
+        && getKitchenRooms().includes(oldName)) {
+      await syncKitchenRoomsToSupabase(getKitchenRooms().map(n => (n === oldName ? newName : n)));
+    }
+  } catch (e) { failed.push('kitchen list'); }
+  if (failed.length) console.error('[rooms] rename links failed:', failed, results.filter(r => r.error));
+  return failed.length ? { error: { message: 'not moved: ' + failed.join(', ') }, failed } : { error: null };
+}
+
+/* Tenant records still stored under this room (active + former) */
+async function roomTenantCount(roomName) {
+  if (!sbL || !roomName) return { active: 0, former: 0, error: null };
+  const { data, error } = await sbL.from('tenant_records').select('id,status').eq('room', roomName);
+  if (error) return { active: 0, former: 0, error };
+  const rows = data || [];
+  const active = rows.filter(r => r.status === 'active').length;
+  return { active, former: rows.length - active, error: null };
+}
+
+// Delete a room — refused while tenant records are still stored under it
+// (they would be hidden for good: nothing else shows them without the room).
 async function deleteRoom(roomId) {
   if (!sbL) return { ok: false, error: 'No database connection.' };
+  const _room = getRoomById(roomId);
+  const _tc = await roomTenantCount(_room?.name);
+  if (_tc.error) return { ok: false, error: _tc.error.message || String(_tc.error) };
+  if (_tc.active + _tc.former > 0) return { ok: false, blocked: true, active: _tc.active, former: _tc.former, error: 'Room still has tenant records.' };
 
   const { error } = await sbL.from('rooms').delete().eq('id', roomId);
   if (error) return { ok: false, error: error.message };

@@ -1481,7 +1481,7 @@ function _tnNKVorausAdd(room, rid, ctx) {
   form.querySelector('input[type=date]').focus();
 }
 
-async function _tnNKVorausConfirmAdd(room, rid) {
+async function _tnNKVorausConfirmAdd__run(room, rid) {
   const dateInp   = document.getElementById(`nkv-add-date-${rid}`);
   const amountInp = document.getElementById(`nkv-add-amount-${rid}`);
   const date   = dateInp?.value?.trim();
@@ -2402,7 +2402,7 @@ async function _tnAddNkPeriod(tid, ctx) {
   wrap.querySelector('.tn-btn-sm').onclick = () => { wrap.remove(); addBtn.style.display = ''; };
 }
 
-async function _tnConfirmAddNk(tid, inp, wrap, addBtn) {
+async function _tnConfirmAddNk__run(tid, inp, wrap, addBtn) {
   const period = inp.value.trim();
   if (!period || !sbL) return;
   const { data, error } = await sbL.from('nk_entries')
@@ -2880,3 +2880,8 @@ async function loadTenants() {
   await _tnLoad();
   checkBirthdays();
 }
+
+
+/* ── Double-tap lock (ccOnce in direct-save.js): these add a new row ── */
+async function _tnNKVorausConfirmAdd(...args) { return ccOnce('_tnNKVorausConfirmAdd', () => _tnNKVorausConfirmAdd__run(...args)); }
+async function _tnConfirmAddNk(...args) { return ccOnce('_tnConfirmAddNk', () => _tnConfirmAddNk__run(...args)); }

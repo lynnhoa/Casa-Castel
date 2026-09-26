@@ -1545,6 +1545,23 @@ function _roomSaveSection(sec, id) {
     return;
   }
 
+  // Rename guards: room names are link keys (tenants, login, kitchen) → must stay unique
+  const oldName = room.name;
+  if (sec === 'identity') {
+    data.name = String(data.name).trim();
+    const lower = data.name.toLowerCase();
+    const clash = appRooms.some(r => String(r.id) !== String(id) && String(r.name || '').trim().toLowerCase() === lower);
+    const landlordName = (typeof CC_LANDLORD_NAME !== 'undefined' ? CC_LANDLORD_NAME : 'Casa Castel').toLowerCase();
+    if (clash || lower === landlordName) {
+      const inp = el.querySelector('[data-f="name"]');
+      if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
+      if (typeof ccToast === 'function') ccToast(clash ? `A room called "${data.name}" already exists. Choose another name.`
+                                                       : `"${data.name}" is reserved for the landlord login.`, true);
+      return;
+    }
+  }
+  const renamed = sec === 'identity' && data.name !== oldName;
+
   const before = {};
   Object.keys(data).forEach(k => { before[k] = room[k]; });
   Object.assign(room, data);
@@ -1562,6 +1579,13 @@ function _roomSaveSection(sec, id) {
       }
       // Let the other tabs (Tenants, Kitchen, generators) know the room changed
       if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', room);
+      // Renamed: move tenant records, login, NK and Kitchen data to the new name
+      if (renamed && typeof renameRoomLinks === 'function') {
+        ccQueueWrite('room-' + id, () => renameRoomLinks(oldName, room.name)).then(r => {
+          if (r && r.error) ccToast(`Room renamed, but some linked data is still under "${oldName}". Rename it once more to finish.`, true);
+          if (typeof loadTenants === 'function') loadTenants();   // Tenants tab shows the tenants under the new name
+        });
+      }
     });
 }
 
@@ -1784,12 +1808,37 @@ document.getElementById('roomAddBtn')?.addEventListener('click', () => {
 /* ── DELETE ──────────────────────────────────────────────── */
 let _pendingDeleteId = null;
 
-function _confirmDelete(card) {
-  _pendingDeleteId = card.dataset.id;
+function _confirmDeleteReset() {
+  const ok = document.getElementById('confirmOk');
+  const cancel = document.getElementById('confirmCancel');
+  if (ok) { ok.style.display = ''; ok.disabled = false; }
+  if (cancel) cancel.textContent = 'Cancel';
+}
+function _confirmDeleteBlocked(name, active, former) {
+  const parts = [];
+  if (active) parts.push(`${active} active tenant${active === 1 ? '' : 's'}`);
+  if (former) parts.push(`${former} former tenant${former === 1 ? '' : 's'}`);
+  document.getElementById('confirmBody').innerHTML =
+    `<strong>${esc(name)}</strong> still has ${parts.join(' and ')}. ` +
+    `Move out and delete ${active + former === 1 ? 'this tenant' : 'these tenants'} in the Tenants tab first, so no tenant or Kaution data is lost.`;
+  document.getElementById('confirmOk').style.display = 'none';
+  document.getElementById('confirmCancel').textContent = 'OK';
+}
+
+async function _confirmDelete(card) {
+  const id = card.dataset.id;
+  _pendingDeleteId = id;
   const name = card.dataset.room || 'this room';
+  _confirmDeleteReset();
   document.getElementById('confirmBody').innerHTML =
     `This will permanently delete <strong>${esc(name)}</strong>. This cannot be undone.`;
+  const ok = document.getElementById('confirmOk');
+  ok.disabled = true;                                   // until the tenant check is back
   document.getElementById('confirmOverlay').classList.add('open');
+  const tc = typeof roomTenantCount === 'function' ? await roomTenantCount(card.dataset.room) : { active: 0, former: 0 };
+  if (_pendingDeleteId !== id) return;                  // closed or another room opened meanwhile
+  if (tc.active + tc.former > 0) { _confirmDeleteBlocked(name, tc.active, tc.former); return; }
+  ok.disabled = false;
 }
 
 document.getElementById('confirmCancel')?.addEventListener('click', () => {
@@ -1802,10 +1851,16 @@ document.getElementById('confirmOk')?.addEventListener('click', async () => {
   const btn = document.getElementById('confirmOk');
   btn.disabled = true;
 
+  const delRoom = getRoomById(_pendingDeleteId);
   const result = await deleteRoom(_pendingDeleteId);
+  btn.disabled = false;
+  if (result.blocked) {                                 // safety net: tenants were added meanwhile
+    _confirmDeleteBlocked(delRoom?.name || 'This room', result.active, result.former);
+    return;
+  }
   document.getElementById('confirmOverlay').classList.remove('open');
   _pendingDeleteId = null;
-  btn.disabled = false;
+  if (!result.ok && typeof ccToast === 'function') ccToast('Room not deleted — ' + (result.error || 'unknown error'), true);
 
   if (result.ok) {
     _renderRoomsList();

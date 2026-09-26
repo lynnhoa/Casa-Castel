@@ -1673,7 +1673,7 @@ function _aptHGAdd(aptId) {
   form.querySelector('input[type=date]').focus();
 }
 
-async function _aptHGConfirmAdd(aptId) {
+async function _aptHGConfirmAdd__run(aptId) {
   const dateInp   = document.getElementById(`apt-hg-date-${aptId}`);
   const amountInp = document.getElementById(`apt-hg-amount-${aptId}`);
   const date   = dateInp?.value?.trim();
@@ -3566,3 +3566,7 @@ VALUES (
   };
   ['input', 'change', 'click'].forEach(ev => body.addEventListener(ev, save, true));
 })();
+
+
+/* ── Double-tap lock (ccOnce in direct-save.js): these add a new row ── */
+async function _aptHGConfirmAdd(...args) { return ccOnce('_aptHGConfirmAdd', () => _aptHGConfirmAdd__run(...args)); }

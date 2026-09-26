@@ -1653,7 +1653,7 @@ function _rntNKVorausAdd(aptId, rid, ctx) {
   form.querySelector('input[type=date]').focus();
 }
 
-async function _rntNKVorausConfirmAdd(aptId, rid) {
+async function _rntNKVorausConfirmAdd__run(aptId, rid) {
   const date   = document.getElementById(`nkv-add-date-${rid}`)?.value?.trim();
   const amount = parseFloat(document.getElementById(`nkv-add-amount-${rid}`)?.value);
   if (!date || isNaN(amount) || amount <= 0) return;
@@ -1806,10 +1806,10 @@ function _rntStaffelOpenAdd(aptId, rid) {
   setTimeout(() => document.getElementById('sf-add-date')?.focus(), 80);
 }
 
-async function _rntStaffelConfirmAdd(aptId, rid) {
+async function _rntStaffelConfirmAdd__run(aptId, rid) {
   const date   = document.getElementById('sf-add-date')?.value?.trim();
   const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
-  if (!date || isNaN(amount) || amount <= 0) return;
+  if (!date || isNaN(amount) || amount <= 0) { _rntStaffelAddError(!date, isNaN(amount) || amount <= 0); return; }
   if (!sbL) return;
   const { data, error } = await sbL.from('rnt_staffelmiete_history')
     .insert({ apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false })
@@ -1822,10 +1822,10 @@ async function _rntStaffelConfirmAdd(aptId, rid) {
   _rntRender();
 }
 
-async function _rntPkStaffelConfirmAdd(pkId, rid) {
+async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
   const date   = document.getElementById('sf-add-date')?.value?.trim();
   const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
-  if (!date || isNaN(amount) || amount <= 0) return;
+  if (!date || isNaN(amount) || amount <= 0) { _rntStaffelAddError(!date, isNaN(amount) || amount <= 0); return; }
   if (!sbL) return;
   const { data, error } = await sbL.from('rnt_staffelmiete_history')
     .insert({ parking_id: pkId, effective_date: date, amount, tenant_adjusted: false })
@@ -1972,6 +1972,33 @@ function _rntPkStaffelOpenVerlauf(pkId, rid) {
    the database write runs in the background (one retry). If it fails,
    the pill switches back and a red message says so. */
 let _rntStaffelVerlaufOpen = null;   // { fn, unitId, rid } while the Verlauf sheet is open
+
+/* Staffel "Save" with a missing field: red border + one short line under the fields */
+function _rntStaffelAddError(noDate, noAmount) {
+  const d = document.getElementById('sf-add-date'), a = document.getElementById('sf-add-amount');
+  const clear = () => {
+    [d, a].forEach(el => { if (el) el.style.borderColor = ''; });
+    document.getElementById('sf-add-err')?.remove();
+  };
+  [[d, noDate], [a, noAmount]].forEach(([el, bad]) => {
+    if (!el) return;
+    el.style.borderColor = bad ? '#C4705A' : '';
+    if (!el._sfErrWired) { el._sfErrWired = true; el.addEventListener('input', clear); el.addEventListener('change', clear); }
+  });
+  let m = document.getElementById('sf-add-err');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'sf-add-err';
+    m.setAttribute('role', 'alert');
+    m.style.cssText = 'font-size:11px;color:#A32D2D;margin:-6px 0 12px;';
+    const fg = (a || d)?.closest('.tn-fg');
+    if (fg) fg.insertAdjacentElement('afterend', m); else document.getElementById('rntStaffelModalBody')?.prepend(m);
+  }
+  m.textContent = noDate && noAmount ? 'Enter the date and the new rent.'
+                : noDate ? 'Enter the date from which the new rent applies.'
+                : 'Enter a rent above 0 €.';
+  (noDate ? d : a)?.focus();
+}
 
 function _rntStaffelSetTitle(t) {
   const el = document.getElementById('rntStaffelModalTitle');
@@ -2875,7 +2902,7 @@ async function _rntAddNkPeriod(tid, ctx) {
   wrap.querySelector('.tn-btn-sm').onclick = () => { wrap.remove(); addBtn.style.display = ''; };
 }
 
-async function _rntConfirmAddNk(tid, inp, wrap, addBtn) {
+async function _rntConfirmAddNk__run(tid, inp, wrap, addBtn) {
   const period = inp.value.trim();
   if (!period || !sbL) return;
   const { data, error } = await sbL.from('rnt_nk_entries')
@@ -3289,3 +3316,10 @@ async function loadRntTenants() {
   ]);
   await _rntLoad();
 }
+
+
+/* ── Double-tap lock (ccOnce in direct-save.js): these add a new row ── */
+async function _rntNKVorausConfirmAdd(...args) { return ccOnce('_rntNKVorausConfirmAdd', () => _rntNKVorausConfirmAdd__run(...args)); }
+async function _rntConfirmAddNk(...args) { return ccOnce('_rntConfirmAddNk', () => _rntConfirmAddNk__run(...args)); }
+async function _rntStaffelConfirmAdd(...args) { return ccOnce('_rntStaffelConfirmAdd', () => _rntStaffelConfirmAdd__run(...args)); }
+async function _rntPkStaffelConfirmAdd(...args) { return ccOnce('_rntPkStaffelConfirmAdd', () => _rntPkStaffelConfirmAdd__run(...args)); }

@@ -153,3 +153,17 @@ button.cc-save:disabled { opacity:.5 !important; cursor:default; }
   `;
   document.head.appendChild(s);
 })();
+
+
+/* ═════════════════════════════════════════════════════════════
+   ONE AT A TIME — "Add" actions that insert a new row
+   A second tap while the first one is still saving is ignored,
+   so a double-tap can never create two identical entries.
+   ═════════════════════════════════════════════════════════════ */
+const _ccBusy = {};
+async function ccOnce(key, fn) {
+  if (_ccBusy[key]) return;
+  _ccBusy[key] = true;
+  try { return await fn(); }
+  finally { delete _ccBusy[key]; }
+}
