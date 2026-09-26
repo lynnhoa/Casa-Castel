@@ -619,6 +619,35 @@ function _rntFreezeKautionSoll() {
   });
 }
 
+/* Rent is fixed per tenancy (like the Kaution Soll). Active tenants without a
+   stored rent get today's price saved ONCE — afterwards a later price change
+   for the next tenant never rewrites what this tenant pays.               */
+const _rntRentFilling = new Set();
+function _rntFreezeRent() {
+  if (!sbL) return;
+  _rntRecords.forEach(rec => {
+    if (rec.status !== 'active' || _rntRentFilling.has(rec.id)) return;
+    const isApt = !!rec.apartment_id;
+    const upd = {};
+    if (rec.kaltmiete == null) {
+      const k = isApt ? _rntAptPricing(rec.apartment_id).kaltmiete : _rntPkPricing(rec.parking_id).miete;
+      if (k != null) upd.kaltmiete = k;
+    }
+    if (isApt && rec.nebenkosten == null) {
+      const nk = _rntAptPricing(rec.apartment_id).nebenkosten;
+      if (nk != null) upd.nebenkosten = nk;
+    }
+    if (!Object.keys(upd).length) return;
+    _rntRentFilling.add(rec.id);
+    Object.assign(rec, upd);
+    ccQueueWrite('rnt-' + rec.id, () => {
+      let q = sbL.from('rnt_tenant_records').update(upd).eq('id', rec.id);
+      if ('kaltmiete' in upd) q = q.is('kaltmiete', null);
+      return q;
+    }).then(({ error }) => { if (error) { Object.keys(upd).forEach(k => { rec[k] = null; }); _rntRentFilling.delete(rec.id); console.warn('[rnt-tenants] rent fix:', error.message); } });
+  });
+}
+
 /* Contract generators: the active tenant's fixed Kaution Soll (or null) */
 function rntFixedKautionSoll(kind, id) {
   const src = _rntLoadedOnce ? _rntRecords : _rntActiveRecs;
@@ -897,6 +926,7 @@ async function _rntLoad() {
   _rntLoadedOnce = true;
 
   _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
+  _rntFreezeRent();          // existing active tenants: fix their rent once
   _rntRenderIfChanged();
 }
 
@@ -1230,7 +1260,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
     <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
-    <span class="tn-rf-hint" style="margin:0">Frozen at move-out for former tenants.</span>
+    <span class="tn-rf-hint" style="margin:0">Fixed at move-in · changes via Staffel / NK or here.</span>
     <div style="display:flex;gap:6px">
       <button class="tn-btn tn-btn-sm" onclick="_rntToggleRentEdit('${rid}')">Cancel</button>
       <button class="tn-btn tn-btn-primary cc-save" onclick="_rntSaveRent('${rid}','${tid}','apt','${unit.id}')">
@@ -2600,8 +2630,9 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
     email_2: p.email_2 || null, phone_2: p.phone_2 || null, birthday_2: p.birthday_2 || null, address_2: p.address_2 || null,
     first_name_3: p.first_name_3 || null, last_name_3: p.last_name_3 || null,
     email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null, address_3: p.address_3 || null,
-    kaltmiete:   p.kaltmiete   ?? (mietende ? liveKalt : null) ?? null,
-    nebenkosten: isApt ? (p.nebenkosten ?? (mietende ? liveNK : null) ?? null) : null,
+    // Rent belongs to the tenancy: fixed at move-in (price now), changes via Staffel / NK or by hand
+    kaltmiete:   p.kaltmiete   ?? liveKalt ?? null,
+    nebenkosten: isApt ? (p.nebenkosten ?? liveNK ?? null) : null,
     // Kaution Soll is fixed at move-in: typed value, else calculated from the rent now
     kaution_soll: p.kaution_soll ?? (_rntKautionSollInfo({ apartment_id: isApt ? unitId : null, parking_id: isApt ? null : unitId,
       mietbeginn: p.mietbeginn, mietende }) || {}).amount ?? null,

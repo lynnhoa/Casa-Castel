@@ -603,6 +603,27 @@ function _tnFreezeKautionSoll() {
   });
 }
 
+/* Rent is fixed per tenancy (like the Kaution Soll). Active tenants without a
+   stored rent / contract type get today's room price saved ONCE.          */
+const _tnRentFilling = new Set();
+function _tnFreezeRent() {
+  if (!sbL) return;
+  _tnRecords.forEach(rec => {
+    if (rec.status !== 'active' || _tnRentFilling.has(rec.id)) return;
+    const liveP = _tnRoomPricing(rec.room) || {};
+    const upd = {};
+    if (rec.kaltmiete == null && liveP.kaltmiete != null) upd.kaltmiete = liveP.kaltmiete;
+    if (rec.nebenkosten == null && liveP.nebenkosten != null) upd.nebenkosten = liveP.nebenkosten;
+    if (!rec.contract_type) { const ct = _tnRoomContractType(rec.room); if (ct) upd.contract_type = ct; }
+    if (!Object.keys(upd).length) return;
+    _tnRentFilling.add(rec.id);
+    const before = {}; Object.keys(upd).forEach(k => { before[k] = rec[k]; });
+    Object.assign(rec, upd);
+    ccQueueWrite('tn-' + rec.id, () => sbL.from('tenant_records').update(upd).eq('id', rec.id))
+      .then(({ error }) => { if (error) { Object.assign(rec, before); _tnRentFilling.delete(rec.id); console.warn('[tenants] rent fix:', error.message); } });
+  });
+}
+
 /* Contract generators: the active tenant's fixed Kaution Soll (or null) */
 function tnFixedKautionSoll(roomName) {
   const rec = (_tnRecords || []).filter(r => r.room === roomName && r.status === 'active')
@@ -835,6 +856,7 @@ async function _tnLoad() {
   _tnLoadedOnce = true;
 
   _tnFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
+  _tnFreezeRent();          // existing active tenants: fix their rent once
   _tnRenderIfChanged();
 }
 
@@ -1089,7 +1111,7 @@ function _tnRentFormHTML(rid, room, rec) {
     <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
-    <span class="tn-rf-hint" style="margin:0">Frozen at move-out for former tenants.</span>
+    <span class="tn-rf-hint" style="margin:0">Fixed at move-in · changes via NK or here.</span>
     <div style="display:flex;gap:6px">
       <button class="tn-btn tn-btn-sm" onclick="_tnToggleRentEdit('${rid}')">Cancel</button>
       <button class="tn-btn tn-btn-primary cc-save" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
@@ -1979,12 +2001,13 @@ async function _tnSaveNewTenant(rid, roomName) {
   const ctype     = _tnRoomContractType(roomName);
 
   const payload = {
-    room: roomName, status, contract_type: mietende ? ctype : null,
+    room: roomName, status, contract_type: ctype || null,   // fixed at move-in
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende,
-    kaltmiete:    p.kaltmiete   ?? (mietende ? liveP.kaltmiete   : null) ?? null,
-    nebenkosten:  p.nebenkosten ?? (mietende ? liveP.nebenkosten : null) ?? null,
+    // Rent belongs to the tenancy: fixed at move-in (room price now), changes via NK or by hand
+    kaltmiete:    p.kaltmiete   ?? liveP.kaltmiete   ?? null,
+    nebenkosten:  p.nebenkosten ?? liveP.nebenkosten ?? null,
     kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende) ?? null,
   };
 

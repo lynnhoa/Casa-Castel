@@ -143,10 +143,9 @@ function _cxTenantsFor(link) {
   return list.filter(t => t.mietbeginn || t.status === 'active')
     .sort((a, b) => _cxD(b.mietbeginn).localeCompare(_cxD(a.mietbeginn)));
 }
-/* Same rule as the tenant apps: an "active" tenant counts until set to former,
-   even if the end date has passed (still living there). */
-const _cxActiveOn = (t, iso) => (!t.mietbeginn || _cxD(t.mietbeginn) <= iso) &&
-  (!t.mietende || _cxD(t.mietende) >= iso || t.status === 'active');
+/* The Auszug date wins: no rent after it, even if the status is still "active"
+   (the data check asks to set the tenant to former). */
+const _cxActiveOn = (t, iso) => (!t.mietbeginn || _cxD(t.mietbeginn) <= iso) && (!t.mietende || _cxD(t.mietende) >= iso);
 
 function _cxRoomPricing(room, t) {
   if (!room) return { k: null, nk: null };
@@ -197,6 +196,40 @@ const _cxUnitCache = new Map();
 function ctlSollReset() { _cxUnitCache.clear(); }
 
 /* → { k, nk, soll, empty, link, notes:[..], badge, partial, src } */
+/* The rent a tenant agreed, in this order:
+     1 stored on the tenant (fixed at move-in, or edited by hand)
+     2 learned from what you entered in Controlling during their tenancy (other months)
+     3 today's room / apartment price — flagged if the tenant is no longer there   */
+function _cxLearned(u, t, y, m) {
+  if (u.id == null) return null;
+  const count = new Map();
+  for (const r of (window._ctrl.income || [])) {
+    if (r.unit_id !== u.id || (r.year === y && r.month === m)) continue;
+    const n = new Date(r.year, r.month, 0).getDate();
+    if (!_cxActiveOn(t, _cxIso(r.year, r.month, 1)) || !_cxActiveOn(t, _cxIso(r.year, r.month, n))) continue;   // full months only
+    const k = _cxR(r.kaltmiete), nk = _cxR(r.nebenkosten);
+    if (!(k + nk)) continue;
+    const key = k + '|' + nk, c = count.get(key) || { k, nk, n: 0, last: 0 };
+    c.n++; c.last = Math.max(c.last, r.year * 12 + r.month);
+    count.set(key, c);
+  }
+  let best = null;
+  for (const c of count.values()) if (!best || c.n > best.n || (c.n === best.n && c.last > best.last)) best = c;
+  return best ? { k: best.k, nk: best.nk } : null;
+}
+function _cxTenantBase(link, t, u, y, m) {
+  const sk = _cxNum(t.kaltmiete), snk = _cxNum(t.nebenkosten);
+  if (sk !== null || snk !== null) {
+    const p = _cxBase(link, t);
+    return { k: sk ?? p.k, nk: snk ?? p.nk, src: 'tenant' };
+  }
+  const h = _cxLearned(u, t, y, m);
+  if (h) return { k: h.k, nk: h.nk, src: 'history' };
+  const p = _cxBase(link, t);
+  return { k: p.k, nk: p.nk, src: 'price' };
+}
+
+/* → { k, nk, soll, empty, link, notes, badge, partial, days, N, parts, check, src } */
 function ctlUnitSoll(u, pid, y, m) {
   const key = [pid, u.id ?? 'v:' + u.name, y, m, u.source_type || '', u.source_ref || ''].join('|');
   if (_cxUnitCache.has(key)) return _cxUnitCache.get(key);
@@ -205,49 +238,57 @@ function ctlUnitSoll(u, pid, y, m) {
   let out;
   if (!link) {
     const k = _cxN0(u.def_kaltmiete), nk = _cxN0(u.def_nebenkosten);
-    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, src: 'Planwert',
+    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, days: 0, N: 0, parts: [], src: 'Planwert',
             check: !(k + nk) ? 'Nicht verknüpft und kein Planwert – in Setup verknüpfen' : null };
   } else {
     const tens = _cxTenantsFor(link), staffel = _cxHist(link, 'staffel'), nkH = _cxHist(link, 'nk');
     const N = new Date(y, m, 0).getDate();
-    // Casa Castel: a room marked occupied in the Rooms tab (rooms.vacant = false) is occupied,
-    // even without a tenant entry — same rule as the Casa Castel app. Applies from the current month on.
+    const first = _cxIso(y, m, 1), last = _cxIso(y, m, N), inM = d => d && d >= first && d <= last;
+    // Casa Castel: a room marked occupied in the Rooms tab (rooms.vacant = false) counts as occupied
+    // even without a tenant entry — same rule as the Casa Castel app. Only from the current month on.
     const today = typeof cxToday === 'function' ? cxToday() : new Date().toISOString().slice(0, 10);
     const thisMonth = today.slice(0, 8) + '01';
     const roomBusy = link.type === 'casa_room' && link.obj && link.obj.vacant === false;
+    const roomFill = roomBusy && !tens.length;     // only a room with NO tenant entries at all: tenant dates always win
+    let roomGap = false;
+    const bases = new Map(), parts = new Map();
     let sk = 0, snk = 0, occ = 0, roomOnly = 0, noPrice = 0;
     for (let d = 1; d <= N; d++) {
       const iso = _cxIso(y, m, d);
       const t = tens.find(x => _cxActiveOn(x, iso));
+      let dk, dnk, pk;
       if (!t) {
-        if (roomBusy && iso >= thisMonth) {
-          const rp = _cxRoomPricing(link.obj, null);
-          occ++; roomOnly++;
-          sk += _cxN0(rp.k); snk += _cxN0(rp.nk);
-          if (!_cxN0(rp.k) && !_cxN0(rp.nk)) noPrice++;
-        }
-        continue;
+        if (roomBusy && tens.length && iso >= thisMonth && iso <= today) roomGap = true;
+        if (!(roomFill && iso >= thisMonth)) continue;
+        const rp = _cxRoomPricing(link.obj, null);
+        dk = _cxN0(rp.k); dnk = _cxN0(rp.nk); roomOnly++; pk = 'room';
+      } else {
+        if (!bases.has(t.id)) bases.set(t.id, _cxTenantBase(link, t, u, y, m));
+        const b = bases.get(t.id);
+        dk = _cxStepAt(staffel, t, iso) ?? b.k;
+        dnk = _cxStepAt(nkH, t, iso) ?? b.nk;
+        pk = t.id;
       }
-      occ++;
-      const b = _cxBase(link, t);
-      const dk = _cxStepAt(staffel, t, iso) ?? b.k, dnk = _cxStepAt(nkH, t, iso) ?? b.nk;
-      sk += dk; snk += dnk;
+      occ++; sk += dk; snk += dnk;
       if (!dk && !dnk) noPrice++;
+      const pt = parts.get(pk) || { from: d, to: d, sum: 0, t };
+      pt.to = d; pt.sum += dk + dnk; parts.set(pk, pt);
     }
     const k = _cxR(sk / N), nk = _cxR(snk / N);
+
     // What changed in this month (shown under the row)
-    const first = _cxIso(y, m, 1), last = _cxIso(y, m, N), inM = d => d && d >= first && d <= last;
     const notes = [];
     let badge = null;
-    for (const t of tens) {
-      if (inM(_cxD(t.mietbeginn))) {
-        const earlier = tens.some(x => x !== t && _cxD(x.mietbeginn) < _cxD(t.mietbeginn));
-        notes.push((earlier ? 'Mieterwechsel · ' : 'Neu vermietet · ') + 'ab ' + _cxFmtD(t.mietbeginn));
+    for (const t of [...tens].reverse()) {                 // chronological
+      const mb = _cxD(t.mietbeginn), me = _cxD(t.mietende);
+      if (inM(mb)) {
+        const earlier = tens.some(x => x !== t && _cxD(x.mietbeginn) < mb);
+        const days = N - Number(mb.slice(8, 10)) + 1;
+        notes.push((earlier ? 'Mieterwechsel' : 'Neu vermietet') + ' · ab ' + _cxFmtD(t.mietbeginn) + (mb !== first ? ' · ' + days + ' von ' + N + ' Tagen' : ''));
         if (!earlier) badge = 'neu';
       }
-      if (inM(_cxD(t.mietende))) notes.push('Auszug · ' + _cxFmtD(t.mietende));
+      if (inM(me) && me !== last) notes.push('Auszug ' + _cxFmtD(t.mietende) + ' · ' + Number(me.slice(8, 10)) + ' von ' + N + ' Tagen');
     }
-    // previous value = earlier history step, else the tenant card / price of the tenant active the day before
     const prevVal = (hist, d, kind) => {
       let b = null;
       for (const h of hist) { const x = _cxD(h.effective_date); if (x < d && (!b || x > _cxD(b.effective_date))) b = h; }
@@ -256,7 +297,7 @@ function ctlUnitSoll(u, pid, y, m) {
       const before = _cxIso(dd.getFullYear(), dd.getMonth() + 1, dd.getDate());
       const t = tens.find(x => _cxActiveOn(x, before));
       if (!t) return null;
-      const bb = _cxBase(link, t);
+      const bb = bases.get(t.id) || _cxTenantBase(link, t, u, y, m);
       return kind === 'k' ? bb.k : bb.nk;
     };
     for (const h of staffel) if (inM(_cxD(h.effective_date))) {
@@ -267,19 +308,35 @@ function ctlUnitSoll(u, pid, y, m) {
       const pv = prevVal(nkH, _cxD(h.effective_date), 'nk');
       notes.push('NK angepasst · ' + (pv !== null && pv !== _cxNum(h.amount) ? _cxEurS(pv) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(h.effective_date));
     }
-    // Data check: things that don't add up are shown, never silently turned into "leer"
-    let check = null;
-    if (noPrice) check = 'Belegt, aber kein Mietpreis hinterlegt – bitte im ' + (link.type === 'casa_room' ? 'Casa Castel Zimmer' : 'Mieter') + ' eintragen';
-    else if (roomOnly) check = 'Belegt laut Casa Castel, aber kein Mieter eingetragen – Soll aus dem Zimmerpreis';
-    // Tenant entries exist, but none is active this month → say why (instead of a silent "nicht vermietet")
+    for (const b of bases.values()) if (b.src === 'history') { notes.push('Miete aus Ihren früheren Einträgen (beim Mieter nicht gespeichert)'); break; }
+
+    // Data check: what doesn't add up is shown, never silently turned into a number or "leer"
+    const checks = [];
+    if (noPrice) checks.push('Belegt, aber kein Mietpreis hinterlegt – bitte im ' + (link.type === 'casa_room' ? 'Casa Castel Zimmer' : 'Mieter') + ' eintragen');
+    if (roomOnly && !noPrice) checks.push('Belegt laut Casa Castel, aber kein Mieter eingetragen – Soll aus dem Zimmerpreis');
+    for (const [tid, b] of bases) {
+      const t = tens.find(x => x.id === tid);
+      const gone = t && (t.status !== 'active' || (t.mietende && _cxD(t.mietende) < today));
+      if (b.src === 'price' && gone) checks.push('Miete des früheren Mieters unbekannt – aktueller Preis verwendet, bitte beim Mieter hinterlegen');
+    }
+    for (const t of tens) {
+      const me = _cxD(t.mietende);
+      if (t.status === 'active' && me && me < today && me < last && !tens.some(x => _cxD(x.mietbeginn) > me))
+        checks.push('Auszug ' + _cxFmtD(t.mietende) + ' eingetragen, Status noch aktiv – bitte auf ehemalig setzen oder Auszug verlängern');
+    }
+    if (roomGap && !checks.some(c => /Auszug/.test(c))) checks.push('Zimmer als belegt markiert, aber für diese Tage kein Mieter eingetragen – bitte Mieter oder Zimmerstatus prüfen');
     if (occ === 0 && tens.length) {
       const next = tens.filter(t => _cxD(t.mietbeginn) > last).sort((a, b) => _cxD(a.mietbeginn).localeCompare(_cxD(b.mietbeginn)))[0];
       const prev = tens.filter(t => t.mietende && _cxD(t.mietende) < first).sort((a, b) => _cxD(b.mietende).localeCompare(_cxD(a.mietende)))[0];
       if (next) notes.push('Mieter ab ' + _cxFmtD(next.mietbeginn) + ' (noch nicht eingezogen)');
       else if (prev) notes.push('Letzter Mieter bis ' + _cxFmtD(prev.mietende));
-      else check = 'Mieter eingetragen, aber ohne gültiges Einzugsdatum – bitte im Mieter-Tab prüfen';
+      else if (!checks.length) checks.push('Mieter eingetragen, aber ohne gültiges Einzugsdatum – bitte im Mieter-Tab prüfen');
     }
-    out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge, partial: occ > 0 && occ < N, check,
+    const partList = [...parts.values()].sort((a, b) => a.from - b.from)
+      .map(pt => ({ from: pt.from, to: pt.to, amount: _cxR(pt.sum / N) }));
+    out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge,
+            partial: occ > 0 && (occ < N || partList.length > 1), days: occ, N, parts: partList,
+            check: checks.length ? [...new Set(checks)].join(' · ') : null,
             src: link.type === 'casa_room' ? 'Casa Castel' : 'Rentals' };
   }
   _cxUnitCache.set(key, out);

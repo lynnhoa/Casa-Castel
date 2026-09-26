@@ -61,6 +61,7 @@ const _CX_CSS = `
     .cx-sum__v { display:flex; align-items:baseline; gap:6px; margin-top:6px; font-variant-numeric:tabular-nums; }
     .cx-sum__big { font-family:'Cormorant Garamond',Georgia,serif; font-size:28px; font-weight:400; color:var(--cx-ink); }   /* = .rp-summary__total */
     .cx-sum__of { font-size:12px; color:var(--cx-mut); }
+    .cx-sum__hint { font-size:10.5px; color:var(--cx-mut); text-align:center; margin-top:8px; }
     .cx-bar { height:10px; border-radius:5px; background:#E3D5BF; overflow:hidden; }
     .cx-bar > div { height:100%; background:var(--cx-acc); border-radius:5px 0 0 5px; transition:width .25s; }
     .cx-bar > div.over { background:var(--cx-neg); border-radius:5px; }
@@ -111,7 +112,7 @@ const _CX_CSS = `
     .cx-from { color:var(--cx-sub); }
     .cx-r__note { font-size:10px; color:var(--cx-acc); margin-top:2px; }
     .cx-r__warn { font-size:10px; color:#7A4A12; background:#FAEEDA; border:.5px solid #E9B06A; border-radius:6px; padding:3px 6px; margin-top:4px; line-height:1.35; }
-    .cx-r__p { grid-column:1/-1; display:flex; justify-content:flex-end; margin-top:-2px; }
+    .cx-r__p { grid-column:1/-1; display:flex; justify-content:flex-end; gap:5px; margin-top:-2px; }
     .cx-take { width:30px; height:30px; border-radius:50%; border:.5px solid #D4B896; background:#F5EFE6; color:var(--cx-acc); padding:0;
                display:flex; align-items:center; justify-content:center; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .cx-take.on { background:#EEF0DD; border-color:#B9C28A; color:#55622A; }
@@ -259,7 +260,8 @@ function cxSummary(o) {
     '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' offen') : cxPill('ok', 'alles erfasst')) + '</div>' +
     '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(o.done) + '</span><span class="cx-sum__of">von ' + cxW(o.plan) + ' geplant</span></div>' +
     '<div class="cx-bar cx-bar--thin"><div style="width:' + pct + '%"></div></div>' +
-    '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="all"' + (o.open ? '' : ' disabled') + '><i class="ti ti-checks" aria-hidden="true"></i>Alle offenen wie geplant</button>' +
+    '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="all"' + ((o.bulk !== undefined ? o.bulk : o.open) ? '' : ' disabled') + '><i class="ti ti-checks" aria-hidden="true"></i>Alle offenen wie geplant</button>' +
+    (o.partial ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 anteiliger Monat' : o.partial + ' anteilige Monate') + ' · bitte einzeln bestätigen</div>' : '') +
   '</div>';
 }
 
@@ -289,7 +291,7 @@ function cxRow(o) {
     '</div>' +
     '<button class="cx-take' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Soll übernehmen"' + (o.soll ? '' : ' disabled') + '><i class="ti ti-arrow-right" aria-hidden="true"></i></button>' +
     '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Betrag' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist-Betrag ' + cxEsc(o.label) + '"><span>€</span></label>' +
-    '<div class="cx-r__p">' + cxPill(s[0], s[1]) + '</div>' +
+    '<div class="cx-r__p">' + (o.pills || '') + cxPill(s[0], s[1]) + '</div>' +
   '</div>';
 }
 function cxNotDue(list) {

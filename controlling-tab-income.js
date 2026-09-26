@@ -37,17 +37,22 @@ window.renderIncome = function () {
   if (!host) return;
   CX.tab = 'income';
   const model = _cxIncModel();
-  let done = 0, plan = 0, open = 0;
-  model.forEach(g => g.rows.forEach(r => { plan += r.soll; if (r.ist !== null) done += r.ist; else if (r.soll) open++; }));
+  let done = 0, plan = 0, open = 0, partialOpen = 0;
+  model.forEach(g => g.rows.forEach(r => { plan += r.soll; if (r.ist !== null) done += r.ist; else if (r.soll) { open++; if (r.s.partial) partialOpen++; } }));
 
   const cards = model.map(g => {
     const src = g.p.id === CASA_PROP_ID ? 'aus Casa Castel' : (g.rows.some(r => r.s.link) ? 'aus Rentals' : 'Planwert');
     const changed = g.rows.some(r => r.s.notes.length);
     const warned = g.rows.some(r => r.s.check || (!r.soll && r.ist));
     const body = g.rows.map(r => {
-      const sub = r.soll ? cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK' + (r.s.partial ? ' · anteilig' : '')
-                         : (r.s.link ? 'nicht vermietet' : 'kein Planwert');
-      return cxRow({ id: r.id, label: r.u.name, badge: r.s.badge, soll: r.soll, ist: r.ist, sub,
+      // tenant change in the month → both parts, each at its own rent
+      const sub = r.soll
+        ? (r.s.parts && r.s.parts.length > 1
+            ? r.s.parts.map(pt => pt.from + '.–' + pt.to + '.: ' + cxEur(pt.amount)).join(' · ')
+            : cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK')
+        : (r.s.link ? 'nicht vermietet' : 'kein Planwert');
+      const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'anteilig' : 'anteilig ' + r.s.days + '/' + r.s.N) : '';
+      return cxRow({ id: r.id, label: r.u.name, badge: r.s.badge, soll: r.soll, ist: r.ist, sub, pills,
                      notes: r.s.notes, emptyText: 'leer', allowEmpty: true,
                      warn: r.s.check || (!r.soll && r.ist ? 'Miete erfasst, aber laut Mieter-Daten nicht vermietet – bitte Mieter-Tab prüfen' : null) });
     }).join('');
@@ -57,7 +62,7 @@ window.renderIncome = function () {
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Mieten eingegangen', done, plan, open }) +
+    cxSummary({ label: 'Mieten eingegangen', done, plan, open, bulk: open - partialOpen, partial: partialOpen }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · aus den Mieter-Tabs</span><span class="cx-lbl">Ist</span></div>' +
     cards + '</div>';
 
@@ -70,7 +75,7 @@ window.renderIncome = function () {
         for (const id of Object.keys(_cxIncIndex)) {
           const e = _cxIncIndex[id];
           const has = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === window._ctrl.year && r.month === CX.month);
-          if (!has && e.s.soll) await _cxIncSave(e, e.s.soll);
+          if (!has && e.s.soll && !e.s.partial) await _cxIncSave(e, e.s.soll);   // part months: one tap each (deliberate check)
         }
         window.renderIncome();
       }
