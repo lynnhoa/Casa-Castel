@@ -2726,6 +2726,18 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     return;
   }
 
+  // Fix 7: "To former" needs a move-out date (default today, editable) — a former tenant
+  // without Auszug would otherwise keep a Soll until the next tenant moves in
+  if (forceFormer && !p.mietende) {
+    const today = new Date(), dflt = String(today.getDate()).padStart(2, '0') + '.' + String(today.getMonth() + 1).padStart(2, '0') + '.' + today.getFullYear();
+    const v = prompt('Auszugsdatum (TT.MM.JJJJ):', dflt);
+    if (v === null) return;
+    const iso = _rntParseDate(String(v).trim());
+    if (!iso) { if (typeof ccToast === 'function') ccToast('Bitte ein Datum im Format TT.MM.JJJJ eingeben', true); return; }
+    p.mietende = iso;
+    const inp = sec.querySelector('[data-f="mietende"]'); if (inp) inp.value = v.trim();
+  }
+
   const isApt    = unitType === 'apt';
   const toFormer = !!forceFormer || !!(p.mietende && _rntIsPast(p.mietende) && rec?.status === 'active');
   const toActive = rec?.status === 'former' && (!p.mietende || !_rntIsPast(p.mietende));

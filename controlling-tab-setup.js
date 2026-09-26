@@ -123,11 +123,14 @@ window.renderSetup = function () {
       '<div class="cx-r__sub" style="margin:6px 0 10px">Werden schon verwendet. Einmal bestätigen, dann sind sie fest.</div>' +
       '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="acceptAll"><i class="ti ti-checks" aria-hidden="true"></i>Alle Vorschläge übernehmen</button></div>' : '') +
     (() => {
-      const chk = ctlDataChecks(window._ctrl.year, CX.month);
-      return '<div class="cx-head"><span class="cx-lbl">Datenprüfung · ' + CX_MONTHS[CX.month - 1] + '</span></div>' +
+      const t = cxToday(), y = window._ctrl.year;
+      const upTo = y < Number(t.slice(0, 4)) ? 12 : y > Number(t.slice(0, 4)) ? 0 : Number(t.slice(5, 7));
+      const chk = typeof ctlDataChecksYear === 'function' ? ctlDataChecksYear(y, upTo) : ctlDataChecks(y, CX.month);
+      const ms = c => c.months && c.months.length ? ' <span style="color:var(--cx-taupe,#9A8E7E)">(' + (c.months.length > 3 ? c.months.length + ' Monate' : c.months.map(m => CX_MONTHS[m - 1].slice(0, 3)).join(', ')) + ')</span>' : '';
+      return '<div class="cx-head"><span class="cx-lbl">Datenprüfung · ' + y + '</span></div>' +
         '<div class="cx-card cx-sum">' + (chk.length
           ? '<div class="cx-row-sb"><span class="cx-lbl">Bitte prüfen</span>' + cxPill('open', chk.length + (chk.length === 1 ? ' Hinweis' : ' Hinweise')) + '</div>' +
-            chk.map(c => '<div class="cx-kv" style="margin-top:6px"><span><b style="font-weight:500;color:var(--cx-ink)">' + cxEsc(c.prop) + ' · ' + cxEsc(c.unit) + '</b><br>' + cxEsc(c.text) + '</span></div>').join('')
+            chk.map(c => '<div class="cx-kv" style="margin-top:6px"><span><b style="font-weight:500;color:var(--cx-ink)">' + cxEsc(c.prop) + ' · ' + cxEsc(c.unit) + '</b>' + ms(c) + '<br>' + cxEsc(c.text) + '</span></div>').join('')
           : '<div class="cx-row-sb"><span class="cx-lbl">Mieten und Soll</span>' + cxPill('ok', 'Alles stimmig') + '</div>') +
         '</div>';
     })() +

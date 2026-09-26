@@ -2441,6 +2441,7 @@ async function _aptOpenContract(type, aptId) {
               tenantName: mieterName, start: startVal, end: befristet ? endVal : null, mode: 'kalt_nk',
               kalt: _k, nk: Number(data.nkVorauszahlung) || 0, total: _k + (Number(data.nkVorauszahlung) || 0),
               first_month: 'anteilig', last_month: 'anteilig', contract_type: 'mietvertrag', legacyMode: 'kalt_nk',
+              staffel: staffelAn ? staffeln : [], staffelTable: 'rnt_staffelmiete_history',
             });
           }
           const filename = ccPdfFileName('Mietvertrag', apt2.name, mieterName);

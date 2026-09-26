@@ -193,13 +193,31 @@ async function ccRpFromContract(o) {
     if (!CC_RP.loaded[o.app] && !CC_RP.loaded['*']) await ccRpLoad(o.db, o.app);
     const rec = recs[0], start = ccRpIso(o.start), einzug = ccRpIso(rec.mietbeginn);
     const mode = o.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';
+    // Only a real, final contract belongs in the history — a draft or test PDF does not (fix 3)
+    const steps = (o.staffel || []).map(x => ({ date: ccRpIso(x.datum || x.date), amount: ccRpNum(x.betrag ?? x.amount) })).filter(x => x.date && x.amount);
+    const nm = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
+    const q = 'Miete ab ' + ccRpFmt(start) + (steps.length ? ' und ' + steps.length + (steps.length === 1 ? ' Staffelstufe' : ' Staffelstufen') : '') +
+              ' für ' + nm + ' in die Miethistorie übernehmen?\n\nNur bei einem endgültigen Vertrag – bei einem Entwurf „Abbrechen“.';
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(q)) return null;
     const saved = await ccRpSetRent(o.db, {
       app: o.app, rec, validFrom: start, mode, kalt: o.kalt, nk: o.nk, pauschale: o.total,
       kind: einzug && start > einzug ? 'renewal' : 'contract', source: 'generator', legacyMode: o.legacyMode,
       first_month: o.first_month || 'anteilig', last_month: o.last_month || 'anteilig',
       contract_type: o.contract_type || null, contract_end: o.end || null,
     });
-    if (saved && typeof ccToast === 'function') ccToast('Miete ab ' + ccRpFmt(start) + ' in die Miethistorie übernommen');
+    // Staffel steps of the contract → this tenant's Staffel history (fix 1)
+    if (saved && steps.length && o.staffelTable) {
+      for (const st of steps) {
+        const { data: ex } = await o.db.from(o.staffelTable).select('*').eq(o.unitKey, o.unitRef).eq('effective_date', st.date);
+        if (ex && ex.length) {
+          let r = await o.db.from(o.staffelTable).update({ amount: st.amount, tenant_id: String(rec.id) }).eq('id', ex[0].id);
+          if (r.error && ccRpIsMissingColumn(r.error, 'tenant_id')) await o.db.from(o.staffelTable).update({ amount: st.amount }).eq('id', ex[0].id);
+        } else {
+          await ccRpInsertWithTenant(o.db, o.staffelTable, { [o.unitKey]: o.unitRef, effective_date: st.date, amount: st.amount, tenant_adjusted: false }, rec.id);
+        }
+      }
+    }
+    if (saved && typeof ccToast === 'function') ccToast('Miete ab ' + ccRpFmt(start) + (steps.length ? ' + ' + steps.length + ' Staffel' : '') + ' in die Miethistorie übernommen');
     return saved;
   } catch (e) {
     if (!ccRpIsMissing(e)) console.warn('[rent periods] contract:', e && e.message || e);

@@ -191,7 +191,9 @@ window.renderOneTime = function () {
         const date = String(document.getElementById('cxSetDate-' + id)?.value || '').slice(0, 10) || _cxOtDefaultDate();
         const dir = (_cxSet.pay[id] && _cxSet.pay[id].dir) || 1;
         try {
-          if (via === 'zahlung' && amt > 0) {
+          const already = typeof ctlSettlementAlreadyBooked === 'function' && ctlSettlementAlreadyBooked(r);
+          if (already && typeof ctlToast === 'function') ctlToast('Schon aus dem Mieter-Tab in Einmalig gebucht – nur als bezahlt markiert');
+          if (via === 'zahlung' && amt > 0 && !already) {
             await ctlAddOneTime({ property_id: r.property_id, invoice_date: date, item: _cxSetLabel(r), amount: cxR(amt),
               kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: dir, source_ref: 'set:' + id });
           }
@@ -213,8 +215,13 @@ window.renderOneTime = function () {
       if (a === 'sug') {
         const s = ctlOtSuggestions()[Number(b.dataset.i)];
         if (!s) return;
-        try { await ctlAddOneTime({ property_id: s.pid, invoice_date: _cxOtDefaultDate(), item: s.text, amount: s.amount, kind: 'NK-Abrechnung', direction: s.direction, source_ref: s.ref }); }
-        catch (e) { cxToastErr(e); }
+        try {
+          const d = _cxOtDefaultDate();
+          await ctlAddOneTime({ property_id: s.pid, invoice_date: d, item: s.text, amount: s.amount, kind: 'NK-Abrechnung', direction: s.direction, source_ref: s.ref });
+          // Fix 2: the matching entry in the Abrechnungen list is closed as well (no second booking)
+          const row = (window._src.settle || []).find(r => r.kind === 'nk_tenant' && String(r.tenant_id) === s.tid && Number(r.covers_year) === Number(s.year) && r.status !== 'bezahlt');
+          if (row) await _cxSetUpdate(row.id, { status: 'bezahlt', amount: s.amount, direction: s.direction, paid_date: d, settled_via: 'zahlung' });
+        } catch (e) { cxToastErr(e); }
         return window.renderOneTime();
       }
     },

@@ -40,7 +40,11 @@ function _cxHIssues(w) {
   if (w.noEnd) out.push('Auszug fehlt');
   const legacy = w.t.kaltmiete != null || w.t.nebenkosten != null;
   if (!w.periods.length && !legacy) out.push('keine Miete hinterlegt');
-  else if (!w.periods.length) out.push('Miete unbestätigt');
+  else if (!w.periods.length) out.push(w.app === 'casa' ? 'Miete unbestätigt (Pauschal / Kalt + NK aus der heutigen Zimmer-Einstellung)' : 'Miete unbestätigt');   // fix 6
+  const per = w.periods.length ? w.periods[w.periods.length - 1] : null;                     // fix 4
+  const ce = per && per.contract_end ? ccRpIso(per.contract_end) : '';
+  if (ce && ce < cxToday() && !w.t.mietende && w.t.status === 'active') out.push('Vertrag endete am ' + cxFmtDate(ce) + ' – Auszug oder Verlängerung fehlt');
+  if (w.balance && w.balance.missing) out.push(w.balance.missing + (w.balance.missing === 1 ? ' Monat' : ' Monate') + ' ohne Zahlungseintrag (' + cxEur(w.balance.missingSum) + ')');   // fix 5
   return out;
 }
 
@@ -49,8 +53,9 @@ function _cxHTenancyHTML(u, pid, w) {
   const iss = _cxHIssues(w);
   const status = w.t.status === 'active' ? cxPill('ok', 'aktiv') : cxPill('grey', 'ehemalig');
   const bal = w.balance || { saldo: 0, months: 0 };
-  const balTxt = !bal.months ? 'noch keine Zahlungen erfasst'
-    : bal.saldo > 0.005 ? 'Rückstand ' + cxEur(bal.saldo) : bal.saldo < -0.005 ? 'Überzahlt ' + cxEur(-bal.saldo) : 'ausgeglichen';
+  const balTxt = (!bal.months ? 'noch keine Zahlungen erfasst'
+    : bal.saldo > 0.005 ? 'Rückstand ' + cxEur(bal.saldo) : bal.saldo < -0.005 ? 'Überzahlt ' + cxEur(-bal.saldo) : 'ausgeglichen') +
+    (bal.missing ? ' · nicht erfasst: ' + cxEur(bal.missingSum) : '');
   const dateIn = (field, val) => '<label class="cx-f cx-f--l"><input type="text" placeholder="TT.MM.JJJJ" data-h-date="' + cxEsc(key + '|' + field) + '" value="' + cxEsc(val ? cxFmtDate(val) : '') + '" aria-label="' + (field === 'mietbeginn' ? 'Einzug' : 'Auszug') + '"></label>';
 
   const periods = w.periods.map(p =>

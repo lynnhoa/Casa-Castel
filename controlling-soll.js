@@ -558,6 +558,12 @@ function _cxUnitSollV2(u, pid, y, m) {
     if (w.t.status === 'active' && me && me < today && me < last && !dated.some(x => x.from > me))
       checks.push('Auszug ' + _cxFmtD(me) + ' eingetragen, Status noch aktiv – bitte auf ehemalig setzen oder Auszug verlängern');
   }
+  for (const w of dated) {                                  // Fix 4
+    if (w.to !== '9999-12-31') continue;
+    const per = _cxPerAt(_cxTenancyData(link, w, all, memo).per, today);
+    const ce = per && _cxD(per.contract_end);
+    if (ce && ce < today && ce <= last) checks.push(w.name + ': Vertrag endete am ' + _cxFmtD(ce) + ' – kein Auszug und keine Verlängerung eingetragen');
+  }
   if (overlap) checks.push('Zwei Mieter gleichzeitig an ' + overlap + (overlap === 1 ? ' Tag' : ' Tagen') + ' – bitte Ein- und Auszug prüfen (gezählt: der neuere)');
   if (roomGap && !checks.some(c => /Auszug/.test(c))) checks.push('Zimmer als belegt markiert, aber für diese Tage kein Mieter eingetragen – bitte Mieter oder Zimmerstatus prüfen');
   if (occ === 0 && all.length) {
@@ -597,7 +603,8 @@ function ctlIstFor(row, s, tid) {
 /* Running balance of one tenancy over every month with an entered payment (G1).
    → { soll, ist, saldo, months } · saldo > 0 = Rückstand, < 0 = Guthaben        */
 function ctlTenancyBalance(u, pid, tid) {
-  const rows = (window._src.incAll || []).filter(r => u.id != null && r.unit_id === u.id);
+  const all = window._src.incAll || [];
+  const rows = all.filter(r => u.id != null && r.unit_id === u.id);
   let soll = 0, ist = 0, months = 0;
   for (const row of rows) {
     const s = ctlUnitSoll(u, pid, row.year, row.month);
@@ -607,7 +614,21 @@ function ctlTenancyBalance(u, pid, tid) {
     if (i === null) continue;
     soll += part.amount; ist += i; months++;
   }
-  return { soll: _cxR(soll), ist: _cxR(ist), saldo: _cxR(soll - ist), months };
+  // Fix 5: finished months since Controlling started (first entry anywhere) with a Soll for this
+  // tenant but nothing entered → "nicht erfasst" (maybe unpaid, maybe just not entered)
+  let missing = 0, missingSum = 0;
+  const start = all.reduce((a, r) => Math.min(a, r.year * 12 + r.month), Infinity);
+  const t = _cxToday(), cur = Number(t.slice(0, 4)) * 12 + Number(t.slice(5, 7));
+  if (isFinite(start) && u.id != null) {
+    const has = new Set(rows.map(r => r.year * 12 + r.month));
+    for (let k = start; k < cur; k++) {
+      if (has.has(k)) continue;
+      const y = Math.floor((k - 1) / 12), m = k - y * 12;
+      const part = (ctlUnitSoll(u, pid, y, m).parts || []).find(p => p.tid === String(tid));
+      if (part && part.amount) { missing++; missingSum += part.amount; }
+    }
+  }
+  return { soll: _cxR(soll), ist: _cxR(ist), saldo: _cxR(soll - ist), months, missing, missingSum: _cxR(missingSum) };
 }
 
 /* Everything the history screen needs for one unit (Phase 3) */
@@ -633,6 +654,15 @@ function ctlUnitHistory(u, pid) {
   return { link, tenancies, orphans: _cxOrphanSteps(link, all), istNoTenant };
 }
 
+/* Fix 8: data check over every month of the year up to the selected one (duplicates merged) */
+function ctlDataChecksYear(y, upTo) {
+  const seen = new Map();
+  for (let m = 1; m <= upTo; m++) for (const c of ctlDataChecks(y, m)) for (const text of String(c.text).split(' · ')) {
+    const k = c.prop + '|' + c.unit + '|' + text;                // each warning once, with its months
+    if (!seen.has(k)) seen.set(k, { ...c, text, months: [m] }); else if (!seen.get(k).months.includes(m)) seen.get(k).months.push(m);
+  }
+  return [...seen.values()];
+}
 /* Data check for a month: every unit whose Soll doesn't add up */
 function ctlDataChecks(y, m) {
   const out = [];
@@ -737,22 +767,26 @@ function ctlCasaCostRows(p, y, m) {
 function ctlOtSuggestions() {
   const S = window._src, out = [];
   const taken = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
+  // Fix 2: an NK settlement already marked "bezahlt" in the Abrechnungen list is not offered again
+  const yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
+  const done = new Set((S.settle || []).filter(r => r.status === 'bezahlt' && r.kind === 'nk_tenant').map(r => String(r.tenant_id) + '|' + r.covers_year));
+  const isDone = (tid, e) => done.has(String(tid) + '|' + yr(e));
   const props = window._ctrl.properties.filter(p => p.active);
   const aptProp = aptId => props.find(p => { const l = ctlPropLinks(p); return l.apt && String(l.apt.id) === String(aptId); });
   for (const e of S.rntNk) {
     const amt = _cxNum(e.amount);
-    if (!e.paid || !amt || taken.has('rnt_nk:' + e.id)) continue;
+    if (!e.paid || !amt || taken.has('rnt_nk:' + e.id) || isDone(e.tenant_id, e)) continue;
     const t = S.rntTen.find(x => x.id === e.tenant_id);
     const p = t && t.apartment_id ? aptProp(t.apartment_id) : null;
     if (!p) continue;
-    out.push({ ref: 'rnt_nk:' + e.id, pid: p.id, prop: p.name, text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung Mieter' : ' · Guthaben Mieter'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
+    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'rnt_nk:' + e.id, pid: p.id, prop: p.name, text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung Mieter' : ' · Guthaben Mieter'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
   }
   const casa = props.find(p => p.id === CASA_PROP_ID);
   if (casa) for (const e of S.casaNk) {
     const amt = _cxNum(e.amount);
-    if (!e.paid || !amt || taken.has('nk:' + e.id)) continue;
+    if (!e.paid || !amt || taken.has('nk:' + e.id) || isDone(e.tenant_id, e)) continue;
     const t = S.casaTen.find(x => x.id === e.tenant_id);
-    out.push({ ref: 'nk:' + e.id, pid: casa.id, prop: casa.name + (t && t.room ? ' · ' + t.room : ''), text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung Mieter' : ' · Guthaben Mieter'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
+    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'nk:' + e.id, pid: casa.id, prop: casa.name + (t && t.room ? ' · ' + t.room : ''), text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung Mieter' : ' · Guthaben Mieter'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
   }
   return out;
 }
@@ -854,4 +888,15 @@ function ctlExpectedSettlements(coversYear) {
     }
   }
   return out;
+}
+
+
+/* Fix 2: an NK settlement for this tenant + year already booked in Einmalig from the
+   Tenants tab (suggestion taken over)? Then the Abrechnungen list must not book it again. */
+function ctlSettlementAlreadyBooked(r) {
+  if (r.kind !== 'nk_tenant') return false;
+  const S = window._src, yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
+  const refs = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
+  const list = r.app === 'casa' ? (S.casaNk || []).map(e => ['nk:' + e.id, e]) : (S.rntNk || []).map(e => ['rnt_nk:' + e.id, e]);
+  return list.some(([ref, e]) => String(e.tenant_id) === String(r.tenant_id) && yr(e) === Number(r.covers_year) && refs.has(ref));
 }

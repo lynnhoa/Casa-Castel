@@ -2109,6 +2109,18 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     return;
   }
 
+  // Fix 7: "To former" needs a move-out date (default today, editable) — a former tenant
+  // without Auszug would otherwise keep a Soll until the next tenant moves in
+  if (forceFormer && !p.mietende) {
+    const today = new Date(), dflt = String(today.getDate()).padStart(2, '0') + '.' + String(today.getMonth() + 1).padStart(2, '0') + '.' + today.getFullYear();
+    const v = prompt('Auszugsdatum (TT.MM.JJJJ):', dflt);
+    if (v === null) return;
+    const iso = _tnParseDate(String(v).trim());
+    if (!iso) { if (typeof ccToast === 'function') ccToast('Bitte ein Datum im Format TT.MM.JJJJ eingeben', true); return; }
+    p.mietende = iso;
+    const inp = sec.querySelector('[data-f="mietende"]'); if (inp) inp.value = v.trim();
+  }
+
   // Manual "To former" (forceFormer) demotes even when mietende is today/future,
   // so the room frees up now; auto-demote on a past move-out date still applies.
   const toFormer = !!forceFormer || !!(p.mietende && _tnIsPast(p.mietende) && rec?.status === 'active');
