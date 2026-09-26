@@ -1058,10 +1058,10 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
   return `
 <div class="tn-hdr-wrap" onclick="_rntToggleCard('${rid}')">
   <div class="tn-hdr-top">
-    <span class="tn-room-lbl">${_rntEsc(unitLabel)}</span>
-    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${pills.row1}</div>
+    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
+  <div class="tn-room-lbl tn-unit-line">${_rntEsc(unitLabel)}</div>
   ${isApt && unit.adresse ? `<div class="tn-hdr-addr">${_rntEsc(unit.adresse)}</div>` : ''}
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}

@@ -982,10 +982,10 @@ function _tnHeaderHTML(rid, room, activeRec) {
   return `
 <div class="tn-hdr-wrap" onclick="_tnToggleCard('tc-${rid}')">
   <div class="tn-hdr-top">
-    <span class="tn-room-lbl">${esc(room.name)}</span>
-    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0">${pills.row1}</div>
+    <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
+  <div class="tn-room-lbl tn-unit-line">${esc(room.name)}</div>
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
   <div class="tn-todo-row" id="hdr-todo-${rid}" style="${pills.todo ? '' : 'display:none'}">${pills.todo}</div>

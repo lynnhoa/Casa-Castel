@@ -8,8 +8,9 @@
    Wording    English status words, German domain nouns (Kaution, Staffel, NK)
 
    Collapsed card
-     Row 1  UNIT ················· [Kaution 1.500 €] [Occupied]   ← state
-     Row 2  Tenant name  dates
+     Row 1  ······················· [Kaution 1.500 €] [Occupied] ›   ← state, always the same spot
+     Row 2  UNIT NAME (full width, wraps — never cut)   · Rentals apartments: address
+     Row 2b Tenant name  dates
      Row 3  650 € warm · 500 + 150 Kalt + NK · Mietvertrag          ← info
      Row 4  [red to-dos] [amber to-dos]  ← only if any · wraps · max 3 + "+N"
    ═════════════════════════════════════════════════════════════ */
@@ -115,7 +116,8 @@ function ccTnApplyPills(rid, row1, todo) {
   s.textContent = `
 html .tnp-occ { background:transparent; color:#27500A; border:.5px solid #97C459; }
 html .tn-hdr-top > [id^="hdr-kpill-"] { flex-shrink:0 !important; min-width:auto; flex-wrap:nowrap; }
-html .tn-hdr-top > .tn-room-lbl { flex:0 1 auto !important; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }   /* long unit names shorten with …, pills never do */
+/* Pills on top (always the same spot), unit name underneath at full width — wraps, never cut */
+html .tn-unit-line { display:block; white-space:normal; overflow-wrap:anywhere; margin-top:6px; line-height:1.35; }
 html .tn-todo-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; padding-top:8px; border-top:.5px solid var(--cc-rule); }
 `;
   document.head.appendChild(s);
