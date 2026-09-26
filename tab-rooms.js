@@ -2116,6 +2116,7 @@ async function _openContract(type, roomId) {
     titleLbl.textContent = `New contract — ${room.name}`;
     subLbl.textContent   = `${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''} · ${room.floor || ''} · ${room.room_type || ''}`;
     body.innerHTML       = _contractBodyKurzzeit(room);
+    if (typeof tnFixedKautionSoll === 'function') ccApplyFixedKaution('cm-kaution', tnFixedKautionSoll(room.name));
     footer.innerHTML     = `
       <button class="rm-btn rm-btn--cancel" id="contractCancelBtn">Cancel</button>
       <button class="rm-btn rm-btn--pdf" id="contractPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
@@ -2174,6 +2175,7 @@ async function _openContract(type, roomId) {
     titleLbl.textContent = `New contract — ${room.name}`;
     subLbl.textContent   = `${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''} · ${room.floor || ''}`;
     body.innerHTML       = _contractBodyMietvertrag(room);
+    if (typeof tnFixedKautionSoll === 'function') ccApplyFixedKaution('mv-kaution', tnFixedKautionSoll(room.name));
     footer.innerHTML     = `
       <button class="rm-btn rm-btn--cancel" id="contractCancelBtn">Cancel</button>
       <button class="rm-btn rm-btn--pdf" id="contractPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;

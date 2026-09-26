@@ -299,6 +299,8 @@ html .cck-f input::placeholder{color:var(--cc-stone)}
 .cck-rv{font-size:14px;font-weight:500}
 .cck-note{font-size:10px;color:var(--cc-taupe);margin-top:2px;min-height:13px}
 .cck-note.cck-err{color:#A32D2D}
+.cck-fixed-hint{font-size:10px;color:var(--cc-taupe);margin-top:4px;line-height:1.4}
+.cck-soll-hint{font-size:10px;color:var(--cc-taupe);margin-top:3px}
 .cck-b{height:36px;padding:0 16px;border-radius:8px;font-family:inherit;font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .cck-b:disabled{opacity:.5;cursor:default}
 .cck-bp{min-width:96px;padding:0 18px;background:var(--cc-ink);color:var(--cc-white);border:.5px solid var(--cc-ink)}
@@ -306,4 +308,41 @@ html .cck-f input::placeholder{color:var(--cc-stone)}
 html button.cc-save.cck-sec{background:transparent!important;color:var(--cc-taupe)!important;border-color:var(--cc-rule)!important;min-width:0!important;padding:0 16px!important}
 `;
   (document.head || document.documentElement).appendChild(s);
+}
+
+/* ── KAUTION SOLL: fixed per tenancy ────────────────────────────
+   Set ONCE at move-in, saved on the tenant (kaution_soll). It does not
+   follow rent changes (Staffel, index, new rent) or contract renewals of
+   the same tenant — only a manual change in the tenant's profile.
+
+   Filling a tenant that has no fixed Soll yet (existing tenants, once):
+     1 unit-level individual Kaution (card)          → that amount
+     2 Staffel history shows the rent at move-in     → Kaution from that rent
+     3 tenancy < 12 months (rent cannot have risen)   → Kaution from today's rent
+     4 tenancy ≥ 12 months: Kaution received > 0      → the amount received
+     5 otherwise                                      → Kaution from today's rent  */
+function ccKautionStartSoll({ current, staffelSoll, mietbeginn, received }) {
+  const cur = current && Number(current.amount) > 0 ? Number(current.amount) : null;
+  if (current && /^Individuell/.test(current.text || '') && cur) return cur;
+  if (Number(staffelSoll) > 0) return Math.round(Number(staffelSoll) * 100) / 100;
+  const d = mietbeginn && typeof ccTnDaysUntil === 'function' ? ccTnDaysUntil(mietbeginn) : null;
+  if (d == null || d > -365) return cur;
+  if (Number(received) > 0) return Math.round(Number(received) * 100) / 100;
+  return cur;
+}
+
+/* Contract generators: the current tenant's fixed Kaution Soll goes into the
+   Kaution field (instead of a value recalculated from today's rent). */
+function ccApplyFixedKaution(inputId, amount) {
+  if (amount == null || amount === '' || !(Number(amount) > 0)) return;
+  const el = document.getElementById(inputId); if (!el) return;
+  el.removeAttribute('data-auto');                      // no longer follows rent / dates
+  el.value = String(Number(amount));
+  const box = el.closest('.rm-field') || el.parentElement;
+  if (box && !box.querySelector('.cck-fixed-hint')) {
+    const h = document.createElement('div');
+    h.className = 'cck-fixed-hint';
+    h.textContent = 'Kaution-Soll des aktuellen Mieters (fest seit Einzug). Für einen neuen Mieter bitte anpassen.';
+    box.appendChild(h);
+  }
 }

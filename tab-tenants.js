@@ -573,7 +573,7 @@ function _tnToggleKautionOverride(el, inputId, hintId) {
    Individuell · Mieter (set on the tenant) → Individuell · Karte (room card) → Standard (rule). */
 function _tnKautionSollInfo(rec) {
   if (!rec) return null;
-  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Individuell \u00b7 Mieter' };
+  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fest seit Einzug' };
   const p = _tnRoomPricing(rec.room);
   if (p.kaution_override && p.kaution_fixed != null && p.kaution_fixed !== '') return { amount: Number(p.kaution_fixed), text: 'Individuell \u00b7 Karte' };
   const amount = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende);
@@ -586,6 +586,31 @@ function _tnKautionSollInfo(rec) {
   return { amount, text: 'Standard' + (rule ? ' \u00b7 ' + rule : '') };
 }
 /* After saving: refresh exactly this tenant's Soll lines (no full repaint → nothing typed elsewhere is lost) */
+/* Kaution Soll is fixed per tenancy (cc-kaution-card.js). Active tenants that
+   have none yet get it filled ONCE; afterwards it only changes by hand. */
+const _tnSollFilling = new Set();
+function _tnFreezeKautionSoll() {
+  if (!sbL || typeof ccKautionStartSoll !== 'function') return;
+  _tnRecords.forEach(rec => {
+    if (rec.status !== 'active' || (rec.kaution_soll != null && rec.kaution_soll !== '') || _tnSollFilling.has(rec.id)) return;
+    const amount = ccKautionStartSoll({ current: _tnKautionSollInfo(rec), staffelSoll: null,
+      mietbeginn: rec.mietbeginn, received: _tnKaution[rec.id]?.received });
+    if (!(amount > 0)) return;
+    _tnSollFilling.add(rec.id);
+    rec.kaution_soll = amount;
+    ccQueueWrite('tn-' + rec.id, () => sbL.from('tenant_records').update({ kaution_soll: amount }).eq('id', rec.id).is('kaution_soll', null))
+      .then(({ error }) => { if (error) { rec.kaution_soll = null; _tnSollFilling.delete(rec.id); console.warn('[tenants] kaution soll:', error.message); } });
+  });
+}
+
+/* Contract generators: the active tenant's fixed Kaution Soll (or null) */
+function tnFixedKautionSoll(roomName) {
+  const rec = (_tnRecords || []).filter(r => r.room === roomName && r.status === 'active')
+    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
+  const v = rec && rec.kaution_soll;
+  return v != null && v !== '' && Number(v) > 0 ? Number(v) : null;
+}
+
 function _tnRefreshKautionSoll(tid) {
   const info = _tnKautionSollInfo(_tnRecords.find(r => r.id === tid));
   document.querySelectorAll(`[data-ksoll-for="${tid}"]`).forEach(el => {
@@ -809,6 +834,7 @@ async function _tnLoad() {
   });
   _tnLoadedOnce = true;
 
+  _tnFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _tnRenderIfChanged();
 }
 
@@ -1058,21 +1084,9 @@ function _tnRentFormHTML(rid, room, rec) {
     <div class="tn-rf-derived" id="rf-warm-${rid}">${warm !== '' ? _tnFmtEUR(warm) : '\u2014'}</div>
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
-    <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${tid}">${(() => { const i = _tnKautionSollInfo(rec); return i ? `Soll \u00b7 ${_tnFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
-      <label class="tn-kaut-ovr-sw" title="Override kaution">
-        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null ? 'checked' : ''}
-          onchange="_tnToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
-        <span class="tn-kaut-ovr-sw__t"></span>
-      </label>
-    </div>
-    <span id="rf-ksoll-hint-${rid}" class="tn-kaut-hint" style="${rec && rec.kaution_soll != null ? 'display:none' : ''}">
-      Auto from rooms tab · clear override to re-sync
-    </span>
-    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}"
-      value="${rec && rec.kaution_soll != null ? ksoll : ''}"
-      placeholder="${ksoll}"
-      ${rec && rec.kaution_soll != null ? '' : 'disabled style="opacity:.4"'}/>
+    <span class="tn-flbl">Kaution Soll</span>
+    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
+    <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
     <span class="tn-rf-hint" style="margin:0">Frozen at move-out for former tenants.</span>
@@ -1733,20 +1747,10 @@ function _tnModalBodyHTML(rec) {
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
           <input data-mf="nebenkosten" type="number" data-cc-num="2" value="${dNK ?? ''}"/></div>
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
-          <div class="tn-kaut-override-row">
-            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${tid}">${(() => { const i = _tnKautionSollInfo(rec); return i ? `Soll \u00b7 ${_tnFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
-            <label class="tn-kaut-ovr-sw" title="Override kaution">
-              <input type="checkbox" id="mkaut-ovr-${tid}" ${dKS != null ? 'checked' : ''}
-                onchange="_tnToggleKautionOverride(this,'mkaut-inp-${tid}','mkaut-hint-${tid}')"/>
-              <span class="tn-kaut-ovr-sw__t"></span>
-            </label>
-          </div>
-          <span id="mkaut-hint-${tid}" class="tn-kaut-hint" style="${dKS != null ? 'display:none' : ''}">
-            Auto from rooms tab · toggle to set a fixed amount
-          </span>
+          <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
-            value="${dKS ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) ?? ''}"
-            ${dKS != null ? '' : 'disabled style="opacity:.4"'}/>
+            value="${dKS ?? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) ?? ''}"/>
+          <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
         </div>
         <div class="tn-field">
           <span class="tn-flbl">Contract</span>
@@ -2040,7 +2044,7 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
     kaltmiete:   p.kaltmiete   ?? null,
     nebenkosten: p.nebenkosten ?? null,
-    kaution_soll:p.kaution_soll ?? null,
+    kaution_soll:p.kaution_soll ?? rec?.kaution_soll ?? null,   // a profile save never wipes the fixed Soll
   };
   if (toFormer) {
     update.status        = 'former';
@@ -2092,7 +2096,7 @@ async function _tnSaveRent(rid, tid, roomName) {
   const nk    = parseFloat(document.getElementById('rf-nk-'    + rid)?.value) || null;
   const ksollOvr = document.getElementById('rf-ksoll-ovr-' + rid);
   const ksollInp = document.getElementById('rf-ksoll-' + rid);
-  const ksoll = (ksollOvr?.checked && ksollInp) ? (parseFloat(ksollInp.value) || null) : null;
+  const ksoll = ksollInp ? (parseFloat(ksollInp.value) || null) : (_tnRecords.find(r => r.id === tid)?.kaution_soll ?? null);
 
   // Direct save: local values + bar first, database in the background (direct-save.js)
   const rec = _tnRecords.find(r => r.id === tid);

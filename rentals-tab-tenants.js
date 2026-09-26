@@ -547,7 +547,7 @@ function _rntPkPricing(pkId) {
    Rentals has no "Kurzzeit" tenant type: a fixed stay of ≤ 3 months uses the Kurzzeit rule (1×). */
 function _rntKautionSollInfo(rec) {
   if (!rec) return null;
-  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Individuell \u00b7 Mieter' };
+  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fest seit Einzug' };
   if (rec.apartment_id) {
     const a  = appApartments?.find(x => x.id === rec.apartment_id);
     const pr = a?.pricing || {};
@@ -586,6 +586,48 @@ function _rntRefreshKautionSoll(tid) {
   });
 }
 function _rntKautionSoll(rec) { const i = _rntKautionSollInfo(rec); return i ? i.amount : null; }
+
+/* Kaution from the rent that applied at move-in (Staffel history), or null */
+function _rntStaffelStartSoll(rec) {
+  const unitId = rec.apartment_id || rec.parking_id;
+  if (!unitId || !rec.mietbeginn) return null;
+  const e = (_rntStaffel[unitId] || [])
+    .filter(x => x.effective_date && x.effective_date <= rec.mietbeginn)
+    .sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)))[0];
+  if (!e || !(Number(e.amount) > 0)) return null;
+  if (rec.parking_id) return ccKaution({ contract: 'parking', kalt: Number(e.amount) }).amount;
+  const a = appApartments?.find(x => x.id === rec.apartment_id);
+  const gewerbe = a?.zimmer_type === 'Gewerbefläche';
+  if (!gewerbe && rec.mietende && ccKzIsLong(rec.mietbeginn, rec.mietende) === false) return null;   // short stay: no Staffel
+  return ccKaution({ contract: gewerbe ? 'gewerbe' : 'mietvertrag', kalt: Number(e.amount) }).amount;
+}
+
+/* Kaution Soll is fixed per tenancy (cc-kaution-card.js). Active tenants that
+   have none yet get it filled ONCE; afterwards it only changes by hand. */
+const _rntSollFilling = new Set();
+function _rntFreezeKautionSoll() {
+  if (!sbL || typeof ccKautionStartSoll !== 'function') return;
+  _rntRecords.forEach(rec => {
+    if (rec.status !== 'active' || (rec.kaution_soll != null && rec.kaution_soll !== '') || _rntSollFilling.has(rec.id)) return;
+    const amount = ccKautionStartSoll({ current: _rntKautionSollInfo(rec), staffelSoll: _rntStaffelStartSoll(rec),
+      mietbeginn: rec.mietbeginn, received: _rntKaution[rec.id]?.received });
+    if (!(amount > 0)) return;
+    _rntSollFilling.add(rec.id);
+    rec.kaution_soll = amount;
+    ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ kaution_soll: amount }).eq('id', rec.id).is('kaution_soll', null))
+      .then(({ error }) => { if (error) { rec.kaution_soll = null; _rntSollFilling.delete(rec.id); console.warn('[rnt-tenants] kaution soll:', error.message); } });
+  });
+}
+
+/* Contract generators: the active tenant's fixed Kaution Soll (or null) */
+function rntFixedKautionSoll(kind, id) {
+  const src = _rntLoadedOnce ? _rntRecords : _rntActiveRecs;
+  const col = kind === 'apt' ? 'apartment_id' : 'parking_id';
+  const rec = (src || []).filter(r => r[col] === id && r.status === 'active')
+    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
+  const v = rec && rec.kaution_soll;
+  return v != null && v !== '' && Number(v) > 0 ? Number(v) : null;
+}
 
 
 function _rntToggleKautionOverride(el, inputId, hintId) {
@@ -854,6 +896,7 @@ async function _rntLoad() {
   });
   _rntLoadedOnce = true;
 
+  _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _rntRenderIfChanged();
 }
 
@@ -1182,17 +1225,9 @@ function _rntRentFormHTML(rid, type, unit, rec) {
     <div class="tn-rf-derived" id="rf-warm-${rid}">${warm !== '' ? _rntFmtEUR(warm) : '\u2014'}</div>
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
-    <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${rec?.id || ''}">${(() => { const i = _rntKautionSollInfo(rec); return i ? `Soll \u00b7 ${_rntFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
-      <label class="tn-kaut-ovr-sw" title="Override kaution">
-        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec?.kaution_soll != null ? 'checked' : ''}
-          onchange="_rntToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
-        <span class="tn-kaut-ovr-sw__t"></span>
-      </label>
-    </div>
-    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}"
-      value="${rec?.kaution_soll != null ? ksoll : ''}" placeholder="${ksoll}"
-      ${rec?.kaution_soll != null ? '' : 'disabled style="opacity:.4"'}/>
+    <span class="tn-flbl">Kaution Soll</span>
+    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
+    <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
     <span class="tn-rf-hint" style="margin:0">Frozen at move-out for former tenants.</span>
@@ -1215,17 +1250,9 @@ function _rntRentFormHTML(rid, type, unit, rec) {
     <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${miete}" placeholder="${liveP.miete ?? ''}"/>
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
-    <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${rec?.id || ''}">${(() => { const i = _rntKautionSollInfo(rec); return i ? `Soll \u00b7 ${_rntFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
-      <label class="tn-kaut-ovr-sw" title="Override kaution">
-        <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec?.kaution_soll != null ? 'checked' : ''}
-          onchange="_rntToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
-        <span class="tn-kaut-ovr-sw__t"></span>
-      </label>
-    </div>
-    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}"
-      value="${rec?.kaution_soll != null ? ksoll : ''}" placeholder="${ksoll}"
-      ${rec?.kaution_soll != null ? '' : 'disabled style="opacity:.4"'}/>
+    <span class="tn-flbl">Kaution Soll</span>
+    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
+    <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:flex-end">
     <button class="tn-btn tn-btn-sm" onclick="_rntToggleRentEdit('${rid}')">Cancel</button>
@@ -2331,17 +2358,10 @@ function _rntModalBodyHTML(rec, isApt) {
           <input data-mf="kaltmiete" type="number" data-cc-num="2" value="${dK ?? ''}"/></div>
         `}
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
-          <div class="tn-kaut-override-row">
-            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${tid}">${(() => { const i = _rntKautionSollInfo(rec); return i ? `Soll \u00b7 ${_rntFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
-            <label class="tn-kaut-ovr-sw">
-              <input type="checkbox" id="mkaut-ovr-${tid}" ${dKS != null ? 'checked' : ''}
-                onchange="_rntToggleKautionOverride(this,'mkaut-inp-${tid}','mkaut-hint-${tid}')"/>
-              <span class="tn-kaut-ovr-sw__t"></span>
-            </label>
-          </div>
+          <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
-            value="${dKS ?? ''}" placeholder="${soll ?? ''}"
-            ${dKS != null ? '' : 'disabled style="opacity:.4"'}/>
+            value="${dKS ?? soll ?? ''}" placeholder="${soll ?? ''}"/>
+          <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
         </div>
       </div>
     </div>
@@ -2582,7 +2602,9 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
     email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null, address_3: p.address_3 || null,
     kaltmiete:   p.kaltmiete   ?? (mietende ? liveKalt : null) ?? null,
     nebenkosten: isApt ? (p.nebenkosten ?? (mietende ? liveNK : null) ?? null) : null,
-    kaution_soll: p.kaution_soll ?? null,
+    // Kaution Soll is fixed at move-in: typed value, else calculated from the rent now
+    kaution_soll: p.kaution_soll ?? (_rntKautionSollInfo({ apartment_id: isApt ? unitId : null, parking_id: isApt ? null : unitId,
+      mietbeginn: p.mietbeginn, mietende }) || {}).amount ?? null,
   };
 
   const { data, error } = await sbL.from('rnt_tenant_records').insert(payload).select().single();
@@ -2661,7 +2683,7 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null, address_3: p.address_3 || null,
     kaltmiete:    p.kaltmiete   ?? null,
     nebenkosten:  isApt ? (p.nebenkosten ?? null) : null,
-    kaution_soll: p.kaution_soll ?? null,
+    kaution_soll: p.kaution_soll ?? rec?.kaution_soll ?? null,   // a profile save never wipes the fixed Soll
   };
 
   if (toFormer) {
@@ -2718,7 +2740,7 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   const nk    = isApt ? (parseFloat(document.getElementById('rf-nk-' + rid)?.value) || null) : null;
   const ksollOvr = document.getElementById('rf-ksoll-ovr-' + rid);
   const ksollInp = document.getElementById('rf-ksoll-' + rid);
-  const ksoll = (ksollOvr?.checked && ksollInp) ? (parseFloat(ksollInp.value) || null) : null;
+  const ksoll = ksollInp ? (parseFloat(ksollInp.value) || null) : (_rntRecords.find(r => r.id === tid)?.kaution_soll ?? null);
 
   // Optimistic: apply locally and refresh the summary bar immediately, persist in the background
   const rec = _rntRecords.find(r => r.id === tid);
@@ -3288,7 +3310,7 @@ function rntWarmTenants() {
   if (typeof sbL === 'undefined' || !sbL) return Promise.resolve();
   if (!_rntWarmPromise) {
     _rntWarmPromise = sbL.from('rnt_tenant_records')
-      .select('apartment_id,parking_id,status,mietbeginn,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3')
+      .select('apartment_id,parking_id,status,mietbeginn,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll')
       .eq('status', 'active')
       .then(({ data, error }) => {
         if (error) { console.warn('[rentals tenants] preload:', error.message); return; }

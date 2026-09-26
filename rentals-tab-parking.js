@@ -896,6 +896,7 @@ async function _pkOpenContract(type, pkId) {
   if (type === 'mietvertrag') {
     const _pkMvProfile = await _pkResolveTenantProfile(pkId);
     document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk, _pkMvProfile);
+    if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('pk-mv-kaution', rntFixedKautionSoll('pk', spot.id));
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
        <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;

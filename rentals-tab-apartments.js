@@ -2134,6 +2134,7 @@ async function _aptOpenContract(type, aptId) {
     const kzK = ccKaution(_aptKzKautionOpts(p));
     const _kzProfile = await _aptResolveTenantProfile(apt.id);
     body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, _kzProfile);
+    if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('apt-cm-kaution', rntFixedKautionSoll('apt', apt.id));   // tenant's fixed Kaution
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
 
     setTimeout(() => {
@@ -2203,6 +2204,7 @@ async function _aptOpenContract(type, aptId) {
 
     if (isGewerbe) {
       body.innerHTML = _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, _mvProfile);
+      if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('apt-gw-kaution', rntFixedKautionSoll('apt', apt.id));
       footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptGwPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
       setTimeout(() => {
         _aptGwInitInteractions();
@@ -2320,6 +2322,7 @@ async function _aptOpenContract(type, aptId) {
 
     } else {
     body.innerHTML = _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, _mvProfile);
+    if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('apt-mv-kaution', rntFixedKautionSoll('apt', apt.id));
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
     setTimeout(() => {
       document.getElementById('aptMvPdfBtn')?.addEventListener('click', async () => {
