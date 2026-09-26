@@ -359,7 +359,7 @@ button.tn-nkv-pill.done:active { opacity:.7; }
   border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold);
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; width:120px; }
-.tn-nkv-add-form input[type=number] { width:90px; }
+.tn-nkv-add-form input[type=number], .tn-nkv-add-form input[data-cc-num] { width:90px; }
 .tn-nkv-verlauf-btn { font-size:10px; color:var(--cc-stone);
   text-decoration:underline; text-underline-offset:2px;
   background:none; border:none; cursor:pointer; font-family:inherit;
@@ -612,7 +612,7 @@ function _rntFullTenantNames(rec) {
 
 function _rntFmtEUR(n) {
   const v = Number(n) || 0;
-  return v.toLocaleString('de-DE', { minimumFractionDigits:0, maximumFractionDigits:2 }) + '\u00a0\u20ac';
+  return v.toLocaleString('de-DE', { minimumFractionDigits:2, maximumFractionDigits:2 }) + '\u00a0\u20ac';
 }
 
 function _rntFmtDate(d) {
@@ -1142,12 +1142,12 @@ function _rntRentFormHTML(rid, type, unit, rec) {
 <div class="tn-rent-form" id="rform-${rid}" style="display:none">
   <div class="tn-rf">
     <span class="tn-flbl">Kaltmiete \u20ac/mo</span>
-    <input type="number" id="rf-kalt-${rid}" value="${kalt}" placeholder="${liveP.kaltmiete ?? ''}"
+    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${liveP.kaltmiete ?? ''}"
       oninput="_rntUpdateWarm('${rid}')"/>
   </div>
   <div class="tn-rf">
     <span class="tn-flbl">Nebenkosten \u20ac/mo</span>
-    <input type="number" id="rf-nk-${rid}" value="${nk}" placeholder="${liveP.nebenkosten ?? ''}"
+    <input type="number" data-cc-num="2" id="rf-nk-${rid}" value="${nk}" placeholder="${liveP.nebenkosten ?? ''}"
       oninput="_rntUpdateWarm('${rid}')"/>
   </div>
   <div class="tn-rf">
@@ -1163,7 +1163,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
         <span class="tn-kaut-ovr-sw__t"></span>
       </label>
     </div>
-    <input type="number" id="rf-ksoll-${rid}"
+    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}"
       value="${rec?.kaution_soll != null ? ksoll : ''}" placeholder="${ksoll}"
       ${rec?.kaution_soll != null ? '' : 'disabled style="opacity:.4"'}/>
   </div>
@@ -1185,7 +1185,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
 <div class="tn-rent-form" id="rform-${rid}" style="display:none">
   <div class="tn-rf">
     <span class="tn-flbl">Parkmiete \u20ac/mo</span>
-    <input type="number" id="rf-kalt-${rid}" value="${miete}" placeholder="${liveP.miete ?? ''}"/>
+    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${miete}" placeholder="${liveP.miete ?? ''}"/>
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <div class="tn-kaut-override-row">
@@ -1196,7 +1196,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
         <span class="tn-kaut-ovr-sw__t"></span>
       </label>
     </div>
-    <input type="number" id="rf-ksoll-${rid}"
+    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}"
       value="${rec?.kaution_soll != null ? ksoll : ''}" placeholder="${ksoll}"
       ${rec?.kaution_soll != null ? '' : 'disabled style="opacity:.4"'}/>
   </div>
@@ -1278,7 +1278,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <div class="tn-field"><span class="tn-flbl">Name</span>
         <input data-f="name_2" type="text" value="${_rntEsc(fullName2)}" placeholder="Full name"/></div>
       <div class="tn-field"><span class="tn-flbl">Birthday</span>
-        <input data-f="birthday_2" type="text" value="${_rntEsc(rec ? rec.birthday_2||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+        <input data-f="birthday_2" type="text" value="${_rntEsc(rec ? rec.birthday_2||'' : '')}" placeholder="TT.MM.JJJJ"/></div>
       <div class="tn-field"><span class="tn-flbl">Email</span>
         <input data-f="email_2" type="email" value="${_rntEsc(rec ? rec.email_2||'' : '')}" placeholder="mieter@mail.de"/></div>
       <div class="tn-field"><span class="tn-flbl">Phone</span>
@@ -1298,7 +1298,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
       <div class="tn-field"><span class="tn-flbl">Name</span>
         <input data-f="name_3" type="text" value="${_rntEsc(fullName3)}" placeholder="Full name"/></div>
       <div class="tn-field"><span class="tn-flbl">Birthday</span>
-        <input data-f="birthday_3" type="text" value="${_rntEsc(rec ? rec.birthday_3||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+        <input data-f="birthday_3" type="text" value="${_rntEsc(rec ? rec.birthday_3||'' : '')}" placeholder="TT.MM.JJJJ"/></div>
       <div class="tn-field"><span class="tn-flbl">Email</span>
         <input data-f="email_3" type="email" value="${_rntEsc(rec ? rec.email_3||'' : '')}" placeholder="mieter@mail.de"/></div>
       <div class="tn-field"><span class="tn-flbl">Phone</span>
@@ -1320,7 +1320,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     <div class="tn-field"><span class="tn-flbl">Name</span>
       <input data-f="name" type="text" value="${_rntEsc(fullName)}" placeholder="Full name"/></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <input data-f="birthday" type="text" value="${_rntEsc(rec ? rec.birthday||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+      <input data-f="birthday" type="text" value="${_rntEsc(rec ? rec.birthday||'' : '')}" placeholder="TT.MM.JJJJ"/></div>
     <div class="tn-field"><span class="tn-flbl">Email</span>
       <input data-f="email" type="email" value="${email}" placeholder="mieter@mail.de"/></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
@@ -1333,9 +1333,9 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     <div class="tn-field-full" style="grid-column:1/-1;border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
       <div class="tn-fg">
         <div class="tn-field"><span class="tn-flbl">Move in</span>
-          <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="DD.MM.YYYY"/></div>
+          <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move out</span>
-          <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 becomes Former when reached"/></div>
+          <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ \u2014 becomes Former when reached"/></div>
       </div>
     </div>
   </div>`;
@@ -1448,12 +1448,12 @@ function _rntKautionHTML(rid, tid, ctx, rec) {
     <div class="tn-kaut-grid">
       <div class="tn-kc">
         <div class="tn-kc-lbl">Received</div>
-        <input class="tn-kc-input" type="number" id="kr-${pfx}" value="${recv}" ${dis}
+        <input class="tn-kc-input" type="number" data-cc-num="2" id="kr-${pfx}" value="${recv}" ${dis}
           oninput="_rntCalcKaution('${pfx}','${tid||''}')"/>
       </div>
       <div class="tn-kc">
         <div class="tn-kc-lbl">Returned</div>
-        <input class="tn-kc-input" type="number" id="kret-${pfx}" value="${ret}" ${dis}
+        <input class="tn-kc-input" type="number" data-cc-num="2" id="kret-${pfx}" value="${ret}" ${dis}
           oninput="_rntCalcKaution('${pfx}','${tid||''}')"/>
       </div>
       <div class="tn-kc">
@@ -1676,19 +1676,19 @@ function _rntNKVorausModalOutside(e) { if (e.target === document.getElementById(
 function _rntNKVorausAdd(aptId, rid, ctx) {
   const sec = document.getElementById(`nkv-sec-${rid}`);
   if (!sec) return;
-  if (sec.querySelector('.tn-nkv-add-form')) { sec.querySelector('input[type=date]')?.focus(); return; }
+  if (sec.querySelector('.tn-nkv-add-form')) { sec.querySelector('input[type=date], input.cc-date')?.focus(); return; }
   const body = sec.querySelector('.tn-sec-body');
   const form = document.createElement('div');
   form.className = 'tn-nkv-add-form';
   form.innerHTML = `
     <input type="date" id="nkv-add-date-${rid}" style="width:130px"/>
-    <input type="number" id="nkv-add-amount-${rid}" placeholder="Betrag €" step="0.01" min="0"/>
+    <input type="number" data-cc-num="2" id="nkv-add-amount-${rid}" placeholder="Betrag €" step="0.01" min="0"/>
     <button class="tn-btn tn-btn-primary" style="height:30px;font-size:11px;padding:0 10px"
       onclick="_rntNKVorausConfirmAdd('${aptId}','${rid}')"><i class="ti ti-check"></i></button>
     <button class="tn-btn tn-btn-sm" style="height:30px;font-size:11px;padding:0 10px"
       onclick="this.closest('.tn-nkv-add-form').remove()"><i class="ti ti-x"></i></button>`;
   body.appendChild(form);
-  form.querySelector('input[type=date]').focus();
+  form.querySelector('input[type=date], input.cc-date').focus();
 }
 
 async function _rntNKVorausConfirmAdd__run(aptId, rid) {
@@ -1709,7 +1709,7 @@ async function _rntNKVorausConfirmAdd__run(aptId, rid) {
 
 async function _rntNKVorausMarkNotified(id, aptId, rid) {
   if (!sbL) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = ccTodayISO();
   const { error } = await sbL.from('rnt_nk_vorauszahlung_history')
     .update({ tenant_notified: true, notified_date: today }).eq('id', id);
   if (error) { console.warn('[rnt-tenants] nkv notified:', error.message); return; }
@@ -1720,7 +1720,7 @@ async function _rntNKVorausMarkNotified(id, aptId, rid) {
 
 async function _rntNKVorausMarkAdjusted(id, aptId, rid) {
   if (!sbL) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = ccTodayISO();
   const { error } = await sbL.from('rnt_nk_vorauszahlung_history')
     .update({ tenant_adjusted: true, adjusted_date: today }).eq('id', id);
   if (error) { console.warn('[rnt-tenants] nkv adjusted:', error.message); return; }
@@ -1822,12 +1822,12 @@ function _rntStaffelOpenAdd(aptId, rid) {
       <div class="tn-fg" style="margin-bottom:14px">
         <div class="tn-field tn-field-full">
           <span class="tn-flbl">Gültig ab</span>
-          <input type="date" id="sf-add-date" value="${new Date(Date.now()+31536e6).toISOString().slice(0,10)}"/>
+          <input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/>
           <span class="tn-flbl" style="font-weight:300;margin-top:2px">Datum, ab dem die neue Kaltmiete gilt</span>
         </div>
         <div class="tn-field tn-field-full">
           <span class="tn-flbl">Neue Kaltmiete (€)</span>
-          <input type="number" id="sf-add-amount" placeholder="z.B. 1250" step="0.01" min="0"/>
+          <input type="number" data-cc-num="2" id="sf-add-amount" placeholder="z.B. 1250" step="0.01" min="0"/>
           <span class="tn-flbl" style="font-weight:300;margin-top:2px">Betrag aus dem Staffelmietvertrag entnehmen</span>
         </div>
       </div>
@@ -1949,12 +1949,12 @@ function _rntPkStaffelOpenAdd(pkId, rid) {
       <div class="tn-fg" style="margin-bottom:14px">
         <div class="tn-field tn-field-full">
           <span class="tn-flbl">Gültig ab</span>
-          <input type="date" id="sf-add-date" value="${new Date(Date.now()+31536e6).toISOString().slice(0,10)}"/>
+          <input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/>
           <span class="tn-flbl" style="font-weight:300;margin-top:2px">Datum, ab dem die neue Kaltmiete gilt</span>
         </div>
         <div class="tn-field tn-field-full">
           <span class="tn-flbl">Neue Kaltmiete (€)</span>
-          <input type="number" id="sf-add-amount" placeholder="z.B. 110" step="0.01" min="0"/>
+          <input type="number" data-cc-num="2" id="sf-add-amount" placeholder="z.B. 110" step="0.01" min="0"/>
           <span class="tn-flbl" style="font-weight:300;margin-top:2px">Betrag aus dem Staffelmietvertrag entnehmen</span>
         </div>
       </div>
@@ -2077,7 +2077,7 @@ function _rntStaffelToggleAdjusted(id, unitId) {
   const prev = { on: !!entry.tenant_adjusted, date: entry.adjusted_date ?? null };
   const on   = !prev.on;
   entry.tenant_adjusted = on;
-  entry.adjusted_date   = on ? new Date().toISOString().slice(0, 10) : null;
+  entry.adjusted_date   = on ? ccTodayISO() : null;
   _rntStaffelRefreshUI(id, unitId);   // instant
 
   const payload = { tenant_adjusted: on, adjusted_date: entry.adjusted_date };
@@ -2318,7 +2318,7 @@ function _rntModalBodyHTML(rec, isApt) {
         <div class="tn-field"><span class="tn-flbl">Name</span>
           <input data-mf="name" type="text" value="${_rntEsc(full)}" placeholder="Full name"/></div>
         <div class="tn-field"><span class="tn-flbl">Birthday</span>
-          <input data-mf="birthday" type="text" value="${_rntEsc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
+          <input data-mf="birthday" type="text" value="${_rntEsc(rec.birthday||'')}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Email</span>
           <input data-mf="email" type="email" value="${_rntEsc(rec.email||'')}"/></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
@@ -2326,15 +2326,15 @@ function _rntModalBodyHTML(rec, isApt) {
         <div class="tn-field"><span class="tn-flbl">Move in</span>
           <input data-mf="mietbeginn" type="text" value="${_rntFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move out</span>
-          <input data-mf="mietende" type="text" value="${_rntFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY"/></div>
+          <input data-mf="mietende" type="text" value="${_rntFmtDate(rec.mietende)}" placeholder="TT.MM.JJJJ"/></div>
         ${isApt ? `
         <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
-          <input data-mf="kaltmiete" type="number" value="${dK ?? ''}"/></div>
+          <input data-mf="kaltmiete" type="number" data-cc-num="2" value="${dK ?? ''}"/></div>
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
-          <input data-mf="nebenkosten" type="number" value="${dNK ?? ''}"/></div>
+          <input data-mf="nebenkosten" type="number" data-cc-num="2" value="${dNK ?? ''}"/></div>
         ` : `
         <div class="tn-field"><span class="tn-flbl">Parkmiete</span>
-          <input data-mf="kaltmiete" type="number" value="${dK ?? ''}"/></div>
+          <input data-mf="kaltmiete" type="number" data-cc-num="2" value="${dK ?? ''}"/></div>
         `}
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <div class="tn-kaut-override-row">
@@ -2345,7 +2345,7 @@ function _rntModalBodyHTML(rec, isApt) {
               <span class="tn-kaut-ovr-sw__t"></span>
             </label>
           </div>
-          <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number"
+          <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
             value="${dKS ?? ''}" placeholder="${soll ?? ''}"
             ${dKS != null ? '' : 'disabled style="opacity:.4"'}/>
         </div>

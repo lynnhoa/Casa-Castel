@@ -226,7 +226,7 @@ async function ccTplRenew(kind, unitId, type) {
   const p = ad.prefix(type, unitId);
 
   // 1) New contract period: clear every date field (start, end, signing, Sonderkündigung…)
-  body.querySelectorAll('input[type=date]').forEach(el => {
+  body.querySelectorAll('input[type=date], input.cc-date').forEach(el => {
     el.value = '';
     el.dispatchEvent(new Event('input',  { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));

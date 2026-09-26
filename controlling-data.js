@@ -253,11 +253,11 @@ async function ctlUpdateCategoryDefault(cat_id, default_amount) {
 
 /* ── Format helpers ─────────────────────────────────────────── */
 const ctlEur = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
-const ctlEur0 = v => Math.round(Number(v) || 0).toLocaleString('de-DE') + '\u202f€';
-/* Signed variant for cashflow: +170 €, −340 €, 0 € */
+const ctlEur0 = v => ctlEur(v);   // always with cents: 1.200,00 €
+/* Signed variant for cashflow: +170,00 €, −340,00 €, 0,00 € */
 const ctlEur0Signed = v => {
-  const n = Math.round(Number(v) || 0);
-  const s = Math.abs(n).toLocaleString('de-DE') + '\u202f€';
+  const n = Math.round((Number(v) || 0) * 100) / 100;
+  const s = Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
   if (n > 0) return '+\u202f' + s;
   if (n < 0) return '\u2212\u202f' + s;   // real minus sign
   return s;

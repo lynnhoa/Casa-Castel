@@ -501,7 +501,7 @@ document.getElementById('tab-apartments').innerHTML = `
 .apt-hg-pill i { font-size:10px; }
 .apt-hg-add-form { display:flex; align-items:center; gap:6px; padding-top:8px; border-top:var(--cc-border); margin-top:4px; flex-wrap:wrap; padding-bottom:10px; }
 .apt-hg-add-form input { font-size:12px; padding:5px 8px; border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold); background:var(--cc-white); color:var(--cc-charcoal); font-family:inherit; outline:none; width:120px; }
-.apt-hg-add-form input[type=number] { width:90px; }
+.apt-hg-add-form input[type=number], .apt-hg-add-form input[data-cc-num] { width:90px; }
 .apt-hg-status-pill { display:inline-flex; align-items:center; gap:3px; font-size:9px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:3px 8px; border-radius:var(--cc-r-pill); background:#FAEEDA; color:#633806; border:.5px solid #EF9F27; }
 /* Mieter prefill pill toggle (shared with Casa Castel pattern) */
 .ub-mieter-pill { position:relative; width:44px; height:26px; background:var(--cc-ink); border-radius:13px; cursor:pointer; transition:background .25s; flex-shrink:0; }
@@ -524,7 +524,7 @@ document.getElementById('tab-apartments').innerHTML = `
    date fields never grow wider than their half. */
 .rm-field-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .rm-field-row > .rm-field { min-width:0; }
-.rm-field-row .rm-input, .rm-input[type=date] { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
+.rm-field-row .rm-input, .rm-input[type=date], .rm-input.cc-date { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
 /* Name and PLZ / Ort: one per row (long names / places were cut) */
 .apt-field-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .apt-field-row > .apt-field { min-width:0; }
@@ -777,8 +777,7 @@ function aptFmtEUR(n) {
 function aptFmtEURCompact(n) {
   const num = Number(n);
   if (!num && num !== 0) return '—';
-  // No decimals if whole number
-  return num.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €';
+  return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';   // 1.200,00 €
 }
 
 
@@ -1010,7 +1009,7 @@ function _aptCardHTML(a) {
         </div>
         <div class="apt-field"><div class="apt-field__label">Unterzeichnungsort</div><input class="apt-input" data-f="unterschrift_ort" value="${aptEsc(a.unterschrift_ort||'')}" placeholder="z.B. Wiesbaden"/></div>
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Size m²</div><input class="apt-input" type="number" data-f="flaeche_m2" value="${a.flaeche_m2||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Size m²</div><input class="apt-input" type="number" data-cc-num="auto" data-f="flaeche_m2" value="${a.flaeche_m2||''}"/></div>
           <div class="apt-field"><div class="apt-field__label">Rooms</div>
             <select class="apt-input" data-f="zimmer_type">
               ${['1 Zimmer','2 Zimmer','3 Zimmer','4 Zimmer','Gewerbefläche'].map(t =>
@@ -1059,21 +1058,21 @@ function _aptCardHTML(a) {
       <div class="apt-sec-edit" style="display:none">
         <div class="apt-stitle" style="margin-top:2px">Mietvertrag</div>
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-f="kaltmiete" value="${p.kaltmiete||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-f="nk_pauschale" value="${p.nk_pauschale||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaltmiete" value="${p.kaltmiete||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="nk_pauschale" value="${p.nk_pauschale||''}"/></div>
         </div>
         <div class="apt-toggle-row">
           <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${p.kaution_override?'checked':''} onchange="_aptToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${p.kaution_override?'':'display:none'}">
-          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${p.kaution_default||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${p.kaution_default||''}"/></div>
         </div>
         ${a.zimmer_type !== 'Gewerbefläche' ? `
         <div class="apt-stitle" style="margin-top:10px">Kurzzeit</div>
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-f="kurzzeit_kaltmiete" value="${p.kurzzeit_kaltmiete||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-f="kurzzeit_nk" value="${p.kurzzeit_nk||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kurzzeit_kaltmiete" value="${p.kurzzeit_kaltmiete||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kurzzeit_nk" value="${p.kurzzeit_nk||''}"/></div>
         </div>` : ''}
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('miete','${a.id}')">Cancel</button>
@@ -1109,8 +1108,8 @@ function _aptCardHTML(a) {
           <div class="apt-field"><div class="apt-field__label">Telefon</div><input class="apt-input" type="tel" data-vf="hv_telefon" value="${aptEsc(v.hv_telefon||'')}"/></div>
         </div>
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Hausgeld (€/mtl)</div><input class="apt-input" type="number" data-vf="hausgeld_mtl" value="${v.hausgeld_mtl||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Hausgeld (€/mtl)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="hausgeld_mtl" value="${v.hausgeld_mtl||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
         </div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">Abrechnung von</div><input class="apt-input" data-vf="abrechnung_von" value="${aptEsc(v.abrechnung_von||'')}" placeholder="01.01."/></div>
@@ -1359,7 +1358,7 @@ async function _aptSaveIdentity(aptId) {
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
-    data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+    data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
   });
 
   // Direct save: card first, database in the background (direct-save.js)
@@ -1414,7 +1413,7 @@ async function _aptSaveMiete(aptId) {
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
     if (inp.type === 'checkbox') data[k] = inp.checked;
-    else if (inp.type === 'number') data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
+    else if (ccIsNumInput(inp)) data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
     else data[k] = inp.value;
   });
   _aptDirectSaveRow(aptId, 'pricing', 'rentals_pricing', data);
@@ -1428,7 +1427,7 @@ async function _aptSaveVerwaltung(aptId) {
   const data = {};
   el.querySelectorAll('[data-vf]').forEach(inp => {
     const k = inp.dataset.vf;
-    data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+    data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
   });
   _aptDirectSaveRow(aptId, 'verwaltung', 'rentals_verwaltung', data);
 }
@@ -1675,14 +1674,14 @@ function _aptHGAdd(aptId) {
   const sec = document.getElementById(`apt-hg-sec-${aptId}`);
   if (!sec) return;
   const existing = sec.querySelector('.apt-hg-add-form');
-  if (existing) { existing.querySelector('input[type=date]')?.focus(); return; }
+  if (existing) { existing.querySelector('input[type=date], input.cc-date')?.focus(); return; }
 
   const body = sec.querySelector('.apt-hg-body');
   const form = document.createElement('div');
   form.className = 'apt-hg-add-form';
   form.innerHTML = `
     <input type="date" id="apt-hg-date-${aptId}" />
-    <input type="number" id="apt-hg-amount-${aptId}" placeholder="Amount €" step="0.01" min="0" />
+    <input type="number" data-cc-num="2" id="apt-hg-amount-${aptId}" placeholder="Amount €" step="0.01" min="0" />
     <button class="apt-btn--save" style="height:30px;font-size:11px;padding:0 10px"
       onclick="_aptHGConfirmAdd('${aptId}')">
       <i class="ti ti-check" aria-hidden="true"></i>
@@ -1692,7 +1691,7 @@ function _aptHGAdd(aptId) {
       <i class="ti ti-x" aria-hidden="true"></i>
     </button>`;
   body.appendChild(form);
-  form.querySelector('input[type=date]').focus();
+  form.querySelector('input[type=date], input.cc-date').focus();
 }
 
 async function _aptHGConfirmAdd__run(aptId) {
@@ -1734,7 +1733,7 @@ function _aptHGToggleNoted(id, aptId) {
   const prev = { on: !!entry.weg_notified, date: entry.notified_date ?? null };
   const on   = !prev.on;
   entry.weg_notified  = on;
-  entry.notified_date = on ? new Date().toISOString().slice(0, 10) : null;
+  entry.notified_date = on ? ccTodayISO() : null;
   _aptHGRefreshUI(id, aptId);   // instant
 
   const payload = { weg_notified: on, notified_date: entry.notified_date };
@@ -2468,7 +2467,7 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
         <div class="rm-kaution-lbl">Kaution</div>
         <div class="rm-kaution-rule" id="apt-cm-kaution-rule">${aptEsc(kzK.rule)}</div>
       </div>
-      <input class="rm-input" id="apt-cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kzK.amount}" placeholder="€" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
+      <input class="rm-input" id="apt-cm-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kzK.amount}" placeholder="€" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
     </div>
     <div style="margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
@@ -2516,7 +2515,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
         <div class="rm-kaution-rule">${ccKautionOverride(p) !== null ? 'Individuelle Kaution (Karte)' : '3 × Kaltmiete'}</div>
       </div>
-      <input class="rm-input" id="apt-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
+      <input class="rm-input" id="apt-mv-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
     </div>
     <div style="margin-bottom:20px">
       <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
@@ -2686,7 +2685,7 @@ function _aptMvAddStaffel(force) {
   row.className = 'apt-mv-staffel-row';
   row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
   row.innerHTML = `
-    <input class="rm-input apt-mv-staffel-betrag" type="number" step="0.01"
+    <input class="rm-input apt-mv-staffel-betrag" type="number" data-cc-num="2" step="0.01"
       placeholder="${miete ? (miete + (count+1)*10).toFixed(2) : (800 + count*10) + '.00'}"
       style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
     <span style="font-size:11px;color:var(--cc-stone);">€ ab</span>
@@ -2833,11 +2832,11 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
       <div class="rm-field-row">
         <div class="rm-field">
           <label>Neue Kaltmiete</label>
-          <input class="rm-input" id="apt-gw-neue-kalt" type="number" step="0.01" placeholder="950,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcVerl('kalt')"/>
+          <input class="rm-input" id="apt-gw-neue-kalt" type="number" data-cc-num="2" step="0.01" placeholder="950,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcVerl('kalt')"/>
         </div>
         <div class="rm-field">
           <label>oder Erhöhung %</label>
-          <input class="rm-input" id="apt-gw-erhöhung-pct" type="number" step="0.1" placeholder="5" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcVerl('pct')"/>
+          <input class="rm-input" id="apt-gw-erhöhung-pct" type="number" data-cc-num="auto" step="0.1" placeholder="5" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcVerl('pct')"/>
         </div>
       </div>
       <div id="apt-gw-neue-kalt-display" style="font-size:12px;color:var(--cc-taupe);margin-bottom:12px;display:none;">
@@ -2887,11 +2886,11 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div class="rm-field-row">
       <div class="rm-field">
         <label>Kaltmiete</label>
-        <input class="rm-input" id="apt-gw-kalt" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcGesamt()"/>
+        <input class="rm-input" id="apt-gw-kalt" type="number" data-cc-num="2" step="0.01" value="${kalt||''}" placeholder="800,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcGesamt()"/>
       </div>
       <div class="rm-field">
         <label>Nebenkosten VZ</label>
-        <input class="rm-input" id="apt-gw-nk" type="number" step="0.01" value="${nk||''}" placeholder="150,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcGesamt()"/>
+        <input class="rm-input" id="apt-gw-nk" type="number" data-cc-num="2" step="0.01" value="${nk||''}" placeholder="150,00" style="-webkit-appearance:textfield;appearance:textfield;" oninput="_aptGwCalcGesamt()"/>
       </div>
     </div>
     <div id="apt-gw-gesamt-display" style="font-size:12px;color:var(--cc-taupe);margin-bottom:12px;">
@@ -2899,7 +2898,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
     </div>
     <div class="rm-field">
       <label>Kaution</label>
-      <input class="rm-input" id="apt-gw-kaution" type="number" step="0.01" value="${kaution || ''}" placeholder="3 × Kaltmiete" data-auto="1" oninput="this.removeAttribute('data-auto')" style="-webkit-appearance:textfield;appearance:textfield;"/>
+      <input class="rm-input" id="apt-gw-kaution" type="number" data-cc-num="2" step="0.01" value="${kaution || ''}" placeholder="3 × Kaltmiete" data-auto="1" oninput="this.removeAttribute('data-auto')" style="-webkit-appearance:textfield;appearance:textfield;"/>
     </div>
     <div style="margin-bottom:16px;">
       <div class="rm-kaution-lbl" style="margin-bottom:6px;">Kaution Fälligkeit</div>
@@ -3104,7 +3103,7 @@ function _aptGwAddStaffel(force) {
   row.className = 'apt-gw-staffel-row';
   row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
   row.innerHTML = `
-    <input class="rm-input apt-gw-staffel-betrag" type="number" step="0.01"
+    <input class="rm-input apt-gw-staffel-betrag" type="number" data-cc-num="2" step="0.01"
       placeholder="${850 + count*50}.00"
       style="width:120px;-webkit-appearance:textfield;appearance:textfield;"
       oninput="_aptGwCalcGesamt()"/>
@@ -3407,7 +3406,7 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
       const data = { vacant: false, active: true, sort_order: appApartments.length };
       identitySection.querySelectorAll('[data-f]').forEach(inp => {
         const k = inp.dataset.f;
-        data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+        data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
       });
 
       saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;

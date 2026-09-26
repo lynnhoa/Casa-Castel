@@ -129,17 +129,17 @@
       </div>
       <div class="e-field"><label class="e-lbl">Address</label><input class="cc-input" id="a-addr" placeholder="Street No., PLZ City"/></div>
       <div class="e-grid">
-        <div class="e-field"><label class="e-lbl">Size m²</label><input class="cc-input" id="a-m2" type="number" placeholder="32"/></div>
-        <div class="e-field"><label class="e-lbl">Purchase date</label><input class="cc-input" id="a-kaufdatum" placeholder="2026"/></div>
+        <div class="e-field"><label class="e-lbl">Size m²</label><input class="cc-input" id="a-m2" type="number" data-cc-num="auto" placeholder="32"/></div>
+        <div class="e-field"><label class="e-lbl">Purchase date</label><input class="cc-input" id="a-kaufdatum" placeholder="TT.MM.JJJJ"/></div>
       </div>
       <span class="e-sec">Purchase</span>
       <div class="e-grid">
-        <div class="e-field"><label class="e-lbl">Purchase price €</label><input class="cc-input" id="a-kaufpreis" type="number"/></div>
-        <div class="e-field"><label class="e-lbl">Equity €</label><input class="cc-input" id="a-ek" type="number"/></div>
+        <div class="e-field"><label class="e-lbl">Purchase price €</label><input class="cc-input" id="a-kaufpreis" type="number" data-cc-num="2"/></div>
+        <div class="e-field"><label class="e-lbl">Equity €</label><input class="cc-input" id="a-ek" type="number" data-cc-num="2"/></div>
       </div>
       <div class="e-grid">
-        <div class="e-field"><label class="e-lbl">Acquisition costs €</label><input class="cc-input" id="a-nebenkosten" type="number"/></div>
-        <div class="e-field"><label class="e-lbl">Est. market value €</label><input class="cc-input" id="a-marktwert" type="number"/></div>
+        <div class="e-field"><label class="e-lbl">Acquisition costs €</label><input class="cc-input" id="a-nebenkosten" type="number" data-cc-num="2"/></div>
+        <div class="e-field"><label class="e-lbl">Est. market value €</label><input class="cc-input" id="a-marktwert" type="number" data-cc-num="2"/></div>
       </div>
       <span class="e-sec">Financing</span>
       <div class="e-grid">
@@ -147,12 +147,12 @@
         <div class="e-field"><label class="e-lbl">Loan number</label><input class="cc-input" id="a-darlehensnr"/></div>
       </div>
       <div class="e-grid">
-        <div class="e-field"><label class="e-lbl">Loan amount €</label><input class="cc-input" id="a-darlehen" type="number"/></div>
-        <div class="e-field"><label class="e-lbl">Remaining debt €</label><input class="cc-input" id="a-restschuld" type="number"/></div>
+        <div class="e-field"><label class="e-lbl">Loan amount €</label><input class="cc-input" id="a-darlehen" type="number" data-cc-num="2"/></div>
+        <div class="e-field"><label class="e-lbl">Remaining debt €</label><input class="cc-input" id="a-restschuld" type="number" data-cc-num="2"/></div>
       </div>
       <div class="e-grid">
-        <div class="e-field"><label class="e-lbl">Paid off €</label><input class="cc-input" id="a-abbezahlt" type="number" placeholder="0"/></div>
-        <div class="e-field"><label class="e-lbl">Interest rate %</label><input class="cc-input" id="a-zinssatz" type="number" step="0.01"/></div>
+        <div class="e-field"><label class="e-lbl">Paid off €</label><input class="cc-input" id="a-abbezahlt" type="number" data-cc-num="2" placeholder="0"/></div>
+        <div class="e-field"><label class="e-lbl">Interest rate %</label><input class="cc-input" id="a-zinssatz" type="number" data-cc-num="auto" step="0.01"/></div>
       </div>
       <div class="e-grid">
         <div class="e-field"><label class="e-lbl">Fixed rate until</label><input class="cc-input" id="a-zb" placeholder="bis 2036"/></div>
@@ -161,11 +161,11 @@
         </div>
       </div>
       <div class="e-grid">
-        <div class="e-field"><label class="e-lbl">Monthly payment €</label><input class="cc-input" id="a-rate" type="number"/></div>
-        <div class="e-field"><label class="e-lbl">Repayment €/mo</label><input class="cc-input" id="a-tilgung" type="number"/></div>
+        <div class="e-field"><label class="e-lbl">Monthly payment €</label><input class="cc-input" id="a-rate" type="number" data-cc-num="2"/></div>
+        <div class="e-field"><label class="e-lbl">Repayment €/mo</label><input class="cc-input" id="a-tilgung" type="number" data-cc-num="2"/></div>
       </div>
       <div class="e-grid">
-        <div class="e-field"><label class="e-lbl">Interest €/mo</label><input class="cc-input" id="a-zinsen" type="number"/></div>
+        <div class="e-field"><label class="e-lbl">Interest €/mo</label><input class="cc-input" id="a-zinsen" type="number" data-cc-num="2"/></div>
         <div class="e-field"><label class="e-lbl">Savings contract</label>
           <select class="cc-select" id="a-sparv"><option value="false">No</option><option value="true">Yes</option></select>
         </div>
@@ -239,7 +239,7 @@ async function getNextSortOrder() {
 window._props = [];
 const n   = v => Number(v) || 0;
 const de  = v => n(v).toLocaleString('de-DE');
-const eur = v => de(v) + '\u202f€';
+const eur = v => n(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';   // 1.200,00 €
 function mio(v) {
   v = n(v);
   if (v >= 1000000) return (Math.round(v/10000)/100).toFixed(2).replace('.',',') + '\u202fMio\u202f€';
@@ -320,6 +320,7 @@ async function boot() {
 boot();
 </script>
 
+<script src="cc-german-format.js"></script>
 <script src="properties-dashboard.js"></script>
 <script src="properties-portfolio.js"></script>
 <!-- Profile panel (same one as Rentals). Reuses this page's Supabase client

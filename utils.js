@@ -21,10 +21,11 @@ function roomInitials(r) {
 }
 
 /* ── DATE / TIME ────────────────────────────────────────── */
+/* Chat / activity time → "26.09. · 14:30" (German time; helper in cc-german-format.js) */
 function fmtTs(ts) {
-  return new Date(ts).toLocaleString('en-GB', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-  });
+  if (typeof ccFmtTs === 'function') return ccFmtTs(ts);
+  const d = new Date(ts), p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '. · ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
 function fmtDate(d) {

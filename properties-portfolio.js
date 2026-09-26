@@ -42,7 +42,7 @@ function renderPortfolio() {
       ? eur(p.rate)
       : `<span style="color:var(--cc-stone)">—</span>`;
     const sd = n(p.rate) > 0
-      ? `<span class="t">${de(p.tilgung)}\u202f€</span> / <span class="z">${de(p.zinsen)}\u202f€</span>`
+      ? `<span class="t">${eur(p.tilgung)}</span> / <span class="z">${eur(p.zinsen)}</span>`
       : `<span style="color:var(--cc-stone)">no payment</span>`;
 
     return `
@@ -196,7 +196,7 @@ function renderView(p) {
     <div class="mod-row"><span class="mod-key">Purchase price</span><span class="mod-val">${eur(p.kaufpreis)}</span></div>
     <div class="mod-row"><span class="mod-key">Acquisition costs</span><span class="mod-val">${eur(p.nebenkosten)}</span></div>
     <div class="mod-row"><span class="mod-key">Equity</span><span class="mod-val">${eur(p.ek)}</span></div>
-    <div class="mod-row"><span class="mod-key">Purchase date</span><span class="mod-val">${p.kaufdatum}</span></div>
+    <div class="mod-row"><span class="mod-key">Purchase date</span><span class="mod-val">${ccFmtDate(p.kaufdatum)}</span></div>
     <div class="mod-row"><span class="mod-key">Est. market value</span><span class="mod-val mod-val--gold">${eur(p.marktwert)}</span></div>`;
 }
 
@@ -224,17 +224,17 @@ function renderEditForm(p) {
     </div>
     <div class="e-field"><label class="e-lbl">Address</label><input class="cc-input" id="e-addr" value="${p.addr}"/></div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Size m²</label><input class="cc-input" id="e-m2" type="number" value="${p.m2}"/></div>
-      <div class="e-field"><label class="e-lbl">Purchase date</label><input class="cc-input" id="e-kaufdatum" value="${p.kaufdatum}"/></div>
+      <div class="e-field"><label class="e-lbl">Size m²</label><input class="cc-input" id="e-m2" type="number" data-cc-num="auto" value="${p.m2}"/></div>
+      <div class="e-field"><label class="e-lbl">Purchase date</label><input class="cc-input" id="e-kaufdatum" value="${ccFmtDate(p.kaufdatum)}" placeholder="TT.MM.JJJJ"/></div>
     </div>
     <span class="e-sec">Purchase</span>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Purchase price €</label><input class="cc-input" id="e-kaufpreis" type="number" value="${p.kaufpreis}"/></div>
-      <div class="e-field"><label class="e-lbl">Equity €</label><input class="cc-input" id="e-ek" type="number" value="${p.ek}"/></div>
+      <div class="e-field"><label class="e-lbl">Purchase price €</label><input class="cc-input" id="e-kaufpreis" type="number" data-cc-num="2" value="${p.kaufpreis}"/></div>
+      <div class="e-field"><label class="e-lbl">Equity €</label><input class="cc-input" id="e-ek" type="number" data-cc-num="2" value="${p.ek}"/></div>
     </div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Acquisition costs €</label><input class="cc-input" id="e-nebenkosten" type="number" value="${p.nebenkosten}"/></div>
-      <div class="e-field"><label class="e-lbl">Est. market value €</label><input class="cc-input" id="e-marktwert" type="number" value="${p.marktwert}"/></div>
+      <div class="e-field"><label class="e-lbl">Acquisition costs €</label><input class="cc-input" id="e-nebenkosten" type="number" data-cc-num="2" value="${p.nebenkosten}"/></div>
+      <div class="e-field"><label class="e-lbl">Est. market value €</label><input class="cc-input" id="e-marktwert" type="number" data-cc-num="2" value="${p.marktwert}"/></div>
     </div>
     <span class="e-sec">Financing</span>
     <div class="e-grid">
@@ -242,12 +242,12 @@ function renderEditForm(p) {
       <div class="e-field"><label class="e-lbl">Loan number</label><input class="cc-input" id="e-darlehensnr" value="${p.darlehensnr}"/></div>
     </div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Loan amount €</label><input class="cc-input" id="e-darlehen" type="number" value="${p.darlehen}"/></div>
-      <div class="e-field"><label class="e-lbl">Remaining debt €</label><input class="cc-input" id="e-restschuld" type="number" value="${p.restschuld}"/></div>
+      <div class="e-field"><label class="e-lbl">Loan amount €</label><input class="cc-input" id="e-darlehen" type="number" data-cc-num="2" value="${p.darlehen}"/></div>
+      <div class="e-field"><label class="e-lbl">Remaining debt €</label><input class="cc-input" id="e-restschuld" type="number" data-cc-num="2" value="${p.restschuld}"/></div>
     </div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Paid off €</label><input class="cc-input" id="e-abbezahlt" type="number" value="${p.abbezahlt}"/></div>
-      <div class="e-field"><label class="e-lbl">Interest rate %</label><input class="cc-input" id="e-zinssatz" type="number" step="0.01" value="${p.zinssatz}"/></div>
+      <div class="e-field"><label class="e-lbl">Paid off €</label><input class="cc-input" id="e-abbezahlt" type="number" data-cc-num="2" value="${p.abbezahlt}"/></div>
+      <div class="e-field"><label class="e-lbl">Interest rate %</label><input class="cc-input" id="e-zinssatz" type="number" data-cc-num="auto" step="0.01" value="${p.zinssatz}"/></div>
     </div>
     <div class="e-grid">
       <div class="e-field"><label class="e-lbl">Fixed rate until</label><input class="cc-input" id="e-zb" value="${p.zb}"/></div>
@@ -260,11 +260,11 @@ function renderEditForm(p) {
       </div>
     </div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Monthly payment €</label><input class="cc-input" id="e-rate" type="number" value="${p.rate}"/></div>
-      <div class="e-field"><label class="e-lbl">Repayment €/mo</label><input class="cc-input" id="e-tilgung" type="number" value="${p.tilgung}"/></div>
+      <div class="e-field"><label class="e-lbl">Monthly payment €</label><input class="cc-input" id="e-rate" type="number" data-cc-num="2" value="${p.rate}"/></div>
+      <div class="e-field"><label class="e-lbl">Repayment €/mo</label><input class="cc-input" id="e-tilgung" type="number" data-cc-num="2" value="${p.tilgung}"/></div>
     </div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Interest €/mo</label><input class="cc-input" id="e-zinsen" type="number" value="${p.zinsen}"/></div>
+      <div class="e-field"><label class="e-lbl">Interest €/mo</label><input class="cc-input" id="e-zinsen" type="number" data-cc-num="2" value="${p.zinsen}"/></div>
       <div class="e-field"><label class="e-lbl">Savings contract</label>
         <select class="cc-select" id="e-sparv">
           <option value="false"${!p.sparv ? ' selected' : ''}>No</option>

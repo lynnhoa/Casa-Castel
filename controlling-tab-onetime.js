@@ -177,7 +177,7 @@ function renderOtDrawerBody(pid) {
     .filter(o => o.property_id === pid && matchesFilter(o, y))
     .sort((a, b) => (a.invoice_date < b.invoice_date ? 1 : -1));
   const total = entries.reduce((s, o) => s + Number(o.amount || 0), 0);
-  const defDate = new Date().toISOString().slice(0, 10);
+  const defDate = ccTodayISO();
 
   const filterScope = [];
   if (_ctlOtFilterMonth !== 'all') filterScope.push(ctlMonthName(_ctlOtFilterMonth));
@@ -255,7 +255,7 @@ function wireOtDrawer() {
 
 function fmtOtDate(iso) {
   const d = ctlParseDate(iso);
-  return String(d.day).padStart(2,'0') + '.' + String(d.month).padStart(2,'0') + '.' + String(d.year).slice(2);
+  return String(d.day).padStart(2,'0') + '.' + String(d.month).padStart(2,'0') + '.' + String(d.year);
 }
 
 window.ctlOtDrawerAdd = async function () {
@@ -268,7 +268,7 @@ window.ctlOtDrawerAdd = async function () {
   const company = (inps.company || '').trim() || null;
   const item    = (inps.item    || '').trim();
   const amtRaw  = String(inps.amt || '').trim();
-  const amt     = amtRaw.includes(',') ? Number(amtRaw.replace(/\./g, '').replace(',', '.')) : Number(amtRaw);
+  const amt     = ccParseEUR(amtRaw);   // 1.200,50 · 1200,5 · 1.200
   if (!date || !item || !amt) { ctlToast('Datum · Beschreibung · Betrag'); return; }
   try {
     await ctlInsertOneTime(_ctlOtDrawerPid, date, item, amt, company);

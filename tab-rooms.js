@@ -755,7 +755,7 @@ document.getElementById('tab-rooms').innerHTML = `
    date fields never grow wider than their half. */
 .rm-field-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .rm-field-row > .rm-field { min-width:0; }
-.rm-field-row .rm-input, .rm-input[type=date] { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
+.rm-field-row .rm-input, .rm-input[type=date], .rm-input.cc-date { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
 /* Name + Floor: one per row (long floor texts were cut) */
 .rc-field-row:has(input[data-f="floor"]) { grid-template-columns:minmax(0,1fr); }
 .rc-field-row, .rc-field { min-width:0; }
@@ -1178,7 +1178,7 @@ function _roomCardHTML(r) {
           <div class="rc-field"><label class="rc-field__label">Floor</label><input class="rc-input" data-f="floor" value="${esc(r.floor||'')}"/></div>
         </div>
         <div class="rc-field-row">
-          <div class="rc-field"><label class="rc-field__label">Size m²</label><input class="rc-input" type="number" data-f="flaeche_m2" value="${r.flaeche_m2||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Size m²</label><input class="rc-input" type="number" data-cc-num="auto" data-f="flaeche_m2" value="${r.flaeche_m2||''}"/></div>
           <div class="rc-field"><label class="rc-field__label">Type</label>
             <select class="rc-input" data-f="room_type">
               <option ${r.room_type==='WG Zimmer'?'selected':''}>WG Zimmer</option>
@@ -1219,8 +1219,8 @@ function _roomCardHTML(r) {
           </div>
         </div>
         <div class="rc-field-row">
-          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kurzzeit_kaltmiete" value="${r.kurzzeit_kaltmiete||''}"/></div>
-          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="kurzzeit_nk" value="${r.kurzzeit_nk||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-cc-num="2" data-f="kurzzeit_kaltmiete" value="${r.kurzzeit_kaltmiete||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-cc-num="2" data-f="kurzzeit_nk" value="${r.kurzzeit_nk||''}"/></div>
         </div>
         <div class="rc-edit-stitle" style="margin-top:14px">Mietvertrag Pricing</div>
         <div class="rc-field">
@@ -1232,15 +1232,15 @@ function _roomCardHTML(r) {
           </div>
         </div>
         <div class="rc-field-row">
-          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kaltmiete" value="${r.kaltmiete||''}"/></div>
-          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="nk_pauschale" value="${r.nk_pauschale||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-cc-num="2" data-f="kaltmiete" value="${r.kaltmiete||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-cc-num="2" data-f="nk_pauschale" value="${r.nk_pauschale||''}"/></div>
         </div>
         <div class="rc-toggle-row" style="margin-top:6px;">
           <span class="rc-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${r.kaution_override?'checked':''} onchange="_toggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionoverridefield style="${r.kaution_override?'':'display:none;'}">
-          <div class="rc-field"><label class="rc-field__label">Kaution (€)</label><input class="rc-input" type="number" data-f="kaution_default" value="${r.kaution_default||''}"/></div>
+          <div class="rc-field"><label class="rc-field__label">Kaution (€)</label><input class="rc-input" type="number" data-cc-num="2" data-f="kaution_default" value="${r.kaution_default||''}"/></div>
         </div>`;
   const editKeys = `
         <div class="rc-field-row">
@@ -1510,7 +1510,7 @@ function _roomCollectFields(scope) {
   scope.querySelectorAll('[data-f]').forEach(el => {
     const key = el.dataset.f;
     if (el.tagName === 'INPUT' && el.type === 'checkbox')      data[key] = el.checked;
-    else if (el.tagName === 'INPUT' && el.type === 'number')   data[key] = el.value !== '' ? parseFloat(el.value) : null;
+    else if (el.tagName === 'INPUT' && ccIsNumInput(el))   data[key] = el.value !== '' ? parseFloat(el.value) : null;
     else if (el.classList.contains('rc-stepper__v'))           data[key] = parseInt(el.textContent, 10);
     else                                                       data[key] = el.value;
   });
@@ -1708,7 +1708,7 @@ async function _saveCard(card) {
     const key = el.dataset.f;
     if (el.tagName === 'INPUT' && el.type === 'checkbox') {
       data[key] = el.checked;
-    } else if (el.tagName === 'INPUT' && el.type === 'number') {
+    } else if (el.tagName === 'INPUT' && ccIsNumInput(el)) {
       data[key] = el.value !== '' ? parseFloat(el.value) : null;
     } else if (el.classList.contains('rc-stepper__v')) {
       data[key] = parseInt(el.textContent, 10);
@@ -1793,7 +1793,7 @@ document.getElementById('roomAddBtn')?.addEventListener('click', () => {
     card.querySelectorAll('[data-f]').forEach(el => {
       const key = el.dataset.f;
       if (el.tagName === 'INPUT' && el.type === 'checkbox') data[key] = el.checked;
-      else if (el.tagName === 'INPUT' && el.type === 'number') data[key] = el.value !== '' ? parseFloat(el.value) : null;
+      else if (el.tagName === 'INPUT' && ccIsNumInput(el)) data[key] = el.value !== '' ? parseFloat(el.value) : null;
       else if (el.classList.contains('rc-stepper__v')) data[key] = parseInt(el.textContent, 10);
       else data[key] = el.value;
     });
@@ -2759,7 +2759,7 @@ function _contractBodyKurzzeit(room) {
         <div class="rm-kaution-lbl">Kaution</div>
         <div class="rm-kaution-rule" id="cm-kaution-rule">${kautionRule}</div>
       </div>
-      <input class="rm-input" id="cm-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
+      <input class="rm-input" id="cm-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
         value="${_kzK.amount}"
         placeholder="€" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
     </div>
@@ -4242,7 +4242,7 @@ function _contractBodyMietvertrag(room) {
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
         <div class="rm-kaution-rule">${_mvK.source === 'override' ? 'Individuelle Kaution (Karte)' : (_mvp.mode === 'pauschal' ? '3 \u00d7 Pauschalmiete' : '3 \u00d7 Kaltmiete')} · Treuhandkonto</div>
       </div>
-      <input class="rm-input" id="mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
+      <input class="rm-input" id="mv-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px;-webkit-appearance:textfield;-moz-appearance:textfield;appearance:textfield;"
         value="${kaution}" placeholder="€"/>
     </div>
     <div style="margin-top:8px;margin-bottom:20px">

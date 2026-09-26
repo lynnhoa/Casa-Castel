@@ -16,12 +16,12 @@
 'use strict';
 
 /* German money formatting for setup inputs */
-const fmtDe = v => (v === null || v === undefined || v === '') ? '' : String(v).replace('.', ',');
-const parseDe = s => {
+const fmtDe = v => (v === null || v === undefined || v === '') ? '' : ccFmtNum(v, 2);   // 1.200,00
+const parseDe = s => {                     // 1.200,50 · 1200,5 · 1.200 → number
   s = String(s).trim();
   if (!s) return null;
-  if (s.includes(',')) return Number(s.replace(/\./g, '').replace(',', '.'));
-  return Number(s);
+  const n = ccParseEUR(s);
+  return n === null ? NaN : n;
 };
 
 document.getElementById('tab-setup').innerHTML = `
@@ -142,6 +142,7 @@ async function saveSetupField(e) {
   const id    = Number(inp.dataset.id);
   const field = inp.dataset.field;
   const val   = parseDe(inp.value);
+  if (Number.isNaN(val)) { ctlToast('Betrag ungültig – z. B. 1.200,50'); return; }
   try {
     if (kind === 'unit') {
       const u = ctlUnit(id);
@@ -209,7 +210,7 @@ async function ctlOpenHistory() {
   const fmtVal = v => v === null || v === undefined ? '—' : ctlEur(v);
   const fmtDate = ts => {
     const d = new Date(ts);
-    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getFullYear()).slice(2) +
+    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getFullYear()) +
            ' · ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
   };
 

@@ -265,7 +265,7 @@ function pkFmtEUR(n) {
 function pkFmtEURCompact(n) {
   const num = Number(n);
   if (!num && num !== 0) return '—';
-  return num.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €';
+  return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';   // 85,00 €
 }
 
 function pkFmtDate(iso) {
@@ -481,13 +481,13 @@ function _pkCardHTML(p) {
       </div>
       <!-- EDIT -->
       <div class="pk-sec-edit" style="display:none">
-        <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-f="miete" value="${pr.miete||''}"/></div>
+        <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-cc-num="2" data-f="miete" value="${pr.miete||''}"/></div>
         <div class="apt-toggle-row">
           <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${pr.kaution_override?'checked':''} onchange="_pkToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${pr.kaution_override?'':'display:none'}">
-          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('miete','${p.id}')">Cancel</button>
@@ -613,7 +613,7 @@ async function _pkSaveIdentity(pkId) {
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
-    data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+    data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
   });
 
   // Direct save: card first, database in the background (direct-save.js)
@@ -665,7 +665,7 @@ async function _pkSaveMiete(pkId) {
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
     if (inp.type === 'checkbox') data[k] = inp.checked;
-    else if (inp.type === 'number') data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
+    else if (ccIsNumInput(inp)) data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
     else data[k] = inp.value;
   });
   _pkDirectSaveRow(pkId, 'pricing', 'rentals_parking_pricing', data);
@@ -781,7 +781,7 @@ function _pkAddStaffel(force) {
   row.className = 'pk-mv-staffel-row';
   row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
   row.innerHTML = `
-    <input class="rm-input pk-mv-staffel-betrag" type="number" step="0.01"
+    <input class="rm-input pk-mv-staffel-betrag" type="number" data-cc-num="2" step="0.01"
       placeholder="${miete ? (miete + (count+1)*5).toFixed(2) : (85 + count*5) + '.00'}"
       style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
     <span style="font-size:11px;color:var(--cc-stone);">€ ab</span>
@@ -1161,7 +1161,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
         <div class="rm-kaution-rule">${_pkK.source === 'override' ? 'Individuelle Kaution (Karte)' : '3 × Monatsmiete'}</div>
       </div>
-      <input class="rm-input" id="pk-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
+      <input class="rm-input" id="pk-mv-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
     </div>
     <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
@@ -1340,7 +1340,7 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
       const data = { vacant: true, sort_order: appParking.length };
       identitySection.querySelectorAll('[data-f]').forEach(inp => {
         const k = inp.dataset.f;
-        data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+        data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
       });
 
       saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;

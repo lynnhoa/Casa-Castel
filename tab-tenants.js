@@ -334,7 +334,7 @@ document.getElementById('tab-tenants').innerHTML = `
   border-radius:var(--cc-r-sm); border:.5px solid var(--cc-gold);
   background:var(--cc-white); color:var(--cc-charcoal);
   font-family:inherit; outline:none; width:120px; }
-.tn-nkv-add-form input[type=number] { width:90px; }
+.tn-nkv-add-form input[type=number], .tn-nkv-add-form input[data-cc-num] { width:90px; }
 .tn-nkv-verlauf-btn { font-size:10px; color:var(--cc-stone);
   text-decoration:underline; text-underline-offset:2px;
   background:none; border:none; cursor:pointer; font-family:inherit;
@@ -644,7 +644,7 @@ function _tnContractLabel(type) {
 ══════════════════════════════════════════════════════════════ */
 function _tnFmtEUR(n) {
   const v = Number(n) || 0;
-  return v.toLocaleString('de-DE', { minimumFractionDigits:0, maximumFractionDigits:2 }) + '\u00a0\u20ac';
+  return v.toLocaleString('de-DE', { minimumFractionDigits:2, maximumFractionDigits:2 }) + '\u00a0\u20ac';
 }
 
 function _tnFmtDate(d) {
@@ -1045,12 +1045,12 @@ function _tnRentFormHTML(rid, room, rec) {
 <div class="tn-rent-form" id="rform-${rid}" style="display:none">
   <div class="tn-rf">
     <span class="tn-flbl">Kaltmiete \u20ac/mo</span>
-    <input type="number" id="rf-kalt-${rid}" value="${kalt}" placeholder="${liveP.kaltmiete ?? ''}"
+    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${liveP.kaltmiete ?? ''}"
       oninput="_tnUpdateWarm('${rid}')"/>
   </div>
   <div class="tn-rf">
     <span class="tn-flbl">Nebenkosten \u20ac/mo</span>
-    <input type="number" id="rf-nk-${rid}" value="${nk}" placeholder="${liveP.nebenkosten ?? ''}"
+    <input type="number" data-cc-num="2" id="rf-nk-${rid}" value="${nk}" placeholder="${liveP.nebenkosten ?? ''}"
       oninput="_tnUpdateWarm('${rid}')"/>
   </div>
   <div class="tn-rf">
@@ -1069,7 +1069,7 @@ function _tnRentFormHTML(rid, room, rec) {
     <span id="rf-ksoll-hint-${rid}" class="tn-kaut-hint" style="${rec && rec.kaution_soll != null ? 'display:none' : ''}">
       Auto from rooms tab · clear override to re-sync
     </span>
-    <input type="number" id="rf-ksoll-${rid}"
+    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}"
       value="${rec && rec.kaution_soll != null ? ksoll : ''}"
       placeholder="${ksoll}"
       ${rec && rec.kaution_soll != null ? '' : 'disabled style="opacity:.4"'}/>
@@ -1116,15 +1116,15 @@ function _tnProfileSectionHTML(rid, room, rec) {
     <div class="tn-field"><span class="tn-flbl">Name</span>
       <input data-f="name" type="text" value="${esc(fullName)}" placeholder="Full name"/></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <input data-f="birthday" type="text" value="${esc(rec ? rec.birthday||'' : '')}" placeholder="DD.MM.YYYY"/></div>
+      <input data-f="birthday" type="text" value="${esc(rec ? rec.birthday||'' : '')}" placeholder="TT.MM.JJJJ"/></div>
     <div class="tn-field"><span class="tn-flbl">Email</span>
       <input data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <input data-f="phone" type="tel" value="${esc(rec ? rec.phone||'' : '')}" placeholder="+49 ..."/></div>
     <div class="tn-field"><span class="tn-flbl">Move in</span>
-      <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="DD.MM.YYYY"/></div>
+      <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
     <div class="tn-field"><span class="tn-flbl">Move out</span>
-      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="DD.MM.YYYY \u2014 becomes Former when reached"/></div>
+      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ \u2014 becomes Former when reached"/></div>
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <input data-f="address" type="text" value="${esc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
   </div>`;
@@ -1236,12 +1236,12 @@ function _tnKautionHTML(rid, tid, ctx) {
     <div class="tn-kaut-grid">
       <div class="tn-kc">
         <div class="tn-kc-lbl">Received</div>
-        <input class="tn-kc-input" type="number" id="kr-${pfx}" value="${recv}" ${dis}
+        <input class="tn-kc-input" type="number" data-cc-num="2" id="kr-${pfx}" value="${recv}" ${dis}
           oninput="_tnCalcKaution('${pfx}','${tid||''}')"/>
       </div>
       <div class="tn-kc">
         <div class="tn-kc-lbl">Returned</div>
-        <input class="tn-kc-input" type="number" id="kret-${pfx}" value="${ret}" ${dis}
+        <input class="tn-kc-input" type="number" data-cc-num="2" id="kret-${pfx}" value="${ret}" ${dis}
           oninput="_tnCalcKaution('${pfx}','${tid||''}')"/>
       </div>
       <div class="tn-kc">
@@ -1489,14 +1489,14 @@ function _tnNKVorausAdd(room, rid, ctx) {
   const sec = document.getElementById(`nkv-sec-${rid}`);
   if (!sec) return;
   const existing = sec.querySelector('.tn-nkv-add-form');
-  if (existing) { existing.querySelector('input[type=date]')?.focus(); return; }
+  if (existing) { existing.querySelector('input[type=date], input.cc-date')?.focus(); return; }
 
   const body = sec.querySelector('.tn-sec-body');
   const form = document.createElement('div');
   form.className = 'tn-nkv-add-form';
   form.innerHTML = `
     <input type="date" id="nkv-add-date-${rid}" style="width:130px" />
-    <input type="number" id="nkv-add-amount-${rid}" placeholder="Betrag €" step="0.01" min="0" />
+    <input type="number" data-cc-num="2" id="nkv-add-amount-${rid}" placeholder="Betrag €" step="0.01" min="0" />
     <button class="tn-btn tn-btn-primary" style="height:30px;font-size:11px;padding:0 10px"
       onclick="_tnNKVorausConfirmAdd('${room}','${rid}')">
       <i class="ti ti-check" aria-hidden="true"></i>
@@ -1506,7 +1506,7 @@ function _tnNKVorausAdd(room, rid, ctx) {
       <i class="ti ti-x" aria-hidden="true"></i>
     </button>`;
   body.appendChild(form);
-  form.querySelector('input[type=date]').focus();
+  form.querySelector('input[type=date], input.cc-date').focus();
 }
 
 async function _tnNKVorausConfirmAdd__run(room, rid) {
@@ -1533,7 +1533,7 @@ async function _tnNKVorausConfirmAdd__run(room, rid) {
 /* ── NK VORAUSZAHLUNG MARK NOTIFIED ── */
 async function _tnNKVorausMarkNotified(id, room, rid) {
   if (!sbL) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = ccTodayISO();
   const { error } = await sbL.from('nk_vorauszahlung_history')
     .update({ tenant_notified: true, notified_date: today })
     .eq('id', id);
@@ -1546,7 +1546,7 @@ async function _tnNKVorausMarkNotified(id, room, rid) {
 /* ── NK VORAUSZAHLUNG MARK ADJUSTED ── */
 async function _tnNKVorausMarkAdjusted(id, room, rid) {
   if (!sbL) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = ccTodayISO();
   const { error } = await sbL.from('nk_vorauszahlung_history')
     .update({ tenant_adjusted: true, adjusted_date: today })
     .eq('id', id);
@@ -1753,7 +1753,7 @@ function _tnModalBodyHTML(rec) {
         <div class="tn-field"><span class="tn-flbl">Name</span>
           <input data-mf="name" type="text" value="${esc(full)}" placeholder="Full name"/></div>
         <div class="tn-field"><span class="tn-flbl">Birthday</span>
-          <input data-mf="birthday" type="text" value="${esc(rec.birthday||'')}" placeholder="DD.MM.YYYY"/></div>
+          <input data-mf="birthday" type="text" value="${esc(rec.birthday||'')}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Email</span>
           <input data-mf="email" type="email" value="${esc(rec.email||'')}"/></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
@@ -1761,11 +1761,11 @@ function _tnModalBodyHTML(rec) {
         <div class="tn-field"><span class="tn-flbl">Move in</span>
           <input data-mf="mietbeginn" type="text" value="${_tnFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move out</span>
-          <input data-mf="mietende" type="text" value="${_tnFmtDate(rec.mietende)}" placeholder="DD.MM.YYYY"/></div>
+          <input data-mf="mietende" type="text" value="${_tnFmtDate(rec.mietende)}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
-          <input data-mf="kaltmiete" type="number" value="${dK ?? ''}"/></div>
+          <input data-mf="kaltmiete" type="number" data-cc-num="2" value="${dK ?? ''}"/></div>
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
-          <input data-mf="nebenkosten" type="number" value="${dNK ?? ''}"/></div>
+          <input data-mf="nebenkosten" type="number" data-cc-num="2" value="${dNK ?? ''}"/></div>
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <div class="tn-kaut-override-row">
             <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${tid}">${(() => { const i = _tnKautionSollInfo(rec); return i ? `Soll \u00b7 ${_tnFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
@@ -1778,7 +1778,7 @@ function _tnModalBodyHTML(rec) {
           <span id="mkaut-hint-${tid}" class="tn-kaut-hint" style="${dKS != null ? 'display:none' : ''}">
             Auto from rooms tab · toggle to set a fixed amount
           </span>
-          <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number"
+          <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
             value="${dKS ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) ?? ''}"
             ${dKS != null ? '' : 'disabled style="opacity:.4"'}/>
         </div>
