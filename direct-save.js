@@ -176,6 +176,21 @@ async function ccOnce(key, fn) {
    repainted (the occasional flicker when switching tabs).
    Rows are compared by id; a real reorder is still seen via sort_order.
    ═════════════════════════════════════════════════════════════ */
+/* Replace ONE card in place: stays open if it was open, and the screen does not
+   jump (iPhone Safari has no scroll anchoring, so we correct the offset ourselves). */
+function ccSwapCard(card, html, openClass) {
+  const wasOpen = card.classList.contains(openClass);
+  const y0  = card.getBoundingClientRect().top;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const nc = tmp.firstElementChild;
+  if (wasOpen) nc.classList.add(openClass);
+  card.replaceWith(nc);
+  const dy = nc.getBoundingClientRect().top - y0;
+  if (dy) window.scrollBy(0, dy);
+  return nc;
+}
+
 function ccStableJSON(v) {
   const norm = x => {
     if (Array.isArray(x)) {

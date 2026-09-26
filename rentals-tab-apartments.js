@@ -880,6 +880,8 @@ function _renderAptList() {
     html += gewerbe.map(a => _aptCardHTML(a)).join('');
   }
   const _open = new Set([...list.querySelectorAll('.apt-card.apt--open')].map(c => c.dataset.id));
+  _aptCardCache = {};
+  appApartments.forEach(a => { _aptCardCache[a.id] = _aptCardHTML(a); });
   list.innerHTML = html;
   _open.forEach(id => list.querySelector(`.apt-card[data-id="${id}"]`)?.classList.add('apt--open'));   // open cards stay open
   _updateAptSummary();
@@ -894,8 +896,35 @@ function _aptRenderIfChanged() {
   const shown = !!(list && list.querySelector('.apt-card'));
   if (shown && sig === _aptRenderedSig) return;
   if (shown && typeof _rtBusy === 'function' && _rtBusy('apartments')) return;
+  if (shown && _aptPatchCards(list)) { _aptRenderedSig = sig; return; }   // no full redraw → no glitch
   _renderAptList();
   _aptRenderedSig = sig;
+}
+
+/* Each card's HTML as last drawn (id → html) */
+let _aptCardCache = {};
+
+/* Same cards in the same order → redraw only the cards whose content changed.
+   Returns false when cards were added / removed / moved (then a full redraw). */
+function _aptPatchCards(list) {
+  const isGw  = a => a.zimmer_type === 'Gewerbefläche';
+  const order = [...appApartments.filter(a => !isGw(a)), ...appApartments.filter(isGw)];
+  const cards = [...list.querySelectorAll('.apt-card[data-id]')];
+  if (cards.length !== order.length) return false;
+  if (!cards.every((c, i) => String(c.dataset.id) === String(order[i].id))) return false;
+  const bothExist = order.some(isGw) && order.some(a => !isGw(a));
+  if (list.querySelectorAll('.rnt-group-hdr').length !== (bothExist ? 2 : 0)) return false;
+  let changed = 0;
+  order.forEach((a, i) => {
+    const html = _aptCardHTML(a);
+    if (_aptCardCache[a.id] === html) return;          // looks the same → leave it alone
+    ccSwapCard(cards[i], html, 'apt--open');
+    _aptCardCache[a.id] = html;
+    changed++;
+  });
+  if (changed) _aptInitSortable();
+  _updateAptSummary();
+  return true;
 }
 
 
@@ -1544,7 +1573,7 @@ function _aptRerenderCard(aptId) {
   const card = document.querySelector(`.apt-card[data-id="${aptId}"]`);
   if (!apt || !card) return;
   const newDiv = document.createElement('div');
-  newDiv.innerHTML = _aptCardHTML(apt);
+  newDiv.innerHTML = _aptCardCache[aptId] = _aptCardHTML(apt);   // remembered as drawn
   const newCard = newDiv.firstElementChild;
   newCard.classList.add('apt--open');
   card.parentNode.insertBefore(newCard, card);

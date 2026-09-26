@@ -350,7 +350,8 @@ function _renderPkList() {
     return;
   }
   const _open = new Set([...list.querySelectorAll('.pk-card.pk--open')].map(c => c.dataset.id));
-  list.innerHTML = appParking.map(p => _pkCardHTML(p)).join('');
+  _pkCardCache = {};
+  list.innerHTML = appParking.map(p => (_pkCardCache[p.id] = _pkCardHTML(p))).join('');
   _open.forEach(id => list.querySelector(`.pk-card[data-id="${id}"]`)?.classList.add('pk--open'));   // open cards stay open
   _updatePkSummary();
 }
@@ -364,8 +365,30 @@ function _pkRenderIfChanged() {
   const shown = !!(list && list.querySelector('.pk-card'));
   if (shown && sig === _pkRenderedSig) return;
   if (shown && typeof _rtBusy === 'function' && _rtBusy('parking')) return;
+  if (shown && _pkPatchCards(list)) { _pkRenderedSig = sig; return; }     // no full redraw → no glitch
   _renderPkList();
   _pkRenderedSig = sig;
+}
+
+/* Each card's HTML as last drawn (id → html) */
+let _pkCardCache = {};
+
+/* Same cards in the same order → redraw only the cards whose content changed */
+function _pkPatchCards(list) {
+  const cards = [...list.querySelectorAll('.pk-card[data-id]')];
+  if (cards.length !== appParking.length) return false;
+  if (!cards.every((c, i) => String(c.dataset.id) === String(appParking[i].id))) return false;
+  let changed = 0;
+  appParking.forEach((p, i) => {
+    const html = _pkCardHTML(p);
+    if (_pkCardCache[p.id] === html) return;
+    ccSwapCard(cards[i], html, 'pk--open');
+    _pkCardCache[p.id] = html;
+    changed++;
+  });
+  if (changed) _pkInitSortable();
+  _updatePkSummary();
+  return true;
 }
 
 
@@ -817,7 +840,7 @@ function _pkRerenderCard(pkId) {
   const card = document.querySelector(`.pk-card[data-id="${pkId}"]`);
   if (!spot || !card) return;
   const newDiv = document.createElement('div');
-  newDiv.innerHTML = _pkCardHTML(spot);
+  newDiv.innerHTML = _pkCardCache[pkId] = _pkCardHTML(spot);   // remembered as drawn
   const newCard = newDiv.firstElementChild;
   newCard.classList.add('pk--open');
   card.parentNode.insertBefore(newCard, card);
