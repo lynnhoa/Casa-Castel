@@ -1625,28 +1625,41 @@ function _setEU(roomId, idx, btn) {
   tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
 }
 
-async function _toggleVacant(roomId, btn) {
-  btn.disabled = true;
-  const result = await toggleRoomVacant(roomId);
-  if (result.ok) {
-    const room = getRoomById(roomId);
-    const card = document.querySelector(`.rc[data-id="${roomId}"]`);
-    if (card && room) {
-      const wasExpanded = card.classList.contains('rc--expanded');
-      // Insert new card before old one, then remove old — more reliable than outerHTML on iOS
-      const newDiv = document.createElement('div');
-      newDiv.innerHTML = _roomCardHTML(room);
-      const newCard = newDiv.firstElementChild;
-      card.parentNode.insertBefore(newCard, card);
-      card.remove();
-      if (wasExpanded) newCard.classList.add('rc--expanded');
-      _bindAllCards();
-      _initSortable();
-      _updateRoomsSummary(appRooms);
-    }
-  } else {
-    btn.disabled = false;
-  }
+/* Mark as vacant / occupied — instant: the card switches at once, the database
+   write runs in the background. If it fails, the card switches back + red message. */
+function _roomVacancyRerender(roomId) {
+  const room = getRoomById(roomId);
+  const card = document.querySelector(`.rc[data-id="${roomId}"]`);
+  if (!card || !room) return;
+  const wasExpanded = card.classList.contains('rc--expanded');
+  // Insert new card before old one, then remove old — more reliable than outerHTML on iOS
+  const newDiv = document.createElement('div');
+  newDiv.innerHTML = _roomCardHTML(room);
+  const newCard = newDiv.firstElementChild;
+  card.parentNode.insertBefore(newCard, card);
+  card.remove();
+  if (wasExpanded) newCard.classList.add('rc--expanded');
+  _bindAllCards();
+  _initSortable();
+  _updateRoomsSummary(appRooms);
+}
+function _toggleVacant(roomId, btn) {
+  const room = getRoomById(roomId);
+  if (!room || !sbL) return;
+  const before = !!room.vacant, next = !before;
+  room.vacant = next;
+  _roomVacancyRerender(roomId);   // instant
+  ccQueueWrite('room-' + roomId, () => sbL.from('rooms')
+      .update({ vacant: next, updated_at: new Date().toISOString() }).eq('id', roomId))
+    .then(r => {
+      if (r && r.error) {
+        room.vacant = before;
+        _roomVacancyRerender(roomId);
+        ccSaveFailed(r.error, 'room vacancy');
+        return;
+      }
+      if (typeof roomAfterVacancyChange === 'function') roomAfterVacancyChange(room, next);
+    });
 }
 
 async function _toggleKitchenRoom(roomName, btn) {

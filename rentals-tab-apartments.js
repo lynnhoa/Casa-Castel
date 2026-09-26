@@ -970,7 +970,7 @@ function _aptCardHTML(a) {
       <button class="apt-act ${vacant ? 'apt-act--mark-occupied' : 'apt-act--mark-vacant'}"
         onclick="_aptToggleVacant('${a.id}',this)">
         <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:11px"></i>
-        ${vacant ? 'Mark as Occupied' : 'Mark as Vacant'}
+        ${vacant ? 'Mark as occupied' : 'Mark as vacant'}
       </button>
     </div>
 
@@ -1763,21 +1763,23 @@ function _aptHGRenderRow(id, aptId) { _aptHGRefreshUI(id, aptId); }
 
 
 /* ── TOGGLE VACANT ───────────────────────────────────────── */
-async function _aptToggleVacant(aptId, btn) {
-  btn.disabled = true;
+/* Mark as vacant / occupied — instant, saved in the background (red message + undo if it fails) */
+function _aptToggleVacant(aptId, btn) {
   const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) { btn.disabled = false; return; }
-
-  const newVacant = !apt.vacant;
-
-  if (_aptSbClient) {
-    const { error } = await _aptSbClient.from('rentals_apartments').update({ vacant: newVacant }).eq('id', aptId);
-    if (error) { btn.disabled = false; return; }
-  }
-
-  apt.vacant = newVacant;
-  _aptRerenderCard(aptId);
+  if (!apt) return;
+  const before = !!apt.vacant, next = !before;
+  apt.vacant = next;
+  _aptRerenderCard(aptId);   // instant
   _updateAptSummary();
+  if (!_aptSbClient) return;
+  ccQueueWrite('apt-vacant-' + aptId, () => _aptSbClient.from('rentals_apartments').update({ vacant: next }).eq('id', aptId))
+    .then(r => {
+      if (!r || !r.error) return;
+      apt.vacant = before;
+      _aptRerenderCard(aptId);
+      _updateAptSummary();
+      ccSaveFailed(r.error, 'apartment vacancy');
+    });
 }
 
 

@@ -569,6 +569,31 @@ function _tnToggleKautionOverride(el, inputId, hintId) {
   if (hint) hint.style.display = on ? 'none' : '';
 }
 
+/* Soll + where it comes from — ONE source for Kaution section, rent form and pop-up.
+   Individuell · Mieter (set on the tenant) → Individuell · Karte (room card) → Standard (rule). */
+function _tnKautionSollInfo(rec) {
+  if (!rec) return null;
+  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Individuell \u00b7 Mieter' };
+  const p = _tnRoomPricing(rec.room);
+  if (p.kaution_override && p.kaution_fixed != null && p.kaution_fixed !== '') return { amount: Number(p.kaution_fixed), text: 'Individuell \u00b7 Karte' };
+  const amount = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende);
+  if (amount == null) return null;
+  const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === rec.room) : null;
+  const ctype = _tnRoomContractType(rec.room);
+  const isPauschal = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk' : r?.mietvertrag_pricing !== 'kalt_nk';
+  const rule = typeof ccKautionRuleText === 'function'
+    ? ccKautionRuleText(ctype === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', isPauschal ? 'pauschal' : 'kalt_nk', rec.mietbeginn, rec.mietende) : '';
+  return { amount, text: 'Standard' + (rule ? ' \u00b7 ' + rule : '') };
+}
+/* After saving: refresh exactly this tenant's Soll lines (no full repaint → nothing typed elsewhere is lost) */
+function _tnRefreshKautionSoll(tid) {
+  const info = _tnKautionSollInfo(_tnRecords.find(r => r.id === tid));
+  document.querySelectorAll(`[data-ksoll-for="${tid}"]`).forEach(el => {
+    if (el.dataset.ksollKind === 'hint') { el.textContent = info ? `Soll: ${_tnFmtEUR(info.amount)} \u00b7 ${info.text}` : ''; el.style.display = info ? '' : 'none'; }
+    else el.textContent = info ? `Soll \u00b7 ${_tnFmtEUR(info.amount)} \u00b7 ${info.text}` : 'Soll \u00b7 \u2014';
+  });
+}
+
 function _tnKautionSoll(room, mietbeginn, mietende) {
   const p = _tnRoomPricing(room);
   if (p.kaution_override) return p.kaution_fixed;
@@ -1043,7 +1068,7 @@ function _tnRentFormHTML(rid, room, rec) {
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${_tnFmtEUR(ksoll) || '—'} (${rule})</span></span>
+      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${tid}">${(() => { const i = _tnKautionSollInfo(rec); return i ? `Soll \u00b7 ${_tnFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
         <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null ? 'checked' : ''}
           onchange="_tnToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
@@ -1206,12 +1231,8 @@ function _tnKautionHTML(rid, tid, ctx) {
   const body    = ctx === 'modal' ? 'tn-msec-body' : 'tn-sec-body';
   const footer  = ctx === 'modal' ? 'tn-msec-footer' : 'tn-sec-footer';
 
-  let rec = tid ? _tnRecords.find(r => r.id === tid) : null;
-  let soll = rec && rec.kaution_soll != null
-    ? Number(rec.kaution_soll)
-    : (rec ? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) : null);
-  const ctype = rec ? _tnRoomContractType(rec.room) : null;
-  const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ' : '3\u00d7 Kaltmiete \u00b7 MV';
+  const rec   = tid ? _tnRecords.find(r => r.id === tid) : null;
+  const sInfo = _tnKautionSollInfo(rec);
 
   return `
 <div class="${sec}" style="${opac}" data-cc-save-scope>
@@ -1220,7 +1241,7 @@ function _tnKautionHTML(rid, tid, ctx) {
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
 
     </div>
-    ${soll != null ? `<div class="tn-kaut-hint">Soll: ${_tnFmtEUR(soll)} \u00b7 ${rule}</div>` : ''}
+    <div class="tn-kaut-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${sInfo ? '' : 'display:none'}">${sInfo ? `Soll: ${_tnFmtEUR(sInfo.amount)} \u00b7 ${sInfo.text}` : ''}</div>
     <div class="tn-kaut-grid">
       <div class="tn-kc">
         <div class="tn-kc-lbl">Received</div>
@@ -1759,7 +1780,7 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="nebenkosten" type="number" value="${dNK ?? ''}"/></div>
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <div class="tn-kaut-override-row">
-            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${_tnFmtEUR(_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende)) || '—'} (auto)</span></span>
+            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${tid}">${(() => { const i = _tnKautionSollInfo(rec); return i ? `Soll \u00b7 ${_tnFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
             <label class="tn-kaut-ovr-sw" title="Override kaution">
               <input type="checkbox" id="mkaut-ovr-${tid}" ${dKS != null ? 'checked' : ''}
                 onchange="_tnToggleKautionOverride(this,'mkaut-inp-${tid}','mkaut-hint-${tid}')"/>
@@ -2149,13 +2170,8 @@ async function _tnSaveRent(rid, tid, roomName) {
     if (subs[1]) subs[1].textContent = nk   != null ? 'agreed' : 'per month';
   }
 
-  // Update kaution hint if visible
-  const kautHint = document.querySelector('#tab-tenants .tn-kaut-hint');
-  if (kautHint && ksoll != null) {
-    const ctype = _tnRoomContractType(roomName);
-    const rule = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
-    kautHint.textContent = `Soll: ${_tnFmtEUR(ksoll)} \u00b7 ${rule}`;
-  }
+  // Kaution Soll lines of THIS tenant show the new value at once (Kaution section + rent form + pop-up)
+  _tnRefreshKautionSoll(tid);
 
   // Switch back to read bar, keep card open
   _tnToggleRentEdit(rid);

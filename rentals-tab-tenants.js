@@ -542,23 +542,51 @@ function _rntPkPricing(pkId) {
 
 // Kaution soll: the tenant's own agreed amount if saved, otherwise the card
 // rule (override while its toggle is ON, else 3× Kaltmiete / 3× Parkmiete)
-function _rntKautionSoll(rec) {
+/* Soll + where it comes from — ONE source for Kaution section, rent form and pop-up.
+   Individuell · Mieter → Individuell · Karte → Standard (rule).
+   Rentals has no "Kurzzeit" tenant type: a fixed stay of ≤ 3 months uses the Kurzzeit rule (1×). */
+function _rntKautionSollInfo(rec) {
   if (!rec) return null;
-  if (rec.kaution_soll != null) return Number(rec.kaution_soll);
+  if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Individuell \u00b7 Mieter' };
   if (rec.apartment_id) {
     const a  = appApartments?.find(x => x.id === rec.apartment_id);
     const pr = a?.pricing || {};
-    if (ccKautionOverride(pr) === null && !Number(pr.kaltmiete)) return null;
-    return ccKaution({ contract: 'mietvertrag', kalt: pr.kaltmiete, rec: pr }).amount;
+    const ovr = ccKautionOverride(pr);
+    if (ovr !== null) return { amount: ovr, text: 'Individuell \u00b7 Karte' };
+    const gewerbe = a?.zimmer_type === 'Gewerbefläche';
+    const shortStay = !gewerbe && rec.mietbeginn && rec.mietende && ccKzIsLong(rec.mietbeginn, rec.mietende) === false;
+    if (shortStay) {
+      const hasKz = pr.kurzzeit_kaltmiete != null && pr.kurzzeit_kaltmiete !== '';
+      const kalt  = hasKz ? Number(pr.kurzzeit_kaltmiete) : (Number(pr.kaltmiete) || 0);
+      const nk    = hasKz ? (Number(pr.kurzzeit_nk) || 0) : (Number(pr.nk_pauschale) || 0);
+      if (!kalt) return null;
+      const k = ccKaution({ contract: 'kurzzeit', mode: nk > 0 ? 'kalt_nk' : 'pauschal', kalt, nk, start: rec.mietbeginn, end: rec.mietende });
+      return { amount: k.amount, text: 'Standard \u00b7 ' + k.rule };
+    }
+    if (!Number(pr.kaltmiete)) return null;
+    const k = ccKaution({ contract: gewerbe ? 'gewerbe' : 'mietvertrag', kalt: pr.kaltmiete });
+    return { amount: k.amount, text: 'Standard \u00b7 ' + k.rule };
   }
   if (rec.parking_id) {
     const s  = appParking?.find(x => x.id === rec.parking_id);
     const pr = s?.pricing || {};
-    if (ccKautionOverride(pr) === null && !Number(pr.miete)) return null;
-    return ccKaution({ contract: 'parking', kalt: pr.miete, rec: pr }).amount;
+    const ovr = ccKautionOverride(pr);
+    if (ovr !== null) return { amount: ovr, text: 'Individuell \u00b7 Karte' };
+    if (!Number(pr.miete)) return null;
+    const k = ccKaution({ contract: 'parking', kalt: pr.miete });
+    return { amount: k.amount, text: 'Standard \u00b7 ' + k.rule };
   }
   return null;
 }
+function _rntRefreshKautionSoll(tid) {
+  const info = _rntKautionSollInfo(_rntRecords.find(r => r.id === tid));
+  document.querySelectorAll(`[data-ksoll-for="${tid}"]`).forEach(el => {
+    if (el.dataset.ksollKind === 'hint') { el.textContent = info ? `Soll: ${_rntFmtEUR(info.amount)} \u00b7 ${info.text}` : ''; el.style.display = info ? '' : 'none'; }
+    else el.textContent = info ? `Soll \u00b7 ${_rntFmtEUR(info.amount)} \u00b7 ${info.text}` : 'Soll \u00b7 \u2014';
+  });
+}
+function _rntKautionSoll(rec) { const i = _rntKautionSollInfo(rec); return i ? i.amount : null; }
+
 
 function _rntToggleKautionOverride(el, inputId, hintId) {
   const on  = el.checked;
@@ -1133,7 +1161,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${ksoll ? _rntFmtEUR(ksoll) : '\u2014'} (3\u00d7 Kaltmiete)</span></span>
+      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${rec?.id || ''}">${(() => { const i = _rntKautionSollInfo(rec); return i ? `Soll \u00b7 ${_rntFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
         <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec?.kaution_soll != null ? 'checked' : ''}
           onchange="_rntToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
@@ -1166,7 +1194,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${ksoll ? _rntFmtEUR(ksoll) : '\u2014'} (3\u00d7 Parkmiete)</span></span>
+      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${rec?.id || ''}">${(() => { const i = _rntKautionSollInfo(rec); return i ? `Soll \u00b7 ${_rntFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
         <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec?.kaution_soll != null ? 'checked' : ''}
           onchange="_rntToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
@@ -1421,7 +1449,7 @@ function _rntKautionHTML(rid, tid, ctx, rec) {
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
       <span class="tnp ${st.cls}" id="kstat-${pfx}">${st.label}</span>
     </div>
-    ${soll != null ? `<div class="tn-kaut-hint">Soll: ${_rntFmtEUR(soll)} \u00b7 3\u00d7 Miete</div>` : ''}
+    ${(() => { const i = _rntKautionSollInfo(rec || (tid ? _rntRecords.find(r => r.id === tid) : null)); return `<div class="tn-kaut-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${i ? '' : 'display:none'}">${i ? `Soll: ${_rntFmtEUR(i.amount)} \u00b7 ${i.text}` : ''}</div>`; })()}
     <div class="tn-kaut-grid">
       <div class="tn-kc">
         <div class="tn-kc-lbl">Received</div>
@@ -2318,7 +2346,7 @@ function _rntModalBodyHTML(rec, isApt) {
         `}
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <div class="tn-kaut-override-row">
-            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${soll ? _rntFmtEUR(soll) : '\u2014'} (auto)</span></span>
+            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub" data-ksoll-for="${tid}">${(() => { const i = _rntKautionSollInfo(rec); return i ? `Soll \u00b7 ${_rntFmtEUR(i.amount)} \u00b7 ${i.text}` : 'Soll \u00b7 \u2014'; })()}</span></span>
             <label class="tn-kaut-ovr-sw">
               <input type="checkbox" id="mkaut-ovr-${tid}" ${dKS != null ? 'checked' : ''}
                 onchange="_rntToggleKautionOverride(this,'mkaut-inp-${tid}','mkaut-hint-${tid}')"/>
@@ -2710,6 +2738,7 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   const rec = _rntRecords.find(r => r.id === tid);
   const beforeRent = rec ? { kaltmiete: rec.kaltmiete, nebenkosten: rec.nebenkosten, kaution_soll: rec.kaution_soll } : null;   // undo if the save fails
   if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
+  _rntRefreshKautionSoll(tid);   // this tenant's Soll lines show the new value at once
 
   const bar = document.getElementById('rbar-' + rid);
   if (bar && isApt) {

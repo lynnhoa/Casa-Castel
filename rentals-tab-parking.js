@@ -416,7 +416,7 @@ function _pkCardHTML(p) {
       <button class="pk-act ${vacant ? 'pk-act--mark-occupied' : 'pk-act--mark-vacant'}"
         onclick="_pkToggleVacant('${p.id}',this)">
         <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:11px"></i>
-        ${vacant ? 'Mark as Occupied' : 'Mark as Vacant'}
+        ${vacant ? 'Mark as occupied' : 'Mark as vacant'}
       </button>
     </div>
 
@@ -828,21 +828,23 @@ function _pkRerenderCard(pkId) {
 
 
 /* ── TOGGLE VACANT ───────────────────────────────────────── */
-async function _pkToggleVacant(pkId, btn) {
-  btn.disabled = true;
+/* Mark as vacant / occupied — instant, saved in the background (red message + undo if it fails) */
+function _pkToggleVacant(pkId, btn) {
   const spot = appParking.find(p => p.id === pkId);
-  if (!spot) { btn.disabled = false; return; }
-
-  const newVacant = !spot.vacant;
-
-  if (_pkSbClient) {
-    const { error } = await _pkSbClient.from('rentals_parking').update({ vacant: newVacant }).eq('id', pkId);
-    if (error) { btn.disabled = false; return; }
-  }
-
-  spot.vacant = newVacant;
-  _pkRerenderCard(pkId);
+  if (!spot) return;
+  const before = !!spot.vacant, next = !before;
+  spot.vacant = next;
+  _pkRerenderCard(pkId);   // instant
   _updatePkSummary();
+  if (!_pkSbClient) return;
+  ccQueueWrite('pk-vacant-' + pkId, () => _pkSbClient.from('rentals_parking').update({ vacant: next }).eq('id', pkId))
+    .then(r => {
+      if (!r || !r.error) return;
+      spot.vacant = before;
+      _pkRerenderCard(pkId);
+      _updatePkSummary();
+      ccSaveFailed(r.error, 'parking vacancy');
+    });
 }
 
 

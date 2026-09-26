@@ -110,7 +110,12 @@ async function toggleRoomVacant(roomId) {
   if (error) return { ok: false, error: error.message };
 
   room.vacant = newVacant;
+  await roomAfterVacancyChange(room, newVacant);
+  return { ok: true, vacant: newVacant };
+}
 
+/* Follow-up after a vacancy change was saved: kitchen reset (when occupied) + tell the other tabs */
+async function roomAfterVacancyChange(room, newVacant) {
   // When marking occupied: reset any stale 'skipped' kitchen_weeks row for this week
   if (!newVacant && typeof kWeekIdx === 'function') {
     try {
@@ -129,7 +134,6 @@ async function toggleRoomVacant(roomId) {
   }
 
   _notifyRoomsListeners('UPDATE', room);
-  return { ok: true, vacant: newVacant };
 }
 
 // Update sort order after drag
