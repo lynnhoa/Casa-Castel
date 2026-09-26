@@ -302,7 +302,9 @@ function cxNotDue(list) {
 /* ── Toasts ── */
 function cxToastErr(e) {
   console.error('[controlling]', e);
-  if (typeof ctlToast === 'function') ctlToast('Speichern fehlgeschlagen – bitte erneut versuchen');
+  // Short reason in the message, so a problem can be named from a screenshot
+  const why = String((e && (e.message || e.details)) || e || '').replace(/\s+/g, ' ').slice(0, 70);
+  if (typeof ctlToast === 'function') ctlToast('Speichern fehlgeschlagen – bitte erneut versuchen' + (why ? ' · ' + why : ''));
 }
 
 /* ── Wire a tab host once: month arrows, fold, take-over, inputs ── */

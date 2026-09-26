@@ -52,7 +52,7 @@ function ctlToast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._to);
-  t._to = setTimeout(() => t.classList.remove('show'), 1800);
+  t._to = setTimeout(() => t.classList.remove('show'), String(msg).length > 60 ? 5000 : 1800);   // errors stay readable
 }
 
 /* ── Parts of the app that newer versions need. If the page is an older

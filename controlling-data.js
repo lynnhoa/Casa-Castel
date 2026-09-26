@@ -213,7 +213,15 @@ async function ctlDeleteCastel(category_id, month) {
 /* New unit (e.g. a Casa Castel room like Berlin) — created on its first save */
 async function ctlCreateUnit(fields) {
   const sort = Math.max(0, ...window._ctrl.units.filter(u => u.property_id === fields.property_id).map(u => Number(u.sort_order) || 0)) + 1;
-  const { data, error } = await _ctlSupa.from('ctrl_units').insert({ sort_order: sort, ...fields }).select().single();
+  let { data, error } = await _ctlSupa.from('ctrl_units').insert({ sort_order: sort, ...fields }).select().single();
+  // Old rows were imported with fixed ids, so the database's own counter can hand out an id
+  // that is already taken (duplicate) — or the column has no counter at all (null).
+  // Then retry once with the next free id.
+  if (error && /duplicate key|23505|null value|23502/i.test(String((error.code || '') + ' ' + (error.message || '')))) {
+    const { data: mx } = await _ctlSupa.from('ctrl_units').select('id').order('id', { ascending: false }).limit(1);
+    const next = Math.max(0, ...(mx || []).map(r => Number(r.id) || 0), ...window._ctrl.units.map(u => Number(u.id) || 0)) + 1;
+    ({ data, error } = await _ctlSupa.from('ctrl_units').insert({ id: next, sort_order: sort, ...fields }).select().single());
+  }
   if (error) throw error;
   window._ctrl.units.push(data);
   return data;

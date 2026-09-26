@@ -484,7 +484,9 @@ function _cxUnitSollV2(u, pid, y, m) {
     const w = act[0];                                       // newest Einzug wins, one tenant per day (D4)
     let dk, dnk, pk, r = null;
     if (!w) {
-      if (roomBusy && all.length && iso >= thisMonth && iso <= today) roomGap = true;
+      // days before a move-in / after a move-out in this month are expected to be empty
+      const expectedGap = dated.some(w2 => (inM(w2.from) && iso < w2.from) || (inM(w2.to) && iso > w2.to));
+      if (roomBusy && all.length && iso >= thisMonth && iso <= today && !expectedGap) roomGap = true;
       if (!(roomFill && iso >= thisMonth)) continue;
       const rp = _cxRoomPricing(link.obj, null);
       dk = _cxN0(rp.k); dnk = _cxN0(rp.nk); roomOnly++; pk = 'room';
