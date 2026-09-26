@@ -107,7 +107,7 @@ window.renderDashboard = function () {
     return '<div class="cx-card">' +
       '<button class="cx-ph" data-cx="fold" data-k="' + k + '" aria-expanded="' + isOpen + '">' +
         '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(p.name) + '</span>' +
-          '<span class="cx-src">' + (future ? 'noch nicht fällig' : nothing ? 'noch nichts erfasst' : 'rein ' + cxW(s.rein) + ' · raus ' + cxW(s.raus)) + '</span></span>' +
+          '<span class="cx-src' + (future || nothing ? ' cx-src--empty' : '') + '">' + (future ? 'noch nicht fällig' : nothing ? 'noch nichts erfasst' : 'rein ' + cxW(s.rein) + ' · raus ' + cxW(s.raus)) + '</span></span>' +
         '<span class="cx-ph__r">' + (open ? cxPill('open', open + ' offen') : '') +
           '<span class="cx-cf' + (!future && !nothing && s.konto < 0 ? ' neg' : '') + '">' + (future || nothing ? '\u2014' : cxWS(s.konto)) + '</span></span>' +
       '</button>' + details + '</div>';
