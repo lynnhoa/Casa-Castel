@@ -622,7 +622,15 @@ function ctlUnitHistory(u, pid) {
     return { ...w, app: _cxApp(link), periods: c.per, staffel: c.st, nkSteps: c.nk, legacyMode: _cxLegacyMode(link, w.t),
              current: cur, balance: ctlTenancyBalance(u, pid, w.id) };
   });
-  return { link, tenancies, orphans: _cxOrphanSteps(link, all) };
+  // Payments recorded in months when, by the data, nobody lived there — typically an Einzug
+  // that was overwritten by a renewal in the past (B1). Shown so the real Einzug gets entered.
+  const istNoTenant = (window._src.incAll || [])
+    .filter(r => u.id != null && r.unit_id === u.id && (_cxN0(r.kaltmiete) + _cxN0(r.nebenkosten)) > 0)
+    .filter(r => { const f = _cxIso(r.year, r.month, 1), l = _cxIso(r.year, r.month, new Date(r.year, r.month, 0).getDate());
+                   return !all.some(w => w.from && w.from <= l && w.to >= f); })
+    .sort((a, b) => (a.year - b.year) || (a.month - b.month))
+    .map(r => String(r.month).padStart(2, '0') + '.' + r.year);
+  return { link, tenancies, orphans: _cxOrphanSteps(link, all), istNoTenant };
 }
 
 /* Data check for a month: every unit whose Soll doesn't add up */

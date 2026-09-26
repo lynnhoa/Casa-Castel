@@ -102,11 +102,14 @@ window.renderHistory = function (host) {
   const cards = props.map(p => ctlUnitsFor(p.id).map(u => {
     const h = ctlUnitHistory(u, p.id);
     if (!h.link) return '';
-    const iss = h.tenancies.reduce((a, w) => a + _cxHIssues(w).length, 0);
+    const iss = h.tenancies.reduce((a, w) => a + _cxHIssues(w).length, 0) + (h.istNoTenant && h.istNoTenant.length ? 1 : 0);
     nIssues += iss; nOrph += h.orphans.length;
     const k = 'hist:' + p.id + ':' + (u.id ?? u.name), isOpen = _cxH.open[k] !== undefined ? _cxH.open[k] : iss + h.orphans.length > 0;
     const body = !isOpen ? '' : '<div style="padding:0 16px 8px">' +
       (h.tenancies.length ? h.tenancies.map(w => _cxHTenancyHTML(u, p.id, w)).join('') : '<div class="cx-r__sub" style="padding:10px 0">Keine Mieter eingetragen.</div>') +
+      (h.istNoTenant && h.istNoTenant.length ? '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Zahlungen erfasst, aber laut Daten wohnte niemand hier: ' +
+        cxEsc(h.istNoTenant.length > 6 ? h.istNoTenant.slice(0, 6).join(', ') + ' …' : h.istNoTenant.join(', ')) +
+        ' – Einzug prüfen (evtl. bei einer Verlängerung überschrieben)</div>' : '') +
       h.orphans.map(o => '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' +
         (o.kind === 'staffel' ? 'Staffelstufe' : 'NK-Änderung') + ' ab ' + cxFmtDate(ccRpIso(o.h.effective_date)) + ' (' + cxEur(o.h.amount) + ') gehört zu keinem Mieter – wird nicht verwendet</div>').join('') +
       '</div>';
