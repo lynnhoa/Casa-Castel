@@ -151,12 +151,20 @@ function ctlMonthStatus(month) {
 }
 
 /* ── Writes (upsert) ────────────────────────────────────────── */
-async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten) {
+async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
   const y = window._ctrl.year;
   const payload = { unit_id, year: y, month, kaltmiete, nebenkosten };
-  const { data, error } = await _ctlSupa.from('ctrl_income_months')
-    .upsert(payload, { onConflict: 'unit_id,year,month' }).select().single();
+  if (split !== undefined) payload.split = split;                    // per tenant in change months (G1)
+  const up = pl => _ctlSupa.from('ctrl_income_months').upsert(pl, { onConflict: 'unit_id,year,month' }).select().single();
+  let { data, error } = await up(payload);
+  if (error && 'split' in payload && /split/.test(String(error.message || '')) ) {   // SQL not run yet
+    delete payload.split;
+    ({ data, error } = await up(payload));
+    if (!error && typeof ctlToast === 'function') ctlToast('Gespeichert – Aufteilung pro Mieter erst nach dem SQL-Update');
+  }
   if (error) throw error;
+  const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
+  if (all) { const j = all.findIndex(r => r.unit_id === unit_id && r.year === y && r.month === month); if (j >= 0) all[j] = data; else all.push(data); }
   const idx = window._ctrl.income.findIndex(r => r.unit_id === unit_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.income[idx] = data;
   else window._ctrl.income.push(data);
@@ -192,6 +200,7 @@ async function ctlDeleteIncome(unit_id, month) {
   const { error } = await _ctlSupa.from('ctrl_income_months').delete().eq('unit_id', unit_id).eq('year', y).eq('month', month);
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+  if (window._src && window._src.incAll) window._src.incAll = window._src.incAll.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
 }
 
 async function ctlDeleteCastel(category_id, month) {

@@ -2182,6 +2182,13 @@ async function _aptOpenContract(type, aptId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
+          // Rent history (5.5): contract rent + dates → the tenant (Kurzzeit is always prorated)
+          if (typeof ccRpFromContract === 'function') await ccRpFromContract({
+            app: 'rentals', db: sbL, records: typeof _rntRecords !== 'undefined' ? _rntRecords : [], unitKey: 'apartment_id', unitRef: apt2.id,
+            tenantName: mieterName, start: startVal, end: endVal, mode: 'kalt_nk',
+            kalt: data.kzKaltmiete, nk: data.kzNk, total: (Number(data.kzKaltmiete) || 0) + (Number(data.kzNk) || 0),
+            first_month: 'anteilig', last_month: 'anteilig', contract_type: 'kurzzeit', legacyMode: 'kalt_nk',
+          });
           const filename = ccPdfFileName('Mietvertrag_befristet', apt2.name, mieterName);
           await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
@@ -2395,6 +2402,16 @@ async function _aptOpenContract(type, aptId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
+          // Rent history (5.5): contract rent (Anfangsmiete with Staffel) + dates → the tenant
+          if (typeof ccRpFromContract === 'function') {
+            const _k = staffelAn && Number(anfangsmiete) > 0 ? Number(anfangsmiete) : Number(data.kaltmiete) || 0;
+            await ccRpFromContract({
+              app: 'rentals', db: sbL, records: typeof _rntRecords !== 'undefined' ? _rntRecords : [], unitKey: 'apartment_id', unitRef: apt2.id,
+              tenantName: mieterName, start: startVal, end: befristet ? endVal : null, mode: 'kalt_nk',
+              kalt: _k, nk: Number(data.nkVorauszahlung) || 0, total: _k + (Number(data.nkVorauszahlung) || 0),
+              first_month: 'anteilig', last_month: 'anteilig', contract_type: 'mietvertrag', legacyMode: 'kalt_nk',
+            });
+          }
           const filename = ccPdfFileName('Mietvertrag', apt2.name, mieterName);
           await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {

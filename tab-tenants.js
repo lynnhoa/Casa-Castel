@@ -607,21 +607,39 @@ function _tnFreezeKautionSoll() {
    stored rent / contract type get today's room price saved ONCE.          */
 const _tnRentFilling = new Set();
 function _tnFreezeRent() {
+  // B3: a rent is only stored when you type it or a contract is generated.
+  // Today's room price is never copied onto a tenant. Only the contract type
+  // of an active tenant without one is filled in (from the room).
   if (!sbL) return;
   _tnRecords.forEach(rec => {
-    if (rec.status !== 'active' || _tnRentFilling.has(rec.id)) return;
-    const liveP = _tnRoomPricing(rec.room) || {};
-    const upd = {};
-    if (rec.kaltmiete == null && liveP.kaltmiete != null) upd.kaltmiete = liveP.kaltmiete;
-    if (rec.nebenkosten == null && liveP.nebenkosten != null) upd.nebenkosten = liveP.nebenkosten;
-    if (!rec.contract_type) { const ct = _tnRoomContractType(rec.room); if (ct) upd.contract_type = ct; }
-    if (!Object.keys(upd).length) return;
+    if (rec.status !== 'active' || _tnRentFilling.has(rec.id) || rec.contract_type) return;
+    const ct = _tnRoomContractType(rec.room);
+    if (!ct) return;
     _tnRentFilling.add(rec.id);
-    const before = {}; Object.keys(upd).forEach(k => { before[k] = rec[k]; });
-    Object.assign(rec, upd);
-    ccQueueWrite('tn-' + rec.id, () => sbL.from('tenant_records').update(upd).eq('id', rec.id))
-      .then(({ error }) => { if (error) { Object.assign(rec, before); _tnRentFilling.delete(rec.id); console.warn('[tenants] rent fix:', error.message); } });
+    rec.contract_type = ct;
+    ccQueueWrite('tn-' + rec.id, () => sbL.from('tenant_records').update({ contract_type: ct }).eq('id', rec.id))
+      .then(({ error }) => { if (error) { rec.contract_type = null; _tnRentFilling.delete(rec.id); console.warn('[tenants] contract type:', error.message); } });
   });
+}
+
+/* Pauschal or Kalt + NK for a tenant without rent history: from the room's
+   pricing for the tenant's contract type (same rule as the Kaution). */
+function _tnLegacyMode(roomName, rec) {
+  const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === roomName) : null;
+  const ctype = (rec && rec.contract_type) || _tnRoomContractType(roomName);
+  const isP = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk' : r?.mietvertrag_pricing !== 'kalt_nk';
+  return isP ? 'pauschal' : 'kalt_nk';
+}
+/* The tenant's rent today: rent history first, else the rent stored on the tenant.
+   → { mode, kalt, nk, total, src } or null (nothing stored — never the room price) */
+function _tnCurrentRent(rec, roomName) {
+  if (!rec) return null;
+  const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('casa', rec.id), ccRpToday()) : null;
+  if (per) return { ...ccRpAmount(per), src: 'history', period: per };
+  if (rec.kaltmiete == null && rec.nebenkosten == null) return null;
+  const mode = _tnLegacyMode(roomName, rec);
+  const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
+  return mode === 'pauschal' ? { mode, kalt: k + n, nk: 0, total: k + n, src: 'tenant' } : { mode, kalt: k, nk: n, total: k + n, src: 'tenant' };
 }
 
 /* Contract generators: the active tenant's fixed Kaution Soll (or null) */
@@ -822,6 +840,7 @@ async function _tnLoad() {
     sbL.from('nk_entries').select('*').in('tenant_id', tids).order('period', { ascending: false }),
     sbL.from('tenant_documents').select('*').in('tenant_id', tids),
     sbL.from('nk_vorauszahlung_history').select('*').in('room', rooms).order('effective_date', { ascending: false }),
+    typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'casa') : Promise.resolve([]),   // rent history (rent_periods)
   ]);
 
   _tnKaution = {};
@@ -866,6 +885,7 @@ async function _tnLoad() {
 let _tnRenderedSig = null;
 function _tnRenderIfChanged() {
   const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache,
+                              (typeof CC_RP !== 'undefined' ? CC_RP.rows.filter(r => r.app === 'casa') : []),
                               (typeof appRooms !== 'undefined' ? appRooms : []).map(r => [r.id, r.name, r.active, r.vacant, r.sort_order,
                                 r.kaltmiete, r.nk_pauschale, r.kurzzeit_kaltmiete, r.kurzzeit_nk, r.mietvertrag_pricing, r.kurzzeit_pricing, r.kaution_override, r.kaution_default, r.active_price_type])]);
   const list  = document.getElementById('tenantsList');
@@ -1042,29 +1062,29 @@ function _tnHeaderHTML(rid, room, activeRec) {
 
 /* ── RENT BAR ── */
 function _tnRentBarHTML(rid, room, rec) {
-  const liveP = _tnRoomPricing(room.name);
-  const kalt = (rec && rec.kaltmiete != null) ? Number(rec.kaltmiete) : liveP.kaltmiete;
-  const nk   = (rec && rec.nebenkosten != null) ? Number(rec.nebenkosten) : liveP.nebenkosten;
-  const warm = (kalt != null && nk != null) ? kalt + nk : kalt;
+  const cur = _tnCurrentRent(rec, room.name);
   const priceLabel = _tnPriceLabel(room.name) || '';
-  const src  = (rec && rec.kaltmiete != null) ? 'agreed' : 'from rooms tab';
+  const src  = !cur ? 'nicht hinterlegt' : (cur.src === 'history' ? 'ab ' + ccRpFmt(cur.period.valid_from) : 'agreed');
+  const nextP = rec && typeof ccRpFor === 'function'
+    ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday()) : null;
+  const pausch = cur && cur.mode === 'pauschal';
 
   return `
 <div class="tn-rent-bar" id="rbar-${rid}">
   <div class="tn-rc">
-    <div class="tn-rlbl">Kaltmiete</div>
-    <div class="tn-rval">${kalt != null ? _tnFmtEUR(kalt) : '\u2014'}</div>
+    <div class="tn-rlbl">${pausch ? 'Pauschalmiete' : 'Kaltmiete'}</div>
+    <div class="tn-rval">${cur ? _tnFmtEUR(pausch ? cur.total : cur.kalt) : '\u2014'}</div>
     <div class="tn-rsub">${src}</div>
   </div>
   <div class="tn-rc">
     <div class="tn-rlbl">Nebenkosten</div>
-    <div class="tn-rval">${nk != null ? _tnFmtEUR(nk) : '\u2014'}</div>
-    <div class="tn-rsub">per month</div>
+    <div class="tn-rval">${!cur ? '\u2014' : pausch ? 'inkl.' : _tnFmtEUR(cur.nk)}</div>
+    <div class="tn-rsub">${nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : 'per month'}</div>
   </div>
   <div class="tn-rc">
     <div class="tn-rlbl">Warmmiete</div>
-    <div class="tn-rval">${warm != null ? _tnFmtEUR(warm) : '\u2014'}</div>
-    <div class="tn-rsub">derived</div>
+    <div class="tn-rval">${cur ? _tnFmtEUR(cur.total) : '\u2014'}</div>
+    <div class="tn-rsub">${pausch ? 'pauschal' : 'derived'}</div>
   </div>
   <div class="tn-rc">
     <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
@@ -1077,26 +1097,31 @@ function _tnRentBarHTML(rid, room, rec) {
 </div>`;
 }
 
-/* ── RENT FORM ── */
+/* ── RENT FORM ──
+   Shows only the tenant's own rent (B3). Today's room price is a grey hint.
+   "Gilt ab" empty = correct the current rent · a date = new rent from that day
+   (the old rent stays in the history). */
 function _tnRentFormHTML(rid, room, rec) {
   const liveP = _tnRoomPricing(room.name);
-  const kalt = (rec && rec.kaltmiete != null) ? Number(rec.kaltmiete) : (liveP.kaltmiete ?? '');
-  const nk   = (rec && rec.nebenkosten != null) ? Number(rec.nebenkosten) : (liveP.nebenkosten ?? '');
-  const warm = (kalt !== '' && nk !== '') ? Number(kalt) + Number(nk) : (kalt !== '' ? kalt : '');
+  const cur   = _tnCurrentRent(rec, room.name);
+  const mode  = cur ? cur.mode : _tnLegacyMode(room.name, rec);
+  const pausch = mode === 'pauschal';
+  const kalt = cur ? (pausch ? cur.total : cur.kalt) : '';
+  const nk   = cur && !pausch ? cur.nk : '';
+  const warm = cur ? cur.total : '';
+  const hintK = pausch ? ((Number(liveP.kaltmiete) || 0) + (Number(liveP.nebenkosten) || 0) || '') : (liveP.kaltmiete ?? '');
   const tid  = rec ? rec.id : '';
   const ksoll = (rec && rec.kaution_soll != null) ? Number(rec.kaution_soll)
     : (_tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null) ?? '');
-  const ctype = _tnRoomContractType(room.name);
-  const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ rule' : '3\u00d7 Kaltmiete \u00b7 MV rule';
 
   return `
-<div class="tn-rent-form" id="rform-${rid}" style="display:none">
+<div class="tn-rent-form" id="rform-${rid}" data-mode="${mode}" style="display:none">
   <div class="tn-rf">
-    <span class="tn-flbl">Kaltmiete \u20ac/mo</span>
-    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${liveP.kaltmiete ?? ''}"
+    <span class="tn-flbl">${pausch ? 'Pauschalmiete' : 'Kaltmiete'} \u20ac/mo</span>
+    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${hintK}"
       oninput="_tnUpdateWarm('${rid}')"/>
   </div>
-  <div class="tn-rf">
+  <div class="tn-rf"${pausch ? ' style="display:none"' : ''}>
     <span class="tn-flbl">Nebenkosten \u20ac/mo</span>
     <input type="number" data-cc-num="2" id="rf-nk-${rid}" value="${nk}" placeholder="${liveP.nebenkosten ?? ''}"
       oninput="_tnUpdateWarm('${rid}')"/>
@@ -1105,13 +1130,17 @@ function _tnRentFormHTML(rid, room, rec) {
     <span class="tn-flbl">Warmmiete</span>
     <div class="tn-rf-derived" id="rf-warm-${rid}">${warm !== '' ? _tnFmtEUR(warm) : '\u2014'}</div>
   </div>
+  <div class="tn-rf">
+    <span class="tn-flbl">Gilt ab</span>
+    <input type="text" id="rf-from-${rid}" value="" placeholder="TT.MM.JJJJ"/>
+  </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <span class="tn-flbl">Kaution Soll</span>
     <input type="number" data-cc-num="2" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
     <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
-    <span class="tn-rf-hint" style="margin:0">Fixed at move-in · changes via NK or here.</span>
+    <span class="tn-rf-hint" style="margin:0">Gilt ab leer = aktuelle Miete korrigieren · Datum = neue Miete ab diesem Tag</span>
     <div style="display:flex;gap:6px">
       <button class="tn-btn tn-btn-sm" onclick="_tnToggleRentEdit('${rid}')">Cancel</button>
       <button class="tn-btn tn-btn-primary cc-save" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
@@ -1521,10 +1550,12 @@ async function _tnNKVorausConfirmAdd__run(room, rid) {
     return;
   }
   if (!sbL) return;
-  const { data, error } = await sbL.from('nk_vorauszahlung_history')
-    .insert({ room, effective_date: date, amount,
-              tenant_notified: false, tenant_adjusted: false })
-    .select().single();
+  const actT = (_tnRecords || []).filter(r => r.room === room && r.status === 'active')
+    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
+  const nkRow = { room, effective_date: date, amount, tenant_notified: false, tenant_adjusted: false };
+  const { data, error } = typeof ccRpInsertWithTenant === 'function'
+    ? await ccRpInsertWithTenant(sbL, 'nk_vorauszahlung_history', nkRow, actT ? actT.id : null)
+    : await sbL.from('nk_vorauszahlung_history').insert(nkRow).select().single();
   if (error) { console.warn('[tenants] nkv add:', error.message); return; }
   if (!_tnNKVoraus[room]) _tnNKVoraus[room] = [];
   _tnNKVoraus[room].unshift(data);
@@ -1993,6 +2024,12 @@ function _tnCollectProfile(container, selector) {
   };
 }
 
+function _tnNewIsCurrent(mietbeginn) {
+  if (typeof ccRpIso !== 'function') return true;
+  const iso = ccRpIso(mietbeginn);
+  return !iso || iso >= ccRpAddDays(ccRpToday(), -31);
+}
+
 async function _tnSaveNewTenant(rid, roomName) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
@@ -2021,8 +2058,10 @@ async function _tnSaveNewTenant(rid, roomName) {
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende,
     // Rent belongs to the tenancy: fixed at move-in (room price now), changes via NK or by hand
-    kaltmiete:    p.kaltmiete   ?? liveP.kaltmiete   ?? null,
-    nebenkosten:  p.nebenkosten ?? liveP.nebenkosten ?? null,
+    // Room price only for a current move-in (≤ 31 days ago or later); a tenant
+    // entered for the past stays without rent until you type it (B3)
+    kaltmiete:    p.kaltmiete   ?? (_tnNewIsCurrent(p.mietbeginn) ? liveP.kaltmiete   : null) ?? null,
+    nebenkosten:  p.nebenkosten ?? (_tnNewIsCurrent(p.mietbeginn) ? liveP.nebenkosten : null) ?? null,
     kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende) ?? null,
   };
 
@@ -2075,20 +2114,20 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   const toFormer = !!forceFormer || !!(p.mietende && _tnIsPast(p.mietende) && rec?.status === 'active');
   // Reverse: former tenant whose mietende is cleared or set to future → back to active
   const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
-  const liveP    = _tnRoomPricing(roomName);
   const update   = {
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
-    kaltmiete:   p.kaltmiete   ?? null,
-    nebenkosten: p.nebenkosten ?? null,
     kaution_soll:p.kaution_soll ?? rec?.kaution_soll ?? null,   // a profile save never wipes the fixed Soll
   };
+  // B20: the rent is only written when this form actually has rent fields —
+  // the card's profile form has none, so saving a phone number never wipes the rent.
+  if (sec.querySelector('[data-f="kaltmiete"]'))   update.kaltmiete   = p.kaltmiete   ?? null;
+  if (sec.querySelector('[data-f="nebenkosten"]')) update.nebenkosten = p.nebenkosten ?? null;
   if (toFormer) {
-    update.status        = 'former';
-    update.contract_type = _tnRoomContractType(roomName);
-    if (!p.kaltmiete)   update.kaltmiete   = liveP.kaltmiete   ?? null;
-    if (!p.nebenkosten) update.nebenkosten = liveP.nebenkosten ?? null;
+    // B4: moving to former changes status (and keeps the Auszug) — the rent is never filled in
+    update.status = 'former';
+    if (!rec?.contract_type) update.contract_type = _tnRoomContractType(roomName);
   }
   if (toActive) {
     update.status        = 'active';
@@ -2130,48 +2169,62 @@ function _tnRebuildProfileCache() {
 
 async function _tnSaveRent(rid, tid, roomName) {
   if (!sbL || !tid) return;
-  const kalt  = parseFloat(document.getElementById('rf-kalt-'  + rid)?.value) || null;
-  const nk    = parseFloat(document.getElementById('rf-nk-'    + rid)?.value) || null;
-  const ksollOvr = document.getElementById('rf-ksoll-ovr-' + rid);
+  const form  = document.getElementById('rform-' + rid);
+  const mode  = form?.dataset.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';
+  const kaltV = parseFloat(document.getElementById('rf-kalt-' + rid)?.value);
+  const nkV   = parseFloat(document.getElementById('rf-nk-'   + rid)?.value);
+  const kalt  = isNaN(kaltV) ? null : kaltV;
+  const nk    = mode === 'pauschal' ? null : (isNaN(nkV) ? null : nkV);
+  const from  = typeof ccRpIso === 'function' ? ccRpIso(document.getElementById('rf-from-' + rid)?.value) : '';
   const ksollInp = document.getElementById('rf-ksoll-' + rid);
   const ksoll = ksollInp ? (parseFloat(ksollInp.value) || null) : (_tnRecords.find(r => r.id === tid)?.kaution_soll ?? null);
-
-  // Direct save: local values + bar first, database in the background (direct-save.js)
   const rec = _tnRecords.find(r => r.id === tid);
-  const before = rec ? { kaltmiete: rec.kaltmiete, nebenkosten: rec.nebenkosten, kaution_soll: rec.kaution_soll } : null;
-  if (rec) { rec.kaltmiete = kalt; rec.nebenkosten = nk; rec.kaution_soll = ksoll; }
-  ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records')
-      .update({ kaltmiete: kalt, nebenkosten: nk, kaution_soll: ksoll }).eq('id', tid))
+  if (!rec) return;
+  const before = { kaltmiete: rec.kaltmiete, nebenkosten: rec.nebenkosten, kaution_soll: rec.kaution_soll };
+  const legacyMode = _tnLegacyMode(roomName, rec);
+  const today = ccRpToday();
+
+  // Rent history (rent_periods). Table missing → only the tenant record is saved.
+  let histOk = true;
+  try {
+    if (from) {
+      await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: from, mode, kalt, nk, pauschale: kalt,
+                               kind: 'manual', source: 'tenant_form', legacyMode });
+    } else {
+      const per = ccRpAt(ccRpFor('casa', rec.id), today);
+      if (per) await ccRpUpdate(sbL, per.id, mode === 'pauschal' ? { mode, pauschale: kalt, kaltmiete: null, nebenkosten: null }
+                                                                 : { mode, kaltmiete: kalt, nebenkosten: nk, pauschale: null });
+    }
+  } catch (e) {
+    histOk = false;
+    if (from) { ccToast('Miethistorie nicht verfügbar (SQL noch nicht ausgeführt) – Miete nur beim Mieter gespeichert', true); }
+    console.warn('[tenants] rent history:', e && e.message || e);
+  }
+
+  // The tenant record keeps the rent in effect today (a future rent waits in the history)
+  const upd = { kaution_soll: ksoll };
+  if (!from || from <= today || !histOk) { upd.kaltmiete = kalt; upd.nebenkosten = nk; }
+  Object.assign(rec, upd);
+  ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(upd).eq('id', tid))
     .then(({ error }) => {
       if (!error) return;
-      if (rec && before) Object.assign(rec, before);
+      Object.assign(rec, before);
       _tnRender();
       ccSaveFailed(error, 'tenant rent');
     });
 
-  // Update rent bar read values in-place
-  const liveP = _tnRoomPricing(roomName);
-  const resolvedKalt = kalt ?? liveP?.kaltmiete ?? null;
-  const resolvedNk   = nk   ?? liveP?.nebenkosten ?? null;
-  const resolvedWarm = (resolvedKalt != null && resolvedNk != null) ? resolvedKalt + resolvedNk : null;
-
-  const bar = document.getElementById('rbar-' + rid);
-  if (bar) {
-    const vals = bar.querySelectorAll('.tn-rval');
-    if (vals[0]) vals[0].textContent = resolvedKalt != null ? _tnFmtEUR(resolvedKalt) : '\u2014';
-    if (vals[1]) vals[1].textContent = resolvedNk   != null ? _tnFmtEUR(resolvedNk)   : '\u2014';
-    if (vals[2]) vals[2].textContent = resolvedWarm != null ? _tnFmtEUR(resolvedWarm) : '\u2014';
-    const subs = bar.querySelectorAll('.tn-rsub');
-    if (subs[0]) subs[0].textContent = kalt != null ? 'agreed' : 'from rooms tab';
-    if (subs[1]) subs[1].textContent = nk   != null ? 'agreed' : 'per month';
+  // Rent bar + form of this card redrawn in place (card stays open)
+  const room = typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === roomName) : null;
+  const bar  = document.getElementById('rbar-' + rid);
+  if (room && bar && form) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = _tnRentBarHTML(rid, room, rec) + _tnRentFormHTML(rid, room, rec);
+    bar.replaceWith(tmp.children[0]);
+    form.replaceWith(tmp.children[0]);
   }
 
-  // Kaution Soll lines of THIS tenant show the new value at once (Kaution section + rent form + pop-up)
   _tnRefreshKautionSoll(tid);
   _tnRefreshCardPills(roomName);
-
-  // Switch back to read bar, keep card open
-  _tnToggleRentEdit(rid);
 }
 
 async function _tnModalSaveProfile(tid) {
@@ -2195,17 +2248,29 @@ async function _tnModalSaveProfile(tid) {
   const ctBtn = body.querySelector('.tn-contract-toggle .tn-btn-primary');
   const ctype = ctBtn?.dataset?.ct || null;
 
+  const rec = _tnRecords.find(r => r.id === tid);
   const update = {
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
     mietbeginn: p.mietbeginn, mietende: p.mietende,
     contract_type: ctype,
-    kaltmiete:   p.kaltmiete   ?? null,
-    nebenkosten: p.nebenkosten ?? null,
-    kaution_soll:p.kaution_soll ?? null,
+    kaution_soll:p.kaution_soll ?? rec?.kaution_soll ?? null,   // never wiped by a profile save
   };
+  const hasRent = !!body.querySelector('[data-mf="kaltmiete"]');   // B20: only when the form shows the rent
+  if (hasRent) { update.kaltmiete = p.kaltmiete ?? null; update.nebenkosten = p.nebenkosten ?? null; }
+  // A tenant with rent history: the corrected rent goes into the period of their last day
+  if (hasRent && rec && typeof ccRpFor === 'function') {
+    const hist = ccRpFor('casa', rec.id);
+    const lastDay = [ccRpIso(p.mietende) || ccRpToday(), ccRpToday()].sort()[0];
+    const per = ccRpAt(hist, lastDay);
+    if (per && (Number(p.kaltmiete) || 0) + (Number(p.nebenkosten) || 0) !== (ccRpAmount(per) || {}).total) {
+      const f = per.mode === 'pauschal'
+        ? { pauschale: (Number(p.kaltmiete) || 0) + (Number(p.nebenkosten) || 0) }
+        : { kaltmiete: p.kaltmiete ?? null, nebenkosten: p.nebenkosten ?? null };
+      ccRpUpdate(sbL, per.id, f).catch(e => console.warn('[tenants] rent history:', e && e.message || e));
+    }
+  }
 
-  const rec = _tnRecords.find(r => r.id === tid);
   const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
   if (toActive) {
     update.status        = 'active';

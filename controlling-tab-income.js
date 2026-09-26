@@ -20,14 +20,25 @@ function _cxIncModel() {
   const y = window._ctrl.year, m = CX.month;
   _cxIncIndex = {};
   return window._ctrl.properties.filter(p => p.active).map(p => {
-    const rows = ctlUnitsFor(p.id).map(u => {
+    const rows = [];
+    for (const u of ctlUnitsFor(p.id)) {
       const s = ctlUnitSoll(u, p.id, y, m);
       const inc = u.id != null ? window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === m) : null;
-      const ist = inc ? cxR((Number(inc.kaltmiete) || 0) + (Number(inc.nebenkosten) || 0)) : null;
-      const id = 'inc:' + p.id + ':' + (u.id != null ? u.id : 'v:' + u.name);
-      _cxIncIndex[id] = { p, u, s };
-      return { id, u, s, soll: s.soll, ist };
-    });
+      const base = 'inc:' + p.id + ':' + (u.id != null ? u.id : 'v:' + u.name);
+      const tenantParts = (s.parts || []).filter(pt => pt.tid !== 'room');
+      if (tenantParts.length > 1) {
+        // G1: tenant change in the month → one line per tenant, each with its own Soll and Ist
+        tenantParts.forEach((pt, i) => {
+          const id = base + ':t:' + pt.tid;
+          _cxIncIndex[id] = { p, u, s, part: pt, inc };
+          rows.push({ id, u, s, part: pt, first: i === 0, soll: pt.amount, ist: typeof ctlIstFor === 'function' ? ctlIstFor(inc, s, pt.tid) : null });
+        });
+      } else {
+        const ist = inc ? cxR((Number(inc.kaltmiete) || 0) + (Number(inc.nebenkosten) || 0)) : null;
+        _cxIncIndex[base] = { p, u, s };
+        rows.push({ id: base, u, s, soll: s.soll, ist });
+      }
+    }
     return { p, rows };
   });
 }
@@ -45,11 +56,18 @@ window.renderIncome = function () {
     const changed = g.rows.some(r => r.s.notes.length);
     const warned = g.rows.some(r => r.s.check || (!r.soll && r.ist));
     const body = g.rows.map(r => {
+      if (r.part) {                                          // one line per tenant (G1)
+        const pt = r.part;
+        return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: r.first ? r.s.badge : null, soll: r.soll, ist: r.ist,
+                       sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'pauschal' : cxEur(pt.k) + ' kalt + ' + cxEur(pt.nk) + ' NK'),
+                       pills: cxPill('beige', 'anteilig'), notes: r.first ? r.s.notes : [], emptyText: 'leer', allowEmpty: true,
+                       warn: r.first ? r.s.check : null });
+      }
       // tenant change in the month → both parts, each at its own rent
       const sub = r.soll
         ? (r.s.parts && r.s.parts.length > 1
             ? r.s.parts.map(pt => pt.from + '.–' + pt.to + '.: ' + cxEur(pt.amount)).join(' · ')
-            : cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK')
+            : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' pauschal' : cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK'))
         : (r.s.link ? 'nicht vermietet' : 'kein Planwert');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'anteilig' : 'anteilig ' + r.s.days + '/' + r.s.N) : '';
       return cxRow({ id: r.id, label: r.u.name, badge: r.s.badge, soll: r.soll, ist: r.ist, sub, pills,
@@ -69,11 +87,12 @@ window.renderIncome = function () {
   cxWire(host, {
     render: () => window.renderIncome(),
     click: async (a, b) => {
-      if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; if (e) await _cxIncSave(e, e.s.soll); window.renderIncome(); }
+      if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; if (e) await _cxIncSave(e, e.part ? e.part.amount : e.s.soll); window.renderIncome(); }
       if (a === 'all') {
         b.disabled = true;
         for (const id of Object.keys(_cxIncIndex)) {
           const e = _cxIncIndex[id];
+          if (e.part) continue;                                                   // tenant lines: one tap each
           const has = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === window._ctrl.year && r.month === CX.month);
           if (!has && e.s.soll && !e.s.partial) await _cxIncSave(e, e.s.soll);   // part months: one tap each (deliberate check)
         }
@@ -86,6 +105,7 @@ window.renderIncome = function () {
 
 /* Save one unit's income (null = delete → "offen") */
 async function _cxIncSave(e, ist) {
+  if (e.part) return _cxIncSavePart(e, ist);
   const m = CX.month;
   try {
     if (ist === null || ist === undefined) { if (e.u.id != null) await ctlDeleteIncome(e.u.id, m); return; }
@@ -98,5 +118,32 @@ async function _cxIncSave(e, ist) {
     const nkPlan = cxR(e.s.nk || 0);
     const nk = ist >= nkPlan ? nkPlan : Math.max(0, cxR(ist));
     await ctlUpsertIncome(e.u.id, m, cxR(ist - nk), nk);
+  } catch (err) { cxToastErr(err); }
+}
+
+/* One tenant's line in a change month (G1): stored as split[tenant] + the unit total */
+async function _cxIncSavePart(e, ist) {
+  const m = CX.month, y = window._ctrl.year;
+  try {
+    if (e.u.id == null) {
+      const nu = await ctlCreateUnit({ property_id: e.p.id, name: e.u.name, unit_type: e.u.unit_type || 'Zimmer',
+                                       source_type: e.u.source_type || null, source_ref: e.u.source_ref || null });
+      e.u = nu;
+      if (typeof ctlSollReset === 'function') ctlSollReset();
+    }
+    const inc = window._ctrl.income.find(r => r.unit_id === e.u.id && r.year === y && r.month === m);
+    const split = {};
+    if (inc) for (const pt of (e.s.parts || [])) {           // keep what the other tenants paid
+      if (pt.tid === 'room') continue;
+      const v = ctlIstFor(inc, e.s, pt.tid);
+      if (v !== null) split[pt.tid] = v;
+    }
+    if (ist === null || ist === undefined) delete split[e.part.tid]; else split[e.part.tid] = cxR(ist);
+    const keys = Object.keys(split);
+    if (!keys.length) { await ctlDeleteIncome(e.u.id, m); return; }
+    const total = cxR(keys.reduce((a, k) => a + split[k], 0));
+    const nkPlan = cxR(e.s.nk || 0);
+    const nk = total >= nkPlan ? nkPlan : Math.max(0, total);
+    await ctlUpsertIncome(e.u.id, m, cxR(total - nk), nk, split);
   } catch (err) { cxToastErr(err); }
 }

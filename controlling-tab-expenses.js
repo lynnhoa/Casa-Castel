@@ -35,6 +35,13 @@ function _cxExpModel() {
         const c = ctlCat(x.category_id);
         rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Kosten', soll: 0, sub: (c && c.frequency) || '', src: 'Setup', ist: cxR(x.amount) });
       }
+      // sporadic costs without a plan this month: always enterable, no Soll (B18)
+      for (const bd of (plan.bedarf || [])) {
+        if (rows.some(r => r.catId === bd.catId)) continue;
+        rows.push({ key: 'cat:' + bd.catId, catId: bd.catId, label: bd.label, soll: 0, sub: 'bei Bedarf', src: '', ist: null, bedarf: true });
+      }
+      // quarterly / yearly without due months: shown as a check, never silently gone (B19)
+      if (plan.checks && plan.checks.length) rows.warn = 'Fälligkeit fehlt: ' + plan.checks.join(', ') + ' – in Setup die Monate wählen';
     } else {
       const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m);
       for (const r of rows) r.ist = row && row[r.key] !== null && row[r.key] !== undefined ? cxR(row[r.key]) : null;
@@ -44,7 +51,7 @@ function _cxExpModel() {
       }
     }
     for (const r of rows) { r.id = 'exp:' + p.id + ':' + r.key; _cxExpIndex[r.id] = { p, row: r }; }
-    return { p, rows, notDue: plan.notDue };
+    return { p, rows, notDue: plan.notDue, warn: rows.warn || null };
   });
 }
 
@@ -57,9 +64,15 @@ window.renderExpenses = function () {
   model.forEach(g => g.rows.forEach(r => { plan += r.soll; if (r.ist !== null) done += r.ist; else if (r.soll) open++; }));
 
   const cards = model.map(g => {
-    const body = g.rows.map(r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist,
+    const regular = g.rows.filter(r => !r.bedarf), bedarf = g.rows.filter(r => r.bedarf);
+    const row = r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist,
         sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">aus ' + cxEsc(r.src) + '</span>' : ''),
-        notes: r.note ? [r.note] : [], emptyText: 'nicht geplant', allowEmpty: true })).join('') + cxNotDue(g.notDue);
+        notes: r.note ? [r.note] : [], emptyText: r.bedarf ? 'bei Bedarf' : 'nicht geplant', allowEmpty: true });
+    const bk = 'expb:' + g.p.id + ':' + CX.month, bOpen = !!CX.open[bk];
+    const body = (g.warn ? '<div class="cx-r"><div class="cx-r__l"><div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(g.warn) + '</div></div></div>' : '') +
+      regular.map(row).join('') + cxNotDue(g.notDue) +
+      (bedarf.length ? '<button class="cx-link" data-cx="fold" data-k="' + bk + '" aria-expanded="' + bOpen + '"><i class="ti ti-chevron-' + (bOpen ? 'up' : 'down') + '" aria-hidden="true"></i> Bei Bedarf · ' + bedarf.map(r => cxEsc(r.label)).join(', ') + '</button>' +
+        (bOpen ? bedarf.map(row).join('') : '') : '');
     const n = g.rows.length;
     return cxCard({ key: 'exp:' + g.p.id, title: g.p.name, sub: n === 1 ? '1 Posten' : n + ' Posten',
                     status: cxGroupStatus(g.rows), sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0),

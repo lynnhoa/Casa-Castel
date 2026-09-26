@@ -2158,6 +2158,15 @@ async function _openContract(type, roomId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
+          // Rent history (5.5 / B7): the contract's rent, dates and first/last-month rule → the tenant
+          if (typeof ccRpFromContract === 'function') await ccRpFromContract({
+            app: 'casa', db: sbL, records: typeof _tnRecords !== 'undefined' ? _tnRecords : [], unitKey: 'room', unitRef: room2.name,
+            tenantName: mieterName, start: startVal, end: endVal, mode: kzPricingOverride,
+            kalt: Number(room2.kurzzeit_kaltmiete) || 0, nk: Number(room2.kurzzeit_nk) || 0,
+            total: (Number(room2.kurzzeit_kaltmiete) || 0) + (Number(room2.kurzzeit_nk) || 0),
+            first_month: ersterMonatVoll ? 'voll' : 'anteilig', last_month: letzterMonatVoll ? 'voll' : 'anteilig',
+            contract_type: 'kurzzeit', legacyMode: typeof _tnLegacyMode === 'function' ? _tnLegacyMode(room2.name, null) : 'pauschal',
+          });
           const filename = ccPdfFileName('Mietvertrag_befristet', room2.name, mieterName);
           await _roomGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {
@@ -2237,6 +2246,17 @@ async function _openContract(type, roomId) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
+          // Rent history (5.5 / B7): the contract's rent, dates and first-month rule → the tenant
+          if (typeof ccRpFromContract === 'function') {
+            const _mvP = _roomMvPricing(room2);
+            await ccRpFromContract({
+              app: 'casa', db: sbL, records: typeof _tnRecords !== 'undefined' ? _tnRecords : [], unitKey: 'room', unitRef: room2.name,
+              tenantName: mieterName, start: startVal, end: befristet ? endVal : null, mode: _mvP.mode,
+              kalt: _mvP.kalt, nk: _mvP.nk, total: _mvP.total,
+              first_month: ersterMonatVoll ? 'voll' : 'anteilig', last_month: 'anteilig', contract_type: 'mietvertrag',
+              legacyMode: typeof _tnLegacyMode === 'function' ? _tnLegacyMode(room2.name, null) : 'pauschal',
+            });
+          }
           const filenameMv = ccPdfFileName('Mietvertrag', room2.name, mieterName);
           await _roomGenericPdfAction(container, filenameMv, btn, '<i class="ti ti-printer"></i> Generate PDF');
         } catch(err) {

@@ -49,6 +49,7 @@ window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
   if (!host) return;
   CX.tab = 'setup';
+  if (CX.hist && typeof window.renderHistory === 'function') return window.renderHistory(host);   // Phase 3
   const S = window._src;
   const props = window._ctrl.properties.filter(p => p.active);
   const sugg = _cxSetupSuggestions();
@@ -92,9 +93,13 @@ window.renderSetup = function () {
       '<div class="cx-grid2">' +
         '<label class="cx-f"><input type="text" inputmode="decimal" data-cx-in="ctrl_castel_categories|' + c.id + '|default_amount" value="' + (c.default_amount === null || c.default_amount === undefined ? '' : cxE2(c.default_amount)) + '" placeholder="0,00" aria-label="Betrag"><span>€</span></label>' +
         '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|frequency" aria-label="Häufigkeit">' +
-          _CX_FREQ.map(f => _cxOpt(f, f === 'sporadisch' ? 'bei Bedarf (Einmalig)' : f, f === freq)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
+          _CX_FREQ.map(f => _cxOpt(f, f, f === freq)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
       '</div>' +
-      (freq === 'monatlich' || _cxBedarf(freq) ? '' : '<div class="cx-set__k" style="margin-top:6px">Fällig in</div>' + _cxMonthChips('ctrl_castel_categories|due_months', c.id, c.due_months)) +
+      (freq === 'monatlich' ? '' :
+        '<div class="cx-set__k" style="margin-top:6px">' + (_cxBedarf(freq) ? 'Geplant in (optional)' : 'Fällig in') + '</div>' +
+        _cxMonthChips('ctrl_castel_categories|due_months', c.id, c.due_months) +
+        (!_cxBedarf(freq) && !(Array.isArray(c.due_months) && c.due_months.length) && Number(c.default_amount)
+          ? '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Fälligkeit fehlt – bitte Monate wählen, sonst fehlt der Posten im Soll</div>' : '')) +
     '</div>';
   }).join('');
 
@@ -126,6 +131,9 @@ window.renderSetup = function () {
           : '<div class="cx-row-sb"><span class="cx-lbl">Mieten und Soll</span>' + cxPill('ok', 'Alles stimmig') + '</div>') +
         '</div>';
     })() +
+    '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Mieterhistorie</span></div>' +
+      '<div class="cx-r__sub" style="margin:6px 0 10px">Einzug, Auszug und Miete aller Mieter – auch ehemaliger – einmal prüfen und korrigieren.</div>' +
+      '<button class="cx-btn cx-btn--full" data-cx="openHist"><i class="ti ti-history" aria-hidden="true"></i>Mieterhistorie prüfen</button></div>' +
     '<div class="cx-head"><span class="cx-lbl">Verknüpfungen</span></div>' + linkCards +
     '<div class="cx-head"><span class="cx-lbl">Casa Castel · Kostenarten</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">Keine Kostenarten.</div>') + '</div>' +
     '<div class="cx-head"><span class="cx-lbl">Planwerte · nur ohne Verknüpfung</span></div>' +
@@ -136,6 +144,7 @@ window.renderSetup = function () {
   cxWire(host, {
     render: () => window.renderSetup(),
     click: async (a, b) => {
+      if (a === 'openHist') { CX.hist = true; window.scrollTo(0, 0); return window.renderSetup(); }
       if (a === 'acceptAll') {
         b.disabled = true;
         for (const [t, id, f] of _cxSetupSuggestions()) { try { await ctlUpdateRow(t, id, f); } catch (e) { cxToastErr(e); } }
