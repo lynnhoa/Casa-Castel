@@ -85,8 +85,8 @@ function _buildRentalMietvertragData(room, s, {
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
-    abriss:      'Abriss / wesentliche Umbaumaßnahmen (§\u00a0575 Abs.\u00a01 Nr.\u00a03 BGB)',
-    dienst:      'Dienstwohnung (§\u00a0575 Abs.\u00a01 Nr.\u00a02 BGB)',
+    abriss:      'Abriss / wesentliche Umbaumaßnahmen (§\u00a0575 Abs.\u00a01 Nr.\u00a02 BGB)',
+    dienst:      'Dienstwohnung (§\u00a0575 Abs.\u00a01 Nr.\u00a03 BGB)',
   };
 
   return {
@@ -271,7 +271,7 @@ function _contractBodyRentalMietvertrag(room) {
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:300;color:var(--cc-charcoal);text-transform:none;letter-spacing:0;">
             <input type="radio" name="rv-grund" value="dienst"
               style="width:16px;height:16px;accent-color:var(--cc-ink);flex-shrink:0;" onchange="_updateRentalMvGrundDetail()"/>
-            Dienstwohnung (§ 575 Abs. 1 Nr. 2 BGB)
+            Dienstwohnung (§ 575 Abs. 1 Nr. 3 BGB)
           </label>
         </div>
       </div>

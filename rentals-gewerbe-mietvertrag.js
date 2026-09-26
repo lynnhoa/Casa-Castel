@@ -141,7 +141,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     szenario,
     mietbeginn:   startVal ? fmtDt(new Date(startVal)) : '',
     mietende,
-    festlaufzeit: `${festNum}\u00a0${festUnit}`,
+    festlaufzeit: festNum ? `${festNum}\u00a0${festUnit}` : `____\u00a0${festUnit}`,   // empty → fill in by hand
     // S1
     kuendigungsfrist,
     staffelAn,
@@ -320,9 +320,9 @@ function _renderGewerbeMietvertragHTML(d) {
 
   const p1_S3_miete = (d.szenario === 'S3' && d.staffelAn && d.staffeln.length > 0)
     ? `die Nettokaltmiete ist ab dem ersten Tag der Verl\u00e4ngerung gem\u00e4\u00df \u00a7\u00a03 (Staffelmiete) gestaffelt`
-    : `die Nettokaltmiete betr\u00e4gt ab dem ersten Tag der Verl\u00e4ngerung ${eur(d.neueKaltmiete)}`;
+    : `die Nettokaltmiete betr\u00e4gt ab dem ersten Tag der Verl\u00e4ngerung ${d.neueKaltmiete ? eur(d.neueKaltmiete) : '________ \u20ac'}`;   // empty → fill in by hand
 
-  const p1_S3 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und wird f\u00fcr eine Mindestlaufzeit von ${d.festlaufzeit} fest abgeschlossen. W\u00e4hrend der Mindestlaufzeit ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen. Der Mieter ist berechtigt, das Mietverh\u00e4ltnis einmalig um ${d.verlaengerungJahre}\u00a0Jahr${d.verlaengerungJahre===1?'':'e'} zu verl\u00e4ngern. Die Verl\u00e4ngerung muss dem Vermieter sp\u00e4testens ${d.ankuendigungMonate}\u00a0Monate vor Ablauf, d.\u202fh. bis zum ${d.ankuendigungBis}, schriftlich mitgeteilt werden. Bei fristgerechter Aus\u00fcbung verl\u00e4ngert sich die Mindestlaufzeit bis zum ${d.verlBis}; w\u00e4hrend der Verl\u00e4ngerungsperiode ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen, und ${p1_S3_miete}. Wird die Option nicht fristgerecht ausge\u00fcbt, erlischt sie ersatzlos. Das Mietverh\u00e4ltnis endet nicht automatisch mit Ablauf der Mindestlaufzeit bzw. der Verl\u00e4ngerungsperiode, sondern l\u00e4uft anschlie\u00dfend auf unbestimmte Zeit weiter. Es kann danach von jeder Partei mit einer Frist von ${d.kuendigungsfrist}\u00a0Monaten zum Quartalsende ordentlich gek\u00fcndigt werden (\u00a7\u00a0580a Abs.\u00a02 BGB). Die K\u00fcndigung bedarf der Schriftform. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
+  const p1_S3 = `Das Mietverh\u00e4ltnis beginnt am ${d.mietbeginn} und wird f\u00fcr eine Mindestlaufzeit von ${d.festlaufzeit} fest abgeschlossen. W\u00e4hrend der Mindestlaufzeit ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen. Der Mieter ist berechtigt, das Mietverh\u00e4ltnis einmalig um ${d.verlaengerungJahre || '____'}\u00a0Jahr${d.verlaengerungJahre===1?'':'e'} zu verl\u00e4ngern. Die Verl\u00e4ngerung muss dem Vermieter sp\u00e4testens ${d.ankuendigungMonate}\u00a0Monate vor Ablauf, d.\u202fh. bis zum ${d.ankuendigungBis || '__.__.____'}, schriftlich mitgeteilt werden. Bei fristgerechter Aus\u00fcbung verl\u00e4ngert sich die Mindestlaufzeit bis zum ${d.verlBis || '__.__.____'}; w\u00e4hrend der Verl\u00e4ngerungsperiode ist eine ordentliche K\u00fcndigung f\u00fcr beide Parteien ausgeschlossen, und ${p1_S3_miete}. Wird die Option nicht fristgerecht ausge\u00fcbt, erlischt sie ersatzlos. Das Mietverh\u00e4ltnis endet nicht automatisch mit Ablauf der Mindestlaufzeit bzw. der Verl\u00e4ngerungsperiode, sondern l\u00e4uft anschlie\u00dfend auf unbestimmte Zeit weiter. Es kann danach von jeder Partei mit einer Frist von ${d.kuendigungsfrist}\u00a0Monaten zum Quartalsende ordentlich gek\u00fcndigt werden (\u00a7\u00a0580a Abs.\u00a02 BGB). Die K\u00fcndigung bedarf der Schriftform. \u00a7\u00a0545 BGB (stillschweigende Verl\u00e4ngerung) findet keine Anwendung. Die au\u00dferordentliche K\u00fcndigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unber\u00fchrt.`;
 
   const p1Body = d.szenario === 'S1' ? p1_S1 : d.szenario === 'S3' ? p1_S3 : p1_S2;
 
@@ -375,7 +375,7 @@ function _renderGewerbeMietvertragHTML(d) {
     ${kv('Bezeichnung',d.aptName)}
     ${d.etage?kv('Etage / Einheit',d.etage):''}
     ${d.flaeche?kv('Nutzfl\u00e4che','ca.\u00a0'+d.flaeche+'\u00a0m\u00b2'):''}
-    ${kv('Nutzungszweck',d.nutzungszweck)}
+    ${kv('Nutzungszweck',d.nutzungszweck || '________________________')}
     ${d.moebliert?kv('M\u00f6blierung','M\u00f6bliert \u00b7 Inventar siehe Anlage\u00a0A'):''}
     ${kv('Schl\u00fcssel',d.schluessel)}
     ${sec('Mietzeit',false,false)}
@@ -385,7 +385,7 @@ function _renderGewerbeMietvertragHTML(d) {
       ? kv('Danach','Unbefristet \u00b7 k\u00fcndbar mit '+d.kuendigungsfrist+'\u00a0Monaten zum Quartalsende (\u00a7\u00a0580a Abs.\u00a02 BGB)')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
       : d.szenario==='S3'
-        ? kv('Verl\u00e4ngerungsoption','Einmalig um '+d.verlaengerungJahre+'\u00a0Jahr'+( d.verlaengerungJahre===1?'':'e')+' \u2014 Mieter bis '+d.ankuendigungBis+' mitteilen')
+        ? kv('Verl\u00e4ngerungsoption','Einmalig um '+(d.verlaengerungJahre || '____')+'\u00a0Jahr'+( d.verlaengerungJahre===1?'':'e')+' \u2014 Mieter bis '+(d.ankuendigungBis || '__.__.____')+' mitteilen')
           + kv('Danach','Unbefristet \u00b7 k\u00fcndbar mit '+d.kuendigungsfrist+'\u00a0Monaten zum Quartalsende (\u00a7\u00a0580a Abs.\u00a02 BGB)')
           + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')
         : kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')

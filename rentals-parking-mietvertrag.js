@@ -507,6 +507,7 @@ function _wirePkMvPdfBtn() {
     const sigVal      = document.getElementById('pk-mv-sig')?.value          || '';
     const befristet   = document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet';
     const endVal      = befristet ? (document.getElementById('pk-mv-end')?.value || '') : '';
+    if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) return;
     const kennzeichen = document.getElementById('pk-mv-kennzeichen')?.value.trim() || '';
     const fahrzeug    = document.getElementById('pk-mv-fahrzeug')?.value.trim()    || '';
     const kautionVal  = document.getElementById('pk-mv-kaution')?.value || null;
@@ -538,6 +539,7 @@ function _wirePkMvPdfBtn() {
         kautionVal, kautionFael,
         staffelAn, staffeln, anfangsmiete,
       });
+      ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : []));   // empty dates → line to fill in by hand
 
       const html = _renderPkMietvertragHTML(data);
 

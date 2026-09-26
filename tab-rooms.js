@@ -2134,7 +2134,7 @@ async function _openContract(type, roomId) {
           const ersterMonatVoll  = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
           const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
           const kzPricingOverride = document.getElementById('cm-nk-btn')?.dataset.mode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
-          if (!startVal || !endVal) { if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
+          if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', !endVal && 'Mietende'])) { if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } return; }
           const s    = appSettings;
           const kautionOverrideKz = ccKautionManual(document.getElementById('cm-kaution')?.value);
           const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
@@ -2144,6 +2144,7 @@ async function _openContract(type, roomId) {
             ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
             : _cmFaelVal === 'sofort' ? 'sofort' : 5;
           const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz, kautionFaelligkeit: kautionFaelligkeitKz, kzPricingOverride });
+          ccBlankFill(data, ['mietbeginn', 'mietende']);   // empty dates → line to fill in by hand
           const html = _renderKurzzeitHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
           if (container) container.remove();
@@ -2196,13 +2197,9 @@ async function _openContract(type, roomId) {
             if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
             alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
           }
-          if (!startVal) {
+          if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) {
             if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
-            alert('Bitte Mietbeginn ausfüllen.'); return;
-          }
-          if (befristet && !endVal) {
-            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
-            alert('Bitte Mietende ausfüllen.'); return;
+            return;
           }
           const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
           const kautionOverrideMv = ccKautionManual(document.getElementById('mv-kaution')?.value);
@@ -2225,6 +2222,7 @@ async function _openContract(type, roomId) {
             kautionFaelligkeit: kautionFaelligkeitMv,
             mindestlaufzeitJahre,
           });
+          ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : [], data.hasMindestlaufzeit ? ['mindestlaufzeitBis'] : []));
           const html = _renderMietvertragHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
           if (container) container.remove();
@@ -4126,8 +4124,8 @@ function _buildMietvertragOnlyData(room, s, {
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
-    abriss:      'Abriss / wesentliche Umbaumaßnahmen (§\u00a0575 Abs.\u00a01 Nr.\u00a03 BGB)',
-    dienst:      'Dienstwohnung (§\u00a0575 Abs.\u00a01 Nr.\u00a02 BGB)',
+    abriss:      'Abriss / wesentliche Umbaumaßnahmen (§\u00a0575 Abs.\u00a01 Nr.\u00a02 BGB)',
+    dienst:      'Dienstwohnung (§\u00a0575 Abs.\u00a01 Nr.\u00a03 BGB)',
   };
 
   return {
@@ -4174,10 +4172,15 @@ function _buildMietvertragOnlyData(room, s, {
     mindestlaufzeitJahre: (!befristet && Number(mindestlaufzeitJahre) >= 1) ? Math.min(4, Number(mindestlaufzeitJahre)) : 0,
     mindestlaufzeitBis:   (() => {
       const n = (!befristet && Number(mindestlaufzeitJahre) >= 1) ? Math.min(4, Number(mindestlaufzeitJahre)) : 0;
-      if (!n || !sigVal) return '';
-      const sd = new Date(sigVal);
-      if (isNaN(sd)) return '';
-      return fmt(new Date(sd.getFullYear() + n, sd.getMonth(), sd.getDate()));
+      // Kündigungsverzicht runs from Mietbeginn (always filled) → the date never goes blank.
+      // BGH: at most 4 years from signing → if a signing date is known, never later than signing + 4 years.
+      if (!n || !startVal) return '';
+      const st = new Date(startVal);
+      if (isNaN(st)) return '';
+      let end = new Date(st.getFullYear() + n, st.getMonth(), st.getDate());
+      const sd = sigVal ? new Date(sigVal) : null;
+      if (sd && !isNaN(sd)) { const cap = new Date(sd.getFullYear() + 4, sd.getMonth(), sd.getDate()); if (end > cap) end = cap; }
+      return fmt(end);
     })(),
     // Energieausweis — house-level, from appSettings
     energieklasse:     s.energieklasse     || '',
@@ -4344,7 +4347,7 @@ function _contractBodyMietvertrag(room) {
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:300;color:var(--cc-charcoal);text-transform:none;letter-spacing:0;">
             <input type="radio" name="mv-grund" value="dienst"
               style="width:16px;height:16px;accent-color:var(--cc-ink);flex-shrink:0;" onchange="_updateMvGrundDetail()"/>
-            Dienstwohnung (§ 575 Abs. 1 Nr. 2 BGB)
+            Dienstwohnung (§ 575 Abs. 1 Nr. 3 BGB)
           </label>
         </div>
       </div>
@@ -4545,7 +4548,7 @@ function _renderMietvertragHTML(d) {
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit',false,false)}
     ${kv('Mietbeginn',d.mietbeginn||'—')}
-    ${d.hasMindestlaufzeit ? kv('Mindestlaufzeit', d.mindestlaufzeitJahre + '\u00a0Jahr' + (d.mindestlaufzeitJahre > 1 ? 'e' : '') + ' ab Vertragsschluss' + (d.mindestlaufzeitBis ? ' (bis ' + d.mindestlaufzeitBis + ')' : '')) : ''}
+    ${d.hasMindestlaufzeit ? kv('Mindestlaufzeit', d.mindestlaufzeitJahre + '\u00a0Jahr' + (d.mindestlaufzeitJahre > 1 ? 'e' : '') + ' ab Mietbeginn' + (d.mindestlaufzeitBis ? ' (bis ' + d.mindestlaufzeitBis + ')' : '')) : ''}
     ${d.ersterMonatNote ? kv('Erster Monat',d.ersterMonatNote) : ''}
     ${d.befristet
       ? ''
@@ -4591,7 +4594,7 @@ function _renderMietvertragHTML(d) {
         ? 'Das befristete Mietverhältnis endet am '+d.mietende+' automatisch ohne Kündigung (\u00a7\u00a0575 BGB). Befristungsgrund: '+d.grundLabel+(d.eigenbedarfPerson?' \u2014 '+d.eigenbedarfPerson:'')+'. Eine ordentliche Kündigung ist ausgeschlossen; die außerordentliche Kündigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unberührt. Im Falle einer Verlängerung beträgt die Kündigungsfrist für den Mieter 3\u00a0Monate zum Monatsende.'
         : 'Die ordentliche Kündigung richtet sich nach \u00a7\u00a0573c BGB. Kündigungsfrist für den Mieter: 3\u00a0Monate zum Monatsende. Für den Vermieter gilt die gesetzlich gestaffelte Frist. Die Kündigung bedarf der Schriftform. Eine stillschweigende Verlängerung nach \u00a7\u00a0545 BGB ist ausgeschlossen. '
           + (d.hasMindestlaufzeit
-              ? 'Beide Vertragsparteien verzichten wechselseitig für die Dauer von ' + (d.mindestlaufzeitJahre === 1 ? 'einem Jahr' : d.mindestlaufzeitJahre + ' Jahren') + ' ab Vertragsschluss auf ihr Recht zur ordentlichen Kündigung dieses Mietvertrags (Mindestlaufzeit). Eine ordentliche Kündigung ist erstmals zum Ablauf dieses Zeitraums mit der gesetzlichen Frist zulässig; sie kann bereits innerhalb des Zeitraums so erklärt werden, dass sie zu dessen Ablauf wirksam wird. '
+              ? 'Beide Vertragsparteien verzichten wechselseitig für die Dauer von ' + (d.mindestlaufzeitJahre === 1 ? 'einem Jahr' : d.mindestlaufzeitJahre + ' Jahren') + ' ab Mietbeginn' + (d.mindestlaufzeitBis ? ' (bis ' + d.mindestlaufzeitBis + ')' : '') + ' auf ihr Recht zur ordentlichen Kündigung dieses Mietvertrags (Mindestlaufzeit). Eine ordentliche Kündigung ist erstmals zum Ablauf dieses Zeitraums mit der gesetzlichen Frist zulässig; sie kann bereits innerhalb des Zeitraums so erklärt werden, dass sie zu dessen Ablauf wirksam wird. '
               : '')
           + 'Das Recht zur außerordentlichen Kündigung aus wichtigem Grund (\u00a7\u00a7\u00a0543, 569 BGB) bleibt hiervon unberührt.')}
     ${(() => {

@@ -1926,7 +1926,9 @@ function _aptContractSnapshot() {
       const rows = body.querySelectorAll(`.apt-${pre}-staffel-row`);
       if (rows.length) staffel[pre] = [...rows].map(r => r.querySelector(`.apt-${pre}-staffel-betrag`)?.value || '');
     });
-    return { fields, radios, modes, pills, fael, wraps, staffel };
+    // Gewerbe: the chosen Szenario (S1 / S2 / S3) — kept in the 2 h draft and in templates
+    const szenario = body.querySelector('.apt-gw-szenario-btn.active')?.dataset.s || null;
+    return { fields, radios, modes, pills, fael, wraps, staffel, szenario };
 }
 
 function _aptSaveContractDraft() {
@@ -1995,6 +1997,9 @@ async function _aptReopenContractDraft(d) {
     await _aptOpenContract(d.type, d.aptId);
     await new Promise(r => setTimeout(r, 80));   // let setTimeout(0) wiring inside _aptOpenContract run
 
+    // 0) Gewerbe Szenario first — it decides which Gewerbe fields are shown
+    if (d.szenario && typeof _aptGwSetSzenario === 'function' && document.querySelector('.apt-gw-szenario-btn')) _aptGwSetSzenario(d.szenario);
+
     // 1) Tenant blocks 2/3 — mirror _aptAddTenantBlock without stealing focus
     ['cm','mv','gw'].forEach(pre => {
       const w2 = document.getElementById(`apt-${pre}2-wrap`);
@@ -2062,6 +2067,7 @@ async function _aptReopenContractDraft(d) {
     });
 
     // 7) Dependent recalculations
+    if (typeof ccUbRevealFilled === 'function') ccUbRevealFilled('apt-ub');   // Übergabe: show restored Mieter 2/3
     if (typeof _aptUpdateMvGrundDetail === 'function') _aptUpdateMvGrundDetail();
     if (typeof _aptMvCalcStaffelDates  === 'function') _aptMvCalcStaffelDates();
   } catch (e) {
@@ -2125,7 +2131,7 @@ async function _aptOpenContract(type, aptId) {
         const sigVal      = document.getElementById('apt-cm-sig')?.value;
         const kautionVal  = document.getElementById('apt-cm-kaution')?.value;
         const kautionFael = _aptReadKautionFael('cm');
-        if (!startVal || !endVal) { alert('Bitte Mietbeginn und Mietende ausfüllen.'); return; }
+        if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', !endVal && 'Mietende'])) return;
         const btn = document.getElementById('aptKzPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
@@ -2136,6 +2142,7 @@ async function _aptOpenContract(type, aptId) {
             mieterName3: t3cm.name, mieterAdr3: t3cm.adr, mieterDob3: t3cm.dob, mieterEmail3: t3cm.email, mieterTel3: t3cm.tel,
             startVal, endVal, sigVal, kautionVal, kautionFael,
           });
+          ccBlankFill(data, ['mietbeginn', 'mietende']);   // empty dates → line to fill in by hand
           const html = _renderRentalKurzzeitHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
           if (container) container.remove();
@@ -2214,6 +2221,7 @@ async function _aptOpenContract(type, aptId) {
           const sonderkEnde    = document.getElementById('apt-gw-sonderk-ende')?.value || '';
 
           // Validate
+          if (!ccConfirmMissingDates([!startVal && 'Mietbeginn'])) return;
           if (sonderkAn && !sonderkEnde) {
             alert('Bitte Datum für das vorzeitige Vertragsende wählen (§ 2 Abs. 7).');
             return;
@@ -2261,6 +2269,7 @@ async function _aptOpenContract(type, aptId) {
               kuendigungsfrist, staffelAn, staffeln,
               verlaengerungJahre, ankuendigungMonate, neueKaltmiete, verlaengerungBis,
             });
+            ccBlankFill(data, ['mietbeginn'].concat(szenario === 'S2' ? ['mietende'] : [], szenario === 'S3' ? ['ankuendigungBis'] : []));
             const html = _renderGewerbeMietvertragHTML(data);
             let container = document.getElementById('_pdfRenderContainer');
             if (container) container.remove();
@@ -2303,8 +2312,7 @@ async function _aptOpenContract(type, aptId) {
         const endVal            = befristet ? document.getElementById('apt-mv-end')?.value : null;
         const grundVal          = befristet ? (document.querySelector('input[name="apt-mv-grund"]:checked')?.value || '') : '';
         const eigenbedarfPerson = grundVal === 'eigenbedarf' ? document.getElementById('apt-mv-eigenbedarf-person')?.value.trim() : '';
-        if (!startVal) { alert('Bitte Mietbeginn ausfüllen.'); return; }
-        if (befristet && !endVal) { alert('Bitte Mietende ausfüllen.'); return; }
+        if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) return;
         if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) {
           alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
         }
@@ -2345,6 +2353,7 @@ async function _aptOpenContract(type, aptId) {
             kautionVal: document.getElementById('apt-mv-kaution')?.value,
             staffelAn, staffeln, anfangsmiete,
           });
+          ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : []));
           const html = _renderRentalMietvertragHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
           if (container) container.remove();
@@ -3301,12 +3310,19 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
     </div>
     <div class="rm-field"><label>${(_ubT2 || _ubT3) ? 'Mieter 1 Name' : 'Mieter Name'}</label><input class="rm-input" id="apt-ub-mieter-name" value="${aptEsc(_aptUbTenantName)}" placeholder="Vor- und Nachname…"/></div>
     <div class="rm-field"><label>${(_ubT2 || _ubT3) ? 'Mieter 1 Adresse' : 'Mieter Adresse'}</label><input class="rm-input" id="apt-ub-mieter-adr" value="${aptEsc(_aptUbTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
-    ${_ubT2 ? `
+
+    <div id="apt-ub-t2-wrap" style="${_ubT2 ? '' : 'display:none'}">
     <div class="rm-field"><label>Mieter 2 Name</label><input class="rm-input" id="apt-ub-mieter-name2" value="${aptEsc(_ubT2Name)}" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Mieter 2 Adresse</label><input class="rm-input" id="apt-ub-mieter-adr2" value="${aptEsc(_ubT2Adr)}" placeholder="Aktuelle Adresse…"/></div>` : ''}
-    ${_ubT3 ? `
+    <div class="rm-field"><label>Mieter 2 Adresse</label><input class="rm-input" id="apt-ub-mieter-adr2" value="${aptEsc(_ubT2Adr)}" placeholder="Aktuelle Adresse…"/></div>
+    </div>
+    <div id="apt-ub-t3-wrap" style="${_ubT3 ? '' : 'display:none'}">
     <div class="rm-field"><label>Mieter 3 Name</label><input class="rm-input" id="apt-ub-mieter-name3" value="${aptEsc(_ubT3Name)}" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Mieter 3 Adresse</label><input class="rm-input" id="apt-ub-mieter-adr3" value="${aptEsc(_ubT3Adr)}" placeholder="Aktuelle Adresse…"/></div>` : ''}
+    <div class="rm-field"><label>Mieter 3 Adresse</label><input class="rm-input" id="apt-ub-mieter-adr3" value="${aptEsc(_ubT3Adr)}" placeholder="Aktuelle Adresse…"/></div>
+    </div>
+    <button type="button" id="apt-ub-addbtn" onclick="ccUbAddTenant('apt-ub')"
+      style="font-size:11px;padding:6px 12px;border-radius:6px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-taupe);cursor:pointer;font-family:inherit;display:${(_ubT2 && _ubT3) ? 'none' : 'flex'};align-items:center;gap:6px;margin-top:4px;margin-bottom:12px;">
+      <i class="ti ti-plus" style="font-size:13px;"></i> Mieter hinzuf\u00fcgen
+    </button>
     <div class="rm-field"><label>Übergabedatum</label><input class="rm-input" id="apt-ub-datum" type="text" placeholder="TT.MM.JJJJ"/></div>
     ${!isEinzug ? `
     <div class="rm-field"><label>Neue Adresse des Mieters</label><input class="rm-input" id="apt-ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/></div>` : ''}

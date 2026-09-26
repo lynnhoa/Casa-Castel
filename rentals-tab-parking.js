@@ -969,6 +969,7 @@ async function _pkReopenContractDraft(d) {
     await _pkOpenContract(d.meta.type, d.meta.pkId);
     await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
     await ccDraftApply(document.getElementById('pkContractBody'), d);
+    if (typeof ccUbRevealFilled === 'function') ccUbRevealFilled('pk-ub');   // Übergabe: show restored Mieter 2/3
   } catch (e) { console.warn('[parking draft] restore skipped:', e); }
 }
 
@@ -1261,12 +1262,19 @@ function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
     </div>
     <div class="rm-field"><label>${_pkUbMulti ? 'Mieter 1 Name' : 'Mieter Name'}</label><input class="rm-input" id="pk-ub-mieter-name" value="${pkEsc(_pkUbTenantName)}" placeholder="Vor- und Nachname…"/></div>
     <div class="rm-field"><label>${_pkUbMulti ? 'Mieter 1 Adresse' : 'Mieter Adresse'}</label><input class="rm-input" id="pk-ub-mieter-adr" value="${pkEsc(_pkUbTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
-    ${_pkUbT2Name ? `
+
+    <div id="pk-ub-t2-wrap" style="${_pkUbT2Name ? '' : 'display:none'}">
     <div class="rm-field"><label>Mieter 2 Name</label><input class="rm-input" id="pk-ub-mieter-name2" value="${pkEsc(_pkUbT2Name)}" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Mieter 2 Adresse</label><input class="rm-input" id="pk-ub-mieter-adr2" value="${pkEsc(_pkUbT2Adr)}" placeholder="Aktuelle Adresse…"/></div>` : ''}
-    ${_pkUbT3Name ? `
+    <div class="rm-field"><label>Mieter 2 Adresse</label><input class="rm-input" id="pk-ub-mieter-adr2" value="${pkEsc(_pkUbT2Adr)}" placeholder="Aktuelle Adresse…"/></div>
+    </div>
+    <div id="pk-ub-t3-wrap" style="${_pkUbT3Name ? '' : 'display:none'}">
     <div class="rm-field"><label>Mieter 3 Name</label><input class="rm-input" id="pk-ub-mieter-name3" value="${pkEsc(_pkUbT3Name)}" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Mieter 3 Adresse</label><input class="rm-input" id="pk-ub-mieter-adr3" value="${pkEsc(_pkUbT3Adr)}" placeholder="Aktuelle Adresse…"/></div>` : ''}
+    <div class="rm-field"><label>Mieter 3 Adresse</label><input class="rm-input" id="pk-ub-mieter-adr3" value="${pkEsc(_pkUbT3Adr)}" placeholder="Aktuelle Adresse…"/></div>
+    </div>
+    <button type="button" id="pk-ub-addbtn" onclick="ccUbAddTenant('pk-ub')"
+      style="font-size:11px;padding:6px 12px;border-radius:6px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-taupe);cursor:pointer;font-family:inherit;display:${(_pkUbT2Name && _pkUbT3Name) ? 'none' : 'flex'};align-items:center;gap:6px;margin-top:4px;margin-bottom:12px;">
+      <i class="ti ti-plus" style="font-size:13px;"></i> Mieter hinzuf\u00fcgen
+    </button>
     <div class="rm-field"><label>Übergabedatum</label><input class="rm-input" id="pk-ub-datum" type="text" placeholder="TT.MM.JJJJ"/></div>
     ${!isEinzug ? `
     <div class="rm-field"><label>Neue Adresse des Mieters</label><input class="rm-input" id="pk-ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/></div>` : ''}

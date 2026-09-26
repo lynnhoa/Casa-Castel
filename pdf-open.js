@@ -73,6 +73,7 @@ function ccPdfSafeName(name) {
    page at 2× (≈190 dpi, sharp in print) and each canvas is released
    straight away — the old code rendered twice at up to 3×.       */
 async function ccRenderPagesToPdf(container, opts = {}) {
+  _ccBlankOutBroken(container);
   try { await ccFlowPages(container); } catch (e) { console.warn('[pdf] page flow skipped:', e); }
   const pages = container ? container.querySelectorAll('.pdf-page') : [];
   if (!pages.length) { _ccCloseWaitingTab(); throw new Error('no .pdf-page nodes rendered'); }
@@ -571,6 +572,58 @@ async function ccDraftApply(root, d) {
 
 
 /* ── HELPERS FOR THE GENERATORS ──────────────────────────── */
+/* Missing contract dates: warn, don't block. You may leave a date empty on purpose
+   and write it by hand — the PDF then shows a line to fill in. Cancel = back to the form. */
+const CC_BLANK_DATE = '__.__.____';
+function ccConfirmMissingDates(labels) {
+  const miss = (labels || []).filter(Boolean);
+  if (!miss.length) return true;
+  const ok = confirm(miss.join(' und ') + ' fehlt \u2013 trotzdem erstellen?\n\nIm PDF bleibt eine Linie zum Ausfüllen von Hand.');
+  if (!ok && typeof ccCancelPdf === 'function') ccCancelPdf();
+  return ok;
+}
+/* Übergabe: "+ Mieter hinzufügen" — reveals Mieter 2, then Mieter 3 (like the contract generators) */
+function ccUbAddTenant(prefix) {
+  for (const n of [2, 3]) {
+    const w = document.getElementById(`${prefix}-t${n}-wrap`);
+    if (w && w.style.display === 'none') { w.style.display = ''; document.getElementById(`${prefix}-mieter-name${n}`)?.focus(); break; }
+  }
+  ccUbSyncAddBtn(prefix);
+}
+function ccUbSyncAddBtn(prefix) {
+  const anyHidden = [2, 3].some(n => document.getElementById(`${prefix}-t${n}-wrap`)?.style.display === 'none');
+  const b = document.getElementById(`${prefix}-addbtn`);
+  if (b) b.style.display = anyHidden ? 'flex' : 'none';
+}
+/* After a draft / template restore: show Mieter 2/3 if they have a name */
+function ccUbRevealFilled(prefix) {
+  [2, 3].forEach(n => {
+    const i = document.getElementById(`${prefix}-mieter-name${n}`), w = document.getElementById(`${prefix}-t${n}-wrap`);
+    if (i && w && i.value.trim()) w.style.display = '';
+  });
+  ccUbSyncAddBtn(prefix);
+}
+
+/* Dates you left empty → a line to fill in by hand (only the keys that belong in THIS contract) */
+function ccBlankFill(d, keys) {
+  if (!d) return d;
+  const empty = v => v === undefined || v === null || v === '' || v === '\u2014' || /NaN|Invalid/.test(String(v));
+  (keys || []).forEach(k => { if (empty(d[k])) d[k] = CC_BLANK_DATE; });
+  if (Array.isArray(d.staffeln)) d.staffeln.forEach(x => { if (x && empty(x.datum)) x.datum = CC_BLANK_DATE; });
+  return d;
+}
+/* Safety net for every PDF: a value that could not be calculated (a date is missing) is
+   printed as a line to fill in — never "NaN", "Invalid Date" or "undefined". */
+function _ccBlankOutBroken(root) {
+  if (!root) return;
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+    const t = n.nodeValue;
+    if (!/NaN|Invalid Date|undefined/.test(t)) continue;
+    n.nodeValue = t.replace(/NaN\.NaN\.NaN/g, CC_BLANK_DATE).replace(/Invalid Date/g, CC_BLANK_DATE)
+                   .replace(/-?NaN(,NaN)?/g, '______').replace(/undefined/g, '______');
+  }
+}
 // A generator that stops without creating a PDF → close the waiting tab.
 function ccCancelPdf() { _ccCloseWaitingTab(); }
 
