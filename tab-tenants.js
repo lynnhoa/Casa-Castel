@@ -1842,6 +1842,8 @@ function _tnModalFooterHTML(rec, allDone) {
     <span style="font-size:10px;color:var(--cc-stone)">When all closed</span>`;
 }
 
+/* Snapshot of the edit fields → closing with changes asks instead of silently dropping them */
+function _ccModalSnap(edit) { return JSON.stringify([...edit.querySelectorAll('input,select,textarea')].map(i => i.type === 'checkbox' ? i.checked : i.value)); }
 function _tnToggleModalProfile(tid) {
   const read  = document.getElementById('mprof-read-' + tid);
   const edit  = document.getElementById('mprof-edit-' + tid);
@@ -1849,6 +1851,7 @@ function _tnToggleModalProfile(tid) {
   const fedit = document.getElementById('mprof-foot-edit-' + tid);
   if (!read || !edit) return;
   const isEditing = read.style.display === 'none';
+  if (!isEditing) edit.dataset.snap = _ccModalSnap(edit);
   read.style.display  = isEditing ? '' : 'none';
   edit.style.display  = isEditing ? 'none' : '';
   if (fread) fread.style.display = isEditing ? '' : 'none';
@@ -1871,6 +1874,18 @@ function _tnModalUpdateWarm() {
 }
 
 function _tnCloseModal() {
+  // Unsaved changes in the edit view → ask (instead of silently dropping them)
+  if (_tnModalTid) {
+    const ed = document.getElementById('mprof-edit-' + _tnModalTid);
+    if (ed && ed.style.display !== 'none' && ed.dataset.snap && ed.dataset.snap !== _ccModalSnap(ed)) {
+      const tid = _tnModalTid;
+      if (confirm('Änderungen speichern?')) {
+        ed.dataset.snap = '';                           // answered once — the save may close the view itself
+        Promise.resolve(_tnModalSaveProfile(tid)).then(() => { if (_tnModalTid === tid) _tnCloseModal(); });
+        return;
+      }
+    }
+  }
   // If profile is in edit mode, cancel it first (x = cancel, not save)
   if (_tnModalTid) {
     const read  = document.getElementById('mprof-read-'      + _tnModalTid);

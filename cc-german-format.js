@@ -409,9 +409,17 @@ function ccIsNumInput(el) {
     if (v) tin.value = dm ? `${String(v.d).padStart(2, '0')}.${String(v.m).padStart(2, '0')}.` : ccFmtDate(`${v.y}-${String(v.m).padStart(2, '0')}-${String(v.d).padStart(2, '0')}`);
     tin.addEventListener('input', e => {                   // 2609 → 26.09 · 26092026 → 26.09.2026
       tin.removeAttribute('aria-invalid');
+      tin._typed = true;
       if (e.inputType && !e.inputType.startsWith('insert')) return;
       const out = ccDateTyping(tin.value, dm);
       if (out !== tin.value) tin.value = out;
+      // A complete date is applied at once: the phone's number keypad has no Enter,
+      // and its ✓ only closes the keyboard — the typed date used to get lost.
+      if (dm ? /^\d{2}\.\d{2}\.$/.test(tin.value) : /^\d{2}\.\d{2}\.\d{4}$/.test(tin.value)) applyTyped();
+    });
+    tin.addEventListener('blur', () => {                  // keyboard closed (✓) with a readable date, e.g. 1.10.25
+      if (!tin._typed || !document.getElementById('ccCal')) return;
+      if (dm ? /^\d{1,2}\.\d{1,2}\.?$/.test(tin.value.trim()) : !!ccParseDate(tin.value.trim())) applyTyped();
     });
     tin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyTyped(); } });
     draw();

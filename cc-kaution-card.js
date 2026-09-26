@@ -48,11 +48,14 @@ function ccKautionPhase(k, soll, rec, ui) {
     (rec.mietende && typeof ccTnDaysUntil === 'function' && ccTnDaysUntil(rec.mietende) < 0));
   let phase;
   if (settled) phase = 5;
-  else if (recv > 0 && (mode === 'settle' || ret > 0 || movedOut)) phase = 4;
+  else if (recv > 0 && (mode === 'settle' || movedOut)) phase = 4;          // only a real move-out (or SETTLE) — never a stored plan
   else if (recv > 0 && mode !== 'edit' && (soll == null || recv >= soll - 0.005)) phase = 3;
   else if (recv > 0) phase = 2;
   else phase = 1;
-  return { phase, recv, ret, settled, soll, open: soll != null ? Math.max(0, soll - recv) : 0 };
+  // A refund saved as a plan while the tenant still lives there (e.g. set to former, then back to active):
+  // nothing was paid → the Kaution is still held; the card offers to drop the plan.
+  const planned = !settled && !movedOut && ret > 0;
+  return { phase, recv, ret, settled, soll, movedOut, planned, open: soll != null ? Math.max(0, soll - recv) : 0 };
 }
 
 function _cckLook(P, A, k) {
@@ -64,9 +67,10 @@ function _cckLook(P, A, k) {
     case 2: return P.open > 0
       ? { pill: [`${f(P.open)} open`, 'tnp-amber'], bar: [pct, '#C9922E'], cap: `${f(P.recv)} received · ${f(P.open)} open` }
       : { pill: ['Held', 'tnp-blue'], bar: [100, '#0C447C'], cap: 'Fully received' };
-    case 3: return { pill: ['Held', 'tnp-blue'], bar: [100, '#0C447C'],
+    case 3: if (P.planned) return { pill: ['Held', 'tnp-blue'], bar: [100, '#0C447C'], cap: `Fully held · planned refund ${f(P.ret)} not paid out` };
+            return { pill: ['Held', 'tnp-blue'], bar: [100, '#0C447C'],
       cap: P.soll && P.recv > P.soll + 0.005 ? `Fully received · ${f(P.recv - P.soll)} above Soll` : 'Fully received' };
-    case 4: return { pill: ['Settle', 'tnp-amber'], bar: [100, '#0C447C'], cap: `${f(P.recv)} held` };
+    case 4: return { pill: ['Settle', 'tnp-amber'], bar: [100, '#0C447C'], cap: `${f(P.recv)} held · paid out only with REFUND PAID` };
     default: return { pill: ['Settled', 'tnp-green'], bar: [100, '#3B6D11'],
       cap: 'Settled' + (k && k.settled_at ? ' on ' + A.fmtDate(k.settled_at) : '') };
   }
@@ -146,8 +150,8 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
       onclick="ccKautionAct(${q},'${act}')">${label}</button>`;
   let btns = '';
   if (P.phase <= 2)      btns = (ui.mode === 'edit' ? B('Cancel', 'cancel', 's') : '') + B('Save', 'save', 'save');
-  else if (P.phase === 3) btns = B('Edit', 'edit', 's') + B('Settle', 'settle', 'p');
-  else if (P.phase === 4) btns = (ui.mode === 'settle' && P.ret === 0 ? B('Back', 'cancel', 's') : '') + B('Save', 'save', 'save', 'cck-sec') + B('Refund paid', 'paid', 'p');
+  else if (P.phase === 3) btns = (P.planned ? B('Keep holding', 'unplan', 's') : B('Edit', 'edit', 's')) + B('Settle', 'settle', 'p');
+  else if (P.phase === 4) btns = (!P.movedOut ? B('Keep holding', 'unplan', 's') : '') + B('Save', 'save', 'save', 'cck-sec') + B('Refund paid', 'paid', 'p');
   else                    btns = B('Undo', 'undo', 's');
 
   return `
@@ -214,6 +218,20 @@ async function ccKautionAct(app, pfx, tid, act) {
   if (act === 'edit')   { ui.mode = 'edit';   return redraw(); }
   if (act === 'settle') { ui.mode = 'settle'; return redraw(); }
   if (act === 'cancel') { ui.mode = '';       return redraw(); }
+  if (act === 'unplan') {                                   // tenant still lives there → nothing refunded, keep holding
+    const k0 = A.map()[tid];
+    ui.mode = '';
+    if (k0 && Number(k0.returned) > 0) {
+      await A.saveAmounts(tid, _cckNum(k0.received), 0);
+      const k = A.map()[tid];
+      if (k && k.id && _cckHasExtra(A) && k.deduction_reason) {
+        const before = k.deduction_reason; k.deduction_reason = null;
+        const { error } = await ccQueueWrite(A.writeKey + tid, () => sbL.from(A.table).update({ deduction_reason: null }).eq('id', k.id));
+        if (error) { k.deduction_reason = before; if (typeof ccSaveFailed === 'function') ccSaveFailed(error, A.failLabel); }
+      }
+    }
+    return redraw();
+  }
 
   const k0 = A.map()[tid];
   const recvNow = $(`cck-r-${pfx}`) ? _cckNum($(`cck-r-${pfx}`).value) : _cckNum(k0 && k0.received);
