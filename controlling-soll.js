@@ -846,26 +846,44 @@ function ctlActualMonth(pid, m) {
    One row per expected yearly settlement: NK per tenancy period (Kalt + NK
    tenants only) and the WEG Hausgeld-Jahresabrechnung per Rentals apartment. */
 function ctlExpectedSettlements(coversYear) {
+  // Complete by default (fix after live check 27.09.): every tenancy that lived in a unit during
+  // the year gets an NK row — Pauschal ones are marked so they can be set "nicht durchgeführt";
+  // every Rentals property gets its Hausgeld row, linked or not; units without a Rentals link get
+  // one NK row per unit. Casa Castel has no WEG (D6). Parking spaces have no NK.
   const out = [], first = coversYear + '-01-01', last = coversYear + '-12-31';
   for (const p of window._ctrl.properties.filter(x => x.active)) {
-    const casa = p.id === CASA_PROP_ID, pl = ctlPropLinks(p);
-    if (!casa && pl.apt) out.push({ property_id: p.id, tenant_id: null, kind: 'weg_hausgeld', covers_year: coversYear, period_from: first, period_to: last, label: 'Hausgeld ' + coversYear });
+    const casa = p.id === CASA_PROP_ID;
+    if (!casa) out.push({ property_id: p.id, tenant_id: null, kind: 'weg_hausgeld', covers_year: coversYear, period_from: first, period_to: last, note: null });
     for (const u of ctlUnitsFor(p.id)) {
+      if (_cxIsParking(u)) continue;
       const link = ctlUnitLink(u, p);
-      if (!link || link.type === 'rentals_parking') continue;
+      if (link && link.type === 'rentals_parking') continue;
+      if (!link) {                                        // no tenant data → one row for the unit
+        out.push({ property_id: p.id, tenant_id: null, kind: 'nk_tenant', covers_year: coversYear, period_from: first, period_to: last, note: u.name });
+        continue;
+      }
       const all = _cxTenancies(link), memo = new Map();
       for (const w of all) {
-        if (!w.from || w.from > last || w.to < first) continue;
+        if (!w.from) {                                    // no Einzug: still listed, so it isn't forgotten
+          if (w.t.status === 'active') out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: coversYear, period_from: first, period_to: last, note: 'Einzug fehlt' });
+          continue;
+        }
+        if (w.from > last || w.to < first) continue;
         const from = w.from > first ? w.from : first, to = w.to < last ? w.to : last;
-        // only tenants who prepaid NK (Kalt + NK) get a settlement
         const r = _cxRentDay(link, w, u, coversYear, Number(to.slice(5, 7)), to, all, memo);
-        if (r.mode === 'pauschal' || !r.nk) continue;
         out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: coversYear, period_from: from, period_to: to,
-                   label: u.name + ' · ' + w.name + ' · NK ' + coversYear });
+                   note: r.mode === 'pauschal' ? 'Pauschal' : null });
       }
     }
   }
   return out;
+}
+/* Same expected settlement? (tenant rows by tenant + period, unit rows by unit name) */
+function ctlSettlementSame(x, e) {
+  return x.kind === e.kind && Number(x.property_id) === Number(e.property_id) &&
+    String(x.tenant_id || '') === String(e.tenant_id || '') &&
+    String(x.period_from || '').slice(0, 10) === String(e.period_from || '').slice(0, 10) &&
+    (e.tenant_id || e.kind !== 'nk_tenant' || String(x.note || '') === String(e.note || ''));
 }
 
 

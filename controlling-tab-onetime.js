@@ -47,16 +47,19 @@ function _cxSetLabel(r) {
 }
 function _cxSetLabelShort(r) {
   if (r.kind === 'weg_hausgeld') return 'Hausgeldabrechnung ' + r.covers_year + ' (WEG)';
+  if (!r.tenant_id) return 'NK ' + r.covers_year + ' · ' + (r.note || 'Einheit') + ' · Mieter nicht verknüpft';
   const S = window._src, t = (r.app === 'casa' ? S.casaTen : S.rntTen).find(x => String(x.id) === String(r.tenant_id));
   const nm = t ? [t.first_name, t.last_name].filter(Boolean).join(' ') : 'Mieter';
-  return 'NK ' + r.covers_year + (t && t.room ? ' · ' + t.room : '') + ' · ' + nm;
+  const unit = t ? (t.room || ((S.apts || []).find(a => String(a.id) === String(t.apartment_id)) || {}).name || '') : '';
+  const pn = (ctlProp(r.property_id) || {}).name || '';
+  return 'NK ' + r.covers_year + (unit && unit !== pn ? ' · ' + unit : '') + ' · ' + nm + (r.note && r.note !== 'Einzug fehlt' ? ' · ' + r.note : '') +
+         (r.note === 'Einzug fehlt' ? ' · Einzug fehlt – Zeitraum prüfen' : '');
 }
 function _cxSetHTML() {
   const cy = window._ctrl.year - 1;
   const rows = _cxSetRows(cy);
   const exp = typeof ctlExpectedSettlements === 'function' ? ctlExpectedSettlements(cy) : [];
-  const same = (a, b) => a.kind === b.kind && Number(a.property_id) === Number(b.property_id) && String(a.tenant_id || '') === String(b.tenant_id || '') && String(a.period_from || '').slice(0, 10) === String(b.period_from || '').slice(0, 10);
-  const missing = exp.filter(e => !rows.some(r => same(r, e)));
+  const missing = exp.filter(e => !rows.some(r => ctlSettlementSame(r, e)));
   const nOpen = rows.filter(r => r.status === 'offen' || r.status === 'erstellt').length;
   const isOpen = _cxSet.open !== null ? _cxSet.open : (nOpen + missing.length > 0);
   const rowHTML = r => {
@@ -183,9 +186,8 @@ window.renderOneTime = function () {
       if (a === 'setGen') {
         b.disabled = true;
         const cy = window._ctrl.year - 1, rows = _cxSetRows(cy);
-        const same = (x, e) => x.kind === e.kind && Number(x.property_id) === Number(e.property_id) && String(x.tenant_id || '') === String(e.tenant_id || '') && String(x.period_from || '').slice(0, 10) === e.period_from;
-        const add = ctlExpectedSettlements(cy).filter(e => !rows.some(x => same(x, e)))
-          .map(e => ({ property_id: e.property_id, tenant_id: e.tenant_id, app: e.app || null, kind: e.kind, covers_year: e.covers_year, period_from: e.period_from, period_to: e.period_to, status: 'offen' }));
+        const add = ctlExpectedSettlements(cy).filter(e => !rows.some(x => ctlSettlementSame(x, e)))
+          .map(e => ({ property_id: e.property_id, tenant_id: e.tenant_id, app: e.app || null, kind: e.kind, covers_year: e.covers_year, period_from: e.period_from, period_to: e.period_to, note: e.note || null, status: 'offen' }));
         try {
           const { data, error } = await _ctlSupa.from('ctrl_settlements').insert(add).select();
           if (error) throw error;
