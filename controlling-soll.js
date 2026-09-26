@@ -127,11 +127,14 @@ function _cxTenantsFor(link) {
   let list = [];
   if (link.type === 'rentals_apartment') list = S.rntTen.filter(t => String(t.apartment_id) === link.ref);
   else if (link.type === 'rentals_parking') list = S.rntTen.filter(t => String(t.parking_id) === link.ref);
-  else if (link.type === 'casa_room') list = S.casaTen.filter(t => t.room === link.ref);
+  else if (link.type === 'casa_room') list = S.casaTen.filter(t => _cxNorm(t.room) === _cxNorm(link.ref));   // "New york" = "New York"
   return list.filter(t => t.mietbeginn || t.status === 'active')
     .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')));
 }
-const _cxActiveOn = (t, iso) => (!t.mietbeginn || _cxD(t.mietbeginn) <= iso) && (!t.mietende || _cxD(t.mietende) >= iso);
+/* Same rule as the tenant apps: an "active" tenant counts until set to former,
+   even if the end date has passed (still living there). */
+const _cxActiveOn = (t, iso) => (!t.mietbeginn || _cxD(t.mietbeginn) <= iso) &&
+  (!t.mietende || _cxD(t.mietende) >= iso || t.status === 'active');
 
 function _cxRoomPricing(room, t) {
   if (!room) return { k: null, nk: null };
@@ -190,19 +193,34 @@ function ctlUnitSoll(u, pid, y, m) {
   let out;
   if (!link) {
     const k = _cxN0(u.def_kaltmiete), nk = _cxN0(u.def_nebenkosten);
-    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, src: 'Planwert' };
+    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, src: 'Planwert',
+            check: !(k + nk) ? 'Nicht verknüpft und kein Planwert – in Setup verknüpfen' : null };
   } else {
     const tens = _cxTenantsFor(link), staffel = _cxHist(link, 'staffel'), nkH = _cxHist(link, 'nk');
     const N = new Date(y, m, 0).getDate();
-    let sk = 0, snk = 0, occ = 0;
+    // Casa Castel: a room marked occupied in the Rooms tab (rooms.vacant = false) is occupied,
+    // even without a tenant entry — same rule as the Casa Castel app. Applies from the current month on.
+    const today = typeof cxToday === 'function' ? cxToday() : new Date().toISOString().slice(0, 10);
+    const thisMonth = today.slice(0, 8) + '01';
+    const roomBusy = link.type === 'casa_room' && link.obj && link.obj.vacant === false;
+    let sk = 0, snk = 0, occ = 0, roomOnly = 0, noPrice = 0;
     for (let d = 1; d <= N; d++) {
       const iso = _cxIso(y, m, d);
       const t = tens.find(x => _cxActiveOn(x, iso));
-      if (!t) continue;
+      if (!t) {
+        if (roomBusy && iso >= thisMonth) {
+          const rp = _cxRoomPricing(link.obj, null);
+          occ++; roomOnly++;
+          sk += _cxN0(rp.k); snk += _cxN0(rp.nk);
+          if (!_cxN0(rp.k) && !_cxN0(rp.nk)) noPrice++;
+        }
+        continue;
+      }
       occ++;
       const b = _cxBase(link, t);
-      sk  += _cxStepAt(staffel, t, iso) ?? b.k;
-      snk += _cxStepAt(nkH, t, iso) ?? b.nk;
+      const dk = _cxStepAt(staffel, t, iso) ?? b.k, dnk = _cxStepAt(nkH, t, iso) ?? b.nk;
+      sk += dk; snk += dnk;
+      if (!dk && !dnk) noPrice++;
     }
     const k = _cxR(sk / N), nk = _cxR(snk / N);
     // What changed in this month (shown under the row)
@@ -237,10 +255,26 @@ function ctlUnitSoll(u, pid, y, m) {
       const pv = prevVal(nkH, _cxD(h.effective_date), 'nk');
       notes.push('NK angepasst · ' + (pv !== null && pv !== _cxNum(h.amount) ? _cxEurS(pv) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(h.effective_date));
     }
-    out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge, partial: occ > 0 && occ < N,
+    // Data check: things that don't add up are shown, never silently turned into "leer"
+    let check = null;
+    if (noPrice) check = 'Belegt, aber kein Mietpreis hinterlegt – bitte im ' + (link.type === 'casa_room' ? 'Casa Castel Zimmer' : 'Mieter') + ' eintragen';
+    else if (roomOnly) check = 'Belegt laut Casa Castel, aber kein Mieter eingetragen – Soll aus dem Zimmerpreis';
+    out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge, partial: occ > 0 && occ < N, check,
             src: link.type === 'casa_room' ? 'Casa Castel' : 'Rentals' };
   }
   _cxUnitCache.set(key, out);
+  return out;
+}
+
+/* Data check for a month: every unit whose Soll doesn't add up */
+function ctlDataChecks(y, m) {
+  const out = [];
+  for (const p of window._ctrl.properties.filter(x => x.active)) {
+    for (const u of ctlUnitsFor(p.id)) {
+      const s = ctlUnitSoll(u, p.id, y, m);
+      if (s.check) out.push({ prop: p.name, unit: u.name, text: s.check });
+    }
+  }
   return out;
 }
 

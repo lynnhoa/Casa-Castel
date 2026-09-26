@@ -117,6 +117,15 @@ window.renderSetup = function () {
     (sugg.length ? '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Vorschläge nach Namen</span>' + cxPill('beige', sugg.length + ' offen') + '</div>' +
       '<div class="cx-r__sub" style="margin:6px 0 10px">Werden schon verwendet. Einmal bestätigen, dann sind sie fest.</div>' +
       '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="acceptAll"><i class="ti ti-checks" aria-hidden="true"></i>Alle Vorschläge übernehmen</button></div>' : '') +
+    (() => {
+      const chk = ctlDataChecks(window._ctrl.year, CX.month);
+      return '<div class="cx-head"><span class="cx-lbl">Datenprüfung · ' + CX_MONTHS[CX.month - 1] + '</span></div>' +
+        '<div class="cx-card cx-sum">' + (chk.length
+          ? '<div class="cx-row-sb"><span class="cx-lbl">Bitte prüfen</span>' + cxPill('open', chk.length + (chk.length === 1 ? ' Hinweis' : ' Hinweise')) + '</div>' +
+            chk.map(c => '<div class="cx-kv" style="margin-top:6px"><span><b style="font-weight:500;color:var(--cx-ink)">' + cxEsc(c.prop) + ' · ' + cxEsc(c.unit) + '</b><br>' + cxEsc(c.text) + '</span></div>').join('')
+          : '<div class="cx-row-sb"><span class="cx-lbl">Mieten und Soll</span>' + cxPill('ok', 'Alles stimmig') + '</div>') +
+        '</div>';
+    })() +
     '<div class="cx-head"><span class="cx-lbl">Verknüpfungen</span></div>' + linkCards +
     '<div class="cx-head"><span class="cx-lbl">Casa Castel · Kostenarten</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">Keine Kostenarten.</div>') + '</div>' +
     '<div class="cx-head"><span class="cx-lbl">Planwerte · nur ohne Verknüpfung</span></div>' +

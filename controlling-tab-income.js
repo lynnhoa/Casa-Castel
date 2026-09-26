@@ -43,15 +43,16 @@ window.renderIncome = function () {
   const cards = model.map(g => {
     const src = g.p.id === CASA_PROP_ID ? 'aus Casa Castel' : (g.rows.some(r => r.s.link) ? 'aus Rentals' : 'Planwert');
     const changed = g.rows.some(r => r.s.notes.length);
+    const warned = g.rows.some(r => r.s.check);
     const body = g.rows.map(r => {
       const sub = r.soll ? cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK' + (r.s.partial ? ' · anteilig' : '')
                          : (r.s.link ? 'nicht vermietet' : 'kein Planwert');
       return cxRow({ id: r.id, label: r.u.name, badge: r.s.badge, soll: r.soll, ist: r.ist, sub,
-                     notes: r.s.notes, emptyText: 'leer', allowEmpty: true });
+                     notes: r.s.notes, warn: r.s.check, emptyText: 'leer', allowEmpty: true });
     }).join('');
     return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(g.rows),
                     sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0),
-                    extraPill: changed ? cxPill('beige', 'Änderung') : '', body });
+                    extraPill: (warned ? cxPill('open', 'prüfen') : '') + (changed ? cxPill('beige', 'Änderung') : ''), body });
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +

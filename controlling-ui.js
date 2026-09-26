@@ -110,6 +110,7 @@ const _CX_CSS = `
     .cx-r__sub { font-size:10px; color:var(--cx-mut); margin-top:1px; }
     .cx-from { color:var(--cx-sub); }
     .cx-r__note { font-size:10px; color:var(--cx-acc); margin-top:2px; }
+    .cx-r__warn { font-size:10px; color:#7A4A12; background:#FAEEDA; border:.5px solid #E9B06A; border-radius:6px; padding:3px 6px; margin-top:4px; line-height:1.35; }
     .cx-r__p { grid-column:1/-1; display:flex; justify-content:flex-end; margin-top:-2px; }
     .cx-take { width:30px; height:30px; border-radius:50%; border:.5px solid #D4B896; background:#F5EFE6; color:var(--cx-acc); padding:0;
                display:flex; align-items:center; justify-content:center; cursor:pointer; -webkit-tap-highlight-color:transparent; }
@@ -278,6 +279,7 @@ function cxRow(o) {
       '<div class="cx-r__s">' + (o.soll ? cxEur(o.soll) : '\u2014') + '</div>' +
       (o.sub ? '<div class="cx-r__sub">' + o.sub + '</div>' : '') +
       (o.notes || []).map(n => '<div class="cx-r__note"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> ' + cxEsc(n) + '</div>').join('') +
+      (o.warn ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(o.warn) + '</div>' : '') +
     '</div>' +
     '<button class="cx-take' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Soll übernehmen"' + (o.soll ? '' : ' disabled') + '><i class="ti ti-arrow-right" aria-hidden="true"></i></button>' +
     '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Betrag' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist-Betrag ' + cxEsc(o.label) + '"><span>€</span></label>' +
