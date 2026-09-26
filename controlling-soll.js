@@ -67,7 +67,19 @@ const _cxN0   = v => _cxNum(v) ?? 0;
 const _cxR    = v => Math.round((Number(v) || 0) * 100) / 100;
 const _cxNorm = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
 const _cxIso  = (y, m, d) => y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
-const _cxD    = iso => String(iso || '').slice(0, 10);
+/* Any date the apps store → 'YYYY-MM-DD' (ISO, German TT.MM.JJJJ, timestamps).
+   Plain text comparison of '25.04.2025' with '2026-09-01' was the New York bug. */
+const _cxD = v => {
+  if (!v) return '';
+  if (typeof ccParseDate === 'function') { const r = ccParseDate(v); if (r) return r; }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
+  if (m) { const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); return y + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0'); }
+  const d = new Date(s);
+  return isNaN(d) ? '' : d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
 const _cxFmtD = iso => { const s = _cxD(iso); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; };
 const _cxEurS = v => { const n = Number(v) || 0, whole = Math.abs(n - Math.round(n)) < 0.005;
   return n.toLocaleString('de-DE', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }) + '\u202f€'; };   // 330 € · 359,10 €
@@ -129,7 +141,7 @@ function _cxTenantsFor(link) {
   else if (link.type === 'rentals_parking') list = S.rntTen.filter(t => String(t.parking_id) === link.ref);
   else if (link.type === 'casa_room') list = S.casaTen.filter(t => _cxNorm(t.room) === _cxNorm(link.ref));   // "New york" = "New York"
   return list.filter(t => t.mietbeginn || t.status === 'active')
-    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')));
+    .sort((a, b) => _cxD(b.mietbeginn).localeCompare(_cxD(a.mietbeginn)));
 }
 /* Same rule as the tenant apps: an "active" tenant counts until set to former,
    even if the end date has passed (still living there). */
@@ -259,6 +271,14 @@ function ctlUnitSoll(u, pid, y, m) {
     let check = null;
     if (noPrice) check = 'Belegt, aber kein Mietpreis hinterlegt – bitte im ' + (link.type === 'casa_room' ? 'Casa Castel Zimmer' : 'Mieter') + ' eintragen';
     else if (roomOnly) check = 'Belegt laut Casa Castel, aber kein Mieter eingetragen – Soll aus dem Zimmerpreis';
+    // Tenant entries exist, but none is active this month → say why (instead of a silent "nicht vermietet")
+    if (occ === 0 && tens.length) {
+      const next = tens.filter(t => _cxD(t.mietbeginn) > last).sort((a, b) => _cxD(a.mietbeginn).localeCompare(_cxD(b.mietbeginn)))[0];
+      const prev = tens.filter(t => t.mietende && _cxD(t.mietende) < first).sort((a, b) => _cxD(b.mietende).localeCompare(_cxD(a.mietende)))[0];
+      if (next) notes.push('Mieter ab ' + _cxFmtD(next.mietbeginn) + ' (noch nicht eingezogen)');
+      else if (prev) notes.push('Letzter Mieter bis ' + _cxFmtD(prev.mietende));
+      else check = 'Mieter eingetragen, aber ohne gültiges Einzugsdatum – bitte im Mieter-Tab prüfen';
+    }
     out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge, partial: occ > 0 && occ < N, check,
             src: link.type === 'casa_room' ? 'Casa Castel' : 'Rentals' };
   }
