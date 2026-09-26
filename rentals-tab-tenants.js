@@ -861,7 +861,7 @@ async function _rntLoad() {
    are not in the middle of editing here — otherwise the screen stays as it is. */
 let _rntRenderedSig = null;
 function _rntRenderIfChanged() {
-  const sig = JSON.stringify([_rntRecords, _rntKaution, _rntNK, _rntDocs, _rntNKVoraus, _rntStaffel, _rntProfileCache,
+  const sig = ccStableJSON([_rntRecords, _rntKaution, _rntNK, _rntDocs, _rntNKVoraus, _rntStaffel, _rntProfileCache,
                               (appApartments || []).map(a => [a.id, a.name, a.vacant, a.zimmer_type, a.pricing, a.adresse]),
                               (appParking    || []).map(p => [p.id, p.name, p.vacant, p.pricing, p.adresse])]);
   const list  = document.getElementById('rntTenantsList');

@@ -359,7 +359,7 @@ function _renderPkList() {
    are not in the middle of editing here. */
 let _pkRenderedSig = null;
 function _pkRenderIfChanged() {
-  const sig  = JSON.stringify(appParking);
+  const sig  = ccStableJSON(appParking);
   const list = document.getElementById('pkList');
   const shown = !!(list && list.querySelector('.pk-card'));
   if (shown && sig === _pkRenderedSig) return;

@@ -167,3 +167,25 @@ async function ccOnce(key, fn) {
   try { return await fn(); }
   finally { delete _ccBusy[key]; }
 }
+
+
+/* ═════════════════════════════════════════════════════════════
+   STABLE COMPARE — "did the data really change?" regardless of the
+   order the database returned the rows in. Without this, the same data
+   in a different row order looked like a change and the whole list
+   repainted (the occasional flicker when switching tabs).
+   Rows are compared by id; a real reorder is still seen via sort_order.
+   ═════════════════════════════════════════════════════════════ */
+function ccStableJSON(v) {
+  const norm = x => {
+    if (Array.isArray(x)) {
+      const arr = x.map(norm);
+      if (arr.length && arr.every(e => e && typeof e === 'object' && !Array.isArray(e) && e.id != null))
+        arr.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      return arr;
+    }
+    if (x && typeof x === 'object') { const o = {}; Object.keys(x).sort().forEach(k => { o[k] = norm(x[k]); }); return o; }
+    return x;
+  };
+  return JSON.stringify(norm(v));
+}

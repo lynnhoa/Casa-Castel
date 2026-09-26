@@ -890,7 +890,7 @@ function _renderAptList() {
    are not in the middle of editing here — otherwise the screen stays as it is. */
 let _aptRenderedSig = null;
 function _aptRenderIfChanged() {
-  const sig  = JSON.stringify([appApartments, _aptHausgeld]);
+  const sig  = ccStableJSON([appApartments, _aptHausgeld]);
   const list = document.getElementById('aptList');
   const shown = !!(list && list.querySelector('.apt-card'));
   if (shown && sig === _aptRenderedSig) return;

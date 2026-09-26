@@ -817,7 +817,7 @@ async function _tnLoad() {
    Otherwise the screen stays exactly as it is — nothing typed gets lost. */
 let _tnRenderedSig = null;
 function _tnRenderIfChanged() {
-  const sig = JSON.stringify([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache,
+  const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache,
                               (typeof appRooms !== 'undefined' ? appRooms : []).map(r => [r.id, r.name, r.active, r.vacant, r.sort_order,
                                 r.kaltmiete, r.nk_pauschale, r.kurzzeit_kaltmiete, r.kurzzeit_nk, r.mietvertrag_pricing, r.kurzzeit_pricing, r.kaution_override, r.kaution_default, r.active_price_type])]);
   const list  = document.getElementById('tenantsList');
