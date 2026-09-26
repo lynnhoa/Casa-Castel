@@ -166,7 +166,7 @@
       parking:    () => (typeof loadParking    === 'function' ? loadParking()    : null),
       tenants:    () => (typeof loadRntTenants === 'function' ? loadRntTenants() : null),
     };
-    const _rtInflight = {}, _rtScroll = {};
+    const _rtInflight = {}, _rtScroll = {}, _rtLoadedAt = {};
     let _rtCurrent = null;
     // "Busy" = something unsaved or an editor / add form is open in that tab
     function _rtBusy(tab) {
@@ -178,7 +178,7 @@
       if (_rtInflight[tab]) return _rtInflight[tab];
       const p = Promise.resolve().then(_rtLoaders[tab])
         .catch(e => console.warn('[rentals] load ' + tab + ':', e))
-        .finally(() => { delete _rtInflight[tab]; });
+        .finally(() => { delete _rtInflight[tab]; _rtLoadedAt[tab] = Date.now(); });
       _rtInflight[tab] = p;
       return p;
     }
@@ -191,19 +191,23 @@
         .forEach(o => o.classList.remove('open'));
       ['aptContractPdfPreviewOverlay','pkUebergPreviewOverlay','aptUebergPreviewOverlay']
         .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      // B17: the new tab is laid out hidden, scrolled to its own position, then shown in the
+      // next frame — iOS never paints it at the old tab's scroll offset (the "double" flash)
       const tabEl = document.getElementById('tab-' + tabName);
-      if (tabEl) tabEl.style.display = 'block';
+      if (tabEl) { tabEl.style.visibility = 'hidden'; tabEl.style.display = 'block'; }
+      document.querySelectorAll('.tab-content').forEach(c => { if (c !== tabEl) c.style.display = 'none'; });
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tabName);
       });
       _rtCurrent = tabName;
       window.scrollTo(0, _rtScroll[tabName] || 0);   // each tab keeps its own scroll position
+      requestAnimationFrame(() => { if (tabEl) tabEl.style.visibility = ''; });
       if (tabName === 'tenants') {                     // first visit while still loading: say so
         const l = document.getElementById('rntTenantsList');
         if (l && !l.querySelector('.tn-card')) l.innerHTML = '<p class="tn-empty">Loading tenants…</p>';
       }
-      _rtLoad(tabName);
+      // B17: no background reload when this tab was loaded less than a minute ago
+      if (!_rtLoadedAt[tabName] || Date.now() - _rtLoadedAt[tabName] > 60000) _rtLoad(tabName);
     }
 
     function initTabs() {

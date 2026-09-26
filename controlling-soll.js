@@ -46,7 +46,7 @@ window._src = {
   apts: [], pricing: [], verw: [], hgHist: [], parking: [], pkPricing: [],
   rntTen: [], staffel: [], rntNkV: [], rntNk: [],
   rooms: [], casaTen: [], casaNkV: [], casaNk: [],
-  loans: [], rentP: [], incAll: [],
+  loans: [], rentP: [], incAll: [], settle: [],
 };
 
 const _CX_SRC = [
@@ -55,7 +55,7 @@ const _CX_SRC = [
   ['rntTen', 'rnt_tenant_records'], ['staffel', 'rnt_staffelmiete_history'], ['rntNkV', 'rnt_nk_vorauszahlung_history'],
   ['rntNk', 'rnt_nk_entries'], ['rooms', 'rooms'], ['casaTen', 'tenant_records'],
   ['casaNkV', 'nk_vorauszahlung_history'], ['casaNk', 'nk_entries'], ['loans', 'properties'],
-  ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'],
+  ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -662,7 +662,7 @@ function ctlCostRows(p, y, m) {
 
   let hg = null, hgNote = null;
   if (pl.apt) {
-    const hist = S.hgHist.filter(h => String(h.apartment_id) === String(pl.apt.id));
+    const hist = S.hgHist.filter(h => String(h.apt_id ?? h.apartment_id) === String(pl.apt.id));   // B21: Rentals column is apt_id
     let cur = null;
     for (const h of hist) { const d = _cxD(h.effective_date); if (d && d <= first && (!cur || d > _cxD(cur.effective_date))) cur = h; }
     const v = S.verw.find(x => String(x.apartment_id) === String(pl.apt.id));
@@ -745,6 +745,105 @@ function ctlOtSuggestions() {
     if (!e.paid || !amt || taken.has('nk:' + e.id)) continue;
     const t = S.casaTen.find(x => x.id === e.tenant_id);
     out.push({ ref: 'nk:' + e.id, pid: casa.id, prop: casa.name + (t && t.room ? ' · ' + t.room : ''), text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung Mieter' : ' · Guthaben Mieter'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
+  }
+  return out;
+}
+
+
+/* ── Phase 5 · Warm-Bilanz (G4, G6, B15) ─────────────────────
+   What you really keep per property and month. Same money as the Cashflow,
+   only sorted differently — the lines always add up to Cashflow + Tilgung.
+
+   Rentals apartment
+     Kalt-Ergebnis = Kaltmiete Ist − Hausgeld nicht umlagefähig − Zinsen − Strom
+     NK-Saldo      = NK Ist − Hausgeld umlagefähig − Grundsteuer   (vorläufig bis zur Abrechnung)
+                     davon Leerstand: umlagefähige Kosten für leere Tage
+   Casa Castel (until the NK tool exists)
+     Kalt-Ergebnis = Mieten Ist − Hauskosten − Zinsen
+   Both
+     Einmalig      = Einmalig rein − raus (davon Abrechnungen: NK / Hausgeld)
+     Tilgung       = Vermögensaufbau (shown, not a loss)
+   Kaution is never included (D14). Rentals "Strom" is passed on, not your cost (D17). */
+const CX_STROM_OWN_COST = false;  // D17: Rentals Strom (Gewerbe, until 07/2026) was passed on — never your own cost
+
+function _cxNuAt(pl, y, m) {                            // nicht umlagefähiger Hausgeld-Anteil (D1)
+  if (!pl.apt) return null;
+  const first = _cxIso(y, m, 1);
+  let cur = null;
+  for (const h of window._src.hgHist.filter(h => String(h.apt_id ?? h.apartment_id) === String(pl.apt.id))) {
+    const d = _cxD(h.effective_date);
+    if (d && d <= first && (!cur || d > _cxD(cur.effective_date))) cur = h;
+  }
+  return cur ? _cxNum(cur.nicht_umlagefaehig) : null;
+}
+
+function ctlWarmMonth(pid, m) {
+  const y = window._ctrl.year, p = ctlProp(pid), casa = pid === CASA_PROP_ID;
+  const x = ctlPropertyMonth(pid, m);
+  const ot = (window._ctrl.one_time || []).filter(o => o.property_id === pid && ctlParseDate(o.invoice_date).year === y && ctlParseDate(o.invoice_date).month === m);
+  const isSet = o => /abrechnung/i.test(String(o.kind || ''));
+  const signed = o => (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);
+  const einmalig = ot.reduce((a, o) => a + signed(o), 0), abrechnungen = ot.filter(isSet).reduce((a, o) => a + signed(o), 0);
+  const notes = [];
+  let kaltRes = 0, nkSaldo = null, leerstand = 0, tilgung = 0;
+  if (casa) {
+    let rate = 0, house = 0;
+    const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
+    for (const e of window._ctrl.castel_expenses) if (e.year === y && e.month === m) {
+      if (rateCat && e.category_id === rateCat.id) rate += Number(e.amount) || 0; else house += Number(e.amount) || 0;
+    }
+    const loan = p ? ctlPropLinks(p).loan : null, lr = loan ? Number(loan.rate) || 0 : 0;
+    tilgung = lr ? rate * (Number(loan.tilgung) || 0) / lr : 0;
+    kaltRes = x.kalt + x.neben - house - (rate - tilgung);
+  } else {
+    const row = window._ctrl.apt_expenses.find(e => e.property_id === pid && e.year === y && e.month === m) || {};
+    const rate = Number(row.rate) || 0, hg = Number(row.hausgeld) || 0, gs = Number(row.grundsteuer) || 0, strom = Number(row.strom) || 0;
+    tilgung = Number(row.tilgung) || 0;
+    const zinsen = rate - tilgung;
+    const pl = p ? ctlPropLinks(p) : { apt: null };
+    let nu = _cxNuAt(pl, y, m);
+    if (hg && nu === null) notes.push('Nicht umlagefähiger Hausgeld-Anteil fehlt – in Rentals beim Hausgeld eintragen');
+    nu = Math.min(nu ?? 0, hg);
+    const stromOwn = CX_STROM_OWN_COST ? strom : 0;
+    kaltRes = x.kalt - nu - zinsen - stromOwn;
+    nkSaldo = x.neben - (hg - nu) - gs - (CX_STROM_OWN_COST ? 0 : strom);
+    // vacancy: share of the umlagefähige costs for days without a tenant
+    const units = ctlUnitsFor(pid).filter(u => !_cxIsParking(u));
+    if (units.length) {
+      const N = new Date(y, m, 0).getDate();
+      const occ = units.reduce((a, u) => a + (ctlUnitSoll(u, pid, y, m).days || 0), 0) / units.length;
+      leerstand = Math.max(0, (N - occ) / N) * ((hg - nu) + gs);
+    }
+  }
+  const today = typeof cxToday === 'function' ? cxToday() : '';
+  const provisional = nkSaldo !== null && Number(today.slice(0, 4)) === y;
+  return { kaltRes: _cxR(kaltRes), nkSaldo: nkSaldo === null ? null : _cxR(nkSaldo), leerstand: _cxR(leerstand),
+           einmalig: _cxR(einmalig), abrechnungen: _cxR(abrechnungen), tilgung: _cxR(tilgung),
+           result: _cxR(kaltRes + (nkSaldo || 0) + einmalig), provisional, notes };
+}
+
+/* ── Phase 5 · Abrechnungen tracker (B13, B14, G3) ──────────
+   One row per expected yearly settlement: NK per tenancy period (Kalt + NK
+   tenants only) and the WEG Hausgeld-Jahresabrechnung per Rentals apartment. */
+function ctlExpectedSettlements(coversYear) {
+  const out = [], first = coversYear + '-01-01', last = coversYear + '-12-31';
+  for (const p of window._ctrl.properties.filter(x => x.active)) {
+    const casa = p.id === CASA_PROP_ID, pl = ctlPropLinks(p);
+    if (!casa && pl.apt) out.push({ property_id: p.id, tenant_id: null, kind: 'weg_hausgeld', covers_year: coversYear, period_from: first, period_to: last, label: 'Hausgeld ' + coversYear });
+    for (const u of ctlUnitsFor(p.id)) {
+      const link = ctlUnitLink(u, p);
+      if (!link || link.type === 'rentals_parking') continue;
+      const all = _cxTenancies(link), memo = new Map();
+      for (const w of all) {
+        if (!w.from || w.from > last || w.to < first) continue;
+        const from = w.from > first ? w.from : first, to = w.to < last ? w.to : last;
+        // only tenants who prepaid NK (Kalt + NK) get a settlement
+        const r = _cxRentDay(link, w, u, coversYear, Number(to.slice(5, 7)), to, all, memo);
+        if (r.mode === 'pauschal' || !r.nk) continue;
+        out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: coversYear, period_from: from, period_to: to,
+                   label: u.name + ' · ' + w.name + ' · NK ' + coversYear });
+      }
+    }
   }
   return out;
 }

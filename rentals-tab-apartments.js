@@ -1627,6 +1627,7 @@ function _aptHGSectionHTML(aptId) {
         <span class="tn-nkv-cur-since">seit ${_aptHGFmt(current.effective_date)}</span>
         ${_aptHGDelBtn(current, aptId)}
       </div>
+      ${_aptHGNuBtn(current, aptId)}
       <div class="tn-nkv-pills" style="margin:6px 0 2px">${_aptHGPill(current, aptId)}</div>`
     : (entries.length ? '' : `<p class="apt-empty" style="padding:3px 0 10px;font-size:12px;color:var(--cc-stone);font-style:italic">No rate entered yet.</p>`);
 
@@ -1699,6 +1700,31 @@ function _aptHGModalOutside(e) {
   _aptHGMouseDownOnOverlay = false;
 }
 
+/* D1: nicht umlagefähiger Anteil (Verwaltung, Rücklage …) from the Wirtschaftsplan — tap to set */
+function _aptHGNuBtn(e, aptId) {
+  const v = e.nicht_umlagefaehig;
+  return `<button type="button" class="tn-nkv-pill ${v != null ? 'done' : 'pending'}" style="margin:4px 0 2px"
+    onclick="_aptHGSetNu('${e.id}','${aptId}')">davon nicht umlagefähig: ${v != null ? aptFmtEUR(v) : 'eintragen'}</button>`;
+}
+async function _aptHGSetNu(id, aptId) {
+  const e = (_aptHausgeld[aptId] || []).find(x => String(x.id) === String(id));
+  if (!e || !_aptSbClient) return;
+  const cur = e.nicht_umlagefaehig != null ? String(e.nicht_umlagefaehig).replace('.', ',') : '';
+  const inp = prompt('Davon nicht umlagefähig (€ / Monat, laut Wirtschaftsplan):', cur);
+  if (inp === null) return;
+  const v = inp.trim() === '' ? null : (typeof ccParseEUR === 'function' ? ccParseEUR(inp) : parseFloat(inp.replace(',', '.')));
+  if (v !== null && (isNaN(v) || v < 0)) return;
+  const before = e.nicht_umlagefaehig;
+  e.nicht_umlagefaehig = v;
+  _aptRerenderCard(aptId);
+  const { error } = await _aptSbClient.from('rentals_hausgeld_history').update({ nicht_umlagefaehig: v }).eq('id', id);
+  if (error) {
+    e.nicht_umlagefaehig = before;
+    _aptRerenderCard(aptId);
+    if (typeof ccToast === 'function') ccToast(/nicht_umlagefaehig/.test(error.message || '') ? 'Bitte zuerst das SQL-Update ausführen' : 'Speichern fehlgeschlagen', true);
+  }
+}
+
 function _aptHGAdd(aptId) {
   const sec = document.getElementById(`apt-hg-sec-${aptId}`);
   if (!sec) return;
@@ -1711,6 +1737,7 @@ function _aptHGAdd(aptId) {
   form.innerHTML = `
     <input type="date" id="apt-hg-date-${aptId}" />
     <input type="number" data-cc-num="2" id="apt-hg-amount-${aptId}" placeholder="Amount €" step="0.01" min="0" />
+    <input type="number" data-cc-num="2" id="apt-hg-nu-${aptId}" placeholder="davon n. uml. €" step="0.01" min="0" title="davon nicht umlagefähig (Wirtschaftsplan)" />
     <button class="apt-btn--save" style="height:30px;font-size:11px;padding:0 10px"
       onclick="_aptHGConfirmAdd('${aptId}')">
       <i class="ti ti-check" aria-hidden="true"></i>
@@ -1731,10 +1758,14 @@ async function _aptHGConfirmAdd__run(aptId) {
   if (!date || isNaN(amount) || amount <= 0) { dateInp?.focus(); return; }
   if (!_aptSbClient) return;
 
-  const { data, error } = await _aptSbClient.from('rentals_hausgeld_history')
-    .insert({ apt_id: aptId, effective_date: date, amount,
-              weg_notified: false, hv_adjusted: false })
-    .select().single();
+  const nuV = parseFloat(document.getElementById(`apt-hg-nu-${aptId}`)?.value);
+  const row = { apt_id: aptId, effective_date: date, amount, weg_notified: false, hv_adjusted: false };
+  if (!isNaN(nuV)) row.nicht_umlagefaehig = nuV;   // D1: from the Wirtschaftsplan
+  let { data, error } = await _aptSbClient.from('rentals_hausgeld_history').insert(row).select().single();
+  if (error && 'nicht_umlagefaehig' in row && /nicht_umlagefaehig/.test(String(error.message || ''))) {   // SQL not run yet
+    delete row.nicht_umlagefaehig;
+    ({ data, error } = await _aptSbClient.from('rentals_hausgeld_history').insert(row).select().single());
+  }
   if (error) { console.warn('[apartments] hg add:', error.message); return; }
 
   if (!_aptHausgeld[aptId]) _aptHausgeld[aptId] = [];

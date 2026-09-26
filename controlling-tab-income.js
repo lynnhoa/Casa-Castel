@@ -5,8 +5,8 @@
    One list per month, one card per property, one row per unit:
      Soll (from the tenant tabs, bold)  │  →  │  Ist field  │  pill
    · "Alle offenen wie geplant" takes over every open row at once.
-   · One amount per unit (what arrived on the account). It is stored
-     as Nebenkosten first (up to the planned NK), the rest as Kaltmiete.
+   · One amount per unit (what arrived on the account). It is split in the
+     ratio of the Soll (Kalt : NK); Pauschal is stored as Kalt only (B16).
    · An empty field = "offen" again (row removed).
    · Casa Castel rooms without a unit yet (e.g. Berlin) show
      automatically; the unit is created on the first save.
@@ -115,10 +115,16 @@ async function _cxIncSave(e, ist) {
       e.u = nu;
       if (typeof ctlSollReset === 'function') ctlSollReset();
     }
-    const nkPlan = cxR(e.s.nk || 0);
-    const nk = ist >= nkPlan ? nkPlan : Math.max(0, cxR(ist));
+    const nk = _cxIncNkShare(e.s, ist);
     await ctlUpsertIncome(e.u.id, m, cxR(ist - nk), nk);
   } catch (err) { cxToastErr(err); }
+}
+
+/* B16: one amount per unit is split in the ratio of the Soll (Kalt : NK) —
+   a short payment is short on both, not only on the Kaltmiete. Pauschal: all Kalt. */
+function _cxIncNkShare(s, ist) {
+  if (!s || !s.soll || !s.nk) return 0;
+  return Math.max(0, cxR(ist * s.nk / s.soll));
 }
 
 /* One tenant's line in a change month (G1): stored as split[tenant] + the unit total */
@@ -142,8 +148,7 @@ async function _cxIncSavePart(e, ist) {
     const keys = Object.keys(split);
     if (!keys.length) { await ctlDeleteIncome(e.u.id, m); return; }
     const total = cxR(keys.reduce((a, k) => a + split[k], 0));
-    const nkPlan = cxR(e.s.nk || 0);
-    const nk = total >= nkPlan ? nkPlan : Math.max(0, total);
+    const nk = _cxIncNkShare(e.s, total);
     await ctlUpsertIncome(e.u.id, m, cxR(total - nk), nk, split);
   } catch (err) { cxToastErr(err); }
 }

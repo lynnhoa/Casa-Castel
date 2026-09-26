@@ -29,6 +29,71 @@ function _cxOtDefaultDate() {
   return (Number(t.slice(0, 4)) === y && Number(t.slice(5, 7)) === m) ? t : y + '-' + String(m).padStart(2, '0') + '-01';
 }
 
+
+/* ── Abrechnungen (Phase 5 · B13 B14 G3) ─────────────────────
+   Expected yearly settlements with status: offen → erstellt → bezahlt
+   (or "nicht durchgeführt"). Paid by payment → one entry in Einmalig
+   (counts in the year paid, D2); paid via Kaution → closed, no line (D14). */
+let _cxSet = { pay: {}, open: null };
+const _CX_SET_ST = { offen: ['open', 'offen'], erstellt: ['beige', 'erstellt'], bezahlt: ['ok', 'bezahlt'], 'nicht durchgeführt': ['grey', 'nicht durchgeführt'] };
+function _cxSetRows(cy) { return (window._src.settle || []).filter(r => Number(r.covers_year) === cy); }
+function _cxSetLabel(r) {
+  const p = ctlProp(r.property_id);
+  if (r.kind === 'weg_hausgeld') return (p ? p.name : '') + ' · Hausgeld-Jahresabrechnung ' + r.covers_year;
+  const S = window._src, t = (r.app === 'casa' ? S.casaTen : S.rntTen).find(x => String(x.id) === String(r.tenant_id));
+  const nm = t ? [t.first_name, t.last_name].filter(Boolean).join(' ') : 'Mieter';
+  const u = t ? (t.room || (S.apts.find(a => String(a.id) === String(t.apartment_id)) || {}).name || '') : '';
+  return (p ? p.name : '') + (u && u !== (p && p.name) ? ' · ' + u : '') + ' · ' + nm + ' · NK ' + r.covers_year;
+}
+function _cxSetHTML() {
+  const cy = window._ctrl.year - 1;
+  const rows = _cxSetRows(cy);
+  const exp = typeof ctlExpectedSettlements === 'function' ? ctlExpectedSettlements(cy) : [];
+  const same = (a, b) => a.kind === b.kind && Number(a.property_id) === Number(b.property_id) && String(a.tenant_id || '') === String(b.tenant_id || '') && String(a.period_from || '').slice(0, 10) === String(b.period_from || '').slice(0, 10);
+  const missing = exp.filter(e => !rows.some(r => same(r, e)));
+  const nOpen = rows.filter(r => r.status === 'offen' || r.status === 'erstellt').length;
+  const isOpen = _cxSet.open !== null ? _cxSet.open : (nOpen + missing.length > 0);
+  const list = rows.sort((a, b) => _cxSetLabel(a).localeCompare(_cxSetLabel(b))).map(r => {
+    const st = _CX_SET_ST[r.status] || _CX_SET_ST.offen, id = cxEsc(r.id);
+    const per = r.period_from && r.period_to ? cxFmtDate(r.period_from) + '–' + cxFmtDate(r.period_to) : '';
+    const paid = r.status === 'bezahlt' ? (r.settled_via === 'kaution' ? 'mit Kaution verrechnet' : (Number(r.direction) === 1 ? '+ ' : '\u2212 ') + cxEur(r.amount || 0) + (r.paid_date ? ' · ' + cxFmtDate(r.paid_date) : '')) : '';
+    const pay = _cxSet.pay[r.id] ?
+      '<div class="cx-form" style="margin-top:8px">' +
+        '<div class="cx-grid2"><div class="cx-seg"><button class="' + ((_cxSet.pay[r.id].dir || 1) > 0 ? 'on' : '') + '" data-cx="setDir" data-id="' + id + '" data-v="1">Rein</button><button class="' + ((_cxSet.pay[r.id].dir || 1) < 0 ? 'on' : '') + '" data-cx="setDir" data-id="' + id + '" data-v="-1">Raus</button></div>' +
+        '<label class="cx-f"><input type="text" inputmode="decimal" id="cxSetAmt-' + id + '" placeholder="Betrag" aria-label="Betrag"><span>€</span></label></div>' +
+        '<div class="cx-grid2"><label class="cx-f cx-f--l"><input type="date" id="cxSetDate-' + id + '" value="' + _cxOtDefaultDate() + '" aria-label="Bezahlt am"></label>' +
+        '<label class="cx-f cx-f--l"><select id="cxSetVia-' + id + '" aria-label="Wie"><option value="zahlung">per Zahlung</option><option value="kaution">mit Kaution verrechnet</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
+        '<div class="cx-grid2"><button class="cx-btn" data-cx="setPay" data-id="' + id + '">Abbrechen</button><button class="cx-btn cx-btn--p" data-cx="setPaySave" data-id="' + id + '">Speichern</button></div>' +
+      '</div>' : '';
+    const acts = r.status === 'bezahlt' || r.status === 'nicht durchgeführt'
+      ? '<button class="cx-link" style="display:inline" data-cx="setStatus" data-id="' + id + '" data-v="offen">wieder öffnen</button>'
+      : (r.status === 'offen' ? '<button class="cx-link" style="display:inline" data-cx="setStatus" data-id="' + id + '" data-v="erstellt">erstellt</button> · ' : '') +
+        '<button class="cx-link" style="display:inline" data-cx="setPay" data-id="' + id + '">bezahlt …</button> · ' +
+        '<button class="cx-link" style="display:inline" data-cx="setStatus" data-id="' + id + '" data-v="nicht durchgeführt">nicht durchgeführt</button>';
+    return '<div class="cx-r" style="display:block"><div class="cx-row-sb"><span class="cx-r__u">' + cxEsc(_cxSetLabel(r)) + '</span>' + cxPill(st[0], st[1]) + '</div>' +
+      '<div class="cx-r__sub">' + cxEsc([per, paid].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="cx-r__sub" style="margin-top:4px">' + acts + ' · <button class="cx-link" style="display:inline" data-cx="setDel" data-id="' + id + '">löschen</button></div>' + pay + '</div>';
+  }).join('');
+  const body = !isOpen ? '' : '<div style="padding:0 16px 12px">' +
+    (missing.length ? '<button class="cx-btn cx-btn--p cx-btn--full" style="margin:6px 0" data-cx="setGen"><i class="ti ti-list-check" aria-hidden="true"></i>' + missing.length + (missing.length === 1 ? ' erwartete Abrechnung' : ' erwartete Abrechnungen') + ' ' + cy + ' anlegen</button>' : '') +
+    (list || '<div class="cx-r__sub" style="padding:8px 0">Noch keine Abrechnungen für ' + cy + '.</div>') + '</div>';
+  return '<div class="cx-card"><button class="cx-ph" data-cx="setFold" aria-expanded="' + isOpen + '">' +
+    '<span class="cx-ph__l"><span class="cx-pn">Abrechnungen ' + cy + '</span><span class="cx-src">NK je Mieter · Hausgeld je Wohnung</span></span>' +
+    '<span class="cx-ph__r">' + (nOpen + missing.length ? cxPill('open', (nOpen + missing.length) + ' offen') : cxPill('ok', 'erledigt')) +
+    '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span></button>' + body + '</div>';
+}
+async function _cxSetUpdate(id, fields) {
+  const { data, error } = await _ctlSupa.from('ctrl_settlements').update(fields).eq('id', id).select().single();
+  if (error) throw error;
+  const L = window._src.settle, i = L.findIndex(r => String(r.id) === String(id));
+  if (i >= 0) L[i] = data;
+  return data;
+}
+function _cxSetErr(e) {
+  if (/ctrl_settlements/.test(String(e && e.message || e))) { if (typeof ctlToast === 'function') ctlToast('Bitte zuerst das SQL-Update ausführen'); }
+  else cxToastErr(e);
+}
+
 window.renderOneTime = function () {
   const host = document.getElementById('tab-onetime');
   if (!host) return;
@@ -82,13 +147,61 @@ window.renderOneTime = function () {
       '<div style="text-align:right"><div class="cx-lbl">Raus</div><div class="cx-io__v">' + cxW(raus) + '</div></div></div>' +
       '<button class="cx-btn cx-btn--' + (_cxOt.form ? 's' : 'p') + ' cx-btn--full" data-cx="form"><i class="ti ti-' + (_cxOt.form ? 'x' : 'plus') + '" aria-hidden="true"></i>' + (_cxOt.form ? 'Abbrechen' : 'Eintrag hinzufügen') + '</button>' +
       form +
-    '</div>' + sugHtml +
+    '</div>' + _cxSetHTML() + sugHtml +
     '<div class="cx-head"><span class="cx-lbl">Einträge · ' + CX_MONTHS[CX.month - 1] + '</span></div>' + list + '</div>';
 
   cxWire(host, {
     render: () => window.renderOneTime(),
     click: async (a, b) => {
       if (a === 'form') { _cxOt.form = !_cxOt.form; return window.renderOneTime(); }
+      if (a === 'setFold') { _cxSet.open = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
+      if (a === 'setPay') { const id = b.dataset.id; _cxSet.pay[id] = _cxSet.pay[id] ? null : { dir: 1 }; return window.renderOneTime(); }
+      if (a === 'setDir') { const id = b.dataset.id; if (_cxSet.pay[id]) _cxSet.pay[id].dir = Number(b.dataset.v); return window.renderOneTime(); }
+      if (a === 'setGen') {
+        b.disabled = true;
+        const cy = window._ctrl.year - 1, rows = _cxSetRows(cy);
+        const same = (x, e) => x.kind === e.kind && Number(x.property_id) === Number(e.property_id) && String(x.tenant_id || '') === String(e.tenant_id || '') && String(x.period_from || '').slice(0, 10) === e.period_from;
+        const add = ctlExpectedSettlements(cy).filter(e => !rows.some(x => same(x, e)))
+          .map(e => ({ property_id: e.property_id, tenant_id: e.tenant_id, app: e.app || null, kind: e.kind, covers_year: e.covers_year, period_from: e.period_from, period_to: e.period_to, status: 'offen' }));
+        try {
+          const { data, error } = await _ctlSupa.from('ctrl_settlements').insert(add).select();
+          if (error) throw error;
+          window._src.settle = (window._src.settle || []).concat(data || []);
+        } catch (e) { _cxSetErr(e); }
+        return window.renderOneTime();
+      }
+      if (a === 'setStatus') {
+        try { await _cxSetUpdate(b.dataset.id, { status: b.dataset.v }); } catch (e) { _cxSetErr(e); }
+        return window.renderOneTime();
+      }
+      if (a === 'setDel') {
+        if (!confirm('Diese Abrechnung aus der Liste löschen?')) return;
+        try {
+          const { error } = await _ctlSupa.from('ctrl_settlements').delete().eq('id', b.dataset.id);
+          if (error) throw error;
+          window._src.settle = window._src.settle.filter(r => String(r.id) !== String(b.dataset.id));
+        } catch (e) { _cxSetErr(e); }
+        return window.renderOneTime();
+      }
+      if (a === 'setPaySave') {
+        const id = b.dataset.id, r = (window._src.settle || []).find(x => String(x.id) === String(id));
+        if (!r) return;
+        const via = document.getElementById('cxSetVia-' + id)?.value === 'kaution' ? 'kaution' : 'zahlung';
+        const amt = cxParse(document.getElementById('cxSetAmt-' + id)?.value) || 0;
+        const date = String(document.getElementById('cxSetDate-' + id)?.value || '').slice(0, 10) || _cxOtDefaultDate();
+        const dir = (_cxSet.pay[id] && _cxSet.pay[id].dir) || 1;
+        try {
+          if (via === 'zahlung' && amt > 0) {
+            await ctlAddOneTime({ property_id: r.property_id, invoice_date: date, item: _cxSetLabel(r), amount: cxR(amt),
+              kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: dir, source_ref: 'set:' + id });
+          }
+          await _cxSetUpdate(id, { status: 'bezahlt', amount: cxR(amt), direction: dir, paid_date: date, settled_via: via });
+          _cxSet.pay[id] = null;
+          const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7));
+          if (via === 'zahlung' && amt > 0 && typeof ctlToast === 'function') ctlToast('In Einmalig gebucht: ' + CX_MONTHS[m - 1] + ' ' + y);
+        } catch (e) { _cxSetErr(e); }
+        return window.renderOneTime();
+      }
       if (a === 'kind') { _cxOt.kind = b.dataset.v; _cxOt.dir = _CX_KIND_DIR[b.dataset.v] || -1; return _cxOtKeepForm(); }
       if (a === 'dir')  { _cxOt.dir = Number(b.dataset.v); return _cxOtKeepForm(); }
       if (a === 'save') return _cxOtSave();

@@ -17,6 +17,21 @@
 
 let _cxDash = { openInc: 0, openMonth: 0 };           // for the jump targets
 if (!CX.dashView) CX.dashView = 'm';                    // default: Monat
+if (!CX.dashMode) CX.dashMode = 'cash';                 // Cashflow | Warm-Bilanz (Phase 5)
+
+/* Warm-Bilanz of several properties over several months */
+function _cxWarmSum(pids, months) {
+  const s = { kaltRes: 0, nkSaldo: 0, hasNk: false, leerstand: 0, einmalig: 0, abrechnungen: 0, tilgung: 0, result: 0, provisional: false, notes: [] };
+  for (const m of months) for (const pid of pids) {
+    const w = ctlWarmMonth(pid, m);
+    s.kaltRes += w.kaltRes; s.leerstand += w.leerstand; s.einmalig += w.einmalig; s.abrechnungen += w.abrechnungen;
+    s.tilgung += w.tilgung; s.result += w.result;
+    if (w.nkSaldo !== null) { s.nkSaldo += w.nkSaldo; s.hasNk = true; }
+    if (w.provisional) s.provisional = true;
+    for (const n of w.notes) if (!s.notes.includes(n)) s.notes.push(n);
+  }
+  return s;
+}
 
 function _cxIsFuture(y, m) {
   const t = cxToday(), ty = Number(t.slice(0, 4)), tm = Number(t.slice(5, 7));
@@ -129,7 +144,25 @@ window.renderDashboard = function () {
       : '<div class="cx-stat cx-stat--ok"><span class="cx-dot"></span>' + CX_MONTHS[m - 1] + ' vollständig erfasst</div>';
   }
 
-  const hero = '<div class="cx-card cx-hero">' +
+  const warm = CX.dashMode === 'warm';
+  const W = warm ? _cxWarmSum(props.map(p => p.id), future ? [] : months) : null;
+  const heroWarm = !warm ? '' : '<div class="cx-card cx-hero">' +
+    '<div class="cx-lbl" style="text-align:center">Ergebnis · ' + cxEsc(periodLbl) + '</div>' +
+    '<div class="cx-hero__v' + (!future && W.result < 0 ? ' neg' : '') + '">' + (future ? '\u2014' : cxWS(W.result)) + '</div>' +
+    '<div class="cx-hero__c">was Ihnen bleibt · Tilgung zählt als Vermögensaufbau</div>' +
+    '<div class="cx-bar"><div class="' + (tot.raus > tot.rein ? 'over' : '') + '" style="width:' + (future ? 0 : pct) + '%"></div></div>' +
+    '<div class="cx-io"><div><div class="cx-lbl"><span class="cx-sw cx-sw--in"></span>Kalt-Ergebnis</div><div class="cx-io__v">' + (future ? '\u2014' : cxWS(W.kaltRes)) + '</div></div>' +
+    '<div style="text-align:right"><div class="cx-lbl"><span class="cx-sw cx-sw--out"></span>NK-Saldo' + (W.provisional ? ' · vorläufig' : '') + '</div><div class="cx-io__v">' + (future || !W.hasNk ? '\u2014' : cxWS(W.nkSaldo)) + '</div></div></div>' +
+    '<div class="cx-davon">' +
+      '<div class="cx-kv"><span>davon Leerstand</span><span>' + (future ? '\u2014' : cxW(W.leerstand)) + '</span></div>' +
+      '<div class="cx-kv"><span>Einmalig</span><span>' + (future ? '\u2014' : cxWS(W.einmalig)) + '</span></div>' +
+      '<div class="cx-kv"><span>davon Abrechnungen</span><span>' + (future ? '\u2014' : cxWS(W.abrechnungen)) + '</span></div>' +
+      '<div class="cx-kv"><span>Tilgung <span class="cx-davon__h">· baut Vermögen auf</span></span><span class="cx-davon__t">' + (future ? '\u2014' : cxW(W.tilgung)) + '</span></div>' +
+    '</div>' +
+    (W.notes.length ? W.notes.map(n => '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(n) + '</div>').join('') : '') +
+    status + '</div>';
+
+  const hero = warm ? heroWarm : '<div class="cx-card cx-hero">' +
     '<div class="cx-lbl" style="text-align:center">Cashflow · ' + cxEsc(periodLbl) + '</div>' +
     '<div class="cx-hero__v' + (!future && tot.konto < 0 ? ' neg' : '') + '">' + (future ? '\u2014' : cxWS(tot.konto)) + '</div>' +
     '<div class="cx-hero__c">alles was reinkam, minus alles was rausging</div>' +
@@ -145,8 +178,20 @@ window.renderDashboard = function () {
   const cards = per.map(({ p, s, open }) => {
     const k = 'dash:' + CX.dashView + ':' + p.id, isOpen = !!CX.open[k];
     const nothing = !future && !s.rein && !s.raus;
+    const pw = warm && !future ? _cxWarmSum([p.id], months) : null;
     let details = '';
-    if (isOpen) {
+    if (isOpen && warm) {
+      const lines = [];
+      if (isYear) {
+        for (const mm of months) { const x = ctlWarmMonth(p.id, mm); lines.push([CX_MONTHS[mm - 1], x.result ? cxWS(x.result) : '\u2014', false]); }
+      } else if (pw) {
+        lines.push(['Kalt-Ergebnis', cxWS(pw.kaltRes), false]);
+        if (pw.hasNk) lines.push(['NK-Saldo' + (pw.provisional ? ' · vorläufig' : ''), cxWS(pw.nkSaldo), false], ['  davon Leerstand', cxW(pw.leerstand), false, true]);
+        lines.push(['Einmalig', cxWS(pw.einmalig), false], ['Tilgung · Vermögensaufbau', cxW(pw.tilgung), false]);
+        for (const n of pw.notes) lines.push([n, '', true]);
+      }
+      details = '<div class="cx-det">' + lines.map(l => '<div class="cx-kv' + (l[3] ? ' cx-kv--sub' : '') + '"><span>' + cxEsc(l[0]) + '</span><span class="' + (l[2] ? 'cx-kv--open' : '') + '">' + cxEsc(l[1]) + '</span></div>').join('') + '</div>';
+    } else if (isOpen) {
       const lines = [];
       if (isYear) {
         for (const mm of months) {
@@ -183,9 +228,12 @@ window.renderDashboard = function () {
     return '<div class="cx-card">' +
       '<button class="cx-ph" data-cx="fold" data-k="' + k + '" aria-expanded="' + isOpen + '">' +
         '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(p.name) + '</span>' +
-          '<span class="cx-src' + (future || nothing ? ' cx-src--empty' : '') + '">' + (future ? 'noch nicht fällig' : nothing ? 'noch nichts erfasst' : 'rein ' + cxW(s.rein) + ' · raus ' + cxW(s.raus)) + '</span></span>' +
+          '<span class="cx-src' + (future || nothing ? ' cx-src--empty' : '') + '">' + (future ? 'noch nicht fällig' : nothing ? 'noch nichts erfasst' :
+            (warm && pw ? 'kalt ' + cxWS(pw.kaltRes) + (pw.hasNk ? ' · NK ' + cxWS(pw.nkSaldo) : '') : 'rein ' + cxW(s.rein) + ' · raus ' + cxW(s.raus))) + '</span></span>' +
         '<span class="cx-ph__r">' + pill +
-          '<span class="cx-cf' + (!future && !nothing && s.konto < 0 ? ' neg' : '') + '">' + (future || nothing ? '\u2014' : cxWS(s.konto)) + '</span></span>' +
+          (warm && pw
+            ? '<span class="cx-cf' + (!nothing && pw.result < 0 ? ' neg' : '') + '">' + (nothing ? '\u2014' : cxWS(pw.result)) + '</span></span>'
+            : '<span class="cx-cf' + (!future && !nothing && s.konto < 0 ? ' neg' : '') + '">' + (future || nothing ? '\u2014' : cxWS(s.konto)) + '</span></span>') +
       '</button>' + details + '</div>';
   }).join('');
 
@@ -194,14 +242,19 @@ window.renderDashboard = function () {
       '<button class="' + (isYear ? '' : 'on') + '" data-cx="view" data-v="m" aria-pressed="' + !isYear + '">Monat</button>' +
       '<button class="' + (isYear ? 'on' : '') + '" data-cx="view" data-v="y" aria-pressed="' + isYear + '">Jahr</button>' +
     '</div>' +
+    '<div class="cx-seg cx-seg--view" role="group" aria-label="Ansicht" style="margin-top:8px">' +
+      '<button class="' + (warm ? '' : 'on') + '" data-cx="mode" data-v="cash" aria-pressed="' + !warm + '">Cashflow</button>' +
+      '<button class="' + (warm ? 'on' : '') + '" data-cx="mode" data-v="warm" aria-pressed="' + warm + '">Warm-Bilanz</button>' +
+    '</div>' +
     _cxPeriodBar(isYear) + hero +
-    '<div class="cx-head"><span class="cx-lbl">Immobilien</span><span class="cx-lbl">Cashflow · ' + cxEsc(isYear ? String(y) : CX_MONTHS[m - 1]) + '</span></div>' + cards +
+    '<div class="cx-head"><span class="cx-lbl">Immobilien</span><span class="cx-lbl">' + (warm ? 'Ergebnis' : 'Cashflow') + ' · ' + cxEsc(isYear ? String(y) : CX_MONTHS[m - 1]) + '</span></div>' + cards +
     '</div>';
 
   cxWire(host, {
     render: () => window.renderDashboard(),
     click: async (a, b) => {
       if (a === 'view') { CX.dashView = b.dataset.v; return window.renderDashboard(); }
+      if (a === 'mode') { CX.dashMode = b.dataset.v; return window.renderDashboard(); }
       if (a === 'gotoOpen') return cxGoto(_cxDash.openInc ? 'income' : 'expenses');
       if (a === 'gotoOpenMonth') { CX.dashView = 'm'; CX.month = _cxDash.openMonth || CX.month; try { localStorage.setItem('cx_month', String(CX.month)); } catch (e) {} return window.renderDashboard(); }
       if (a === 'yprev' || a === 'ynext') {
