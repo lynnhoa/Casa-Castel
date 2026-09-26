@@ -45,6 +45,9 @@ function ccTnKautionStatus(recv, ret, settled) {
 function ccTnKautionPill(k, sollAmount, fmtEUR) {
   const x = ccTnKaution(k);
   if (x.settled) return '';
+  const soll = Number(sollAmount) || 0;
+  if (x.recv > 0 && x.ret === 0 && soll > 0 && x.recv < soll - 0.005)
+    return _ccTnPill('tnp-amber', 'Kaution ' + fmtEUR(soll - x.recv) + ' open');   // shortfall
   if (x.recv > 0 && x.held > 0) return _ccTnPill('tnp-green', 'Kaution ' + fmtEUR(x.held));
   if (x.recv > 0)               return _ccTnPill('tnp-amber', 'Kaution settle?');
   if (Number(sollAmount) > 0)   return _ccTnPill('tnp-amber', 'Kaution open');

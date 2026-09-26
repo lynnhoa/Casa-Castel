@@ -1209,59 +1209,25 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
 }
 
 /* ── KAUTION SECTION (shared card + modal) ── */
+/* Kaution section — shared card (cc-kaution-card.js): one layout, five phases */
 function _tnKautionHTML(rid, tid, ctx) {
-  const k       = (tid && _tnKaution[tid]) || { received:0, returned:0, settled:false };
-  const recv    = Number(k.received)  || 0;
-  const ret     = Number(k.returned)  || 0;
-  const kept    = recv - ret;
-  const st      = _tnKautionStatus(recv, ret, k.settled);
-  const pfx     = `${ctx}_${(tid||'none').replace(/-/g,'').slice(0,8)}`;
-  const dis     = tid ? '' : 'disabled';
-  const opac    = tid ? '' : 'opacity:.45;pointer-events:none;';
-  const sec     = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
-  const body    = ctx === 'modal' ? 'tn-msec-body' : 'tn-sec-body';
-  const footer  = ctx === 'modal' ? 'tn-msec-footer' : 'tn-sec-footer';
-
-  const rec   = tid ? _tnRecords.find(r => r.id === tid) : null;
-  const sInfo = _tnKautionSollInfo(rec);
-
-  return `
-<div class="${sec}" style="${opac}" data-cc-save-scope>
-  <div class="${body}" style="padding-top:10px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span class="tn-sec-lbl" style="flex:1">Kaution</span>
-      <span class="tnp ${st.cls}" id="kstat-${pfx}">${st.label}</span>
-    </div>
-    <div class="tn-kaut-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${sInfo ? '' : 'display:none'}">${sInfo ? `Soll: ${_tnFmtEUR(sInfo.amount)} \u00b7 ${sInfo.text}` : ''}</div>
-    <div class="tn-kaut-grid">
-      <div class="tn-kc">
-        <div class="tn-kc-lbl">Received</div>
-        <input class="tn-kc-input" type="number" data-cc-num="2" id="kr-${pfx}" value="${recv}" ${dis}
-          oninput="_tnCalcKaution('${pfx}','${tid||''}')"/>
-      </div>
-      <div class="tn-kc">
-        <div class="tn-kc-lbl">Returned</div>
-        <input class="tn-kc-input" type="number" data-cc-num="2" id="kret-${pfx}" value="${ret}" ${dis}
-          oninput="_tnCalcKaution('${pfx}','${tid||''}')"/>
-      </div>
-      <div class="tn-kc">
-        <div class="tn-kc-lbl">Kept</div>
-        <div class="tn-kc-val${kept > 0 ? ' gold' : ''}" id="kk-${pfx}">${_tnFmtEUR(kept)}</div>
-      </div>
-    </div>
-  </div>
-  <div class="${footer}" style="gap:6px">
-    ${recv > 0 ? `<button class="tn-btn ${k.settled ? 'tn-btn-done' : 'tn-btn-sm'}" id="kset-${pfx}"
-      ${dis} onclick="_tnToggleSettle('${pfx}','${tid||''}')">
-      <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
-    </button>` : ''}
-    <button class="tn-btn cc-save" id="ksave-${pfx}"
-      ${dis} onclick="_tnSaveKautionBtn('${pfx}','${tid||''}')">
-      Save
-    </button>
-  </div>
-</div>`;
+  return ccKautionSectionHTML('tn', tid, ctx, tid ? _tnRecords.find(r => r.id === tid) : null);
 }
+ccKautionRegister('tn', {
+  table: 'kaution', writeKey: 'tnk-', failLabel: 'kaution',
+  map:  () => _tnKaution,
+  rec:  tid => _tnRecords.find(r => r.id === tid) || null,
+  soll: rec => _tnKautionSollInfo(rec),
+  fmt:  n => _tnFmtEUR(n),
+  fmtDate: d => _tnFmtDate(d),
+  saveAmounts: (tid, received, returned) => _tnSaveKaution(tid, received, returned),
+  afterChange: tid => {
+    _tnRefreshFormerBadges(tid);
+    const r = _tnRecords.find(x => x.id === tid);
+    if (r) _tnRefreshCardPills(r.room);
+  },
+});
+
 
 /* ── NK SECTION (shared card + modal) ── */
 function _tnNKHTML(rid, tid, ctx) {
