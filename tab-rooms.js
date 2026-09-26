@@ -750,6 +750,15 @@ document.getElementById('tab-rooms').innerHTML = `
 .rc-row__k { font-size:11px; min-width:0; }
 .rc-row__v { text-align:right; }
 .rc-section--miete { padding-left:11px; }
+/* ── CHOPPED-OFF FIXES — nothing may run past the screen edge ──
+   Generator 2-field rows (Mietbeginn / Mietende): both halves may shrink,
+   date fields never grow wider than their half. */
+.rm-field-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.rm-field-row > .rm-field { min-width:0; }
+.rm-field-row .rm-input, .rm-input[type=date] { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
+/* Name + Floor: one per row (long floor texts were cut) */
+.rc-field-row:has(input[data-f="floor"]) { grid-template-columns:minmax(0,1fr); }
+.rc-field-row, .rc-field { min-width:0; }
   `;
   document.head.appendChild(s);
 })();

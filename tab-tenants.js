@@ -455,6 +455,30 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-rf-save-row .tn-btn { white-space:nowrap; }
 .tn-rf-save-row .tn-rf-hint { flex:1; min-width:0; }
 .tn-edit-rent-btn { border-radius:6px; letter-spacing:.06em; text-transform:uppercase; }
+
+/* ── CHOPPED-OFF FIXES ──
+   Rent bar (Kaltmiete · NK · Warmmiete · Edit): cells may shrink, so Edit stays inside the card. */
+.tn-rent-bar { min-width:0; }
+.tn-rc { min-width:0; padding:7px 7px; }
+.tn-rc:last-child { padding:6px 8px; }
+.tn-rlbl { letter-spacing:.02em; white-space:nowrap; }
+.tn-rval, .tn-rsub { white-space:nowrap; }
+.tn-edit-rent-btn { padding:0 8px; }
+/* The contract-type pill is already in the card header — not repeated in the rent bar (it squeezed the columns) */
+.tn-rent-bar .tn-rc:last-child .tnp { display:none; }
+.tn-rc .tn-rlbl, .tn-rc .tn-rval, .tn-rc .tn-rsub { overflow:hidden; text-overflow:clip; }
+/* Header: status pills wrap under each other instead of running out of the card */
+.tn-hdr-top { min-width:0; }
+.tn-room-lbl { flex-shrink:0; }
+.tn-hdr-top > [id^="hdr-kpill-"] { flex-shrink:1 !important; min-width:0; flex-wrap:wrap; justify-content:flex-end; row-gap:4px; }
+.tn-hdr-mid, .tn-hdr-bot { min-width:0; max-width:100%; }
+.tn-hdr-bot > * { min-width:0; max-width:100%; }
+.tn-tenant-name { overflow-wrap:anywhere; }
+/* Profile edit: Name, Email, Phone, Birthday and Address one per row (long values were cut);
+   Move in / Move out stay side by side */
+.tn-fg { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.tn-fg > .tn-field { min-width:0; }
+.tn-fg > .tn-field:has(> input):not(:has(> input[data-f="mietbeginn"])):not(:has(> input[data-f="mietende"])) { grid-column:1/-1; }
   `;
   document.head.appendChild(s);
 })();

@@ -519,6 +519,19 @@ document.getElementById('tab-apartments').innerHTML = `
 .apt-input[type=number] { -moz-appearance:textfield; }
 [data-zaehler-id] > .apt-field:last-child > button { width:38px !important; height:38px !important; border-radius:var(--cc-r-md) !important; }
 .apt-section--miete { padding-left:11px; }
+/* ── CHOPPED-OFF FIXES — nothing may run past the screen edge ──
+   Generator 2-field rows (Mietbeginn / Mietende): both halves may shrink,
+   date fields never grow wider than their half. */
+.rm-field-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.rm-field-row > .rm-field { min-width:0; }
+.rm-field-row .rm-input, .rm-input[type=date] { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
+/* Name and PLZ / Ort: one per row (long names / places were cut) */
+.apt-field-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.apt-field-row > .apt-field { min-width:0; }
+.apt-field-row:has(input[data-f="name"]), .apt-field-row:has(input[data-f="plz_ort"]) { grid-template-columns:minmax(0,1fr); }
+/* Zähler: meter number uses the full width, delete button beside it */
+.apt-field-row[data-zaehler-id] { grid-template-columns:minmax(0,1fr) 38px; }
+.apt-field-row[data-zaehler-id] > .apt-field:last-child { padding-top:0 !important; justify-content:flex-end; }
   `;
   document.head.appendChild(s);
 })();
