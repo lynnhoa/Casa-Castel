@@ -917,6 +917,26 @@ function _rntRender() {
     }
   }
 
+  // Same cards in the same order as on screen → redraw only the cards whose
+  // content changed (no full rebuild → no flash / jump when you open the tab)
+  const units   = [...apts.map(a => ({ type: 'apt', unit: a })), ...gewerbe.map(a => ({ type: 'apt', unit: a })),
+                   ...parking.map(p => ({ type: 'parking', unit: p }))];
+  const cardId  = u => 'tc-' + (u.type === 'apt' ? 'apt_' : 'pk_') + String(u.unit.id).replace(/-/g, '').slice(0, 12);
+  const groups  = [apts.length > 0, gewerbe.length > 0, parking.length > 0].join();
+  const onScreen = [...list.querySelectorAll(':scope > .tn-card')];
+  if (list.dataset.groups === groups && onScreen.length === units.length &&
+      onScreen.every((c, i) => c.id === cardId(units[i]))) {
+    units.forEach((u, i) => {
+      const cardHtml = _rntCardHTML(u);
+      const same = _rntNormCard(cardHtml);                 // open / closed does not count as a change
+      if (_rntCardCache[onScreen[i].id] === same) return;
+      ccSwapCard(onScreen[i], cardHtml, 'open');
+      _rntCardCache[onScreen[i].id] = same;
+    });
+    _rntBindCards();
+    return;
+  }
+
   let html = '';
   if (apts.length) {
     html += `<div class="rnt-group-hdr">Wohnungen</div>`;
@@ -931,10 +951,17 @@ function _rntRender() {
     html += parking.map(p => _rntCardHTML({ type: 'parking', unit: p })).join('');
   }
   list.innerHTML = html;
+  list.dataset.groups = groups;
+  _rntCardCache = {};
+  units.forEach(u => { _rntCardCache[cardId(u)] = _rntNormCard(_rntCardHTML(u)); });
 
   _rntOpenCards.forEach(id => document.getElementById(id)?.classList.add('open'));
   _rntBindCards();
 }
+
+/* Each card's HTML as last drawn (card id → html), for the redraw-only-changes check */
+let _rntCardCache = {};
+function _rntNormCard(html) { return html.replace('<div class="tn-card open"', '<div class="tn-card"'); }
 
 
 /* ══════════════════════════════════════════════════════════════
