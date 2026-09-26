@@ -55,6 +55,24 @@ function ctlToast(msg) {
   t._to = setTimeout(() => t.classList.remove('show'), 1800);
 }
 
+/* ── Parts of the app that newer versions need. If the page is an older
+      controlling.html (cached or not yet replaced), load them here so the
+      app still starts — and name the file if one is really missing. ── */
+const CTL_BUILD = '2026-09-26b';
+function _ctlLoadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src + '?v=' + CTL_BUILD;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Datei fehlt: ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function ctlEnsureParts() {
+  if (typeof CX === 'undefined')              await _ctlLoadScript('controlling-ui.js');
+  if (typeof ctlSollLoad !== 'function')      await _ctlLoadScript('controlling-soll.js');
+}
+
 /* ── Boot ───────────────────────────────────────────────────── */
 async function boot() {
   ctlShowLoading(true);
@@ -68,6 +86,7 @@ async function boot() {
   try { localStorage.setItem('mgmt_last_app', 'controlling.html'); } catch (e) {}
 
   try {
+    await ctlEnsureParts();
     await Promise.all([ctlLoadAll(), ctlSollLoad()]);   // Controlling data + planned amounts from the other apps
     document.getElementById('appShell').style.display = 'block';
     window.renderDashboard?.();
@@ -75,8 +94,9 @@ async function boot() {
     console.error('[controlling] boot failed:', e);
     document.getElementById('appShell').style.display = 'block';
     document.getElementById('tab-dashboard').innerHTML =
-      '<div class="ct-page"><p class="cc-note" style="padding:20px 0;">Could not load data. ' +
-      '<a href="#" onclick="location.reload();return false;" style="color:var(--cc-gold);text-decoration:underline;">Retry</a></p></div>';
+      '<div class="ct-page" style="padding:20px 16px"><p class="cc-note">Daten konnten nicht geladen werden. ' +
+      '<a href="#" onclick="location.reload();return false;" style="color:#8A6535;text-decoration:underline;">Erneut versuchen</a></p>' +
+      '<p style="font-size:11px;color:#A89A86;margin-top:6px">' + String((e && e.message) || e).replace(/</g, '&lt;') + '</p></div>';
   } finally {
     ctlShowLoading(false);
   }

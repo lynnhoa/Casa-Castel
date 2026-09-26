@@ -423,6 +423,8 @@
         text-transform:uppercase; color:var(--cc-taupe); font-weight:500; padding-right:100px;
       }
     }
+
+    /* Controlling design system (cx): injected by controlling-ui.js */
   </style>
 </head>
 <body class="is-landlord">
@@ -465,15 +467,6 @@
     </div>
   </div>
 
-  <!-- Monthly entry drawer (available from Dashboard Month-view row clicks) -->
-  <div class="ct-drawer" id="ctDrawer">
-    <div class="ct-drawer__hdr">
-      <button class="ct-drawer__close" id="ctDrawerClose" aria-label="Close"><i class="ti ti-x"></i></button>
-      <div class="ct-drawer__ttl" id="ctDrawerTitle">—</div>
-    </div>
-    <div class="ct-drawer__body" id="ctDrawerBody"></div>
-  </div>
-
   <!-- Toast + loading -->
   <div class="ct-toast" id="ctToast"></div>
   <div class="ct-loading" id="ctLoading"><div class="ct-loading__spinner"></div></div>
@@ -510,10 +503,11 @@
 
   <script src="controlling-auth.js"></script>
   <script src="controlling-data.js"></script>
+  <script src="controlling-soll.js"></script>
+  <script src="controlling-ui.js"></script>
   <script src="controlling-tab-dashboard.js"></script>
   <script src="controlling-tab-income.js"></script>
   <script src="controlling-tab-expenses.js"></script>
-  <script src="controlling-tab-entry.js"></script>
   <script src="controlling-tab-onetime.js"></script>
   <script src="controlling-tab-setup.js"></script>
   <!-- Profile panel (same one as Rentals). Reuses this page's Supabase client
