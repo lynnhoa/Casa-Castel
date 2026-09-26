@@ -1627,7 +1627,7 @@ function _aptHGSectionHTML(aptId) {
         <span class="tn-nkv-cur-since">seit ${_aptHGFmt(current.effective_date)}</span>
         ${_aptHGDelBtn(current, aptId)}
       </div>
-      ${_aptHGNuBtn(current, aptId)}
+      ${''/* D19: nicht-umlagefähig share no longer needed — _aptHGNuBtn kept, not shown */}
       <div class="tn-nkv-pills" style="margin:6px 0 2px">${_aptHGPill(current, aptId)}</div>`
     : (entries.length ? '' : `<p class="apt-empty" style="padding:3px 0 10px;font-size:12px;color:var(--cc-stone);font-style:italic">No rate entered yet.</p>`);
 
@@ -1737,7 +1737,6 @@ function _aptHGAdd(aptId) {
   form.innerHTML = `
     <input type="date" id="apt-hg-date-${aptId}" />
     <input type="number" data-cc-num="2" id="apt-hg-amount-${aptId}" placeholder="Amount €" step="0.01" min="0" />
-    <input type="number" data-cc-num="2" id="apt-hg-nu-${aptId}" placeholder="davon n. uml. €" step="0.01" min="0" title="davon nicht umlagefähig (Wirtschaftsplan)" />
     <button class="apt-btn--save" style="height:30px;font-size:11px;padding:0 10px"
       onclick="_aptHGConfirmAdd('${aptId}')">
       <i class="ti ti-check" aria-hidden="true"></i>

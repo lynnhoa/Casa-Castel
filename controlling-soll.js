@@ -792,76 +792,52 @@ function ctlOtSuggestions() {
 }
 
 
-/* ── Phase 5 · Warm-Bilanz (G4, G6, B15) ─────────────────────
-   What you really keep per property and month. Same money as the Cashflow,
-   only sorted differently — the lines always add up to Cashflow + Tilgung.
-
-   Rentals apartment
-     Kalt-Ergebnis = Kaltmiete Ist − Hausgeld nicht umlagefähig − Zinsen − Strom
-     NK-Saldo      = NK Ist − Hausgeld umlagefähig − Grundsteuer   (vorläufig bis zur Abrechnung)
-                     davon Leerstand: umlagefähige Kosten für leere Tage
-   Casa Castel (until the NK tool exists)
-     Kalt-Ergebnis = Mieten Ist − Hauskosten − Zinsen
-   Both
-     Einmalig      = Einmalig rein − raus (davon Abrechnungen: NK / Hausgeld)
-     Tilgung       = Vermögensaufbau (shown, not a loss)
-   Kaution is never included (D14). Rentals "Strom" is passed on, not your cost (D17). */
-const CX_STROM_OWN_COST = false;  // D17: Rentals Strom (Gewerbe, until 07/2026) was passed on — never your own cost
-
-function _cxNuAt(pl, y, m) {                            // nicht umlagefähiger Hausgeld-Anteil (D1)
-  if (!pl.apt) return null;
-  const first = _cxIso(y, m, 1);
-  let cur = null;
-  for (const h of window._src.hgHist.filter(h => String(h.apt_id ?? h.apartment_id) === String(pl.apt.id))) {
-    const d = _cxD(h.effective_date);
-    if (d && d <= first && (!cur || d > _cxD(cur.effective_date))) cur = h;
-  }
-  return cur ? _cxNum(cur.nicht_umlagefaehig) : null;
-}
-
-function ctlWarmMonth(pid, m) {
-  const y = window._ctrl.year, p = ctlProp(pid), casa = pid === CASA_PROP_ID;
+/* ── Konto | Tatsächlich (change round 3 · D18–D21) ──────────
+   Warm rein  = Kaltmiete + NK + one-time income (incl. Abrechnungen received)
+   Warm raus  = everything paid: Hausgeld, Grundsteuer, Strom / all Casa house
+                costs, invoices, Abrechnungen paid — and the Kreditrate
+   Konto       = Warm rein − Warm raus
+   Tatsächlich = Warm rein − Warm raus without the Kreditrate
+   Meine Kosten = Hausgeld − NK (Rentals) · Hauskosten − NK (Casa Castel)
+   Abrechnungen count in the month the money moves (D21). Kaution never (D14).
+   Invariant: Tatsächlich = Konto + Kreditrate.                              */
+function ctlActualMonth(pid, m) {
+  const y = window._ctrl.year, casa = pid === CASA_PROP_ID;
   const x = ctlPropertyMonth(pid, m);
-  const ot = (window._ctrl.one_time || []).filter(o => o.property_id === pid && ctlParseDate(o.invoice_date).year === y && ctlParseDate(o.invoice_date).month === m);
-  const isSet = o => /abrechnung/i.test(String(o.kind || ''));
-  const signed = o => (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);
-  const einmalig = ot.reduce((a, o) => a + signed(o), 0), abrechnungen = ot.filter(isSet).reduce((a, o) => a + signed(o), 0);
-  const notes = [];
-  let kaltRes = 0, nkSaldo = null, leerstand = 0, tilgung = 0;
+  const lines = [];                                       // [label, signed amount, kontoOnly]
+  const warm = _cxR(x.kalt + x.neben);
+  if (warm) lines.push(['Miete + NK', warm, false]);
+  let rate = 0, costs = 0;
   if (casa) {
-    let rate = 0, house = 0;
     const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
     for (const e of window._ctrl.castel_expenses) if (e.year === y && e.month === m) {
-      if (rateCat && e.category_id === rateCat.id) rate += Number(e.amount) || 0; else house += Number(e.amount) || 0;
+      if (rateCat && e.category_id === rateCat.id) rate += Number(e.amount) || 0; else costs += Number(e.amount) || 0;
     }
-    const loan = p ? ctlPropLinks(p).loan : null, lr = loan ? Number(loan.rate) || 0 : 0;
-    tilgung = lr ? rate * (Number(loan.tilgung) || 0) / lr : 0;
-    kaltRes = x.kalt + x.neben - house - (rate - tilgung);
+    if (costs) lines.push(['Hauskosten', -_cxR(costs), false]);
   } else {
     const row = window._ctrl.apt_expenses.find(e => e.property_id === pid && e.year === y && e.month === m) || {};
-    const rate = Number(row.rate) || 0, hg = Number(row.hausgeld) || 0, gs = Number(row.grundsteuer) || 0, strom = Number(row.strom) || 0;
-    tilgung = Number(row.tilgung) || 0;
-    const zinsen = rate - tilgung;
-    const pl = p ? ctlPropLinks(p) : { apt: null };
-    let nu = _cxNuAt(pl, y, m);
-    if (hg && nu === null) notes.push('Nicht umlagefähiger Hausgeld-Anteil fehlt – in Rentals beim Hausgeld eintragen');
-    nu = Math.min(nu ?? 0, hg);
-    const stromOwn = CX_STROM_OWN_COST ? strom : 0;
-    kaltRes = x.kalt - nu - zinsen - stromOwn;
-    nkSaldo = x.neben - (hg - nu) - gs - (CX_STROM_OWN_COST ? 0 : strom);
-    // vacancy: share of the umlagefähige costs for days without a tenant
-    const units = ctlUnitsFor(pid).filter(u => !_cxIsParking(u));
-    if (units.length) {
-      const N = new Date(y, m, 0).getDate();
-      const occ = units.reduce((a, u) => a + (ctlUnitSoll(u, pid, y, m).days || 0), 0) / units.length;
-      leerstand = Math.max(0, (N - occ) / N) * ((hg - nu) + gs);
-    }
+    rate = Number(row.rate) || 0;
+    const hg = Number(row.hausgeld) || 0, gs = Number(row.grundsteuer) || 0, st = Number(row.strom) || 0;
+    costs = hg;
+    if (hg) lines.push(['Hausgeld', -_cxR(hg), false]);
+    if (gs) lines.push(['Grundsteuer', -_cxR(gs), false]);
+    if (st) lines.push(['Strom', -_cxR(st), false]);
   }
-  const today = typeof cxToday === 'function' ? cxToday() : '';
-  const provisional = nkSaldo !== null && Number(today.slice(0, 4)) === y;
-  return { kaltRes: _cxR(kaltRes), nkSaldo: nkSaldo === null ? null : _cxR(nkSaldo), leerstand: _cxR(leerstand),
-           einmalig: _cxR(einmalig), abrechnungen: _cxR(abrechnungen), tilgung: _cxR(tilgung),
-           result: _cxR(kaltRes + (nkSaldo || 0) + einmalig), provisional, notes };
+  let abrIn = 0, abrOut = 0;
+  for (const o of (window._ctrl.one_time || [])) {
+    if (o.property_id !== pid) continue;
+    const d = ctlParseDate(o.invoice_date);
+    if (d.year !== y || d.month !== m) continue;
+    const amt = Number(o.amount) || 0, inn = Number(o.direction) === 1;
+    if (/abrechnung/i.test(String(o.kind || ''))) { if (inn) abrIn += amt; else abrOut += amt; }
+    lines.push([[o.company, o.item].filter(Boolean).join(' · ') || o.kind || 'Einmalig', inn ? _cxR(amt) : -_cxR(amt), false]);
+  }
+  if (rate) lines.push(['Kreditrate', -_cxR(rate), true]);
+  return {
+    rein: _cxR(x.rein), raus: _cxR(x.raus - rate), rausKonto: _cxR(x.raus), rate: _cxR(rate),
+    tats: _cxR(x.rein - (x.raus - rate)), konto: _cxR(x.konto),
+    meineKosten: _cxR(costs - x.neben), abr: _cxR(abrIn - abrOut), lines,
+  };
 }
 
 /* ── Phase 5 · Abrechnungen tracker (B13, B14, G3) ──────────
