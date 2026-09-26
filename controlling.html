@@ -40,11 +40,12 @@
     .ct-kpi__sub   { font-size:10px; color:var(--cc-taupe); margin-top:4px; letter-spacing:.06em; }
 
     /* Month tile strip */
-    .ct-months     { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:24px; }
-    @media (min-width:700px){ .ct-months { grid-template-columns:repeat(12,1fr); } }
-    .ct-month      { padding:10px 4px; text-align:center; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background .12s, border-color .12s, box-shadow .18s, transform .18s; }
+    .ct-months     { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-bottom:24px; }   /* share the width, never wider than the screen */
+    @media (min-width:700px){ .ct-months { grid-template-columns:repeat(12,minmax(0,1fr)); } }
+    .ct-month      { padding:10px 2px; min-width:0; text-align:center; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background .12s, border-color .12s, box-shadow .18s, transform .18s; }
     .ct-month__lbl { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); }
-    .ct-month__val { font-size:12px; font-weight:500; color:var(--cc-ink); margin-top:4px; }
+    .ct-month__val { font-size:12px; font-weight:500; color:var(--cc-ink); margin-top:4px; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums; }
+    .ct-month__val--long { font-size:10.5px; letter-spacing:-.01em; }   /* 5-digit / negative amounts */
 
     /* Done — past/current month with income entered */
     .ct-month.done                 { background:var(--cc-avail-bg); border-color:var(--cc-avail-bdr); }

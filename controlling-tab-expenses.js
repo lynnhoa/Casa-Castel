@@ -139,7 +139,7 @@ window.renderExpenses = function () {
       '<div class="ct-month__lbl">' + ctlMonthName(m) + '</div>' +
       (status === 'future'
         ? '<div class="ct-month__val" style="color:var(--cc-taupe);">—</div>'
-        : '<div class="ct-month__val">' + ctlEur0(s.exp_total) + '</div>');
+        : ctlMonthValHTML(s.exp_total));
     tile.addEventListener('click', () => {
       if (_ctlExpView === 'year') {
         _ctlExpView = 'month';

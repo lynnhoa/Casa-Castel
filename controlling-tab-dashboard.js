@@ -186,7 +186,7 @@ function renderMonthStrip() {
       '<div class="ct-month__lbl">' + ctlMonthName(m) + '</div>' +
       (status === 'future'
         ? '<div class="ct-month__val" style="color:var(--cc-taupe);">—</div>'
-        : '<div class="ct-month__val">' + ctlEur0(val) + '</div>');
+        : ctlMonthValHTML(val));
     tile.addEventListener('click', () => {
       if (_ctlDashView === 'year') {
         _ctlDashView = 'month';

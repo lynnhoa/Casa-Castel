@@ -116,7 +116,7 @@ window.renderIncome = function () {
       '<div class="ct-month__lbl">' + ctlMonthName(m) + '</div>' +
       (status === 'future'
         ? '<div class="ct-month__val" style="color:var(--cc-taupe);">—</div>'
-        : '<div class="ct-month__val">' + ctlEur0(s.warm) + '</div>');
+        : ctlMonthValHTML(s.warm));
     tile.addEventListener('click', () => {
       if (_ctlIncView === 'year') {
         _ctlIncView = 'month';

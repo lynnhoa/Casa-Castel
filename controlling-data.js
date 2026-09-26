@@ -255,6 +255,36 @@ async function ctlUpdateCategoryDefault(cat_id, default_amount) {
 const ctlEur = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
 const ctlEur0 = v => ctlEur(v);   // always with cents: 1.200,00 €
 /* Signed variant for cashflow: +170,00 €, −340,00 €, 0,00 € */
+/* Month cards only: whole euros ("1.139 €") so 6 cards always fit the width.
+   Everywhere else amounts keep their cents (ctlEur / ctlEur0). */
+const ctlEurWhole = v => Math.round(Number(v) || 0).toLocaleString('de-DE') + '\u202f€';
+function ctlMonthValHTML(v) {
+  const t = ctlEurWhole(v);
+  return '<div class="ct-month__val' + (t.length > 7 ? ' ct-month__val--long' : '') + '">' + t + '</div>';
+}
+/* Every month amount fits its card: if it is wider than the card, the font
+   steps down (to min. 8.5 px). Runs whenever month cards are drawn or the
+   screen width changes — one place for Dashboard, Einnahmen and Ausgaben. */
+function ctlFitMonthVals(root) {
+  (root || document).querySelectorAll('.ct-month__val').forEach(el => {
+    el.style.fontSize = '';
+    let fs = parseFloat(getComputedStyle(el).fontSize) || 12;
+    while (el.scrollWidth > el.clientWidth + 0.5 && fs > 8.5) { fs -= 0.5; el.style.fontSize = fs + 'px'; }
+  });
+}
+(function () {
+  if (typeof document === 'undefined') return;
+  let t = null;
+  const later = () => { clearTimeout(t); t = setTimeout(() => ctlFitMonthVals(document), 0); };
+  const start = () => {
+    new MutationObserver(ms => { if (ms.some(m => m.target.closest && m.target.closest('.ct-months'))) later(); })
+      .observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', later);
+    later();
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
+
 const ctlEur0Signed = v => {
   const n = Math.round((Number(v) || 0) * 100) / 100;
   const s = Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
