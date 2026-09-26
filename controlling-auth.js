@@ -68,7 +68,7 @@ async function boot() {
   try { localStorage.setItem('mgmt_last_app', 'controlling.html'); } catch (e) {}
 
   try {
-    await ctlLoadAll();                             // → controlling-data.js
+    await Promise.all([ctlLoadAll(), ctlSollLoad()]);   // Controlling data + planned amounts from the other apps
     document.getElementById('appShell').style.display = 'block';
     window.renderDashboard?.();
   } catch (e) {

@@ -1,249 +1,113 @@
 /* ─────────────────────────────────────────────────────────────
-   CONTROLLING — AUSGABEN (EXPENSES) TAB
+   CONTROLLING — AUSGABEN (enter running costs)
    controlling-tab-expenses.js
 
-   Expenses-only view that answers the core question the Dashboard
-   buries: how much is monthly-recurring vs one-time.
-
-   Two totals kept strictly apart:
-     · Laufend   = recurring monthly expenses (exp_total)
-                   Apartments → Rate/Zinsen/Tilgung/Hausgeld/Grundsteuer/Strom
-                   Casa Castel → per-category amounts (with Häufigkeit)
-                   Mirrors the Excel "Expense" + "Expense Castel" sheets.
-     · Einmalig  = one-time expenses (managed on the Einmalig tab)
-
-   Read-only surface; drilldown shows the per-category breakdown plus
-   a clearly-separated one-time subtotal that links to the Einmalig tab.
-
-   Depends on: controlling-data.js, controlling-tab-onetime.js (deep link)
+   Same pattern as Einnahmen. Per property:
+     Apartments   Kreditrate (Properties) · Hausgeld (Rentals) ·
+                  Grundsteuer (Rentals, only in its months) · Strom
+     Casa Castel  cost types by frequency / due months (Setup);
+                  Kreditrate from the Properties loan
+   · Costs not due this month: one grey "nicht fällig" line.
+   · Kreditrate: one field; Zins and Tilgung are stored from the loan.
+   · One-time costs live only in the Einmalig tab.
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
 
-let _ctlExpView  = (function(){ try { return localStorage.getItem('ctl_exp_view') || 'year'; } catch(e){ return 'year'; } })();
-let _ctlExpMonth = (function(){ try { return Number(localStorage.getItem('ctl_exp_month')) || (new Date().getMonth()+1); } catch(e){ return new Date().getMonth()+1; } })();
-function _ctlExpSave(){ try { localStorage.setItem('ctl_exp_view', _ctlExpView); localStorage.setItem('ctl_exp_month', String(_ctlExpMonth)); } catch(e){} }
+let _cxExpIndex = {};                                   // row id → { p, row }
+const _CX_APT_LABEL = { rate: 'Kreditrate', hausgeld: 'Hausgeld', grundsteuer: 'Grundsteuer', strom: 'Strom' };
 
-document.getElementById('tab-expenses').innerHTML = `
-  <div class="ct-page">
-    <div class="ct-hdr">
-      <div>
-        <h1 class="ct-title">Ausgaben</h1>
-        <div class="ct-sub" id="ctExpSub">Portfolio · 2026</div>
-      </div>
-    </div>
-
-    <div class="ct-toolbar" role="toolbar" aria-label="Ansicht">
-      <div class="ct-yr-switch" role="group" aria-label="Zeitraum">
-        <button data-expview="year">Year</button>
-        <button data-expview="month">Month</button>
-      </div>
-    </div>
-
-    <div class="ct-kpis">
-      <div class="ct-kpi">
-        <div class="ct-kpi__label">Laufend · monatlich</div>
-        <div class="ct-kpi__val" id="ctExpKpiLaufend">—</div>
-        <div class="ct-kpi__sub">Wiederkehrende Ausgaben</div>
-      </div>
-      <div class="ct-kpi">
-        <div class="ct-kpi__label">Einmalig</div>
-        <div class="ct-kpi__val" id="ctExpKpiEinmalig">—</div>
-        <div class="ct-kpi__sub">Einmalige Ausgaben</div>
-      </div>
-    </div>
-
-    <div class="ct-months" id="ctExpMonths"></div>
-
-    <div class="ct-cardhead" aria-hidden="true"><span>Immobilie</span><span>Laufend</span></div>
-
-    <table class="ct-tbl ct-listtbl" id="ctExpTbl">
-      <thead>
-        <tr>
-          <th style="width:20px;">#</th>
-          <th>Immobilie</th>
-          <th class="num">Laufend</th>
-          <th class="num">Einmalig</th>
-          <th style="width:24px;"></th>
-        </tr>
-      </thead>
-      <tbody id="ctExpTblBody"></tbody>
-    </table>
-  </div>
-`;
-
-document.querySelectorAll('#tab-expenses [data-expview]').forEach(b => b.classList.toggle('active', b.dataset.expview === _ctlExpView));
-document.querySelectorAll('#tab-expenses [data-expview]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    _ctlExpView = btn.dataset.expview;
-    document.querySelectorAll('#tab-expenses [data-expview]').forEach(b => b.classList.toggle('active', b.dataset.expview === _ctlExpView));
-    _ctlExpSave();
-    window.renderExpenses();
-  });
-});
-
-function _ctlExpMonths() {
-  return _ctlExpView === 'month' ? [_ctlExpMonth] : [1,2,3,4,5,6,7,8,9,10,11,12];
-}
-
-/* Period recurring + one-time for one property → {laufend, einmalig} */
-function _ctlExpProp(pid) {
-  let laufend = 0, einmalig = 0;
-  for (const m of _ctlExpMonths()) {
-    const s = ctlPropertyMonth(pid, m);
-    laufend += s.exp_total;
-    einmalig += s.one_time;
-  }
-  return { laufend, einmalig };
-}
-
-/* Recurring breakdown for the drawer (mirrors Excel Expense / Expense Castel).
-   Apartments → fixed category fields. Casa Castel → per-category with frequency. */
-function _ctlExpBreakdown(pid) {
-  const y = window._ctrl.year;
-  const months = _ctlExpMonths();
-  if (pid === CASA_PROP_ID) {
-    const rows = window._ctrl.categories.map(c => {
-      let amt = 0;
-      for (const r of window._ctrl.castel_expenses) {
-        if (r.category_id !== c.id || r.year !== y || !months.includes(r.month)) continue;
-        amt += Number(r.amount || 0);
+function _cxExpModel() {
+  const y = window._ctrl.year, m = CX.month;
+  _cxExpIndex = {};
+  return window._ctrl.properties.filter(p => p.active).map(p => {
+    const casa = p.id === CASA_PROP_ID;
+    const plan = casa ? ctlCasaCostRows(p, y, m) : ctlCostRows(p, y, m);
+    const rows = plan.rows.map(r => Object.assign({}, r));
+    if (casa) {
+      for (const r of rows) {
+        const x = window._ctrl.castel_expenses.find(e => e.category_id === r.catId && e.year === y && e.month === m);
+        r.ist = x ? cxR(x.amount) : null;
       }
-      return { name: c.name, freq: c.frequency || '', amt };
-    });
-    return { kind: 'casa', rows, total: rows.reduce((s, r) => s + r.amt, 0) };
-  }
-  const f = { rate: 0, zinsen: 0, tilgung: 0, hausgeld: 0, grundsteuer: 0, strom: 0 };
-  for (const r of window._ctrl.apt_expenses) {
-    if (r.property_id !== pid || r.year !== y || !months.includes(r.month)) continue;
-    for (const k in f) f[k] += Number(r[k] || 0);
-  }
-  // exp_total is rate + hausgeld + grundsteuer + strom (Rate already = Zinsen + Tilgung)
-  return { kind: 'apt', f, total: f.rate + f.hausgeld + f.grundsteuer + f.strom };
+      // entered although not planned this month → still shown
+      for (const x of window._ctrl.castel_expenses.filter(e => e.year === y && e.month === m)) {
+        if (rows.some(r => r.catId === x.category_id)) continue;
+        const c = ctlCat(x.category_id);
+        rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Kosten', soll: 0, sub: (c && c.frequency) || '', src: 'Setup', ist: cxR(x.amount) });
+      }
+    } else {
+      const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m);
+      for (const r of rows) r.ist = row && row[r.key] !== null && row[r.key] !== undefined ? cxR(row[r.key]) : null;
+      if (row) for (const k of ['rate', 'hausgeld', 'grundsteuer', 'strom']) {
+        if (rows.some(r => r.key === k) || row[k] === null || row[k] === undefined || Number(row[k]) === 0) continue;
+        rows.push({ key: k, label: _CX_APT_LABEL[k], soll: 0, sub: 'nicht geplant', src: '', ist: cxR(row[k]) });
+      }
+    }
+    for (const r of rows) { r.id = 'exp:' + p.id + ':' + r.key; _cxExpIndex[r.id] = { p, row: r }; }
+    return { p, rows, notDue: plan.notDue };
+  });
 }
 
 window.renderExpenses = function () {
-  const y = window._ctrl.year;
-  document.getElementById('ctExpSub').textContent =
-    'Portfolio · ' + (_ctlExpView === 'month' ? ctlMonthName(_ctlExpMonth) + ' ' + y : y);
+  const host = document.getElementById('tab-expenses');
+  if (!host) return;
+  CX.tab = 'expenses';
+  const model = _cxExpModel();
+  let done = 0, plan = 0, open = 0;
+  model.forEach(g => g.rows.forEach(r => { plan += r.soll; if (r.ist !== null) done += r.ist; else if (r.soll) open++; }));
 
-  /* Month strip — portfolio recurring (laufend) per month */
-  const strip = document.getElementById('ctExpMonths');
-  strip.innerHTML = '';
-  for (let m = 1; m <= 12; m++) {
-    const status = ctlMonthStatus(m);
-    const tile = document.createElement('div');
-    tile.className = 'ct-month ' + status + (_ctlExpView === 'month' && m === _ctlExpMonth ? ' active' : '');
-    const s = ctlPortfolioMonth(m);
-    tile.innerHTML =
-      '<div class="ct-month__lbl">' + ctlMonthName(m) + '</div>' +
-      (status === 'future'
-        ? '<div class="ct-month__val" style="color:var(--cc-taupe);">—</div>'
-        : ctlMonthValHTML(s.exp_total));
-    tile.addEventListener('click', () => {
-      if (_ctlExpView === 'year') {
-        _ctlExpView = 'month';
-        document.querySelectorAll('#tab-expenses [data-expview]').forEach(b => b.classList.toggle('active', b.dataset.expview === 'month'));
+  const cards = model.map(g => {
+    const body = g.rows.map(r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist,
+        sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">aus ' + cxEsc(r.src) + '</span>' : ''),
+        notes: r.note ? [r.note] : [], emptyText: 'nicht geplant', allowEmpty: true })).join('') + cxNotDue(g.notDue);
+    const n = g.rows.length;
+    return cxCard({ key: 'exp:' + g.p.id, title: g.p.name, sub: n === 1 ? '1 Posten' : n + ' Posten',
+                    status: cxGroupStatus(g.rows), sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0),
+                    extraPill: g.rows.some(r => r.note) ? cxPill('beige', 'Änderung') : '', body });
+  }).join('');
+
+  host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
+    cxSummary({ label: 'Laufende Kosten bezahlt', done, plan, open }) +
+    '<div class="cx-head"><span class="cx-lbl">Soll · aus Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
+    cards +
+    '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Rechnungen und Abrechnungen: im Tab Einmalig</button>' +
+    '</div>';
+
+  cxWire(host, {
+    render: () => window.renderExpenses(),
+    click: async (a, b) => {
+      if (a === 'gotoOt') return cxGoto('onetime');
+      if (a === 'take') { const e = _cxExpIndex[b.dataset.id]; if (e) await _cxExpSave(e, e.row.soll); window.renderExpenses(); }
+      if (a === 'all') {
+        b.disabled = true;
+        for (const id of Object.keys(_cxExpIndex)) {
+          const e = _cxExpIndex[id];
+          if ((e.row.ist === null || e.row.ist === undefined) && e.row.soll) await _cxExpSave(e, e.row.soll);
+        }
+        window.renderExpenses();
       }
-      _ctlExpMonth = m;
-      _ctlExpSave();
-      window.renderExpenses();
-    });
-    strip.appendChild(tile);
-  }
-
-  /* Property rows */
-  let tL = 0, tE = 0, html = '';
-  for (const p of window._ctrl.properties.filter(x => x.active)) {
-    const s = _ctlExpProp(p.id);
-    tL += s.laufend; tE += s.einmalig;
-    const eStyle = s.einmalig > 0 ? '' : ' style="color:var(--cc-stone);"';
-    html +=
-      '<tr class="ct-proprow" style="cursor:pointer;" onclick="ctlExpOpen(' + p.id + ')">' +
-        '<td data-label="#">' + p.id + '</td>' +
-        '<td data-label="Immobilie" class="ct-cell-name">' + p.name + '</td>' +
-        '<td class="num ct-cell-head" data-label="Laufend">' + ctlEur0(s.laufend) + '</td>' +
-        '<td class="num" data-label="Einmalig"' + eStyle + '>' + (s.einmalig > 0 ? ctlEur0(s.einmalig) : '—') + '</td>' +
-        '<td style="text-align:right;color:var(--cc-taupe);"><i class="ti ti-chevron-right"></i></td>' +
-      '</tr>';
-  }
-  html +=
-    '<tr class="total">' +
-      '<td data-label="#"></td><td data-label="Immobilie" class="ct-cell-name">Gesamt</td>' +
-      '<td class="num ct-cell-head" data-label="Laufend">' + ctlEur0(tL) + '</td>' +
-      '<td class="num ct-total-detail" data-label="Einmalig">' + ctlEur0(tE) + '</td>' +
-      '<td></td>' +
-    '</tr>';
-  document.getElementById('ctExpTblBody').innerHTML = html;
-
-  document.getElementById('ctExpKpiLaufend').textContent = ctlEur(tL);
-  document.getElementById('ctExpKpiEinmalig').textContent = ctlEur(tE);
+    },
+    input: async (id, val) => { const e = _cxExpIndex[id]; if (!e) return; await _cxExpSave(e, val); window.renderExpenses(); },
+  });
 };
 
-/* ══ PROPERTY DRAWER — recurring breakdown + one-time subtotal ═══ */
-window.ctlExpOpen = function (pid) {
-  const prop = ctlProp(pid);
-  document.getElementById('ctDrawerTitle').textContent = prop.name + ' · Ausgaben';
-  document.getElementById('ctDrawer').dataset.opener = 'expenses';
-
-  const bd = _ctlExpBreakdown(pid);
-  const { einmalig } = _ctlExpProp(pid);
-  const scope = _ctlExpView === 'month' ? ctlMonthName(_ctlExpMonth) + ' ' + window._ctrl.year : window._ctrl.year;
-
-  const line = (lbl, val, sub, muted) =>
-    '<div class="ct-row" style="grid-template-columns:1fr auto;">' +
-      '<div class="ct-row__lbl"' + (muted ? ' style="color:var(--cc-stone);"' : '') + '>' + lbl + (sub ? '<small>' + sub + '</small>' : '') + '</div>' +
-      '<div class="ct-row__lbl" style="text-align:right;font-variant-numeric:tabular-nums;' + (muted ? 'color:var(--cc-stone);' : '') + '">' + ctlEur(val) + '</div>' +
-    '</div>';
-
-  /* Laufend summary card */
-  let body =
-    '<div class="ct-section" style="margin-bottom:14px;"><div style="text-align:center;padding:4px 0;">' +
-      '<div style="font-size:10px;font-weight:500;letter-spacing:.11em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:6px;">Laufend · ' + scope + '</div>' +
-      '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:28px;color:var(--cc-ink);font-variant-numeric:lining-nums tabular-nums;">' + ctlEur(bd.total) + '</div>' +
-      '<div style="font-size:11px;color:var(--cc-taupe);margin-top:4px;">Wiederkehrende Ausgaben</div>' +
-    '</div></div>';
-
-  /* Recurring breakdown */
-  body += '<div class="ct-section"><div class="ct-section__ttl"><span>Laufende Ausgaben</span></div>';
-  if (bd.kind === 'casa') {
-    const active = bd.rows.filter(r => r.amt !== 0);
-    if (!active.length) {
-      body += '<div style="padding:20px 0;text-align:center;color:var(--cc-stone);font-size:12px;">Keine laufenden Ausgaben erfasst</div>';
+/* Save one cost line (null = empty → "offen") */
+async function _cxExpSave(e, v) {
+  const m = CX.month, r = e.row;
+  try {
+    if (r.catId) {
+      if (v === null || v === undefined) await ctlDeleteCastel(r.catId, m);
+      else await ctlUpsertCastel(r.catId, m, cxR(v));
+    } else if (r.key === 'rate') {
+      if (v === null || v === undefined) await ctlUpsertApt(e.p.id, m, { rate: null, zinsen: null, tilgung: null });
+      else {
+        const zPlan = r.split ? cxR(r.split.zinsen) : 0;
+        const zinsen = Math.min(zPlan, cxR(v));
+        await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen, tilgung: cxR(v - zinsen) });
+      }
     } else {
-      for (const r of active) body += line(r.name, r.amt, r.freq, false);
+      await ctlUpsertApt(e.p.id, m, { [r.key]: v === null || v === undefined ? null : cxR(v) });
     }
-  } else {
-    const f = bd.f;
-    body += line('Rate', f.rate, 'Zinsen ' + ctlEur(f.zinsen) + ' · Tilgung ' + ctlEur(f.tilgung), f.rate === 0);
-    body += line('Hausgeld', f.hausgeld, 'durchlaufend', f.hausgeld === 0);
-    body += line('Grundsteuer', f.grundsteuer, '', f.grundsteuer === 0);
-    body += line('Strom', f.strom, '', f.strom === 0);
-  }
-  body += '</div>';
-
-  /* One-time — clearly separated, links to the Einmalig tab */
-  body +=
-    '<div class="ct-section">' +
-      '<div class="ct-section__ttl"><span>Einmalig</span></div>' +
-      '<div class="ct-row" style="grid-template-columns:1fr auto;border-bottom:0;">' +
-        '<div class="ct-row__lbl"' + (einmalig > 0 ? '' : ' style="color:var(--cc-stone);"') + '>Einmalige Ausgaben<small>' + scope + '</small></div>' +
-        '<div class="ct-row__lbl" style="text-align:right;font-variant-numeric:tabular-nums;' + (einmalig > 0 ? '' : 'color:var(--cc-stone);') + '">' + ctlEur(einmalig) + '</div>' +
-      '</div>' +
-      '<button class="ct-btn-sm" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px;" onclick="ctlExpOpenEinmalig(' + pid + ')">' +
-        '<i class="ti ti-external-link"></i> In Einmalig öffnen</button>' +
-    '</div>';
-
-  document.getElementById('ctDrawerBody').innerHTML = body;
-  document.getElementById('ctDrawer').classList.add('open');
-};
-
-/* Hand off to the Einmalig tab, scoped to the same period + this property */
-window.ctlExpOpenEinmalig = function (pid) {
-  document.getElementById('ctDrawer').classList.remove('open');
-  if (typeof window.ctlOtDeepLink === 'function') {
-    window.ctlOtDeepLink(pid, _ctlExpView === 'month' ? _ctlExpMonth : 'all');
-  }
-  if (typeof switchTab === 'function') switchTab('onetime');
-  setTimeout(() => window.ctlOtOpenProperty?.(pid), 60);
-};
+    r.ist = v === null || v === undefined ? null : cxR(v);
+  } catch (err) { cxToastErr(err); }
+}

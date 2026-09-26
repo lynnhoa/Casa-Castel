@@ -93,21 +93,24 @@ function ctlPropertyMonth(pid, month) {
     }
   }
 
-  // One-time expenses returned SEPARATELY. Dashboard toggle decides
-  // whether to include them in the totals shown to the user.
-  let oneTime = 0;
+  // One-time entries: out (direction −1, the default) and in (+1)
+  let oneTime = 0, oneTimeIn = 0;
   for (const ot of window._ctrl.one_time) {
     if (ot.property_id !== pid) continue;
     const d = ctlParseDate(ot.invoice_date);
     if (d.year !== y || d.month !== month) continue;
-    oneTime += Number(ot.amount || 0);
+    if (Number(ot.direction) === 1) oneTimeIn += Number(ot.amount || 0);
+    else                            oneTime   += Number(ot.amount || 0);
   }
 
   const expNet = expTotal - expPassthru;
   return {
     kalt, neben, warm: kalt + neben,
     exp_total: expTotal, exp_passthru: expPassthru, exp_net: expNet,
-    one_time: oneTime,
+    one_time: oneTime, one_time_in: oneTimeIn,
+    rein: kalt + neben + oneTimeIn,                           // Cashflow · Konto: everything in
+    raus: expTotal + oneTime,                                  //                  everything out
+    konto: (kalt + neben + oneTimeIn) - (expTotal + oneTime),
     gesamt:     (kalt + neben) - expTotal,   // recurring only
     netto_kalt: kalt - expNet,               // recurring only
   };
@@ -115,7 +118,7 @@ function ctlPropertyMonth(pid, month) {
 
 /* ── Portfolio + annual rollups ─────────────────────────────── */
 function ctlPortfolioMonth(month) {
-  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, gesamt:0, netto_kalt:0 };
+  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, one_time_in:0, rein:0, raus:0, konto:0, gesamt:0, netto_kalt:0 };
   for (const p of window._ctrl.properties.filter(x => x.active)) {
     const m = ctlPropertyMonth(p.id, month);
     for (const k of Object.keys(m)) {
@@ -181,6 +184,52 @@ async function ctlUpsertCastel(category_id, month, amount) {
   const idx = window._ctrl.castel_expenses.findIndex(r => r.category_id === category_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.castel_expenses[idx] = data;
   else window._ctrl.castel_expenses.push(data);
+  return data;
+}
+
+async function ctlDeleteIncome(unit_id, month) {
+  const y = window._ctrl.year;
+  const { error } = await _ctlSupa.from('ctrl_income_months').delete().eq('unit_id', unit_id).eq('year', y).eq('month', month);
+  if (error) throw error;
+  window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+}
+
+async function ctlDeleteCastel(category_id, month) {
+  const y = window._ctrl.year;
+  const { error } = await _ctlSupa.from('ctrl_expense_castel').delete().eq('category_id', category_id).eq('year', y).eq('month', month);
+  if (error) throw error;
+  window._ctrl.castel_expenses = window._ctrl.castel_expenses.filter(r => !(r.category_id === category_id && r.year === y && r.month === month));
+}
+
+/* New unit (e.g. a Casa Castel room like Berlin) — created on its first save */
+async function ctlCreateUnit(fields) {
+  const sort = Math.max(0, ...window._ctrl.units.filter(u => u.property_id === fields.property_id).map(u => Number(u.sort_order) || 0)) + 1;
+  const { data, error } = await _ctlSupa.from('ctrl_units').insert({ sort_order: sort, ...fields }).select().single();
+  if (error) throw error;
+  window._ctrl.units.push(data);
+  return data;
+}
+
+/* Setup: update one row of ctrl_properties / ctrl_units / ctrl_castel_categories */
+const _CTL_MEM = { ctrl_properties: 'properties', ctrl_units: 'units', ctrl_castel_categories: 'categories' };
+async function ctlUpdateRow(table, id, fields) {
+  const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
+  if (error) throw error;
+  const list = window._ctrl[_CTL_MEM[table]] || [];
+  const i = list.findIndex(r => r.id === id);
+  if (i >= 0) list[i] = data;
+  if (typeof ctlSollReset === 'function') ctlSollReset();
+  return data;
+}
+
+/* One-time entry: in (+1) or out (−1), with type and optional link to a settlement */
+async function ctlAddOneTime(o) {
+  const payload = { property_id: o.property_id, invoice_date: o.invoice_date, item: o.item, amount: o.amount,
+                    company: o.company ?? null, kind: o.kind || 'Rechnung', direction: o.direction === 1 ? 1 : -1,
+                    source_ref: o.source_ref ?? null };
+  const { data, error } = await _ctlSupa.from('ctrl_expense_one_time').insert(payload).select().single();
+  if (error) throw error;
+  window._ctrl.one_time.push(data);
   return data;
 }
 

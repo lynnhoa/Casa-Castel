@@ -1,231 +1,165 @@
 /* ─────────────────────────────────────────────────────────────
-   CONTROLLING — SETUP TAB
+   CONTROLLING — SETUP (set up once, via the avatar menu)
    controlling-tab-setup.js
 
-   Standing-plan defaults, grouped by property:
-     · One card per property; its units listed inside
-     · Wohnungen expense defaults (table)
-     · Casa Castel category defaults
-   No year selector — defaults are "current truth". Every change
-   is logged to ctrl_setup_history; the "Historie" link opens the
-   shared drawer with the change log.
-
-   Depends on: controlling-data.js
+   · Verknüpfungen: property → Rentals apartment (Hausgeld, Grundsteuer)
+     and Properties loan (Kreditrate); unit → Rentals apartment /
+     parking or Casa Castel room (rent). Name matches are suggested;
+     "Alle Vorschläge übernehmen" saves them in one go.
+   · Grundsteuer months per property (default Feb · Mai · Aug · Nov).
+   · Casa Castel cost types: amount, frequency, due months.
+   · Planwerte: only for what has no link (fallback).
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
 
-/* German money formatting for setup inputs */
-const fmtDe = v => (v === null || v === undefined || v === '') ? '' : ccFmtNum(v, 2);   // 1.200,00
-const parseDe = s => {                     // 1.200,50 · 1200,5 · 1.200 → number
-  s = String(s).trim();
-  if (!s) return null;
-  const n = ccParseEUR(s);
-  return n === null ? NaN : n;
-};
+const _CX_MS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+const _CX_FREQ = ['monatlich', 'vierteljährlich', 'jährlich', 'sporadisch'];
 
-document.getElementById('tab-setup').innerHTML = `
-  <div class="ct-page">
-    <div class="ct-hdr">
-      <div>
-        <h1 class="ct-title">Setup</h1>
-        <div class="ct-sub">Standardwerte · Vorbelegung für „Plan übernehmen"</div>
-      </div>
-      <button class="ct-btn-sm" id="ctSetupHistory" style="display:flex;align-items:center;gap:5px;">
-        <i class="ti ti-history"></i> Historie
-      </button>
-    </div>
+function _cxSetupSuggestions() {
+  const out = [];
+  for (const p of window._ctrl.properties.filter(x => x.active)) {
+    const l = ctlPropLinks(p);
+    const f = {};
+    if (l.aptAuto && l.apt) f.rentals_apartment_ref = String(l.apt.id);
+    if (l.loanAuto && l.loan) f.loan_ref = String(l.loan.id);
+    if (Object.keys(f).length) out.push(['ctrl_properties', p.id, f]);
+    for (const u of ctlUnitsOf(p.id)) {
+      const ul = ctlUnitLink(u, p);
+      if (ul && ul.auto) out.push(['ctrl_units', u.id, { source_type: ul.type, source_ref: String(ul.ref) }]);
+    }
+  }
+  return out;
+}
 
-    <div id="ctSetupUnits"></div>
-
-    <div class="ct-section__ttl" style="margin:20px 4px 10px;"><span>Wohnungen — Ausgaben-Standardwerte</span></div>
-    <div id="ctSetupProps"></div>
-
-    <div class="ct-section">
-      <div class="ct-section__ttl"><span>Casa Castel — Kategorien</span></div>
-      <div id="ctSetupCats"></div>
-    </div>
-  </div>
-`;
+function _cxLinkPill(obj, auto) {
+  if (!obj) return cxPill('grey', 'Planwert');
+  return auto ? cxPill('beige', 'vorgeschlagen') : cxPill('ok', 'verknüpft');
+}
+function _cxMonthChips(field, id, months) {
+  const set = new Set((months || []).map(Number));
+  return '<div class="cx-mchips">' + _CX_MS.map((l, i) =>
+    '<button class="cx-mchip' + (set.has(i + 1) ? ' on' : '') + '" data-cx="month" data-t="' + field + '" data-id="' + id + '" data-m="' + (i + 1) + '" aria-label="' + CX_MONTHS[i] + '" aria-pressed="' + set.has(i + 1) + '">' + l + '</button>').join('') + '</div>';
+}
+const _cxOpt = (v, label, sel) => '<option value="' + cxEsc(v) + '"' + (sel ? ' selected' : '') + '>' + cxEsc(label) + '</option>';
+const _cxMoney = (table, id, field, val, label) =>
+  '<div class="cx-set__row"><span class="cx-set__k">' + cxEsc(label) + '</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" data-cx-in="' + table + '|' + id + '|' + field + '" value="' + (val === null || val === undefined || val === '' ? '' : cxE2(val)) + '" placeholder="0,00" aria-label="' + cxEsc(label) + '"><span>€</span></label></div>';
 
 window.renderSetup = function () {
-  /* ── Units, grouped per property ──────────────────────────── */
-  const uHost = document.getElementById('ctSetupUnits');
-  let html = '';
-  for (const p of window._ctrl.properties.filter(x => x.active)) {
+  const host = document.getElementById('tab-setup');
+  if (!host) return;
+  CX.tab = 'setup';
+  const S = window._src;
+  const props = window._ctrl.properties.filter(p => p.active);
+  const sugg = _cxSetupSuggestions();
+
+  const linkCards = props.map(p => {
+    const l = ctlPropLinks(p), casa = p.id === CASA_PROP_ID, k = 'set:' + p.id;
+    let body = '<div class="cx-set">';
+    if (!casa) body += '<div class="cx-set__row"><span class="cx-set__k">Rentals-Wohnung</span>' + _cxLinkPill(l.apt, l.aptAuto) + '</div>' +
+      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|rentals_apartment_ref" aria-label="Rentals-Wohnung">' +
+        _cxOpt('', '— Planwerte verwenden —', !l.apt) + S.apts.map(a => _cxOpt(a.id, a.name, l.apt && String(l.apt.id) === String(a.id))).join('') +
+      '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>';
+    body += '<div class="cx-set__row"><span class="cx-set__k">Darlehen · Properties</span>' + _cxLinkPill(l.loan, l.loanAuto) + '</div>' +
+      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|loan_ref" aria-label="Darlehen">' +
+        _cxOpt('', '— Planwerte verwenden —', !l.loan) + S.loans.map(x => _cxOpt(x.id, (x.name || 'Darlehen') + (x.rate ? ' · ' + cxEur(x.rate) : ''), l.loan && String(l.loan.id) === String(x.id))).join('') +
+      '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>';
+    if (!casa) body += '<div class="cx-set__row"><span class="cx-set__k">Grundsteuer fällig</span></div>' +
+      _cxMonthChips('ctrl_properties|grundsteuer_months', p.id, Array.isArray(p.grundsteuer_months) && p.grundsteuer_months.length ? p.grundsteuer_months : [2, 5, 8, 11]);
     const units = ctlUnitsOf(p.id);
-    if (!units.length) continue;
-    let rows = '<div class="ct-col-hdr"><div>Einheit</div><div>Kaltmiete</div><div>Nebenkosten</div></div>';
-    for (const u of units) {
-      const sub = (u.unit_type && u.unit_type !== u.name) ? '<small>' + u.unit_type + '</small>' : '';
-      rows +=
-        '<div class="ct-row">' +
-          '<div class="ct-row__lbl">' + u.name + sub + '</div>' +
-          '<span class="ct-money"><input class="ct-input ct-input--setup" type="text" inputmode="decimal" ' +
-            'data-setup="unit" data-id="' + u.id + '" data-field="def_kaltmiete" ' +
-            'value="' + fmtDe(u.def_kaltmiete) + '"/></span>' +
-          '<span class="ct-money"><input class="ct-input ct-input--setup" type="text" inputmode="decimal" ' +
-            'data-setup="unit" data-id="' + u.id + '" data-field="def_nebenkosten" ' +
-            'value="' + fmtDe(u.def_nebenkosten) + '"/></span>' +
-        '</div>';
+    if (units.length) body += '<div class="cx-set__sub">Einheiten</div>' + units.map(u => {
+      const ul = ctlUnitLink(u, p), cur = ul ? ul.type + '|' + ul.ref : '';
+      return '<div class="cx-set__row"><span class="cx-set__k">' + cxEsc(u.name) + '</span>' + _cxLinkPill(ul, ul && ul.auto) + '</div>' +
+        '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_units|' + u.id + '|source" aria-label="Quelle ' + cxEsc(u.name) + '">' +
+          _cxOpt('', '— Planwert verwenden —', !ul) +
+          (S.apts.length ? '<optgroup label="Rentals · Wohnungen">' + S.apts.map(a => _cxOpt('rentals_apartment|' + a.id, a.name, cur === 'rentals_apartment|' + a.id)).join('') + '</optgroup>' : '') +
+          (S.parking.length ? '<optgroup label="Rentals · Stellplätze">' + S.parking.map(a => _cxOpt('rentals_parking|' + a.id, a.name, cur === 'rentals_parking|' + a.id)).join('') + '</optgroup>' : '') +
+          (S.rooms.length ? '<optgroup label="Casa Castel · Zimmer">' + S.rooms.map(r => _cxOpt('casa_room|' + r.name, r.name, cur === 'casa_room|' + r.name)).join('') + '</optgroup>' : '') +
+        '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>';
+    }).join('');
+    body += '</div>';
+    const linked = (casa || l.apt) && l.loan;
+    const auto = l.aptAuto || l.loanAuto || units.some(u => { const ul = ctlUnitLink(u, p); return ul && ul.auto; });
+    return cxCard({ key: k, title: p.name, sub: casa ? 'Zimmer aus Casa Castel' : (l.apt ? 'Rentals · ' + l.apt.name : 'ohne Rentals-Wohnung'),
+                    status: !linked ? ['open', 'prüfen'] : auto ? ['beige', 'vorgeschlagen'] : ['ok', 'verknüpft'], body });
+  }).join('');
+
+  const cats = (window._ctrl.categories || []).map(c => {
+    const freq = c.frequency || 'monatlich', isRate = c.code === 'RATE';
+    return '<div class="cx-cat">' +
+      '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || (isRate ? 'Kreditrate' : 'Kosten')) + '</span>' +
+        (isRate ? cxPill('beige', 'aus Properties, wenn verknüpft') : cxPill(freq === 'monatlich' ? 'grey' : 'beige', freq)) + '</div>' +
+      '<div class="cx-grid2">' +
+        '<label class="cx-f"><input type="text" inputmode="decimal" data-cx-in="ctrl_castel_categories|' + c.id + '|default_amount" value="' + (c.default_amount === null || c.default_amount === undefined ? '' : cxE2(c.default_amount)) + '" placeholder="0,00" aria-label="Betrag"><span>€</span></label>' +
+        '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|frequency" aria-label="Häufigkeit">' +
+          _CX_FREQ.map(f => _cxOpt(f, f === 'sporadisch' ? 'bei Bedarf (Einmalig)' : f, f === freq)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
+      '</div>' +
+      (freq === 'monatlich' || _cxBedarf(freq) ? '' : '<div class="cx-set__k" style="margin-top:6px">Fällig in</div>' + _cxMonthChips('ctrl_castel_categories|due_months', c.id, c.due_months)) +
+    '</div>';
+  }).join('');
+
+  // Fallback plan values — only what has no link
+  const fb = [];
+  for (const p of props) {
+    const l = ctlPropLinks(p), rows = [];
+    if (p.id !== CASA_PROP_ID) {
+      if (!l.loan) rows.push(_cxMoney('ctrl_properties', p.id, 'def_rate', p.def_rate, 'Kreditrate'), _cxMoney('ctrl_properties', p.id, 'def_zinsen', p.def_zinsen, '  davon Zinsen'));
+      if (!l.apt) rows.push(_cxMoney('ctrl_properties', p.id, 'def_hausgeld', p.def_hausgeld, 'Hausgeld'), _cxMoney('ctrl_properties', p.id, 'def_grundsteuer', p.def_grundsteuer, 'Grundsteuer / Quartal'));
+      rows.push(_cxMoney('ctrl_properties', p.id, 'def_strom', p.def_strom, 'Strom / Monat'));
     }
-    html +=
-      '<div class="ct-section ct-setup-group">' +
-        '<div class="ct-setup-group__name">' + p.name + '</div>' +
-        rows +
-      '</div>';
+    for (const u of ctlUnitsOf(p.id)) if (!ctlUnitLink(u, p))
+      rows.push(_cxMoney('ctrl_units', u.id, 'def_kaltmiete', u.def_kaltmiete, u.name + ' · Kaltmiete'), _cxMoney('ctrl_units', u.id, 'def_nebenkosten', u.def_nebenkosten, u.name + ' · Nebenkosten'));
+    if (rows.length) fb.push('<div class="cx-set__sub">' + cxEsc(p.name) + '</div>' + rows.join(''));
   }
-  uHost.innerHTML = html;
 
-  /* ── Wohnungen — expense defaults (grouped cards) ──────────── */
-  const APT_FIELDS = [
-    { key: 'def_rate',        lbl: 'Rate',        freq: 'monatlich' },
-    { key: 'def_zinsen',      lbl: 'Zinsen',      freq: 'monatlich' },
-    { key: 'def_tilgung',     lbl: 'Tilgung',     freq: 'monatlich' },
-    { key: 'def_hausgeld',    lbl: 'Hausgeld',    freq: 'monatlich' },
-    { key: 'def_grundsteuer', lbl: 'Grundsteuer', freq: 'vierteljährlich' },
-    { key: 'def_strom',       lbl: 'Strom',       freq: 'monatlich' },
-  ];
-  const pHost = document.getElementById('ctSetupProps');
-  let ph = '';
-  for (const p of window._ctrl.properties) {
-    if (p.id === CASA_PROP_ID || !p.active) continue;
-    let fields = '';
-    for (const f of APT_FIELDS) {
-      const isQuarterly = f.freq !== 'monatlich';
-      fields +=
-        '<div class="ct-setup-field' + (isQuarterly ? ' ct-setup-field--q' : '') + '">' +
-          '<div class="ct-setup-field__lbl">' + f.lbl +
-            '<span class="ct-setup-field__freq">' + f.freq + '</span></div>' +
-          '<span class="ct-money"><input class="ct-input ct-input--setup" type="text" inputmode="decimal" ' +
-            'data-setup="prop" data-id="' + p.id + '" data-field="' + f.key + '" ' +
-            'value="' + fmtDe(p[f.key]) + '"/></span>' +
-        '</div>';
-    }
-    ph +=
-      '<div class="ct-section ct-setup-group">' +
-        '<div class="ct-setup-group__name">' + p.name + '</div>' +
-        '<div class="ct-setup-fields">' + fields + '</div>' +
-      '</div>';
-  }
-  pHost.innerHTML = ph;
+  host.innerHTML = '<div class="cx-page">' +
+    '<div class="cx-title">Setup</div><div class="cx-title__s">Einmal einrichten · danach kommen alle Soll-Werte automatisch</div>' +
+    (sugg.length ? '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Vorschläge nach Namen</span>' + cxPill('beige', sugg.length + ' offen') + '</div>' +
+      '<div class="cx-r__sub" style="margin:6px 0 10px">Werden schon verwendet. Einmal bestätigen, dann sind sie fest.</div>' +
+      '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="acceptAll"><i class="ti ti-checks" aria-hidden="true"></i>Alle Vorschläge übernehmen</button></div>' : '') +
+    '<div class="cx-head"><span class="cx-lbl">Verknüpfungen</span></div>' + linkCards +
+    '<div class="cx-head"><span class="cx-lbl">Casa Castel · Kostenarten</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">Keine Kostenarten.</div>') + '</div>' +
+    '<div class="cx-head"><span class="cx-lbl">Planwerte · nur ohne Verknüpfung</span></div>' +
+    cxCard({ key: 'set:fallback', title: 'Planwerte', sub: fb.length ? 'für Einträge ohne Verknüpfung' : 'alles verknüpft', status: ['grey', fb.length ? 'Fallback' : 'nicht nötig'],
+             body: '<div class="cx-set">' + (fb.join('') || '<div class="cx-r__sub">Alles ist verknüpft – keine Planwerte nötig.</div>') + '</div>' }) +
+    '</div>';
 
-  /* ── Casa Castel categories ────────────────────────────────── */
-  const cHost = document.getElementById('ctSetupCats');
-  let ch = '<div class="ct-col-hdr"><div>Kategorie</div><div>Standard</div><div></div></div>';
-  for (const c of window._ctrl.categories) {
-    const isQ = c.frequency && c.frequency !== 'monatlich' && c.frequency !== 'sporadisch';
-    const freqStyle = isQ ? ' style="color:var(--cc-avail-text);font-weight:500;"' : '';
-    ch +=
-      '<div class="ct-row">' +
-        '<div class="ct-row__lbl">' + c.name + '<small' + freqStyle + '>' + (c.frequency || '') + '</small></div>' +
-        '<span class="ct-money"><input class="ct-input ct-input--setup' + (isQ ? ' ct-input--q' : '') + '" type="text" inputmode="decimal" ' +
-          'data-setup="cat" data-id="' + c.id + '" data-field="default_amount" ' +
-          'value="' + fmtDe(c.default_amount) + '"/></span>' +
-        '<div></div>' +
-      '</div>';
-  }
-  cHost.innerHTML = ch;
-
-  /* ── Save on blur ──────────────────────────────────────────── */
-  document.querySelectorAll('#tab-setup input.ct-input[data-setup]').forEach(inp => {
-    inp.addEventListener('focus', () => inp.classList.add('dirty'));
-    inp.addEventListener('blur',  saveSetupField);
+  cxWire(host, {
+    render: () => window.renderSetup(),
+    click: async (a, b) => {
+      if (a === 'acceptAll') {
+        b.disabled = true;
+        for (const [t, id, f] of _cxSetupSuggestions()) { try { await ctlUpdateRow(t, id, f); } catch (e) { cxToastErr(e); } }
+        if (typeof ctlToast === 'function') ctlToast('Verknüpfungen gespeichert');
+        return window.renderSetup();
+      }
+      if (a === 'month') {
+        const [t, field] = b.dataset.t.split('|'), id = Number(b.dataset.id), mo = Number(b.dataset.m);
+        const row = (t === 'ctrl_properties' ? window._ctrl.properties : window._ctrl.categories).find(r => r.id === id);
+        let cur = Array.isArray(row && row[field]) && row[field].length ? row[field].map(Number) : (field === 'grundsteuer_months' ? [2, 5, 8, 11] : []);
+        cur = cur.includes(mo) ? cur.filter(x => x !== mo) : cur.concat(mo).sort((x, y) => x - y);
+        try { await ctlUpdateRow(t, id, { [field]: cur }); } catch (e) { cxToastErr(e); }
+        return window.renderSetup();
+      }
+    },
+    input: async (key, val) => {
+      const [t, id, field] = key.split('|');
+      try { await ctlUpdateRow(t, Number(id), { [field]: val === null ? null : cxR(val) }); if (typeof ctlToast === 'function') ctlToast('Gespeichert'); }
+      catch (e) { cxToastErr(e); }
+      window.renderSetup();
+    },
   });
-
-  document.getElementById('ctSetupHistory').onclick = ctlOpenHistory;
+  if (!host._cxSelWired) {
+    host._cxSelWired = true;
+    host.addEventListener('change', async ev => {
+      const key = ev.target && ev.target.dataset && ev.target.dataset.cxSel;
+      if (!key) return;
+      const [t, id, field] = key.split('|'), v = ev.target.value;
+      let f;
+      if (field === 'source') { const [st, ...ref] = v.split('|'); f = v ? { source_type: st, source_ref: ref.join('|') } : { source_type: null, source_ref: null }; }
+      else f = { [field]: v || null };
+      try { await ctlUpdateRow(t, Number(id), f); if (typeof ctlToast === 'function') ctlToast('Gespeichert'); } catch (e) { cxToastErr(e); }
+      window.renderSetup();
+    });
+  }
 };
-
-async function saveSetupField(e) {
-  const inp   = e.currentTarget;
-  const kind  = inp.dataset.setup;
-  const id    = Number(inp.dataset.id);
-  const field = inp.dataset.field;
-  const val   = parseDe(inp.value);
-  if (Number.isNaN(val)) { ctlToast('Betrag ungültig – z. B. 1.200,50'); return; }
-  try {
-    if (kind === 'unit') {
-      const u = ctlUnit(id);
-      const kalt  = field === 'def_kaltmiete'   ? val : u.def_kaltmiete;
-      const neben = field === 'def_nebenkosten' ? val : u.def_nebenkosten;
-      await ctlUpdateUnitDefaults(id, kalt, neben);
-    }
-    else if (kind === 'prop') {
-      await ctlUpdatePropertyDefaults(id, { [field]: val });
-    }
-    else if (kind === 'cat') {
-      await ctlUpdateCategoryDefault(id, val);
-    }
-    inp.value = fmtDe(val);          // normalize display to German comma
-    inp.classList.remove('dirty');
-    ctlToast('Gespeichert');
-  } catch (err) {
-    console.error(err); ctlToast('Fehler');
-  }
-}
-
-/* ── Historie drawer ─────────────────────────────────────────── */
-
-const FIELD_NAMES = {
-  def_kaltmiete: 'Kaltmiete', def_nebenkosten: 'Nebenkosten',
-  def_rate: 'Rate', def_zinsen: 'Zinsen', def_tilgung: 'Tilgung',
-  def_hausgeld: 'Hausgeld', def_grundsteuer: 'Grundsteuer', def_strom: 'Strom',
-  default_amount: 'Standardbetrag',
-};
-
-function historyEntityName(h) {
-  if (h.entity_type === 'unit') {
-    const u = ctlUnit(h.entity_id);
-    if (!u) return 'Einheit #' + h.entity_id;
-    const p = ctlProp(u.property_id);
-    return (p ? p.name + ' · ' : '') + u.name;
-  }
-  if (h.entity_type === 'property') return ctlProp(h.entity_id)?.name || 'Immobilie #' + h.entity_id;
-  if (h.entity_type === 'category') return ctlCat(h.entity_id)?.name || 'Kategorie #' + h.entity_id;
-  return '#' + h.entity_id;
-}
-
-async function ctlOpenHistory() {
-  document.getElementById('ctDrawerTitle').textContent = 'Historie · Standardwerte';
-  document.getElementById('ctDrawer').dataset.opener = 'setup';
-  document.getElementById('ctDrawerBody').innerHTML =
-    '<div style="padding:30px 0;text-align:center;color:var(--cc-taupe);font-size:13px;">Lade…</div>';
-  document.getElementById('ctDrawer').classList.add('open');
-
-  let rows = [];
-  try { rows = await ctlFetchHistory(200); }
-  catch (e) {
-    document.getElementById('ctDrawerBody').innerHTML =
-      '<div style="padding:30px 0;text-align:center;color:var(--cc-notice-text);font-size:13px;">Historie konnte nicht geladen werden.</div>';
-    return;
-  }
-
-  if (!rows.length) {
-    document.getElementById('ctDrawerBody').innerHTML =
-      '<div class="ct-section"><div style="padding:24px 0;text-align:center;color:var(--cc-stone);font-size:13px;">' +
-      'Noch keine Änderungen protokolliert.<br><small style="font-size:11px;">Jede Änderung an Standardwerten erscheint hier automatisch.</small></div></div>';
-    return;
-  }
-
-  const fmtVal = v => v === null || v === undefined ? '—' : ctlEur(v);
-  const fmtDate = ts => {
-    const d = new Date(ts);
-    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + String(d.getFullYear()) +
-           ' · ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-  };
-
-  let html = '<div class="ct-section">';
-  for (const h of rows) {
-    html +=
-      '<div class="ct-row" style="grid-template-columns:1fr auto;">' +
-        '<div class="ct-row__lbl">' + historyEntityName(h) +
-          '<small>' + (FIELD_NAMES[h.field] || h.field) + ' · ' + fmtDate(h.changed_at) + '</small></div>' +
-        '<div style="font-size:13px;font-variant-numeric:lining-nums tabular-nums;color:var(--cc-ink);white-space:nowrap;">' +
-          '<span style="color:var(--cc-stone);text-decoration:line-through;">' + fmtVal(h.old_value) + '</span>' +
-          ' <span style="color:var(--cc-taupe);">→</span> ' + fmtVal(h.new_value) +
-        '</div>' +
-      '</div>';
-  }
-  html += '</div>';
-  document.getElementById('ctDrawerBody').innerHTML = html;
-}
