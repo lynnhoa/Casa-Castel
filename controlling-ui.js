@@ -137,6 +137,12 @@ const _CX_CSS = `
                font-size:12px; color:var(--cx-mut); cursor:pointer; }
     .cx-chip.on { background:var(--cx-ink); border-color:var(--cx-ink); color:var(--cx-card); }
     .cx-seg { display:flex; border:.5px solid var(--cx-rule); border-radius:8px; overflow:hidden; height:34px; }
+    .cx-seg--view { background:var(--cx-card); margin-bottom:2px; }
+    .cx-davon { margin-top:10px; padding-top:6px; border-top:.5px solid var(--cx-line); }
+    .cx-davon .cx-kv { border-top:none; padding:3px 0; }
+    .cx-davon .cx-kv span:first-child { color:var(--cx-txt); }
+    .cx-davon__h { color:var(--cx-mut); }
+    .cx-davon__t { color:var(--cx-acc) !important; font-weight:500; }
     .cx-seg button { flex:1; border:none; background:transparent; font-family:inherit; font-size:12px; color:var(--cx-mut); cursor:pointer; }
     .cx-seg button.on { background:var(--cx-ink); color:var(--cx-card); }
     .cx-sug { display:grid; grid-template-columns:minmax(0,1fr) auto 30px; gap:8px; align-items:center; padding:12px 16px; }
