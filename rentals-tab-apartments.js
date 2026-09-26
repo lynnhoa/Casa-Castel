@@ -56,7 +56,7 @@ document.getElementById('tab-apartments').innerHTML = `
       </div>
       <div class="rm-sheet__footer">
         <button class="rm-btn--ghost" id="aptInventarCancel">Cancel</button>
-        <button class="rm-btn--primary" id="aptInventarSave">Save</button>
+        <button class="rm-btn--primary cc-save cc-save--create" id="aptInventarSave">Save</button>
       </div>
     </div>
   </div>
@@ -1003,7 +1003,7 @@ function _aptCardHTML(a) {
         <div class="apt-field"><div class="apt-field__label">Energieausweisart</div><input class="apt-input" data-f="energieausweisart" value="${aptEsc(a.energieausweisart||'')}" placeholder="Bedarfsausweis / Verbrauchsausweis"/></div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('identity','${a.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_aptSaveIdentity('${a.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_aptSaveIdentity('${a.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -1049,7 +1049,7 @@ function _aptCardHTML(a) {
         </div>` : ''}
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('miete','${a.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_aptSaveMiete('${a.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_aptSaveMiete('${a.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -1094,7 +1094,7 @@ function _aptCardHTML(a) {
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('verwaltung','${a.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_aptSaveVerwaltung('${a.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_aptSaveVerwaltung('${a.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -1144,7 +1144,7 @@ function _aptCardHTML(a) {
         </button>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('zaehler','${a.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_aptSaveZaehler('${a.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_aptSaveZaehler('${a.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -1195,7 +1195,7 @@ function _aptCardHTML(a) {
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('schlussel','${a.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_aptSaveSchlussel('${a.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_aptSaveSchlussel('${a.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -1805,7 +1805,7 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
   });
 
   const btn = document.getElementById('aptInventarSave');
-  btn.textContent = '…'; btn.disabled = true;
+  btn.textContent = 'Saving…'; btn.disabled = true;
 
   let saved = inventar;
   if (_aptSbClient) {
@@ -3339,6 +3339,8 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
 
   // Override save for new card
   const saveBtn = identitySection?.querySelector('.apt-btn--save');
+  // New unit: this Save creates it → always dark SAVE, "Saving…" while waiting
+  if (saveBtn) { saveBtn.classList.add('cc-save--create'); delete saveBtn.dataset.ccSave; saveBtn.textContent = 'Save'; }
   if (saveBtn) {
     saveBtn.onclick = async () => {
       const name = identitySection.querySelector('[data-f="name"]')?.value.trim();
@@ -3350,7 +3352,7 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
         data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
       });
 
-      saveBtn.textContent = '…'; saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
 
       if (_aptSbClient) {
         const { data: newApt, error } = await _aptSbClient.from('rentals_apartments').insert(data).select().single();

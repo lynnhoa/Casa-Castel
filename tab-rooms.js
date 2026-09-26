@@ -64,7 +64,7 @@ document.getElementById('tab-rooms').innerHTML = `
       </div>
       <div class="rm-sheet__footer">
         <button class="rm-btn rm-btn--ghost" id="inventarCancel" data-i18n="rooms_cancel">Cancel</button>
-        <button class="rm-btn rm-btn--primary" id="inventarSave" data-i18n="rooms_save">Save</button>
+        <button class="rm-btn rm-btn--primary cc-save cc-save--create" id="inventarSave" data-i18n="rooms_save">Save</button>
       </div>
     </div>
   </div>
@@ -1252,7 +1252,7 @@ function _roomCardHTML(r) {
           ${inner}
           <div class="rc-sec-save-row">
             <button class="rc-btn--cancel" onclick="_roomCancelSection('${sec}','${r.id}')">${t('rooms_cancel')}</button>
-            <button class="rc-btn--save" onclick="_roomSaveSection('${sec}','${r.id}')">${t('rooms_save')}</button>
+            <button class="rc-btn--save cc-save" onclick="_roomSaveSection('${sec}','${r.id}')">${t('rooms_save')}</button>
           </div>
         </div>`;
 
@@ -1422,7 +1422,7 @@ function _roomCardHTML(r) {
       <div class="rc-edit-footer">
         <div class="rc-save-row">
           <button class="rm-btn rm-btn--ghost" onclick="_cancelEdit(this.closest('.rc'))" data-i18n="rooms_cancel">${t('rooms_cancel')}</button>
-          <button class="rm-btn rm-btn--primary" onclick="_saveCard(this.closest('.rc'))" data-i18n="rooms_save">${t('rooms_save')}</button>
+          <button class="rm-btn rm-btn--primary cc-save cc-save--create" onclick="_saveCard(this.closest('.rc'))" data-i18n="rooms_save">${t('rooms_save')}</button>
         </div>
       </div>
     </div>` : ''}
@@ -1679,7 +1679,7 @@ async function _saveCard(card) {
   // Save
   const saveBtn = card.querySelector('.rm-btn--primary');
   const origText = saveBtn.innerHTML;
-  saveBtn.innerHTML = '…';
+  saveBtn.innerHTML = 'Saving…';
   saveBtn.disabled = true;
 
   const result = await saveRoom(data);
@@ -1862,7 +1862,7 @@ document.getElementById('inventarSave')?.addEventListener('click', async () => {
   });
 
   const btn = document.getElementById('inventarSave');
-  btn.textContent = '…';
+  btn.textContent = 'Saving…';
   btn.disabled = true;
 
   const result = await saveRoomInventar(_inventarRoomId, inventar);

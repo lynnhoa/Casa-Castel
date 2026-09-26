@@ -1106,8 +1106,8 @@ function _rntRentFormHTML(rid, type, unit, rec) {
     <span class="tn-rf-hint" style="margin:0">Frozen at move-out for former tenants.</span>
     <div style="display:flex;gap:6px">
       <button class="tn-btn tn-btn-sm" onclick="_rntToggleRentEdit('${rid}')">Cancel</button>
-      <button class="tn-btn tn-btn-primary" onclick="_rntSaveRent('${rid}','${tid}','apt','${unit.id}')">
-        <i class="ti ti-check"></i> Save rent
+      <button class="tn-btn tn-btn-primary cc-save" onclick="_rntSaveRent('${rid}','${tid}','apt','${unit.id}')">
+        Save
       </button>
     </div>
   </div>
@@ -1138,8 +1138,8 @@ function _rntRentFormHTML(rid, type, unit, rec) {
   </div>
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:flex-end">
     <button class="tn-btn tn-btn-sm" onclick="_rntToggleRentEdit('${rid}')">Cancel</button>
-    <button class="tn-btn tn-btn-primary" onclick="_rntSaveRent('${rid}','${tid}','parking','${unit.id}')">
-      <i class="ti ti-check"></i> Save rent
+    <button class="tn-btn tn-btn-primary cc-save" onclick="_rntSaveRent('${rid}','${tid}','parking','${unit.id}')">
+      Save
     </button>
   </div>
 </div>`;
@@ -1292,7 +1292,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
     ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_rntMoveToFormerConfirm(this,'${rid}','${tid}','${unitType}','${unitId}')"><i class="ti ti-user-off"></i> To former</button><div style="flex:1"></div>` : ''}
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntToggleProfile('${rid}','${tid}')">Cancel</button>` : ''}
-    <button class="tn-btn tn-btn-primary"
+    <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec
         ? `_rntSaveProfile('${rid}','${tid}','${unitType}','${unitId}')`
         : `_rntSaveNewTenant('${rid}','${unitType}','${unitId}')`}">
@@ -1374,7 +1374,7 @@ function _rntKautionHTML(rid, tid, ctx, rec) {
   const soll   = _rntKautionSoll(rec || (tid ? _rntRecords.find(r => r.id === tid) : null));
 
   return `
-<div class="${sec}" style="${opac}">
+<div class="${sec}" style="${opac}" data-cc-save-scope>
   <div class="${body}" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
@@ -1403,7 +1403,7 @@ function _rntKautionHTML(rid, tid, ctx, rec) {
       ${dis} style="${recv > 0 ? '' : 'display:none'}" onclick="_rntToggleSettle('${pfx}','${tid||''}')">
       <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
     </button>
-    <button class="tn-btn tn-btn-sm" id="ksave-${pfx}"
+    <button class="tn-btn cc-save" id="ksave-${pfx}"
       ${dis} onclick="_rntSaveKautionBtn('${pfx}','${tid||''}')">
       Save
     </button>
@@ -1771,7 +1771,7 @@ function _rntStaffelOpenAdd(aptId, rid) {
     <div class="tn-sheet-footer">
       <button class="tn-btn tn-btn-ghost" style="flex:1;height:44px;font-size:13px"
         onclick="_rntStaffelModalClose()">Cancel</button>
-      <button class="tn-btn tn-btn-primary" style="flex:1;height:44px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:var(--cc-r)"
+      <button class="tn-btn tn-btn-primary cc-save cc-save--create" style="flex:1;height:44px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:var(--cc-r)"
         onclick="_rntStaffelConfirmAdd('${aptId}','${rid}')">
         <i class="ti ti-check" style="font-size:14px" aria-hidden="true"></i> Save
       </button>
@@ -1898,7 +1898,7 @@ function _rntPkStaffelOpenAdd(pkId, rid) {
     <div class="tn-sheet-footer">
       <button class="tn-btn tn-btn-ghost" style="flex:1;height:44px;font-size:13px"
         onclick="_rntStaffelModalClose()">Cancel</button>
-      <button class="tn-btn tn-btn-primary" style="flex:1;height:44px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:var(--cc-r)"
+      <button class="tn-btn tn-btn-primary cc-save cc-save--create" style="flex:1;height:44px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:var(--cc-r)"
         onclick="_rntPkStaffelConfirmAdd('${pkId}','${rid}')">
         <i class="ti ti-check" style="font-size:14px" aria-hidden="true"></i> Save
       </button>
@@ -2218,8 +2218,8 @@ function _rntModalBodyHTML(rec, isApt) {
     </div>
     <div class="tn-msec-footer" id="mprof-foot-edit-${tid}" style="display:none">
       <button class="tn-btn tn-btn-sm" onclick="_rntToggleModalProfile('${tid}')">Cancel</button>
-      <button class="tn-btn tn-btn-primary" onclick="_rntModalSaveProfile('${tid}')">
-        <i class="ti ti-check"></i> Save info</button>
+      <button class="tn-btn tn-btn-primary cc-save" onclick="_rntModalSaveProfile('${tid}')">
+        Save</button>
     </div>
   </div>
 
@@ -2249,7 +2249,7 @@ function _rntModalFooterHTML(rec, allDone) {
     <button class="tn-btn tn-btn-ghost" onclick="_rntMarkDone('${rec.id}')">
       <i class="ti ti-archive"></i> Archive</button>
     <div class="tn-sheet-spacer"></div>
-    <button class="tn-btn tn-btn-primary" onclick="_rntModalSaveProfile('${rec.id}')">
+    <button class="tn-btn tn-btn-primary cc-save" onclick="_rntModalSaveProfile('${rec.id}')">
       <i class="ti ti-check"></i> Save</button>
     <button class="tn-btn tn-btn-danger"
       style="${allDone ? '' : 'opacity:.35;pointer-events:none'}"
@@ -2676,7 +2676,7 @@ function _rntCalcKaution(pfx, tid) {
   const pill    = document.getElementById('kstat-' + pfx);
   if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
   const saveBtn = document.getElementById('ksave-' + pfx);
-  if (saveBtn) saveBtn.classList.add('tn-btn-primary');
+  if (saveBtn) ccSaveSet(saveBtn, 'dirty');     // unsaved change → dark SAVE
   const setBtn = document.getElementById('kset-' + pfx);
   if (setBtn) setBtn.style.display = (recv > 0 && tid) ? '' : 'none';
 }
@@ -2707,7 +2707,7 @@ async function _rntSaveKautionBtn(pfx, tid) {
       hdrPill.innerHTML = newPills.slice(0,2).join('');
     }
   }
-  if (saveBtn) saveBtn.classList.remove('tn-btn-primary');   // not highlighted = nothing unsaved
+  if (saveBtn) ccSaveSet(saveBtn, 'saved');     // saved → grey ✓ SAVED until the next change
 }
 
 async function _rntSaveKaution(tid, received, returned) {
@@ -2965,7 +2965,7 @@ function _rntOpenModalDraft(draft) {
   document.getElementById('rntModalFooter').innerHTML = `
     <div class="tn-sheet-spacer"></div>
     <button class="tn-btn tn-btn-sm" onclick="_rntCloseModal()">Cancel</button>
-    <button class="tn-btn tn-btn-primary" onclick="_rntModalSaveDraft()">
+    <button class="tn-btn tn-btn-primary cc-save cc-save--create" onclick="_rntModalSaveDraft()">
       <i class="ti ti-check"></i> Save</button>`;
 
   document.getElementById('rntModal')._draft = draft;

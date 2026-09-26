@@ -444,7 +444,7 @@ function _pkCardHTML(p) {
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('identity','${p.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_pkSaveIdentity('${p.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_pkSaveIdentity('${p.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -476,7 +476,7 @@ function _pkCardHTML(p) {
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('miete','${p.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_pkSaveMiete('${p.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_pkSaveMiete('${p.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -518,7 +518,7 @@ function _pkCardHTML(p) {
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('schlussel','${p.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_pkSaveSchlussel('${p.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_pkSaveSchlussel('${p.id}')">Save</button>
         </div>
       </div>
     </div>
@@ -1305,6 +1305,8 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
 
   // Override save for new card
   const saveBtn = identitySection?.querySelector('.apt-btn--save');
+  // New unit: this Save creates it → always dark SAVE, "Saving…" while waiting
+  if (saveBtn) { saveBtn.classList.add('cc-save--create'); delete saveBtn.dataset.ccSave; saveBtn.textContent = 'Save'; }
   if (saveBtn) {
     saveBtn.onclick = async () => {
       const name = identitySection.querySelector('[data-f="name"]')?.value.trim();
@@ -1316,7 +1318,7 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
         data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
       });
 
-      saveBtn.textContent = '…'; saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
 
       if (_pkSbClient) {
         const { data: newSpot, error } = await _pkSbClient.from('rentals_parking').insert(data).select().single();

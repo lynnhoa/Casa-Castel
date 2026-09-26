@@ -1022,8 +1022,8 @@ function _tnRentFormHTML(rid, room, rec) {
     <span class="tn-rf-hint" style="margin:0">Frozen at move-out for former tenants.</span>
     <div style="display:flex;gap:6px">
       <button class="tn-btn tn-btn-sm" onclick="_tnToggleRentEdit('${rid}')">Cancel</button>
-      <button class="tn-btn tn-btn-primary" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
-        <i class="ti ti-check"></i> Save rent
+      <button class="tn-btn tn-btn-primary cc-save" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
+        Save
       </button>
     </div>
   </div>
@@ -1090,7 +1090,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
     ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_tnMoveToFormerConfirm(this,'${rid}','${tid}','${esc(room.name)}')"><i class="ti ti-user-off"></i> To former</button><div style="flex:1"></div>` : ''}
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
-    <button class="tn-btn tn-btn-primary"
+    <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec ? `_tnSaveProfile('${rid}','${tid}','${esc(room.name)}')` : `_tnSaveNewTenant('${rid}','${esc(room.name)}')`}">
       <i class="ti ti-check"></i> Save</button>
   </div>`;
@@ -1174,7 +1174,7 @@ function _tnKautionHTML(rid, tid, ctx) {
   const rule  = ctype === 'kurzzeit' ? '1\u00d7 Kaltmiete \u00b7 KZ' : '3\u00d7 Kaltmiete \u00b7 MV';
 
   return `
-<div class="${sec}" style="${opac}">
+<div class="${sec}" style="${opac}" data-cc-save-scope>
   <div class="${body}" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
@@ -1203,7 +1203,7 @@ function _tnKautionHTML(rid, tid, ctx) {
       ${dis} onclick="_tnToggleSettle('${pfx}','${tid||''}')">
       <i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}
     </button>` : ''}
-    <button class="tn-btn tn-btn-sm" id="ksave-${pfx}"
+    <button class="tn-btn cc-save" id="ksave-${pfx}"
       ${dis} onclick="_tnSaveKautionBtn('${pfx}','${tid||''}')">
       Save
     </button>
@@ -1753,8 +1753,8 @@ function _tnModalBodyHTML(rec) {
     </div>
     <div class="tn-msec-footer" id="mprof-foot-edit-${tid}" style="display:none">
       <button class="tn-btn tn-btn-sm" onclick="_tnToggleModalProfile('${tid}')">Cancel</button>
-      <button class="tn-btn tn-btn-primary" onclick="_tnModalSaveProfile('${tid}')">
-        <i class="ti ti-check"></i> Save info</button>
+      <button class="tn-btn tn-btn-primary cc-save" onclick="_tnModalSaveProfile('${tid}')">
+        Save</button>
     </div>
   </div>
 
@@ -1793,7 +1793,7 @@ function _tnModalFooterHTML(rec, allDone) {
     <button class="tn-btn tn-btn-ghost" onclick="_tnMarkDone('${rec.id}')">
       <i class="ti ti-archive"></i> Archive</button>
     <div class="tn-sheet-spacer"></div>
-    <button class="tn-btn tn-btn-primary" onclick="_tnModalSaveProfile('${rec.id}')">
+    <button class="tn-btn tn-btn-primary cc-save" onclick="_tnModalSaveProfile('${rec.id}')">
       <i class="ti ti-check"></i> Save</button>
     <button class="tn-btn tn-btn-danger${allDone ? '' : ''}"
       style="${allDone ? '' : 'opacity:.35;pointer-events:none'}"
@@ -2242,7 +2242,7 @@ function _tnCalcKaution(pfx, tid) {
 
   // Mark save button as dirty
   const saveBtn = document.getElementById('ksave-' + pfx);
-  if (saveBtn) saveBtn.classList.add('tn-btn-primary');
+  if (saveBtn) ccSaveSet(saveBtn, 'dirty');     // unsaved change → dark SAVE
 }
 
 async function _tnSaveKautionBtn(pfx, tid) {
@@ -2274,7 +2274,7 @@ async function _tnSaveKautionBtn(pfx, tid) {
       hdrPill.innerHTML = newPills.slice(0,2).join('');
     }
   }
-  if (saveBtn) saveBtn.classList.remove('tn-btn-primary');   // not highlighted = nothing unsaved
+  if (saveBtn) ccSaveSet(saveBtn, 'saved');     // saved → grey ✓ SAVED until the next change
 }
 
 async function _tnSaveKaution(tid, received, returned) {
@@ -2579,7 +2579,7 @@ function _tnOpenModalDraft(draft) {
   document.getElementById('tnModalFooter').innerHTML = `
     <div class="tn-sheet-spacer"></div>
     <button class="tn-btn tn-btn-sm" onclick="_tnCloseModal()">Cancel</button>
-    <button class="tn-btn tn-btn-primary" onclick="_tnModalSaveDraft()">
+    <button class="tn-btn tn-btn-primary cc-save cc-save--create" onclick="_tnModalSaveDraft()">
       <i class="ti ti-check"></i> Save</button>`;
 
   // Store draft data for save
