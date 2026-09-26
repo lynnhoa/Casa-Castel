@@ -7,13 +7,15 @@
      Casa Castel (tab-rooms.js)                                               key 'room-ub'
 
    Form:  Auswahl "Ohne Fotos | Mit Fotos" (app standard cc-seg, cc-controls.js).
-          Mit Fotos → camera opens; photos as upright thumbnails, 4 per row,
-          first tile = "Foto" (take the next one). Tap a photo → larger view,
-          Beschreibung, Foto löschen.
+          "Foto" opens the phone's own menu: Fotomediathek (several at once),
+          Foto aufnehmen, Datei auswählen. Upright thumbnails, 4 per row.
+          Tap a photo → larger view, Beschreibung, Foto löschen.
    PDF:   Ohne Fotos → PDF exactly as before.
-          Mit Fotos  → extra A4 pages at the END: 6 photos per page (2 × 3),
-          upright and landscape photos fit without cropping; number, date/time,
-          Beschreibung under each photo.
+          Mit Fotos  → extra A4 pages at the END, built as pages of the SAME
+          document (its own beige header, footer, fonts, running page number):
+          6 photos per page (2 × 3) in equal frames; number, date/time when the
+          photo was TAKEN (from the photo itself; "(hinzugefügt)" if unknown),
+          Beschreibung.
 
    Photos live only in this open form (memory) — not stored in the app or
    database. Opening the Übergabe form again starts with no photos.
@@ -40,9 +42,9 @@ function ccUbPhotosHTML(key) {
       </div>
       <div class="ccub-body" style="display:none;">
         <div class="ccub-grid"></div>
-        <div class="ccub-hint">Werden am Ende des PDFs angehängt, mit Datum und Uhrzeit.</div>
+        <div class="ccub-hint">Kamera oder Fotomediathek. Werden am Ende des PDFs angehängt, mit Aufnahmedatum.</div>
       </div>
-      <input type="file" accept="image/*" capture="environment" style="display:none" onchange="ccUbFiles('${key}', this)"/>
+      <input type="file" accept="image/*" multiple style="display:none" onchange="ccUbFiles('${key}', this)"/>
     </div>`;
 }
 
@@ -58,7 +60,7 @@ function ccUbSet(key, on) {
   });
   box.querySelector('.ccub-body').style.display = st.on ? '' : 'none';
   _ccUbRenderGrid(key);
-  if (st.on && !st.photos.length) ccUbTakePhoto(key);    // "Mit Fotos" opens the camera straight away
+  if (st.on && !st.photos.length) ccUbTakePhoto(key);    // "Mit Fotos" opens the photo menu straight away
 }
 
 function ccUbTakePhoto(key) {
@@ -73,12 +75,16 @@ async function ccUbFiles(key, input) {
   input.value = '';                                       // the same photo can be taken again
   if (!st || !files.length) return;
   const box = document.getElementById('ccub-' + key);
+  const room = CC_UB_MAX - st.photos.length;
+  if (files.length > room) alert(room > 0
+    ? `Maximal ${CC_UB_MAX} Fotos pro Protokoll – die ersten ${room} wurden übernommen.`
+    : `Maximal ${CC_UB_MAX} Fotos pro Protokoll.`);
   box?.classList.add('ccub--busy');
-  for (const f of files) {
-    if (st.photos.length >= CC_UB_MAX) { alert(`Maximal ${CC_UB_MAX} Fotos pro Protokoll.`); break; }
+  for (const f of files.slice(0, Math.max(0, room))) {
     try {
+      const taken = await _ccUbExifTime(f);               // when the photo was taken (null if unknown)
       const img = await _ccUbLoadImage(f);
-      st.photos.push({ ...img, ts: Date.now(), caption: '' });
+      st.photos.push({ ...img, ts: taken ? taken.ts : Date.now(), when: taken ? taken.text : '', taken: !!taken, caption: '' });
     } catch (e) {
       console.error('[Übergabe Fotos]', e);
       alert('Das Foto konnte nicht gelesen werden. Bitte erneut aufnehmen.');
@@ -101,7 +107,7 @@ function _ccUbRenderGrid(key) {
   const n = st.photos.length;
   const full = n >= CC_UB_MAX;
   box.querySelector('.ccub-grid').innerHTML =
-    `<button type="button" class="ccub-add" onclick="ccUbTakePhoto('${key}')" ${full ? 'disabled' : ''} aria-label="Foto aufnehmen">
+    `<button type="button" class="ccub-add" onclick="ccUbTakePhoto('${key}')" ${full ? 'disabled' : ''} aria-label="Foto hinzufügen">
        <i class="ti ti-camera"></i><span>Foto</span>
      </button>` +
     st.photos.map((p, i) => `
@@ -178,7 +184,103 @@ function _ccUbLoadImage(file) {
   });
 }
 
-/* ── PDF: photo pages at the end (jsPDF, A4 portrait, mm) ──────────────
+/* Capture date from the photo's own data (EXIF DateTimeOriginal / DateTime) → { ts, text } or null */
+async function _ccUbExifTime(file) {
+  try {
+    const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+    const v = new DataView(buf);
+    if (v.byteLength < 12 || v.getUint16(0) !== 0xFFD8) return null;          // JPEG only
+    let off = 2;
+    while (off + 10 < v.byteLength) {
+      const marker = v.getUint16(off), len = v.getUint16(off + 2);
+      if ((marker & 0xFF00) !== 0xFF00) break;
+      if (marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) {        // "Exif"
+        const t = off + 10, le = v.getUint16(t) === 0x4949;
+        const u16 = o => v.getUint16(t + o, le), u32 = o => v.getUint32(t + o, le);
+        const ifd = o => { const n = u16(o), tags = {}; for (let i = 0; i < n; i++) { const e = o + 2 + i * 12; tags[u16(e)] = { count: u32(e + 4), at: e + 8 }; } return tags; };
+        const str = tag => { if (!tag) return null; const o = tag.count > 4 ? u32(tag.at) : tag.at; let r = ''; for (let i = 0; i < tag.count - 1; i++) r += String.fromCharCode(v.getUint8(t + o + i)); return r; };
+        const ifd0 = ifd(u32(4));
+        let dt = null;
+        if (ifd0[0x8769]) { const sub = ifd(u32(ifd0[0x8769].at)); dt = str(sub[0x9003]) || str(sub[0x9004]); }
+        dt = dt || str(ifd0[0x0132]);
+        const m = dt && dt.match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+        if (!m) return null;
+        const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+        if (isNaN(d)) return null;
+        // the camera's own wall-clock time, printed as it is (no time-zone conversion)
+        return { ts: d.getTime(), text: `${m[3]}.${m[2]}.${m[1]} · ${m[4]}:${m[5]}` };
+      }
+      off += 2 + len;
+    }
+  } catch (e) { /* no date → the time it was added is used */ }
+  return null;
+}
+
+function _ccUbWhen(ts) {                                  // 26.09.2026 · 17:55 (German time)
+  const two = n => String(n).padStart(2, '0');
+  if (typeof ccFmtDate === 'function' && typeof ccParseDate === 'function' && typeof ccFmtTs === 'function')
+    return ccFmtDate(ccParseDate(new Date(ts))) + ' · ' + ccFmtTs(ts).split(' · ')[1];
+  const t = new Date(ts);
+  return `${two(t.getDate())}.${two(t.getMonth() + 1)}.${t.getFullYear()} · ${two(t.getHours())}:${two(t.getMinutes())}`;
+}
+
+/* ── PDF: photo pages as pages of the SAME document ───────────────────
+   Called with the rendered protocol (container of .pdf-page) BEFORE it is
+   turned into a PDF. Each new page is a copy of page 1 (its beige header and
+   footer) with its content replaced by up to 6 photos. Page numbers continue
+   (pdf-open.js renumbers). Returns the number of pages added.            */
+async function ccUbAddPhotoPages(key, container, meta = {}) {
+  const st = _ccUb[key];
+  if (!container || !st || !st.on || !st.photos.length) return 0;
+  const pages = container.querySelectorAll('.pdf-page');
+  const first = pages[0]; if (!first) return 0;
+  let last = pages[pages.length - 1];
+  const E = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const PER = 6, GAP_X = 22, GAP_Y = 18, FRAME_H = 206;
+  const cw = (first.querySelector(':scope > .content')?.clientWidth) || 634;
+  const frameW = Math.floor((cw - GAP_X) / 2);
+  const total = st.photos.length;
+  const sub = ['Übergabeprotokoll ' + (meta.isEinzug ? 'Einzug' : 'Auszug'), meta.objekt, meta.mieter,
+    total === 1 ? '1 Foto' : total + ' Fotos'].filter(Boolean).map(E).join(' · ');
+  const imgs = [];
+  for (let start = 0; start < total; start += PER) {
+    const pg = first.cloneNode(true);
+    let content = pg.querySelector(':scope > .content');
+    if (!content) {
+      content = document.createElement('div');
+      content.className = 'content';
+      content.style.cssText = 'position:absolute;top:144px;left:80px;right:80px;bottom:90px;overflow:hidden;';
+      pg.appendChild(content);
+    }
+    const cells = st.photos.slice(start, start + PER).map((p, j) => {
+      const i = start + j;
+      const r = Math.min(frameW / p.w, FRAME_H / p.h);
+      const iw = Math.round(p.w * r), ih = Math.round(p.h * r);
+      const cap = String(p.caption || '').trim();
+      return `<div style="display:flex;flex-direction:column;min-width:0">
+        <div style="height:${FRAME_H}px;background:#f7f4f0;border:0.5px solid #e8e2d8;border-radius:3px;display:flex;align-items:center;justify-content:center;overflow:hidden">
+          <img src="${p.dataUrl}" width="${iw}" height="${ih}" style="display:block;width:${iw}px;height:${ih}px" alt=""/>
+        </div>
+        <div style="display:flex;gap:8px;align-items:baseline;margin-top:7px">
+          <span style="font-family:'Lato',sans-serif;font-size:7.5px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#4a4540">Foto ${i + 1}</span>
+          <span style="font-family:'Lato',sans-serif;font-size:9px;font-weight:300;color:#8a847c">${p.when || _ccUbWhen(p.ts)}${p.taken === false ? ' (hinzugefügt)' : ''}</span>
+        </div>
+        ${cap ? `<div style="font-family:'Lato',sans-serif;font-size:10px;font-weight:300;color:#1a1a1a;margin-top:3px;line-height:1.35;max-height:27px;overflow:hidden">${E(cap)}</div>` : ''}
+      </div>`;
+    }).join('');
+    content.innerHTML = `
+      <div class="doc-title" style="font-family:'Playfair Display',serif;font-size:21px;font-weight:400;color:#1a1a1a;line-height:1.15;margin-bottom:4px">Fotodokumentation</div>
+      <div class="doc-subtitle" style="font-family:'Lato',sans-serif;font-size:9.5px;font-weight:300;color:#aaa59e;margin-bottom:22px">${sub}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:${GAP_X}px;row-gap:${GAP_Y}px">${cells}</div>`;
+    last.after(pg);
+    last = pg;
+    imgs.push(...pg.querySelectorAll('img'));
+  }
+  await Promise.all(imgs.map(img => (img.decode ? img.decode() : Promise.resolve()).catch(() => {})));
+  return Math.ceil(total / PER);
+}
+
+/* ── (previous version, no longer used) photo pages drawn directly with jsPDF ──
    6 per page (2 columns × 3 rows). meta: { isEinzug, objekt, mieter }
    → returns the number of pages added                                   */
 function ccUbAppendPhotos(pdf, key, meta = {}) {

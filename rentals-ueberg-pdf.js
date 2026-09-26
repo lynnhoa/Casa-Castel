@@ -192,11 +192,11 @@ async function _aptSaveUebergPDFFromData(d, existingContainer) {
   }
 
   // Phase 1: one render at print quality, opened on top of the app (pdf-open.js)
+  // Optional photo pages, as pages of this same document (cc-ueberg-photos.js)
+  if (typeof ccUbAddPhotoPages === 'function') await ccUbAddPhotoPages('apt-ub', container, { isEinzug: d.isEinzug, objekt: d.aptName, mieter: d.mieterName });
   const pdf = await ccRenderPagesToPdf(container);
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
-  // Optional photo pages at the end (cc-ueberg-photos.js) — only when the toggle is on
-  if (typeof ccUbAppendPhotos === 'function') ccUbAppendPhotos(pdf, 'apt-ub', { isEinzug: d.isEinzug, objekt: d.aptName, mieter: d.mieterName });
   await ccOpenPdf(pdf, ccPdfFileName('Übergabeprotokoll', typ, d.aptName, d.mieterName));
 
   if (!existingContainer) container.remove();

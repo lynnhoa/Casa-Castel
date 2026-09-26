@@ -2069,9 +2069,9 @@ async function _roomGenericPdfAction(container, filename, btnEl, resetHtml, save
   }
 
   try {
+    // Optional photo pages, as pages of this same document (Übergabe only, cc-ueberg-photos.js)
+    if (opts && opts.photosKey && typeof ccUbAddPhotoPages === 'function') await ccUbAddPhotoPages(opts.photosKey, container, opts.meta || {});
     const pdf = await ccRenderPagesToPdf(container);
-    // Optional photo pages at the end (Übergabe only, cc-ueberg-photos.js)
-    if (opts && opts.photosKey && typeof ccUbAppendPhotos === 'function') ccUbAppendPhotos(pdf, opts.photosKey, opts.meta || {});
     if (btnEl) btnEl.innerHTML = '<i class="ti ti-loader"></i> Opening PDF\u2026';
     await ccOpenPdf(pdf, _pdfSafeName(filename));
   } finally {

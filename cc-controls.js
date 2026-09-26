@@ -191,7 +191,8 @@ html .cc-seg--stack > .cc-seg__opt { height:auto !important; min-height:44px; pa
 html .cc-seg--stack > .cc-seg__opt + .cc-seg__opt { border-left:none !important; border-top:.5px solid var(--cc-rule) !important; }
 /* compact, on card faces */
 html .cc-seg--sm { width:auto; display:inline-flex !important; flex-shrink:0; }
-html .cc-seg--sm > .cc-seg__opt { height:28px !important; font-size:12px !important; padding:0 12px !important; flex:0 0 auto !important; }
+html .cc-seg--sm { align-items:stretch !important; }
+html .cc-seg--sm > .cc-seg__opt { height:auto !important; min-height:28px; align-self:stretch !important; font-size:12px !important; padding:0 12px !important; flex:0 0 auto !important; }   /* fill the whole box: no gap above/below the dark fill */
 
 /* SWITCH — 44×26, round knob 20, off = light, on = dark, always right */
 html .cc-sw, html .tn-kaut-ovr-sw { width:44px !important; height:26px !important; flex-shrink:0; }
