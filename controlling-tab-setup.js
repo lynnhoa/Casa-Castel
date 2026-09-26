@@ -67,6 +67,11 @@ window.renderSetup = function () {
       '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>';
     if (!casa) body += '<div class="cx-set__row"><span class="cx-set__k">Grundsteuer fällig</span></div>' +
       _cxMonthChips('ctrl_properties|grundsteuer_months', p.id, Array.isArray(p.grundsteuer_months) && p.grundsteuer_months.length ? p.grundsteuer_months : [2, 5, 8, 11]);
+    const ps = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
+    body += '<div class="cx-set__row"><span class="cx-set__k">Abrechnungszeitraum beginnt am</span>' + cxPill('grey', casa ? 'NK' : 'WEG + NK') + '</div>' +
+      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|nk_period_start" aria-label="Abrechnungszeitraum beginnt am">' +
+        Array.from({ length: 12 }, (_, i) => { const v = String(i + 1).padStart(2, '0') + '-01'; return _cxOpt(v, '01.' + String(i + 1).padStart(2, '0') + '. (' + CX_MONTHS[i] + ')', v === ps); }).join('') +
+      '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>';
     const units = ctlUnitsOf(p.id);
     if (units.length) body += '<div class="cx-set__sub">Einheiten</div>' + units.map(u => {
       const ul = ctlUnitLink(u, p), cur = ul ? ul.type + '|' + ul.ref : '';
