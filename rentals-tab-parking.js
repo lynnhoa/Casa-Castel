@@ -314,7 +314,7 @@ async function loadParking() {
     console.error('[parking] Load failed:', e);
   }
 
-  _renderPkList();
+  _pkRenderIfChanged();
   _pkInitSortable();
   if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _pkRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
@@ -349,8 +349,23 @@ function _renderPkList() {
     _updatePkSummary();
     return;
   }
+  const _open = new Set([...list.querySelectorAll('.pk-card.pk--open')].map(c => c.dataset.id));
   list.innerHTML = appParking.map(p => _pkCardHTML(p)).join('');
+  _open.forEach(id => list.querySelector(`.pk-card[data-id="${id}"]`)?.classList.add('pk--open'));   // open cards stay open
   _updatePkSummary();
+}
+
+/* After a (background) load: repaint only if the data really changed and you
+   are not in the middle of editing here. */
+let _pkRenderedSig = null;
+function _pkRenderIfChanged() {
+  const sig  = JSON.stringify(appParking);
+  const list = document.getElementById('pkList');
+  const shown = !!(list && list.querySelector('.pk-card'));
+  if (shown && sig === _pkRenderedSig) return;
+  if (shown && typeof _rtBusy === 'function' && _rtBusy('parking')) return;
+  _renderPkList();
+  _pkRenderedSig = sig;
 }
 
 
@@ -468,7 +483,7 @@ function _pkCardHTML(p) {
       <div class="pk-sec-edit" style="display:none">
         <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-f="miete" value="${pr.miete||''}"/></div>
         <div class="apt-toggle-row">
-          <span class="apt-tlabel">Custom Kaution</span>
+          <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${pr.kaution_override?'checked':''} onchange="_pkToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${pr.kaution_override?'':'display:none'}">
@@ -1074,7 +1089,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-field--toggle">
       <div class="rm-toggle-row">
         <div>
-          <div class="rm-toggle-label">Befristung</div>
+          <div class="rm-toggle-label">Befristet</div>
           <div class="rm-toggle-sub" id="pk-mv-befristung-sub">Unbefristet</div>
         </div>
         <button type="button" class="rm-pill-toggle" id="pk-mv-befristung-btn" data-mode="unbefristet">
@@ -1147,8 +1162,8 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     </div>
     <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','5',this)">5 Tage</button>
       <button class="rm-fael-btn active" data-prefix="pk-mv" data-val="sofort" onclick="_pkKfSelect('pk-mv','sofort',this)">Sofort</button>
+      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','5',this)">5 Tage</button>
       <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','custom',this)">Individuell</button>
     </div>
     <div id="pk-mv-fael-custom" style="display:none">

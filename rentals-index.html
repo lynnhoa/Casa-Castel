@@ -107,6 +107,7 @@
   <script src="settings.js"></script>
   <script src="kaution.js"></script>
   <script src="direct-save.js"></script>
+  <script src="cc-controls.js"></script>
 
   <!-- Nav helpers -->
   <script>
@@ -149,7 +150,36 @@
   <script src="rentals-profile.js"></script>
 
   <script>
+    /* ── TAB SWITCHING — instant, no repaint glitch ─────────────────
+       The tab shows immediately with what is already on screen. Fresh data is
+       fetched in the background (one request at a time per tab) and the list is
+       only repainted if something actually changed and you are not editing
+       there. Open cards and each tab's scroll position are kept. After start,
+       the other tabs are preloaded so their first visit is instant too. */
+    const _rtLoaders = {
+      apartments: () => (typeof loadApartments === 'function' ? loadApartments() : null),
+      parking:    () => (typeof loadParking    === 'function' ? loadParking()    : null),
+      tenants:    () => (typeof loadRntTenants === 'function' ? loadRntTenants() : null),
+    };
+    const _rtInflight = {}, _rtScroll = {};
+    let _rtCurrent = null;
+    // "Busy" = something unsaved or an editor / add form is open in that tab
+    function _rtBusy(tab) {
+      const el = document.getElementById('tab-' + tab);
+      return !!(el && el.querySelector('.cc-save[data-cc-save="dirty"], .apt-edit-active, .tn-nk-add-form, .tn-nkv-add-form, .apt-hg-add-form'));
+    }
+    function _rtLoad(tab) {
+      if (!_rtLoaders[tab]) return Promise.resolve();
+      if (_rtInflight[tab]) return _rtInflight[tab];
+      const p = Promise.resolve().then(_rtLoaders[tab])
+        .catch(e => console.warn('[rentals] load ' + tab + ':', e))
+        .finally(() => { delete _rtInflight[tab]; });
+      _rtInflight[tab] = p;
+      return p;
+    }
+
     function switchTab(tabName) {
+      if (_rtCurrent) _rtScroll[_rtCurrent] = window.scrollY;
       try { localStorage.setItem('rentals_last_tab', tabName); } catch(e) {}
       // Close any open sheets / preview overlays so none flash or carry across tabs
       document.querySelectorAll('.rm-overlay.open, .rm-confirm-overlay.open')
@@ -162,9 +192,13 @@
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tabName);
       });
-      if (tabName === 'apartments') loadApartments?.();
-      if (tabName === 'parking')    loadParking?.();
-      if (tabName === 'tenants')    loadRntTenants?.();
+      _rtCurrent = tabName;
+      window.scrollTo(0, _rtScroll[tabName] || 0);   // each tab keeps its own scroll position
+      if (tabName === 'tenants') {                     // first visit while still loading: say so
+        const l = document.getElementById('rntTenantsList');
+        if (l && !l.querySelector('.tn-card')) l.innerHTML = '<p class="tn-empty">Loading tenants…</p>';
+      }
+      _rtLoad(tabName);
     }
 
     function initTabs() {
@@ -204,7 +238,12 @@
 
     const saved     = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
     const available = new Set(['apartments','parking','tenants']);
-    switchTab((saved && available.has(saved)) ? saved : 'apartments');
+    const _rtFirst = (saved && available.has(saved)) ? saved : 'apartments';
+    switchTab(_rtFirst);
+    // Preload the other tabs in the background (one after another) → their first visit is instant
+    (_rtInflight[_rtFirst] || Promise.resolve()).then(() =>
+      ['apartments', 'parking', 'tenants'].filter(t => t !== _rtFirst)
+        .reduce((p, t) => p.then(() => _rtLoad(t)), Promise.resolve()));
   </script>
 
 </body>

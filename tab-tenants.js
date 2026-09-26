@@ -790,7 +790,24 @@ async function _tnLoad() {
   });
   _tnLoadedOnce = true;
 
+  _tnRenderIfChanged();
+}
+
+/* After a (re)load: repaint only if the data really changed and you are not in
+   the middle of editing here (unsaved Kaution / rent / profile, an open NK form).
+   Otherwise the screen stays exactly as it is — nothing typed gets lost. */
+let _tnRenderedSig = null;
+function _tnRenderIfChanged() {
+  const sig = JSON.stringify([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache,
+                              (typeof appRooms !== 'undefined' ? appRooms : []).map(r => [r.id, r.name, r.active, r.vacant, r.sort_order,
+                                r.kaltmiete, r.nk_pauschale, r.kurzzeit_kaltmiete, r.kurzzeit_nk, r.mietvertrag_pricing, r.kurzzeit_pricing, r.kaution_override, r.kaution_default, r.active_price_type])]);
+  const list  = document.getElementById('tenantsList');
+  const shown = !!(list && list.querySelector('.tn-card'));
+  if (shown && sig === _tnRenderedSig) return;
+  const tab = document.getElementById('tab-tenants');
+  if (shown && tab && tab.querySelector('.cc-save[data-cc-save="dirty"], .tn-nk-add-form, .tn-nkv-add-form')) return;
   _tnRender();
+  _tnRenderedSig = sig;
 }
 
 
@@ -1026,13 +1043,12 @@ function _tnRentFormHTML(rid, room, rec) {
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl">Kaution soll · ${_tnFmtEUR(ksoll) || '—'} (${rule})</span>
+      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${_tnFmtEUR(ksoll) || '—'} (${rule})</span></span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
         <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec && rec.kaution_soll != null ? 'checked' : ''}
           onchange="_tnToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
         <span class="tn-kaut-ovr-sw__t"></span>
       </label>
-      <span style="font-size:10px;color:var(--cc-stone)">Override</span>
     </div>
     <span id="rf-ksoll-hint-${rid}" class="tn-kaut-hint" style="${rec && rec.kaution_soll != null ? 'display:none' : ''}">
       Auto from rooms tab · clear override to re-sync
@@ -1743,13 +1759,12 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="nebenkosten" type="number" value="${dNK ?? ''}"/></div>
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <div class="tn-kaut-override-row">
-            <span class="tn-kaut-override-lbl">Kaution soll · ${_tnFmtEUR(_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende)) || '—'} (auto)</span>
+            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${_tnFmtEUR(_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende)) || '—'} (auto)</span></span>
             <label class="tn-kaut-ovr-sw" title="Override kaution">
               <input type="checkbox" id="mkaut-ovr-${tid}" ${dKS != null ? 'checked' : ''}
                 onchange="_tnToggleKautionOverride(this,'mkaut-inp-${tid}','mkaut-hint-${tid}')"/>
               <span class="tn-kaut-ovr-sw__t"></span>
             </label>
-            <span style="font-size:10px;color:var(--cc-stone)">Override</span>
           </div>
           <span id="mkaut-hint-${tid}" class="tn-kaut-hint" style="${dKS != null ? 'display:none' : ''}">
             Auto from rooms tab · toggle to set a fixed amount

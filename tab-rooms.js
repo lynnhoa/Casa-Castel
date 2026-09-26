@@ -1210,25 +1210,33 @@ function _roomCardHTML(r) {
         </div>`;
   const editPricing = `
         <div class="rc-edit-stitle">Kurzzeit Pricing</div>
-        <div class="rc-toggle-row">
-          <span class="rc-tlabel">${kzIsPauschal ? 'Pauschal' : 'Kalt + NK'}</span>
-          <label class="cc-sw"><input type="checkbox" data-kztoggle ${kzIsPauschal?'':'checked'} onchange="_onKzToggle(this)"/><span class="cc-sw__t"></span></label>
+        <div class="rc-field">
+          <label class="rc-field__label">Nebenkosten</label>
+          <div class="cc-seg" role="radiogroup">
+            <button type="button" class="cc-seg__opt${kzIsPauschal ? ' is-on' : ''}" role="radio" onclick="ccSegCheck(this,false)">Pauschal</button>
+            <button type="button" class="cc-seg__opt${kzIsPauschal ? '' : ' is-on'}" role="radio" onclick="ccSegCheck(this,true)">Kalt + NK</button>
+            <input type="checkbox" data-kztoggle ${kzIsPauschal?'':'checked'} hidden/>
+          </div>
         </div>
         <div class="rc-field-row">
           <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kurzzeit_kaltmiete" value="${r.kurzzeit_kaltmiete||''}"/></div>
           <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="kurzzeit_nk" value="${r.kurzzeit_nk||''}"/></div>
         </div>
         <div class="rc-edit-stitle" style="margin-top:14px">Mietvertrag Pricing</div>
-        <div class="rc-toggle-row">
-          <span class="rc-tlabel">${mvIsPauschal ? 'Pauschal' : 'Kalt + NK'}</span>
-          <label class="cc-sw"><input type="checkbox" data-mvtoggle ${mvIsPauschal?'checked':''} onchange="_onMvToggle(this)"/><span class="cc-sw__t"></span></label>
+        <div class="rc-field">
+          <label class="rc-field__label">Nebenkosten</label>
+          <div class="cc-seg" role="radiogroup">
+            <button type="button" class="cc-seg__opt${mvIsPauschal ? ' is-on' : ''}" role="radio" onclick="ccSegCheck(this,true)">Pauschal</button>
+            <button type="button" class="cc-seg__opt${mvIsPauschal ? '' : ' is-on'}" role="radio" onclick="ccSegCheck(this,false)">Kalt + NK</button>
+            <input type="checkbox" data-mvtoggle ${mvIsPauschal?'checked':''} hidden/>
+          </div>
         </div>
         <div class="rc-field-row">
           <div class="rc-field"><label class="rc-field__label">Kaltmiete (€)</label><input class="rc-input" type="number" data-f="kaltmiete" value="${r.kaltmiete||''}"/></div>
           <div class="rc-field"><label class="rc-field__label">Nebenkosten (€)</label><input class="rc-input" type="number" data-f="nk_pauschale" value="${r.nk_pauschale||''}"/></div>
         </div>
         <div class="rc-toggle-row" style="margin-top:6px;">
-          <span class="rc-tlabel">Custom Kaution</span>
+          <span class="rc-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${r.kaution_override?'checked':''} onchange="_toggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionoverridefield style="${r.kaution_override?'':'display:none;'}">
@@ -1302,7 +1310,7 @@ function _roomCardHTML(r) {
           data-kitchenbtn="${esc(r.name)}"
           onclick="_toggleKitchenRoom('${esc(r.name)}',this)">
           <i class="ti ti-tool-kitchen-2" style="font-size:12px;"></i>
-          ${hasKitchen ? 'Kitchen: On' : 'Kitchen: Off'}
+          ${hasKitchen ? 'Remove from kitchen' : 'Add to kitchen'}
         </button>
       </div>
 
@@ -4291,7 +4299,7 @@ function _contractBodyMietvertrag(room) {
     <div class="rm-field--toggle" style="margin-bottom:10px;">
       <div class="rm-toggle-row">
         <div>
-          <div class="rm-toggle-label">Befristung</div>
+          <div class="rm-toggle-label">Befristet</div>
           <div class="rm-toggle-sub" id="mv-befristung-sub">Unbefristet</div>
         </div>
         <button type="button" class="rm-pill-toggle" id="mv-befristung-btn"

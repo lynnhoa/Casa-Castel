@@ -489,10 +489,13 @@ function ccDraftSnapshot(root) {
   });
   root.querySelectorAll('input[type=radio]:checked').forEach(r => { if (r.name) radios[r.name] = r.value; });
   root.querySelectorAll('[id][data-mode]').forEach(el => { modes[el.id] = el.dataset.mode; });
+  // Two-state switches kept in data-state (e.g. Mieter: Prefill / Manuell)
+  const states = {};
+  root.querySelectorAll('[id][data-state]').forEach(el => { states[el.id] = el.dataset.state; });
   root.querySelectorAll('[data-val]').forEach(el => {
     if (_ccIsActive(el)) { const sel = _ccOptSelector(el); if (sel) actives.push(sel); }
   });
-  return { fields, radios, modes, actives };
+  return { fields, radios, modes, actives, states };
 }
 function ccDraftSave(key, root, meta) {
   if (!root || !meta) return;
@@ -543,6 +546,11 @@ async function ccDraftApply(root, d) {
     for (let i = 0; i < 3 && own(el) && el.dataset.mode !== mode; i++) el.click();
   });
   applyModes();
+  // Mieter Prefill / Manuell first — switching it may clear the tenant fields, which are refilled below
+  Object.entries(d.states || {}).forEach(([id, state]) => {
+    const el = document.getElementById(id);
+    for (let i = 0; i < 2 && own(el) && el.dataset.state !== state; i++) el.click();
+  });
   (d.actives || []).forEach(sel => {
     try { const el = root.querySelector(sel); if (el && !_ccIsActive(el)) el.click(); } catch (e) {}
   });

@@ -805,6 +805,8 @@ async function _rntLoad() {
     if (!_rntStaffel[key]) _rntStaffel[key] = [];
     _rntStaffel[key].push(e);
   });
+  // Newest first — sorted here, never relying on the order the database sent
+  Object.values(_rntStaffel).forEach(list => list.sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date))));
 
   // Build profile cache
   _rntProfileCache = {};
@@ -828,7 +830,22 @@ async function _rntLoad() {
   });
   _rntLoadedOnce = true;
 
+  _rntRenderIfChanged();
+}
+
+/* After a (background) load: repaint only if the data really changed and you
+   are not in the middle of editing here — otherwise the screen stays as it is. */
+let _rntRenderedSig = null;
+function _rntRenderIfChanged() {
+  const sig = JSON.stringify([_rntRecords, _rntKaution, _rntNK, _rntDocs, _rntNKVoraus, _rntStaffel, _rntProfileCache,
+                              (appApartments || []).map(a => [a.id, a.name, a.vacant, a.zimmer_type, a.pricing, a.adresse]),
+                              (appParking    || []).map(p => [p.id, p.name, p.vacant, p.pricing, p.adresse])]);
+  const list  = document.getElementById('rntTenantsList');
+  const shown = !!(list && list.querySelector('.tn-card'));
+  if (shown && sig === _rntRenderedSig) return;
+  if (shown && typeof _rtBusy === 'function' && _rtBusy('tenants')) return;
   _rntRender();
+  _rntRenderedSig = sig;
 }
 
 
@@ -1116,13 +1133,12 @@ function _rntRentFormHTML(rid, type, unit, rec) {
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl">Kaution soll · ${ksoll ? _rntFmtEUR(ksoll) : '\u2014'} (3\u00d7 Kaltmiete)</span>
+      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${ksoll ? _rntFmtEUR(ksoll) : '\u2014'} (3\u00d7 Kaltmiete)</span></span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
         <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec?.kaution_soll != null ? 'checked' : ''}
           onchange="_rntToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
         <span class="tn-kaut-ovr-sw__t"></span>
       </label>
-      <span style="font-size:10px;color:var(--cc-stone)">Override</span>
     </div>
     <input type="number" id="rf-ksoll-${rid}"
       value="${rec?.kaution_soll != null ? ksoll : ''}" placeholder="${ksoll}"
@@ -1150,13 +1166,12 @@ function _rntRentFormHTML(rid, type, unit, rec) {
   </div>
   <div class="tn-rf" style="grid-column:1/-1">
     <div class="tn-kaut-override-row">
-      <span class="tn-kaut-override-lbl">Kaution soll · ${ksoll ? _rntFmtEUR(ksoll) : '\u2014'} (3\u00d7 Parkmiete)</span>
+      <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${ksoll ? _rntFmtEUR(ksoll) : '\u2014'} (3\u00d7 Parkmiete)</span></span>
       <label class="tn-kaut-ovr-sw" title="Override kaution">
         <input type="checkbox" id="rf-ksoll-ovr-${rid}" ${rec?.kaution_soll != null ? 'checked' : ''}
           onchange="_rntToggleKautionOverride(this,'rf-ksoll-${rid}','rf-ksoll-hint-${rid}')"/>
         <span class="tn-kaut-ovr-sw__t"></span>
       </label>
-      <span style="font-size:10px;color:var(--cc-stone)">Override</span>
     </div>
     <input type="number" id="rf-ksoll-${rid}"
       value="${rec?.kaution_soll != null ? ksoll : ''}" placeholder="${ksoll}"
@@ -2303,13 +2318,12 @@ function _rntModalBodyHTML(rec, isApt) {
         `}
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <div class="tn-kaut-override-row">
-            <span class="tn-kaut-override-lbl">Kaution soll · ${soll ? _rntFmtEUR(soll) : '\u2014'} (auto)</span>
+            <span class="tn-kaut-override-lbl"><span class="cc-sw-title">Individuelle Kaution</span><span class="cc-sw-sub">Soll · ${soll ? _rntFmtEUR(soll) : '\u2014'} (auto)</span></span>
             <label class="tn-kaut-ovr-sw">
               <input type="checkbox" id="mkaut-ovr-${tid}" ${dKS != null ? 'checked' : ''}
                 onchange="_rntToggleKautionOverride(this,'mkaut-inp-${tid}','mkaut-hint-${tid}')"/>
               <span class="tn-kaut-ovr-sw__t"></span>
             </label>
-            <span style="font-size:10px;color:var(--cc-stone)">Override</span>
           </div>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number"
             value="${dKS ?? ''}" placeholder="${soll ?? ''}"

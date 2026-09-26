@@ -82,7 +82,7 @@ document.getElementById('tab-apartments').innerHTML = `
     <div class="rm-sheet" style="max-height:70vh">
       <div class="rm-sheet__hdr">
         <div style="flex:1;min-width:0">
-          <div class="rm-sheet__title">Hausgeld History</div>
+          <div class="rm-sheet__title">Verlauf</div>
           <div class="rm-sheet__sub" id="aptHGModalSub"></div>
         </div>
         <button class="rm-sheet__close" onclick="_aptHGModalClose()"><i class="ti ti-x"></i></button>
@@ -832,7 +832,7 @@ async function loadApartments() {
     console.error('[apartments] Load failed:', e);
   }
 
-  _renderAptList();
+  _aptRenderIfChanged();
   _aptInitSortable();
   if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _aptRestoreContractDraft();
@@ -880,8 +880,23 @@ function _renderAptList() {
     if (bothExist) html += `<div class="rnt-group-hdr" style="margin-top:16px;">Gewerbeflächen</div>`;
     html += gewerbe.map(a => _aptCardHTML(a)).join('');
   }
+  const _open = new Set([...list.querySelectorAll('.apt-card.apt--open')].map(c => c.dataset.id));
   list.innerHTML = html;
+  _open.forEach(id => list.querySelector(`.apt-card[data-id="${id}"]`)?.classList.add('apt--open'));   // open cards stay open
   _updateAptSummary();
+}
+
+/* After a (background) load: repaint only if the data really changed and you
+   are not in the middle of editing here — otherwise the screen stays as it is. */
+let _aptRenderedSig = null;
+function _aptRenderIfChanged() {
+  const sig  = JSON.stringify([appApartments, _aptHausgeld]);
+  const list = document.getElementById('aptList');
+  const shown = !!(list && list.querySelector('.apt-card'));
+  if (shown && sig === _aptRenderedSig) return;
+  if (shown && typeof _rtBusy === 'function' && _rtBusy('apartments')) return;
+  _renderAptList();
+  _aptRenderedSig = sig;
 }
 
 
@@ -942,7 +957,7 @@ function _aptCardHTML(a) {
         ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
       </div>
       <div class="apt-hdr__rent">${rentHTML}</div>
-      ${hgHasOpen && hgPendingEntry ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld ${aptFmtEURCompact(hgPendingEntry.amount)}</span></div>` : ''}
+      <div id="apt-hg-hdr-${a.id}">${_aptHGHeaderPill(a.id)}</div>
     </div>
     <i class="ti ti-chevron-right apt-chevron"></i>
   </div>
@@ -1048,7 +1063,7 @@ function _aptCardHTML(a) {
           <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-f="nk_pauschale" value="${p.nk_pauschale||''}"/></div>
         </div>
         <div class="apt-toggle-row">
-          <span class="apt-tlabel">Custom Kaution</span>
+          <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${p.kaution_override?'checked':''} onchange="_aptToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${p.kaution_override?'':'display:none'}">
@@ -1542,99 +1557,106 @@ function _aptRerenderCard(aptId) {
 
 /* ── HAUSGELD HISTORY ────────────────────────────────────── */
 
+/* Hausgeld works exactly like Staffelmiete (Tenants tab) and uses the same
+   components: the current rate + the next step on the card, a "Noted" pill
+   that switches instantly (tap again to undo), delete, and a Verlauf sheet
+   that updates in place. Store: _aptHausgeld[aptId], newest first. */
+function _aptHGFmt(d) { if (!d) return ''; const [y, m, day] = d.split('-'); return `${day}.${m}.${y}`; }
+/* Newest first — always sorted here, never relying on the order the database sent */
+function _aptHGSorted(aptId) {
+  return (_aptHausgeld[aptId] || []).slice().sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
+}
+function _aptHGToday() { const t = new Date(); t.setHours(0, 0, 0, 0); return t; }
+
+function _aptHGPill(e, aptId) {
+  const on = !!e.weg_notified;
+  return `<button type="button" class="tn-nkv-pill ${on ? 'done' : 'pending'}" data-hg-noted="${e.id}"
+    aria-pressed="${on}" onclick="_aptHGToggleNoted('${e.id}','${aptId}')">
+    <i class="ti ti-check" aria-hidden="true"></i> ${on ? 'Noted' : 'Noted?'}</button>`;
+}
+function _aptHGDelBtn(e, aptId) {
+  return `<button class="tn-icon-btn" style="color:var(--cc-stone);flex-shrink:0" aria-label="Löschen"
+    onclick="_aptHGDelete('${e.id}','${aptId}')">
+    <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i></button>`;
+}
+/* Amber header pill: newest step that is not noted yet */
+function _aptHGHeaderPill(aptId) {
+  const open = _aptHGSorted(aptId).find(e => !e.weg_notified);
+  return open ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld ${aptFmtEURCompact(open.amount)}</span></div>` : '';
+}
+
 function _aptHGSectionHTML(aptId) {
-  const entries = _aptHausgeld[aptId] || [];
-  const today = new Date(); today.setHours(0,0,0,0);
+  const entries = _aptHGSorted(aptId);                    // newest first
+  const today   = _aptHGToday();
   const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  const pending = entries.filter(e => !e.weg_notified);
+  const future  = entries.filter(e => new Date(e.effective_date) > today);
+  const next    = future.length ? future[future.length - 1] : null;   // nearest upcoming step
 
-  const fmtDate = (d) => {
-    if (!d) return '';
-    const [y,m,day] = d.split('-');
-    return `${day}.${m}.${y}`;
-  };
-
-  const isFuture = (e) => new Date(e.effective_date) > today;
-
-  const rowIcon = (e) => isFuture(e)
-    ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>`
-    : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`;
-
-  const pillHTML = (e) => {
-    return e.weg_notified
-      ? `<span class="apt-hg-pill done"><i class="ti ti-check" aria-hidden="true"></i> Noted${e.notified_date ? ' · ' + e.notified_date.split('-').reverse().join('.') : ''}</span>`
-      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as noted">
-           <i class="ti ti-check" aria-hidden="true"></i> Noted?
-         </button>`;
-  };
-
-  const pendingRows = pending.map(e => `
-    <div class="apt-hg-row" id="apt-hg-row-${e.id}">
-      <div class="apt-hg-row-top">
-        ${rowIcon(e)}
-        <span class="apt-hg-date">${isFuture(e) ? 'from ' : ''}${fmtDate(e.effective_date)}</span>
-        <span class="apt-hg-amount">${aptFmtEUR(e.amount)}</span>
+  const curDisplay = current
+    ? `<div class="tn-nkv-current">
+        <i class="ti ti-building-estate" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
+        <span class="tn-nkv-cur-amount">${aptFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+        <span class="tn-nkv-cur-since">seit ${_aptHGFmt(current.effective_date)}</span>
+        ${_aptHGDelBtn(current, aptId)}
       </div>
-      <div class="apt-hg-pills">${pillHTML(e)}</div>
-    </div>`).join('');
+      <div class="tn-nkv-pills" style="margin:6px 0 2px">${_aptHGPill(current, aptId)}</div>`
+    : (entries.length ? '' : `<p class="apt-empty" style="padding:3px 0 10px;font-size:12px;color:var(--cc-stone);font-style:italic">No rate entered yet.</p>`);
+
+  const nextRow = next ? `
+    <div class="tn-nkv-row" id="apt-hg-row-${next.id}">
+      <div class="tn-nkv-top">
+        <i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>
+        <span class="tn-nkv-date">ab ${_aptHGFmt(next.effective_date)}</span>
+        <span class="tn-nkv-amount">${aptFmtEUR(next.amount)}</span>
+        ${_aptHGDelBtn(next, aptId)}
+      </div>
+      <div class="tn-nkv-pills">${_aptHGPill(next, aptId)}</div>
+    </div>` : '';
 
   return `
 <div class="apt-hg-sec" id="apt-hg-sec-${aptId}">
   <div class="apt-hg-body">
     <div class="apt-hg-header">
-      <span class="apt-hg-lbl">Hausgeld increase</span>
-      ${entries.length > 1 ? `<button class="apt-hg-verlauf-btn" onclick="_aptHGOpenModal('${aptId}')">History</button>` : ''}
+      <span class="apt-hg-lbl">Hausgeld</span>
+      ${entries.length > 1 ? `<button class="apt-hg-verlauf-btn" onclick="_aptHGOpenModal('${aptId}')">Verlauf</button>` : ''}
       <button class="apt-hg-add-btn" onclick="_aptHGAdd('${aptId}')">
         <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
       </button>
     </div>
-    ${current
-      ? `<div class="apt-hg-current">
-           <i class="ti ti-building-estate" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
-           <span class="apt-hg-cur-amount">${aptFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
-           <span class="apt-hg-cur-since">since ${fmtDate(current.effective_date)}</span>
-         </div>`
-      : `<p class="apt-empty" style="padding:3px 0 10px;font-size:12px;color:var(--cc-stone);font-style:italic">No rate entered yet.</p>`}
-    ${pendingRows}
+    ${curDisplay}
+    ${nextRow}
   </div>
 </div>`;
 }
 
+let _aptHGVerlaufApt = null;   // apartment whose Verlauf sheet is open (refreshed in place)
 function _aptHGOpenModal(aptId) {
-  const entries = (_aptHausgeld[aptId] || []).slice();
-  const today = new Date(); today.setHours(0,0,0,0);
-  const apt = appApartments.find(a => a.id === aptId);
-
-  const fmtDate = (d) => {
-    if (!d) return '';
-    const [y,m,day] = d.split('-');
-    return `${day}.${m}.${y}`;
-  };
-  const isFuture = (e) => new Date(e.effective_date) > today;
-
-  const pillHTML = (e) => {
-    return e.weg_notified
-      ? `<span class="apt-hg-pill done"><i class="ti ti-check" aria-hidden="true"></i> Noted${e.notified_date ? ' · ' + e.notified_date.split('-').reverse().join('.') : ''}</span>`
-      : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${e.id}','${aptId}')" title="Mark as noted">
-           <i class="ti ti-check" aria-hidden="true"></i> Noted?
-         </button>`;
-  };
-
-  const rows = entries.map(e => `
-    <div class="apt-hg-row" id="apt-hg-row-${e.id}" style="padding-left:16px;padding-right:16px">
-      <div class="apt-hg-row-top">
-        ${isFuture(e)
-          ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>`
-          : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`}
-        <span class="apt-hg-date">${isFuture(e) ? 'from ' : ''}${fmtDate(e.effective_date)}</span>
-        <span class="apt-hg-amount ${e.hv_adjusted && !isFuture(e) ? 'past' : ''}">${aptFmtEUR(e.amount)}</span>
-      </div>
-      <div class="apt-hg-pills">${pillHTML(e)}</div>
-    </div>`).join('');
-
+  _aptHGVerlaufApt = aptId;
+  const entries = _aptHGSorted(aptId).reverse();          // oldest first, like Staffel
+  const today   = _aptHGToday();
+  const apt     = appApartments.find(a => a.id === aptId);
+  const rows = entries.map(e => {
+    const isFuture = new Date(e.effective_date) > today;
+    return `
+      <div class="tn-nkv-row" style="padding:7px 16px">
+        <div class="tn-nkv-top">
+          <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-gold)' : 'var(--cc-green,#3B6D11)'};flex-shrink:0" aria-hidden="true"></i>
+          <span class="tn-nkv-date">${isFuture ? 'ab' : 'seit'} ${_aptHGFmt(e.effective_date)}</span>
+          <span class="${e.weg_notified ? 'tn-nkv-amount past' : 'tn-nkv-amount'}">${aptFmtEUR(e.amount)}</span>
+          ${_aptHGDelBtn(e, aptId).replace('flex-shrink:0"', 'flex-shrink:0;margin-left:4px"')}
+        </div>
+        <div class="tn-nkv-pills">${_aptHGPill(e, aptId)}</div>
+      </div>`;
+  }).join('');
   document.getElementById('aptHGModalSub').textContent = apt ? apt.name : '';
-  document.getElementById('aptHGModalBody').innerHTML = rows || `<p style="padding:12px 16px;font-size:12px;color:var(--cc-stone);font-style:italic">No entries yet.</p>`;
+  const body = document.getElementById('aptHGModalBody');
+  const top  = body.scrollTop;
+  body.innerHTML = rows || `<p style="padding:12px 16px;font-size:12px;color:var(--cc-stone);font-style:italic">Keine Einträge.</p>`;
+  body.scrollTop = top;
   document.getElementById('aptHGModal').classList.add('open');
+}
+function _aptHGRefreshVerlauf(aptId) {
+  if (_aptHGVerlaufApt === aptId && document.getElementById('aptHGModal')?.classList.contains('open')) _aptHGOpenModal(aptId);
 }
 
 function _aptHGModalClose() {
@@ -1691,49 +1713,53 @@ async function _aptHGConfirmAdd__run(aptId) {
   _aptHausgeld[aptId].unshift(data);
   _aptHausgeld[aptId].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
   _aptRerenderCard(aptId);
+  _aptHGRefreshVerlauf(aptId);
 }
 
-async function _aptHGMarkNotified(id, aptId) {
+/* ── "Noted" — tap to set, tap again to undo ────────────────────
+   Instant: pill (card + Verlauf) and the amber header pill switch at once;
+   the database write runs in the background (one retry). If it fails the
+   pill switches back and a red message says so. */
+function _aptHGRefreshUI(id, aptId) {
+  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
+  if (entry) document.querySelectorAll(`[data-hg-noted="${id}"]`).forEach(el => { el.outerHTML = _aptHGPill(entry, aptId); });
+  const hdr = document.getElementById('apt-hg-hdr-' + aptId);
+  if (hdr) hdr.innerHTML = _aptHGHeaderPill(aptId);
+  _aptHGRefreshVerlauf(aptId);
+}
+
+function _aptHGToggleNoted(id, aptId) {
+  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
+  if (!entry || !_aptSbClient) return;
+  const prev = { on: !!entry.weg_notified, date: entry.notified_date ?? null };
+  const on   = !prev.on;
+  entry.weg_notified  = on;
+  entry.notified_date = on ? new Date().toISOString().slice(0, 10) : null;
+  _aptHGRefreshUI(id, aptId);   // instant
+
+  const payload = { weg_notified: on, notified_date: entry.notified_date };
+  ccQueueWrite('hausgeld:' + id, () => _aptSbClient.from('rentals_hausgeld_history').update(payload).eq('id', id))
+    .then(r => {
+      if (!r || !r.error) return;
+      entry.weg_notified  = prev.on;
+      entry.notified_date = prev.date;
+      _aptHGRefreshUI(id, aptId);
+      ccSaveFailed(r.error, 'Hausgeld noted');
+    });
+}
+
+async function _aptHGDelete(id, aptId) {
   if (!_aptSbClient) return;
-  const today = new Date().toISOString().slice(0,10);
-  const { error } = await _aptSbClient.from('rentals_hausgeld_history')
-    .update({ weg_notified: true, notified_date: today })
-    .eq('id', id);
-  if (error) { console.warn('[apartments] hg notified:', error.message); return; }
-  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
-  if (entry) { entry.weg_notified = true; entry.notified_date = today; }
-  // Full rerender — amber pill on header must disappear when all entries are notified
+  const { error } = await _aptSbClient.from('rentals_hausgeld_history').delete().eq('id', id);
+  if (error) { ccSaveFailed(error, 'Hausgeld delete'); return; }
+  if (_aptHausgeld[aptId]) _aptHausgeld[aptId] = _aptHausgeld[aptId].filter(e => e.id !== id);
   _aptRerenderCard(aptId);
+  _aptHGRefreshVerlauf(aptId);
 }
 
-async function _aptHGMarkAdjusted(id, aptId) {
-  if (!_aptSbClient) return;
-  const today = new Date().toISOString().slice(0,10);
-  const { error } = await _aptSbClient.from('rentals_hausgeld_history')
-    .update({ hv_adjusted: true, adjusted_date: today })
-    .eq('id', id);
-  if (error) { console.warn('[apartments] hg adjusted:', error.message); return; }
-  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
-  if (entry) { entry.hv_adjusted = true; entry.adjusted_date = today; }
-  // Full rerender — amber pill on header may need to disappear
-  _aptRerenderCard(aptId);
-}
-
-function _aptHGRenderRow(id, aptId) {
-  const row = document.getElementById('apt-hg-row-' + id);
-  if (!row) { _aptRerenderCard(aptId); return; }
-  const entry = (_aptHausgeld[aptId] || []).find(e => e.id === id);
-  if (!entry) { _aptRerenderCard(aptId); return; }
-
-  const notPill = entry.weg_notified
-    ? `<span class="apt-hg-pill done"><i class="ti ti-check" aria-hidden="true"></i> Noted${entry.notified_date ? ' · ' + entry.notified_date.split('-').reverse().join('.') : ''}</span>`
-    : `<button class="apt-hg-pill pending" onclick="_aptHGMarkNotified('${id}','${aptId}')">
-         <i class="ti ti-check" aria-hidden="true"></i> Noted?
-       </button>`;
-
-  const pillsEl = row.querySelector('.apt-hg-pills');
-  if (pillsEl) pillsEl.innerHTML = notPill;
-}
+// Old names, kept so nothing that still calls them breaks
+function _aptHGMarkNotified(id, aptId) { _aptHGToggleNoted(id, aptId); }
+function _aptHGRenderRow(id, aptId) { _aptHGRefreshUI(id, aptId); }
 
 
 /* ── TOGGLE VACANT ───────────────────────────────────────── */
@@ -2502,7 +2528,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div class="rm-field--toggle">
       <div class="rm-toggle-row">
         <div>
-          <div class="rm-toggle-label">Befristung</div>
+          <div class="rm-toggle-label">Befristet</div>
           <div class="rm-toggle-sub" id="apt-mv-befristung-sub">Unbefristet</div>
         </div>
         <button type="button" class="rm-pill-toggle" id="apt-mv-befristung-btn" data-mode="unbefristet" onclick="_aptToggleMvBefristung()">
@@ -2904,6 +2930,7 @@ function _aptGwSetSzenario(s) {
     btn.style.background    = active ? 'var(--cc-charcoal)' : 'none';
     btn.style.color         = active ? '#fff' : 'var(--cc-charcoal)';
     btn.style.borderColor   = active ? 'var(--cc-charcoal)' : 'var(--cc-rule)';
+    btn.classList.toggle('active', active);   // the PDF + date calculation read this marker (was never moved → always S1)
   });
   const s1 = document.getElementById('apt-gw-s1-fields');
   const s3 = document.getElementById('apt-gw-s3-fields');
