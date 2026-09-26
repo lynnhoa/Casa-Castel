@@ -59,7 +59,7 @@ document.getElementById('tab-tenants').innerHTML = `
     <div class="tn-sheet" id="rntStaffelSheet" style="max-height:70vh">
       <div class="tn-sheet-hdr">
         <div style="flex:1;min-width:0">
-          <div class="tn-sheet-name">Stufe hinzufügen</div>
+          <div class="tn-sheet-name" id="rntStaffelModalTitle">Stufe hinzufügen</div>
           <div class="tn-sheet-sub" id="rntStaffelModalSub"></div>
         </div>
         <button class="tn-icon-btn" onclick="_rntStaffelModalClose()" aria-label="Close">
@@ -346,6 +346,8 @@ document.getElementById('tab-tenants').innerHTML = `
   border-radius:var(--cc-r-pill); white-space:nowrap;
   cursor:default; font-family:inherit; border:none; }
 .tn-nkv-pill.done    { background:#EAF3DE; color:#27500A; }
+button.tn-nkv-pill.done { cursor:pointer; -webkit-tap-highlight-color:transparent; }
+button.tn-nkv-pill.done:active { opacity:.7; }
 .tn-nkv-pill.pending { background:var(--cc-surface); color:var(--cc-stone);
   border:.5px solid var(--cc-rule); cursor:pointer;
   -webkit-tap-highlight-color:transparent; }
@@ -1702,10 +1704,7 @@ function _rntStaffelHTML(rid, aptId) {
        <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
      </button>`;
 
-  const adjBtn = (e) => e.tenant_adjusted
-    ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
-    : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','${rid}')">
-         <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
+  const adjBtn = (e) => _rntStaffelAdjPill(e, aptId);
 
   const nextRow = next ? `
     <div class="tn-nkv-row" id="sf-row-${next.id}">
@@ -1724,7 +1723,8 @@ function _rntStaffelHTML(rid, aptId) {
         <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
         <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
         ${delBtn(current)}
-      </div>`
+      </div>
+      <div class="tn-nkv-pills" style="margin:6px 0 2px">${adjBtn(current)}</div>`
     : (entries.length ? '' : `<p class="tn-empty">Noch keine Staffelstufen eingetragen.</p>`);
 
   const verlaufLink = entries.length > 1
@@ -1749,6 +1749,8 @@ function _rntStaffelHTML(rid, aptId) {
 }
 
 function _rntStaffelOpenAdd(aptId, rid) {
+  _rntStaffelSetTitle('Stufe hinzufügen');
+  _rntStaffelVerlaufOpen = null;
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
   const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
   const label = apt ? (apt.name || apt.adresse || 'Wohnung') : pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Einheit';
@@ -1830,10 +1832,7 @@ function _rntPkStaffelHTML(rid, pkId) {
        <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
      </button>`;
 
-  const adjBtn = (e) => e.tenant_adjusted
-    ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
-    : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${pkId}','${rid}')">
-         <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
+  const adjBtn = (e) => _rntStaffelAdjPill(e, pkId);
 
   const nextRow = next ? `
     <div class="tn-nkv-row" id="sf-row-${next.id}">
@@ -1852,7 +1851,8 @@ function _rntPkStaffelHTML(rid, pkId) {
         <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
         <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
         ${delBtn(current)}
-      </div>`
+      </div>
+      <div class="tn-nkv-pills" style="margin:6px 0 2px">${adjBtn(current)}</div>`
     : (entries.length ? '' : `<p class="tn-empty">Noch keine Staffelstufen eingetragen.</p>`);
 
   const verlaufLink = entries.length > 1
@@ -1877,6 +1877,8 @@ function _rntPkStaffelHTML(rid, pkId) {
 }
 
 function _rntPkStaffelOpenAdd(pkId, rid) {
+  _rntStaffelSetTitle('Stufe hinzufügen');
+  _rntStaffelVerlaufOpen = null;
   const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);
   const label = pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Stellplatz';
   document.getElementById('rntStaffelModalSub').textContent = label;
@@ -1908,6 +1910,8 @@ function _rntPkStaffelOpenAdd(pkId, rid) {
 }
 
 function _rntPkStaffelOpenVerlauf(pkId, rid) {
+  _rntStaffelSetTitle('Verlauf');
+  _rntStaffelVerlaufOpen = { fn: _rntPkStaffelOpenVerlauf, unitId: pkId, rid };   // refreshed in place after a tap
   const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);
   const label = pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Stellplatz';
   const entries = (_rntStaffel[pkId] || []).slice().reverse();
@@ -1916,10 +1920,7 @@ function _rntPkStaffelOpenVerlauf(pkId, rid) {
 
   const rows = entries.map(e => {
     const isFuture = new Date(e.effective_date) > today;
-    const adjTag = e.tenant_adjusted
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
-      : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${pkId}','m')">
-           <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
+    const adjTag = _rntStaffelAdjPill(e, pkId);
     const amtCls = e.tenant_adjusted ? 'tn-nkv-amount past' : 'tn-nkv-amount';
     return `
       <div class="tn-nkv-row" style="padding:7px 16px">
@@ -1942,16 +1943,67 @@ function _rntPkStaffelOpenVerlauf(pkId, rid) {
   document.getElementById('rntStaffelModal').classList.add('open');
 }
 
-async function _rntStaffelMarkAdjusted(id, aptId, rid) {
-  if (!sbL) return;
-  const today = new Date().toISOString().slice(0, 10);
-  const { error } = await sbL.from('rnt_staffelmiete_history')
-    .update({ tenant_adjusted: true, adjusted_date: today }).eq('id', id);
-  if (error) { console.warn('[rnt-tenants] staffel adjusted:', error.message); return; }
-  const entry = (_rntStaffel[aptId] || []).find(e => e.id === id);
-  if (entry) { entry.tenant_adjusted = true; entry.adjusted_date = today; }
-  _rntRender();
+/* ── STAFFEL "ANGEPASST" — tap to set, tap again to undo ─────────
+   Instant: the pill switches at once (card + Verlauf + header pill);
+   the database write runs in the background (one retry). If it fails,
+   the pill switches back and a red message says so. */
+let _rntStaffelVerlaufOpen = null;   // { fn, unitId, rid } while the Verlauf sheet is open
+
+function _rntStaffelSetTitle(t) {
+  const el = document.getElementById('rntStaffelModalTitle');
+  if (el) el.textContent = t;
 }
+
+function _rntStaffelAdjPill(e, unitId) {
+  const on = !!e.tenant_adjusted;
+  return `<button type="button" class="tn-nkv-pill ${on ? 'done' : 'pending'}" data-sf-adj="${e.id}"
+    aria-pressed="${on}" onclick="_rntStaffelToggleAdjusted('${e.id}','${unitId}')">
+    <i class="ti ti-check" aria-hidden="true"></i> ${on ? 'Angepasst' : 'Angepasst?'}</button>`;
+}
+
+function _rntStaffelRefreshUI(id, unitId) {
+  const entry = (_rntStaffel[unitId] || []).find(e => e.id === id);
+  if (entry) document.querySelectorAll(`[data-sf-adj="${id}"]`).forEach(el => {
+    el.outerHTML = _rntStaffelAdjPill(entry, unitId);
+  });
+  // Verlauf sheet (amount colour follows the state)
+  const v = _rntStaffelVerlaufOpen;
+  if (v && v.unitId === unitId && document.getElementById('rntStaffelModal')?.classList.contains('open')) {
+    const body = document.getElementById('rntStaffelModalBody');
+    const top  = body ? body.scrollTop : 0;
+    v.fn(v.unitId, v.rid);
+    if (body) body.scrollTop = top;
+  }
+  // Card header pill ("Staffel … fällig" / "Staffel ab …")
+  const isApt = (typeof appApartments !== 'undefined' ? appApartments : []).some(a => a.id === unitId);
+  const rec   = (_rntRecords || []).find(r => (isApt ? r.apartment_id : r.parking_id) === unitId && r.status === 'active');
+  const rid   = (isApt ? 'apt_' : 'pk_') + String(unitId).replace(/-/g, '').slice(0, 12);
+  const hdr   = document.getElementById('hdr-kpill-' + rid);
+  if (hdr && rec) hdr.innerHTML = _rntStatusPill(unitId, isApt, rec);
+}
+
+function _rntStaffelToggleAdjusted(id, unitId) {
+  const entry = (_rntStaffel[unitId] || []).find(e => e.id === id);
+  if (!entry || !sbL) return;
+  const prev = { on: !!entry.tenant_adjusted, date: entry.adjusted_date ?? null };
+  const on   = !prev.on;
+  entry.tenant_adjusted = on;
+  entry.adjusted_date   = on ? new Date().toISOString().slice(0, 10) : null;
+  _rntStaffelRefreshUI(id, unitId);   // instant
+
+  const payload = { tenant_adjusted: on, adjusted_date: entry.adjusted_date };
+  ccQueueWrite('staffel:' + id, () => sbL.from('rnt_staffelmiete_history').update(payload).eq('id', id))
+    .then(r => {
+      if (!r || !r.error) return;
+      entry.tenant_adjusted = prev.on;
+      entry.adjusted_date   = prev.date;
+      _rntStaffelRefreshUI(id, unitId);
+      ccSaveFailed(r.error, 'Staffel angepasst');
+    });
+}
+
+// Old name, kept so nothing that still calls it breaks
+function _rntStaffelMarkAdjusted(id, unitId) { _rntStaffelToggleAdjusted(id, unitId); }
 
 async function _rntStaffelDelete(id, aptId, rid) {
   if (!sbL) return;
@@ -1959,9 +2011,14 @@ async function _rntStaffelDelete(id, aptId, rid) {
   if (error) { console.warn('[rnt-tenants] staffel delete:', error.message); return; }
   if (_rntStaffel[aptId]) _rntStaffel[aptId] = _rntStaffel[aptId].filter(e => e.id !== id);
   _rntRender();
+  // Verlauf sheet open? show the list without the deleted step
+  const v = _rntStaffelVerlaufOpen;
+  if (v && document.getElementById('rntStaffelModal')?.classList.contains('open')) v.fn(v.unitId, v.rid);
 }
 
 function _rntStaffelOpenVerlauf(aptId, rid) {
+  _rntStaffelSetTitle('Verlauf');
+  _rntStaffelVerlaufOpen = { fn: _rntStaffelOpenVerlauf, unitId: aptId, rid };   // refreshed in place after a tap
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
   const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
   const label = apt ? (apt.name || apt.adresse || 'Wohnung') : pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Einheit';
@@ -1971,10 +2028,7 @@ function _rntStaffelOpenVerlauf(aptId, rid) {
 
   const rows = entries.map(e => {
     const isFuture = new Date(e.effective_date) > today;
-    const adjTag = e.tenant_adjusted
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Angepasst</span>`
-      : `<button class="tn-nkv-pill pending" onclick="_rntStaffelMarkAdjusted('${e.id}','${aptId}','m')">
-           <i class="ti ti-check" aria-hidden="true"></i> Angepasst?</button>`;
+    const adjTag = _rntStaffelAdjPill(e, aptId);
     const amtCls = e.tenant_adjusted ? 'tn-nkv-amount past' : 'tn-nkv-amount';
     return `
       <div class="tn-nkv-row" style="padding:7px 16px">
