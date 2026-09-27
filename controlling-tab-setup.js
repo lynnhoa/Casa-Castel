@@ -139,12 +139,9 @@ window.renderSetup = function () {
         : casa ? '<div class="cx-r__sub">Kreditrate aus der Kostenart „Kreditrate“ unten</div>'
         : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Nur solange nicht verknüpft: Kreditrate aus diesen Werten</div>' +
           _cxMoney('ctrl_properties', p.id, 'def_rate', p.def_rate, 'Kreditrate') + _cxMoney('ctrl_properties', p.id, 'def_zinsen', p.def_zinsen, 'davon Zinsen'));
-    const ps = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
+    // Abrechnungszeitraum: set later in the Abrechnungen app (placeholder until then, stored value untouched)
     body += _cxSuSub('Abrechnungszeitraum · ' + (casa ? 'NK' : 'WEG + NK')) +
-      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|nk_period_start" aria-label="Abrechnungszeitraum beginnt am">' +
-        Array.from({ length: 12 }, (_, i) => { const v = String(i + 1).padStart(2, '0') + '-01'; return _cxOpt(v, 'beginnt 01.' + String(i + 1).padStart(2, '0') + '. (' + CX_MONTHS[i] + ')', v === ps); }).join('') +
-      '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-      '<div class="cx-r__sub">Ändern verschiebt die Abrechnungen – schon angelegte erscheinen dann als „veraltet“.</div>';
+      '<div class="cx-r__sub">Kommt mit der Abrechnungen-App. Bis dahin gilt vorläufig das Kalenderjahr.</div>';
     const living = ctlUnitsOf(p.id).filter(u => !_cxIsParking(u));
     body += _cxSuSub(casa ? 'Zimmer · aus Casa Castel' : (living.length === 1 ? 'Wohnung' : 'Wohnungen')) +
       (living.length ? living.map(u => _cxSuUnit(u, p, st, 'living')).join('') : '<div class="cx-r__sub">' + (casa ? 'Alle Zimmer werden automatisch aus Casa Castel übernommen.' : 'Keine Einheit angelegt.') + '</div>');

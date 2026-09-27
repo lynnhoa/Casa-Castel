@@ -77,20 +77,25 @@ window.renderIncome = function () {
                      notes: r.s.notes, emptyText: 'leer', allowEmpty: true,
                      warn: vis(r) || (!r.soll && r.ist ? 'Miete erfasst, aber laut Mieter-Daten nicht vermietet – bitte Mieter-Tab prüfen' : null) });
     }).join('');
-    return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(g.rows),
-                    sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0), plan: g.rows.reduce((s, r) => s + (r.soll || 0), 0),
-                    extraPill: warned ? cxPill('open', 'prüfen') : (changed ? cxPill('beige', 'Änderung') : ''), body });   // one extra pill at most
+    // NK Nachzahlung vom Mieter · Hausgeld Guthaben von WEG — only finished results (controlling-abr.js)
+    const abr = ctlAbrRows(g.p.id, window._ctrl.year, CX.month, 1).filter(r => !r.info);
+    const all = g.rows.concat(abr);
+    return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(all),
+                    sum: all.reduce((s, r) => s + (r.ist || 0), 0), plan: all.reduce((s, r) => s + (r.soll || 0), 0),
+                    extraPill: warned ? cxPill('open', 'prüfen') : (changed ? cxPill('beige', 'Änderung') : ''),
+                    body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, 1) });   // one extra pill at most
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
     cxSummary({ label: 'Mieten eingegangen', done, plan, open, bulk: open - partialOpen, partial: partialOpen,
-                confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income') }) +
+                confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income'), note: _cxAbrNote(1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · aus den Mieter-Tabs</span><span class="cx-lbl">Ist</span></div>' +
     cards + '</div>';
 
   cxWire(host, {
     render: () => window.renderIncome(),
     click: async (a, b) => {
+      if (await cxAbrClick(a, b, () => window.renderIncome())) return;
       if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; CX.undo = null; if (e) await _cxIncSave(e, e.part ? e.part.amount : e.s.soll); window.renderIncome(); }
       // #6: ask first, then book, then offer undo
       if (a === 'all') { CX.bulk = 'income'; return window.renderIncome(); }
@@ -111,7 +116,7 @@ window.renderIncome = function () {
         return window.renderIncome();
       }
     },
-    input: async (id, val) => { const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await _cxIncSave(e, val); window.renderIncome(); },
+    input: async (id, val) => { if (await cxAbrInput(id, val, () => window.renderIncome())) return; const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await _cxIncSave(e, val); window.renderIncome(); },
   });
 };
 

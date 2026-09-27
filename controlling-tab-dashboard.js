@@ -58,6 +58,7 @@ function _cxOpenOf(p, y, m) {
     for (const r of ctlCostRows(p, y, m).rows)
       if (r.soll && (!row || row[r.key] === null || row[r.key] === undefined)) exp++;
   }
+  if (typeof ctlAbrOpenCount === 'function') { inc += ctlAbrOpenCount(p.id, y, m, 1); exp += ctlAbrOpenCount(p.id, y, m, -1); }   // finished Abrechnungen to confirm
   return { inc, exp };
 }
 
@@ -131,18 +132,7 @@ window.renderDashboard = function () {
   const pct = tot.rein > 0 ? Math.min(100, out(tot) / tot.rein * 100) : (out(tot) > 0 ? 100 : 0);
   const prelim = !future && (isYear ? openMonths.size > 0 : openInc + openExp > 0);
 
-  // #18: yearly settlements on the Dashboard — open ones and the next Frist
-  let setLine = '';
-  try {
-    const so = typeof ctlSettlementOverview === 'function' ? ctlSettlementOverview() : null;
-    if (so && so.open + so.check) {
-      const soon = so.frist && so.frist <= (() => { const d = new Date(cxToday() + 'T12:00:00'); d.setDate(d.getDate() + 60); return d.toISOString().slice(0, 10); })();
-      setLine = '<button class="cx-stat cx-stat--open" data-cx="gotoSet"><span><span class="cx-dot"></span>Abrechnungen · ' +
-        [so.open ? so.open + ' offen' : '', so.check ? so.check + ' prüfen' : ''].filter(Boolean).join(' · ') +
-        (so.frist ? ' · <span style="' + (soon ? 'color:var(--cx-neg);' : '') + '">Frist ' + cxFmtDate(so.frist) + '</span>' : '') +
-        '</span><span class="cx-stat__go">Ansehen ›</span></button>';
-    }
-  } catch (e) { console.warn('[controlling] Abrechnungen overview', e); }
+  const setLine = '';                                       // settlement tracking lives in the Abrechnungen app (later)
 
   let status;
   if (future) status = '<div class="cx-stat cx-stat--muted"><span class="cx-dot"></span>' + (isYear ? 'Jahr liegt in der Zukunft' : 'Monat liegt in der Zukunft') + '</div>';
@@ -221,7 +211,6 @@ window.renderDashboard = function () {
       if (a === 'view') { CX.dashView = b.dataset.v; return window.renderDashboard(); }
       if (a === 'mode') { CX.dashMode = b.dataset.v; return window.renderDashboard(); }
       if (a === 'gotoOpen') return cxGoto(_cxDash.openInc ? 'income' : 'expenses');
-      if (a === 'gotoSet') { if (typeof _cxSet !== 'undefined') _cxSet.open = true; return cxGoto('onetime'); }
       if (a === 'gotoOpenMonth') { CX.dashView = 'm'; CX.month = _cxDash.openMonth || CX.month; try { localStorage.setItem('cx_month', String(CX.month)); } catch (e) {} return window.renderDashboard(); }
       if (a === 'yprev' || a === 'ynext') {
         const ny = window._ctrl.year + (a === 'yprev' ? -1 : 1);

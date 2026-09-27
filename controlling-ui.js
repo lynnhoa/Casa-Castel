@@ -190,6 +190,30 @@ const _CX_CSS = `
             display:flex; align-items:center; justify-content:center; padding:0; cursor:pointer; font-size:13px; -webkit-tap-highlight-color:transparent; }
     .cx-hint-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 4px; font-size:11px; color:var(--cx-mut); }
     .cx-hint-foot .cx-link { color:var(--cx-acc); font-weight:500; padding:4px 0; }
+    .cx-abr { border-top:.5px solid var(--cx-rule); margin-top:2px; }
+    .cx-abr-h { display:flex; justify-content:space-between; align-items:center; padding:10px 16px 0; }
+    .cx-abr-h .cx-link { color:var(--cx-acc); font-weight:500; padding:4px 0; }
+    .cx-abr-empty { padding:4px 16px 12px; }
+    .cx-abr-form { margin:8px 16px 14px; }
+    .cx-link--a { color:var(--cx-acc); font-weight:500; }
+    .cx-link--in { display:inline; padding:0; font-size:10px; }
+    .cx-ot-g { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+    .cx-ot-h { display:flex; align-items:center; gap:8px; padding:4px 4px 0; }
+    .cx-ot-hb { flex:1; display:flex; align-items:center; gap:8px; background:none; border:none; padding:6px 0; font-family:inherit; cursor:pointer; text-align:left; min-width:0; }
+    .cx-ot-hb .cx-lbl { font-size:10px; color:var(--cx-txt); font-weight:600; }
+    .cx-ot-hs { margin-left:auto; font-size:11px; color:var(--cx-mut); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .cx-ot-m { padding:8px 16px 2px; font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--cx-sub); border-top:.5px solid var(--cx-line); }
+    .cx-ot-m:first-child { border-top:none; }
+    .cx-ot-row { width:100%; display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px 16px; background:none; border:none;
+                 border-top:.5px solid var(--cx-line); font-family:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cx-ot-m + .cx-ot-row, .cx-card > .cx-ot-row:first-child { border-top:none; }
+    .cx-ot-d { font-size:11px; color:var(--cx-mut); font-variant-numeric:tabular-nums; }
+    .cx-ot-t { display:flex; flex-direction:column; min-width:0; }
+    .cx-ot-i { font-size:13px; color:var(--cx-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cx-ot-c { font-size:10.5px; color:var(--cx-mut); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cx-ot-edit { padding:0 16px 12px; border-top:.5px solid var(--cx-line); }
+    .cx-ot-q { background:var(--cx-card); }
+    .cx-btn--del { color:var(--cx-neg); border-color:#D9957C; }
     .cx-su-u { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-top:.5px solid var(--cx-line); }
     .cx-set__sub + .cx-su-u { border-top:none; padding-top:2px; }
     .cx-su-n { font-size:13px; font-weight:500; color:var(--cx-ink); min-width:0; }
@@ -302,7 +326,7 @@ function cxSummary(o) {
     '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' offen') : cxPill('ok', 'alles erfasst')) + '</div>' +
     '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(o.done) + '</span><span class="cx-sum__of">von ' + cxW(o.plan) + ' geplant</span></div>' +
     '<div class="cx-bar cx-bar--thin"><div style="width:' + pct + '%"></div></div>' +
-    undo + action +
+    undo + action + (o.note ? '<div class="cx-sum__hint">' + o.note + '</div>' : '') +
     (o.partial && !o.confirm ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 anteiliger Monat' : o.partial + ' anteilige Monate') + ' · bitte einzeln bestätigen</div>' : '') +
   '</div>';
 }

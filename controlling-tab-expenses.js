@@ -74,22 +74,26 @@ window.renderExpenses = function () {
       (bedarf.length ? '<button class="cx-link" data-cx="fold" data-k="' + bk + '" aria-expanded="' + bOpen + '"><i class="ti ti-chevron-' + (bOpen ? 'up' : 'down') + '" aria-hidden="true"></i> Bei Bedarf · ' + bedarf.map(r => cxEsc(r.label)).join(', ') + '</button>' +
         (bOpen ? bedarf.map(row).join('') : '') : '');
     const n = g.rows.length;
+    // NK Guthaben an Mieter · Hausgeld Nachzahlung an WEG — only finished results (controlling-abr.js)
+    const abr = ctlAbrRows(g.p.id, window._ctrl.year, CX.month, -1).filter(r => !r.info);
+    const all = g.rows.concat(abr);
     return cxCard({ key: 'exp:' + g.p.id, title: g.p.name, sub: n === 1 ? '1 Posten' : n + ' Posten',
-                    status: cxGroupStatus(g.rows), sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0), plan: g.rows.reduce((s, r) => s + (r.soll || 0), 0),
-                    extraPill: g.rows.some(r => r.note) ? cxPill('beige', 'Änderung') : '', body });
+                    status: cxGroupStatus(all), sum: all.reduce((s, r) => s + (r.ist || 0), 0), plan: all.reduce((s, r) => s + (r.soll || 0), 0),
+                    extraPill: g.rows.some(r => r.note) ? cxPill('beige', 'Änderung') : '', body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, -1) });
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
     cxSummary({ label: 'Laufende Kosten bezahlt', done, plan, open,
-                confirm: CX.bulk === 'expenses' ? _cxExpBulkList() : null, undo: cxUndoFor('expenses') }) +
+                confirm: CX.bulk === 'expenses' ? _cxExpBulkList() : null, undo: cxUndoFor('expenses'), note: _cxAbrNote(-1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · aus Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
     cards +
-    '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Rechnungen und Abrechnungen: im Tab Einmalig</button>' +
+    '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Rechnungen: im Tab One-off</button>' +
     '</div>';
 
   cxWire(host, {
     render: () => window.renderExpenses(),
     click: async (a, b) => {
+      if (await cxAbrClick(a, b, () => window.renderExpenses())) return;
       if (a === 'gotoOt') return cxGoto('onetime');
       if (a === 'take') { const e = _cxExpIndex[b.dataset.id]; CX.undo = null; if (e) await _cxExpSave(e, e.row.soll); window.renderExpenses(); }
       // #6: ask first, then book, then offer undo
@@ -117,7 +121,7 @@ window.renderExpenses = function () {
         return window.renderExpenses();
       }
     },
-    input: async (id, val) => { const e = _cxExpIndex[id]; if (!e) return; CX.undo = null; await _cxExpSave(e, val); window.renderExpenses(); },
+    input: async (id, val) => { if (await cxAbrInput(id, val, () => window.renderExpenses())) return; const e = _cxExpIndex[id]; if (!e) return; CX.undo = null; await _cxExpSave(e, val); window.renderExpenses(); },
   });
 };
 

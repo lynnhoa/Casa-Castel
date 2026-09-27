@@ -251,6 +251,16 @@ async function ctlAddOneTime(o) {
   return data;
 }
 
+/* Edit a one-time entry (One-off edit form · Abrechnungen amount) */
+async function ctlUpdateOneTime(id, fields) {
+  const { data, error } = await _ctlSupa.from('ctrl_expense_one_time').update(fields).eq('id', id).select().single();
+  if (error) throw error;
+  if (!data) throw new Error('nicht gespeichert – Eintrag ' + id + ' nicht gefunden');
+  const i = window._ctrl.one_time.findIndex(r => r.id === id);
+  if (i >= 0) window._ctrl.one_time[i] = data;
+  return data;
+}
+
 async function ctlInsertOneTime(property_id, invoice_date, item, amount, company) {
   const { data, error } = await _ctlSupa.from('ctrl_expense_one_time')
     .insert({ property_id, invoice_date, item, amount, company: company ?? null }).select().single();

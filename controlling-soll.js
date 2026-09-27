@@ -47,6 +47,7 @@ window._src = {
   rntTen: [], staffel: [], rntNkV: [], rntNk: [],
   rooms: [], casaTen: [], casaNkV: [], casaNk: [],
   loans: [], rentP: [], incAll: [], settle: [],
+  abr: [], abrPay: [],                                   // Abrechnungen results + their bookings (all years)
 };
 
 const _CX_SRC = [
@@ -56,6 +57,7 @@ const _CX_SRC = [
   ['rntNk', 'rnt_nk_entries'], ['rooms', 'rooms'], ['casaTen', 'tenant_records'],
   ['casaNkV', 'nk_vorauszahlung_history'], ['casaNk', 'nk_entries'], ['loans', 'properties'],
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
+  ['abr', 'abr_results'],
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -67,6 +69,12 @@ async function ctlSollLoad() {
     if (res[i].error) console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
     window._src[k] = res[i].data || [];
   });
+  // NK / Hausgeld bookings of every year (a 2025 Abrechnung is often paid in 2026)
+  try {
+    const r = await _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
+    if (r.error) throw r.error;
+    window._src.abrPay = r.data || [];
+  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); window._src.abrPay = []; }
   window._src.loaded = true;
   window._src.loadedAt = Date.now();
   if (typeof ccRpSetRows === 'function') ccRpSetRows(window._src.rentP);   // shared store for the history screen
