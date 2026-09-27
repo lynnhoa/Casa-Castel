@@ -767,7 +767,8 @@ function ctlCostRows(p, y, m) {
   const t = L ? _cxN0(L.tilgung) : _cxN0(p.def_tilgung);
   const splitKnown = !!L || !!(z || t);                     // #7: no loan link and no split → don't invent Zins 0
   if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate),
-    sub: splitKnown ? 'Zins ' + _cxEurS(z) + ' · Tilgung ' + _cxEurS(t) : 'Zins / Tilgung unbekannt', src: L ? 'Properties' : 'Planwert',
+    // Soll = the rate, the same every month (like copying last month). Zins / Tilgung = information only (~, as in Properties)
+    sub: splitKnown ? 'Zins ~' + _cxEurS(z) + ' · Tilgung ~' + _cxEurS(t) : 'Zins / Tilgung unbekannt', src: L ? 'Properties' : 'Planwert',
     split: splitKnown ? { zinsen: z, tilgung: t } : null,
     info: L ? null : 'Kredit nicht mit Properties verknüpft – Planwert aus Setup › Objekte › Darlehen' });
 
@@ -826,7 +827,8 @@ function ctlCasaCostRows(p, y, m) {
       continue;
     }
     const due = freq === 'monatlich' ? (!dm.length || dm.includes(m)) : dm.includes(m);
-    if (due) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: freq,
+    if (due) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount),
+      sub: isRate && pl.loan ? 'Zins ~' + _cxEurS(_cxN0(pl.loan.zinsen)) + ' · Tilgung ~' + _cxEurS(_cxN0(pl.loan.tilgung)) : freq,
       src: isRate && pl.loan ? 'Properties' : 'Setup',
       split: isRate && pl.loan ? { zinsen: _cxN0(pl.loan.zinsen), tilgung: _cxN0(pl.loan.tilgung) } : null });
     else if (dm.length) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }

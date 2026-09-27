@@ -62,34 +62,6 @@ function _cxOpenOf(p, y, m) {
   return { inc, exp };
 }
 
-/* Tilgung paid in a month (from the Kreditrate entries).
-   Apartments store it with the rate; Casa Castel stores only the amount →
-   split by the loan's Zins/Tilgung ratio from Properties.                */
-function _cxTilgung(pid, y, m) {
-  let t = 0;
-  if (pid === CASA_PROP_ID) {
-    const p = ctlProp(pid), loan = p ? ctlPropLinks(p).loan : null;
-    const rate = loan ? Number(loan.rate) || 0 : 0, share = rate ? (Number(loan.tilgung) || 0) / rate : 0;
-    const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
-    if (rateCat && share) for (const e of window._ctrl.castel_expenses)
-      if (e.category_id === rateCat.id && e.year === y && e.month === m) t += (Number(e.amount) || 0) * share;
-  } else {
-    for (const e of window._ctrl.apt_expenses)
-      if (e.property_id === pid && e.year === y && e.month === m) t += Number(e.tilgung) || 0;
-  }
-  return t;
-}
-
-function _cxSum(pids, months) {
-  const s = { rein: 0, raus: 0, konto: 0, tilg: 0, ein: 0 };
-  for (const m of months) for (const pid of pids) {
-    const x = ctlPropertyMonth(pid, m);
-    s.rein += x.rein; s.raus += x.raus; s.konto += x.konto; s.ein += x.one_time;
-    s.tilg += _cxTilgung(pid, window._ctrl.year, m);
-  }
-  return s;
-}
-
 function _cxPeriodBar(isYear) {
   if (!isYear) return cxMonthBar();
   return '<div class="cx-month">' +
