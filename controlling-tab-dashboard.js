@@ -129,6 +129,20 @@ window.renderDashboard = function () {
   _cxDash.openInc = openInc;
   _cxDash.openMonth = openMonths.size ? Math.max(...openMonths) : 0;
   const pct = tot.rein > 0 ? Math.min(100, out(tot) / tot.rein * 100) : (out(tot) > 0 ? 100 : 0);
+  const prelim = !future && (isYear ? openMonths.size > 0 : openInc + openExp > 0);
+
+  // #18: yearly settlements on the Dashboard — open ones and the next Frist
+  let setLine = '';
+  try {
+    const so = typeof ctlSettlementOverview === 'function' ? ctlSettlementOverview() : null;
+    if (so && so.open + so.check) {
+      const soon = so.frist && so.frist <= (() => { const d = new Date(cxToday() + 'T12:00:00'); d.setDate(d.getDate() + 60); return d.toISOString().slice(0, 10); })();
+      setLine = '<button class="cx-stat cx-stat--open" data-cx="gotoSet"><span><span class="cx-dot"></span>Abrechnungen · ' +
+        [so.open ? so.open + ' offen' : '', so.check ? so.check + ' prüfen' : ''].filter(Boolean).join(' · ') +
+        (so.frist ? ' · <span style="' + (soon ? 'color:var(--cx-neg);' : '') + '">Frist ' + cxFmtDate(so.frist) + '</span>' : '') +
+        '</span><span class="cx-stat__go">Ansehen ›</span></button>';
+    }
+  } catch (e) { console.warn('[controlling] Abrechnungen overview', e); }
 
   let status;
   if (future) status = '<div class="cx-stat cx-stat--muted"><span class="cx-dot"></span>' + (isYear ? 'Jahr liegt in der Zukunft' : 'Monat liegt in der Zukunft') + '</div>';
@@ -146,7 +160,7 @@ window.renderDashboard = function () {
 
   // One layout for Konto and Tatsächlich — only labels and values change
   const hero = '<div class="cx-card cx-hero">' +
-    '<div class="cx-lbl" style="text-align:center">' + (tats ? 'Tatsächlich' : 'Konto') + ' · ' + cxEsc(periodLbl) + '</div>' +
+    '<div class="cx-lbl" style="text-align:center">' + (tats ? 'Tatsächlich' : 'Konto') + ' · ' + cxEsc(periodLbl) + (prelim ? ' · vorläufig' : '') + '</div>' +
     '<div class="cx-hero__v' + (!future && val(tot) < 0 ? ' neg' : '') + '">' + (future ? D : cxWS(val(tot))) + '</div>' +
     '<div class="cx-hero__c">Warm rein − Warm raus, ' + (tats ? 'ohne' : 'inkl.') + ' Kreditrate</div>' +
     '<div class="cx-bar"><div class="' + (out(tot) > tot.rein ? 'over' : '') + '" style="width:' + (future ? 0 : pct) + '%"></div></div>' +
@@ -158,7 +172,7 @@ window.renderDashboard = function () {
         : '<div class="cx-kv"><span>davon Kreditrate</span><span>' + (future ? D : cxW(tot.rate)) + '</span></div>') +
       (!future && tot.abr ? '<div class="cx-kv"><span>davon Abrechnungen</span><span>' + cxWS(tot.abr) + '</span></div>' : '') +
     '</div>' +
-    status + '</div>';
+    status + setLine + '</div>';
 
   const cards = per.map(({ p, s, open }) => {
     const k = 'dash:' + CX.dashView + ':' + p.id, isOpen = !!CX.open[k];
@@ -188,14 +202,15 @@ window.renderDashboard = function () {
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' +
+    '<div class="cx-views">' +
     '<div class="cx-seg cx-seg--view" role="group" aria-label="Zeitraum">' +
       '<button class="' + (isYear ? '' : 'on') + '" data-cx="view" data-v="m" aria-pressed="' + !isYear + '">Monat</button>' +
       '<button class="' + (isYear ? 'on' : '') + '" data-cx="view" data-v="y" aria-pressed="' + isYear + '">Jahr</button>' +
     '</div>' +
-    '<div class="cx-seg cx-seg--view" role="group" aria-label="Ansicht" style="margin-top:8px">' +
+    '<div class="cx-seg cx-seg--view" role="group" aria-label="Ansicht">' +
       '<button class="' + (tats ? '' : 'on') + '" data-cx="mode" data-v="konto" aria-pressed="' + !tats + '">Konto</button>' +
       '<button class="' + (tats ? 'on' : '') + '" data-cx="mode" data-v="tats" aria-pressed="' + tats + '">Tatsächlich</button>' +
-    '</div>' +
+    '</div></div>' +
     _cxPeriodBar(isYear) + hero +
     '<div class="cx-head"><span class="cx-lbl">Immobilien</span><span class="cx-lbl">' + (tats ? 'Tatsächlich' : 'Konto') + ' · ' + cxEsc(isYear ? String(y) : CX_MONTHS[m - 1]) + '</span></div>' + cards +
     '</div>';
@@ -206,6 +221,7 @@ window.renderDashboard = function () {
       if (a === 'view') { CX.dashView = b.dataset.v; return window.renderDashboard(); }
       if (a === 'mode') { CX.dashMode = b.dataset.v; return window.renderDashboard(); }
       if (a === 'gotoOpen') return cxGoto(_cxDash.openInc ? 'income' : 'expenses');
+      if (a === 'gotoSet') { if (typeof _cxSet !== 'undefined') _cxSet.open = true; return cxGoto('onetime'); }
       if (a === 'gotoOpenMonth') { CX.dashView = 'm'; CX.month = _cxDash.openMonth || CX.month; try { localStorage.setItem('cx_month', String(CX.month)); } catch (e) {} return window.renderDashboard(); }
       if (a === 'yprev' || a === 'ynext') {
         const ny = window._ctrl.year + (a === 'yprev' ? -1 : 1);

@@ -203,7 +203,7 @@ function _cxStepAt(hist, t, iso) {
 }
 
 const _cxUnitCache = new Map();
-function ctlSollReset() { _cxUnitCache.clear(); }
+function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
 
 /* → { k, nk, soll, empty, link, notes:[..], badge, partial, src } */
 /* The rent a tenant agreed, in this order:
@@ -486,7 +486,8 @@ function _cxUnitSollV2(u, pid, y, m) {
     if (!w) {
       // days before a move-in / after a move-out in this month are expected to be empty
       const expectedGap = dated.some(w2 => (inM(w2.from) && iso < w2.from) || (inM(w2.to) && iso > w2.to));
-      if (roomBusy && all.length && iso >= thisMonth && iso <= today && !expectedGap) roomGap = true;
+      const reserved = dated.some(w2 => w2.from > iso);        // #10: room held for a tenant who moves in later
+      if (roomBusy && all.length && iso >= thisMonth && iso <= today && !expectedGap && !reserved) roomGap = true;
       if (!(roomFill && iso >= thisMonth)) continue;
       const rp = _cxRoomPricing(link.obj, null);
       dk = _cxN0(rp.k); dnk = _cxN0(rp.nk); roomOnly++; pk = 'room';
@@ -503,6 +504,7 @@ function _cxUnitSollV2(u, pid, y, m) {
 
   // First / last month "voll" from the contract (B7, D3) → that tenant pays the full month
   const notes = [];
+  let fullNote = false;
   for (const pt of parts.values()) {
     const w = pt.w; if (!w) continue;
     const c = _cxTenancyData(link, w, all, memo);
@@ -513,22 +515,24 @@ function _cxUnitSollV2(u, pid, y, m) {
       const r = _cxRentDay(link, w, u, y, m, fullIn ? w.from : w.to, all, memo);
       pt.sk = r.k * N; pt.snk = r.nk * N;
       notes.push((fullIn ? 'Erster' : 'Letzter') + ' Monat laut Vertrag voll · ' + w.name);
+      fullNote = true;
     }
   }
   let sk = 0, snk = 0;
   for (const pt of parts.values()) { sk += pt.sk; snk += pt.snk; }
   const k = _cxR(sk / N), nk = _cxR(snk / N);
 
-  // What changed in this month (shown under the row)
-  let badge = null;
+  // What changed in this month (shown under the row) · changed = a real change (#11), not just info
+  let badge = null, changed = false;
   for (const w of [...dated].reverse()) {                   // chronological
     if (inM(w.from)) {
-      const earlier = dated.some(x => x !== w && x.from < w.from);
-      const days = N - Number(w.from.slice(8, 10)) + 1;
-      notes.push((earlier ? 'Mieterwechsel' : 'Neu vermietet') + ' · ab ' + _cxFmtD(w.from) + (w.from !== first ? ' · ' + days + ' von ' + N + ' Tagen' : ''));
+      const dayBefore = _cxAddDays(w.from, -1);
+      const earlier = dated.some(x => x !== w && x.from < w.from && x.to >= dayBefore);   // #12: seamless change only
+      notes.push((earlier ? 'Mieterwechsel' : 'Neu vermietet') + ' · ab ' + _cxFmtD(w.from));
+      changed = true;
       if (!earlier) badge = 'neu';
     }
-    if (inM(w.to) && w.to !== last && !w.noEnd) notes.push('Auszug ' + _cxFmtD(w.to) + ' · ' + Number(w.to.slice(8, 10)) + ' von ' + N + ' Tagen');
+    if (inM(w.to) && w.to !== last && !w.noEnd) { notes.push('Auszug ' + _cxFmtD(w.to)); changed = true; }
     const c = _cxTenancyData(link, w, all, memo);
     const before = iso => { const dd = _cxAddDays(iso, -1); return dd >= w.from ? _cxRentDay(link, w, u, y, m, dd, all, memo) : null; };
     for (const pr of c.per) {
@@ -536,11 +540,12 @@ function _cxUnitSollV2(u, pid, y, m) {
       if (!inM(d) || d === w.from) continue;
       const a = _cxAmount(pr), b = before(d);
       notes.push((pr.kind === 'renewal' ? 'Verlängerung' : 'Neue Miete') + ' · ' + (b && _cxR(b.k + b.nk) !== _cxR(a.total) ? _cxEurS(b.k + b.nk) + ' → ' : '') + _cxEurS(a.total) + (a.mode === 'pauschal' ? ' pauschal' : '') + ' ab ' + _cxFmtD(d));
+      changed = true;
     }
     for (const h of c.st) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
-      notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(d)); }
+      notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(d)); changed = true; }
     for (const h of c.nk) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
-      notes.push('NK angepasst · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(d)); }
+      notes.push('NK angepasst · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(d)); changed = true; }
   }
   for (const pt of parts.values()) if (pt.src === 'learned') { notes.push('Miete aus Ihren früheren Einträgen (beim Mieter nicht gespeichert)'); break; }
 
@@ -553,8 +558,13 @@ function _cxUnitSollV2(u, pid, y, m) {
     const gone = pt.w.t.status !== 'active' || (pt.w.t.mietende && _cxD(pt.w.t.mietende) < today);
     if (gone) checks.push('Miete von ' + pt.w.name + ' unbekannt – aktueller Preis verwendet, bitte beim Mieter hinterlegen');
   }
+  const tenantDays = occ - roomOnly;
   for (const w of all) {
-    if (w.noStart) checks.push(w.name + ' ohne Einzugsdatum – kein Soll, bitte Einzug eintragen');
+    if (w.noStart) checks.push(w.t.status !== 'active'
+      ? 'Früherer Mieter „' + w.name + '“ ohne Einzug – im Mieter-Tab Einzug und Auszug eintragen (für die Abrechnungen)'
+      : tenantDays > 0
+        ? 'Zusätzlicher Eintrag „' + w.name + '“ ohne Einzug – zählt nicht; im Mieter-Tab Einzug eintragen oder Eintrag löschen'
+        : w.name + ' ohne Einzugsdatum – kein Soll, bitte Einzug eintragen');
     if (w.noEnd && w.from <= last && w.to >= first) checks.push(w.name + ': Auszug fehlt – Ende vorläufig ' + _cxFmtD(w.to) + ', bitte Auszug eintragen');
     const me = _cxD(w.t.mietende);
     if (w.t.status === 'active' && me && me < today && me < last && !dated.some(x => x.from > me))
@@ -577,7 +587,7 @@ function _cxUnitSollV2(u, pid, y, m) {
   const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)
     .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR((pt.sk + pt.snk) / N), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
                            tid: pk, name: pt.w ? pt.w.name : 'Zimmer', mode: pt.r0 ? pt.r0.mode : 'kalt_nk' }));
-  out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge,
+  out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge, changed: changed || fullNote,
           partial: occ > 0 && (occ < N || partList.length > 1), days: occ, N, parts: partList,
           check: checks.length ? [...new Set(checks)].join(' · ') : null,
           src: link.type === 'casa_room' ? 'Casa Castel' : 'Rentals' };
@@ -697,8 +707,11 @@ function ctlCostRows(p, y, m) {
   const rate = L ? _cxN0(L.rate) : _cxN0(p.def_rate);
   const z = L ? _cxN0(L.zinsen) : _cxN0(p.def_zinsen);
   const t = L ? _cxN0(L.tilgung) : _cxN0(p.def_tilgung);
+  const splitKnown = !!L || !!(z || t);                     // #7: no loan link and no split → don't invent Zins 0
   if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate),
-    sub: 'Zins ' + _cxEurS(z) + ' · Tilgung ' + _cxEurS(t), src: L ? 'Properties' : 'Planwert', split: { zinsen: z, tilgung: t } });
+    sub: splitKnown ? 'Zins ' + _cxEurS(z) + ' · Tilgung ' + _cxEurS(t) : 'Zins / Tilgung unbekannt', src: L ? 'Properties' : 'Planwert',
+    split: splitKnown ? { zinsen: z, tilgung: t } : null,
+    info: L ? null : 'Kredit nicht mit Properties verknüpft – Planwert aus Setup (Setup › Darlehen)' });
 
   let hg = null, hgNote = null;
   if (pl.apt) {
@@ -716,7 +729,7 @@ function ctlCostRows(p, y, m) {
     }
   }
   if (hg === null) hg = _cxNum(p.def_hausgeld);
-  if (hg) rows.push({ key: 'hausgeld', label: 'Hausgeld', soll: _cxR(hg), sub: 'durchlaufend', src: pl.apt ? 'Rentals' : 'Planwert', note: hgNote });
+  if (hg) rows.push({ key: 'hausgeld', label: 'Hausgeld', soll: _cxR(hg), sub: 'an Hausverwaltung', src: pl.apt ? 'Rentals' : 'Planwert', note: hgNote });
 
   const months = Array.isArray(p.grundsteuer_months) && p.grundsteuer_months.length ? p.grundsteuer_months.map(Number) : _CX_Q;
   let gs = null;
@@ -878,27 +891,29 @@ function ctlPeriodLabel(from, to) {
 /* Expected settlements for every open period (Rules 1, 2, 5):
    · per tenant × span of equal type (Kalt + NK | Pauschal) inside the period — Pauschal spans are
      listed (note 'Pauschal') so they can be set "nicht durchgeführt" (D25)
-   · tenants without Einzug still listed ('Einzug fehlt'); units without Rentals link → one row per unit
+   · a tenant without Einzug never creates a row: it can't be placed in time. It shows as a check in
+     the coverage instead (Phase 1 · #1, #3) — old "Einzug fehlt" rows therefore turn "veraltet"
+   · units without Rentals link → one row per unit
    · every Rentals property: its Hausgeldabrechnung (WEG) per period; Casa Castel has no WEG (D6)
-   · parking spaces: no NK                                                                           */
+   · parking spaces: no NK
+   unit_name / unit_order are for display and sorting only — never written to the database.        */
 function ctlExpectedSettlements() {
   const out = [];
   for (const p of window._ctrl.properties.filter(x => x.active)) {
     const casa = p.id === CASA_PROP_ID;
+    const units = ctlUnitsFor(p.id);
     for (const per of ctlSettlementPeriods(p)) {
       const first = per.from, last = per.to, cy = Number(last.slice(0, 4));
-      if (!casa) out.push({ property_id: p.id, tenant_id: null, kind: 'weg_hausgeld', covers_year: cy, period_from: first, period_to: last, note: null });
-      for (const u of ctlUnitsFor(p.id)) {
-        if (_cxIsParking(u)) continue;
+      if (!casa) out.push({ property_id: p.id, tenant_id: null, kind: 'weg_hausgeld', covers_year: cy, period_from: first, period_to: last, note: null, unit_name: '', unit_order: -1 });
+      units.forEach((u, ui) => {
+        if (_cxIsParking(u)) return;
         const link = ctlUnitLink(u, p);
-        if (link && link.type === 'rentals_parking') continue;
-        if (!link) { out.push({ property_id: p.id, tenant_id: null, kind: 'nk_tenant', covers_year: cy, period_from: first, period_to: last, note: u.name }); continue; }
+        if (link && link.type === 'rentals_parking') return;
+        const meta = { unit_name: u.name, unit_order: ui };
+        if (!link) { out.push({ property_id: p.id, tenant_id: null, kind: 'nk_tenant', covers_year: cy, period_from: first, period_to: last, note: u.name, ...meta }); return; }
         const all = _cxTenancies(link), memo = new Map();
         for (const w of all) {
-          if (!w.from) {
-            if (w.t.status === 'active') out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: first, period_to: last, note: 'Einzug fehlt' });
-            continue;
-          }
+          if (!w.from) continue;                                   // #1 #3: coverage check, not a row
           if (w.from > last || w.to < first) continue;
           const from = w.from > first ? w.from : first, to = w.to < last ? w.to : last;
           // split the tenant's days into spans of equal type (Pauschal ↔ Kalt + NK)
@@ -907,47 +922,154 @@ function ctlExpectedSettlements() {
             const md = _cxRentDay(link, w, u, Number(d.slice(0, 4)), Number(d.slice(5, 7)), d, all, memo).mode;
             if (mode === null) mode = md;
             if (md !== mode) {
-              out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: _cxAddDays(d, -1), note: mode === 'pauschal' ? 'Pauschal' : null });
+              out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: _cxAddDays(d, -1), note: mode === 'pauschal' ? 'Pauschal' : null, ...meta });
               spanFrom = d; mode = md;
             }
           }
-          out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: to, note: mode === 'pauschal' ? 'Pauschal' : null });
+          out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: to, note: mode === 'pauschal' ? 'Pauschal' : null, ...meta });
         }
-      }
+      });
     }
   }
   return out;
 }
 
+const _cxDays = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5) + 1;
+const _cxPlusYear = iso => { const e = new Date(iso + 'T12:00:00'); e.setFullYear(e.getFullYear() + 1); return _cxIso(e.getFullYear(), e.getMonth() + 1, e.getDate()); };
+
+/* Coverage of every unit in one period (Phase 1 · #1): the days no dated tenancy covers, and the
+   tenants without Einzug. → [{ unit, order, link, gaps:[{from,to,days}], undated:[{id,name,active}] }] */
+function ctlSettlementCoverage(p, per) {
+  const out = [];
+  ctlUnitsFor(p.id).forEach((u, ui) => {
+    if (_cxIsParking(u)) return;
+    const link = ctlUnitLink(u, p);
+    if (!link || link.type === 'rentals_parking') return;
+    const all = _cxTenancies(link), dated = all.filter(w => w.from);
+    const gaps = []; let g = null;
+    for (let d = per.from; d <= per.to; d = _cxAddDays(d, 1)) {
+      if (dated.some(w => w.from <= d && d <= w.to)) { if (g) { gaps.push(g); g = null; } }
+      else if (g) g.to = d; else g = { from: d, to: d };
+    }
+    if (g) gaps.push(g);
+    gaps.forEach(x => { x.days = _cxDays(x.from, x.to); });
+    const undated = all.filter(w => !w.from).map(w => ({ id: w.id, name: w.name, active: w.t.status === 'active' }));
+    out.push({ unit: u, order: ui, link, gaps, undated });
+  });
+  return out;
+}
+
+/* ── Abrechnungen model (Phase 1) ─────────────────────────────
+   One list for the Abrechnungen card and the Dashboard line:
+   · every expected settlement — the stored row, or a virtual one that gets its database row on
+     the first status change (same pattern as Casa rooms without a unit)
+   · gaps: days without any tenant ("war leer" confirms them — stored as a closed row, note 'leer:<Einheit>')
+   · extra: an active tenant record without Einzug next to a tenant who covers the whole period
+   · stale: stored rows of an open period that no longer match the tenant data ("veraltet")
+   · other: stored rows of periods that are no longer open (history, shown as they are)            */
+let _cxSetModelCache = null;
+let _cxSetVirtMap = {};
+function ctlSettlementInvalidate() { _cxSetModelCache = null; }
+const ctlSettlementIsLeer = r => !!r && r.kind === 'nk_tenant' && !r.tenant_id && /^leer:/.test(String(r.note || ''));
+const _cxSetOpenSt = r => r.status === 'offen' || r.status === 'erstellt';
+function _cxSetVirtual(e) {
+  const id = 'v:' + [e.kind, e.property_id, e.tenant_id || '', _cxD(e.period_from), e.tenant_id ? '' : (e.note || '')].join('|');
+  _cxSetVirtMap[id] = e;
+  return { id, property_id: e.property_id, tenant_id: e.tenant_id, app: e.app || null, kind: e.kind, covers_year: e.covers_year,
+           period_from: e.period_from, period_to: e.period_to, note: e.note || null, status: 'offen', _virtual: true };
+}
+function ctlSettlementModel() {
+  if (_cxSetModelCache) return _cxSetModelCache;
+  _cxSetVirtMap = {};
+  const stored = window._src.settle || [];
+  const used = new Set();
+  const exp = ctlExpectedSettlements();
+  const groups = [];
+  for (const p of window._ctrl.properties.filter(x => x.active)) {
+    const periods = ctlSettlementPeriods(p).map(per => ({ ...per, items: [] }));
+    const perOf = iso => periods.find(x => iso >= x.from && iso <= x.to) || null;
+    for (const e of exp.filter(x => x.property_id === p.id)) {
+      const r = stored.find(x => !used.has(x.id) && !ctlSettlementIsLeer(x) && ctlSettlementSame(x, e));
+      if (r) used.add(r.id);
+      const per = perOf(_cxD(e.period_from));
+      if (per) per.items.push({ type: 'row', r: r || _cxSetVirtual(e), virtual: !r, e, order: e.unit_order, from: _cxD(e.period_from) });
+    }
+    for (const per of periods) for (const c of ctlSettlementCoverage(p, per)) {
+      for (const g of c.gaps) {
+        const r = stored.find(x => !used.has(x.id) && ctlSettlementIsLeer(x) && Number(x.property_id) === p.id &&
+          x.note === 'leer:' + c.unit.name && _cxD(x.period_from) === g.from && _cxD(x.period_to) === g.to);
+        if (r) used.add(r.id);
+        per.items.push({ type: 'gap', unit: c.unit, order: c.order, from: g.from, to: g.to, days: g.days, confirmed: r || null,
+                         undated: c.undated, app: _cxApp(c.link), covers_year: Number(per.to.slice(0, 4)) });
+      }
+      if (!c.gaps.length) for (const w of c.undated.filter(x => x.active))
+        per.items.push({ type: 'extra', unit: c.unit, order: c.order, from: per.from, name: w.name, app: _cxApp(c.link) });
+    }
+    const other = [];
+    for (const r of stored.filter(x => Number(x.property_id) === p.id && !used.has(x.id))) {
+      const per = perOf(_cxD(r.period_from));
+      if (per) per.items.push({ type: 'row', r, virtual: false, stale: true, order: 999, from: _cxD(r.period_from) });
+      else other.push({ type: 'row', r, virtual: false, order: 999, from: _cxD(r.period_from) });
+    }
+    const byOrder = (a, b) => (a.order - b.order) || String(a.from).localeCompare(String(b.from));
+    periods.forEach(per => per.items.sort(byOrder));
+    other.sort((a, b) => String(b.from).localeCompare(String(a.from)));
+    let nOpen = 0, nCheck = 0, frist = null;
+    const fristOf = iso => { const pp = ctlPeriodOf(p, iso); return pp ? _cxPlusYear(pp.to) : null; };
+    const note = (f) => { if (f && (!frist || f < frist)) frist = f; };
+    for (const per of periods) for (const it of per.items) {
+      if (it.type === 'row' && !it.stale && _cxSetOpenSt(it.r)) { nOpen++; note(per.frist); }
+      else if (it.type === 'row' && it.stale) nCheck++;
+      else if (it.type === 'gap' && !it.confirmed) { nCheck++; note(per.frist); }
+      else if (it.type === 'extra') nCheck++;
+    }
+    for (const it of other) if (_cxSetOpenSt(it.r) && !ctlSettlementIsLeer(it.r)) { nOpen++; note(fristOf(it.from)); }
+    groups.push({ p, periods: periods.filter(x => x.items.length), other, nOpen, nCheck, frist });
+  }
+  _cxSetModelCache = groups;
+  return groups;
+}
+function ctlSettlementOverview() {
+  let open = 0, check = 0, frist = null;
+  for (const g of ctlSettlementModel()) { open += g.nOpen; check += g.nCheck; if (g.frist && (!frist || g.frist < frist)) frist = g.frist; }
+  return { open, check, frist };
+}
+function ctlSettlementVirtual(id) { return _cxSetVirtMap[id] || null; }
+
 /* Figures shown on a settlement row (computed live, never stored):
    days · NK Soll for exactly these days · NK paid (from Einnahmen, per-tenant split) ·
-   Frist (end + 12 months) · for WEG rows: vacant days of the property in the period */
+   Frist (end of the property's period + 12 months) · for WEG rows: vacant days in the period.
+   preStart: every month of the row lies before the first Controlling entry → "gezahlt" unknown (#14). */
 function ctlSettlementFigures(r) {
   const from = _cxD(r.period_from), to = _cxD(r.period_to);
   if (!from || !to) return null;
-  const days = Math.round((new Date(to + 'T12:00:00') - new Date(from + 'T12:00:00')) / 864e5) + 1;
+  const days = _cxDays(from, to);
   const p = ctlProp(r.property_id);
-  const frist = (() => { const e = new Date(to + 'T12:00:00'); e.setFullYear(e.getFullYear() + 1); return _cxIso(e.getFullYear(), e.getMonth() + 1, e.getDate()); })();
-  const out = { days, frist, nkSoll: null, nkIst: null, vacant: null };
+  const pp = p ? ctlPeriodOf(p, from) : null;
+  const frist = _cxPlusYear(pp ? pp.to : to);
+  const out = { days, frist, nkSoll: null, nkIst: null, vacant: null, vacUnknown: false, preStart: false, istPartial: false };
   if (!p) return out;
   if (r.kind === 'weg_hausgeld') {
     let vac = 0;
     for (const u of ctlUnitsFor(p.id)) {
       if (_cxIsParking(u)) continue;
-      const link = ctlUnitLink(u, p); if (!link) continue;
+      const link = ctlUnitLink(u, p);
+      if (!link) { out.vacUnknown = true; continue; }                        // #16: unknown, not "leer"
       const all = _cxTenancies(link).filter(w => w.from);
       for (let d = from; d <= to; d = _cxAddDays(d, 1)) if (!all.some(w => w.from <= d && d <= w.to)) vac++;
     }
-    out.vacant = vac;
+    out.vacant = out.vacUnknown ? null : vac;
     return out;
   }
   if (!r.tenant_id) return out;
+  const inc = window._src.incAll || [];
+  const start = inc.reduce((a, x) => Math.min(a, x.year * 12 + x.month), Infinity);   // first Controlling entry
   for (const u of ctlUnitsFor(p.id)) {
     const link = ctlUnitLink(u, p); if (!link || link.type === 'rentals_parking') continue;
     const all = _cxTenancies(link), w = all.find(x => x.id === String(r.tenant_id));
     if (!w || !w.from) continue;
     const memo = new Map();
-    let soll = 0, ist = 0, istKnown = false;
+    let soll = 0, ist = 0, istKnown = false, pre = 0, n = 0;
     const months = new Map();                          // 'Y-M' → NK Soll of the row's days in that month
     for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
       if (d < w.from || d > w.to) continue;
@@ -957,7 +1079,9 @@ function ctlSettlementFigures(r) {
     }
     for (const [ym, nkPart] of months) {
       const [y, m] = ym.split('-').map(Number);
-      const row = (window._src.incAll || []).find(x => u.id != null && x.unit_id === u.id && x.year === y && x.month === m);
+      n++;
+      if (!(y * 12 + m >= start)) { pre++; continue; }
+      const row = inc.find(x => u.id != null && x.unit_id === u.id && x.year === y && x.month === m);
       if (!row) continue;
       const s = ctlUnitSoll(u, p.id, y, m), part = (s.parts || []).find(x => x.tid === w.id);
       const i = ctlIstFor(row, s, w.id);
@@ -965,6 +1089,7 @@ function ctlSettlementFigures(r) {
       ist += i * nkPart / part.amount; istKnown = true; // the NK share of what this tenant paid
     }
     out.nkSoll = _cxR(soll); out.nkIst = istKnown ? _cxR(ist) : null;
+    out.preStart = n > 0 && pre === n; out.istPartial = pre > 0 && pre < n;
     return out;
   }
   return out;
@@ -980,9 +1105,10 @@ function ctlSettlementSame(x, e) {
 
 
 /* Fix 2: an NK settlement for this tenant + year already booked in Einmalig from the
-   Tenants tab (suggestion taken over)? Then the Abrechnungen list must not book it again. */
+   Tenants tab (suggestion taken over)? Then the Abrechnungen list must not book it again.
+   A Pauschal span never has a tenant-tab settlement (#24). */
 function ctlSettlementAlreadyBooked(r) {
-  if (r.kind !== 'nk_tenant') return false;
+  if (r.kind !== 'nk_tenant' || r.note === 'Pauschal' || !r.tenant_id) return false;
   const S = window._src, yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
   const refs = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
   const list = r.app === 'casa' ? (S.casaNk || []).map(e => ['nk:' + e.id, e]) : (S.rntNk || []).map(e => ['rnt_nk:' + e.id, e]);

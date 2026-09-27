@@ -67,7 +67,7 @@ window.renderExpenses = function () {
     const regular = g.rows.filter(r => !r.bedarf), bedarf = g.rows.filter(r => r.bedarf);
     const row = r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist,
         sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">aus ' + cxEsc(r.src) + '</span>' : ''),
-        notes: r.note ? [r.note] : [], emptyText: r.bedarf ? 'bei Bedarf' : 'nicht geplant', allowEmpty: true });
+        notes: r.note ? [r.note] : [], info: r.info || null, emptyText: r.bedarf ? 'bei Bedarf' : 'nicht geplant', allowEmpty: true });
     const bk = 'expb:' + g.p.id + ':' + CX.month, bOpen = !!CX.open[bk];
     const body = (g.warn ? '<div class="cx-r"><div class="cx-r__l"><div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(g.warn) + '</div></div></div>' : '') +
       regular.map(row).join('') + cxNotDue(g.notDue) +
@@ -75,12 +75,13 @@ window.renderExpenses = function () {
         (bOpen ? bedarf.map(row).join('') : '') : '');
     const n = g.rows.length;
     return cxCard({ key: 'exp:' + g.p.id, title: g.p.name, sub: n === 1 ? '1 Posten' : n + ' Posten',
-                    status: cxGroupStatus(g.rows), sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0),
+                    status: cxGroupStatus(g.rows), sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0), plan: g.rows.reduce((s, r) => s + (r.soll || 0), 0),
                     extraPill: g.rows.some(r => r.note) ? cxPill('beige', 'Änderung') : '', body });
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Laufende Kosten bezahlt', done, plan, open }) +
+    cxSummary({ label: 'Laufende Kosten bezahlt', done, plan, open,
+                confirm: CX.bulk === 'expenses' ? _cxExpBulkList() : null, undo: cxUndoFor('expenses') }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · aus Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
     cards +
     '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Rechnungen und Abrechnungen: im Tab Einmalig</button>' +
@@ -90,19 +91,48 @@ window.renderExpenses = function () {
     render: () => window.renderExpenses(),
     click: async (a, b) => {
       if (a === 'gotoOt') return cxGoto('onetime');
-      if (a === 'take') { const e = _cxExpIndex[b.dataset.id]; if (e) await _cxExpSave(e, e.row.soll); window.renderExpenses(); }
-      if (a === 'all') {
+      if (a === 'take') { const e = _cxExpIndex[b.dataset.id]; CX.undo = null; if (e) await _cxExpSave(e, e.row.soll); window.renderExpenses(); }
+      // #6: ask first, then book, then offer undo
+      if (a === 'all') { CX.bulk = 'expenses'; return window.renderExpenses(); }
+      if (a === 'allNo') { CX.bulk = null; return window.renderExpenses(); }
+      if (a === 'allYes') {
         b.disabled = true;
-        for (const id of Object.keys(_cxExpIndex)) {
-          const e = _cxExpIndex[id];
-          if ((e.row.ist === null || e.row.ist === undefined) && e.row.soll) await _cxExpSave(e, e.row.soll);
+        const L = _cxExpBulkList(), done = [];
+        for (const e of L.list) { await _cxExpSave(e, e.row.soll); if (e.row.ist !== null && e.row.ist !== undefined) done.push({ pid: e.p.id, catId: e.row.catId || null, key: e.row.key }); }
+        CX.bulk = null;
+        CX.undo = { tab: 'expenses', y: window._ctrl.year, m: CX.month, items: done, n: done.length };
+        return window.renderExpenses();
+      }
+      if (a === 'undo') {
+        const u = cxUndoFor('expenses'); if (!u) return;
+        b.disabled = true;
+        for (const it of u.items) {
+          try {
+            if (it.catId) await ctlDeleteCastel(it.catId, u.m);
+            else if (it.key === 'rate') await ctlUpsertApt(it.pid, u.m, { rate: null, zinsen: null, tilgung: null });
+            else await ctlUpsertApt(it.pid, u.m, { [it.key]: null });
+          } catch (err) { cxToastErr(err); }
         }
-        window.renderExpenses();
+        CX.undo = null;
+        return window.renderExpenses();
       }
     },
-    input: async (id, val) => { const e = _cxExpIndex[id]; if (!e) return; await _cxExpSave(e, val); window.renderExpenses(); },
+    input: async (id, val) => { const e = _cxExpIndex[id]; if (!e) return; CX.undo = null; await _cxExpSave(e, val); window.renderExpenses(); },
   });
 };
+
+/* What "Alle offenen wie geplant" would book: open planned rows without a data check */
+function _cxExpBulkList() {
+  const list = [];
+  let skipped = 0;
+  for (const id of Object.keys(_cxExpIndex)) {
+    const e = _cxExpIndex[id];
+    if (!((e.row.ist === null || e.row.ist === undefined) && e.row.soll)) continue;
+    if (e.row.check) { skipped++; continue; }
+    list.push(e);
+  }
+  return { list, n: list.length, sum: cxR(list.reduce((a, e) => a + e.row.soll, 0)), skipped };
+}
 
 /* Save one cost line (null = empty → "offen") */
 async function _cxExpSave(e, v) {
@@ -114,9 +144,11 @@ async function _cxExpSave(e, v) {
     } else if (r.key === 'rate') {
       if (v === null || v === undefined) await ctlUpsertApt(e.p.id, m, { rate: null, zinsen: null, tilgung: null });
       else {
-        const zPlan = r.split ? cxR(r.split.zinsen) : 0;
-        const zinsen = Math.min(zPlan, cxR(v));
-        await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen, tilgung: cxR(v - zinsen) });
+        if (!r.split) await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen: null, tilgung: null });   // #7: split unknown
+        else {
+          const zinsen = Math.min(cxR(r.split.zinsen), cxR(v));
+          await ctlUpsertApt(e.p.id, m, { rate: cxR(v), zinsen, tilgung: cxR(v - zinsen) });
+        }
       }
     } else {
       await ctlUpsertApt(e.p.id, m, { [r.key]: v === null || v === undefined ? null : cxR(v) });

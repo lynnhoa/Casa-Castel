@@ -19,7 +19,8 @@ const _CX_CSS = `
     /* ════════ Controlling design system (cx) ════════
        Inter everywhere (wordmark excepted) · brown / beige tones, no black ·
        one pill colour = one meaning · 34 px fields, 13 px text.            */
-    :root { --cx-ink:var(--cc-ink,#1E1B18); --cx-txt:var(--cc-charcoal,#3A3530); --cx-amt:var(--cc-ink,#1E1B18); --cx-mut:var(--cc-taupe,#9A8E7E);
+    :root { --cc-ink:#3D3027; }                                   /* #23: espresso brown, no black on this page */
+    :root { --cx-ink:#3D3027; --cx-txt:var(--cc-charcoal,#3A3530); --cx-amt:#3D3027; --cx-mut:var(--cc-taupe,#9A8E7E);
             --cx-sub:var(--cc-stone,#C8BFB0); --cx-acc:var(--cc-gold,#B8956A); --cx-neg:#A0533A; --cx-line:#EDE8E0;
             --cx-rule:var(--cc-rule,#E0DAD0); --cx-card:var(--cc-white,#FDFCFA); --cx-bg:var(--cc-bg,#F5F2ED); }   /* = Rentals */
     body.is-landlord { color:var(--cx-ink); }
@@ -82,7 +83,7 @@ const _CX_CSS = `
     .cx-stat--open { color:#7A4A12; } .cx-stat--open .cx-dot { background:#E9B06A; }
     .cx-stat--ok { color:#55622A; }   .cx-stat--ok .cx-dot { background:#B9C28A; }
     .cx-stat--muted { color:var(--cx-mut); } .cx-stat--muted .cx-dot { background:var(--cx-rule); }
-    .cx-stat__go { font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; }
+    .cx-stat__go { font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; white-space:nowrap; }
     /* property card */
     .cx-ph { width:100%; display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 16px; background:none; border:none;
              font-family:inherit; text-align:left; cursor:pointer; color:inherit; -webkit-tap-highlight-color:transparent; }
@@ -104,15 +105,33 @@ const _CX_CSS = `
     .cx-year__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:24px; font-weight:400; color:var(--cx-ink); font-variant-numeric:tabular-nums; }
     .cx-year__v.neg { color:var(--cx-neg); }
     /* Soll │ → │ Ist row */
-    .cx-r { display:grid; grid-template-columns:minmax(0,1fr) 30px 104px; gap:8px; align-items:center; padding:10px 16px; border-top:.5px solid var(--cx-line); }
+    .cx-r { display:block; padding:10px 16px; border-top:.5px solid var(--cx-line); }
     .cx-r__l { min-width:0; }
+    .cx-r__top { display:flex; justify-content:space-between; align-items:center; gap:8px; min-height:18px; }
+    .cx-r__top .cx-r__u { min-width:0; }
+    .cx-r__mid { display:grid; grid-template-columns:minmax(0,1fr) 112px; gap:8px; align-items:center; margin-top:4px; }
+    .cx-soll { justify-self:start; display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 10px; border-radius:6px;
+               border:.5px solid #D4B896; background:#F5EFE6; font-family:inherit; font-size:14px; font-weight:600; color:var(--cx-amt);
+               font-variant-numeric:tabular-nums; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cx-soll i { font-size:13px; color:var(--cx-acc); }
+    .cx-soll.on { background:#EEF0DD; border-color:#B9C28A; } .cx-soll.on i { color:#55622A; }
+    .cx-r__info { font-size:10px; color:var(--cx-mut); margin-top:2px; }
+    .cx-r--set { padding:10px 0; }
+    .cx-r--set .cx-link { color:var(--cx-acc); font-weight:500; font-size:12px; padding:6px 0 2px; }
+    .cx-set-grp { border-top:.5px solid var(--cx-rule); margin-top:6px; }
+    .cx-set-per { display:flex; justify-content:space-between; gap:8px; padding:10px 0 4px; font-size:10.5px; color:var(--cx-mut); border-top:.5px solid var(--cx-line); }
+    .cx-bulk { margin-top:2px; padding:10px 12px; border:.5px solid #E9B06A; background:#FAEEDA; border-radius:8px; font-size:12px; color:#7A4A12;
+               display:flex; flex-direction:column; gap:8px; }
+    .cx-bulk__s { color:var(--cx-mut); font-size:11px; }
+    .cx-undo { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; font-size:12px; color:var(--cx-txt); }
+    .cx-views { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
     .cx-r__u { font-size:11px; color:var(--cx-mut); }
     .cx-r__s { font-size:14px; font-weight:600; color:var(--cx-ink); font-variant-numeric:tabular-nums; margin-top:1px; }
     .cx-r__sub { font-size:10px; color:var(--cx-mut); margin-top:1px; }
     .cx-from { color:var(--cx-sub); }
     .cx-r__note { font-size:10px; color:var(--cx-acc); margin-top:2px; }
     .cx-r__warn { font-size:10px; color:#7A4A12; background:#FAEEDA; border:.5px solid #E9B06A; border-radius:6px; padding:3px 6px; margin-top:4px; line-height:1.35; }
-    .cx-r__p { grid-column:1/-1; display:flex; justify-content:flex-end; gap:5px; margin-top:-2px; }
+    .cx-r__p { display:flex; justify-content:flex-end; gap:5px; flex-shrink:0; }
     .cx-take { width:30px; height:30px; border-radius:50%; border:.5px solid #D4B896; background:#F5EFE6; color:var(--cx-acc); padding:0;
                display:flex; align-items:center; justify-content:center; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .cx-take.on { background:#EEF0DD; border-color:#B9C28A; color:#55622A; }
@@ -238,7 +257,7 @@ async function cxStepMonth(delta) {
   let m = CX.month + delta, y = window._ctrl.year;
   if (m < 1) { m = 12; y--; }
   if (m > 12) { m = 1; y++; }
-  CX.month = m; CX.open = {};
+  CX.month = m; CX.open = {}; CX.undo = null; CX.bulk = null;
   try { localStorage.setItem('cx_month', String(m)); } catch (e) {}
   if (y !== window._ctrl.year) {
     if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
@@ -253,16 +272,32 @@ function cxRenderActive() {
 }
 function cxGoto(tab) { if (typeof switchTab === 'function') switchTab(tab); }
 
-/* ── Summary card (Einnahmen / Ausgaben) ── */
+/* ── Summary card (Einnahmen / Ausgaben) ──
+   #6: "Alle offenen wie geplant" asks first (count, sum, rows skipped for a data check)
+   and offers "Rückgängig" afterwards. o.confirm = { n, sum, skipped } · o.undo = { n }        */
 function cxSummary(o) {
   const pct = o.plan ? Math.min(100, o.done / o.plan * 100) : 0;
+  const canBulk = (o.bulk !== undefined ? o.bulk : o.open) > 0;
+  const undo = o.undo ? '<div class="cx-undo"><span>' + o.undo.n + (o.undo.n === 1 ? ' Posten' : ' Posten') + ' wie geplant gebucht</span>' +
+    '<button class="cx-link" data-cx="undo" style="padding:4px 0;color:var(--cx-acc);font-weight:500">Rückgängig</button></div>' : '';
+  const action = o.confirm
+    ? '<div class="cx-bulk"><div>' + o.confirm.n + (o.confirm.n === 1 ? ' Posten' : ' Posten') + ' wie geplant buchen · ' + cxEur(o.confirm.sum) +
+        (o.confirm.skipped ? '<div class="cx-bulk__s">' + o.confirm.skipped + ' mit Prüfhinweis übersprungen – bitte einzeln erfassen</div>' : '') + '</div>' +
+        '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="allNo">Abbrechen</button>' +
+        '<button class="cx-btn cx-btn--p" data-cx="allYes"' + (o.confirm.n ? '' : ' disabled') + '>Buchen</button></div></div>'
+    : '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="all"' + (canBulk ? '' : ' disabled') + '><i class="ti ti-checks" aria-hidden="true"></i>Alle offenen wie geplant …</button>';
   return '<div class="cx-card cx-sum">' +
     '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' offen') : cxPill('ok', 'alles erfasst')) + '</div>' +
     '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(o.done) + '</span><span class="cx-sum__of">von ' + cxW(o.plan) + ' geplant</span></div>' +
     '<div class="cx-bar cx-bar--thin"><div style="width:' + pct + '%"></div></div>' +
-    '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="all"' + ((o.bulk !== undefined ? o.bulk : o.open) ? '' : ' disabled') + '><i class="ti ti-checks" aria-hidden="true"></i>Alle offenen wie geplant</button>' +
-    (o.partial ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 anteiliger Monat' : o.partial + ' anteilige Monate') + ' · bitte einzeln bestätigen</div>' : '') +
+    undo + action +
+    (o.partial && !o.confirm ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 anteiliger Monat' : o.partial + ' anteilige Monate') + ' · bitte einzeln bestätigen</div>' : '') +
   '</div>';
+}
+/* Pending undo for this tab and month? */
+function cxUndoFor(tab) {
+  const u = CX.undo;
+  return u && u.tab === tab && u.y === window._ctrl.year && u.m === CX.month ? u : null;
 }
 
 /* ── Property card with fold-up ── */
@@ -271,27 +306,34 @@ function cxCard(o) {
   const isOpen = CX.open[o.key] !== undefined ? CX.open[o.key] : (g[0] === 'open' || g[0] === 'diff');   // only what needs you
   return '<div class="cx-card">' +
     '<button class="cx-ph" data-cx="fold" data-k="' + cxEsc(o.key) + '" aria-expanded="' + isOpen + '">' +
-      '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span><span class="cx-src">' + cxEsc(o.sub || '') + '</span></span>' +
-      '<span class="cx-ph__r">' + (o.extraPill || '') + (o.sum !== undefined ? '<span class="cx-ph__sum">' + cxW(o.sum) + '</span>' : '') +
+      '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span><span class="cx-src">' +
+        cxEsc([o.sub || '', o.sum !== undefined ? 'erfasst ' + cxW(o.sum) + (o.plan ? ' von ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · ')) + '</span></span>' +
+      '<span class="cx-ph__r">' + (o.extraPill || '') +
         cxPill(g[0], g[1]) + '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span>' +
     '</button>' + (isOpen ? o.body : '') + '</div>';
 }
 
-/* ── Soll │ → │ Ist row ── */
+/* ── Soll │ Ist row (#19) ──
+   line 1: label · pills + status      line 2: Soll (tap = take over) │ Ist field
+   then sub line, change notes, info (grey) and data checks                                  */
 function cxRow(o) {
   const s = cxStatus(o.soll, o.ist, o.emptyText);
   const can = !!o.soll || (o.ist !== null && o.ist !== undefined);
   const took = o.ist !== null && o.ist !== undefined && o.soll && cxR(o.ist - o.soll) === 0;
+  const soll = o.soll
+    ? '<button class="cx-soll' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Soll übernehmen: ' + cxEsc(cxEur(o.soll)) + '">' +
+        '<span>' + cxEur(o.soll) + '</span><i class="ti ti-' + (took ? 'check' : 'arrow-right') + '" aria-hidden="true"></i></button>'
+    : '<span class="cx-r__s">\u2014</span>';
   return '<div class="cx-r">' +
-    '<div class="cx-r__l"><div class="cx-r__u">' + cxEsc(o.label) + (o.badge ? ' ' + cxPill('beige', o.badge) : '') + '</div>' +
-      '<div class="cx-r__s">' + (o.soll ? cxEur(o.soll) : '\u2014') + '</div>' +
-      (o.sub ? '<div class="cx-r__sub">' + o.sub + '</div>' : '') +
-      (o.notes || []).map(n => '<div class="cx-r__note"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> ' + cxEsc(n) + '</div>').join('') +
-      (o.warn ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(o.warn) + '</div>' : '') +
+    '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.label) + (o.badge ? ' ' + cxPill('beige', o.badge) : '') + '</span>' +
+      '<span class="cx-r__p">' + (o.pills || '') + cxPill(s[0], s[1]) + '</span></div>' +
+    '<div class="cx-r__mid">' + soll +
+      '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Betrag' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist-Betrag ' + cxEsc(o.label) + '"><span>€</span></label>' +
     '</div>' +
-    '<button class="cx-take' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Soll übernehmen"' + (o.soll ? '' : ' disabled') + '><i class="ti ti-arrow-right" aria-hidden="true"></i></button>' +
-    '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Betrag' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist-Betrag ' + cxEsc(o.label) + '"><span>€</span></label>' +
-    '<div class="cx-r__p">' + (o.pills || '') + cxPill(s[0], s[1]) + '</div>' +
+    (o.sub ? '<div class="cx-r__sub">' + o.sub + '</div>' : '') +
+    (o.notes || []).map(n => '<div class="cx-r__note"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> ' + cxEsc(n) + '</div>').join('') +
+    (o.info ? '<div class="cx-r__info">' + cxEsc(o.info) + '</div>' : '') +
+    (o.warn ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(o.warn) + '</div>' : '') +
   '</div>';
 }
 function cxNotDue(list) {

@@ -53,12 +53,13 @@ window.renderIncome = function () {
 
   const cards = model.map(g => {
     const src = g.p.id === CASA_PROP_ID ? 'aus Casa Castel' : (g.rows.some(r => r.s.link) ? 'aus Rentals' : 'Planwert');
-    const changed = g.rows.some(r => r.s.notes.length);
+    // #11: "Änderung" only for a real change (Einzug, Auszug, new rent, Staffel, NK) — not for info notes
+    const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Mieterwechsel|Neu vermietet|Auszug|Staffel|NK angepasst|Verlängerung|Neue Miete)/.test(n)));
     const warned = g.rows.some(r => r.s.check || (!r.soll && r.ist));
     const body = g.rows.map(r => {
       if (r.part) {                                          // one line per tenant (G1)
         const pt = r.part;
-        return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: r.first ? r.s.badge : null, soll: r.soll, ist: r.ist,
+        return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: null, soll: r.soll, ist: r.ist,
                        sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'pauschal' : cxEur(pt.k) + ' kalt + ' + cxEur(pt.nk) + ' NK'),
                        pills: cxPill('beige', 'anteilig'), notes: r.first ? r.s.notes : [], emptyText: 'leer', allowEmpty: true,
                        warn: r.first ? r.s.check : null });
@@ -70,38 +71,62 @@ window.renderIncome = function () {
             : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' pauschal' : cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK'))
         : (r.s.link ? 'nicht vermietet' : 'kein Planwert');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'anteilig' : 'anteilig ' + r.s.days + '/' + r.s.N) : '';
-      return cxRow({ id: r.id, label: r.u.name, badge: r.s.badge, soll: r.soll, ist: r.ist, sub, pills,
+      return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Neu vermietet"
                      notes: r.s.notes, emptyText: 'leer', allowEmpty: true,
                      warn: r.s.check || (!r.soll && r.ist ? 'Miete erfasst, aber laut Mieter-Daten nicht vermietet – bitte Mieter-Tab prüfen' : null) });
     }).join('');
     return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(g.rows),
-                    sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0),
-                    extraPill: (warned ? cxPill('open', 'prüfen') : '') + (changed ? cxPill('beige', 'Änderung') : ''), body });
+                    sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0), plan: g.rows.reduce((s, r) => s + (r.soll || 0), 0),
+                    extraPill: warned ? cxPill('open', 'prüfen') : (changed ? cxPill('beige', 'Änderung') : ''), body });   // one extra pill at most
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Mieten eingegangen', done, plan, open, bulk: open - partialOpen, partial: partialOpen }) +
+    cxSummary({ label: 'Mieten eingegangen', done, plan, open, bulk: open - partialOpen, partial: partialOpen,
+                confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income') }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · aus den Mieter-Tabs</span><span class="cx-lbl">Ist</span></div>' +
     cards + '</div>';
 
   cxWire(host, {
     render: () => window.renderIncome(),
     click: async (a, b) => {
-      if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; if (e) await _cxIncSave(e, e.part ? e.part.amount : e.s.soll); window.renderIncome(); }
-      if (a === 'all') {
+      if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; CX.undo = null; if (e) await _cxIncSave(e, e.part ? e.part.amount : e.s.soll); window.renderIncome(); }
+      // #6: ask first, then book, then offer undo
+      if (a === 'all') { CX.bulk = 'income'; return window.renderIncome(); }
+      if (a === 'allNo') { CX.bulk = null; return window.renderIncome(); }
+      if (a === 'allYes') {
         b.disabled = true;
-        for (const id of Object.keys(_cxIncIndex)) {
-          const e = _cxIncIndex[id];
-          if (e.part) continue;                                                   // tenant lines: one tap each
-          const has = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === window._ctrl.year && r.month === CX.month);
-          if (!has && e.s.soll && !e.s.partial) await _cxIncSave(e, e.s.soll);   // part months: one tap each (deliberate check)
-        }
-        window.renderIncome();
+        const L = _cxIncBulkList(), done = [];
+        for (const e of L.list) { await _cxIncSave(e, e.s.soll); if (e.u.id != null) done.push(e.u.id); }
+        CX.bulk = null;
+        CX.undo = { tab: 'income', y: window._ctrl.year, m: CX.month, items: done, n: done.length };
+        return window.renderIncome();
+      }
+      if (a === 'undo') {
+        const u = cxUndoFor('income'); if (!u) return;
+        b.disabled = true;
+        for (const uid of u.items) { try { await ctlDeleteIncome(uid, u.m); } catch (err) { cxToastErr(err); } }
+        CX.undo = null;
+        return window.renderIncome();
       }
     },
-    input: async (id, val) => { const e = _cxIncIndex[id]; if (!e) return; await _cxIncSave(e, val); window.renderIncome(); },
+    input: async (id, val) => { const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await _cxIncSave(e, val); window.renderIncome(); },
   });
 };
+
+/* What "Alle offenen wie geplant" would book: open, full-month rows without a data check */
+function _cxIncBulkList() {
+  const y = window._ctrl.year, m = CX.month, list = [];
+  let skipped = 0;
+  for (const id of Object.keys(_cxIncIndex)) {
+    const e = _cxIncIndex[id];
+    if (e.part) continue;                                                    // tenant lines: one tap each
+    const has = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === y && r.month === m);
+    if (has || !e.s.soll || e.s.partial) continue;                           // part months: one tap each
+    if (e.s.check) { skipped++; continue; }                                  // data check: deliberate entry only
+    list.push(e);
+  }
+  return { list, n: list.length, sum: cxR(list.reduce((a, e) => a + e.s.soll, 0)), skipped };
+}
 
 /* Save one unit's income (null = delete → "offen") */
 async function _cxIncSave(e, ist) {
