@@ -6,8 +6,9 @@
    property and year and counts in its month on the Dashboard (real cost)
    → tap to edit or delete.
    · Jahr (default) or Monat view · search by description / company
-   · one section per property WITH entries: header above the card
-     (name · total · count · +), card folded in Jahr view
+   · one card per property WITH entries, same card as Income / Expenses:
+     name, count, total · rows: Beschreibung │ amount │ date · Firma ·
+     "+ Rechnung für …" · folded in Jahr view
    · all Casa Castel rooms go under Casa Castel · inactive properties keep
      their old entries
    · NK / Hausgeld results are not here — they live in Income / Expenses
@@ -19,7 +20,8 @@
 
 const _CX_KINDS = ['Rechnung', 'Sonstiges'];
 let _cxOt = {
-  form: null,                                          // null · 'new' · entry id (edit)
+  form: null,                                          // null · 'new' (summary) · 'new:<pid>' (in a card) · entry id (edit)
+  flash: null, formAt: null,
   view: (() => { try { return localStorage.getItem('cx_ot_view') === 'm' ? 'm' : 'y'; } catch (e) { return 'y'; } })(),
   q: '', fold: {}, kind: 'Rechnung', dir: -1, pid: null,
 };
@@ -69,56 +71,66 @@ function _cxOtFormHTML(o) {
     '<label class="cx-f cx-f--l"><input type="text" id="cxOtCompany" list="cxOtCompanies" placeholder="Firma (optional)" aria-label="Firma" value="' + cxEsc(o ? o.company || '' : '') + '"></label>' +
     '<datalist id="cxOtTexts">' + uniq('item').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
     '<datalist id="cxOtCompanies">' + uniq('company').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
-    '<div class="cx-grid2">' +
-      '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Datum"></label>' +
-      '<button class="cx-btn cx-btn--p" data-cx="otSave">Speichern</button>' +
-    '</div>' +
+    '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Datum"></label>' +
     '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Abbrechen</button>' +
-      (o ? '<button class="cx-btn cx-btn--s cx-btn--del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Löschen</button>' : '<span></span>') + '</div>' +
+      '<button class="cx-btn cx-btn--p" data-cx="otSave">Speichern</button></div>' +
+    (o ? '<button class="cx-link cx-ot-del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Rechnung löschen</button>' : '') +
   '</div>';
 }
 
+/* One invoice = one row, same pattern as Income / Expenses:
+   label (Beschreibung) · pill │ amount (bold) │ date · Firma — tap to edit */
 function _cxOtRowHTML(o) {
   if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(o) + '</div>';
-  const dir = Number(o.direction) === 1 ? 1 : -1;
-  return '<button class="cx-ot-row" data-cx="otEdit" data-id="' + cxEsc(o.id) + '">' +
-    '<span class="cx-ot-d">' + cxFmtDate(o.invoice_date).slice(0, 6) + '</span>' +
-    '<span class="cx-ot-t"><span class="cx-ot-i">' + cxEsc(o.item || 'Eintrag') + '</span>' +
-      ((o.company || o.kind === 'Sonstiges') ? '<span class="cx-ot-c">' + cxEsc([o.company, o.kind === 'Sonstiges' ? 'Sonstiges' : ''].filter(Boolean).join(' · ')) + '</span>' : '') + '</span>' +
-    '<span class="cx-amt ' + (dir > 0 ? 'pos' : 'neg') + '">' + (dir > 0 ? '+\u202f' : '\u2212\u202f') + cxEur(o.amount) + '</span></button>';
+  const inn = Number(o.direction) === 1;
+  const pills = (o.kind === 'Sonstiges' ? cxPill('grey', 'Sonstiges') : '') + (inn ? cxPill('ok', 'Rein') : '');
+  return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc((o.item || 'Eintrag') + ' bearbeiten') + '">' +
+    '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Eintrag') + '</span>' +
+      '<span class="cx-r__p">' + pills + '<i class="ti ti-chevron-right cx-chev" aria-hidden="true"></i></span></div>' +
+    '<div class="cx-r__s' + (inn ? ' pos' : '') + '">' + (inn ? '+\u202f' : '') + cxEur(o.amount) + '</div>' +
+    '<div class="cx-r__sub">' + cxEsc([cxFmtDate(o.invoice_date), o.company].filter(Boolean).join(' · ')) + '</div>' +
+  '</button>';
 }
 
 function _cxOtListHTML() {
   const rows = _cxOtVisible();
-  if (!rows.length) return '<div class="cx-empty">' + (_cxOt.q ? 'Nichts gefunden für „' + cxEsc(_cxOt.q) + '“.' :
-    'Noch keine Rechnungen ' + (_cxOt.view === 'y' ? window._ctrl.year : 'im ' + CX_MONTHS[CX.month - 1]) + '.') + '</div>';
+  if (!rows.length) return '<div class="cx-card"><div class="cx-empty">' + (_cxOt.q ? 'Nichts gefunden für „' + cxEsc(_cxOt.q) + '“.' :
+    'Noch keine Rechnungen ' + (_cxOt.view === 'y' ? window._ctrl.year : 'im ' + CX_MONTHS[CX.month - 1]) + '.') + '</div></div>';
   const order = window._ctrl.properties.slice().sort((a, b) => (b.active === a.active ? 0 : a.active ? -1 : 1) || a.id - b.id);
   return order.map(p => {
     const list = rows.filter(o => Number(o.property_id) === p.id);
     if (!list.length) return '';                                         // a property shows only once it has an entry
-    const total = list.reduce((s, o) => s + _cxOtSigned(o), 0);
-    const fk = p.id + '|' + _cxOt.view;
-    const open = _cxOt.q ? true : (_cxOt.fold[fk] !== undefined ? _cxOt.fold[fk] : _cxOt.view === 'm');
-    let body = '', lastM = null;
-    if (open) for (const o of list) {
+    const out = list.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+    const inn = list.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+    const here = _cxOt.form === 'new:' + p.id;
+    let body = here ? '<div class="cx-ot-edit cx-ot-edit--top">' + _cxOtFormHTML(null) + '</div>' : '', lastM = null;
+    for (const o of list) {
       const mm = Number(String(o.invoice_date).slice(5, 7));
       if (_cxOt.view === 'y' && mm !== lastM) { body += '<div class="cx-ot-m">' + CX_MONTHS[mm - 1] + '</div>'; lastM = mm; }
       body += _cxOtRowHTML(o);
     }
-    return '<div class="cx-ot-g">' +
-      '<div class="cx-ot-h"><button class="cx-ot-hb" data-cx="otFold" data-k="' + fk + '" aria-expanded="' + open + '">' +
-        '<span class="cx-lbl">' + cxEsc(p.name) + '</span>' +
-        '<span class="cx-ot-hs">' + cxWS(total) + ' · ' + list.length + '</span>' +
-        '<i class="ti ti-chevron-' + (open ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></button>' +
-        '<button class="cx-x" data-cx="otAddFor" data-p="' + p.id + '" aria-label="Rechnung für ' + cxEsc(p.name) + '"><span aria-hidden="true">+</span></button></div>' +
-      (open ? '<div class="cx-card">' + body + '</div>' : '') + '</div>';
+    body += '<div class="cx-ot-foot"><button class="cx-link" data-cx="otAddFor" data-p="' + p.id + '">' +
+      (here ? '× Schließen' : '+ Rechnung für ' + cxEsc(p.name)) + '</button></div>';
+    const n = list.length;
+    return cxCard({
+      key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
+      title: p.name,
+      sub: n + (n === 1 ? ' Rechnung' : ' Rechnungen') + (inn ? ' · Rein ' + cxW(inn) : ''),
+      status: null,
+      extraPill: '<span class="cx-ot-tot">' + cxW(out) + '</span>',
+      defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || list.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
+      body,
+    });
   }).join('');
 }
 
 window.renderOneTime = function () {
   const host = document.getElementById('tab-onetime');
   if (!host) return;
+  const at = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
+  if (CX.tab !== 'onetime' || (_cxOt.formAt && _cxOt.formAt !== at)) { _cxOt.form = null; _cxOt.formAt = null; }
   CX.tab = 'onetime';
+  const flash = _cxOt.flash;
   const all = _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month);
   const raus = all.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
   const rein = all.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
@@ -130,17 +142,19 @@ window.renderOneTime = function () {
       '<button class="' + (_cxOt.view === 'm' ? 'on' : '') + '" data-cx="otView" data-v="m">Monat</button></div>' +
     (_cxOt.view === 'y' ? _cxOtYearBar() : cxMonthBar()) +
     '<div class="cx-card cx-sum">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Rechnungen · ' + cxEsc(period) + '</span><span class="cx-lbl">' + all.length + (all.length === 1 ? ' Eintrag' : ' Einträge') + '</span></div>' +
-      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(-raus) + '</span>' + (rein ? '<span class="cx-sum__of">Rein ' + cxW(rein) + '</span>' : '') + '</div>' +
-      (_cxOt.form === 'new'
-        ? _cxOtFormHTML(null)
-        : '<button class="cx-btn cx-btn--p cx-btn--full" style="margin-top:12px" data-cx="otNew"><i class="ti ti-plus" aria-hidden="true"></i>Rechnung erfassen</button>') +
+      '<div class="cx-row-sb"><span class="cx-lbl">Rechnungen bezahlt · ' + cxEsc(period) + '</span>' + cxPill('beige', all.length + (all.length === 1 ? ' Rechnung' : ' Rechnungen')) + '</div>' +
+      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Rein ' + cxW(rein) : (_cxOt.view === 'y' ? 'im Jahr ' + window._ctrl.year : 'im ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
+      '<button class="cx-btn cx-btn--s cx-btn--full" style="margin-top:4px" data-cx="otNew">' +
+        (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Schließen' : '<i class="ti ti-plus" aria-hidden="true"></i>Rechnung erfassen') + '</button>' +
+      (_cxOt.form === 'new' ? _cxOtFormHTML(null) : '') +
     '</div>' +
+    '<div class="cx-head"><span class="cx-lbl">Rechnungen je Objekt</span><span class="cx-lbl">Betrag</span></div>' +
     '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Suchen · Beschreibung oder Firma" aria-label="Suchen" value="' + cxEsc(_cxOt.q) + '"></label>' +
     '<div id="cxOtList">' + _cxOtListHTML() + '</div>' +
     '<div class="cx-r__sub" style="text-align:center;margin-top:8px">NK- und Hausgeld-Abrechnungen stehen in Income und Expenses.</div>' +
   '</div>';
 
+  if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60); }
   const q = document.getElementById('cxOtQ');
   if (q && !q._w) {
     q._w = true;
@@ -151,8 +165,9 @@ window.renderOneTime = function () {
   cxWire(host, {
     render: () => window.renderOneTime(),
     click: async (a, b) => {
-      if (a === 'otView') { _cxOt.view = b.dataset.v; _cxOt.form = null; try { localStorage.setItem('cx_ot_view', _cxOt.view); } catch (e) {} return window.renderOneTime(); }
+      if (a === 'otView') { if (!_cxOtClose()) return; _cxOt.view = b.dataset.v; try { localStorage.setItem('cx_ot_view', _cxOt.view); } catch (e) {} return window.renderOneTime(); }
       if (a === 'otYear') {
+        if (!_cxOtClose()) return;
         const y = window._ctrl.year + Number(b.dataset.v);
         if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
         try { await ctlLoadAll(y); } catch (e) { cxToastErr(e); }
@@ -160,11 +175,21 @@ window.renderOneTime = function () {
         _cxOt.form = null;
         return window.renderOneTime();
       }
-      if (a === 'otFold') { const k = b.dataset.k; _cxOt.fold[k] = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
-      if (a === 'otNew') { _cxOt.form = 'new'; _cxOt.pid = null; _cxOt.kind = 'Rechnung'; _cxOt.dir = -1; return window.renderOneTime(); }
-      if (a === 'otAddFor') { _cxOt.form = 'new'; _cxOt.pid = Number(b.dataset.p); _cxOt.kind = 'Rechnung'; _cxOt.dir = -1; window.renderOneTime(); window.scrollTo(0, 0); document.getElementById('cxOtAmt')?.focus(); return; }
-      if (a === 'otEdit') { _cxOt.form = b.dataset.id; return window.renderOneTime(); }
-      if (a === 'otCancel') { const o = _cxOtEditing(); if (o) { delete o._kind; delete o._dir; } _cxOt.form = null; return window.renderOneTime(); }
+      if (a === 'otNew') {
+        if (_cxOt.form === 'new') { if (_cxOtClose()) window.renderOneTime(); return; }
+        if (!_cxOtClose()) return;
+        _cxOtOpen('new', null); return window.renderOneTime();
+      }
+      if (a === 'otAddFor') {
+        const k = 'new:' + b.dataset.p;
+        if (_cxOt.form === k) { if (_cxOtClose()) window.renderOneTime(); return; }
+        if (!_cxOtClose()) return;
+        _cxOtOpen(k, Number(b.dataset.p)); window.renderOneTime();
+        document.getElementById('cxOtAmt')?.focus();
+        return;
+      }
+      if (a === 'otEdit') { if (!_cxOtClose()) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
+      if (a === 'otCancel') { if (_cxOtClose()) window.renderOneTime(); return; }
       if (a === 'otKind') { _cxOt.kind = b.dataset.v; return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._kind = b.dataset.v; }); }
       if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._dir = Number(b.dataset.v); }); }
       if (a === 'otSave') return _cxOtSave(b);
@@ -179,7 +204,31 @@ window.renderOneTime = function () {
 };
 
 function _cxOtEditing() {
-  return _cxOt.form && _cxOt.form !== 'new' ? (window._ctrl.one_time || []).find(x => String(x.id) === String(_cxOt.form)) || null : null;
+  return _cxOt.form && !/^new/.test(String(_cxOt.form)) ? (window._ctrl.one_time || []).find(x => String(x.id) === String(_cxOt.form)) || null : null;
+}
+function _cxOtOpen(form, pid) {
+  _cxOt.form = form; _cxOt.pid = pid; _cxOt.kind = 'Rechnung'; _cxOt.dir = -1;
+  _cxOt.formAt = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
+}
+/* Something typed that would be lost? (new: any field · edit: anything changed) */
+function _cxOtDirty() {
+  if (_cxOt.form === null) return false;
+  const g = id => document.getElementById(id);
+  if (!g('cxOtAmt')) return false;
+  const o = _cxOtEditing();
+  const amt = g('cxOtAmt').value.trim(), text = (g('cxOtText')?.value || '').trim(), co = (g('cxOtCompany')?.value || '').trim();
+  if (!o) return !!(amt || text || co);
+  return cxParse(amt) !== cxR(o.amount) || text !== String(o.item || '') || co !== String(o.company || '') ||
+    String(g('cxOtDate')?.value || '') !== String(o.invoice_date).slice(0, 10) || Number(g('cxOtProp')?.value) !== Number(o.property_id) ||
+    (o._kind && o._kind !== o.kind) || (o._dir && o._dir !== (Number(o.direction) === 1 ? 1 : -1));
+}
+/* Close the open form; asks first when something typed would be lost. Returns false if you keep editing. */
+function _cxOtClose() {
+  if (_cxOt.form === null) return true;
+  if (_cxOtDirty() && !confirm('Eingabe verwerfen?')) return false;
+  const o = _cxOtEditing(); if (o) { delete o._kind; delete o._dir; }
+  _cxOt.form = null; _cxOt.formAt = null;
+  return true;
 }
 /* Re-render but keep what was typed in the form; kind / direction chips of an edit apply on save */
 function _cxOtKeep(fn) {
@@ -213,13 +262,16 @@ async function _cxOtSave(b) {
   if (dup && !confirm('Mögliches Duplikat: „' + (dup.item || 'Eintrag') + '“ · ' + cxEur(dup.amount) + ' am ' + cxFmtDate(date) + ' gibt es schon.\n\nTrotzdem speichern?')) return;
   b.disabled = true;
   try {
+    let saved;
     if (o) {
-      await ctlUpdateOneTime(o.id, { property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir });
+      saved = await ctlUpdateOneTime(o.id, { property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir });
     } else {
-      await ctlAddOneTime({ property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir });
+      saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir });
     }
+    if (o) { delete o._kind; delete o._dir; }
+    if (saved) { _cxOt.flash = saved.id; delete CX.open['ot:' + pid + ':' + _cxOt.view]; }
     try { localStorage.setItem('cx_ot_prop', String(pid)); } catch (e) {}
-    _cxOt.form = null;
+    _cxOt.form = null; _cxOt.formAt = null;
     const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7));
     if (y !== window._ctrl.year) say('Gespeichert in ' + y);
     else if (_cxOt.view === 'm' && m !== CX.month) say('Gespeichert in ' + CX_MONTHS[m - 1]);

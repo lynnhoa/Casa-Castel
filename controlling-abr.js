@@ -131,9 +131,8 @@ function cxAbrSection(p, y, m, dir) {
                  pills: r.overdue ? cxPill('open', 'fällig seit ' + mon(r.overdue)) : '',
                  sub: cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">stornieren</button>' : '') });
   }
-  if (!rows.length && !formOpen) h += '<div class="cx-r__sub cx-abr-empty">Keine Abrechnung in diesem Monat.</div>';
   if (formOpen) h += _cxAbrFormHTML(p, dir);
-  return '<div class="cx-abr">' + h + '</div>';
+  return '<div class="cx-abr' + (!rows.length && !formOpen ? ' cx-abr--empty' : '') + '">' + h + '</div>';
 }
 
 function _cxAbrFormHTML(p, dir) {

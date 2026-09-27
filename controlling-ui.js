@@ -193,27 +193,32 @@ const _CX_CSS = `
     .cx-abr { border-top:.5px solid var(--cx-rule); margin-top:2px; }
     .cx-abr-h { display:flex; justify-content:space-between; align-items:center; padding:10px 16px 0; }
     .cx-abr-h .cx-link { color:var(--cx-acc); font-weight:500; padding:4px 0; }
-    .cx-abr-empty { padding:4px 16px 12px; }
+    .cx-abr--empty .cx-abr-h { padding-bottom:10px; }
     .cx-abr-form { margin:8px 16px 14px; }
     .cx-link--a { color:var(--cx-acc); font-weight:500; }
     .cx-link--in { display:inline; padding:0; font-size:10px; }
-    .cx-ot-g { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
-    .cx-ot-h { display:flex; align-items:center; gap:8px; padding:4px 4px 0; }
-    .cx-ot-hb { flex:1; display:flex; align-items:center; gap:8px; background:none; border:none; padding:6px 0; font-family:inherit; cursor:pointer; text-align:left; min-width:0; }
-    .cx-ot-hb .cx-lbl { font-size:10px; color:var(--cx-txt); font-weight:600; }
-    .cx-ot-hs { margin-left:auto; font-size:11px; color:var(--cx-mut); font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .cx-ot-m { padding:8px 16px 2px; font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--cx-sub); border-top:.5px solid var(--cx-line); }
-    .cx-ot-m:first-child { border-top:none; }
-    .cx-ot-row { width:100%; display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px 16px; background:none; border:none;
-                 border-top:.5px solid var(--cx-line); font-family:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-    .cx-ot-m + .cx-ot-row, .cx-card > .cx-ot-row:first-child { border-top:none; }
-    .cx-ot-d { font-size:11px; color:var(--cx-mut); font-variant-numeric:tabular-nums; }
-    .cx-ot-t { display:flex; flex-direction:column; min-width:0; }
-    .cx-ot-i { font-size:13px; color:var(--cx-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .cx-ot-c { font-size:10.5px; color:var(--cx-mut); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* One-off: same card and row pattern as Income / Expenses */
+    .cx-ot-m { padding:10px 16px 0; font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--cx-mut); border-top:.5px solid var(--cx-line); }
+    button.cx-ot-r { width:100%; background:none; border:none; border-top:.5px solid var(--cx-line); font-family:inherit; text-align:left; cursor:pointer;
+                     color:inherit; -webkit-tap-highlight-color:transparent; }
+    .cx-ot-m + button.cx-ot-r { border-top:none; }
+    .cx-ot-r .cx-r__u { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cx-ot-r .cx-r__s { margin-top:4px; }
+    .cx-ot-r .cx-r__s.pos { color:var(--cx-acc); }
+    .cx-ot-r .cx-chev { font-size:13px; }
     .cx-ot-edit { padding:0 16px 12px; border-top:.5px solid var(--cx-line); }
+    .cx-ot-edit--top { border-top:none; }
+    .cx-ot-edit--top .cx-form { margin-top:0; }
+    .cx-sum .cx-form { margin-top:12px; }
+    @keyframes cxFlash { from { background:#F3EADC; } to { background:transparent; } }
+    .cx-ot-flash { animation:cxFlash 1.8s ease-out; }
+    @media (prefers-reduced-motion: reduce) { .cx-ot-flash { animation:none; background:#F7F1E6; } }
+    .cx-ot-foot { display:flex; justify-content:flex-end; padding:8px 16px 12px; border-top:.5px solid var(--cx-line); }
+    .cx-ot-foot .cx-link, .cx-ph__r .cx-link { color:var(--cx-acc); font-weight:500; padding:4px 0; }
+    .cx-ot-tot { font-size:14px; font-weight:600; color:var(--cx-amt); font-variant-numeric:tabular-nums; white-space:nowrap; }
     .cx-ot-q { background:var(--cx-card); }
     .cx-btn--del { color:var(--cx-neg); border-color:#D9957C; }
+    .cx-ot-del { color:var(--cx-neg); align-self:center; padding:6px 0 0; }
     .cx-su-u { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-top:.5px solid var(--cx-line); }
     .cx-set__sub + .cx-su-u { border-top:none; padding-top:2px; }
     .cx-su-n { font-size:13px; font-weight:500; color:var(--cx-ink); min-width:0; }
@@ -339,13 +344,14 @@ function cxUndoFor(tab) {
 /* ── Property card with fold-up ── */
 function cxCard(o) {
   const g = o.status;
-  const isOpen = CX.open[o.key] !== undefined ? CX.open[o.key] : (g[0] === 'open' || g[0] === 'diff');   // only what needs you
+  const isOpen = CX.open[o.key] !== undefined ? CX.open[o.key]
+    : (o.defaultOpen !== undefined ? o.defaultOpen : !!g && (g[0] === 'open' || g[0] === 'diff'));   // only what needs you
   return '<div class="cx-card">' +
     '<button class="cx-ph" data-cx="fold" data-k="' + cxEsc(o.key) + '" aria-expanded="' + isOpen + '">' +
       '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span><span class="cx-src">' +
         cxEsc([o.sub || '', o.sum !== undefined ? 'erfasst ' + cxW(o.sum) + (o.plan ? ' von ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · ')) + '</span></span>' +
       '<span class="cx-ph__r">' + (o.extraPill || '') +
-        cxPill(g[0], g[1]) + '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span>' +
+        (g ? cxPill(g[0], g[1]) : '') + '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span>' +
     '</button>' + (isOpen ? o.body : '') + '</div>';
 }
 
