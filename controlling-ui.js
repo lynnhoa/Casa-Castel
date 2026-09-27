@@ -198,10 +198,14 @@ const _CX_CSS = `
     .cx-link--a { color:var(--cx-acc); font-weight:500; }
     .cx-link--in { display:inline; padding:0; font-size:10px; }
     /* One-off: same card and row pattern as Income / Expenses */
-    .cx-ot-m { padding:10px 16px 0; font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--cx-mut); border-top:.5px solid var(--cx-line); }
+    .cx-ot-top { display:flex; justify-content:space-between; align-items:center; padding:8px 16px; border-top:.5px solid var(--cx-line); }
+    .cx-ot-top .cx-link { color:var(--cx-acc); font-weight:500; font-size:12px; padding:4px 0; }
+    .cx-ot-m { width:100%; display:flex; justify-content:space-between; align-items:center; padding:10px 16px 6px; background:#FAF7F2; border:none;
+               border-top:.5px solid var(--cx-line); font-family:inherit; font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase;
+               color:var(--cx-mut); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cx-ot-ms { font-size:11px; letter-spacing:0; text-transform:none; font-weight:400; color:var(--cx-mut); font-variant-numeric:tabular-nums; }
     button.cx-ot-r { width:100%; background:none; border:none; border-top:.5px solid var(--cx-line); font-family:inherit; text-align:left; cursor:pointer;
                      color:inherit; -webkit-tap-highlight-color:transparent; }
-    .cx-ot-m + button.cx-ot-r { border-top:none; }
     .cx-ot-r .cx-r__u { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .cx-ot-r .cx-r__s { margin-top:4px; }
     .cx-ot-r .cx-r__s.pos { color:var(--cx-acc); }
@@ -213,10 +217,9 @@ const _CX_CSS = `
     @keyframes cxFlash { from { background:#F3EADC; } to { background:transparent; } }
     .cx-ot-flash { animation:cxFlash 1.8s ease-out; }
     @media (prefers-reduced-motion: reduce) { .cx-ot-flash { animation:none; background:#F7F1E6; } }
-    .cx-ot-foot { display:flex; justify-content:flex-end; padding:8px 16px 12px; border-top:.5px solid var(--cx-line); }
-    .cx-ot-foot .cx-link, .cx-ph__r .cx-link { color:var(--cx-acc); font-weight:500; padding:4px 0; }
     .cx-ot-tot { font-size:14px; font-weight:600; color:var(--cx-amt); font-variant-numeric:tabular-nums; white-space:nowrap; }
     .cx-ot-q { background:var(--cx-card); }
+    #cxOtList { display:flex; flex-direction:column; gap:8px; }   /* same card spacing as the other tabs */
     .cx-btn--del { color:var(--cx-neg); border-color:#D9957C; }
     .cx-ot-del { color:var(--cx-neg); align-self:center; padding:6px 0 0; }
     .cx-su-u { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-top:.5px solid var(--cx-line); }
