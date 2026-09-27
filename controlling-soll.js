@@ -117,7 +117,8 @@ function ctlUnitLink(u, p) {
   }
   if (!p) return null;
   if (_cxIsParking(u)) {                                   // B11: before the Casa room match
-    const pk = S.parking.find(x => _cxNorm(x.name) === _cxNorm(u.name));
+    const pk = S.parking.find(x => _cxNorm(x.name) === _cxNorm(u.name)) ||
+               S.parking.find(x => _cxNorm(x.name) === _cxNorm(p.name + ' ' + u.name));   // "Casa Castel" + "Stellplatz"
     return pk ? { type: 'rentals_parking', ref: String(pk.id), obj: pk, auto: true } : null;
   }
   if (p.id === CASA_PROP_ID) {
@@ -463,9 +464,11 @@ function _cxUnitSollV2(u, pid, y, m) {
   const link = ctlUnitLink(u, p);
   let out;
   if (!link) {
-    const k = _cxN0(u.def_kaltmiete), nk = _cxN0(u.def_nebenkosten);
+    // parking: no Planwert any more — the rent comes from Rentals › Parking once linked (Setup review)
+    const pk = _cxIsParking(u), k = pk ? 0 : _cxN0(u.def_kaltmiete), nk = pk ? 0 : _cxN0(u.def_nebenkosten);
     out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, days: 0, N: 0, parts: [], src: 'Planwert',
-            check: !(k + nk) ? 'Nicht verknüpft und kein Planwert – in Setup verknüpfen' : null };
+            check: !(k + nk) ? (_cxIsParking(u) ? 'Stellplatz nicht verknüpft – in Setup › Stellplätze mit Rentals verknüpfen'
+                                                : 'Nicht verknüpft – in Setup › Objekte mit ' + (pid === CASA_PROP_ID ? 'dem Casa Castel Zimmer' : 'der Rentals-Wohnung') + ' verknüpfen') : null };
     _cxUnitCache.set(key, out);
     return out;
   }
@@ -711,7 +714,7 @@ function ctlCostRows(p, y, m) {
   if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate),
     sub: splitKnown ? 'Zins ' + _cxEurS(z) + ' · Tilgung ' + _cxEurS(t) : 'Zins / Tilgung unbekannt', src: L ? 'Properties' : 'Planwert',
     split: splitKnown ? { zinsen: z, tilgung: t } : null,
-    info: L ? null : 'Kredit nicht mit Properties verknüpft – Planwert aus Setup (Setup › Darlehen)' });
+    info: L ? null : 'Kredit nicht mit Properties verknüpft – Planwert aus Setup › Objekte › Darlehen' });
 
   let hg = null, hgNote = null;
   if (pl.apt) {
@@ -740,8 +743,6 @@ function ctlCostRows(p, y, m) {
     else { const nx = _cxNextDue(months, m); notDue.push({ label: 'Grundsteuer', next: nx ? _cxMonthShort(nx) : '' }); }
   }
 
-  const st = _cxN0(p.def_strom);
-  if (st) rows.push({ key: 'strom', label: 'Strom', soll: _cxR(st), sub: 'monatlich', src: 'Planwert' });
   return { rows, notDue };
 }
 
@@ -1113,4 +1114,55 @@ function ctlSettlementAlreadyBooked(r) {
   const refs = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
   const list = r.app === 'casa' ? (S.casaNk || []).map(e => ['nk:' + e.id, e]) : (S.rntNk || []).map(e => ['rnt_nk:' + e.id, e]);
   return list.some(([ref, e]) => String(e.tenant_id) === String(r.tenant_id) && yr(e) === Number(r.covers_year) && refs.has(ref));
+}
+
+
+/* ── Setup: links at a glance (Setup review) ──────────────────
+   Parking info from Rentals, and every link problem in one list:
+   unlinked units · one source linked twice (double Soll) · unit linked to another
+   apartment than its property · Rentals spaces / apartments that are in no property. */
+function ctlParkingInfo(pk) {
+  const S = window._src, today = _cxToday();
+  const pr = S.pkPricing.find(x => String(x.parking_id) === String(pk.id));
+  const price = pr ? _cxNum(pr.miete) : null;
+  const t = S.rntTen.filter(x => String(x.parking_id) === String(pk.id) && _cxActiveOn(x, today))
+    .sort((a, b) => _cxD(b.mietbeginn).localeCompare(_cxD(a.mietbeginn)))[0] || null;
+  return { price, tenant: t, tenantName: t ? _cxTName(t) : null, rent: t ? _cxNum(t.kaltmiete) : null };
+}
+function ctlSetupLinkState() {
+  const S = window._src, props = window._ctrl.properties.filter(p => p.active);
+  const used = new Map();                                  // 'type|ref' → [{p,u}]
+  const units = [];
+  for (const p of props) for (const u of ctlUnitsOf(p.id)) {
+    const l = ctlUnitLink(u, p);
+    units.push({ p, u, l, parking: _cxIsParking(u) });
+    if (l) { const k = l.type + '|' + l.ref; if (!used.has(k)) used.set(k, []); used.get(k).push({ p, u }); }
+  }
+  const issues = [];
+  for (const [k, list] of used) if (list.length > 1)
+    issues.push({ kind: 'double', pid: list[0].p.id, text: list.map(x => x.p.name + ' · ' + x.u.name).join(' und ') + ' sind mit derselben Quelle verknüpft – das Soll zählt doppelt' });
+  for (const x of units) {
+    if (!x.l) issues.push({ kind: x.parking ? 'parking' : 'unit', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ' ist nicht verknüpft' });
+    else if (x.l.type === 'rentals_apartment') {
+      const pl = ctlPropLinks(x.p);
+      if (pl.apt && String(pl.apt.id) !== String(x.l.ref)) issues.push({ kind: 'mismatch', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ': Miete aus „' + (x.l.obj.name || '') + '“, Hausgeld aus „' + (pl.apt.name || '') + '“ – bitte gleiche Wohnung wählen' });
+    } else if (x.l.type === 'casa_room' && x.p.id !== CASA_PROP_ID) issues.push({ kind: 'mismatch', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ' ist mit einem Casa Castel Zimmer verknüpft' });
+  }
+  for (const p of props) {
+    const pl = ctlPropLinks(p);
+    if (p.id !== CASA_PROP_ID && !pl.apt) issues.push({ kind: 'prop', pid: p.id, text: p.name + ': keine Rentals-Wohnung – Hausgeld und Grundsteuer fehlen im Soll' });
+    if (!pl.loan) issues.push({ kind: 'loan', pid: p.id, text: p.name + ': kein Darlehen verknüpft' + (p.id === CASA_PROP_ID ? ' – Kreditrate aus der Kostenart' : (_cxN0(p.def_rate) ? ' – Kreditrate aus Planwert' : ' – keine Kreditrate im Soll')) });
+  }
+  const freeParking = S.parking.filter(pk => !used.has('rentals_parking|' + String(pk.id)));
+  const freeApts = S.apts.filter(a => !props.some(p => { const pl = ctlPropLinks(p); return pl.apt && String(pl.apt.id) === String(a.id); }) &&
+                                      !used.has('rentals_apartment|' + String(a.id)));
+  for (const pk of freeParking) issues.push({ kind: 'freePk', text: 'Rentals-Stellplatz „' + pk.name + '“ ist in keinem Objekt' });
+  for (const a of freeApts) issues.push({ kind: 'freeApt', text: 'Rentals-Wohnung „' + a.name + '“ ist in keinem Objekt' });
+  return { units, used, issues, freeParking, freeApts };
+}
+/* Guess the property of a Rentals parking space from its name ("Studio One TG 3" → Studio One) */
+function ctlGuessParkingProp(pk) {
+  const n = _cxNorm(pk.name);
+  return window._ctrl.properties.filter(p => p.active).sort((a, b) => _cxNorm(b.name).length - _cxNorm(a.name).length)
+    .find(p => n.startsWith(_cxNorm(p.name))) || null;
 }

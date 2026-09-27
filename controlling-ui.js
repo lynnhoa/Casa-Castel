@@ -184,6 +184,12 @@ const _CX_CSS = `
     .cx-mchip.on { background:#F3EADC; border-color:#D4B896; color:var(--cx-acc); font-weight:600; }
     .cx-cat { padding:12px 16px; border-top:.5px solid var(--cx-line); display:flex; flex-direction:column; gap:6px; }
     .cx-cat:first-child { border-top:none; }
+    .cx-su-u { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-top:.5px solid var(--cx-line); }
+    .cx-set__sub + .cx-su-u { border-top:none; padding-top:2px; }
+    .cx-su-n { font-size:13px; font-weight:500; color:var(--cx-ink); min-width:0; }
+    .cx-su-a { display:flex; gap:14px; }
+    .cx-su-a:empty { display:none; }
+    .cx-su-a .cx-link { color:var(--cx-acc); font-weight:500; font-size:12px; padding:2px 0; }
 `;
 (function () {
   if (typeof document === 'undefined' || document.getElementById('cx-styles')) return;

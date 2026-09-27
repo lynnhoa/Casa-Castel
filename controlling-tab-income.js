@@ -68,7 +68,8 @@ window.renderIncome = function () {
       const sub = r.soll
         ? (r.s.parts && r.s.parts.length > 1
             ? r.s.parts.map(pt => pt.from + '.–' + pt.to + '.: ' + cxEur(pt.amount)).join(' · ')
-            : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' pauschal' : cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK'))
+            : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' pauschal'
+              : (_cxIsParking(r.u) && !r.s.nk ? 'Miete ' + cxEur(r.s.k) : cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK')))
         : (r.s.link ? 'nicht vermietet' : 'kein Planwert');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'anteilig' : 'anteilig ' + r.s.days + '/' + r.s.N) : '';
       return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Neu vermietet"
