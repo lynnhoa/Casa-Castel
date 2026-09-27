@@ -21,7 +21,7 @@
 const _CX_KINDS = ['Rechnung', 'Sonstiges'];
 let _cxOt = {
   form: null,                                          // null · 'new' (summary) · 'new:<pid>' (in a card) · entry id (edit)
-  flash: null, formAt: null,
+  flash: null, formAt: null, mfold: {}, more: {},
   view: (() => { try { return localStorage.getItem('cx_ot_view') === 'm' ? 'm' : 'y'; } catch (e) { return 'y'; } })(),
   q: '', fold: {}, kind: 'Rechnung', dir: -1, pid: null,
 };
@@ -92,6 +92,16 @@ function _cxOtRowHTML(o) {
   '</button>';
 }
 
+/* Very long lists: 20 rows at a time — "Weitere … anzeigen" (search always shows all) */
+function _cxOtRowsLimited(list, k) {
+  const lim = _cxOt.q ? Infinity : (_cxOt.more[k] || 20);
+  const focus = list.findIndex(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash));
+  const n = Math.max(lim, focus + 1);
+  const rest = list.length - n;
+  return list.slice(0, n).map(_cxOtRowHTML).join('') +
+    (rest > 0 ? '<button class="cx-ot-more" data-cx="otMore" data-k="' + k + '">Weitere ' + Math.min(rest, 20) + ' von ' + rest + ' anzeigen</button>' : '');
+}
+
 function _cxOtListHTML() {
   const rows = _cxOtVisible();
   if (!rows.length) return '<div class="cx-card"><div class="cx-empty">' + (_cxOt.q ? 'Nichts gefunden für „' + cxEsc(_cxOt.q) + '“.' :
@@ -103,14 +113,27 @@ function _cxOtListHTML() {
     const out = list.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
     const inn = list.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
     const here = _cxOt.form === 'new:' + p.id;
-    let body = here ? '<div class="cx-ot-edit cx-ot-edit--top">' + _cxOtFormHTML(null) + '</div>' : '', lastM = null;
-    for (const o of list) {
-      const mm = Number(String(o.invoice_date).slice(5, 7));
-      if (_cxOt.view === 'y' && mm !== lastM) { body += '<div class="cx-ot-m">' + CX_MONTHS[mm - 1] + '</div>'; lastM = mm; }
-      body += _cxOtRowHTML(o);
+    // "+ Rechnung" sits at the TOP of the card (no scrolling past 100 invoices); the form opens right below it
+    let body = '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'Nach Monat' : CX_MONTHS[CX.month - 1]) + '</span>' +
+      '<button class="cx-link" data-cx="otAddFor" data-p="' + p.id + '">' + (here ? '× Schließen' : '+ Rechnung') + '</button></div>' +
+      (here ? '<div class="cx-ot-edit cx-ot-edit--top">' + _cxOtFormHTML(null) + '</div>' : '');
+    if (_cxOt.view === 'm') body += _cxOtRowsLimited(list, p.id + '|m|' + window._ctrl.year + '|' + CX.month);
+    else {
+      // Jahr view: one foldable block per month. Many invoices → only the newest month open at first
+      const months = [...new Set(list.map(o => Number(String(o.invoice_date).slice(5, 7))))];   // newest first
+      const many = list.length > 15;
+      months.forEach((mm, i) => {
+        const ml = list.filter(o => Number(String(o.invoice_date).slice(5, 7)) === mm);
+        const k = p.id + '|' + window._ctrl.year + '|' + mm;
+        const hasFocus = ml.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash));
+        const open = _cxOt.q || hasFocus ? true : (_cxOt.mfold[k] !== undefined ? _cxOt.mfold[k] : (!many || i === 0));
+        const mt = ml.reduce((s2, o) => s2 + _cxOtSigned(o), 0);
+        body += '<button class="cx-ot-m" data-cx="otMonth" data-k="' + k + '" aria-expanded="' + open + '">' +
+          '<span>' + CX_MONTHS[mm - 1] + '</span><span class="cx-ot-ms">' + cxW(Math.abs(mt)) + ' · ' + ml.length +
+          ' <i class="ti ti-chevron-' + (open ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
+          (open ? _cxOtRowsLimited(ml, k) : '');
+      });
     }
-    body += '<div class="cx-ot-foot"><button class="cx-link" data-cx="otAddFor" data-p="' + p.id + '">' +
-      (here ? '× Schließen' : '+ Rechnung für ' + cxEsc(p.name)) + '</button></div>';
     const n = list.length;
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
@@ -188,6 +211,8 @@ window.renderOneTime = function () {
         document.getElementById('cxOtAmt')?.focus();
         return;
       }
+      if (a === 'otMore') { const k = b.dataset.k; _cxOt.more[k] = (_cxOt.more[k] || 20) + 20; return window.renderOneTime(); }
+      if (a === 'otMonth') { const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
       if (a === 'otEdit') { if (!_cxOtClose()) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
       if (a === 'otCancel') { if (_cxOtClose()) window.renderOneTime(); return; }
       if (a === 'otKind') { _cxOt.kind = b.dataset.v; return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._kind = b.dataset.v; }); }

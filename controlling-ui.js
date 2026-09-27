@@ -203,6 +203,8 @@ const _CX_CSS = `
     .cx-ot-m { width:100%; display:flex; justify-content:space-between; align-items:center; padding:10px 16px 6px; background:#FAF7F2; border:none;
                border-top:.5px solid var(--cx-line); font-family:inherit; font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase;
                color:var(--cx-mut); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cx-ot-more { width:100%; padding:10px 16px; background:none; border:none; border-top:.5px solid var(--cx-line); font-family:inherit; font-size:12px;
+                  font-weight:500; color:var(--cx-acc); cursor:pointer; text-align:center; }
     .cx-ot-ms { font-size:11px; letter-spacing:0; text-transform:none; font-weight:400; color:var(--cx-mut); font-variant-numeric:tabular-nums; }
     button.cx-ot-r { width:100%; background:none; border:none; border-top:.5px solid var(--cx-line); font-family:inherit; text-align:left; cursor:pointer;
                      color:inherit; -webkit-tap-highlight-color:transparent; }
