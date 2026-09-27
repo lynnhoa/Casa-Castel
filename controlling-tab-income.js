@@ -55,14 +55,15 @@ window.renderIncome = function () {
     const src = g.p.id === CASA_PROP_ID ? 'aus Casa Castel' : (g.rows.some(r => r.s.link) ? 'aus Rentals' : 'Planwert');
     // #11: "Änderung" only for a real change (Einzug, Auszug, new rent, Staffel, NK) — not for info notes
     const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Mieterwechsel|Neu vermietet|Auszug|Staffel|NK angepasst|Verlängerung|Neue Miete)/.test(n)));
-    const warned = g.rows.some(r => r.s.check || (!r.soll && r.ist));
+    const vis = r => ctlVisibleCheck(g.p.name, r.u.name, r.s.check);      // × in Setup hides a hint here too
+    const warned = g.rows.some(r => vis(r) || (!r.soll && r.ist));
     const body = g.rows.map(r => {
       if (r.part) {                                          // one line per tenant (G1)
         const pt = r.part;
         return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: null, soll: r.soll, ist: r.ist,
                        sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'pauschal' : cxEur(pt.k) + ' kalt + ' + cxEur(pt.nk) + ' NK'),
                        pills: cxPill('beige', 'anteilig'), notes: r.first ? r.s.notes : [], emptyText: 'leer', allowEmpty: true,
-                       warn: r.first ? r.s.check : null });
+                       warn: r.first ? vis(r) : null });
       }
       // tenant change in the month → both parts, each at its own rent
       const sub = r.soll
@@ -74,7 +75,7 @@ window.renderIncome = function () {
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'anteilig' : 'anteilig ' + r.s.days + '/' + r.s.N) : '';
       return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Neu vermietet"
                      notes: r.s.notes, emptyText: 'leer', allowEmpty: true,
-                     warn: r.s.check || (!r.soll && r.ist ? 'Miete erfasst, aber laut Mieter-Daten nicht vermietet – bitte Mieter-Tab prüfen' : null) });
+                     warn: vis(r) || (!r.soll && r.ist ? 'Miete erfasst, aber laut Mieter-Daten nicht vermietet – bitte Mieter-Tab prüfen' : null) });
     }).join('');
     return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(g.rows),
                     sum: g.rows.reduce((s, r) => s + (r.ist || 0), 0), plan: g.rows.reduce((s, r) => s + (r.soll || 0), 0),
@@ -123,7 +124,7 @@ function _cxIncBulkList() {
     if (e.part) continue;                                                    // tenant lines: one tap each
     const has = e.u.id != null && window._ctrl.income.some(r => r.unit_id === e.u.id && r.year === y && r.month === m);
     if (has || !e.s.soll || e.s.partial) continue;                           // part months: one tap each
-    if (e.s.check) { skipped++; continue; }                                  // data check: deliberate entry only
+    if (ctlVisibleCheck(e.p.name, e.u.name, e.s.check)) { skipped++; continue; }                                  // data check: deliberate entry only
     list.push(e);
   }
   return { list, n: list.length, sum: cxR(list.reduce((a, e) => a + e.s.soll, 0)), skipped };

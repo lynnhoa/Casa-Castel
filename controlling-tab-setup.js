@@ -103,6 +103,14 @@ window.renderSetup = function () {
   const props = window._ctrl.properties.filter(p => p.active);
   const sugg = _cxSetupSuggestions();
   const st = ctlSetupLinkState();
+  // × on the suggestions hides exactly this set — a new suggestion brings the card back
+  const suggKey = 'sug:' + sugg.map(([t, id, f]) => t + '#' + id + '#' + JSON.stringify(f)).sort().join(';');
+  ctlPruneDismissed('sug:', sugg.length ? [suggKey] : []);
+  // fixes made in Rentals / Casa Castel: reload their data when Setup is opened (at most every 20 s)
+  if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - window._src.loadedAt > 20000) {
+    _cxSU.refreshing = true;
+    ctlRefreshSources(false).then(ch => { _cxSU.refreshing = false; if (ch && CX.tab === 'setup' && !CX.hist) window.renderSetup(); });
+  }
 
   /* ── Objekte ── */
   const propCards = props.map(p => {
@@ -201,24 +209,37 @@ window.renderSetup = function () {
   const nPkU = by('parking').length, nPkF = by('freePk').length;
   if (nPkU || nPkF) lines.push('Stellplätze: ' + [nPkU ? nPkU + ' nicht verknüpft' : '', nPkF ? nPkF + ' aus Rentals in keinem Objekt' : ''].filter(Boolean).join(', ') + ' › Stellplätze');
   if (by('freeApt').length) lines.push('Rentals-Wohnungen in keinem Objekt: ' + by('freeApt').map(i => i.text.replace(/^Rentals-Wohnung „|“ ist in keinem Objekt$/g, '')).join(', '));
-  const linkCard = '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Verknüpfungen</span>' +
-      (lines.length ? cxPill('open', lines.length + (lines.length === 1 ? ' Punkt' : ' Punkte')) : cxPill('ok', 'Alles verknüpft')) + '</div>' +
-      lines.map(t => '<div class="cx-kv" style="margin-top:6px"><span>' + cxEsc(t) + '</span></div>').join('') + '</div>';
+  const hint = (key, html) => '<div class="cx-hint"><span>' + html + '</span><button class="cx-x" data-cx="hintX" data-k="' + cxEsc(key) + '" aria-label="Hinweis ausblenden"><span aria-hidden="true">×</span></button></div>';
+  const lnkKeys = lines.map(t => 'lnk:' + t);
+  ctlPruneDismissed('lnk:', lnkKeys);                       // fixed → its × is forgotten, it can come back
+  const lnkVis = lines.filter((t, i) => !ctlIsDismissed(lnkKeys[i]));
+  const linkCard = !lnkVis.length ? '' : '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Verknüpfungen</span>' +
+      cxPill('open', lnkVis.length + (lnkVis.length === 1 ? ' Punkt' : ' Punkte')) + '</div>' +
+      lnkVis.map(t => hint('lnk:' + t, cxEsc(t))).join('') + '</div>';
   const t = cxToday(), y = window._ctrl.year;
   const upTo = y < Number(t.slice(0, 4)) ? 12 : y > Number(t.slice(0, 4)) ? 0 : Number(t.slice(5, 7));
   const chk = typeof ctlDataChecksYear === 'function' ? ctlDataChecksYear(y, upTo) : ctlDataChecks(y, CX.month);
   const ms = c => c.months && c.months.length ? ' <span style="color:var(--cx-mut)">(' + (c.months.length > 3 ? c.months.length + ' Monate' : c.months.map(m => CX_MONTHS[m - 1].slice(0, 3)).join(', ')) + ')</span>' : '';
-  const dataCard = '<div class="cx-card cx-sum">' + (chk.length
-      ? '<div class="cx-row-sb"><span class="cx-lbl">Mieten und Soll · ' + y + '</span>' + cxPill('open', chk.length + (chk.length === 1 ? ' Hinweis' : ' Hinweise')) + '</div>' +
-        chk.map(c => '<div class="cx-kv" style="margin-top:6px"><span><b style="font-weight:500;color:var(--cx-ink)">' + cxEsc(c.prop) + ' · ' + cxEsc(c.unit) + '</b>' + ms(c) + '<br>' + cxEsc(c.text) + '</span></div>').join('')
-      : '<div class="cx-row-sb"><span class="cx-lbl">Mieten und Soll · ' + y + '</span>' + cxPill('ok', 'Alles stimmig') + '</div>') + '</div>';
+  const chkKey = c => ctlCheckKey(c.prop, c.unit, c.text);
+  // link problems are already listed under Verknüpfungen – shown once, not twice
+  for (let i = chk.length - 1; i >= 0; i--) if (/^(Stellplatz nicht verknüpft|Nicht verknüpft –)/.test(chk[i].text)) chk.splice(i, 1);
+  if (y === Number(t.slice(0, 4))) ctlPruneDismissed('chk:', chk.map(chkKey));   // only on the current year's full list
+  const chkVis = chk.filter(c => !ctlIsDismissed(chkKey(c)));
+  const dataCard = !chkVis.length ? '' : '<div class="cx-card cx-sum">' +
+      '<div class="cx-row-sb"><span class="cx-lbl">Mieten und Soll · ' + y + '</span>' + cxPill('open', chkVis.length + (chkVis.length === 1 ? ' Hinweis' : ' Hinweise')) + '</div>' +
+      chkVis.map(c => hint(chkKey(c), '<b style="font-weight:500;color:var(--cx-ink)">' + cxEsc(c.prop) + ' · ' + cxEsc(c.unit) + '</b>' + ms(c) + '<br>' + cxEsc(c.text))).join('') + '</div>';
+  const nHidden = lnkKeys.filter(k => ctlIsDismissed(k)).length + chk.filter(c => ctlIsDismissed(chkKey(c))).length;
+  const allClear = !lnkVis.length && !chkVis.length;
+  const statusLine = '<div class="cx-hint-foot">' + (allClear ? '<span>' + (nHidden ? 'Keine offenen Hinweise' : 'Alles verknüpft und stimmig') + '</span>' : '<span></span>') +
+      (nHidden ? '<button class="cx-link" data-cx="hintAll">' + nHidden + ' ausgeblendet · wieder anzeigen</button>' : '') + '</div>';
 
   host.innerHTML = '<div class="cx-page">' +
     '<div class="cx-title">Setup</div><div class="cx-title__s">Einmal einrichten · danach kommen alle Soll-Werte automatisch</div>' +
-    (sugg.length ? '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Vorschläge nach Namen</span>' + cxPill('beige', sugg.length + ' offen') + '</div>' +
+    (sugg.length && !ctlIsDismissed(suggKey) ? '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Vorschläge nach Namen</span><span class="cx-row-sb" style="gap:6px">' + cxPill('beige', sugg.length + ' offen') +
+      '<button class="cx-x" data-cx="hintX" data-k="' + cxEsc(suggKey) + '" aria-label="Vorschläge ausblenden"><span aria-hidden="true">×</span></button></span></div>' +
       '<div class="cx-r__sub" style="margin:6px 0 10px">Werden schon verwendet. Einmal bestätigen, dann sind sie fest.</div>' +
       '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="acceptAll"><i class="ti ti-checks" aria-hidden="true"></i>Alle Vorschläge übernehmen</button></div>' : '') +
-    '<div class="cx-head"><span class="cx-lbl">Prüfen</span></div>' + linkCard + dataCard +
+    '<div class="cx-head"><span class="cx-lbl">Prüfen</span></div>' + linkCard + dataCard + statusLine +
     '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Mieterhistorie</span></div>' +
       '<div class="cx-r__sub" style="margin:6px 0 10px">Einzug, Auszug und Miete aller Mieter – auch ehemaliger – einmal prüfen und korrigieren.</div>' +
       '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="openHist"><i class="ti ti-history" aria-hidden="true"></i>Mieterhistorie prüfen</button></div>' +
@@ -233,10 +254,14 @@ window.renderSetup = function () {
       if (a === 'openHist') { CX.hist = true; window.scrollTo(0, 0); return window.renderSetup(); }
       if (a === 'acceptAll') {
         b.disabled = true;
-        for (const [t, id, f] of _cxSetupSuggestions()) { try { await ctlUpdateRow(t, id, f); } catch (e) { cxToastErr(e); } }
-        if (typeof ctlToast === 'function') ctlToast('Verknüpfungen gespeichert');
+        const list = _cxSetupSuggestions();
+        let ok = 0, err = null;
+        for (const [t, id, f] of list) { try { await ctlUpdateRow(t, id, f); ok++; } catch (e) { err = e; console.error('[controlling] Vorschlag', t, id, e); } }
+        if (typeof ctlToast === 'function') ctlToast(err ? ok + ' von ' + list.length + ' gespeichert · ' + String(err.message || err).slice(0, 60) : 'Verknüpfungen gespeichert');
         return window.renderSetup();
       }
+      if (a === 'hintX') { ctlDismiss(b.dataset.k); return window.renderSetup(); }
+      if (a === 'hintAll') { ctlUndismissAll(['lnk:', 'chk:', 'sug:']); return window.renderSetup(); }
       if (a === 'suEdit') { const id = Number(b.dataset.u); _cxSU.edit[id] = !_cxSU.edit[id]; return window.renderSetup(); }
       if (a === 'suDel') {
         const id = Number(b.dataset.u), u = ctlUnit(id);

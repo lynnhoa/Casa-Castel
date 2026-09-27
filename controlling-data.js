@@ -232,6 +232,7 @@ const _CTL_MEM = { ctrl_properties: 'properties', ctrl_units: 'units', ctrl_cast
 async function ctlUpdateRow(table, id, fields) {
   const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
   if (error) throw error;
+  if (!data) throw new Error('nicht gespeichert – Zeile ' + id + ' nicht gefunden');   // never replace the row with nothing
   const list = window._ctrl[_CTL_MEM[table]] || [];
   const i = list.findIndex(r => r.id === id);
   if (i >= 0) list[i] = data;

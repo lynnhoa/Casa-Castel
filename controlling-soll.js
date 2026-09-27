@@ -68,8 +68,55 @@ async function ctlSollLoad() {
     window._src[k] = res[i].data || [];
   });
   window._src.loaded = true;
+  window._src.loadedAt = Date.now();
   if (typeof ccRpSetRows === 'function') ccRpSetRows(window._src.rentP);   // shared store for the history screen
 }
+
+/* ── Hints lifecycle ──────────────────────────────────────────
+   1 found   → computed live from the data, never stored
+   2 fixed   → disappears on the next render. Fixes made in Rentals / Casa Castel arrive when
+               Controlling is shown again (sources reload on return, at most every 20 s)
+   3 ×       → hidden ("ausgeblendet") while exactly this hint still exists
+   4 again   → a hint that went away forgets its ×, so it pops up again if the data breaks again;
+               a new hint always shows
+   Dismissed hints are kept on this device (localStorage), key = kind:property|unit|text.           */
+const _CX_DIS = 'cx_dismissed_v1';
+function ctlDismissed() { try { return JSON.parse(localStorage.getItem(_CX_DIS) || '{}') || {}; } catch (e) { return {}; } }
+function _cxDisSave(d) { try { localStorage.setItem(_CX_DIS, JSON.stringify(d)); } catch (e) {} }
+function ctlDismiss(key) { const d = ctlDismissed(); d[key] = _cxToday(); _cxDisSave(d); }
+function ctlUndismissAll(prefixes) { const d = ctlDismissed(); for (const k of Object.keys(d)) if (prefixes.some(p => k.startsWith(p))) delete d[k]; _cxDisSave(d); }
+function ctlIsDismissed(key) { return !!ctlDismissed()[key]; }
+/* forget the × of every hint of this family that no longer exists */
+function ctlPruneDismissed(prefix, liveKeys) {
+  const d = ctlDismissed(), live = new Set(liveKeys);
+  let ch = false;
+  for (const k of Object.keys(d)) if (k.startsWith(prefix) && !live.has(k)) { delete d[k]; ch = true; }
+  if (ch) _cxDisSave(d);
+}
+const ctlCheckKey = (prop, unit, text) => 'chk:' + prop + '|' + unit + '|' + text;
+/* A unit's data check without the parts you dismissed (null when nothing is left) */
+function ctlVisibleCheck(propName, unitName, check) {
+  if (!check) return null;
+  const d = ctlDismissed();
+  const left = String(check).split(' · ').filter(t => !d[ctlCheckKey(propName, unitName, t)]);
+  return left.length ? left.join(' · ') : null;
+}
+/* Reload the other apps' data (tenants, rooms, parking, loans, settlements) */
+let _cxRefreshing = null;
+async function ctlRefreshSources(force) {
+  if (_cxRefreshing) return _cxRefreshing;
+  if (!force && window._src.loadedAt && Date.now() - window._src.loadedAt < 20000) return false;
+  _cxRefreshing = (async () => {
+    try { await ctlSollLoad(); if (typeof ctlSollReset === 'function') ctlSollReset(); return true; }
+    catch (e) { console.warn('[controlling] refresh', e); return false; }
+    finally { _cxRefreshing = null; }
+  })();
+  return _cxRefreshing;
+}
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !window._src.loaded) return;
+  if (await ctlRefreshSources(false) && typeof cxRenderActive === 'function') cxRenderActive();
+});
 
 /* ── small helpers ── */
 const _cxNum  = v => (v === null || v === undefined || v === '' || isNaN(Number(v))) ? null : Number(v);

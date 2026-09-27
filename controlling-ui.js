@@ -184,6 +184,12 @@ const _CX_CSS = `
     .cx-mchip.on { background:#F3EADC; border-color:#D4B896; color:var(--cx-acc); font-weight:600; }
     .cx-cat { padding:12px 16px; border-top:.5px solid var(--cx-line); display:flex; flex-direction:column; gap:6px; }
     .cx-cat:first-child { border-top:none; }
+    .cx-hint { display:grid; grid-template-columns:minmax(0,1fr) 28px; gap:8px; align-items:start; margin-top:6px; padding-top:6px;
+               border-top:.5px solid var(--cx-line); font-size:12px; color:var(--cx-txt); line-height:1.45; }
+    .cx-x { width:28px; height:28px; border-radius:50%; border:.5px solid var(--cx-rule); background:transparent; color:var(--cx-mut);
+            display:flex; align-items:center; justify-content:center; padding:0; cursor:pointer; font-size:13px; -webkit-tap-highlight-color:transparent; }
+    .cx-hint-foot { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:0 4px; font-size:11px; color:var(--cx-mut); }
+    .cx-hint-foot .cx-link { color:var(--cx-acc); font-weight:500; padding:4px 0; }
     .cx-su-u { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-top:.5px solid var(--cx-line); }
     .cx-set__sub + .cx-su-u { border-top:none; padding-top:2px; }
     .cx-su-n { font-size:13px; font-weight:500; color:var(--cx-ink); min-width:0; }
