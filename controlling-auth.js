@@ -58,7 +58,7 @@ function ctlToast(msg) {
 /* ── Parts of the app that newer versions need. If the page is an older
       controlling.html (cached or not yet replaced), load them here so the
       app still starts — and name the file if one is really missing. ── */
-const CTL_BUILD = '2026-09-27h';
+const CTL_BUILD = '2026-09-27i';
 function _ctlLoadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
@@ -72,6 +72,7 @@ async function ctlEnsureParts() {
   if (typeof CX === 'undefined')              await _ctlLoadScript('controlling-ui.js');
   if (typeof ctlSollLoad !== 'function')      await _ctlLoadScript('controlling-soll.js');
   if (typeof ctlAbrRows !== 'function')       await _ctlLoadScript('controlling-abr.js');
+  if (typeof cxExportInvoices !== 'function') await _ctlLoadScript('controlling-export.js');
 }
 
 /* ── Boot ───────────────────────────────────────────────────── */

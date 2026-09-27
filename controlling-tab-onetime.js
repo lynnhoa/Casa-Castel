@@ -167,8 +167,11 @@ window.renderOneTime = function () {
     '<div class="cx-card cx-sum">' +
       '<div class="cx-row-sb"><span class="cx-lbl">Rechnungen bezahlt · ' + cxEsc(period) + '</span>' + cxPill('beige', all.length + (all.length === 1 ? ' Rechnung' : ' Rechnungen')) + '</div>' +
       '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Rein ' + cxW(rein) : (_cxOt.view === 'y' ? 'im Jahr ' + window._ctrl.year : 'im ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
-      '<button class="cx-btn cx-btn--s cx-btn--full" style="margin-top:4px" data-cx="otNew">' +
-        (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Schließen' : '<i class="ti ti-plus" aria-hidden="true"></i>Rechnung erfassen') + '</button>' +
+      '<div class="cx-grid2" style="margin-top:4px">' +
+        '<button class="cx-btn cx-btn--s" data-cx="otNew">' +
+          (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Schließen' : '<i class="ti ti-plus" aria-hidden="true"></i>Rechnung') + '</button>' +
+        '<button class="cx-btn cx-btn--s" data-cx="otXlsx" aria-label="Excel export ' + window._ctrl.year + '"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i>Excel export</button>' +
+      '</div>' +
       (_cxOt.form === 'new' ? _cxOtFormHTML(null) : '') +
     '</div>' +
     '<div class="cx-head"><span class="cx-lbl">Rechnungen je Objekt</span><span class="cx-lbl">Betrag</span></div>' +
@@ -178,6 +181,7 @@ window.renderOneTime = function () {
   '</div>';
 
   if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60); }
+  if (typeof cxXlsxPreload === 'function') cxXlsxPreload().catch(() => {});   // ready before the tap (iPhone share sheet)
   const q = document.getElementById('cxOtQ');
   if (q && !q._w) {
     q._w = true;
@@ -211,6 +215,7 @@ window.renderOneTime = function () {
         document.getElementById('cxOtAmt')?.focus();
         return;
       }
+      if (a === 'otXlsx') return cxExportInvoices(window._ctrl.year);            // always the whole selected year
       if (a === 'otMore') { const k = b.dataset.k; _cxOt.more[k] = (_cxOt.more[k] || 20) + 20; return window.renderOneTime(); }
       if (a === 'otMonth') { const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
       if (a === 'otEdit') { if (!_cxOtClose()) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
