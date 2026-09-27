@@ -1,105 +1,230 @@
 /* ─────────────────────────────────────────────────────────────
-   CONTROLLING — EXCEL EXPORT (One-off invoices of one year)
+   CONTROLLING — EXPORT (One-off invoices of one year): Excel · PDF A4
    controlling-export.js
 
-   One file per year: Rechnungen_2026.xlsx
-   · one sheet per property (only properties with invoices)
-   · columns: Produkt · Geschäft · Preis · Rechnungsdatum
-   · sorted by Rechnungsdatum, total at the bottom
-   · Preis is a real number (€ format), Rechnungsdatum a real date (TT.MM.JJJJ)
-   · Rein (refund) → negative Preis, so the total is what you really paid
-   · NK / Hausgeld Abrechnungen are not included
-   The Excel library (SheetJS) is loaded in the background when One-off opens,
-   so the tap on "Excel export" can open the share sheet right away (iPhone).
+   Export panel in One-off: Format (Excel · PDF) · Objekte (alle · eines)
+   Both formats come from ONE data function (cxInvoiceData) → identical numbers:
+     Nr. · Produkt · Geschäft · Preis · Rechnungsdatum
+     · sorted by Rechnungsdatum, Nr. = 1, 2, 3 … per property in that order
+     · Rein (refund) → negative Preis · NK / Hausgeld Abrechnungen are not included
+   Excel  Rechnungen_2026[_Objekt].xlsx — one sheet per property, Summe as formula,
+          € format, real dates, filter; iPhone share sheet
+   PDF    Rechnungen_2026[_Objekt].pdf — A4 portrait, real text (sharp, small,
+          searchable): overview page (all properties), then one page per property,
+          column heads repeat on every page, "Seite x von y".
+          Opens like the contracts (pdf-open.js): iPhone viewer on top of the app;
+          installed app → "Open PDF" + "Save / Share" appear in place of the button.
+   Libraries load in the background when the panel opens, so the tap can open
+   the viewer / share sheet right away (iPhone only allows that from a tap).
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
 
-const CX_XLSX_URL = window.CX_XLSX_URL || 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-let _cxXlsxLoading = null;
-
-function cxXlsxPreload() {
-  if (window.XLSX) return Promise.resolve(window.XLSX);
-  if (_cxXlsxLoading) return _cxXlsxLoading;
-  _cxXlsxLoading = new Promise((resolve, reject) => {
+const CX_XLSX_URL   = window.CX_XLSX_URL   || 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+const CX_JSPDF_URL  = window.CX_JSPDF_URL  || 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+const CX_ATABLE_URL = window.CX_ATABLE_URL || 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+const _cxLibs = {};
+function _cxLoadScript(url) {
+  if (_cxLibs[url]) return _cxLibs[url];
+  _cxLibs[url] = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = CX_XLSX_URL;
-    s.onload = () => resolve(window.XLSX);
-    s.onerror = () => { _cxXlsxLoading = null; reject(new Error('Excel-Bibliothek konnte nicht geladen werden')); };
+    s.src = url;
+    s.onload = () => resolve();
+    s.onerror = () => { delete _cxLibs[url]; reject(new Error('Bibliothek konnte nicht geladen werden')); };
     document.head.appendChild(s);
   });
-  return _cxXlsxLoading;
+  return _cxLibs[url];
 }
-
-/* Sheet names: max 31 characters, none of  [ ] : * ? / \  and unique */
-function _cxSheetName(name, used) {
-  let n = String(name || 'Objekt').replace(/[\[\]:*?\/\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Objekt';
-  let base = n, i = 2;
-  while (used.has(n.toLowerCase())) { const suf = ' (' + i++ + ')'; n = base.slice(0, 31 - suf.length) + suf; }
-  used.add(n.toLowerCase());
-  return n;
+function cxXlsxPreload() { return window.XLSX ? Promise.resolve() : _cxLoadScript(CX_XLSX_URL); }
+function cxPdfPreload() {
+  const ready = () => window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable;
+  if (ready()) return Promise.resolve();
+  return (window.jspdf ? Promise.resolve() : _cxLoadScript(CX_JSPDF_URL)).then(() => ready() ? null : _cxLoadScript(CX_ATABLE_URL));
 }
+const _cxPdfReady = () => !!(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable);
 
-/* Build the workbook for a year → { wb, count, name } */
-function cxBuildInvoiceWorkbook(year) {
-  const X = window.XLSX;
+/* ── the one data source for Excel and PDF ── */
+function cxInvoiceData(year, pid) {
   const rows = (window._ctrl.one_time || []).filter(o =>
-    !(typeof CX_ABR_KINDS !== 'undefined' && CX_ABR_KINDS.includes(o.kind)) && Number(String(o.invoice_date || '').slice(0, 4)) === year);
-  const wb = X.utils.book_new();
-  const used = new Set();
+    !(typeof CX_ABR_KINDS !== 'undefined' && CX_ABR_KINDS.includes(o.kind)) && Number(String(o.invoice_date || '').slice(0, 4)) === year &&
+    (!pid || Number(o.property_id) === Number(pid)));
   const order = window._ctrl.properties.slice().sort((a, b) => (b.active === a.active ? 0 : a.active ? -1 : 1) || a.id - b.id);
-  let count = 0;
+  const groups = [];
   for (const p of order) {
     const list = rows.filter(o => Number(o.property_id) === p.id)
       .sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || (Number(a.id) || 0) - (Number(b.id) || 0));
     if (!list.length) continue;
-    count += list.length;
-    const aoa = [['Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum']];
-    for (const o of list) {
-      const d = String(o.invoice_date).slice(0, 10);
-      const price = (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0);
-      aoa.push([o.item || '', o.company || '', Math.round(price * 100) / 100, new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))]);
-    }
-    const last = aoa.length;                                     // Excel row number of the last invoice
-    aoa.push([]);
-    aoa.push(['Summe', '', null, '']);
-    const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true });
-    // total as a formula, so it stays right when the file is edited in Excel
-    const tot = X.utils.encode_cell({ r: last + 1, c: 2 });
-    ws[tot] = { t: 'n', f: 'SUM(C2:C' + last + ')', v: list.reduce((s, o) => s + (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0), 0) };
-    // formats: € for Preis, TT.MM.JJJJ for Rechnungsdatum
-    for (let r = 1; r <= last + 1; r++) {
-      const c = ws[X.utils.encode_cell({ r, c: 2 })]; if (c && c.t === 'n') c.z = '#,##0.00 "€";-#,##0.00 "€"';
-      const d = ws[X.utils.encode_cell({ r, c: 3 })]; if (d && (d.t === 'd' || d.t === 'n')) d.z = 'dd.mm.yyyy';
-    }
-    ws['!cols'] = [{ wch: 36 }, { wch: 24 }, { wch: 12 }, { wch: 15 }];
-    ws['!autofilter'] = { ref: 'A1:D' + last };
-    X.utils.book_append_sheet(wb, ws, _cxSheetName(p.name, used));
+    let nr = 0, total = 0;
+    const items = list.map(o => {
+      const price = Math.round((Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0) * 100) / 100;
+      total += price;
+      return { nr: ++nr, item: o.item || '', company: o.company || '', price, date: String(o.invoice_date).slice(0, 10) };
+    });
+    groups.push({ p, items, total: Math.round(total * 100) / 100 });
   }
-  return { wb, count, name: 'Rechnungen_' + year + '.xlsx' };
+  return groups;
 }
+/* properties that have invoices in the year (for the Objekte choice) */
+function cxInvoiceProps(year) { return cxInvoiceData(year, null).map(g => g.p); }
 
-/* Tap on "Excel export": share sheet on the iPhone (save to Files, Mail …), download elsewhere */
-async function cxExportInvoices(year) {
-  const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
-  if (!window.XLSX) {                                            // not loaded yet: load, then ask for one more tap
-    say('Excel wird vorbereitet …');
-    try { await cxXlsxPreload(); say('Bereit – bitte noch einmal auf „Excel export“ tippen'); }
-    catch (e) { say(e.message + ' – Internetverbindung prüfen'); }
+function _cxExportName(year, pid, ext) {
+  const p = pid ? ctlProp(Number(pid)) : null;
+  const base = ['Rechnungen', year, p ? p.name : ''].filter(Boolean).join('_');
+  return base.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '') + '.' + ext;
+}
+const _cxSay = t => { if (typeof ctlToast === 'function') ctlToast(t); };
+
+/* ── EXCEL ─────────────────────────────────────────────────── */
+function _cxSheetName(name, used) {
+  let n = String(name || 'Objekt').replace(/[\[\]:*?\/\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'Objekt';
+  const base = n; let i = 2;
+  while (used.has(n.toLowerCase())) { const suf = ' (' + i++ + ')'; n = base.slice(0, 31 - suf.length) + suf; }
+  used.add(n.toLowerCase());
+  return n;
+}
+function cxBuildInvoiceWorkbook(year, pid) {
+  const X = window.XLSX, wb = X.utils.book_new(), used = new Set();
+  const groups = cxInvoiceData(year, pid);
+  let count = 0;
+  for (const g of groups) {
+    count += g.items.length;
+    const aoa = [['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum']];
+    for (const it of g.items) {
+      const d = it.date;
+      aoa.push([it.nr, it.item, it.company, it.price, new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))]);
+    }
+    const last = aoa.length;
+    aoa.push([]);
+    aoa.push(['', 'Summe', '', null, '']);
+    const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true });
+    ws[X.utils.encode_cell({ r: last + 1, c: 3 })] = { t: 'n', f: 'SUM(D2:D' + last + ')', v: g.total };
+    for (let r = 1; r <= last + 1; r++) {
+      const c = ws[X.utils.encode_cell({ r, c: 3 })]; if (c && c.t === 'n') c.z = '#,##0.00 "€";-#,##0.00 "€"';
+      const d = ws[X.utils.encode_cell({ r, c: 4 })]; if (d && (d.t === 'd' || d.t === 'n')) d.z = 'dd.mm.yyyy';
+    }
+    ws['!cols'] = [{ wch: 5 }, { wch: 36 }, { wch: 24 }, { wch: 12 }, { wch: 15 }];
+    ws['!autofilter'] = { ref: 'A1:E' + last };
+    X.utils.book_append_sheet(wb, ws, _cxSheetName(g.p.name, used));
+  }
+  return { wb, count, name: _cxExportName(year, pid, 'xlsx') };
+}
+async function cxExportInvoices(year, pid) {
+  if (!window.XLSX) {
+    _cxSay('Excel wird vorbereitet …');
+    try { await cxXlsxPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
     return;
   }
-  const { wb, count, name } = cxBuildInvoiceWorkbook(year);
-  if (!count) { say('Keine Rechnungen in ' + year); return; }
+  const { wb, count, name } = cxBuildInvoiceWorkbook(year, pid);
+  if (!count) { _cxSay('Keine Rechnungen in ' + year); return; }
   const data = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellDates: true });
   const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const file = typeof File === 'function' ? new File([data], name, { type }) : null;
   if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file], title: name }); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; }      // closed the share sheet → nothing to do
+    catch (e) { if (e && e.name === 'AbortError') return; }
   }
   const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  say(count + (count === 1 ? ' Rechnung' : ' Rechnungen') + ' exportiert');
+  _cxSay(count + (count === 1 ? ' Rechnung' : ' Rechnungen') + ' exportiert');
+}
+
+/* ── PDF (A4 portrait, real text) ─────────────────────────── */
+const _CX_PDF = { ink: [61, 48, 39], txt: [58, 53, 48], mut: [154, 142, 126], line: [232, 226, 216], head: [243, 238, 230], acc: [184, 151, 106], neg: [165, 80, 56] };
+// standard PDF fonts only know Latin-1 (+ €): no narrow spaces, typographic quotes are replaced
+const _cxPdfTxt = s => String(s == null ? '' : s).replace(/[\u202f\u00a0]/g, ' ').replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'").replace(/[^\x20-\x7E\u00A0-\u00FF€–—•…]/g, '');
+const _cxPdfEur = n => (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+const _cxPdfDate = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
+
+function cxBuildInvoicePdf(year, pid) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const C = _CX_PDF, W = 210, M = 18;
+  const groups = cxInvoiceData(year, pid);
+  const stand = _cxPdfDate(cxToday());
+  const single = pid ? ctlProp(Number(pid)) : null;
+  const titleOf = () => 'Rechnungen ' + year + (single ? ' · ' + single.name : '');
+
+  const pageTitle = (t, sub) => {
+    doc.setFont('times', 'normal'); doc.setFontSize(22); doc.setTextColor(...C.ink);
+    doc.text(_cxPdfTxt(t), M, 34);
+    if (sub) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...C.mut); doc.text(_cxPdfTxt(sub), M, 41); }
+  };
+  const table = (startY, head, body, foot, colStyles) => doc.autoTable({
+    startY, head: [head], body, foot: foot ? [foot] : undefined, showFoot: 'lastPage',
+    margin: { left: M, right: M, top: 26, bottom: 20 },
+    theme: 'plain',
+    styles: { font: 'helvetica', fontSize: 9, textColor: C.txt, cellPadding: { top: 2.2, bottom: 2.2, left: 2, right: 2 }, lineColor: C.line, lineWidth: { bottom: 0.2 }, overflow: 'linebreak' },
+    headStyles: { fillColor: C.head, textColor: C.mut, fontStyle: 'bold', fontSize: 7.5, lineWidth: 0 },
+    footStyles: { fontStyle: 'bold', textColor: C.ink, fontSize: 9.5, lineWidth: { top: 0.4 }, lineColor: C.acc },
+    columnStyles: colStyles,
+    didParseCell: d => {
+      const cs = colStyles[d.column.index];
+      if (cs && cs.halign && d.section !== 'body') d.cell.styles.halign = cs.halign;          // heads + Summe line up with their column
+      if (d.section === 'body' && d.column.index === (head.length === 5 ? 3 : 2) && String(d.cell.raw).startsWith('-')) d.cell.styles.textColor = C.neg;
+    },
+  });
+
+  // Page 1 · overview (all properties) — a single-property export starts with its table
+  if (!single) {
+    pageTitle('Rechnungen ' + year, 'Alle Objekte · Stand ' + stand);
+    const tot = groups.reduce((s, g) => s + g.total, 0), n = groups.reduce((s, g) => s + g.items.length, 0);
+    table(50, ['Objekt', 'Rechnungen', 'Summe'],
+      groups.map(g => [_cxPdfTxt(g.p.name), String(g.items.length), _cxPdfEur(g.total)]),
+      ['Gesamt', String(n), _cxPdfEur(tot)],
+      { 1: { halign: 'right', cellWidth: 30 }, 2: { halign: 'right', cellWidth: 38 } });
+  }
+  const pageProp = {};                                    // page → property (continuation pages keep its name in the header)
+  groups.forEach((g, i) => {
+    if (!single || i > 0) doc.addPage();
+    const first = doc.getNumberOfPages();
+    pageTitle(g.p.name, g.items.length + (g.items.length === 1 ? ' Rechnung' : ' Rechnungen') + ' · ' + year + ' · Stand ' + stand);
+    table(50, ['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum'],
+      g.items.map(it => [String(it.nr), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
+      ['', 'Summe', '', _cxPdfEur(g.total), ''],
+      { 0: { cellWidth: 11, textColor: C.mut }, 2: { cellWidth: 42 }, 3: { halign: 'right', cellWidth: 27 }, 4: { halign: 'right', cellWidth: 29 } });
+    for (let pg = first; pg <= doc.getNumberOfPages(); pg++) pageProp[pg] = g.p.name;
+  });
+
+  // header + footer on every page
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...C.mut);
+    const hdr = 'Rechnungen ' + year + (pageProp[i] ? ' · ' + pageProp[i] : '');
+    doc.text(_cxPdfTxt(hdr.toUpperCase()), M, 14, { charSpace: 0.6 });
+    doc.text('Stand ' + stand, W - M, 14, { align: 'right' });
+    doc.setDrawColor(...C.line); doc.setLineWidth(0.2); doc.line(M, 17, W - M, 17);
+    doc.text(_cxPdfTxt(titleOf()) + ' · Seite ' + i + ' von ' + pages, W / 2, 287, { align: 'center' });
+  }
+  return { doc, count: groups.reduce((s, g) => s + g.items.length, 0), name: _cxExportName(year, pid, 'pdf') };
+}
+
+/* Tap on "PDF erstellen" (btn = the tapped button; its parent gets "Open PDF" + "Save / Share" in the installed app) */
+async function cxExportInvoicesPdf(year, pid, btn) {
+  if (typeof window.sbL === 'undefined' && typeof _ctlSupa !== 'undefined') window.sbL = _ctlSupa;   // pdf-open.js uses sbL (temp storage)
+  if (!_cxPdfReady()) {
+    _cxSay('PDF wird vorbereitet …');
+    try { await cxPdfPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
+    return;
+  }
+  const pre = cxInvoiceData(year, pid);
+  if (!pre.length) { _cxSay('Keine Rechnungen in ' + year); return; }
+  const viaViewer = typeof ccOpenPdf === 'function';
+  if (viaViewer) {                                        // same behaviour as the contracts
+    try { _ccLastTrigger = btn || null; } catch (e) {}
+    if (typeof CC_STANDALONE !== 'undefined' && !CC_STANDALONE && typeof _ccOpenWaitingTab === 'function') _ccOpenWaitingTab();   // still inside the tap
+  }
+  let out;
+  try { out = cxBuildInvoicePdf(year, pid); }
+  catch (e) { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); _cxSay('PDF fehlgeschlagen: ' + (e.message || e)); return; }
+  if (viaViewer) { await ccOpenPdf(out.doc, out.name); return; }
+  const blob = out.doc.output('blob');                    // without pdf-open.js: share sheet / download
+  const file = typeof File === 'function' ? new File([blob], out.name, { type: 'application/pdf' }) : null;
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: out.name }); } catch (e) {} return; }
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = out.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }

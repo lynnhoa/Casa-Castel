@@ -221,6 +221,8 @@ const _CX_CSS = `
     @media (prefers-reduced-motion: reduce) { .cx-ot-flash { animation:none; background:#F7F1E6; } }
     .cx-ot-tot { font-size:14px; font-weight:600; color:var(--cx-amt); font-variant-numeric:tabular-nums; white-space:nowrap; }
     .cx-ot-q { background:var(--cx-card); }
+    .cx-ot-exp__go { display:flex; gap:8px; }
+    .cx-ot-exp__go > .cx-btn { flex:1; }
     #cxOtList { display:flex; flex-direction:column; gap:8px; }   /* same card spacing as the other tabs */
     .cx-btn--del { color:var(--cx-neg); border-color:#D9957C; }
     .cx-ot-del { color:var(--cx-neg); align-self:center; padding:6px 0 0; }

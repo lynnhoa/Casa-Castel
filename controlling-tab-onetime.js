@@ -22,6 +22,7 @@ const _CX_KINDS = ['Rechnung', 'Sonstiges'];
 let _cxOt = {
   form: null,                                          // null · 'new' (summary) · 'new:<pid>' (in a card) · entry id (edit)
   flash: null, formAt: null, mfold: {}, more: {},
+  exp: { open: false, fmt: 'pdf', pid: '' },            // export panel: Excel · PDF, all or one property
   view: (() => { try { return localStorage.getItem('cx_ot_view') === 'm' ? 'm' : 'y'; } catch (e) { return 'y'; } })(),
   q: '', fold: {}, kind: 'Rechnung', dir: -1, pid: null,
 };
@@ -102,6 +103,25 @@ function _cxOtRowsLimited(list, k) {
     (rest > 0 ? '<button class="cx-ot-more" data-cx="otMore" data-k="' + k + '">Weitere ' + Math.min(rest, 20) + ' von ' + rest + ' anzeigen</button>' : '');
 }
 
+/* Export panel (inside the summary card) */
+function _cxOtExportHTML() {
+  const y = window._ctrl.year, e = _cxOt.exp;
+  const props = typeof cxInvoiceProps === 'function' ? cxInvoiceProps(y) : [];
+  if (e.pid && !props.some(p => String(p.id) === String(e.pid))) e.pid = '';
+  return '<div class="cx-form cx-ot-exp">' +
+    '<div class="cx-set__k">Format</div>' +
+    '<div class="cx-chips">' + [['pdf', 'PDF (A4)'], ['xlsx', 'Excel']].map(([v, l]) =>
+      '<button class="cx-chip' + (e.fmt === v ? ' on' : '') + '" data-cx="otExpFmt" data-v="' + v + '">' + l + '</button>').join('') + '</div>' +
+    '<div class="cx-set__k">Objekte</div>' +
+    '<label class="cx-f cx-f--l"><select id="cxOtExpProp" aria-label="Objekte"><option value="">Alle Objekte</option>' +
+      props.map(p => '<option value="' + p.id + '"' + (String(e.pid) === String(p.id) ? ' selected' : '') + '>' + cxEsc(p.name) + '</option>').join('') +
+    '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
+    '<div class="cx-r__sub">Ganzes Jahr ' + y + ' · Nr. · Produkt · Geschäft · Preis · Rechnungsdatum</div>' +
+    '<div class="cx-ot-exp__go"><button class="cx-btn cx-btn--p cx-btn--full" data-cx="otExpGo"' + (props.length ? '' : ' disabled') + '>' +
+      (e.fmt === 'pdf' ? 'PDF erstellen' : 'Excel exportieren') + '</button></div>' +
+  '</div>';
+}
+
 function _cxOtListHTML() {
   const rows = _cxOtVisible();
   if (!rows.length) return '<div class="cx-card"><div class="cx-empty">' + (_cxOt.q ? 'Nichts gefunden für „' + cxEsc(_cxOt.q) + '“.' :
@@ -170,8 +190,8 @@ window.renderOneTime = function () {
       '<div class="cx-grid2" style="margin-top:4px">' +
         '<button class="cx-btn cx-btn--s" data-cx="otNew">' +
           (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Schließen' : '<i class="ti ti-plus" aria-hidden="true"></i>Rechnung') + '</button>' +
-        '<button class="cx-btn cx-btn--s" data-cx="otXlsx" aria-label="Excel export ' + window._ctrl.year + '"><i class="ti ti-file-spreadsheet" aria-hidden="true"></i>Excel export</button>' +
-      '</div>' +
+        '<button class="cx-btn cx-btn--s" data-cx="otExp">' + (_cxOt.exp.open ? '<i class="ti ti-x" aria-hidden="true"></i>Schließen' : '<i class="ti ti-download" aria-hidden="true"></i>Export') + '</button>' +
+      '</div>' + (_cxOt.exp.open ? _cxOtExportHTML() : '') +
       (_cxOt.form === 'new' ? _cxOtFormHTML(null) : '') +
     '</div>' +
     '<div class="cx-head"><span class="cx-lbl">Rechnungen je Objekt</span><span class="cx-lbl">Betrag</span></div>' +
@@ -181,7 +201,6 @@ window.renderOneTime = function () {
   '</div>';
 
   if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60); }
-  if (typeof cxXlsxPreload === 'function') cxXlsxPreload().catch(() => {});   // ready before the tap (iPhone share sheet)
   const q = document.getElementById('cxOtQ');
   if (q && !q._w) {
     q._w = true;
@@ -215,7 +234,20 @@ window.renderOneTime = function () {
         document.getElementById('cxOtAmt')?.focus();
         return;
       }
-      if (a === 'otXlsx') return cxExportInvoices(window._ctrl.year);            // always the whole selected year
+      if (a === 'otExp') {
+        _cxOt.exp.open = !_cxOt.exp.open;
+        if (_cxOt.exp.open) {                                                     // libraries load now, so the export tap is instant
+          if (typeof cxXlsxPreload === 'function') cxXlsxPreload().catch(() => {});
+          if (typeof cxPdfPreload === 'function') cxPdfPreload().catch(() => {});
+        }
+        return window.renderOneTime();
+      }
+      if (a === 'otExpFmt') { _cxOt.exp.fmt = b.dataset.v; return window.renderOneTime(); }
+      if (a === 'otExpGo') {                                                      // whole selected year; no await before this line (tap)
+        const pid = document.getElementById('cxOtExpProp')?.value || '';
+        _cxOt.exp.pid = pid;
+        return _cxOt.exp.fmt === 'pdf' ? cxExportInvoicesPdf(window._ctrl.year, pid || null, b) : cxExportInvoices(window._ctrl.year, pid || null);
+      }
       if (a === 'otMore') { const k = b.dataset.k; _cxOt.more[k] = (_cxOt.more[k] || 20) + 20; return window.renderOneTime(); }
       if (a === 'otMonth') { const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
       if (a === 'otEdit') { if (!_cxOtClose()) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }

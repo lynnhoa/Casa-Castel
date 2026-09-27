@@ -58,7 +58,7 @@ function ctlToast(msg) {
 /* ── Parts of the app that newer versions need. If the page is an older
       controlling.html (cached or not yet replaced), load them here so the
       app still starts — and name the file if one is really missing. ── */
-const CTL_BUILD = '2026-09-27i';
+const CTL_BUILD = '2026-09-27k';
 function _ctlLoadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
