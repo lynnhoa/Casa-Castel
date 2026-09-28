@@ -791,16 +791,18 @@ function _rntCardPills(unit, isApt, activeRec) {
     if (isApt && _rntNKVorausHasOpen(unit.id)) todos.push({ level: 'amber', text: 'NK-Erhöhung offen' });        // NK: unchanged for now
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }
-  const kPill = (!vacant && activeRec)
+  const movesIn = ccTnMovesIn(vacant, activeRec);
+  const kPill = ((!vacant || movesIn) && activeRec)
     ? ccTnKautionPill(_rntKaution[activeRec.id], (_rntKautionSollInfo(activeRec) || {}).amount, _rntFmtEUR) : '';
-  return { row1: ccTnRow1(vacant, kPill), todo: ccTnTodoRow(todos) };
+  return { row1: ccTnRow1(vacant, kPill, movesIn), todo: ccTnTodoRow(todos) };
 }
 function _rntRefreshCardPills(unitId) {
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === unitId);
   const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === unitId);
   const unit = apt || pk; if (!unit) return;
   const isApt = !!apt;
-  const rec = (_rntRecords || []).find(r => (isApt ? r.apartment_id : r.parking_id) === unitId && r.status === 'active');
+  const _pk = _ccPickTenancy((_rntRecords || []).filter(r => (isApt ? r.apartment_id : r.parking_id) === unitId && r.status === 'active'));
+  const rec = _pk.current || _pk.next;
   const p = _rntCardPills(unit, isApt, rec);
   ccTnApplyPills((isApt ? 'apt_' : 'pk_') + String(unitId).replace(/-/g, '').slice(0, 12), p.row1, p.todo);
 }
@@ -1095,7 +1097,9 @@ function _rntCardHTML({ type, unit }) {
 /* ── HEADER ── */
 function _rntHeaderHTML(rid, type, unit, activeRec) {
   const isApt  = type === 'apt';
-  const vacant = !!unit.vacant;
+  // A signed tenant who moves in later is shown like a tenant ("from 01.10.2026"), not as "No current tenant"
+  const _movesIn = typeof ccTnMovesIn === 'function' ? ccTnMovesIn(!!unit.vacant, activeRec) : null;
+  const vacant = !!unit.vacant && !_movesIn;
 
   const fullName = activeRec ? _rntFullTenantNames(activeRec) : null;
 
@@ -1116,7 +1120,7 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
   const mietende   = activeRec ? _rntFmtDate(activeRec.mietende)   : null;
   const dateStr = mietbeginn && mietende
     ? `${mietbeginn} \u2013 ${mietende}`
-    : mietbeginn ? `since ${mietbeginn}` : '';
+    : mietbeginn ? `${_movesIn ? 'from' : 'since'} ${mietbeginn}` : '';
 
   const unitLabel = isApt
     ? unit.name

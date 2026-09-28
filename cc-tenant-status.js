@@ -82,6 +82,7 @@ function ccTnMoveOutTodo(rec) {
 /* Unit marked vacant but the tenant was never moved out (a future end date is planned, not a to-do) */
 function ccTnStillActiveTodo(vacant, rec) {
   if (!vacant || !rec) return null;
+  { const m = ccTnDaysUntil(rec.mietbeginn); if (m !== null && m > 0) return null; }   // signed, moves in later — not a to-do
   const d = ccTnDaysUntil(rec.mietende);
   if (d !== null && d >= 0) return null;
   return { level: 'amber', text: 'Tenant still active' };
@@ -101,7 +102,16 @@ function ccTnTodoRow(todos) {
   return shown.join('');
 }
 /* Row 1 */
-function ccTnRow1(vacant, kautionPill) {
+/* A signed tenant who moves in later: "Moves in 01.10." (the unit stays vacant until then) */
+function ccTnMovesIn(vacant, rec) {
+  if (!vacant || !rec || !rec.mietbeginn) return null;
+  const d = ccTnDaysUntil(rec.mietbeginn);
+  if (d === null || d <= 0) return null;
+  const s = String(rec.mietbeginn).slice(0, 10).split('-');
+  return s.length === 3 ? s[2] + '.' + s[1] + '.' : null;
+}
+function ccTnRow1(vacant, kautionPill, movesIn) {
+  if (movesIn) return (kautionPill || '') + _ccTnPill('tnp-amber', 'Moves in ' + movesIn);
   if (vacant) return _ccTnPill('tnp-gray', 'Vacant');
   return (kautionPill || '') + _ccTnPill('tnp-occ', 'Occupied');
 }

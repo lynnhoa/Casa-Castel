@@ -800,14 +800,16 @@ function _tnCardPills(room, activeRec) {
     if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'red', text: 'NK open' });   // NK: unchanged for now
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }
-  const kPill = (!vacant && activeRec)
+  const movesIn = ccTnMovesIn(vacant, activeRec);
+  const kPill = ((!vacant || movesIn) && activeRec)
     ? ccTnKautionPill(_tnKaution[activeRec.id], (_tnKautionSollInfo(activeRec) || {}).amount, _tnFmtEUR) : '';
-  return { row1: ccTnRow1(vacant, kPill), todo: ccTnTodoRow(todos) };
+  return { row1: ccTnRow1(vacant, kPill, movesIn), todo: ccTnTodoRow(todos) };
 }
 function _tnRefreshCardPills(roomName) {
   const room = (typeof appRooms !== 'undefined' ? appRooms : []).find(r => r.name === roomName);
   if (!room) return;
-  const rec = _tnRecords.find(r => r.room === roomName && r.status === 'active');
+  const _pk = _ccPickTenancy(_tnRecords.filter(r => r.room === roomName && r.status === 'active'));
+  const rec = _pk.current || _pk.next;
   const p = _tnCardPills(room, rec);
   ccTnApplyPills(esc(roomName.replace(/\s+/g,'_').toLowerCase()), p.row1, p.todo);
 }
@@ -1003,7 +1005,9 @@ function _tnCardHTML(room) {
 
 /* ── HEADER ── */
 function _tnHeaderHTML(rid, room, activeRec) {
-  const vacant = !!room.vacant;
+  // A signed tenant who moves in later is shown like a tenant ("from 01.10.2026"), not as "No current tenant"
+  const _movesIn = typeof ccTnMovesIn === 'function' ? ccTnMovesIn(!!room.vacant, activeRec) : null;
+  const vacant = !!room.vacant && !_movesIn;
   const fullName = activeRec
     ? [activeRec.first_name, activeRec.last_name].filter(Boolean).join(' ')
     : null;
@@ -1021,7 +1025,7 @@ function _tnHeaderHTML(rid, room, activeRec) {
   const mietende   = activeRec ? _tnFmtDate(activeRec.mietende)   : null;
   const dateStr = mietbeginn && mietende
     ? `${mietbeginn} \u2013 ${mietende}`
-    : mietbeginn ? `since ${mietbeginn}` : '';
+    : mietbeginn ? `${_movesIn ? 'from' : 'since'} ${mietbeginn}` : '';
 
   const pills = _tnCardPills(room, activeRec);
   const ctLabel = ({ mietvertrag: 'Mietvertrag', kurzzeit: 'Kurzzeit' })[_tnRoomContractType(room.name)] || '';
