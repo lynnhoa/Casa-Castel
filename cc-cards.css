@@ -349,3 +349,14 @@
 #tab-tenants [id^="pfoot-edit-"] { padding: 4px 14px 12px !important; }
 :is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-foot button { display: inline-flex !important; align-items: center; gap: 5px; }
 #tab-tenants .tn-sec [id^="pfoot-edit-"]:not(:has(.tn-btn-former)), #tab-tenants .tn-sec [id^="pfoot-edit-"] { padding: 4px 14px 12px !important; }
+
+/* v3.1 · the main action is ALWAYS at the far right — also when the row wraps on a phone */
+#tab-tenants [id^="pfoot-read-"] [id^="pedit-btn-"],
+#tab-tenants .tn-sec-footer .cc-slot,
+#tab-tenants .tn-rf-save-row > div:last-child,
+#tab-tenants .cc-inline-slot,
+.cc-sec-foot > :last-child,
+.cc-foot-right { margin-left: auto !important; }
+.cc-foot-right { display: inline-flex; gap: 6px; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-foot { flex-wrap: wrap; row-gap: 8px; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .tn-sec-footer, .cc-sec-foot { flex-wrap: wrap; row-gap: 8px; }

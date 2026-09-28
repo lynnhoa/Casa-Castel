@@ -1093,7 +1093,7 @@ function _tnRentBarHTML(rid, room, rec) {
   <div class="tn-rc">
     <div class="tn-rlbl">Warmmiete</div>
     <div class="tn-rval">${cur ? _tnFmtEUR(cur.total) : '\u2014'}</div>
-    <div class="tn-rsub">${pausch ? 'pauschal' : 'derived'}</div>
+    <div class="tn-rsub">${pausch ? 'pauschal' : 'Kalt + NK'}</div>
   </div>
   <div class="tn-rc">
     <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">

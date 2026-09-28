@@ -196,7 +196,7 @@ function _cckFootOrder(btns, slot) {
   const box = document.createElement('div'); box.innerHTML = btns;
   const left = [], right = [];
   [...box.children].forEach(b => (/'(unplan|undo)'\)/.test(b.getAttribute('onclick') || '') ? left : right).push(b.outerHTML));
-  return left.join('') + '<span style="flex:1"></span>' + slot + right.join('');
+  return left.join('') + '<span class="cc-foot-right">' + slot + right.join('') + '</span>';
 }
 
 /* ── live typing: pill, bar, caption, refund; SAVE turns dark ── */
