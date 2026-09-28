@@ -1316,7 +1316,7 @@ function _roomCardHTML(r) {
 
       <!-- Identity -->
       <div class="rc-section" id="rc-identity-${r.id}">
-        <div class="rc-stitle">Identity</div>
+        <div class="rc-stitle">Property</div>
         <div class="rc-sec-read">
           <div class="rc-rows">
             <div class="rc-row"><span class="rc-row__k">Name</span><span class="rc-row__v">${esc(r.name||'—')}</span></div>
@@ -1345,7 +1345,7 @@ function _roomCardHTML(r) {
 
       <!-- Miete — gold left border accent -->
       <div class="rc-section--miete" id="rc-miete-${r.id}">
-        <div class="rc-stitle">Miete</div>
+        <div class="rc-stitle">Asking rent</div>
         <div class="rc-sec-read">
           <div class="rc-rows">
             ${rentRead || '<div class="rc-row"><span class="rc-row__v" style="color:var(--cc-stone);font-style:italic;">Not set</span></div>'}
@@ -1357,7 +1357,7 @@ function _roomCardHTML(r) {
 
       <!-- Schlüssel — inline icons -->
       <div class="rc-section" id="rc-schluessel-${r.id}">
-        <div class="rc-stitle">Schlüssel</div>
+        <div class="rc-stitle">Keys</div>
         <div class="rc-sec-read">
           <div class="rc-keys">
             <div class="rc-key"><i class="ti ti-home"></i> Haustür ×${r.haustuerschluessel||1}</div>
@@ -1382,7 +1382,7 @@ function _roomCardHTML(r) {
 
       <!-- Contracts — proper buttons -->
       <div class="rc-contracts">
-        <div class="rc-contracts-title">Contracts</div>
+        <div class="rc-contracts-title">Create contracts</div>
 
         <div class="rc-doc-row">
           <button class="rc-doc-btn" onclick="_openContract('kurzzeit','${r.id}')">

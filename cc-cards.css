@@ -1,0 +1,109 @@
+/* ─────────────────────────────────────────────────────────────
+   CASA CASTEL · RENTALS — SHARED CARD DESIGN (phase 1, Sep 2026)
+   cc-cards.css
+
+   One look for Rooms · Apartments · Parking · both Tenants tabs:
+   · section title left, the section's single action (Edit / + Add) top right
+   · READ = EDIT: both use the same 2-column grid, label above value,
+     same order — edit only turns the value into a field of the same size
+   · one type scale: section title 10px caps · label 11px · value 13px
+   · fields 36px high, 14px text; one button style for section actions
+   Loaded last; every rule is scoped to the five tabs.
+   ───────────────────────────────────────────────────────────── */
+
+/* ── Section titles ── */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-stitle,.pk-stitle,.rc-stitle,.tn-sec-lbl,.apt-contracts-title,.pk-contracts-title,.rc-contracts-title) {
+  font-size: 10px !important; font-weight: 600 !important; letter-spacing: .12em !important;
+  text-transform: uppercase !important; color: var(--cc-taupe) !important; margin-bottom: 10px;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-section,.pk-section,.pk-section--miete,.rc-section,.rc-section--miete) { position: relative; padding-top: 14px; padding-bottom: 14px; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .tn-sec { position: relative; }
+
+/* ── The section's action sits top right, same button everywhere ── */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-read,.pk-sec-read,.rc-sec-read) > :is(.apt-section-edit,.pk-section-edit,.rc-section-edit) {
+  position: absolute; top: 9px; right: 14px; margin: 0 !important;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-edit-btn,.pk-sec-edit-btn,.rc-sec-edit-btn,.tn-edit-rent-btn,[id^="pedit-btn-"],.apt-inv-btn,.rc-inv-btn,.apt-hg-add-btn) {
+  height: 28px !important; padding: 0 12px !important; display: inline-flex !important; align-items: center; gap: 5px;
+  background: var(--cc-white) !important; border: .5px solid var(--cc-rule) !important; border-radius: 14px !important;
+  font-family: inherit !important; font-size: 11px !important; font-weight: 500 !important;
+  letter-spacing: .02em !important; text-transform: none !important; color: var(--cc-taupe) !important;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-edit-btn,.pk-sec-edit-btn,.rc-sec-edit-btn,.tn-edit-rent-btn,[id^="pedit-btn-"],.apt-inv-btn,.rc-inv-btn,.apt-hg-add-btn):hover { color: var(--cc-charcoal) !important; border-color: var(--cc-stone) !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-edit-btn,.pk-sec-edit-btn,.rc-sec-edit-btn,.tn-edit-rent-btn,[id^="pedit-btn-"],.apt-inv-btn,.rc-inv-btn,.apt-hg-add-btn) i { font-size: 12px !important; }
+/* Tenant profile: Edit moves up next to the section title (Email stays below) */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .tn-sec [id^="pedit-btn-"] { position: absolute; top: 9px; right: 14px; }
+
+/* ── READ view: 2-column grid, label above value ── */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-read,.pk-sec-read,.rc-sec-read):has(> :is(.apt-row,.pk-row,.rc-row)) {
+  display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px 16px; align-items: start;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-read,.pk-sec-read,.rc-sec-read) > :not(.apt-row):not(.pk-row):not(.rc-row) { grid-column: 1 / -1; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row,.pk-row,.rc-row) {
+  display: flex !important; flex-direction: column !important; align-items: flex-start !important;
+  gap: 2px !important; padding: 0 !important; min-width: 0;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row__k,.pk-row__k,.rc-row__k,.tn-flbl,.apt-field__label,.pk-field__label,.rc-field__label,.cck-fl) {
+  font-size: 11px !important; font-weight: 400 !important; letter-spacing: 0 !important;
+  text-transform: none !important; color: var(--cc-taupe) !important; min-width: 0 !important;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row__v,.pk-row__v,.rc-row__v,.tn-fval) {
+  font-size: 13px !important; color: var(--cc-charcoal) !important; text-align: left !important;
+  line-height: 1.35; overflow-wrap: anywhere;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row__v--muted,.tn-fval.muted,.tn-fval .muted) { color: var(--cc-stone) !important; font-style: normal !important; }
+
+/* ── EDIT view: same grid, same size ── */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .apt-field-row, :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .pk-field-row, :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .rc-field-row { display: grid !important; grid-template-columns: minmax(0,1fr) minmax(0,1fr) !important; gap: 12px 16px !important; margin-bottom: 12px !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .apt-sec-edit, :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .pk-sec-edit, :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .rc-sec-edit {
+  display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px 16px; align-items: end;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-edit,.pk-sec-edit,.rc-sec-edit)[style*="none"] { display: none !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-edit,.pk-sec-edit,.rc-sec-edit) > * { grid-column: 1 / -1; margin-bottom: 0 !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-edit,.pk-sec-edit,.rc-sec-edit) > :is(.apt-field,.pk-field,.rc-field) { grid-column: auto; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-edit,.pk-sec-edit,.rc-sec-edit) > :is(.apt-field-row,.pk-field-row,.rc-field-row) { margin-bottom: 0 !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-field,.pk-field,.rc-field) { gap: 4px !important; margin-bottom: 0 !important; min-width: 0; }
+
+/* Tenants: keep 2 columns while editing (was 1 column) */
+#tab-tenants .tn-fg > .tn-field:has(> input) { grid-column: auto; }
+#tab-tenants .tn-fg > .tn-field.tn-field-full,
+#tab-tenants .tn-fg > .tn-field:has(> input[data-f^="address"]) { grid-column: 1 / -1; }
+#tab-tenants .tn-fg { gap: 12px 16px !important; }
+#tab-tenants .tn-field { gap: 2px !important; min-width: 0; }
+
+/* Fields: one size, close to the read value */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-field input,.tn-rf input),
+#tab-tenants .tn-field input {
+  height: 36px !important; min-height: 36px !important; padding: 0 10px !important;
+  font-family: inherit !important; font-size: 14px !important; font-weight: 400 !important;
+  color: var(--cc-charcoal) !important; background: var(--cc-bg) !important;
+  border: .5px solid var(--cc-rule) !important; border-radius: 8px !important; box-sizing: border-box;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) select.rc-input, :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) select.apt-input, :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) select.pk-input { padding-right: 28px !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-field input,.tn-rf input):focus { border-color: var(--cc-gold) !important; background: var(--cc-white) !important; outline: none; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-field input,.tn-rf input)::placeholder { color: var(--cc-stone) !important; }
+
+/* Save / Cancel rows: same place, same size */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-save-row,.pk-save-row,.rc-sec-save-row) { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-save-row,.pk-save-row,.rc-sec-save-row) button { height: 36px !important; border-radius: 8px !important; }
+
+/* Rent bar (tenants): calmer labels, same value size */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .tn-rlbl { font-size: 9.5px !important; letter-spacing: .05em !important; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .tn-rval { font-size: 15px !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .tn-rsub { font-size: 10.5px !important; }
+
+/* Inventar row title reads like a section title */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-inv-label,.rc-inv-label) { font-size: 10px !important; font-weight: 600 !important; letter-spacing: .12em !important; text-transform: uppercase !important; color: var(--cc-taupe) !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-inv-count,.rc-inv-count) { font-size: 13px !important; color: var(--cc-charcoal) !important; margin-top: 4px; }
+
+/* Casa tenants: edit fields in the same order as the read view (Address before the dates) */
+#tab-tenants .tn-fg:has(> .tn-field > input[data-f="mietbeginn"]) > .tn-field:has(> input[data-f="address"]) { order: 1; }
+#tab-tenants .tn-fg:has(> .tn-field > input[data-f="mietbeginn"]):has(> .tn-field > input[data-f="address"]) > .tn-field:has(> input[data-f^="miet"]) { order: 2; }
+
+/* Edit footer: move-out button never cut off */
+#tab-tenants [id^="pfoot-edit-"] { flex-wrap: wrap; row-gap: 8px; }
+#tab-tenants [id^="pfoot-edit-"] .tn-btn-former { margin-right: auto; }
+
+/* Room read rows (Mietobjekt): a little air between rows */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .rc-sec-read > .rc-row + .rc-row { margin-top: 8px; }

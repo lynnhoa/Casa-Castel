@@ -445,7 +445,7 @@ function _pkCardHTML(p) {
 
     <!-- 1. IDENTITY -->
     <div class="apt-section" id="pk-identity-${p.id}">
-      <div class="pk-stitle">Identity</div>
+      <div class="pk-stitle">Property</div>
       <!-- READ -->
       <div class="pk-sec-read">
         <div class="pk-row"><span class="pk-row__k">Name</span><span class="pk-row__v">${pkEsc(p.name)}</span></div>
@@ -489,7 +489,7 @@ function _pkCardHTML(p) {
 
     <!-- 2. MIETE -->
     <div class="pk-section--miete" id="pk-miete-${p.id}">
-      <div class="pk-stitle">Miete</div>
+      <div class="pk-stitle">Asking rent</div>
       <!-- READ -->
       <div class="pk-sec-read">
         ${miete
@@ -521,7 +521,7 @@ function _pkCardHTML(p) {
 
     <!-- 3. SCHLÜSSEL -->
     <div class="apt-section" id="pk-schlussel-${p.id}">
-      <div class="pk-stitle">Schlüssel</div>
+      <div class="pk-stitle">Keys</div>
       <!-- READ -->
       <div class="pk-sec-read">
         <div class="pk-keys">
@@ -563,7 +563,7 @@ function _pkCardHTML(p) {
 
     <!-- 4. CONTRACT -->
     <div class="pk-contracts">
-      <div class="pk-contracts-title">Contract</div>
+      <div class="pk-contracts-title">Create contracts</div>
       <div class="pk-doc-row">
         <button class="pk-doc-btn" onclick="_pkOpenContract('mietvertrag','${p.id}')">
           Mietvertrag <i class="ti ti-chevron-right"></i>

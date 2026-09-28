@@ -1064,7 +1064,7 @@ function _tnHeaderHTML(rid, room, activeRec) {
 function _tnRentBarHTML(rid, room, rec) {
   const cur = _tnCurrentRent(rec, room.name);
   const priceLabel = _tnPriceLabel(room.name) || '';
-  const src  = !cur ? 'nicht hinterlegt' : (cur.src === 'history' ? 'ab ' + ccRpFmt(cur.period.valid_from) : 'agreed');
+  const src  = !cur ? 'not set' : (cur.src === 'history' ? 'ab ' + ccRpFmt(cur.period.valid_from) : 'agreed');
   const nextP = rec && typeof ccRpFor === 'function'
     ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday()) : null;
   const pausch = cur && cur.mode === 'pauschal';
@@ -1161,19 +1161,19 @@ function _tnProfileSectionHTML(rid, room, rec) {
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
     <div class="tn-field"><span class="tn-flbl">Name</span>
-      <span class="tn-fval">${esc(fullName) || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${esc(fullName) || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <span class="tn-fval">${esc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${esc(rec.birthday||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Email</span>
-      <span class="tn-fval">${email || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${email || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
-      <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
-    <div class="tn-field"><span class="tn-flbl">Move in</span>
-      <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
-    <div class="tn-field"><span class="tn-flbl">Move out</span>
-      <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'Not set \u2014 active'}</span></div>
+      <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Move-in</span>
+      <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
+    <div class="tn-field"><span class="tn-flbl">Move-out</span>
+      <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'open-ended'}</span></div>
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
-      <span class="tn-fval">${esc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${esc(rec.address||'') || '<span class="muted">—</span>'}</span></div>
   </div>`;
 
   const editView = `
@@ -1186,9 +1186,9 @@ function _tnProfileSectionHTML(rid, room, rec) {
       <input data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <input data-f="phone" type="tel" value="${esc(rec ? rec.phone||'' : '')}" placeholder="+49 ..."/></div>
-    <div class="tn-field"><span class="tn-flbl">Move in</span>
+    <div class="tn-field"><span class="tn-flbl">Move-in</span>
       <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
-    <div class="tn-field"><span class="tn-flbl">Move out</span>
+    <div class="tn-field"><span class="tn-flbl">Move-out</span>
       <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ \u2014 becomes Former when reached"/></div>
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <input data-f="address" type="text" value="${esc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
@@ -1209,7 +1209,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
 
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
-    ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_tnMoveToFormerConfirm(this,'${rid}','${tid}','${esc(room.name)}')"><i class="ti ti-user-off"></i> To former</button><div style="flex:1"></div>` : ''}
+    ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_tnMoveToFormerConfirm(this,'${rid}','${tid}','${esc(room.name)}')"><i class="ti ti-user-off"></i> Move out</button><div style="flex:1"></div>` : ''}
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec ? `_tnSaveProfile('${rid}','${tid}','${esc(room.name)}')` : `_tnSaveNewTenant('${rid}','${esc(room.name)}')`}">
@@ -1219,7 +1219,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
   return `
 <div class="tn-sec" id="psec-${rid}">
   <div class="tn-sec-body" style="padding-top:10px">
-    <div style="margin-bottom:8px"><span class="tn-sec-lbl">Profile</span></div>
+    <div style="margin-bottom:8px"><span class="tn-sec-lbl">Tenant</span></div>
     ${readView}
     ${editView}
   </div>
@@ -1300,7 +1300,7 @@ function _tnNKHTML(rid, tid, ctx) {
     const sec = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
     return `<div class="${sec}" style="opacity:.45;pointer-events:none">
       <div class="tn-sec-body" style="padding-top:10px;padding-bottom:11px">
-        <div style="margin-bottom:8px"><span class="tn-sec-lbl">NK Abrechnungen</span></div>
+        <div style="margin-bottom:8px"><span class="tn-sec-lbl">NK-Abrechnungen</span></div>
         <p class="tn-empty">Save profile first.</p>
       </div></div>`;
   }
@@ -1377,7 +1377,7 @@ function _tnNKHTML(rid, tid, ctx) {
 <div class="${sec}">
   <div class="tn-sec-body" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <span class="tn-sec-lbl" style="flex:1">NK Abrechnungen</span>
+      <span class="tn-sec-lbl" style="flex:1">NK-Abrechnungen</span>
       ${openCount > 0 ? `<span class="tnp tnp-amber">${openCount} open</span>` : '<span class="tnp tnp-green">All done</span>'}
     </div>
     ${open.map(nkRow).join('')}
@@ -1755,30 +1755,30 @@ function _tnModalBodyHTML(rec) {
       <!-- READ -->
       <div class="tn-fg" id="mprof-read-${tid}">
         <div class="tn-field"><span class="tn-flbl">Name</span>
-          <span class="tn-fval">${esc(full) || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${esc(full) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Birthday</span>
-          <span class="tn-fval">${esc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${esc(rec.birthday||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Email</span>
-          <span class="tn-fval">${esc(rec.email||'') || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${esc(rec.email||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
-          <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Move in</span>
-          <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Move out</span>
-          <span class="tn-fval">${_tnFmtDate(rec.mietende) || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
+          <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
+          <span class="tn-fval">${_tnFmtDate(rec.mietende) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
-          <span class="tn-fval">${dK != null ? _tnFmtEUR(dK) : '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${dK != null ? _tnFmtEUR(dK) : '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
-          <span class="tn-fval">${dNK != null ? _tnFmtEUR(dNK) : '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${dNK != null ? _tnFmtEUR(dNK) : '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
           <span class="tn-fval">${(() => {
             const live = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende);
             if (dKS != null) return _tnFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(override)</span>';
             if (live != null) return _tnFmtEUR(live) + ' <span style="font-size:10px;color:var(--cc-stone)">(auto)</span>';
-            return '<span class="muted">Not set</span>';
+            return '<span class="muted">—</span>';
           })()}</span></div>
         <div class="tn-field"><span class="tn-flbl">Contract</span>
-          <span class="tn-fval">${ct ? _tnContractLabel(ct) : '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${ct ? _tnContractLabel(ct) : '<span class="muted">—</span>'}</span></div>
       </div>
 
       <!-- EDIT -->
@@ -1791,9 +1791,9 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="email" type="email" value="${esc(rec.email||'')}"/></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <input data-mf="phone" type="tel" value="${esc(rec.phone||'')}"/></div>
-        <div class="tn-field"><span class="tn-flbl">Move in</span>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-mf="mietbeginn" type="text" value="${_tnFmtDate(rec.mietbeginn)}"/></div>
-        <div class="tn-field"><span class="tn-flbl">Move out</span>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-mf="mietende" type="text" value="${_tnFmtDate(rec.mietende)}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
           <input data-mf="kaltmiete" type="number" data-cc-num="2" value="${dK ?? ''}"/></div>
@@ -2317,7 +2317,7 @@ async function _tnModalSaveProfile(tid) {
       ctype ? _tnContractLabel(ctype) : '',
     ];
     vals.forEach((el, i) => {
-      el.innerHTML = labels[i] || '<span class="muted">Not set</span>';
+      el.innerHTML = labels[i] || '<span class="muted">—</span>';
     });
     readEl.style.display = '';
     editEl.style.display = 'none';

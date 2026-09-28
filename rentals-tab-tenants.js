@@ -1166,7 +1166,7 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
 function _rntRentBarHTML(rid, type, unit, rec) {
   const isApt = type === 'apt';
   const cur   = _rntCurrentRent(rec);
-  const src   = !cur ? 'nicht hinterlegt' : (cur.src === 'history' ? 'ab ' + ccRpFmt(cur.period.valid_from) : 'agreed');
+  const src   = !cur ? 'not set' : (cur.src === 'history' ? 'ab ' + ccRpFmt(cur.period.valid_from) : 'agreed');
   const nextP = rec && typeof ccRpFor === 'function'
     ? ccRpFor('rentals', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday()) : null;
 
@@ -1186,7 +1186,7 @@ function _rntRentBarHTML(rid, type, unit, rec) {
   <div class="tn-rc">
     <div class="tn-rlbl">Warmmiete</div>
     <div class="tn-rval">${cur ? _rntFmtEUR(cur.total) : '\u2014'}</div>
-    <div class="tn-rsub">derived</div>
+    <div class="tn-rsub">Kalt + NK</div>
   </div>
   <div class="tn-rc">
     <button class="tn-edit-rent-btn" onclick="_rntToggleRentEdit('${rid}')">
@@ -1308,43 +1308,43 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
     <div class="tn-field"><span class="tn-flbl">Name</span>
-      <span class="tn-fval">${_rntEsc(fullName) || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(fullName) || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <span class="tn-fval">${_rntEsc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.birthday||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Email</span>
-      <span class="tn-fval">${email || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${email || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
-      <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
-      <span class="tn-fval">${_rntEsc(rec.address||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.address||'') || '<span class="muted">—</span>'}</span></div>
     ${has2 ? `
-    <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Mieter 2</span></div>
+    <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Tenant 2</span></div>
     <div class="tn-field"><span class="tn-flbl">Name</span>
-      <span class="tn-fval">${_rntEsc(fullName2) || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(fullName2) || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <span class="tn-fval">${_rntEsc(rec.birthday_2||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.birthday_2||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Email</span>
-      <span class="tn-fval">${_rntEsc(rec.email_2||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.email_2||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
-      <span class="tn-fval">${_rntEsc(rec.phone_2||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.phone_2||'') || '<span class="muted">—</span>'}</span></div>
     ` : ''}
     ${has3 ? `
-    <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Mieter 3</span></div>
+    <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Tenant 3</span></div>
     <div class="tn-field"><span class="tn-flbl">Name</span>
-      <span class="tn-fval">${_rntEsc(fullName3) || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(fullName3) || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
-      <span class="tn-fval">${_rntEsc(rec.birthday_3||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.birthday_3||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Email</span>
-      <span class="tn-fval">${_rntEsc(rec.email_3||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.email_3||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
-      <span class="tn-fval">${_rntEsc(rec.phone_3||'') || '<span class="muted">Not set</span>'}</span></div>
+      <span class="tn-fval">${_rntEsc(rec.phone_3||'') || '<span class="muted">—</span>'}</span></div>
     ` : ''}
     <div class="tn-field tn-field-full" style="border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
       <div class="tn-fg">
-        <div class="tn-field"><span class="tn-flbl">Move in</span>
-          <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Move out</span>
-          <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_rntFmtDate(rec.mietende) || 'Not set \u2014 active'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
+          <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
+          <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_rntFmtDate(rec.mietende) || 'open-ended'}</span></div>
       </div>
     </div>
   </div>`;
@@ -1352,8 +1352,8 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const tenant2Block = `
   <div id="p2wrap-${rid}" class="tn-field-full" style="display:${has2 ? 'block' : 'none'};grid-column:1/-1;margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-      <span class="tn-flbl">Mieter 2</span>
-      <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',2)">Entfernen</button>
+      <span class="tn-flbl">Tenant 2</span>
+      <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',2)">Remove</button>
     </div>
     <div class="tn-fg">
       <div class="tn-field"><span class="tn-flbl">Name</span>
@@ -1372,8 +1372,8 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const tenant3Block = `
   <div id="p3wrap-${rid}" class="tn-field-full" style="display:${has3 ? 'block' : 'none'};grid-column:1/-1;margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-      <span class="tn-flbl">Mieter 3</span>
-      <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',3)">Entfernen</button>
+      <span class="tn-flbl">Tenant 3</span>
+      <button type="button" class="tn-btn tn-btn-sm" onclick="_rntRemoveCoTenant('${rid}',3)">Remove</button>
     </div>
     <div class="tn-fg">
       <div class="tn-field"><span class="tn-flbl">Name</span>
@@ -1392,7 +1392,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const addTenantBtn = `
   <div class="tn-field-full" style="display:${has3 ? 'none' : 'block'};grid-column:1/-1;margin-top:4px;margin-bottom:4px;">
     <button type="button" id="paddco-${rid}" class="tn-btn tn-btn-sm" onclick="_rntAddCoTenant('${rid}')">
-      <i class="ti ti-plus"></i> Mieter hinzuf\u00fcgen
+      <i class="ti ti-plus"></i> Add tenant
     </button>
   </div>`;
 
@@ -1413,9 +1413,9 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     ${addTenantBtn}
     <div class="tn-field-full" style="grid-column:1/-1;border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
       <div class="tn-fg">
-        <div class="tn-field"><span class="tn-flbl">Move in</span>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
-        <div class="tn-field"><span class="tn-flbl">Move out</span>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ \u2014 becomes Former when reached"/></div>
       </div>
     </div>
@@ -1435,7 +1435,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
 
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
-    ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_rntMoveToFormerConfirm(this,'${rid}','${tid}','${unitType}','${unitId}')"><i class="ti ti-user-off"></i> To former</button><div style="flex:1"></div>` : ''}
+    ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_rntMoveToFormerConfirm(this,'${rid}','${tid}','${unitType}','${unitId}')"><i class="ti ti-user-off"></i> Move out</button><div style="flex:1"></div>` : ''}
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntToggleProfile('${rid}','${tid}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec
@@ -1447,7 +1447,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   return `
 <div class="tn-sec" id="psec-${rid}">
   <div class="tn-sec-body" style="padding-top:10px">
-    <div style="margin-bottom:8px"><span class="tn-sec-lbl">Profile</span></div>
+    <div style="margin-bottom:8px"><span class="tn-sec-lbl">Tenant</span></div>
     ${readView}
     ${editView}
   </div>
@@ -1530,7 +1530,7 @@ function _rntNKHTML(rid, tid, ctx) {
     const sec = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
     return `<div class="${sec}" style="opacity:.45;pointer-events:none">
       <div class="tn-sec-body" style="padding-top:10px;padding-bottom:11px">
-        <div style="margin-bottom:8px"><span class="tn-sec-lbl">NK Abrechnungen</span></div>
+        <div style="margin-bottom:8px"><span class="tn-sec-lbl">NK-Abrechnungen</span></div>
         <p class="tn-empty">Save profile first.</p>
       </div></div>`;
   }
@@ -1600,7 +1600,7 @@ function _rntNKHTML(rid, tid, ctx) {
 <div class="${sec}">
   <div class="tn-sec-body" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <span class="tn-sec-lbl" style="flex:1">NK Abrechnungen</span>
+      <span class="tn-sec-lbl" style="flex:1">NK-Abrechnungen</span>
       ${openCount > 0
         ? `<span class="tnp tnp-amber">${openCount} open</span>`
         : (settled.length > 0 ? '<span class="tnp tnp-green">All done</span>' : '')}
@@ -2341,31 +2341,31 @@ function _rntModalBodyHTML(rec, isApt) {
       <!-- READ -->
       <div class="tn-fg" id="mprof-read-${tid}">
         <div class="tn-field"><span class="tn-flbl">Name</span>
-          <span class="tn-fval">${_rntEsc(full) || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${_rntEsc(full) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Birthday</span>
-          <span class="tn-fval">${_rntEsc(rec.birthday||'') || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${_rntEsc(rec.birthday||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Email</span>
-          <span class="tn-fval">${_rntEsc(rec.email||'') || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${_rntEsc(rec.email||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
-          <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">Not set</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Move in</span>
-          <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">Not set</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Move out</span>
-          <span class="tn-fval">${_rntFmtDate(rec.mietende) || '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
+          <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
+          <span class="tn-fval">${_rntFmtDate(rec.mietende) || '<span class="muted">—</span>'}</span></div>
         ${isApt ? `
         <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
-          <span class="tn-fval">${dK != null ? _rntFmtEUR(dK) : '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${dK != null ? _rntFmtEUR(dK) : '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
-          <span class="tn-fval">${dNK != null ? _rntFmtEUR(dNK) : '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${dNK != null ? _rntFmtEUR(dNK) : '<span class="muted">—</span>'}</span></div>
         ` : `
         <div class="tn-field"><span class="tn-flbl">Parkmiete</span>
-          <span class="tn-fval">${dK != null ? _rntFmtEUR(dK) : '<span class="muted">Not set</span>'}</span></div>
+          <span class="tn-fval">${dK != null ? _rntFmtEUR(dK) : '<span class="muted">—</span>'}</span></div>
         `}
         <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
           <span class="tn-fval">${dKS != null
             ? _rntFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(override)</span>'
             : soll != null ? _rntFmtEUR(soll) + ' <span style="font-size:10px;color:var(--cc-stone)">(auto)</span>'
-            : '<span class="muted">Not set</span>'}</span></div>
+            : '<span class="muted">—</span>'}</span></div>
       </div>
       <!-- EDIT -->
       <div class="tn-fg" id="mprof-edit-${tid}" style="display:none">
@@ -2377,9 +2377,9 @@ function _rntModalBodyHTML(rec, isApt) {
           <input data-mf="email" type="email" value="${_rntEsc(rec.email||'')}"/></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <input data-mf="phone" type="tel" value="${_rntEsc(rec.phone||'')}"/></div>
-        <div class="tn-field"><span class="tn-flbl">Move in</span>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-mf="mietbeginn" type="text" value="${_rntFmtDate(rec.mietbeginn)}"/></div>
-        <div class="tn-field"><span class="tn-flbl">Move out</span>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-mf="mietende" type="text" value="${_rntFmtDate(rec.mietende)}" placeholder="TT.MM.JJJJ"/></div>
         ${isApt ? `
         <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>

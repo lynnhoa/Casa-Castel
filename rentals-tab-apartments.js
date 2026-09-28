@@ -1004,7 +1004,7 @@ function _aptCardHTML(a) {
 
     <!-- 1. IDENTITY -->
     <div class="apt-section" id="apt-identity-${a.id}">
-      <div class="apt-stitle">Identity</div>
+      <div class="apt-stitle">Property</div>
       <!-- READ -->
       <div class="apt-sec-read">
         <div class="apt-row"><span class="apt-row__k">Name</span><span class="apt-row__v">${aptEsc(a.name)}</span></div>
@@ -1066,7 +1066,7 @@ function _aptCardHTML(a) {
 
     <!-- 2. MIETE -->
     <div class="apt-section--miete" id="apt-miete-${a.id}">
-      <div class="apt-stitle">Miete</div>
+      <div class="apt-stitle">Asking rent</div>
       <!-- READ -->
       <div class="apt-sec-read">
         ${kalt || nk ? `
@@ -1112,7 +1112,7 @@ function _aptCardHTML(a) {
 
     <!-- 3. VERWALTUNG -->
     <div class="apt-section" id="apt-verwaltung-${a.id}">
-      <div class="apt-stitle">Verwaltung & Kosten</div>
+      <div class="apt-stitle">Costs & Hausverwaltung</div>
       <!-- READ -->
       <div class="apt-sec-read">
         ${v.hausverwaltung ? `<div class="apt-row"><span class="apt-row__k">Hausverwaltung</span><span class="apt-row__v">${aptEsc(v.hausverwaltung)}</span></div>` : ''}
@@ -1160,7 +1160,7 @@ function _aptCardHTML(a) {
 
     <!-- 4. ZÄHLER -->
     <div class="apt-section" id="apt-zaehler-${a.id}">
-      <div class="apt-stitle">Zähler</div>
+      <div class="apt-stitle">Meters</div>
       <!-- READ -->
       <div class="apt-sec-read">
         ${meterGroups.length ? meterGroups.map(g => `
@@ -1207,7 +1207,7 @@ function _aptCardHTML(a) {
 
     <!-- 5. SCHLÜSSEL -->
     <div class="apt-section" id="apt-schlussel-${a.id}">
-      <div class="apt-stitle">Schlüssel</div>
+      <div class="apt-stitle">Keys</div>
       <!-- READ -->
       <div class="apt-sec-read">
         <div class="apt-keys">
@@ -1269,7 +1269,7 @@ function _aptCardHTML(a) {
 
     <!-- 7. CONTRACTS -->
     <div class="apt-contracts">
-      <div class="apt-contracts-title">Contracts</div>
+      <div class="apt-contracts-title">Create contracts</div>
       ${a.zimmer_type !== 'Gewerbefläche' ? `
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('kurzzeit','${a.id}')">
