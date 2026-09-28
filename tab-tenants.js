@@ -1433,7 +1433,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
   const tid   = rec ? rec.id : '';
   const getDoc = type => docs.find(d => d.type === type);
 
-  const row = (type, label) => {
+  const row = (type, label, createBtn) => {
     const doc    = getDoc(type);
     const signed = !!doc?.file_url;
     const pill   = signed
@@ -1453,7 +1453,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     return `<div class="tn-doc-row">
       <span class="tn-doc-name">${esc(label)}</span>
       ${pill}
-      <div class="tn-doc-btns">${viewBtn}${delBtn}${upBtn}</div>
+      <div class="tn-doc-btns">${!signed && createBtn ? createBtn : viewBtn}${delBtn}${upBtn}</div>
     </div>`;
   };
 
@@ -1465,12 +1465,14 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
     ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
     ${(rec && typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id).filter(p => p.kind === 'renewal') : [])
-        .map(p => {
+        .map((p, i) => {
+          // "1. Verlängerung ab 01.10.2026" — a renewal that switches the type says so
           const before = tnContractType(rec, ccRpAddDays(_ccIso(p.valid_from), -1));
-          const lbl = (p.contract_type && before && p.contract_type !== before)
-            ? (p.contract_type === 'kurzzeit' ? 'Kurzzeitmietvertrag' : 'Mietvertrag') + ' ab ' + _ccFmtD(p.valid_from)
-            : 'Verlängerung ab ' + _ccFmtD(p.valid_from);
-          return row('verlaengerung_' + _ccIso(p.valid_from), lbl);
+          const lbl = (i + 1) + '. Verlängerung ab ' + _ccFmtD(p.valid_from)
+            + ((p.contract_type && before && p.contract_type !== before) ? ' \u00b7 ' + _tnContractLabel(p.contract_type) : '');
+          const create = `<button class="tn-doc-btn" onclick="_tnRenewCreate('${tid}','${esc(String(p.id))}',${i + 1})" title="Create contract">
+            <i class="ti ti-file-plus"></i></button>`;
+          return row('verlaengerung_' + _ccIso(p.valid_from), lbl, create);
         }).join('')}
     ${row('einzug','Übergabe Einzug')}
     ${row('auszug','Übergabe Auszug')}
@@ -2327,6 +2329,23 @@ function _tnMoveOutOpen(rid, tid) {
   });
 }
 /* Renew (Casa 1-year contracts): same tenant, same Kaution — new contract end, optional new rent */
+/* Renewal row → "Create": the right generator in Rooms, filled in with this renewal
+   (tenant, start, end, the renewal's own rent). Draft rounds as usual; upload the signed one here. */
+function _tnRenewCreate(tid, pid, n) {
+  const rec  = _tnRecords.find(r => r.id === tid);
+  const per  = typeof ccRpFor === 'function' ? ccRpFor('casa', tid).find(p => String(p.id) === String(pid)) : null;
+  const room = rec && typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === rec.room) : null;
+  if (!rec || !per || !room || typeof _openContract !== 'function') return;
+  const amt  = ccRpAmount(per) || {};
+  const type = per.contract_type || tnContractType(rec) || 'mietvertrag';
+  if (typeof switchTab === 'function') switchTab('rooms');   // the generator lives in the Rooms tab
+  _openContract(type, room.id, {
+    roomId: room.id, label: n + '. Verlängerung',
+    start: _ccIso(per.valid_from), end: _ccIso(per.contract_end || rec.vertragsende || ''),
+    mode: amt.mode, kalt: amt.kalt, nk: amt.nk, total: amt.total,
+  });
+}
+
 function _tnRenewOpen(rid, tid) {
   const rec = _tnRecords.find(r => r.id === tid);
   const endNow = rec && (rec.vertragsende || rec.mietende);   // the contract ends, or the tenant was going to move out
