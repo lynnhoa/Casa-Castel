@@ -70,7 +70,7 @@
       margin-bottom: 7px;
     }
     .studio-label {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 500;
       letter-spacing: 0.18em;
       text-transform: uppercase;
@@ -82,87 +82,105 @@
       font-size: 10px;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: var(--stone);
+      color: var(--taupe);
       text-align: center;
-      margin-bottom: 36px;
+      margin-bottom: 32px;
     }
 
     .login-form {
       width: 100%;
-      max-width: 320px;
+      max-width: 360px;
       display: flex;
       flex-direction: column;
     }
 
-    /* ── APP BUTTONS ── */
-    .role-tab:last-child:nth-child(odd) { grid-column: 1 / -1; }   /* 5th tile uses the full row */
+    /* ── APP BUTTONS ──
+       Properties on its own row, then Casa Castel + Rentals, Controlling + Settlements.
+       Each tile: icon, name (readable, dark), one short line what it's for. */
     .role-tabs {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 14px;
+      gap: 10px;
+      margin-bottom: 22px;
     }
-
     .role-tab {
+      position: relative;
       display: flex;
-      flex-direction: row;
-      align-items: center;
-      justify-content: center;
-      gap: 9px;
-      padding: 14px 12px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+      min-height: 104px;
+      padding: 14px 14px 13px;
       background: #fff;
-      border: 0.5px solid var(--rule);
-      border-radius: 10px;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      text-align: left;
       cursor: pointer;
       font-family: inherit;
-      transition: border-color .15s, background .15s, transform .1s;
+      transition: border-color .15s, background .15s, box-shadow .15s, transform .1s;
       -webkit-tap-highlight-color: transparent;
     }
-    .role-tab:hover { border-color: var(--stone); background: var(--warm); }
-    .role-tab:active { transform: scale(.96); }
-
-    .role-tab i {
-      font-size: 17px;
-      color: var(--stone);
-      transition: color .15s;
-      flex-shrink: 0;
+    .role-tab--wide {
+      grid-column: 1 / -1;
+      flex-direction: row;
+      align-items: center;
+      min-height: 0;
+      padding: 14px;
+      gap: 12px;
     }
-    .role-tab span {
-      font-size: 9px;
-      font-weight: 500;
-      letter-spacing: 0.09em;
-      text-transform: uppercase;
-      color: var(--stone);
-      transition: color .15s;
-      white-space: nowrap;
-    }
+    .role-tab:hover  { border-color: var(--stone); }
+    .role-tab:active { transform: scale(.98); }
+    .role-tab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
-    /* Selected state */
+    .role-tab__ico {
+      width: 36px; height: 36px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--warm);
+      border-radius: 10px;
+      transition: background .15s;
+    }
+    .role-tab__ico i { font-size: 19px; color: var(--taupe); transition: color .15s; }
+    .role-tab__txt  { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .role-tab__name { font-size: 14px; font-weight: 500; color: var(--ink); letter-spacing: 0.01em; line-height: 1.2; }
+    .role-tab__sub  { font-size: 11.5px; font-weight: 400; color: var(--taupe); line-height: 1.3; }
+    .role-tab__check {
+      position: absolute; top: 12px; right: 12px;
+      font-size: 18px; color: var(--gold-dk);
+      opacity: 0; transform: scale(.6);
+      transition: opacity .15s, transform .15s;
+    }
+    .role-tab--wide .role-tab__check { top: 50%; margin-top: -9px; right: 14px; }
+
+    /* Selected */
     .role-tab.active {
       background: var(--gold-lt);
-      border: 1.5px solid var(--gold);
+      border-color: var(--gold);
+      box-shadow: 0 0 0 1px var(--gold) inset;
     }
-    .role-tab.active i { color: var(--gold-dk); }
-    .role-tab.active span { color: var(--gold-dk); }
+    .role-tab.active .role-tab__ico   { background: var(--gold-dk); }
+    .role-tab.active .role-tab__ico i { color: #fff; }
+    .role-tab.active .role-tab__name  { color: #5E4526; }
+    .role-tab.active .role-tab__sub   { color: var(--gold-dk); }
+    .role-tab.active .role-tab__check { opacity: 1; transform: none; }
 
     /* ── INPUTS ── */
     .cc-input {
       width: 100%;
-      height: 46px;
-      padding: 0 14px;
+      height: 50px;
+      padding: 0 16px;
       background: #fff;
-      border: 0.5px solid var(--stone);
-      border-radius: 6px;
+      border: 1px solid var(--rule);
+      border-radius: 12px;
       font-family: inherit;
-      font-size: 13px;
-      font-weight: 300;
+      font-size: 16px;
+      font-weight: 400;
       color: var(--ink);
       outline: none;
       transition: border-color .15s;
       -webkit-appearance: none;
     }
-    .cc-input + .cc-input { margin-top: 8px; }
-    .cc-input::placeholder { color: var(--stone); }
+    .cc-input + .cc-input { margin-top: 10px; }
+    .cc-input::placeholder { color: var(--taupe); }
     .cc-input:focus { border-color: var(--gold); }
     .cc-input.error { border-color: var(--error); }
 
@@ -181,14 +199,14 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      padding: 12px 14px;
+      padding: 14px 16px;
       background: #fff;
-      border: 0.5px solid var(--rule);
-      border-radius: 6px;
+      border: 1px solid var(--rule);
+      border-radius: 12px;
     }
     .signed-in.visible { display: flex; }
     .signed-in__email {
-      font-size: 12px;
+      font-size: 14px;
       color: var(--body);
       overflow: hidden;
       text-overflow: ellipsis;
@@ -214,28 +232,28 @@
     /* ── ENTER ── */
     .enter-btn {
       width: 100%;
-      height: 46px;
-      margin-top: 10px;
-      background: var(--warm);
-      border: 0.5px solid var(--stone);
-      border-radius: 6px;
+      height: 50px;
+      margin-top: 14px;
+      background: #3D3027;
+      border: none;
+      border-radius: 12px;
       font-family: inherit;
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: 0.16em;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: var(--body);
+      color: #fff;
       cursor: pointer;
       transition: background .15s, border-color .15s, transform .1s, opacity .15s;
       -webkit-tap-highlight-color: transparent;
     }
-    .enter-btn:hover  { background: var(--rule); border-color: var(--taupe); }
+    .enter-btn:hover  { background: #2E241D; }
     .enter-btn:active { transform: scale(.99); }
     .enter-btn:disabled { opacity: .55; cursor: default; }
 
     @media (min-width: 600px) {
       .wordmark { font-size: 46px; }
-      .login-form { max-width: 340px; }
+      .login-form { max-width: 380px; }
     }
   </style>
 </head>
@@ -249,26 +267,31 @@
 
   <div class="login-form">
 
-    <div class="role-tabs" role="group" aria-label="Select app">
-      <button class="role-tab" data-dest="properties.html">
-        <i class="ti ti-building-estate" aria-hidden="true"></i>
-        <span>Properties</span>
+    <div class="role-tabs" role="group" aria-label="Choose an app">
+      <button class="role-tab role-tab--wide" data-dest="properties.html" aria-pressed="false">
+        <span class="role-tab__ico"><i class="ti ti-building-estate" aria-hidden="true"></i></span>
+        <span class="role-tab__txt"><span class="role-tab__name">Properties</span><span class="role-tab__sub">Portfolio &amp; loans</span></span>
+        <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
       </button>
-      <button class="role-tab" data-dest="rentals-index.html">
-        <i class="ti ti-key" aria-hidden="true"></i>
-        <span>Rentals</span>
+      <button class="role-tab active" data-dest="landlord.html" data-tab="rooms" aria-pressed="true">
+        <span class="role-tab__ico"><i class="ti ti-home-heart" aria-hidden="true"></i></span>
+        <span class="role-tab__txt"><span class="role-tab__name">Casa Castel</span><span class="role-tab__sub">House &amp; tenants</span></span>
+        <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
       </button>
-      <button class="role-tab active" data-dest="landlord.html" data-tab="rooms">
-        <i class="ti ti-home-heart" aria-hidden="true"></i>
-        <span>Casa Castel</span>
+      <button class="role-tab" data-dest="rentals-index.html" aria-pressed="false">
+        <span class="role-tab__ico"><i class="ti ti-key" aria-hidden="true"></i></span>
+        <span class="role-tab__txt"><span class="role-tab__name">Rentals</span><span class="role-tab__sub">Apartments &amp; parking</span></span>
+        <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
       </button>
-      <button class="role-tab" data-dest="controlling.html">
-        <i class="ti ti-chart-bar" aria-hidden="true"></i>
-        <span>Controlling</span>
+      <button class="role-tab" data-dest="controlling.html" aria-pressed="false">
+        <span class="role-tab__ico"><i class="ti ti-chart-bar" aria-hidden="true"></i></span>
+        <span class="role-tab__txt"><span class="role-tab__name">Controlling</span><span class="role-tab__sub">Income &amp; expenses</span></span>
+        <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
       </button>
-      <button class="role-tab" data-dest="settlements.html">
-        <i class="ti ti-receipt" aria-hidden="true"></i>
-        <span>Settlements</span>
+      <button class="role-tab" data-dest="settlements.html" aria-pressed="false">
+        <span class="role-tab__ico"><i class="ti ti-receipt" aria-hidden="true"></i></span>
+        <span class="role-tab__txt"><span class="role-tab__name">Settlements</span><span class="role-tab__sub">NK &amp; Hausgeld</span></span>
+        <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
       </button>
     </div>
 
@@ -324,12 +347,12 @@
   let tileChosen   = false;    // true only when you tap an app tile yourself
   let hasSession   = false;
 
-  tabs.forEach(t => t.classList.toggle('active', t.dataset.dest === selectedDest));
+  const markTabs = () => tabs.forEach(t => { const on = t.dataset.dest === selectedDest; t.classList.toggle('active', on); t.setAttribute('aria-pressed', on); });
+  markTabs();
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
       selectedDest = tab.dataset.dest;
+      markTabs();
       selectedTab  = tab.dataset.tab || null;
       tileChosen   = true;
       clearError();
