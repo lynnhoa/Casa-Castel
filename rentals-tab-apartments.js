@@ -1257,6 +1257,8 @@ function _aptCardHTML(a) {
       </button>
     </div>
 
+    ${typeof ccVacSectionHTML === 'function' ? ccVacSectionHTML('apt', a.id, 'apt') : ''}
+
     <!-- 7. CONTRACTS -->
     <div class="apt-contracts">
       <div class="apt-contracts-title">Create contracts</div>
@@ -1762,6 +1764,35 @@ async function _aptHGConfirmAdd__run(aptId) {
   _aptHausgeld[aptId].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
   _aptRerenderCard(aptId);
   _aptHGRefreshVerlauf(aptId);
+  _aptHGHint(aptId, data.effective_date);
+}
+
+/* Phase 4 · After a Hausgeld change: offer to check the tenant's NK-Vorauszahlung.
+   Only a hint — nothing changes by itself. */
+function _aptHGHint(aptId, date) {
+  const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('apt', aptId) : null;
+  const body = document.querySelector(`#apt-hg-sec-${aptId} .apt-hg-body`);
+  if (!cur || !cur.name || !body) return;
+  body.querySelector('.cc-hint')?.remove();
+  const d = String(date || '').slice(0, 10).split('-');
+  body.insertAdjacentHTML('beforeend', `<div class="cc-hint">
+    <span>Hausgeld changes from ${d[2]}.${d[1]}.${d[0]} — check the NK-Vorauszahlung of <strong>${aptEsc(cur.name)}</strong>?</span>
+    <span class="cc-hint__btns"><button type="button" onclick="ccOpenTenantCard('apt','${aptId}')">Open tenant</button>
+    <button type="button" aria-label="Dismiss" onclick="this.closest('.cc-hint').remove()"><i class="ti ti-x"></i></button></span></div>`);
+}
+/* Open a unit's card in the Tenants tab (used by hints) */
+function ccOpenTenantCard(kind, id) {
+  if (typeof switchTab === 'function') switchTab('tenants');
+  const cid = 'tc-' + (kind === 'apt' ? 'apt_' : 'pk_') + String(id).replace(/-/g, '').slice(0, 12);
+  let n = 0;
+  const t = setInterval(() => {
+    const card = document.getElementById(cid);
+    if (card || ++n > 40) {
+      clearInterval(t); if (!card) return;
+      if (!card.classList.contains('open')) card.querySelector('.tn-hdr-wrap')?.click();
+      setTimeout(() => { card.scrollIntoView({ block: 'start' }); window.scrollBy(0, -120); }, 150);
+    }
+  }, 150);
 }
 
 /* ── "Noted" — tap to set, tap again to undo ────────────────────

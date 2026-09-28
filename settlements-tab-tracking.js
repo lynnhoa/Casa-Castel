@@ -273,7 +273,9 @@ function _stPanelHtml() {
   }
   let body = '';
   if (l.type === 'gap') {
-    body = l.it.confirmed
+    body = l.it.confirmed && l.it.confirmed.vacancy
+      ? '<p class="st-note">Geplanter Leerstand (' + stEsc(l.it.confirmed.grund || 'Leerstand') + ') aus der Einheit — für diese Tage gibt es keine NK-Abrechnung. Ändern im Einheiten-Tab.</p>'
+      : l.it.confirmed
       ? '<p class="st-note">Als Leerstand bestätigt — für diese Tage gibt es keine NK-Abrechnung.</p><button class="cx-btn cx-btn--s cx-btn--full" data-st="gapUndo">Zurück auf Offen</button>'
       : '<p class="st-note">In diesen Tagen ist kein Mieter eingetragen. Hat hier jemand gewohnt, trag ihn als ehemaligen Mieter nach — die Daten sind schon ausgefüllt. War die Einheit leer, bestätige es.</p>' +
         (_stGapTarget(l)

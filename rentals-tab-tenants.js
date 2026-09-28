@@ -1463,8 +1463,17 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     </button>
   </div>`;
 
+  // Phase 4 · new parking tenant who already rents an apartment → copy their details
+  const copyOpts = (!rec && type !== 'apt')
+    ? _rntRecords.filter(r => r.status === 'active' && r.apartment_id)
+        .map(r => `<option value="${_rntEsc(r.id)}">${_rntEsc(_rntFullTenantNames(r))}</option>`).join('') : '';
+  const copyRow = copyOpts ? `
+    <div class="tn-field tn-field-full"><span class="tn-flbl">Copy details from</span>
+      <select class="cc-copy-select" onchange="_rntCopyTenantInto('${rid}', this.value)"><option value="">— new person —</option>${copyOpts}</select></div>` : '';
+
   const editView = `
   <div class="tn-fg" id="pedit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
+    ${copyRow}
     <div class="tn-field"><span class="tn-flbl">Name</span>
       <input data-f="name" type="text" value="${_rntEsc(fullName)}" placeholder="Full name"/></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
@@ -2826,6 +2835,15 @@ function _rntMoveToFormerConfirm(btn, rid, tid, unitType, unitId) {
       btn.innerHTML = orig;
     }
   }, 3500);
+}
+
+/* Fill a new tenant's form with an existing tenant's contact details (copy only) */
+function _rntCopyTenantInto(rid, tid) {
+  const src = _rntRecords.find(r => r.id === tid); const sec = document.getElementById('pedit-' + rid);
+  if (!src || !sec) return;
+  const set = (f, v) => { const i = sec.querySelector(`[data-f="${f}"]`); if (i && v != null) { i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); } };
+  set('name', [src.first_name, src.last_name].filter(Boolean).join(' '));
+  set('email', src.email || ''); set('phone', src.phone || ''); set('birthday', src.birthday || ''); set('address', src.address || '');
 }
 
 /* Record move-out: the last day the tenant pays → then former + vacant (automatic) */

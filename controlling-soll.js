@@ -57,7 +57,7 @@ const _CX_SRC = [
   ['rntNk', 'rnt_nk_entries'], ['rooms', 'rooms'], ['casaTen', 'tenant_records'],
   ['casaNkV', 'nk_vorauszahlung_history'], ['casaNk', 'nk_entries'], ['loans', 'properties'],
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
-  ['abr', 'abr_results'],
+  ['abr', 'abr_results'], ['vac', 'unit_vacancies'],
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -1062,7 +1062,14 @@ function ctlSettlementModel() {
         const r = stored.find(x => !used.has(x.id) && ctlSettlementIsLeer(x) && Number(x.property_id) === p.id &&
           x.note === 'leer:' + c.unit.name && _cxD(x.period_from) === g.from && _cxD(x.period_to) === g.to);
         if (r) used.add(r.id);
-        per.items.push({ type: 'gap', unit: c.unit, order: c.order, from: g.from, to: g.to, days: g.days, confirmed: r || null,
+        // A planned Leerstand (unit card) that covers the whole gap confirms it by itself
+        let vac = null;
+        if (!r && c.link) {
+          const vApp = c.link.type === 'casa_room' ? 'casa' : c.link.type === 'rentals_apartment' ? 'apt' : c.link.type === 'rentals_parking' ? 'pk' : null;
+          const v = (window._src.vac || []).find(x => x.app === vApp && String(x.unit_ref) === String(c.link.ref) && _cxD(x.von) <= g.from && _cxD(x.bis) >= g.to);
+          if (v) vac = { id: 'vac:' + v.id, vacancy: true, grund: v.grund || '', note: 'leer:' + c.unit.name };
+        }
+        per.items.push({ type: 'gap', unit: c.unit, order: c.order, from: g.from, to: g.to, days: g.days, confirmed: r || vac || null,
                          undated: c.undated, app: _cxApp(c.link), covers_year: Number(per.to.slice(0, 4)) });
       }
       if (!c.gaps.length) for (const w of c.undated.filter(x => x.active))

@@ -205,3 +205,27 @@
 #tab-tenants .tn-sf-pills { display: inline-flex; gap: 5px; flex-wrap: wrap; }
 #tab-tenants .tn-nkv-pill.ignored { background: var(--cc-surface); color: var(--cc-stone); border: .5px solid var(--cc-rule); cursor: pointer; }
 #tab-tenants .tn-sf-ignored { text-decoration: line-through; color: var(--cc-stone) !important; }
+
+/* Phase 4 · hints (e.g. after a Hausgeld change) */
+.cc-hint { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 10px 0 2px; padding: 10px 12px; background: #F3EADC; border: .5px solid #D4B896; border-radius: 10px; font-size: 12px; line-height: 1.45; color: #6E5230; }
+.cc-hint__btns { display: flex; gap: 6px; flex-shrink: 0; }
+.cc-hint__btns button { height: 26px; padding: 0 10px; border-radius: 13px; border: .5px solid #D4B896; background: var(--cc-white); color: #6E5230; font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
+#tab-tenants .cc-copy-select { height: 32px; width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--cc-rule); font: inherit; font-size: 13px; color: var(--cc-charcoal); }
+@media (hover: none) and (pointer: coarse) { #tab-tenants .cc-copy-select { font-size: 16px; } }
+
+/* Phase 4c · Leerstand section (Rooms · Apartments · Parking) */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac { position: relative; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-slot { position: absolute; top: 9px; right: 14px; display: flex; gap: 6px; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-btn { height: 28px; padding: 0 12px; border-radius: 14px; border: .5px solid var(--cc-rule); background: var(--cc-white); color: var(--cc-taupe); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-btn.is-primary { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-form { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px 16px; margin-bottom: 8px; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-full { grid-column: 1 / -1; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-hint { grid-column: 1 / -1; margin: 0; font-size: 11.5px; line-height: 1.45; color: var(--cc-taupe); }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: .5px solid var(--cc-rule); }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-row:first-of-type { border-top: none; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-dates { font-size: 13px; color: var(--cc-charcoal); font-variant-numeric: tabular-nums; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-reason { flex: 1; font-size: 12px; color: var(--cc-taupe); }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-row.is-now .cc-vac-reason { color: #8C5A30; font-weight: 500; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-del { width: 28px; height: 28px; border: none; background: none; color: var(--cc-stone); cursor: pointer; border-radius: 50%; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-empty { font-size: 13px; color: var(--cc-stone); }
+@media (hover: none) and (pointer: coarse) { :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-dates { font-size: 15px; } }
