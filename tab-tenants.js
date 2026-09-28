@@ -198,6 +198,7 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .tn-nk-add-form input { font-size:12px !important; }
 .tn-contract-toggle { display:flex; gap:4px; margin-top:4px; }
 .tn-ct-next { font-size:11px; color:#8C5A30; }
+.tn-ve-missing { color:#854F0B; font-weight:500; }
 
 /* ── BUTTONS ── */
 .tn-btn { display:inline-flex; align-items:center; gap:4px;
@@ -873,6 +874,8 @@ function _tnCardPills(room, activeRec) {
   if (activeRec) {
     todos.push(ccTnMoveOutTodo(activeRec));
     todos.push(ccTnRenewalTodo(activeRec));
+    if (tnContractType(activeRec) === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende)
+      todos.push({ level: 'amber', text: 'Contract end missing' });
     if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'red', text: 'NK open' });   // NK: unchanged for now
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }
@@ -1260,9 +1263,10 @@ function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
   return true;
 }
 
-/* ── TENANCY (3b): Contract end · Renew (Casa 1-year contracts) · Record move-out ──
+/* ── TENANCY (3b): Contract end · Move-out · Renew ──
    Contract end ≠ move-out: the contract can end and be renewed with the same tenant;
-   only a move-out makes the tenant former and the unit vacant (automatic, at night). */
+   only a move-out makes the tenant former and the unit vacant. Both dates are set in
+   Edit. Renew shows whenever one of them is set (a renewal removes a planned move-out). */
 function _ccHasVE(list) { return (list || []).some(r => r && Object.prototype.hasOwnProperty.call(r, 'vertragsende')); }
 function _ccAddDaysIso(iso, n) { const d = new Date(_ccIso(iso) + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 function _ccAddYearIso(iso) { const d = new Date(_ccIso(iso) + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); }
@@ -1329,7 +1333,9 @@ function _tnProfileSectionHTML(rid, room, rec) {
     : '<span class="muted">Not set</span>';
   const ctEdit = ct || _tnRoomContractType(room.name) || 'mietvertrag';   // a new tenant starts with the room's offer
   const hasVE  = _ccHasVE(_tnRecords);
-  const veRead = rec && rec.vertragsende ? _tnFmtDate(rec.vertragsende) : (rec && (rec.room === 'Oslo' || rec.room === 'Paris') ? 'unbefristet' : '');
+  // Contract end: a Mietvertrag without an end date is unbefristet; a Kurzzeit always needs one
+  const veRead    = rec && rec.vertragsende ? _tnFmtDate(rec.vertragsende) : (ct === 'mietvertrag' ? 'unbefristet' : '');
+  const veMissing = !!(rec && ct === 'kurzzeit' && !rec.vertragsende && !rec.mietende);
 
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
@@ -1352,7 +1358,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'open-ended'}</span></div>
         ${hasVE ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
-          <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${veRead || '—'}</span></div>` : ''}
+          <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${veMissing ? '<span class="tn-ve-missing">Missing</span>' : (veRead || '—')}</span></div>` : ''}
       </div>
     </div>
   </div>`;
@@ -1391,8 +1397,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
       <i class="ti ti-mail"></i> Email</button>` : ''}
     <button class="tn-btn tn-btn-sm" onclick="_tnResetPw('${esc(room.name)}')">
       <i class="ti ti-key"></i> Reset pw</button>
-    ${rec && rec.status === 'active' && rec.vertragsende && !rec.mietende ? `<button class="tn-btn tn-btn-sm" onclick="_tnRenewOpen('${rid}','${tid}')"><i class="ti ti-refresh"></i> Renew</button>` : ''}
-    ${rec && rec.status === 'active' && !rec.mietende ? `<button class="tn-btn tn-btn-sm" onclick="_tnMoveOutOpen('${rid}','${tid}')"><i class="ti ti-door-exit"></i> Record move-out</button>` : ''}
+    ${rec && rec.status === 'active' && (rec.vertragsende || rec.mietende) ? `<button class="tn-btn tn-btn-sm" onclick="_tnRenewOpen('${rid}','${tid}')"><i class="ti ti-refresh"></i> Renew</button>` : ''}
     <div class="tn-spacer"></div>
     <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">
       <i class="ti ti-pencil"></i> Edit</button>
@@ -2323,32 +2328,36 @@ function _tnMoveOutOpen(rid, tid) {
 }
 /* Renew (Casa 1-year contracts): same tenant, same Kaution — new contract end, optional new rent */
 function _tnRenewOpen(rid, tid) {
-  const rec = _tnRecords.find(r => r.id === tid); if (!rec || !rec.vertragsende) return;
+  const rec = _tnRecords.find(r => r.id === tid);
+  const endNow = rec && (rec.vertragsende || rec.mietende);   // the contract ends, or the tenant was going to move out
+  if (!rec || !endNow) return;
   const cur = _tnCurrentRent(rec, rec.room) || {};
-  const start = _ccAddDaysIso(rec.vertragsende, 1);
+  const start = _ccAddDaysIso(endNow, 1);
   const pauschal = cur.mode === 'pauschal';
   const ctNow = tnContractType(rec) || 'mietvertrag';
   _ccPanelOpen('psec-' + rid, 'Renew contract', `
     <div class="tn-fg">
       <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_tnCtSegHTML('data-cc', ctNow)}</div>
       <div class="tn-field"><span class="tn-flbl">New contract end</span>
-        <input data-cc="end" type="text" placeholder="TT.MM.JJJJ" value="${_ccFmtD(_ccAddYearIso(rec.vertragsende))}"/></div>
+        <input data-cc="end" type="text" placeholder="TT.MM.JJJJ" value="${_ccFmtD(_ccAddYearIso(endNow))}"/></div>
       <div class="tn-field"><span class="tn-flbl">Starts</span><span class="tn-fval">${_ccFmtD(start)}</span></div>
       ${pauschal
         ? `<div class="tn-field"><span class="tn-flbl">Pauschalmiete from ${_ccFmtD(start)}</span><input data-cc="kalt" type="number" data-cc-num="2" value="${cur.total ?? ''}"/></div>`
         : `<div class="tn-field"><span class="tn-flbl">Kaltmiete from ${_ccFmtD(start)}</span><input data-cc="kalt" type="number" data-cc-num="2" value="${cur.kalt ?? ''}"/></div>
            <div class="tn-field"><span class="tn-flbl">Nebenkosten</span><input data-cc="nk" type="number" data-cc-num="2" value="${cur.nk ?? ''}"/></div>`}
     </div>
-    <p class="cc-inline-hint">Same tenant, Kaution stays. A changed rent or contract applies from ${_ccFmtD(start)}; the new contract goes into Documents.</p>`, async p => {
+    <p class="cc-inline-hint">Same tenant, Kaution stays. A changed rent or contract applies from ${_ccFmtD(start)}; the new contract goes into Documents.${rec.mietende ? ` The move-out on ${_ccFmtD(rec.mietende)} is removed — the tenant stays.` : ''}</p>`, async p => {
     const end = _tnParseDate(p.querySelector('[data-cc="end"]').value || '');
     if (!end || end <= start) { p.querySelector('[data-cc="end"]').style.borderBottomColor = '#C4705A'; return false; }
     const kalt = parseFloat(p.querySelector('[data-cc="kalt"]')?.value), nk = parseFloat(p.querySelector('[data-cc="nk"]')?.value);
     const ctNew = p.querySelector('[data-cc="ct"]')?.value || ctNow;
     // Every renewal is recorded as its own period (also with the same rent) → contract version row in Documents
     const changed = true;
-    const { error } = await sbL.from('tenant_records').update({ vertragsende: end }).eq('id', tid);
+    const upd = { vertragsende: end };
+    if (rec.mietende) upd.mietende = null;   // renewed → not moving out
+    const { error } = await sbL.from('tenant_records').update(upd).eq('id', tid);
     if (error) { alert('Could not save — ' + error.message); return false; }
-    rec.vertragsende = end;
+    Object.assign(rec, upd);
     if (changed && typeof ccRpSetRent === 'function') {
       try {
         await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: start, mode: pauschal ? 'pauschal' : 'kalt_nk',

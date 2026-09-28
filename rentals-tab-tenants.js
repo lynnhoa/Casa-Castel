@@ -1526,7 +1526,6 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   <div class="tn-sec-footer-split" id="pfoot-read-${rid}" ${startEdit ? 'style="display:none"' : ''}>
     ${email ? `<button class="tn-btn tn-btn-sm" onclick="window.location.href='mailto:${email}'">
       <i class="ti ti-mail"></i> Email</button>` : ''}
-    ${rec && rec.status === 'active' && !rec.mietende ? `<button class="tn-btn tn-btn-sm" onclick="_rntMoveOutOpen('${rid}','${tid}')"><i class="ti ti-door-exit"></i> Record move-out</button>` : ''}
     <div class="tn-spacer"></div>
     <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_rntToggleProfile('${rid}','${tid}')">
       <i class="ti ti-pencil"></i> Edit</button>

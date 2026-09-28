@@ -179,7 +179,6 @@
 }
 
 /* (v3: the 16 px / 15 px phone sizes were replaced by one 14 px size — see the end of this file) */
-}
 
 /* ── Phase 3b: small panels (Record move-out, Renew) — same look as a section in edit mode ── */
 #tab-tenants .cc-inline-panel { margin: 4px 14px 14px; padding: 12px 12px 12px; background: #FBF8F2; border: .5px solid var(--cc-rule); border-radius: 12px; }
