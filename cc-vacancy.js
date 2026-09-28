@@ -71,8 +71,8 @@ function _ccVacInner(app, ref, cls) {
   const slot = editing
     ? `<div class="cc-vac-slot"><button type="button" class="cc-vac-btn" onclick="ccVacCancel('${key}')">Cancel</button><button type="button" class="cc-vac-btn is-primary" onclick="ccVacSave('${app}','${_ccVacEsc(ref)}','${cls}')">Save</button></div>`
     : `<div class="cc-vac-slot"><button type="button" class="${cls === 'rc' ? 'rc-sec-edit-btn' : 'apt-sec-edit-btn'}" onclick="ccVacAdd('${key}')"><i class="ti ti-plus" style="font-size:10px"></i> Add</button></div>`;
-  return `<div class="${cls}-stitle">Leerstand</div>${slot}${form}
-    ${rows || (editing ? '' : `<div class="cc-vac-empty">${CC_VAC.missing ? 'Run the Leerstand SQL first.' : '—'}</div>`)}`;
+  return `<div class="${cls}-stitle">Leerstand</div>${form}
+    ${rows || (editing ? '' : `<div class="cc-vac-empty">${CC_VAC.missing ? 'Run the Leerstand SQL first.' : '—'}</div>`)}${slot}`;
 }
 function _ccVacAddDays(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 

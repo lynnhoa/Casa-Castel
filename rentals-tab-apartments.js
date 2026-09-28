@@ -1733,7 +1733,7 @@ function _aptHGAdd(aptId) {
       <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
       <button type="button" class="cc-add-btn is-primary" onclick="_aptHGConfirmAdd('${aptId}')">Save</button>
     </div>`;
-  body.insertBefore(form, body.children[1] || null);
+  body.insertBefore(form, body.querySelector('.cc-sec-foot') || null);
   form.querySelector('input[type=date]').focus();
 }
 

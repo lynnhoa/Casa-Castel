@@ -174,7 +174,6 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
       <span class="tn-sec-lbl">Kaution</span>
       <span class="tnp ${L.pill[1]}" id="cck-pill-${pfx}">${L.pill[0]}</span>
     </div>
-    <div class="cck-slot">${slot}</div>
     <div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}</div>
     ${sollRow}
     <div class="cck-bar"><div id="cck-bar-${pfx}" style="width:${L.bar[0]}%;background:${L.bar[1]}"></div></div>
@@ -188,8 +187,16 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
       <div class="cck-note" id="cck-rn-${pfx}">${note}</div>
     </div>
   </div>
-  ${btns ? `<div class="${foot} cck-foot" style="gap:6px">${btns}</div>` : ''}
+  ${(slot || btns) ? `<div class="${foot} cck-foot" style="gap:6px">${_cckFootOrder(btns, slot)}</div>` : ''}
 </div>`;
+}
+
+/* Bottom row: "Keep holding" / "Undo" on the left · Edit / Cancel · Save · main step on the right */
+function _cckFootOrder(btns, slot) {
+  const box = document.createElement('div'); box.innerHTML = btns;
+  const left = [], right = [];
+  [...box.children].forEach(b => (/'(unplan|undo)'\)/.test(b.getAttribute('onclick') || '') ? left : right).push(b.outerHTML));
+  return left.join('') + '<span style="flex:1"></span>' + slot + right.join('');
 }
 
 /* ── live typing: pill, bar, caption, refund; SAVE turns dark ── */

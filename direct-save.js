@@ -226,3 +226,30 @@ function ccStableJSON(v) {
   };
   return JSON.stringify(norm(v));
 }
+
+
+/* ═════════════════════════════════════════════════════════════
+   SECTION ACTIONS AT THE BOTTOM RIGHT (list sections)
+   Staffelmiete · NK-Vorauszahlung · Hausgeld: their "Verlauf" and
+   "+ Add" buttons are moved from the title row into one action row at
+   the end of the section — the same place as Edit / Cancel · Save.
+   ═════════════════════════════════════════════════════════════ */
+(function () {
+  const fix = root => {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll('[id^="sf-sec-"] > .tn-sec-body, [id^="nkv-sec-"] > .tn-sec-body, .apt-hg-sec > .apt-hg-body').forEach(body => {
+      if (body.querySelector(':scope > .cc-sec-foot')) return;
+      const head = body.firstElementChild; if (!head) return;
+      const btns = [...head.querySelectorAll('button')]; if (!btns.length) return;
+      const foot = document.createElement('div'); foot.className = 'cc-sec-foot';
+      btns.forEach(b => { b.classList.add('cc-foot-btn'); if (/verlauf/i.test(b.className)) b.classList.add('is-left'); foot.appendChild(b); });
+      body.appendChild(foot);
+    });
+  };
+  const start = () => {
+    fix(document);
+    new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) fix(n.parentNode || n); })
+      .observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();

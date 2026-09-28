@@ -55,8 +55,8 @@ function ccNksSectionHTML(tid, ctx, legacy) {
   setTimeout(() => { const el = document.getElementById(id); if (el) el._legacy = legacy || []; }, 0);
   return `<div class="${sec} cc-nks-wrap"><div class="tn-sec-body" style="padding-top:10px;padding-bottom:12px">
     <div class="cc-nks-head"><span class="tn-sec-lbl">NK-Abrechnungen</span></div>
-    <div class="cc-nks-slot"><a class="tn-btn tn-btn-sm" href="settlements.html"><i class="ti ti-external-link"></i> Settlements</a></div>
     <div class="cc-nks" id="${id}" data-tid="${_ccNksEsc(tid)}">${_ccNksInner(tid, legacy || [])}</div>
+    <div class="cc-sec-foot"><a class="cc-foot-btn" href="settlements.html"><i class="ti ti-external-link"></i> Open in Settlements</a></div>
   </div></div>`;
 }
 function _ccNksInner(tid, legacy) {

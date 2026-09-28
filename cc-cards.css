@@ -178,11 +178,7 @@
   font-size: 11px !important; font-weight: 500 !important; letter-spacing: .02em !important; text-transform: none !important;
 }
 
-/* Phones/iPads: fields must be 16 px (smaller text makes iOS zoom in on every tap).
-   So the saved values are set to 15 px there too — edit and saved view stay the same size. */
-@media (hover: none) and (pointer: coarse) {
-  :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-rf input), #tab-tenants .tn-field input { font-size: 16px !important; height: 32px !important; min-height: 32px !important; }
-  :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row__v,.pk-row__v,.rc-row__v,.tn-fval) { font-size: 15px !important; }
+/* (v3: the 16 px / 15 px phone sizes were replaced by one 14 px size — see the end of this file) */
 }
 
 /* ── Phase 3b: small panels (Record move-out, Renew) — same look as a section in edit mode ── */
@@ -196,7 +192,7 @@
 }
 #tab-tenants .cc-inline-slot button.tn-btn-primary { background: var(--cc-ink) !important; color: var(--cc-white) !important; border-color: var(--cc-ink) !important; }
 #tab-tenants .cc-inline-panel input { height: 30px; width: 100%; padding: 0 0 2px; background: transparent; border: none; border-bottom: 1px solid var(--cc-rule); border-radius: 0; font: inherit; font-size: 13px; color: var(--cc-charcoal); outline: none; }
-@media (hover: none) and (pointer: coarse) { #tab-tenants .cc-inline-panel input { font-size: 16px; height: 32px; } }
+
 #tab-tenants .cc-inline-panel input:focus { border-bottom-color: var(--cc-gold); }
 #tab-tenants .cc-inline-hint { margin: 10px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--cc-taupe); }
 #tab-tenants [id^="pfoot-read-"] { flex-wrap: wrap; row-gap: 8px; }
@@ -211,7 +207,7 @@
 .cc-hint__btns { display: flex; gap: 6px; flex-shrink: 0; }
 .cc-hint__btns button { height: 26px; padding: 0 10px; border-radius: 13px; border: .5px solid #D4B896; background: var(--cc-white); color: #6E5230; font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
 #tab-tenants .cc-copy-select { height: 32px; width: 100%; background: transparent; border: none; border-bottom: 1px solid var(--cc-rule); font: inherit; font-size: 13px; color: var(--cc-charcoal); }
-@media (hover: none) and (pointer: coarse) { #tab-tenants .cc-copy-select { font-size: 16px; } }
+
 
 /* Phase 4c · Leerstand section (Rooms · Apartments · Parking) */
 :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac { position: relative; }
@@ -228,7 +224,7 @@
 :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-row.is-now .cc-vac-reason { color: #8C5A30; font-weight: 500; }
 :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-del { width: 28px; height: 28px; border: none; background: none; color: var(--cc-stone); cursor: pointer; border-radius: 50%; }
 :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-empty { font-size: 13px; color: var(--cc-stone); }
-@media (hover: none) and (pointer: coarse) { :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-dates { font-size: 15px; } }
+
 
 /* ── 3e · Kaution in the same frame: title + status left, Edit ↔ Cancel · Save top right ── */
 :is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-title { display: flex; align-items: center; gap: 8px; min-height: 28px; padding-right: 120px; }
@@ -247,7 +243,7 @@
 #tab-tenants .cck .cck-f, .cck .cck-f { background: transparent !important; border: none !important; border-bottom: 1px solid var(--cc-rule) !important; border-radius: 0 !important; height: 30px !important; padding: 0 !important; }
 #tab-tenants .cck .cck-f:focus-within { border-bottom-color: var(--cc-gold) !important; }
 #tab-tenants .cck .cck-f input { background: transparent !important; border: none !important; padding: 0 !important; height: 28px !important; font-size: 13px !important; color: var(--cc-charcoal) !important; }
-@media (hover: none) and (pointer: coarse) { #tab-tenants .cck .cck-f input { font-size: 16px !important; } #tab-tenants .cck .cck-ro { font-size: 15px !important; } }
+
 
 /* ── 3f · NK-Abrechnungen (read-only from Settlements) ── */
 .cc-nks-wrap { position: relative; }
@@ -260,7 +256,7 @@
 .cc-nks-res { flex: 1; font-size: 12px; color: var(--cc-taupe); }
 .cc-nks-row.is-old .cc-nks-per { color: var(--cc-taupe); }
 .cc-nks-old-lbl { margin: 12px 0 2px; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--cc-stone); }
-@media (hover: none) and (pointer: coarse) { .cc-nks-per { font-size: 15px; } }
+
 
 /* ── 3c · "+ Add" forms (Staffel · NK-Vorauszahlung · Hausgeld): opens at the top, Cancel · Save in the slot ── */
 .apt-hg-sec { position: relative; }
@@ -270,13 +266,13 @@
 .cc-add-f { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .cc-add-f input { height: 30px; width: 100%; min-width: 0; padding: 0 0 2px; background: transparent; border: none; border-bottom: 1px solid var(--cc-rule); border-radius: 0; font: inherit; font-size: 13px; color: var(--cc-charcoal); outline: none; -webkit-appearance: none; }
 .cc-add-f input:focus { border-bottom-color: var(--cc-gold); }
-@media (hover: none) and (pointer: coarse) { .cc-add-f input { font-size: 16px; height: 32px; } }
+
 .cc-add-slot { position: absolute; top: 9px; right: 14px; display: flex; gap: 6px; z-index: 1; }
 .cc-add-btn { height: 28px; padding: 0 12px; border-radius: 14px; border: .5px solid var(--cc-rule); background: var(--cc-white); color: var(--cc-taupe); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
 .cc-add-btn.is-primary { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
 :is(.tn-nkv-add-form, .apt-hg-add-form).cc-add-form { display: block !important; border: none !important; padding: 0 !important; background: transparent !important; }
 :is(.tn-nkv-add-form, .apt-hg-add-form).cc-add-form .cc-add-f input { height: 30px !important; width: 100% !important; padding: 0 0 2px !important; background: transparent !important; border: none !important; border-bottom: 1px solid var(--cc-rule) !important; border-radius: 0 !important; box-shadow: none !important; }
-@media (hover: none) and (pointer: coarse) { :is(.tn-nkv-add-form, .apt-hg-add-form).cc-add-form .cc-add-f input { font-size: 16px !important; height: 32px !important; } }
+
 
 /* ── 3c · Rent history under the rent bar ── */
 #tab-tenants .cc-tl { border-bottom: .5px solid var(--cc-rule); background: var(--cc-white); }
@@ -290,3 +286,66 @@
 #tab-tenants .cc-tl-kind { font-size: 11px; color: var(--cc-stone); white-space: nowrap; }
 #tab-tenants .cc-tl-row.is-cur .cc-tl-amt { font-weight: 600; }
 #tab-tenants .cc-tl-row.is-fut .cc-tl-amt { color: #8C5A30; }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   v3 · ALL ACTIONS BOTTOM RIGHT + ONE CALM TEXT SIZE (14 px, read = edit)
+   Top of a section: only title (+ status). Bottom row: extras left,
+   Edit / + Add ↔ Cancel · Save (and the main step) right.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Unit cards (Rooms · Apartments · Parking) */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-sec-read,.pk-sec-read,.rc-sec-read) > :is(.apt-section-edit,.pk-section-edit,.rc-section-edit) {
+  position: static !important; grid-column: 1 / -1; justify-self: end; display: flex; justify-content: flex-end; margin: 4px 0 0 !important;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .apt-sec-edit > .apt-save-row,
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .rc-sec-edit > .rc-sec-save-row { position: static !important; grid-column: 1 / -1; justify-content: flex-end !important; margin: 4px 0 0 !important; }
+
+/* Tenant section */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .tn-sec [id^="pedit-btn-"] { position: static !important; }
+#tab-tenants .tn-sec .tn-sec-footer .cc-slot { position: static !important; margin-left: auto !important; }
+
+/* Rent form: title as its first row, Cancel · Save bottom right */
+#tab-tenants .tn-rent-form { padding-top: 12px !important; }
+#tab-tenants .tn-rent-form::before { position: static !important; grid-column: 1 / -1; display: block; margin-bottom: 2px; }
+#tab-tenants .tn-rf-save-row { justify-content: space-between !important; align-items: center !important; gap: 10px; }
+#tab-tenants .tn-rf-save-row > div:last-child { position: static !important; margin-left: auto; }
+
+/* Kaution */
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-title { padding-right: 0 !important; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-foot { display: flex !important; align-items: center; justify-content: flex-end; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-foot button.cc-save { background: var(--cc-ink) !important; color: var(--cc-white) !important; border: .5px solid var(--cc-ink) !important; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-foot button.cc-save[data-cc-save="saved"] { background: var(--cc-surface) !important; color: var(--cc-stone) !important; border-color: var(--cc-rule) !important; }
+
+/* List sections (Staffel · NK-Vorauszahlung · Hausgeld · NK-Abrechnungen · Leerstand) and small panels */
+.cc-sec-foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.cc-sec-foot .is-left { margin-right: auto; }
+:is(.tn-sec, .tn-msec, .apt-hg-sec):has(.cc-add-form) .cc-sec-foot { display: none; }
+.cc-foot-btn, .cc-sec-foot button {
+  height: 28px !important; padding: 0 12px !important; border-radius: 14px !important; border: .5px solid var(--cc-rule) !important;
+  background: var(--cc-white) !important; color: var(--cc-taupe) !important; font: inherit; font-size: 11px !important; font-weight: 500 !important;
+  letter-spacing: .02em !important; text-transform: none !important; display: inline-flex !important; align-items: center; gap: 5px; text-decoration: none; cursor: pointer;
+}
+.cc-foot-btn i, .cc-sec-foot button i { font-size: 12px !important; }
+.cc-add-slot { position: static !important; justify-content: flex-end; margin-top: 12px; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-slot { position: static !important; justify-content: flex-end; margin-top: 10px; }
+#tab-tenants .cc-inline-slot { justify-content: flex-end; margin-top: 12px; }
+
+/* One text size: saved value = field = 14 px */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row__v,.pk-row__v,.rc-row__v,.tn-fval,.cck-ro,.cc-vac-dates,.cc-nks-per,.tn-nkv-cur-amount,.cc-tl-amt) {
+  font-size: 14px !important; font-weight: 400 !important; color: var(--cc-charcoal);
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input):is(input,select,textarea),
+#tab-tenants .tn-fg .tn-field input:not([type=checkbox]):not([type=radio]):not([type=file]),
+#tab-tenants .tn-rent-form .tn-rf input:not([type=checkbox]):not([type=radio]):not([type=file]),
+#tab-tenants .cck .cck-f input:not([type=checkbox]):not([type=radio]):not([type=file]),
+#tab-tenants .cc-add-form .cc-add-f input:not([type=checkbox]):not([type=radio]):not([type=file]),
+.apt-hg-sec .cc-add-form .cc-add-f input:not([type=checkbox]):not([type=radio]):not([type=file]),
+#tab-tenants .cc-inline-panel input:not([type=checkbox]):not([type=radio]):not([type=file]),
+#tab-tenants .cc-copy-select { font-size: 14px !important; font-weight: 400 !important; height: 30px !important; min-height: 30px !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) input::placeholder { color: var(--cc-stone) !important; opacity: .75; font-weight: 300; }
+
+/* v3 fixes */
+#tab-tenants [id^="pfoot-edit-"] { padding: 4px 14px 12px !important; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-foot button { display: inline-flex !important; align-items: center; gap: 5px; }
+#tab-tenants .tn-sec [id^="pfoot-edit-"]:not(:has(.tn-btn-former)), #tab-tenants .tn-sec [id^="pfoot-edit-"] { padding: 4px 14px 12px !important; }

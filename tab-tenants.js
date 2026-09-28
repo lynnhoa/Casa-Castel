@@ -1199,10 +1199,10 @@ function _ccPanelOpen(secId, title, bodyHtml, onSave) {
   const sec = document.getElementById(secId); if (!sec) return;
   _ccPanelClose(secId);
   sec.insertAdjacentHTML('beforeend', `<div class="cc-inline-panel">
-    <div class="cc-inline-head"><span class="tn-sec-lbl">${title}</span>
-      <div class="cc-inline-slot"><button type="button" class="tn-btn tn-btn-sm" data-cc="cancel">Cancel</button>
-      <button type="button" class="tn-btn tn-btn-primary" data-cc="save">Save</button></div></div>
-    ${bodyHtml}</div>`);
+    <div class="cc-inline-head"><span class="tn-sec-lbl">${title}</span></div>
+    ${bodyHtml}
+    <div class="cc-inline-slot"><button type="button" class="tn-btn tn-btn-sm" data-cc="cancel">Cancel</button>
+      <button type="button" class="tn-btn tn-btn-primary" data-cc="save">Save</button></div></div>`);
   const p = sec.querySelector('.cc-inline-panel');
   p.querySelector('[data-cc="cancel"]').onclick = () => p.remove();
   p.querySelector('[data-cc="save"]').onclick = async e => {
@@ -1642,7 +1642,7 @@ function _tnNKVorausAdd(room, rid, ctx) {
       <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
       <button type="button" class="cc-add-btn is-primary" onclick="_tnNKVorausConfirmAdd('${room}','${rid}')">Save</button>
     </div>`;
-  body.insertBefore(form, body.children[1] || null);
+  body.insertBefore(form, body.querySelector('.cc-sec-foot') || null);
   form.querySelector('input[type=date]').focus();
 }
 
