@@ -1449,7 +1449,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
-          <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ \u2014 becomes Former when reached"/></div>
+          <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ"/></div>
       </div>
     </div>
   </div>`;
@@ -1469,12 +1469,14 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
     ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_rntMoveToFormerConfirm(this,'${rid}','${tid}','${unitType}','${unitId}')"><i class="ti ti-user-off"></i> Move out</button><div style="flex:1"></div>` : ''}
+    <div class="cc-slot">
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntToggleProfile('${rid}','${tid}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec
         ? `_rntSaveProfile('${rid}','${tid}','${unitType}','${unitId}')`
         : `_rntSaveNewTenant('${rid}','${unitType}','${unitId}')`}">
-      <i class="ti ti-check"></i> Save</button>
+      Save</button>
+    </div>
   </div>`;
 
   return `

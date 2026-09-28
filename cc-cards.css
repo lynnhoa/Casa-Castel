@@ -126,3 +126,61 @@
 
 /* Rooms: occupied header shows the tenant's rent */
 #tab-rooms .rc-rent-badge--tenant { background: #EEF0DD; color: #55622A; border: .5px solid #C9D29A; }
+
+
+/* ═══ Phase 3a — edit looks like the saved view; buttons always in the same place ═══ */
+
+/* Fields: same text size as the saved value, no box — only a thin line under it */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-field input,.tn-rf input),
+#tab-tenants .tn-field input {
+  height: 30px !important; min-height: 30px !important; padding: 0 0 2px !important;
+  font-size: 13px !important; font-weight: 400 !important; color: var(--cc-charcoal) !important;
+  background: transparent !important; border: none !important; border-bottom: 1px solid var(--cc-rule) !important;
+  border-radius: 0 !important; box-shadow: none !important;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-field input,.tn-rf input):focus { border-bottom-color: var(--cc-gold) !important; background: transparent !important; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) select:is(.apt-input,.pk-input,.rc-input) { padding-right: 18px !important; }
+
+/* The section's slot (top right): Edit ↔ Cancel · Save — the same place, the same size */
+#tab-tenants .tn-sec .tn-sec-footer .cc-slot { position: absolute; top: 9px; right: 14px; display: flex; gap: 6px; margin: 0; }
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .apt-sec-edit > .apt-save-row,
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .rc-sec-edit > .rc-sec-save-row { position: absolute !important; top: 9px; right: 14px; margin: 0 !important; display: flex !important; gap: 6px; }
+#tab-tenants .tn-rent-form { position: relative; padding-top: 46px !important; }
+#tab-tenants .tn-rent-form::before {
+  content: 'Miete'; position: absolute; top: 17px; left: 14px;
+  font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--cc-taupe);
+}
+#tab-tenants .tn-rf-save-row > div:last-child { position: absolute; top: 9px; right: 14px; display: flex; gap: 6px; }
+#tab-tenants .tn-rf-save-row { justify-content: flex-start !important; }
+
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.cc-slot, .apt-save-row, .rc-sec-save-row, .tn-rf-save-row > div) button {
+  height: 28px !important; min-width: 0 !important; padding: 0 12px !important; margin: 0 !important;
+  border-radius: 14px !important; font-family: inherit !important; font-size: 11px !important; font-weight: 500 !important;
+  letter-spacing: .02em !important; text-transform: none !important; line-height: 1 !important;
+  display: inline-flex !important; align-items: center !important; gap: 5px !important;
+  background: var(--cc-white) !important; color: var(--cc-taupe) !important; border: .5px solid var(--cc-rule) !important;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.cc-slot, .apt-save-row, .rc-sec-save-row, .tn-rf-save-row > div) button.cc-save {
+  background: var(--cc-ink) !important; color: var(--cc-white) !important; border-color: var(--cc-ink) !important;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.cc-slot, .apt-save-row, .rc-sec-save-row, .tn-rf-save-row > div) button.cc-save[data-cc-save="saved"] {
+  background: var(--cc-surface) !important; color: var(--cc-stone) !important; border-color: var(--cc-rule) !important;
+}
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.cc-slot, .apt-save-row, .rc-sec-save-row, .tn-rf-save-row > div) button i { font-size: 12px !important; }
+
+/* Tenant edit: only "Move out" stays below (never next to Save) */
+#tab-tenants [id^="pfoot-edit-"] { min-height: 0; }
+#tab-tenants [id^="pfoot-edit-"]:not(:has(.tn-btn-former)) { padding: 0 !important; }
+
+/* Kaution: same small buttons */
+:is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cck-foot button {
+  height: 28px !important; min-width: 0 !important; padding: 0 12px !important; border-radius: 14px !important;
+  font-size: 11px !important; font-weight: 500 !important; letter-spacing: .02em !important; text-transform: none !important;
+}
+
+/* Phones/iPads: fields must be 16 px (smaller text makes iOS zoom in on every tap).
+   So the saved values are set to 15 px there too — edit and saved view stay the same size. */
+@media (hover: none) and (pointer: coarse) {
+  :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-rf input), #tab-tenants .tn-field input { font-size: 16px !important; height: 32px !important; min-height: 32px !important; }
+  :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row__v,.pk-row__v,.rc-row__v,.tn-fval) { font-size: 15px !important; }
+}

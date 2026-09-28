@@ -55,9 +55,11 @@ function ccSaveFailed(err, where) {
 /* ═════════════════════════════════════════════════════════════
    SAVE BUTTONS — one look and one behaviour for every Save (both apps)
 
-   Two states, nothing in between:
-     dark  SAVE      → you changed something that is not saved yet
-     grey  ✓ SAVED   → everything is saved (stays until your next change)
+   Two states, nothing in between (phase 3a):
+     dark  Save      → you changed something that is not saved yet
+     grey  Save      → nothing changed yet (not clickable)
+   After a successful save a small "Saved" message appears — a button
+   never reads "Saved".
 
    Markup:
      class="cc-save"                   two states (starts as ✓ SAVED)
@@ -72,8 +74,25 @@ const CC_SAVE_SCOPES = '.rc-sec-edit, .apt-sec-edit, .pk-sec-edit, .tn-rent-form
 function ccSaveSet(btn, state) {
   if (!btn || !btn.classList || !btn.classList.contains('cc-save') || btn.classList.contains('cc-save--create')) return;
   if (btn.dataset.ccSave === state) return;
+  const was = btn.dataset.ccSave;
   btn.dataset.ccSave = state;
-  btn.innerHTML = state === 'dirty' ? 'Save' : '<i class="ti ti-check" aria-hidden="true"></i> Saved';
+  btn.innerHTML = 'Save';
+  btn.setAttribute('aria-disabled', state === 'dirty' ? 'false' : 'true');
+  if (was === 'dirty' && state === 'saved') ccSavedToast();
+}
+/* Small confirmation after a save */
+function ccSavedToast(text) {
+  let t = document.getElementById('cc-saved-toast');
+  if (!t) {
+    t = document.createElement('div'); t.id = 'cc-saved-toast'; t.setAttribute('role', 'status');
+    t.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);' +
+      'background:#1E1B18;color:#fff;font:500 12px Inter,system-ui,sans-serif;padding:8px 16px;border-radius:16px;' +
+      'opacity:0;transition:opacity .2s;z-index:3000;pointer-events:none;display:flex;align-items:center;gap:6px';
+    document.body.appendChild(t);
+  }
+  t.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i> ' + (text || 'Saved');
+  t.style.opacity = '1';
+  clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 1600);
 }
 function _ccSaveButtonsFor(el) {
   const scope = el && el.closest ? el.closest(CC_SAVE_SCOPES) : null;
@@ -124,6 +143,8 @@ function ccSaveMarkDirtyFrom(el) { _ccSaveButtonsFor(el).forEach(b => ccSaveSet(
     const b = e.target && e.target.closest && e.target.closest('.cc-save:not(.cc-save--create)');
     if (!b) return;
     setTimeout(() => { if (b.isConnected && !b.offsetParent) ccSaveSet(b, 'saved'); }, 0);
+    // a card section re-renders after saving (button replaced) → still confirm it
+    if (b.dataset.ccSave === 'dirty') setTimeout(() => { if (!b.isConnected) ccSavedToast(); }, 400);
   }, false);
 
   if (document.getElementById('cc-save-styles')) return;
@@ -141,7 +162,8 @@ button.cc-save {
   -webkit-tap-highlight-color:transparent;
 }
 button.cc-save:not(.cc-save--create)[data-cc-save="saved"] {
-  background:var(--cc-white) !important; color:#3B6D11 !important; border-color:var(--cc-rule) !important;
+  background:var(--cc-surface) !important; color:var(--cc-stone) !important; border-color:var(--cc-rule) !important;
+  pointer-events:none;
 }
 button.cc-save i { font-size:13px !important; }
 button.cc-save:disabled { opacity:.5 !important; cursor:default; }

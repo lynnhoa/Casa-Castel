@@ -1228,7 +1228,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
     <div class="tn-field"><span class="tn-flbl">Move-in</span>
       <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
     <div class="tn-field"><span class="tn-flbl">Move-out</span>
-      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ \u2014 becomes Former when reached"/></div>
+      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ"/></div>
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <input data-f="address" type="text" value="${esc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
   </div>`;
@@ -1249,10 +1249,12 @@ function _tnProfileSectionHTML(rid, room, rec) {
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
     ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_tnMoveToFormerConfirm(this,'${rid}','${tid}','${esc(room.name)}')"><i class="ti ti-user-off"></i> Move out</button><div style="flex:1"></div>` : ''}
+    <div class="cc-slot">
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec ? `_tnSaveProfile('${rid}','${tid}','${esc(room.name)}')` : `_tnSaveNewTenant('${rid}','${esc(room.name)}')`}">
-      <i class="ti ti-check"></i> Save</button>
+      Save</button>
+    </div>
   </div>`;
 
   return `
