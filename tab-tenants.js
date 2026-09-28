@@ -197,6 +197,7 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .tn-kc-input { font-size:11px !important; }
 #tab-tenants .tn-nk-add-form input { font-size:12px !important; }
 .tn-contract-toggle { display:flex; gap:4px; margin-top:4px; }
+.tn-ct-next { font-size:11px; color:#8C5A30; }
 
 /* ── BUTTONS ── */
 .tn-btn { display:inline-flex; align-items:center; gap:4px;
@@ -533,11 +534,11 @@ function _tnRoomContractTypes(room) {
   return types;
 }
 
-function _tnRoomPricing(room) {
+function _tnRoomPricing(room, ctypeArg) {
   if (typeof appRooms === 'undefined') return {};
   const r = appRooms.find(x => x.name === room);
   if (!r) return {};
-  const ctype = _tnRoomContractType(room);
+  const ctype = ctypeArg || _tnRoomContractType(room);   // the tenancy's type; the room's offer only as a fallback
   let kaltmiete = null, nebenkosten = null;
   if (ctype === 'mietvertrag') {
     if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
@@ -574,12 +575,12 @@ function _tnToggleKautionOverride(el, inputId, hintId) {
 function _tnKautionSollInfo(rec) {
   if (!rec) return null;
   if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fest seit Einzug' };
-  const p = _tnRoomPricing(rec.room);
+  const ctype = _tnBaseContractType(rec) || _tnRoomContractType(rec.room);   // the first contract of this tenancy
+  const p = _tnRoomPricing(rec.room, ctype);
   if (p.kaution_override && p.kaution_fixed != null && p.kaution_fixed !== '') return { amount: Number(p.kaution_fixed), text: 'Individuell \u00b7 Karte' };
-  const amount = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende);
+  const amount = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende, ctype);
   if (amount == null) return null;
   const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === rec.room) : null;
-  const ctype = _tnRoomContractType(rec.room);
   const isPauschal = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk' : r?.mietvertrag_pricing !== 'kalt_nk';
   const rule = typeof ccKautionRuleText === 'function'
     ? ccKautionRuleText(ctype === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', isPauschal ? 'pauschal' : 'kalt_nk', rec.mietbeginn, rec.mietende) : '';
@@ -626,7 +627,7 @@ function _tnFreezeRent() {
    pricing for the tenant's contract type (same rule as the Kaution). */
 function _tnLegacyMode(roomName, rec) {
   const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === roomName) : null;
-  const ctype = (rec && rec.contract_type) || _tnRoomContractType(roomName);
+  const ctype = (rec && tnContractType(rec)) || _tnRoomContractType(roomName);
   const isP = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk' : r?.mietvertrag_pricing !== 'kalt_nk';
   return isP ? 'pauschal' : 'kalt_nk';
 }
@@ -658,15 +659,15 @@ function _tnRefreshKautionSoll(tid) {
   });
 }
 
-function _tnKautionSoll(room, mietbeginn, mietende) {
-  const p = _tnRoomPricing(room);
+function _tnKautionSoll(room, mietbeginn, mietende, ctypeArg) {
+  const p = _tnRoomPricing(room, ctypeArg);
   if (p.kaution_override) return p.kaution_fixed;
   if (!p.kaltmiete) return null;
 
   // Pauschal: kaution base = kaltmiete + NK (full monthly charge)
   // Kalt+NK:  kaution base = kaltmiete only (legal standard § 551 BGB)
   const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === room) : null;
-  const ctype = _tnRoomContractType(room);
+  const ctype = ctypeArg || _tnRoomContractType(room);
   const isPauschal = ctype === 'kurzzeit'
     ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
     : r?.mietvertrag_pricing !== 'kalt_nk';
@@ -698,8 +699,82 @@ function _tnPriceLabel(room) {
 
 function _tnContractLabel(type) {
   if (type === 'mietvertrag') return 'Mietvertrag';
-  if (type === 'kurzzeit')    return 'Kurzzeitmietvertrag';
+  if (type === 'kurzzeit')    return 'Kurzzeit';
   return null;
+}
+
+/* ── CONTRACT TYPE — belongs to the tenancy, never to the room ─────────────
+   The room only has an OFFER (Rooms → Asking rent → Offer). It pre-selects the
+   type of a NEW tenant; after that the tenancy owns its type:
+     · Tenants → Tenant → Contract (new tenant form + Edit) · former/next pop-up
+     · a final contract from the generator and Renew write it into the rent
+       history from their start date (so a renewal can switch Kurzzeit → Mietvertrag)
+   Type on a day = the latest rent-history entry with a type on/before that day,
+   else the type stored on the tenant. A signed tenant who moves in later is
+   read on the move-in day.                                                    */
+function _tnTypedPeriods(rec) {
+  if (!rec || !rec.id || typeof ccRpFor !== 'function') return [];
+  return ccRpFor('casa', rec.id).filter(p => p.contract_type === 'mietvertrag' || p.contract_type === 'kurzzeit');
+}
+function _tnTypeDay(rec) {
+  const today = typeof ccRpToday === 'function' ? ccRpToday() : _ccTodayIso();
+  const mb = rec && rec.mietbeginn ? _ccIso(rec.mietbeginn) : '';
+  return mb && mb > today ? mb : today;
+}
+function tnContractType(rec, iso) {
+  if (!rec) return null;
+  const per = typeof ccRpAt === 'function' ? ccRpAt(_tnTypedPeriods(rec), iso || _tnTypeDay(rec)) : null;
+  return (per && per.contract_type) || rec.contract_type || null;
+}
+/* The first contract of the tenancy: the main Documents slot and the Kaution rule */
+function _tnBaseContractType(rec) {
+  if (!rec) return null;
+  const first = _tnTypedPeriods(rec).find(p => p.kind !== 'renewal');
+  return (first && first.contract_type) || rec.contract_type || null;
+}
+/* A planned change of type (a renewal with another contract type) → { type, from } */
+function _tnCtNextChange(rec) {
+  if (!rec) return null;
+  const day = _tnTypeDay(rec), now = tnContractType(rec);
+  const nx = _tnTypedPeriods(rec).find(p => _ccIso(p.valid_from) > day && p.contract_type !== now);
+  return nx ? { type: nx.contract_type, from: nx.valid_from } : null;
+}
+/* An edited type also goes into the history entry that decides it — else that entry would win */
+function _tnSyncTypePeriod(rec, type) {
+  if (!rec || !type || !sbL || typeof ccRpUpdate !== 'function') return;
+  const per = ccRpAt(_tnTypedPeriods(rec), _tnTypeDay(rec));
+  if (!per || per.contract_type === type) return;
+  const before = per.contract_type;
+  per.contract_type = type;   // instant: the card reads it
+  ccRpUpdate(sbL, per.id, { contract_type: type }).catch(err => {
+    per.contract_type = before;
+    _tnRender();
+    if (typeof ccSaveFailed === 'function') ccSaveFailed(err, 'contract type'); else console.warn('[tenants] contract type:', err && err.message || err);
+  });
+}
+/* The choice Mietvertrag | Kurzzeit (tenant form, pop-up, Renew) — value in a hidden field */
+function _tnCtSegHTML(attr, value) {
+  const v = value === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag';
+  const opt = (t, l) => `<button type="button" class="cc-seg__opt${v === t ? ' is-on' : ''}" role="radio" aria-checked="${v === t}" data-ct="${t}" onclick="_tnSetCt(this)">${l}</button>`;
+  return `<div class="cc-seg tn-contract-toggle" role="radiogroup" aria-label="Contract">${opt('mietvertrag', 'Mietvertrag')}${opt('kurzzeit', 'Kurzzeit')}<input type="hidden" ${attr}="${attr === 'data-cc' ? 'ct' : 'contract_type'}" value="${v}"/></div>`;
+}
+function _tnSetCt(btn) {
+  const seg = btn.closest('.cc-seg');
+  if (!seg) return;
+  seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  const inp = seg.querySelector('input[type=hidden]');
+  if (inp) inp.value = btn.dataset.ct;
+  // "Add former tenant": the suggested Kaution Soll and rent hint follow the chosen type
+  const modal = document.getElementById('tnModal');
+  if (modal && modal._draft && seg.closest('#tnModalBody')) {
+    const d = modal._draft, body = document.getElementById('tnModalBody'), ct = btn.dataset.ct;
+    const val = f => body.querySelector(`[data-mf="${f}"]`)?.value || '';
+    const soll = _tnKautionSoll(d.room, _tnParseDate(val('mietbeginn')), _tnParseDate(val('mietende')), ct);
+    const k = body.querySelector('[data-mf="kaution_soll"]');
+    if (k && soll != null) { k.value = soll; k.placeholder = soll; }
+    const sp = _tnRoomPricing(d.room, ct), hint = body.querySelector('.cc-soll-hint');
+    if (hint && sp.kaltmiete != null) hint.textContent = `Empty rent = today's Soll: ${_tnFmtEUR(sp.kaltmiete)}${sp.nebenkosten != null ? ' + ' + _tnFmtEUR(sp.nebenkosten) + ' NK' : ''}. Please check what this tenant paid back then.`;
+  }
 }
 
 
@@ -1013,14 +1088,12 @@ function _tnHeaderHTML(rid, room, activeRec) {
     ? [activeRec.first_name, activeRec.last_name].filter(Boolean).join(' ')
     : null;
 
-  const liveP = _tnRoomPricing(room.name);
-  const storedKalt = activeRec && activeRec.kaltmiete != null ? Number(activeRec.kaltmiete) : null;
-  const storedNK   = activeRec && activeRec.nebenkosten != null ? Number(activeRec.nebenkosten) : null;
-  const kalt = storedKalt ?? liveP.kaltmiete;
-  const nk   = storedNK   ?? liveP.nebenkosten;
-  const warm = (kalt != null && nk != null) ? kalt + nk : kalt;
-  const priceLabel = _tnPriceLabel(room.name);
-  const isKaltNK = priceLabel && priceLabel.includes('Kalt+NK');
+  // The tenant's own rent (history → stored on the tenant) and own contract type — same as the rent bar below
+  const curR = _tnCurrentRent(activeRec, room.name);
+  const isKaltNK = !!curR && curR.mode !== 'pauschal';
+  const kalt = curR ? curR.kalt : null;
+  const nk   = curR ? curR.nk   : null;
+  const warm = curR ? curR.total : null;
 
   const mietbeginn = activeRec ? _tnFmtDate(activeRec.mietbeginn) : null;
   const mietende   = activeRec ? _tnFmtDate(activeRec.mietende)   : null;
@@ -1029,7 +1102,7 @@ function _tnHeaderHTML(rid, room, activeRec) {
     : mietbeginn ? `${_movesIn ? 'from' : 'since'} ${mietbeginn}` : '';
 
   const pills = _tnCardPills(room, activeRec);
-  const ctLabel = ({ mietvertrag: 'Mietvertrag', kurzzeit: 'Kurzzeit' })[_tnRoomContractType(room.name)] || '';
+  const ctLabel = activeRec ? (_tnContractLabel(tnContractType(activeRec)) || '') : '';
 
   let midLine = '';
   let botLine = '';
@@ -1111,7 +1184,7 @@ function _tnRentBarHTML(rid, room, rec) {
    "Gilt ab" empty = correct the current rent · a date = new rent from that day
    (the old rent stays in the history). */
 function _tnRentFormHTML(rid, room, rec) {
-  const liveP = _tnRoomPricing(room.name);
+  const liveP = _tnRoomPricing(room.name, rec ? tnContractType(rec) : null);
   const cur   = _tnCurrentRent(rec, room.name);
   const mode  = cur ? cur.mode : _tnLegacyMode(room.name, rec);
   const pausch = mode === 'pauschal';
@@ -1121,7 +1194,7 @@ function _tnRentFormHTML(rid, room, rec) {
   const hintK = pausch ? ((Number(liveP.kaltmiete) || 0) + (Number(liveP.nebenkosten) || 0) || '') : (liveP.kaltmiete ?? '');
   const tid  = rec ? rec.id : '';
   const ksoll = (rec && rec.kaution_soll != null) ? Number(rec.kaution_soll)
-    : (_tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null) ?? '');
+    : (_tnKautionSoll(room.name, rec ? rec.mietbeginn : null, rec ? rec.mietende : null, rec ? _tnBaseContractType(rec) : null) ?? '');
 
   return `
 <div class="tn-rent-form" id="rform-${rid}" data-mode="${mode}" style="display:none">
@@ -1249,6 +1322,15 @@ function _tnProfileSectionHTML(rid, room, rec) {
   const email = rec ? esc(rec.email || '') : '';
   const fullName = rec ? [rec.first_name, rec.last_name].filter(Boolean).join(' ') : '';
 
+  const ct     = rec ? tnContractType(rec) : null;
+  const ctNext = rec ? _tnCtNextChange(rec) : null;
+  const ctRead = ct
+    ? esc(_tnContractLabel(ct)) + (ctNext ? ` <span class="tn-ct-next">\u2192 ${esc(_tnContractLabel(ctNext.type))} ab ${_ccFmtD(ctNext.from)}</span>` : '')
+    : '<span class="muted">Not set</span>';
+  const ctEdit = ct || _tnRoomContractType(room.name) || 'mietvertrag';   // a new tenant starts with the room's offer
+  const hasVE  = _ccHasVE(_tnRecords);
+  const veRead = rec && rec.vertragsende ? _tnFmtDate(rec.vertragsende) : (rec && (rec.room === 'Oslo' || rec.room === 'Paris') ? 'unbefristet' : '');
+
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
     <div class="tn-field"><span class="tn-flbl">Name</span>
@@ -1259,14 +1341,20 @@ function _tnProfileSectionHTML(rid, room, rec) {
       <span class="tn-fval">${email || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
-    <div class="tn-field"><span class="tn-flbl">Move-in</span>
-      <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
-    <div class="tn-field"><span class="tn-flbl">Move-out</span>
-      <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'open-ended'}</span></div>
-    ${_ccHasVE(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
-      <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${_tnFmtDate(rec.vertragsende) || (rec.room === 'Oslo' || rec.room === 'Paris' ? 'unbefristet' : '—')}</span></div>` : ''}
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <span class="tn-fval">${esc(rec.address||'') || '<span class="muted">—</span>'}</span></div>
+    <div class="tn-field tn-field-full" style="border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
+      <div class="tn-fg">
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>
+          <span class="tn-fval">${ctRead}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
+          <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
+          <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'open-ended'}</span></div>
+        ${hasVE ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${veRead || '—'}</span></div>` : ''}
+      </div>
+    </div>
   </div>`;
 
   const editView = `
@@ -1279,14 +1367,20 @@ function _tnProfileSectionHTML(rid, room, rec) {
       <input data-f="email" type="email" value="${email}" placeholder="tenant@mail.de"/></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <input data-f="phone" type="tel" value="${esc(rec ? rec.phone||'' : '')}" placeholder="+49 ..."/></div>
-    <div class="tn-field"><span class="tn-flbl">Move-in</span>
-      <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
-    <div class="tn-field"><span class="tn-flbl">Move-out</span>
-      <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ"/></div>
-    ${_ccHasVE(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
-      <input data-f="vertragsende" type="text" value="${_tnFmtDate(rec ? rec.vertragsende : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <input data-f="address" type="text" value="${esc(rec ? rec.address||'' : '')}" placeholder="Street, City"/></div>
+    <div class="tn-field-full" style="grid-column:1/-1;border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
+      <div class="tn-fg">
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>
+          ${_tnCtSegHTML('data-f', ctEdit)}</div>
+        <div class="tn-field"><span class="tn-flbl">Move-in</span>
+          <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
+        <div class="tn-field"><span class="tn-flbl">Move-out</span>
+          <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ"/></div>
+        ${hasVE ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <input data-f="vertragsende" type="text" value="${_tnFmtDate(rec ? rec.vertragsende : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
+      </div>
+    </div>
   </div>`;
 
   const tid = rec ? rec.id : '';
@@ -1328,8 +1422,8 @@ function _tnProfileSectionHTML(rid, room, rec) {
 
 /* ── DOCUMENTS SECTION ── */
 function _tnDocumentsSectionHTML(rid, room, rec) {
-  // The tenant's own contract type (saved per tenancy); the room's type only as a fallback
-  const activeType = (rec && rec.contract_type) || _tnRoomContractType(room.name);
+  // The tenancy's first contract (Rooms offer only when there is no tenant yet)
+  const activeType = rec ? (_tnBaseContractType(rec) || _tnRoomContractType(room.name)) : _tnRoomContractType(room.name);
   const docs  = rec ? (_tnDocs[rec.id] || []) : [];
   const tid   = rec ? rec.id : '';
   const getDoc = type => docs.find(d => d.type === type);
@@ -1366,7 +1460,13 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
     ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
     ${(rec && typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id).filter(p => p.kind === 'renewal') : [])
-        .map(p => row('verlaengerung_' + _ccIso(p.valid_from), 'Verlängerung ab ' + _ccFmtD(p.valid_from))).join('')}
+        .map(p => {
+          const before = tnContractType(rec, ccRpAddDays(_ccIso(p.valid_from), -1));
+          const lbl = (p.contract_type && before && p.contract_type !== before)
+            ? (p.contract_type === 'kurzzeit' ? 'Kurzzeitmietvertrag' : 'Mietvertrag') + ' ab ' + _ccFmtD(p.valid_from)
+            : 'Verlängerung ab ' + _ccFmtD(p.valid_from);
+          return row('verlaengerung_' + _ccIso(p.valid_from), lbl);
+        }).join('')}
     ${row('einzug','Übergabe Einzug')}
     ${row('auszug','Übergabe Auszug')}
   </div>
@@ -1804,7 +1904,7 @@ function _tnOpenModal(tid) {
 
   const name   = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || '\u2014';
   const period = [_tnFmtDate(rec.mietbeginn), _tnFmtDate(rec.mietende)].filter(Boolean).join(' \u2013 ');
-  const ctLabel = _tnContractLabel(rec.contract_type);
+  const ctLabel = _tnContractLabel(tnContractType(rec));
   const allDone = _tnIsAllDone(tid);
 
   document.getElementById('tnModalName').textContent = name;
@@ -1823,7 +1923,8 @@ function _tnOpenModal(tid) {
 function _tnModalBodyHTML(rec) {
   const tid  = rec.id || '_draft';
   const full = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
-  const ct   = rec.contract_type;
+  const ct   = tnContractType(rec);                 // the tenancy's own type
+  const ctK  = _tnBaseContractType(rec) || ct;       // first contract: Kaution rule + Documents
   const dK   = rec.kaltmiete   != null ? Number(rec.kaltmiete)   : null;
   const dNK  = rec.nebenkosten != null ? Number(rec.nebenkosten) : null;
   const dKS  = rec.kaution_soll != null ? Number(rec.kaution_soll) : null;
@@ -1878,7 +1979,7 @@ function _tnModalBodyHTML(rec) {
           <span class="tn-fval">${dNK != null ? _tnFmtEUR(dNK) : '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
           <span class="tn-fval">${(() => {
-            const live = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende);
+            const live = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende, ctK);
             if (dKS != null) return _tnFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(override)</span>';
             if (live != null) return _tnFmtEUR(live) + ' <span style="font-size:10px;color:var(--cc-stone)">(auto)</span>';
             return '<span class="muted">—</span>';
@@ -1908,17 +2009,12 @@ function _tnModalBodyHTML(rec) {
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
-            value="${dKS ?? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende) ?? ''}"/>
+            value="${dKS ?? _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende, ctK) ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende, ctK) ?? ''}"/>
           <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
         </div>
-        <div class="tn-field">
+        <div class="tn-field tn-field-full">
           <span class="tn-flbl">Contract</span>
-          <div class="tn-contract-toggle">
-            <button class="tn-btn tn-btn-sm${ct==='mietvertrag'?' tn-btn-primary':''}"
-              data-ct="mietvertrag" onclick="_tnModalSetCt('mietvertrag',this)">MV</button>
-            <button class="tn-btn tn-btn-sm${ct==='kurzzeit'?' tn-btn-primary':''}"
-              data-ct="kurzzeit" onclick="_tnModalSetCt('kurzzeit',this)">KZ</button>
-          </div>
+          ${_tnCtSegHTML('data-mf', ct || _tnRoomContractType(rec.room) || 'mietvertrag')}
         </div>
       </div>
     </div>
@@ -1942,9 +2038,8 @@ function _tnModalBodyHTML(rec) {
     </div>
     <div class="tn-msec-body" style="padding-bottom:11px">
       ${(() => {
-        // For former tenants: stored contract_type is the snapshot — use it.
-        // For active tenants (ct=null): use rooms tab active toggle.
-        const effectiveCt = ct || _tnRoomContractType(rec.room);
+        // The tenancy's first contract (the room's offer only for old records without a type)
+        const effectiveCt = ctK || _tnRoomContractType(rec.room);
         if (effectiveCt === 'mietvertrag')  return docRow('mietvertrag','Mietvertrag');
         if (effectiveCt === 'kurzzeit')     return docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
         return docRow('mietvertrag','Mietvertrag') + docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
@@ -2119,6 +2214,7 @@ function _tnCollectProfile(container, selector) {
     mietbeginn: _tnParseDate(get('mietbeginn')),
     mietende:   _tnParseDate(get('mietende')),
     vertragsende: container.querySelector(`[${selector}="vertragsende"]`) ? _tnParseDate(get('vertragsende')) : undefined,
+    contract_type: container.querySelector(`[${selector}="contract_type"]`) ? (get('contract_type') || null) : undefined,
     kaltmiete:     parseFloat(container.querySelector(`[${selector}="kaltmiete"]`)?.value)    || null,
     nebenkosten:   parseFloat(container.querySelector(`[${selector}="nebenkosten"]`)?.value)  || null,
     kaution_soll:  (() => {
@@ -2160,11 +2256,11 @@ async function _tnSaveNewTenant(rid, roomName) {
   // Only transition to former if mietende is actually reached (today or past)
   // A future move-out date keeps the tenant active
   const status    = (mietende && _tnIsPast(mietende)) ? 'former' : 'active';
-  const liveP     = _tnRoomPricing(roomName);
-  const ctype     = _tnRoomContractType(roomName);
+  const ctype     = p.contract_type || _tnRoomContractType(roomName);   // chosen in the form (pre-selected from the room's offer)
+  const liveP     = _tnRoomPricing(roomName, ctype);
 
   const payload = {
-    room: roomName, status, contract_type: ctype || null,   // fixed at move-in
+    room: roomName, status, contract_type: ctype || null,   // belongs to this tenancy from now on
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende,
@@ -2173,7 +2269,7 @@ async function _tnSaveNewTenant(rid, roomName) {
     // entered for the past stays without rent until you type it (B3)
     kaltmiete:    p.kaltmiete   ?? (_tnNewIsCurrent(p.mietbeginn) ? liveP.kaltmiete   : null) ?? null,
     nebenkosten:  p.nebenkosten ?? (_tnNewIsCurrent(p.mietbeginn) ? liveP.nebenkosten : null) ?? null,
-    kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende) ?? null,
+    kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende, ctype) ?? null,
   };
 
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
@@ -2231,8 +2327,10 @@ function _tnRenewOpen(rid, tid) {
   const cur = _tnCurrentRent(rec, rec.room) || {};
   const start = _ccAddDaysIso(rec.vertragsende, 1);
   const pauschal = cur.mode === 'pauschal';
+  const ctNow = tnContractType(rec) || 'mietvertrag';
   _ccPanelOpen('psec-' + rid, 'Renew contract', `
     <div class="tn-fg">
+      <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_tnCtSegHTML('data-cc', ctNow)}</div>
       <div class="tn-field"><span class="tn-flbl">New contract end</span>
         <input data-cc="end" type="text" placeholder="TT.MM.JJJJ" value="${_ccFmtD(_ccAddYearIso(rec.vertragsende))}"/></div>
       <div class="tn-field"><span class="tn-flbl">Starts</span><span class="tn-fval">${_ccFmtD(start)}</span></div>
@@ -2241,10 +2339,11 @@ function _tnRenewOpen(rid, tid) {
         : `<div class="tn-field"><span class="tn-flbl">Kaltmiete from ${_ccFmtD(start)}</span><input data-cc="kalt" type="number" data-cc-num="2" value="${cur.kalt ?? ''}"/></div>
            <div class="tn-field"><span class="tn-flbl">Nebenkosten</span><input data-cc="nk" type="number" data-cc-num="2" value="${cur.nk ?? ''}"/></div>`}
     </div>
-    <p class="cc-inline-hint">Same tenant, Kaution stays. A changed rent applies from ${_ccFmtD(start)}; the new contract goes into Documents.</p>`, async p => {
+    <p class="cc-inline-hint">Same tenant, Kaution stays. A changed rent or contract applies from ${_ccFmtD(start)}; the new contract goes into Documents.</p>`, async p => {
     const end = _tnParseDate(p.querySelector('[data-cc="end"]').value || '');
     if (!end || end <= start) { p.querySelector('[data-cc="end"]').style.borderBottomColor = '#C4705A'; return false; }
     const kalt = parseFloat(p.querySelector('[data-cc="kalt"]')?.value), nk = parseFloat(p.querySelector('[data-cc="nk"]')?.value);
+    const ctNew = p.querySelector('[data-cc="ct"]')?.value || ctNow;
     // Every renewal is recorded as its own period (also with the same rent) → contract version row in Documents
     const changed = true;
     const { error } = await sbL.from('tenant_records').update({ vertragsende: end }).eq('id', tid);
@@ -2254,7 +2353,7 @@ function _tnRenewOpen(rid, tid) {
       try {
         await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: start, mode: pauschal ? 'pauschal' : 'kalt_nk',
           kalt: isNaN(kalt) ? cur.kalt : kalt, nk: pauschal ? 0 : (isNaN(nk) ? cur.nk : nk), pauschale: pauschal ? kalt : null,
-          kind: 'renewal', source: 'renew', legacyMode: cur.mode || 'kalt_nk', contract_end: end });
+          kind: 'renewal', source: 'renew', legacyMode: cur.mode || 'kalt_nk', contract_end: end, contract_type: ctNew });
       } catch (e2) { alert('Contract end saved, but the new rent could not be saved — ' + (e2.message || e2)); }
     }
     _tnRender(); return true;
@@ -2298,6 +2397,10 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     kaution_soll:p.kaution_soll ?? rec?.kaution_soll ?? null,   // a profile save never wipes the fixed Soll
   };
   if (p.vertragsende !== undefined) update.vertragsende = p.vertragsende || null;
+  // Contract type belongs to the tenancy — the room's offer never changes it
+  const ctBefore  = rec ? tnContractType(rec) : null;
+  const ctChanged = !!(rec && p.contract_type && p.contract_type !== ctBefore);
+  if (p.contract_type) update.contract_type = p.contract_type;
   // B20: the rent is only written when this form actually has rent fields —
   // the card's profile form has none, so saving a phone number never wipes the rent.
   if (sec.querySelector('[data-f="kaltmiete"]'))   update.kaltmiete   = p.kaltmiete   ?? null;
@@ -2305,17 +2408,17 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   if (toFormer) {
     // B4: moving to former changes status (and keeps the Auszug) — the rent is never filled in
     update.status = 'former';
-    if (!rec?.contract_type) update.contract_type = _tnRoomContractType(roomName);
+    if (!rec?.contract_type && !update.contract_type) update.contract_type = _tnRoomContractType(roomName);
   }
   if (toActive) {
-    update.status        = 'active';
-    update.contract_type = null;
+    update.status        = 'active';   // the contract type stays with the tenancy
     update.done          = false;
   }
 
   // Direct save: card first, database in the background (direct-save.js)
   const before = rec ? { ...rec } : null;
   if (rec) Object.assign(rec, update);
+  if (ctChanged) _tnSyncTypePeriod(rec, p.contract_type);
   _tnRebuildProfileCache();
   _tnRender();
 
@@ -2323,6 +2426,7 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     .then(async ({ error }) => {
       if (error) {
         if (rec && before) { Object.keys(update).forEach(k => { rec[k] = before[k]; }); }
+        if (ctChanged && ctBefore) _tnSyncTypePeriod(rec, ctBefore);
         _tnRebuildProfileCache();
         _tnRender();
         ccSaveFailed(error, 'tenant profile');
@@ -2425,10 +2529,10 @@ async function _tnModalSaveProfile(tid) {
   const p     = _tnCollectProfile(body, 'data-mf');
   { const _r = _tnRecords.find(r => r.id === tid);
     if (_r && !_ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === _r.room), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return; }
-  const ctBtn = body.querySelector('.tn-contract-toggle .tn-btn-primary');
-  const ctype = ctBtn?.dataset?.ct || null;
-
   const rec = _tnRecords.find(r => r.id === tid);
+  const ctBefore  = rec ? tnContractType(rec) : null;
+  const ctype     = p.contract_type || rec?.contract_type || null;
+  const ctChanged = !!(rec && ctype && ctype !== ctBefore);
   const update = {
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
@@ -2453,13 +2557,13 @@ async function _tnModalSaveProfile(tid) {
 
   const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
   if (toActive) {
-    update.status        = 'active';
-    update.contract_type = null;
+    update.status        = 'active';   // the contract type stays with the tenancy
     update.done          = false;
   }
 
   // Update local cache immediately — instant UI
   if (rec) Object.assign(rec, update);
+  if (ctChanged) _tnSyncTypePeriod(rec, ctype);
 
   // Switch back to read mode and refresh read fields
   const readEl = document.getElementById('mprof-read-' + tid);
@@ -2863,7 +2967,7 @@ function _tnOpenModalDraft(draft) {
 
   document.getElementById('tnModalBody').innerHTML = _tnModalBodyHTML(draft);
   { // Past tenant: an empty rent takes today's Soll — show it so it can be checked
-    const sp = _tnRoomPricing(draft.room) || {};
+    const sp = _tnRoomPricing(draft.room, draft.contract_type) || {};
     if (sp.kaltmiete != null) document.getElementById('tnModalBody').insertAdjacentHTML('afterbegin',
       `<p class="cc-soll-hint">Empty rent = today's Soll: ${_tnFmtEUR(sp.kaltmiete)}${sp.nebenkosten != null ? ' + ' + _tnFmtEUR(sp.nebenkosten) + ' NK' : ''}. Please check what this tenant paid back then.</p>`);
   }
@@ -2900,8 +3004,7 @@ async function _tnModalSaveDraft() {
 
   const body = document.getElementById('tnModalBody');
   const p    = _tnCollectProfile(body, 'data-mf');
-  const ctBtn = body.querySelector('.tn-contract-toggle .tn-btn-primary');
-  const ctype = ctBtn?.dataset?.ct || draft.contract_type || null;
+  const ctype = p.contract_type || draft.contract_type || null;
 
   const btn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
@@ -2914,8 +3017,8 @@ async function _tnModalSaveDraft() {
       email: p.email, phone: p.phone, birthday: p.birthday,
       address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
       // Starting rent = the room's price (Soll) unless you typed another amount
-      kaltmiete: p.kaltmiete ?? _tnRoomPricing(draft.room).kaltmiete ?? null,
-      nebenkosten: p.nebenkosten ?? _tnRoomPricing(draft.room).nebenkosten ?? null,
+      kaltmiete: p.kaltmiete ?? _tnRoomPricing(draft.room, ctype).kaltmiete ?? null,
+      nebenkosten: p.nebenkosten ?? _tnRoomPricing(draft.room, ctype).nebenkosten ?? null,
       kaution_soll: p.kaution_soll ?? null,
     })
     .select().single();
@@ -3137,7 +3240,24 @@ function tnCurrentRentOf(roomName) {
   const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === roomName && r.status === 'active')).current;
   if (!cur) return null;
   const r = _tnCurrentRent(cur, roomName);
-  return r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode, ctype: cur.contract_type } : null;
+  return r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode, ctype: tnContractType(cur) } : null;
+}
+/* The CURRENT tenancy of a room for the Rooms header: its contract type, the
+   end of a Kurzzeit contract and its rent (rent may be null = not stored yet).
+   null = nobody lives there now, or the tenants are not loaded yet.          */
+function tnCurrentTenancyOf(roomName) {
+  if (!_tnLoadedOnce) return null;
+  const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === roomName && r.status === 'active')).current;
+  if (!cur) return null;
+  const r = _tnCurrentRent(cur, roomName);
+  // End of the contract in force: the day before a planned renewal, else Contract end / Move-out
+  const nextRen = typeof ccRpFor === 'function'
+    ? ccRpFor('casa', cur.id).find(p => p.kind === 'renewal' && _ccIso(p.valid_from) > _tnTypeDay(cur)) : null;
+  return {
+    ctype: tnContractType(cur),
+    end: nextRen ? ccRpAddDays(_ccIso(nextRen.valid_from), -1) : _ccIso(cur.vertragsende || cur.mietende || ''),
+    rent: r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode } : null,
+  };
 }
 function tnWarmTenants() {
   if (_tnLoadedOnce) return Promise.resolve();

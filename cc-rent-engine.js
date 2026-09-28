@@ -196,15 +196,25 @@ async function ccRpFromContract(o) {
     // Only a real, final contract belongs in the history — a draft or test PDF does not (fix 3)
     const steps = (o.staffel || []).map(x => ({ date: ccRpIso(x.datum || x.date), amount: ccRpNum(x.betrag ?? x.amount) })).filter(x => x.date && x.amount);
     const nm = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
-    const q = 'Miete ab ' + ccRpFmt(start) + (steps.length ? ' und ' + steps.length + (steps.length === 1 ? ' Staffelstufe' : ' Staffelstufen') : '') +
+    const kind = einzug && start > einzug ? 'renewal' : 'contract';
+    // Casa Castel: the final contract also sets the tenancy's contract type (shown in the question)
+    const ctLbl = o.app === 'casa' ? ({ mietvertrag: 'Mietvertrag', kurzzeit: 'Kurzzeit' })[o.contract_type] || '' : '';
+    const q = 'Miete ab ' + ccRpFmt(start) + (ctLbl ? ' (' + ctLbl + ')' : '') + (steps.length ? ' und ' + steps.length + (steps.length === 1 ? ' Staffelstufe' : ' Staffelstufen') : '') +
               ' für ' + nm + ' in die Miethistorie übernehmen?\n\nNur bei einem endgültigen Vertrag – bei einem Entwurf „Abbrechen“.';
     if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(q)) return null;
     const saved = await ccRpSetRent(o.db, {
       app: o.app, rec, validFrom: start, mode, kalt: o.kalt, nk: o.nk, pauschale: o.total,
-      kind: einzug && start > einzug ? 'renewal' : 'contract', source: 'generator', legacyMode: o.legacyMode,
+      kind, source: 'generator', legacyMode: o.legacyMode,
       first_month: o.first_month || 'anteilig', last_month: o.last_month || 'anteilig',
       contract_type: o.contract_type || null, contract_end: o.end || null,
     });
+    // Casa Castel: the move-in contract fixes the tenancy's own type (a renewal switches it
+    // from its start date through the history entry saved above)
+    if (saved && o.app === 'casa' && kind === 'contract' && ctLbl && rec.contract_type !== o.contract_type) {
+      const { error: ctErr } = await o.db.from('tenant_records').update({ contract_type: o.contract_type }).eq('id', rec.id);
+      if (!ctErr) rec.contract_type = o.contract_type;
+      else console.warn('[rent periods] contract type:', ctErr.message);
+    }
     // Staffel steps of the contract → this tenant's Staffel history (fix 1)
     if (saved && steps.length && o.staffelTable) {
       for (const st of steps) {

@@ -183,6 +183,17 @@ document.getElementById('tab-rooms').innerHTML = `
 .rc-price-toggle__opt.active--mietvertrag { background:#EFF6FF; color:#1E40AF; }
 .rc-price-toggle__opt.active--kurzzeit    { background:#FFF7ED; color:#92400E; }
 .rc-hdr__rent-info { min-width:0; }
+/* Header pill: who pays now and on which contract — or, when vacant, the room's offer */
+.rc-ct { display:inline-flex; align-items:center; gap:4px; }
+.rc-ct i { font-size:11px; }
+.rc-ct--mv    { background:var(--cc-white); color:var(--cc-charcoal); border:.5px solid var(--cc-stone); }
+.rc-ct--kz    { background:#F1EEF6; color:#5B4A7A; border:.5px solid #CFC4E0; }
+.rc-ct--offer { background:transparent; color:var(--cc-taupe); border:.5px dashed var(--cc-stone); }
+.rc-ct--none  { background:var(--cc-surface); color:var(--cc-stone); border:.5px solid var(--cc-rule); }
+/* Asking rent → Offer: which contract the room is offered on next */
+.rc-offer { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 4px; }
+.rc-offer__lbl { font-size:11px; color:var(--cc-taupe); }
+.rc-offer__hint { margin:0 0 12px; font-size:11.5px; line-height:1.45; color:var(--cc-taupe); }
 .rp-summary { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:4px; background:var(--cc-white); border:var(--cc-border); border-radius:var(--cc-r-lg); }
 .rp-summary__label { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-taupe); margin-bottom:2px; }
 .rp-summary__breakdown { font-size:12px; font-weight:300; color:var(--cc-stone); }
@@ -1032,88 +1043,80 @@ function _getActiveType(r) {
   return null;
 }
 
-async function _toggleRentType(btn) {
-  const toggle = btn.closest('.rc-price-toggle');
-  const card   = btn.closest('.rc');
-  const type   = btn.dataset.type;
-  const rid    = card.dataset.id;
-
-  // Update toggle active state immediately (optimistic)
-  toggle.querySelectorAll('.rc-price-toggle__opt').forEach(b => {
-    b.className = 'rc-price-toggle__opt' + (b.dataset.type === type ? ' active--'+type : '');
-  });
-
-  // Update in-memory room object
-  const r = appRooms.find(x => x.id === rid);
-  if (!r) return;
+/* The room's OFFER (Mietvertrag | Kurzzeit): the asking rent shown while the room
+   is vacant and the contract type pre-selected for the next tenant. It never
+   changes a tenancy — every tenant keeps their own contract type (Tenants tab). */
+function _setOfferType(roomId, type) {
+  const r = appRooms.find(x => x.id === roomId);
+  if (!r || !sbL || _getActiveType(r) === type && r.active_price_type === type) return;
+  const before = r.active_price_type ?? null;
   r.active_price_type = type;
-
-  // Persist to Supabase + notify all tabs (tenants re-renders with correct kaution)
-  if (sbL) {
-    sbL.from('rooms').update({ active_price_type: type }).eq('id', rid).then(({ error }) => {
-      if (error) console.warn('[rooms] active_price_type save error:', error.message);
-    });
-  }
+  _roomVacancyRerender(roomId);   // instant: header + Offer choice
   if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', r);
+  ccQueueWrite('room-offer-' + roomId, () => sbL.from('rooms').update({ active_price_type: type }).eq('id', roomId))
+    .then(res => {
+      if (!res || !res.error) return;
+      r.active_price_type = before;
+      _roomVacancyRerender(roomId);
+      if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', r);
+      ccSaveFailed(res.error, 'room offer');
+    });
+}
+// Old name (header toggle) — kept so nothing that still calls it breaks
+function _toggleRentType(btn) {
+  const card = btn && btn.closest('.rc');
+  if (card && btn.dataset.type) _setOfferType(card.dataset.id, btn.dataset.type);
+}
 
-  // Update amount + detail in card
-  const info = _getRentInfo(r, type);
-  const amountEl = card.querySelector('.rc-rent-amount');
-  const detailEl = card.querySelector('.rc-rent-detail');
-  if (info) {
-    if (amountEl) amountEl.textContent = fmtEUR(info.total);
-    if (detailEl) detailEl.textContent = info.detail;
-  } else {
-    // Switched to a contract type whose price isn't set yet
-    if (amountEl) amountEl.textContent = '';
-    if (detailEl) detailEl.textContent = 'Preis nicht gesetzt';
+function _rcFmtD(iso) { const s = String(iso || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; }
+/* Header pill for a tenancy: Mietvertrag (neutral) · Kurzzeit with its end date (lilac — not a status colour) */
+function _roomCtPill(ctype, endIso) {
+  if (ctype === 'kurzzeit') {
+    const end = _rcFmtD(endIso);
+    return `<span class="rc-rent-badge rc-ct rc-ct--kz"><i class="ti ti-clock" aria-hidden="true"></i>Kurzzeit${end ? ' bis ' + end : ''}</span>`;
   }
-
-  _updateRoomsSummary(appRooms);
+  if (ctype === 'mietvertrag') return `<span class="rc-rent-badge rc-ct rc-ct--mv"><i class="ti ti-file-text" aria-hidden="true"></i>Mietvertrag</span>`;
+  return `<span class="rc-rent-badge rc-ct rc-ct--none">Contract not set</span>`;
 }
 
 function _rentRowHTML(r) {
-  // Occupied: the tenant's real rent (no offer toggle) · vacant: the asking rent with its toggle
-  const cur = typeof tnCurrentRentOf === 'function' ? tnCurrentRentOf(r.name) : null;
-  if (cur) {
-    const d = cur.mode === 'pauschal' ? fmtEUR(cur.total) + ' pauschal' : fmtEUR(cur.kalt) + ' kalt + ' + fmtEUR(cur.nk) + ' NK';
-    const ct = cur.ctype === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag';
-    return `<div class="rc-hdr__rent">
+  const row = (pill, detail, amount) => `<div class="rc-hdr__rent">
     <div class="rc-hdr__rent-left">
-      <div class="rc-hdr__rent-top"><span class="rc-rent-badge rc-rent-badge--tenant">Tenant · ${ct}</span></div>
-      <div class="rc-hdr__rent-info"><span class="rc-rent-detail">${d}</span></div>
+      <div class="rc-hdr__rent-top">${pill}</div>
+      ${detail ? `<div class="rc-hdr__rent-info"><span class="rc-rent-detail">${detail}</span></div>` : ''}
     </div>
-    <span class="rc-rent-amount">${fmtEUR(cur.total)}</span>
+    <span class="rc-rent-amount">${amount || ''}</span>
   </div>`;
+
+  // Someone lives here now: their contract type and their own rent (Tenants tab)
+  const ten = typeof tnCurrentTenancyOf === 'function' ? tnCurrentTenancyOf(r.name) : null;
+  if (ten) {
+    const cur = ten.rent;
+    const d = !cur ? 'Rent not set' : cur.mode === 'pauschal' ? fmtEUR(cur.total) + ' pauschal' : fmtEUR(cur.kalt) + ' kalt + ' + fmtEUR(cur.nk) + ' NK';
+    return row(_roomCtPill(ten.ctype, ten.end), d, cur ? fmtEUR(cur.total) : '');
   }
+
+  // Nobody lives here: the room's offer (chosen in Asking rent → Offer)
   const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
   const hasKz = !!r.kurzzeit_kaltmiete;
+  if (!hasMv && !hasKz) return row(`<span class="rc-rent-badge rc-rent-badge--none">Nicht gesetzt</span>`, '', '');
   const activeType = _getActiveType(r);
   const info = activeType ? _getRentInfo(r, activeType) : null;
+  const pill = `<span class="rc-rent-badge rc-ct rc-ct--offer">Offer · ${activeType === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag'}</span>`;
+  return row(pill, info ? info.detail : 'Preis nicht gesetzt', info ? fmtEUR(info.total) : '');
+}
 
-  if (!hasMv && !hasKz) {
-    return `<div class="rc-hdr__rent"><div class="rc-hdr__rent-left"><div class="rc-hdr__rent-top"><span class="rc-rent-badge rc-rent-badge--none">Nicht gesetzt</span></div></div></div>`;
-  }
-
-  // Always keep both spans present so _toggleRentType can update them in place,
-  // even when the selected contract type has no price yet.
-  const amountHTML = `<span class="rc-rent-amount">${info ? fmtEUR(info.total) : ''}</span>`;
-  const detailText = info ? info.detail : 'Preis nicht gesetzt';
-
-  // Toggle shows on every priced room now (not only when both prices exist),
-  // so any room can be switched between Mietvertrag and Kurzzeit.
-  const mvActive = activeType === 'mietvertrag' ? ' active--mietvertrag' : '';
-  const kzActive = activeType === 'kurzzeit'    ? ' active--kurzzeit'    : '';
-  return `<div class="rc-hdr__rent">
-    <div class="rc-hdr__rent-left">
-      <div class="rc-price-toggle">
-        <button class="rc-price-toggle__opt${mvActive}" data-type="mietvertrag" onclick="event.stopPropagation();_toggleRentType(this)">Mietvertrag</button>
-        <button class="rc-price-toggle__opt${kzActive}"  data-type="kurzzeit"    onclick="event.stopPropagation();_toggleRentType(this)">Kurzzeit</button>
-      </div>
-      <div class="rc-hdr__rent-info"><span class="rc-rent-detail">${detailText}</span></div>
+/* Asking rent → Offer: the one place to choose it (vacant and occupied rooms alike) */
+function _offerChoiceHTML(r) {
+  if (!r.id || !(r.kaltmiete || r.mietvertrag_miete || r.kurzzeit_kaltmiete)) return '';
+  const t = _getActiveType(r);
+  const opt = (v, l) => `<button type="button" class="cc-seg__opt${t === v ? ' is-on' : ''}" role="radio" aria-checked="${t === v}"
+      onclick="event.stopPropagation();_setOfferType('${r.id}','${v}')">${l}</button>`;
+  return `<div class="rc-offer">
+      <span class="rc-offer__lbl">Offer</span>
+      <div class="cc-seg cc-seg--sm" role="radiogroup" aria-label="Offer">${opt('mietvertrag', 'Mietvertrag')}${opt('kurzzeit', 'Kurzzeit')}</div>
     </div>
-    ${amountHTML}
-  </div>`;
+    <p class="rc-offer__hint">Pre-selected for the next tenant. Each tenant's own contract is set in Tenants.</p>`;
 }
 
 function _roomCardHTML(r) {
@@ -1346,6 +1349,7 @@ function _roomCardHTML(r) {
       <div class="rc-section--miete" id="rc-miete-${r.id}">
         <div class="rc-stitle">Asking rent</div>
         <div class="rc-sec-read">
+          ${_offerChoiceHTML(r)}
           ${rentRead || '<div class="rc-rows"><div class="rc-row"><span class="rc-row__v" style="color:var(--cc-stone);font-style:italic;">Not set</span></div></div>'}
           ${_secBtn('miete')}
         </div>
