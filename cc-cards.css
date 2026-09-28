@@ -200,3 +200,8 @@
 #tab-tenants .cc-inline-panel input:focus { border-bottom-color: var(--cc-gold); }
 #tab-tenants .cc-inline-hint { margin: 10px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--cc-taupe); }
 #tab-tenants [id^="pfoot-read-"] { flex-wrap: wrap; row-gap: 8px; }
+
+/* Staffel: "Ignore" next to "Adjusted?" */
+#tab-tenants .tn-sf-pills { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+#tab-tenants .tn-nkv-pill.ignored { background: var(--cc-surface); color: var(--cc-stone); border: .5px solid var(--cc-rule); cursor: pointer; }
+#tab-tenants .tn-sf-ignored { text-decoration: line-through; color: var(--cc-stone) !important; }

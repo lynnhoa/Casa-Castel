@@ -769,7 +769,7 @@ function _rntStaffelPillState(aptId) {
   const today = new Date(); today.setHours(0,0,0,0);
   const entries = _rntStaffel[aptId] || [];
   for (const e of entries) {
-    if (e.tenant_adjusted) continue;
+    if (e.tenant_adjusted || e.ignored) continue;     // ignored steps are never a to-do
     const eff = new Date(e.effective_date);
     const diffDays = Math.ceil((eff - today) / (24 * 3600 * 1000));
     if (diffDays > 30) continue;
@@ -1749,7 +1749,7 @@ function _rntNKVorausHTML(rid, aptId, ctx) {
     ${current ? `
     <div class="tn-nkv-current">
       <i class="ti ti-coin-euro" style="font-size:15px;color:var(--cc-stone)"></i>
-      <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+      <span class="tn-nkv-cur-amount${current.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
       <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
     </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`}
     ${pendingRows}
@@ -1892,14 +1892,14 @@ function _rntStaffelHTML(rid, aptId) {
        <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
      </button>`;
 
-  const adjBtn = (e) => _rntStaffelAdjPill(e, aptId);
+  const adjBtn = (e) => _rntStaffelPills(e, aptId);
 
   const nextRow = next ? `
     <div class="tn-nkv-row" id="sf-row-${next.id}">
       <div class="tn-nkv-top">
         <i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>
         <span class="tn-nkv-date">ab ${fmtD(next.effective_date)}</span>
-        <span class="tn-nkv-amount">${_rntFmtEUR(next.amount)}</span>
+        <span class="tn-nkv-amount${next.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(next.amount)}</span>
         ${delBtn(next)}
       </div>
       <div class="tn-nkv-pills">${adjBtn(next)}</div>
@@ -1908,7 +1908,7 @@ function _rntStaffelHTML(rid, aptId) {
   const curDisplay = current
     ? `<div class="tn-nkv-current">
         <i class="ti ti-stairs-up" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
-        <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+        <span class="tn-nkv-cur-amount${current.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
         <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
         ${delBtn(current)}
       </div>
@@ -2027,14 +2027,14 @@ function _rntPkStaffelHTML(rid, pkId) {
        <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
      </button>`;
 
-  const adjBtn = (e) => _rntStaffelAdjPill(e, pkId);
+  const adjBtn = (e) => _rntStaffelPills(e, pkId);
 
   const nextRow = next ? `
     <div class="tn-nkv-row" id="sf-row-${next.id}">
       <div class="tn-nkv-top">
         <i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>
         <span class="tn-nkv-date">ab ${fmtD(next.effective_date)}</span>
-        <span class="tn-nkv-amount">${_rntFmtEUR(next.amount)}</span>
+        <span class="tn-nkv-amount${next.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(next.amount)}</span>
         ${delBtn(next)}
       </div>
       <div class="tn-nkv-pills">${adjBtn(next)}</div>
@@ -2043,7 +2043,7 @@ function _rntPkStaffelHTML(rid, pkId) {
   const curDisplay = current
     ? `<div class="tn-nkv-current">
         <i class="ti ti-stairs-up" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
-        <span class="tn-nkv-cur-amount">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
+        <span class="tn-nkv-cur-amount${current.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
         <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
         ${delBtn(current)}
       </div>
@@ -2115,7 +2115,7 @@ function _rntPkStaffelOpenVerlauf(pkId, rid) {
 
   const rows = entries.map(e => {
     const isFuture = new Date(e.effective_date) > today;
-    const adjTag = _rntStaffelAdjPill(e, pkId);
+    const adjTag = _rntStaffelPills(e, pkId);
     const amtCls = e.tenant_adjusted ? 'tn-nkv-amount past' : 'tn-nkv-amount';
     return `
       <div class="tn-nkv-row" style="padding:7px 16px">
@@ -2176,6 +2176,32 @@ function _rntStaffelSetTitle(t) {
   if (el) el.textContent = t;
 }
 
+/* Adjusted? + Ignore — the two quick toggles of a Staffel step (saved on tap) */
+function _rntStaffelPills(e, unitId) {
+  return `<span class="tn-sf-pills" data-sf-pills="${e.id}">${e.ignored ? '' : _rntStaffelAdjPill(e, unitId)}${_rntStaffelIgnPill(e, unitId)}</span>`;
+}
+function _rntStaffelIgnPill(e, unitId) {
+  const on = !!e.ignored;
+  return `<button type="button" class="tn-nkv-pill ${on ? 'ignored' : 'pending'}" data-sf-ign="${e.id}"
+    aria-pressed="${on}" title="${on ? 'Ignored — the tenant keeps paying the previous amount. Tap to apply again.' : 'Ignore this step (keep the previous amount)'}"
+    onclick="_rntStaffelToggleIgnored('${e.id}','${unitId}')">
+    <i class="ti ti-ban" aria-hidden="true"></i> ${on ? 'Ignored' : 'Ignore'}</button>`;
+}
+function _rntStaffelToggleIgnored(id, unitId) {
+  const entry = (_rntStaffel[unitId] || []).find(e => e.id === id);
+  if (!entry || !sbL) return;
+  const prev = !!entry.ignored;
+  entry.ignored = !prev;
+  _rntStaffelRefreshUI(id, unitId);
+  ccQueueWrite('staffel-ign:' + id, () => sbL.from('rnt_staffelmiete_history').update({ ignored: entry.ignored }).eq('id', id))
+    .then(r => {
+      if (!r || !r.error) { if (typeof ccSavedToast === 'function') ccSavedToast(entry.ignored ? 'Staffel ignored' : 'Staffel applied'); return; }
+      entry.ignored = prev;
+      _rntStaffelRefreshUI(id, unitId);
+      ccSaveFailed(r.error, 'Staffel ignorieren (SQL ausgeführt?)');
+    });
+}
+
 function _rntStaffelAdjPill(e, unitId) {
   const on = !!e.tenant_adjusted;
   return `<button type="button" class="tn-nkv-pill ${on ? 'done' : 'pending'}" data-sf-adj="${e.id}"
@@ -2185,8 +2211,12 @@ function _rntStaffelAdjPill(e, unitId) {
 
 function _rntStaffelRefreshUI(id, unitId) {
   const entry = (_rntStaffel[unitId] || []).find(e => e.id === id);
-  if (entry) document.querySelectorAll(`[data-sf-adj="${id}"]`).forEach(el => {
-    el.outerHTML = _rntStaffelAdjPill(entry, unitId);
+  if (entry) document.querySelectorAll(`[data-sf-pills="${id}"]`).forEach(el => {
+    el.outerHTML = _rntStaffelPills(entry, unitId);
+  });
+  if (entry) document.querySelectorAll(`[id="sf-row-${id}"] .tn-nkv-amount, .tn-nkv-current .tn-nkv-cur-amount`).forEach(el => {
+    if (el.closest(`[id="sf-row-${id}"]`) || el.closest('.tn-nkv-current')?.nextElementSibling?.querySelector(`[data-sf-pills="${id}"]`))
+      el.classList.toggle('tn-sf-ignored', !!entry.ignored);
   });
   // Verlauf sheet (amount colour follows the state)
   const v = _rntStaffelVerlaufOpen;
@@ -2250,7 +2280,7 @@ function _rntStaffelOpenVerlauf(aptId, rid) {
 
   const rows = entries.map(e => {
     const isFuture = new Date(e.effective_date) > today;
-    const adjTag = _rntStaffelAdjPill(e, aptId);
+    const adjTag = _rntStaffelPills(e, aptId);
     const amtCls = e.tenant_adjusted ? 'tn-nkv-amount past' : 'tn-nkv-amount';
     return `
       <div class="tn-nkv-row" style="padding:7px 16px">

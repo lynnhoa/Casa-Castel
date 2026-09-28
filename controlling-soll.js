@@ -242,7 +242,8 @@ function _cxHist(link, kind) {
   const S = window._src;
   if (kind === 'staffel') {
     const col = link.type === 'rentals_parking' ? 'parking_id' : 'apartment_id';
-    return link.type === 'casa_room' ? [] : S.staffel.filter(h => String(h[col]) === link.ref);
+    // "Ignored" steps: in the contract, but deliberately not charged → the rent stays as before
+    return link.type === 'casa_room' ? [] : S.staffel.filter(h => String(h[col]) === link.ref && !h.ignored);
   }
   if (link.type === 'rentals_apartment') return S.rntNkV.filter(h => String(h.apartment_id) === link.ref);
   if (link.type === 'casa_room') return S.casaNkV.filter(h => _cxNorm(h.room) === _cxNorm(link.ref));   // B10
