@@ -143,15 +143,17 @@ function scrollToBottom(feedEl, tries = 3) {
 }
 
 /* ── KITCHEN HISTORY PILL (shared landlord + tenant) ────────── */
-function kHistPill(status, size) {
+function kHistPill(status, size, row) {
   const sm   = size === 'sm';
   const base = sm
     ? 'font-size:9px;padding:1px 7px;border-radius:10px;font-weight:500;white-space:nowrap;border:0.5px solid;'
     : 'font-size:10px;padding:2px 9px;border-radius:20px;font-weight:500;white-space:nowrap;border:0.5px solid;display:inline-block;';
+  const late = !!(row && row.is_late);
+  const auto = !!(row && row.approved_by === 'auto');
   if (status === 'approved')
-    return `<span style="${base}background:#EDF5E8;color:#3A6A1A;border-color:#9AC87A;">✓ Done</span>`;
+    return `<span style="${base}background:#EDF5E8;color:#3A6A1A;border-color:#9AC87A;">✓ ${late ? 'Done (late)' : auto ? 'Done (auto)' : 'Done'}</span>`;
   if (status === 'submitted')
-    return `<span style="${base}background:#FFF7ED;color:#92400E;border-color:#FCD34D;">↑ Submitted</span>`;
+    return `<span style="${base}background:#FFF7ED;color:#92400E;border-color:#FCD34D;">↑ ${late ? 'Late proof' : 'Submitted'}</span>`;
   if (status === 'missed')
     return `<span style="${base}background:#FEF2F2;color:#991B1B;border-color:#FCA5A5;">✗ Missed</span>`;
   if (status === 'flagged')
@@ -161,6 +163,16 @@ function kHistPill(status, size) {
   if (status === 'absent')
     return `<span style="${base}background:#F5EEE8;color:#8C5A30;border-color:#D4A87A;">Away</span>`;
   return `<span style="${base}background:var(--cc-surface);color:var(--cc-stone);border-color:var(--cc-rule);">—</span>`;
+}
+
+/* ── ABSENCE RULE (Kitchen + House Cleaning) ─────────────
+   A turn is only excused when ONE absence covers the whole
+   Monday–Sunday week. Dates are 'YYYY-MM-DD' strings.       */
+function absCoversWeek(a, wStartYmd, wEndYmd) {
+  return !!a && a.from_date <= wStartYmd && a.to_date >= wEndYmd;
+}
+function absOverlapsWeek(a, wStartYmd, wEndYmd) {
+  return !!a && a.from_date <= wEndYmd && a.to_date >= wStartYmd;
 }
 
 /* ── KITCHEN WEEK DATE RANGE (index-only, rotation-independent) ── */

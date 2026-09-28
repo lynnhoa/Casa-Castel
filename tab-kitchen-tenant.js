@@ -35,12 +35,15 @@ document.getElementById('tab-kitchen').innerHTML = `
         <div class="k-mob-week-left">
           <span class="k-mob-week-room" id="k-mob-room-name">—</span>
           <span class="k-mob-week-dates-sm" id="k-mob-dates">—</span>
-          <span class="k-mob-absent-note" id="k-mob-absent-note" style="display:none;"></span>
+          <span class="k-note" id="k-mob-absent-note" style="display:none;"></span>
         </div>
         <!-- Upload proof button — shown only when it is tenant's turn -->
         <div id="k-ten-act"></div>
       </div>
     </div>
+
+    <!-- Late proof — only when last week was yours and missed -->
+    <div class="k-late" id="k-ten-late" style="display:none;"></div>
 
     <!-- Nudge banner — shown when landlord sends a nudge to this room -->
     <div id="k-ten-nudge-banner" style="display:none;flex-shrink:0;padding:8px 14px;background:#FEFCE8;border-bottom:0.5px solid #EAD96B;align-items:center;gap:8px;">
@@ -85,8 +88,9 @@ document.getElementById('tab-kitchen').innerHTML = `
         </div>
         <span class="k-mob-week-room" id="k-ten-dsk-room">—</span>
         <span class="k-mob-week-dates-sm" style="display:block;margin-top:3px;" id="k-ten-dsk-dates">—</span>
-        <span class="k-mob-week-absent-note" id="k-ten-dsk-absent-note" style="display:none;margin-top:3px;"></span>
+        <span class="k-note" id="k-ten-dsk-absent-note" style="display:none;margin-top:3px;"></span>
         <div id="k-ten-dsk-act"></div>
+        <div class="k-late k-late--dsk" id="k-ten-dsk-late" style="display:none;"></div>
       </div>
 
       <!-- Rotation — rot-tl style matching cleaning tab -->
@@ -162,7 +166,7 @@ document.getElementById('tab-kitchen').innerHTML = `
   wiz.innerHTML = `
     <div style="background:var(--cc-bg);display:flex;flex-direction:column;width:100%;height:100%;max-width:480px;max-height:100%;border-radius:0;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:0.5px solid var(--cc-rule);flex-shrink:0;">
-        <span style="font-size:10px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--cc-taupe);">Kitchen proof</span>
+        <span id="k-ten-wiz-title" style="font-size:10px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:var(--cc-taupe);">Kitchen proof</span>
         <button onclick="_kTenWizCancel()" style="font-size:14px;color:var(--cc-stone);background:none;border:none;cursor:pointer;padding:4px 8px;">✕</button>
       </div>
       <div id="k-ten-wiz-dots" style="display:flex;gap:6px;justify-content:center;padding:12px 0 4px;flex-shrink:0;"></div>
@@ -262,27 +266,58 @@ function _kYmd(dt) {
 function _kAddDays(dt, n) { return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + n); }
 
 /* ── ROTATION STATE HELPER (mirrors landlord) ───────────── */
+// Finished weeks: the saved result wins (set by the Sunday close in the database).
+// Current / future weeks: live rules — away only when ONE absence covers Mon–Sun.
 function _kRotState(opts) {
   const { isNow, isPast, isNext, dbStatus, room, weekStart, absenceRows } = opts;
-  // Absence first — explicit absence overrides vacancy, now, next, missed
+  if (isPast) {
+    if (!dbStatus)                return 'none';
+    if (dbStatus === 'approved')  return 'done';
+    if (dbStatus === 'absent')    return 'absent';
+    if (dbStatus === 'skipped')   return 'skipped';
+    if (dbStatus === 'submitted') return 'review';
+    return 'missed';
+  }
+  if (isNow && dbStatus === 'absent')  return 'absent';
+  if (isNow && dbStatus === 'skipped') return 'skipped';
   if (absenceRows && weekStart) {
     const wStart = _kYmd(weekStart);
     const wEnd   = _kYmd(_kAddDays(weekStart, 6));
-    const absent = absenceRows.some(a => a.room === room && a.from_date <= wEnd && a.to_date >= wStart);
-    if (absent) return 'absent';
+    if (absenceRows.some(a => a.room === room && absCoversWeek(a, wStart, wEnd))) return 'absent';
   }
   if (isVacant(room)) return 'skipped';
   if (isNow) {
     if (dbStatus === 'approved') return 'done';
-    if (dbStatus === 'missed')   return 'missed';   // landlord marked the current week as missed
+    if (dbStatus === 'missed')   return 'missed';
     return 'now';
   }
-  if (!isPast) return isNext ? 'next' : 'upcoming';
-  if (!dbStatus)               return 'none';
-  if (dbStatus === 'approved') return 'done';
-  if (dbStatus === 'skipped')  return 'skipped';
-  if (dbStatus === 'absent')   return 'absent';
-  return 'missed';
+  return isNext ? 'next' : 'upcoming';
+}
+
+/* Position of this week's room in the rotation — from the saved week */
+function _kCyclePos(rooms, idx, weekRow) {
+  const n = rooms.length; if (!n) return 0;
+  const p = weekRow ? rooms.indexOf(weekRow.room) : -1;
+  return p !== -1 ? p : ((idx % n) + n) % n;
+}
+function _kFmtDM(d) { const p = n => String(n).padStart(2, '0'); return p(d.getDate()) + '.' + p(d.getMonth() + 1); }
+function _kWeekRange(idx) {
+  const s = new Date(K_START.getTime() + idx * 7 * 24 * 60 * 60 * 1000);
+  const e = new Date(s.getTime() + 6 * 24 * 60 * 60 * 1000);
+  return _kFmtDM(s) + ' – ' + _kFmtDM(e);
+}
+function _kFmtWhen(d) {
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const p = n => String(n).padStart(2, '0');
+  return days[d.getDay()] + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function _kTenSetNote(text, tone) {
+  ['k-mob-absent-note', 'k-ten-dsk-absent-note'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.textContent = text || '';
+    el.className = 'k-note' + (tone ? ' k-note--' + tone : '');
+    el.style.display = text ? '' : 'none';
+  });
 }
 
 /* ── STATE ──────────────────────────────────────────────── */
@@ -297,16 +332,19 @@ let _kTenMobSending = false;
    Back/Next navigate; last slide Next = Submit
    ───────────────────────────────────────────────────────── */
 const _kWizSlots = [
-  { type: 'trash',    emoji: '🗑️', label: 'Trash',    hint: 'Please take a photo of the emptied trash can.' },
-  { type: 'geschirr', emoji: '🍽️', label: 'Dishes',   hint: 'Please take a photo of the sink without any dishes left.' },
-  { type: 'overview', emoji: '🏠', label: 'Overview', hint: 'Please take a photo of the full kitchen, cleaned.' },
+  { type: 'trash',    icon: 'ti-trash',            label: 'Trash',    hint: 'Take a photo of the emptied trash can.' },
+  { type: 'geschirr', icon: 'ti-bowl',             label: 'Dishes',   hint: 'Take a photo of the sink with no dishes left.' },
+  { type: 'overview', icon: 'ti-tools-kitchen-2',  label: 'Overview', hint: 'Take a photo of the whole kitchen, cleaned.' },
 ];
 let _kWizBlobs      = [null, null, null];
 let _kWizPreviews   = [null, null, null];
 let _kWizSubmitting = false;
 let _kWizStep       = 0;
+let _kWizLate       = false;   // true = late proof for last week
 
-function _kTenWizOpen() {
+function _kTenWizOpen(which) {
+  _kWizLate = which === 'late';
+  if (_kWizLate && !_kTenLateRow) return;
   _kWizBlobs    = [null, null, null];
   _kWizPreviews.forEach(u => u && URL.revokeObjectURL(u));
   _kWizPreviews = [null, null, null];
@@ -317,6 +355,8 @@ function _kTenWizOpen() {
     if (window.innerWidth <= 700) fileInput.setAttribute('capture', 'environment');
     else fileInput.removeAttribute('capture');
   }
+  const ttl = document.getElementById('k-ten-wiz-title');
+  if (ttl) ttl.textContent = _kWizLate ? 'Late proof · ' + _kWeekRange(_kTenLateRow.week_index) : 'Kitchen proof';
   _kTenWizRender();
   document.getElementById('k-ten-wizard').style.display = 'flex';
 }
@@ -325,6 +365,8 @@ function _kTenWizCancel() {
   document.getElementById('k-ten-wizard').style.display = 'none';
 }
 
+/* One step = same layout every time: icon · title · hint · photo frame · Take photo.
+   The camera only opens when the tenant taps — never by itself. */
 function _kTenWizRender() {
   const step     = _kWizStep;
   const slot     = _kWizSlots[step];
@@ -342,24 +384,20 @@ function _kTenWizRender() {
 
   const slideEl = document.getElementById('k-ten-wiz-slide');
   if (slideEl) {
-    slideEl.innerHTML =
-      `<div style="text-align:center;padding:8px 0 16px;">
-        <div style="font-size:36px;margin-bottom:8px;">${slot.emoji}</div>
-        <p style="font-size:16px;font-weight:500;color:var(--cc-ink);margin-bottom:4px;">${slot.label}</p>
-        <p style="font-size:12px;color:var(--cc-taupe);">${slot.hint}</p>
+    slideEl.innerHTML = `
+      <div class="k-wiz-step">
+        <span class="k-wiz-step__icon"><i class="ti ${slot.icon}" aria-hidden="true"></i></span>
+        <p class="k-wiz-step__title">${slot.label}</p>
+        <p class="k-wiz-step__hint">${slot.hint}</p>
       </div>
-      <div onclick="_kTenWizTakePhoto()" style="width:100%;aspect-ratio:3/4;border-radius:var(--cc-r-md);overflow:hidden;border:${hasPhoto ? '1.5px solid var(--cc-gold)' : '1px dashed var(--cc-rule)'};background:var(--cc-surface);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;cursor:pointer;">`
-      + (hasPhoto && preview
-          ? `<img src="${preview}" style="width:100%;height:100%;object-fit:cover;display:block;" alt="${slot.label}"/>
-             <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.45);padding:8px 0;text-align:center;font-size:9px;color:#fff;letter-spacing:0.06em;text-transform:uppercase;">↺ tap to retake</div>`
-          : `<i class="ti ti-camera" style="font-size:36px;color:var(--cc-stone);" aria-hidden="true"></i>
-             <span style="font-size:11px;color:var(--cc-taupe);margin-top:8px;">Opening camera…</span>`)
-      + `</div>`;
-  }
-
-  // Auto-fire camera on mobile when no photo taken yet for this slide
-  if (window.innerWidth <= 700 && !hasPhoto) {
-    setTimeout(() => _kTenWizTakePhoto(), 120);
+      <div class="k-wiz-frame${hasPhoto ? ' k-wiz-frame--done' : ''}" onclick="_kTenWizTakePhoto()">
+        ${hasPhoto && preview
+          ? `<img src="${preview}" alt="${slot.label}"/>`
+          : `<i class="ti ti-camera" aria-hidden="true"></i><span>No photo yet</span>`}
+      </div>
+      <button type="button" class="k-wiz-shoot${hasPhoto ? ' k-wiz-shoot--again' : ''}" onclick="_kTenWizTakePhoto()">
+        <i class="ti ${hasPhoto ? 'ti-refresh' : 'ti-camera'}" aria-hidden="true"></i>${hasPhoto ? 'Retake photo' : 'Take photo'}
+      </button>`;
   }
 
   const backBtn = document.getElementById('k-ten-wiz-back-btn');
@@ -409,6 +447,8 @@ async function _kTenWizSubmit() {
     alert("A new week has started, so the kitchen tab was refreshed. Please check this week's status.");
     return;
   }
+  const target = _kWizLate ? _kTenLateRow : _kTenWeekRow;
+  if (!target) { document.getElementById('k-ten-wizard').style.display = 'none'; return; }
 
   const room = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
   _kWizSubmitting = true;
@@ -417,7 +457,7 @@ async function _kTenWizSubmit() {
   if (submitBtn) { submitBtn.textContent = 'Uploading 1/3…'; submitBtn.style.pointerEvents = 'none'; }
 
   try {
-    const idx      = kWeekIdx();
+    const idx      = target.week_index;
     const uploaded = [];
     const total    = _kWizSlots.length;
     let   done     = 0;
@@ -456,22 +496,23 @@ async function _kTenWizSubmit() {
     }
 
     // isReupload: was flagged OR already has photos (guards against stale local status)
-    const isReupload = _kTenWeekRow.status === 'flagged'
-                    || !!(_kTenWeekRow.photos && _kTenWeekRow.photos.length)
-                    || !!(_kTenWeekRow.reupload_count);
+    const isReupload = target.status === 'flagged'
+                    || !!(target.photos && target.photos.length)
+                    || !!(target.reupload_count);
     const patch = {
       status:       'submitted',
       submitted_at: new Date().toISOString(),
+      flag_reason:  null,
     };
     if (isReupload) {
       // Re-upload: keep original photos column intact — new photos go in the comment only
-      patch.reupload_count = (_kTenWeekRow.reupload_count || 0) + 1;
+      patch.reupload_count = (target.reupload_count || 0) + 1;
       patch.flagged        = false;
     } else {
       // First upload: write photos to the row
       patch.photos = uploaded;
     }
-    const { error: updateErr } = await sbL.from('kitchen_weeks').update(patch).eq('id', _kTenWeekRow.id);
+    const { error: updateErr } = await sbL.from('kitchen_weeks').update(patch).eq('id', target.id);
     if (updateErr) {
       console.error('[kitchen] week update failed', JSON.stringify(updateErr));
       alert('Save failed: ' + (updateErr.message || updateErr.code || JSON.stringify(updateErr)));
@@ -480,14 +521,17 @@ async function _kTenWizSubmit() {
       return;
     }
 
-    // Post [submission] comment — this is what the feed renderer reads on both sides
+    // Post [submission] comment on the week the proof belongs to
     const commentPayload = JSON.stringify({ photos: uploaded, isReupload });
-    await _kTenAddComment(_kTenWeekRow.id, room, '[submission] ' + commentPayload, false);
+    await _kTenAddComment(target.id, room, '[submission] ' + commentPayload, false);
 
-    // Post a visible system message on resubmit so landlord sees it in the feed
-    // even if the realtime UPDATE on kitchen_weeks arrives before the row propagates
-    if (isReupload) {
-      await _kTenAddComment(_kTenWeekRow.id, room, '[system] ' + room + ' has resubmitted.', false);
+    if (_kWizLate) {
+      // Late proof also shows in this week's chat, so everyone (and the landlord) sees it
+      await _kTenAddComment(_kTenWeekRow.id, room,
+        '[late] ' + JSON.stringify({ photos: uploaded, week: _kWeekRange(idx) }), false);
+    } else if (isReupload) {
+      // Visible system message on resubmit so landlord sees it in the feed
+      await _kTenAddComment(target.id, room, '[system] ' + room + ' has resubmitted.', false);
     }
 
     // Close wizard
@@ -495,10 +539,13 @@ async function _kTenWizSubmit() {
     _kWizSubmitting = false;
 
     // Patch local state and render immediately from it — no re-fetch.
-    // Avoids the race where a fresh DB fetch returns the old row before the write propagates.
-    // Realtime subscription fires ~100–800ms later and does the authoritative re-sync.
-    _kTenWeekRow = { ..._kTenWeekRow, ...patch };
-    await _kTenRenderWeekCard(_kTenWeekRow);
+    if (_kWizLate) {
+      _kTenLateRow = { ..._kTenLateRow, ...patch, is_late: true };
+      _kTenRenderLate();
+    } else {
+      _kTenWeekRow = { ..._kTenWeekRow, ...patch };
+      await _kTenRenderWeekCard(_kTenWeekRow);
+    }
     await _kTenRenderFeed();
 
   } catch (err) {
@@ -531,15 +578,23 @@ function _kTenRenderActBtnToEl(el, state, freshRow) {
 
 /* ── WEEK CARD ──────────────────────────────────────────── */
 async function _kTenRenderWeekCard(overrideRow) {
-  const wi = _kTenWeekInfo(kWeekIdx()); if (!wi) return;
+  const idx = kWeekIdx();
+  const wi  = _kTenWeekInfo(idx); if (!wi) return;
   const myRoom = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
-  const isAssigned = wi.room === myRoom;
 
-  const pad = n => String(n).padStart(2, '0');
-  const fmt = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
+  // The saved week decides whose turn it is (database rotation); fetch when needed
+  let row = overrideRow || (_kTenWeekRow && _kTenWeekRow.week_index === idx ? _kTenWeekRow : null);
+  const [fetched, absRes] = await Promise.all([
+    row || !sbL ? Promise.resolve(row) : _kTenGetWeek(idx),
+    sbL ? sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || []) : Promise.resolve([])
+  ]);
+  row = fetched;
+  const turnRoom   = (row && row.room) || wi.room;
+  const isAssigned = turnRoom === myRoom;
+
   const dateStr = isAssigned
-    ? fmt(wi.start) + ' – ' + fmt(wi.end) + (wi.daysLeft > 0 ? ' · ' + wi.daysLeft + 'd left' : ' · ends today')
-    : wi.room + "'s turn · " + fmt(wi.start) + ' – ' + fmt(wi.end);
+    ? _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end) + (wi.daysLeft > 0 ? ' · ' + wi.daysLeft + 'd left' : ' · ends today')
+    : turnRoom + "'s turn · " + _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end);
   document.getElementById('k-mob-room-name').textContent = myRoom;
   document.getElementById('k-mob-dates').textContent = dateStr;
   const dskRoom  = document.getElementById('k-ten-dsk-room');
@@ -547,88 +602,76 @@ async function _kTenRenderWeekCard(overrideRow) {
   if (dskRoom)  dskRoom.textContent  = myRoom;
   if (dskDates) dskDates.textContent = dateStr;
 
-  // If caller passes overrideRow (e.g. after optimistic patch), use it directly — no DB fetch.
-  // Otherwise fetch fresh from Supabase as normal.
-  let state = null;
-  let freshRow = null;
-  if (isAssigned) {
-    const idx = kWeekIdx();
-    let row, absRes;
-    if (overrideRow) {
-      [row, absRes] = await Promise.all([
-        Promise.resolve(overrideRow),
-        sbL ? sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || []) : Promise.resolve([])
-      ]);
-    } else {
-      [row, absRes] = await Promise.all([
-        _kTenGetWeek(idx),
-        sbL ? sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || []) : Promise.resolve([])
-      ]);
-    }
-    freshRow = row;
-    state = _kRotState({
-      isNow:       true,
-      isPast:      false,
-      dbStatus:    freshRow ? freshRow.status : null,
-      room:        wi.room,
-      weekStart:   wi.start,
-      absenceRows: absRes,
-    });
-  }
+  const dbStatus = row ? row.status : null;
+  const state = _kRotState({ isNow: true, isPast: false, dbStatus, room: turnRoom, weekStart: wi.start, absenceRows: absRes });
 
   // Chip
   const _setChip = (el, cls, txt) => { if (el) { el.className = cls; el.textContent = txt; } };
   const chip    = document.getElementById('k-mob-status-chip');
   const dskChip = document.getElementById('k-ten-dsk-chip');
-  if (chip || dskChip) {
-    if (!isAssigned) {
-      _setChip(chip,    'k-mob-status-chip not-your-turn', '— Not your turn');
-      _setChip(dskChip, 'k-mob-status-chip not-your-turn', '— Not your turn');
-    } else {
-      const dbStatus = freshRow ? freshRow.status : null;
-      const isResub  = state === 'now' && freshRow && freshRow.reupload_count > 0 && dbStatus !== 'flagged';
-      const chipCls = state === 'done'    ? 'approved'
-                    : state === 'missed'  ? 'missed'
-                    : state === 'absent'  ? 'skipped'
-                    : state === 'skipped' ? 'skipped'
-                    : dbStatus === 'flagged'                        ? 'flagged'
-                    : dbStatus === 'submitted' && isResub           ? 'resubmitted'
-                    : dbStatus === 'submitted'                      ? 'submitted'
-                    : 'pending';
-      const chipTxt = state !== 'now'
-        ? ({ done:'✓ Approved', missed:'✗ Missed', absent:'— Away', skipped:'— Skipped' }[state] || 'Pending')
-        : dbStatus === 'flagged'       ? '⚑ Redo'
-        : isResub                      ? '↑↑ Re-submitted'
-        : dbStatus === 'submitted'     ? '↑ Submitted'
-        : 'Pending';
-      _setChip(chip,    'k-mob-status-chip ' + chipCls, chipTxt);
-      _setChip(dskChip, 'k-mob-status-chip ' + chipCls, chipTxt);
+  if (!isAssigned) {
+    _setChip(chip,    'k-mob-status-chip not-your-turn', '— Not your turn');
+    _setChip(dskChip, 'k-mob-status-chip not-your-turn', '— Not your turn');
+  } else {
+    const isResub = state === 'now' && row && row.reupload_count > 0 && dbStatus !== 'flagged';
+    const isAuto  = !!(row && row.approved_by === 'auto');
+    const isLate  = !!(row && row.is_late);
+    const chipCls = state === 'done'    ? 'approved'
+                  : state === 'missed'  ? 'missed'
+                  : state === 'absent'  ? 'skipped'
+                  : state === 'skipped' ? 'skipped'
+                  : dbStatus === 'flagged'                  ? 'flagged'
+                  : dbStatus === 'submitted' && isResub     ? 'resubmitted'
+                  : dbStatus === 'submitted'                ? 'submitted'
+                  : 'pending';
+    const chipTxt = state !== 'now'
+      ? ({ done: isLate ? '✓ Done (late)' : isAuto ? '✓ Approved (auto)' : '✓ Approved',
+           missed:'✗ Missed', absent:'— Away', skipped:'— Skipped' }[state] || 'Pending')
+      : dbStatus === 'flagged'   ? '⚑ Redo'
+      : isResub                  ? '↑↑ Re-submitted'
+      : dbStatus === 'submitted' ? '↑ Submitted'
+      : 'Pending';
+    _setChip(chip,    'k-mob-status-chip ' + chipCls, chipTxt);
+    _setChip(dskChip, 'k-mob-status-chip ' + chipCls, chipTxt);
+  }
+
+  // Action button
+  ['k-ten-act', 'k-ten-dsk-act'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    if (!isAssigned) { el.innerHTML = ''; return; }
+    _kTenRenderActBtnToEl(el, state, row);
+  });
+
+  // One short line under the dates
+  let note = '', tone = '';
+  if (state === 'absent')       note = isAssigned ? "You're away this week — no kitchen turn." : turnRoom + ' is away this week — no kitchen turn.';
+  else if (state === 'skipped') note = turnRoom + ' is vacant — no kitchen turn this week.';
+  else if (isAssigned && dbStatus === 'flagged')   { note = row.flag_reason ? 'Redo: ' + row.flag_reason : 'Please upload new photos.'; tone = 'flag'; }
+  else if (isAssigned && dbStatus === 'submitted') note = 'Proof sent — waiting for review.';
+  else if (isAssigned && state === 'missed')       { note = 'Marked missed — you can upload late proof early next week.'; tone = 'flag'; }
+  _kTenSetNote(note, tone);
+}
+
+/* ── LATE PROOF (last week was yours and missed) ────────── */
+let _kTenLateRow = null;
+function _kTenRenderLate() {
+  const els    = ['k-ten-late', 'k-ten-dsk-late'].map(id => document.getElementById(id)).filter(Boolean);
+  const myRoom = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
+  const r      = _kTenLateRow;
+  let html = '';
+  if (r && r.room === myRoom) {
+    const open = r.late_until && new Date(r.late_until) > new Date();
+    if (r.status === 'missed' && open) {
+      html = `<div class="k-late__text"><strong>Last week missed</strong><span>Upload late proof until ${_kFmtWhen(new Date(r.late_until))} — it then counts as done.</span></div>
+              <button class="k-late__btn" onclick="_kTenWizOpen('late')"><i class="ti ti-camera-plus" aria-hidden="true"></i>Late proof</button>`;
+    } else if (r.status === 'flagged' && r.is_late) {
+      html = `<div class="k-late__text"><strong>Late proof: redo</strong><span>${esc(r.flag_reason || 'Please upload new photos.')}</span></div>
+              <button class="k-late__btn" onclick="_kTenWizOpen('late')"><i class="ti ti-camera-plus" aria-hidden="true"></i>Re-upload</button>`;
+    } else if (r.status === 'submitted') {
+      html = `<div class="k-late__text"><strong>${r.is_late ? 'Late proof sent' : "Last week's proof"}</strong><span>Waiting for review.</span></div>`;
     }
   }
-
-  // Action button — same fetch, same state
-  const actEl    = document.getElementById('k-ten-act');
-  const dskActEl = document.getElementById('k-ten-dsk-act');
-  const _setAct = (el) => {
-    if (!el) return;
-    if (!isAssigned) { el.innerHTML = ''; return; }
-    _kTenRenderActBtnToEl(el, state, freshRow);
-  };
-  _setAct(actEl);
-  _setAct(dskActEl);
-
-  const absNote = document.getElementById('k-mob-absent-note');
-  const dskAbsNote = document.getElementById('k-ten-dsk-absent-note');
-  if (freshRow && freshRow.is_absent) {
-    const txt = isAssigned
-      ? '📅 You are absent — no proof required'
-      : '📅 ' + wi.room + ' is absent — no proof required';
-    if (absNote) { absNote.textContent = txt; absNote.style.display = ''; }
-    if (dskAbsNote) { dskAbsNote.textContent = txt; dskAbsNote.style.display = ''; }
-  } else {
-    if (absNote) absNote.style.display = 'none';
-    if (dskAbsNote) dskAbsNote.style.display = 'none';
-  }
+  els.forEach(el => { el.innerHTML = html; el.style.display = html ? '' : 'none'; });
 }
 
 /* ── ROTATION STRIP ─────────────────────────────────────── */
@@ -660,16 +703,20 @@ function _kTenWeekInfo(idx) {
 async function _kTenRenderMobRotation() {
   const el = document.getElementById('k-mob-rot-strip'); if (!el) return;
   const rooms      = _kTenGetRoomList();
+  if (!rooms.length) { el.innerHTML = ''; return; }
   const idx        = kWeekIdx();
-  const cyclePos   = ((idx % rooms.length) + rooms.length) % rooms.length;
+  const cyclePos   = _kCyclePos(rooms, idx, _kTenWeekRow && _kTenWeekRow.week_index === idx ? _kTenWeekRow : null);
   const cycleStart = idx - cyclePos;
   const pad = n => String(n).padStart(2, '0');
   const fmt = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
 
-  const [dbRows, absData] = await Promise.all([
+  const [dbRowsRaw, absData] = await Promise.all([
     Promise.all(rooms.map((_, i) => _kTenGetWeek(cycleStart + i))),
     sbL ? sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || []) : Promise.resolve([])
   ]);
+
+  // A saved week only counts for this row when it really belongs to this room
+  const dbRows = dbRowsRaw.map((r, i) => (r && r.room === rooms[i]) ? r : null);
 
   let approvedCount = 0;
   for (let i = 0; i < cyclePos; i++) { if (dbRows[i] && dbRows[i].status === 'approved') approvedCount++; }
@@ -685,7 +732,7 @@ async function _kTenRenderMobRotation() {
     const nStart = new Date(K_START.getTime() + slot * 7 * 24 * 60 * 60 * 1000);
     const nWs = _kYmd(nStart);
     const nWe = _kYmd(_kAddDays(nStart, 6));
-    const nAbsent  = absData.some(a => a.room === nRoom && a.from_date <= nWe && a.to_date >= nWs);
+    const nAbsent  = absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe));
     const nSkipped = isVacant(nRoom);
     if (!nAbsent && !nSkipped) { trueNextI = ni; break; }
   }
@@ -705,7 +752,7 @@ async function _kTenRenderMobRotation() {
       weekStart:   info ? info.start : null,
       absenceRows: absData,
     });
-    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'Away', now:'Now', none:'—', next:'Next', upcoming:'—' }[state] || '—';
+    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'Away', now:'Now', none:'—', next:'Next', upcoming:'—', review:'↑' }[state] || '—';
     return `<div class="k-mob-rot-item ${state}"><span class="k-mob-rot-badge ${state}">${badgeText}</span><span class="k-mob-rot-room">${esc(room)}</span><span class="k-mob-rot-dates">${dateStr}</span></div>`;
   }).join('');
 
@@ -730,7 +777,8 @@ async function _kTenRenderMobRotation() {
                      : state === 'missed'  ? 'rot-line-missed' : 'rot-line-faded';
       const botLine  = state === 'done' && slotIdx < idx - 1 ? 'rot-line-done' : 'rot-line-faded';
       const badge    = {
-        done:     '<span class="rot-badge rot-badge--done">Done</span>',
+        done:     `<span class="rot-badge rot-badge--done">${dbRow && dbRow.is_late ? 'Done (late)' : 'Done'}</span>`,
+        review:   '<span class="rot-badge rot-badge--next">↑ Review</span>',
         now:      '<span class="rot-badge rot-badge--now">Now</span>',
         next:     '<span class="rot-badge rot-badge--next">Next</span>',
         missed:   '<span class="rot-badge rot-badge--missed">Missed</span>',
@@ -759,7 +807,7 @@ async function _kTenRenderDskHistory() {
   if (!data || !data.length) { el.innerHTML = '<p class="cc-note" style="font-size:10px;">No history yet.</p>'; return; }
   el.innerHTML = data.map(w => {
     const dateStr = kWeekDateRange(w.week_index);
-    return `<div class="k-dsk-hist-row"><div><div class="k-dsk-hist-room">${esc(w.room)}</div><div class="k-dsk-hist-date">${dateStr}</div></div>${kHistPill(w.status, 'sm')}</div>`;
+    return `<div class="k-dsk-hist-row"><div><div class="k-dsk-hist-room">${esc(w.room)}</div><div class="k-dsk-hist-date">${dateStr}</div></div>${kHistPill(w.status, 'sm', w)}</div>`;
   }).join('');
 }
 
@@ -772,7 +820,7 @@ function _kProofUrl(u) {
 }
 // Typed chat text must never look like a system marker ([photo] / [submission] / [system] / ✓ / ↩).
 function _kSafeChatText(t) {
-  return /^(\[(photo|submission|system)\]|✓|↩)/.test(t) ? '\u200B' + t : t;
+  return /^(\[(photo|submission|system|late)\]|✓|↩|✗|⚑)/.test(t) ? '\u200B' + t : t;
 }
 
 /* ── FEED RENDERER (identical to landlord, no delete buttons) */
@@ -793,6 +841,11 @@ function _kTenBuildFeedHtml(comments, weekRow) {
         const p = JSON.parse(c.text.slice(13));
         events.push({ _type:'submission', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[], isReupload:!!p.isReupload });
       } catch(e) {}
+    } else if (c.text && c.text.startsWith('[late] ')) {
+      try {
+        const p = JSON.parse(c.text.slice(7));
+        events.push({ _type:'late', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[], week:p.week||'' });
+      } catch(e) {}
     } else if (c.text && c.text.startsWith('[system] ')) {
       events.push({ _type:'system', _ts:new Date(c.created_at).getTime(), text:c.text.slice(9) });
     } else {
@@ -803,8 +856,26 @@ function _kTenBuildFeedHtml(comments, weekRow) {
 
   if (!events.length) return '<p class="cc-note" style="padding:8px 0;">No activity yet this week.</p>';
 
+  const _strip = photos => photos && photos.length
+    ? '<div style="display:flex;gap:4px;margin-top:8px;">'
+      + photos.filter(p => p && _kProofUrl(p.url)).map(p =>
+          `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" data-url="${esc(_kProofUrl(p.url))}" data-label="${esc(lbl(p.type))}" onclick="_kTenOpenPhoto(this.dataset.url,this.dataset.label)">`
+          + `<img src="${esc(_kProofUrl(p.url))}" alt="${esc(p.type)}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/>`
+          + `<span style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);font-size:8px;font-weight:500;color:#fff;letter-spacing:0.05em;text-transform:uppercase;padding:3px 4px;text-align:center;">${esc(lbl(p.type))}</span>`
+          + `</div>`
+        ).join('') + '</div>'
+    : '';
+
   let flagSeen = false;
   return events.map(ev => {
+
+    if (ev._type === 'late') {
+      return `<div style="padding:8px 0;border-bottom:0.5px solid var(--cc-rule);">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:11px;font-weight:500;color:var(--cc-ink);background:var(--cc-surface);border:0.5px solid var(--cc-rule);border-radius:var(--cc-r-pill);padding:2px 9px;">${esc(ev.room)}</span>
+          <span class="k-late-badge">Late proof · ${esc(ev.week)}</span><span style="font-size:10px;color:var(--cc-stone);">${fmtTs(ev._ts)}</span>
+        </div>${_strip(ev.photos)}</div>`;
+    }
 
     if (ev._type === 'submission') {
       const isRe = flagSeen; flagSeen = false;
@@ -836,18 +907,26 @@ function _kTenBuildFeedHtml(comments, weekRow) {
     }
     if (ev.is_flag) {
       flagSeen = true;
+      const why = ev.text && ev.text.startsWith('⚑ Redo: ') ? ev.text.slice(2) : 'Re-upload requested';
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--flag">⚑ Re-upload requested · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--flag">⚑ ${esc(why)} · ${fmtTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
 
     const isSysApproved = ev.text && (ev.text.startsWith('✓ Approved') || ev.text.startsWith('↩ Approval'));
     if (isSysApproved) {
       const isApproved = ev.text.startsWith('✓ Approved');
+      const isAuto     = ev.text.startsWith('✓ Approved automatically');
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
         <span class="k-sys-event__text${isApproved ? ' k-sys-event__text--approved' : ''}">
-          ${isApproved ? '✓ Approved' : '↩ Approval undone'} · ${fmtTs(ev._ts)}
+          ${isApproved ? (isAuto ? '✓ Approved automatically (48h)' : '✓ Approved') : '↩ Approval undone'} · ${fmtTs(ev._ts)}
         </span><div class="k-sys-event__line"></div></div>`;
+    }
+
+    if (ev.text && ev.text.startsWith('✗ ')) {
+      return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
+        <span class="k-sys-event__text k-sys-event__text--missed">${esc(ev.text)} · ${fmtTs(ev._ts)}</span>
+        <div class="k-sys-event__line"></div></div>`;
     }
 
     if (ev.text && ev.text.startsWith('✓ ') && !ev.text.startsWith('✓ Approved') && !ev.text.startsWith('✓ Approval')) {
@@ -893,11 +972,6 @@ async function _kTenRenderFeed() {
     if (elDsk) elDsk.innerHTML = empty;
     return;
   }
-  if (row.status === 'missed') {
-    if (elMob) elMob.innerHTML = missed;
-    if (elDsk) elDsk.innerHTML = missed;
-    return;
-  }
   const comments = await _kTenGetComments(row.id);
   const html = _kTenBuildFeedHtml(comments, row);
   if (elMob) { elMob.innerHTML = html; scrollToBottom(elMob); }
@@ -913,11 +987,10 @@ async function _kTenPopulateHistory() {
   if (!data || !data.length) { el.innerHTML = '<p class="cc-note">No past weeks yet.</p>'; return; }
   el.innerHTML = data.map(w => {
     const dateStr = kWeekDateRange(w.week_index);
-    const c  = w.comment_count ? ` · ${w.comment_count} comment${w.comment_count !== 1 ? 's' : ''}` : '';
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);">
       <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(w.room)}</p>
-      <p style="font-size:11px;color:var(--cc-taupe);">${dateStr}${c}</p></div>
-      ${kHistPill(w.status)}</div>`;
+      <p style="font-size:11px;color:var(--cc-taupe);">${dateStr}</p></div>
+      ${kHistPill(w.status, '', w)}</div>`;
   }).join('');
 }
 
@@ -977,11 +1050,13 @@ function _kTenSubscribe(idx) {
     .on('postgres_changes', { event:'UPDATE', schema:'public', table:'kitchen_weeks' }, async payload => {
       if (!_kTenWeekRow) return;
       if (!(await _kTenEnsureCurrentWeek())) return;   // K1: new week → tab was reloaded
-      const fresh = await _kTenGetWeek(kWeekIdx());
+      const [fresh, last] = await Promise.all([_kTenGetWeek(kWeekIdx()), _kTenGetWeek(kWeekIdx() - 1)]);
       if (!fresh) return;
       _kTenWeekRow = fresh;
+      _kTenLateRow = last;
 
       await _kTenRenderWeekCard();
+      _kTenRenderLate();
       await _kTenRenderFeed();
       await _kTenRenderMobRotation();
     })
@@ -1020,16 +1095,12 @@ async function initKitchenMobile() {
   if (typeof loadRoomsData === 'function') await loadRoomsData();
   await loadKitchenRoomsFromSupabase();
 
-  await _kTenRenderWeekCard();
-
   const idx  = kWeekIdx(new Date());
   const info = _kTenWeekInfo(Math.max(0, idx));
-  if (!sbL) { await _kTenRenderMobRotation(); return; }
+  if (!sbL) { await _kTenRenderWeekCard(); await _kTenRenderMobRotation(); return; }
 
-  const [, weekRowFresh] = await Promise.all([
-    _kTenRenderMobRotation(),
-    _kTenGetWeek(idx)
-  ]);
+  const [weekRowFresh, lastRow] = await Promise.all([_kTenGetWeek(idx), _kTenGetWeek(idx - 1)]);
+  _kTenLateRow = lastRow;
 
   let weekRow = weekRowFresh;
   if (!weekRow) {
@@ -1041,7 +1112,8 @@ async function initKitchenMobile() {
   _kTenWeekRow = weekRow;
 
   await _kTenRenderWeekCard();
-  await _kTenRenderFeed();
+  _kTenRenderLate();
+  await Promise.all([_kTenRenderMobRotation(), _kTenRenderFeed()]);
   await _kTenLoadNudgeBanner();
   _kTenSubscribe(idx);
 }
@@ -1051,7 +1123,7 @@ async function _kTenLoadNudgeBanner() {
   if (!sbL || _kTenNudgeBusy) return;
   const myRoom = (typeof currentRoom !== 'undefined' ? currentRoom : '') || localStorage.getItem('cc_room') || '';
   const { data } = await sbL.from('lounge_data').select('*')
-    .eq('type', 'kitchen_nudge')
+    .eq('type', 'kitchen_nudge').is('resolved_at', null)
     .order('created_at', { ascending: false })
     .limit(5);
   const banner = document.getElementById('k-ten-nudge-banner');
@@ -1112,9 +1184,11 @@ async function _kTenMarkNudgeDone() {
       await _kTenAddComment(_kTenWeekRow.id, myRoom, `✓ ${myRoom} — ${resolved} · done`, false);
       await _kTenRenderFeed();
     }
-    // Always delete the nudge — first person to tap Done resolves it for everyone
+    // Mark the nudge as resolved (kept in the landlord's log) — first Done resolves it for everyone
     if (sbL && nudgeId) {
-      await sbL.from('lounge_data').delete().eq('id', nudgeId);
+      await sbL.from('lounge_data')
+        .update({ resolved_at: new Date().toISOString(), resolved_by: myRoom })
+        .eq('id', nudgeId);
     }
   } finally { _kTenNudgeBusy = false; }
 }

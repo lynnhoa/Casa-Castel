@@ -38,6 +38,10 @@
               <input type="date" id="abs-to" style="flex:1;min-width:0;height:40px;border:0.5px solid var(--cc-rule);border-radius:var(--cc-r-sm);padding:0 10px;font-size:12px;color:var(--cc-taupe);background:var(--cc-white);font-family:inherit;"/>
             </div>
           </div>
+          <div class="abs-rule" id="abs-rule">
+            <p class="abs-rule__hint">Only full weeks (Mon–Sun) excuse your kitchen and cleaning turn.</p>
+            <p class="abs-rule__preview" id="abs-preview"></p>
+          </div>
           <p style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:6px;">Note (optional)</p>
           <textarea id="abs-note" rows="2" placeholder="e.g. holiday, work trip…" style="width:100%;border:0.5px solid var(--cc-rule);border-radius:var(--cc-r-sm);padding:8px 10px;font-size:12px;color:var(--cc-ink);background:var(--cc-white);font-family:inherit;resize:none;margin-bottom:14px;"></textarea>
           <p id="abs-error" style="font-size:11px;color:#7A2020;margin-bottom:8px;display:none;"></p>
@@ -74,11 +78,43 @@
   document.getElementById('abs-from')?.addEventListener('change', e => {
     const toEl = document.getElementById('abs-to');
     if (toEl) { toEl.min = e.target.value; if (toEl.value < e.target.value) toEl.value = e.target.value; }
+    _absUpdatePreview();
   });
+  document.getElementById('abs-to')?.addEventListener('change', _absUpdatePreview);
 
   /* Wire save button */
   document.getElementById('abs-save')?.addEventListener('click', absSaveAbsence);
 })();
+
+/* ── WHICH WEEKS DOES THIS ABSENCE EXCUSE? ─────────────────────
+   Lists every full Monday–Sunday week inside the chosen dates.   */
+function _absExcusedWeeks(fromYmd, toYmd) {
+  if (!fromYmd || !toYmd || toYmd < fromYmd) return [];
+  const [y, m, d] = fromYmd.split('-').map(Number);
+  const start = new Date(y, m - 1, d);
+  const toMon = (8 - start.getDay()) % 7;                 // days until the next Monday (0 = already Monday)
+  let mon = new Date(y, m - 1, d + toMon);
+  const out = [];
+  for (let i = 0; i < 60; i++) {
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+    if (_hcYmd(sun) > toYmd) break;
+    out.push([mon, sun]);
+    mon = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 7);
+  }
+  return out;
+}
+function _absUpdatePreview() {
+  const el = document.getElementById('abs-preview'); if (!el) return;
+  const from = document.getElementById('abs-from')?.value;
+  const to   = document.getElementById('abs-to')?.value;
+  const p = n => String(n).padStart(2, '0');
+  const f = dt => p(dt.getDate()) + '.' + p(dt.getMonth() + 1);
+  const weeks = _absExcusedWeeks(from, to);
+  el.classList.toggle('abs-rule__preview--none', !weeks.length);
+  el.textContent = weeks.length
+    ? 'Excused: ' + weeks.map(([a, b]) => f(a) + ' – ' + f(b)).join(', ')
+    : 'No full week in these dates — your turns still count.';
+}
 
 /* ── ROLE DETECTION ─────────────────────────────────────────── */
 function _absRole() { return localStorage.getItem('cc_role') || 'tenant'; }
@@ -110,6 +146,7 @@ function absOpenModal(name) {
     if (errEl) errEl.style.display = 'none';
     const noteEl = document.getElementById('abs-note');
     if (noteEl) noteEl.value = '';
+    _absUpdatePreview();
   }
 }
 function absCloseModal(name) {
@@ -135,10 +172,13 @@ async function _absPopulateList() {
   const curEnd   = curInfo ? _hcYmd(curInfo.end)   : null;
   const badge = `<span style="font-size:9px;font-weight:500;padding:2px 8px;border-radius:8px;background:#F5EEE8;border:0.5px solid #D4A87A;color:#8C5A30;white-space:nowrap;flex-shrink:0;">Away</span>`;
   el.innerHTML = data.map(a => {
-    const overlaps = curStart && a.from_date <= curEnd && a.to_date >= curStart;
-    const thisWeek = overlaps ? `<span style="font-size:10px;color:#8C5A30;margin-left:4px;">· this week</span>` : '';
+    const covers   = curStart && absCoversWeek(a, curStart, curEnd);
+    const overlaps = curStart && absOverlapsWeek(a, curStart, curEnd);
+    const thisWeek = covers   ? `<span style="font-size:10px;color:#8C5A30;margin-left:4px;">· away this week</span>`
+                   : overlaps ? `<span style="font-size:10px;color:var(--cc-taupe);margin-left:4px;">· part of this week — turn still counts</span>` : '';
     const note = a.note ? ` · <span style="color:var(--cc-stone);">${esc(a.note)}</span>` : '';
-    const canDelete = isLandlord || a.room === _absMyRoom();
+    // Tenants can only remove absences that haven't started yet (you can remove any)
+    const canDelete = isLandlord || (a.room === _absMyRoom() && a.from_date > _hcYmd(new Date()));
     return `<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);">
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">${badge}<span style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(a.room)}</span>${thisWeek}</div>
@@ -185,12 +225,22 @@ async function absSaveAbsence() {
     const mergedTo   = allTo.reduce((a,b) => a>b?a:b);
     const existingNote = overlapping.find(a=>a.note)?.note || null;
     const mergedNote   = noteRaw || existingNote;
-    if (overlapping.length) {
-      await sbL.from('kitchen_absences').delete().in('id', overlapping.map(a=>a.id));
+    // An absence that already started can't be replaced — it is extended instead
+    const started = overlapping.filter(a => a.from_date <= today).sort((a, b) => a.from_date < b.from_date ? -1 : 1)[0];
+    const others  = overlapping.filter(a => !started || a.id !== started.id);
+    if (others.length) {
+      await sbL.from('kitchen_absences').delete().in('id', others.map(a=>a.id));
     }
-    const payload = { room: myRoom, from_date: mergedFrom, to_date: mergedTo };
-    if (mergedNote) payload.note = mergedNote;
-    const { error: insErr } = await sbL.from('kitchen_absences').insert(payload);
+    let insErr = null;
+    if (started) {
+      const patch = { to_date: mergedTo };
+      if (mergedNote) patch.note = mergedNote;
+      ({ error: insErr } = await sbL.from('kitchen_absences').update(patch).eq('id', started.id));
+    } else {
+      const payload = { room: myRoom, from_date: mergedFrom, to_date: mergedTo };
+      if (mergedNote) payload.note = mergedNote;
+      ({ error: insErr } = await sbL.from('kitchen_absences').insert(payload));
+    }
     if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="ti ti-calendar-plus" style="font-size:14px;margin-right:6px;" aria-hidden="true"></i>Save absence'; }
     if (insErr) { showErr('Could not save — ' + (insErr.message || 'please try again.')); return; }
     absCloseModal('register');
@@ -339,7 +389,9 @@ async function loadHouseCleaning() {
   // Absences covering this week
   const curWStart = curInfo ? _hcYmd(curInfo.start) : null;
   const curWEnd   = curInfo ? _hcYmd(curInfo.end)   : null;
-  const weekAbsences = curWStart ? absRows.filter(a => a.from_date <= curWEnd && a.to_date >= curWStart) : [];
+  // Away only when one absence covers the whole Mon–Sun week; shorter ones are shown as info
+  const weekAbsences = curWStart ? absRows.filter(a => absCoversWeek(a, curWStart, curWEnd)) : [];
+  const partAbsences = curWStart ? absRows.filter(a => absOverlapsWeek(a, curWStart, curWEnd) && !absCoversWeek(a, curWStart, curWEnd)) : [];
   // Is the current week's assigned room itself absent?
   const isCurrentRoomAbsent = curInfo ? weekAbsences.some(a => a.room === curInfo.room) : false;
 
@@ -385,6 +437,13 @@ async function loadHouseCleaning() {
           <i class="ti ti-calendar-off" style="font-size:14px;color:#8C5A30;flex-shrink:0;" aria-hidden="true"></i>
           <span style="flex:1;font-size:11px;color:#8C5A30;">${esc(a.room)} is away this week${note}</span>
         </div>`;
+      }).join('') + `</div>` : ''}
+      ${partAbsences.length ? `<div style="margin-top:2px;">` + partAbsences.map(a => {
+        const f = s => { const [y, m, d] = s.split('-'); return d + '.' + m; };
+        return `<div style="width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--cc-surface);border:0.5px solid var(--cc-rule);border-radius:var(--cc-r-sm);margin-bottom:6px;">
+          <i class="ti ti-calendar-event" style="font-size:14px;color:var(--cc-taupe);flex-shrink:0;" aria-hidden="true"></i>
+          <span style="flex:1;font-size:11px;color:var(--cc-taupe);">${esc(a.room)} is away ${f(a.from_date)} – ${f(a.to_date)} · turn still counts</span>
+        </div>`;
       }).join('') + `</div>` : ''}`;
   }
 
@@ -407,7 +466,7 @@ function _hcRotState({ isNow, isPast, isNext, slotDone, room, weekStart, absRows
   if (absRows && weekStart) {
     const wStart = _hcYmd(weekStart);
     const wEnd   = _hcYmd(_hcAddDays(weekStart, 6));
-    if (absRows.some(a => a.room === room && a.from_date <= wEnd && a.to_date >= wStart)) return 'absent';
+    if (absRows.some(a => a.room === room && absCoversWeek(a, wStart, wEnd))) return 'absent';
   }
   // 2. Vacant room
   if (isVacant(room)) return 'skipped';
@@ -441,7 +500,7 @@ function _renderHcRotation(cycleStart, cyclePos, hcDoneMap, absRows, rot) {
     const candidateWs   = _hcAddDays(HC_W1_START, candidateSlot * 7);
     const cwStart = _hcYmd(candidateWs);
     const cwEnd   = _hcYmd(_hcAddDays(candidateWs, 6));
-    const isAbsent  = (absRows || []).some(a => a.room === candidateRoom && a.from_date <= cwEnd && a.to_date >= cwStart);
+    const isAbsent  = (absRows || []).some(a => a.room === candidateRoom && absCoversWeek(a, cwStart, cwEnd));
     const isSkipped = isVacant(candidateRoom);
     if (!isAbsent && !isSkipped) { trueNextI = candidateI; break; }
   }

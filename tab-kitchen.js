@@ -36,10 +36,14 @@ document.getElementById('tab-kitchen').innerHTML = `
         <div class="k-mob-week-left">
           <span class="k-mob-week-room" id="k-mob-room-name">—</span>
           <span class="k-mob-week-dates-sm" id="k-mob-dates">—</span>
+          <span class="k-note" id="k-mob-note" style="display:none;"></span>
         </div>
         <div class="k-mob-week-acts" id="k-mob-actions"></div>
       </div>
     </div>
+
+    <!-- Last week — shown only while last week still needs a review -->
+    <div class="k-last" id="k-mob-last" style="display:none;"></div>
 
     <!-- Nudge banner -->
     <div id="k-mob-nudge-banner" style="display:none;flex-shrink:0;padding:8px 14px;background:#FEFCE8;border-bottom:0.5px solid #EAD96B;align-items:center;gap:8px;">
@@ -80,6 +84,14 @@ document.getElementById('tab-kitchen').innerHTML = `
     <!-- Left column: week card + rotation + nudge compose -->
     <div class="k-desktop-left">
 
+      <!-- Last week — shown only while last week still needs a review -->
+      <div class="k-dsk-section" id="k-dsk-last-sec" style="display:none;">
+        <div class="k-dsk-section-hdr">
+          <span class="k-dsk-section-lbl">Last week</span>
+        </div>
+        <div id="k-dsk-last"></div>
+      </div>
+
       <!-- This week -->
       <div class="k-dsk-section">
         <div class="k-dsk-section-hdr">
@@ -90,6 +102,7 @@ document.getElementById('tab-kitchen').innerHTML = `
           <div class="k-mob-week-left">
             <span class="k-mob-week-room" id="k-dsk-room-name">—</span>
             <span class="k-mob-week-dates-sm" id="k-dsk-dates">—</span>
+            <span class="k-note" id="k-dsk-note" style="display:none;"></span>
           </div>
         </div>
         <div class="k-dsk-act-row" id="k-dsk-actions"></div>
@@ -229,6 +242,28 @@ document.getElementById('tab-kitchen').innerHTML = `
       <div class="cc-modal-body" id="k-mob-nudgelog-body"><p class="cc-note">Loading…</p></div>
     </div>
   </div>
+
+  <!-- Flag sheet — why the proof has to be redone -->
+  <div class="cc-modal-overlay" id="kitchen-modal-flag" onclick="if(event.target===this)kitchenCloseModal('flag')">
+    <div class="cc-modal-sheet" style="max-height:75vh;">
+      <div class="cc-modal-hdr">
+        <span class="cc-modal-title" id="k-flag-title">Flag proof</span>
+        <button class="cc-modal-close" onclick="kitchenCloseModal('flag')">✕</button>
+      </div>
+      <div class="cc-modal-body">
+        <p class="k-nudge-sublbl">What has to be redone?</p>
+        <div class="k-flag-reasons" id="k-flag-reasons">
+          <button type="button" class="k-mob-n-chip" data-reason="Trash">Trash</button>
+          <button type="button" class="k-mob-n-chip" data-reason="Dishes">Dishes</button>
+          <button type="button" class="k-mob-n-chip" data-reason="Overview photo unclear">Overview photo unclear</button>
+          <button type="button" class="k-mob-n-chip" data-reason="Not clean enough">Not clean enough</button>
+        </div>
+        <textarea class="issue-note-input k-nudge-note" id="k-flag-note" placeholder="Add a note… (optional)" rows="2"></textarea>
+        <p class="k-flag-err" id="k-flag-err" style="display:none;">Pick a reason or write a note.</p>
+        <button class="k-nudge-send-btn" id="k-flag-send-btn" onclick="_kFlagConfirm()">Flag — ask for new photos</button>
+      </div>
+    </div>
+  </div>
 `;
 
 /* ── MODAL HELPERS ──────────────────────────────────────── */
@@ -250,6 +285,13 @@ async function _kGetWeek(idx) {
 async function _kUpdateWeek(idx, patch) {
   if (!sbL) return;
   await sbL.from('kitchen_weeks').update(patch).eq('week_index', idx);
+}
+// Actions always write to the exact week that is on screen (by its id)
+async function _kUpdateRow(row, patch) {
+  if (!sbL || !row) return { error: 'no row' };
+  const res = await sbL.from('kitchen_weeks').update(patch).eq('id', row.id);
+  if (res.error) alert('Could not save — ' + (res.error.message || 'please try again.'));
+  return res;
 }
 async function _kGetComments(weekId) {
   if (!sbL) return [];
@@ -376,12 +418,24 @@ function _kYmd(dt) {
 function _kAddDays(dt, n) { return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + n); }
 
 /* ── ROTATION STATE ─────────────────────────────────────── */
+// Finished weeks: the saved result wins (set by the Sunday close in the database).
+// Current / future weeks: live rules — away only when ONE absence covers Mon–Sun.
 function _kRotState(opts) {
   const { isNow, isPast, isNext, dbStatus, room, weekStart, absenceRows } = opts;
+  if (isPast) {
+    if (!dbStatus)               return 'none';
+    if (dbStatus === 'approved') return 'done';
+    if (dbStatus === 'absent')   return 'absent';
+    if (dbStatus === 'skipped')  return 'skipped';
+    if (dbStatus === 'submitted') return 'review';   // proof waiting for review / auto-approve
+    return 'missed';                                  // missed, or not closed yet
+  }
+  if (isNow && dbStatus === 'absent')  return 'absent';
+  if (isNow && dbStatus === 'skipped') return 'skipped';
   if (absenceRows && weekStart) {
     const wStart = _kYmd(weekStart);
     const wEnd   = _kYmd(_kAddDays(weekStart, 6));
-    if (absenceRows.some(a => a.room === room && a.from_date <= wEnd && a.to_date >= wStart)) return 'absent';
+    if (absenceRows.some(a => a.room === room && absCoversWeek(a, wStart, wEnd))) return 'absent';
   }
   if (isVacant(room)) return 'skipped';
   if (isNow) {
@@ -389,12 +443,40 @@ function _kRotState(opts) {
     if (dbStatus === 'missed')   return 'missed';   // landlord marked the current week as missed
     return 'now';
   }
-  if (!isPast) return isNext ? 'next' : 'upcoming';
-  if (!dbStatus)               return 'none';
-  if (dbStatus === 'approved') return 'done';
-  if (dbStatus === 'skipped')  return 'skipped';
-  if (dbStatus === 'absent')   return 'absent';
-  return 'missed';
+  return isNext ? 'next' : 'upcoming';
+}
+
+/* Position of this week's room in the rotation — taken from the saved week
+   (the database decides the room per week), modulo only as a fallback. */
+function _kCyclePos(rooms, idx, weekRow) {
+  const n = rooms.length; if (!n) return 0;
+  const p = weekRow ? rooms.indexOf(weekRow.room) : -1;
+  return p !== -1 ? p : ((idx % n) + n) % n;
+}
+
+/* Small formatters shared by the week card + last-week card */
+function _kFmtDM(d) { const p = n => String(n).padStart(2, '0'); return p(d.getDate()) + '.' + p(d.getMonth() + 1); }
+function _kWeekRange(idx) {
+  const s = new Date(K_START.getTime() + idx * 7 * 24 * 60 * 60 * 1000);
+  const e = new Date(s.getTime() + 6 * 24 * 60 * 60 * 1000);
+  return _kFmtDM(s) + ' – ' + _kFmtDM(e);
+}
+function _kAutoAt(row) {
+  const t = row && (row.submitted_at || row.created_at);
+  return t ? new Date(new Date(t).getTime() + 48 * 60 * 60 * 1000) : null;
+}
+function _kFmtWhen(d) {
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const p = n => String(n).padStart(2, '0');
+  return days[d.getDay()] + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function _kSetNote(ids, text, tone) {
+  ids.forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.textContent = text || '';
+    el.className = 'k-note' + (tone ? ' k-note--' + tone : '');
+    el.style.display = text ? '' : 'none';
+  });
 }
 
 /* ── FEED SAFETY HELPERS (K2/K3) ────────────────────────── */
@@ -406,7 +488,7 @@ function _kProofUrl(u) {
 }
 // Typed chat text must never look like a system marker ([photo] / [submission] / [system] / ✓ / ↩).
 function _kSafeChatText(t) {
-  return /^(\[(photo|submission|system)\]|✓|↩)/.test(t) ? '\u200B' + t : t;
+  return /^(\[(photo|submission|system|late)\]|✓|↩|✗|⚑)/.test(t) ? '\u200B' + t : t;
 }
 
 /* ── SENDER DISPLAY (K14) ───────────────────────────────── */
@@ -417,6 +499,20 @@ function _kSenderHtml(room) {
     avatar: `<div class="k-chat-avatar${isCC ? ' k-chat-avatar--me' : ''}"${isCC ? ' style="background:var(--cc-ink);color:var(--cc-white);"' : ''}>${esc(roomInitials(room || ''))}</div>`,
     name:   `<span class="k-chat-name"${isCC ? ' style="color:var(--cc-gold);"' : ''}>${esc(room || '')}</span>`
   };
+}
+
+/* Photo strip for a proof submission (3 photos with labels) */
+function _kPhotoStrip(photos) {
+  const labels = { trash:'Trash', geschirr:'Dishes', overview:'Overview' };
+  const lbl    = t => labels[t] || t;
+  if (!photos || !photos.length) return '';
+  return '<div style="display:flex;gap:4px;margin-top:8px;">'
+    + photos.filter(p => p && _kProofUrl(p.url)).map(p =>
+        `<div style="flex:1;min-width:0;aspect-ratio:3/4;border-radius:6px;overflow:hidden;border:0.5px solid var(--cc-rule);position:relative;cursor:pointer;" data-url="${esc(_kProofUrl(p.url))}" data-label="${esc(lbl(p.type))}" onclick="openPhotoModal(this.dataset.url,this.dataset.label)">`
+        + `<img src="${esc(_kProofUrl(p.url))}" alt="${esc(p.type)}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'"/>`
+        + `<span style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);font-size:8px;font-weight:500;color:#fff;letter-spacing:0.05em;text-transform:uppercase;padding:3px 4px;text-align:center;">${esc(lbl(p.type))}</span>`
+        + `</div>`
+      ).join('') + '</div>';
 }
 
 /* ── FEED HTML BUILDER ──────────────────────────────────── */
@@ -434,6 +530,11 @@ function _kBuildFeedHtml(comments, weekRow) {
         const p = JSON.parse(c.text.slice(13));
         events.push({ _type:'submission', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[], isReupload:!!p.isReupload });
       } catch(e) {}
+    } else if (c.text && c.text.startsWith('[late] ')) {
+      try {
+        const p = JSON.parse(c.text.slice(7));
+        events.push({ _type:'late', _ts:new Date(c.created_at).getTime(), room:c.room, photos:p.photos||[], week:p.week||'' });
+      } catch(e) {}
     } else if (c.text && c.text.startsWith('[system] ')) {
       events.push({ _type:'system', _ts:new Date(c.created_at).getTime(), text:c.text.slice(9) });
     } else {
@@ -445,6 +546,13 @@ function _kBuildFeedHtml(comments, weekRow) {
 
   let flagSeen = false;
   return events.map(ev => {
+    if (ev._type === 'late') {
+      return `<div style="padding:8px 0;border-bottom:0.5px solid var(--cc-rule);">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:11px;font-weight:500;color:var(--cc-ink);background:var(--cc-surface);border:0.5px solid var(--cc-rule);border-radius:var(--cc-r-pill);padding:2px 9px;">${esc(ev.room)}</span>
+          <span class="k-late-badge">Late proof · ${esc(ev.week)}</span><span style="font-size:10px;color:var(--cc-stone);">${fmtTs(ev._ts)}</span>
+        </div>${_kPhotoStrip(ev.photos)}</div>`;
+    }
     if (ev._type === 'submission') {
       const isRe = flagSeen; flagSeen = false;
       const photoStrip = ev.photos && ev.photos.length
@@ -474,20 +582,28 @@ function _kBuildFeedHtml(comments, weekRow) {
     }
     if (ev.is_flag) {
       flagSeen = true;
+      const why = ev.text && ev.text.startsWith('⚑ Redo: ') ? ev.text.slice(2) : 'Re-upload requested';
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--flag">⚑ Re-upload requested · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--flag">⚑ ${esc(why)} · ${fmtTs(ev._ts)}</span>
         <button class="k-delete-btn k-delete-btn--sys" title="Delete">✕</button>
         <div class="k-sys-event__line"></div></div>`;
     }
     const isSysApproved = ev.text && (ev.text.startsWith('✓ Approved') || ev.text.startsWith('↩ Approval'));
     if (isSysApproved) {
       const isApproved = ev.text.startsWith('✓ Approved');
+      const isAuto     = ev.text.startsWith('✓ Approved automatically');
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
         <span class="k-sys-event__text${isApproved ? ' k-sys-event__text--approved' : ''}">
-          ${isApproved ? '✓ Approved' : '↩ Approval undone'} · ${fmtTs(ev._ts)}
+          ${isApproved ? (isAuto ? '✓ Approved automatically (48h)' : '✓ Approved') : '↩ Approval undone'} · ${fmtTs(ev._ts)}
         </span>
+        <div class="k-sys-event__line"></div></div>`;
+    }
+    if (ev.text && ev.text.startsWith('✗ ')) {
+      return `<div class="k-sys-event" data-comment-id="${ev.id}">
+        <div class="k-sys-event__line"></div>
+        <span class="k-sys-event__text k-sys-event__text--missed">${esc(ev.text)} · ${fmtTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
     if (ev.text && ev.text.startsWith('✓ ') && !ev.text.startsWith('✓ Approved') && !ev.text.startsWith('✓ Approval')) {
@@ -531,11 +647,6 @@ async function _kRenderFeed(weekRow) {
     if (elDsk) elDsk.innerHTML = el.innerHTML;
     return;
   }
-  if (weekRow.status === 'missed') {
-    el.innerHTML = '<p class="cc-note" style="padding:8px 0;">Week reset — marked as missed.</p>';
-    if (elDsk) elDsk.innerHTML = el.innerHTML;
-    return;
-  }
   const comments = await _kGetComments(weekRow.id);
   const html = _kBuildFeedHtml(comments, weekRow);
   el.innerHTML = html;
@@ -563,7 +674,7 @@ async function _kRenderRotation(weekRow, absData, preRows) {
   const rooms = _kGetRoomList();
   if (!rooms.length) { el.innerHTML = ''; return; }
   const idx        = kWeekIdx();
-  const cyclePos   = ((idx % rooms.length) + rooms.length) % rooms.length;
+  const cyclePos   = _kCyclePos(rooms, idx, weekRow);
   const cycleStart = idx - cyclePos;
   const pad = n => String(n).padStart(2, '0');
   const fmt = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
@@ -578,7 +689,8 @@ async function _kRenderRotation(weekRow, absData, preRows) {
       .gte('week_index', cycleStart).lte('week_index', cycleStart + rooms.length - 1);
     _rows = data || [];
   }
-  const dbRows = rooms.map((_, i) => _rows.find(r => r.week_index === cycleStart + i) || null);
+  // A saved week only counts for this row when it really belongs to this room
+  const dbRows = rooms.map((room, i) => _rows.find(r => r.week_index === cycleStart + i && r.room === room) || null);
 
   let approvedCount = 0;
   for (let i = 0; i < cyclePos; i++) { if (dbRows[i] && dbRows[i].status === 'approved') approvedCount++; }
@@ -592,7 +704,7 @@ async function _kRenderRotation(weekRow, absData, preRows) {
     const nStart = new Date(K_START.getTime() + slot * 7 * 24 * 60 * 60 * 1000);
     const nWs = _kYmd(nStart);
     const nWe = _kYmd(_kAddDays(nStart, 6));
-    if (!absData.some(a => a.room === nRoom && a.from_date <= nWe && a.to_date >= nWs) && !isVacant(nRoom)) {
+    if (!absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe)) && !isVacant(nRoom)) {
       trueNextI = ni; break;
     }
   }
@@ -613,7 +725,7 @@ async function _kRenderRotation(weekRow, absData, preRows) {
       weekStart:   info ? info.start : null,
       absenceRows: absData,
     });
-    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'Away', now:'Now', none:'—', next:'Next', upcoming:'—' }[state] || '—';
+    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'Away', now:'Now', none:'—', next:'Next', upcoming:'—', review:'↑' }[state] || '—';
     return `<div class="k-mob-rot-item ${state}"><span class="k-mob-rot-badge ${state}">${badgeText}</span><span class="k-mob-rot-room">${esc(room)}</span><span class="k-mob-rot-dates">${dateStr}</span></div>`;
   }).join('');
 
@@ -637,7 +749,8 @@ async function _kRenderRotation(weekRow, absData, preRows) {
                      : state === 'missed'  ? 'rot-line-missed' : 'rot-line-faded';
       const botLine  = state === 'done' && i < cyclePos ? 'rot-line-done' : 'rot-line-faded';
       const badge    = {
-        done:     '<span class="rot-badge rot-badge--done">✓ Done</span>',
+        done:     `<span class="rot-badge rot-badge--done">✓ ${dbRow && dbRow.is_late ? 'Done (late)' : 'Done'}</span>`,
+        review:   '<span class="rot-badge rot-badge--next">↑ Review</span>',
         now:      '<span class="rot-badge rot-badge--now">Now</span>',
         next:     '<span class="rot-badge rot-badge--next">Next</span>',
         missed:   '<span class="rot-badge rot-badge--missed">Missed</span>',
@@ -667,26 +780,20 @@ async function _kRenderRotation(weekRow, absData, preRows) {
 function _kRenderWeekCard(weekRow, absData) {
   const idx = kWeekIdx();
   const wi  = _kWeekInfo(idx); if (!wi) return;
-  const pad = n => String(n).padStart(2, '0');
-  const fmt = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
-  const dateStr = fmt(wi.start) + ' – ' + fmt(wi.end) + (wi.daysLeft > 0 ? ' · ' + wi.daysLeft + 'd left' : ' · ends today');
+  const room    = (weekRow && weekRow.room) || wi.room;          // saved room wins
+  const dateStr = _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end) + (wi.daysLeft > 0 ? ' · ' + wi.daysLeft + 'd left' : ' · ends today');
 
   const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  setTxt('k-mob-room-name', wi.room);
+  setTxt('k-mob-room-name', room);
   setTxt('k-mob-dates', dateStr);
-  setTxt('k-dsk-room-name', wi.room);
+  setTxt('k-dsk-room-name', room);
   setTxt('k-dsk-dates', dateStr);
 
-  const state    = _kRotState({
-    isNow:       true,
-    isPast:      false,
-    dbStatus:    weekRow ? weekRow.status : null,
-    room:        wi.room,
-    weekStart:   wi.start,
-    absenceRows: absData,
-  });
   const dbStatus = weekRow ? weekRow.status : null;
+  const state    = _kRotState({ isNow: true, isPast: false, dbStatus, room, weekStart: wi.start, absenceRows: absData });
   const isResub  = state === 'now' && weekRow && weekRow.reupload_count > 0 && dbStatus !== 'flagged';
+  const isAuto   = !!(weekRow && weekRow.approved_by === 'auto');
+  const isLate   = !!(weekRow && weekRow.is_late);
 
   // Chip — status is checked before reupload_count so flagged always wins
   const chipCls = state === 'done'     ? 'approved'
@@ -698,19 +805,38 @@ function _kRenderWeekCard(weekRow, absData) {
                 : dbStatus === 'submitted'                    ? 'submitted'
                 : 'pending';
   const chipTxt = state !== 'now'
-    ? ({ done:'✓ Approved', missed:'✗ Missed', absent:'— Away', skipped:'— Skipped' }[state] || 'Pending')
+    ? ({ done: isLate ? '✓ Done (late)' : isAuto ? '✓ Approved (auto)' : '✓ Approved',
+         missed:'✗ Missed', absent:'— Away', skipped:'— Skipped' }[state] || 'Pending')
     : dbStatus === 'flagged'       ? '⚑ Redo'
     : isResub                      ? '↑↑ Re-submitted'
     : dbStatus === 'submitted'     ? '↑ Submitted'
     : 'Pending';
-  const chip = document.getElementById('k-mob-status-chip');
-  if (chip) { chip.className = 'k-mob-status-chip ' + chipCls; chip.textContent = chipTxt; }
-  const chipDsk = document.getElementById('k-dsk-status-chip');
-  if (chipDsk) { chipDsk.className = 'k-mob-status-chip ' + chipCls; chipDsk.textContent = chipTxt; }
+  ['k-mob-status-chip', 'k-dsk-status-chip'].forEach(id => {
+    const chip = document.getElementById(id);
+    if (chip) { chip.className = 'k-mob-status-chip ' + chipCls; chip.textContent = chipTxt; }
+  });
+
+  // One short line under the dates: what happens next
+  let note = '', tone = '';
+  if (state === 'absent')       { note = room + ' is away this week — no kitchen turn.'; }
+  else if (state === 'skipped') { note = room + ' is vacant — no kitchen turn this week.'; }
+  else if (dbStatus === 'submitted') {
+    const at = _kAutoAt(weekRow);
+    note = weekRow.no_auto ? 'Waiting for your review — no auto-approve.'
+         : at && at > new Date() ? 'Auto-approves ' + _kFmtWhen(at)
+         : 'Auto-approving…';
+  }
+  else if (dbStatus === 'flagged' && weekRow.flag_reason) { note = 'Redo: ' + weekRow.flag_reason; tone = 'flag'; }
+  else if (state === 'done' && isAuto) { note = 'Approved automatically after 48 hours.'; }
+  else if (state === 'missed') {
+    note = weekRow && weekRow.late_until && new Date(weekRow.late_until) > new Date()
+      ? 'Late proof possible until ' + _kFmtWhen(new Date(weekRow.late_until))
+      : 'Marked missed.';
+    tone = 'flag';
+  }
+  _kSetNote(['k-mob-note', 'k-dsk-note'], note, tone);
 
   // Action buttons
-  const actEl = document.getElementById('k-mob-actions');
-  if (!actEl) return;
   let items = [];
   if (state === 'skipped' || state === 'absent') {
     // no buttons
@@ -728,16 +854,60 @@ function _kRenderWeekCard(weekRow, absData) {
     items.push(`<button class="k-mob-wact blue"  onclick="kReminder()" aria-label="Remind"><i class="ti ti-mail"></i><span>Remind</span></button>`);
     items.push(`<button class="k-mob-wact red"   onclick="kReset()"   aria-label="Missed"><i class="ti ti-ban"></i><span>Missed</span></button>`);
   }
-  actEl.innerHTML = items.join('');
+  const actEl  = document.getElementById('k-mob-actions');
   const actDsk = document.getElementById('k-dsk-actions');
+  if (actEl)  actEl.innerHTML  = items.join('');
   if (actDsk) actDsk.innerHTML = items.join('');
+}
+
+/* ── LAST WEEK CARD ─────────────────────────────────────────
+   Shown only while last week still needs you: a (late) proof is
+   waiting for review. Same Approve / Flag as this week.          */
+async function _kRenderLastWeek(lastRow) {
+  const mob    = document.getElementById('k-mob-last');
+  const dsk    = document.getElementById('k-dsk-last');
+  const dskSec = document.getElementById('k-dsk-last-sec');
+  const hide = () => { if (mob) mob.style.display = 'none'; if (dskSec) dskSec.style.display = 'none'; };
+  if (!lastRow || lastRow.status !== 'submitted') { hide(); return; }
+
+  // Photos of the newest upload for that week
+  let photos = lastRow.photos || [];
+  try {
+    const comments = await _kGetComments(lastRow.id);
+    const subs = comments.filter(c => c.text && c.text.startsWith('[submission] '));
+    if (subs.length) photos = JSON.parse(subs[subs.length - 1].text.slice(13)).photos || photos;
+  } catch (e) {}
+
+  const at    = _kAutoAt(lastRow);
+  const label = lastRow.is_late ? '↑ Late proof' : '↑ In review';
+  const when  = lastRow.no_auto ? 'Waiting for your review'
+              : at && at > new Date() ? 'Auto-approves ' + _kFmtWhen(at) : 'Auto-approving…';
+  const html = `
+    <div class="k-last__top">
+      <div class="k-last__info">
+        <span class="k-last__room">${esc(lastRow.room)}</span>
+        <span class="k-last__meta">Last week · ${_kWeekRange(lastRow.week_index)} · ${when}</span>
+      </div>
+      <span class="k-mob-status-chip submitted">${label}</span>
+    </div>
+    <div class="k-last__body">
+      <div class="k-last__photos">${_kPhotoStrip(photos)}</div>
+      <div class="k-mob-week-acts">
+        <button class="k-mob-wact green" onclick="kApprove('last')" aria-label="Approve last week"><i class="ti ti-circle-check"></i><span>Approve</span></button>
+        <button class="k-mob-wact red"   onclick="kFlag('last')"    aria-label="Flag last week"><i class="ti ti-flag"></i><span>Flag</span></button>
+      </div>
+    </div>`;
+  if (mob) { mob.innerHTML = html; mob.style.display = ''; }
+  if (dsk) dsk.innerHTML = html;
+  if (dskSec) dskSec.style.display = '';
 }
 
 /* ── NUDGE BANNER ───────────────────────────────────────── */
 async function _kLoadNudgeBanner(weekRow) {
   if (!sbL) return;
   const { data } = await sbL.from('lounge_data').select('*')
-    .eq('type', 'kitchen_nudge').order('created_at', { ascending: false }).limit(1).maybeSingle();
+    .eq('type', 'kitchen_nudge').is('resolved_at', null)
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
   const banner = document.getElementById('k-mob-nudge-banner');
   const text   = document.getElementById('k-mob-nudge-banner-text');
   const status = document.getElementById('k-mob-nudge-banner-status');
@@ -767,16 +937,15 @@ async function _kLoadNudgeBanner(weekRow) {
   banner.style.display = 'flex';
   if (bannerDsk) bannerDsk.style.display = 'flex';
 }
+/* Dismiss = mark the open nudge as resolved (kept in the log), never delete */
 async function _kDismissNudgeBanner() {
   const b = document.getElementById('k-mob-nudge-banner'); if (b) b.style.display = 'none';
   const d = document.getElementById('k-dsk-nudge-banner'); if (d) d.style.display = 'none';
-  if (sbL) await sbL.from('lounge_data').delete().eq('type', 'kitchen_nudge');
+  if (sbL) await sbL.from('lounge_data')
+    .update({ resolved_at: new Date().toISOString(), resolved_by: 'Casa Castel' })
+    .eq('type', 'kitchen_nudge').is('resolved_at', null);
 }
-async function _kDismissNudgeBannerDsk() {
-  const b = document.getElementById('k-mob-nudge-banner'); if (b) b.style.display = 'none';
-  const d = document.getElementById('k-dsk-nudge-banner'); if (d) d.style.display = 'none';
-  if (sbL) await sbL.from('lounge_data').delete().eq('type', 'kitchen_nudge');
-}
+var _kDismissNudgeBannerDsk = _kDismissNudgeBanner;
 
 /* ── MODAL POPULATORS ───────────────────────────────────── */
 async function _populateKHistory() {
@@ -787,17 +956,23 @@ async function _populateKHistory() {
   if (!data || !data.length) { el.innerHTML = '<p class="cc-note">No past weeks yet.</p>'; return; }
   el.innerHTML = data.map(w => {
     const dateStr = kWeekDateRange(w.week_index);
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);"><div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(w.room)}</p><p style="font-size:11px;color:var(--cc-taupe);">${dateStr}</p></div>${kHistPill(w.status)}</div>`;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);"><div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(w.room)}</p><p style="font-size:11px;color:var(--cc-taupe);">${dateStr}</p></div>${kHistPill(w.status, '', w)}</div>`;
   }).join('');
 }
 async function _populateKNudgeLog() {
   const el = document.getElementById('k-mob-nudgelog-body');
   if (!sbL) { el.innerHTML = '<p class="cc-note">Connect Supabase.</p>'; return; }
-  const { data } = await sbL.from('lounge_data').select('*').eq('type', 'kitchen_nudge').order('created_at', { ascending: false }).limit(20);
+  const { data } = await sbL.from('lounge_data').select('*').eq('type', 'kitchen_nudge').order('created_at', { ascending: false }).limit(K_NUDGE_LOG_MAX);
   if (!data || !data.length) { el.innerHTML = '<p class="cc-note">No nudges sent yet.</p>'; return; }
-  el.innerHTML = data.map(n =>
-    `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);"><div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(n.body)}</p><p style="font-size:11px;color:var(--cc-taupe);">→ ${esc(n.room === 'All' ? 'All rooms' : n.room)} · ${fmtTs(new Date(n.created_at).getTime())}</p></div><button onclick="_kDeleteNudge('${n.id}',this)" style="font-size:10px;color:var(--cc-stone);background:none;border:none;cursor:pointer;">✕</button></div>`
-  ).join('');
+  el.innerHTML = data.map(n => {
+    const state = n.resolved_at
+      ? (n.resolved_by === 'replaced'
+          ? `<span class="k-nudge-state">↺ Replaced by a newer nudge</span>`
+          : `<span class="k-nudge-state k-nudge-state--done">✓ Resolved${n.resolved_by ? ' by ' + esc(n.resolved_by) : ''} · ${fmtTs(new Date(n.resolved_at).getTime())}</span>`)
+      : `<span class="k-nudge-state">Open</span>`;
+    const note = n.title ? ` · ${esc(n.title)}` : '';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);"><div style="min-width:0;"><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(n.body)}${note}</p><p style="font-size:11px;color:var(--cc-taupe);">→ ${esc(n.room === 'All' ? 'All rooms' : n.room)} · ${fmtTs(new Date(n.created_at).getTime())}</p>${state}</div><button onclick="_kDeleteNudge('${n.id}',this)" style="font-size:10px;color:var(--cc-stone);background:none;border:none;cursor:pointer;flex-shrink:0;">✕</button></div>`;
+  }).join('');
 }
 async function _kDeleteNudge(id, btn) {
   if (!sbL) return;
@@ -890,76 +1065,87 @@ async function _kSendPhoto(file) {
 
 /* ── ACTION HANDLERS ────────────────────────────────────── */
 let _kWeekRow    = null;
+let _kLastRow    = null;   // last week, when it still needs a review
 let _kActionBusy = false;
 let _kMobSending = false;
 let _kChannel    = null;
+let _kFlagTarget = null;
 
-async function kApprove() {
-  if (!_kWeekRow || !sbL || _kActionBusy) return; _kActionBusy = true;
-  try {
-    await _kUpdateWeek(kWeekIdx(), { status:'approved', flagged:false, approved_at:new Date().toISOString() });
-    await _kAddComment(_kWeekRow.id, 'Casa Castel', '✓ Approved by landlord.', false);
-    await loadKitchen();
-  } finally { _kActionBusy = false; }
+/* New-week safety: if the app was left open into a new week, refresh first
+   so a button never acts on the wrong week. Returns false when it refreshed. */
+async function _kEnsureCurrentWeek() {
+  if (!_kWeekRow || _kWeekRow.week_index === kWeekIdx()) return true;
+  await loadKitchen();
+  alert('A new week has started, so the kitchen tab was refreshed. Please check again.');
+  return false;
 }
-async function kFlag() {
-  if (!_kWeekRow || !sbL || _kActionBusy) return; _kActionBusy = true;
-  try {
-    await _kUpdateWeek(kWeekIdx(), { flagged:true, status:'flagged' });
-    await _kAddComment(_kWeekRow.id, 'Casa Castel', '⚑ Flagged by landlord — please re-upload your photos.', true);
-    await loadKitchen();
-  } finally { _kActionBusy = false; }
+// Which week a button acts on: this week (default) or last week
+function _kTarget(which) { return which === 'last' ? _kLastRow : _kWeekRow; }
+
+async function _kRun(which, fn) {
+  if (!sbL || _kActionBusy) return;
+  if (!(await _kEnsureCurrentWeek())) return;
+  const row = _kTarget(which); if (!row) return;
+  _kActionBusy = true;
+  try { await fn(row); await loadKitchen(); } finally { _kActionBusy = false; }
 }
-async function kUnapprove() {
-  if (!_kWeekRow || !sbL || _kActionBusy) return; _kActionBusy = true;
-  try {
-    await _kUpdateWeek(kWeekIdx(), { status:'submitted', flagged:false, approved_at:null });
-    await _kAddComment(_kWeekRow.id, 'Casa Castel', '↩ Approval undone — week back under review.', false);
-    await loadKitchen();
-  } finally { _kActionBusy = false; }
+
+function kApprove(which) {
+  return _kRun(which, async row => {
+    const { error } = await _kUpdateRow(row, { status:'approved', flagged:false, approved_at:new Date().toISOString(), approved_by:'landlord' });
+    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Approved by landlord.', false);
+  });
 }
-async function kUnflag() {
-  if (!_kWeekRow || !sbL || _kActionBusy) return; _kActionBusy = true;
-  try {
-    await _kUpdateWeek(kWeekIdx(), { flagged:false, status:'submitted' });
-    await _kAddComment(_kWeekRow.id, 'Casa Castel', '✓ Flag removed — week back under review.', false);
-    await loadKitchen();
-  } finally { _kActionBusy = false; }
+/* Flag opens a small sheet: what has to be redone */
+async function kFlag(which) {
+  if (!(await _kEnsureCurrentWeek())) return;
+  const row = _kTarget(which); if (!row) return;
+  _kFlagTarget = which === 'last' ? 'last' : 'now';
+  document.querySelectorAll('#k-flag-reasons .k-mob-n-chip').forEach(b => b.classList.remove('selected'));
+  const note = document.getElementById('k-flag-note'); if (note) note.value = '';
+  const err  = document.getElementById('k-flag-err');  if (err) err.style.display = 'none';
+  const ttl  = document.getElementById('k-flag-title');
+  if (ttl) ttl.textContent = 'Flag proof — ' + row.room + (which === 'last' ? ' · last week' : '');
+  kitchenOpenModal('flag');
 }
-async function kReset() {
-  if (!_kWeekRow || !sbL || _kActionBusy) return; _kActionBusy = true;
-  try {
-    if (!confirm(`Reset week for ${_kWeekRow.room}? Marks as Missed and clears proof.`)) return;
-    // Collect all storage paths before deleting comments (same logic as kClearChat)
-    const paths = [];
-    if (_kWeekRow.photos && Array.isArray(_kWeekRow.photos))
-      _kWeekRow.photos.forEach(p => { if (p.path) paths.push(p.path); });
-    if (_kWeekRow.photo_path) paths.push(_kWeekRow.photo_path);
-    const comments = await _kGetComments(_kWeekRow.id);
-    comments.forEach(c => {
-      if (!c.text) return;
-      if (c.text.startsWith('[submission] ')) {
-        try { const d = JSON.parse(c.text.replace('[submission] ', '')); (d.photos||[]).forEach(p => { if (p.path) paths.push(p.path); }); } catch(e) {}
-      } else if (c.text.startsWith('[photo] ')) {
-        const url = c.text.replace('[photo] ', '').trim();
-        const marker = 'kitchen-proofs/';
-        const mi = url.indexOf(marker);
-        if (mi !== -1) paths.push(decodeURIComponent(url.slice(mi + marker.length)));
-      }
-    });
-    if (paths.length) await sbL.storage.from('kitchen-proofs').remove(paths).catch(e => console.warn('Storage cleanup error', e));
-    await _kDeleteComments(_kWeekRow.id);
-    await _kUpdateWeek(kWeekIdx(), { status:'missed', photos:null, photo_path:null, photo_url:null, flagged:false, closed_at:new Date().toISOString() });
-    await loadKitchen();
-  } finally { _kActionBusy = false; }
+async function _kFlagConfirm() {
+  const reasons = [...document.querySelectorAll('#k-flag-reasons .k-mob-n-chip.selected')].map(b => b.dataset.reason);
+  const note    = (document.getElementById('k-flag-note')?.value || '').trim();
+  if (!reasons.length && !note) { const err = document.getElementById('k-flag-err'); if (err) err.style.display = ''; return; }
+  const reason = [reasons.join(', '), note].filter(Boolean).join(' — ');
+  kitchenCloseModal('flag');
+  await _kRun(_kFlagTarget === 'last' ? 'last' : 'now', async row => {
+    const { error } = await _kUpdateRow(row, { flagged:true, status:'flagged', flag_reason: reason });
+    if (!error) await _kAddComment(row.id, 'Casa Castel', '⚑ Redo: ' + reason, true);
+  });
 }
-async function kReopen() {
-  if (!_kWeekRow || !sbL || _kActionBusy) return; _kActionBusy = true;
-  try {
-    if (!confirm(`Reopen week for ${_kWeekRow.room}? They can upload proof again.`)) return;
-    await _kUpdateWeek(kWeekIdx(), { status:'pending', flagged:false, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null });
-    await loadKitchen();
-  } finally { _kActionBusy = false; }
+function kUnapprove(which) {
+  return _kRun(which, async row => {
+    const { error } = await _kUpdateRow(row, { status:'submitted', flagged:false, approved_at:null });
+    if (!error) await _kAddComment(row.id, 'Casa Castel', '↩ Approval undone — week back under review.', false);
+  });
+}
+function kUnflag(which) {
+  return _kRun(which, async row => {
+    const { error } = await _kUpdateRow(row, { flagged:false, status:'submitted', flag_reason:null });
+    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Flag removed — week back under review.', false);
+  });
+}
+/* Missed keeps the chat and the photos — it only changes the status */
+function kReset() {
+  const row = _kWeekRow; if (!row) return;
+  if (!confirm(`Mark this week as missed for ${row.room}?`)) return;
+  return _kRun('now', async r => {
+    const { error } = await _kUpdateRow(r, { status:'missed', flagged:false, closed_at:new Date().toISOString() });
+    if (!error) await _kAddComment(r.id, 'Casa Castel', '✗ Marked missed by Casa Castel.', false);
+  });
+}
+function kReopen() {
+  const row = _kWeekRow; if (!row) return;
+  if (!confirm(`Reopen week for ${row.room}? They can upload proof again.`)) return;
+  return _kRun('now', async r => {
+    await _kUpdateRow(r, { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null });
+  });
 }
 function kReminder() {
   if (!_kWeekRow) return;
@@ -1016,7 +1202,7 @@ function _kSubscribe() {
       // If this is a submission comment, do a full reload so the chip + buttons update.
       // For regular chat messages, only re-render the feed to avoid a premature re-fetch.
       const text = payload.new?.text || '';
-      if (text.startsWith('[submission] ') || text.startsWith('[system] ')) {
+      if (text.startsWith('[submission] ') || text.startsWith('[system] ') || text.startsWith('[late] ')) {
         setTimeout(() => loadKitchen(), 350);
       } else {
         if (_kWeekRow) await _kRenderFeed(_kWeekRow);
@@ -1056,15 +1242,13 @@ async function loadKitchen() {
 
   // Stage 2 — ONE ranged query fetches the current week AND every rotation
   // slot of the cycle (previously: 1 query for the week + 1 query per room).
-  const _rotRooms   = _kGetRoomList();
-  const _cyclePos   = _rotRooms.length ? ((idx % _rotRooms.length) + _rotRooms.length) % _rotRooms.length : 0;
-  const _cycleStart = idx - _cyclePos;
-  const _cycleEnd   = _rotRooms.length ? _cycleStart + _rotRooms.length - 1 : idx;
+  // (range covers last week + the whole rotation cycle around this week)
+  const _n = Math.max(_kGetRoomList().length, 1);
 
   let [cycleRows, absData] = await Promise.all([
     sbL.from('kitchen_weeks').select('*')
-      .gte('week_index', Math.min(_cycleStart, idx))
-      .lte('week_index', Math.max(_cycleEnd, idx))
+      .gte('week_index', idx - _n)
+      .lte('week_index', idx + _n)
       .then(r => r.data || []),
     sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || [])
   ]);
@@ -1080,6 +1264,7 @@ async function loadKitchen() {
     if (weekRow) cycleRows = cycleRows.concat([weekRow]);
   }
   _kWeekRow = weekRow;
+  _kLastRow = cycleRows.find(r => r.week_index === idx - 1) || null;
   _kAutoReset(idx).catch(e => console.warn('[kitchen] auto cleanup', e)); // K8: background, once per week
 
   // Render everything — week card is sync; the three async renderers are
@@ -1089,6 +1274,7 @@ async function loadKitchen() {
     _kRenderFeed(weekRow),
     _kRenderRotation(weekRow, absData, cycleRows),
     _kLoadNudgeBanner(weekRow),
+    _kRenderLastWeek(_kLastRow),
   ]);
 
   // Start realtime only once — channel must stay alive permanently
@@ -1124,7 +1310,10 @@ async function _kSendNudge(typeBtn, toBtn, noteEl, sendBtn, afterSend) {
   try {
     // Delete the old nudge FIRST, then insert the new one (K5: run in parallel, the delete
     // could be processed after the insert and remove the new nudge straight away)
-    await sbL.from('lounge_data').delete().eq('type', 'kitchen_nudge');
+    // Only one open nudge at a time: the previous open one is closed (kept in the log)
+    await sbL.from('lounge_data')
+      .update({ resolved_at: new Date().toISOString(), resolved_by: 'replaced' })
+      .eq('type', 'kitchen_nudge').is('resolved_at', null);
     await sbL.from('lounge_data').insert({
       type: 'kitchen_nudge',
       room: toBtn.dataset.to,
@@ -1215,3 +1404,22 @@ async function _kSendNudge(typeBtn, toBtn, noteEl, sendBtn, afterSend) {
   // PWA keyboard fix — mobile only (not needed on desktop)
   wireComposeBlur(mobInput);
 })();
+
+
+/* ── FLAG SHEET CHIPS (multi-select) ────────────────────── */
+document.querySelectorAll('#k-flag-reasons .k-mob-n-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.classList.toggle('selected');
+    const err = document.getElementById('k-flag-err'); if (err) err.style.display = 'none';
+  });
+});
+
+/* ── NEW WEEK WHILE OPEN ────────────────────────────────────
+   Re-check when the app comes back to the front and once a minute;
+   a quiet reload (no alert) when nothing was tapped yet.          */
+function _kQuietWeekCheck() {
+  if (document.visibilityState !== 'visible' || !_kWeekRow) return;
+  if (_kWeekRow.week_index !== kWeekIdx()) loadKitchen();
+}
+document.addEventListener('visibilitychange', _kQuietWeekCheck);
+setInterval(_kQuietWeekCheck, 60 * 1000);
