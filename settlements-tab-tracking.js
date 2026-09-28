@@ -60,7 +60,7 @@ function _stWho(line) {
 function _stState(line) {
   const soon = f => f && f <= _stAddDays(cxToday(), 60);
   if (line.type === 'gap') {
-    return line.it.confirmed ? { k: 'erledigt', pill: ['grey', 'leer'], text: 'Leerstand bestätigt' }
+    return line.it.confirmed ? { k: 'erledigt', pill: ['grey', 'leer'], text: line.it.confirmed.auto ? 'Leerstand' : 'Leerstand bestätigt' }
                              : { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist bald'] : ['open', 'prüfen'], text: 'Leerstand prüfen' };
   }
   const r = line.it.r, weg = r.kind === 'weg_hausgeld';
@@ -273,7 +273,9 @@ function _stPanelHtml() {
   }
   let body = '';
   if (l.type === 'gap') {
-    body = l.it.confirmed && l.it.confirmed.vacancy
+    body = l.it.confirmed && l.it.confirmed.auto
+      ? '<p class="st-note">Leerstand zwischen zwei Mietern — automatisch aus den Ein- und Auszugsdaten. Für diese Tage gibt es keine NK-Abrechnung.</p>'
+      : l.it.confirmed && l.it.confirmed.vacancy
       ? '<p class="st-note">Geplanter Leerstand (' + stEsc(l.it.confirmed.grund || 'Leerstand') + ') aus der Einheit — für diese Tage gibt es keine NK-Abrechnung. Ändern im Einheiten-Tab.</p>'
       : l.it.confirmed
       ? '<p class="st-note">Als Leerstand bestätigt — für diese Tage gibt es keine NK-Abrechnung.</p><button class="cx-btn cx-btn--s cx-btn--full" data-st="gapUndo">Zurück auf Offen</button>'

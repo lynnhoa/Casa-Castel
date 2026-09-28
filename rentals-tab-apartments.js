@@ -1257,7 +1257,6 @@ function _aptCardHTML(a) {
       </button>
     </div>
 
-    ${typeof ccVacSectionHTML === 'function' ? ccVacSectionHTML('apt', a.id, 'apt') : ''}
 
     <!-- 7. CONTRACTS -->
     <div class="apt-contracts">

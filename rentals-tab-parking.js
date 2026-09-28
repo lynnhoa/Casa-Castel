@@ -559,7 +559,6 @@ function _pkCardHTML(p) {
       </div>
     </div>
 
-    ${typeof ccVacSectionHTML === 'function' ? ccVacSectionHTML('pk', p.id, 'apt') : ''}
 
     <!-- 4. CONTRACT -->
     <div class="pk-contracts">

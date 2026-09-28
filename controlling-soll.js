@@ -1069,7 +1069,12 @@ function ctlSettlementModel() {
           const v = (window._src.vac || []).find(x => x.app === vApp && String(x.unit_ref) === String(c.link.ref) && _cxD(x.von) <= g.from && _cxD(x.bis) >= g.to);
           if (v) vac = { id: 'vac:' + v.id, vacancy: true, grund: v.grund || '', note: 'leer:' + c.unit.name };
         }
-        per.items.push({ type: 'gap', unit: c.unit, order: c.order, from: g.from, to: g.to, days: g.days, confirmed: r || vac || null,
+        // Automatic Leerstand: the gap follows a recorded move-out → nobody lived there, nothing to confirm.
+        // Only a gap with no tenant recorded before it (missing history) still asks "Mieter nachtragen / War leer".
+        let auto = null;
+        if (!r && !vac && c.link && _cxTenancies(c.link).some(w => w.from && w.to && w.to < g.from))
+          auto = { id: 'auto:' + g.from, auto: true, note: 'leer:' + c.unit.name };
+        per.items.push({ type: 'gap', unit: c.unit, order: c.order, from: g.from, to: g.to, days: g.days, confirmed: r || vac || auto || null,
                          undated: c.undated, app: _cxApp(c.link), covers_year: Number(per.to.slice(0, 4)) });
       }
       if (!c.gaps.length) for (const w of c.undated.filter(x => x.active))

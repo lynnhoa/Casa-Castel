@@ -1387,7 +1387,6 @@ function _roomCardHTML(r) {
         </button>
       </div>
 
-      ${!isNew && typeof ccVacSectionHTML === 'function' ? ccVacSectionHTML('casa', r.name, 'rc') : ''}
 
       <!-- Contracts — proper buttons -->
       <div class="rc-contracts">
