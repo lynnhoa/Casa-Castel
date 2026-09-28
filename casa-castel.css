@@ -1502,7 +1502,42 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .k-nudge-send-btn:hover  { opacity: 0.85; }
 .k-nudge-send-btn:active { opacity: 0.70; }
 .k-nudge-send-btn:disabled { opacity: 0.35; cursor: default; }
-.k-dsk-nudge-banner-text {\n  flex: 1;\n  font-size: 11px;\n  color: #78640A;\n}\n\n/* Rotation list items in desktop left column */\n.k-dsk-rot-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 5px 0;\n  border-bottom: 0.5px solid var(--cc-rule);\n  font-size: 11px;\n}\n.k-dsk-rot-item:last-child { border-bottom: none; }\n.k-dsk-rot-dot {\n  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;\n}\n.k-dsk-rot-room { flex: 1; color: var(--cc-ink); }\n.k-dsk-rot-date { font-size: 9px; color: var(--cc-stone); }\n.k-dsk-rot-status { font-size: 8px; font-weight: 500; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }\n.rs-done  { background: #EAF3DE; color: #27500A; border: 0.5px solid #9AC87A; }\n.rs-missed{ background: #FDEEED; color: #7A2020; border: 0.5px solid #F5A8A5; }\n.rs-now   { background: #FDF5E8; color: #633806; border: 0.5px solid #E8C97A; }\n.rs-next  { background: #EBF4FF; color: #1A5896; border: 0.5px solid #90C2F5; }\n\n/* Desktop feed — mirrors mobile k-mob-feed scroll behaviour */\n.k-desktop-right .k-dsk-feed {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n  scroll-behavior: smooth;\n  padding: 10px 14px;\n  background: var(--cc-bg);\n}
+.k-dsk-nudge-banner-text {
+  flex: 1;
+  font-size: 11px;
+  color: #78640A;
+}
+
+/* Rotation list items in desktop left column */
+.k-dsk-rot-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 0.5px solid var(--cc-rule);
+  font-size: 11px;
+}
+.k-dsk-rot-item:last-child { border-bottom: none; }
+.k-dsk-rot-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.k-dsk-rot-room { flex: 1; color: var(--cc-ink); }
+.k-dsk-rot-date { font-size: 9px; color: var(--cc-stone); }
+.k-dsk-rot-status { font-size: 8px; font-weight: 500; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
+.rs-done  { background: #EAF3DE; color: #27500A; border: 0.5px solid #9AC87A; }
+.rs-missed{ background: #FDEEED; color: #7A2020; border: 0.5px solid #F5A8A5; }
+.rs-now   { background: #FDF5E8; color: #633806; border: 0.5px solid #E8C97A; }
+.rs-next  { background: #EBF4FF; color: #1A5896; border: 0.5px solid #90C2F5; }
+
+/* Desktop feed — mirrors mobile k-mob-feed scroll behaviour */
+.k-desktop-right .k-dsk-feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 10px 14px;
+  background: var(--cc-bg);
+}
 
 .msg-row{display:flex;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--cc-rule);}
 .msg-row:last-child{border-bottom:none;}
@@ -1981,3 +2016,137 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 }
 .k-ten-dsk-camera:hover { border-color: var(--cc-taupe); color: var(--cc-taupe); }
 .k-ten-dsk-camera:active { background: var(--cc-surface); }
+
+
+/* ═══════════════════════════════════════════════════════════
+   iPAD + LAPTOP LAYOUT  (Sep 2026)
+   Everything here starts at 701px, so the iPhone layout
+   (≤700px) is not touched. Layout only — no function changes.
+   Breakpoints:  701px  = iPad portrait and up
+                1000px  = iPad landscape and laptop
+═══════════════════════════════════════════════════════════ */
+
+@media (min-width: 701px) {
+
+  /* ── 1. Header lines up with the page content ───────────
+     The content column is max 1200px wide with 36px inner
+     padding. Nav + tabs use the same edges, so the logo sits
+     straight above the page title. (100% = header width.)   */
+  .cc-header .cc-nav {
+    padding-left:  max(36px, calc((100% - 1200px) / 2 + 36px));
+    padding-right: max(36px, calc((100% - 1200px) / 2 + 36px));
+  }
+  .cc-header .cc-tabs {
+    /* tab buttons have 4px inner padding → start 4px earlier
+       so the tab text lines up with the logo */
+    padding-left:  max(32px, calc((100% - 1200px) / 2 + 32px));
+    padding-right: max(32px, calc((100% - 1200px) / 2 + 32px));
+  }
+
+  /* ── 2. Lounge + Kitchen fill the screen height ─────────
+     Was: 100vh − 160px, capped at 800px → big empty area on
+     iPad portrait and a small page scroll on laptops.
+     179px = header (115) + page padding top/bottom (32 + 32).
+     Safe areas cover the iPad home indicator / status bar.   */
+  .l-desktop-grid,
+  .k-desktop-grid {
+    height: calc(100vh - 179px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 179px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: none;
+    min-height: 480px;
+  }
+  /* Slightly wider side column on iPad portrait so the
+     announcement form isn't squeezed */
+  .l-desktop-grid { grid-template-columns: 280px minmax(0, 1fr); }
+  .k-desktop-grid { grid-template-columns: 300px minmax(0, 1fr); }
+
+  /* Side columns scroll inside their card, with room at the end */
+  .l-desktop-left,
+  .k-desktop-left {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+
+  /* ── 5. Landlord kitchen compose bar — flag + camera ────
+     These buttons were only styled for iPhone, so on iPad /
+     laptop they showed as plain browser buttons. Same look as
+     the tenant kitchen + lounge compose bars.               */
+  #tab-kitchen .k-desktop-right .k-mob-compose-input { height: 40px; font-size: 14px; }
+  .k-desktop-right .k-mob-nudge-flag-btn,
+  .k-desktop-right .k-mob-camera-btn {
+    width: 40px; height: 40px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--cc-surface); color: var(--cc-taupe);
+    border: 0.5px solid var(--cc-rule); border-radius: 50%;
+    font-size: 16px; line-height: 1; padding: 0;
+    cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s, color 0.15s, opacity 0.15s;
+  }
+  .k-desktop-right .k-mob-camera-btn i { font-size: 16px !important; }
+  .k-desktop-right .k-mob-nudge-flag-btn:hover,
+  .k-desktop-right .k-mob-camera-btn:hover { border-color: var(--cc-taupe); color: var(--cc-charcoal); }
+  .k-desktop-right .k-mob-nudge-flag-btn:active,
+  .k-desktop-right .k-mob-camera-btn:active { opacity: 0.65; }
+  .k-desktop-right .k-mob-nudge-flag-btn.absent {
+    background: var(--cc-notice-bg); color: var(--cc-notice-text); border-color: var(--cc-notice-bdr);
+  }
+}
+
+/* ── 3. Card lists: 2 per row on iPad landscape + laptop ───
+   Rooms, Apartments, Parking and both Tenants tabs. Cards
+   keep their DOM order (drag-to-sort unchanged). An opened
+   card grows in its own column, the card next to it stays
+   as it is (align-items:start). Group titles, empty notes
+   and anything that isn't a card use the full row.         */
+@media (min-width: 1000px) {
+  .cc-main .rp-list,
+  .cc-main .tn-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  .cc-main .rp-list > :not(.rc):not(.apt-card):not(.pk-card),
+  .cc-main .tn-list > :not(.tn-card) {
+    grid-column: 1 / -1;
+  }
+  /* Summary bar above the grid: same spacing as between cards */
+  .cc-main .rp-summary { margin-bottom: 12px; }
+  /* Rentals › Tenants group titles: spacing comes from the grid gap */
+  .cc-main .tn-list > .rnt-group-hdr { margin-top: 12px !important; }
+  .cc-main .tn-list > .rnt-group-hdr:first-child { margin-top: 0 !important; }
+
+  /* ── 4. Cleaning: "This week" left, rotation right ─────── */
+  #tab-cleaning > .cc-section:nth-of-type(1) {
+    float: left;
+    width: 340px;
+    margin-right: 28px;
+    padding-top: 0;
+    border-bottom: none;
+  }
+  #tab-cleaning > .cc-section:nth-of-type(2) {
+    display: flow-root;           /* sits next to the floated column */
+    padding-top: 0;
+    border-bottom: none;
+  }
+  #tab-cleaning::after { content: ""; display: table; clear: both; }
+
+  /* Lounge + kitchen side columns a bit wider on big screens */
+  .l-desktop-grid { grid-template-columns: 320px minmax(0, 1fr); }
+  .k-desktop-grid { grid-template-columns: 340px minmax(0, 1fr); }
+}
+
+/* ── iPad (touch, no mouse): easier-to-hit small links ─────
+   Refresh / Clear / Reset chat / + New / history ›, which are
+   tiny 9px text links on the big-screen layout.            */
+@media (min-width: 701px) and (hover: none) {
+  .l-dsk-section-action,
+  .l-dsk-chat-link,
+  .k-dsk-chat-link,
+  .k-dsk-section-link {
+    font-size: 10.5px;
+    padding: 8px 4px;
+    margin: -8px -4px;
+  }
+}

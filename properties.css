@@ -738,3 +738,18 @@
 
 /* ── OVERFLOW FIX — prevent horizontal scroll ── */
 body { overflow-x: clip; }
+
+/* ── iPad + laptop: header lines up with the page content ──
+   (Sep 2026) Properties' content column is 900px / 28px
+   padding up to 1099px, then 1200px / 36px (same as the other
+   apps, handled in casa-castel.css). */
+@media (min-width: 701px) and (max-width: 1099px) {
+  .cc-header .cc-nav {
+    padding-left:  max(28px, calc((100% - 900px) / 2 + 28px));
+    padding-right: max(28px, calc((100% - 900px) / 2 + 28px));
+  }
+  .cc-header .cc-tabs {
+    padding-left:  max(24px, calc((100% - 900px) / 2 + 24px));
+    padding-right: max(24px, calc((100% - 900px) / 2 + 24px));
+  }
+}
