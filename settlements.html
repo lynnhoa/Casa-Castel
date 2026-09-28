@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="LT Real Estate"/>
+  <meta name="theme-color" content="#F5F2ED"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="mgmt-apple-touch-icon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="mgmt-favicon-32.png"/>
+  <title>Settlements — Management</title>
+  <link rel="stylesheet" href="casa-castel.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="cc-german-format.js"></script>
+  <script src="constants.js"></script>
+  <script src="cc-rent-engine.js"></script>
+  <style>
+    html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+    .ct-toast      { position:fixed; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); padding:8px 16px; background:var(--cc-ink); color:var(--cc-white); border-radius:16px; font-size:12px; letter-spacing:.04em; opacity:0; transition:opacity .2s; pointer-events:none; z-index:900; max-width:90vw; text-align:center; }
+    .ct-toast.show { opacity:1; }
+    .ct-loading    { position:fixed; inset:0; background:rgba(245,242,237,0.7); display:none; align-items:center; justify-content:center; z-index:800; }
+    .ct-loading.show { display:flex; }
+    .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:st-spin .8s linear infinite; }
+    @keyframes st-spin { to { transform:rotate(360deg); } }
+  </style>
+  <link rel="stylesheet" href="settlements.css"/>
+</head>
+<body class="is-landlord">
+
+  <div class="app-shell visible" id="appShell" style="display:none;">
+    <div class="cc-header">
+      <nav class="cc-nav">
+        <a class="cc-nav__logo" href="#">Settlements</a>
+        <div class="nav-profile" id="navProfile">
+          <button class="cc-nav__icon" onclick="toggleProfileMenu()" aria-label="Menu" aria-haspopup="true">
+            <i class="ti ti-user"></i>
+          </button>
+          <div class="nav-profile-menu" id="navProfileMenu">
+            <button class="nav-profile-menu-item" onclick="location.href='properties.html'">Properties</button>
+            <button class="nav-profile-menu-item" onclick="location.href='rentals-index.html'">Rentals</button>
+            <button class="nav-profile-menu-item" onclick="location.href='landlord.html'">Casa Castel</button>
+            <button class="nav-profile-menu-item" onclick="location.href='controlling.html'">Controlling</button>
+            <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
+            <button class="nav-profile-menu-item" onclick="document.getElementById('navProfileMenu').classList.remove('open'); openRentalsProfile();">Profile</button>
+            <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
+          </div>
+        </div>
+      </nav>
+      <div class="cc-tabs" id="appTabs">
+        <button class="cc-tab"        data-tab="casa">Casa Castel</button>
+        <button class="cc-tab"        data-tab="rentals">Rentals</button>
+        <button class="cc-tab active" data-tab="tracking">Tracking</button>
+      </div>
+    </div>
+
+    <div class="cc-layout" id="appLayout">
+      <div class="cc-main" id="appMain">
+        <div class="tab-content" id="tab-casa"     style="display:none;"></div>
+        <div class="tab-content" id="tab-rentals"  style="display:none;"></div>
+        <div class="tab-content" id="tab-tracking"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entry panel: bottom sheet (phone) · centred window (iPad portrait) · side panel (iPad landscape / laptop) -->
+  <div class="st-scrim" id="stScrim" hidden></div>
+
+  <div class="ct-toast" id="ctToast" role="status" aria-live="polite"></div>
+  <div class="ct-loading" id="ctLoading"><div class="ct-loading__spinner"></div></div>
+
+  <script>
+    'use strict';
+    function toggleProfileMenu() { document.getElementById('navProfileMenu')?.classList.toggle('open'); }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.nav-profile')) document.getElementById('navProfileMenu')?.classList.remove('open');
+    });
+  </script>
+
+  <!-- Shared data + rules with Controlling (one set of Abrechnungs rules for both apps) -->
+  <script src="controlling-auth.js?v=2026-09-28a"></script>
+  <script src="controlling-data.js?v=2026-09-28a"></script>
+  <script src="controlling-soll.js?v=2026-09-28a"></script>
+  <script src="controlling-ui.js?v=2026-09-28a"></script>
+  <script src="controlling-abr.js?v=2026-09-28a"></script>
+
+  <script src="settlements-app.js?v=2026-09-28a"></script>
+  <script src="settlements-tab-calc.js?v=2026-09-28a"></script>
+  <script src="settlements-tab-tracking.js?v=2026-09-28a"></script>
+
+  <!-- Profile panel (same one as Rentals / Controlling), sharing this page's login session -->
+  <script>var sbL = _ctlSupa;</script>
+  <script src="settings.js"></script>
+  <script src="rentals-profile.js"></script>
+  <script>stBoot();</script>
+</body>
+</html>

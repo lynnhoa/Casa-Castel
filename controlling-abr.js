@@ -114,7 +114,7 @@ function cxAbrSection(p, y, m, dir) {
   const fk = p.id + '|' + dir, formOpen = _cxAbr.form === fk;
   const mon = ym => CX_MONTHS[(ym - 1) % 12].slice(0, 3);
   let h = '<div class="cx-abr-h"><span class="cx-lbl">Abrechnungen</span>' +
-    '<button class="cx-link" data-cx="abrAdd" data-k="' + cxEsc(fk) + '">' + (formOpen ? 'schließen' : '+ Abrechnung') + '</button></div>';
+    '<a class="cx-link" href="settlements.html" style="color:var(--cx-acc)">in Settlements öffnen ›</a></div>';
   for (const r of rows) {
     _cxAbrIndex[r.id] = Object.assign({ p, dir }, r);
     if (r.info) {

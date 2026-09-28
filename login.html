@@ -95,6 +95,7 @@
     }
 
     /* ── APP BUTTONS ── */
+    .role-tab:last-child:nth-child(odd) { grid-column: 1 / -1; }   /* 5th tile uses the full row */
     .role-tabs {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -265,6 +266,10 @@
         <i class="ti ti-chart-bar" aria-hidden="true"></i>
         <span>Controlling</span>
       </button>
+      <button class="role-tab" data-dest="settlements.html">
+        <i class="ti ti-receipt" aria-hidden="true"></i>
+        <span>Settlements</span>
+      </button>
     </div>
 
     <!-- Shown when a Supabase session already exists -->
@@ -312,7 +317,7 @@
 
   /* The app you were last in (each app stores it when it opens). You are
      always sent back there — and that app reopens its own last tab. */
-  const MGMT_APPS = ['landlord.html', 'rentals-index.html', 'controlling.html', 'properties.html'];
+  const MGMT_APPS = ['landlord.html', 'rentals-index.html', 'controlling.html', 'properties.html', 'settlements.html'];
   const lastApp   = (() => { try { return localStorage.getItem('mgmt_last_app'); } catch (e) { return null; } })();
   let selectedDest = MGMT_APPS.includes(lastApp) ? lastApp : 'landlord.html';
   let selectedTab  = null;     // null = the app opens its own last tab
