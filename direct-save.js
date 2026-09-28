@@ -253,3 +253,29 @@ function ccStableJSON(v) {
   };
   if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
 })();
+
+
+/* ═════════════════════════════════════════════════════════════
+   ASKING RENT — one clear table (Rooms · Apartments)
+   cols: [{ title, mode: 'kalt_nk' | 'pauschal', kalt, nk, kaution, note }]
+         Mietvertrag | Kurzzeit side by side; rows Kaltmiete · Nebenkosten ·
+         Monthly · Kaution (with its rule underneath).
+   ═════════════════════════════════════════════════════════════ */
+function ccAskingRentTable(cols, fmt) {
+  cols = (cols || []).filter(Boolean);
+  if (!cols.length) return '<p class="cc-ask-empty">Not set</p>';
+  const f = n => fmt(Number(n) || 0);
+  const cell = (c, key) => {
+    const p = c.mode === 'pauschal';
+    if (key === 'kalt') return p ? '<span class="cc-ask-dim">—</span>' : f(c.kalt);
+    if (key === 'nk')   return p ? '<span class="cc-ask-dim">inkl.</span>' : f(c.nk);
+    if (key === 'tot')  return f((Number(c.kalt) || 0) + (Number(c.nk) || 0)) + (p ? '<small>pauschal</small>' : '');
+    if (key === 'kau')  return f(c.kaution) + (c.note ? '<small>' + c.note + '</small>' : '');
+    return '';
+  };
+  const row = (label, key, cls) => `<tr${cls ? ` class="${cls}"` : ''}><th scope="row">${label}</th>${cols.map(c => `<td>${cell(c, key)}</td>`).join('')}</tr>`;
+  return `<table class="cc-ask">
+    <thead><tr><th></th>${cols.map(c => `<th scope="col">${c.title}</th>`).join('')}</tr></thead>
+    <tbody>${row('Kaltmiete', 'kalt')}${row('Nebenkosten', 'nk')}${row('Monthly', 'tot', 'is-total')}${row('Kaution', 'kau', 'is-kau')}</tbody>
+  </table>`;
+}

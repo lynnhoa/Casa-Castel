@@ -1135,31 +1135,23 @@ function _roomCardHTML(r) {
   // Kaution — shared rule (kaution.js): override while toggle ON, else base × multiplier
   const _kLbl = k => k.source === 'override' ? 'Individuell' : null;
 
-  let rentRead = '';
+  // Asking rent as one table: Mietvertrag | Kurzzeit
+  const _askCols = [];
+  if (r.kaltmiete) {
+    const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
+    const pausch = r.mietvertrag_pricing !== 'kalt_nk';
+    const _kMv = ccKaution({ contract: 'mietvertrag', mode: pausch ? 'pauschal' : 'kalt_nk', kalt, nk, rec: r });
+    _askCols.push({ title: 'Mietvertrag', mode: pausch ? 'pauschal' : 'kalt_nk', kalt, nk, kaution: _kMv.amount,
+      note: _kLbl(_kMv) || (pausch ? '3× Pauschal' : '3× Kalt') });
+  }
   if (r.kurzzeit_kaltmiete) {
-    const kalt = Number(r.kurzzeit_kaltmiete)||0;
-    const nk   = Number(r.kurzzeit_nk)||0;
-    const isPauschal = (r.kurzzeit_pricing||'pauschal') === 'pauschal';
-    const display = isPauschal ? fmtEUR(kalt+nk)+' pauschal inkl. NK' : fmtEUR(kalt)+' kalt + '+fmtEUR(nk)+' NK';
-    const _kKz = ccKaution({ contract: 'kurzzeit', mode: isPauschal ? 'pauschal' : 'kalt_nk', kalt, nk, rec: r });
-    const kzKaution = _kKz.amount;
-    rentRead += `<div class="rc-row"><span class="rc-row__k">Kurzzeit</span><span class="rc-row__v">${display} / Monat</span></div>`;
-    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(kzKaution)} · ${_kLbl(_kKz) || '1× ' + (isPauschal ? 'Pauschal' : 'Kalt') + ' · > 3 Mon. 3×'}</span></div>`;
+    const kalt = Number(r.kurzzeit_kaltmiete)||0, nk = Number(r.kurzzeit_nk)||0;
+    const pausch = (r.kurzzeit_pricing||'pauschal') === 'pauschal';
+    const _kKz = ccKaution({ contract: 'kurzzeit', mode: pausch ? 'pauschal' : 'kalt_nk', kalt, nk, rec: r });
+    _askCols.push({ title: 'Kurzzeit', mode: pausch ? 'pauschal' : 'kalt_nk', kalt, nk, kaution: _kKz.amount,
+      note: _kLbl(_kKz) || ('1× ' + (pausch ? 'Pauschal' : 'Kalt') + ' · from 3 months 3×') });
   }
-  if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
-    const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
-    const _kMv = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: r });
-    const mvKaution = _kMv.amount;
-    rentRead += `<div class="rc-row"><span class="rc-row__k">Mietvertrag</span><span class="rc-row__v">${fmtEUR(kalt)} kalt + ${fmtEUR(nk)} NK</span></div>`;
-    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · ${_kLbl(_kMv) || '3× Kalt'}</span></div>`;
-  } else if (r.kaltmiete) {
-    const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
-    const tot = kalt + nk;
-    const _kMv = ccKaution({ contract: 'mietvertrag', mode: 'pauschal', kalt, nk, rec: r });
-    const mvKaution = _kMv.amount;
-    rentRead += `<div class="rc-row"><span class="rc-row__k">Mietvertrag</span><span class="rc-row__v">${fmtEUR(tot)} pauschal inkl. NK</span></div>`;
-    rentRead += `<div class="rc-row"><span class="rc-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="rc-row__v" style="color:var(--cc-stone)">${fmtEUR(mvKaution)} · ${_kLbl(_kMv) || '3× Pauschal'}</span></div>`;
-  }
+  const rentRead = _askCols.length ? ccAskingRentTable(_askCols, fmtEUR) : '';
 
   // Shared space chips (edit)
   const allSpaces = _parseArr(appSettings.gemeinschaftsraeume);
@@ -1354,9 +1346,7 @@ function _roomCardHTML(r) {
       <div class="rc-section--miete" id="rc-miete-${r.id}">
         <div class="rc-stitle">Asking rent</div>
         <div class="rc-sec-read">
-          <div class="rc-rows">
-            ${rentRead || '<div class="rc-row"><span class="rc-row__v" style="color:var(--cc-stone);font-style:italic;">Not set</span></div>'}
-          </div>
+          ${rentRead || '<div class="rc-rows"><div class="rc-row"><span class="rc-row__v" style="color:var(--cc-stone);font-style:italic;">Not set</span></div></div>'}
           ${_secBtn('miete')}
         </div>
         ${_secEdit('miete', editPricing)}

@@ -492,7 +492,7 @@ function _pkCardHTML(p) {
       <div class="pk-sec-read">
         ${miete
           ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
-             <div class="pk-row"><span class="pk-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="pk-row__v pk-row__v--muted">${pkFmtEURCompact(kaution)} · ${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</span></div>`
+             <div class="pk-row"><span class="pk-row__k">Kaution</span><span class="pk-row__v">${pkFmtEURCompact(kaution)}<small class="cc-ask-note">${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</small></span></div>`
           : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">

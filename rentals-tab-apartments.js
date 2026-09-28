@@ -1068,14 +1068,12 @@ function _aptCardHTML(a) {
       <div class="apt-stitle">Asking rent</div>
       <!-- READ -->
       <div class="apt-sec-read">
-        ${kalt || nk ? `
-        <div class="apt-row"><span class="apt-row__k">${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemiete' : 'Mietvertrag'}</span><span class="apt-row__v apt-row__v--gold">${aptFmtEURCompact(kalt)} kalt + ${aptFmtEURCompact(nk)} NK</span></div>
-        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kautionAmt)} · ${_kMv.source === 'override' ? 'Individuell' : '3× Kalt'}</span></div>
-        ` : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
-        ${kzKalt ? `
-        <div class="apt-row" style="margin-top:6px"><span class="apt-row__k">Kurzzeit</span><span class="apt-row__v">${aptFmtEURCompact(kzWarm)} / Monat</span></div>
-        <div class="apt-row"><span class="apt-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="apt-row__v apt-row__v--muted">${aptFmtEURCompact(kzKaution)} · ${_kKz.source === 'override' ? 'Individuell' : '1× Kalt · > 3 Mon. 3×'}</span></div>
-        ` : ''}
+        ${(kalt || nk || kzKalt) ? ccAskingRentTable([
+          (kalt || nk) ? { title: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : 'Mietvertrag', mode: 'kalt_nk', kalt, nk, kaution: kautionAmt,
+                           note: _kMv.source === 'override' ? 'Individuell' : '3× Kalt' } : null,
+          kzKalt ? { title: 'Kurzzeit', mode: 'kalt_nk', kalt: kzKalt, nk: kzNk, kaution: kzKaution,
+                     note: _kKz.source === 'override' ? 'Individuell' : '1× Kalt · from 3 months 3×' } : null,
+        ], aptFmtEURCompact) : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('miete','${a.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
