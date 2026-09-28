@@ -2024,7 +2024,10 @@ function _tnCollectProfile(container, selector) {
   };
 }
 
+/* The room's price is always the starting rent of a new tenant — also for
+   tenants entered for the past. You can change it by hand. */
 function _tnNewIsCurrent(mietbeginn) {
+  return true;
   if (typeof ccRpIso !== 'function') return true;
   const iso = ccRpIso(mietbeginn);
   return !iso || iso >= ccRpAddDays(ccRpToday(), -31);
@@ -2739,8 +2742,9 @@ async function _tnModalSaveDraft() {
       first_name: p.first_name, last_name: p.last_name,
       email: p.email, phone: p.phone, birthday: p.birthday,
       address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
-      kaltmiete: p.kaltmiete ?? null,
-      nebenkosten: p.nebenkosten ?? null,
+      // Starting rent = the room's price (Soll) unless you typed another amount
+      kaltmiete: p.kaltmiete ?? _tnRoomPricing(draft.room).kaltmiete ?? null,
+      nebenkosten: p.nebenkosten ?? _tnRoomPricing(draft.room).nebenkosten ?? null,
       kaution_soll: p.kaution_soll ?? null,
     })
     .select().single();

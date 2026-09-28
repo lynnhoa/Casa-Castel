@@ -2615,7 +2615,10 @@ function _rntCollectProfile(container, selector) {
   };
 }
 
+/* The unit's price (Apartments / Parking) is always the starting rent of a new
+   tenant — also for tenants entered for the past. You can change it by hand. */
 function _rntNewIsCurrent(mietbeginn) {
+  return true;
   if (typeof ccRpIso !== 'function') return true;
   const iso = ccRpIso(mietbeginn);
   return !iso || iso >= ccRpAddDays(ccRpToday(), -31);
@@ -3243,8 +3246,9 @@ async function _rntModalSaveDraft() {
       first_name: p.first_name, last_name: p.last_name,
       email: p.email, phone: p.phone, birthday: p.birthday,
       address: p.address, mietbeginn: p.mietbeginn, mietende: p.mietende,
-      kaltmiete:   p.kaltmiete   ?? null,
-      nebenkosten: isApt ? (p.nebenkosten ?? null) : null,
+      // Starting rent = the unit's price (Soll) unless you typed another amount
+      kaltmiete:   p.kaltmiete   ?? (isApt ? _rntAptPricing(draft.apartment_id).kaltmiete : _rntPkPricing(draft.parking_id).miete) ?? null,
+      nebenkosten: isApt ? (p.nebenkosten ?? _rntAptPricing(draft.apartment_id).nebenkosten ?? null) : null,
       kaution_soll: p.kaution_soll ?? null,
     })
     .select().single();
