@@ -10,6 +10,8 @@ function initChatViewport() {
     const keyboardH = window.innerHeight - vv.height - vv.offsetTop;
     const isOpen   = keyboardH > 50;
     const headerH  = document.querySelector('.cc-header')?.offsetHeight || 0;
+    // Compose card: no home-bar gap while the keyboard is open
+    document.body.classList.toggle('cc-kb-open', isOpen);
 
     // tab-lounge: inside shell-lock flex column, header is part of the flex column
     // so vv.height covers the full visible area including header space

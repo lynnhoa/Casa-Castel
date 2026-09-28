@@ -33,18 +33,13 @@ document.getElementById('tab-lounge').innerHTML = `
     <div class="l-chat-hdr">
       <span class="l-chat-lbl">House chat</span>
       <div style="display:flex;gap:10px;align-items:center;">
-        <button class="l-chat-tlink" onclick="loadLounge()">↺ Refresh</button>
-        <button class="l-chat-tlink" onclick="loungeOpenModal('actions')" style="background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:var(--cc-r-sm);padding:4px 10px;text-decoration:none;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;">⋯ More</button>
+        ${ccRefreshBtnHtml('loadLounge()')}
       </div>
     </div>
     <div class="l-feed" id="lounge-feed">
       <p class="cc-note" style="padding:8px 0 4px;">No messages yet.</p>
     </div>
-    <div class="l-compose">
-      <button class="l-action-btn" onclick="loungeOpenModal('actions')" title="Actions">⊕</button>
-      <input class="l-compose-input" id="lounge-input" type="text" placeholder="Message as Casa Castel…"/>
-      <button class="l-compose-send" id="lounge-send">↑</button>
-    </div>
+    <div id="lounge-compose-mob"></div>
   </div>
 
   <!-- ② Desktop 2-column layout — hidden on mobile via CSS -->
@@ -108,7 +103,7 @@ document.getElementById('tab-lounge').innerHTML = `
       <div class="l-dsk-chat-hdr">
         <span class="l-dsk-chat-lbl">House chat</span>
         <div style="display:flex;gap:10px;align-items:center;">
-          <button class="l-dsk-chat-link" onclick="loadLounge()">↺ Refresh</button>
+          ${ccRefreshBtnHtml('loadLounge()')}
           <a class="l-dsk-chat-link" id="lounge-email-all-desktop" href="#" target="_blank">✉ Email all</a>
           <button class="l-dsk-chat-link l-dsk-chat-link--danger" id="lounge-reset-btn">↺ Reset chat</button>
         </div>
@@ -121,10 +116,7 @@ document.getElementById('tab-lounge').innerHTML = `
       <div class="lounge-feed" id="lounge-feed-desktop">
         <p class="cc-note" style="padding:8px 0 4px;">No messages yet.</p>
       </div>
-      <div class="compose-bar">
-        <textarea class="compose-input" id="lounge-input-desktop" placeholder="Message as Casa Castel… @London @Paris @Oslo" rows="1"></textarea>
-        <button class="compose-send" id="lounge-send-desktop">↑</button>
-      </div>
+      <div id="lounge-compose-dsk"></div>
     </div><!-- /.l-desktop-right -->
 
   </div><!-- /.l-desktop-grid -->
@@ -468,27 +460,28 @@ async function loadLounge() {
   _renderMsgs(data || []);
 }
 
-/* Mobile compose bar markup — kept in one place so it can be
-   re-inserted if any chat operation ever removes it. */
-const _MOBILE_COMPOSE_HTML = `
-    <div class="l-compose">
-      <button class="l-action-btn" onclick="loungeOpenModal('actions')" title="Actions">⊕</button>
-      <input class="l-compose-input" id="lounge-input" type="text" placeholder="Message as Casa Castel…"/>
-      <button class="l-compose-send" id="lounge-send">↑</button>
-    </div>`;
-
-/* Guarantees the mobile compose bar is present + wired. Safe to call
-   any number of times: it does nothing if the bar already exists, and
-   only ever ADDS it back — it never removes anything. */
+/* ── COMPOSE CARD ─────────────────────────────────────────
+   Same card on phone and iPad/laptop. + opens the Lounge actions
+   (phone only — the laptop layout shows them in the left column),
+   camera lets you take a photo or pick one from the library.     */
+function _mountLoungeCompose(el) {
+  if (!el || el.classList.contains('cc-dock')) return;
+  ccCompose(el, {
+    placeholder: 'Message as Casa Castel…',
+    plus: () => loungeOpenModal('actions'),
+    plusMobileOnly: true,
+    camera: 'choice',
+    onSend: _loungeSend,
+  });
+}
+/* Guarantees the mobile compose card is present. Safe to call any
+   number of times: only ever ADDS it back, never removes anything. */
 function _ensureMobileCompose() {
   const chat = document.querySelector('#tab-lounge .l-chat');
-  if (!chat || chat.querySelector('.l-compose')) return;   // already there → no-op
-  chat.insertAdjacentHTML('beforeend', _MOBILE_COMPOSE_HTML);
-  document.getElementById('lounge-send')
-    ?.addEventListener('click', sendLounge);
-  document.getElementById('lounge-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLounge(); }});
-  if (typeof wireComposeBlur === 'function') wireComposeBlur(document.getElementById('lounge-input'));
+  if (!chat) return;
+  let m = document.getElementById('lounge-compose-mob');
+  if (!m) { chat.insertAdjacentHTML('beforeend', '<div id="lounge-compose-mob"></div>'); m = document.getElementById('lounge-compose-mob'); }
+  _mountLoungeCompose(m);
 }
 
 function _renderMsgs(msgs) {
@@ -504,6 +497,13 @@ function _renderMsgs(msgs) {
   _ensureMobileCompose();   // re-show the compose bar if a render ever dropped it
 }
 
+/* A message is text, or a photo ("[photo] <url>") */
+function _loungeBodyHtml(body, me) {
+  const url = typeof body === 'string' && body.startsWith('[photo] ') ? ccPhotoUrl(body.slice(8)) : '';
+  if (url) return `<img class="msg-photo" src="${esc(url)}" alt="Photo" loading="lazy" onclick="ccOpenPhoto(this.src)" onerror="this.style.display='none'"/>`;
+  return `<p class="msg-text">${parseMsg(body, me)}</p>`;
+}
+
 function _msgHtml(m, canDelete) {
   const isCC = m.room === 'Casa Castel';
   return `<div class="msg-row" data-id="${m.id}">
@@ -513,7 +513,7 @@ function _msgHtml(m, canDelete) {
         <span class="msg-name${isCC ? ' msg-name--mgmt' : ''}">${esc(m.room)}</span>
         <span class="msg-time">${fmtTs(new Date(m.created_at).getTime())}</span>
       </div>
-      <p class="msg-text">${parseMsg(m.body, 'Casa Castel')}</p>
+      ${_loungeBodyHtml(m.body, 'Casa Castel')}
     </div>
     ${canDelete ? `<button class="msg-del" title="Delete" onclick="deleteMsg('${m.id}')">✕</button>` : ''}
   </div>`;
@@ -539,44 +539,44 @@ function _removeOptimistic() {
   });
 }
 
-async function sendLounge() {
-  if (!sbL) return;
-  const input = document.getElementById('lounge-input');
-  const text  = input.value.trim(); if (!text) return;
-  input.value = '';
+/* Send one chat message (text or photo) with an instant "sending" row */
+async function _loungeInsert(body) {
   const tmpId = '_tmp_' + Date.now();
-  const opt = { id: tmpId, room:'Casa Castel', body:text, created_at: new Date().toISOString(), type:'message' };
-  _appendMsg(opt);
-  const { data } = await sbL.from('lounge_data').insert({ type:'message', room:'Casa Castel', body:text }).select().maybeSingle();
-  // Remove optimistic row — realtime subscription will append the real one,
-  // or we append it directly if realtime is slow
+  _appendMsg({ id: tmpId, room:'Casa Castel', body, created_at: new Date().toISOString(), type:'message' });
+  const { data, error } = await sbL.from('lounge_data').insert({ type:'message', room:'Casa Castel', body }).select().maybeSingle();
   _removeOptimistic();
+  if (error) throw error;
   if (data) _appendMsg(data);
+  return true;
 }
-
-async function sendLoungeDesktop() {
-  if (!sbL) return;
-  const input = document.getElementById('lounge-input-desktop');
-  const text  = input.value.trim(); if (!text) return;
-  input.value = '';
-  const tmpId = '_tmp_' + Date.now();
-  const opt = { id: tmpId, room:'Casa Castel', body:text, created_at: new Date().toISOString(), type:'message' };
-  _appendMsg(opt);
-  const { data } = await sbL.from('lounge_data').insert({ type:'message', room:'Casa Castel', body:text }).select().maybeSingle();
-  _removeOptimistic();
-  if (data) _appendMsg(data);
+/* Compose card → photo first (if any), then the text */
+async function _loungeSend({ text, photo }) {
+  if (!sbL) return false;
+  if (photo) {
+    const url = await ccUploadPhoto(photo, 'lounge/mgmt-' + Date.now() + '.jpg');
+    await _loungeInsert('[photo] ' + url);
+  }
+  if (text) await _loungeInsert(text);
+  return true;
 }
 
 async function deleteMsg(id) {
   if (!sbL) return;
   document.querySelectorAll(`.msg-row[data-id="${id}"]`).forEach(el => el.remove());
+  const { data } = await sbL.from('lounge_data').select('body').eq('id', id).maybeSingle();
   await sbL.from('lounge_data').delete().eq('id', id);
+  const path = data && data.body && data.body.startsWith('[photo] ') ? ccPhotoPathFromUrl(data.body.slice(8)) : '';
+  if (path) sbL.storage.from('kitchen-proofs').remove([path]).catch(() => {});
 }
 
 async function resetChat() {
   if (!sbL) return;
   if (!confirm('Delete all chat messages? This cannot be undone.')) return;
   _renderMsgs([]);
+  // Photos of the chat go with it
+  const { data: photos } = await sbL.from('lounge_data').select('body').eq('type','message').like('body', '[photo] %');
+  const paths = (photos || []).map(p => ccPhotoPathFromUrl(p.body.slice(8))).filter(Boolean);
+  if (paths.length) sbL.storage.from('kitchen-proofs').remove(paths).catch(() => {});
   await sbL.from('lounge_data').delete().eq('type','message');
   _ensureMobileCompose();   // realtime delete events can re-render — keep the bar
 }
@@ -658,20 +658,12 @@ async function loadLoungeAll() {
   });
   document.getElementById('notice-clear-btn')?.addEventListener('click', clearNotice);
 
-  // Mobile chat send
-  document.getElementById('lounge-send')
-    ?.addEventListener('click', sendLounge);
-  document.getElementById('lounge-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLounge(); }});
+  // Compose cards (phone + iPad/laptop)
+  _mountLoungeCompose(document.getElementById('lounge-compose-mob'));
+  _mountLoungeCompose(document.getElementById('lounge-compose-dsk'));
 
-  // v2 keyboard fix — replaces old blur scrollTo(0,0)
-  wireComposeBlur(document.getElementById('lounge-input'));
-
-  // Desktop chat send
-  document.getElementById('lounge-send-desktop')
-    ?.addEventListener('click', sendLoungeDesktop);
-  document.getElementById('lounge-input-desktop')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLoungeDesktop(); }});
+  // Messages normally arrive live; also reload when the app comes back to the front
+  ccOnResume(() => { if (typeof loadLoungeAll === 'function') loadLoungeAll(); else loadLounge(); });
 
   // Email hrefs
   _setEmailHref('lounge-email-all-desktop');

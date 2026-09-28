@@ -57,20 +57,10 @@ document.getElementById('tab-kitchen').innerHTML = `
     <div class="k-mob-chat">
       <div class="k-mob-chat-hdr">
         <span class="k-mob-chat-lbl">Proof &amp; chat</span>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="k-mob-tlink" onclick="kClearChat()">✕ Clear</button>
-          <button class="k-mob-tlink" onclick="loadKitchen()">↺ Refresh</button>
-        </div>
+        ${ccRefreshBtnHtml('loadKitchen()')}
       </div>
       <div class="k-mob-feed" id="k-feed-mob"></div>
-      <div class="k-mob-compose">
-        <input class="k-mob-compose-input" id="k-mob-msg-input" type="text" placeholder="Write to kitchen group…"/>
-        <button class="k-mob-nudge-flag-btn" id="k-mob-nudge-flag-btn" onclick="kitchenOpenModal('nudge')" aria-label="Send a nudge">⚑</button>
-        <input type="file" id="k-mob-photo-file" accept="image/*" capture="environment" style="display:none;"/>
-        <button class="k-mob-camera-btn" id="k-mob-photo-btn" aria-label="Send photo">
-          <i class="ti ti-camera" style="font-size:18px;"></i>
-        </button>
-      </div>
+      <div id="k-compose-mob"></div>
     </div>
   </div>
 
@@ -156,10 +146,7 @@ document.getElementById('tab-kitchen').innerHTML = `
       <!-- Chat header -->
       <div class="k-dsk-chat-hdr">
         <span class="k-dsk-chat-lbl">Proof &amp; chat</span>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <button class="k-dsk-chat-link" onclick="loadKitchen()">↺ Refresh</button>
-          <button class="k-dsk-chat-link" onclick="kClearChat()">✕ Clear</button>
-        </div>
+        ${ccRefreshBtnHtml('loadKitchen()')}
       </div>
 
       <!-- Nudge banner (desktop) -->
@@ -174,14 +161,7 @@ document.getElementById('tab-kitchen').innerHTML = `
       <div class="k-dsk-feed" id="k-feed-dsk"></div>
 
       <!-- Compose bar -->
-      <div class="k-mob-compose" style="padding-bottom:10px!important;">
-        <input class="k-mob-compose-input" id="k-dsk-msg-input" type="text" placeholder="Write to kitchen group…"/>
-        <button class="k-mob-nudge-flag-btn" id="k-dsk-nudge-flag-btn" onclick="kitchenOpenModal('nudge')" aria-label="Send a nudge">⚑</button>
-        <input type="file" id="k-dsk-photo-file" accept="image/*" style="display:none;"/>
-        <button class="k-mob-camera-btn" id="k-dsk-photo-btn" aria-label="Send photo">
-          <i class="ti ti-camera" style="font-size:18px;"></i>
-        </button>
-      </div>
+      <div id="k-compose-dsk"></div>
 
     </div><!-- /.k-desktop-right -->
 
@@ -1373,38 +1353,39 @@ async function _kSendNudge(typeBtn, toBtn, noteEl, sendBtn, afterSend) {
   });
 })();
 
-/* ── WIRE COMPOSE + PHOTO + PWA KEYBOARD FIX ───────────── */
-(function _wireCompose() {
-  const mobInput = document.getElementById('k-mob-msg-input');
-  const mobPhoto = document.getElementById('k-mob-photo-btn');
-  const mobFile  = document.getElementById('k-mob-photo-file');
-  const dskInput = document.getElementById('k-dsk-msg-input');
-  const dskPhoto = document.getElementById('k-dsk-photo-btn');
-  const dskFile  = document.getElementById('k-dsk-photo-file');
-
-  mobInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _kSendMsg(); } });
-  dskInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _kSendMsg(); } });
-
-  mobPhoto?.addEventListener('click', () => mobFile?.click());
-  mobFile?.addEventListener('change', async e => {
-    const file = e.target.files[0]; if (!file) return;
-    mobFile.value = ''; mobPhoto.style.opacity = '0.5';
-    await _kSendPhoto(file);
-    mobPhoto.style.opacity = '';
-  });
-
-  dskPhoto?.addEventListener('click', () => dskFile?.click());
-  dskFile?.addEventListener('change', async e => {
-    const file = e.target.files[0]; if (!file) return;
-    dskFile.value = ''; dskPhoto.style.opacity = '0.5';
-    await _kSendPhoto(file);
-    dskPhoto.style.opacity = '';
-  });
-
-  // PWA keyboard fix — mobile only (not needed on desktop)
-  wireComposeBlur(mobInput);
+/* ── COMPOSE CARD (phone + iPad/laptop) ─────────────────────
+   + : Choose photo · Send nudge · Nudge log · Clear chat
+       (nudge + log only on the phone — the laptop layout has them
+       in the left column). Camera = live photo.                   */
+async function _kComposeSend({ text, photo }) {
+  if (!sbL || !_kWeekRow) return false;
+  if (!(await _kEnsureCurrentWeek())) return false;
+  const row = _kWeekRow;
+  if (photo) {
+    const url = await ccUploadPhoto(photo, `week-${row.week_index}-mgmt-${Date.now()}.jpg`);
+    await _kAddComment(row.id, 'Casa Castel', '[photo] ' + url, false);
+  }
+  if (text) await _kAddComment(row.id, 'Casa Castel', _kSafeChatText(text), false);
+  await _kRenderFeed(_kWeekRow);
+  return true;
+}
+(function _mountKitchenCompose() {
+  const menu = [
+    { icon: 'photo', label: 'Choose photo',  sub: 'From your library', library: true },
+    { icon: 'flag',  label: 'Send nudge',    sub: 'Trash, dishes or fridge reminder', mobileOnly: true, onClick: () => kitchenOpenModal('nudge') },
+    { icon: 'list',  label: 'Nudge log',     sub: 'Open and resolved nudges',          mobileOnly: true, onClick: () => kitchenOpenModal('nudgelog') },
+    { icon: 'trash', label: 'Clear chat',    sub: "Delete this week's messages and photos", danger: true, onClick: () => kClearChat() },
+  ];
+  ['k-compose-mob', 'k-compose-dsk'].forEach(id => ccCompose(document.getElementById(id), {
+    placeholder: 'Write to kitchen group…',
+    plus: menu,
+    camera: 'live',
+    onSend: _kComposeSend,
+  }));
 })();
 
+/* Reload the kitchen when the app comes back to the front */
+ccOnResume(() => loadKitchen());
 
 /* ── FLAG SHEET CHIPS (multi-select) ────────────────────── */
 document.querySelectorAll('#k-flag-reasons .k-mob-n-chip').forEach(btn => {

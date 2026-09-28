@@ -58,18 +58,10 @@ document.getElementById('tab-kitchen').innerHTML = `
     <div class="k-mob-chat">
       <div class="k-mob-chat-hdr">
         <span class="k-mob-chat-lbl">Proof &amp; chat</span>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="k-mob-tlink" onclick="initKitchenMobile()">↺ Refresh</button>
-        </div>
+        ${ccRefreshBtnHtml('initKitchenMobile()')}
       </div>
       <div class="k-mob-feed" id="k-feed-mob"></div>
-      <div class="k-mob-compose">
-        <input class="k-mob-compose-input" id="k-mob-msg-input" type="text" placeholder="Write to kitchen group…"/>
-        <input type="file" id="k-mob-photo-file" accept="image/*" capture="environment" style="display:none;"/>
-        <button class="k-mob-camera-btn" id="k-mob-photo-btn" aria-label="Send photo" title="Send photo">
-          <i class="ti ti-camera" style="font-size:18px;"></i>
-        </button>
-      </div>
+      <div id="k-compose-mob"></div>
     </div>
 
   </div><!-- /#k-mob-wrapper -->
@@ -118,7 +110,7 @@ document.getElementById('tab-kitchen').innerHTML = `
       <!-- Header -->
       <div class="k-dsk-chat-hdr">
         <span class="k-dsk-chat-lbl">Proof &amp; chat</span>
-        <button class="k-dsk-chat-link" onclick="initKitchenMobile()">↺ Refresh</button>
+        ${ccRefreshBtnHtml('initKitchenMobile()')}
       </div>
 
       <!-- Nudge banner -->
@@ -132,14 +124,7 @@ document.getElementById('tab-kitchen').innerHTML = `
       <div class="k-dsk-feed" id="k-ten-dsk-feed"></div>
 
       <!-- Compose bar — matches lounge desktop style -->
-      <div class="k-ten-dsk-compose">
-        <input class="k-ten-dsk-compose-input" id="k-ten-dsk-msg-input" type="text" placeholder="Write to kitchen group…"/>
-        <input type="file" id="k-ten-dsk-photo-file" accept="image/*" style="display:none;"/>
-        <button class="k-ten-dsk-camera" id="k-ten-dsk-photo-btn" aria-label="Send photo" title="Send photo">
-          <i class="ti ti-camera" style="font-size:15px;"></i>
-        </button>
-        <button class="k-ten-dsk-compose-send" id="k-ten-dsk-send-btn" aria-label="Send message">↑</button>
-      </div>
+      <div id="k-compose-dsk"></div>
 
     </div><!-- /.k-desktop-right -->
 
@@ -351,10 +336,7 @@ function _kTenWizOpen(which) {
   _kWizSubmitting = false;
   _kWizStep = 0;
   const fileInput = document.getElementById('k-ten-wiz-file');
-  if (fileInput) {
-    if (window.innerWidth <= 700) fileInput.setAttribute('capture', 'environment');
-    else fileInput.removeAttribute('capture');
-  }
+  if (fileInput) fileInput.setAttribute('capture', 'environment');   // live photo only — no library
   const ttl = document.getElementById('k-ten-wiz-title');
   if (ttl) ttl.textContent = _kWizLate ? 'Late proof · ' + _kWeekRange(_kTenLateRow.week_index) : 'Kitchen proof';
   _kTenWizRender();
@@ -562,6 +544,11 @@ function _kTenRenderActBtnToEl(el, state, freshRow) {
   if (!el) return;
   if (state !== 'now') { el.innerHTML = ''; return; }
   const dbStatus = freshRow ? freshRow.status : null;
+  // Proof photos must be live photos — a laptop can't guarantee that
+  if (ccIsLaptop() && (!dbStatus || dbStatus === 'pending' || dbStatus === 'flagged')) {
+    el.innerHTML = '<p class="k-phone-only">Proof photos: please use your phone.</p>';
+    return;
+  }
   const isDsk = el.id === 'k-ten-dsk-act';
   if (dbStatus === 'flagged') {
     el.innerHTML = isDsk
@@ -663,10 +650,10 @@ function _kTenRenderLate() {
     const open = r.late_until && new Date(r.late_until) > new Date();
     if (r.status === 'missed' && open) {
       html = `<div class="k-late__text"><strong>Last week missed</strong><span>Upload late proof until ${_kFmtWhen(new Date(r.late_until))} — it then counts as done.</span></div>
-              <button class="k-late__btn" onclick="_kTenWizOpen('late')"><i class="ti ti-camera-plus" aria-hidden="true"></i>Late proof</button>`;
+              ${ccIsLaptop() ? '' : `<button class="k-late__btn" onclick="_kTenWizOpen('late')"><i class="ti ti-camera-plus" aria-hidden="true"></i>Late proof</button>`}`;
     } else if (r.status === 'flagged' && r.is_late) {
       html = `<div class="k-late__text"><strong>Late proof: redo</strong><span>${esc(r.flag_reason || 'Please upload new photos.')}</span></div>
-              <button class="k-late__btn" onclick="_kTenWizOpen('late')"><i class="ti ti-camera-plus" aria-hidden="true"></i>Re-upload</button>`;
+              ${ccIsLaptop() ? '' : `<button class="k-late__btn" onclick="_kTenWizOpen('late')"><i class="ti ti-camera-plus" aria-hidden="true"></i>Re-upload</button>`}`;
     } else if (r.status === 'submitted') {
       html = `<div class="k-late__text"><strong>${r.is_late ? 'Late proof sent' : "Last week's proof"}</strong><span>Waiting for review.</span></div>`;
     }
@@ -1193,63 +1180,28 @@ async function _kTenMarkNudgeDone() {
   } finally { _kTenNudgeBusy = false; }
 }
 
-/* ── WIRE COMPOSE (identical to landlord) ───────────────── */
-(function _kTenWireMobSend() {
-  const mobInput  = document.getElementById('k-mob-msg-input');
-  const mobPhoto  = document.getElementById('k-mob-photo-btn');
-  const mobFile   = document.getElementById('k-mob-photo-file');
-
-  mobInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _kTenMobSendMsg(); } });
-
-  mobPhoto?.addEventListener('click', () => mobFile?.click());
-  mobFile?.addEventListener('change', async e => {
-    const file = e.target.files[0]; if (!file) return;
-    mobFile.value = ''; mobPhoto.style.opacity = '0.5';
-    await _kTenSendPhoto(file, 'k-feed-mob');
-    mobPhoto.style.opacity = '';
-  });
-
-  wireComposeBlur(mobInput);
-
-  // Desktop compose wiring
-  const dskInput  = document.getElementById('k-ten-dsk-msg-input');
-  const dskSend   = document.getElementById('k-ten-dsk-send-btn');
-  const dskPhoto  = document.getElementById('k-ten-dsk-photo-btn');
-  const dskFile   = document.getElementById('k-ten-dsk-photo-file');
-
-  dskInput?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); _kTenDskSendMsg(); }
-  });
-  dskSend?.addEventListener('click', () => _kTenDskSendMsg());
-  dskPhoto?.addEventListener('click', () => dskFile?.click());
-  dskFile?.addEventListener('change', async e => {
-    const file = e.target.files[0]; if (!file) return;
-    dskFile.value = ''; dskPhoto.style.opacity = '0.5';
-    await _kTenSendPhoto(file, 'k-ten-dsk-feed');
-    dskPhoto.style.opacity = '';
-  });
-})();
-
-async function _kTenDskSendMsg() {
-  const inp  = document.getElementById('k-ten-dsk-msg-input');
-  const text = inp ? inp.value.trim() : '';
-  if (!text || !_kTenWeekRow || _kTenMobSending) return;
-  await _kTenEnsureCurrentWeek();
-  _kTenMobSending = true; inp.value = '';
+/* ── COMPOSE CARD (phone + iPad/laptop) ─────────────────────
+   Tenants: text + live camera only (no photo library, no +).
+   On a laptop the camera can't be forced, so photos are phone-only. */
+async function _kTenComposeSend({ text, photo }) {
+  if (!sbL || !_kTenWeekRow) return false;
+  if (!(await _kTenEnsureCurrentWeek())) return false;
   const room = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
-  const feed = document.getElementById('k-ten-dsk-feed');
-  if (feed) {
-    const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-ten-dsk-optimistic';
-    tmp.innerHTML = `<div class="k-chat-avatar">${_kTenRoomInitials(room)}</div>`
-      + `<div style="flex:1;min-width:0;"><div class="k-chat-meta">`
-      + `<span class="k-chat-name">${esc(room)}</span>`
-      + `<span class="k-chat-time" style="opacity:0.5;">sending…</span></div>`
-      + `<p class="k-chat-text">${esc(text)}</p></div>`;
-    feed.appendChild(tmp); scrollToBottom(feed);
+  const row  = _kTenWeekRow;
+  if (photo) {
+    const url = await ccUploadPhoto(photo, 'week-' + row.week_index + '-' + room + '-chat-' + Date.now() + '.jpg');
+    await _kTenAddComment(row.id, room, '[photo] ' + url, false);
   }
-  _kTenAddComment(_kTenWeekRow.id, room, _kSafeChatText(text), false)
-    .finally(() => { _kTenMobSending = false; });
+  if (text) await _kTenAddComment(row.id, room, _kSafeChatText(text), false);
+  await _kTenRenderFeed();
+  return true;
 }
+['k-compose-mob', 'k-compose-dsk'].forEach(id => ccCompose(document.getElementById(id), {
+  placeholder: 'Write to kitchen group…',
+  camera: 'phone-only-live',
+  onSend: _kTenComposeSend,
+}));
+ccOnResume(() => { _kTenEnsureCurrentWeek().then(ok => { if (ok) _kTenRenderFeed(); }); });
 
 /* ── SHOW KITCHEN TAB IN NAV ────────────────────────────── */
 function _kTenShowTabIfEligible() {

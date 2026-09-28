@@ -342,6 +342,7 @@ img { display: block; max-width: 100%; }
 /* ── CARDS ──────────────────────────────────────────────────
 ──────────────────────────────────────────────────────────── */
 .cc-card {
+  position: relative; z-index: 41;          /* stays above the + menu scrim */
   background: var(--cc-white);
   border: var(--cc-border);
   border-radius: var(--cc-r-lg);
@@ -2291,3 +2292,162 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .abs-rule__hint { font-size: 11px; line-height: 1.4; color: var(--cc-charcoal); margin: 0; }
 .abs-rule__preview { font-size: 11px; line-height: 1.4; color: #3A6A1A; margin: 4px 0 0; }
 .abs-rule__preview--none { color: #8C3A2A; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   CHAT COMPOSE CARD (Sep 2026) — Lounge + Kitchen, all devices
+   The beige chat background runs to the bottom of the screen;
+   the compose bar is a white card floating on it.
+═══════════════════════════════════════════════════════════ */
+
+/* Chat screens on the phone: no white strip under the chat */
+@media (max-width: 700px) {
+  .app-shell.visible.lounge-active,
+  .app-shell.visible.kitchen-active {
+    padding-bottom: 0;
+    background: var(--cc-bg);
+  }
+}
+
+.cc-dock {
+  position: relative;
+  flex-shrink: 0;
+  padding: 8px 12px 12px;
+  background: var(--cc-bg);
+}
+@media (max-width: 700px) {
+  .cc-dock { padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); }
+  body.browser-mode .cc-dock { padding-bottom: 12px; }
+  body.cc-kb-open .cc-dock  { padding-bottom: 8px; }
+}
+@media (min-width: 701px) {
+  .cc-dock { padding: 10px 14px 14px; }
+  .cc-mobile-only { display: none !important; }
+}
+
+.cc-card {
+  background: var(--cc-white);
+  border: 0.5px solid var(--cc-rule);
+  border-radius: 22px;
+  box-shadow: 0 2px 14px rgba(30, 27, 24, 0.07);
+  padding: 10px 8px 8px 14px;
+  transition: border-color 0.15s;
+}
+.cc-card:focus-within { border-color: var(--cc-stone); }
+.cc-card--err { border-color: #E3A39B; }
+
+.cc-field {
+  display: block; width: 100%; box-sizing: border-box;
+  min-height: 24px; max-height: 112px;
+  padding: 2px 6px 0 0; margin: 0;
+  border: none; outline: none; background: transparent; resize: none; overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px; font-weight: 300; line-height: 22px;
+  color: var(--cc-charcoal);
+}
+.cc-field::placeholder { color: var(--cc-stone); }
+@media (min-width: 701px) and (hover: hover) { .cc-field { font-size: 14px; } }
+
+.cc-tools { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.cc-spacer { flex: 1; }
+.cc-note { font-size: 10px; color: var(--cc-taupe); }
+
+.cc-btn {
+  width: 36px; height: 36px; flex-shrink: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-bg); color: var(--cc-taupe);
+  border: 0.5px solid var(--cc-rule); border-radius: 50%;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.cc-btn:hover { color: var(--cc-charcoal); border-color: var(--cc-stone); }
+.cc-btn:active { opacity: 0.7; }
+.cc-plus[aria-expanded="true"] { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+
+.cc-send {
+  width: 36px; height: 36px; flex-shrink: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-rule); color: var(--cc-white);
+  border: none; border-radius: 50%;
+  cursor: default; -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, opacity 0.15s;
+}
+.cc-send--on { background: var(--cc-ink); cursor: pointer; }
+.cc-send--on:active { opacity: 0.75; }
+.cc-card--busy .cc-send { background: var(--cc-ink); opacity: 0.45; }
+
+.cc-err { font-size: 11px; color: #8C3A2A; margin: 6px 0 0; }
+
+/* Photo waiting to be sent */
+.cc-att { margin-bottom: 8px; }
+.cc-thumb {
+  position: relative; width: 56px; height: 56px;
+  border-radius: 12px; overflow: hidden;
+  border: 0.5px solid var(--cc-rule); background: var(--cc-surface);
+}
+.cc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cc-thumb-x {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 20px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(30, 27, 24, 0.7); color: #fff;
+  border: none; border-radius: 50%; cursor: pointer;
+}
+.cc-thumb-bar { display: none; position: absolute; left: 6px; right: 6px; bottom: 6px; height: 3px; border-radius: 2px; background: rgba(253, 252, 250, 0.7); overflow: hidden; }
+.cc-thumb-bar span { display: block; width: 40%; height: 100%; border-radius: 2px; background: var(--cc-ink); animation: cc-load 1.1s ease-in-out infinite; }
+.cc-card--busy .cc-thumb-bar { display: block; }
+.cc-card--busy .cc-thumb-x { display: none; }
+@keyframes cc-load { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .cc-thumb-bar span { animation: none; width: 100%; } }
+
+/* + menu (above the card) */
+.cc-menu-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(30, 27, 24, 0.12); }
+.cc-menu {
+  position: absolute; left: 12px; bottom: calc(100% - 4px); z-index: 41;
+  width: 260px; max-width: calc(100% - 24px); box-sizing: border-box;
+  padding: 6px;
+  background: var(--cc-white);
+  border: 0.5px solid var(--cc-rule); border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(30, 27, 24, 0.14);
+}
+.cc-mi {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px; border: none; border-radius: 10px;
+  background: none; text-align: left; font-family: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cc-mi:hover, .cc-mi:active { background: var(--cc-bg); }
+.cc-mi-ico {
+  width: 32px; height: 32px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-surface); color: var(--cc-taupe);
+  border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-md);
+}
+.cc-mi-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cc-mi-t { font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--cc-ink); }
+.cc-mi-s { font-size: 11px; font-weight: 300; line-height: 1.3; color: var(--cc-taupe); }
+.cc-mi--danger .cc-mi-t { color: #9F1239; }
+.cc-mi--danger .cc-mi-ico { color: #9F1239; background: #FFF1F2; border-color: #FECDD3; }
+.cc-menu-sep { height: 0.5px; background: var(--cc-rule); margin: 4px 10px; }
+
+/* Chat header: small refresh icon instead of the text link */
+.cc-hdr-refresh {
+  width: 26px; height: 26px; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: none; color: var(--cc-taupe);
+  border: 0.5px solid var(--cc-rule); border-radius: 50%;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cc-hdr-refresh:hover { color: var(--cc-charcoal); border-color: var(--cc-stone); }
+.cc-hdr-refresh:active { opacity: 0.7; }
+.l-chat-hdr, .k-mob-chat-hdr { min-height: 34px; }
+
+/* Photos in the lounge chat */
+.msg-photo {
+  display: block; max-width: min(240px, 100%); max-height: 260px; margin-top: 5px;
+  border-radius: 10px; border: 0.5px solid var(--cc-rule);
+  object-fit: cover; cursor: pointer;
+}
+
+/* Tenant on a laptop: kitchen photos only from the phone */
+.k-phone-only { margin: 8px 0 0; font-size: 10.5px; color: var(--cc-taupe); }

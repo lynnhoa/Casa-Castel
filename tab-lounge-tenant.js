@@ -24,15 +24,12 @@ document.getElementById('tab-lounge').innerHTML = `
   <div class="l-chat">
     <div class="l-chat-hdr">
       <span class="l-chat-lbl">House chat</span>
-      <button class="l-chat-tlink" id="lounge-refresh-btn">↺ Refresh</button>
+      ${ccRefreshBtnHtml('', 'lounge-refresh-btn')}
     </div>
     <div class="l-feed" id="lounge-feed">
       <p class="cc-note" style="padding:8px 0 4px;">No messages yet. Say hello 👋</p>
     </div>
-    <div class="l-compose">
-      <input class="l-compose-input" id="lounge-input" type="text" placeholder="Message the house…"/>
-      <button class="l-compose-send" id="lounge-send">↑</button>
-    </div>
+    <div id="lounge-compose-mob"></div>
   </div>
 
   <!-- Desktop 2-column layout — hidden on mobile via CSS -->
@@ -54,7 +51,7 @@ document.getElementById('tab-lounge').innerHTML = `
     <div class="l-desktop-right">
       <div class="l-dsk-chat-hdr">
         <span class="l-dsk-chat-lbl">House chat</span>
-        <button class="l-dsk-chat-link" id="lounge-refresh-btn-desktop">↺ Refresh</button>
+        ${ccRefreshBtnHtml('', 'lounge-refresh-btn-desktop')}
       </div>
       <div id="lounge-notice-banner-desktop" style="display:none;flex-shrink:0;padding:8px 14px;border-bottom:0.5px solid #EAD96B;align-items:center;gap:8px;">
         <span style="font-size:13px;flex-shrink:0;" id="lounge-notice-banner-icon-dsk">ⓘ</span>
@@ -63,10 +60,7 @@ document.getElementById('tab-lounge').innerHTML = `
       <div class="l-feed" id="lounge-feed-desktop">
         <p class="cc-note" style="padding:8px 0 4px;">No messages yet. Say hello 👋</p>
       </div>
-      <div class="compose-bar">
-        <textarea class="compose-input" id="lounge-input-desktop" placeholder="Message the house…" rows="1"></textarea>
-        <button class="compose-send" id="lounge-send-desktop">↑</button>
-      </div>
+      <div id="lounge-compose-dsk"></div>
     </div><!-- /.l-desktop-right -->
 
   </div><!-- /.l-desktop-grid -->
@@ -157,6 +151,13 @@ async function loadLounge(room) {
   if (feedDsk) { feedDsk.innerHTML = html; scrollToBottom(feedDsk); }
 }
 
+/* A message is text, or a photo ("[photo] <url>") */
+function _loungeBodyHtml(body, me) {
+  const url = typeof body === 'string' && body.startsWith('[photo] ') ? ccPhotoUrl(body.slice(8)) : '';
+  if (url) return `<img class="msg-photo" src="${esc(url)}" alt="Photo" loading="lazy" onclick="ccOpenPhoto(this.src)" onerror="this.style.display='none'"/>`;
+  return `<p class="msg-text">${parseMsg(body, me)}</p>`;
+}
+
 function _msgHtml(m, currentRoom) {
   const isCC  = m.room === 'Casa Castel';
   const isMe  = m.room === currentRoom;
@@ -167,24 +168,30 @@ function _msgHtml(m, currentRoom) {
         <span class="msg-name${isCC ? ' msg-name--mgmt' : ''}">${esc(m.room)}</span>
         <span class="msg-time">${fmtTs(new Date(m.created_at).getTime())}</span>
       </div>
-      <p class="msg-text">${parseMsg(m.body, currentRoom)}</p>
+      ${_loungeBodyHtml(m.body, currentRoom)}
     </div>
   </div>`;
 }
 
-async function sendLounge(room, inputId) {
-  if (!sbL || !room) return;
-  const input = document.getElementById(inputId || 'lounge-input');
-  if (!input) return;
-  const text = input.value.trim(); if (!text) return;
-  input.value = '';
-  // Optimistic append — no full feed reload
+/* Send one chat message (text or photo) with an instant "sending" row */
+async function _loungeInsert(room, body) {
   const tmpId = '_tmp_' + Date.now();
-  const opt = { id: tmpId, room, body: text, created_at: new Date().toISOString(), type: 'message' };
-  _appendMsg(opt, room);
-  const { data } = await sbL.from('lounge_data').insert({ type:'message', room, body:text }).select().maybeSingle();
+  _appendMsg({ id: tmpId, room, body, created_at: new Date().toISOString(), type: 'message' }, room);
+  const { data, error } = await sbL.from('lounge_data').insert({ type:'message', room, body }).select().maybeSingle();
   _removeOptimistic();
+  if (error) throw error;
   if (data) _appendMsg(data, room);
+  return true;
+}
+/* Compose card → photo first (if any), then the text */
+async function _loungeSendTenant(room, { text, photo }) {
+  if (!sbL || !room) return false;
+  if (photo) {
+    const url = await ccUploadPhoto(photo, 'lounge/' + room.replace(/[^A-Za-z0-9_-]/g, '') + '-' + Date.now() + '.jpg');
+    await _loungeInsert(room, '[photo] ' + url);
+  }
+  if (text) await _loungeInsert(room, text);
+  return true;
 }
 
 // Appends a single message to both feeds (deduplicates by id)
@@ -249,24 +256,19 @@ function initLoungeTab(room) {
   }
   initLoungeTab._wired = true;
 
-  // Mobile wiring
-  document.getElementById('lounge-send')
-    ?.addEventListener('click', () => sendLounge(room, 'lounge-input'));
-  document.getElementById('lounge-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendLounge(room, 'lounge-input'); }});
+  // Compose cards (phone + iPad/laptop): text, photo (camera or library), send — no + for tenants
+  ['lounge-compose-mob', 'lounge-compose-dsk'].forEach(id => ccCompose(document.getElementById(id), {
+    placeholder: 'Message the house…',
+    camera: 'choice',
+    onSend: msg => _loungeSendTenant(room, msg),
+  }));
   document.getElementById('lounge-refresh-btn')
     ?.addEventListener('click', () => loadLounge(room));
-
-  // Desktop wiring
-  document.getElementById('lounge-send-desktop')
-    ?.addEventListener('click', () => sendLounge(room, 'lounge-input-desktop'));
-  document.getElementById('lounge-input-desktop')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLounge(room, 'lounge-input-desktop'); }});
   document.getElementById('lounge-refresh-btn-desktop')
     ?.addEventListener('click', () => loadLounge(room));
 
-  // v2 keyboard fix
-  wireComposeBlur(document.getElementById('lounge-input'));
+  // Messages normally arrive live; also reload when the app comes back to the front
+  ccOnResume(() => loadLounge(room));
 
   loadAnnouncements();
   loadNotice();
