@@ -195,27 +195,27 @@ document.getElementById('tab-lounge').innerHTML = `
     <div class="cc-modal-sheet" style="max-height:60vh;">
       <div class="cc-modal-hdr">
         <span class="cc-modal-title">Lounge actions</span>
-        <button class="cc-modal-close" onclick="loungeCloseModal('actions')">✕</button>
+        <button class="cc-modal-close" onclick="loungeCloseModal('actions')" aria-label="Close"><i class="ti ti-x"></i></button>
       </div>
-      <div class="cc-modal-body" style="padding:0;">
-        <button onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('ann'),120);" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:none;border:none;border-bottom:0.5px solid var(--cc-rule);cursor:pointer;text-align:left;font-family:inherit;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">📢</div>
-          <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);margin:0 0 2px;">Post announcement</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Push a message to all tenants</p></div>
-          <span style="margin-left:auto;color:var(--cc-stone);font-size:16px;">›</span>
+      <div class="cc-modal-body l-act-list">
+        <button type="button" class="l-act-row" onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('ann'),120);">
+          <span class="l-act-icon"><i class="ti ti-speakerphone"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Post announcement</span><span class="l-act-sub">Push a message to all tenants</span></span>
+          <i class="ti ti-chevron-right l-act-chev"></i>
         </button>
-        <button onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('notice'),120);" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:none;border:none;border-bottom:0.5px solid var(--cc-rule);cursor:pointer;text-align:left;font-family:inherit;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">ℹ</div>
-          <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);margin:0 0 2px;">Post notice</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Info strip above the chat</p></div>
-          <span style="margin-left:auto;color:var(--cc-stone);font-size:16px;">›</span>
+        <button type="button" class="l-act-row" onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('notice'),120);">
+          <span class="l-act-icon"><i class="ti ti-info-circle"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Post notice</span><span class="l-act-sub">Info strip above the chat</span></span>
+          <i class="ti ti-chevron-right l-act-chev"></i>
         </button>
-        <a id="lounge-email-all-mob" href="#" target="_blank" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border-bottom:0.5px solid var(--cc-rule);text-decoration:none;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">✉</div>
-          <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);margin:0 0 2px;">Email all tenants</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Open email to all rooms</p></div>
-          <span style="margin-left:auto;color:var(--cc-stone);font-size:16px;">›</span>
+        <a id="lounge-email-all-mob" class="l-act-row" href="#" target="_blank">
+          <span class="l-act-icon"><i class="ti ti-mail"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Email all tenants</span><span class="l-act-sub">Open email to all rooms</span></span>
+          <i class="ti ti-chevron-right l-act-chev"></i>
         </a>
-        <button id="lounge-reset-btn-mob" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">↺</div>
-          <div><p style="font-size:13px;font-weight:500;color:#9F1239;margin:0 0 2px;">Reset chat</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Delete all messages</p></div>
+        <button type="button" id="lounge-reset-btn-mob" class="l-act-row l-act-row--danger">
+          <span class="l-act-icon"><i class="ti ti-trash"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Reset chat</span><span class="l-act-sub">Delete all messages</span></span>
         </button>
       </div>
     </div>

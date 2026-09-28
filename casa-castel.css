@@ -2150,3 +2150,31 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
     margin: -8px -4px;
   }
 }
+
+
+/* ── LOUNGE ACTIONS SHEET (landlord "More") ─────────────────
+   Line icons in the app's tile style instead of emoji.      */
+.l-act-list { padding: 0 0 max(8px, env(safe-area-inset-bottom, 0px)); }
+.l-act-row {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 14px 16px;
+  background: none; border: none; border-bottom: 0.5px solid var(--cc-rule);
+  text-align: left; text-decoration: none; font-family: inherit;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.l-act-row:last-child { border-bottom: none; }
+.l-act-row:active { background: var(--cc-surface); }
+.l-act-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-surface); border: 0.5px solid var(--cc-rule);
+  border-radius: var(--cc-r-md);
+  color: var(--cc-taupe); font-size: 18px;
+}
+.l-act-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.l-act-title { line-height: 1.35; font-size: 13px; font-weight: 500; color: var(--cc-ink); }
+.l-act-sub   { line-height: 1.35; font-size: 11px; font-weight: 300; color: var(--cc-taupe); }
+.l-act-chev  { margin-left: auto; color: var(--cc-stone); font-size: 16px; flex-shrink: 0; }
+.l-act-row--danger .l-act-icon  { color: #9F1239; background: #FFF1F2; border-color: #FECDD3; }
+.l-act-row--danger .l-act-title { color: #9F1239; }
+#lounge-modal-actions .cc-modal-close { display: flex; align-items: center; justify-content: center; font-size: 16px; }
