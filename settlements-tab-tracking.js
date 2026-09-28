@@ -237,8 +237,12 @@ function _stPanelHtml() {
   if (l.type === 'gap') {
     body = l.it.confirmed
       ? '<p class="st-note">Als Leerstand bestätigt — für diese Tage gibt es keine NK-Abrechnung.</p><button class="cx-btn cx-btn--s cx-btn--full" data-st="gapUndo">Zurück auf Offen</button>'
-      : '<p class="st-note">In diesen Tagen ist kein Mieter eingetragen. War die Einheit leer, bestätige es hier. Sonst fehlt ein Mieter in ' + (l.it.app === 'casa' ? 'Casa Castel' : 'Rentals') + '.</p>' +
-        '<button class="cx-btn cx-btn--p cx-btn--full" data-st="gapOk">War leer</button>';
+      : '<p class="st-note">In diesen Tagen ist kein Mieter eingetragen. Hat hier jemand gewohnt, trag ihn als ehemaligen Mieter nach — die Daten sind schon ausgefüllt. War die Einheit leer, bestätige es.</p>' +
+        (_stGapTarget(l)
+          ? '<button class="cx-btn cx-btn--p cx-btn--full" data-st="gapAdd"><i class="ti ti-user-plus" aria-hidden="true"></i> Mieter nachtragen</button>' +
+            '<p class="st-hint st-center">Öffnet ' + (_stGapTarget(l).app === 'casa' ? 'Casa Castel' : 'Rentals') + ' → Tenants · nach dem Speichern geht es hierher zurück.</p>'
+          : '<p class="st-hint">Diese Einheit ist nicht verknüpft — Mieter bitte direkt in Casa Castel oder Rentals nachtragen.</p>') +
+        '<button class="cx-btn cx-btn--s cx-btn--full" data-st="gapOk">War leer</button>';
   } else if (s.k === 'offen' || ST.edit) {
     body = _stFormHtml(l, weg, ST.edit ? s.res : null);
   } else if (s.res) {
@@ -294,6 +298,26 @@ function _stHint(res, weg, via) {
   const inc = weg ? res === 'gut' : res === 'nach';
   if (via && via !== 'zahlung') return 'Wird ' + (_stViaText[via] || '') + ' — keine Zahlung, danach erledigt.';
   return 'Erscheint in Controlling unter ' + (inc ? 'Income' : 'Expenses') + '. Dort bestätigst du, wann das Geld geflossen ist.';
+}
+
+/* Where a Leerstand line's tenant would be added (Casa room or Rentals apartment) */
+function _stGapTarget(l) {
+  let link = null;
+  try { link = ctlUnitLink(l.it.unit, l.p); } catch (e) {}
+  if (!link) return null;
+  if (link.type === 'casa_room') return { app: 'casa', room: link.ref };
+  if (link.type === 'rentals_apartment') return { app: 'rentals', aptId: link.ref };
+  return null;
+}
+function _stGapAdd(l) {
+  const t = _stGapTarget(l); if (!t) return;
+  const h = { ...t, from: l.from, to: l.to, back: 'settlements.html', t: Date.now() };
+  try {
+    sessionStorage.setItem('cc_prefill_former', JSON.stringify(h));
+    if (t.app === 'casa') sessionStorage.setItem('cc_open_tab', 'tenants');
+    else localStorage.setItem('rentals_last_tab', 'tenants');
+  } catch (e) {}
+  location.href = t.app === 'casa' ? 'landlord.html' : 'rentals-index.html';
 }
 
 /* ── Saving ───────────────────────────────────────────────── */
@@ -469,6 +493,7 @@ document.getElementById('tab-tracking')?.addEventListener('click', async e => {
   if (a === 'reopen') { await _stReopen(l); return; }
   if (a === 'nd') { await _stNotDone(l); return; }
   if (a === 'gapOk') { await _stGap(l, true); return; }
+  if (a === 'gapAdd') { _stGapAdd(l); return; }
   if (a === 'gapUndo') { await _stGap(l, false); return; }
 });
 /* Laptop: Enter in the amount field saves */

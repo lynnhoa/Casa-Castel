@@ -3172,14 +3172,15 @@ function _rntToast(msg, isError) {
 /* ══════════════════════════════════════════════════════════════
    17. FORMER TENANT MANAGEMENT
 ══════════════════════════════════════════════════════════════ */
-function _rntAddFormer(unitType, unitId) {
+function _rntAddFormer(unitType, unitId, pre) {
   const draft = {
     id: null,
     apartment_id: unitType === 'apt'     ? unitId : null,
     parking_id:   unitType === 'parking' ? unitId : null,
     status: 'former', contract_type: 'mietvertrag',
     first_name: null, last_name: null, email: null, phone: null,
-    birthday: null, address: null, mietbeginn: null, mietende: null,
+    birthday: null, address: null,
+    mietbeginn: (pre && pre.from) || null, mietende: (pre && pre.to) || null,
     kaltmiete: null, nebenkosten: null, kaution_soll: null,
   };
   _rntOpenModalDraft(draft);
@@ -3261,6 +3262,7 @@ async function _rntModalSaveDraft() {
   modal._draft = null;
 
   _rntCloseModal();
+  if (window._ccReturnTo) { location.href = window._ccReturnTo; return; }  // came from Settlements → straight back
   _rntOpenModal(data.id);
   _rntRender();
 }
@@ -3442,6 +3444,31 @@ async function loadRntTenants() {
     !appParking?.length    ? loadParking?.()    : Promise.resolve(),
   ]);
   await _rntLoad();
+  const h = _ccTakeFormerHandoff('rentals');
+  if (h && h.aptId != null) {
+    const apt = (appApartments || []).find(a => String(a.id) === String(h.aptId));
+    if (apt) { _ccReturnBanner(document.getElementById('tab-tenants')); _rntAddFormer('apt', apt.id, h); }
+  }
+}
+
+/* ── "Mieter nachtragen" from Settlements ─────────────────────
+   Settlements (Tracking → Leerstand) opens this tab with the room and
+   the empty days. The "Add former tenant" form opens with those dates
+   filled in; after saving you go straight back to Settlements.       */
+function _ccTakeFormerHandoff(app) {
+  let h = null;
+  try { h = JSON.parse(sessionStorage.getItem('cc_prefill_former') || 'null'); } catch (e) {}
+  if (!h || h.app !== app || Date.now() - (h.t || 0) > 15 * 60 * 1000) return null;
+  try { sessionStorage.removeItem('cc_prefill_former'); } catch (e) {}
+  window._ccReturnTo = h.back || null;
+  return h;
+}
+function _ccReturnBanner(tabEl) {
+  if (!tabEl || !window._ccReturnTo || tabEl.querySelector('.cc-return-bar')) return;
+  tabEl.insertAdjacentHTML('afterbegin',
+    '<div class="cc-return-bar"><button type="button" onclick="location.href=window._ccReturnTo">' +
+    '<i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück zu Settlements</button>' +
+    '<span>Mieter für den Leerstand nachtragen</span></div>');
 }
 
 

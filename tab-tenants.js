@@ -2671,7 +2671,7 @@ async function _tnDeleteDoc(tid, type, docId) {
 /* ══════════════════════════════════════════════════════════════
    17. FORMER TENANT MANAGEMENT
 ══════════════════════════════════════════════════════════════ */
-function _tnAddFormer(roomName) {
+function _tnAddFormer(roomName, pre) {
   // Open modal with a local draft — nothing written to DB until Save
   const draft = {
     id: null,
@@ -2679,7 +2679,8 @@ function _tnAddFormer(roomName) {
     status: 'former',
     contract_type: _tnRoomContractType(roomName),
     first_name: null, last_name: null, email: null, phone: null,
-    birthday: null, address: null, mietbeginn: null, mietende: null,
+    birthday: null, address: null,
+    mietbeginn: (pre && pre.from) || null, mietende: (pre && pre.to) || null,
     kaltmiete: null, nebenkosten: null, kaution_soll: null,
   };
   _tnOpenModalDraft(draft);
@@ -2757,6 +2758,7 @@ async function _tnModalSaveDraft() {
   modal._draft = null;
 
   _tnCloseModal();
+  if (window._ccReturnTo) { location.href = window._ccReturnTo; return; }   // came from Settlements → straight back
   _tnOpenModal(data.id);
   _tnRender();
 }
@@ -2971,7 +2973,30 @@ async function loadTenants() {
   _tnWireRealtime();
   await _tnLoad();
   checkBirthdays();
+  const h = _ccTakeFormerHandoff('casa');
+  if (h && h.room) { _ccReturnBanner(document.getElementById('tab-tenants')); _tnAddFormer(h.room, h); }
 }
+
+/* ── "Mieter nachtragen" from Settlements ─────────────────────
+   Settlements (Tracking → Leerstand) opens this tab with the room and
+   the empty days. The "Add former tenant" form opens with those dates
+   filled in; after saving you go straight back to Settlements.       */
+function _ccTakeFormerHandoff(app) {
+  let h = null;
+  try { h = JSON.parse(sessionStorage.getItem('cc_prefill_former') || 'null'); } catch (e) {}
+  if (!h || h.app !== app || Date.now() - (h.t || 0) > 15 * 60 * 1000) return null;
+  try { sessionStorage.removeItem('cc_prefill_former'); } catch (e) {}
+  window._ccReturnTo = h.back || null;
+  return h;
+}
+function _ccReturnBanner(tabEl) {
+  if (!tabEl || !window._ccReturnTo || tabEl.querySelector('.cc-return-bar')) return;
+  tabEl.insertAdjacentHTML('afterbegin',
+    '<div class="cc-return-bar"><button type="button" onclick="location.href=window._ccReturnTo">' +
+    '<i class="ti ti-arrow-left" aria-hidden="true"></i> Zurück zu Settlements</button>' +
+    '<span>Mieter für den Leerstand nachtragen</span></div>');
+}
+
 
 
 /* ── Double-tap lock (ccOnce in direct-save.js): these add a new row ── */
