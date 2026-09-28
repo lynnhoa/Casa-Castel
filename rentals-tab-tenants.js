@@ -1080,7 +1080,7 @@ function _rntCardHTML({ type, unit }) {
   ${formerNudges}
   <div class="tn-body" id="tb-${rid}">
     ${activeRec || !unit.vacant
-      ? _rntRentBarHTML(rid, type, unit, activeRec) + _rntRentFormHTML(rid, type, unit, activeRec)
+      ? _rntRentBarHTML(rid, type, unit, activeRec) + _rntRentFormHTML(rid, type, unit, activeRec) + _ccRentTimelineHTML('rentals', activeRec, _rntFmtEUR)
       : ''}
     ${_ccNextTenantHTML(nextRec, nextRec ? _rntEsc(_rntFullTenantNames(nextRec)) : '', _rntFmtDate, '_rntOpenModal')}
     ${_rntProfileSectionHTML(rid, type, unit, activeRec)}
@@ -1347,6 +1347,26 @@ function _ccPanelOpen(secId, title, bodyHtml, onSave) {
     p.remove(); if (typeof ccSavedToast === 'function') ccSavedToast();
   };
   p.querySelector('input')?.focus();
+}
+
+/* ── 3c · Miete timeline: every rent the tenancy had / will have (read-only) ── */
+function _ccRentTimelineHTML(app, rec, fmtEUR) {
+  if (!rec || typeof ccRpFor !== 'function') return '';
+  const list = ccRpFor(app, rec.id);
+  if (list.length < 2) return '';
+  const today = _ccTodayIso();
+  let curIdx = -1; list.forEach((p, i) => { if (_ccIso(p.valid_from) <= today) curIdx = i; });
+  const kind = { migrated: 'Start', manual: 'Korrektur', renewal: 'Verlängerung', staffel: 'Staffel', index: 'Index', nk: 'NK-Anpassung' };
+  const rows = list.slice().reverse().map((p, ri) => {
+    const i = list.length - 1 - ri, fut = _ccIso(p.valid_from) > today;
+    const amt = p.mode === 'pauschal' ? fmtEUR(p.pauschale) + ' pauschal'
+      : fmtEUR(p.kaltmiete) + ' + ' + fmtEUR(p.nebenkosten) + ' NK';
+    return `<div class="cc-tl-row${i === curIdx ? ' is-cur' : ''}${fut ? ' is-fut' : ''}">
+      <span class="cc-tl-date">ab ${_ccFmtD(p.valid_from)}</span>
+      <span class="cc-tl-amt">${amt}</span>
+      <span class="cc-tl-kind">${fut ? 'geplant · ' : ''}${kind[p.kind] || p.kind || ''}</span></div>`;
+  }).join('');
+  return `<details class="cc-tl"><summary>Rent history · ${list.length} entries</summary>${rows}</details>`;
 }
 function _ccNextTenantHTML(rec, name, fmtDate, openFn) {
   if (!rec) return '';
@@ -1623,6 +1643,8 @@ function _rntNKHTML(rid, tid, ctx) {
       </div></div>`;
   }
 
+  // 3f · NK-Abrechnungen are made in Settlements — here read-only
+  if (typeof ccNksSectionHTML === 'function') return ccNksSectionHTML(tid, ctx, _rntNK[tid] || []);
   const entries  = (_rntNK[tid] || []).slice().sort((a,b) => b.period.localeCompare(a.period));
   const open     = entries.filter(e => !e.paid);
   const settled  = entries.filter(e =>  e.paid);
@@ -1810,21 +1832,24 @@ function _rntNKVorausModalClose() { document.getElementById('rntNKVorausModal').
 function _rntNKVorausModalOutside(e) { if (e.target === document.getElementById('rntNKVorausModal')) _rntNKVorausModalClose(); }
 
 function _rntNKVorausAdd(aptId, rid, ctx) {
+  // Same frame as every section: the form opens at the top, Cancel · Save in the slot
   const sec = document.getElementById(`nkv-sec-${rid}`);
   if (!sec) return;
-  if (sec.querySelector('.tn-nkv-add-form')) { sec.querySelector('input[type=date], input.cc-date')?.focus(); return; }
+  if (sec.querySelector('.tn-nkv-add-form')) { sec.querySelector('input[type=date]')?.focus(); return; }
   const body = sec.querySelector('.tn-sec-body');
   const form = document.createElement('div');
-  form.className = 'tn-nkv-add-form';
+  form.className = 'tn-nkv-add-form cc-add-form';
   form.innerHTML = `
-    <input type="date" id="nkv-add-date-${rid}" style="width:130px"/>
-    <input type="number" data-cc-num="2" id="nkv-add-amount-${rid}" placeholder="Betrag €" step="0.01" min="0"/>
-    <button class="tn-btn tn-btn-primary" style="height:30px;font-size:11px;padding:0 10px"
-      onclick="_rntNKVorausConfirmAdd('${aptId}','${rid}')"><i class="ti ti-check"></i></button>
-    <button class="tn-btn tn-btn-sm" style="height:30px;font-size:11px;padding:0 10px"
-      onclick="this.closest('.tn-nkv-add-form').remove()"><i class="ti ti-x"></i></button>`;
-  body.appendChild(form);
-  form.querySelector('input[type=date], input.cc-date').focus();
+    <div class="cc-add-grid">
+      <label class="cc-add-f"><span class="tn-flbl">Gültig ab</span><input type="date" id="nkv-add-date-${rid}" value=""/></label>
+      <label class="cc-add-f"><span class="tn-flbl">NK-Vorauszahlung €</span><input type="number" data-cc-num="2" id="nkv-add-amount-${rid}" placeholder="0,00" step="0.01" min="0"/></label>
+    </div>
+    <div class="cc-add-slot">
+      <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
+      <button type="button" class="cc-add-btn is-primary" onclick="_rntNKVorausConfirmAdd('${aptId}','${rid}')">Save</button>
+    </div>`;
+  body.insertBefore(form, body.children[1] || null);
+  form.querySelector('input[type=date]').focus();
 }
 
 async function _rntNKVorausConfirmAdd__run(aptId, rid) {
@@ -1946,6 +1971,28 @@ function _rntStaffelHTML(rid, aptId) {
 }
 
 function _rntStaffelOpenAdd(aptId, rid) {
+  const sec = document.getElementById(`sf-sec-${rid}`);
+  if (sec) {
+    if (sec.querySelector('.cc-add-form')) { sec.querySelector('#sf-add-date')?.focus(); return; }
+    const body = sec.querySelector('.tn-sec-body');
+    const form = document.createElement('div');
+    form.className = 'cc-add-form';
+    form.innerHTML = `
+    <div class="cc-add-grid">
+      <label class="cc-add-f"><span class="tn-flbl">Gültig ab</span><input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">Neue Kaltmiete €</span><input type="number" data-cc-num="2" id="sf-add-amount" placeholder="0,00" step="0.01" min="0"/></label>
+    </div>
+    <div class="cc-add-slot">
+      <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
+      <button type="button" class="cc-add-btn is-primary" onclick="_rntStaffelConfirmAdd('${aptId}','${rid}')">Save</button>
+    </div>`;
+    body.insertBefore(form, body.children[1] || null);
+    form.querySelector('#sf-add-amount').focus();
+    return;
+  }
+  return _rntStaffelOpenAdd__sheet(aptId, rid);
+}
+function _rntStaffelOpenAdd__sheet(aptId, rid) {
   _rntStaffelSetTitle('Stufe hinzufügen');
   _rntStaffelVerlaufOpen = null;
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
@@ -2081,6 +2128,28 @@ function _rntPkStaffelHTML(rid, pkId) {
 }
 
 function _rntPkStaffelOpenAdd(pkId, rid) {
+  const sec = document.getElementById(`sf-sec-${rid}`);
+  if (sec) {
+    if (sec.querySelector('.cc-add-form')) { sec.querySelector('#sf-add-date')?.focus(); return; }
+    const body = sec.querySelector('.tn-sec-body');
+    const form = document.createElement('div');
+    form.className = 'cc-add-form';
+    form.innerHTML = `
+    <div class="cc-add-grid">
+      <label class="cc-add-f"><span class="tn-flbl">Gültig ab</span><input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">Neue Kaltmiete €</span><input type="number" data-cc-num="2" id="sf-add-amount" placeholder="0,00" step="0.01" min="0"/></label>
+    </div>
+    <div class="cc-add-slot">
+      <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
+      <button type="button" class="cc-add-btn is-primary" onclick="_rntPkStaffelConfirmAdd('${pkId}','${rid}')">Save</button>
+    </div>`;
+    body.insertBefore(form, body.children[1] || null);
+    form.querySelector('#sf-add-amount').focus();
+    return;
+  }
+  return _rntPkStaffelOpenAdd__sheet(pkId, rid);
+}
+function _rntPkStaffelOpenAdd__sheet(pkId, rid) {
   _rntStaffelSetTitle('Stufe hinzufügen');
   _rntStaffelVerlaufOpen = null;
   const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);

@@ -322,6 +322,10 @@ function _stFormHtml(l, weg, res) {
       opt('null', 'Ausgeglichen', 'kein Geld fließt') + '</div></fieldset>' +
     '<label class="st-f st-f--amt"' + hide + '><span class="st-f__l">Betrag</span><span class="st-amt">' +
       '<input id="stAmt" class="st-in" inputmode="decimal" autocomplete="off" placeholder="0,00" value="' + (res && res.amount ? stEsc(cxE2(res.amount)) : '') + '"/><span>€</span></span></label>' +
+    (!weg && r.tenant_id ? '<div class="st-f st-f--per"><span class="st-f__l">Abrechnungszeitraum (dieser Mieter)</span><span class="st-per2">' +
+      '<input id="stPerFrom" class="st-in" type="date" value="' + stEsc(_stD(r.period_from) || '') + '"/><span>–</span>' +
+      '<input id="stPerTo" class="st-in" type="date" value="' + stEsc(_stD(r.period_to) || '') + '"/></span>' +
+      '<small class="st-per-hint">Nur ändern, wenn die Abrechnung dieses Mieters einen anderen Zeitraum hat.</small></div>' : '') +
     '<label class="st-f"><span class="st-f__l">' + (weg ? 'Abrechnung vom' : 'Verschickt am') + '</span>' +
       '<input id="stDate" class="st-in" type="date" value="' + stEsc(res && res.date ? res.date : cxToday()) + '"/></label>' +
     '<fieldset class="st-f st-f--via"' + hide + '><legend class="st-f__l">Verrechnung</legend><div class="st-seg st-seg--' + vias.length + '" role="group">' +
@@ -406,17 +410,24 @@ async function _stSave(l, btn) {
     dir = (res === 'nach') === !weg ? 1 : -1;       // NK Nachzahlung / WEG Guthaben → money comes to you
   }
   const r = l.it.r, e = l.it.e || {};
+  // 4d: own period for this tenant's line (e.g. a different Abrechnungszeitraum)
+  const pf = document.getElementById('stPerFrom')?.value || '', pt = document.getElementById('stPerTo')?.value || '';
+  const perPatch = {};
+  if (pf && pt && (pf !== _stD(r.period_from) || pt !== _stD(r.period_to))) {
+    if (pt < pf) { stSay('Zeitraum: „bis“ liegt vor „von“'); return; }
+    Object.assign(perPatch, { period_from: pf, period_to: pt, period_custom: true });
+  }
   const app = r.app || e.app || (l.p.id === CASA_PROP_ID ? 'casa' : 'rentals');
   const t = _stTenant(app, r.tenant_id);
   const existing = ST.edit ? l.state.res : null;
-  const resRow = { property_id: l.p.id, kind: r.kind, year: Number(r.covers_year), period_from: _stD(r.period_from) || null, period_to: _stD(r.period_to) || null,
+  const resRow = { property_id: l.p.id, kind: r.kind, year: Number(r.covers_year), period_from: perPatch.period_from || _stD(r.period_from) || null, period_to: perPatch.period_to || _stD(r.period_to) || null,
                    app, tenant_id: r.tenant_id || null, unit_label: weg ? null : (e.unit_name || (t && t.room) || null), tenant_name: _stTName(t) || null,
                    direction: dir, amount: cxR(amount), result_date: date, due_date: null, settle_via: res === 'null' ? 'zahlung' : via, status: 'fertig', source: 'settlements_app' };
   if (btn) btn.disabled = true;
   const before = { status: r.status || 'offen', amount: r.amount ?? null, direction: r.direction ?? null, settled_via: r.settled_via ?? null, result_id: r.result_id ?? null };
   let row = null;
   try {
-    row = await _stUpsertSettlement(l, { status: 'verschickt', amount: cxR(amount), direction: dir, settled_via: resRow.settle_via });
+    row = await _stUpsertSettlement(l, { status: 'verschickt', amount: cxR(amount), direction: dir, settled_via: resRow.settle_via, ...perPatch });
   } catch (err) {
     stSay(_stSqlMissing(err) ? 'Bitte zuerst das Settlements-SQL in Supabase ausführen' : 'Speichern fehlgeschlagen — ' + (err.message || err));
     if (btn) btn.disabled = false; return;

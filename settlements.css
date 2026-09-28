@@ -162,3 +162,8 @@
 .st-period--edit .cx-btn--s { margin-left: auto; }
 .st-sel { width: auto; height: 34px; padding: 0 8px; }
 .st-period__sep { margin-left: 8px; }
+
+/* 4d · own period per tenant line */
+.st-per2 { display: flex; align-items: center; gap: 6px; }
+.st-per2 .st-in { flex: 1; min-width: 0; }
+.st-per-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--cx-mut); }

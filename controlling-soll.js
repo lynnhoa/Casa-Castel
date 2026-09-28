@@ -1167,9 +1167,13 @@ function ctlSettlementFigures(r) {
 
 /* Same expected settlement? (tenant rows by tenant + period, unit rows by unit name) */
 function ctlSettlementSame(x, e) {
+  // 4d: a line whose period was adjusted by hand (period_custom) belongs to the same tenant + year
+  const samePeriod = x.period_custom && x.tenant_id
+    ? Number(x.covers_year) === Number(e.covers_year)
+    : String(x.period_from || '').slice(0, 10) === String(e.period_from || '').slice(0, 10);
   return x.kind === e.kind && Number(x.property_id) === Number(e.property_id) &&
     String(x.tenant_id || '') === String(e.tenant_id || '') &&
-    String(x.period_from || '').slice(0, 10) === String(e.period_from || '').slice(0, 10) &&
+    samePeriod &&
     (e.tenant_id || e.kind !== 'nk_tenant' || String(x.note || '') === String(e.note || ''));
 }
 

@@ -1720,25 +1720,21 @@ async function _aptHGSetNu(id, aptId) {
 function _aptHGAdd(aptId) {
   const sec = document.getElementById(`apt-hg-sec-${aptId}`);
   if (!sec) return;
-  const existing = sec.querySelector('.apt-hg-add-form');
-  if (existing) { existing.querySelector('input[type=date], input.cc-date')?.focus(); return; }
-
+  if (sec.querySelector('.apt-hg-add-form')) { sec.querySelector('input[type=date]')?.focus(); return; }
   const body = sec.querySelector('.apt-hg-body');
   const form = document.createElement('div');
-  form.className = 'apt-hg-add-form';
+  form.className = 'apt-hg-add-form cc-add-form';
   form.innerHTML = `
-    <input type="date" id="apt-hg-date-${aptId}" />
-    <input type="number" data-cc-num="2" id="apt-hg-amount-${aptId}" placeholder="Amount €" step="0.01" min="0" />
-    <button class="apt-btn--save" style="height:30px;font-size:11px;padding:0 10px"
-      onclick="_aptHGConfirmAdd('${aptId}')">
-      <i class="ti ti-check" aria-hidden="true"></i>
-    </button>
-    <button class="apt-btn--cancel" style="height:30px;font-size:11px;padding:0 10px"
-      onclick="this.closest('.apt-hg-add-form').remove()">
-      <i class="ti ti-x" aria-hidden="true"></i>
-    </button>`;
-  body.appendChild(form);
-  form.querySelector('input[type=date], input.cc-date').focus();
+    <div class="cc-add-grid">
+      <label class="cc-add-f"><span class="tn-flbl">Gültig ab</span><input type="date" id="apt-hg-date-${aptId}" value=""/></label>
+      <label class="cc-add-f"><span class="tn-flbl">Hausgeld €</span><input type="number" data-cc-num="2" id="apt-hg-amount-${aptId}" placeholder="0,00" step="0.01" min="0"/></label>
+    </div>
+    <div class="cc-add-slot">
+      <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
+      <button type="button" class="cc-add-btn is-primary" onclick="_aptHGConfirmAdd('${aptId}')">Save</button>
+    </div>`;
+  body.insertBefore(form, body.children[1] || null);
+  form.querySelector('input[type=date]').focus();
 }
 
 async function _aptHGConfirmAdd__run(aptId) {

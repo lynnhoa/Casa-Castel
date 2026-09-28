@@ -114,11 +114,13 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
   const f     = A.fmt;
   const grid  = extra ? 'cck-grid' : 'cck-grid cck-one';
 
+  // 3e · phases 1–2 are a read view until "Edit" (same frame as every other section)
+  const editing = P.phase <= 2 && (ui.mode === 'edit' || !tid);
   // Row 1 · Received
-  const r1a = (P.phase <= 2)
+  const r1a = (P.phase <= 2 && editing)
     ? _cckCell('Received', _cckMoney(`cck-r-${pfx}`, P.recv || '', onIn, dis), `cck-r-${pfx}`)
     : _cckCell('Received', _cckRo(f(P.recv)));
-  const r1b = !extra ? '' : (P.phase <= 2)
+  const r1b = !extra ? '' : (P.phase <= 2 && editing)
     ? _cckCell('Received on', _cckDate(`cck-rd-${pfx}`, _cckDateOnly(k.received_at), onIn, dis), `cck-rd-${pfx}`)
     : _cckCell('Received on', k.received_at ? _cckRo(A.fmtDate(k.received_at)) : _cckOff);
 
@@ -148,25 +150,33 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
   const B = (label, act, kind, extraCls = '') =>
     `<button type="button" class="${kind === 'save' ? 'tn-btn cc-save ' + extraCls : 'cck-b ' + (kind === 'p' ? 'cck-bp' : 'cck-bs')}" id="cck-${act}-${pfx}" ${dis}
       onclick="ccKautionAct(${q},'${act}')">${label}</button>`;
-  let btns = '';
-  if (P.phase <= 2)      btns = (ui.mode === 'edit' ? B('Cancel', 'cancel', 's') : '') + B('Save', 'save', 'save');
-  else if (P.phase === 3) btns = (P.planned ? B('Keep holding', 'unplan', 's') : B('Edit', 'edit', 's')) + B('Settle', 'settle', 'p');
-  else if (P.phase === 4) btns = (!P.movedOut ? B('Keep holding', 'unplan', 's') : '') + B('Save', 'save', 'save', 'cck-sec') + B('Refund paid', 'paid', 'p');
-  else                    btns = B('Undo', 'undo', 's');
+  // Slot (top right, like every section): Edit ↔ Cancel · Save.  Footer: only the lifecycle steps.
+  let slot = '', btns = '';
+  if (P.phase <= 2) {
+    slot = editing ? (tid && (ui.mode === 'edit') ? B('Cancel', 'cancel', 's') : '') + B('Save', 'save', 'save') : B('<i class="ti ti-pencil"></i> Edit', 'edit', 's');
+  } else if (P.phase === 3) {
+    slot = P.planned ? '' : B('<i class="ti ti-pencil"></i> Edit', 'edit', 's');
+    btns = (P.planned ? B('Keep holding', 'unplan', 's') : '') + B('Settle', 'settle', 'p');
+  } else if (P.phase === 4) {
+    slot = (ui.mode === 'settle' && !P.movedOut ? B('Cancel', 'cancel', 's') : '') + B('Save', 'save', 'save', 'cck-sec');
+    btns = (!P.movedOut ? B('Keep holding', 'unplan', 's') : '') + B('Refund paid', 'paid', 'p');
+  } else {
+    btns = B('Undo', 'undo', 's');
+  }
+  // Kaution Soll: edited together with the received amount (one Edit)
+  const sollRow = editing && tid && A.saveSoll
+    ? `<div class="${grid}">${_cckCell('Kaution Soll', _cckMoney(`cck-sv-${pfx}`, soll != null ? soll : '', onIn, dis), `cck-sv-${pfx}`)}${extra ? '<div></div>' : ''}</div>` : '';
 
   return `
 <div class="${sec} cck" id="cck-${pfx}" data-app="${app}" data-tid="${tid || ''}" data-ctx="${ctx}" style="${tid ? '' : 'opacity:.45;pointer-events:none;'}" data-cc-save-scope>
   <div class="${body}" style="padding-top:10px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <span class="tn-sec-lbl" style="flex:1">Kaution</span>
+    <div class="cck-title">
+      <span class="tn-sec-lbl">Kaution</span>
       <span class="tnp ${L.pill[1]}" id="cck-pill-${pfx}">${L.pill[0]}</span>
     </div>
-    <div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}${tid && A.saveSoll ? ` <button type="button" class="cck-soll-edit" onclick="ccKautionEditSoll(${q})">Edit Soll</button>` : ''}</div>
-    <div class="cck-soll-form" id="cck-sf-${pfx}" hidden>
-      <input type="number" data-cc-num="2" id="cck-sv-${pfx}" value="${soll != null ? soll : ''}" placeholder="0,00"/>
-      <button type="button" class="cck-b cck-bs" onclick="document.getElementById('cck-sf-${pfx}').hidden=true">Cancel</button>
-      <button type="button" class="cck-b cck-bp" onclick="ccKautionSaveSoll(${q})">Save</button>
-    </div>
+    <div class="cck-slot">${slot}</div>
+    <div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}</div>
+    ${sollRow}
     <div class="cck-bar"><div id="cck-bar-${pfx}" style="width:${L.bar[0]}%;background:${L.bar[1]}"></div></div>
     <div class="cck-cap" id="cck-cap-${pfx}">${L.cap}</div>
     <div class="${grid}">${r1a}${r1b}</div>
@@ -178,7 +188,7 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
       <div class="cck-note" id="cck-rn-${pfx}">${note}</div>
     </div>
   </div>
-  <div class="${foot} cck-foot" style="gap:6px">${btns}</div>
+  ${btns ? `<div class="${foot} cck-foot" style="gap:6px">${btns}</div>` : ''}
 </div>`;
 }
 
@@ -242,6 +252,12 @@ async function ccKautionAct(app, pfx, tid, act) {
   const recvNow = $(`cck-r-${pfx}`) ? _cckNum($(`cck-r-${pfx}`).value) : _cckNum(k0 && k0.received);
 
   if (act === 'save' || act === 'paid') {
+    const sv = $(`cck-sv-${pfx}`);
+    if (sv && A.saveSoll) {
+      const info0 = A.soll(A.rec(tid)); const cur = info0 ? _cckNum(info0.amount) : null;
+      const nv = sv.value === '' ? null : Number(sv.value);
+      if (nv !== cur && (nv === null || nv >= 0)) await A.saveSoll(tid, nv);
+    }
     let returned = _cckNum(k0 && k0.returned);
     const dIn = $(`cck-d-${pfx}`);
     if (dIn) {

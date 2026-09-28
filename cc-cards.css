@@ -229,3 +229,64 @@
 :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-del { width: 28px; height: 28px; border: none; background: none; color: var(--cc-stone); cursor: pointer; border-radius: 50%; }
 :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-empty { font-size: 13px; color: var(--cc-stone); }
 @media (hover: none) and (pointer: coarse) { :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .cc-vac-dates { font-size: 15px; } }
+
+/* ── 3e · Kaution in the same frame: title + status left, Edit ↔ Cancel · Save top right ── */
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-title { display: flex; align-items: center; gap: 8px; min-height: 28px; padding-right: 120px; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-slot { position: absolute; top: 9px; right: 14px; display: flex; gap: 6px; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck { position: relative; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-slot button {
+  height: 28px !important; min-width: 0 !important; padding: 0 12px !important; margin: 0 !important; border-radius: 14px !important;
+  font-family: inherit !important; font-size: 11px !important; font-weight: 500 !important; letter-spacing: .02em !important; text-transform: none !important;
+  display: inline-flex !important; align-items: center !important; gap: 5px !important;
+  background: var(--cc-white) !important; color: var(--cc-taupe) !important; border: .5px solid var(--cc-rule) !important;
+}
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-slot button.cc-save { background: var(--cc-ink) !important; color: var(--cc-white) !important; border-color: var(--cc-ink) !important; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-slot button.cc-save[data-cc-save="saved"] { background: var(--cc-surface) !important; color: var(--cc-stone) !important; border-color: var(--cc-rule) !important; }
+:is(#tab-tenants, .tn-modal, [id$="Modal"]) .cck .cck-slot button i { font-size: 12px !important; }
+/* Kaution fields: same hairline style as all other edit fields */
+#tab-tenants .cck .cck-f, .cck .cck-f { background: transparent !important; border: none !important; border-bottom: 1px solid var(--cc-rule) !important; border-radius: 0 !important; height: 30px !important; padding: 0 !important; }
+#tab-tenants .cck .cck-f:focus-within { border-bottom-color: var(--cc-gold) !important; }
+#tab-tenants .cck .cck-f input { background: transparent !important; border: none !important; padding: 0 !important; height: 28px !important; font-size: 13px !important; color: var(--cc-charcoal) !important; }
+@media (hover: none) and (pointer: coarse) { #tab-tenants .cck .cck-f input { font-size: 16px !important; } #tab-tenants .cck .cck-ro { font-size: 15px !important; } }
+
+/* ── 3f · NK-Abrechnungen (read-only from Settlements) ── */
+.cc-nks-wrap { position: relative; }
+.cc-nks-head { min-height: 28px; display: flex; align-items: center; margin-bottom: 4px; }
+.cc-nks-slot { position: absolute; top: 9px; right: 14px; }
+.cc-nks-slot a { height: 28px !important; padding: 0 12px !important; border-radius: 14px !important; font-size: 11px !important; font-weight: 500 !important; display: inline-flex !important; align-items: center; gap: 5px; text-decoration: none; background: var(--cc-white); color: var(--cc-taupe); border: .5px solid var(--cc-rule); }
+.cc-nks-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: .5px solid var(--cc-rule); }
+.cc-nks-row:first-child { border-top: none; }
+.cc-nks-per { font-size: 13px; color: var(--cc-charcoal); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cc-nks-res { flex: 1; font-size: 12px; color: var(--cc-taupe); }
+.cc-nks-row.is-old .cc-nks-per { color: var(--cc-taupe); }
+.cc-nks-old-lbl { margin: 12px 0 2px; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--cc-stone); }
+@media (hover: none) and (pointer: coarse) { .cc-nks-per { font-size: 15px; } }
+
+/* ── 3c · "+ Add" forms (Staffel · NK-Vorauszahlung · Hausgeld): opens at the top, Cancel · Save in the slot ── */
+.apt-hg-sec { position: relative; }
+:is(.tn-sec, .tn-msec, .apt-hg-sec):has(.cc-add-form) :is(.apt-hg-header, .tn-sec-body > div:first-child) button { visibility: hidden; }
+.cc-add-form { margin: 2px 0 10px; }
+.cc-add-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px 16px; }
+.cc-add-f { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cc-add-f input { height: 30px; width: 100%; min-width: 0; padding: 0 0 2px; background: transparent; border: none; border-bottom: 1px solid var(--cc-rule); border-radius: 0; font: inherit; font-size: 13px; color: var(--cc-charcoal); outline: none; -webkit-appearance: none; }
+.cc-add-f input:focus { border-bottom-color: var(--cc-gold); }
+@media (hover: none) and (pointer: coarse) { .cc-add-f input { font-size: 16px; height: 32px; } }
+.cc-add-slot { position: absolute; top: 9px; right: 14px; display: flex; gap: 6px; z-index: 1; }
+.cc-add-btn { height: 28px; padding: 0 12px; border-radius: 14px; border: .5px solid var(--cc-rule); background: var(--cc-white); color: var(--cc-taupe); font: inherit; font-size: 11px; font-weight: 500; cursor: pointer; }
+.cc-add-btn.is-primary { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+:is(.tn-nkv-add-form, .apt-hg-add-form).cc-add-form { display: block !important; border: none !important; padding: 0 !important; background: transparent !important; }
+:is(.tn-nkv-add-form, .apt-hg-add-form).cc-add-form .cc-add-f input { height: 30px !important; width: 100% !important; padding: 0 0 2px !important; background: transparent !important; border: none !important; border-bottom: 1px solid var(--cc-rule) !important; border-radius: 0 !important; box-shadow: none !important; }
+@media (hover: none) and (pointer: coarse) { :is(.tn-nkv-add-form, .apt-hg-add-form).cc-add-form .cc-add-f input { font-size: 16px !important; height: 32px !important; } }
+
+/* ── 3c · Rent history under the rent bar ── */
+#tab-tenants .cc-tl { border-bottom: .5px solid var(--cc-rule); background: var(--cc-white); }
+#tab-tenants .cc-tl > summary { list-style: none; cursor: pointer; padding: 9px 14px; font-size: 11px; font-weight: 500; color: var(--cc-taupe); }
+#tab-tenants .cc-tl > summary::-webkit-details-marker { display: none; }
+#tab-tenants .cc-tl > summary::after { content: ' ›'; }
+#tab-tenants .cc-tl[open] > summary::after { content: ' ˅'; }
+#tab-tenants .cc-tl-row { display: flex; align-items: baseline; gap: 10px; padding: 6px 14px; border-top: .5px solid var(--cc-rule); }
+#tab-tenants .cc-tl-date { font-size: 12px; color: var(--cc-taupe); white-space: nowrap; min-width: 92px; }
+#tab-tenants .cc-tl-amt { flex: 1; font-size: 13px; color: var(--cc-charcoal); }
+#tab-tenants .cc-tl-kind { font-size: 11px; color: var(--cc-stone); white-space: nowrap; }
+#tab-tenants .cc-tl-row.is-cur .cc-tl-amt { font-weight: 600; }
+#tab-tenants .cc-tl-row.is-fut .cc-tl-amt { color: #8C5A30; }

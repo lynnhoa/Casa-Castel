@@ -991,7 +991,7 @@ function _tnCardHTML(room) {
   ${formerNudges}
   <div class="tn-body" id="tb-${rid}">
     ${activeRec || room.vacant
-      ? _tnRentBarHTML(rid, room, activeRec) + _tnRentFormHTML(rid, room, activeRec)
+      ? _tnRentBarHTML(rid, room, activeRec) + _tnRentFormHTML(rid, room, activeRec) + _ccRentTimelineHTML('casa', activeRec, _tnFmtEUR)
       : ''}
     ${_ccNextTenantHTML(nextRec, nextRec ? esc([nextRec.first_name, nextRec.last_name].filter(Boolean).join(' ')) : '', _tnFmtDate, '_tnOpenModal')}
     ${_tnProfileSectionHTML(rid, room, activeRec)}
@@ -1213,6 +1213,26 @@ function _ccPanelOpen(secId, title, bodyHtml, onSave) {
   };
   p.querySelector('input')?.focus();
 }
+
+/* ── 3c · Miete timeline: every rent the tenancy had / will have (read-only) ── */
+function _ccRentTimelineHTML(app, rec, fmtEUR) {
+  if (!rec || typeof ccRpFor !== 'function') return '';
+  const list = ccRpFor(app, rec.id);
+  if (list.length < 2) return '';
+  const today = _ccTodayIso();
+  let curIdx = -1; list.forEach((p, i) => { if (_ccIso(p.valid_from) <= today) curIdx = i; });
+  const kind = { migrated: 'Start', manual: 'Korrektur', renewal: 'Verlängerung', staffel: 'Staffel', index: 'Index', nk: 'NK-Anpassung' };
+  const rows = list.slice().reverse().map((p, ri) => {
+    const i = list.length - 1 - ri, fut = _ccIso(p.valid_from) > today;
+    const amt = p.mode === 'pauschal' ? fmtEUR(p.pauschale) + ' pauschal'
+      : fmtEUR(p.kaltmiete) + ' + ' + fmtEUR(p.nebenkosten) + ' NK';
+    return `<div class="cc-tl-row${i === curIdx ? ' is-cur' : ''}${fut ? ' is-fut' : ''}">
+      <span class="cc-tl-date">ab ${_ccFmtD(p.valid_from)}</span>
+      <span class="cc-tl-amt">${amt}</span>
+      <span class="cc-tl-kind">${fut ? 'geplant · ' : ''}${kind[p.kind] || p.kind || ''}</span></div>`;
+  }).join('');
+  return `<details class="cc-tl"><summary>Rent history · ${list.length} entries</summary>${rows}</details>`;
+}
 function _ccNextTenantHTML(rec, name, fmtDate, openFn) {
   if (!rec) return '';
   return `<div class="cc-next-tenant" onclick="${openFn}('${rec.id}')">
@@ -1345,6 +1365,8 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     ${!activeType ? `<p class="tn-empty">No contract type set.</p>` : ''}
     ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
     ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
+    ${(rec && typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id).filter(p => p.kind === 'renewal') : [])
+        .map(p => row('verlaengerung_' + _ccIso(p.valid_from), 'Verlängerung ab ' + _ccFmtD(p.valid_from))).join('')}
     ${row('einzug','Übergabe Einzug')}
     ${row('auszug','Übergabe Auszug')}
   </div>
@@ -1391,6 +1413,8 @@ function _tnNKHTML(rid, tid, ctx) {
       </div></div>`;
   }
 
+  // 3f · NK-Abrechnungen are made in Settlements — here read-only
+  if (typeof ccNksSectionHTML === 'function') return ccNksSectionHTML(tid, ctx, _tnNK[tid] || []);
   const entries = (_tnNK[tid] || []).slice().sort((a,b) => b.period.localeCompare(a.period));
   const open    = entries.filter(e => !e.paid);
   const settled = entries.filter(e => e.paid);
@@ -1605,25 +1629,21 @@ function _tnNKVorausModalOutside(e) {
 function _tnNKVorausAdd(room, rid, ctx) {
   const sec = document.getElementById(`nkv-sec-${rid}`);
   if (!sec) return;
-  const existing = sec.querySelector('.tn-nkv-add-form');
-  if (existing) { existing.querySelector('input[type=date], input.cc-date')?.focus(); return; }
-
+  if (sec.querySelector('.tn-nkv-add-form')) { sec.querySelector('input[type=date]')?.focus(); return; }
   const body = sec.querySelector('.tn-sec-body');
   const form = document.createElement('div');
-  form.className = 'tn-nkv-add-form';
+  form.className = 'tn-nkv-add-form cc-add-form';
   form.innerHTML = `
-    <input type="date" id="nkv-add-date-${rid}" style="width:130px" />
-    <input type="number" data-cc-num="2" id="nkv-add-amount-${rid}" placeholder="Betrag €" step="0.01" min="0" />
-    <button class="tn-btn tn-btn-primary" style="height:30px;font-size:11px;padding:0 10px"
-      onclick="_tnNKVorausConfirmAdd('${room}','${rid}')">
-      <i class="ti ti-check" aria-hidden="true"></i>
-    </button>
-    <button class="tn-btn tn-btn-sm" style="height:30px;font-size:11px;padding:0 10px"
-      onclick="this.closest('.tn-nkv-add-form').remove()">
-      <i class="ti ti-x" aria-hidden="true"></i>
-    </button>`;
-  body.appendChild(form);
-  form.querySelector('input[type=date], input.cc-date').focus();
+    <div class="cc-add-grid">
+      <label class="cc-add-f"><span class="tn-flbl">Gültig ab</span><input type="date" id="nkv-add-date-${rid}" value=""/></label>
+      <label class="cc-add-f"><span class="tn-flbl">NK-Vorauszahlung €</span><input type="number" data-cc-num="2" id="nkv-add-amount-${rid}" placeholder="0,00" step="0.01" min="0"/></label>
+    </div>
+    <div class="cc-add-slot">
+      <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
+      <button type="button" class="cc-add-btn is-primary" onclick="_tnNKVorausConfirmAdd('${room}','${rid}')">Save</button>
+    </div>`;
+  body.insertBefore(form, body.children[1] || null);
+  form.querySelector('input[type=date]').focus();
 }
 
 async function _tnNKVorausConfirmAdd__run(room, rid) {
@@ -2225,7 +2245,8 @@ function _tnRenewOpen(rid, tid) {
     const end = _tnParseDate(p.querySelector('[data-cc="end"]').value || '');
     if (!end || end <= start) { p.querySelector('[data-cc="end"]').style.borderBottomColor = '#C4705A'; return false; }
     const kalt = parseFloat(p.querySelector('[data-cc="kalt"]')?.value), nk = parseFloat(p.querySelector('[data-cc="nk"]')?.value);
-    const changed = pauschal ? (!isNaN(kalt) && kalt !== Number(cur.total)) : ((!isNaN(kalt) && kalt !== Number(cur.kalt)) || (!isNaN(nk) && nk !== Number(cur.nk)));
+    // Every renewal is recorded as its own period (also with the same rent) → contract version row in Documents
+    const changed = true;
     const { error } = await sbL.from('tenant_records').update({ vertragsende: end }).eq('id', tid);
     if (error) { alert('Could not save — ' + error.message); return false; }
     rec.vertragsende = end;
