@@ -604,7 +604,7 @@ function _aptKzKautionOpts(p, start = null, end = null, manual = null) {
 
 /* Kurzzeit generator: Kaution follows the dates until you type your own value */
 function _aptKzUpdateKaution() {
-  const apt = appApartments.find(a => a.id === _aptContractId);
+  const apt = _aptContractApt(appApartments.find(a => a.id === _aptContractId));
   if (!apt) return;
   const start = document.getElementById('apt-cm-start')?.value;
   const end   = document.getElementById('apt-cm-end')?.value;
@@ -2150,12 +2150,45 @@ async function _aptReopenContractDraft(d) {
 
 let _aptContractId   = null;
 let _aptContractType = null;
+let _aptContractRenew = null;   // set when opened from Tenants → Documents → "N. Verlängerung" → Create
 
-async function _aptOpenContract(type, aptId) {
+/* The apartment as the generator should see it: for a renewal the renewal's own rent
+   replaces the asking rent (nothing is saved on the apartment). */
+function _aptContractApt(apt) {
+  const rn = _aptContractRenew;
+  if (!apt || !rn || rn.aptId !== apt.id) return apt;
+  const p = { ...(apt.pricing || {}) };
+  if (_aptContractType === 'kurzzeit') { p.kurzzeit_kaltmiete = Number(rn.kalt) || 0; p.kurzzeit_nk = Number(rn.nk) || 0; }
+  else { p.kaltmiete = Number(rn.kalt) || 0; p.nk_pauschale = Number(rn.nk) || 0; }
+  return { ...apt, pricing: p };
+}
+/* Renewal: dates filled in + a note on top saying which rent the contract uses */
+function _aptApplyRenew(type, apt) {
+  const rn = _aptContractRenew;
+  if (!rn || (type !== 'kurzzeit' && type !== 'mietvertrag')) return;
+  const pre = type === 'kurzzeit' ? 'apt-cm' : 'apt-mv';
+  const set = (id, v) => {
+    const el = document.getElementById(id); if (!el || !v) return;
+    el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  set(pre + '-start', rn.start);
+  set(pre + '-end', rn.end);   // Mietvertrag: used only if you choose "befristet"
+  const t = document.getElementById('aptContractTitleLbl');
+  if (t) t.textContent = `${rn.label} \u2014 ${apt.name}`;
+  const d = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
+  const eur = n => (Number(n) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
+  document.getElementById('aptContractBody')?.insertAdjacentHTML('afterbegin',
+    `<p class="cc-soll-hint">${rn.label} ab ${d(rn.start)} \u00b7 Miete ${eur(rn.kalt)} kalt + ${eur(rn.nk)} NK \u2014 from Tenants \u2192 Renew</p>`);
+}
+
+async function _aptOpenContract(type, aptId, renew) {
   if (typeof ccDismissDraftOffer === 'function') ccDismissDraftOffer();   // you opened a generator yourself
   _aptContractId   = aptId;
   _aptContractType = type;
-  const apt = appApartments.find(a => a.id === aptId);
+  _aptContractRenew = renew && renew.aptId === aptId ? renew : null;
+  const apt = _aptContractApt(appApartments.find(a => a.id === aptId));
   if (!apt) return;
 
   const p  = apt.pricing    || {};
@@ -2189,7 +2222,7 @@ async function _aptOpenContract(type, aptId) {
       });
       document.getElementById('aptKzPdfBtn')?.addEventListener('click', async () => {
         _aptSaveContractDraft();
-        const apt2        = appApartments.find(a => a.id === _aptContractId);
+        const apt2        = _aptContractApt(appApartments.find(a => a.id === _aptContractId));
         if (!apt2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); return; }
         const t1cm        = _aptReadTenantBlock('cm', 1);
         const mieterName  = t1cm.name;
@@ -2378,7 +2411,7 @@ async function _aptOpenContract(type, aptId) {
     setTimeout(() => {
       document.getElementById('aptMvPdfBtn')?.addEventListener('click', async () => {
         _aptSaveContractDraft();
-        const apt2              = appApartments.find(a => a.id === _aptContractId);
+        const apt2              = _aptContractApt(appApartments.find(a => a.id === _aptContractId));
         if (!apt2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); return; }
         const mieterName        = document.getElementById('apt-mv-name')?.value.trim();
         const mieterAdr         = document.getElementById('apt-mv-adr')?.value.trim();
@@ -2497,6 +2530,8 @@ async function _aptOpenContract(type, aptId) {
     const _tplType = (type === 'mietvertrag' && apt.zimmer_type === 'Gewerbefläche') ? 'gewerbe' : type;
     ccTplAttach({ kind: 'apartment', unitId: aptId, type: _tplType, footer });
   }
+
+  _aptApplyRenew(type, apt);   // opened from a renewal in Tenants → dates + that renewal's rent
 
   document.getElementById('aptContractOverlay').classList.add('open');
 }

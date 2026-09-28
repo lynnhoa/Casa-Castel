@@ -105,6 +105,8 @@ document.getElementById('tab-tenants').innerHTML = `
   text-transform:uppercase; color:var(--cc-stone);
   padding:4px 2px 6px; margin-top:8px; }
 .rnt-group-hdr:first-child { margin-top:0; }
+.tn-ct-next { font-size:11px; color:#8C5A30; }
+.tn-ve-missing { color:#854F0B; font-weight:500; }
 
 /* ── CARD ── */
 .tn-card { background:var(--cc-white); border:var(--cc-border);
@@ -715,6 +717,7 @@ function _rntEsc(s) {
 function _rntKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
 
 function _rntNkHasOpen(tid) {
+  if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _rntNK[tid]);   // Settlements + old tracking
   return (_rntNK[tid] || []).some(e => !e.paid);
 }
 
@@ -786,10 +789,12 @@ function _rntCardPills(unit, isApt, activeRec) {
   const todos = [];
   if (activeRec) {
     todos.push(ccTnMoveOutTodo(activeRec));
-    todos.push(ccTnRenewalTodo(activeRec));
+    const _ct = _rntHasCt(unit, isApt) ? rntContractType(activeRec) : null;
+    if (!_rntHasCt(unit, isApt) || _ct === 'kurzzeit') todos.push(ccTnRenewalTodo(activeRec));   // Mietvertrag is never renewed
+    if (_ct === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende) todos.push({ level: 'amber', text: 'Contract end missing' });
     todos.push(ccTnStaffelTodo(_rntStaffelPillState(unit.id), d => { const [y, m, day] = d.split('-'); return `${day}.${m}.`; }));
-    if (isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'red', text: 'NK open' });                     // NK: unchanged for now
-    if (isApt && _rntNKVorausHasOpen(unit.id)) todos.push({ level: 'amber', text: 'NK-Erhöhung offen' });        // NK: unchanged for now
+    if (isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: 'NK open' });   // Settlements + old tracking
+    if (isApt && typeof ccTnNkChangeTodo === 'function') todos.push(ccTnNkChangeTodo(_rntNKVoraus[unit.id], activeRec));
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }
   const movesIn = ccTnMovesIn(vacant, activeRec);
@@ -864,6 +869,7 @@ async function _rntLoad() {
     sbL.from('rnt_nk_entries').select('*').in('tenant_id', tids).order('period', { ascending: false }),
     sbL.from('rnt_tenant_documents').select('*').in('tenant_id', tids),
     typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'rentals') : Promise.resolve([]),   // rent history (rent_periods)
+    typeof ccNksLoad === 'function' ? ccNksLoad() : Promise.resolve(),                  // NK-Abrechnungen (Settlements)
   ]);
 
   _rntKaution = {};
@@ -919,6 +925,7 @@ async function _rntLoad() {
   });
   _rntLoadedOnce = true;
 
+  _rntSyncOccupancy();       // occupied / vacant from the dates (and former after the move-out)
   _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _rntFreezeRent();          // existing active tenants: fix their rent once
   _rntRenderIfChanged();
@@ -1079,7 +1086,7 @@ function _rntCardHTML({ type, unit }) {
   ${_rntHeaderHTML(rid, type, unit, activeRec)}
   ${formerNudges}
   <div class="tn-body" id="tb-${rid}">
-    ${activeRec || !unit.vacant
+    ${activeRec
       ? _rntRentBarHTML(rid, type, unit, activeRec) + _rntRentFormHTML(rid, type, unit, activeRec) + _ccRentTimelineHTML('rentals', activeRec, _rntFmtEUR)
       : ''}
     ${_ccNextTenantHTML(nextRec, nextRec ? _rntEsc(_rntFullTenantNames(nextRec)) : '', _rntFmtDate, '_rntOpenModal')}
@@ -1129,7 +1136,7 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
 
   const pills = _rntCardPills(unit, isApt, activeRec);
   const ctLabel = !isApt ? '' : (unit.zimmer_type === 'Gewerbefläche' ? 'Gewerbe'
-    : ((activeRec && activeRec.mietbeginn && activeRec.mietende && ccKzIsLong(activeRec.mietbeginn, activeRec.mietende) === false) ? 'Kurzzeit' : 'Mietvertrag'));
+    : (_rntContractLabel(rntContractType(activeRec)) || 'Mietvertrag'));
 
   let midLine = '', botLine = '';
 
@@ -1385,6 +1392,21 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const fullName = rec ? [rec.first_name, rec.last_name].filter(Boolean).join(' ') : '';
   const tid      = rec ? rec.id : '';
 
+  const hasCt  = _rntHasCt(unit, type === 'apt');
+  const ct     = rec ? rntContractType(rec) : null;
+  const ctNext = (() => {
+    if (!rec || !hasCt) return null;
+    const day = _rntTypeDay(rec), now = rntContractType(rec);
+    const nx = _rntTypedPeriods(rec).find(p => _ccIso(p.valid_from) > day && p.contract_type !== now);
+    return nx ? { type: nx.contract_type, from: nx.valid_from } : null;
+  })();
+  const ctRead = ct ? _rntEsc(_rntContractLabel(ct)) + (ctNext ? ` <span class="tn-ct-next">\u2192 ${_rntContractLabel(ctNext.type)} ab ${_ccFmtD(ctNext.from)}</span>` : '')
+                    : '<span class="muted">Not set</span>';
+  // Contract end: Mietvertrag / Gewerbe / parking without an end date = unbefristet; a Kurzzeit always needs one
+  const veMissing = !!(rec && hasCt && ct === 'kurzzeit' && !rec.vertragsende && !rec.mietende);
+  const veHTML = !rec ? '' : veMissing ? '<span class="tn-ve-missing">Missing</span>'
+    : (_rntFmtDate(rec.vertragsende) || (hasCt && ct === 'kurzzeit' ? '—' : 'unbefristet'));
+
   const has2 = !!(rec && (rec.first_name_2 || rec.last_name_2));
   const has3 = !!(rec && (rec.first_name_3 || rec.last_name_3));
   const fullName2 = rec ? [rec.first_name_2, rec.last_name_2].filter(Boolean).join(' ') : '';
@@ -1426,12 +1448,14 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     ` : ''}
     <div class="tn-field tn-field-full" style="border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
       <div class="tn-fg">
+        ${hasCt ? `<div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>
+          <span class="tn-fval">${ctRead}</span></div>` : ''}
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_rntFmtDate(rec.mietende) || 'open-ended'}</span></div>
         ${_ccHasVE(_rntRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
-          <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${_rntFmtDate(rec.vertragsende) || 'unbefristet'}</span></div>` : ''}
+          <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${veHTML}</span></div>` : ''}
       </div>
     </div>
   </div>`;
@@ -1509,6 +1533,8 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
     ${addTenantBtn}
     <div class="tn-field-full" style="grid-column:1/-1;border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
       <div class="tn-fg">
+        ${hasCt ? `<div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>
+          ${_rntCtSegHTML('data-f', ct || 'mietvertrag')}</div>` : ''}
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
@@ -1522,10 +1548,12 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const unitId   = type === 'apt' ? unit.id : unit.id;
   const unitType = type;
 
+  const allMails = rec ? [rec.email, rec.email_2, rec.email_3].filter(Boolean).map(m => _rntEsc(m)).join(',') : '';
   const footerRead = `
   <div class="tn-sec-footer-split" id="pfoot-read-${rid}" ${startEdit ? 'style="display:none"' : ''}>
-    ${email ? `<button class="tn-btn tn-btn-sm" onclick="window.location.href='mailto:${email}'">
+    ${allMails ? `<button class="tn-btn tn-btn-sm" onclick="window.location.href='mailto:${allMails}'">
       <i class="ti ti-mail"></i> Email</button>` : ''}
+    ${rec && rec.status === 'active' && hasCt && ct === 'kurzzeit' ? `<button class="tn-btn tn-btn-sm" onclick="_rntRenewOpen('${rid}','${tid}')"><i class="ti ti-refresh"></i> Renew</button>` : ''}
     <div class="tn-spacer"></div>
     <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_rntToggleProfile('${rid}','${tid}')">
       <i class="ti ti-pencil"></i> Edit</button>
@@ -1565,7 +1593,7 @@ function _rntDocumentsSectionHTML(rid, type, unit, rec) {
 
   const unitLabel = isApt ? unit.name : (unit.name + ' ' + (unit.parking_type || ''));
 
-  const row = (docType, label) => {
+  const row = (docType, label, createBtn, removeBtn) => {
     const doc    = getDoc(docType);
     const signed = !!doc?.file_url;
     const pill   = signed
@@ -1586,16 +1614,23 @@ function _rntDocumentsSectionHTML(rid, type, unit, rec) {
     return `<div class="tn-doc-row">
       <span class="tn-doc-name">${_rntEsc(label)}</span>
       ${pill}
-      <div class="tn-doc-btns">${viewBtn}${delBtn}${upBtn}</div>
+      <div class="tn-doc-btns">${!signed && createBtn ? createBtn : viewBtn}${signed ? delBtn : (removeBtn || '')}${upBtn}</div>
     </div>`;
   };
+  const renewRows = !isApt ? '' : _rntRenewalRows(rec).map(x => {
+    const create = `<button class="tn-doc-btn" onclick="_rntRenewCreate('${tid}','${_rntEsc(String(x.p.id))}',${x.n})" title="Create contract">
+      <i class="ti ti-file-plus"></i></button>`;
+    const remove = x.last ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
+      onclick="_rntRenewDelete('${tid}','${_rntEsc(String(x.p.id))}')" title="Remove this renewal"><i class="ti ti-trash"></i></button>` : '';
+    return row(x.key, x.label, create, remove);
+  }).join('');
 
   return `
 <div class="tn-sec">
   <div class="tn-sec-body" style="padding-top:16px;padding-bottom:14px">
     <div style="margin-bottom:10px"><span class="tn-sec-lbl">Documents</span></div>
     ${isApt
-      ? row('mietvertrag','Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? row('uebergabeprotokoll','Übergabeprotokoll') : '') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')
+      ? row('mietvertrag','Mietvertrag') + renewRows + (getDoc('uebergabeprotokoll')?.file_url ? row('uebergabeprotokoll','Übergabeprotokoll') : '') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')
       : row('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? row('uebergabeprotokoll','Übergabeprotokoll') : '') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')}
   </div>
 </div>`;
@@ -1724,6 +1759,159 @@ function _rntNKHTML(rid, tid, ctx) {
 </div>`;
 }
 
+
+/* ── CONTRACT TYPE (apartments) — same rule as Casa Castel ──
+   Kurzzeit (befristet) is renewed, Mietvertrag (unbefristet) never. Gewerbe and parking
+   keep their own fixed contract. Type on a day = latest rent-history entry with a type,
+   else the type stored on the tenant.                                                    */
+function _rntContractLabel(t) { return t === 'kurzzeit' ? 'Kurzzeit' : t === 'mietvertrag' ? 'Mietvertrag' : null; }
+function _rntHasCt(unit, isApt) { return !!isApt && !!unit && unit.zimmer_type !== 'Gewerbefläche'; }
+function _rntTypedPeriods(rec) {
+  if (!rec || !rec.id || typeof ccRpFor !== 'function') return [];
+  return ccRpFor('rentals', rec.id).filter(p => p.contract_type === 'mietvertrag' || p.contract_type === 'kurzzeit');
+}
+function _rntTypeDay(rec) {
+  const today = typeof ccRpToday === 'function' ? ccRpToday() : _ccTodayIso();
+  const mb = rec && rec.mietbeginn ? _ccIso(rec.mietbeginn) : '';
+  return mb && mb > today ? mb : today;
+}
+function rntContractType(rec, iso) {
+  if (!rec) return null;
+  const per = typeof ccRpAt === 'function' ? ccRpAt(_rntTypedPeriods(rec), iso || _rntTypeDay(rec)) : null;
+  return (per && per.contract_type) || rec.contract_type || null;
+}
+function _rntSyncTypePeriod(rec, type) {
+  if (!rec || !type || !sbL || typeof ccRpUpdate !== 'function') return;
+  const per = ccRpAt(_rntTypedPeriods(rec), _rntTypeDay(rec));
+  if (!per || per.contract_type === type) return;
+  const before = per.contract_type;
+  per.contract_type = type;
+  ccRpUpdate(sbL, per.id, { contract_type: type }).catch(err => { per.contract_type = before; _rntRender(); ccSaveFailed(err, 'contract type'); });
+}
+function _rntCtSegHTML(attr, value) {
+  const v = value === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag';
+  const opt = (t, l) => `<button type="button" class="cc-seg__opt${v === t ? ' is-on' : ''}" role="radio" aria-checked="${v === t}" data-ct="${t}" onclick="_rntSetCt(this)">${l}</button>`;
+  return `<div class="cc-seg tn-contract-toggle" role="radiogroup" aria-label="Contract">${opt('mietvertrag', 'Mietvertrag')}${opt('kurzzeit', 'Kurzzeit')}<input type="hidden" ${attr}="${attr === 'data-cc' ? 'ct' : 'contract_type'}" value="${v}"/></div>`;
+}
+function _rntSetCt(btn) {
+  const seg = btn.closest('.cc-seg'); if (!seg) return;
+  seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  const inp = seg.querySelector('input[type=hidden]'); if (inp) inp.value = btn.dataset.ct;
+  const endWrap = seg.closest('.cc-inline-panel')?.querySelector('[data-cc="endwrap"]');
+  if (endWrap) endWrap.style.display = btn.dataset.ct === 'mietvertrag' ? 'none' : '';
+}
+
+/* Renewals of a tenancy, oldest first: "1. Verlängerung ab 01.10.2026" (+ type if it switches) */
+function _rntRenewalRows(rec) {
+  if (!rec || !rec.id || typeof ccRpFor !== 'function') return [];
+  const list = ccRpFor('rentals', rec.id).filter(p => p.kind === 'renewal');
+  return list.map((p, i) => {
+    const before = rntContractType(rec, ccRpAddDays(_ccIso(p.valid_from), -1));
+    const label = (i + 1) + '. Verlängerung ab ' + _ccFmtD(p.valid_from)
+      + ((p.contract_type && before && p.contract_type !== before) ? ' \u00b7 ' + _rntContractLabel(p.contract_type) : '');
+    return { p, n: i + 1, key: 'verlaengerung_' + _ccIso(p.valid_from), label, last: i === list.length - 1 };
+  });
+}
+/* Remove the latest renewal (saved by mistake): entry goes, Contract end back to the day before */
+async function _rntRenewDelete(tid, pid) {
+  const rec = _rntRecords.find(r => r.id === tid);
+  const per = typeof ccRpFor === 'function' ? ccRpFor('rentals', tid).find(p => String(p.id) === String(pid)) : null;
+  if (!rec || !per || !sbL) return;
+  const prevEnd = ccRpAddDays(_ccIso(per.valid_from), -1);
+  const n = _rntRenewalRows(rec).find(x => String(x.p.id) === String(pid))?.n || '';
+  if (!confirm(`Remove the ${n}. Verlängerung ab ${_ccFmtD(per.valid_from)}?\n\nThe contract end goes back to ${_ccFmtD(prevEnd)}.`)) return;
+  try { await ccRpDelete(sbL, per.id); } catch (e) { ccSaveFailed(e, 'remove renewal'); return; }
+  const before = rec.vertragsende;
+  rec.vertragsende = prevEnd;
+  _rntRender();
+  ccQueueWrite('rnt-' + tid, () => sbL.from('rnt_tenant_records').update({ vertragsende: prevEnd }).eq('id', tid))
+    .then(({ error }) => { if (error) { rec.vertragsende = before; _rntRender(); ccSaveFailed(error, 'contract end'); } });
+}
+/* Renewal row → "Create": the matching generator in Apartments, filled in with this renewal */
+function _rntRenewCreate(tid, pid, n) {
+  const rec = _rntRecords.find(r => r.id === tid);
+  const per = typeof ccRpFor === 'function' ? ccRpFor('rentals', tid).find(p => String(p.id) === String(pid)) : null;
+  if (!rec || !per || !rec.apartment_id || typeof _aptOpenContract !== 'function') return;
+  const amt  = ccRpAmount(per) || {};
+  const type = per.contract_type || rntContractType(rec) || 'mietvertrag';
+  const renew = { aptId: rec.apartment_id, label: n + '. Verlängerung', start: _ccIso(per.valid_from),
+    end: _ccIso(per.contract_end || rec.vertragsende || ''), kalt: amt.kalt, nk: amt.nk, total: amt.total };
+  if (typeof switchTab === 'function') switchTab('apartments');   // the generator lives in the Apartments tab
+  setTimeout(() => _aptOpenContract(type, rec.apartment_id, renew), 80);
+}
+/* Renew (Kurzzeit only): new end, rent and type from the day after the current end */
+function _rntRenewOpen(rid, tid) {
+  const rec = _rntRecords.find(r => r.id === tid);
+  if (!rec) return;
+  const endNow = rec.vertragsende || rec.mietende || '';
+  const cur = _rntCurrentRent(rec) || {};
+  const ctNow = rntContractType(rec) || 'kurzzeit';
+  const from  = endNow ? ' from ' + _ccFmtD(_ccAddDaysIso(endNow, 1)) : ' (new)';
+  _ccPanelOpen('psec-' + rid, 'Renew contract', `
+    <div class="tn-fg">
+      <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_rntCtSegHTML('data-cc', ctNow)}</div>
+      ${endNow ? '' : `<div class="tn-field"><span class="tn-flbl">Current contract ends</span>
+        <input data-cc="cur" type="text" placeholder="TT.MM.JJJJ"/></div>`}
+      <div class="tn-field" data-cc="endwrap"${ctNow === 'mietvertrag' ? ' style="display:none"' : ''}><span class="tn-flbl">New contract end</span>
+        <input data-cc="end" type="text" placeholder="TT.MM.JJJJ" value="${endNow ? _ccFmtD(_ccAddYearIso(endNow)) : ''}"/></div>
+      ${endNow ? `<div class="tn-field"><span class="tn-flbl">Starts</span><span class="tn-fval">${_ccFmtD(_ccAddDaysIso(endNow, 1))}</span></div>` : ''}
+      <div class="tn-field"><span class="tn-flbl">Kaltmiete${from}</span><input data-cc="kalt" type="number" data-cc-num="2" value="${cur.kalt ?? ''}"/></div>
+      <div class="tn-field"><span class="tn-flbl">Nebenkosten</span><input data-cc="nk" type="number" data-cc-num="2" value="${cur.nk ?? ''}"/></div>
+    </div>
+    <p class="cc-inline-hint">Same tenant, Kaution stays. The new rent and contract start the day after the current end; the new contract goes into Documents. Mietvertrag (unbefristet) needs no end date.${rec.mietende ? ` The move-out on ${_ccFmtD(rec.mietende)} is removed — the tenant stays.` : ''}</p>`, async p => {
+    const mark = sel => { const el = p.querySelector(sel); if (el) el.style.borderBottomColor = '#C4705A'; return false; };
+    const curEnd = endNow || _rntParseDate(p.querySelector('[data-cc="cur"]')?.value || '');
+    if (!curEnd) return mark('[data-cc="cur"]');
+    const start = _ccAddDaysIso(curEnd, 1);
+    const ctNew = p.querySelector('[data-cc="ct"]')?.value || ctNow;
+    const end   = ctNew === 'kurzzeit' ? _rntParseDate(p.querySelector('[data-cc="end"]')?.value || '') : null;
+    if (ctNew === 'kurzzeit' && (!end || end <= start)) return mark('[data-cc="end"]');
+    const kalt = parseFloat(p.querySelector('[data-cc="kalt"]')?.value), nk = parseFloat(p.querySelector('[data-cc="nk"]')?.value);
+    const upd = { vertragsende: end };
+    if (rec.mietende) upd.mietende = null;
+    const { error } = await sbL.from('rnt_tenant_records').update(upd).eq('id', tid);
+    if (error) { ccSaveFailed(error, 'renewal'); return false; }
+    Object.assign(rec, upd);
+    if (typeof ccRpSetRent === 'function') {
+      try {
+        await ccRpSetRent(sbL, { app: 'rentals', rec, validFrom: start, mode: 'kalt_nk',
+          kalt: isNaN(kalt) ? cur.kalt : kalt, nk: isNaN(nk) ? cur.nk : nk,
+          kind: 'renewal', source: 'renew', legacyMode: 'kalt_nk', contract_end: end, contract_type: ctNew });
+      } catch (e2) { alert('Contract end saved, but the new rent could not be saved — ' + (e2.message || e2)); }
+    }
+    _rntSyncOccupancy();
+    _rntRender(); return true;
+  });
+}
+
+/* Occupancy from the dates — the same rule as Casa Castel (ccOccupancyPlan).
+   Apartments and parking; writes only what really changed. */
+function _rntSyncOccupancy() {
+  if (!sbL || typeof ccOccupancyPlan !== 'function') return;
+  const recs = _rntLoadedOnce ? _rntRecords : (_rntActiveRecs || []);
+  if (!recs.length) return;
+  const today = _ccTodayIso();
+  const run = (units, col, table) => {
+    const list = units || [];
+    const plan = ccOccupancyPlan(list.map(u => ({ key: u.id, vacant: !!u.vacant })), recs.filter(r => r[col]), r => r[col], today);
+    plan.unitChanges.forEach(ch => {
+      const u = list.find(x => x.id === ch.key); if (!u) return;
+      const before = !!u.vacant; u.vacant = ch.vacant;
+      ccQueueWrite('occ-' + ch.key, () => sbL.from(table).update({ vacant: ch.vacant }).eq('id', ch.key))
+        .then(res => { if (res && res.error) { u.vacant = before; ccSaveFailed(res.error, 'occupancy'); } });
+    });
+    return plan;
+  };
+  const a = run(typeof appApartments !== 'undefined' ? appApartments : [], 'apartment_id', 'rentals_apartments');
+  const k = run(typeof appParking    !== 'undefined' ? appParking    : [], 'parking_id',   'rentals_parking');
+  [...new Set([...a.toFormer, ...k.toFormer])].forEach(rec => {
+    rec.status = 'former';
+    ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ status: 'former' }).eq('id', rec.id))
+      .then(res => { if (res && res.error) { rec.status = 'active'; ccSaveFailed(res.error, 'tenant status'); } });
+  });
+  try { if (a.unitChanges.length && typeof _renderAptList === 'function' && document.getElementById('aptList')) { _renderAptList(); _updateAptSummary?.(); } } catch (e) {}
+  try { if (k.unitChanges.length && typeof _renderPkList === 'function' && document.getElementById('pkList')) { _renderPkList(); _updatePkSummary?.(); } } catch (e) {}
+}
 
 /* ── NK VORAUSZAHLUNG SECTION (apartments only) ── */
 function _rntNKVorausHTML(rid, aptId, ctx) {
@@ -1859,7 +2047,7 @@ async function _rntNKVorausConfirmAdd__run(aptId, rid) {
   const { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_nk_vorauszahlung_history',
     { apartment_id: aptId, effective_date: date, amount, tenant_notified: false, tenant_adjusted: false },
     _rntActiveTenantId('apartment_id', aptId));
-  if (error) { console.warn('[rnt-tenants] nkv add:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK Vorauszahlung'); return; }
   if (!_rntNKVoraus[aptId]) _rntNKVoraus[aptId] = [];
   _rntNKVoraus[aptId].unshift(data);
   _rntNKVoraus[aptId].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
@@ -1871,7 +2059,7 @@ async function _rntNKVorausMarkNotified(id, aptId, rid) {
   const today = ccTodayISO();
   const { error } = await sbL.from('rnt_nk_vorauszahlung_history')
     .update({ tenant_notified: true, notified_date: today }).eq('id', id);
-  if (error) { console.warn('[rnt-tenants] nkv notified:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK Vorauszahlung'); return; }
   const entry = (_rntNKVoraus[aptId] || []).find(e => e.id === id);
   if (entry) { entry.tenant_notified = true; entry.notified_date = today; }
   _rntRenderNKVorausRow(id, aptId, rid);
@@ -1882,7 +2070,7 @@ async function _rntNKVorausMarkAdjusted(id, aptId, rid) {
   const today = ccTodayISO();
   const { error } = await sbL.from('rnt_nk_vorauszahlung_history')
     .update({ tenant_adjusted: true, adjusted_date: today }).eq('id', id);
-  if (error) { console.warn('[rnt-tenants] nkv adjusted:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK Vorauszahlung'); return; }
   const entry = (_rntNKVoraus[aptId] || []).find(e => e.id === id);
   if (entry) { entry.tenant_adjusted = true; entry.adjusted_date = today; }
   _rntRender();
@@ -2040,7 +2228,7 @@ async function _rntStaffelConfirmAdd__run(aptId, rid) {
   const { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
     { apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false },
     _rntActiveTenantId('apartment_id', aptId));
-  if (error) { console.warn('[rnt-tenants] staffel add:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'Staffel'); return; }
   if (!_rntStaffel[aptId]) _rntStaffel[aptId] = [];
   _rntStaffel[aptId].push(data);
   _rntStaffel[aptId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
@@ -2056,7 +2244,7 @@ async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
   const { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
     { parking_id: pkId, effective_date: date, amount, tenant_adjusted: false },
     _rntActiveTenantId('parking_id', pkId));
-  if (error) { console.warn('[rnt-tenants] pk staffel add:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'Staffel'); return; }
   if (!_rntStaffel[pkId]) _rntStaffel[pkId] = [];
   _rntStaffel[pkId].push(data);
   _rntStaffel[pkId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
@@ -2337,7 +2525,7 @@ function _rntStaffelMarkAdjusted(id, unitId) { _rntStaffelToggleAdjusted(id, uni
 async function _rntStaffelDelete(id, aptId, rid) {
   if (!sbL) return;
   const { error } = await sbL.from('rnt_staffelmiete_history').delete().eq('id', id);
-  if (error) { console.warn('[rnt-tenants] staffel delete:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'Staffel'); return; }
   if (_rntStaffel[aptId]) _rntStaffel[aptId] = _rntStaffel[aptId].filter(e => e.id !== id);
   _rntRender();
   // Verlauf sheet open? show the list without the deleted step
@@ -2534,6 +2722,12 @@ function _rntModalBodyHTML(rec, isApt) {
           <span class="tn-fval">${_rntEsc(rec.email||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
+        ${[2, 3].filter(n => rec['first_name_' + n] || rec['last_name_' + n]).map(n => `
+        <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Tenant ${n}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Name</span>
+          <span class="tn-fval">${_rntEsc([rec['first_name_' + n], rec['last_name_' + n]].filter(Boolean).join(' '))}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Email</span>
+          <span class="tn-fval">${_rntEsc(rec['email_' + n] || '') || '<span class="muted">—</span>'}</span></div>`).join('')}
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
@@ -2563,6 +2757,12 @@ function _rntModalBodyHTML(rec, isApt) {
           <input data-mf="email" type="email" value="${_rntEsc(rec.email||'')}"/></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <input data-mf="phone" type="tel" value="${_rntEsc(rec.phone||'')}"/></div>
+        ${[2, 3].filter(n => rec['first_name_' + n] || rec['last_name_' + n]).map(n => `
+        <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Tenant ${n}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Name</span>
+          <input data-mf="name_${n}" type="text" value="${_rntEsc([rec['first_name_' + n], rec['last_name_' + n]].filter(Boolean).join(' '))}"/></div>
+        <div class="tn-field"><span class="tn-flbl">Email</span>
+          <input data-mf="email_${n}" type="email" value="${_rntEsc(rec['email_' + n] || '')}"/></div>`).join('')}
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-mf="mietbeginn" type="text" value="${_rntFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
@@ -2600,7 +2800,7 @@ function _rntModalBodyHTML(rec, isApt) {
     <div class="tn-msec-hdr"><span class="tn-msec-lbl">Documents</span></div>
     <div class="tn-msec-body" style="padding-bottom:11px">
       ${isApt
-        ? docRow('mietvertrag','Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? docRow('uebergabeprotokoll','Übergabeprotokoll') : '') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')
+        ? docRow('mietvertrag','Mietvertrag') + _rntRenewalRows(rec).map(x => docRow(x.key, x.label)).join('') + (getDoc('uebergabeprotokoll')?.file_url ? docRow('uebergabeprotokoll','Übergabeprotokoll') : '') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')
         : docRow('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? docRow('uebergabeprotokoll','Übergabeprotokoll') : '') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')}
     </div>
   </div>
@@ -2621,8 +2821,6 @@ function _rntModalFooterHTML(rec, allDone) {
     <button class="tn-btn tn-btn-ghost" onclick="_rntMarkDone('${rec.id}')">
       <i class="ti ti-archive"></i> Archive</button>
     <div class="tn-sheet-spacer"></div>
-    <button class="tn-btn tn-btn-primary cc-save" onclick="_rntModalSaveProfile('${rec.id}')">
-      <i class="ti ti-check"></i> Save</button>
     <button class="tn-btn tn-btn-danger"
       style="${allDone ? '' : 'opacity:.35;pointer-events:none'}"
       onclick="_rntDeleteFormer('${rec.id}')">
@@ -2788,6 +2986,7 @@ function _rntCollectProfile(container, selector) {
     mietbeginn: _rntParseDate(get('mietbeginn')),
     mietende:   _rntParseDate(get('mietende')),
     vertragsende: container.querySelector(`[${selector}="vertragsende"]`) ? _rntParseDate(get('vertragsende')) : undefined,
+    contract_type: container.querySelector(`[${selector}="contract_type"]`) ? (get('contract_type') || null) : undefined,
     first_name_2: n2.first, last_name_2: n2.last,
     email_2: get('email_2'), phone_2: get('phone_2'), birthday_2: get('birthday_2'), address_2: get('address_2'),
     first_name_3: n3.first, last_name_3: n3.last,
@@ -2837,7 +3036,7 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
   const payload = {
     apartment_id: isApt ? unitId : null,
     parking_id:   isApt ? null   : unitId,
-    status, contract_type: 'mietvertrag',
+    status, contract_type: p.contract_type || 'mietvertrag',
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
     address: p.address, mietbeginn: p.mietbeginn, mietende,
@@ -2857,25 +3056,13 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
 
   const { data, error } = await sbL.from('rnt_tenant_records').insert(payload).select().single();
   if (error) {
-    console.warn('[rnt-tenants] create:', error.message);
+    ccSaveFailed(error, 'new tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
 
-  // Flip vacant flag on unit
+  // Occupied / vacant follows the dates (the reload runs the occupancy check)
   try {
-    if (status === 'active') {
-      if (isApt) {
-        await sbL.from('rentals_apartments').update({ vacant: false }).eq('id', unitId);
-        const a = appApartments?.find(a => a.id === unitId);
-        if (a) { a.vacant = false; _aptRerenderCard?.(unitId); }
-      } else {
-        await sbL.from('rentals_parking').update({ vacant: false }).eq('id', unitId);
-        const p = appParking?.find(p => p.id === unitId);
-        if (p) p.vacant = false;
-      }
-    }
-
     await _rntEnsureKaution(data.id);
     await _rntLoad();
   } catch (e) {
@@ -2972,43 +3159,21 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     kaution_soll: p.kaution_soll ?? rec?.kaution_soll ?? null,   // a profile save never wipes the fixed Soll
   };
   if (p.vertragsende !== undefined) update.vertragsende = p.vertragsende || null;
+  const ctBefore  = rec ? rntContractType(rec) : null;
+  const ctChanged = !!(rec && p.contract_type && p.contract_type !== ctBefore);
+  if (p.contract_type) update.contract_type = p.contract_type;
   // B20: the rent is only written when this form actually has rent fields
   if (sec.querySelector('[data-f="kaltmiete"]')) update.kaltmiete = p.kaltmiete ?? null;
   if (isApt && sec.querySelector('[data-f="nebenkosten"]')) update.nebenkosten = p.nebenkosten ?? null;
 
-  if (toFormer) {
-    // B4 / B12: status + Auszug only — no rent filled in, the contract type stays as it is
-    update.status = 'former';
-    // flip unit back to vacant
-    if (isApt) {
-      ccPersist(() => sbL.from('rentals_apartments').update({ vacant: true }).eq('id', unitId));   // (was never sent: query had no .then)
-      const a = appApartments?.find(a => a.id === unitId);
-      if (a) { a.vacant = true; _aptRerenderCard?.(unitId); }
-    } else {
-      ccPersist(() => sbL.from('rentals_parking').update({ vacant: true }).eq('id', unitId));   // (was never sent: query had no .then)
-      const pp = appParking?.find(p => p.id === unitId);
-      if (pp) pp.vacant = true;
-    }
-  }
-  if (toActive) {
-    update.status = 'active';
-    update.contract_type = null;
-    update.done = false;
-    // flip unit back to occupied
-    if (isApt) {
-      ccPersist(() => sbL.from('rentals_apartments').update({ vacant: false }).eq('id', unitId));   // (was never sent: query had no .then)
-      const a = appApartments?.find(a => a.id === unitId);
-      if (a) { a.vacant = false; _aptRerenderCard?.(unitId); }
-    } else {
-      ccPersist(() => sbL.from('rentals_parking').update({ vacant: false }).eq('id', unitId));   // (was never sent: query had no .then)
-      const pp = appParking?.find(p => p.id === unitId);
-      if (pp) pp.vacant = false;
-    }
-  }
+  if (toFormer) update.status = 'former';   // B4 / B12: status + Auszug only; occupancy follows the dates
+  if (toActive) { update.status = 'active'; update.done = false; }   // the contract type stays with the tenancy
 
   // Direct save: apply in memory and re-render instantly; persist in the background (1 retry)
   const before = rec ? { ...rec } : null;
   if (rec) Object.assign(rec, update);
+  if (ctChanged) _rntSyncTypePeriod(rec, p.contract_type);
+  _rntSyncOccupancy();
   _rntEnsureKaution(tid);   // background; no-op when the tenant already has a kaution row
   _rntRender();
 
@@ -3016,6 +3181,7 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     .then(({ error }) => {
       if (!error) return;
       if (rec && before) Object.keys(update).forEach(k => { rec[k] = before[k]; });
+      if (ctChanged && ctBefore) _rntSyncTypePeriod(rec, ctBefore);
       _rntRender();
       ccSaveFailed(error, 'rentals tenant profile');
     });
@@ -3106,6 +3272,11 @@ async function _rntModalSaveProfile(tid) {
     mietbeginn: p.mietbeginn, mietende: p.mietende,
     kaution_soll: p.kaution_soll ?? rec?.kaution_soll ?? null,   // never wiped by a profile save
   };
+  [2, 3].forEach(n => {   // co-tenants shown in the pop-up
+    if (!body.querySelector(`[data-mf="name_${n}"]`)) return;
+    update['first_name_' + n] = p['first_name_' + n] || null; update['last_name_' + n] = p['last_name_' + n] || null;
+    update['email_' + n] = p['email_' + n] || null;
+  });
   const hasRent = !!body.querySelector('[data-mf="kaltmiete"]');   // B20
   if (hasRent) { update.kaltmiete = p.kaltmiete ?? null; update.nebenkosten = p.nebenkosten ?? null; }
   if (hasRent && rec && typeof ccRpFor === 'function') {           // rent history follows the correction
@@ -3113,16 +3284,23 @@ async function _rntModalSaveProfile(tid) {
     const per = ccRpAt(ccRpFor('rentals', rec.id), lastDay);
     if (per && (Number(p.kaltmiete) || 0) + (Number(p.nebenkosten) || 0) !== (ccRpAmount(per) || {}).total)
       ccRpUpdate(sbL, per.id, { kaltmiete: p.kaltmiete ?? null, nebenkosten: p.nebenkosten ?? null })
-        .catch(e => console.warn('[rnt-tenants] rent history:', e && e.message || e));
+        .catch(e => ccSaveFailed(e, 'rent history'));
   }
 
   const toActive = rec?.status === 'former' && (!p.mietende || !_rntIsPast(p.mietende));
-  if (toActive) { update.status = 'active'; update.contract_type = null; update.done = false; }
+  if (toActive) { update.status = 'active'; update.done = false; }   // the contract type stays with the tenancy
 
+  const beforeRec = rec ? { ...rec } : null;
   if (rec) Object.assign(rec, update);
+  _rntSyncOccupancy();
 
-  sbL.from('rnt_tenant_records').update(update).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[rnt-tenants] modal save:', error.message); });
+  ccQueueWrite('rnt-' + tid, () => sbL.from('rnt_tenant_records').update(update).eq('id', tid))
+    .then(({ error }) => {
+      if (!error) return;
+      if (rec && beforeRec) Object.keys(update).forEach(k => { rec[k] = beforeRec[k]; });
+      _rntRender();
+      ccSaveFailed(error, 'tenant');
+    });
 
   _rntCloseModal();
   _rntRender();
@@ -3174,6 +3352,10 @@ async function _rntSaveKaution(tid, received, returned) {
   const before = k0 ? { received: k0.received, returned: k0.returned } : null;
   if (k0) { k0.received = received; k0.returned = returned; }
   _rntRefreshFormerBadges(tid);
+  if (_rntModalTid === tid) {
+    const delBtn = document.getElementById('rntModalFooter')?.querySelector('.tn-btn-danger');
+    if (delBtn) { const done = _rntIsAllDone(tid); delBtn.style.opacity = done ? '1' : '.35'; delBtn.style.pointerEvents = done ? 'auto' : 'none'; }
+  }
   // Then the database (row created first if this tenant has none yet)
   if (!_rntKaution[tid]) await _rntEnsureKaution(tid);
   const k = _rntKaution[tid];
@@ -3219,7 +3401,7 @@ async function _rntToggleSettle(pfx, tid) {
   const pill = document.getElementById('kstat-' + pfx);
   if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
   sbL.from('rnt_kaution').update(upd).eq('id', k.id)
-    .then(({ error }) => { if (error) console.warn('[rnt-tenants] settle:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'Kaution settled'); _rntLoad(); } });
   _rntRefreshFormerBadges(tid);
   { const _r = _rntRecords.find(r => r.id === tid); if (_r) _rntRefreshCardPills(_r.apartment_id || _r.parking_id); }
 }
@@ -3260,7 +3442,7 @@ async function _rntConfirmAddNk__run(tid, inp, wrap, addBtn) {
   if (!period || !sbL) return;
   const { data, error } = await sbL.from('rnt_nk_entries')
     .insert({ tenant_id: tid, period, sent:false, paid:false }).select().single();
-  if (error) { console.warn('[rnt-tenants] add NK:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK period'); return; }
   if (!_rntNK[tid]) _rntNK[tid] = [];
   _rntNK[tid].push(data);
   if (_rntModalTid === tid) { _rntOpenModal(tid); } else { _rntRender(); }
@@ -3306,7 +3488,7 @@ function _rntDeleteNk(nkId, tid) {
 async function _rntConfirmDeleteNk(nkId, tid) {
   if (!sbL) return;
   const { error } = await sbL.from('rnt_nk_entries').delete().eq('id', nkId);
-  if (error) { console.warn('[rnt-tenants] delete NK:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'delete NK period'); return; }
   if (_rntNK[tid]) _rntNK[tid] = _rntNK[tid].filter(e => e.id !== nkId);
   if (_rntModalTid === tid) { _rntOpenModal(tid); } else { _rntRender(); }
 }
@@ -3350,7 +3532,7 @@ async function _rntHandleUpload(file) {
   const { data: docData, error: docErr } = await sbL.from('rnt_tenant_documents')
     .upsert({ tenant_id: _rntUploadTid, type: _rntUploadType, file_url: path },
             { onConflict: 'tenant_id,type' }).select().single();
-  if (docErr) { console.warn('[rnt-tenants] doc upsert:', docErr.message); return; }
+  if (docErr) { ccSaveFailed(docErr, 'document'); return; }
 
   const tid = _rntUploadTid;
   if (!_rntDocs[tid]) _rntDocs[tid] = [];
@@ -3368,7 +3550,7 @@ async function _rntDeleteDoc(tid, type, docId) {
   const doc = (_rntDocs[tid] || []).find(d => d.id === docId);
   if (doc?.file_url) await sbL.storage.from('rnt-tenant-documents').remove([doc.file_url]);
   const { error } = await sbL.from('rnt_tenant_documents').delete().eq('id', docId);
-  if (error) { console.warn('[rnt-tenants] delete doc:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'delete document'); return; }
   if (_rntDocs[tid]) _rntDocs[tid] = _rntDocs[tid].filter(d => d.id !== docId);
   if (_rntModalTid === tid) { _rntOpenModal(tid); } else { _rntRender(); }
 }
@@ -3479,13 +3661,14 @@ async function _rntModalSaveDraft() {
     .select().single();
 
   if (error) {
-    console.warn('[rnt-tenants] add former:', error.message);
+    ccSaveFailed(error, 'former tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
 
   await _rntEnsureKaution(data.id);
   _rntRecords.push(data);
+  _rntSyncOccupancy();
   _rntNK[data.id]   = [];
   _rntDocs[data.id] = [];
   modal._draft = null;
@@ -3503,7 +3686,7 @@ async function _rntMarkDone(tid) {
   _rntCloseModal();
   _rntRender();
   sbL.from('rnt_tenant_records').update({ done:true, status:'archived' }).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[rnt-tenants] archive:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'tenant archive'); _rntLoad(); } });
 }
 
 async function _rntReopen(tid) {
@@ -3512,7 +3695,7 @@ async function _rntReopen(tid) {
   if (rec) { rec.done = false; rec.status = 'former'; }
   _rntRender();
   sbL.from('rnt_tenant_records').update({ done:false, status:'former' }).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[rnt-tenants] reopen:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'tenant reopen'); _rntLoad(); } });
 }
 
 async function _rntHideFormer(tid) {
@@ -3521,7 +3704,7 @@ async function _rntHideFormer(tid) {
   if (rec) { rec.done = true; rec.status = 'archived'; }
   _rntRender();
   sbL.from('rnt_tenant_records').update({ done:true, status:'archived' }).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[rnt-tenants] hide:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'tenant hide'); _rntLoad(); } });
 }
 
 function _rntDeleteFormer(tid) {
@@ -3544,6 +3727,7 @@ async function _rntConfirmDelete() {
   const btn = document.getElementById('rntConfirmOk');
   if (btn) btn.disabled = true;
   const { error } = await sbL.from('rnt_tenant_records').delete().eq('id', _rntDeleteId);
+  if (error) ccSaveFailed(error, 'delete tenant');
   document.getElementById('rntConfirm').classList.remove('open');
   if (!error) {
     _rntRecords = _rntRecords.filter(r => r.id !== _rntDeleteId);
@@ -3632,10 +3816,9 @@ function rntWarmTenants() {
   if (!_rntWarmPromise) {
     _rntWarmPromise = sbL.from('rnt_tenant_records')
       .select('id,apartment_id,parking_id,status,mietbeginn,mietende,kaltmiete,nebenkosten,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll')
-      .eq('status', 'active')
       .then(({ data, error }) => {
         if (error) { console.warn('[rentals tenants] preload:', error.message); return; }
-        if (!_rntLoadedOnce) _rntActiveRecs = data || [];
+        if (!_rntLoadedOnce) { _rntActiveRecs = data || []; _rntSyncOccupancy(); }   // all statuses; readers filter 'active'
         // headers + totals in Apartments / Parking show the tenants' real rent once known
         try { if (typeof _renderAptList === 'function' && document.getElementById('aptList')) { _renderAptList(); _updateAptSummary(); } } catch (e) {}
         try { if (typeof _renderPkList === 'function' && document.getElementById('pkList')) { _renderPkList(); _updatePkSummary(); } } catch (e) {}

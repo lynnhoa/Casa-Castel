@@ -101,6 +101,58 @@ function ccTnStaffelTodo(state, fmtDateISO) {
   if (state.state === 'reminder') return { level: 'amber', text: `Staffel from ${fmtDateISO(state.entry.effective_date)}` };
   return null;
 }
+/* NK-Vorauszahlung change not yet confirmed with the tenant — same timing as Staffel:
+   nothing until 30 days before · amber "NK change from 01.01." · red once the date has passed.
+   Only this tenancy's changes (linked to the tenant, or dated after the move-in). */
+function ccTnNkChangeTodo(entries, rec) {
+  if (!rec) return null;
+  const iso = v => String(v || '').slice(0, 10);
+  const mb = rec.mietbeginn ? ccTnIso(rec.mietbeginn) : '';
+  const mine = (entries || []).filter(e => e && !e.tenant_adjusted && !e.ignored &&
+      (e.tenant_id ? String(e.tenant_id) === String(rec.id) : (!mb || iso(e.effective_date) >= mb)))
+    .sort((a, b) => iso(a.effective_date).localeCompare(iso(b.effective_date)));
+  for (const e of mine) {
+    const d = ccTnDaysUntil(e.effective_date);
+    if (d === null || d > 30) continue;
+    const s = iso(e.effective_date).split('-');
+    if (d >= 0) return { level: 'amber', text: 'NK change from ' + s[2] + '.' + s[1] + '.' };
+    return { level: 'red', text: `NK change overdue ${-d} day${-d === 1 ? '' : 's'}` };
+  }
+  return null;
+}
+function ccTnIso(v) {
+  const s = String(v || '').trim();
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : s.slice(0, 10);
+}
+
+/* ── OCCUPANCY — one rule for Rooms · Apartments · Parking (both apps) ──
+   A unit is occupied today when a tenancy covers today: move-in ≤ today ≤ move-out
+   (no move-out = open-ended; an active tenant without a move-in date counts).
+   A signed tenant who moves in later leaves the unit vacant until then, so the gap
+   between two tenants is Leerstand by itself. Units that never had a tenant in
+   the app are left as they are. An active tenant whose move-out has passed
+   becomes former.
+   units: [{ key, vacant }] · unitOf(rec) → unit key · returns what has to change */
+function ccOccupancyPlan(units, records, unitOf, todayIso) {
+  const occ = new Set(), known = new Set();
+  (records || []).forEach(r => {
+    if (!r) return;
+    const k = unitOf(r); if (k == null || k === '') return;
+    known.add(String(k));
+    if (r.status === 'archived') return;
+    const mb = r.mietbeginn ? ccTnIso(r.mietbeginn) : '', me = r.mietende ? ccTnIso(r.mietende) : '';
+    if (mb ? mb > todayIso : r.status !== 'active') return;
+    if (me && me < todayIso) return;
+    occ.add(String(k));
+  });
+  const unitChanges = (units || [])
+    .filter(u => known.has(String(u.key)) && !!u.vacant === occ.has(String(u.key)))
+    .map(u => ({ key: u.key, vacant: !occ.has(String(u.key)) }));
+  const toFormer = (records || []).filter(r => r && r.status === 'active' && r.mietende && ccTnIso(r.mietende) < todayIso);
+  return { unitChanges, toFormer };
+}
+
 /* Row 4: red first, then amber; max 3 + "+N" */
 function ccTnTodoRow(todos) {
   const list = (todos || []).filter(Boolean).sort((a, b) => (a.level === 'red' ? 0 : 1) - (b.level === 'red' ? 0 : 1));

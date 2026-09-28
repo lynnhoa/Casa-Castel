@@ -814,6 +814,7 @@ function _tnParseDate(s) {
 function _tnKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
 
 function _tnNkHasOpen(tid) {
+  if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _tnNK[tid]);   // Settlements + old tracking
   return (_tnNK[tid] || []).some(e => !e.paid);
 }
 
@@ -858,6 +859,13 @@ function _tnIsPast(dateStr) {
   return d <= today;
 }
 
+/* Kalt + NK tenancy? (NK Vorauszahlung and its reminder only apply there — not to Pauschal) */
+function _tnIsKaltNK(rec, roomName) {
+  if (!rec) return false;
+  const cur = _tnCurrentRent(rec, roomName || rec.room);
+  return (cur ? cur.mode : _tnLegacyMode(roomName || rec.room, rec)) !== 'pauschal';
+}
+
 /* ── NK VORAUSZAHLUNG HELPERS ── */
 function _tnNKVorausCurrent(room) {
   const today = new Date(); today.setHours(0,0,0,0);
@@ -878,7 +886,9 @@ function _tnCardPills(room, activeRec) {
     if (tnContractType(activeRec) === 'kurzzeit') todos.push(ccTnRenewalTodo(activeRec));   // only Kurzzeit is renewed
     if (tnContractType(activeRec) === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende)
       todos.push({ level: 'amber', text: 'Contract end missing' });
-    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'red', text: 'NK open' });   // NK: unchanged for now
+    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: 'NK open' });   // Settlements + old tracking
+    if (_tnIsKaltNK(activeRec, room.name) && typeof ccTnNkChangeTodo === 'function')
+      todos.push(ccTnNkChangeTodo(_tnNKVoraus[room.name], activeRec));
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }
   const movesIn = ccTnMovesIn(vacant, activeRec);
@@ -924,6 +934,7 @@ async function _tnLoad() {
     sbL.from('tenant_documents').select('*').in('tenant_id', tids),
     sbL.from('nk_vorauszahlung_history').select('*').in('room', rooms).order('effective_date', { ascending: false }),
     typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'casa') : Promise.resolve([]),   // rent history (rent_periods)
+    typeof ccNksLoad === 'function' ? ccNksLoad() : Promise.resolve(),               // NK-Abrechnungen (Settlements)
   ]);
 
   _tnKaution = {};
@@ -959,6 +970,7 @@ async function _tnLoad() {
 
   _tnFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _tnFreezeRent();          // existing active tenants: fix their rent once
+  _tnSyncOccupancy();       // occupied / vacant from the dates (and former after the move-out)
   _tnRenderIfChanged();
 }
 
@@ -1017,13 +1029,29 @@ function _tnRender() {
     }
   }
 
-  list.innerHTML = rooms.map(r => _tnCardHTML(r)).join('');
+  // Same cards in the same order as on screen → swap only the cards whose content changed
+  // (Rentals does the same): no flash, no jump, and an open form in another card stays open
+  const cards = rooms.map(r => ({ id: 'tc-' + esc(r.name.replace(/\s+/g,'_').toLowerCase()), html: _tnCardHTML(r) }));
+  const onScreen = [...list.querySelectorAll(':scope > .tn-card')];
+  if (typeof ccSwapCard === 'function' && onScreen.length === cards.length && onScreen.every((c, i) => c.id === cards[i].id)) {
+    cards.forEach((c, i) => {
+      if (_tnCardCache[c.id] === c.html) return;
+      ccSwapCard(onScreen[i], c.html, 'open');
+      _tnCardCache[c.id] = c.html;
+    });
+    _tnBindCards();
+    return;
+  }
+  list.innerHTML = cards.map(c => c.html).join('');
+  _tnCardCache = {};
+  cards.forEach(c => { _tnCardCache[c.id] = c.html; });
 
   // Restore open state (read mode is the default after re-render — no extra work needed)
   _tnOpenCards.forEach(id => document.getElementById(id)?.classList.add('open'));
 
   _tnBindCards();
 }
+let _tnCardCache = {};   // card id → its HTML as last drawn
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -1070,7 +1098,7 @@ function _tnCardHTML(room) {
   ${_tnHeaderHTML(rid, room, activeRec)}
   ${formerNudges}
   <div class="tn-body" id="tb-${rid}">
-    ${activeRec || room.vacant
+    ${activeRec
       ? _tnRentBarHTML(rid, room, activeRec) + _tnRentFormHTML(rid, room, activeRec) + _ccRentTimelineHTML('casa', activeRec, _tnFmtEUR)
       : ''}
     ${_ccNextTenantHTML(nextRec, nextRec ? esc([nextRec.first_name, nextRec.last_name].filter(Boolean).join(' ')) : '', _tnFmtDate, '_tnOpenModal')}
@@ -1078,7 +1106,7 @@ function _tnCardHTML(room) {
     ${_tnDocumentsSectionHTML(rid, room, activeRec)}
     ${_tnKautionHTML(rid, activeRec ? activeRec.id : null, 'card')}
     ${_tnNKHTML(rid, activeRec ? activeRec.id : null, 'card')}
-    ${_tnNKVorausHTML(rid, activeRec ? activeRec.room : null, 'card')}
+    ${_tnIsKaltNK(activeRec, room.name) ? _tnNKVorausHTML(rid, activeRec ? activeRec.room : null, 'card') : ''}
     ${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs)}
   </div>
 </div>`;
@@ -1436,7 +1464,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
   const tid   = rec ? rec.id : '';
   const getDoc = type => docs.find(d => d.type === type);
 
-  const row = (type, label, createBtn) => {
+  const row = (type, label, createBtn, removeBtn) => {
     const doc    = getDoc(type);
     const signed = !!doc?.file_url;
     const pill   = signed
@@ -1456,7 +1484,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     return `<div class="tn-doc-row">
       <span class="tn-doc-name">${esc(label)}</span>
       ${pill}
-      <div class="tn-doc-btns">${!signed && createBtn ? createBtn : viewBtn}${delBtn}${upBtn}</div>
+      <div class="tn-doc-btns">${!signed && createBtn ? createBtn : viewBtn}${signed ? delBtn : (removeBtn || '')}${upBtn}</div>
     </div>`;
   };
 
@@ -1467,15 +1495,12 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     ${!activeType ? `<p class="tn-empty">No contract type set.</p>` : ''}
     ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
     ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
-    ${(rec && typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id).filter(p => p.kind === 'renewal') : [])
-        .map((p, i) => {
-          // "1. Verlängerung ab 01.10.2026" — a renewal that switches the type says so
-          const before = tnContractType(rec, ccRpAddDays(_ccIso(p.valid_from), -1));
-          const lbl = (i + 1) + '. Verlängerung ab ' + _ccFmtD(p.valid_from)
-            + ((p.contract_type && before && p.contract_type !== before) ? ' \u00b7 ' + _tnContractLabel(p.contract_type) : '');
-          const create = `<button class="tn-doc-btn" onclick="_tnRenewCreate('${tid}','${esc(String(p.id))}',${i + 1})" title="Create contract">
+    ${_tnRenewalRows(rec).map(x => {
+          const create = `<button class="tn-doc-btn" onclick="_tnRenewCreate('${tid}','${esc(String(x.p.id))}',${x.n})" title="Create contract">
             <i class="ti ti-file-plus"></i></button>`;
-          return row('verlaengerung_' + _ccIso(p.valid_from), lbl, create);
+          const remove = x.last ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
+            onclick="_tnRenewDelete('${tid}','${esc(String(x.p.id))}')" title="Remove this renewal"><i class="ti ti-trash"></i></button>` : '';
+          return row(x.key, x.label, create, remove);
         }).join('')}
     ${row('einzug','Übergabe Einzug')}
     ${row('auszug','Übergabe Auszug')}
@@ -1772,7 +1797,7 @@ async function _tnNKVorausConfirmAdd__run(room, rid) {
   const { data, error } = typeof ccRpInsertWithTenant === 'function'
     ? await ccRpInsertWithTenant(sbL, 'nk_vorauszahlung_history', nkRow, actT ? actT.id : null)
     : await sbL.from('nk_vorauszahlung_history').insert(nkRow).select().single();
-  if (error) { console.warn('[tenants] nkv add:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK Vorauszahlung'); return; }
   if (!_tnNKVoraus[room]) _tnNKVoraus[room] = [];
   _tnNKVoraus[room].unshift(data);
   _tnNKVoraus[room].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
@@ -1786,7 +1811,7 @@ async function _tnNKVorausMarkNotified(id, room, rid) {
   const { error } = await sbL.from('nk_vorauszahlung_history')
     .update({ tenant_notified: true, notified_date: today })
     .eq('id', id);
-  if (error) { console.warn('[tenants] nkv notified:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK Vorauszahlung'); return; }
   const entry = (_tnNKVoraus[room] || []).find(e => e.id === id);
   if (entry) { entry.tenant_notified = true; entry.notified_date = today; }
   _tnRenderNKVorausRow(id, room, rid);
@@ -1799,7 +1824,7 @@ async function _tnNKVorausMarkAdjusted(id, room, rid) {
   const { error } = await sbL.from('nk_vorauszahlung_history')
     .update({ tenant_adjusted: true, adjusted_date: today })
     .eq('id', id);
-  if (error) { console.warn('[tenants] nkv adjusted:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK Vorauszahlung'); return; }
   const entry = (_tnNKVoraus[room] || []).find(e => e.id === id);
   if (entry) { entry.tenant_adjusted = true; entry.adjusted_date = today; }
   // full re-render: header pill may disappear, row moves to history
@@ -2050,9 +2075,10 @@ function _tnModalBodyHTML(rec) {
       ${(() => {
         // The tenancy's first contract (the room's offer only for old records without a type)
         const effectiveCt = ctK || _tnRoomContractType(rec.room);
-        if (effectiveCt === 'mietvertrag')  return docRow('mietvertrag','Mietvertrag');
-        if (effectiveCt === 'kurzzeit')     return docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
-        return docRow('mietvertrag','Mietvertrag') + docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
+        const base = effectiveCt === 'mietvertrag' ? docRow('mietvertrag','Mietvertrag')
+          : effectiveCt === 'kurzzeit' ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag')
+          : docRow('mietvertrag','Mietvertrag') + docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
+        return base + _tnRenewalRows(rec).map(x => docRow(x.key, x.label)).join('');
       })()}
       ${docRow('einzug','Übergabe Einzug')}
       ${docRow('auszug','Übergabe Auszug')}
@@ -2075,8 +2101,6 @@ function _tnModalFooterHTML(rec, allDone) {
     <button class="tn-btn tn-btn-ghost" onclick="_tnMarkDone('${rec.id}')">
       <i class="ti ti-archive"></i> Archive</button>
     <div class="tn-sheet-spacer"></div>
-    <button class="tn-btn tn-btn-primary cc-save" onclick="_tnModalSaveProfile('${rec.id}')">
-      <i class="ti ti-check"></i> Save</button>
     <button class="tn-btn tn-btn-danger${allDone ? '' : ''}"
       style="${allDone ? '' : 'opacity:.35;pointer-events:none'}"
       onclick="_tnDeleteFormer('${rec.id}')">
@@ -2284,7 +2308,7 @@ async function _tnSaveNewTenant(rid, roomName) {
 
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
   if (error) {
-    console.warn('[tenants] create:', error.message);
+    ccSaveFailed(error, 'new tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
@@ -2332,6 +2356,35 @@ function _tnMoveOutOpen(rid, tid) {
   });
 }
 /* Renew (Casa 1-year contracts): same tenant, same Kaution — new contract end, optional new rent */
+/* The renewals of a tenancy, oldest first: "1. Verlängerung ab 01.10.2026" (+ type if it switches) */
+function _tnRenewalRows(rec) {
+  if (!rec || !rec.id || typeof ccRpFor !== 'function') return [];
+  const list = ccRpFor('casa', rec.id).filter(p => p.kind === 'renewal');
+  return list.map((p, i) => {
+    const before = tnContractType(rec, ccRpAddDays(_ccIso(p.valid_from), -1));
+    const label = (i + 1) + '. Verlängerung ab ' + _ccFmtD(p.valid_from)
+      + ((p.contract_type && before && p.contract_type !== before) ? ' \u00b7 ' + _tnContractLabel(p.contract_type) : '');
+    return { p, n: i + 1, key: 'verlaengerung_' + _ccIso(p.valid_from), label, last: i === list.length - 1 };
+  });
+}
+
+/* Remove a renewal saved by mistake (only the latest, only while no signed contract is uploaded):
+   the rent-history entry goes, Contract end goes back to the day before it started. */
+async function _tnRenewDelete(tid, pid) {
+  const rec = _tnRecords.find(r => r.id === tid);
+  const per = typeof ccRpFor === 'function' ? ccRpFor('casa', tid).find(p => String(p.id) === String(pid)) : null;
+  if (!rec || !per || !sbL) return;
+  const prevEnd = ccRpAddDays(_ccIso(per.valid_from), -1);
+  const n = _tnRenewalRows(rec).find(x => String(x.p.id) === String(pid))?.n || '';
+  if (!confirm(`Remove the ${n}. Verlängerung ab ${_ccFmtD(per.valid_from)}?\n\nThe contract end goes back to ${_ccFmtD(prevEnd)}.`)) return;
+  try { await ccRpDelete(sbL, per.id); } catch (e) { ccSaveFailed(e, 'remove renewal'); return; }
+  const before = rec.vertragsende;
+  rec.vertragsende = prevEnd;
+  _tnRender();
+  ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update({ vertragsende: prevEnd }).eq('id', tid))
+    .then(({ error }) => { if (error) { rec.vertragsende = before; _tnRender(); ccSaveFailed(error, 'contract end'); } });
+}
+
 /* Renewal row → "Create": the right generator in Rooms, filled in with this renewal
    (tenant, start, end, the renewal's own rent). Draft rounds as usual; upload the signed one here. */
 function _tnRenewCreate(tid, pid, n) {
@@ -2456,6 +2509,7 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   const before = rec ? { ...rec } : null;
   if (rec) Object.assign(rec, update);
   if (ctChanged) _tnSyncTypePeriod(rec, p.contract_type);
+  _tnSyncOccupancy();
   _tnRebuildProfileCache();
   _tnRender();
 
@@ -2472,6 +2526,30 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
       await _tnEnsureKaution(tid);
       if (toFormer || toActive) await _tnLoad();   // tenant moved between active / former: quiet full refresh
     });
+}
+
+/* Occupancy from the dates — ONE rule for both apps (ccOccupancyPlan in cc-tenant-status.js).
+   Runs after every load and every tenant save; writes only what really changed. */
+function _tnSyncOccupancy() {
+  if (!sbL || typeof ccOccupancyPlan !== 'function' || typeof appRooms === 'undefined' || !appRooms.length) return;
+  const plan = ccOccupancyPlan(appRooms.filter(r => r.active).map(r => ({ key: r.name, vacant: !!r.vacant })),
+                               _tnRecords, r => r.room, _ccTodayIso());
+  plan.unitChanges.forEach(u => {
+    const room = appRooms.find(r => r.name === u.key); if (!room) return;
+    const before = !!room.vacant;
+    room.vacant = u.vacant;
+    ccQueueWrite('room-occ-' + room.id, () => sbL.from('rooms').update({ vacant: u.vacant }).eq('id', room.id))
+      .then(res => { if (res && res.error) { room.vacant = before; ccSaveFailed(res.error, 'room occupancy'); } });
+  });
+  plan.toFormer.forEach(rec => {
+    rec.status = 'former';
+    ccQueueWrite('tn-' + rec.id, () => sbL.from('tenant_records').update({ status: 'former' }).eq('id', rec.id))
+      .then(res => { if (res && res.error) { rec.status = 'active'; ccSaveFailed(res.error, 'tenant status'); } });
+  });
+  if (plan.toFormer.length) _tnRebuildProfileCache();
+  if (plan.unitChanges.length && typeof _renderRoomsList === 'function' && document.getElementById('roomsList')) {
+    try { _renderRoomsList(); } catch (e) {}
+  }
 }
 
 /* Profile cache (names for the contract generators) from the records in memory */
@@ -2588,7 +2666,7 @@ async function _tnModalSaveProfile(tid) {
       const f = per.mode === 'pauschal'
         ? { pauschale: (Number(p.kaltmiete) || 0) + (Number(p.nebenkosten) || 0) }
         : { kaltmiete: p.kaltmiete ?? null, nebenkosten: p.nebenkosten ?? null };
-      ccRpUpdate(sbL, per.id, f).catch(e => console.warn('[tenants] rent history:', e && e.message || e));
+      ccRpUpdate(sbL, per.id, f).catch(e => ccSaveFailed(e, 'rent history'));
     }
   }
 
@@ -2599,8 +2677,10 @@ async function _tnModalSaveProfile(tid) {
   }
 
   // Update local cache immediately — instant UI
+  const beforeRec = rec ? { ...rec } : null;
   if (rec) Object.assign(rec, update);
   if (ctChanged) _tnSyncTypePeriod(rec, ctype);
+  _tnSyncOccupancy();
 
   // Switch back to read mode and refresh read fields
   const readEl = document.getElementById('mprof-read-' + tid);
@@ -2637,8 +2717,13 @@ async function _tnModalSaveProfile(tid) {
   if (el) el.textContent = newName;
 
   // Fire to Supabase in background
-  sbL.from('tenant_records').update(update).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[tenants] modal save:', error.message); });
+  ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(update).eq('id', tid))
+    .then(({ error }) => {
+      if (!error) return;
+      if (rec && beforeRec) Object.keys(update).forEach(k => { rec[k] = beforeRec[k]; });
+      _tnRender();
+      ccSaveFailed(error, 'tenant');
+    });
 
   _tnCloseModal();
   _tnRender();
@@ -2766,7 +2851,7 @@ async function _tnToggleSettle(pfx, tid) {
 
   // Fire to Supabase in background
   sbL.from('kaution').update(upd).eq('id', k.id)
-    .then(({ error }) => { if (error) console.warn('[tenants] settle:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'Kaution settled'); _tnLoad(); } });
   { const _r = _tnRecords.find(r => r.id === tid); if (_r) _tnRefreshCardPills(_r.room); }
 
   _tnRefreshFormerBadges(tid);
@@ -2810,7 +2895,7 @@ async function _tnConfirmAddNk__run(tid, inp, wrap, addBtn) {
   if (!period || !sbL) return;
   const { data, error } = await sbL.from('nk_entries')
     .insert({ tenant_id: tid, period, sent:false, paid:false }).select().single();
-  if (error) { console.warn('[tenants] add NK:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'NK period'); return; }
   if (!_tnNK[tid]) _tnNK[tid] = [];
   _tnNK[tid].push(data);
   if (_tnModalTid === tid) { _tnOpenModal(tid); } else { _tnRender(); }
@@ -2863,7 +2948,7 @@ function _tnDeleteNk(nkId, tid) {
 async function _tnConfirmDeleteNk(nkId, tid) {
   if (!sbL) return;
   const { error } = await sbL.from('nk_entries').delete().eq('id', nkId);
-  if (error) { console.warn('[tenants] delete NK:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'delete NK period'); return; }
   if (_tnNK[tid]) _tnNK[tid] = _tnNK[tid].filter(e => e.id !== nkId);
   if (_tnModalTid === tid) { _tnOpenModal(tid); } else { _tnRender(); }
 }
@@ -2912,7 +2997,7 @@ async function _tnHandleUpload(file) {
     .upsert({ tenant_id: _tnUploadTid, type: _tnUploadType, file_url: path,
               uploaded_at: new Date().toISOString() },
             { onConflict: 'tenant_id,type' }).select().single();
-  if (docErr) { console.warn('[tenants] doc upsert:', docErr.message); return; }
+  if (docErr) { ccSaveFailed(docErr, 'document'); return; }
 
   if (!_tnDocs[_tnUploadTid]) _tnDocs[_tnUploadTid] = [];
   const idx = _tnDocs[_tnUploadTid].findIndex(d => d.type === _tnUploadType);
@@ -2971,7 +3056,7 @@ async function _tnDeleteDoc(tid, type, docId) {
     await sbL.storage.from('tenant-documents').remove([doc.file_url]);
   }
   const { error } = await sbL.from('tenant_documents').delete().eq('id', docId);
-  if (error) { console.warn('[tenants] delete doc:', error.message); return; }
+  if (error) { ccSaveFailed(error, 'delete document'); return; }
   if (_tnDocs[tid]) _tnDocs[tid] = _tnDocs[tid].filter(d => d.id !== docId);
   if (_tnModalTid === tid) { _tnOpenModal(tid); } else { _tnRender(); }
 }
@@ -3061,13 +3146,14 @@ async function _tnModalSaveDraft() {
     .select().single();
 
   if (error) {
-    console.warn('[tenants] add former:', error.message);
+    ccSaveFailed(error, 'former tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
 
   await _tnEnsureKaution(data.id);
   _tnRecords.push(data);
+  _tnSyncOccupancy();
   _tnNK[data.id]   = [];
   _tnDocs[data.id] = [];
   modal._draft = null;
@@ -3086,7 +3172,7 @@ async function _tnMarkDone(tid) {
   _tnRender();
   // Fire to Supabase in background
   sbL.from('tenant_records').update({ done:true, status:'archived' }).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[tenants] archive:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'tenant archive'); _tnLoad(); } });
 }
 
 async function _tnReopen(tid) {
@@ -3095,7 +3181,7 @@ async function _tnReopen(tid) {
   if (rec) { rec.done = false; rec.status = 'former'; }
   _tnRender();
   sbL.from('tenant_records').update({ done:false, status:'former' }).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[tenants] reopen:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'tenant reopen'); _tnLoad(); } });
 }
 
 async function _tnHideFormer(tid) {
@@ -3104,7 +3190,7 @@ async function _tnHideFormer(tid) {
   if (rec) { rec.done = true; rec.status = 'archived'; }
   _tnRender();
   sbL.from('tenant_records').update({ done:true, status:'archived' }).eq('id', tid)
-    .then(({ error }) => { if (error) console.warn('[tenants] hide:', error.message); });
+    .then(({ error }) => { if (error) { ccSaveFailed(error, 'tenant hide'); _tnLoad(); } });
 }
 
 function _tnDeleteFormer(tid) {
@@ -3128,6 +3214,7 @@ async function _tnConfirmDelete() {
   if (btn) btn.disabled = true;
   const { error } = await sbL.from('tenant_records').delete().eq('id', _tnDeleteId);
   document.getElementById('tnConfirm').classList.remove('open');
+  if (error) ccSaveFailed(error, 'delete tenant');
   if (!error) {
     _tnRecords = _tnRecords.filter(r => r.id !== _tnDeleteId);
     delete _tnKaution[_tnDeleteId];

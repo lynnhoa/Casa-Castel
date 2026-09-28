@@ -47,6 +47,14 @@ function _ccNksStatus(s) {
   return ['tnp-amber', 'open'];
 }
 
+/* Is an NK-Abrechnung still open for this tenant? The same data the section shows:
+   Settlements (not done / not paid / not "nicht durchgeführt") + old tracking not paid. */
+function ccNksHasOpen(tid, legacy) {
+  const rows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant'));
+  if (rows.some(r => !['erledigt', 'bezahlt', 'nicht durchgeführt'].includes(r.status))) return true;
+  return (legacy || []).some(e => !e.paid);
+}
+
 /* legacy = the tenant's entries from the old tracking (read-only) */
 function ccNksSectionHTML(tid, ctx, legacy) {
   if (CC_NKS.rows === null && !CC_NKS.loading) setTimeout(ccNksLoad, 0);
