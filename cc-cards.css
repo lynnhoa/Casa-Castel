@@ -107,3 +107,22 @@
 
 /* Room read rows (Mietobjekt): a little air between rows */
 :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) .rc-sec-read > .rc-row + .rc-row { margin-top: 8px; }
+
+/* ── Phase 2 ── */
+/* Next tenant (signed, moves in later) — compact block inside the unit's card */
+.cc-next-tenant {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0; padding: 10px 14px;
+  background: #F3EADC; border-bottom: .5px solid var(--cc-rule);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cc-next-tenant__lbl { font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #8C5A30; }
+.cc-next-tenant__name { font-size: 13px; font-weight: 500; color: var(--cc-ink); }
+.cc-next-tenant__date { font-size: 12px; color: var(--cc-taupe); }
+.cc-next-tenant i { margin-left: auto; color: var(--cc-stone); font-size: 14px; }
+
+/* Past tenant form: today's Soll shown as a hint */
+.cc-soll-hint { margin: 0 0 12px; padding: 9px 11px; background: #F3EADC; border: .5px solid #D4B896; border-radius: 10px; font-size: 12px; line-height: 1.45; color: #6E5230; }
+
+/* Rooms: occupied header shows the tenant's rent */
+#tab-rooms .rc-rent-badge--tenant { background: #EEF0DD; color: #55622A; border: .5px solid #C9D29A; }

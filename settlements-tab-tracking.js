@@ -185,9 +185,38 @@ function _stCard(p, lines, all) {
     '<button class="st-card__h st-card__h--btn" data-st="fold" data-k="' + key + '" aria-expanded="' + isOpen + '">' +
       '<span class="st-card__t"><span class="cx-pn">' + stEsc(p.name) + '</span><span class="cx-src">' + stEsc(perText) + '</span></span>' +
       '<span class="st-card__r">' + pill + '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span></button>' +
-    (isOpen ? '<div class="st-colhead"><span>Einheit · Mieter</span><span>Zeitraum</span><span>Ergebnis</span><span>Status</span></div>' +
+    (isOpen ? _stPeriodRow(p) + '<div class="st-colhead"><span>Einheit · Mieter</span><span>Zeitraum</span><span>Ergebnis</span><span>Status</span></div>' +
       lines.map(_stLineHtml).join('') : '') +
   '</div>';
+}
+
+/* Abrechnungszeitraum of a property — set here (the one place). Each tenant's
+   NK line is cut to their own stay inside this period automatically. */
+function _stPeriodRow(p) {
+  const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
+  const per = ctlPeriodOf(p, (ST.year || new Date().getFullYear()) + '-' + st);
+  const txt = per ? stDM(per.from) + ' – ' + stDM(per.to) : '01.01. – 31.12.';
+  if (ST.perEdit !== p.id) {
+    return '<div class="st-period"><span>Abrechnungszeitraum <strong>' + txt + '</strong></span>' +
+      '<button class="cx-link" data-st="perEdit" data-k="' + p.id + '">Change</button></div>';
+  }
+  const [mm, dd] = st.split('-');
+  const opt = (n, sel) => '<option value="' + String(n).padStart(2, '0') + '"' + (Number(sel) === n ? ' selected' : '') + '>' + String(n).padStart(2, '0') + '</option>';
+  let days = '', months = '';
+  for (let i = 1; i <= 31; i++) days += opt(i, dd);
+  for (let i = 1; i <= 12; i++) months += opt(i, mm);
+  return '<div class="st-period st-period--edit"><span>Period starts on</span>' +
+    '<select class="st-in st-sel" id="stPerD">' + days + '</select><span>.</span><select class="st-in st-sel" id="stPerM">' + months + '</select>' +
+    '<button class="cx-btn cx-btn--s" data-st="perCancel">Cancel</button><button class="cx-btn cx-btn--p" data-st="perSave" data-k="' + p.id + '">Save</button></div>';
+}
+async function _stPeriodSave(pid) {
+  const d = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
+  if (!d || !m) return;
+  const v = m + '-' + d;
+  const { error } = await _ctlSupa.from('ctrl_properties').update({ nk_period_start: v }).eq('id', pid);
+  if (error) { stSay('Could not save — ' + error.message); return; }
+  const p = (window._ctrl.properties || []).find(x => x.id === pid); if (p) p.nk_period_start = v;
+  ST.perEdit = null; ctlSettlementInvalidate(); stSay('Abrechnungszeitraum saved'); stRenderTracking();
 }
 
 function _stLineHtml(l) {
@@ -466,6 +495,9 @@ document.getElementById('tab-tracking')?.addEventListener('click', async e => {
   if (a === 'showDone') { ST.filter.add('erledigt'); stRenderTracking(); return; }
   if (a === 'fold') { const k = b.dataset.k; ST.open[k] = !(ST.open[k] !== undefined ? ST.open[k] : true); stRenderTracking(); return; }
   if (a === 'checks') { ST.checkOpen = !ST.checkOpen; stRenderTracking(); return; }
+  if (a === 'perEdit') { ST.perEdit = Number(b.dataset.k); stRenderTracking(); return; }
+  if (a === 'perCancel') { ST.perEdit = null; stRenderTracking(); return; }
+  if (a === 'perSave') { await _stPeriodSave(Number(b.dataset.k)); return; }
   if (a === 'sel') { ST.sel = b.dataset.id; ST.edit = false; stRenderTracking(); if (!stIsWide()) document.querySelector('#stPanel .st-panel__b')?.scrollTo(0, 0); return; }
   if (a === 'close') { stClosePanel(); return; }
   if (a === 'dropStale') {

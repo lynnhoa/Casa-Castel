@@ -333,7 +333,8 @@ function _updatePkSummary() {
   appParking.forEach(p => {
     if (p.vacant) return;
     occupied++;
-    total += Number(p.pricing?.miete) || 0;
+    const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('pk', p.id) : null;
+    total += cur ? (Number(cur.kalt) || 0) : (Number(p.pricing?.miete) || 0);
   });
 
   bar.style.display = 'flex';
@@ -400,9 +401,13 @@ function _pkCardHTML(p) {
 
   // Header rent line
   const miete = Number(pr.miete) || 0;
-  const rentHTML = miete
-    ? `<strong>${pkFmtEURCompact(miete)}</strong> / mo`
-    : `<span class="pk-hdr__rent--vacant">No pricing set</span>`;
+  // Occupied: the tenant's real rent · vacant: the asking rent (labelled)
+  const _cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('pk', p.id) : null;
+  const rentHTML = _cur
+    ? `<strong>${pkFmtEURCompact(_cur.kalt)}</strong> / mo`
+    : miete
+      ? `Asking rent <strong>${pkFmtEURCompact(miete)}</strong> / mo`
+      : `<span class="pk-hdr__rent--vacant">No asking rent set</span>`;
 
   // Kaution (shared rule, kaution.js)
   const _pkK    = ccKaution({ contract: 'parking', kalt: miete, rec: pr });
@@ -434,14 +439,7 @@ function _pkCardHTML(p) {
   <!-- BODY -->
   <div class="pk-body">
 
-    <!-- Status action -->
-    <div class="pk-actions">
-      <button class="pk-act ${vacant ? 'pk-act--mark-occupied' : 'pk-act--mark-vacant'}"
-        onclick="_pkToggleVacant('${p.id}',this)">
-        <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:11px"></i>
-        ${vacant ? 'Mark as occupied' : 'Mark as vacant'}
-      </button>
-    </div>
+    <!-- occupied / vacant is automatic (tenant move-in / move-out) -->
 
     <!-- 1. IDENTITY -->
     <div class="apt-section" id="pk-identity-${p.id}">

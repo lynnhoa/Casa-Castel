@@ -161,7 +161,12 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
       <span class="tn-sec-lbl" style="flex:1">Kaution</span>
       <span class="tnp ${L.pill[1]}" id="cck-pill-${pfx}">${L.pill[0]}</span>
     </div>
-    <div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}</div>
+    <div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}${tid && A.saveSoll ? ` <button type="button" class="cck-soll-edit" onclick="ccKautionEditSoll(${q})">Edit Soll</button>` : ''}</div>
+    <div class="cck-soll-form" id="cck-sf-${pfx}" hidden>
+      <input type="number" data-cc-num="2" id="cck-sv-${pfx}" value="${soll != null ? soll : ''}" placeholder="0,00"/>
+      <button type="button" class="cck-b cck-bs" onclick="document.getElementById('cck-sf-${pfx}').hidden=true">Cancel</button>
+      <button type="button" class="cck-b cck-bp" onclick="ccKautionSaveSoll(${q})">Save</button>
+    </div>
     <div class="cck-bar"><div id="cck-bar-${pfx}" style="width:${L.bar[0]}%;background:${L.bar[1]}"></div></div>
     <div class="cck-cap" id="cck-cap-${pfx}">${L.cap}</div>
     <div class="${grid}">${r1a}${r1b}</div>
@@ -281,6 +286,20 @@ async function ccKautionAct(app, pfx, tid, act) {
   }
 }
 
+/* Kaution Soll — the one place to change it (fixed per tenancy) */
+function ccKautionEditSoll(app, pfx, tid) {
+  const f = document.getElementById('cck-sf-' + pfx); if (!f) return;
+  f.hidden = false; document.getElementById('cck-sv-' + pfx)?.focus();
+}
+async function ccKautionSaveSoll(app, pfx, tid) {
+  const A = _CCK[app]; if (!A || !A.saveSoll || !tid) return;
+  const raw = document.getElementById('cck-sv-' + pfx)?.value;
+  const v = raw === '' || raw == null ? null : Number(raw);
+  if (v !== null && !(v >= 0)) return;
+  const ok = await A.saveSoll(tid, v);
+  if (ok !== false) { _cckRedraw(app, pfx); if (A.afterChange) A.afterChange(tid); }
+}
+
 function _cckRedraw(app, pfx) {
   const el = document.getElementById('cck-' + pfx); if (!el) return;
   const A = _CCK[app]; const tid = el.dataset.tid, ctx = el.dataset.ctx;
@@ -292,6 +311,13 @@ function _cckRedraw(app, pfx) {
 
 /* ── styles (once) — sizes from the app: 34 px fields like today's Kaution fields ── */
 function _cckStyles() {
+  if (!document.getElementById('cck-soll-css')) {
+    const st = document.createElement('style'); st.id = 'cck-soll-css';
+    st.textContent = '.cck-soll-edit{margin-left:6px;padding:0;border:none;background:none;font:inherit;font-size:11px;color:var(--cc-taupe);text-decoration:underline;text-underline-offset:2px;cursor:pointer}'
+      + '.cck-soll-form{display:flex;gap:6px;align-items:center;margin:6px 0 8px}.cck-soll-form[hidden]{display:none}'
+      + '.cck-soll-form input{flex:1;min-width:0;height:34px;padding:0 10px;border:.5px solid var(--cc-rule);border-radius:8px;background:var(--cc-bg);font:inherit;font-size:14px}';
+    document.head.appendChild(st);
+  }
   if (typeof document === 'undefined' || document.getElementById('cck-styles')) return;
   const s = document.createElement('style');
   s.id = 'cck-styles';

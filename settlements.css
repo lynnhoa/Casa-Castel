@@ -153,3 +153,11 @@
 .st-prow__a { font-weight: 500; color: var(--cx-ink); }
 .st-prow__b { color: var(--cx-txt); }
 .st-prow__b em { color: var(--cx-mut); }
+
+/* Abrechnungszeitraum per property */
+.st-period { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 16px; border-top: .5px solid var(--cx-line); font-size: 12px; color: var(--cx-mut); }
+.st-period strong { color: var(--cx-ink); font-weight: 500; margin-left: 4px; }
+.st-period .cx-link { margin-left: auto; }
+.st-period--edit .cx-btn { height: 34px; }
+.st-period--edit .cx-btn--s { margin-left: auto; }
+.st-sel { width: auto; height: 34px; padding: 0 8px; }

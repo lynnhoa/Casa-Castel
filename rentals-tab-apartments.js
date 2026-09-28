@@ -846,12 +846,14 @@ function _updateAptSummary() {
   if (!bar) return;
   if (!appApartments.length) { bar.style.display = 'none'; return; }
 
+  // Total of the tenants' real rents (asking rent only while tenant data isn't loaded yet)
   let kalt = 0, nk = 0, occupied = 0;
   appApartments.forEach(a => {
     if (a.vacant) return;
     occupied++;
-    kalt += Number(a.pricing?.kaltmiete) || 0;
-    nk   += Number(a.pricing?.nk_pauschale) || 0;
+    const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('apt', a.id) : null;
+    kalt += cur ? (Number(cur.kalt) || 0) : (Number(a.pricing?.kaltmiete) || 0);
+    nk   += cur ? (Number(cur.nk)   || 0) : (Number(a.pricing?.nk_pauschale) || 0);
   });
 
   bar.style.display = 'flex';
@@ -941,9 +943,13 @@ function _aptCardHTML(a) {
   const kalt = Number(p.kaltmiete) || 0;
   const nk   = Number(p.nk_pauschale) || 0;
   const warm = kalt + nk;
-  const rentHTML = (kalt || nk)
-    ? `<strong>${aptFmtEURCompact(warm)}</strong> warm · ${aptFmtEURCompact(kalt)} + ${aptFmtEURCompact(nk)} NK`
-    : `<span class="apt-hdr__rent--vacant">No pricing set</span>`;
+  // Occupied: the tenant's real rent · vacant: the asking rent (labelled)
+  const _cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('apt', a.id) : null;
+  const rentHTML = _cur
+    ? `<strong>${aptFmtEURCompact(_cur.total)}</strong> warm · ${aptFmtEURCompact(_cur.kalt)} + ${aptFmtEURCompact(_cur.nk)} NK`
+    : (kalt || nk)
+      ? `Asking rent <strong>${aptFmtEURCompact(warm)}</strong> warm`
+      : `<span class="apt-hdr__rent--vacant">No asking rent set</span>`;
 
   // Kaution
   const _kMv = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: p });
@@ -993,14 +999,7 @@ function _aptCardHTML(a) {
   <!-- BODY -->
   <div class="apt-body">
 
-    <!-- Status action -->
-    <div class="apt-actions">
-      <button class="apt-act ${vacant ? 'apt-act--mark-occupied' : 'apt-act--mark-vacant'}"
-        onclick="_aptToggleVacant('${a.id}',this)">
-        <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:11px"></i>
-        ${vacant ? 'Mark as occupied' : 'Mark as vacant'}
-      </button>
-    </div>
+    <!-- occupied / vacant is automatic (tenant move-in / move-out) -->
 
     <!-- 1. IDENTITY -->
     <div class="apt-section" id="apt-identity-${a.id}">
@@ -1118,11 +1117,9 @@ function _aptCardHTML(a) {
         ${v.hausverwaltung ? `<div class="apt-row"><span class="apt-row__k">Hausverwaltung</span><span class="apt-row__v">${aptEsc(v.hausverwaltung)}</span></div>` : ''}
         ${v.hv_email ? `<div class="apt-row"><span class="apt-row__k">E-Mail</span><span class="apt-row__v"><a class="apt-hv-link" href="mailto:${aptEsc(v.hv_email)}">${aptEsc(v.hv_email)}</a></span></div>` : ''}
         ${v.hv_telefon ? `<div class="apt-row"><span class="apt-row__k">Telefon</span><span class="apt-row__v">${aptEsc(v.hv_telefon)}</span></div>` : ''}
-        ${v.hausgeld_mtl ? `<div class="apt-row" style="margin-top:6px"><span class="apt-row__k">Hausgeld</span><span class="apt-row__v">${aptFmtEURCompact(v.hausgeld_mtl)} / mtl.</span></div>` : ''}
         ${v.grundsteuer_mtl ? `<div class="apt-row"><span class="apt-row__k">Grundsteuer</span><span class="apt-row__v">${aptFmtEURCompact(v.grundsteuer_mtl)} / Quartal</span></div>` : ''}
-        ${(v.abrechnung_von && v.abrechnung_bis) ? `<div class="apt-row"><span class="apt-row__k">Abrechnung</span><span class="apt-row__v">${aptEsc(v.abrechnung_von)} – ${aptEsc(v.abrechnung_bis)}${v.abrechnungsmonat ? ' · ' + aptEsc(v.abrechnungsmonat) : ''}</span></div>` : ''}
         ${v.strom_provider ? `<div class="apt-row"><span class="apt-row__k">Strom Provider</span><span class="apt-row__v">${aptEsc(v.strom_provider)}</span></div>` : ''}
-        ${!v.hausverwaltung && !v.hausgeld_mtl ? `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>` : ''}
+        ${!v.hausverwaltung && !v.grundsteuer_mtl && !v.strom_provider ? `<div class="apt-row"><span class="apt-row__v apt-row__v--muted">—</span></div>` : ''}
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('verwaltung','${a.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -1136,16 +1133,9 @@ function _aptCardHTML(a) {
           <div class="apt-field"><div class="apt-field__label">E-Mail</div><input class="apt-input" type="email" data-vf="hv_email" value="${aptEsc(v.hv_email||'')}"/></div>
           <div class="apt-field"><div class="apt-field__label">Telefon</div><input class="apt-input" type="tel" data-vf="hv_telefon" value="${aptEsc(v.hv_telefon||'')}"/></div>
         </div>
+        <!-- Hausgeld: only in the Hausgeld timeline below · Abrechnungszeitraum: set in Settlements -->
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Hausgeld (€/mtl)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="hausgeld_mtl" value="${v.hausgeld_mtl||''}"/></div>
           <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
-        </div>
-        <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Abrechnung von</div><input class="apt-input" data-vf="abrechnung_von" value="${aptEsc(v.abrechnung_von||'')}" placeholder="01.01."/></div>
-          <div class="apt-field"><div class="apt-field__label">Abrechnung bis</div><input class="apt-input" data-vf="abrechnung_bis" value="${aptEsc(v.abrechnung_bis||'')}" placeholder="31.12."/></div>
-        </div>
-        <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Abrechnungsmonat</div><input class="apt-input" data-vf="abrechnungsmonat" value="${aptEsc(v.abrechnungsmonat||'')}" placeholder="März"/></div>
           <div class="apt-field"><div class="apt-field__label">Strom Provider</div><input class="apt-input" data-vf="strom_provider" value="${aptEsc(v.strom_provider||'')}"/></div>
         </div>
         <div class="apt-save-row">

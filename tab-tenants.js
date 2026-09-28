@@ -948,7 +948,10 @@ function _tnRender() {
 ══════════════════════════════════════════════════════════════ */
 function _tnCardHTML(room) {
   const rid      = esc(room.name.replace(/\s+/g,'_').toLowerCase());
-  const activeRec = _tnRecords.find(r => r.room === room.name && r.status === 'active');
+  const _pick = _ccPickTenancy(_tnRecords.filter(r => r.room === room.name && r.status === 'active'));
+  // Current tenant first; a signed next tenant only takes the card when nobody lives there now
+  const activeRec = _pick.current || _pick.next;
+  const nextRec   = _pick.current ? _pick.next : null;
   const formerRecs = _tnRecords
     .filter(r => r.room === room.name && r.status === 'former')
     .sort((a,b) => new Date(b.mietende||0) - new Date(a.mietende||0));
@@ -987,6 +990,7 @@ function _tnCardHTML(room) {
     ${activeRec || room.vacant
       ? _tnRentBarHTML(rid, room, activeRec) + _tnRentFormHTML(rid, room, activeRec)
       : ''}
+    ${_ccNextTenantHTML(nextRec, nextRec ? esc([nextRec.first_name, nextRec.last_name].filter(Boolean).join(' ')) : '', _tnFmtDate, '_tnOpenModal')}
     ${_tnProfileSectionHTML(rid, room, activeRec)}
     ${_tnDocumentsSectionHTML(rid, room, activeRec)}
     ${_tnKautionHTML(rid, activeRec ? activeRec.id : null, 'card')}
@@ -1134,11 +1138,7 @@ function _tnRentFormHTML(rid, room, rec) {
     <span class="tn-flbl">Gilt ab</span>
     <input type="text" id="rf-from-${rid}" value="" placeholder="TT.MM.JJJJ"/>
   </div>
-  <div class="tn-rf" style="grid-column:1/-1">
-    <span class="tn-flbl">Kaution Soll</span>
-    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
-    <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
-  </div>
+  <!-- Kaution Soll: only in the Kaution section -->
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
     <span class="tn-rf-hint" style="margin:0">Gilt ab leer = aktuelle Miete korrigieren · Datum = neue Miete ab diesem Tag</span>
     <div style="display:flex;gap:6px">
@@ -1152,6 +1152,45 @@ function _tnRentFormHTML(rid, room, rec) {
 }
 
 /* ── PROFILE SECTION ── */
+
+/* ── Tenancy in time: current (moved in) and next (signed, moves in later) ── */
+function _ccTodayIso() { const d = new Date(); const p = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()); }
+function _ccIso(v) { if (!v) return ''; const s = String(v).trim(); const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? m[3] + '-' + m[2] + '-' + m[1] : s.slice(0, 10); }
+function _ccPickTenancy(actives) {
+  const t = _ccTodayIso();
+  const cur = actives.filter(r => !r.mietbeginn || _ccIso(r.mietbeginn) <= t).sort((a, b) => _ccIso(b.mietbeginn).localeCompare(_ccIso(a.mietbeginn)))[0] || null;
+  const next = actives.filter(r => r.mietbeginn && _ccIso(r.mietbeginn) > t).sort((a, b) => _ccIso(a.mietbeginn).localeCompare(_ccIso(b.mietbeginn)))[0] || null;
+  return { current: cur, next };
+}
+
+/* Move-in is required; overlapping tenancies on one unit need a confirmation */
+function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
+  const reset = () => { if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; } };
+  if (!p.mietbeginn) {
+    const inp = container && container.querySelector('[' + attr + '="mietbeginn"]');
+    if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); inp.placeholder = 'Move-in required'; }
+    reset(); return false;
+  }
+  const a1 = _ccIso(p.mietbeginn), a2 = p.mietende ? _ccIso(p.mietende) : '9999-12-31';
+  const hit = (sameUnit || []).find(o => o.id !== selfId && o.status !== 'archived' && o.mietbeginn &&
+    _ccIso(o.mietbeginn) <= a2 && (o.mietende ? _ccIso(o.mietende) : '9999-12-31') >= a1);
+  if (hit) {
+    const nm = nameOf(hit) || 'another tenant';
+    const ok = confirm('This tenancy overlaps with ' + nm + ' on the same unit.\n\nFor a renewal, keep the existing tenant and extend it instead of adding a new one.\n\nSave anyway?');
+    if (!ok) { reset(); return false; }
+  }
+  return true;
+}
+function _ccNextTenantHTML(rec, name, fmtDate, openFn) {
+  if (!rec) return '';
+  return `<div class="cc-next-tenant" onclick="${openFn}('${rec.id}')">
+    <span class="cc-next-tenant__lbl">Next tenant</span>
+    <span class="cc-next-tenant__name">${name}</span>
+    <span class="cc-next-tenant__date">from ${fmtDate(rec.mietbeginn)}</span>
+    <i class="ti ti-chevron-right" aria-hidden="true"></i>
+  </div>`;
+}
+
 function _tnProfileSectionHTML(rid, room, rec) {
   const isEmpty = !rec || (!rec.first_name && !rec.last_name && !rec.email && !rec.mietbeginn);
   const startEdit = !rec || isEmpty;
@@ -1230,8 +1269,8 @@ function _tnProfileSectionHTML(rid, room, rec) {
 
 /* ── DOCUMENTS SECTION ── */
 function _tnDocumentsSectionHTML(rid, room, rec) {
-  // Use the single active contract type from rooms tab — not all configured types
-  const activeType = _tnRoomContractType(room.name);
+  // The tenant's own contract type (saved per tenancy); the room's type only as a fallback
+  const activeType = (rec && rec.contract_type) || _tnRoomContractType(room.name);
   const docs  = rec ? (_tnDocs[rec.id] || []) : [];
   const tid   = rec ? rec.id : '';
   const getDoc = type => docs.find(d => d.type === type);
@@ -1240,8 +1279,8 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
     const doc    = getDoc(type);
     const signed = !!doc?.file_url;
     const pill   = signed
-      ? `<span class="tnp tnp-green">Signed</span>`
-      : `<span class="tnp tnp-gray">Not uploaded</span>`;
+      ? `<span class="tnp tnp-green">uploaded</span>`
+      : `<span class="tnp tnp-gray">missing</span>`;
     const viewBtn = `<button class="tn-doc-btn${signed?'':' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}','${esc(label)}','${esc(room.name)}')` : ''}" title="View">
       <i class="ti ti-eye"></i></button>`;
     const delBtn = signed
@@ -1264,7 +1303,7 @@ function _tnDocumentsSectionHTML(rid, room, rec) {
 <div class="tn-sec">
   <div class="tn-sec-body" style="padding-top:16px;padding-bottom:14px">
     <div style="margin-bottom:10px"><span class="tn-sec-lbl">Documents</span></div>
-    ${!activeType ? `<p class="tn-empty">No contract type set in rooms tab.</p>` : ''}
+    ${!activeType ? `<p class="tn-empty">No contract type set.</p>` : ''}
     ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
     ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
     ${row('einzug','Übergabe Einzug')}
@@ -1279,6 +1318,14 @@ function _tnKautionHTML(rid, tid, ctx) {
   return ccKautionSectionHTML('tn', tid, ctx, tid ? _tnRecords.find(r => r.id === tid) : null);
 }
 ccKautionRegister('tn', {
+  // Kaution Soll lives only here (Kaution section) — fixed per tenancy
+  saveSoll: async (tid, v) => {
+    const rec = _tnRecords.find(r => r.id === tid); if (!rec || !sbL) return false;
+    const before = rec.kaution_soll; rec.kaution_soll = v;
+    const { error } = await sbL.from('tenant_records').update({ kaution_soll: v }).eq('id', tid);
+    if (error) { rec.kaution_soll = before; alert('Could not save — ' + error.message); return false; }
+    return true;
+  },
   table: 'kaution', writeKey: 'tnk-', failLabel: 'kaution',
   map:  () => _tnKaution,
   rec:  tid => _tnRecords.find(r => r.id === tid) || null,
@@ -1735,7 +1782,7 @@ function _tnModalBodyHTML(rec) {
       : '';
     return `<div class="tn-doc-row">
       <span class="tn-doc-name">${esc(label)}</span>
-      <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'Signed' : 'Not uploaded'}</span>
+      <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'uploaded' : 'missing'}</span>
       <div class="tn-doc-btns">
         <button class="tn-doc-btn${signed ? '' : ' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}','${esc(label)}','${esc(rec.room)}')` : ''}">
           <i class="ti ti-eye"></i></button>
@@ -2047,6 +2094,7 @@ async function _tnSaveNewTenant(rid, roomName) {
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
+  if (!_ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return;
 
   const mietende  = p.mietende;
   // Only transition to former if mietende is actually reached (today or past)
@@ -2111,6 +2159,7 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
     return;
   }
+  if (!_ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return;
 
   // Fix 7: "To former" needs a move-out date (default today, editable) — a former tenant
   // without Auszug would otherwise keep a Soll until the next tenant moves in
@@ -2260,6 +2309,8 @@ async function _tnModalSaveProfile(tid) {
   }
 
   const p     = _tnCollectProfile(body, 'data-mf');
+  { const _r = _tnRecords.find(r => r.id === tid);
+    if (_r && !_ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === _r.room), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return; }
   const ctBtn = body.querySelector('.tn-contract-toggle .tn-btn-primary');
   const ctype = ctBtn?.dataset?.ct || null;
 
@@ -2697,6 +2748,11 @@ function _tnOpenModalDraft(draft) {
     `<span class="tnp tnp-gray">${esc(draft.room)}</span>`;
 
   document.getElementById('tnModalBody').innerHTML = _tnModalBodyHTML(draft);
+  { // Past tenant: an empty rent takes today's Soll — show it so it can be checked
+    const sp = _tnRoomPricing(draft.room) || {};
+    if (sp.kaltmiete != null) document.getElementById('tnModalBody').insertAdjacentHTML('afterbegin',
+      `<p class="cc-soll-hint">Empty rent = today's Soll: ${_tnFmtEUR(sp.kaltmiete)}${sp.nebenkosten != null ? ' + ' + _tnFmtEUR(sp.nebenkosten) + ' NK' : ''}. Please check what this tenant paid back then.</p>`);
+  }
   // Footer: just Save + Cancel for draft
   document.getElementById('tnModalFooter').innerHTML = `
     <div class="tn-sheet-spacer"></div>
@@ -2735,6 +2791,7 @@ async function _tnModalSaveDraft() {
 
   const btn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  if (!_ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === draft.room), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return;
 
   const { data, error } = await sbL.from('tenant_records')
     .insert({
@@ -2960,10 +3017,21 @@ function _tnWireRealtime() {
 let _tnLoadedOnce  = false;
 let _tnWarmPromise = null;
 function tnTenantsLoaded() { return _tnLoadedOnce; }
+/* The CURRENT tenant's rent of a room (moved in, active) — null if none / not loaded yet */
+function tnCurrentRentOf(roomName) {
+  if (!_tnLoadedOnce) return null;
+  const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === roomName && r.status === 'active')).current;
+  if (!cur) return null;
+  const r = _tnCurrentRent(cur, roomName);
+  return r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode, ctype: cur.contract_type } : null;
+}
 function tnWarmTenants() {
   if (_tnLoadedOnce) return Promise.resolve();
   if (!_tnWarmPromise) {
     _tnWarmPromise = loadTenants()
+      .then(() => {   // Rooms header + total show the tenants' real rent once known
+        try { if (typeof _renderRoomsList === 'function' && document.getElementById('roomsList')) _renderRoomsList(); } catch (e) {}
+      })
       .catch(e => console.warn('[tenants] preload:', e))
       .finally(() => { _tnWarmPromise = null; });
   }

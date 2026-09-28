@@ -945,6 +945,8 @@ function _updateRoomsSummary(rooms) {
   rooms.forEach(r => {
     if (r.vacant !== false) return;  // skip vacant, null, or undefined
     occupied++;
+    const cur = typeof tnCurrentRentOf === 'function' ? tnCurrentRentOf(r.name) : null;
+    if (cur) { kalt += cur.mode === 'pauschal' ? cur.total : cur.kalt; nk += cur.mode === 'pauschal' ? 0 : cur.nk; return; }
     const type = _getActiveType(r);
     if (!type) return;
     const info = _getRentInfo(r, type);
@@ -1071,6 +1073,19 @@ async function _toggleRentType(btn) {
 }
 
 function _rentRowHTML(r) {
+  // Occupied: the tenant's real rent (no offer toggle) · vacant: the asking rent with its toggle
+  const cur = typeof tnCurrentRentOf === 'function' ? tnCurrentRentOf(r.name) : null;
+  if (cur) {
+    const d = cur.mode === 'pauschal' ? fmtEUR(cur.total) + ' pauschal' : fmtEUR(cur.kalt) + ' kalt + ' + fmtEUR(cur.nk) + ' NK';
+    const ct = cur.ctype === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag';
+    return `<div class="rc-hdr__rent">
+    <div class="rc-hdr__rent-left">
+      <div class="rc-hdr__rent-top"><span class="rc-rent-badge rc-rent-badge--tenant">Tenant · ${ct}</span></div>
+      <div class="rc-hdr__rent-info"><span class="rc-rent-detail">${d}</span></div>
+    </div>
+    <span class="rc-rent-amount">${fmtEUR(cur.total)}</span>
+  </div>`;
+  }
   const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
   const hasKz = !!r.kurzzeit_kaltmiete;
   const activeType = _getActiveType(r);
@@ -1187,10 +1202,7 @@ function _roomCardHTML(r) {
             </select>
           </div>
         </div>
-        <div class="rc-toggle-row">
-          <span class="rc-tlabel" data-i18n="rooms_vacant">${t('rooms_vacant')}</span>
-          <label class="cc-sw"><input type="checkbox" data-f="vacant" ${r.vacant?'checked':''}/><span class="cc-sw__t"></span></label>
-        </div>`;
+        `;
   const editMietobjekt = `
         <div class="rc-field">
           <label class="rc-field__label">Kitchen</label>
@@ -1300,12 +1312,7 @@ function _roomCardHTML(r) {
 
       <!-- Actions — slim ghost pills -->
       <div class="rc-actions">
-        <button class="rc-act ${vacant ? 'rc-act--mark-occupied' : 'rc-act--mark-vacant'}"
-          data-vacantbtn="${r.id}"
-          onclick="_toggleVacant('${r.id}',this)">
-          <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:12px;"></i>
-          ${vacant ? t('rooms_mark_occupied') : t('rooms_mark_vacant')}
-        </button>
+        <!-- occupied / vacant is automatic (tenant move-in / move-out) -->
         <button class="rc-act ${hasKitchen ? 'rc-act--kitchen-on' : 'rc-act--kitchen-off'}"
           data-kitchenbtn="${esc(r.name)}"
           onclick="_toggleKitchenRoom('${esc(r.name)}',this)">

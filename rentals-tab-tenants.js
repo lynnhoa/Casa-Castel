@@ -1036,9 +1036,10 @@ function _rntCardHTML({ type, unit }) {
   const rid   = (isApt ? 'apt_' : 'pk_') + unit.id.replace(/-/g,'').slice(0,12);
   const cid   = 'tc-' + rid;
 
-  const activeRec = isApt
-    ? _rntRecords.find(r => r.apartment_id === unit.id && r.status === 'active')
-    : _rntRecords.find(r => r.parking_id   === unit.id && r.status === 'active');
+  const _pick = _ccPickTenancy(_rntRecords.filter(r => (isApt ? r.apartment_id : r.parking_id) === unit.id && r.status === 'active'));
+  // Current tenant first; a signed next tenant only takes the card when nobody lives there now
+  const activeRec = _pick.current || _pick.next;
+  const nextRec   = _pick.current ? _pick.next : null;
 
   const formerRecs = (isApt
     ? _rntRecords.filter(r => r.apartment_id === unit.id && r.status === 'former')
@@ -1078,6 +1079,7 @@ function _rntCardHTML({ type, unit }) {
     ${activeRec || !unit.vacant
       ? _rntRentBarHTML(rid, type, unit, activeRec) + _rntRentFormHTML(rid, type, unit, activeRec)
       : ''}
+    ${_ccNextTenantHTML(nextRec, nextRec ? _rntEsc(_rntFullTenantNames(nextRec)) : '', _rntFmtDate, '_rntOpenModal')}
     ${_rntProfileSectionHTML(rid, type, unit, activeRec)}
     ${_rntDocumentsSectionHTML(rid, type, unit, activeRec)}
     ${_rntKautionHTML(rid, activeRec ? activeRec.id : null, 'card', activeRec)}
@@ -1248,11 +1250,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
     <span class="tn-flbl">Warmmiete</span>
     <div class="tn-rf-derived" id="rf-warm-${rid}">${warm !== '' ? _rntFmtEUR(warm) : '\u2014'}</div>
   </div>${fromRow}
-  <div class="tn-rf" style="grid-column:1/-1">
-    <span class="tn-flbl">Kaution Soll</span>
-    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
-    <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
-  </div>
+  <!-- Kaution Soll: only in the Kaution section -->
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
     <span class="tn-rf-hint" style="margin:0">Gilt ab leer = aktuelle Miete korrigieren · Datum = neue Miete ab diesem Tag</span>
     <div style="display:flex;gap:6px">
@@ -1273,11 +1271,7 @@ function _rntRentFormHTML(rid, type, unit, rec) {
     <span class="tn-flbl">Parkmiete \u20ac/mo</span>
     <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${miete}" placeholder="${liveP.miete ?? ''}"/>
   </div>${fromRow}
-  <div class="tn-rf" style="grid-column:1/-1">
-    <span class="tn-flbl">Kaution Soll</span>
-    <input type="number" data-cc-num="2" id="rf-ksoll-${rid}" value="${ksoll}" placeholder="${ksoll}"/>
-    <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
-  </div>
+  <!-- Kaution Soll: only in the Kaution section -->
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
     <span class="tn-rf-hint" style="margin:0">Gilt ab leer = korrigieren · Datum = neue Miete</span>
     <div style="display:flex;gap:6px">
@@ -1293,6 +1287,45 @@ function _rntRentFormHTML(rid, type, unit, rec) {
 
 
 /* ── PROFILE SECTION ── */
+
+/* ── Tenancy in time: current (moved in) and next (signed, moves in later) ── */
+function _ccTodayIso() { const d = new Date(); const p = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()); }
+function _ccIso(v) { if (!v) return ''; const s = String(v).trim(); const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m ? m[3] + '-' + m[2] + '-' + m[1] : s.slice(0, 10); }
+function _ccPickTenancy(actives) {
+  const t = _ccTodayIso();
+  const cur = actives.filter(r => !r.mietbeginn || _ccIso(r.mietbeginn) <= t).sort((a, b) => _ccIso(b.mietbeginn).localeCompare(_ccIso(a.mietbeginn)))[0] || null;
+  const next = actives.filter(r => r.mietbeginn && _ccIso(r.mietbeginn) > t).sort((a, b) => _ccIso(a.mietbeginn).localeCompare(_ccIso(b.mietbeginn)))[0] || null;
+  return { current: cur, next };
+}
+
+/* Move-in is required; overlapping tenancies on one unit need a confirmation */
+function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
+  const reset = () => { if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; } };
+  if (!p.mietbeginn) {
+    const inp = container && container.querySelector('[' + attr + '="mietbeginn"]');
+    if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); inp.placeholder = 'Move-in required'; }
+    reset(); return false;
+  }
+  const a1 = _ccIso(p.mietbeginn), a2 = p.mietende ? _ccIso(p.mietende) : '9999-12-31';
+  const hit = (sameUnit || []).find(o => o.id !== selfId && o.status !== 'archived' && o.mietbeginn &&
+    _ccIso(o.mietbeginn) <= a2 && (o.mietende ? _ccIso(o.mietende) : '9999-12-31') >= a1);
+  if (hit) {
+    const nm = nameOf(hit) || 'another tenant';
+    const ok = confirm('This tenancy overlaps with ' + nm + ' on the same unit.\n\nFor a renewal, keep the existing tenant and extend it instead of adding a new one.\n\nSave anyway?');
+    if (!ok) { reset(); return false; }
+  }
+  return true;
+}
+function _ccNextTenantHTML(rec, name, fmtDate, openFn) {
+  if (!rec) return '';
+  return `<div class="cc-next-tenant" onclick="${openFn}('${rec.id}')">
+    <span class="cc-next-tenant__lbl">Next tenant</span>
+    <span class="cc-next-tenant__name">${name}</span>
+    <span class="cc-next-tenant__date">from ${fmtDate(rec.mietbeginn)}</span>
+    <i class="ti ti-chevron-right" aria-hidden="true"></i>
+  </div>`;
+}
+
 function _rntProfileSectionHTML(rid, type, unit, rec) {
   const isEmpty  = !rec || (!rec.first_name && !rec.last_name && !rec.email && !rec.mietbeginn);
   const startEdit = !rec || isEmpty;
@@ -1470,8 +1503,8 @@ function _rntDocumentsSectionHTML(rid, type, unit, rec) {
     const doc    = getDoc(docType);
     const signed = !!doc?.file_url;
     const pill   = signed
-      ? `<span class="tnp tnp-green">Signed</span>`
-      : `<span class="tnp tnp-gray">Not uploaded</span>`;
+      ? `<span class="tnp tnp-green">uploaded</span>`
+      : `<span class="tnp tnp-gray">missing</span>`;
     const viewBtn = `<button class="tn-doc-btn${signed?'':' off'}" onclick="${signed
       ? `_rntViewDoc('${_rntEsc(doc.file_url)}','${_rntEsc(label)}','${_rntEsc(unitLabel)}')`
       : ''}" title="View"><i class="ti ti-eye"></i></button>`;
@@ -1496,8 +1529,8 @@ function _rntDocumentsSectionHTML(rid, type, unit, rec) {
   <div class="tn-sec-body" style="padding-top:16px;padding-bottom:14px">
     <div style="margin-bottom:10px"><span class="tn-sec-lbl">Documents</span></div>
     ${isApt
-      ? row('mietvertrag','Mietvertrag') + row('uebergabeprotokoll','Übergabeprotokoll') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')
-      : row('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + row('uebergabeprotokoll','Übergabeprotokoll') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')}
+      ? row('mietvertrag','Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? row('uebergabeprotokoll','Übergabeprotokoll') : '') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')
+      : row('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? row('uebergabeprotokoll','Übergabeprotokoll') : '') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')}
   </div>
 </div>`;
 }
@@ -1509,6 +1542,14 @@ function _rntKautionHTML(rid, tid, ctx, rec) {
   return ccKautionSectionHTML('rnt', tid, ctx, rec || (tid ? _rntRecords.find(r => r.id === tid) : null));
 }
 ccKautionRegister('rnt', {
+  // Kaution Soll lives only here (Kaution section) — fixed per tenancy
+  saveSoll: async (tid, v) => {
+    const rec = _rntRecords.find(r => r.id === tid); if (!rec || !sbL) return false;
+    const before = rec.kaution_soll; rec.kaution_soll = v;
+    const { error } = await sbL.from('rnt_tenant_records').update({ kaution_soll: v }).eq('id', tid);
+    if (error) { rec.kaution_soll = before; alert('Could not save — ' + error.message); return false; }
+    return true;
+  },
   table: 'rnt_kaution', writeKey: 'rntk-', failLabel: 'rentals kaution',
   map:  () => _rntKaution,
   rec:  tid => _rntRecords.find(r => r.id === tid) || null,
@@ -2319,7 +2360,7 @@ function _rntModalBodyHTML(rec, isApt) {
       : '';
     return `<div class="tn-doc-row">
       <span class="tn-doc-name">${_rntEsc(label)}</span>
-      <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'Signed' : 'Not uploaded'}</span>
+      <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'uploaded' : 'missing'}</span>
       <div class="tn-doc-btns">
         <button class="tn-doc-btn${signed ? '' : ' off'}" onclick="${signed
           ? `_rntViewDoc('${_rntEsc(doc.file_url)}','${_rntEsc(label)}','${_rntEsc(unitLabel)}')`
@@ -2414,8 +2455,8 @@ function _rntModalBodyHTML(rec, isApt) {
     <div class="tn-msec-hdr"><span class="tn-msec-lbl">Documents</span></div>
     <div class="tn-msec-body" style="padding-bottom:11px">
       ${isApt
-        ? docRow('mietvertrag','Mietvertrag') + docRow('uebergabeprotokoll','Übergabeprotokoll') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')
-        : docRow('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + docRow('uebergabeprotokoll','Übergabeprotokoll') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')}
+        ? docRow('mietvertrag','Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? docRow('uebergabeprotokoll','Übergabeprotokoll') : '') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')
+        : docRow('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? docRow('uebergabeprotokoll','Übergabeprotokoll') : '') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')}
     </div>
   </div>
 
@@ -2638,6 +2679,7 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
+  if (!_ccTenancyOk(sec, 'data-f', p, _rntRecords.filter(r => (unitType === 'apt' ? r.apartment_id : r.parking_id) === unitId), null, btn, r => _rntFullTenantNames(r))) return;
 
   const isApt   = unitType === 'apt';
   const mietende = p.mietende;
@@ -2728,6 +2770,7 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
     return;
   }
+  if (!_ccTenancyOk(sec, 'data-f', p, _rntRecords.filter(r => (unitType === 'apt' ? r.apartment_id : r.parking_id) === unitId), tid, null, r => _rntFullTenantNames(r))) return;
 
   // Fix 7: "To former" needs a move-out date (default today, editable) — a former tenant
   // without Auszug would otherwise keep a Soll until the next tenant moves in
@@ -2882,6 +2925,7 @@ async function _rntModalSaveProfile(tid) {
 
   const p    = _rntCollectProfile(body, 'data-mf');
   const rec  = _rntRecords.find(r => r.id === tid);
+  if (rec && !_ccTenancyOk(body, 'data-mf', p, _rntRecords.filter(r => rec.apartment_id ? r.apartment_id === rec.apartment_id : r.parking_id === rec.parking_id), tid, null, r => _rntFullTenantNames(r))) return;
   const update = {
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
@@ -3203,6 +3247,12 @@ function _rntOpenModalDraft(draft) {
     `<span class="tnp tnp-gray">${_rntEsc(unitObj?.name || unitId)}</span>`;
 
   document.getElementById('rntModalBody').innerHTML   = _rntModalBodyHTML(draft, isApt);
+  { // Past tenant: an empty rent takes today's Soll — show it so it can be checked
+    const sollK = isApt ? _rntAptPricing(draft.apartment_id).kaltmiete : _rntPkPricing(draft.parking_id).miete;
+    const sollN = isApt ? _rntAptPricing(draft.apartment_id).nebenkosten : null;
+    if (sollK != null) document.getElementById('rntModalBody').insertAdjacentHTML('afterbegin',
+      `<p class="cc-soll-hint">Empty rent = today's Soll: ${_rntFmtEUR(sollK)}${sollN != null ? ' + ' + _rntFmtEUR(sollN) + ' NK' : ''}. Please check what this tenant paid back then.</p>`);
+  }
   document.getElementById('rntModalFooter').innerHTML = `
     <div class="tn-sheet-spacer"></div>
     <button class="tn-btn tn-btn-sm" onclick="_rntCloseModal()">Cancel</button>
@@ -3235,6 +3285,7 @@ async function _rntModalSaveDraft() {
   const p    = _rntCollectProfile(body, 'data-mf');
   const btn  = document.getElementById('rntModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
+  if (!_ccTenancyOk(body, 'data-mf', p, _rntRecords.filter(r => draft.apartment_id ? r.apartment_id === draft.apartment_id : r.parking_id === draft.parking_id), null, btn, r => _rntFullTenantNames(r))) return;
 
   const isApt = !!draft.apartment_id;
 
@@ -3406,16 +3457,32 @@ function rntWarmTenants() {
   if (typeof sbL === 'undefined' || !sbL) return Promise.resolve();
   if (!_rntWarmPromise) {
     _rntWarmPromise = sbL.from('rnt_tenant_records')
-      .select('apartment_id,parking_id,status,mietbeginn,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll')
+      .select('id,apartment_id,parking_id,status,mietbeginn,mietende,kaltmiete,nebenkosten,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll')
       .eq('status', 'active')
       .then(({ data, error }) => {
         if (error) { console.warn('[rentals tenants] preload:', error.message); return; }
         if (!_rntLoadedOnce) _rntActiveRecs = data || [];
+        // headers + totals in Apartments / Parking show the tenants' real rent once known
+        try { if (typeof _renderAptList === 'function' && document.getElementById('aptList')) { _renderAptList(); _updateAptSummary(); } } catch (e) {}
+        try { if (typeof _renderPkList === 'function' && document.getElementById('pkList')) { _renderPkList(); _updatePkSummary(); } } catch (e) {}
       })
       .catch(e => console.warn('[rentals tenants] preload:', e))
       .finally(() => { _rntWarmPromise = null; });
   }
   return _rntWarmPromise;
+}
+
+/* The CURRENT tenant's rent of a unit (moved in, active) — what Apartments /
+   Parking show in the header and add up in the total. null = no current tenant
+   or records not loaded yet (then the offer price is shown, labelled as such). */
+function rntCurrentRentOf(kind, id) {
+  const src = _rntLoadedOnce ? _rntRecords : _rntActiveRecs;
+  if (!src) return null;
+  const col = kind === 'apt' ? 'apartment_id' : 'parking_id';
+  const cur = _ccPickTenancy(src.filter(r => r[col] === id && r.status === 'active')).current;
+  if (!cur) return null;
+  const r = _rntCurrentRent(cur);
+  return r ? { kalt: r.kalt, nk: r.nk, total: r.total, name: [cur.first_name, cur.last_name].filter(Boolean).join(' ') } : null;
 }
 
 /* Active tenant of a unit, read from the loaded records — the same record the
