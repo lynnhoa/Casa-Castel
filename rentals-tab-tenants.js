@@ -786,6 +786,7 @@ function _rntCardPills(unit, isApt, activeRec) {
   const todos = [];
   if (activeRec) {
     todos.push(ccTnMoveOutTodo(activeRec));
+    todos.push(ccTnRenewalTodo(activeRec));
     todos.push(ccTnStaffelTodo(_rntStaffelPillState(unit.id), d => { const [y, m, day] = d.split('-'); return `${day}.${m}.`; }));
     if (isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'red', text: 'NK open' });                     // NK: unchanged for now
     if (isApt && _rntNKVorausHasOpen(unit.id)) todos.push({ level: 'amber', text: 'NK-Erhöhung offen' });        // NK: unchanged for now
@@ -1320,6 +1321,33 @@ function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
   }
   return true;
 }
+
+/* ── TENANCY (3b): Contract end · Renew (Casa 1-year contracts) · Record move-out ──
+   Contract end ≠ move-out: the contract can end and be renewed with the same tenant;
+   only a move-out makes the tenant former and the unit vacant (automatic, at night). */
+function _ccHasVE(list) { return (list || []).some(r => r && Object.prototype.hasOwnProperty.call(r, 'vertragsende')); }
+function _ccAddDaysIso(iso, n) { const d = new Date(_ccIso(iso) + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+function _ccAddYearIso(iso) { const d = new Date(_ccIso(iso) + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); }
+function _ccFmtD(iso) { const s = _ccIso(iso); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; }
+function _ccPanelClose(secId) { document.getElementById(secId)?.querySelector('.cc-inline-panel')?.remove(); }
+function _ccPanelOpen(secId, title, bodyHtml, onSave) {
+  const sec = document.getElementById(secId); if (!sec) return;
+  _ccPanelClose(secId);
+  sec.insertAdjacentHTML('beforeend', `<div class="cc-inline-panel">
+    <div class="cc-inline-head"><span class="tn-sec-lbl">${title}</span>
+      <div class="cc-inline-slot"><button type="button" class="tn-btn tn-btn-sm" data-cc="cancel">Cancel</button>
+      <button type="button" class="tn-btn tn-btn-primary" data-cc="save">Save</button></div></div>
+    ${bodyHtml}</div>`);
+  const p = sec.querySelector('.cc-inline-panel');
+  p.querySelector('[data-cc="cancel"]').onclick = () => p.remove();
+  p.querySelector('[data-cc="save"]').onclick = async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = '…';
+    const ok = await onSave(p);
+    if (ok === false) { b.disabled = false; b.textContent = 'Save'; return; }
+    p.remove(); if (typeof ccSavedToast === 'function') ccSavedToast();
+  };
+  p.querySelector('input')?.focus();
+}
 function _ccNextTenantHTML(rec, name, fmtDate, openFn) {
   if (!rec) return '';
   return `<div class="cc-next-tenant" onclick="${openFn}('${rec.id}')">
@@ -1382,6 +1410,8 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
           <span class="tn-fval">${_rntFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_rntFmtDate(rec.mietende) || 'open-ended'}</span></div>
+        ${_ccHasVE(_rntRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${_rntFmtDate(rec.vertragsende) || 'unbefristet'}</span></div>` : ''}
       </div>
     </div>
   </div>`;
@@ -1454,6 +1484,8 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
           <input data-f="mietbeginn" type="text" value="${_rntFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-f="mietende" type="text" value="${_rntFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ"/></div>
+        ${_ccHasVE(_rntRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <input data-f="vertragsende" type="text" value="${_rntFmtDate(rec ? rec.vertragsende : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
       </div>
     </div>
   </div>`;
@@ -1465,6 +1497,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   <div class="tn-sec-footer-split" id="pfoot-read-${rid}" ${startEdit ? 'style="display:none"' : ''}>
     ${email ? `<button class="tn-btn tn-btn-sm" onclick="window.location.href='mailto:${email}'">
       <i class="ti ti-mail"></i> Email</button>` : ''}
+    ${rec && rec.status === 'active' && !rec.mietende ? `<button class="tn-btn tn-btn-sm" onclick="_rntMoveOutOpen('${rid}','${tid}')"><i class="ti ti-door-exit"></i> Record move-out</button>` : ''}
     <div class="tn-spacer"></div>
     <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_rntToggleProfile('${rid}','${tid}')">
       <i class="ti ti-pencil"></i> Edit</button>
@@ -1472,7 +1505,6 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
 
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
-    ${rec && rec.status === 'active' ? `<button class="tn-btn tn-btn-sm tn-btn-former" onclick="_rntMoveToFormerConfirm(this,'${rid}','${tid}','${unitType}','${unitId}')"><i class="ti ti-user-off"></i> Move out</button><div style="flex:1"></div>` : ''}
     <div class="cc-slot">
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntToggleProfile('${rid}','${tid}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
@@ -2648,6 +2680,7 @@ function _rntCollectProfile(container, selector) {
     birthday: get('birthday'), address: get('address'),
     mietbeginn: _rntParseDate(get('mietbeginn')),
     mietende:   _rntParseDate(get('mietende')),
+    vertragsende: container.querySelector(`[${selector}="vertragsende"]`) ? _rntParseDate(get('vertragsende')) : undefined,
     first_name_2: n2.first, last_name_2: n2.last,
     email_2: get('email_2'), phone_2: get('phone_2'), birthday_2: get('birthday_2'), address_2: get('address_2'),
     first_name_3: n3.first, last_name_3: n3.last,
@@ -2765,6 +2798,24 @@ function _rntMoveToFormerConfirm(btn, rid, tid, unitType, unitId) {
   }, 3500);
 }
 
+/* Record move-out: the last day the tenant pays → then former + vacant (automatic) */
+function _rntMoveOutOpen(rid, tid) {
+  const rec = _rntRecords.find(r => r.id === tid); if (!rec) return;
+  _ccPanelOpen('psec-' + rid, 'Record move-out', `
+    <div class="tn-fg"><div class="tn-field"><span class="tn-flbl">Move-out (last day)</span>
+      <input data-cc="date" type="text" placeholder="TT.MM.JJJJ" value="${_rntFmtDate(rec.vertragsende || '')}"/></div></div>
+    <p class="cc-inline-hint">After this date the tenant becomes a former tenant and the unit is vacant — automatically.
+    Then: Übergabe Auszug (Documents) · settle the Kaution · NK-Abrechnung in Settlements.</p>`, async p => {
+    const iso = _rntParseDate(p.querySelector('[data-cc="date"]').value || '');
+    if (!iso) { p.querySelector('[data-cc="date"]').style.borderBottomColor = '#C4705A'; return false; }
+    const upd = { mietende: iso };
+    if (_rntIsPast(iso)) upd.status = 'former';
+    const { error } = await sbL.from('rnt_tenant_records').update(upd).eq('id', tid);
+    if (error) { alert('Could not save — ' + error.message); return false; }
+    Object.assign(rec, upd); _rntRender(); return true;
+  });
+}
+
 async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
@@ -2804,6 +2855,7 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
     email_3: p.email_3 || null, phone_3: p.phone_3 || null, birthday_3: p.birthday_3 || null, address_3: p.address_3 || null,
     kaution_soll: p.kaution_soll ?? rec?.kaution_soll ?? null,   // a profile save never wipes the fixed Soll
   };
+  if (p.vertragsende !== undefined) update.vertragsende = p.vertragsende || null;
   // B20: the rent is only written when this form actually has rent fields
   if (sec.querySelector('[data-f="kaltmiete"]')) update.kaltmiete = p.kaltmiete ?? null;
   if (isApt && sec.querySelector('[data-f="nebenkosten"]')) update.nebenkosten = p.nebenkosten ?? null;

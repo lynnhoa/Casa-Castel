@@ -760,6 +760,7 @@ function ctlCostRows(p, y, m) {
   const S = window._src, pl = ctlPropLinks(p), first = _cxIso(y, m, 1);
   const N = new Date(y, m, 0).getDate(), last = _cxIso(y, m, N);
   const rows = [], notDue = [];
+  { const since = _cxD(p.in_portfolio_since); if (since && last < since) return { rows, notDue }; }   // not in the portfolio yet
 
   const L = pl.loan;
   const rate = L ? _cxN0(L.rate) : _cxN0(p.def_rate);
@@ -924,8 +925,11 @@ const _cxPerStart = p => (/^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) 
 function ctlSettlementPeriods(p, today) {
   today = today || _cxToday();
   const st = _cxPerStart(p), ty = Number(today.slice(0, 4)), out = [];
+  const since = _cxD(p && p.in_portfolio_since);          // "In portfolio since": nothing before this date
   for (let y = ty - 3; y <= ty; y++) {
-    const from = y + '-' + st, to = _cxAddDays((y + 1) + '-' + st, -1);
+    let from = y + '-' + st; const to = _cxAddDays((y + 1) + '-' + st, -1);
+    if (since && to < since) continue;
+    if (since && from < since) from = since;
     const frist = _cxAddDays((y + 2) + '-' + st, -1);
     if (to < today && frist >= today) out.push({ from, to, frist, label: ctlPeriodLabel(from, to) });
   }

@@ -184,3 +184,19 @@
   :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-input,.pk-input,.rc-input,.tn-rf input), #tab-tenants .tn-field input { font-size: 16px !important; height: 32px !important; min-height: 32px !important; }
   :is(#tab-rooms,#tab-apartments,#tab-parking,#tab-tenants) :is(.apt-row__v,.pk-row__v,.rc-row__v,.tn-fval) { font-size: 15px !important; }
 }
+
+/* ── Phase 3b: small panels (Record move-out, Renew) — same look as a section in edit mode ── */
+#tab-tenants .cc-inline-panel { margin: 4px 14px 14px; padding: 12px 12px 12px; background: #FBF8F2; border: .5px solid var(--cc-rule); border-radius: 12px; }
+#tab-tenants .cc-inline-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+#tab-tenants .cc-inline-slot { display: flex; gap: 6px; }
+#tab-tenants .cc-inline-slot button {
+  height: 28px !important; min-width: 0 !important; padding: 0 12px !important; border-radius: 14px !important;
+  font-size: 11px !important; font-weight: 500 !important; letter-spacing: .02em !important; text-transform: none !important;
+  background: var(--cc-white) !important; color: var(--cc-taupe) !important; border: .5px solid var(--cc-rule) !important;
+}
+#tab-tenants .cc-inline-slot button.tn-btn-primary { background: var(--cc-ink) !important; color: var(--cc-white) !important; border-color: var(--cc-ink) !important; }
+#tab-tenants .cc-inline-panel input { height: 30px; width: 100%; padding: 0 0 2px; background: transparent; border: none; border-bottom: 1px solid var(--cc-rule); border-radius: 0; font: inherit; font-size: 13px; color: var(--cc-charcoal); outline: none; }
+@media (hover: none) and (pointer: coarse) { #tab-tenants .cc-inline-panel input { font-size: 16px; height: 32px; } }
+#tab-tenants .cc-inline-panel input:focus { border-bottom-color: var(--cc-gold); }
+#tab-tenants .cc-inline-hint { margin: 10px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--cc-taupe); }
+#tab-tenants [id^="pfoot-read-"] { flex-wrap: wrap; row-gap: 8px; }

@@ -87,6 +87,14 @@ function ccTnStillActiveTodo(vacant, rec) {
   if (d !== null && d >= 0) return null;
   return { level: 'amber', text: 'Tenant still active' };
 }
+/* Contract ends within 60 days and no move-out recorded → renew or record the move-out */
+function ccTnRenewalTodo(rec) {
+  if (!rec || !rec.vertragsende || rec.mietende || rec.status !== 'active') return null;
+  const d = ccTnDaysUntil(rec.vertragsende);
+  if (d === null || d > 60) return null;
+  const s = String(rec.vertragsende).slice(0, 10).split('-');
+  return { level: d < 0 ? 'red' : 'amber', text: (d < 0 ? 'Contract ended ' : 'Contract ends ') + s[2] + '.' + s[1] + '.' };
+}
 function ccTnStaffelTodo(state, fmtDateISO) {
   if (!state) return null;
   if (state.state === 'overdue')  return { level: 'red',   text: `Staffel overdue ${state.days} day${state.days === 1 ? '' : 's'}` };
