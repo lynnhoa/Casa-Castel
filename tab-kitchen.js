@@ -403,12 +403,19 @@ function _kAddDays(dt, n) { return new Date(dt.getFullYear(), dt.getMonth(), dt.
 function _kRotState(opts) {
   const { isNow, isPast, isNext, dbStatus, room, weekStart, absenceRows } = opts;
   if (isPast) {
-    if (!dbStatus)               return 'none';
-    if (dbStatus === 'approved') return 'done';
-    if (dbStatus === 'absent')   return 'absent';
-    if (dbStatus === 'skipped')  return 'skipped';
+    if (dbStatus === 'approved')  return 'done';
+    if (dbStatus === 'absent')    return 'absent';
+    if (dbStatus === 'skipped')   return 'skipped';
     if (dbStatus === 'submitted') return 'review';   // proof waiting for review / auto-approve
-    return 'missed';                                  // missed, or not closed yet
+    if (dbStatus === 'missed')    return 'missed';
+    // No saved result for this room, or the week isn't closed yet (pending / flagged):
+    // same rule as the Monday close — Away, else Vacant, else Missed. Never "No result".
+    if (absenceRows && weekStart) {
+      const pS = _kYmd(weekStart), pE = _kYmd(_kAddDays(weekStart, 6));
+      if (absenceRows.some(a => a.room === room && absCoversWeek(a, pS, pE))) return 'absent';
+    }
+    if (kVacantInWeek(room, weekStart ? kWeekIdx(weekStart) : kWeekIdx())) return 'skipped';
+    return 'missed';
   }
   if (isNow && dbStatus === 'absent')  return 'absent';
   if (isNow && dbStatus === 'skipped') return 'skipped';
@@ -417,7 +424,7 @@ function _kRotState(opts) {
     const wEnd   = _kYmd(_kAddDays(weekStart, 6));
     if (absenceRows.some(a => a.room === room && absCoversWeek(a, wStart, wEnd))) return 'absent';
   }
-  if (isVacant(room)) return 'skipped';
+  if (kVacantInWeek(room, weekStart ? kWeekIdx(weekStart) : kWeekIdx())) return 'skipped';   // vacant = nobody lived there any day of this week
   if (isNow) {
     if (dbStatus === 'approved') return 'done';
     if (dbStatus === 'missed')   return 'missed';   // landlord marked the current week as missed
@@ -684,7 +691,7 @@ async function _kRenderRotation(weekRow, absData, preRows) {
     const nStart = new Date(K_START.getTime() + slot * 7 * 24 * 60 * 60 * 1000);
     const nWs = _kYmd(nStart);
     const nWe = _kYmd(_kAddDays(nStart, 6));
-    if (!absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe)) && !isVacant(nRoom)) {
+    if (!absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe)) && !kVacantInWeek(nRoom, slot)) {
       trueNextI = ni; break;
     }
   }
@@ -1239,7 +1246,8 @@ async function loadKitchen() {
       .gte('week_index', idx - _n)
       .lte('week_index', idx + _n)
       .then(r => r.data || []),
-    sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || [])
+    sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || []),
+    kLoadWeekVacancy(idx - _n, idx + _n),   // vacant per week from move-in / move-out dates
   ]);
 
   let weekRow = cycleRows.find(r => r.week_index === idx) || null;

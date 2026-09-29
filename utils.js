@@ -35,7 +35,7 @@ function fmtDate(d) {
 
 /* ── KITCHEN WEEK CALC ──────────────────────────────────── */
 /* Completely independent Mon–Sun weeks from K_START.
-   Kitchen rotation (London, Copenhagen, Stockholm, Oslo)
+   Kitchen rotation (Copenhagen, Stockholm, Oslo, London, Berlin)
    cycles over KITCHEN_ROOMS independently from HC rotation. */
 const _K_DAY = 24 * 60 * 60 * 1000;
 
@@ -184,4 +184,25 @@ function kWeekDateRange(weekIndex) {
   const start = new Date(K_START.getTime() + weekIndex * 7 * 24 * 60 * 60 * 1000);
   const end   = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
   return fmtD(start) + ' – ' + fmtD(end);
+}
+
+/* ── KITCHEN WEEK VACANCY (shared landlord + tenant) ─────────
+   Vacant = no tenant lived in the room on ANY day of that Mon–Sun
+   week (move-in / move-out dates in the Tenants tab). Same rule as
+   the Monday close in the database (kitchen_room_vacant_in_week).
+   One call per load returns only room + week + yes/no — no tenant
+   data reaches the tenant app. Fallback: today's vacant flag.     */
+const _kVacCache = {};
+async function kLoadWeekVacancy(fromIdx, toIdx) {
+  if (typeof sbL === 'undefined' || !sbL) return;
+  try {
+    const { data, error } = await sbL.rpc('kitchen_vacancy_range', { p_from: fromIdx, p_to: toIdx });
+    if (error) { console.warn('[kitchen] week vacancy:', error.message); return; }
+    (data || []).forEach(r => { _kVacCache[r.room + '|' + r.week_index] = !!r.vacant; });
+  } catch (e) { console.warn('[kitchen] week vacancy:', e); }
+}
+function kVacantInWeek(room, weekIdx) {
+  const v = _kVacCache[room + '|' + weekIdx];
+  if (typeof v === 'boolean') return v;
+  return typeof isVacant === 'function' ? isVacant(room) : false;
 }
