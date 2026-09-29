@@ -17,6 +17,7 @@ document.getElementById('tab-tenants').innerHTML = `
     <h1 class="cc-h1">Tenants</h1>
     <div id="tn-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--cc-stone);"></div>
   </div>
+  <div id="tn-open-summary" class="tn-open-summary" style="display:none"></div>
   <div class="tn-list" id="tenantsList"></div>
 
 
@@ -131,6 +132,21 @@ document.getElementById('tab-tenants').innerHTML = `
   text-transform:uppercase; color:var(--cc-taupe); margin-bottom:2px; }
 .tn-rval { font-size:13px; font-weight:500; color:var(--cc-charcoal); }
 .tn-rsub { font-size:10px; font-weight:300; color:var(--cc-stone); }
+/* Former tenant with open items: one line under the card header, clearly apart from the current tenant */
+.tn-former-line { display:flex; align-items:center; gap:8px; width:100%; margin:0; padding:9px 14px 10px;
+  background:var(--cc-bg); border:none; border-top:var(--cc-border); font-family:inherit; text-align:left;
+  cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.tn-former-line:active { background:var(--cc-surface); }
+.tn-fl-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+.tn-fl-top { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+.tn-fl-lbl { font-size:9.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--cc-taupe); }
+.tn-fl-name { font-size:12px; color:var(--cc-charcoal); }
+.tn-fl-out { font-size:11px; color:var(--cc-taupe); }
+.tn-fl-pills { display:flex; gap:4px; flex-wrap:wrap; }
+.tn-fl-chev { font-size:15px; color:var(--cc-stone); }
+.tn-card.open .tn-former-line { display:none; }   /* opened card: the Former tenants list at the bottom shows them */
+.tn-open-summary { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:-12px 0 16px; }
+.tn-open-lbl { font-size:11px; color:var(--cc-taupe); }
 /* Running contract: its name and dates inside the beige bar */
 .tn-rent-wrap { background:var(--cc-surface); border-bottom:var(--cc-border); }
 .tn-rent-wrap .tn-rent-bar { border-bottom:none; background:transparent; }
@@ -912,6 +928,34 @@ function _tnSyncTypePeriod(rec, type) {
     if (typeof ccSaveFailed === 'function') ccSaveFailed(err, 'contract type'); else console.warn('[tenants] contract type:', err && err.message || err);
   });
 }
+/* Rent mode belongs to the tenancy's contract, never to the room's current offer:
+   Pauschal | Kalt + NK — chosen in the beige Edit (running contract) and in the pop-up (former / next). */
+function _tnModeSegHTML(attr, value) {
+  const v = value === 'pauschal' ? 'pauschal' : 'kalt_nk';
+  const opt = (t, l) => `<button type="button" class="cc-seg__opt${v === t ? ' is-on' : ''}" role="radio" aria-checked="${v === t}" data-rmode="${t}" onclick="_tnSetMode(this)">${l}</button>`;
+  return `<div class="cc-seg tn-contract-toggle" role="radiogroup" aria-label="Rent">${opt('kalt_nk', 'Kalt + NK')}${opt('pauschal', 'Pauschal')}<input type="hidden" ${attr}="rent_mode" value="${v}"/></div>`;
+}
+function _tnSetMode(btn) {
+  const seg = btn.closest('.cc-seg'); if (!seg) return;
+  seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  const inp = seg.querySelector('input[type=hidden]'); if (inp) inp.value = btn.dataset.rmode;
+  const box = seg.closest('.tn-rent-form, .tn-fg'); if (!box) return;
+  const p = btn.dataset.rmode === 'pauschal';
+  box.querySelectorAll('[data-nkwrap]').forEach(el => { el.style.display = p ? 'none' : ''; });
+  box.querySelectorAll('[data-kaltlbl]').forEach(el => { el.textContent = p ? 'Pauschalmiete' : 'Kaltmiete'; });
+}
+/* The mode a tenant pays on a day (rent history first, else the room's offer as before) */
+function _tnModeAt(rec, iso) {
+  const per = rec && typeof ccRpAt === 'function' ? ccRpAt(ccRpFor('casa', rec.id), iso || ccRpToday()) : null;
+  return per ? (per.mode === 'pauschal' ? 'pauschal' : 'kalt_nk') : _tnLegacyMode(rec.room, rec);
+}
+/* Pauschal for the whole tenancy → no NK-Abrechnung at all (no NK section, no "NK open") */
+function _tnAllPauschal(rec) {
+  if (!rec) return false;
+  const cs = _tnContracts(rec);
+  return cs.length > 0 && cs.every(c => c.amt && c.amt.mode === 'pauschal');
+}
+
 /* The choice Mietvertrag | Kurzzeit (tenant form, pop-up, Renew) — value in a hidden field */
 function _tnCtSegHTML(attr, value) {
   const v = value === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag';
@@ -973,8 +1017,44 @@ function _tnParseDate(s) {
 function _tnKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
 
 function _tnNkHasOpen(tid) {
+  const rec = _tnRecords.find(r => r.id === tid);
+  if (rec && _tnAllPauschal(rec)) return false;                                     // pauschal → no NK-Abrechnung
   if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _tnNK[tid]);   // Settlements + old tracking
   return (_tnNK[tid] || []).some(e => !e.paid);
+}
+
+/* Open items of a FORMER tenant as pills (NK with year · Kaution still to settle) — '' when nothing is open */
+function _tnFormerOpenPills(r) {
+  const out = [];
+  if (_tnNkHasOpen(r.id)) out.push(`<span class="tnp tnp-amber">${esc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(r.id, _tnNK[r.id]) : 'NK open')}</span>`);
+  if (_tnKautionOpen(r.id)) {
+    const held = _tnKautionKept(r.id);
+    out.push(`<span class="tnp tnp-amber">${held > 0 ? 'Kaution ' + _tnFmtEUR(held) + ' to settle' : 'Kaution: mark settled'}</span>`);
+  }
+  return out.join('');
+}
+/* Whole house: NK open (current + former) · Kaution to settle (former) */
+function _tnOpenCounts() {
+  const act = _tnRecords.filter(r => r.status === 'active' || r.status === 'former');
+  return {
+    nk: act.filter(r => _tnNkHasOpen(r.id)).length,
+    kaution: act.filter(r => r.status === 'former' && _tnKautionOpen(r.id)).length,
+  };
+}
+function _tnSummaryUpdate() {
+  const el = document.getElementById('tn-kaution-summary');
+  const held = ccTnHeldTotal(_tnRecords, _tnKaution);
+  if (el) {
+    el.innerHTML = held > 0 ? `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_tnFmtEUR(held)}</strong>` : '';
+    el.style.display = held > 0 ? 'flex' : 'none';
+  }
+  const oc = document.getElementById('tn-open-summary');
+  if (oc) {
+    const c = _tnOpenCounts();
+    const pills = (c.nk ? `<span class="tnp tnp-amber">NK \u00b7 ${c.nk}</span>` : '') + (c.kaution ? `<span class="tnp tnp-amber">Kaution \u00b7 ${c.kaution}</span>` : '');
+    oc.innerHTML = pills ? `<span class="tn-open-lbl">Open:</span>${pills}` : '';
+    oc.style.display = pills ? 'flex' : 'none';
+  }
 }
 
 function _tnKautionOpen(tid) {
@@ -1223,16 +1303,7 @@ function _tnRender() {
   document.querySelectorAll('.tn-card.open').forEach(el => _tnOpenCards.add(el.id));
 
   // Summary: total kaution held across all tenants (active + unsettled former)
-  const totalHeld = ccTnHeldTotal(_tnRecords, _tnKaution);   // received − returned, unsettled
-  const summaryEl = document.getElementById('tn-kaution-summary');
-  if (summaryEl) {
-    if (totalHeld > 0) {
-      summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_tnFmtEUR(totalHeld)}</strong>`;
-      summaryEl.style.display = 'flex';
-    } else {
-      summaryEl.style.display = 'none';
-    }
-  }
+  _tnSummaryUpdate();   // Kaution held + "Open: NK · n  Kaution · n"
 
   // Same cards in the same order as on screen → swap only the cards whose content changed
   // (Rentals does the same): no flash, no jump, and an open form in another card stays open
@@ -1279,23 +1350,15 @@ function _tnCardHTML(room) {
 
   // Collapsed nudge: former tenants with unsettled kaution
   const formerNudges = formerRecs
-    .filter(r => { const k = _tnKaution[r.id]; return k && k.received > 0 && !k.settled; })
-    .map(r => {
-      const name  = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
-      const kk    = _tnKaution[r.id];
-      const kept  = _tnKautionKept(r.id);
-      const allReturned = kk && kk.returned >= kk.received;
-      const keptStr = kept > 0
-        ? _tnFmtEUR(kept) + ' kept'
-        : allReturned ? 'fully returned' : 'full refund';
-      const statusStr = allReturned ? 'Mark settled' : 'Refund pending';
-      return `<div class="tn-kaution-nudge" onclick="_tnOpenModal('${r.id}')">
-        <i class="ti ti-user" style="font-size:11px"></i>
-        <span class="tn-nudge-name">${esc(name)} · former</span>
-        <span class="tn-nudge-kept">${keptStr}</span>
-        <span class="tn-nudge-status">${statusStr}</span>
-        <i class="ti ti-chevron-right" style="font-size:11px"></i>
-      </div>`;
+    .map(r => ({ r, pills: _tnFormerOpenPills(r) }))
+    .filter(x => x.pills)
+    .map(({ r, pills }) => {
+      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || '\u2014';
+      return `<button type="button" class="tn-former-line" onclick="event.stopPropagation();_tnOpenModal('${r.id}')">
+        <span class="tn-fl-main">
+          <span class="tn-fl-top"><span class="tn-fl-lbl">Former</span><span class="tn-fl-name">${esc(name)}</span>${r.mietende ? `<span class="tn-fl-out">\u00b7 moved out ${_tnFmtDate(r.mietende)}</span>` : ''}</span>
+          <span class="tn-fl-pills">${pills}</span></span>
+        <i class="ti ti-chevron-right tn-fl-chev" aria-hidden="true"></i></button>`;
     }).join('');
 
   return `
@@ -1310,7 +1373,7 @@ function _tnCardHTML(room) {
     ${_tnProfileSectionHTML(rid, room, activeRec)}
     ${activeRec && typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(activeRec, 'card') + ccfDocsSectionHTML(activeRec, 'card') : ''}
     ${_tnKautionHTML(rid, activeRec ? activeRec.id : null, 'card')}
-    ${_tnNKHTML(rid, activeRec ? activeRec.id : null, 'card')}
+    ${activeRec && _tnAllPauschal(activeRec) ? '' : _tnNKHTML(rid, activeRec ? activeRec.id : null, 'card')}
     ${_tnIsKaltNK(activeRec, room.name) ? _tnNKVorausHTML(rid, activeRec ? activeRec.room : null, 'card') : ''}
     ${_tnEarlierContractsHTML(rid, activeRec)}
     ${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs)}
@@ -1458,13 +1521,13 @@ function _tnRentFormHTML(rid, room, rec) {
   <div class="tn-rf"><span class="tn-flbl">Contract end</span>${c.last
       ? `<input type="text" id="rf-end-${rid}" value="${c.end ? _ccFmtD(c.end) : ''}" placeholder="TT.MM.JJJJ"/>`
       : `<div class="tn-rf-derived">${_ccFmtD(c.end)}</div>`}</div>
-  <div class="tn-rf"></div>` : ''}
+  <div class="tn-rf" style="grid-column:1/-1"><span class="tn-flbl">Rent</span>${_tnModeSegHTML('data-rf', mode)}</div>` : ''}
   <div class="tn-rf">
-    <span class="tn-flbl">${pausch ? 'Pauschalmiete' : 'Kaltmiete'} \u20ac/mo</span>
+    <span class="tn-flbl"><span data-kaltlbl>${pausch ? 'Pauschalmiete' : 'Kaltmiete'}</span> \u20ac/mo</span>
     <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${hintK}"
       oninput="_tnUpdateWarm('${rid}')"/>
   </div>
-  <div class="tn-rf"${pausch ? ' style="display:none"' : ''}>
+  <div class="tn-rf" data-nkwrap${pausch ? ' style="display:none"' : ''}>
     <span class="tn-flbl">Nebenkosten \u20ac/mo</span>
     <input type="number" data-cc-num="2" id="rf-nk-${rid}" value="${nk}" placeholder="${liveP.nebenkosten ?? ''}"
       oninput="_tnUpdateWarm('${rid}')"/>
@@ -2062,7 +2125,7 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
         <div class="tn-former-name">${esc(name)}</div>
         <div class="tn-former-period">${esc(period)}</div>
       </div>
-      <div class="tn-former-pills">${kPill}</div>
+      <div class="tn-former-pills">${_tnNkHasOpen(rec.id) ? `<span class="tnp tnp-amber">${esc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _tnNK[rec.id]) : 'NK open')}</span>` : ''}${kPill}</div>
       ${canHide
         ? `<button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Archive this tenant">
              <i class="ti ti-eye-off" style="font-size:11px"></i></button>`
@@ -2141,7 +2204,9 @@ function _tnModalBodyHTML(rec) {
   const full = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
   const ct   = tnContractType(rec);                 // the tenancy's own type
   const ctK  = _tnBaseContractType(rec) || ct;       // first contract: Kaution rule + Documents
-  const dK   = rec.kaltmiete   != null ? Number(rec.kaltmiete)   : null;
+  const dMode = _tnModeAt(rec, [_ccIso(rec.mietende) || ccRpToday(), ccRpToday()].sort()[0]);
+  const dPau = dMode === 'pauschal';
+  const dK   = rec.kaltmiete   != null ? Number(rec.kaltmiete) + (dPau && rec.nebenkosten != null ? Number(rec.nebenkosten) : 0) : null;
   const dNK  = rec.nebenkosten != null ? Number(rec.nebenkosten) : null;
   const dKS  = rec.kaution_soll != null ? Number(rec.kaution_soll) : null;
   const warm = (dK != null && dNK != null) ? dK + dNK : dK;
@@ -2203,10 +2268,12 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="mietbeginn" type="text" value="${_tnFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-mf="mietende" type="text" value="${_tnFmtDate(rec.mietende)}" placeholder="TT.MM.JJJJ"/></div>
-        <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Rent</span>
+          ${_tnModeSegHTML('data-mf', dMode)}</div>
+        <div class="tn-field"><span class="tn-flbl" data-kaltlbl>${dPau ? 'Pauschalmiete' : 'Kaltmiete'}</span>
           <input data-mf="kaltmiete" type="number" data-cc-num="2" value="${dK ?? ''}"/></div>
-        <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
-          <input data-mf="nebenkosten" type="number" data-cc-num="2" value="${dNK ?? ''}"/></div>
+        <div class="tn-field" data-nkwrap${dPau ? ' style="display:none"' : ''}><span class="tn-flbl">Nebenkosten</span>
+          <input data-mf="nebenkosten" type="number" data-cc-num="2" value="${dPau ? '' : (dNK ?? '')}"/></div>
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
@@ -2239,7 +2306,7 @@ function _tnModalBodyHTML(rec) {
   ${_tnKautionHTML('m', tid, 'modal')}
 
   <!-- NK -->
-  ${_tnNKHTML('m', tid, 'modal')}
+  ${_tnAllPauschal(rec) ? '' : _tnNKHTML('m', tid, 'modal')}
 
   <!-- NK VORAUSZAHLUNG -->
   ${_tnNKVorausHTML('m', rec.room, 'modal')}
@@ -2656,7 +2723,8 @@ function _tnRebuildProfileCache() {
 async function _tnSaveRent(rid, tid, roomName) {
   if (!sbL || !tid) return;
   const form  = document.getElementById('rform-' + rid);
-  const mode  = form?.dataset.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';
+  const modeSel = form?.querySelector('[data-rf="rent_mode"]')?.value;
+  const mode  = (modeSel || form?.dataset.mode) === 'pauschal' ? 'pauschal' : 'kalt_nk';
   const kaltV = parseFloat(document.getElementById('rf-kalt-' + rid)?.value);
   const nkV   = parseFloat(document.getElementById('rf-nk-'   + rid)?.value);
   const kalt  = isNaN(kaltV) ? null : kaltV;
@@ -2694,6 +2762,11 @@ async function _tnSaveRent(rid, tid, roomName) {
       const per = ccRpAt(ccRpFor('casa', rec.id), today);
       if (per) await ccRpUpdate(sbL, per.id, mode === 'pauschal' ? { mode, pauschale: kalt, kaltmiete: null, nebenkosten: null }
                                                                  : { mode, kaltmiete: kalt, nebenkosten: nk, pauschale: null });
+      else if (cc && cc.start) {
+        // no rent history yet: the contract's own entry keeps rent + mode (never the room's offer again)
+        await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: cc.start, mode, kalt, nk, pauschale: kalt,
+                                 kind: 'migrated', source: 'tenant_form', legacyMode });
+      }
     }
   } catch (e) {
     histOk = false;
@@ -2764,17 +2837,27 @@ async function _tnModalSaveProfile(tid) {
   if (body.querySelector('[data-mf="address"]')) update.address = p.address || null;
   if (body.querySelector('[data-mf="vertragsende"]')) update.vertragsende = p.vertragsende || null;
   const hasRent = !!body.querySelector('[data-mf="kaltmiete"]');   // B20: only when the form shows the rent
-  if (hasRent) { update.kaltmiete = p.kaltmiete ?? null; update.nebenkosten = p.nebenkosten ?? null; }
-  // A tenant with rent history: the corrected rent goes into the period of their last day
+  const modeNew = body.querySelector('[data-mf="rent_mode"]')?.value || null;
+  const pauNew  = modeNew === 'pauschal';
+  if (hasRent) { update.kaltmiete = p.kaltmiete ?? null; update.nebenkosten = pauNew ? null : (p.nebenkosten ?? null); }
+  // The rent + mode go into the rent history (the entry of their last day) — so the room's offer never changes them again
   if (hasRent && rec && typeof ccRpFor === 'function') {
     const hist = ccRpFor('casa', rec.id);
     const lastDay = [ccRpIso(p.mietende) || ccRpToday(), ccRpToday()].sort()[0];
     const per = ccRpAt(hist, lastDay);
-    if (per && (Number(p.kaltmiete) || 0) + (Number(p.nebenkosten) || 0) !== (ccRpAmount(per) || {}).total) {
-      const f = per.mode === 'pauschal'
-        ? { pauschale: (Number(p.kaltmiete) || 0) + (Number(p.nebenkosten) || 0) }
-        : { kaltmiete: p.kaltmiete ?? null, nebenkosten: p.nebenkosten ?? null };
-      ccRpUpdate(sbL, per.id, f).catch(e => ccSaveFailed(e, 'rent history'));
+    const k = Number(p.kaltmiete) || 0, n = pauNew ? 0 : (Number(p.nebenkosten) || 0);
+    const mode = modeNew || (per ? per.mode : _tnLegacyMode(rec.room, rec));
+    const f = mode === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: null }
+                                  : { mode: 'kalt_nk', kaltmiete: p.kaltmiete ?? null, nebenkosten: p.nebenkosten ?? null, pauschale: null };
+    if (per) {
+      const a = ccRpAmount(per) || {};
+      if ((per.mode === 'pauschal' ? 'pauschal' : 'kalt_nk') !== mode || k + n !== a.total || (mode !== 'pauschal' && k !== a.kalt)) {
+        ccRpUpdate(sbL, per.id, f).catch(e => ccSaveFailed(e, 'rent history'));
+      }
+    } else if (ccRpIso(p.mietbeginn) && (p.kaltmiete != null || modeNew)) {
+      ccRpSetRent(sbL, { app: 'casa', rec: { ...rec, ...update }, validFrom: ccRpIso(p.mietbeginn), mode, kalt: k, nk: n, pauschale: k,
+                         kind: 'migrated', source: 'tenant_form', legacyMode: _tnLegacyMode(rec.room, rec) })
+        .catch(e => ccSaveFailed(e, 'rent history'));
     }
   }
 
@@ -3307,53 +3390,8 @@ async function _tnDeleteCascade(tid) {
    18. BADGE REFRESH
 ══════════════════════════════════════════════════════════════ */
 function _tnRefreshFormerBadges(tid) {
-  const k        = _tnKaution[tid];
-  const settled  = k?.settled || false;
-  const hasK     = k && k.received > 0;
-
-  // Refresh expanded former row pill
-  document.querySelectorAll('.tn-former-row').forEach(row => {
-    const onclick = row.getAttribute('onclick') || '';
-    const infoDiv = row.querySelector('.tn-former-info');
-    if (onclick.includes(tid) || infoDiv?.getAttribute('onclick')?.includes(tid)) {
-      const pills = row.querySelector('.tn-former-pills');
-      if (pills) {
-        const ret2  = k ? Number(k.returned) : 0;
-        const sdate = k?.settled_at ? _tnFmtDate(k.settled_at) : '';
-        const kPill = !hasK ? '' :
-          settled
-            ? `<span class="tnp tnp-green">${_tnFmtEUR(ret2)} returned${sdate ? ' \u00b7 ' + sdate : ''}</span>`
-            : `<span class="tnp tnp-amber">Refund pending</span>`;
-        pills.innerHTML = kPill;
-      }
-    }
-  });
-
-  // Refresh collapsed nudge strip
-  const kept = _tnKautionKept(tid);
-  document.querySelectorAll('.tn-kaution-nudge').forEach(el => {
-    if (el.getAttribute('onclick')?.includes(tid)) {
-      if (settled || !hasK) {
-        el.remove();
-      } else {
-        const keptStr = kept > 0 ? _tnFmtEUR(kept) + ' kept' : 'full refund';
-        const keptEl  = el.querySelector('.tn-nudge-kept');
-        if (keptEl) keptEl.textContent = keptStr;
-      }
-    }
-  });
-
-  // Refresh summary line
-  const summaryEl = document.getElementById('tn-kaution-summary');
-  if (summaryEl) {
-    const totalHeld2 = ccTnHeldTotal(_tnRecords, _tnKaution);
-    if (totalHeld2 > 0) {
-      summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_tnFmtEUR(totalHeld2)}</strong>`;
-      summaryEl.style.display = 'flex';
-    } else {
-      summaryEl.style.display = 'none';
-    }
-  }
+  // Former line, list pills and the "Open" count all come from the same data → just redraw
+  _tnRender();
 }
 
 

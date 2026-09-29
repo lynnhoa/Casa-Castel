@@ -714,7 +714,13 @@ function _rntEsc(s) {
 ══════════════════════════════════════════════════════════════ */
 function _rntKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
 
+/* Pauschal for the whole tenancy (every rent-history entry pauschal) → no NK-Abrechnung */
+function _rntAllPauschal(tid) {
+  const per = typeof ccRpFor === 'function' ? ccRpFor('rentals', tid) : [];
+  return per.length > 0 && per.every(p => p.mode === 'pauschal');
+}
 function _rntNkHasOpen(tid) {
+  if (_rntAllPauschal(tid)) return false;                                           // pauschal → no NK-Abrechnung
   if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _rntNK[tid]);   // Settlements + old tracking
   return (_rntNK[tid] || []).some(e => !e.paid);
 }
@@ -1093,7 +1099,7 @@ function _rntCardHTML({ type, unit }) {
     ${_rntProfileSectionHTML(rid, type, unit, activeRec)}
     ${activeRec && typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(activeRec, 'card') + ccfDocsSectionHTML(activeRec, 'card') : ''}
     ${_rntKautionHTML(rid, activeRec ? activeRec.id : null, 'card', activeRec)}
-    ${isApt ? _rntNKHTML(rid, activeRec ? activeRec.id : null, 'card') : ''}
+    ${isApt && !(activeRec && _rntAllPauschal(activeRec.id)) ? _rntNKHTML(rid, activeRec ? activeRec.id : null, 'card') : ''}
     ${isApt ? _rntNKVorausHTML(rid, activeRec ? unit.id : null, 'card') : ''}
     ${isApt ? _rntStaffelHTML(rid, activeRec ? unit.id : null) : _rntPkStaffelHTML(rid, activeRec ? unit.id : null)}
     ${_rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs)}
@@ -2680,7 +2686,7 @@ function _rntModalBodyHTML(rec, isApt) {
   ${_rntKautionHTML('m', tid, 'modal', rec)}
 
   <!-- NK (apartments only) -->
-  ${isApt ? _rntNKHTML('m', tid, 'modal') : ''}
+  ${isApt && !_rntAllPauschal(tid) ? _rntNKHTML('m', tid, 'modal') : ''}
 
   <!-- NK VORAUSZAHLUNG (apartments only) -->
   ${isApt && rec.apartment_id ? _rntNKVorausHTML('m', rec.apartment_id, 'modal') : ''}
