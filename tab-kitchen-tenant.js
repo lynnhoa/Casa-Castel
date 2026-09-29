@@ -731,8 +731,8 @@ async function _kTenRenderMobRotation() {
     const info    = kWeekInfo(Math.max(0, slotIdx));
     const dateStr = info ? fmt(info.start) + '–' + fmt(info.end) : '—';
     const isPast  = !inNextRound && i < cyclePos;
-    const saved   = isPast ? (dbRowsRaw[i] || null) : null;   // past week: what was saved, whichever room
-    const shown   = saved && saved.room ? saved.room : room;
+    const saved   = isPast ? (dbRows[i] || null) : null;   // fixed room order — a saved week counts only for this room
+    const shown   = room;
     const dbRow   = inNextRound ? null : (isPast ? saved : dbRows[i]);
     let state     = _kRotState({
       isNow:       i === cyclePos,
@@ -761,8 +761,8 @@ async function _kTenRenderMobRotation() {
       const end      = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
       const dateStr  = fmt(start) + ' – ' + fmt(end);
       const _isPast = !inNextRound && i < cyclePos;
-      const _saved = _isPast ? (dbRowsRaw[i] || null) : null;
-      const _shown = _saved && _saved.room ? _saved.room : room;
+      const _saved = _isPast ? (dbRows[i] || null) : null;
+      const _shown = room;
       const dbRow    = inNextRound ? null : (_isPast ? _saved : dbRows[i]);
       const state    = _kRotState({ isNow: i === cyclePos, isPast: !inNextRound && i < cyclePos, isNext: i === trueNextI, dbStatus: dbRow ? dbRow.status : null, room: _shown, weekStart: start, absenceRows: absData });
       const dotClass = { done:'rot-dot--done', now:'rot-dot--now', missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent' }[state] || 'rot-dot--next';
@@ -1242,8 +1242,8 @@ var initKitchen          = initKitchenMobile; // layout.js calls initKitchen on 
 
 /* ── ROTATION STRIP LABELS (K1/K3/K4) ───────────────────────
    Words instead of symbols; a line segment per week (green = done,
-   red = missed, amber = in review). Past weeks show what the database
-   saved for that week — the rotation order can change over time. */
+   red = missed, amber = in review). The room order stays fixed; a past
+   week shows its result only when it was saved for that room. */
 function _kRotLabel(state) {
   return { done: 'Done', late: 'Late', review: 'Review', missed: 'Missed', skipped: 'Vacant', absent: 'Away',
            now: 'Now', none: 'No result', next: 'Next', upcoming: '' }[state] ?? '';
