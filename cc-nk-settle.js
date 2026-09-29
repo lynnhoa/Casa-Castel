@@ -55,7 +55,53 @@ function ccNksHasOpen(tid, legacy) {
   return (legacy || []).some(e => !e.paid);
 }
 
-/* legacy = the tenant's entries from the old tracking (read-only) */
+/* Which NK-Abrechnung is open, for the card pill: "NK 2025 open" (oldest open first) */
+function ccNksOpenLabel(tid, legacy) {
+  const rows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant')
+    && !['erledigt', 'bezahlt', 'nicht durchgeführt'].includes(r.status))
+    .sort((a, b) => String(a.period_from).localeCompare(String(b.period_from)));
+  let y = rows.length ? (rows[0].covers_year || String(rows[0].period_to || rows[0].period_from || '').slice(0, 4)) : '';
+  if (!y) {
+    const o = (legacy || []).filter(e => !e.paid).sort((a, b) => String(a.period || '').localeCompare(String(b.period || '')))[0];
+    y = o ? String(o.period || '').replace(/^.*?(\d{4}).*$/, '$1') : '';
+  }
+  return y ? 'NK ' + y + ' open' : 'NK open';
+}
+
+/* An entry from the old NK tracking: mark it done or delete it — right here, no SQL.
+   (New Abrechnungen are made in Settlements.) */
+async function ccNksOldAction(id, tid) {
+  const casa = typeof _tnNK !== 'undefined' && _tnNK[tid];
+  const map  = casa ? _tnNK : (typeof _rntNK !== 'undefined' ? _rntNK : null);
+  const table = casa ? 'nk_entries' : 'rnt_nk_entries';
+  const list = map && map[tid] ? map[tid] : [];
+  const e = list.find(x => String(x.id) === String(id));
+  const db = _ccNksDb();
+  if (!e || !db) return;
+  // Rentals has no in-app dialog yet → plain question, "Mark done" only
+  if (typeof ccDialog !== 'function') {
+    if (e.paid || !confirm('NK ' + (e.period || '') + ' (old tracking)\n\nMark as done?')) return;
+  }
+  const v = typeof ccDialog !== 'function' ? 'done' : await ccDialog({ icon: 'ti-receipt', title: 'NK ' + _ccNksEsc(e.period || ''),
+    body: 'An entry from the old NK tracking. New Abrechnungen are made in Settlements.',
+    actions: [{ label: 'Cancel', value: null }, { label: 'Delete', value: 'del', danger: true, icon: 'ti-trash' },
+              ...(e.paid ? [] : [{ label: 'Mark done', value: 'done', primary: true }])] });
+  if (!v) return;
+  if (v === 'del') {
+    if (!(await ccConfirm('Delete NK ' + _ccNksEsc(e.period || '') + '?', 'This old entry is removed for good.', 'Delete', true))) return;
+    const { error } = await db.from(table).delete().eq('id', e.id);
+    if (error) { if (typeof ccSaveFailed === 'function') ccSaveFailed(error, 'NK entry'); return; }
+    map[tid] = list.filter(x => x !== e);
+  } else {
+    const { error } = await db.from(table).update({ sent: true, paid: true }).eq('id', e.id);
+    if (error) { if (typeof ccSaveFailed === 'function') ccSaveFailed(error, 'NK entry'); return; }
+    e.sent = true; e.paid = true;
+  }
+  if (typeof _tnRender === 'function') _tnRender();
+  if (typeof _rntRender === 'function') _rntRender();
+}
+
+/* legacy = the tenant's entries from the old tracking (tap one to mark it done or delete it) */
 function ccNksSectionHTML(tid, ctx, legacy) {
   if (CC_NKS.rows === null && !CC_NKS.loading) setTimeout(ccNksLoad, 0);
   const sec = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
@@ -79,10 +125,11 @@ function _ccNksInner(tid, legacy) {
       <span class="tnp ${cls}">${txt}</span></div>`;
   };
   const old = (legacy || []).slice().sort((a, b) => String(b.period || '').localeCompare(String(a.period || ''))).map(e => `
-    <div class="cc-nks-row is-old">
+    <button type="button" class="cc-nks-row is-old" onclick="ccNksOldAction('${_ccNksEsc(String(e.id))}','${_ccNksEsc(String(tid))}')">
       <span class="cc-nks-per">${_ccNksEsc(e.period || '')}</span>
       <span class="cc-nks-res">${e.amount ? _ccNksEur(e.amount) : ''}</span>
-      <span class="tnp ${e.paid ? 'tnp-green' : e.sent ? 'tnp-blue' : 'tnp-gray'}">${e.paid ? 'done' : e.sent ? 'sent' : 'open'}</span></div>`).join('');
+      <span class="tnp ${e.paid ? 'tnp-green' : e.sent ? 'tnp-blue' : 'tnp-amber'}">${e.paid ? 'done' : e.sent ? 'sent' : 'open'}</span>
+      <i class="ti ti-chevron-right" style="font-size:13px;color:var(--cc-stone)" aria-hidden="true"></i></button>`).join('');
   return (rows.length ? rows.map(line).join('') : '<p class="tn-empty">No Abrechnung in Settlements yet.</p>') +
     (old ? `<div class="cc-nks-old-lbl">Earlier (old tracking)</div>${old}` : '');
 }

@@ -791,7 +791,7 @@ function _rntCardPills(unit, isApt, activeRec) {
     if (!_rntHasCt(unit, isApt) || _ct === 'kurzzeit') todos.push(ccTnRenewalTodo(activeRec));   // Mietvertrag is never renewed
     if (_ct === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende) todos.push({ level: 'amber', text: 'Contract end missing' });
     todos.push(ccTnStaffelTodo(_rntStaffelPillState(unit.id), d => { const [y, m, day] = d.split('-'); return `${day}.${m}.`; }));
-    if (isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: 'NK open' });   // Settlements + old tracking
+    if (isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(activeRec.id, _rntNK[activeRec.id]) : 'NK open' });   // Settlements + old tracking
     if (isApt && typeof ccTnNkChangeTodo === 'function') todos.push(ccTnNkChangeTodo(_rntNKVoraus[unit.id], activeRec));
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }

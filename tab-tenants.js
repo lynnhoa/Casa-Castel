@@ -134,7 +134,8 @@ document.getElementById('tab-tenants').innerHTML = `
 /* Running contract: its name and dates inside the beige bar */
 .tn-rent-wrap { background:var(--cc-surface); border-bottom:var(--cc-border); }
 .tn-rent-wrap .tn-rent-bar { border-bottom:none; background:transparent; }
-.tn-rtitle { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; padding:9px 11px 0; }
+.tn-rtitle { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; padding:10px 14px 0; }
+.tn-rent-wrap .tn-rc:first-child { padding-left:14px; }
 .tn-rt-name { font-size:13px; font-weight:500; color:var(--cc-charcoal); }
 .tn-rt-dates { font-size:11px; color:var(--cc-taupe); }
 /* One contract as a line (next contract · earlier contracts) */
@@ -1044,7 +1045,7 @@ function _tnCardPills(room, activeRec) {
     if (tnContractType(activeRec) === 'kurzzeit') todos.push(ccTnRenewalTodo(activeRec));   // only Kurzzeit is renewed
     if (tnContractType(activeRec) === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende)
       todos.push({ level: 'amber', text: 'Contract end missing' });
-    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: 'NK open' });   // Settlements + old tracking
+    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(activeRec.id, _tnNK[activeRec.id]) : 'NK open' });   // Settlements + old tracking
     if (_tnIsKaltNK(activeRec, room.name) && typeof ccTnNkChangeTodo === 'function')
       todos.push(ccTnNkChangeTodo(_tnNKVoraus[room.name], activeRec));
     todos.push(ccTnStillActiveTodo(vacant, activeRec));

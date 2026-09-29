@@ -254,6 +254,8 @@
 .cc-nks-per { font-size: 13px; color: var(--cc-charcoal); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cc-nks-res { flex: 1; font-size: 12px; color: var(--cc-taupe); }
 .cc-nks-row.is-old .cc-nks-per { color: var(--cc-taupe); }
+button.cc-nks-row { width: 100%; background: none; border: none; border-top: .5px solid var(--cc-rule); font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button.cc-nks-row:active { background: var(--cc-surface); }
 .cc-nks-old-lbl { margin: 12px 0 2px; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--cc-stone); }
 
 
