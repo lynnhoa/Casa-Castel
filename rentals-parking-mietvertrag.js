@@ -526,7 +526,7 @@ function _wirePkMvPdfBtn() {
     // Load latest settings if available
     if (typeof loadSettings === 'function') await loadSettings();
 
-    const resetHtml = '<i class="ti ti-printer"></i> Generate PDF';
+    const resetHtml = '<i class="ti ti-file-text"></i> Draft PDF';
     btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026';
     btn.disabled  = true;
 
@@ -539,6 +539,7 @@ function _wirePkMvPdfBtn() {
         kautionVal, kautionFael,
         staffelAn, staffeln, anfangsmiete,
       });
+      if (typeof ccfContractData === 'function') ccfContractData(data, kautionVal);
       ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : []));   // empty dates → line to fill in by hand
 
       const html = _renderPkMietvertragHTML(data);
@@ -553,16 +554,6 @@ function _wirePkMvPdfBtn() {
       document.body.appendChild(container);
       await document.fonts.ready;
 
-      // Rent history + contract Staffel → the parking tenant (fixes 1 and 3)
-      if (typeof ccRpFromContract === 'function') {
-        const _pkK = staffelAn && Number(anfangsmiete) > 0 ? Number(anfangsmiete) : (Number(pr && pr.miete) || 0);
-        await ccRpFromContract({
-          app: 'rentals', db: sbL, records: typeof _rntRecords !== 'undefined' ? _rntRecords : [], unitKey: 'parking_id', unitRef: spot.id,
-          tenantName: mieterName, start: startVal, end: befristet ? endVal : null, mode: 'kalt_nk', kalt: _pkK, nk: 0, total: _pkK,
-          first_month: 'anteilig', last_month: 'anteilig', contract_type: 'mietvertrag', legacyMode: 'kalt_nk',
-          staffel: staffelAn ? staffeln : [], staffelTable: 'rnt_staffelmiete_history',
-        });
-      }
       const filename = ccPdfFileName(data.isTG ? 'Garagenmietvertrag' : 'Stellplatzmietvertrag', spot.name, mieterName);   // = the PDF's own title
 
       await _aptGenericPdfAction(container, filename, btn, resetHtml);

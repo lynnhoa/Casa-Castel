@@ -70,7 +70,7 @@ async function pkGenerateUebergPDF(isEinzug) {
   } catch (err) {
     console.error('[Parking Übergabe PDF]', err);
     alert('PDF generation failed. Please try again.');
-    if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+    if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   }
 }
 
@@ -172,7 +172,7 @@ async function _pkOpenUebergPreview(d, container) {
   });
 
   const btn = document.getElementById('pkUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
 }
 
 
@@ -181,7 +181,7 @@ async function _pkSaveUebergPDF(d, container) {
   await _pkSaveUebergPDFFromData(d, container);
   container?.remove();
   const btn = document.getElementById('pkUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   document.getElementById('pkContractOverlay')?.classList.add('open');
 }
 

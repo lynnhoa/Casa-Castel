@@ -329,7 +329,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + '\u2002monatlich, jeweils f\u00e4llig 3.\u00a0Werktag') : ''}
     ${d.letzteZahlungNoetig ? kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + '\u2002(' + d.letzteZahlungBeschreibung + '), f\u00e4llig am ' + d.letzteZahlungFaellig) : ''}
     ${kv('Gesamtbetrag Mietzeit', eur(d.gesamtbetragMietzeit) + '\u2002(' + d.mietbeginn + ' \u2013 ' + d.mietende + ')')}
-    ${kv('Kaution', eur(d.kaution) + '\u2002(f\u00e4llig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)'))}
+    ${kv('Kaution', d.kautionBestehend ? (d.kaution ? eur(d.kaution) + '\u2002(bereits geleistet)' : 'bereits geleistet') : eur(d.kaution) + '\u2002(f\u00e4llig ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? ')' : ' nach Unterzeichnung)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.wohnungName} \u2013 Miete Monat Jahr / Kaution.</p>`;
@@ -395,7 +395,7 @@ function _renderRentalKurzzeitHTML(d) {
     ${cl('3','Fälligkeit der Mietzahlungen',
       'Die Miete ist jeweils spätestens bis zum dritten Werktag des fälligen Monats zu überweisen (\u00a7\u00a0556b BGB). Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß \u00a7\u00a0288 BGB geltend zu machen.')}
     ${cl('4','Kaution',
-      'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? '' : ' nach Unterzeichnung') + '. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden von der Kaution abgezogen. Kleinreparaturen bis 100\u202f\u20ac pro Schadensfall gehen zu Lasten des Mieters (\u00a7\u00a0535 BGB). Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.')}
+      (d.kautionBestehend ? 'Die vom Mieter bereits geleistete Kaution' + (d.kaution ? ' von ' + eur(d.kaution) : '') + ' bleibt bestehen und sichert auch dieses Mietverhältnis; eine erneute Zahlung ist nicht erforderlich.' : 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelText + (d.kautionFaelText.startsWith('sofort') ? '' : ' nach Unterzeichnung') + '.') + ' Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden von der Kaution abgezogen. Kleinreparaturen bis 100\u202f\u20ac pro Schadensfall gehen zu Lasten des Mieters (\u00a7\u00a0535 BGB). Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.')}
     ${cl('5','Schlüsselübergabe',
       'Der Mieter erhält bei Einzug ' + d.hausstuerschluessel + '\u00a0Haustürschlüssel und ' + d.wohnungsschluessel + '\u00a0Wohnungsschlüssel. Alle Schlüssel sind bei Auszug zurückzugeben. Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs.')}
     ${cl('6','Zustand &amp; Übergabe',

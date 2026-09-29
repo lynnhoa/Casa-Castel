@@ -21,8 +21,6 @@ document.getElementById('tab-tenants').innerHTML = `
   </div>
   <div class="tn-list" id="rntTenantsList"></div>
 
-  <input type="file" id="rntFileInput" accept="application/pdf,image/*"
-         style="display:none" aria-hidden="true"/>
 
   <div class="tn-overlay" id="rntModal" onclick="_rntModalOutside(event)">
     <div class="tn-sheet" id="rntSheet">
@@ -870,6 +868,7 @@ async function _rntLoad() {
     sbL.from('rnt_tenant_documents').select('*').in('tenant_id', tids),
     typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'rentals') : Promise.resolve([]),   // rent history (rent_periods)
     typeof ccNksLoad === 'function' ? ccNksLoad() : Promise.resolve(),                  // NK-Abrechnungen (Settlements)
+    typeof ccfLoadReadings === 'function' ? ccfLoadReadings(tids) : Promise.resolve(),  // Zählerstände (meter_readings)
   ]);
 
   _rntKaution = {};
@@ -936,6 +935,7 @@ async function _rntLoad() {
 let _rntRenderedSig = null;
 function _rntRenderIfChanged() {
   const sig = ccStableJSON([_rntRecords, _rntKaution, _rntNK, _rntDocs, _rntNKVoraus, _rntStaffel, _rntProfileCache,
+                              (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
                               (appApartments || []).map(a => [a.id, a.name, a.vacant, a.zimmer_type, a.pricing, a.adresse]),
                               (appParking    || []).map(p => [p.id, p.name, p.vacant, p.pricing, p.adresse])]);
   const list  = document.getElementById('rntTenantsList');
@@ -1091,7 +1091,7 @@ function _rntCardHTML({ type, unit }) {
       : ''}
     ${_ccNextTenantHTML(nextRec, nextRec ? _rntEsc(_rntFullTenantNames(nextRec)) : '', _rntFmtDate, '_rntOpenModal')}
     ${_rntProfileSectionHTML(rid, type, unit, activeRec)}
-    ${_rntDocumentsSectionHTML(rid, type, unit, activeRec)}
+    ${activeRec && typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(activeRec, 'card') + ccfDocsSectionHTML(activeRec, 'card') : ''}
     ${_rntKautionHTML(rid, activeRec ? activeRec.id : null, 'card', activeRec)}
     ${isApt ? _rntNKHTML(rid, activeRec ? activeRec.id : null, 'card') : ''}
     ${isApt ? _rntNKVorausHTML(rid, activeRec ? unit.id : null, 'card') : ''}
@@ -1553,7 +1553,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   <div class="tn-sec-footer-split" id="pfoot-read-${rid}" ${startEdit ? 'style="display:none"' : ''}>
     ${allMails ? `<button class="tn-btn tn-btn-sm" onclick="window.location.href='mailto:${allMails}'">
       <i class="ti ti-mail"></i> Email</button>` : ''}
-    ${rec && rec.status === 'active' && hasCt && ct === 'kurzzeit' ? `<button class="tn-btn tn-btn-sm" onclick="_rntRenewOpen('${rid}','${tid}')"><i class="ti ti-refresh"></i> Renew</button>` : ''}
+    ${rec && rec.status === 'active' && hasCt && ct === 'kurzzeit' ? `<button class="tn-btn tn-btn-sm" onclick="ccfRenewOpen('${tid}')"><i class="ti ti-refresh"></i> Renew</button>` : ''}
     <div class="tn-spacer"></div>
     <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_rntToggleProfile('${rid}','${tid}')">
       <i class="ti ti-pencil"></i> Edit</button>
@@ -1585,56 +1585,6 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
 
 
 /* ── DOCUMENTS SECTION ── */
-function _rntDocumentsSectionHTML(rid, type, unit, rec) {
-  const isApt = type === 'apt';
-  const docs  = rec ? (_rntDocs[rec.id] || []) : [];
-  const tid   = rec ? rec.id : '';
-  const getDoc = t => docs.find(d => d.type === t && (d.variant || 'signed') === 'signed');
-
-  const unitLabel = isApt ? unit.name : (unit.name + ' ' + (unit.parking_type || ''));
-
-  const row = (docType, label, createBtn, removeBtn) => {
-    const doc    = getDoc(docType);
-    const signed = !!doc?.file_url;
-    const pill   = signed
-      ? `<span class="tnp tnp-green">uploaded</span>`
-      : `<span class="tnp tnp-gray">missing</span>`;
-    const viewBtn = `<button class="tn-doc-btn${signed?'':' off'}" onclick="${signed
-      ? `_rntViewDoc('${_rntEsc(doc.file_url)}','${_rntEsc(label)}','${_rntEsc(unitLabel)}')`
-      : ''}" title="View"><i class="ti ti-eye"></i></button>`;
-    const delBtn = signed
-      ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
-           onclick="_rntDeleteDoc('${tid}','${docType}','${_rntEsc(doc.id)}')" title="Delete">
-           <i class="ti ti-trash"></i></button>`
-      : '';
-    const upBtn = tid
-      ? `<button class="tn-doc-btn" onclick="_rntTriggerUpload('${tid}','${docType}')" title="Upload">
-           <i class="ti ti-upload"></i></button>`
-      : `<button class="tn-doc-btn off" title="Save profile first"><i class="ti ti-upload"></i></button>`;
-    return `<div class="tn-doc-row">
-      <span class="tn-doc-name">${_rntEsc(label)}</span>
-      ${pill}
-      <div class="tn-doc-btns">${!signed && createBtn ? createBtn : viewBtn}${signed ? delBtn : (removeBtn || '')}${upBtn}</div>
-    </div>`;
-  };
-  const renewRows = !isApt ? '' : _rntRenewalRows(rec).map(x => {
-    const create = `<button class="tn-doc-btn" onclick="_rntRenewCreate('${tid}','${_rntEsc(String(x.p.id))}',${x.n})" title="Create contract">
-      <i class="ti ti-file-plus"></i></button>`;
-    const remove = x.last ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
-      onclick="_rntRenewDelete('${tid}','${_rntEsc(String(x.p.id))}')" title="Remove this renewal"><i class="ti ti-trash"></i></button>` : '';
-    return row(x.key, x.label, create, remove);
-  }).join('');
-
-  return `
-<div class="tn-sec">
-  <div class="tn-sec-body" style="padding-top:16px;padding-bottom:14px">
-    <div style="margin-bottom:10px"><span class="tn-sec-lbl">Documents</span></div>
-    ${isApt
-      ? row('mietvertrag','Mietvertrag') + renewRows + (getDoc('uebergabeprotokoll')?.file_url ? row('uebergabeprotokoll','Übergabeprotokoll') : '') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')
-      : row('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? row('uebergabeprotokoll','Übergabeprotokoll') : '') + row('einzug','Übergabe Einzug') + row('auszug','Übergabe Auszug')}
-  </div>
-</div>`;
-}
 
 
 /* ── KAUTION SECTION ── */
@@ -1828,61 +1778,6 @@ async function _rntRenewDelete(tid, pid) {
     .then(({ error }) => { if (error) { rec.vertragsende = before; _rntRender(); ccSaveFailed(error, 'contract end'); } });
 }
 /* Renewal row → "Create": the matching generator in Apartments, filled in with this renewal */
-function _rntRenewCreate(tid, pid, n) {
-  const rec = _rntRecords.find(r => r.id === tid);
-  const per = typeof ccRpFor === 'function' ? ccRpFor('rentals', tid).find(p => String(p.id) === String(pid)) : null;
-  if (!rec || !per || !rec.apartment_id || typeof _aptOpenContract !== 'function') return;
-  const amt  = ccRpAmount(per) || {};
-  const type = per.contract_type || rntContractType(rec) || 'mietvertrag';
-  const renew = { aptId: rec.apartment_id, label: n + '. Verlängerung', start: _ccIso(per.valid_from),
-    end: _ccIso(per.contract_end || rec.vertragsende || ''), kalt: amt.kalt, nk: amt.nk, total: amt.total };
-  if (typeof switchTab === 'function') switchTab('apartments');   // the generator lives in the Apartments tab
-  setTimeout(() => _aptOpenContract(type, rec.apartment_id, renew), 80);
-}
-/* Renew (Kurzzeit only): new end, rent and type from the day after the current end */
-function _rntRenewOpen(rid, tid) {
-  const rec = _rntRecords.find(r => r.id === tid);
-  if (!rec) return;
-  const endNow = rec.vertragsende || rec.mietende || '';
-  const cur = _rntCurrentRent(rec) || {};
-  const ctNow = rntContractType(rec) || 'kurzzeit';
-  const from  = endNow ? ' from ' + _ccFmtD(_ccAddDaysIso(endNow, 1)) : ' (new)';
-  _ccPanelOpen('psec-' + rid, 'Renew contract', `
-    <div class="tn-fg">
-      <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_rntCtSegHTML('data-cc', ctNow)}</div>
-      ${endNow ? '' : `<div class="tn-field"><span class="tn-flbl">Current contract ends</span>
-        <input data-cc="cur" type="text" placeholder="TT.MM.JJJJ"/></div>`}
-      <div class="tn-field" data-cc="endwrap"${ctNow === 'mietvertrag' ? ' style="display:none"' : ''}><span class="tn-flbl">New contract end</span>
-        <input data-cc="end" type="text" placeholder="TT.MM.JJJJ" value="${endNow ? _ccFmtD(_ccAddYearIso(endNow)) : ''}"/></div>
-      ${endNow ? `<div class="tn-field"><span class="tn-flbl">Starts</span><span class="tn-fval">${_ccFmtD(_ccAddDaysIso(endNow, 1))}</span></div>` : ''}
-      <div class="tn-field"><span class="tn-flbl">Kaltmiete${from}</span><input data-cc="kalt" type="number" data-cc-num="2" value="${cur.kalt ?? ''}"/></div>
-      <div class="tn-field"><span class="tn-flbl">Nebenkosten</span><input data-cc="nk" type="number" data-cc-num="2" value="${cur.nk ?? ''}"/></div>
-    </div>
-    <p class="cc-inline-hint">Same tenant, Kaution stays. The new rent and contract start the day after the current end; the new contract goes into Documents. Mietvertrag (unbefristet) needs no end date.${rec.mietende ? ` The move-out on ${_ccFmtD(rec.mietende)} is removed — the tenant stays.` : ''}</p>`, async p => {
-    const mark = sel => { const el = p.querySelector(sel); if (el) el.style.borderBottomColor = '#C4705A'; return false; };
-    const curEnd = endNow || _rntParseDate(p.querySelector('[data-cc="cur"]')?.value || '');
-    if (!curEnd) return mark('[data-cc="cur"]');
-    const start = _ccAddDaysIso(curEnd, 1);
-    const ctNew = p.querySelector('[data-cc="ct"]')?.value || ctNow;
-    const end   = ctNew === 'kurzzeit' ? _rntParseDate(p.querySelector('[data-cc="end"]')?.value || '') : null;
-    if (ctNew === 'kurzzeit' && (!end || end <= start)) return mark('[data-cc="end"]');
-    const kalt = parseFloat(p.querySelector('[data-cc="kalt"]')?.value), nk = parseFloat(p.querySelector('[data-cc="nk"]')?.value);
-    const upd = { vertragsende: end };
-    if (rec.mietende) upd.mietende = null;
-    const { error } = await sbL.from('rnt_tenant_records').update(upd).eq('id', tid);
-    if (error) { ccSaveFailed(error, 'renewal'); return false; }
-    Object.assign(rec, upd);
-    if (typeof ccRpSetRent === 'function') {
-      try {
-        await ccRpSetRent(sbL, { app: 'rentals', rec, validFrom: start, mode: 'kalt_nk',
-          kalt: isNaN(kalt) ? cur.kalt : kalt, nk: isNaN(nk) ? cur.nk : nk,
-          kind: 'renewal', source: 'renew', legacyMode: 'kalt_nk', contract_end: end, contract_type: ctNew });
-      } catch (e2) { alert('Contract end saved, but the new rent could not be saved — ' + (e2.message || e2)); }
-    }
-    _rntSyncOccupancy();
-    _rntRender(); return true;
-  });
-}
 
 /* Occupancy from the dates — the same rule as Casa Castel (ccOccupancyPlan).
    Apartments and parking; writes only what really changed. */
@@ -2674,36 +2569,11 @@ function _rntModalBodyHTML(rec, isApt) {
   const dK   = rec.kaltmiete   != null ? Number(rec.kaltmiete)   : null;
   const dNK  = rec.nebenkosten != null ? Number(rec.nebenkosten) : null;
   const dKS  = rec.kaution_soll != null ? Number(rec.kaution_soll) : null;
-  const docs = _rntDocs[tid] || [];
-  const getDoc = t => docs.find(d => d.type === t && (d.variant || 'signed') === 'signed');
-
   const unitId  = rec.apartment_id || rec.parking_id;
   const unitObj = isApt
     ? appApartments?.find(a => a.id === unitId)
     : appParking?.find(p => p.id === unitId);
   const unitLabel = unitObj?.name || '';
-
-  const docRow = (docType, label) => {
-    const doc    = getDoc(docType);
-    const signed = !!doc?.file_url;
-    const delBtn = signed
-      ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
-           onclick="_rntDeleteDoc('${tid}','${docType}','${_rntEsc(doc.id)}')" title="Delete">
-           <i class="ti ti-trash"></i></button>`
-      : '';
-    return `<div class="tn-doc-row">
-      <span class="tn-doc-name">${_rntEsc(label)}</span>
-      <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'uploaded' : 'missing'}</span>
-      <div class="tn-doc-btns">
-        <button class="tn-doc-btn${signed ? '' : ' off'}" onclick="${signed
-          ? `_rntViewDoc('${_rntEsc(doc.file_url)}','${_rntEsc(label)}','${_rntEsc(unitLabel)}')`
-          : ''}"><i class="ti ti-eye"></i></button>
-        ${delBtn}
-        <button class="tn-doc-btn" onclick="_rntTriggerUpload('${tid}','${docType}')">
-          <i class="ti ti-upload"></i></button>
-      </div>
-    </div>`;
-  };
 
   const soll = _rntKautionSoll(rec);
 
@@ -2722,6 +2592,10 @@ function _rntModalBodyHTML(rec, isApt) {
           <span class="tn-fval">${_rntEsc(rec.email||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <span class="tn-fval">${_rntEsc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+          <span class="tn-fval">${_rntEsc(rec.address||'') || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <span class="tn-fval">${_rntFmtDate(rec.vertragsende) || '<span class="muted">—</span>'}</span></div>
         ${[2, 3].filter(n => rec['first_name_' + n] || rec['last_name_' + n]).map(n => `
         <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Tenant ${n}</span></div>
         <div class="tn-field"><span class="tn-flbl">Name</span>
@@ -2757,6 +2631,10 @@ function _rntModalBodyHTML(rec, isApt) {
           <input data-mf="email" type="email" value="${_rntEsc(rec.email||'')}"/></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <input data-mf="phone" type="tel" value="${_rntEsc(rec.phone||'')}"/></div>
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+          <input data-mf="address" type="text" value="${_rntEsc(rec.address||'')}"/></div>
+        <div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <input data-mf="vertragsende" type="text" value="${_rntFmtDate(rec.vertragsende)}" placeholder="TT.MM.JJJJ"/></div>
         ${[2, 3].filter(n => rec['first_name_' + n] || rec['last_name_' + n]).map(n => `
         <div class="tn-field tn-field-full" style="margin-top:6px;border-top:1px solid var(--cc-rule);padding-top:8px;"><span class="tn-flbl">Tenant ${n}</span></div>
         <div class="tn-field"><span class="tn-flbl">Name</span>
@@ -2795,15 +2673,8 @@ function _rntModalBodyHTML(rec, isApt) {
     </div>
   </div>
 
-  <!-- DOCUMENTS -->
-  <div class="tn-msec">
-    <div class="tn-msec-hdr"><span class="tn-msec-lbl">Documents</span></div>
-    <div class="tn-msec-body" style="padding-bottom:11px">
-      ${isApt
-        ? docRow('mietvertrag','Mietvertrag') + _rntRenewalRows(rec).map(x => docRow(x.key, x.label)).join('') + (getDoc('uebergabeprotokoll')?.file_url ? docRow('uebergabeprotokoll','Übergabeprotokoll') : '') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')
-        : docRow('parkplatz_mietvertrag','Parkplatz-Mietvertrag') + (getDoc('uebergabeprotokoll')?.file_url ? docRow('uebergabeprotokoll','Übergabeprotokoll') : '') + docRow('einzug','Übergabe Einzug') + docRow('auszug','Übergabe Auszug')}
-    </div>
-  </div>
+  <!-- ZÄHLERSTÄNDE + DOCUMENTS (Unsigned | Signed) — same sections as the card -->
+  ${typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(rec, 'modal') + ccfDocsSectionHTML(rec, 'modal') : ''}
 
   <!-- KAUTION -->
   ${_rntKautionHTML('m', tid, 'modal', rec)}
@@ -3277,6 +3148,8 @@ async function _rntModalSaveProfile(tid) {
     update['first_name_' + n] = p['first_name_' + n] || null; update['last_name_' + n] = p['last_name_' + n] || null;
     update['email_' + n] = p['email_' + n] || null;
   });
+  if (body.querySelector('[data-mf="address"]')) update.address = p.address || null;
+  if (body.querySelector('[data-mf="vertragsende"]')) update.vertragsende = p.vertragsende || null;
   const hasRent = !!body.querySelector('[data-mf="kaltmiete"]');   // B20
   if (hasRent) { update.kaltmiete = p.kaltmiete ?? null; update.nebenkosten = p.nebenkosten ?? null; }
   if (hasRent && rec && typeof ccRpFor === 'function') {           // rent history follows the correction
@@ -3497,12 +3370,6 @@ async function _rntConfirmDeleteNk(nkId, tid) {
 /* ══════════════════════════════════════════════════════════════
    16. DOCUMENTS
 ══════════════════════════════════════════════════════════════ */
-function _rntTriggerUpload(tid, type) {
-  _rntUploadTid  = tid;
-  _rntUploadType = type;
-  const inp = document.getElementById('rntFileInput');
-  if (inp) { inp.value = ''; inp.click(); }
-}
 
 async function _rntViewDoc(fileUrl, label, unitLabel) {
   if (!fileUrl || !sbL) return;
@@ -3518,43 +3385,7 @@ async function _rntViewDoc(fileUrl, label, unitLabel) {
   else window.open(url, '_blank');
 }
 
-async function _rntHandleUpload(file) {
-  if (!file || !_rntUploadTid || !_rntUploadType || !sbL) return;
-  const rec      = _rntRecords.find(r => r.id === _rntUploadTid);
-  const unitId   = rec?.apartment_id || rec?.parking_id || 'unknown';
-  const ext      = file.name.split('.').pop() || 'pdf';
-  // Uploads here are the signed version (Unsigned | Signed arrives with step 2 of the contract flow)
-  const path     = `${unitId}/${_rntUploadTid}/${_rntUploadType}.signed.${ext}`;
 
-  const { error: upErr } = await sbL.storage
-    .from('rnt-tenant-documents').upload(path, file, { upsert:true, contentType:file.type });
-  if (upErr) { _rntToast('Upload failed', true); return; }
-
-  const { data: docData, error: docErr } = await sbL.from('rnt_tenant_documents')
-    .upsert({ tenant_id: _rntUploadTid, type: _rntUploadType, variant: 'signed', file_url: path },
-            { onConflict: 'tenant_id,type,variant' }).select().single();
-  if (docErr) { ccSaveFailed(docErr, 'document'); return; }
-
-  const tid = _rntUploadTid;
-  if (!_rntDocs[tid]) _rntDocs[tid] = [];
-  const idx = _rntDocs[tid].findIndex(d => d.type === _rntUploadType && (d.variant || 'signed') === 'signed');
-  if (idx >= 0) _rntDocs[tid][idx] = docData;
-  else          _rntDocs[tid].push(docData);
-
-  if (_rntModalTid === tid) { _rntOpenModal(tid); } else { _rntRender(); }
-  _rntToast('Document uploaded \u2713');
-}
-
-async function _rntDeleteDoc(tid, type, docId) {
-  if (!sbL) return;
-  if (!confirm('Delete this document? This cannot be undone.')) return;
-  const doc = (_rntDocs[tid] || []).find(d => d.id === docId);
-  if (doc?.file_url) await sbL.storage.from('rnt-tenant-documents').remove([doc.file_url]);
-  const { error } = await sbL.from('rnt_tenant_documents').delete().eq('id', docId);
-  if (error) { ccSaveFailed(error, 'delete document'); return; }
-  if (_rntDocs[tid]) _rntDocs[tid] = _rntDocs[tid].filter(d => d.id !== docId);
-  if (_rntModalTid === tid) { _rntOpenModal(tid); } else { _rntRender(); }
-}
 
 function _rntToast(msg, isError) {
   const ex = document.getElementById('rnt-toast');
@@ -3793,11 +3624,7 @@ function _rntRefreshFormerBadges(tid) {
    19. EVENT BINDS
 ══════════════════════════════════════════════════════════════ */
 function _rntBindCards() {
-  const inp = document.getElementById('rntFileInput');
-  if (inp && !inp._rntBound) {
-    inp._rntBound = true;
-    inp.addEventListener('change', () => { if (inp.files?.[0]) _rntHandleUpload(inp.files[0]); });
-  }
+  // Document uploads: cc-contract-flow.js (Unsigned | Signed, photos → PDF)
 }
 
 

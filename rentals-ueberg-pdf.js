@@ -58,7 +58,7 @@ async function aptGenerateUebergPDF(isEinzug) {
   } catch(err) {
     console.error('[Übergabe PDF]', err);
     alert('PDF generation failed. Please try again.');
-    if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+    if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   }
 }
 
@@ -164,7 +164,7 @@ async function _aptOpenUebergPreview(d, container) {
 
   // Re-enable modal button
   const btn = document.getElementById('aptUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
 }
 
 
@@ -173,7 +173,7 @@ async function _aptSaveUebergPDF(d, container) {
   await _aptSaveUebergPDFFromData(d, container);
   container?.remove();
   const btn = document.getElementById('aptUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   document.getElementById('aptContractOverlay')?.classList.add('open');
 }
 

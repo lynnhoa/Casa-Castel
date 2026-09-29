@@ -244,6 +244,7 @@ const CC_PDF_RETURN_MS  = 15 * 60 * 1000;
 document.addEventListener('click', e => {
   const t = e.target && e.target.closest ? e.target.closest(CC_PDF_TRIGGERS) : null;
   if (!t || t.disabled || t.classList.contains('off')) return;
+  if (_ccCapture) return;                                // Approve: the PDF comes back to the app, no tab
   _ccLastTrigger = t;
   if (CC_STANDALONE) return;                             // installed app: see _ccShowReady
   _ccOpenWaitingTab();
@@ -278,6 +279,7 @@ async function ccOpenPdf(pdfOrBlob, filename) {
   const name = ccPdfSafeName(filename);
   const blob = (pdfOrBlob && typeof pdfOrBlob.output === 'function')
     ? pdfOrBlob.output('blob') : pdfOrBlob;
+  if (_ccCapture) { const c = _ccCapture; _ccCapture = null; c.done({ blob, name }); return; }
   const url = await _ccUploadTempPdf(blob, name);
   if (CC_STANDALONE) return _ccShowReady(url, blob, name);
   if (url) return ccOpenUrl(url, name);
@@ -625,7 +627,25 @@ function _ccBlankOutBroken(root) {
   }
 }
 // A generator that stops without creating a PDF → close the waiting tab.
-function ccCancelPdf() { _ccCloseWaitingTab(); }
+function ccCancelPdf() { _ccCloseWaitingTab(); if (_ccCapture) { const c = _ccCapture; _ccCapture = null; c.done(null); } }
+
+/* Contract flow "Approve": run a generator's own PDF code, but hand the finished
+   PDF back instead of opening it (same pages, same file name as Draft PDF).
+   Resolves { blob, name } — or null when the generator stopped (a question
+   answered with Cancel, an error). */
+let _ccCapture = null;
+function ccCapturePdf(run, ms) {
+  return new Promise(resolve => {
+    let t = null;
+    const alert0 = window.alert;
+    const done = v => { clearTimeout(t); window.alert = alert0; _ccCapture = null; resolve(v); };
+    _ccCapture = { done };
+    t = setTimeout(() => done(null), ms || 90000);
+    const onErr = () => { if (_ccCapture && _ccCapture.done === done) done(null); };
+    window.alert = m => { alert0.call(window, m); onErr(); };   // the generator reported a problem → stop waiting
+    try { Promise.resolve(run()).catch(onErr); } catch (e) { onErr(); }
+  });
+}
 
 // True once, right after the PDF viewer was closed (installed app).
 function ccCameBackFromPdf() {

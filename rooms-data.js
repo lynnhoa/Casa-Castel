@@ -209,7 +209,6 @@ async function deleteRoom(roomId) {
   if (error) return { ok: false, error: error.message };
 
   const room = getRoomById(roomId);
-  if (typeof ccTplDeleteUnit === 'function') ccTplDeleteUnit('room', roomId);   // its contract templates go too
   appRooms = appRooms.filter(r => r.id !== roomId);
   _notifyRoomsListeners('DELETE', room);
   return { ok: true };

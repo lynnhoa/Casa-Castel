@@ -884,6 +884,7 @@ async function _pkOpenContract(type, pkId) {
   _pkContractId = pkId;
   const spot = appParking.find(p => p.id === pkId);
   if (!spot) return;
+  { const b0 = document.getElementById('pkContractBody'); if (b0) b0.innerHTML = ''; }
 
   const pr = spot.pricing   || {};
   const sk = spot.schlussel || {};
@@ -895,10 +896,9 @@ async function _pkOpenContract(type, pkId) {
   if (type === 'mietvertrag') {
     const _pkMvProfile = await _pkResolveTenantProfile(pkId);
     document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk, _pkMvProfile);
-    if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('pk-mv-kaution', rntFixedKautionSoll('pk', spot.id));
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
-       <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+       <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
 
     document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
       if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
@@ -918,7 +918,7 @@ async function _pkOpenContract(type, pkId) {
     document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug, _pkUbProfile);
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
-       <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+       <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
 
     document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
       if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
@@ -930,10 +930,12 @@ async function _pkOpenContract(type, pkId) {
       try {
         await pkGenerateUebergPDF(isEinzug);
       } finally {
-        if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+        if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
       }
     });
   }
+
+  _pkSetupFlow(type, spot);   // For line, Draft PDF / Approve (cc-contract-flow.js)
 
   // Keep what is typed for 2 hours (restored if the app ever has to restart)
   if (typeof ccDraftAutoSave === 'function') {
@@ -948,15 +950,51 @@ async function _pkOpenContract(type, pkId) {
 }
 
 document.getElementById('pkContractClose')?.addEventListener('click', () => {
-  if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
   document.getElementById('pkContractOverlay').classList.remove('open');
 });
 document.getElementById('pkContractOverlay')?.addEventListener('click', e => {
   if (e.target === document.getElementById('pkContractOverlay')) {
-    if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
     document.getElementById('pkContractOverlay').classList.remove('open');
   }
 });
+
+
+/* ── CONTRACT FLOW (cc-contract-flow.js) — Parking generators ── */
+const _PK_MV_FIELDS = { name: 'pk-mv-name', adr: 'pk-mv-adr', dob: 'pk-mv-dob', email: 'pk-mv-email', tel: 'pk-mv-tel', kaution: 'pk-mv-kaution',
+  t2: { name: 'pk-mv-name2', adr: 'pk-mv-adr2', dob: 'pk-mv-dob2', email: 'pk-mv-email2', tel: 'pk-mv-tel2', wrap: 'pk-mv-mieter2' },
+  t3: { name: 'pk-mv-name3', adr: 'pk-mv-adr3', dob: 'pk-mv-dob3', email: 'pk-mv-email3', tel: 'pk-mv-tel3', wrap: 'pk-mv-mieter3' }, addBtn: 'pk-mv-addbtn' };
+const _PK_UB_FIELDS = { name: 'pk-ub-mieter-name', adr: 'pk-ub-mieter-adr',
+  t2: { name: 'pk-ub-mieter-name2', adr: 'pk-ub-mieter-adr2', wrap: 'pk-ub-t2-wrap' },
+  t3: { name: 'pk-ub-mieter-name3', adr: 'pk-ub-mieter-adr3', wrap: 'pk-ub-t3-wrap' }, addBtn: 'pk-ub-addbtn' };
+function _pkSetupFlow(type, spot) {
+  if (typeof ccfSetupGenerator !== 'function') return;
+  const unit = 'pk:' + spot.id;
+  const v = id => document.getElementById(id)?.value || '';
+  if (type === 'ueberg') {
+    const isEinzug = document.getElementById('pk-eu-' + spot.id)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    ccfSetupGenerator({ body: 'pkContractBody', footer: 'pkContractFooter', draftId: 'pkUebergPdfBtn', mode: 'ueberg', unit,
+      occasion: isEinzug ? 'einzug' : 'auszug', fields: _PK_UB_FIELDS,
+      read: () => ({ kind: 'ueberg', occasion: isEinzug ? 'einzug' : 'auszug', room: unit, forId: ccfForValue(),
+        date: v('pk-ub-datum'), newAddress: isEinzug ? '' : v('pk-ub-neue-adr').trim(), readings: [] }) });
+    return;
+  }
+  ccfSetupGenerator({ body: 'pkContractBody', footer: 'pkContractFooter', draftId: 'pkMvPdfBtn', mode: 'contract', unit,
+    fields: _PK_MV_FIELDS,
+    read: () => {
+      const sp = appParking.find(p => p.id === _pkContractId) || spot;
+      const staffelOn = document.getElementById('pk-mv-staffel-btn')?.dataset.mode === 'ja';
+      const staffel = !staffelOn ? [] : [...document.querySelectorAll('.pk-mv-staffel-row')].map(row => ({
+        betrag: ccfNum(row.querySelector('.pk-mv-staffel-betrag')?.value),
+        datum: row.querySelector('.pk-mv-staffel-datum')?.textContent?.trim() })).filter(x => x.betrag && x.datum && x.datum !== '—');
+      const anf = ccfNum(v('pk-mv-staffel-anfang'));
+      const miete = staffelOn && anf > 0 ? anf : (Number((sp.pricing || {}).miete) || 0);
+      return { kind: 'contract', ctype: 'mietvertrag', room: unit, forId: ccfForValue(),
+        tenant: ccfReadTenant(_PK_MV_FIELDS), coTenants: ccfReadCoTenants(_PK_MV_FIELDS),
+        start: v('pk-mv-start'), end: document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet' ? v('pk-mv-end') : null,
+        rent: { mode: 'kalt_nk', kalt: miete, nk: 0, total: miete }, staffel, staffelTable: 'rnt_staffelmiete_history',
+        first_month: 'anteilig', last_month: 'anteilig', docLabel: 'Parkplatz-Mietvertrag' };
+    } });
+}
 
 /* ── CONTRACT DRAFT RESTORE (Phase 1 safety net) ───────────── */
 const _PK_DRAFT_KEY = 'cc_draft_parking_contract';

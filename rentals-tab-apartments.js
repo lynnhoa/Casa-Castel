@@ -1264,14 +1264,12 @@ function _aptCardHTML(a) {
         <button class="apt-doc-btn" onclick="_aptOpenContract('kurzzeit','${a.id}')">
           Kurzzeitmiete <i class="ti ti-chevron-right"></i>
         </button>
-      </div>
-      ${typeof ccTplSlot === 'function' ? ccTplSlot('apartment', a.id, 'kurzzeit') : ''}` : ''}
+      </div>` : ''}
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('mietvertrag','${a.id}')">
           ${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemietvertrag' : 'Mietvertrag'} <i class="ti ti-chevron-right"></i>
         </button>
       </div>
-      ${typeof ccTplSlot === 'function' ? ccTplSlot('apartment', a.id, a.zimmer_type === 'Gewerbefläche' ? 'gewerbe' : 'mietvertrag') : ''}
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('ueberg','${a.id}')">
           Übergabeprotokoll <i class="ti ti-chevron-right"></i>
@@ -2155,6 +2153,13 @@ let _aptContractRenew = null;   // set when opened from Tenants → Documents �
 /* The apartment as the generator should see it: for a renewal the renewal's own rent
    replaces the asking rent (nothing is saved on the apartment). */
 function _aptContractApt(apt) {
+  const m = apt && typeof ccfMieteGet === 'function' && apt.id === _aptContractId ? ccfMieteGet() : null;
+  if (m && (_aptContractType === 'kurzzeit' || _aptContractType === 'mietvertrag') && apt.zimmer_type !== 'Gewerbefläche') {
+    const p = { ...(apt.pricing || {}) };
+    if (_aptContractType === 'kurzzeit') { p.kurzzeit_kaltmiete = m.kalt; p.kurzzeit_nk = m.nk; }
+    else { p.kaltmiete = m.kalt; p.nk_pauschale = m.nk; }
+    return { ...apt, pricing: p };
+  }
   const rn = _aptContractRenew;
   if (!apt || !rn || rn.aptId !== apt.id) return apt;
   const p = { ...(apt.pricing || {}) };
@@ -2177,10 +2182,6 @@ function _aptApplyRenew(type, apt) {
   set(pre + '-end', rn.end);   // Mietvertrag: used only if you choose "befristet"
   const t = document.getElementById('aptContractTitleLbl');
   if (t) t.textContent = `${rn.label} \u2014 ${apt.name}`;
-  const d = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
-  const eur = n => (Number(n) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
-  document.getElementById('aptContractBody')?.insertAdjacentHTML('afterbegin',
-    `<p class="cc-soll-hint">${rn.label} ab ${d(rn.start)} \u00b7 Miete ${eur(rn.kalt)} kalt + ${eur(rn.nk)} NK \u2014 from Tenants \u2192 Renew</p>`);
 }
 
 async function _aptOpenContract(type, aptId, renew) {
@@ -2188,6 +2189,7 @@ async function _aptOpenContract(type, aptId, renew) {
   _aptContractId   = aptId;
   _aptContractType = type;
   _aptContractRenew = renew && renew.aptId === aptId ? renew : null;
+  { const b0 = document.getElementById('aptContractBody'); if (b0) b0.innerHTML = ''; }   // no stale Miete block
   const apt = _aptContractApt(appApartments.find(a => a.id === aptId));
   if (!apt) return;
 
@@ -2211,8 +2213,7 @@ async function _aptOpenContract(type, aptId, renew) {
     const kzK = ccKaution(_aptKzKautionOpts(p));
     const _kzProfile = await _aptResolveTenantProfile(apt.id);
     body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, _kzProfile);
-    if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('apt-cm-kaution', rntFixedKautionSoll('apt', apt.id));   // tenant's fixed Kaution
-    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
 
     setTimeout(() => {
       ['apt-cm-start', 'apt-cm-end'].forEach(id => {
@@ -2248,6 +2249,7 @@ async function _aptOpenContract(type, aptId, renew) {
             mieterName3: t3cm.name, mieterAdr3: t3cm.adr, mieterDob3: t3cm.dob, mieterEmail3: t3cm.email, mieterTel3: t3cm.tel,
             startVal, endVal, sigVal, kautionVal, kautionFael,
           });
+          if (typeof ccfContractData === 'function') ccfContractData(data, kautionVal);
           ccBlankFill(data, ['mietbeginn', 'mietende']);   // empty dates → line to fill in by hand
           const html = _renderRentalKurzzeitHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
@@ -2259,19 +2261,12 @@ async function _aptOpenContract(type, aptId, renew) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          // Rent history (5.5): contract rent + dates → the tenant (Kurzzeit is always prorated)
-          if (typeof ccRpFromContract === 'function') await ccRpFromContract({
-            app: 'rentals', db: sbL, records: typeof _rntRecords !== 'undefined' ? _rntRecords : [], unitKey: 'apartment_id', unitRef: apt2.id,
-            tenantName: mieterName, start: startVal, end: endVal, mode: 'kalt_nk',
-            kalt: data.kzKaltmiete, nk: data.kzNk, total: (Number(data.kzKaltmiete) || 0) + (Number(data.kzNk) || 0),
-            first_month: 'anteilig', last_month: 'anteilig', contract_type: 'kurzzeit', legacyMode: 'kalt_nk',
-          });
           const filename = ccPdfFileName('Mietvertrag_befristet', apt2.name, mieterName);
-          await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
+          await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-file-text"></i> Draft PDF');
         } catch(err) {
           console.error('[Kurzzeit PDF]', err);
           alert('PDF generation failed. Please try again.');
-          if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+          if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
         }
       });
     }, 0);
@@ -2288,8 +2283,7 @@ async function _aptOpenContract(type, aptId, renew) {
 
     if (isGewerbe) {
       body.innerHTML = _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, _mvProfile);
-      if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('apt-gw-kaution', rntFixedKautionSoll('apt', apt.id));
-      footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptGwPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+        footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptGwPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
       setTimeout(() => {
         _aptGwInitInteractions();
         document.getElementById('aptGwPdfBtn')?.addEventListener('click', async () => {
@@ -2383,6 +2377,7 @@ async function _aptOpenContract(type, aptId, renew) {
               kuendigungsfrist, staffelAn, staffeln,
               verlaengerungJahre, ankuendigungMonate, neueKaltmiete, verlaengerungBis,
             });
+            if (typeof ccfContractData === 'function') ccfContractData(data, document.getElementById('apt-gw-kaution')?.value);
             ccBlankFill(data, ['mietbeginn'].concat(szenario === 'S2' ? ['mietende'] : [], szenario === 'S3' ? ['ankuendigungBis'] : []));
             const html = _renderGewerbeMietvertragHTML(data);
             let container = document.getElementById('_pdfRenderContainer');
@@ -2395,19 +2390,18 @@ async function _aptOpenContract(type, aptId, renew) {
             await document.fonts.ready;
             await new Promise(r => setTimeout(r, 300));
             const filename = ccPdfFileName('Gewerbemietvertrag', apt2.name, mieterName);
-            await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
+            await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-file-text"></i> Draft PDF');
           } catch(err) {
             console.error('[Gewerbe PDF]', err);
             alert('PDF generation failed. Please try again.');
-            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+            if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
           }
         });
       }, 0);
 
     } else {
     body.innerHTML = _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, _mvProfile);
-    if (typeof rntFixedKautionSoll === 'function') ccApplyFixedKaution('apt-mv-kaution', rntFixedKautionSoll('apt', apt.id));
-    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptMvPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
     setTimeout(() => {
       document.getElementById('aptMvPdfBtn')?.addEventListener('click', async () => {
         _aptSaveContractDraft();
@@ -2468,6 +2462,7 @@ async function _aptOpenContract(type, aptId, renew) {
             kautionVal: document.getElementById('apt-mv-kaution')?.value,
             staffelAn, staffeln, anfangsmiete,
           });
+          if (typeof ccfContractData === 'function') ccfContractData(data, document.getElementById('apt-mv-kaution')?.value);
           ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : []));
           const html = _renderRentalMietvertragHTML(data);
           let container = document.getElementById('_pdfRenderContainer');
@@ -2479,23 +2474,12 @@ async function _aptOpenContract(type, aptId, renew) {
           document.body.appendChild(container);
           await document.fonts.ready;
           await new Promise(r => setTimeout(r, 300));
-          // Rent history (5.5): contract rent (Anfangsmiete with Staffel) + dates → the tenant
-          if (typeof ccRpFromContract === 'function') {
-            const _k = staffelAn && Number(anfangsmiete) > 0 ? Number(anfangsmiete) : Number(data.kaltmiete) || 0;
-            await ccRpFromContract({
-              app: 'rentals', db: sbL, records: typeof _rntRecords !== 'undefined' ? _rntRecords : [], unitKey: 'apartment_id', unitRef: apt2.id,
-              tenantName: mieterName, start: startVal, end: befristet ? endVal : null, mode: 'kalt_nk',
-              kalt: _k, nk: Number(data.nkVorauszahlung) || 0, total: _k + (Number(data.nkVorauszahlung) || 0),
-              first_month: 'anteilig', last_month: 'anteilig', contract_type: 'mietvertrag', legacyMode: 'kalt_nk',
-              staffel: staffelAn ? staffeln : [], staffelTable: 'rnt_staffelmiete_history',
-            });
-          }
           const filename = ccPdfFileName('Mietvertrag', apt2.name, mieterName);
-          await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
+          await _aptGenericPdfAction(container, filename, btn, '<i class="ti ti-file-text"></i> Draft PDF');
         } catch(err) {
           console.error('[Mietvertrag PDF]', err);
           alert('PDF error: ' + (err && err.message ? err.message : String(err)));
-          if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+          if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
         }
       });
       document.getElementById('apt-mv-start')?.addEventListener('input', _aptUpdateMvMonatToggle);
@@ -2508,7 +2492,7 @@ async function _aptOpenContract(type, aptId, renew) {
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + apt.name;
     const _ubProfile = await _aptResolveTenantProfile(apt.id);
     body.innerHTML = _aptBodyUeberg(apt, sk, isEinzug, _ubProfile);
-    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+    footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptUebergPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
     setTimeout(() => {
       document.getElementById('aptUebergPdfBtn')?.addEventListener('click', () => {
         _aptSaveContractDraft();
@@ -2525,34 +2509,13 @@ async function _aptOpenContract(type, aptId, renew) {
     });
   }, 0);
 
-  // Req 3: "Save as template" (Kurzzeit, Mietvertrag, Gewerbe)
-  if (typeof ccTplAttach === 'function') {
-    const _tplType = (type === 'mietvertrag' && apt.zimmer_type === 'Gewerbefläche') ? 'gewerbe' : type;
-    ccTplAttach({ kind: 'apartment', unitId: aptId, type: _tplType, footer });
-  }
-
-  _aptApplyRenew(type, apt);   // opened from a renewal in Tenants → dates + that renewal's rent
+  _aptSetupFlow(type, apt);    // For line, Miete block, Draft PDF / Approve (cc-contract-flow.js)
+  _aptApplyRenew(type, apt);   // opened from Tenants › Renew → dates of the renewal
 
   document.getElementById('aptContractOverlay').classList.add('open');
 }
 
-/* ── CONTRACT TEMPLATES (Req 3) — Apartments adapter ─────────
-   Template = the same snapshot the draft safety net uses; Renew refills
-   the generator through the same restore path. */
-if (typeof ccTplRegister === 'function') ccTplRegister('apartment', {
-  body:     () => document.getElementById('aptContractBody'),
-  snapshot: () => _aptContractSnapshot(),
-  prefix:   type => ({ kurzzeit: 'apt-cm-', mietvertrag: 'apt-mv-', gewerbe: 'apt-gw-' })[type],
-  openType: type => (type === 'gewerbe' ? 'mietvertrag' : type),
-  currentTenant: id => (typeof rntProfileFromRecords === 'function' ? rntProfileFromRecords('apt', id) : null),
-  renew: async (type, id, snap) => {
-    _aptClearContractDraft();
-    await _aptReopenContractDraft({ ...snap, aptId: id, type });
-  },
-});
-
 document.getElementById('aptContractClose')?.addEventListener('click', () => {
-  _aptClearContractDraft();
   document.getElementById('aptContractOverlay').classList.remove('open');
 });
 let _aptContractMouseDownOnOverlay = false;
@@ -2561,12 +2524,94 @@ document.getElementById('aptContractOverlay')?.addEventListener('mousedown', e =
 });
 document.getElementById('aptContractOverlay')?.addEventListener('click', e => {
   if (_aptContractMouseDownOnOverlay && e.target === document.getElementById('aptContractOverlay')) {
-    _aptClearContractDraft();
     document.getElementById('aptContractOverlay').classList.remove('open');
   }
   _aptContractMouseDownOnOverlay = false;
 });
 
+
+
+/* ── CONTRACT FLOW (cc-contract-flow.js) — Apartments generators ──
+   Draft PDF = the generator's own PDF (nothing saved). Approve = the same PDF
+   + summary → tenant (For), rent history, Staffel, Kaution Soll, Zählerstände,
+   Documents › Unsigned.                                                     */
+function _aptFlowFields(pfx) {
+  const b = (n, sfx) => ({ name: `apt-${pfx}-name${sfx}`, adr: `apt-${pfx}-adr${sfx}`, dob: `apt-${pfx}-dob${sfx}`,
+                           email: `apt-${pfx}-email${sfx}`, tel: `apt-${pfx}-tel${sfx}`, wrap: n > 1 ? `apt-${pfx}${n}-wrap` : null });
+  return { ...b(1, ''), kaution: `apt-${pfx}-kaution`, t2: b(2, '2'), t3: b(3, '3'), addBtn: `apt-${pfx}-addbtn` };
+}
+const _APT_UB_FIELDS = { name: 'apt-ub-mieter-name', adr: 'apt-ub-mieter-adr',
+  t2: { name: 'apt-ub-mieter-name2', adr: 'apt-ub-mieter-adr2', wrap: 'apt-ub-t2-wrap' },
+  t3: { name: 'apt-ub-mieter-name3', adr: 'apt-ub-mieter-adr3', wrap: 'apt-ub-t3-wrap' }, addBtn: 'apt-ub-addbtn' };
+function _aptStaffelRows(pfx) {
+  if (document.getElementById(`apt-${pfx}-staffel-btn`)?.dataset.mode !== 'ja') return [];
+  return [...document.querySelectorAll(`.apt-${pfx}-staffel-row`)].map(row => ({
+    betrag: ccfNum(row.querySelector(`.apt-${pfx}-staffel-betrag`)?.value),
+    datum: row.querySelector(`.apt-${pfx}-staffel-datum`)?.textContent?.trim() })).filter(x => x.betrag && x.datum && x.datum !== '—');
+}
+function _aptSetupFlow(type, apt) {
+  if (typeof ccfSetupGenerator !== 'function') return;
+  const unit = 'apt:' + apt.id;
+  const rn = _aptContractRenew;
+  const isGw = type === 'mietvertrag' && apt.zimmer_type === 'Gewerbefläche';
+  if (type === 'ueberg') {
+    const isEinzug = document.getElementById('apt-eu-' + apt.id)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    ccfSetupGenerator({ body: 'aptContractBody', footer: 'aptContractFooter', draftId: 'aptUebergPdfBtn', mode: 'ueberg', unit,
+      occasion: isEinzug ? 'einzug' : 'auszug', fields: _APT_UB_FIELDS,
+      read: () => {
+        const a2 = appApartments.find(a => a.id === _aptContractId) || apt;
+        const readings = ccfMetersFromZaehler(a2.zaehler).map(m => ({ meter: m.meter, meter_no: m.no || null, unit: m.unit,
+          value: ccfNum(document.getElementById('apt-ub-z-' + m.id)?.value) }));
+        return { kind: 'ueberg', occasion: isEinzug ? 'einzug' : 'auszug', room: unit, forId: ccfForValue(),
+          date: document.getElementById('apt-ub-datum')?.value || '', newAddress: isEinzug ? '' : (document.getElementById('apt-ub-neue-adr')?.value || '').trim(), readings };
+      } });
+    return;
+  }
+  const pfx = type === 'kurzzeit' ? 'cm' : isGw ? 'gw' : 'mv';
+  const f = _aptFlowFields(pfx);
+  const pr = apt.pricing || {};
+  const miete = isGw ? null : {
+    anchor: '.rm-kaution-row', mode: 'kalt_nk', fixedMode: true,
+    kalt: type === 'kurzzeit' ? (Number(pr.kurzzeit_kaltmiete) || Number(pr.kaltmiete) || 0) : (Number(pr.kaltmiete) || 0),
+    nk:   type === 'kurzzeit' ? (Number(pr.kurzzeit_nk) || Number(pr.nk_pauschale) || 0) : (Number(pr.nk_pauschale) || 0),
+    note: rn ? 'Prefilled with the current rent — type the new one if it changes.' : 'Prefilled from the apartment’s rent — change it for this contract.',
+    onChange: () => {
+      if (type === 'kurzzeit') { if (typeof _aptKzUpdateKaution === 'function') _aptKzUpdateKaution(); return; }
+      const inp = document.getElementById('apt-mv-kaution'), m = ccfMieteGet();
+      if (inp && inp.hasAttribute('data-auto') && m) {
+        const a2 = _aptContractApt(appApartments.find(a => a.id === _aptContractId));
+        inp.value = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt: m.kalt, nk: m.nk, rec: a2.pricing }).amount;
+      }
+    } };
+  const mk = document.getElementById('apt-mv-kaution');
+  if (mk && !mk.hasAttribute('data-auto') && !mk.value) { mk.setAttribute('data-auto', '1'); mk.addEventListener('input', () => mk.removeAttribute('data-auto')); }
+  ccfSetupGenerator({ body: 'aptContractBody', footer: 'aptContractFooter',
+    draftId: type === 'kurzzeit' ? 'aptKzPdfBtn' : isGw ? 'aptGwPdfBtn' : 'aptMvPdfBtn', mode: 'contract', unit, renew: rn,
+    fields: f, switchTo: rn && rn.tid ? (type === 'kurzzeit' ? 'mietvertrag' : 'kurzzeit') : null, miete,
+    read: () => {
+      const v = id => document.getElementById(id)?.value || '';
+      let rent, start, end, staffel = [];
+      if (isGw) {
+        const k = ccfNum(v('apt-gw-kalt')) || 0, n = ccfNum(v('apt-gw-nk')) || 0;
+        rent = { mode: 'kalt_nk', kalt: k, nk: n, total: k + n };
+        start = v('apt-gw-start'); end = v('apt-gw-enddatum-val') || null; staffel = _aptStaffelRows('gw');
+      } else {
+        rent = ccfMieteGet() || { mode: 'kalt_nk', kalt: 0, nk: 0, total: 0 };
+        start = v(`apt-${pfx}-start`);
+        if (type === 'kurzzeit') end = v('apt-cm-end');
+        else {
+          end = document.getElementById('apt-mv-befristung-btn')?.dataset.mode === 'befristet' ? v('apt-mv-end') : null;
+          staffel = _aptStaffelRows('mv');
+          const anf = ccfNum(v('apt-mv-staffel-anfang'));
+          if (staffel.length && anf > 0) rent = { ...rent, kalt: anf, total: anf + rent.nk };
+        }
+      }
+      return { kind: 'contract', ctype: type === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', room: unit, forId: ccfForValue(), renew: rn,
+        tenant: ccfReadTenant(f), coTenants: ccfReadCoTenants(f), start, end, rent, staffel, staffelTable: 'rnt_staffelmiete_history',
+        first_month: 'anteilig', last_month: 'anteilig',
+        docLabel: isGw ? 'Gewerbemietvertrag' : type === 'kurzzeit' ? 'Mietvertrag befristet' : 'Mietvertrag' };
+    } });
+}
 
 /* ── CONTRACT BODY: KURZZEIT ─────────────────────────────── */
 function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
@@ -3594,7 +3639,6 @@ document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
   if (_aptSbClient) {
     // Cascade deletes via FK on delete cascade
     await _aptSbClient.from('rentals_apartments').delete().eq('id', _aptPendingDeleteId);
-    if (typeof ccTplDeleteUnit === 'function') ccTplDeleteUnit('apartment', _aptPendingDeleteId);   // its contract templates go too
   }
 
   appApartments = appApartments.filter(a => a.id !== _aptPendingDeleteId);

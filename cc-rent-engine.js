@@ -174,66 +174,6 @@ async function ccRpSetRent(db, o) {
   return same ? ccRpUpdate(db, same.id, row) : ccRpInsert(db, row);
 }
 
-/* Contract generator → rent history (B7, 5.5). Only when the contract's tenant
-   name matches exactly one tenancy of that unit; otherwise nothing is written.
-   o = { app, db, records, unitKey, unitRef, tenantName, start, end, mode,
-         kalt, nk, total, first_month, last_month, contract_type }         */
-async function ccRpFromContract(o) {
-  try {
-    if (!o || !o.db || !o.start || CC_RP.missing) return null;
-    const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-    const want = norm(o.tenantName);
-    if (!want) return null;
-    const recs = (o.records || []).filter(r => String(r[o.unitKey]) === String(o.unitRef)
-      && norm([r.first_name, r.last_name].filter(Boolean).join(' ')) === want);
-    if (recs.length !== 1) {
-      if (typeof ccToast === 'function') ccToast(recs.length ? 'Mehrere Mieter mit diesem Namen – Miete nicht in die Historie übernommen' : 'Mieter noch nicht angelegt – Miete nicht in die Historie übernommen');
-      return null;
-    }
-    if (!CC_RP.loaded[o.app] && !CC_RP.loaded['*']) await ccRpLoad(o.db, o.app);
-    const rec = recs[0], start = ccRpIso(o.start), einzug = ccRpIso(rec.mietbeginn);
-    const mode = o.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';
-    // Only a real, final contract belongs in the history — a draft or test PDF does not (fix 3)
-    const steps = (o.staffel || []).map(x => ({ date: ccRpIso(x.datum || x.date), amount: ccRpNum(x.betrag ?? x.amount) })).filter(x => x.date && x.amount);
-    const nm = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
-    const kind = einzug && start > einzug ? 'renewal' : 'contract';
-    // Casa Castel: the final contract also sets the tenancy's contract type (shown in the question)
-    const ctLbl = o.app === 'casa' ? ({ mietvertrag: 'Mietvertrag', kurzzeit: 'Kurzzeit' })[o.contract_type] || '' : '';
-    const q = 'Miete ab ' + ccRpFmt(start) + (ctLbl ? ' (' + ctLbl + ')' : '') + (steps.length ? ' und ' + steps.length + (steps.length === 1 ? ' Staffelstufe' : ' Staffelstufen') : '') +
-              ' für ' + nm + ' in die Miethistorie übernehmen?\n\nNur bei einem endgültigen Vertrag – bei einem Entwurf „Abbrechen“.';
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm(q)) return null;
-    const saved = await ccRpSetRent(o.db, {
-      app: o.app, rec, validFrom: start, mode, kalt: o.kalt, nk: o.nk, pauschale: o.total,
-      kind, source: 'generator', legacyMode: o.legacyMode,
-      first_month: o.first_month || 'anteilig', last_month: o.last_month || 'anteilig',
-      contract_type: o.contract_type || null, contract_end: o.end || null,
-    });
-    // Casa Castel: the move-in contract fixes the tenancy's own type (a renewal switches it
-    // from its start date through the history entry saved above)
-    if (saved && o.app === 'casa' && kind === 'contract' && ctLbl && rec.contract_type !== o.contract_type) {
-      const { error: ctErr } = await o.db.from('tenant_records').update({ contract_type: o.contract_type }).eq('id', rec.id);
-      if (!ctErr) rec.contract_type = o.contract_type;
-      else console.warn('[rent periods] contract type:', ctErr.message);
-    }
-    // Staffel steps of the contract → this tenant's Staffel history (fix 1)
-    if (saved && steps.length && o.staffelTable) {
-      for (const st of steps) {
-        const { data: ex } = await o.db.from(o.staffelTable).select('*').eq(o.unitKey, o.unitRef).eq('effective_date', st.date);
-        if (ex && ex.length) {
-          let r = await o.db.from(o.staffelTable).update({ amount: st.amount, tenant_id: String(rec.id) }).eq('id', ex[0].id);
-          if (r.error && ccRpIsMissingColumn(r.error, 'tenant_id')) await o.db.from(o.staffelTable).update({ amount: st.amount }).eq('id', ex[0].id);
-        } else {
-          await ccRpInsertWithTenant(o.db, o.staffelTable, { [o.unitKey]: o.unitRef, effective_date: st.date, amount: st.amount, tenant_adjusted: false }, rec.id);
-        }
-      }
-    }
-    if (saved && typeof ccToast === 'function') ccToast('Miete ab ' + ccRpFmt(start) + (steps.length ? ' + ' + steps.length + ' Staffel' : '') + ' in die Miethistorie übernommen');
-    return saved;
-  } catch (e) {
-    if (!ccRpIsMissing(e)) console.warn('[rent periods] contract:', e && e.message || e);
-    return null;
-  }
-}
 
 /* History tables (Staffel, NK-Vorauszahlung): insert with the tenant link (B6).
    If the column doesn't exist yet (SQL not run), insert without it.          */
