@@ -1016,17 +1016,30 @@ function _tnParseDate(s) {
 ══════════════════════════════════════════════════════════════ */
 function _tnKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
 
+/* Kalt + NK on any day between from and to (the tenant's own rent history; old tenants: as entered) */
+function _tnHasKaltNKBetween(rec, from, to) {
+  const per = typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id) : [];
+  if (!per.length) return _tnLegacyMode(rec.room, rec) !== 'pauschal';
+  const first = ccRpAt(per, from);
+  const modes = (first ? [first] : [{ mode: _tnLegacyMode(rec.room, rec) }])
+    .concat(per.filter(p => ccRpIso(p.valid_from) > from && ccRpIso(p.valid_from) <= to));
+  return modes.some(p => p.mode !== 'pauschal');
+}
+function _tnNkDue(rec) { return rec && typeof ccNksDue === 'function' ? ccNksDue(rec, (f, t) => _tnHasKaltNKBetween(rec, f, t)) : []; }
+function _tnNkOpenLabel(rec) {
+  return typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _tnNK[rec.id], _tnNkDue(rec)) : 'NK open';
+}
 function _tnNkHasOpen(tid) {
   const rec = _tnRecords.find(r => r.id === tid);
   if (rec && _tnAllPauschal(rec)) return false;                                     // pauschal → no NK-Abrechnung
-  if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _tnNK[tid]);   // Settlements + old tracking
+  if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _tnNK[tid], rec ? _tnNkDue(rec) : []);   // Settlements + old tracking + due
   return (_tnNK[tid] || []).some(e => !e.paid);
 }
 
 /* Open items of a FORMER tenant as pills (NK with year · Kaution still to settle) — '' when nothing is open */
 function _tnFormerOpenPills(r) {
   const out = [];
-  if (_tnNkHasOpen(r.id)) out.push(`<span class="tnp tnp-amber">${esc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(r.id, _tnNK[r.id]) : 'NK open')}</span>`);
+  if (_tnNkHasOpen(r.id)) out.push(`<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(r))}</span>`);
   if (_tnKautionOpen(r.id)) {
     const held = _tnKautionKept(r.id);
     out.push(`<span class="tnp tnp-amber">${held > 0 ? 'Kaution ' + _tnFmtEUR(held) + ' to settle' : 'Kaution: mark settled'}</span>`);
@@ -1125,7 +1138,7 @@ function _tnCardPills(room, activeRec) {
     if (tnContractType(activeRec) === 'kurzzeit') todos.push(ccTnRenewalTodo(activeRec));   // only Kurzzeit is renewed
     if (tnContractType(activeRec) === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende)
       todos.push({ level: 'amber', text: 'Contract end missing' });
-    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(activeRec.id, _tnNK[activeRec.id]) : 'NK open' });   // Settlements + old tracking
+    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: _tnNkOpenLabel(activeRec) });   // Settlements + old tracking
     if (_tnIsKaltNK(activeRec, room.name) && typeof ccTnNkChangeTodo === 'function')
       todos.push(ccTnNkChangeTodo(_tnNKVoraus[room.name], activeRec));
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
@@ -1793,7 +1806,7 @@ function _tnNKHTML(rid, tid, ctx) {
   }
 
   // 3f · NK-Abrechnungen are made in Settlements — here read-only
-  if (typeof ccNksSectionHTML === 'function') return ccNksSectionHTML(tid, ctx, _tnNK[tid] || []);
+  if (typeof ccNksSectionHTML === 'function') return ccNksSectionHTML(tid, ctx, _tnNK[tid] || [], _tnNkDue(_tnRecords.find(r => r.id === tid)));
   const entries = (_tnNK[tid] || []).slice().sort((a,b) => b.period.localeCompare(a.period));
   const open    = entries.filter(e => !e.paid);
   const settled = entries.filter(e => e.paid);
@@ -2125,7 +2138,7 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
         <div class="tn-former-name">${esc(name)}</div>
         <div class="tn-former-period">${esc(period)}</div>
       </div>
-      <div class="tn-former-pills">${_tnNkHasOpen(rec.id) ? `<span class="tnp tnp-amber">${esc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _tnNK[rec.id]) : 'NK open')}</span>` : ''}${kPill}</div>
+      <div class="tn-former-pills">${_tnNkHasOpen(rec.id) ? `<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(rec))}</span>` : ''}${kPill}</div>
       ${canHide
         ? `<button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Archive this tenant">
              <i class="ti ti-eye-off" style="font-size:11px"></i></button>`

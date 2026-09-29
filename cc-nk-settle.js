@@ -9,7 +9,7 @@
    below, read-only, so nothing disappears.
    ───────────────────────────────────────────────────────────── */
 
-const CC_NKS = { rows: null, res: null, loading: null };
+const CC_NKS = { rows: null, res: null, loading: null, casaProp: null };
 
 function _ccNksDb() { return (typeof sbL !== 'undefined' && sbL) ? sbL : null; }
 function _ccNksEsc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -22,10 +22,12 @@ async function ccNksLoad() {
   CC_NKS.loading = Promise.all([
     db.from('ctrl_settlements').select('*').not('tenant_id', 'is', null),
     db.from('abr_results').select('*'),
-  ]).then(([a, b]) => {
+    db.from('ctrl_properties').select('*').eq('id', 7),                // Casa Castel: NK period start + "in portfolio since"
+  ]).then(([a, b, c]) => {
     CC_NKS.rows = a.error ? [] : (a.data || []);
     CC_NKS.res  = b.error ? [] : (b.data || []);
-    document.querySelectorAll('.cc-nks').forEach(el => { el.innerHTML = _ccNksInner(el.dataset.tid, el._legacy || []); });
+    CC_NKS.casaProp = c && !c.error && c.data && c.data[0] ? c.data[0] : {};
+    document.querySelectorAll('.cc-nks').forEach(el => { el.innerHTML = _ccNksInner(el.dataset.tid, el._legacy || [], el._due || []); });
   }).catch(() => { CC_NKS.rows = []; CC_NKS.res = []; })
     .finally(() => { CC_NKS.loading = null; });
   return CC_NKS.loading;
@@ -49,14 +51,66 @@ function _ccNksStatus(s) {
 
 /* Is an NK-Abrechnung still open for this tenant? The same data the section shows:
    Settlements (not done / not paid / not "nicht durchgeführt") + old tracking not paid. */
-function ccNksHasOpen(tid, legacy) {
+function ccNksHasOpen(tid, legacy, due) {
   const rows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant'));
-  if (rows.some(r => !['erledigt', 'bezahlt', 'nicht durchgeführt'].includes(r.status))) return true;
-  return (legacy || []).some(e => !e.paid);
+  if (rows.some(r => !_NK_DONE.includes(r.status))) return true;
+  if ((legacy || []).some(e => !e.paid)) return true;
+  return ccNksDueOpen(tid, legacy, due).length > 0;
+}
+
+/* ── DUE NK-Abrechnungen (Casa) — the same rules as Settlements ─────────────
+   A tenant owes an Abrechnung for every settlement period that has ENDED, whose
+   Frist (period end + 12 months) has not passed, and in which they paid
+   Kalt + NK on at least one day. Pauschal-only spans never count.
+   Done = a Settlements line "erledigt / bezahlt / nicht durchgeführt"
+   (or an old entry marked paid). Nothing entered yet = open.              */
+const _nkAdd = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const _NK_DONE = ['erledigt', 'bezahlt', 'nicht durchgeführt'];
+function _ccNksToday() { return typeof ccTodayISO === 'function' ? ccTodayISO() : new Date().toISOString().slice(0, 10); }
+function ccNksPeriods(prop) {
+  const p = prop || CC_NKS.casaProp || {}, today = _ccNksToday();
+  const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
+  const since = String(p.in_portfolio_since || '').slice(0, 10), ty = Number(today.slice(0, 4)), out = [];
+  for (let y = ty - 3; y <= ty; y++) {
+    let from = y + '-' + st; const to = _nkAdd((y + 1) + '-' + st, -1);
+    if (since && to < since) continue;
+    if (since && from < since) from = since;
+    const frist = _nkAdd((y + 2) + '-' + st, -1);
+    if (to < today && frist >= today) out.push({ from, to, frist, year: Number(to.slice(0, 4)) });
+  }
+  return out;
+}
+function _ccNksPerLabel(from, to) {
+  if (from.slice(5) === '01-01' && to.slice(5) === '12-31' && from.slice(0, 4) === to.slice(0, 4)) return from.slice(0, 4);
+  return from.slice(0, 4) + '/' + to.slice(2, 4);
+}
+/* hasKaltNK(from, to) → true when the tenant paid Kalt + NK on any day of that span */
+function ccNksDue(rec, hasKaltNK) {
+  const mb = String(rec && rec.mietbeginn || '').slice(0, 10);
+  if (!mb) return [];
+  const me = String(rec.mietende || '').slice(0, 10) || '9999-12-31';
+  return ccNksPeriods().map(P => {
+    const from = mb > P.from ? mb : P.from, to = me < P.to ? me : P.to;
+    if (from > to) return null;
+    if (typeof hasKaltNK === 'function' && !hasKaltNK(from, to)) return null;   // pauschal → no Abrechnung
+    return { ...P, spanFrom: from, spanTo: to, label: _ccNksPerLabel(P.from, P.to) };
+  }).filter(Boolean);
+}
+/* The due periods that are not done yet */
+function ccNksDueOpen(tid, legacy, due) {
+  const rows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant'));
+  return (due || []).filter(d => {
+    const m = rows.filter(r => Number(r.covers_year) === d.year || (String(r.period_from).slice(0, 10) >= d.from && String(r.period_from).slice(0, 10) <= d.to));
+    if (m.length) return m.some(r => !_NK_DONE.includes(r.status));
+    const old = (legacy || []).filter(e => String(e.period || '').includes(String(d.year)));
+    if (old.length) return old.some(e => !e.paid);
+    return true;
+  });
 }
 
 /* Which NK-Abrechnung is open, for the card pill: "NK 2025 open" (oldest open first) */
-function ccNksOpenLabel(tid, legacy) {
+function ccNksOpenLabel(tid, legacy, due) {
+  const dOpen = ccNksDueOpen(tid, legacy, due).sort((a, b) => a.from.localeCompare(b.from));
   const rows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant')
     && !['erledigt', 'bezahlt', 'nicht durchgeführt'].includes(r.status))
     .sort((a, b) => String(a.period_from).localeCompare(String(b.period_from)));
@@ -65,6 +119,7 @@ function ccNksOpenLabel(tid, legacy) {
     const o = (legacy || []).filter(e => !e.paid).sort((a, b) => String(a.period || '').localeCompare(String(b.period || '')))[0];
     y = o ? String(o.period || '').replace(/^.*?(\d{4}).*$/, '$1') : '';
   }
+  if (dOpen.length && (!y || dOpen[0].label.slice(0, 4) < String(y))) y = dOpen[0].label;
   return y ? 'NK ' + y + ' open' : 'NK open';
 }
 
@@ -102,18 +157,18 @@ async function ccNksOldAction(id, tid) {
 }
 
 /* legacy = the tenant's entries from the old tracking (tap one to mark it done or delete it) */
-function ccNksSectionHTML(tid, ctx, legacy) {
+function ccNksSectionHTML(tid, ctx, legacy, due) {
   if (CC_NKS.rows === null && !CC_NKS.loading) setTimeout(ccNksLoad, 0);
   const sec = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
   const id = 'nks-' + String(tid).replace(/[^A-Za-z0-9]/g, '').slice(0, 16) + (ctx === 'modal' ? '-m' : '');
-  setTimeout(() => { const el = document.getElementById(id); if (el) el._legacy = legacy || []; }, 0);
+  setTimeout(() => { const el = document.getElementById(id); if (el) { el._legacy = legacy || []; el._due = due || []; } }, 0);
   return `<div class="${sec} cc-nks-wrap"><div class="tn-sec-body" style="padding-top:10px;padding-bottom:12px">
     <div class="cc-nks-head"><span class="tn-sec-lbl">NK-Abrechnungen</span></div>
-    <div class="cc-nks" id="${id}" data-tid="${_ccNksEsc(tid)}">${_ccNksInner(tid, legacy || [])}</div>
+    <div class="cc-nks" id="${id}" data-tid="${_ccNksEsc(tid)}">${_ccNksInner(tid, legacy || [], due || [])}</div>
     <div class="cc-sec-foot"><a class="cc-foot-btn" href="settlements.html"><i class="ti ti-external-link"></i> Open in Settlements</a></div>
   </div></div>`;
 }
-function _ccNksInner(tid, legacy) {
+function _ccNksInner(tid, legacy, due) {
   if (CC_NKS.rows === null) return '<p class="tn-empty">Loading…</p>';
   const rows = CC_NKS.rows.filter(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant'))
     .sort((a, b) => String(b.period_from).localeCompare(String(a.period_from)));
@@ -130,6 +185,13 @@ function _ccNksInner(tid, legacy) {
       <span class="cc-nks-res">${e.amount ? _ccNksEur(e.amount) : ''}</span>
       <span class="tnp ${e.paid ? 'tnp-green' : e.sent ? 'tnp-blue' : 'tnp-amber'}">${e.paid ? 'done' : e.sent ? 'sent' : 'open'}</span>
       <i class="ti ti-chevron-right" style="font-size:13px;color:var(--cc-stone)" aria-hidden="true"></i></button>`).join('');
-  return (rows.length ? rows.map(line).join('') : '<p class="tn-empty">No Abrechnung in Settlements yet.</p>') +
+  // due, but nothing entered in Settlements yet
+  const pending = ccNksDueOpen(tid, legacy, due).filter(d => !rows.some(r => Number(r.covers_year) === d.year
+    || (String(r.period_from).slice(0, 10) >= d.from && String(r.period_from).slice(0, 10) <= d.to)))
+    .map(d => `<div class="cc-nks-row">
+      <span class="cc-nks-per">${_ccNksD(d.spanFrom)} – ${_ccNksD(d.spanTo)}</span>
+      <span class="cc-nks-res">due by ${_ccNksD(d.frist)}</span>
+      <span class="tnp tnp-amber">open</span></div>`).join('');
+  return ((rows.length || pending) ? pending + rows.map(line).join('') : '<p class="tn-empty">No Abrechnung due.</p>') +
     (old ? `<div class="cc-nks-old-lbl">Earlier (old tracking)</div>${old}` : '');
 }
