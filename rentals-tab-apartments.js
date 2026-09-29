@@ -2064,6 +2064,7 @@ async function _aptReopenContractDraft(d) {
       });
     }
 
+    window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
     await _aptOpenContract(d.type, d.aptId);
     await new Promise(r => setTimeout(r, 80));   // let setTimeout(0) wiring inside _aptOpenContract run
 
@@ -2204,6 +2205,10 @@ async function _aptOpenContract(type, aptId, renew) {
 
   const aptInfo = [apt.zimmer_type, apt.heizungsart, apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : ''].filter(Boolean).join(' · ');
   subLbl.textContent = aptInfo;
+  // the sheet appears at once; the form follows as soon as the tenant data is there
+  titleLbl.textContent = apt.name; footer.innerHTML = '';
+  body.innerHTML = '<p class="ccf-hint" style="padding:24px 0;text-align:center">Loading…</p>';
+  document.getElementById('aptContractOverlay').classList.add('open');
 
   if (type === 'kurzzeit') {
     typeLbl.textContent  = 'Kurzzeitmiete';

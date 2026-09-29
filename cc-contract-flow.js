@@ -348,7 +348,9 @@ function ccfMieteRefresh() {
   if (l) l.textContent = m.mode === 'pauschal' ? 'Pauschalmiete' : 'Warmmiete';
   if (w) w.textContent = ccfEur(m.total);
 }
+let _ccfMieteOnChange = null;
 function ccfMieteInit(onChange) {
+  _ccfMieteOnChange = onChange || null;
   const seg = document.getElementById('rc-mode');
   seg?.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
     seg.dataset.mode = b.dataset.v; ccfMieteRefresh(); if (onChange) onChange();
@@ -548,17 +550,46 @@ function ccfFormGet(key) {
     return d;
   } catch (e) { return null; }
 }
+/* A saved form never breaks the generator: a tenancy that no longer exists and an
+   empty rent are left out (the current values stay); derived switches are not replayed */
+function _ccfFormClean(d) {
+  if (!d) return null;
+  d = JSON.parse(JSON.stringify(d));
+  const f = d.fields || {}, m = d.modes || {};
+  const sel = document.getElementById('rc-for');
+  if ('rc-for' in f && sel && ![...sel.options].some(o => o.value === f['rc-for'])) delete f['rc-for'];
+  if ('rc-kalt' in f || 'rc-nk' in f) {
+    if ((ccfNum(f['rc-kalt']) || 0) + (ccfNum(f['rc-nk']) || 0) === 0) { delete f['rc-kalt']; delete f['rc-nk']; delete m['rc-mode']; }
+  }
+  delete m['cm-nk-btn'];                                  // follows the Miete switch by itself
+  return d;
+}
+function _ccfRevealCoTenants() {
+  const f = _ccfFor && _ccfFor.fields; if (!f) return;
+  [2, 3].forEach(n => {
+    const b = f['t' + n]; if (!b || !b.wrap) return;
+    const w = document.getElementById(b.wrap), nm = document.getElementById(b.name);
+    if (w && nm && nm.value.trim()) w.style.display = '';
+  });
+}
 function ccfFormClear(key) { try { if (key) localStorage.removeItem(key); } catch (e) {} }
 async function ccfFormAttach(bodyId, key) {
   const b = document.getElementById(bodyId); if (!b) return;
   b._ccfFormKey = key;
   b._ccfFormRestoring = true;
-  const saved = ccfFormGet(key);
+  // Reopened by "Continue" / after the PDF viewer: that path refills the form itself — one source only
+  const skip = !!window._ccfSkipFormRestoreOnce; window._ccfSkipFormRestoreOnce = false;
+  const saved = skip ? null : _ccfFormClean(ccfFormGet(key));
   if (saved && typeof ccDraftApply === 'function') {
-    await new Promise(r => setTimeout(r, 150));          // the generator's own wiring first (dates, renewal)
-    if (b._ccfFormKey !== key) return;                   // another generator was opened meanwhile
+    b.style.visibility = 'hidden';                       // no visible jump: the form appears once, already filled
+    await new Promise(r => setTimeout(r, 40));           // the generator's own wiring first (dates, renewal)
+    if (b._ccfFormKey !== key) { b.style.visibility = ''; return; }   // another generator was opened meanwhile
     try { await ccDraftApply(b, saved); } catch (e) { console.warn('[form] restore', e); }
     ccfMieteRefresh();
+    _ccfRevealCoTenants();
+    const g = document.getElementById('rc-mode');        // pricing mode → Kaution rule / hidden Kurzzeit switch
+    if (g && _ccfMieteOnChange) _ccfMieteOnChange();
+    b.style.visibility = '';
     const w = document.getElementById('ccf-for-hint'); if (w && saved.ts) w.textContent += ' · continued from ' + ccfFmt(new Date(saved.ts).toISOString().slice(0, 10));
   }
   b._ccfFormRestoring = false;

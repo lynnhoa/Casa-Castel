@@ -2346,7 +2346,17 @@ async function _openContract(type, roomId, renew) {
   // Tenant names come from the preloaded tenant data (started when the Rooms tab
   // loads) — no full reload here, so the generator opens instantly. Only if you
   // tap before the preload has ever finished do we wait for it once.
-  if (typeof tnTenantsLoaded === 'function' && !tnTenantsLoaded()) await tnWarmTenants();
+  if (typeof tnTenantsLoaded === 'function' && !tnTenantsLoaded()) {
+    // First open after starting the app: the sheet appears at once, the form follows when the tenants are loaded
+    const ov = document.getElementById('contractOverlay');
+    document.getElementById('contractTitleLbl').textContent = room.name;
+    document.getElementById('contractFooter').innerHTML = '';
+    const b1 = document.getElementById('contractBody');
+    if (b1) b1.innerHTML = '<p class="ccf-hint" style="padding:24px 0;text-align:center">Loading tenants…</p>';
+    ov?.classList.add('open');
+    await tnWarmTenants();
+    if (_contractRoomId !== roomId || _contractType !== type) return;   // another generator was opened meanwhile
+  }
 
   const typeLbl  = document.getElementById('contractTypeLbl');
   const titleLbl = document.getElementById('contractTitleLbl');
@@ -2452,8 +2462,10 @@ async function _roomReopenContractDraft(d) {
         if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
       });
     }
+    window._ccfSkipFormRestoreOnce = true;          // this path fills the form — the 30-day memory stays out
     await _openContract(d.meta.type, d.meta.roomId, d.meta.renew || undefined);
-    await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
+    await new Promise(r => setTimeout(r, 60));    // let the form's own wiring run first
+    if (d.modes) delete d.modes['cm-nk-btn'];     // follows the Miete switch by itself
     await ccDraftApply(document.getElementById('contractBody'), d);
     if (typeof ccfMieteRefresh === 'function') ccfMieteRefresh();
   } catch (e) { console.warn('[rooms draft] restore skipped:', e); }

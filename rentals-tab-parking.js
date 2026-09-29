@@ -892,6 +892,10 @@ async function _pkOpenContract(type, pkId) {
   document.getElementById('pkContractTypeLbl').textContent  = type === 'mietvertrag' ? 'Mietvertrag' : 'Übergabeprotokoll';
   document.getElementById('pkContractTitleLbl').textContent = spot.name;
   document.getElementById('pkContractSubLbl').textContent   = spot.parking_type || '';
+  // the sheet appears at once; the form follows as soon as the tenant data is there
+  document.getElementById('pkContractFooter').innerHTML = '';
+  document.getElementById('pkContractBody').innerHTML = '<p class="ccf-hint" style="padding:24px 0;text-align:center">Loading…</p>';
+  document.getElementById('pkContractOverlay').classList.add('open');
 
   if (type === 'mietvertrag') {
     const _pkMvProfile = await _pkResolveTenantProfile(pkId);
@@ -1027,6 +1031,7 @@ async function _pkReopenContractDraft(d) {
         if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
       });
     }
+    window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
     await _pkOpenContract(d.meta.type, d.meta.pkId);
     await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
     await ccDraftApply(document.getElementById('pkContractBody'), d);
