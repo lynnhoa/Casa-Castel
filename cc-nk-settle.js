@@ -45,7 +45,7 @@ function _ccNksResult(r) {
 function _ccNksStatus(s) {
   if (s === 'erledigt' || s === 'bezahlt') return ['tnp-green', 'done'];
   if (s === 'verschickt') return ['tnp-blue', 'sent'];
-  if (s === 'nicht durchgeführt') return ['tnp-gray', 'not done'];
+  if (s === 'nicht durchgeführt') return ['tnp-gray', 'skipped'];
   return ['tnp-amber', 'open'];
 }
 
@@ -156,6 +156,100 @@ async function ccNksOldAction(id, tid) {
   if (typeof _rntRender === 'function') _rntRender();
 }
 
+/* ── SKIP an NK-Abrechnung ("I'm not doing this one") ─────────────────────
+   Saved exactly like Settlements does: a ctrl_settlements line with status
+   "nicht durchgeführt". Pill and count disappear; the line stays, greyed,
+   and can be reopened. Casa only: skip one year for every Casa tenant.      */
+const _NK_CASA_PROP = 7;
+function _ccNksName(tid) {
+  const r = typeof _tnRecords !== 'undefined' ? _tnRecords.find(x => String(x.id) === String(tid)) : null;
+  return r ? ([r.first_name, r.last_name].filter(Boolean).join(' ') || r.room || '') : '';
+}
+function _ccNksRefresh() {
+  document.querySelectorAll('.cc-nks').forEach(el => { el.innerHTML = _ccNksInner(el.dataset.tid, el._legacy || [], el._due || []); });
+  if (typeof _tnRender === 'function') _tnRender();
+  if (typeof _rntRender === 'function') _rntRender();
+}
+async function _ccNksSetStatus(row, status) {
+  const db = _ccNksDb(); if (!db) return false;
+  const { data, error } = await db.from('ctrl_settlements').update({ status }).eq('id', row.id).select().single();
+  if (error) { if (typeof ccSaveFailed === 'function') ccSaveFailed(error, 'NK-Abrechnung'); return false; }
+  Object.assign(row, data || { status });
+  return true;
+}
+async function _ccNksInsertSkip(tid, d) {
+  const db = _ccNksDb(); if (!db) return false;
+  const row = { property_id: _NK_CASA_PROP, tenant_id: tid, app: 'casa', kind: 'nk_tenant', covers_year: d.year,
+                period_from: d.spanFrom, period_to: d.spanTo, note: null, status: 'nicht durchgeführt' };
+  const { data, error } = await db.from('ctrl_settlements').insert(row).select().single();
+  if (error) { if (typeof ccSaveFailed === 'function') ccSaveFailed(error, 'NK-Abrechnung'); return false; }
+  CC_NKS.rows = (CC_NKS.rows || []).concat([data || row]);
+  return true;
+}
+/* Every Casa tenant with this year still open → [{ tid, name, d (due item) | row (stored open line) }] */
+function _ccNksCasaOpenForYear(year) {
+  if (typeof _tnRecords === 'undefined' || typeof _tnNkDue !== 'function') return [];
+  const out = [];
+  _tnRecords.filter(r => r.status === 'active' || r.status === 'former').forEach(r => {
+    const legacy = (typeof _tnNK !== 'undefined' && _tnNK[r.id]) || [];
+    const d = ccNksDueOpen(r.id, legacy, _tnNkDue(r)).find(x => x.year === year);
+    if (!d) return;
+    const row = (CC_NKS.rows || []).find(x => String(x.tenant_id) === String(r.id) && (!x.kind || x.kind === 'nk_tenant')
+      && (Number(x.covers_year) === year) && (x.status === 'offen' || x.status === 'erstellt' || !x.status));
+    out.push({ tid: r.id, name: [r.first_name, r.last_name].filter(Boolean).join(' ') + ' (' + r.room + ')', d, row });
+  });
+  return out;
+}
+async function _ccNksSkipAll(year, label) {
+  const list = _ccNksCasaOpenForYear(year);
+  if (!list.length) return;
+  const ok = await ccConfirm('Skip NK ' + _ccNksEsc(label) + ' for all?',
+    'Marks it "nicht durchgeführt" for ' + list.length + ' tenant' + (list.length === 1 ? '' : 's') + ':<br><strong>' +
+    list.map(x => _ccNksEsc(x.name)).join('<br>') + '</strong><br>You can reopen each one later.', 'Skip all', true);
+  if (!ok) return;
+  for (const x of list) { if (x.row) await _ccNksSetStatus(x.row, 'nicht durchgeführt'); else await _ccNksInsertSkip(x.tid, x.d); }
+  if (typeof ccToast === 'function') ccToast('NK ' + label + ' skipped for ' + list.length);
+  _ccNksRefresh();
+}
+async function _ccNksAskSkip(title, body, casaYear, label) {
+  if (typeof ccDialog !== 'function') return confirm(title + '\n\nMark as "nicht durchgeführt"?') ? 'one' : null;
+  const others = casaYear ? _ccNksCasaOpenForYear(casaYear).length : 0;
+  return ccDialog({ icon: 'ti-receipt', title, body,
+    actions: [{ label: 'Cancel', value: null },
+              ...(others > 1 ? [{ label: 'Skip all ' + label, value: 'all' }] : []),
+              { label: 'Skip', value: 'one', primary: true }] });
+}
+/* A due year with nothing entered yet (Casa) */
+async function ccNksDueAction(tid, year) {
+  const rec = typeof _tnRecords !== 'undefined' ? _tnRecords.find(r => String(r.id) === String(tid)) : null;
+  const d = rec && typeof _tnNkDue === 'function' ? ccNksDueOpen(tid, (typeof _tnNK !== 'undefined' && _tnNK[tid]) || [], _tnNkDue(rec)).find(x => x.year === year) : null;
+  if (!d) return;
+  const v = await _ccNksAskSkip('NK ' + _ccNksEsc(d.label) + ' · ' + _ccNksEsc(_ccNksName(tid)),
+    _ccNksD(d.spanFrom) + ' – ' + _ccNksD(d.spanTo) + ' · due by ' + _ccNksD(d.frist) +
+    '<br>Not doing this one? It is saved as "nicht durchgeführt", the same as in Settlements. You can reopen it any time.', year, d.label);
+  if (v === 'all') return _ccNksSkipAll(year, d.label);
+  if (v === 'one' && await _ccNksInsertSkip(tid, d)) _ccNksRefresh();
+}
+/* A line from Settlements: open → skip · skipped → reopen */
+async function ccNksRowAction(tid, id) {
+  const row = (CC_NKS.rows || []).find(r => String(r.id) === String(id)); if (!row) return;
+  const per = _ccNksD(row.period_from) + ' – ' + _ccNksD(row.period_to);
+  if (row.status === 'nicht durchgeführt') {
+    const ok = typeof ccConfirm === 'function'
+      ? await ccConfirm('Reopen this NK-Abrechnung?', per + ' · ' + _ccNksEsc(_ccNksName(tid)) + ' is due again.', 'Reopen')
+      : confirm('Reopen NK ' + per + '?');
+    if (ok && await _ccNksSetStatus(row, 'offen')) _ccNksRefresh();
+    return;
+  }
+  const casa = Number(row.property_id) === _NK_CASA_PROP;
+  const year = Number(row.covers_year) || Number(String(row.period_to || '').slice(0, 4));
+  const label = String(year);
+  const v = await _ccNksAskSkip('NK ' + label + ' · ' + _ccNksEsc(_ccNksName(tid)),
+    per + '<br>Not doing this one? It is saved as "nicht durchgeführt", the same as in Settlements. You can reopen it any time.', casa ? year : null, label);
+  if (v === 'all') return _ccNksSkipAll(year, label);
+  if (v === 'one' && await _ccNksSetStatus(row, 'nicht durchgeführt')) _ccNksRefresh();
+}
+
 /* legacy = the tenant's entries from the old tracking (tap one to mark it done or delete it) */
 function ccNksSectionHTML(tid, ctx, legacy, due) {
   if (CC_NKS.rows === null && !CC_NKS.loading) setTimeout(ccNksLoad, 0);
@@ -174,10 +268,13 @@ function _ccNksInner(tid, legacy, due) {
     .sort((a, b) => String(b.period_from).localeCompare(String(a.period_from)));
   const line = r => {
     const [cls, txt] = _ccNksStatus(r.status), res = _ccNksResult(r);
-    return `<div class="cc-nks-row">
-      <span class="cc-nks-per">${_ccNksD(r.period_from)} – ${_ccNksD(r.period_to)}</span>
+    const tap = r.status === 'offen' || r.status === 'erstellt' || !r.status || r.status === 'nicht durchgeführt';
+    const inner = `<span class="cc-nks-per">${_ccNksD(r.period_from)} – ${_ccNksD(r.period_to)}</span>
       <span class="cc-nks-res">${_ccNksEsc(res)}</span>
-      <span class="tnp ${cls}">${txt}</span></div>`;
+      <span class="tnp ${cls}">${txt}</span>`;
+    return tap
+      ? `<button type="button" class="cc-nks-row" onclick="ccNksRowAction('${_ccNksEsc(String(tid))}','${_ccNksEsc(String(r.id))}')">${inner}<i class="ti ti-chevron-right" style="font-size:13px;color:var(--cc-stone)" aria-hidden="true"></i></button>`
+      : `<div class="cc-nks-row">${inner}</div>`;
   };
   const old = (legacy || []).slice().sort((a, b) => String(b.period || '').localeCompare(String(a.period || ''))).map(e => `
     <button type="button" class="cc-nks-row is-old" onclick="ccNksOldAction('${_ccNksEsc(String(e.id))}','${_ccNksEsc(String(tid))}')">
@@ -188,10 +285,11 @@ function _ccNksInner(tid, legacy, due) {
   // due, but nothing entered in Settlements yet
   const pending = ccNksDueOpen(tid, legacy, due).filter(d => !rows.some(r => Number(r.covers_year) === d.year
     || (String(r.period_from).slice(0, 10) >= d.from && String(r.period_from).slice(0, 10) <= d.to)))
-    .map(d => `<div class="cc-nks-row">
+    .map(d => `<button type="button" class="cc-nks-row" onclick="ccNksDueAction('${_ccNksEsc(String(tid))}',${d.year})">
       <span class="cc-nks-per">${_ccNksD(d.spanFrom)} – ${_ccNksD(d.spanTo)}</span>
       <span class="cc-nks-res">due by ${_ccNksD(d.frist)}</span>
-      <span class="tnp tnp-amber">open</span></div>`).join('');
+      <span class="tnp tnp-amber">open</span>
+      <i class="ti ti-chevron-right" style="font-size:13px;color:var(--cc-stone)" aria-hidden="true"></i></button>`).join('');
   return ((rows.length || pending) ? pending + rows.map(line).join('') : '<p class="tn-empty">No Abrechnung due.</p>') +
     (old ? `<div class="cc-nks-old-lbl">Earlier (old tracking)</div>${old}` : '');
 }
