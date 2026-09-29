@@ -2352,16 +2352,24 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .cc-spacer { flex: 1; }
 .cc-note { font-size: 10px; color: var(--cc-taupe); }
 
-.cc-btn {
-  width: 36px; height: 36px; flex-shrink: 0; padding: 0;
+/* Round icon buttons of the chat composer (+ and camera) — scoped, so the
+   normal .cc-btn buttons (Enter, Save new password, Post to app) keep their look */
+.cc-btn.cc-plus, .cc-btn.cc-cam {
+  width: 36px; height: 36px; min-height: 0; flex-shrink: 0; padding: 0;
   display: flex; align-items: center; justify-content: center;
   background: var(--cc-bg); color: var(--cc-taupe);
   border: 0.5px solid var(--cc-rule); border-radius: 50%;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
   transition: color 0.15s, border-color 0.15s;
 }
-.cc-btn:hover { color: var(--cc-charcoal); border-color: var(--cc-stone); }
-.cc-btn:active { opacity: 0.7; }
+.cc-btn.cc-plus:hover, .cc-btn.cc-cam:hover { color: var(--cc-charcoal); border-color: var(--cc-stone); }
+.cc-btn.cc-plus:active, .cc-btn.cc-cam:active { opacity: 0.7; }
+
+/* Tenant app: login + change password — full-width, easy to tap */
+#tenantLoginBtn, #changePwSubmit {
+  min-height: 48px; margin-top: 6px; border-radius: 12px;
+  font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none;
+}
 .cc-plus[aria-expanded="true"] { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
 
 .cc-send {

@@ -179,6 +179,10 @@ document.getElementById('tab-tenants').innerHTML = `
   background:#FAEEDA; border:.5px solid #EF9F27; border-radius:8px; font-size:12px; line-height:1.4; color:#633806; }
 .tn-pw-need span { flex:1; min-width:150px; }
 .tn-pw-need .tn-btn { background:var(--cc-white); }
+.tn-pw-test { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; padding:9px 11px;
+  background:var(--cc-bg); border:var(--cc-border); border-radius:8px; font-size:12px; line-height:1.4; color:var(--cc-charcoal); }
+.tn-pw-test i { color:var(--cc-taupe); }
+.tn-pw-test span { flex:1; min-width:150px; }
 
 /* ── FIELD GRID ── */
 .tn-fg { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
@@ -998,6 +1002,22 @@ function _tnNeedsPw(rec) {
   const at = _tnPwAt[rec.room];
   return !at || String(at).slice(0, 10) < inAt;
 }
+/* Empty room (T2): a password to log into the tenant app yourself and test.
+   The next tenant gets their own (amber reminder from move-in day) — then this one stops working. */
+function _tnEmptyRoomPwHTML(room) {
+  if (!_tnPwLoaded) return '';
+  const at = _tnPwAt[room];
+  const r = esc(room);
+  return `<div class="tn-pw-test"><i class="ti ti-key"></i>
+    <span>Tenant app: ${at ? 'password set ' + _tnFmtDate(String(at).slice(0, 10)) : 'no password'}</span>
+    <button class="tn-btn tn-btn-sm" onclick="_tnSetTestPw('${r}')">${at ? 'New password' : 'Set password'}</button></div>`;
+}
+async function _tnSetTestPw(room) {
+  if (!sbL) { alert('No database connection.'); return; }
+  if (!confirm(`Set a tenant-app password for ${room}? Use it to log in and test. When a tenant moves in, give them a new one.`)) return;
+  const pw = await ccSetNewRoomPassword(room, 'Tenant-app password');
+  if (pw) { _tnPwAt[room] = new Date().toISOString(); _tnRender(); }
+}
 async function _tnGivePw(room, name) {
   if (!sbL) { alert('No database connection.'); return; }
   if (!confirm(`Give ${name || 'the tenant'} a tenant-app password for ${room}? A previous password stops working.`)) return;
@@ -1480,6 +1500,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
 <div class="tn-sec" id="psec-${rid}">
   <div class="tn-sec-body" style="padding-top:10px">
     <div style="margin-bottom:8px"><span class="tn-sec-lbl">Tenant</span></div>
+    ${!rec ? _tnEmptyRoomPwHTML(room.name) : ''}
     ${readView}
     ${editView}
     ${rec && _tnNeedsPw(rec) ? `<div class="tn-pw-need"><i class="ti ti-key"></i>
