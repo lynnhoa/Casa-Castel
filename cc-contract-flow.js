@@ -202,13 +202,25 @@ function ccfRoleText(t) {
   return 'former tenant' + (t.rec.mietende ? ' · moved out ' + ccfFmt(t.rec.mietende) : '');
 }
 function ccfTenancy(room, id) { return ccfRoomTenancies(room).find(t => String(t.rec.id) === String(id)) || null; }
-function ccfMatchName(room, name) {
+/* Who can be picked in "For": current + next tenant. Former tenants are done —
+   only Übergabe Auszug also offers the one who moved out last (it is often
+   written on or after the last day, when the tenancy already shows as former). */
+function ccfChoices(room, mode, occasion) {
+  const ts = ccfRoomTenancies(room);
+  const live = ts.filter(t => t.role !== 'former');
+  if (mode === 'ueberg' && occasion === 'auszug') {
+    const last = ts.find(t => t.role === 'former');
+    if (last) live.push(last);
+  }
+  return live;
+}
+function ccfMatchName(room, name, mode, occasion) {
   const want = ccfNorm(name); if (!want) return null;
-  const hit = ccfRoomTenancies(room).find(t => ccfNorm(ccfName(t.rec)) === want);
+  const hit = ccfChoices(room, mode, occasion).find(t => ccfNorm(ccfName(t.rec)) === want);
   return hit ? hit.rec : null;
 }
-function ccfForOptions(room, mode, selected) {
-  const ts = ccfRoomTenancies(room);
+function ccfForOptions(room, mode, selected, occasion) {
+  const ts = ccfChoices(room, mode, occasion);
   let html = mode === 'contract' ? `<option value="new"${selected === 'new' ? ' selected' : ''}>New tenancy</option>` : '';
   if (mode === 'ueberg' && !ts.length) html += '<option value="">No tenant on this room yet</option>';
   html += ts.map(t => {
@@ -224,7 +236,7 @@ function ccfForOptions(room, mode, selected) {
 let _ccfFor = null;
 function ccfForDefault(o) {
   if (o.renew && o.renew.tid) return String(o.renew.tid);
-  const ts = ccfRoomTenancies(o.room);
+  const ts = ccfChoices(o.room, o.mode, o.occasion);
   if (o.mode === 'contract') { const nx = ts.find(t => t.role === 'next'); return nx ? String(nx.rec.id) : 'new'; }
   const pick = o.occasion === 'einzug'
     ? (ts.find(t => t.role === 'next') || ts.find(t => t.role === 'current'))
@@ -244,7 +256,7 @@ function ccfForHTML(o) {
   }
   return `<div class="ccf-for" id="ccf-for-box">
     <div class="ccf-for-row"><label class="ccf-for-lbl" for="rc-for">For</label>
-      <select id="rc-for" class="ccf-for-sel">${ccfForOptions(o.room, o.mode, sel)}</select></div>
+      <select id="rc-for" class="ccf-for-sel">${ccfForOptions(o.room, o.mode, sel, o.occasion)}</select></div>
     <div class="ccf-for-hint" id="ccf-for-hint"></div>
   </div>`;
 }
@@ -266,7 +278,7 @@ function ccfForAutoMatch() {
   const o = _ccfFor, sel = document.getElementById('rc-for');
   if (!o || !sel || sel.disabled) return;
   const name = document.getElementById(o.fields.name)?.value || '';
-  const rec = ccfMatchName(o.room, name);
+  const rec = ccfMatchName(o.room, name, o.mode, o.occasion);
   if (rec && sel.value !== String(rec.id)) { sel.value = String(rec.id); o.auto = true; ccfForApply(sel.value, false); }
   else if (!rec && o.auto && o.mode === 'contract') { sel.value = 'new'; o.auto = false; ccfForApply('new', false); }
 }
@@ -686,7 +698,7 @@ function _ccfSummaryRender() {
   const e = ccfEsc;
   const locked = !!Object.keys(A.done).length || !!A.blob || !!(p.renew && p.renew.tid);
   const forSel = locked ? '' : `<label class="ccf-change"><span>Change</span>
-      <select id="ccf-sum-for" aria-label="Tenancy">${ccfForOptions(p.room, p.kind === 'ueberg' ? 'ueberg' : 'contract', p.forId || 'new')}</select></label>`;
+      <select id="ccf-sum-for" aria-label="Tenancy">${ccfForOptions(p.room, p.kind === 'ueberg' ? 'ueberg' : 'contract', p.forId || 'new', p.occasion)}</select></label>`;
   let body = '';
   if (pl.kind === 'contract') {
     const t = p.tenant || {};
