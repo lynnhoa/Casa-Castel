@@ -639,6 +639,20 @@ function _tnKautionSollInfo(rec) {
   const ctype = _tnBaseContractType(rec) || _tnRoomContractType(rec.room);   // the first contract of this tenancy
   const p = _tnRoomPricing(rec.room, ctype);
   if (p.kaution_override && p.kaution_fixed != null && p.kaution_fixed !== '') return { amount: Number(p.kaution_fixed), text: 'Individuell \u00b7 Karte' };
+  { // the tenant's own rent at move-in (their first contract) — today's room price only if no rent is known
+    const own = _tnContracts(rec)[0];
+    const a = own && own.amt;
+    if (a && a.total > 0 && typeof ccKaution === 'function') {
+      const kz = ctype === 'kurzzeit', pa = a.mode === 'pauschal';
+      const amount = ccKaution({ contract: kz ? 'kurzzeit' : 'mietvertrag', mode: pa ? 'pauschal' : 'kalt_nk',
+        kalt: pa ? a.total : a.kalt, nk: pa ? 0 : a.nk, start: rec.mietbeginn, end: rec.mietende }).amount;
+      if (amount != null) {
+        const rule = typeof ccKautionRuleText === 'function'
+          ? ccKautionRuleText(kz ? 'kurzzeit' : 'mietvertrag', pa ? 'pauschal' : 'kalt_nk', rec.mietbeginn, rec.mietende) : '';
+        return { amount, text: 'Standard' + (rule ? ' \u00b7 ' + rule : '') + ' \u00b7 own rent' };
+      }
+    }
+  }
   const amount = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende, ctype);
   if (amount == null) return null;
   const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === rec.room) : null;
@@ -681,6 +695,27 @@ function _tnFreezeRent() {
     rec.contract_type = ct;
     ccQueueWrite('tn-' + rec.id, () => sbL.from('tenant_records').update({ contract_type: ct }).eq('id', rec.id))
       .then(({ error }) => { if (error) { rec.contract_type = null; _tnRentFilling.delete(rec.id); console.warn('[tenants] contract type:', error.message); } });
+  });
+}
+
+/* Gap 2: a tenancy whose rent has no history entry yet (typed on the tenant before rent history existed)
+   gets ONE entry at its move-in with what the card shows today (rent + Pauschal / Kalt + NK). From then
+   on the room's pricing can never change it again. Current and former tenants. Runs once per load. */
+const _tnModeLocking = new Set();
+function _tnLockRentMode() {
+  if (!sbL || typeof ccRpSetRent !== 'function' || typeof CC_RP === 'undefined' || CC_RP.missing || !CC_RP.loaded.casa) return;
+  _tnRecords.forEach(rec => {
+    if (!(rec.status === 'active' || rec.status === 'former') || _tnModeLocking.has(rec.id)) return;
+    if (!rec.mietbeginn || (rec.kaltmiete == null && rec.nebenkosten == null)) return;   // no rent typed → nothing to lock
+    if (ccRpFor('casa', rec.id).length) return;                                          // already has its own entry
+    const mode = _tnLegacyMode(rec.room, rec);
+    const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
+    _tnModeLocking.add(rec.id);
+    ccRpSetRent(sbL, { app: 'casa', rec, validFrom: _ccIso(rec.mietbeginn), mode,
+      kalt: mode === 'pauschal' ? k + n : k, nk: mode === 'pauschal' ? null : n, pauschale: k + n,
+      contract_type: tnContractType(rec) || undefined, kind: 'migrated', source: 'migration',
+      note: 'Rent mode locked from the tenant card', legacyMode: mode })
+      .catch(e => { _tnModeLocking.delete(rec.id); console.warn('[tenants] lock rent mode:', e && e.message || e); });
   });
 }
 
@@ -1266,6 +1301,7 @@ async function _tnLoad() {
 
   _tnFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _tnFreezeRent();          // existing active tenants: fix their rent once
+  _tnLockRentMode();        // Pauschal / Kalt + NK: locked per tenancy, never from the room again
   _tnSyncOccupancy();       // occupied / vacant from the dates (and former after the move-out)
   _tnRenderIfChanged();
 }

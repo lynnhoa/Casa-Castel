@@ -1093,7 +1093,11 @@ function _rentRowHTML(r) {
   if (ten) {
     const cur = ten.rent;
     const d = !cur ? 'Rent not set' : cur.mode === 'pauschal' ? fmtEUR(cur.total) + ' pauschal' : fmtEUR(cur.kalt) + ' kalt + ' + fmtEUR(cur.nk) + ' NK';
-    return row(_roomCtPill(ten.ctype, ten.end), d, cur ? fmtEUR(cur.total) : '');
+    // The tenant's contract is edited in Tenants — pill and link take you there (one place to correct it)
+    const go = `event.stopPropagation();_rcOpenTenant('${esc(r.name).replace(/'/g, "\\'")}')`;
+    const pillBtn = `<button type="button" class="rc-ct-link" title="Edit in Tenants" onclick="${go}">${_roomCtPill(ten.ctype, ten.end)}</button>`;
+    const more = `${d} \u00b7 <button type="button" class="rc-ct-link rc-ct-link__txt" onclick="${go}">Edit in Tenants \u203a</button>`;
+    return row(pillBtn, more, cur ? fmtEUR(cur.total) : '');
   }
 
   // Nobody lives here: the room's offer (chosen in Asking rent → Offer)
@@ -1105,6 +1109,26 @@ function _rentRowHTML(r) {
   const pill = `<span class="rc-rent-badge rc-ct rc-ct--offer">Offer · ${activeType === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag'}</span>`;
   return row(pill, info ? info.detail : 'Preis nicht gesetzt', info ? fmtEUR(info.total) : '');
 }
+
+/* Rooms header → the tenant's card in Tenants, opened at the running contract */
+function _rcOpenTenant(roomName) {
+  if (typeof switchTab === 'function') switchTab('tenants');
+  let tries = 0;
+  const go = () => {
+    const card = [...document.querySelectorAll('#tenantsList .tn-card')].find(c => c.dataset.room === roomName);
+    if (!card) { if (++tries < 40) setTimeout(go, 100); return; }
+    if (!card.classList.contains('open') && typeof _tnToggleCard === 'function') _tnToggleCard(card.id);
+    (card.querySelector('.tn-rent-wrap') || card).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  setTimeout(go, 50);
+}
+(function () {
+  if (typeof document === 'undefined' || document.getElementById('rc-ct-link-style')) return;
+  const st = document.createElement('style'); st.id = 'rc-ct-link-style';
+  st.textContent = `.rc-ct-link{display:inline-flex;align-items:center;gap:6px;padding:0;background:none;border:none;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.rc-ct-link.rc-ct-link__txt{font-size:inherit;color:var(--cc-taupe);text-decoration:underline;text-underline-offset:2px;white-space:nowrap}`;
+  document.head.appendChild(st);
+})();
 
 /* Asking rent → Offer: the one place to choose it (vacant and occupied rooms alike) */
 function _offerChoiceHTML(r) {
@@ -2019,8 +2043,8 @@ function _rcApplyRenew(type, room) {
    Approve:   the same PDF + a summary → the tenant (For), rent history,
               Kaution Soll, Zählerstände and Documents › Unsigned.       */
 const _RC_FIELDS = {
-  kurzzeit:    { name: 'cm-name', adr: 'cm-adr', dob: 'cm-dob', email: 'cm-email', tel: 'cm-tel', kaution: 'cm-kaution' },
-  mietvertrag: { name: 'mv-name', adr: 'mv-adr', dob: 'mv-dob', email: 'mv-email', tel: 'mv-tel', kaution: 'mv-kaution' },
+  kurzzeit:    { name: 'cm-name', adr: 'cm-adr', dob: 'cm-dob', email: 'cm-email', tel: 'cm-tel', kaution: 'cm-kaution', start: 'cm-start', end: 'cm-end' },
+  mietvertrag: { name: 'mv-name', adr: 'mv-adr', dob: 'mv-dob', email: 'mv-email', tel: 'mv-tel', kaution: 'mv-kaution', start: 'mv-start', end: 'mv-end' },
   ueberg:      { name: 'ub-mieter-name', adr: 'ub-mieter-adr' },
 };
 function _rcIsEinzug(roomId) {

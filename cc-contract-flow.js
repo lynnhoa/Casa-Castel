@@ -40,6 +40,13 @@ const CCF_CASA = {
   prefix: r => r.room || 'unknown',
   renewalRows: r => (typeof _tnRenewalRows === 'function' ? _tnRenewalRows(r) : []),
   currentRent: r => (typeof _tnCurrentRent === 'function' ? _tnCurrentRent(r, r.room) : null),
+  // A (non-renewal) contract for an existing tenant replaces their first contract → fill the form from it
+  contractPrefill(r) {
+    const c = typeof _tnContracts === 'function' ? _tnContracts(r)[0] : null;
+    if (!c) return null;
+    return { mode: c.amt ? c.amt.mode : null, kalt: c.amt ? c.amt.kalt : null, nk: c.amt ? c.amt.nk : null,
+             total: c.amt ? c.amt.total : null, start: c.start || null, end: c.end || null, name: c.name };
+  },
   ensureKaution: id => (typeof _tnEnsureKaution === 'function' ? _tnEnsureKaution(id) : null),
   reload: () => (typeof _tnLoad === 'function' ? _tnLoad() : null),
   viewDoc: (doc, label, rec) => { if (typeof _tnViewDoc === 'function') _tnViewDoc(doc.file_url, label, rec ? rec.room : ''); },
@@ -300,11 +307,47 @@ function ccfForApply(val, fill) {
     set('email', t.rec.email); set('tel', t.rec.phone);
     ccfFillCoTenants(o.fields, t.rec);
     if (o.mode === 'contract' && o.fields.kaution && Number(t.rec.kaution_soll) > 0) ccfSetKaution(o.fields.kaution, Number(t.rec.kaution_soll), 'Kaution Soll of ' + ccfName(t.rec));
+    if (o.mode === 'contract' && !(o.renew && o.renew.tid)) ccfPrefillFromTenancy(o, t.rec);
   } else if (o.mode === 'contract') {
     ['name', 'adr', 'dob', 'email', 'tel'].forEach(k => set(k, ''));
     ccfFillCoTenants(o.fields, null);
+    ccfPrefillFromTenancy(o, null);
   }
 }
+/* Miete block + dates of an existing tenancy (Casa). null = back to what the form had (the room's asking rent). */
+function ccfPrefillFromTenancy(o, rec) {
+  const fx = ccfA().contractPrefill; if (typeof fx !== 'function') return;
+  const box = document.getElementById('ccf-miete');
+  const seg = document.getElementById('rc-mode'), kIn = document.getElementById('rc-kalt'), nIn = document.getElementById('rc-nk');
+  const hint = box && box.querySelector('.ccf-hint');
+  const sEl = o.fields && o.fields.start ? document.getElementById(o.fields.start) : null;
+  const eEl = o.fields && o.fields.end ? document.getElementById(o.fields.end) : null;
+  if (box && !box.dataset.orig) box.dataset.orig = JSON.stringify({ mode: seg ? seg.dataset.mode : null, kalt: kIn ? kIn.value : '', nk: nIn ? nIn.value : '', hint: hint ? hint.textContent : '' });
+  const changed = () => { ccfMieteRefresh(); if (typeof _ccfMieteOnChange === 'function') _ccfMieteOnChange(); };
+  if (!rec) {   // New tenancy: the room's asking rent again, dates empty (only what this function had filled)
+    if (box && box.dataset.filled) {
+      const o0 = JSON.parse(box.dataset.orig || '{}');
+      if (seg && o0.mode) seg.dataset.mode = o0.mode;
+      if (kIn) kIn.value = o0.kalt || ''; if (nIn) nIn.value = o0.nk || ''; if (hint && o0.hint) hint.textContent = o0.hint;
+      delete box.dataset.filled; changed();
+    }
+    if (sEl && sEl.dataset.ccfFilled) { sEl.value = ''; delete sEl.dataset.ccfFilled; }
+    if (eEl && eEl.dataset.ccfFilled) { eEl.value = ''; delete eEl.dataset.ccfFilled; }
+    return;
+  }
+  const c = fx(rec); if (!c) return;
+  if (box && c.mode && c.total != null) {
+    const pa = c.mode === 'pauschal';
+    if (seg) seg.dataset.mode = pa ? 'pauschal' : 'kalt_nk';
+    if (kIn) kIn.value = ccfNumFmt(pa ? c.total : c.kalt);
+    if (nIn) nIn.value = ccfNumFmt(pa ? 0 : c.nk);
+    if (hint) hint.textContent = 'Prefilled from ' + ccfName(rec) + '’s ' + (c.name || 'contract') + ' — change it only if this contract differs.';
+    box.dataset.filled = '1'; changed();
+  }
+  if (sEl && c.start) { sEl.value = c.start; sEl.dataset.ccfFilled = '1'; sEl.dispatchEvent(new Event('input', { bubbles: true })); }
+  if (eEl && c.end)   { eEl.value = c.end;   eEl.dataset.ccfFilled = '1'; eEl.dispatchEvent(new Event('input', { bubbles: true })); }
+}
+
 /* Rentals: Mieter 2 / 3 of the tenancy fill (and show) the generator's extra blocks */
 function ccfFillCoTenants(f, rec) {
   [2, 3].forEach(n => {
