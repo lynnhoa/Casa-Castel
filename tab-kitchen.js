@@ -583,7 +583,7 @@ function _kBuildFeedHtml(comments, weekRow) {
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
         <span class="k-sys-event__text${isApproved ? ' k-sys-event__text--approved' : ''}">
-          ${isApproved ? (isAuto ? '✓ Approved automatically (48h)' : '✓ Approved') : '↩ Approval undone'} · ${fmtTs(ev._ts)}
+          ${isApproved ? '✓ Done' : '↩ Approval undone'} · ${fmtTs(ev._ts)}
         </span>
         <div class="k-sys-event__line"></div></div>`;
     }
@@ -801,7 +801,7 @@ function _kRenderWeekCard(weekRow, absData) {
                 : dbStatus === 'submitted'                    ? 'submitted'
                 : 'pending';
   const chipTxt = state !== 'now'
-    ? ({ done: isLate ? '✓ Done (late)' : isAuto ? '✓ Approved (auto)' : '✓ Approved',
+    ? ({ done: isLate ? '✓ Done (late)' : '✓ Done',
          missed:'✗ Missed', absent:'— Away', skipped:'— Vacant' }[state] || 'Pending')
     : dbStatus === 'flagged'       ? '⚑ Redo'
     : isResub                      ? '↑↑ Re-submitted'
@@ -823,7 +823,6 @@ function _kRenderWeekCard(weekRow, absData) {
          : 'Auto-approving…';
   }
   else if (dbStatus === 'flagged' && weekRow.flag_reason) { note = 'Redo: ' + weekRow.flag_reason; tone = 'flag'; }
-  else if (state === 'done' && isAuto) { note = 'Approved automatically after 48 hours.'; }
   else if (state === 'missed') {
     note = weekRow && weekRow.late_until && new Date(weekRow.late_until) > new Date()
       ? 'Late proof possible until ' + _kFmtWhen(new Date(weekRow.late_until))

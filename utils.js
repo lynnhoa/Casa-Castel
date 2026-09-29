@@ -252,7 +252,7 @@ function kHistPill(status, size, row) {
   const late = !!(row && row.is_late);
   const auto = !!(row && row.approved_by === 'auto');
   if (status === 'approved')
-    return `<span style="${base}background:#EDF5E8;color:#3A6A1A;border-color:#9AC87A;">✓ ${late ? 'Done (late)' : auto ? 'Done (auto)' : 'Done'}</span>`;
+    return `<span style="${base}background:#EDF5E8;color:#3A6A1A;border-color:#9AC87A;">✓ ${late ? 'Done (late)' : 'Done'}</span>`;
   if (status === 'submitted')
     return `<span style="${base}background:#FFF7ED;color:#92400E;border-color:#FCD34D;">↑ ${late ? 'Late proof' : 'Submitted'}</span>`;
   if (status === 'missed')

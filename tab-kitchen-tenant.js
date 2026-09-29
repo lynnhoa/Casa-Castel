@@ -675,7 +675,7 @@ async function _kTenRenderWeekCard(overrideRow) {
                   : dbStatus === 'submitted'                ? 'submitted'
                   : 'pending';
     const chipTxt = state !== 'now'
-      ? ({ done: isLate ? '✓ Done (late)' : isAuto ? '✓ Approved (auto)' : '✓ Approved',
+      ? ({ done: isLate ? '✓ Done (late)' : '✓ Done',
            missed:'✗ Missed', absent:'— Away', skipped:'— Vacant' }[state] || 'Pending')
       : dbStatus === 'flagged'   ? '⚑ Redo'
       : isResub                  ? '↑↑ Re-submitted'
@@ -978,7 +978,7 @@ function _kTenBuildFeedHtml(comments, weekRow) {
       const isAuto     = ev.text.startsWith('✓ Approved automatically');
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
         <span class="k-sys-event__text${isApproved ? ' k-sys-event__text--approved' : ''}">
-          ${isApproved ? (isAuto ? '✓ Approved automatically (48h)' : '✓ Approved') : '↩ Approval undone'} · ${fmtTs(ev._ts)}
+          ${isApproved ? '✓ Done' : '↩ Approval undone'} · ${fmtTs(ev._ts)}
         </span><div class="k-sys-event__line"></div></div>`;
     }
 
