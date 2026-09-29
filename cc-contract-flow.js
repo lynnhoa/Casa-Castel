@@ -224,8 +224,8 @@ function ccfForOptions(room, mode, selected) {
 let _ccfFor = null;
 function ccfForDefault(o) {
   if (o.renew && o.renew.tid) return String(o.renew.tid);
-  if (o.mode === 'contract') return 'new';
   const ts = ccfRoomTenancies(o.room);
+  if (o.mode === 'contract') { const nx = ts.find(t => t.role === 'next'); return nx ? String(nx.rec.id) : 'new'; }
   const pick = o.occasion === 'einzug'
     ? (ts.find(t => t.role === 'next') || ts.find(t => t.role === 'current'))
     : (ts.find(t => t.role === 'current') || ts.find(t => t.role === 'former'));
@@ -423,22 +423,20 @@ function ccfSetupGenerator(cfg) {
   draft.classList.add('ccf-btn-draft');
   draft.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF';
   document.getElementById('ccfApproveBtn')?.remove();
-  const canApprove = cfg.mode === 'contract' || ccfRoomTenancies(cfg.unit).length > 0;
-  draft.insertAdjacentHTML('afterend', `<button class="rm-btn--pdf ccf-approve" id="ccfApproveBtn"${canApprove ? '' : ' disabled'}><i class="ti ti-check"></i> Approve</button>`);
-  const appr = document.getElementById('ccfApproveBtn');
-  appr.addEventListener('click', async () => {
-    if (appr.disabled || typeof ccCapturePdf !== 'function') return;
-    const pre = cfg.read();
-    if (!pre || !ccfApproveCheck(pre)) return;
-    appr.disabled = true; appr.innerHTML = '<i class="ti ti-loader"></i> Preparing\u2026';
+  draft.insertAdjacentHTML('afterend', `<button class="rm-btn--pdf ccf-approve" id="ccfApproveBtn"><i class="ti ti-check"></i> Approve</button>`);
+  // Draft PDF tapped: this version (form + finished PDF) becomes the one Approve saves
+  draft.addEventListener('click', () => {
+    if (draft.disabled) return;
     _ccfLastData = null;
-    const res = await ccCapturePdf(() => draft.click());
-    appr.disabled = false; appr.innerHTML = '<i class="ti ti-check"></i> Approve';
-    if (!res || !res.blob) return;
-    const p = cfg.read();
-    if (_ccfLastData && p.kind === 'contract') p.kaution = _ccfLastData.kautionBestehend ? null : (Number(_ccfLastData.kaution) || 0);
-    ccfApprove({ ...p, blob: res.blob });
-  });
+    ccfDraftBegin(cfg.body, () => {
+      const p = cfg.read();
+      if (_ccfLastData && p.kind === 'contract') p.kaution = _ccfLastData.kautionBestehend ? null : (Number(_ccfLastData.kaution) || 0);
+      return p;
+    });
+  }, true);
+  document.getElementById('ccfApproveBtn').addEventListener('click', ccfApproveDraft);
+  ccfFlowWatch(cfg.body, cfg.footer);
+  ccfFormAttach(cfg.body, ccfFormKey(cfg.unit, cfg.draftId + (cfg.occasion ? ':' + cfg.occasion : '') + (cfg.renew && cfg.renew.tid ? ':renew' + cfg.renew.tid : '')));
 }
 function ccfApproveCheck(p) {
   if (p.kind === 'contract' && !ccfIso(p.start)) { alert('Approve needs a Mietbeginn — it becomes the Move-in.'); return false; }
@@ -459,6 +457,136 @@ function ccfReadCoTenants(f) {
     if (w && w.style.display === 'none') return null;
     const t = ccfReadTenant(b); return t.name ? t : null;
   });
+}
+
+
+/* ── DRAFT → APPROVE (one version) ─────────────────────────────
+   Editing:  Cancel · Draft PDF            (Draft PDF is the main button)
+   Ready:    Cancel · Open PDF             (installed iPhone app: one tap)
+   Seen:     Cancel · Draft PDF · Approve  (Approve saves exactly this PDF)
+   Any change in the form → back to Editing until the next Draft PDF.        */
+let _ccfPend = null;      // { body, read } — Draft PDF tapped, PDF not finished yet
+let _ccfDraft = null;     // { body, sig, blob, payload, seen }
+function ccfSig(bodyId) {
+  const b = document.getElementById(bodyId);
+  if (!b || typeof ccDraftSnapshot !== 'function') return '';
+  try { return JSON.stringify(ccDraftSnapshot(b)); } catch (e) { return ''; }
+}
+function ccfDraftBegin(bodyId, read) { _ccfPend = { body: bodyId, read }; }
+if (typeof window !== 'undefined') {
+  window.ccOnPdfReady = blob => {
+    const pe = _ccfPend; _ccfPend = null;
+    if (!pe) return;
+    let payload = null;
+    try { payload = pe.read(); } catch (e) { console.warn('[draft] read', e); }
+    _ccfDraft = { body: pe.body, sig: ccfSig(pe.body), blob, payload, seen: false };
+    ccfFooterState();
+  };
+  window.addEventListener('cc-pdf-opened', () => { if (_ccfDraft) { _ccfDraft.seen = true; ccfFooterState(); } });
+  window.addEventListener('cc-pdf-outdated', () => ccfFooterState());
+}
+/* Which generator is open right now: its body, footer and Approve button */
+function _ccfOpenGen() {
+  const ids = [['contractBody', 'contractFooter', 'contractApproveBtn', 'contractPdfBtn'],
+               ['aptContractBody', 'aptContractFooter', 'ccfApproveBtn', null],
+               ['pkContractBody', 'pkContractFooter', 'ccfApproveBtn', null]];
+  for (const [b, f, a, d] of ids) {
+    const foot = document.getElementById(f), appr = foot && foot.querySelector('#' + a);
+    if (appr) return { body: b, foot, appr, draft: d ? document.getElementById(d) : appr.previousElementSibling };
+  }
+  return null;
+}
+function ccfFooterState() {
+  const g = _ccfOpenGen(); if (!g) return;
+  const ready = !!g.foot.querySelector('.cc-pdf-ready');
+  const same = !!(_ccfDraft && _ccfDraft.body === g.body && _ccfDraft.sig === ccfSig(g.body));
+  const show = same && _ccfDraft.seen && !ready;
+  g.appr.style.display = show ? '' : 'none';
+  if (g.draft) g.draft.classList.toggle('ccf-draft-primary', !show);
+  // one quiet line above the buttons explains where Approve is
+  let note = document.getElementById('ccf-foot-note');
+  const text = ready ? '' : show ? '' : (_ccfDraft && _ccfDraft.body === g.body)
+    ? (same ? 'Open the PDF — then Approve appears.' : 'Changed — make a new Draft PDF to approve.')
+    : 'Approve appears after your first Draft PDF.';
+  if (!text) { note?.remove(); return; }
+  if (!note || note.parentElement !== g.foot) {
+    note?.remove();
+    note = document.createElement('div'); note.id = 'ccf-foot-note'; note.className = 'ccf-foot-note';
+    g.foot.insertAdjacentElement('afterbegin', note);      // first row of the footer: never covers the form
+  }
+  note.textContent = text;
+}
+function ccfFlowWatch(bodyId, footId) {
+  const b = document.getElementById(bodyId); if (!b) return;
+  if (_ccfDraft && _ccfDraft.body === bodyId && _ccfDraft.openedFor !== b) _ccfDraft = null;   // a new generator opening
+  if (!b._ccfWatch) {
+    b._ccfWatch = true;
+    let t = null;
+    const upd = () => { clearTimeout(t); t = setTimeout(ccfFooterState, 150); };
+    ['input', 'change', 'click'].forEach(ev => b.addEventListener(ev, upd, true));
+  }
+  setTimeout(ccfFooterState, 0);
+}
+function ccfApproveDraft() {
+  const d = _ccfDraft, g = _ccfOpenGen();
+  if (!d || !g || d.body !== g.body || d.sig !== ccfSig(g.body) || !d.payload) { ccfFooterState(); return; }
+  if (!ccfApproveCheck(d.payload)) return;
+  ccfApprove({ ...d.payload, blob: d.blob, container: null, photos: null });
+}
+
+/* ── FORM MEMORY per unit (B4) ─────────────────────────────────
+   What you type stays with that room / apartment / parking spot and
+   generator until you Approve or Cancel — for up to 30 days. X or tapping
+   outside only closes. Nothing is saved to Tenants by this.               */
+const CCF_FORM_DAYS = 30;
+function ccfFormKey(unit, gen) { return 'cc_draft_form_' + ccfA().app + '_' + String(unit).replace(/\s+/g, '_') + '_' + gen; }
+function ccfFormGet(key) {
+  try {
+    const d = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!d) return null;
+    if (Date.now() - (d.ts || 0) > CCF_FORM_DAYS * 86400000) { localStorage.removeItem(key); return null; }
+    return d;
+  } catch (e) { return null; }
+}
+function ccfFormClear(key) { try { if (key) localStorage.removeItem(key); } catch (e) {} }
+async function ccfFormAttach(bodyId, key) {
+  const b = document.getElementById(bodyId); if (!b) return;
+  b._ccfFormKey = key;
+  b._ccfFormRestoring = true;
+  const saved = ccfFormGet(key);
+  if (saved && typeof ccDraftApply === 'function') {
+    await new Promise(r => setTimeout(r, 150));          // the generator's own wiring first (dates, renewal)
+    if (b._ccfFormKey !== key) return;                   // another generator was opened meanwhile
+    try { await ccDraftApply(b, saved); } catch (e) { console.warn('[form] restore', e); }
+    ccfMieteRefresh();
+    const w = document.getElementById('ccf-for-hint'); if (w && saved.ts) w.textContent += ' · continued from ' + ccfFmt(new Date(saved.ts).toISOString().slice(0, 10));
+  }
+  b._ccfFormRestoring = false;
+  if (!b._ccfFormWired) {
+    b._ccfFormWired = true;
+    let t = null;
+    const save = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        if (b._ccfFormRestoring || !b._ccfFormKey || typeof ccDraftSnapshot !== 'function') return;
+        const ov = b.closest('.rm-overlay, .rm-sheet-overlay, [id$="ContractOverlay"], #contractOverlay');
+        if (ov && !ov.classList.contains('open')) return;
+        try { localStorage.setItem(b._ccfFormKey, JSON.stringify({ ts: Date.now(), ...ccDraftSnapshot(b) })); } catch (e) {}
+      }, 400);
+    };
+    ['input', 'change', 'click'].forEach(ev => b.addEventListener(ev, save, true));
+  }
+  setTimeout(ccfFooterState, 0);
+}
+/* Cancel = throw this form away (all three generators) */
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', e => {
+    const c = e.target && e.target.closest && e.target.closest('#contractCancelBtn, #aptContractCancelBtn, #pkContractCancelBtn');
+    if (!c) return;
+    const g = _ccfOpenGen(); const b = g && document.getElementById(g.body);
+    if (b) ccfFormClear(b._ccfFormKey);
+    _ccfDraft = null;
+  }, true);
 }
 
 /* ── APPROVE: PLAN ─────────────────────────────────────────── */
@@ -640,6 +768,8 @@ async function ccfApproveRun() {
     }
     const who = ccfName(pl.rec);
     ccfSummaryClose();
+    { const g = _ccfOpenGen(); const b = g && document.getElementById(g.body); if (b) ccfFormClear(b._ccfFormKey); }
+    _ccfDraft = null;
     ccfA().afterApprove();
     await ccfA().reload();
     ccfToast('Approved — saved to ' + who + ' · Documents › Unsigned');
@@ -1194,6 +1324,9 @@ html #contractBody .cc-seg--mieter{display:none !important}
 .ccf-kaution-hint{font-size:11.5px;line-height:1.45;color:#7A5A2A;margin:-8px 0 14px}
 #contractFooter .ccf-btn-draft,.ccf-btn-draft{flex:1;height:48px;border-radius:var(--cc-r-md);background:var(--cc-white);color:var(--cc-ink);border:.5px solid var(--cc-charcoal);font-family:inherit;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
 #contractFooter .rm-btn--pdf:disabled{opacity:.45;cursor:not-allowed}
+#contractFooter .ccf-draft-primary,#aptContractFooter .ccf-draft-primary,#pkContractFooter .ccf-draft-primary{background:var(--cc-ink);color:var(--cc-white);border-color:var(--cc-ink)}
+#contractFooter,#aptContractFooter,#pkContractFooter{flex-wrap:wrap}
+.ccf-foot-note{flex:0 0 100%;order:-1;margin:-2px 0 2px;font-size:11.5px;line-height:1.4;color:var(--cc-taupe)}
 #aptContractFooter,#pkContractFooter{display:flex;align-items:center;gap:8px}
 #aptContractFooter .ccf-btn-draft,#pkContractFooter .ccf-btn-draft{flex:1;background:var(--cc-white);color:var(--cc-ink);border:.5px solid var(--cc-charcoal)}
 #aptContractFooter .ccf-approve,#pkContractFooter .ccf-approve{flex:1}

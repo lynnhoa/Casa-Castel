@@ -2067,6 +2067,9 @@ function _rcSetupFlow(type, room) {
   ccfForInit(o, true);
   if (rn && rn.tid && isContract) _rcRenewKautionField(type);
   _rcWireFooter(type);
+  ccfFlowWatch('contractBody', 'contractFooter');
+  // what you type stays with this room + generator until Approve or Cancel (30 days)
+  ccfFormAttach('contractBody', ccfFormKey(room.name, type + (type === 'ueberg' ? ':' + o.occasion : '') + (rn && rn.tid ? ':renew' + rn.tid : '')));
 }
 /* The Miete block drives the pricing mode and the Kaution rule (until you type a Kaution) */
 function _rcMieteChanged(type) {
@@ -2097,6 +2100,7 @@ function _rcWireFooter(type) {
     try {
       const b = await _rcBuild(type, false);
       if (!b) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); draft.innerHTML = reset; draft.disabled = false; return; }
+      ccfDraftBegin('contractBody', () => ({ ...b.payload, photos: null }));   // this version is what Approve saves
       await _roomGenericPdfAction(b.container, b.filename, draft, reset, null,
         b.photos ? { photosKey: b.photos.key, meta: b.photos.meta } : undefined);
     } catch (err) {
@@ -2105,18 +2109,8 @@ function _rcWireFooter(type) {
       draft.innerHTML = reset; draft.disabled = false;
     }
   });
-  appr?.addEventListener('click', async () => {
-    if (appr.disabled) return;
-    appr.disabled = true;
-    try {
-      const b = await _rcBuild(type, true);
-      if (b) ccfApprove({ ...b.payload, container: b.container, photos: b.photos || null });
-    } catch (err) {
-      console.error('[Approve]', err);
-      alert('The PDF could not be prepared. Please try again.');
-    }
-    appr.disabled = false;
-  });
+  // Approve saves exactly the last Draft PDF you have seen (cc-contract-flow.js)
+  appr?.addEventListener('click', () => { if (!appr.disabled) ccfApproveDraft(); });
 }
 function _rcBuild(type, forApprove) {
   if (type === 'kurzzeit')    return _rcBuildKurzzeit(forApprove);

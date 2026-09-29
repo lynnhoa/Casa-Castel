@@ -280,10 +280,12 @@ async function ccOpenPdf(pdfOrBlob, filename) {
   const blob = (pdfOrBlob && typeof pdfOrBlob.output === 'function')
     ? pdfOrBlob.output('blob') : pdfOrBlob;
   if (_ccCapture) { const c = _ccCapture; _ccCapture = null; c.done({ blob, name }); return; }
+  try { if (typeof window.ccOnPdfReady === 'function') window.ccOnPdfReady(blob, name); } catch (e) {}   // contract flow: this draft = the version to approve
   const url = await _ccUploadTempPdf(blob, name);
   if (CC_STANDALONE) return _ccShowReady(url, blob, name);
-  if (url) return ccOpenUrl(url, name);
-  return _ccFallbackDeliver(blob, name);
+  const res = url ? ccOpenUrl(url, name) : _ccFallbackDeliver(blob, name);
+  _ccPdfOpened();
+  return res;
 }
 
 /* ── INSTALLED APP: "Open PDF" + "Save / Share" in place of Generate ──
@@ -305,10 +307,12 @@ function _ccShowReady(url, blob, name) {
     const open = document.createElement('a');
     open.className = 'cc-pdf-ready__open';
     open.href = url; open.target = '_blank'; open.rel = 'noopener';
-    open.textContent = 'Open PDF';
+    open.innerHTML = '<i class="ti ti-file-text"></i> Open PDF';
     // Safety net: if the iPhone ever reloads the app while the viewer is open,
     // you still come back into this generator (marker is dropped on normal return).
     open.addEventListener('click', () => {
+      // Seen → back in the app the footer shows Draft PDF again (+ Approve for contracts)
+      setTimeout(() => { _ccClearReady(footer); _ccPdfOpened(); }, 400);
       try { sessionStorage.setItem(CC_PDF_RETURN_KEY, String(Date.now())); } catch (e) {}
       const back = () => {
         if (document.visibilityState !== 'visible') return;
@@ -317,24 +321,18 @@ function _ccShowReady(url, blob, name) {
       };
       setTimeout(() => document.addEventListener('visibilitychange', back), 500);
     });
-    open.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;padding:11px 16px;border-radius:10px;' +
-      'background:#B8976A;color:#fff;font-weight:600;font-size:14px;text-decoration:none;white-space:nowrap;';
+    open.style.cssText = 'flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 16px;' +
+      'border-radius:var(--cc-r-md,10px);background:#B8976A;color:#fff;font-weight:500;font-size:13px;text-decoration:none;white-space:nowrap;';
     box.appendChild(open);
   }
-  const share = document.createElement('button');
-  share.type = 'button';
-  share.className = 'cc-pdf-ready__share';
-  share.textContent = url ? 'Save / Share' : 'Save / Share PDF';
-  share.style.cssText = 'padding:11px 14px;border-radius:10px;border:1px solid #D9CFC2;background:#fff;color:#3A3530;' +
-    'font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;';
-  share.onclick = () => _ccSharePdf(blob, name);
-  box.appendChild(share);
+  // No Save / Share here: the iPhone PDF viewer has its own share button
   trigger.style.display = 'none';
   footer.appendChild(box);
   // Anything changed in the generator → this PDF is outdated → Generate button back
   const sheet = footer.closest('.rm-sheet') || footer.parentElement;
   const reset = e => {
     if (e && box.contains(e.target)) return;
+    try { window.dispatchEvent(new CustomEvent('cc-pdf-outdated')); } catch (x) {}
     sheet.removeEventListener('input', reset, true);
     sheet.removeEventListener('change', reset, true);
     _ccClearReady(footer);
@@ -344,6 +342,8 @@ function _ccShowReady(url, blob, name) {
   setTimeout(() => { if (box.isConnected) reset(); }, 25 * 60 * 1000);   // link valid 30 min
   return 'ready';
 }
+/* The PDF was shown (browser tab opened, or Open PDF tapped in the installed app) */
+function _ccPdfOpened() { try { window.dispatchEvent(new CustomEvent('cc-pdf-opened')); } catch (e) {} }
 function _ccClearReady(footer) {
   footer.querySelectorAll('.cc-pdf-ready').forEach(b => b.remove());
   footer.querySelectorAll(CC_PDF_TRIGGERS).forEach(b => { if (b.style.display === 'none') b.style.display = ''; });
