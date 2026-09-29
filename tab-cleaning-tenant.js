@@ -39,7 +39,7 @@
             </div>
           </div>
           <div class="abs-rule" id="abs-rule">
-            <p class="abs-rule__hint">Only full weeks (Mon–Sun) excuse your kitchen and cleaning turn.</p>
+            <p class="abs-rule__hint">Only full weeks (Mon–Sun) excuse your cleaning turn.</p>
             <p class="abs-rule__preview" id="abs-preview"></p>
           </div>
           <p style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:6px;">Note (optional)</p>
