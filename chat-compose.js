@@ -81,6 +81,91 @@ function ccCompressImage(file, maxPx = 1280, quality = 0.8) {
   });
 }
 
+/* ── IN-APP CAMERA (live photo inside the app — no iPhone Retake / Use Photo screen) ──
+   Used by the kitchen proof steps (camera inside the photo frame) and the
+   kitchen chat camera button (full-screen). Falls back to the iPhone camera
+   when camera access is not possible or was refused.                       */
+let _ccCamDenied = false;
+function ccCamSupported() {
+  return !_ccCamDenied && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && !ccIsLaptop();
+}
+function ccCamAttach(videoEl, stream) {
+  videoEl.setAttribute('playsinline', ''); videoEl.setAttribute('webkit-playsinline', '');
+  videoEl.muted = true; videoEl.autoplay = true;
+  if (videoEl.srcObject !== stream) videoEl.srcObject = stream;
+  const p = videoEl.play(); if (p && p.catch) p.catch(() => {});
+}
+async function ccCamOpen(videoEl) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+    ccCamAttach(videoEl, stream);
+    return stream;
+  } catch (e) { _ccCamDenied = true; throw e; }    // this session: iPhone camera from now on
+}
+function ccCamStop(stream) { try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {} }
+/* Takes exactly what the frame shows (centre crop to the frame's ratio), max 1280 px JPEG */
+function ccCamSnap(videoEl, ratio, maxPx = 1280, quality = 0.82) {
+  return new Promise(resolve => {
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!vw || !vh) { resolve(null); return; }
+    const r = ratio || (videoEl.clientWidth && videoEl.clientHeight ? videoEl.clientWidth / videoEl.clientHeight : vw / vh);
+    let sw = vw, sh = vh;
+    if (vw / vh > r) sw = Math.round(vh * r); else sh = Math.round(vw / r);
+    const sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
+    const k = Math.min(1, maxPx / Math.max(sw, sh));
+    const c = document.createElement('canvas'); c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+    c.getContext('2d').drawImage(videoEl, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    c.toBlob(b => resolve(b), 'image/jpeg', quality);
+  });
+}
+function _ccCamCss() {
+  if (document.getElementById('cc-cam-css')) return;
+  const st = document.createElement('style'); st.id = 'cc-cam-css';
+  st.textContent = `
+.cc-camsheet { position:fixed; inset:0; z-index:9500; background:var(--cc-ink,#1E1B18); display:flex; flex-direction:column; }
+.cc-camsheet video { flex:1; width:100%; min-height:0; object-fit:cover; display:block; }
+.cc-camsheet__bar { display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:16px 22px calc(16px + env(safe-area-inset-bottom, 0px)); background:var(--cc-bg,#F5F2ED); }
+.cc-camsheet__cancel { min-width:72px; height:40px; padding:0 14px; border-radius:20px; border:.5px solid var(--cc-rule,#E0DAD0);
+  background:var(--cc-white,#FDFCFA); color:var(--cc-charcoal,#3A3530); font:inherit; font-size:13px; }
+.cc-camsheet__shutter { width:66px; height:66px; border-radius:50%; border:3px solid var(--cc-ink,#1E1B18);
+  background:var(--cc-white,#FDFCFA); padding:4px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.cc-camsheet__shutter span { display:block; width:100%; height:100%; border-radius:50%; background:var(--cc-ink,#1E1B18); }
+.cc-camsheet__shutter:active span { transform:scale(.9); }
+.cc-camsheet__sp { min-width:72px; }`;
+  document.head.appendChild(st);
+}
+/* Full-screen in-app camera → photo blob · null = cancelled · undefined = camera not possible */
+function ccCameraSheet() {
+  _ccCamCss();
+  return new Promise(async resolve => {
+    const ov = document.createElement('div'); ov.className = 'cc-camsheet';
+    ov.innerHTML = `<video playsinline muted autoplay></video>
+      <div class="cc-camsheet__bar">
+        <button type="button" class="cc-camsheet__cancel">Cancel</button>
+        <button type="button" class="cc-camsheet__shutter" aria-label="Take photo"><span></span></button>
+        <span class="cc-camsheet__sp"></span>
+      </div>`;
+    document.body.appendChild(ov);
+    const video = ov.querySelector('video');
+    let stream = null, closed = false;
+    const done = v => { if (closed) return; closed = true; ccCamStop(stream); ov.remove(); resolve(v); };
+    ov.querySelector('.cc-camsheet__cancel').addEventListener('click', () => done(null));
+    try { stream = await ccCamOpen(video); } catch (e) { done(undefined); return; }
+    if (closed) { ccCamStop(stream); return; }
+    ov.querySelector('.cc-camsheet__shutter').addEventListener('click', async () => done(await ccCamSnap(video)));
+  });
+}
+/* Camera refused → offer the iPhone camera (the tap on the button opens it) */
+async function ccCamFallbackAsk() {
+  if (typeof ccDialog !== 'function') return true;
+  const v = await ccDialog({ icon: 'ti-camera', title: 'Camera access is off',
+    body: 'Allow the camera for this app in the iPhone settings — or use the iPhone camera now.',
+    actions: [{ label: 'Cancel', value: false }, { label: 'iPhone camera', value: true, primary: true }] });
+  return v === true;
+}
+
 /* Upload a chat photo into the shared proof bucket, returns its public URL */
 async function ccUploadPhoto(blob, path) {
   if (typeof sbL === 'undefined' || !sbL) throw new Error('offline');
@@ -162,7 +247,16 @@ function ccCompose(mountEl, opts) {
   });
   if (typeof wireComposeBlur === 'function') wireComposeBlur(field);
 
-  $('.cc-cam')?.addEventListener('click', async () => { const b = await pick($('.cc-file-cam')); if (b) setPhoto(b); });
+  $('.cc-cam')?.addEventListener('click', async () => {
+    // Live camera: in-app (one tap on the shutter, no iPhone Retake / Use Photo screen)
+    if (camMode === 'live' && ccCamSupported()) {
+      const b = await ccCameraSheet();
+      if (b) { setPhoto(b); return; }
+      if (b === null) return;                                  // cancelled
+      if (!(await ccCamFallbackAsk())) return;                 // camera refused → iPhone camera?
+    }
+    const b = await pick($('.cc-file-cam')); if (b) setPhoto(b);
+  });
   $('.cc-thumb-x').addEventListener('click', () => setPhoto(null));
   send.addEventListener('click', () => doSend());
 

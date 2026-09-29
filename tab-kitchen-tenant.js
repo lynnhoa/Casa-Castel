@@ -333,6 +333,20 @@ let _kWizPreviews   = [null, null, null];
 let _kWizSubmitting = false;
 let _kWizStep       = 0;
 let _kWizLate       = false;   // true = late proof for last week
+/* In-app camera for the proof steps: live view inside the photo frame */
+let _kCamStream = null;   // one camera session while the steps are open
+let _kCamVideo  = null;
+let _kCamLive   = false;  // live view showing in this step's frame
+function _kTenCamStop() {
+  _kCamLive = false;
+  if (typeof ccCamStop === 'function') ccCamStop(_kCamStream);
+  _kCamStream = null;
+  if (_kCamVideo) { try { _kCamVideo.srcObject = null; } catch (e) {} }
+}
+function _kTenWizHide() {
+  _kTenCamStop();
+  const w = document.getElementById('k-ten-wizard'); if (w) w.style.display = 'none';
+}
 
 function _kTenWizOpen(which) {
   _kWizLate = which === 'late';
@@ -342,6 +356,7 @@ function _kTenWizOpen(which) {
   _kWizPreviews = [null, null, null];
   _kWizSubmitting = false;
   _kWizStep = 0;
+  _kCamLive = false;
   const fileInput = document.getElementById('k-ten-wiz-file');
   if (fileInput) fileInput.setAttribute('capture', 'environment');   // live photo only — no library
   const ttl = document.getElementById('k-ten-wiz-title');
@@ -351,7 +366,7 @@ function _kTenWizOpen(which) {
 }
 
 function _kTenWizCancel() {
-  document.getElementById('k-ten-wizard').style.display = 'none';
+  _kTenWizHide();
 }
 
 /* One step = same layout every time: icon · title · hint · photo frame · Take photo.
@@ -379,14 +394,20 @@ function _kTenWizRender() {
         <p class="k-wiz-step__title">${slot.label}</p>
         <p class="k-wiz-step__hint">${slot.hint}</p>
       </div>
-      <div class="k-wiz-frame${hasPhoto ? ' k-wiz-frame--done' : ''}" onclick="_kTenWizTakePhoto()">
-        ${hasPhoto && preview
+      <div class="k-wiz-frame${_kCamLive ? ' k-wiz-frame--live' : hasPhoto ? ' k-wiz-frame--done' : ''}" onclick="_kTenWizTakePhoto()">
+        ${_kCamLive
+          ? '<div class="k-wiz-live"></div>'
+          : hasPhoto && preview
           ? `<img src="${preview}" alt="${slot.label}"/>`
           : `<i class="ti ti-camera" aria-hidden="true"></i><span>No photo yet</span>`}
       </div>
-      <button type="button" class="k-wiz-shoot${hasPhoto ? ' k-wiz-shoot--again' : ''}" onclick="_kTenWizTakePhoto()">
-        <i class="ti ${hasPhoto ? 'ti-refresh' : 'ti-camera'}" aria-hidden="true"></i>${hasPhoto ? 'Retake photo' : 'Take photo'}
+      <button type="button" class="k-wiz-shoot${!_kCamLive && hasPhoto ? ' k-wiz-shoot--again' : ''}" onclick="_kTenWizTakePhoto()">
+        <i class="ti ${_kCamLive ? 'ti-circle-dot' : hasPhoto ? 'ti-refresh' : 'ti-camera'}" aria-hidden="true"></i>${_kCamLive ? 'Capture' : hasPhoto ? 'Retake photo' : 'Take photo'}
       </button>`;
+    if (_kCamLive && _kCamVideo && _kCamStream) {
+      slideEl.querySelector('.k-wiz-live').appendChild(_kCamVideo);
+      ccCamAttach(_kCamVideo, _kCamStream);
+    }
   }
 
   const backBtn = document.getElementById('k-ten-wiz-back-btn');
@@ -401,8 +422,41 @@ function _kTenWizRender() {
   }
 }
 
-function _kTenWizTakePhoto() {
+/* Tap 1: live camera appears in the frame · tap 2 (Capture, or the frame): photo taken.
+   Retake photo = live again. No iPhone Retake / Use Photo screen.
+   Camera not possible → iPhone camera (as before).                           */
+async function _kTenWizTakePhoto() {
   if (_kWizSubmitting) return;
+  if (_kCamLive) { await _kTenWizSnap(); return; }
+  if (typeof ccCamSupported === 'function' && ccCamSupported()) {
+    try {
+      if (!_kCamVideo) { _kCamVideo = document.createElement('video'); _kCamVideo.className = 'k-wiz-video'; }
+      if (!_kCamStream || !_kCamStream.active) _kCamStream = await ccCamOpen(_kCamVideo);
+      _kCamLive = true;
+      _kTenWizRender();
+      return;
+    } catch (e) {
+      console.warn('[kitchen] in-app camera not possible — iPhone camera instead', e);
+      _kTenCamStop();
+      if (!(await ccCamFallbackAsk())) return;
+    }
+  }
+  _kTenWizPickFile();
+}
+
+async function _kTenWizSnap() {
+  if (!_kCamVideo) return;
+  const blob = await ccCamSnap(_kCamVideo, 3 / 4);          // the frame is 3:4 — saved photo = what you saw
+  if (!blob) return;
+  if (_kWizPreviews[_kWizStep]) URL.revokeObjectURL(_kWizPreviews[_kWizStep]);
+  _kWizBlobs[_kWizStep]    = blob;
+  _kWizPreviews[_kWizStep] = URL.createObjectURL(blob);
+  _kCamLive = false;
+  _kTenWizRender();
+}
+
+/* Fallback: the iPhone's own camera (file input with live capture) */
+function _kTenWizPickFile() {
   const file = document.getElementById('k-ten-wiz-file');
   file.value = '';
   file.onchange = async e => {
@@ -418,12 +472,14 @@ function _kTenWizTakePhoto() {
 }
 
 function _kTenWizBack() {
-  if (_kWizStep > 0) { _kWizStep--; _kTenWizRender(); }
+  if (_kWizStep > 0) { _kWizStep--; _kCamLive = false; _kTenWizRender(); }
 }
 
 function _kTenWizNext() {
   if (_kWizBlobs[_kWizStep] && _kWizStep < _kWizSlots.length - 1) {
     _kWizStep++;
+    // camera already open → the next empty step goes straight to the live view
+    _kCamLive = !_kWizBlobs[_kWizStep] && !!(_kCamStream && _kCamStream.active);
     _kTenWizRender();
   }
 }
@@ -432,12 +488,12 @@ async function _kTenWizSubmit() {
   if (_kWizSubmitting) return;
   if (!sbL || !_kTenWeekRow) { alert('No connection. Please refresh.'); return; }
   if (!(await _kTenEnsureCurrentWeek())) {
-    document.getElementById('k-ten-wizard').style.display = 'none';
+    _kTenWizHide();
     alert("A new week has started, so the kitchen tab was refreshed. Please check this week's status.");
     return;
   }
   const target = _kWizLate ? _kTenLateRow : _kTenWeekRow;
-  if (!target) { document.getElementById('k-ten-wizard').style.display = 'none'; return; }
+  if (!target) { _kTenWizHide(); return; }
 
   const room = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
   _kWizSubmitting = true;
@@ -524,7 +580,7 @@ async function _kTenWizSubmit() {
     }
 
     // Close wizard
-    document.getElementById('k-ten-wizard').style.display = 'none';
+    _kTenWizHide();
     _kWizSubmitting = false;
 
     // Patch local state and render immediately from it — no re-fetch.
@@ -1245,6 +1301,9 @@ function _kTenShowTabIfEligible() {
 
 /* ── WEEK CHANGE WHILE OPEN (K1) ───────────────────────── */
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _kTenEnsureCurrentWeek(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && _kCamStream) { _kTenCamStop(); if (document.getElementById('k-ten-wizard')?.style.display !== 'none') _kTenWizRender(); }
+});
 setInterval(() => { if (document.visibilityState === 'visible') _kTenEnsureCurrentWeek(); }, 60 * 1000);
 
 /* ── NAV ALIAS ──────────────────────────────────────────── */

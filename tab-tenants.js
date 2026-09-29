@@ -438,6 +438,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-confirm-body { font-size:13px; color:var(--cc-taupe);
   line-height:1.55; margin-bottom:18px; }
 .tn-confirm-btns { display:flex; align-items:center; gap:10px; }
+#tab-tenants .tn-del-btn { color:#A32D2D !important; border-color:#F09595 !important; margin-right:auto; }
 
 /* ── EMPTY / MISC ── */
 .tn-empty { font-size:12px; color:var(--cc-stone); font-style:italic; padding:3px 0; }
@@ -1488,6 +1489,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
 
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
+    ${rec ? `<button type="button" class="cc-foot-btn tn-del-btn" onclick="_tnDeleteTenant('${tid}')"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>` : ''}
     <div class="cc-slot">
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
@@ -2369,6 +2371,8 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   const p   = _tnCollectProfile(sec, 'data-f');
   const rec = _tnRecords.find(r => r.id === tid);
   if (!p.first_name && !p.last_name && !p.email) {
+    // Name and email cleared → the tenant should go: ask, never delete silently
+    if (rec) { await _tnDeleteTenant(tid); return; }
     const inp = sec.querySelector('[data-f="name"]');
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
     return;
@@ -3060,19 +3064,52 @@ async function _tnConfirmDelete() {
   if (!_tnDeleteId || !sbL) return;
   const btn = document.getElementById('tnConfirmOk');
   if (btn) btn.disabled = true;
-  const { error } = await sbL.from('tenant_records').delete().eq('id', _tnDeleteId);
+  const ok = await _tnDeleteCascade(_tnDeleteId);
   document.getElementById('tnConfirm').classList.remove('open');
-  if (error) ccSaveFailed(error, 'delete tenant');
-  if (!error) {
-    _tnRecords = _tnRecords.filter(r => r.id !== _tnDeleteId);
-    delete _tnKaution[_tnDeleteId];
-    delete _tnNK[_tnDeleteId];
-    delete _tnDocs[_tnDeleteId];
-  }
   _tnDeleteId = null;
   if (btn) btn.disabled = false;
   _tnCloseModal();
-  _tnRender();
+  if (ok) await _tnLoad(); else _tnRender();
+}
+
+/* Delete a tenant from the card (Edit → Delete, or Save with name + email cleared).
+   Always asks first. Removes the tenant and everything linked to them. */
+async function _tnDeleteTenant(tid) {
+  const rec = _tnRecords.find(r => r.id === tid); if (!rec || !sbL) return;
+  const name = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || 'this tenant';
+  const yes = await ccConfirm('Delete ' + esc(name) + '?',
+    `Removes <strong>${esc(name)}</strong> (${esc(rec.room)}) and everything linked: Kaution, NK, rent history, Zählerstände and documents. Cannot be undone.`,
+    'Delete', true);
+  if (!yes) return;
+  if (await _tnDeleteCascade(tid)) {
+    await _tnLoad();                       // occupancy (vacant / occupied) follows from the dates again
+    if (typeof ccToast === 'function') ccToast(name + ' deleted');
+  }
+}
+
+/* Everything linked to one tenant, then the tenant. A table that doesn't exist is skipped. */
+async function _tnDeleteCascade(tid) {
+  if (!sbL || !tid) return false;
+  const docs = _tnDocs[tid] || [];
+  const soft = async (q, what) => {
+    try { const { error } = await q; if (error && !/does not exist|schema cache|Could not find/i.test(error.message || '')) console.warn('[tenants] delete ' + what + ':', error.message); }
+    catch (e) { console.warn('[tenants] delete ' + what + ':', e); }
+  };
+  await Promise.all([
+    soft(sbL.from('kaution').delete().eq('tenant_id', tid), 'Kaution'),
+    soft(sbL.from('nk_entries').delete().eq('tenant_id', tid), 'NK'),
+    soft(sbL.from('nk_vorauszahlung_history').delete().eq('tenant_id', String(tid)), 'NK-Vorauszahlung'),
+    soft(sbL.from('rent_periods').delete().eq('app', 'casa').eq('tenant_id', String(tid)), 'rent history'),
+    soft(sbL.from('meter_readings').delete().eq('app', 'casa').eq('tenant_id', String(tid)), 'Zählerstände'),
+    soft(sbL.from('tenant_documents').delete().eq('tenant_id', tid), 'documents'),
+  ]);
+  const paths = docs.map(d => d && d.file_url).filter(Boolean);
+  if (paths.length) { try { await sbL.storage.from('tenant-documents').remove(paths); } catch (e) {} }
+  const { error } = await sbL.from('tenant_records').delete().eq('id', tid);
+  if (error) { ccSaveFailed(error, 'delete tenant'); return false; }
+  _tnRecords = _tnRecords.filter(r => r.id !== tid);
+  delete _tnKaution[tid]; delete _tnNK[tid]; delete _tnDocs[tid];
+  return true;
 }
 
 
@@ -3135,7 +3172,7 @@ function _tnRefreshFormerBadges(tid) {
 ══════════════════════════════════════════════════════════════ */
 async function _tnResetPw(room) {
   if (!sbL) { alert('No database connection.'); return; }
-  if (!confirm(`Reset password for ${room}? The old password stops working.`)) return;
+  if (!(await ccConfirm('Reset password · ' + esc(room), 'The old password stops working. The new one is shown once.', 'Reset'))) return;
   const pw = await ccSetNewRoomPassword(room, 'New password');
   if (pw) { _tnPwAt[room] = new Date().toISOString(); _tnRender(); }
 }

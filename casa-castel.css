@@ -2297,6 +2297,10 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .k-wiz-shoot i { font-size: 17px; }
 .k-wiz-shoot--again { background: var(--cc-white); color: var(--cc-charcoal); border: 0.5px solid var(--cc-rule); }
 .k-wiz-shoot:active { opacity: 0.75; }
+/* In-app camera: live view inside the same frame */
+.k-wiz-frame--live { border: 1.5px solid var(--cc-ink); background: var(--cc-ink); }
+.k-wiz-live, .k-wiz-live video { position: absolute; inset: 0; width: 100%; height: 100%; }
+.k-wiz-live video { object-fit: cover; display: block; }
 
 /* Absence form: whole-week rule + which weeks are excused */
 .abs-rule { margin: 0 0 14px; padding: 9px 11px; background: var(--cc-surface); border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-sm); }
