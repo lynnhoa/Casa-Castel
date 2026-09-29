@@ -48,7 +48,11 @@ const CCF_CASA = {
              total: c.amt ? c.amt.total : null, start: c.start || null, end: c.end || null, name: c.name };
   },
   ensureKaution: id => (typeof _tnEnsureKaution === 'function' ? _tnEnsureKaution(id) : null),
-  reload: () => (typeof _tnLoad === 'function' ? _tnLoad() : null),
+  reload: async () => {
+    if (typeof _tnLoad === 'function') await _tnLoad();
+    const b = window._ccfBackTo; window._ccfBackTo = null;
+    if (b && typeof _rcOpenTenant === 'function') _rcOpenTenant(b.room, '.tn-cstrip');   // the new Verlängerung line in view
+  },
   viewDoc: (doc, label, rec) => { if (typeof _tnViewDoc === 'function') _tnViewDoc(doc.file_url, label, rec ? rec.room : ''); },
   contractDocType: (p, rec) => (p.ctype === 'kurzzeit' ? 'kurzzeitmietvertrag' : 'mietvertrag'),
   firstContract(rec, docs) {
@@ -65,13 +69,16 @@ const CCF_CASA = {
     const room = typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === rec.room) : null;
     if (!room || typeof _openContract !== 'function') return;
     if (typeof switchTab === 'function') switchTab('rooms');
-    _openContract(renew.ct, room.id, { ...renew, roomId: room.id });
+    _openContract(renew.ct, room.id, { ...renew, roomId: room.id, back: 'tenants' });   // Approve returns to this tenant
   },
   renewSwitch(type) {
     if (typeof _contractRenew === 'undefined' || !_contractRenew || typeof _openContract !== 'function') return;
     _openContract(type, _contractRenew.roomId, { ..._contractRenew });
   },
   afterApprove() {
+    { const rn = typeof _contractRenew !== 'undefined' ? _contractRenew : null;   // Renew was started in Tenants → go back there
+      const rec = rn && rn.back === 'tenants' && rn.tid ? ccfRec(rn.tid) : null;
+      window._ccfBackTo = rec ? { room: rec.room } : null; }
     if (typeof ccDraftClear === 'function' && typeof _ROOM_DRAFT_KEY !== 'undefined') ccDraftClear(_ROOM_DRAFT_KEY);
     document.getElementById('contractOverlay')?.classList.remove('open');
     try { if (typeof _renderRoomsList === 'function' && document.getElementById('roomsList')) _renderRoomsList(); } catch (e) {}
@@ -152,7 +159,10 @@ function ccfIso(v) {
   const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[0] : null;
 }
 function ccfFmt(v) { const i = ccfIso(v); return i ? i.slice(8, 10) + '.' + i.slice(5, 7) + '.' + i.slice(0, 4) : ''; }
-function ccfFmtShort(v) { const i = ccfIso(v); return i ? i.slice(8, 10) + '.' + i.slice(5, 7) + '.' : ''; }
+function ccfFmtShort(v) {   // "29.09." this year · "29.09.2025" otherwise (the year only where it isn't clear)
+  const i = ccfIso(v); if (!i) return '';
+  return i.slice(8, 10) + '.' + i.slice(5, 7) + '.' + (i.slice(0, 4) !== ccfToday().slice(0, 4) ? i.slice(0, 4) : '');
+}
 function ccfToday() { return typeof ccTodayISO === 'function' ? ccTodayISO() : new Date().toISOString().slice(0, 10); }
 function ccfAddDays(iso, n) {
   const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10);

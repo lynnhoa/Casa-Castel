@@ -1070,10 +1070,11 @@ function _toggleRentType(btn) {
 
 function _rcFmtD(iso) { const s = String(iso || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; }
 /* Header pill for a tenancy: Mietvertrag (neutral) · Kurzzeit with its end date (lilac — not a status colour) */
-function _roomCtPill(ctype, endIso) {
+function _roomCtPill(ctype, endIso, ten) {
   if (ctype === 'kurzzeit') {
     const end = _rcFmtD(endIso);
-    return `<span class="rc-rent-badge rc-ct rc-ct--kz"><i class="ti ti-clock" aria-hidden="true"></i>Kurzzeit${end ? ' bis ' + end : ''}</span>`;
+    const more = ten && ten.renewed ? (ten.then === 'mietvertrag' ? ' \u00b7 then Mietvertrag' : ' \u00b7 verlängert') : '';
+    return `<span class="rc-rent-badge rc-ct rc-ct--kz"><i class="ti ti-clock" aria-hidden="true"></i>Kurzzeit${end ? ' bis ' + end : ''}${more}</span>`;
   }
   if (ctype === 'mietvertrag') return `<span class="rc-rent-badge rc-ct rc-ct--mv"><i class="ti ti-file-text" aria-hidden="true"></i>Mietvertrag</span>`;
   return `<span class="rc-rent-badge rc-ct rc-ct--none">Contract not set</span>`;
@@ -1095,7 +1096,7 @@ function _rentRowHTML(r) {
     const d = !cur ? 'Rent not set' : cur.mode === 'pauschal' ? fmtEUR(cur.total) + ' pauschal' : fmtEUR(cur.kalt) + ' kalt + ' + fmtEUR(cur.nk) + ' NK';
     // The tenant's contract is edited in Tenants — pill and link take you there (one place to correct it)
     const go = `event.stopPropagation();_rcOpenTenant('${esc(r.name).replace(/'/g, "\\'")}')`;
-    const pillBtn = `<button type="button" class="rc-ct-link" title="Edit in Tenants" onclick="${go}">${_roomCtPill(ten.ctype, ten.end)}</button>`;
+    const pillBtn = `<button type="button" class="rc-ct-link" title="Edit in Tenants" onclick="${go}">${_roomCtPill(ten.ctype, ten.end, ten)}</button>`;
     const more = `${d} \u00b7 <button type="button" class="rc-ct-link rc-ct-link__txt" onclick="${go}">Edit in Tenants \u203a</button>`;
     return row(pillBtn, more, cur ? fmtEUR(cur.total) : '');
   }
@@ -1111,14 +1112,14 @@ function _rentRowHTML(r) {
 }
 
 /* Rooms header → the tenant's card in Tenants, opened at the running contract */
-function _rcOpenTenant(roomName) {
+function _rcOpenTenant(roomName, target) {
   if (typeof switchTab === 'function') switchTab('tenants');
   let tries = 0;
   const go = () => {
     const card = [...document.querySelectorAll('#tenantsList .tn-card')].find(c => c.dataset.room === roomName);
     if (!card) { if (++tries < 40) setTimeout(go, 100); return; }
     if (!card.classList.contains('open') && typeof _tnToggleCard === 'function') _tnToggleCard(card.id);
-    (card.querySelector('.tn-rent-wrap') || card).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    (card.querySelector(target || '.tn-rent-wrap') || card.querySelector('.tn-rent-wrap') || card).scrollIntoView({ behavior: 'smooth', block: target ? 'center' : 'start' });
   };
   setTimeout(go, 50);
 }
@@ -2112,9 +2113,17 @@ function _rcMieteChanged(type) {
 }
 function _rcRenewKautionField(type) {
   const soll = _contractRenew && _contractRenew.kautionSoll;
-  ccfSetKaution(type === 'kurzzeit' ? 'cm-kaution' : 'mv-kaution', 0,
+  const px = type === 'kurzzeit' ? 'cm' : 'mv';
+  ccfSetKaution(px + '-kaution', 0,
     'Renewal — no new Kaution. The PDF keeps the first Kaution' + (soll ? ' (' + fmtEUR(soll) + ')' : '') +
     '. Type an amount only for a new Kaution.');
+  // no new Kaution → its rule line and "Kaution Fälligkeit" don't apply
+  const row = document.getElementById(px + '-kaution')?.closest('.rm-kaution-row');
+  const rule = row && row.querySelector('.rm-kaution-rule'); if (rule) rule.style.display = 'none';
+  const body = document.getElementById('contractBody');
+  const lbl = body && [...body.querySelectorAll('.rm-kaution-lbl')].find(e => e.textContent.trim() === 'Kaution Fälligkeit');
+  const fael = lbl && lbl.parentElement;
+  if (fael && fael !== body && !fael.contains(document.getElementById(px + '-kaution'))) fael.style.display = 'none';
 }
 function _rcWireFooter(type) {
   const draft = document.getElementById('contractPdfBtn');

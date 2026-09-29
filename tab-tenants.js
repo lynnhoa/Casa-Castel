@@ -168,6 +168,8 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-crow-warm { font-size:14px; font-weight:500; color:var(--cc-charcoal); }
 .tn-crow-chev { font-size:15px; color:var(--cc-stone); }
 .tn-cstrip--due { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#FAEEDA; }
+.tn-cstrip--quiet { display:flex; align-items:center; gap:10px; padding:8px 14px; }
+.tn-cstrip-qtxt { flex:1; font-size:12px; color:var(--cc-taupe); }
 .tn-cstrip-txt { flex:1; font-size:12px; line-height:1.4; color:#633806; }
 .tn-earlier .tn-arc-toggle { color:var(--cc-taupe); border:none; }
 .tn-earlier-body { background:var(--cc-surface); }
@@ -903,6 +905,11 @@ function _tnContractStripHTML(rid, room, rec) {
       return `<div class="tn-cstrip tn-cstrip--due" id="cstrip-${rid}">
         <span class="tn-cstrip-txt">${d < 0 ? 'Contract ended ' + _ccFmtD(c.end) + ' \u2014 not renewed yet' : 'No contract after ' + _ccFmtD(c.end) + ' yet'}</span>
         <button type="button" class="tn-btn tn-btn-primary" onclick="ccfRenewOpen('${rec.id}')"><i class="ti ti-refresh"></i> Renew</button></div>`;
+    }
+    if (d !== null) {   // earlier: a quiet line — renewing ahead of time is always possible
+      return `<div class="tn-cstrip tn-cstrip--quiet" id="cstrip-${rid}">
+        <span class="tn-cstrip-qtxt">Ends ${_ccFmtD(c.end)} \u00b7 not renewed yet</span>
+        <button type="button" class="tn-btn tn-btn-sm" onclick="ccfRenewOpen('${rec.id}')"><i class="ti ti-refresh"></i> Renew</button></div>`;
     }
   }
   return '';
@@ -3692,12 +3699,13 @@ function tnCurrentTenancyOf(roomName) {
   const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === roomName && r.status === 'active')).current;
   if (!cur) return null;
   const r = _tnCurrentRent(cur, roomName);
-  // End of the contract in force: the day before a planned renewal, else Contract end / Move-out
-  const nextRen = typeof ccRpFor === 'function'
-    ? ccRpFor('casa', cur.id).find(p => p.kind === 'renewal' && _ccIso(p.valid_from) > _tnTypeDay(cur)) : null;
+  // Already renewed → the LATEST contract end ("bis … · verlängert"); renewed as unbefristet → the running end ("then Mietvertrag")
+  const st = _tnContractState(cur), last = st.all[st.all.length - 1];
+  const renewed = !!st.next;
+  const then = renewed && last && last.type === 'mietvertrag' ? 'mietvertrag' : null;
   return {
-    ctype: tnContractType(cur),
-    end: nextRen ? ccRpAddDays(_ccIso(nextRen.valid_from), -1) : _ccIso(cur.vertragsende || cur.mietende || ''),
+    ctype: tnContractType(cur), renewed, then,
+    end: renewed ? (then ? _ccAddDaysIso(st.next.start, -1) : (last.end || '')) : _ccIso(cur.vertragsende || cur.mietende || ''),
     rent: r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode } : null,
   };
 }
