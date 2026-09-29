@@ -1414,6 +1414,7 @@ function _tnRender() {
       _tnCardCache[c.id] = c.html;
     });
     _tnBindCards();
+    if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
     return;
   }
   list.innerHTML = cards.map(c => c.html).join('');
@@ -1424,6 +1425,7 @@ function _tnRender() {
   _tnOpenCards.forEach(id => document.getElementById(id)?.classList.add('open'));
 
   _tnBindCards();
+  if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
 }
 let _tnCardCache = {};   // card id → its HTML as last drawn
 
@@ -1469,14 +1471,75 @@ function _tnCardHTML(room) {
       : _tnNewContractHTML(rid, room)}
     ${_ccNextTenantHTML(nextRec, nextRec ? esc([nextRec.first_name, nextRec.last_name].filter(Boolean).join(' ')) : '', _tnFmtDate, '_tnOpenModal')}
     ${_tnProfileSectionHTML(rid, room, activeRec)}
-    ${activeRec && typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(activeRec, 'card') + ccfDocsSectionHTML(activeRec, 'card') : ''}
     ${activeRec ? _tnKautionHTML(rid, activeRec.id, 'card') : ''}
-    ${!activeRec || _tnAllPauschal(activeRec) ? '' : _tnNKHTML(rid, activeRec.id, 'card')}
-    ${_tnIsKaltNK(activeRec, room.name) ? _tnNKVorausHTML(rid, activeRec ? activeRec.room : null, 'card') : ''}
+    ${activeRec ? _tnNkGroupHTML(rid, room, activeRec) : ''}
+    ${activeRec ? _tnDetailsGroupHTML(rid, activeRec) : ''}
     ${_tnEarlierContractsHTML(rid, activeRec)}
     ${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs)}
   </div>
 </div>`;
+}
+
+/* ── NEBENKOSTEN + DETAILS: one row each, the full section opens in a sheet ── */
+function _tnNkGroupHTML(rid, room, rec) {
+  const rows = [];
+  if (!_tnAllPauschal(rec)) {
+    const open = _tnNkHasOpen(rec.id);
+    rows.push(ccRowHTML({ icon: 'receipt', title: 'Abrechnungen',
+      meta: open ? `<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(rec))}</span>` : 'none due',
+      onclick: `_tnSheet('nk','${rid}','${rec.id}')` }));
+  }
+  if (_tnIsKaltNK(rec, room.name)) {
+    const c = _tnNKVorausCurFor(room.name);
+    const pend = typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_tnNKVoraus[room.name], rec) : null;
+    rows.push(ccRowHTML({ icon: 'coin-euro', title: 'Vorauszahlung',
+      meta: pend ? `<span class="tnp ${pend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${esc(pend.text)}</span>`
+                 : c ? `${_tnFmtEUR(c.amount)}/mo` : 'not set',
+      onclick: `_tnSheet('nkv','${rid}','${rec.id}')` }));
+  }
+  return rows.length ? ccGroupHTML('Nebenkosten', rows.join('')) : '';
+}
+function _tnDetailsGroupHTML(rid, rec) {
+  if (typeof ccfDocsSectionHTML !== 'function') return '';
+  return ccGroupHTML('Details',
+    ccRowHTML({ icon: 'file-text', title: 'Documents', meta: esc(ccfDocsSummary(rec)), onclick: `_tnSheet('docs','${rid}','${rec.id}')` }) +
+    ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: esc(ccfMetersSummary(rec)), onclick: `_tnSheet('meters','${rid}','${rec.id}')` }));
+}
+function _tnSheet(kind, rid, tid) {
+  const rec0 = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec0) return;
+  const titles = { nk: 'NK-Abrechnungen', nkv: 'NK Vorauszahlung', docs: 'Documents', meters: 'Zählerstände' };
+  ccSheetOpen({
+    title: titles[kind],
+    kicker: rec0.room + ' \u00b7 ' + ([rec0.first_name, rec0.last_name].filter(Boolean).join(' ') || ''),
+    build: () => {
+      const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec) return '';
+      if (kind === 'nk')     return _tnNKHTML(rid, rec.id, 'card');
+      if (kind === 'nkv')    return _tnNKVorausHTML(rid, rec.room, 'card');
+      if (kind === 'docs')   return ccfDocsSectionHTML(rec, 'card');
+      if (kind === 'meters') return ccfMetersSectionHTML(rec, 'card');
+      return '';
+    },
+  });
+}
+
+/* NK-Vorauszahlung of the room's CURRENT tenant: their own latest rate (never the previous
+   tenant's); none entered yet → the NK of their contract, from the move-in */
+function _tnNKVorausWho(room) {
+  const today = _ccTodayIso();
+  return (_tnRecords || []).filter(r => r.room === room && r.status === 'active')
+    .sort((a, b) => String(a.mietbeginn || '').localeCompare(String(b.mietbeginn || '')))
+    .find(r => !r.mietbeginn || _ccIso(r.mietbeginn) <= today) || null;
+}
+function _tnNKVorausCurFor(room) {
+  const who = _tnNKVorausWho(room); if (!who) return null;
+  const mb = who.mietbeginn ? _ccIso(who.mietbeginn) : '', today = _ccTodayIso();
+  const e = (_tnNKVoraus[room] || []).filter(x => x.tenant_id ? String(x.tenant_id) === String(who.id)
+      : (!mb || String(x.effective_date).slice(0, 10) >= mb))
+    .find(x => String(x.effective_date).slice(0, 10) <= today);
+  if (e) return { amount: Number(e.amount), since: String(e.effective_date).slice(0, 10) };
+  const r = _tnCurrentRent(who, room);
+  if (r && r.mode !== 'pauschal' && r.nk) return { amount: Number(r.nk), since: mb, fromContract: true };
+  return null;
 }
 
 /* ── HEADER ── */
@@ -1781,14 +1844,12 @@ function _tnProfileSectionHTML(rid, room, rec) {
 
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
-    <div class="tn-field"><span class="tn-flbl">Name</span>
-      <span class="tn-fval">${esc(fullName) || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Birthday</span>
       <span class="tn-fval">${esc(rec.birthday||'') || '<span class="muted">—</span>'}</span></div>
-    <div class="tn-field"><span class="tn-flbl">Email</span>
-      <span class="tn-fval">${email || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field"><span class="tn-flbl">Phone</span>
       <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
+    <div class="tn-field tn-field-full"><span class="tn-flbl">Email</span>
+      <span class="tn-fval">${email || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
       <span class="tn-fval">${esc(rec.address||'') || '<span class="muted">—</span>'}</span></div>
     <div class="tn-field tn-field-full" style="border-top:1px solid var(--cc-rule);margin-top:6px;padding-top:8px;">
@@ -2062,12 +2123,12 @@ function _tnNKVorausHTML(rid, room, ctx) {
         <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
       </button>
     </div>
-    ${current ? `
+    ${(() => { const cu = _tnNKVorausCurFor(room); return cu ? `
     <div class="tn-nkv-current">
       <i class="ti ti-coin-euro" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
-      <span class="tn-nkv-cur-amount">${_tnFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
-      <span class="tn-nkv-cur-since">seit ${fmtDate(current.effective_date)}</span>
-    </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`}
+      <span class="tn-nkv-cur-amount">${_tnFmtEUR(cu.amount)}&thinsp;/&thinsp;mo</span>
+      <span class="tn-nkv-cur-since">seit ${cu.since ? fmtDate(cu.since) : ''}${cu.fromContract ? ' \u00b7 contract' : ''}</span>
+    </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`; })()}
     ${pendingRows}
     ${!pendingRows && current ? '' : ''}
   </div>

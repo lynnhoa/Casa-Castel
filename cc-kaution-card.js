@@ -163,6 +163,9 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
   } else {
     btns = B('Undo', 'undo', 's');
   }
+  // Short card: while the Kaution is simply held (nothing typed, no move-out), one line says it all.
+  // Edit / Settle open the full form exactly as before.
+  const compact = !!tid && !editing && P.phase <= 3;
   // Kaution Soll: edited together with the received amount (one Edit)
   const sollRow = editing && tid && A.saveSoll
     ? `<div class="${grid}">${_cckCell('Kaution Soll', _cckMoney(`cck-sv-${pfx}`, soll != null ? soll : '', onIn, dis), `cck-sv-${pfx}`)}${extra ? '<div></div>' : ''}</div>` : '';
@@ -176,16 +179,17 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     </div>
     <div class="cck-hint" data-ksoll-for="${tid || ''}" data-ksoll-kind="hint" style="${info ? '' : 'display:none'}">${info ? `Soll: ${f(info.amount)} · ${_cckEsc(info.text)}` : ''}</div>
     ${sollRow}
+    ${compact ? `<div class="cck-sum">${f(P.recv)} <span>received${k.received_at ? ' \u00b7 ' + A.fmtDate(k.received_at) : ''}</span></div>` : ''}
     <div class="cck-bar"><div id="cck-bar-${pfx}" style="width:${L.bar[0]}%;background:${L.bar[1]}"></div></div>
     <div class="cck-cap" id="cck-cap-${pfx}">${L.cap}</div>
-    <div class="${grid}">${r1a}${r1b}</div>
+    ${compact ? '' : `<div class="${grid}">${r1a}${r1b}</div>
     <div class="${grid}">${r2a}${r2b}</div>
     <div class="cck-refund${P.phase >= 4 ? '' : ' cck-dim'}">
       <div class="cck-grid" style="margin-bottom:0;align-items:end">
         ${_cckCell('Refund to tenant', `<div class="cck-ro cck-rv" id="cck-rv-${pfx}">${refund}</div>`)}${r3b}
       </div>
       <div class="cck-note" id="cck-rn-${pfx}">${note}</div>
-    </div>
+    </div>`}
   </div>
   ${(slot || btns) ? `<div class="${foot} cck-foot" style="gap:6px">${_cckFootOrder(btns, slot)}</div>` : ''}
 </div>`;
@@ -349,6 +353,8 @@ function _cckStyles() {
 .cck-bar{height:3px;border-radius:2px;background:var(--cc-surface);overflow:hidden}
 .cck-bar>div{height:3px;border-radius:2px;transition:width .2s}
 .cck-cap{font-size:10px;color:var(--cc-taupe);margin:5px 0 10px;min-height:14px}
+.cck-sum{font-size:15px;font-weight:500;color:var(--cc-charcoal);margin:2px 0 6px}
+.cck-sum span{font-size:11px;font-weight:400;color:var(--cc-taupe)}
 .cck-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:8px}
 .cck-grid.cck-one{grid-template-columns:minmax(0,1fr)}
 .cck-fl{display:block;font-size:10px;color:var(--cc-taupe);margin-bottom:3px}

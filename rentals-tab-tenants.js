@@ -635,6 +635,89 @@ function _rntFreezeRent() { /* intentionally no longer writes */ }
 
 /* The tenant's rent today: rent history first, else the rent stored on the tenant.
    → { mode, kalt, nk, total, src, period? } or null (nothing stored — never the unit price) */
+/* ── STAFFEL / NEBENKOSTEN / DETAILS: one row each, the full section opens in a sheet (same as Casa) ── */
+function _rntStaffelRowHTML(rid, isApt, unit, rec) {
+  const all = _rntStaffel[unit.id] || [];
+  if (!all.length) return '';
+  const today = _ccTodayIso(), iso = e => String(e.effective_date || '').slice(0, 10);
+  const nxt = all.filter(e => iso(e) > today).sort((a, b) => iso(a).localeCompare(iso(b)))[0];
+  const cur = all.filter(e => iso(e) <= today).sort((a, b) => iso(b).localeCompare(iso(a)))[0];
+  const st  = typeof _rntStaffelPillState === 'function' ? _rntStaffelPillState(unit.id) : null;
+  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">Staffel overdue</span>`
+    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">Staffel ab ${_rntFmtDate(st.entry.effective_date)}</span>`
+    : nxt ? `next ${_rntFmtEUR(nxt.amount)} ab ${_rntFmtDate(nxt.effective_date)}`
+    : cur ? `${_rntFmtEUR(cur.amount)} seit ${_rntFmtDate(cur.effective_date)}` : '';
+  return ccGroupHTML('', ccRowHTML({ icon: 'stairs-up', title: 'Staffelmiete', meta,
+    onclick: `_rntSheet('staffel','${rid}','${rec.id}','${isApt ? 'apt' : 'pk'}','${unit.id}')` }));
+}
+function _rntNkGroupHTML(rid, unit, rec) {
+  const rows = [];
+  if (!_rntAllPauschal(rec.id)) {
+    const open = _rntNkHasOpen(rec.id);
+    rows.push(ccRowHTML({ icon: 'receipt', title: 'Abrechnungen',
+      meta: open ? `<span class="tnp tnp-amber">${_rntEsc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _rntNK[rec.id]) : 'NK open')}</span>` : 'none due',
+      onclick: `_rntSheet('nk','${rid}','${rec.id}','apt','${unit.id}')` }));
+  }
+  const c = _rntNKVorausCurFor(unit.id, rec);
+  const pend = typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_rntNKVoraus[unit.id], rec) : null;
+  rows.push(ccRowHTML({ icon: 'coin-euro', title: 'Vorauszahlung',
+    meta: pend ? `<span class="tnp ${pend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${_rntEsc(pend.text)}</span>`
+               : c ? `${_rntFmtEUR(c.amount)}/mo` : 'not set',
+    onclick: `_rntSheet('nkv','${rid}','${rec.id}','apt','${unit.id}')` }));
+  return ccGroupHTML('Nebenkosten', rows.join(''));
+}
+function _rntDetailsGroupHTML(rid, unit, rec) {
+  if (typeof ccfDocsSectionHTML !== 'function') return '';
+  const kind = rec.apartment_id ? 'apt' : 'pk';
+  const n = typeof ccRpFor === 'function' ? ccRpFor('rentals', rec.id).length : 0;
+  return ccGroupHTML('Details',
+    ccRowHTML({ icon: 'file-text', title: 'Documents', meta: _rntEsc(ccfDocsSummary(rec)), onclick: `_rntSheet('docs','${rid}','${rec.id}','${kind}','${unit.id}')` }) +
+    (kind === 'apt' ? ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: _rntEsc(ccfMetersSummary(rec)), onclick: `_rntSheet('meters','${rid}','${rec.id}','${kind}','${unit.id}')` }) : '') +   // parking has no Zähler
+    (n >= 2 ? ccRowHTML({ icon: 'history', title: 'Rent history', meta: n + ' entries', onclick: `_rntSheet('rent','${rid}','${rec.id}','${kind}','${unit.id}')` }) : ''));
+}
+function _rntSheet(kind, rid, tid, ukind, unitId) {
+  const rec0 = _rntRecords.find(r => String(r.id) === String(tid)); if (!rec0) return;
+  const unit = (ukind === 'apt' ? (typeof appApartments !== 'undefined' ? appApartments : []) : (typeof appParking !== 'undefined' ? appParking : []))
+    .find(u => String(u.id) === String(unitId));
+  const titles = { staffel: 'Staffelmiete', nk: 'NK-Abrechnungen', nkv: 'NK Vorauszahlung', docs: 'Documents', meters: 'Zählerstände', rent: 'Rent history' };
+  const unitName = unit ? (unit.name || unit.bezeichnung || unit.label || '') : '';
+  ccSheetOpen({
+    title: titles[kind],
+    kicker: [unitName, _rntFullTenantNames(rec0)].filter(Boolean).join(' \u00b7 '),
+    build: () => {
+      const rec = _rntRecords.find(r => String(r.id) === String(tid)); if (!rec) return '';
+      if (kind === 'staffel') return ukind === 'apt' ? _rntStaffelHTML(rid, unitId) : _rntPkStaffelHTML(rid, unitId);
+      if (kind === 'nk')      return _rntNKHTML(rid, rec.id, 'card');
+      if (kind === 'nkv')     return _rntNKVorausHTML(rid, unitId, 'card');
+      if (kind === 'docs')    return ccfDocsSectionHTML(rec, 'card');
+      if (kind === 'meters')  return ccfMetersSectionHTML(rec, 'card');
+      if (kind === 'rent') {
+        const h = _ccRentTimelineHTML('rentals', rec, _rntFmtEUR);
+        return h ? '<div class="tn-sec"><div class="tn-sec-body" style="padding-top:10px">' + h.replace('<details class="cc-tl">', '<details class="cc-tl" open>') + '</div></div>' : '';
+      }
+      return '';
+    },
+  });
+}
+/* NK-Vorauszahlung of the unit's CURRENT tenant (never the previous tenant's rate) */
+function _rntNKVorausCurFor(aptId, who) {
+  const today = _ccTodayIso();
+  if (!who) {
+    who = (_rntRecords || []).filter(r => r.apartment_id === aptId && r.status === 'active')
+      .sort((a, b) => String(a.mietbeginn || '').localeCompare(String(b.mietbeginn || '')))
+      .find(r => !r.mietbeginn || _ccIso(r.mietbeginn) <= today) || null;
+  }
+  if (!who) return null;
+  const mb = who.mietbeginn ? _ccIso(who.mietbeginn) : '';
+  const e = (_rntNKVoraus[aptId] || []).filter(x => x.tenant_id ? String(x.tenant_id) === String(who.id)
+      : (!mb || String(x.effective_date).slice(0, 10) >= mb))
+    .find(x => String(x.effective_date).slice(0, 10) <= today);
+  if (e) return { amount: Number(e.amount), since: String(e.effective_date).slice(0, 10), ignored: e.ignored };
+  const r = _rntCurrentRent(who);
+  if (r && r.mode !== 'pauschal' && r.nk) return { amount: Number(r.nk), since: mb, fromContract: true };
+  return null;
+}
+
 function _rntCurrentRent(rec) {
   if (!rec) return null;
   const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('rentals', rec.id), ccRpToday()) : null;
@@ -1023,6 +1106,7 @@ function _rntRender() {
       _rntCardCache[onScreen[i].id] = same;
     });
     _rntBindCards();
+    if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
     return;
   }
 
@@ -1046,6 +1130,7 @@ function _rntRender() {
 
   _rntOpenCards.forEach(id => document.getElementById(id)?.classList.add('open'));
   _rntBindCards();
+  if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
 }
 
 /* Each card's HTML as last drawn (card id → html), for the redraw-only-changes check */
@@ -1102,15 +1187,13 @@ function _rntCardHTML({ type, unit }) {
   ${formerNudges}
   <div class="tn-body" id="tb-${rid}">
     ${activeRec
-      ? _rntRentBarHTML(rid, type, unit, activeRec) + _rntRentFormHTML(rid, type, unit, activeRec) + _ccRentTimelineHTML('rentals', activeRec, _rntFmtEUR)
+      ? _rntRentBarHTML(rid, type, unit, activeRec) + _rntRentFormHTML(rid, type, unit, activeRec) + _rntStaffelRowHTML(rid, isApt, unit, activeRec)
       : ''}
     ${_ccNextTenantHTML(nextRec, nextRec ? _rntEsc(_rntFullTenantNames(nextRec)) : '', _rntFmtDate, '_rntOpenModal')}
     ${_rntProfileSectionHTML(rid, type, unit, activeRec)}
-    ${activeRec && typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(activeRec, 'card') + ccfDocsSectionHTML(activeRec, 'card') : ''}
-    ${_rntKautionHTML(rid, activeRec ? activeRec.id : null, 'card', activeRec)}
-    ${isApt && !(activeRec && _rntAllPauschal(activeRec.id)) ? _rntNKHTML(rid, activeRec ? activeRec.id : null, 'card') : ''}
-    ${isApt ? _rntNKVorausHTML(rid, activeRec ? unit.id : null, 'card') : ''}
-    ${isApt ? _rntStaffelHTML(rid, activeRec ? unit.id : null) : _rntPkStaffelHTML(rid, activeRec ? unit.id : null)}
+    ${activeRec ? _rntKautionHTML(rid, activeRec.id, 'card', activeRec) : ''}
+    ${activeRec && isApt ? _rntNkGroupHTML(rid, unit, activeRec) : ''}
+    ${activeRec ? _rntDetailsGroupHTML(rid, unit, activeRec) : ''}
     ${_rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs)}
   </div>
 </div>`;
@@ -1874,12 +1957,12 @@ function _rntNKVorausHTML(rid, aptId, ctx) {
         <i class="ti ti-plus" style="font-size:11px"></i> Add
       </button>
     </div>
-    ${current ? `
+    ${(() => { const cu = _rntNKVorausCurFor(aptId); return cu ? `
     <div class="tn-nkv-current">
       <i class="ti ti-coin-euro" style="font-size:15px;color:var(--cc-stone)"></i>
-      <span class="tn-nkv-cur-amount${current.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
-      <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
-    </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`}
+      <span class="tn-nkv-cur-amount${cu.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(cu.amount)}&thinsp;/&thinsp;mo</span>
+      <span class="tn-nkv-cur-since">seit ${cu.since ? fmtD(cu.since) : ''}${cu.fromContract ? ' \u00b7 contract' : ''}</span>
+    </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`; })()}
     ${pendingRows}
   </div>
 </div>`;

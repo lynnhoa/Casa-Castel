@@ -221,3 +221,104 @@ html .rc-act { max-width:100%; white-space:nowrap; }
   `;
   document.head.appendChild(s);
 })();
+
+/* ═════════════════════════════════════════════════════════════
+   TENANT CARDS — shorter card, same content (both apps)
+   Less-used sections sit behind one row each ("Nebenkosten", "Details");
+   a tap opens exactly the same section in a bottom sheet (same look as
+   the tenant pop-up). Nothing changes in how a section works: it is the
+   same HTML with the same ids and buttons, only shown in the sheet.
+   ═════════════════════════════════════════════════════════════ */
+function ccGroupHTML(label, rows) {
+  if (!rows) return '';
+  return label
+    ? `<div class="tn-sec cc-grp"><div class="tn-sec-body" style="padding-top:10px;padding-bottom:2px">
+    <div style="margin-bottom:2px"><span class="tn-sec-lbl">${label}</span></div>${rows}</div></div>`
+    : `<div class="tn-sec cc-grp cc-grp--bare"><div class="tn-sec-body" style="padding-top:0;padding-bottom:0">${rows}</div></div>`;
+}
+/* o = { icon, title, meta (html), onclick } */
+function ccRowHTML(o) {
+  return `<button type="button" class="cc-grow" onclick="${o.onclick}">
+    <i class="ti ti-${o.icon} cc-grow-ic" aria-hidden="true"></i>
+    <span class="cc-grow-t">${o.title}</span>
+    <span class="cc-grow-m">${o.meta || ''}</span>
+    <i class="ti ti-chevron-right cc-grow-ch" aria-hidden="true"></i></button>`;
+}
+
+let _ccSheetCur = null;   // { title, kicker, build }
+function _ccSheetEl() {
+  let el = document.getElementById('ccSheetModal');
+  if (el) return el;
+  el = document.createElement('div');
+  el.className = 'tn-overlay cc-sheet-ov'; el.id = 'ccSheetModal';
+  el.innerHTML = `<div class="tn-sheet" role="dialog" aria-modal="true" aria-labelledby="ccSheetTitle">
+    <div class="tn-sheet-hdr">
+      <div style="flex:1;min-width:0"><div class="tn-sheet-name" id="ccSheetTitle"></div><div class="tn-sheet-sub" id="ccSheetSub"></div></div>
+      <button type="button" class="tn-icon-btn" onclick="ccSheetClose()" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="tn-sheet-body" id="ccSheetBody"></div></div>`;
+  el.addEventListener('click', e => { if (e.target === el) ccSheetClose(); });
+  document.body.appendChild(el);
+  return el;
+}
+function ccSheetOpen(o) {
+  const el = _ccSheetEl();
+  _ccSheetCur = o;
+  document.getElementById('ccSheetTitle').textContent = o.title || '';
+  document.getElementById('ccSheetSub').textContent = o.kicker || '';
+  const body = document.getElementById('ccSheetBody');
+  body.innerHTML = o.build() || '';
+  _ccSheetTidy(body);
+  body.scrollTop = 0;
+  el.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function ccSheetClose() {
+  const el = document.getElementById('ccSheetModal'); if (!el) return;
+  el.classList.remove('open');
+  _ccSheetCur = null;
+  document.getElementById('ccSheetBody').innerHTML = '';
+  if (!document.querySelector('.tn-overlay.open')) document.body.style.overflow = '';
+}
+/* After a card redraw: the open sheet shows the fresh data too — unless you are typing in it */
+function ccSheetRefresh() {
+  if (!_ccSheetCur) return;
+  const body = document.getElementById('ccSheetBody'); if (!body) return;
+  if (body.querySelector('input:focus, textarea:focus, select:focus, [data-cc-save="dirty"], .ccf-medit, .tn-nkv-add-form, .tn-nk-add-form, .cc-inline-panel, .cc-dlg')) return;
+  const html = _ccSheetCur.build();
+  if (!html) { ccSheetClose(); return; }
+  const y = body.scrollTop;
+  body.innerHTML = html;
+  _ccSheetTidy(body);
+  body.scrollTop = y;
+}
+/* The sheet's title already names the section → its own small label is not shown twice */
+function _ccSheetTidy(body) {
+  const t = String((_ccSheetCur && _ccSheetCur.title) || '').trim().toLowerCase();
+  const l = body.querySelector('.tn-sec-lbl, .tn-msec-lbl');
+  if (!l || l.textContent.trim().toLowerCase() !== t) return;
+  const box = l.parentElement;
+  (box && box.children.length === 1 ? box : l).style.display = 'none';
+}
+(function () {
+  if (typeof document === 'undefined' || document.getElementById('cc-grp-style')) return;
+  const s = document.createElement('style'); s.id = 'cc-grp-style';
+  s.textContent = `
+.cc-grow{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:8px 0;margin:0;background:none;border:none;border-top:var(--cc-border);font-family:inherit;text-align:left;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cc-grp .tn-sec-body > .cc-grow:nth-child(2), .cc-grp .tn-sec-body > .cc-grow:first-child{border-top:none}
+.cc-grow:active{background:var(--cc-surface)}
+.cc-grow-ic{font-size:16px;width:18px;text-align:center;color:var(--cc-taupe);flex-shrink:0}
+.cc-grow-t{flex:0 0 auto;font-size:14px;color:var(--cc-charcoal)}
+.cc-grow-m{flex:1 1 auto;display:block;min-width:0;font-size:12px;color:var(--cc-taupe);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-grow-m .tnp{vertical-align:middle}
+.cc-grow-ch{font-size:15px;color:var(--cc-stone);flex-shrink:0}
+#ccSheetModal .tn-sheet-name{font-family:'Cormorant Garamond',Georgia,serif;font-size:24px;font-weight:400;line-height:1.1}
+#ccSheetModal .tn-sheet-sub{margin-top:0;order:-1;font-size:10px;font-weight:500;letter-spacing:.09em;text-transform:uppercase}
+#ccSheetModal .tn-sheet-hdr > div{display:flex;flex-direction:column;gap:4px}
+#ccSheetModal .tn-sheet-body{padding-bottom:max(12px,env(safe-area-inset-bottom,12px))}
+#ccSheetModal .tn-sheet-body > .tn-sec{border-top:none;border-bottom:none}
+#ccSheetModal .cc-tl{border:none}
+#ccSheetModal .cc-tl > summary{display:none}
+`;
+  document.head.appendChild(s);
+})();

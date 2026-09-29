@@ -40,6 +40,7 @@ const CCF_CASA = {
   prefix: r => r.room || 'unknown',
   renewalRows: r => (typeof _tnRenewalRows === 'function' ? _tnRenewalRows(r) : []),
   currentRent: r => (typeof _tnCurrentRent === 'function' ? _tnCurrentRent(r, r.room) : null),
+  redraw: () => { if (typeof _tnRender === 'function') _tnRender(); },
   // A (non-renewal) contract for an existing tenant replaces their first contract → fill the form from it
   contractPrefill(r) {
     const c = typeof _tnContracts === 'function' ? _tnContracts(r)[0] : null;
@@ -101,6 +102,7 @@ const CCF_RENTALS = {
   prefix: r => r.apartment_id || r.parking_id || 'unknown',
   renewalRows: r => (typeof _rntRenewalRows === 'function' ? _rntRenewalRows(r) : []),
   currentRent: r => (typeof _rntCurrentRent === 'function' ? _rntCurrentRent(r) : null),
+  redraw: () => { if (typeof _rntRender === 'function') _rntRender(); },
   ensureKaution: id => (typeof _rntEnsureKaution === 'function' ? _rntEnsureKaution(id) : null),
   reload: () => (typeof _rntLoad === 'function' ? _rntLoad() : null),
   viewDoc: (doc, label, rec) => { if (typeof _rntViewDoc === 'function') _rntViewDoc(doc.file_url, label, rec ? CCF_RENTALS.unitLabel(CCF_RENTALS.unitOf(rec)) : ''); },
@@ -1355,6 +1357,14 @@ function ccfDocsSectionHTML(rec, ctx) {
   </div>`;
 }
 function ccfDocEditToggle(tid) { _ccfDocEdit[tid] = !_ccfDocEdit[tid]; ccfRefreshTenant(tid); }
+/* Details row: "3 · 1 signed" */
+function ccfDocsSummary(rec) {
+  if (!rec || !rec.id) return '';
+  const rows = _ccfDocRows(rec);
+  const docs = ccfDocsOf(rec.id);
+  const signed = rows.filter(r => docs.some(d => d.type === r.type && (d.variant || 'signed') === 'signed')).length;
+  return rows.length + ' \u00b7 ' + (signed ? signed + ' signed' : 'none signed');
+}
 
 /* ── TENANTS TAB: ZÄHLERSTÄNDE SECTION ─────────────────────── */
 let _ccfReadings = {};       // tenant_id → rows of meter_readings
@@ -1431,6 +1441,14 @@ function ccfMetersSectionHTML(rec, ctx) {
   </div>`;
 }
 function ccfMeterEditToggle(tid) { _ccfMeterEdit[tid] = !_ccfMeterEdit[tid]; ccfRefreshTenant(tid); }
+/* Details row: "Einzug ✓ · Auszug —" */
+function ccfMetersSummary(rec) {
+  if (!rec || !rec.id) return '';
+  const rows = _ccfMeterRows(String(rec.id));
+  if (!rows.length) return 'none set up';
+  const has = occ => rows.some(r => occ === 'einzug' ? r.ein : r.aus);
+  return 'Einzug ' + (has('einzug') ? '\u2713' : '\u2014') + ' \u00b7 Auszug ' + (has('auszug') ? '\u2713' : '\u2014');
+}
 async function ccfMeterSave(tid, ctx) {
   const box = document.querySelector(`[data-ccf-meters="${CSS.escape(String(tid))}"][data-ctx="${ctx}"]`);
   if (!box) return;
@@ -1494,6 +1512,8 @@ function ccfRefreshTenant(tid) {
     const t = document.createElement('div'); t.innerHTML = ccfMetersSectionHTML(rec, el.dataset.ctx);
     if (t.firstElementChild) el.replaceWith(t.firstElementChild);
   });
+  // the card's "Details" row shows a summary of both → redraw the card too
+  if (typeof ccfA().redraw === 'function') { try { ccfA().redraw(); } catch (e) {} }
 }
 
 /* ── RENEW: opens the generator, prefilled ─────────────────── */
