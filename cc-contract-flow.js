@@ -49,7 +49,9 @@ const CCF_CASA = {
       || (typeof _tnRoomContractType === 'function' && _tnRoomContractType(rec.room)) || rec.contract_type;
     const out = [base === 'kurzzeit' ? 'kurzzeitmietvertrag' : 'mietvertrag'];
     ['mietvertrag', 'kurzzeitmietvertrag'].forEach(t => { if (!out.includes(t) && docs.some(d => d.type === t)) out.push(t); });
-    return out.map(t => ({ type: t, label: ccfDocLabel(t, rec) }));
+    // Once renewed, the first contract is called "Erstvertrag" (same name as in the rent bar)
+    const renewed = typeof _tnContracts === 'function' && _tnContracts(rec).length > 1;
+    return out.map((t, i) => ({ type: t, label: renewed && i === 0 ? 'Erstvertrag' : ccfDocLabel(t, rec) }));
   },
   meters: () => ccfMetersFromSettings(),
   openRenew(rec, renew) {

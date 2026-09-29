@@ -93,7 +93,7 @@ function ccTnRenewalTodo(rec) {
   const d = ccTnDaysUntil(rec.vertragsende);
   if (d === null || d > 60) return null;
   const s = String(rec.vertragsende).slice(0, 10).split('-');
-  return { level: d < 0 ? 'red' : 'amber', text: (d < 0 ? 'Contract ended ' : 'Contract ends ') + s[2] + '.' + s[1] + '.' };
+  return { level: d < 0 ? 'red' : 'amber', text: (d < 0 ? 'Contract ended ' : 'Contract ends ') + s[2] + '.' + s[1] + '.' + s[0] };
 }
 function ccTnStaffelTodo(state, fmtDateISO) {
   if (!state) return null;
