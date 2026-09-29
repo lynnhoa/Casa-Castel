@@ -689,27 +689,32 @@ async function _kRenderRotation(weekRow, absData, preRows) {
     }
   }
 
+  const _segStates = [];
   const items = rooms.map((room, i) => {
     // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
     const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
     const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
     const info    = kWeekInfo(Math.max(0, slotIdx));
     const dateStr = info ? fmt(info.start) + '–' + fmt(info.end) : '—';
-    const dbRow   = inNextRound ? null : dbRows[i];
-    const state   = _kRotState({
+    const isPast  = !inNextRound && i < cyclePos;
+    const saved   = isPast ? (_rows.find(r => r.week_index === cycleStart + i) || null) : null;   // past week: what was saved, whichever room
+    const shown   = saved && saved.room ? saved.room : room;
+    const dbRow   = inNextRound ? null : (isPast ? saved : dbRows[i]);
+    let state     = _kRotState({
       isNow:       i === cyclePos,
-      isPast:      !inNextRound && i < cyclePos,
+      isPast,
       isNext:      i === trueNextI,
       dbStatus:    dbRow ? dbRow.status : null,
-      room,
+      room:        shown,
       weekStart:   info ? info.start : null,
       absenceRows: absData,
     });
-    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'Away', now:'Now', none:'—', next:'Next', upcoming:'—', review:'↑' }[state] || '—';
-    return `<div class="k-mob-rot-item ${state}"><span class="k-mob-rot-badge ${state}">${badgeText}</span><span class="k-mob-rot-room">${esc(room)}</span><span class="k-mob-rot-dates">${dateStr}</span></div>`;
+    if (state === 'done' && dbRow && dbRow.is_late) state = 'late';
+    _segStates.push(state);
+    return _kRotItemHTML(state, shown, dateStr);
   }).join('');
 
-  el.innerHTML = `<div class="k-mob-rot-line"></div><div class="k-mob-rot-line-done" style="width:${greenPct}"></div><div class="k-mob-rot-items">${items}</div>`;
+  el.innerHTML = `<div class="k-mob-rot-line"></div>${_kRotSegsHTML(_segStates)}<div class="k-mob-rot-items">${items}</div>`;
 
   // Desktop: rot-tl style matching cleaning tab and tenant
   const elDsk = document.getElementById('k-dsk-rot-list');
@@ -720,8 +725,11 @@ async function _kRenderRotation(weekRow, absData, preRows) {
       const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
       const info    = kWeekInfo(Math.max(0, slotIdx));
       const dateStr = info ? fmt(info.start) + ' – ' + fmt(info.end) : '—';
-      const dbRow   = inNextRound ? null : dbRows[i];
-      const state   = _kRotState({ isNow:i===cyclePos, isPast:!inNextRound && i<cyclePos, isNext:i===trueNextI, dbStatus:dbRow?dbRow.status:null, room, weekStart:info?info.start:null, absenceRows:absData });
+      const _isPast = !inNextRound && i < cyclePos;
+      const _saved = _isPast ? (_rows.find(r => r.week_index === cycleStart + i) || null) : null;
+      const _shown = _saved && _saved.room ? _saved.room : room;
+      const dbRow   = inNextRound ? null : (_isPast ? _saved : dbRows[i]);
+      const state   = _kRotState({ isNow:i===cyclePos, isPast:!inNextRound && i<cyclePos, isNext:i===trueNextI, dbStatus:dbRow?dbRow.status:null, room: _shown, weekStart:info?info.start:null, absenceRows:absData });
       const dotClass = { done:'rot-dot--done', now:'rot-dot--now', missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent' }[state] || 'rot-dot--next';
       const topLine  = state === 'done' || state === 'now' ? 'rot-line-done'
                      : state === 'skipped' ? 'rot-line-skipped'
@@ -734,9 +742,10 @@ async function _kRenderRotation(weekRow, absData, preRows) {
         now:      '<span class="rot-badge rot-badge--now">Now</span>',
         next:     '<span class="rot-badge rot-badge--next">Next</span>',
         missed:   '<span class="rot-badge rot-badge--missed">Missed</span>',
-        skipped:  '<span class="rot-badge rot-badge--skipped">Skipped</span>',
+        skipped:  '<span class="rot-badge rot-badge--skipped">Vacant</span>',
         absent:   '<span class="rot-badge rot-badge--absent">Away</span>',
         upcoming: '<span class="rot-badge rot-badge--none">—</span>',
+        none:     '<span class="rot-badge rot-badge--none">No result</span>',
       }[state] || '<span class="rot-badge rot-badge--none">—</span>';
       const rowClass = 'rot-tl-row'
         + (state === 'now'     ? ' rot-tl-row--now'
@@ -752,7 +761,7 @@ async function _kRenderRotation(weekRow, absData, preRows) {
       const mailBtn = email
         ? `<a href="mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}" target="_blank" title="Send reminder to ${esc(room)}" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--cc-r-sm);background:var(--cc-surface);border:0.5px solid var(--cc-rule);color:var(--cc-taupe);text-decoration:none;flex-shrink:0;margin-left:5px;" aria-label="Send reminder to ${esc(room)}"><i class="ti ti-mail" style="font-size:12px;" aria-hidden="true"></i></a>`
         : '';
-      return `<div class="${rowClass}"><div class="rot-spine"><div class="rot-spine-top ${topLine}"></div><div class="rot-dot ${dotClass}"></div><div class="rot-spine-bot ${botLine}"></div></div><div class="rot-tl-body"><div class="rot-tl-info"><p class="rot-tl-room">${esc(room)}</p><p class="rot-tl-dates">${dateStr}</p></div><div style="display:flex;align-items:center;">${badge}${mailBtn}</div></div></div>`;
+      return `<div class="${rowClass}"><div class="rot-spine"><div class="rot-spine-top ${topLine}"></div><div class="rot-dot ${dotClass}"></div><div class="rot-spine-bot ${botLine}"></div></div><div class="rot-tl-body"><div class="rot-tl-info"><p class="rot-tl-room">${esc(_shown)}</p><p class="rot-tl-dates">${dateStr}</p></div><div style="display:flex;align-items:center;">${badge}${mailBtn}</div></div></div>`;
     }).join('') + '</div>';
   }
 }
@@ -786,7 +795,7 @@ function _kRenderWeekCard(weekRow, absData) {
                 : 'pending';
   const chipTxt = state !== 'now'
     ? ({ done: isLate ? '✓ Done (late)' : isAuto ? '✓ Approved (auto)' : '✓ Approved',
-         missed:'✗ Missed', absent:'— Away', skipped:'— Skipped' }[state] || 'Pending')
+         missed:'✗ Missed', absent:'— Away', skipped:'— Vacant' }[state] || 'Pending')
     : dbStatus === 'flagged'       ? '⚑ Redo'
     : isResub                      ? '↑↑ Re-submitted'
     : dbStatus === 'submitted'     ? '↑ Submitted'
@@ -907,7 +916,7 @@ async function _kLoadNudgeBanner(weekRow) {
   const _setStatus = (el, weekRow, data) => {
     if (!el) return;
     if (weekRow && data.room !== 'All' && data.room === weekRow.room) {
-      const statusMap = { pending:'Pending', submitted:'Submitted', approved:'Approved', flagged:'Flagged', missed:'Missed', skipped:'Skipped' };
+      const statusMap = { pending:'Pending', submitted:'Submitted', approved:'Approved', flagged:'Flagged', missed:'Missed', skipped:'Vacant' };
       el.textContent = statusMap[weekRow.status] || '';
       el.style.display = el.textContent ? '' : 'none';
     } else { el.style.display = 'none'; }
@@ -1404,3 +1413,18 @@ function _kQuietWeekCheck() {
 }
 document.addEventListener('visibilitychange', _kQuietWeekCheck);
 setInterval(_kQuietWeekCheck, 60 * 1000);
+
+/* ── ROTATION STRIP LABELS (K1/K3/K4) ───────────────────────
+   Words instead of symbols; a line segment per week (green = done,
+   red = missed, amber = in review). Past weeks show what the database
+   saved for that week — the rotation order can change over time. */
+function _kRotLabel(state) {
+  return { done: 'Done', late: 'Late', review: 'Review', missed: 'Missed', skipped: 'Vacant', absent: 'Away',
+           now: 'Now', none: 'No result', next: 'Next', upcoming: '' }[state] ?? '';
+}
+function _kRotItemHTML(state, room, dateStr) {
+  return `<div class="k-mob-rot-item ${state}"><span class="k-mob-rot-badge ${state}">${_kRotLabel(state)}</span><span class="k-mob-rot-room">${esc(room)}</span><span class="k-mob-rot-dates">${dateStr}</span></div>`;
+}
+function _kRotSegsHTML(states) {
+  return '<div class="k-mob-rot-segs">' + states.map(s => `<span class="k-mob-rot-seg ${s}"></span>`).join('') + '</div>';
+}

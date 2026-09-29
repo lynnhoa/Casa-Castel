@@ -613,7 +613,7 @@ async function _kTenRenderWeekCard(overrideRow) {
                   : 'pending';
     const chipTxt = state !== 'now'
       ? ({ done: isLate ? '✓ Done (late)' : isAuto ? '✓ Approved (auto)' : '✓ Approved',
-           missed:'✗ Missed', absent:'— Away', skipped:'— Skipped' }[state] || 'Pending')
+           missed:'✗ Missed', absent:'— Away', skipped:'— Vacant' }[state] || 'Pending')
       : dbStatus === 'flagged'   ? '⚑ Redo'
       : isResub                  ? '↑↑ Re-submitted'
       : dbStatus === 'submitted' ? '↑ Submitted'
@@ -723,27 +723,32 @@ async function _kTenRenderMobRotation() {
     const nSkipped = isVacant(nRoom);
     if (!nAbsent && !nSkipped) { trueNextI = ni; break; }
   }
+  const _segStates = [];
   const items = rooms.map((room, i) => {
     // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
     const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
     const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
     const info    = kWeekInfo(Math.max(0, slotIdx));
     const dateStr = info ? fmt(info.start) + '–' + fmt(info.end) : '—';
-    const dbRow   = inNextRound ? null : dbRows[i];
-    const state   = _kRotState({
+    const isPast  = !inNextRound && i < cyclePos;
+    const saved   = isPast ? (dbRowsRaw[i] || null) : null;   // past week: what was saved, whichever room
+    const shown   = saved && saved.room ? saved.room : room;
+    const dbRow   = inNextRound ? null : (isPast ? saved : dbRows[i]);
+    let state     = _kRotState({
       isNow:       i === cyclePos,
-      isPast:      !inNextRound && i < cyclePos,
+      isPast,
       isNext:      i === trueNextI,
       dbStatus:    dbRow ? dbRow.status : null,
-      room,
+      room:        shown,
       weekStart:   info ? info.start : null,
       absenceRows: absData,
     });
-    const badgeText = { done:'✓', missed:'✗', skipped:'—', absent:'Away', now:'Now', none:'—', next:'Next', upcoming:'—', review:'↑' }[state] || '—';
-    return `<div class="k-mob-rot-item ${state}"><span class="k-mob-rot-badge ${state}">${badgeText}</span><span class="k-mob-rot-room">${esc(room)}</span><span class="k-mob-rot-dates">${dateStr}</span></div>`;
+    if (state === 'done' && dbRow && dbRow.is_late) state = 'late';
+    _segStates.push(state);
+    return _kRotItemHTML(state, shown, dateStr);
   }).join('');
 
-  el.innerHTML = `<div class="k-mob-rot-line"></div><div class="k-mob-rot-line-done" style="width:${greenPct}"></div><div class="k-mob-rot-items">${items}</div>`;
+  el.innerHTML = `<div class="k-mob-rot-line"></div>${_kRotSegsHTML(_segStates)}<div class="k-mob-rot-items">${items}</div>`;
 
   // Also render desktop rotation list — uses same rot-tl CSS classes as landlord desktop
   const dskRot = document.getElementById('k-ten-dsk-rot');
@@ -755,8 +760,11 @@ async function _kTenRenderMobRotation() {
       const start    = new Date(K_START.getTime() + slotIdx * 7 * 24 * 60 * 60 * 1000);
       const end      = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
       const dateStr  = fmt(start) + ' – ' + fmt(end);
-      const dbRow    = inNextRound ? null : dbRows[i];
-      const state    = _kRotState({ isNow: i === cyclePos, isPast: !inNextRound && i < cyclePos, isNext: i === trueNextI, dbStatus: dbRow ? dbRow.status : null, room, weekStart: start, absenceRows: absData });
+      const _isPast = !inNextRound && i < cyclePos;
+      const _saved = _isPast ? (dbRowsRaw[i] || null) : null;
+      const _shown = _saved && _saved.room ? _saved.room : room;
+      const dbRow    = inNextRound ? null : (_isPast ? _saved : dbRows[i]);
+      const state    = _kRotState({ isNow: i === cyclePos, isPast: !inNextRound && i < cyclePos, isNext: i === trueNextI, dbStatus: dbRow ? dbRow.status : null, room: _shown, weekStart: start, absenceRows: absData });
       const dotClass = { done:'rot-dot--done', now:'rot-dot--now', missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent' }[state] || 'rot-dot--next';
       const topLine  = state === 'done' || state === 'now' ? 'rot-line-done'
                      : state === 'skipped' ? 'rot-line-skipped'
@@ -769,9 +777,10 @@ async function _kTenRenderMobRotation() {
         now:      '<span class="rot-badge rot-badge--now">Now</span>',
         next:     '<span class="rot-badge rot-badge--next">Next</span>',
         missed:   '<span class="rot-badge rot-badge--missed">Missed</span>',
-        skipped:  '<span class="rot-badge rot-badge--skipped">Skipped</span>',
+        skipped:  '<span class="rot-badge rot-badge--skipped">Vacant</span>',
         absent:   '<span class="rot-badge rot-badge--absent">Away</span>',
         upcoming: '<span class="rot-badge rot-badge--none">—</span>',
+        none:     '<span class="rot-badge rot-badge--none">No result</span>',
       }[state] || '<span class="rot-badge rot-badge--none">—</span>';
       const rowClass = 'rot-tl-row'
         + (state === 'now'     ? ' rot-tl-row--now'
@@ -779,7 +788,7 @@ async function _kTenRenderMobRotation() {
          : state === 'skipped' ? ' rot-tl-row--skipped'
          : state === 'absent'  ? ' rot-tl-row--absent'
          : state === 'next'    ? ' rot-tl-row--next' : '');
-      return `<div class="${rowClass}"><div class="rot-spine"><div class="rot-spine-top ${topLine}"></div><div class="rot-dot ${dotClass}"></div><div class="rot-spine-bot ${botLine}"></div></div><div class="rot-tl-body"><div class="rot-tl-info"><p class="rot-tl-room">${esc(room)}</p><p class="rot-tl-dates">${dateStr}</p></div>${badge}</div></div>`;
+      return `<div class="${rowClass}"><div class="rot-spine"><div class="rot-spine-top ${topLine}"></div><div class="rot-dot ${dotClass}"></div><div class="rot-spine-bot ${botLine}"></div></div><div class="rot-tl-body"><div class="rot-tl-info"><p class="rot-tl-room">${esc(_shown)}</p><p class="rot-tl-dates">${dateStr}</p></div>${badge}</div></div>`;
     }).join('') + '</div>';
   }
 
@@ -1230,3 +1239,18 @@ setInterval(() => { if (document.visibilityState === 'visible') _kTenEnsureCurre
 /* ── NAV ALIAS ──────────────────────────────────────────── */
 var initKitchenMobExtend = initKitchenMobile;
 var initKitchen          = initKitchenMobile; // layout.js calls initKitchen on desktop
+
+/* ── ROTATION STRIP LABELS (K1/K3/K4) ───────────────────────
+   Words instead of symbols; a line segment per week (green = done,
+   red = missed, amber = in review). Past weeks show what the database
+   saved for that week — the rotation order can change over time. */
+function _kRotLabel(state) {
+  return { done: 'Done', late: 'Late', review: 'Review', missed: 'Missed', skipped: 'Vacant', absent: 'Away',
+           now: 'Now', none: 'No result', next: 'Next', upcoming: '' }[state] ?? '';
+}
+function _kRotItemHTML(state, room, dateStr) {
+  return `<div class="k-mob-rot-item ${state}"><span class="k-mob-rot-badge ${state}">${_kRotLabel(state)}</span><span class="k-mob-rot-room">${esc(room)}</span><span class="k-mob-rot-dates">${dateStr}</span></div>`;
+}
+function _kRotSegsHTML(states) {
+  return '<div class="k-mob-rot-segs">' + states.map(s => `<span class="k-mob-rot-seg ${s}"></span>`).join('') + '</div>';
+}

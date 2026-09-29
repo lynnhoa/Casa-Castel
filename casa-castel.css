@@ -2193,6 +2193,17 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 
 /* Rotation: proof waiting for review (finished week) */
 .k-mob-rot-badge.review { background: #FDF5E8; color: #633806; border: 0.5px solid #E8C97A; }
+/* Kitchen strip (K1/K3/K4): words, a line segment per week, "Late" and "No result" */
+.k-mob-rot-badge.late { background:#EAF3DE; color:#27500A; border:0.5px solid #97C459; }
+.k-mob-rot-badge.none { background:transparent; color:var(--cc-taupe); border:0.5px dashed #B8AE9F; font-weight:500; }
+.k-mob-rot-badge.upcoming { min-width:8px; }
+.k-mob-rot-item.none .k-mob-rot-room { color:var(--cc-stone); font-style:italic; }
+.k-mob-rot-item.done .k-mob-rot-room, .k-mob-rot-item.late .k-mob-rot-room { color:#27500A; }
+.k-mob-rot-segs { position:absolute; top:25px; left:8px; right:8px; height:1.5px; display:flex; z-index:1; pointer-events:none; }
+.k-mob-rot-seg { flex:1; }
+.k-mob-rot-seg.done, .k-mob-rot-seg.late { background:#9AC87A; }
+.k-mob-rot-seg.missed { background:#F5A8A5; }
+.k-mob-rot-seg.review { background:#E8C97A; }
 .k-mob-rot-item.review .k-mob-rot-room { color: #633806; }
 
 /* Chat: late proof label + "marked missed" line */
