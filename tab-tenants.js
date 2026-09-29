@@ -19,8 +19,6 @@ document.getElementById('tab-tenants').innerHTML = `
   </div>
   <div class="tn-list" id="tenantsList"></div>
 
-  <input type="file" id="tnFileInput" accept="application/pdf,image/*"
-         style="display:none" aria-hidden="true"/>
 
   <div class="tn-overlay" id="tnModal" onclick="_tnModalOutside(event)">
     <div class="tn-sheet" id="tnSheet">
@@ -935,6 +933,7 @@ async function _tnLoad() {
     sbL.from('nk_vorauszahlung_history').select('*').in('room', rooms).order('effective_date', { ascending: false }),
     typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'casa') : Promise.resolve([]),   // rent history (rent_periods)
     typeof ccNksLoad === 'function' ? ccNksLoad() : Promise.resolve(),               // NK-Abrechnungen (Settlements)
+    typeof ccfLoadReadings === 'function' ? ccfLoadReadings(tids) : Promise.resolve(), // Zählerstände (meter_readings)
   ]);
 
   _tnKaution = {};
@@ -980,6 +979,7 @@ async function _tnLoad() {
 let _tnRenderedSig = null;
 function _tnRenderIfChanged() {
   const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache,
+                              (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
                               (typeof CC_RP !== 'undefined' ? CC_RP.rows.filter(r => r.app === 'casa') : []),
                               (typeof appRooms !== 'undefined' ? appRooms : []).map(r => [r.id, r.name, r.active, r.vacant, r.sort_order,
                                 r.kaltmiete, r.nk_pauschale, r.kurzzeit_kaltmiete, r.kurzzeit_nk, r.mietvertrag_pricing, r.kurzzeit_pricing, r.kaution_override, r.kaution_default, r.active_price_type])]);
@@ -1103,7 +1103,7 @@ function _tnCardHTML(room) {
       : ''}
     ${_ccNextTenantHTML(nextRec, nextRec ? esc([nextRec.first_name, nextRec.last_name].filter(Boolean).join(' ')) : '', _tnFmtDate, '_tnOpenModal')}
     ${_tnProfileSectionHTML(rid, room, activeRec)}
-    ${_tnDocumentsSectionHTML(rid, room, activeRec)}
+    ${activeRec && typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(activeRec, 'card') + ccfDocsSectionHTML(activeRec, 'card') : ''}
     ${_tnKautionHTML(rid, activeRec ? activeRec.id : null, 'card')}
     ${_tnNKHTML(rid, activeRec ? activeRec.id : null, 'card')}
     ${_tnIsKaltNK(activeRec, room.name) ? _tnNKVorausHTML(rid, activeRec ? activeRec.room : null, 'card') : ''}
@@ -1428,7 +1428,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
       <i class="ti ti-mail"></i> Email</button>` : ''}
     <button class="tn-btn tn-btn-sm" onclick="_tnResetPw('${esc(room.name)}')">
       <i class="ti ti-key"></i> Reset pw</button>
-    ${rec && rec.status === 'active' && ct === 'kurzzeit' ? `<button class="tn-btn tn-btn-sm" onclick="_tnRenewOpen('${rid}','${tid}')"><i class="ti ti-refresh"></i> Renew</button>` : ''}
+    ${rec && rec.status === 'active' && ct === 'kurzzeit' ? `<button class="tn-btn tn-btn-sm" onclick="ccfRenewOpen('${tid}')"><i class="ti ti-refresh"></i> Renew</button>` : ''}
     <div class="tn-spacer"></div>
     <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">
       <i class="ti ti-pencil"></i> Edit</button>
@@ -1457,56 +1457,6 @@ function _tnProfileSectionHTML(rid, room, rec) {
 }
 
 /* ── DOCUMENTS SECTION ── */
-function _tnDocumentsSectionHTML(rid, room, rec) {
-  // The tenancy's first contract (Rooms offer only when there is no tenant yet)
-  const activeType = rec ? (_tnBaseContractType(rec) || _tnRoomContractType(room.name)) : _tnRoomContractType(room.name);
-  const docs  = rec ? (_tnDocs[rec.id] || []) : [];
-  const tid   = rec ? rec.id : '';
-  const getDoc = type => docs.find(d => d.type === type);
-
-  const row = (type, label, createBtn, removeBtn) => {
-    const doc    = getDoc(type);
-    const signed = !!doc?.file_url;
-    const pill   = signed
-      ? `<span class="tnp tnp-green">uploaded</span>`
-      : `<span class="tnp tnp-gray">missing</span>`;
-    const viewBtn = `<button class="tn-doc-btn${signed?'':' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}','${esc(label)}','${esc(room.name)}')` : ''}" title="View">
-      <i class="ti ti-eye"></i></button>`;
-    const delBtn = signed
-      ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
-           onclick="_tnDeleteDoc('${tid}','${type}','${esc(doc.id)}')" title="Delete">
-           <i class="ti ti-trash"></i></button>`
-      : '';
-    const upBtn = tid
-      ? `<button class="tn-doc-btn" onclick="_tnTriggerUpload('${tid}','${type}')" title="Upload">
-           <i class="ti ti-upload"></i></button>`
-      : `<button class="tn-doc-btn off" title="Save profile first"><i class="ti ti-upload"></i></button>`;
-    return `<div class="tn-doc-row">
-      <span class="tn-doc-name">${esc(label)}</span>
-      ${pill}
-      <div class="tn-doc-btns">${!signed && createBtn ? createBtn : viewBtn}${signed ? delBtn : (removeBtn || '')}${upBtn}</div>
-    </div>`;
-  };
-
-  return `
-<div class="tn-sec">
-  <div class="tn-sec-body" style="padding-top:16px;padding-bottom:14px">
-    <div style="margin-bottom:10px"><span class="tn-sec-lbl">Documents</span></div>
-    ${!activeType ? `<p class="tn-empty">No contract type set.</p>` : ''}
-    ${activeType === 'mietvertrag' ? row('mietvertrag','Mietvertrag') : ''}
-    ${activeType === 'kurzzeit'    ? row('kurzzeitmietvertrag','Kurzzeitmietvertrag') : ''}
-    ${_tnRenewalRows(rec).map(x => {
-          const create = `<button class="tn-doc-btn" onclick="_tnRenewCreate('${tid}','${esc(String(x.p.id))}',${x.n})" title="Create contract">
-            <i class="ti ti-file-plus"></i></button>`;
-          const remove = x.last ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
-            onclick="_tnRenewDelete('${tid}','${esc(String(x.p.id))}')" title="Remove this renewal"><i class="ti ti-trash"></i></button>` : '';
-          return row(x.key, x.label, create, remove);
-        }).join('')}
-    ${row('einzug','Übergabe Einzug')}
-    ${row('auszug','Übergabe Auszug')}
-  </div>
-</div>`;
-}
 
 /* ── KAUTION SECTION (shared card + modal) ── */
 /* Kaution section — shared card (cc-kaution-card.js): one layout, five phases */
@@ -1965,34 +1915,11 @@ function _tnModalBodyHTML(rec) {
   const dKS  = rec.kaution_soll != null ? Number(rec.kaution_soll) : null;
   const warm = (dK != null && dNK != null) ? dK + dNK : dK;
 
-  const docs  = _tnDocs[tid] || [];
-  const getDoc = type => docs.find(d => d.type === type);
-  const docRow = (type, label) => {
-    const doc    = getDoc(type);
-    const signed = !!doc?.file_url;
-    const delBtn = signed
-      ? `<button class="tn-doc-btn" style="color:#A32D2D;border-color:#F09595"
-           onclick="_tnDeleteDoc('${tid}','${type}','${esc(doc.id)}')" title="Delete">
-           <i class="ti ti-trash"></i></button>`
-      : '';
-    return `<div class="tn-doc-row">
-      <span class="tn-doc-name">${esc(label)}</span>
-      <span class="tnp ${signed ? 'tnp-green' : 'tnp-gray'}">${signed ? 'uploaded' : 'missing'}</span>
-      <div class="tn-doc-btns">
-        <button class="tn-doc-btn${signed ? '' : ' off'}" onclick="${signed ? `_tnViewDoc('${esc(doc.file_url)}','${esc(label)}','${esc(rec.room)}')` : ''}">
-          <i class="ti ti-eye"></i></button>
-        ${delBtn}
-        <button class="tn-doc-btn" onclick="_tnTriggerUpload('${tid}','${type}')">
-          <i class="ti ti-upload"></i></button>
-      </div>
-    </div>`;
-  };
-
   return `
   <!-- PROFILE -->
   <div class="tn-msec" id="mprof-sec-${tid}">
     <div class="tn-msec-body" style="padding-top:10px">
-      <div style="margin-bottom:8px"><span class="tn-msec-lbl">Profile</span></div>
+      <div style="margin-bottom:8px"><span class="tn-msec-lbl">Tenant</span></div>
 
       <!-- READ -->
       <div class="tn-fg" id="mprof-read-${tid}">
@@ -2004,6 +1931,10 @@ function _tnModalBodyHTML(rec) {
           <span class="tn-fval">${esc(rec.email||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+          <span class="tn-fval">${esc(rec.address||'') || '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <span class="tn-fval">${_tnFmtDate(rec.vertragsende) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
@@ -2033,6 +1964,10 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="email" type="email" value="${esc(rec.email||'')}"/></div>
         <div class="tn-field"><span class="tn-flbl">Phone</span>
           <input data-mf="phone" type="tel" value="${esc(rec.phone||'')}"/></div>
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
+          <input data-mf="address" type="text" value="${esc(rec.address||'')}"/></div>
+        <div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <input data-mf="vertragsende" type="text" value="${_tnFmtDate(rec.vertragsende)}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-mf="mietbeginn" type="text" value="${_tnFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
@@ -2066,24 +2001,8 @@ function _tnModalBodyHTML(rec) {
     </div>
   </div>
 
-  <!-- DOCUMENTS -->
-  <div class="tn-msec">
-    <div class="tn-msec-hdr" style="margin-bottom:0">
-      <span class="tn-msec-lbl">Documents</span>
-    </div>
-    <div class="tn-msec-body" style="padding-bottom:11px">
-      ${(() => {
-        // The tenancy's first contract (the room's offer only for old records without a type)
-        const effectiveCt = ctK || _tnRoomContractType(rec.room);
-        const base = effectiveCt === 'mietvertrag' ? docRow('mietvertrag','Mietvertrag')
-          : effectiveCt === 'kurzzeit' ? docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag')
-          : docRow('mietvertrag','Mietvertrag') + docRow('kurzzeitmietvertrag','Kurzzeitmietvertrag');
-        return base + _tnRenewalRows(rec).map(x => docRow(x.key, x.label)).join('');
-      })()}
-      ${docRow('einzug','Übergabe Einzug')}
-      ${docRow('auszug','Übergabe Auszug')}
-    </div>
-  </div>
+  <!-- ZÄHLERSTÄNDE + DOCUMENTS (Unsigned | Signed) — same sections as the card -->
+  ${typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(rec, 'modal') + ccfDocsSectionHTML(rec, 'modal') : ''}
 
   <!-- KAUTION -->
   ${_tnKautionHTML('m', tid, 'modal')}
@@ -2385,70 +2304,7 @@ async function _tnRenewDelete(tid, pid) {
     .then(({ error }) => { if (error) { rec.vertragsende = before; _tnRender(); ccSaveFailed(error, 'contract end'); } });
 }
 
-/* Renewal row → "Create": the right generator in Rooms, filled in with this renewal
-   (tenant, start, end, the renewal's own rent). Draft rounds as usual; upload the signed one here. */
-function _tnRenewCreate(tid, pid, n) {
-  const rec  = _tnRecords.find(r => r.id === tid);
-  const per  = typeof ccRpFor === 'function' ? ccRpFor('casa', tid).find(p => String(p.id) === String(pid)) : null;
-  const room = rec && typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === rec.room) : null;
-  if (!rec || !per || !room || typeof _openContract !== 'function') return;
-  const amt  = ccRpAmount(per) || {};
-  const type = per.contract_type || tnContractType(rec) || 'mietvertrag';
-  if (typeof switchTab === 'function') switchTab('rooms');   // the generator lives in the Rooms tab
-  _openContract(type, room.id, {
-    roomId: room.id, label: n + '. Verlängerung',
-    start: _ccIso(per.valid_from), end: _ccIso(per.contract_end || rec.vertragsende || ''),
-    mode: amt.mode, kalt: amt.kalt, nk: amt.nk, total: amt.total,
-  });
-}
 
-function _tnRenewOpen(rid, tid) {
-  const rec = _tnRecords.find(r => r.id === tid);
-  if (!rec) return;
-  const endNow = rec.vertragsende || rec.mietende || '';   // current end (a planned move-out counts); asked for if missing
-  const cur = _tnCurrentRent(rec, rec.room) || {};
-  const pauschal = cur.mode === 'pauschal';
-  const ctNow = tnContractType(rec) || 'kurzzeit';
-  const from  = endNow ? ' from ' + _ccFmtD(_ccAddDaysIso(endNow, 1)) : ' (new)';
-  _ccPanelOpen('psec-' + rid, 'Renew contract', `
-    <div class="tn-fg">
-      <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_tnCtSegHTML('data-cc', ctNow)}</div>
-      ${endNow ? '' : `<div class="tn-field"><span class="tn-flbl">Current contract ends</span>
-        <input data-cc="cur" type="text" placeholder="TT.MM.JJJJ"/></div>`}
-      <div class="tn-field" data-cc="endwrap"${ctNow === 'mietvertrag' ? ' style="display:none"' : ''}><span class="tn-flbl">New contract end</span>
-        <input data-cc="end" type="text" placeholder="TT.MM.JJJJ" value="${endNow ? _ccFmtD(_ccAddYearIso(endNow)) : ''}"/></div>
-      ${endNow ? `<div class="tn-field"><span class="tn-flbl">Starts</span><span class="tn-fval">${_ccFmtD(_ccAddDaysIso(endNow, 1))}</span></div>` : ''}
-      ${pauschal
-        ? `<div class="tn-field"><span class="tn-flbl">Pauschalmiete${from}</span><input data-cc="kalt" type="number" data-cc-num="2" value="${cur.total ?? ''}"/></div>`
-        : `<div class="tn-field"><span class="tn-flbl">Kaltmiete${from}</span><input data-cc="kalt" type="number" data-cc-num="2" value="${cur.kalt ?? ''}"/></div>
-           <div class="tn-field"><span class="tn-flbl">Nebenkosten</span><input data-cc="nk" type="number" data-cc-num="2" value="${cur.nk ?? ''}"/></div>`}
-    </div>
-    <p class="cc-inline-hint">Same tenant, Kaution stays. The new rent and contract start the day after the current end; the new contract goes into Documents. Mietvertrag (unbefristet) needs no end date.${rec.mietende ? ` The move-out on ${_ccFmtD(rec.mietende)} is removed — the tenant stays.` : ''}</p>`, async p => {
-    const mark = sel => { const el = p.querySelector(sel); if (el) el.style.borderBottomColor = '#C4705A'; return false; };
-    const curEnd = endNow || _tnParseDate(p.querySelector('[data-cc="cur"]')?.value || '');
-    if (!curEnd) return mark('[data-cc="cur"]');
-    const start = _ccAddDaysIso(curEnd, 1);
-    const ctNew = p.querySelector('[data-cc="ct"]')?.value || ctNow;
-    const end   = ctNew === 'kurzzeit' ? _tnParseDate(p.querySelector('[data-cc="end"]')?.value || '') : null;
-    if (ctNew === 'kurzzeit' && (!end || end <= start)) return mark('[data-cc="end"]');
-    const kalt = parseFloat(p.querySelector('[data-cc="kalt"]')?.value), nk = parseFloat(p.querySelector('[data-cc="nk"]')?.value);
-    const upd = { vertragsende: end };            // unbefristet → no contract end any more
-    if (rec.mietende) upd.mietende = null;        // renewed → not moving out
-    const { error } = await sbL.from('tenant_records').update(upd).eq('id', tid);
-    if (error) { alert('Could not save — ' + error.message); return false; }
-    Object.assign(rec, upd);
-    // Every renewal is its own rent-history entry (also with the same rent) → its row in Documents
-    if (typeof ccRpSetRent === 'function') {
-      try {
-        await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: start, mode: pauschal ? 'pauschal' : 'kalt_nk',
-          kalt: isNaN(kalt) ? cur.kalt : kalt, nk: pauschal ? 0 : (isNaN(nk) ? cur.nk : nk),
-          pauschale: pauschal ? (isNaN(kalt) ? cur.total : kalt) : null,
-          kind: 'renewal', source: 'renew', legacyMode: cur.mode || 'kalt_nk', contract_end: end, contract_type: ctNew });
-      } catch (e2) { alert('Contract end saved, but the new rent could not be saved — ' + (e2.message || e2)); }
-    }
-    _tnRender(); return true;
-  });
-}
 
 async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   if (!sbL) return;
@@ -2655,6 +2511,8 @@ async function _tnModalSaveProfile(tid) {
     contract_type: ctype,
     kaution_soll:p.kaution_soll ?? rec?.kaution_soll ?? null,   // never wiped by a profile save
   };
+  if (body.querySelector('[data-mf="address"]')) update.address = p.address || null;
+  if (body.querySelector('[data-mf="vertragsende"]')) update.vertragsende = p.vertragsende || null;
   const hasRent = !!body.querySelector('[data-mf="kaltmiete"]');   // B20: only when the form shows the rent
   if (hasRent) { update.kaltmiete = p.kaltmiete ?? null; update.nebenkosten = p.nebenkosten ?? null; }
   // A tenant with rent history: the corrected rent goes into the period of their last day
@@ -2957,12 +2815,6 @@ async function _tnConfirmDeleteNk(nkId, tid) {
 /* ══════════════════════════════════════════════════════════════
    16. DOCUMENTS
 ══════════════════════════════════════════════════════════════ */
-function _tnTriggerUpload(tid, type) {
-  _tnUploadTid  = tid;
-  _tnUploadType = type;
-  const inp = document.getElementById('tnFileInput');
-  if (inp) { inp.value = ''; inp.click(); }
-}
 
 async function _tnViewDoc(fileUrl, label, roomName) {
   if (!fileUrl || !sbL) return;
@@ -2982,55 +2834,7 @@ async function _tnViewDoc(fileUrl, label, roomName) {
   else window.open(url, '_blank');
 }
 
-async function _tnHandleUpload(file) {
-  if (!file || !_tnUploadTid || !_tnUploadType || !sbL) return;
-  const rec  = _tnRecords.find(r => r.id === _tnUploadTid);
-  const room = rec?.room || 'unknown';
-  const ext  = file.name.split('.').pop() || 'pdf';
-  const path = `${room}/${_tnUploadTid}/${_tnUploadType}.${ext}`;
 
-  const { error: upErr } = await sbL.storage
-    .from('tenant-documents').upload(path, file, { upsert:true, contentType:file.type });
-  if (upErr) { console.warn('[tenants] upload:', upErr.message); _tnToast('Upload failed', true); return; }
-
-  const { data: docData, error: docErr } = await sbL.from('tenant_documents')
-    .upsert({ tenant_id: _tnUploadTid, type: _tnUploadType, file_url: path,
-              uploaded_at: new Date().toISOString() },
-            { onConflict: 'tenant_id,type' }).select().single();
-  if (docErr) { ccSaveFailed(docErr, 'document'); return; }
-
-  if (!_tnDocs[_tnUploadTid]) _tnDocs[_tnUploadTid] = [];
-  const idx = _tnDocs[_tnUploadTid].findIndex(d => d.type === _tnUploadType);
-  if (idx >= 0) _tnDocs[_tnUploadTid][idx] = docData;
-  else          _tnDocs[_tnUploadTid].push(docData);
-
-  // Bug 1 fix: targeted update — don't collapse cards
-  const tid  = _tnUploadTid;
-  if (_tnModalTid === tid) {
-    _tnOpenModal(tid); // modal re-open is fine, no card collapse
-  } else {
-    _tnRefreshDocSection(tid); // swap only the doc section in-place
-  }
-  _tnToast('Document uploaded \u2713');
-}
-
-function _tnRefreshDocSection(tid) {
-  const rec = _tnRecords.find(r => r.id === tid);
-  if (!rec) return;
-  const rid  = rec.room.replace(/\s+/g,'_').toLowerCase();
-  const body = document.getElementById('tb-' + rid);
-  if (!body) return;
-  // Find the sec containing doc-rows and replace it
-  const secs = body.querySelectorAll('.tn-sec');
-  secs.forEach(sec => {
-    if (sec.querySelector('.tn-doc-row')) {
-      const tmp = document.createElement('div');
-      tmp.innerHTML = _tnDocumentsSectionHTML(rid, { name: rec.room }, rec);
-      const newSec = tmp.firstElementChild;
-      if (newSec) sec.replaceWith(newSec);
-    }
-  });
-}
 
 function _tnToast(msg, isError) {
   const ex = document.getElementById('tn-toast');
@@ -3048,18 +2852,6 @@ function _tnToast(msg, isError) {
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2200);
 }
 
-async function _tnDeleteDoc(tid, type, docId) {
-  if (!sbL) return;
-  if (!confirm('Delete this document? This cannot be undone.')) return;
-  const doc = (_tnDocs[tid] || []).find(d => d.id === docId);
-  if (doc?.file_url) {
-    await sbL.storage.from('tenant-documents').remove([doc.file_url]);
-  }
-  const { error } = await sbL.from('tenant_documents').delete().eq('id', docId);
-  if (error) { ccSaveFailed(error, 'delete document'); return; }
-  if (_tnDocs[tid]) _tnDocs[tid] = _tnDocs[tid].filter(d => d.id !== docId);
-  if (_tnModalTid === tid) { _tnOpenModal(tid); } else { _tnRender(); }
-}
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -3330,11 +3122,7 @@ async function checkBirthdays() {
    21. EVENT BINDS
 ══════════════════════════════════════════════════════════════ */
 function _tnBindCards() {
-  const inp = document.getElementById('tnFileInput');
-  if (inp && !inp._tnBound) {
-    inp._tnBound = true;
-    inp.addEventListener('change', () => { if (inp.files?.[0]) _tnHandleUpload(inp.files[0]); });
-  }
+  // Document uploads: cc-contract-flow.js (Unsigned | Signed, photos → PDF)
 }
 
 

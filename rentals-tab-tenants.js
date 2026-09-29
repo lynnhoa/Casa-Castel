@@ -1589,7 +1589,7 @@ function _rntDocumentsSectionHTML(rid, type, unit, rec) {
   const isApt = type === 'apt';
   const docs  = rec ? (_rntDocs[rec.id] || []) : [];
   const tid   = rec ? rec.id : '';
-  const getDoc = t => docs.find(d => d.type === t);
+  const getDoc = t => docs.find(d => d.type === t && (d.variant || 'signed') === 'signed');
 
   const unitLabel = isApt ? unit.name : (unit.name + ' ' + (unit.parking_type || ''));
 
@@ -2675,7 +2675,7 @@ function _rntModalBodyHTML(rec, isApt) {
   const dNK  = rec.nebenkosten != null ? Number(rec.nebenkosten) : null;
   const dKS  = rec.kaution_soll != null ? Number(rec.kaution_soll) : null;
   const docs = _rntDocs[tid] || [];
-  const getDoc = t => docs.find(d => d.type === t);
+  const getDoc = t => docs.find(d => d.type === t && (d.variant || 'signed') === 'signed');
 
   const unitId  = rec.apartment_id || rec.parking_id;
   const unitObj = isApt
@@ -3523,20 +3523,21 @@ async function _rntHandleUpload(file) {
   const rec      = _rntRecords.find(r => r.id === _rntUploadTid);
   const unitId   = rec?.apartment_id || rec?.parking_id || 'unknown';
   const ext      = file.name.split('.').pop() || 'pdf';
-  const path     = `${unitId}/${_rntUploadTid}/${_rntUploadType}.${ext}`;
+  // Uploads here are the signed version (Unsigned | Signed arrives with step 2 of the contract flow)
+  const path     = `${unitId}/${_rntUploadTid}/${_rntUploadType}.signed.${ext}`;
 
   const { error: upErr } = await sbL.storage
     .from('rnt-tenant-documents').upload(path, file, { upsert:true, contentType:file.type });
   if (upErr) { _rntToast('Upload failed', true); return; }
 
   const { data: docData, error: docErr } = await sbL.from('rnt_tenant_documents')
-    .upsert({ tenant_id: _rntUploadTid, type: _rntUploadType, file_url: path },
-            { onConflict: 'tenant_id,type' }).select().single();
+    .upsert({ tenant_id: _rntUploadTid, type: _rntUploadType, variant: 'signed', file_url: path },
+            { onConflict: 'tenant_id,type,variant' }).select().single();
   if (docErr) { ccSaveFailed(docErr, 'document'); return; }
 
   const tid = _rntUploadTid;
   if (!_rntDocs[tid]) _rntDocs[tid] = [];
-  const idx = _rntDocs[tid].findIndex(d => d.type === _rntUploadType);
+  const idx = _rntDocs[tid].findIndex(d => d.type === _rntUploadType && (d.variant || 'signed') === 'signed');
   if (idx >= 0) _rntDocs[tid][idx] = docData;
   else          _rntDocs[tid].push(docData);
 

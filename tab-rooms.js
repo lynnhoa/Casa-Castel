@@ -1391,14 +1391,12 @@ function _roomCardHTML(r) {
             Kurzzeitmiete <i class="ti ti-chevron-right"></i>
           </button>
         </div>
-        ${typeof ccTplSlot === 'function' ? ccTplSlot('room', r.id, 'kurzzeit') : ''}
 
         <div class="rc-doc-row">
           <button class="rc-doc-btn" onclick="_openContract('mietvertrag','${r.id}')">
             Mietvertrag <i class="ti ti-chevron-right"></i>
           </button>
         </div>
-        ${typeof ccTplSlot === 'function' ? ccTplSlot('room', r.id, 'mietvertrag') : ''}
 
         <div class="rc-doc-row">
           <button class="rc-doc-btn" onclick="_openContract('ueberg','${r.id}')">
@@ -1983,6 +1981,10 @@ let _contractRenew  = null;   // set when opened from Tenants → Documents → 
 /* The room as the generator should see it: for a renewal the renewal's own rent
    replaces the room's asking rent (nothing is saved on the room). */
 function _rcContractRoom(room) {
+  // Contract flow: the generator's own Miete block (cc-contract-flow.js) is this contract's rent
+  const m = room && typeof ccfMieteGet === 'function' && room.id === _contractRoomId ? ccfMieteGet() : null;
+  if (m && _contractType === 'kurzzeit')    return { ...room, kurzzeit_kaltmiete: m.kalt, kurzzeit_nk: m.nk, kurzzeit_pricing: m.mode };
+  if (m && _contractType === 'mietvertrag') return { ...room, kaltmiete: m.kalt, nk_pauschale: m.nk, mietvertrag_pricing: m.mode };
   const rn = _contractRenew;
   if (!room || !rn || rn.roomId !== room.id) return room;
   const pausch = rn.mode === 'pauschal';
@@ -2010,10 +2012,215 @@ function _rcApplyRenew(type, room) {
   set(pre + '-end', rn.end);   // Mietvertrag: used only if you choose "befristet"
   const t = document.getElementById('contractTitleLbl');
   if (t) t.textContent = `${rn.label} \u2014 ${room.name}`;
-  const d = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
-  const rent = rn.mode === 'pauschal' ? fmtEUR(rn.total) + ' pauschal' : fmtEUR(rn.kalt) + ' kalt + ' + fmtEUR(rn.nk) + ' NK';
-  document.getElementById('contractBody')?.insertAdjacentHTML('afterbegin',
-    `<p class="cc-soll-hint">${rn.label} ab ${d(rn.start)} \u00b7 Miete ${rent} \u2014 from Tenants \u2192 Renew</p>`);
+}
+
+/* ── CONTRACT FLOW (cc-contract-flow.js) — Rooms generators ───
+   Draft PDF: as often as you like, nothing is saved.
+   Approve:   the same PDF + a summary → the tenant (For), rent history,
+              Kaution Soll, Zählerstände and Documents › Unsigned.       */
+const _RC_FIELDS = {
+  kurzzeit:    { name: 'cm-name', adr: 'cm-adr', dob: 'cm-dob', email: 'cm-email', tel: 'cm-tel', kaution: 'cm-kaution' },
+  mietvertrag: { name: 'mv-name', adr: 'mv-adr', dob: 'mv-dob', email: 'mv-email', tel: 'mv-tel', kaution: 'mv-kaution' },
+  ueberg:      { name: 'ub-mieter-name', adr: 'ub-mieter-adr' },
+};
+function _rcIsEinzug(roomId) {
+  return document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+}
+function _rcSetupFlow(type, room) {
+  const body = document.getElementById('contractBody');
+  if (!body || typeof ccfForHTML !== 'function') return;
+  const rn = _contractRenew;
+  const isContract = type === 'kurzzeit' || type === 'mietvertrag';
+  // "For" replaces the old room-tenant / Manuell switch
+  ['cmMieterPill', 'mvMieterPill', 'uebergMieterPill'].forEach(id => {
+    const p = document.getElementById(id); if (p && p.parentElement) p.parentElement.style.display = 'none';
+  });
+  const o = { mode: isContract ? 'contract' : 'ueberg', room: room.name, renew: rn,
+              occasion: _rcIsEinzug(room.id) ? 'einzug' : 'auszug', fields: _RC_FIELDS[type],
+              switchTo: rn && rn.tid ? (type === 'kurzzeit' ? 'mietvertrag' : 'kurzzeit') : null };
+  body.insertAdjacentHTML('afterbegin', ccfForHTML(o));
+  if (isContract) {
+    // The rent lives in the Miete block now — the pre-filled box would show a stale copy
+    body.querySelectorAll('.rm-prefilled .rm-pre-row').forEach(row => {
+      const k = row.firstElementChild?.textContent.trim();
+      if (k === 'Rent' || k === 'Miete' || k === 'Gesamtmiete') row.style.display = 'none';
+    });
+    const base = _rcContractRoom(room);   // no Miete block yet: the room's price, or the renewal's rent
+    const m = type === 'kurzzeit'
+      ? { mode: (base.kurzzeit_pricing || 'pauschal') === 'kalt_nk' ? 'kalt_nk' : 'pauschal',
+          kalt: Number(base.kurzzeit_kaltmiete) || 0, nk: Number(base.kurzzeit_nk) || 0 }
+      : _roomMvPricing(base);
+    const note = rn ? 'Prefilled with the current rent — type the new one if it changes.'
+                    : 'Prefilled from the room’s asking rent — change it for this contract.';
+    const html = ccfMieteHTML({ mode: m.mode, kalt: m.kalt, nk: m.nk, note });
+    const anchor = body.querySelector('.rm-kaution-row');
+    if (anchor) anchor.insertAdjacentHTML('beforebegin', html); else body.insertAdjacentHTML('beforeend', html);
+    const nkWrap = document.getElementById('cm-nk-wrap'); if (nkWrap) nkWrap.style.display = 'none';
+    const mk = document.getElementById('mv-kaution');
+    if (mk && !mk.hasAttribute('data-auto')) {
+      mk.setAttribute('data-auto', '1');
+      mk.addEventListener('input', () => mk.removeAttribute('data-auto'));
+    }
+    ccfMieteInit(() => _rcMieteChanged(type));
+    _rcMieteChanged(type);
+  }
+  ccfForInit(o, true);
+  if (rn && rn.tid && isContract) _rcRenewKautionField(type);
+  _rcWireFooter(type);
+}
+/* The Miete block drives the pricing mode and the Kaution rule (until you type a Kaution) */
+function _rcMieteChanged(type) {
+  const m = ccfMieteGet(); if (!m) return;
+  if (type === 'kurzzeit') {
+    const b = document.getElementById('cm-nk-btn'); if (b) b.dataset.mode = m.mode;
+    if (typeof _roomKzUpdateKaution === 'function') _roomKzUpdateKaution();
+  } else {
+    const inp = document.getElementById('mv-kaution');
+    if (inp && inp.hasAttribute('data-auto')) {
+      const room = _rcContractRoom(getRoomById(_contractRoomId));
+      inp.value = ccKaution({ contract: 'mietvertrag', mode: m.mode, kalt: m.kalt, nk: m.nk, rec: room }).amount;
+    }
+  }
+}
+function _rcRenewKautionField(type) {
+  const soll = _contractRenew && _contractRenew.kautionSoll;
+  ccfSetKaution(type === 'kurzzeit' ? 'cm-kaution' : 'mv-kaution', 0,
+    'Renewal — no new Kaution. The PDF keeps the first Kaution' + (soll ? ' (' + fmtEUR(soll) + ')' : '') +
+    '. Type an amount only for a new Kaution.');
+}
+function _rcWireFooter(type) {
+  const draft = document.getElementById('contractPdfBtn');
+  const appr  = document.getElementById('contractApproveBtn');
+  const reset = '<i class="ti ti-file-text"></i> Draft PDF';
+  draft?.addEventListener('click', async () => {
+    draft.innerHTML = '<i class="ti ti-loader"></i> Creating\u2026'; draft.disabled = true;
+    try {
+      const b = await _rcBuild(type, false);
+      if (!b) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); draft.innerHTML = reset; draft.disabled = false; return; }
+      await _roomGenericPdfAction(b.container, b.filename, draft, reset, null,
+        b.photos ? { photosKey: b.photos.key, meta: b.photos.meta } : undefined);
+    } catch (err) {
+      console.error('[Draft PDF]', err);
+      alert('PDF generation failed. Please try again.');
+      draft.innerHTML = reset; draft.disabled = false;
+    }
+  });
+  appr?.addEventListener('click', async () => {
+    if (appr.disabled) return;
+    appr.disabled = true;
+    try {
+      const b = await _rcBuild(type, true);
+      if (b) ccfApprove({ ...b.payload, container: b.container, photos: b.photos || null });
+    } catch (err) {
+      console.error('[Approve]', err);
+      alert('The PDF could not be prepared. Please try again.');
+    }
+    appr.disabled = false;
+  });
+}
+function _rcBuild(type, forApprove) {
+  if (type === 'kurzzeit')    return _rcBuildKurzzeit(forApprove);
+  if (type === 'mietvertrag') return _rcBuildMietvertrag(forApprove);
+  return _rcBuildUeberg();
+}
+function _rcMakeContainer(html, bg) {
+  document.getElementById('_pdfRenderContainer')?.remove();
+  const c = document.createElement('div');
+  c.id = '_pdfRenderContainer';
+  c.style.cssText = `position:fixed;top:0;left:-9999px;width:794px;background:${bg};z-index:-1;font-size:11.33px;`;
+  c.innerHTML = html;
+  document.body.appendChild(c);
+  return c;
+}
+function _rcVal(id) { return (document.getElementById(id)?.value || '').trim(); }
+function _rcFael(prefix) {
+  let v = 'sofort';
+  document.querySelectorAll('.' + prefix + '-fael-opt').forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') v = b.dataset.val; });
+  return v === 'custom' ? (parseInt(document.getElementById(prefix + '-faelligkeit-custom')?.value) || 5) : v === 'sofort' ? 'sofort' : 5;
+}
+/* Renewal without a new Kaution: the PDF keeps the first contract's Kaution ("bleibt bestehen") */
+function _rcRenewKaution(data, manual) {
+  const rn = _contractRenew;
+  if (!rn || !rn.tid || (manual != null && manual > 0)) return;
+  data.kautionBestehend = true;
+  data.kaution = Number(rn.kautionSoll) || 0;
+}
+async function _rcBuildKurzzeit(forApprove) {
+  const room2 = _rcContractRoom(getRoomById(_contractRoomId)); if (!room2) return null;
+  const mieterName = _rcVal('cm-name'), mieterAdr = _rcVal('cm-adr'), mieterDob = _rcVal('cm-dob');
+  const mieterEmail = _rcVal('cm-email'), mieterTel = _rcVal('cm-tel');
+  const startVal = document.getElementById('cm-start')?.value, endVal = document.getElementById('cm-end')?.value;
+  const sigVal = document.getElementById('cm-sig')?.value;
+  const ersterMonatVoll  = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
+  const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
+  const m = ccfMieteGet() || { mode: 'pauschal', kalt: 0, nk: 0, total: 0 };
+  if (!forApprove && !ccConfirmMissingDates([!startVal && 'Mietbeginn', !endVal && 'Mietende'])) return null;
+  const kautionOverride = ccKautionManual(document.getElementById('cm-kaution')?.value);
+  const data = _buildMietvertragData(room2, appSettings, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
+    startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride,
+    kautionFaelligkeit: _rcFael('cm'), kzPricingOverride: m.mode });
+  _rcRenewKaution(data, kautionOverride);
+  const kaution = data.kautionBestehend ? null : (Number(data.kaution) || 0);
+  ccBlankFill(data, ['mietbeginn', 'mietende']);   // empty dates → line to fill in by hand
+  const container = _rcMakeContainer(_renderKurzzeitHTML(data), '#faf9f7');
+  await document.fonts.ready;
+  await new Promise(r => setTimeout(r, 300));
+  return { container, filename: ccPdfFileName('Mietvertrag_befristet', room2.name, mieterName),
+    payload: { kind: 'contract', ctype: 'kurzzeit', room: room2.name, forId: ccfForValue(), renew: _contractRenew,
+      tenant: { name: mieterName, address: mieterAdr, birthday: mieterDob, email: mieterEmail, phone: mieterTel },
+      start: startVal, end: endVal, rent: m, kaution,
+      first_month: ersterMonatVoll ? 'voll' : 'anteilig', last_month: letzterMonatVoll ? 'voll' : 'anteilig' } };
+}
+async function _rcBuildMietvertrag(forApprove) {
+  const room2 = _rcContractRoom(getRoomById(_contractRoomId)); if (!room2) return null;
+  const mieterName = _rcVal('mv-name'), mieterAdr = _rcVal('mv-adr'), mieterDob = _rcVal('mv-dob');
+  const mieterEmail = _rcVal('mv-email'), mieterTel = _rcVal('mv-tel');
+  const startVal = document.getElementById('mv-start')?.value, sigVal = document.getElementById('mv-sig')?.value;
+  const befristet = document.getElementById('mv-befristung-btn')?.dataset.mode === 'befristet';
+  const endVal = befristet ? document.getElementById('mv-end')?.value : null;
+  const grundVal = befristet ? (document.querySelector('input[name=\'mv-grund\']:checked')?.value || '') : '';
+  const eigenbedarfPerson = grundVal === 'eigenbedarf' ? _rcVal('mv-eigenbedarf-person') : '';
+  if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) { alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return null; }
+  if (!forApprove && !ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) return null;
+  const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
+  const kautionOverride = ccKautionManual(document.getElementById('mv-kaution')?.value);
+  let mindestlaufzeitJahre = 0;   // Kündigungsverzicht — unbefristet only, cap 4 Jahre (BGH)
+  if (!befristet && document.getElementById('mv-mindest-btn')?.dataset.mode === 'ja') {
+    const selMl = document.querySelector('.mv-mindest-opt.active-mindest');
+    mindestlaufzeitJahre = selMl ? Math.min(4, Math.max(1, Number(selMl.dataset.val))) : 1;
+  }
+  const data = _buildMietvertragOnlyData(room2, appSettings, {
+    mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
+    befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
+    kautionOverride, kautionFaelligkeit: _rcFael('mv'), mindestlaufzeitJahre });
+  _rcRenewKaution(data, kautionOverride);
+  const kaution = data.kautionBestehend ? null : (Number(data.kaution) || 0);
+  ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : [], data.hasMindestlaufzeit ? ['mindestlaufzeitBis'] : []));
+  const container = _rcMakeContainer(_renderMietvertragHTML(data), '#ffffff');
+  await document.fonts.ready;
+  await new Promise(r => setTimeout(r, 300));
+  const m = ccfMieteGet() || _roomMvPricing(room2);
+  return { container, filename: ccPdfFileName('Mietvertrag', room2.name, mieterName),
+    payload: { kind: 'contract', ctype: 'mietvertrag', room: room2.name, forId: ccfForValue(), renew: _contractRenew,
+      tenant: { name: mieterName, address: mieterAdr, birthday: mieterDob, email: mieterEmail, phone: mieterTel },
+      start: startVal, end: endVal, rent: m, kaution, first_month: ersterMonatVoll ? 'voll' : 'anteilig' } };
+}
+async function _rcBuildUeberg() {
+  const isEinzug = _rcIsEinzug(_contractRoomId);
+  await _generateUebergPreviewContainer(isEinzug);
+  const container = document.getElementById('_pdfRenderContainer');
+  if (!container) throw new Error('Übergabe render container missing');
+  const room3 = getRoomById(_contractRoomId);
+  const mieterNameUb = _rcVal('ub-mieter-name');
+  const d = _buildUebergData(isEinzug) || {};
+  const unit = { Strom: 'kWh', Gas: 'm\u00b3', Wasser: 'm\u00b3' };
+  const readings = [['Strom', d.strom], ['Gas', d.gas], ['Wasser', d.wasser]].map(([meter, x]) => ({
+    meter, meter_no: (x && x.nummer) || null, value: ccfNum(x && x.stand), unit: unit[meter] }));
+  return { container,
+    filename: ccPdfFileName('Übergabeprotokoll', isEinzug ? 'Einzug' : 'Auszug', room3?.name || 'Zimmer', mieterNameUb),
+    photos: { key: 'room-ub', meta: { isEinzug, objekt: room3?.name || 'Zimmer', mieter: mieterNameUb } },
+    payload: { kind: 'ueberg', occasion: isEinzug ? 'einzug' : 'auszug', room: room3?.name, forId: ccfForValue(),
+      date: _rcVal('ub-datum'), newAddress: isEinzug ? '' : _rcVal('ub-neue-adr'), readings } };
 }
 
 /* ── PDF PREVIEW — close wiring (overlay is static in landlord.html) ──
@@ -2139,6 +2346,8 @@ async function _openContract(type, roomId, renew) {
   _contractRenew  = renew && renew.roomId === roomId ? renew : null;
   const room = getRoomById(roomId);
   if (!room) return;
+  { const b0 = document.getElementById('contractBody'); if (b0) b0.innerHTML = ''; }
+  document.getElementById('_pdfRenderContainer')?.remove();
 
   // Tenant names come from the preloaded tenant data (started when the Rooms tab
   // loads) — no full reload here, so the generator opens instantly. Only if you
@@ -2156,66 +2365,7 @@ async function _openContract(type, roomId, renew) {
     titleLbl.textContent = `New contract — ${room.name}`;
     subLbl.textContent   = `${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''} · ${room.floor || ''} · ${room.room_type || ''}`;
     body.innerHTML       = _contractBodyKurzzeit(_rcContractRoom(room));
-    if (typeof tnFixedKautionSoll === 'function') ccApplyFixedKaution('cm-kaution', tnFixedKautionSoll(room.name));
-    footer.innerHTML     = `
-      <button class="rm-btn rm-btn--cancel" id="contractCancelBtn">Cancel</button>
-      <button class="rm-btn rm-btn--pdf" id="contractPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
-    setTimeout(() => {
-      document.getElementById('contractPdfBtn')?.addEventListener('click', async () => {
-        const btn = document.getElementById('contractPdfBtn');
-        if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
-        try {
-          const room2 = _rcContractRoom(getRoomById(_contractRoomId)); if (!room2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } return; }
-          const mieterName = document.getElementById('cm-name')?.value.trim();
-          const mieterAdr  = document.getElementById('cm-adr')?.value.trim();
-          const mieterDob  = document.getElementById('cm-dob')?.value.trim();
-          const mieterEmail= document.getElementById('cm-email')?.value.trim();
-          const mieterTel  = document.getElementById('cm-tel')?.value.trim();
-          const startVal   = document.getElementById('cm-start')?.value;
-          const endVal     = document.getElementById('cm-end')?.value;
-          const sigVal     = document.getElementById('cm-sig')?.value;
-          const ersterMonatVoll  = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
-          const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
-          const kzPricingOverride = document.getElementById('cm-nk-btn')?.dataset.mode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
-          if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', !endVal && 'Mietende'])) { if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } return; }
-          const s    = appSettings;
-          const kautionOverrideKz = ccKautionManual(document.getElementById('cm-kaution')?.value);
-          const _cmFaelOpts = document.querySelectorAll('.cm-fael-opt');
-          let _cmFaelVal = 'sofort';
-          _cmFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _cmFaelVal = b.dataset.val; });
-          const kautionFaelligkeitKz = _cmFaelVal === 'custom'
-            ? (parseInt(document.getElementById('cm-faelligkeit-custom')?.value) || 5)
-            : _cmFaelVal === 'sofort' ? 'sofort' : 5;
-          const data = _buildMietvertragData(room2, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride: kautionOverrideKz, kautionFaelligkeit: kautionFaelligkeitKz, kzPricingOverride });
-          ccBlankFill(data, ['mietbeginn', 'mietende']);   // empty dates → line to fill in by hand
-          const html = _renderKurzzeitHTML(data);
-          let container = document.getElementById('_pdfRenderContainer');
-          if (container) container.remove();
-          container = document.createElement('div');
-          container.id = '_pdfRenderContainer';
-          container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#faf9f7;z-index:-1;font-size:11.33px;';
-          container.innerHTML = html;
-          document.body.appendChild(container);
-          await document.fonts.ready;
-          await new Promise(r => setTimeout(r, 300));
-          // Rent history (5.5 / B7): the contract's rent, dates and first/last-month rule → the tenant
-          if (typeof ccRpFromContract === 'function') await ccRpFromContract({
-            app: 'casa', db: sbL, records: typeof _tnRecords !== 'undefined' ? _tnRecords : [], unitKey: 'room', unitRef: room2.name,
-            tenantName: mieterName, start: startVal, end: endVal, mode: kzPricingOverride,
-            kalt: Number(room2.kurzzeit_kaltmiete) || 0, nk: Number(room2.kurzzeit_nk) || 0,
-            total: (Number(room2.kurzzeit_kaltmiete) || 0) + (Number(room2.kurzzeit_nk) || 0),
-            first_month: ersterMonatVoll ? 'voll' : 'anteilig', last_month: letzterMonatVoll ? 'voll' : 'anteilig',
-            contract_type: 'kurzzeit', legacyMode: typeof _tnLegacyMode === 'function' ? _tnLegacyMode(room2.name, null) : 'pauschal',
-          });
-          const filename = ccPdfFileName('Mietvertrag_befristet', room2.name, mieterName);
-          await _roomGenericPdfAction(container, filename, btn, '<i class="ti ti-printer"></i> Generate PDF');
-        } catch(err) {
-          console.error('[KZ PDF]', err);
-          alert('PDF generation failed. Please try again.');
-          if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
-        }
-      });
-    }, 0);
+    footer.innerHTML     = ccfFooterHTML();
     document.getElementById('cm-start')?.addEventListener('change', _updateMonatToggles);
     document.getElementById('cm-end')?.addEventListener('change', _updateMonatToggles);
 
@@ -2224,88 +2374,7 @@ async function _openContract(type, roomId, renew) {
     titleLbl.textContent = `New contract — ${room.name}`;
     subLbl.textContent   = `${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''} · ${room.floor || ''}`;
     body.innerHTML       = _contractBodyMietvertrag(_rcContractRoom(room));
-    if (typeof tnFixedKautionSoll === 'function') ccApplyFixedKaution('mv-kaution', tnFixedKautionSoll(room.name));
-    footer.innerHTML     = `
-      <button class="rm-btn rm-btn--cancel" id="contractCancelBtn">Cancel</button>
-      <button class="rm-btn rm-btn--pdf" id="contractPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
-    setTimeout(() => {
-      document.getElementById('contractPdfBtn')?.addEventListener('click', async () => {
-        const btn = document.getElementById('contractPdfBtn');
-        if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
-        try {
-          const room2   = _rcContractRoom(getRoomById(_contractRoomId)); if (!room2) { if (typeof ccCancelPdf === 'function') ccCancelPdf(); if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; } return; }
-          const mieterName  = document.getElementById('mv-name')?.value.trim();
-          const mieterAdr   = document.getElementById('mv-adr')?.value.trim();
-          const mieterDob   = document.getElementById('mv-dob')?.value.trim();
-          const mieterEmail = document.getElementById('mv-email')?.value.trim();
-          const mieterTel   = document.getElementById('mv-tel')?.value.trim();
-          const startVal    = document.getElementById('mv-start')?.value;
-          const sigVal      = document.getElementById('mv-sig')?.value;
-          const befristet   = document.getElementById('mv-befristung-btn')?.dataset.mode === 'befristet';
-          const endVal      = befristet ? document.getElementById('mv-end')?.value : null;
-          const grundVal    = befristet ? (document.querySelector('input[name=\'mv-grund\']:checked')?.value || '') : '';
-          const eigenbedarfPerson = grundVal === 'eigenbedarf'
-            ? document.getElementById('mv-eigenbedarf-person')?.value.trim() : '';
-          if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) {
-            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
-            alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
-          }
-          if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) {
-            if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
-            return;
-          }
-          const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
-          const kautionOverrideMv = ccKautionManual(document.getElementById('mv-kaution')?.value);
-          const _mvFaelOpts = document.querySelectorAll('.mv-fael-opt');
-          let _mvFaelVal = 'sofort';
-          _mvFaelOpts.forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') _mvFaelVal = b.dataset.val; });
-          const kautionFaelligkeitMv = _mvFaelVal === 'custom'
-            ? (parseInt(document.getElementById('mv-faelligkeit-custom')?.value) || 5)
-            : _mvFaelVal === 'sofort' ? 'sofort' : 5;
-          // Mindestlaufzeit (Kündigungsverzicht) — unbefristet only, cap 4 Jahre (BGH)
-          let mindestlaufzeitJahre = 0;
-          if (!befristet && document.getElementById('mv-mindest-btn')?.dataset.mode === 'ja') {
-            const selMl = document.querySelector('.mv-mindest-opt.active-mindest');
-            mindestlaufzeitJahre = selMl ? Math.min(4, Math.max(1, Number(selMl.dataset.val))) : 1;
-          }
-          const data = _buildMietvertragOnlyData(room2, appSettings, {
-            mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
-            befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
-            kautionOverride: kautionOverrideMv,
-            kautionFaelligkeit: kautionFaelligkeitMv,
-            mindestlaufzeitJahre,
-          });
-          ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : [], data.hasMindestlaufzeit ? ['mindestlaufzeitBis'] : []));
-          const html = _renderMietvertragHTML(data);
-          let container = document.getElementById('_pdfRenderContainer');
-          if (container) container.remove();
-          container = document.createElement('div');
-          container.id = '_pdfRenderContainer';
-          container.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#ffffff;z-index:-1;font-size:11.33px;';
-          container.innerHTML = html;
-          document.body.appendChild(container);
-          await document.fonts.ready;
-          await new Promise(r => setTimeout(r, 300));
-          // Rent history (5.5 / B7): the contract's rent, dates and first-month rule → the tenant
-          if (typeof ccRpFromContract === 'function') {
-            const _mvP = _roomMvPricing(room2);
-            await ccRpFromContract({
-              app: 'casa', db: sbL, records: typeof _tnRecords !== 'undefined' ? _tnRecords : [], unitKey: 'room', unitRef: room2.name,
-              tenantName: mieterName, start: startVal, end: befristet ? endVal : null, mode: _mvP.mode,
-              kalt: _mvP.kalt, nk: _mvP.nk, total: _mvP.total,
-              first_month: ersterMonatVoll ? 'voll' : 'anteilig', last_month: 'anteilig', contract_type: 'mietvertrag',
-              legacyMode: typeof _tnLegacyMode === 'function' ? _tnLegacyMode(room2.name, null) : 'pauschal',
-            });
-          }
-          const filenameMv = ccPdfFileName('Mietvertrag', room2.name, mieterName);
-          await _roomGenericPdfAction(container, filenameMv, btn, '<i class="ti ti-printer"></i> Generate PDF');
-        } catch(err) {
-          console.error('[MV PDF]', err);
-          alert('PDF generation failed. Please try again.');
-          if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
-        }
-      });
-    }, 0);
+    footer.innerHTML     = ccfFooterHTML();
 
   } else if (type === 'ueberg') {
     const isEinzug = document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
@@ -2313,38 +2382,11 @@ async function _openContract(type, roomId, renew) {
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + room.name;
     subLbl.textContent   = (room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '') + (room.floor ? ' · ' + room.floor : '');
     body.innerHTML       = _contractBodyUeberg(room, isEinzug);
-    footer.innerHTML     = `
-      <button class="rm-btn rm-btn--cancel" id="contractCancelBtn">Cancel</button>
-      <button class="rm-btn rm-btn--pdf" id="contractPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
-    setTimeout(() => {
-      document.getElementById('contractPdfBtn')?.addEventListener('click', async () => {
-        const btn = document.getElementById('contractPdfBtn');
-        if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
-        try {
-          await _generateUebergPreviewContainer(isEinzug);
-          const container = document.getElementById('_pdfRenderContainer');
-          if (!container) throw new Error('Übergabe render container missing');
-          const room3 = getRoomById(_contractRoomId);
-          const mieterNameUb = document.getElementById('ub-mieter-name')?.value.trim() || '';
-          const filenameUb = ccPdfFileName('Übergabeprotokoll', isEinzug ? 'Einzug' : 'Auszug', room3?.name || 'Zimmer', mieterNameUb);
-          // No saveFn: take the identical path as the Mietvertrag flow —
-          // _roomGenericPdfAction re-renders the snapshotted preview HTML at
-          // full quality and delivers it. Passing _generateUebergPDF here used
-          // to rebuild the document a second time from the live form and hide
-          // the overlay before rendering, which is the only step Mietvertrag
-          // never took.
-          await _roomGenericPdfAction(container, filenameUb, btn, '<i class="ti ti-printer"></i> Generate PDF', null,
-            { photosKey: 'room-ub', meta: { isEinzug, objekt: room3?.name || 'Zimmer', mieter: mieterNameUb } });
-        } catch(err) {
-          console.error('[Übergabe PDF]', err);
-          alert('PDF generation failed. Please try again.');
-          if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
-        }
-      });
-    }, 0);
-    // Init toggle after DOM renders
-    setTimeout(() => { _initUebergMieterToggle(room); }, 50);
+    footer.innerHTML     = ccfFooterHTML(ccfRoomTenancies(room.name).length > 0);
   }
+
+  // Contract flow: For line, Miete block, Draft PDF / Approve (cc-contract-flow.js)
+  _rcSetupFlow(type, room);
 
   // Cancel: use fresh clone to avoid stale listener accumulation
   const cancelBtn = document.getElementById('contractCancelBtn');
@@ -2363,11 +2405,8 @@ async function _openContract(type, roomId, renew) {
       ? (document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() || null)
       : null;
     ccDraftAutoSave(_ROOM_DRAFT_KEY, body, () =>
-      document.getElementById('contractOverlay')?.classList.contains('open') ? { type, roomId, euLabel } : null);
+      document.getElementById('contractOverlay')?.classList.contains('open') ? { type, roomId, euLabel, renew: _contractRenew || null } : null);
   }
-
-  // Req 3: "Save as template" (Kurzzeit + Mietvertrag only)
-  if (typeof ccTplAttach === 'function') ccTplAttach({ kind: 'room', unitId: roomId, type, footer });
 
   _rcApplyRenew(type, room);   // opened from a renewal in Tenants → dates + that renewal's rent
 
@@ -2375,13 +2414,11 @@ async function _openContract(type, roomId, renew) {
 }
 
 document.getElementById('contractClose')?.addEventListener('click', () => {
-  if (typeof ccDraftClear === 'function') ccDraftClear(_ROOM_DRAFT_KEY);
   document.getElementById('contractOverlay').classList.remove('open');
 });
 
 document.getElementById('contractOverlay')?.addEventListener('click', e => {
   if (e.target === document.getElementById('contractOverlay')) {
-    if (typeof ccDraftClear === 'function') ccDraftClear(_ROOM_DRAFT_KEY);
     document.getElementById('contractOverlay').classList.remove('open');
   }
 });
@@ -2421,32 +2458,12 @@ async function _roomReopenContractDraft(d) {
         if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
       });
     }
-    await _openContract(d.meta.type, d.meta.roomId);
+    await _openContract(d.meta.type, d.meta.roomId, d.meta.renew || undefined);
     await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
     await ccDraftApply(document.getElementById('contractBody'), d);
+    if (typeof ccfMieteRefresh === 'function') ccfMieteRefresh();
   } catch (e) { console.warn('[rooms draft] restore skipped:', e); }
 }
-
-
-/* ── CONTRACT TEMPLATES (Req 3) — Rooms adapter ─────────────
-   Template = the same field snapshot the draft safety net uses.
-   Renew opens the generator and refills it the same way a draft is restored. */
-if (typeof ccTplRegister === 'function') ccTplRegister('room', {
-  body:     () => document.getElementById('contractBody'),
-  snapshot: body => ccDraftSnapshot(body),
-  prefix:   type => (type === 'kurzzeit' ? 'cm-' : 'mv-'),
-  openType: type => type,
-  currentTenant: id => {
-    const room = getRoomById(id);
-    return room && typeof _getProfile === 'function' ? _getProfile(room.name) : null;
-  },
-  renew: async (type, id, snap) => {
-    if (typeof ccDraftClear === 'function') ccDraftClear(_ROOM_DRAFT_KEY);
-    await _openContract(type, id);
-    await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
-    await ccDraftApply(document.getElementById('contractBody'), snap);
-  },
-});
 
 
 /* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */
@@ -3524,7 +3541,7 @@ function _renderKurzzeitHTML(d) {
     ${kv('1. Zahlung', eur(d.zahlung1Betrag) + ' (' + d.zahlung1Beschreibung + '), fällig am ' + d.zahlung1Faellig)}
     ${d.weitereZahlungen ? kv('Weitere Zahlungen', eur(d.weitereZahlungenBetrag) + ' monatlich, jeweils fällig 3. Werktag') : ''}
     ${d.letzteZahlungNoetig ? kv('Letzte Zahlung', eur(d.letzteZahlungBetrag) + ' (' + d.letzteZahlungBeschreibung + '), fällig am ' + d.letzteZahlungFaellig) : ''}
-    ${kv('Kaution', eur(d.kaution) + ' (' + d.kautionFaelligkeitShort + ')')}
+    ${kv('Kaution', d.kautionBestehend ? (d.kaution ? eur(d.kaution) + ' (bereits geleistet)' : 'bereits geleistet') : eur(d.kaution) + ' (' + d.kautionFaelligkeitShort + ')')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber', d.kontoinhaber)}
     ${kv('Bank', d.bankname)}
@@ -3590,7 +3607,7 @@ function _renderKurzzeitHTML(d) {
   ${hdr(d.zimmerName)}
   ${ftr(4)}
   <div class="content">
-    ${clause('6', 'Kaution', 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelligkeitLong + '. Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', true)}
+    ${clause('6', 'Kaution', (d.kautionBestehend ? 'Die vom Mieter bereits geleistete Kaution' + (d.kaution ? ' von ' + eur(d.kaution) : '') + ' bleibt bestehen und sichert auch dieses Mietverhältnis; eine erneute Zahlung ist nicht erforderlich.' : 'Der Mieter zahlt eine Kaution von ' + eur(d.kaution) + ' ' + d.kautionFaelligkeitLong + '.') + ' Vom Mieter selbstverschuldete Schäden werden zu 100 % von der Kaution abgezogen. Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands zurückerstattet.', true)}
     ${clause('7', 'Kleinreparaturen', 'Kleinreparaturen an Gegenständen, die dem häufigen Zugriff des Mieters unterliegen, trägt der Mieter bis 150 € pro Einzelfall, höchstens jedoch 8 % der Jahresmiete pro Jahr. Übersteigen die Kosten einer einzelnen Reparatur 150 €, trägt der Mieter keinen Anteil.', false)}
     ${clause('8', 'Tierhaltung', 'Die Haltung von Tieren ist nicht gestattet.', false)}
     ${clause('9', 'Betreten des Mietobjekts', 'Das Zimmer wird nur nach vorheriger Ankündigung (mindestens 2 Werktage in Textform) betreten, etwa zur Besichtigung bei Weitervermietung oder für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.', false)}
@@ -4639,7 +4656,7 @@ function _renderMietvertragHTML(d) {
   <div class="content">
     ${sec('Bankverbindung',true,true)}
     ${kv('Fälligkeit','Spätestens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
-    ${kv('Kaution',eur(d.kaution)+'\u2002(' + d.kautionFaelligkeitShort + ', \u00a7\u00a0551 BGB)')}
+    ${kv('Kaution', d.kautionBestehend ? (d.kaution ? eur(d.kaution) + '\u2002(bereits geleistet)' : 'bereits geleistet') : eur(d.kaution)+'\u2002(' + d.kautionFaelligkeitShort + ', \u00a7\u00a0551 BGB)')}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${kv('Bank',d.bankname)}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel \u2013 ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>
@@ -4683,7 +4700,7 @@ function _renderMietvertragHTML(d) {
     ${cl('5','Schlüsselübergabe',
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`)}
     ${cl('6','Kaution',
-      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelligkeitLong.startsWith('sofort') ? d.kautionFaelligkeitLong : d.kautionFaelligkeitLong + ' dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
+      `${d.kautionBestehend ? 'Die vom Mieter bereits geleistete Kaution' + (d.kaution ? ' von ' + eur(d.kaution) : '') + ' bleibt bestehen und sichert auch dieses Mietverhältnis; eine erneute Zahlung ist nicht erforderlich.' : `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelligkeitLong.startsWith('sofort') ? d.kautionFaelligkeitLong : d.kautionFaelligkeitLong + ' dieses Vertrages'} auf das oben genannte Konto.`} Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Treuhandkonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`)}
     ${cl('7','Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.')}
     ${cl('8','Tierhaltung',
