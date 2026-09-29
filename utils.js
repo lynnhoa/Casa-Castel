@@ -294,10 +294,11 @@ function kWeekDateRange(weekIndex) {
    One call per load returns only room + week + yes/no — no tenant
    data reaches the tenant app. Fallback: today's vacant flag.     */
 const _kVacCache = {};
-async function kLoadWeekVacancy(fromIdx, toIdx) {
+async function kLoadWeekVacancy(fromIdx, toIdx, rpcName) {
   if (typeof sbL === 'undefined' || !sbL) return;
   try {
-    const { data, error } = await sbL.rpc('kitchen_vacancy_range', { p_from: fromIdx, p_to: toIdx });
+    // kitchen rooms by default; 'room_vacancy_range' = all rooms (House Cleaning). Same Mon–Sun weeks from 05.01.2026.
+    const { data, error } = await sbL.rpc(rpcName || 'kitchen_vacancy_range', { p_from: fromIdx, p_to: toIdx });
     if (error) { console.warn('[kitchen] week vacancy:', error.message); return; }
     (data || []).forEach(r => { _kVacCache[r.room + '|' + r.week_index] = !!r.vacant; });
   } catch (e) { console.warn('[kitchen] week vacancy:', e); }

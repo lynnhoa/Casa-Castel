@@ -368,7 +368,8 @@ async function loadHouseCleaning() {
   if (sbL) {
     const [doneRes, absRes] = await Promise.all([
       sbL.from('cleaning_weeks').select('week_index,room,status,done_at,done_by').eq('status','done'),
-      sbL.from('kitchen_absences').select('*')
+      sbL.from('kitchen_absences').select('*'),
+      kLoadWeekVacancy(cycleStart, cycleStart + 2 * rot.length, 'room_vacancy_range'),   // vacant per week from move-in / move-out dates
     ]);
     if (doneRes.data) doneRes.data.forEach(row => {
       const key = row.week_index + '_' + row.room;
@@ -394,6 +395,7 @@ async function loadHouseCleaning() {
   const partAbsences = curWStart ? absRows.filter(a => absOverlapsWeek(a, curWStart, curWEnd) && !absCoversWeek(a, curWStart, curWEnd)) : [];
   // Is the current week's assigned room itself absent?
   const isCurrentRoomAbsent = curInfo ? weekAbsences.some(a => a.room === curInfo.room) : false;
+  const isCurrentRoomVacant = curInfo && !isCurrentRoomAbsent ? kVacantInWeek(curInfo.room, curIdx) : false;
 
   /* ── This week card ── */
   const cwEl = document.getElementById('hc-current-week');
@@ -406,9 +408,9 @@ async function loadHouseCleaning() {
           <div>
             <p class="hc-current-kw">${esc(curInfo.room)}</p>
           </div>
-          <span class="k-pill ${isDone ? 'k-pill--done' : isCurrentRoomAbsent ? 'k-pill--skipped' : 'k-pill--pending'}" style="font-size:10px;padding:3px 8px;">
-            <span class="k-dot ${isDone ? 'k-dot--done' : isCurrentRoomAbsent ? 'k-dot--skipped' : 'k-dot--pending'}"></span>
-            ${isDone ? 'Done' : isCurrentRoomAbsent ? '— Away' : 'Pending'}
+          <span class="k-pill ${isDone ? 'k-pill--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-pill--skipped' : 'k-pill--pending'}" style="font-size:10px;padding:3px 8px;">
+            <span class="k-dot ${isDone ? 'k-dot--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-dot--skipped' : 'k-dot--pending'}"></span>
+            ${isDone ? 'Done' : isCurrentRoomAbsent ? '— Away' : isCurrentRoomVacant ? '— Vacant' : 'Pending'}
           </span>
         </div>
         <p class="hc-current-dates">${curInfo.dateRange} · ${curInfo.daysLeft} days left</p>
@@ -420,7 +422,8 @@ async function loadHouseCleaning() {
                </span>
                <span class="hc-done-ts">${fmtTs(wDone.ts)}</span>
              </div>`
-          : isCurrentRoomAbsent ? `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is away this week.</p>` : `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is responsible this week.</p>`
+          : isCurrentRoomAbsent ? `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is away this week.</p>`
+          : isCurrentRoomVacant ? `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is vacant — no cleaning turn this week.</p>` : `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is responsible this week.</p>`
         }
       </div>
 
@@ -469,7 +472,7 @@ function _hcRotState({ isNow, isPast, isNext, slotDone, room, weekStart, absRows
     if (absRows.some(a => a.room === room && absCoversWeek(a, wStart, wEnd))) return 'absent';
   }
   // 2. Vacant room
-  if (isVacant(room)) return 'skipped';
+  if (kVacantInWeek(room, weekStart ? _hcWeekIndex(weekStart) : _hcWeekIndex())) return 'skipped';   // nobody lived there any day of that week
   // 3. Done — check before isNow so current week shows done correctly
   if (slotDone) return 'done';
   // 4. Current week, not done yet
@@ -501,7 +504,7 @@ function _renderHcRotation(cycleStart, cyclePos, hcDoneMap, absRows, rot) {
     const cwStart = _hcYmd(candidateWs);
     const cwEnd   = _hcYmd(_hcAddDays(candidateWs, 6));
     const isAbsent  = (absRows || []).some(a => a.room === candidateRoom && absCoversWeek(a, cwStart, cwEnd));
-    const isSkipped = isVacant(candidateRoom);
+    const isSkipped = kVacantInWeek(candidateRoom, candidateSlot);
     if (!isAbsent && !isSkipped) { trueNextI = candidateI; break; }
   }
 
