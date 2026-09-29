@@ -57,8 +57,8 @@ function ccTnKautionPill(k, sollAmount, fmtEUR) {
 function ccTnFormerKautionPill(k, fmtEUR, fmtDate) {
   const x = ccTnKaution(k);
   if (!x.recv) return '';
-  if (x.settled) return _ccTnPill('tnp-green', fmtEUR(x.ret) + ' returned' + (k.settled_at ? ' \u00b7 ' + fmtDate(k.settled_at) : ''));
-  if (x.held > 0) return _ccTnPill('tnp-amber', fmtEUR(x.held) + ' open');
+  if (x.settled) return _ccTnPill('tnp-gray', 'Kaution ' + fmtEUR(x.ret) + ' returned');   // done → quiet; date is in the pop-up
+  if (x.held > 0) return _ccTnPill('tnp-amber', 'Kaution ' + fmtEUR(x.held) + ' open');
   return _ccTnPill('tnp-amber', 'Kaution settle?');
 }
 /* Tab summary: money currently held (unsettled, received − returned) */

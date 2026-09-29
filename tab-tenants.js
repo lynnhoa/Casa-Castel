@@ -402,6 +402,15 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-former-name { font-size:11px; font-weight:400; color:var(--cc-taupe); }
 .tn-former-period { font-size:11px; color:var(--cc-stone); }
 .tn-former-pills { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+/* Former row: pills on their own line — never over name or dates */
+.tn-former-row { flex-wrap:wrap; row-gap:6px; padding:10px 14px; }
+.tn-former-row .tn-former-info { flex:1 1 0; min-width:0; }
+.tn-former-row .tn-former-name, .tn-former-row .tn-former-period { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tn-former-row .tn-former-name { font-size:13px; color:var(--cc-charcoal); }
+.tn-former-row .tn-former-period { font-size:11px; color:var(--cc-taupe); margin-top:2px; }
+.tn-former-row .tn-former-pills { order:3; flex:1 0 100%; justify-content:flex-start; }
+.tn-former-row .tn-former-pills:empty { display:none; }
+.tn-former-row > .tn-btn, .tn-former-row > .ti { order:2; flex-shrink:0; }
 .tn-show-older { display:flex; align-items:center; gap:5px; padding:7px 14px;
   font-size:11px; color:var(--cc-stone); cursor:pointer; background:none;
   border:none; font-family:inherit; width:100%;
@@ -1693,6 +1702,13 @@ function _tnNewContractHTML(rid, room) {
     <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_tnCtSegHTML('data-f', ct)}</div>
     ${hasVE ? `<div class="tn-field" data-cc="endwrap"${ct === 'mietvertrag' ? ' style="display:none"' : ''}><span class="tn-flbl">Contract end</span>
       <input data-f="vertragsende" type="text" value="" placeholder="TT.MM.JJJJ"/></div>` : ''}
+    <div class="tn-field tn-field-full"><span class="tn-flbl">Rent</span>${_tnModeSegHTML('data-f', 'kalt_nk')}</div>
+    <div class="tn-field"><span class="tn-flbl" data-kaltlbl>Kaltmiete</span>
+      <input data-f="kaltmiete" type="number" data-cc-num="2" inputmode="decimal" value="" placeholder="0,00"/></div>
+    <div class="tn-field" data-nkwrap><span class="tn-flbl">Nebenkosten</span>
+      <input data-f="nebenkosten" type="number" data-cc-num="2" inputmode="decimal" value="" placeholder="0,00"/></div>
+    <div class="tn-field"><span class="tn-flbl">Kaution</span>
+      <input data-f="kaution_soll" type="number" data-cc-num="2" inputmode="decimal" value="" placeholder="0,00"/></div>
   </div>
 </div>`;
 }
@@ -2549,7 +2565,12 @@ async function _tnSaveNewTenant(rid, roomName) {
   { const nc = document.getElementById('newc-' + rid);            // Contract + Contract end sit in the beige block
     if (nc) { const q = _tnCollectProfile(nc, 'data-f');
       if (q.contract_type !== undefined) p.contract_type = q.contract_type;
-      if (q.vertragsende !== undefined) p.vertragsende = q.vertragsende; } }
+      if (q.vertragsende !== undefined) p.vertragsende = q.vertragsende;
+      p._mode = nc.querySelector('[data-f="rent_mode"]')?.value === 'pauschal' ? 'pauschal' : 'kalt_nk';
+      if (q.kaltmiete != null) p.kaltmiete = q.kaltmiete;
+      if (p._mode === 'pauschal') p.nebenkosten = null; else if (q.nebenkosten != null) p.nebenkosten = q.nebenkosten;
+      p._typedRent = q.kaltmiete != null;
+      if (q.kaution_soll != null) p.kaution_soll = q.kaution_soll; } }
   if (!p.first_name && !p.last_name && !p.email) {
     const inp = sec.querySelector('[data-f="name"]');
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
@@ -2578,12 +2599,22 @@ async function _tnSaveNewTenant(rid, roomName) {
     kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende, ctype) ?? null,
   };
   if (p.vertragsende !== undefined) payload.vertragsende = ctype === 'mietvertrag' ? null : (p.vertragsende || null);
+  if (p._typedRent && p._mode === 'pauschal') payload.nebenkosten = null;
 
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
   if (error) {
     ccSaveFailed(error, 'new tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
+  }
+  // Rent typed in "New contract" = the Erstvertrag's rent and mode (never the room's offer later)
+  if (p._typedRent && data.mietbeginn && typeof ccRpSetRent === 'function') {
+    try {
+      await ccRpSetRent(sbL, { app: 'casa', rec: data, validFrom: _ccIso(data.mietbeginn), mode: p._mode,
+        kalt: Number(data.kaltmiete) || 0, nk: p._mode === 'pauschal' ? null : (Number(data.nebenkosten) || 0),
+        pauschale: Number(data.kaltmiete) || 0, contract_type: ctype || undefined,
+        kind: 'migrated', source: 'tenant_form', legacyMode: p._mode });
+    } catch (e) { ccSaveFailed(e, 'rent history'); }
   }
 
   await _tnEnsureKaution(data.id);

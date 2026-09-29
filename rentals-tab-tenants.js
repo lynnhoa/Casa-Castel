@@ -375,6 +375,15 @@ button.tn-nkv-pill.done:active { opacity:.7; }
 .tn-former-name   { font-size:11px; font-weight:400; color:var(--cc-taupe); }
 .tn-former-period { font-size:11px; color:var(--cc-stone); }
 .tn-former-pills  { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+/* Former row: pills on their own line — never over name or dates */
+.tn-former-row { flex-wrap:wrap; row-gap:6px; padding:10px 14px; }
+.tn-former-row .tn-former-info { flex:1 1 0; min-width:0; }
+.tn-former-row .tn-former-name, .tn-former-row .tn-former-period { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tn-former-row .tn-former-name { font-size:13px; color:var(--cc-charcoal); }
+.tn-former-row .tn-former-period { font-size:11px; color:var(--cc-taupe); margin-top:2px; }
+.tn-former-row .tn-former-pills { order:3; flex:1 0 100%; justify-content:flex-start; }
+.tn-former-row .tn-former-pills:empty { display:none; }
+.tn-former-row > .tn-btn, .tn-former-row > .ti { order:2; flex-shrink:0; }
 .tn-show-older { display:flex; align-items:center; gap:5px; padding:7px 14px;
   font-size:11px; color:var(--cc-stone); cursor:pointer; background:none;
   border:none; font-family:inherit; width:100%;
