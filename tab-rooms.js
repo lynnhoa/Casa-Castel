@@ -2069,7 +2069,8 @@ function _rcSetupFlow(type, room) {
   _rcWireFooter(type);
   ccfFlowWatch('contractBody', 'contractFooter');
   // what you type stays with this room + generator until Approve or Cancel (30 days)
-  ccfFormAttach('contractBody', ccfFormKey(room.name, type + (type === 'ueberg' ? ':' + o.occasion : '') + (rn && rn.tid ? ':renew' + rn.tid : '')));
+  { const gen = type + (type === 'ueberg' ? ':' + o.occasion : '') + (rn && rn.tid ? ':renew' + rn.tid : '');
+    ccfFormAttach('contractBody', ccfFormKey('room' + room.id, gen), ccfFormKey(room.name, gen)); }   // room id: a renamed room keeps its form
 }
 /* The Miete block drives the pricing mode and the Kaution rule (until you type a Kaution) */
 function _rcMieteChanged(type) {

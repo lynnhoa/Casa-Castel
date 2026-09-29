@@ -175,6 +175,10 @@ document.getElementById('tab-tenants').innerHTML = `
   gap:6px; padding:8px 14px; }
 .tn-sec-footer-split { display:flex; align-items:center; gap:6px; padding:8px 14px; }
 .tn-sec-footer-split .tn-spacer { flex:1; }
+.tn-pw-need { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:10px 0 2px; padding:9px 11px;
+  background:#FAEEDA; border:.5px solid #EF9F27; border-radius:8px; font-size:12px; line-height:1.4; color:#633806; }
+.tn-pw-need span { flex:1; min-width:150px; }
+.tn-pw-need .tn-btn { background:var(--cc-white); }
 
 /* ── FIELD GRID ── */
 .tn-fg { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
@@ -934,6 +938,7 @@ async function _tnLoad() {
     typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'casa') : Promise.resolve([]),   // rent history (rent_periods)
     typeof ccNksLoad === 'function' ? ccNksLoad() : Promise.resolve(),               // NK-Abrechnungen (Settlements)
     typeof ccfLoadReadings === 'function' ? ccfLoadReadings(tids) : Promise.resolve(), // Zählerstände (meter_readings)
+    _tnLoadPwDates(),                                                                  // when each room's tenant-app password was given
   ]);
 
   _tnKaution = {};
@@ -973,12 +978,39 @@ async function _tnLoad() {
   _tnRenderIfChanged();
 }
 
+/* Tenant-app password (B2): the date each room's password was given. A tenant who
+   moved in after that date (or a room without one) still needs theirs. */
+let _tnPwAt = {};
+async function _tnLoadPwDates() {
+  try {
+    const { data, error } = await sbL.from('lounge_data').select('room, created_at').eq('type', 'password');
+    if (error) { console.warn('[tenants] password dates:', error.message); return; }
+    _tnPwAt = {};
+    (data || []).forEach(r => { if (r.room && (!_tnPwAt[r.room] || r.created_at > _tnPwAt[r.room])) _tnPwAt[r.room] = r.created_at; });
+    _tnPwLoaded = true;
+  } catch (e) { console.warn('[tenants] password dates:', e); }
+}
+let _tnPwLoaded = false;
+function _tnNeedsPw(rec) {
+  if (!_tnPwLoaded || !rec || rec.status !== 'active') return false;
+  const inAt = _ccIso(rec.mietbeginn);
+  if (!inAt || inAt > _ccTodayIso()) return false;                  // not moved in yet
+  const at = _tnPwAt[rec.room];
+  return !at || String(at).slice(0, 10) < inAt;
+}
+async function _tnGivePw(room, name) {
+  if (!sbL) { alert('No database connection.'); return; }
+  if (!confirm(`Give ${name || 'the tenant'} a tenant-app password for ${room}? A previous password stops working.`)) return;
+  const pw = await ccSetNewRoomPassword(room, 'Login password');
+  if (pw) { _tnPwAt[room] = new Date().toISOString(); _tnRender(); }
+}
+
 /* After a (re)load: repaint only if the data really changed and you are not in
    the middle of editing here (unsaved Kaution / rent / profile, an open NK form).
    Otherwise the screen stays exactly as it is — nothing typed gets lost. */
 let _tnRenderedSig = null;
 function _tnRenderIfChanged() {
-  const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache,
+  const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache, _tnPwAt,
                               (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
                               (typeof CC_RP !== 'undefined' ? CC_RP.rows.filter(r => r.app === 'casa') : []),
                               (typeof appRooms !== 'undefined' ? appRooms : []).map(r => [r.id, r.name, r.active, r.vacant, r.sort_order,
@@ -1450,6 +1482,9 @@ function _tnProfileSectionHTML(rid, room, rec) {
     <div style="margin-bottom:8px"><span class="tn-sec-lbl">Tenant</span></div>
     ${readView}
     ${editView}
+    ${rec && _tnNeedsPw(rec) ? `<div class="tn-pw-need"><i class="ti ti-key"></i>
+      <span>Tenant-app password not given yet · moved in ${_tnFmtDate(rec.mietbeginn)}</span>
+      <button class="tn-btn tn-btn-sm" onclick="_tnGivePw('${esc(room.name)}','${esc([rec.first_name, rec.last_name].filter(Boolean).join(' '))}')">Give password</button></div>` : ''}
   </div>
   ${footerRead}
   ${footerEdit}
@@ -3080,7 +3115,8 @@ function _tnRefreshFormerBadges(tid) {
 async function _tnResetPw(room) {
   if (!sbL) { alert('No database connection.'); return; }
   if (!confirm(`Reset password for ${room}? The old password stops working.`)) return;
-  await ccSetNewRoomPassword(room, 'New password');
+  const pw = await ccSetNewRoomPassword(room, 'New password');
+  if (pw) { _tnPwAt[room] = new Date().toISOString(); _tnRender(); }
 }
 
 

@@ -486,7 +486,7 @@ function ccfSig(bodyId) {
   if (!b || typeof ccDraftSnapshot !== 'function') return '';
   try { return JSON.stringify(ccDraftSnapshot(b)); } catch (e) { return ''; }
 }
-function ccfDraftBegin(bodyId, read) { _ccfPend = { body: bodyId, read }; }
+function ccfDraftBegin(bodyId, read) { _ccfPend = { body: bodyId, read }; ccfFormFlush(); }
 if (typeof window !== 'undefined') {
   window.ccOnPdfReady = blob => {
     const pe = _ccfPend; _ccfPend = null;
@@ -553,15 +553,49 @@ function ccfApproveDraft() {
    generator until you Approve or Cancel — for up to 30 days. X or tapping
    outside only closes. Nothing is saved to Tenants by this.               */
 const CCF_FORM_DAYS = 30;
+const CCF_FORM_MS = CCF_FORM_DAYS * 86400000;
 function ccfFormKey(unit, gen) { return 'cc_draft_form_' + ccfA().app + '_' + String(unit).replace(/\s+/g, '_') + '_' + gen; }
 function ccfFormGet(key) {
   try {
     const d = JSON.parse(localStorage.getItem(key) || 'null');
     if (!d) return null;
-    if (Date.now() - (d.ts || 0) > CCF_FORM_DAYS * 86400000) { localStorage.removeItem(key); return null; }
+    if (Date.now() - (d.ts || 0) > CCF_FORM_MS) { localStorage.removeItem(key); return null; }
     return d;
   } catch (e) { return null; }
 }
+function _ccfLocalPut(key, d) { try { localStorage.setItem(key, JSON.stringify(d)); } catch (e) {} }
+
+/* Online copy (table contract_drafts) — the same form on iPhone, iPad and laptop.
+   Never blocks: without the table or offline, the phone's copy simply keeps working. */
+let _ccfSrvOff = false;
+function _ccfSrvOk() { return !_ccfSrvOff && typeof sbL !== 'undefined' && !!sbL; }
+function _ccfSrvFail(e) {
+  const m = String(e && e.message || e || '');
+  if (/contract_drafts|relation|schema cache|does not exist/i.test(m)) _ccfSrvOff = true;   // SQL not run yet
+  console.warn('[form] online copy:', m);
+}
+async function _ccfSrvGet(key) {
+  if (!_ccfSrvOk()) return null;
+  try {
+    const { data, error } = await sbL.from('contract_drafts').select('data, updated_at').eq('app', ccfA().app).eq('form_key', key).maybeSingle();
+    if (error) { _ccfSrvFail(error); return null; }
+    if (!data || !data.data) return null;
+    const ts = Date.parse(data.updated_at) || data.data.ts || 0;
+    if (Date.now() - ts > CCF_FORM_MS) { _ccfSrvDel(key); return null; }
+    return { ...data.data, ts };
+  } catch (e) { _ccfSrvFail(e); return null; }
+}
+function _ccfSrvPut(key, d) {
+  if (!_ccfSrvOk() || !key || !d) return;
+  sbL.from('contract_drafts').upsert({ app: ccfA().app, form_key: key, data: d, updated_at: new Date(d.ts || Date.now()).toISOString() },
+    { onConflict: 'app,form_key' }).then(r => { if (r && r.error) _ccfSrvFail(r.error); }, _ccfSrvFail);
+}
+function _ccfSrvDel(key) {
+  if (!_ccfSrvOk() || !key) return;
+  sbL.from('contract_drafts').delete().eq('app', ccfA().app).eq('form_key', key).then(r => { if (r && r.error) _ccfSrvFail(r.error); }, _ccfSrvFail);
+}
+function ccfFormClear(key) { if (!key) return; try { localStorage.removeItem(key); } catch (e) {} _ccfSrvDel(key); }
+
 /* A saved form never breaks the generator: a tenancy that no longer exists and an
    empty rent are left out (the current values stay); derived switches are not replayed */
 function _ccfFormClean(d) {
@@ -584,51 +618,94 @@ function _ccfRevealCoTenants() {
     if (w && nm && nm.value.trim()) w.style.display = '';
   });
 }
-function ccfFormClear(key) { try { if (key) localStorage.removeItem(key); } catch (e) {} }
-async function ccfFormAttach(bodyId, key) {
+/* Fill the open generator from a saved form — hidden while it runs, so it appears once */
+async function _ccfFormApply(b, key, d, note) {
+  b.style.visibility = 'hidden';
+  b._ccfFormRestoring = true;
+  await new Promise(r => setTimeout(r, 40));              // the generator's own wiring first (dates, renewal)
+  if (b._ccfFormKey !== key) { b.style.visibility = ''; return false; }   // another generator was opened meanwhile
+  try { await ccDraftApply(b, d); } catch (e) { console.warn('[form] restore', e); }
+  ccfMieteRefresh();
+  _ccfRevealCoTenants();
+  if (document.getElementById('rc-mode') && _ccfMieteOnChange) _ccfMieteOnChange();
+  b.style.visibility = '';
+  b._ccfFormRestoring = false;
+  b._ccfQuietUntil = Date.now() + 300;
+  const w = document.getElementById('ccf-for-hint');
+  if (w) w.textContent = w.textContent.replace(/ · (continued from|updated from your other device).*$/, '') + ' · ' + note;
+  return true;
+}
+function _ccfFormSnap(b) {
+  if (typeof ccDraftSnapshot !== 'function') return null;
+  try { return { ts: Date.now(), ...ccDraftSnapshot(b) }; } catch (e) { return null; }
+}
+/* Save now (Draft PDF, X): phone + online */
+function ccfFormFlush() {
+  const g = _ccfOpenGen(); const b = g && document.getElementById(g.body);
+  if (!b || !b._ccfFormKey || b._ccfFormRestoring || !b._ccfTyped) return;
+  const d = _ccfFormSnap(b); if (!d) return;
+  _ccfLocalPut(b._ccfFormKey, d);
+  clearTimeout(b._ccfSrvTimer); _ccfSrvPut(b._ccfFormKey, d);
+}
+async function ccfFormAttach(bodyId, key, legacyKey) {
   const b = document.getElementById(bodyId); if (!b) return;
   b._ccfFormKey = key;
-  b._ccfFormRestoring = true;
+  b._ccfTyped = false;
+  b._ccfQuietUntil = Date.now() + 300;
   // Reopened by "Continue" / after the PDF viewer: that path refills the form itself — one source only
   const skip = !!window._ccfSkipFormRestoreOnce; window._ccfSkipFormRestoreOnce = false;
-  const saved = skip ? null : _ccfFormClean(ccfFormGet(key));
-  if (saved && typeof ccDraftApply === 'function') {
-    b.style.visibility = 'hidden';                       // no visible jump: the form appears once, already filled
-    await new Promise(r => setTimeout(r, 40));           // the generator's own wiring first (dates, renewal)
-    if (b._ccfFormKey !== key) { b.style.visibility = ''; return; }   // another generator was opened meanwhile
-    try { await ccDraftApply(b, saved); } catch (e) { console.warn('[form] restore', e); }
-    ccfMieteRefresh();
-    _ccfRevealCoTenants();
-    const g = document.getElementById('rc-mode');        // pricing mode → Kaution rule / hidden Kurzzeit switch
-    if (g && _ccfMieteOnChange) _ccfMieteOnChange();
-    b.style.visibility = '';
-    const w = document.getElementById('ccf-for-hint'); if (w && saved.ts) w.textContent += ' · continued from ' + ccfFmt(new Date(saved.ts).toISOString().slice(0, 10));
+  let local = skip ? null : ccfFormGet(key);
+  if (!skip && !local && legacyKey && legacyKey !== key) {           // older copy saved under the room name
+    local = ccfFormGet(legacyKey);
+    if (local) { _ccfLocalPut(key, local); try { localStorage.removeItem(legacyKey); } catch (e) {} }
+  }
+  const srvP = skip ? Promise.resolve(null) : _ccfSrvGet(key);        // online copy loads meanwhile
+  if (local && typeof ccDraftApply === 'function') {
+    await _ccfFormApply(b, key, _ccfFormClean(local), 'continued from ' + ccfFmt(new Date(local.ts).toISOString().slice(0, 10)));
   }
   b._ccfFormRestoring = false;
   if (!b._ccfFormWired) {
     b._ccfFormWired = true;
     let t = null;
-    const save = () => {
+    const save = ev => {
+      if (b._ccfFormRestoring || !b._ccfFormKey) return;
+      if (Date.now() > (b._ccfQuietUntil || 0)) b._ccfTyped = true;   // ignore the generator's own setup events
       clearTimeout(t);
       t = setTimeout(() => {
-        if (b._ccfFormRestoring || !b._ccfFormKey || typeof ccDraftSnapshot !== 'function') return;
-        const ov = b.closest('.rm-overlay, .rm-sheet-overlay, [id$="ContractOverlay"], #contractOverlay');
+        if (b._ccfFormRestoring || !b._ccfFormKey || !b._ccfTyped) return;
+        const ov = b.closest('[id$="ContractOverlay"], #contractOverlay');
         if (ov && !ov.classList.contains('open')) return;
-        try { localStorage.setItem(b._ccfFormKey, JSON.stringify({ ts: Date.now(), ...ccDraftSnapshot(b) })); } catch (e) {}
+        const d = _ccfFormSnap(b); if (!d) return;
+        _ccfLocalPut(b._ccfFormKey, d);
+        clearTimeout(b._ccfSrvTimer);
+        const k = b._ccfFormKey;
+        b._ccfSrvTimer = setTimeout(() => _ccfSrvPut(k, d), 2000);   // online after 2 s without typing
       }, 400);
     };
     ['input', 'change', 'click'].forEach(ev => b.addEventListener(ev, save, true));
   }
   setTimeout(ccfFooterState, 0);
+  // A newer copy from another device replaces the form once — unless you already typed here
+  const srv = await srvP;
+  if (srv && b._ccfFormKey === key && !b._ccfTyped && srv.ts > ((local && local.ts) || 0) + 1000 && typeof ccDraftApply === 'function') {
+    _ccfLocalPut(key, srv);
+    await _ccfFormApply(b, key, _ccfFormClean(srv), 'updated from your other device');
+    setTimeout(ccfFooterState, 0);
+  } else if (!srv && local && b._ccfFormKey === key) {
+    _ccfSrvPut(key, local);                                            // first time online: upload the phone's copy
+  }
 }
-/* Cancel = throw this form away (all three generators) */
+/* Cancel = throw this form away (all three generators) · X = keep it (saved now) */
 if (typeof document !== 'undefined') {
   document.addEventListener('click', e => {
-    const c = e.target && e.target.closest && e.target.closest('#contractCancelBtn, #aptContractCancelBtn, #pkContractCancelBtn');
-    if (!c) return;
-    const g = _ccfOpenGen(); const b = g && document.getElementById(g.body);
-    if (b) ccfFormClear(b._ccfFormKey);
-    _ccfDraft = null;
+    const t = e.target && e.target.closest ? e.target : null; if (!t) return;
+    if (t.closest('#contractCancelBtn, #aptContractCancelBtn, #pkContractCancelBtn')) {
+      const g = _ccfOpenGen(); const b = g && document.getElementById(g.body);
+      if (b) { clearTimeout(b._ccfSrvTimer); ccfFormClear(b._ccfFormKey); b._ccfTyped = false; }
+      _ccfDraft = null;
+    } else if (t.closest('#contractClose, #aptContractClose, #pkContractClose')) {
+      ccfFormFlush();
+    }
   }, true);
 }
 
@@ -662,10 +739,19 @@ function ccfPlan(p) {
   else if (renewal) kautionNew = p.kaution > 0 && p.kaution !== soll ? p.kaution : null;
   else kautionNew = p.kaution != null && p.kaution !== soll ? p.kaution : null;
   // A new tenancy that overlaps the current / next tenant (no move-out before its start)
-  const overlaps = !rec && start ? ccfRoomTenancies(p.room).filter(x => x.role !== 'former'
+  const overlapAll = !rec && start ? ccfRoomTenancies(p.room).filter(x => x.role !== 'former'
     && (!ccfIso(x.rec.mietende) || ccfIso(x.rec.mietende) >= start)).map(x => x.rec) : [];
+  // B1: whoever moved in before this new tenancy ends the day before (otherwise two rents run in Controlling)
+  const endPrev = overlapAll.filter(r => ccfIso(r.mietbeginn) && ccfIso(r.mietbeginn) < start)
+    .map(r => ({ rec: r, was: ccfIso(r.mietende), to: ccfAddDays(start, -1) }));
+  const overlaps = overlapAll.filter(r => !endPrev.some(x => x.rec === r));
+  // B3: this tenancy's own Staffel steps that the new contract replaces (Rentals)
+  const staffelOld = rec && !renewal && p.staffelTable && typeof _rntStaffel !== 'undefined'
+    ? (_rntStaffel[String(p.room).slice(String(p.room).indexOf(':') + 1)] || []).filter(h => String(h.tenant_id || '') === String(rec.id)
+        && !h.tenant_adjusted && !h.ignored && ccfIso(h.effective_date) >= start
+        && !(p.staffel || []).some(x => ccfIso(x.datum || x.date) === ccfIso(h.effective_date))) : [];
   return {
-    kind: 'contract', rec, t, renewal, renewPid, renewN, start, end, soll, kautionNew, overlaps,
+    kind: 'contract', rec, t, renewal, renewPid, renewN, start, end, soll, kautionNew, overlaps, endPrev, endPrevOn: true, staffelOld,
     moveInChange: rec && !renewal && start && ccfIso(rec.mietbeginn) && ccfIso(rec.mietbeginn) !== start ? ccfIso(rec.mietbeginn) : null,
     endBefore: rec ? recEnd : null,
     moveOutRemoved: renewal && rec.mietende ? ccfIso(rec.mietende) : null,
@@ -712,7 +798,10 @@ function _ccfSummaryRender() {
       ${t.phone ? _ccfRow('Phone', e(t.phone), was('phone', t.phone)) : ''}
       ${t.address ? _ccfRow('Address', e(t.address), was('address', t.address)) : ''}
       ${(p.coTenants || []).map((c, i) => c && c.name ? _ccfRow('Mieter ' + (i + 2), e(c.name), [c.email, c.phone].filter(Boolean).map(e).join(' · ')) : '').join('')}
-      ${pl.overlaps.length ? `<p class="ccf-warn">${pl.overlaps.map(r => e(ccfName(r)) + (r.mietende ? ' moves out ' + ccfFmt(r.mietende) : ' has no Move-out')).join(' · ')} — set the Move-out in Tenants if this tenancy follows.</p>` : ''}
+      ${pl.endPrev.map(x => `<label class="ccf-srow ccf-check"><input type="checkbox" class="ccf-endprev"${pl.endPrevOn ? ' checked' : ''}/>
+        <span class="ccf-sl">Move-out of ${e(ccfName(x.rec))}</span>
+        <span class="ccf-sv"><span>${ccfFmt(x.to)}</span><span class="ccf-ss">day before · ${x.was ? 'was ' + ccfFmt(x.was) : 'was empty'}</span></span></label>`).join('')}
+      ${pl.overlaps.length ? `<p class="ccf-warn">${pl.overlaps.map(r => e(ccfName(r)) + ' moves in ' + ccfFmt(r.mietbeginn)).join(' · ')} — the same time as this tenancy. Check the dates in Tenants.</p>` : ''}
     </div>`;
     const ctRow = pl.renewal
       ? _ccfRow('Type', e(ccfCtLabel(p.ctype)), `${pl.renewN}. Verlängerung ab ${ccfFmt(pl.start)}`)
@@ -730,7 +819,8 @@ function _ccfSummaryRender() {
       : _ccfRow('Kaution Soll', pl.soll != null ? ccfEur(pl.soll) : '—', pl.renewal ? 'stays · no new Kaution' : 'unchanged');
     body += `<div class="ccf-sec"><div class="ccf-sh"><span>Miete</span></div>
       ${_ccfRow('From ' + ccfFmt(pl.start), rentTxt, months)}
-      ${(p.staffel || []).length ? _ccfRow('Staffel', p.staffel.length + (p.staffel.length === 1 ? ' step' : ' steps'), p.staffel.map(x => ccfFmt(x.datum || x.date) + ' ' + ccfEur(x.betrag ?? x.amount)).join(' · ')) : ''}
+      ${(p.staffel || []).length || (pl.staffelOld || []).length ? _ccfRow('Staffel', (p.staffel || []).length + ((p.staffel || []).length === 1 ? ' step' : ' steps')
+        + (pl.staffelOld.length ? ' · replaces ' + pl.staffelOld.length : ''), (p.staffel || []).map(x => ccfFmt(x.datum || x.date) + ' ' + ccfEur(x.betrag ?? x.amount)).join(' · ')) : ''}
       ${kTxt}</div>`;
   } else {
     const t = pl.t;
@@ -772,6 +862,7 @@ function _ccfSummaryRender() {
       <button type="button" class="ccf-go" id="ccfGo" onclick="ccfApproveRun()"><i class="ti ti-check"></i> ${again ? 'Approve again' : 'Approve &amp; save'}</button></div>
   </div>`;
   ov.classList.add('open');
+  ov.querySelectorAll('.ccf-endprev').forEach(cb => cb.addEventListener('change', () => { A.plan.endPrevOn = cb.checked; }));
   document.getElementById('ccf-sum-for')?.addEventListener('change', ev => {
     A.p.forId = ev.target.value;
     const g = document.getElementById('rc-for'); if (g) g.value = ev.target.value;
@@ -799,6 +890,8 @@ async function ccfApproveRun() {
       const pdf = await ccRenderPagesToPdf(p.container);
       A.blob = pdf.output('blob');
     }
+    step = 'previous tenant';
+    if (!A.done.prev && pl.kind === 'contract' && pl.endPrevOn && (pl.endPrev || []).length) { await _ccfStepEndPrev(A); A.done.prev = true; }
     step = 'tenant';     if (!A.done.tenant)   { await _ccfStepTenant(A);   A.done.tenant = true; }
     if (pl.kind === 'contract') {
       step = 'rent history'; if (!A.done.rent) { await _ccfStepRent(A);     A.done.rent = true; }
@@ -811,7 +904,7 @@ async function ccfApproveRun() {
     }
     const who = ccfName(pl.rec);
     ccfSummaryClose();
-    { const g = _ccfOpenGen(); const b = g && document.getElementById(g.body); if (b) ccfFormClear(b._ccfFormKey); }
+    { const g = _ccfOpenGen(); const b = g && document.getElementById(g.body); if (b) { clearTimeout(b._ccfSrvTimer); ccfFormClear(b._ccfFormKey); b._ccfTyped = false; } }
     _ccfDraft = null;
     ccfA().afterApprove();
     await ccfA().reload();
@@ -825,6 +918,17 @@ async function ccfApproveRun() {
   }
 }
 
+/* B1: the tenant before ends the day before the new move-in (status follows the date by itself) */
+async function _ccfStepEndPrev(A) {
+  for (const x of A.plan.endPrev) {
+    if (ccfIso(x.rec.mietende) === x.to) continue;
+    const upd = { mietende: x.to };
+    if (x.to < ccfToday()) upd.status = 'former';
+    const { error } = await sbL.from(ccfA().recTable).update(upd).eq('id', x.rec.id);
+    if (error) throw error;
+    Object.assign(x.rec, upd);
+  }
+}
 async function _ccfStepTenant(A) {
   const p = A.p, pl = A.plan;
   if (pl.kind === 'ueberg') {
@@ -933,9 +1037,22 @@ async function _ccfStepRent(A) {
 async function _ccfStepStaffel(A) {
   const p = A.p, rec = A.plan.rec;
   const steps = (p.staffel || []).map(x => ({ date: ccfIso(x.datum || x.date), amount: ccfNum(x.betrag ?? x.amount) })).filter(x => x.date && x.amount);
-  if (!steps.length || !p.staffelTable) return;
+  if (!p.staffelTable) return;
   const col = String(p.room).startsWith('pk:') ? 'parking_id' : 'apartment_id';
   const unitId = String(p.room).slice(String(p.room).indexOf(':') + 1);
+  // B3: this tenancy's own steps from the contract start that the new contract no longer has
+  //     (Adjusted / Ignored steps and old steps without a tenant link are never touched)
+  if (A.plan.start) {
+    const { data: own, error: e0 } = await sbL.from(p.staffelTable).select('*').eq(col, unitId).eq('tenant_id', String(rec.id));
+    if (e0) throw e0;
+    for (const h of own || []) {
+      const d = ccfIso(h.effective_date);
+      if (!d || d < A.plan.start || h.tenant_adjusted || h.ignored || steps.some(s2 => s2.date === d)) continue;
+      const { error } = await sbL.from(p.staffelTable).delete().eq('id', h.id);
+      if (error) throw error;
+    }
+  }
+  if (!steps.length) return;
   for (const st of steps) {
     const { data: ex, error: e1 } = await sbL.from(p.staffelTable).select('*').eq(col, unitId).eq('effective_date', st.date);
     if (e1) throw e1;
@@ -1249,7 +1366,7 @@ function ccfMetersSectionHTML(rec, ctx) {
     <div class="${Body}" style="padding-top:14px">
       <div style="margin-bottom:10px"><span class="${Lbl}">Zählerstände</span></div>
       ${grid}
-      ${edit ? '' : '<p class="ccf-hint" style="margin-top:8px">From Übergabe Einzug / Auszug, with the Zählernummer. Settlements reads these and the move-in / move-out dates.</p>'}
+      ${edit ? '' : '<p class="ccf-hint" style="margin-top:8px">From Übergabe Einzug / Auszug, with the Zählernummer — for the NK-Abrechnung (Settlements will use them later).</p>'}
     </div>
     <div class="tn-sec-footer ccf-foot">
       ${edit ? `<button class="tn-btn tn-btn-sm" onclick="ccfMeterEditToggle('${idA}')">Cancel</button>
@@ -1392,6 +1509,10 @@ html #aptContractBody .cc-seg--mieter,html #pkContractBody .cc-seg--mieter{displ
 .ccf-change select{position:absolute;inset:0;opacity:0;width:100%;font-size:16px}
 .ccf-srow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:var(--cc-border)}
 .ccf-sl{font-size:12px;color:var(--cc-taupe);flex-shrink:0}
+.ccf-check{align-items:flex-start;cursor:pointer}
+.ccf-check input{width:20px;height:20px;margin:0 2px 0 0;flex-shrink:0;accent-color:var(--cc-ink)}
+.ccf-check .ccf-sl{flex:1}
+.ccf-check .ccf-sv{display:flex;flex-direction:column}
 .ccf-sv{text-align:right;min-width:0;font-size:13px;color:var(--cc-charcoal);overflow-wrap:anywhere}
 .ccf-ss{font-size:11px;color:var(--cc-taupe);margin-top:1px}
 .ccf-sft{display:flex;align-items:center;gap:10px;padding:12px 16px;padding-bottom:max(16px,env(safe-area-inset-bottom,16px));border-top:var(--cc-border)}
