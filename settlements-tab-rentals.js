@@ -221,9 +221,14 @@ function _srKeyText(rec, pos, apt) {
   return 'direkt (nur diese Wohnung)';
 }
 /* HV record summary (for the card line and the panel) */
-function _srRecSummary(rec, apt) {
+/* A cost belongs to the Hausgeld-Jahresabrechnung (origin 'hv', the default) or only to the NK (origin 'nk').
+   A Hausgeld cost goes into the NK when it is umlagefähig and not unticked ('nk' false). */
+const _srIsNkOnly = p => p.origin === 'nk';
+const _srInNk = p => _srIsNkOnly(p) || (p.u && p.nk !== false);
+function _srRecSummary(rec, apt) {                     // the Hausgeld side only
   let u = 0, nu = 0, missing = 0, n = 0;
   for (const pos of (rec && rec.positions) || []) {
+    if (_srIsNkOnly(pos)) continue;
     n++;
     const a = _srUnitAmt(rec, pos, apt);
     if (a === null) { if (pos.split !== 'mieter') missing++; continue; }
@@ -243,8 +248,9 @@ function _srCalc(c, it, rec) {
   const ts = (rec && rec.tenants && rec.tenants[String(r.tenant_id)]) || {};
   const lines = []; let sum = 0, missing = 0, direct = false;
   for (const pos of (rec && rec.positions) || []) {
-    if (!pos.u) continue;
+    if (!_srInNk(pos)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
+    if (unit === null && pos.split !== 'mieter') continue;          // no amount typed yet → not part of the NK
     let amt = null;
     if (pos.split === 'mieter') {
       const d = _srNum(ts.direct && ts.direct[pos.id]);
@@ -909,8 +915,8 @@ function stRenderRentals() {
   const sqlNote = SR.missing ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>The table nk_abrechnung_rentals is missing. Run SETTLEMENTS-RENTALS.sql in Supabase, then reload.</span></div></div>' : '';
 
   el.innerHTML = '<div class="st-page rk-page">' +
-    '<div class="rk-head"><div><h1 class="cx-title">Rentals</h1><p class="cx-title__s">Hausgeld &amp; NK for all Wohnungen · tap a line to edit it</p></div>' +
-      '<div class="rk-head__r"><button class="rk-topbtn" data-sr="nk"><i class="ti ti-plus" aria-hidden="true"></i> NK-Abrechnung</button>' +
+    '<div class="rk-head"><div><h1 class="cx-title">Rentals</h1><p class="cx-title__s">Hausgeld line → Jahresabrechnung · tenant or “NK-Abrechnung” → NK</p></div>' +
+      '<div class="rk-head__r">' +
       '<div class="rk-yr"><button class="cx-arw" data-sr="year" data-d="-1" aria-label="Previous year"' + (SR.year <= ty - 4 ? ' disabled' : '') + '><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
         '<div class="rk-yr__t"><div class="rk-yr__m">' + SR.year + '</div><div class="rk-yr__s">Year</div></div>' +
         '<button class="cx-arw" data-sr="year" data-d="1" aria-label="Next year"' + (SR.year >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div></div></div>' +
@@ -935,7 +941,7 @@ function _srTrackerBlock(info) {
   const sub = c.before ? 'bought ' + stDate(c.p.in_portfolio_since)
     : _srPerText(c.per.from, c.per.to) + (hg ? ' · Hausgeld ' + stEur(hg) + '/mo' : '') + ' · Frist ' + stDate(c.per.frist);
   let h = '<section class="rk-block"><div class="rk-grp"><div class="rk-grp__n"><span class="rk-grp__i">' + idx + '</span><span class="rk-grp__t">' + stEsc(c.p.name) + '</span><span class="rk-grp__s">' + stEsc(sub) + '</span></div>' +
-    '<button class="rk-lnk" data-sr="open" data-k="' + stEsc(c.ck) + '">NK-Abrechnung ›</button></div>';
+    '<button class="rk-lnk" data-sr="openNk" data-k="' + stEsc(c.ck) + '">NK-Abrechnung ›</button></div>';
   if (c.before) return h + '<div class="rk-row is-dim"><span class="rk-who">' + SR.year + ' before purchase – the seller settles it</span><span></span><span class="rk-st">' + cxPill('grey', 'not yours') + '</span><span></span><span></span><span></span><span></span></div></section>';
   // Hausgeld line
   const hv = info.hv, rec = info.rec, wegSt = hv.wegSt;
@@ -947,8 +953,8 @@ function _srTrackerBlock(info) {
   const hvLine2 = !hv.received ? (c.running ? 'runs until ' + stDate(c.per.to) : (hv.exp ? (hv.k === 'ueberfaellig' ? 'expected ' : 'expected ~') + hv.exp.label : 'expected – month not set'))
     + (hv.asked.length ? ' · asked ' + stDate(hv.asked[hv.asked.length - 1]) : '') : 'received ' + stDate(rec.received_on || rec.hv_date);
   const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
-  h += '<div class="rk-row" data-sr="open" data-k="' + stEsc(c.ck) + '">' +
-    '<span class="rk-who"><span class="rk-ic"><i class="ti ti-building" aria-hidden="true"></i></span><button class="rk-name" data-sr="open" data-k="' + stEsc(c.ck) + '">Jahresabrechnung</button></span>' +
+  h += '<div class="rk-row" data-sr="openHv" data-k="' + stEsc(c.ck) + '">' +
+    '<span class="rk-who"><span class="rk-ic"><i class="ti ti-building" aria-hidden="true"></i></span><button class="rk-name" data-sr="openHv" data-k="' + stEsc(c.ck) + '">Hausgeld · Jahresabrechnung</button></span>' +
     '<span class="rk-per">' + stEsc(hvLine2) + '</span>' +
     '<span class="rk-st">' + cxPill(hvPill[0], hvPill[1]) + (hv.k === 'ueberfaellig' && mail ? ' <a class="rk-ask" data-sr="ask" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srAskMail(c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Ask HV</a>' : '') + '</span>' +
     '<span class="rk-res">' + stEsc(wegMoney) + '</span>' +
@@ -997,7 +1003,8 @@ function _srModalHtml() {
   SR.sel = { kind: m.view === 'tenant' ? 'ten' : 'hv', ck: m.ck, tid: m.tid };
   if (m.view === 'tenant') return _srTenView(c);
   if (m.view === 'settle') return _srSettleView(c);
-  return _srWohnView(c);
+  if (m.view === 'hv') return _srHvView(c);
+  return _srNkView(c);
 }
 function _srRerenderPanel() {
   const host = document.getElementById('srPanel'); if (!host || !SR.modal) return;
@@ -1013,7 +1020,7 @@ function _srPicker(c) {
     '<button class="cx-arw" data-sr="pick" data-d="1" aria-label="Next Wohnung"' + (i >= list.length - 1 ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
 }
 /* Draft of the Jahresabrechnung: saved record, else last year's rows (no amounts), else the standard list */
-const SR_STD_U = ['grundsteuer', 'wasser', 'abwasser', 'heizung', 'warmwasser', 'muell', 'reinigung', 'strom', 'versicherung'];
+const SR_STD_U = ['wasser', 'abwasser', 'heizung', 'warmwasser', 'muell', 'reinigung', 'strom', 'versicherung'];
 const SR_STD_NU = ['verwaltung', 'ruecklage'];
 function _srMakeDraft(c) {
   const rec = _srRec(c.p, c.per);
@@ -1028,13 +1035,23 @@ function _srMakeDraft(c) {
   return d;
 }
 
-/* View 1 · one Wohnung */
-function _srWohnView(c) {
-  const title = 'NK-Abrechnung ' + c.per.label;
-  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(c.p.in_portfolio_since) + '). The seller settles this period with the tenants.</p></div></div>';
-  if (!SR.draft || SR.draft._ck !== c.ck) { SR.draft = _srMakeDraft(c); SR.draft._ck = c.ck; SR.costsOpen = !(_srRecSummary(_srRec(c.p, c.per), c.apt).ok); }
-  const d = SR.draft, rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt), hv = _srHvState(c, rec, sum);
-  const dateF = (f, v, lab) => '<label class="st-f"><span class="st-f__l">' + lab + '</span><input class="st-in" type="date" data-srf="' + f + '" value="' + stEsc(_srD(v) || '') + '"/></label>';
+/* Shared by both windows: the draft of this Wohnung's record */
+function _srEnsureDraft(c) {
+  if (!SR.draft || SR.draft._ck !== c.ck) {
+    SR.draft = _srMakeDraft(c); SR.draft._ck = c.ck;
+    SR.costsOpen = !(_srRecSummary(_srRec(c.p, c.per), c.apt).ok);
+  }
+  return SR.draft;
+}
+const _srDateF = (f, v, lab) => '<label class="st-f"><span class="st-f__l">' + lab + '</span><input class="st-in" type="date" data-srf="' + f + '" value="' + stEsc(_srD(v) || '') + '"/></label>';
+const _srAmtOf = (d, p, apt) => { const a = _srNum(p.amount); return a !== null ? a : _srUnitAmt(d, p, apt); };
+const _srSigned = (p, v) => (v || 0) * (_srKind(p.kind).neg ? -1 : 1);
+
+/* ── Window A · Hausgeld-Jahresabrechnung (you ↔ WEG): all costs · WEG result · check ── */
+function _srHvView(c) {
+  const title = 'Hausgeld ' + c.per.label;
+  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(c.p.in_portfolio_since) + '). The seller settles this period.</p></div></div>';
+  const d = _srEnsureDraft(c), rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt), hv = _srHvState(c, rec, sum);
   const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
   let status = '';
   if (!hv.received) {
@@ -1043,88 +1060,140 @@ function _srWohnView(c) {
       '<p class="srm__banner-s">' + (c.running ? 'You can prepare it already. ' : '') + 'Frist for the NK: ' + stDate(hv.per.frist) + (hv.asked.length ? ' · asked ' + hv.asked.map(stDM).join(', ') : '') + '</p></div>' +
       (mail && !c.running ? '<a class="cx-btn cx-btn--s srm__ask" data-sr="ask" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srAskMail(c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Ask HV</a>' : '') + '</div>';
   }
-  // costs: folded line or the table
   const U = [], N = [];
-  (d.positions || []).forEach((p, i) => (p.u ? U : N).push([p, i]));
-  const change = _srTenantChange(c);
-  const amtOf = p => { const a = _srNum(p.amount); return a !== null ? a : _srUnitAmt(d, p, c.apt); };
-  const tot = arr => cxR(arr.reduce((s, [p]) => s + (amtOf(p) || 0) * (_srKind(p.kind).neg ? -1 : 1), 0));
+  (d.positions || []).forEach((p, i) => { if (!_srIsNkOnly(p)) (p.u ? U : N).push([p, i]); });
+  const tot = arr => cxR(arr.reduce((s, [p]) => s + _srSigned(p, _srAmtOf(d, p, c.apt)), 0));
   const tu = tot(U), tn = tot(N), tt = cxR(tu + tn);
   const row = ([p, i]) => {
-    const k = _srKind(p.kind), custom = !SR_KINDS.some(x => x.k === p.kind && x.k !== 'sonst' && x.k !== 'nu_sonst') || p.label;
+    const k = _srKind(p.kind), custom = p.kind === 'sonst' || p.kind === 'nu_sonst' || p.label;
     const lab = custom ? '<input class="ct-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || '') + '"/>' : '<span class="ct-lab">' + stEsc(k.l) + '</span>';
-    const chip = change && p.u && ['heizung', 'warmwasser'].includes(p.kind) ? '<label class="ct-chip"><input type="checkbox" data-src="split" data-i="' + i + '"' + (p.split === 'mieter' ? ' checked' : '') + '/>per tenant</label>' : '';
-    const ph = _srNum(p.amount) === null && _srUnitAmt(d, p, c.apt) !== null ? cxE2(Math.abs(_srUnitAmt(d, p, c.apt))) : '';
-    return '<div class="ct-r"><span class="ct-l">' + lab + chip + '</span><span class="ct-a"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" placeholder="' + stEsc(ph) + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
+    const calc = _srNum(p.amount) === null ? _srUnitAmt(d, p, c.apt) : null;
+    return '<div class="ct-r"><span class="ct-l">' + lab + '</span><span class="ct-a"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" placeholder="' + stEsc(calc !== null ? cxE2(Math.abs(calc)) : '') + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
   };
   const block = (arr, u, label, total) => '<div class="ct"><div class="ct-h"><span class="st-f__l">' + label + '</span><b data-sr-tot="' + (u ? 'u' : 'n') + '">' + stEur(total) + '</b></div>' + arr.map(row).join('') +
     '<button class="ct-add" data-sr="rowAdd" data-u="' + (u ? 1 : 0) + '"><i class="ti ti-plus" aria-hidden="true"></i> Add row</button></div>';
   const costs = SR.costsOpen
     ? '<div class="ct-top"><span class="st-f__l">Kosten · your Wohnung’s amounts from the Einzelabrechnung</span>' + (sum.ok ? '<button class="ct-hide" data-sr="costs">hide</button>' : '') + '</div>' +
-      '<div class="ct-2">' + block(U, true, 'Umlagefähig · for the tenants', tu) + block(N, false, 'Nicht umlagefähig · stays with you', tn) + '</div>' +
+      '<div class="ct-2">' + block(U, true, 'Umlagefähig', tu) + block(N, false, 'Nicht umlagefähig', tn) + '</div>' +
       '<div class="ct-tot"><span>Total costs per Jahresabrechnung</span><b data-sr-tot="t">' + stEur(tt) + '</b></div>' +
       '<datalist id="srKindList">' + SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist>'
     : '<button class="ct-fold" data-sr="costs"><span class="ct-fold__l"><span class="ct-fold__t">Kosten · ' + (U.length + N.length) + ' items</span><span class="ct-fold__s">umlagefähig ' + stEur(tu) + ' · nicht umlagefähig ' + stEur(tn) + '</span></span><span class="ct-fold__r">' + stEur(tt) + ' <i class="ti ti-chevron-down" aria-hidden="true"></i></span></button>';
-  // WEG result + check
   const wDir = d.weg_direction === null || d.weg_direction === undefined ? null : Number(d.weg_direction);
-  const seg = (v, on, t, s) => '<button type="button" class="st-seg__b' + (on ? ' is-on' : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + on + '">' + t + (s ? '<small>' + s + '</small>' : '<small>&nbsp;</small>') + '</button>';
+  const seg = (v, on, t, s) => '<button type="button" class="st-seg__b' + (on ? ' is-on' : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + on + '">' + t + '<small>' + (s || '&nbsp;') + '</small></button>';
   const hgPaid = _srNum(d.keys.hg_paid) ?? _srHausgeldPaid(c);
-  const calc = cxR(tt - hgPaid), entered = wDir === null ? null : cxR(wDir === 0 ? 0 : -wDir * (_srNum(d.weg_amount) || 0));   // + = Nachzahlung
+  const calc = cxR(tt - hgPaid), entered = wDir === null ? null : cxR(wDir === 0 ? 0 : -wDir * (_srNum(d.weg_amount) || 0));
   const diff = entered === null ? null : cxR(calc - entered);
-  const check = tt ? '<div class="srm__chk' + (diff !== null && Math.abs(diff) >= 0.01 ? ' is-warn' : '') + '" data-sr-check4>' +
+  const check = tt ? '<div class="srm__chk' + (diff !== null && Math.abs(diff) >= 0.01 ? ' is-warn' : '') + '">' +
       '<span>Costs</span><span>' + stEur(tt) + '</span>' +
       '<span>− Hausgeld paid <small>(per Rentals · editable)</small></span><span class="srm__hg"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld paid" value="' + stEsc(cxE2(hgPaid)) + '"/> €</span>' +
       '<span><b>= ' + (calc > 0 ? 'Nachzahlung' : calc < 0 ? 'Guthaben' : 'balanced') + '</b>' + (diff === null ? '' : Math.abs(diff) < 0.01 ? ' · matches the HV' : ' · HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff))) + '</span><span><b>' + stEur(Math.abs(calc)) + '</b></span></div>' : '';
   const weg = '<fieldset class="st-f"><legend class="st-f__l">WEG result</legend><div class="st-seg st-seg--3" role="group">' +
       seg(-1, wDir === -1, 'Nachzahlung', 'to WEG') + seg(1, wDir === 1, 'Guthaben', 'from WEG') + seg(0, wDir === 0, 'balanced', '') + '</div>' +
       (wDir ? '<div class="sr-grid2" style="margin-top:10px"><label class="st-f"><span class="st-f__l">Amount</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '"/><span>€</span></span></label>' +
-        dateF('weg_due', d.weg_due, 'Due') + '</div>' : '') + '</fieldset>';
-  // Wohnung settings (period standard, expected month) — folded
+        _srDateF('weg_due', d.weg_due, 'Due') + '</div>' : '') + '</fieldset>';
   const expTxt = Number(c.p.hv_expected_month) ? SR_MON[Number(c.p.hv_expected_month) - 1] : '—';
   const settings = '<details class="srm__set"' + (SR.expEdit || ST.perEdit === c.p.id ? ' open' : '') + '><summary>Settings · Period ' + stEsc(stDM(c.per.from) + '–' + stDM(c.per.to)) + ' · HV usually sends in ' + stEsc(expTxt) + '</summary>' +
     _stPeriodRow(c.p) +
     (SR.expEdit ? '<div class="sr-exp"><span>HV usually sends in</span><span class="cx-f cx-f--l sr-sel"><select id="srExpM" aria-label="Month"><option value="">—</option>' + SR_MON.map((mm, i) => '<option value="' + (i + 1) + '"' + (Number(c.p.hv_expected_month) === i + 1 ? ' selected' : '') + '>' + mm + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></span><button class="cx-link" data-sr="expCancel">Cancel</button><button class="cx-link sr-acc" data-sr="expSave">Save</button></div>'
                 : '<div class="sr-exp"><span>HV usually sends in</span><b>' + stEsc(expTxt) + '</b><button class="cx-link" data-sr="expEdit">Change</button></div>') +
-    '<div class="sr-grid2" style="margin-top:8px">' + dateF('per_from', d.period_from, 'This Abrechnung from') + dateF('per_to', d.period_to, 'to') + '</div>' +
+    '<div class="sr-grid2" style="margin-top:8px">' + _srDateF('per_from', d.period_from, 'This Abrechnung from') + _srDateF('per_to', d.period_to, 'to') + '</div>' +
     '<p class="st-hint">Only change the dates if the HV settles a different period (max. 12 months).</p></details>';
-  const one = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct"><span class="sr-num">1</span>Jahresabrechnung</p><span class="srm__cs">' + stEsc(_srPerText(c.per.from, c.per.to)) + ' · Frist ' + stDate(c.per.frist) + '</span></div>' +
-    status +
-    '<div class="sr-grid2">' + dateF('received_on', d.received_on, 'Received on') + dateF('hv_date', d.hv_date, 'Statement date') + '</div>' +
+  const nU = U.filter(([p]) => p.nk !== false && _srAmtOf(d, p, c.apt) !== null).length;
+  const card = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Hausgeld-Jahresabrechnung</p><span class="srm__cs">' + stEsc(_srPerText(c.per.from, c.per.to)) + ' · Frist for the NK ' + stDate(c.per.frist) + '</span></div>' +
+    status + '<div class="sr-grid2">' + _srDateF('received_on', d.received_on, 'Received on') + _srDateF('hv_date', d.hv_date, 'Statement date') + '</div>' +
     costs + weg + check + settings + '</section>';
-  // ② tenants
-  const infos = c.items.map(it => _srTenInfo(c, it, rec, sum.ok));
-  const tens = infos.map(ti => {
-    const id = String(ti.l.id);
-    const res = ti.st.res ? _srMoneyTxt(ti.st.res.dir, ti.st.res.amount, false) : ti.x && !ti.x.missing ? _srMoneyTxt(Math.sign(ti.x.saldo), Math.abs(ti.x.saldo), false) : '';
+  return _srHead4(title, c.p.name + ' · you ↔ WEG') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
+    '<div class="srm__b"><div class="srm__one srm__wide">' + card + '</div></div>' +
+    '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sr="toNk"' + (nU ? '' : ' disabled') + '>Create NK · ' + nU + ' umlagefähige costs <i class="ti ti-chevron-right" aria-hidden="true"></i></button>' +
+      '<button class="cx-btn cx-btn--p" data-sr="hvSave">' + (c.running && !hv.received ? 'Save draft' : 'Save') + '</button></div>';
+}
+
+/* ── Window B · NK-Abrechnung (you ↔ tenants): umlagefähige Hausgeld costs (ticked) + NK-only costs · tenants ── */
+function _srNkView(c) {
+  const title = 'NK-Abrechnung ' + c.per.label;
+  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(c.p.in_portfolio_since) + '). The seller settles this period with the tenants.</p></div></div>';
+  const d = _srEnsureDraft(c), rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
+  const change = _srTenantChange(c);
+  const HV = [], X = [];
+  (d.positions || []).forEach((p, i) => { if (_srIsNkOnly(p)) X.push([p, i]); else if (p.u) HV.push([p, i]); });
+  const hvReady = HV.some(([p]) => _srAmtOf(d, p, c.apt) !== null);
+  let costCard;
+  if (!hvReady) {
+    costCard = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Costs for the NK</p></div>' +
+      '<p class="st-note">The NK takes the umlagefähige costs from the Hausgeld-Jahresabrechnung. Enter those first.</p>' +
+      '<div><button class="cx-btn cx-btn--p" data-sr="toHv">Open Hausgeld ' + stEsc(c.per.label) + '</button></div></section>';
+  } else {
+    const hvRows = HV.map(([p, i]) => {
+      const k = _srKind(p.kind), a = _srAmtOf(d, p, c.apt), on = p.nk !== false && a !== null;
+      const chip = change && ['heizung', 'warmwasser'].includes(p.kind) && on ? '<label class="ct-chip"><input type="checkbox" data-src="split" data-i="' + i + '"' + (p.split === 'mieter' ? ' checked' : '') + '/>per tenant</label>' : '';
+      return '<div class="ct-r ct-r--nk' + (on ? '' : ' is-off') + '"><label class="ct-l"><input type="checkbox" class="ct-cb" data-src="innk" data-i="' + i + '"' + (on ? ' checked' : '') + (a === null ? ' disabled' : '') + '/><span class="ct-lab">' + stEsc(p.label || k.l) + '</span>' + chip + '</label>' +
+        '<span class="ct-ro">' + (a === null ? '—' : stEur(_srSigned(p, a))) + '</span></div>';
+    }).join('');
+    const xRows = X.map(([p, i]) => {
+      const k = _srKind(p.kind), named = p.kind !== 'grundsteuer' || p.label;
+      const lab = named ? '<input class="ct-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || (p.kind === 'sonst' ? '' : k.l)) + '"/>' : '<span class="ct-lab">' + stEsc(k.l) + ' <small class="ct-src">from Rentals</small></span>';
+      return '<div class="ct-r"><span class="ct-l">' + lab + '</span><span class="ct-a"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
+    }).join('');
+    const tHv = cxR(HV.reduce((s, [p]) => s + (p.nk !== false ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
+    const tX = cxR(X.reduce((s, [p]) => s + _srSigned(p, _srAmtOf(d, p, c.apt)), 0));
+    const hasGs = (d.positions || []).some(p => p.kind === 'grundsteuer');
+    const gsQ = c.verw ? _srNum(c.verw.grundsteuer_mtl) : null;
+    costCard = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Costs for the NK</p><span class="srm__cs">split on the tenants by days</span></div>' +
+      '<div class="ct"><div class="ct-h"><span class="st-f__l">From the Hausgeld · umlagefähig</span><b data-sr-tot="hvnk">' + stEur(tHv) + '</b></div>' + hvRows +
+        '<button class="ct-add" data-sr="toHv"><i class="ti ti-pencil" aria-hidden="true"></i> Change amounts in Hausgeld</button></div>' +
+      '<div class="ct"><div class="ct-h"><span class="st-f__l">NK only · not in the Hausgeld</span><b data-sr-tot="x">' + stEur(tX) + '</b></div>' + (xRows || '<p class="st-hint" style="margin:8px 0 0">e.g. Grundsteuer, which is billed to you directly.</p>') +
+        '<div class="ct-adds">' + (!hasGs && gsQ ? '<button class="ct-add" data-sr="nkGs"><i class="ti ti-plus" aria-hidden="true"></i> Grundsteuer from Rentals</button>' : '') +
+        '<button class="ct-add" data-sr="nkAdd"><i class="ti ti-plus" aria-hidden="true"></i> Add cost</button></div></div>' +
+      '<div class="ct-tot"><span>Total for the NK</span><b data-sr-tot="nk">' + stEur(cxR(tHv + tX)) + '</b></div>' +
+      '<datalist id="srKindList">' + SR_KINDS.filter(k => k.u).map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist>' +
+    '</section>';
+  }
+  const tenCard = '<section class="srm__card" id="srNkTens">' + _srNkTens(c, d, rec, hvReady) + '</section>';
+  return _srHead4(title, c.p.name + ' · you ↔ tenants') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
+    '<div class="srm__b"><div class="srm__cols">' + costCard + tenCard + '</div></div>' +
+    (hvReady ? '<div class="srm__bar"><button class="cx-btn cx-btn--p" data-sr="nkSave">Save</button></div>' : '');
+}
+/* The tenants of the NK window — previews follow the draft, so a change shows at once */
+function _srNkTens(c, d, rec, hvReady) {
+  const calcRec = hvReady ? d : rec, sumOk = hvReady;
+  const tens = c.items.map(it => {
+    const ti = _srTenInfo(c, it, calcRec, sumOk), id = String(ti.l.id);
+    const res = ti.skipped ? '' : ti.st.res ? _srMoneyTxt(ti.st.res.dir, ti.st.res.amount, false) : ti.x && !ti.x.missing ? _srMoneyTxt(Math.sign(ti.x.saldo), Math.abs(ti.x.saldo), false) : '';
     const sub = stDM(ti.l.from) + '–' + stDate(ti.l.to) + (ti.st.res ? ' · sent ' + stDate(ti.st.res.date) : '');
     let acts = '';
     if (ti.kind === 'pausch') acts = ti.skipped ? '<span class="rk-ok"><i class="ti ti-check" aria-hidden="true"></i> no NK</span>' : '<button class="cx-btn cx-btn--s" data-sr="nd" data-id="' + stEsc(id) + '">Mark as no NK</button>';
     else if (ti.kind === 'unlinked') acts = '<span class="st-hint">No tenant linked – add the tenant in Rentals › Tenants.</span>';
-    else if (ti.k === 'waiting') acts = '<button class="cx-btn cx-btn--s" disabled>Create NK – enter costs first</button>';
+    else if (!ti.x) acts = '<span class="st-hint">Waiting for the Hausgeld costs.</span>';
     else {
       acts = '<button class="cx-btn cx-btn--s" data-sr="pdfRow" data-cc-pdf="1" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '"><i class="ti ti-file-text" aria-hidden="true"></i> PDF</button>' +
         '<button class="cx-btn ' + (ti.k === 'open' ? 'cx-btn--p' : 'cx-btn--s') + '" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '">' + (ti.k === 'open' ? 'Create NK' : 'Open') + '</button>' +
         (ti.k === 'sent' ? '<button class="cx-btn cx-btn--p" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '">Settle</button>' : '') +
         (ti.k === 'settled' ? '<span class="rk-ok"><i class="ti ti-check" aria-hidden="true"></i> ' + stEsc(_srSettledTxt(ti, false)) + '</span>' : '');
     }
+    const g = /Guthaben/.test(res);
     return '<div class="srm__ten"><div class="srm__ten-h"><div><p class="srm__ten-n">' + stEsc(ti.name) + (ti.kind === 'pausch' ? ' <span class="st-tag">Pauschal</span>' : '') + '</p><p class="srm__ten-s">' + stEsc(sub) + '</p></div>' +
-      (res ? '<p class="srm__ten-r' + (/Guthaben/.test(res) ? ' is-g' : '') + '">' + stEsc(res.replace(/^(Nachzahlung|Guthaben) /, '')) + '<small>' + (/Guthaben/.test(res) ? 'Guthaben' : /Nachzahlung/.test(res) ? 'Nachzahlung' : '') + (ti.st.res ? '' : ' · preview') + '</small></p>' : '') + '</div>' +
+      (res ? '<p class="srm__ten-r' + (g ? ' is-g' : '') + '">' + stEsc(res.replace(/^(Nachzahlung|Guthaben) /, '')) + '<small>' + (g ? 'Guthaben' : /Nachzahlung/.test(res) ? 'Nachzahlung' : '') + (ti.st.res ? '' : ' · preview') + '</small></p>' : '') + '</div>' +
       '<div class="srm__acts">' + acts + '</div></div>';
   }).join('') || '<p class="st-hint">No tenant with Kalt + NK in this period.</p>';
-  const two = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct"><span class="sr-num">2</span>NK per tenant</p><span class="srm__cs">from the umlagefähige Kosten · saved to the tracker</span></div>' + tens + '</section>';
-  return _srHead4(title, c.p.name + ' · saves straight to the tracker') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
-    '<div class="srm__b"><div class="srm__cols">' + one + two + '</div></div>' +
-    '<div class="srm__bar"><button class="cx-btn cx-btn--p" data-sr="hvSave">' + (c.running && !hv.received ? 'Save draft' : 'Save') + '</button></div>';
+  return '<div class="srm__ch"><p class="srm__ct">Tenants</p><span class="srm__cs">' + (SR.dirty ? 'preview · save to keep the changes' : 'saved to the tracker') + '</span></div>' + tens;
 }
+function _srRefreshNkTens() {
+  const host = document.getElementById('srNkTens'), c = _srCards[SR.modal && SR.modal.ck];
+  if (!host || !c || !SR.draft) return;
+  _srCollect();
+  host.innerHTML = _srNkTens(c, SR.draft, _srRec(c.p, c.per), true);
+}
+
 function _srRefreshTotals() {
   const c = _srCards[SR.modal && SR.modal.ck]; if (!c || !SR.draft) return;
   _srCollect();
-  const d = SR.draft;
-  const amtOf = p => { const a = _srNum(p.amount); return a !== null ? a : _srUnitAmt(d, p, c.apt); };
-  let tu = 0, tn = 0;
-  (d.positions || []).forEach(p => { const v = (amtOf(p) || 0) * (_srKind(p.kind).neg ? -1 : 1); if (p.u) tu += v; else tn += v; });
+  const d = SR.draft, t = { u: 0, n: 0, hvnk: 0, x: 0 };
+  (d.positions || []).forEach(p => {
+    const v = _srSigned(p, _srAmtOf(d, p, c.apt));
+    if (_srIsNkOnly(p)) t.x += v; else { if (p.u) t.u += v; else t.n += v; if (p.u && p.nk !== false) t.hvnk += v; }
+  });
   const set = (k, v) => { const el = document.querySelector('#srPanel [data-sr-tot="' + k + '"]'); if (el) el.textContent = stEur(cxR(v)); };
-  set('u', tu); set('n', tn); set('t', tu + tn);
+  set('u', t.u); set('n', t.n); set('t', t.u + t.n); set('hvnk', t.hvnk); set('x', t.x); set('nk', t.hvnk + t.x);
 }
 
 /* View 2 · one tenant */
@@ -1307,7 +1376,7 @@ async function _srSettleSave(btn) {
     }
     ctlSettlementInvalidate();
     stSay('Saved');
-    SR.modal = m.from === 'tracker' ? null : Object.assign({}, m, { view: m.back || 'wohnung', choice: null, offVia: null, skip: null });
+    SR.modal = m.from === 'tracker' ? null : Object.assign({}, m, { view: m.back || 'nk', choice: null, offVia: null, skip: null });
     if (SR.modal && SR.modal.view === 'tenant' && m.tid) {                     // the line id may have changed (virtual → stored)
       const again = _srYearModel(SR.year).find(x => x.ck === m.ck);
       const nit = again && again.items.find(x => x.r.tenant_id && it.r.tenant_id && String(x.r.tenant_id) === String(it.r.tenant_id) && _srD(x.r.period_from) === _srD(it.r.period_from));
@@ -1334,7 +1403,7 @@ async function _srUnsettle() {
 }
 
 /* Save ① Jahresabrechnung */
-async function _srHvSave4(btn) {
+async function _srHvSave4(btn, thenView) {
   _srCollect();
   const d = SR.draft, c = _srCards[SR.modal.ck]; if (!d || !c) return;
   // custom rows: match a catalogue name, else keep as "Sonstige"
@@ -1356,6 +1425,7 @@ async function _srHvSave4(btn) {
     const saved = await srSaveRow(clean);
     await _srWriteWeg(c, saved);
     SR.draft = null; SR.costsOpen = false;
+    if (thenView && SR.modal) SR.modal.view = thenView;
     stSay('Saved');
   } catch (err) {
     const msg = String((err && (err.message || err.code)) || err);
@@ -1368,9 +1438,10 @@ async function _srHvSave4(btn) {
 
 /* ── Events ── */
 function _srOpen(modal) {
-  SR.modal = Object.assign({ view: 'wohnung' }, modal);
+  const keepDraft = SR.modal && SR.draft && SR.draft._ck === modal.ck;
+  SR.modal = Object.assign({ view: 'nk' }, modal);
   SR.briefOpen = false; SR.perEdit = false; SR.expEdit = false;
-  if (SR.modal.view === 'wohnung') SR.draft = null;
+  if (!keepDraft && (SR.modal.view === 'nk' || SR.modal.view === 'hv')) SR.draft = null;
   stRenderRentals();
 }
 function _srCloseModal() {
@@ -1394,6 +1465,10 @@ function srIsRentalsLine() { return false; }
       return;
     }
     const a = b.dataset.sr;
+    // unsaved costs in a window: save them before moving on to a tenant, a PDF or Settle
+    if (SR.modal && SR.dirty && ['openTen', 'pdfRow', 'settle'].includes(a) && ['nk', 'hv'].includes(SR.modal.view)) {
+      const view = SR.modal.view; await _srHvSave4(null, view); SR.dirty = false;
+    }
     // tracker
     if (a === 'year') { SR.year += Number(b.dataset.d); SR.modal = null; SR.draft = null; stRenderRentals(); return; }
     if (a === 'filter') { SR.filter = b.dataset.k; stRenderRentals(); return; }
@@ -1402,14 +1477,15 @@ function srIsRentalsLine() { return false; }
       const next = list.find(i => i.k === 'open' && !i.c.running) || list.find(i => i.k === 'open') || list[0];
       if (next) _srOpen({ ck: next.c.ck, from: 'tracker' }); return;
     }
-    if (a === 'open') { e.stopPropagation(); _srOpen({ ck: b.dataset.k, from: 'tracker' }); return; }
+    if (a === 'open' || a === 'openNk') { e.stopPropagation(); _srOpen({ ck: b.dataset.k, view: 'nk', from: 'tracker' }); return; }
+    if (a === 'openHv') { e.stopPropagation(); _srOpen({ ck: b.dataset.k, view: 'hv', from: 'tracker' }); return; }
     if (a === 'openTen') {
       e.stopPropagation();
       const c = _srCards[b.dataset.k]; if (!c) return;
       const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
       const it = c.items.find(x => String(x.r.id) === String(b.dataset.id));
       const ti = it ? _srTenInfo(c, it, rec, sum.ok) : null;
-      if (ti && ti.kind === 'ten' && ti.x) _srOpen({ ck: b.dataset.k, view: 'tenant', tid: b.dataset.id, from: SR.modal ? 'wohnung' : 'tracker' });
+      if (ti && ti.kind === 'ten' && ti.x) _srOpen({ ck: b.dataset.k, view: 'tenant', tid: b.dataset.id, from: SR.modal ? 'nk' : 'tracker' });
       else _srOpen({ ck: b.dataset.k, from: 'tracker' });
       return;
     }
@@ -1451,12 +1527,12 @@ function srIsRentalsLine() { return false; }
     if (a === 'back') {
       const m = SR.modal;
       if (m.view === 'settle' && m.from === 'tracker') { SR.modal = null; stRenderRentals(); return; }
-      SR.modal = Object.assign({}, m, { view: m.view === 'settle' ? (m.back || 'wohnung') : 'wohnung', choice: null, weg: false });
+      SR.modal = Object.assign({}, m, { view: m.view === 'settle' ? (m.back || 'nk') : 'nk', choice: null, weg: false });
       SR.briefOpen = false; SR.perEdit = false; stRenderRentals(); return;
     }
     if (a === 'pick') {
       const list = Object.values(_srCards), i = list.findIndex(x => x.ck === SR.modal.ck) + Number(b.dataset.d);
-      if (list[i]) { if (SR.dirty && !confirm('Discard your changes?')) return; SR.dirty = false; _srOpen({ ck: list[i].ck, from: SR.modal.from }); }
+      if (list[i]) { if (SR.dirty && !confirm('Discard your changes?')) return; SR.dirty = false; _srOpen({ ck: list[i].ck, view: SR.modal.view === 'hv' ? 'hv' : 'nk', from: SR.modal.from }); }
       return;
     }
     if (!c) return;
@@ -1469,7 +1545,18 @@ function srIsRentalsLine() { return false; }
       return;
     }
     if (a === 'wegDir') { _srCollect(); SR.draft.weg_direction = Number(b.dataset.v); SR.dirty = true; _srRerenderPanel(); return; }
-    if (a === 'hvSave') { await _srHvSave4(b); SR.dirty = false; return; }
+    if (a === 'hvSave' || a === 'nkSave') { await _srHvSave4(b); SR.dirty = false; return; }
+    if (a === 'toNk') { if (SR.dirty) { await _srHvSave4(b, 'nk'); SR.dirty = false; } else { SR.modal.view = 'nk'; _srRerenderPanel(); } return; }
+    if (a === 'toHv') { _srCollect(); SR.modal.view = 'hv'; SR.costsOpen = true; _srRerenderPanel(); return; }
+    if (a === 'nkAdd' || a === 'nkGs') {
+      _srCollect();
+      const gs = a === 'nkGs', p = _srNewPos(gs ? 'grundsteuer' : 'sonst', SR.draft);
+      p.origin = 'nk'; p.u = true;
+      if (gs) { const q = _srNum(c.verw && c.verw.grundsteuer_mtl); p.amount = q ? cxR(q * 4) : null; } else p.label = '';
+      SR.draft.positions.push(p); SR.dirty = true; _srRerenderPanel();
+      if (!gs) { const ins = document.querySelectorAll('#srPanel .ct-name'); if (ins.length) ins[ins.length - 1].focus(); }
+      return;
+    }
     if (a === 'expEdit') { _srCollect(); SR.expEdit = true; _srRerenderPanel(); return; }
     if (a === 'expCancel') { SR.expEdit = false; _srRerenderPanel(); return; }
     if (a === 'expSave') {
@@ -1525,14 +1612,21 @@ function srIsRentalsLine() { return false; }
     const k = row.dataset.k, id = row.dataset.id;
     if (row.dataset.sr === 'openTen') {
       const btn = row.querySelector('.rk-name'); if (btn) btn.click();
-    } else if (row.dataset.sr === 'open') _srOpen({ ck: k, from: 'tracker' });
+    } else if (row.dataset.sr === 'openHv') _srOpen({ ck: k, view: 'hv', from: 'tracker' });
   });
   host.addEventListener('change', e => {
     const s = e.target.closest('[data-srs="pick"]');
-    if (s) { if (SR.dirty && !confirm('Discard your changes?')) { s.value = SR.modal.ck; return; } SR.dirty = false; _srOpen({ ck: s.value, from: SR.modal ? SR.modal.from : 'tracker' }); return; }
+    if (s) { if (SR.dirty && !confirm('Discard your changes?')) { s.value = SR.modal.ck; return; } SR.dirty = false; _srOpen({ ck: s.value, view: SR.modal && SR.modal.view === 'hv' ? 'hv' : 'nk', from: SR.modal ? SR.modal.from : 'tracker' }); return; }
+    const nkcb = e.target.closest('[data-src="innk"]');
+    if (nkcb && SR.draft) { _srCollect(); const p = SR.draft.positions[Number(nkcb.dataset.i)]; if (p) p.nk = nkcb.checked ? true : false; SR.dirty = true; _srRerenderPanel(); return; }
     const cb = e.target.closest('[data-src="split"]');
     if (cb && SR.draft) { _srCollect(); const p = SR.draft.positions[Number(cb.dataset.i)]; if (p) p.split = cb.checked ? 'mieter' : 'tage'; SR.dirty = true; _srRerenderPanel(); return; }
-    if (e.target.closest('[data-srf]')) { SR.dirty = true; _srCollect(); if (e.target.dataset.srf === 'keys.hg_paid' || e.target.dataset.srf === 'weg_amount') _srRerenderPanel(); return; }
+    if (e.target.closest('[data-srf]')) {
+      SR.dirty = true; _srCollect();
+      if (e.target.dataset.srf === 'keys.hg_paid' || e.target.dataset.srf === 'weg_amount') _srRerenderPanel();
+      else if (SR.modal && SR.modal.view === 'nk') _srRefreshNkTens();          // tenants only – the field you type in keeps its focus
+      return;
+    }
     const t = e.target.closest('[data-srt]');
     if (t) {
       const res = _srRefreshTenant(); if (!res) return;

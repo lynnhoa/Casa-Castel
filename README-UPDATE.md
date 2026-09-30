@@ -1,16 +1,15 @@
-# Settlements · Rentals — build 4 (01.10.2026)
+# Settlements · Rentals — build 5 (01.10.2026) · contains builds 2–5
 
-1. SQL: in SETTLEMENTS-RENTALS.sql only the LAST block (sort_order = purchase order) is new — run it if you haven't yet.
-   Everything above it you already ran.
+1. SQL: in SETTLEMENTS-RENTALS.sql only the LAST block (sort_order) is new — run it if you haven't yet. No other new SQL.
 2. Copy all files into the repo root (replace), push → Vercel deploys.
 3. iPhone: close the app completely and reopen it.
 
-What changed
-- Tabs: Rentals (first) · Casa Castel. The Tracking tab is gone – Rentals IS the tracker now.
-- Rentals tracker: all Wohnungen for the chosen year, purchase order. Per Wohnung the Hausgeld line + one line per tenant:
-  Period · Status · Result · Sent (tick) · Settled · PDF. Tap any line to open it.
-- NK-Abrechnung (modal): ① Jahresabrechnung — Received on, Statement date, costs as a table
-  (umlagefähig + nicht umlagefähig, folds to one line once saved), WEG result + check · ② NK per tenant.
-- Tenant: result, period (from Rentals, editable for this NK only), Vorauszahlungen, letter, Create PDF, Mark sent, Skip this NK.
-- Settle: paid (amount may differ) · offset (Kaution / rent / Hausgeld) · skipped — always editable, with "Undo".
-- English UI, German key terms. The tenant letter stays German.
+Build 5 · Hausgeld and NK are two separate processes
+- Tracker: "Hausgeld · Jahresabrechnung" line → Hausgeld window · tenant line → that tenant's NK ·
+  "NK-Abrechnung ›" on a Wohnung → NK window. No top button any more.
+- Hausgeld window (you ↔ WEG): received on, statement date, ALL costs (umlagefähig + nicht umlagefähig),
+  WEG result, check, settings. Bottom: Save · "Create NK · n umlagefähige costs".
+- NK window (you ↔ tenants): the umlagefähige Hausgeld costs, ticked (untick if not in the contract; amounts are
+  changed in Hausgeld only) + NK-only costs (Grundsteuer from Rentals, "Add cost") · live tenant previews.
+- Hausgeld totals and the WEG check count Hausgeld costs only; the NK counts ticked Hausgeld costs + NK-only costs.
+- Existing entries keep working (they count as Hausgeld costs).

@@ -638,3 +638,15 @@ body.st-panel-open { overflow: hidden; }
   .rk-row { grid-template-areas: "who st" "per per" "res res" "sent done" "pdf pdf"; row-gap: 3px; }
 }
 .srm__ct .sr-num { font-family: 'Inter', system-ui, sans-serif; font-size: 11px; }
+/* ── build 5 · Hausgeld window / NK window ── */
+.srm__wide { max-width: 860px; }
+.ct-r--nk .ct-l { cursor: pointer; }
+.ct-cb { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: #3D3027; }
+.ct-ro { text-align: right; font-size: 13.5px; color: var(--cx-ink); font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 2px; }
+.ct-r.is-off .ct-lab, .ct-r.is-off .ct-ro { color: #B0A596; text-decoration: line-through; }
+.ct-src { font-size: 10.5px; color: var(--cx-mut); margin-left: 4px; }
+.ct-adds { display: flex; gap: 16px; flex-wrap: wrap; }
+.srm__card > .ct + .ct { margin-top: 4px; }
+.srm__bar--2 .cx-btn--s i { font-size: 14px; }
+@media (max-width: 700px) { .srm__bar--2 { flex-direction: column-reverse; } .srm__bar--2 .cx-btn { width: 100%; } }
+@media (max-width: 700px) { .srm__bar--2 .cx-btn { flex: none; height: 46px; } }
