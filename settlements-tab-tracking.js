@@ -145,7 +145,7 @@ function stRenderTracking() {
   const byProp = new Map();
   shown.forEach(l => { if (!byProp.has(l.p.id)) byProp.set(l.p.id, []); byProp.get(l.p.id).push(l); });
   const props = (window._ctrl.properties || []).filter(p => byProp.has(p.id));
-  props.sort((a, b) => (a.id === CASA_PROP_ID ? -1 : b.id === CASA_PROP_ID ? 1 : String(a.name).localeCompare(String(b.name), 'de')));
+  props.sort(stPropOrder);
   const cards = props.map(p => _stCard(p, byProp.get(p.id), inYear.filter(l => l.p.id === p.id))).join('');
   const hiddenDone = !filt.has('erledigt') && n.erledigt
     ? '<button class="st-more" data-st="showDone">' + n.erledigt + ' erledigt anzeigen</button>' : '';
@@ -234,7 +234,8 @@ function _stLineHtml(l) {
   const res = s.text || '';
   return '<button class="st-line' + (ST.sel === l.id ? ' is-sel' : '') + (s.k === 'erledigt' ? ' is-done' : '') + (l.type === 'gap' ? ' is-gap' : '') + '" data-st="sel" data-id="' + stEsc(l.id) + '">' +
     '<span class="st-c st-c--who"><span class="st-who">' + stEsc(w.a) + (w.b ? '<span class="st-who__b"> · ' + stEsc(w.b) + '</span>' : '') + '</span>' +
-      (w.tag ? '<span class="st-tag">' + stEsc(w.tag) + '</span>' : '') + '</span>' +
+      (w.tag ? '<span class="st-tag">' + stEsc(w.tag) + '</span>' : '') +
+      (typeof srIsRentalsLine === 'function' && srIsRentalsLine(l) ? '<span class="st-tag st-tag--go">in Rentals ›</span>' : '') + '</span>' +
     '<span class="st-c st-c--per">' + stEsc(per) + '</span>' +
     '<span class="st-c st-c--res">' + stEsc(res) + '</span>' +
     '<span class="st-c st-c--st">' + cxPill(s.pill[0], s.pill[1]) + '</span>' +
@@ -522,7 +523,12 @@ document.getElementById('tab-tracking')?.addEventListener('click', async e => {
   if (a === 'perEdit') { ST.perEdit = Number(b.dataset.k); stRenderTracking(); return; }
   if (a === 'perCancel') { ST.perEdit = null; stRenderTracking(); return; }
   if (a === 'perSave') { await _stPeriodSave(Number(b.dataset.k)); return; }
-  if (a === 'sel') { ST.sel = b.dataset.id; ST.edit = false; stRenderTracking(); if (!stIsWide()) document.querySelector('#stPanel .st-panel__b')?.scrollTo(0, 0); return; }
+  if (a === 'sel') {
+    // Rentals: NK and Hausgeld of a due period are worked on in the Rentals tab → open it there
+    const l0 = _stLines[b.dataset.id];
+    if (l0 && typeof srOpenFromTracking === 'function' && srOpenFromTracking(l0)) return;
+    ST.sel = b.dataset.id; ST.edit = false; stRenderTracking(); if (!stIsWide()) document.querySelector('#stPanel .st-panel__b')?.scrollTo(0, 0); return;
+  }
   if (a === 'close') { stClosePanel(); return; }
   if (a === 'dropStale') {
     if (!confirm('Diese veraltete Zeile entfernen?')) return;

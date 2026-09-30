@@ -1,16 +1,12 @@
-# Settlements › Rentals — NK-Abrechnung (30.09.2026)
+# Settlements › Rentals — build 3 (30.09.2026) · contains builds 2 + 3
 
-1. Run SETTLEMENTS-RENTALS.sql once in Supabase (skip if already done).
-2. Copy these files into the repo root (replace), push → Vercel deploys.
+1. SQL: only the last block of SETTLEMENTS-RENTALS.sql is new (sort_order) — the rest you already ran.
+2. Copy all files into the repo root (replace), push → Vercel deploys.
+3. iPhone: close the app completely and reopen, so the new version loads.
 
-New
-- settlements-tab-rentals.js   Rentals tab: HV-Abrechnung, calculation per tenant, PDF letter, "Verschickt" → Tracking + Controlling
-- SETTLEMENTS-RENTALS.sql      table nk_abrechnung_rentals
-
-Changed
-- settlements.html             loads the new tab + PDF tools (html2canvas, jsPDF, pdf-open.js)
-- settlements.css              Rentals tab styles (phone / iPad / desktop)
-- settlements-app.js           closing the panel + reload work for both tabs
-- settlements-tab-calc.js      Rentals placeholder removed (Casa Castel placeholder unchanged)
-- settlements-tab-tracking.js  "Change" Abrechnungszeitraum refreshes the tab you are on
-- pdf-open.js                  the new PDF button uses the same iPhone viewer flow ([data-cc-pdf])
+Build 3
+- Jahresabrechnung form: Erhalten am · Abrechnung vom · WEG-Ergebnis · umlagefähige Kosten der Wohnung (one amount each).
+  No Umlageschlüssel / Gebäude-m² / MEA / Einheiten / Gesamtkosten any more. Zeitraum only behind "ändern".
+  "je Mieter" only appears when the tenant changed in that period.
+- Letter page 2: Kostenart · Kosten der Wohnung · Ihr Anteil; the HV's Einzelabrechnung is named as basis and Anlage.
+- Fixed order in Rentals and Tracking = your purchase order (ctrl_properties.sort_order).

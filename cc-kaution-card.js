@@ -134,13 +134,23 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ? _cckCell('Reason', _cckText(`cck-g-${pfx}`, k.deduction_reason, onIn, dis), `cck-g-${pfx}`)
     : P.phase === 5 ? _cckCell('Reason', k.deduction_reason ? _cckRo(k.deduction_reason) : _cckOff) : _cckCell('Reason', _cckOff);
 
+  // NK-Einbehalt: part of the deduction held back until the NK-Abrechnung (Rentals only — column nk_einbehalt)
+  const hasNk = Object.values(A.map() || {}).some(r => r && Object.prototype.hasOwnProperty.call(r, 'nk_einbehalt'));
+  const nkv = _cckNum(k.nk_einbehalt);
+  let nkRow = '';
+  if (hasNk && P.phase === 4) {
+    nkRow = `<div class="${grid}">${_cckCell('davon Einbehalt bis NK-Abrechnung', _cckMoney(`cck-nk-${pfx}`, nkv || '', onIn, dis), `cck-nk-${pfx}`)}${extra ? '<div class="cck-nkhint">wird in Settlements mit der NK-Abrechnung verrechnet</div>' : ''}</div>`;
+  } else if (hasNk && P.phase === 5 && nkv > 0) {
+    nkRow = `<div class="${grid}">${_cckCell('davon Einbehalt bis NK-Abrechnung', _cckRo(f(nkv)))}${extra ? '<div class="cck-nkhint">offen – wird in Settlements verrechnet</div>' : ''}</div>`;
+  }
+
   // Refund box
   let refund = '—', note = 'Calculated at move-out', r3b;
   if (P.phase === 4) {
     refund = f(P.recv - ded); note = `${f(P.recv)} held − ${f(ded)} deduction`;
     r3b = _cckCell('Refunded on', _cckDate(`cck-fd-${pfx}`, ui.refDate || (typeof ccTodayISO === 'function' ? ccTodayISO() : ''), onIn, dis), `cck-fd-${pfx}`);
   } else if (P.phase === 5) {
-    refund = f(P.ret); note = `${f(P.recv)} − ${f(ded)} deduction`;
+    refund = f(P.ret); note = `${f(P.recv)} − ${f(ded)} deduction` + (nkv > 0 ? ` (davon ${f(nkv)} bis zur NK-Abrechnung)` : '');
     r3b = _cckCell('Refunded on', k.settled_at ? _cckRo(A.fmtDate(k.settled_at)) : _cckOff);
   } else {
     r3b = _cckCell('Refunded on', _cckOff);
@@ -184,6 +194,7 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     <div class="cck-cap" id="cck-cap-${pfx}">${L.cap}</div>
     ${compact ? '' : `<div class="${grid}">${r1a}${r1b}</div>
     <div class="${grid}">${r2a}${r2b}</div>
+    ${nkRow}
     <div class="cck-refund${P.phase >= 4 ? '' : ' cck-dim'}">
       <div class="cck-grid" style="margin-bottom:0;align-items:end">
         ${_cckCell('Refund to tenant', `<div class="cck-ro cck-rv" id="cck-rv-${pfx}">${refund}</div>`)}${r3b}
@@ -225,7 +236,10 @@ function ccKautionInput(app, pfx, tid) {
     const raw = dIn.value, d = _cckNum(raw);
     const rv = $(`cck-rv-${pfx}`), rn = $(`cck-rn-${pfx}`);
     const bad = raw !== '' && (d < 0 || d > recv + 0.005);
-    if (rn) { rn.classList.toggle('cck-err', bad); rn.textContent = bad ? `Enter a deduction up to ${A.fmt(recv)}` : `${A.fmt(recv)} held − ${A.fmt(d)} deduction`; }
+    const nkIn = $(`cck-nk-${pfx}`), nk = nkIn ? _cckNum(nkIn.value) : 0;
+    const nkBad = !!nkIn && (nk < 0 || nk > d + 0.005);
+    if (nkIn) nkIn.classList.toggle('cck-err', nkBad);
+    if (rn) { rn.classList.toggle('cck-err', bad || nkBad); rn.textContent = bad ? `Enter a deduction up to ${A.fmt(recv)}` : nkBad ? `Einbehalt für die NK höchstens ${A.fmt(d)} (Teil der Deduction)` : `${A.fmt(recv)} held − ${A.fmt(d)} deduction` + (nk > 0 ? ` (davon ${A.fmt(nk)} bis zur NK-Abrechnung)` : ''); }
     if (rv) rv.textContent = bad ? '—' : A.fmt(recv - d);
   }
   const fd = $(`cck-fd-${pfx}`);
@@ -284,6 +298,13 @@ async function ccKautionAct(app, pfx, tid, act) {
       const rd = $(`cck-rd-${pfx}`), g = $(`cck-g-${pfx}`);
       if (rd) upd.received_at = rd.value || null;
       if (g)  upd.deduction_reason = g.value.trim() || null;
+    }
+    const nkIn = $(`cck-nk-${pfx}`);
+    if (nkIn && Object.prototype.hasOwnProperty.call(k, 'nk_einbehalt')) {      // NK-Einbehalt ≤ deduction
+      const nk = nkIn.value === '' ? 0 : _cckNum(nkIn.value);
+      const dedNow = Math.max(0, recvNow - returned);
+      if (nk < 0 || nk > dedNow + 0.005) { nkIn.focus(); return; }
+      upd.nk_einbehalt = Math.round(nk * 100) / 100;
     }
     if (act === 'paid') {
       const fd = $(`cck-fd-${pfx}`);
@@ -350,6 +371,7 @@ function _cckStyles() {
   s.id = 'cck-styles';
   s.textContent = `
 .cck-hint{font-size:10px;color:var(--cc-taupe);margin:4px 0 7px}
+.cck-nkhint{font-size:10px;line-height:1.4;color:var(--cc-taupe);align-self:end;padding-bottom:10px}
 .cck-bar{height:3px;border-radius:2px;background:var(--cc-surface);overflow:hidden}
 .cck-bar>div{height:3px;border-radius:2px;transition:width .2s}
 .cck-cap{font-size:10px;color:var(--cc-taupe);margin:5px 0 10px;min-height:14px}

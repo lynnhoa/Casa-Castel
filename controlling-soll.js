@@ -928,9 +928,9 @@ function ctlSettlementPeriods(p, today) {
   const st = _cxPerStart(p), ty = Number(today.slice(0, 4)), out = [];
   const since = _cxD(p && p.in_portfolio_since);          // "In portfolio since": nothing before this date
   for (let y = ty - 3; y <= ty; y++) {
-    let from = y + '-' + st; const to = _cxAddDays((y + 1) + '-' + st, -1);
-    if (since && to < since) continue;
-    if (since && from < since) from = since;
+    const from = y + '-' + st; const to = _cxAddDays((y + 1) + '-' + st, -1);
+    if (since && to < since) continue;                       // ended before the purchase → the seller settles it
+    // the year the purchase falls in counts in full: the buyer settles the whole period with the tenants
     const frist = _cxAddDays((y + 2) + '-' + st, -1);
     if (to < today && frist >= today) out.push({ from, to, frist, label: ctlPeriodLabel(from, to) });
   }

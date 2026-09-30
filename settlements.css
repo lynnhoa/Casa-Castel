@@ -381,3 +381,74 @@ html .sr-sel select { font-size: 14px !important; }
   .sr-bar--form .sr-total__nu { flex-basis: auto; }
   .sr-bar__btns .cx-btn { flex: 1; }
 }
+.sr-vzalt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 0 8px; font-size: 11.5px; color: var(--cx-mut); }
+.sr-vzalt__b { height: 28px; padding: 0 10px; border-radius: 14px; border: .5px solid #D4B896; background: #F5EFE6; font: 500 11.5px 'Inter', sans-serif; color: #6E5230; cursor: pointer; font-variant-numeric: tabular-nums; }
+.sr-panel .cx-link.sr-skip { align-self: center; color: var(--cx-mut); text-decoration: underline; text-underline-offset: 3px; font-size: 12px; padding: 4px 8px; }
+
+/* ── Rentals · Eingang, WEG, Überblick (build 2) ───────────── */
+/* phone / iPad: Überblick as a foldable card on top of the list */
+.sr-overm { background: var(--cx-card); border: .5px solid var(--cx-rule); border-radius: 14px; overflow: hidden; }
+.sr-overm > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px 16px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.sr-overm > summary::-webkit-details-marker { display: none; }
+.sr-overm__t { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; color: var(--cx-ink); }
+.sr-overm__s { flex: 1; font-size: 12.5px; color: var(--cx-mut); text-align: right; }
+.sr-overm > summary i { color: var(--cx-sub); transition: transform .2s; }
+.sr-overm[open] > summary i { transform: rotate(180deg); }
+.sr-overm[open] > summary { border-bottom: .5px solid var(--cx-line); }
+.sr-overm .sr-over__b { padding: 14px 16px 16px; }
+@media (min-width: 1000px) { .sr-overm { display: none; } }
+/* money table */
+.sr-mrow { display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px; gap: 8px; padding: 7px 0; border-top: .5px solid var(--cx-line); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.sr-mrow span:first-child { color: var(--cx-txt); }
+.sr-mrow span:not(:first-child) { text-align: right; color: var(--cx-ink); }
+.sr-mrow--h { border-top: none; padding-top: 0; font-size: 9px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+.sr-mrow--h span:not(:first-child) { color: var(--cx-mut); }
+.sr-miss-row { margin: 0; padding: 6px 0; border-top: .5px solid var(--cx-line); font-size: 12.5px; color: var(--cx-txt); line-height: 1.45; }
+.sr-miss-row b { font-weight: 500; color: var(--cx-ink); }
+/* Eingang box (not received yet) */
+.sr-inbox { padding: 14px 16px; border-radius: 12px; background: #F5F2ED; border: .5px solid var(--cx-rule); display: flex; flex-direction: column; gap: 4px; }
+.sr-inbox.is-warn { background: #FAEEDA; border-color: #E9B06A; }
+.sr-inbox__t { margin: 0; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; color: var(--cx-ink); line-height: 1.15; }
+.sr-inbox.is-warn .sr-inbox__t { color: #7A4A12; }
+.sr-inbox__s { margin: 0; font-size: 12.5px; color: var(--cx-mut); }
+.sr-inbox.is-warn .sr-inbox__s { color: #7A4A12; }
+.sr-inbox__b { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.sr-inbox__b .cx-btn { height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; font-size: 11px; }
+.sr-inbox__b .sr-note { align-self: center; }
+/* Wohnung settings */
+.sr-exp { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0 0; font-size: 12.5px; color: var(--cx-mut); }
+.sr-exp b { font-weight: 500; color: var(--cx-ink); flex: 1; }
+.sr-exp .sr-sel { flex: 1; min-width: 150px; height: 38px; }
+.sr-exp .cx-link { font-size: 12px; }
+.sr-panel .st-period { border-bottom: none; padding: 0; }
+/* forms */
+.sr-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 520px) { .sr-grid3 { grid-template-columns: 1fr 1fr; } .sr-grid3 > :last-child { grid-column: 1 / -1; } }
+.st-seg__b small { display: block; font-size: 10px; font-weight: 400; opacity: .75; margin-top: 1px; }
+.sr-peredit { padding: 8px 0; border-bottom: .5px solid var(--cx-line); }
+.sr-peredit__b { display: flex; justify-content: flex-end; gap: 16px; padding-top: 6px; }
+.sr-peredit__b .cx-link { font-size: 12.5px; }
+.sr-panel .cx-link.sr-inl { font-size: 11.5px; color: var(--cx-acc); margin-left: 6px; padding: 0; }
+.sr-hint2 { margin: 4px 0 6px; padding: 8px 10px; border-radius: 8px; background: #F5EFE6; font-size: 11.5px; line-height: 1.45; color: #6E5230; }
+.sr-kau { border: .5px solid #D4B896; border-radius: 12px; padding: 10px 12px; background: #FAF7F2; }
+.sr-kau .st-f__l { margin: 0 0 4px; }
+.sr-kau b { font-weight: 600; color: var(--cx-ink); }
+.sr-kaudone { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #F5EFE6; }
+.sr-kaudone b { color: var(--cx-ink); }
+.st-tag.st-tag--go { background: transparent; border-color: #D4B896; color: var(--cx-acc); }
+@media (min-width: 1000px) { .sr-panel--wide .sr-form__top { display: block; } .sr-panel--wide .sr-f-key .st-seg { max-width: 520px; } }
+
+/* ── Rentals · simple positions (build 3): Kostenart · Betrag der Wohnung ── */
+.sr-pos2 { display: grid; grid-template-columns: minmax(0, 1fr) 132px 44px; gap: 6px 8px; align-items: center; padding: 8px 0; border-top: .5px solid var(--cx-line); }
+.sr-pos2:first-of-type { border-top: none; }
+.sr-pos2.is-nu { opacity: .7; }
+.sr-pos2__k { height: 44px; }
+.sr-pos2__a .st-in { text-align: right; font-variant-numeric: tabular-nums; }
+.sr-pos2__n, .sr-pos2__h, .sr-pos2__s { grid-column: 1 / -1; }
+.sr-pos2__h { margin: 0; font-size: 11.5px; color: var(--cx-mut); }
+.sr-pos2__s { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--cx-txt); cursor: pointer; }
+.sr-pos2__s input { width: 18px; height: 18px; accent-color: #3D3027; }
+.sr-pos2__s small { color: var(--cx-mut); font-size: 11px; }
+.sr-perbox summary { font-size: 12.5px; }
+.sr-perbox[open] summary { margin-bottom: 10px; }
+html .sr-pos2 .cx-f.sr-pos2__k { height: 44px; border-radius: 10px; }
