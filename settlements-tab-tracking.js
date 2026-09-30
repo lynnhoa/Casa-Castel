@@ -225,7 +225,7 @@ async function _stPeriodSave(pid) {
   }
   if (error) { stSay('Could not save — ' + error.message); return; }
   const p = (window._ctrl.properties || []).find(x => x.id === pid); if (p) Object.assign(p, upd);
-  ST.perEdit = null; ctlSettlementInvalidate(); stSay('Abrechnungszeitraum saved'); stRenderTracking();
+  ST.perEdit = null; ctlSettlementInvalidate(); stSay('Abrechnungszeitraum saved'); stRender();   // Tracking or Rentals
 }
 
 function _stLineHtml(l) {

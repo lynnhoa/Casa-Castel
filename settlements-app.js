@@ -3,7 +3,8 @@
    settlements-app.js
 
    Fifth management app (login tile + profile menus of all apps).
-   Tabs: Casa Castel · Rentals (NK calculation — placeholders for now)
+   Tabs: Casa Castel (placeholder) · Rentals (NK-Abrechnung der Wohnungen —
+         settlements-tab-rentals.js)
          · Tracking (every NK- and Hausgeld-Abrechnung: offen → verschickt → erledigt)
 
    Shares data + rules with Controlling (controlling-data.js /
@@ -56,7 +57,7 @@ async function stBoot() {
 
 /* All data (same sources as Controlling) */
 async function stLoad() {
-  await Promise.all([ctlLoadAll(), ctlSollLoad()]);
+  await Promise.all([ctlLoadAll(), ctlSollLoad(), typeof srLoadRows === 'function' ? srLoadRows() : null]);
   if (typeof ctlSollReset === 'function') ctlSollReset();
   if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
   ST.loadedAt = Date.now();
@@ -94,9 +95,10 @@ document.addEventListener('visibilitychange', async () => {
 /* ── Entry panel (Tracking) ───────────────────────────────── */
 function stClosePanel(silent) {
   ST.sel = null; ST.edit = false;
+  if (typeof SR !== 'undefined') { SR.sel = null; SR.edit = false; SR.draft = null; }
   document.getElementById('stScrim').hidden = true;
   document.body.classList.remove('st-panel-open');
-  if (!silent && ST.tab === 'tracking') stRenderTracking();
+  if (!silent) stRender();
 }
 document.getElementById('stScrim')?.addEventListener('click', () => stClosePanel());
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && ST.sel) stClosePanel(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && (ST.sel || (typeof SR !== 'undefined' && SR.sel))) stClosePanel(); });

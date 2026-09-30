@@ -216,7 +216,7 @@ async function ccFlowPages(container) {
    tab/viewer immediately (a tap is the only moment phones allow it). The
    tab shows "Creating PDF…" until the finished PDF is loaded into it. */
 const CC_PDF_TRIGGERS = '#contractPdfBtn, #aptKzPdfBtn, #aptGwPdfBtn, #aptMvPdfBtn, #aptUebergPdfBtn, '
-                      + '#pkMvPdfBtn, #pkUebergPdfBtn, [onclick*="ViewDoc("]';
+                      + '#pkMvPdfBtn, #pkUebergPdfBtn, [onclick*="ViewDoc("], [data-cc-pdf]';   // [data-cc-pdf]: Settlements
 const CC_WAITING_PAGE =
   '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>Creating PDF…</title></head>' +
