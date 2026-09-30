@@ -15,7 +15,7 @@
 'use strict';
 
 const ST = {
-  tab: (() => { try { const t = localStorage.getItem('st_last_tab'); return ['casa', 'rentals', 'tracking'].includes(t) ? t : 'tracking'; } catch (e) { return 'tracking'; } })(),
+  tab: (() => { try { const t = localStorage.getItem('st_last_tab'); return ['casa', 'rentals'].includes(t) ? t : 'rentals'; } catch (e) { return 'rentals'; } })(),
   year: null,                                   // Abrechnungsjahr shown in Tracking
   filter: new Set(['offen', 'verschickt']),     // what needs you first
   open: {},                                     // folded cards
@@ -101,10 +101,14 @@ document.addEventListener('visibilitychange', async () => {
 /* ── Entry panel (Tracking) ───────────────────────────────── */
 function stClosePanel(silent) {
   ST.sel = null; ST.edit = false;
-  if (typeof SR !== 'undefined') { SR.sel = null; SR.edit = false; SR.draft = null; }
+  if (typeof SR !== 'undefined') { SR.sel = null; SR.edit = false; SR.draft = null; SR.modal = null; SR.dirty = false; }
   document.getElementById('stScrim').hidden = true;
   document.body.classList.remove('st-panel-open');
   if (!silent) stRender();
 }
 document.getElementById('stScrim')?.addEventListener('click', () => stClosePanel());
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && (ST.sel || (typeof SR !== 'undefined' && SR.sel))) stClosePanel(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (typeof SR !== 'undefined' && SR.modal) { _srCloseModal(); return; }
+  if (ST.sel) stClosePanel();
+});

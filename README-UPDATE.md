@@ -1,12 +1,16 @@
-# Settlements › Rentals — build 3 (30.09.2026) · contains builds 2 + 3
+# Settlements · Rentals — build 4 (01.10.2026)
 
-1. SQL: only the last block of SETTLEMENTS-RENTALS.sql is new (sort_order) — the rest you already ran.
+1. SQL: in SETTLEMENTS-RENTALS.sql only the LAST block (sort_order = purchase order) is new — run it if you haven't yet.
+   Everything above it you already ran.
 2. Copy all files into the repo root (replace), push → Vercel deploys.
-3. iPhone: close the app completely and reopen, so the new version loads.
+3. iPhone: close the app completely and reopen it.
 
-Build 3
-- Jahresabrechnung form: Erhalten am · Abrechnung vom · WEG-Ergebnis · umlagefähige Kosten der Wohnung (one amount each).
-  No Umlageschlüssel / Gebäude-m² / MEA / Einheiten / Gesamtkosten any more. Zeitraum only behind "ändern".
-  "je Mieter" only appears when the tenant changed in that period.
-- Letter page 2: Kostenart · Kosten der Wohnung · Ihr Anteil; the HV's Einzelabrechnung is named as basis and Anlage.
-- Fixed order in Rentals and Tracking = your purchase order (ctrl_properties.sort_order).
+What changed
+- Tabs: Rentals (first) · Casa Castel. The Tracking tab is gone – Rentals IS the tracker now.
+- Rentals tracker: all Wohnungen for the chosen year, purchase order. Per Wohnung the Hausgeld line + one line per tenant:
+  Period · Status · Result · Sent (tick) · Settled · PDF. Tap any line to open it.
+- NK-Abrechnung (modal): ① Jahresabrechnung — Received on, Statement date, costs as a table
+  (umlagefähig + nicht umlagefähig, folds to one line once saved), WEG result + check · ② NK per tenant.
+- Tenant: result, period (from Rentals, editable for this NK only), Vorauszahlungen, letter, Create PDF, Mark sent, Skip this NK.
+- Settle: paid (amount may differ) · offset (Kaution / rent / Hausgeld) · skipped — always editable, with "Undo".
+- English UI, German key terms. The tenant letter stays German.

@@ -28,7 +28,7 @@
     .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:st-spin .8s linear infinite; }
     @keyframes st-spin { to { transform:rotate(360deg); } }
   </style>
-  <link rel="stylesheet" href="settlements.css?v=2026-09-30c"/>
+  <link rel="stylesheet" href="settlements.css?v=2026-10-01a"/>
 </head>
 <body class="is-landlord">
 
@@ -52,17 +52,17 @@
         </div>
       </nav>
       <div class="cc-tabs" id="appTabs">
+        <button class="cc-tab active" data-tab="rentals">Rentals</button>
         <button class="cc-tab"        data-tab="casa">Casa Castel</button>
-        <button class="cc-tab"        data-tab="rentals">Rentals</button>
-        <button class="cc-tab active" data-tab="tracking">Tracking</button>
       </div>
     </div>
 
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
+        <div class="tab-content" id="tab-rentals"></div>
         <div class="tab-content" id="tab-casa"     style="display:none;"></div>
-        <div class="tab-content" id="tab-rentals"  style="display:none;"></div>
-        <div class="tab-content" id="tab-tracking"></div>
+        <!-- the former Tracking tab: no longer shown; its helpers are still used by Rentals -->
+        <div class="tab-content" id="tab-tracking" style="display:none;" hidden></div>
       </div>
     </div>
   </div>
@@ -82,16 +82,16 @@
   </script>
 
   <!-- Shared data + rules with Controlling (one set of Abrechnungs rules for both apps) -->
-  <script src="controlling-auth.js?v=2026-09-30c"></script>
-  <script src="controlling-data.js?v=2026-09-30c"></script>
-  <script src="controlling-soll.js?v=2026-09-30c"></script>
-  <script src="controlling-ui.js?v=2026-09-30c"></script>
-  <script src="controlling-abr.js?v=2026-09-30c"></script>
+  <script src="controlling-auth.js?v=2026-10-01a"></script>
+  <script src="controlling-data.js?v=2026-10-01a"></script>
+  <script src="controlling-soll.js?v=2026-10-01a"></script>
+  <script src="controlling-ui.js?v=2026-10-01a"></script>
+  <script src="controlling-abr.js?v=2026-10-01a"></script>
 
-  <script src="settlements-app.js?v=2026-09-30c"></script>
-  <script src="settlements-tab-calc.js?v=2026-09-30c"></script>
-  <script src="settlements-tab-tracking.js?v=2026-09-30c"></script>
-  <script src="settlements-tab-rentals.js?v=2026-09-30c"></script>
+  <script src="settlements-app.js?v=2026-10-01a"></script>
+  <script src="settlements-tab-calc.js?v=2026-10-01a"></script>
+  <script src="settlements-tab-tracking.js?v=2026-10-01a"></script>
+  <script src="settlements-tab-rentals.js?v=2026-10-01a"></script>
 
   <!-- Profile panel (same one as Rentals / Controlling), sharing this page's login session -->
   <script>var sbL = _ctlSupa;</script>
@@ -99,7 +99,7 @@
   <!-- PDF (NK-Abrechnung): same pipeline as the Rentals contracts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="pdf-open.js?v=2026-09-30c"></script>
+  <script src="pdf-open.js?v=2026-10-01a"></script>
   <script src="rentals-profile.js"></script>
   <script>stBoot();</script>
 </body>
