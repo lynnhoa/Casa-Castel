@@ -916,6 +916,8 @@ img { display: block; max-width: 100%; }
 .ann-body-text{font-size:12px;font-weight:300;color:var(--cc-charcoal);line-height:1.6;}
 .ann-actions{display:flex;gap:8px;margin-top:10px;align-items:center;}
 .ann-del{font-size:9px;color:#9F1239;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px;font-family:inherit;}
+.ann-edit{font-size:9px;color:var(--cc-ink,#1E1A17);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px;font-family:inherit;margin-right:6px;}
+.ann-cancel-edit{display:block;width:100%;margin-top:10px;padding:6px 0;font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:var(--cc-taupe);background:none;border:none;cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:2px;}
 .ann-compose{background:var(--cc-white);border:0.5px solid var(--cc-rule);border-radius:var(--cc-r-lg);padding:20px;margin-bottom:24px;}
 .ann-compose-title{font-size:10px;font-weight:500;letter-spacing:0.11em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:14px;}
 .ann-compose-actions{display:flex;gap:8px;margin-top:12px;}

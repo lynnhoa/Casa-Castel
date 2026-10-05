@@ -57,7 +57,7 @@ document.getElementById('tab-lounge').innerHTML = `
       </div>
 
       <div class="l-dsk-section">
-        <p class="l-dsk-compose-lbl">New announcement</p>
+        <p class="l-dsk-compose-lbl" id="ann-compose-lbl">New announcement</p>
         <div class="cc-input-wrap cc-mb-8">
           <label class="cc-input-label" for="ann-title-input">Title (optional)</label>
           <input class="cc-input" id="ann-title-input" type="text" placeholder="e.g. Important: bin day change"/>
@@ -74,6 +74,7 @@ document.getElementById('tab-lounge').innerHTML = `
           <button class="cc-btn cc-btn--primary" id="ann-post-btn" style="flex:1;">Post to app</button>
           <a class="btn-email" id="ann-email-btn" href="#" target="_blank" style="flex:1;justify-content:center;">✉ Email all</a>
         </div>
+        <button type="button" class="ann-cancel-edit" onclick="cancelAnnEdit()" style="display:none;">Cancel editing</button>
       </div>
 
       <div class="l-dsk-section" style="border-bottom:none;">
@@ -134,7 +135,7 @@ document.getElementById('tab-lounge').innerHTML = `
         <p style="font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:8px;">Currently posted</p>
         <div id="ann-list-modal"><p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p></div>
         <div style="height:0.5px;background:var(--cc-rule);margin:14px 0;"></div>
-        <p style="font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:10px;">Post new announcement</p>
+        <p id="ann-compose-lbl-mob" style="font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:10px;">Post new announcement</p>
         <div class="cc-input-wrap cc-mb-8">
           <label class="cc-input-label" for="ann-title-input-mob">Title (optional)</label>
           <input class="cc-input" id="ann-title-input-mob" type="text" placeholder="e.g. Important: bin day change"/>
@@ -151,6 +152,7 @@ document.getElementById('tab-lounge').innerHTML = `
           <button class="cc-btn cc-btn--primary" id="ann-post-btn-mob" style="flex:1;">Post to app</button>
           <a class="btn-email" id="ann-email-btn-mob" href="#" target="_blank" style="flex:1;justify-content:center;">✉ Email all</a>
         </div>
+        <button type="button" class="ann-cancel-edit" onclick="cancelAnnEdit()" style="display:none;">Cancel editing</button>
       </div>
     </div>
   </div>
@@ -229,6 +231,7 @@ function loungeOpenModal(name) {
 }
 function loungeCloseModal(name) {
   document.getElementById('lounge-modal-' + name)?.classList.remove('open');
+  if (name === 'ann' && _annEditId) cancelAnnEdit();
 }
 
 /* ── STATE ──────────────────────────────────────────────── */
@@ -237,6 +240,8 @@ let _loungeSub   = null;
 
 /* ── ANNOUNCEMENTS ──────────────────────────────────────── */
 let _lastRenderedAnnId = null;
+let _annCur    = null;   // the announcement currently posted
+let _annEditId = null;   // editing it (Save changes) instead of posting a new one
 async function loadAnnouncements() {
   const el = document.getElementById('ann-list');
   if (!sbL) { el.innerHTML = '<p class="cc-note" style="padding:4px 0;">Connect Supabase.</p>'; return; }
@@ -246,6 +251,7 @@ async function loadAnnouncements() {
 }
 
 function _renderAnn(data) {
+  _annCur = data || null;
   if (data && data.id && data.id === _lastRenderedAnnId) return;
   if (data && data.id) _lastRenderedAnnId = data.id;
   const emptyHtml = '<p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p>';
@@ -257,7 +263,7 @@ function _renderAnn(data) {
     </div>
     ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
     <p class="ann-body-text">${esc(data.body)}</p>
-    <div class="ann-actions"><button class="ann-del" onclick="deleteAnn('${data.id}')">Delete announcement</button></div>
+    <div class="ann-actions"><button class="ann-edit" onclick="editAnn()">Edit</button><button class="ann-del" onclick="deleteAnn('${data.id}')">Delete announcement</button></div>
   </div>`;
   const el    = document.getElementById('ann-list');
   const elDsk = document.getElementById('ann-list-desktop');
@@ -279,6 +285,7 @@ async function _populateAnnModal() {
   if (!sbL) { el.innerHTML = '<p class="cc-note">Connect Supabase.</p>'; return; }
   const { data } = await sbL.from('lounge_data').select('*')
     .eq('type','announcement').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  _annCur = data || null;
   if (!data) { el.innerHTML = '<p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p>'; return; }
   el.innerHTML = `<div class="ann-card${data.pinned ? ' ann-card--pinned' : ''}">
     <div class="ann-top">
@@ -288,7 +295,10 @@ async function _populateAnnModal() {
     </div>
     ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
     <p class="ann-body-text">${esc(data.body)}</p>
-    <button onclick="deleteAnn('${data.id}')" style="font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:#9F1239;background:none;border:none;cursor:pointer;margin-top:10px;padding:0;font-family:inherit;">Delete announcement</button>
+    <div style="display:flex;gap:18px;margin-top:10px;">
+      <button onclick="editAnn()" style="font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:var(--cc-ink,#1E1A17);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">Edit announcement</button>
+      <button onclick="deleteAnn('${data.id}')" style="font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:#9F1239;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">Delete announcement</button>
+    </div>
   </div>`;
 }
 
@@ -299,8 +309,22 @@ async function _postAnn(titleId, bodyId, pinId, closeAfter) {
   const body   = document.getElementById(bodyId).value.trim();
   if (!body) return;
   const pinned = document.getElementById(pinId).checked;
-  await sbL.from('lounge_data').delete().eq('type','announcement');
-  const { data } = await sbL.from('lounge_data').insert({ type:'announcement', title, body, pinned }).select().maybeSingle();
+  let data = null;
+  if (_annEditId) {
+    // Edit: same announcement (same date), new text — tenants see it change live
+    const keep = _annCur && _annCur.id === _annEditId ? _annCur.created_at : null;
+    ({ data } = await sbL.from('lounge_data').update({ title, body, pinned }).eq('id', _annEditId).select().maybeSingle());
+    if (!data) {   // update not allowed here → replace it, keeping its original date
+      await sbL.from('lounge_data').delete().eq('type','announcement');
+      const row = { type:'announcement', title, body, pinned };
+      if (keep) row.created_at = keep;
+      ({ data } = await sbL.from('lounge_data').insert(row).select().maybeSingle());
+    }
+    _setAnnEditMode(false);
+  } else {
+    await sbL.from('lounge_data').delete().eq('type','announcement');
+    ({ data } = await sbL.from('lounge_data').insert({ type:'announcement', title, body, pinned }).select().maybeSingle());
+  }
   document.getElementById(titleId).value = '';
   document.getElementById(bodyId).value  = '';
   document.getElementById(pinId).checked = false;
@@ -309,8 +333,40 @@ async function _postAnn(titleId, bodyId, pinId, closeAfter) {
   if (closeAfter) loungeCloseModal('ann');
 }
 
+/* ── Edit the posted announcement ── */
+function _setAnnEditMode(on) {
+  _annEditId = on && _annCur ? _annCur.id : null;
+  const lm = document.getElementById('ann-compose-lbl-mob'); if (lm) lm.textContent = on ? 'Edit announcement' : 'Post new announcement';
+  const ld = document.getElementById('ann-compose-lbl');     if (ld) ld.textContent = on ? 'Edit announcement' : 'New announcement';
+  ['ann-post-btn-mob', 'ann-post-btn'].forEach(id => { const b = document.getElementById(id); if (b) b.textContent = on ? 'Save changes' : 'Post to app'; });
+  document.querySelectorAll('.ann-cancel-edit').forEach(b => { b.style.display = on ? '' : 'none'; });
+}
+function editAnn() {
+  if (!_annCur) return;
+  const modal = document.getElementById('lounge-modal-ann');
+  const desktopVisible = !!document.getElementById('ann-list-desktop')?.offsetParent;
+  if (!desktopVisible && modal && !modal.classList.contains('open')) loungeOpenModal('ann');
+  _setAnnEditMode(true);
+  [['ann-title-input-mob', 'ann-body-input-mob', 'ann-pin-check-mob'], ['ann-title-input', 'ann-body-input', 'ann-pin-check']]
+    .forEach(([t, b, p]) => {
+      const te = document.getElementById(t), be = document.getElementById(b), pe = document.getElementById(p);
+      if (te) te.value = _annCur.title || '';
+      if (be) be.value = _annCur.body || '';
+      if (pe) pe.checked = !!_annCur.pinned;
+    });
+  _updateAnnEmailBtn();
+  const focus = document.getElementById(desktopVisible ? 'ann-body-input' : 'ann-body-input-mob');
+  if (focus) setTimeout(() => { focus.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 150);
+}
+function cancelAnnEdit() {
+  _setAnnEditMode(false);
+  ['ann-title-input-mob', 'ann-body-input-mob', 'ann-title-input', 'ann-body-input'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  ['ann-pin-check-mob', 'ann-pin-check'].forEach(id => { const e = document.getElementById(id); if (e) e.checked = false; });
+}
+
 async function deleteAnn(id) {
   if (!sbL) return;
+  if (_annEditId === id) cancelAnnEdit();
   _lastRenderedAnnId = null;
   await sbL.from('lounge_data').delete().eq('id', id);
   loadAnnouncements();
