@@ -160,6 +160,7 @@ async function doTenantLogin() {
     localStorage.setItem('cc_room', room);
     err?.classList.remove('visible');
     showApp(room);
+    if (typeof ccPwReqLoggedIn === 'function') ccPwReqLoggedIn();   // picked-up password leaves the request
     if (typeof loadRoomsData === 'function') loadRoomsData();
   } else {
     showErr(noPassword ? 'No password set for this room yet — please ask Casa Castel.' : undefined);

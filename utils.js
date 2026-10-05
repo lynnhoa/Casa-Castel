@@ -82,6 +82,14 @@ async function ccHashPassword(pw) {
 // Stores a new random password for a room and shows it to the landlord once (in-app popup).
 async function ccSetNewRoomPassword(room, reason) {
   if (!sbL || !room) return null;
+  // Database creates it (PASSWORDS.sql): login fingerprint + a readable copy for your Tenants card
+  const rpc = await sbL.rpc('room_password_reset', { p_room: room });
+  if (!rpc.error && rpc.data) {
+    if (typeof ccPwRemember === 'function') ccPwRemember(room, rpc.data);
+    await ccShowPassword(room, reason || 'New password', rpc.data);
+    return rpc.data;
+  }
+  // Fallback (PASSWORDS.sql not run yet): as before, not readable later
   const pw   = ccGeneratePassword();
   const hash = await ccHashPassword(pw);
   await sbL.from('lounge_data').delete().eq('type', 'password').eq('room', room);
@@ -178,7 +186,7 @@ function ccShowPassword(room, reason, pw) {
     title: esc(reason || 'New password') + ' · ' + esc(room),
     body: `<div class="cc-dlg__pw"><span class="cc-dlg__pwtxt">${esc(pw)}</span>
              <button type="button" class="cc-dlg__copy" aria-label="Copy password"><i class="ti ti-copy" aria-hidden="true"></i><span>Copy</span></button></div>
-           Give it to the tenant. It is shown only this once.`,
+           ${typeof ccPwRemember === 'function' ? 'It stays visible in the Tenants card. The tenant can also get it with “Forgot password?” on the login page.' : 'Give it to the tenant. It is shown only this once.'}`,
     actions: [{ label: 'Done', primary: true, value: true }],
     onOpen: ov => {
       const btn = ov.querySelector('.cc-dlg__copy');

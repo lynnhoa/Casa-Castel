@@ -2507,3 +2507,66 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .tenant-shell .cc-tab[data-tab="kitchen"].turn-open::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1.6' y='4.4' width='12.8' height='7.6' rx='1.8' fill='%23E2B33A'/%3E%3Ccircle cx='5' cy='7.4' r='.9' fill='%23B98A1C'/%3E%3Ccircle cx='8.6' cy='9.2' r='.8' fill='%23B98A1C'/%3E%3Ccircle cx='11.2' cy='6.8' r='.7' fill='%23B98A1C'/%3E%3C/svg%3E");
 }
+
+
+/* ── PASSWORD REQUEST (tenant login page, pw-request-tenant.js) ─── */
+.pwr-links { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
+.pwr-link { background: none; border: none; padding: 4px 2px; font-family: inherit; font-size: 12px; color: var(--cc-taupe);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pwr-dot { color: var(--cc-stone); font-size: 12px; }
+.pwr-card { margin-top: 16px; padding: 14px 14px 12px; border-radius: var(--cc-r-md, 10px); background: var(--cc-bg);
+  border: 0.5px solid var(--cc-rule); text-align: left; }
+.pwr-card--ok { background: #F0FDF4; border-color: #86EFAC; }
+.pwr-card--warn { background: #F5EEE8; border-color: #D4A87A; }
+.pwr-card__title { font-size: 13px; font-weight: 500; color: var(--cc-ink); margin: 0 0 6px; }
+.pwr-card__text { font-size: 12px; line-height: 1.5; color: var(--cc-taupe); margin: 0 0 8px; }
+.pwr-card__hint { font-size: 11px; line-height: 1.45; color: var(--cc-taupe); margin: 10px 0 0; text-align: center; }
+.pwr-pw { font-size: 22px; font-weight: 500; letter-spacing: 0.08em; text-align: center; color: var(--cc-ink);
+  background: var(--cc-white); border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-sm); padding: 12px 8px;
+  margin: 8px 0 12px; user-select: all; -webkit-user-select: all; word-break: break-all; }
+.pwr-textbtn { background: none; border: none; padding: 2px 0; font-family: inherit; font-size: 12px; color: var(--cc-taupe);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+
+/* ── PASSWORD REQUESTS + ROOM PASSWORDS (management app, pw-requests-admin.js) ── */
+.pwa-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 10px 20px; background: var(--cc-gold-lt); color: #6E5230; border: none; border-bottom: 0.5px solid #D9C3A0;
+  font-family: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; }
+.pwa-banner__go { flex-shrink: 0; text-decoration: underline; text-underline-offset: 3px; }
+.pwa-push { display: block; width: 100%; margin: 0 0 14px; padding: 9px 12px; background: var(--cc-bg);
+  border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-sm); font-family: inherit; font-size: 12px;
+  color: var(--cc-taupe); text-align: left; cursor: pointer; }
+.pwa-card { border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-md, 10px); background: var(--cc-white);
+  padding: 12px 14px; margin-bottom: 12px; }
+.pwa-card--done { background: var(--cc-bg); }
+.pwa-card__top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.pwa-room { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; color: var(--cc-ink); }
+.pwa-kind { font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-taupe);
+  background: var(--cc-surface); border: 0.5px solid var(--cc-rule); border-radius: 10px; padding: 2px 8px; }
+.pwa-time { margin-left: auto; font-size: 11px; color: var(--cc-stone); }
+.pwa-msg { font-size: 12px; font-style: italic; color: var(--cc-taupe); margin: 0 0 8px; }
+.pwa-cmp { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0 8px; table-layout: fixed; }
+.pwa-cmp th { font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-stone); text-align: left; padding: 0 6px 4px 0; }
+.pwa-cmp th:first-child, .pwa-cmp td:first-child { width: 70px; color: var(--cc-taupe); }
+.pwa-cmp td { padding: 5px 6px 5px 0; border-top: 0.5px solid var(--cc-rule); color: var(--cc-ink); word-break: break-word; }
+.pwa-match { font-size: 12px; font-weight: 500; padding: 7px 10px; border-radius: var(--cc-r-sm); margin: 0 0 10px; }
+.pwa-match--ok   { background: #F0FDF4; color: #14532D; border: 0.5px solid #86EFAC; }
+.pwa-match--warn { background: #FEFCE8; color: #78640A; border: 0.5px solid #EAD96B; }
+.pwa-match--info { background: #EBF4FF; color: #185FA5; border: 0.5px solid #90C2F5; }
+.pwa-match--bad  { background: #FFF1F2; color: #9F1239; border: 0.5px solid #FECDD3; }
+.pwa-btns { display: flex; gap: 8px; }
+.pwa-btns .cc-btn { flex: 1; }
+.pwa-link { display: block; margin: 8px auto 0; background: none; border: none; font-family: inherit; font-size: 11px;
+  color: var(--cc-taupe); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pwa-note { font-size: 11px; line-height: 1.45; color: #78640A; background: #FEFCE8; border: 0.5px solid #EAD96B;
+  border-radius: var(--cc-r-sm); padding: 7px 10px; margin: 0 0 10px; }
+.pwa-state { font-size: 12px; color: var(--cc-taupe); margin: 0; }
+.pwa-sent { font-size: 12px; color: #14532D; }
+.pwa-sent__pw { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;
+  padding: 8px 10px; background: var(--cc-white); border: 0.5px solid #86EFAC; border-radius: var(--cc-r-sm); }
+.pwa-sent__pw b { font-size: 16px; letter-spacing: 0.06em; color: var(--cc-ink); user-select: all; -webkit-user-select: all; }
+.pwa-hist { margin-top: 6px; font-size: 12px; color: var(--cc-taupe); }
+.pwa-hist summary { cursor: pointer; padding: 6px 0; }
+.pwa-hist__row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 0.5px solid var(--cc-rule); }
+.pwa-pw { letter-spacing: 0.05em; color: var(--cc-ink); user-select: all; -webkit-user-select: all; }
+.pwa-pw--none { font-weight: 400; color: var(--cc-stone); letter-spacing: 0; user-select: none; -webkit-user-select: none; }

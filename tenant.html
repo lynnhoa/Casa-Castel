@@ -40,6 +40,13 @@
         <input class="cc-input" id="tenantPass" type="password" placeholder="Enter your password" autocomplete="current-password"/>
       </div>
       <button class="cc-btn cc-btn--primary" id="tenantLoginBtn">Enter</button>
+      <!-- Password request (pw-request-tenant.js): links, then waiting / password card in the same spot -->
+      <div class="pwr-links" id="pwrLinks">
+        <button type="button" class="pwr-link" data-pwr="first">First time here?</button>
+        <span class="pwr-dot" aria-hidden="true">·</span>
+        <button type="button" class="pwr-link" data-pwr="forgot">Forgot password?</button>
+      </div>
+      <div id="pwrCard"></div>
     </div>
 
   </div>
@@ -57,7 +64,6 @@
             <div class="nav-profile-menu" id="navProfileMenu">
               <button class="nav-profile-menu-item" id="profileMenuBtn">Edit profile</button>
               <button class="nav-profile-menu-item" id="pushMenuBtn">Notifications · Off</button>
-              <button class="nav-profile-menu-item" id="changePwBtn">Change password</button>
               <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
             </div>
           </div>
@@ -75,28 +81,6 @@
         <div class="tab-content" id="tab-lounge"></div>
         <div class="tab-content" id="tab-cleaning" style="display:none;"></div>
         <div class="tab-content" id="tab-kitchen"  style="display:none;"></div>
-      </div>
-    </div>
-
-    <!-- Change password modal -->
-    <div class="cc-modal-overlay" id="changePwModal">
-      <div class="cc-modal-sheet">
-        <div class="cc-modal-hdr">
-          <span class="cc-modal-title">Change password</span>
-          <button class="cc-modal-close" onclick="closeModal('changePwModal')">✕</button>
-        </div>
-        <div class="cc-modal-body">
-          <div class="cc-input-wrap cc-mb-12">
-            <label class="cc-input-label">New password</label>
-            <input class="cc-input" id="newPw1" type="password" placeholder="New password"/>
-          </div>
-          <div class="cc-input-wrap cc-mb-16">
-            <label class="cc-input-label">Confirm password</label>
-            <input class="cc-input" id="newPw2" type="password" placeholder="Confirm password"/>
-          </div>
-          <div class="login-error" id="pwError" style="margin-bottom:12px;"></div>
-          <button class="cc-btn cc-btn--primary" id="changePwSubmit">Save new password</button>
-        </div>
       </div>
     </div>
 
@@ -127,39 +111,7 @@
     loadRoomsData();
     initRoomsRealtime();
 
-    // Change password modal
-    document.getElementById('changePwBtn')?.addEventListener('click', () => {
-      toggleProfileMenu();
-      document.getElementById('changePwModal')?.classList.add('open');
-    });
-    document.getElementById('changePwModal')?.addEventListener('click', e => {
-      if (e.target === document.getElementById('changePwModal')) closeModal('changePwModal');
-    });
-    document.getElementById('changePwSubmit')?.addEventListener('click', async () => {
-      const p1  = document.getElementById('newPw1').value;
-      const p2  = document.getElementById('newPw2').value;
-      const err = document.getElementById('pwError');
-      err.classList.remove('visible');
-      if (!p1 || p1 !== p2) { err.textContent = 'Passwords do not match.'; err.classList.add('visible'); return; }
-      if (p1.length < 6)    { err.textContent = 'Minimum 6 characters.';   err.classList.add('visible'); return; }
-      if (!sbL) { err.textContent = 'No database connection.'; err.classList.add('visible'); return; }
-      // Hash and store in lounge_data (matches v1 approach)
-      const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p1));
-      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-      // This phone knows the new password BEFORE it is saved → session-guard.js does not log it out
-      const oldPwh = localStorage.getItem('cc_pwh');
-      const restorePwh = () => { if (oldPwh) localStorage.setItem('cc_pwh', oldPwh); else localStorage.removeItem('cc_pwh'); };
-      localStorage.setItem('cc_pwh', hash);
-      const { error } = await sbL.from('lounge_data').delete().eq('type', 'password').eq('room', currentRoom);
-      if (error) { restorePwh(); err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
-      const { error: insErr } = await sbL.from('lounge_data').insert({ type:'password', room: currentRoom, body: hash });
-      if (insErr) { restorePwh(); err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
-      // Push: this phone keeps its notifications with the new password
-      if (typeof ccPushRefresh === 'function') ccPushRefresh();
-      closeModal('changePwModal');
-      document.getElementById('newPw1').value = '';
-      document.getElementById('newPw2').value = '';
-    });
+    // (Change password removed — passwords come from Casa Castel: First time / Forgot password on the login page)
 
     function closeModal(id) {
       document.getElementById(id)?.classList.remove('open');
@@ -168,6 +120,7 @@
   </script>
   <!-- Turn markers on the House Cleaning / Kitchen tabs + push notifications (need the app and login above) -->
   <script src="session-guard.js"></script>
+  <script src="pw-request-tenant.js"></script>
   <script src="turn-markers.js"></script>
   <script src="profile-tenant.js"></script>
   <script src="push-client.js"></script>

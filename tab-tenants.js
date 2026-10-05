@@ -1340,7 +1340,7 @@ function _tnEmptyRoomPwHTML(room) {
   const at = _tnPwAt[room];
   const r = esc(room);
   return `<div class="tn-pw-test"><i class="ti ti-key"></i>
-    <span>Tenant app: ${at ? 'password set ' + _tnFmtDate(String(at).slice(0, 10)) : 'no password'}</span>
+    <span>Tenant app: ${at ? 'password set ' + _tnFmtDate(String(at).slice(0, 10)) + (typeof ccRoomPwInline === 'function' ? ccRoomPwInline(room) : '') : 'no password'}</span>
     <button class="tn-btn tn-btn-sm" onclick="_tnSetTestPw('${r}')">${at ? 'New password' : 'Set password'}</button></div>`;
 }
 async function _tnSetTestPw(room) {
@@ -1917,6 +1917,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
     <div style="margin-bottom:8px"><span class="tn-sec-lbl">Tenant</span></div>
     ${!rec ? _tnEmptyRoomPwHTML(room.name) : ''}
     ${readView}
+    ${rec && typeof ccRoomPwLineHTML === 'function' ? ccRoomPwLineHTML(room.name) : ''}
     ${editView}
     ${rec && _tnNeedsPw(rec) ? `<div class="tn-pw-need"><i class="ti ti-key"></i>
       <span>Tenant-app password not given yet · moved in ${_tnFmtDate(rec.mietbeginn)}</span>
@@ -3674,7 +3675,7 @@ function _tnRefreshFormerBadges(tid) {
 /* ══════════════════════════════════════════════════════════════
    19. PASSWORD RESET
 ══════════════════════════════════════════════════════════════ */
-async function _tnResetPw(room) {
+async function _tnResetPw(room) {   // the new password also shows in the card (pw-requests-admin.js)
   if (!sbL) { alert('No database connection.'); return; }
   if (!(await ccConfirm('Reset password · ' + esc(room), 'The old password stops working. The new one is shown once.', 'Reset'))) return;
   const pw = await ccSetNewRoomPassword(room, 'New password');
@@ -3721,6 +3722,7 @@ async function checkBirthdays() {
 ══════════════════════════════════════════════════════════════ */
 function _tnBindCards() {
   // Document uploads: cc-contract-flow.js (Unsigned | Signed, photos → PDF)
+  if (typeof ccPwApply === 'function') ccPwApply();   // room passwords (pw-requests-admin.js)
 }
 
 

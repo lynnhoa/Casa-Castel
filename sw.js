@@ -70,20 +70,25 @@ function ccTabOf(ch) { const t = ccTurnKind(ch); return t ? t : ccChannel(ch); }
 function ccIsTenantPage(url) {
   try { const p = new URL(url).pathname; return p === '/' || p === '/tenant.html'; } catch (e) { return false; }
 }
+/* Management app (Casa Castel) — password-request pushes open here */
+function ccIsAdminPage(url) {
+  try { return new URL(url).pathname === '/landlord.html'; } catch (e) { return false; }
+}
 
 /* ── PUSH ──────────────────────────────────────────────────── */
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : '' }; }
   const turn = ccTurnKind(d.ch);
-  const ch = turn ? d.ch : ccChannel(d.ch);
+  const admin = d.ch === 'pwreq';                  // your password-request push: never counted
+  const ch = turn || admin ? d.ch : ccChannel(d.ch);
   // Show the notification FIRST (no waiting for the counter / storage), then update the red number
   const opts = { body: d.body || '', data: { ch }, icon: '/tenant-icon-192.png', badge: '/tenant-icon-192.png' };
   if (d.tag) opts.tag = d.tag;
   const shown = self.registration.showNotification(d.title || 'Casa Castel', opts);
   e.waitUntil((async () => {
     await shown;
-    if (!turn) {                                   // turn reminders never change the red number
+    if (!turn && !admin) {                         // turn reminders + your pushes never change the red number
       const c = await ccGetCounts();
       c[ch] = (c[ch] || 0) + (Number(d.count) > 0 ? Number(d.count) : 1);
       await ccSetCounts(c);
@@ -98,6 +103,15 @@ self.addEventListener('push', e => {
 /* ── TAP ON A NOTIFICATION ─────────────────────────────────── */
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  if (e.notification.data && e.notification.data.ch === 'pwreq') {    // → management app, open the requests
+    e.waitUntil((async () => {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const w = wins.find(x => ccIsAdminPage(x.url));
+      if (w) { try { await w.focus(); } catch (err) {} w.postMessage({ type: 'cc-pwreq' }); return; }
+      await self.clients.openWindow('/landlord.html?pwreq=1');
+    })());
+    return;
+  }
   const tab = ccTabOf(e.notification.data && e.notification.data.ch);
   e.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
