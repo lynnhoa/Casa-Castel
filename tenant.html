@@ -55,6 +55,7 @@
           <div class="nav-profile" id="navProfile">
             <button class="nav-role-pill" id="navRoomPill" onclick="toggleProfileMenu()" aria-haspopup="true">Room</button>
             <div class="nav-profile-menu" id="navProfileMenu">
+              <button class="nav-profile-menu-item" id="pushMenuBtn">Notifications · Off</button>
               <button class="nav-profile-menu-item" id="changePwBtn">Change password</button>
               <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
             </div>
@@ -147,6 +148,9 @@
       if (error) { err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
       const { error: insErr } = await sbL.from('lounge_data').insert({ type:'password', room: currentRoom, body: hash });
       if (insErr) { err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
+      // Push: this phone keeps its notifications with the new password
+      localStorage.setItem('cc_pwh', hash);
+      if (typeof ccPushRefresh === 'function') ccPushRefresh();
       closeModal('changePwModal');
       document.getElementById('newPw1').value = '';
       document.getElementById('newPw2').value = '';
@@ -157,5 +161,7 @@
       window.scrollTo(0, 0);
     }
   </script>
+  <!-- Push notifications (loaded last: needs the app and login above) -->
+  <script src="push-client.js"></script>
 </body>
 </html>

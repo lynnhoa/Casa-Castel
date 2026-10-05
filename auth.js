@@ -149,6 +149,7 @@ async function doTenantLogin() {
       if (data && data.body) {
         const h = await _hashPassword(pass);
         valid = (h === data.body);
+        if (valid) localStorage.setItem('cc_pwh', h);   // push: this phone's notifications follow the room password
       } else {
         noPassword = true;
       }
@@ -231,6 +232,7 @@ function initTenantLogin() {
 /* ── LOGOUT ─────────────────────────────────────────────── */
 function logout() {
   const wasTenant = localStorage.getItem('cc_role') === 'tenant';
+  if (wasTenant && typeof ccPushLogout === 'function') { try { ccPushLogout(); } catch (e) {} }   // this phone gets no more pushes
   localStorage.removeItem('cc_role');
   localStorage.removeItem('cc_room');
   if (!wasTenant) {
