@@ -326,14 +326,20 @@ function _updateAnnEmailBtn() {
 }
 
 /* ── NOTICE ─────────────────────────────────────────────── */
+/* Every render counts up; a load whose answer arrives after a newer render is dropped */
+let _noticeSeq = 0;
+
 async function loadNotice() {
   if (!sbL) return;
+  const my = ++_noticeSeq;
   const { data } = await sbL.from('lounge_data').select('*')
     .eq('type','notice').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if (my !== _noticeSeq) return;   // a newer notice was shown meanwhile
   _renderNotice(data || null);
 }
 
 function _renderNotice(data) {
+  _noticeSeq++;
   const strip    = document.getElementById('notice-posted');
   const clearBtn  = document.getElementById('notice-clear-btn');
   const bannerDsk = document.getElementById('lounge-notice-banner-desktop');
@@ -602,7 +608,8 @@ function subscribeLounge() {
       } else if (old.type === 'announcement') {
         loadAnnouncements();
       } else if (old.type === 'notice') {
-        _renderNotice(null);
+        // Re-load instead of hiding: when the birthday notice is removed, the notice underneath comes back
+        setTimeout(loadNotice, 500);
       } else {
         // Unknown type — full reload as fallback
         loadLoungeAll();

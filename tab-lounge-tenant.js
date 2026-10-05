@@ -68,17 +68,24 @@ document.getElementById('tab-lounge').innerHTML = `
 
 /* ── STATE ──────────────────────────────────────────────── */
 let _loungeSub = null;
+/* Every render counts up; a load whose answer arrives after a newer render
+   (e.g. a live insert) is dropped, so an old answer never hides a new post */
+let _annSeq = 0, _noticeSeq = 0;
+let _loungeDelTimer = null;   // one reload after a burst of live deletes
 
 /* ── ANNOUNCEMENTS ──────────────────────────────────────── */
 async function loadAnnouncements() {
   const el = document.getElementById('ann-list'); if (!el) return;
   if (!sbL) { el.innerHTML = '<p class="cc-note" style="padding:4px 0;">—</p>'; return; }
+  const my = ++_annSeq;
   const { data } = await sbL.from('lounge_data').select('*')
     .eq('type','announcement').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if (my !== _annSeq) return;   // a newer announcement was shown meanwhile
   _renderAnn(data);
 }
 
 function _renderAnn(data) {
+  _annSeq++;
   const emptyHtml = '<p class="cc-note" style="padding:4px 0;">No announcement yet.</p>';
   const annHtml = !data ? emptyHtml : `
     <div class="ann-card${data.pinned ? ' ann-card--pinned' : ''}">
@@ -99,12 +106,15 @@ function _renderAnn(data) {
 /* ── NOTICE ─────────────────────────────────────────────── */
 async function loadNotice() {
   if (!sbL) { _renderNotice(null); return; }
+  const my = ++_noticeSeq;
   const { data } = await sbL.from('lounge_data').select('*')
     .eq('type','notice').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if (my !== _noticeSeq) return;   // a newer notice was shown meanwhile
   _renderNotice(data || null);
 }
 
 function _renderNotice(data) {
+  _noticeSeq++;
   const strip     = document.getElementById('notice-strip');
   const bannerDsk = document.getElementById('lounge-notice-banner-desktop');
   const textDsk   = document.getElementById('lounge-notice-banner-text-dsk');
@@ -232,16 +242,24 @@ function subscribeLounge(room) {
       if (r.type === 'notice')       _renderNotice(r);
     })
     .on('postgres_changes', { event:'DELETE', schema:'public', table:'lounge_data' }, payload => {
+      // Supabase often sends only the id on delete (no type) → handle every case safely:
+      // a deleted message is removed by id; announcement + notice are re-loaded (never just hidden),
+      // so the birthday notice going away brings back the notice underneath it.
       const old = payload.old || {};
-      if (old.type === 'message') {
-        if (old.id) document.querySelectorAll(`.msg-row[data-id="${old.id}"]`).forEach(el => el.remove());
-      } else if (old.type === 'announcement') {
-        _renderAnn(null);
-      } else if (old.type === 'notice') {
-        _renderNotice(null);
-      }
+      if (old.id) document.querySelectorAll(`.msg-row[data-id="${old.id}"]`).forEach(el => el.remove());
+      if (old.type === 'message') return;
+      // One reload of announcement + notice 0.5 s after the last delete (e.g. "reset chat" deletes many rows at once)
+      clearTimeout(_loungeDelTimer);
+      _loungeDelTimer = setTimeout(() => { loadAnnouncements(); loadNotice(); }, 500);
     })
     .subscribe();
+}
+
+/* Messages + announcement + notice together (resume + refresh buttons) */
+function _loungeReloadAll(room) {
+  loadAnnouncements();
+  loadNotice();
+  loadLounge(room);
 }
 
 /* ── EVENT WIRING (called after showApp sets currentRoom) ── */
@@ -263,12 +281,13 @@ function initLoungeTab(room) {
     onSend: msg => _loungeSendTenant(room, msg),
   }));
   document.getElementById('lounge-refresh-btn')
-    ?.addEventListener('click', () => loadLounge(room));
+    ?.addEventListener('click', () => _loungeReloadAll(room));
   document.getElementById('lounge-refresh-btn-desktop')
-    ?.addEventListener('click', () => loadLounge(room));
+    ?.addEventListener('click', () => _loungeReloadAll(room));
 
-  // Messages normally arrive live; also reload when the app comes back to the front
-  ccOnResume(() => loadLounge(room));
+  // Posts normally arrive live, but iPhone pauses the live connection while the app is in
+  // the background → when the app comes back, reload messages, announcement AND notice (max every 3 s)
+  ccOnResume(() => _loungeReloadAll(room), 3000);
 
   loadAnnouncements();
   loadNotice();

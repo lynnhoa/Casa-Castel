@@ -3789,7 +3789,7 @@ async function loadTenants() {
   }
   _tnWireRealtime();
   await _tnLoad();
-  checkBirthdays();
+  // Birthday notice now comes from the daily Supabase job (BIRTHDAY.sql) — checkBirthdays() is no longer called
   const h = _ccTakeFormerHandoff('casa');
   if (h && h.room) { _ccReturnBanner(document.getElementById('tab-tenants')); _tnAddFormer(h.room, h); }
 }

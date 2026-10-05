@@ -299,12 +299,15 @@ function ccRefreshBtnHtml(onclick, id) {
   return `<button type="button" class="cc-hdr-refresh"${id ? ` id="${id}"` : ''}${onclick ? ` onclick="${onclick}"` : ''} aria-label="Refresh" title="Refresh">${ccIcon('refresh', 14)}</button>`;
 }
 
-/* Reload a chat whenever the app comes back to the front (at most every 20 s) */
-function ccOnResume(fn) {
+/* Reload a chat whenever the app comes back to the front.
+   minGapMs = shortest pause between two reloads (default 20 s, unchanged for
+   kitchen + management Lounge; the tenant Lounge passes 3 s)               */
+function ccOnResume(fn, minGapMs) {
+  const gap = typeof minGapMs === 'number' ? minGapMs : 20000;
   let last = 0;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
-    const now = Date.now(); if (now - last < 20000) return; last = now;
+    const now = Date.now(); if (now - last < gap) return; last = now;
     try { fn(); } catch (e) {}
   });
 }
