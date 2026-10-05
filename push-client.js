@@ -223,12 +223,13 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
     }
     try { _reg && _reg.pushManager.getSubscription().then(s => s && s.unsubscribe()).catch(() => {}); } catch (e) {}
     toSW({ type: 'cc-reset' });
-    ['cc_push_on', 'cc_pwh', 'cc_push_asked'].forEach(k => localStorage.removeItem(k));
+    ['cc_push_on', 'cc_pwh', 'cc_push_asked', 'cc_push_room'].forEach(k => localStorage.removeItem(k));
   };
 
   /* ── Cleaning / Kitchen tab: is this room's turn this week still open? ── */
   window.ccPushTurn = function (kind, week, open) {
     if (PREVIEW || !room() || !Number.isFinite(Number(week))) return;
+    if (!isOn()) return;                       // notifications off on this phone → no red number at all
     toSW({ type: 'cc-turn', kind, week: Number(week), open: !!open });
   };
 
@@ -273,6 +274,10 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
       if (typeof switchTab === 'function') switchTab(tabOf(openTab));
       history.replaceState(null, '', location.pathname);
     }
+    // Red number belongs to this room with notifications on: another room on this phone,
+    // or notifications off → start from 0 (leftovers from a test / the previous room)
+    if (localStorage.getItem('cc_push_room') !== room() || !isOn()) toSW({ type: 'cc-reset' });
+    localStorage.setItem('cc_push_room', room());
     setTimeout(clearVisible, 300);
     refresh();
     // One-time question (only where it can work and nobody decided yet)
