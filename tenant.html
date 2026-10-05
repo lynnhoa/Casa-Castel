@@ -146,12 +146,15 @@
       // Hash and store in lounge_data (matches v1 approach)
       const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p1));
       const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-      const { error } = await sbL.from('lounge_data').delete().eq('type', 'password').eq('room', currentRoom);
-      if (error) { err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
-      const { error: insErr } = await sbL.from('lounge_data').insert({ type:'password', room: currentRoom, body: hash });
-      if (insErr) { err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
-      // Push: this phone keeps its notifications with the new password
+      // This phone knows the new password BEFORE it is saved → session-guard.js does not log it out
+      const oldPwh = localStorage.getItem('cc_pwh');
+      const restorePwh = () => { if (oldPwh) localStorage.setItem('cc_pwh', oldPwh); else localStorage.removeItem('cc_pwh'); };
       localStorage.setItem('cc_pwh', hash);
+      const { error } = await sbL.from('lounge_data').delete().eq('type', 'password').eq('room', currentRoom);
+      if (error) { restorePwh(); err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
+      const { error: insErr } = await sbL.from('lounge_data').insert({ type:'password', room: currentRoom, body: hash });
+      if (insErr) { restorePwh(); err.textContent = 'Failed to save. Please try again.'; err.classList.add('visible'); return; }
+      // Push: this phone keeps its notifications with the new password
       if (typeof ccPushRefresh === 'function') ccPushRefresh();
       closeModal('changePwModal');
       document.getElementById('newPw1').value = '';
@@ -164,6 +167,7 @@
     }
   </script>
   <!-- Turn markers on the House Cleaning / Kitchen tabs + push notifications (need the app and login above) -->
+  <script src="session-guard.js"></script>
   <script src="turn-markers.js"></script>
   <script src="profile-tenant.js"></script>
   <script src="push-client.js"></script>

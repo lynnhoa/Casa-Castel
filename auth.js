@@ -235,6 +235,7 @@ function logout() {
   if (wasTenant && typeof ccPushLogout === 'function') { try { ccPushLogout(); } catch (e) {} }   // this phone gets no more pushes
   localStorage.removeItem('cc_role');
   localStorage.removeItem('cc_room');
+  if (wasTenant) localStorage.removeItem('cc_pwh');   // the next login stores the fingerprint again
   if (!wasTenant) {
     if (typeof ccDraftClearAll === 'function') ccDraftClearAll();   // generator drafts
     localStorage.removeItem('rentals_role');
