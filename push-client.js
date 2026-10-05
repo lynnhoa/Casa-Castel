@@ -9,10 +9,12 @@
      password (hash): after a password reset (new tenant) the old
      phone gets no more pushes
    · opening Lounge / Kitchen resets that part of the red number
+   · House Cleaning / Kitchen tab report this room's open turn (+1)
    · tapping a notification opens the right tab
 
    Public: ccPushLogout() (auth.js logout), ccPushRefresh()
-           (after a password change)
+           (after a password change), ccPushTurn(kind, week, open)
+           (tab-cleaning-tenant.js / tab-kitchen-tenant.js)
    Depends on: constants.js (SB_URL, SB_KEY), supabase-client.js,
                utils.js (ccHashPassword), layout.js (switchTab)
    ───────────────────────────────────────────────────────────── */
@@ -55,6 +57,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
 
   /* ── Red number: the tab you are looking at counts as read ── */
   const activeTab = () => document.querySelector('#appTabs .cc-tab.active')?.dataset.tab || null;
+  const tabOf = t => (t === 'kitchen' || t === 'cleaning' ? t : 'lounge');
   function clearVisible() {
     if (document.visibilityState !== 'visible' || !room()) return;
     const t = activeTab();
@@ -235,6 +238,12 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
     ['cc_push_on', 'cc_pwh', 'cc_push_asked'].forEach(k => localStorage.removeItem(k));
   };
 
+  /* ── Cleaning / Kitchen tab: is this room's turn this week still open? ── */
+  window.ccPushTurn = function (kind, week, open) {
+    if (PREVIEW || !room() || !Number.isFinite(Number(week))) return;
+    toSW({ type: 'cc-turn', kind, week: Number(week), open: !!open });
+  };
+
   /* ── After the tenant changed the password (tenant.html) ── */
   window.ccPushRefresh = function () { refresh(); };
 
@@ -257,7 +266,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
       const m = e.data || {};
       if (m.type === 'cc-push') clearVisible();
       if (m.type === 'cc-open' && room()) {
-        if (typeof switchTab === 'function') switchTab(m.ch === 'kitchen' ? 'kitchen' : 'lounge');
+        if (typeof switchTab === 'function') switchTab(tabOf(m.ch));
         setTimeout(clearVisible, 0);
       }
     });
@@ -273,7 +282,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
     // Opened by tapping a notification while the app was closed
     const openTab = new URLSearchParams(location.search).get('open');
     if (openTab) {
-      if (typeof switchTab === 'function') switchTab(openTab === 'kitchen' ? 'kitchen' : 'lounge');
+      if (typeof switchTab === 'function') switchTab(tabOf(openTab));
       history.replaceState(null, '', location.pathname);
     }
     setTimeout(clearVisible, 300);

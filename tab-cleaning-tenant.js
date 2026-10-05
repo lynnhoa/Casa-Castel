@@ -395,6 +395,8 @@ async function loadHouseCleaning(room) {
   // Is the current week's assigned room itself absent?
   const isCurrentRoomAbsent = curInfo ? weekAbsences.some(a => a.room === curInfo.room) : false;
   const isCurrentRoomVacant = curInfo && !isCurrentRoomAbsent ? kVacantInWeek(curInfo.room, curIdx) : false;
+  // Push badge: +1 on the app icon while this room's turn this week is open (push-client.js)
+  if (typeof ccPushTurn === 'function' && curInfo) ccPushTurn('cleaning', curIdx, isMyTurn && !isDone && !isCurrentRoomAbsent && !isCurrentRoomVacant);
 
   /* ── "Your next turn" lookahead ── */
   let nextTurnHtml = '';
