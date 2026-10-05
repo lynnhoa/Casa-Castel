@@ -5,9 +5,9 @@
    · registers sw.js (push only, no caching)
    · "Notifications" in the profile menu + a one-time question
      after login → turns pushes on / off for this phone
-   · the phone is saved for its room together with the room's
-     password (hash): after a password reset (new tenant) the old
-     phone gets no more pushes
+   · one tap "Turn on" (no password): the phone is saved for its
+     room together with the room's current password (hash); after a
+     password reset (new tenant) the old phone gets no more pushes
    · opening Lounge / Kitchen resets that part of the red number
    · House Cleaning / Kitchen tab report this room's open turn (+1)
    · tapping a notification opens the right tab
@@ -120,12 +120,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
       document.getElementById('pushOffBtn').addEventListener('click', disable);
       return;
     }
-    const needPw = !localStorage.getItem('cc_pwh');
-    open(`<p class="cc-note cc-mb-16">Get a notification for new messages in the Lounge and Kitchen chat, and for kitchen reminders. Nothing between 00:00 and 08:00 — those arrive at 8.</p>
-      ${needPw ? `<div class="cc-input-wrap cc-mb-16">
-        <label class="cc-input-label" for="pushPw">Your room password</label>
-        <input class="cc-input" id="pushPw" type="password" placeholder="Enter your password" autocomplete="current-password"/>
-      </div>` : ''}
+    open(`<p class="cc-note cc-mb-16">Get a notification for new messages in the Lounge and Kitchen chat, kitchen reminders and your cleaning turns. Nothing between 00:00 and 08:00 — those arrive at 8.</p>
       <div class="login-error" id="pushErr" style="margin-bottom:12px;"></div>
       <button class="cc-btn cc-btn--primary cc-mb-12" type="button" id="pushOnBtn">Turn on</button>
       <button class="cc-btn cc-btn--ghost" type="button" data-push="close">Not now</button>`);
@@ -135,9 +130,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
   /* ── Turn on (runs inside the tap — iPhone requires that) ── */
   function enable() {
     const btn = document.getElementById('pushOnBtn');
-    const typed = document.getElementById('pushPw')?.value || '';
-    const stored = localStorage.getItem('cc_pwh');
-    if (!stored && !typed) { err('Please enter your room password.'); return; }
+    const stored = localStorage.getItem('cc_pwh') || '';   // from login; older logins have none → the room's current password is used
     if (!_reg) { err('One moment — please tap again.'); return; }
     let p;
     try { p = subscribe(); }                                   // first call inside the tap → permission prompt
@@ -154,21 +147,17 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
           : 'Notifications could not be turned on. Please try again.');
         return;
       }
-      const pwh = typed ? await ccHashPassword(typed) : stored;
       let res = 'error';
-      try { res = await register(sub, pwh); } catch (e) {}
+      try { res = await register(sub, stored); } catch (e) {}
       if (res === 'ok') {
-        localStorage.setItem('cc_pwh', pwh);
         localStorage.setItem('cc_push_on', '1');
         close(true);
         updateMenu();
         clearVisible();
-      } else if (res === 'wrong_password') {
+      } else if (res === 'wrong_password') {   // this phone's login is older than the room's current password
         try { await sub.unsubscribe(); } catch (e) {}
-        localStorage.removeItem('cc_pwh');
         reset();
-        if (!document.getElementById('pushPw')) { showSheet(); }
-        err('Incorrect password.');
+        err('The password for this room has changed. Please log out and log in again, then turn notifications on.');
       } else {
         reset();
         err('No connection — please try again.');
@@ -200,8 +189,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
     let sub = null;
     try { sub = await _reg.pushManager.getSubscription(); } catch (e) {}
     if (!sub) { try { sub = await subscribe(); } catch (e) { return; } }
-    const pwh = localStorage.getItem('cc_pwh');
-    if (!pwh) return;
+    const pwh = localStorage.getItem('cc_pwh') || '';
     let res = null;
     try { res = await register(sub, pwh); } catch (e) { return; }
     if (res === 'wrong_password') {          // the room got a new password (new tenant / changed elsewhere)
