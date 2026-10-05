@@ -5,6 +5,10 @@
    · registers sw.js (push only, no caching)
    · "Notifications" in the profile menu + a one-time question
      after login → turns pushes on / off for this phone
+   · DEFAULT ON: the login tap itself asks the iPhone for permission
+     (ccPushPrime / ccPushAfterLogin, called by auth.js) → notifications
+     are on right after login, no extra step. Turned off in the menu →
+     stays off until the next login, then on again.
    · one tap "Turn on" (no password): the phone is saved for its
      room together with the room's current password (hash); after a
      password reset (new tenant) the old phone gets no more pushes
@@ -27,6 +31,8 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
   const PREVIEW   = new URLSearchParams(location.search).has('preview');   // landlord preview: never
   const SUPPORTED = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   let _reg = null;          // service worker registration (needed synchronously in the tap)
+  let _prime = null;        // subscription asked for inside the login tap
+  const USER_OFF = 'cc_push_user_off';   // tenant switched it off → stays off until the next login
   let _endpoint = null;     // this phone's push address (for logout)
 
   const room  = () => (localStorage.getItem('cc_role') === 'tenant' ? localStorage.getItem('cc_room') : null);
@@ -117,7 +123,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
       return;
     }
     if (isOn()) {
-      open(`<p class="cc-note cc-mb-16">Notifications are on for this phone: new messages in the Lounge and Kitchen chat, and kitchen reminders. Nothing between 00:00 and 08:00 — those arrive at 8.</p>
+      open(`<p class="cc-note cc-mb-16">Notifications are on for this phone: new messages in the Lounge and Kitchen chat, kitchen reminders and your cleaning turns. Nothing between 00:00 and 08:00 — those arrive at 8. If you turn them off, they come back on at your next login.</p>
         <button class="cc-btn cc-btn--secondary" type="button" id="pushOffBtn">Turn off</button>`);
       document.getElementById('pushOffBtn').addEventListener('click', disable);
       return;
@@ -152,6 +158,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
       let res = 'error';
       try { res = await register(sub, stored); } catch (e) {}
       if (res === 'ok') {
+        localStorage.removeItem(USER_OFF);
         localStorage.setItem('cc_push_on', '1');
         close(true);
         updateMenu();
@@ -170,6 +177,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
   /* ── Turn off (this phone only) ── */
   async function disable() {
     localStorage.removeItem('cc_push_on');
+    localStorage.setItem(USER_OFF, '1');
     try {
       const sub = _reg && await _reg.pushManager.getSubscription();
       if (sub) {
@@ -186,14 +194,16 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
   /* ── Every app start: keep this phone's registration fresh ── */
   async function refresh() {
     if (!SUPPORTED || PREVIEW || !room() || !_reg) return;
-    if (localStorage.getItem('cc_push_on') !== '1') return;
+    if (localStorage.getItem(USER_OFF) === '1') return;                 // switched off → off until next login
     if (perm() !== 'granted') { localStorage.removeItem('cc_push_on'); updateMenu(); return; }
+    // default ON: permission is there → (re)register silently
     let sub = null;
     try { sub = await _reg.pushManager.getSubscription(); } catch (e) {}
     if (!sub) { try { sub = await subscribe(); } catch (e) { return; } }
     const pwh = localStorage.getItem('cc_pwh') || '';
     let res = null;
     try { res = await register(sub, pwh); } catch (e) { return; }
+    if (res === 'ok' && localStorage.getItem('cc_push_on') !== '1') { localStorage.setItem('cc_push_on', '1'); updateMenu(); }
     if (res === 'wrong_password') {          // the room got a new password (new tenant / changed elsewhere)
       try { await sub.unsubscribe(); } catch (e) {}
       localStorage.removeItem('cc_push_on');
@@ -225,7 +235,34 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
     }
     try { _reg && _reg.pushManager.getSubscription().then(s => s && s.unsubscribe()).catch(() => {}); } catch (e) {}
     toSW({ type: 'cc-reset' });
-    ['cc_push_on', 'cc_pwh', 'cc_push_asked', 'cc_push_room'].forEach(k => localStorage.removeItem(k));
+    ['cc_push_on', 'cc_pwh', 'cc_push_asked', 'cc_push_room', USER_OFF].forEach(k => localStorage.removeItem(k));
+  };
+
+  /* ── Login (auth.js): default ON ──
+     ccPushPrime runs INSIDE the login tap (before any waiting) → the iPhone may show its
+     permission question right there; ccPushAfterLogin registers the phone once the
+     password was right. Denied / not possible → the one-time question can still ask. */
+  window.ccPushPrime = function () {
+    if (!SUPPORTED || PREVIEW || !_reg || perm() === 'denied') return;
+    try { _prime = subscribe(); _prime.catch(() => {}); } catch (e) { _prime = null; }
+  };
+  window.ccPushAfterLogin = async function () {
+    localStorage.removeItem(USER_OFF);                                   // every login: on again
+    if (!SUPPORTED || PREVIEW) return;
+    let sub = null;
+    if (_prime) { try { sub = await _prime; } catch (e) {} _prime = null; }
+    if (!sub && _reg && perm() === 'granted') {
+      try { sub = (await _reg.pushManager.getSubscription()) || (await subscribe()); } catch (e) {}
+    }
+    if (sub) {
+      try {
+        const res = await register(sub, localStorage.getItem('cc_pwh') || '');
+        if (res === 'ok') { localStorage.setItem('cc_push_on', '1'); localStorage.setItem('cc_push_asked', '1'); }
+      } catch (e) {}
+    } else if (perm() === 'default' && !document.querySelector('.cc-modal-overlay.open')) {
+      setTimeout(() => { if (room()) showSheet(); }, 800);               // tap needed once
+    }
+    updateMenu();
   };
 
   /* ── A turn is done / away: remove its reminder from the lock screen ── */
@@ -282,7 +319,7 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
     setTimeout(clearVisible, 300);
     refresh();
     // One-time question (only where it can work and nobody decided yet)
-    if (SUPPORTED && perm() === 'default' && !localStorage.getItem('cc_push_asked') && !isOn()) {
+    if (SUPPORTED && perm() === 'default' && !_prime && !localStorage.getItem('cc_push_asked') && !isOn() && localStorage.getItem(USER_OFF) !== '1') {
       setTimeout(() => { if (room() && !document.querySelector('.cc-modal-overlay.open')) showSheet(); }, 1500);
     }
   }, 500);

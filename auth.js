@@ -139,6 +139,8 @@ async function doTenantLogin() {
     err.classList.add('visible');
   };
   if (!room || !pass || room === CC_LANDLORD_NAME) { showErr(); return; }
+  // Notifications on by default: ask the iPhone INSIDE this tap (must happen before any waiting)
+  if (typeof ccPushPrime === 'function') ccPushPrime();
   let valid = false, noPassword = false;
   try {
     const rooms = await _ccActiveRooms();
@@ -161,6 +163,7 @@ async function doTenantLogin() {
     err?.classList.remove('visible');
     showApp(room);
     if (typeof ccPwReqLoggedIn === 'function') ccPwReqLoggedIn();   // picked-up password leaves the request
+    if (typeof ccPushAfterLogin === 'function') ccPushAfterLogin(); // notifications on (default)
     if (typeof loadRoomsData === 'function') loadRoomsData();
   } else {
     showErr(noPassword ? 'No password set for this room yet — please ask Casa Castel.' : undefined);
