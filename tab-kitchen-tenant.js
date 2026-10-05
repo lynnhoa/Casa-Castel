@@ -1000,9 +1000,9 @@ function _kTenBuildFeedHtml(comments, weekRow) {
       const pUrl = esc(_kProofUrl(ev.text.slice(8)));
       const isCC = ev.room === 'Casa Castel';
       return `<div class="k-chat-row">
-        <div class="k-chat-avatar${isCC?' k-chat-avatar--me':''}" ${isCC?'style="background:var(--cc-ink);color:var(--cc-white);"':''}>${_kTenRoomInitials(ev.room)}</div>
+        <div class="k-chat-avatar${isCC?' k-chat-avatar--me':''}" ${isCC?'style="background:var(--cc-ink);color:var(--cc-white);"':''}${ccAvAttrs(ev.room)}>${_kTenRoomInitials(ev.room)}</div>
         <div style="flex:1;min-width:0;"><div class="k-chat-meta">
-          <span class="k-chat-name"${isCC?' style="color:var(--cc-gold);"':''}>${esc(ev.room)}</span>
+          <span class="k-chat-name"${isCC?' style="color:var(--cc-gold);"':''}${ccNameAttrs(ev.room)}>${esc(ccNameText(ev.room))}</span>
           <span class="k-chat-time">${fmtTs(ev._ts)}</span></div>
           <div style="margin-top:5px;"><img src="${pUrl}" alt="photo"
             style="max-width:100%;border-radius:6px;display:block;object-fit:contain;cursor:pointer;"
@@ -1012,9 +1012,9 @@ function _kTenBuildFeedHtml(comments, weekRow) {
 
     const isCC = ev.room === 'Casa Castel';
     return `<div class="k-chat-row">
-      <div class="k-chat-avatar${isCC?' k-chat-avatar--me':''}" ${isCC?'style="background:var(--cc-ink);color:var(--cc-white);"':''}>${_kTenRoomInitials(ev.room)}</div>
+      <div class="k-chat-avatar${isCC?' k-chat-avatar--me':''}" ${isCC?'style="background:var(--cc-ink);color:var(--cc-white);"':''}${ccAvAttrs(ev.room)}>${_kTenRoomInitials(ev.room)}</div>
       <div style="flex:1;min-width:0;"><div class="k-chat-meta">
-        <span class="k-chat-name"${isCC?' style="color:var(--cc-gold);"':''}>${esc(ev.room)}</span>
+        <span class="k-chat-name"${isCC?' style="color:var(--cc-gold);"':''}${ccNameAttrs(ev.room)}>${esc(ccNameText(ev.room))}</span>
         <span class="k-chat-time">${fmtTs(ev._ts)}</span></div>
         <p class="k-chat-text">${esc(ev.text)}</p>
       </div></div>`;
@@ -1066,9 +1066,9 @@ async function _kTenMobSendMsg() {
   const feed = document.getElementById('k-feed-mob');
   if (feed) {
     const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-mob-optimistic';
-    tmp.innerHTML = `<div class="k-chat-avatar">${_kTenRoomInitials(room)}</div>`
+    tmp.innerHTML = `<div class="k-chat-avatar"${ccAvAttrs(room)}>${_kTenRoomInitials(room)}</div>`
       + `<div style="flex:1;min-width:0;"><div class="k-chat-meta">`
-      + `<span class="k-chat-name">${esc(room)}</span>`
+      + `<span class="k-chat-name"${ccNameAttrs(room)}>${esc(ccNameText(room))}</span>`
       + `<span class="k-chat-time" style="opacity:0.5;">sending…</span></div>`
       + `<p class="k-chat-text">${esc(text)}</p></div>`;
     feed.appendChild(tmp); scrollToBottom(feed);
@@ -1088,9 +1088,9 @@ async function _kTenSendPhoto(file, feedId) {
   const localUrl   = URL.createObjectURL(compressed);
   if (feed) {
     const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-ten-photo-optimistic';
-    tmp.innerHTML = `<div class="k-chat-avatar">${_kTenRoomInitials(room)}</div>`
+    tmp.innerHTML = `<div class="k-chat-avatar"${ccAvAttrs(room)}>${_kTenRoomInitials(room)}</div>`
       + `<div style="flex:1;min-width:0;"><div class="k-chat-meta">`
-      + `<span class="k-chat-name">${esc(room)}</span>`
+      + `<span class="k-chat-name"${ccNameAttrs(room)}>${esc(ccNameText(room))}</span>`
       + `<span class="k-chat-time" style="opacity:0.5;">uploading…</span></div>`
       + `<div style="margin-top:5px;"><img src="${localUrl}" style="max-width:100%;border-radius:6px;object-fit:contain;opacity:0.7;"/></div></div>`;
     feed.appendChild(tmp); scrollToBottom(feed);

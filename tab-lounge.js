@@ -513,10 +513,10 @@ function _loungeBodyHtml(body, me) {
 function _msgHtml(m, canDelete) {
   const isCC = m.room === 'Casa Castel';
   return `<div class="msg-row" data-id="${m.id}">
-    <div class="msg-avatar${isCC ? ' msg-avatar--mgmt' : ''}">${roomInitials(m.room)}</div>
+    <div class="msg-avatar${isCC ? ' msg-avatar--mgmt' : ''}"${ccAvAttrs(m.room)}>${roomInitials(m.room)}</div>
     <div class="msg-content">
       <div class="msg-meta">
-        <span class="msg-name${isCC ? ' msg-name--mgmt' : ''}">${esc(m.room)}</span>
+        <span class="msg-name${isCC ? ' msg-name--mgmt' : ''}"${ccNameAttrs(m.room)}>${esc(ccNameText(m.room))}</span>
         <span class="msg-time">${fmtTs(new Date(m.created_at).getTime())}</span>
       </div>
       ${_loungeBodyHtml(m.body, 'Casa Castel')}

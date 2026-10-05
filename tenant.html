@@ -55,6 +55,7 @@
           <div class="nav-profile" id="navProfile">
             <button class="nav-role-pill" id="navRoomPill" onclick="toggleProfileMenu()" aria-haspopup="true">Room</button>
             <div class="nav-profile-menu" id="navProfileMenu">
+              <button class="nav-profile-menu-item" id="profileMenuBtn">Edit profile</button>
               <button class="nav-profile-menu-item" id="pushMenuBtn">Notifications · Off</button>
               <button class="nav-profile-menu-item" id="changePwBtn">Change password</button>
               <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
@@ -106,6 +107,7 @@
   <script src="constants.js"></script>
   <script src="supabase-client.js"></script>
   <script src="utils.js"></script>
+  <script src="room-profiles.js"></script>
   <script src="chat-compose.js"></script>
   <script src="storage.js"></script>
   <script src="auth.js"></script>
@@ -163,6 +165,7 @@
   </script>
   <!-- Turn markers on the House Cleaning / Kitchen tabs + push notifications (need the app and login above) -->
   <script src="turn-markers.js"></script>
+  <script src="profile-tenant.js"></script>
   <script src="push-client.js"></script>
 </body>
 </html>

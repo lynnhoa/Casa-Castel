@@ -483,8 +483,8 @@ function _kSafeChatText(t) {
 function _kSenderHtml(room) {
   const isCC = room === 'Casa Castel';
   return {
-    avatar: `<div class="k-chat-avatar${isCC ? ' k-chat-avatar--me' : ''}"${isCC ? ' style="background:var(--cc-ink);color:var(--cc-white);"' : ''}>${esc(roomInitials(room || ''))}</div>`,
-    name:   `<span class="k-chat-name"${isCC ? ' style="color:var(--cc-gold);"' : ''}>${esc(room || '')}</span>`
+    avatar: `<div class="k-chat-avatar${isCC ? ' k-chat-avatar--me' : ''}"${isCC ? ' style="background:var(--cc-ink);color:var(--cc-white);"' : ''}${ccAvAttrs(room)}>${esc(roomInitials(room || ''))}</div>`,
+    name:   `<span class="k-chat-name"${isCC ? ' style="color:var(--cc-gold);"' : ''}${ccNameAttrs(room)}>${esc(ccNameText(room || ''))}</span>`
   };
 }
 
