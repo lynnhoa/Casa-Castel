@@ -77,7 +77,12 @@ self.addEventListener('push', e => {
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : '' }; }
   const turn = ccTurnKind(d.ch);
   const ch = turn ? d.ch : ccChannel(d.ch);
+  // Show the notification FIRST (no waiting for the counter / storage), then update the red number
+  const opts = { body: d.body || '', data: { ch }, icon: '/tenant-icon-192.png', badge: '/tenant-icon-192.png' };
+  if (d.tag) opts.tag = d.tag;
+  const shown = self.registration.showNotification(d.title || 'Casa Castel', opts);
   e.waitUntil((async () => {
+    await shown;
     if (!turn) {                                   // turn reminders never change the red number
       const c = await ccGetCounts();
       c[ch] = (c[ch] || 0) + (Number(d.count) > 0 ? Number(d.count) : 1);
@@ -87,9 +92,6 @@ self.addEventListener('push', e => {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       wins.filter(w => ccIsTenantPage(w.url)).forEach(w => w.postMessage({ type: 'cc-push', ch }));
     }
-    const opts = { body: d.body || '', data: { ch }, icon: '/tenant-icon-192.png', badge: '/tenant-icon-192.png' };
-    if (d.tag) opts.tag = d.tag;
-    await self.registration.showNotification(d.title || 'Casa Castel', opts);
   })());
 });
 
