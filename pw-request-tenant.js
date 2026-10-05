@@ -28,7 +28,13 @@
   /* ── Login card: links or the request card in the same spot ── */
   const links = () => document.getElementById('pwrLinks');
   const card  = () => document.getElementById('pwrCard');
-  function showLinks(on) { const l = links(); if (l) l.style.display = on ? '' : 'none'; }
+  const EVER_IN = 'cc_ever_in';      // this phone has logged in before → only "Forgot password?"
+  function showLinks(on) {
+    const l = links(); if (!l) return;
+    l.style.display = on ? '' : 'none';
+    const been = localStorage.getItem(EVER_IN) === '1';
+    l.querySelectorAll('[data-pwr="first"], .pwr-dot').forEach(el => { el.style.display = been ? 'none' : ''; });
+  }
   function setCard(html) { const c = card(); if (c) c.innerHTML = html; showLinks(!html); }
 
   function waitingHtml(r) {
@@ -203,13 +209,17 @@
 
   /* ── Called by auth.js after a successful login on this phone ── */
   window.ccPwReqLoggedIn = function () {
+    localStorage.setItem(EVER_IN, '1');                       // from now on: "Forgot password?" only
     const r = getReq(); if (!r) return;
-    try { sbL && sbL.rpc('pw_request_done', { p_token: r.token }); } catch (e) {}
+    // .then() makes the call actually run (Supabase calls only start when awaited / then-ed)
+    try { if (sbL) sbL.rpc('pw_request_done', { p_token: r.token }).then(() => {}, () => {}); } catch (e) {}
     setReq(null); _pw = null;
     const c = card(); if (c) c.innerHTML = ''; showLinks(true);
   };
 
   /* ── Start ── */
+  if (loggedIn()) localStorage.setItem(EVER_IN, '1');       // already in on this phone
+  showLinks(true);
   if (getReq() && !loggedIn()) { render({ status: 'pending' }); poll(); }
   setInterval(() => { if (document.visibilityState === 'visible') poll(); }, POLL_MS);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poll(); });
