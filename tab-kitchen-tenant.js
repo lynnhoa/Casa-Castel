@@ -654,8 +654,8 @@ async function _kTenRenderWeekCard(overrideRow) {
 
   const dbStatus = row ? row.status : null;
   const state = _kRotState({ isNow: true, isPast: false, dbStatus, room: turnRoom, weekStart: wi.start, absenceRows: absRes });
-  // Push badge: +1 on the app icon while this room's kitchen turn is open — a submitted proof counts as done (push-client.js)
-  if (typeof ccPushTurn === 'function') ccPushTurn('kitchen', idx, isAssigned && state === 'now' && dbStatus !== 'submitted');
+  // Tab marker (yellow sponge) while this room's kitchen turn is open — a submitted proof counts as done (turn-markers.js)
+  if (typeof ccTabMarker === 'function') ccTabMarker('kitchen', isAssigned && state === 'now' && dbStatus !== 'submitted');
 
   // Chip
   const _setChip = (el, cls, txt) => { if (el) { el.className = cls; el.textContent = txt; } };

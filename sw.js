@@ -5,12 +5,12 @@
    Push ONLY: no caching, no fetch handler → loading and updates of
    all apps stay exactly as before.
 
-   · push              → shows the notification, counts it for the
-                          red number on the app icon (Lounge / Kitchen)
-                          turn reminders: +1 while this week's turn is open
+   · push              → shows the notification; chat messages count for
+                          the red number on the app icon (Lounge / Kitchen).
+                          Turn reminders are shown but never counted — open
+                          turns are marked on the tabs in the app instead
+                          (turn-markers.js)
    · notificationclick → opens / focuses the tenant app on that tab
-   · message 'cc-turn' → the Cleaning / Kitchen tab reports whether this
-                          room's turn this week is still open
    · message 'cc-clear'→ the app says "Lounge / Kitchen was seen":
                           count back to 0, its notifications removed
    · message 'cc-reset'→ logout: everything back to 0
@@ -21,14 +21,7 @@ self.addEventListener('activate', e  => e.waitUntil(self.clients.claim()));
 
 /* ── Counters (IndexedDB, survives app restarts) ───────────── */
 const CC_DB = 'cc-push', CC_STORE = 'kv';
-
-/* Week index like the app: Mon–Sun weeks from 05.01.2026 (calendar days → summer/winter time safe) */
-function ccWeekIdx() {
-  const n = new Date();
-  return Math.floor((Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) - Date.UTC(2026, 0, 5)) / (7 * 864e5));
-}
-// turns: week index while that room's turn is open
-const ccZero = () => ({ lounge: 0, kitchen: 0, turns: { cleaning: null, kitchen: null } });
+const ccZero = () => ({ lounge: 0, kitchen: 0 });
 
 function ccDb() {
   return new Promise((res, rej) => {
@@ -43,7 +36,7 @@ async function ccGetCounts() {
     const db = await ccDb();
     return await new Promise(res => {
       const q = db.transaction(CC_STORE).objectStore(CC_STORE).get('counts');
-      q.onsuccess = () => { const r = q.result || {}; res({ ...ccZero(), ...r, turns: { ...ccZero().turns, ...(r.turns || {}) } }); };
+      q.onsuccess = () => { const r = q.result || {}; res({ lounge: Number(r.lounge) || 0, kitchen: Number(r.kitchen) || 0 }); };
       q.onerror   = () => res(ccZero());
     });
   } catch (e) { return ccZero(); }
@@ -59,9 +52,7 @@ async function ccSetCounts(c) {
   } catch (e) {}
 }
 async function ccApplyBadge(c) {
-  const wk = ccWeekIdx(), t = c.turns || {};
-  const open = ['cleaning', 'kitchen'].filter(k => t[k] === wk).length;   // last week's turns drop out by themselves
-  const n = (c.lounge || 0) + (c.kitchen || 0) + open;
+  const n = (c.lounge || 0) + (c.kitchen || 0);   // unread chat only
   try {
     if (n > 0 && self.navigator.setAppBadge) await self.navigator.setAppBadge(n);
     else if (self.navigator.clearAppBadge)   await self.navigator.clearAppBadge();
@@ -87,14 +78,15 @@ self.addEventListener('push', e => {
   const turn = ccTurnKind(d.ch);
   const ch = turn ? d.ch : ccChannel(d.ch);
   e.waitUntil((async () => {
-    const c = await ccGetCounts();
-    if (turn) c.turns[turn] = Number.isFinite(Number(d.week)) ? Number(d.week) : ccWeekIdx();   // +1 until done / away
-    else c[ch] = (c[ch] || 0) + (Number(d.count) > 0 ? Number(d.count) : 1);
-    await ccSetCounts(c);
-    await ccApplyBadge(c);
-    // An open tenant app on that tab clears chat counts right away
-    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    if (!turn) wins.filter(w => ccIsTenantPage(w.url)).forEach(w => w.postMessage({ type: 'cc-push', ch }));
+    if (!turn) {                                   // turn reminders never change the red number
+      const c = await ccGetCounts();
+      c[ch] = (c[ch] || 0) + (Number(d.count) > 0 ? Number(d.count) : 1);
+      await ccSetCounts(c);
+      await ccApplyBadge(c);
+      // An open tenant app on that tab clears it right away
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      wins.filter(w => ccIsTenantPage(w.url)).forEach(w => w.postMessage({ type: 'cc-push', ch }));
+    }
     const opts = { body: d.body || '', data: { ch }, icon: '/tenant-icon-192.png', badge: '/tenant-icon-192.png' };
     if (d.tag) opts.tag = d.tag;
     await self.registration.showNotification(d.title || 'Casa Castel', opts);
@@ -131,16 +123,10 @@ self.addEventListener('message', e => {
       ns.forEach(n => { if (n.data && chs.includes(n.data.ch)) n.close(); });
     })());
   }
-  if (m.type === 'cc-turn' && (m.kind === 'cleaning' || m.kind === 'kitchen')) {
-    e.waitUntil((async () => {
-      const c = await ccGetCounts();
-      c.turns[m.kind] = m.open ? Number(m.week) : null;
-      await ccSetCounts(c);
-      await ccApplyBadge(c);
-      if (!m.open) {   // done / away → its reminder disappears from the lock screen too
-        const ns = await self.registration.getNotifications();
-        ns.forEach(n => { if (n.data && n.data.ch === 'turn-' + m.kind) n.close(); });
-      }
+  if (m.type === 'cc-turn-done' && (m.kind === 'cleaning' || m.kind === 'kitchen')) {
+    e.waitUntil((async () => {   // done / away → its reminder disappears from the lock screen too
+      const ns = await self.registration.getNotifications();
+      ns.forEach(n => { if (n.data && n.data.ch === 'turn-' + m.kind) n.close(); });
     })());
   }
   if (m.type === 'cc-reset') {

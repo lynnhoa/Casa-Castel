@@ -9,12 +9,14 @@
      room together with the room's current password (hash); after a
      password reset (new tenant) the old phone gets no more pushes
    · opening Lounge / Kitchen resets that part of the red number
-   · House Cleaning / Kitchen tab report this room's open turn (+1)
+   · turn reminders don't count for the red number (tabs show a marker,
+     turn-markers.js); a finished turn removes its reminder from the
+     lock screen
    · tapping a notification opens the right tab
 
    Public: ccPushLogout() (auth.js logout), ccPushRefresh()
-           (after a password change), ccPushTurn(kind, week, open)
-           (tab-cleaning-tenant.js / tab-kitchen-tenant.js)
+           (after a password change), ccPushTurnDone(kind)
+           (turn-markers.js)
    Depends on: constants.js (SB_URL, SB_KEY), supabase-client.js,
                utils.js (ccHashPassword), layout.js (switchTab)
    ───────────────────────────────────────────────────────────── */
@@ -226,11 +228,10 @@ const CC_VAPID_PUBLIC = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaY
     ['cc_push_on', 'cc_pwh', 'cc_push_asked', 'cc_push_room'].forEach(k => localStorage.removeItem(k));
   };
 
-  /* ── Cleaning / Kitchen tab: is this room's turn this week still open? ── */
-  window.ccPushTurn = function (kind, week, open) {
-    if (PREVIEW || !room() || !Number.isFinite(Number(week))) return;
-    if (!isOn()) return;                       // notifications off on this phone → no red number at all
-    toSW({ type: 'cc-turn', kind, week: Number(week), open: !!open });
+  /* ── A turn is done / away: remove its reminder from the lock screen ── */
+  window.ccPushTurnDone = function (kind) {
+    if (PREVIEW || !room() || !isOn()) return;
+    toSW({ type: 'cc-turn-done', kind });
   };
 
   /* ── After the tenant changed the password (tenant.html) ── */

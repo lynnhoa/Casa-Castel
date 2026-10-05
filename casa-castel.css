@@ -2489,3 +2489,21 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
   font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
 }
 .cc-return-bar span { font-size: 12px; color: #6E5230; }
+
+
+/* ── TURN MARKERS (tenant app) ──────────────────────────────
+   While this room's turn this week is open, the tab shows a small
+   symbol after its name: House Cleaning = blue broom, Kitchen =
+   yellow sponge. Class .turn-open is set by turn-markers.js.
+──────────────────────────────────────────────────────────── */
+.tenant-shell .cc-tab.turn-open::after {
+  content: ""; display: inline-block; width: 14px; height: 14px;
+  margin: -4px 0 -4px 4px; vertical-align: -3px;   /* negative margins: the tab text stays on the same line height */
+  background: no-repeat center / contain;
+}
+.tenant-shell .cc-tab[data-tab="cleaning"].turn-open::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M12.6 1.6 8.3 7.9' stroke='%23185FA5' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3Cpath d='M6 7.1 10.4 9.5 8.6 14.6 2.4 11.4Z' fill='%23185FA5'/%3E%3Cpath d='M4.4 12.4l1.2-2.6M6.6 13.5l1.1-2.6' stroke='%23EBF4FF' stroke-width='.9' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.tenant-shell .cc-tab[data-tab="kitchen"].turn-open::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1.6' y='4.4' width='12.8' height='7.6' rx='1.8' fill='%23E2B33A'/%3E%3Ccircle cx='5' cy='7.4' r='.9' fill='%23B98A1C'/%3E%3Ccircle cx='8.6' cy='9.2' r='.8' fill='%23B98A1C'/%3E%3Ccircle cx='11.2' cy='6.8' r='.7' fill='%23B98A1C'/%3E%3C/svg%3E");
+}
