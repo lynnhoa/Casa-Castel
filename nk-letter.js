@@ -86,7 +86,16 @@ function nkLetterHtml(d) {
   const amt = Math.abs(Number(d.saldo) || 0);
   const resLabel = d.saldo > 0 ? 'Nachzahlung' : d.saldo < 0 ? 'Guthaben' : 'Ergebnis';
   let pay;
-  if (d.saldo > 0 && d.via === 'kaution') pay = `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit Ihrer Mietkaution. Sie müssen nichts überweisen.</p>`;
+  const E = Number(d.einbehalt) || 0;
+  if (d.saldo > 0 && d.via === 'kaution' && E > 0) {
+    const rest = Math.round((E - amt) * 100) / 100;
+    pay = rest >= 0
+      ? `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(E)}).${rest > 0 ? ` Den verbleibenden Betrag von <strong>${eur(rest)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong>${d.tenantIban ? ' auf Ihr Konto ' + esc(d.tenantIban) : d.former ? ' – bitte teilen Sie uns dafür Ihre aktuelle Bankverbindung (IBAN) mit' : ' auf Ihr uns bekanntes Konto'}.` : ' Damit ist die Kaution vollständig abgerechnet.'}</p>`
+      : `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(E)}). Bitte überweisen Sie den verbleibenden Betrag von <strong>${eur(-rest)}</strong> bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto:</p>${bankBlock()}`;
+  }
+  else if (d.saldo < 0 && E > 0) pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> zahlen wir Ihnen zusammen mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(E)}), insgesamt <strong>${eur(amt + E)}</strong>, bis zum <strong>${dt(d.due)}</strong>${d.tenantIban ? ' auf Ihr Konto ' + esc(d.tenantIban) : d.former ? ' – bitte teilen Sie uns dafür Ihre aktuelle Bankverbindung (IBAN) mit' : ' auf Ihr uns bekanntes Konto'}.</p>`;
+  else if (!d.saldo && E > 0) pay = `<p class="p">Ihre Vorauszahlungen decken Ihren Kostenanteil genau. Den einbehaltenen Teil Ihrer Mietkaution von <strong>${eur(E)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong>${d.tenantIban ? ' auf Ihr Konto ' + esc(d.tenantIban) : ' auf Ihr uns bekanntes Konto'}.</p>`;
+  else if (d.saldo > 0 && d.via === 'kaution') pay = `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit Ihrer Mietkaution. Sie müssen nichts überweisen.</p>`;
   else if (d.saldo > 0 && d.via === 'miete') pay = `<p class="p">Bitte zahlen Sie den Betrag von <strong>${eur(amt)}</strong> zusammen mit Ihrer nächsten Miete, spätestens bis zum <strong>${dt(d.due)}</strong> (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
   else if (d.saldo > 0) pay = `<p class="p">Bitte überweisen Sie den Betrag von <strong>${eur(amt)}</strong> bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto:</p>${bankBlock()}`;
   else if (d.saldo < 0 && d.via === 'miete') pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> können Sie mit Ihrer nächsten Mietzahlung verrechnen: Überweisen Sie die nächste Miete um diesen Betrag gekürzt.</p>`;

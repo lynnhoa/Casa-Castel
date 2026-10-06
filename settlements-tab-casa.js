@@ -26,6 +26,7 @@ const SC = {
   missing: false, lettersMissing: false, data: {}, model: null,
   modal: null,            // { view: 'costs' | 'ten' | 'settle', key, flow: [keys], i, choice }
   open: {}, saveTimer: null,
+  kau: {},               // tenant_id → kaution row (nk_einbehalt = held back until the NK)
 };
 const SC_TABLE = 'nk_abrechnung_casa', SC_LETTERS = 'nk_letters', SC_BUCKET = 'nk-letters';
 const SC_AV = [['#E8D5B5', '#6B4A1E'], ['#D6E3D0', '#3E5A30'], ['#E3D6E6', '#5E3F66'], ['#D3DEE8', '#2F4A63'],
@@ -50,6 +51,11 @@ async function scLoadRows() {
     if (r.error) { SC.missing = true; SC.rows = []; } else { SC.missing = false; SC.rows = r.data || []; }
     const l = await _ctlSupa.from(SC_LETTERS).select('*').order('sent_at', { ascending: false });
     if (l.error) { SC.lettersMissing = true; SC.letters = []; } else { SC.lettersMissing = false; SC.letters = l.data || []; }
+    try {                                                   // Kaution (Casa Castel › Tenants) — the NK-Einbehalt is read here
+      const ids = (window._src.casaTen || []).map(t => t.id).filter(Boolean);
+      SC.kau = {};
+      if (ids.length) { const k = await _ctlSupa.from('kaution').select('*').in('tenant_id', ids); (k.data || []).forEach(x => { SC.kau[String(x.tenant_id)] = x; }); }
+    } catch (e) { SC.kau = {}; }
   } finally { SC.loaded = true; SC.loading = false; }
 }
 async function scLoadYear(y) {
@@ -108,13 +114,20 @@ function scModel(y) {
     const line = it ? { id: String(it.r.id), type: 'row', p, per: perM, it, year: y, frist, from: t.from, to: t.to } : null;
     let st = null; try { st = line ? _stState(line) : null; } catch (e) {}
     const skipped = !!(it && it.r.status === 'nicht durchgeführt');
-    const k = t.mode === 'pauschal' ? 'none' : skipped ? 'done' : st && st.res ? (st.k === 'erledigt' ? 'done' : 'sent') : 'open';
+    const kau = SC.kau[String(t.tenantId)] || null;
+    const einbehalt = kau && Number(kau.nk_einbehalt) > 0 ? cxR(Number(kau.nk_einbehalt)) : 0;
+    let k = t.mode === 'pauschal' ? 'none' : skipped ? 'done' : st && st.res ? (st.k === 'erledigt' ? 'done' : 'sent') : 'open';
+    if (k === 'done' && einbehalt > 0 && st && st.res && st.res.via === 'kaution') k = 'sent';   // Kaution still to pay back
     const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId)) || null;
     const movedOut = t.to < y + '-12-31' || !!(tr && tr.mietende && scD(tr.mietende) < today);
-    return Object.assign({}, t, { it, line, st, skipped, k, tr, movedOut, vzMissing: src.vzMissing || [], vzAuto: src.vz, set: ts[t.key] || {} });
+    return Object.assign({}, t, { it, line, st, skipped, k, tr, movedOut, vzMissing: src.vzMissing || [], vzAuto: src.vz, set: ts[t.key] || {}, kau, einbehalt });
   });
   const money = { back: 0, get: 0 };
-  ten.filter(t => t.k === 'sent' && t.st.res.via === 'zahlung').forEach(t => { if (t.st.res.dir > 0) money.get += t.st.res.amount; else money.back += t.st.res.amount; });
+  ten.filter(t => t.k === 'sent').forEach(t => {
+    const r = t.st.res;
+    if (r.via === 'kaution' && t.einbehalt > 0) money.back += Math.max(0, cxR(t.einbehalt - r.dir * r.amount));
+    else if (r.via === 'zahlung') { if (r.dir > 0) money.get += r.amount; else money.back += r.amount; }
+  });
   return { p, y, rec, locked, input, R, ten, perM, frist, running: (y + '-12-31') >= today, sendable: !!perM, warn: input.warn || [], money, today };
 }
 
@@ -213,7 +226,11 @@ function scSay(t) {
     if (r.via === 'miete') return ['', scE(r.amount) + ' with the rent'];
     return ['', 'balanced'];
   }
-  if (t.k === 'sent') { const r = t.st.res; return r.dir > 0 ? ['neg', 'pays you ' + scE(r.amount)] : r.dir < 0 ? ['pos', 'gets ' + scE(r.amount) + ' back'] : ['', 'balanced']; }
+  if (t.k === 'sent') {
+    const r = t.st.res;
+    if (r.via === 'kaution' && t.einbehalt > 0) { const back = cxR(t.einbehalt - r.dir * r.amount); return back > 0 ? ['pos', 'Kaution: pay back ' + scE(back)] : ['', 'Kaution-Einbehalt used up']; }
+    return r.dir > 0 ? ['neg', 'pays you ' + scE(r.amount)] : r.dir < 0 ? ['pos', 'gets ' + scE(r.amount) + ' back'] : ['', 'balanced'];
+  }
   return s > 0 ? ['neg', 'pays you ' + a] : s < 0 ? ['pos', 'gets ' + a + ' back'] : ['', 'balanced'];
 }
 function scRowHtml(t, M) {
@@ -321,6 +338,9 @@ function scTenView(M, m) {
   const vz = t.k === 'none' ? '' : '<div class="srm__card"><p class="srm__ct" style="font-size:20px">Vorauszahlungen</p>' +
     '<div class="sc-li"><span>Paid per Controlling<small>' + (t.vzMissing.length ? 'missing for ' + t.vzMissing.length + ' month(s) – check Income' : 'NK part of the rent, by day') + '</small></span><span>' + scE(t.vzAuto || 0) + '</span></div>' +
     (canEdit ? '<label class="st-f"><span class="st-f__l">Other amount (optional)</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-sc-in="vz" data-k="' + stEsc(t.key) + '" value="' + (vzOver ? stEsc(cxE2(s.vz)) : '') + '" placeholder="' + stEsc(cxE2(t.vzAuto || 0)) + '"/><span>€</span></span></label>' : (vzOver ? '<div class="sc-li"><span>Used in the letter</span><span>' + scE(s.vz) + '</span></div>' : '')) + '</div>';
+  const kauCard = t.einbehalt > 0 && t.k !== 'none' ? '<div class="srm__card"><p class="srm__ct" style="font-size:20px">Kaution-Einbehalt</p>' +
+    '<div class="sc-li"><span>Held back until the NK<small>set in Casa Castel › Tenants › Kaution</small></span><span>' + scE(t.einbehalt) + '</span></div>' +
+    '<div class="sc-li"><b>' + (cxR(t.einbehalt - t.saldo) >= 0 ? 'Pay back to ' + stEsc(first) : stEsc(first) + ' still pays') + '</b><span><b>' + scE(Math.abs(cxR(t.einbehalt - t.saldo))) + '</b></span></div></div>' : '';
   const addrDef = scAddrDefault(t).join('\n');
   const former = s.former !== undefined ? !!s.former : t.movedOut;
   const list = s.list !== undefined ? !!s.list : scListDefault();
@@ -328,7 +348,7 @@ function scTenView(M, m) {
     '<label class="st-f"><span class="st-f__l">Address' + (t.movedOut ? ' · new address after moving out' : '') + '</span><textarea class="st-in sc-ta" rows="3" data-sc-in="addr" data-k="' + stEsc(t.key) + '"' + (canEdit ? '' : ' disabled') + '>' + stEsc(s.addr !== undefined ? s.addr : addrDef) + '</textarea></label>' +
     (saldo < 0 ? '<label class="st-f"><span class="st-f__l">Tenant IBAN · for the Guthaben (optional)</span><input class="st-in" data-sc-in="iban" data-k="' + stEsc(t.key) + '" value="' + stEsc(s.iban || '') + '" placeholder="DE…"' + (canEdit ? '' : ' disabled') + '/></label>' : '') +
     '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Settle by</span><select class="st-in" data-sc-in="via" data-k="' + stEsc(t.key) + '"' + (canEdit ? '' : ' disabled') + '>' +
-      [['zahlung', 'Bank transfer'], ['kaution', 'Kaution'], ['miete', 'With the rent']].map(([v, l]) => '<option value="' + v + '"' + ((s.via || 'zahlung') === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
+      [['zahlung', 'Bank transfer'], ['kaution', 'Kaution'], ['miete', 'With the rent']].map(([v, l]) => '<option value="' + v + '"' + (scVia(t) === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
     '<label class="st-f"><span class="st-f__l">Due in (days)</span><input class="st-in" inputmode="numeric" data-sc-in="days" data-k="' + stEsc(t.key) + '" value="' + stEsc(s.days ?? 30) + '"' + (canEdit ? '' : ' disabled') + '/></label></div>' +
     scToggle('former', t.key, former, 'Former tenant', 'the letter says "Ihr ehemaliges Zimmer"', canEdit) +
     scToggle('list', t.key, list, 'Add invoice list', 'page 3 · Hausgeld and NK one-offs', canEdit) + '</div>';
@@ -339,11 +359,11 @@ function scTenView(M, m) {
   let bar = '';
   if (t.k === 'open' && M.sendable) bar = '<button class="cx-btn cx-btn--s" data-sc="pdf" data-k="' + stEsc(t.key) + '"><i class="ti ti-file-text" aria-hidden="true"></i> PDF</button>' +
     '<button class="cx-btn cx-btn--p" data-sc="send" data-k="' + stEsc(t.key) + '"' + (M.locked ? '' : ' disabled') + '>' + (m.flow ? 'Sent · next <i class="ti ti-arrow-right" aria-hidden="true"></i>' : 'Mark as sent') + '</button>';
-  else if (t.k === 'sent') bar = scLetterBtn(t) + '<button class="cx-btn cx-btn--p" data-sc="settle" data-k="' + stEsc(t.key) + '">Settle</button>';
+  else if (t.k === 'sent') bar = scLetterBtn(t) + '<button class="cx-btn cx-btn--p" data-sc="settle" data-k="' + stEsc(t.key) + '">' + (t.einbehalt > 0 && t.st.res.via === 'kaution' ? 'Close the Kaution' : 'Settle') + '</button>';
   else if (t.k === 'done') bar = scLetterBtn(t) + '<button class="cx-btn cx-btn--s" data-sc="reopen" data-k="' + stEsc(t.key) + '">Back to open</button>';
   const skipFlow = m.flow ? '<button class="cx-link sc-skipflow" data-sc="flowNext">Skip for now ›</button>' : '';
   return scHead(t.name, sub, '', flow + pre) +
-    '<div class="srm__b"><div class="srm__one">' + hero + split + vz + sendTo + steps + skipFlow + '</div></div>' +
+    '<div class="srm__b"><div class="srm__one">' + hero + kauCard + split + vz + sendTo + steps + skipFlow + '</div></div>' +
     (bar ? '<div class="srm__bar srm__bar--2">' + bar + '</div>' : '');
 }
 function scToggle(f, key, on, t, s, can) {
@@ -358,6 +378,8 @@ function scLetterBtn(t) {
   return L ? '<button class="cx-btn cx-btn--s" data-sc="letter" data-id="' + stEsc(L.id) + '"><i class="ti ti-file-text" aria-hidden="true"></i> Open letter</button>'
            : '<button class="cx-btn cx-btn--s" data-sc="pdf" data-k="' + stEsc(t.key) + '"><i class="ti ti-file-text" aria-hidden="true"></i> PDF (recreated)</button>';
 }
+/* How the result is settled: chosen in the sheet, else Kaution when part of it is held back for the NK */
+const scVia = t => (t.set && t.set.via) || (t.einbehalt > 0 ? 'kaution' : 'zahlung');
 const scListDefault = () => { try { return localStorage.getItem('sc_list') !== '0'; } catch (e) { return true; } };
 function scAddrDefault(t) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
@@ -373,16 +395,20 @@ function scSettleView(M, m) {
   const cur = m.choice || (t.skipped ? 'skip' : b ? 'paid' : res && res.via !== 'zahlung' ? res.via : res ? 'paid' : 'skip');
   const opt = (v, ti, s, extra) => '<div class="srm__opt' + (cur === v ? ' is-on' : '') + '" data-sc="choice" data-v="' + v + '"><input type="radio" name="scSettle" value="' + v + '"' + (cur === v ? ' checked' : '') + '/>' +
     '<div class="srm__opt-b"><span class="srm__opt-t">' + ti + '</span><span class="srm__opt-s">' + s + '</span>' + (cur === v && extra ? extra : '') + '</div></div>';
-  const amt = b ? Number(b.amount) : res ? res.amount : 0;
+  const kauCase = t.einbehalt > 0 && res && res.via === 'kaution';
+  const amt = b ? Number(b.amount) : kauCase ? Math.max(0, cxR(t.einbehalt - t.saldo)) : res ? res.amount : 0;
   const paidX = '<div class="sr-grid2 srm__opt-f"><label class="st-f"><span class="st-f__l">Amount</span><span class="st-amt"><input class="st-in" inputmode="decimal" id="scSetAmt" value="' + stEsc(cxE2(amt)) + '"/><span>€</span></span></label>' +
     '<label class="st-f"><span class="st-f__l">Date</span><input class="st-in" type="date" id="scSetDate" value="' + stEsc(b ? scD(b.invoice_date) : cxToday()) + '"/></label></div>';
   let opts = '';
-  if (res && res.amount) {
-    opts += opt('paid', res.dir > 0 ? 'Paid by ' + stEsc(scFirst(t.name)) : 'Paid back to ' + stEsc(scFirst(t.name)), 'the amount may differ from the result (' + scE(res.amount) + ')', paidX);
+  if (kauCase) {
+    opts += opt('paid', amt > 0 ? 'Paid back to ' + stEsc(scFirst(t.name)) + ' (Guthaben + Kaution-Einbehalt)' : 'Kaution-Einbehalt used up', 'closes the Kaution · the amount may differ', paidX);
+    opts += opt('skip', 'Skipped', 'not paid or not claimed – counts as done', '');
+  } else if (res && res.amount) {
+    opts += opt('paid', res.dir > 0 ? 'Paid by ' + stEsc(scFirst(t.name)) + (t.einbehalt > 0 ? ' (rest after the Kaution)' : '') : 'Paid back to ' + stEsc(scFirst(t.name)), 'the amount may differ from the result (' + scE(res.amount) + ')', paidX);
     opts += opt('kaution', 'Offset with the Kaution', 'no money moved', '');
     opts += opt('miete', 'Offset with the rent', 'no money moved', '');
   }
-  opts += opt('skip', 'Skipped', 'not paid or not claimed – counts as done', '');
+  if (!kauCase) opts += opt('skip', 'Skipped', 'not paid or not claimed – counts as done', '');
   return scHead('Settle – ' + t.name, 'NK ' + M.y + ' · ' + t.room + (res ? ' · ' + (res.dir > 0 ? 'Nachzahlung ' : 'Guthaben ') + scE(res.amount) : ''), 'backTen') +
     '<div class="srm__b"><div class="srm__one srm__narrow">' + opts +
       '<label class="st-f"><span class="st-f__l">Note (optional)</span><input class="st-in" id="scSetNote" value="' + stEsc(t.set.settle_note || '') + '"/></label></div></div>' +
@@ -421,7 +447,7 @@ async function scLetterData(M, t) {
     introHtml: 'hiermit rechnen wir die Betriebskosten für Ihr ' + (former ? 'ehemaliges ' : '') + 'Zimmer „' + t.room + '“ in der Casa Castel für den Abrechnungszeitraum vom <strong>' + dt(per.from) + ' bis ' + dt(per.to) + '</strong> ab.' +
       (partial ? ' Sie haben das Zimmer vom ' + dt(t.from) + ' bis ' + dt(t.to) + ' bewohnt (' + t.days + ' von ' + M.R.days + ' Tagen).' : '') +
       ' Die Kosten des Hauses wurden tagesgenau verteilt – Sie zahlen nur für die Tage, an denen Sie im Haus gewohnt haben.',
-    sum: t.sum, vz: t.vz, saldo: t.saldo, via: t.saldo ? (set.via || 'zahlung') : 'zahlung', due: NkCasa.addDays(date, days),
+    sum: t.sum, vz: t.vz, saldo: t.saldo, via: t.saldo ? scVia(t) : 'zahlung', einbehalt: t.einbehalt || 0, due: NkCasa.addDays(date, days),
     bank: { inhaber: s.kontoinhaber || s.vermieter_name || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
     verwendung: 'NK ' + y + ' Casa Castel ' + t.room + ' ' + last, tenantIban: set.iban || '', former,
     hinweise: ['Die Aufstellung aller Kosten, die Verteilerschlüssel und die Berechnung Ihres Anteils finden Sie auf Seite 2.',
@@ -544,7 +570,9 @@ async function scSend(key, btn) {
   if (!t.line) { stSay('This tenant is not in the settlement list – check move-in / move-out in Casa Castel'); return; }
   const s = t.set || {};
   const amount = Math.abs(t.saldo), dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0;
-  const via = dir ? (s.via || 'zahlung') : 'zahlung';
+  let via = dir ? scVia(t) : (t.einbehalt > 0 ? 'kaution' : 'zahlung');
+  let amountRec = amount;
+  if (via === 'kaution' && t.einbehalt > 0 && t.saldo > t.einbehalt) { via = 'zahlung'; amountRec = cxR(t.saldo - t.einbehalt); }   // Einbehalt too small → tenant pays the rest
   const date = s.date || cxToday();
   const reset = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
@@ -553,11 +581,11 @@ async function scSend(key, btn) {
   try { pdf = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t)); } catch (e) { console.warn('[settlements] letter for archive', e); }
   const r = t.it.r;
   const resRow = { property_id: CASA_PROP_ID, kind: 'nk_tenant', year: M.y, period_from: t.from, period_to: t.to, app: 'casa', tenant_id: t.tenantId || null,
-                   unit_label: t.room || null, tenant_name: t.name || null, direction: dir, amount: cxR(amount), result_date: date,
+                   unit_label: t.room || null, tenant_name: t.name || null, direction: dir, amount: cxR(amountRec), result_date: date,
                    due_date: dir ? NkCasa.addDays(date, Number(s.days ?? 30) || 30) : null, settle_via: via, status: 'fertig', source: 'settlements_app' };
   const before = { status: r.status || 'offen', amount: r.amount ?? null, direction: r.direction ?? null, settled_via: r.settled_via ?? null, result_id: r.result_id ?? null };
   let row;
-  try { row = await _stUpsertSettlement(t.line, { status: 'verschickt', amount: cxR(amount), direction: dir, settled_via: via }); }
+  try { row = await _stUpsertSettlement(t.line, { status: 'verschickt', amount: cxR(amountRec), direction: dir, settled_via: via }); }
   catch (err) { stSay(_stSqlMissing(err) ? 'Please run the Settlements SQL in Supabase first' : 'Saving failed — ' + (err.message || err)); if (btn) { btn.disabled = false; btn.innerHTML = reset; } return; }
   try {
     const saved = await _stWriteResult(null, resRow);
@@ -570,7 +598,7 @@ async function scSend(key, btn) {
     if (btn) { btn.disabled = false; btn.innerHTML = reset; }
     ctlSettlementInvalidate(); stRenderCasa(); return;
   }
-  if (pdf) await scArchive(M, t, pdf, { dir, amount: cxR(amount), addr: String(s.addr !== undefined ? s.addr : scAddrDefault(t).join('\n')) });
+  if (pdf) await scArchive(M, t, pdf, { dir, amount: cxR(amountRec), addr: String(s.addr !== undefined ? s.addr : scAddrDefault(t).join('\n')) });
   ctlSettlementInvalidate();
   stSay('Marked as sent');
   const flow = SC.modal && SC.modal.flow ? SC.modal : null;
@@ -609,10 +637,22 @@ async function scSettleSave(key, btn) {
   try {
     const setVia = async via => { await _ctlSupa.from('abr_results').update({ settle_via: via }).eq('id', res.id); res.db.settle_via = via; await _stUpsertSettlement(l, { settled_via: via }); };
     const dropBooking = async () => { if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); } };
-    if (choice === 'paid' && res) {
+    const kauCase = t.einbehalt > 0 && res && res.via === 'kaution';
+    const closeKau = async paidBack => {                    // Kaution-Einbehalt done: add what was paid back, nothing held any more
+      const k = t.kau; if (!k || !k.id) return;
+      const upd = { nk_einbehalt: 0, returned: cxR((Number(k.returned) || 0) + (paidBack || 0)) };
+      if (Object.prototype.hasOwnProperty.call(k, 'deduction_reason')) upd.deduction_reason = [k.deduction_reason, 'NK ' + M.y + ' verrechnet'].filter(Boolean).join(' · ');
+      const { error } = await _ctlSupa.from('kaution').update(upd).eq('id', k.id); if (error) throw error;
+      Object.assign(k, upd);
+    };
+    if (choice === 'paid' && kauCase) {
+      const amt = cxR(Math.abs(cxParse((document.getElementById('scSetAmt') || {}).value || '0') || 0));
+      await dropBooking(); await closeKau(amt);
+    } else if (choice === 'paid' && res) {
       const amt = cxR(Math.abs(cxParse((document.getElementById('scSetAmt') || {}).value || '0') || 0));
       const date = scD((document.getElementById('scSetDate') || {}).value) || cxToday();
       if (!(amt > 0)) { stSay('Please enter the amount'); if (btn) btn.disabled = false; return; }
+      if (t.einbehalt > 0 && res.dir > 0) await closeKau(0);            // the Einbehalt was used for the Nachzahlung
       if (res.via !== 'zahlung') await setVia('zahlung');
       if (b) {
         const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
