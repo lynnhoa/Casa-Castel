@@ -977,12 +977,24 @@ function stRenderRentals() {
 }
 
 /* ── Phase 5 · overview helpers ── */
-function _srMinYear() {                                   // the year switch goes back to the first purchase
+/* Purchase date of a Wohnung: "in portfolio since" (Controlling) or the purchase date in Properties */
+function _srIsoAny(v) {
+  const s = String(v || '').trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[0];
+  if ((m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/))) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  if ((m = s.match(/^(\d{4})$/))) return m[1] + '-01-01';
+  return '';
+}
+function _srBought(p) {
+  if (p.in_portfolio_since) return _srD(p.in_portfolio_since);
+  const loan = ctlPropLinks(p).loan;
+  return loan ? _srIsoAny(loan.kaufdatum) : '';
+}
+function _srMinYear() {                                   // the year switch goes back to the first purchase (Properties)
   const ty = Number(cxToday().slice(0, 4));
   const props = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID);
-  const ys = props.map(p => Number(String(p.in_portfolio_since || '').slice(0, 4))).filter(Boolean);
-  if (!ys.length || props.some(p => !p.in_portfolio_since)) return Math.min(ty - 10, ...(ys.length ? ys : [ty]));
-  return Math.min(...ys);
+  const ys = props.map(p => Number(_srBought(p).slice(0, 4))).filter(Boolean);
+  return ys.length ? Math.min(...ys, ty - 1) : ty - 4;
 }
 const _srInit = name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 function _srNextSteps(live) {
@@ -1062,7 +1074,7 @@ function _srCard5(info) {
 /* ── History of one Wohnung: every year since the purchase ── */
 function _srHistoryView(c) {
   const p = c.p, ty = Number(cxToday().slice(0, 4));
-  const since = Number(String(p.in_portfolio_since || '').slice(0, 4)) || _srMinYear();
+  const bought = _srBought(p), since = Number(bought.slice(0, 4)) || _srMinYear();
   const years = []; for (let Y = ty; Y >= since; Y--) years.push(Y);
   const rows = years.map(Y => {
     const per = _srPeriodFor(p, Y), cy = Number(per.to.slice(0, 4));
@@ -1083,7 +1095,7 @@ function _srHistoryView(c) {
         stEsc(l.tenant_name || '') + (l.source === 'manual' ? ' · manual' : '') + '</span><span class="sc-row__p">letter sent ' + stDate(String(l.sent_at).slice(0, 10)) + '</span></span><span class="sc-open">Open</span></button>').join('') +
       (!tens.length && !letters.length ? '<p class="sr5-empty">No tenant results saved for this year.</p>' : '') + '</div>';
   }).join('');
-  return _srHead4('History · ' + p.name, 'every year since ' + (p.in_portfolio_since ? 'the purchase ' + stDate(p.in_portfolio_since) : since), '') +
+  return _srHead4('History · ' + p.name, 'every year since ' + (bought ? 'the purchase ' + stDate(bought) : since), '') +
     '<div class="srm__b"><div class="srm__one">' + rows + '</div></div>';
 }
 async function _srOpenLetter(id) {

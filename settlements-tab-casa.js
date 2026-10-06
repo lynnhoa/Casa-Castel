@@ -163,7 +163,7 @@ function stRenderCasa() {
   const grp = k => M.ten.filter(t => t.k === k);
   const open = grp('open'), sent = grp('sent'), done = grp('done'), none = grp('none');
   const yearNav = '<div class="sc-yr">' +
-    '<button class="cx-arw" data-sc="year" data-d="-1" aria-label="Previous year"' + (y <= ty - 6 ? ' disabled' : '') + '><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
+    '<button class="cx-arw" data-sc="year" data-d="-1" aria-label="Previous year"' + (y <= scMinYear() ? ' disabled' : '') + '><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
     '<div class="sc-yr__t"><div class="sc-yr__m">NK ' + y + '</div><div class="sc-yr__s">' + (M.running ? 'runs until 31.12.' + y : M.sendable ? 'send by ' + scDate(M.frist) : 'Frist passed · history') + '</div></div>' +
     '<button class="cx-arw" data-sc="year" data-d="1" aria-label="Next year"' + (y >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
   const sql = SC.missing || SC.lettersMissing
@@ -380,6 +380,15 @@ function scLetterBtn(t) {
 }
 /* How the result is settled: chosen in the sheet, else Kaution when part of it is held back for the NK */
 const scVia = t => (t.set && t.set.via) || (t.einbehalt > 0 ? 'kaution' : 'zahlung');
+/* First year to show: the purchase of Casa Castel (Controlling "in portfolio since" or the purchase date in Properties) */
+function scMinYear() {
+  const ty = Number(cxToday().slice(0, 4));
+  const p = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID);
+  let iso = p && p.in_portfolio_since ? String(p.in_portfolio_since).slice(0, 10) : '';
+  if (!iso && p) { const loan = ctlPropLinks(p).loan; if (loan && typeof _srIsoAny === 'function') iso = _srIsoAny(loan.kaufdatum); }
+  const y = Number(iso.slice(0, 4));
+  return y ? Math.min(y, ty - 1) : ty - 4;
+}
 const scListDefault = () => { try { return localStorage.getItem('sc_list') !== '0'; } catch (e) { return true; } };
 function scAddrDefault(t) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
