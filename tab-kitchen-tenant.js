@@ -1104,22 +1104,29 @@ async function _kTenSendPhoto(file, feedId) {
   await _kTenAddComment(_kTenWeekRow.id, room, '[photo] ' + data.publicUrl, false);
 }
 
+/* ── FRESH WEEK STATUS ──────────────────────────────────────
+   Re-reads this week + last week and redraws card, late proof, rotation
+   and chat. Used by live updates and when the app comes back to the front
+   (a flag / approve made while the app was in the background).        */
+async function _kTenRefreshWeek() {
+  if (!sbL || !_kTenWeekRow) return;
+  if (!(await _kTenEnsureCurrentWeek())) return;   // K1: new week → tab was reloaded
+  const [fresh, last] = await Promise.all([_kTenGetWeek(kWeekIdx()), _kTenGetWeek(kWeekIdx() - 1)]);
+  if (!fresh) return;
+  _kTenWeekRow = fresh;
+  _kTenLateRow = last;
+  await _kTenRenderWeekCard();
+  _kTenRenderLate();
+  await _kTenRenderFeed();
+  await _kTenRenderMobRotation();
+}
+
 /* ── REALTIME ───────────────────────────────────────────── */
 function _kTenSubscribe(idx) {
   if (_kTenChannel) { sbL.removeChannel(_kTenChannel); _kTenChannel = null; }
   _kTenChannel = sbL.channel('kitchen-tenant-rt')
-    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'kitchen_weeks' }, async payload => {
-      if (!_kTenWeekRow) return;
-      if (!(await _kTenEnsureCurrentWeek())) return;   // K1: new week → tab was reloaded
-      const [fresh, last] = await Promise.all([_kTenGetWeek(kWeekIdx()), _kTenGetWeek(kWeekIdx() - 1)]);
-      if (!fresh) return;
-      _kTenWeekRow = fresh;
-      _kTenLateRow = last;
-
-      await _kTenRenderWeekCard();
-      _kTenRenderLate();
-      await _kTenRenderFeed();
-      await _kTenRenderMobRotation();
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'kitchen_weeks' }, async () => {
+      await _kTenRefreshWeek();
     })
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'kitchen_comments' }, async payload => {
       if (!payload.new || !_kTenWeekRow) return;
@@ -1127,7 +1134,9 @@ function _kTenSubscribe(idx) {
       if (payload.new.week_id && payload.new.week_id !== _kTenWeekRow.id) return;
       document.getElementById('k-mob-optimistic')?.remove();
       document.getElementById('k-ten-dsk-optimistic')?.remove();
-      await _kTenRenderFeed();
+      // A flag / approve message means the week status changed too → redraw the card as well
+      if (payload.new.is_flag || /^(✓ Approved|✓ Flag removed)/.test(payload.new.text || '')) await _kTenRefreshWeek();
+      else await _kTenRenderFeed();
     })
     .on('postgres_changes', { event:'DELETE', schema:'public', table:'kitchen_comments' }, async () => {
       if (!_kTenWeekRow) return;
@@ -1279,7 +1288,7 @@ async function _kTenComposeSend({ text, photo }) {
   camera: 'phone-only-live',
   onSend: _kTenComposeSend,
 }));
-ccOnResume(() => { _kTenEnsureCurrentWeek().then(ok => { if (ok) _kTenRenderFeed(); }); });
+ccOnResume(() => { _kTenRefreshWeek(); }, 3000);   // back in front: status AND chat (not only the chat)
 
 /* ── SHOW KITCHEN TAB IN NAV ────────────────────────────── */
 function _kTenShowTabIfEligible() {
