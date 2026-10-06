@@ -140,7 +140,7 @@ function _cxDashSum(list) {
 
 /* The calculation: Kalt | Warm, three results */
 function _cxDashCalc(t, note) {
-  const D = '\u2014', n = v => (Math.round(Number(v) || 0)).toLocaleString('de-DE');
+  const D = '\u2014', n = v => cxW(v);                     // always with €
   const st = (l, k, w) => '<div class="cxd-tr cxd-st"><span>' + l + '</span><span>' + k + '</span><span>' + w + '</span></div>';
   const res = (l, sub, k, w, fin) => '<div class="cxd-tr cxd-res' + (fin ? ' cxd-fin' : '') + '"><span>' + l + (sub ? '<small>' + sub + '</small>' : '') + '</span>' +
     '<span' + (k < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(k) + '</span><span' + (w < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(w) + '</span></div>';
@@ -182,7 +182,11 @@ function _cxdCss() {
     .cxd-kwbar { display:flex; height:30px; border-radius:8px; overflow:hidden; margin:10px 0 0; background:#EDE8E0; }
     .cxd-kwbar span { display:flex; align-items:center; justify-content:center; font-family:'Inter',system-ui,sans-serif; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; min-width:0; }
     .cxd-kwbar__k { background:#B8956A; color:#fff; }
-    .cxd-kwbar__n { background:#E3D5BF; color:#6B5E4E; }
+    .cxd-kwbar__n { background:#E3D5BF; color:#6B5E4E; min-width:72px; }
+    .cxd-kwbar__k { min-width:72px; }
+    .cxd-tr { grid-template-columns:1fr 90px 90px !important; }
+    .cxd-res > span:not(:first-child) { font-size:19px !important; white-space:nowrap; }
+    .cxd-st > span:not(:first-child) { white-space:nowrap; }
     .cxd-kwleg { display:flex; justify-content:space-between; gap:8px; margin-top:6px; font-size:11.5px; color:#6B5E4E; text-align:left; }
     .cxd-kwleg i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
     .cxd-kwleg i.k { background:#B8956A; } .cxd-kwleg i.n { background:#E3D5BF; }
@@ -238,10 +242,9 @@ window.renderDashboard = function () {
   const nkPart = cxR(Math.max(0, t.warm - t.kalt));
   const kwBar = t.warm > 0
     ? '<div class="cxd-kwbar">' +
-        (t.kalt > 0 ? '<span class="cxd-kwbar__k" style="flex:' + Math.round(t.kalt) + '">' + (t.kalt / t.warm > 0.22 ? 'Kalt ' + Math.round(t.kalt).toLocaleString('de-DE') : '') + '</span>' : '') +
-        (nkPart > 0 ? '<span class="cxd-kwbar__n" style="flex:' + Math.round(nkPart) + '">' + (nkPart / t.warm > 0.22 ? 'NK ' + Math.round(nkPart).toLocaleString('de-DE') : '') + '</span>' : '') +
-      '</div>' +
-      '<div class="cxd-kwleg"><span><i class="k"></i>Kaltmiete ' + cxW(t.kalt) + '</span><span><i class="n"></i>+ Nebenkosten ' + cxW(nkPart) + ' = Warmmiete</span></div>'
+        (t.kalt > 0 ? '<span class="cxd-kwbar__k" style="flex:' + Math.round(t.kalt) + '">' + cxW(t.kalt) + '</span>' : '') +
+        (nkPart > 0 ? '<span class="cxd-kwbar__n" style="flex:' + Math.round(nkPart) + '">' + cxW(nkPart) + '</span>' : '') +
+      '</div>'
     : '';
   const hero = '<div class="cxd-hero">' +
     '<div class="cxd-hero__l">Cashflow · ' + cxEsc(periodWord) + (open ? ' · preliminary' : '') + '</div>' +
