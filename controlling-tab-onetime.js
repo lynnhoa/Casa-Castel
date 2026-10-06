@@ -19,7 +19,9 @@
 'use strict';
 
 const _CX_KINDS = ['Rechnung', 'Versorger', 'Sonstiges'];   // stored values (German) · Versorger = yearly Strom/Gas/Wasser result
-const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Utility bill', Sonstiges: 'Other' };   // what the app shows
+const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Versorgerabrechnung', Sonstiges: 'Other' };   // what the app shows
+// the two directions, named for the kind: Versorgerabrechnung → Nachzahlung / Guthaben · else Expense / Income
+const _cxOtDirLbl = kind => kind === 'Versorger' ? ['Nachzahlung', 'Guthaben'] : ['Expense', 'Income'];
 let _cxOt = {
   form: null,                                          // null · 'new' (summary) · 'new:<pid>' (in a card) · entry id (edit)
   flash: null, formAt: null, mfold: {}, more: {},
@@ -68,7 +70,7 @@ function _cxOtFormHTML(o) {
   return '<div class="cx-form cx-ot-form" data-edit="' + (o ? cxEsc(o.id) : '') + '">' +
     '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '">' + (_CX_KIND_LBL[k] || k) + '</button>').join('') + '</div>' +
     '<div class="cx-grid2">' +
-      '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">Out</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">In</button></div>' +
+      '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">' + _cxOtDirLbl(kind)[0] + '</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">' + _cxOtDirLbl(kind)[1] + '</button></div>' +
       '<label class="cx-f"><input type="text" inputmode="decimal" id="cxOtAmt" placeholder="Amount" aria-label="Amount" value="' + (o ? cxE2(o.amount) : '') + '"><span>€</span></label>' +
     '</div>' +
     '<label class="cx-f cx-f--l"><select id="cxOtProp" aria-label="Objekt" onchange="_cxOtNkShow()">' + props.map(p => '<option value="' + p.id + '"' + (p.id === pid ? ' selected' : '') + '>' + cxEsc(p.name) + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
@@ -94,7 +96,8 @@ function _cxOtRowHTML(o) {
   if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(o) + '</div>';
   const inn = Number(o.direction) === 1;
   const pills = (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK</span>' : '') +
-                (o.kind === 'Sonstiges' || o.kind === 'Versorger' ? cxPill('grey', _CX_KIND_LBL[o.kind]) : '') + (inn ? cxPill('ok', 'In') : '');
+                (o.kind === 'Versorger' ? cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung
+                  : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill('ok', 'Income') : ''));
   return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc('Edit ' + (o.item || 'entry')) + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +
       '<span class="cx-r__p">' + pills + '<i class="ti ti-chevron-right cx-chev" aria-hidden="true"></i></span></div>' +
@@ -168,7 +171,7 @@ function _cxOtListHTML() {
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
-      sub: n + (n === 1 ? ' invoice' : ' invoices') + (inn ? ' · In ' + cxW(inn) : ''),
+      sub: n + (n === 1 ? ' invoice' : ' invoices') + (inn ? ' · Income ' + cxW(inn) : ''),
       status: null,
       extraPill: '<span class="cx-ot-tot">' + cxW(out) + '</span>',
       defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || list.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
@@ -196,7 +199,7 @@ window.renderOneTime = function () {
     (_cxOt.view === 'y' ? _cxOtYearBar() : cxMonthBar()) +
     '<div class="cx-card cx-sum">' +
       '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', all.length + (all.length === 1 ? ' invoice' : ' invoices')) + '</div>' +
-      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'In ' + cxW(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
+      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxW(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
       '<div class="cx-grid2" style="margin-top:4px">' +
         '<button class="cx-btn cx-btn--s" data-cx="otNew">' +
           (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-plus" aria-hidden="true"></i>Invoice') + '</button>' +
