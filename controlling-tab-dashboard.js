@@ -179,6 +179,13 @@ function _cxdCss() {
     .cxd-kw__l { font-size:10px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:#9A8E7E; }
     .cxd-kw__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:24px; font-weight:500; color:#3D3027; line-height:1.15; }
     .cxd-kw__s { font-size:11px; color:#9A8E7E; }
+    .cxd-kwbar { display:flex; height:30px; border-radius:8px; overflow:hidden; margin:10px 0 0; background:#EDE8E0; }
+    .cxd-kwbar span { display:flex; align-items:center; justify-content:center; font-family:'Inter',system-ui,sans-serif; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; min-width:0; }
+    .cxd-kwbar__k { background:#B8956A; color:#fff; }
+    .cxd-kwbar__n { background:#E3D5BF; color:#6B5E4E; }
+    .cxd-kwleg { display:flex; justify-content:space-between; gap:8px; margin-top:6px; font-size:11.5px; color:#6B5E4E; text-align:left; }
+    .cxd-kwleg i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+    .cxd-kwleg i.k { background:#B8956A; } .cxd-kwleg i.n { background:#E3D5BF; }
     .cxd-th small { display:block; font-size:9px; letter-spacing:.02em; text-transform:none; font-weight:400; color:#B4A890; }`;
   document.head.appendChild(st);
 }
@@ -226,45 +233,36 @@ window.renderDashboard = function () {
       '<button class="' + (isYear ? 'on' : '') + '" data-cx="view" data-v="y" aria-pressed="' + isYear + '">Year</button>' +
     '</div></div>';
 
-  // ── Big number
+  // ── Big number · Kaltmiete | Warmmiete · one bar: Kaltmiete + Nebenkosten
   const tilgKnown = t.tilg > 0 ? '<div class="cxd-hero__t">+ ' + cxW(t.tilg) + ' saved through Tilgung</div>' : '';
+  const nkPart = cxR(Math.max(0, t.warm - t.kalt));
+  const kwBar = t.warm > 0
+    ? '<div class="cxd-kwbar">' +
+        (t.kalt > 0 ? '<span class="cxd-kwbar__k" style="flex:' + Math.round(t.kalt) + '">' + (t.kalt / t.warm > 0.22 ? 'Kalt ' + Math.round(t.kalt).toLocaleString('de-DE') : '') + '</span>' : '') +
+        (nkPart > 0 ? '<span class="cxd-kwbar__n" style="flex:' + Math.round(nkPart) + '">' + (nkPart / t.warm > 0.22 ? 'NK ' + Math.round(nkPart).toLocaleString('de-DE') : '') + '</span>' : '') +
+      '</div>' +
+      '<div class="cxd-kwleg"><span><i class="k"></i>Kaltmiete ' + cxW(t.kalt) + '</span><span><i class="n"></i>+ Nebenkosten ' + cxW(nkPart) + ' = Warmmiete</span></div>'
+    : '';
   const hero = '<div class="cxd-hero">' +
     '<div class="cxd-hero__l">Cashflow · ' + cxEsc(periodWord) + (open ? ' · preliminary' : '') + '</div>' +
     '<div class="cxd-hero__v' + (!future && t.freiWarm < 0 ? ' neg' : '') + '">' + (future ? D : cxWS(t.freiWarm)) + '</div>' +
     (future ? '<div class="cxd-hero__s">This ' + (isYear ? 'year' : 'month') + ' is still ahead</div>'
             : '<div class="cxd-kw">' +
-                '<div class="cxd-kw__t"><span class="cxd-kw__l">Warmmiete</span><span class="cxd-kw__v">' + cxW(t.warm) + '</span><span class="cxd-kw__s">rent incl. Nebenkosten</span></div>' +
                 '<div class="cxd-kw__t"><span class="cxd-kw__l">Kaltmiete</span><span class="cxd-kw__v">' + cxW(t.kalt) + '</span><span class="cxd-kw__s">rent without Nebenkosten</span></div>' +
-              '</div>' + tilgKnown) +
+                '<div class="cxd-kw__t"><span class="cxd-kw__l">Warmmiete</span><span class="cxd-kw__v">' + cxW(t.warm) + '</span><span class="cxd-kw__s">rent incl. Nebenkosten</span></div>' +
+              '</div>' + kwBar + tilgKnown) +
     (open ? '<button class="cxd-open" data-cx="gotoOpen"><i class="ti ti-point-filled" aria-hidden="true"></i> ' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button>' : '') +
   '</div>';
 
-  // ── One bar: where the (warm) rent goes
+  // ── Calculation (tap to open)
   let barCard = '';
   if (!future) {
-    const segs = [
-      ['Hausgeld, house costs', t.kosten, '#B8A58C'],
-      ['Zinsen', t.zins, '#C0785A'],
-      ['Tilgung', t.tilg, '#7A6A58'],
-      ['Kreditrate', t.unknown, '#A89C8E'],
-      ['One-offs', t.einmalig, '#D4A87A'],
-      ['Cashflow', Math.max(0, t.freiWarm), '#6E9A5A'],
-    ].filter(s => s[1] > 0);
-    const base = Math.max(t.warm, segs.reduce((a, s) => a + s[1], 0), 1);
-    const bar = '<div class="cxd-bar">' + segs.map(s => '<span style="flex:' + Math.round(s[1]) + ';background:' + s[2] + '">' +
-      (s[1] / base > 0.16 ? (Math.round(s[1])).toLocaleString('de-DE') : '') + '</span>').join('') + '</div>';
-    const kp = t.kalt > 0 ? Math.min(100, t.kalt / base * 100) : 0;
-    const kaltLine = kp ? '<div class="cxd-kalt"><i style="right:0;width:' + kp.toFixed(1) + '%"></i><span>◂ Kaltmiete ' + cxW(t.kalt) + '</span></div>' : '';
-    const legend = '<div class="cxd-leg">' + segs.map(s => '<span><i style="background:' + s[2] + '"></i>' +
-      (s[0] === 'Kreditrate' ? 'Kreditrate · no split' : s[0] === 'Cashflow' ? 'Cashflow · yours' + (t.abr ? ' (incl. Abrechnungen ' + cxWS(t.abr) + ')' : '') : s[0]) + '</span>').join('') +
-      (t.freiWarm < 0 ? '<span style="color:var(--cx-neg)">Cashflow negative ' + cxW(-t.freiWarm) + '</span>' : '') + '</div>';
-    const hint = t.noSplit ? '<button class="cxd-hint" data-cx="toProps">' + t.noSplit + (t.noSplit === 1 ? ' loan' : ' loans') +
+    const hint = t.noSplit ? '<button class="cxd-hint" style="margin:0 0 4px" data-cx="toProps">' + t.noSplit + (t.noSplit === 1 ? ' loan' : ' loans') +
       ' without Zinsen/Tilgung · add in Properties ›</button>' : '';
     const calcOpen = !!CX.open['dash:calc'];
-    barCard = '<div class="cx-card" style="padding:12px 14px 10px">' +
-      '<div class="cx-lbl">Cashflow</div>' + bar + kaltLine + legend + hint +
-      '<button class="cxd-calcbtn" data-cx="fold" data-k="dash:calc" aria-expanded="' + calcOpen + '"><span>Show calculation' +
-        '<small>kalt & warm · before/after one-offs & Abrechnungen</small></span><i class="ti ti-chevron-' + (calcOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>' +
+    barCard = '<div class="cx-card" style="padding:10px 14px">' + hint +
+      '<button class="cxd-calcbtn" style="margin-top:0;padding-top:0;border-top:none" data-cx="fold" data-k="dash:calc" aria-expanded="' + calcOpen + '"><span>Show calculation' +
+        '<small>kalt & warm · costs, Kreditraten, one-offs & Abrechnungen</small></span><i class="ti ti-chevron-' + (calcOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>' +
       (calcOpen ? _cxDashCalc(t, 'Kalt = only the Kaltmiete, Nebenkosten and house costs left out. Warm = everything that came in and went out, incl. Nebenkosten. Only booked amounts count.') : '') +
     '</div>';
   }
