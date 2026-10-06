@@ -2602,3 +2602,17 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .k-mob-week[data-turn="done"]{background:#F6FAF1;}
 .hc-current-card[data-turn="turn"]{background:#FFFAF1;border:1px solid #E8C97A;}
 .hc-current-card[data-turn="done"]{background:#F6FAF1;border:1px solid #97C459;}
+
+
+/* ── NEW ANNOUNCEMENT (tenant app, tab-lounge-tenant.js) ────────
+   Pop-up once per announcement, gold dot on the Lounge tab until seen,
+   gold "New" chip on the card (unseen or posted in the last 3 days). */
+.ann-new{font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--cc-white);background:var(--cc-gold);border-radius:var(--cc-r-sm);padding:2px 7px;flex-shrink:0;}
+.tenant-shell .cc-tab.ann-unseen::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cc-gold);margin-left:5px;vertical-align:2px;}
+.ann-new-sheet .cc-modal-body{padding:16px 18px 18px;}
+.ann-new-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cc-gold);margin-right:7px;vertical-align:1px;}
+.ann-new-meta{display:flex;justify-content:space-between;gap:8px;font-size:9px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:#9C8060;padding-bottom:9px;margin-bottom:12px;border-bottom:0.5px solid #EAE0D0;}
+.ann-new-meta span:last-child{font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;color:#B4A890;}
+.ann-new-title{font-size:24px;margin-bottom:8px;}
+.ann-new-body{font-size:13px;white-space:pre-line;margin-bottom:18px;}
+.ann-new-btn{width:100%;height:42px;background:var(--cc-gold);border:none;border-radius:var(--cc-r-sm);color:#fff;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;font-family:inherit;}

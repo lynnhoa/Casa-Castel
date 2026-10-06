@@ -91,6 +91,7 @@ function _renderAnn(data) {
     <div class="ann-card${data.pinned ? ' ann-card--pinned' : ''}">
       <div class="ann-top">
         <span class="ann-top-lbl">Casa Castel</span>
+        ${_annFresh(data) ? '<span class="ann-new">New</span>' : ''}
         ${data.pinned ? '<span class="ann-pin">Pinned</span>' : ''}
         <span class="ann-date">${fmtTs(new Date(data.created_at).getTime())}</span>
       </div>
@@ -101,6 +102,78 @@ function _renderAnn(data) {
   const elDsk = document.getElementById('ann-list-desktop');
   if (el)    el.innerHTML    = annHtml;
   if (elDsk) elDsk.innerHTML = annHtml;
+  _annCurrent = data || null;
+  _annCheckNew();
+}
+
+/* ── NEW ANNOUNCEMENT ──────────────────────────────────────
+   Each phone remembers the date of the last announcement it has seen
+   (localStorage cc_ann_seen = created_at). A newer one:
+     · pops up once as a sheet (title + text + "Got it"), on any tab
+     · gold dot on the Lounge tab until it was seen
+     · gold "New" chip on the card while unseen and for 3 days after posting
+   Closing the sheet (Got it, ✕ or tapping outside) = seen.
+   An edit keeps the original date → it never pops up again.        */
+const CC_ANN_SEEN    = 'cc_ann_seen';
+const CC_ANN_NEW_MS  = 3 * 24 * 60 * 60 * 1000;   // "New" chip stays 3 days
+let _annCurrent = null;
+function _annKey(a)    { return a && a.created_at ? String(a.created_at) : null; }
+function _annIsUnseen(a) {
+  const k = _annKey(a); if (!k) return false;
+  try { return localStorage.getItem(CC_ANN_SEEN) !== k; } catch (e) { return false; }
+}
+function _annFresh(a) {
+  if (!a) return false;
+  if (_annIsUnseen(a)) return true;
+  return Date.now() - new Date(a.created_at).getTime() < CC_ANN_NEW_MS;
+}
+function _annCheckNew() {
+  const unseen = localStorage.getItem('cc_role') === 'tenant'
+              && !new URLSearchParams(location.search).has('preview')   // landlord preview: never
+              && _annIsUnseen(_annCurrent);
+  document.querySelector('.cc-tab[data-tab="lounge"]')?.classList.toggle('ann-unseen', unseen);
+  if (unseen) _annShowNew(); else _annHideNew();
+}
+function _annModal() {
+  let ov = document.getElementById('ann-new-modal');
+  if (ov) return ov;
+  ov = document.createElement('div');
+  ov.className = 'cc-modal-overlay';
+  ov.id = 'ann-new-modal';
+  ov.innerHTML = `
+    <div class="cc-modal-sheet ann-new-sheet">
+      <div class="cc-modal-hdr">
+        <span class="cc-modal-title"><span class="ann-new-dot" aria-hidden="true"></span>New announcement</span>
+        <button class="cc-modal-close" aria-label="Close" data-ann-seen>✕</button>
+      </div>
+      <div class="cc-modal-body">
+        <p class="ann-new-meta"><span>Casa Castel</span><span id="ann-new-date"></span></p>
+        <p class="ann-title-text ann-new-title" id="ann-new-title"></p>
+        <p class="ann-body-text ann-new-body" id="ann-new-body"></p>
+        <button type="button" class="ann-new-btn" data-ann-seen>Got it</button>
+      </div>
+    </div>`;
+  ov.addEventListener('click', e => {
+    if (e.target === ov || e.target.closest('[data-ann-seen]')) _annMarkSeen();
+  });
+  document.body.appendChild(ov);
+  return ov;
+}
+function _annShowNew() {
+  const a = _annCurrent; if (!a) return;
+  const ov = _annModal();
+  const t = document.getElementById('ann-new-title');
+  t.textContent = a.title || '';
+  t.style.display = a.title ? '' : 'none';
+  document.getElementById('ann-new-body').textContent = a.body || '';
+  document.getElementById('ann-new-date').textContent = fmtTs(new Date(a.created_at).getTime());
+  ov.classList.add('open');
+}
+function _annHideNew() { document.getElementById('ann-new-modal')?.classList.remove('open'); }
+function _annMarkSeen() {
+  const k = _annKey(_annCurrent);
+  if (k) { try { localStorage.setItem(CC_ANN_SEEN, k); } catch (e) {} }
+  _annCheckNew();
 }
 
 /* ── NOTICE ─────────────────────────────────────────────── */
