@@ -143,14 +143,14 @@ function _cxDashCalc(t, note) {
     '<span' + (k < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(k) + '</span><span' + (w < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(w) + '</span></div>';
   return '<div class="cxd-tbl">' +
     '<div class="cxd-tr cxd-th"><span></span><span>KALT</span><span>WARM</span></div>' +
-    st('Miete', n(t.kalt), n(t.warm)) +
-    st('\u2212 Hausgeld, Hauskosten', D, n(t.kosten)) +
+    st('Rent', n(t.kalt), n(t.warm)) +
+    st('\u2212 Hausgeld, house costs', D, n(t.kosten)) +
     st('\u2212 Kreditraten', n(t.rate), n(t.rate)) +
-    res('Bleibt laufend', 'vor Einmalig & Abrechnungen', t.lfKalt, t.lfWarm) +
-    st('\u2212 Einmalig', n(t.einmalig), n(t.einmalig)) +
-    res('Nach Einmalig', '', t.eiKalt, t.eiWarm) +
+    res('Running cashflow', 'before one-offs & Abrechnungen', t.lfKalt, t.lfWarm) +
+    st('\u2212 One-offs', n(t.einmalig), n(t.einmalig)) +
+    res('After one-offs', '', t.eiKalt, t.eiWarm) +
     st('\u00b1 Abrechnungen', D, (t.abr > 0 ? '+ ' : t.abr < 0 ? '\u2212 ' : '') + n(Math.abs(t.abr))) +
-    res('Frei verfügbar', '', t.freiKalt, t.freiWarm, true) +
+    res('Cashflow', 'after everything', t.freiKalt, t.freiWarm, true) +
   '</div>' + (note ? '<div class="cxd-tnote">' + note + '</div>' : '');
 }
 
@@ -162,7 +162,8 @@ window.renderDashboard = function () {
   const y = window._ctrl.year, m = CX.month;
   const months = isYear ? _cxYearMonths(y) : (_cxIsFuture(y, m) ? [] : [m]);
   const future = !months.length;
-  const shortM = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const shortM = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const EN_M = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const props = window._ctrl.properties.filter(p => p.active);
   const per = props.map(p => ({ p, r: _cxDashProp(p, months) }));
   const t = _cxDashSum(per.map(x => x.r));
@@ -180,41 +181,41 @@ window.renderDashboard = function () {
   _cxDash.openInc = openInc; _cxDash.openCasa = openCasa; _cxDash.open = open;
   _cxDash.openMonth = openMonths.size ? Math.max(...openMonths) : 0;
 
-  const periodTitle = isYear ? String(y) : CX_MONTHS[m - 1] + ' ' + y;
-  const periodWord  = isYear ? (months.length && months.length < 12 ? 'Jan – ' + shortM[months.length - 1] + ' ' + y : String(y)) : 'im ' + CX_MONTHS[m - 1];
+  const periodTitle = isYear ? String(y) : EN_M[m - 1] + ' ' + y;
+  const periodWord  = isYear ? (months.length && months.length < 12 ? 'Jan – ' + shortM[months.length - 1] + ' ' + y : String(y)) : EN_M[m - 1];
 
   // ── Top: switch + period
   const top = '<div class="cxd-top">' +
     '<div class="cxd-per">' +
-      '<button class="cx-arw" data-cx="' + (isYear ? 'yprev' : 'prev') + '" aria-label="Zurück"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
+      '<button class="cx-arw" data-cx="' + (isYear ? 'yprev' : 'prev') + '" aria-label="Previous"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
       '<span class="cxd-per__t">' + cxEsc(periodTitle) + '</span>' +
-      '<button class="cx-arw" data-cx="' + (isYear ? 'ynext' : 'next') + '" aria-label="Weiter"><i class="ti ti-chevron-right" aria-hidden="true"></i></button>' +
+      '<button class="cx-arw" data-cx="' + (isYear ? 'ynext' : 'next') + '" aria-label="Next"><i class="ti ti-chevron-right" aria-hidden="true"></i></button>' +
     '</div>' +
-    '<div class="cx-seg cx-seg--view" role="group" aria-label="Zeitraum">' +
-      '<button class="' + (isYear ? '' : 'on') + '" data-cx="view" data-v="m" aria-pressed="' + !isYear + '">Monat</button>' +
-      '<button class="' + (isYear ? 'on' : '') + '" data-cx="view" data-v="y" aria-pressed="' + isYear + '">Jahr</button>' +
+    '<div class="cx-seg cx-seg--view" role="group" aria-label="Period">' +
+      '<button class="' + (isYear ? '' : 'on') + '" data-cx="view" data-v="m" aria-pressed="' + !isYear + '">Month</button>' +
+      '<button class="' + (isYear ? 'on' : '') + '" data-cx="view" data-v="y" aria-pressed="' + isYear + '">Year</button>' +
     '</div></div>';
 
   // ── Big number
-  const tilgKnown = t.tilg > 0 ? '<div class="cxd-hero__t">+ ' + cxW(t.tilg) + ' in Tilgung angespart</div>' : '';
+  const tilgKnown = t.tilg > 0 ? '<div class="cxd-hero__t">+ ' + cxW(t.tilg) + ' saved through Tilgung</div>' : '';
   const hero = '<div class="cxd-hero">' +
-    '<div class="cxd-hero__l">Frei verfügbar ' + cxEsc(periodWord) + (open ? ' · vorläufig' : '') + '</div>' +
-    '<div class="cxd-hero__v' + (!future && t.freiWarm < 0 ? ' neg' : '') + '">' + (future ? D : cxW(t.freiWarm)) + '</div>' +
-    (future ? '<div class="cxd-hero__s">' + (isYear ? 'Jahr' : 'Monat') + ' liegt in der Zukunft</div>'
-            : '<div class="cxd-hero__s">von ' + cxW(t.warm) + ' Miete warm · <b>kalt ' + cxW(t.kalt) + '</b></div>' + tilgKnown) +
-    (open ? '<button class="cxd-open" data-cx="gotoOpen"><i class="ti ti-point-filled" aria-hidden="true"></i> ' + open + (open === 1 ? ' Posten' : ' Posten') + ' noch offen · <u>erfassen</u></button>' : '') +
+    '<div class="cxd-hero__l">Cashflow · ' + cxEsc(periodWord) + (open ? ' · preliminary' : '') + '</div>' +
+    '<div class="cxd-hero__v' + (!future && t.freiWarm < 0 ? ' neg' : '') + '">' + (future ? D : cxWS(t.freiWarm)) + '</div>' +
+    (future ? '<div class="cxd-hero__s">This ' + (isYear ? 'year' : 'month') + ' is still ahead</div>'
+            : '<div class="cxd-hero__s">of ' + cxW(t.warm) + ' Warmmiete · <b>Kaltmiete ' + cxW(t.kalt) + '</b></div>' + tilgKnown) +
+    (open ? '<button class="cxd-open" data-cx="gotoOpen"><i class="ti ti-point-filled" aria-hidden="true"></i> ' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button>' : '') +
   '</div>';
 
   // ── One bar: where the (warm) rent goes
   let barCard = '';
   if (!future) {
     const segs = [
-      ['Hausgeld, Hauskosten', t.kosten, '#B8A58C'],
+      ['Hausgeld, house costs', t.kosten, '#B8A58C'],
       ['Zinsen', t.zins, '#C0785A'],
       ['Tilgung', t.tilg, '#7A6A58'],
       ['Kreditrate', t.unknown, '#A89C8E'],
-      ['Einmalig', t.einmalig, '#D4A87A'],
-      ['Frei', Math.max(0, t.freiWarm), '#6E9A5A'],
+      ['One-offs', t.einmalig, '#D4A87A'],
+      ['Cashflow', Math.max(0, t.freiWarm), '#6E9A5A'],
     ].filter(s => s[1] > 0);
     const base = Math.max(t.warm, segs.reduce((a, s) => a + s[1], 0), 1);
     const bar = '<div class="cxd-bar">' + segs.map(s => '<span style="flex:' + Math.round(s[1]) + ';background:' + s[2] + '">' +
@@ -222,36 +223,37 @@ window.renderDashboard = function () {
     const kp = t.kalt > 0 ? Math.min(100, t.kalt / base * 100) : 0;
     const kaltLine = kp ? '<div class="cxd-kalt"><i style="right:0;width:' + kp.toFixed(1) + '%"></i><span>◂ Kaltmiete ' + cxW(t.kalt) + '</span></div>' : '';
     const legend = '<div class="cxd-leg">' + segs.map(s => '<span><i style="background:' + s[2] + '"></i>' +
-      (s[0] === 'Kreditrate' ? 'Kreditrate · ohne Aufteilung' : s[0] === 'Frei' ? 'Frei' + (t.abr ? ' · inkl. Abr. ' + cxWS(t.abr) : '') : s[0]) + '</span>').join('') +
-      (t.freiWarm < 0 ? '<span style="color:var(--cx-neg)">Minus ' + cxW(-t.freiWarm) + '</span>' : '') + '</div>';
-    const hint = t.noSplit ? '<button class="cxd-hint" data-cx="toProps">' + t.noSplit + (t.noSplit === 1 ? ' Darlehen' : ' Darlehen') +
-      ' ohne Zinsen/Tilgung · in Properties ergänzen ›</button>' : '';
+      (s[0] === 'Kreditrate' ? 'Kreditrate · no split' : s[0] === 'Cashflow' ? 'Cashflow · yours' + (t.abr ? ' (incl. Abrechnungen ' + cxWS(t.abr) + ')' : '') : s[0]) + '</span>').join('') +
+      (t.freiWarm < 0 ? '<span style="color:var(--cx-neg)">Cashflow negative ' + cxW(-t.freiWarm) + '</span>' : '') + '</div>';
+    const hint = t.noSplit ? '<button class="cxd-hint" data-cx="toProps">' + t.noSplit + (t.noSplit === 1 ? ' loan' : ' loans') +
+      ' without Zinsen/Tilgung · add in Properties ›</button>' : '';
     const calcOpen = !!CX.open['dash:calc'];
     barCard = '<div class="cx-card" style="padding:12px 14px 10px">' +
-      '<div class="cx-lbl">Wohin die Miete geht</div>' + bar + kaltLine + legend + hint +
-      '<button class="cxd-calcbtn" data-cx="fold" data-k="dash:calc" aria-expanded="' + calcOpen + '"><span>Rechnung anzeigen' +
-        '<small>kalt & warm · vor/nach Einmalig & Abrechnungen</small></span><i class="ti ti-chevron-' + (calcOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>' +
-      (calcOpen ? _cxDashCalc(t, 'Kalt = Kaltmiete ohne Nebenkosten-Geld und Hauskosten · Warm = was wirklich aufs Konto kam und ging. Kreditraten aus Properties.') : '') +
+      '<div class="cx-lbl">Where the rent goes</div>' + bar + kaltLine + legend + hint +
+      '<button class="cxd-calcbtn" data-cx="fold" data-k="dash:calc" aria-expanded="' + calcOpen + '"><span>Show calculation' +
+        '<small>kalt & warm · before/after one-offs & Abrechnungen</small></span><i class="ti ti-chevron-' + (calcOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>' +
+      (calcOpen ? _cxDashCalc(t, 'Kalt = Kaltmiete without Nebenkosten money and house costs · Warm = what actually came in and went out. Kreditraten from Properties.') : '') +
     '</div>';
   }
 
   // ── Per property: one bar each, tap → its calculation
   let propCard = '';
   if (!future) {
+    // One plain row per property: name · what came in · what went out → cashflow (no bars)
     const order = per.slice().sort((a, b) => b.r.freiWarm - a.r.freiWarm);
-    const mx = Math.max(1, ...order.map(x => Math.abs(x.r.freiWarm)));
     const rows = order.map(({ p, r }) => {
       const k = 'dash:p:' + p.id, isOpen = !!CX.open[k], neg = r.freiWarm < 0;
-      const w = Math.max(2, Math.abs(r.freiWarm) / mx * 100);
-      return '<button class="cxd-pr" data-cx="fold" data-k="' + k + '" aria-expanded="' + isOpen + '">' +
-          '<span class="cxd-pr__n">' + cxEsc(p.name) + '</span>' +
-          '<span class="cxd-track"><i class="' + (neg ? 'neg' : '') + '" style="width:' + w.toFixed(1) + '%"></i></span>' +
-          '<span class="cxd-pr__v' + (neg ? ' neg' : '') + '">' + (neg ? '\u2212\u202f' : '') + Math.abs(Math.round(r.freiWarm)).toLocaleString('de-DE') + '</span></button>' +
-        (isOpen ? '<div class="cxd-pdet">' + _cxDashCalc(r, r.loan && !r.split ? 'Darlehen ohne Zinsen/Tilgung in Properties.' : '') + '</div>' : '');
+      const out = cxR(r.warm - r.freiWarm);                     // everything that went out (net)
+      return '<button class="cxd-prow" data-cx="fold" data-k="' + k + '" aria-expanded="' + isOpen + '">' +
+          '<span class="cxd-prow__l"><span class="cxd-prow__n">' + cxEsc(p.name) + '</span>' +
+            '<span class="cxd-prow__s">in ' + cxW(r.warm) + ' · out ' + cxW(out) + '</span></span>' +
+          '<span class="cxd-prow__v' + (neg ? ' neg' : ' pos') + '">' + cxWS(r.freiWarm) + '</span>' +
+          '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cxd-prow__c" aria-hidden="true"></i></button>' +
+        (isOpen ? '<div class="cxd-pdet">' + _cxDashCalc(r, r.loan && !r.split ? 'Loan without Zinsen/Tilgung in Properties.' : '') + '</div>' : '');
     }).join('');
-    propCard = '<div class="cx-card" style="padding:12px 14px">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Frei je Immobilie</span><span class="cx-lbl">warm · €</span></div>' +
-      '<div style="margin-top:4px">' + rows + '</div></div>';
+    propCard = '<div class="cx-card" style="padding:12px 14px 4px">' +
+      '<div class="cx-row-sb"><span class="cx-lbl">Cashflow per property</span><span class="cx-lbl">' + cxEsc(isYear ? String(y) : EN_M[m - 1]) + '</span></div>' +
+      '<div style="margin-top:2px">' + rows + '</div></div>';
   }
 
   host.innerHTML = '<div class="cx-page">' + top + hero + barCard + propCard + '</div>';
