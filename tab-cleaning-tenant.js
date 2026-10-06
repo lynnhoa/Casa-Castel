@@ -547,6 +547,7 @@ async function loadHouseCleaning(room) {
 
   /* ── Rotation timeline ── */
   _renderHcRotation(curIdx, hcDoneMap, absRows, room);
+  requestAnimationFrame(_hcFitScreen);   // hold the page still when everything fits
 
   /* ── Start realtime if not already running ── */
   _hcTenSubscribe(room);
@@ -682,4 +683,28 @@ function _renderHcRotation(curIdx, hcDoneMap, absRows, myRoom) {
     loadHouseCleaning._roomsWired = true;
     onRoomsChange(() => loadHouseCleaning(myRoom));
   }
+}
+
+/* ── NO EMPTY SCROLL (phone) ───────────────────────────────
+   When everything on the House Cleaning tab fits on the screen, the page
+   is held still (no scrolling into empty space). As soon as it does not fit
+   (small iPhone, extra notes, more rooms) normal scrolling is back, so
+   nothing is ever cut off. Re-checked after every redraw and on rotate /
+   resize; leaving the tab resets it (switchTab in layout.js). */
+function _hcFitScreen() {
+  const tab = document.getElementById('tab-cleaning');
+  if (!tab || tab.style.display === 'none') return;
+  const de = document.documentElement, b = document.body;
+  if (!(typeof kIsMobile === 'function' ? kIsMobile() : window.innerWidth <= 700)) {
+    de.style.overflow = ''; b.style.overflow = ''; return;
+  }
+  const bottom = tab.getBoundingClientRect().bottom + window.scrollY;   // where the content really ends
+  const fits = bottom <= window.innerHeight + 1;
+  de.style.overflow = fits ? 'hidden' : '';
+  b.style.overflow  = fits ? 'hidden' : '';
+  if (fits && window.scrollY) window.scrollTo(0, 0);
+}
+if (!window._hcFitWired) {
+  window._hcFitWired = true;
+  window.addEventListener('resize', () => setTimeout(_hcFitScreen, 150));
 }
