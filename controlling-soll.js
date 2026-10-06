@@ -305,8 +305,8 @@ function _cxUnitSollV1(u, pid, y, m) {
   let out;
   if (!link) {
     const k = _cxN0(u.def_kaltmiete), nk = _cxN0(u.def_nebenkosten);
-    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, days: 0, N: 0, parts: [], src: 'Planwert',
-            check: !(k + nk) ? 'Nicht verknüpft und kein Planwert – in Setup verknüpfen' : null };
+    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, days: 0, N: 0, parts: [], src: 'plan value',
+            check: !(k + nk) ? 'Not linked and no plan value – link it in Setup' : null };
   } else {
     const tens = _cxTenantsForV1(link), staffel = _cxHist(link, 'staffel'), nkH = _cxHist(link, 'nk');
     const N = new Date(y, m, 0).getDate();
@@ -351,10 +351,10 @@ function _cxUnitSollV1(u, pid, y, m) {
       if (inM(mb)) {
         const earlier = tens.some(x => x !== t && _cxD(x.mietbeginn) < mb);
         const days = N - Number(mb.slice(8, 10)) + 1;
-        notes.push((earlier ? 'Mieterwechsel' : 'Neu vermietet') + ' · ab ' + _cxFmtD(t.mietbeginn) + (mb !== first ? ' · ' + days + ' von ' + N + ' Tagen' : ''));
+        notes.push((earlier ? 'Tenant change' : 'Newly let') + ' · from ' + _cxFmtD(t.mietbeginn) + (mb !== first ? ' · ' + days + ' of ' + N + ' days' : ''));
         if (!earlier) badge = 'neu';
       }
-      if (inM(me) && me !== last) notes.push('Auszug ' + _cxFmtD(t.mietende) + ' · ' + Number(me.slice(8, 10)) + ' von ' + N + ' Tagen');
+      if (inM(me) && me !== last) notes.push('Move-out ' + _cxFmtD(t.mietende) + ' · ' + Number(me.slice(8, 10)) + ' of ' + N + ' days');
     }
     const prevVal = (hist, d, kind) => {
       let b = null;
@@ -369,35 +369,35 @@ function _cxUnitSollV1(u, pid, y, m) {
     };
     for (const h of staffel) if (inM(_cxD(h.effective_date))) {
       const pv = prevVal(staffel, _cxD(h.effective_date), 'k');
-      notes.push('Staffel · ' + (pv !== null && pv !== _cxNum(h.amount) ? _cxEurS(pv) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(h.effective_date));
+      notes.push('Staffel · ' + (pv !== null && pv !== _cxNum(h.amount) ? _cxEurS(pv) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(h.effective_date));
     }
     for (const h of nkH) if (inM(_cxD(h.effective_date))) {
       const pv = prevVal(nkH, _cxD(h.effective_date), 'nk');
-      notes.push('NK angepasst · ' + (pv !== null && pv !== _cxNum(h.amount) ? _cxEurS(pv) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(h.effective_date));
+      notes.push('NK changed · ' + (pv !== null && pv !== _cxNum(h.amount) ? _cxEurS(pv) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(h.effective_date));
     }
-    for (const b of bases.values()) if (b.src === 'learned') { notes.push('Miete aus Ihren früheren Einträgen (beim Mieter nicht gespeichert)'); break; }
+    for (const b of bases.values()) if (b.src === 'learned') { notes.push('Rent from your earlier entries (not saved with the tenant)'); break; }
 
     // Data check: what doesn't add up is shown, never silently turned into a number or "leer"
     const checks = [];
-    if (noPrice) checks.push('Belegt, aber kein Mietpreis hinterlegt – bitte im ' + (link.type === 'casa_room' ? 'Casa Castel Zimmer' : 'Mieter') + ' eintragen');
-    if (roomOnly && !noPrice) checks.push('Belegt laut Casa Castel, aber kein Mieter eingetragen – Soll aus dem Zimmerpreis');
+    if (noPrice) checks.push('Occupied, but no rent price saved – please add it ' + (link.type === 'casa_room' ? 'to the Casa Castel room' : 'to the tenant'));
+    if (roomOnly && !noPrice) checks.push('Occupied per Casa Castel, but no tenant entered – Soll from the room price');
     for (const [tid, b] of bases) {
       const t = tens.find(x => x.id === tid);
       const gone = t && (t.status !== 'active' || (t.mietende && _cxD(t.mietende) < today));
-      if (b.src === 'price' && gone) checks.push('Miete des früheren Mieters unbekannt – aktueller Preis verwendet, bitte beim Mieter hinterlegen');
+      if (b.src === 'price' && gone) checks.push('Rent of the former tenant unknown – current price used, please add it to the tenant');
     }
     for (const t of tens) {
       const me = _cxD(t.mietende);
       if (t.status === 'active' && me && me < today && me < last && !tens.some(x => _cxD(x.mietbeginn) > me))
-        checks.push('Auszug ' + _cxFmtD(t.mietende) + ' eingetragen, Status noch aktiv – bitte auf ehemalig setzen oder Auszug verlängern');
+        checks.push('Move-out ' + _cxFmtD(t.mietende) + ' entered, status still active – please set to former or extend the move-out');
     }
-    if (roomGap && !checks.some(c => /Auszug/.test(c))) checks.push('Zimmer als belegt markiert, aber für diese Tage kein Mieter eingetragen – bitte Mieter oder Zimmerstatus prüfen');
+    if (roomGap && !checks.some(c => /Move-out/.test(c))) checks.push('Room marked as occupied, but no tenant entered for these days – please check the tenant or the room status');
     if (occ === 0 && tens.length) {
       const next = tens.filter(t => _cxD(t.mietbeginn) > last).sort((a, b) => _cxD(a.mietbeginn).localeCompare(_cxD(b.mietbeginn)))[0];
       const prev = tens.filter(t => t.mietende && _cxD(t.mietende) < first).sort((a, b) => _cxD(b.mietende).localeCompare(_cxD(a.mietende)))[0];
-      if (next) notes.push('Mieter ab ' + _cxFmtD(next.mietbeginn) + ' (noch nicht eingezogen)');
-      else if (prev) notes.push('Letzter Mieter bis ' + _cxFmtD(prev.mietende));
-      else if (!checks.length) checks.push('Mieter eingetragen, aber ohne gültiges Einzugsdatum – bitte im Mieter-Tab prüfen');
+      if (next) notes.push('Tenant from ' + _cxFmtD(next.mietbeginn) + ' (not moved in yet)');
+      else if (prev) notes.push('Last tenant until ' + _cxFmtD(prev.mietende));
+      else if (!checks.length) checks.push('Tenant entered, but without a valid move-in date – please check the tenant tab');
     }
     const partList = [...parts.values()].sort((a, b) => a.from - b.from)
       .map(pt => ({ from: pt.from, to: pt.to, amount: _cxR(pt.sum / N) }));
@@ -414,7 +414,7 @@ function _cxUnitSollV1(u, pid, y, m) {
 const _cxToday = () => (typeof cxToday === 'function' ? cxToday() : new Date().toISOString().slice(0, 10));
 const _cxAddDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return _cxIso(d.getFullYear(), d.getMonth() + 1, d.getDate()); };
 const _cxApp = link => (link.type === 'casa_room' ? 'casa' : 'rentals');
-const _cxTName = t => [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Mieter';
+const _cxTName = t => [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Tenant';
 
 /* Tenancies of a unit → [{ t, id, name, from, to, noStart, noEnd, created }], newest Einzug first.
    Einzug missing → no window (B8). Former tenant without Auszug → ends the day
@@ -522,9 +522,9 @@ function _cxUnitSollV2(u, pid, y, m) {
   if (!link) {
     // parking: no Planwert any more — the rent comes from Rentals › Parking once linked (Setup review)
     const pk = _cxIsParking(u), k = pk ? 0 : _cxN0(u.def_kaltmiete), nk = pk ? 0 : _cxN0(u.def_nebenkosten);
-    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, days: 0, N: 0, parts: [], src: 'Planwert',
-            check: !(k + nk) ? (_cxIsParking(u) ? 'Stellplatz nicht verknüpft – in Setup › Stellplätze mit Rentals verknüpfen'
-                                                : 'Nicht verknüpft – in Setup › Objekte mit ' + (pid === CASA_PROP_ID ? 'dem Casa Castel Zimmer' : 'der Rentals-Wohnung') + ' verknüpfen') : null };
+    out = { k, nk, soll: _cxR(k + nk), empty: !(k + nk), link: null, notes: [], badge: null, partial: false, days: 0, N: 0, parts: [], src: 'plan value',
+            check: !(k + nk) ? (_cxIsParking(u) ? 'Parking space not linked – link it with Rentals in Setup › Parking'
+                                                : 'Not linked – in Setup › Properties link it with ' + (pid === CASA_PROP_ID ? 'the Casa Castel room' : 'the Rentals apartment') + '') : null };
     _cxUnitCache.set(key, out);
     return out;
   }
@@ -573,7 +573,7 @@ function _cxUnitSollV2(u, pid, y, m) {
     if (fullIn || fullOut) {
       const r = _cxRentDay(link, w, u, y, m, fullIn ? w.from : w.to, all, memo);
       pt.sk = r.k * N; pt.snk = r.nk * N;
-      notes.push((fullIn ? 'Erster' : 'Letzter') + ' Monat laut Vertrag voll · ' + w.name);
+      notes.push((fullIn ? 'First' : 'Last') + ' month in full per contract · ' + w.name);
       fullNote = true;
     }
   }
@@ -587,65 +587,65 @@ function _cxUnitSollV2(u, pid, y, m) {
     if (inM(w.from)) {
       const dayBefore = _cxAddDays(w.from, -1);
       const earlier = dated.some(x => x !== w && x.from < w.from && x.to >= dayBefore);   // #12: seamless change only
-      notes.push((earlier ? 'Mieterwechsel' : 'Neu vermietet') + ' · ab ' + _cxFmtD(w.from));
+      notes.push((earlier ? 'Tenant change' : 'Newly let') + ' · from ' + _cxFmtD(w.from));
       changed = true;
       if (!earlier) badge = 'neu';
     }
-    if (inM(w.to) && w.to !== last && !w.noEnd) { notes.push('Auszug ' + _cxFmtD(w.to)); changed = true; }
+    if (inM(w.to) && w.to !== last && !w.noEnd) { notes.push('Move-out ' + _cxFmtD(w.to)); changed = true; }
     const c = _cxTenancyData(link, w, all, memo);
     const before = iso => { const dd = _cxAddDays(iso, -1); return dd >= w.from ? _cxRentDay(link, w, u, y, m, dd, all, memo) : null; };
     for (const pr of c.per) {
       const d = _cxD(pr.valid_from);
       if (!inM(d) || d === w.from) continue;
       const a = _cxAmount(pr), b = before(d);
-      notes.push((pr.kind === 'renewal' ? 'Verlängerung' : 'Neue Miete') + ' · ' + (b && _cxR(b.k + b.nk) !== _cxR(a.total) ? _cxEurS(b.k + b.nk) + ' → ' : '') + _cxEurS(a.total) + (a.mode === 'pauschal' ? ' pauschal' : '') + ' ab ' + _cxFmtD(d));
+      notes.push((pr.kind === 'renewal' ? 'Renewal' : 'New rent') + ' · ' + (b && _cxR(b.k + b.nk) !== _cxR(a.total) ? _cxEurS(b.k + b.nk) + ' → ' : '') + _cxEurS(a.total) + (a.mode === 'pauschal' ? ' Pauschal' : '') + ' from ' + _cxFmtD(d));
       changed = true;
     }
     for (const h of c.st) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
-      notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(d)); changed = true; }
+      notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
     for (const h of c.nk) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
-      notes.push('NK angepasst · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' ab ' + _cxFmtD(d)); changed = true; }
+      notes.push('NK changed · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
   }
-  for (const pt of parts.values()) if (pt.src === 'learned') { notes.push('Miete aus Ihren früheren Einträgen (beim Mieter nicht gespeichert)'); break; }
+  for (const pt of parts.values()) if (pt.src === 'learned') { notes.push('Rent from your earlier entries (not saved with the tenant)'); break; }
 
   // Data check: what doesn't add up is shown, never silently turned into a number or "leer"
   const checks = [];
-  if (noPrice) checks.push('Belegt, aber keine Miete hinterlegt – bitte beim ' + (link.type === 'casa_room' ? 'Mieter (Casa Castel)' : 'Mieter') + ' eintragen');
-  if (roomOnly && !noPrice) checks.push('Belegt laut Casa Castel, aber kein Mieter eingetragen – Soll aus dem Zimmerpreis');
+  if (noPrice) checks.push('Occupied, but no rent saved – please add it to the ' + (link.type === 'casa_room' ? 'tenant (Casa Castel)' : 'tenant'));
+  if (roomOnly && !noPrice) checks.push('Occupied per Casa Castel, but no tenant entered – Soll from the room price');
   for (const pt of parts.values()) {
     if (!pt.w || pt.src !== 'price') continue;
     const gone = pt.w.t.status !== 'active' || (pt.w.t.mietende && _cxD(pt.w.t.mietende) < today);
-    if (gone) checks.push('Miete von ' + pt.w.name + ' unbekannt – aktueller Preis verwendet, bitte beim Mieter hinterlegen');
+    if (gone) checks.push('Rent of ' + pt.w.name + ' unknown – current price used, please add it to the tenant');
   }
   const tenantDays = occ - roomOnly;
   for (const w of all) {
     if (w.noStart) checks.push(w.t.status !== 'active'
-      ? 'Früherer Mieter „' + w.name + '“ ohne Einzug – im Mieter-Tab Einzug und Auszug eintragen (für die Abrechnungen)'
+      ? 'Former tenant "' + w.name + '" without move-in – add move-in and move-out in the tenant tab (for the Abrechnungen)'
       : tenantDays > 0
-        ? 'Zusätzlicher Eintrag „' + w.name + '“ ohne Einzug – zählt nicht; im Mieter-Tab Einzug eintragen oder Eintrag löschen'
-        : w.name + ' ohne Einzugsdatum – kein Soll, bitte Einzug eintragen');
-    if (w.noEnd && w.from <= last && w.to >= first) checks.push(w.name + ': Auszug fehlt – Ende vorläufig ' + _cxFmtD(w.to) + ', bitte Auszug eintragen');
+        ? 'Extra entry "' + w.name + '" without move-in – not counted; add the move-in in the tenant tab or delete the entry'
+        : w.name + ' without move-in date – no Soll, please add the move-in');
+    if (w.noEnd && w.from <= last && w.to >= first) checks.push(w.name + ': move-out missing – end for now ' + _cxFmtD(w.to) + ', please add the move-out');
     const me = _cxD(w.t.mietende);
     if (w.t.status === 'active' && me && me < today && me < last && !dated.some(x => x.from > me))
-      checks.push('Auszug ' + _cxFmtD(me) + ' eingetragen, Status noch aktiv – bitte auf ehemalig setzen oder Auszug verlängern');
+      checks.push('Move-out ' + _cxFmtD(me) + ' entered, status still active – please set to former or extend the move-out');
   }
   for (const w of dated) {                                  // Fix 4
     if (w.to !== '9999-12-31') continue;
     const per = _cxPerAt(_cxTenancyData(link, w, all, memo).per, today);
     const ce = per && _cxD(per.contract_end);
-    if (ce && ce < today && ce <= last) checks.push(w.name + ': Vertrag endete am ' + _cxFmtD(ce) + ' – kein Auszug und keine Verlängerung eingetragen');
+    if (ce && ce < today && ce <= last) checks.push(w.name + ': contract ended on ' + _cxFmtD(ce) + ' – no move-out and no renewal entered');
   }
-  if (overlap) checks.push('Zwei Mieter gleichzeitig an ' + overlap + (overlap === 1 ? ' Tag' : ' Tagen') + ' – bitte Ein- und Auszug prüfen (gezählt: der neuere)');
-  if (roomGap && !checks.some(c => /Auszug/.test(c))) checks.push('Zimmer als belegt markiert, aber für diese Tage kein Mieter eingetragen – bitte Mieter oder Zimmerstatus prüfen');
+  if (overlap) checks.push('Two tenants at the same time on ' + overlap + (overlap === 1 ? ' day' : ' days') + ' – please check move-in and move-out (counted: the newer one)');
+  if (roomGap && !checks.some(c => /Move-out/.test(c))) checks.push('Room marked as occupied, but no tenant entered for these days – please check the tenant or the room status');
   if (occ === 0 && all.length) {
     const next = dated.filter(w => w.from > last).sort((a, b) => a.from.localeCompare(b.from))[0];
     const prev = dated.filter(w => w.to < first).sort((a, b) => b.to.localeCompare(a.to))[0];
-    if (next) notes.push('Mieter ab ' + _cxFmtD(next.from) + ' (noch nicht eingezogen)');
-    else if (prev) notes.push('Letzter Mieter bis ' + _cxFmtD(prev.to));
+    if (next) notes.push('Tenant from ' + _cxFmtD(next.from) + ' (not moved in yet)');
+    else if (prev) notes.push('Last tenant until ' + _cxFmtD(prev.to));
   }
   const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)
     .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR((pt.sk + pt.snk) / N), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
-                           tid: pk, name: pt.w ? pt.w.name : 'Zimmer', mode: pt.r0 ? pt.r0.mode : 'kalt_nk' }));
+                           tid: pk, name: pt.w ? pt.w.name : 'Room', mode: pt.r0 ? pt.r0.mode : 'kalt_nk' }));
   out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge, changed: changed || fullNote,
           partial: occ > 0 && (occ < N || partList.length > 1), days: occ, N, parts: partList,
           check: checks.length ? [...new Set(checks)].join(' · ') : null,
@@ -748,7 +748,8 @@ function ctlDataChecks(y, m) {
 
 /* ── Cost Soll per property and month ─────────────────────── */
 const _CX_Q = [2, 5, 8, 11];
-const _cxMonthShort = m => ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][m - 1];
+const _cxFreqLbl = f => ({ monatlich: 'monthly', 'vierteljährlich': 'quarterly', 'jährlich': 'yearly', sporadisch: 'as needed' })[f] || f;   // stored values stay German
+const _cxMonthShort = m => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
 function _cxNextDue(months, m) {
   const s = months.map(Number).filter(x => x >= 1 && x <= 12).sort((a, b) => a - b);
   if (!s.length) return null;
@@ -770,9 +771,9 @@ function ctlCostRows(p, y, m) {
   const splitKnown = !!L || !!(z || t);                     // #7: no loan link and no split → don't invent Zins 0
   if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate),
     // Soll = the rate, the same every month (like copying last month). Zins / Tilgung = information only (~, as in Properties)
-    sub: splitKnown ? 'Zins ~' + _cxEurS(z) + ' · Tilgung ~' + _cxEurS(t) : 'Zins / Tilgung unbekannt', src: L ? 'Properties' : 'Planwert',
+    sub: splitKnown ? 'Zinsen ~' + _cxEurS(z) + ' · Tilgung ~' + _cxEurS(t) : 'Zinsen / Tilgung unknown', src: L ? 'Properties' : 'plan value',
     split: splitKnown ? { zinsen: z, tilgung: t } : null,
-    info: L ? null : 'Kredit nicht mit Properties verknüpft – Planwert aus Setup › Objekte › Darlehen' });
+    info: L ? null : 'Loan not linked with Properties – plan value from Setup › Properties › Loan' });
 
   let hg = null, hgNote = null;
   if (pl.apt) {
@@ -785,19 +786,19 @@ function ctlCostRows(p, y, m) {
     if (ch) {
       let pv = null;
       for (const h of hist) { const d = _cxD(h.effective_date); if (d < _cxD(ch.effective_date) && (!pv || d > _cxD(pv.effective_date))) pv = h; }
-      hgNote = 'Hausgeld neu · ' + (pv ? _cxEurS(pv.amount) + ' → ' : '') + _cxEurS(ch.amount) + ' ab ' + _cxFmtD(ch.effective_date) +
-               (_cxD(ch.effective_date) > first ? ' (gilt ab nächstem Monat)' : '');
+      hgNote = 'New Hausgeld · ' + (pv ? _cxEurS(pv.amount) + ' → ' : '') + _cxEurS(ch.amount) + ' from ' + _cxFmtD(ch.effective_date) +
+               (_cxD(ch.effective_date) > first ? ' (applies from next month)' : '');
     }
   }
   if (hg === null) hg = _cxNum(p.def_hausgeld);
-  if (hg) rows.push({ key: 'hausgeld', label: 'Hausgeld', soll: _cxR(hg), sub: 'an Hausverwaltung', src: pl.apt ? 'Rentals' : 'Planwert', note: hgNote });
+  if (hg) rows.push({ key: 'hausgeld', label: 'Hausgeld', soll: _cxR(hg), sub: 'to the Hausverwaltung', src: pl.apt ? 'Rentals' : 'plan value', note: hgNote });
 
   const months = Array.isArray(p.grundsteuer_months) && p.grundsteuer_months.length ? p.grundsteuer_months.map(Number) : _CX_Q;
   let gs = null;
   if (pl.apt) { const v = S.verw.find(x => String(x.apartment_id) === String(pl.apt.id)); gs = v ? _cxNum(v.grundsteuer_mtl) : null; }
   if (gs === null) gs = _cxNum(p.def_grundsteuer);
   if (gs) {
-    if (months.includes(m)) rows.push({ key: 'grundsteuer', label: 'Grundsteuer', soll: _cxR(gs), sub: 'fällig 15.' + String(m).padStart(2, '0') + '.', src: pl.apt ? 'Rentals' : 'Planwert' });
+    if (months.includes(m)) rows.push({ key: 'grundsteuer', label: 'Grundsteuer', soll: _cxR(gs), sub: 'due 15.' + String(m).padStart(2, '0') + '.', src: pl.apt ? 'Rentals' : 'plan value' });
     else { const nx = _cxNextDue(months, m); notDue.push({ label: 'Grundsteuer', next: nx ? _cxMonthShort(nx) : '' }); }
   }
 
@@ -815,12 +816,12 @@ function ctlCasaCostRows(p, y, m) {
   for (const c of (window._ctrl.categories || [])) {
     if (c.active === false) continue;
     const isRate = c.code === 'RATE';
-    const label = c.name || (isRate ? 'Kreditrate' : 'Kosten');
+    const label = c.name || (isRate ? 'Kreditrate' : 'Cost');
     const freq = c.frequency || 'monatlich';
     const dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
     const amount = isRate && pl.loan ? _cxN0(pl.loan.rate) : _cxN0(c.default_amount);
     if (_cxBedarf(freq)) {
-      if (dm.includes(m)) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'sporadisch · geplant', src: 'Setup', split: null });
+      if (dm.includes(m)) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'as needed · planned', src: 'Setup', split: null });
       else bedarf.push({ catId: c.id, label });
       continue;
     }
@@ -830,7 +831,7 @@ function ctlCasaCostRows(p, y, m) {
     }
     const due = freq === 'monatlich' ? (!dm.length || dm.includes(m)) : dm.includes(m);
     if (due) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount),
-      sub: isRate && pl.loan ? 'Zins ~' + _cxEurS(_cxN0(pl.loan.zinsen)) + ' · Tilgung ~' + _cxEurS(_cxN0(pl.loan.tilgung)) : freq,
+      sub: isRate && pl.loan ? 'Zinsen ~' + _cxEurS(_cxN0(pl.loan.zinsen)) + ' · Tilgung ~' + _cxEurS(_cxN0(pl.loan.tilgung)) : _cxFreqLbl(freq),
       src: isRate && pl.loan ? 'Properties' : 'Setup',
       split: isRate && pl.loan ? { zinsen: _cxN0(pl.loan.zinsen), tilgung: _cxN0(pl.loan.tilgung) } : null });
     else if (dm.length) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }
@@ -854,14 +855,14 @@ function ctlOtSuggestions() {
     const t = S.rntTen.find(x => x.id === e.tenant_id);
     const p = t && t.apartment_id ? aptProp(t.apartment_id) : null;
     if (!p) continue;
-    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'rnt_nk:' + e.id, pid: p.id, prop: p.name, text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung Mieter' : ' · Guthaben Mieter'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
+    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'rnt_nk:' + e.id, pid: p.id, prop: p.name, text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung from tenant' : ' · Guthaben to tenant'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
   }
   const casa = props.find(p => p.id === CASA_PROP_ID);
   if (casa) for (const e of S.casaNk) {
     const amt = _cxNum(e.amount);
     if (!e.paid || !amt || taken.has('nk:' + e.id) || isDone(e.tenant_id, e)) continue;
     const t = S.casaTen.find(x => x.id === e.tenant_id);
-    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'nk:' + e.id, pid: casa.id, prop: casa.name + (t && t.room ? ' · ' + t.room : ''), text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung Mieter' : ' · Guthaben Mieter'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
+    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'nk:' + e.id, pid: casa.id, prop: casa.name + (t && t.room ? ' · ' + t.room : ''), text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung from tenant' : ' · Guthaben to tenant'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
   }
   return out;
 }
@@ -881,7 +882,7 @@ function ctlActualMonth(pid, m) {
   const x = ctlPropertyMonth(pid, m);
   const lines = [];                                       // [label, signed amount, kontoOnly]
   const warm = _cxR(x.kalt + x.neben);
-  if (warm) lines.push(['Miete + NK', warm, false]);
+  if (warm) lines.push(['Rent + NK', warm, false]);
   let rate = 0, costs = 0;
   if (casa) {
     const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
@@ -1218,24 +1219,24 @@ function ctlSetupLinkState() {
   }
   const issues = [];
   for (const [k, list] of used) if (list.length > 1)
-    issues.push({ kind: 'double', pid: list[0].p.id, text: list.map(x => x.p.name + ' · ' + x.u.name).join(' und ') + ' sind mit derselben Quelle verknüpft – das Soll zählt doppelt' });
+    issues.push({ kind: 'double', pid: list[0].p.id, text: list.map(x => x.p.name + ' · ' + x.u.name).join(' and ') + ' are linked to the same source – the Soll counts twice' });
   for (const x of units) {
-    if (!x.l) issues.push({ kind: x.parking ? 'parking' : 'unit', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ' ist nicht verknüpft' });
+    if (!x.l) issues.push({ kind: x.parking ? 'parking' : 'unit', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ' is not linked' });
     else if (x.l.type === 'rentals_apartment') {
       const pl = ctlPropLinks(x.p);
-      if (pl.apt && String(pl.apt.id) !== String(x.l.ref)) issues.push({ kind: 'mismatch', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ': Miete aus „' + (x.l.obj.name || '') + '“, Hausgeld aus „' + (pl.apt.name || '') + '“ – bitte gleiche Wohnung wählen' });
-    } else if (x.l.type === 'casa_room' && x.p.id !== CASA_PROP_ID) issues.push({ kind: 'mismatch', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ' ist mit einem Casa Castel Zimmer verknüpft' });
+      if (pl.apt && String(pl.apt.id) !== String(x.l.ref)) issues.push({ kind: 'mismatch', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ': rent from "' + (x.l.obj.name || '') + '", Hausgeld from "' + (pl.apt.name || '') + '" – please choose the same apartment' });
+    } else if (x.l.type === 'casa_room' && x.p.id !== CASA_PROP_ID) issues.push({ kind: 'mismatch', pid: x.p.id, text: x.p.name + ' · ' + x.u.name + ' is linked to a Casa Castel room' });
   }
   for (const p of props) {
     const pl = ctlPropLinks(p);
-    if (p.id !== CASA_PROP_ID && !pl.apt) issues.push({ kind: 'prop', pid: p.id, text: p.name + ': keine Rentals-Wohnung – Hausgeld und Grundsteuer fehlen im Soll' });
-    if (!pl.loan) issues.push({ kind: 'loan', pid: p.id, text: p.name + ': kein Darlehen verknüpft' + (p.id === CASA_PROP_ID ? ' – Kreditrate aus der Kostenart' : (_cxN0(p.def_rate) ? ' – Kreditrate aus Planwert' : ' – keine Kreditrate im Soll')) });
+    if (p.id !== CASA_PROP_ID && !pl.apt) issues.push({ kind: 'prop', pid: p.id, text: p.name + ': no Rentals apartment – Hausgeld and Grundsteuer are missing in the Soll' });
+    if (!pl.loan) issues.push({ kind: 'loan', pid: p.id, text: p.name + ': no loan linked' + (p.id === CASA_PROP_ID ? ' – Kreditrate from the cost type' : (_cxN0(p.def_rate) ? ' – Kreditrate from plan value' : ' – no Kreditrate in the Soll')) });
   }
   const freeParking = S.parking.filter(pk => !used.has('rentals_parking|' + String(pk.id)));
   const freeApts = S.apts.filter(a => !props.some(p => { const pl = ctlPropLinks(p); return pl.apt && String(pl.apt.id) === String(a.id); }) &&
                                       !used.has('rentals_apartment|' + String(a.id)));
-  for (const pk of freeParking) issues.push({ kind: 'freePk', text: 'Rentals-Stellplatz „' + pk.name + '“ ist in keinem Objekt' });
-  for (const a of freeApts) issues.push({ kind: 'freeApt', text: 'Rentals-Wohnung „' + a.name + '“ ist in keinem Objekt' });
+  for (const pk of freeParking) issues.push({ kind: 'freePk', text: 'Rentals parking space "' + pk.name + '" is in no property' });
+  for (const a of freeApts) issues.push({ kind: 'freeApt', text: 'Rentals apartment "' + a.name + '" is in no property' });
   return { units, used, issues, freeParking, freeApts };
 }
 /* Guess the property of a Rentals parking space from its name ("Studio One TG 3" → Studio One) */

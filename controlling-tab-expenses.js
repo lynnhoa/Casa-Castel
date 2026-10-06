@@ -33,7 +33,7 @@ function _cxExpModel() {
       for (const x of window._ctrl.castel_expenses.filter(e => e.year === y && e.month === m)) {
         if (rows.some(r => r.catId === x.category_id)) continue;
         const c = ctlCat(x.category_id);
-        rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Cost', soll: 0, sub: (c && c.frequency) || '', src: 'Setup', ist: cxR(x.amount) });
+        rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Cost', soll: 0, sub: typeof _cxFreqLbl === 'function' ? _cxFreqLbl((c && c.frequency) || '') : ((c && c.frequency) || ''), src: 'Setup', ist: cxR(x.amount) });
       }
       // sporadic costs without a plan this month: always enterable, no Soll (B18)
       for (const bd of (plan.bedarf || [])) {

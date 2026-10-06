@@ -14,7 +14,7 @@
 'use strict';
 
 const _CX_MS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
-const _CX_FREQ = ['monatlich', 'vierteljährlich', 'jährlich', 'sporadisch'];
+const _CX_FREQ = ['monatlich', 'vierteljährlich', 'jährlich', 'sporadisch'];   // stored values (German) · shown via _cxFreqLbl
 
 function _cxSetupSuggestions() {
   const out = [];
@@ -33,8 +33,8 @@ function _cxSetupSuggestions() {
 }
 
 function _cxLinkPill(obj, auto) {
-  if (!obj) return cxPill('grey', 'Planwert');
-  return auto ? cxPill('beige', 'vorgeschlagen') : cxPill('ok', 'verknüpft');
+  if (!obj) return cxPill('grey', 'plan value');
+  return auto ? cxPill('beige', 'suggested') : cxPill('ok', 'linked');
 }
 function _cxMonthChips(field, id, months) {
   const set = new Set((months || []).map(Number));
@@ -74,14 +74,14 @@ const _cxMoney = (table, id, field, val, label) =>
 const _cxSU = { edit: {} };
 const _cxUnitHasEntries = uid => (window._src.incAll || []).concat(window._ctrl.income || []).some(r => r.unit_id === uid);
 function _cxSuSelect(u, opts, cur) {
-  return '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_units|' + u.id + '|source" aria-label="Quelle ' + cxEsc(u.name) + '">' +
-    '<option value=""' + (cur ? '' : ' selected') + '>— nicht verknüpft —</option>' + opts + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>';
+  return '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_units|' + u.id + '|source" aria-label="Source ' + cxEsc(u.name) + '">' +
+    '<option value=""' + (cur ? '' : ' selected') + '>— not linked —</option>' + opts + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>';
 }
 /* One unit line: linked → name · source + "ändern"; not linked (or editing) → the select */
 function _cxSuUnit(u, p, st, kind) {
   const S = window._src, l = ctlUnitLink(u, p), cur = l ? l.type + '|' + l.ref : '';
   const takenBy = k => { const list = st.used.get(k) || []; const o = list.find(x => x.u.id !== u.id); return o ? o.p.name + ' · ' + o.u.name : null; };
-  const opt = (v, label) => { const tb = takenBy(v); return '<option value="' + cxEsc(v) + '"' + (cur === v ? ' selected' : '') + (tb && cur !== v ? ' disabled' : '') + '>' + cxEsc(label + (tb ? ' – schon bei ' + tb : '')) + '</option>'; };
+  const opt = (v, label) => { const tb = takenBy(v); return '<option value="' + cxEsc(v) + '"' + (cur === v ? ' selected' : '') + (tb && cur !== v ? ' disabled' : '') + '>' + cxEsc(label + (tb ? ' – already used by ' + tb : '')) + '</option>'; };
   let opts = '';
   if (kind === 'parking') opts = S.parking.map(x => opt('rentals_parking|' + x.id, x.name)).join('');
   else if (p.id === CASA_PROP_ID) opts = S.rooms.map(r => opt('casa_room|' + r.name, r.name)).join('');
@@ -90,10 +90,10 @@ function _cxSuUnit(u, p, st, kind) {
   let info = '';
   if (kind === 'parking' && l) {
     const i = ctlParkingInfo(l.obj);
-    info = [i.price !== null ? cxEur(i.price) + ' / Monat' : 'kein Preis in Rentals',
-            i.tenantName ? 'Mieter: ' + i.tenantName + (i.rent !== null ? ' · ' + cxEur(i.rent) : '') : 'kein Mieter'].join(' · ');
+    info = [i.price !== null ? cxEur(i.price) + ' / month' : 'no price in Rentals',
+            i.tenantName ? 'Tenant: ' + i.tenantName + (i.rent !== null ? ' · ' + cxEur(i.rent) : '') : 'no tenant'].join(' · ');
   }
-  const pill = l ? (l.auto ? cxPill('beige', 'vorgeschlagen') : cxPill('ok', 'verknüpft')) : cxPill('open', 'nicht verknüpft');
+  const pill = l ? (l.auto ? cxPill('beige', 'suggested') : cxPill('ok', 'linked')) : cxPill('open', 'not linked');
   const canDel = !l && u.id != null && !_cxUnitHasEntries(u.id);
   return '<div class="cx-su-u">' +
     '<div class="cx-set__row"><span class="cx-su-n">' + cxEsc(kind === 'parking' ? p.name + ' · ' + u.name : u.name) + '</span>' + pill + '</div>' +
@@ -101,11 +101,11 @@ function _cxSuUnit(u, p, st, kind) {
     (info ? '<div class="cx-r__sub">' + cxEsc(info) + '</div>' : '') +
     (editing ? _cxSuSelect(u, opts, cur) : '') +
     (!l ? (kind === 'parking'
-            ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Ohne Verknüpfung kein Soll – Stellplatz in Rentals wählen</div>'
-            : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Nur solange nicht verknüpft: Soll aus diesen Werten</div>' +
+            ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Without a link no Soll – choose the parking space in Rentals</div>'
+            : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Soll from these values</div>' +
               _cxMoney('ctrl_units', u.id, 'def_kaltmiete', u.def_kaltmiete, 'Kaltmiete') + _cxMoney('ctrl_units', u.id, 'def_nebenkosten', u.def_nebenkosten, 'Nebenkosten')) : '') +
-    '<div class="cx-su-a">' + (l ? '<button class="cx-link" data-cx="suEdit" data-u="' + u.id + '">' + (editing ? 'fertig' : 'ändern') + '</button>' : '') +
-      (canDel ? '<button class="cx-link" data-cx="suDel" data-u="' + u.id + '">Einheit entfernen</button>' : '') + '</div>' +
+    '<div class="cx-su-a">' + (l ? '<button class="cx-link" data-cx="suEdit" data-u="' + u.id + '">' + (editing ? 'done' : 'change') + '</button>' : '') +
+      (canDel ? '<button class="cx-link" data-cx="suDel" data-u="' + u.id + '">Remove unit</button>' : '') + '</div>' +
   '</div>';
 }
 const _cxMoneyF = (table, id, field, val, label) =>
@@ -137,77 +137,77 @@ window.renderSetup = function () {
     let body = '<div class="cx-set">';
     if (!casa) {
       const v = l.apt ? S.verw.find(x => String(x.apartment_id) === String(l.apt.id)) : null;
-      body += _cxSuSub('Rentals-Wohnung') +
-        '<div class="cx-set__row"><span class="cx-set__k">Hausgeld, Grundsteuer, Mieter</span>' + _cxLinkPill(l.apt, l.aptAuto) + '</div>' +
-        '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|rentals_apartment_ref" aria-label="Rentals-Wohnung">' +
-          _cxOpt('', '— nicht verknüpft —', !l.apt) + S.apts.map(a => _cxOpt(a.id, a.name, l.apt && String(l.apt.id) === String(a.id))).join('') +
+      body += _cxSuSub('Rentals apartment') +
+        '<div class="cx-set__row"><span class="cx-set__k">Hausgeld, Grundsteuer, tenant</span>' + _cxLinkPill(l.apt, l.aptAuto) + '</div>' +
+        '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|rentals_apartment_ref" aria-label="Rentals apartment">' +
+          _cxOpt('', '— not linked —', !l.apt) + S.apts.map(a => _cxOpt(a.id, a.name, l.apt && String(l.apt.id) === String(a.id))).join('') +
         '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-        (l.apt ? '<div class="cx-r__sub">' + cxEsc('Hausgeld ' + (v && v.hausgeld_mtl != null ? cxEur(v.hausgeld_mtl) : '—') + ' · Grundsteuer ' + (v && v.grundsteuer_mtl != null ? cxEur(v.grundsteuer_mtl) + ' / Quartal' : '—') + ' · aus Rentals') + '</div>'
-               : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Nur solange nicht verknüpft: Hausgeld und Grundsteuer aus diesen Werten</div>' +
+        (l.apt ? '<div class="cx-r__sub">' + cxEsc('Hausgeld ' + (v && v.hausgeld_mtl != null ? cxEur(v.hausgeld_mtl) : '—') + ' · Grundsteuer ' + (v && v.grundsteuer_mtl != null ? cxEur(v.grundsteuer_mtl) + ' / quarter' : '—') + ' · from Rentals') + '</div>'
+               : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Hausgeld and Grundsteuer from these values</div>' +
                  _cxMoney('ctrl_properties', p.id, 'def_hausgeld', p.def_hausgeld, 'Hausgeld') + _cxMoney('ctrl_properties', p.id, 'def_grundsteuer', p.def_grundsteuer, 'Grundsteuer/Q')) +
-        _cxSuSub('Grundsteuer fällig') +
+        _cxSuSub('Grundsteuer due') +
         _cxMonthChips('ctrl_properties|grundsteuer_months', p.id, Array.isArray(p.grundsteuer_months) && p.grundsteuer_months.length ? p.grundsteuer_months : [2, 5, 8, 11]);
     }
-    body += _cxSuSub('Darlehen · Properties') +
-      '<div class="cx-set__row"><span class="cx-set__k">Kreditrate, Zins, Tilgung</span>' + _cxLinkPill(l.loan, l.loanAuto) + '</div>' +
-      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|loan_ref" aria-label="Darlehen">' +
-        _cxOpt('', '— nicht verknüpft —', !l.loan) + S.loans.map(x => _cxOpt(x.id, (x.name || 'Darlehen') + (x.rate ? ' · ' + cxEur(x.rate) : ''), l.loan && String(l.loan.id) === String(x.id))).join('') +
+    body += _cxSuSub('Loan · Properties') +
+      '<div class="cx-set__row"><span class="cx-set__k">Kreditrate, Zinsen, Tilgung</span>' + _cxLinkPill(l.loan, l.loanAuto) + '</div>' +
+      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|loan_ref" aria-label="Loan">' +
+        _cxOpt('', '— not linked —', !l.loan) + S.loans.map(x => _cxOpt(x.id, (x.name || 'Loan') + (x.rate ? ' · ' + cxEur(x.rate) : ''), l.loan && String(l.loan.id) === String(x.id))).join('') +
       '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-      (l.loan ? '<div class="cx-r__sub">' + cxEsc('Rate ' + cxEur(l.loan.rate || 0) + ' · Zins ' + cxEur(l.loan.zinsen || 0) + ' · Tilgung ' + cxEur(l.loan.tilgung || 0)) + '</div>'
-        : casa ? '<div class="cx-r__sub">Kreditrate aus der Kostenart „Kreditrate“ unten</div>'
-        : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Nur solange nicht verknüpft: Kreditrate aus diesen Werten</div>' +
-          _cxMoney('ctrl_properties', p.id, 'def_rate', p.def_rate, 'Kreditrate') + _cxMoney('ctrl_properties', p.id, 'def_zinsen', p.def_zinsen, 'davon Zinsen'));
+      (l.loan ? '<div class="cx-r__sub">' + cxEsc('Rate ' + cxEur(l.loan.rate || 0) + ' · Zinsen ' + cxEur(l.loan.zinsen || 0) + ' · Tilgung ' + cxEur(l.loan.tilgung || 0)) + '</div>'
+        : casa ? '<div class="cx-r__sub">Kreditrate from the cost type "Kreditrate" below</div>'
+        : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Kreditrate from these values</div>' +
+          _cxMoney('ctrl_properties', p.id, 'def_rate', p.def_rate, 'Kreditrate') + _cxMoney('ctrl_properties', p.id, 'def_zinsen', p.def_zinsen, 'of which Zinsen'));
     // Abrechnungszeitraum: set later in the Abrechnungen app (placeholder until then, stored value untouched)
     body += _cxSuSub('Abrechnungszeitraum · ' + (casa ? 'NK' : 'WEG + NK')) +
-      '<div class="cx-r__sub">Kommt mit der Abrechnungen-App. Bis dahin gilt vorläufig das Kalenderjahr.</div>';
+      '<div class="cx-r__sub">Set per property in Settlements · otherwise the calendar year.</div>';
     const living = ctlUnitsOf(p.id).filter(u => !_cxIsParking(u));
-    body += _cxSuSub(casa ? 'Zimmer · aus Casa Castel' : (living.length === 1 ? 'Wohnung' : 'Wohnungen')) +
-      (living.length ? living.map(u => _cxSuUnit(u, p, st, 'living')).join('') : '<div class="cx-r__sub">' + (casa ? 'Alle Zimmer werden automatisch aus Casa Castel übernommen.' : 'Keine Einheit angelegt.') + '</div>');
+    body += _cxSuSub(casa ? 'Rooms · from Casa Castel' : (living.length === 1 ? 'Apartment' : 'Apartments')) +
+      (living.length ? living.map(u => _cxSuUnit(u, p, st, 'living')).join('') : '<div class="cx-r__sub">' + (casa ? 'All rooms are taken over from Casa Castel automatically.' : 'No unit set up.') + '</div>');
     const nPk = ctlUnitsOf(p.id).filter(u => _cxIsParking(u)).length;
-    if (nPk) body += '<div class="cx-r__sub" style="margin-top:6px">' + nPk + (nPk === 1 ? ' Stellplatz' : ' Stellplätze') + ' · siehe Stellplätze unten</div>';
+    if (nPk) body += '<div class="cx-r__sub" style="margin-top:6px">' + nPk + (nPk === 1 ? ' parking space' : ' parking spaces') + ' · see Parking below</div>';
     body += '</div>';
     const auto = l.aptAuto || l.loanAuto || ctlUnitsOf(p.id).some(u => { const ul = ctlUnitLink(u, p); return ul && ul.auto; });
-    return cxCard({ key: k, title: p.name, sub: casa ? 'Zimmer aus Casa Castel' : (l.apt ? 'Rentals · ' + l.apt.name : 'ohne Rentals-Wohnung'),
-                    status: pIssues.length ? ['open', 'prüfen'] : auto ? ['beige', 'vorgeschlagen'] : ['ok', 'verknüpft'], body });
+    return cxCard({ key: k, title: p.name, sub: casa ? 'Rooms from Casa Castel' : (l.apt ? 'Rentals · ' + l.apt.name : 'without Rentals apartment'),
+                    status: pIssues.length ? ['open', 'check'] : auto ? ['beige', 'suggested'] : ['ok', 'linked'], body });
   }).join('');
 
   /* ── Stellplätze ── */
   const pkUnits = st.units.filter(x => x.parking);
   const pkOpen = pkUnits.filter(x => !x.l).length + st.freeParking.length;
   const pkBody = '<div class="cx-set">' +
-    (pkUnits.length ? pkUnits.map(x => _cxSuUnit(x.u, x.p, st, 'parking')).join('') : '<div class="cx-r__sub">Noch kein Stellplatz in Controlling.</div>') +
-    (st.freeParking.length ? _cxSuSub('In Rentals, noch in keinem Objekt') +
-      (pkUnits.some(x => !x.l) ? '<div class="cx-r__sub">Zuerst die Stellplätze oben verknüpfen – was danach hier übrig bleibt, fehlt in Controlling und kann hinzugefügt werden.</div>' : '') +
+    (pkUnits.length ? pkUnits.map(x => _cxSuUnit(x.u, x.p, st, 'parking')).join('') : '<div class="cx-r__sub">No parking space in Controlling yet.</div>') +
+    (st.freeParking.length ? _cxSuSub('In Rentals, not in any property yet') +
+      (pkUnits.some(x => !x.l) ? '<div class="cx-r__sub">Link the parking spaces above first – what is left here afterwards is missing in Controlling and can be added.</div>' : '') +
       st.freeParking.map(pk => {
       const i = ctlParkingInfo(pk), g = ctlGuessParkingProp(pk);
-      return '<div class="cx-su-u"><div class="cx-set__row"><span class="cx-su-n">' + cxEsc(pk.name) + '</span>' + cxPill('open', 'fehlt') + '</div>' +
-        '<div class="cx-r__sub">' + cxEsc([i.price !== null ? cxEur(i.price) + ' / Monat' : 'kein Preis in Rentals', i.tenantName ? 'Mieter: ' + i.tenantName : 'kein Mieter'].join(' · ')) + '</div>' +
-        '<div class="cx-grid2"><label class="cx-f cx-f--l"><select id="cxPkProp-' + cxEsc(pk.id) + '" aria-label="Objekt">' +
+      return '<div class="cx-su-u"><div class="cx-set__row"><span class="cx-su-n">' + cxEsc(pk.name) + '</span>' + cxPill('open', 'missing') + '</div>' +
+        '<div class="cx-r__sub">' + cxEsc([i.price !== null ? cxEur(i.price) + ' / month' : 'no price in Rentals', i.tenantName ? 'Tenant: ' + i.tenantName : 'no tenant'].join(' · ')) + '</div>' +
+        '<div class="cx-grid2"><label class="cx-f cx-f--l"><select id="cxPkProp-' + cxEsc(pk.id) + '" aria-label="Property">' +
           props.map(p => _cxOpt(p.id, p.name, g && g.id === p.id)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-        '<button class="cx-btn cx-btn--s" data-cx="pkAdd" data-pk="' + cxEsc(pk.id) + '">Hinzufügen</button></div></div>';
+        '<button class="cx-btn cx-btn--s" data-cx="pkAdd" data-pk="' + cxEsc(pk.id) + '">Add</button></div></div>';
     }).join('') : '') + '</div>';
-  const pkCard = cxCard({ key: 'set:parking', title: 'Stellplätze', sub: 'Miete aus Rentals › Parking · keine NK',
-                          status: pkOpen ? ['open', pkOpen + ' prüfen'] : ['ok', 'verknüpft'], body: pkBody });
+  const pkCard = cxCard({ key: 'set:parking', title: 'Parking', sub: 'Rent from Rentals › Parking · no NK',
+                          status: pkOpen ? ['open', pkOpen + ' to check'] : ['ok', 'linked'], body: pkBody });
 
   /* ── Kostenarten (Casa Castel) ── */
   const casaP = props.find(p => p.id === CASA_PROP_ID), casaLoan = casaP ? ctlPropLinks(casaP).loan : null;
   const cats = (window._ctrl.categories || []).map(c => {
-    const freq = c.frequency || 'monatlich', isRate = c.code === 'RATE';
+    const freq = c.frequency || 'monatlich', isRate = c.code === 'RATE', freqL = typeof _cxFreqLbl === 'function' ? _cxFreqLbl(freq) : freq;
     const fromLoan = isRate && casaLoan;
     return '<div class="cx-cat">' +
-      '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || (isRate ? 'Kreditrate' : 'Kosten')) + '</span>' +
-        (isRate ? cxPill(fromLoan ? 'ok' : 'beige', fromLoan ? 'aus Properties' : 'Planwert') : cxPill(freq === 'monatlich' ? 'grey' : 'beige', freq)) + '</div>' +
-      (fromLoan ? '<div class="cx-r__sub">' + cxEsc(cxEur(casaLoan.rate || 0) + ' monatlich · aus dem verknüpften Darlehen') + '</div>' :
+      '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || (isRate ? 'Kreditrate' : 'Cost')) + '</span>' +
+        (isRate ? cxPill(fromLoan ? 'ok' : 'beige', fromLoan ? 'from Properties' : 'plan value') : cxPill(freq === 'monatlich' ? 'grey' : 'beige', freqL)) + '</div>' +
+      (fromLoan ? '<div class="cx-r__sub">' + cxEsc(cxEur(casaLoan.rate || 0) + ' monthly · from the linked loan') + '</div>' :
       '<div class="cx-grid2">' +
-        '<label class="cx-f"><input type="text" inputmode="decimal" data-cx-in="ctrl_castel_categories|' + c.id + '|default_amount" value="' + (c.default_amount === null || c.default_amount === undefined ? '' : cxE2(c.default_amount)) + '" placeholder="0,00" aria-label="Betrag"><span>€</span></label>' +
-        '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|frequency" aria-label="Häufigkeit">' +
-          _CX_FREQ.map(f => _cxOpt(f, f, f === freq)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
+        '<label class="cx-f"><input type="text" inputmode="decimal" data-cx-in="ctrl_castel_categories|' + c.id + '|default_amount" value="' + (c.default_amount === null || c.default_amount === undefined ? '' : cxE2(c.default_amount)) + '" placeholder="0,00" aria-label="Amount"><span>€</span></label>' +
+        '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|frequency" aria-label="Frequency">' +
+          _CX_FREQ.map(f => _cxOpt(f, typeof _cxFreqLbl === 'function' ? _cxFreqLbl(f) : f, f === freq)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
       '</div>') +
       (freq === 'monatlich' || fromLoan ? '' :
-        '<div class="cx-set__k" style="margin-top:6px">' + (_cxBedarf(freq) ? 'Geplant in (optional)' : 'Fällig in') + '</div>' +
+        '<div class="cx-set__k" style="margin-top:6px">' + (_cxBedarf(freq) ? 'Planned in (optional)' : 'Due in') + '</div>' +
         _cxMonthChips('ctrl_castel_categories|due_months', c.id, c.due_months) +
         (!_cxBedarf(freq) && !(Array.isArray(c.due_months) && c.due_months.length) && Number(c.default_amount)
-          ? '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Fälligkeit fehlt – bitte Monate wählen, sonst fehlt der Posten im Soll</div>' : '')) +
+          ? '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Due months missing – choose the months, otherwise the item is missing in the Soll</div>' : '')) +
       _cxNkSetupHTML(c, isRate) +
     '</div>';
   }).join('');
@@ -215,53 +215,53 @@ window.renderSetup = function () {
   /* ── Prüfen ── */
   // grouped: serious ones one by one, the rest as one line per kind with a pointer to the section
   const by = k => st.issues.filter(i => i.kind === k);
-  const nm = list => list.map(i => i.text.split(':')[0].replace(/ ist nicht verknüpft$/, '')).join(', ');
+  const nm = list => list.map(i => i.text.split(':')[0].replace(/ is not linked$/, '')).join(', ');
   const lines = [];
   by('double').forEach(i => lines.push(i.text));
   by('mismatch').forEach(i => lines.push(i.text));
-  if (by('prop').length) lines.push('Ohne Rentals-Wohnung (Hausgeld, Grundsteuer fehlen): ' + nm(by('prop')) + ' › Objekte');
-  if (by('unit').length) lines.push('Nicht verknüpft: ' + nm(by('unit')) + ' › Objekte');
-  if (by('loan').length) lines.push('Ohne Darlehen: ' + nm(by('loan')) + ' › Objekte');
+  if (by('prop').length) lines.push('Without Rentals apartment (Hausgeld, Grundsteuer missing): ' + nm(by('prop')) + ' › Properties');
+  if (by('unit').length) lines.push('Not linked: ' + nm(by('unit')) + ' › Properties');
+  if (by('loan').length) lines.push('Without loan: ' + nm(by('loan')) + ' › Properties');
   const nPkU = by('parking').length, nPkF = by('freePk').length;
-  if (nPkU || nPkF) lines.push('Stellplätze: ' + [nPkU ? nPkU + ' nicht verknüpft' : '', nPkF ? nPkF + ' aus Rentals in keinem Objekt' : ''].filter(Boolean).join(', ') + ' › Stellplätze');
-  if (by('freeApt').length) lines.push('Rentals-Wohnungen in keinem Objekt: ' + by('freeApt').map(i => i.text.replace(/^Rentals-Wohnung „|“ ist in keinem Objekt$/g, '')).join(', '));
-  const hint = (key, html) => '<div class="cx-hint"><span>' + html + '</span><button class="cx-x" data-cx="hintX" data-k="' + cxEsc(key) + '" aria-label="Hinweis ausblenden"><span aria-hidden="true">×</span></button></div>';
+  if (nPkU || nPkF) lines.push('Parking: ' + [nPkU ? nPkU + ' not linked' : '', nPkF ? nPkF + ' from Rentals in no property' : ''].filter(Boolean).join(', ') + ' › Parking');
+  if (by('freeApt').length) lines.push('Rentals apartments in no property: ' + by('freeApt').map(i => i.text.replace(/^Rentals apartment "|" is in no property$/g, '')).join(', '));
+  const hint = (key, html) => '<div class="cx-hint"><span>' + html + '</span><button class="cx-x" data-cx="hintX" data-k="' + cxEsc(key) + '" aria-label="Hide hint"><span aria-hidden="true">×</span></button></div>';
   const lnkKeys = lines.map(t => 'lnk:' + t);
   ctlPruneDismissed('lnk:', lnkKeys);                       // fixed → its × is forgotten, it can come back
   const lnkVis = lines.filter((t, i) => !ctlIsDismissed(lnkKeys[i]));
-  const linkCard = !lnkVis.length ? '' : '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Verknüpfungen</span>' +
-      cxPill('open', lnkVis.length + (lnkVis.length === 1 ? ' Punkt' : ' Punkte')) + '</div>' +
+  const linkCard = !lnkVis.length ? '' : '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Links</span>' +
+      cxPill('open', lnkVis.length + (lnkVis.length === 1 ? ' point' : ' points')) + '</div>' +
       lnkVis.map(t => hint('lnk:' + t, cxEsc(t))).join('') + '</div>';
   const t = cxToday(), y = window._ctrl.year;
   const upTo = y < Number(t.slice(0, 4)) ? 12 : y > Number(t.slice(0, 4)) ? 0 : Number(t.slice(5, 7));
   const chk = typeof ctlDataChecksYear === 'function' ? ctlDataChecksYear(y, upTo) : ctlDataChecks(y, CX.month);
-  const ms = c => c.months && c.months.length ? ' <span style="color:var(--cx-mut)">(' + (c.months.length > 3 ? c.months.length + ' Monate' : c.months.map(m => CX_MONTHS[m - 1].slice(0, 3)).join(', ')) + ')</span>' : '';
+  const ms = c => c.months && c.months.length ? ' <span style="color:var(--cx-mut)">(' + (c.months.length > 3 ? c.months.length + ' months' : c.months.map(m => CX_MONTHS[m - 1].slice(0, 3)).join(', ')) + ')</span>' : '';
   const chkKey = c => ctlCheckKey(c.prop, c.unit, c.text);
   // link problems are already listed under Verknüpfungen – shown once, not twice
-  for (let i = chk.length - 1; i >= 0; i--) if (/^(Stellplatz nicht verknüpft|Nicht verknüpft –)/.test(chk[i].text)) chk.splice(i, 1);
+  for (let i = chk.length - 1; i >= 0; i--) if (/^(Parking space not linked|Not linked –)/.test(chk[i].text)) chk.splice(i, 1);
   if (y === Number(t.slice(0, 4))) ctlPruneDismissed('chk:', chk.map(chkKey));   // only on the current year's full list
   const chkVis = chk.filter(c => !ctlIsDismissed(chkKey(c)));
   const dataCard = !chkVis.length ? '' : '<div class="cx-card cx-sum">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Mieten und Soll · ' + y + '</span>' + cxPill('open', chkVis.length + (chkVis.length === 1 ? ' Hinweis' : ' Hinweise')) + '</div>' +
+      '<div class="cx-row-sb"><span class="cx-lbl">Rents and Soll · ' + y + '</span>' + cxPill('open', chkVis.length + (chkVis.length === 1 ? ' hint' : ' hints')) + '</div>' +
       chkVis.map(c => hint(chkKey(c), '<b style="font-weight:500;color:var(--cx-ink)">' + cxEsc(c.prop) + ' · ' + cxEsc(c.unit) + '</b>' + ms(c) + '<br>' + cxEsc(c.text))).join('') + '</div>';
   const nHidden = lnkKeys.filter(k => ctlIsDismissed(k)).length + chk.filter(c => ctlIsDismissed(chkKey(c))).length;
   const allClear = !lnkVis.length && !chkVis.length;
-  const statusLine = '<div class="cx-hint-foot">' + (allClear ? '<span>' + (nHidden ? 'Keine offenen Hinweise' : 'Alles verknüpft und stimmig') + '</span>' : '<span></span>') +
-      (nHidden ? '<button class="cx-link" data-cx="hintAll">' + nHidden + ' ausgeblendet · wieder anzeigen</button>' : '') + '</div>';
+  const statusLine = '<div class="cx-hint-foot">' + (allClear ? '<span>' + (nHidden ? 'No open hints' : 'Everything linked and consistent') + '</span>' : '<span></span>') +
+      (nHidden ? '<button class="cx-link" data-cx="hintAll">' + nHidden + ' hidden · show again</button>' : '') + '</div>';
 
   host.innerHTML = '<div class="cx-page">' +
-    '<div class="cx-title">Setup</div><div class="cx-title__s">Einmal einrichten · danach kommen alle Soll-Werte automatisch</div>' +
-    (sugg.length && !ctlIsDismissed(suggKey) ? '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Vorschläge nach Namen</span><span class="cx-row-sb" style="gap:6px">' + cxPill('beige', sugg.length + ' offen') +
-      '<button class="cx-x" data-cx="hintX" data-k="' + cxEsc(suggKey) + '" aria-label="Vorschläge ausblenden"><span aria-hidden="true">×</span></button></span></div>' +
-      '<div class="cx-r__sub" style="margin:6px 0 10px">Werden schon verwendet. Einmal bestätigen, dann sind sie fest.</div>' +
-      '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="acceptAll"><i class="ti ti-checks" aria-hidden="true"></i>Alle Vorschläge übernehmen</button></div>' : '') +
-    '<div class="cx-head"><span class="cx-lbl">Prüfen</span></div>' + linkCard + dataCard + statusLine +
-    '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Mieterhistorie</span></div>' +
-      '<div class="cx-r__sub" style="margin:6px 0 10px">Einzug, Auszug und Miete aller Mieter – auch ehemaliger – einmal prüfen und korrigieren.</div>' +
-      '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="openHist"><i class="ti ti-history" aria-hidden="true"></i>Mieterhistorie prüfen</button></div>' +
-    '<div class="cx-head"><span class="cx-lbl">Objekte</span></div>' + propCards +
-    '<div class="cx-head"><span class="cx-lbl">Stellplätze</span></div>' + pkCard +
-    '<div class="cx-head"><span class="cx-lbl">Casa Castel · Kostenarten</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">Keine Kostenarten.</div>') + '</div>' +
+    '<div class="cx-title">Setup</div><div class="cx-title__s">Set up once · after that every Soll comes automatically</div>' +
+    (sugg.length && !ctlIsDismissed(suggKey) ? '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Suggestions by name</span><span class="cx-row-sb" style="gap:6px">' + cxPill('beige', sugg.length + ' open') +
+      '<button class="cx-x" data-cx="hintX" data-k="' + cxEsc(suggKey) + '" aria-label="Hide suggestions"><span aria-hidden="true">×</span></button></span></div>' +
+      '<div class="cx-r__sub" style="margin:6px 0 10px">Already in use. Confirm once, then they are fixed.</div>' +
+      '<button class="cx-btn cx-btn--p cx-btn--full" data-cx="acceptAll"><i class="ti ti-checks" aria-hidden="true"></i>Accept all suggestions</button></div>' : '') +
+    '<div class="cx-head"><span class="cx-lbl">Check</span></div>' + linkCard + dataCard + statusLine +
+    '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Tenant history</span></div>' +
+      '<div class="cx-r__sub" style="margin:6px 0 10px">Check and correct move-in, move-out and rent of every tenant – former ones too – once.</div>' +
+      '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="openHist"><i class="ti ti-history" aria-hidden="true"></i>Check tenant history</button></div>' +
+    '<div class="cx-head"><span class="cx-lbl">Properties</span></div>' + propCards +
+    '<div class="cx-head"><span class="cx-lbl">Parking</span></div>' + pkCard +
+    '<div class="cx-head"><span class="cx-lbl">Casa Castel · cost types</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">No cost types.</div>') + '</div>' +
     '</div>';
 
   cxWire(host, {
@@ -273,7 +273,7 @@ window.renderSetup = function () {
         const list = _cxSetupSuggestions();
         let ok = 0, err = null;
         for (const [t, id, f] of list) { try { await ctlUpdateRow(t, id, f); ok++; } catch (e) { err = e; console.error('[controlling] Vorschlag', t, id, e); } }
-        if (typeof ctlToast === 'function') ctlToast(err ? ok + ' von ' + list.length + ' gespeichert · ' + String(err.message || err).slice(0, 60) : 'Verknüpfungen gespeichert');
+        if (typeof ctlToast === 'function') ctlToast(err ? ok + ' of ' + list.length + ' saved · ' + String(err.message || err).slice(0, 60) : 'Links saved');
         return window.renderSetup();
       }
       if (a === 'hintX') { ctlDismiss(b.dataset.k); return window.renderSetup(); }
@@ -281,8 +281,8 @@ window.renderSetup = function () {
       if (a === 'suEdit') { const id = Number(b.dataset.u); _cxSU.edit[id] = !_cxSU.edit[id]; return window.renderSetup(); }
       if (a === 'suDel') {
         const id = Number(b.dataset.u), u = ctlUnit(id);
-        if (!u || _cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Einheit hat Einträge – kann nicht entfernt werden'); return; }
-        if (!confirm('„' + u.name + '“ aus Controlling entfernen?')) return;
+        if (!u || _cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Unit has entries – it can\'t be removed'); return; }
+        if (!confirm('Remove "' + u.name + '" from Controlling?')) return;
         try {
           const { error } = await _ctlSupa.from('ctrl_units').delete().eq('id', id);
           if (error) throw error;
@@ -303,7 +303,7 @@ window.renderSetup = function () {
         try {
           await ctlCreateUnit({ property_id: p.id, name: short, unit_type: type, source_type: 'rentals_parking', source_ref: String(pk.id) });
           ctlSollReset();
-          if (typeof ctlToast === 'function') ctlToast(short + ' in ' + p.name + ' angelegt');
+          if (typeof ctlToast === 'function') ctlToast(short + ' added to ' + p.name);
         } catch (e) { cxToastErr(e); }
         return window.renderSetup();
       }
@@ -318,7 +318,7 @@ window.renderSetup = function () {
     },
     input: async (key, val) => {
       const [t, id, field] = key.split('|');
-      try { await ctlUpdateRow(t, Number(id), { [field]: val === null ? null : cxR(val) }); if (typeof ctlToast === 'function') ctlToast('Gespeichert'); }
+      try { await ctlUpdateRow(t, Number(id), { [field]: val === null ? null : cxR(val) }); if (typeof ctlToast === 'function') ctlToast('Saved'); }
       catch (e) { cxToastErr(e); }
       window.renderSetup();
     },
@@ -335,7 +335,7 @@ window.renderSetup = function () {
       try {
         await ctlUpdateRow(t, Number(id), f);
         if (field === 'source') _cxSU.edit[Number(id)] = false;
-        if (typeof ctlToast === 'function') ctlToast('Gespeichert');
+        if (typeof ctlToast === 'function') ctlToast('Saved');
       } catch (e) { cxToastErr(e); }
       window.renderSetup();
     });

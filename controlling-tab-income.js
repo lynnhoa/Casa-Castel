@@ -54,7 +54,7 @@ window.renderIncome = function () {
   const cards = model.map(g => {
     const src = g.p.id === CASA_PROP_ID ? 'from Casa Castel' : (g.rows.some(r => r.s.link) ? 'from Rentals' : 'plan value');
     // #11: "Änderung" only for a real change (Einzug, Auszug, new rent, Staffel, NK) — not for info notes
-    const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Mieterwechsel|Neu vermietet|Auszug|Staffel|NK angepasst|Verlängerung|Neue Miete)/.test(n)));
+    const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Tenant change|Newly let|Move-out|Staffel|NK changed|Renewal|New rent)/.test(n)));
     const vis = r => ctlVisibleCheck(g.p.name, r.u.name, r.s.check);      // × in Setup hides a hint here too
     const warned = g.rows.some(r => vis(r) || (!r.soll && r.ist));
     const body = g.rows.map(r => {
@@ -73,7 +73,7 @@ window.renderIncome = function () {
               : (_cxIsParking(r.u) && !r.s.nk ? 'Rent ' + cxEur(r.s.k) : cxEur(r.s.k) + ' Kalt + ' + cxEur(r.s.nk) + ' NK')))
         : (r.s.link ? 'not let' : 'no plan value');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'partial' : 'partial ' + r.s.days + '/' + r.s.N) : '';
-      return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Neu vermietet"
+      return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Newly let"
                      notes: r.s.notes, emptyText: 'empty', allowEmpty: true,
                      warn: vis(r) || (!r.soll && r.ist ? 'Rent entered, but the tenant data says not let – please check the tenant tab' : null) });
     }).join('');

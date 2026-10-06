@@ -3,7 +3,7 @@
    settlements-app.js
 
    Fifth management app (login tile + profile menus of all apps).
-   Tabs: Casa Castel (settlements-tab-casa.js) · Rentals (NK-Abrechnung der Wohnungen —
+   Tabs: Dashboard (settlements-tab-dashboard.js) · Casa Castel (settlements-tab-casa.js) · Rentals (NK-Abrechnung der Wohnungen —
          settlements-tab-rentals.js)
          · Tracking (every NK- and Hausgeld-Abrechnung: offen → verschickt → erledigt)
 
@@ -15,7 +15,7 @@
 'use strict';
 
 const ST = {
-  tab: (() => { try { const t = localStorage.getItem('st_last_tab'); return ['casa', 'rentals'].includes(t) ? t : 'rentals'; } catch (e) { return 'rentals'; } })(),
+  tab: (() => { try { const t = localStorage.getItem('st_last_tab'); return ['dashboard', 'casa', 'rentals'].includes(t) ? t : 'dashboard'; } catch (e) { return 'dashboard'; } })(),
   year: null,                                   // Abrechnungsjahr shown in Tracking
   filter: new Set(['offen', 'verschickt']),     // what needs you first
   open: {},                                     // folded cards
@@ -82,6 +82,7 @@ function stSwitchTab(tab) {
   stRender();
 }
 function stRender() {
+  if (ST.tab === 'dashboard') stRenderDashboard();
   if (ST.tab === 'casa')     stRenderCasa();
   if (ST.tab === 'rentals')  stRenderRentals();
   if (ST.tab === 'tracking') stRenderTracking();
@@ -103,6 +104,7 @@ function stClosePanel(silent) {
   ST.sel = null; ST.edit = false;
   if (typeof SR !== 'undefined') { SR.sel = null; SR.edit = false; SR.draft = null; SR.modal = null; SR.dirty = false; }
   if (typeof SC !== 'undefined' && SC.modal) { SC.modal = null; if (typeof scRenderModal === 'function') scRenderModal(); }
+  if (typeof SD !== 'undefined' && SD.modal) { SD.modal = null; SD.d = null; if (typeof sdRenderModal === 'function') sdRenderModal(); }
   document.getElementById('stScrim').hidden = true;
   document.body.classList.remove('st-panel-open');
   if (!silent) stRender();
