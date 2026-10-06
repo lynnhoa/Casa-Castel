@@ -57,15 +57,19 @@
     if (a && p && !a.includes(p)) return a + ', ' + p;
     return a || p;
   }
+  /* A fill-in line. Plain block layout (no flex inside): the PDF renderer
+     (html2canvas) then puts the text ON the line, not through it. */
   function line(value, flex) {
-    return `<span style="flex:${flex || 1};min-width:0;border-bottom:0.8px solid #1a1a1a;height:22px;padding-left:4px;display:flex;align-items:flex-end;font-weight:400;">${value ? esc(value) : ''}</span>`;
+    return `<span style="flex:${flex || 1};min-width:0;display:block;box-sizing:content-box;height:24px;line-height:24px;border-bottom:0.8px solid #1a1a1a;padding:0 0 0 6px;font-weight:400;white-space:nowrap;overflow:hidden;">${value ? esc(value) : ''}</span>`;
   }
   function hint(text, left) {
     return `<div style="font-size:9.5px;font-weight:300;color:#8a8580;margin:3px 0 14px ${left || 0}px;">${text}</div>`;
   }
+  // Labels and lines share one 24px line box, so all text sits on the same baseline
   function row(inner, top) {
-    return `<div style="display:flex;align-items:flex-end;gap:10px;font-size:12.5px;font-weight:300;${top ? 'margin-top:' + top + 'px;' : ''}">${inner}</div>`;
+    return `<div style="display:flex;align-items:flex-start;gap:10px;font-size:12.5px;font-weight:300;line-height:24px;${top ? 'margin-top:' + top + 'px;' : ''}">${inner}</div>`;
   }
+  const lbl = t => `<span style="display:block;height:24px;line-height:24px;white-space:nowrap;flex-shrink:0;">${t}</span>`;
   const P = t => `<p style="font-size:12.5px;font-weight:300;line-height:1.75;margin:0 0 14px;text-align:justify;">${t}</p>`;
 
   function pageHTML(d, kind) {
@@ -77,16 +81,16 @@
     return `
 <div class="pdf-page page cc-bg-page" style="position:relative;width:794px;height:1123px;box-sizing:border-box;margin:0;padding:96px 92px 80px;background:#ffffff;font-family:'Lato',Arial,sans-serif;color:#1a1a1a;overflow:hidden;">
   <div style="font-size:22px;font-weight:700;letter-spacing:.02em;margin:0 0 34px;">Mietbürgschaft</div>
-  ${row('Hiermit übernehme ich,' + line(''))}
+  ${row(lbl('Hiermit übernehme ich,') + line(''))}
   ${hint('[Name des Bürgen in Druckbuchstaben]', 150)}
-  ${row('wohnhaft' + line(''))}
+  ${row(lbl('wohnhaft') + line(''))}
   ${hint('[Anschrift des Bürgen]', 70)}
-  ${row('geboren am' + line('', .8) + 'in' + line(''))}
-  ${row('mit Personalausweis Nr.' + line(''), 22)}
+  ${row(lbl('geboren am') + line('', .8) + lbl('in') + line(''))}
+  ${row(lbl('mit Personalausweis Nr.') + line(''), 22)}
   <div style="height:14px"></div>
-  ${row('für alle Verpflichtungen meines Sohnes / meiner Tochter,' + line(name))}
+  ${row(lbl('für alle Verpflichtungen meines Sohnes / meiner Tochter,') + line(name))}
   ${hint('[Name des Kindes]', 390)}
-  ${row('aus dem Mietverhältnis ' + objekt + line(objName) + 'in')}
+  ${row(lbl('aus dem Mietverhältnis ' + objekt) + line(objName) + lbl('in'))}
   ${row(line(address(d)), 8)}
   ${hint('[Anschrift der neuen Mietwohnung]')}
   ${P('die selbstschuldnerische Bürgschaft für Mietrückstände, Verfahrens- und Prozesskosten und für die künftig fällig werdenden Zahlungsansprüche des Vermieters auf Nutzungsentschädigung und sonstige, sich aus dem Mietverhältnis ergebenen Zahlungen.')}
