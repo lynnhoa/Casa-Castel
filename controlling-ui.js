@@ -338,6 +338,7 @@ function cxSummary(o) {
     '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' offen') : cxPill('ok', 'alles erfasst')) + '</div>' +
     '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(o.done) + '</span><span class="cx-sum__of">von ' + cxW(o.plan) + ' geplant</span></div>' +
     '<div class="cx-bar cx-bar--thin"><div style="width:' + pct + '%"></div></div>' +
+    (o.split || '') +                                       // e.g. Kalt / NK / Warm table (Income)
     undo + action + (o.note ? '<div class="cx-sum__hint">' + o.note + '</div>' : '') +
     (o.partial && !o.confirm ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 anteiliger Monat' : o.partial + ' anteilige Monate') + ' · bitte einzeln bestätigen</div>' : '') +
   '</div>';

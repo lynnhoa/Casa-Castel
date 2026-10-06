@@ -87,7 +87,7 @@ window.renderIncome = function () {
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Mieten eingegangen', done, plan, open, bulk: open - partialOpen, partial: partialOpen,
+    cxSummary({ label: 'Mieten eingegangen', done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
                 confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income'), note: _cxAbrNote(1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · aus den Mieter-Tabs</span><span class="cx-lbl">Ist</span></div>' +
     cards + '</div>';
@@ -119,6 +119,36 @@ window.renderIncome = function () {
     input: async (id, val) => { if (await cxAbrInput(id, val, () => window.renderIncome())) return; const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await _cxIncSave(e, val); window.renderIncome(); },
   });
 };
+
+/* Kalt / NK / Warm totals for the month (eingegangen · geplant).
+   Same split as the bookings: Kalt+NK units in the ratio of their Soll;
+   Pauschal rents shown on their own line (no Kalt/NK split exists for them). */
+function _cxIncSplitHTML(model) {
+  const t = { kI: 0, nI: 0, pI: 0, kP: 0, nP: 0, pP: 0 };
+  model.forEach(g => g.rows.forEach(r => {
+    const src  = r.part || (r.s.parts && r.s.parts[0]) || {};
+    const paus = src.mode === 'pauschal';
+    const k    = Number(r.part ? r.part.k  : r.s.k)  || 0;
+    const nk   = Number(r.part ? r.part.nk : r.s.nk) || 0;
+    const kShare = k + nk > 0 ? k / (k + nk) : 1;           // no NK (e.g. parking) → all Kalt
+    const soll = Number(r.soll) || 0, ist = r.ist == null ? 0 : Number(r.ist) || 0;
+    if (paus) { t.pP += soll; t.pI += ist; return; }
+    t.kP += soll * kShare; t.nP += soll - soll * kShare;
+    t.kI += ist * kShare;  t.nI += ist - ist * kShare;
+  }));
+  const cell = (v, muted) => '<span style="width:84px;text-align:right;font-variant-numeric:tabular-nums;' + (muted ? 'color:var(--cx-mut,#9A8E7E);' : '') + '">' + cxW(v) + '</span>';
+  const row  = (lbl, i, p, total) =>
+    '<div style="display:flex;align-items:center;gap:6px;padding:' + (total ? '7px 0 0;margin-top:3px;border-top:0.5px solid var(--cx-line,#EDE8E0);font-weight:500;' : '3px 0;') + '">' +
+    '<span style="flex:1">' + lbl + '</span>' + cell(i) + cell(p, true) + '</div>';
+  return '<div style="margin:12px 0 4px;font-size:12px;color:var(--cc-charcoal,#3A3530);">' +
+    '<div style="display:flex;gap:6px;font-size:9px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe,#9A8E7E);padding-bottom:2px;">' +
+      '<span style="flex:1"></span><span style="width:84px;text-align:right">Eingegangen</span><span style="width:84px;text-align:right">Geplant</span></div>' +
+    row('Kaltmiete', t.kI, t.kP) +
+    row('Nebenkosten', t.nI, t.nP) +
+    (t.pP || t.pI ? row('Pauschal', t.pI, t.pP) : '') +
+    row('Warm (gesamt)', t.kI + t.nI + t.pI, t.kP + t.nP + t.pP, true) +
+  '</div>';
+}
 
 /* What "Alle offenen wie geplant" would book: open, full-month rows without a data check */
 function _cxIncBulkList() {
