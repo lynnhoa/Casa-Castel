@@ -18,7 +18,8 @@
 
 'use strict';
 
-const _CX_KINDS = ['Rechnung', 'Sonstiges'];
+const _CX_KINDS = ['Rechnung', 'Versorger', 'Sonstiges'];   // stored values (German) · Versorger = yearly Strom/Gas/Wasser result
+const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Utility bill', Sonstiges: 'Other' };   // what the app shows
 let _cxOt = {
   form: null,                                          // null · 'new' (summary) · 'new:<pid>' (in a card) · entry id (edit)
   flash: null, formAt: null, mfold: {}, more: {},
@@ -49,9 +50,9 @@ const _cxOtSigned = o => (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount
 /* Year bar for the Jahr view (the month bar is used in the Monat view) */
 function _cxOtYearBar() {
   return '<div class="cx-month">' +
-    '<button class="cx-arw" data-cx="otYear" data-v="-1" aria-label="Vorheriges Jahr"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
-    '<div class="cx-month__t"><div class="cx-month__m">' + window._ctrl.year + '</div><div class="cx-month__s">Stand ' + cxFmtDate(cxToday()) + '</div></div>' +
-    '<button class="cx-arw" data-cx="otYear" data-v="1" aria-label="Nächstes Jahr"><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
+    '<button class="cx-arw" data-cx="otYear" data-v="-1" aria-label="Previous year"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
+    '<div class="cx-month__t"><div class="cx-month__m">' + window._ctrl.year + '</div><div class="cx-month__s">As of ' + cxFmtDate(cxToday()) + '</div></div>' +
+    '<button class="cx-arw" data-cx="otYear" data-v="1" aria-label="Next year"><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
 }
 
 /* Add / edit form (inline) */
@@ -65,25 +66,25 @@ function _cxOtFormHTML(o) {
   const all = window._ctrl.one_time || [];
   const uniq = f => [...new Set(all.map(x => String(x[f] || '').trim()).filter(Boolean))].slice(0, 60);
   return '<div class="cx-form cx-ot-form" data-edit="' + (o ? cxEsc(o.id) : '') + '">' +
-    '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '">' + k + '</button>').join('') + '</div>' +
+    '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '">' + (_CX_KIND_LBL[k] || k) + '</button>').join('') + '</div>' +
     '<div class="cx-grid2">' +
-      '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">Raus</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">Rein</button></div>' +
-      '<label class="cx-f"><input type="text" inputmode="decimal" id="cxOtAmt" placeholder="Betrag" aria-label="Betrag" value="' + (o ? cxE2(o.amount) : '') + '"><span>€</span></label>' +
+      '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">Out</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">In</button></div>' +
+      '<label class="cx-f"><input type="text" inputmode="decimal" id="cxOtAmt" placeholder="Amount" aria-label="Amount" value="' + (o ? cxE2(o.amount) : '') + '"><span>€</span></label>' +
     '</div>' +
     '<label class="cx-f cx-f--l"><select id="cxOtProp" aria-label="Objekt" onchange="_cxOtNkShow()">' + props.map(p => '<option value="' + p.id + '"' + (p.id === pid ? ' selected' : '') + '>' + cxEsc(p.name) + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-    '<label class="cx-f cx-f--l"><input type="text" id="cxOtText" list="cxOtTexts" placeholder="Beschreibung · z. B. Handwerker" aria-label="Beschreibung" value="' + cxEsc(o ? o.item || '' : '') + '"></label>' +
-    '<label class="cx-f cx-f--l"><input type="text" id="cxOtCompany" list="cxOtCompanies" placeholder="Firma (optional)" aria-label="Firma" value="' + cxEsc(o ? o.company || '' : '') + '"></label>' +
+    '<label class="cx-f cx-f--l"><input type="text" id="cxOtText" list="cxOtTexts" placeholder="Description · e.g. Handwerker" aria-label="Description" value="' + cxEsc(o ? o.item || '' : '') + '"></label>' +
+    '<label class="cx-f cx-f--l"><input type="text" id="cxOtCompany" list="cxOtCompanies" placeholder="Company (optional)" aria-label="Company" value="' + cxEsc(o ? o.company || '' : '') + '"></label>' +
     '<datalist id="cxOtTexts">' + uniq('item').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
     '<datalist id="cxOtCompanies">' + uniq('company').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
-    '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Datum"></label>' +
+    '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Date"></label>' +
     // Casa Castel costs that tenants pay via the NK-Abrechnung — for you still a normal cost (tax export unchanged)
     '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '"' +
-      (pid === CASA_PROP_ID && dir < 0 ? '' : ' style="display:none"') + '>' +
+      (pid === CASA_PROP_ID ? '' : ' style="display:none"') + '>' +
       '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
-      '<span class="cx-ot-nk__t"><b>In NK-Abrechnung umlegen</b><small>Gemeinschaftskosten · für dich weiter normale Kosten</small></span></button>' +
-    '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Abbrechen</button>' +
-      '<button class="cx-btn cx-btn--p" data-cx="otSave">Speichern</button></div>' +
-    (o ? '<button class="cx-link cx-ot-del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Rechnung löschen</button>' : '') +
+      '<span class="cx-ot-nk__t"><b>Include in NK-Abrechnung</b><small>Gemeinschaftskosten · still a normal cost for you</small></span></button>' +
+    '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
+      '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
+    (o ? '<button class="cx-link cx-ot-del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Delete invoice</button>' : '') +
   '</div>';
 }
 
@@ -93,9 +94,9 @@ function _cxOtRowHTML(o) {
   if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(o) + '</div>';
   const inn = Number(o.direction) === 1;
   const pills = (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK</span>' : '') +
-                (o.kind === 'Sonstiges' ? cxPill('grey', 'Sonstiges') : '') + (inn ? cxPill('ok', 'Rein') : '');
-  return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc((o.item || 'Eintrag') + ' bearbeiten') + '">' +
-    '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Eintrag') + '</span>' +
+                (o.kind === 'Sonstiges' || o.kind === 'Versorger' ? cxPill('grey', _CX_KIND_LBL[o.kind]) : '') + (inn ? cxPill('ok', 'In') : '');
+  return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc('Edit ' + (o.item || 'entry')) + '">' +
+    '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +
       '<span class="cx-r__p">' + pills + '<i class="ti ti-chevron-right cx-chev" aria-hidden="true"></i></span></div>' +
     '<div class="cx-r__s' + (inn ? ' pos' : '') + '">' + (inn ? '+\u202f' : '') + cxEur(o.amount) + '</div>' +
     '<div class="cx-r__sub">' + cxEsc([cxFmtDate(o.invoice_date), o.company].filter(Boolean).join(' · ')) + '</div>' +
@@ -109,7 +110,7 @@ function _cxOtRowsLimited(list, k) {
   const n = Math.max(lim, focus + 1);
   const rest = list.length - n;
   return list.slice(0, n).map(_cxOtRowHTML).join('') +
-    (rest > 0 ? '<button class="cx-ot-more" data-cx="otMore" data-k="' + k + '">Weitere ' + Math.min(rest, 20) + ' von ' + rest + ' anzeigen</button>' : '');
+    (rest > 0 ? '<button class="cx-ot-more" data-cx="otMore" data-k="' + k + '">Show ' + Math.min(rest, 20) + ' more of ' + rest + '</button>' : '');
 }
 
 /* Export panel (inside the summary card) */
@@ -121,20 +122,20 @@ function _cxOtExportHTML() {
     '<div class="cx-set__k">Format</div>' +
     '<div class="cx-chips">' + [['pdf', 'PDF (A4)'], ['xlsx', 'Excel']].map(([v, l]) =>
       '<button class="cx-chip' + (e.fmt === v ? ' on' : '') + '" data-cx="otExpFmt" data-v="' + v + '">' + l + '</button>').join('') + '</div>' +
-    '<div class="cx-set__k">Objekte</div>' +
-    '<label class="cx-f cx-f--l"><select id="cxOtExpProp" aria-label="Objekte"><option value="">Alle Objekte</option>' +
+    '<div class="cx-set__k">Properties</div>' +
+    '<label class="cx-f cx-f--l"><select id="cxOtExpProp" aria-label="Properties"><option value="">All properties</option>' +
       props.map(p => '<option value="' + p.id + '"' + (String(e.pid) === String(p.id) ? ' selected' : '') + '>' + cxEsc(p.name) + '</option>').join('') +
     '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-    '<div class="cx-r__sub">Ganzes Jahr ' + y + ' · Nr. · Produkt · Geschäft · Preis · Rechnungsdatum</div>' +
+    '<div class="cx-r__sub">Whole year ' + y + ' · No. · Product · Shop · Price · Invoice date</div>' +
     '<div class="cx-ot-exp__go"><button class="cx-btn cx-btn--p cx-btn--full" data-cx="otExpGo"' + (props.length ? '' : ' disabled') + '>' +
-      (e.fmt === 'pdf' ? 'PDF erstellen' : 'Excel exportieren') + '</button></div>' +
+      (e.fmt === 'pdf' ? 'Create PDF' : 'Export Excel') + '</button></div>' +
   '</div>';
 }
 
 function _cxOtListHTML() {
   const rows = _cxOtVisible();
-  if (!rows.length) return '<div class="cx-card"><div class="cx-empty">' + (_cxOt.q ? 'Nichts gefunden für „' + cxEsc(_cxOt.q) + '“.' :
-    'Noch keine Rechnungen ' + (_cxOt.view === 'y' ? window._ctrl.year : 'im ' + CX_MONTHS[CX.month - 1]) + '.') + '</div></div>';
+  if (!rows.length) return '<div class="cx-card"><div class="cx-empty">' + (_cxOt.q ? 'Nothing found for "' + cxEsc(_cxOt.q) + '".' :
+    'No invoices yet ' + (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1]) + '.') + '</div></div>';
   const order = window._ctrl.properties.slice().sort((a, b) => (b.active === a.active ? 0 : a.active ? -1 : 1) || a.id - b.id);
   return order.map(p => {
     const list = rows.filter(o => Number(o.property_id) === p.id);
@@ -143,8 +144,8 @@ function _cxOtListHTML() {
     const inn = list.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
     const here = _cxOt.form === 'new:' + p.id;
     // "+ Rechnung" sits at the TOP of the card (no scrolling past 100 invoices); the form opens right below it
-    let body = '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'Nach Monat' : CX_MONTHS[CX.month - 1]) + '</span>' +
-      '<button class="cx-link" data-cx="otAddFor" data-p="' + p.id + '">' + (here ? '× Schließen' : '+ Rechnung') + '</button></div>' +
+    let body = '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'By month' : CX_MONTHS[CX.month - 1]) + '</span>' +
+      '<button class="cx-link" data-cx="otAddFor" data-p="' + p.id + '">' + (here ? '× Close' : '+ Invoice') + '</button></div>' +
       (here ? '<div class="cx-ot-edit cx-ot-edit--top">' + _cxOtFormHTML(null) + '</div>' : '');
     if (_cxOt.view === 'm') body += _cxOtRowsLimited(list, p.id + '|m|' + window._ctrl.year + '|' + CX.month);
     else {
@@ -167,7 +168,7 @@ function _cxOtListHTML() {
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
-      sub: n + (n === 1 ? ' Rechnung' : ' Rechnungen') + (inn ? ' · Rein ' + cxW(inn) : ''),
+      sub: n + (n === 1 ? ' invoice' : ' invoices') + (inn ? ' · In ' + cxW(inn) : ''),
       status: null,
       extraPill: '<span class="cx-ot-tot">' + cxW(out) + '</span>',
       defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || list.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
@@ -190,23 +191,23 @@ window.renderOneTime = function () {
 
   host.innerHTML = '<div class="cx-page">' +
     '<div class="cx-seg cx-seg--view" role="group" aria-label="Ansicht">' +
-      '<button class="' + (_cxOt.view === 'y' ? 'on' : '') + '" data-cx="otView" data-v="y">Jahr</button>' +
-      '<button class="' + (_cxOt.view === 'm' ? 'on' : '') + '" data-cx="otView" data-v="m">Monat</button></div>' +
+      '<button class="' + (_cxOt.view === 'y' ? 'on' : '') + '" data-cx="otView" data-v="y">Year</button>' +
+      '<button class="' + (_cxOt.view === 'm' ? 'on' : '') + '" data-cx="otView" data-v="m">Month</button></div>' +
     (_cxOt.view === 'y' ? _cxOtYearBar() : cxMonthBar()) +
     '<div class="cx-card cx-sum">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Rechnungen bezahlt · ' + cxEsc(period) + '</span>' + cxPill('beige', all.length + (all.length === 1 ? ' Rechnung' : ' Rechnungen')) + '</div>' +
-      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Rein ' + cxW(rein) : (_cxOt.view === 'y' ? 'im Jahr ' + window._ctrl.year : 'im ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
+      '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', all.length + (all.length === 1 ? ' invoice' : ' invoices')) + '</div>' +
+      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'In ' + cxW(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
       '<div class="cx-grid2" style="margin-top:4px">' +
         '<button class="cx-btn cx-btn--s" data-cx="otNew">' +
-          (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Schließen' : '<i class="ti ti-plus" aria-hidden="true"></i>Rechnung') + '</button>' +
-        '<button class="cx-btn cx-btn--s" data-cx="otExp">' + (_cxOt.exp.open ? '<i class="ti ti-x" aria-hidden="true"></i>Schließen' : '<i class="ti ti-download" aria-hidden="true"></i>Export') + '</button>' +
+          (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-plus" aria-hidden="true"></i>Invoice') + '</button>' +
+        '<button class="cx-btn cx-btn--s" data-cx="otExp">' + (_cxOt.exp.open ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-download" aria-hidden="true"></i>Export') + '</button>' +
       '</div>' + (_cxOt.exp.open ? _cxOtExportHTML() : '') +
       (_cxOt.form === 'new' ? _cxOtFormHTML(null) : '') +
     '</div>' +
-    '<div class="cx-head"><span class="cx-lbl">Rechnungen je Objekt</span><span class="cx-lbl">Betrag</span></div>' +
-    '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Suchen · Beschreibung oder Firma" aria-label="Suchen" value="' + cxEsc(_cxOt.q) + '"></label>' +
+    '<div class="cx-head"><span class="cx-lbl">Invoices per property</span><span class="cx-lbl">Amount</span></div>' +
+    '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Search · description or company" aria-label="Search" value="' + cxEsc(_cxOt.q) + '"></label>' +
     '<div id="cxOtList">' + _cxOtListHTML() + '</div>' +
-    '<div class="cx-r__sub" style="text-align:center;margin-top:8px">NK- und Hausgeld-Abrechnungen stehen in Income und Expenses.</div>' +
+    '<div class="cx-r__sub" style="text-align:center;margin-top:8px">NK and Hausgeld Abrechnungen are in Income and Expenses.</div>' +
   '</div>';
 
   if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60); }
@@ -272,7 +273,7 @@ window.renderOneTime = function () {
       if (a === 'otSave') return _cxOtSave(b);
       if (a === 'otDel') {
         const id = b.dataset.id, o = (window._ctrl.one_time || []).find(x => String(x.id) === String(id));
-        if (!o || !confirm('„' + (o.item || 'Eintrag') + '“ über ' + cxEur(o.amount) + ' löschen?')) return;
+        if (!o || !confirm('Delete "' + (o.item || 'entry') + '" (' + cxEur(o.amount) + ')?')) return;
         try { await ctlDeleteOneTime(o.id); _cxOt.form = null; } catch (e) { cxToastErr(e); }
         return window.renderOneTime();
       }
@@ -303,7 +304,7 @@ function _cxOtDirty() {
 /* Close the open form; asks first when something typed would be lost. Returns false if you keep editing. */
 function _cxOtClose() {
   if (_cxOt.form === null) return true;
-  if (_cxOtDirty() && !confirm('Eingabe verwerfen?')) return false;
+  if (_cxOtDirty() && !confirm('Discard your input?')) return false;
   const o = _cxOtEditing(); if (o) { delete o._kind; delete o._dir; delete o._nk; }
   _cxOt.form = null; _cxOt.formAt = null;
   return true;
@@ -330,18 +331,18 @@ async function _cxOtSave(b) {
   const pid = Number(g('cxOtProp')?.value);
   const date = String(g('cxOtDate')?.value || '').slice(0, 10);
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
-  if (!(amt > 0)) { say('Bitte einen Betrag eingeben'); g('cxOtAmt')?.focus(); return; }
-  if (!date) { say('Bitte ein Datum eingeben'); g('cxOtDate')?.focus(); return; }
+  if (!(amt > 0)) { say('Please enter an amount'); g('cxOtAmt')?.focus(); return; }
+  if (!date) { say('Please enter a date'); g('cxOtDate')?.focus(); return; }
   const o = _cxOtEditing();
   const kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   // NK only for Casa Castel costs (Raus); anything else is saved without it
   const nkOn = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
-  const nk_umlage = pid === CASA_PROP_ID && dir < 0 && !!nkOn;
+  const nk_umlage = pid === CASA_PROP_ID && !!nkOn;          // Raus adds to the NK costs, Rein (e.g. Versorger-Guthaben) lowers them
   // soft duplicate hint: same property, amount and date
   const dup = (window._ctrl.one_time || []).find(x => (!o || x.id !== o.id) && Number(x.property_id) === pid &&
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
-  if (dup && !confirm('Mögliches Duplikat: „' + (dup.item || 'Eintrag') + '“ · ' + cxEur(dup.amount) + ' am ' + cxFmtDate(date) + ' gibt es schon.\n\nTrotzdem speichern?')) return;
+  if (dup && !confirm('Possible duplicate: "' + (dup.item || 'entry') + '" · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists.\n\nSave anyway?')) return;
   b.disabled = true;
   try {
     let saved;
@@ -356,11 +357,11 @@ async function _cxOtSave(b) {
     try { localStorage.setItem('cx_ot_prop', String(pid)); } catch (e) {}
     _cxOt.form = null; _cxOt.formAt = null;
     const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7));
-    if (y !== window._ctrl.year) say('Gespeichert in ' + y);
-    else if (_cxOt.view === 'm' && m !== CX.month) say('Gespeichert in ' + CX_MONTHS[m - 1]);
-    else say('Gespeichert');
+    if (y !== window._ctrl.year) say('Saved in ' + y);
+    else if (_cxOt.view === 'm' && m !== CX.month) say('Saved in ' + CX_MONTHS[m - 1]);
+    else say('Saved');
   } catch (e) {
-    if (/nk_umlage/.test(String(e && (e.message || e)))) say('Bitte zuerst das SQL für „NK umlegen“ ausführen');
+    if (/nk_umlage/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK switch first');
     else cxToastErr(e);
     b.disabled = false; return;
   }
@@ -373,5 +374,5 @@ function _cxOtNkShow() {
   const pid = Number(document.getElementById('cxOtProp')?.value);
   const o = _cxOtEditing();
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
-  row.style.display = pid === CASA_PROP_ID && dir < 0 ? '' : 'none';
+  row.style.display = pid === CASA_PROP_ID ? '' : 'none';
 }

@@ -328,7 +328,7 @@ function cxAreaPid(pid) {
 }
 const cxAreaOk = p => cxAreaPid(p.id);
 
-const CX_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const CX_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 /* ── Money ── */
 const cxR    = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -355,29 +355,29 @@ const cxFmtDate = iso => { const s = String(iso || '').slice(0, 10); return s ? 
 /* ── Pills: one colour = one meaning ── */
 const cxPill = (cls, text) => '<span class="cx-pill cx-pill--' + cls + '">' + cxEsc(text) + '</span>';
 function cxStatus(soll, ist, emptyText) {
-  if (!soll && (ist === null || ist === undefined)) return ['grey', emptyText || 'leer'];
-  if (ist === null || ist === undefined) return ['open', 'offen'];
+  if (!soll && (ist === null || ist === undefined)) return ['grey', emptyText || 'empty'];
+  if (ist === null || ist === undefined) return ['open', 'open'];
   const d = cxR(ist - soll);
-  if (!d) return ['ok', 'bezahlt'];
-  return ['diff', (d < 0 ? '\u2212 ' : '+ ') + cxEur(Math.abs(d)) + (d < 0 ? ' weniger' : ' mehr')];
+  if (!d) return ['ok', 'paid'];
+  return ['diff', (d < 0 ? '\u2212 ' : '+ ') + cxEur(Math.abs(d)) + (d < 0 ? ' less' : ' more')];
 }
 function cxGroupStatus(rows) {
   const act = rows.filter(r => r.soll || (r.ist !== null && r.ist !== undefined));
   const open = act.filter(r => r.ist === null || r.ist === undefined).length;
   const diff = act.some(r => r.ist !== null && r.ist !== undefined && cxR(r.ist - r.soll) !== 0);
-  if (diff) return ['diff', 'Abweichung'];
-  if (open) return ['open', open + ' offen'];
-  return act.length ? ['ok', 'erfasst'] : ['grey', 'leer'];
+  if (diff) return ['diff', 'difference'];
+  if (open) return ['open', open + ' open'];
+  return act.length ? ['ok', 'done'] : ['grey', 'empty'];
 }
 
 /* ── Month selector (same on every tab) ── */
 function cxMonthBar() {
   const today = cxFmtDate(cxToday());
   return '<div class="cx-month">' +
-    '<button class="cx-arw" data-cx="prev" aria-label="Vorheriger Monat"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
+    '<button class="cx-arw" data-cx="prev" aria-label="Previous month"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
     '<div class="cx-month__t"><div class="cx-month__m">' + CX_MONTHS[CX.month - 1] + ' ' + window._ctrl.year + '</div>' +
-    '<div class="cx-month__s">Stand ' + today + '</div></div>' +
-    '<button class="cx-arw" data-cx="next" aria-label="Nächster Monat"><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
+    '<div class="cx-month__s">As of ' + today + '</div></div>' +
+    '<button class="cx-arw" data-cx="next" aria-label="Next month"><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
 }
 async function cxStepMonth(delta) {
   let m = CX.month + delta, y = window._ctrl.year;
@@ -404,21 +404,21 @@ function cxGoto(tab) { if (typeof switchTab === 'function') switchTab(tab); }
 function cxSummary(o) {
   const pct = o.plan ? Math.min(100, o.done / o.plan * 100) : 0;
   const canBulk = (o.bulk !== undefined ? o.bulk : o.open) > 0;
-  const undo = o.undo ? '<div class="cx-undo"><span>' + o.undo.n + (o.undo.n === 1 ? ' Posten' : ' Posten') + ' wie geplant gebucht</span>' +
-    '<button class="cx-link" data-cx="undo" style="padding:4px 0;color:var(--cx-acc);font-weight:500">Rückgängig</button></div>' : '';
+  const undo = o.undo ? '<div class="cx-undo"><span>' + o.undo.n + (o.undo.n === 1 ? ' item' : ' items') + ' booked as planned</span>' +
+    '<button class="cx-link" data-cx="undo" style="padding:4px 0;color:var(--cx-acc);font-weight:500">Undo</button></div>' : '';
   const action = o.confirm
-    ? '<div class="cx-bulk"><div>' + o.confirm.n + (o.confirm.n === 1 ? ' Posten' : ' Posten') + ' wie geplant buchen · ' + cxEur(o.confirm.sum) +
-        (o.confirm.skipped ? '<div class="cx-bulk__s">' + o.confirm.skipped + ' mit Prüfhinweis übersprungen – bitte einzeln erfassen</div>' : '') + '</div>' +
-        '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="allNo">Abbrechen</button>' +
-        '<button class="cx-btn cx-btn--p" data-cx="allYes"' + (o.confirm.n ? '' : ' disabled') + '>Buchen</button></div></div>'
-    : '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="all"' + (canBulk ? '' : ' disabled') + '><i class="ti ti-checks" aria-hidden="true"></i>Alle offenen wie geplant …</button>';
+    ? '<div class="cx-bulk"><div>' + 'Book ' + o.confirm.n + (o.confirm.n === 1 ? ' item' : ' items') + ' as planned · ' + cxEur(o.confirm.sum) +
+        (o.confirm.skipped ? '<div class="cx-bulk__s">' + o.confirm.skipped + ' skipped because of a check – please enter one by one</div>' : '') + '</div>' +
+        '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="allNo">Cancel</button>' +
+        '<button class="cx-btn cx-btn--p" data-cx="allYes"' + (o.confirm.n ? '' : ' disabled') + '>Book</button></div></div>'
+    : '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="all"' + (canBulk ? '' : ' disabled') + '><i class="ti ti-checks" aria-hidden="true"></i>Book all open as planned</button>';
   return '<div class="cx-card cx-sum">' +
-    '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' offen') : cxPill('ok', 'alles erfasst')) + '</div>' +
-    '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(o.done) + '</span><span class="cx-sum__of">von ' + cxW(o.plan) + ' geplant</span></div>' +
+    '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' open') : cxPill('ok', 'all done')) + '</div>' +
+    '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(o.done) + '</span><span class="cx-sum__of">of ' + cxW(o.plan) + ' planned</span></div>' +
     '<div class="cx-bar cx-bar--thin"><div style="width:' + pct + '%"></div></div>' +
     (o.split || '') +                                       // e.g. Kalt / NK / Warm table (Income)
     undo + action + (o.note ? '<div class="cx-sum__hint">' + o.note + '</div>' : '') +
-    (o.partial && !o.confirm ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 anteiliger Monat' : o.partial + ' anteilige Monate') + ' · bitte einzeln bestätigen</div>' : '') +
+    (o.partial && !o.confirm ? '<div class="cx-sum__hint">' + (o.partial === 1 ? '1 partial month' : o.partial + ' partial months') + ' · please confirm one by one</div>' : '') +
   '</div>';
 }
 /* Pending undo for this tab and month? */
@@ -435,7 +435,7 @@ function cxCard(o) {
   return '<div class="cx-card">' +
     '<button class="cx-ph" data-cx="fold" data-k="' + cxEsc(o.key) + '" aria-expanded="' + isOpen + '">' +
       '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span><span class="cx-src">' +
-        cxEsc([o.sub || '', o.sum !== undefined ? 'erfasst ' + cxW(o.sum) + (o.plan ? ' von ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · ')) + '</span></span>' +
+        cxEsc([o.sub || '', o.sum !== undefined ? 'done ' + cxW(o.sum) + (o.plan ? ' of ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · ')) + '</span></span>' +
       '<span class="cx-ph__r">' + (o.extraPill || '') +
         (g ? cxPill(g[0], g[1]) : '') + '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span>' +
     '</button>' + (isOpen ? o.body : '') + '</div>';
@@ -449,14 +449,14 @@ function cxRow(o) {
   const can = !!o.soll || (o.ist !== null && o.ist !== undefined);
   const took = o.ist !== null && o.ist !== undefined && o.soll && cxR(o.ist - o.soll) === 0;
   const soll = o.soll
-    ? '<button class="cx-soll' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Soll übernehmen: ' + cxEsc(cxEur(o.soll)) + '">' +
+    ? '<button class="cx-soll' + (took ? ' on' : '') + '" data-cx="take" data-id="' + cxEsc(o.id) + '" aria-label="Take Soll: ' + cxEsc(cxEur(o.soll)) + '">' +
         '<span>' + cxEur(o.soll) + '</span><i class="ti ti-' + (took ? 'check' : 'arrow-right') + '" aria-hidden="true"></i></button>'
     : '<span class="cx-r__s">\u2014</span>';
   return '<div class="cx-r">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.label) + (o.badge ? ' ' + cxPill('beige', o.badge) : '') + '</span>' +
       '<span class="cx-r__p">' + (o.pills || '') + cxPill(s[0], s[1]) + '</span></div>' +
     '<div class="cx-r__mid">' + soll +
-      '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Betrag' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist-Betrag ' + cxEsc(o.label) + '"><span>€</span></label>' +
+      '<label class="cx-f' + (can || o.allowEmpty ? '' : ' cx-f--off') + '"><input type="text" inputmode="decimal" data-cx-in="' + cxEsc(o.id) + '" value="' + (o.ist === null || o.ist === undefined ? '' : cxE2(o.ist)) + '" placeholder="' + (o.soll || o.allowEmpty ? 'Amount' : '\u2014') + '"' + (o.soll || o.allowEmpty || can ? '' : ' disabled') + ' aria-label="Ist amount ' + cxEsc(o.label) + '"><span>€</span></label>' +
     '</div>' +
     (o.sub ? '<div class="cx-r__sub">' + o.sub + '</div>' : '') +
     (o.notes || []).map(n => '<div class="cx-r__note"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> ' + cxEsc(n) + '</div>').join('') +
@@ -466,7 +466,7 @@ function cxRow(o) {
 }
 function cxNotDue(list) {
   if (!list || !list.length) return '';
-  return '<div class="cx-nd">' + cxPill('grey', 'nicht fällig') + '<span>' + list.map(n => cxEsc(n.label) + (n.next ? ' · nächste im ' + n.next : '')).join(' · ') + '</span></div>';
+  return '<div class="cx-nd">' + cxPill('grey', 'not due') + '<span>' + list.map(n => cxEsc(n.label) + (n.next ? ' · next in ' + n.next : '')).join(' · ') + '</span></div>';
 }
 
 /* ── Toasts ── */
@@ -474,7 +474,7 @@ function cxToastErr(e) {
   console.error('[controlling]', e);
   // Short reason in the message, so a problem can be named from a screenshot
   const why = String((e && (e.message || e.details)) || e || '').replace(/\s+/g, ' ').slice(0, 70);
-  if (typeof ctlToast === 'function') ctlToast('Speichern fehlgeschlagen – bitte erneut versuchen' + (why ? ' · ' + why : ''));
+  if (typeof ctlToast === 'function') ctlToast('Saving failed – please try again' + (why ? ' · ' + why : ''));
 }
 
 /* ── Wire a tab host once: month arrows, fold, take-over, inputs ── */

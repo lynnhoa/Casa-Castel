@@ -33,21 +33,21 @@ function _cxExpModel() {
       for (const x of window._ctrl.castel_expenses.filter(e => e.year === y && e.month === m)) {
         if (rows.some(r => r.catId === x.category_id)) continue;
         const c = ctlCat(x.category_id);
-        rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Kosten', soll: 0, sub: (c && c.frequency) || '', src: 'Setup', ist: cxR(x.amount) });
+        rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Cost', soll: 0, sub: (c && c.frequency) || '', src: 'Setup', ist: cxR(x.amount) });
       }
       // sporadic costs without a plan this month: always enterable, no Soll (B18)
       for (const bd of (plan.bedarf || [])) {
         if (rows.some(r => r.catId === bd.catId)) continue;
-        rows.push({ key: 'cat:' + bd.catId, catId: bd.catId, label: bd.label, soll: 0, sub: 'bei Bedarf', src: '', ist: null, bedarf: true });
+        rows.push({ key: 'cat:' + bd.catId, catId: bd.catId, label: bd.label, soll: 0, sub: 'as needed', src: '', ist: null, bedarf: true });
       }
       // quarterly / yearly without due months: shown as a check, never silently gone (B19)
-      if (plan.checks && plan.checks.length) rows.warn = 'Fälligkeit fehlt: ' + plan.checks.join(', ') + ' – in Setup die Monate wählen';
+      if (plan.checks && plan.checks.length) rows.warn = 'Due months missing: ' + plan.checks.join(', ') + ' – choose the months in Setup';
     } else {
       const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m);
       for (const r of rows) r.ist = row && row[r.key] !== null && row[r.key] !== undefined ? cxR(row[r.key]) : null;
       if (row) for (const k of ['rate', 'hausgeld', 'grundsteuer', 'strom']) {
         if (rows.some(r => r.key === k) || row[k] === null || row[k] === undefined || Number(row[k]) === 0) continue;
-        rows.push({ key: k, label: _CX_APT_LABEL[k], soll: 0, sub: 'nicht geplant', src: '', ist: cxR(row[k]) });
+        rows.push({ key: k, label: _CX_APT_LABEL[k], soll: 0, sub: 'not planned', src: '', ist: cxR(row[k]) });
       }
     }
     for (const r of rows) { r.id = 'exp:' + p.id + ':' + r.key; _cxExpIndex[r.id] = { p, row: r }; }
@@ -66,28 +66,28 @@ window.renderExpenses = function () {
   const cards = model.map(g => {
     const regular = g.rows.filter(r => !r.bedarf), bedarf = g.rows.filter(r => r.bedarf);
     const row = r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist,
-        sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">aus ' + cxEsc(r.src) + '</span>' : ''),
-        notes: r.note ? [r.note] : [], info: r.info || null, emptyText: r.bedarf ? 'bei Bedarf' : 'nicht geplant', allowEmpty: true });
+        sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">from ' + cxEsc(r.src) + '</span>' : ''),
+        notes: r.note ? [r.note] : [], info: r.info || null, emptyText: r.bedarf ? 'as needed' : 'not planned', allowEmpty: true });
     const bk = 'expb:' + g.p.id + ':' + CX.month, bOpen = !!CX.open[bk];
     const body = (g.warn ? '<div class="cx-r"><div class="cx-r__l"><div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(g.warn) + '</div></div></div>' : '') +
       regular.map(row).join('') + cxNotDue(g.notDue) +
-      (bedarf.length ? '<button class="cx-link" data-cx="fold" data-k="' + bk + '" aria-expanded="' + bOpen + '"><i class="ti ti-chevron-' + (bOpen ? 'up' : 'down') + '" aria-hidden="true"></i> Bei Bedarf · ' + bedarf.map(r => cxEsc(r.label)).join(', ') + '</button>' +
+      (bedarf.length ? '<button class="cx-link" data-cx="fold" data-k="' + bk + '" aria-expanded="' + bOpen + '"><i class="ti ti-chevron-' + (bOpen ? 'up' : 'down') + '" aria-hidden="true"></i> As needed · ' + bedarf.map(r => cxEsc(r.label)).join(', ') + '</button>' +
         (bOpen ? bedarf.map(row).join('') : '') : '');
     const n = g.rows.length;
     // NK Guthaben an Mieter · Hausgeld Nachzahlung an WEG — only finished results (controlling-abr.js)
     const abr = ctlAbrRows(g.p.id, window._ctrl.year, CX.month, -1).filter(r => !r.info);
     const all = g.rows.concat(abr);
-    return cxCard({ key: 'exp:' + g.p.id, title: g.p.name, sub: n === 1 ? '1 Posten' : n + ' Posten',
+    return cxCard({ key: 'exp:' + g.p.id, title: g.p.name, sub: n === 1 ? '1 item' : n + ' items',
                     status: cxGroupStatus(all), sum: all.reduce((s, r) => s + (r.ist || 0), 0), plan: all.reduce((s, r) => s + (r.soll || 0), 0),
-                    extraPill: g.rows.some(r => r.note) ? cxPill('beige', 'Änderung') : '', body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, -1) });
+                    extraPill: g.rows.some(r => r.note) ? cxPill('beige', 'change') : '', body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, -1) });
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Laufende Kosten bezahlt', done, plan, open,
+    cxSummary({ label: 'Running costs paid', done, plan, open,
                 confirm: CX.bulk === 'expenses' ? _cxExpBulkList() : null, undo: cxUndoFor('expenses'), note: _cxAbrNote(-1) }) +
-    '<div class="cx-head"><span class="cx-lbl">Soll · aus Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
+    '<div class="cx-head"><span class="cx-lbl">Soll · from Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
     cards +
-    '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Rechnungen: im Tab One-off</button>' +
+    '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Invoices: in the One-off tab</button>' +
     '</div>';
 
   cxWire(host, {

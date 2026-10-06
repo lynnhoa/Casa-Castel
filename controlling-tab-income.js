@@ -52,7 +52,7 @@ window.renderIncome = function () {
   model.forEach(g => g.rows.forEach(r => { plan += r.soll; if (r.ist !== null) done += r.ist; else if (r.soll) { open++; if (r.s.partial) partialOpen++; } }));
 
   const cards = model.map(g => {
-    const src = g.p.id === CASA_PROP_ID ? 'aus Casa Castel' : (g.rows.some(r => r.s.link) ? 'aus Rentals' : 'Planwert');
+    const src = g.p.id === CASA_PROP_ID ? 'from Casa Castel' : (g.rows.some(r => r.s.link) ? 'from Rentals' : 'plan value');
     // #11: "Änderung" only for a real change (Einzug, Auszug, new rent, Staffel, NK) — not for info notes
     const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Mieterwechsel|Neu vermietet|Auszug|Staffel|NK angepasst|Verlängerung|Neue Miete)/.test(n)));
     const vis = r => ctlVisibleCheck(g.p.name, r.u.name, r.s.check);      // × in Setup hides a hint here too
@@ -61,35 +61,35 @@ window.renderIncome = function () {
       if (r.part) {                                          // one line per tenant (G1)
         const pt = r.part;
         return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: null, soll: r.soll, ist: r.ist,
-                       sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'pauschal' : cxEur(pt.k) + ' kalt + ' + cxEur(pt.nk) + ' NK'),
-                       pills: cxPill('beige', 'anteilig'), notes: r.first ? r.s.notes : [], emptyText: 'leer', allowEmpty: true,
+                       sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'Pauschal' : cxEur(pt.k) + ' Kalt + ' + cxEur(pt.nk) + ' NK'),
+                       pills: cxPill('beige', 'partial'), notes: r.first ? r.s.notes : [], emptyText: 'empty', allowEmpty: true,
                        warn: r.first ? vis(r) : null });
       }
       // tenant change in the month → both parts, each at its own rent
       const sub = r.soll
         ? (r.s.parts && r.s.parts.length > 1
             ? r.s.parts.map(pt => pt.from + '.–' + pt.to + '.: ' + cxEur(pt.amount)).join(' · ')
-            : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' pauschal'
-              : (_cxIsParking(r.u) && !r.s.nk ? 'Miete ' + cxEur(r.s.k) : cxEur(r.s.k) + ' kalt + ' + cxEur(r.s.nk) + ' NK')))
-        : (r.s.link ? 'nicht vermietet' : 'kein Planwert');
-      const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'anteilig' : 'anteilig ' + r.s.days + '/' + r.s.N) : '';
+            : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' Pauschal'
+              : (_cxIsParking(r.u) && !r.s.nk ? 'Rent ' + cxEur(r.s.k) : cxEur(r.s.k) + ' Kalt + ' + cxEur(r.s.nk) + ' NK')))
+        : (r.s.link ? 'not let' : 'no plan value');
+      const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'partial' : 'partial ' + r.s.days + '/' + r.s.N) : '';
       return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Neu vermietet"
-                     notes: r.s.notes, emptyText: 'leer', allowEmpty: true,
-                     warn: vis(r) || (!r.soll && r.ist ? 'Miete erfasst, aber laut Mieter-Daten nicht vermietet – bitte Mieter-Tab prüfen' : null) });
+                     notes: r.s.notes, emptyText: 'empty', allowEmpty: true,
+                     warn: vis(r) || (!r.soll && r.ist ? 'Rent entered, but the tenant data says not let – please check the tenant tab' : null) });
     }).join('');
     // NK Nachzahlung vom Mieter · Hausgeld Guthaben von WEG — only finished results (controlling-abr.js)
     const abr = ctlAbrRows(g.p.id, window._ctrl.year, CX.month, 1).filter(r => !r.info);
     const all = g.rows.concat(abr);
     return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(all),
                     sum: all.reduce((s, r) => s + (r.ist || 0), 0), plan: all.reduce((s, r) => s + (r.soll || 0), 0),
-                    extraPill: warned ? cxPill('open', 'prüfen') : (changed ? cxPill('beige', 'Änderung') : ''),
+                    extraPill: warned ? cxPill('open', 'check') : (changed ? cxPill('beige', 'change') : ''),
                     body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, 1) });   // one extra pill at most
   }).join('');
 
   host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Mieten eingegangen', done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
+    cxSummary({ label: 'Rent received', done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
                 confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income'), note: _cxAbrNote(1) }) +
-    '<div class="cx-head"><span class="cx-lbl">Soll · aus den Mieter-Tabs</span><span class="cx-lbl">Ist</span></div>' +
+    '<div class="cx-head"><span class="cx-lbl">Soll · from the tenant tabs</span><span class="cx-lbl">Ist</span></div>' +
     cards + '</div>';
 
   cxWire(host, {
@@ -142,11 +142,11 @@ function _cxIncSplitHTML(model) {
     '<span style="flex:1">' + lbl + '</span>' + cell(i) + cell(p, true) + '</div>';
   return '<div style="margin:12px 0 4px;font-size:12px;color:var(--cc-charcoal,#3A3530);">' +
     '<div style="display:flex;gap:6px;font-size:9px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--cc-taupe,#9A8E7E);padding-bottom:2px;">' +
-      '<span style="flex:1"></span><span style="width:84px;text-align:right">Eingegangen</span><span style="width:84px;text-align:right">Geplant</span></div>' +
+      '<span style="flex:1"></span><span style="width:84px;text-align:right">Received</span><span style="width:84px;text-align:right">Planned</span></div>' +
     row('Kaltmiete', t.kI, t.kP) +
     row('Nebenkosten', t.nI, t.nP) +
     (t.pP || t.pI ? row('Pauschal', t.pI, t.pP) : '') +
-    row('Warm (gesamt)', t.kI + t.nI + t.pI, t.kP + t.nP + t.pP, true) +
+    row('Warmmiete (total)', t.kI + t.nI + t.pI, t.kP + t.nP + t.pP, true) +
   '</div>';
 }
 
