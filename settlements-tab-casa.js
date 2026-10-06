@@ -363,6 +363,10 @@ function scTenView(M, m) {
   const why = noData ? 'There are no NK costs or payments for ' + M.y + ' in Controlling yet.'
     : saldo > 0 ? first + '\'s share was a little more than the NK paid with the rent.'
     : saldo < 0 ? first + ' paid a bit more NK than the share – the rest goes back.' : 'The NK paid with the rent covers the share exactly.';
+  if (noData) return head + '<div class="srm__b"><div class="srm__one sc-sheet">' +
+    '<div class="sc-card sc-nodata"><b><i class="ti ti-info-circle" aria-hidden="true"></i> No NK for ' + M.y + ' yet</b>' +
+    '<span>' + stEsc(first) + ' lived here ' + t.days + ' days in ' + M.y + ', but there are no house costs and no NK payments for ' + M.y + ' in Controlling – so there is nothing to split yet.</span>' +
+    '<span class="sc-nodata__b"><a class="sc-go" href="controlling.html">Open Controlling</a><button class="sc-go sc-go--ghost" data-sc="manual">Manual NK</button></span></div></div></div>';
   const hero = '<div class="sc-res is-' + tone + '"><span class="sc-res__l">' + (saldo > 0 ? stEsc(first) + ' pays you' : saldo < 0 ? stEsc(first) + ' gets back' : '<i class="ti ti-circle-check" aria-hidden="true"></i> All even') + '</span>' +
     '<span class="sc-res__v">' + scE(Math.abs(saldo)) + '</span>' +
     '<span class="sc-res__w">' + stEsc(why) + (!M.locked && t.k === 'open' && !noData ? ' <em>Preview until the house costs are locked.</em>' : '') + '</span></div>';
@@ -439,10 +443,17 @@ function scMinYear() {
   const y = Number(iso.slice(0, 4));
   return y ? Math.min(y, ty - 1) : ty - 4;
 }
+/* Casa Castel address as letter lines – "Alsenstr. 60, 55252 Mainz-Kastel" never gets the PLZ twice */
+function scHouse() {
+  const s = (typeof appSettings !== 'undefined' && appSettings) || {};
+  const a = String(s.objekt_adresse || '').trim(), plz = String(s.objekt_plz_ort || '').trim();
+  const lines = a ? (plz && !a.includes(plz) ? [a, plz] : a.split(/\s*,\s*/)) : String(typeof ADDRESS !== 'undefined' ? ADDRESS : '').split(/\s*,\s*/);
+  return lines.map(x => x.trim()).filter(Boolean);
+}
 const scListDefault = () => { try { return localStorage.getItem('sc_list') !== '0'; } catch (e) { return true; } };
 function scAddrDefault(t) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
-  const house = s.objekt_adresse ? [s.objekt_adresse, s.objekt_plz_ort].filter(Boolean) : String(typeof ADDRESS !== 'undefined' ? ADDRESS : '').split(/\s*,\s*/).filter(Boolean);
+  const house = scHouse();
   if (t.movedOut) return t.tr && t.tr.address ? String(t.tr.address).split(/\s*,\s*|\n/).filter(Boolean) : [];
   return house;
 }
@@ -480,7 +491,7 @@ async function scLetterData(M, t) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const set = t.set || {};
   const dt = iso => stDate(iso);
-  const house = s.objekt_adresse ? [s.objekt_adresse, s.objekt_plz_ort].filter(Boolean) : String(typeof ADDRESS !== 'undefined' ? ADDRESS : '').split(/\s*,\s*/).filter(Boolean);
+  const house = scHouse();
   const addr = String(set.addr !== undefined ? set.addr : scAddrDefault(t).join('\n')).split('\n').map(x => x.trim()).filter(Boolean);
   const former = set.former !== undefined ? !!set.former : t.movedOut;
   const list = set.list !== undefined ? !!set.list : scListDefault();
@@ -614,7 +625,7 @@ async function scListPdf(btn) {
   const M = SC.model; if (!M) return;
   if (typeof loadSettings === 'function') { try { await loadSettings(); } catch (e) {} }
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
-  const house = s.objekt_adresse ? [s.objekt_adresse, s.objekt_plz_ort].filter(Boolean) : String(typeof ADDRESS !== 'undefined' ? ADDRESS : '').split(/\s*,\s*/).filter(Boolean);
+  const house = scHouse();
   const ex = M.input.lines.filter(l => l.info);
   const d = { brand: 'Casa Castel', unitLabel: 'NK', unitName: String(M.y), footer: house.join(' \u00b7 '), listOnly: true,
               extra: { title: 'Belegliste ' + M.y + ' \u00b7 Einzelrechnungen', intro: 'Hausgeld-Jahresabrechnungen und Einzelrechnungen, die in die Nebenkosten ' + M.y + ' eingeflossen sind.',
