@@ -444,16 +444,19 @@ async function loadHouseCleaning(room) {
     cwEl.innerHTML = '<p class="cc-note">Not started yet.</p>';
   } else {
     cwEl.innerHTML = `
-      <div class="hc-current-card${isDone ? ' hc-current-card--done' : ''}">
+      <div class="hc-current-card${isDone ? ' hc-current-card--done' : ''}" data-turn="${isDone ? 'done' : (isMyTurn && !isCurrentRoomAbsent && !isCurrentRoomVacant) ? 'turn' : ''}">
         <div class="hc-current-top">
-          <span class="k-mob-status-chip ${isDone ? 'approved' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'skipped' : isMyTurn ? 'pending' : 'not-your-turn'}">
-            ${isDone ? '✓ Done' : isCurrentRoomAbsent ? '— Away' : isCurrentRoomVacant ? '— Vacant' : isMyTurn ? 'Your turn' : '— Not your turn'}
+          <span class="k-mob-status-chip ${isDone ? 'approved' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'skipped' : isMyTurn ? 'myturn' : 'not-your-turn'}">
+            ${isDone ? '<i class="ti ti-check" aria-hidden="true"></i>Done'
+              : isCurrentRoomAbsent ? '<i class="ti ti-calendar-off" aria-hidden="true"></i>Away'
+              : isCurrentRoomVacant ? 'Vacant'
+              : isMyTurn ? '<i class="ti ti-broom" aria-hidden="true"></i>Your turn' : 'Not your turn'}
           </span>
           <button onclick="hcOpenHistory()" style="font-size:9px;color:var(--cc-stone);text-decoration:underline;text-underline-offset:2px;cursor:pointer;background:none;border:none;padding:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">history</button>
         </div>
         <div class="k-mob-week-body" style="margin-top:8px;">
           <div class="k-mob-week-left">
-            <span class="k-mob-week-room">${esc(curInfo.room)}</span>
+            <span class="k-mob-week-room">${esc(curInfo.room)}${curInfo.room === room ? '<span class="cc-turn-you">you</span>' : ''}</span>
             <span class="k-mob-week-dates-sm">${curInfo.dateRange} · ${curInfo.daysLeft} day${curInfo.daysLeft !== 1 ? 's' : ''} left</span>
           </div>
           ${isMyTurn && !isDone && !isCurrentRoomAbsent

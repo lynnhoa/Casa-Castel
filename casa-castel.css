@@ -2572,3 +2572,33 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .pwa-hist__row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 0.5px solid var(--cc-rule); }
 .pwa-pw { letter-spacing: 0.05em; color: var(--cc-ink); user-select: all; -webkit-user-select: all; }
 .pwa-pw--none { font-weight: 400; color: var(--cc-stone); letter-spacing: 0; user-select: none; -webkit-user-select: none; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   TURN CARD — Kitchen + House Cleaning (this week)
+   Bold room name, bigger status chip with icon, card tinted by status.
+   Same layout in every state — only the values change.
+══════════════════════════════════════════════════════════════ */
+.k-mob-week-room{font-size:28px;font-weight:500;}
+.k-mob-week-dates-sm{font-size:11px;}
+.k-note{font-size:11px;}
+.k-note--flag{color:#7A2020;}
+.k-note--wait{color:#854F0B;}
+.k-note--done{color:#3B6D11;}
+.cc-turn-you{font-family:'Inter',system-ui,sans-serif;font-size:10px;font-weight:600;color:var(--cc-gold);letter-spacing:0.06em;margin-left:6px;}
+.k-mob-status-chip{gap:5px;font-size:11px;font-weight:600;padding:4px 11px;border-radius:12px;letter-spacing:0.02em;line-height:1.2;}
+.k-mob-status-chip i{font-size:13px;}
+.k-mob-status-chip.submitted{background:#FDF5E8;border:1px solid #E8C97A;color:#633806;}
+.k-mob-status-chip.approved{background:#EAF3DE;border:1px solid #639922;color:#27500A;}
+.k-mob-status-chip.pending{background:var(--cc-surface);border:1px solid var(--cc-rule);color:#6B5E4E;}
+.k-mob-status-chip.missed{background:#FDEEED;border:1px solid #F5A8A5;color:#7A2020;}
+.k-mob-status-chip.flagged{background:#FDEEED;border:1px solid #F5A8A5;color:#7A2020;}
+.k-mob-status-chip.resubmitted{background:#FDF0D8;border:1px solid #E8C97A;color:#633806;}
+.k-mob-status-chip.skipped{background:#F5F3FF;border:1px solid #C4B5FD;color:#5B21B6;}
+.k-mob-status-chip.not-your-turn{background:var(--cc-surface);border:1px solid var(--cc-rule);color:var(--cc-taupe);}
+.k-mob-status-chip.myturn{background:var(--cc-ink);border:1px solid var(--cc-ink);color:var(--cc-white);}
+.k-mob-week[data-turn="turn"],.k-mob-week[data-turn="wait"]{background:#FFFAF1;}
+.k-mob-week[data-turn="redo"]{background:#FEF6F5;}
+.k-mob-week[data-turn="done"]{background:#F6FAF1;}
+.hc-current-card[data-turn="turn"]{background:#FFFAF1;border:1px solid #E8C97A;}
+.hc-current-card[data-turn="done"]{background:#F6FAF1;border:1px solid #97C459;}

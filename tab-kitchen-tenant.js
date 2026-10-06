@@ -24,7 +24,7 @@ document.getElementById('tab-kitchen').innerHTML = `
     <div class="k-mob-rot" id="k-mob-rot-strip"></div>
 
     <!-- Week card -->
-    <div class="k-mob-week">
+    <div class="k-mob-week" id="k-mob-week-card">
       <div class="k-mob-week-top-row">
         <span class="k-mob-status-chip pending" id="k-mob-status-chip"></span>
         <div class="k-mob-week-corner-links">
@@ -645,11 +645,13 @@ async function _kTenRenderWeekCard(overrideRow) {
   const dateStr = isAssigned
     ? _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end) + (wi.daysLeft > 0 ? ' · ' + wi.daysLeft + 'd left' : ' · ends today')
     : turnRoom + "'s turn · " + _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end);
-  document.getElementById('k-mob-room-name').textContent = myRoom;
+  // Whose turn it is, in big letters; "you" when it is this room's turn
+  const nameHtml = isAssigned ? esc(myRoom) + '<span class="cc-turn-you">you</span>' : esc(turnRoom);
+  document.getElementById('k-mob-room-name').innerHTML = nameHtml;
   document.getElementById('k-mob-dates').textContent = dateStr;
   const dskRoom  = document.getElementById('k-ten-dsk-room');
   const dskDates = document.getElementById('k-ten-dsk-dates');
-  if (dskRoom)  dskRoom.textContent  = myRoom;
+  if (dskRoom)  dskRoom.innerHTML  = nameHtml;
   if (dskDates) dskDates.textContent = dateStr;
 
   const dbStatus = row ? row.status : null;
@@ -658,12 +660,13 @@ async function _kTenRenderWeekCard(overrideRow) {
   if (typeof ccTabMarker === 'function') ccTabMarker('kitchen', isAssigned && state === 'now' && dbStatus !== 'submitted');
 
   // Chip
-  const _setChip = (el, cls, txt) => { if (el) { el.className = cls; el.textContent = txt; } };
+  const _setChip = (el, cls, icon, txt) => { if (el) { el.className = cls; el.innerHTML = (icon ? '<i class="ti ti-' + icon + '" aria-hidden="true"></i>' : '') + esc(txt); } };
   const chip    = document.getElementById('k-mob-status-chip');
   const dskChip = document.getElementById('k-ten-dsk-chip');
+  let turnTone = '';   // card tint: turn · wait · redo · done
   if (!isAssigned) {
-    _setChip(chip,    'k-mob-status-chip not-your-turn', '— Not your turn');
-    _setChip(dskChip, 'k-mob-status-chip not-your-turn', '— Not your turn');
+    _setChip(chip,    'k-mob-status-chip not-your-turn', '', 'Not your turn');
+    _setChip(dskChip, 'k-mob-status-chip not-your-turn', '', 'Not your turn');
   } else {
     const isResub = state === 'now' && row && row.reupload_count > 0 && dbStatus !== 'flagged';
     const isAuto  = !!(row && row.approved_by === 'auto');
@@ -675,17 +678,24 @@ async function _kTenRenderWeekCard(overrideRow) {
                   : dbStatus === 'flagged'                  ? 'flagged'
                   : dbStatus === 'submitted' && isResub     ? 'resubmitted'
                   : dbStatus === 'submitted'                ? 'submitted'
+                  : state === 'now'                         ? 'myturn'
                   : 'pending';
-    const chipTxt = state !== 'now'
-      ? ({ done: isLate ? '✓ Done (late)' : '✓ Done',
-           missed:'✗ Missed', absent:'— Away', skipped:'— Vacant' }[state] || 'Pending')
-      : dbStatus === 'flagged'   ? '⚑ Redo'
-      : isResub                  ? '↑↑ Re-submitted'
-      : dbStatus === 'submitted' ? '↑ Submitted'
-      : 'Pending';
-    _setChip(chip,    'k-mob-status-chip ' + chipCls, chipTxt);
-    _setChip(dskChip, 'k-mob-status-chip ' + chipCls, chipTxt);
+    const [chipIcon, chipTxt] = state !== 'now'
+      ? ({ done: ['check', isLate ? 'Done (late)' : 'Done'],
+           missed: ['x', 'Missed'], absent: ['calendar-off', 'Away'], skipped: ['', 'Vacant'] }[state] || ['', 'Pending'])
+      : dbStatus === 'flagged'   ? ['flag', 'Redo']
+      : isResub                  ? ['arrow-up', 'Re-submitted']
+      : dbStatus === 'submitted' ? ['arrow-up', 'Submitted']
+      : ['tools-kitchen-2', 'Your turn'];
+    _setChip(chip,    'k-mob-status-chip ' + chipCls, chipIcon, chipTxt);
+    _setChip(dskChip, 'k-mob-status-chip ' + chipCls, chipIcon, chipTxt);
+    turnTone = state === 'done' ? 'done'
+             : state === 'missed' || dbStatus === 'flagged' ? 'redo'
+             : state === 'now' && dbStatus === 'submitted' ? 'wait'
+             : state === 'now' ? 'turn' : '';
   }
+  const weekCard = document.getElementById('k-mob-week-card');
+  if (weekCard) weekCard.dataset.turn = turnTone;
 
   // Action button
   ['k-ten-act', 'k-ten-dsk-act'].forEach(id => {
@@ -699,7 +709,8 @@ async function _kTenRenderWeekCard(overrideRow) {
   if (state === 'absent')       note = isAssigned ? "You're away this week — no kitchen turn." : turnRoom + ' is away this week — no kitchen turn.';
   else if (state === 'skipped') note = turnRoom + ' is vacant — no kitchen turn this week.';
   else if (isAssigned && dbStatus === 'flagged')   { note = row.flag_reason ? 'Redo: ' + row.flag_reason : 'Please upload new photos.'; tone = 'flag'; }
-  else if (isAssigned && dbStatus === 'submitted') note = 'Proof sent — waiting for review.';
+  else if (isAssigned && dbStatus === 'submitted') { note = 'Proof sent — waiting for review.'; tone = 'wait'; }
+  else if (isAssigned && state === 'done')         { note = 'Approved.'; tone = 'done'; }
   else if (isAssigned && state === 'missed')       { note = 'Marked missed — you can upload late proof early next week.'; tone = 'flag'; }
   _kTenSetNote(note, tone);
 }
