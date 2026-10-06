@@ -281,6 +281,17 @@ document.getElementById('tab-cleaning').innerHTML = `
     <div id="hc-rotation-list"></div>
   </div>
 
+  <!-- History modal (last 12 weeks) -->
+  <div class="cc-modal-overlay" id="hc-modal-history" onclick="if(event.target===this)hcCloseHistory()">
+    <div class="cc-modal-sheet" style="max-height:70vh;">
+      <div class="cc-modal-hdr">
+        <span class="cc-modal-title">History</span>
+        <button class="cc-modal-close" onclick="hcCloseHistory()">✕</button>
+      </div>
+      <div class="cc-modal-body" id="hc-history-body"><p class="cc-note">Loading…</p></div>
+    </div>
+  </div>
+
 `;
 
 /* ── HC ROTATION CONSTANTS ──────────────────────────────── */
@@ -367,8 +378,9 @@ async function loadHouseCleaning() {
   let absRows   = [];
   if (sbL) {
     const [doneRes, absRes] = await Promise.all([
-      sbL.from('cleaning_weeks').select('week_index,room,status,done_at,done_by').eq('status','done'),
-      sbL.from('kitchen_absences').select('*'),
+      // only this rotation round onward (older weeks live in the history)
+      sbL.from('cleaning_weeks').select('week_index,room,status,done_at,done_by').eq('status','done').gte('week_index', cycleStart),
+      sbL.from('kitchen_absences').select('*').gte('to_date', _hcYmd(_hcAddDays(HC_W1_START, cycleStart * 7))),
       kLoadWeekVacancy(cycleStart, cycleStart + 2 * rot.length, 'room_vacancy_range'),   // vacant per week from move-in / move-out dates
     ]);
     if (doneRes.data) doneRes.data.forEach(row => {
@@ -408,10 +420,13 @@ async function loadHouseCleaning() {
           <div>
             <p class="hc-current-kw">${esc(curInfo.room)}</p>
           </div>
-          <span class="k-pill ${isDone ? 'k-pill--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-pill--skipped' : 'k-pill--pending'}" style="font-size:10px;padding:3px 8px;">
-            <span class="k-dot ${isDone ? 'k-dot--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-dot--skipped' : 'k-dot--pending'}"></span>
-            ${isDone ? 'Done' : isCurrentRoomAbsent ? '— Away' : isCurrentRoomVacant ? '— Vacant' : 'Pending'}
-          </span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+            <span class="k-pill ${isDone ? 'k-pill--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-pill--skipped' : 'k-pill--pending'}" style="font-size:10px;padding:3px 8px;">
+              <span class="k-dot ${isDone ? 'k-dot--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-dot--skipped' : 'k-dot--pending'}"></span>
+              ${isDone ? 'Done' : isCurrentRoomAbsent ? '— Away' : isCurrentRoomVacant ? '— Vacant' : 'Pending'}
+            </span>
+            <button onclick="hcOpenHistory()" style="font-size:9px;color:var(--cc-stone);text-decoration:underline;text-underline-offset:2px;cursor:pointer;background:none;border:none;padding:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">history</button>
+          </div>
         </div>
         <p class="hc-current-dates">${curInfo.dateRange} · ${curInfo.daysLeft} days left</p>
         ${isDone
@@ -455,12 +470,72 @@ async function loadHouseCleaning() {
 
   /* ── Start realtime if not already running ── */
   _hcSubscribe();
+  _hcTrimHistory(curIdx).catch(e => console.warn('[cleaning] trim', e));   // background, once per week
 
   /* ── Rerender when rooms tab changes (new room, sort_order, vacant) ── */
   if (typeof onRoomsChange === 'function' && !loadHouseCleaning._roomsWired) {
     loadHouseCleaning._roomsWired = true;
     onRoomsChange(() => loadHouseCleaning());
   }
+}
+
+/* ── HISTORY (last 12 weeks) ────────────────────────────────
+   "history" link on the This-week card → the last 12 weeks, newest
+   first: Done / Missed / Away / Skipped (vacant) / This week.
+   Weeks older than 12 are deleted by the management app (_hcTrimHistory). */
+const HC_HISTORY_WEEKS = 12;   // current week included
+function hcOpenHistory()  { document.getElementById('hc-modal-history')?.classList.add('open'); _hcPopulateHistory(); }
+function hcCloseHistory() { document.getElementById('hc-modal-history')?.classList.remove('open'); }
+async function _hcPopulateHistory() {
+  const el = document.getElementById('hc-history-body'); if (!el) return;
+  if (!sbL) { el.innerHTML = '<p class="cc-note">No connection.</p>'; return; }
+  const curIdx = _hcWeekIndex(new Date());
+  if (curIdx < 0) { el.innerHTML = '<p class="cc-note">No past weeks yet.</p>'; return; }
+  const from    = Math.max(0, curIdx - (HC_HISTORY_WEEKS - 1));
+  const fromYmd = _hcYmd(_hcAddDays(HC_W1_START, from * 7));
+  const [doneRes, absRes] = await Promise.all([
+    sbL.from('cleaning_weeks').select('week_index,room,done_at,done_by').eq('status', 'done').gte('week_index', from).lte('week_index', curIdx),
+    sbL.from('kitchen_absences').select('room,from_date,to_date').gte('to_date', fromYmd),
+    kLoadWeekVacancy(from, curIdx, 'room_vacancy_range'),
+  ]);
+  const doneBy = {};
+  (doneRes.data || []).forEach(r => { if (!doneBy[r.week_index]) doneBy[r.week_index] = r; });
+  const absRows = absRes.data || [];
+  const nowPill = '<span style="font-size:10px;padding:2px 9px;border-radius:20px;font-weight:500;white-space:nowrap;border:0.5px solid #E8C97A;display:inline-block;background:#FDF5E8;color:#c8a84b;">This week</span>';
+  const rows = [];
+  for (let idx = curIdx; idx >= from; idx--) {
+    const info = _hcWeekInfo(idx); if (!info) continue;
+    const d    = doneBy[idx] || null;
+    const room = d ? d.room : info.room;   // the saved week wins over the formula
+    const state = _hcRotState({ isNow: idx === curIdx, isPast: idx < curIdx, isNext: false,
+                                slotDone: d, room, weekStart: info.start, absRows });
+    const pill = state === 'done'    ? kHistPill('approved')
+               : state === 'missed'  ? kHistPill('missed')
+               : state === 'skipped' ? kHistPill('skipped')
+               : state === 'absent'  ? kHistPill('absent')
+               : state === 'now'     ? nowPill
+               : kHistPill(null);
+    rows.push(`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);">
+      <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(room)}</p>
+      <p style="font-size:11px;color:var(--cc-taupe);">${info.dateRange}</p></div>
+      ${pill}</div>`);
+  }
+  el.innerHTML = rows.length ? rows.join('') : '<p class="cc-note">No past weeks yet.</p>';
+}
+
+/* Keep 12 weeks: cleaning results older than that are deleted, and absences
+   that ended before them (Kitchen and House Cleaning look back less than 12
+   weeks). Runs in the background once per week per management-app session. */
+let _hcTrimRanFor = null;
+async function _hcTrimHistory(curIdx) {
+  if (!sbL || curIdx < HC_HISTORY_WEEKS || _hcTrimRanFor === curIdx) return;
+  _hcTrimRanFor = curIdx;
+  const keepFrom = curIdx - (HC_HISTORY_WEEKS - 1);
+  const keepYmd  = _hcYmd(_hcAddDays(HC_W1_START, keepFrom * 7));
+  const { error: wErr } = await sbL.from('cleaning_weeks').delete().lt('week_index', keepFrom);
+  if (wErr) console.warn('[cleaning] history trim:', wErr.message);
+  const { error: aErr } = await sbL.from('kitchen_absences').delete().lt('to_date', keepYmd);
+  if (aErr) console.warn('[cleaning] absence trim:', aErr.message);
 }
 
 /* ── ROTATION STATE ─────────────────────────────────────── */
