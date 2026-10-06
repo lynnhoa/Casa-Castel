@@ -452,14 +452,19 @@
       </nav>
       <div class="cc-tabs" id="appTabs">
         <button class="cc-tab active" data-tab="dashboard">Dashboard</button>
-        <button class="cc-tab"        data-tab="income">Income</button>
-        <button class="cc-tab"        data-tab="expenses">Expenses</button>
-        <button class="cc-tab"        data-tab="onetime">One-off</button>
+        <button class="cc-tab"        data-tab="rentals">Rentals</button>
+        <button class="cc-tab"        data-tab="casa">Casa Castel</button>
       </div>
     </div>
 
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
+        <!-- Rentals / Casa Castel: Income · Expenses · One-off (same screens, filtered to the area) -->
+        <div class="cx-subnav" id="ctlSubNav" style="display:none;" role="group" aria-label="Bereich">
+          <button data-sub="income">Income</button>
+          <button data-sub="expenses">Expenses</button>
+          <button data-sub="onetime">One-off</button>
+        </div>
         <div class="tab-content" id="tab-dashboard"></div>
         <div class="tab-content" id="tab-income"   style="display:none;"></div>
         <div class="tab-content" id="tab-expenses" style="display:none;"></div>
@@ -485,33 +490,51 @@
       }
     });
     /* Tab switching */
+    /* Tabs: Dashboard · Rentals · Casa Castel. Rentals / Casa Castel show the
+       Income · Expenses · One-off screens filtered to that area (CX.area).
+       switchTab('income' | 'expenses' | 'onetime') opens that screen in the
+       current area (from the Dashboard: Rentals). */
     function switchTab(tab) {
+      const SUB = ['income', 'expenses', 'onetime'];
+      if (SUB.includes(tab)) { CX.sub = tab; tab = CX.area === 'casa' ? 'casa' : 'rentals'; }
+      const area = tab === 'rentals' || tab === 'casa';
+      CX.area = area ? tab : null;
+      const show = area ? (CX.sub || 'income') : tab;
       document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-      const el = document.getElementById('tab-' + tab);
+      const el = document.getElementById('tab-' + show);
       if (el) el.style.display = 'block';
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      const sub = document.getElementById('ctlSubNav');
+      if (sub) {
+        sub.style.display = area ? '' : 'none';
+        sub.querySelectorAll('button[data-sub]').forEach(b => b.classList.toggle('on', b.dataset.sub === show));
+      }
       window.scrollTo(0, 0);
-      if (tab === 'dashboard') window.renderDashboard?.();
-      if (tab === 'income')    window.renderIncome?.();
-      if (tab === 'expenses')  window.renderExpenses?.();
-      if (tab === 'onetime')   window.renderOneTime?.();
-      if (tab === 'setup')     window.renderSetup?.();
+      if (show === 'dashboard') window.renderDashboard?.();
+      if (show === 'income')    window.renderIncome?.();
+      if (show === 'expenses')  window.renderExpenses?.();
+      if (show === 'onetime')   window.renderOneTime?.();
+      if (show === 'setup')     window.renderSetup?.();
     }
     document.getElementById('appTabs').addEventListener('click', e => {
       const btn = e.target.closest('.cc-tab[data-tab]');
       if (btn) switchTab(btn.dataset.tab);
+    });
+    document.getElementById('ctlSubNav').addEventListener('click', e => {
+      const b = e.target.closest('button[data-sub]');
+      if (b) switchTab(b.dataset.sub);
     });
   </script>
 
   <script src="controlling-auth.js?v=2026-09-27l"></script>
   <script src="controlling-data.js?v=2026-09-27l"></script>
   <script src="controlling-soll.js?v=2026-09-30b"></script>
-  <script src="controlling-ui.js?v=2026-09-27l"></script>
+  <script src="controlling-ui.js?v=2026-10-06a"></script>
   <script src="controlling-abr.js?v=2026-09-27l"></script>
-  <script src="controlling-tab-dashboard.js?v=2026-09-27l"></script>
-  <script src="controlling-tab-income.js?v=2026-09-27l"></script>
-  <script src="controlling-tab-expenses.js?v=2026-09-27l"></script>
-  <script src="controlling-tab-onetime.js?v=2026-09-27l"></script>
+  <script src="controlling-tab-dashboard.js?v=2026-10-06a"></script>
+  <script src="controlling-tab-income.js?v=2026-10-06a"></script>
+  <script src="controlling-tab-expenses.js?v=2026-10-06a"></script>
+  <script src="controlling-tab-onetime.js?v=2026-10-06a"></script>
   <script src="pdf-open.js?v=2026-09-27l"></script>
   <script src="controlling-export.js?v=2026-09-27l"></script>
   <script src="controlling-tab-setup.js?v=2026-09-27l"></script>

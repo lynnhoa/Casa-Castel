@@ -48,6 +48,55 @@ const _CX_CSS = `
     .cx-pill--diff  { background:#F7E4DC; color:#8A3B22; border-color:#D9957C; }
     .cx-pill--grey  { background:#EFE9E0; color:var(--cx-mut); border-color:var(--cx-rule); }
     .cx-pill--beige { background:#F3EADC; color:var(--cx-acc); border-color:#D4B896; }
+    /* ── Area sub-tabs (Rentals / Casa Castel → Income · Expenses · One-off) ── */
+    .cx-subnav { max-width:560px; margin:0 auto 10px; display:flex; border:.5px solid var(--cx-rule); border-radius:10px; overflow:hidden; background:var(--cx-card); height:36px; }
+    .cx-subnav button { flex:1; border:none; background:transparent; font-family:'Inter',system-ui,sans-serif; font-size:12.5px; color:var(--cx-mut); cursor:pointer; }
+    .cx-subnav button.on { background:var(--cx-ink); color:#fff; }
+    /* ── Dashboard v2 (hybrid: big number · one bar · calculation on tap · per property) ── */
+    .cxd-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .cxd-top .cx-seg { width:150px; flex-shrink:0; }
+    .cxd-per { display:flex; align-items:center; gap:6px; }
+    .cxd-per__t { font-family:'Cormorant Garamond',Georgia,serif; font-size:26px; font-weight:500; color:var(--cx-ink); line-height:1.1; }
+    .cxd-hero { text-align:center; padding:14px 0 4px; }
+    .cxd-hero__l { font-size:12px; color:var(--cx-mut); }
+    .cxd-hero__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:54px; font-weight:500; line-height:1.05; color:var(--cx-ink); }
+    .cxd-hero__v.neg { color:var(--cx-neg); }
+    .cxd-hero__s { font-size:12.5px; color:#6B5E4E; }
+    .cxd-hero__s b { font-weight:500; color:var(--cx-ink); }
+    .cxd-hero__t { font-size:11.5px; color:var(--cx-mut); margin-top:4px; }
+    .cxd-open { display:block; width:100%; margin-top:8px; border:none; background:none; font-family:inherit; font-size:12.5px; color:#854F0B; cursor:pointer; text-align:center; }
+    .cxd-open u { text-underline-offset:2px; }
+    .cxd-bar { display:flex; height:34px; border-radius:8px; overflow:hidden; margin:8px 0 2px; background:var(--cx-line); }
+    .cxd-bar span { display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:500; color:#fff; white-space:nowrap; overflow:hidden; min-width:0; }
+    .cxd-kalt { position:relative; height:16px; }
+    .cxd-kalt i { position:absolute; top:4px; border-top:1.5px solid var(--cx-ink); }
+    .cxd-kalt span { position:absolute; right:0; top:5px; font-size:10px; color:var(--cx-ink); }
+    .cxd-leg { display:grid; grid-template-columns:1fr 1fr; gap:5px 10px; font-size:11.5px; color:#6B5E4E; margin-top:6px; }
+    .cxd-leg i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+    .cxd-hint { display:block; width:100%; margin-top:8px; border:none; background:none; padding:0; font-family:inherit; font-size:11.5px; color:#854F0B; text-align:left; cursor:pointer; }
+    .cxd-calcbtn { display:flex; width:100%; align-items:center; justify-content:space-between; margin-top:12px; padding:10px 0 0; border:none; border-top:.5px solid var(--cx-line); background:none; font-family:inherit; font-size:13px; color:var(--cx-ink); cursor:pointer; text-align:left; }
+    .cxd-calcbtn small { display:block; font-size:11px; color:var(--cx-mut); }
+    .cxd-calcbtn i { color:var(--cx-sub); }
+    .cxd-tbl { margin-top:6px; }
+    .cxd-tr { display:grid; grid-template-columns:1fr 76px 76px; align-items:center; column-gap:6px; }
+    .cxd-tr > span:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }
+    .cxd-th { font-size:9.5px; font-weight:500; letter-spacing:.12em; color:var(--cx-mut); padding:8px 0 4px; }
+    .cxd-st { padding:4px 0 4px 10px; font-size:12px; color:var(--cx-mut); }
+    .cxd-res { padding:10px 0; border-top:.5px solid var(--cx-line); }
+    .cxd-res > span:first-child { font-size:13.5px; font-weight:500; color:var(--cx-ink); }
+    .cxd-res > span:first-child small { display:block; font-size:11px; font-weight:400; color:var(--cx-mut); }
+    .cxd-res > span:not(:first-child) { font-family:'Cormorant Garamond',Georgia,serif; font-size:21px; font-weight:500; color:var(--cx-ink); }
+    .cxd-fin { background:#F6FAF1; margin:2px -14px -10px; padding:11px 14px; border-top:1px solid #97C459; border-radius:0 0 12px 12px; }
+    .cxd-fin > span:first-child { color:#27500A; }
+    .cxd-tnote { font-size:11px; color:var(--cx-mut); margin-top:12px; line-height:1.45; }
+    .cxd-pr { display:grid; grid-template-columns:128px 1fr 64px; align-items:center; gap:8px; width:100%; padding:7px 0; border:none; background:none; font-family:inherit; font-size:12.5px; color:var(--cx-ink); text-align:left; cursor:pointer; }
+    .cxd-pr__n { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cxd-pr__v { text-align:right; font-weight:500; font-variant-numeric:tabular-nums; }
+    .cxd-pr__v.neg { color:var(--cx-neg); }
+    .cxd-track { height:10px; border-radius:5px; background:var(--cx-line); position:relative; overflow:hidden; }
+    .cxd-track i { position:absolute; left:0; top:0; bottom:0; border-radius:5px; background:var(--cx-acc); }
+    .cxd-track i.neg { background:#C0785A; }
+    .cxd-pdet { padding:0 0 8px; border-bottom:.5px solid var(--cx-line); }
     .cx-pill--nk { background:#E3EFEE; color:#3E6E69; border-color:#9CC5C0; }   /* Casa cost umgelegt in die NK-Abrechnung */
     .cx-ot-nk { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px; border-radius:10px; border:0.5px solid var(--cx-rule); background:var(--cx-card); font-family:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .cx-ot-nk.on { border:1px solid #9CC5C0; background:#EEF6F5; }
@@ -259,7 +308,16 @@ const CX = {
   })(),
   open: {},            // fold state per card key
   tab: 'dashboard',
+  area: null,          // null = Dashboard (everything) · 'rentals' · 'casa'
+  sub: 'income',       // sub-tab inside Rentals / Casa Castel: income · expenses · onetime
 };
+
+/* Area filter (Rentals = all apartments · Casa Castel = the house) */
+function cxAreaPid(pid) {
+  if (!CX.area) return true;
+  return CX.area === 'casa' ? Number(pid) === CASA_PROP_ID : Number(pid) !== CASA_PROP_ID;
+}
+const cxAreaOk = p => cxAreaPid(p.id);
 
 const CX_MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 

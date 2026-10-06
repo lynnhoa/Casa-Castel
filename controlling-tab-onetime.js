@@ -31,7 +31,7 @@ const _cxOtLastProp = () => { try { return Number(localStorage.getItem('cx_ot_pr
 
 function _cxOtAll() {
   const y = window._ctrl.year;
-  return (window._ctrl.one_time || []).filter(o => !CX_ABR_KINDS.includes(o.kind) && Number(String(o.invoice_date || '').slice(0, 4)) === y);
+  return (window._ctrl.one_time || []).filter(o => !CX_ABR_KINDS.includes(o.kind) && Number(String(o.invoice_date || '').slice(0, 4)) === y && cxAreaPid(o.property_id));
 }
 function _cxOtVisible() {
   const q = _cxOt.q.trim().toLowerCase();
@@ -56,8 +56,9 @@ function _cxOtYearBar() {
 
 /* Add / edit form (inline) */
 function _cxOtFormHTML(o) {
-  const props = window._ctrl.properties.filter(p => p.active || (o && p.id === Number(o.property_id)));
-  const pid = o ? Number(o.property_id) : (_cxOt.pid || _cxOtLastProp() || (props[0] && props[0].id));
+  const props = window._ctrl.properties.filter(p => (p.active && cxAreaOk(p)) || (o && p.id === Number(o.property_id)));
+  const pick = [_cxOt.pid, _cxOtLastProp()].find(x => x && props.some(p => p.id === Number(x)));   // stays inside Rentals / Casa Castel
+  const pid = o ? Number(o.property_id) : (Number(pick) || (props[0] && props[0].id));
   const kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   const nk  = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
