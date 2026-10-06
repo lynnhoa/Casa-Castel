@@ -832,3 +832,13 @@ body.st-panel-open { overflow: hidden; }
 .sd-m { display: flex; flex-direction: column; gap: 2px; }
 .sd-m small { font-size: 10px; color: var(--cx-mut); }
 .sd-m .st-in { text-align: right; padding: 0 8px; }
+
+/* Casa Castel · one card per room (tenants in date order + empty days) */
+.sc-roomc { padding: 12px 14px 4px; }
+.sc-roomc__h { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; }
+.sc-roomc__t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sc-roomc__t b { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 500; line-height: 1.05; color: var(--cx-ink); }
+.sc-roomc__t small { font-size: 11.5px; color: var(--cx-mut); }
+.sc-row--in { padding-left: 52px; border-top: .5px solid var(--cx-line) !important; }
+.sc-gap { padding: 9px 0 9px 52px; border-top: .5px solid var(--cx-line); font-size: 12px; color: var(--cx-sub); }
+.sc-gap i { margin-right: 4px; }

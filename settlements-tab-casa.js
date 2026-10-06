@@ -197,12 +197,11 @@ function stRenderCasa() {
     '<span class="sc-costs__t"><b>House costs ' + y + '</b><small class="' + (M.locked ? 'is-ok' : '') + '">' + (M.locked ? '<i class="ti ti-lock" aria-hidden="true"></i> locked ' + scDate(M.rec.locked_at) : 'not locked · preview') + (M.warn.length && !M.locked ? ' · ' + M.warn.length + ' to check' : '') + '</small></span>' +
     '<span class="sc-costs__v">' + scE(L.total) + '</span><i class="ti ti-chevron-right sc-chev" aria-hidden="true"></i></button>';
 
-  const section = (title, list) => list.length ? '<div class="sc-sec">' + title + ' <span>' + list.length + '</span></div><div class="sc-card sc-list">' + list.map(t => scRowHtml(t, M)).join('') + '</div>' : '';
-  const pausch = none.length ? '<p class="sc-foot">' + none.map(t => stEsc(t.room + ' · ' + t.name)).join(', ') + ' – Pauschal, no NK</p>' : '';
   const letters = scLettersHtml(y);
+  const roomsHtml = scRoomsHtml(M);
 
   el.innerHTML = '<div class="st-page sc-page">' + yearNav + sql + progress + next + costsCard +
-    section('To send', open) + section('Waiting for money', sent) + section('Done', done) + pausch + letters +
+    '<div class="sc-sec">Rooms</div>' + roomsHtml + letters +
     (!M.ten.length ? '<p class="cx-empty">No tenants with Kalt + NK in ' + y + '.</p>' : '') + '</div>';
   scRenderModal();
 }
@@ -233,14 +232,41 @@ function scSay(t) {
   }
   return s > 0 ? ['neg', 'pays you ' + a] : s < 0 ? ['pos', 'gets ' + a + ' back'] : ['', 'balanced'];
 }
-function scRowHtml(t, M) {
+const scNorm = s => String(s || '').trim().toLowerCase();
+function scRoomsHtml(M) {
+  const rooms = (window._src.rooms || []).filter(r => r.active !== false).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(r => ({ name: r.name, m2: Number(r.flaeche_m2) || 0 }));
+  for (const t of M.ten) if (!rooms.some(r => scNorm(r.name) === scNorm(t.room))) rooms.push({ name: t.room || 'Room', m2: t.m2 || 0 });
+  const per = M.R.period;
+  return rooms.map(r => {
+    const list = M.ten.filter(t => scNorm(t.room) === scNorm(r.name)).sort((a, b) => a.from.localeCompare(b.from));
+    // empty days between the tenancies (vacancy) – so every day of the year is accounted for
+    const gaps = []; let cur = per.from;
+    for (const t of list) {
+      if (t.from > cur) gaps.push({ gap: true, from: cur, to: NkCasa.addDays(t.from, -1) });
+      const next = NkCasa.addDays(t.to, 1); if (next > cur) cur = next;
+    }
+    if (cur <= per.to) gaps.push({ gap: true, from: cur, to: per.to });
+    const items = list.concat(gaps).sort((a, b) => a.from.localeCompare(b.from));
+    const c = scAv(r.name), nk = list.filter(t => t.k !== 'none').length;
+    const open = list.filter(t => t.k === 'open').length;
+    const chip = !list.length ? ['grey', 'empty'] : !nk ? ['grey', 'Pauschal'] : open ? (M.locked ? ['send', open + ' to send'] : ['grey', 'preview'])
+      : list.some(t => t.k === 'sent') ? ['wait', 'waiting'] : ['done', '✓ done'];
+    return '<div class="sc-card sc-roomc"><div class="sc-roomc__h"><span class="sc-av" style="background:' + c[0] + ';color:' + c[1] + '">' + stEsc(scAbbr(r.name)) + '</span>' +
+      '<span class="sc-roomc__t"><b>' + stEsc(r.name) + '</b><small>' + (r.m2 ? String(r.m2).replace('.', ',') + ' m² · ' : '') + list.length + (list.length === 1 ? ' tenant' : ' tenants') + ' in ' + M.y + '</small></span>' +
+      '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></div>' +
+      items.map(it => it.gap
+        ? '<div class="sc-gap"><i class="ti ti-door" aria-hidden="true"></i> empty ' + stDM(it.from) + '–' + stDate(it.to) + ' · ' + NkCasa.daysBetween(it.from, it.to) + ' days</div>'
+        : scRowHtml(it, M, true)).join('') + '</div>';
+  }).join('');
+}
+function scRowHtml(t, M, inRoom) {
   const c = scAv(t.room), say = scSay(t);
   const chip = t.k === 'open' ? (M.locked ? ['send', 'to send'] : ['grey', 'preview']) : t.k === 'sent' ? ['wait', 'sent ' + stDM(t.st.res.date)] :
     t.k === 'done' ? ['done', t.skipped ? 'skipped' : '✓ ' + (t.st.booking ? 'paid' : t.st.res && t.st.res.via === 'kaution' ? 'Kaution' : 'done')] : ['grey', 'Pauschal'];
   const per = (t.days < M.R.days ? stDM(t.from) + '–' + stDate(t.to) + ' · ' + t.days + ' days' : 'whole year') + (t.movedOut ? ' · moved out' : '');
-  return '<button class="sc-row" data-sc="ten" data-k="' + stEsc(t.key) + '">' +
-    '<span class="sc-av" style="background:' + c[0] + ';color:' + c[1] + '">' + stEsc(scAbbr(t.room)) + '</span>' +
-    '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(t.name) + '</span><span class="sc-row__s ' + say[0] + '">' + stEsc(say[1]) + (t.k === 'open' && !M.locked ? ' · preview' : '') + '</span><span class="sc-row__p">' + stEsc(t.room + ' · ' + per) + '</span></span>' +
+  return '<button class="sc-row' + (inRoom ? ' sc-row--in' : '') + '" data-sc="ten" data-k="' + stEsc(t.key) + '">' +
+    (inRoom ? '' : '<span class="sc-av" style="background:' + c[0] + ';color:' + c[1] + '">' + stEsc(scAbbr(t.room)) + '</span>') +
+    '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(t.name) + '</span><span class="sc-row__s ' + say[0] + '">' + stEsc(say[1]) + '</span><span class="sc-row__p">' + stEsc((inRoom ? '' : t.room + ' · ') + per) + '</span></span>' +
     '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></button>';
 }
 function scLettersHtml(y) {
