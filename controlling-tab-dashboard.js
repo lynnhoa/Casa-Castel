@@ -145,7 +145,7 @@ function _cxDashCalc(t, note) {
   const res = (l, sub, k, w, fin) => '<div class="cxd-tr cxd-res' + (fin ? ' cxd-fin' : '') + '"><span>' + l + (sub ? '<small>' + sub + '</small>' : '') + '</span>' +
     '<span' + (k < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(k) + '</span><span' + (w < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(w) + '</span></div>';
   return '<div class="cxd-tbl">' +
-    '<div class="cxd-tr cxd-th"><span></span><span>KALT</span><span>WARM</span></div>' +
+    '<div class="cxd-tr cxd-th"><span></span><span>KALT<small>without NK</small></span><span>WARM<small>incl. NK</small></span></div>' +
     st('Rent', n(t.kalt), n(t.warm)) +
     st('\u2212 Hausgeld, house costs', D, n(t.kosten)) +
     st('\u2212 Kreditraten', n(t.rate), n(t.rate)) +
@@ -173,7 +173,13 @@ function _cxdCss() {
     .cxd-prow__v.pos { color:#3B6D11; }
     .cxd-prow__v.neg { color:#A0533A; }
     .cxd-prow__c { color:#C8BFB0; font-size:14px; }
-    .cxd-pdet { padding:0 0 8px; border-bottom:.5px solid #EDE8E0; }`;
+    .cxd-pdet { padding:0 0 8px; border-bottom:.5px solid #EDE8E0; }
+    .cxd-kw { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0 2px; text-align:center; }
+    .cxd-kw__t { background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:12px; padding:9px 6px; display:flex; flex-direction:column; gap:1px; }
+    .cxd-kw__l { font-size:10px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:#9A8E7E; }
+    .cxd-kw__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:24px; font-weight:500; color:#3D3027; line-height:1.15; }
+    .cxd-kw__s { font-size:11px; color:#9A8E7E; }
+    .cxd-th small { display:block; font-size:9px; letter-spacing:.02em; text-transform:none; font-weight:400; color:#B4A890; }`;
   document.head.appendChild(st);
 }
 
@@ -226,7 +232,10 @@ window.renderDashboard = function () {
     '<div class="cxd-hero__l">Cashflow · ' + cxEsc(periodWord) + (open ? ' · preliminary' : '') + '</div>' +
     '<div class="cxd-hero__v' + (!future && t.freiWarm < 0 ? ' neg' : '') + '">' + (future ? D : cxWS(t.freiWarm)) + '</div>' +
     (future ? '<div class="cxd-hero__s">This ' + (isYear ? 'year' : 'month') + ' is still ahead</div>'
-            : '<div class="cxd-hero__s">of ' + cxW(t.warm) + ' Warmmiete · <b>Kaltmiete ' + cxW(t.kalt) + '</b></div>' + tilgKnown) +
+            : '<div class="cxd-kw">' +
+                '<div class="cxd-kw__t"><span class="cxd-kw__l">Warmmiete</span><span class="cxd-kw__v">' + cxW(t.warm) + '</span><span class="cxd-kw__s">rent incl. Nebenkosten</span></div>' +
+                '<div class="cxd-kw__t"><span class="cxd-kw__l">Kaltmiete</span><span class="cxd-kw__v">' + cxW(t.kalt) + '</span><span class="cxd-kw__s">rent without Nebenkosten</span></div>' +
+              '</div>' + tilgKnown) +
     (open ? '<button class="cxd-open" data-cx="gotoOpen"><i class="ti ti-point-filled" aria-hidden="true"></i> ' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button>' : '') +
   '</div>';
 
@@ -253,10 +262,10 @@ window.renderDashboard = function () {
       ' without Zinsen/Tilgung · add in Properties ›</button>' : '';
     const calcOpen = !!CX.open['dash:calc'];
     barCard = '<div class="cx-card" style="padding:12px 14px 10px">' +
-      '<div class="cx-lbl">Where the rent goes</div>' + bar + kaltLine + legend + hint +
+      '<div class="cx-lbl">Cashflow</div>' + bar + kaltLine + legend + hint +
       '<button class="cxd-calcbtn" data-cx="fold" data-k="dash:calc" aria-expanded="' + calcOpen + '"><span>Show calculation' +
         '<small>kalt & warm · before/after one-offs & Abrechnungen</small></span><i class="ti ti-chevron-' + (calcOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>' +
-      (calcOpen ? _cxDashCalc(t, 'Kalt = Kaltmiete without Nebenkosten money and house costs · Warm = what actually came in and went out. Only booked amounts count — Kreditraten as confirmed in Expenses.') : '') +
+      (calcOpen ? _cxDashCalc(t, 'Kalt = only the Kaltmiete, Nebenkosten and house costs left out. Warm = everything that came in and went out, incl. Nebenkosten. Only booked amounts count.') : '') +
     '</div>';
   }
 
