@@ -19,7 +19,10 @@
 'use strict';
 
 const _CX_KINDS = ['Rechnung', 'Versorger', 'Sonstiges'];   // stored values (German) · Versorger = yearly Strom/Gas/Wasser result
-const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Versorgerabrechnung', Sonstiges: 'Other' };   // what the app shows
+const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Jahresabrechnung', Sonstiges: 'Other' };   // what the app shows
+// Casa Castel: the yearly Strom/Gas/Wasser results are your "Hausgeld" (no WEG there) → chip "Hausgeld"
+// Rentals: chip "Jahresabrechnung" (WEG Hausgeld results come from Settlements → Abrechnungen, not from here)
+const _cxOtKindLbl = (k, pid) => k === 'Versorger' && Number(pid) === CASA_PROP_ID ? 'Hausgeld' : (_CX_KIND_LBL[k] || k);
 // the two directions, named for the kind: Versorgerabrechnung → Nachzahlung / Guthaben · else Expense / Income
 const _cxOtDirLbl = kind => kind === 'Versorger' ? ['Nachzahlung', 'Guthaben'] : ['Expense', 'Income'];
 let _cxOt = {
@@ -68,7 +71,7 @@ function _cxOtFormHTML(o) {
   const all = window._ctrl.one_time || [];
   const uniq = f => [...new Set(all.map(x => String(x[f] || '').trim()).filter(Boolean))].slice(0, 60);
   return '<div class="cx-form cx-ot-form" data-edit="' + (o ? cxEsc(o.id) : '') + '">' +
-    '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '">' + (_CX_KIND_LBL[k] || k) + '</button>').join('') + '</div>' +
+    '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '">' + _cxOtKindLbl(k, pid) + '</button>').join('') + '</div>' +
     '<div class="cx-grid2">' +
       '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">' + _cxOtDirLbl(kind)[0] + '</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">' + _cxOtDirLbl(kind)[1] + '</button></div>' +
       '<label class="cx-f"><input type="text" inputmode="decimal" id="cxOtAmt" placeholder="Amount" aria-label="Amount" value="' + (o ? cxE2(o.amount) : '') + '"><span>€</span></label>' +
@@ -378,4 +381,6 @@ function _cxOtNkShow() {
   const o = _cxOtEditing();
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   row.style.display = pid === CASA_PROP_ID ? '' : 'none';
+  const chip = document.querySelector('.cx-ot-form [data-cx="otKind"][data-v="Versorger"]');
+  if (chip) chip.textContent = _cxOtKindLbl('Versorger', pid);       // Hausgeld (Casa Castel) · Jahresabrechnung (Rentals)
 }
