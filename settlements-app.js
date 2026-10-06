@@ -3,7 +3,7 @@
    settlements-app.js
 
    Fifth management app (login tile + profile menus of all apps).
-   Tabs: Casa Castel (placeholder) · Rentals (NK-Abrechnung der Wohnungen —
+   Tabs: Casa Castel (settlements-tab-casa.js) · Rentals (NK-Abrechnung der Wohnungen —
          settlements-tab-rentals.js)
          · Tracking (every NK- and Hausgeld-Abrechnung: offen → verschickt → erledigt)
 
@@ -102,6 +102,7 @@ document.addEventListener('visibilitychange', async () => {
 function stClosePanel(silent) {
   ST.sel = null; ST.edit = false;
   if (typeof SR !== 'undefined') { SR.sel = null; SR.edit = false; SR.draft = null; SR.modal = null; SR.dirty = false; }
+  if (typeof SC !== 'undefined' && SC.modal) { SC.modal = null; if (typeof scRenderModal === 'function') scRenderModal(); }
   document.getElementById('stScrim').hidden = true;
   document.body.classList.remove('st-panel-open');
   if (!silent) stRender();

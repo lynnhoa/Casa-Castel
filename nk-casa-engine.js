@@ -150,9 +150,13 @@ const NkCasa = (() => {
      tenants   Controlling settlement model (Casa Castel tenant records, Pauschal spans already split)
      m²        Casa Castel › Rooms
      paid NK   Controlling › Casa Castel › Income, per room and month; a month shared by two tenants is split by days */
-  function fromControlling(year) {
-    const W = window, C = W._ctrl, S = W._src || {};
-    if (!C || Number(C.year) !== Number(year)) return { error: 'load', message: 'Load ' + year + ' in Controlling first' };
+  function fromControlling(year, src) {
+    // src (optional): the year's own rows { castel_expenses, one_time, income } — Settlements loads last year
+    // separately, so Controlling's current year stays untouched
+    const W = window, S = W._src || {};
+    const C0 = W._ctrl || {};
+    if (!src && Number(C0.year) !== Number(year)) return { error: 'load', message: 'Load ' + year + ' in Controlling first' };
+    const C = src ? { categories: C0.categories, castel_expenses: src.castel_expenses || [], one_time: src.one_time || [], income: src.income || [] } : C0;
     const CASA = typeof CASA_PROP_ID !== 'undefined' ? CASA_PROP_ID : 7;
     const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const period = { from: year + '-01-01', to: year + '-12-31' };

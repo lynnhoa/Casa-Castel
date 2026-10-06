@@ -30,7 +30,7 @@ function _stPlaceholder(title, sub, cards, note) {
 }
 
 /* ── Casa Castel ── */
-function stRenderCasa() {
+function _stRenderCasaPlaceholder() {   // replaced by settlements-tab-casa.js
   const el = document.getElementById('tab-casa'); if (!el) return;
   const p = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID && x.active);
   if (!p) { el.innerHTML = _stPlaceholder('Casa Castel', 'NK-Abrechnung der Zimmer', '', 'Casa Castel ist in Controlling noch nicht als Objekt angelegt.'); return; }
