@@ -89,6 +89,71 @@ function scQueueSave(r) {
 }
 function scSet(key) { const r = scRecEnsure(SC.year); return (r.tenants[key] = r.tenants[key] || {}); }
 
+/* ── Input of one year ────────────────────────────────────────
+   Controlling (costs, NK paid) + what you typed here for years before the app:
+     __pos    typed house positions   { id, label, amount, key: personen|flaeche, spread: year|from, date }
+     __extra  tenants not in the app  { id, name, room, from, to, nk (per month), addr }
+   NK paid per month: Controlling income where booked, else the contract NK (rent history / tenant record). */
+const SC_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function scContractNk(t, ym) {
+  if (t.extra) return Number(t.contractNk) || 0;
+  const rp = (window._src.rentP || []).filter(r => r.app === 'casa' && String(r.tenant_id) === String(t.tenantId) && String(r.valid_from || '').slice(0, 7) <= ym)
+    .sort((a, b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0];
+  if (rp && typeof ccRpAmount === 'function') { const a = ccRpAmount(rp); if (a && a.mode !== 'pauschal') return Number(a.nk) || 0; }
+  const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId));
+  return Number(tr && tr.nebenkosten) || 0;
+}
+function scVzMonths(input, y) {
+  const T = input.tenancies, inc = window._src.incAll || [];
+  for (const t of T) { t.vzMap = {}; t.vzAuto = 0; t.vzContract = 0; }
+  for (let m = 1; m <= 12; m++) {
+    const ym = y + '-' + String(m).padStart(2, '0'), dim = new Date(y, m, 0).getDate();
+    const mFrom = ym + '-01', mTo = ym + '-' + String(dim).padStart(2, '0');
+    const groups = {};
+    for (const t of T) {
+      if (t.mode !== 'nk') continue;
+      const a = t.from > mFrom ? t.from : mFrom, b = t.to < mTo ? t.to : mTo; if (a > b) continue;
+      const days = NkCasa.daysBetween(a, b), g = t.unitId === null || t.unitId === undefined ? 'solo:' + t.key : t.unitId;
+      (groups[g] = groups[g] || []).push({ t, days });
+    }
+    for (const g of Object.keys(groups)) {
+      const list = groups[g], row = g.startsWith('solo:') ? null : inc.find(r => String(r.unit_id) === String(g) && Number(r.year) === Number(y) && Number(r.month) === m);
+      const sumDays = list.reduce((a, x) => a + x.days, 0);
+      for (const x of list) {
+        const amt = row ? (Number(row.nebenkosten) || 0) * x.days / sumDays : scContractNk(x.t, ym) * x.days / dim;
+        x.t.vzMap[ym] = { amt: cxR(amt), src: row ? 'paid' : 'contract' };
+        x.t.vzAuto += amt; if (!row) x.t.vzContract++;
+      }
+    }
+  }
+  for (const t of T) { t.vzAuto = cxR(t.vzAuto); t.vz = t.vzAuto; t.vzMissing = []; }
+}
+function scInputFor(y) {
+  const d = SC.data[y];
+  const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [] });
+  if (input.error) return input;
+  const ts = (scRec(y) || {}).tenants || {};
+  for (const p of (ts.__pos || [])) {
+    const amt = Number(p.amount) || 0; if (!amt) continue;
+    const from = p.spread === 'from' && p.date;
+    input.lines.push({ id: 'typed:' + p.id, label: p.label || 'Position', group: 'typed', key: p.key === 'flaeche' ? 'flaeche' : 'personen',
+                       parts: [from ? { amount: amt, spread: 'from', date: p.date } : { amount: amt, spread: 'year' }],
+                       info: from ? { date: p.date, company: '', item: p.label || '', amount: amt } : null });
+  }
+  const per = input.period, units = typeof ctlUnitsOf === 'function' ? ctlUnitsOf(CASA_PROP_ID) : [];
+  for (const x of (ts.__extra || [])) {
+    if (!x.from) continue;
+    const from = x.from > per.from ? x.from : per.from, to = (x.to || per.to) < per.to ? (x.to || per.to) : per.to;
+    if (from > to) continue;
+    const room = (window._src.rooms || []).find(r => scNorm(r.name) === scNorm(x.room));
+    input.tenancies.push({ key: 'x:' + x.id, tenantId: 'x:' + x.id, extra: true, name: x.name || 'Tenant', room: x.room || '', m2: room ? Number(room.flaeche_m2) || 0 : 0,
+                           from, to, mode: 'nk', unitId: (units.find(u => scNorm(u.name) === scNorm(x.room)) || {}).id ?? null, contractNk: Number(x.nk) || 0, addr: x.addr || '' });
+  }
+  scVzMonths(input, y);
+  input.warn = (input.warn || []).filter(w => !/NK paid missing/.test(w));
+  return input;
+}
+
 /* ── Model of one year ────────────────────────────────────── */
 function scModel(y) {
   const p = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID);
@@ -98,11 +163,15 @@ function scModel(y) {
   if (locked) input = JSON.parse(JSON.stringify(rec.snapshot.input));
   else {
     const d = SC.data[y]; if (!d) return { loading: true };
-    input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [] });
+    input = scInputFor(y);
     if (input.error) return { error: input.message };
   }
   const ts = (rec && rec.tenants) || {};
-  for (const t of input.tenancies) { const s = ts[t.key]; if (s && s.vz !== undefined && s.vz !== null && s.vz !== '') t.vz = Number(s.vz); }
+  for (const t of input.tenancies) {
+    const s = ts[t.key]; if (!s) continue;
+    if (s.vzMonths && Object.keys(s.vzMonths).length && t.vzMap) t.vz = cxR(Object.keys(t.vzMap).reduce((a, ym) => a + (s.vzMonths[ym] !== undefined ? Number(s.vzMonths[ym]) || 0 : t.vzMap[ym].amt), 0));
+    else if (s.vz !== undefined && s.vz !== null && s.vz !== '') t.vz = Number(s.vz);
+  }
   const R = NkCasa.calc(input);
   const g = (typeof ctlSettlementModel === 'function' ? ctlSettlementModel() : []).find(x => x.p.id === CASA_PROP_ID);
   const perM = g ? g.periods.find(pp => pp.to.slice(0, 4) === String(y)) : null;
@@ -113,6 +182,8 @@ function scModel(y) {
     const it = perM ? perM.items.find(i => i.type === 'row' && String(i.r.tenant_id) === String(t.tenantId) && scD(i.r.period_from) === t.from) : null;
     const line = it ? { id: String(it.r.id), type: 'row', p, per: perM, it, year: y, frist, from: t.from, to: t.to } : null;
     let st = null; try { st = line ? _stState(line) : null; } catch (e) {}
+    const xs = src.extra ? (ts[t.key] || {}).sent : null;
+    if (src.extra && xs) st = { res: { dir: xs.dir, amount: xs.amount, date: xs.date, via: xs.via }, k: xs.settled ? 'erledigt' : 'verschickt', booking: null };
     const skipped = !!(it && it.r.status === 'nicht durchgeführt');
     const kau = SC.kau[String(t.tenantId)] || null;
     const einbehalt = kau && Number(kau.nk_einbehalt) > 0 ? cxR(Number(kau.nk_einbehalt)) : 0;
@@ -120,7 +191,8 @@ function scModel(y) {
     if (k === 'done' && einbehalt > 0 && st && st.res && st.res.via === 'kaution') k = 'sent';   // Kaution still to pay back
     const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId)) || null;
     const movedOut = t.to < y + '-12-31' || !!(tr && tr.mietende && scD(tr.mietende) < today);
-    return Object.assign({}, t, { it, line, st, skipped, k, tr, movedOut, vzMissing: src.vzMissing || [], vzAuto: src.vz, set: ts[t.key] || {}, kau, einbehalt });
+    return Object.assign({}, t, { it, line, st, skipped, k, tr, movedOut, vzMissing: src.vzMissing || [], vzAuto: src.vzAuto ?? src.vz, vzMap: src.vzMap || {}, vzContract: src.vzContract || 0,
+                                  extra: !!src.extra, xAddr: src.addr || '', set: ts[t.key] || {}, kau, einbehalt });
   });
   const money = { back: 0, get: 0 };
   ten.filter(t => t.k === 'sent').forEach(t => {
@@ -193,10 +265,10 @@ function stRenderCasa() {
   else if (total) next = '<div class="sc-card sc-done"><i class="ti ti-confetti" aria-hidden="true"></i><div><b>NK ' + y + ' done</b><span>' + total + ' tenants settled</span></div></div>';
 
   const L = M.R.check;
-  const noData = !M.running && !M.R.lines.length && !M.ten.some(t => t.vz > 0);
-  if (noData) next = '<div class="sc-card sc-nodata"><b><i class="ti ti-info-circle" aria-hidden="true"></i> No NK data for ' + y + ' yet</b>' +
-    '<span>Controlling has no Casa Castel costs and no NK payments for ' + y + ', so every result would be 0 €.</span>' +
-    '<span class="sc-nodata__b"><a class="sc-go" href="controlling.html">Open Controlling</a><button class="sc-go sc-go--ghost" data-sc="manual">Manual NK</button></span></div>';
+  const noData = !M.locked && !M.R.lines.length;
+  if (noData) next = '<div class="sc-card sc-nodata"><b><i class="ti ti-pencil" aria-hidden="true"></i> Type the house costs for ' + y + '</b>' +
+    '<span>Nothing is booked in Controlling for ' + y + '. Type the positions once (Strom, Gas, Wasser …) – NK paid comes from the contracts – and every tenant is calculated.</span>' +
+    '<span class="sc-nodata__b"><button class="sc-go" data-sc="costs">Type house costs</button><button class="sc-go sc-go--ghost" data-sc="manual">Manual NK</button></span></div>';
   const costsCard = '<button class="sc-card sc-costs" data-sc="costs"><span class="sc-costs__i"><i class="ti ti-home" aria-hidden="true"></i></span>' +
     '<span class="sc-costs__t"><b>House costs ' + y + '</b><small class="' + (M.locked ? 'is-ok' : '') + '">' + (M.locked ? '<i class="ti ti-lock" aria-hidden="true"></i> locked ' + scDate(M.rec.locked_at) : 'not locked · preview') + (M.warn.length && !M.locked ? ' · ' + M.warn.length + ' to check' : '') + '</small></span>' +
     '<span class="sc-costs__v">' + scE(L.total) + '</span><i class="ti ti-chevron-right sc-chev" aria-hidden="true"></i></button>';
@@ -260,7 +332,8 @@ function scRoomsHtml(M) {
       '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></div>' +
       items.map(it => it.gap
         ? '<div class="sc-gap">empty ' + stDM(it.from) + '–' + stDM(it.to) + ' · ' + NkCasa.daysBetween(it.from, it.to) + ' days</div>'
-        : scRowHtml(it, M, true)).join('') + '</div>';
+        : scRowHtml(it, M, true)).join('') +
+      (!M.locked ? '<button class="sc-addt" data-sc="extraNew" data-room="' + stEsc(r.name) + '"><i class="ti ti-user-plus" aria-hidden="true"></i> Add a tenant for ' + M.y + '</button>' : '') + '</div>';
   }).join('');
 }
 function scRowHtml(t, M, inRoom) {
@@ -303,6 +376,7 @@ function scRenderModal() {
   if (m.view === 'costs') inner = scCostsView(M);
   else if (m.view === 'ten') inner = scTenView(M, m);
   else if (m.view === 'settle') inner = scSettleView(M, m);
+  else if (m.view === 'extra') inner = scExtraView(M, m);
   h.innerHTML = '<div class="srm" role="dialog" aria-label="NK-Abrechnung Casa Castel"><div class="srm__bg" data-sc="close"></div><div class="srm__win sc-win">' + inner + '</div></div>';
   document.body.classList.add('st-panel-open');
 }
@@ -310,19 +384,70 @@ const scHead = (t, s, back, pre) => '<div class="srm__h"><div class="srm__ht">' 
   (pre || '') + '<p class="srm__t">' + stEsc(t) + '</p><p class="srm__s">' + stEsc(s) + '</p></div><button class="srm__x" data-sc="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
 
 /* ── House costs sheet ── */
+const SC_QUICK = [['Strom', 'personen'], ['Gas', 'flaeche'], ['Wasser / Abwasser', 'personen'], ['Müll', 'personen'], ['Grundsteuer', 'personen'], ['Versicherung', 'personen'], ['Internet', 'personen'], ['Reinigung', 'personen'], ['Schornsteinfeger', 'flaeche']];
+function scTypedHtml(M) {
+  const pos = ((scRec(M.y) || {}).tenants || {}).__pos || [], ed = SC.posEdit;
+  const sum = cxR(pos.reduce((a, p) => a + (Number(p.amount) || 0), 0));
+  const seg = (id, f, opts, cur) => '<div class="sc-seg">' + opts.map(([v, l]) => '<button class="' + (cur === v ? 'is-on' : '') + '" data-sc="posSet" data-id="' + id + '" data-f="' + f + '" data-v="' + v + '">' + l + '</button>').join('') + '</div>';
+  const rows = pos.map(p => {
+    const open = ed === p.id;
+    return '<button class="sc-pos" data-sc="posEdit" data-id="' + p.id + '"><span><b>' + stEsc(p.label || 'Position') + '</b><small>' + scKeyTxt(p.key) + ' · ' + (p.spread === 'from' && p.date ? 'from ' + stDM(p.date) : 'whole year') + '</small></span><span class="sc-pos__v">' + (Number(p.amount) ? scE(p.amount) : '<em>amount?</em>') + '</span></button>' +
+      (open ? '<div class="sc-ed sc-ped"><div class="sc-ped__r"><input class="st-in" data-sc-pos="label" data-id="' + p.id + '" value="' + stEsc(p.label || '') + '" placeholder="Kostenart"/>' +
+        '<span class="st-amt sc-ped__a"><input class="st-in" inputmode="decimal" data-sc-pos="amount" data-id="' + p.id + '" value="' + (Number(p.amount) ? stEsc(cxE2(p.amount)) : '') + '" placeholder="per year"/><span>€</span></span></div>' +
+        seg(p.id, 'key', [['personen', 'By person'], ['flaeche', 'By room m²']], p.key || 'personen') +
+        seg(p.id, 'spread', [['year', 'Whole year'], ['from', 'From a date']], p.spread || 'year') +
+        (p.spread === 'from' ? '<input class="st-in" type="date" data-sc-pos="date" data-id="' + p.id + '" value="' + stEsc(p.date || M.y + '-01-01') + '"/>' : '') +
+        '<div class="sc-ped__b"><button class="cx-link" data-sc="posDel" data-id="' + p.id + '">Remove</button><button class="cx-link sr-acc" data-sc="posEdit" data-id="' + p.id + '">Done</button></div></div>' : '');
+  }).join('');
+  return '<div class="srm__card sc-typed"><p class="sc-cap" style="margin:0">Add a position</p><div class="sc-qa">' +
+    SC_QUICK.map(([l, k]) => '<button class="sc-qa__b" data-sc="posAdd" data-l="' + stEsc(l) + '" data-key="' + k + '"><i class="ti ti-plus" aria-hidden="true"></i>' + stEsc(l) + '</button>').join('') +
+    '<button class="sc-qa__b" data-sc="posAdd" data-l="" data-key="personen"><i class="ti ti-plus" aria-hidden="true"></i>other</button></div>' +
+    (pos.length ? '<p class="sc-cap">Positions ' + M.y + '</p><div class="sc-posl">' + rows + '<div class="sc-pos sc-pos--t"><b>Total typed</b><span class="sc-pos__v">' + scE(sum) + '</span></div></div>' : '') + '</div>';
+}
 const scKeyTxt = k => k === 'flaeche' ? 'by room m²' : 'by person';
+/* "already paid" per month: Controlling where booked, else the contract – every month can be changed */
+function scVzEditor(t, can) {
+  const yms = Object.keys(t.vzMap || {}).sort(), ov = (t.set && t.set.vzMonths) || {};
+  if (!yms.length) return '';
+  const vals = yms.map(ym => ov[ym] !== undefined ? Number(ov[ym]) || 0 : t.vzMap[ym].amt);
+  const allContract = yms.every(ym => t.vzMap[ym].src === 'contract'), allPaid = yms.every(ym => t.vzMap[ym].src === 'paid');
+  const nk = allContract ? scContractNk(t, yms[0]) : 0, changed = Object.keys(ov).length > 0;
+  const title = changed ? 'Changed by you' : allContract ? 'As per contract' + (nk ? ' · ' + scE(nk) + ' per month' : '') : allPaid ? 'As booked in Controlling' : 'Controlling + contract';
+  const sub = allContract ? 'no NK payments in Controlling for these months' : allPaid ? 'NK part of the rent, by day' : t.vzContract + ' month(s) from the contract';
+  return '<div class="sc-vz"><div class="sc-vz__h"><span><b>' + stEsc(title) + '</b><small>' + stEsc(sub) + '</small></span><b>' + scE(t.vz) + '</b></div>' +
+    '<div class="sc-vz__m">' + yms.map((ym, i) => '<label class="sc-vz__c' + (ov[ym] !== undefined ? ' is-ov' : '') + '"><small>' + SC_MONTHS[Number(ym.slice(5, 7)) - 1] + '</small>' +
+      (can ? '<input inputmode="decimal" data-sc-in="vzm" data-ym="' + ym + '" data-k="' + stEsc(t.key) + '" value="' + stEsc(cxE2(vals[i])) + '"/>' : '<b>' + stEsc(cxE2(vals[i])) + '</b>') + '</label>').join('') + '</div>' +
+    '<div class="sc-vz__f">' + (can ? 'Only the months ' + stEsc(scFirst(t.name)) + ' lived here · tap a month to change it' : 'Sent – the amounts are fixed') +
+      (can && changed ? ' · <button class="cx-link sc-inl" data-sc="vzReset" data-k="' + stEsc(t.key) + '">reset</button>' : '') + '</div></div>';
+}
+/* Add a tenant who is not in the app (only for this NK year) */
+function scExtraView(M, m) {
+  const rooms = (window._src.rooms || []).filter(r => r.active !== false).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  const f = (lab, html) => '<div class="sc-xf"><span>' + lab + '</span>' + html + '</div>';
+  return scHead('Add a tenant · NK ' + M.y, 'only for this NK year – not added to Casa Castel', '') +
+    '<div class="srm__b"><div class="srm__one"><div class="srm__card sc-xcard">' +
+      f('Name', '<input class="st-in" id="scxName" placeholder="First and last name"/>') +
+      f('Room', '<select class="st-in" id="scxRoom">' + rooms.map(r => '<option' + (scNorm(r.name) === scNorm(m.room) ? ' selected' : '') + '>' + stEsc(r.name) + '</option>').join('') + '</select>') +
+      f('Moved in', '<input class="st-in" type="date" id="scxFrom" value="' + M.y + '-01-01"/>') +
+      f('Moved out', '<input class="st-in" type="date" id="scxTo" value="' + M.y + '-12-31"/>') +
+      f('NK / month', '<span class="st-amt"><input class="st-in" inputmode="decimal" id="scxNk" placeholder="per contract"/><span>€</span></span>') +
+      f('Address', '<input class="st-in" id="scxAddr" placeholder="Street, PLZ City (if moved out)"/>') +
+    '</div><p class="sc-hint2" style="margin-top:6px">The tenant counts in the split day by day, like everyone else.</p></div></div>' +
+    '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sc="close">Cancel</button><button class="cx-btn cx-btn--p" data-sc="extraSave">Add tenant</button></div>';
+}
 function scSpreadTxt(M, id) {
   const ln = M.input.lines.find(l => l.id === id); if (!ln || !ln.parts.length) return '';
   const p = ln.parts[0];
   return p.spread === 'year' ? 'over the year' : p.spread === 'from' ? 'from ' + stDM(p.date) + ' to 31.12.' : 'in its month';
 }
 function scCostsView(M) {
-  const R = M.R, groups = [['running', 'Running costs', 'Expenses · Casa Castel'], ['hausgeld', 'Hausgeld', 'One-off · yearly Strom / Gas / Wasser results'], ['oneoff', 'NK one-offs', 'One-off · shared from the purchase date']];
+  const R = M.R, groups = [['typed', 'Typed by you', 'positions for ' + M.y], ['running', 'Running costs', 'Expenses · Casa Castel'], ['hausgeld', 'Hausgeld', 'One-off · yearly Strom / Gas / Wasser results'], ['oneoff', 'NK one-offs', 'One-off · shared from the purchase date']];
   const warn = !M.locked && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
   const lockB = M.locked
     ? '<div class="srm__banner"><div><p class="srm__banner-t"><i class="ti ti-lock" aria-hidden="true"></i> Costs locked</p><p class="srm__banner-s">' + scDate(M.rec.locked_at) + ' · the letters use this snapshot</p></div><button class="cx-link" data-sc="unlock">Unlock</button></div>'
-    : '<div class="srm__banner"><div><p class="srm__banner-t">Not locked yet</p><p class="srm__banner-s">Live from Controlling. Lock the costs when everything for ' + M.y + ' is booked – then the letters can be sent.</p></div></div>';
+    : M.R.lines.some(l => l.group !== 'typed') ? '<div class="srm__banner"><div><p class="srm__banner-t">Not locked yet</p><p class="srm__banner-s">Live from Controlling. Lock the costs when everything for ' + M.y + ' is there – then the letters can be sent.</p></div></div>' : '';
   const card = ([g, t, s]) => {
+    if (g === 'typed' && !M.locked) return scTypedHtml(M);
     const ls = R.lines.filter(l => l.group === g); if (!ls.length) return '';
     const sum = cxR(ls.reduce((a, l) => a + l.total, 0)), k = 'cg:' + g, o = !!SC.open[k];
     return '<div class="srm__card sc-cg"><button class="sc-cg__h" data-sc="fold" data-k="' + k + '" aria-expanded="' + o + '"><span><b>' + t + '</b><small>' + s + ' · ' + ls.length + (ls.length === 1 ? ' line' : ' lines') + '</small></span>' +
@@ -339,9 +464,10 @@ function scCostsView(M) {
     '<div class="srm__chk' + (Lc.ok ? '' : ' is-warn') + '"><span><i class="ti ti-' + (Lc.ok ? 'check' : 'alert-triangle') + '" aria-hidden="true"></i> ' + (Lc.ok ? 'adds up' : 'does not add up') + '</span><span>' + scE(Lc.total) + '</span></div></div>';
   void tot;
   const hasList = R.lines.some(l => l.group !== 'running');
-  return scHead('House costs ' + M.y, 'Casa Castel · 01.01.–31.12.' + M.y + ' · from Controlling', '') +
+  const fromC = R.lines.some(l => l.group !== 'typed'), typed = R.lines.some(l => l.group === 'typed');
+  return scHead('House costs ' + M.y, 'Casa Castel · ' + (fromC && typed ? 'from Controlling + typed by you' : fromC ? 'from Controlling' : 'typed by you'), '') +
     '<div class="srm__b"><div class="srm__one">' + warn + lockB + groups.map(card).join('') +
-      (!R.lines.length ? '<p class="cx-empty">No NK costs found for ' + M.y + '. Check Controlling › Casa Castel › Expenses and the NK settings in Setup.</p>' : '') + who + '</div></div>' +
+      (R.lines.length ? who : '') + '</div></div>' +
     '<div class="srm__bar srm__bar--2">' + (hasList ? '<button class="cx-btn cx-btn--s" data-sc="listPdf"><i class="ti ti-file-text" aria-hidden="true"></i> Invoice list PDF</button>' : '') +
       (M.locked ? '' : M.sendable ? '<button class="cx-btn cx-btn--p" data-sc="lock"' + (R.lines.length ? '' : ' disabled') + '><i class="ti ti-lock" aria-hidden="true"></i> Lock costs</button>' : '') + '</div>';
 }
@@ -359,20 +485,23 @@ function scTenView(M, m) {
   const res = t.k === 'sent' || t.k === 'done' ? t.st && t.st.res : null;
   const saldo = res ? res.dir * res.amount : t.saldo;
   const tone = saldo > 0 ? 'neg' : saldo < 0 ? 'pos' : 'even';
-  const noData = !t.lines.length && !t.vz;
+  const noData = !M.R.lines.length;
   const why = noData ? 'There are no NK costs or payments for ' + M.y + ' in Controlling yet.'
     : saldo > 0 ? first + '\'s share was a little more than the NK paid with the rent.'
     : saldo < 0 ? first + ' paid a bit more NK than the share – the rest goes back.' : 'The NK paid with the rent covers the share exactly.';
   if (noData) return head + '<div class="srm__b"><div class="srm__one sc-sheet">' +
-    '<div class="sc-card sc-nodata"><b><i class="ti ti-info-circle" aria-hidden="true"></i> No NK for ' + M.y + ' yet</b>' +
-    '<span>' + stEsc(first) + ' lived here ' + t.days + ' days in ' + M.y + ', but there are no house costs and no NK payments for ' + M.y + ' in Controlling – so there is nothing to split yet.</span>' +
-    '<span class="sc-nodata__b"><a class="sc-go" href="controlling.html">Open Controlling</a><button class="sc-go sc-go--ghost" data-sc="manual">Manual NK</button></span></div></div></div>';
+    '<div class="sc-card sc-nodata"><b><i class="ti ti-pencil" aria-hidden="true"></i> Type the house costs first</b>' +
+    '<span>' + stEsc(first) + ' lived here ' + t.days + ' days in ' + M.y + '. As soon as the house costs for ' + M.y + ' are typed, ' + stEsc(first) + '\'s share is calculated here.</span>' +
+    '<span class="sc-nodata__b"><button class="sc-go" data-sc="costs">Type house costs</button></span></div>' +
+    (t.extra ? '<button class="cx-link sc-skipflow" data-sc="extraDel" data-k="' + stEsc(t.key) + '">Remove this tenant</button>' : '') + '</div></div>';
   const hero = '<div class="sc-res is-' + tone + '"><span class="sc-res__l">' + (saldo > 0 ? stEsc(first) + ' pays you' : saldo < 0 ? stEsc(first) + ' gets back' : '<i class="ti ti-circle-check" aria-hidden="true"></i> All even') + '</span>' +
     '<span class="sc-res__v">' + scE(Math.abs(saldo)) + '</span>' +
     '<span class="sc-res__w">' + stEsc(why) + (!M.locked && t.k === 'open' && !noData ? ' <em>Preview until the house costs are locked.</em>' : '') + '</span></div>';
   const tiles = '<div class="sc-tiles"><div class="sc-tile"><i class="ti ti-calendar" aria-hidden="true"></i><small>lived here</small><b>' + t.days + ' days</b></div>' +
     '<div class="sc-tile"><i class="ti ti-home" aria-hidden="true"></i><small>' + stEsc(first) + '\'s share</small><b>' + scE(t.sum) + '</b></div>' +
-    '<div class="sc-tile"><i class="ti ti-coins" aria-hidden="true"></i><small>already paid</small><b>' + scE(t.vz) + '</b></div></div>';
+    '<button class="sc-tile sc-tile--b' + (SC.pill && SC.pill.k === t.key && SC.pill.p === 'vz' ? ' is-on' : '') + '" data-sc="pill" data-p="vz" data-k="' + stEsc(t.key) + '"><i class="ti ti-coins" aria-hidden="true"></i><small>already paid ›</small><b>' + scE(t.vz) + '</b></button></div>';
+  const vzOpen = SC.pill && SC.pill.k === t.key && SC.pill.p === 'vz';
+  const vzEd = vzOpen ? scVzEditor(t, t.k === 'open' && M.sendable && !(t.st && t.st.res)) : '';
   const kau = t.einbehalt > 0 ? '<div class="sc-kau"><i class="ti ti-lock" aria-hidden="true"></i><span><b>' + scE(t.einbehalt) + ' of the Kaution held back</b><small>' +
     (cxR(t.einbehalt - t.saldo) >= 0 ? 'so ' + stEsc(first) + ' gets ' + scE(cxR(t.einbehalt - t.saldo)) + ' back in the end' : stEsc(first) + ' still pays ' + scE(cxR(t.saldo - t.einbehalt))) + '</small></span></div>' : '';
   // details: what the share is made of + the NK paid
@@ -384,8 +513,8 @@ function scTenView(M, m) {
       '<div class="sc-det__s"><span><i class="ti ti-users" aria-hidden="true"></i> shared by person, day by day</span><b>' + scE(pers) + '</b></div>' +
       '<div class="sc-det__s"><span><i class="ti ti-flame" aria-hidden="true"></i> Gas by room size (' + (t.m2 ? String(t.m2).replace('.', ',') + ' m²' : 'm²') + ')</span><b>' + scE(fl) + '</b></div>' +
       t.lines.map(l => '<div class="sc-li"><span>' + stEsc(l.label) + '<small>' + (l.share * 100).toFixed(1).replace('.', ',') + ' % of ' + scE(l.total) + '</small></span><span>' + scE(l.amount) + '</span></div>').join('') +
-      '<div class="sc-li"><span>Already paid<small>' + (t.vzMissing.length ? 'NK missing for ' + t.vzMissing.length + ' month(s) in Controlling' : 'NK part of the rent, by day') + (vzOver ? ' · changed by you' : '') + '</small></span><span>' + scE(t.vz) + '</span></div>' +
-      (canEdit ? '<label class="st-f"><span class="st-f__l">Other amount paid (optional)</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-sc-in="vz" data-k="' + stEsc(t.key) + '" value="' + (vzOver ? stEsc(cxE2(s.vz)) : '') + '" placeholder="' + stEsc(cxE2(t.vzAuto || 0)) + '"/><span>€</span></span></label>' : '') +
+      '<div class="sc-li"><span>Already paid<small>' + (t.vzContract ? t.vzContract + ' month(s) as per contract' : 'NK part of the rent, by day') + (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length) ? ' · changed by you' : '') + '</small></span><span>' + scE(t.vz) + '</span></div>' +
+
     '</div>' : '');
   // the letter as pills
   let letter = '';
@@ -417,7 +546,8 @@ function scTenView(M, m) {
   else if (t.k === 'done') bar = scLetterBtn(t) + '<button class="cx-btn cx-btn--s" data-sc="reopen" data-k="' + stEsc(t.key) + '">Back to open</button>';
   const skipFlow = m.flow ? '<button class="cx-link sc-skipflow" data-sc="flowNext">Skip for now ›</button>' : '';
   const lockHint = t.k === 'open' && M.sendable && !M.locked && !noData ? '<p class="sc-hint2" style="text-align:center">Lock the house costs to send the letter.</p>' : '';
-  return head + '<div class="srm__b"><div class="srm__one sc-sheet">' + hero + tiles + kau + status + det + letter + lockHint + skipFlow + '</div></div>' +
+  const xDel = t.extra && t.k === 'open' ? '<button class="cx-link sc-skipflow" data-sc="extraDel" data-k="' + stEsc(t.key) + '">Remove this tenant (added for ' + M.y + ')</button>' : '';
+  return head + '<div class="srm__b"><div class="srm__one sc-sheet">' + hero + tiles + vzEd + kau + status + det + letter + lockHint + skipFlow + xDel + '</div></div>' +
     (bar ? '<div class="srm__bar srm__bar--2">' + bar + '</div>' : '');
 }
 function scToggle(f, key, on, t, s, can) {
@@ -454,6 +584,7 @@ const scListDefault = () => { try { return localStorage.getItem('sc_list') !== '
 function scAddrDefault(t) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const house = scHouse();
+  if (t.extra && t.xAddr) return t.xAddr.split('\n').filter(Boolean);
   if (t.movedOut) return t.tr && t.tr.address ? String(t.tr.address).split(/\s*,\s*|\n/).filter(Boolean) : [];
   return house;
 }
@@ -559,19 +690,73 @@ async function scClick(e) {
   if (a === 'pill') { const cur = SC.pill && SC.pill.k === b.dataset.k && SC.pill.p === b.dataset.p; SC.pill = cur ? null : { k: b.dataset.k, p: b.dataset.p }; return scRenderModal(); }
   if (a === 'viaSet') { scSet(b.dataset.k).via = b.dataset.v; scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); return scRenderModal(); }
   if (a === 'manual') { stSwitchTab('dashboard'); setTimeout(() => { if (typeof sdNew === 'function') { SD.d = sdNew(); SD.d.property_id = CASA_PROP_ID; SD.modal = 'calc'; sdRenderModal(); } }, 80); return; }
+  if (a === 'posAdd' || a === 'posEdit' || a === 'posSet' || a === 'posDel') {
+    const r = scRecEnsure(SC.year), list = (r.tenants.__pos = r.tenants.__pos || []);
+    if (a === 'posAdd') { const id = Date.now().toString(36); list.push({ id, label: b.dataset.l, amount: null, key: b.dataset.key || 'personen', spread: 'year' }); SC.posEdit = id; }
+    if (a === 'posEdit') SC.posEdit = SC.posEdit === b.dataset.id ? null : b.dataset.id;
+    if (a === 'posSet') { const p = list.find(x => x.id === b.dataset.id); if (p) p[b.dataset.f] = b.dataset.v; }
+    if (a === 'posDel') { r.tenants.__pos = list.filter(x => x.id !== b.dataset.id); SC.posEdit = null; }
+    scQueueSave(r); SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); return;
+  }
+  if (a === 'vzReset') { const s = scSet(b.dataset.k); delete s.vzMonths; delete s.vz; scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); return scRenderModal(); }
+  if (a === 'extraNew') { SC.modal = { view: 'extra', room: b.dataset.room }; return scRenderModal(); }
+  if (a === 'extraSave') {
+    const v = id => (document.getElementById(id) || {}).value || '';
+    const name = v('scxName').trim(), from = scD(v('scxFrom')), to = scD(v('scxTo'));
+    if (!name || !from) { stSay('Please enter the name and the move-in'); return; }
+    const r = scRecEnsure(SC.year), nk = cxParse(v('scxNk'));
+    (r.tenants.__extra = r.tenants.__extra || []).push({ id: Date.now().toString(36), name, room: v('scxRoom'), from, to: to || null, nk: nk === null ? 0 : cxR(nk),
+      addr: v('scxAddr').split(/\s*,\s*/).filter(Boolean).join('\n') });
+    try { await scSaveRec(r); } catch (err) { stSay('Saving failed — ' + (err.message || err)); return; }
+    SC.modal = null; SC.model = scModel(SC.year); stRenderCasa(); stSay(name + ' added for ' + SC.year); return;
+  }
+  if (a === 'extraDel') {
+    if (!confirm('Remove this tenant from the NK ' + SC.year + '?')) return;
+    const r = scRecEnsure(SC.year), id = String(b.dataset.k).replace(/^x:/, '');
+    r.tenants.__extra = (r.tenants.__extra || []).filter(x => x.id !== id); delete r.tenants[b.dataset.k];
+    try { await scSaveRec(r); } catch (err) { stSay('Saving failed — ' + (err.message || err)); return; }
+    SC.modal = null; SC.model = scModel(SC.year); return stRenderCasa();
+  }
   if (a === 'lock') return scLock(b);
   if (a === 'unlock') return scUnlock();
   if (a === 'listPdf') return scListPdf(b);
   if (a === 'pdf') return scPdf(b.dataset.k, b);
   if (a === 'send') return scSend(b.dataset.k, b);
-  if (a === 'settle') { SC.modal = { view: 'settle', key: b.dataset.k, back: SC.modal }; return scRenderModal(); }
+  if (a === 'settle') {
+    const t = M && M.ten.find(x => x.key === b.dataset.k);
+    if (t && t.extra) {                                           // added tenant: no booking in Controlling – just mark it
+      if (!confirm('Mark ' + t.name + '\'s NK as settled?')) return;
+      const s = scSet(t.key); if (s.sent) s.sent.settled = cxToday();
+      try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {}
+      SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal();
+    }
+    SC.modal = { view: 'settle', key: b.dataset.k, back: SC.modal }; return scRenderModal();
+  }
   if (a === 'backTen') { const m = SC.modal; SC.modal = (m && m.back) || { view: 'ten', key: m && m.key }; return scRenderModal(); }
   if (a === 'choice') { SC.modal.choice = b.dataset.v; return scRenderModal(); }
   if (a === 'settleSave') return scSettleSave(b.dataset.k, b);
-  if (a === 'reopen') return scReopen(b.dataset.k);
+  if (a === 'reopen') {
+    const t = M && M.ten.find(x => x.key === b.dataset.k);
+    if (t && t.extra) { if (!confirm('Back to open?')) return; delete scSet(t.key).sent; try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {} SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal(); }
+    return scReopen(b.dataset.k);
+  }
 }
 function scInput(e) {
-  const el = e.target, f = el && el.dataset && el.dataset.scIn; if (!f) return;
+  const el = e.target;
+  if (el && el.dataset && el.dataset.scPos) {                         // typed house position
+    const r = scRecEnsure(SC.year), p = (r.tenants.__pos || []).find(x => x.id === el.dataset.id); if (!p) return;
+    const f = el.dataset.scPos;
+    if (f === 'amount') { const n = cxParse(el.value); p.amount = n === null ? null : cxR(n); } else p[f] = f === 'date' ? scD(el.value) : el.value;
+    scQueueSave(r); SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); return;
+  }
+  if (el && el.dataset && el.dataset.scIn === 'vzm') {                // NK paid, one month
+    const s = scSet(el.dataset.k), n = cxParse(el.value);
+    s.vzMonths = s.vzMonths || {};
+    if (el.value.trim() === '' || n === null) delete s.vzMonths[el.dataset.ym]; else s.vzMonths[el.dataset.ym] = cxR(n);
+    delete s.vz;
+    scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); return;
+  }
+  const f = el && el.dataset && el.dataset.scIn; if (!f) return;
   const s = scSet(el.dataset.k);
   let v = el.value;
   if (f === 'vz') { const n = cxParse(v); s.vz = v.trim() === '' || n === null ? null : cxR(n); }
@@ -592,7 +777,7 @@ async function scLock(btn) {
   const M = SC.model; if (!M || M.locked) return;
   if (M.warn.length && !confirm('There are ' + M.warn.length + ' point(s) to check:\n\n' + M.warn.join('\n') + '\n\nLock the costs anyway?')) return;
   const r = scRecEnsure(M.y);
-  const input = NkCasa.fromControlling(M.y, { castel_expenses: SC.data[M.y].castel_expenses, one_time: SC.data[M.y].one_time, income: window._src.incAll || [] });
+  const input = scInputFor(M.y);
   r.snapshot = { input, total: M.R.check.total, at: new Date().toISOString() };
   r.locked_at = new Date().toISOString();
   if (btn) btn.disabled = true;
@@ -640,6 +825,7 @@ async function scListPdf(btn) {
 async function scSend(key, btn) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
   if (!M.locked) { stSay('Lock the house costs first'); return; }
+  if (t.extra) return scSendExtra(M, t, btn);
   if (!t.line) { stSay('This tenant is not in the settlement list – check move-in / move-out in Casa Castel'); return; }
   const s = t.set || {};
   const amount = Math.abs(t.saldo), dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0;
@@ -678,6 +864,19 @@ async function scSend(key, btn) {
   SC.model = scModel(M.y);
   stRenderCasa();
   if (flow) { SC.modal = flow; scFlowNext(); } else { SC.modal = { view: 'ten', key }; scRenderModal(); }
+}
+async function scSendExtra(M, t, btn) {
+  const s = scSet(t.key), dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0, date = s.date || cxToday();
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
+  let pdf = null;
+  try { pdf = await nkLetterPdf(await scLetterData(M, t), scFileName(M, t)); } catch (e) { console.warn('[settlements] letter', e); }
+  s.sent = { date, dir, amount: cxR(Math.abs(t.saldo)), via: dir ? scVia(t) : 'zahlung' };
+  try { await scSaveRec(scRecEnsure(M.y)); } catch (e) { stSay('Saving failed — ' + (e.message || e)); return; }
+  if (pdf) await scArchive(M, t, pdf, { dir, amount: s.sent.amount, addr: String(s.addr !== undefined ? s.addr : scAddrDefault(t).join('\n')) });
+  stSay('Marked as sent');
+  const flow = SC.modal && SC.modal.flow ? SC.modal : null;
+  SC.model = scModel(M.y); stRenderCasa();
+  if (flow) { SC.modal = flow; scFlowNext(); } else { SC.modal = { view: 'ten', key: t.key }; scRenderModal(); }
 }
 async function scArchive(M, t, pdf, x) {
   if (SC.lettersMissing) { stSay('Marked as sent · run the archive SQL to keep a copy of the letter'); return; }

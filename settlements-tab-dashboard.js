@@ -175,7 +175,7 @@ function sdNew() {
   const y = Number(cxToday().slice(0, 4)) - 1;
   return { id: null, property_id: null, unit_label: '', title_name: '', tenant_ref: '', tenant_name: '', address: '', iban: '', former: false,
            period_from: y + '-01-01', period_to: y + '-12-31', use_from: '', use_to: '',
-           lines: [{ label: 'Grundsteuer', amount: null, split: 'full', value: null }], vz: [], settle_via: 'zahlung', due_days: 30, letter_date: cxToday(), book: false, status: 'draft' };
+           lines: [{ label: '', amount: null, split: 'full', value: null }], vz: [], settle_via: 'zahlung', due_days: 30, letter_date: cxToday(), book: false, status: 'draft' };
 }
 function sdMonths(d) {
   const out = []; if (!d.period_from || !d.period_to || d.period_to < d.period_from) return out;
@@ -239,62 +239,73 @@ function sdRenderModal() {
   document.body.classList.add('st-panel-open');
 }
 const sdOpt = (v, l, on) => '<option value="' + stEsc(v) + '"' + (on ? ' selected' : '') + '>' + stEsc(l) + '</option>';
+function sdUseMonths(d) {
+  const uf = (d.use_from || d.period_from || '').slice(0, 7), ut = (d.use_to || d.period_to || '').slice(0, 7);
+  return sdMonths(d).filter(ym => ym >= uf && ym <= ut);
+}
 function sdCalcView() {
-  const d = SD.d, x = sdCalc(d), sent = d.status === 'sent';
-  const props = sdProps(), p = d.property_id ? props.find(q => q.id === Number(d.property_id)) : null, casa = p && p.id === CASA_PROP_ID;
-  const dis = sent ? ' disabled' : '';
+  const d = SD.d, x = sdCalc(d), sent = d.status === 'sent', dis = sent ? ' disabled' : '';
+  const props = sdProps(), p = d.property_id ? props.find(q => q.id === Number(d.property_id)) : null, casa = p && p.id === CASA_PROP_ID, other = !d.property_id && d.title_name !== '';
   const rooms = (window._src.rooms || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   const tens = sdTenants(d);
-  const forCard = '<div class="srm__card"><p class="sd-lbl">Abrechnung for</p>' +
-    '<label class="st-f"><span class="st-f__l">Property · sets the Betreff</span><select class="st-in" data-sdf="property_id"' + dis + '>' + sdOpt('', '— choose —', !d.property_id && !d.title_name) +
-      props.map(q => sdOpt(q.id, q.name, Number(d.property_id) === q.id)).join('') + sdOpt('other', 'Other (type the name)', !d.property_id && !!d.title_name) + '</select></label>' +
-    (casa ? '<label class="st-f"><span class="st-f__l">Room</span><select class="st-in" data-sdf="unit_label"' + dis + '>' + sdOpt('', '— choose —', !d.unit_label) + rooms.map(r => sdOpt(r.name, r.name, d.unit_label === r.name)).join('') + '</select></label>' : '') +
-    (!d.property_id && d.title_name !== '' ? '<label class="st-f"><span class="st-f__l">Name of the property</span><input class="st-in" data-sdf="title_name" value="' + stEsc(d.title_name) + '"' + dis + '/></label>' : '') +
-    (p ? '<p class="sd-hint"><i class="ti ti-home" aria-hidden="true"></i> ' + stEsc(sdPropAddr(d).join(' · ') || 'no address in Rentals') + '</p>' : '') +
-    '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Period from</span><input class="st-in" type="date" data-sdf="period_from" value="' + stEsc(d.period_from) + '"' + dis + '/></label>' +
-      '<label class="st-f"><span class="st-f__l">to</span><input class="st-in" type="date" data-sdf="period_to" value="' + stEsc(d.period_to) + '"' + dis + '/></label></div></div>';
-  const toCard = '<div class="srm__card"><p class="sd-lbl">Send to</p>' +
-    (tens.length ? '<label class="st-f"><span class="st-f__l">Tenant</span><select class="st-in" data-sdf="tenant_ref"' + dis + '>' + sdOpt('', '— type a name below —', !d.tenant_ref) +
-      tens.map(t => sdOpt(t.id, [t.first_name, t.last_name].filter(Boolean).join(' ') + (t.mietende ? ' · moved out ' + stDate(t.mietende) : ''), String(d.tenant_ref) === String(t.id))).join('') + '</select></label>' : '') +
-    '<label class="st-f"><span class="st-f__l">Name</span><input class="st-in" data-sdf="tenant_name" value="' + stEsc(d.tenant_name) + '"' + dis + '/></label>' +
-    '<label class="st-f"><span class="st-f__l">Current address · type it in</span><textarea class="st-in sc-ta" rows="3" data-sdf="address"' + dis + '>' + stEsc(d.address) + '</textarea></label>' +
-    '<label class="st-f"><span class="st-f__l">Tenant IBAN · only for a Guthaben</span><input class="st-in" data-sdf="iban" value="' + stEsc(d.iban || '') + '" placeholder="DE…"' + dis + '/></label>' +
-    '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Lived there from (optional)</span><input class="st-in" type="date" data-sdf="use_from" value="' + stEsc(d.use_from || '') + '"' + dis + '/></label>' +
-      '<label class="st-f"><span class="st-f__l">until</span><input class="st-in" type="date" data-sdf="use_to" value="' + stEsc(d.use_to || '') + '"' + dis + '/></label></div>' +
-    '<p class="sd-hint" id="sdDays">' + (x.partial ? x.useDays + ' of ' + x.perDays + ' days' : 'the whole period · ' + x.perDays + ' days') + '</p>' +
-    scToggleSd('former', d.former, 'Former tenant', 'the letter says "Ihre ehemalige Wohnung"', !sent) + '</div>';
-  const lines = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct" style="font-size:21px">Costs</p><span class="srm__cs">the tenant\'s share per line</span></div>' +
-    (d.lines || []).map((l, i) => {
-      const c = x.lines[i];
-      return '<div class="sd-line"><input class="st-in sd-line__l" list="sdKinds" data-sdl="label" data-i="' + i + '" value="' + stEsc(l.label || '') + '" placeholder="Kostenart"' + dis + '/>' +
-        '<div class="sd-line__r"><span class="st-amt"><input class="st-in" inputmode="decimal" data-sdl="amount" data-i="' + i + '" value="' + stEsc(l.amount === null || l.amount === undefined ? '' : cxE2(l.amount)) + '" placeholder="' + (l.split === 'direct' ? 'optional' : 'Kosten') + '"' + dis + '/><span>€</span></span>' +
-        '<select class="st-in" data-sdl="split" data-i="' + i + '"' + dis + '>' + SD_SPLITS.map(([v, t]) => sdOpt(v, t, l.split === v)).join('') + '</select>' +
-        (l.split === 'pct' || l.split === 'direct' ? '<span class="st-amt"><input class="st-in" inputmode="decimal" data-sdl="value" data-i="' + i + '" value="' + stEsc(l.value === null || l.value === undefined ? '' : String(l.value).replace('.', ',')) + '" placeholder="' + (l.split === 'pct' ? 'Anteil' : 'Ihr Betrag') + '"' + dis + '/><span>' + (l.split === 'pct' ? '%' : '€') + '</span></span>' : '') +
-        '<span class="sd-line__s" data-sd-share="' + i + '">' + (c.share === null ? '—' : sdE(c.share)) + '</span>' +
-        (sent ? '' : '<button class="sd-x" data-sd="delLine" data-i="' + i + '" aria-label="Remove line"><i class="ti ti-x" aria-hidden="true"></i></button>') + '</div></div>';
-    }).join('') +
-    '<datalist id="sdKinds">' + (typeof SR_KINDS !== 'undefined' ? SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '">').join('') : '') + '</datalist>' +
-    (sent ? '' : '<button class="cx-link" data-sd="addLine"><i class="ti ti-plus" aria-hidden="true"></i> Add line</button>') +
-    '<div class="sc-li"><b>Tenant share</b><span id="sdSum">' + sdE(x.sum) + '</span></div></div>';
-  const months = x.months;
-  const vz = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct" style="font-size:21px">Vorauszahlungen</p><span class="srm__cs">paid per month</span></div>' +
-    (sent ? '' : '<div class="sd-fill"><span class="st-amt"><input class="st-in" inputmode="decimal" id="sdFill" placeholder="same amount"/><span>€</span></span><button class="cx-link" data-sd="fill">fill all ' + months.length + ' months</button></div>') +
-    '<div class="sd-months">' + months.map(ym => '<label class="sd-m"><small>' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(ym.slice(5, 7)) - 1] + (months.length > 12 || ym.slice(0, 4) !== months[0].slice(0, 4) ? ' ' + ym.slice(2, 4) : '') + '</small>' +
-      '<input class="st-in" inputmode="decimal" data-sdv="' + ym + '" value="' + stEsc(sdVzOf(d, ym) === null ? '' : cxE2(sdVzOf(d, ym))) + '"' + dis + '/></label>').join('') + '</div>' +
-    '<div class="sc-li"><b>Paid</b><span id="sdVz">' + sdE(x.vz) + '</span></div></div>';
+  const row = (lab, html) => '<div class="sd-f"><span>' + lab + '</span>' + html + '</div>';
+  const two = (a, b) => '<span class="sd-two">' + a + '<i>–</i>' + b + '</span>';
+  const top = '<div class="sd-box">' +
+    row('Property', '<select class="sd-in" data-sdf="property_id"' + dis + '>' + sdOpt('', '— choose —', !d.property_id && !other) + props.map(q => sdOpt(q.id, q.name, Number(d.property_id) === q.id)).join('') + sdOpt('other', 'Other …', other) + '</select>') +
+    (casa ? row('Room', '<select class="sd-in" data-sdf="unit_label"' + dis + '>' + sdOpt('', '— choose —', !d.unit_label) + rooms.map(r => sdOpt(r.name, r.name, d.unit_label === r.name)).join('') + '</select>') : '') +
+    (other ? row('Name', '<input class="sd-in" data-sdf="title_name" value="' + stEsc(String(d.title_name).trim()) + '" placeholder="name of the property"' + dis + '/>') : '') +
+    row('Period', two('<input class="sd-in" type="date" data-sdf="period_from" value="' + stEsc(d.period_from) + '"' + dis + '/>', '<input class="sd-in" type="date" data-sdf="period_to" value="' + stEsc(d.period_to) + '"' + dis + '/>')) +
+    row('Tenant', '<input class="sd-in" list="sdTen" data-sdf="tenant_name" value="' + stEsc(d.tenant_name) + '" placeholder="type or choose"' + dis + '/>' +
+      '<datalist id="sdTen">' + tens.map(t => '<option value="' + stEsc([t.first_name, t.last_name].filter(Boolean).join(' ')) + '">').join('') + '</datalist>') +
+    row('Address', '<input class="sd-in" data-sdf="address1" value="' + stEsc(String(d.address || '').split('\n').filter(Boolean).join(', ')) + '" placeholder="Street, PLZ City"' + dis + '/>') +
+  '</div>' +
+  '<button class="sd-more" data-sd="more"><i class="ti ti-' + (SD.more ? 'minus' : 'plus') + '" aria-hidden="true"></i> ' + (SD.more ? 'less' : 'more · lived from–until, IBAN, former tenant') + '</button>' +
+  (SD.more ? '<div class="sd-box">' +
+    row('Lived', two('<input class="sd-in" type="date" data-sdf="use_from" value="' + stEsc(d.use_from || '') + '"' + dis + '/>', '<input class="sd-in" type="date" data-sdf="use_to" value="' + stEsc(d.use_to || '') + '"' + dis + '/>')) +
+    row('IBAN', '<input class="sd-in" data-sdf="iban" value="' + stEsc(d.iban || '') + '" placeholder="only for a Guthaben"' + dis + '/>') +
+    row('Former', '<label class="sd-chk"><input type="checkbox" data-sd="tg" data-f="former"' + (d.former ? ' checked aria-pressed="true"' : ' aria-pressed="false"') + dis + '/> moved out · "ehemalige Wohnung"</label>') +
+  '</div>' : '');
+  // positions
+  const pos = '<p class="sd-cap">Positions</p><div class="sd-box sd-box--p">' + (d.lines || []).map((l, i) => {
+    const c = x.lines[i];
+    return '<div class="sd-pl"><div class="sd-pl__r"><input class="sd-in sd-pl__l" list="sdKinds" data-sdl="label" data-i="' + i + '" value="' + stEsc(l.label || '') + '" placeholder="Kostenart"' + dis + '/>' +
+      '<span class="sd-amt"><input class="sd-in" inputmode="decimal" data-sdl="amount" data-i="' + i + '" value="' + stEsc(l.amount === null || l.amount === undefined ? '' : cxE2(l.amount)) + '" placeholder="' + (l.split === 'direct' ? 'optional' : 'Kosten') + '"' + dis + '/><em>€</em></span>' +
+      (sent ? '' : '<button class="sd-x" data-sd="delLine" data-i="' + i + '" aria-label="Remove line"><i class="ti ti-x" aria-hidden="true"></i></button>') + '</div>' +
+      '<div class="sd-pl__r2"><select class="sd-in sd-pl__s" data-sdl="split" data-i="' + i + '"' + dis + '>' + SD_SPLITS.map(([v, t]) => sdOpt(v, t, l.split === v)).join('') + '</select>' +
+      (l.split === 'pct' || l.split === 'direct' ? '<span class="sd-amt sd-amt--s"><input class="sd-in" inputmode="decimal" data-sdl="value" data-i="' + i + '" value="' + stEsc(l.value === null || l.value === undefined ? '' : String(l.value).replace('.', ',')) + '" placeholder="' + (l.split === 'pct' ? 'Anteil' : 'Betrag') + '"' + dis + '/><em>' + (l.split === 'pct' ? '%' : '€') + '</em></span>' : '') +
+      '<span class="sd-pl__sh">share <b data-sd-share="' + i + '">' + (c.share === null ? '—' : sdE(c.share)) + '</b></span></div></div>';
+  }).join('') +
+  '<datalist id="sdKinds">' + (typeof SR_KINDS !== 'undefined' ? SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '">').join('') : '') + '</datalist>' +
+  (sent ? '' : '<button class="sd-add" data-sd="addLine"><i class="ti ti-plus" aria-hidden="true"></i> Add position</button>') +
+  '<div class="sd-tot"><span>Tenant share</span><b id="sdSum">' + sdE(x.sum) + '</b></div></div>';
+  // NK paid
+  const um = sdUseMonths(d), vals = um.map(ym => sdNum(sdVzOf(d, ym)));
+  const same = vals.length && vals.every(v => v !== null && v === vals[0]) ? vals[0] : null;
+  const perMonth = SD.perMonth || (!same && vals.some(v => v !== null));
+  const vz = '<p class="sd-cap">NK paid</p><div class="sd-box sd-box--p">' +
+    (perMonth
+      ? '<div class="sd-months">' + um.map(ym => '<label class="sd-m"><small>' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(ym.slice(5, 7)) - 1] + (um.length > 12 ? ' ' + ym.slice(2, 4) : '') + '</small>' +
+          '<input class="sd-in" inputmode="decimal" data-sdv="' + ym + '" value="' + stEsc(sdVzOf(d, ym) === null ? '' : cxE2(sdVzOf(d, ym))) + '"' + dis + '/></label>').join('') + '</div>' +
+        '<div class="sd-tot"><span>Paid</span><b id="sdVz">' + sdE(x.vz) + '</b></div>'
+      : '<div class="sd-vz1"><span class="sd-amt"><input class="sd-in" inputmode="decimal" data-sdx="vzone" value="' + (same !== null ? stEsc(cxE2(same)) : '') + '" placeholder="per month"' + dis + '/><em>€</em></span>' +
+          '<span>× ' + um.length + (um.length === 1 ? ' month' : ' months') + ' = <b id="sdVz">' + sdE(x.vz) + '</b></span></div>') +
+    (sent ? '' : '<button class="sd-add" data-sd="perMonth">' + (perMonth ? 'same amount every month' : 'different per month') + '</button>') + '</div>';
+  // result + how it is settled
   const tone = x.saldo > 0 ? 'neg' : x.saldo < 0 ? 'pos' : '';
-  const res = '<div class="srm__card sc-hero"><span class="sc-hero__l ' + tone + '" id="sdResL">' + sdResLabel(d, x) + '</span><span class="sc-hero__v ' + tone + '" id="sdRes">' + sdE(Math.abs(x.saldo)) + '</span>' +
-    '<span class="sc-hero__s" id="sdResS">' + sdE(x.sum) + ' − ' + sdE(x.vz) + (x.saldo > 0 ? ' · Nachzahlung' : x.saldo < 0 ? ' · Guthaben' : '') + '</span>' +
-    '<div class="sr-grid2" style="text-align:left"><label class="st-f"><span class="st-f__l">Settle by</span><select class="st-in" data-sdf="settle_via"' + dis + '>' + [['zahlung', 'Bank transfer'], ['kaution', 'Kaution'], ['miete', 'With the rent']].map(([v, t]) => sdOpt(v, t, d.settle_via === v)).join('') + '</select></label>' +
-      '<label class="st-f"><span class="st-f__l">Due in (days)</span><input class="st-in" inputmode="numeric" data-sdf="due_days" value="' + stEsc(d.due_days ?? 30) + '"' + dis + '/></label></div>' +
-    '<label class="st-f" style="text-align:left"><span class="st-f__l">Letter date</span><input class="st-in" type="date" data-sdf="letter_date" value="' + stEsc(d.letter_date || cxToday()) + '"' + dis + '/></label>' +
-    (d.property_id ? scToggleSd('book', d.book, 'Also book the result in Controlling', 'off for old years that are already settled', !sent) : '') + '</div>';
-  const head = '<div class="srm__h"><div class="srm__ht"><p class="srm__t">' + (d.id ? 'NK-Abrechnung · draft' : 'New NK-Abrechnung') + '</p><p class="srm__s">manual · ' + (sent ? 'sent ' + stDate(String(d.sent_at || '').slice(0, 10)) : SD.dirty ? 'not saved yet' : 'saved as a draft') + '</p></div>' +
+  const res = '<div class="sd-res"><span class="sc-hero__l ' + tone + '" id="sdResL">' + sdResLabel(d, x) + '</span><span class="sd-res__v ' + tone + '" id="sdRes">' + sdE(Math.abs(x.saldo)) + '</span>' +
+    '<span class="sd-res__s" id="sdResS">' + sdE(x.sum) + ' − ' + sdE(x.vz) + (x.saldo > 0 ? ' · Nachzahlung' : x.saldo < 0 ? ' · Guthaben' : '') + '</span></div>' +
+    '<div class="sd-box">' +
+      row('Settle', '<select class="sd-in" data-sdf="settle_via"' + dis + '>' + [['zahlung', 'Bank transfer'], ['kaution', 'With the Kaution'], ['miete', 'With the rent']].map(([v, t]) => sdOpt(v, t, d.settle_via === v)).join('') + '</select>') +
+      row('Within', '<span class="sd-two"><input class="sd-in" inputmode="numeric" data-sdf="due_days" value="' + stEsc(d.due_days ?? 30) + '"' + dis + '/><i>days</i></span>') +
+      row('Letter', '<input class="sd-in" type="date" data-sdf="letter_date" value="' + stEsc(d.letter_date || cxToday()) + '"' + dis + '/>') +
+      (d.property_id ? row('Controlling', '<label class="sd-chk"><input type="checkbox" data-sd="tg" data-f="book"' + (d.book ? ' checked aria-pressed="true"' : ' aria-pressed="false"') + dis + '/> also book the result</label>') : '') +
+    '</div>';
+  const head = '<div class="srm__h"><div class="srm__ht"><p class="srm__t">' + (d.id ? 'NK-Abrechnung' : 'New NK-Abrechnung') + '</p><p class="srm__s">manual · ' + (sent ? 'sent ' + stDate(String(d.sent_at || '').slice(0, 10)) : SD.dirty ? 'not saved yet' : 'draft') + '</p></div>' +
     '<button class="srm__x" data-sd="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
   const bar = sent ? '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sd="close">Close</button><button class="cx-btn cx-btn--p" data-sd="pdf"><i class="ti ti-file-text" aria-hidden="true"></i> PDF</button></div>'
-    : '<div class="srm__bar srm__bar--2">' + (d.id ? '<button class="cx-btn cx-btn--s" data-sd="delDraft"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>' : '') +
-      '<button class="cx-btn cx-btn--s" data-sd="save">Save draft</button><button class="cx-btn cx-btn--p" data-sd="preview">Preview <i class="ti ti-arrow-right" aria-hidden="true"></i></button></div>';
-  return head + '<div class="srm__b"><div class="srm__one">' + forCard + toCard + lines + vz + res + '</div></div>' + bar;
+    : '<div class="srm__bar srm__bar--2">' + (d.id ? '<button class="cx-btn cx-btn--s" data-sd="delDraft" aria-label="Delete draft"><i class="ti ti-trash" aria-hidden="true"></i></button>' : '') +
+      '<button class="cx-btn cx-btn--s" data-sd="save">Save</button><button class="cx-btn cx-btn--p" data-sd="preview">Preview <i class="ti ti-arrow-right" aria-hidden="true"></i></button></div>';
+  return head + '<div class="srm__b"><div class="srm__one sd-form">' + top + pos + vz + res + '</div></div>' + bar;
 }
 function scToggleSd(f, on, t, s, can) {
   return '<button type="button" class="sc-tg' + (on ? ' on' : '') + '" data-sd="tg" data-f="' + f + '"' + (can ? '' : ' disabled') + ' aria-pressed="' + !!on + '">' +
@@ -341,6 +352,12 @@ function sdInput(e) {
     d.vz = (d.vz || []).filter(v => v.ym !== ym); if (n !== null) d.vz.push({ ym, amount: cxR(n) });
     SD.dirty = true; return sdTotals();
   }
+  if (el.dataset.sdx === 'vzone') {
+    const n = sdNum(el.value);
+    d.vz = n === null ? [] : sdUseMonths(d).map(ym => ({ ym, amount: cxR(n) }));
+    SD.dirty = true; return sdTotals();
+  }
+  if (el.dataset.sdf === 'address1') { d.address = el.value.split(/\s*,\s*/).filter(Boolean).join('\n'); SD.dirty = true; return; }
   if (el.dataset.sdf && ['tenant_name', 'address', 'iban', 'title_name', 'due_days'].includes(el.dataset.sdf)) {
     const f = el.dataset.sdf; d[f] = f === 'due_days' ? (Math.max(0, Math.round(Number(el.value) || 0)) || 30) : el.value; SD.dirty = true;
     if (f === 'tenant_name') { const l = document.getElementById('sdResL'); if (l) l.textContent = sdResLabel(d, sdCalc(d)); }
@@ -350,7 +367,15 @@ function sdChange(e) {
   const el = e.target, d = SD.d; if (!d) return;
   const f = el.dataset.sdf;
   if (el.dataset.sdl === 'split') { const l = d.lines[Number(el.dataset.i)]; if (l) { l.split = el.value; if (el.value === 'full' || el.value === 'days') l.value = null; } SD.dirty = true; return sdRenderModal(); }
-  if (!f || ['tenant_name', 'address', 'iban', 'title_name', 'due_days'].includes(f)) return;
+  if (f === 'tenant_name') {                                       // a known tenant → fill address, days and NK
+    const t = sdTenants(d).find(z => [z.first_name, z.last_name].filter(Boolean).join(' ').toLowerCase() === String(el.value).trim().toLowerCase());
+    if (t) { d.tenant_ref = String(t.id); d.tenant_name = [t.first_name, t.last_name].filter(Boolean).join(' ');
+      const out = t.mietende && sdD(t.mietende) < cxToday(); d.former = !!out;
+      d.address = out && t.address ? String(t.address).split(/\s*,\s*|\n/).filter(Boolean).join('\n') : sdPropAddr(d).join('\n');
+      sdTenantPeriod(d, t); SD.dirty = true; return sdRenderModal(); }
+    d.tenant_ref = ''; return;
+  }
+  if (!f || ['address', 'address1', 'iban', 'title_name', 'due_days'].includes(f)) return;
   SD.dirty = true;
   if (f === 'property_id') {
     if (el.value === 'other') { d.property_id = null; d.title_name = d.title_name || ' '; }
@@ -433,7 +458,7 @@ async function sdLetterData(d) {
   return {
     brand, unitLabel: casa ? 'Zimmer' : p ? 'Wohnung' : '', unitName: casa ? (d.unit_label || '') : (apt.wohnungsnummer || ''),
     footer: addr.join(' \u00b7 '), sender, vermieter: s.vermieter_name || '', ort, date, names: [d.tenant_name || ''],
-    addr: String(d.address || '').split('\n').map(z => z.trim()).filter(Boolean),
+    addr: String(d.address || '').split(/\n|,\s*(?=\d{5}\b)/).map(z => z.trim()).filter(Boolean),
     title: 'Betriebskostenabrechnung ' + y,
     subtitle: (addr.length ? 'Mietobjekt ' + addr.join(', ') + (casa && d.unit_label ? ' \u00b7 Zimmer ' + d.unit_label : '') + ' \u00b7 ' : (brand ? brand + ' \u00b7 ' : '')) + 'Abrechnungszeitraum ' + dt(d.period_from) + ' bis ' + dt(d.period_to),
     greeting: d.tenant_name ? 'Guten Tag ' + d.tenant_name + ',' : 'Sehr geehrte Damen und Herren,',
@@ -523,7 +548,9 @@ async function sdClick(e) {
     const n = sdNum((document.getElementById('sdFill') || {}).value); if (n === null) { stSay('Type the monthly amount first'); return; }
     d.vz = sdMonths(d).map(ym => ({ ym, amount: cxR(n) })); SD.dirty = true; return sdRenderModal();
   }
-  if (a === 'tg') { d[b.dataset.f] = b.getAttribute('aria-pressed') !== 'true'; SD.dirty = true; return sdRenderModal(); }
+  if (a === 'tg') { d[b.dataset.f] = b.type === 'checkbox' ? b.checked : b.getAttribute('aria-pressed') !== 'true'; SD.dirty = true; return sdRenderModal(); }
+  if (a === 'more') { SD.more = !SD.more; return sdRenderModal(); }
+  if (a === 'perMonth') { SD.perMonth = !SD.perMonth; if (!SD.perMonth) { const um = sdUseMonths(d), v = um.map(ym => sdNum(sdVzOf(d, ym))).find(z => z !== null); d.vz = v === undefined ? [] : um.map(ym => ({ ym, amount: v })); SD.dirty = true; } return sdRenderModal(); }
   if (a === 'save') { await sdSave(); return sdRenderModal(); }
   if (a === 'preview') { SD.modal = 'preview'; sdSave(true); return sdRenderModal(); }
   if (a === 'back') { SD.modal = 'calc'; return sdRenderModal(); }
