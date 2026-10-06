@@ -23,9 +23,7 @@ function _cxExpModel() {
   return window._ctrl.properties.filter(p => p.active && cxAreaOk(p)).map(p => {
     const casa = p.id === CASA_PROP_ID;
     const plan = casa ? ctlCasaCostRows(p, y, m) : ctlCostRows(p, y, m);
-    // Kreditraten come straight from Properties (Dashboard) — nothing to confirm here
-    const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
-    const rows = plan.rows.filter(r => r.key !== 'rate' && !(casa && rateCat && r.catId === rateCat.id)).map(r => Object.assign({}, r));
+    const rows = plan.rows.map(r => Object.assign({}, r));   // incl. Kreditrate: Soll from Properties, you confirm when it's booked
     if (casa) {
       for (const r of rows) {
         const x = window._ctrl.castel_expenses.find(e => e.category_id === r.catId && e.year === y && e.month === m);

@@ -51,14 +51,12 @@ function _cxOpenOf(p, y, m) {
     if (!has) inc++;
   }
   if (p.id === CASA_PROP_ID) {
-    const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
     for (const r of ctlCasaCostRows(p, y, m).rows)
-      if (r.soll && !(rateCat && r.catId === rateCat.id) &&
-          !window._ctrl.castel_expenses.some(e => e.category_id === r.catId && e.year === y && e.month === m)) exp++;
+      if (r.soll && !window._ctrl.castel_expenses.some(e => e.category_id === r.catId && e.year === y && e.month === m)) exp++;
   } else {
     const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m);
     for (const r of ctlCostRows(p, y, m).rows)
-      if (r.key !== 'rate' && r.soll && (!row || row[r.key] === null || row[r.key] === undefined)) exp++;   // Kreditrate: from Properties
+      if (r.soll && (!row || row[r.key] === null || row[r.key] === undefined)) exp++;
   }
   if (typeof ctlAbrOpenCount === 'function') { inc += ctlAbrOpenCount(p.id, y, m, 1); exp += ctlAbrOpenCount(p.id, y, m, -1); }   // finished Abrechnungen to confirm
   return { inc, exp };
@@ -94,11 +92,15 @@ function _cxDashProp(p, months) {
     const x = ctlPropertyMonth(p.id, m);
     r.kalt += x.kalt; r.nk += x.neben;
     if (casa) {
-      for (const e of window._ctrl.castel_expenses)
-        if (e.year === y && e.month === m && !(rateCat && e.category_id === rateCat.id)) r.kosten += Number(e.amount) || 0;
+      for (const e of window._ctrl.castel_expenses) {
+        if (e.year !== y || e.month !== m) continue;
+        if (rateCat && e.category_id === rateCat.id) r.rate += Number(e.amount) || 0;   // Kreditrate as booked
+        else r.kosten += Number(e.amount) || 0;
+      }
     } else {
       const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m) || {};
       r.kosten += (Number(row.hausgeld) || 0) + (Number(row.grundsteuer) || 0) + (Number(row.strom) || 0);
+      r.rate   += Number(row.rate) || 0;                                                  // Kreditrate as booked
     }
     for (const o of (window._ctrl.one_time || [])) {
       if (Number(o.property_id) !== p.id) continue;
@@ -109,13 +111,14 @@ function _cxDashProp(p, months) {
       else r.einmalig -= signed;                                // one-off costs (a refund lowers them)
     }
   }
-  // Kreditrate from Properties: Zinsen + Tilgung when both are known there
+  // Kreditrate = what you confirmed in Expenses (Soll comes from Properties). It is split into
+  // Zinsen and Tilgung in the ratio Properties gives for the loan; without that ratio it stays one amount.
   const loan = ctlPropLinks(p).loan;
-  if (loan && Number(loan.rate) > 0 && months.length) {
-    const n = months.length, rate = Number(loan.rate), z = Number(loan.zinsen) || 0, t = Number(loan.tilgung) || 0;
-    r.loan = loan; r.rate = rate * n;
-    if (z > 0 && t > 0) { r.zins = z * n; r.tilg = Math.max(0, rate - z) * n; }
-    else { r.unknown = rate * n; r.split = false; }
+  if (loan) r.loan = loan;
+  if (r.rate > 0) {
+    const L = Number(loan && loan.rate) || 0, z = Number(loan && loan.zinsen) || 0, t = Number(loan && loan.tilgung) || 0;
+    if (L > 0 && z > 0 && t > 0) { r.zins = r.rate * z / (z + t); r.tilg = r.rate - r.zins; }
+    else { r.unknown = r.rate; r.split = false; }
   }
   for (const k of ['kalt', 'nk', 'kosten', 'einmalig', 'abr', 'rate', 'zins', 'tilg', 'unknown']) r[k] = cxR(r[k]);
   r.warm      = cxR(r.kalt + r.nk);
@@ -253,7 +256,7 @@ window.renderDashboard = function () {
       '<div class="cx-lbl">Where the rent goes</div>' + bar + kaltLine + legend + hint +
       '<button class="cxd-calcbtn" data-cx="fold" data-k="dash:calc" aria-expanded="' + calcOpen + '"><span>Show calculation' +
         '<small>kalt & warm · before/after one-offs & Abrechnungen</small></span><i class="ti ti-chevron-' + (calcOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>' +
-      (calcOpen ? _cxDashCalc(t, 'Kalt = Kaltmiete without Nebenkosten money and house costs · Warm = what actually came in and went out. Kreditraten from Properties.') : '') +
+      (calcOpen ? _cxDashCalc(t, 'Kalt = Kaltmiete without Nebenkosten money and house costs · Warm = what actually came in and went out. Only booked amounts count — Kreditraten as confirmed in Expenses.') : '') +
     '</div>';
   }
 
