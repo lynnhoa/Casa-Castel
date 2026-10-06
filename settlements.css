@@ -755,3 +755,44 @@ body.st-panel-open { overflow: hidden; }
 .sc-step.is-now .sc-step__d { background: var(--cx-ink); color: #FDFCFA; }
 .sc-step.is-later b { color: var(--cx-mut); }
 .sc-skipflow { align-self: center; }
+
+/* ══ Rentals tab · phase 5 design (one card per Wohnung) ════════════════════ */
+.sr5-page { max-width: 760px; }
+@media (min-width: 1000px) {
+  .sr5-page { max-width: 1180px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+  .sr5-page > .sc-yr, .sr5-page > .st-soon, .sr5-page > .sc-prog, .sr5-page > .sr5-money, .sr5-page > .sr5-next, .sr5-page > .st-filter, .sr5-page > .cx-empty { grid-column: 1 / -1; }
+}
+.sr5-ic { color: #8A6535; margin-right: 6px; }
+.sr5-mut { color: var(--cx-mut); }
+.sr5-money { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sr5-mt { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; }
+.sr5-lbl { margin: 0 0 4px; font-size: 9.5px; font-weight: 500; letter-spacing: .13em; text-transform: uppercase; color: var(--cx-mut); }
+.sr5-mt span { font-size: 12px; } .sr5-mt b { font-weight: 600; }
+.sr5-mt .pos { color: #3B6D11; } .sr5-mt .neg { color: #8A3B22; }
+.sr5-next { padding: 4px 14px; }
+.sr5-nx { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: .5px solid var(--cx-line); }
+.sr5-nx:first-child { border-top: none; }
+.sr5-nx__i { width: 34px; height: 34px; border-radius: 50%; background: #FAEEDA; color: #7A4A12; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.sr5-nx__i.is-red { background: #F7E4DC; color: #8A3B22; }
+.sr5-go--warn { background: #FAEEDA; color: #7A4A12; border: .5px solid #E9B06A; text-decoration: none; }
+.sr5-card { padding: 14px 14px 6px; }
+.sr5-h { display: flex; align-items: center; gap: 10px; width: 100%; }
+.sr5-h__t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.sr5-no { width: 26px; height: 26px; border-radius: 8px; background: #F5EFE6; color: #8A6535; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sr5-pn { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; line-height: 1.05; color: var(--cx-ink); }
+.sr5-pm { font-size: 11.5px; color: var(--cx-mut); }
+.sr5-hist { font-size: 12px; white-space: nowrap; }
+.sr5-fold { padding: 12px 14px; width: 100%; font: inherit; color: inherit; cursor: pointer; }
+.sr5-fold .sr5-pn { font-size: 20px; }
+.sr5-ln { border-top: .5px solid var(--cx-line) !important; }
+.sr5-card .sr5-ln:nth-of-type(1) { margin-top: 10px; }
+.sr5-av { background: #E8E2D8; color: #5A574E; width: 36px; height: 36px; }
+.sr5-av--hv { background: #F5EFE6; color: #8A6535; width: 36px; height: 36px; font-size: 17px; }
+.sc-row__s.warn { color: #7A4A12; }
+.sc-chip--red { background: #F7E4DC; color: #8A3B22; }
+.sr5-empty { font-size: 12px; color: var(--cx-mut); padding: 10px 0 8px; margin: 0; border-top: .5px solid var(--cx-line); }
+.sr5-hy { gap: 4px; }
+.sr5-hy__h { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.sr5-hy__h b { display: block; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 500; color: var(--cx-ink); }
+.sr5-hy__h small { display: block; font-size: 11.5px; color: var(--cx-mut); }
+.sr5-hy__v { font-weight: 500 !important; text-align: right; white-space: normal !important; }

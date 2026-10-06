@@ -38,6 +38,7 @@ const SR = {
   sel: null,            // { kind: 'hv' | 'ten' | 'pausch', ck, tid }
   edit: false, draft: null,
   rows: [], loaded: false, loading: false, missing: false,
+  letters: [],          // nk_letters (archive) — History
 };
 const SR_TABLE = 'nk_abrechnung_rentals';
 const SR_MON = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
@@ -108,6 +109,10 @@ async function srLoadRows() {
     const { data, error } = await _ctlSupa.from(SR_TABLE).select('*');
     if (error) throw error;
     SR.rows = data || []; SR.missing = false;
+    try {                                               // letter archive (nk_letters) — for the History
+      const l = await _ctlSupa.from('nk_letters').select('*').order('sent_at', { ascending: false });
+      SR.letters = l.error ? [] : (l.data || []);
+    } catch (e) { SR.letters = []; }
     SR.cols = !!(SR.rows[0] ? Object.prototype.hasOwnProperty.call(SR.rows[0], 'received_on') : true);
     try {                                               // Kaution-Einbehalt (Rentals › Tenants) — read only here
       const k = await _ctlSupa.from('rnt_kaution').select('*');
@@ -486,6 +491,19 @@ async function _srPdf(btn) {
   const reset = btn ? btn.innerHTML : '';
   if (btn) { btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; btn.disabled = true; }
   try {
+    const out = await _srLetterBlob(c, it, rec, ts, x);
+    if (btn) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';
+    await ccOpenPdf(out.blob, out.name);
+  } catch (err) {
+    console.error('[settlements] NK PDF', err);
+    alert('The PDF could not be created. Please try again.');
+  } finally {
+    if (btn) { btn.innerHTML = reset; btn.disabled = false; }
+  }
+}
+/* The letter as a PDF file (not opened) — for "Create PDF" and for the archive on "Mark sent" */
+async function _srLetterBlob(c, it, rec, ts, x) {
+  {
     if (typeof loadSettings === 'function') await loadSettings();
     const d = _srLetterData(c, it, rec, x, ts);
     let box = document.getElementById('_pdfRenderContainer'); if (box) box.remove();
@@ -502,15 +520,27 @@ async function _srPdf(btn) {
       const pages = box.querySelectorAll('.pdf-page');
       pages.forEach((pg, i) => { const a = pg.querySelector('.pgn'), b = pg.querySelector('.pgt'); if (a) a.textContent = String(i + 1); if (b) b.textContent = String(pages.length); });
       const pdf = await ccRenderPagesToPdf(box);
-      if (btn) btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Opening PDF';
-      await ccOpenPdf(pdf, ccPdfFileName('NK-Abrechnung', d.periodLabel.replace(/\//g, '-'), d.aptName, (d.names[0] || '').split(' ').slice(-1)[0]));
+      const name = ccPdfSafeName(ccPdfFileName('NK-Abrechnung', d.periodLabel.replace(/\//g, '-'), d.aptName, (d.names[0] || '').split(' ').slice(-1)[0]));
+      return { blob: pdf.output('blob'), name, d };
     } finally { box.remove(); }
-  } catch (err) {
-    console.error('[settlements] NK PDF', err);
-    alert('The PDF could not be created. Please try again.');
-  } finally {
-    if (btn) { btn.innerHTML = reset; btn.disabled = false; }
   }
+}
+/* Mark sent → keep the letter exactly as sent (storage "nk-letters" + table nk_letters) */
+async function _srArchive(c, it, rec, ts, x, dir, amount) {
+  try {
+    const out = await _srLetterBlob(c, it, rec, ts, x);
+    const cy = Number(it.r.covers_year) || Number(c.per.to.slice(0, 4));
+    const path = 'rentals/' + cy + '/' + Date.now() + '-' + out.name;
+    const up = await _ctlSupa.storage.from('nk-letters').upload(path, out.blob, { contentType: 'application/pdf', upsert: false });
+    if (up.error) throw up.error;
+    const row = { app: 'rentals', property_id: c.p.id, year: cy, period_from: _srD(it.r.period_from) || null, period_to: _srD(it.r.period_to) || null,
+                  tenant_id: it.r.tenant_id ? String(it.r.tenant_id) : null, tenant_name: (out.d.names || []).join(', ') || null, unit_label: c.p.name,
+                  address: (out.d.addr || []).join('\n') || null, direction: dir, amount, file_path: path, file_name: out.name, source: 'app', sent_at: new Date().toISOString() };
+    const ins = await _ctlSupa.from('nk_letters').insert(row).select().single();
+    if (ins.error) throw ins.error;
+    SR.letters = [ins.data].concat(SR.letters || []);
+    if (typeof SC !== 'undefined' && SC.loaded) SC.letters.unshift(ins.data);
+  } catch (e) { console.warn('[settlements] archive', e); stSay('Marked sent · the letter could not be archived (' + (e.message || e) + ')'); }
 }
 
 function _srLetterData(c, it, rec, x, ts) {
@@ -537,6 +567,7 @@ function _srLetterData(c, it, rec, x, ts) {
     anlagen: ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec),
     hasVerbrauch: x.lines.some(l => l.pos.key === 'verbrauch' || ['heizung', 'warmwasser'].includes(l.pos.kind)), hasFlaeche: x.lines.some(l => l.pos.key === 'flaeche'), hasMea: x.lines.some(l => l.pos.key === 'mea'),
     keyMode: rec.key_mode || 'flaeche',
+    tenantIban: ts.iban || '', former: _srMovedOut(t),
     verwendung: 'NK ' + periodLabel + ' ' + (apt.name || c.p.name) + (t && t.last_name ? ' ' + t.last_name : ''),
   };
 }
@@ -619,7 +650,11 @@ function srLetterHtml(d) {
     pay = `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit Ihrer Mietkaution. Sie müssen nichts überweisen.</p>`;
   } else if (d.saldo > 0) {
     pay = `<p class="p">Bitte zahlen Sie den Betrag von <strong>${eur(amt)}</strong> zusammen mit Ihrer nächsten Miete, spätestens bis zum <strong>${dt(d.due)}</strong> (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
-  } else if (d.saldo < 0 && d.via === 'zahlung') {
+  } else if (d.saldo < 0 && d.via === 'zahlung' && d.tenantIban) {
+    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr Konto ${esc(d.tenantIban)}.</p>`;
+  } else if (d.saldo < 0 && d.via === 'zahlung' && d.former) {
+    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen gern. Bitte teilen Sie uns dafür Ihre aktuelle Bankverbindung (IBAN) mit.</p>`;
+} else if (d.saldo < 0 && d.via === 'zahlung') {
     pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr uns bekanntes Konto. Hat sich Ihre Bankverbindung geändert, teilen Sie uns die neue bitte kurz mit.</p>`;
   } else if (d.saldo < 0 && d.via === 'miete') {
     pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> können Sie mit Ihrer nächsten Mietzahlung verrechnen: Überweisen Sie die nächste Miete um diesen Betrag gekürzt.</p>`;
@@ -643,7 +678,7 @@ function srLetterHtml(d) {
     <div class="doc-title">Betriebskostenabrechnung ${esc(d.periodLabel)}</div>
     <div class="doc-subtitle">${d.objekt ? 'Mietobjekt ' + esc(d.objekt) + ' \u00b7 ' : ''}Abrechnungszeitraum ${perTxt}${d.hvDate ? '<br/>Grundlage: Hausgeldabrechnung ' + (d.hvName ? esc(d.hvName) + ' ' : '') + 'vom ' + dt(d.hvDate) : ''}</div>
     <p class="p" style="margin-top:0">${d.names.length ? 'Guten Tag ' + esc(_srJoin(d.names)) + ',' : 'Sehr geehrte Damen und Herren,'}</p>
-    <p class="p">hiermit rechnen wir die Betriebskosten für Ihre Wohnung für den Abrechnungszeitraum vom <strong>${perTxt}</strong> ab.${d.partial ? ` Sie haben die Wohnung in diesem Zeitraum vom ${dt(d.useFrom)} bis ${dt(d.useTo)} genutzt (${d.tDays} von ${d.perDays} Tagen); die Kosten sind deshalb zeitanteilig berechnet.` : ''}</p>
+    <p class="p">hiermit rechnen wir die Betriebskosten für Ihre ${d.former ? 'ehemalige ' : ''}Wohnung für den Abrechnungszeitraum vom <strong>${perTxt}</strong> ab.${d.partial ? ` Sie haben die Wohnung in diesem Zeitraum vom ${dt(d.useFrom)} bis ${dt(d.useTo)} genutzt (${d.tDays} von ${d.perDays} Tagen); die Kosten sind deshalb zeitanteilig berechnet.` : ''}</p>
     <div class="sec">Ergebnis</div>
     <div class="sum">
       <div class="sum__r"><span>Ihr Anteil an den Betriebskosten</span><span>${eur(d.sum)}</span></div>
@@ -745,6 +780,7 @@ async function _srSend(btn) {
     if (btn) btn.disabled = false; ctlSettlementInvalidate(); stRenderRentals(); return;
   }
   ctlSettlementInvalidate();
+  await _srArchive(c, it, rec, ts, x, dir, cxR(amountRec));
   SR.sel = { kind: 'ten', ck: c.ck, tid: String(row.id) };
   if (SR.modal && SR.modal.view === 'tenant') SR.modal.tid = String(row.id);
   SR.briefOpen = false;
@@ -914,27 +950,151 @@ function stRenderRentals() {
                   owe.toTen ? 'to tenants <b>' + stEur(cxR(owe.toTen)) + '</b>' : '', owe.fromTen ? 'from tenants <b>' + stEur(cxR(owe.fromTen)) + '</b>' : ''].filter(Boolean).join(' · ') || 'nothing open';
   const sqlNote = SR.missing ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>The table nk_abrechnung_rentals is missing. Run SETTLEMENTS-RENTALS.sql in Supabase, then reload.</span></div></div>' : '';
 
-  el.innerHTML = '<div class="st-page rk-page">' +
-    '<div class="rk-head"><div><h1 class="cx-title">Rentals</h1><p class="cx-title__s">Hausgeld line → Jahresabrechnung · tenant or “NK-Abrechnung” → NK</p></div>' +
-      '<div class="rk-head__r">' +
-      '<div class="rk-yr"><button class="cx-arw" data-sr="year" data-d="-1" aria-label="Previous year"' + (SR.year <= ty - 4 ? ' disabled' : '') + '><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
-        '<div class="rk-yr__t"><div class="rk-yr__m">' + SR.year + '</div><div class="rk-yr__s">Year</div></div>' +
-        '<button class="cx-arw" data-sr="year" data-d="1" aria-label="Next year"' + (SR.year >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div></div></div>' +
-    sqlNote +
-    '<div class="rk-kpis">' +
-      '<div class="rk-kpi"><p class="rk-kpi__l">Jahresabrechnungen</p><p class="rk-kpi__v"><b>' + hvIn + ' of ' + live.length + '</b> received<br><span>' + hvExp + ' expected</span>' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') + '</p></div>' +
-      '<div class="rk-kpi"><p class="rk-kpi__l">NK to tenants</p><p class="rk-kpi__v"><b>' + nOpen + '</b> open · <b>' + nSent + '</b> sent · <b>' + nSet + '</b> settled<br><span>' + nWait + ' waiting for the Jahresabrechnung</span></p></div>' +
-      '<div class="rk-kpi"><p class="rk-kpi__l">Still to settle</p><p class="rk-kpi__v">' + oweTxt + '</p></div>' +
-    '</div>' +
-    '<div class="st-filter" role="group" aria-label="Filter">' + chip('all', 'All') + chip('open', 'Open', nO) + chip('settled', 'Settled', nS) + '</div>' +
-    '<div class="rk-tbl">' +
-      '<div class="rk-th"><span>Wohnung · tenant</span><span>Period</span><span>Status</span><span>Result</span><span>Sent</span><span>Settled</span><span>PDF</span></div>' +
-      (shown.length ? shown.map(_srTrackerBlock).join('') : '<p class="cx-empty" style="padding:20px">Nothing in this filter.</p>') +
-    '</div>' +
+  // ── overview (phase 5 design: one card per Wohnung, plain words, next steps) ──
+  const minY = _srMinYear();
+  const C = 2 * Math.PI * 34, nLive = live.length;
+  const ring = '<svg class="sc-ring" width="84" height="84" viewBox="0 0 84 84" aria-hidden="true"><circle cx="42" cy="42" r="34" fill="none" stroke="#EDE8E0" stroke-width="9"/>' +
+    '<circle cx="42" cy="42" r="34" fill="none" stroke="#97C459" stroke-width="9" stroke-linecap="round" transform="rotate(-90 42 42)" stroke-dasharray="' + (nLive ? C * nS / nLive : 0).toFixed(1) + ' ' + C.toFixed(1) + '"/>' +
+    '<text x="42" y="40" text-anchor="middle" class="sc-ring__n">' + nS + '/' + nLive + '</text><text x="42" y="55" text-anchor="middle" class="sc-ring__s">settled</text></svg>';
+  const yearNav = '<div class="sc-yr">' +
+    '<button class="cx-arw" data-sr="year" data-d="-1" aria-label="Previous year"' + (SR.year <= minY ? ' disabled' : '') + '><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
+    '<div class="sc-yr__t"><div class="sc-yr__m">NK ' + SR.year + '</div><div class="sc-yr__s">' + nLive + (nLive === 1 ? ' apartment' : ' apartments') + '</div></div>' +
+    '<button class="cx-arw" data-sr="year" data-d="1" aria-label="Next year"' + (SR.year >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
+  const prog = '<div class="sc-card sc-prog">' + ring + '<div class="sc-prog__l">' +
+    '<span><i class="ti ti-file-invoice sr5-ic" aria-hidden="true"></i>' + hvIn + ' of ' + nLive + ' Jahresabrechnungen in' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') + '</span>' +
+    '<span><i class="ti ti-mail sr5-ic" aria-hidden="true"></i>' + nOpen + ' to send · ' + nSent + ' sent · ' + nSet + ' settled</span>' +
+    (nWait ? '<span class="sr5-mut"><i class="ti ti-hourglass sr5-ic" aria-hidden="true"></i>' + nWait + ' waiting for the Jahresabrechnung</span>' : '') + '</div></div>';
+  const money = '<div class="sr5-money">' +
+    '<div class="sc-card sr5-mt"><p class="sr5-lbl">Tenants</p><span class="pos">you pay back <b>' + stEur(cxR(owe.toTen)) + '</b></span><span class="neg">you get <b>' + stEur(cxR(owe.fromTen)) + '</b></span></div>' +
+    '<div class="sc-card sr5-mt"><p class="sr5-lbl">WEG</p><span class="neg">you pay <b>' + stEur(cxR(owe.toWeg)) + '</b></span><span class="pos">you get <b>' + stEur(cxR(owe.fromWeg)) + '</b></span></div></div>';
+  const next = _srNextSteps(live);
+  el.innerHTML = '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +
+    '<div class="st-filter" role="group" aria-label="Filter">' + chip('all', 'All') + chip('open', 'To do', nO) + chip('settled', 'Done', nS) + '</div>' +
+    (shown.length ? shown.map(_srCard5).join('') : '<p class="cx-empty" style="padding:20px">Nothing in this filter.</p>') +
   '</div>' +
   (SR.modal ? '<div class="srm" id="srModal"><div class="srm__bg" data-sr="close"></div><div class="srm__win" id="srPanel" role="dialog" aria-label="NK-Abrechnung">' + _srModalHtml() + '</div></div>' : '');
   document.body.classList.toggle('st-panel-open', !!SR.modal);
 }
+
+/* ── Phase 5 · overview helpers ── */
+function _srMinYear() {                                   // the year switch goes back to the first purchase
+  const ty = Number(cxToday().slice(0, 4));
+  const props = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID);
+  const ys = props.map(p => Number(String(p.in_portfolio_since || '').slice(0, 4))).filter(Boolean);
+  if (!ys.length || props.some(p => !p.in_portfolio_since)) return Math.min(ty - 10, ...(ys.length ? ys : [ty]));
+  return Math.min(...ys);
+}
+const _srInit = name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+function _srNextSteps(live) {
+  const steps = [];
+  for (const i of live) {
+    const hv = i.hv; if (!hv) continue;
+    if (hv.k === 'ueberfaellig') {
+      const mail = i.c.verw && i.c.verw.hv_email ? String(i.c.verw.hv_email).trim() : '';
+      steps.push({ o: 1, ic: 'alert-circle', tone: 'red', t: 'Jahresabrechnung overdue', s: i.c.p.name + (hv.exp ? ' · expected ' + hv.exp.label : ''),
+        btn: mail ? '<a class="sc-go sr5-go--warn" data-sr="ask" data-k="' + stEsc(i.c.ck) + '" href="' + stEsc(_srAskMail(i.c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Ask HV</a>'
+                  : '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
+    } else if (hv.k === 'erfassen') steps.push({ o: 2, ic: 'pencil', t: 'Enter costs', s: i.c.p.name + (hv.received ? ' · received' : ''), btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
+    else if (hv.k === 'weg') steps.push({ o: 3, ic: 'scale', t: 'Enter the WEG result', s: i.c.p.name, btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
+  }
+  const ready = [];
+  for (const i of live) for (const r of i.rows) if (r.kind === 'ten' && r.k === 'open') ready.push({ i, r });
+  if (ready.length) steps.push({ o: 4, ic: 'send', t: ready.length + (ready.length === 1 ? ' letter ready' : ' letters ready'),
+    s: [...new Set(ready.map(x => x.i.c.p.name))].join(' · '),
+    btn: '<button class="sc-go" data-sr="openTen" data-k="' + stEsc(ready[0].i.c.ck) + '" data-id="' + stEsc(String(ready[0].r.l.id)) + '">Start <i class="ti ti-arrow-right" aria-hidden="true"></i></button>' });
+  if (!steps.length) return '';
+  steps.sort((a, b) => a.o - b.o);
+  return '<div class="sc-card sr5-next">' + steps.slice(0, 3).map(x =>
+    '<div class="sr5-nx"><span class="sr5-nx__i' + (x.tone === 'red' ? ' is-red' : '') + '"><i class="ti ti-' + x.ic + '" aria-hidden="true"></i></span>' +
+    '<span class="sc-next__t"><b>' + stEsc(x.t) + '</b><span>' + stEsc(x.s) + '</span></span>' + x.btn + '</div>').join('') + '</div>';
+}
+function _srWegWords(dir, amount, done) {
+  if (!dir || !amount) return 'balanced with the WEG';
+  return dir > 0 ? (done ? 'the WEG paid you ' : 'the WEG pays you ') + stEur(amount) : (done ? 'you paid the WEG ' : 'you pay the WEG ') + stEur(amount);
+}
+function _srCard5(info) {
+  const c = info.c, props = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder);
+  const idx = props.findIndex(p => p.id === c.p.id) + 1;
+  const num = '<span class="sr5-no">' + idx + '</span>';
+  if (c.before) return '<div class="sc-card sr5-fold"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">bought ' + stDate(c.p.in_portfolio_since) + ' · ' + SR.year + ' settled by the seller</span></span><span class="sc-chip sc-chip--grey">not yours</span></div></div>';
+  const k5 = 'c5:' + c.ck;
+  if (info.k === 'settled' && !SR.open[k5]) return '<button class="sc-card sr5-fold" data-sr="fold5" data-k="' + stEsc(k5) + '"><span class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span></span><span class="sc-chip sc-chip--done"><i class="ti ti-check" aria-hidden="true"></i> all settled</span><i class="ti ti-chevron-down sc-chev" aria-hidden="true"></i></span></button>';
+  const hg = c.verw ? _srNum(c.verw.hausgeld_mtl) : null;
+  const meta = _srPerText(c.per.from, c.per.to) + (hg ? ' · Hausgeld ' + stEur(hg) + '/mo' : '') + ' · Frist ' + stDate(c.per.frist);
+  let h = '<div class="sc-card sr5-card"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">' + stEsc(meta) + '</span></span>' +
+    '<button class="cx-link sr5-hist" data-sr="history" data-k="' + stEsc(c.ck) + '"><i class="ti ti-history" aria-hidden="true"></i> History</button>' +
+    (info.k === 'settled' ? '<button class="cx-link" data-sr="fold5" data-k="' + stEsc(k5) + '" aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '') + '</div>';
+  // Jahresabrechnung line
+  const hv = info.hv, rec = info.rec, wegSt = hv.wegSt, wRes = wegSt && wegSt.res;
+  const wegDone = !!(wRes && (wegSt.k === 'erledigt' || wegSt.booking));
+  let say, tone = '';
+  if (hv.k === 'fertig') { say = wRes ? _srWegWords(wRes.dir, wRes.amount, true) : 'settled'; tone = 'pos'; }
+  else if (hv.k === 'zahlung') { say = wRes ? _srWegWords(wRes.dir, wRes.amount, wegDone) + ' · payment open' : 'payment open'; tone = wRes && wRes.dir > 0 ? 'pos' : 'neg'; }
+  else if (hv.k === 'weg') say = 'costs entered · enter the WEG result';
+  else if (hv.k === 'erfassen') { say = 'received' + (rec && (rec.received_on || rec.hv_date) ? ' ' + stDM(rec.received_on || rec.hv_date) : '') + ' · costs not entered yet'; tone = 'warn'; }
+  else if (hv.k === 'ueberfaellig') { say = 'overdue' + (hv.exp ? ' · expected ' + hv.exp.label : '') + (hv.asked.length ? ' · asked ' + stDM(hv.asked[hv.asked.length - 1]) : ''); tone = 'neg'; }
+  else say = c.running ? 'runs until ' + stDate(c.per.to) : (hv.exp ? 'expected ~ ' + hv.exp.label : 'expected');
+  const hvChip = hv.k === 'fertig' ? ['done', '✓ settled'] : hv.k === 'zahlung' ? ['wait', 'payment open'] : hv.k === 'weg' ? ['send', 'WEG result'] : hv.k === 'erfassen' ? ['send', 'enter costs']
+    : hv.k === 'ueberfaellig' ? ['red', 'overdue'] : ['grey', c.running ? 'running' : 'expected'];
+  h += '<button class="sc-row sr5-ln" data-sr="openHv" data-k="' + stEsc(c.ck) + '"><span class="sc-av sr5-av--hv"><i class="ti ti-building" aria-hidden="true"></i></span>' +
+    '<span class="sc-row__m"><span class="sc-row__n">Jahresabrechnung</span><span class="sc-row__s ' + tone + '">' + stEsc(say) + '</span></span>' +
+    '<span class="sc-chip sc-chip--' + hvChip[0] + '">' + stEsc(hvChip[1]) + '</span></button>';
+  // tenant lines
+  for (const ti of info.rows) {
+    let s2, t2 = '';
+    if (ti.kind === 'pausch') s2 = 'Pauschal – no NK';
+    else if (ti.kind === 'unlinked') s2 = 'no tenant linked';
+    else if (ti.k === 'settled') s2 = ti.skipped ? 'skipped' : (_srSettledTxt(ti, false) || 'settled');
+    else if (ti.k === 'sent') { const r = ti.st.res; s2 = r.dir > 0 ? 'pays you ' + stEur(r.amount) : r.dir < 0 ? 'gets ' + stEur(r.amount) + ' back' : 'balanced'; t2 = r.dir > 0 ? 'neg' : r.dir < 0 ? 'pos' : ''; }
+    else if (ti.k === 'open' && ti.x && !ti.x.missing) { const v = ti.x.saldo; s2 = v > 0 ? 'pays you ' + stEur(v) : v < 0 ? 'gets ' + stEur(-v) + ' back' : 'balanced'; t2 = v > 0 ? 'neg' : v < 0 ? 'pos' : ''; }
+    else s2 = 'waiting for the Jahresabrechnung';
+    const chip = ti.kind === 'pausch' ? ['grey', 'Pauschal'] : ti.kind === 'unlinked' ? ['grey', 'no tenant'] : ti.k === 'settled' ? ['done', ti.skipped ? 'skipped' : '✓ done'] :
+      ti.k === 'sent' ? ['wait', 'sent ' + stDM(ti.st.res.date)] : ti.k === 'open' ? ['send', 'to send'] : ['grey', 'waiting'];
+    const per = stDM(ti.l.from) + '–' + stDate(ti.l.to) + (ti.t && _srMovedOut(ti.t) ? ' · moved out' : '');
+    h += '<button class="sc-row sr5-ln" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '"><span class="sc-av sr5-av">' + stEsc(_srInit(ti.name)) + '</span>' +
+      '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(ti.name) + '</span><span class="sc-row__s ' + t2 + '">' + stEsc(s2) + '</span><span class="sc-row__p">' + stEsc(per) + '</span></span>' +
+      '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></button>';
+  }
+  if (!info.rows.length) h += '<p class="sr5-empty">No tenant with Kalt + NK in this period</p>';
+  return h + '</div>';
+}
+
+/* ── History of one Wohnung: every year since the purchase ── */
+function _srHistoryView(c) {
+  const p = c.p, ty = Number(cxToday().slice(0, 4));
+  const since = Number(String(p.in_portfolio_since || '').slice(0, 4)) || _srMinYear();
+  const years = []; for (let Y = ty; Y >= since; Y--) years.push(Y);
+  const rows = years.map(Y => {
+    const per = _srPeriodFor(p, Y), cy = Number(per.to.slice(0, 4));
+    if (per.from > cxToday()) return '';
+    const res = (window._src.abr || []).filter(a => a.status !== 'storniert' && Number(a.property_id) === p.id && Number(a.year) === cy);
+    const weg = res.find(a => a.kind === 'weg_hausgeld'), tens = res.filter(a => a.kind === 'nk_tenant');
+    const rec = _srRec(p, per);
+    const letters = (SR.letters || []).filter(l => (l.app === 'rentals' || l.app === 'manual') && Number(l.property_id) === p.id && Number(l.year) === cy);
+    if (per.to >= cxToday() && !res.length && !letters.length && !(rec && (rec.received_on || rec.hv_date))) return '';   // the running year: only once something exists
+    const wegTxt = weg ? _srWegWords(Number(weg.direction), Number(weg.amount), false).replace('pays you', 'paid you').replace('you pay the', 'you paid the')
+      : rec && (rec.received_on || rec.hv_date) ? 'Jahresabrechnung received ' + stDate(rec.received_on || rec.hv_date) : per.to >= cxToday() ? 'running' : 'no Jahresabrechnung entered';
+    return '<div class="srm__card sr5-hy"><div class="sr5-hy__h"><span><b>NK ' + cy + '</b><small>' + stEsc(_srPerText(per.from, per.to)) + '</small></span>' +
+      '<button class="cx-link" data-sr="histYear" data-y="' + Y + '">Open this year ›</button></div>' +
+      '<div class="sc-li"><span>Jahresabrechnung</span><span class="sr5-hy__v">' + stEsc(wegTxt) + '</span></div>' +
+      tens.map(a => '<div class="sc-li"><span>' + stEsc(a.tenant_name || 'Tenant') + '<small>' + stEsc(a.settle_via === 'kaution' ? 'with the Kaution' : a.settle_via === 'miete' ? 'with the rent' : 'by bank transfer') + '</small></span><span class="sr5-hy__v">' +
+        stEsc(Number(a.direction) > 0 ? 'Nachzahlung ' + stEur(a.amount) : Number(a.direction) < 0 ? 'Guthaben ' + stEur(a.amount) : 'balanced') + '</span></div>').join('') +
+      letters.map(l => '<button class="sc-row" data-sr="letterOpen" data-id="' + stEsc(l.id) + '"><span class="sc-av sc-av--doc"><i class="ti ti-file-text" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">' +
+        stEsc(l.tenant_name || '') + (l.source === 'manual' ? ' · manual' : '') + '</span><span class="sc-row__p">letter sent ' + stDate(String(l.sent_at).slice(0, 10)) + '</span></span><span class="sc-open">Open</span></button>').join('') +
+      (!tens.length && !letters.length ? '<p class="sr5-empty">No tenant results saved for this year.</p>' : '') + '</div>';
+  }).join('');
+  return _srHead4('History · ' + p.name, 'every year since ' + (p.in_portfolio_since ? 'the purchase ' + stDate(p.in_portfolio_since) : since), '') +
+    '<div class="srm__b"><div class="srm__one">' + rows + '</div></div>';
+}
+async function _srOpenLetter(id) {
+  const L = (SR.letters || []).find(l => String(l.id) === String(id)); if (!L) return;
+  try {
+    const { data, error } = await _ctlSupa.storage.from('nk-letters').createSignedUrl(L.file_path, 600);
+    if (error || !data) throw error || new Error('no link');
+    ccOpenUrl(data.signedUrl, L.file_name || 'NK-Abrechnung.pdf');
+  } catch (e) { stSay('The letter could not be opened — ' + (e.message || e)); }
+}
+
 function _srTrackerBlock(info) {
   const c = info.c, idx = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder).findIndex(p => p.id === c.p.id) + 1;
   const hg = c.verw ? _srNum(c.verw.hausgeld_mtl) : null;
@@ -1001,6 +1161,7 @@ function _srModalHtml() {
   const m = SR.modal, c = _srCards[m.ck];
   if (!c) return _srHead4('NK-Abrechnung', '') + '<div class="srm__b"><p class="cx-empty">This Wohnung is not in the list.</p></div>';
   SR.sel = { kind: m.view === 'tenant' ? 'ten' : 'hv', ck: m.ck, tid: m.tid };
+  if (m.view === 'history') return _srHistoryView(c);
   if (m.view === 'tenant') return _srTenView(c);
   if (m.view === 'settle') return _srSettleView(c);
   if (m.view === 'hv') return _srHvView(c);
@@ -1255,6 +1416,7 @@ function _srTenView(c) {
       const vias = [['zahlung', 'Transfer'], ['miete', 'With rent'], ['kaution', 'Kaution']];
       letter = '<div class="st-form"><p class="st-f__l">Letter</p>' +
         '<label class="st-f"><span class="st-f__l">Address' + (moved ? ' (new address after moving out)' : '') + '</span><textarea class="st-in sr-ta" rows="3" data-srt="addr">' + stEsc(addr) + '</textarea></label>' +
+        (!isNach && x.saldo ? '<label class="st-f"><span class="st-f__l">Tenant IBAN · for the Guthaben (optional)</span><input class="st-in" data-srt="iban" value="' + stEsc(ts.iban || '') + '" placeholder="DE…"/></label>' : '') +
         '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Date</span><input class="st-in" type="date" data-srt="date" value="' + stEsc(date) + '"/></label>' +
           '<label class="st-f"><span class="st-f__l">Payment term (days)</span><input class="st-in" inputmode="numeric" data-srt="days" value="' + days + '"/></label></div>' +
         (x.saldo ? '<fieldset class="st-f"><legend class="st-f__l">' + (isNach ? 'Nachzahlung' : 'Guthaben') + ' settled by</legend><div class="st-seg st-seg--3" role="group">' +
@@ -1520,6 +1682,10 @@ function srIsRentalsLine() { return false; }
       setTimeout(async () => { try { await srSaveRow(rec); stRenderRentals(); } catch (err) { stSay('Not saved — ' + (err.message || err)); } }, 400);
       return;
     }
+    if (a === 'history') { e.stopPropagation(); _srOpen({ ck: b.dataset.k, view: 'history', from: 'tracker' }); return; }
+    if (a === 'histYear') { SR.year = Number(b.dataset.y); SR.modal = null; SR.draft = null; stRenderRentals(); window.scrollTo(0, 0); return; }
+    if (a === 'letterOpen') { e.stopPropagation(); await _srOpenLetter(b.dataset.id); return; }
+    if (a === 'fold5') { SR.open[b.dataset.k] = !SR.open[b.dataset.k]; stRenderRentals(); return; }
     // modal
     if (!SR.modal) return;
     const c = _srCards[SR.modal.ck];
