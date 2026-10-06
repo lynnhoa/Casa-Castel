@@ -410,26 +410,15 @@ async function loadHouseCleaning(room) {
   // Tab marker (blue broom) while this room's turn this week is open (turn-markers.js)
   if (typeof ccTabMarker === 'function' && curInfo) ccTabMarker('cleaning', isMyTurn && !isDone && !isCurrentRoomAbsent && !isCurrentRoomVacant);
 
-  /* ── "Your next turn" lookahead ── */
-  let nextTurnHtml = '';
+  /* ── Your next turn (weeks you are away are skipped) — shown inside the card ── */
+  let mineHtml = '';
   if (curInfo && (!isMyTurn || isCurrentRoomAbsent)) {
-    // Find the next slot belonging to this room — search up to 2 full cycles ahead
     for (let offset = 1; offset <= rot.length * 2; offset++) {
-      const futureIdx  = curIdx + offset;
-      const futureInfo = _hcWeekInfo(futureIdx);
-      // Skip future turns in weeks the tenant has registered as away
-      const futureAway = futureInfo && absRows.some(a => a.room === room && absCoversWeek(a, _hcYmd(futureInfo.start), _hcYmd(futureInfo.end)));
-      if (futureInfo && futureInfo.room === room && !futureAway) {
-        const pad  = n => String(n).padStart(2, '0');
-        const fmtD = dt => pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1);
-        const rangeStr = fmtD(futureInfo.start) + ' – ' + fmtD(futureInfo.end) + '.' + futureInfo.end.getFullYear();
-        const weeksLabel = offset === 1 ? 'next week' : `in ${offset} week${offset !== 1 ? 's' : ''}`;
-        nextTurnHtml = `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#EBF4FF;border:0.5px solid #90C2F5;border-radius:var(--cc-r-sm);margin-bottom:8px;">
-          <i class="ti ti-calendar-due" style="font-size:14px;color:#185FA5;flex-shrink:0;" aria-hidden="true"></i>
-          <span style="font-size:11px;color:#1A5896;">Your turn ${weeksLabel} · ${rangeStr}</span>
-        </div>`;
-        break;
-      }
+      const fi = _hcWeekInfo(curIdx + offset);
+      if (!fi || fi.room !== room) continue;
+      if (absRows.some(a => a.room === room && absCoversWeek(a, _hcYmd(fi.start), _hcYmd(fi.end)))) continue;
+      mineHtml = `<span class="turn-mine"><i class="ti ti-calendar-due" aria-hidden="true"></i><span>Your turn <b>${offset === 1 ? 'next week' : 'in ' + offset + ' weeks'}</b> · ${_hcFmtDM(fi.start)} – ${_hcFmtDM(fi.end)}</span></span>`;
+      break;
     }
   }
 
@@ -448,7 +437,7 @@ async function loadHouseCleaning(room) {
     }
   }
   const ntEl = document.getElementById('hc-next-turn');
-  if (ntEl) ntEl.innerHTML = lateHtml + nextTurnHtml;
+  if (ntEl) ntEl.innerHTML = lateHtml;
   document.getElementById('hc-late-btn')?.addEventListener('click', async e => {
     const b = e.currentTarget; b.disabled = true; b.textContent = 'Saving…';
     if (sbL) {
@@ -467,26 +456,35 @@ async function loadHouseCleaning(room) {
     cwEl.innerHTML = '<p class="cc-note">Not started yet.</p>';
   } else {
     cwEl.innerHTML = `
-      <div class="hc-current-card${isDone ? ' hc-current-card--done' : ''}" data-turn="${isDone ? 'done' : (isMyTurn && !isCurrentRoomAbsent && !isCurrentRoomVacant) ? 'turn' : ''}">
+      <div class="hc-current-card${isMyTurn && isDone ? ' hc-current-card--done' : ''}" data-turn="${!isMyTurn ? '' : isDone ? 'done' : (!isCurrentRoomAbsent && !isCurrentRoomVacant) ? 'turn' : ''}">
         <div class="hc-current-top">
-          <span class="k-mob-status-chip ${isDone ? 'approved' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'skipped' : isMyTurn ? 'myturn' : 'not-your-turn'}">
-            ${isDone ? '<i class="ti ti-check" aria-hidden="true"></i>Done'
+          <span class="k-mob-status-chip ${!isMyTurn ? 'not-your-turn' : isDone ? 'approved' : isCurrentRoomAbsent ? 'away' : isCurrentRoomVacant ? 'skipped' : 'myturn'}">
+            ${!isMyTurn ? '<i class="ti ti-coffee" aria-hidden="true"></i>Free this week'
+              : isDone ? '<i class="ti ti-check" aria-hidden="true"></i>Done'
               : isCurrentRoomAbsent ? '<i class="ti ti-calendar-off" aria-hidden="true"></i>Away'
               : isCurrentRoomVacant ? 'Vacant'
-              : isMyTurn ? '<i class="ti ti-broom" aria-hidden="true"></i>Your turn' : 'Not your turn'}
+              : '<i class="ti ti-broom" aria-hidden="true"></i>Your turn'}
           </span>
           <button onclick="hcOpenHistory()" style="font-size:9px;color:var(--cc-stone);text-decoration:underline;text-underline-offset:2px;cursor:pointer;background:none;border:none;padding:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">history</button>
         </div>
         <div class="k-mob-week-body" style="margin-top:8px;">
           <div class="k-mob-week-left">
-            <span class="k-mob-week-room">${esc(curInfo.room)}${curInfo.room === room ? '<span class="cc-turn-you">you</span>' : ''}</span>
-            <span class="k-mob-week-dates-sm">${curInfo.dateRange} · ${curInfo.daysLeft} day${curInfo.daysLeft !== 1 ? 's' : ''} left</span>
+            <span class="k-mob-week-room">${isMyTurn ? esc(room) + '<span class="cc-turn-you">you</span>' : 'Not your turn'}</span>
+            <span class="k-mob-week-dates-sm">${isMyTurn
+              ? `${curInfo.dateRange} · ${curInfo.daysLeft} day${curInfo.daysLeft !== 1 ? 's' : ''} left`
+              : `This week: <span class="turn-who">${esc(curInfo.room)}</span> · ${isDone ? '<span class="turn-st turn-st--done">Done</span>'
+                  : isCurrentRoomAbsent ? '<span class="turn-st turn-st--away">Away</span>'
+                  : isCurrentRoomVacant ? '<span class="turn-st turn-st--vacant">Vacant</span>'
+                  : curInfo.dateRange}`}</span>
+            ${isMyTurn && isCurrentRoomAbsent ? `<span class="k-note">You're away this week — no cleaning turn.</span>`
+              : isMyTurn && !isDone && !isCurrentRoomVacant ? `<span class="k-note">Clean by Sunday, then tap Done.</span>` : ''}
+            ${mineHtml}
           </div>
           ${isMyTurn && !isDone && !isCurrentRoomAbsent
             ? `<button class="k-mob-wact ink" id="hc-done-btn" aria-label="Mark as done">
                  <i class="ti ti-check"></i><span>Done</span>
                </button>`
-            : isDone
+            : isMyTurn && isDone
               ? `<div style="font-size:10px;color:var(--cc-stone);text-align:right;line-height:1.3;">${esc(wDone.room)}<br>${fmtTs(wDone.ts)}</div>`
               : ''
           }

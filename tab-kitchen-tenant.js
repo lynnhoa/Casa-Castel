@@ -36,6 +36,7 @@ document.getElementById('tab-kitchen').innerHTML = `
           <span class="k-mob-week-room" id="k-mob-room-name">—</span>
           <span class="k-mob-week-dates-sm" id="k-mob-dates">—</span>
           <span class="k-note" id="k-mob-absent-note" style="display:none;"></span>
+          <span class="turn-mine" id="k-mob-mine" style="display:none;"></span>
         </div>
         <!-- Upload proof button — shown only when it is tenant's turn -->
         <div id="k-ten-act"></div>
@@ -81,6 +82,7 @@ document.getElementById('tab-kitchen').innerHTML = `
         <span class="k-mob-week-room" id="k-ten-dsk-room">—</span>
         <span class="k-mob-week-dates-sm" style="display:block;margin-top:3px;" id="k-ten-dsk-dates">—</span>
         <span class="k-note" id="k-ten-dsk-absent-note" style="display:none;margin-top:3px;"></span>
+        <span class="turn-mine" id="k-ten-dsk-mine" style="display:none;"></span>
         <div id="k-ten-dsk-act"></div>
         <div class="k-late k-late--dsk" id="k-ten-dsk-late" style="display:none;"></div>
       </div>
@@ -616,11 +618,11 @@ function _kTenRenderActBtnToEl(el, state, freshRow) {
   if (dbStatus === 'flagged') {
     el.innerHTML = isDsk
       ? `<button class="k-ten-upload-pill red" onclick="_kTenWizOpen()"><i class="ti ti-upload" style="font-size:14px;"></i> Re-upload proof</button>`
-      : `<button class="k-mob-wact red" onclick="_kTenWizOpen()" aria-label="Re-upload proof"><i class="ti ti-camera-plus"></i><span>Re-upload</span></button>`;
+      : `<button class="k-mob-wact ink" onclick="_kTenWizOpen()" aria-label="Re-upload proof"><i class="ti ti-camera-plus"></i><span>Re-upload</span></button>`;
   } else if (!dbStatus || dbStatus === 'pending') {
     el.innerHTML = isDsk
       ? `<button class="k-ten-upload-pill blue" onclick="_kTenWizOpen()"><i class="ti ti-upload" style="font-size:14px;"></i> Upload proof</button>`
-      : `<button class="k-mob-wact blue" onclick="_kTenWizOpen()" aria-label="Upload proof"><i class="ti ti-camera-plus"></i><span>Proof</span></button>`;
+      : `<button class="k-mob-wact ink" onclick="_kTenWizOpen()" aria-label="Upload proof"><i class="ti ti-camera-plus"></i><span>Proof</span></button>`;
   } else {
     el.innerHTML = '';
   }
@@ -642,20 +644,46 @@ async function _kTenRenderWeekCard(overrideRow) {
   const turnRoom   = (row && row.room) || wi.room;
   const isAssigned = turnRoom === myRoom;
 
-  const dateStr = isAssigned
-    ? _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end) + (wi.daysLeft > 0 ? ' · ' + wi.daysLeft + 'd left' : ' · ends today')
-    : turnRoom + "'s turn · " + _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end);
-  // Whose turn it is, in big letters; "you" when it is this room's turn
-  const nameHtml = isAssigned ? esc(myRoom) + '<span class="cc-turn-you">you</span>' : esc(turnRoom);
+  const dbStatus = row ? row.status : null;
+  const state = _kRotState({ isNow: true, isPast: false, dbStatus, room: turnRoom, weekStart: wi.start, absenceRows: absRes });
+
+  /* Big line = about YOU: your room when it is your turn, otherwise "Not your turn".
+     The line below says whose week it is (and its status); a blue line shows
+     your own next turn whenever you have nothing to do this week.            */
+  const range = _kFmtDM(wi.start) + ' – ' + _kFmtDM(wi.end);
+  const otherSt = state === 'done'    ? '<span class="turn-st turn-st--done">Done</span>'
+                : state === 'absent'  ? '<span class="turn-st turn-st--away">Away</span>'
+                : state === 'skipped' ? '<span class="turn-st turn-st--vacant">Vacant</span>'
+                : dbStatus === 'submitted' ? '<span class="turn-st turn-st--wait">Proof sent</span>'
+                : range;
+  const nameHtml = isAssigned ? esc(myRoom) + '<span class="cc-turn-you">you</span>' : 'Not your turn';
+  const lineHtml = isAssigned
+    ? range + (wi.daysLeft > 0 ? ' · ' + wi.daysLeft + 'd left' : ' · ends today')
+    : 'This week: <span class="turn-who">' + esc(turnRoom) + '</span> · ' + otherSt;
+  // Your next kitchen turn (weeks you are away are skipped)
+  let mineHtml = '';
+  if (!isAssigned || state === 'absent') {
+    const n = Math.max(_kTenGetRoomList().length, 1);
+    const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    for (let off = 1; off <= n * 2; off++) {
+      const fi = _kTenWeekInfo(idx + off);
+      if (!fi || fi.room !== myRoom) continue;
+      if ((absRes || []).some(a => a.room === myRoom && absCoversWeek(a, ymd(fi.start), ymd(fi.end)))) continue;
+      mineHtml = '<i class="ti ti-calendar-due" aria-hidden="true"></i><span>Your turn <b>'
+               + (off === 1 ? 'next week' : 'in ' + off + ' weeks') + '</b> · ' + _kFmtDM(fi.start) + ' – ' + _kFmtDM(fi.end) + '</span>';
+      break;
+    }
+  }
   document.getElementById('k-mob-room-name').innerHTML = nameHtml;
-  document.getElementById('k-mob-dates').textContent = dateStr;
+  document.getElementById('k-mob-dates').innerHTML = lineHtml;
   const dskRoom  = document.getElementById('k-ten-dsk-room');
   const dskDates = document.getElementById('k-ten-dsk-dates');
   if (dskRoom)  dskRoom.innerHTML  = nameHtml;
-  if (dskDates) dskDates.textContent = dateStr;
-
-  const dbStatus = row ? row.status : null;
-  const state = _kRotState({ isNow: true, isPast: false, dbStatus, room: turnRoom, weekStart: wi.start, absenceRows: absRes });
+  if (dskDates) dskDates.innerHTML = lineHtml;
+  ['k-mob-mine', 'k-ten-dsk-mine'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.innerHTML = mineHtml; el.style.display = mineHtml ? '' : 'none';
+  });
   // Tab marker (yellow sponge) while this room's kitchen turn is open — a submitted proof counts as done (turn-markers.js)
   if (typeof ccTabMarker === 'function') ccTabMarker('kitchen', isAssigned && state === 'now' && dbStatus !== 'submitted');
 
@@ -665,15 +693,15 @@ async function _kTenRenderWeekCard(overrideRow) {
   const dskChip = document.getElementById('k-ten-dsk-chip');
   let turnTone = '';   // card tint: turn · wait · redo · done
   if (!isAssigned) {
-    _setChip(chip,    'k-mob-status-chip not-your-turn', '', 'Not your turn');
-    _setChip(dskChip, 'k-mob-status-chip not-your-turn', '', 'Not your turn');
+    _setChip(chip,    'k-mob-status-chip not-your-turn', 'coffee', 'Free this week');
+    _setChip(dskChip, 'k-mob-status-chip not-your-turn', 'coffee', 'Free this week');
   } else {
     const isResub = state === 'now' && row && row.reupload_count > 0 && dbStatus !== 'flagged';
     const isAuto  = !!(row && row.approved_by === 'auto');
     const isLate  = !!(row && row.is_late);
     const chipCls = state === 'done'    ? 'approved'
                   : state === 'missed'  ? 'missed'
-                  : state === 'absent'  ? 'skipped'
+                  : state === 'absent'  ? 'away'
                   : state === 'skipped' ? 'skipped'
                   : dbStatus === 'flagged'                  ? 'flagged'
                   : dbStatus === 'submitted' && isResub     ? 'resubmitted'
@@ -706,8 +734,10 @@ async function _kTenRenderWeekCard(overrideRow) {
 
   // One short line under the dates
   let note = '', tone = '';
-  if (state === 'absent')       note = isAssigned ? "You're away this week — no kitchen turn." : turnRoom + ' is away this week — no kitchen turn.';
-  else if (state === 'skipped') note = turnRoom + ' is vacant — no kitchen turn this week.';
+  if (!isAssigned)              note = '';   // the line under "Not your turn" already says whose week it is
+  else if (state === 'absent')  note = "You're away this week — no kitchen turn.";
+  else if (state === 'skipped') note = 'No kitchen turn this week.';
+  else if (state === 'now' && (!dbStatus || dbStatus === 'pending')) note = 'Upload your proof by Sunday.';
   else if (isAssigned && dbStatus === 'flagged')   { note = row.flag_reason ? 'Redo: ' + row.flag_reason : 'Please upload new photos.'; tone = 'flag'; }
   else if (isAssigned && dbStatus === 'submitted') { note = 'Proof sent — waiting for review.'; tone = 'wait'; }
   else if (isAssigned && state === 'done')         { note = 'Approved.'; tone = 'done'; }
