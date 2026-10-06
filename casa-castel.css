@@ -2616,3 +2616,47 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .ann-new-title{font-size:24px;margin-bottom:8px;}
 .ann-new-body{font-size:13px;white-space:pre-line;margin-bottom:18px;}
 .ann-new-btn{width:100%;height:42px;background:var(--cc-gold);border:none;border-radius:var(--cc-r-sm);color:#fff;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;font-family:inherit;}
+
+
+/* ══════════════════════════════════════════════════════════════
+   HOUSE CLEANING — ROTATION AS A SCHEDULE (tenant + management app)
+   Last week · This week · then the rest of the round in time order.
+   Colours: gold = now · ink = your action · blue = next only ·
+   green = done · red = missed · sand = away · purple = vacant · grey = later
+══════════════════════════════════════════════════════════════ */
+.hc-sch{display:flex;flex-direction:column;gap:3px;}
+.hc-sch-row{height:30px;display:flex;align-items:center;border-radius:8px;padding:0 8px 0 10px;border:0.5px solid transparent;-webkit-tap-highlight-color:transparent;}
+.hc-sch-row--tap{cursor:pointer;}
+.hc-sch-row--tap:active{opacity:0.7;}
+.hc-sch-when{width:76px;flex-shrink:0;font-size:10px;color:var(--cc-taupe);}
+.hc-sch-name{flex:1;min-width:0;font-size:13px;font-weight:500;color:var(--cc-charcoal);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hc-sch-name .cc-turn-you{margin-left:5px;}
+.hc-sch-dates{font-size:10px;color:#B4A890;white-space:nowrap;}
+.hc-sch-row--last{opacity:0.75;}
+.hc-sch-row--last .hc-sch-name{color:var(--cc-taupe);}
+.hc-sch-row--now{background:#FDF5E8;border-color:#E8C97A;}
+.hc-sch-row--now .hc-sch-when,.hc-sch-row--now .hc-sch-dates{color:#A0860E;}
+.hc-sch-row--now .hc-sch-when{font-weight:600;}
+.hc-sch-row--now .hc-sch-name{color:#6B5A0E;}
+.hc-sch-row--done{background:#F6FAF1;border-color:#97C459;}
+.hc-sch-row--done .hc-sch-when{color:#3B6D11;font-weight:600;}
+.hc-sch-row--done .hc-sch-name{color:#27500A;}
+.hc-sch-row--next{background:#EBF4FF;border-color:#90C2F5;}
+.hc-sch-row--next .hc-sch-when,.hc-sch-row--next .hc-sch-dates{color:#185FA5;}
+.hc-sch-row--next .hc-sch-when{font-weight:600;}
+.hc-sch-row--next .hc-sch-name{color:#0C447C;}
+.hc-sch-row--off .hc-sch-name{color:#B4A890;}
+.hc-sch-badge{font-size:8px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;padding:2px 7px;border-radius:20px;border:0.5px solid;white-space:nowrap;}
+.hc-sch-badge--done{background:#EDF5E8;color:#3A6A1A;border-color:#9AC87A;}
+.hc-sch-badge--missed{background:#FEF2F2;color:#991B1B;border-color:#FCA5A5;}
+.hc-sch-badge--away{background:#F5EEE8;color:#8C5A30;border-color:#D4A87A;}
+.hc-sch-badge--vacant{background:#F5F3FF;color:#5B21B6;border-color:#C4B5FD;}
+.hc-sch-mail{width:24px;height:24px;flex-shrink:0;margin-left:8px;border-radius:5px;background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:inline-flex;align-items:center;justify-content:center;color:var(--cc-taupe);font-size:13px;text-decoration:none;}
+.hc-sch-mail--none{visibility:hidden;}
+/* Ink = "you have to act" (tenant action buttons) */
+.k-mob-wact.ink{background:var(--cc-ink);color:var(--cc-white);}
+.k-mob-wact.ink i{color:var(--cc-white);}
+/* Done (late) — Monday until 12:00, last week still open */
+.hc-late{display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:8px;background:#FDEEED;border:0.5px solid #F5A8A5;border-radius:var(--cc-r-sm);}
+.hc-late__text{flex:1;font-size:11px;line-height:1.35;color:#7A2020;}
+.hc-late__btn{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;height:30px;padding:0 10px;border:none;border-radius:8px;background:var(--cc-ink);color:var(--cc-white);font-size:10px;font-weight:600;letter-spacing:0.03em;cursor:pointer;font-family:inherit;}

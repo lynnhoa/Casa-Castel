@@ -268,7 +268,7 @@ function kHistPill(status, size, row) {
   if (status === 'flagged')
     return `<span style="${base}background:#FFF7ED;color:#C2410C;border-color:#FDBA74;">⚑ Redo</span>`;
   if (status === 'skipped')
-    return `<span style="${base}background:#F5F3FF;color:#5B21B6;border-color:#C4B5FD;">Skipped</span>`;
+    return `<span style="${base}background:#F5F3FF;color:#5B21B6;border-color:#C4B5FD;">Vacant</span>`;
   if (status === 'absent')
     return `<span style="${base}background:#F5EEE8;color:#8C5A30;border-color:#D4A87A;">Away</span>`;
   return `<span style="${base}background:var(--cc-surface);color:var(--cc-stone);border-color:var(--cc-rule);">—</span>`;

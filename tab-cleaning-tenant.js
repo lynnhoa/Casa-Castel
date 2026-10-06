@@ -279,7 +279,7 @@ document.getElementById('tab-cleaning').innerHTML = `
   </div>
 
   <div class="cc-section">
-    <p class="hc-section-title">Rotation — all rooms</p>
+    <p class="hc-section-title">Rotation</p>
     <div id="hc-rotation-list"></div>
   </div>
 
@@ -377,9 +377,9 @@ async function loadHouseCleaning(room) {
   if (sbL) {
     const [doneRes, absRes] = await Promise.all([
       // only this rotation round onward (older weeks live in the history)
-      sbL.from('cleaning_weeks').select('week_index,room,status,done_at,done_by').eq('status','done').gte('week_index', cycleStart),
-      sbL.from('kitchen_absences').select('*').gte('to_date', _hcYmd(_hcAddDays(HC_W1_START, cycleStart * 7))),
-      kLoadWeekVacancy(cycleStart, cycleStart + 2 * rot.length, 'room_vacancy_range'),   // vacant per week from move-in / move-out dates
+      sbL.from('cleaning_weeks').select('week_index,room,status,done_at,done_by').eq('status','done').gte('week_index', Math.min(cycleStart, curIdx - 1)),
+      sbL.from('kitchen_absences').select('*').gte('to_date', _hcYmd(_hcAddDays(HC_W1_START, Math.min(cycleStart, curIdx - 1) * 7))),
+      kLoadWeekVacancy(Math.min(cycleStart, curIdx - 1), curIdx + 2 * rot.length, 'room_vacancy_range'),   // vacant per week from move-in / move-out dates
     ]);
     if (doneRes.data) doneRes.data.forEach(row => {
       const key = row.week_index + '_' + row.room;
@@ -434,8 +434,31 @@ async function loadHouseCleaning(room) {
   }
 
   /* ── "Your next turn" callout — rendered above the card ── */
+  /* ── Done (late): until Monday 12:00 the room can still mark LAST week as done ── */
+  let lateHtml = '', lateIdx = -1, lateRoom = null;
+  {
+    const now = new Date(), li = curIdx - 1, lInfo = li >= HC_HISTORY_FROM ? _hcWeekInfo(li) : null;
+    if (lInfo && lInfo.room === room && now.getDay() === 1 && now.getHours() < 12
+        && _hcWeekState(li, room, curIdx, hcDoneMap, absRows).state === 'missed') {
+      lateIdx = li; lateRoom = lInfo.room;
+      lateHtml = `<div class="hc-late">
+        <span class="hc-late__text">Last week (${_hcFmtDM(lInfo.start)} – ${_hcFmtDM(lInfo.end)}) is not marked as done. Cleaned it? You can still mark it until 12:00 today.</span>
+        <button class="hc-late__btn" id="hc-late-btn"><i class="ti ti-check" aria-hidden="true"></i>Done (late)</button>
+      </div>`;
+    }
+  }
   const ntEl = document.getElementById('hc-next-turn');
-  if (ntEl) ntEl.innerHTML = nextTurnHtml;
+  if (ntEl) ntEl.innerHTML = lateHtml + nextTurnHtml;
+  document.getElementById('hc-late-btn')?.addEventListener('click', async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = 'Saving…';
+    if (sbL) {
+      const { error } = await sbL.from('cleaning_weeks').upsert(
+        { week_index: lateIdx, room: lateRoom, status: 'done', done_at: new Date().toISOString(), done_by: room },
+        { onConflict: 'week_index,room' });
+      if (error) { alert('Could not save — ' + (error.message || 'please try again.')); }
+    }
+    await loadHouseCleaning(room);
+  });
 
   /* ── This week card ── */
   const cwEl = document.getElementById('hc-current-week');
@@ -460,7 +483,7 @@ async function loadHouseCleaning(room) {
             <span class="k-mob-week-dates-sm">${curInfo.dateRange} · ${curInfo.daysLeft} day${curInfo.daysLeft !== 1 ? 's' : ''} left</span>
           </div>
           ${isMyTurn && !isDone && !isCurrentRoomAbsent
-            ? `<button class="k-mob-wact blue" id="hc-done-btn" aria-label="Mark as done">
+            ? `<button class="k-mob-wact ink" id="hc-done-btn" aria-label="Mark as done">
                  <i class="ti ti-check"></i><span>Done</span>
                </button>`
             : isDone
@@ -523,7 +546,7 @@ async function loadHouseCleaning(room) {
   }
 
   /* ── Rotation timeline ── */
-  _renderHcRotation(cycleStart, cyclePos, hcDoneMap, absRows, room, rot);
+  _renderHcRotation(curIdx, hcDoneMap, absRows, room);
 
   /* ── Start realtime if not already running ── */
   _hcTenSubscribe(room);
@@ -560,13 +583,15 @@ async function _hcPopulateHistory() {
     const room = d ? d.room : info.room;   // the saved week wins over the formula
     const state = _hcRotState({ isNow: idx === curIdx, isPast: idx < curIdx, isNext: false,
                                 slotDone: d, room, weekStart: info.start, absRows });
-    const pill = state === 'done'    ? kHistPill('approved')
+    const late = !!(d && d.done_at && new Date(d.done_at).getTime() >= _hcAddDays(info.start, 7).getTime());
+    const pill = state === 'done'    ? kHistPill('approved', '', { is_late: late })
                : state === 'missed'  ? kHistPill('missed')
                : state === 'skipped' ? kHistPill('skipped')
                : state === 'absent'  ? kHistPill('absent')
                : state === 'now'     ? nowPill
                : kHistPill(null);
-    rows.push(`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);">
+    const tap  = typeof hcCorrectWeek === 'function' && state !== 'skipped' && state !== 'absent';   // management app: correct a week
+    rows.push(`<div${tap ? ` onclick="hcCorrectWeek(${idx})"` : ''} style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);${tap ? 'cursor:pointer;' : ''}">
       <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(room)}</p>
       <p style="font-size:11px;color:var(--cc-taupe);">${info.dateRange}</p></div>
       ${pill}</div>`);
@@ -596,92 +621,65 @@ function _hcRotState({ isNow, isPast, isNext, slotDone, room, weekStart, absRows
   return 'upcoming';
 }
 
-/* ── ROTATION TIMELINE ──────────────────────────────────── */
-function _renderHcRotation(cycleStart, cyclePos, hcDoneMap, absRows, myRoom, rot) {
-  rot = rot || _hcGetRoomList();
-  const rotEl = document.getElementById('hc-rotation-list');
-  const pad   = n => String(n).padStart(2, '0');
-  const fmtD  = dt => pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1) + '.' + dt.getFullYear();
-
-  let trueNextI = -1;
-  for (let offset = 1; offset <= rot.length; offset++) {
-    const candidateI    = (cyclePos + offset) % rot.length;
-    const candidateSlot = cycleStart + cyclePos + offset;
-    const candidateRoom = rot[candidateI];
-    const candidateWs   = _hcAddDays(HC_W1_START, candidateSlot * 7);
-    const cwStart = _hcYmd(candidateWs);
-    const cwEnd   = _hcYmd(_hcAddDays(candidateWs, 6));
-    const isAbsent  = (absRows || []).some(a => a.room === candidateRoom && absCoversWeek(a, cwStart, cwEnd));
-    const isSkipped = kVacantInWeek(candidateRoom, candidateSlot);
-    if (!isAbsent && !isSkipped) { trueNextI = candidateI; break; }
-  }
-
-  rotEl.innerHTML = '<div class="rot-tl">' + rot.map((r, i) => {
-    // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
-    const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
-    const slotIdx  = inNextRound ? cycleStart + rot.length + i : cycleStart + i;
-    const ws       = _hcAddDays(HC_W1_START, slotIdx * 7);
-    const we       = _hcAddDays(ws, 6);
-    const dateStr  = fmtD(ws) + ' – ' + fmtD(we);
-    const isPast   = !inNextRound && i < cyclePos;
-    const isNow    = i === cyclePos;
-    const isNext   = i === trueNextI;
-    const slotDone = hcDoneMap[slotIdx + '_' + r] || null;
-
-    const state = _hcRotState({ isNow, isPast, isNext, slotDone, room: r, weekStart: ws, absRows: absRows || [] });
-
-    const rowClass = 'rot-tl-row'
-      + (state === 'now'     ? ' rot-tl-row--now'     : '')
-      + (state === 'next'    ? ' rot-tl-row--next'    : '')
-      + (state === 'missed'  ? ' rot-tl-row--missed'  : '')
-      + (state === 'skipped' ? ' rot-tl-row--skipped' : '')
-      + (state === 'absent'  ? ' rot-tl-row--absent'  : '');
-
-    const dotClass = {
-      done:'rot-dot--done', now:'rot-dot--now', next:'rot-dot--next',
-      missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent'
-    }[state] || 'rot-dot--none';
-
-    const topLine = state === 'done' || state === 'now' ? 'rot-line-done'
-                  : state === 'skipped' ? 'rot-line-skipped'
-                  : state === 'absent'  ? 'rot-line-absent'
-                  : state === 'missed'  ? 'rot-line-missed'
-                  : 'rot-line-faded';
-    const botLine = state === 'done' && i < cyclePos ? 'rot-line-done' : 'rot-line-faded';
-
-    const badge = {
-      done:     '<span class="rot-badge rot-badge--done">Done</span>',
-      now:      '<span class="rot-badge rot-badge--now">This week</span>',
-      next:     '<span class="rot-badge rot-badge--next">Next</span>',
-      missed:   '<span class="rot-badge rot-badge--missed">Missed</span>',
-      skipped:  '<span class="rot-badge rot-badge--skipped">Skipped</span>',
-      absent:   '<span class="rot-badge rot-badge--absent">Away</span>',
-      upcoming: '<span class="rot-badge rot-badge--none">—</span>',
-    }[state] || '<span class="rot-badge rot-badge--none">—</span>';
-
-    /* "you" label on the tenant's own room rows */
-    const youTag = (myRoom && r === myRoom)
-      ? `<span style="font-size:9px;font-weight:600;color:var(--cc-gold);margin-left:4px;letter-spacing:0.06em;">you</span>`
-      : '';
-
-    return `<div class="${rowClass}">
-      <div class="rot-spine">
-        <div class="rot-spine-top ${topLine}"></div>
-        <div class="rot-dot ${dotClass}"></div>
-        <div class="rot-spine-bot ${botLine}"></div>
-      </div>
-      <div class="rot-tl-body">
-        <div class="rot-tl-info">
-          <p class="rot-tl-room">${r}${youTag}</p>
-          <p class="rot-tl-dates">${dateStr}</p>
-        </div>
-        ${badge}
-      </div>
+/* ── ROTATION — schedule in time order ──────────────────────
+   Last week (faded, with its result) · This week · then the rest of the
+   round in time order. The room order never changes (Rooms tab); the list
+   only rolls forward one row each week. Blue = the next real turn
+   (the first coming week whose room is not away / vacant).
+   Management app (hcCorrectWeek defined): last + this week can be tapped
+   to set Done / Not done, and each open / coming week has a mail button. */
+function _hcFmtDM(dt) { const p = n => String(n).padStart(2, '0'); return p(dt.getDate()) + '.' + p(dt.getMonth() + 1); }
+function _hcWeekState(idx, room, curIdx, hcDoneMap, absRows) {
+  const ws  = _hcAddDays(HC_W1_START, idx * 7);
+  const wsY = _hcYmd(ws), weY = _hcYmd(_hcAddDays(ws, 6));
+  if ((absRows || []).some(a => a.room === room && absCoversWeek(a, wsY, weY))) return { state: 'away' };
+  if (kVacantInWeek(room, idx)) return { state: 'vacant' };
+  const d = hcDoneMap[idx + '_' + room];
+  if (d) return { state: 'done', late: d.ts >= _hcAddDays(ws, 7).getTime(), done: d };   // marked after Sunday = late
+  if (idx < curIdx)  return { state: 'missed' };
+  if (idx === curIdx) return { state: 'open' };
+  return { state: 'upcoming' };
+}
+function _renderHcRotation(curIdx, hcDoneMap, absRows, myRoom) {
+  const rotEl = document.getElementById('hc-rotation-list'); if (!rotEl) return;
+  if (curIdx < 0) { rotEl.innerHTML = ''; return; }
+  const n      = _hcGetRoomList().length || 1;
+  const isMgmt = typeof hcCorrectWeek === 'function';
+  const LABEL  = { done: 'Done', late: 'Done (late)', missed: 'Missed', away: 'Away', vacant: 'Vacant' };
+  const weeks  = [];
+  if (curIdx - 1 >= HC_HISTORY_FROM) weeks.push(curIdx - 1);   // test weeks before the start never show
+  // this week + the rest of one round — every room exactly once (last week's room is not repeated)
+  const ahead = weeks.length ? n - 1 : n;
+  for (let i = 0; i < ahead; i++) weeks.push(curIdx + i);
+  let nextSet = false;
+  rotEl.innerHTML = '<div class="hc-sch">' + weeks.map(idx => {
+    const info = _hcWeekInfo(idx); if (!info) return '';
+    const room = info.room;
+    const s    = _hcWeekState(idx, room, curIdx, hcDoneMap, absRows);
+    const off  = s.state === 'away' || s.state === 'vacant';
+    const when = idx < curIdx ? 'Last week' : idx === curIdx ? 'This week'
+               : idx === curIdx + 1 ? 'Next week' : 'In ' + (idx - curIdx) + ' weeks';
+    let tone = '';
+    if (idx < curIdx)        tone = 'last';
+    else if (idx === curIdx) tone = s.state === 'done' ? 'done' : 'now';
+    else if (!off && !nextSet) { tone = 'next'; nextSet = true; }
+    const key   = s.state === 'done' ? (s.late ? 'late' : 'done')
+                : (off || s.state === 'missed') ? s.state : null;
+    const right = key
+      ? `<span class="hc-sch-badge hc-sch-badge--${key === 'late' ? 'done' : key}">${LABEL[key]}</span>`
+      : `<span class="hc-sch-dates">${_hcFmtDM(info.start)} – ${_hcFmtDM(info.end)}</span>`;
+    const you    = myRoom && room === myRoom ? '<span class="cc-turn-you">you</span>' : '';
+    const canFix = isMgmt && idx <= curIdx && !off;
+    const mail   = isMgmt && typeof _hcMailBtn === 'function' ? _hcMailBtn(room, idx >= curIdx && s.state !== 'done' && !off) : '';
+    return `<div class="hc-sch-row${tone ? ' hc-sch-row--' + tone : ''}${off ? ' hc-sch-row--off' : ''}${canFix ? ' hc-sch-row--tap' : ''}"${canFix ? ` onclick="hcCorrectWeek(${idx})"` : ''}>
+      <span class="hc-sch-when">${when}</span>
+      <span class="hc-sch-name">${esc(room)}${you}</span>
+      ${right}${mail}
     </div>`;
   }).join('') + '</div>';
 
-  if (typeof onRoomsChange === 'function' && !loadHouseCleaning._roomsWired) {
+  if (myRoom && typeof onRoomsChange === 'function' && !loadHouseCleaning._roomsWired) {
     loadHouseCleaning._roomsWired = true;
-    onRoomsChange(() => loadHouseCleaning(room));
+    onRoomsChange(() => loadHouseCleaning(myRoom));
   }
 }
