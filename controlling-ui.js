@@ -106,6 +106,9 @@ const _CX_CSS = `
     .cxd-prow__v.pos { color:#3B6D11; }
     .cxd-prow__v.neg { color:var(--cx-neg); }
     .cxd-prow__c { color:var(--cx-sub); font-size:14px; }
+    .cx-nkset { margin-top:8px; padding-top:8px; border-top:.5px dashed var(--cx-line); }
+    .cx-nkset__k { display:block; font-size:9.5px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:#3E6E69; margin-bottom:5px; }
+    .cx-nkset__v { font-size:12px; color:var(--cx-mut); }
     .cx-pill--nk { background:#E3EFEE; color:#3E6E69; border-color:#9CC5C0; }   /* Casa cost umgelegt in die NK-Abrechnung */
     .cx-ot-nk { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px; border-radius:10px; border:0.5px solid var(--cx-rule); background:var(--cx-card); font-family:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .cx-ot-nk.on { border:1px solid #9CC5C0; background:#EEF6F5; }

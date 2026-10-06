@@ -245,6 +245,8 @@ async function ctlAddOneTime(o) {
   const payload = { property_id: o.property_id, invoice_date: o.invoice_date, item: o.item, amount: o.amount,
                     company: o.company ?? null, kind: o.kind || 'Rechnung', direction: o.direction === 1 ? 1 : -1,
                     source_ref: o.source_ref ?? null };
+  if (o.nk_umlage !== undefined) payload.nk_umlage = !!o.nk_umlage;                 // Casa Castel: goes into the NK-Abrechnung
+  if (o.nk_category_id !== undefined) payload.nk_category_id = o.nk_category_id;   // … as this Casa cost type (key + booking from Setup)
   const { data, error } = await _ctlSupa.from('ctrl_expense_one_time').insert(payload).select().single();
   if (error) throw error;
   window._ctrl.one_time.push(data);

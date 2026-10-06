@@ -41,6 +41,24 @@ function _cxMonthChips(field, id, months) {
   return '<div class="cx-mchips">' + _CX_MS.map((l, i) =>
     '<button class="cx-mchip' + (set.has(i + 1) ? ' on' : '') + '" data-cx="month" data-t="' + field + '" data-id="' + id + '" data-m="' + (i + 1) + '" aria-label="' + CX_MONTHS[i] + '" aria-pressed="' + set.has(i + 1) + '">' + l + '</button>').join('') + '</div>';
 }
+/* NK-Abrechnung Casa Castel: how this cost type is split among the tenants (Settlements)
+   nk_key    personen = split each day among the tenants living there · flaeche = by room m² (Gas/Heizung) · none = not in the NK
+   nk_spread month = counts in the month it is booked · year = spread evenly over the whole year (Grundsteuer, Versicherung …) */
+function _cxNkSetupHTML(c, isRate) {
+  if (isRate) return '<div class="cx-nkset"><span class="cx-nkset__k">NK-Abrechnung</span><span class="cx-nkset__v">not included · Kreditrate</span></div>';
+  if (!('nk_key' in c)) return '<div class="cx-nkset"><span class="cx-nkset__k">NK-Abrechnung</span><span class="cx-nkset__v">run the SQL for the NK settings first</span></div>';
+  const key = c.nk_key || 'personen', spread = c.nk_spread || 'month';
+  return '<div class="cx-nkset"><span class="cx-nkset__k">NK-Abrechnung</span>' +
+    '<div class="cx-grid2">' +
+      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|nk_key" aria-label="NK split">' +
+        _cxOpt('personen', 'By person', key === 'personen') + _cxOpt('flaeche', 'By room m²', key === 'flaeche') + _cxOpt('none', 'Not in NK', key === 'none') +
+      '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
+      (key === 'none' ? '<span class="cx-nkset__v" style="align-self:center">stays with you</span>' :
+      '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|nk_spread" aria-label="NK booking">' +
+        _cxOpt('month', 'In its month', spread === 'month') + _cxOpt('year', 'Over the year', spread === 'year') +
+      '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>') +
+    '</div></div>';
+}
 const _cxOpt = (v, label, sel) => '<option value="' + cxEsc(v) + '"' + (sel ? ' selected' : '') + '>' + cxEsc(label) + '</option>';
 const _cxMoney = (table, id, field, val, label) =>
   '<div class="cx-set__row"><span class="cx-set__k">' + cxEsc(label) + '</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" data-cx-in="' + table + '|' + id + '|' + field + '" value="' + (val === null || val === undefined || val === '' ? '' : cxE2(val)) + '" placeholder="0,00" aria-label="' + cxEsc(label) + '"><span>€</span></label></div>';
@@ -190,6 +208,7 @@ window.renderSetup = function () {
         _cxMonthChips('ctrl_castel_categories|due_months', c.id, c.due_months) +
         (!_cxBedarf(freq) && !(Array.isArray(c.due_months) && c.due_months.length) && Number(c.default_amount)
           ? '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Fälligkeit fehlt – bitte Monate wählen, sonst fehlt der Posten im Soll</div>' : '')) +
+      _cxNkSetupHTML(c, isRate) +
     '</div>';
   }).join('');
 
