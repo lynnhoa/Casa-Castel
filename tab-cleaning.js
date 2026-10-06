@@ -415,31 +415,27 @@ async function loadHouseCleaning() {
     cwEl.innerHTML = '<p class="cc-note">Not started yet.</p>';
   } else {
     cwEl.innerHTML = `
-      <div class="hc-current-card${isDone ? ' hc-current-card--done' : ''}">
+      <div class="hc-current-card${isDone ? ' hc-current-card--done' : ''}" data-turn="${isDone ? 'done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? '' : 'turn'}">
         <div class="hc-current-top">
-          <div>
-            <p class="hc-current-kw">${esc(curInfo.room)}</p>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-            <span class="k-pill ${isDone ? 'k-pill--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-pill--skipped' : 'k-pill--pending'}" style="font-size:10px;padding:3px 8px;">
-              <span class="k-dot ${isDone ? 'k-dot--done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'k-dot--skipped' : 'k-dot--pending'}"></span>
-              ${isDone ? 'Done' : isCurrentRoomAbsent ? '— Away' : isCurrentRoomVacant ? '— Vacant' : 'Pending'}
-            </span>
-            <button onclick="hcOpenHistory()" style="font-size:9px;color:var(--cc-stone);text-decoration:underline;text-underline-offset:2px;cursor:pointer;background:none;border:none;padding:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">history</button>
-          </div>
+          <span class="k-mob-status-chip ${isDone ? 'approved' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'skipped' : 'submitted'}">
+            ${isDone ? '<i class="ti ti-check" aria-hidden="true"></i>Done'
+              : isCurrentRoomAbsent ? '<i class="ti ti-calendar-off" aria-hidden="true"></i>Away'
+              : isCurrentRoomVacant ? 'Vacant'
+              : '<i class="ti ti-clock" aria-hidden="true"></i>Pending'}
+          </span>
+          <button onclick="hcOpenHistory()" style="font-size:9px;color:var(--cc-stone);text-decoration:underline;text-underline-offset:2px;cursor:pointer;background:none;border:none;padding:0;font-family:inherit;-webkit-tap-highlight-color:transparent;">history</button>
         </div>
-        <p class="hc-current-dates">${curInfo.dateRange} · ${curInfo.daysLeft} days left</p>
-        ${isDone
-          ? `<div class="hc-done-confirm visible">
-               <span class="k-pill k-pill--done" style="font-size:10px;padding:3px 8px;">
-                 <span class="k-dot k-dot--done"></span>
-                 Marked done by ${esc(wDone.room)}
-               </span>
-               <span class="hc-done-ts">${fmtTs(wDone.ts)}</span>
-             </div>`
-          : isCurrentRoomAbsent ? `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is away this week.</p>`
-          : isCurrentRoomVacant ? `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is vacant — no cleaning turn this week.</p>` : `<p class="cc-note" style="margin-top:4px;">${esc(curInfo.room)} is responsible this week.</p>`
-        }
+        <div class="k-mob-week-body" style="margin-top:8px;">
+          <div class="k-mob-week-left">
+            <span class="k-mob-week-room">${esc(curInfo.room)}</span>
+            <span class="k-mob-week-dates-sm">${curInfo.dateRange} · ${curInfo.daysLeft} day${curInfo.daysLeft !== 1 ? 's' : ''} left</span>
+            ${isDone ? ''
+              : isCurrentRoomAbsent ? `<span class="k-note">${esc(curInfo.room)} is away this week.</span>`
+              : isCurrentRoomVacant ? `<span class="k-note">${esc(curInfo.room)} is vacant — no cleaning turn this week.</span>`
+              : `<span class="k-note k-note--wait">${esc(curInfo.room)} is responsible this week.</span>`}
+          </div>
+          ${isDone ? `<div style="font-size:10px;color:var(--cc-stone);text-align:right;line-height:1.3;">${esc(wDone.room)}<br>${fmtTs(wDone.ts)}</div>` : ''}
+        </div>
       </div>
 
       <!-- Action strip: absences button + week-absence notices -->
