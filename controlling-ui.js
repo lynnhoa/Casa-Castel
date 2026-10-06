@@ -97,6 +97,15 @@ const _CX_CSS = `
     .cxd-track i { position:absolute; left:0; top:0; bottom:0; border-radius:5px; background:var(--cx-acc); }
     .cxd-track i.neg { background:#C0785A; }
     .cxd-pdet { padding:0 0 8px; border-bottom:.5px solid var(--cx-line); }
+    .cxd-prow { display:flex; align-items:center; gap:10px; width:100%; padding:10px 0; border:none; border-top:.5px solid var(--cx-line); background:none; font-family:inherit; text-align:left; cursor:pointer; color:var(--cx-ink); }
+    .cxd-prow:first-child { border-top:none; }
+    .cxd-prow__l { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+    .cxd-prow__n { font-size:14px; font-weight:500; line-height:1.25; }
+    .cxd-prow__s { font-size:11.5px; color:var(--cx-mut); }
+    .cxd-prow__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:500; white-space:nowrap; }
+    .cxd-prow__v.pos { color:#3B6D11; }
+    .cxd-prow__v.neg { color:var(--cx-neg); }
+    .cxd-prow__c { color:var(--cx-sub); font-size:14px; }
     .cx-pill--nk { background:#E3EFEE; color:#3E6E69; border-color:#9CC5C0; }   /* Casa cost umgelegt in die NK-Abrechnung */
     .cx-ot-nk { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px; border-radius:10px; border:0.5px solid var(--cx-rule); background:var(--cx-card); font-family:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .cx-ot-nk.on { border:1px solid #9CC5C0; background:#EEF6F5; }

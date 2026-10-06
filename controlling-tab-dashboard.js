@@ -154,10 +154,31 @@ function _cxDashCalc(t, note) {
   '</div>' + (note ? '<div class="cxd-tnote">' + note + '</div>' : '');
 }
 
+/* The property rows bring their own styles, so they look right even if an
+   older controlling-ui.js is still cached */
+function _cxdCss() {
+  if (document.getElementById('cxd-css')) return;
+  const st = document.createElement('style');
+  st.id = 'cxd-css';
+  st.textContent = `
+    .cxd-prow { display:flex; align-items:center; gap:10px; width:100%; padding:10px 0; margin:0; border:none; border-top:.5px solid #EDE8E0; border-radius:0; background:none; -webkit-appearance:none; appearance:none; font-family:'Inter',system-ui,sans-serif; text-align:left; cursor:pointer; color:#3D3027; }
+    .cxd-prow:first-child { border-top:none; }
+    .cxd-prow__l { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+    .cxd-prow__n { font-size:14px; font-weight:500; line-height:1.25; }
+    .cxd-prow__s { font-size:11.5px; color:#9A8E7E; }
+    .cxd-prow__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:500; white-space:nowrap; }
+    .cxd-prow__v.pos { color:#3B6D11; }
+    .cxd-prow__v.neg { color:#A0533A; }
+    .cxd-prow__c { color:#C8BFB0; font-size:14px; }
+    .cxd-pdet { padding:0 0 8px; border-bottom:.5px solid #EDE8E0; }`;
+  document.head.appendChild(st);
+}
+
 window.renderDashboard = function () {
   const host = document.getElementById('tab-dashboard');
   if (!host) return;
   CX.tab = 'dashboard';
+  _cxdCss();
   const isYear = CX.dashView === 'y';
   const y = window._ctrl.year, m = CX.month;
   const months = isYear ? _cxYearMonths(y) : (_cxIsFuture(y, m) ? [] : [m]);
