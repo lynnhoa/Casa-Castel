@@ -291,6 +291,13 @@ async function _kDeleteComments(weekId) {
   if (!sbL || !weekId) return;
   await sbL.from('kitchen_comments').delete().eq('week_id', weekId);
 }
+/* Status lines in the chat stay neutral — nobody is named (older messages included) */
+function _kSysText(t) {
+  t = String(t || '').trim();
+  if (/^✗ Marked missed/.test(t)) return '✗ Marked missed';
+  if (/^✓ Flag removed/.test(t))  return '✓ Redo cancelled';
+  return t.replace(/\s+by\s+(the\s+)?(landlord|Casa Castel)\.?$/i, '').replace(/\.$/, '');
+}
 let _kAutoResetRanFor = null;
 const K_HISTORY_WEEKS = 8;    // history keeps the last 8 weeks (current week included)
 const K_NUDGE_LOG_MAX = 20;   // nudge log keeps the newest 20 nudges
@@ -590,13 +597,13 @@ function _kBuildFeedHtml(comments, weekRow) {
     if (ev.text && ev.text.startsWith('✗ ')) {
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--missed">${esc(ev.text)} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--missed">${esc(_kSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
     if (ev.text && ev.text.startsWith('✓ ') && !ev.text.startsWith('✓ Approved') && !ev.text.startsWith('✓ Approval')) {
       return `<div class="k-sys-event" data-comment-id="${ev.id}">
         <div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--done">${esc(ev.text)} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--done">${esc(_kSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
     if (ev.text && ev.text.startsWith('[photo] ') && _kProofUrl(ev.text.slice(8))) {
@@ -1088,7 +1095,7 @@ async function _kRun(which, fn) {
 function kApprove(which) {
   return _kRun(which, async row => {
     const { error } = await _kUpdateRow(row, { status:'approved', flagged:false, approved_at:new Date().toISOString(), approved_by:'landlord' });
-    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Approved by landlord.', false);
+    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Approved.', false);
   });
 }
 /* Flag opens a small sheet: what has to be redone */
@@ -1117,13 +1124,13 @@ async function _kFlagConfirm() {
 function kUnapprove(which) {
   return _kRun(which, async row => {
     const { error } = await _kUpdateRow(row, { status:'submitted', flagged:false, approved_at:null });
-    if (!error) await _kAddComment(row.id, 'Casa Castel', '↩ Approval undone — week back under review.', false);
+    if (!error) await _kAddComment(row.id, 'Casa Castel', '↩ Approval undone.', false);
   });
 }
 function kUnflag(which) {
   return _kRun(which, async row => {
     const { error } = await _kUpdateRow(row, { flagged:false, status:'submitted', flag_reason:null });
-    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Flag removed — week back under review.', false);
+    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Redo cancelled.', false);
   });
 }
 /* Missed keeps the chat and the photos — it only changes the status */
@@ -1132,7 +1139,7 @@ function kReset() {
   if (!confirm(`Mark this week as missed for ${row.room}?`)) return;
   return _kRun('now', async r => {
     const { error } = await _kUpdateRow(r, { status:'missed', flagged:false, closed_at:new Date().toISOString() });
-    if (!error) await _kAddComment(r.id, 'Casa Castel', '✗ Marked missed by Casa Castel.', false);
+    if (!error) await _kAddComment(r.id, 'Casa Castel', '✗ Marked missed.', false);
   });
 }
 function kReopen() {

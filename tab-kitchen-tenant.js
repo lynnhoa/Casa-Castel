@@ -986,13 +986,13 @@ function _kTenBuildFeedHtml(comments, weekRow) {
 
     if (ev.text && ev.text.startsWith('✗ ')) {
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--missed">${esc(ev.text)} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--missed">${esc(_kTenSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
 
     if (ev.text && ev.text.startsWith('✓ ') && !ev.text.startsWith('✓ Approved') && !ev.text.startsWith('✓ Approval')) {
       return `<div class="k-sys-event"><div class="k-sys-event__line"></div>
-        <span class="k-sys-event__text k-sys-event__text--done">${esc(ev.text)} · ${fmtTs(ev._ts)}</span>
+        <span class="k-sys-event__text k-sys-event__text--done">${esc(_kTenSysText(ev.text))} · ${fmtTs(ev._ts)}</span>
         <div class="k-sys-event__line"></div></div>`;
     }
 
@@ -1104,6 +1104,14 @@ async function _kTenSendPhoto(file, feedId) {
   await _kTenAddComment(_kTenWeekRow.id, room, '[photo] ' + data.publicUrl, false);
 }
 
+/* Status lines in the chat stay neutral — nobody is named (older messages included) */
+function _kTenSysText(t) {
+  t = String(t || '').trim();
+  if (/^✗ Marked missed/.test(t)) return '✗ Marked missed';
+  if (/^✓ Flag removed/.test(t))  return '✓ Redo cancelled';
+  return t.replace(/\s+by\s+(the\s+)?(landlord|Casa Castel)\.?$/i, '').replace(/\.$/, '');
+}
+
 /* ── FRESH WEEK STATUS ──────────────────────────────────────
    Re-reads this week + last week and redraws card, late proof, rotation
    and chat. Used by live updates and when the app comes back to the front
@@ -1134,8 +1142,8 @@ function _kTenSubscribe(idx) {
       if (payload.new.week_id && payload.new.week_id !== _kTenWeekRow.id) return;
       document.getElementById('k-mob-optimistic')?.remove();
       document.getElementById('k-ten-dsk-optimistic')?.remove();
-      // A flag / approve message means the week status changed too → redraw the card as well
-      if (payload.new.is_flag || /^(✓ Approved|✓ Flag removed)/.test(payload.new.text || '')) await _kTenRefreshWeek();
+      // A status message (flag, approve, undo, redo cancelled, missed) → redraw the card as well
+      if (payload.new.is_flag || /^(✓ Approved|✓ Flag removed|✓ Redo cancelled|↩ Approval|✗ Marked missed)/.test(payload.new.text || '')) await _kTenRefreshWeek();
       else await _kTenRenderFeed();
     })
     .on('postgres_changes', { event:'DELETE', schema:'public', table:'kitchen_comments' }, async () => {
