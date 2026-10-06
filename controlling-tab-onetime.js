@@ -25,6 +25,7 @@ let _cxOt = {
   exp: { open: false, fmt: 'pdf', pid: '' },            // export panel: Excel · PDF, all or one property
   view: (() => { try { return localStorage.getItem('cx_ot_view') === 'm' ? 'm' : 'y'; } catch (e) { return 'y'; } })(),
   q: '', fold: {}, kind: 'Rechnung', dir: -1, pid: null,
+  nk: false,                                           // new entry: "In NK-Abrechnung umlegen" (Casa Castel only)
 };
 const _cxOtLastProp = () => { try { return Number(localStorage.getItem('cx_ot_prop')) || null; } catch (e) { return null; } };
 
@@ -59,6 +60,7 @@ function _cxOtFormHTML(o) {
   const pid = o ? Number(o.property_id) : (_cxOt.pid || _cxOtLastProp() || (props[0] && props[0].id));
   const kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
+  const nk  = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
   const all = window._ctrl.one_time || [];
   const uniq = f => [...new Set(all.map(x => String(x[f] || '').trim()).filter(Boolean))].slice(0, 60);
   return '<div class="cx-form cx-ot-form" data-edit="' + (o ? cxEsc(o.id) : '') + '">' +
@@ -67,12 +69,17 @@ function _cxOtFormHTML(o) {
       '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">Raus</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">Rein</button></div>' +
       '<label class="cx-f"><input type="text" inputmode="decimal" id="cxOtAmt" placeholder="Betrag" aria-label="Betrag" value="' + (o ? cxE2(o.amount) : '') + '"><span>€</span></label>' +
     '</div>' +
-    '<label class="cx-f cx-f--l"><select id="cxOtProp" aria-label="Objekt">' + props.map(p => '<option value="' + p.id + '"' + (p.id === pid ? ' selected' : '') + '>' + cxEsc(p.name) + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
+    '<label class="cx-f cx-f--l"><select id="cxOtProp" aria-label="Objekt" onchange="_cxOtNkShow()">' + props.map(p => '<option value="' + p.id + '"' + (p.id === pid ? ' selected' : '') + '>' + cxEsc(p.name) + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
     '<label class="cx-f cx-f--l"><input type="text" id="cxOtText" list="cxOtTexts" placeholder="Beschreibung · z. B. Handwerker" aria-label="Beschreibung" value="' + cxEsc(o ? o.item || '' : '') + '"></label>' +
     '<label class="cx-f cx-f--l"><input type="text" id="cxOtCompany" list="cxOtCompanies" placeholder="Firma (optional)" aria-label="Firma" value="' + cxEsc(o ? o.company || '' : '') + '"></label>' +
     '<datalist id="cxOtTexts">' + uniq('item').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
     '<datalist id="cxOtCompanies">' + uniq('company').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
     '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Datum"></label>' +
+    // Casa Castel costs that tenants pay via the NK-Abrechnung — for you still a normal cost (tax export unchanged)
+    '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '"' +
+      (pid === CASA_PROP_ID && dir < 0 ? '' : ' style="display:none"') + '>' +
+      '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
+      '<span class="cx-ot-nk__t"><b>In NK-Abrechnung umlegen</b><small>Gemeinschaftskosten · für dich weiter normale Kosten</small></span></button>' +
     '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Abbrechen</button>' +
       '<button class="cx-btn cx-btn--p" data-cx="otSave">Speichern</button></div>' +
     (o ? '<button class="cx-link cx-ot-del" data-cx="otDel" data-id="' + cxEsc(o.id) + '">Rechnung löschen</button>' : '') +
@@ -84,7 +91,8 @@ function _cxOtFormHTML(o) {
 function _cxOtRowHTML(o) {
   if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(o) + '</div>';
   const inn = Number(o.direction) === 1;
-  const pills = (o.kind === 'Sonstiges' ? cxPill('grey', 'Sonstiges') : '') + (inn ? cxPill('ok', 'Rein') : '');
+  const pills = (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK</span>' : '') +
+                (o.kind === 'Sonstiges' ? cxPill('grey', 'Sonstiges') : '') + (inn ? cxPill('ok', 'Rein') : '');
   return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc((o.item || 'Eintrag') + ' bearbeiten') + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Eintrag') + '</span>' +
       '<span class="cx-r__p">' + pills + '<i class="ti ti-chevron-right cx-chev" aria-hidden="true"></i></span></div>' +
@@ -254,6 +262,12 @@ window.renderOneTime = function () {
       if (a === 'otCancel') { if (_cxOtClose()) window.renderOneTime(); return; }
       if (a === 'otKind') { _cxOt.kind = b.dataset.v; return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._kind = b.dataset.v; }); }
       if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._dir = Number(b.dataset.v); }); }
+      if (a === 'otNk') {
+        const o = _cxOtEditing();
+        const cur = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
+        if (o) o._nk = !cur; else _cxOt.nk = !cur;
+        return _cxOtKeep(() => {});
+      }
       if (a === 'otSave') return _cxOtSave(b);
       if (a === 'otDel') {
         const id = b.dataset.id, o = (window._ctrl.one_time || []).find(x => String(x.id) === String(id));
@@ -269,7 +283,7 @@ function _cxOtEditing() {
   return _cxOt.form && !/^new/.test(String(_cxOt.form)) ? (window._ctrl.one_time || []).find(x => String(x.id) === String(_cxOt.form)) || null : null;
 }
 function _cxOtOpen(form, pid) {
-  _cxOt.form = form; _cxOt.pid = pid; _cxOt.kind = 'Rechnung'; _cxOt.dir = -1;
+  _cxOt.form = form; _cxOt.pid = pid; _cxOt.kind = 'Rechnung'; _cxOt.dir = -1; _cxOt.nk = false;
   _cxOt.formAt = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
 }
 /* Something typed that would be lost? (new: any field · edit: anything changed) */
@@ -282,13 +296,14 @@ function _cxOtDirty() {
   if (!o) return !!(amt || text || co);
   return cxParse(amt) !== cxR(o.amount) || text !== String(o.item || '') || co !== String(o.company || '') ||
     String(g('cxOtDate')?.value || '') !== String(o.invoice_date).slice(0, 10) || Number(g('cxOtProp')?.value) !== Number(o.property_id) ||
-    (o._kind && o._kind !== o.kind) || (o._dir && o._dir !== (Number(o.direction) === 1 ? 1 : -1));
+    (o._kind && o._kind !== o.kind) || (o._dir && o._dir !== (Number(o.direction) === 1 ? 1 : -1)) ||
+    (o._nk !== undefined && o._nk !== !!o.nk_umlage);
 }
 /* Close the open form; asks first when something typed would be lost. Returns false if you keep editing. */
 function _cxOtClose() {
   if (_cxOt.form === null) return true;
   if (_cxOtDirty() && !confirm('Eingabe verwerfen?')) return false;
-  const o = _cxOtEditing(); if (o) { delete o._kind; delete o._dir; }
+  const o = _cxOtEditing(); if (o) { delete o._kind; delete o._dir; delete o._nk; }
   _cxOt.form = null; _cxOt.formAt = null;
   return true;
 }
@@ -303,6 +318,7 @@ function _cxOtKeep(fn) {
   if (keep.text !== undefined && g('cxOtText')) g('cxOtText').value = keep.text;
   if (keep.co !== undefined && g('cxOtCompany')) g('cxOtCompany').value = keep.co;
   if (keep.date && g('cxOtDate')) g('cxOtDate').value = keep.date;
+  _cxOtNkShow();   // NK switch follows the (kept) property and Raus / Rein
 }
 
 async function _cxOtSave(b) {
@@ -318,6 +334,9 @@ async function _cxOtSave(b) {
   const o = _cxOtEditing();
   const kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
+  // NK only for Casa Castel costs (Raus); anything else is saved without it
+  const nkOn = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
+  const nk_umlage = pid === CASA_PROP_ID && dir < 0 && !!nkOn;
   // soft duplicate hint: same property, amount and date
   const dup = (window._ctrl.one_time || []).find(x => (!o || x.id !== o.id) && Number(x.property_id) === pid &&
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
@@ -326,11 +345,12 @@ async function _cxOtSave(b) {
   try {
     let saved;
     if (o) {
-      saved = await ctlUpdateOneTime(o.id, { property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir });
+      saved = await ctlUpdateOneTime(o.id, { property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir, nk_umlage });
     } else {
-      saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir });
+      saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: text || company || kind, company, amount: cxR(amt), kind, direction: dir, nk_umlage });
     }
-    if (o) { delete o._kind; delete o._dir; }
+    if (o) { delete o._kind; delete o._dir; delete o._nk; }
+    _cxOt.nk = false;
     if (saved) { _cxOt.flash = saved.id; delete CX.open['ot:' + pid + ':' + _cxOt.view]; }
     try { localStorage.setItem('cx_ot_prop', String(pid)); } catch (e) {}
     _cxOt.form = null; _cxOt.formAt = null;
@@ -338,6 +358,19 @@ async function _cxOtSave(b) {
     if (y !== window._ctrl.year) say('Gespeichert in ' + y);
     else if (_cxOt.view === 'm' && m !== CX.month) say('Gespeichert in ' + CX_MONTHS[m - 1]);
     else say('Gespeichert');
-  } catch (e) { cxToastErr(e); b.disabled = false; return; }
+  } catch (e) {
+    if (/nk_umlage/.test(String(e && (e.message || e)))) say('Bitte zuerst das SQL für „NK umlegen“ ausführen');
+    else cxToastErr(e);
+    b.disabled = false; return;
+  }
   window.renderOneTime();
+}
+
+/* Property changed in the form: the NK switch only belongs to Casa Castel costs */
+function _cxOtNkShow() {
+  const row = document.getElementById('cxOtNkRow'); if (!row) return;
+  const pid = Number(document.getElementById('cxOtProp')?.value);
+  const o = _cxOtEditing();
+  const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
+  row.style.display = pid === CASA_PROP_ID && dir < 0 ? '' : 'none';
 }

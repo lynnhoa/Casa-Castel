@@ -48,6 +48,17 @@ const _CX_CSS = `
     .cx-pill--diff  { background:#F7E4DC; color:#8A3B22; border-color:#D9957C; }
     .cx-pill--grey  { background:#EFE9E0; color:var(--cx-mut); border-color:var(--cx-rule); }
     .cx-pill--beige { background:#F3EADC; color:var(--cx-acc); border-color:#D4B896; }
+    .cx-pill--nk { background:#E3EFEE; color:#3E6E69; border-color:#9CC5C0; }   /* Casa cost umgelegt in die NK-Abrechnung */
+    .cx-ot-nk { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px; border-radius:10px; border:0.5px solid var(--cx-rule); background:var(--cx-card); font-family:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cx-ot-nk.on { border:1px solid #9CC5C0; background:#EEF6F5; }
+    .cx-ot-nk__sw { position:relative; width:38px; height:22px; flex-shrink:0; border-radius:11px; background:#D9D2C7; transition:background .15s; }
+    .cx-ot-nk__sw::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#fff; transition:transform .15s; }
+    .cx-ot-nk.on .cx-ot-nk__sw { background:#3E6E69; }
+    .cx-ot-nk.on .cx-ot-nk__sw::after { transform:translateX(16px); }
+    .cx-ot-nk__t { display:flex; flex-direction:column; gap:2px; }
+    .cx-ot-nk__t b { font-size:13px; font-weight:500; color:var(--cx-ink); }
+    .cx-ot-nk.on .cx-ot-nk__t b { color:#2F5753; }
+    .cx-ot-nk__t small { font-size:11px; color:var(--cx-mut); }
     /* buttons */
     .cx-btn { height:36px; padding:0 16px; border-radius:8px; font-family:inherit; font-size:11px; font-weight:500; letter-spacing:.07em;
               text-transform:uppercase; display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;
