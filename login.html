@@ -163,6 +163,33 @@
     .role-tab.active .role-tab__sub   { color: var(--gold-dk); }
     .role-tab.active .role-tab__check { opacity: 1; transform: none; }
 
+    /* ── APP TILES — even grid, each app its own colour (Oct 2026) ──
+       All tiles the same height, icon left of the name; Properties centred
+       on its own row. Tinted icon at rest; selected = warm tile, gold
+       border, icon filled with the app's colour, check top right. */
+    .role-tab, .role-tab--wide {
+      flex-direction: row; align-items: center; gap: 11px;
+      min-height: 0; height: 62px; padding: 12px;
+    }
+    .role-tab--wide { justify-content: center; }
+    .role-tab__ico { width: 38px; height: 38px; border-radius: 11px; }
+    .role-tab__ico i { font-size: 20px; }
+    .role-tab__check { top: 8px; right: 8px; font-size: 15px; }
+    .role-tab--wide .role-tab__check { top: 50%; margin-top: -8px; right: 12px; }
+    .role-tab[data-dest="properties.html"]    { --app: #4A6076; --app-lt: #E6ECF2; --app-fill: #5E7489; }
+    .role-tab[data-dest="landlord.html"]      { --app: #9A7040; --app-lt: #F2E9DC; --app-fill: #A0703F; }
+    .role-tab[data-dest="rentals-index.html"] { --app: #55704F; --app-lt: #E8EFE6; --app-fill: #6E8B6A; }
+    .role-tab[data-dest="controlling.html"]   { --app: #734E6D; --app-lt: #F1E8EF; --app-fill: #8A6283; }
+    .role-tab[data-dest="settlements.html"]   { --app: #3E6E69; --app-lt: #E3EFEE; --app-fill: #4E8580; }
+    .role-tab .role-tab__ico   { background: var(--app-lt, var(--warm)); }
+    .role-tab .role-tab__ico i { color: var(--app, var(--taupe)); }
+    .role-tab.active {
+      background: #F6EEE4; border-color: var(--gold);
+      box-shadow: 0 0 0 0.5px var(--gold) inset;
+    }
+    .role-tab.active .role-tab__ico   { background: var(--app-fill, var(--gold-dk)); }
+    .role-tab.active .role-tab__ico i { color: #fff; }
+
     /* ── INPUTS ── */
     .cc-input {
       width: 100%;
