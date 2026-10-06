@@ -484,14 +484,15 @@ async function loadHouseCleaning() {
    first: Done / Missed / Away / Skipped (vacant) / This week.
    Weeks older than 12 are deleted by the management app (_hcTrimHistory). */
 const HC_HISTORY_WEEKS = 12;   // current week included
+const HC_HISTORY_FROM  = 40;   // history starts with the week 12.10 – 18.10.2026 (earlier weeks were tests)
 function hcOpenHistory()  { document.getElementById('hc-modal-history')?.classList.add('open'); _hcPopulateHistory(); }
 function hcCloseHistory() { document.getElementById('hc-modal-history')?.classList.remove('open'); }
 async function _hcPopulateHistory() {
   const el = document.getElementById('hc-history-body'); if (!el) return;
   if (!sbL) { el.innerHTML = '<p class="cc-note">No connection.</p>'; return; }
   const curIdx = _hcWeekIndex(new Date());
-  if (curIdx < 0) { el.innerHTML = '<p class="cc-note">No past weeks yet.</p>'; return; }
-  const from    = Math.max(0, curIdx - (HC_HISTORY_WEEKS - 1));
+  if (curIdx < HC_HISTORY_FROM) { el.innerHTML = '<p class="cc-note">No history yet.</p>'; return; }
+  const from    = Math.max(HC_HISTORY_FROM, curIdx - (HC_HISTORY_WEEKS - 1));
   const fromYmd = _hcYmd(_hcAddDays(HC_W1_START, from * 7));
   const [doneRes, absRes] = await Promise.all([
     sbL.from('cleaning_weeks').select('week_index,room,done_at,done_by').eq('status', 'done').gte('week_index', from).lte('week_index', curIdx),
@@ -520,7 +521,7 @@ async function _hcPopulateHistory() {
       <p style="font-size:11px;color:var(--cc-taupe);">${info.dateRange}</p></div>
       ${pill}</div>`);
   }
-  el.innerHTML = rows.length ? rows.join('') : '<p class="cc-note">No past weeks yet.</p>';
+  el.innerHTML = rows.length ? rows.join('') : '<p class="cc-note">No history yet.</p>';
 }
 
 /* Keep 12 weeks: cleaning results older than that are deleted, and absences

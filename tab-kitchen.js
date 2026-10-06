@@ -300,6 +300,7 @@ function _kSysText(t) {
 }
 let _kAutoResetRanFor = null;
 const K_HISTORY_WEEKS = 8;    // history keeps the last 8 weeks (current week included)
+const K_HISTORY_FROM  = 40;   // history starts with the week 12.10 – 18.10.2026 (earlier weeks were tests)
 const K_NUDGE_LOG_MAX = 20;   // nudge log keeps the newest 20 nudges
 
 /* Storage paths of one week's proof photos (week row + its chat comments) */
@@ -954,8 +955,8 @@ async function _populateKHistory() {
   const el = document.getElementById('k-mob-history-body');
   if (!sbL) { el.innerHTML = '<p class="cc-note">Connect Supabase.</p>'; return; }
   const idx = kWeekIdx();
-  const { data } = await sbL.from('kitchen_weeks').select('*').lte('week_index', idx).order('week_index', { ascending: false }).limit(K_HISTORY_WEEKS);
-  if (!data || !data.length) { el.innerHTML = '<p class="cc-note">No past weeks yet.</p>'; return; }
+  const { data } = await sbL.from('kitchen_weeks').select('*').gte('week_index', K_HISTORY_FROM).lte('week_index', idx).order('week_index', { ascending: false }).limit(K_HISTORY_WEEKS);
+  if (!data || !data.length) { el.innerHTML = '<p class="cc-note">No history yet.</p>'; return; }
   el.innerHTML = data.map(w => {
     const dateStr = kWeekDateRange(w.week_index);
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--cc-rule);"><div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);">${esc(w.room)}</p><p style="font-size:11px;color:var(--cc-taupe);">${dateStr}</p></div>${kHistPill(w.status, '', w)}</div>`;
