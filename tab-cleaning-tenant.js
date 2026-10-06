@@ -658,20 +658,32 @@ function _renderHcRotation(curIdx, hcDoneMap, absRows, myRoom) {
     const off  = s.state === 'away' || s.state === 'vacant';
     const when = idx < curIdx ? 'Last week' : idx === curIdx ? 'This week'
                : idx === curIdx + 1 ? 'Next week' : 'In ' + (idx - curIdx) + ' weeks';
-    let tone = '';
-    if (idx < curIdx)        tone = 'last';
-    else if (idx === curIdx) tone = s.state === 'done' ? 'done' : 'now';
-    else if (!off && !nextSet) { tone = 'next'; nextSet = true; }
-    const key   = s.state === 'done' ? (s.late ? 'late' : 'done')
-                : (off || s.state === 'missed') ? s.state : null;
-    const right = key
-      ? `<span class="hc-sch-badge hc-sch-badge--${key === 'late' ? 'done' : key}">${LABEL[key]}</span>`
-      : `<span class="hc-sch-dates">${_hcFmtDM(info.start)} – ${_hcFmtDM(info.end)}</span>`;
+    /* Pill at the front of every row (colour map):
+       time label for this / next / later weeks, coloured by status;
+       a status word (Away / Vacant) wins for a later week nobody cleans;
+       last week: outline "Last week" + its result on the right.        */
+    let tone = '', pk, ptxt = when, pic = '';
+    if (idx < curIdx) { tone = 'last'; pk = 'last'; }
+    else if (idx === curIdx) {
+      tone = 'now';
+      pk  = s.state === 'done' ? 'done' : s.state === 'away' ? 'away' : s.state === 'vacant' ? 'vacant' : 'now';
+      pic = { done: 'check', away: 'calendar-off', vacant: 'door', now: 'broom' }[pk];
+    }
+    else if (off) { pk = s.state; ptxt = LABEL[s.state]; pic = s.state === 'away' ? 'calendar-off' : 'door'; }
+    else if (!nextSet) { tone = 'next'; nextSet = true; pk = 'next'; pic = 'arrow-right'; }
+    else pk = 'later';
+    const pill  = `<span class="hc-pill hc-pill--${pk}">${pic ? `<i class="ti ti-${pic}" aria-hidden="true"></i>` : ''}${ptxt}</span>`;
+    const dates = `<span class="hc-sch-dates">${_hcFmtDM(info.start)} – ${_hcFmtDM(info.end)}</span>`;
+    const res   = s.state === 'done' ? (s.late ? 'late' : 'done') : s.state;   // last week's result
+    const right = idx < curIdx
+      ? `<span class="hc-pill hc-pill--sm hc-pill--${res === 'late' ? 'done' : res}">${LABEL[res] || ''}</span>`
+      : dates;
     const you    = myRoom && room === myRoom ? '<span class="cc-turn-you">you</span>' : '';
     const canFix = isMgmt && idx <= curIdx && !off;
     const mail   = isMgmt && typeof _hcMailBtn === 'function' ? _hcMailBtn(room, idx >= curIdx && s.state !== 'done' && !off) : '';
-    return `<div class="hc-sch-row${tone ? ' hc-sch-row--' + tone : ''}${off ? ' hc-sch-row--off' : ''}${canFix ? ' hc-sch-row--tap' : ''}"${canFix ? ` onclick="hcCorrectWeek(${idx})"` : ''}>
-      <span class="hc-sch-when">${when}</span>
+    const mine   = myRoom && room === myRoom && idx > curIdx ? ' hc-sch-row--mine' : '';
+    return `<div class="hc-sch-row${tone ? ' hc-sch-row--' + tone : ''}${off ? ' hc-sch-row--off' : ''}${mine}${canFix ? ' hc-sch-row--tap' : ''}"${canFix ? ` onclick="hcCorrectWeek(${idx})"` : ''}>
+      ${pill}
       <span class="hc-sch-name">${esc(room)}${you}</span>
       ${right}${mail}
     </div>`;

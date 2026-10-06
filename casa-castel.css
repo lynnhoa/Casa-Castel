@@ -2675,3 +2675,32 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .turn-mine i{font-size:14px;color:#185FA5;flex-shrink:0;}
 .turn-mine b{font-weight:600;color:#0C447C;}
 .k-mob-status-chip.away{background:#F5EEE8;border:1px solid #D4A87A;color:#8C5A30;}
+
+
+/* ── ROTATION v2 — pill at the front of each row (colour map) ───────────
+   This week = biggest row · next real turn = medium · the rest small.
+   Pill colours = the agreed status colours (soft tints). */
+.hc-pill{width:92px;height:24px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:12px;border:1px solid;font-size:11px;font-weight:600;white-space:nowrap;}
+.hc-pill i{font-size:13px;}
+.hc-pill--sm{width:auto;height:22px;padding:0 9px;font-size:10px;}
+.hc-pill--now{background:#FDF0D8;border-color:#E8C97A;color:#633806;}
+.hc-pill--next{background:#EBF4FF;border-color:#90C2F5;color:#0C447C;}
+.hc-pill--later{background:#EDE8E0;border-color:#E0DAD0;color:#6B5E4E;}
+.hc-pill--done{background:#EAF3DE;border-color:#639922;color:#27500A;}
+.hc-pill--missed{background:#FDEEED;border-color:#F5A8A5;color:#7A2020;}
+.hc-pill--away{background:#F5EEE8;border-color:#D4A87A;color:#8C5A30;}
+.hc-pill--vacant{background:#F5F3FF;border-color:#C4B5FD;color:#5B21B6;}
+.hc-pill--last{background:transparent;border-color:#D9CFC0;color:#9A8E7E;}
+.hc-sch{gap:4px;}
+.hc-sch-row{height:28px;gap:10px;padding:0 10px;}
+.hc-sch-row--last{height:30px;opacity:0.85;}
+.hc-sch-row--now{height:48px;background:#FFFAF1;border:1px solid #E8C97A;}
+.hc-sch-row--now .hc-pill{width:100px;height:28px;font-size:12px;}
+.hc-sch-row--now .hc-sch-name{font-family:'Cormorant Garamond',Georgia,serif;font-size:24px;font-weight:500;color:#4A3D0A;}
+.hc-sch-row--now .hc-sch-dates{font-size:11px;font-weight:500;color:#A0860E;}
+.hc-sch-row--next{height:36px;background:transparent;border-color:transparent;}
+.hc-sch-row--next .hc-sch-name{font-size:15px;color:#0C447C;}
+.hc-sch-row--next .hc-sch-dates{color:#185FA5;}
+.hc-sch-row--off .hc-sch-name{color:#B4A890;font-weight:400;}
+.hc-sch-row--mine{background:#FFFAF1;border-color:#E8C97A;}
+.hc-sch-row--mine .hc-sch-dates{color:#A0860E;font-weight:500;}
