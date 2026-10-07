@@ -66,11 +66,11 @@ async function stLoad() {
 }
 
 /* ── Tabs ─────────────────────────────────────────────────── */
-/* Fixed order of the Wohnungen (ctrl_properties.sort_order = your purchase order), then name */
+/* Fixed order of the Wohnungen = your purchase order: Setup sort order if set, else the id (1 Kostheim … 10 Studio One) */
 function stPropOrder(a, b) {
   const oa = Number.isFinite(Number(a.sort_order)) && a.sort_order !== null ? Number(a.sort_order) : 999;
   const ob = Number.isFinite(Number(b.sort_order)) && b.sort_order !== null ? Number(b.sort_order) : 999;
-  return oa - ob || String(a.name).localeCompare(String(b.name), 'de');
+  return oa - ob || (Number(a.id) || 0) - (Number(b.id) || 0);
 }
 function stSwitchTab(tab) {
   ST.tab = tab;

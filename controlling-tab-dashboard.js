@@ -277,7 +277,9 @@ window.renderDashboard = function () {
   let propCard = '';
   if (!future) {
     // One plain row per property: name · what came in · what went out → cashflow (no bars)
-    const order = per.slice().sort((a, b) => b.r.freiWarm - a.r.freiWarm);
+    // your purchase order (Setup sort order if set, else the id) — the same everywhere, never by amount
+    const pos = p => (p.sort_order !== null && p.sort_order !== undefined && Number.isFinite(Number(p.sort_order))) ? Number(p.sort_order) : 999;
+    const order = per.slice().sort((a, b) => pos(a.p) - pos(b.p) || a.p.id - b.p.id);
     const rows = order.map(({ p, r }) => {
       const k = 'dash:p:' + p.id, isOpen = !!CX.open[k], neg = r.freiWarm < 0;
       const out = cxR(r.warm - r.freiWarm);                     // everything that went out (net)
