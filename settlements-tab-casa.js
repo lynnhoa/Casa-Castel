@@ -560,7 +560,7 @@ function scTenView(M, m) {
     (lo ? '<div class="sc-det">' +
       '<div class="sc-det__s"><span><i class="ti ti-users" aria-hidden="true"></i> shared by person, day by day</span><b>' + scE(pers) + '</b></div>' +
       '<div class="sc-det__s"><span><i class="ti ti-flame" aria-hidden="true"></i> Gas by room size (' + (t.m2 ? String(t.m2).replace('.', ',') + ' m²' : 'm²') + ')</span><b>' + scE(fl) + '</b></div>' +
-      scShareLines(t).map(g => '<div class="sc-li"><span>' + stEsc(g.label) + '<small>' + stEsc(scFrac(g, t.m2)) + ' of ' + scE(g.total) +
+      scShareLines(t).map(g => '<div class="sc-li"><span>' + stEsc(g.label) + '<small>' + stEsc(scPct(g)) + ' of ' + scE(g.total) +
         (g.merged ? ' · incl. ' + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + scE(g.hg) : '') + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') +
       '<div class="sc-li"><span>Already paid<small>' + (t.vzContract ? t.vzContract + ' month(s) as per contract' : 'NK part of the rent, by day') + (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length) ? ' · changed by you' : '') + '</small></span><span>' + scE(t.vz) + '</span></div>' +
 
@@ -715,8 +715,8 @@ async function scSetUndo(key) {
 /* ── Share lines for letter + details (Oct 2026) ────────────
    · a Versorger Jahresabrechnung (One-off · Versorger) is netted into its cost type:
      Strom Abschläge + Strom Jahresabrechnung(en) = one "Strom" line showing the result
-   · range → "1/6" (shared by 6 people) or "1/5 – 1/8" when the number changed;
-     Gas / Heizung: "14 von 98 m²"                                                 */
+   · range = people (or m²) sharing it on the tenant's days → "5 bis 7 Personen" in the letter head
+   · the share is shown in % of the house cost (scPct)                            */
 function scShareLines(t) {
   const out = [], byKey = {};
   for (const l of (t.lines || [])) {
@@ -731,11 +731,9 @@ function scShareLines(t) {
   out.forEach(g => { g.total = cxR(g.total); g.amount = cxR(g.amount); g.hg = cxR(g.hg); g.run = cxR(g.run); g.merged = g.nHg > 0 && g.id.indexOf('cat:') === 0; });
   return out;
 }
-function scFrac(g, m2) {
-  const r = g.range; if (!r) return '\u2013';
-  const nf = v => (Number(v) || 0).toLocaleString('de-DE', { maximumFractionDigits: 2 });
-  if (g.key === 'flaeche') return nf(m2) + ' von ' + (r.lo === r.hi ? nf(r.lo) : nf(r.lo) + '\u2013' + nf(r.hi)) + ' m²';
-  return r.lo === r.hi ? '1/' + r.lo : '1/' + r.lo + ' \u2013 1/' + r.hi;
+function scPct(g) {                                     // share of the house cost, e.g. "10,21 %"
+  if (!g.total || Math.abs(g.total) < 0.005) return '\u2013';
+  return (g.amount / g.total * 100).toFixed(2).replace('.', ',') + '\u00a0%';
 }
 
 /* ── Letter data ─────────────────────────────────────────── */
@@ -753,49 +751,59 @@ async function scLetterData(M, t) {
   const ort = s.unterschrift_ort || ((String(s.vermieter_adresse || '').match(/\d{5}\s+([^,\n]+)/) || [])[1] || '').trim();
   const y = M.y, per = M.R.period, partial = t.days < M.R.days;
   const keyTxt = l => {
-    if (l.key === 'flaeche') return 'nach Zimmerfläche';
+    if (l.key === 'flaeche') return 'Zimmerfläche';
     const ln = M.input.lines.find(x => x.id === l.id), p = ln && ln.parts[0];
-    return p && p.spread === 'from' ? 'nach Personen ab ' + dt(p.date) : 'nach Personen';
+    return p && p.spread === 'from' ? 'Personen ab ' + dt(p.date) : 'Personen';
   };
+  const eur = v => { const n = Number(v) || 0; return (n < -0.004 ? '\u2212\u00a0' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };
+  const extraLines = M.input.lines.filter(l => l.info && t.lines.some(x => x.id === l.id)).sort((a, b) => String(a.info.date).localeCompare(String(b.info.date)));
   const SL = scShareLines(t);
   const merged = SL.some(g => g.merged), hasFl = SL.some(g => g.key === 'flaeche');
   // how many people lived in the house during this tenancy (all Personen lines together)
   const occ = SL.filter(g => g.key === 'personen' && g.range).reduce((a, g) => a ? { lo: Math.min(a.lo, g.range.lo), hi: Math.max(a.hi, g.range.hi) } : { lo: g.range.lo, hi: g.range.hi }, null);
-  const occTxt = occ ? (occ.lo === occ.hi ? ' Im Nutzungszeitraum wohnten durchgehend ' + occ.lo + ' Personen im Haus.' : ' Im Nutzungszeitraum wohnten ' + occ.lo + ' bis ' + occ.hi + ' Personen im Haus.') : '';
-  const cellLabel = g => g.merged ? { t: g.label, s: 'Abschläge ' + eur(g.run) + ' \u00b7 ' + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + eur(g.hg) } : g.label;
-  const eur = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
-  const extraLines = M.input.lines.filter(l => l.info && t.lines.some(x => x.id === l.id));
-  const last = String(t.name).split(' ').slice(-1)[0];
+  const span = (a, b) => (String(a).slice(0, 4) === String(b).slice(0, 4) ? dt(a).slice(0, 6) : dt(a)) + ' \u2013 ' + dt(b);
+  // Jahresabrechnung netted into its cost type → a small line under it
+  const subRow = g => ({ sub: 'Abschläge ' + eur(g.run) + (g.hg < 0 ? ' abzüglich ' : ' zuzüglich ') + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + eur(Math.abs(g.hg)) + (g.hg < 0 ? ' (Guthaben)' : ' (Nachzahlung)') });
+  const rows = [];
+  SL.forEach(g => { rows.push([g.label, eur(g.total), keyTxt(g), scPct(g), eur(g.amount)]); if (g.merged) rows.push(subRow(g)); });
+  const first = scFirst(t.name);
   return {
-    brand: 'Casa Castel', unitLabel: 'Zimmer', unitName: t.room,
+    brand: 'Casa Castel', unitLabel: 'Zimmer', unitName: t.room, du: true,
     footer: house.join(' \u00b7 '), sender, vermieter: s.vermieter_name || '', ort, date, names: [t.name], addr,
     title: 'Betriebskostenabrechnung ' + y,
     subtitle: 'Mietobjekt ' + house.join(', ') + ' \u00b7 Zimmer ' + t.room + (t.m2 ? ' (' + String(t.m2).replace('.', ',') + ' m²)' : '') + ' \u00b7 Abrechnungszeitraum ' + dt(per.from) + ' bis ' + dt(per.to),
-    greeting: 'Guten Tag ' + t.name + ',',
-    introHtml: 'hiermit erfolgt die Abrechnung der Betriebskosten für das ' + (former ? 'ehemalige ' : '') + 'Zimmer „' + t.room + '“ in der Casa Castel für den Abrechnungszeitraum vom <strong>' + dt(per.from) + ' bis ' + dt(per.to) + '</strong>.' +
-      (partial ? ' Das Zimmer wurde vom ' + dt(t.from) + ' bis ' + dt(t.to) + ' bewohnt (' + t.days + ' von ' + M.R.days + ' Tagen).' : '') +
-      ' Die Kosten des Hauses werden tagesgenau verteilt – berechnet werden nur die Tage im Nutzungszeitraum.',
+    greeting: 'Hallo ' + first + ',',
+    closing: 'Viele Grüße',
+    introHtml: 'anbei die Abrechnung der Betriebskosten für das ' + (former ? 'ehemalige ' : '') + 'Zimmer „' + t.room + '“ in der Casa Castel für den Zeitraum vom <strong>' + dt(per.from) + ' bis ' + dt(per.to) + '</strong>.' +
+      ' Die Kosten des Hauses werden tagesgenau auf alle Personen verteilt, die im Haus wohnen.' +
+      (partial ? ' Das Zimmer wurde vom ' + dt(t.from) + ' bis ' + dt(t.to) + ' bewohnt (' + t.days + ' von ' + M.R.days + ' Tagen) – berechnet werden nur diese Tage.' : ''),
     sum: t.sum, vz: t.vz, saldo: t.saldo, via: t.saldo ? scVia(t) : 'zahlung', einbehalt: t.einbehalt || 0, due: NkCasa.addDays(date, days),
     bank: { inhaber: s.kontoinhaber || s.vermieter_name || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
-    verwendung: 'NK ' + y + ' Casa Castel ' + t.room + ' ' + last, tenantIban: set.iban || '', former,
-    hinweise: ['Die Aufstellung aller Kosten und die Berechnung des Anteils stehen auf Seite 2.',
-               'Die Belege können nach vorheriger Terminabsprache eingesehen werden.',
-               'Einwendungen gegen diese Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'],
+    verwendung: 'NK ' + y + ' Casa Castel ' + t.room + ' ' + String(t.name).split(' ').slice(-1)[0], tenantIban: set.iban || '', former,
+    hinweise: [],
+    outro: 'Die Aufstellung aller Kosten und die Berechnung deines Anteils findest du auf Seite 2.',
     anlagen: list && extraLines.length ? 'Belegliste (Seite 3)' : '',
-    intro2: 'Abrechnungszeitraum ' + dt(per.from) + ' bis ' + dt(per.to) + ' (' + M.R.days + ' Tage)' + (partial ? ' \u00b7 Nutzungszeitraum ' + dt(t.from) + ' bis ' + dt(t.to) + ' (' + t.days + ' Tage)' : '') + '. Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten des Hauses.' + occTxt,
+    title2: 'Aufstellung der Betriebskosten ' + y,
+    subtitle2: 'Zimmer ' + t.room + ' \u00b7 Casa Castel, ' + house.join(', '),
+    facts: [['Abrechnungszeitraum', span(per.from, per.to), M.R.days + ' Tage'],
+            ['Nutzungszeitraum', span(t.from, t.to), t.days + ' Tage'],
+            ...(occ ? [['Personen im Haus', occ.lo === occ.hi ? String(occ.lo) : occ.lo + ' bis ' + occ.hi, 'im Nutzungszeitraum']] : []),
+            ...(t.m2 ? [['Zimmerfläche', String(t.m2).replace('.', ',') + ' m²', 'für Gas und Heizung']] : [])],
+    intro2: 'Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten des Hauses.',
     table: {
-      cols: [{ label: 'Kostenart', w: '29%' }, { label: 'Kosten Haus', w: '15%', cls: 'r' }, { label: 'Verteilung', w: '19%', cls: 'k' }, { label: 'Anteil', w: '21%', cls: 'r' }, { label: 'Betrag', w: '16%', cls: 'r' }],
-      rows: SL.map(g => [cellLabel(g), eur(g.total), keyTxt(g), scFrac(g, t.m2), eur(g.amount)]),
+      cols: [{ label: 'Kostenart', w: '33%' }, { label: 'Kosten Haus', w: '15%', cls: 'r' }, { label: 'Verteilt nach', w: '21%', cls: 'k' }, { label: 'Anteil', w: '13%', cls: 'r' }, { label: 'Betrag', w: '18%', cls: 'r' }],
+      rows,
       sumLabel: 'Summe Anteil',
       vzLabel: 'abzüglich geleisteter Vorauszahlungen',
     },
-    note2: 'Anteil: Die Kosten jedes Tages werden zu gleichen Teilen auf alle Personen verteilt, die an diesem Tag im Haus gewohnt haben – bei 6 Personen also 1/6. ' +
-      'Haben im Zeitraum unterschiedlich viele Personen im Haus gewohnt, steht dort die Spanne (z. B. 1/5 \u2013 1/8). ' +
-      (hasFl ? 'Gas und Heizung werden nach Zimmerfläche verteilt: Fläche des Zimmers im Verhältnis zur Fläche aller an diesem Tag bewohnten Zimmer. ' : '') +
-      'Monatliche Kosten zählen im jeweiligen Monat, Jahresbeträge gleichmäßig über alle Tage, Einzelrechnungen ab dem Rechnungsdatum bis zum Ende des Zeitraums. ' +
-      (merged ? 'Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet. ' : '') +
-      'Nicht umlagefähige Kosten sind nicht enthalten.',
-    extra: list && extraLines.length ? { title: 'Belegliste ' + y + ' \u00b7 Einzelrechnungen', intro: 'Diese Rechnungen sind in die Aufstellung auf Seite 2 eingeflossen. Laufende Kosten stehen dort mit ihrem Jahresbetrag.',
+    notes2Title: 'So wird gerechnet',
+    notes2: ['Die Kosten jedes Tages werden zu gleichen Teilen auf alle Personen verteilt, die an diesem Tag im Haus wohnen.' +
+               (hasFl ? ' Gas und Heizung werden nach Zimmerfläche verteilt – im Verhältnis zur Fläche aller an diesem Tag bewohnten Zimmer.' : ''),
+             'Der Anteil in % ist je Kostenart verschieden: Die Kosten fallen zu unterschiedlichen Zeiten an, und es wohnen nicht immer gleich viele Personen im Haus.',
+             'Monatliche Kosten zählen im jeweiligen Monat, Jahresbeträge gleichmäßig über alle Tage, Einzelrechnungen ab dem Rechnungsdatum bis zum Ende des Zeitraums.',
+             ...(merged ? ['Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
+             'Nicht umlagefähige Kosten sind nicht enthalten.'],
+    extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung auf Seite 2 eingeflossen sind. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.',
       rows: extraLines.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(extraLines.reduce((a, l) => a + l.info.amount, 0)) } : null,
   };
 }
