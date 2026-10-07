@@ -58,6 +58,7 @@ const _CX_SRC = [
   ['casaNkV', 'nk_vorauszahlung_history'], ['casaNk', 'nk_entries'], ['loans', 'properties'],
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
   ['abr', 'abr_results'], ['vac', 'unit_vacancies'], ['loanHist', 'loan_terms_history'], ['casaMh', 'casa_mieterhoehung_history'],
+  ['castelHist', 'ctrl_castel_amount_history'],          // Casa Castel cost Soll by month (B22)
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -871,6 +872,32 @@ function ctlCostRows(p, y, m) {
    · sporadisch otherwise → no Soll, but always enterable ("bei Bedarf")
    · vierteljährlich / jährlich without months → flagged, never silently gone (B19) */
 const _cxBedarf = f => /sporad|bedarf/i.test(String(f || ''));
+
+/* Casa Castel cost Soll with a date (B22) — ctrl_castel_amount_history (category_id, valid_from, amount).
+   A month takes the period that started on or before its 1st; months before the first period
+   take the first one; no periods → the Setup amount. A new Abschlag never rewrites the months
+   before it; correcting a period changes only that period's months.                           */
+const CX_PER_START = '2000-01-01';                         // "from start" period = the amount before any change
+const _CX_PER_MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ctlPerMonthLbl = iso => { const d = _cxD(iso); return d ? _CX_PER_MN[Number(d.slice(5, 7)) - 1] + ' ' + d.slice(0, 4) : ''; };
+function ctlCastelPeriods(catId) {
+  return (window._src.castelHist || []).filter(h => Number(h.category_id) === Number(catId))
+    .sort((a, b) => _cxD(a.valid_from).localeCompare(_cxD(b.valid_from)));
+}
+function ctlCastelAmountAt(c, y, m) {
+  const list = ctlCastelPeriods(c.id);
+  if (!list.length) return { amount: _cxN0(c.default_amount), period: null, prev: null };
+  const first = _cxIso(y, m, 1);
+  let i = 0;
+  list.forEach((h, k) => { if (_cxD(h.valid_from) <= first) i = k; });
+  return { amount: _cxN0(list[i].amount), period: list[i], prev: i > 0 ? list[i - 1] : null };
+}
+function _cxPerNote(at, y, m) {
+  if (!at || !at.period || !at.prev) return null;
+  if (_cxD(at.period.valid_from).slice(0, 7) !== _cxIso(y, m, 1).slice(0, 7)) return null;
+  return 'New Soll · ' + _cxEurS(at.prev.amount) + ' → ' + _cxEurS(at.period.amount) + ' from ' + ctlPerMonthLbl(at.period.valid_from);
+}
+
 function ctlCasaCostRows(p, y, m) {
   const pl = ctlPropLinks(p), rows = [], notDue = [], bedarf = [], checks = [];
   for (const c of (window._ctrl.categories || [])) {
@@ -879,9 +906,11 @@ function ctlCasaCostRows(p, y, m) {
     const label = c.name || (isRate ? 'Kreditrate' : 'Cost');
     const freq = c.frequency || 'monatlich';
     const dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
-    const amount = isRate && pl.loan ? _cxN0(pl.loan.rate) : _cxN0(c.default_amount);
+    const at = isRate && pl.loan ? null : ctlCastelAmountAt(c, y, m);
+    const amount = at ? at.amount : _cxN0(pl.loan.rate);
+    const note = _cxPerNote(at, y, m);
     if (_cxBedarf(freq)) {
-      if (dm.includes(m)) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'as needed · planned', src: 'Setup', split: null });
+      if (dm.includes(m)) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'as needed · planned', src: 'Setup', split: null, note });
       else bedarf.push({ catId: c.id, label });
       continue;
     }
@@ -892,7 +921,7 @@ function ctlCasaCostRows(p, y, m) {
     const due = freq === 'monatlich' ? (!dm.length || dm.includes(m)) : dm.includes(m);
     if (due) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount),
       sub: isRate && pl.loan ? 'Zinsen ~' + _cxEurS(_cxN0(pl.loan.zinsen)) + ' · Tilgung ~' + _cxEurS(_cxN0(pl.loan.tilgung)) : _cxFreqLbl(freq),
-      src: isRate && pl.loan ? 'Properties' : 'Setup',
+      src: isRate && pl.loan ? 'Properties' : 'Setup', note,
       split: isRate && pl.loan ? { zinsen: _cxN0(pl.loan.zinsen), tilgung: _cxN0(pl.loan.tilgung) } : null });
     else if (dm.length) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }
   }

@@ -202,7 +202,7 @@ window.renderSetup = function () {
         '<label class="cx-f"><input type="text" inputmode="decimal" data-cx-in="ctrl_castel_categories|' + c.id + '|default_amount" value="' + (c.default_amount === null || c.default_amount === undefined ? '' : cxE2(c.default_amount)) + '" placeholder="0,00" aria-label="Amount"><span>€</span></label>' +
         '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|frequency" aria-label="Frequency">' +
           _CX_FREQ.map(f => _cxOpt(f, typeof _cxFreqLbl === 'function' ? _cxFreqLbl(f) : f, f === freq)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-      '</div>') +
+      '</div>' + _cxPerHTML(c)) +
       (freq === 'monatlich' || fromLoan ? '' :
         '<div class="cx-set__k" style="margin-top:6px">' + (_cxBedarf(freq) ? 'Planned in (optional)' : 'Due in') + '</div>' +
         _cxMonthChips('ctrl_castel_categories|due_months', c.id, c.due_months) +
@@ -307,6 +307,20 @@ window.renderSetup = function () {
         } catch (e) { cxToastErr(e); }
         return window.renderSetup();
       }
+      if (a === 'perOpen') {                                // open / close one period form (or the new one)
+        const cid = Number(b.dataset.c);
+        _cxPer.open[cid] = b.dataset.r ? b.dataset.r : null;
+        return window.renderSetup();
+      }
+      if (a === 'perSave' || a === 'perDel') {
+        b.disabled = true;
+        try {
+          const ok = a === 'perSave' ? await _cxPerSave(Number(b.dataset.c), b.dataset.r) : await _cxPerDel(Number(b.dataset.c), b.dataset.r);
+          if (ok) _cxPer.open[Number(b.dataset.c)] = null;
+        } catch (e) { cxToastErr(e); }
+        b.disabled = false;
+        return window.renderSetup();
+      }
       if (a === 'month') {
         const [t, field] = b.dataset.t.split('|'), id = Number(b.dataset.id), mo = Number(b.dataset.m);
         const row = (t === 'ctrl_properties' ? window._ctrl.properties : window._ctrl.categories).find(r => r.id === id);
@@ -318,7 +332,11 @@ window.renderSetup = function () {
     },
     input: async (key, val) => {
       const [t, id, field] = key.split('|');
-      try { await ctlUpdateRow(t, Number(id), { [field]: val === null ? null : cxR(val) }); if (typeof ctlToast === 'function') ctlToast('Saved'); }
+      try {
+        await ctlUpdateRow(t, Number(id), { [field]: val === null ? null : cxR(val) });
+        if (t === 'ctrl_castel_categories' && field === 'default_amount' && val !== null) await _cxPerCorrectNow(Number(id), cxR(val));
+        if (typeof ctlToast === 'function') ctlToast('Saved');
+      }
       catch (e) { cxToastErr(e); }
       window.renderSetup();
     },
@@ -341,3 +359,111 @@ window.renderSetup = function () {
     });
   }
 };
+
+
+/* ── Casa Castel cost Soll by month (B22) ─────────────────────────────────────
+   The amount field = the Soll that applies now: typing there CORRECTS that period.
+   "+ New amount from a month" = a real change (new Abschlag): months before it stay.
+   Each period can be corrected (month / amount) or deleted (the one before runs on). */
+const _cxPer = { open: {} };                                // catId → period id | 'new' | null
+const _CX_PER_T = 'ctrl_castel_amount_history';
+const _cxPerMMYYYY = iso => { const d = _cxD(iso); return d ? d.slice(5, 7) + '.' + d.slice(0, 4) : ''; };
+function _cxPerParse(v) {                                   // 07.2026 · 7.2026 · 15.07.2026 · 2026-07 → 2026-07-01
+  const s = String(v || '').trim(), iso = (y, m) => (m >= 1 && m <= 12 && y > 2000 && y < 2100) ? y + '-' + String(m).padStart(2, '0') + '-01' : null;
+  let x = s.match(/^(\d{1,2})[.\/-](\d{4})$/); if (x) return iso(+x[2], +x[1]);
+  x = s.match(/^\d{1,2}\.(\d{1,2})\.(\d{4})$/); if (x) return iso(+x[2], +x[1]);
+  x = s.match(/^(\d{4})-(\d{1,2})/); if (x) return iso(+x[1], +x[2]);
+  return null;
+}
+const _cxPerIsStart = h => !!h && _cxD(h.valid_from) <= CX_PER_START;
+function _cxPerNowOf(c) { const t = cxToday(); return ctlCastelAmountAt(c, Number(t.slice(0, 4)), Number(t.slice(5, 7))); }
+
+function _cxPerHTML(c) {
+  const list = ctlCastelPeriods(c.id), st = _cxPer.open[c.id], now = _cxPerNowOf(c).period, k = c.id;
+  const lbl = h => _cxPerIsStart(h) ? 'from start' : 'from ' + ctlPerMonthLbl(h.valid_from);
+  const form = h => {
+    const start = _cxPerIsStart(h);
+    return '<div class="cx-set" style="margin-top:8px">' +
+      '<div class="cx-set__row"><span class="cx-set__k">Valid from</span>' + (start
+        ? '<span class="cx-r__sub">start</span>'
+        : '<label class="cx-f cx-f--l"><input type="text" inputmode="numeric" placeholder="MM.JJJJ" id="cxPerF-' + k + '" value="' + cxEsc(_cxPerMMYYYY(h ? h.valid_from : cxToday())) + '" aria-label="Valid from (month)"></label>') + '</div>' +
+      '<div class="cx-set__row"><span class="cx-set__k">Amount</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="cxPerA-' + k + '" value="' + (h ? cxE2(h.amount) : '') + '" aria-label="Amount"><span>€</span></label></div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px">' +
+        (h && !start ? '<button class="cx-btn cx-btn--del" style="flex:1" data-cx="perDel" data-c="' + k + '" data-r="' + cxEsc(h.id) + '">Delete</button>' : '') +
+        '<button class="cx-btn" style="flex:1" data-cx="perOpen" data-c="' + k + '" data-r="">Cancel</button>' +
+        '<button class="cx-btn cx-btn--p" style="flex:1" data-cx="perSave" data-c="' + k + '" data-r="' + (h ? cxEsc(h.id) : 'new') + '">Save</button></div></div>';
+  };
+  const rows = list.map(h => String(st) === String(h.id) ? form(h) :
+    '<div class="cx-kv" style="margin-top:4px"><span>' + cxEsc(lbl(h)) + (now && now.id === h.id ? ' · now' : '') + '</span>' +
+    '<span>' + cxEur(h.amount) + ' <button class="cx-link" style="display:inline;padding:0 0 0 8px" data-cx="perOpen" data-c="' + k + '" data-r="' + cxEsc(h.id) + '" aria-label="Correct"><i class="ti ti-pencil" aria-hidden="true"></i></button></span></div>').join('');
+  const add = st === 'new' ? form(null)
+    : '<button class="cx-link" data-cx="perOpen" data-c="' + k + '" data-r="new"><i class="ti ti-plus" aria-hidden="true"></i> New amount from a month</button>';
+  return (list.length ? '<div class="cx-set__k" style="margin-top:8px">Soll by month</div>' + rows : '') + add;
+}
+
+async function _cxPerInsert(row) {
+  const { data, error } = await _ctlSupa.from(_CX_PER_T).insert(row).select().single();
+  if (error) throw error;
+  (window._src.castelHist || (window._src.castelHist = [])).push(data);
+  return data;
+}
+async function _cxPerUpdate(id, f) {
+  const { data, error } = await _ctlSupa.from(_CX_PER_T).update(f).eq('id', id).select().single();
+  if (error) throw error;
+  const list = window._src.castelHist || [], i = list.findIndex(h => String(h.id) === String(id));
+  if (i >= 0) list[i] = data;
+  return data;
+}
+/* Setup amount = the Soll that applies this month (so everything else keeps reading the right one) */
+async function _cxPerSyncDefault(catId) {
+  const c = ctlCat(catId); if (!c) return;
+  const a = _cxPerNowOf(c);
+  if (a.period && Math.abs(_cxN0(c.default_amount) - a.amount) > 0.004) await ctlUpdateRow('ctrl_castel_categories', catId, { default_amount: cxR(a.amount) });
+}
+async function _cxPerSave(catId, rid) {
+  const c = ctlCat(catId); if (!c) return false;
+  const list = ctlCastelPeriods(catId);
+  const cur = rid && rid !== 'new' ? list.find(h => String(h.id) === String(rid)) : null;
+  const amt = cxParse(document.getElementById('cxPerA-' + catId)?.value);
+  if (amt === null) { ctlToast('Please enter the amount'); return false; }
+  const from = _cxPerIsStart(cur) ? CX_PER_START : _cxPerParse(document.getElementById('cxPerF-' + catId)?.value);
+  if (!from) { ctlToast('Please enter the month as MM.JJJJ'); return false; }
+  const same = list.find(h => h !== cur && _cxD(h.valid_from) === from);
+  if (cur) {                                                // correction of one period
+    if (same) { ctlToast('There is already an amount from ' + ctlPerMonthLbl(from)); return false; }
+    await _cxPerUpdate(cur.id, { valid_from: from, amount: cxR(amt) });
+    ctlLogHistory('category', catId, 'soll ' + from.slice(0, 7), cur.amount, cxR(amt));
+  } else {                                                  // new amount from a month
+    const before = same ? same.amount : ctlCastelAmountAt(c, Number(from.slice(0, 4)), Number(from.slice(5, 7))).amount;
+    if (!list.length) await _cxPerInsert({ category_id: catId, valid_from: CX_PER_START, amount: cxR(_cxN0(c.default_amount)) });
+    if (same) await _cxPerUpdate(same.id, { amount: cxR(amt) });
+    else await _cxPerInsert({ category_id: catId, valid_from: from, amount: cxR(amt) });
+    ctlLogHistory('category', catId, 'soll ' + from.slice(0, 7), before, cxR(amt));
+  }
+  await _cxPerSyncDefault(catId);
+  ctlSollReset();
+  ctlToast('Saved');
+  return true;
+}
+async function _cxPerDel(catId, rid) {
+  const h = ctlCastelPeriods(catId).find(x => String(x.id) === String(rid));
+  if (!h || _cxPerIsStart(h)) return false;
+  if (!confirm('Delete the amount from ' + ctlPerMonthLbl(h.valid_from) + '? The amount before it runs on.')) return false;
+  const { error } = await _ctlSupa.from(_CX_PER_T).delete().eq('id', h.id);
+  if (error) throw error;
+  window._src.castelHist = (window._src.castelHist || []).filter(x => String(x.id) !== String(h.id));
+  ctlLogHistory('category', catId, 'soll ' + _cxD(h.valid_from).slice(0, 7), h.amount, null);
+  await _cxPerSyncDefault(catId);
+  ctlSollReset();
+  ctlToast('Deleted');
+  return true;
+}
+/* Amount field typed in Setup → correct the period that applies now (no new period) */
+async function _cxPerCorrectNow(catId, amt) {
+  const c = ctlCat(catId); if (!c) return;
+  const a = _cxPerNowOf(c);
+  if (!a.period || Math.abs(_cxN0(a.period.amount) - amt) < 0.005) return;
+  await _cxPerUpdate(a.period.id, { amount: amt });
+  ctlLogHistory('category', catId, 'soll ' + _cxD(a.period.valid_from).slice(0, 7), a.period.amount, amt);
+  ctlSollReset();
+}
