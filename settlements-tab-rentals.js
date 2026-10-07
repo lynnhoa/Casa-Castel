@@ -29,7 +29,7 @@
 'use strict';
 
 const SR = {
-  year: null, filter: 'all', modal: null, costsOpen: false, dirty: false, open: {},
+  year: null, filter: 'all', modal: null, costsOpen: false, dirty: false, open: {}, setEdit: null,
   briefOpen: false,     // tenant panel: letter settings unfolded
   perEdit: false,       // tenant panel: Nutzungszeitraum being changed
   expEdit: false,       // HV panel: expected month being changed
@@ -793,7 +793,7 @@ const _srViaText = { zahlung: 'per bank transfer', miete: 'with the rent', kauti
    Modal:   one Wohnung — ① Jahresabrechnung (dates, cost table umlagefähig /
             nicht umlagefähig, WEG result + check) · ② NK per tenant.
             Tenant view (calculation, letter, PDF, Mark sent, Skip) and a
-            Settle dialog (paid · offset · skipped — amount may differ).
+            Settle line (Soll once · what really moved · Settled; 0 € = kept, still done).
    Everything stays editable; nothing is final.
    ══════════════════════════════════════════════════════════════ */
 
@@ -888,6 +888,7 @@ function _srSettledTxt(ti, weg) {
   const st = ti.st;
   if (ti.skipped) return 'skipped' + (ti.ts.settle_note ? ' · ' + ti.ts.settle_note : '');
   if (!st.res) return '';
+  if (st.booking && Number(st.booking.amount) < 0.005) return (weg ? 'nothing moved' : st.res.dir > 0 ? 'let go ' + stEur(st.res.amount) : 'kept ' + stEur(st.res.amount)) + ' · ' + stDM(st.booking.invoice_date);
   if (st.booking) {
     const verb = weg ? (st.res.dir > 0 ? 'received ' : 'paid ') : (st.res.dir > 0 ? 'paid you ' : 'returned ');
     const diff = Math.abs(Number(st.booking.amount) - st.res.amount) >= 0.005 ? ' (instead of ' + stEur(st.res.amount) + ')' : '';
@@ -1200,27 +1201,30 @@ function _srModalHtml() {
   if (m.view === 'hv') return _srHvView(c);
   return _srNkView(c);
 }
+const _srSetCount = rows => { const all = rows.filter(r => r.set && r.set.state !== 'locked'); return all.length ? ' · ' + all.filter(r => r.set.state === 'settled').length + ' of ' + all.length + ' settled' : ''; };
 function _srSumSheet(view) {
   const infos = _srYearModel(SR.year).map(_srCardInfo4), S = srSummary(infos);
   const close = 'data-sr="close"';
   if (view === 'sumTen') {
     const rows = S.tenRows.map(x => { const av = stAv(x.idx);
       return { av, ab: stAbbr(x.i.c.p.name), name: x.r.name, sub: x.i.c.p.name + ' · ' + stPer(x.r.l.from, x.r.l.to) + (x.r.k === 'open' ? ' · to send' : x.r.k === 'sent' ? ' · sent' : ''),
-               amount: Math.abs(x.v) >= 0.005 ? Math.abs(x.v) : 0, dir: x.v > 0 ? 1 : -1, act: 'data-sr="openTen" data-k="' + stEsc(x.i.c.ck) + '" data-id="' + stEsc(String(x.r.it.r.id)) + '"' }; });
+               amount: Math.abs(x.v) >= 0.005 ? Math.abs(x.v) : 0, dir: x.v > 0 ? 1 : -1, act: 'data-sr="openTen" data-k="' + stEsc(x.i.c.ck) + '" data-id="' + stEsc(String(x.r.it.r.id)) + '"',
+               set: Math.abs(x.v) >= 0.005 ? _srSetObj(x.i.c, x.r.st, x.r, false, x.idx) : null }; });
     return stSumSheet({ title: 'Tenants', sub: 'Rentals · periods ending in ' + SR.year, net: S.ten,
-      sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'),
+      sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back') + _srSetCount(rows),
       groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
                { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, close);
   }
   const rows = S.hgRows.map(x => { const av = stAv(x.idx), w = x.w, hv = x.i.hv || {};
     const act = 'data-sr="openHv" data-k="' + stEsc(x.i.c.ck) + '"';
-    if (w && w.amount) return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: (w.dir > 0 ? 'Guthaben · ' : 'Nachzahlung · ') + stPer(x.i.c.per.from, x.i.c.per.to), amount: w.amount, dir: w.dir, act };
+    if (w && w.amount) return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: (w.dir > 0 ? 'Guthaben · ' : 'Nachzahlung · ') + stPer(x.i.c.per.from, x.i.c.per.to), amount: w.amount, dir: w.dir, act,
+                                set: _srSetObj(x.i.c, x.i.hv.wegSt, null, true, x.idx) };
     if (w) return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: 'balanced · ' + stPer(x.i.c.per.from, x.i.c.per.to), chip: ['grey', 'balanced'], act };
     const over = hv.k === 'ueberfaellig';
     return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: x.i.c.running ? 'runs until ' + stDe(x.i.c.per.to) : hv.exp ? 'expected ' + (over ? '' : '~ ') + hv.exp.label : 'expected', chip: over ? ['red', 'overdue'] : ['grey', x.i.c.running ? 'running' : 'expected'], act, wait: true };
   });
   return stSumSheet({ title: 'Hausgeld', sub: 'Rentals · WEG Jahresabrechnungen · periods ending in ' + SR.year, net: S.hg,
-    sub2: rows.filter(r => r.amount && r.dir < 0).length + ' Nachzahlung · ' + rows.filter(r => r.amount && r.dir > 0).length + ' Guthaben · ' + rows.filter(r => r.wait).length + ' not in yet',
+    sub2: rows.filter(r => r.amount && r.dir < 0).length + ' Nachzahlung · ' + rows.filter(r => r.amount && r.dir > 0).length + ' Guthaben · ' + rows.filter(r => r.wait).length + ' not in yet' + _srSetCount(rows),
     groups: [{ title: 'You pay', rows: rows.filter(r => r.amount && r.dir < 0) }, { title: 'You get', rows: rows.filter(r => r.amount && r.dir > 0) },
              { title: 'Not in yet', rows: rows.filter(r => r.wait) }, { title: 'Balanced', rows: rows.filter(r => !r.amount && !r.wait) }] }, close);
 }
@@ -1496,121 +1500,127 @@ function _srTenView(c) {
           : '<button type="button" class="cx-btn cx-btn--p" data-sr="send"' + (x.missing ? ' disabled' : '') + '><i class="ti ti-send" aria-hidden="true"></i> Mark sent</button>') + '</div>';
 }
 
-/* View 3 · settle (tenant NK or WEG result) — paid · offset · skipped; amount may differ */
+/* View 3 · settle one line (tenant NK or WEG result) — the same settle line as in the Tenants / Hausgeld sheets */
 function _srSettleView(c) {
-  const m = SR.modal, weg = !!m.weg;
-  const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
-  let st, name, res, einbehalt = 0, saldo = 0, ti = null;
-  if (weg) { const l = _srLine(c, c.weg); st = l.state; res = st.res; name = 'Hausgeld · WEG'; }
-  else {
-    const it = c.items.find(x => String(x.r.id) === String(m.tid)); if (!it) return _srHead4('Settle', '', 'back') + '<div class="srm__b"><p class="cx-empty">Not found.</p></div>';
-    ti = _srTenInfo(c, it, rec, sum.ok); st = ti.st; res = st.res; name = ti.name;
-    if (ti.x) { einbehalt = ti.x.einbehalt; saldo = ti.x.saldo; }
+  const m = SR.modal, weg = !!m.weg, x = _srSetCtx(c.ck, m.tid, weg);
+  if (!x) return _srHead4('Settle', '', 'back') + '<div class="srm__b"><p class="cx-empty">Not found.</p></div>';
+  const title = 'Settle – ' + (weg ? 'Hausgeld · WEG' : x.ti.name), sub = (weg ? 'Hausgeld ' : 'NK ') + c.per.label + ' · ' + c.p.name;
+  let body;
+  if (x.ti && x.ti.skipped) {
+    body = '<div class="srm__state is-ok"><span><i class="ti ti-check" aria-hidden="true"></i> Skipped · counts as done</span><span class="srm__state-a">' +
+      '<button class="cx-link" data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(m.tid)) + '">undo</button></span></div>';
+  } else {
+    const o = _srSetObj(c, x.st, x.ti, weg);
+    body = o ? '<div class="srm__card st-sg">' + stSetRow(o) + '</div>' : '<p class="cx-empty">Nothing to settle – the result is balanced.</p>';
   }
-  const cur = m.choice || (ti && ti.skipped ? 'skip' : st.booking ? 'paid' : res && res.via && res.via !== 'zahlung' ? 'offset' : m.skip ? 'skip' : res ? 'paid' : 'skip');
-  const kauCase = false;                                     // Kaution + Einbehalt: Rentals › Tenants, by hand
-  const defAmt = st.booking ? Number(st.booking.amount) : res ? res.amount : 0;
-  const defDate = st.booking ? _srD(st.booking.invoice_date) : cxToday();
-  const paidLabel = weg ? (res && res.dir > 0 ? 'Received from the WEG' : 'Paid to the WEG') : kauCase ? 'Paid back (Guthaben + Kaution-Einbehalt)' : res && res.dir > 0 ? 'Paid by the tenant' : 'Paid back to the tenant';
-  const opt = (v, t, s, extra) => '<div class="srm__opt' + (cur === v ? ' is-on' : '') + '" data-sr="choice" data-v="' + v + '"><input type="radio" name="srSettle" id="srOpt_' + v + '" value="' + v + '"' + (cur === v ? ' checked' : '') + '/>' +
-    '<div class="srm__opt-b"><label class="srm__opt-t" for="srOpt_' + v + '">' + t + '</label><span class="srm__opt-s">' + s + '</span>' + (cur === v && extra ? extra : '') + '</div></div>';
-  const paidExtra = '<div class="sr-grid2 srm__opt-f"><div class="st-f"><label class="st-f__l" for="srSetAmt">Amount</label><span class="st-amt"><input class="st-in" inputmode="decimal" id="srSetAmt" value="' + stEsc(cxE2(defAmt)) + '"/><span>€</span></span></div>' +
-    '<div class="st-f"><label class="st-f__l" for="srSetDate">Date</label><input class="st-in" type="date" id="srSetDate" value="' + stEsc(defDate) + '"/></div></div>';
-  const offVia = weg ? '' : '<div class="st-seg st-seg--2 srm__opt-f" role="group">' + ['kaution', 'miete'].map(v => '<button type="button" class="st-seg__b' + ((m.offVia || (res && res.via !== 'zahlung' ? res.via : 'kaution')) === v ? ' is-on' : '') + '" data-sr="offVia" data-v="' + v + '">' + (v === 'kaution' ? 'Kaution' : 'Rent') + '</button>').join('') + '</div>';
-  const note = (weg ? (rec && rec.keys && rec.keys.weg_note) : ti && ti.ts.settle_note) || '';
-  let opts = '';
-  if (res && res.amount) opts += opt('paid', paidLabel, 'the amount may differ from the result' + (res ? ' (' + stEur(res.amount) + ')' : ''), paidExtra);
-  if (res && res.amount) opts += opt('offset', weg ? 'Settled with the Hausgeld' : 'Settled via Kaution or with the rent', weg ? 'no extra transfer' : 'you keep track of the Einbehalt in Rentals › Tenants', offVia);
-  if (!weg) opts += opt('skip', 'Skipped', 'not paid or not claimed – counts as settled', '');
-  const settledNow = weg ? (st.booking || (res && res.via !== 'zahlung')) : ti && (ti.k === 'settled');
-  return _srHead4('Settle – ' + name, (weg ? 'Hausgeld ' : 'NK ') + c.per.label + ' · ' + c.p.name + (res ? ' · result ' + _srMoneyTxt(res.dir, res.amount, weg) : ''), 'back') +
-    '<div class="srm__b"><div class="srm__one srm__narrow">' + opts +
-      '<label class="st-f"><span class="st-f__l">Note (optional)</span><input class="st-in" id="srSetNote" value="' + stEsc(note) + '"/></label>' +
-      '<p class="st-hint">You can change this any time: tap the line in the tracker.</p>' +
-      (settledNow ? '<button class="cx-link sr-skip" data-sr="unsettle">Undo – back to ' + (ti && ti.skipped ? 'open' : 'sent') + '</button>' : '') +
-    '</div></div>' +
-    '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sr="back">Cancel</button><button class="cx-btn cx-btn--p" data-sr="settleSave">Save</button></div>';
+  return _srHead4(title, sub, 'back') + '<div class="srm__b"><div class="srm__one srm__narrow">' + body +
+    '<p class="st-hint">What you type goes to Controlling on the day you tap Settled. 0 € counts as done.</p></div></div>';
 }
 
-/* Apply the settle choice */
-async function _srSettleSave(btn) {
-  const m = SR.modal, c = _srCards[m.ck], weg = !!m.weg; if (!c) return;
+/* The line behind a settle button: card, line, state, tenant info */
+function _srSetCtx(ck, tid, weg) {
+  const c = _srCards[ck]; if (!c) return null;
   const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
-  const choice = m.choice || (document.querySelector('#srPanel input[name="srSettle"]:checked') || {}).value;
-  const note = (document.getElementById('srSetNote') || {}).value || '';
-  let it = null, l, st, ti = null;
-  if (weg) { it = c.weg; l = _srLine(c, it); st = l.state; }
-  else { it = c.items.find(x => String(x.r.id) === String(m.tid)); if (!it) return; ti = _srTenInfo(c, it, rec, sum.ok); l = ti.l; st = ti.st; }
-  const res = st.res, b = st.booking;
+  if (weg) { if (!c.weg) return null; const l = _srLine(c, c.weg); return { c, it: c.weg, l, st: l.state, ti: null, rec }; }
+  const it = c.items.find(x => String(x.r.id) === String(tid)); if (!it) return null;
+  const ti = _srTenInfo(c, it, rec, sum.ok);
+  return { c, it, l: ti.l, st: ti.st, ti, rec };
+}
+/* One settle line for stSetRow — null when there is nothing to settle (balanced, no result yet for a WEG line) */
+function _srSetObj(c, st, ti, weg, idx) {
+  const res = st && st.res;
+  if (idx === undefined || idx === null) idx = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder).findIndex(p => p.id === c.p.id);
+  const tid = ti ? String(ti.it.r.id) : '';
+  const key = weg ? 'w:' + c.ck : 't:' + c.ck + ':' + tid;
+  const base = { key, ns: 'sr', attrs: 'data-k="' + stEsc(c.ck) + '"' + (weg ? ' data-w="1"' : ' data-id="' + stEsc(tid) + '"'),
+    av: stAv(idx), ab: stAbbr(c.p.name), name: weg ? c.p.name : ti.name, party: weg ? 'WEG' : 'tenant',
+    sub: weg ? 'WEG · ' + stPer(c.per.from, c.per.to) : c.p.name + ' · ' + stPer(ti.l.from, ti.l.to),
+    openAttr: weg ? 'data-sr="openHv" data-k="' + stEsc(c.ck) + '"' : 'data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(tid) + '"' };
+  if (!res) {
+    if (weg || !ti.x || ti.x.missing || Math.abs(ti.x.saldo || 0) < 0.005) return null;
+    return Object.assign(base, { state: 'locked', dir: ti.x.saldo > 0 ? 1 : -1, soll: Math.abs(ti.x.saldo), lockText: 'Send the NK letter first' });
+  }
+  if (!res.amount || !res.dir) return null;
+  const b = st.booking, done = st.k === 'erledigt';
+  return Object.assign(base, { state: SR.setEdit === key ? 'edit' : done ? 'settled' : 'open', dir: res.dir, soll: res.amount,
+    ist: b ? cxR(b.amount) : done ? res.amount : null, date: b ? _srD(b.invoice_date) : null,
+    note: done && !b && SR.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent', hausgeld: 'Settled with the Hausgeld' }[res.via] || null) : null });
+}
+/* Settled: the typed amount (0 is fine) → booking in Controlling today → the line is done */
+async function _srSetAmount(ck, tid, weg, raw, btn) {
+  const x = _srSetCtx(ck, tid, weg); if (!x) return;
+  const res = x.st.res; if (!res || !res.amount) { stSay('Nothing to settle'); return; }
+  const s = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!s) { stSay('Type the amount – 0 is fine'); return; }
+  const parsed = cxParse(s);
+  if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
+  const amt = cxR(Math.abs(parsed)), date = cxToday(), b = x.st.booking;
   if (btn) btn.disabled = true;
   try {
-    const setVia = async via => {
-      await _ctlSupa.from('abr_results').update({ settle_via: via }).eq('id', res.id);
-      res.db.settle_via = via;
-      await _stUpsertSettlement(l, { settled_via: via });
-    };
-    const dropBooking = async () => { if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); } };
-    if (choice === 'paid') {
-      const amt = cxR(Math.abs(cxParse((document.getElementById('srSetAmt') || {}).value || '0')));
-      const date = _srD((document.getElementById('srSetDate') || {}).value) || cxToday();
-      if (!(amt > 0)) { stSay('Please enter the amount'); if (btn) btn.disabled = false; return; }
-      {
-        if (res.via !== 'zahlung') await setVia('zahlung');
-        if (b) {
-          const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
-          const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-        } else {
-          const label = weg ? 'Hausgeld ' + c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG') : 'NK ' + c.per.label + ' · ' + (ti ? _srTName(ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
-          const d = await ctlAddOneTime({ property_id: c.p.id, invoice_date: date, item: label, amount: amt,
-            kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
-          window._src.abrPay = (window._src.abrPay || []).concat([d]);
-        }
-      }
-      await _stConfirmSettled(l, 'zahlung', date);
-    } else if (choice === 'offset') {
-      await dropBooking();
-      const via = weg ? 'hausgeld' : (m.offVia || (res.via !== 'zahlung' ? res.via : 'kaution'));
-      await setVia(via);
-      await _stConfirmSettled(l, via, cxToday());
-      if (weg && rec) { rec.weg_via = 'hausgeld'; }
-    } else if (choice === 'skip') {
-      await dropBooking();
-      if (res) { await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.id); res.db.status = 'storniert'; }
-      await _stUpsertSettlement(l, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null, result_id: null });
+    if (res.via !== 'zahlung') {
+      await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung';
+      await _stUpsertSettlement(x.l, { settled_via: 'zahlung' });
     }
-    // the note lives with the Jahresabrechnung record
-    if (rec) {
-      if (weg) { rec.keys = rec.keys || {}; rec.keys.weg_note = note || null; }
-      else { rec.tenants = rec.tenants || {}; const ts = rec.tenants[String(it.r.tenant_id)] = rec.tenants[String(it.r.tenant_id)] || {}; ts.settle_note = note || null; }
-      try { await srSaveRow(rec); } catch (e) {}
+    if (b) {
+      const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
+      const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
+    } else {
+      const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
+                        : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
+      const d = await ctlAddOneTime({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
+        kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
+      window._src.abrPay = (window._src.abrPay || []).concat([d]);
     }
-    ctlSettlementInvalidate();
-    stSay('Saved');
-    SR.modal = m.from === 'tracker' ? null : Object.assign({}, m, { view: m.back || 'nk', choice: null, offVia: null, skip: null });
-    if (SR.modal && SR.modal.view === 'tenant' && m.tid) {                     // the line id may have changed (virtual → stored)
-      const again = _srYearModel(SR.year).find(x => x.ck === m.ck);
-      const nit = again && again.items.find(x => x.r.tenant_id && it.r.tenant_id && String(x.r.tenant_id) === String(it.r.tenant_id) && _srD(x.r.period_from) === _srD(it.r.period_from));
-      if (nit) SR.modal.tid = String(nit.r.id);
-    }
+    await _stConfirmSettled(x.l, 'zahlung', date);
   } catch (err) { stSay('Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
-  stRenderRentals();
+  SR.setEdit = null; ctlSettlementInvalidate(); stSay('Settled');
+  _srAfterSettle(x);
 }
-async function _srUnsettle() {
-  const m = SR.modal, c = _srCards[m.ck], weg = !!m.weg; if (!c) return;
-  const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
-  let l, st, ti = null;
-  if (weg) { l = _srLine(c, c.weg); st = l.state; }
-  else { const it = c.items.find(x => String(x.r.id) === String(m.tid)); if (!it) return; ti = _srTenInfo(c, it, rec, sum.ok); l = ti.l; st = ti.st; }
+/* Back to open: the booking in Controlling goes too (a skipped NK comes back as open) */
+async function _srSetUndo(ck, tid, weg) {
+  const x = _srSetCtx(ck, tid, weg); if (!x) return;
+  const b = x.st.booking, skipped = !!(x.ti && x.ti.skipped);
+  if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open',
+    text: b ? 'The booking of ' + stDe(b.invoice_date) + ' (' + stEur(cxR(b.amount)) + ') in Controlling is removed too.' : '' }))) return;
   try {
-    if (ti && ti.skipped) { await _stUpsertSettlement(l, { status: 'offen' }); }
+    if (skipped) await _stUpsertSettlement(x.l, { status: 'offen' });
     else {
-      if (st.booking) { await ctlDeleteOneTime(st.booking.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== st.booking.id); }
-      if (st.res && st.res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', st.res.id); st.res.db.settle_via = 'zahlung'; await _stUpsertSettlement(l, { settled_via: 'zahlung' }); }
-      await _stUpsertSettlement(l, { status: 'verschickt' });                 // back to sent: waiting again
+      if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+      if (x.st.res && x.st.res.via !== 'zahlung') {
+        await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', x.st.res.id); x.st.res.db.settle_via = 'zahlung';
+        await _stUpsertSettlement(x.l, { settled_via: 'zahlung' });
+      }
+      await _stUpsertSettlement(x.l, { status: 'verschickt' });                 // back to sent: waiting again
     }
   } catch (err) { stSay('Could not undo — ' + (err.message || err)); return; }
-  ctlSettlementInvalidate(); stSay('Undone');
-  SR.modal = Object.assign({}, m, { choice: null }); stRenderRentals();
+  SR.setEdit = null; ctlSettlementInvalidate(); stSay('Back to open');
+  stRenderRentals();
+}
+/* Skip this NK (no letter, no result) — counts as done, undo brings it back */
+async function _srSkipNk(ck, tid) {
+  const x = _srSetCtx(ck, tid, false); if (!x) return;
+  if (!(await stConfirm({ title: 'Skip this NK?', ok: 'Skip', text: 'No letter and no result – it counts as done. You can undo it later.' }))) return;
+  try {
+    const res = x.st.res, b = x.st.booking;
+    if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+    if (res) { await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.id); res.db.status = 'storniert'; }
+    await _stUpsertSettlement(x.l, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null, result_id: null });
+  } catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
+  ctlSettlementInvalidate(); stSay('Skipped');
+  stRenderRentals();
+}
+/* After Settled: a settle window goes back to where it came from; a sheet stays open */
+function _srAfterSettle(x) {
+  const m = SR.modal;
+  if (m && m.view === 'settle') {
+    SR.modal = m.from === 'tracker' ? null : Object.assign({}, m, { view: m.back || 'nk' });
+    if (SR.modal && SR.modal.view === 'tenant' && x.it && x.it.r) {           // the line id may have changed (virtual → stored)
+      const again = _srYearModel(SR.year).find(y => y.ck === m.ck);
+      const nit = again && again.items.find(y => y.r.tenant_id && x.it.r.tenant_id && String(y.r.tenant_id) === String(x.it.r.tenant_id) && _srD(y.r.period_from) === _srD(x.it.r.period_from));
+      if (nit) SR.modal.tid = String(nit.r.id);
+    }
+  }
+  stRenderRentals();
 }
 
 /* Save ① Jahresabrechnung */
@@ -1657,7 +1667,7 @@ function _srOpen(modal) {
 }
 async function _srCloseModal() {
   if (SR.dirty && !(await stConfirm({ title: 'Discard your changes?', ok: 'Discard', danger: true }))) return false;
-  SR.modal = null; SR.draft = null; SR.dirty = false; SR.sel = null;
+  SR.modal = null; SR.draft = null; SR.dirty = false; SR.sel = null; SR.setEdit = null;
   stRenderRentals(); return true;
 }
 function srOpenFromTracking(l) { return false; }             // the Tracking tab is gone; kept for older callers
@@ -1701,12 +1711,17 @@ function srIsRentalsLine() { return false; }
       else _srOpen({ ck: b.dataset.k, from: 'tracker' });
       return;
     }
+    if (a === 'settle' && b.dataset.skip === '1') { e.stopPropagation(); await _srSkipNk(b.dataset.k, b.dataset.id); return; }
+    if (a === 'setOk') { e.stopPropagation(); await _srSetAmount(b.dataset.k, b.dataset.id, b.dataset.w === '1', stSetVal(b), b); return; }
+    if (a === 'setEdit') { e.stopPropagation(); SR.setEdit = b.dataset.w === '1' ? 'w:' + b.dataset.k : 't:' + b.dataset.k + ':' + b.dataset.id; _srRerenderPanel();
+      const inp = document.querySelector('#srPanel input[data-stset="' + SR.setEdit + '"]'); if (inp) { inp.focus(); inp.select(); } return; }
+    if (a === 'setCancel') { e.stopPropagation(); SR.setEdit = null; _srRerenderPanel(); return; }
+    if (a === 'setUndo') { e.stopPropagation(); await _srSetUndo(b.dataset.k, b.dataset.id, b.dataset.w === '1'); return; }
     if (a === 'settle') {
       e.stopPropagation();
       const from = SR.modal ? SR.modal.view : 'tracker';
-      SR.modal = { ck: b.dataset.k, view: 'settle', tid: b.dataset.id || null, weg: b.dataset.w === '1', from: from === 'tracker' ? 'tracker' : from, back: from === 'tracker' ? null : from, skip: b.dataset.skip === '1' };
-      if (SR.modal.skip) SR.modal.choice = 'skip';
-      stRenderRentals(); return;
+      SR.modal = { ck: b.dataset.k, view: 'settle', tid: b.dataset.id || null, weg: b.dataset.w === '1', from: from === 'tracker' ? 'tracker' : from, back: from === 'tracker' ? null : from };
+      SR.setEdit = null; stRenderRentals(); return;
     }
     if (a === 'tick') {
       e.preventDefault(); e.stopPropagation();
@@ -1742,8 +1757,9 @@ function srIsRentalsLine() { return false; }
     if (a === 'close') { _srCloseModal(); return; }
     if (a === 'back') {
       const m = SR.modal;
-      if (m.view === 'settle' && m.from === 'tracker') { SR.modal = null; stRenderRentals(); return; }
-      SR.modal = Object.assign({}, m, { view: m.view === 'settle' ? (m.back || 'nk') : 'nk', choice: null, weg: false });
+      if (m.view === 'settle' && m.from === 'tracker') { SR.modal = null; SR.setEdit = null; stRenderRentals(); return; }
+      SR.setEdit = null;
+      SR.modal = Object.assign({}, m, { view: m.view === 'settle' ? (m.back || 'nk') : 'nk', weg: false });
       SR.briefOpen = false; SR.perEdit = false; stRenderRentals(); return;
     }
     if (a === 'pick') {
@@ -1814,11 +1830,6 @@ function srIsRentalsLine() { return false; }
       const it = c.items.find(x => String(x.r.id) === String(SR.modal.tid)); if (!it) return;
       await _stReopen(_srLine(c, it)); ctlSettlementInvalidate(); stRenderRentals(); return;
     }
-    // settle view
-    if (a === 'choice') { const v = b.dataset.v || b.value; if (SR.modal.choice !== v) { SR.modal.choice = v; _srRerenderPanel(); } return; }
-    if (a === 'offVia') { SR.modal.offVia = b.dataset.v; _srRerenderPanel(); return; }
-    if (a === 'settleSave') { await _srSettleSave(b); return; }
-    if (a === 'unsettle') { await _srUnsettle(); return; }
   });
   // row click anywhere (not on a control) opens the modal
   host.addEventListener('click', e => {

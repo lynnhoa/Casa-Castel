@@ -1071,3 +1071,23 @@ button.st-sg__r { cursor: pointer; }
 .stc__b { display: flex; flex-direction: column; gap: 8px; }
 .stc__b .cx-btn { height: 46px; width: 100%; }
 .stc__d { background: none; color: #A0533A; border: .5px solid #D9957C; }
+
+/* Settle right in the sheet: the Soll once (green = comes to you · red = goes out), what really happened, Settled */
+.st-set { display: flex; flex-direction: column; gap: 10px; padding: 12px 0 14px; border-top: .5px solid var(--cx-line); }
+.srm__card > .st-set:first-child { border-top: none; padding-top: 0; }
+.st-set__top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.st-set__who { background: none; border: none; padding: 0; font: inherit; text-align: left; color: inherit; cursor: pointer; }
+.st-set__soll { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 8px 12px; border-radius: 10px; }
+.st-set__soll span { font-size: 12px; font-weight: 500; line-height: 1.3; }
+.st-set__soll b { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 21px; font-weight: 500; white-space: nowrap; line-height: 1.1; }
+.st-set__soll.pos { background: #EEF5E6; } .st-set__soll.pos span { color: #3B6D11; } .st-set__soll.pos b { color: #27500A; }
+.st-set__soll.neg { background: #F7E9E2; } .st-set__soll.neg span { color: #8A3B22; } .st-set__soll.neg b { color: #712B13; }
+.st-set__f { display: grid; grid-template-columns: minmax(0, 1fr) 108px; gap: 8px; align-items: end; }
+.st-set__btn { height: 44px; width: 100%; padding: 0 8px; }
+.st-set__done { height: 44px; width: 100%; border-radius: 8px; background: #EEF0DD; color: #4A5724; border: .5px solid #DCE2C2; font-size: 11px; font-weight: 500;
+  letter-spacing: .07em; text-transform: uppercase; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.st-set .st-in[readonly], .st-set .st-in:disabled { background: #F5F2ED; color: #6E6357; }
+.st-set__note { margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 11.5px; line-height: 1.45; color: var(--cx-mut); min-height: 17px; }
+.st-set__note.is-kept { color: #6E5230; }
+.st-set__a { display: flex; gap: 14px; flex-shrink: 0; }
+.st-set__a .cx-link { color: var(--cx-acc); font-weight: 500; font-size: 12px; padding: 0; }

@@ -79,7 +79,7 @@ function stMoneySay(dir, amount, name) {
 }
 
 /* ── Summary sheet (behind a tile) ────────────────────────── */
-/* o = { title, sub, net, sub2, groups: [{ title, rows: [{ av, ab, name, sub, amount, dir, chip }] }] } */
+/* o = { title, sub, net, sub2, groups: [{ title, rows: [{ av, ab, name, sub, amount, dir, chip, set (→ settle line) }] }] } */
 function stSumSheet(o, closeAttr) {
   const k = o.net === null || o.net === undefined ? 'nil' : o.net > 0.004 ? 'in' : o.net < -0.004 ? 'out' : 'nil';
   const hero = '<div class="st-hero st-hero--' + k + '"><span>' + (k === 'in' ? 'you get' : k === 'out' ? 'you pay' : o.net === null ? 'nothing yet' : 'balanced') + '</span>' +
@@ -89,7 +89,7 @@ function stSumSheet(o, closeAttr) {
     const gk = tot > 0.004 ? 'pos' : tot < -0.004 ? 'neg' : '';
     return '<div class="srm__card st-sg"><div class="srm__ch"><p class="srm__ct">' + stEsc(g.title) + '</p>' +
       (g.rows.some(r => r.amount) ? '<span class="srm__cs ' + gk + '">' + stEur(cxR(Math.abs(tot))) + '</span>' : '<span class="srm__cs">' + g.rows.length + '</span>') + '</div>' +
-      g.rows.map(r => '<' + (r.act ? 'button ' + r.act : 'div') + ' class="st-sg__r"><span class="sc-av sc-av--s" style="background:' + r.av[0] + ';color:' + r.av[1] + '">' + stEsc(r.ab) + '</span>' +
+      g.rows.map(r => r.set ? stSetRow(r.set) : '<' + (r.act ? 'button ' + r.act : 'div') + ' class="st-sg__r"><span class="sc-av sc-av--s" style="background:' + r.av[0] + ';color:' + r.av[1] + '">' + stEsc(r.ab) + '</span>' +
         '<span class="st-sg__m"><span class="st-sg__n">' + stEsc(r.name) + '</span><span class="st-sg__s">' + stEsc(r.sub || '') + '</span></span>' +
         (r.amount ? '<span class="st-sg__a ' + (r.dir > 0 ? 'pos' : 'neg') + '">' + stEur(cxR(r.amount)) + '</span>' : r.chip ? '<span class="sc-chip sc-chip--' + r.chip[0] + '">' + stEsc(r.chip[1]) + '</span>' : '') +
         '</' + (r.act ? 'button' : 'div') + '>').join('') + '</div>';
@@ -98,6 +98,59 @@ function stSumSheet(o, closeAttr) {
     '<button class="srm__x" ' + closeAttr + ' aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>' +
     '<div class="srm__b"><div class="srm__one">' + hero + (groups || '<p class="cx-empty">Nothing yet.</p>') + '</div></div>';
 }
+
+/* ── Settle right in the sheet ─────────────────────────────── */
+/* The Soll once (green = money comes to you · red = money goes out), what really happened, Settled.
+   You always type the plain amount; the direction comes from the result. 0 € = nothing moved, still done.
+   o = { key, ns ('sr'|'sc'), attrs (data attributes naming the line), av, ab, name, sub, dir, soll, party ('tenant'|'WEG'|<company>),
+         state ('open'|'edit'|'settled'|'locked'|'booked'), ist, date, note, lockText, openAttr } */
+function stSetNote(o) {
+  if (o.note) return o.note;
+  const inn = o.dir > 0, ten = o.party === 'tenant', d = o.date ? ' · ' + stDe(o.date) : '';
+  if (o.state === 'locked') return o.lockText || 'Send the NK letter first';
+  if (o.state === 'open') return ten ? (inn ? '0 € means you let it go' : '0 € means you keep it') : '0 € if it was offset with the Hausgeld';
+  if (o.state === 'edit') return 'Change the amount, then tap Settled';
+  if (o.state === 'booked') return 'Booked in Controlling' + d;
+  const ist = cxR(o.ist || 0), soll = cxR(o.soll), diff = cxR(soll - ist);
+  if (Math.abs(diff) < 0.005) return (inn ? 'Received in full' : ten ? 'Paid back in full' : 'Paid in full') + d;
+  if (ist < 0.005) return (ten ? (inn ? 'Let go ' + stEur(soll) + ' · not received' : 'Kept ' + stEur(soll) + ' · not paid back') : 'Nothing moved · offset with the Hausgeld') + d;
+  if (diff > 0) return (ten ? (inn ? 'Received ' + stEur(ist) + ' · let go ' + stEur(diff) : 'Paid back ' + stEur(ist) + ' · kept ' + stEur(diff))
+                            : (inn ? 'Received ' : 'Paid ') + stEur(ist) + ' · ' + stEur(diff) + ' less than the Soll') + d;
+  return (inn ? 'Received ' : ten ? 'Paid back ' : 'Paid ') + stEur(ist) + ' · ' + stEur(-diff) + ' more than the Soll' + d;
+}
+function stSetRow(o) {
+  const inn = o.dir > 0, ten = o.party === 'tenant';
+  const word = ten ? (inn ? 'Nachzahlung from tenant' : 'Guthaben to tenant') : (inn ? 'Guthaben from ' : 'Nachzahlung to ') + o.party;
+  const lab = inn ? 'Actually received' : ten ? 'Actually paid back' : 'Actually paid';
+  const id = 'stSet_' + String(o.key).replace(/[^A-Za-z0-9_-]/g, '_');
+  const act = a => 'data-' + o.ns + '="' + a + '" ' + o.attrs;
+  const edit = o.state === 'open' || o.state === 'edit', done = o.state === 'settled' || o.state === 'booked';
+  const val = done || o.state === 'edit' ? cxE2(cxR(o.ist || 0)) : '';
+  const field = '<label class="st-f" for="' + id + '"><span class="st-f__l">' + lab + '</span><span class="st-amt"><input class="st-in" id="' + id + '" inputmode="decimal" autocomplete="off" value="' + stEsc(val) + '"' +
+    (edit ? ' data-stset="' + stEsc(o.key) + '"' : o.state === 'locked' ? ' disabled' : ' readonly') + '/><span>€</span></span></label>';
+  const btn = edit ? '<button type="button" class="cx-btn cx-btn--p st-set__btn" ' + act('setOk') + '>Settled</button>'
+    : o.state === 'locked' ? '<button type="button" class="cx-btn cx-btn--s st-set__btn" ' + (o.openAttr || '') + '>Open</button>'
+    : '<span class="st-set__done"><i class="ti ti-check" aria-hidden="true"></i>' + (o.state === 'booked' ? 'Booked' : 'Settled') + '</span>';
+  const kept = o.state === 'settled' && !o.note && cxR(o.ist || 0) < cxR(o.soll) - 0.004;
+  const links = o.state === 'settled' ? '<span class="st-set__a"><button type="button" class="cx-link" ' + act('setEdit') + '>edit</button><button type="button" class="cx-link" ' + act('setUndo') + '>undo</button></span>'
+    : o.state === 'edit' ? '<span class="st-set__a"><button type="button" class="cx-link" ' + act('setCancel') + '>cancel</button></span>' : '';
+  const who = '<span class="st-sg__n">' + stEsc(o.name) + '</span><span class="st-sg__s">' + stEsc(o.sub || '') + '</span>';
+  return '<div class="st-set">' +
+    '<div class="st-set__top"><span class="sc-av sc-av--s" style="background:' + o.av[0] + ';color:' + o.av[1] + '">' + stEsc(o.ab) + '</span>' +
+      (o.openAttr ? '<button type="button" class="st-sg__m st-set__who" ' + o.openAttr + '>' + who + '</button>' : '<span class="st-sg__m">' + who + '</span>') + '</div>' +
+    '<div class="st-set__soll ' + (inn ? 'pos' : 'neg') + '"><span>Soll · ' + stEsc(word) + '</span><b>' + stEur(cxR(o.soll)) + '</b></div>' +
+    '<div class="st-set__f">' + field + btn + '</div>' +
+    '<p class="st-set__note' + (kept ? ' is-kept' : '') + '"><span>' + stEsc(stSetNote(o)) + '</span>' + links + '</p></div>';
+}
+/* The typed amount of the line a button belongs to */
+const stSetVal = b => { const r = b && b.closest('.st-set'), i = r && r.querySelector('input[data-stset]'); return i ? i.value : null; };
+/* Enter in the amount = Settled */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !e.target.closest) return;
+  const inp = e.target.closest('input[data-stset]'); if (!inp) return;
+  e.preventDefault();
+  const b = inp.closest('.st-set').querySelector('.st-set__btn'); if (b) b.click();
+});
 
 /* ── In-app confirm sheet (replaces confirm() / alert()) ──── */
 /* stConfirm({ title, text, ok, danger }) → Promise<boolean> */

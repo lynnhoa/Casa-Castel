@@ -309,6 +309,7 @@ function scSay(t) {
     if (t.skipped) return ['', 'skipped'];
     const r = t.st.res, b = t.st.booking;
     if (!r) return ['', 'settled'];
+    if (b && Number(b.amount) < 0.005) return ['', r.dir > 0 ? 'let go ' + scE(r.amount) : 'kept ' + scE(r.amount)];
     if (b) return [r.dir > 0 ? 'pos' : 'neg', (r.dir > 0 ? 'paid you ' : 'returned ') + scE(b.amount)];
     if (!r.dir || !r.amount) return ['', 'balanced'];
     const how = r.via === 'kaution' ? ' via Kaution' : r.via === 'miete' ? ' with the rent' : '';
@@ -381,20 +382,23 @@ function scSumTen(M) {
   const rows = M.ten.filter(t => t.k !== 'none' && !t.skipped).map(t => {
     const v = t.st && t.st.res ? t.st.res.dir * t.st.res.amount : t.saldo, c = scAv(t.room);
     return { av: c, ab: scAbbr(t.room), name: t.name, sub: t.room + ' · ' + stPer(t.from, t.to) + (t.k === 'open' && !M.locked ? ' · preview' : ''),
-             amount: Math.abs(v) >= 0.005 ? Math.abs(v) : 0, dir: v > 0 ? 1 : -1, act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"' };
+             amount: Math.abs(v) >= 0.005 ? Math.abs(v) : 0, dir: v > 0 ? 1 : -1, act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"',
+             set: Math.abs(v) >= 0.005 ? scSetObj(t, M) : null };
   });
-  const mo = M.money;
+  const mo = M.money, all = rows.filter(r => r.set && r.set.state !== 'locked');
+  const cnt = all.length ? ' · ' + all.filter(r => r.set.state === 'settled').length + ' of ' + all.length + ' settled' : '';
   return stSumSheet({ title: 'Tenants', sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview'), net: mo.ten,
-    sub2: mo.ten === null ? 'no house costs yet' : mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back'),
+    sub2: mo.ten === null ? 'no house costs yet' : mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back') + cnt,
     groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
              { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');
 }
 function scSumHg(M) {
   const rows = M.money.hgLines.map((l, i) => {
     const info = l.info || {};
-    return { av: stAv(i + 5), ab: String(l.label || '?').slice(0, 2).toUpperCase(), name: l.label,
-             sub: [info.company, info.date ? stDe(info.date) : ''].filter(Boolean).join(' · ') || 'Jahresabrechnung',
-             amount: Math.abs(l.total), dir: l.total > 0 ? -1 : 1 };
+    const av = stAv(i + 5), ab = String(l.label || '?').slice(0, 2).toUpperCase(), dir = l.total > 0 ? -1 : 1, amount = Math.abs(l.total);
+    return { av, ab, name: l.label, sub: [info.company, info.date ? stDe(info.date) : ''].filter(Boolean).join(' · ') || 'Jahresabrechnung', amount, dir,
+             set: amount >= 0.005 ? { key: 'h:' + i, ns: 'sc', attrs: '', av, ab, name: l.label, sub: 'Jahresabrechnung', dir, soll: amount, ist: amount,
+                                      party: info.company || l.label, state: 'booked', date: info.date || null } : null };
   });
   return stSumSheet({ title: 'Hausgeld', sub: 'Casa Castel · Strom · Gas · Wasser · ' + stNkLabel(M.per.from, M.per.to), net: M.money.hg,
     sub2: rows.length ? rows.filter(r => r.dir < 0).length + ' Nachzahlung · ' + rows.filter(r => r.dir > 0).length + ' Guthaben' : 'no Jahresabrechnung yet',
@@ -636,25 +640,75 @@ function scAddrDefault(t) {
 
 /* ── Settle ── */
 function scSettleView(M, m) {
-  const t = M.ten.find(x => x.key === m.key); if (!t) return scHead('Settle', '', 'back');
-  const res = t.st && t.st.res, b = t.st && t.st.booking;
-  const cur = m.choice || (t.skipped ? 'skip' : b ? 'paid' : res && res.via !== 'zahlung' ? res.via : res ? 'paid' : 'skip');
-  const opt = (v, ti, s, extra) => '<div class="srm__opt' + (cur === v ? ' is-on' : '') + '" data-sc="choice" data-v="' + v + '"><input type="radio" name="scSettle" value="' + v + '"' + (cur === v ? ' checked' : '') + '/>' +
-    '<div class="srm__opt-b"><span class="srm__opt-t">' + ti + '</span><span class="srm__opt-s">' + s + '</span>' + (cur === v && extra ? extra : '') + '</div></div>';
-  const amt = b ? Number(b.amount) : res ? res.amount : 0;
-  const paidX = '<div class="sr-grid2 srm__opt-f"><label class="st-f"><span class="st-f__l">Amount</span><span class="st-amt"><input class="st-in" inputmode="decimal" id="scSetAmt" value="' + stEsc(cxE2(amt)) + '"/><span>€</span></span></label>' +
-    '<label class="st-f"><span class="st-f__l">Date</span><input class="st-in" type="date" id="scSetDate" value="' + stEsc(b ? scD(b.invoice_date) : cxToday()) + '"/></label></div>';
-  let opts = '';
-  if (res && res.amount) {
-    opts += opt('paid', res.dir > 0 ? 'Paid by ' + stEsc(scFirst(t.name)) : 'Paid back to ' + stEsc(scFirst(t.name)), 'by transfer · the amount may differ from the result (' + scE(res.amount) + ')', paidX);
-    opts += opt('kaution', 'Settled via Kaution', 'you keep track of the Einbehalt in Casa Castel › Tenants', '');
-    opts += opt('miete', 'Settled with the rent', 'no extra transfer', '');
+  const t = M.ten.find(x => x.key === m.key); if (!t) return scHead('Settle', '', 'backTen');
+  const o = scSetObj(t, M);
+  const body = t.skipped ? '<div class="srm__state is-ok"><span><i class="ti ti-check" aria-hidden="true"></i> Skipped · counts as done</span><span class="srm__state-a">' +
+      '<button class="cx-link" data-sc="setUndo" data-k="' + stEsc(t.key) + '">undo</button></span></div>'
+    : o ? '<div class="srm__card st-sg">' + stSetRow(o) + '</div>' : '<p class="cx-empty">Nothing to settle – the result is balanced.</p>';
+  return scHead('Settle – ' + t.name, stNkLabel(t.from, t.to) + ' · ' + t.room, 'backTen') +
+    '<div class="srm__b"><div class="srm__one srm__narrow">' + body + '<p class="st-hint">What you type goes to Controlling on the day you tap Settled. 0 € counts as done.</p></div></div>';
+}
+/* One settle line for stSetRow — null when there is nothing to settle here (balanced, added tenant) */
+function scSetObj(t, M) {
+  if (t.extra || !t.line) return null;
+  const res = t.st && t.st.res, key = 'c:' + t.key;
+  const base = { key, ns: 'sc', attrs: 'data-k="' + stEsc(t.key) + '"', av: scAv(t.room), ab: scAbbr(t.room), name: t.name, party: 'tenant',
+                 sub: t.room + ' · ' + stPer(t.from, t.to), openAttr: 'data-sc="ten" data-k="' + stEsc(t.key) + '"' };
+  if (!res) {
+    if (t.k !== 'open' || Math.abs(t.saldo || 0) < 0.005) return null;
+    return Object.assign(base, { state: 'locked', dir: t.saldo > 0 ? 1 : -1, soll: Math.abs(t.saldo), sub: base.sub + (M.locked ? '' : ' · preview'),
+                                 lockText: M.locked ? 'Send the NK letter first' : 'Lock the house costs, then send the letter' });
   }
-  opts += opt('skip', 'Skipped', 'not paid or not claimed – counts as done', '');
-  return scHead('Settle – ' + t.name, stNkLabel(t.from, t.to) + ' · ' + t.room + (res ? ' · ' + (res.dir > 0 ? 'Nachzahlung ' : 'Guthaben ') + scE(res.amount) : ''), 'backTen') +
-    '<div class="srm__b"><div class="srm__one srm__narrow">' + opts +
-      '<label class="st-f"><span class="st-f__l">Note (optional)</span><input class="st-in" id="scSetNote" value="' + stEsc(t.set.settle_note || '') + '"/></label></div></div>' +
-    '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sc="backTen">Cancel</button><button class="cx-btn cx-btn--p" data-sc="settleSave" data-k="' + stEsc(t.key) + '">Save</button></div>';
+  if (!res.amount || !res.dir) return null;
+  const b = t.st.booking, done = t.k === 'done';
+  return Object.assign(base, { state: SC.setEdit === key ? 'edit' : done ? 'settled' : 'open', dir: res.dir, soll: res.amount,
+    ist: b ? cxR(b.amount) : done ? res.amount : null, date: b ? scD(b.invoice_date) : null,
+    note: done && !b && SC.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent' }[res.via] || null) : null });
+}
+/* Settled: the typed amount (0 is fine) → booking in Controlling today → the line is done */
+async function scSetAmount(key, raw, btn) {
+  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
+  const st = t.st || {}, res = st.res, b = st.booking;
+  if (!res || !res.amount) { stSay('Nothing to settle'); return; }
+  const s = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!s) { stSay('Type the amount – 0 is fine'); return; }
+  const parsed = cxParse(s);
+  if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
+  const amt = cxR(Math.abs(parsed)), date = cxToday();
+  if (btn) btn.disabled = true;
+  try {
+    if (res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
+    if (b) {
+      const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
+      const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
+    } else {
+      const d = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
+                                      amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
+      window._src.abrPay = (window._src.abrPay || []).concat([d]);
+    }
+    await _stConfirmSettled(t.line, 'zahlung', date);
+  } catch (e) { stSay('Could not save — ' + (e.message || e)); if (btn) btn.disabled = false; return; }
+  SC.setEdit = null; ctlSettlementInvalidate(); stSay('Settled');
+  const m = SC.modal;
+  SC.model = scModel(M.y); stRenderCasa();
+  SC.modal = m && m.view === 'settle' ? (m.back || { view: 'ten', key }) : m; scRenderModal();
+}
+/* Back to open (sent, waiting): the booking in Controlling goes too; a skipped NK comes back as open */
+async function scSetUndo(key) {
+  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
+  const st = t.st || {}, res = st.res, b = st.booking;
+  if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open',
+    text: b ? 'The booking of ' + scDate(b.invoice_date) + ' (' + scE(b.amount) + ') in Controlling is removed too.' : '' }))) return;
+  try {
+    if (t.skipped) await _stUpsertSettlement(t.line, { status: 'offen' });
+    else {
+      if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+      if (res && res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
+      await _stUpsertSettlement(t.line, { status: 'verschickt' });
+    }
+  } catch (e) { stSay('Could not undo — ' + (e.message || e)); return; }
+  SC.setEdit = null; ctlSettlementInvalidate(); stSay('Back to open');
+  const m = SC.modal; SC.model = scModel(M.y); stRenderCasa(); SC.modal = m; scRenderModal();
 }
 
 /* ── Letter data ─────────────────────────────────────────── */
@@ -716,7 +770,7 @@ async function scClick(e) {
   const b = e.target.closest('[data-sc]'); if (!b || b.disabled) return;
   const a = b.dataset.sc, M = SC.model;
   if (a === 'year') { SC.year += Number(b.dataset.d); SC.modal = null; return stRenderCasa(); }
-  if (a === 'close') { SC.modal = null; return scRenderModal(); }
+  if (a === 'close') { SC.modal = null; SC.setEdit = null; return scRenderModal(); }
   if (a === 'fold') { SC.open[b.dataset.k] = !SC.open[b.dataset.k]; return scRenderModal(); }
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
   if (a === 'sumTen' || a === 'sumHg') { SC.modal = { view: a }; return scRenderModal(); }
@@ -775,9 +829,11 @@ async function scClick(e) {
     }
     SC.modal = { view: 'settle', key: b.dataset.k, back: SC.modal }; return scRenderModal();
   }
-  if (a === 'backTen') { const m = SC.modal; SC.modal = (m && m.back) || { view: 'ten', key: m && m.key }; return scRenderModal(); }
-  if (a === 'choice') { SC.modal.choice = b.dataset.v; return scRenderModal(); }
-  if (a === 'settleSave') return scSettleSave(b.dataset.k, b);
+  if (a === 'backTen') { SC.setEdit = null; const m = SC.modal; SC.modal = (m && m.back) || { view: 'ten', key: m && m.key }; return scRenderModal(); }
+  if (a === 'setOk') return scSetAmount(b.dataset.k, stSetVal(b), b);
+  if (a === 'setEdit') { SC.setEdit = 'c:' + b.dataset.k; scRenderModal(); const inp = document.querySelector('#scModal input[data-stset="' + SC.setEdit + '"]'); if (inp) { inp.focus(); inp.select(); } return; }
+  if (a === 'setCancel') { SC.setEdit = null; return scRenderModal(); }
+  if (a === 'setUndo') return scSetUndo(b.dataset.k);
   if (a === 'reopen') {
     const t = M && M.ten.find(x => x.key === b.dataset.k);
     if (t && t.extra) { if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return; delete scSet(t.key).sent; try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {} SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal(); }
@@ -943,44 +999,6 @@ async function scOpenLetter(id) {
   } catch (e) { stSay('The letter could not be opened — ' + (e.message || e)); }
 }
 
-async function scSettleSave(key, btn) {
-  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
-  const m = SC.modal, choice = m.choice || (document.querySelector('#scModal input[name="scSettle"]:checked') || {}).value;
-  const note = (document.getElementById('scSetNote') || {}).value || '';
-  const st = t.st || {}, res = st.res, b = st.booking, l = t.line;
-  if (btn) btn.disabled = true;
-  try {
-    const setVia = async via => { await _ctlSupa.from('abr_results').update({ settle_via: via }).eq('id', res.id); res.db.settle_via = via; await _stUpsertSettlement(l, { settled_via: via }); };
-    const dropBooking = async () => { if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); } };
-    if (choice === 'paid' && res) {
-      const amt = cxR(Math.abs(cxParse((document.getElementById('scSetAmt') || {}).value || '0') || 0));
-      const date = scD((document.getElementById('scSetDate') || {}).value) || cxToday();
-      if (!(amt > 0)) { stSay('Please enter the amount'); if (btn) btn.disabled = false; return; }
-      if (res.via !== 'zahlung') await setVia('zahlung');
-      if (b) {
-        const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
-        const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-      } else {
-        const d = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
-                                        amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
-        window._src.abrPay = (window._src.abrPay || []).concat([d]);
-      }
-      await _stConfirmSettled(l, 'zahlung', date);
-    } else if ((choice === 'kaution' || choice === 'miete') && res) {
-      await dropBooking(); await setVia(choice); await _stConfirmSettled(l, choice, cxToday());
-    } else if (choice === 'skip') {
-      await dropBooking();
-      if (res) { await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.id); res.db.status = 'storniert'; }
-      await _stUpsertSettlement(l, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null, result_id: null });
-    }
-    scSet(key).settle_note = note || null;
-    try { await scSaveRec(scRecEnsure(M.y)); } catch (e) {}
-    ctlSettlementInvalidate();
-    stSay('Saved');
-  } catch (e) { stSay('Saving failed — ' + (e.message || e)); if (btn) btn.disabled = false; return; }
-  SC.model = scModel(M.y); stRenderCasa();
-  SC.modal = { view: 'ten', key }; scRenderModal();
-}
 async function scReopen(key) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
   const res = t.st && t.st.res, b = res ? ctlAbrBooking(res) : null;
