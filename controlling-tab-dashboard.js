@@ -83,6 +83,21 @@ function _cxPeriodBar(isYear) {
    Kreditraten come from Properties (rate, Zinsen, Tilgung) — not entered.
    ══════════════════════════════════════════════════════════════ */
 
+/* How many one-off bills / refunds and Abrechnungen results fall in the period (dashboard tiles) */
+function _cxDashCounts(props, months) {
+  const y = window._ctrl.year, ids = new Set(props.map(p => p.id)), ms = new Set(months);
+  const c = { bills: 0, refunds: 0, weg: 0, nk: 0 };
+  for (const o of (window._ctrl.one_time || [])) {
+    if (!ids.has(Number(o.property_id))) continue;
+    const d = ctlParseDate(o.invoice_date);
+    if (d.year !== y || !ms.has(d.month)) continue;
+    if (CX_ABR_KINDS.includes(o.kind)) { if (o.kind === 'NK-Abrechnung') c.nk++; else c.weg++; }
+    else if (Number(o.direction) === 1) c.refunds++;
+    else c.bills++;
+  }
+  return c;
+}
+
 /* One property over some months (all Ist values; loans from Properties) */
 function _cxDashProp(p, months) {
   const y = window._ctrl.year, casa = p.id === CASA_PROP_ID;
@@ -177,16 +192,23 @@ function _cxdCss() {
     .cxd-prow__v.neg { color:#A0533A; }
     .cxd-prow__c { color:#C8BFB0; font-size:14px; }
     .cxd-pdet { padding:0 0 8px; border-bottom:.5px solid #EDE8E0; }
-    .cxd-kw { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0 2px; text-align:center; }
-    .cxd-kw__t { background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:12px; padding:9px 6px; display:flex; flex-direction:column; gap:1px; }
-    .cxd-kw__l { font-size:10px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:#9A8E7E; }
-    .cxd-kw__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:24px; font-weight:500; color:#3D3027; line-height:1.15; }
-    .cxd-kw__s { font-size:11px; color:#9A8E7E; }
-    .cxd-kwbar { display:flex; height:30px; border-radius:8px; overflow:hidden; margin:10px 0 0; background:#EDE8E0; }
-    .cxd-kwbar span { display:flex; align-items:center; justify-content:center; font-family:'Inter',system-ui,sans-serif; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; min-width:0; }
+    .cxd-kw { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0 2px; text-align:center; }
+    .cxd-kw__t { background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:12px; padding:7px 6px; display:flex; flex-direction:column; gap:0; }
+    .cxd-kw__l { font-size:9.5px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:#9A8E7E; }
+    .cxd-kw__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:21px; font-weight:500; color:#3D3027; line-height:1.15; }
+    .cxd-kw__s { font-size:10.5px; color:#9A8E7E; }
+    .cxd-kwbar { display:flex; height:22px; border-radius:7px; overflow:hidden; margin:8px 0 0; background:#EDE8E0; }
+    .cxd-kwbar span { display:flex; align-items:center; justify-content:center; font-family:'Inter',system-ui,sans-serif; font-size:10.5px; font-weight:500; white-space:nowrap; overflow:hidden; min-width:0; }
     .cxd-kwbar__k { background:#B8956A; color:#fff; }
-    .cxd-kwbar__n { background:#E3D5BF; color:#6B5E4E; min-width:72px; }
-    .cxd-kwbar__k { min-width:72px; }
+    .cxd-kwbar__n { background:#E3D5BF; color:#6B5E4E; min-width:64px; }
+    .cxd-kwbar__k { min-width:64px; }
+    /* costs: running · one-offs · Abrechnungen — with the Warmmiete they add up to the cashflow */
+    .cxd-cost { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:12px 0 2px; text-align:center; }
+    .cxd-ct { background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:12px; padding:7px 4px; display:flex; flex-direction:column; gap:0; min-width:0; }
+    .cxd-ct .cxd-kw__l { font-size:9px; letter-spacing:.08em; }
+    .cxd-ct__v { font-family:'Cormorant Garamond',Georgia,serif; font-size:19px; font-weight:500; line-height:1.2; color:#3D3027; white-space:nowrap; }
+    .cxd-ct__v.neg { color:#A0533A; } .cxd-ct__v.pos { color:#3B6D11; } .cxd-ct__v.mut { color:#C8BFB0; }
+    .cxd-ct__s { font-size:10px; line-height:1.3; color:#9A8E7E; }
     .cxd-tr { grid-template-columns:1fr 90px 90px !important; }
     .cxd-res > span:not(:first-child) { font-size:19px !important; white-space:nowrap; }
     .cxd-st > span:not(:first-child) { white-space:nowrap; }
@@ -241,7 +263,19 @@ window.renderDashboard = function () {
     '</div></div>';
 
   // ── Big number · Kaltmiete | Warmmiete · one bar: Kaltmiete + Nebenkosten
-  const tilgKnown = t.tilg > 0 ? '<div class="cxd-hero__t">+ ' + cxW(t.tilg) + ' saved through Tilgung</div>' : '';
+  // ── Costs: running · one-offs · Abrechnungen (Warmmiete − these = the cashflow)
+  const cnt = _cxDashCounts(props, months), running = cxR(t.kosten + t.rate), abrN = cnt.weg + cnt.nk, oneN = cnt.bills + cnt.refunds;
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  const tile = (lbl, val, cls, sub) => '<div class="cxd-ct"><span class="cxd-kw__l">' + lbl + '</span>' +
+    '<span class="cxd-ct__v ' + cls + '">' + val + '</span><span class="cxd-ct__s">' + cxEsc(sub) + '</span></div>';
+  const costTiles = '<div class="cxd-cost">' +
+    tile('Running costs', running ? cxWS(-running) : D, running > 0 ? 'neg' : running < 0 ? 'pos' : 'mut',
+         t.tilg > 0 ? 'incl. ' + cxW(t.tilg) + ' Tilgung' : 'loans, Hausgeld, house costs') +
+    tile('One-offs', oneN || t.einmalig ? cxWS(-t.einmalig) : D, t.einmalig > 0 ? 'neg' : t.einmalig < 0 ? 'pos' : 'mut',
+         oneN ? [cnt.bills ? plural(cnt.bills, 'bill', 'bills') : '', cnt.refunds ? plural(cnt.refunds, 'refund', 'refunds') : ''].filter(Boolean).join(' · ') : 'none') +
+    tile('Abrechnungen', abrN || t.abr ? cxWS(t.abr) : D, t.abr > 0 ? 'pos' : t.abr < 0 ? 'neg' : 'mut',
+         abrN ? [cnt.weg ? cnt.weg + ' WEG' : '', cnt.nk ? cnt.nk + ' NK' : ''].filter(Boolean).join(' · ') + (abrN === 1 ? ' result' : ' results') : 'none') +
+  '</div>';
   const nkPart = cxR(Math.max(0, t.warm - t.kalt));
   const kwBar = t.warm > 0
     ? '<div class="cxd-kwbar">' +
@@ -256,7 +290,7 @@ window.renderDashboard = function () {
             : '<div class="cxd-kw">' +
                 '<div class="cxd-kw__t"><span class="cxd-kw__l">Kaltmiete</span><span class="cxd-kw__v">' + cxW(t.kalt) + '</span><span class="cxd-kw__s">rent without Nebenkosten</span></div>' +
                 '<div class="cxd-kw__t"><span class="cxd-kw__l">Warmmiete</span><span class="cxd-kw__v">' + cxW(t.warm) + '</span><span class="cxd-kw__s">rent incl. Nebenkosten</span></div>' +
-              '</div>' + kwBar + tilgKnown) +
+              '</div>' + kwBar + costTiles) +
     (open ? '<button class="cxd-open" data-cx="gotoOpen"><i class="ti ti-point-filled" aria-hidden="true"></i> ' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button>' : '') +
   '</div>';
 
