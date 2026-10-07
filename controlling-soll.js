@@ -168,6 +168,23 @@ function ctlPropLinks(p) {
   return { apt, aptAuto, loan, loanAuto };
 }
 
+/* ── Purchase date (Properties › Purchase date / kaufdatum) ──
+   A property appears in Controlling from the month it was bought:
+   no card, no Soll, no open items before that month (Dashboard,
+   Income, Expenses, data checks). No date in Properties → always shown. */
+function ctlPropSince(p) {
+  const l = p ? ctlPropLinks(p).loan : null;
+  return l ? _cxD(l.kaufdatum) : '';
+}
+function ctlPropOwned(p, y, m) {                        // bought on or before the month's last day
+  const s = ctlPropSince(p);
+  return !s || s <= _cxIso(y, m, new Date(y, m, 0).getDate());
+}
+function ctlPropOwnedYear(p, y) {                       // bought in that year or earlier
+  const s = ctlPropSince(p);
+  return !s || Number(s.slice(0, 4)) <= y;
+}
+
 function ctlUnitLink(u, p) {
   const S = window._src;
   if (u.source_type && u.source_ref) {
@@ -764,7 +781,7 @@ function ctlDataChecksYear(y, upTo) {
 /* Data check for a month: every unit whose Soll doesn't add up */
 function ctlDataChecks(y, m) {
   const out = [];
-  for (const p of window._ctrl.properties.filter(x => x.active)) {
+  for (const p of window._ctrl.properties.filter(x => x.active && ctlPropOwned(x, y, m))) {
     for (const u of ctlUnitsFor(p.id)) {
       const s = ctlUnitSoll(u, p.id, y, m);
       if (s.check) out.push({ prop: p.name, unit: u.name, text: s.check });

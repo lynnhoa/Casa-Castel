@@ -19,7 +19,7 @@ let _cxIncIndex = {};                                   // row id → { p, u, s 
 function _cxIncModel() {
   const y = window._ctrl.year, m = CX.month;
   _cxIncIndex = {};
-  return window._ctrl.properties.filter(p => p.active && cxAreaOk(p)).map(p => {
+  return window._ctrl.properties.filter(p => p.active && cxAreaOk(p) && ctlPropOwned(p, y, m)).map(p => {   // from the purchase month on
     const rows = [];
     for (const u of ctlUnitsFor(p.id)) {
       const s = ctlUnitSoll(u, p.id, y, m);

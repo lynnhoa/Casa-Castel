@@ -20,7 +20,7 @@ const _CX_APT_LABEL = { rate: 'Kreditrate', hausgeld: 'Hausgeld', grundsteuer: '
 function _cxExpModel() {
   const y = window._ctrl.year, m = CX.month;
   _cxExpIndex = {};
-  return window._ctrl.properties.filter(p => p.active && cxAreaOk(p)).map(p => {
+  return window._ctrl.properties.filter(p => p.active && cxAreaOk(p) && ctlPropOwned(p, y, m)).map(p => {   // from the purchase month on
     const casa = p.id === CASA_PROP_ID;
     const plan = casa ? ctlCasaCostRows(p, y, m) : ctlCostRows(p, y, m);
     const rows = plan.rows.map(r => Object.assign({}, r));   // incl. Kreditrate: Soll from Properties, you confirm when it's booked

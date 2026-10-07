@@ -95,6 +95,7 @@ function _cxDashCounts(props, months) {
     if (!ids.has(Number(o.property_id))) continue;
     const d = ctlParseDate(o.invoice_date);
     if (d.year !== y || !ms.has(d.month)) continue;
+    if (!ctlPropOwned(ctlProp(Number(o.property_id)), y, d.month)) continue;   // before the purchase
     if (o.kind === 'Kaufnebenkosten') continue;                   // part of the purchase, not the cashflow
     if (CX_ABR_KINDS.includes(o.kind)) { if (o.kind === 'NK-Abrechnung') c.nk++; else c.weg++; }
     else if (Number(o.direction) === 1) c.refunds++;
@@ -108,6 +109,7 @@ function _cxDashProp(p, months) {
   const y = window._ctrl.year, casa = p.id === CASA_PROP_ID;
   const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
   const r = { kalt: 0, nk: 0, kosten: 0, einmalig: 0, abr: 0, rate: 0, zins: 0, tilg: 0, unknown: 0, split: true, loan: null };
+  months = months.filter(m => ctlPropOwned(p, y, m));          // only from the purchase month on
   for (const m of months) {
     const x = ctlPropertyMonth(p.id, m);
     r.kalt += x.kalt; r.nk += x.neben;
@@ -359,7 +361,8 @@ window.renderDashboard = function () {
   const future = !months.length;
   const shortM = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const EN_M = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const props = window._ctrl.properties.filter(p => p.active);
+  // a property appears from its purchase month (Month) / purchase year (Year) — Properties › Purchase date
+  const props = window._ctrl.properties.filter(p => p.active && (isYear ? ctlPropOwnedYear(p, y) : ctlPropOwned(p, y, m)));
   const per = props.map(p => ({ p, r: _cxDashProp(p, months) }));
   const t = _cxDashSum(per.map(x => x.r));
   const D = '\u2014';
@@ -368,6 +371,7 @@ window.renderDashboard = function () {
   let open = 0, openInc = 0, openCasa = 0;
   const openMonths = new Set();
   for (const p of props) for (const mm of months) {
+    if (!ctlPropOwned(p, y, mm)) continue;                  // before the purchase: nothing is open
     const o = _cxOpenOf(p, y, mm), k = o.inc + o.exp;
     if (k) openMonths.add(mm);
     open += k; openInc += o.inc;

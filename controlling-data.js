@@ -120,6 +120,7 @@ function ctlPropertyMonth(pid, month) {
 function ctlPortfolioMonth(month) {
   const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, one_time_in:0, rein:0, raus:0, konto:0, gesamt:0, netto_kalt:0 };
   for (const p of window._ctrl.properties.filter(x => x.active)) {
+    if (typeof ctlPropOwned === 'function' && !ctlPropOwned(p, window._ctrl.year, month)) continue;   // not bought yet
     const m = ctlPropertyMonth(p.id, month);
     for (const k of Object.keys(m)) {
       acc[k] = (Number(acc[k]) || 0) + (Number(m[k]) || 0);

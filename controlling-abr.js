@@ -280,7 +280,7 @@ async function cxAbrInput(id, val, rerender) {
 function _cxAbrNote(dir) {
   const y = window._ctrl.year, m = CX.month;
   let open = 0, openSum = 0, done = 0;
-  for (const p of window._ctrl.properties.filter(x => x.active)) for (const r of ctlAbrRows(p.id, y, m, dir)) {
+  for (const p of window._ctrl.properties.filter(x => x.active && ctlPropOwned(x, y, m))) for (const r of ctlAbrRows(p.id, y, m, dir)) {
     if (r.info) continue;
     if (r.ist === null) { open++; openSum += r.soll; } else done += r.ist;
   }
