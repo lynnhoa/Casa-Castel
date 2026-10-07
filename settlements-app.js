@@ -41,13 +41,14 @@ async function stBoot() {
   try {
     await stLoad();
     document.getElementById('appShell').style.display = 'block';
-    stSwitchTab(ST.tab);
+    const link = typeof stReadLink === 'function' ? stReadLink() : null;          // "Open NK-Abrechnung" from a tenant card
+    if (link) stOpenLink(link); else stSwitchTab(ST.tab);
   } catch (e) {
     console.error('[settlements] boot failed:', e);
     document.getElementById('appShell').style.display = 'block';
     document.getElementById('tab-tracking').innerHTML =
-      '<div class="st-page"><p class="cx-empty">Daten konnten nicht geladen werden. ' +
-      '<a href="#" onclick="location.reload();return false;" class="st-inline-link">Erneut versuchen</a></p>' +
+      '<div class="st-page"><p class="cx-empty">The data could not be loaded. ' +
+      '<a href="#" onclick="location.reload();return false;" class="st-inline-link">Try again</a></p>' +
       '<p class="st-muted">' + stEsc((e && e.message) || e) + '</p></div>';
     stSwitchTab('tracking');
   } finally {
@@ -61,6 +62,7 @@ async function stLoad() {
   if (typeof ctlSollReset === 'function') ctlSollReset();
   if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
   ST.loadedAt = Date.now();
+  if (typeof _stSyncStatus === 'function') _stSyncStatus().catch(() => {});      // done in Settlements = done on the tenant cards
 }
 
 /* ── Tabs ─────────────────────────────────────────────────── */

@@ -19,7 +19,7 @@
 
 'use strict';
 
-const SD = { loaded: false, loading: false, missing: false, drafts: [], modal: null, d: null, saveTimer: null, dirty: false };
+const SD = { loaded: false, loading: false, missing: false, drafts: [], modal: null, d: null, saveTimer: null, dirty: false, year: null };
 const SD_TABLE = 'nk_abrechnung_manual';
 const SD_SPLITS = [['full', '100 %'], ['days', 'By days'], ['pct', '%'], ['direct', 'Direct €']];
 
@@ -49,14 +49,15 @@ async function sdLoad() {
 function sdRentals(Y) {
   let infos;
   try { infos = _srYearModel(Y).map(_srCardInfo4); } catch (e) { console.warn('[settlements] dashboard rentals', e); return null; }
-  const live = infos.filter(i => i.k !== 'before');
-  const s = { live: live.length, settled: live.filter(i => i.k === 'settled').length, back: 0, get: 0, toSend: 0, steps: [], frist: null };
+  const live = infos.filter(i => i.k !== 'before'), S = srSummary(infos);
+  const s = { live: live.length, settled: live.filter(i => i.k === 'settled').length, back: 0, get: 0, toSend: 0, steps: [], frist: null,
+              ten: S.ten, hg: S.hg, sent: 0, hvIn: S.nHgIn };
   for (const i of live) {
     if (i.c.per.frist && (!s.frist || i.c.per.frist < s.frist) && i.k !== 'settled') s.frist = i.c.per.frist;
     for (const r of i.rows) {
       if (r.kind !== 'ten') continue;
       if (r.k === 'open') s.toSend++;
-      if (r.k === 'sent' && r.st.res && r.st.res.via === 'zahlung') { if (r.st.res.dir > 0) s.get += r.st.res.amount; else s.back += r.st.res.amount; }
+      if (r.k === 'sent' && r.st.confirm) s.steps.push({ o: 2, ic: 'check', t: 'Confirm settlement ' + (r.st.res.via === 'miete' ? 'with the rent' : 'via Kaution'), s: 'Rentals · ' + i.c.p.name + ' · ' + stEur(r.st.res.amount), go: { tab: 'rentals', ck: i.c.ck, view: 'settle', tid: String(r.it.r.id), y: Y } });
     }
     const hv = i.hv; if (!hv) continue;
     if (hv.k === 'ueberfaellig') s.steps.push({ o: 1, ic: 'alert-circle', red: true, t: 'Jahresabrechnung overdue', s: 'Rentals · ' + i.c.p.name, go: { tab: 'rentals', ck: i.c.ck, view: 'hv', y: Y } });
@@ -70,8 +71,9 @@ function sdCasa(Y) {
   let M; try { M = scModel(Y); } catch (e) { return null; }
   if (!M || M.error || M.loading) return null;
   const nk = M.ten.filter(t => t.k !== 'none');
-  return { M, total: nk.length, done: nk.filter(t => t.k === 'done').length, open: nk.filter(t => t.k === 'open').length,
-           back: M.money.back, get: M.money.get, frist: M.frist, locked: M.locked, sendable: M.sendable };
+  return { M, total: nk.length, done: nk.filter(t => t.k === 'done').length, open: nk.filter(t => t.k === 'open').length, sent: nk.filter(t => t.k === 'sent').length,
+           back: M.money.back, get: M.money.get, ten: M.money.ten, hg: M.money.hg, frist: M.frist, locked: M.locked, sendable: M.sendable,
+           confirm: nk.filter(t => t.k === 'sent' && t.st && t.st.confirm) };
 }
 const sdLeft = iso => iso ? Math.round((new Date(sdD(iso) + 'T12:00:00Z') - new Date(cxToday() + 'T12:00:00Z')) / 864e5) : null;
 
@@ -84,34 +86,46 @@ function stRenderDashboard() {
     if (!SD.loading) sdLoad().then(() => { if (ST.tab === 'dashboard') stRenderDashboard(); }).catch(e => { el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Could not load.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'; });
     return;
   }
-  const ty = Number(cxToday().slice(0, 4)), Y = ty - 1;
+  const ty = Number(cxToday().slice(0, 4));
+  if (!SD.year) SD.year = ty - 1;
+  const Y = SD.year;
+  if (typeof scLoadYear === 'function' && typeof SC !== 'undefined' && !SC.data[Y] && !((scRec(Y) || {}).locked_at)) {
+    el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Loading …</p></div>';
+    scLoadYear(Y).then(() => { if (ST.tab === 'dashboard') stRenderDashboard(); }).catch(() => { SC.data[Y] = SC.data[Y] || { castel_expenses: [], one_time: [], per: scPeriod(Y) }; stRenderDashboard(); });
+    return;
+  }
   const ren = sdRentals(Y), casa = sdCasa(Y);
-  // needs you
+  const casaLabel = casa ? stNkLabel(casa.M.per.from, casa.M.per.to) : '';
+  // needs you — both areas in one list
   const steps = (ren ? ren.steps : []).slice();
   if (casa && casa.sendable) {
-    if (!casa.locked) steps.push({ o: 2, ic: 'home', t: 'Lock the house costs', s: 'Casa Castel · NK ' + Y, go: { tab: 'casa', view: 'costs', y: Y } });
-    else if (casa.open) steps.push({ o: 5, ic: 'send', t: casa.open + (casa.open === 1 ? ' letter ready' : ' letters ready'), s: 'Casa Castel · NK ' + Y, go: { tab: 'casa', view: 'start', y: Y } });
+    if (!casa.locked) steps.push({ o: 2, ic: 'lock', t: 'Lock house costs', s: 'Casa Castel · ' + casaLabel, go: { tab: 'casa', view: 'costs', y: Y } });
+    else if (casa.open) steps.push({ o: 5, ic: 'send', t: casa.open + (casa.open === 1 ? ' letter ready' : ' letters ready'), s: 'Casa Castel · ' + casaLabel, go: { tab: 'casa', view: 'start', y: Y } });
   }
-  if (ren && ren.toSend) steps.push({ o: 6, ic: 'send', t: ren.toSend + (ren.toSend === 1 ? ' letter ready' : ' letters ready'), s: 'Rentals · NK ' + Y, go: { tab: 'rentals', y: Y } });
+  if (casa) casa.confirm.forEach(t => steps.push({ o: 2, ic: 'check', t: 'Confirm settlement ' + (t.st.res.via === 'miete' ? 'with the rent' : 'via Kaution'), s: 'Casa Castel · ' + t.name + ' · ' + stEur(t.st.res.amount), go: { tab: 'casa', view: 'settle', key: t.key, y: Y } }));
+  if (ren && ren.toSend) steps.push({ o: 6, ic: 'send', t: ren.toSend + (ren.toSend === 1 ? ' letter ready' : ' letters ready'), s: 'Rentals · periods ending in ' + Y, go: { tab: 'rentals', y: Y } });
   steps.sort((a, b) => a.o - b.o);
   SD.steps = steps;
-  const need = steps.length ? '<div class="sc-card sr5-next"><p class="sd-lbl">Needs you</p>' + steps.slice(0, 3).map((x, i) =>
-    '<button class="sd-nx" data-sd="go" data-i="' + i + '"><span class="sr5-nx__i' + (x.red ? ' is-red' : '') + '"><i class="ti ti-' + x.ic + '" aria-hidden="true"></i></span>' +
-    '<span class="sc-next__t"><b>' + stEsc(x.t) + '</b><span>' + stEsc(x.s) + '</span></span><i class="ti ti-chevron-right sc-chev" aria-hidden="true"></i></button>').join('') + '</div>'
-    : '<div class="sc-card sc-done"><i class="ti ti-circle-check" aria-hidden="true"></i><div><b>Nothing needs you</b><span>NK ' + Y + ' is on track</span></div></div>';
-  // two summary cards
-  const ring = (n, t) => { const C = 2 * Math.PI * 26; return '<svg width="62" height="62" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" stroke="#EDE8E0" stroke-width="7"/>' +
-    '<circle cx="32" cy="32" r="26" fill="none" stroke="#97C459" stroke-width="7" stroke-linecap="round" transform="rotate(-90 32 32)" stroke-dasharray="' + (t ? C * n / t : 0).toFixed(1) + ' ' + C.toFixed(1) + '"/>' +
-    '<text x="32" y="37" text-anchor="middle" class="sc-ring__n" style="font-size:18px">' + n + '/' + t + '</text></svg>'; };
-  const area = (tab, name, n, t, back, get, frist) => {
+  const need = stNeeds(steps.map((x, i) => ({ tone: x.red ? 'red' : 'gold', icon: x.ic, t: x.t, s: x.s, act: 'data-sd="go" data-i="' + i + '"' })), 'periods ending in ' + Y + ' are on track');
+  // two area cards — the same numbers and colours as the tabs
+  const line = (label, net, emptyTxt) => '<span class="sd-ml"><small>' + label + '</small>' + (net === null || net === undefined
+    ? '<b class="is-nil">' + stEsc(emptyTxt) + '</b>' : '<b class="' + (net > 0.004 ? 'pos' : net < -0.004 ? 'neg' : 'is-nil') + '">' + (net > 0.004 ? 'you get ' : net < -0.004 ? 'you pay ' : 'balanced ') + (Math.abs(net) >= 0.005 ? sdE(Math.abs(net)) : '') + '</b>') + '</span>';
+  const area = (tab, name, n, sent, t, frist, l1, l2) => {
     const left = sdLeft(frist);
     return '<button class="sc-card sd-area" data-sd="tab" data-t="' + tab + '"><span class="sd-area__n">' + name + '</span>' +
-      '<span class="sd-area__r">' + ring(n, t) + '<span class="sd-area__s">settled' + (left !== null ? '<br><b class="' + (left < 60 ? 'is-warn' : '') + '">' + (left >= 0 ? left + ' days left' : 'Frist passed') + '</b>' : '') + '</span></span>' +
-      '<span class="sd-area__m pos">you pay back ' + sdE(back) + '</span><span class="sd-area__m neg">you get ' + sdE(get) + '</span></button>';
+      '<span class="sd-area__r">' + stRing(n, sent, t, '', 58) + '<span class="sd-area__s">settled' + (left !== null ? '<br><b class="' + (left < 60 ? 'is-warn' : '') + '">' + (left >= 0 ? left + ' days left' : 'Frist passed') + '</b>' : '') + '</span></span>' +
+      '<span class="sd-area__ls">' + l1 + l2 + '</span></button>';
   };
   const areas = '<div class="sd-areas">' +
-    (ren ? area('rentals', 'Rentals', ren.settled, ren.live, ren.back, ren.get, ren.frist) : '') +
-    (casa ? area('casa', 'Casa Castel', casa.done, casa.total, casa.back, casa.get, casa.frist) : '') + '</div>';
+    (ren ? area('rentals', 'Rentals', ren.settled, 0, ren.live, ren.frist, line('Tenants', ren.ten, 'waiting for the Jahresabrechnungen'), line('Hausgeld', ren.hg, 'no Jahresabrechnung yet')) : '') +
+    (casa ? area('casa', 'Casa Castel', casa.done, casa.sent, casa.total, casa.frist, line('Tenants', casa.ten, 'no house costs yet'), line('Hausgeld', casa.hg, 'no Jahresabrechnung yet')) : '') + '</div>';
+  const yearNav = '<div class="sc-yr">' +
+    '<button class="cx-arw" data-sd="year" data-d="-1" aria-label="Previous year"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
+    '<div class="sc-yr__t"><div class="sc-yr__m">' + Y + '</div><div class="sc-yr__s">periods ending in ' + Y + ' · status ' + stDe(cxToday()) + '</div></div>' +
+    '<button class="cx-arw" data-sd="year" data-d="1" aria-label="Next year"' + (Y >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
+  // the cute one: manual NK-Abrechnung (older years or anything not in the app)
+  const create = '<button class="sd-c4" data-sd="new"><span class="sd-c4__i" aria-hidden="true">🏡<span class="sd-c4__s">✨</span></span>' +
+    '<span class="sd-c4__t"><b>NK-Abrechnung erstellen</b><small>manual · older years</small></span><span class="sd-c4__p" aria-hidden="true"><i class="ti ti-plus"></i></span></button>';
   // house costs per year (Casa Castel)
   const yrs = (typeof SC !== 'undefined' ? SC.rows : []).filter(r => r.snapshot && r.snapshot.total !== undefined).map(r => ({ y: Number(r.year), v: Number(r.snapshot.total) || 0, locked: true }));
   if (casa && !casa.locked && !yrs.some(x => x.y === Y)) yrs.push({ y: Y, v: casa.M.R.check.total, locked: false });
@@ -120,7 +134,7 @@ function stRenderDashboard() {
   let chart = '';
   if (last4.length) {
     const lastTwo = last4.slice(-2), ch = lastTwo.length === 2 && lastTwo[0].v ? (lastTwo[1].v - lastTwo[0].v) / lastTwo[0].v * 100 : null;
-    chart = '<div class="sc-card"><div class="sd-ch__h"><span class="sd-lbl">Casa Castel · house costs per year</span></div><div class="sd-ch">' +
+    chart = stSec('House costs Casa Castel') + '<div class="sc-card"><div class="sd-ch">' +
       last4.map((x, i) => '<div class="sd-ch__c"><span class="sd-ch__v">' + Math.round(x.v).toLocaleString('de-DE') + '</span><span class="sd-ch__b' + (i === last4.length - 1 ? ' is-last' : '') + (x.locked ? '' : ' is-prev') + '" style="height:' + Math.max(4, Math.round(x.v / mx * 70)) + 'px"></span><span class="sd-ch__y">' + x.y + '</span></div>').join('') + '</div>' +
       (ch !== null ? '<p class="sd-ch__f">' + lastTwo[1].y + ': ' + (ch >= 0 ? '+ ' : '− ') + Math.abs(ch).toFixed(1).replace('.', ',') + ' % vs. ' + lastTwo[0].y + (last4[last4.length - 1].locked ? '' : ' · preview') + '</p>' : '') + '</div>';
   }
@@ -135,10 +149,7 @@ function stRenderDashboard() {
     '<span class="sc-row__p">' + stEsc((l.source === 'manual' ? 'manual · ' : '') + 'NK ' + l.year + ' · sent ' + stDate(String(l.sent_at).slice(0, 10)) + ' · ' + (Number(l.direction) > 0 ? 'Nachzahlung ' + sdE(l.amount) : Number(l.direction) < 0 ? 'Guthaben ' + sdE(l.amount) : 'balanced')) + '</span></span><span class="sc-open">Open</span></button>').join('') + '</div>' : '';
   const sql = SD.missing ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>The table nk_abrechnung_manual is missing – the SQL is in the chat.</span></div></div>' : '';
 
-  el.innerHTML = '<div class="st-page sc-page sd-page">' +
-    '<div class="sd-head"><h1 class="cx-title">Settlements</h1><p class="cx-title__s">NK ' + Y + ' · as of ' + stDate(cxToday()) + '</p></div>' + sql +
-    '<button class="sd-create" data-sd="new"><i class="ti ti-plus" aria-hidden="true"></i> NK-Abrechnung erstellen</button>' +
-    '<p class="sd-create__s">manual · for older years or anything not in the app</p>' +
+  el.innerHTML = '<div class="st-page sc-page sd-page">' + create + yearNav + sql +
     need + areas + chart + draftsHtml + lettersHtml + '</div>';
   sdRenderModal();
 }
@@ -148,6 +159,7 @@ function sdGo(g) {
   if (!g) return;
   if (g.tab === 'rentals') {
     SR.year = g.y; stSwitchTab('rentals');
+    if (g.ck && g.view === 'settle') { SR.modal = { ck: g.ck, view: 'settle', tid: g.tid || null, weg: !g.tid, from: 'tracker' }; stRenderRentals(); return; }
     if (g.ck && g.view) _srOpen({ ck: g.ck, view: g.view, from: 'tracker' });
     return;
   }
@@ -156,6 +168,7 @@ function sdGo(g) {
     setTimeout(() => {
       if (!SC.model) return;
       if (g.view === 'costs') { SC.modal = { view: 'costs' }; scRenderModal(); }
+      if (g.view === 'settle' && g.key) { SC.modal = { view: 'settle', key: g.key }; scRenderModal(); }
       if (g.view === 'start') { const keys = SC.model.ten.filter(t => t.k === 'open').map(t => t.key); if (keys.length) { SC.modal = { view: 'ten', key: keys[0], flow: keys, i: 0 }; scRenderModal(); } }
     }, 60);
   }
@@ -431,7 +444,8 @@ async function sdSave(quiet) {
                 tenant_name: d.tenant_name || null, address: d.address || null, iban: d.iban || null, former: !!d.former,
                 period_from: d.period_from || null, period_to: d.period_to || null, use_from: d.use_from || null, use_to: d.use_to || null,
                 lines: d.lines || [], vz: d.vz || [], settle_via: d.settle_via || 'zahlung', due_days: d.due_days ?? 30, letter_date: d.letter_date || null,
-                book: !!d.book, status: d.status || 'draft', sent_at: d.sent_at || null, updated_at: new Date().toISOString() };
+                book: !!d.book, status: d.status || 'draft', sent_at: d.sent_at || null, updated_at: new Date().toISOString(),
+                tenant_app: d.tenant_ref && d.property_id ? (Number(d.property_id) === CASA_PROP_ID ? 'casa' : 'rentals') : null };
   const q = d.id ? _ctlSupa.from(SD_TABLE).update(row).eq('id', d.id).select().single() : _ctlSupa.from(SD_TABLE).insert(row).select().single();
   const { data, error } = await q;
   if (error) { stSay(SD.missing ? 'Please run the SQL for the manual NK-Abrechnung first' : 'Saving failed — ' + (error.message || error)); return null; }
@@ -490,7 +504,7 @@ async function sdPdf(btn) {
       if (L) { await scOpenLetter(L.id); return; }
     }
     const out = await nkLetterPdf(await sdLetterData(d), sdFileName(d)); await ccOpenPdf(out.blob, out.name);
-  } catch (e) { console.error('[settlements] manual PDF', e); alert('The PDF could not be created. Please try again.'); }
+  } catch (e) { console.error('[settlements] manual PDF', e); stNotice('The PDF could not be created. Please try again.'); }
   finally { if (btn) { btn.disabled = false; btn.innerHTML = reset; } }
 }
 async function sdSend(btn) {
@@ -524,6 +538,20 @@ async function sdSend(btn) {
       if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
     } catch (e) { stSay('Sent · the result could not be booked in Controlling (' + (e.message || e) + ')'); }
   }
+  // a chosen tenant: the result also lands on that tenant's card (Casa Castel / Rentals › Tenants · NK-Abrechnungen)
+  if (d.tenant_ref && d.property_id) {
+    try {
+      const pid = Number(d.property_id), app = pid === CASA_PROP_ID ? 'casa' : 'rentals';
+      const res = d.book ? (window._src.abr || []).concat([]).reverse().find(a => String(a.tenant_id || '') === String(d.tenant_ref) && sdD(a.period_from) === sdD(d.period_from) && a.status !== 'storniert') : null;
+      const line = { property_id: pid, tenant_id: String(d.tenant_ref), app, kind: 'nk_tenant', covers_year: Y, period_from: d.period_from, period_to: d.period_to,
+                     status: dir && d.book ? 'verschickt' : 'erledigt', amount, direction: dir, settled_via: d.settle_via || 'zahlung', note: 'manual',
+                     paid_date: dir && d.book ? null : (d.letter_date || cxToday()), result_id: res ? String(res.id) : null };
+      const old = (window._src.settle || []).find(r => String(r.tenant_id) === String(d.tenant_ref) && r.app === app && sdD(r.period_from) === sdD(d.period_from));
+      const q = old ? _ctlSupa.from('ctrl_settlements').update(line).eq('id', old.id).select().single() : _ctlSupa.from('ctrl_settlements').insert(line).select().single();
+      const { data, error } = await q;
+      if (!error && data) { window._src.settle = (window._src.settle || []).filter(r => r.id !== data.id).concat([data]); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
+    } catch (e) { console.warn('[settlements] manual → tenant card', e); }
+  }
   d.status = 'sent'; d.sent_at = new Date().toISOString(); d.letter_id = letterId;
   try { await _ctlSupa.from(SD_TABLE).update({ status: 'sent', sent_at: d.sent_at, letter_id: letterId }).eq('id', d.id); } catch (e) {}
   const i = SD.drafts.findIndex(z => z.id === d.id); if (i >= 0) SD.drafts[i] = Object.assign({}, SD.drafts[i], d);
@@ -538,10 +566,11 @@ async function sdClick(e) {
   if (a === 'new') { SD.d = sdNew(); SD.modal = 'calc'; SD.dirty = false; return sdRenderModal(); }
   if (a === 'openDraft') { const r = SD.drafts.find(x => String(x.id) === String(b.dataset.id)); if (r) { SD.d = JSON.parse(JSON.stringify(r)); SD.d.lines = SD.d.lines || []; SD.d.vz = SD.d.vz || []; SD.modal = 'calc'; SD.dirty = false; sdRenderModal(); } return; }
   if (a === 'go') return sdGo((SD.steps || [])[Number(b.dataset.i)] && SD.steps[Number(b.dataset.i)].go);
+  if (a === 'year') { SD.year = (SD.year || Number(cxToday().slice(0, 4)) - 1) + Number(b.dataset.d); return stRenderDashboard(); }
   if (a === 'tab') return stSwitchTab(b.dataset.t);
   if (a === 'letter') return scOpenLetter(b.dataset.id);
   if (!d) return;
-  if (a === 'close') { if (SD.dirty && !confirm('Close without saving?')) return; SD.modal = null; SD.d = null; SD.dirty = false; return sdRenderModal(); }
+  if (a === 'close') { if (SD.dirty && !(await stConfirm({ title: 'Close without saving?', ok: 'Close', danger: true }))) return; SD.modal = null; SD.d = null; SD.dirty = false; return sdRenderModal(); }
   if (a === 'addLine') { d.lines.push({ label: '', amount: null, split: d.use_from || d.use_to ? 'days' : 'full', value: null }); SD.dirty = true; return sdRenderModal(); }
   if (a === 'delLine') { d.lines.splice(Number(b.dataset.i), 1); SD.dirty = true; return sdRenderModal(); }
   if (a === 'fill') {
@@ -557,7 +586,7 @@ async function sdClick(e) {
   if (a === 'pdf') return sdPdf(b);
   if (a === 'send') return sdSend(b);
   if (a === 'delDraft') {
-    if (!confirm('Delete this draft?')) return;
+    if (!(await stConfirm({ title: 'Delete this draft?', ok: 'Delete', danger: true }))) return;
     const { error } = await _ctlSupa.from(SD_TABLE).delete().eq('id', d.id);
     if (error) { stSay('Could not delete — ' + error.message); return; }
     SD.drafts = SD.drafts.filter(x => x.id !== d.id); SD.modal = null; SD.d = null; stRenderDashboard();

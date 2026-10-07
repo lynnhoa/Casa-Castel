@@ -32,7 +32,9 @@ function _stTenant(app, id) {
   const list = app === 'casa' ? (window._src.casaTen || []) : (window._src.rntTen || []);
   return list.find(t => String(t.id) === String(id)) || null;
 }
-const _stViaText = { zahlung: 'per Zahlung', kaution: 'mit Kaution verrechnet', miete: 'mit Miete verrechnet', hausgeld: 'mit Hausgeld verrechnet' };
+const _stViaText = { zahlung: 'by transfer', kaution: 'settled via Kaution', miete: 'settled with the rent', hausgeld: 'settled with the Hausgeld' };
+/* Settled with the rent / via Kaution / with the Hausgeld counts as done only once you confirmed it (status erledigt) */
+const _stConfirmed = r => !!r && (r.status === 'erledigt' || r.status === 'bezahlt' || !!r.paid_date);
 
 /* Result (abr_results) of a tracking line — by link, else by matching (e.g. entered in Controlling before) */
 function _stResultOf(p, r) {
@@ -60,24 +62,26 @@ function _stWho(line) {
 function _stState(line) {
   const soon = f => f && f <= _stAddDays(cxToday(), 60);
   if (line.type === 'gap') {
-    return line.it.confirmed ? { k: 'erledigt', pill: ['grey', 'leer'], text: line.it.confirmed.auto ? 'Leerstand' : 'Leerstand bestätigt' }
-                             : { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist bald'] : ['open', 'prüfen'], text: 'Leerstand prüfen' };
+    return line.it.confirmed ? { k: 'erledigt', pill: ['grey', 'empty'], text: line.it.confirmed.auto ? 'Leerstand' : 'Leerstand confirmed' }
+                             : { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist soon'] : ['open', 'check'], text: 'check Leerstand' };
   }
   const r = line.it.r, weg = r.kind === 'weg_hausgeld';
-  if (r.status === 'nicht durchgeführt') return { k: 'erledigt', pill: ['grey', 'nicht durchgeführt'], text: '' };
+  if (r.status === 'nicht durchgeführt') return { k: 'erledigt', pill: ['grey', 'skipped'], text: '' };
   const res = _stResultOf(line.p, r);
   if (res) {
     const txt = _stResultText(res, weg);
-    if (!res.amount || !res.dir || res.via !== 'zahlung') return { k: 'erledigt', pill: ['ok', 'erledigt'], res, text: txt };
-    const b = ctlAbrBooking(res);
-    if (b) return { k: 'erledigt', pill: ['ok', 'bezahlt'], res, booking: b, text: txt };
-    return { k: 'verschickt', pill: ['beige', weg ? 'erhalten' : 'verschickt'], res, text: txt };
+    if (!res.amount || !res.dir) return { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
+    const b = res.via === 'zahlung' ? ctlAbrBooking(res) : null;
+    if (b) return { k: 'erledigt', pill: ['ok', 'paid'], res, booking: b, text: txt };
+    if (res.via !== 'zahlung' && _stConfirmed(r)) return { k: 'erledigt', pill: ['ok', 'settled'], res, text: txt };
+    // sent: waiting for the money — or, settled with the rent / via Kaution, waiting for your Confirm
+    return { k: 'verschickt', pill: ['beige', res.via !== 'zahlung' ? 'confirm' : weg ? 'received' : 'sent'], res, text: txt, confirm: res.via !== 'zahlung' };
   }
-  if (r.status === 'bezahlt') return { k: 'erledigt', pill: ['ok', 'erledigt'], text: '' };   // older tracking
-  return { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist bald'] : ['open', 'offen'], text: '' };
+  if (r.status === 'bezahlt' || r.status === 'erledigt') return { k: 'erledigt', pill: ['ok', 'settled'], text: '' };   // older tracking
+  return { k: 'offen', pill: soon(line.frist) ? ['diff', 'Frist soon'] : ['open', 'open'], text: '' };
 }
 function _stResultText(res, weg) {
-  if (!res.dir || !res.amount) return 'Ausgeglichen';
+  if (!res.dir || !res.amount) return 'balanced';
   const nach = weg ? res.dir < 0 : res.dir > 0;
   return (nach ? 'Nachzahlung ' : 'Guthaben ') + stEur(res.amount);
 }
@@ -372,6 +376,7 @@ const _stSqlMissing = err => /check constraint|violates check|result_id|column .
 
 async function _stUpsertSettlement(l, fields) {
   const r = l.it.r;
+  if ((fields.status === 'offen' || fields.status === 'verschickt' || fields.status === 'nicht durchgeführt') && !('paid_date' in fields)) fields = { paid_date: null, ...fields };
   if (r._virtual || String(r.id).startsWith('v:')) {
     const row = { property_id: l.p.id, tenant_id: r.tenant_id || null, app: r.app || (l.p.id === CASA_PROP_ID ? 'casa' : 'rentals'), kind: r.kind,
                   covers_year: Number(r.covers_year), period_from: _stD(r.period_from) || null, period_to: _stD(r.period_to) || null, note: r.note || null, ...fields };
@@ -385,6 +390,27 @@ async function _stUpsertSettlement(l, fields) {
   const i = (window._src.settle || []).findIndex(x => x.id === r.id);
   if (i >= 0) window._src.settle[i] = data;
   return data;
+}
+
+/* You confirmed it: paid / settled with the rent / via Kaution / with the Hausgeld → the line is done (tenant cards read this) */
+async function _stConfirmSettled(l, via, date) {
+  return _stUpsertSettlement(l, { status: 'erledigt', settled_via: via || 'zahlung', paid_date: _stD(date) || cxToday() });
+}
+/* Keep ctrl_settlements.status true for the tenant cards: a transfer booked in Controlling = erledigt */
+async function _stSyncStatus() {
+  const rows = (window._src.settle || []).filter(r => r.status === 'verschickt' && r.kind === 'nk_tenant');
+  for (const r of rows) {
+    const p = (window._ctrl.properties || []).find(x => x.id === Number(r.property_id)); if (!p) continue;
+    const res = _stResultOf(p, r); if (!res) continue;
+    let paid = null;
+    if (!res.amount || !res.dir) paid = res.date || cxToday();
+    else if (res.via === 'zahlung') { const b = ctlAbrBooking(res); if (b) paid = _stD(b.invoice_date); }
+    if (!paid) continue;
+    try {
+      const { data, error } = await _ctlSupa.from('ctrl_settlements').update({ status: 'erledigt', paid_date: paid }).eq('id', r.id).select().single();
+      if (!error && data) Object.assign(r, data);
+    } catch (e) {}
+  }
 }
 
 async function _stWriteResult(existing, row) {
@@ -457,13 +483,14 @@ async function _stReopen(l) {
   const s = l.state, r = l.it.r;
   if (s.res) {
     const b = ctlAbrBooking(s.res);
-    if (!confirm('Abrechnung zurück auf Offen setzen?' + (b ? '\n\nDie Zahlung vom ' + stDate(b.invoice_date) + ' (' + stEur(b.amount) + ') in Controlling wird ebenfalls gelöscht.' : '\n\nDas Ergebnis verschwindet aus Controlling.'))) return;
+    if (!(await stConfirm({ title: 'Set this NK-Abrechnung back to open?', ok: 'Back to open', danger: true,
+      text: b ? 'The payment of ' + stDate(b.invoice_date) + ' (' + stEur(b.amount) + ') in Controlling is removed too.' : 'The result disappears from Controlling.' }))) return;
     try {
       if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
       const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', s.res.id);
       if (error) throw error;
       s.res.db.status = 'storniert';
-    } catch (err) { stSay('Fehlgeschlagen — ' + (err.message || err)); return; }
+    } catch (err) { stSay('Failed — ' + (err.message || err)); return; }
   }
   if (!(r._virtual || String(r.id).startsWith('v:'))) {
     try { await _stUpsertSettlement(l, { status: 'offen', amount: null, direction: null, settled_via: null, result_id: null }); }
@@ -531,7 +558,7 @@ document.getElementById('tab-tracking')?.addEventListener('click', async e => {
   }
   if (a === 'close') { stClosePanel(); return; }
   if (a === 'dropStale') {
-    if (!confirm('Diese veraltete Zeile entfernen?')) return;
+    if (!(await stConfirm({ title: 'Remove this outdated line?', ok: 'Remove', danger: true }))) return;
     const { error } = await _ctlSupa.from('ctrl_settlements').delete().eq('id', b.dataset.id);
     if (error) { stSay('Fehlgeschlagen — ' + error.message); return; }
     window._src.settle = (window._src.settle || []).filter(x => String(x.id) !== String(b.dataset.id));

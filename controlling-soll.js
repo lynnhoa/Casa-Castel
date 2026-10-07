@@ -245,8 +245,9 @@ function _cxHist(link, kind) {
     // "Ignored" steps: in the contract, but deliberately not charged → the rent stays as before
     return link.type === 'casa_room' ? [] : S.staffel.filter(h => String(h[col]) === link.ref && !h.ignored);
   }
-  if (link.type === 'rentals_apartment') return S.rntNkV.filter(h => String(h.apartment_id) === link.ref);
-  if (link.type === 'casa_room') return S.casaNkV.filter(h => _cxNorm(h.room) === _cxNorm(link.ref));   // B10
+  // NK-Vorauszahlung: a skipped Änderung (ignored) never changes the amount — the old one keeps running
+  if (link.type === 'rentals_apartment') return S.rntNkV.filter(h => String(h.apartment_id) === link.ref && !h.ignored);
+  if (link.type === 'casa_room') return S.casaNkV.filter(h => _cxNorm(h.room) === _cxNorm(link.ref) && !h.ignored);   // B10
   return [];
 }
 function _cxStepAt(hist, t, iso) {
@@ -948,8 +949,16 @@ function ctlPeriodOf(p, iso) {
 function ctlPeriodLabel(from, to) {
   from = _cxD(from); to = _cxD(to);
   if (!from || !to) return '';
-  if (from.slice(5) === '01-01' && to.slice(5) === '12-31' && from.slice(0, 4) === to.slice(0, 4)) return from.slice(0, 4);
-  return from.slice(5, 7) + '/' + from.slice(0, 4) + '–' + to.slice(5, 7) + '/' + to.slice(0, 4);
+  const de = iso => iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4);
+  return de(from) + '–' + de(to);                            // always dd.mm.yyyy–dd.mm.yyyy
+}
+/* The settlement period of a property that ENDS in year Y (the year rule of every year switch) */
+function ctlPeriodEndingIn(p, Y) {
+  const st = _cxPerStart(p || {});
+  const from = (st === '01-01' ? Y : Y - 1) + '-' + st;
+  const to = _cxAddDays((Number(from.slice(0, 4)) + 1) + '-' + st, -1);
+  const frist = _cxAddDays((Number(from.slice(0, 4)) + 2) + '-' + st, -1);
+  return { from, to, frist, label: ctlPeriodLabel(from, to) };
 }
 
 /* Expected settlements for every open period (Rules 1, 2, 5):
@@ -964,38 +973,52 @@ function ctlPeriodLabel(from, to) {
 function ctlExpectedSettlements() {
   const out = [];
   for (const p of window._ctrl.properties.filter(x => x.active)) {
-    const casa = p.id === CASA_PROP_ID;
-    const units = ctlUnitsFor(p.id);
-    for (const per of ctlSettlementPeriods(p)) {
-      const first = per.from, last = per.to, cy = Number(last.slice(0, 4));
-      if (!casa) out.push({ property_id: p.id, tenant_id: null, kind: 'weg_hausgeld', covers_year: cy, period_from: first, period_to: last, note: null, unit_name: '', unit_order: -1 });
-      units.forEach((u, ui) => {
-        if (_cxIsParking(u)) return;
-        const link = ctlUnitLink(u, p);
-        if (link && link.type === 'rentals_parking') return;
-        const meta = { unit_name: u.name, unit_order: ui };
-        if (!link) { out.push({ property_id: p.id, tenant_id: null, kind: 'nk_tenant', covers_year: cy, period_from: first, period_to: last, note: u.name, ...meta }); return; }
-        const all = _cxTenancies(link), memo = new Map();
-        for (const w of all) {
-          if (!w.from) continue;                                   // #1 #3: coverage check, not a row
-          if (w.from > last || w.to < first) continue;
-          const from = w.from > first ? w.from : first, to = w.to < last ? w.to : last;
-          // split the tenant's days into spans of equal type (Pauschal ↔ Kalt + NK)
-          let spanFrom = from, mode = null;
-          for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
-            const md = _cxRentDay(link, w, u, Number(d.slice(0, 4)), Number(d.slice(5, 7)), d, all, memo).mode;
-            if (mode === null) mode = md;
-            if (md !== mode) {
-              out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: _cxAddDays(d, -1), note: mode === 'pauschal' ? 'Pauschal' : null, ...meta });
-              spanFrom = d; mode = md;
-            }
-          }
-          out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: to, note: mode === 'pauschal' ? 'Pauschal' : null, ...meta });
-        }
-      });
-    }
+    for (const per of ctlSettlementPeriods(p)) ctlTenanciesFor(p, per, true).forEach(e => out.push(e));
   }
   return out;
+}
+/* Every expected line of ONE period of a property — for any period (running, open or past the Frist):
+   · per tenant × span of equal type (Kalt + NK | Pauschal), Pauschal spans marked note 'Pauschal'
+   · units without a tenant link → one row per unit · the WEG Hausgeld line (Rentals only, withWeg)
+   The rows carry the source (_src: link, tenancy, unit) so the NK-Vorauszahlung Soll of any month can be read —
+   unit_name / unit_order / _src are for display and calculation only, never written to the database. */
+function ctlTenanciesFor(p, per, withWeg) {
+  const out = [], casa = p.id === CASA_PROP_ID;
+  const first = per.from, last = per.to, cy = Number(last.slice(0, 4));
+  if (withWeg && !casa) out.push({ property_id: p.id, tenant_id: null, kind: 'weg_hausgeld', covers_year: cy, period_from: first, period_to: last, note: null, unit_name: '', unit_order: -1 });
+  ctlUnitsFor(p.id).forEach((u, ui) => {
+    if (_cxIsParking(u)) return;
+    const link = ctlUnitLink(u, p);
+    if (link && link.type === 'rentals_parking') return;
+    const meta = { unit_name: u.name, unit_order: ui };
+    if (!link) { out.push({ property_id: p.id, tenant_id: null, kind: 'nk_tenant', covers_year: cy, period_from: first, period_to: last, note: u.name, ...meta }); return; }
+    const all = _cxTenancies(link), memo = new Map();
+    for (const w of all) {
+      if (!w.from) continue;                                   // #1 #3: coverage check, not a row
+      if (w.from > last || w.to < first) continue;
+      const from = w.from > first ? w.from : first, to = w.to < last ? w.to : last;
+      const src = { link, w, u, all, memo };
+      // split the tenant's days into spans of equal type (Pauschal ↔ Kalt + NK)
+      let spanFrom = from, mode = null;
+      for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
+        const md = _cxRentDay(link, w, u, Number(d.slice(0, 4)), Number(d.slice(5, 7)), d, all, memo).mode;
+        if (mode === null) mode = md;
+        if (md !== mode) {
+          out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: _cxAddDays(d, -1), note: mode === 'pauschal' ? 'Pauschal' : null, ...meta, _src: src });
+          spanFrom = d; mode = md;
+        }
+      }
+      out.push({ property_id: p.id, tenant_id: w.id, app: _cxApp(link), kind: 'nk_tenant', covers_year: cy, period_from: spanFrom, period_to: to, note: mode === 'pauschal' ? 'Pauschal' : null, ...meta, _src: src });
+    }
+  });
+  return out;
+}
+/* NK-Vorauszahlung Soll (€/month) of an expected line on a day — the same rule as Controlling:
+   rent history → NK-Vorauszahlung history (skipped Änderungen ignored) → contract */
+function ctlNkSollAt(e, iso) {
+  const s = e && e._src; if (!s) return null;
+  try { const r = _cxRentDay(s.link, s.w, s.u, Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), iso, s.all, s.memo); return r.mode === 'pauschal' ? 0 : _cxN0(r.nk); }
+  catch (err) { return null; }
 }
 
 const _cxDays = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5) + 1;

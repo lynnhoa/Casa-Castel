@@ -159,7 +159,14 @@ const NkCasa = (() => {
     const C = src ? { categories: C0.categories, castel_expenses: src.castel_expenses || [], one_time: src.one_time || [], income: src.income || [] } : C0;
     const CASA = typeof CASA_PROP_ID !== 'undefined' ? CASA_PROP_ID : 7;
     const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    const period = { from: year + '-01-01', to: year + '-12-31' };
+    // the period comes from Casa's "beginnt am" (Controlling › Setup) — never assumed to be 01.01.–31.12.
+    const period = src && src.period ? { from: D(src.period.from), to: D(src.period.to) } : { from: year + '-01-01', to: year + '-12-31' };
+    const months = [];                                         // every month the period touches: 'YYYY-MM'
+    for (let ym = period.from.slice(0, 7); ym <= period.to.slice(0, 7); ) {
+      months.push(ym);
+      const y0 = Number(ym.slice(0, 4)), m0 = Number(ym.slice(5, 7));
+      ym = (m0 === 12 ? y0 + 1 : y0) + '-' + String(m0 === 12 ? 1 : m0 + 1).padStart(2, '0');
+    }
     const warn = [];
 
     // cost types
@@ -170,12 +177,13 @@ const NkCasa = (() => {
     const lines = [];
     const byCat = {};
     for (const e of (C.castel_expenses || [])) {
-      if (Number(e.year) !== Number(year)) continue;
+      const ym = e.year + '-' + String(e.month).padStart(2, '0');
+      if (!months.includes(ym)) continue;
       const c = catOf(e.category_id);
       if (!inNk(c)) continue;
       const amt = Number(e.amount) || 0; if (!amt) continue;
       const L = byCat[c.id] || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [] });
-      L.parts.push(c.nk_spread === 'year' ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'month', month: year + '-' + String(e.month).padStart(2, '0') });
+      L.parts.push(c.nk_spread === 'year' ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'month', month: ym });
     }
     Object.values(byCat).forEach(l => lines.push(l));
 
@@ -195,7 +203,8 @@ const NkCasa = (() => {
     }
 
     // tenants (spans of equal type) from the settlement model
-    const exp = (typeof ctlExpectedSettlements === 'function' ? ctlExpectedSettlements() : [])
+    // src.tenancies: the expected lines of exactly this period (ctlTenanciesFor) — running years and years past the Frist included
+    const exp = (src && src.tenancies ? src.tenancies : (typeof ctlExpectedSettlements === 'function' ? ctlExpectedSettlements() : []))
       .filter(e => Number(e.property_id) === CASA && e.kind === 'nk_tenant' && e.tenant_id && D(e.period_from) <= period.to && D(e.period_to) >= period.from);
     const rooms = S.rooms || [];
     const m2Of = name => { const r = rooms.find(x => norm(x.name) === norm(name)); return r ? Number(r.flaeche_m2) || 0 : 0; };
@@ -206,16 +215,16 @@ const NkCasa = (() => {
       const m2 = m2Of(e.unit_name);
       if (!m2) warn.push('Room ' + e.unit_name + ' has no m² – Gas/Heizung can’t be split for it');
       return { key: e.tenant_id + '|' + D(e.period_from), tenantId: String(e.tenant_id),
-               name: [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Mieter', room: e.unit_name || '', m2,
+               name: [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Tenant', room: e.unit_name || '', m2,
                from: D(e.period_from), to: D(e.period_to), mode: e.note === 'Pauschal' ? 'pauschal' : 'nk',
-               unitId: (units.find(u => norm(u.name) === norm(e.unit_name)) || {}).id ?? null };
+               unitId: (units.find(u => norm(u.name) === norm(e.unit_name)) || {}).id ?? null, _exp: e };
     });
 
     // paid NK per tenancy: the room's NK income per month, split by days among its Kalt + NK tenants that month
     const missing = {};
     for (const t of tenancies) { t.vz = 0; t.vzMissing = []; }
-    for (let m = 1; m <= 12; m++) {
-      const ym = year + '-' + String(m).padStart(2, '0'), dim = daysInMonth(ym);
+    for (const ym of months) {
+      const m = Number(ym.slice(5, 7)), yy = Number(ym.slice(0, 4)), dim = daysInMonth(ym);
       const mFrom = ym + '-01', mTo = ym + '-' + String(dim).padStart(2, '0');
       const groups = {};
       for (const t of tenancies) {
@@ -225,7 +234,7 @@ const NkCasa = (() => {
         (groups[t.unitId] = groups[t.unitId] || []).push({ t, days: daysBetween(a, b) });
       }
       for (const uid of Object.keys(groups)) {
-        const row = (C.income || []).find(r => String(r.unit_id) === String(uid) && Number(r.year) === Number(year) && Number(r.month) === m);
+        const row = (C.income || []).find(r => String(r.unit_id) === String(uid) && Number(r.year) === yy && Number(r.month) === m);
         const g = groups[uid], sumDays = g.reduce((s, x) => s + x.days, 0);
         if (!row) { g.forEach(x => x.t.vzMissing.push(m)); missing[uid] = true; continue; }
         const nk = Number(row.nebenkosten) || 0;
@@ -234,7 +243,7 @@ const NkCasa = (() => {
     }
     for (const t of tenancies) { t.vz = r2(t.vz); if (t.vzMissing.length) warn.push(t.name + ': NK paid missing in Controlling for ' + t.vzMissing.length + ' month(s)'); }
 
-    return { period, lines, tenancies, warn };
+    return { period, months, lines, tenancies, warn };
   }
 
   return { calc, fromControlling, r2, daysBetween, addDays };

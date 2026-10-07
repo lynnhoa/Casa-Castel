@@ -29,9 +29,10 @@ let _cxAbrIndex = {};                                   // row id → { res | le
 const _cxYm = iso => { const s = String(iso || '').slice(0, 10); return s ? Number(s.slice(0, 4)) * 12 + Number(s.slice(5, 7)) : null; };
 const _cxAbrVia = { kaution: 'settled with Kaution', miete: 'settled with rent', hausgeld: 'settled with Hausgeld' };
 
-function _cxAbrLabel(kind, year, dir, unit, name) {
-  if (kind === 'weg_hausgeld') return 'Hausgeld ' + year + ' · ' + (dir > 0 ? 'Guthaben from WEG' : dir < 0 ? 'Nachzahlung to WEG' : 'balanced');
-  return 'NK ' + year + [unit, name].filter(Boolean).map(x => ' · ' + x).join('') + ' · ' +
+function _cxAbrLabel(kind, year, dir, unit, name, from, to) {
+  const per = from && to && typeof ctlPeriodLabel === 'function' ? ctlPeriodLabel(from, to) : String(year);   // NK dd.mm.yyyy–dd.mm.yyyy
+  if (kind === 'weg_hausgeld') return 'Hausgeld ' + per + ' · ' + (dir > 0 ? 'Guthaben from WEG' : dir < 0 ? 'Nachzahlung to WEG' : 'balanced');
+  return 'NK ' + per + [unit, name].filter(Boolean).map(x => ' · ' + x).join('') + ' · ' +
     (dir > 0 ? 'Nachzahlung from tenant' : dir < 0 ? 'Guthaben to tenant' : 'balanced');
 }
 
@@ -45,7 +46,7 @@ function ctlAbrResults() {
     out.push({ key: 'abr:' + r.id, refs: ['abr:' + r.id].concat(r.source_ref ? [r.source_ref] : []), db: r,
                pid: Number(r.property_id), kind: r.kind, year: r.year, dir, amount: cxR(r.amount),
                date: String(r.due_date || r.result_date || '').slice(0, 10), via: r.settle_via || 'zahlung',
-               label: _cxAbrLabel(r.kind, r.year, dir, r.unit_label, r.tenant_name), manual: true });
+               label: _cxAbrLabel(r.kind, r.year, dir, r.unit_label, r.tenant_name, r.period_from, r.period_to), manual: true });
   }
   // interim: NK entries with an amount from the tenant tabs (not yet taken over into abr_results)
   const over = new Set((S.abr || []).filter(r => r.status !== 'storniert' && r.source_ref).map(r => r.source_ref));

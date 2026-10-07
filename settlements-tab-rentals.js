@@ -95,11 +95,8 @@ const _srTName = t => t ? [t.first_name, t.last_name].filter(Boolean).join(' ') 
 const _srTNames = t => t ? [_srTName(t), [t.first_name_2, t.last_name_2].filter(Boolean).join(' '), [t.first_name_3, t.last_name_3].filter(Boolean).join(' ')].filter(Boolean) : [];
 const _srJoin = a => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
 const _srCk = (pid, from) => pid + '|' + from;
-const _srPerText = (from, to) => cxFmtDate(from) + ' – ' + cxFmtDate(to);
-function _srPerLabel(from, to) {
-  if (from.slice(5) === '01-01' && to.slice(5) === '12-31' && from.slice(0, 4) === to.slice(0, 4)) return from.slice(0, 4);
-  return from.slice(5, 7) + '/' + from.slice(0, 4) + '–' + to.slice(5, 7) + '/' + to.slice(0, 4);
-}
+const _srPerText = (from, to) => stPer(from, to);                 // dd.mm.yyyy–dd.mm.yyyy
+function _srPerLabel(from, to) { return stPer(from, to); }
 
 /* ── Data: own table ──────────────────────────────────────── */
 async function srLoadRows() {
@@ -288,8 +285,7 @@ function _srCalc(c, it, rec) {
   const vz = vzOv !== null ? vzOv : (vzIst !== null ? vzIst : (vzSoll || 0));
   const f = { istPartial: vzPartialFlag };
   sum = cxR(sum);
-  const kau = SR.kaution[String(r.tenant_id)] || null;
-  const einbehalt = kau && _srNum(kau.nk_einbehalt) > 0 ? cxR(_srNum(kau.nk_einbehalt)) : 0;
+  const kau = null, einbehalt = 0;
   return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
            tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
 }
@@ -380,7 +376,7 @@ async function _srWriteWeg(c, rec) {
   if (existing && existing.dir === dir && Math.abs(existing.amount - amount) < 0.005 && existing.via === via &&
       _srD(existing.db.due_date) === _srD(rec.weg_due)) return;                                      // unchanged
   if (existing && st.booking && (existing.dir !== dir || Math.abs(existing.amount - amount) >= 0.005) &&
-      !confirm('Das WEG-Ergebnis ist in Controlling schon als bezahlt gebucht. Trotzdem ändern?')) return;
+      !(await stConfirm({ title: 'Change the WEG result?', text: 'It is already booked as paid in Controlling.', ok: 'Change it' }))) return;
   const r = c.weg.r;
   const resRow = { property_id: c.p.id, kind: 'weg_hausgeld', year: Number(r.covers_year), period_from: _srD(r.period_from) || null, period_to: _srD(r.period_to) || null,
                    app: 'rentals', tenant_id: null, unit_label: null, tenant_name: null, direction: dir, amount,
@@ -399,7 +395,7 @@ async function _srWriteWeg(c, rec) {
 
 const _srSign = x => x.missing ? 'm' : String(Math.sign(x.saldo));
 /* How the result is settled: chosen in the letter, else Kaution when part of it is held back, else transfer */
-const _srViaOf = x => (x.ts && x.ts.via) || (x.einbehalt > 0 ? 'kaution' : 'zahlung');
+const _srViaOf = x => (x.ts && x.ts.via) || 'zahlung';
 function _srBig(x, date, days, via) {
   if (x.missing) return '<div class="sr-res sr-res--open"><span><b>Result</b><small>amounts per tenant missing</small></span><strong>—</strong></div>';
   const due = _srAdd(date || cxToday(), days ?? 30);
@@ -496,7 +492,7 @@ async function _srPdf(btn) {
     await ccOpenPdf(out.blob, out.name);
   } catch (err) {
     console.error('[settlements] NK PDF', err);
-    alert('The PDF could not be created. Please try again.');
+    stNotice('The PDF could not be created. Please try again.');
   } finally {
     if (btn) { btn.innerHTML = reset; btn.disabled = false; }
   }
@@ -804,11 +800,10 @@ const _srViaText = { zahlung: 'per bank transfer', miete: 'with the rent', kauti
 let _srCards = {};                                    // ck → card of the shown year
 const _srWide = () => window.innerWidth >= 1000;
 
-/* ── Year model: every active Rentals property, the period that starts in year Y ── */
+/* ── Year model: every active Rentals property, the period that ENDS in year Y (same rule as Controlling) ── */
 function _srPeriodFor(p, Y) {
-  const st = _cxPerStart(p);
-  const from = Y + '-' + st, to = _cxAddDays((Y + 1) + '-' + st, -1), frist = _cxAddDays((Y + 2) + '-' + st, -1);
-  return { from, to, frist, label: _srPerLabel(from, to) };
+  const per = ctlPeriodEndingIn(p, Y);
+  return { from: per.from, to: per.to, frist: per.frist, label: _srPerLabel(per.from, per.to) };
 }
 function _srItemsFor(p, per) {
   const stored = window._src.settle || [];
@@ -894,13 +889,14 @@ function _srSettledTxt(ti, weg) {
   if (ti.skipped) return 'skipped' + (ti.ts.settle_note ? ' · ' + ti.ts.settle_note : '');
   if (!st.res) return '';
   if (st.booking) {
-    const verb = weg ? (st.res.dir > 0 ? 'received ' : 'paid ') : (st.res.dir > 0 ? 'paid ' : 'paid back ');
+    const verb = weg ? (st.res.dir > 0 ? 'received ' : 'paid ') : (st.res.dir > 0 ? 'paid you ' : 'returned ');
     const diff = Math.abs(Number(st.booking.amount) - st.res.amount) >= 0.005 ? ' (instead of ' + stEur(st.res.amount) + ')' : '';
     return verb + stEur(st.booking.amount) + ' · ' + stDM(st.booking.invoice_date) + diff;
   }
-  if (st.res.via === 'kaution') return 'offset with Kaution';
-  if (st.res.via === 'miete') return 'offset with rent';
-  if (st.res.via === 'hausgeld') return 'offset with Hausgeld';
+  if (st.k !== 'erledigt' && st.confirm) return (st.res.via === 'miete' ? 'with the rent' : st.res.via === 'hausgeld' ? 'with the Hausgeld' : 'via Kaution') + ' · confirm';
+  if (st.res.via === 'kaution') return (weg ? '' : st.res.dir > 0 ? 'paid you ' : 'returned ') + stEur(st.res.amount) + ' via Kaution';
+  if (st.res.via === 'miete') return (st.res.dir > 0 ? 'paid you ' : 'returned ') + stEur(st.res.amount) + ' with the rent';
+  if (st.res.via === 'hausgeld') return 'settled with the Hausgeld';
   if (!st.res.amount || !st.res.dir) return 'balanced';
   return '';
 }
@@ -934,45 +930,39 @@ function stRenderRentals() {
   const hvIn = live.filter(i => i.hv && i.hv.received).length, hvOver = live.filter(i => i.hv && i.hv.k === 'ueberfaellig').length;
   const hvExp = live.filter(i => i.hv && i.hv.k === 'erwartet').length;
   let nOpen = 0, nSent = 0, nSet = 0, nWait = 0; const owe = { toWeg: 0, fromWeg: 0, toTen: 0, fromTen: 0 };
+  const S = srSummary(infos);                                   // one net amount per tile (shared with the Dashboard)
   for (const i of live) {
     for (const r of i.rows) {
       if (r.kind !== 'ten') continue;
       if (r.k === 'open') nOpen++; else if (r.k === 'sent') nSent++; else if (r.k === 'settled') nSet++; else if (r.k === 'waiting') nWait++;
-      if (r.k === 'sent' && r.st.res && r.st.res.via === 'zahlung') { if (r.st.res.dir > 0) owe.fromTen += r.st.res.amount; else owe.toTen += r.st.res.amount; }
     }
-    const w = i.hv && i.hv.wegSt;
-    if (w && w.res && w.k === 'verschickt' && w.res.via === 'zahlung') { if (w.res.dir > 0) owe.fromWeg += w.res.amount; else owe.toWeg += w.res.amount; }
   }
   const nO = infos.filter(i => i.k === 'open').length, nS = infos.filter(i => i.k === 'settled').length;
   const shown = SR.filter === 'open' ? infos.filter(i => i.k === 'open') : SR.filter === 'settled' ? infos.filter(i => i.k === 'settled') : infos;
   const chip = (k, label, n) => '<button class="st-chip' + (SR.filter === k ? ' is-on' : '') + '" data-sr="filter" data-k="' + k + '" aria-pressed="' + (SR.filter === k) + '">' + label + (n !== undefined ? '<span class="st-chip__n">' + n + '</span>' : '') + '</button>';
-  const oweTxt = [owe.toWeg ? 'to WEG <b>' + stEur(cxR(owe.toWeg)) + '</b>' : '', owe.fromWeg ? 'from WEG <b>' + stEur(cxR(owe.fromWeg)) + '</b>' : '',
-                  owe.toTen ? 'to tenants <b>' + stEur(cxR(owe.toTen)) + '</b>' : '', owe.fromTen ? 'from tenants <b>' + stEur(cxR(owe.fromTen)) + '</b>' : ''].filter(Boolean).join(' · ') || 'nothing open';
+  void owe;
   const sqlNote = SR.missing ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>The table nk_abrechnung_rentals is missing. Run SETTLEMENTS-RENTALS.sql in Supabase, then reload.</span></div></div>' : '';
 
   // ── overview (phase 5 design: one card per Wohnung, plain words, next steps) ──
   const minY = _srMinYear();
-  const C = 2 * Math.PI * 34, nLive = live.length;
-  const ring = '<svg class="sc-ring" width="84" height="84" viewBox="0 0 84 84" aria-hidden="true"><circle cx="42" cy="42" r="34" fill="none" stroke="#EDE8E0" stroke-width="9"/>' +
-    '<circle cx="42" cy="42" r="34" fill="none" stroke="#97C459" stroke-width="9" stroke-linecap="round" transform="rotate(-90 42 42)" stroke-dasharray="' + (nLive ? C * nS / nLive : 0).toFixed(1) + ' ' + C.toFixed(1) + '"/>' +
-    '<text x="42" y="40" text-anchor="middle" class="sc-ring__n">' + nS + '/' + nLive + '</text><text x="42" y="55" text-anchor="middle" class="sc-ring__s">settled</text></svg>';
+  const nLive = live.length;
   const yearNav = '<div class="sc-yr">' +
     '<button class="cx-arw" data-sr="year" data-d="-1" aria-label="Previous year"' + (SR.year <= minY ? ' disabled' : '') + '><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
-    '<div class="sc-yr__t"><div class="sc-yr__m">NK ' + SR.year + '</div><div class="sc-yr__s">' + nLive + (nLive === 1 ? ' apartment' : ' apartments') + '</div></div>' +
+    '<div class="sc-yr__t"><div class="sc-yr__m">' + SR.year + '</div><div class="sc-yr__s">' + nLive + (nLive === 1 ? ' apartment' : ' apartments') + ' · periods ending in ' + SR.year + '</div></div>' +
     '<button class="cx-arw" data-sr="year" data-d="1" aria-label="Next year"' + (SR.year >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
-  const prog = '<div class="sc-card sc-prog">' + ring + '<div class="sc-prog__l">' +
-    '<span><i class="ti ti-file-invoice sr5-ic" aria-hidden="true"></i>' + hvIn + ' of ' + nLive + ' Jahresabrechnungen in' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') + '</span>' +
-    '<span><i class="ti ti-mail sr5-ic" aria-hidden="true"></i>' + nOpen + ' to send · ' + nSent + ' sent · ' + nSet + ' settled</span>' +
-    (nWait ? '<span class="sr5-mut"><i class="ti ti-hourglass sr5-ic" aria-hidden="true"></i>' + nWait + ' waiting for the Jahresabrechnung</span>' : '') + '</div></div>';
-  const money = '<div class="sr5-money">' +
-    '<div class="sc-card sr5-mt"><p class="sr5-lbl">Tenants</p><span class="pos">you pay back <b>' + stEur(cxR(owe.toTen)) + '</b></span><span class="neg">you get <b>' + stEur(cxR(owe.fromTen)) + '</b></span></div>' +
-    '<div class="sc-card sr5-mt"><p class="sr5-lbl">WEG</p><span class="neg">you pay <b>' + stEur(cxR(owe.toWeg)) + '</b></span><span class="pos">you get <b>' + stEur(cxR(owe.fromWeg)) + '</b></span></div></div>';
+  const prog = stProgress({ done: nSet, sent: nSent, total: nOpen + nSent + nSet + nWait, open: nOpen,
+    first: hvIn + ' of ' + nLive + ' Jahresabrechnungen in' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') });
+  const money = '<div class="st-money">' +
+    stTile('Tenants', 'users', S.ten, S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') +
+    stTile('Hausgeld', 'receipt', S.hg, 'WEG · ' + hvIn + ' of ' + nLive + ' in', 'data-sr="sumHg"') + '</div>';
   const next = _srNextSteps(live);
+  const wide = SR.modal && (SR.modal.view === 'hv' || SR.modal.view === 'nk' || !SR.modal.view);
   el.innerHTML = '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +
     '<div class="st-filter" role="group" aria-label="Filter">' + chip('all', 'All') + chip('open', 'To do', nO) + chip('settled', 'Done', nS) + '</div>' +
+    stSec('Apartments', nLive) +
     (shown.length ? shown.map(_srCard5).join('') : '<p class="cx-empty" style="padding:20px">Nothing in this filter.</p>') +
   '</div>' +
-  (SR.modal ? '<div class="srm" id="srModal"><div class="srm__bg" data-sr="close"></div><div class="srm__win" id="srPanel" role="dialog" aria-label="NK-Abrechnung">' + _srModalHtml() + '</div></div>' : '');
+  (SR.modal ? '<div class="srm" id="srModal"><div class="srm__bg" data-sr="close"></div><div class="srm__win' + (wide ? ' is-wide' : '') + '" id="srPanel" role="dialog" aria-label="NK-Abrechnung">' + _srModalHtml() + '</div></div>' : '');
   document.body.classList.toggle('st-panel-open', !!SR.modal);
 }
 
@@ -1014,11 +1004,40 @@ function _srNextSteps(live) {
   if (ready.length) steps.push({ o: 4, ic: 'send', t: ready.length + (ready.length === 1 ? ' letter ready' : ' letters ready'),
     s: [...new Set(ready.map(x => x.i.c.p.name))].join(' · '),
     btn: '<button class="sc-go" data-sr="openTen" data-k="' + stEsc(ready[0].i.c.ck) + '" data-id="' + stEsc(String(ready[0].r.l.id)) + '">Start <i class="ti ti-arrow-right" aria-hidden="true"></i></button>' });
+  // settled with the rent / via Kaution / with the Hausgeld: waiting for your Confirm
+  for (const i of live) {
+    for (const r of i.rows) if (r.kind === 'ten' && r.k === 'sent' && r.st.confirm) steps.push({ o: 5, ic: 'check', t: 'Settled ' + (r.st.res.via === 'miete' ? 'with the rent' : 'via Kaution') + '?',
+      s: i.c.p.name + ' · ' + r.name + ' · ' + stEur(r.st.res.amount),
+      btn: '<button class="sc-go" data-sr="settle" data-k="' + stEsc(i.c.ck) + '" data-id="' + stEsc(String(r.it.r.id)) + '">Confirm</button>' });
+    const w = i.hv && i.hv.wegSt;
+    if (w && w.k === 'verschickt' && w.confirm) steps.push({ o: 5, ic: 'check', t: 'Settled with the Hausgeld?', s: i.c.p.name + ' · WEG ' + stEur(w.res.amount),
+      btn: '<button class="sc-go" data-sr="settle" data-k="' + stEsc(i.c.ck) + '" data-w="1">Confirm</button>' });
+  }
   if (!steps.length) return '';
   steps.sort((a, b) => a.o - b.o);
-  return '<div class="sc-card sr5-next">' + steps.slice(0, 3).map(x =>
-    '<div class="sr5-nx"><span class="sr5-nx__i' + (x.tone === 'red' ? ' is-red' : '') + '"><i class="ti ti-' + x.ic + '" aria-hidden="true"></i></span>' +
-    '<span class="sc-next__t"><b>' + stEsc(x.t) + '</b><span>' + stEsc(x.s) + '</span></span>' + x.btn + '</div>').join('') + '</div>';
+  return stNeeds(steps.slice(0, 6).map(x => ({ tone: x.tone === 'red' ? 'red' : 'gold', icon: x.ic, t: x.t, s: x.s, btn: x.btn })));
+}
+/* One net amount per tile — shared with the Dashboard: > 0 money comes to you · < 0 you pay */
+function srSummary(infos) {
+  const live = infos.filter(i => i.k !== 'before');
+  const S = { ten: null, nIn: 0, nOut: 0, hg: null, nHgIn: 0, tenRows: [], hgRows: [] };
+  let tn = 0, any = false, hg = 0, anyHg = false;
+  live.forEach(i => {
+    const idx = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder).findIndex(p => p.id === i.c.p.id);
+    for (const r of i.rows) {
+      if (r.kind !== 'ten' || r.skipped) continue;
+      const v = r.st.res ? r.st.res.dir * r.st.res.amount : r.k === 'open' && r.x && !r.x.missing ? r.x.saldo : null;
+      if (v === null) continue;
+      any = true; tn += v; if (v > 0.004) S.nIn++; else if (v < -0.004) S.nOut++;
+      S.tenRows.push({ i, r, v, idx });
+    }
+    const w = i.hv && i.hv.wegSt && i.hv.wegSt.res;
+    if (w) { anyHg = true; S.nHgIn++; hg += w.dir * w.amount; }
+    S.hgRows.push({ i, w: w || null, idx });
+  });
+  if (any) S.ten = cxR(tn);
+  if (anyHg) S.hg = cxR(hg);
+  return S;
 }
 function _srWegWords(dir, amount, done) {
   if (!dir || !amount) return 'balanced with the WEG';
@@ -1026,13 +1045,13 @@ function _srWegWords(dir, amount, done) {
 }
 function _srCard5(info) {
   const c = info.c, props = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder);
-  const idx = props.findIndex(p => p.id === c.p.id) + 1;
-  const num = '<span class="sr5-no">' + idx + '</span>';
+  const idx = props.findIndex(p => p.id === c.p.id) + 1, av = stAv(idx - 1);
+  const num = '<span class="sc-av sr5-pav" style="background:' + av[0] + ';color:' + av[1] + '">' + stEsc(stAbbr(c.p.name)) + '</span>';
   if (c.before) return '<div class="sc-card sr5-fold"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">bought ' + stDate(c.p.in_portfolio_since) + ' · ' + SR.year + ' settled by the seller</span></span><span class="sc-chip sc-chip--grey">not yours</span></div></div>';
   const k5 = 'c5:' + c.ck;
   if (info.k === 'settled' && !SR.open[k5]) return '<button class="sc-card sr5-fold" data-sr="fold5" data-k="' + stEsc(k5) + '"><span class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span></span><span class="sc-chip sc-chip--done"><i class="ti ti-check" aria-hidden="true"></i> all settled</span><i class="ti ti-chevron-down sc-chev" aria-hidden="true"></i></span></button>';
   const hg = c.verw ? _srNum(c.verw.hausgeld_mtl) : null;
-  const meta = _srPerText(c.per.from, c.per.to) + (hg ? ' · Hausgeld ' + stEur(hg) + '/mo' : '') + ' · Frist ' + stDate(c.per.frist);
+  const meta = stNkLabel(c.per.from, c.per.to) + (hg ? ' · Hausgeld ' + stEur(hg) + '/mo' : '') + ' · Frist ' + stDe(c.per.frist);
   let h = '<div class="sc-card sr5-card"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">' + stEsc(meta) + '</span></span>' +
     '<button class="cx-link sr5-hist" data-sr="history" data-k="' + stEsc(c.ck) + '"><i class="ti ti-history" aria-hidden="true"></i> History</button>' +
     (info.k === 'settled' ? '<button class="cx-link" data-sr="fold5" data-k="' + stEsc(k5) + '" aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '') + '</div>';
@@ -1046,7 +1065,7 @@ function _srCard5(info) {
   else if (hv.k === 'erfassen') { say = 'received' + (rec && (rec.received_on || rec.hv_date) ? ' ' + stDM(rec.received_on || rec.hv_date) : '') + ' · costs not entered yet'; tone = 'warn'; }
   else if (hv.k === 'ueberfaellig') { say = 'overdue' + (hv.exp ? ' · expected ' + hv.exp.label : '') + (hv.asked.length ? ' · asked ' + stDM(hv.asked[hv.asked.length - 1]) : ''); tone = 'neg'; }
   else say = c.running ? 'runs until ' + stDate(c.per.to) : (hv.exp ? 'expected ~ ' + hv.exp.label : 'expected');
-  const hvChip = hv.k === 'fertig' ? ['done', '✓ settled'] : hv.k === 'zahlung' ? ['wait', 'payment open'] : hv.k === 'weg' ? ['send', 'WEG result'] : hv.k === 'erfassen' ? ['send', 'enter costs']
+  const hvChip = hv.k === 'fertig' ? ['done', 'settled'] : hv.k === 'zahlung' ? ['wait', 'payment open'] : hv.k === 'weg' ? ['send', 'WEG result'] : hv.k === 'erfassen' ? ['send', 'enter costs']
     : hv.k === 'ueberfaellig' ? ['red', 'overdue'] : ['grey', c.running ? 'running' : 'expected'];
   h += '<button class="sc-row sr5-ln" data-sr="openHv" data-k="' + stEsc(c.ck) + '"><span class="sc-av sr5-av--hv"><i class="ti ti-building" aria-hidden="true"></i></span>' +
     '<span class="sc-row__m"><span class="sc-row__n">Jahresabrechnung</span><span class="sc-row__s ' + tone + '">' + stEsc(say) + '</span></span>' +
@@ -1056,13 +1075,13 @@ function _srCard5(info) {
     let s2, t2 = '';
     if (ti.kind === 'pausch') s2 = 'Pauschal – no NK';
     else if (ti.kind === 'unlinked') s2 = 'no tenant linked';
-    else if (ti.k === 'settled') s2 = ti.skipped ? 'skipped' : (_srSettledTxt(ti, false) || 'settled');
-    else if (ti.k === 'sent') { const r = ti.st.res; s2 = r.dir > 0 ? 'pays you ' + stEur(r.amount) : r.dir < 0 ? 'gets ' + stEur(r.amount) + ' back' : 'balanced'; t2 = r.dir > 0 ? 'neg' : r.dir < 0 ? 'pos' : ''; }
-    else if (ti.k === 'open' && ti.x && !ti.x.missing) { const v = ti.x.saldo; s2 = v > 0 ? 'pays you ' + stEur(v) : v < 0 ? 'gets ' + stEur(-v) + ' back' : 'balanced'; t2 = v > 0 ? 'neg' : v < 0 ? 'pos' : ''; }
+    else if (ti.k === 'settled') { s2 = ti.skipped ? 'skipped' : (_srSettledTxt(ti, false) || 'settled'); const r = ti.st.res; t2 = !ti.skipped && r && r.amount ? (r.dir > 0 ? 'pos' : 'neg') : ''; }
+    else if (ti.k === 'sent') { const r = ti.st.res; s2 = r.dir > 0 ? 'pays you ' + stEur(r.amount) : r.dir < 0 ? 'gets ' + stEur(r.amount) + ' back' : 'balanced'; if (ti.st.confirm) s2 += ' · ' + (r.via === 'miete' ? 'with the rent' : 'via Kaution'); t2 = r.dir > 0 ? 'pos' : r.dir < 0 ? 'neg' : ''; }
+    else if (ti.k === 'open' && ti.x && !ti.x.missing) { const v = ti.x.saldo; s2 = v > 0 ? 'pays you ' + stEur(v) : v < 0 ? 'gets ' + stEur(-v) + ' back' : 'balanced'; t2 = v > 0 ? 'pos' : v < 0 ? 'neg' : ''; }
     else s2 = 'waiting for the Jahresabrechnung';
-    const chip = ti.kind === 'pausch' ? ['grey', 'Pauschal'] : ti.kind === 'unlinked' ? ['grey', 'no tenant'] : ti.k === 'settled' ? ['done', ti.skipped ? 'skipped' : '✓ done'] :
-      ti.k === 'sent' ? ['wait', 'sent ' + stDM(ti.st.res.date)] : ti.k === 'open' ? ['send', 'to send'] : ['grey', 'waiting'];
-    const per = stDM(ti.l.from) + '–' + stDate(ti.l.to) + (ti.t && _srMovedOut(ti.t) ? ' · moved out' : '');
+    const chip = ti.kind === 'pausch' ? ['grey', 'Pauschal'] : ti.kind === 'unlinked' ? ['grey', 'no tenant'] : ti.k === 'settled' ? ['done', ti.skipped ? 'skipped' : ti.st.res && ti.st.res.dir < 0 ? 'returned' : ti.st.booking ? 'paid' : 'settled'] :
+      ti.k === 'sent' ? (ti.st.confirm ? ['send', 'confirm'] : ['wait', 'sent ' + stDM(ti.st.res.date)]) : ti.k === 'open' ? ['send', 'to send'] : ['grey', 'waiting'];
+    const per = stPer(ti.l.from, ti.l.to) + (ti.t && _srMovedOut(ti.t) ? ' · moved out' : '');
     h += '<button class="sc-row sr5-ln" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '"><span class="sc-av sr5-av">' + stEsc(_srInit(ti.name)) + '</span>' +
       '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(ti.name) + '</span><span class="sc-row__s ' + t2 + '">' + stEsc(s2) + '</span><span class="sc-row__p">' + stEsc(per) + '</span></span>' +
       '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></button>';
@@ -1170,7 +1189,9 @@ function _srTrackerBlock(info) {
 const _srHead4 = (t, s, back) => '<div class="srm__h"><div class="srm__ht">' + (back ? '<button class="srm__back" data-sr="' + back + '"><i class="ti ti-chevron-left" aria-hidden="true"></i> ' + stEsc(_srCards[SR.modal.ck] ? _srCards[SR.modal.ck].p.name + ' ' + _srCards[SR.modal.ck].per.label : 'Back') + '</button>' : '') +
   '<p class="srm__t">' + stEsc(t) + '</p><p class="srm__s">' + stEsc(s) + '</p></div><button class="srm__x" data-sr="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
 function _srModalHtml() {
-  const m = SR.modal, c = _srCards[m.ck];
+  const m = SR.modal;
+  if (m.view === 'sumTen' || m.view === 'sumHg') return _srSumSheet(m.view);
+  const c = _srCards[m.ck];
   if (!c) return _srHead4('NK-Abrechnung', '') + '<div class="srm__b"><p class="cx-empty">This Wohnung is not in the list.</p></div>';
   SR.sel = { kind: m.view === 'tenant' ? 'ten' : 'hv', ck: m.ck, tid: m.tid };
   if (m.view === 'history') return _srHistoryView(c);
@@ -1178,6 +1199,30 @@ function _srModalHtml() {
   if (m.view === 'settle') return _srSettleView(c);
   if (m.view === 'hv') return _srHvView(c);
   return _srNkView(c);
+}
+function _srSumSheet(view) {
+  const infos = _srYearModel(SR.year).map(_srCardInfo4), S = srSummary(infos);
+  const close = 'data-sr="close"';
+  if (view === 'sumTen') {
+    const rows = S.tenRows.map(x => { const av = stAv(x.idx);
+      return { av, ab: stAbbr(x.i.c.p.name), name: x.r.name, sub: x.i.c.p.name + ' · ' + stPer(x.r.l.from, x.r.l.to) + (x.r.k === 'open' ? ' · to send' : x.r.k === 'sent' ? ' · sent' : ''),
+               amount: Math.abs(x.v) >= 0.005 ? Math.abs(x.v) : 0, dir: x.v > 0 ? 1 : -1, act: 'data-sr="openTen" data-k="' + stEsc(x.i.c.ck) + '" data-id="' + stEsc(String(x.r.it.r.id)) + '"' }; });
+    return stSumSheet({ title: 'Tenants', sub: 'Rentals · periods ending in ' + SR.year, net: S.ten,
+      sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'),
+      groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
+               { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, close);
+  }
+  const rows = S.hgRows.map(x => { const av = stAv(x.idx), w = x.w, hv = x.i.hv || {};
+    const act = 'data-sr="openHv" data-k="' + stEsc(x.i.c.ck) + '"';
+    if (w && w.amount) return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: (w.dir > 0 ? 'Guthaben · ' : 'Nachzahlung · ') + stPer(x.i.c.per.from, x.i.c.per.to), amount: w.amount, dir: w.dir, act };
+    if (w) return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: 'balanced · ' + stPer(x.i.c.per.from, x.i.c.per.to), chip: ['grey', 'balanced'], act };
+    const over = hv.k === 'ueberfaellig';
+    return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: x.i.c.running ? 'runs until ' + stDe(x.i.c.per.to) : hv.exp ? 'expected ' + (over ? '' : '~ ') + hv.exp.label : 'expected', chip: over ? ['red', 'overdue'] : ['grey', x.i.c.running ? 'running' : 'expected'], act, wait: true };
+  });
+  return stSumSheet({ title: 'Hausgeld', sub: 'Rentals · WEG Jahresabrechnungen · periods ending in ' + SR.year, net: S.hg,
+    sub2: rows.filter(r => r.amount && r.dir < 0).length + ' Nachzahlung · ' + rows.filter(r => r.amount && r.dir > 0).length + ' Guthaben · ' + rows.filter(r => r.wait).length + ' not in yet',
+    groups: [{ title: 'You pay', rows: rows.filter(r => r.amount && r.dir < 0) }, { title: 'You get', rows: rows.filter(r => r.amount && r.dir > 0) },
+             { title: 'Not in yet', rows: rows.filter(r => r.wait) }, { title: 'Balanced', rows: rows.filter(r => !r.amount && !r.wait) }] }, close);
 }
 function _srRerenderPanel() {
   const host = document.getElementById('srPanel'); if (!host || !SR.modal) return;
@@ -1463,8 +1508,8 @@ function _srSettleView(c) {
     if (ti.x) { einbehalt = ti.x.einbehalt; saldo = ti.x.saldo; }
   }
   const cur = m.choice || (ti && ti.skipped ? 'skip' : st.booking ? 'paid' : res && res.via && res.via !== 'zahlung' ? 'offset' : m.skip ? 'skip' : res ? 'paid' : 'skip');
-  const kauCase = !weg && einbehalt > 0 && res;
-  const defAmt = st.booking ? Number(st.booking.amount) : kauCase ? Math.max(0, cxR(einbehalt - saldo)) : res ? res.amount : 0;
+  const kauCase = false;                                     // Kaution + Einbehalt: Rentals › Tenants, by hand
+  const defAmt = st.booking ? Number(st.booking.amount) : res ? res.amount : 0;
   const defDate = st.booking ? _srD(st.booking.invoice_date) : cxToday();
   const paidLabel = weg ? (res && res.dir > 0 ? 'Received from the WEG' : 'Paid to the WEG') : kauCase ? 'Paid back (Guthaben + Kaution-Einbehalt)' : res && res.dir > 0 ? 'Paid by the tenant' : 'Paid back to the tenant';
   const opt = (v, t, s, extra) => '<div class="srm__opt' + (cur === v ? ' is-on' : '') + '" data-sr="choice" data-v="' + v + '"><input type="radio" name="srSettle" id="srOpt_' + v + '" value="' + v + '"' + (cur === v ? ' checked' : '') + '/>' +
@@ -1475,10 +1520,10 @@ function _srSettleView(c) {
   const note = (weg ? (rec && rec.keys && rec.keys.weg_note) : ti && ti.ts.settle_note) || '';
   let opts = '';
   if (res && res.amount) opts += opt('paid', paidLabel, 'the amount may differ from the result' + (res ? ' (' + stEur(res.amount) + ')' : ''), paidExtra);
-  if (res && res.amount) opts += opt('offset', weg ? 'Offset with Hausgeld' : 'Offset', weg ? 'no money moved' : 'against Kaution or rent – no money moved', offVia);
+  if (res && res.amount) opts += opt('offset', weg ? 'Settled with the Hausgeld' : 'Settled via Kaution or with the rent', weg ? 'no extra transfer' : 'you keep track of the Einbehalt in Rentals › Tenants', offVia);
   if (!weg) opts += opt('skip', 'Skipped', 'not paid or not claimed – counts as settled', '');
   const settledNow = weg ? (st.booking || (res && res.via !== 'zahlung')) : ti && (ti.k === 'settled');
-  return _srHead4('Settle – ' + name, 'NK ' + c.per.label + ' · ' + c.p.name + (res ? ' · result ' + _srMoneyTxt(res.dir, res.amount, weg) : ''), 'back') +
+  return _srHead4('Settle – ' + name, (weg ? 'Hausgeld ' : 'NK ') + c.per.label + ' · ' + c.p.name + (res ? ' · result ' + _srMoneyTxt(res.dir, res.amount, weg) : ''), 'back') +
     '<div class="srm__b"><div class="srm__one srm__narrow">' + opts +
       '<label class="st-f"><span class="st-f__l">Note (optional)</span><input class="st-in" id="srSetNote" value="' + stEsc(note) + '"/></label>' +
       '<p class="st-hint">You can change this any time: tap the line in the tracker.</p>' +
@@ -1509,33 +1554,24 @@ async function _srSettleSave(btn) {
       const amt = cxR(Math.abs(cxParse((document.getElementById('srSetAmt') || {}).value || '0')));
       const date = _srD((document.getElementById('srSetDate') || {}).value) || cxToday();
       if (!(amt > 0)) { stSay('Please enter the amount'); if (btn) btn.disabled = false; return; }
-      const kauCase = !weg && ti && ti.x && ti.x.einbehalt > 0;
-      if (kauCase) {                                            // Kaution-Einbehalt: close the Kaution with the amount paid back
-        const k = ti.x.kau;
-        if (k && k.id) {
-          const upd = { nk_einbehalt: 0, returned: cxR((Number(k.returned) || 0) + amt) };
-          if (Object.prototype.hasOwnProperty.call(k, 'deduction_reason')) upd.deduction_reason = [k.deduction_reason, 'NK ' + c.per.label + ' verrechnet'].filter(Boolean).join(' · ');
-          const { error } = await _ctlSupa.from('rnt_kaution').update(upd).eq('id', k.id); if (error) throw error;
-          Object.assign(k, upd);
-        }
-        if (res.via !== 'kaution') await setVia('kaution');
-        await dropBooking();
-      } else {
+      {
         if (res.via !== 'zahlung') await setVia('zahlung');
         if (b) {
           const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
           const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
         } else {
-          const label = weg ? 'Hausgeld ' + c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben von WEG' : 'Nachzahlung an WEG') : 'NK ' + c.per.label + ' · ' + (ti ? _srTName(ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
+          const label = weg ? 'Hausgeld ' + c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG') : 'NK ' + c.per.label + ' · ' + (ti ? _srTName(ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
           const d = await ctlAddOneTime({ property_id: c.p.id, invoice_date: date, item: label, amount: amt,
             kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
           window._src.abrPay = (window._src.abrPay || []).concat([d]);
         }
       }
+      await _stConfirmSettled(l, 'zahlung', date);
     } else if (choice === 'offset') {
       await dropBooking();
       const via = weg ? 'hausgeld' : (m.offVia || (res.via !== 'zahlung' ? res.via : 'kaution'));
       await setVia(via);
+      await _stConfirmSettled(l, via, cxToday());
       if (weg && rec) { rec.weg_via = 'hausgeld'; }
     } else if (choice === 'skip') {
       await dropBooking();
@@ -1570,6 +1606,7 @@ async function _srUnsettle() {
     else {
       if (st.booking) { await ctlDeleteOneTime(st.booking.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== st.booking.id); }
       if (st.res && st.res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', st.res.id); st.res.db.settle_via = 'zahlung'; await _stUpsertSettlement(l, { settled_via: 'zahlung' }); }
+      await _stUpsertSettlement(l, { status: 'verschickt' });                 // back to sent: waiting again
     }
   } catch (err) { stSay('Could not undo — ' + (err.message || err)); return; }
   ctlSettlementInvalidate(); stSay('Undone');
@@ -1618,8 +1655,8 @@ function _srOpen(modal) {
   if (!keepDraft && (SR.modal.view === 'nk' || SR.modal.view === 'hv')) SR.draft = null;
   stRenderRentals();
 }
-function _srCloseModal() {
-  if (SR.dirty && !confirm('Discard your changes?')) return false;
+async function _srCloseModal() {
+  if (SR.dirty && !(await stConfirm({ title: 'Discard your changes?', ok: 'Discard', danger: true }))) return false;
   SR.modal = null; SR.draft = null; SR.dirty = false; SR.sel = null;
   stRenderRentals(); return true;
 }
@@ -1646,6 +1683,7 @@ function srIsRentalsLine() { return false; }
     // tracker
     if (a === 'year') { SR.year += Number(b.dataset.d); SR.modal = null; SR.draft = null; stRenderRentals(); return; }
     if (a === 'filter') { SR.filter = b.dataset.k; stRenderRentals(); return; }
+    if (a === 'sumTen' || a === 'sumHg') { SR.modal = { view: a, from: 'tracker' }; stRenderRentals(); return; }
     if (a === 'nk') {                                                 // next Wohnung that needs work, else the first
       const list = Object.values(_srCards).map(c => _srCardInfo4(c));
       const next = list.find(i => i.k === 'open' && !i.c.running) || list.find(i => i.k === 'open') || list[0];
@@ -1710,7 +1748,7 @@ function srIsRentalsLine() { return false; }
     }
     if (a === 'pick') {
       const list = Object.values(_srCards), i = list.findIndex(x => x.ck === SR.modal.ck) + Number(b.dataset.d);
-      if (list[i]) { if (SR.dirty && !confirm('Discard your changes?')) return; SR.dirty = false; _srOpen({ ck: list[i].ck, view: SR.modal.view === 'hv' ? 'hv' : 'nk', from: SR.modal.from }); }
+      if (list[i]) { if (SR.dirty && !(await stConfirm({ title: 'Discard your changes?', ok: 'Discard', danger: true }))) return; SR.dirty = false; _srOpen({ ck: list[i].ck, view: SR.modal.view === 'hv' ? 'hv' : 'nk', from: SR.modal.from }); }
       return;
     }
     if (!c) return;
@@ -1792,9 +1830,9 @@ function srIsRentalsLine() { return false; }
       const btn = row.querySelector('.rk-name'); if (btn) btn.click();
     } else if (row.dataset.sr === 'openHv') _srOpen({ ck: k, view: 'hv', from: 'tracker' });
   });
-  host.addEventListener('change', e => {
+  host.addEventListener('change', async e => {
     const s = e.target.closest('[data-srs="pick"]');
-    if (s) { if (SR.dirty && !confirm('Discard your changes?')) { s.value = SR.modal.ck; return; } SR.dirty = false; _srOpen({ ck: s.value, view: SR.modal && SR.modal.view === 'hv' ? 'hv' : 'nk', from: SR.modal ? SR.modal.from : 'tracker' }); return; }
+    if (s) { if (SR.dirty && !(await stConfirm({ title: 'Discard your changes?', ok: 'Discard', danger: true }))) { s.value = SR.modal.ck; return; } SR.dirty = false; _srOpen({ ck: s.value, view: SR.modal && SR.modal.view === 'hv' ? 'hv' : 'nk', from: SR.modal ? SR.modal.from : 'tracker' }); return; }
     const nkcb = e.target.closest('[data-src="innk"]');
     if (nkcb && SR.draft) { _srCollect(); const p = SR.draft.positions[Number(nkcb.dataset.i)]; if (p) p.nk = nkcb.checked ? true : false; SR.dirty = true; _srRerenderPanel(); return; }
     const cb = e.target.closest('[data-src="split"]');
