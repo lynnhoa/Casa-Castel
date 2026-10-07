@@ -168,6 +168,8 @@ document.getElementById('tab-tenants').innerHTML = `
   background:var(--cc-surface); color:var(--cc-charcoal);
   font-family:inherit; outline:none; -webkit-appearance:none; }
 .tn-rf input:focus { border-color:var(--cc-gold); background:var(--cc-white); }
+.tn-rf input[data-mh-lock][readonly] { background:var(--cc-surface); color:var(--cc-taupe); }
+.tn-rf-hint a { color:#8A6535; }
 .tn-rf-derived { font-size:11px; font-weight:400; color:var(--cc-charcoal);
   padding:5px 8px; background:var(--cc-surface); border-radius:var(--cc-r-sm);
   border:var(--cc-border); }
@@ -733,10 +735,27 @@ function _rntNKVorausCurFor(aptId, who) {
 function _rntCurrentRent(rec) {
   if (!rec) return null;
   const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('rentals', rec.id), ccRpToday()) : null;
-  if (per) return { ...ccRpAmount(per), src: 'history', period: per };
-  if (rec.kaltmiete == null && rec.nebenkosten == null) return null;
-  const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
-  return { mode: 'kalt_nk', kalt: k, nk: n, total: k + n, src: 'tenant' };
+  let out = null;
+  if (per) out = { ...ccRpAmount(per), src: 'history', period: per };
+  else if (rec.kaltmiete != null || rec.nebenkosten != null) {
+    const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
+    out = { mode: 'kalt_nk', kalt: k, nk: n, total: k + n, src: 'tenant' };
+  }
+  // a Mieterhöhung that has started (not skipped) is today's Kaltmiete — the same as Controlling
+  const st = out && out.mode !== 'pauschal' ? _rntMhAt(rec, ccRpToday(), per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn)) : null;
+  if (st) out = { ...out, kalt: Number(st.amount), total: Number(st.amount) + (Number(out.nk) || 0), src: 'mh', step: st };
+  return out;
+}
+/* The tenant's latest Mieterhöhung on/before iso (and not before base) · the next one after today */
+function _rntMhAt(rec, iso, base) {
+  const unitId = rec.apartment_id || rec.parking_id; if (!unitId || typeof _rntOwnSteps !== 'function') return null;
+  return _rntOwnSteps(unitId, rec.id).filter(e => !e.ignored && ccRpIso(e.effective_date) <= iso && (!base || ccRpIso(e.effective_date) >= base))
+    .sort((a, b) => ccRpIso(b.effective_date).localeCompare(ccRpIso(a.effective_date)))[0] || null;
+}
+function _rntMhNext(rec) {
+  const unitId = rec && (rec.apartment_id || rec.parking_id); if (!unitId || typeof _rntOwnSteps !== 'function') return null;
+  return _rntOwnSteps(unitId, rec.id).filter(e => !e.ignored && e.kind !== 'start' && ccRpIso(e.effective_date) > ccRpToday())
+    .sort((a, b) => ccRpIso(a.effective_date).localeCompare(ccRpIso(b.effective_date)))[0] || null;
 }
 
 
@@ -1232,6 +1251,7 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
   // Pricing for header summary
   let warm = null, kalt = null, nk = null, miete = null;
   const curR = _rntCurrentRent(activeRec);   // the tenant's own rent — no unit price fallback (B3)
+  const _mhN = activeRec ? _rntMhNext(activeRec) : null;   // next Mieterhöhung → brown "→ … ab …"
   if (isApt) {
     const liveP = _rntAptPricing(unit.id);
     kalt  = curR ? curR.kalt : (activeRec ? null : liveP.kaltmiete);
@@ -1269,10 +1289,12 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
         ${warm != null ? `<span class="tn-warm">${_rntFmtEUR(warm)}</span><span class="tn-dim">warm</span>` : ''}
         ${(kalt != null && nk != null) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
         ${ctLabel ? `<div class="tn-dot-sep"></div><span class="tn-dim">${ctLabel}</span>` : ''}
+        ${_mhN && nk != null ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_rntFmtEUR(Number(_mhN.amount) + Number(nk))} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
       </div>`;
     } else {
       botLine = `<div class="tn-hdr-bot">
         ${miete != null ? `<span class="tn-warm">${_rntFmtEUR(miete)}</span><span class="tn-dim">Miete</span>` : ''}
+        ${_mhN ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_rntFmtEUR(_mhN.amount)} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
       </div>`;
     }
   } else {
@@ -1298,9 +1320,11 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
 function _rntRentBarHTML(rid, type, unit, rec) {
   const isApt = type === 'apt';
   const cur   = _rntCurrentRent(rec);
-  const src   = !cur ? 'not set' : (cur.src === 'history' ? 'ab ' + ccRpFmt(cur.period.valid_from) : 'agreed');
+  const src   = !cur ? 'not set' : cur.src === 'mh' ? 'since ' + ccRpFmt(cur.step.effective_date) : (cur.src === 'history' ? 'ab ' + ccRpFmt(cur.period.valid_from) : 'agreed');
   const nextP = rec && typeof ccRpFor === 'function'
     ? ccRpFor('rentals', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday()) : null;
+  const nextM = _rntMhNext(rec);                                   // next Mieterhöhung → "neu ab" under the Kaltmiete
+  const kSub  = nextM ? `<span style="color:#8C5A30">neu ab ${ccRpFmt(nextM.effective_date)}</span>` : src;
 
   if (isApt) {
     return `
@@ -1308,7 +1332,7 @@ function _rntRentBarHTML(rid, type, unit, rec) {
   <div class="tn-rc">
     <div class="tn-rlbl">Kaltmiete</div>
     <div class="tn-rval">${cur ? _rntFmtEUR(cur.kalt) : '\u2014'}</div>
-    <div class="tn-rsub">${src}</div>
+    <div class="tn-rsub">${kSub}</div>
   </div>
   <div class="tn-rc">
     <div class="tn-rlbl">Nebenkosten</div>
@@ -1332,7 +1356,7 @@ function _rntRentBarHTML(rid, type, unit, rec) {
   <div class="tn-rc">
     <div class="tn-rlbl">Parkmiete</div>
     <div class="tn-rval">${cur ? _rntFmtEUR(cur.kalt) : '\u2014'}</div>
-    <div class="tn-rsub">${nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : src}</div>
+    <div class="tn-rsub">${nextM ? kSub : nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : src}</div>
   </div>
   <div class="tn-rc">
     <button class="tn-edit-rent-btn" onclick="_rntToggleRentEdit('${rid}')">
@@ -1369,7 +1393,8 @@ function _rntRentFormHTML(rid, type, unit, rec) {
   <div class="tn-rf">
     <span class="tn-flbl">Kaltmiete \u20ac/mo</span>
     <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${liveP.kaltmiete ?? ''}"
-      oninput="_rntUpdateWarm('${rid}')"/>
+      readonly data-mh-lock oninput="_rntUpdateWarm('${rid}')"/>
+    <span class="tn-rf-hint" style="margin:3px 0 0">Raise it with <a href="#" onclick="event.preventDefault();_rntSheet('staffel','${rid}','${tid}','apt','${unit.id}')">Mieterhöhung</a> · <a href="#" onclick="event.preventDefault();ccMhUnlock(this)">Correct</a></span>
   </div>
   <div class="tn-rf">
     <span class="tn-flbl">Nebenkosten \u20ac/mo</span>
@@ -1399,7 +1424,8 @@ function _rntRentFormHTML(rid, type, unit, rec) {
 <div class="tn-rent-form" id="rform-${rid}" style="display:none">
   <div class="tn-rf">
     <span class="tn-flbl">Parkmiete \u20ac/mo</span>
-    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${miete}" placeholder="${liveP.miete ?? ''}"/>
+    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${miete}" placeholder="${liveP.miete ?? ''}" readonly data-mh-lock/>
+    <span class="tn-rf-hint" style="margin:3px 0 0">Raise it with <a href="#" onclick="event.preventDefault();_rntSheet('staffel','${rid}','${tid}','pk','${unit.id}')">Mieterhöhung</a> · <a href="#" onclick="event.preventDefault();ccMhUnlock(this)">Correct</a></span>
   </div>${fromRow}
   <!-- Kaution Soll: only in the Kaution section -->
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
@@ -1929,63 +1955,26 @@ function _rntSyncOccupancy() {
 /* ── NK VORAUSZAHLUNG SECTION (apartments only) ── */
 function _rntNKVorausHTML(rid, aptId, ctx) {
   if (!aptId) return '';
-  const sec     = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
-  const entries = _rntNKVoraus[aptId] || [];
-  const today   = new Date(); today.setHours(0,0,0,0);
-  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  const pending = entries.filter(e => !e.tenant_adjusted);
-
-  const fmtD = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
-  const isFuture = (e) => new Date(e.effective_date) > today;
-
-  const pillHTML = (e) => {
-    const notPill = e.tenant_notified
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informiert</span>`
-      : `<button class="tn-nkv-pill pending" onclick="_rntNKVorausMarkNotified('${e.id}','${aptId}','${rid}')">
-           <i class="ti ti-mail" aria-hidden="true"></i> Informiert?
-         </button>`;
-    const adjPill = e.tenant_adjusted
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst</span>`
-      : (e.tenant_notified
-          ? `<button class="tn-nkv-pill pending" onclick="_rntNKVorausMarkAdjusted('${e.id}','${aptId}','${rid}')">
-               <i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?
-             </button>`
-          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?</span>`);
-    return notPill + adjPill;
-  };
-
-  const pendingRows = pending.map(e => `
-    <div class="tn-nkv-row" id="nkv-row-${e.id}">
-      <div class="tn-nkv-top">
-        ${isFuture(e)
-          ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0"></i>`
-          : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0"></i>`}
-        <span class="tn-nkv-date">${isFuture(e) ? 'ab ' : ''}${fmtD(e.effective_date)}</span>
-        <span class="tn-nkv-amount">${_rntFmtEUR(e.amount)}</span>
-      </div>
-      <div class="tn-nkv-pills">${pillHTML(e)}</div>
-    </div>`).join('');
-
-  return `
-<div class="${sec}" id="nkv-sec-${rid}">
-  <div class="tn-sec-body" style="padding-top:10px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <span class="tn-sec-lbl" style="flex:1">NK Vorauszahlung</span>
-      ${entries.length > 1 ? `<button class="tn-nkv-verlauf-btn" onclick="_rntNKVorausOpenModal('${aptId}')">Verlauf</button>` : ''}
-      <button class="tn-btn tn-btn-sm" style="height:24px;padding:0 9px;font-size:10px"
-        onclick="_rntNKVorausAdd('${aptId}','${rid}','${ctx}')">
-        <i class="ti ti-plus" style="font-size:11px"></i> Add
-      </button>
-    </div>
-    ${(() => { const cu = _rntNKVorausCurFor(aptId); return cu ? `
-    <div class="tn-nkv-current">
-      <i class="ti ti-coin-euro" style="font-size:15px;color:var(--cc-stone)"></i>
-      <span class="tn-nkv-cur-amount${cu.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(cu.amount)}&thinsp;/&thinsp;mo</span>
-      <span class="tn-nkv-cur-since">seit ${cu.since ? fmtD(cu.since) : ''}${cu.fromContract ? ' \u00b7 contract' : ''}</span>
-    </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`; })()}
-    ${pendingRows}
-  </div>
-</div>`;
+  const who = (_rntRecords || []).find(r => String(r.id) === String(_rntActiveTenantId('apartment_id', aptId)));
+  const mb  = who && who.mietbeginn ? _ccIso(who.mietbeginn) : '';
+  // this tenancy's Änderungen only (linked to the tenant, or dated from the move-in)
+  const entries = (_rntNKVoraus[aptId] || []).filter(x => !who || (x.tenant_id ? String(x.tenant_id) === String(who.id) : (!mb || String(x.effective_date).slice(0, 10) >= mb)));
+  return ccNkvSheetHTML({ sec: ctx === 'modal' ? 'tn-msec' : 'tn-sec', rid, entries, cur: _rntNKVorausCurFor(aptId), fmtEUR: _rntFmtEUR,
+    onAdd: `_rntNKVorausAdd('${aptId}','${rid}','${ctx}')`,
+    onNotified: `_rntNKVorausMarkNotified('$ID','${aptId}','${rid}')`,
+    onAdjusted: `_rntNKVorausMarkAdjusted('$ID','${aptId}','${rid}')`,
+    onSkip: `_rntNkvSkip('$ID','${aptId}')`,
+    onHistory: `_rntNKVorausOpenModal('${aptId}')` });
+}
+/* Skip an NK-Vorauszahlung change (the tenant keeps paying the previous amount) · tap again to apply */
+async function _rntNkvSkip(id, aptId) {
+  const e = (_rntNKVoraus[aptId] || []).find(x => String(x.id) === String(id)); if (!e || !sbL) return;
+  const on = !e.ignored;
+  const { error } = await sbL.from('rnt_nk_vorauszahlung_history').update({ ignored: on }).eq('id', id);
+  if (error) { ccSaveFailed(error, 'NK-Vorauszahlung (SQL run?)'); return; }
+  e.ignored = on;
+  if (typeof ccSavedToast === 'function') ccSavedToast(on ? 'Change skipped' : 'Change applied again');
+  _rntRender(); if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
 }
 
 
@@ -1998,15 +1987,15 @@ function _rntNKVorausOpenModal(aptId) {
 
   const pillHTML = (e) => {
     const notPill = e.tenant_notified
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail"></i> Informiert</span>`
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail"></i> Informed</span>`
       : `<button class="tn-nkv-pill pending" onclick="_rntNKVorausMarkNotified('${e.id}','${aptId}','m')">
-           <i class="ti ti-mail"></i> Informiert?</button>`;
+           <i class="ti ti-mail"></i> Informed?</button>`;
     const adjPill = e.tenant_adjusted
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh"></i> Angepasst</span>`
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh"></i> Adjusted</span>`
       : (e.tenant_notified
           ? `<button class="tn-nkv-pill pending" onclick="_rntNKVorausMarkAdjusted('${e.id}','${aptId}','m')">
-               <i class="ti ti-refresh"></i> Angepasst?</button>`
-          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh"></i> Angepasst?</span>`);
+               <i class="ti ti-refresh"></i> Adjusted?</button>`
+          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh"></i> Adjusted?</span>`);
     return notPill + adjPill;
   };
 
@@ -2095,15 +2084,15 @@ function _rntRenderNKVorausRow(id, aptId, rid) {
   const entry = (_rntNKVoraus[aptId] || []).find(e => e.id === id);
   if (!entry) { _rntRender(); return; }
   const notPill = entry.tenant_notified
-    ? `<span class="tn-nkv-pill done"><i class="ti ti-mail"></i> Informiert</span>`
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-mail"></i> Informed</span>`
     : `<button class="tn-nkv-pill pending" onclick="_rntNKVorausMarkNotified('${id}','${aptId}','${rid}')">
-         <i class="ti ti-mail"></i> Informiert?</button>`;
+         <i class="ti ti-mail"></i> Informed?</button>`;
   const adjPill = entry.tenant_adjusted
-    ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh"></i> Angepasst</span>`
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh"></i> Adjusted</span>`
     : (entry.tenant_notified
         ? `<button class="tn-nkv-pill pending" onclick="_rntNKVorausMarkAdjusted('${id}','${aptId}','${rid}')">
-             <i class="ti ti-refresh"></i> Angepasst?</button>`
-        : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh"></i> Angepasst?</span>`);
+             <i class="ti ti-refresh"></i> Adjusted?</button>`
+        : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh"></i> Adjusted?</span>`);
   const pillsEl = row.querySelector('.tn-nkv-pills');
   if (pillsEl) pillsEl.innerHTML = notPill + adjPill;
 }
@@ -2552,7 +2541,7 @@ function _rntStaffelToggleAdjusted(id, unitId) {
       entry.tenant_adjusted = prev.on;
       entry.adjusted_date   = prev.date;
       _rntStaffelRefreshUI(id, unitId);
-      ccSaveFailed(r.error, 'Staffel angepasst');
+      ccSaveFailed(r.error, 'Mieterhöhung adjusted');
     });
 }
 

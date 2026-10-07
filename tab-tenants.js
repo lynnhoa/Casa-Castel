@@ -187,6 +187,8 @@ document.getElementById('tab-tenants').innerHTML = `
   background:var(--cc-surface); color:var(--cc-charcoal);
   font-family:inherit; outline:none; -webkit-appearance:none; }
 .tn-rf input:focus { border-color:var(--cc-gold); background:var(--cc-white); }
+.tn-rf input[data-mh-lock][readonly] { background:var(--cc-surface); color:var(--cc-taupe); }
+.tn-rf-hint a { color:#8A6535; }
 .tn-rf-derived { font-size:11px; font-weight:400; color:var(--cc-charcoal);
   padding:5px 8px; background:var(--cc-surface); border-radius:var(--cc-r-sm);
   border:var(--cc-border); }
@@ -735,11 +737,28 @@ function _tnLegacyMode(roomName, rec) {
 function _tnCurrentRent(rec, roomName) {
   if (!rec) return null;
   const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('casa', rec.id), ccRpToday()) : null;
-  if (per) return { ...ccRpAmount(per), src: 'history', period: per };
-  if (rec.kaltmiete == null && rec.nebenkosten == null) return null;
-  const mode = _tnLegacyMode(roomName, rec);
-  const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
-  return mode === 'pauschal' ? { mode, kalt: k + n, nk: 0, total: k + n, src: 'tenant' } : { mode, kalt: k, nk: n, total: k + n, src: 'tenant' };
+  let out = null;
+  if (per) out = { ...ccRpAmount(per), src: 'history', period: per };
+  else if (rec.kaltmiete != null || rec.nebenkosten != null) {
+    const mode = _tnLegacyMode(roomName, rec);
+    const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
+    out = mode === 'pauschal' ? { mode, kalt: k + n, nk: 0, total: k + n, src: 'tenant' } : { mode, kalt: k, nk: n, total: k + n, src: 'tenant' };
+  }
+  // a Mieterhöhung that has started (not skipped) is today's rent — Kaltmiete, or the Pauschalmiete — the same as Controlling
+  const st = out ? _tnMhAt(rec, roomName || rec.room, ccRpToday(), per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn)) : null;
+  if (st) out = out.mode === 'pauschal' ? { ...out, kalt: Number(st.amount), total: Number(st.amount), src: 'mh', step: st }
+                                        : { ...out, kalt: Number(st.amount), total: Number(st.amount) + (Number(out.nk) || 0), src: 'mh', step: st };
+  return out;
+}
+function _tnMhAt(rec, roomName, iso, base) {
+  if (typeof _tnOwnMh !== 'function') return null;
+  return _tnOwnMh(roomName, rec).filter(e => !e.ignored && ccRpIso(e.effective_date) <= iso && (!base || ccRpIso(e.effective_date) >= base))
+    .sort((a, b) => ccRpIso(b.effective_date).localeCompare(ccRpIso(a.effective_date)))[0] || null;
+}
+function _tnMhNext(rec, roomName) {
+  if (!rec || typeof _tnOwnMh !== 'function') return null;
+  return _tnOwnMh(roomName || rec.room, rec).filter(e => !e.ignored && ccRpIso(e.effective_date) > ccRpToday())
+    .sort((a, b) => ccRpIso(a.effective_date).localeCompare(ccRpIso(b.effective_date)))[0] || null;
 }
 
 /* Contract generators: the active tenant's fixed Kaution Soll (or null) */
@@ -1574,8 +1593,11 @@ function _tnHeaderHTML(rid, room, activeRec) {
     ? `${mietbeginn} \u2013 ${mietende} (move-out)`
     : mietbeginn ? `${_movesIn ? 'from' : 'since'} ${mietbeginn}${_lastC && _lastC.end ? ' \u00b7 contract until ' + _ccFmtD(_lastC.end) : ''}` : '';
   const _nextC = _cs ? _cs.next : null;
+  const _mhN = activeRec ? _tnMhNext(activeRec, room.name) : null;   // next Mieterhöhung
   const hdrNext = _nextC && _nextC.amt && curR && _nextC.amt.total !== curR.total
-    ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_tnFmtEUR(_nextC.amt.total)} ab ${_ccFmtD(_nextC.start)}</span>` : '';
+    ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_tnFmtEUR(_nextC.amt.total)} ab ${_ccFmtD(_nextC.start)}</span>`
+    : _mhN && curR
+    ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_tnFmtEUR(curR.mode === 'pauschal' ? Number(_mhN.amount) : Number(_mhN.amount) + (Number(curR.nk) || 0))} ab ${_ccFmtD(String(_mhN.effective_date).slice(0, 10))}</span>` : '';
 
   const pills = _tnCardPills(room, activeRec);
   const ctLabel = activeRec ? (_tnTypeWord(tnContractType(activeRec)) || '') : '';
@@ -1738,6 +1760,7 @@ function _tnRentBarHTML(rid, room, rec) {
     ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday() && p.kind !== 'renewal'
         && (!st || !st.next || ccRpIso(p.valid_from) < st.next.start)) : null;
   const pausch = cur && cur.mode === 'pauschal';
+  const _mhN0 = rec ? _tnMhNext(rec, room.name) : null;          // next Mieterhöhung → "neu ab" under the rent
   const title = c ? `<div class="tn-rtitle"><span class="tn-rt-name">${esc(c.name)}</span><span class="tn-rt-dates">${esc(_tnContractSub(c))}</span></div>` : '';
 
   return `
@@ -1747,7 +1770,7 @@ function _tnRentBarHTML(rid, room, rec) {
   <div class="tn-rc">
     <div class="tn-rlbl">${pausch ? 'Pauschal' : 'Kaltmiete'}</div>
     <div class="tn-rval">${cur ? _tnFmtEUR(pausch ? cur.total : cur.kalt) : '\u2014'}</div>
-    <div class="tn-rsub">${cur ? 'per month' : 'not set'}</div>
+    <div class="tn-rsub">${_mhN0 ? `<span style="color:#8C5A30">neu ab ${ccRpFmt(_mhN0.effective_date)}</span>` : cur ? 'per month' : 'not set'}</div>
   </div>
   <div class="tn-rc">
     <div class="tn-rlbl">Nebenkosten</div>
@@ -1801,8 +1824,9 @@ function _tnRentFormHTML(rid, room, rec) {
   <div class="tn-rf" style="grid-column:1/-1"><span class="tn-flbl">Rent</span>${_tnModeSegHTML('data-rf', mode)}</div>` : ''}
   <div class="tn-rf">
     <span class="tn-flbl"><span data-kaltlbl>${pausch ? 'Pauschalmiete' : 'Kaltmiete'}</span> \u20ac/mo</span>
-    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${hintK}"
+    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${hintK}" readonly data-mh-lock
       oninput="_tnUpdateWarm('${rid}')"/>
+    <span class="tn-rf-hint" style="margin:3px 0 0">Raise it with <a href="#" onclick="event.preventDefault();_tnSheet('mh','${rid}','${tid}')">Mieterhöhung</a> · <a href="#" onclick="event.preventDefault();ccMhUnlock(this)">Correct</a></span>
   </div>
   <div class="tn-rf" data-nkwrap${pausch ? ' style="display:none"' : ''}>
     <span class="tn-flbl">Nebenkosten \u20ac/mo</span>
@@ -2175,84 +2199,26 @@ function _tnNKHTML(rid, tid, ctx) {
 
 /* ── NK VORAUSZAHLUNG SECTION (card + modal) ── */
 function _tnNKVorausHTML(rid, room, ctx) {
-  if (!room) return '';
-  const sec  = ctx === 'modal' ? 'tn-msec' : 'tn-sec';
-  const pad  = ctx === 'modal' ? '16px' : '14px';
-  const entries = _tnNKVoraus[room] || [];
-
-  const today = new Date(); today.setHours(0,0,0,0);
-  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  // pending steps (inform / adjust) of THIS room's current tenant only — same rule as the header to-do
-  const who = (_tnRecords || []).filter(r => r.room === room && r.status === 'active')
-    .sort((a, b) => String(a.mietbeginn || '').localeCompare(String(b.mietbeginn || '')))
-    .find(r => !r.mietbeginn || _ccIso(r.mietbeginn) <= _ccTodayIso()) || null;
-  const mb = who && who.mietbeginn ? _ccIso(who.mietbeginn) : '';
-  const pending = entries.filter(e => !e.tenant_adjusted && !e.ignored &&
-    (e.tenant_id ? (who && String(e.tenant_id) === String(who.id)) : (!mb || String(e.effective_date).slice(0, 10) >= mb)));
-
-  const fmtDate = (d) => {
-    if (!d) return '';
-    const [y,m,day] = d.split('-');
-    return `${day}.${m}.${y}`;
-  };
-
-  const pillHTML = (e) => {
-    const notDone = !e.tenant_notified;
-    const adjDone = e.tenant_adjusted;
-    const notPill = e.tenant_notified
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informiert</span>`
-      : `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkNotified('${e.id}','${room}','${rid}')" title="Als informiert markieren">
-           <i class="ti ti-mail" aria-hidden="true"></i> Informiert?
-         </button>`;
-    const adjPill = e.tenant_adjusted
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst</span>`
-      : (e.tenant_notified
-          ? `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkAdjusted('${e.id}','${room}','${rid}')" title="Als angepasst markieren">
-               <i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?
-             </button>`
-          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?</span>`);
-    return notPill + adjPill;
-  };
-
-  const isFuture = (e) => new Date(e.effective_date) > today;
-  const rowIcon  = (e) => isFuture(e)
-    ? `<i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>`
-    : `<i class="ti ti-check" style="font-size:13px;color:#3B6D11;flex-shrink:0" aria-hidden="true"></i>`;
-
-  const pendingRows = pending.map(e => `
-    <div class="tn-nkv-row" id="nkv-row-${e.id}">
-      <div class="tn-nkv-top">
-        ${rowIcon(e)}
-        <span class="tn-nkv-date">${isFuture(e) ? 'ab ' : ''}${fmtDate(e.effective_date)}</span>
-        <span class="tn-nkv-amount">${_tnFmtEUR(e.amount)}</span>
-      </div>
-      <div class="tn-nkv-pills">${pillHTML(e)}</div>
-    </div>`).join('');
-
-  return `
-<div class="${sec}" id="nkv-sec-${rid}">
-  <div class="tn-sec-body" style="padding-top:10px;padding-left:${pad};padding-right:${pad}">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <span class="tn-sec-lbl" style="flex:1">NK Vorauszahlung</span>
-      ${entries.length > 1 ? `<button class="tn-nkv-verlauf-btn" onclick="_tnNKVorausOpenModal('${room}')">Verlauf</button>` : ''}
-      <button class="tn-btn tn-btn-sm" style="height:24px;padding:0 9px;font-size:10px"
-        onclick="_tnNKVorausAdd('${room}','${rid}','${ctx}')">
-        <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
-      </button>
-    </div>
-    ${(() => { const cu = _tnNKVorausCurFor(room); return cu ? `
-    <div class="tn-nkv-current">
-      <i class="ti ti-coin-euro" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
-      <span class="tn-nkv-cur-amount">${_tnFmtEUR(cu.amount)}&thinsp;/&thinsp;mo</span>
-      <span class="tn-nkv-cur-since">seit ${cu.since ? fmtDate(cu.since) : ''}${cu.fromContract ? ' \u00b7 contract' : ''}</span>
-    </div>` : `<p class="tn-empty">Noch kein Satz eingetragen.</p>`; })()}
-    ${pendingRows}
-    ${!pendingRows && current ? '' : ''}
-  </div>
-</div>`;
+  const who = _tnNKVorausWho(room);
+  const mb  = who && who.mietbeginn ? _ccIso(who.mietbeginn) : '';
+  const entries = (_tnNKVoraus[room] || []).filter(x => !who || (x.tenant_id ? String(x.tenant_id) === String(who.id) : (!mb || String(x.effective_date).slice(0, 10) >= mb)));
+  return ccNkvSheetHTML({ sec: ctx === 'modal' ? 'tn-msec' : 'tn-sec', rid, entries, cur: _tnNKVorausCurFor(room), fmtEUR: _tnFmtEUR,
+    onAdd: `_tnNKVorausAdd('${esc(room)}','${rid}','${ctx}')`,
+    onNotified: `_tnNKVorausMarkNotified('$ID','${esc(room)}','${rid}')`,
+    onAdjusted: `_tnNKVorausMarkAdjusted('$ID','${esc(room)}','${rid}')`,
+    onSkip: `_tnNkvSkip('$ID','${esc(room)}')`,
+    onHistory: `_tnNKVorausOpenModal('${esc(room)}')` });
+}
+async function _tnNkvSkip(id, room) {
+  const e = (_tnNKVoraus[room] || []).find(x => String(x.id) === String(id)); if (!e) return;
+  const on = !e.ignored;
+  const { error } = await sbL.from('nk_vorauszahlung_history').update({ ignored: on }).eq('id', id);
+  if (error) { ccSaveFailed(error, 'NK-Vorauszahlung (SQL run?)'); return; }
+  e.ignored = on;
+  if (typeof ccSavedToast === 'function') ccSavedToast(on ? 'Change skipped' : 'Change applied again');
+  _tnRender(); if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
 }
 
-/* ── NK VORAUSZAHLUNG VERLAUF MODAL ── */
 function _tnNKVorausOpenModal(room) {
   const entries = (_tnNKVoraus[room] || []).slice(); // already DESC
   const today = new Date(); today.setHours(0,0,0,0);
@@ -2265,17 +2231,17 @@ function _tnNKVorausOpenModal(room) {
 
   const pillHTML = (e) => {
     const notPill = e.tenant_notified
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informiert</span>`
-      : `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkNotified('${e.id}','${room}','m')" title="Als informiert markieren">
-           <i class="ti ti-mail" aria-hidden="true"></i> Informiert?
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informed</span>`
+      : `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkNotified('${e.id}','${room}','m')" title="Mark as informed">
+           <i class="ti ti-mail" aria-hidden="true"></i> Informed?
          </button>`;
     const adjPill = e.tenant_adjusted
-      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst</span>`
+      ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
       : (e.tenant_notified
-          ? `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkAdjusted('${e.id}','${room}','m')" title="Als angepasst markieren">
-               <i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?
+          ? `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkAdjusted('${e.id}','${room}','m')" title="Mark as adjusted">
+               <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
              </button>`
-          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?</span>`);
+          : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
     return notPill + adjPill;
   };
 
@@ -2384,17 +2350,17 @@ function _tnRenderNKVorausRow(id, room, rid) {
   const today = new Date(); today.setHours(0,0,0,0);
   const isFuture = new Date(entry.effective_date) > today;
   const notPill = entry.tenant_notified
-    ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informiert</span>`
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informed</span>`
     : `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkNotified('${id}','${room}','${rid}')">
-         <i class="ti ti-mail" aria-hidden="true"></i> Informiert?
+         <i class="ti ti-mail" aria-hidden="true"></i> Informed?
        </button>`;
   const adjPill = entry.tenant_adjusted
-    ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst</span>`
+    ? `<span class="tn-nkv-pill done"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted</span>`
     : (entry.tenant_notified
         ? `<button class="tn-nkv-pill pending" onclick="_tnNKVorausMarkAdjusted('${id}','${room}','${rid}')">
-             <i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?
+             <i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?
            </button>`
-        : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Angepasst?</span>`);
+        : `<span class="tn-nkv-pill pending" style="cursor:default;opacity:.4"><i class="ti ti-refresh" aria-hidden="true"></i> Adjusted?</span>`);
   const pillsEl = row.querySelector('.tn-nkv-pills');
   if (pillsEl) pillsEl.innerHTML = notPill + adjPill;
 }

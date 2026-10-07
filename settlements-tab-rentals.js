@@ -1307,7 +1307,7 @@ function _srHvView(c) {
       '<span><b>= ' + (calc > 0 ? 'Nachzahlung' : calc < 0 ? 'Guthaben' : 'balanced') + '</b>' + (diff === null ? '' : Math.abs(diff) < 0.01 ? ' · matches the HV' : ' · HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff))) + '</span><span><b>' + stEur(Math.abs(calc)) + '</b></span></div>' : '';
   const weg = '<fieldset class="st-f"><legend class="st-f__l">WEG result</legend><div class="st-seg st-seg--3" role="group">' +
       seg(-1, wDir === -1, 'Nachzahlung', 'to WEG') + seg(1, wDir === 1, 'Guthaben', 'from WEG') + seg(0, wDir === 0, 'balanced', '') + '</div>' +
-      (wDir ? '<div class="sr-grid2" style="margin-top:10px"><label class="st-f"><span class="st-f__l">Amount</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '"/><span>€</span></span></label>' +
+      (wDir ? '<div class="sr-grid2" style="margin-top:10px"><label class="st-f"><span class="st-f__l">Amount per HV</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '"/><span>€</span></span></label>' +
         _srDateF('weg_due', d.weg_due, 'Due') + '</div>' : '') + '</fieldset>';
   const expTxt = Number(c.p.hv_expected_month) ? SR_MON[Number(c.p.hv_expected_month) - 1] : '—';
   const settings = '<details class="srm__set"' + (SR.expEdit || ST.perEdit === c.p.id ? ' open' : '') + '><summary>Settings · Period ' + stEsc(stDM(c.per.from) + '–' + stDM(c.per.to)) + ' · HV usually sends in ' + stEsc(expTxt) + '</summary>' +
@@ -1319,11 +1319,11 @@ function _srHvView(c) {
   const nU = U.filter(([p]) => p.nk !== false && _srAmtOf(d, p, c.apt) !== null).length;
   const card = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Hausgeld-Jahresabrechnung</p><span class="srm__cs">' + stEsc(_srPerText(c.per.from, c.per.to)) + ' · Frist for the NK ' + stDate(c.per.frist) + '</span></div>' +
     status + '<div class="sr-grid2">' + _srDateF('received_on', d.received_on, 'Received on') + _srDateF('hv_date', d.hv_date, 'Statement date') + '</div>' +
-    costs + weg + check + settings + '</section>';
+    costs + check + weg + settings + '</section>';                    // mockup order: Kosten → Check → WEG result
   return _srHead4(title, c.p.name + ' · you ↔ WEG') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
     '<div class="srm__b"><div class="srm__one srm__wide">' + card + '</div></div>' +
     '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sr="toNk"' + (nU ? '' : ' disabled') + '>Create NK · ' + nU + ' umlagefähige costs <i class="ti ti-chevron-right" aria-hidden="true"></i></button>' +
-      '<button class="cx-btn cx-btn--p" data-sr="hvSave">' + (c.running && !hv.received ? 'Save draft' : 'Save') + '</button></div>';
+      '<button class="cx-btn cx-btn--p" data-sr="hvSave">' + (c.running && !hv.received ? 'Save draft' : 'Save Jahresabrechnung') + '</button></div>';
 }
 
 /* ── Window B · NK-Abrechnung (you ↔ tenants): umlagefähige Hausgeld costs (ticked) + NK-only costs · tenants ── */

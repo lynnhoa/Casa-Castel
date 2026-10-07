@@ -133,6 +133,55 @@ function ccTnStepNext(steps, fmtEUR, fmtDate) {
     .sort((a, b) => ccTnIso(a.effective_date).localeCompare(ccTnIso(b.effective_date)))[0];
   return nx ? 'next ' + fmtEUR(nx.amount) + ' from ' + fmtDate(nx.effective_date) : 'none planned';
 }
+/* ── NK-VORAUSZAHLUNG sheet — one layout for both apps ──────────────────
+   o = { sec, rid, entries (this tenancy's, any order), cur {amount, since, fromContract}, fmtEUR,
+         onAdd, onNotified(id), onAdjusted(id), onSkip(id), onHistory }   (actions = JS call strings)
+   Each Änderung: upcoming · adjusted · skipped · open (date passed, not adjusted) · start (from the contract) */
+function ccNkvSheetHTML(o) {
+  const fd = d => { const s = ccTnIso(d); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; };
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  const list = (o.entries || []).slice().sort((a, b) => ccTnIso(b.effective_date).localeCompare(ccTnIso(a.effective_date)));
+  const next = list.filter(e => !e.tenant_adjusted && !e.ignored).sort((a, b) => ccTnIso(a.effective_date).localeCompare(ccTnIso(b.effective_date)))[0];
+  const st = e => e.ignored ? ['tnp-gray', 'skipped'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : ccTnIso(e.effective_date) > today ? ['tnp-amber', 'upcoming'] : ['tnp-red', 'open'];
+  const call = (fn, id) => fn ? fn.replace('$ID', id) : '';
+  const nextBox = next ? `
+    <div style="border-radius:10px;background:#FAEEDA;border:.5px solid #EF9F27;padding:10px 12px;margin:0 0 10px">
+      <div class="tn-flbl" style="color:#8A6535">Next change</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b style="font-size:16px">${o.fmtEUR(next.amount)}/mo</b><span style="font-size:12px;color:#633806">from ${fd(next.effective_date)}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+        ${next.tenant_notified ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informed</span>`
+          : `<button type="button" class="tn-nkv-pill pending" onclick="${call(o.onNotified, next.id)}"><i class="ti ti-mail" aria-hidden="true"></i> Informed?</button>`}
+        <button type="button" class="tn-nkv-pill pending" onclick="${call(o.onAdjusted, next.id)}"><i class="ti ti-check" aria-hidden="true"></i> Adjusted</button>
+        ${o.onSkip ? `<button type="button" class="tn-nkv-pill pending" onclick="${call(o.onSkip, next.id)}"><i class="ti ti-ban" aria-hidden="true"></i> Skip</button>` : ''}
+      </div>
+    </div>` : '';
+  const rows = list.map(e => { const s = st(e);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:var(--cc-border);font-size:12.5px">
+      <span style="flex:1;min-width:0;${e.ignored ? 'text-decoration:line-through;color:var(--cc-taupe)' : ''}">From ${fd(e.effective_date)} · ${o.fmtEUR(e.amount)}/mo</span>
+      ${e.ignored && o.onSkip ? `<button type="button" class="tn-nkv-pill pending" onclick="${call(o.onSkip, e.id)}">Apply again</button>` : ''}
+      <span class="tnp ${s[0]}">${s[1]}</span></div>`; }).join('')
+    + (o.cur && o.cur.fromContract ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:var(--cc-border);font-size:12.5px">
+      <span style="flex:1">From ${fd(o.cur.since)} · ${o.fmtEUR(o.cur.amount)}/mo</span><span class="tnp tnp-gray">start</span></div>` : '');
+  return `
+<div class="${o.sec}" id="nkv-sec-${o.rid}"><div class="tn-sec-body" style="padding-top:10px">
+  <div style="margin-bottom:10px"><span class="tn-flbl" style="display:block">NK-Vorauszahlung now</span>
+    ${o.cur ? `<b style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:500">${o.fmtEUR(o.cur.amount)}</b> <span class="tn-flbl">/mo · since ${fd(o.cur.since)}${o.cur.fromContract ? ' · contract' : ''}</span>`
+      : `<p class="tn-empty" style="margin:2px 0 0">Not set yet.</p>`}</div>
+  ${nextBox}
+  ${rows ? `<div class="tn-msec-lbl" style="margin:4px 0 2px">All Änderungen</div>${rows}` : ''}
+  <div class="cc-sec-foot"><button type="button" onclick="${o.onAdd}"><i class="ti ti-plus"></i> NK-Vorauszahlung change</button>
+    ${o.onHistory && list.length > 1 ? `<button type="button" onclick="${o.onHistory}"><i class="ti ti-history"></i> History</button>` : ''}</div>
+</div></div>`;
+}
+
+/* Rent form: the Kaltmiete is read-only (a rent increase goes through Mieterhöhung) — "Correct" unlocks it for a typo */
+function ccMhUnlock(a) {
+  const box = a && a.closest('.tn-rf'); const inp = box && box.querySelector('input[data-mh-lock]');
+  if (!inp) return;
+  inp.removeAttribute('readonly'); inp.focus();
+  const hint = a.closest('.tn-rf-hint'); if (hint) hint.textContent = 'Correcting – leave "Gilt ab" empty to fix a typo';
+}
 const CC_MH_KINDS = { staffel: 'Staffel', mieterhoehung: 'Mieterhöhung', index: 'Index', korrektur: 'Korrektur', start: 'start', verlaengerung: 'Verlängerung' };
 /* NK-Vorauszahlung change not yet confirmed with the tenant — same timing as Staffel:
    nothing until 30 days before · amber "NK change from 01.01." · red once the date has passed.
