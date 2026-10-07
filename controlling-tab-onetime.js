@@ -18,8 +18,11 @@
 
 'use strict';
 
-const _CX_KINDS = ['Rechnung', 'Versorger', 'Sonstiges'];   // stored values (German) · Versorger = yearly Strom/Gas/Wasser result
-const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Jahresabrechnung', Sonstiges: 'Other' };   // what the app shows
+const _CX_KINDS = ['Rechnung', 'Versorger', 'Sonstiges', 'Kaufnebenkosten'];   // stored values (German) · Versorger = yearly Strom/Gas/Wasser result
+const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Jahresabrechnung', Sonstiges: 'Other', Kaufnebenkosten: 'Kaufnebenkosten' };   // what the app shows
+// Kaufnebenkosten (Notar, Grundbuch, Grunderwerbsteuer, Makler): listed and exported for the tax return,
+// but part of the purchase — never in the cashflow, the dashboard or a property's month result
+const _cxOtKnk = o => !!o && o.kind === 'Kaufnebenkosten';
 // Casa Castel: the yearly Strom/Gas/Wasser results are your "Hausgeld" (no WEG there) → chip "Hausgeld"
 // Rentals: chip "Jahresabrechnung" (WEG Hausgeld results come from Settlements → Abrechnungen, not from here)
 const _cxOtKindLbl = (k, pid) => k === 'Versorger' && Number(pid) === CASA_PROP_ID ? 'Hausgeld' : (_CX_KIND_LBL[k] || k);
@@ -85,7 +88,7 @@ function _cxOtFormHTML(o) {
     '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Date"></label>' +
     // Casa Castel costs that tenants pay via the NK-Abrechnung — for you still a normal cost (tax export unchanged)
     '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '"' +
-      (pid === CASA_PROP_ID ? '' : ' style="display:none"') + '>' +
+      (pid === CASA_PROP_ID && kind !== 'Kaufnebenkosten' ? '' : ' style="display:none"') + '>' +
       '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
       '<span class="cx-ot-nk__t"><b>Include in NK-Abrechnung</b><small>Gemeinschaftskosten · still a normal cost for you</small></span></button>' +
     _cxOtNkCatHTML(o, nk, pid) +
@@ -101,7 +104,8 @@ function _cxOtRowHTML(o) {
   if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(o) + '</div>';
   const inn = Number(o.direction) === 1;
   const nkCat = o.nk_umlage && o.nk_category_id ? (window._ctrl.categories || []).find(c => Number(c.id) === Number(o.nk_category_id)) : null;
-  const pills = (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK' + (nkCat ? ' · ' + cxEsc(nkCat.name) : '') + '</span>' : '') +
+  const pills = _cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (inn ? cxPill('ok', 'Refund') : '') :
+                (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK' + (nkCat ? ' · ' + cxEsc(nkCat.name) : '') + '</span>' : '') +
                 (o.kind === 'Versorger' ? cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung
                   : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill('ok', 'Income') : ''));
   return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc('Edit ' + (o.item || 'entry')) + '">' +
@@ -147,8 +151,10 @@ function _cxOtListHTML() {
     'No invoices yet ' + (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1]) + '.') + '</div></div>';
   const order = window._ctrl.properties.slice().sort((a, b) => (b.active === a.active ? 0 : a.active ? -1 : 1) || a.id - b.id);
   return order.map(p => {
-    const list = rows.filter(o => Number(o.property_id) === p.id);
-    if (!list.length) return '';                                         // a property shows only once it has an entry
+    const all = rows.filter(o => Number(o.property_id) === p.id);
+    if (!all.length) return '';                                          // a property shows only once it has an entry
+    const list = all.filter(o => !_cxOtKnk(o)), knk = all.filter(_cxOtKnk);
+    const knkSum = knk.reduce((s, o) => s - _cxOtSigned(o), 0);
     const out = list.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
     const inn = list.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
     const here = _cxOt.form === 'new:' + p.id;
@@ -173,14 +179,18 @@ function _cxOtListHTML() {
           (open ? _cxOtRowsLimited(ml, k) : '');
       });
     }
+    if (knk.length) body +=                                             // part of the purchase: own block, own total
+      '<div class="cx-ot-knk"><div class="cx-row-sb"><span class="cx-lbl">Kaufnebenkosten · not in cashflow</span>' +
+        '<span class="cx-ot-ms">' + cxW(knkSum) + ' · ' + knk.length + '</span></div>' +
+        knk.slice().sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date))).map(_cxOtRowHTML).join('') + '</div>';
     const n = list.length;
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
-      sub: n + (n === 1 ? ' invoice' : ' invoices') + (inn ? ' · Income ' + cxW(inn) : ''),
+      sub: [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', inn ? 'Income ' + cxW(inn) : '', knk.length ? 'Kaufnebenkosten ' + cxW(knkSum) : ''].filter(Boolean).join(' · '),
       status: null,
       extraPill: '<span class="cx-ot-tot">' + cxW(out) + '</span>',
-      defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || list.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
+      defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || all.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
       body,
     });
   }).join('');
@@ -189,11 +199,19 @@ function _cxOtListHTML() {
 window.renderOneTime = function () {
   const host = document.getElementById('tab-onetime');
   if (!host) return;
+  if (!document.getElementById('cx-ot-knk-css')) {                    // Kaufnebenkosten block (own look, set apart from the invoices)
+    const st = document.createElement('style'); st.id = 'cx-ot-knk-css';
+    st.textContent = '.cx-ot-knk{margin:10px 0 6px;padding:8px 10px 2px;border-radius:10px;background:#F5F2ED;border:.5px dashed #D9CFC0}' +
+      '.cx-ot-knk>.cx-row-sb{padding:2px 0 4px}.cx-ot-knk .cx-r{background:transparent}';
+    document.head.appendChild(st);
+  }
   const at = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
   if (CX.tab !== 'onetime' || (_cxOt.formAt && _cxOt.formAt !== at)) { _cxOt.form = null; _cxOt.formAt = null; }
   CX.tab = 'onetime';
   const flash = _cxOt.flash;
-  const all = _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month);
+  const inPer = _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month);
+  const all = inPer.filter(o => !_cxOtKnk(o)), knkAll = inPer.filter(_cxOtKnk);
+  const knkTot = knkAll.reduce((s, o) => s - _cxOtSigned(o), 0);
   const raus = all.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
   const rein = all.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
   const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
@@ -206,6 +224,7 @@ window.renderOneTime = function () {
     '<div class="cx-card cx-sum">' +
       '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', all.length + (all.length === 1 ? ' invoice' : ' invoices')) + '</div>' +
       '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxW(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
+      (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '') +
       '<div class="cx-grid2" style="margin-top:4px">' +
         '<button class="cx-btn cx-btn--s" data-cx="otNew">' +
           (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-plus" aria-hidden="true"></i>Invoice') + '</button>' +
@@ -278,6 +297,7 @@ window.renderOneTime = function () {
           // Hausgeld = the yearly Strom/Gas/Wasser result → always part of the Casa Castel NK
           const pid = Number(document.getElementById('cxOtProp')?.value);
           if (b.dataset.v === 'Versorger' && pid === CASA_PROP_ID) { if (o) o._nk = true; else _cxOt.nk = true; }
+          if (b.dataset.v === 'Kaufnebenkosten') { if (o) o._nk = false; else _cxOt.nk = false; }
         });
       }
       if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._dir = Number(b.dataset.v); }); }
@@ -357,7 +377,7 @@ async function _cxOtSave(b) {
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   // NK only for Casa Castel costs (Raus); anything else is saved without it
   const nkOn = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
-  const nk_umlage = pid === CASA_PROP_ID && !!nkOn;          // Raus adds to the NK costs, Rein (e.g. Versorger-Guthaben) lowers them
+  const nk_umlage = pid === CASA_PROP_ID && !!nkOn && kind !== 'Kaufnebenkosten';          // Raus adds to the NK costs, Rein (e.g. Versorger-Guthaben) lowers them
   const catV = g('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;   // '' = general house costs (split by person)
   if (nk_umlage && kind === 'Versorger' && !catV) { say('Please choose the cost type, e.g. Gas or Strom'); g('cxOtNkCat')?.focus(); return; }
@@ -410,7 +430,8 @@ function _cxOtNkShow() {
   const pid = Number(document.getElementById('cxOtProp')?.value);
   const o = _cxOtEditing();
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
-  row.style.display = pid === CASA_PROP_ID ? '' : 'none';
+  const kind = o ? (o._kind || o.kind) : _cxOt.kind;
+  row.style.display = pid === CASA_PROP_ID && kind !== 'Kaufnebenkosten' ? '' : 'none';
   const catRow = document.getElementById('cxOtNkCatRow'); if (catRow && pid !== CASA_PROP_ID) catRow.style.display = 'none';
   const chip = document.querySelector('.cx-ot-form [data-cx="otKind"][data-v="Versorger"]');
   if (chip) chip.textContent = _cxOtKindLbl('Versorger', pid);       // Hausgeld (Casa Castel) · Jahresabrechnung (Rentals)

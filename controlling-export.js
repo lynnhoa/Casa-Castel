@@ -54,13 +54,16 @@ function cxInvoiceData(year, pid) {
     const list = rows.filter(o => Number(o.property_id) === p.id)
       .sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || (Number(a.id) || 0) - (Number(b.id) || 0));
     if (!list.length) continue;
-    let nr = 0, total = 0;
-    const items = list.map(o => {
-      const price = Math.round((Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0) * 100) / 100;
-      total += price;
-      return { nr: ++nr, item: o.item || '', company: o.company || '', price, date: String(o.invoice_date).slice(0, 10) };
-    });
-    groups.push({ p, items, total: Math.round(total * 100) / 100 });
+    // Kaufnebenkosten (Notar, Grundbuch, Grunderwerbsteuer, Makler) get their own list and sum: part of the purchase
+    const mk = arr => { let nr = 0, total = 0;
+      const items = arr.map(o => {
+        const price = Math.round((Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0) * 100) / 100;
+        total += price;
+        return { nr: ++nr, item: o.item || '', company: o.company || '', price, date: String(o.invoice_date).slice(0, 10) };
+      });
+      return { items, total: Math.round(total * 100) / 100 }; };
+    const reg = mk(list.filter(o => o.kind !== 'Kaufnebenkosten')), knk = mk(list.filter(o => o.kind === 'Kaufnebenkosten'));
+    groups.push({ p, items: reg.items, total: reg.total, knk: knk.items, knkTotal: knk.total });
   }
   return groups;
 }
@@ -88,18 +91,26 @@ function cxBuildInvoiceWorkbook(year, pid) {
   const groups = cxInvoiceData(year, pid);
   let count = 0;
   for (const g of groups) {
-    count += g.items.length;
+    count += g.items.length + g.knk.length;
+    const dt = d => new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
     const aoa = [['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum']];
-    for (const it of g.items) {
-      const d = it.date;
-      aoa.push([it.nr, it.item, it.company, it.price, new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))]);
-    }
+    for (const it of g.items) aoa.push([it.nr, it.item, it.company, it.price, dt(it.date)]);
     const last = aoa.length;
     aoa.push([]);
     aoa.push(['', 'Summe', '', null, '']);
+    let kFirst = 0, kLast = 0;
+    if (g.knk.length) {                                              // Kaufnebenkosten: own block, own sum (not in the Summe above)
+      aoa.push([]);
+      aoa.push(['', 'Kaufnebenkosten (Anschaffungsnebenkosten, nicht im Cashflow)', '', '', '']);
+      kFirst = aoa.length + 1;
+      for (const it of g.knk) aoa.push([it.nr, it.item, it.company, it.price, dt(it.date)]);
+      kLast = aoa.length;
+      aoa.push(['', 'Summe Kaufnebenkosten', '', null, '']);
+    }
     const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true });
-    ws[X.utils.encode_cell({ r: last + 1, c: 3 })] = { t: 'n', f: 'SUM(D2:D' + last + ')', v: g.total };
-    for (let r = 1; r <= last + 1; r++) {
+    ws[X.utils.encode_cell({ r: last + 1, c: 3 })] = { t: 'n', f: g.items.length ? 'SUM(D2:D' + last + ')' : '0', v: g.total };
+    if (g.knk.length) ws[X.utils.encode_cell({ r: kLast, c: 3 })] = { t: 'n', f: 'SUM(D' + kFirst + ':D' + kLast + ')', v: g.knkTotal };
+    for (let r = 1; r < aoa.length; r++) {
       const c = ws[X.utils.encode_cell({ r, c: 3 })]; if (c && c.t === 'n') c.z = '#,##0.00 "€";-#,##0.00 "€"';
       const d = ws[X.utils.encode_cell({ r, c: 4 })]; if (d && (d.t === 'd' || d.t === 'n')) d.z = 'dd.mm.yyyy';
     }
@@ -171,20 +182,45 @@ function cxBuildInvoicePdf(year, pid) {
   if (!single) {
     pageTitle('Rechnungen ' + year, 'Alle Objekte · Stand ' + stand);
     const tot = groups.reduce((s, g) => s + g.total, 0), n = groups.reduce((s, g) => s + g.items.length, 0);
-    table(50, ['Objekt', 'Rechnungen', 'Summe'],
+    const kTot = groups.reduce((s, g) => s + g.knkTotal, 0), hasK = groups.some(g => g.knk.length);
+    if (hasK) table(50, ['Objekt', 'Rechnungen', 'Summe', 'Kaufnebenkosten'],
+      groups.map(g => [_cxPdfTxt(g.p.name), String(g.items.length), _cxPdfEur(g.total), g.knk.length ? _cxPdfEur(g.knkTotal) : '–']),
+      ['Gesamt', String(n), _cxPdfEur(tot), _cxPdfEur(kTot)],
+      { 1: { halign: 'right', cellWidth: 26 }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'right', cellWidth: 36 } });
+    else table(50, ['Objekt', 'Rechnungen', 'Summe'],
       groups.map(g => [_cxPdfTxt(g.p.name), String(g.items.length), _cxPdfEur(g.total)]),
       ['Gesamt', String(n), _cxPdfEur(tot)],
       { 1: { halign: 'right', cellWidth: 30 }, 2: { halign: 'right', cellWidth: 38 } });
+    if (hasK) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.mut);
+      doc.text(_cxPdfTxt('Kaufnebenkosten (Notar, Grundbuch, Grunderwerbsteuer, Makler) sind Anschaffungsnebenkosten und in der Summe nicht enthalten.'),
+        M, doc.lastAutoTable.finalY + 8, { maxWidth: W - 2 * M });
+    }
   }
   const pageProp = {};                                    // page → property (continuation pages keep its name in the header)
   groups.forEach((g, i) => {
     if (!single || i > 0) doc.addPage();
     const first = doc.getNumberOfPages();
-    pageTitle(g.p.name, g.items.length + (g.items.length === 1 ? ' Rechnung' : ' Rechnungen') + ' · ' + year + ' · Stand ' + stand);
-    table(50, ['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum'],
-      g.items.map(it => [String(it.nr), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
-      ['', 'Summe', '', _cxPdfEur(g.total), ''],
-      { 0: { cellWidth: 11, textColor: C.mut }, 2: { cellWidth: 42 }, 3: { halign: 'right', cellWidth: 27 }, 4: { halign: 'right', cellWidth: 29 } });
+    pageTitle(g.p.name, [g.items.length ? g.items.length + (g.items.length === 1 ? ' Rechnung' : ' Rechnungen') : '',
+      g.knk.length ? g.knk.length + ' Kaufnebenkosten' : '', String(year), 'Stand ' + stand].filter(Boolean).join(' · '));
+    const cols = { 0: { cellWidth: 11, textColor: C.mut }, 2: { cellWidth: 42 }, 3: { halign: 'right', cellWidth: 27 }, 4: { halign: 'right', cellWidth: 29 } };
+    let y = 50;
+    if (g.items.length) {
+      table(y, ['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum'],
+        g.items.map(it => [String(it.nr), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
+        ['', 'Summe', '', _cxPdfEur(g.total), ''], cols);
+      y = doc.lastAutoTable.finalY + 14;
+    }
+    if (g.knk.length) {                                    // Kaufnebenkosten: own table, own sum, clearly labelled
+      if (y > 235) { doc.addPage(); y = 34; }
+      doc.setFont('times', 'normal'); doc.setFontSize(14); doc.setTextColor(...C.ink);
+      doc.text('Kaufnebenkosten', M, y);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.mut);
+      doc.text(_cxPdfTxt('Anschaffungsnebenkosten · nicht im Cashflow, nicht in der Summe oben'), M, y + 5);
+      table(y + 9, ['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum'],
+        g.knk.map(it => [String(it.nr), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
+        ['', 'Summe Kaufnebenkosten', '', _cxPdfEur(g.knkTotal), ''], cols);
+    }
     for (let pg = first; pg <= doc.getNumberOfPages(); pg++) pageProp[pg] = g.p.name;
   });
 
@@ -199,7 +235,7 @@ function cxBuildInvoicePdf(year, pid) {
     doc.setDrawColor(...C.line); doc.setLineWidth(0.2); doc.line(M, 17, W - M, 17);
     doc.text(_cxPdfTxt(titleOf()) + ' · Seite ' + i + ' von ' + pages, W / 2, 287, { align: 'center' });
   }
-  return { doc, count: groups.reduce((s, g) => s + g.items.length, 0), name: _cxExportName(year, pid, 'pdf') };
+  return { doc, count: groups.reduce((s, g) => s + g.items.length + g.knk.length, 0), name: _cxExportName(year, pid, 'pdf') };
 }
 
 /* Tap on "PDF erstellen" (btn = the tapped button; its parent gets "Open PDF" + "Save / Share" in the installed app) */

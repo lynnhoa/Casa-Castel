@@ -1005,7 +1005,7 @@ function ctlActualMonth(pid, m) {
   }
   let abrIn = 0, abrOut = 0;
   for (const o of (window._ctrl.one_time || [])) {
-    if (o.property_id !== pid) continue;
+    if (o.property_id !== pid || o.kind === 'Kaufnebenkosten') continue;   // Kaufnebenkosten: not in the month result
     const d = ctlParseDate(o.invoice_date);
     if (d.year !== y || d.month !== m) continue;
     const amt = Number(o.amount) || 0, inn = Number(o.direction) === 1;

@@ -91,6 +91,7 @@ function _cxDashCounts(props, months) {
     if (!ids.has(Number(o.property_id))) continue;
     const d = ctlParseDate(o.invoice_date);
     if (d.year !== y || !ms.has(d.month)) continue;
+    if (o.kind === 'Kaufnebenkosten') continue;                   // part of the purchase, not the cashflow
     if (CX_ABR_KINDS.includes(o.kind)) { if (o.kind === 'NK-Abrechnung') c.nk++; else c.weg++; }
     else if (Number(o.direction) === 1) c.refunds++;
     else c.bills++;
@@ -119,7 +120,7 @@ function _cxDashProp(p, months) {
       if (row.zinsen !== null && row.zinsen !== undefined) { r.zinsB = (r.zinsB || 0) + (Number(row.zinsen) || 0); r.tilgB = (r.tilgB || 0) + (Number(row.tilgung) || 0); }
     }
     for (const o of (window._ctrl.one_time || [])) {
-      if (Number(o.property_id) !== p.id) continue;
+      if (Number(o.property_id) !== p.id || o.kind === 'Kaufnebenkosten') continue;   // Kaufnebenkosten: not in the cashflow
       const d = ctlParseDate(o.invoice_date);
       if (d.year !== y || d.month !== m) continue;
       const signed = (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);

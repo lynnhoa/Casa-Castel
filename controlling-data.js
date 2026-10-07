@@ -96,7 +96,7 @@ function ctlPropertyMonth(pid, month) {
   // One-time entries: out (direction −1, the default) and in (+1)
   let oneTime = 0, oneTimeIn = 0;
   for (const ot of window._ctrl.one_time) {
-    if (ot.property_id !== pid) continue;
+    if (ot.property_id !== pid || ot.kind === 'Kaufnebenkosten') continue;   // Kaufnebenkosten: part of the purchase, not the cashflow
     const d = ctlParseDate(ot.invoice_date);
     if (d.year !== y || d.month !== month) continue;
     if (Number(ot.direction) === 1) oneTimeIn += Number(ot.amount || 0);
