@@ -346,7 +346,7 @@ function sdPreviewView() {
         (d.property_id ? '<div class="sc-li"><span>Also book in Controlling</span><span>' + (d.book ? 'yes' : 'no') + '</span></div>' : '') + '</div>' +
       '<p class="sd-hint" style="text-align:center">Mark as sent → the letter is saved to the archive and the property\'s history</p>' +
     '</div></div>' +
-    '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sd="pdf"' + (issues.length ? ' disabled' : '') + '><i class="ti ti-file-text" aria-hidden="true"></i> Create PDF</button>' +
+    '<div class="srm__bar srm__bar--2 srm__bar--doc"><button class="cx-btn cx-btn--s" data-sd="pdf"' + (issues.length ? ' disabled' : '') + '><i class="ti ti-file-text" aria-hidden="true"></i> Create PDF</button>' +
       '<button class="cx-btn cx-btn--p" data-sd="send"' + (issues.length ? ' disabled' : '') + '>Mark as sent</button></div>';
 }
 

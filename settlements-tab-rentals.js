@@ -1495,7 +1495,7 @@ function _srTenView(c) {
     (late ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> The Frist (' + stDate(perC.frist) + ') has passed: a Nachzahlung can no longer be claimed; a Guthaben must still be paid.</div>' : '') +
     (sent ? '' : '<button class="cx-link sr-skip" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '" data-skip="1">Skip this NK</button>') +
   '</div></div>' +
-  '<div class="srm__bar srm__bar--2"><button type="button" class="cx-btn cx-btn--s" data-sr="pdf" data-cc-pdf="1"' + (x.missing ? ' disabled' : '') + '><i class="ti ti-file-text" aria-hidden="true"></i> Create PDF</button>' +
+  '<div class="srm__bar srm__bar--2 srm__bar--doc"><button type="button" class="cx-btn cx-btn--s" data-sr="pdf" data-cc-pdf="1"' + (x.missing ? ' disabled' : '') + '><i class="ti ti-file-text" aria-hidden="true"></i> Create PDF</button>' +
     (sent ? '<button type="button" class="cx-btn cx-btn--p" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '">' + (ti.k === 'settled' ? 'Edit settlement' : 'Settle') + '</button>'
           : '<button type="button" class="cx-btn cx-btn--p" data-sr="send"' + (x.missing ? ' disabled' : '') + '><i class="ti ti-send" aria-hidden="true"></i> Mark sent</button>') + '</div>';
 }

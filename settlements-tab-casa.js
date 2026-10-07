@@ -598,7 +598,7 @@ function scTenView(M, m) {
   const lockHint = t.k === 'open' && M.sendable && !M.locked && !noData ? '<p class="sc-hint2" style="text-align:center">Lock the house costs to send the letter.</p>' : '';
   const xDel = t.extra && t.k === 'open' ? '<button class="cx-link sc-skipflow" data-sc="extraDel" data-k="' + stEsc(t.key) + '">Remove this tenant from this NK</button>' : '';
   return head + '<div class="srm__b"><div class="srm__one sc-sheet">' + hero + tiles + vzEd + kau + status + det + letter + lockHint + skipFlow + xDel + '</div></div>' +
-    (bar ? '<div class="srm__bar srm__bar--2">' + bar + '</div>' : '');
+    (bar ? '<div class="srm__bar srm__bar--2 srm__bar--doc">' + bar + '</div>' : '');
 }
 function scToggle(f, key, on, t, s, can) {
   return '<button type="button" class="sc-tg' + (on ? ' on' : '') + '" data-sc="tg" data-f="' + f + '" data-k="' + stEsc(key) + '"' + (can ? '' : ' disabled') + ' aria-pressed="' + on + '">' +

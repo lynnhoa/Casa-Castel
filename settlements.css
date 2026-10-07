@@ -1091,3 +1091,13 @@ button.st-sg__r { cursor: pointer; }
 .st-set__note.is-kept { color: #6E5230; }
 .st-set__a { display: flex; gap: 14px; flex-shrink: 0; }
 .st-set__a .cx-link { color: var(--cx-acc); font-weight: 500; font-size: 12px; padding: 0; }
+
+/* Letter bars (Oct 2026): PDF first, then the main action (Mark as sent / Settle) —
+   on the phone PDF on top, the main action below; clearer, bolder outlines */
+.srm__bar--doc .cx-btn { font-weight: 600; letter-spacing: .08em; }
+.srm__bar--doc .cx-btn--s { background: var(--cx-card); color: var(--cx-ink); border: 1.2px solid #B9A98F; }
+.srm__bar--doc .cx-btn--s i { color: #8A6535; font-size: 16px; }
+.srm__bar--doc .cx-btn--p { border-width: 1.2px; }
+.srm__bar--doc .cx-btn--p:disabled { opacity: 1; background: #EAE4DA; border-color: #D9D1C4; color: #8C8379; }
+.srm__bar--doc .cx-btn--s:disabled { opacity: .5; }
+@media (max-width: 700px) { .srm__bar--doc { flex-direction: column; } }
