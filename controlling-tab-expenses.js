@@ -45,7 +45,9 @@ function _cxExpModel() {
     } else {
       const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m);
       for (const r of rows) r.ist = row && row[r.key] !== null && row[r.key] !== undefined ? cxR(row[r.key]) : null;
+      const splitLoan = rows.some(r => r.key === 'zinsen' || r.key === 'tilgung');      // Zinsen + Tilgung debited separately
       if (row) for (const k of ['rate', 'hausgeld', 'grundsteuer', 'strom']) {
+        if (k === 'rate' && splitLoan) continue;                                         // the rate is their sum, not its own line
         if (rows.some(r => r.key === k) || row[k] === null || row[k] === undefined || Number(row[k]) === 0) continue;
         rows.push({ key: k, label: _CX_APT_LABEL[k], soll: 0, sub: 'not planned', src: '', ist: cxR(row[k]) });
       }
@@ -65,7 +67,7 @@ window.renderExpenses = function () {
 
   const cards = model.map(g => {
     const regular = g.rows.filter(r => !r.bedarf), bedarf = g.rows.filter(r => r.bedarf);
-    const row = r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist,
+    const row = r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist, badge: r.bank ? 'bank' : null,
         sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">from ' + cxEsc(r.src) + '</span>' : ''),
         notes: r.note ? [r.note] : [], info: r.info || null, emptyText: r.bedarf ? 'as needed' : 'not planned', allowEmpty: true });
     const bk = 'expb:' + g.p.id + ':' + CX.month, bOpen = !!CX.open[bk];
@@ -114,6 +116,7 @@ window.renderExpenses = function () {
           try {
             if (it.catId) await ctlDeleteCastel(it.catId, u.m);
             else if (it.key === 'rate') await ctlUpsertApt(it.pid, u.m, { rate: null, zinsen: null, tilgung: null });
+            else if (it.key === 'zinsen' || it.key === 'tilgung') await _cxAptLoanPart(it.pid, u.m, it.key, null);
             else await ctlUpsertApt(it.pid, u.m, { [it.key]: null });
           } catch (err) { cxToastErr(err); }
         }
@@ -138,6 +141,15 @@ function _cxExpBulkList() {
   return { list, n: list.length, sum: cxR(list.reduce((a, e) => a + e.row.soll, 0)), skipped };
 }
 
+/* Zinsen or Tilgung debited separately: save that part, the Kreditrate is always their sum */
+async function _cxAptLoanPart(pid, m, key, val) {
+  const y = window._ctrl.year;
+  const row = window._ctrl.apt_expenses.find(e => e.property_id === pid && e.year === y && e.month === m) || {};
+  const other = key === 'zinsen' ? row.tilgung : row.zinsen;
+  const parts = [val, other].filter(x => x !== null && x !== undefined);
+  await ctlUpsertApt(pid, m, { [key]: val, rate: parts.length ? cxR(parts.reduce((a, b) => a + Number(b), 0)) : null });
+}
+
 /* Save one cost line (null = empty → "offen") */
 async function _cxExpSave(e, v) {
   const m = CX.month, r = e.row;
@@ -145,6 +157,8 @@ async function _cxExpSave(e, v) {
     if (r.catId) {
       if (v === null || v === undefined) await ctlDeleteCastel(r.catId, m);
       else await ctlUpsertCastel(r.catId, m, cxR(v));
+    } else if (r.key === 'zinsen' || r.key === 'tilgung') {
+      await _cxAptLoanPart(e.p.id, m, r.key, v === null || v === undefined ? null : cxR(v));
     } else if (r.key === 'rate') {
       if (v === null || v === undefined) await ctlUpsertApt(e.p.id, m, { rate: null, zinsen: null, tilgung: null });
       else {

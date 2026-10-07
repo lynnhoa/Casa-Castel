@@ -246,6 +246,15 @@ function renderEditForm(p) {
       <div class="e-field"><label class="e-lbl">Remaining debt €</label><input class="cc-input" id="e-restschuld" type="number" data-cc-num="2" value="${p.restschuld}"/></div>
     </div>
     <div class="e-grid">
+      <div class="e-field"><label class="e-lbl">Remaining debt as of</label><input class="cc-input" id="e-restschuld-date" type="date" value="${p.restschuld_date || ''}"/></div>
+      <div class="e-field"><label class="e-lbl">Bank debits</label>
+        <select class="cc-select" id="e-bank-debit">
+          <option value="rate"${(p.bank_debit || (p.sparv ? 'split' : 'rate')) === 'rate' ? ' selected' : ''}>One Kreditrate</option>
+          <option value="split"${(p.bank_debit || (p.sparv ? 'split' : 'rate')) === 'split' ? ' selected' : ''}>Zinsen + Tilgung separately</option>
+        </select>
+      </div>
+    </div>
+    <div class="e-grid">
       <div class="e-field"><label class="e-lbl">Paid off €</label><input class="cc-input" id="e-abbezahlt" type="number" data-cc-num="2" value="${p.abbezahlt}"/></div>
       <div class="e-field"><label class="e-lbl">Interest rate %</label><input class="cc-input" id="e-zinssatz" type="number" data-cc-num="auto" step="0.01" value="${p.zinssatz}"/></div>
     </div>
@@ -271,6 +280,10 @@ function renderEditForm(p) {
           <option value="true"${p.sparv ? ' selected' : ''}>Yes</option>
         </select>
       </div>
+    </div>
+    <div class="e-grid">
+      <div class="e-field"><label class="e-lbl">Rate changes valid from</label><input class="cc-input" id="e-valid-from" type="date" value="${new Date().toISOString().slice(0, 8) + '01'}"/></div>
+      <div class="e-field"><label class="e-lbl">&nbsp;</label><span style="font-size:11px;color:var(--cc-taupe);line-height:1.4">Earlier months in Controlling keep the old rate</span></div>
     </div>
     <button class="cc-btn--primary" onclick="saveEdit()">Save</button>
     <button class="cc-btn--secondary" onclick="toggleEdit()">Cancel</button>
@@ -307,10 +320,28 @@ async function saveEdit() {
     tilgung:    gn('e-tilgung'),
     zinsen:     gn('e-zinsen'),
     sparv:      g('e-sparv') === 'true',
+    bank_debit: g('e-bank-debit') || p.bank_debit || null,
+    restschuld_date: g('e-restschuld-date') || null,
   };
+  // Rate / Tilgung / Zinsen / what the bank debits changed → Controlling uses the new terms from that month on only
+  const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+  const termsChanged = ['rate', 'tilgung', 'zinsen'].some(k => r2(fields[k]) !== r2(p[k])) || (fields.bank_debit || null) !== (p.bank_debit || null);
+  const validFrom = (g('e-valid-from') || new Date().toISOString().slice(0, 10)).slice(0, 8) + '01';
 
   try {
     showLoading(true);
+    if (termsChanged && typeof getClient === 'function') {
+      try {
+        const db = getClient();
+        const { data: had } = await db.from('loan_terms_history').select('id').eq('property_id', _pid).limit(1);
+        if (!had || !had.length)                                       // first change: today's terms are the start version
+          await db.from('loan_terms_history').insert({ property_id: _pid, valid_from: '2000-01-01', rate: p.rate, tilgung: p.tilgung, zinsen: p.zinsen, bank_debit: p.bank_debit || null });
+        const same = await db.from('loan_terms_history').select('id').eq('property_id', _pid).eq('valid_from', validFrom).limit(1);
+        const row = { property_id: _pid, valid_from: validFrom, rate: fields.rate, tilgung: fields.tilgung, zinsen: fields.zinsen, bank_debit: fields.bank_debit };
+        if (same.data && same.data.length) await db.from('loan_terms_history').update(row).eq('id', same.data[0].id);
+        else await db.from('loan_terms_history').insert(row);
+      } catch (e) { console.warn('[properties] loan history', e); }
+    }
     await updateProperty(_pid, fields);
     window._props = await fetchAll();
     renderAll();

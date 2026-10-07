@@ -57,7 +57,7 @@ const _CX_SRC = [
   ['rntNk', 'rnt_nk_entries'], ['rooms', 'rooms'], ['casaTen', 'tenant_records'],
   ['casaNkV', 'nk_vorauszahlung_history'], ['casaNk', 'nk_entries'], ['loans', 'properties'],
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
-  ['abr', 'abr_results'], ['vac', 'unit_vacancies'],
+  ['abr', 'abr_results'], ['vac', 'unit_vacancies'], ['loanHist', 'loan_terms_history'],
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -757,6 +757,49 @@ function _cxNextDue(months, m) {
   return s.find(x => x > m) || s[0];
 }
 
+/* ── Loans (Properties) ─────────────────────────────────────
+   bank_debit 'rate' | 'split' (Zinsen + Tilgung separately · default: Bausparvertrag = split)
+   loan_terms_history: a change counts from its month on — earlier months keep the terms they had */
+const _cxE2 = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0€';
+function ctlLoanDebit(L) {
+  const d = String((L && L.bank_debit) || '');
+  if (d === 'rate' || d === 'split') return d;
+  return L && (L.sparv === true || L.sparv === 'true') ? 'split' : 'rate';
+}
+/* The terms valid in month y/m: the latest history entry from that month or before, else today's Properties values */
+function ctlLoanTerms(L, y, m) {
+  const first = _cxIso(y, m, 1);
+  const hist = (window._src.loanHist || []).filter(h => String(h.property_id) === String(L.id) && _cxD(h.valid_from) && _cxD(h.valid_from) <= first)
+    .sort((a, b) => _cxD(b.valid_from).localeCompare(_cxD(a.valid_from)));
+  const h = hist[0];
+  if (!h) return L;
+  const out = Object.assign({}, L);
+  ['rate', 'tilgung', 'zinsen', 'bank_debit'].forEach(k => { if (h[k] !== null && h[k] !== undefined) out[k] = h[k]; });
+  return out;
+}
+/* Zinsen + Tilgung of one month. 'split': the fixed debits. 'rate': estimate from the Restschuld
+   (Restschuld × Zinssatz ÷ 12, to the cent, rolled month by month from restschuld_date) */
+function ctlLoanMonth(L, y, m) {
+  const rate = _cxN0(L.rate), z0 = _cxN0(L.zinsen), t0 = _cxN0(L.tilgung), debit = ctlLoanDebit(L);
+  if (debit === 'split') return { debit, rate: _cxR(z0 + t0), zinsen: _cxR(z0), tilgung: _cxR(t0), est: false };
+  const i = (Number(L.zinssatz) || 0) / 100 / 12, R0 = Number(L.restschuld) || 0, d0 = _cxD(L.restschuld_date);
+  if (!(rate > 0) || !(i > 0) || !(R0 > 0) || !d0) return { debit, rate, zinsen: _cxR(z0), tilgung: _cxR(t0), est: true };
+  const k = (y - Number(d0.slice(0, 4))) * 12 + (m - Number(d0.slice(5, 7)));
+  let R = R0;
+  if (k > 0) for (let j = 0; j < k && R > 0; j++) R = R - (rate - _cxR(R * i));
+  else for (let j = 0; j < -k; j++) R = (R + rate) / (1 + i);
+  const z = Math.min(_cxR(Math.max(R, 0) * i), rate);
+  return { debit, rate, zinsen: z, tilgung: _cxR(rate - z), est: true, rest: _cxR(R) };
+}
+/* "bis 2030" → from 6 months before the end: a reminder to enter the new rate */
+function ctlZinsbindungNote(L, y, m) {
+  const yr = Number((String(L.zb || '').match(/(20\d\d)/) || [])[1]);
+  if (!yr) return null;
+  const k = (yr - y) * 12 + (12 - m);
+  if (k > 6) return null;
+  return k >= 0 ? 'Zinsbindung ends ' + yr + ' – enter the new rate in Properties once you have it' : 'Zinsbindung ended ' + yr + ' – check the rate in Properties';
+}
+
 /* Apartments: Kreditrate · Hausgeld · Grundsteuer · Strom
    → { rows:[{key,label,soll,sub,src,split,note}], notDue:[{label,next}] } */
 function ctlCostRows(p, y, m) {
@@ -765,16 +808,28 @@ function ctlCostRows(p, y, m) {
   const rows = [], notDue = [];
   { const since = _cxD(p.in_portfolio_since); if (since && last < since) return { rows, notDue }; }   // not in the portfolio yet
 
-  const L = pl.loan;
-  const rate = L ? _cxN0(L.rate) : _cxN0(p.def_rate);
-  const z = L ? _cxN0(L.zinsen) : _cxN0(p.def_zinsen);
-  const t = L ? _cxN0(L.tilgung) : _cxN0(p.def_tilgung);
-  const splitKnown = !!L || !!(z || t);                     // #7: no loan link and no split → don't invent Zins 0
-  if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate),
-    // Soll = the rate, the same every month (like copying last month). Zins / Tilgung = information only (~, as in Properties)
-    sub: splitKnown ? 'Zinsen ~' + _cxEurS(z) + ' · Tilgung ~' + _cxEurS(t) : 'Zinsen / Tilgung unknown', src: L ? 'Properties' : 'plan value',
-    split: splitKnown ? { zinsen: z, tilgung: t } : null,
-    info: L ? null : 'Loan not linked with Properties – plan value from Setup › Properties › Loan' });
+  // Kreditrate = exactly what the bank debits (Properties · "Bank debits"), to the cent, valid from its month on:
+  //   'rate'  one debit → one row; Zinsen / Tilgung shown as a monthly estimate (Restschuld × Zinssatz ÷ 12)
+  //   'split' Zinsen and Tilgung (Bausparvertrag) debited separately → two rows, each confirmed on its own
+  const L0 = pl.loan, L = L0 ? ctlLoanTerms(L0, y, m) : null;
+  const zbNote = L0 ? ctlZinsbindungNote(L0, y, m) : null;
+  if (L && ctlLoanDebit(L) === 'split') {
+    const lm = ctlLoanMonth(L, y, m);
+    if (lm.zinsen) rows.push({ key: 'zinsen', label: 'Zinsen', soll: lm.zinsen, bank: true, src: 'Properties', note: zbNote,
+      sub: (_cxN0(L.darlehen) ? 'on ' + _cxE2(L.darlehen) + ' · ' : '') + 'fixed' });
+    if (lm.tilgung) rows.push({ key: 'tilgung', label: 'Tilgung · Bausparvertrag', soll: lm.tilgung, bank: true, src: 'Properties',
+      sub: 'into the Bausparvertrag · Kreditrate together ' + _cxE2(lm.zinsen + lm.tilgung) });
+  } else {
+    const rate = L ? _cxN0(L.rate) : _cxN0(p.def_rate);
+    const lm = L ? ctlLoanMonth(L, y, m) : null;
+    const z = lm ? lm.zinsen : _cxN0(p.def_zinsen), t = lm ? lm.tilgung : _cxN0(p.def_tilgung);
+    const splitKnown = !!L || !!(z || t);                   // #7: no loan link and no split → don't invent Zins 0
+    if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate), bank: !!L, note: zbNote,
+      // Soll = the debit, to the cent. Zins / Tilgung = information only (≈ the loan plan for this month)
+      sub: splitKnown ? '≈ Zinsen ' + _cxE2(z) + ' · ≈ Tilgung ' + _cxE2(t) : 'Zinsen / Tilgung unknown', src: L ? 'Properties' : 'plan value',
+      split: splitKnown ? { zinsen: z, tilgung: t } : null,
+      info: L ? null : 'Loan not linked with Properties – plan value from Setup › Properties › Loan' });
+  }
 
   let hg = null, hgNote = null;
   if (pl.apt) {

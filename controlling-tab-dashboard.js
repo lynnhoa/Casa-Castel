@@ -101,6 +101,7 @@ function _cxDashProp(p, months) {
       const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m) || {};
       r.kosten += (Number(row.hausgeld) || 0) + (Number(row.grundsteuer) || 0) + (Number(row.strom) || 0);
       r.rate   += Number(row.rate) || 0;                                                  // Kreditrate as booked
+      if (row.zinsen !== null && row.zinsen !== undefined) { r.zinsB = (r.zinsB || 0) + (Number(row.zinsen) || 0); r.tilgB = (r.tilgB || 0) + (Number(row.tilgung) || 0); }
     }
     for (const o of (window._ctrl.one_time || [])) {
       if (Number(o.property_id) !== p.id) continue;
@@ -117,9 +118,11 @@ function _cxDashProp(p, months) {
   if (loan) r.loan = loan;
   if (r.rate > 0) {
     const L = Number(loan && loan.rate) || 0, z = Number(loan && loan.zinsen) || 0, t = Number(loan && loan.tilgung) || 0;
-    if (L > 0 && z > 0 && t > 0) { r.zins = r.rate * z / (z + t); r.tilg = r.rate - r.zins; }
+    if (r.zinsB !== undefined && Math.abs((r.zinsB || 0) + (r.tilgB || 0) - r.rate) < 0.05) { r.zins = r.zinsB; r.tilg = r.tilgB; }   // booked per month (bank debits / monthly estimate)
+    else if (L > 0 && z > 0 && t > 0) { r.zins = r.rate * z / (z + t); r.tilg = r.rate - r.zins; }
     else { r.unknown = r.rate; r.split = false; }
   }
+  delete r.zinsB; delete r.tilgB;
   for (const k of ['kalt', 'nk', 'kosten', 'einmalig', 'abr', 'rate', 'zins', 'tilg', 'unknown']) r[k] = cxR(r[k]);
   r.warm      = cxR(r.kalt + r.nk);
   r.lfWarm    = cxR(r.warm - r.kosten - r.rate);          // Bleibt laufend
