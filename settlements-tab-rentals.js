@@ -137,7 +137,7 @@ async function srSaveRow(rec) {
   if (error && /received_on|asked_on|beschluss_on|weg_/i.test(error.message || '')) {     // step-1 SQL not run yet → save the rest
     SR_NEW_COLS.forEach(k => delete row[k]);
     ({ data, error } = await write(row));
-    if (!error) stSay('Gespeichert – für Eingang und WEG-Ergebnis bitte das neue SQL ausführen');
+    if (!error) stSay('Saved – run the latest SQL to also store the received date and the WEG result');
   }
   if (error) throw error;
   const i = SR.rows.findIndex(x => x.id === data.id);
@@ -304,19 +304,19 @@ function _srHvState(c, rec, sum) {
   const wegSt = wegL ? wegL.state : null;
   if (!received) {
     const over = exp ? today > exp.overdue : false;
-    const line2 = exp ? (over ? 'überfällig – erwartet ' + exp.label : 'erwartet ca. ' + exp.label) : 'erwartet – Monat nicht hinterlegt';
+    const line2 = exp ? (over ? 'overdue – expected ' + exp.label : 'expected around ' + exp.label) : 'expected – month not set';
     const k = over || fristSoon ? 'ueberfaellig' : 'erwartet';
     return { k, received, exp, asked, fristSoon, per, wegL, wegSt, todo: k === 'ueberfaellig', wait: k === 'erwartet',
-             pill: fristSoon ? ['diff', 'Frist bald'] : over ? ['diff', 'überfällig'] : ['grey', 'erwartet'],
-             line2: line2 + (asked.length ? ' · nachgefragt ' + stDate(asked[asked.length - 1]) : '') };
+             pill: fristSoon ? ['diff', 'Frist soon'] : over ? ['diff', 'overdue'] : ['grey', 'expected'],
+             line2: line2 + (asked.length ? ' · asked ' + stDate(asked[asked.length - 1]) : '') };
   }
-  const recv = 'erhalten ' + stDate(rec.received_on || rec.hv_date);
-  if (!sum.ok) return { k: 'erfassen', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'erfassen'], line2: recv + ' · noch nicht vollständig erfasst' };
+  const recv = 'received ' + stDate(rec.received_on || rec.hv_date);
+  if (!sum.ok) return { k: 'erfassen', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'enter'], line2: recv + ' · not fully entered yet' };
   const wegSet = rec.weg_direction !== null && rec.weg_direction !== undefined;
-  if (!wegSet && !(wegSt && wegSt.res)) return { k: 'weg', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'WEG-Ergebnis'], line2: recv + ' · WEG-Ergebnis fehlt' };
-  if (wegSt && wegSt.k === 'verschickt') return { k: 'zahlung', received, exp, asked, fristSoon, per, wegL, wegSt, wait: true, pill: ['beige', 'Zahlung offen'], line2: recv + (rec.weg_due ? ' · fällig ' + stDate(rec.weg_due) : '') };
-  const paid = wegSt && wegSt.booking ? ' · ' + (wegSt.res && wegSt.res.dir > 0 ? 'erhalten ' : 'bezahlt ') + stDate(wegSt.booking.invoice_date) : '';
-  return { k: 'fertig', received, exp, asked, fristSoon, per, wegL, wegSt, pill: ['ok', wegSt && wegSt.booking ? (wegSt.res.dir > 0 ? 'erhalten' : 'bezahlt') : 'erfasst'], line2: recv + paid };
+  if (!wegSet && !(wegSt && wegSt.res)) return { k: 'weg', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'WEG result'], line2: recv + ' · WEG result missing' };
+  if (wegSt && wegSt.k === 'verschickt') return { k: 'zahlung', received, exp, asked, fristSoon, per, wegL, wegSt, wait: true, pill: ['beige', 'payment open'], line2: recv + (rec.weg_due ? ' · due ' + stDate(rec.weg_due) : '') };
+  const paid = wegSt && wegSt.booking ? ' · ' + (wegSt.res && wegSt.res.dir > 0 ? 'received ' : 'paid ') + stDate(wegSt.booking.invoice_date) : '';
+  return { k: 'fertig', received, exp, asked, fristSoon, per, wegL, wegSt, pill: ['ok', wegSt && wegSt.booking ? (wegSt.res.dir > 0 ? 'received' : 'paid') : 'entered'], line2: recv + paid };
 }
 
 function _srBlankRec(c) {
@@ -389,7 +389,7 @@ async function _srWriteWeg(c, rec) {
     ctlSettlementInvalidate();
   } catch (err) {
     const msg = String((err && (err.message || err.code)) || err);
-    stSay(/abr_results_one_weg|duplicate|23505/i.test(msg) ? 'Für dieses Jahr gibt es schon eine Hausgeldabrechnung in Controlling' : 'WEG-Ergebnis nicht gespeichert — ' + msg);
+    stSay(/abr_results_one_weg|duplicate|23505/i.test(msg) ? 'There is already a Hausgeld-Abrechnung for this year in Controlling' : 'WEG result not saved — ' + msg);
   }
 }
 

@@ -57,7 +57,7 @@ const _CX_SRC = [
   ['rntNk', 'rnt_nk_entries'], ['rooms', 'rooms'], ['casaTen', 'tenant_records'],
   ['casaNkV', 'nk_vorauszahlung_history'], ['casaNk', 'nk_entries'], ['loans', 'properties'],
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
-  ['abr', 'abr_results'], ['vac', 'unit_vacancies'], ['loanHist', 'loan_terms_history'],
+  ['abr', 'abr_results'], ['vac', 'unit_vacancies'], ['loanHist', 'loan_terms_history'], ['casaMh', 'casa_mieterhoehung_history'],
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -243,7 +243,9 @@ function _cxHist(link, kind) {
   if (kind === 'staffel') {
     const col = link.type === 'rentals_parking' ? 'parking_id' : 'apartment_id';
     // "Ignored" steps: in the contract, but deliberately not charged → the rent stays as before
-    return link.type === 'casa_room' ? [] : S.staffel.filter(h => String(h[col]) === link.ref && !h.ignored);
+    // Casa Castel: the Mieterhöhungen typed in Casa Castel › Tenants (skipped never count)
+    if (link.type === 'casa_room') return (S.casaMh || []).filter(h => _cxNorm(h.room) === _cxNorm(link.ref) && !h.ignored);
+    return S.staffel.filter(h => String(h[col]) === link.ref && !h.ignored);
   }
   // NK-Vorauszahlung: a skipped Änderung (ignored) never changes the amount — the old one keeps running
   if (link.type === 'rentals_apartment') return S.rntNkV.filter(h => String(h.apartment_id) === link.ref && !h.ignored);
@@ -509,6 +511,8 @@ function _cxRentDay(link, w, u, y, m, iso, all, memo) {
   if (mode !== 'pauschal') {                               // Pauschal: one amount, steps don't apply (D5)
     const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) k = sk;
     const sn = _cxStepFrom(c.nk, iso, base); if (sn !== null) nk = sn;
+  } else if (link.type === 'casa_room') {                  // Casa Castel Pauschal: a Mieterhöhung sets the new Pauschalmiete
+    const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) k = sk;
   }
   return { k, nk, mode, src, period: per };
 }

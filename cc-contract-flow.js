@@ -1111,14 +1111,16 @@ async function _ccfStepStaffel(A) {
   }
   if (!steps.length) return;
   for (const st of steps) {
-    const { data: ex, error: e1 } = await sbL.from(p.staffelTable).select('*').eq(col, unitId).eq('effective_date', st.date);
+    const { data: ex0, error: e1 } = await sbL.from(p.staffelTable).select('*').eq(col, unitId).eq('effective_date', st.date);
     if (e1) throw e1;
-    if (ex && ex.length) {
+    // only this tenancy's own step (or an unlinked one) is updated — a former tenant's step stays theirs
+    const ex = (ex0 || []).filter(h => !h.tenant_id || String(h.tenant_id) === String(rec.id));
+    if (ex.length) {
       const { error } = await sbL.from(p.staffelTable).update({ amount: st.amount, tenant_id: String(rec.id) }).eq('id', ex[0].id);
       if (error) throw error;
     } else {
       const res = typeof ccRpInsertWithTenant === 'function'
-        ? await ccRpInsertWithTenant(sbL, p.staffelTable, { [col]: unitId, effective_date: st.date, amount: st.amount, tenant_adjusted: false }, rec.id)
+        ? await ccRpInsertWithTenant(sbL, p.staffelTable, { [col]: unitId, effective_date: st.date, amount: st.amount, tenant_adjusted: false, kind: 'staffel' }, rec.id)
         : await sbL.from(p.staffelTable).insert({ [col]: unitId, effective_date: st.date, amount: st.amount, tenant_adjusted: false, tenant_id: String(rec.id) });
       if (res && res.error) throw res.error;
     }

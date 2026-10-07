@@ -97,10 +97,43 @@ function ccTnRenewalTodo(rec) {
 }
 function ccTnStaffelTodo(state, fmtDateISO) {
   if (!state) return null;
-  if (state.state === 'overdue')  return { level: 'red',   text: `Staffel overdue ${state.days} day${state.days === 1 ? '' : 's'}` };
-  if (state.state === 'reminder') return { level: 'amber', text: `Staffel from ${fmtDateISO(state.entry.effective_date)}` };
+  if (state.state === 'overdue')  return { level: 'red',   text: `Mieterhöhung overdue ${state.days} day${state.days === 1 ? '' : 's'}` };
+  if (state.state === 'reminder') return { level: 'amber', text: `Mieterhöhung from ${fmtDateISO(state.entry.effective_date)}` };
   return null;
 }
+/* ── MIETERHÖHUNG (Staffel + typed increases) — one tenancy owns its steps ──
+   A step linked to a tenant belongs to that tenant only. A step without a link belongs to the tenancy
+   whose dates cover it — never to a later tenant (the same rule as Controlling, _cxOwnsStep).
+   When a tenant moves out, their steps stay with them (info); the next tenant starts with none.     */
+function ccTnStepOwned(e, rec, recsOfUnit) {
+  if (!e || !rec) return false;
+  if (e.tenant_id !== undefined && e.tenant_id !== null && e.tenant_id !== '') return String(e.tenant_id) === String(rec.id);
+  const d = ccTnIso(e.effective_date), from = ccTnIso(rec.mietbeginn), to = rec.mietende ? ccTnIso(rec.mietende) : '9999-12-31';
+  if (!d || !from || d < from || d > to) return false;
+  if (e.created_at && rec.created_at && String(e.created_at) < String(rec.created_at)
+      && (recsOfUnit || []).some(x => x !== rec && ccTnIso(x.mietbeginn) && ccTnIso(x.mietbeginn) < from)) return false;
+  return true;
+}
+/* Next open step of a tenancy → null · { state: 'reminder' (≤30 days) | 'overdue' (date passed, not adjusted / skipped), entry, days } */
+function ccTnStepState(steps) {
+  const open = (steps || []).filter(e => !e.tenant_adjusted && !e.ignored && e.kind !== 'start')
+    .sort((a, b) => ccTnIso(a.effective_date).localeCompare(ccTnIso(b.effective_date)));
+  for (const e of open) {
+    const d = ccTnDaysUntil(ccTnIso(e.effective_date));
+    if (d === null || d > 30) continue;
+    return d >= 0 ? { state: 'reminder', entry: e, days: d } : { state: 'overdue', entry: e, days: -d };
+  }
+  return null;
+}
+/* Card row meta: "next 545,00 € from 01.05.2027" · "none planned" */
+function ccTnStepNext(steps, fmtEUR, fmtDate) {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  const nx = (steps || []).filter(e => !e.ignored && e.kind !== 'start' && ccTnIso(e.effective_date) >= today)
+    .sort((a, b) => ccTnIso(a.effective_date).localeCompare(ccTnIso(b.effective_date)))[0];
+  return nx ? 'next ' + fmtEUR(nx.amount) + ' from ' + fmtDate(nx.effective_date) : 'none planned';
+}
+const CC_MH_KINDS = { staffel: 'Staffel', mieterhoehung: 'Mieterhöhung', index: 'Index', korrektur: 'Korrektur', start: 'start', verlaengerung: 'Verlängerung' };
 /* NK-Vorauszahlung change not yet confirmed with the tenant — same timing as Staffel:
    nothing until 30 days before · amber "NK change from 01.01." · red once the date has passed.
    Only this tenancy's changes (linked to the tenant, or dated after the move-in). */

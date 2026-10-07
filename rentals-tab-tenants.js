@@ -57,7 +57,7 @@ document.getElementById('tab-tenants').innerHTML = `
     <div class="tn-sheet" id="rntStaffelSheet" style="max-height:70vh">
       <div class="tn-sheet-hdr">
         <div style="flex:1;min-width:0">
-          <div class="tn-sheet-name" id="rntStaffelModalTitle">Stufe hinzufügen</div>
+          <div class="tn-sheet-name" id="rntStaffelModalTitle">New Mieterhöhung</div>
           <div class="tn-sheet-sub" id="rntStaffelModalSub"></div>
         </div>
         <button class="tn-icon-btn" onclick="_rntStaffelModalClose()" aria-label="Close">
@@ -596,11 +596,26 @@ function _rntRefreshKautionSoll(tid) {
 }
 function _rntKautionSoll(rec) { const i = _rntKautionSollInfo(rec); return i ? i.amount : null; }
 
+/* Mieterhöhung steps (Staffel + typed) that belong to ONE tenancy — the previous tenant's stay with them.
+   tid omitted → the unit's current tenant. Rule shared with Casa Castel + Controlling (ccTnStepOwned). */
+function _rntOwnSteps(unitId, tid) {
+  const all = _rntStaffel[unitId] || [];
+  const recs = (_rntRecords || []).filter(r => String(r.apartment_id) === String(unitId) || String(r.parking_id) === String(unitId));
+  if (tid === undefined) {
+    const a = recs.filter(r => r.status === 'active').sort((x, y) => String(ccRpIso(y.mietbeginn)).localeCompare(String(ccRpIso(x.mietbeginn))))[0];
+    tid = a ? a.id : null;
+  }
+  if (!tid) return [];
+  const rec = recs.find(r => String(r.id) === String(tid));
+  return all.filter(e => typeof ccTnStepOwned === 'function' ? ccTnStepOwned(e, rec, recs) : true);
+}
+const _rntMhKind = e => (typeof CC_MH_KINDS !== 'undefined' && CC_MH_KINDS[e.kind || 'staffel']) || 'Staffel';
+
 /* Kaution from the rent that applied at move-in (Staffel history), or null */
 function _rntStaffelStartSoll(rec) {
   const unitId = rec.apartment_id || rec.parking_id;
   if (!unitId || !rec.mietbeginn) return null;
-  const e = (_rntStaffel[unitId] || [])
+  const e = _rntOwnSteps(unitId, rec.id)
     .filter(x => x.effective_date && x.effective_date <= rec.mietbeginn)
     .sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)))[0];
   if (!e || !(Number(e.amount) > 0)) return null;
@@ -637,30 +652,27 @@ function _rntFreezeRent() { /* intentionally no longer writes */ }
    → { mode, kalt, nk, total, src, period? } or null (nothing stored — never the unit price) */
 /* ── STAFFEL / NEBENKOSTEN / DETAILS: one row each, the full section opens in a sheet (same as Casa) ── */
 function _rntStaffelRowHTML(rid, isApt, unit, rec) {
-  const all = _rntStaffel[unit.id] || [];
-  if (!all.length) return '';
-  const today = _ccTodayIso(), iso = e => String(e.effective_date || '').slice(0, 10);
-  const nxt = all.filter(e => iso(e) > today).sort((a, b) => iso(a).localeCompare(iso(b)))[0];
-  const cur = all.filter(e => iso(e) <= today).sort((a, b) => iso(b).localeCompare(iso(a)))[0];
-  const st  = typeof _rntStaffelPillState === 'function' ? _rntStaffelPillState(unit.id) : null;
-  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">Staffel overdue</span>`
-    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">Staffel ab ${_rntFmtDate(st.entry.effective_date)}</span>`
-    : nxt ? `next ${_rntFmtEUR(nxt.amount)} ab ${_rntFmtDate(nxt.effective_date)}`
-    : cur ? `${_rntFmtEUR(cur.amount)} seit ${_rntFmtDate(cur.effective_date)}` : '';
-  return ccGroupHTML('', ccRowHTML({ icon: 'stairs-up', title: 'Staffelmiete', meta,
+  if (!rec) return '';
+  const own = _rntOwnSteps(unit.id, rec.id);
+  const st  = typeof ccTnStepState === 'function' ? ccTnStepState(own) : null;
+  const staffel = own.some(e => (e.kind || 'staffel') === 'staffel');
+  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">Mieterhöhung overdue</span>`
+    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">Mieterhöhung from ${_rntFmtDate(st.entry.effective_date)}</span>`
+    : (typeof ccTnStepNext === 'function' ? ccTnStepNext(own, _rntFmtEUR, _rntFmtDate) : '');
+  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Mieterhöhung' + (staffel ? ' <span class="tnp tnp-blue">Staffel</span>' : ''), meta,
     onclick: `_rntSheet('staffel','${rid}','${rec.id}','${isApt ? 'apt' : 'pk'}','${unit.id}')` }));
 }
 function _rntNkGroupHTML(rid, unit, rec) {
   const rows = [];
   if (!_rntAllPauschal(rec.id)) {
     const open = _rntNkHasOpen(rec.id);
-    rows.push(ccRowHTML({ icon: 'receipt', title: 'Abrechnungen',
-      meta: open ? `<span class="tnp tnp-amber">${_rntEsc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _rntNK[rec.id]) : 'NK open')}</span>` : 'none due',
+    rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen',
+      meta: open ? `<span class="tnp tnp-amber">${_rntEsc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _rntNK[rec.id], _rntNkDue(rec)) : 'NK open')}</span>` : 'none due',
       onclick: `_rntSheet('nk','${rid}','${rec.id}','apt','${unit.id}')` }));
   }
   const c = _rntNKVorausCurFor(unit.id, rec);
   const pend = typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_rntNKVoraus[unit.id], rec) : null;
-  rows.push(ccRowHTML({ icon: 'coin-euro', title: 'Vorauszahlung',
+  rows.push(ccRowHTML({ icon: 'coin-euro', title: 'NK-Vorauszahlung',
     meta: pend ? `<span class="tnp ${pend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${_rntEsc(pend.text)}</span>`
                : c ? `${_rntFmtEUR(c.amount)}/mo` : 'not set',
     onclick: `_rntSheet('nkv','${rid}','${rec.id}','apt','${unit.id}')` }));
@@ -679,14 +691,14 @@ function _rntSheet(kind, rid, tid, ukind, unitId) {
   const rec0 = _rntRecords.find(r => String(r.id) === String(tid)); if (!rec0) return;
   const unit = (ukind === 'apt' ? (typeof appApartments !== 'undefined' ? appApartments : []) : (typeof appParking !== 'undefined' ? appParking : []))
     .find(u => String(u.id) === String(unitId));
-  const titles = { staffel: 'Staffelmiete', nk: 'NK-Abrechnungen', nkv: 'NK Vorauszahlung', docs: 'Documents', meters: 'Zählerstände', rent: 'Rent history' };
+  const titles = { staffel: 'Mieterhöhung', nk: 'NK-Abrechnungen', nkv: 'NK-Vorauszahlung', docs: 'Documents', meters: 'Zählerstände', rent: 'Rent history' };
   const unitName = unit ? (unit.name || unit.bezeichnung || unit.label || '') : '';
   ccSheetOpen({
     title: titles[kind],
     kicker: [unitName, _rntFullTenantNames(rec0)].filter(Boolean).join(' \u00b7 '),
     build: () => {
       const rec = _rntRecords.find(r => String(r.id) === String(tid)); if (!rec) return '';
-      if (kind === 'staffel') return ukind === 'apt' ? _rntStaffelHTML(rid, unitId) : _rntPkStaffelHTML(rid, unitId);
+      if (kind === 'staffel') return ukind === 'apt' ? _rntStaffelHTML(rid, unitId, tid) : _rntPkStaffelHTML(rid, unitId, tid);
       if (kind === 'nk')      return _rntNKHTML(rid, rec.id, 'card');
       if (kind === 'nkv')     return _rntNKVorausHTML(rid, unitId, 'card');
       if (kind === 'docs')    return ccfDocsSectionHTML(rec, 'card');
@@ -811,9 +823,16 @@ function _rntAllPauschal(tid) {
   const per = typeof ccRpFor === 'function' ? ccRpFor('rentals', tid) : [];
   return per.length > 0 && per.every(p => p.mode === 'pauschal');
 }
+/* NK periods that are due for this tenant — from the apartment's own Abrechnungszeitraum (Controlling) */
+function _rntNkDue(rec) {
+  if (!rec || typeof ccNksDueFor !== 'function') return [];
+  const apt = rec.apartment_id ? (appApartments || []).find(a => String(a.id) === String(rec.apartment_id)) : null;
+  return apt ? ccNksDueFor(rec, apt) : [];
+}
 function _rntNkHasOpen(tid) {
   if (_rntAllPauschal(tid)) return false;                                           // pauschal → no NK-Abrechnung
-  if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _rntNK[tid]);   // Settlements + old tracking
+  const rec = (_rntRecords || []).find(r => String(r.id) === String(tid));
+  if (typeof ccNksHasOpen === 'function') return ccNksHasOpen(tid, _rntNK[tid], _rntNkDue(rec));   // Settlements + old tracking
   return (_rntNK[tid] || []).some(e => !e.paid);
 }
 
@@ -857,16 +876,17 @@ function _rntNKVorausHasOpen(aptId) {
 
 function _rntStaffelNext(aptId) {
   const today = new Date(); today.setHours(0,0,0,0);
-  return (_rntStaffel[aptId] || []).find(e => new Date(e.effective_date) > today) || null;
+  return _rntOwnSteps(aptId).find(e => new Date(e.effective_date) > today) || null;
 }
 function _rntStaffelCurrent(aptId) {
   const today = new Date(); today.setHours(0,0,0,0);
-  return (_rntStaffel[aptId] || []).find(e => new Date(e.effective_date) <= today) || null;
+  return _rntOwnSteps(aptId).find(e => new Date(e.effective_date) <= today) || null;
 }
 function _rntStaffelPillState(aptId) {
-  // Returns null (no pill), 'reminder' (amber, ≤30 days), or 'overdue' (red, past + not adjusted)
+  // Returns null (no pill), 'reminder' (amber, ≤30 days), or 'overdue' (red, past + not adjusted) — own steps only
+  if (typeof ccTnStepState === 'function') return ccTnStepState(_rntOwnSteps(aptId));
   const today = new Date(); today.setHours(0,0,0,0);
-  const entries = _rntStaffel[aptId] || [];
+  const entries = _rntOwnSteps(aptId);
   for (const e of entries) {
     if (e.tenant_adjusted || e.ignored) continue;     // ignored steps are never a to-do
     const eff = new Date(e.effective_date);
@@ -1726,7 +1746,7 @@ function _rntNKHTML(rid, tid, ctx) {
   }
 
   // 3f · NK-Abrechnungen are made in Settlements — here read-only
-  if (typeof ccNksSectionHTML === 'function') return ccNksSectionHTML(tid, ctx, _rntNK[tid] || []);
+  if (typeof ccNksSectionHTML === 'function') return ccNksSectionHTML(tid, ctx, _rntNK[tid] || [], _rntNkDue((_rntRecords || []).find(r => String(r.id) === String(tid))));
   const entries  = (_rntNK[tid] || []).slice().sort((a,b) => b.period.localeCompare(a.period));
   const open     = entries.filter(e => !e.paid);
   const settled  = entries.filter(e =>  e.paid);
@@ -2090,9 +2110,9 @@ function _rntRenderNKVorausRow(id, aptId, rid) {
 
 
 /* ── STAFFELMIETE SECTION (apartments + parking) ── */
-function _rntStaffelHTML(rid, aptId) {
+function _rntStaffelHTML(rid, aptId, tid) {
   if (!aptId) return '';
-  const entries = _rntStaffel[aptId] || [];
+  const entries = _rntOwnSteps(aptId, tid);
   const today   = new Date(); today.setHours(0,0,0,0);
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
@@ -2112,8 +2132,9 @@ function _rntStaffelHTML(rid, aptId) {
     <div class="tn-nkv-row" id="sf-row-${next.id}">
       <div class="tn-nkv-top">
         <i class="ti ti-clock" style="font-size:13px;color:var(--cc-gold);flex-shrink:0" aria-hidden="true"></i>
-        <span class="tn-nkv-date">ab ${fmtD(next.effective_date)}</span>
+        <span class="tn-nkv-date">from ${fmtD(next.effective_date)}</span>
         <span class="tn-nkv-amount${next.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(next.amount)}</span>
+        <span class="tnp tnp-gray">${_rntMhKind(next)}</span>
         ${delBtn(next)}
       </div>
       <div class="tn-nkv-pills">${adjBtn(next)}</div>
@@ -2121,31 +2142,37 @@ function _rntStaffelHTML(rid, aptId) {
 
   const curDisplay = current
     ? `<div class="tn-nkv-current">
-        <i class="ti ti-stairs-up" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
+        <i class="ti ti-trending-up" style="font-size:15px;color:var(--cc-stone)" aria-hidden="true"></i>
         <span class="tn-nkv-cur-amount${current.ignored ? ' tn-sf-ignored' : ''}">${_rntFmtEUR(current.amount)}&thinsp;/&thinsp;mo</span>
-        <span class="tn-nkv-cur-since">seit ${fmtD(current.effective_date)}</span>
+        <span class="tn-nkv-cur-since">since ${fmtD(current.effective_date)}</span>
         ${delBtn(current)}
       </div>
       <div class="tn-nkv-pills" style="margin:6px 0 2px">${adjBtn(current)}</div>`
-    : (entries.length ? '' : `<p class="tn-empty">Noch keine Staffelstufen eingetragen.</p>`);
+    : (entries.length ? '' : `<p class="tn-empty">No Mieterhöhung planned.</p>`);
 
-  const verlaufLink = entries.length > 1
-    ? `<button class="tn-nkv-verlauf-btn" onclick="_rntStaffelOpenVerlauf('${aptId}','${rid}')">Verlauf</button>`
-    : '';
+  // every step of this tenancy: upcoming · adjusted · skipped · start
+  const all = entries.slice().sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
+  const st = e => e.ignored ? ['tnp-gray', 'skipped'] : e.kind === 'start' ? ['tnp-gray', 'start'] : e.tenant_adjusted ? ['tnp-green', 'adjusted']
+    : new Date(e.effective_date) > today ? ['tnp-amber', 'upcoming'] : ['tnp-red', 'open'];
+  const list = all.length > 1 ? `<div class="tn-msec-lbl" style="margin:12px 0 4px">All Mieterhöhungen</div>` + all.map(e => {
+      const s = st(e);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:var(--cc-border);font-size:12.5px">
+        <span style="flex:1;min-width:0;${e.ignored ? 'text-decoration:line-through;color:var(--cc-taupe)' : ''}">From ${fmtD(e.effective_date)} · ${_rntFmtEUR(e.amount)}</span>
+        <span class="tnp tnp-gray">${_rntMhKind(e)}</span><span class="tnp ${s[0]}">${s[1]}</span></div>`; }).join('') : '';
 
   return `
 <div class="tn-sec" id="sf-sec-${rid}">
   <div class="tn-sec-body" style="padding-top:10px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <span class="tn-sec-lbl" style="flex:1">Staffelmiete</span>
-      ${verlaufLink}
+      <span class="tn-sec-lbl" style="flex:1">Mieterhöhung</span>
       <button class="tn-btn tn-btn-sm" style="height:24px;padding:0 9px;font-size:10px"
         onclick="_rntStaffelOpenAdd('${aptId}','${rid}')">
-        <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Add
+        <i class="ti ti-plus" style="font-size:11px" aria-hidden="true"></i> Mieterhöhung
       </button>
     </div>
     ${curDisplay}
     ${nextRow}
+    ${list}
   </div>
 </div>`;
 }
@@ -2159,8 +2186,10 @@ function _rntStaffelOpenAdd(aptId, rid) {
     form.className = 'cc-add-form';
     form.innerHTML = `
     <div class="cc-add-grid">
-      <label class="cc-add-f"><span class="tn-flbl">Gültig ab</span><input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/></label>
-      <label class="cc-add-f"><span class="tn-flbl">Neue Kaltmiete €</span><input type="number" data-cc-num="2" id="sf-add-amount" placeholder="0,00" step="0.01" min="0"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">From</span><input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">New Kaltmiete €</span><input type="number" data-cc-num="2" id="sf-add-amount" placeholder="0,00" step="0.01" min="0"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">Type</span><select id="sf-add-kind" class="cc-select">
+        <option value="mieterhoehung">Mieterhöhung</option><option value="staffel">Staffel</option><option value="index">Index</option><option value="korrektur">Korrektur</option></select></label>
     </div>
     <div class="cc-add-slot">
       <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
@@ -2173,7 +2202,7 @@ function _rntStaffelOpenAdd(aptId, rid) {
   return _rntStaffelOpenAdd__sheet(aptId, rid);
 }
 function _rntStaffelOpenAdd__sheet(aptId, rid) {
-  _rntStaffelSetTitle('Stufe hinzufügen');
+  _rntStaffelSetTitle('New Mieterhöhung');
   _rntStaffelVerlaufOpen = null;
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
   const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
@@ -2183,14 +2212,17 @@ function _rntStaffelOpenAdd__sheet(aptId, rid) {
     <div class="tn-msec-body" style="padding-top:14px;padding-bottom:4px">
       <div class="tn-fg" style="margin-bottom:14px">
         <div class="tn-field tn-field-full">
-          <span class="tn-flbl">Gültig ab</span>
+          <span class="tn-flbl">From</span>
           <input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/>
-          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Datum, ab dem die neue Kaltmiete gilt</span>
+          <span class="tn-flbl" style="font-weight:300;margin-top:2px">The date the new Kaltmiete counts from</span>
         </div>
         <div class="tn-field tn-field-full">
-          <span class="tn-flbl">Neue Kaltmiete (€)</span>
-          <input type="number" data-cc-num="2" id="sf-add-amount" placeholder="z.B. 1250" step="0.01" min="0"/>
-          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Betrag aus dem Staffelmietvertrag entnehmen</span>
+          <span class="tn-flbl">New Kaltmiete (€)</span>
+          <input type="number" data-cc-num="2" id="sf-add-amount" placeholder="1.250,00" step="0.01" min="0"/>
+        </div>
+        <div class="tn-field tn-field-full">
+          <span class="tn-flbl">Type</span>
+          <select id="sf-add-kind" class="cc-select"><option value="mieterhoehung">Mieterhöhung</option><option value="staffel">Staffel</option><option value="index">Index</option><option value="korrektur">Korrektur</option></select>
         </div>
       </div>
     </div>
@@ -2218,9 +2250,12 @@ async function _rntStaffelConfirmAdd__run(aptId, rid) {
   const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
   if (!date || isNaN(amount) || amount <= 0) { _rntStaffelAddError(!date, isNaN(amount) || amount <= 0); return; }
   if (!sbL) return;
-  const { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
-    { apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false },
+  const kind = document.getElementById('sf-add-kind')?.value || 'mieterhoehung';
+  let { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
+    { apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false, kind },
     _rntActiveTenantId('apartment_id', aptId));
+  if (error && /kind/i.test(error.message || '')) ({ data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
+    { apartment_id: aptId, effective_date: date, amount, tenant_adjusted: false }, _rntActiveTenantId('apartment_id', aptId)));
   if (error) { ccSaveFailed(error, 'Staffel'); return; }
   if (!_rntStaffel[aptId]) _rntStaffel[aptId] = [];
   _rntStaffel[aptId].push(data);
@@ -2234,9 +2269,12 @@ async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
   const amount = parseFloat(document.getElementById('sf-add-amount')?.value);
   if (!date || isNaN(amount) || amount <= 0) { _rntStaffelAddError(!date, isNaN(amount) || amount <= 0); return; }
   if (!sbL) return;
-  const { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
-    { parking_id: pkId, effective_date: date, amount, tenant_adjusted: false },
+  const kind = document.getElementById('sf-add-kind')?.value || 'mieterhoehung';
+  let { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
+    { parking_id: pkId, effective_date: date, amount, tenant_adjusted: false, kind },
     _rntActiveTenantId('parking_id', pkId));
+  if (error && /kind/i.test(error.message || '')) ({ data, error } = await ccRpInsertWithTenant(sbL, 'rnt_staffelmiete_history',
+    { parking_id: pkId, effective_date: date, amount, tenant_adjusted: false }, _rntActiveTenantId('parking_id', pkId)));
   if (error) { ccSaveFailed(error, 'Staffel'); return; }
   if (!_rntStaffel[pkId]) _rntStaffel[pkId] = [];
   _rntStaffel[pkId].push(data);
@@ -2247,9 +2285,10 @@ async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
 
 
 /* ── STAFFELMIETE SECTION (parking clone) ── */
-function _rntPkStaffelHTML(rid, pkId) {
+function _rntPkStaffelHTML(rid, pkId, tid) {
   if (!pkId) return '';
-  const entries = _rntStaffel[pkId] || [];
+  if (typeof _rntStaffelHTML === 'function') return _rntStaffelHTML(rid, pkId, tid);   // one Mieterhöhung sheet for apartments + parking
+  const entries = _rntOwnSteps(pkId, tid);
   const today   = new Date(); today.setHours(0,0,0,0);
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
@@ -2316,8 +2355,10 @@ function _rntPkStaffelOpenAdd(pkId, rid) {
     form.className = 'cc-add-form';
     form.innerHTML = `
     <div class="cc-add-grid">
-      <label class="cc-add-f"><span class="tn-flbl">Gültig ab</span><input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/></label>
-      <label class="cc-add-f"><span class="tn-flbl">Neue Kaltmiete €</span><input type="number" data-cc-num="2" id="sf-add-amount" placeholder="0,00" step="0.01" min="0"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">From</span><input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">New Kaltmiete €</span><input type="number" data-cc-num="2" id="sf-add-amount" placeholder="0,00" step="0.01" min="0"/></label>
+      <label class="cc-add-f"><span class="tn-flbl">Type</span><select id="sf-add-kind" class="cc-select">
+        <option value="mieterhoehung">Mieterhöhung</option><option value="staffel">Staffel</option><option value="index">Index</option><option value="korrektur">Korrektur</option></select></label>
     </div>
     <div class="cc-add-slot">
       <button type="button" class="cc-add-btn" onclick="this.closest('.cc-add-form').remove()">Cancel</button>
@@ -2330,7 +2371,7 @@ function _rntPkStaffelOpenAdd(pkId, rid) {
   return _rntPkStaffelOpenAdd__sheet(pkId, rid);
 }
 function _rntPkStaffelOpenAdd__sheet(pkId, rid) {
-  _rntStaffelSetTitle('Stufe hinzufügen');
+  _rntStaffelSetTitle('New Mieterhöhung');
   _rntStaffelVerlaufOpen = null;
   const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);
   const label = pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Stellplatz';
@@ -2339,14 +2380,17 @@ function _rntPkStaffelOpenAdd__sheet(pkId, rid) {
     <div class="tn-msec-body" style="padding-top:14px;padding-bottom:4px">
       <div class="tn-fg" style="margin-bottom:14px">
         <div class="tn-field tn-field-full">
-          <span class="tn-flbl">Gültig ab</span>
+          <span class="tn-flbl">From</span>
           <input type="date" id="sf-add-date" value="${ccTodayPlusYearsISO(1)}"/>
-          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Datum, ab dem die neue Kaltmiete gilt</span>
+          <span class="tn-flbl" style="font-weight:300;margin-top:2px">The date the new rent counts from</span>
         </div>
         <div class="tn-field tn-field-full">
-          <span class="tn-flbl">Neue Kaltmiete (€)</span>
-          <input type="number" data-cc-num="2" id="sf-add-amount" placeholder="z.B. 110" step="0.01" min="0"/>
-          <span class="tn-flbl" style="font-weight:300;margin-top:2px">Betrag aus dem Staffelmietvertrag entnehmen</span>
+          <span class="tn-flbl">New rent (€)</span>
+          <input type="number" data-cc-num="2" id="sf-add-amount" placeholder="110,00" step="0.01" min="0"/>
+        </div>
+        <div class="tn-field tn-field-full">
+          <span class="tn-flbl">Type</span>
+          <select id="sf-add-kind" class="cc-select"><option value="mieterhoehung">Mieterhöhung</option><option value="staffel">Staffel</option><option value="index">Index</option><option value="korrektur">Korrektur</option></select>
         </div>
       </div>
     </div>
@@ -2363,11 +2407,11 @@ function _rntPkStaffelOpenAdd__sheet(pkId, rid) {
 }
 
 function _rntPkStaffelOpenVerlauf(pkId, rid) {
-  _rntStaffelSetTitle('Verlauf');
+  _rntStaffelSetTitle('History');
   _rntStaffelVerlaufOpen = { fn: _rntPkStaffelOpenVerlauf, unitId: pkId, rid };   // refreshed in place after a tap
   const pk = (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === pkId);
   const label = pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Stellplatz';
-  const entries = (_rntStaffel[pkId] || []).slice().reverse();
+  const entries = _rntOwnSteps(pkId).slice().reverse();
   const today   = new Date(); today.setHours(0,0,0,0);
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
@@ -2441,9 +2485,9 @@ function _rntStaffelPills(e, unitId) {
 function _rntStaffelIgnPill(e, unitId) {
   const on = !!e.ignored;
   return `<button type="button" class="tn-nkv-pill ${on ? 'ignored' : 'pending'}" data-sf-ign="${e.id}"
-    aria-pressed="${on}" title="${on ? 'Ignored — the tenant keeps paying the previous amount. Tap to apply again.' : 'Ignore this step (keep the previous amount)'}"
+    aria-pressed="${on}" title="${on ? 'Skipped — the tenant keeps paying the previous amount. Tap to apply again.' : 'Skip this step (keep the previous amount)'}"
     onclick="_rntStaffelToggleIgnored('${e.id}','${unitId}')">
-    <i class="ti ti-ban" aria-hidden="true"></i> ${on ? 'Ignored' : 'Ignore'}</button>`;
+    <i class="ti ti-ban" aria-hidden="true"></i> ${on ? 'Skipped' : 'Skip'}</button>`;
 }
 function _rntStaffelToggleIgnored(id, unitId) {
   const entry = (_rntStaffel[unitId] || []).find(e => e.id === id);
@@ -2453,10 +2497,10 @@ function _rntStaffelToggleIgnored(id, unitId) {
   _rntStaffelRefreshUI(id, unitId);
   ccQueueWrite('staffel-ign:' + id, () => sbL.from('rnt_staffelmiete_history').update({ ignored: entry.ignored }).eq('id', id))
     .then(r => {
-      if (!r || !r.error) { if (typeof ccSavedToast === 'function') ccSavedToast(entry.ignored ? 'Staffel ignored' : 'Staffel applied'); return; }
+      if (!r || !r.error) { if (typeof ccSavedToast === 'function') ccSavedToast(entry.ignored ? 'Mieterhöhung skipped' : 'Mieterhöhung applied'); return; }
       entry.ignored = prev;
       _rntStaffelRefreshUI(id, unitId);
-      ccSaveFailed(r.error, 'Staffel ignorieren (SQL ausgeführt?)');
+      ccSaveFailed(r.error, 'Skip Mieterhöhung');
     });
 }
 
@@ -2527,12 +2571,12 @@ async function _rntStaffelDelete(id, aptId, rid) {
 }
 
 function _rntStaffelOpenVerlauf(aptId, rid) {
-  _rntStaffelSetTitle('Verlauf');
+  _rntStaffelSetTitle('History');
   _rntStaffelVerlaufOpen = { fn: _rntStaffelOpenVerlauf, unitId: aptId, rid };   // refreshed in place after a tap
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
   const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
   const label = apt ? (apt.name || apt.adresse || 'Wohnung') : pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Einheit';
-  const entries = (_rntStaffel[aptId] || []).slice().reverse();
+  const entries = _rntOwnSteps(aptId).slice().reverse();
   const today   = new Date(); today.setHours(0,0,0,0);
   const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
 
@@ -2661,6 +2705,28 @@ function _rntOpenModal(tid) {
   document.body.style.overflow = 'hidden';
 }
 
+
+/* Former tenant: their Mieterhöhungen stay with them as read-only info (reached · skipped · not reached) */
+function _rntMhInfoHTML(rec, unitId) {
+  const own = _rntOwnSteps(unitId, rec.id).slice().sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)));
+  if (!own.length) return '';
+  const end = rec.mietende ? String(rec.mietende).slice(0, 10) : null;
+  const rows = own.map(e => {
+    const d = String(e.effective_date).slice(0, 10);
+    const st = end && d > end ? ['tnp-gray', 'not reached'] : e.ignored ? ['tnp-gray', 'skipped'] : e.kind === 'start' ? ['tnp-gray', 'start'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : ['tnp-gray', 'not adjusted'];
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:var(--cc-border);font-size:12.5px">
+      <span style="flex:1;min-width:0">From ${_rntFmtDate(d)} · ${_rntFmtEUR(e.amount)}</span>
+      <span class="tnp tnp-gray">${_rntMhKind(e)}</span><span class="tnp ${st[0]}">${st[1]}</span></div>`;
+  }).join('');
+  return `
+  <div class="tn-msec">
+    <div class="tn-msec-body" style="padding-top:10px">
+      <div style="margin-bottom:4px"><span class="tn-msec-lbl">Mieterhöhungen</span></div>
+      ${end ? `<p class="tn-empty" style="margin:0 0 4px">Moved out ${_rntFmtDate(end)} – these steps stay with this tenancy and count nowhere after the move-out.</p>` : ''}
+      ${rows}
+    </div>
+  </div>`;
+}
 function _rntModalBodyHTML(rec, isApt) {
   const tid  = rec.id || '_draft';
   const full = [rec.first_name, rec.last_name].filter(Boolean).join(' ');
@@ -2674,8 +2740,9 @@ function _rntModalBodyHTML(rec, isApt) {
   const unitLabel = unitObj?.name || '';
 
   const soll = _rntKautionSoll(rec);
+  const mhInfo = rec.status !== 'active' && rec.id ? _rntMhInfoHTML(rec, unitId) : '';
 
-  return `
+  return `${mhInfo}
   <!-- PROFILE -->
   <div class="tn-msec" id="mprof-sec-${tid}">
     <div class="tn-msec-body" style="padding-top:10px">
