@@ -76,6 +76,12 @@ async function ctlSollLoad() {
     if (r.error) throw r.error;
     window._src.abrPay = r.data || [];
   } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); window._src.abrPay = []; }
+  // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
+  try {
+    const r = await _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
+    if (r.error) throw r.error;
+    window._src.knkAll = r.data || [];
+  } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); window._src.knkAll = []; }
   window._src.loaded = true;
   window._src.loadedAt = Date.now();
   if (typeof ccRpSetRows === 'function') ccRpSetRows(window._src.rentP);   // shared store for the history screen

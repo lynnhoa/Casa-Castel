@@ -240,6 +240,27 @@ async function ctlUpdateRow(table, id, fields) {
   return data;
 }
 
+/* New property (a new purchase): added at the end, so the list stays in purchase order.
+   Old rows were imported with fixed ids → the counter can hand out a taken id: retry once with the next free one. */
+async function ctlCreateProperty(name) {
+  const fields = { name: String(name || '').trim(), active: true };
+  let { data, error } = await _ctlSupa.from('ctrl_properties').insert(fields).select().single();
+  if (error && /duplicate key|23505|null value|23502/i.test(String((error.code || '') + ' ' + (error.message || '')))) {
+    const { data: mx } = await _ctlSupa.from('ctrl_properties').select('id').order('id', { ascending: false }).limit(1);
+    const next = Math.max(0, ...(mx || []).map(r => Number(r.id) || 0), ...window._ctrl.properties.map(p => Number(p.id) || 0)) + 1;
+    ({ data, error } = await _ctlSupa.from('ctrl_properties').insert({ id: next, ...fields }).select().single());
+  }
+  if (error) throw error;
+  window._ctrl.properties.push(data);
+  window._ctrl.properties.sort((a, b) => a.id - b.id);
+  return data;
+}
+
+/* Kaufnebenkosten type (Makler · Notar · Grundbuch · Grunderwerbsteuer · Sonstiges) and part (Kauf · Grundschuld):
+   if the columns are not there yet (SQL not run), the entry is saved without them */
+const _ctlNoKnkCol = e => /knk_(type|part)/i.test(String((e && e.message) || ''));
+const _ctlStripKnk = f => { const x = { ...f }; delete x.knk_type; delete x.knk_part; return x; };
+
 /* One-time entry: in (+1) or out (−1), with type and optional link to a settlement */
 async function ctlAddOneTime(o) {
   const payload = { property_id: o.property_id, invoice_date: o.invoice_date, item: o.item, amount: o.amount,
@@ -247,7 +268,11 @@ async function ctlAddOneTime(o) {
                     source_ref: o.source_ref ?? null };
   if (o.nk_umlage !== undefined) payload.nk_umlage = !!o.nk_umlage;                 // Casa Castel: goes into the NK-Abrechnung
   if (o.nk_category_id !== undefined) payload.nk_category_id = o.nk_category_id;   // … as this Casa cost type (key + booking from Setup)
-  const { data, error } = await _ctlSupa.from('ctrl_expense_one_time').insert(payload).select().single();
+  if (o.knk_type !== undefined) payload.knk_type = o.knk_type;                     // Kaufnebenkosten: Makler, Notar, …
+  if (o.knk_part !== undefined) payload.knk_part = o.knk_part;                     // … Notar / Grundbuch: Kauf or Grundschuld
+  const ins = pl => _ctlSupa.from('ctrl_expense_one_time').insert(pl).select().single();
+  let { data, error } = await ins(payload);
+  if (error && _ctlNoKnkCol(error)) ({ data, error } = await ins(_ctlStripKnk(payload)));
   if (error) throw error;
   window._ctrl.one_time.push(data);
   return data;
@@ -255,7 +280,9 @@ async function ctlAddOneTime(o) {
 
 /* Edit a one-time entry (One-off edit form · Abrechnungen amount) */
 async function ctlUpdateOneTime(id, fields) {
-  const { data, error } = await _ctlSupa.from('ctrl_expense_one_time').update(fields).eq('id', id).select().single();
+  const upd = f => _ctlSupa.from('ctrl_expense_one_time').update(f).eq('id', id).select().single();
+  let { data, error } = await upd(fields);
+  if (error && _ctlNoKnkCol(error)) ({ data, error } = await upd(_ctlStripKnk(fields)));
   if (error) throw error;
   if (!data) throw new Error('nicht gespeichert – Eintrag ' + id + ' nicht gefunden');
   const i = window._ctrl.one_time.findIndex(r => r.id === id);

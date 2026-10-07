@@ -264,3 +264,176 @@ async function cxExportInvoicesPdf(year, pid, btn) {
   a.href = url; a.download = out.name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
+
+/* ══ KAUFNEBENKOSTEN · every year, per purchase (for the Steuerberater) ══════════════
+   One PDF / Excel: every line (Art · Kauf/Grundschuld · Beschreibung · Firma · Betrag · Datum),
+   the sum, subtotals per Art, and Kauf vs Grundschuld (Notar / Grundbuch without it = still open). */
+const _CX_KNK_ORDER = ['Makler', 'Notar', 'Grundbuch', 'Grunderwerbsteuer', 'Sonstiges'];
+function cxKnkData(pid) {
+  const rows = typeof cxKnkRows === 'function' ? cxKnkRows(pid || null) : [];
+  const r2 = v => Math.round(v * 100) / 100;
+  const groups = [];
+  for (const p of window._ctrl.properties.slice().sort((a, b) => a.id - b.id)) {
+    const list = rows.filter(o => Number(o.property_id) === p.id);
+    if (!list.length) continue;
+    let nr = 0;
+    const items = list.map(o => ({ nr: ++nr, type: o.knk_type || '', part: o.knk_type === 'Notar' || o.knk_type === 'Grundbuch' ? (o.knk_part || '') : '',
+      item: o.item || '', company: o.company || '', date: String(o.invoice_date).slice(0, 10),
+      price: r2((Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0)) }));
+    const sum = f => r2(items.filter(f).reduce((s, i) => s + i.price, 0));
+    const total = sum(() => true);
+    const byType = _CX_KNK_ORDER.concat(['']).map(t => ({ t: t || 'ohne Art', sum: sum(i => i.type === t) })).filter(x => x.sum);
+    const grund = sum(i => i.part === 'Grundschuld');
+    const open = sum(i => !i.type || ((i.type === 'Notar' || i.type === 'Grundbuch') && !i.part));
+    const years = [...new Set(items.map(i => i.date.slice(0, 4)))].sort();
+    groups.push({ p, items, total, byType, grund, open, kauf: r2(total - grund - open), years });
+  }
+  return groups;
+}
+const _cxKnkPartLbl = i => i.part === 'Grundschuld' ? 'Grundschuld' : i.part === 'Kauf' ? 'Kauf' : ((i.type === 'Notar' || i.type === 'Grundbuch') ? 'offen' : '');
+function _cxKnkName(pid, ext) {
+  const p = pid ? ctlProp(Number(pid)) : null;
+  const base = 'Kaufnebenkosten_' + (p ? p.name : 'alle_Objekte');
+  return base.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '') + '.' + ext;
+}
+
+function cxBuildKnkPdf(pid) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const C = _CX_PDF, W = 210, M = 18;
+  const groups = cxKnkData(pid), stand = _cxPdfDate(cxToday()), single = pid ? ctlProp(Number(pid)) : null;
+  const yrs = g => g.years.length > 1 ? g.years[0] + '–' + g.years[g.years.length - 1] : g.years[0];
+  const pageTitle = (t, sub) => {
+    doc.setFont('times', 'normal'); doc.setFontSize(22); doc.setTextColor(...C.ink); doc.text(_cxPdfTxt(t), M, 34);
+    if (sub) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...C.mut); doc.text(_cxPdfTxt(sub), M, 41); }
+  };
+  const table = (startY, head, body, foot, colStyles, amtCol) => doc.autoTable({
+    startY, head: [head], body, foot: foot ? [foot] : undefined, showFoot: 'lastPage',
+    margin: { left: M, right: M, top: 26, bottom: 20 }, theme: 'plain',
+    styles: { font: 'helvetica', fontSize: 8.6, textColor: C.txt, cellPadding: { top: 2, bottom: 2, left: 1.8, right: 1.8 }, lineColor: C.line, lineWidth: { bottom: 0.2 }, overflow: 'linebreak' },
+    headStyles: { fillColor: C.head, textColor: C.mut, fontStyle: 'bold', fontSize: 7.3, lineWidth: 0 },
+    footStyles: { fontStyle: 'bold', textColor: C.ink, fontSize: 9.3, lineWidth: { top: 0.4 }, lineColor: C.acc },
+    columnStyles: colStyles,
+    didParseCell: d => {
+      const cs = colStyles[d.column.index];
+      if (cs && cs.halign && d.section !== 'body') d.cell.styles.halign = cs.halign;
+      if (d.section === 'body' && d.column.index === amtCol && String(d.cell.raw).startsWith('-')) d.cell.styles.textColor = C.neg;
+    },
+  });
+  const note = (y, t) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.3); doc.setTextColor(...C.mut); doc.text(_cxPdfTxt(t), M, y, { maxWidth: W - 2 * M }); };
+
+  if (!single) {
+    pageTitle('Kaufnebenkosten', 'Alle Objekte · alle Jahre · Stand ' + stand);
+    const tot = groups.reduce((s, g) => s + g.total, 0), n = groups.reduce((s, g) => s + g.items.length, 0);
+    table(50, ['Objekt', 'Jahre', 'Posten', 'Summe'],
+      groups.map(g => [_cxPdfTxt(g.p.name), yrs(g), String(g.items.length), _cxPdfEur(g.total)]),
+      ['Gesamt', '', String(n), _cxPdfEur(tot)],
+      { 1: { cellWidth: 28 }, 2: { halign: 'right', cellWidth: 20 }, 3: { halign: 'right', cellWidth: 34 } }, 3);
+    note(doc.lastAutoTable.finalY + 8, 'Anschaffungsnebenkosten je Kauf: Makler, Notar, Grundbuch, Grunderwerbsteuer. Kauf / Grundschuld laut Rechnung; die steuerliche Behandlung klärt der Steuerberater.');
+  }
+  const pageProp = {};
+  groups.forEach((g, i) => {
+    if (!single || i > 0) doc.addPage();
+    const first = doc.getNumberOfPages();
+    pageTitle(g.p.name, 'Kaufnebenkosten · ' + yrs(g) + ' · ' + g.items.length + ' Posten · Stand ' + stand);
+    table(50, ['Nr.', 'Art', 'Für', 'Beschreibung', 'Firma', 'Betrag', 'Datum'],
+      g.items.map(it => [String(it.nr), _cxPdfTxt(it.type || '–'), _cxKnkPartLbl(it), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
+      ['', 'Summe', '', '', '', _cxPdfEur(g.total), ''],
+      { 0: { cellWidth: 9, textColor: C.mut }, 1: { cellWidth: 25 }, 2: { cellWidth: 19 }, 4: { cellWidth: 30 }, 5: { halign: 'right', cellWidth: 23 }, 6: { halign: 'right', cellWidth: 20 } }, 5);
+    let y = doc.lastAutoTable.finalY + 12;
+    if (y > 225) { doc.addPage(); y = 34; }
+    doc.setFont('times', 'normal'); doc.setFontSize(13); doc.setTextColor(...C.ink); doc.text('Zusammenfassung', M, y);
+    const rows = g.byType.map(x => ['nach Art · ' + x.t, _cxPdfEur(x.sum)])
+      .concat([['davon Kauf (Anschaffungsnebenkosten)', _cxPdfEur(g.kauf)], ['davon Grundschuld (Finanzierung)', _cxPdfEur(g.grund)]])
+      .concat(g.open ? [['davon noch nicht zugeordnet (Notar / Grundbuch)', _cxPdfEur(g.open)]] : []);
+    table(y + 4, ['', 'Betrag'], rows, ['Kaufnebenkosten gesamt', _cxPdfEur(g.total)], { 1: { halign: 'right', cellWidth: 34 } }, 1);
+    for (let pg = first; pg <= doc.getNumberOfPages(); pg++) pageProp[pg] = g.p.name;
+  });
+  const pages = doc.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...C.mut);
+    doc.text(_cxPdfTxt(('Kaufnebenkosten' + (pageProp[i] ? ' · ' + pageProp[i] : '')).toUpperCase()), M, 14, { charSpace: 0.6 });
+    doc.text('Stand ' + stand, W - M, 14, { align: 'right' });
+    doc.setDrawColor(...C.line); doc.setLineWidth(0.2); doc.line(M, 17, W - M, 17);
+    doc.text(_cxPdfTxt('Kaufnebenkosten' + (single ? ' · ' + single.name : '')) + ' · Seite ' + i + ' von ' + pages, W / 2, 287, { align: 'center' });
+  }
+  return { doc, count: groups.reduce((s, g) => s + g.items.length, 0), name: _cxKnkName(pid, 'pdf') };
+}
+
+function cxBuildKnkWorkbook(pid) {
+  const X = window.XLSX, wb = X.utils.book_new(), used = new Set();
+  const groups = cxKnkData(pid);
+  let count = 0;
+  const eur = '#,##0.00 "€";-#,##0.00 "€"';
+  for (const g of groups) {
+    count += g.items.length;
+    const aoa = [['Nr.', 'Art', 'Für', 'Beschreibung', 'Firma', 'Betrag', 'Datum']];
+    for (const it of g.items) aoa.push([it.nr, it.type, _cxKnkPartLbl(it), it.item, it.company, it.price,
+      new Date(Number(it.date.slice(0, 4)), Number(it.date.slice(5, 7)) - 1, Number(it.date.slice(8, 10)))]);
+    const last = aoa.length;
+    aoa.push([]); aoa.push(['', 'Summe', '', '', '', null, '']);
+    aoa.push([]);
+    g.byType.forEach(x => aoa.push(['', 'nach Art · ' + x.t, '', '', '', x.sum, '']));
+    aoa.push(['', 'davon Kauf (Anschaffungsnebenkosten)', '', '', '', g.kauf, '']);
+    aoa.push(['', 'davon Grundschuld (Finanzierung)', '', '', '', g.grund, '']);
+    if (g.open) aoa.push(['', 'davon noch nicht zugeordnet (Notar / Grundbuch)', '', '', '', g.open, '']);
+    const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true });
+    ws[X.utils.encode_cell({ r: last + 1, c: 5 })] = { t: 'n', f: 'SUM(F2:F' + last + ')', v: g.total };
+    for (let r = 1; r < aoa.length; r++) {
+      const c = ws[X.utils.encode_cell({ r, c: 5 })]; if (c && c.t === 'n') c.z = eur;
+      const d = ws[X.utils.encode_cell({ r, c: 6 })]; if (d && (d.t === 'd' || d.t === 'n')) d.z = 'dd.mm.yyyy';
+    }
+    ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 12 }, { wch: 42 }, { wch: 24 }, { wch: 13 }, { wch: 12 }];
+    ws['!autofilter'] = { ref: 'A1:G' + last };
+    X.utils.book_append_sheet(wb, ws, _cxSheetName(g.p.name, used));
+  }
+  return { wb, count, name: _cxKnkName(pid, 'xlsx') };
+}
+
+async function cxExportKnk(pid) {
+  if (!window.XLSX) {
+    _cxSay('Excel wird vorbereitet …');
+    try { await cxXlsxPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
+    return;
+  }
+  const { wb, count, name } = cxBuildKnkWorkbook(pid);
+  if (!count) { _cxSay('Keine Kaufnebenkosten'); return; }
+  const data = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellDates: true });
+  const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const file = typeof File === 'function' ? new File([data], name, { type }) : null;
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(new Blob([data], { type })), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  _cxSay(count + ' Kaufnebenkosten exportiert');
+}
+
+/* Tap on "Create PDF" with Kaufnebenkosten chosen — same delivery as the invoice PDF */
+async function cxExportKnkPdf(pid, btn) {
+  if (typeof window.sbL === 'undefined' && typeof _ctlSupa !== 'undefined') window.sbL = _ctlSupa;
+  if (!_cxPdfReady()) {
+    _cxSay('PDF wird vorbereitet …');
+    try { await cxPdfPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
+    return;
+  }
+  if (!cxKnkData(pid).length) { _cxSay('Keine Kaufnebenkosten'); return; }
+  const viaViewer = typeof ccOpenPdf === 'function';
+  if (viaViewer) {
+    try { _ccLastTrigger = btn || null; } catch (e) {}
+    if (typeof CC_STANDALONE !== 'undefined' && !CC_STANDALONE && typeof _ccOpenWaitingTab === 'function') _ccOpenWaitingTab();
+  }
+  let out;
+  try { out = cxBuildKnkPdf(pid); }
+  catch (e) { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); _cxSay('PDF fehlgeschlagen: ' + (e.message || e)); return; }
+  if (viaViewer) { await ccOpenPdf(out.doc, out.name); return; }
+  const blob = out.doc.output('blob');
+  const file = typeof File === 'function' ? new File([blob], out.name, { type: 'application/pdf' }) : null;
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: out.name }); } catch (e) {} return; }
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = out.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}

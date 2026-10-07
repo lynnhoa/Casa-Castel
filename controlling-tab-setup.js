@@ -259,7 +259,7 @@ window.renderSetup = function () {
     '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Tenant history</span></div>' +
       '<div class="cx-r__sub" style="margin:6px 0 10px">Check and correct move-in, move-out and rent of every tenant – former ones too – once.</div>' +
       '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="openHist"><i class="ti ti-history" aria-hidden="true"></i>Check tenant history</button></div>' +
-    '<div class="cx-head"><span class="cx-lbl">Properties</span></div>' + propCards +
+    '<div class="cx-head"><span class="cx-lbl">Properties</span></div>' + propCards + _cxSuNewPropHTML() +
     '<div class="cx-head"><span class="cx-lbl">Parking</span></div>' + pkCard +
     '<div class="cx-head"><span class="cx-lbl">Casa Castel · cost types</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">No cost types.</div>') + '</div>' +
     '</div>';
@@ -268,6 +268,22 @@ window.renderSetup = function () {
     render: () => window.renderSetup(),
     click: async (a, b) => {
       if (a === 'openHist') { CX.hist = true; window.scrollTo(0, 0); return window.renderSetup(); }
+      if (a === 'propNew') { _cxSU.newProp = !_cxSU.newProp; return window.renderSetup(); }
+      if (a === 'propAdd') {
+        const inp = document.getElementById('cxSuNewProp'), name = (inp?.value || '').trim();
+        if (!name) { ctlToast('Please enter a name'); inp?.focus(); return; }
+        if (window._ctrl.properties.some(p => String(p.name).trim().toLowerCase() === name.toLowerCase())) { ctlToast('There is already a property called ' + name); inp?.focus(); return; }
+        b.disabled = true;
+        try {
+          const p = await ctlCreateProperty(name);
+          _cxSU.newProp = false;
+          CX.open['set:' + p.id] = true;                                // open its card: link apartment, units and loan next
+          ctlSollReset();
+          ctlToast(name + ' added');
+        } catch (e) { cxToastErr(e); }
+        b.disabled = false;
+        return window.renderSetup();
+      }
       if (a === 'acceptAll') {
         b.disabled = true;
         const list = _cxSetupSuggestions();
@@ -466,4 +482,21 @@ async function _cxPerCorrectNow(catId, amt) {
   await _cxPerUpdate(a.period.id, { amount: amt });
   ctlLogHistory('category', catId, 'soll ' + _cxD(a.period.valid_from).slice(0, 7), a.period.amount, amt);
   ctlSollReset();
+}
+
+
+/* ── + New property (a new purchase) ─────────────────────────────────────────────
+   Name only: it goes to the end of the list (purchase order) and starts as a Rentals property.
+   Rentals apartment, units and loan are linked in its card afterwards, like for every other property. */
+function _cxSuNewPropHTML() {
+  if (!_cxSU.newProp) return '<button class="cx-btn cx-btn--s cx-btn--full" style="margin-top:2px" data-cx="propNew">' +
+    '<i class="ti ti-plus" aria-hidden="true"></i>New property</button>';
+  return '<div class="cx-card" style="padding:12px 14px"><div class="cx-set">' +
+    '<div class="cx-set__k">New property · e.g. after a purchase</div>' +
+    '<label class="cx-f cx-f--l"><input type="text" id="cxSuNewProp" placeholder="Name · e.g. Musterstr. 5, WHG 3" aria-label="Name of the new property" autocomplete="off"></label>' +
+    '<div class="cx-r__sub">Added at the end of the list. Link the Rentals apartment, units and loan in its card afterwards. ' +
+      'Kaufnebenkosten can be booked right away in One-off.</div>' +
+    '<div class="cx-grid2" style="margin-top:8px"><button class="cx-btn cx-btn--s" data-cx="propNew">Cancel</button>' +
+      '<button class="cx-btn cx-btn--p" data-cx="propAdd">Add property</button></div>' +
+  '</div></div>';
 }
