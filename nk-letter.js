@@ -74,6 +74,7 @@ function nkLetterHtml(d) {
     .nk .r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .nk td.k { font-size:9.5px; color:#4a4540; padding-left:14px; }
     .nk th.k { padding-left:14px; }
+    .nk td .sub { display:block; font-size:8.5px; color:#888780; line-height:1.35; margin-top:1px; white-space:normal; }
     .nk tr.s td { font-weight:700; border-top:0.6px solid #d8d3cc; padding-top:9px; }
     .res2 { margin-top:10px; }
     .note2 { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:300; color:#6f6a63; line-height:1.55; margin-top:14px; }
@@ -85,25 +86,28 @@ function nkLetterHtml(d) {
 
   const amt = Math.abs(Number(d.saldo) || 0);
   const resLabel = d.saldo > 0 ? 'Nachzahlung' : d.saldo < 0 ? 'Guthaben' : 'Ergebnis';
-  let pay;
+  // neutral wording (no "Sie / Ihr"): "Es entsteht ein Guthaben …" — Oct 2026
   const E = Number(d.einbehalt) || 0;
+  const res = d.saldo > 0 ? `Es entsteht eine Nachzahlung von <strong>${eur(amt)}</strong>.` : d.saldo < 0 ? `Es entsteht ein Guthaben von <strong>${eur(amt)}</strong>.` : '';
+  const to = d.tenantIban ? ' auf das Konto ' + esc(d.tenantIban) : ' auf das bekannte Konto';
+  const toNew = d.tenantIban ? ' auf das Konto ' + esc(d.tenantIban) + ' überwiesen.' : d.former ? ' überwiesen. Dafür wird die aktuelle Bankverbindung (IBAN) benötigt – bitte kurz mitteilen.' : ' auf das bekannte Konto überwiesen.';
+  let pay;
   if (d.saldo > 0 && d.via === 'kaution' && E > 0) {
     const rest = Math.round((E - amt) * 100) / 100;
     pay = rest >= 0
-      ? `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(E)}).${rest > 0 ? ` Den verbleibenden Betrag von <strong>${eur(rest)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong>${d.tenantIban ? ' auf Ihr Konto ' + esc(d.tenantIban) : d.former ? ' – bitte teilen Sie uns dafür Ihre aktuelle Bankverbindung (IBAN) mit' : ' auf Ihr uns bekanntes Konto'}.` : ' Damit ist die Kaution vollständig abgerechnet.'}</p>`
-      : `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(E)}). Bitte überweisen Sie den verbleibenden Betrag von <strong>${eur(-rest)}</strong> bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto:</p>${bankBlock()}`;
+      ? `<p class="p">${res} Der Betrag wird mit dem einbehaltenen Teil der Mietkaution (${eur(E)}) verrechnet.${rest > 0 ? ` Der verbleibende Betrag von <strong>${eur(rest)}</strong> wird bis zum <strong>${dt(d.due)}</strong>${toNew}` : ' Damit ist die Kaution vollständig abgerechnet.'}</p>`
+      : `<p class="p">${res} Der Betrag wird mit dem einbehaltenen Teil der Mietkaution (${eur(E)}) verrechnet. Der verbleibende Betrag von <strong>${eur(-rest)}</strong> ist bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto zu überweisen:</p>${bankBlock()}`;
   }
-  else if (d.saldo < 0 && E > 0) pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> zahlen wir Ihnen zusammen mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(E)}), insgesamt <strong>${eur(amt + E)}</strong>, bis zum <strong>${dt(d.due)}</strong>${d.tenantIban ? ' auf Ihr Konto ' + esc(d.tenantIban) : d.former ? ' – bitte teilen Sie uns dafür Ihre aktuelle Bankverbindung (IBAN) mit' : ' auf Ihr uns bekanntes Konto'}.</p>`;
-  else if (!d.saldo && E > 0) pay = `<p class="p">Ihre Vorauszahlungen decken Ihren Kostenanteil genau. Den einbehaltenen Teil Ihrer Mietkaution von <strong>${eur(E)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong>${d.tenantIban ? ' auf Ihr Konto ' + esc(d.tenantIban) : ' auf Ihr uns bekanntes Konto'}.</p>`;
-  else if (d.saldo > 0 && d.via === 'kaution') pay = `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit Ihrer Mietkaution. Sie müssen nichts überweisen.</p>`;
-  else if (d.saldo > 0 && d.via === 'miete') pay = `<p class="p">Bitte zahlen Sie den Betrag von <strong>${eur(amt)}</strong> zusammen mit Ihrer nächsten Miete, spätestens bis zum <strong>${dt(d.due)}</strong> (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
-  else if (d.saldo > 0) pay = `<p class="p">Bitte überweisen Sie den Betrag von <strong>${eur(amt)}</strong> bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto:</p>${bankBlock()}`;
-  else if (d.saldo < 0 && d.via === 'miete') pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> können Sie mit Ihrer nächsten Mietzahlung verrechnen: Überweisen Sie die nächste Miete um diesen Betrag gekürzt.</p>`;
-  else if (d.saldo < 0 && d.via === 'kaution') pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> berücksichtigen wir bei der Abrechnung Ihrer Mietkaution.</p>`;
-  else if (d.saldo < 0 && d.tenantIban) pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr Konto ${esc(d.tenantIban)}.</p>`;
-  else if (d.saldo < 0 && d.former) pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen gern. Bitte teilen Sie uns dafür Ihre aktuelle Bankverbindung (IBAN) mit.</p>`;
-  else if (d.saldo < 0) pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr uns bekanntes Konto. Hat sich Ihre Bankverbindung geändert, teilen Sie uns die neue bitte kurz mit.</p>`;
-  else pay = `<p class="p">Ihre Vorauszahlungen decken Ihren Kostenanteil genau – es ergibt sich weder eine Nachzahlung noch ein Guthaben.</p>`;
+  else if (d.saldo < 0 && E > 0) pay = `<p class="p">${res} Das Guthaben wird zusammen mit dem einbehaltenen Teil der Mietkaution (${eur(E)}), insgesamt <strong>${eur(amt + E)}</strong>, bis zum <strong>${dt(d.due)}</strong>${toNew}</p>`;
+  else if (!d.saldo && E > 0) pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben. Der einbehaltene Teil der Mietkaution von <strong>${eur(E)}</strong> wird bis zum <strong>${dt(d.due)}</strong>${to} überwiesen.</p>`;
+  else if (d.saldo > 0 && d.via === 'kaution') pay = `<p class="p">${res} Der Betrag wird mit der Mietkaution verrechnet – eine Überweisung ist nicht nötig.</p>`;
+  else if (d.saldo > 0 && d.via === 'miete') pay = `<p class="p">${res} Der Betrag ist zusammen mit der nächsten Miete zu zahlen, spätestens bis zum <strong>${dt(d.due)}</strong> (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
+  else if (d.saldo > 0) pay = `<p class="p">${res} Der Betrag ist bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto zu überweisen:</p>${bankBlock()}`;
+  else if (d.saldo < 0 && d.via === 'miete') pay = `<p class="p">${res} Das Guthaben kann mit der nächsten Mietzahlung verrechnet werden: Die nächste Miete einfach um diesen Betrag gekürzt überweisen.</p>`;
+  else if (d.saldo < 0 && d.via === 'kaution') pay = `<p class="p">${res} Das Guthaben wird bei der Abrechnung der Mietkaution berücksichtigt.</p>`;
+  else if (d.saldo < 0 && (d.tenantIban || d.former)) pay = `<p class="p">${res} Das Guthaben wird${d.tenantIban ? ' bis zum <strong>' + dt(d.due) + '</strong>' : ''}${toNew}</p>`;
+  else if (d.saldo < 0) pay = `<p class="p">${res} Das Guthaben wird bis zum <strong>${dt(d.due)}</strong> auf das bekannte Konto überwiesen. Falls sich die Bankverbindung geändert hat, bitte kurz die neue mitteilen.</p>`;
+  else pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>`;
 
   const page1 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
     <div class="addr"><div class="addr__l">
@@ -116,8 +120,8 @@ function nkLetterHtml(d) {
     <p class="p">${d.introHtml || ''}</p>
     <div class="sec">Ergebnis</div>
     <div class="sum">
-      <div class="sum__r"><span>Ihr Anteil an den Betriebskosten</span><span>${eur(d.sum)}</span></div>
-      <div class="sum__r"><span>abzüglich Ihrer Vorauszahlungen</span><span>\u2212\u00a0${eur(d.vz)}</span></div>
+      <div class="sum__r"><span>Anteil an den Betriebskosten</span><span>${eur(d.sum)}</span></div>
+      <div class="sum__r"><span>abzüglich geleisteter Vorauszahlungen</span><span>\u2212\u00a0${eur(d.vz)}</span></div>
       <div class="total-box"><span>${resLabel}</span><span>${d.saldo ? eur(amt) : 'ausgeglichen'}</span></div>
     </div>
     ${pay}
@@ -129,13 +133,15 @@ function nkLetterHtml(d) {
   </div></div>`;
 
   const T = d.table;
+  // a cell is text, or { t, s } = text with a small second line (e.g. "Strom" + "Abschläge … · Jahresabrechnung …")
+  const cell = v => (v && typeof v === 'object') ? `${esc(v.t)}<span class="sub">${esc(v.s || '')}</span>` : esc(v);
   const page2 = T ? `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
     <div class="sec sec--first">Aufstellung der Betriebskosten</div>
     <p class="intro2">${d.intro2 || ''}</p>
     <table class="nk"><colgroup>${T.cols.map(c => `<col style="width:${c.w}"/>`).join('')}</colgroup>
       <thead><tr>${T.cols.map(c => `<th class="${c.cls || ''}">${esc(c.label)}</th>`).join('')}</tr></thead>
-      <tbody>${T.rows.map(r => `<tr>${r.map((v, i) => `<td class="${T.cols[i].cls || ''}">${esc(v)}</td>`).join('')}</tr>`).join('')}
-        <tr class="s"><td colspan="${T.cols.length - 1}">Summe Ihr Anteil</td><td class="r">${eur(d.sum)}</td></tr>
+      <tbody>${T.rows.map(r => `<tr>${r.map((v, i) => `<td class="${T.cols[i].cls || ''}">${cell(v)}</td>`).join('')}</tr>`).join('')}
+        <tr class="s"><td colspan="${T.cols.length - 1}">${esc(T.sumLabel || 'Summe Anteil')}</td><td class="r">${eur(d.sum)}</td></tr>
         <tr><td colspan="${T.cols.length - 1}">${esc(T.vzLabel || 'abzüglich geleisteter Vorauszahlungen')}</td><td class="r">\u2212\u00a0${eur(d.vz)}</td></tr>
       </tbody></table>
     <div class="total-box res2"><span>${resLabel}</span><span>${d.saldo ? eur(amt) : 'ausgeglichen'}</span></div>

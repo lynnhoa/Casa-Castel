@@ -19,6 +19,8 @@
      · a day with nobody (or no m²) → that day's cost stays with the landlord
      · each tenant line is rounded to cents (half away from zero, like Excel);
        the rounding difference goes to the landlord, so the check always adds up
+     · per tenant line: range = how many people (Personen) or how many m² (Fläche)
+       shared the cost on that tenant's days → shown as "1/6" or "1/5 – 1/8" in the letter
 
    Input  NkCasa.calc({ period:{from,to}, tenancies:[…], lines:[…] })
      tenancy  { key, tenantId, name, room, m2, from, to, mode:'nk'|'pauschal',
@@ -87,6 +89,8 @@ const NkCasa = (() => {
       for (const p of (ln.parts || [])) { const d = partDaily(p); for (let i = 0; i < N; i++) daily[i] += d[i]; }
       let total = 0, lp = 0, lv = 0;
       const by = new Float64Array(ten.length);
+      const rng = ten.map(() => null);                       // { lo, hi } people (Personen) or m² (Fläche) sharing it
+      const seen = (k, v) => { const r = rng[k] || (rng[k] = { lo: v, hi: v }); if (v < r.lo) r.lo = v; if (v > r.hi) r.hi = v; };
       for (let i = 0; i < N; i++) {
         const c = daily[i]; if (!c) continue;
         total += c;
@@ -94,24 +98,26 @@ const NkCasa = (() => {
         if (ln.key === 'flaeche') {
           const m2 = who.reduce((s, k) => s + ten[k].m2, 0);
           if (!m2) { lv += c; continue; }
-          for (const k of who) by[k] += c * ten[k].m2 / m2;
+          for (const k of who) { by[k] += c * ten[k].m2 / m2; seen(k, Math.round(m2 * 100) / 100); }
         } else {
           if (!who.length) { lv += c; continue; }
-          for (const k of who) by[k] += c / who.length;
+          for (const k of who) { by[k] += c / who.length; seen(k, who.length); }
         }
       }
+      const range = {};
       const byTenant = {};
       ten.forEach((t, k) => {
         if (t.mode === 'pauschal') { lp += by[k]; return; }
         if (!by[k]) return;
         exact[k][ln.id] = by[k];
         byTenant[t.key] = r2(by[k]);
+        if (rng[k]) range[t.key] = rng[k];
       });
       const totalR = r2(total);
       const alloc = r2(Object.values(byTenant).reduce((s, v) => s + v, 0));
       land.pauschal += lp; land.vacancy += lv;
       lines.push({ id: ln.id, label: ln.label, group: ln.group || 'running', key: ln.key === 'flaeche' ? 'flaeche' : 'personen',
-                   total: totalR, byTenant, landlord: r2(totalR - alloc), info: ln.info || null });
+                   total: totalR, byTenant, range, landlord: r2(totalR - alloc), info: ln.info || null, catId: ln.catId ?? null });
     }
 
     // per tenancy: lines, sum, prepayments, result
@@ -121,7 +127,7 @@ const NkCasa = (() => {
     const tenants = ten.map((t, k) => {
       const tl = lines.filter(l => l.byTenant[t.key] !== undefined).map(l => ({
         id: l.id, label: l.label, group: l.group, key: l.key, total: l.total, amount: l.byTenant[t.key],
-        share: l.total ? l.byTenant[t.key] / l.total : 0,
+        share: l.total ? l.byTenant[t.key] / l.total : 0, range: l.range[t.key] || null, catId: l.catId,
       }));
       const sum = r2(tl.reduce((s, l) => s + l.amount, 0));
       const months = monthsShare(t);
@@ -182,7 +188,7 @@ const NkCasa = (() => {
       const c = catOf(e.category_id);
       if (!inNk(c)) continue;
       const amt = Number(e.amount) || 0; if (!amt) continue;
-      const L = byCat[c.id] || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [] });
+      const L = byCat[c.id] || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [], catId: c.id });
       L.parts.push(c.nk_spread === 'year' ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'month', month: ym });
     }
     Object.values(byCat).forEach(l => lines.push(l));
@@ -197,7 +203,7 @@ const NkCasa = (() => {
       const hg = o.kind === 'Versorger';
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
-                   parts: [hg ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'from', date: d }],
+                   parts: [hg ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'from', date: d }], catId: hg && c ? c.id : null,
                    info: { date: d, company: o.company || '', item: o.item || '', amount: amt } });
       if (hg && !c) warn.push('Hausgeld entry ' + d + ' has no cost type – split by person');
     }

@@ -462,8 +462,8 @@ async function sdLetterData(d) {
   const addr = sdPropAddr(d), dt = iso => stDate(iso), y = String(d.period_to).slice(0, 4);
   const eur = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
   const unit = casa ? 'Zimmer' : 'Wohnung';
-  const objekt = casa ? (d.former ? 'Ihr ehemaliges Zimmer' : 'Ihr Zimmer') + (d.unit_label ? ' „' + d.unit_label + '“ in der Casa Castel' : ' in der Casa Castel')
-    : (d.former ? 'Ihre ehemalige Wohnung' : 'Ihre Wohnung') + (addr[0] ? ' ' + addr[0] : '');
+  const objekt = casa ? (d.former ? 'das ehemalige Zimmer' : 'das Zimmer') + (d.unit_label ? ' „' + d.unit_label + '“ in der Casa Castel' : ' in der Casa Castel')
+    : (d.former ? 'die ehemalige Wohnung' : 'die Wohnung') + (addr[0] ? ' ' + addr[0] : '');
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   const ort = s.unterschrift_ort || ((String(s.vermieter_adresse || '').match(/\d{5}\s+([^,\n]+)/) || [])[1] || '').trim();
   const date = d.letter_date || cxToday(), due = new Date(date + 'T12:00:00Z'); due.setUTCDate(due.getUTCDate() + (Number(d.due_days ?? 30) || 30));
@@ -476,21 +476,21 @@ async function sdLetterData(d) {
     title: 'Betriebskostenabrechnung ' + y,
     subtitle: (addr.length ? 'Mietobjekt ' + addr.join(', ') + (casa && d.unit_label ? ' \u00b7 Zimmer ' + d.unit_label : '') + ' \u00b7 ' : (brand ? brand + ' \u00b7 ' : '')) + 'Abrechnungszeitraum ' + dt(d.period_from) + ' bis ' + dt(d.period_to),
     greeting: d.tenant_name ? 'Guten Tag ' + d.tenant_name + ',' : 'Sehr geehrte Damen und Herren,',
-    introHtml: 'hiermit rechnen wir die Betriebskosten für ' + objekt + ' für den Abrechnungszeitraum vom <strong>' + dt(d.period_from) + ' bis ' + dt(d.period_to) + '</strong> ab.' +
-      (x.partial ? ' Sie haben die ' + unit + ' in diesem Zeitraum vom ' + dt(x.uf) + ' bis ' + dt(x.ut) + ' genutzt (' + x.useDays + ' von ' + x.perDays + ' Tagen).' : ''),
+    introHtml: 'hiermit erfolgt die Abrechnung der Betriebskosten für ' + objekt + ' für den Abrechnungszeitraum vom <strong>' + dt(d.period_from) + ' bis ' + dt(d.period_to) + '</strong>.' +
+      (x.partial ? (casa ? ' Das ' : ' Die ') + unit + ' wurde in diesem Zeitraum vom ' + dt(x.uf) + ' bis ' + dt(x.ut) + ' genutzt (' + x.useDays + ' von ' + x.perDays + ' Tagen).' : ''),
     sum: x.sum, vz: x.vz, saldo: x.saldo, via: x.saldo ? (d.settle_via || 'zahlung') : 'zahlung', due: due.toISOString().slice(0, 10),
     bank: { inhaber: s.kontoinhaber || s.vermieter_name || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
     verwendung: 'NK ' + y + ' ' + (brand || '') + (casa && d.unit_label ? ' ' + d.unit_label : '') + ' ' + last, tenantIban: d.iban || '', former: !!d.former,
-    hinweise: ['Die Aufstellung der Kosten und die Berechnung Ihres Anteils finden Sie auf Seite 2.',
-               'Die Belege können Sie nach vorheriger Terminabsprache einsehen.',
-               'Einwendungen gegen diese Abrechnung teilen Sie uns bitte spätestens bis zum Ablauf des zwölften Monats nach Zugang mit (§ 556 Abs. 3 Satz 5 BGB).'],
-    intro2: 'Abrechnungszeitraum ' + dt(d.period_from) + ' bis ' + dt(d.period_to) + ' (' + x.perDays + ' Tage)' + (x.partial ? ' \u00b7 Ihr Nutzungszeitraum ' + dt(x.uf) + ' bis ' + dt(x.ut) + ' (' + x.useDays + ' Tage)' : '') + '. Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten.',
+    hinweise: ['Die Aufstellung der Kosten und die Berechnung des Anteils stehen auf Seite 2.',
+               'Die Belege können nach vorheriger Terminabsprache eingesehen werden.',
+               'Einwendungen gegen diese Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'],
+    intro2: 'Abrechnungszeitraum ' + dt(d.period_from) + ' bis ' + dt(d.period_to) + ' (' + x.perDays + ' Tage)' + (x.partial ? ' \u00b7 Nutzungszeitraum ' + dt(x.uf) + ' bis ' + dt(x.ut) + ' (' + x.useDays + ' Tage)' : '') + '. Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten.',
     table: {
-      cols: [{ label: 'Kostenart', w: '38%' }, { label: 'Kosten', w: '22%', cls: 'r' }, { label: 'Verteilung', w: '20%', cls: 'k' }, { label: 'Ihr Anteil', w: '20%', cls: 'r' }],
+      cols: [{ label: 'Kostenart', w: '38%' }, { label: 'Kosten', w: '22%', cls: 'r' }, { label: 'Verteilung', w: '20%', cls: 'k' }, { label: 'Anteil', w: '20%', cls: 'r' }],
       rows: x.lines.map(l => [l.label, l.amount !== null ? eur(l.amount) : 'lt. Abrechnung', l.key, eur(l.share)]),
       vzLabel: 'abzüglich geleisteter Vorauszahlungen' + (x.same && x.months.length ? ' (' + (d.vz || []).length + ' × ' + eur(x.same) + ')' : ''),
     },
-    note2: x.lines.some(l => l.split === 'days') ? 'Ihr Anteil nach Tagen: Kosten × Ihre Nutzungstage (' + x.useDays + ') / Tage des Abrechnungszeitraums (' + x.perDays + '). Nicht umlagefähige Kosten sind nicht enthalten.' : 'Nicht umlagefähige Kosten sind nicht enthalten.',
+    note2: x.lines.some(l => l.split === 'days') ? 'Anteil nach Tagen: Kosten × Nutzungstage (' + x.useDays + ') / Tage des Abrechnungszeitraums (' + x.perDays + '). Nicht umlagefähige Kosten sind nicht enthalten.' : 'Nicht umlagefähige Kosten sind nicht enthalten.',
     extra: null,
   };
 }
