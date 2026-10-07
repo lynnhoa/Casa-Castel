@@ -495,6 +495,19 @@ function _cxTenancyData(link, w, all, memo) {
 const _cxPerAt = (per, iso) => { let b = null; for (const p of per) { const d = _cxD(p.valid_from); if (d && d <= iso && (!b || d >= _cxD(b.valid_from))) b = p; } return b; };
 const _cxStepFrom = (hist, iso, base) => { let b = null; for (const h of hist) { const d = _cxD(h.effective_date); if (d && d <= iso && d >= base && (!b || d > _cxD(b.effective_date))) b = h; } return b ? _cxNum(b.amount) : null; };
 
+/* A tenancy at 0 € that was saved on purpose (B23): rent history, the tenant's own rent,
+   or — for Rentals units without a tenant rent — an asking rent explicitly saved as 0 €.
+   Only "nothing saved anywhere" is a missing rent.                                       */
+function _cxFreeSet(link, r) {
+  if (!r) return false;
+  if (r.src === 'period' || r.src === 'tenant') return true;
+  if (r.src !== 'price') return false;
+  const S = window._src, set = v => v !== null && v !== undefined && v !== '' && Number(v) === 0;
+  if (link.type === 'rentals_parking') { const pr = (S.pkPricing || []).find(x => String(x.parking_id) === link.ref); return !!pr && set(pr.miete); }
+  if (link.type === 'rentals_apartment') { const pr = (S.pricing || []).find(x => String(x.apartment_id) === link.ref); return !!pr && set(pr.kaltmiete) && !Number(pr.nk_pauschale); }
+  return false;
+}
+
 /* Rent of one tenancy on one day → { k, nk, mode, src, period } */
 function _cxRentDay(link, w, u, y, m, iso, all, memo) {
   const c = _cxTenancyData(link, w, all, memo);
@@ -561,7 +574,7 @@ function _cxUnitSollV2(u, pid, y, m) {
       dk = r.k; dnk = r.nk; pk = w.id;
     }
     occ++;
-    if (!dk && !dnk) noPrice++;
+    if (!dk && !dnk && !_cxFreeSet(link, r)) noPrice++;       // 0 € saved on purpose = free of charge, not missing (B23)
     const pt = parts.get(pk) || { from: d, to: d, sk: 0, snk: 0, days: 0, w: w || null, r0: r, src: r ? r.src : 'room' };
     pt.to = d; pt.sk += dk; pt.snk += dnk; pt.days++;
     parts.set(pk, pt);
@@ -652,7 +665,9 @@ function _cxUnitSollV2(u, pid, y, m) {
   const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)
     .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR((pt.sk + pt.snk) / N), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
                            tid: pk, name: pt.w ? pt.w.name : 'Room', mode: pt.r0 ? pt.r0.mode : 'kalt_nk' }));
-  out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, link, notes, badge, changed: changed || fullNote,
+  const free = occ > 0 && !noPrice && !roomOnly && _cxR(k + nk) === 0;
+  if (free) notes.push('Free of charge' + (partList[0] && partList[0].name && partList[0].name !== 'Room' ? ' · ' + partList[0].name : ''));
+  out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, free, link, notes, badge, changed: changed || fullNote,
           partial: occ > 0 && (occ < N || partList.length > 1), days: occ, N, parts: partList,
           check: checks.length ? [...new Set(checks)].join(' · ') : null,
           src: link.type === 'casa_room' ? 'Casa Castel' : 'Rentals' };

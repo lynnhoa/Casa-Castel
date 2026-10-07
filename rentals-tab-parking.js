@@ -401,11 +401,12 @@ function _pkCardHTML(p) {
 
   // Header rent line
   const miete = Number(pr.miete) || 0;
+  const mieteSet = pr.miete !== null && pr.miete !== undefined && pr.miete !== '';   // 0 € saved = free, not "not set"
   // Occupied: the tenant's real rent · vacant: the asking rent (labelled)
   const _cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('pk', p.id) : null;
   const rentHTML = _cur
     ? `<strong>${pkFmtEURCompact(_cur.kalt)}</strong> / mo`
-    : miete
+    : mieteSet
       ? `Asking rent <strong>${pkFmtEURCompact(miete)}</strong> / mo`
       : `<span class="pk-hdr__rent--vacant">No asking rent set</span>`;
 
@@ -490,7 +491,9 @@ function _pkCardHTML(p) {
       <div class="pk-stitle">Asking rent</div>
       <!-- READ -->
       <div class="pk-sec-read">
-        ${miete
+        ${mieteSet && !miete
+          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(0)} / mo · free</span></div>`
+          : miete
           ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
              <div class="pk-row"><span class="pk-row__k">Kaution</span><span class="pk-row__v">${pkFmtEURCompact(kaution)}<small class="cc-ask-note">${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</small></span></div>`
           : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}

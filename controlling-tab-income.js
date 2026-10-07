@@ -71,10 +71,10 @@ window.renderIncome = function () {
             ? r.s.parts.map(pt => pt.from + '.–' + pt.to + '.: ' + cxEur(pt.amount)).join(' · ')
             : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' Pauschal'
               : (_cxIsParking(r.u) && !r.s.nk ? 'Rent ' + cxEur(r.s.k) : cxEur(r.s.k) + ' Kalt + ' + cxEur(r.s.nk) + ' NK')))
-        : (r.s.link ? 'not let' : 'no plan value');
+        : (r.s.free ? 'Rent 0,00\u202f€' : r.s.link ? 'not let' : 'no plan value');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'partial' : 'partial ' + r.s.days + '/' + r.s.N) : '';
       return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Newly let"
-                     notes: r.s.notes, emptyText: 'empty', allowEmpty: true,
+                     notes: r.s.notes, emptyText: r.s.free ? 'free' : 'empty', allowEmpty: true,
                      warn: vis(r) || (!r.soll && r.ist ? 'Rent entered, but the tenant data says not let – please check the tenant tab' : null) });
     }).join('');
     // NK Nachzahlung vom Mieter · Hausgeld Guthaben von WEG — only finished results (controlling-abr.js)
