@@ -1101,3 +1101,15 @@ button.st-sg__r { cursor: pointer; }
 .srm__bar--doc .cx-btn--p:disabled { opacity: 1; background: #EAE4DA; border-color: #D9D1C4; color: #8C8379; }
 .srm__bar--doc .cx-btn--s:disabled { opacity: .5; }
 @media (max-width: 700px) { .srm__bar--doc { flex-direction: column; } }
+
+/* Split method card (Oct 2026): Kostenquote | Day-exact */
+.sc-meth { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 14px; }
+.sc-meth__t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 200px; }
+.sc-meth__t b { font-size: 13px; font-weight: 500; color: var(--cx-ink); }
+.sc-meth__t small { font-size: 11.5px; color: var(--cx-mut); line-height: 1.4; }
+.sc-meth__t small.sc-meth__lock { color: #854F0B; }
+.sc-meth__seg { width: 220px; flex-shrink: 0; height: 34px; background: var(--cx-card); }
+.sc-meth__seg button:disabled { cursor: default; opacity: .55; }
+@media (max-width: 420px) { .sc-meth__seg { width: 100%; } }
+.sc-cmp { display: flex; align-items: center; gap: 6px; margin: -4px 0 10px; font-size: 11.5px; color: var(--cx-mut); }
+.sc-cmp i { font-size: 14px; color: #B8956A; }

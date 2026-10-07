@@ -177,8 +177,9 @@ function scModel(y) {
     else if (s.vz !== undefined && s.vz !== null && s.vz !== '') t.vz = Number(s.vz);
   }
   // Split method (Oct 2026): 'quota' = Kostenquote (default) · 'days' = day-exact by person present
-  const method = ts.__method === 'days' ? 'days' : 'quota';
-  const Rd = NkCasa.calc(input), Rq = NkCasa.quota(Rd);
+  // (an older nk-casa-engine.js without quota → falls back to day-exact instead of failing)
+  const Rd = NkCasa.calc(input), Rq = typeof NkCasa.quota === 'function' ? NkCasa.quota(Rd) : Rd;
+  const method = ts.__method === 'days' || Rq === Rd ? 'days' : 'quota';
   const R = method === 'quota' ? Rq : Rd, Ralt = method === 'quota' ? Rd : Rq;
   const g = (typeof ctlSettlementModel === 'function' ? ctlSettlementModel() : []).find(x => x.p.id === CASA_PROP_ID);
   const perM = g ? g.periods.find(pp => pp.to.slice(0, 4) === String(y)) : null;
