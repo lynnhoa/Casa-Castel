@@ -85,7 +85,7 @@ const NK_LETTER_CSS = `
     .intro2 { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:400; color:#4a433c; line-height:1.6; margin:0 0 14px; }
     .nk { width:100%; border-collapse:collapse; table-layout:fixed; }
     .nk th { font-family:'Lato',sans-serif; font-size:7px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#8c8379; text-align:left; padding:0 0 8px; border-bottom:0.6px solid #d9d0c3; vertical-align:bottom; line-height:1.3; }
-    .nk td { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:400; color:#2b2520; padding:7px 0 7px; vertical-align:top; line-height:1.4; border-top:0.5px solid #efe9e0; }
+    .nk td { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:400; color:#2b2520; padding:7px 0 7px; vertical-align:top; line-height:1.4; }
     .nk tr:first-child td { border-top:none; }
     .nk .r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .nk th.r { text-align:right; }
@@ -94,7 +94,7 @@ const NK_LETTER_CSS = `
     .nk td.m { color:#4a433c; }
     .nk td .sub { display:block; font-size:8.5px; color:#8c8379; line-height:1.35; margin-top:1px; white-space:normal; }
     .nk tr.sub td { border-top:none; padding:0 0 8px; font-size:8.5px; color:#8c8379; line-height:1.35; }
-    .nk tr.s td { font-weight:700; border-top:0.6px solid #d9d0c3; padding-top:11px; }
+    .nk tr.s td { font-weight:700; padding-top:14px; }
     .nk tr.v td { color:#4a433c; }
     .res2 { margin-top:12px; }
     .note2 { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#6f675e; line-height:1.55; margin-top:14px; }
