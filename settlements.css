@@ -1262,3 +1262,20 @@ button.st-sg__r { cursor: pointer; }
 .sc-lfold b { font-size: 13px; font-weight: 500; color: var(--cx-ink); }
 .sc-lfold small { font-size: 11px; color: var(--cx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sc-lfold i { color: var(--cx-sub); }
+
+/* ── Money with the WEG (Oct 2026): red while open · green once settled ── */
+.sr-money { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1px solid #D9957C; background: #FBEFEA; }
+.sr-money.is-done { border-color: #B9C28A; background: #EEF0DD; }
+.sr-money__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.sr-money__l { margin: 0; font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #8A3B22; }
+.sr-money.is-done .sr-money__l { color: #55622A; }
+.sr-money__st { margin: 5px 0 0; display: flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; color: #A0533A; }
+.sr-money__ok { margin: 5px 0 0; display: flex; align-items: center; gap: 5px; font-size: 13.5px; font-weight: 600; color: #55622A; }
+.sr-money__a { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 32px; font-weight: 500; line-height: 1; color: #A0533A; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sr-money.is-done .sr-money__a { color: #55622A; }
+.sr-money__h { margin: 3px 0 0; font-size: 11.5px; color: var(--cx-mut); }
+.sr-money__h .cx-link { font-size: 11.5px; padding: 0; }
+.sr-money__b { display: flex; gap: 8px; }
+.sr-money__b .cx-btn { height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+.sr-money__b .cx-btn--p { flex: 1; }
+.sr-money .sr-grid2 { margin: 0; }

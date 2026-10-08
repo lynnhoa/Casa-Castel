@@ -339,7 +339,7 @@ function _srHvState(c, rec, sum) {
   if (!sum.ok || !_srJaDone(rec, sum)) return { k: 'erfassen', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'to enter'], line2: recv + ' · not complete yet' };
   const wegSet = rec.weg_direction !== null && rec.weg_direction !== undefined;
   if (!wegSet && !(wegSt && wegSt.res)) return { k: 'weg', received, exp, asked, fristSoon, per, wegL, wegSt, todo: true, pill: ['open', 'WEG result'], line2: recv + ' · WEG result missing' };
-  if (wegSt && wegSt.k === 'verschickt') return { k: 'zahlung', received, exp, asked, fristSoon, per, wegL, wegSt, wait: true, pill: ['beige', wegSt.res && wegSt.res.dir < 0 ? 'to pay' : 'to receive'], line2: recv + (rec.weg_due ? ' · due ' + stDate(rec.weg_due) : '') };
+  if (wegSt && wegSt.k === 'verschickt') return { k: 'zahlung', received, exp, asked, fristSoon, per, wegL, wegSt, wait: true, pill: ['diff', 'open'], line2: recv + (rec.weg_due ? ' · due ' + stDate(rec.weg_due) : '') };
   const paid = wegSt && wegSt.booking ? ' · ' + (wegSt.res && wegSt.res.dir > 0 ? 'received ' : 'paid ') + stDate(wegSt.booking.invoice_date) : '';
   return { k: 'fertig', received, exp, asked, fristSoon, per, wegL, wegSt, pill: ['ok', wegSt && wegSt.booking ? (wegSt.res.dir > 0 ? 'received' : 'paid') : 'entered'], line2: recv + paid };
 }
@@ -792,6 +792,42 @@ function _srCardInfo4(c) {
   return { c, rec, sum, rows, hv, k: open ? 'open' : 'settled' };
 }
 
+/* WEG result of a complete Jahresabrechnung → tracker (no "edit → Done" after an import);
+   money already booked in Controlling with the same amount → linked instead of booked twice */
+function _srWegSync(infos) {
+  SR._wegSync = SR._wegSync || {};
+  const jobs = [];
+  for (const i of infos) {
+    const c = i.c, rec = i.rec, ck = c.ck, mark = SR._wegSync[ck];
+    if (mark === 'ok' || c.before || !c.weg || !rec || !_srJaDone(rec, i.sum)) continue;
+    if (rec.weg_direction === null || rec.weg_direction === undefined) continue;
+    const st = i.hv && i.hv.wegSt;
+    if (!st || !st.res) { if (mark !== 'w') { SR._wegSync[ck] = 'w'; jobs.push(() => _srWriteWeg(c, rec)); } continue; }
+    SR._wegSync[ck] = 'ok';
+    if (st.booking || st.k === 'erledigt' || !st.res.amount || !st.res.dir) continue;
+    const b = _srFindBooking(c, st.res, rec);
+    if (b) jobs.push(() => _srLinkBooking(b, st.res));
+  }
+  if (!jobs.length) return;
+  (async () => {
+    for (const j of jobs) { try { await j(); } catch (e) { console.warn('[settlements] WEG sync', e); } }
+    ctlSettlementInvalidate(); stRenderRentals();
+  })();
+}
+function _srFindBooking(c, res, rec) {
+  const from = _srD(rec.hv_date) || c.per.to;
+  const all = (window._ctrl.one_time || []).concat(window._src.abrPay || []);
+  return all.find(o => Number(o.property_id) === Number(c.p.id) && Math.abs(Math.abs(Number(o.amount)) - res.amount) < 0.005 &&
+    _srD(o.invoice_date) >= from && !/^abr:/.test(String(o.source_ref || '')) &&
+    (o.direction === undefined || o.direction === null || Number(o.direction) === res.dir)) || null;
+}
+async function _srLinkBooking(b, res) {
+  const d = await ctlUpdateOneTime(b.id, { source_ref: 'abr:' + res.id, kind: 'Hausgeldabrechnung' });
+  const row = d || Object.assign({}, b, { source_ref: 'abr:' + res.id, kind: 'Hausgeldabrechnung' });
+  window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id).concat([row]);
+  const k = (window._ctrl.one_time || []).findIndex(o => o.id === b.id); if (k >= 0) window._ctrl.one_time[k] = row;
+}
+
 /* ── Tracker ── */
 function stRenderRentals() {
   const el = document.getElementById('tab-rentals'); if (!el) return;
@@ -806,6 +842,7 @@ function stRenderRentals() {
   try { infos = _srYearModel(SR.year).map(_srCardInfo4); }
   catch (e) { console.error('[settlements] rentals', e); el.innerHTML = '<div class="st-page"><p class="cx-empty">Could not calculate the settlements.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'; return; }
   _srCards = {}; infos.forEach(i => { _srCards[i.c.ck] = i.c; });
+  _srWegSync(infos);
 
   // numbers for the year
   const live = infos.filter(i => i.k !== 'before');
@@ -877,6 +914,11 @@ function _srNextSteps(live) {
       steps.push({ o: 1, ic: 'alert-circle', tone: 'red', t: 'Jahresabrechnung overdue', s: i.c.p.name + (hv.exp ? ' · expected ' + hv.exp.label : ''),
         btn: mail ? '<a class="sc-go sr5-go--warn" data-sr="ask" data-k="' + stEsc(i.c.ck) + '" href="' + stEsc(_srAskMail(i.c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Ask HV</a>'
                   : '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
+    } else if (hv.k === 'zahlung' && hv.wegSt && hv.wegSt.res) {
+      const r = hv.wegSt.res;
+      steps.push({ o: 0, ic: 'coin-euro', tone: 'red', t: r.dir > 0 ? 'Guthaben from the WEG not received' : 'Nachzahlung to the WEG not paid',
+        s: i.c.p.name + ' · ' + stEur(r.amount) + (i.rec && i.rec.hv_date ? ' · statement ' + stDate(i.rec.hv_date) : ''),
+        btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
     } else if (hv.k === 'erfassen') steps.push({ o: 2, ic: 'pencil', t: 'Enter costs', s: i.c.p.name + (hv.received ? ' · received' : ''), btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
     else if (hv.k === 'weg') steps.push({ o: 3, ic: 'scale', t: 'Enter the WEG result', s: i.c.p.name, btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
   }
@@ -941,12 +983,12 @@ function _srCard5(info) {
   const wegDone = !!(wRes && (wegSt.k === 'erledigt' || wegSt.booking));
   let say, tone = '';
   if (hv.k === 'fertig') { say = wRes ? _srWegWords(wRes.dir, wRes.amount, true) : 'settled'; tone = 'pos'; }
-  else if (hv.k === 'zahlung') { say = wRes ? _srWegWords(wRes.dir, wRes.amount, wegDone) + ' · payment open' : 'payment open'; tone = wRes && wRes.dir > 0 ? 'pos' : 'neg'; }
+  else if (hv.k === 'zahlung') { say = wRes ? (wRes.dir > 0 ? 'Guthaben ' + stEur(wRes.amount) + ' · not received yet' : 'Nachzahlung ' + stEur(wRes.amount) + ' · not paid yet') : 'not settled yet'; tone = 'neg'; }
   else if (hv.k === 'weg') say = 'costs entered · enter the WEG result';
   else if (hv.k === 'erfassen') { say = 'received' + (rec && (rec.received_on || rec.hv_date) ? ' ' + stDM(rec.received_on || rec.hv_date) : '') + ' · not complete yet'; tone = 'warn'; }
   else if (hv.k === 'ueberfaellig') { say = 'overdue' + (hv.exp ? ' · expected ' + hv.exp.label : '') + (hv.asked.length ? ' · asked ' + stDM(hv.asked[hv.asked.length - 1]) : ''); tone = 'neg'; }
   else say = c.running ? 'runs until ' + stDate(c.per.to) : (hv.exp ? 'expected ~ ' + hv.exp.label : 'expected');
-  const hvChip = hv.k === 'fertig' ? ['done', 'settled'] : hv.k === 'zahlung' ? ['wait', wRes && wRes.dir < 0 ? 'to pay' : 'to receive'] : hv.k === 'weg' ? ['send', 'to enter'] : hv.k === 'erfassen' ? ['send', 'to enter']
+  const hvChip = hv.k === 'fertig' ? ['done', 'settled'] : hv.k === 'zahlung' ? ['red', 'open'] : hv.k === 'weg' ? ['send', 'to enter'] : hv.k === 'erfassen' ? ['send', 'to enter']
     : hv.k === 'ueberfaellig' ? ['red', 'ask HV'] : ['grey', c.running ? 'running' : 'expected'];
   h += '<button class="sc-row sr5-ln" data-sr="openHv" data-k="' + stEsc(c.ck) + '"><span class="sc-av sr5-av--hv"><i class="ti ti-building" aria-hidden="true"></i></span>' +
     '<span class="sc-row__m"><span class="sc-row__n">Hausgeld-Jahresabrechnung</span><span class="sc-row__s ' + tone + '">' + stEsc(say) + '</span></span>' +
@@ -1020,7 +1062,7 @@ function _srTrackerBlock(info) {
   const wRes = wegSt && wegSt.res;
   const wegMoney = wRes ? _srMoneyTxt(wRes.dir, wRes.amount, true) : (rec && rec.weg_direction !== null && rec.weg_direction !== undefined ? _srMoneyTxt(Number(rec.weg_direction), _srNum(rec.weg_amount), true) : '');
   const wegDone = wRes && wegSt.k === 'erledigt';
-  const hvPill = hv.k === 'fertig' ? ['ok', 'settled'] : hv.k === 'zahlung' ? ['beige', wegSt && wegSt.res && wegSt.res.dir < 0 ? 'to pay' : 'to receive'] : hv.k === 'weg' || hv.k === 'erfassen' ? ['open', 'to enter']
+  const hvPill = hv.k === 'fertig' ? ['ok', 'settled'] : hv.k === 'zahlung' ? ['diff', 'open'] : hv.k === 'weg' || hv.k === 'erfassen' ? ['open', 'to enter']
     : hv.k === 'ueberfaellig' ? ['diff', 'overdue'] : ['grey', c.running ? 'running' : 'expected'];
   const hvLine2 = !hv.received ? (c.running ? 'runs until ' + stDate(c.per.to) : (hv.exp ? (hv.k === 'ueberfaellig' ? 'expected ' : 'expected ~') + hv.exp.label : 'expected – month not set'))
     + (hv.asked.length ? ' · asked ' + stDate(hv.asked[hv.asked.length - 1]) : '') : 'received ' + stDate(rec.received_on || rec.hv_date);
@@ -1256,19 +1298,35 @@ function _srHvView(c) {
   const over = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Abrechnung</p><button class="cx-link" data-sr="jaEdit">edit</button></div>' +
     '<div>' + fold('u', 'Umlagefähig', 'go into the NK', GU, sU) + fold('n', 'Nicht umlagefähig', 'your costs', GN, sN) +
       kv('Kosten gesamt', stEur(totK), true) + kv('− Hausgeld paid', stEur(hgP)) + '</div>' + resBox + '</section>';
-  const wegSt = hv.wegSt, wRes = wegSt && wegSt.res, open = !!(wDone && wRes && !wegSt.booking && wegSt.k !== 'erledigt');
+  const wegSt = hv.wegSt, wRes = wegSt && wegSt.res, settled = !!(wRes && (wegSt.booking || wegSt.k === 'erledigt'));
   let money = '';
   if (wDone) {
-    const stTxt = open ? (wDone > 0 ? 'waiting for the money' : 'to pay') + (rec.weg_due ? ' · due ' + stDate(rec.weg_due) : '') : _srSettledTxt({ st: wegSt, ts: {} }, true) || 'settled';
-    const late = open && rec.weg_due && cxToday() > _srD(rec.weg_due);
-    money = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Settlement</p>' + (!open && wRes ? '<button class="cx-link" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-w="1">edit</button>' : '') + '</div>' +
-      '<div class="sr-tl sr-tl--first"><span>' + stEsc(open ? stTxt : (wDone > 0 ? 'received ' : 'paid ') + (wegSt && wegSt.booking ? stDate(wegSt.booking.invoice_date) : '')) + '</span>' + cxPill(open ? (late ? 'diff' : 'open') : 'ok', open ? (late ? 'overdue' : wDone > 0 ? 'to receive' : 'to pay') : wDone > 0 ? 'received' : 'paid') + '</div>' +
-      '<div class="sr-tl"><span>Amount</span><span>' + stEur(wegSt && wegSt.booking ? cxR(wegSt.booking.amount) : wAmt) + '</span></div></section>';
+    const what = wDone > 0 ? 'Guthaben from the WEG' : 'Nachzahlung to the WEG';
+    if (settled) {
+      const b = wegSt.booking, bd = b ? _srD(b.invoice_date) : '';
+      money = '<section class="sr-money is-done"><div class="sr-money__top"><div><p class="sr-money__l">' + what + '</p>' +
+        '<p class="sr-money__ok"><i class="ti ti-check" aria-hidden="true"></i> ' + (wDone > 0 ? 'received' : 'paid') + (bd ? ' ' + stDate(bd) : '') + '</p></div>' +
+        '<b class="sr-money__a">' + stEur(b ? cxR(Math.abs(Number(b.amount))) : wAmt) + '</b></div>' +
+        '<p class="sr-money__h">' + (b ? 'Booked in Controlling › ' + stEsc(c.p.name) + ' · ' + SR_MON[Number(bd.slice(5, 7)) - 1] + ' ' + bd.slice(0, 4) : stEsc(_srSettledTxt({ st: wegSt, ts: {} }, true) || 'settled')) +
+        ' · <button class="cx-link" data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-w="1">undo</button></p></section>';
+    } else {
+      const late = rec.weg_due && cxToday() > _srD(rec.weg_due);
+      const ago = rec.hv_date ? Math.max(0, _srDays(rec.hv_date, cxToday()) - 1) : null;
+      const sub = [rec.weg_due ? 'due ' + stDate(rec.weg_due) + (late ? ' – overdue' : '') : '', ago !== null ? 'statement ' + ago + ' days ago' : ''].filter(Boolean).join(' · ');
+      const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
+      money = '<section class="sr-money is-open"><div class="sr-money__top"><div><p class="sr-money__l">' + what + '</p>' +
+        '<p class="sr-money__st"><i class="ti ti-alert-circle" aria-hidden="true"></i> ' + (wDone > 0 ? 'not received yet' : 'not paid yet') + '</p>' + (sub ? '<p class="sr-money__h">' + stEsc(sub) + '</p>' : '') + '</div>' +
+        '<b class="sr-money__a">' + stEur(wAmt) + '</b></div>' +
+        (wRes ? '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">' + (wDone > 0 ? 'Received on' : 'Paid on') + '</span><input class="st-in" type="date" id="srWegDate" value="' + cxToday() + '"/></label>' +
+            '<label class="st-f"><span class="st-f__l">Amount</span><span class="sr-amt sr-amt--l"><input inputmode="decimal" id="srWegAmt" value="' + stEsc(cxE2(wAmt)) + '" aria-label="Amount"/><em>€</em></span></label></div>' +
+          '<div class="sr-money__b">' + (wDone > 0 && mail ? '<a class="cx-btn cx-btn--s" data-sr="remind" href="' + stEsc(_srRemindMail(c, rec, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Remind HV</a>' : '') +
+            '<button class="cx-btn cx-btn--p" data-sr="wegRecv" data-k="' + stEsc(c.ck) + '">' + (wDone > 0 ? 'Mark received' : 'Mark paid') + '</button></div>' +
+          '<p class="sr-money__h">Books into Controlling › ' + stEsc(c.p.name) + ' on the date you enter.</p>'
+        : '<p class="sr-money__h">Getting ready …</p>') + '</section>';
+    }
   }
-  const bar = open ? '<div class="srm__bar srm__bar--2">' + (wDone > 0 && mail ? '<a class="cx-btn cx-btn--s" data-sr="remind" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srRemindMail(c, rec, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Remind HV</a>' : '') +
-      '<button class="cx-btn cx-btn--p" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-w="1">' + (wDone > 0 ? 'Mark received' : 'Mark paid') + '</button></div>' : '';
   return _srHead4(title, c.p.name + ' · you ↔ WEG') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
-    '<div class="srm__b"><div class="srm__one srm__wide">' + prog + over + money + '</div></div>' + bar;
+    '<div class="srm__b"><div class="srm__one srm__wide">' + prog + money + over + '</div></div>';
 }
 /* Progress line: done · current · open */
 function _srSteps(names, cur) {
@@ -1557,14 +1615,14 @@ function _srSetObj(c, st, ti, weg, idx) {
     note: done && !b && SR.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent', hausgeld: 'Settled with the Hausgeld' }[res.via] || null) : null });
 }
 /* Settled: the typed amount (0 is fine) → booking in Controlling today → the line is done */
-async function _srSetAmount(ck, tid, weg, raw, btn) {
+async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   const x = _srSetCtx(ck, tid, weg); if (!x) return;
   const res = x.st.res; if (!res || !res.amount) { stSay('Nothing to settle'); return; }
   const s = String(raw === null || raw === undefined ? '' : raw).trim();
   if (!s) { stSay('Type the amount – 0 is fine'); return; }
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
-  const amt = cxR(Math.abs(parsed)), date = cxToday(), b = x.st.booking;
+  const amt = cxR(Math.abs(parsed)), date = _srD(when) || cxToday(), b = x.st.booking;
   if (btn) btn.disabled = true;
   try {
     if (res.via !== 'zahlung') {
@@ -1790,6 +1848,10 @@ function srIsRentalsLine() { return false; }
     }
     if (a === 'wegDir') { _srCollect(); SR.draft.weg_direction = Number(b.dataset.v); _srRerenderPanel(); _srAutoQueue(); return; }
     if (a === 'jaDone') { await _srJaComplete(b); return; }
+    if (a === 'wegRecv') {
+      const dt = (document.getElementById('srWegDate') || {}).value || cxToday(), am = (document.getElementById('srWegAmt') || {}).value;
+      await _srSetAmount(b.dataset.k, null, true, am, b, dt); return;
+    }
     if (a === 'jaTab') { _srCollect(); SR.jaTab = b.dataset.g; _srRerenderPanel(); return; }
     if (a === 'jaFold') { SR.jaOpen = Object.assign({}, SR.jaOpen, { [b.dataset.g]: !(SR.jaOpen && SR.jaOpen[b.dataset.g]) }); _srRerenderPanel(); return; }
     if (a === 'jaEdit') { SR.jaEdit = true; SR.draft = null; SR.costsOpen = false; _srRerenderPanel(); return; }
