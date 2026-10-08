@@ -235,20 +235,36 @@ const NkCasa = (() => {
     }
     Object.values(byCat).forEach(l => { delete l.booked; if (l.parts.length) lines.push(l); });
 
+    const consPeriod = (o, d) => {
+      if (o.nk_from && o.nk_to && D(o.nk_to) >= D(o.nk_from)) return { from: D(o.nk_from), to: D(o.nk_to), set: true };
+      if (Number(o.nk_year)) return { from: o.nk_year + '-01-01', to: o.nk_year + '-12-31', set: true };
+      const to = addDays(d.slice(0, 7) + '-01', -1);                       // end of the month before the bill
+      const from = addDays(to, 1).replace(/^(\d{4})/, y => String(Number(y) - 1));   // 12 months back
+      return { from, to, set: false };
+    };
     // one-offs with the NK switch (Casa Castel only, settlement results excluded)
     const ABR = typeof CX_ABR_KINDS !== 'undefined' ? CX_ABR_KINDS : ['NK-Abrechnung', 'Hausgeldabrechnung'];
     for (const o of (C.one_time || [])) {
       if (Number(o.property_id) !== CASA || !o.nk_umlage || ABR.includes(o.kind)) continue;
-      const d = D(o.invoice_date); if (d < period.from || d > period.to) continue;
+      const d = D(o.invoice_date);
       const hg = o.kind === 'Versorger' || /jahresabrechnung/i.test(String(o.item || ''));   // Strom · Gas · Wasser yearly result
+      // A Versorger-Jahresabrechnung belongs to its own Abrechnungszeitraum (consumption period, from the bill):
+      // it counts in this NK period by the days that overlap. Controlling keeps it on the payment date.
+      let cons = null, hgShare = 1;
+      if (hg) {
+        cons = consPeriod(o, d);
+        const a0 = cons.from > period.from ? cons.from : period.from, b0 = cons.to < period.to ? cons.to : period.to;
+        if (a0 > b0) continue;
+        hgShare = daysBetween(a0, b0) / daysBetween(cons.from, cons.to);
+      } else if (d < period.from || d > period.to) continue;
       // cost type: the one chosen in Controlling, else an NK cost type whose name the invoice carries
       // (e.g. "Gärtner Mai" → Gärtner) — so official sporadic costs keep their own line in the letter
       const c = catOf(o.nk_category_id) || (hg ? null : catByName(o.item || o.company));
       const amt = (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0);      // Guthaben / refund lowers the costs
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
-                   parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',
-                   info: { date: d, company: o.company || '', item: o.item || '', amount: amt } });
+                   parts: [hg ? { amount: r2(amt * hgShare), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',
+                   info: { date: d, company: o.company || '', item: o.item || '', amount: amt, cons, share: hg ? hgShare : null, counted: hg ? r2(amt * hgShare) : null, consSet: !!(o.nk_from && o.nk_to) } });
       if (hg && !c) warn.push('Hausgeld entry ' + d + ' has no cost type – split by person');
     }
 

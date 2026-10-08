@@ -104,6 +104,14 @@ function _cxOtFormHTML(o) {
   '</div>';
 }
 
+/* Casa Versorger-Jahresabrechnung: its own Abrechnungsjahr (set in Settlements), else the 12 months before the payment */
+function _cxOtAbrYear(o) {
+  const mmyy = iso => String(iso).slice(5, 7) + '/' + String(iso).slice(2, 4);
+  if (o.nk_from && o.nk_to) return mmyy(o.nk_from) + '–' + mmyy(o.nk_to);
+  const d = String(o.invoice_date).slice(0, 10), y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+  const tm = m === 1 ? 12 : m - 1, ty = m === 1 ? y - 1 : y, fm = tm === 12 ? 1 : tm + 1, fy = tm === 12 ? ty : ty - 1;
+  return String(fm).padStart(2, '0') + '/' + String(fy).slice(2) + '–' + String(tm).padStart(2, '0') + '/' + String(ty).slice(2) + ' ?';
+}
 /* One invoice = one row, same pattern as Income / Expenses:
    label (Beschreibung) · pill │ amount (bold) │ date · Firma — tap to edit */
 function _cxOtRowHTML(o) {
@@ -112,7 +120,8 @@ function _cxOtRowHTML(o) {
   const nkCat = o.nk_umlage && o.nk_category_id ? (window._ctrl.categories || []).find(c => Number(c.id) === Number(o.nk_category_id)) : null;
   const pills = _cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (o.knk_type ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('ok', 'Refund') : '') :
                 (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK' + (nkCat ? ' · ' + cxEsc(nkCat.name) : '') + '</span>' : '') +
-                (o.kind === 'Versorger' ? cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung
+                (o.kind === 'Versorger' ? cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung') +          // Versorgerabrechnung
+                  (o.nk_umlage && Number(o.property_id) === CASA_PROP_ID ? cxPill('beige', 'Abr. ' + _cxOtAbrYear(o)) : '')
                   : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill('ok', 'Income') : ''));
   return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc('Edit ' + (o.item || 'entry')) + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +

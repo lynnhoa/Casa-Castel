@@ -1285,3 +1285,10 @@ button.st-sg__r { cursor: pointer; }
 .sr-skip__t i { color: var(--cx-mut); }
 .sr-skip__s { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--cx-txt); }
 .sr-skip__s b { font-weight: 600; color: var(--cx-ink); }
+/* Casa · a bill's own Abrechnungsjahr + what counts in this NK · NK period setting */
+.sc-hgr__c { color: var(--cx-acc) !important; }
+.sc-hgr__ed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.sc-hgr__ed .st-in { height: 34px; padding: 0 8px; font-size: 13px !important; width: 140px; }
+.sc-hgr--gap { padding-top: 2px; border-top: none; }
+.sc-per { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--cx-mut); }
+.sc-per .st-sel { width: auto; height: 34px; }

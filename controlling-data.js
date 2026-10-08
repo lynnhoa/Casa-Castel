@@ -271,8 +271,11 @@ async function ctlAddOneTime(o) {
   if (o.nk_category_id !== undefined) payload.nk_category_id = o.nk_category_id;   // … as this Casa cost type (key + booking from Setup)
   if (o.knk_type !== undefined) payload.knk_type = o.knk_type;                     // Kaufnebenkosten: Makler, Notar, …
   if (o.knk_part !== undefined) payload.knk_part = o.knk_part;                     // … Notar / Grundbuch: Kauf or Grundschuld
+  if (o.nk_from) payload.nk_from = o.nk_from;                                      // Casa Versorger-Jahresabrechnung: its own Abrechnungsjahr
+  if (o.nk_to) payload.nk_to = o.nk_to;
   const ins = pl => _ctlSupa.from('ctrl_expense_one_time').insert(pl).select().single();
   let { data, error } = await ins(payload);
+  if (error && /nk_from|nk_to/.test(String(error.message || ''))) { delete payload.nk_from; delete payload.nk_to; ({ data, error } = await ins(payload)); }
   if (error && _ctlNoKnkCol(error)) ({ data, error } = await ins(_ctlStripKnk(payload)));
   if (error) throw error;
   window._ctrl.one_time.push(data);

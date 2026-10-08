@@ -63,7 +63,8 @@ async function scLoadYear(y) {
   const per = scPeriod(y), y0 = Number(per.from.slice(0, 4)), y1 = Number(per.to.slice(0, 4));
   const [c, o] = await Promise.all([
     _ctlSupa.from('ctrl_expense_castel').select('*').gte('year', y0).lte('year', y1),
-    _ctlSupa.from('ctrl_expense_one_time').select('*').eq('property_id', CASA_PROP_ID).gte('invoice_date', per.from).lte('invoice_date', per.to),
+    // + the next year: Versorger-Jahresabrechnungen for this NK year arrive then
+    _ctlSupa.from('ctrl_expense_one_time').select('*').eq('property_id', CASA_PROP_ID).gte('invoice_date', per.from).lte('invoice_date', (y1 + 1) + '-12-31'),
   ]);
   if (c.error) throw c.error;
   if (o.error) throw o.error;
@@ -523,13 +524,62 @@ async function scHgBook(btn) {
     try {
       if (!Array.isArray(window._ctrl.one_time)) window._ctrl.one_time = [];
       const row = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: c.name + ' · Jahresabrechnung', company: co || null,
-                                        amount: cxR(amt), kind: 'Versorger', direction: dir, nk_umlage: true, nk_category_id: c.id });
+                                        amount: cxR(amt), kind: 'Versorger', direction: dir, nk_umlage: true, nk_category_id: c.id,
+                                        nk_from: g('scHgPF') && g('scHgPF').value ? g('scHgPF').value : undefined,
+                                        nk_to: g('scHgPT') && g('scHgPT').value ? g('scHgPT').value : undefined });
       if (d && !d.one_time.some(o => o.id === row.id)) d.one_time.push(row);
     } catch (e) { if (btn) btn.disabled = false; return stSay('Could not book it in Controlling'); }
   }
   SC.hgNew = null;
   const m = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m; scRenderModal();
   stSay(dup ? 'Linked to the entry in Controlling' : 'Booked in Controlling');
+}
+/* One Jahresabrechnung for another NK year: the year before the payment (rule) ↔ the payment year */
+/* A Jahresabrechnung's own Abrechnungsjahr (from the bill) and what of it counts in this NK – spread evenly over its months */
+function scHgPeriodHtml(h, can) {
+  const info = h.info || {}, cp = info.cons;
+  if (!cp) return '';
+  if (can && SC.hgEd === h.id) return '<span class="sc-hgr__ed"><input class="st-in" type="date" id="scHgFrom" value="' + stEsc(cp.from) + '" aria-label="Abrechnungsjahr from"/>' +
+    '<span>–</span><input class="st-in" type="date" id="scHgTo" value="' + stEsc(cp.to) + '" aria-label="Abrechnungsjahr to"/>' +
+    '<button type="button" class="cx-link" data-sc="hgPerCancel">Cancel</button><button type="button" class="cx-link sr-acc" data-sc="hgPerSave" data-id="' + stEsc(h.id) + '">Save</button></span>';
+  const mo = (a, b) => { const n = NkCasa.daysBetween(a, b); return Math.round(n / 30.44 * 10) / 10; };
+  const all = mo(cp.from, cp.to), part = Math.round(all * (info.share ?? 1) * 10) / 10;
+  const fmt = v => String(v).replace('.', ',').replace(/,0$/, '');
+  return '<small>Abrechnungsjahr ' + stDate(cp.from) + '–' + stDate(cp.to) + (cp.set ? '' : ' <em>(suggested)</em>') +
+      (can ? ' · <button type="button" class="cx-link" data-sc="hgPerEd" data-id="' + stEsc(h.id) + '">' + (cp.set ? 'edit' : 'set from the bill') + '</button>' : '') + '</small>' +
+    '<small class="sc-hgr__c">counts ' + fmt(part) + ' of ' + fmt(all) + ' months → ' + stEur(cxR(Math.abs(info.counted ?? info.amount))) + ' in this NK</small>';
+}
+async function scHgPeriodSave(lineId) {
+  const id = Number(String(lineId).replace('ot:', '')), f = (document.getElementById('scHgFrom') || {}).value, t = (document.getElementById('scHgTo') || {}).value;
+  if (!f || !t || t < f) return stSay('Enter from and to as on the bill');
+  try {
+    const row = await ctlUpdateOneTime(id, { nk_from: f, nk_to: t });
+    for (const k of Object.keys(SC.data)) { const L = SC.data[k] && SC.data[k].one_time; const i = L ? L.findIndex(x => Number(x.id) === id) : -1; if (i >= 0) L[i] = row; }
+  } catch (e) { return stSay(/nk_from|nk_to/.test(String(e && (e.message || e))) ? 'Please run the SQL (nk_from / nk_to) first' : 'Could not save it'); }
+  SC.hgEd = null; const m = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m; scRenderModal();
+  stSay('Abrechnungsjahr saved');
+}
+/* Casa Castel's own NK period ("starts on") – changing it re-splits everything that is not locked */
+async function scPeriodSave() {
+  const d = (document.getElementById('scPerD') || {}).value, m = (document.getElementById('scPerM') || {}).value;
+  if (!d || !m) return;
+  const { error } = await _ctlSupa.from('ctrl_properties').update({ nk_period_start: m + '-' + d }).eq('id', CASA_PROP_ID);
+  if (error) return stSay('Could not save — ' + error.message);
+  const p = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID); if (p) p.nk_period_start = m + '-' + d;
+  SC.perEdit = false; SC.data = {}; ctlSettlementInvalidate();
+  const mm = SC.modal; await scLoadYear(SC.year); SC.model = scModel(SC.year); stRenderCasa(); SC.modal = mm; scRenderModal();
+  stSay('NK period saved');
+}
+async function scHgYear(lineId, cur, date) {
+  const id = Number(String(lineId).replace('ot:', '')), py = Number(date.slice(0, 4)) || SC.year + 1;
+  const to = cur === py - 1 ? py : py - 1;
+  if (!(await stConfirm({ title: 'Count it for NK ' + to + '?', text: 'Paid ' + stDe(date) + '. It then belongs to the NK-Abrechnung ' + to + ' instead of ' + cur + '. Controlling does not change.', ok: 'NK ' + to }))) return;
+  try {
+    const row = await ctlUpdateOneTime(id, { nk_year: to === py - 1 ? null : to });
+    for (const k of Object.keys(SC.data)) { const L = SC.data[k] && SC.data[k].one_time; const i = L ? L.findIndex(x => Number(x.id) === id) : -1; if (i >= 0) L[i] = row; }
+  } catch (e) { return stSay(/nk_year/.test(String(e && (e.message || e))) ? 'Please run the SQL (nk_year) first' : 'Could not save it'); }
+  SC.data = {}; const m = SC.modal; await scLoadYear(SC.year); SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m; scRenderModal();
+  stSay('Counts for NK ' + to);
 }
 async function scHgRemove(lineId) {
   const id = Number(String(lineId).replace('ot:', '')), d = SC.data[SC.year];
@@ -627,7 +677,14 @@ function scCostsView(M) {
   const R = M.R, Lc = R.check, lnd = R.landlord, can = !M.locked;
   const sup = scHgSuppliers(M), hs = M.money.hgAll || [], missing = sup.filter(x => !x.list.length);
   const step = !R.lines.length ? 0 : M.locked ? 3 : missing.length ? 1 : 2;
-  const prog = '<div class="srm__card sr-progcard">' + scSteps(['Collected', 'Jahresabrechnungen', 'Locked'], step) +
+  const st0 = /^\d{2}-\d{2}$/.test(String(M.p.nk_period_start || '')) ? M.p.nk_period_start : '01-01';
+  const opt = (n, sel) => '<option value="' + String(n).padStart(2, '0') + '"' + (Number(sel) === n ? ' selected' : '') + '>' + String(n).padStart(2, '0') + '</option>';
+  const perRow = SC.perEdit && can
+    ? '<div class="sc-per sc-per--ed"><span>NK period starts on</span><select class="st-in st-sel" id="scPerD">' + Array.from({ length: 31 }, (_, i) => opt(i + 1, st0.slice(3))).join('') + '</select><span>.</span>' +
+      '<select class="st-in st-sel" id="scPerM">' + Array.from({ length: 12 }, (_, i) => opt(i + 1, st0.slice(0, 2))).join('') + '</select>' +
+      '<button class="cx-link" data-sc="perCancel">Cancel</button><button class="cx-link sr-acc" data-sc="perSave">Save</button></div>'
+    : '<p class="sr-progmeta">NK period ' + stDate(M.per.from) + '–' + stDate(M.per.to) + (can ? ' · <button class="cx-link" data-sc="perEdit">change</button>' : '') + '</p>';
+  const prog = '<div class="srm__card sr-progcard">' + scSteps(['Collected', 'Jahresabrechnungen', 'Locked'], step) + perRow +
     '<p class="sr-progmeta">' + (M.locked ? 'Locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot · <button class="cx-link" data-sc="unlock">unlock</button>'
       : R.lines.length ? 'Live from Controlling · ' + R.lines.length + ' lines' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : '') : 'Nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet') + '</p></div>';
   const warn = can && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
@@ -636,20 +693,31 @@ function scCostsView(M) {
   const hgRow = (x, h) => {
     const info = h.info || {}, cost = Number(info.amount) || 0, gut = cost < 0;
     return '<div class="sc-hgr' + (h.on ? '' : ' is-off') + '"><span class="sc-hgr__n">' + stEsc(x.l + (info.company ? ' · ' + info.company : '')) +
-      '<small>' + (gut ? 'Guthaben' : 'Nachzahlung') + (info.date ? ' · ' + stDate(info.date) : '') + (h.on ? '' : ' · not in the NK') +
-        ' · <button type="button" class="cx-link sc-hgr__bl' + (list[h.id] ? ' is-on' : '') + '" data-sc="hglist" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') + '>Belegliste ' + (list[h.id] ? 'on' : 'off') + '</button>' +
+      '<small>' + (gut ? 'Guthaben' : 'Nachzahlung') + (info.date ? ' · paid ' + stDate(info.date) : '') + (h.on ? '' : ' · not in the NK') + '</small>' +
+      scHgPeriodHtml(h, can) +
+      '<small>' +
+        '<button type="button" class="cx-link sc-hgr__bl' + (list[h.id] ? ' is-on' : '') + '" data-sc="hglist" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') + '>Belegliste ' + (list[h.id] ? 'on' : 'off') + '</button>' +
         (can && String(h.id).indexOf('ot:') === 0 ? ' · <button type="button" class="cx-link" data-sc="hgDel" data-id="' + stEsc(h.id) + '">remove</button>' : '') + '</small></span>' +
       '<span class="sc-hgr__v ' + (gut ? 'pos' : 'neg') + '">' + stEur(cxR(Math.abs(cost))) + '</span>' +
       '<button type="button" class="sc-hgr__tg' + (h.on ? ' on' : '') + '" data-sc="hgtog" data-id="' + stEsc(h.id) + '" aria-pressed="' + h.on + '" aria-label="In the NK"' + (can ? '' : ' disabled') + '></button></div>';
   };
-  const hgRows = sup.map(x => x.list.length ? x.list.map(h => hgRow(x, h)).join('')
+  // does a supplier's Abrechnungsjahr cover the whole NK period? the months not covered yet are named
+  const gap = x => {
+    const cs = x.list.map(h => (h.info || {}).cons).filter(Boolean); if (!cs.length) return '';
+    const lo = cs.reduce((a, c) => c.from < a ? c.from : a, cs[0].from), hi = cs.reduce((a, c) => c.to > a ? c.to : a, cs[0].to);
+    const P = M.per, miss = [];
+    if (hi < P.to) miss.push(stDM(NkCasa.addDays(hi, 1)) + '–' + stDate(P.to));
+    if (lo > P.from) miss.push(stDM(P.from) + '–' + stDate(NkCasa.addDays(lo, -1)));
+    return miss.length ? '<div class="sc-hgr sc-hgr--gap"><span class="sc-hgr__n"><small class="neg">' + stEsc(x.l) + ' · Jahresabrechnung for ' + stEsc(miss.join(', ')) + ' not in yet</small></span><span></span><span></span></div>' : '';
+  };
+  const hgRows = sup.map(x => x.list.length ? x.list.map(h => hgRow(x, h)).join('') + gap(x)
     : '<div class="sc-hgr"><span class="sc-hgr__n">' + stEsc(x.l) + '<small class="neg">Jahresabrechnung not in yet</small></span><span></span>' +
       (can ? '<button type="button" class="cx-link sc-hgr__add" data-sc="hgNew" data-t="' + x.k + '">+ add</button>' : '<span></span>') + '</div>').join('');
   const on = hs.filter(h => h.on), nG = on.filter(h => Number((h.info || {}).amount) < 0).length, nN = on.length - nG, net = M.money.hg;
   const hgRes = hs.length ? '<div class="sr-tl sr-tl--res' + (net > 0 ? ' is-g' : '') + '"><span><b>Ergebnis</b> <small>' + [nG ? nG + ' Guthaben' : '', nN ? nN + ' Nachzahlung' : ''].filter(Boolean).join(' · ') + '</small></span><b>' +
     (net > 0.004 ? 'Guthaben ' : net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(net || 0) > 0.004 ? stEur(cxR(Math.abs(net))) : '') + '</b></div>' : '';
   const hgCard = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p><span class="srm__cs">in the NK</span></div>' + hgRows + hgRes +
-    '<p class="sc-hg__note">Netted into Strom, Gas, Wasser in the letter. Booked once – here or in Controlling.</p>' + (can && SC.hgNew ? scHgForm() : '') + '</div>';
+    '<p class="sc-hg__note">Each Jahresabrechnung belongs to its own Abrechnungsjahr: its Nachzahlung / Guthaben is spread evenly over those months, and this NK takes the months that fall into it. Controlling keeps it on the payment date.</p>' + (can && SC.hgNew ? scHgForm() : '') + '</div>';
   // Kosten: per group, folded – the classic list behind a tap
   const groups = [['typed', 'Typed by you', 'positions'], ['running', 'Laufende Kosten', 'Expenses · Casa Castel'], ['hausgeld', 'Jahresabrechnungen', 'netted into their cost type'], ['oneoff', 'Einmalig', 'NK one-offs']];
   const fold = ([g, t, sub]) => {
@@ -693,6 +761,9 @@ function scHgForm() {
     '<div class="sc-hg__row2"><label class="st-f"><span class="st-f__l">Amount</span><span class="st-amt"><input class="st-in" id="scHgAmt" inputmode="decimal" placeholder="0,00" value="' + stEsc(f.amt || '') + '"/><span>€</span></span></label>' +
     '<label class="st-f"><span class="st-f__l">Date</span><input class="st-in" id="scHgDate" type="date" value="' + stEsc(f.date || cxToday()) + '"/></label></div>' +
     '<label class="st-f"><span class="st-f__l">Company</span><input class="st-in" id="scHgCo" placeholder="e.g. eprimo" value="' + stEsc(f.co || '') + '"/></label>' +
+    '<div class="sc-hg__row2"><label class="st-f"><span class="st-f__l">Abrechnungsjahr from</span><input class="st-in" id="scHgPF" type="date"/></label>' +
+    '<label class="st-f"><span class="st-f__l">to</span><input class="st-in" id="scHgPT" type="date"/></label></div>' +
+    '<p class="sc-hg__hint">As on the bill. Empty = the 12 months before the payment date.</p>' +
     '<div class="sc-hg__fb"><button type="button" class="cx-link" data-sc="hgNewCancel">Cancel</button><button type="button" class="cx-btn cx-btn--p" data-sc="hgNewSave">Book</button></div></div>';
 }
 
@@ -1096,6 +1167,12 @@ async function scClick(e) {
   }
   if (a === 'hgNewSave') return scHgBook(b);
   if (a === 'hgDel') return scHgRemove(b.dataset.id);
+  if (a === 'hgPerEd') { SC.hgEd = b.dataset.id; return scRenderModal(); }
+  if (a === 'hgPerCancel') { SC.hgEd = null; return scRenderModal(); }
+  if (a === 'hgPerSave') return scHgPeriodSave(b.dataset.id);
+  if (a === 'perEdit') { SC.perEdit = true; return scRenderModal(); }
+  if (a === 'perCancel') { SC.perEdit = false; return scRenderModal(); }
+  if (a === 'perSave') return scPeriodSave();
   if (a === 'hglist') {                                    // Hausgeld sheet: show a Jahresabrechnung in the Belegliste or not
     if (M && M.locked) return;
     const r = scRecEnsure(SC.year), li = r.tenants.__hgList = r.tenants.__hgList || {}, id = b.dataset.id;
