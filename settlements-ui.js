@@ -85,13 +85,13 @@ function stSumSheet(o, closeAttr) {
   const hero = '<div class="st-hero st-hero--' + k + '"><span>' + (k === 'in' ? 'you get' : k === 'out' ? 'you pay' : o.net === null ? 'nothing yet' : 'balanced') + '</span>' +
     '<b>' + (o.net === null || o.net === undefined ? '—' : stEur(cxR(Math.abs(o.net)))) + '</b><small>' + stEsc(o.sub2 || '') + '</small></div>';
   const groups = o.groups.filter(g => g.rows.length).map(g => {
-    const tot = g.rows.reduce((a, r) => a + (r.amount ? (r.dir || 0) * r.amount : 0), 0);
+    const tot = g.rows.reduce((a, r) => a + (r.amount && !r.dim ? (r.dir || 0) * r.amount : 0), 0);   // faded rows (not counted) stay out
     const gk = tot > 0.004 ? 'pos' : tot < -0.004 ? 'neg' : '';
     return '<div class="srm__card st-sg"><div class="srm__ch"><p class="srm__ct">' + stEsc(g.title) + '</p>' +
       (g.rows.some(r => r.amount) ? '<span class="srm__cs ' + gk + '">' + stEur(cxR(Math.abs(tot))) + '</span>' : '<span class="srm__cs">' + g.rows.length + '</span>') + '</div>' +
-      g.rows.map(r => r.set ? stSetRow(r.set) : '<' + (r.act ? 'button ' + r.act : 'div') + ' class="st-sg__r"><span class="sc-av sc-av--s" style="background:' + r.av[0] + ';color:' + r.av[1] + '">' + stEsc(r.ab) + '</span>' +
+      g.rows.map(r => r.set ? stSetRow(r.set) : '<' + (r.act ? 'button ' + r.act : 'div') + ' class="st-sg__r' + (r.dim ? ' is-dim' : '') + '"><span class="sc-av sc-av--s" style="background:' + r.av[0] + ';color:' + r.av[1] + '">' + stEsc(r.ab) + '</span>' +
         '<span class="st-sg__m"><span class="st-sg__n">' + stEsc(r.name) + '</span><span class="st-sg__s">' + stEsc(r.sub || '') + '</span></span>' +
-        (r.amount ? '<span class="st-sg__a ' + (r.dir > 0 ? 'pos' : 'neg') + '">' + stEur(cxR(r.amount)) + '</span>' : r.chip ? '<span class="sc-chip sc-chip--' + r.chip[0] + '">' + stEsc(r.chip[1]) + '</span>' : '') +
+        (r.amount ? '<span class="st-sg__a ' + (r.dir > 0 ? 'pos' : 'neg') + '">' + stEur(cxR(r.amount)) + '</span>' : r.chip ? '<span class="sc-chip sc-chip--' + r.chip[0] + '">' + stEsc(r.chip[1]) + '</span>' : '') + (r.extra || '') +
         '</' + (r.act ? 'button' : 'div') + '>').join('') + '</div>';
   }).join('');
   return '<div class="srm__h"><div class="srm__ht"><p class="srm__t">' + stEsc(o.title) + '</p><p class="srm__s">' + stEsc(o.sub || '') + '</p></div>' +

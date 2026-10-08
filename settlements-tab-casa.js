@@ -140,13 +140,17 @@ function scInputFor(y) {
   const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [], period: per0, tenancies, cutoff });
   if (input.error) return input;
   const ts = (scRec(y) || {}).tenants || {};
+  // Hausgeld (Versorger Jahresabrechnungen "shown in Settlements"): each one counts unless switched off here
+  const hgOff = ts.__hgOff || {};
+  input.hgAll = input.lines.filter(l => l.group === 'hausgeld').map(l => ({ id: l.id, label: l.label, info: l.info || {}, on: !hgOff[l.id] }));
+  input.lines = input.lines.filter(l => !(l.group === 'hausgeld' && hgOff[l.id]));
   for (const p of (ts.__pos || [])) {
     const amt = Number(p.amount) || 0; if (!amt) continue;
     const from = p.spread === 'from' && p.date;
     if (from && input.preview && p.date > input.preview.cutoff) continue;          // preview: not due yet
     const fullTo = (input.fullPeriod || input.period).to;
     const k = !input.preview ? 1 : from ? NkCasa.daysBetween(p.date, input.preview.cutoff) / NkCasa.daysBetween(p.date, fullTo) : input.preview.share;
-    input.lines.push({ id: 'typed:' + p.id, label: p.label || 'Position', group: 'typed', key: p.key === 'flaeche' ? 'flaeche' : 'personen',
+    input.lines.push({ id: 'typed:' + p.id, label: p.label || 'Position', group: 'typed', key: 'personen',
                        parts: [from ? { amount: cxR(amt * k), spread: 'from', date: p.date } : { amount: cxR(amt * k), spread: 'year' }],
                        info: from ? { date: p.date, company: '', item: p.label || '', amount: amt } : null });
   }
@@ -208,7 +212,7 @@ function scModel(y) {
                                   extra: !!src.extra, xAddr: src.addr || '', set: ts[t.key] || {}, kau, einbehalt, _exp: src._exp || null });
   });
   // one net amount per tile: > 0 money comes to you · < 0 you pay — results where sent, else the preview
-  const money = { ten: null, nIn: 0, nOut: 0, hg: null, hgLines: [], back: 0, get: 0 };
+  const money = { ten: null, nIn: 0, nOut: 0, hg: null, hgLines: [], hgAll: input.hgAll || [], back: 0, get: 0 };
   if (R.lines.length) {
     let net = 0;
     for (const t of ten) {
@@ -270,7 +274,8 @@ function stRenderCasa() {
   const progress = stProgress({ done: nDone, sent: sent.length, total, open: open.length, first: M.locked ? 'House costs locked' : 'House costs not locked' });
   const mo = M.money, pv = !M.locked ? 'preview · ' : '';
   const tenSub = mo.ten === null ? 'no house costs yet' : pv + mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back');
-  const hgSub = mo.hg === null ? 'Strom · Gas · Wasser · no Jahresabrechnung yet' : 'Strom · Gas · Wasser · ' + mo.hgLines.length + ' in';
+  const hgN = mo.hgAll.length, hgIn = mo.hgAll.filter(h => h.on).length;
+  const hgSub = !hgN ? 'Strom · Gas · Wasser · no Jahresabrechnung yet' : hgIn + ' of ' + hgN + ' Jahresabrechnung' + (hgN === 1 ? '' : 'en') + ' in the NK';
   const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub, 'data-sc="sumTen"') + stTile('Hausgeld', 'receipt', mo.hg, hgSub, 'data-sc="sumHg"') + '</div>';
 
   const L = M.R.check;
@@ -416,16 +421,20 @@ function scSumTen(M) {
              { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');
 }
 function scSumHg(M) {
-  const rows = M.money.hgLines.map((l, i) => {
-    const info = l.info || {};
-    const av = stAv(i + 5), ab = String(l.label || '?').slice(0, 2).toUpperCase(), dir = l.total > 0 ? -1 : 1, amount = Math.abs(l.total);
-    return { av, ab, name: l.label, sub: [info.company, info.date ? stDe(info.date) : ''].filter(Boolean).join(' · ') || 'Jahresabrechnung', amount, dir,
-             set: amount >= 0.005 ? { key: 'h:' + i, ns: 'sc', attrs: '', av, ab, name: l.label, sub: 'Jahresabrechnung', dir, soll: amount, ist: amount,
-                                      party: info.company || l.label, state: 'booked', date: info.date || null } : null };
+  // every Jahresabrechnung with "Show in Settlements" (Controlling) · switch per position: Include in NK
+  const can = !M.locked;
+  const rows = (M.money.hgAll || []).map((h, i) => {
+    const info = h.info || {}, cost = Number(info.amount) || 0;           // > 0 Nachzahlung (cost) · < 0 Guthaben
+    const av = stAv(i + 5), ab = String(h.label || '?').slice(0, 2).toUpperCase(), dir = cost > 0 ? -1 : 1, amount = Math.abs(cost);
+    const sw = '<button type="button" class="sc-hgsw' + (h.on ? ' on' : '') + '" data-sc="hgtog" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') +
+      ' aria-pressed="' + h.on + '" aria-label="Include in NK"><span class="sc-tg__sw" aria-hidden="true"></span></button>';
+    return { av, ab, name: h.label, amount, dir, dim: !h.on, extra: sw,
+             sub: [dir < 0 ? 'Nachzahlung' : 'Guthaben', info.company, info.date ? stDe(info.date) : ''].filter(Boolean).join(' · ') + (h.on ? '' : ' · info · not counted') };
   });
+  const nIn = rows.filter(r => !r.dim).length;
   return stSumSheet({ title: 'Hausgeld', sub: 'Casa Castel · Strom · Gas · Wasser · ' + stNkLabel(M.per.from, M.per.to), net: M.money.hg,
-    sub2: rows.length ? rows.filter(r => r.dir < 0).length + ' Nachzahlung · ' + rows.filter(r => r.dir > 0).length + ' Guthaben' : 'no Jahresabrechnung yet',
-    groups: [{ title: 'You pay', rows: rows.filter(r => r.dir < 0) }, { title: 'You get', rows: rows.filter(r => r.dir > 0) }] }, 'data-sc="close"');
+    sub2: rows.length ? nIn + ' of ' + rows.length + ' included in the NK' + (can ? '' : ' · unlock the house costs to change') : 'no Jahresabrechnung shown in Settlements yet',
+    groups: [{ title: 'Include in NK', rows }] }, 'data-sc="close"');
 }
 
 /* ── Modal host ───────────────────────────────────────────── */
@@ -455,7 +464,7 @@ const scHead = (t, s, back, pre) => '<div class="srm__h"><div class="srm__ht">' 
   (pre || '') + '<p class="srm__t">' + stEsc(t) + '</p><p class="srm__s">' + stEsc(s) + '</p></div><button class="srm__x" data-sc="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
 
 /* ── House costs sheet ── */
-const SC_QUICK = [['Strom', 'personen'], ['Gas', 'flaeche'], ['Wasser / Abwasser', 'personen'], ['Müll', 'personen'], ['Grundsteuer', 'personen'], ['Versicherung', 'personen'], ['Internet', 'personen'], ['Reinigung', 'personen'], ['Schornsteinfeger', 'personen']];
+const SC_QUICK = [['Strom', 'personen'], ['Gas', 'personen'], ['Wasser / Abwasser', 'personen'], ['Müll', 'personen'], ['Grundsteuer', 'personen'], ['Versicherung', 'personen'], ['Internet', 'personen'], ['Reinigung', 'personen'], ['Schornsteinfeger', 'personen']];
 function scTypedHtml(M) {
   const pos = ((scRec(M.y) || {}).tenants || {}).__pos || [], ed = SC.posEdit;
   const sum = cxR(pos.reduce((a, p) => a + (Number(p.amount) || 0), 0));
@@ -465,7 +474,6 @@ function scTypedHtml(M) {
     return '<button class="sc-pos" data-sc="posEdit" data-id="' + p.id + '"><span><b>' + stEsc(p.label || 'Position') + '</b><small>' + scKeyTxt(p.key) + ' · ' + (p.spread === 'from' && p.date ? 'from ' + stDM(p.date) : 'whole year') + '</small></span><span class="sc-pos__v">' + (Number(p.amount) ? scE(p.amount) : '<em>amount?</em>') + '</span></button>' +
       (open ? '<div class="sc-ed sc-ped"><div class="sc-ped__r"><input class="st-in" data-sc-pos="label" data-id="' + p.id + '" value="' + stEsc(p.label || '') + '" placeholder="Kostenart"/>' +
         '<span class="st-amt sc-ped__a"><input class="st-in" inputmode="decimal" data-sc-pos="amount" data-id="' + p.id + '" value="' + (Number(p.amount) ? stEsc(cxE2(p.amount)) : '') + '" placeholder="per year"/><span>€</span></span></div>' +
-        seg(p.id, 'key', [['personen', 'By person'], ['flaeche', 'By room m²']], p.key || 'personen') +
         seg(p.id, 'spread', [['year', 'Whole year'], ['from', 'From a date']], p.spread || 'year') +
         (p.spread === 'from' ? '<input class="st-in" type="date" data-sc-pos="date" data-id="' + p.id + '" value="' + stEsc(p.date || M.per.from) + '"/>' : '') +
         '<div class="sc-ped__b"><button class="cx-link" data-sc="posDel" data-id="' + p.id + '">Remove</button><button class="cx-link sr-acc" data-sc="posEdit" data-id="' + p.id + '">Done</button></div></div>' : '');
@@ -475,7 +483,7 @@ function scTypedHtml(M) {
     '<button class="sc-qa__b" data-sc="posAdd" data-l="" data-key="personen"><i class="ti ti-plus" aria-hidden="true"></i>other</button></div>' +
     (pos.length ? '<p class="sc-cap">Positions</p><div class="sc-posl">' + rows + '<div class="sc-pos sc-pos--t"><b>Total typed</b><span class="sc-pos__v">' + scE(sum) + '</span></div></div>' : '') + '</div>';
 }
-const scKeyTxt = k => k === 'flaeche' ? 'by room m²' : 'by person';
+const scKeyTxt = () => 'by person';
 /* "already paid" per month: Controlling where booked, else the contract – every month can be changed */
 function scVzEditor(t, can) {
   const yms = Object.keys(t.vzMap || {}).sort(), ov = (t.set && t.set.vzMonths) || {};
@@ -587,7 +595,7 @@ function scTenView(M, m) {
       (M.method === 'quota'
         ? '<div class="sc-det__s"><span><i class="ti ti-calendar" aria-hidden="true"></i> ' + scMo(t.months) + ' months × ' + scE(M.quota.rate) + ' per month</span><b>' + scE(t.sum) + '</b></div>'
         : '<div class="sc-det__s"><span><i class="ti ti-users" aria-hidden="true"></i> shared by person, day by day</span><b>' + scE(pers) + '</b></div>' +
-          '<div class="sc-det__s"><span><i class="ti ti-flame" aria-hidden="true"></i> Gas by room size (' + (t.m2 ? String(t.m2).replace('.', ',') + ' m²' : 'm²') + ')</span><b>' + scE(fl) + '</b></div>') +
+          '') +
       scShareLines(t).map(g => '<div class="sc-li"><span>' + stEsc(g.label) + '<small>' + stEsc(scPct(g)) + ' of ' + scE(g.total) +
         (g.merged ? ' · incl. ' + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + scE(g.hg) : '') + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') +
       '<div class="sc-li"><span>Already paid<small>' + (t.vzContract ? t.vzContract + ' month(s) as per contract' : 'NK part of the rent, by day') + (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length) ? ' · changed by you' : '') + '</small></span><span>' + scE(t.vz) + '</span></div>' +
@@ -820,7 +828,7 @@ async function scLetterData(M, t) {
     facts: [['Abrechnungszeitraum', span(per.from, per.to), M.R.days + ' Tage'],
             ['Nutzungszeitraum', span(t.from, t.to), t.days + ' Tage'],
             ...(occ ? [['Personen im Haus', occ.lo === occ.hi ? String(occ.lo) : occ.lo + ' bis ' + occ.hi, 'im Nutzungszeitraum']] : []),
-            ...(t.m2 ? [['Zimmerfläche', String(t.m2).replace('.', ',') + ' m²', 'für Gas und Heizung']] : [])],
+            ],
     intro2: 'Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten des Hauses.',
     table: {
       cols: [{ label: 'Kostenart', w: '33%' }, { label: 'Kosten Haus', w: '15%', cls: 'r' }, { label: 'Verteilt nach', w: '21%', cls: 'k' }, { label: 'Anteil', w: '13%', cls: 'r' }, { label: 'Betrag', w: '18%', cls: 'r' }],
@@ -830,7 +838,7 @@ async function scLetterData(M, t) {
     },
     notes2Title: 'So wird gerechnet',
     notes2: ['Die Kosten jedes Tages werden zu gleichen Teilen auf alle Personen verteilt, die an diesem Tag im Haus wohnen.' +
-               (hasFl ? ' Gas und Heizung werden nach Zimmerfläche verteilt – im Verhältnis zur Fläche aller an diesem Tag bewohnten Zimmer.' : ''),
+               '',
              'Der Anteil in % ist je Kostenart verschieden: Die Kosten fallen zu unterschiedlichen Zeiten an, und es wohnen nicht immer gleich viele Personen im Haus.',
              'Monatliche Kosten zählen im jeweiligen Monat, Jahresbeträge gleichmäßig über alle Tage, Einzelrechnungen ab dem Rechnungsdatum bis zum Ende des Zeitraums.',
              ...(merged ? ['Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
@@ -868,6 +876,12 @@ async function scClick(e) {
   if (a === 'fold') { SC.open[b.dataset.k] = !SC.open[b.dataset.k]; return scRenderModal(); }
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
   if (a === 'sumTen' || a === 'sumHg') { SC.modal = { view: a }; return scRenderModal(); }
+  if (a === 'hgtog') {                                     // Hausgeld sheet: include / leave out one Jahresabrechnung
+    if (M && M.locked) return;
+    const r = scRecEnsure(SC.year), off = r.tenants.__hgOff = r.tenants.__hgOff || {}, id = b.dataset.id;
+    if (off[id]) delete off[id]; else off[id] = true;
+    scQueueSave(r); const m = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m; return scRenderModal();
+  }
   if (a === 'filter') { SC.filter = b.dataset.k; return stRenderCasa(); }
   if (a === 'method') { const r = scRecEnsure(SC.year); r.tenants.__method = b.dataset.v === 'days' ? 'days' : 'quota'; scQueueSave(r); SC.model = scModel(SC.year); return stRenderCasa(); }
   if (a === 'ten') { SC.modal = { view: 'ten', key: b.dataset.k }; SC.pill = null; return scRenderModal(); }

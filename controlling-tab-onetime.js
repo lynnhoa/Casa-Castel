@@ -96,7 +96,7 @@ function _cxOtFormHTML(o) {
     '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '"' +
       (pid === CASA_PROP_ID && kind !== 'Kaufnebenkosten' ? '' : ' style="display:none"') + '>' +
       '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
-      '<span class="cx-ot-nk__t"><b>Include in NK-Abrechnung</b><small>Gemeinschaftskosten · still a normal cost for you</small></span></button>' +
+      '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
     _cxOtNkCatHTML(o, nk, pid) +
     '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
       '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
@@ -456,7 +456,7 @@ function _cxOtNkCatHTML(o, nk, pid) {
     '<label class="cx-f cx-f--l"><select id="cxOtNkCat" aria-label="Cost type for the NK">' +
       '<option value="">General house costs · split by person</option>' +
       cats.map(c => '<option value="' + c.id + '"' + (String(cur) === String(c.id) ? ' selected' : '') + '>' + cxEsc(c.name) +
-        (c.nk_key === 'flaeche' ? ' · by m²' : '') + '</option>').join('') +
+        '</option>').join('') +
     '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>';
 }
 

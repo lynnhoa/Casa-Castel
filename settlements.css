@@ -1113,3 +1113,9 @@ button.st-sg__r { cursor: pointer; }
 @media (max-width: 420px) { .sc-meth__seg { width: 100%; } }
 .sc-cmp { display: flex; align-items: center; gap: 6px; margin: -4px 0 10px; font-size: 11.5px; color: var(--cx-mut); }
 .sc-cmp i { font-size: 14px; color: #B8956A; }
+
+/* Hausgeld sheet (Oct 2026): switch "Include in NK" per Jahresabrechnung */
+.st-sg__r.is-dim .st-sg__n, .st-sg__r.is-dim .st-sg__a { opacity: .45; }
+.sc-hgsw { margin-left: 12px; padding: 4px 0; border: none; background: none; cursor: pointer; flex-shrink: 0; }
+.sc-hgsw[disabled] { opacity: .5; cursor: default; }
+.sc-hgsw.on .sc-tg__sw { background: var(--cx-ink); } .sc-hgsw.on .sc-tg__sw::after { transform: translateX(16px); }

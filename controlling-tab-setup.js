@@ -51,7 +51,7 @@ function _cxNkSetupHTML(c, isRate) {
   return '<div class="cx-nkset"><span class="cx-nkset__k">NK-Abrechnung</span>' +
     '<div class="cx-grid2">' +
       '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|nk_key" aria-label="NK split">' +
-        _cxOpt('personen', 'By person', key === 'personen') + _cxOpt('flaeche', 'By room m²', key === 'flaeche') + _cxOpt('none', 'Not in NK', key === 'none') +
+        _cxOpt('personen', 'By person', key !== 'none') + _cxOpt('none', 'Not in NK', key === 'none') +
       '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
       (key === 'none' ? '<span class="cx-nkset__v" style="align-self:center">stays with you</span>' :
       '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|nk_spread" aria-label="NK booking">' +

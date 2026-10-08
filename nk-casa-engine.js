@@ -189,7 +189,7 @@ const NkCasa = (() => {
     // cost types
     const cats = (C.categories || []);
     const catOf = id => cats.find(c => Number(c.id) === Number(id)) || null;
-    const keyOf = c => (c && c.nk_key === 'flaeche') ? 'flaeche' : 'personen';
+    const keyOf = () => 'personen';                            // Oct 2026: Casa Castel no longer splits anything by m² (Gas included)
     const inNk = c => !!c && c.code !== 'RATE' && c.nk_key !== 'none';
     const lines = [];
     const byCat = {};
@@ -232,7 +232,7 @@ const NkCasa = (() => {
       const d = D(o.invoice_date); if (d < period.from || d > period.to) continue;
       const c = catOf(o.nk_category_id);
       const amt = (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0);      // Guthaben / refund lowers the costs
-      const hg = o.kind === 'Versorger';
+      const hg = o.kind === 'Versorger' || /jahresabrechnung/i.test(String(o.item || ''));   // Strom · Gas · Wasser yearly result
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
                    parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: hg && c ? c.id : null,
@@ -251,7 +251,6 @@ const NkCasa = (() => {
     const tenancies = exp.map(e => {
       const t = tenRec(e.tenant_id);
       const m2 = m2Of(e.unit_name);
-      if (!m2) warn.push('Room ' + e.unit_name + ' has no m² – Gas/Heizung can’t be split for it');
       return { key: e.tenant_id + '|' + D(e.period_from), tenantId: String(e.tenant_id),
                name: [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Tenant', room: e.unit_name || '', m2,
                from: D(e.period_from), to: D(e.period_to), mode: e.note === 'Pauschal' ? 'pauschal' : 'nk',
