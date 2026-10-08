@@ -635,12 +635,11 @@ function scLetterBtn(t) {
 }
 /* How the result is settled: chosen in the sheet, else Kaution when part of it is held back for the NK */
 const scVia = t => (t.set && t.set.via) || 'zahlung';
-/* First year to show: the purchase of Casa Castel (Controlling "in portfolio since" or the purchase date in Properties) */
+/* First year to show: the purchase of Casa Castel (Properties › Purchase date) */
 function scMinYear() {
   const ty = Number(cxToday().slice(0, 4));
   const p = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID);
-  let iso = p && p.in_portfolio_since ? String(p.in_portfolio_since).slice(0, 10) : '';
-  if (!iso && p) { const loan = ctlPropLinks(p).loan; if (loan && typeof _srIsoAny === 'function') iso = _srIsoAny(loan.kaufdatum); }
+  const iso = p ? ctlPropSince(p) : '';
   const y = Number(iso.slice(0, 4));
   return y ? Math.min(y, ty - 1) : ty - 4;
 }

@@ -263,7 +263,7 @@ function _srCalc(c, it, rec) {
     lines.push({ pos, unit, amt, keyText: _srKeyText(rec, pos, apt), total: _srNum(pos.total) });
   }
   const fig = (a, b) => { try { return ctlSettlementFigures(Object.assign({}, r, { period_from: a, period_to: b })); } catch (e) { return null; } };
-  const since = _srD(c.p.in_portfolio_since);
+  const since = _srBought(c.p);
   const rf = _srD(r.period_from), rt = _srD(r.period_to);
   let vzSoll, vzIst, pre = null, vzPartialFlag = false;
   if (since && since > rf && since <= rt) {
@@ -845,7 +845,7 @@ function _srYearModel(Y) {
   const props = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder);
   return props.map(p => {
     const per = _srPeriodFor(p, Y);
-    const since = _srD(p.in_portfolio_since);
+    const since = _srBought(p);
     const apt = ctlPropLinks(p).apt || null;
     const verw = apt ? (window._src.verw || []).find(v => String(v.apartment_id) === String(apt.id)) || null : null;
     const c = { ck: _srCk(p.id, per.from), p, per, year: Y, apt, verw, items: [], weg: null, before: false, running: per.to >= cxToday() };
@@ -857,7 +857,7 @@ function _srYearModel(Y) {
 /* Hausgeld you paid in the period (Soll per Rentals, months after the purchase) — for the WEG check */
 function _srHausgeldPaid(c) {
   let sum = 0;
-  const since = _srD(c.p.in_portfolio_since);
+  const since = _srBought(c.p);
   for (let d = c.per.from; d <= c.per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
     if (since && _srLastOfMonth(y, m) < since) continue;
@@ -968,7 +968,7 @@ function stRenderRentals() {
 }
 
 /* ── Phase 5 · overview helpers ── */
-/* Purchase date of a Wohnung: "in portfolio since" (Controlling) or the purchase date in Properties */
+/* Purchase date of a Wohnung: Properties › Purchase date (the only source) */
 function _srIsoAny(v) {
   const s = String(v || '').trim(); let m;
   if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[0];
@@ -977,8 +977,7 @@ function _srIsoAny(v) {
   return '';
 }
 function _srBought(p) {
-  if (p.in_portfolio_since) return _srD(p.in_portfolio_since);
-  const loan = ctlPropLinks(p).loan;
+  const loan = p ? ctlPropLinks(p).loan : null;
   return loan ? _srIsoAny(loan.kaufdatum) : '';
 }
 function _srMinYear() {                                   // the year switch goes back to the first purchase (Properties)
@@ -1048,7 +1047,7 @@ function _srCard5(info) {
   const c = info.c, props = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder);
   const idx = props.findIndex(p => p.id === c.p.id) + 1, av = stAv(idx - 1);
   const num = '<span class="sc-av sr5-pav" style="background:' + av[0] + ';color:' + av[1] + '">' + stEsc(stAbbr(c.p.name)) + '</span>';
-  if (c.before) return '<div class="sc-card sr5-fold"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">bought ' + stDate(c.p.in_portfolio_since) + ' · ' + SR.year + ' settled by the seller</span></span><span class="sc-chip sc-chip--grey">not yours</span></div></div>';
+  if (c.before) return '<div class="sc-card sr5-fold"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">bought ' + stDate(_srBought(c.p)) + ' · ' + SR.year + ' settled by the seller</span></span><span class="sc-chip sc-chip--grey">not yours</span></div></div>';
   const k5 = 'c5:' + c.ck;
   if (info.k === 'settled' && !SR.open[k5]) return '<button class="sc-card sr5-fold" data-sr="fold5" data-k="' + stEsc(k5) + '"><span class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span></span><span class="sc-chip sc-chip--done"><i class="ti ti-check" aria-hidden="true"></i> all settled</span><i class="ti ti-chevron-down sc-chev" aria-hidden="true"></i></span></button>';
   const hg = c.verw ? _srNum(c.verw.hausgeld_mtl) : null;
@@ -1130,7 +1129,7 @@ async function _srOpenLetter(id) {
 function _srTrackerBlock(info) {
   const c = info.c, idx = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder).findIndex(p => p.id === c.p.id) + 1;
   const hg = c.verw ? _srNum(c.verw.hausgeld_mtl) : null;
-  const sub = c.before ? 'bought ' + stDate(c.p.in_portfolio_since)
+  const sub = c.before ? 'bought ' + stDate(_srBought(c.p))
     : _srPerText(c.per.from, c.per.to) + (hg ? ' · Hausgeld ' + stEur(hg) + '/mo' : '') + ' · Frist ' + stDate(c.per.frist);
   let h = '<section class="rk-block"><div class="rk-grp"><div class="rk-grp__n"><span class="rk-grp__i">' + idx + '</span><span class="rk-grp__t">' + stEsc(c.p.name) + '</span><span class="rk-grp__s">' + stEsc(sub) + '</span></div>' +
     '<button class="rk-lnk" data-sr="openNk" data-k="' + stEsc(c.ck) + '">NK-Abrechnung ›</button></div>';
@@ -1272,7 +1271,7 @@ const _srSigned = (p, v) => (v || 0) * (_srKind(p.kind).neg ? -1 : 1);
 /* ── Window A · Hausgeld-Jahresabrechnung (you ↔ WEG): all costs · WEG result · check ── */
 function _srHvView(c) {
   const title = 'Hausgeld ' + c.per.label;
-  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(c.p.in_portfolio_since) + '). The seller settles this period.</p></div></div>';
+  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(_srBought(c.p)) + '). The seller settles this period.</p></div></div>';
   const d = _srEnsureDraft(c), rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt), hv = _srHvState(c, rec, sum);
   const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
   let status = '';
@@ -1333,7 +1332,7 @@ function _srHvView(c) {
 /* ── Window B · NK-Abrechnung (you ↔ tenants): umlagefähige Hausgeld costs (ticked) + NK-only costs · tenants ── */
 function _srNkView(c) {
   const title = 'NK-Abrechnung ' + c.per.label;
-  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(c.p.in_portfolio_since) + '). The seller settles this period with the tenants.</p></div></div>';
+  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(_srBought(c.p)) + '). The seller settles this period with the tenants.</p></div></div>';
   const d = _srEnsureDraft(c), rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
   const change = _srTenantChange(c);
   const HV = [], X = [];
@@ -1429,7 +1428,7 @@ function _srTenView(c) {
   const ts = x.ts, sent = !!ti.st.res, date = ts.date || cxToday(), days = _srNum(ts.days) ?? 30, via = _srViaOf(x);
   SR.sign = _srSign(x);
   const perC = _srPer(c, rec);
-  const since = _srD(c.p.in_portfolio_since);
+  const since = _srBought(c.p);
   // result
   const status = sent ? '<div class="srm__state' + (ti.k === 'settled' ? ' is-ok' : '') + '"><span>' + (ti.k === 'settled' ? '<i class="ti ti-check" aria-hidden="true"></i> Settled · ' + stEsc(_srSettledTxt(ti, false)) : 'Sent ' + stDate(ti.st.res.date) + ' · waiting to be settled') + '</span>' +
     '<span class="srm__state-a">' + (ti.k === 'settled' ? '<button class="cx-link" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '">edit</button>' : '<button class="cx-btn cx-btn--p" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '">Settle</button>') +

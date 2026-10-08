@@ -22,12 +22,14 @@ async function ccNksLoad() {
   CC_NKS.loading = Promise.all([
     db.from('ctrl_settlements').select('*').not('tenant_id', 'is', null),
     db.from('abr_results').select('*'),
-    db.from('ctrl_properties').select('*'),                            // NK period start + "in portfolio since" of every property
-  ]).then(([a, b, c]) => {
+    db.from('ctrl_properties').select('*'),                            // NK period start of every property
+    db.from('properties').select('id,name,kaufdatum'),                 // purchase date (Properties) — the only source
+  ]).then(([a, b, c, d]) => {
     const app = _ccNksApp();                                             // clean split: only this app's lines
     CC_NKS.rows = (a.error ? [] : (a.data || [])).filter(r => !r.app || r.app === app);
     CC_NKS.res  = b.error ? [] : (b.data || []);
     CC_NKS.props = c && !c.error ? (c.data || []) : [];
+    CC_NKS.buys  = d && !d.error ? (d.data || []) : [];
     CC_NKS.casaProp = CC_NKS.props.find(p => Number(p.id) === 7) || {};
     document.querySelectorAll('.cc-nks').forEach(el => { el.innerHTML = _ccNksInner(el.dataset.tid, el._legacy || [], el._due || []); });
   }).catch(() => { CC_NKS.rows = []; CC_NKS.res = []; })
@@ -72,7 +74,7 @@ function _ccNksToday() { return typeof ccTodayISO === 'function' ? ccTodayISO() 
 function ccNksPeriods(prop) {
   const p = prop || CC_NKS.casaProp || {}, today = _ccNksToday();
   const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
-  const since = String(p.in_portfolio_since || '').slice(0, 10), ty = Number(today.slice(0, 4)), out = [];
+  const since = _ccNksSince(p), ty = Number(today.slice(0, 4)), out = [];
   for (let y = ty - 3; y <= ty; y++) {
     let from = y + '-' + st; const to = _nkAdd((y + 1) + '-' + st, -1);
     if (since && to < since) continue;
@@ -81,6 +83,17 @@ function ccNksPeriods(prop) {
     if (to < today && frist >= today) out.push({ from, to, frist, year: Number(to.slice(0, 4)) });
   }
   return out;
+}
+/* Purchase date of a Controlling property = Properties › Purchase date (linked by loan_ref, else by name) */
+function _ccNksSince(p) {
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+  const L = CC_NKS.buys || [];
+  const l = p && p.loan_ref ? L.find(x => String(x.id) === String(p.loan_ref)) : L.find(x => p && norm(x.name) === norm(p.name));
+  const s = String((l && l.kaufdatum) || '').trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return m[0];
+  if ((m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/))) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  if ((m = s.match(/^(\d{4})$/))) return m[1] + '-01-01';
+  return '';
 }
 function _ccNksPerLabel(from, to) { return _ccNksD(from) + '–' + _ccNksD(to); }   // always dd.mm.yyyy–dd.mm.yyyy
 /* Which app this page is: Rentals or Casa Castel (each page has only one tenants tab) */

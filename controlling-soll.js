@@ -174,7 +174,8 @@ function ctlPropLinks(p) {
    Income, Expenses, data checks). No date in Properties → always shown. */
 function ctlPropSince(p) {
   const l = p ? ctlPropLinks(p).loan : null;
-  return l ? _cxD(l.kaufdatum) : '';
+  // the ONE purchase date for Controlling AND Settlements: Properties › Purchase date (Oct 2026)
+  return (l && _cxD(l.kaufdatum)) || '';
 }
 function ctlPropOwned(p, y, m) {                        // bought on or before the month's last day
   const s = ctlPropSince(p);
@@ -849,7 +850,7 @@ function ctlCostRows(p, y, m) {
   const S = window._src, pl = ctlPropLinks(p), first = _cxIso(y, m, 1);
   const N = new Date(y, m, 0).getDate(), last = _cxIso(y, m, N);
   const rows = [], notDue = [];
-  { const since = _cxD(p.in_portfolio_since); if (since && last < since) return { rows, notDue }; }   // not in the portfolio yet
+  { const since = ctlPropSince(p); if (since && last < since) return { rows, notDue }; }   // not bought yet (Properties › Purchase date)
 
   // Kreditrate = exactly what the bank debits (Properties · "Bank debits"), to the cent, valid from its month on:
   //   'rate'  one debit → one row; Zinsen / Tilgung shown as a monthly estimate (Restschuld × Zinssatz ÷ 12)
@@ -1054,7 +1055,7 @@ const _cxPerStart = p => (/^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) 
 function ctlSettlementPeriods(p, today) {
   today = today || _cxToday();
   const st = _cxPerStart(p), ty = Number(today.slice(0, 4)), out = [];
-  const since = _cxD(p && p.in_portfolio_since);          // "In portfolio since": nothing before this date
+  const since = ctlPropSince(p);                          // purchase date (Properties): nothing before it
   for (let y = ty - 3; y <= ty; y++) {
     const from = y + '-' + st; const to = _cxAddDays((y + 1) + '-' + st, -1);
     if (since && to < since) continue;                       // ended before the purchase → the seller settles it

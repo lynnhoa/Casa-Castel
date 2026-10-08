@@ -202,7 +202,7 @@ function _stPeriodRow(p) {
   const txt = per ? stDM(per.from) + ' – ' + stDM(per.to) : '01.01. – 31.12.';
   if (ST.perEdit !== p.id) {
     return '<div class="st-period"><span>Abrechnungszeitraum <strong>' + txt + '</strong>' +
-      (p.in_portfolio_since ? ' · in portfolio since <strong>' + stDate(p.in_portfolio_since) + '</strong>' : '') + '</span>' +
+      (ctlPropSince(p) ? ' · bought <strong>' + stDate(ctlPropSince(p)) + '</strong>' : '') + '</span>' +
       '<button class="cx-link" data-st="perEdit" data-k="' + p.id + '">Change</button></div>';
   }
   const [mm, dd] = st.split('-');
@@ -212,21 +212,14 @@ function _stPeriodRow(p) {
   for (let i = 1; i <= 12; i++) months += opt(i, mm);
   return '<div class="st-period st-period--edit"><span>Period starts on</span>' +
     '<select class="st-in st-sel" id="stPerD">' + days + '</select><span>.</span><select class="st-in st-sel" id="stPerM">' + months + '</select>' +
-    '<span class="st-period__sep">In portfolio since</span><input class="st-in st-sel" type="date" id="stPerSince" value="' + (p.in_portfolio_since ? String(p.in_portfolio_since).slice(0, 10) : '') + '"/>' +
     '<button class="cx-btn cx-btn--s" data-st="perCancel">Cancel</button><button class="cx-btn cx-btn--p" data-st="perSave" data-k="' + p.id + '">Save</button></div>';
 }
 async function _stPeriodSave(pid) {
   const d = document.getElementById('stPerD')?.value, m = document.getElementById('stPerM')?.value;
   if (!d || !m) return;
   const v = m + '-' + d;
-  const sinceEl = document.getElementById('stPerSince');
-  const upd = { nk_period_start: v };
-  if (sinceEl) upd.in_portfolio_since = sinceEl.value || null;
-  let { error } = await _ctlSupa.from('ctrl_properties').update(upd).eq('id', pid);
-  if (error && /in_portfolio_since/.test(error.message || '')) {           // SQL not run yet → save the period only
-    delete upd.in_portfolio_since; ({ error } = await _ctlSupa.from('ctrl_properties').update(upd).eq('id', pid));
-    if (!error) stSay('Period saved — run the SQL for "In portfolio since"');
-  }
+  const upd = { nk_period_start: v };                     // the purchase date comes from Properties, not from here
+  const { error } = await _ctlSupa.from('ctrl_properties').update(upd).eq('id', pid);
   if (error) { stSay('Could not save — ' + error.message); return; }
   const p = (window._ctrl.properties || []).find(x => x.id === pid); if (p) Object.assign(p, upd);
   ST.perEdit = null; ctlSettlementInvalidate(); stSay('Abrechnungszeitraum saved'); stRender();   // Tracking or Rentals
