@@ -1150,3 +1150,34 @@ button.st-sg__r { cursor: pointer; }
 .sc-hg__types .st-seg__b { font-size: 12px; padding: 8px 2px; }
 .sc-hg__row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .sc-hg__hint { margin: 0; font-size: 11px; color: var(--cx-mut); }
+
+/* ── Rentals flow (Oct 2026): progress line · Abrechnung overview · result box · saves by itself ── */
+.sr-progcard { gap: 12px; }
+.sr-steps { display: flex; gap: 4px; }
+.sr-step { flex: 1; text-align: center; font-size: 10.5px; color: var(--cx-mut); letter-spacing: .02em; }
+.sr-step i { display: block; height: 3px; border-radius: 2px; background: var(--cx-rule); margin-bottom: 6px; }
+.sr-step.is-done { color: var(--cx-ink); }
+.sr-step.is-done i { background: var(--cx-ink); }
+.sr-step.is-cur { color: var(--cx-acc); font-weight: 600; }
+.sr-step.is-cur i { background: var(--cx-acc); }
+.sr-progmeta { margin: 0; font-size: 11.5px; color: var(--cx-mut); }
+.sr-sum { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: #F3EADC; }
+.sr-sum span { display: flex; flex-direction: column; gap: 2px; }
+.sr-sum small { font-size: 11px; color: var(--cx-mut); }
+.sr-sum__t { font-size: 13px; font-weight: 600; color: var(--cx-ink); }
+.sr-sum__a { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 27px; font-weight: 500; color: var(--cx-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sr-sum--g { background: #EEF0DD; } .sr-sum--g .sr-sum__a { color: #55622A; }
+.sr-sum--n { background: #F7E4DC; } .sr-sum--n .sr-sum__a { color: #8A3B22; }
+.sr-saved { margin: 0 auto 0 0; align-self: center; font-size: 11px; color: var(--cx-mut); }
+.sr-saved--b { margin: 10px 2px 0; }
+.sr-bar--ja .cx-btn { min-width: 180px; height: 46px; }
+@media (max-width: 700px) { .sr-bar--ja .cx-btn { flex: 1; } }
+.sr-tenrow { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 0; background: none; border: none; border-top: .5px solid var(--cx-line); font-family: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.sr-tenrow:disabled { cursor: default; }
+.sr-tenrow__m { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sr-tenrow__n { font-size: 14px; font-weight: 500; color: var(--cx-ink); }
+.sr-tenrow__s { font-size: 11.5px; color: var(--cx-mut); }
+.sr-tenrow__r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.sr-tenrow__r b { font-size: 14px; font-weight: 600; color: #8A3B22; font-variant-numeric: tabular-nums; }
+.sr-tenrow__r b.is-g { color: #55622A; }
+.sr-tenrow__r small { font-size: 10.5px; color: var(--cx-mut); }
