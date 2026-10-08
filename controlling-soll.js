@@ -1297,23 +1297,35 @@ function ctlSettlementFigures(r) {
     const memo = new Map();
     let soll = 0, ist = 0, istKnown = false, pre = 0, n = 0;
     const months = new Map();                          // 'Y-M' → NK Soll of the row's days in that month
+    const mDays = new Map();                           // 'Y-M' → days of the row in that month
     for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
       if (d < w.from || d > w.to) continue;
       const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)), N = new Date(y, m, 0).getDate();
       const nk = _cxRentDay(link, w, u, y, m, d, all, memo).nk / N;
       soll += nk; months.set(y + '-' + m, (months.get(y + '-' + m) || 0) + nk);
+      mDays.set(y + '-' + m, (mDays.get(y + '-' + m) || 0) + 1);
     }
+    out.months = [];                                   // per month: NK Soll and the NK share actually paid (for the letter)
     for (const [ym, nkPart] of months) {
       const [y, m] = ym.split('-').map(Number);
+      const mo = { y, m, days: mDays.get(ym) || 0, N: new Date(y, m, 0).getDate(), soll: _cxR(nkPart), ist: null, pre: false };
+      out.months.push(mo);
       n++;
-      if (!(y * 12 + m >= start)) { pre++; continue; }
+      if (!(y * 12 + m >= start)) { pre++; mo.pre = true; continue; }
       const row = inc.find(x => u.id != null && x.unit_id === u.id && x.year === y && x.month === m);
       if (!row) continue;
       const s = ctlUnitSoll(u, p.id, y, m), part = (s.parts || []).find(x => x.tid === w.id);
       const i = ctlIstFor(row, s, w.id);
       if (i === null || !part || !part.amount) continue;
-      ist += i * nkPart / part.amount; istKnown = true; // the NK share of what this tenant paid
+      // one tenant in the month, no split: the NK booked in Controlling is exactly what was paid as NK
+      const sp = row.split && typeof row.split === 'object' && Object.keys(row.split).length;
+      const nkPaid = !sp && (s.parts || []).length <= 1 && part.nk > 0 && row.nebenkosten !== null && row.nebenkosten !== undefined && row.nebenkosten !== ''
+        ? _cxN0(row.nebenkosten) * nkPart / part.nk
+        : i * nkPart / part.amount;                    // else: the NK share of what this tenant paid
+      mo.ist = _cxR(nkPaid);
+      ist += nkPaid; istKnown = true;
     }
+    out.months.sort((a, b) => (a.y * 12 + a.m) - (b.y * 12 + b.m));
     out.nkSoll = _cxR(soll); out.nkIst = istKnown ? _cxR(ist) : null;
     out.preStart = n > 0 && pre === n; out.istPartial = pre > 0 && pre < n;
     return out;

@@ -265,10 +265,11 @@ function _srCalc(c, it, rec) {
   const fig = (a, b) => { try { return ctlSettlementFigures(Object.assign({}, r, { period_from: a, period_to: b })); } catch (e) { return null; } };
   const since = _srBought(c.p);
   const rf = _srD(r.period_from), rt = _srD(r.period_to);
-  let vzSoll, vzIst, pre = null, vzPartialFlag = false;
+  let vzSoll, vzIst, pre = null, vzPartialFlag = false, mlist = [];
   if (since && since > rf && since <= rt) {
     // year of purchase: months before it → contract Soll (the seller collected them), after it → what Controlling shows
     const fb = fig(rf, _srAdd(since, -1)), fa = fig(since, rt);
+    mlist = ((fb && fb.months) || []).map(mo => Object.assign({}, mo, { ist: null, pre: true })).concat((fa && fa.months) || []);
     const preSoll = fb && fb.nkSoll !== null ? fb.nkSoll : 0;
     const aIst = fa && fa.nkIst !== null && !fa.istPartial && !fa.preStart ? fa.nkIst : null;
     const aSoll = fa && fa.nkSoll !== null ? fa.nkSoll : 0;
@@ -277,6 +278,7 @@ function _srCalc(c, it, rec) {
     vzIst = aIst !== null ? cxR(preSoll + aIst) : null;
   } else {
     const f = fig(rf, rt);
+    mlist = (f && f.months) || [];
     vzSoll = f && f.nkSoll !== null ? f.nkSoll : null;
     vzIst = f && f.nkIst !== null && !f.istPartial && !f.preStart ? f.nkIst : null;
     vzPartialFlag = !!(f && f.istPartial);
@@ -286,8 +288,23 @@ function _srCalc(c, it, rec) {
   const f = { istPartial: vzPartialFlag };
   sum = cxR(sum);
   const kau = null, einbehalt = 0;
-  return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
+  const vzMonths = _srVzMonths(mlist, vzIst !== null && (vzOv === null || Math.abs(vzOv - vzIst) < 0.005) ? 'ist' : 'soll', cxR(vz));
+  return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzMonths, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
            tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
+}
+/* Geleistete Vorauszahlungen per month (for the letter): paid per Controlling, else per contract.
+   The list always adds up to the Vorauszahlungen of the Abrechnung — cent rounding goes into the last month,
+   an amount typed by hand shows as one "Korrektur" line.                                                 */
+function _srVzMonths(mlist, mode, vz) {
+  const rows = (mlist || []).filter(mo => mo.days > 0).map(mo => ({
+    label: SR_MON[mo.m - 1] + ' ' + mo.y, part: mo.days < mo.N ? mo.days + '/' + mo.N + ' Tage' : '',
+    amt: cxR(mode === 'ist' && !mo.pre ? (mo.ist ?? 0) : mo.soll),          // paid per Controlling: a month without payment is 0 €
+  }));
+  if (!rows.length) return [];
+  const tot = cxR(rows.reduce((a, r) => a + r.amt, 0)), diff = cxR(vz - tot);
+  if (Math.abs(diff) >= 0.005 && Math.abs(diff) < 0.05) rows[rows.length - 1].amt = cxR(rows[rows.length - 1].amt + diff);
+  else if (Math.abs(diff) >= 0.05) rows.push({ label: 'Korrektur', part: '', amt: diff, corr: true });
+  return rows;
 }
 const _srMovedOut = t => !!(t && t.mietende && _cxD(t.mietende) && _cxD(t.mietende) < cxToday());
 const _srSaldoText = s => !s ? 'Ausgeglichen' : (s > 0 ? 'Nachzahlung ' : 'Guthaben ') + stEur(Math.abs(s));
@@ -558,7 +575,7 @@ function _srLetterData(c, it, rec, x, ts) {
     useFrom: x.from, useTo: x.to, tDays: x.tDays, partial: x.partial,
     hvName: (c.verw && c.verw.hausverwaltung) || '', hvDate: rec.hv_date,
     lines: x.lines.filter(l => l.amt !== null), direct: x.direct,
-    sum: x.sum, vz: x.vz, saldo: x.saldo, via: _srViaOf(x), einbehalt: x.einbehalt,
+    sum: x.sum, vz: x.vz, vzMonths: x.vzMonths || [], saldo: x.saldo, via: _srViaOf(x), einbehalt: x.einbehalt,
     newVz: _srNum(ts.new_vz), newVzFrom: ts.new_vz_from || null,
     anlagen: ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec),
     hasVerbrauch: x.lines.some(l => l.pos.key === 'verbrauch' || ['heizung', 'warmwasser'].includes(l.pos.kind)), hasFlaeche: x.lines.some(l => l.pos.key === 'flaeche'), hasMea: x.lines.some(l => l.pos.key === 'mea'),
@@ -642,7 +659,7 @@ function srLetterHtml(d) {
     ${pay}${vzNew}
     <div class="sec">Hinweise</div>
     <div class="hints">
-      <div class="hint"><span>Die Aufstellung aller Kosten, die Verteilerschlüssel und die Berechnung des Anteils stehen auf Seite 2.</span></div>
+      <div class="hint"><span>Die Aufstellung aller Kosten${d.vzMonths && d.vzMonths.length ? ', der monatlich geleisteten Vorauszahlungen' : ''} und die Berechnung des Ergebnisses stehen auf Seite 2.</span></div>
       <div class="hint"><span>Die Belege können nach vorheriger Terminabsprache eingesehen werden.</span></div>
       <div class="hint"><span>${esc(nb('Einwendungen gegen diese Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'))}</span></div>
     </div>
@@ -673,8 +690,29 @@ function srLetterHtml(d) {
       return `<tr><td>${esc(l.pos.label || _srKind(l.pos.kind).l)}</td><td class="r">${tot}</td><td class="k">${esc(key)}</td><td class="r">${l.unit !== null ? eur(l.unit) : '\u2014'}</td>${five ? `<td class="r">${eur(l.amt)}</td>` : ''}</tr>`;
     }).join('');
   }
-  const tail = `<tr class="s"><td colspan="${span}">Summe Anteil</td><td class="r">${eur(d.sum)}</td></tr>
+  const VZ = d.vzMonths || [];
+  const tail = VZ.length
+    ? `<tr class="s"><td colspan="${span}">Summe Kostenanteil</td><td class="r">${eur(d.sum)}</td></tr>`
+    : `<tr class="s"><td colspan="${span}">Summe Anteil</td><td class="r">${eur(d.sum)}</td></tr>
     <tr class="v"><td colspan="${span}">abzüglich geleisteter Vorauszahlungen</td><td class="r">\u2212\u00a0${eur(d.vz)}</td></tr>`;
+  // Geleistete Vorauszahlungen per month — beside the costs (simple statement) or below them in two halves
+  const vzRow = v => `<tr><td${v.corr ? ' class="m"' : ''}>${esc(v.label)}${v.part ? `<span class="sub">${esc(v.part)}</span>` : ''}</td><td class="r">${v.amt < 0 ? '\u2212\u00a0' + eur(-v.amt) : eur(v.amt)}</td></tr>`;
+  const vzTable = (list, head, withSum) => `<table class="nk"><colgroup><col style="width:58%"/><col style="width:42%"/></colgroup>
+    <thead><tr><th>${head}</th><th class="r">Vorauszahlung</th></tr></thead><tbody>${list.map(vzRow).join('')}
+    ${withSum ? `<tr class="s"><td>Summe Vorauszahlungen</td><td class="r">${eur(d.vz)}</td></tr>` : ''}</tbody></table>`;
+  const calc = VZ.length ? `<div class="sum" style="margin-top:22px">
+      <div class="sum__r"><span>Summe Kostenanteil</span><span>${eur(d.sum)}</span></div>
+      <div class="sum__r"><span>abzüglich geleisteter Vorauszahlungen</span><span>\u2212\u00a0${eur(d.vz)}</span></div>
+    </div>` : '';
+  const costTable = `<table class="nk"><colgroup>${cols}</colgroup><thead>${th}</thead><tbody>${rows}${tail}</tbody></table>`;
+  let body;
+  if (!VZ.length) body = costTable;
+  else if (simple) body = `<div style="display:flex;gap:30px;align-items:flex-start"><div style="flex:1 1 60%;min-width:0">${costTable}</div><div style="flex:0 0 36%">${vzTable(VZ, 'Monat', true)}</div></div>`;
+  else {
+    const h = Math.ceil(VZ.length / 2);
+    body = `${costTable}<div class="sec" style="margin-top:22px">Geleistete Vorauszahlungen</div>
+      <div style="display:flex;gap:30px;align-items:flex-start;margin-top:8px"><div style="flex:1 1 50%;min-width:0">${vzTable(VZ.slice(0, h), 'Monat', false)}</div><div style="flex:1 1 50%;min-width:0">${vzTable(VZ.slice(h), 'Monat', VZ.length > 0)}</div></div>`;
+  }
   const expl = [];
   if (simple) {
     if (d.partial) expl.push(`Anteil: Kosten der Wohnung × Nutzungstage (${d.tDays}) / Tage des Abrechnungszeitraums (${d.perDays}).`);
@@ -683,6 +721,7 @@ function srLetterHtml(d) {
     if (d.hasMea) expl.push('MEA: Miteigentumsanteile der Wohnung laut Teilungserklärung' + (d.keyMode === 'weg' ? nb(', wie in der Abrechnung der Eigentümergemeinschaft (§ 556a Abs. 3 BGB)') : '') + '.');
   }
   if (d.hasVerbrauch) expl.push('Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung' + (d.direct ? ', beim Mieterwechsel laut Zwischenablesung' : '') + ' (siehe Anlage).');
+  if (VZ.length) expl.push('Vorauszahlungen: monatlich geleistete Betriebskostenvorauszahlungen im Abrechnungszeitraum' + (VZ.some(v => v.part) ? ', angefangene Monate anteilig nach Tagen' : '') + '.');
   expl.push('Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.');
   const basis = simple
     ? ` Grundlage ist die Einzelabrechnung der Hausverwaltung${d.hvDate ? ' vom ' + dt(d.hvDate) : ''} (Anlage); sie weist die Gesamtkosten der Eigentümergemeinschaft und ihre Verteilung auf diese Wohnung aus.`
@@ -692,7 +731,7 @@ function srLetterHtml(d) {
     <div class="doc-title doc-title--s">Aufstellung der Betriebskosten ${esc(d.periodLabel)}</div>
     <div class="doc-subtitle">${d.objekt ? 'Mietobjekt ' + esc(d.objekt) + ' \u00b7 ' : ''}Wohnung ${esc(d.wohnungsnummer || d.aptName || '')}</div>
     <p class="intro2">Abrechnungszeitraum ${perTxt} (${d.perDays} Tage)${d.partial ? ` \u00b7 Nutzungszeitraum ${dt(d.useFrom)} bis ${dt(d.useTo)} (${d.tDays} Tage)` : ''}.${basis} Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten ${nb('nach § 2 BetrKV')}.</p>
-    <table class="nk"><colgroup>${cols}</colgroup><thead>${th}</thead><tbody>${rows}${tail}</tbody></table>
+    ${body}${calc}
     <div class="total-box res2"><span>${resLabel}</span><span>${d.saldo ? eur(amt) : 'ausgeglichen'}</span></div>
     <p class="note2">${esc(expl.join(' '))}</p>
   </div></div>`;
