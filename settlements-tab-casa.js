@@ -316,10 +316,40 @@ function stRenderCasa() {
   const roomsHtml = scRoomsHtml(M);
   const nRooms = (window._src.rooms || []).filter(r => r.active !== false).length;
 
-  el.innerHTML = '<div class="st-page sc-page">' + yearNav + sql + progress + tiles + need + costsCard + (M.R.lines.length ? methCard : '') + filter +
+  void progress; void tiles; void costsCard; void methCard;
+  el.innerHTML = '<div class="st-page sc-page">' + yearNav + sql + need + scHouseCard(M) + filter +
     stSec('Rooms', nRooms) + roomsHtml + letters +
     (!M.ten.length ? '<p class="cx-empty">No tenants with Kalt + NK in ' + stEsc(stPer(per.from, per.to)) + '.</p>' : '') + '</div>';
   scRenderModal();
+}
+/* The Casa Castel card: the same two lines as every Rentals apartment */
+const scSteps = (names, cur) => typeof _srSteps === 'function' ? _srSteps(names, cur) : '';
+function scHgSuppliers(M) {
+  const hs = M.money.hgAll || [];
+  return SC_HG_TYPES.filter(([k]) => scHgCat(k)).map(([k, l]) => {
+    const c = scHgCat(k);
+    return { k, l, list: hs.filter(h => Number(h.catId) === Number(c.id) || String(h.label || '').toLowerCase().startsWith(k)) };
+  });
+}
+function scHgSummary(M) {
+  const hs = M.money.hgAll || [], sup = scHgSuppliers(M), miss = sup.filter(x => !x.list.length).map(x => x.l), net = M.money.hg;
+  const res = !hs.length ? 'no Jahresabrechnung yet' : net === null || net === undefined ? 'none counted' : (net > 0.004 ? 'Guthaben ' : net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(net) > 0.004 ? scE(Math.abs(net)) : '');
+  return 'Jahresabrechnungen: ' + res.trim() + (miss.length && hs.length ? ' · ' + miss.join(', ') + ' missing' : '');
+}
+function scHouseCard(M) {
+  const L = M.R.check, noData = !M.locked && !M.R.lines.length;
+  const T = M.ten.filter(t => t.k !== 'none'), n = k => T.filter(t => t.k === k).length, open = n('open'), sent = n('sent'), done = n('done');
+  const hkChip = M.locked ? ['done', 'locked'] : noData ? ['grey', 'empty'] : M.running ? ['grey', 'running'] : M.sendable ? ['send', 'to lock'] : ['grey', 'preview'];
+  const hkSub = (noData ? 'nothing booked yet' : scE(L.total) + ' · ' + (M.locked ? 'locked ' + scDate(M.rec.locked_at) : 'not locked')) + ' · ' + (M.method === 'quota' ? 'Kostenquote' : 'day-exact');
+  const nkSub = !T.length ? 'no tenant with Kalt + NK' : !M.locked ? T.length + ' tenants · waiting for the house costs'
+    : T.length + ' tenants · ' + [open ? open + ' to send' : '', sent ? sent + ' sent' : '', done ? done + ' settled' : ''].filter(Boolean).join(' · ');
+  const nkChip = !T.length ? ['grey', 'no NK'] : !M.locked ? ['grey', 'waiting'] : open ? ['send', 'to send'] : sent ? ['wait', 'sent'] : ['done', 'settled'];
+  const rooms = (window._src.rooms || []).filter(r => r.active !== false).length;
+  return '<div class="sc-card sr5-card"><div class="sr5-h"><span class="sc-av sr5-pav" style="background:#E9DCC6;color:#6B4A1E">CC</span><span class="sr5-h__t"><span class="sr5-pn">Casa Castel</span><span class="sr5-pm">' + stEsc(scHouse().join(', ') + ' · ' + rooms + ' rooms') + '</span></span></div>' +
+    '<button class="sc-row sr5-ln" data-sc="costs"><span class="sc-av sr5-av--hv"><i class="ti ti-home" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">Hauskosten</span>' +
+      '<span class="sc-row__s">' + stEsc(hkSub) + '</span><span class="sc-row__p">' + stEsc(scHgSummary(M)) + '</span></span><span class="sc-chip sc-chip--' + hkChip[0] + '">' + stEsc(hkChip[1]) + '</span></button>' +
+    '<button class="sc-row sr5-ln" data-sc="' + (M.locked && open ? 'start' : 'filter') + '" data-k="open"><span class="sc-av sr5-av--hv"><i class="ti ti-mail" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">NK-Abrechnung</span>' +
+      '<span class="sc-row__s">' + stEsc(nkSub) + '</span></span><span class="sc-chip sc-chip--' + nkChip[0] + '">' + stEsc(nkChip[1]) + '</span></button></div>';
 }
 function scNext(icon, t, s, act, btn) {
   return '<div class="sc-card sc-next"><span class="sc-next__i"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span><div class="sc-next__t"><b>' + t + '</b><span>' + s + '</span></div>' +
@@ -594,36 +624,76 @@ function scSpreadTxt(M, id) {
   return p.spread === 'year' ? 'over the period' : p.spread === 'from' ? 'from ' + stDe(p.date) + ' to ' + stDe(M.per.to) : 'in its month';
 }
 function scCostsView(M) {
-  const R = M.R, groups = [['typed', 'Typed by you', 'positions'], ['running', 'Running costs', 'Expenses · Casa Castel'], ['hausgeld', 'Hausgeld', 'One-off · yearly Strom / Gas / Wasser results'], ['oneoff', 'NK one-offs', 'One-off · shared from the purchase date']];
-  const warn = !M.locked && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
-  const lockB = M.locked
-    ? '<div class="srm__banner"><div><p class="srm__banner-t"><i class="ti ti-lock" aria-hidden="true"></i> Costs locked</p><p class="srm__banner-s">' + scDate(M.rec.locked_at) + ' · the letters use this snapshot</p></div><button class="cx-link" data-sc="unlock">Unlock</button></div>'
-    : M.R.lines.some(l => l.group !== 'typed') ? '<div class="srm__banner"><div><p class="srm__banner-t">Not locked yet</p><p class="srm__banner-s">Live from Controlling. Lock the house costs once everything for ' + stPer(M.per.from, M.per.to) + ' is booked – then the letters can be sent.</p></div></div>' : '';
-  const card = ([g, t, s]) => {
-    if (g === 'typed' && !M.locked) return scTypedHtml(M);
+  const R = M.R, Lc = R.check, lnd = R.landlord, can = !M.locked;
+  const sup = scHgSuppliers(M), hs = M.money.hgAll || [], missing = sup.filter(x => !x.list.length);
+  const step = !R.lines.length ? 0 : M.locked ? 3 : missing.length ? 1 : 2;
+  const prog = '<div class="srm__card sr-progcard">' + scSteps(['Collected', 'Jahresabrechnungen', 'Locked'], step) +
+    '<p class="sr-progmeta">' + (M.locked ? 'Locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot · <button class="cx-link" data-sc="unlock">unlock</button>'
+      : R.lines.length ? 'Live from Controlling · ' + R.lines.length + ' lines' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : '') : 'Nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet') + '</p></div>';
+  const warn = can && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
+  // Jahresabrechnungen: one line each, Guthaben / Nachzahlung written out · switch "in the NK" · "+ add" where one is missing
+  const list = ((M.rec && M.rec.tenants) || {}).__hgList || {};
+  const hgRow = (x, h) => {
+    const info = h.info || {}, cost = Number(info.amount) || 0, gut = cost < 0;
+    return '<div class="sc-hgr' + (h.on ? '' : ' is-off') + '"><span class="sc-hgr__n">' + stEsc(x.l + (info.company ? ' · ' + info.company : '')) +
+      '<small>' + (gut ? 'Guthaben' : 'Nachzahlung') + (info.date ? ' · ' + stDate(info.date) : '') + (h.on ? '' : ' · not in the NK') +
+        ' · <button type="button" class="cx-link sc-hgr__bl' + (list[h.id] ? ' is-on' : '') + '" data-sc="hglist" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') + '>Belegliste ' + (list[h.id] ? 'on' : 'off') + '</button>' +
+        (can && String(h.id).indexOf('ot:') === 0 ? ' · <button type="button" class="cx-link" data-sc="hgDel" data-id="' + stEsc(h.id) + '">remove</button>' : '') + '</small></span>' +
+      '<span class="sc-hgr__v ' + (gut ? 'pos' : 'neg') + '">' + stEur(cxR(Math.abs(cost))) + '</span>' +
+      '<button type="button" class="sc-hgr__tg' + (h.on ? ' on' : '') + '" data-sc="hgtog" data-id="' + stEsc(h.id) + '" aria-pressed="' + h.on + '" aria-label="In the NK"' + (can ? '' : ' disabled') + '></button></div>';
+  };
+  const hgRows = sup.map(x => x.list.length ? x.list.map(h => hgRow(x, h)).join('')
+    : '<div class="sc-hgr"><span class="sc-hgr__n">' + stEsc(x.l) + '<small class="neg">Jahresabrechnung not in yet</small></span><span></span>' +
+      (can ? '<button type="button" class="cx-link sc-hgr__add" data-sc="hgNew" data-t="' + x.k + '">+ add</button>' : '<span></span>') + '</div>').join('');
+  const on = hs.filter(h => h.on), nG = on.filter(h => Number((h.info || {}).amount) < 0).length, nN = on.length - nG, net = M.money.hg;
+  const hgRes = hs.length ? '<div class="sr-tl sr-tl--res' + (net > 0 ? ' is-g' : '') + '"><span><b>Ergebnis</b> <small>' + [nG ? nG + ' Guthaben' : '', nN ? nN + ' Nachzahlung' : ''].filter(Boolean).join(' · ') + '</small></span><b>' +
+    (net > 0.004 ? 'Guthaben ' : net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(net || 0) > 0.004 ? stEur(cxR(Math.abs(net))) : '') + '</b></div>' : '';
+  const hgCard = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p><span class="srm__cs">in the NK</span></div>' + hgRows + hgRes +
+    '<p class="sc-hg__note">Netted into Strom, Gas, Wasser in the letter. Booked once – here or in Controlling.</p>' + (can && SC.hgNew ? scHgForm() : '') + '</div>';
+  // Kosten: per group, folded – the classic list behind a tap
+  const groups = [['typed', 'Typed by you', 'positions'], ['running', 'Laufende Kosten', 'Expenses · Casa Castel'], ['hausgeld', 'Jahresabrechnungen', 'netted into their cost type'], ['oneoff', 'Einmalig', 'NK one-offs']];
+  const fold = ([g, t, sub]) => {
+    if (g === 'typed' && can) return '';
     const ls = R.lines.filter(l => l.group === g); if (!ls.length) return '';
     const sum = cxR(ls.reduce((a, l) => a + l.total, 0)), k = 'cg:' + g, o = !!SC.open[k];
-    return '<div class="srm__card sc-cg"><button class="sc-cg__h" data-sc="fold" data-k="' + k + '" aria-expanded="' + o + '"><span><b>' + t + '</b><small>' + s + ' · ' + ls.length + (ls.length === 1 ? ' line' : ' lines') + '</small></span>' +
-      '<span class="sc-cg__v">' + scE(sum) + ' <i class="ti ti-chevron-' + (o ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
-      (o ? ls.map(l => '<div class="sc-li"><span>' + stEsc(l.label) + '<small>' + scKeyTxt(l.key) + ' · ' + scSpreadTxt(M, l.id) + '</small></span><span>' + scE(l.total) + '</span></div>').join('') : '') + '</div>';
+    return '<button class="sr-acc" data-sc="fold" data-k="' + k + '" aria-expanded="' + o + '"><span class="sr-acc__t">' + t + '<small>' + ls.length + (ls.length === 1 ? ' line' : ' lines') + ' · ' + sub + '</small></span>' +
+      '<span class="sr-acc__r">' + scE(sum) + '<i class="ti ti-chevron-' + (o ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
+      (o ? '<div class="sr-items">' + ls.map(l => '<div class="sr-it' + (l.total < 0 ? ' is-neg' : '') + '"><span>' + stEsc(l.label) + '<small class="sr-it__s">' + stEsc(scSpreadTxt(M, l.id)) + '</small></span><span>' + scE(l.total) + '</span></div>').join('') + '</div>' : '');
   };
-  const Lc = R.check, lnd = R.landlord, tot = Math.max(Math.abs(Lc.total), 0.01);
-  const who = '<div class="srm__card"><p class="srm__ct" style="font-size:20px">Who pays</p>' +
-    '<div class="sc-bar"><span style="flex:' + Math.max(0, Lc.allocated) + ';background:#B8956A"></span><span style="flex:' + Math.max(0, lnd.total) + ';background:#E3D5BF"></span></div>' +
-    '<div class="sc-li"><span>Tenants · ' + (M.method === 'quota' ? 'by months lived (Kostenquote)' : 'split by day') + '</span><span>' + scE(Lc.allocated) + '</span></div>' +
-    (lnd.pauschal ? '<div class="sc-li"><span>You · Pauschal tenants<small>their share stays with you</small></span><span>' + scE(lnd.pauschal) + '</span></div>' : '') +
-    (lnd.vacancy ? '<div class="sc-li"><span>You · Leerstand days</span><span>' + scE(lnd.vacancy) + '</span></div>' : '') +
-    (lnd.rounding ? '<div class="sc-li"><span>Rounding</span><span>' + scE(lnd.rounding) + '</span></div>' : '') +
-    '<div class="srm__chk' + (Lc.ok ? '' : ' is-warn') + '"><span><i class="ti ti-' + (Lc.ok ? 'check' : 'alert-triangle') + '" aria-hidden="true"></i> ' + (Lc.ok ? 'adds up' : 'does not add up') + '</span><span>' + scE(Lc.total) + '</span></div></div>';
-  void tot;
+  const kosten = R.lines.length || can ? '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Kosten</p><span class="srm__cs">' + scE(Lc.total) + '</span></div><div>' + groups.map(fold).join('') + '</div></div>' + (can ? scTypedHtml(M) : '') : '';
+  // Verteilung: method + what one month costs + who pays
+  const q = M.quota || {}, anySent = M.ten.some(t => t.k === 'sent' || (t.k === 'done' && !t.skipped));
+  const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const verteilung = R.lines.length ? '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Verteilung</p></div>' +
+    '<div class="sr-seg3 sc-seg2" role="group">' + [['quota', 'Kostenquote'], ['days', 'Day-exact']].map(([v, l]) => '<button type="button" class="' + (M.method === v ? 'is-on' : '') + '" data-sc="method" data-v="' + v + '" aria-pressed="' + (M.method === v) + '"' + (anySent || M.locked ? ' disabled' : '') + '>' + l + '</button>').join('') + '</div>' +
+    '<div><div class="sr-tl"><span>Kosten gesamt</span><b>' + scE(Lc.total) + '</b></div>' +
+    (M.method === 'quota' && q.months ? '<div class="sr-tl"><span>÷ months lived <small>all rooms · Ø ' + nf(q.persons, 1) + ' people</small></span><span>' + scMo(q.months) + '</span></div>' +
+      '<div class="sr-tl sr-tl--res is-g"><span><b>= per month lived</b></span><b>' + scE(q.rate) + '</b></div>'
+      : '<div class="sr-tl"><span>Split day by day among the people living there</span><span></span></div>') +
+    '<div class="sr-tl"><span>Tenants</span><span>' + scE(Lc.allocated) + '</span></div>' +
+    (lnd.pauschal ? '<div class="sr-tl"><span>You · Pauschal tenants</span><span>' + scE(lnd.pauschal) + '</span></div>' : '') +
+    (lnd.vacancy ? '<div class="sr-tl"><span>You · empty days</span><span>' + scE(lnd.vacancy) + '</span></div>' : '') +
+    '<p class="sr-okline' + (Lc.ok ? '' : ' is-warn') + '"><i class="ti ti-' + (Lc.ok ? 'check' : 'alert-triangle') + '" aria-hidden="true"></i> ' + (Lc.ok ? 'adds up' : 'does not add up') + '</p></div>' +
+    (anySent ? '<p class="sc-hg__note">Letters already sent – the split stays as it is.</p>' : '') + '</div>' : '';
   const hasList = R.lines.some(l => l.group !== 'running');
-  const fromC = R.lines.some(l => l.group !== 'typed'), typed = R.lines.some(l => l.group === 'typed');
-  return scHead('House costs', 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + ' · ' + (fromC && typed ? 'from Controlling + typed by you' : fromC ? 'from Controlling' : 'typed by you'), '') +
-    '<div class="srm__b"><div class="srm__one">' + warn + lockB + groups.map(card).join('') +
-      (R.lines.length ? who : '') + '</div></div>' +
-    '<div class="srm__bar srm__bar--2">' + (hasList ? '<button class="cx-btn cx-btn--s" data-sc="listPdf"><i class="ti ti-file-text" aria-hidden="true"></i> Invoice list PDF</button>' : '') +
-      (M.locked ? '' : M.sendable ? '<button class="cx-btn cx-btn--p" data-sc="lock"' + (R.lines.length ? '' : ' disabled') + '><i class="ti ti-lock" aria-hidden="true"></i> Lock house costs</button>'
+  const bar = M.locked ? (hasList ? '<div class="srm__bar"><button class="cx-btn cx-btn--s" data-sc="listPdf"><i class="ti ti-file-text" aria-hidden="true"></i> Belegliste PDF</button></div>' : '')
+    : '<div class="srm__bar srm__bar--2">' + (hasList ? '<button class="cx-btn cx-btn--s" data-sc="listPdf"><i class="ti ti-file-text" aria-hidden="true"></i> Belegliste PDF</button>' : '') +
+      (M.sendable ? '<button class="cx-btn cx-btn--p" data-sc="lock"' + (R.lines.length ? '' : ' disabled') + '><i class="ti ti-lock" aria-hidden="true"></i> Lock costs</button>'
         : M.running ? '<button class="cx-btn cx-btn--p" disabled><i class="ti ti-lock" aria-hidden="true"></i> Lock after ' + stDe(M.per.to) + '</button>' : '') + '</div>';
+  return scHead('Hauskosten ' + M.y, 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? ' · locked' : ' · from Controlling'), '') +
+    '<div class="srm__b"><div class="srm__one">' + prog + warn + hgCard + kosten + verteilung + '</div></div>' + bar;
+}
+/* The add form for a Jahresabrechnung (books into Controlling: One-off · Versorger) */
+function scHgForm() {
+  const f = SC.hgNew;
+  const typeSeg = SC_HG_TYPES.filter(([k]) => scHgCat(k)).map(([k, l]) => '<button type="button" class="st-seg__b' + (f.type === k ? ' is-on' : '') + '" data-sc="hgNewSet" data-f="type" data-v="' + k + '" aria-pressed="' + (f.type === k) + '">' + l + '</button>').join('');
+  const dirSeg = [['1', 'Guthaben', 'you get'], ['-1', 'Nachzahlung', 'you pay']].map(([v, l, sm]) => '<button type="button" class="st-seg__b' + (String(f.dir) === v ? ' is-on' : '') + '" data-sc="hgNewSet" data-f="dir" data-v="' + v + '" aria-pressed="' + (String(f.dir) === v) + '">' + l + '<small>' + sm + '</small></button>').join('');
+  return '<div class="sc-hg__form"><p class="st-f__l">New Jahresabrechnung</p>' +
+    '<div class="st-seg sc-hg__types">' + typeSeg + '</div><div class="st-seg st-seg--2">' + dirSeg + '</div>' +
+    '<div class="sc-hg__row2"><label class="st-f"><span class="st-f__l">Amount</span><span class="st-amt"><input class="st-in" id="scHgAmt" inputmode="decimal" placeholder="0,00" value="' + stEsc(f.amt || '') + '"/><span>€</span></span></label>' +
+    '<label class="st-f"><span class="st-f__l">Date</span><input class="st-in" id="scHgDate" type="date" value="' + stEsc(f.date || cxToday()) + '"/></label></div>' +
+    '<label class="st-f"><span class="st-f__l">Company</span><input class="st-in" id="scHgCo" placeholder="e.g. eprimo" value="' + stEsc(f.co || '') + '"/></label>' +
+    '<div class="sc-hg__fb"><button type="button" class="cx-link" data-sc="hgNewCancel">Cancel</button><button type="button" class="cx-btn cx-btn--p" data-sc="hgNewSave">Book</button></div></div>';
 }
 
 /* ── Tenant sheet (also used by Start) ── */
@@ -691,9 +761,13 @@ function scTenView(M, m) {
     if (pill === 'via') ed = '<div class="sc-ed"><div class="sc-opts">' + [['zahlung', 'Bank transfer'], ['kaution', 'With the Kaution'], ['miete', 'With the rent']].map(([v, l]) =>
       '<button class="sc-opt' + (via === v ? ' is-on' : '') + '" data-sc="viaSet" data-v="' + v + '" data-k="' + stEsc(t.key) + '">' + l + '</button>').join('') + '</div>' +
       '<label class="st-f"><span class="st-f__l">Pay within (days)</span><input class="st-in" inputmode="numeric" data-sc-in="days" data-k="' + stEsc(t.key) + '" value="' + stEsc(s.days ?? 30) + '"/></label></div>';
-    letter = '<p class="sc-cap">The letter</p><div class="sc-pills">' + pl('addr', 'mail', addrShort, !addr.trim()) + (saldo || t.einbehalt ? pl('via', 'building-bank', viaTxt) : '') +
+    const lOpen = pill === 'letter' || pill === 'addr' || pill === 'via';
+    const lSum = '<button class="sc-lfold" data-sc="pill" data-p="letter" data-k="' + stEsc(t.key) + '" aria-expanded="' + lOpen + '"><span><b>Letter</b><small>' + stEsc([addrShort, scDate(s.date || cxToday()), viaTxt, 'Belegliste ' + (list ? 'on' : 'off')].join(' · ')) + '</small></span><i class="ti ti-chevron-' + (lOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>';
+    if (!lOpen) letter = lSum;
+    else letter = lSum + '<div class="sc-pills">' + pl('addr', 'mail', addrShort, !addr.trim()) + (saldo || t.einbehalt ? pl('via', 'building-bank', viaTxt) : '') +
       '<button class="sc-pill' + (list ? ' is-ok' : '') + '" data-sc="tg" data-f="list" data-k="' + stEsc(t.key) + '" aria-pressed="' + list + '"><i class="ti ti-' + (list ? 'check' : 'list') + '" aria-hidden="true"></i>Invoice list ' + (list ? 'on' : 'off') + '</button></div>' +
       ed + '<p class="sc-hint2">Tap a pill to change it.</p>';
+    letter = '<div class="srm__card sc-lcard">' + letter + '</div>';
   }
   // where it stands
   const status = t.k === 'sent' ? '<div class="sc-stat is-wait"><i class="ti ti-hourglass" aria-hidden="true"></i> Sent ' + stDate(res.date) +
@@ -708,7 +782,25 @@ function scTenView(M, m) {
   const lockHint = t.k === 'open' && M.sendable && !M.locked && !noData ? '<p class="sc-hint2" style="text-align:center">Lock the house costs to send the letter.</p>' : '';
   const xDel = t.extra && t.k === 'open' ? '<button class="cx-link sc-skipflow" data-sc="extraDel" data-k="' + stEsc(t.key) + '">Remove this tenant from this NK</button>' : '';
   const cmp = altTxt ? '<p class="sc-cmp"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> ' + stEsc(altTxt) + '</p>' : '';
-  return head + '<div class="srm__b"><div class="srm__one sc-sheet">' + hero + tiles + cmp + vzEd + kau + status + det + letter + lockHint + skipFlow + xDel + '</div></div>' +
+  void hero; void tiles; void det;
+  const step = t.k === 'done' ? 3 : t.k === 'sent' ? 2 : M.locked && !noData ? 1 : 0;
+  const due = NkCasa.addDays(s.date || cxToday(), Number(s.days ?? 30) || 30), via = scVia(t);
+  const viaW = { zahlung: 'bank transfer', kaution: 'with the Kaution', miete: 'with the rent' }[via] || 'bank transfer';
+  const resSub = t.k === 'open' ? (!M.locked ? (M.pv ? 'preview as of ' + stDe(M.pv.cutoff) : 'preview until the house costs are locked') : (saldo < 0 ? 'refund by ' : 'due ') + stDate(due) + ' · ' + viaW)
+    : t.k === 'sent' ? 'sent ' + stDate(res.date) + (t.st.confirm ? ' · confirm once settled' : ' · waiting for the money') : t.skipped ? 'skipped' : 'settled · ' + scSay(t)[1];
+  const resBox = '<div class="sr-sum ' + (saldo < 0 ? 'sr-sum--g' : saldo > 0 ? 'sr-sum--n' : '') + '"><span><b class="sr-sum__t">' + (saldo > 0 ? 'Nachzahlung' : saldo < 0 ? 'Guthaben' : 'Balanced') + '</b><small>' + stEsc(resSub) + '</small></span><b class="sr-sum__a">' + scE(Math.abs(saldo)) + '</b></div>';
+  const prog = '<div class="srm__card sr-progcard">' + scSteps(['Checked', 'Sent', 'Settled'], step) + resBox + '</div>';
+  const q = M.quota || {};
+  const vzSrc = (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length)) ? 'changed by you' : t.vzContract ? t.vzContract + ' month(s) per contract' : 'per Controlling';
+  const rows = '<div class="srm__card"><div>' +
+    '<div class="sr-tl sr-tl--first"><span>Lived here <small>' + stEsc(stPer(t.from, t.to)) + '</small></span><span>' + (M.method === 'quota' ? scMo(t.months) + ' months' : t.days + ' days') + '</span></div>' +
+    '<div class="sr-tl"><span>Anteil <small>' + stEsc(M.method === 'quota' && q.months ? scMo(t.months) + ' × ' + scE(q.rate) + ' · Kostenquote' : 'day by day') + '</small></span><span>' + scE(t.sum) + '</span></div>' +
+    '<button class="sr-tl sc-tlb" data-sc="pill" data-p="vz" data-k="' + stEsc(t.key) + '"><span>− Vorauszahlungen <small>' + stEsc(vzSrc) + ' · per month ' + (vzOpen ? '⌃' : '›') + '</small></span><span>' + scE(t.vz) + '</span></button>' +
+    vzEd +
+    '<button class="sr-acc" data-sc="fold" data-k="' + lk + '" aria-expanded="' + lo + '"><span class="sr-acc__t">Breakdown per cost type</span><span class="sr-acc__r"><i class="ti ti-chevron-' + (lo ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
+    (lo ? '<div class="sr-items">' + scShareLines(t).map(g => '<div class="sr-it"><span>' + stEsc(g.label) + '<small class="sr-it__s">' + stEsc(scPct(g)) + ' of ' + scE(g.total) + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') + '</div>' + cmp : '') +
+    '</div></div>';
+  return head + '<div class="srm__b"><div class="srm__one sc-sheet">' + prog + rows + kau + letter + lockHint + skipFlow + xDel + '</div></div>' +
     (bar ? '<div class="srm__bar srm__bar--2 srm__bar--doc">' + bar + '</div>' : '');
 }
 function scToggle(f, key, on, t, s, can) {
@@ -995,7 +1087,7 @@ async function scClick(e) {
   if (a === 'fold') { SC.open[b.dataset.k] = !SC.open[b.dataset.k]; return scRenderModal(); }
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
   if (a === 'sumTen' || a === 'sumHg') { SC.modal = { view: a }; return scRenderModal(); }
-  if (a === 'hgNew') { SC.hgNew = { type: '', dir: '', amt: '', date: '', co: '' }; return scRenderModal(); }
+  if (a === 'hgNew') { SC.hgNew = { type: b.dataset.t || '', dir: '', amt: '', date: '', co: '' }; return scRenderModal(); }
   if (a === 'hgNewCancel') { SC.hgNew = null; return scRenderModal(); }
   if (a === 'hgNewSet') {
     const f = SC.hgNew || (SC.hgNew = {}), g = id => document.getElementById(id);

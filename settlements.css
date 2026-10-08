@@ -1233,3 +1233,32 @@ button.st-sg__r { cursor: pointer; }
 .srm .sr-er__n, .srm .sr-er__n.is-c input, .srm .sr-amt input { font-size: 13px !important; }
 .srm .sr-er { grid-template-columns: minmax(0, 1fr) 108px; }
 .srm .sr-er__n.is-c i { font-size: 10px; }
+
+/* ── Casa Castel (Oct 2026): Hauskosten sheet + tenant sheet in the Rentals layout ── */
+.sc-hgr { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 0; border-top: .5px solid var(--cx-line); }
+.sc-hgr:first-of-type { border-top: none; }
+.sc-hgr.is-off .sc-hgr__n, .sc-hgr.is-off .sc-hgr__v { opacity: .55; }
+.sc-hgr__n { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--cx-ink); }
+.sc-hgr__n small { font-size: 11px; font-weight: 400; color: var(--cx-mut); }
+.sc-hgr__n small.neg { color: #8A3B22; }
+.sc-hgr__n .cx-link { font-size: 11px; padding: 0; }
+.sc-hgr__bl.is-on { color: var(--cx-acc); }
+.sc-hgr__v { font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sc-hgr__v.pos { color: #55622A; } .sc-hgr__v.neg { color: #8A3B22; }
+.sc-hgr__tg { position: relative; width: 34px; height: 20px; border-radius: 10px; border: none; background: var(--cx-sub); cursor: pointer; padding: 0; }
+.sc-hgr__tg::after { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .15s; }
+.sc-hgr__tg.on { background: var(--cx-ink); }
+.sc-hgr__tg.on::after { left: 16px; }
+.sc-hgr__tg:disabled { opacity: .5; cursor: default; }
+.sc-hgr__add { font-size: 12px; }
+.sc-hg__fb { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.sc-seg2 { grid-template-columns: 1fr 1fr; }
+.sr-seg3 button:disabled { cursor: default; opacity: .6; }
+.sr-it__s { display: block; font-size: 10.5px; color: var(--cx-mut); margin-top: 1px; }
+.sc-tlb { width: 100%; background: none; border-left: none; border-right: none; border-bottom: none; font-family: inherit; text-align: left; cursor: pointer; }
+.sc-lcard { gap: 10px; }
+.sc-lfold { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border: .5px solid var(--cx-rule); border-radius: 10px; background: #fff; font-family: inherit; text-align: left; cursor: pointer; }
+.sc-lfold span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-lfold b { font-size: 13px; font-weight: 500; color: var(--cx-ink); }
+.sc-lfold small { font-size: 11px; color: var(--cx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-lfold i { color: var(--cx-sub); }
