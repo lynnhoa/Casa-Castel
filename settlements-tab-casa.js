@@ -421,20 +421,29 @@ function scSumTen(M) {
              { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');
 }
 function scSumHg(M) {
-  // every Jahresabrechnung with "Show in Settlements" (Controlling) · switch per position: Include in NK
-  const can = !M.locked;
-  const rows = (M.money.hgAll || []).map((h, i) => {
-    const info = h.info || {}, cost = Number(info.amount) || 0;           // > 0 Nachzahlung (cost) · < 0 Guthaben
-    const av = stAv(i + 5), ab = String(h.label || '?').slice(0, 2).toUpperCase(), dir = cost > 0 ? -1 : 1, amount = Math.abs(cost);
-    const sw = '<button type="button" class="sc-hgsw' + (h.on ? ' on' : '') + '" data-sc="hgtog" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') +
-      ' aria-pressed="' + h.on + '" aria-label="Include in NK"><span class="sc-tg__sw" aria-hidden="true"></span></button>';
-    return { av, ab, name: h.label, amount, dir, dim: !h.on, extra: sw,
-             sub: [dir < 0 ? 'Nachzahlung' : 'Guthaben', info.company, info.date ? stDe(info.date) : ''].filter(Boolean).join(' · ') + (h.on ? '' : ' · info · not counted') };
-  });
-  const nIn = rows.filter(r => !r.dim).length;
-  return stSumSheet({ title: 'Hausgeld', sub: 'Casa Castel · Strom · Gas · Wasser · ' + stNkLabel(M.per.from, M.per.to), net: M.money.hg,
-    sub2: rows.length ? nIn + ' of ' + rows.length + ' included in the NK' + (can ? '' : ' · unlock the house costs to change') : 'no Jahresabrechnung shown in Settlements yet',
-    groups: [{ title: 'Include in NK', rows }] }, 'data-sc="close"');
+  // every Jahresabrechnung with "Show in Settlements" (Controlling) · per position: Include in NK · Show in Belegliste
+  const can = !M.locked, ts = (M.rec && M.rec.tenants) || {}, list = ts.__hgList || {};
+  const hs = M.money.hgAll || [], nIn = hs.filter(h => h.on).length, net = M.money.hg;
+  const sw = (act, id, on, label) => '<button type="button" class="sc-hg__sw' + (on ? ' on' : '') + '" data-sc="' + act + '" data-id="' + stEsc(id) + '"' +
+    (can ? '' : ' disabled') + ' aria-pressed="' + on + '"><span class="sc-hg__tr" aria-hidden="true"></span>' + label + '</button>';
+  const rows = hs.map(h => {
+    const info = h.info || {}, cost = Number(info.amount) || 0, inn = cost < 0;
+    return '<div class="sc-hg__r' + (h.on ? '' : ' is-off') + '">' +
+      '<div class="sc-hg__l"><span class="sc-hg__n">' + stEsc(h.label) + '</span><span class="sc-hg__a ' + (inn ? 'pos' : 'neg') + '">' + stEur(cxR(Math.abs(cost))) + '</span></div>' +
+      '<div class="sc-hg__s">' + stEsc([inn ? 'Guthaben' : 'Nachzahlung', info.company, info.date ? stDe(info.date) : ''].filter(Boolean).join(' · ') + (h.on ? '' : ' · not counted')) + '</div>' +
+      '<div class="sc-hg__sws">' + sw('hgtog', h.id, h.on, 'Include in NK') + sw('hglist', h.id, !!list[h.id], 'Show in Belegliste') + '</div></div>';
+  }).join('');
+  const k = net === null || net === undefined ? 'nil' : net > 0.004 ? 'in' : net < -0.004 ? 'out' : 'nil';
+  const hero = '<div class="st-hero st-hero--' + k + '"><span>' + (k === 'in' ? 'you get' : k === 'out' ? 'you pay' : hs.length ? 'nothing counted' : 'nothing yet') + '</span>' +
+    '<b>' + (net === null || net === undefined ? '—' : stEur(cxR(Math.abs(net)))) + '</b><small>' +
+    (hs.length ? nIn + ' of ' + hs.length + ' included in the NK' + (can ? '' : ' · locked') : 'no Jahresabrechnung shown in Settlements yet') + '</small></div>';
+  const tot = hs.length ? '<span class="srm__cs ' + (k === 'in' ? 'pos' : k === 'out' ? 'neg' : '') + '">' + (net === null ? '—' : stEur(cxR(Math.abs(net || 0)))) + '</span>' : '';
+  const card = hs.length ? '<div class="srm__card sc-hg"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p>' + tot + '</div>' + rows + '</div>' : '';
+  const note = hs.length ? '<p class="sc-hg__note">' + (can ? 'Jahresabrechnungen are already netted into Strom · Gas · Wasser in the letter – show them in the Belegliste only when needed.'
+                                                          : 'Unlock the house costs to change.') + '</p>' : '';
+  return '<div class="srm__h"><div class="srm__ht"><p class="srm__t">Hausgeld</p><p class="srm__s">' + stEsc('Casa Castel · Strom · Gas · Wasser · ' + stNkLabel(M.per.from, M.per.to)) + '</p></div>' +
+    '<button class="srm__x" data-sc="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>' +
+    '<div class="srm__b"><div class="srm__one">' + hero + card + note + '</div></div>';
 }
 
 /* ── Modal host ───────────────────────────────────────────── */
@@ -597,7 +606,7 @@ function scTenView(M, m) {
         : '<div class="sc-det__s"><span><i class="ti ti-users" aria-hidden="true"></i> shared by person, day by day</span><b>' + scE(pers) + '</b></div>' +
           '') +
       scShareLines(t).map(g => '<div class="sc-li"><span>' + stEsc(g.label) + '<small>' + stEsc(scPct(g)) + ' of ' + scE(g.total) +
-        (g.merged ? ' · incl. ' + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + scE(g.hg) : '') + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') +
+        (g.nHg ? ' · incl. ' + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + scE(g.hg) : '') + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') +
       '<div class="sc-li"><span>Already paid<small>' + (t.vzContract ? t.vzContract + ' month(s) as per contract' : 'NK part of the rent, by day') + (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length) ? ' · changed by you' : '') + '</small></span><span>' + scE(t.vz) + '</span></div>' +
 
     '</div>' : '');
@@ -754,18 +763,27 @@ async function scSetUndo(key) {
    · range = people (or m²) sharing it on the tenant's days → "5 bis 7 Personen" in the letter head
    · the share is shown in % of the house cost (scPct)                            */
 function scShareLines(t) {
+  // one line per cost type: Abschläge (running) + Jahresabrechnungen (hausgeld) + invoices with that cost type (oneoff);
+  // invoices without a cost type → ONE last line "Allgemeine Hauskosten" (details in the Belegliste)
   const out = [], byKey = {};
   for (const l of (t.lines || [])) {
-    const k = l.catId !== null && l.catId !== undefined ? 'cat:' + l.catId : l.id;
+    const hasCat = l.catId !== null && l.catId !== undefined;
+    const k = hasCat ? 'cat:' + l.catId : l.group === 'oneoff' ? 'allg' : l.id;
     let g = byKey[k];
-    if (!g) { g = byKey[k] = { id: l.id, label: l.label, key: l.key, total: 0, amount: 0, range: null, run: 0, hg: 0, nHg: 0 }; out.push(g); }
+    if (!g) {
+      g = byKey[k] = { id: k === 'allg' ? 'allg' : l.id, label: k === 'allg' ? 'Allgemeine Hauskosten' : (l.group === 'running' ? l.label : (l.catName || l.label)),
+                       key: l.key, total: 0, amount: 0, range: null, run: 0, hg: 0, nHg: 0, inv: 0, nInv: 0, allg: k === 'allg' };
+      out.push(g);
+    }
     g.total += l.total; g.amount += l.amount;
     if (l.range) g.range = g.range ? { lo: Math.min(g.range.lo, l.range.lo), hi: Math.max(g.range.hi, l.range.hi) } : { lo: l.range.lo, hi: l.range.hi };
     if (l.group === 'hausgeld') { g.hg += l.total; g.nHg++; }
+    else if (l.group === 'oneoff') { g.inv += l.total; g.nInv++; }
     else { g.run += l.total; g.id = l.id; g.label = l.label; }            // the running line names it
   }
-  out.forEach(g => { g.total = cxR(g.total); g.amount = cxR(g.amount); g.hg = cxR(g.hg); g.run = cxR(g.run); g.merged = g.nHg > 0 && g.id.indexOf('cat:') === 0; });
-  return out;
+  out.forEach(g => { g.total = cxR(g.total); g.amount = cxR(g.amount); g.hg = cxR(g.hg); g.run = cxR(g.run); g.inv = cxR(g.inv);
+                     g.merged = !g.allg && (g.nHg > 0 || (g.nInv > 0 && g.run)); });
+  return out.filter(g => !g.allg).concat(out.filter(g => g.allg));     // Allgemeine Hauskosten always last
 }
 const scMo = v => (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 });   // 7 · 6,5 · 0,77
 function scPct(g) {                                     // share of the house cost, e.g. "10,21 %"
@@ -793,19 +811,28 @@ async function scLetterData(M, t) {
     return p && p.spread === 'from' ? 'Personen ab ' + dt(p.date) : 'Personen';
   };
   const eur = v => { const n = Number(v) || 0; return (n < -0.004 ? '\u2212\u00a0' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };
-  const extraLines = M.input.lines.filter(l => l.info && t.lines.some(x => x.id === l.id)).sort((a, b) => String(a.info.date).localeCompare(String(b.info.date)));
+  const hgList = ((scRec(M.y) || {}).tenants || {}).__hgList || {};
+  const extraLines = M.input.lines.filter(l => l.info && t.lines.some(x => x.id === l.id) && (l.group !== 'hausgeld' || hgList[l.id]))
+    .sort((a, b) => String(a.info.date).localeCompare(String(b.info.date)));
   const SL = scShareLines(t);
-  const merged = SL.some(g => g.merged), hasFl = SL.some(g => g.key === 'flaeche');
+  const merged = SL.some(g => g.nHg > 0), hasFl = SL.some(g => g.key === 'flaeche');
   // how many people lived in the house during this tenancy (all Personen lines together)
   const occ = SL.filter(g => g.key === 'personen' && g.range).reduce((a, g) => a ? { lo: Math.min(a.lo, g.range.lo), hi: Math.max(a.hi, g.range.hi) } : { lo: g.range.lo, hi: g.range.hi }, null);
   const span = (a, b) => (String(a).slice(0, 4) === String(b).slice(0, 4) ? dt(a).slice(0, 6) : dt(a)) + ' \u2013 ' + dt(b);
   // Jahresabrechnung netted into its cost type → a small line under it
-  const subRow = g => ({ sub: 'Abschläge ' + eur(g.run) + (g.hg < 0 ? ' abzüglich ' : ' zuzüglich ') + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + eur(Math.abs(g.hg)) + (g.hg < 0 ? ' (Guthaben)' : ' (Nachzahlung)') });
+  const subRow = g => {
+    if (g.allg) return { sub: g.nInv + (g.nInv === 1 ? ' Einzelrechnung' : ' Einzelrechnungen') + (list && extraLines.length ? ', siehe Belegliste' : '') };
+    const p = [];
+    if (g.run) p.push('Abschläge ' + eur(g.run));
+    if (g.nHg) p.push((g.hg < 0 ? 'abzüglich ' : 'zuzüglich ') + (g.nHg > 1 ? 'Jahresabrechnungen ' : 'Jahresabrechnung ') + eur(Math.abs(g.hg)) + (g.hg < 0 ? ' (Guthaben)' : ' (Nachzahlung)'));
+    if (g.nInv) p.push((p.length ? 'zuzüglich ' : '') + (g.nInv === 1 ? 'Einzelrechnung ' : 'Einzelrechnungen ') + eur(g.inv));
+    return { sub: p.join(' ') };
+  };
   const Q = M.method === 'quota' && M.quota && M.quota.months ? M.quota : null;   // Kostenquote
   const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const rows = [];
   const qPct = Q ? nf(t.months / Q.months * 100, 2) + '\u00a0%' : '';      // the same share for every cost type
-  SL.forEach(g => { rows.push(Q ? [g.label, eur(g.total), eur(g.amount)] : [g.label, eur(g.total), keyTxt(g), scPct(g), eur(g.amount)]); if (g.merged) rows.push(subRow(g)); });
+  SL.forEach(g => { rows.push(Q ? [g.label, eur(g.total), eur(g.amount)] : [g.label, eur(g.total), keyTxt(g), scPct(g), eur(g.amount)]); if (g.merged || g.allg) rows.push(subRow(g)); });
   const first = scFirst(t.name);
   const D = {
     brand: 'Casa Castel', unitLabel: 'Zimmer', unitName: t.room, du: true,
@@ -843,7 +870,7 @@ async function scLetterData(M, t) {
              'Monatliche Kosten zählen im jeweiligen Monat, Jahresbeträge gleichmäßig über alle Tage, Einzelrechnungen ab dem Rechnungsdatum bis zum Ende des Zeitraums.',
              ...(merged ? ['Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
              'Nicht umlagefähige Kosten sind nicht enthalten.'],
-    extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung auf Seite 2 eingeflossen sind. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.',
+    extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: extraLines.some(l => l.group === 'hausgeld') ? 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung auf Seite 2 eingeflossen sind. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.' : 'Die Einzelrechnungen, die auf Seite 2 in die Aufstellung eingeflossen sind – ohne eigene Kostenart unter „Allgemeine Hauskosten“.',
       rows: extraLines.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(extraLines.reduce((a, l) => a + l.info.amount, 0)) } : null,
   };
   if (!Q) return D;
@@ -876,6 +903,12 @@ async function scClick(e) {
   if (a === 'fold') { SC.open[b.dataset.k] = !SC.open[b.dataset.k]; return scRenderModal(); }
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
   if (a === 'sumTen' || a === 'sumHg') { SC.modal = { view: a }; return scRenderModal(); }
+  if (a === 'hglist') {                                    // Hausgeld sheet: show a Jahresabrechnung in the Belegliste or not
+    if (M && M.locked) return;
+    const r = scRecEnsure(SC.year), li = r.tenants.__hgList = r.tenants.__hgList || {}, id = b.dataset.id;
+    if (li[id]) delete li[id]; else li[id] = true;
+    scQueueSave(r); const m = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m; return scRenderModal();
+  }
   if (a === 'hgtog') {                                     // Hausgeld sheet: include / leave out one Jahresabrechnung
     if (M && M.locked) return;
     const r = scRecEnsure(SC.year), off = r.tenants.__hgOff = r.tenants.__hgOff || {}, id = b.dataset.id;

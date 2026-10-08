@@ -117,7 +117,7 @@ const NkCasa = (() => {
       const alloc = r2(Object.values(byTenant).reduce((s, v) => s + v, 0));
       land.pauschal += lp; land.vacancy += lv;
       lines.push({ id: ln.id, label: ln.label, group: ln.group || 'running', key: ln.key === 'flaeche' ? 'flaeche' : 'personen',
-                   total: totalR, byTenant, range, landlord: r2(totalR - alloc), info: ln.info || null, catId: ln.catId ?? null });
+                   total: totalR, byTenant, range, landlord: r2(totalR - alloc), info: ln.info || null, catId: ln.catId ?? null, catName: ln.catName || '' });
     }
 
     // per tenancy: lines, sum, prepayments, result
@@ -127,7 +127,7 @@ const NkCasa = (() => {
     const tenants = ten.map((t, k) => {
       const tl = lines.filter(l => l.byTenant[t.key] !== undefined).map(l => ({
         id: l.id, label: l.label, group: l.group, key: l.key, total: l.total, amount: l.byTenant[t.key],
-        share: l.total ? l.byTenant[t.key] / l.total : 0, range: l.range[t.key] || null, catId: l.catId,
+        share: l.total ? l.byTenant[t.key] / l.total : 0, range: l.range[t.key] || null, catId: l.catId, catName: l.catName,
       }));
       const sum = r2(tl.reduce((s, l) => s + l.amount, 0));
       const months = monthsShare(t);
@@ -235,7 +235,7 @@ const NkCasa = (() => {
       const hg = o.kind === 'Versorger' || /jahresabrechnung/i.test(String(o.item || ''));   // Strom · Gas · Wasser yearly result
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
-                   parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: hg && c ? c.id : null,
+                   parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',
                    info: { date: d, company: o.company || '', item: o.item || '', amount: amt } });
       if (hg && !c) warn.push('Hausgeld entry ' + d + ' has no cost type – split by person');
     }
@@ -318,7 +318,7 @@ const NkCasa = (() => {
         if (!amts[k] && !l.total) return;
         l.byTenant[t.key] = amts[k];
         tl.push({ id: l.id, label: l.label, group: l.group, key: l.key, total: l.total, amount: amts[k],
-                  share: l.total ? amts[k] / l.total : 0, range: null, catId: l.catId });
+                  share: l.total ? amts[k] / l.total : 0, range: null, catId: l.catId, catName: l.catName });
       });
       const sum = r2(tl.reduce((s, x) => s + x.amount, 0));
       return Object.assign({}, t, { months, lines: tl, sum, saldo: r2(sum - t.vz), quotaShare: share });

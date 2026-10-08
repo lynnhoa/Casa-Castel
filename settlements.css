@@ -1114,8 +1114,24 @@ button.st-sg__r { cursor: pointer; }
 .sc-cmp { display: flex; align-items: center; gap: 6px; margin: -4px 0 10px; font-size: 11.5px; color: var(--cx-mut); }
 .sc-cmp i { font-size: 14px; color: #B8956A; }
 
-/* Hausgeld sheet (Oct 2026): switch "Include in NK" per Jahresabrechnung */
+/* Hausgeld sheet (Oct 2026): per Jahresabrechnung · Include in NK · Show in Belegliste — fits the phone, no side scroll */
+.srm, .srm__b { overflow-x: hidden; overscroll-behavior: contain; }
 .st-sg__r.is-dim .st-sg__n, .st-sg__r.is-dim .st-sg__a { opacity: .45; }
-.sc-hgsw { margin-left: 12px; padding: 4px 0; border: none; background: none; cursor: pointer; flex-shrink: 0; }
-.sc-hgsw[disabled] { opacity: .5; cursor: default; }
-.sc-hgsw.on .sc-tg__sw { background: var(--cx-ink); } .sc-hgsw.on .sc-tg__sw::after { transform: translateX(16px); }
+.sc-hg { gap: 0; padding-bottom: 8px; }
+.sc-hg .srm__ch { padding-bottom: 4px; }
+.sc-hg__r { padding: 12px 0 6px; min-width: 0; }
+.sc-hg__r + .sc-hg__r { border-top: .5px solid var(--cx-line); }
+.sc-hg__l { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; min-width: 0; }
+.sc-hg__n { font-size: 13.5px; font-weight: 500; color: var(--cx-ink); min-width: 0; }
+.sc-hg__a { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 19px; font-weight: 500; white-space: nowrap; }
+.sc-hg__a.pos { color: #27500A; } .sc-hg__a.neg { color: #712B13; }
+.sc-hg__s { font-size: 11px; line-height: 1.4; color: var(--cx-mut); margin-top: 1px; overflow-wrap: anywhere; }
+.sc-hg__r.is-off .sc-hg__n, .sc-hg__r.is-off .sc-hg__a { opacity: .45; }
+.sc-hg__sws { display: flex; flex-wrap: wrap; gap: 0 22px; margin-top: 2px; }
+.sc-hg__sw { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 0; border: none; background: none; font: inherit; font-size: 12px; color: var(--cx-txt); cursor: pointer; }
+.sc-hg__sw[disabled] { color: var(--cx-mut); cursor: default; }
+.sc-hg__tr { position: relative; width: 32px; height: 18px; border-radius: 9px; background: #D9D2C7; flex-shrink: 0; transition: background .15s; }
+.sc-hg__tr::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.sc-hg__sw.on .sc-hg__tr { background: var(--cx-ink); } .sc-hg__sw.on .sc-hg__tr::after { transform: translateX(14px); }
+.sc-hg__sw[disabled] .sc-hg__tr { opacity: .55; }
+.sc-hg__note { margin: 0; padding: 0 6px; font-size: 11.5px; line-height: 1.5; color: var(--cx-mut); text-align: center; }
