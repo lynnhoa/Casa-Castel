@@ -1135,3 +1135,18 @@ button.st-sg__r { cursor: pointer; }
 .sc-hg__sw.on .sc-hg__tr { background: var(--cx-ink); } .sc-hg__sw.on .sc-hg__tr::after { transform: translateX(14px); }
 .sc-hg__sw[disabled] .sc-hg__tr { opacity: .55; }
 .sc-hg__note { margin: 0; padding: 0 6px; font-size: 11.5px; line-height: 1.5; color: var(--cx-mut); text-align: center; }
+
+/* Hausgeld (Casa): supplier check · booked status · add form */
+.sc-hg__cks { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.sc-hg__ck { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 11.5px; background: #FAEEDA; color: #7A4A12; }
+.sc-hg__ck.is-in { background: #EEF0DD; color: #4A5724; }
+.sc-hg__ck i { font-size: 12px; }
+.sc-hg__bk { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #4A5724; margin-top: 3px; }
+.sc-hg__bk i { font-size: 12px; }
+.sc-hg__rm { margin-left: auto; font-size: 11px; }
+.sc-hg__add { align-self: center; }
+.sc-hg__form { gap: 12px; }
+.sc-hg__types { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sc-hg__types .st-seg__b { font-size: 12px; padding: 8px 2px; }
+.sc-hg__row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.sc-hg__hint { margin: 0; font-size: 11px; color: var(--cx-mut); }

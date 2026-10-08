@@ -142,7 +142,7 @@ function scInputFor(y) {
   const ts = (scRec(y) || {}).tenants || {};
   // Hausgeld (Versorger Jahresabrechnungen "shown in Settlements"): each one counts unless switched off here
   const hgOff = ts.__hgOff || {};
-  input.hgAll = input.lines.filter(l => l.group === 'hausgeld').map(l => ({ id: l.id, label: l.label, info: l.info || {}, on: !hgOff[l.id] }));
+  input.hgAll = input.lines.filter(l => l.group === 'hausgeld').map(l => ({ id: l.id, label: l.label, info: l.info || {}, on: !hgOff[l.id], catId: l.catId ?? null }));
   input.lines = input.lines.filter(l => !(l.group === 'hausgeld' && hgOff[l.id]));
   for (const p of (ts.__pos || [])) {
     const amt = Number(p.amount) || 0; if (!amt) continue;
@@ -420,30 +420,95 @@ function scSumTen(M) {
     groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
              { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');
 }
+const SC_HG_TYPES = [['strom', 'Strom'], ['gas', 'Gas'], ['wasser', 'Wasser'], ['entsorg', 'Entsorgung']];   // Versorger with a Jahresabrechnung
+const scHgCat = k => (window._ctrl.categories || []).find(c => c.code !== 'RATE' && String(c.name || '').toLowerCase().startsWith(k)) || null;
 function scSumHg(M) {
   // every Jahresabrechnung with "Show in Settlements" (Controlling) · per position: Include in NK · Show in Belegliste
+  // enter here (books into Controlling) or in Controlling (shows here) – always the same one entry
   const can = !M.locked, ts = (M.rec && M.rec.tenants) || {}, list = ts.__hgList || {};
   const hs = M.money.hgAll || [], nIn = hs.filter(h => h.on).length, net = M.money.hg;
+  const nNach = hs.filter(h => Number((h.info || {}).amount) > 0).length, nGut = hs.length - nNach;
   const sw = (act, id, on, label) => '<button type="button" class="sc-hg__sw' + (on ? ' on' : '') + '" data-sc="' + act + '" data-id="' + stEsc(id) + '"' +
     (can ? '' : ' disabled') + ' aria-pressed="' + on + '"><span class="sc-hg__tr" aria-hidden="true"></span>' + label + '</button>';
+  // per supplier: in or not in yet
+  const check = SC_HG_TYPES.filter(([k]) => scHgCat(k)).map(([k, l]) => {
+    const c = scHgCat(k), got = hs.some(h => Number(h.catId) === Number(c.id) || String(h.label || '').toLowerCase().startsWith(k));
+    return '<span class="sc-hg__ck' + (got ? ' is-in' : '') + '">' + (got ? '<i class="ti ti-check" aria-hidden="true"></i>' : '') + stEsc(l) + (got ? '' : ' · not in yet') + '</span>';
+  }).join('');
   const rows = hs.map(h => {
     const info = h.info || {}, cost = Number(info.amount) || 0, inn = cost < 0;
     return '<div class="sc-hg__r' + (h.on ? '' : ' is-off') + '">' +
       '<div class="sc-hg__l"><span class="sc-hg__n">' + stEsc(h.label) + '</span><span class="sc-hg__a ' + (inn ? 'pos' : 'neg') + '">' + stEur(cxR(Math.abs(cost))) + '</span></div>' +
-      '<div class="sc-hg__s">' + stEsc([inn ? 'Guthaben' : 'Nachzahlung', info.company, info.date ? stDe(info.date) : ''].filter(Boolean).join(' · ') + (h.on ? '' : ' · not counted')) + '</div>' +
+      '<div class="sc-hg__s">' + stEsc([inn ? 'Guthaben' : 'Nachzahlung', info.company].filter(Boolean).join(' · ') + (h.on ? '' : ' · not counted')) + '</div>' +
+      '<div class="sc-hg__bk"><i class="ti ti-check" aria-hidden="true"></i> booked in Controlling' + (info.date ? ' · ' + stDe(info.date) : '') +
+        (can && String(h.id).indexOf('ot:') === 0 ? '<button type="button" class="cx-link sc-hg__rm" data-sc="hgDel" data-id="' + stEsc(h.id) + '">remove</button>' : '') + '</div>' +
       '<div class="sc-hg__sws">' + sw('hgtog', h.id, h.on, 'Include in NK') + sw('hglist', h.id, !!list[h.id], 'Show in Belegliste') + '</div></div>';
   }).join('');
   const k = net === null || net === undefined ? 'nil' : net > 0.004 ? 'in' : net < -0.004 ? 'out' : 'nil';
+  const counts = hs.length ? [nNach ? nNach + ' Nachzahlung' : '', nGut ? nGut + ' Guthaben' : '', nIn + ' of ' + hs.length + ' in the NK'].filter(Boolean).join(' · ') + (can ? '' : ' · locked')
+                           : 'no Jahresabrechnung yet';
   const hero = '<div class="st-hero st-hero--' + k + '"><span>' + (k === 'in' ? 'you get' : k === 'out' ? 'you pay' : hs.length ? 'nothing counted' : 'nothing yet') + '</span>' +
-    '<b>' + (net === null || net === undefined ? '—' : stEur(cxR(Math.abs(net)))) + '</b><small>' +
-    (hs.length ? nIn + ' of ' + hs.length + ' included in the NK' + (can ? '' : ' · locked') : 'no Jahresabrechnung shown in Settlements yet') + '</small></div>';
+    '<b>' + (net === null || net === undefined ? '—' : stEur(cxR(Math.abs(net)))) + '</b><small>' + stEsc(counts) + '</small></div>';
   const tot = hs.length ? '<span class="srm__cs ' + (k === 'in' ? 'pos' : k === 'out' ? 'neg' : '') + '">' + (net === null ? '—' : stEur(cxR(Math.abs(net || 0)))) + '</span>' : '';
+  // the add form (books into Controlling: One-off · Versorger · Show in Settlements)
+  const f = SC.hgNew;
+  const typeSeg = SC_HG_TYPES.filter(([k]) => scHgCat(k)).map(([k, l]) => '<button type="button" class="st-seg__b' + (f && f.type === k ? ' is-on' : '') + '" data-sc="hgNewSet" data-f="type" data-v="' + k + '" aria-pressed="' + !!(f && f.type === k) + '">' + l + '</button>').join('');
+  const dirSeg = [['1', 'Guthaben', 'you get'], ['-1', 'Nachzahlung', 'you pay']].map(([v, l, sm]) => '<button type="button" class="st-seg__b' + (f && String(f.dir) === v ? ' is-on' : '') + '" data-sc="hgNewSet" data-f="dir" data-v="' + v + '" aria-pressed="' + !!(f && String(f.dir) === v) + '">' + l + '<small>' + sm + '</small></button>').join('');
+  const form = !can ? '' : !f ? '<button type="button" class="cx-btn cx-btn--s sc-hg__add" data-sc="hgNew"><i class="ti ti-plus" aria-hidden="true"></i> Jahresabrechnung</button>' :
+    '<div class="srm__card sc-hg__form"><p class="srm__ct">New Jahresabrechnung</p>' +
+      '<fieldset class="st-f"><legend class="st-f__l">Supplier</legend><div class="st-seg sc-hg__types">' + typeSeg + '</div></fieldset>' +
+      '<fieldset class="st-f"><legend class="st-f__l">Result</legend><div class="st-seg st-seg--2">' + dirSeg + '</div></fieldset>' +
+      '<div class="sc-hg__row2"><label class="st-f"><span class="st-f__l">Amount</span><span class="st-amt"><input class="st-in" id="scHgAmt" inputmode="decimal" placeholder="0,00" value="' + stEsc(f.amt || '') + '"/><span>€</span></span></label>' +
+      '<label class="st-f"><span class="st-f__l">Date</span><input class="st-in" id="scHgDate" type="date" value="' + stEsc(f.date || cxToday()) + '"/></label></div>' +
+      '<label class="st-f"><span class="st-f__l">Company</span><input class="st-in" id="scHgCo" placeholder="e.g. eprimo" value="' + stEsc(f.co || '') + '"/></label>' +
+      '<p class="sc-hg__hint">Books into Controlling › Casa Castel › One-off, so it is entered only once.</p>' +
+      '<div class="srm__bar srm__bar--2"><button type="button" class="cx-btn cx-btn--s" data-sc="hgNewCancel">Cancel</button><button type="button" class="cx-btn cx-btn--p" data-sc="hgNewSave">Book</button></div></div>';
   const card = hs.length ? '<div class="srm__card sc-hg"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p>' + tot + '</div>' + rows + '</div>' : '';
-  const note = hs.length ? '<p class="sc-hg__note">' + (can ? 'Jahresabrechnungen are already netted into Strom · Gas · Wasser in the letter – show them in the Belegliste only when needed.'
+  const note = hs.length ? '<p class="sc-hg__note">' + (can ? 'Jahresabrechnungen are already netted into their cost type in the letter – show them in the Belegliste only when needed.'
                                                           : 'Unlock the house costs to change.') + '</p>' : '';
-  return '<div class="srm__h"><div class="srm__ht"><p class="srm__t">Hausgeld</p><p class="srm__s">' + stEsc('Casa Castel · Strom · Gas · Wasser · ' + stNkLabel(M.per.from, M.per.to)) + '</p></div>' +
+  return '<div class="srm__h"><div class="srm__ht"><p class="srm__t">Hausgeld</p><p class="srm__s">' + stEsc('Casa Castel · Strom · Gas · Wasser · Entsorgung · ' + stNkLabel(M.per.from, M.per.to)) + '</p></div>' +
     '<button class="srm__x" data-sc="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>' +
-    '<div class="srm__b"><div class="srm__one">' + hero + card + note + '</div></div>';
+    '<div class="srm__b"><div class="srm__one">' + hero + (check ? '<div class="sc-hg__cks">' + check + '</div>' : '') + card + form + note + '</div></div>';
+}
+
+/* Hausgeld: a Jahresabrechnung typed here is booked into Controlling (One-off · Versorger · Show in Settlements) */
+async function scHgBook(btn) {
+  const f = SC.hgNew || {}, g = id => document.getElementById(id);
+  const amt = typeof ccParseEUR === 'function' ? ccParseEUR(g('scHgAmt').value) : Number(String(g('scHgAmt').value).replace(/\./g, '').replace(',', '.'));
+  const date = g('scHgDate').value, co = g('scHgCo').value.trim();
+  const c = f.type ? scHgCat(f.type) : null;
+  if (!c) return stSay('Choose Strom, Gas, Wasser or Entsorgung');
+  if (!f.dir) return stSay('Choose Guthaben or Nachzahlung');
+  if (!amt || amt <= 0) return stSay('Enter the amount');
+  if (!date) return stSay('Enter the date');
+  const dir = Number(f.dir), d = SC.data[SC.year];
+  if (!Array.isArray(window._ctrl.one_time)) window._ctrl.one_time = [];
+  // already booked in Controlling? (same cost type, amount and date) → use that one
+  const dup = (d ? d.one_time : []).find(o => Number(o.nk_category_id) === Number(c.id) && Math.abs(Number(o.amount) - amt) < 0.005 && String(o.invoice_date).slice(0, 10) === date);
+  if (dup) {
+    if (!(await stConfirm({ title: 'Already booked', text: c.name + ' · ' + stEur(amt) + ' · ' + stDe(date) + ' is already in Controlling. Use that one instead of booking it twice?', ok: 'Use it' }))) return;
+    if (!dup.nk_umlage) { try { await ctlUpdateOneTime(dup.id, { nk_umlage: true }); dup.nk_umlage = true; } catch (e) { return stSay('Could not update it in Controlling'); } }
+  } else {
+    if (btn) btn.disabled = true;
+    try {
+      if (!Array.isArray(window._ctrl.one_time)) window._ctrl.one_time = [];
+      const row = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: c.name + ' · Jahresabrechnung', company: co || null,
+                                        amount: cxR(amt), kind: 'Versorger', direction: dir, nk_umlage: true, nk_category_id: c.id });
+      if (d && !d.one_time.some(o => o.id === row.id)) d.one_time.push(row);
+    } catch (e) { if (btn) btn.disabled = false; return stSay('Could not book it in Controlling'); }
+  }
+  SC.hgNew = null;
+  const m = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m; scRenderModal();
+  stSay(dup ? 'Linked to the entry in Controlling' : 'Booked in Controlling');
+}
+async function scHgRemove(lineId) {
+  const id = Number(String(lineId).replace('ot:', '')), d = SC.data[SC.year];
+  const o = (d ? d.one_time : []).find(x => Number(x.id) === id); if (!o) return;
+  if (!Array.isArray(window._ctrl.one_time)) window._ctrl.one_time = [];
+  if (!(await stConfirm({ title: 'Remove this Jahresabrechnung?', text: 'It is deleted in Controlling too – it is the same entry.', ok: 'Remove', danger: true }))) return;
+  try { await ctlDeleteOneTime(o.id); } catch (e) { return stSay('Could not remove it in Controlling'); }
+  d.one_time = d.one_time.filter(x => x.id !== o.id);
+  const m = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m; scRenderModal();
 }
 
 /* ── Modal host ───────────────────────────────────────────── */
@@ -903,6 +968,15 @@ async function scClick(e) {
   if (a === 'fold') { SC.open[b.dataset.k] = !SC.open[b.dataset.k]; return scRenderModal(); }
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
   if (a === 'sumTen' || a === 'sumHg') { SC.modal = { view: a }; return scRenderModal(); }
+  if (a === 'hgNew') { SC.hgNew = { type: '', dir: '', amt: '', date: '', co: '' }; return scRenderModal(); }
+  if (a === 'hgNewCancel') { SC.hgNew = null; return scRenderModal(); }
+  if (a === 'hgNewSet') {
+    const f = SC.hgNew || (SC.hgNew = {}), g = id => document.getElementById(id);
+    f.amt = g('scHgAmt') ? g('scHgAmt').value : f.amt; f.date = g('scHgDate') ? g('scHgDate').value : f.date; f.co = g('scHgCo') ? g('scHgCo').value : f.co;
+    f[b.dataset.f] = b.dataset.v; return scRenderModal();
+  }
+  if (a === 'hgNewSave') return scHgBook(b);
+  if (a === 'hgDel') return scHgRemove(b.dataset.id);
   if (a === 'hglist') {                                    // Hausgeld sheet: show a Jahresabrechnung in the Belegliste or not
     if (M && M.locked) return;
     const r = scRecEnsure(SC.year), li = r.tenants.__hgList = r.tenants.__hgList || {}, id = b.dataset.id;
