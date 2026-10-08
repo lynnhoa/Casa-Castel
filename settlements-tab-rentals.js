@@ -839,7 +839,7 @@ function stRenderRentals() {
   const ty = Number(cxToday().slice(0, 4));
   if (!SR.year) SR.year = ty - 1;
   let infos;
-  try { infos = _srYearModel(SR.year).map(_srCardInfo4); }
+  try { infos = _srYearModel(SR.year).filter(c => !c.before).map(_srCardInfo4); }   // a Wohnung appears from its purchase date (Properties) on
   catch (e) { console.error('[settlements] rentals', e); el.innerHTML = '<div class="st-page"><p class="cx-empty">Could not calculate the settlements.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'; return; }
   _srCards = {}; infos.forEach(i => { _srCards[i.c.ck] = i.c; });
   _srWegSync(infos);
@@ -1451,8 +1451,8 @@ function _srNkTens(c, d, rec, hvReady) {
     const v = ti.skipped ? null : ti.st.res ? ti.st.res.dir * ti.st.res.amount : ti.x && !ti.x.missing ? ti.x.saldo : null;
     const res = v === null ? '' : '<b class="' + (v < 0 ? 'is-g' : '') + '">' + stEur(Math.abs(v)) + '</b><small>' + (v > 0 ? 'Nachzahlung' : v < 0 ? 'Guthaben' : 'balanced') + '</small>';
     const pill = ti.kind === 'pausch' ? (ti.skipped ? ['ok', 'no NK'] : ['grey', 'Pauschal']) : ti.kind === 'unlinked' ? ['grey', 'no tenant'] :
-      ti.k === 'settled' ? ['ok', ti.skipped ? 'skipped' : 'settled'] : ti.k === 'sent' ? ['beige', 'sent ' + stDM(ti.st.res.date)] : ti.k === 'open' ? ['beige', 'letter ready'] : ['grey', 'waiting'];
-    const sub = stDM(ti.l.from) + '–' + stDate(ti.l.to) + ' · ' + _srDays(ti.l.from, ti.l.to) + ' days';
+      ti.skipped ? ['grey', 'skipped'] : ti.k === 'settled' ? ['ok', 'settled'] : ti.k === 'sent' ? ['beige', 'sent ' + stDM(ti.st.res.date)] : ti.k === 'open' ? ['beige', 'letter ready'] : ['grey', 'waiting'];
+    const sub = stDM(ti.l.from) + '–' + stDate(ti.l.to) + ' · ' + _srDays(ti.l.from, ti.l.to) + ' days' + (ti.skipped ? ' · tap to undo' : '');
     const act = ti.kind === 'pausch' && !ti.skipped ? 'data-sr="nd" data-id="' + stEsc(id) + '"' : ti.kind === 'ten' ? 'data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '"' : '';
     return '<button class="sr-tenrow" ' + act + (act ? '' : ' disabled') + '><span class="sr-tenrow__m"><span class="sr-tenrow__n">' + stEsc(ti.name) + '</span><span class="sr-tenrow__s">' + stEsc(ti.kind === 'pausch' && !ti.skipped ? 'Pauschal · tap to mark as no NK' : sub) + '</span></span>' +
       '<span class="sr-tenrow__r">' + res + cxPill(pill[0], pill[1]) + '</span></button>';
@@ -1492,6 +1492,16 @@ function _srTenView(c) {
   const ti = _srTenInfo(c, it, rec, sum.ok && (_srJaDone(rec, sum) || !!_srLine(c, it).state.res)), x = ti.x;
   const head = _srHead4(ti.name, 'NK ' + c.per.label + ' · ' + c.p.name, 'back');
   if (!x) return head + '<div class="srm__b"><div class="srm__card"><p class="st-note">The NK for ' + stEsc(ti.name) + ' is calculated here once the Hausgeld-Jahresabrechnung ' + stEsc(c.per.label) + ' is complete.</p></div></div>';
+  if (ti.skipped) {
+    const v = x.saldo, prev = !x.missing && Math.abs(v) >= 0.005 ? (v > 0 ? 'Nachzahlung ' : 'Guthaben ') + stEur(Math.abs(v)) : 'balanced';
+    return head + '<div class="srm__b"><div class="srm__one">' +
+      '<section class="srm__card sr-skip"><p class="sr-skip__t"><i class="ti ti-player-skip-forward" aria-hidden="true"></i> This NK is skipped</p>' +
+      '<p class="sr-skip__s">No letter and no result for ' + stEsc(ti.name) + ' (' + stEsc(stDM(x.from) + '–' + stDate(x.to)) + ') – it counts as done.' +
+        (ti.ts.settle_note ? ' Note: ' + stEsc(ti.ts.settle_note) + '.' : '') + '</p>' +
+      '<p class="sr-skip__s">If you bring it back, the NK is calculated again: currently <b>' + stEsc(prev) + '</b>.</p></section>' +
+    '</div></div>' +
+    '<div class="srm__bar"><button type="button" class="cx-btn cx-btn--p" data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '"><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Undo skip</button></div>';
+  }
   const ts = x.ts, sent = !!ti.st.res, date = ts.date || cxToday(), days = _srNum(ts.days) ?? 30, via = _srViaOf(x);
   SR.sign = _srSign(x);
   const perC = _srPer(c, rec);
@@ -1662,6 +1672,11 @@ async function _srSetUndo(ck, tid, weg) {
     }
   } catch (err) { stSay('Could not undo — ' + (err.message || err)); return; }
   SR.setEdit = null; ctlSettlementInvalidate(); stSay('Back to open');
+  if (SR.modal && SR.modal.view === 'tenant' && x.it && x.it.r) {
+    const again = _srYearModel(SR.year).find(y => y.ck === ck);
+    const nit = again && again.items.find(y => y.r.tenant_id && x.it.r.tenant_id && String(y.r.tenant_id) === String(x.it.r.tenant_id) && _srD(y.r.period_from) === _srD(x.it.r.period_from));
+    if (nit) SR.modal.tid = String(nit.r.id);
+  }
   stRenderRentals();
 }
 /* Skip this NK (no letter, no result) — counts as done, undo brings it back */

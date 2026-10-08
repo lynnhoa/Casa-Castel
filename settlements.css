@@ -1279,3 +1279,9 @@ button.st-sg__r { cursor: pointer; }
 .sr-money__b .cx-btn { height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
 .sr-money__b .cx-btn--p { flex: 1; }
 .sr-money .sr-grid2 { margin: 0; }
+/* a skipped NK: what it means and how to bring it back */
+.sr-skip { gap: 8px; }
+.sr-skip__t { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--cx-ink); }
+.sr-skip__t i { color: var(--cx-mut); }
+.sr-skip__s { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--cx-txt); }
+.sr-skip__s b { font-weight: 600; color: var(--cx-ink); }
