@@ -575,56 +575,11 @@ function srLetterHtml(d) {
   const dt = iso => cxFmtDate(iso);
   const nb = s => String(s).replace(/§ /g, '§\u00a0').replace(/Abs\. /g, 'Abs.\u00a0').replace(/Satz /g, 'Satz\u00a0');
   const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300&display=swap');`;
-  const CSS = `
+  // same design as every NK letter (nk-letter.js · Oct 2026); the old frame stays only as a fallback
+  const CSS = typeof NK_LETTER_CSS !== 'undefined' ? NK_LETTER_CSS : `
     * { margin:0; padding:0; box-sizing:border-box; }
     .page { position:relative; width:793.71px; height:1122.52px; background:#ffffff; overflow:hidden; }
-    .hdr { position:absolute; top:0; left:0; right:0; height:83.15px; background:#f0e8da; display:flex; align-items:center; justify-content:space-between; padding:0 80px; }
-    .hdr__wordmark { font-family:'Playfair Display',serif; font-size:26px; font-weight:400; color:#7a5c30; letter-spacing:0.05em; line-height:1; }
-    .hdr__room { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
-    .hdr__room-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:400; letter-spacing:0.16em; text-transform:uppercase; color:#b8975a; line-height:1; }
-    .hdr__room-name { font-family:'Playfair Display',serif; font-size:12px; font-weight:400; color:#7a5c30; line-height:1; }
-    .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
-    .ftr__rule { border:none; border-top:0.5px solid #e8dbc5; margin-bottom:7px; }
-    .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; font-weight:300; color:#aaa59e; line-height:1; }
-    .content { position:absolute; top:122px; left:80px; right:80px; bottom:62px; overflow:hidden; }
-    .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400; color:#1a1a1a; line-height:1.15; margin-bottom:4px; }
-    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:300; color:#aaa59e; line-height:1.5; margin-bottom:20px; }
-    .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:20px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
-    .sec--first { margin-top:0; }
-    .addr { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:34px; }
-    .addr__l { width:360px; }
-    .addr__ret { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#6f6a63; padding-bottom:4px; border-bottom:0.5px solid #e8dbc5; margin-bottom:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .addr__line { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; line-height:1.5; }
-    .meta { text-align:right; }
-    .meta__k { font-family:'Lato',sans-serif; font-size:7px; font-weight:400; letter-spacing:0.16em; text-transform:uppercase; color:#b8975a; line-height:1; }
-    .meta__v { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; color:#3a3530; line-height:1.3; margin-top:3px; }
-    .p { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.6; margin-top:10px; }
-    .p strong { font-weight:700; color:#1a1a1a; }
-    .sum { width:360px; margin-top:4px; }
-    .sum__r { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; padding:5px 0; border-bottom:0.5px solid #f0ede8; }
-    .sum__r span:last-child { font-weight:400; color:#1a1a1a; font-variant-numeric:tabular-nums; }
-    .total-box { background:#f0e8d8; border-radius:3px; padding:10px 12px; display:flex; justify-content:space-between; margin-top:8px; font-family:'Lato',sans-serif; font-size:12px; font-weight:700; color:#8a6535; line-height:1; }
-    .kv { display:flex; padding:3px 0; font-family:'Lato',sans-serif; font-size:12px; }
-    .kv__k { font-weight:300; color:#3a3530; width:150px; flex-shrink:0; }
-    .kv__v { font-weight:400; color:#1a1a1a; }
-    .bank { margin-top:8px; }
-    .hint { display:flex; gap:8px; font-family:'Lato',sans-serif; font-size:10px; font-weight:300; color:#3a3530; line-height:1.55; padding:2px 0; }
-    .hint::before { content:'\\2013'; color:#b8975a; flex-shrink:0; }
-    .greet { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; margin-top:24px; }
-    .greet__name { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; margin-top:26px; }
-    .anl { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:300; color:#888780; margin-top:18px; }
-    .intro2 { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; line-height:1.55; margin:8px 0 6px; }
-    .nk { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:4px; }
-    .nk th { font-family:'Lato',sans-serif; font-size:7px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#888780; text-align:left; padding:4px 0 6px; border-bottom:0.5px solid #d8d3cc; vertical-align:bottom; line-height:1.35; }
-    .nk td { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#1a1a1a; padding:4px 0 5px; vertical-align:top; line-height:1.4; }
-    .nk .r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .nk td.k { font-size:9.5px; color:#4a4540; padding-left:16px; }
-    .nk th.k { padding-left:16px; }
-    .nk tr.s td { font-weight:700; border-top:0.6px solid #d8d3cc; padding-top:9px; }
-    .nk tbody tr:nth-last-child(3) td { padding-bottom:9px; }
-    .res2 { margin-top:8px; }
-    .note2 { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:300; color:#6f6a63; line-height:1.55; margin-top:14px; }
-  `;
+    .content { position:absolute; top:150px; left:80px; right:80px; bottom:72px; overflow:hidden; }`;
   const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.aptName)}</span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${esc(d.wohnungsnummer)}</span></div></div>`;
   const ftr = () => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer)}</span><span>Seite <span class="pgn">1</span> von <span class="pgt">2</span></span></div></div>`;
   const kv = (k, v) => `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
@@ -632,39 +587,42 @@ function srLetterHtml(d) {
   const perTxt = dt(d.perFrom) + ' bis ' + dt(d.perTo);
   const amt = Math.abs(d.saldo);
   const resLabel = d.saldo > 0 ? 'Nachzahlung' : d.saldo < 0 ? 'Guthaben' : 'Ergebnis';
+  const E = Number(d.einbehalt) || 0, due = `<strong>${dt(d.due)}</strong>`;
+  const res = d.saldo > 0 ? `Es entsteht eine Nachzahlung von <strong>${eur(amt)}</strong>.` : d.saldo < 0 ? `Es entsteht ein Guthaben von <strong>${eur(amt)}</strong>.` : '';
+  const ourBank = () => `<div class="bank">${kv('Kontoinhaber', esc(d.bank.inhaber))}${d.bank.bank ? kv('Bank', esc(d.bank.bank)) : ''}${kv('IBAN', esc(d.bank.iban))}${d.bank.bic ? kv('BIC', esc(d.bank.bic)) : ''}${kv('Verwendungszweck', esc(d.verwendung))}</div>`;
+  const line = '<span class="fill"></span>';
+  const theirBank = () => `<div class="bank">${kv('Kontoinhaber', esc(_srJoin(d.names)) || line)}${kv('IBAN', d.tenantIban ? esc(d.tenantIban) : line)}${d.tenantIban ? '' : kv('Bank', line)}</div>`;
+  // money back: to the tenant's account (IBAN from the sheet, else lines to fill in) — known account for current tenants without IBAN
+  const back = what => (d.tenantIban || d.former)
+    ? `<p class="p">${what} bis zum ${due} auf folgendes Bankkonto zurücküberwiesen:</p>${theirBank()}`
+    : `<p class="p">${what} bis zum ${due} auf das bekannte Konto zurücküberwiesen. Bei einer geänderten Bankverbindung bitte kurz Bescheid geben.</p>`;
   let pay;
   if (d.saldo > 0 && d.via === 'zahlung') {
-    pay = `<p class="p">Bitte überweisen Sie den Betrag von <strong>${eur(amt)}</strong> bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto:</p>
-      <div class="bank">${kv('Kontoinhaber', esc(d.bank.inhaber))}${d.bank.bank ? kv('Bank', esc(d.bank.bank)) : ''}${kv('IBAN', esc(d.bank.iban))}${d.bank.bic ? kv('BIC', esc(d.bank.bic)) : ''}${kv('Verwendungszweck', esc(d.verwendung))}</div>`;
-  } else if (d.saldo > 0 && d.via === 'kaution' && d.einbehalt > 0) {
-    const rest = Math.round((d.einbehalt - amt) * 100) / 100;
-    pay = rest >= 0
-      ? `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(d.einbehalt)}).${rest > 0 ? ` Den verbleibenden Betrag von <strong>${eur(rest)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr uns bekanntes Konto.` : ' Sie müssen nichts überweisen.'}</p>`
-      : `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(d.einbehalt)}). Bitte überweisen Sie den verbleibenden Betrag von <strong>${eur(-rest)}</strong> bis zum <strong>${dt(d.due)}</strong> auf folgendes Konto:</p>
-      <div class="bank">${kv('Kontoinhaber', esc(d.bank.inhaber))}${d.bank.bank ? kv('Bank', esc(d.bank.bank)) : ''}${kv('IBAN', esc(d.bank.iban))}${d.bank.bic ? kv('BIC', esc(d.bank.bic)) : ''}${kv('Verwendungszweck', esc(d.verwendung))}</div>`;
+    pay = `<p class="p">${res} Der Betrag ist bis zum ${due} auf folgendes Konto zu überweisen:</p>${ourBank()}`;
+  } else if (d.saldo > 0 && d.via === 'kaution' && E > 0) {
+    const rest = Math.round((E - amt) * 100) / 100, head = `${res} Der Betrag wird mit dem einbehaltenen Teil der Mietkaution (${eur(E)}) verrechnet.`;
+    pay = rest > 0 ? `<p class="p">${head}</p>` + back(`Der verbleibende Betrag von <strong>${eur(rest)}</strong> wird`)
+      : rest === 0 ? `<p class="p">${head} Damit ist die Kaution vollständig abgerechnet.</p>`
+      : `<p class="p">${head} Der verbleibende Betrag von <strong>${eur(-rest)}</strong> ist bis zum ${due} auf folgendes Konto zu überweisen:</p>${ourBank()}`;
   } else if (d.saldo > 0 && d.via === 'kaution') {
-    pay = `<p class="p">Den Betrag von <strong>${eur(amt)}</strong> verrechnen wir mit Ihrer Mietkaution. Sie müssen nichts überweisen.</p>`;
+    pay = `<p class="p">${res} Der Betrag wird mit der Mietkaution verrechnet – eine Überweisung ist nicht nötig.</p>`;
   } else if (d.saldo > 0) {
-    pay = `<p class="p">Bitte zahlen Sie den Betrag von <strong>${eur(amt)}</strong> zusammen mit Ihrer nächsten Miete, spätestens bis zum <strong>${dt(d.due)}</strong> (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
-  } else if (d.saldo < 0 && d.via === 'zahlung' && d.tenantIban) {
-    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr Konto ${esc(d.tenantIban)}.</p>`;
-  } else if (d.saldo < 0 && d.via === 'zahlung' && d.former) {
-    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen gern. Bitte teilen Sie uns dafür Ihre aktuelle Bankverbindung (IBAN) mit.</p>`;
-} else if (d.saldo < 0 && d.via === 'zahlung') {
-    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr uns bekanntes Konto. Hat sich Ihre Bankverbindung geändert, teilen Sie uns die neue bitte kurz mit.</p>`;
+    pay = `<p class="p">${res} Der Betrag ist zusammen mit der nächsten Miete zu zahlen, spätestens bis zum ${due} (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
+  } else if (d.saldo < 0 && d.via === 'zahlung') {
+    pay = `<p class="p">${res}</p>` + back('Das Guthaben wird');
   } else if (d.saldo < 0 && d.via === 'miete') {
-    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> können Sie mit Ihrer nächsten Mietzahlung verrechnen: Überweisen Sie die nächste Miete um diesen Betrag gekürzt.</p>`;
-  } else if (d.saldo < 0 && d.einbehalt > 0) {
-    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> zahlen wir Ihnen zusammen mit dem einbehaltenen Teil Ihrer Mietkaution (${eur(d.einbehalt)}), insgesamt <strong>${eur(amt + d.einbehalt)}</strong>, bis zum <strong>${dt(d.due)}</strong> auf Ihr uns bekanntes Konto aus.</p>`;
+    pay = `<p class="p">${res} Das Guthaben kann mit der nächsten Mietzahlung verrechnet werden: Die nächste Miete wird um diesen Betrag gekürzt überwiesen.</p>`;
+  } else if (d.saldo < 0 && E > 0) {
+    pay = `<p class="p">${res}</p>` + back(`Das Guthaben und der einbehaltene Teil der Mietkaution (${eur(E)}), insgesamt <strong>${eur(amt + E)}</strong>, werden`);
   } else if (d.saldo < 0) {
-    pay = `<p class="p">Das Guthaben von <strong>${eur(amt)}</strong> berücksichtigen wir bei der Abrechnung Ihrer Mietkaution.</p>`;
-  } else if (d.einbehalt > 0) {
-    pay = `<p class="p">Ihre Vorauszahlungen decken Ihren Kostenanteil genau. Den einbehaltenen Teil Ihrer Mietkaution von <strong>${eur(d.einbehalt)}</strong> überweisen wir Ihnen bis zum <strong>${dt(d.due)}</strong> auf Ihr uns bekanntes Konto.</p>`;
+    pay = `<p class="p">${res} Das Guthaben wird bei der Abrechnung der Mietkaution berücksichtigt.</p>`;
+  } else if (E > 0) {
+    pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>` + back(`Der einbehaltene Teil der Mietkaution von <strong>${eur(E)}</strong> wird`);
   } else {
-    pay = `<p class="p">Ihre Vorauszahlungen decken Ihren Kostenanteil genau – es ergibt sich weder eine Nachzahlung noch ein Guthaben.</p>`;
+    pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>`;
   }
   const vzNew = d.newVz !== null && d.newVz !== undefined
-    ? `<p class="p">Auf Grundlage dieser Abrechnung passen wir Ihre monatliche Betriebskostenvorauszahlung nach ${nb('§ 560 Abs. 4 BGB')} ${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> an.</p>` : '';
+    ? `<p class="p">Auf Grundlage dieser Abrechnung wird die monatliche Betriebskostenvorauszahlung nach ${nb('§ 560 Abs. 4 BGB')} ${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> angepasst.</p>` : '';
 
   const page1 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
     <div class="addr"><div class="addr__l">
@@ -674,19 +632,19 @@ function srLetterHtml(d) {
     <div class="doc-title">Betriebskostenabrechnung ${esc(d.periodLabel)}</div>
     <div class="doc-subtitle">${d.objekt ? 'Mietobjekt ' + esc(d.objekt) + ' \u00b7 ' : ''}Abrechnungszeitraum ${perTxt}${d.hvDate ? '<br/>Grundlage: Hausgeldabrechnung ' + (d.hvName ? esc(d.hvName) + ' ' : '') + 'vom ' + dt(d.hvDate) : ''}</div>
     <p class="p" style="margin-top:0">${d.names.length ? 'Guten Tag ' + esc(_srJoin(d.names)) + ',' : 'Sehr geehrte Damen und Herren,'}</p>
-    <p class="p">hiermit rechnen wir die Betriebskosten für Ihre ${d.former ? 'ehemalige ' : ''}Wohnung für den Abrechnungszeitraum vom <strong>${perTxt}</strong> ab.${d.partial ? ` Sie haben die Wohnung in diesem Zeitraum vom ${dt(d.useFrom)} bis ${dt(d.useTo)} genutzt (${d.tDays} von ${d.perDays} Tagen); die Kosten sind deshalb zeitanteilig berechnet.` : ''}</p>
+    <p class="p">hiermit erfolgt die Abrechnung der Betriebskosten für die ${d.former ? 'ehemalige ' : ''}Wohnung für den Abrechnungszeitraum vom <strong>${perTxt}</strong>.${d.partial ? ` Die Wohnung wurde in diesem Zeitraum vom ${dt(d.useFrom)} bis ${dt(d.useTo)} genutzt (${d.tDays} von ${d.perDays} Tagen); die Kosten sind deshalb zeitanteilig berechnet.` : ''}</p>
     <div class="sec">Ergebnis</div>
     <div class="sum">
-      <div class="sum__r"><span>Ihr Anteil an den Betriebskosten</span><span>${eur(d.sum)}</span></div>
-      <div class="sum__r"><span>abzüglich Ihrer Vorauszahlungen</span><span>\u2212\u00a0${eur(d.vz)}</span></div>
+      <div class="sum__r"><span>Anteil an den Betriebskosten</span><span>${eur(d.sum)}</span></div>
+      <div class="sum__r"><span>abzüglich geleisteter Vorauszahlungen</span><span>\u2212\u00a0${eur(d.vz)}</span></div>
       <div class="total-box"><span>${resLabel}</span><span>${d.saldo ? eur(amt) : 'ausgeglichen'}</span></div>
     </div>
     ${pay}${vzNew}
     <div class="sec">Hinweise</div>
-    <div style="margin-top:6px">
-      <div class="hint"><span>Die Aufstellung aller Kosten, die Verteilerschlüssel und die Berechnung Ihres Anteils finden Sie auf Seite 2.</span></div>
-      <div class="hint"><span>Die Belege können Sie nach vorheriger Terminabsprache einsehen.</span></div>
-      <div class="hint"><span>${esc(nb('Einwendungen gegen diese Abrechnung teilen Sie uns bitte spätestens bis zum Ablauf des zwölften Monats nach Zugang mit (§ 556 Abs. 3 Satz 5 BGB).'))}</span></div>
+    <div class="hints">
+      <div class="hint"><span>Die Aufstellung aller Kosten, die Verteilerschlüssel und die Berechnung des Anteils stehen auf Seite 2.</span></div>
+      <div class="hint"><span>Die Belege können nach vorheriger Terminabsprache eingesehen werden.</span></div>
+      <div class="hint"><span>${esc(nb('Einwendungen gegen diese Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'))}</span></div>
     </div>
     <p class="greet">Mit freundlichen Grüßen</p>
     <p class="greet__name">${esc(d.vermieter)}</p>
@@ -702,12 +660,12 @@ function srLetterHtml(d) {
   let cols, th, rows;
   if (simple) {
     cols = five ? '<col style="width:52%"/><col style="width:24%"/><col style="width:24%"/>' : '<col style="width:72%"/><col style="width:28%"/>';
-    th = `<tr><th>Kostenart</th><th class="r">Kosten der Wohnung</th>${five ? `<th class="r">Ihr Anteil${d.partial ? '<br/>' + d.tDays + '/' + d.perDays + ' Tage' : ''}</th>` : ''}</tr>`;
+    th = `<tr><th>Kostenart</th><th class="r">Kosten der Wohnung</th>${five ? `<th class="r">Anteil${d.partial ? '<br/>' + d.tDays + '/' + d.perDays + ' Tage' : ''}</th>` : ''}</tr>`;
     rows = d.lines.map(l => `<tr><td>${esc(l.pos.label || _srKind(l.pos.kind).l)}${l.pos.split === 'mieter' ? ' <span style="color:#888780">(Zwischenablesung)</span>' : ''}</td><td class="r">${l.unit !== null ? eur(l.unit) : '\u2014'}</td>${five ? `<td class="r">${eur(l.amt)}</td>` : ''}</tr>`).join('');
   } else {
     cols = five ? '<col style="width:30%"/><col style="width:15%"/><col style="width:25%"/><col style="width:15%"/><col style="width:15%"/>'
                 : '<col style="width:36%"/><col style="width:18%"/><col style="width:28%"/><col style="width:18%"/>';
-    th = `<tr><th>Kostenart</th><th class="r">Gesamtkosten</th><th class="k">Verteilerschlüssel</th><th class="r">Anteil Wohnung</th>${five ? `<th class="r">Ihr Anteil${d.partial ? '<br/>' + d.tDays + '/' + d.perDays + ' Tage' : ''}</th>` : ''}</tr>`;
+    th = `<tr><th>Kostenart</th><th class="r">Gesamtkosten</th><th class="k">Verteilerschlüssel</th><th class="r">Anteil Wohnung</th>${five ? `<th class="r">Anteil${d.partial ? '<br/>' + d.tDays + '/' + d.perDays + ' Tage' : ''}</th>` : ''}</tr>`;
     rows = d.lines.map(l => {
       const neg = _srKind(l.pos.kind).neg;
       const tot = l.total !== null && l.total !== undefined ? eur(neg ? -Math.abs(l.total) : l.total) : (l.pos.key === 'verbrauch' ? 'lt. Anlage' : (l.unit !== null ? eur(l.unit) : '\u2014'));
@@ -715,13 +673,13 @@ function srLetterHtml(d) {
       return `<tr><td>${esc(l.pos.label || _srKind(l.pos.kind).l)}</td><td class="r">${tot}</td><td class="k">${esc(key)}</td><td class="r">${l.unit !== null ? eur(l.unit) : '\u2014'}</td>${five ? `<td class="r">${eur(l.amt)}</td>` : ''}</tr>`;
     }).join('');
   }
-  const tail = `<tr class="s"><td colspan="${span}">Summe Ihr Anteil</td><td class="r">${eur(d.sum)}</td></tr>
+  const tail = `<tr class="s"><td colspan="${span}">Summe Anteil</td><td class="r">${eur(d.sum)}</td></tr>
     <tr class="v"><td colspan="${span}">abzüglich geleisteter Vorauszahlungen</td><td class="r">\u2212\u00a0${eur(d.vz)}</td></tr>`;
   const expl = [];
   if (simple) {
-    if (d.partial) expl.push(`Ihr Anteil: Kosten der Wohnung × Ihre Nutzungstage (${d.tDays}) / Tage des Abrechnungszeitraums (${d.perDays}).`);
+    if (d.partial) expl.push(`Anteil: Kosten der Wohnung × Nutzungstage (${d.tDays}) / Tage des Abrechnungszeitraums (${d.perDays}).`);
   } else {
-    if (d.hasFlaeche) expl.push('Wohnfläche: Ihre Wohnfläche im Verhältnis zur Gesamtwohnfläche des Gebäudes.');
+    if (d.hasFlaeche) expl.push('Wohnfläche: Wohnfläche der Wohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes.');
     if (d.hasMea) expl.push('MEA: Miteigentumsanteile der Wohnung laut Teilungserklärung' + (d.keyMode === 'weg' ? nb(', wie in der Abrechnung der Eigentümergemeinschaft (§ 556a Abs. 3 BGB)') : '') + '.');
   }
   if (d.hasVerbrauch) expl.push('Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung' + (d.direct ? ', beim Mieterwechsel laut Zwischenablesung' : '') + ' (siehe Anlage).');
@@ -731,8 +689,9 @@ function srLetterHtml(d) {
     : '';
 
   const page2 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
-    <div class="sec sec--first">Aufstellung der Betriebskosten</div>
-    <p class="intro2">Abrechnungszeitraum ${perTxt} (${d.perDays} Tage)${d.partial ? ` \u00b7 Ihr Nutzungszeitraum ${dt(d.useFrom)} bis ${dt(d.useTo)} (${d.tDays} Tage)` : ''}.${basis} Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten ${nb('nach § 2 BetrKV')}.</p>
+    <div class="doc-title doc-title--s">Aufstellung der Betriebskosten ${esc(d.periodLabel)}</div>
+    <div class="doc-subtitle">${d.objekt ? 'Mietobjekt ' + esc(d.objekt) + ' \u00b7 ' : ''}Wohnung ${esc(d.wohnungsnummer || d.aptName || '')}</div>
+    <p class="intro2">Abrechnungszeitraum ${perTxt} (${d.perDays} Tage)${d.partial ? ` \u00b7 Nutzungszeitraum ${dt(d.useFrom)} bis ${dt(d.useTo)} (${d.tDays} Tage)` : ''}.${basis} Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten ${nb('nach § 2 BetrKV')}.</p>
     <table class="nk"><colgroup>${cols}</colgroup><thead>${th}</thead><tbody>${rows}${tail}</tbody></table>
     <div class="total-box res2"><span>${resLabel}</span><span>${d.saldo ? eur(amt) : 'ausgeglichen'}</span></div>
     <p class="note2">${esc(expl.join(' '))}</p>

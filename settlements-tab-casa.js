@@ -134,14 +134,20 @@ function scInputFor(y) {
   const d = SC.data[y], per0 = d.per || scPeriod(y);
   const casa = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID);
   const tenancies = casa && typeof ctlTenanciesFor === 'function' ? ctlTenanciesFor(casa, per0, false) : null;
-  const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [], period: per0, tenancies });
+  // running year: preview up to the end of the last completed month (costs, lived days and NK paid alike)
+  const today = cxToday(), lastDone = NkCasa.addDays(today.slice(0, 7) + '-01', -1);
+  const cutoff = per0.to >= today && lastDone >= per0.from ? lastDone : null;
+  const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [], period: per0, tenancies, cutoff });
   if (input.error) return input;
   const ts = (scRec(y) || {}).tenants || {};
   for (const p of (ts.__pos || [])) {
     const amt = Number(p.amount) || 0; if (!amt) continue;
     const from = p.spread === 'from' && p.date;
+    if (from && input.preview && p.date > input.preview.cutoff) continue;          // preview: not due yet
+    const fullTo = (input.fullPeriod || input.period).to;
+    const k = !input.preview ? 1 : from ? NkCasa.daysBetween(p.date, input.preview.cutoff) / NkCasa.daysBetween(p.date, fullTo) : input.preview.share;
     input.lines.push({ id: 'typed:' + p.id, label: p.label || 'Position', group: 'typed', key: p.key === 'flaeche' ? 'flaeche' : 'personen',
-                       parts: [from ? { amount: amt, spread: 'from', date: p.date } : { amount: amt, spread: 'year' }],
+                       parts: [from ? { amount: cxR(amt * k), spread: 'from', date: p.date } : { amount: cxR(amt * k), spread: 'year' }],
                        info: from ? { date: p.date, company: '', item: p.label || '', amount: amt } : null });
   }
   const per = input.period, units = typeof ctlUnitsOf === 'function' ? ctlUnitsOf(CASA_PROP_ID) : [];
@@ -214,7 +220,9 @@ function scModel(y) {
   }
   money.hgLines = R.lines.filter(l => l.group === 'hausgeld');              // Strom · Gas · Wasser yearly results (One-off · Versorger)
   if (money.hgLines.length) money.hg = cxR(-money.hgLines.reduce((a, l) => a + l.total, 0));   // a cost (Nachzahlung) = you pay
-  return { p, y, rec, locked, input, R, Rd, Rq, method, quota: Rq.quota, ten, perM, frist, per: input.period, running: input.period.to >= today, sendable: !!perM, warn: input.warn || [], money, today };
+  const perFull = input.fullPeriod || input.period;
+  return { p, y, rec, locked, input, R, Rd, Rq, method, quota: Rq.quota, ten, perM, frist, per: perFull, running: perFull.to >= today,
+           pv: input.preview || null, sendable: !!perM, warn: input.warn || [], money, today };
 }
 
 /* ── Overview ─────────────────────────────────────────────── */
@@ -251,7 +259,7 @@ function stRenderCasa() {
   const per = M.per;
   const yearNav = '<div class="sc-yr">' +
     '<button class="cx-arw" data-sc="year" data-d="-1" aria-label="Previous year"' + (y <= scMinYear() ? ' disabled' : '') + '><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
-    '<div class="sc-yr__t"><div class="sc-yr__m">' + y + '</div><div class="sc-yr__s">' + stNkLabel(per.from, per.to) + ' · ' + (M.running ? 'still running' : M.sendable ? 'Frist ' + stDe(M.frist) : 'Frist passed · history') + '</div></div>' +
+    '<div class="sc-yr__t"><div class="sc-yr__m">' + y + '</div><div class="sc-yr__s">' + stNkLabel(per.from, per.to) + ' · ' + (M.running ? 'still running' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : '') : M.sendable ? 'Frist ' + stDe(M.frist) : 'Frist passed · history') + '</div></div>' +
     '<button class="cx-arw" data-sc="year" data-d="1" aria-label="Next year"' + (y >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
   const sql = SC.missing || SC.lettersMissing
     ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>' +
@@ -269,7 +277,7 @@ function stRenderCasa() {
   const noData = !M.locked && !M.R.lines.length;
   const label = stNkLabel(per.from, per.to);
   const needs = [];
-  if (M.running) needs.push({ tone: 'calm', icon: 'clock', t: 'Still running', s: 'NK-Abrechnung after ' + stDe(per.to) + ' · the numbers are a preview' });
+  if (M.running) needs.push({ tone: 'calm', icon: 'clock', t: 'Still running', s: 'NK-Abrechnung after ' + stDe(per.to) + ' · preview as of ' + (M.pv ? stDe(M.pv.cutoff) : 'today') + ' – costs, months and NK paid up to then' });
   else if (!M.sendable) needs.push({ tone: 'calm', icon: 'archive', t: 'Frist passed', s: 'letters and results stay here as history' });
   if (noData) needs.push({ tone: 'gold', icon: 'pencil', t: 'Type the house costs', s: 'nothing booked in Controlling for ' + stPer(per.from, per.to), act: 'data-sc="costs"' });
   else if (M.sendable && !M.locked) needs.push({ tone: 'gold', icon: 'lock', t: 'Lock house costs', s: label + ' · then the letters can be sent', act: 'data-sc="costs"' });
@@ -402,7 +410,7 @@ function scSumTen(M) {
   });
   const mo = M.money, all = rows.filter(r => r.set && r.set.state !== 'locked');
   const cnt = all.length ? ' · ' + all.filter(r => r.set.state === 'settled').length + ' of ' + all.length + ' settled' : '';
-  return stSumSheet({ title: 'Tenants', sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview'), net: mo.ten,
+  return stSumSheet({ title: 'Tenants', sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten,
     sub2: mo.ten === null ? 'no house costs yet' : mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back') + cnt,
     groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
              { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');
@@ -561,7 +569,7 @@ function scTenView(M, m) {
     (t.extra ? '<button class="cx-link sc-skipflow" data-sc="extraDel" data-k="' + stEsc(t.key) + '">Remove this tenant</button>' : '') + '</div></div>';
   const hero = '<div class="sc-res is-' + tone + '"><span class="sc-res__l">' + (saldo > 0 ? stEsc(first) + ' pays you' : saldo < 0 ? stEsc(first) + ' gets back' : '<i class="ti ti-circle-check" aria-hidden="true"></i> All even') + '</span>' +
     '<span class="sc-res__v">' + scE(Math.abs(saldo)) + '</span>' +
-    '<span class="sc-res__w">' + stEsc(why) + (!M.locked && t.k === 'open' && !noData ? ' <em>Preview until the house costs are locked.</em>' : '') + '</span></div>';
+    '<span class="sc-res__w">' + stEsc(why) + (!M.locked && t.k === 'open' && !noData ? ' <em>' + (M.pv ? 'Preview as of ' + stDe(M.pv.cutoff) + ' – costs, months and NK paid up to then.' : 'Preview until the house costs are locked.') + '</em>' : '') + '</span></div>';
   const tiles = '<div class="sc-tiles"><div class="sc-tile"><i class="ti ti-calendar" aria-hidden="true"></i><small>lived here</small><b>' + t.days + ' days</b></div>' +
     '<div class="sc-tile"><i class="ti ti-home" aria-hidden="true"></i><small>' + stEsc(first) + '\'s share</small><b>' + scE(t.sum) + '</b></div>' +
     '<button class="sc-tile sc-tile--b' + (SC.pill && SC.pill.k === t.key && SC.pill.p === 'vz' ? ' is-on' : '') + '" data-sc="pill" data-p="vz" data-k="' + stEsc(t.key) + '"><i class="ti ti-coins" aria-hidden="true"></i><small>already paid ›</small><b>' + scE(t.vz) + '</b></button></div>';

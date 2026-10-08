@@ -167,6 +167,17 @@ const NkCasa = (() => {
     const norm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
     // the period comes from Casa's "beginnt am" (Controlling › Setup) — never assumed to be 01.01.–31.12.
     const period = src && src.period ? { from: D(src.period.from), to: D(src.period.to) } : { from: year + '-01-01', to: year + '-12-31' };
+    // Running year (Oct 2026): a preview counts everything only up to src.cutoff (end of the last completed month)
+    //   · monthly costs: months up to the cutoff · yearly amounts (nk_spread year): the full-year amount
+    //     (booked + still due per Setup) × the elapsed share · single invoices / Jahresabrechnungen: dated up to the
+    //     cutoff, × the share of their own spread that has passed · lived days and NK paid: up to the cutoff
+    const full = { from: period.from, to: period.to };
+    const cut = src && src.cutoff ? D(src.cutoff) : '';
+    const preview = !!cut && cut >= period.from && cut < period.to;
+    if (preview) period.to = cut;
+    const shareYear = preview ? daysBetween(period.from, cut) / daysBetween(full.from, full.to) : 1;
+    const shareFrom = d => (preview && d <= cut) ? daysBetween(d, cut) / daysBetween(d, full.to) : 1;
+    const nextYm = ym => { const y0 = Number(ym.slice(0, 4)), m0 = Number(ym.slice(5, 7)); return (m0 === 12 ? y0 + 1 : y0) + '-' + String(m0 === 12 ? 1 : m0 + 1).padStart(2, '0'); };
     const months = [];                                         // every month the period touches: 'YYYY-MM'
     for (let ym = period.from.slice(0, 7); ym <= period.to.slice(0, 7); ) {
       months.push(ym);
@@ -189,9 +200,30 @@ const NkCasa = (() => {
       if (!inNk(c)) continue;
       const amt = Number(e.amount) || 0; if (!amt) continue;
       const L = byCat[c.id] || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [], catId: c.id });
+      if (preview && c.nk_spread === 'year') { L.booked = (L.booked || 0) + amt; continue; }   // preview: scaled below
       L.parts.push(c.nk_spread === 'year' ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'month', month: ym });
     }
-    Object.values(byCat).forEach(l => lines.push(l));
+    if (preview) {
+      // yearly cost types: full-year amount = booked so far + what is still due after the cutoff (booked early, else Setup) → × elapsed share
+      for (const c of cats) {
+        if (!inNk(c) || c.nk_spread !== 'year' || c.active === false) continue;
+        const freq = c.frequency || 'monatlich', dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
+        const asNeeded = /sporad|bedarf/i.test(String(freq));
+        let rest = 0;
+        for (let ym = nextYm(cut.slice(0, 7)); ym <= full.to.slice(0, 7); ym = nextYm(ym)) {
+          const yy = Number(ym.slice(0, 4)), mm = Number(ym.slice(5, 7));
+          const bk = (C.castel_expenses || []).filter(e => Number(e.category_id) === Number(c.id) && Number(e.year) === yy && Number(e.month) === mm);
+          if (bk.length) { rest += bk.reduce((a, e) => a + (Number(e.amount) || 0), 0); continue; }
+          const due = asNeeded ? dm.includes(mm) : freq === 'monatlich' ? (!dm.length || dm.includes(mm)) : dm.includes(mm);
+          if (due && typeof ctlCastelAmountAt === 'function') rest += Number(ctlCastelAmountAt(c, yy, mm).amount) || 0;
+        }
+        const L = byCat[c.id] || null, booked = L ? (L.booked || 0) : 0, yearAmt = booked + rest;
+        if (!yearAmt) continue;
+        const LL = L || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [], catId: c.id });
+        LL.parts.push({ amount: r2(yearAmt * shareYear), spread: 'year' });
+      }
+    }
+    Object.values(byCat).forEach(l => { delete l.booked; if (l.parts.length) lines.push(l); });
 
     // one-offs with the NK switch (Casa Castel only, settlement results excluded)
     const ABR = typeof CX_ABR_KINDS !== 'undefined' ? CX_ABR_KINDS : ['NK-Abrechnung', 'Hausgeldabrechnung'];
@@ -203,7 +235,7 @@ const NkCasa = (() => {
       const hg = o.kind === 'Versorger';
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
-                   parts: [hg ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'from', date: d }], catId: hg && c ? c.id : null,
+                   parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: hg && c ? c.id : null,
                    info: { date: d, company: o.company || '', item: o.item || '', amount: amt } });
       if (hg && !c) warn.push('Hausgeld entry ' + d + ' has no cost type – split by person');
     }
@@ -249,7 +281,7 @@ const NkCasa = (() => {
     }
     for (const t of tenancies) { t.vz = r2(t.vz); if (t.vzMissing.length) warn.push(t.name + ': NK paid missing in Controlling for ' + t.vzMissing.length + ' month(s)'); }
 
-    return { period, months, lines, tenancies, warn };
+    return { period, fullPeriod: full, preview: preview ? { cutoff: cut, share: shareYear } : null, months, lines, tenancies, warn };
   }
 
   /* ── Kostenquote (Oct 2026) ─────────────────────────────────
