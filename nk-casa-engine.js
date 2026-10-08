@@ -191,6 +191,16 @@ const NkCasa = (() => {
     const catOf = id => cats.find(c => Number(c.id) === Number(id)) || null;
     const keyOf = () => 'personen';                            // Oct 2026: Casa Castel no longer splits anything by m² (Gas included)
     const inNk = c => !!c && c.code !== 'RATE' && c.nk_key !== 'none';
+    // name match for invoices without a cost type: same start, or one small typo in the first word (Regeneriersalz ~ Regeniersalz)
+    const plain = v => String(v || '').toLowerCase().replace(/[^a-zäöüß0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const lev = (a, b) => { const m = a.length, n = b.length; if (Math.abs(m - n) > 2) return 3; let p = Array.from({ length: n + 1 }, (_, j) => j);
+      for (let i = 1; i <= m; i++) { const q = [i]; for (let j = 1; j <= n; j++) q[j] = Math.min(p[j] + 1, q[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); p = q; } return p[n]; };
+    const catByName = text => {
+      const t = plain(text); if (!t) return null;
+      const w = t.split(' ')[0];
+      return cats.find(c => inNk(c) && plain(c.name) && (t.startsWith(plain(c.name)) || plain(c.name).startsWith(t))) ||
+             cats.find(c => inNk(c) && w.length >= 6 && lev(w, plain(c.name).split(' ')[0]) <= 2) || null;
+    };
     const lines = [];
     const byCat = {};
     for (const e of (C.castel_expenses || [])) {
@@ -230,9 +240,11 @@ const NkCasa = (() => {
     for (const o of (C.one_time || [])) {
       if (Number(o.property_id) !== CASA || !o.nk_umlage || ABR.includes(o.kind)) continue;
       const d = D(o.invoice_date); if (d < period.from || d > period.to) continue;
-      const c = catOf(o.nk_category_id);
-      const amt = (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0);      // Guthaben / refund lowers the costs
       const hg = o.kind === 'Versorger' || /jahresabrechnung/i.test(String(o.item || ''));   // Strom · Gas · Wasser yearly result
+      // cost type: the one chosen in Controlling, else an NK cost type whose name the invoice carries
+      // (e.g. "Gärtner Mai" → Gärtner) — so official sporadic costs keep their own line in the letter
+      const c = catOf(o.nk_category_id) || (hg ? null : catByName(o.item || o.company));
+      const amt = (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0);      // Guthaben / refund lowers the costs
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
                    parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',
