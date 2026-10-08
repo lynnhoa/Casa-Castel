@@ -365,7 +365,7 @@ function scSay(t) {
   const s = t.saldo, a = scE(Math.abs(s));
   if (t.k === 'none') return ['', 'Pauschal – no NK'];
   if (t.k === 'done') {
-    if (t.skipped) return ['', 'skipped'];
+    if (t.skipped) return ['', 'skipped · tap to undo'];
     const r = t.st.res, b = t.st.booking;
     if (!r) return ['', 'settled'];
     if (b && Number(b.amount) < 0.005) return ['', r.dir > 0 ? 'let go ' + scE(r.amount) : 'kept ' + scE(r.amount)];
@@ -777,6 +777,14 @@ function scTenView(M, m) {
     '<span><p class="srm__t">' + stEsc(t.name) + '</p><p class="srm__s">' + stEsc(t.room + (t.m2 ? ' · ' + String(t.m2).replace('.', ',') + ' m²' : '') + (t.movedOut ? ' · moved out' : '')) + '</p></span></div></div>' +
     '<button class="srm__x" data-sc="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
   if (t.k === 'none') return head + '<div class="srm__b"><div class="srm__one"><div class="sc-res"><span class="sc-res__l">' + stEsc(first) + ' pays Pauschal</span><span class="sc-res__v">no NK</span><span class="sc-res__w">The Nebenkosten are included in the rent – this share stays with you.</span></div></div></div>';
+  if (t.skipped) {
+    const v = t.saldo, prev = Math.abs(v || 0) >= 0.005 ? (v > 0 ? 'Nachzahlung ' : 'Guthaben ') + scE(Math.abs(v)) : 'balanced';
+    return head + '<div class="srm__b"><div class="srm__one sc-sheet">' +
+      '<section class="srm__card sr-skip"><p class="sr-skip__t"><i class="ti ti-player-skip-forward" aria-hidden="true"></i> This NK is skipped</p>' +
+      '<p class="sr-skip__s">No letter and no result for ' + stEsc(t.name) + ' (' + stEsc(stPer(t.from, t.to)) + ') – it counts as done.</p>' +
+      '<p class="sr-skip__s">If you bring it back, the NK is calculated again: currently <b>' + stEsc(prev) + '</b>.</p></section></div></div>' +
+      '<div class="srm__bar"><button class="cx-btn cx-btn--p" data-sc="setUndo" data-k="' + stEsc(t.key) + '"><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Undo skip</button></div>';
+  }
   const res = t.k === 'sent' || t.k === 'done' ? t.st && t.st.res : null;
   const saldo = res ? res.dir * res.amount : t.saldo;
   const tone = saldo > 0 ? 'pos' : saldo < 0 ? 'neg' : 'even';            // money that comes to you = green
@@ -851,7 +859,8 @@ function scTenView(M, m) {
   else if (t.k === 'done') bar = scLetterBtn(t) + '<button class="cx-btn cx-btn--s" data-sc="reopen" data-k="' + stEsc(t.key) + '">Back to open</button>';
   const skipFlow = m.flow ? '<button class="cx-link sc-skipflow" data-sc="flowNext">Skip for now ›</button>' : '';
   const lockHint = t.k === 'open' && M.sendable && !M.locked && !noData ? '<p class="sc-hint2" style="text-align:center">Lock the house costs to send the letter.</p>' : '';
-  const xDel = t.extra && t.k === 'open' ? '<button class="cx-link sc-skipflow" data-sc="extraDel" data-k="' + stEsc(t.key) + '">Remove this tenant from this NK</button>' : '';
+  const xDel = t.extra && t.k === 'open' ? '<button class="cx-link sc-skipflow" data-sc="extraDel" data-k="' + stEsc(t.key) + '">Remove this tenant from this NK</button>'
+    : t.k === 'open' && t.line ? '<button class="cx-link sc-skipflow" data-sc="skip" data-k="' + stEsc(t.key) + '">Skip this NK</button>' : '';
   const cmp = altTxt ? '<p class="sc-cmp"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> ' + stEsc(altTxt) + '</p>' : '';
   void hero; void tiles; void det;
   const step = t.k === 'done' ? 3 : t.k === 'sent' ? 2 : M.locked && !noData ? 1 : 0;
@@ -966,6 +975,15 @@ async function scSetAmount(key, raw, btn) {
   const m = SC.modal;
   SC.model = scModel(M.y); stRenderCasa();
   SC.modal = m && m.view === 'settle' ? (m.back || { view: 'ten', key }) : m; scRenderModal();
+}
+/* Skip this NK (no letter, no result) – counts as done; "Undo skip" brings it back */
+async function scSkip(key) {
+  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
+  if (!(await stConfirm({ title: 'Skip this NK?', ok: 'Skip', text: 'No letter and no result for ' + t.name + ' – it counts as done. You can undo it later.' }))) return;
+  try { await _stUpsertSettlement(t.line, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null }); }
+  catch (e) { stSay('Could not save — ' + (e.message || e)); return; }
+  ctlSettlementInvalidate(); stSay('Skipped');
+  const m = SC.modal; SC.model = scModel(M.y); stRenderCasa(); SC.modal = m && m.flow ? m : { view: 'ten', key }; scRenderModal();
 }
 /* Back to open (sent, waiting): the booking in Controlling goes too; a skipped NK comes back as open */
 async function scSetUndo(key) {
@@ -1246,6 +1264,7 @@ async function scClick(e) {
   if (a === 'setEdit') { SC.setEdit = 'c:' + b.dataset.k; scRenderModal(); const inp = document.querySelector('#scModal input[data-stset="' + SC.setEdit + '"]'); if (inp) { inp.focus(); inp.select(); } return; }
   if (a === 'setCancel') { SC.setEdit = null; return scRenderModal(); }
   if (a === 'setUndo') return scSetUndo(b.dataset.k);
+  if (a === 'skip') return scSkip(b.dataset.k);
   if (a === 'reopen') {
     const t = M && M.ten.find(x => x.key === b.dataset.k);
     if (t && t.extra) { if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return; delete scSet(t.key).sent; try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {} SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal(); }
