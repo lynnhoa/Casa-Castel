@@ -469,7 +469,7 @@ async function sdLetterData(d) {
   const date = d.letter_date || cxToday(), due = new Date(date + 'T12:00:00Z'); due.setUTCDate(due.getUTCDate() + (Number(d.due_days ?? 30) || 30));
   const last = String(d.tenant_name || '').split(' ').slice(-1)[0];
   const brand = casa ? 'Casa Castel' : p ? (apt.name || p.name) : (d.title_name || '').trim();
-  return {
+  const D = {
     brand, unitLabel: casa ? 'Zimmer' : p ? 'Wohnung' : '', unitName: casa ? (d.unit_label || '') : (apt.wohnungsnummer || ''),
     footer: addr.join(' \u00b7 '), sender, vermieter: s.vermieter_name || '', ort, date, names: [d.tenant_name || ''],
     addr: String(d.address || '').split(/\n|,\s*(?=\d{5}\b)/).map(z => z.trim()).filter(Boolean),
@@ -495,6 +495,23 @@ async function sdLetterData(d) {
     note2: x.lines.some(l => l.split === 'days') ? 'Anteil nach Tagen: Kosten × Nutzungstage (' + x.useDays + ') / Tage des Abrechnungszeitraums (' + x.perDays + '). Nicht umlagefähige Kosten sind nicht enthalten.' : 'Nicht umlagefähige Kosten sind nicht enthalten.',
     extra: null,
   };
+  // One-page letter (Oct 2026): header left only for Casa Castel · costs left · monthly Vorauszahlungen right
+  const MON = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+  D.brand = casa ? 'Casa Castel' : '';
+  D.unitName = casa ? (d.unit_label || '') : (brand || '');
+  D.title = 'Betriebskostenabrechnung ' + dt(x.uf) + ' \u2013 ' + dt(x.ut);
+  D.facts1 = [[unit, casa ? (d.unit_label || '') : (addr[0] || brand), casa ? 'Casa Castel \u00b7 ' + (addr[0] || '') : (addr[1] || '')],
+              ['Zeitraum', dt(x.uf) + ' \u2013 ' + dt(x.ut), x.partial ? x.useDays + ' von ' + x.perDays + ' Tagen' : x.perDays + ' Tage'],
+              ...(x.partial ? [['Abrechnungsjahr', dt(d.period_from) + ' \u2013 ' + dt(d.period_to), x.perDays + ' Tage']] : [])];
+  D.introHtml = 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (x.partial ? ' Die Kosten sind nach Tagen anteilig berechnet.' : '');
+  D.costs = { cols: [{ label: 'Kostenart', w: '70%' }, { label: x.partial ? 'Anteil ' + x.useDays + '/' + x.perDays + ' Tage' : 'Betrag', w: '30%', cls: 'r' }],
+              rows: x.lines.map(l => [l.label, l.share === null ? '\u2014' : eur(l.share)]) };
+  D.vzMonths = x.months.map(ym => ({ label: MON[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4), amt: sdNum(sdVzOf(d, ym)) || 0 }));
+  D.hints = casa ? ['Nicht umlagefähige Kosten sind nicht enthalten.']
+                 : ['Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.',
+                    'Die Belege können nach Terminabsprache eingesehen werden. Einwendungen sind bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'];
+  D.table = null; D.outro = '';
+  return D;
 }
 const sdFileName = d => ccPdfFileName('NK-Abrechnung', String(d.period_to).slice(0, 4), sdPropName(d).replace(/\s*·\s*/g, '-'), String(d.tenant_name || '').split(' ').slice(-1)[0]);
 async function sdPdf(btn) {

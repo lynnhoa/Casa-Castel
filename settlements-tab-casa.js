@@ -938,7 +938,7 @@ async function scLetterData(M, t) {
     extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: extraLines.some(l => l.group === 'hausgeld') ? 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung auf Seite 2 eingeflossen sind. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.' : 'Die Einzelrechnungen, die auf Seite 2 in die Aufstellung eingeflossen sind – ohne eigene Kostenart unter „Allgemeine Hauskosten“.',
       rows: extraLines.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(extraLines.reduce((a, l) => a + l.info.amount, 0)) } : null,
   };
-  if (!Q) return D;
+  if (!Q) return scLetterLayout(D, M, t, { SL, Q, merged, list, extraLines, house, partial });
   // ── Kostenquote: every lived month carries the same amount
   const mo = scMo(t.months);
   D.introHtml = 'anbei die Abrechnung der Betriebskosten für das ' + (former ? 'ehemalige ' : '') + 'Zimmer „' + t.room + '“ in der Casa Castel für den Zeitraum vom <strong>' + dt(per.from) + ' bis ' + dt(per.to) + '</strong>.' +
@@ -955,6 +955,33 @@ async function scLetterData(M, t) {
               'Jeder bewohnte Monat kostet dadurch gleich viel – egal, wann im Jahr und wie viele Personen gerade im Haus wohnen. Monate ohne Bewohner zählen nicht mit.',
               ...(merged ? ['Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
               'Nicht umlagefähige Kosten sind nicht enthalten.'];
+  return scLetterLayout(D, M, t, { SL, Q, merged, list, extraLines, house, partial });
+}
+/* One-page letter (Oct 2026): costs left · monthly NK-Vorauszahlungen right · one result box · Belegliste on page 2 */
+const SC_MON = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+function scLetterLayout(D, M, t, o) {
+  const dt = iso => stDate(iso);
+  const eur = v => { const n = Number(v) || 0; return (n < -0.004 ? '\u2212\u00a0' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };
+  const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const Q = o.Q, mo = scMo(t.months), per = M.R.period;
+  D.title = 'Betriebskostenabrechnung ' + dt(t.from) + ' \u2013 ' + dt(t.to);
+  D.facts1 = [['Zimmer', t.room, 'Casa Castel \u00b7 ' + (o.house[0] || '')],
+              ['Zeitraum', dt(t.from) + ' \u2013 ' + dt(t.to), Q ? mo + ' Monate' : t.days + (o.partial ? ' von ' + M.R.days : '') + ' Tage'],
+              Q ? ['Anteil', nf(t.months / Q.months * 100, 2) + '\u00a0%', mo + ' von ' + scMo(Q.months) + ' bewohnten Monaten']
+                : ['Abrechnungsjahr', dt(per.from) + ' \u2013 ' + dt(per.to), 'Verteilung nach Personen']];
+  D.introHtml = 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (o.partial ? ' Berechnet werden nur die bewohnten ' + (Q ? 'Monate.' : 'Tage.') : '');
+  D.costs = { cols: [{ label: 'Kostenart', w: '52%' }, { label: 'Haus gesamt', w: '24%', cls: 'r' }, { label: 'Anteil', w: '24%', cls: 'r' }],
+              rows: o.SL.map(g => [g.label, eur(g.total), eur(g.amount)]),
+              sumMid: Q ? Q.total : cxR(o.SL.reduce((a, g) => a + (Number(g.total) || 0), 0)) };
+  const ov = (t.set && t.set.vzMonths) || {};
+  D.vzMonths = Object.keys(t.vzMap || {}).sort().map(ym => ({ label: SC_MON[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4), amt: ov[ym] !== undefined ? Number(ov[ym]) || 0 : t.vzMap[ym].amt }));
+  const beleg = o.list && o.extraLines.length;
+  D.hints = [Q ? 'Verteilung: Hauskosten \u00f7 alle bewohnten Monate im Haus = gleicher Betrag je Monat für alle Zimmer; leere Zimmer gehen nicht zu Lasten einzelner Mieter.'
+               : 'Verteilung: Die Kosten jedes Tages werden zu gleichen Teilen auf alle Personen verteilt, die an diesem Tag im Haus wohnen.',
+             ...(o.merged ? ['Versorger-Jahresabrechnungen (Strom, Gas, Wasser) sind mit den Abschlägen verrechnet.'] : []),
+             ...(beleg ? ['Die Einzelrechnungen stehen in der Belegliste auf Seite 2.'] : [])];
+  D.anlagen = beleg ? 'Belegliste (Seite 2)' : '';
+  D.outro = ''; D.table = null;
   return D;
 }
 const scFileName = (M, t) => ccPdfFileName('NK-Abrechnung', M.y, 'Casa-Castel', t.room, String(t.name).split(' ').slice(-1)[0]);

@@ -585,159 +585,34 @@ function _srLetterData(c, it, rec, x, ts) {
   };
 }
 
-/* The letter: same page frame, fonts and colours as the Rentals contracts. Lean: only what the Abrechnung needs. */
+/* The letter (Oct 2026 redesign): one page in the shared NK design (nk-letter.js) — header right: Wohnung + name,
+   left empty · Betreff = period the tenant lived there · costs left, monthly NK-Vorauszahlungen right · one result box */
 function srLetterHtml(d) {
-  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const eur = n => (Number(n) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
   const dt = iso => cxFmtDate(iso);
-  const nb = s => String(s).replace(/§ /g, '§\u00a0').replace(/Abs\. /g, 'Abs.\u00a0').replace(/Satz /g, 'Satz\u00a0');
-  const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300&display=swap');`;
-  // same design as every NK letter (nk-letter.js · Oct 2026); the old frame stays only as a fallback
-  const CSS = typeof NK_LETTER_CSS !== 'undefined' ? NK_LETTER_CSS : `
-    * { margin:0; padding:0; box-sizing:border-box; }
-    .page { position:relative; width:793.71px; height:1122.52px; background:#ffffff; overflow:hidden; }
-    .content { position:absolute; top:150px; left:80px; right:80px; bottom:72px; overflow:hidden; }`;
-  const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.aptName)}</span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${esc(d.wohnungsnummer)}</span></div></div>`;
-  const ftr = () => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer)}</span><span>Seite <span class="pgn">1</span> von <span class="pgt">2</span></span></div></div>`;
-  const kv = (k, v) => `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
-
-  const perTxt = dt(d.perFrom) + ' bis ' + dt(d.perTo);
-  const amt = Math.abs(d.saldo);
-  const resLabel = d.saldo > 0 ? 'Nachzahlung' : d.saldo < 0 ? 'Guthaben' : 'Ergebnis';
-  const E = Number(d.einbehalt) || 0, due = `<strong>${dt(d.due)}</strong>`;
-  const res = d.saldo > 0 ? `Es entsteht eine Nachzahlung von <strong>${eur(amt)}</strong>.` : d.saldo < 0 ? `Es entsteht ein Guthaben von <strong>${eur(amt)}</strong>.` : '';
-  const ourBank = () => `<div class="bank">${kv('Kontoinhaber', esc(d.bank.inhaber))}${d.bank.bank ? kv('Bank', esc(d.bank.bank)) : ''}${kv('IBAN', esc(d.bank.iban))}${d.bank.bic ? kv('BIC', esc(d.bank.bic)) : ''}${kv('Verwendungszweck', esc(d.verwendung))}</div>`;
-  const line = '<span class="fill"></span>';
-  const theirBank = () => `<div class="bank">${kv('Kontoinhaber', esc(_srJoin(d.names)) || line)}${kv('IBAN', d.tenantIban ? esc(d.tenantIban) : line)}${d.tenantIban ? '' : kv('Bank', line)}</div>`;
-  // money back: to the tenant's account (IBAN from the sheet, else lines to fill in) — known account for current tenants without IBAN
-  const back = what => (d.tenantIban || d.former)
-    ? `<p class="p">${what} bis zum ${due} auf folgendes Bankkonto zurücküberwiesen:</p>${theirBank()}`
-    : `<p class="p">${what} bis zum ${due} auf das bekannte Konto zurücküberwiesen. Bei einer geänderten Bankverbindung bitte kurz Bescheid geben.</p>`;
-  let pay;
-  if (d.saldo > 0 && d.via === 'zahlung') {
-    pay = `<p class="p">${res} Der Betrag ist bis zum ${due} auf folgendes Konto zu überweisen:</p>${ourBank()}`;
-  } else if (d.saldo > 0 && d.via === 'kaution' && E > 0) {
-    const rest = Math.round((E - amt) * 100) / 100, head = `${res} Der Betrag wird mit dem einbehaltenen Teil der Mietkaution (${eur(E)}) verrechnet.`;
-    pay = rest > 0 ? `<p class="p">${head}</p>` + back(`Der verbleibende Betrag von <strong>${eur(rest)}</strong> wird`)
-      : rest === 0 ? `<p class="p">${head} Damit ist die Kaution vollständig abgerechnet.</p>`
-      : `<p class="p">${head} Der verbleibende Betrag von <strong>${eur(-rest)}</strong> ist bis zum ${due} auf folgendes Konto zu überweisen:</p>${ourBank()}`;
-  } else if (d.saldo > 0 && d.via === 'kaution') {
-    pay = `<p class="p">${res} Der Betrag wird mit der Mietkaution verrechnet – eine Überweisung ist nicht nötig.</p>`;
-  } else if (d.saldo > 0) {
-    pay = `<p class="p">${res} Der Betrag ist zusammen mit der nächsten Miete zu zahlen, spätestens bis zum ${due} (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
-  } else if (d.saldo < 0 && d.via === 'zahlung') {
-    pay = `<p class="p">${res}</p>` + back('Das Guthaben wird');
-  } else if (d.saldo < 0 && d.via === 'miete') {
-    pay = `<p class="p">${res} Das Guthaben kann mit der nächsten Mietzahlung verrechnet werden: Die nächste Miete wird um diesen Betrag gekürzt überwiesen.</p>`;
-  } else if (d.saldo < 0 && E > 0) {
-    pay = `<p class="p">${res}</p>` + back(`Das Guthaben und der einbehaltene Teil der Mietkaution (${eur(E)}), insgesamt <strong>${eur(amt + E)}</strong>, werden`);
-  } else if (d.saldo < 0) {
-    pay = `<p class="p">${res} Das Guthaben wird bei der Abrechnung der Mietkaution berücksichtigt.</p>`;
-  } else if (E > 0) {
-    pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>` + back(`Der einbehaltene Teil der Mietkaution von <strong>${eur(E)}</strong> wird`);
-  } else {
-    pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>`;
-  }
+  const eur = n => { const v = Number(n) || 0; return (v < -0.004 ? '\u2212\u00a0' : '') + Math.abs(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };
+  const parts = String(d.objekt || '').split(/\s*,\s*/).filter(Boolean);
+  const plz = parts.length > 1 && /^\d{5}\b/.test(parts[parts.length - 1]) ? parts.pop() : '';
+  const year = String(d.perTo || '').slice(0, 4);
   const vzNew = d.newVz !== null && d.newVz !== undefined
-    ? `<p class="p">Auf Grundlage dieser Abrechnung wird die monatliche Betriebskostenvorauszahlung nach ${nb('§ 560 Abs. 4 BGB')} ${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> angepasst.</p>` : '';
-
-  const page1 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
-    <div class="addr"><div class="addr__l">
-      <div class="addr__ret">${esc(d.sender.join(' \u00b7 '))}</div>
-      ${d.names.map(n => `<div class="addr__line">${esc(n)}</div>`).join('')}${d.addr.map(n => `<div class="addr__line">${esc(n)}</div>`).join('')}
-    </div><div class="meta"><div class="meta__k">Datum</div><div class="meta__v">${esc((d.ort ? d.ort + ', ' : '') + dt(d.date))}</div></div></div>
-    <div class="doc-title">Betriebskostenabrechnung ${esc(d.periodLabel)}</div>
-    <div class="doc-subtitle">${d.objekt ? 'Mietobjekt ' + esc(d.objekt) + ' \u00b7 ' : ''}Abrechnungszeitraum ${perTxt}${d.hvDate ? '<br/>Grundlage: Hausgeldabrechnung ' + (d.hvName ? esc(d.hvName) + ' ' : '') + 'vom ' + dt(d.hvDate) : ''}</div>
-    <p class="p" style="margin-top:0">${d.names.length ? 'Guten Tag ' + esc(_srJoin(d.names)) + ',' : 'Sehr geehrte Damen und Herren,'}</p>
-    <p class="p">hiermit erfolgt die Abrechnung der Betriebskosten für die ${d.former ? 'ehemalige ' : ''}Wohnung für den Abrechnungszeitraum vom <strong>${perTxt}</strong>.${d.partial ? ` Die Wohnung wurde in diesem Zeitraum vom ${dt(d.useFrom)} bis ${dt(d.useTo)} genutzt (${d.tDays} von ${d.perDays} Tagen); die Kosten sind deshalb zeitanteilig berechnet.` : ''}</p>
-    <div class="sec">Ergebnis</div>
-    <div class="sum">
-      <div class="sum__r"><span>Anteil an den Betriebskosten</span><span>${eur(d.sum)}</span></div>
-      <div class="sum__r"><span>abzüglich geleisteter Vorauszahlungen</span><span>\u2212\u00a0${eur(d.vz)}</span></div>
-      <div class="total-box"><span>${resLabel}</span><span>${d.saldo ? eur(amt) : 'ausgeglichen'}</span></div>
-    </div>
-    ${pay}${vzNew}
-    <div class="sec">Hinweise</div>
-    <div class="hints">
-      <div class="hint"><span>Die Aufstellung aller Kosten${d.vzMonths && d.vzMonths.length ? ', der monatlich geleisteten Vorauszahlungen' : ''} und die Berechnung des Ergebnisses stehen auf Seite 2.</span></div>
-      <div class="hint"><span>Die Belege können nach vorheriger Terminabsprache eingesehen werden.</span></div>
-      <div class="hint"><span>${esc(nb('Einwendungen gegen diese Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'))}</span></div>
-    </div>
-    <p class="greet">Mit freundlichen Grüßen</p>
-    <p class="greet__name">${esc(d.vermieter)}</p>
-    ${d.anlagen ? `<p class="anl">Anlage: ${esc(d.anlagen)}</p>` : ''}
-  </div></div>`;
-
-  // page 2 — the statement
-  // simple (the usual case): the Wohnung's amounts from the HV's Einzelabrechnung → your share by days;
-  // the Einzelabrechnung is attached and shows the Gesamtkosten and how they were split on the Wohnung
-  const simple = d.lines.every(l => !_srShareKey(l.pos.key) || _srNum(l.pos.amount) !== null);
-  const five = d.partial || d.direct;
-  const span = simple ? (five ? 2 : 1) : (five ? 4 : 3);
-  let cols, th, rows;
-  if (simple) {
-    cols = five ? '<col style="width:52%"/><col style="width:24%"/><col style="width:24%"/>' : '<col style="width:72%"/><col style="width:28%"/>';
-    th = `<tr><th>Kostenart</th><th class="r">Kosten der Wohnung</th>${five ? `<th class="r">Anteil${d.partial ? '<br/>' + d.tDays + '/' + d.perDays + ' Tage' : ''}</th>` : ''}</tr>`;
-    rows = d.lines.map(l => `<tr><td>${esc(l.pos.label || _srKind(l.pos.kind).l)}${l.pos.split === 'mieter' ? ' <span style="color:#888780">(Zwischenablesung)</span>' : ''}</td><td class="r">${l.unit !== null ? eur(l.unit) : '\u2014'}</td>${five ? `<td class="r">${eur(l.amt)}</td>` : ''}</tr>`).join('');
-  } else {
-    cols = five ? '<col style="width:30%"/><col style="width:15%"/><col style="width:25%"/><col style="width:15%"/><col style="width:15%"/>'
-                : '<col style="width:36%"/><col style="width:18%"/><col style="width:28%"/><col style="width:18%"/>';
-    th = `<tr><th>Kostenart</th><th class="r">Gesamtkosten</th><th class="k">Verteilerschlüssel</th><th class="r">Anteil Wohnung</th>${five ? `<th class="r">Anteil${d.partial ? '<br/>' + d.tDays + '/' + d.perDays + ' Tage' : ''}</th>` : ''}</tr>`;
-    rows = d.lines.map(l => {
-      const neg = _srKind(l.pos.kind).neg;
-      const tot = l.total !== null && l.total !== undefined ? eur(neg ? -Math.abs(l.total) : l.total) : (l.pos.key === 'verbrauch' ? 'lt. Anlage' : (l.unit !== null ? eur(l.unit) : '\u2014'));
-      const key = l.pos.split === 'mieter' ? 'Zwischenablesung Nutzerwechsel' : l.keyText;
-      return `<tr><td>${esc(l.pos.label || _srKind(l.pos.kind).l)}</td><td class="r">${tot}</td><td class="k">${esc(key)}</td><td class="r">${l.unit !== null ? eur(l.unit) : '\u2014'}</td>${five ? `<td class="r">${eur(l.amt)}</td>` : ''}</tr>`;
-    }).join('');
-  }
-  const VZ = d.vzMonths || [];
-  const tail = VZ.length
-    ? `<tr class="s"><td colspan="${span}">Summe Kostenanteil</td><td class="r">${eur(d.sum)}</td></tr>`
-    : `<tr class="s"><td colspan="${span}">Summe Anteil</td><td class="r">${eur(d.sum)}</td></tr>
-    <tr class="v"><td colspan="${span}">abzüglich geleisteter Vorauszahlungen</td><td class="r">\u2212\u00a0${eur(d.vz)}</td></tr>`;
-  // Geleistete Vorauszahlungen per month — beside the costs (simple statement) or below them in two halves
-  const vzRow = v => `<tr><td${v.corr ? ' class="m"' : ''}>${esc(v.label)}${v.part ? `<span class="sub">${esc(v.part)}</span>` : ''}</td><td class="r">${v.amt < 0 ? '\u2212\u00a0' + eur(-v.amt) : eur(v.amt)}</td></tr>`;
-  const vzTable = (list, head, withSum) => `<table class="nk"><colgroup><col style="width:58%"/><col style="width:42%"/></colgroup>
-    <thead><tr><th>${head}</th><th class="r">Vorauszahlung</th></tr></thead><tbody>${list.map(vzRow).join('')}
-    ${withSum ? `<tr class="s"><td>Summe Vorauszahlungen</td><td class="r">${eur(d.vz)}</td></tr>` : ''}</tbody></table>`;
-  const calc = VZ.length ? `<div class="sum" style="margin-top:22px">
-      <div class="sum__r"><span>Summe Kostenanteil</span><span>${eur(d.sum)}</span></div>
-      <div class="sum__r"><span>abzüglich geleisteter Vorauszahlungen</span><span>\u2212\u00a0${eur(d.vz)}</span></div>
-    </div>` : '';
-  const costTable = `<table class="nk"><colgroup>${cols}</colgroup><thead>${th}</thead><tbody>${rows}${tail}</tbody></table>`;
-  let body;
-  if (!VZ.length) body = costTable;
-  else if (simple) body = `<div style="display:flex;gap:30px;align-items:flex-start"><div style="flex:1 1 60%;min-width:0">${costTable}</div><div style="flex:0 0 36%">${vzTable(VZ, 'Monat', true)}</div></div>`;
-  else {
-    const h = Math.ceil(VZ.length / 2);
-    body = `${costTable}<div class="sec" style="margin-top:22px">Geleistete Vorauszahlungen</div>
-      <div style="display:flex;gap:30px;align-items:flex-start;margin-top:8px"><div style="flex:1 1 50%;min-width:0">${vzTable(VZ.slice(0, h), 'Monat', false)}</div><div style="flex:1 1 50%;min-width:0">${vzTable(VZ.slice(h), 'Monat', VZ.length > 0)}</div></div>`;
-  }
-  const expl = [];
-  if (simple) {
-    if (d.partial) expl.push(`Anteil: Kosten der Wohnung × Nutzungstage (${d.tDays}) / Tage des Abrechnungszeitraums (${d.perDays}).`);
-  } else {
-    if (d.hasFlaeche) expl.push('Wohnfläche: Wohnfläche der Wohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes.');
-    if (d.hasMea) expl.push('MEA: Miteigentumsanteile der Wohnung laut Teilungserklärung' + (d.keyMode === 'weg' ? nb(', wie in der Abrechnung der Eigentümergemeinschaft (§ 556a Abs. 3 BGB)') : '') + '.');
-  }
-  if (d.hasVerbrauch) expl.push('Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung' + (d.direct ? ', beim Mieterwechsel laut Zwischenablesung' : '') + ' (siehe Anlage).');
-  if (VZ.length) expl.push('Vorauszahlungen: monatlich geleistete Betriebskostenvorauszahlungen im Abrechnungszeitraum' + (VZ.some(v => v.part) ? ', angefangene Monate anteilig nach Tagen' : '') + '.');
-  expl.push('Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.');
-  const basis = simple
-    ? ` Grundlage ist die Einzelabrechnung der Hausverwaltung${d.hvDate ? ' vom ' + dt(d.hvDate) : ''} (Anlage); sie weist die Gesamtkosten der Eigentümergemeinschaft und ihre Verteilung auf diese Wohnung aus.`
-    : '';
-
-  const page2 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
-    <div class="doc-title doc-title--s">Aufstellung der Betriebskosten ${esc(d.periodLabel)}</div>
-    <div class="doc-subtitle">${d.objekt ? 'Mietobjekt ' + esc(d.objekt) + ' \u00b7 ' : ''}Wohnung ${esc(d.wohnungsnummer || d.aptName || '')}</div>
-    <p class="intro2">Abrechnungszeitraum ${perTxt} (${d.perDays} Tage)${d.partial ? ` \u00b7 Nutzungszeitraum ${dt(d.useFrom)} bis ${dt(d.useTo)} (${d.tDays} Tage)` : ''}.${basis} Umgelegt werden die im Mietvertrag vereinbarten Betriebskosten ${nb('nach § 2 BetrKV')}.</p>
-    ${body}${calc}
-    <div class="total-box res2"><span>${resLabel}</span><span>${d.saldo ? eur(amt) : 'ausgeglichen'}</span></div>
-    <p class="note2">${esc(expl.join(' '))}</p>
-  </div></div>`;
-
-  const scoped = CSS.replace(/([^{}]+)\{/g, (m, sel) => sel.split(',').map(x => '.nk-letter ' + x.trim()).join(', ') + ' {');
-  return `<div class="nk-letter"><style>${FONTS}</style><style>${scoped}</style>${page1}${page2}</div>`;
+    ? `<p class="p">Auf Grundlage dieser Abrechnung wird die monatliche Betriebskostenvorauszahlung nach §\u00a0560 Abs.\u00a04 BGB ${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> angepasst.</p>` : '';
+  return nkLetterHtml({
+    brand: '', unitLabel: 'Wohnung', unitName: d.aptName,
+    footer: d.footer, sender: d.sender, vermieter: d.vermieter, ort: d.ort, date: d.date, names: d.names, addr: d.addr,
+    title: 'Betriebskostenabrechnung ' + dt(d.useFrom) + ' \u2013 ' + dt(d.useTo),
+    facts1: [['Wohnung', parts.join(', ') || d.aptName, plz],
+             ['Zeitraum', dt(d.useFrom) + ' \u2013 ' + dt(d.useTo), d.partial ? d.tDays + ' von ' + d.perDays + ' Tagen \u00b7 Abrechnungsjahr ' + year : d.perDays + ' Tage'],
+             ['Grundlage', 'Hausgeldabrechnung', [d.hvName, d.hvDate ? 'vom ' + dt(d.hvDate) : ''].filter(Boolean).join(' ')]],
+    greeting: d.names.length ? 'Guten Tag ' + _srJoin(d.names) + ',' : 'Sehr geehrte Damen und Herren,',
+    introHtml: 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (d.partial ? ' Die Kosten sind nach Tagen anteilig berechnet.' : ''),
+    costs: { cols: [{ label: 'Kostenart', w: '70%' }, { label: d.partial ? 'Anteil ' + d.tDays + '/' + d.perDays + ' Tage' : 'Betrag', w: '30%', cls: 'r' }],
+             rows: d.lines.map(l => [(l.pos.label || _srKind(l.pos.kind).l) + (l.pos.split === 'mieter' ? ' (Zwischenablesung)' : ''), eur(l.amt)]) },
+    sum: d.sum, vz: d.vz, vzMonths: d.vzMonths || [], saldo: d.saldo, via: d.via, einbehalt: d.einbehalt, due: d.due,
+    bank: d.bank, verwendung: d.verwendung, tenantIban: d.tenantIban, former: d.former, du: false,
+    extraHtml: vzNew,
+    hints: [(d.hasVerbrauch ? 'Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung (siehe Anlage). ' : '') + 'Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.',
+            'Die Belege können nach Terminabsprache eingesehen werden. Einwendungen sind bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'],
+    closing: 'Mit freundlichen Grüßen', anlagen: d.anlagen, extra: null,
+  });
 }
 
 /* 5 · Verschickt → Tracking + Controlling (same path as Tracking) */
