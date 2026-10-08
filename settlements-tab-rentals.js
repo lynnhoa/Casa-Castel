@@ -1208,10 +1208,10 @@ function _srHvView(c) {
   if (editing) {
     const tab = SR.jaTab === 'n' ? 'n' : 'u', list = tab === 'u' ? U : N;
     const erow = ([p, i]) => {
-      const k = _srKind(p.kind), custom = p.kind === 'sonst' || p.kind === 'nu_sonst' || p.label;
+      const k = _srKind(p.kind), custom = p.kind === 'sonst' || p.kind === 'nu_sonst';     // only own rows get a name field
       const calcA = _srNum(p.amount) === null ? _srUnitAmt(d, p, c.apt) : null, v = _srNum(p.amount);
       const name = custom ? '<label class="sr-er__n is-c"><input list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || '') + '"/><i class="ti ti-pencil" aria-hidden="true"></i></label>'
-                          : '<span class="sr-er__n">' + stEsc(k.l) + '</span>';
+                          : '<span class="sr-er__n">' + stEsc(p.label || k.l) + '</span>';
       return '<div class="sr-er">' + name + '<label class="sr-amt' + (v !== null && _srSigned(p, v) < 0 ? ' is-neg' : '') + '"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" placeholder="' + stEsc(calcA !== null ? cxE2(Math.abs(calcA)) : '') + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></label></div>';
     };
     const tabs = '<div class="sr-tabs" role="tablist">' +

@@ -1229,3 +1229,7 @@ button.st-sg__r { cursor: pointer; }
 .sr-it:first-child { border-top: none; }
 .sr-it span:last-child { color: var(--cx-ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sr-it.is-neg span:last-child { color: #8A3B22; }
+/* one text size in the Kosten list – phones force inputs to 16 px (casa-castel.css); the viewport has maximum-scale=1, so no zoom on focus */
+.srm .sr-er__n, .srm .sr-er__n.is-c input, .srm .sr-amt input { font-size: 13px !important; }
+.srm .sr-er { grid-template-columns: minmax(0, 1fr) 108px; }
+.srm .sr-er__n.is-c i { font-size: 10px; }
