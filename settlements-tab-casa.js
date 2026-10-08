@@ -277,7 +277,7 @@ function stRenderCasa() {
   const tenSub = mo.ten === null ? 'no house costs yet' : pv + mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back');
   const hgN = mo.hgAll.length, hgIn = mo.hgAll.filter(h => h.on).length;
   const hgSub = !hgN ? 'Strom · Gas · Wasser · no Jahresabrechnung yet' : hgIn + ' of ' + hgN + ' Jahresabrechnung' + (hgN === 1 ? '' : 'en') + ' in the NK';
-  const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub, 'data-sc="sumTen"') + stTile('Hausgeld', 'receipt', mo.hg, hgSub, 'data-sc="sumHg"') + '</div>';
+  const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub, 'data-sc="sumTen"') + stTile('Hausgeld', 'receipt', mo.hg, hgSub, 'data-sc="costs"') + '</div>';
 
   const L = M.R.check;
   const noData = !M.locked && !M.R.lines.length;
@@ -317,8 +317,8 @@ function stRenderCasa() {
   const roomsHtml = scRoomsHtml(M);
   const nRooms = (window._src.rooms || []).filter(r => r.active !== false).length;
 
-  void progress; void tiles; void costsCard; void methCard;
-  el.innerHTML = '<div class="st-page sc-page">' + yearNav + sql + need + scHouseCard(M) + filter +
+  void costsCard; void methCard;
+  el.innerHTML = '<div class="st-page sc-page">' + yearNav + sql + progress + tiles + need + scHouseCard(M) + filter +
     stSec('Rooms', nRooms) + roomsHtml + letters +
     (!M.ten.length ? '<p class="cx-empty">No tenants with Kalt + NK in ' + stEsc(stPer(per.from, per.to)) + '.</p>' : '') + '</div>';
   scRenderModal();
