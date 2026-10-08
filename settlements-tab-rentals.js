@@ -1206,32 +1206,64 @@ function _srHvView(c) {
     (jaDone && !SR.jaEdit ? '<p class="sr-progmeta">Received ' + stDate(rec.received_on || rec.hv_date) + (rec.hv_date ? ' · statement ' + stDate(rec.hv_date) : '') + (c.verw && c.verw.hv_name ? ' · ' + stEsc(c.verw.hv_name) : '') + '</p>' : '') +
     (editing ? status + '<div class="sr-grid2">' + _srDateF('received_on', d.received_on, 'Received on') + _srDateF('hv_date', d.hv_date, 'Statement date') + '</div>' : '') + '</section>';
   if (editing) {
-    const card = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Kosten</p><span class="srm__cs">your Wohnung’s amounts</span></div>' + costs + check + '</section>' +
-      '<section class="srm__card">' + weg + settings + '</section>';
+    const tab = SR.jaTab === 'n' ? 'n' : 'u', list = tab === 'u' ? U : N;
+    const erow = ([p, i]) => {
+      const k = _srKind(p.kind), custom = p.kind === 'sonst' || p.kind === 'nu_sonst' || p.label;
+      const calcA = _srNum(p.amount) === null ? _srUnitAmt(d, p, c.apt) : null, v = _srNum(p.amount);
+      const name = custom ? '<label class="sr-er__n is-c"><input list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || '') + '"/><i class="ti ti-pencil" aria-hidden="true"></i></label>'
+                          : '<span class="sr-er__n">' + stEsc(k.l) + '</span>';
+      return '<div class="sr-er">' + name + '<label class="sr-amt' + (v !== null && _srSigned(p, v) < 0 ? ' is-neg' : '') + '"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" placeholder="' + stEsc(calcA !== null ? cxE2(Math.abs(calcA)) : '') + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></label></div>';
+    };
+    const tabs = '<div class="sr-tabs" role="tablist">' +
+      '<button class="sr-tab' + (tab === 'u' ? ' is-on' : '') + '" data-sr="jaTab" data-g="u" role="tab" aria-selected="' + (tab === 'u') + '">Umlagefähig<b data-sr-tot="u">' + stEur(tu) + '</b></button>' +
+      '<button class="sr-tab' + (tab === 'n' ? ' is-on' : '') + '" data-sr="jaTab" data-g="n" role="tab" aria-selected="' + (tab === 'n') + '">Nicht umlagefähig<b data-sr-tot="n">' + stEur(tn) + '</b></button></div>';
+    const kosten = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Kosten</p><span class="srm__cs">amounts of your Wohnung</span></div>' + tabs +
+      '<div class="sr-erlist">' + (list.map(erow).join('') || '<p class="st-hint">No rows yet.</p>') + '</div>' +
+      '<button class="sr-addrow2" data-sr="rowAdd" data-u="' + (tab === 'u' ? 1 : 0) + '"><i class="ti ti-plus" aria-hidden="true"></i> Add row</button>' +
+      '<datalist id="srKindList">' + SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist></section>';
+    const resWord = v => v > 0 ? 'Nachzahlung' : v < 0 ? 'Guthaben' : 'balanced';
+    const ergebnis = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Ergebnis</p></div><div>' +
+      '<div class="sr-tl"><span>Kosten gesamt</span><b data-sr-tot="t">' + stEur(tt) + '</b></div>' +
+      '<div class="sr-tl"><span>− Hausgeld paid <small>per Rentals</small></span><label class="sr-amt"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld paid" value="' + stEsc(cxE2(hgPaid)) + '"/><em>€</em></label></div>' +
+      '<div class="sr-tl sr-tl--res' + (calc < 0 ? ' is-g' : '') + '"><span><b>= <span data-sr-tot="cl">' + resWord(calc) + '</span></b> <small>calculated</small></span><b data-sr-tot="c">' + stEur(Math.abs(calc)) + '</b></div></div>' +
+      '<p class="st-f__l" style="margin:6px 0 0">WEG result per HV</p>' +
+      '<div class="sr-seg3" role="group">' + [[-1, 'Nachzahlung'], [1, 'Guthaben'], [0, 'balanced']].map(([v, t]) => '<button type="button" class="' + (wDir === v ? 'is-on' : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + (wDir === v) + '">' + t + '</button>').join('') + '</div>' +
+      (wDir ? '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Amount</span><span class="sr-amt sr-amt--l"><input inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '"/><em>€</em></span></label>' + _srDateF('weg_due', d.weg_due, 'Due') + '</div>' : '') +
+      (diff === null ? '' : Math.abs(diff) < 0.01 ? '<p class="sr-okline"><i class="ti ti-check" aria-hidden="true"></i> matches the calculation</p>'
+        : '<p class="sr-okline is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff)) + '</p>') +
+      '</section>';
     return _srHead4(title, c.p.name + ' · you ↔ WEG') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
-      '<div class="srm__b"><div class="srm__one srm__wide">' + prog + card + '</div></div>' +
+      '<div class="srm__b"><div class="srm__one srm__wide">' + prog + kosten + ergebnis + settings + '</div></div>' +
       '<div class="srm__bar sr-bar--ja"><span class="sr-saved" id="srSaved">' + (SR.dirty ? '' : (rec ? '✓ saved' : '')) + '</span>' +
         '<button class="cx-btn cx-btn--p" data-sr="jaDone">' + (jaDone ? 'Done' : 'Mark complete') + '</button></div>';
   }
   // complete: the Abrechnung as an overview, then the money with the WEG
   const wDone = _srNum(rec.weg_direction) === null ? null : Number(rec.weg_direction), wAmt = _srNum(rec.weg_amount) || 0;
-  const hgP = _srNum((rec.keys || {}).hg_paid) ?? _srHausgeldPaid(c), totK = cxR(sum.u + sum.nu);
-  const nUi = (rec.positions || []).filter(p => !_srIsNkOnly(p) && p.u && _srUnitAmt(rec, p, c.apt) !== null).length;
-  const nNi = (rec.positions || []).filter(p => !_srIsNkOnly(p) && !p.u && _srUnitAmt(rec, p, c.apt) !== null).length;
-  const kv = (k, sm, v, strong) => '<div class="cx-kv"><span>' + (strong ? '<b>' + k + '</b>' : k) + (sm ? '<small class="srm__sm">' + sm + '</small>' : '') + '</span><span>' + (strong ? '<b>' + v + '</b>' : v) + '</span></div>';
+  const hgP = _srNum((rec.keys || {}).hg_paid) ?? _srHausgeldPaid(c);
+  const grp = u => (rec.positions || []).filter(p => !_srIsNkOnly(p) && !!p.u === u && _srAmtOf(rec, p, c.apt) !== null)
+    .map(p => ({ l: p.label || _srKind(p.kind).l, v: _srSigned(p, _srAmtOf(rec, p, c.apt)) }));
+  const GU = grp(true), GN = grp(false);
+  const sU = cxR(GU.reduce((a, x) => a + x.v, 0)), sN = cxR(GN.reduce((a, x) => a + x.v, 0)), totK = cxR(sU + sN);
+  const fold = (g, label, sub, list, total) => {
+    const on = !!(SR.jaOpen && SR.jaOpen[g]);
+    return '<button class="sr-acc" data-sr="jaFold" data-g="' + g + '" aria-expanded="' + on + '"><span class="sr-acc__t">' + label + '<small>' + list.length + ' items · ' + sub + '</small></span>' +
+      '<span class="sr-acc__r">' + stEur(total) + '<i class="ti ti-chevron-' + (on ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
+      (on ? '<div class="sr-items">' + list.map(x => '<div class="sr-it' + (x.v < 0 ? ' is-neg' : '') + '"><span>' + stEsc(x.l) + '</span><span>' + stEur(x.v) + '</span></div>').join('') + '</div>' : '');
+  };
+  const kv = (k, v, strong) => '<div class="sr-tl"><span>' + (strong ? '<b>' + k + '</b>' : k) + '</span>' + (strong ? '<b>' + v + '</b>' : '<span>' + v + '</span>') + '</div>';
   const resBox = wDone ? '<div class="sr-sum ' + (wDone > 0 ? 'sr-sum--g' : 'sr-sum--n') + '"><span><b class="sr-sum__t">' + (wDone > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG') + '</b><small>' + (rec.weg_due ? 'due ' + stDate(rec.weg_due) : 'no due date') + ' · ' + (rec.weg_via === 'hausgeld' ? 'with the Hausgeld' : 'bank transfer') + '</small></span><b class="sr-sum__a">' + stEur(wAmt) + '</b></div>'
     : '<div class="sr-sum"><span><b class="sr-sum__t">Balanced with the WEG</b><small>nothing to pay or receive</small></span><b class="sr-sum__a">' + stEur(0) + '</b></div>';
   const over = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Abrechnung</p><button class="cx-link" data-sr="jaEdit">edit</button></div>' +
-    '<div class="st-block">' + kv('Umlagefähig', nUi + ' items · go into the NK', stEur(sum.u)) + kv('Nicht umlagefähig', nNi + ' items · your costs', stEur(sum.nu)) +
-      kv('Kosten gesamt', '', stEur(totK), true) + kv('− Hausgeld paid', '', stEur(hgP)) + '</div>' + resBox + '</section>';
+    '<div>' + fold('u', 'Umlagefähig', 'go into the NK', GU, sU) + fold('n', 'Nicht umlagefähig', 'your costs', GN, sN) +
+      kv('Kosten gesamt', stEur(totK), true) + kv('− Hausgeld paid', stEur(hgP)) + '</div>' + resBox + '</section>';
   const wegSt = hv.wegSt, wRes = wegSt && wegSt.res, open = !!(wDone && wRes && !wegSt.booking && wegSt.k !== 'erledigt');
   let money = '';
   if (wDone) {
     const stTxt = open ? (wDone > 0 ? 'waiting for the money' : 'to pay') + (rec.weg_due ? ' · due ' + stDate(rec.weg_due) : '') : _srSettledTxt({ st: wegSt, ts: {} }, true) || 'settled';
     const late = open && rec.weg_due && cxToday() > _srD(rec.weg_due);
     money = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Settlement</p>' + (!open && wRes ? '<button class="cx-link" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-w="1">edit</button>' : '') + '</div>' +
-      '<div class="cx-kv"><span>Status</span><span>' + cxPill(open ? (late ? 'diff' : 'open') : 'ok', open ? (late ? 'overdue' : wDone > 0 ? 'to receive' : 'to pay') : wDone > 0 ? 'received' : 'paid') + '</span></div>' +
-      '<p class="sr-progmeta">' + stEsc(stTxt) + '</p></section>';
+      '<div class="sr-tl sr-tl--first"><span>' + stEsc(open ? stTxt : (wDone > 0 ? 'received ' : 'paid ') + (wegSt && wegSt.booking ? stDate(wegSt.booking.invoice_date) : '')) + '</span>' + cxPill(open ? (late ? 'diff' : 'open') : 'ok', open ? (late ? 'overdue' : wDone > 0 ? 'to receive' : 'to pay') : wDone > 0 ? 'received' : 'paid') + '</div>' +
+      '<div class="sr-tl"><span>Amount</span><span>' + stEur(wegSt && wegSt.booking ? cxR(wegSt.booking.amount) : wAmt) + '</span></div></section>';
   }
   const bar = open ? '<div class="srm__bar srm__bar--2">' + (wDone > 0 && mail ? '<a class="cx-btn cx-btn--s" data-sr="remind" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srRemindMail(c, rec, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Remind HV</a>' : '') +
       '<button class="cx-btn cx-btn--p" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-w="1">' + (wDone > 0 ? 'Mark received' : 'Mark paid') + '</button></div>' : '';
@@ -1386,6 +1418,12 @@ function _srRefreshTotals() {
   });
   const set = (k, v) => { const el = document.querySelector('#srPanel [data-sr-tot="' + k + '"]'); if (el) el.textContent = stEur(cxR(v)); };
   set('u', t.u); set('n', t.n); set('t', t.u + t.n); set('hvnk', t.hvnk); set('x', t.x); set('nk', t.hvnk + t.x);
+  const hgEl = document.querySelector('#srPanel [data-srf="keys.hg_paid"]');
+  if (hgEl) {
+    const cl = cxR(t.u + t.n - (cxParse(hgEl.value) || 0));
+    set('c', Math.abs(cl));
+    const w = document.querySelector('#srPanel [data-sr-tot="cl"]'); if (w) w.textContent = cl > 0 ? 'Nachzahlung' : cl < 0 ? 'Guthaben' : 'balanced';
+  }
 }
 
 /* View 2 · one tenant */
@@ -1752,6 +1790,8 @@ function srIsRentalsLine() { return false; }
     }
     if (a === 'wegDir') { _srCollect(); SR.draft.weg_direction = Number(b.dataset.v); _srRerenderPanel(); _srAutoQueue(); return; }
     if (a === 'jaDone') { await _srJaComplete(b); return; }
+    if (a === 'jaTab') { _srCollect(); SR.jaTab = b.dataset.g; _srRerenderPanel(); return; }
+    if (a === 'jaFold') { SR.jaOpen = Object.assign({}, SR.jaOpen, { [b.dataset.g]: !(SR.jaOpen && SR.jaOpen[b.dataset.g]) }); _srRerenderPanel(); return; }
     if (a === 'jaEdit') { SR.jaEdit = true; SR.draft = null; SR.costsOpen = false; _srRerenderPanel(); return; }
     if (a === 'hvSave' || a === 'nkSave') { await _srHvSave4(b); SR.dirty = false; return; }
     if (a === 'toNk') { if (SR.dirty) { await _srHvSave4(b, 'nk'); SR.dirty = false; } else { SR.modal.view = 'nk'; _srRerenderPanel(); } return; }
@@ -1845,9 +1885,9 @@ function srIsRentalsLine() { return false; }
   // phone keyboard "Next": jump to the next amount
   host.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
-    const inp = e.target.closest('.ct-a input, .ct-name'); if (!inp) return;
+    const inp = e.target.closest('.ct-a input, .ct-name, .sr-amt input, .sr-er__n input'); if (!inp) return;
     e.preventDefault();
-    const all = [...document.querySelectorAll('#srPanel .ct-name, #srPanel .ct-a input')];
+    const all = [...document.querySelectorAll('#srPanel .ct-name, #srPanel .ct-a input, #srPanel .sr-er__n input, #srPanel .sr-erlist .sr-amt input')];
     const i = all.indexOf(inp); if (all[i + 1]) all[i + 1].focus(); else inp.blur();
   });
 })();
