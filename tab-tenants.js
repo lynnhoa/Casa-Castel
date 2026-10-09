@@ -17,7 +17,7 @@ document.getElementById('tab-tenants').innerHTML = `
     <h1 class="cc-h1">Tenants</h1>
   </div>
   <!-- IST line: what the tenants living here pay today + Kaution held (Rooms shows the Soll) -->
-  <div class="cc-sumline" id="tn-ist" style="display:none;margin-bottom:14px"></div>
+  <div class="cc-sumline" id="tn-ist" style="display:none"></div>
   <div id="tn-open-summary" class="tn-open-summary" style="display:none"></div>
   <div class="tn-list" id="tenantsList"></div>
 
@@ -1314,22 +1314,21 @@ function _tnKautionMissingCount() {
 }
 function _tnSummaryUpdate() {
   const held = ccTnHeldTotal(_tnRecords, _tnKaution);
+  const c = _tnOpenCounts(), miss = _tnKautionMissingCount();
+  const pills = (miss ? `<span class="tnp tnp-amber">Kaution missing \u00b7 ${miss}</span>` : '')
+    + (c.kaution ? `<span class="tnp tnp-amber">Kaution to settle \u00b7 ${c.kaution}</span>` : '');
   const ist = document.getElementById('tn-ist');
   if (ist) {
     const t = _tnIstTotals();
     const vac = Math.max(0, t.rooms - t.tenants);
-    ist.innerHTML = `<div class="cc-sumline__top">Actual (IST) · ${t.tenants} living here${vac ? ' · ' + vac + ' vacant' : ''} · today</div>
-      <div class="cc-sumline__vals"><div><span>Kalt</span><b>${_tnFmtEUR(t.kalt)}</b></div><div><span>NK</span><b>${_tnFmtEUR(t.nk)}</b></div><div><span>Kaution held</span><b>${_tnFmtEUR(held)}</b></div></div>`;
+    // one quiet card: IST figures, open items as its footer (same card as the Soll in Rooms)
+    ist.innerHTML = `<div class="cc-sumline__top"><b>IST · Actual</b><span>${t.tenants} living here${vac ? ' \u00b7 ' + vac + ' vacant' : ''} \u00b7 today</span></div>
+      <div class="cc-sumline__vals"><div><span>Kalt</span><b>${_tnFmtEUR(t.kalt)}</b></div><div><span>NK</span><b>${_tnFmtEUR(t.nk)}</b></div><div><span>Kaution held</span><b>${_tnFmtEUR(held)}</b></div></div>
+      ${pills ? `<div class="cc-sumline__foot"><span>Open</span>${pills}</div>` : ''}`;
     ist.style.display = _tnRecords.length ? '' : 'none';
   }
   const oc = document.getElementById('tn-open-summary');
-  if (oc) {
-    const c = _tnOpenCounts(), miss = _tnKautionMissingCount();
-    const pills = (miss ? `<span class="tnp tnp-amber">Kaution missing \u00b7 ${miss}</span>` : '')
-      + (c.kaution ? `<span class="tnp tnp-amber">Kaution to settle \u00b7 ${c.kaution}</span>` : '');
-    oc.innerHTML = pills ? `<span class="tn-open-lbl">Open:</span>${pills}` : '';
-    oc.style.display = pills ? 'flex' : 'none';
-  }
+  if (oc) { oc.innerHTML = ''; oc.style.display = 'none'; }   // open items now sit inside the IST card
 }
 
 function _tnKautionOpen(tid) {
