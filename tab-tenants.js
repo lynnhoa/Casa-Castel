@@ -597,6 +597,16 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .tn-rent-wrap .tn-rbox-status .tn-cstrip + .tn-rbox-todo { padding-top:0; }
 #tab-tenants .tn-rent-wrap .tn-rbox-status > .tn-rbox-todo:first-child { padding-top:10px; }
 #tab-tenants .tn-rent-wrap .tn-rc:last-child > div { flex-wrap:wrap; }
+
+/* More list (B4) */
+#tab-tenants .cc-grow.is-open .cc-grow-ch { transform:rotate(90deg); }
+#tab-tenants .tn-more-in { margin:0 -14px; border-top:var(--cc-border); background:var(--cc-bg); }
+#tab-tenants .tn-more-in > .tn-sec { border-bottom:none; background:transparent; }
+.tn-ub { display:flex; flex-direction:column; gap:10px; padding:14px 16px 10px; }
+.tn-ub-btn { display:flex; align-items:center; gap:10px; min-height:56px; padding:0 14px; border:.5px solid var(--cc-rule); border-radius:10px; background:var(--cc-white); font-family:inherit; cursor:pointer; text-align:left; }
+.tn-ub-t { font-size:16px; font-weight:500; color:var(--cc-ink); }
+.tn-ub-s { margin-left:auto; font-size:13px; color:#7A6F62; }
+.tn-ub-btn i { font-size:14px; color:var(--cc-stone); }
 `;
   document.head.appendChild(s);
 })();
@@ -1614,12 +1624,76 @@ function _tnCardHTML(room) {
     ${_ccNextTenantHTML(nextRec, nextRec ? esc([nextRec.first_name, nextRec.last_name].filter(Boolean).join(' ')) : '', _tnFmtDate, '_tnOpenModal')}
     ${_tnProfileSectionHTML(rid, room, activeRec)}
     ${activeRec ? _tnKautionHTML(rid, activeRec.id, 'card') : ''}
-    ${activeRec ? _tnNkGroupHTML(rid, room, activeRec) : ''}
-    ${activeRec ? _tnDetailsGroupHTML(rid, activeRec) : ''}
-    ${_tnEarlierContractsHTML(rid, activeRec)}
-    ${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs)}
+    ${_tnMoreHTML(rid, room, activeRec, formerRecs, archivedRecs)}
   </div>
 </div>`;
+}
+
+
+/* ── MORE (B4): one tidy list at the bottom of the card ─────────────────────
+   Übergabe · Documents · Zählerstände · NK-Abrechnungen · Earlier contracts · Former tenants */
+const _tnMoreOpen = {};
+function _tnMoreToggle(key) { _tnMoreOpen[key] = !_tnMoreOpen[key]; _tnRender(); }
+function _tnUebergMeta(rec) {
+  if (!rec || typeof ccfDocsOf !== 'function') return 'Einzug · Auszug protocols';
+  const docs = ccfDocsOf(rec.id);
+  const has = t => docs.some(d => d.type === t);
+  const parts = [];
+  if (has('einzug')) parts.push('Einzug done');
+  if (has('auszug')) parts.push('Auszug done');
+  return parts.length ? parts.join(' \u00b7 ') : 'Einzug · Auszug protocols';
+}
+function _tnUebergSheet(roomName, tid) {
+  const room = typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === roomName) : null;
+  if (!room || typeof ccOpenUebergabe !== 'function') return;
+  const rec = tid ? _tnRecords.find(r => String(r.id) === String(tid)) : null;
+  const nm = rec ? [rec.first_name, rec.last_name].filter(Boolean).join(' ') : '';
+  ccSheetOpen({
+    title: 'Übergabeprotokoll',
+    kicker: roomName + (nm ? ' \u00b7 ' + nm : ''),
+    build: () => {
+      const r2 = tid ? _tnRecords.find(r => String(r.id) === String(tid)) : null;
+      const docs = r2 && typeof ccfDocsOf === 'function' ? ccfDocsOf(r2.id) : [];
+      const st = t => { const d = docs.find(x => x.type === t); return d ? ((d.variant || 'signed') === 'signed' ? 'signed' : 'draft saved') : 'not done yet'; };
+      const btn = (eu, t) => `<button type="button" class="tn-ub-btn" onclick="ccSheetClose();ccOpenUebergabe('${room.id}','${eu}')">
+          <span class="tn-ub-t">${eu}</span><span class="tn-ub-s">${st(t)}</span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>`;
+      return `<div class="tn-ub">${btn('Einzug', 'einzug')}${btn('Auszug', 'auszug')}
+        <p class="tn-cr-hint" style="margin:4px 0 0">Opens the Übergabe generator for this room. The finished protocol is filed under Documents.</p></div>`;
+    },
+  });
+}
+function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
+  const rows = [];
+  rows.push(ccRowHTML({ icon: 'clipboard-check', title: 'Übergabe', meta: esc(_tnUebergMeta(rec)),
+    onclick: `_tnUebergSheet('${esc(room.name)}','${rec ? rec.id : ''}')` }));
+  if (rec && typeof ccfDocsSectionHTML === 'function') {
+    rows.push(ccRowHTML({ icon: 'file-text', title: 'Documents', meta: esc(ccfDocsSummary(rec)), onclick: `_tnSheet('docs','${rid}','${rec.id}')` }));
+    rows.push(ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: esc(ccfMetersSummary(rec)), onclick: `_tnSheet('meters','${rid}','${rec.id}')` }));
+  }
+  if (rec && !_tnAllPauschal(rec)) {
+    const open = _tnNkHasOpen(rec.id);
+    rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen',
+      meta: open ? `<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(rec))}</span>` : 'none due',
+      onclick: `_tnSheet('nk','${rid}','${rec.id}')` }));
+  }
+  // Earlier contracts (renewed) — open inline
+  const earlier = rec ? _tnContractState(rec).earlier : [];
+  let html = rows.join('');
+  if (earlier.length) {
+    const k = rid + ':earlier', open = !!_tnMoreOpen[k];
+    html += ccRowHTML({ icon: 'files', title: 'Earlier contracts', meta: String(earlier.length), onclick: `_tnMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
+    if (open) html += `<div class="tn-more-in" id="earlier-${rid}">${earlier.map(c => _tnContractRowHTML(rec, c, '<span class="tnp tnp-gray">Renewed</span>', rid, 'earlier-' + rid)).join('')}</div>`;
+  }
+  // Former tenants — open inline (the full list with Add former tenant, archive …)
+  {
+    const k = rid + ':former', open = !!_tnMoreOpen[k];
+    const nOpen = formerRecs.filter(r => _tnFormerOpenPills(r)).length;
+    const meta = !formerRecs.length && !archivedRecs.length ? 'none'
+      : nOpen ? `<span class="tnp tnp-amber">${nOpen} open</span>` : String(formerRecs.length + archivedRecs.length);
+    html += ccRowHTML({ icon: 'users', title: 'Former tenants', meta, onclick: `_tnMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
+    if (open) html += `<div class="tn-more-in">${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs, true)}</div>`;
+  }
+  return ccGroupHTML('More', html);
 }
 
 /* ── NEBENKOSTEN + DETAILS: one row each, the full section opens in a sheet ── */
@@ -2697,7 +2771,7 @@ function _tnRenderNKVorausRow(id, room, rid) {
 }
 
 /* ── FORMER SECTION ── */
-function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
+function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs, bare) {
   const visible  = formerRecs.filter(r => _tnFormerVisible(r));
   const hidden   = formerRecs.filter(r => !_tnFormerVisible(r) && !r.done);
   const arcList  = archivedRecs;
@@ -2747,9 +2821,9 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs) {
 
   return `
 <div class="tn-sec">
-  <div class="tn-sec-body" style="padding-top:10px;padding-bottom:0">
+  ${bare ? '<div style="height:8px"></div>' : `<div class="tn-sec-body" style="padding-top:10px;padding-bottom:0">
     <div style="margin-bottom:6px"><span class="tn-sec-lbl">Former tenants</span></div>
-  </div>
+  </div>`}
   ${toShow.length ? toShow.map(formerRow).join('') : `<p class="tn-empty" style="padding:0 14px 6px">None with open business.</p>`}
   ${hidden.length ? `<button class="tn-show-older" onclick="_tnToggleOlder('${rid}')">
     <i class="ti ti-${showOld ? 'eye-off' : 'eye'}"></i>

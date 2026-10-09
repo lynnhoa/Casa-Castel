@@ -1405,17 +1405,7 @@ function _roomCardHTML(r) {
         <button class="rc-inv-btn" onclick="_openInventar('${r.id}')"><i class="ti ti-list"></i> Edit</button>
       </div>
 
-      <div class="rc-contracts">
-        <div class="rc-doc-row">
-          <button class="rc-doc-btn" onclick="_openContract('ueberg','${r.id}')">
-            Übergabeprotokoll <i class="ti ti-chevron-right"></i>
-          </button>
-          <div class="rc-doc-toggle" id="eu-${r.id}" onclick="event.stopPropagation()">
-            <button class="active" onclick="_setEU('${r.id}',0,this)">Einzug</button>
-            <button onclick="_setEU('${r.id}',1,this)">Auszug</button>
-          </div>
-        </div>
-      </div>
+      <!-- Übergabeprotokoll: on the tenant card (Tenants · More · Übergabe) -->
     </div>
 
     <!-- EDIT MODE — only for a NEW room (existing rooms edit per section) -->
@@ -1620,9 +1610,19 @@ function _step(btn, delta) {
 }
 
 function _setEU(roomId, idx, btn) {
+  _rcEU[roomId] = idx === 1 ? 'Auszug' : 'Einzug';
   const tog = document.getElementById('eu-' + roomId);
   if (!tog) return;
   tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+}
+/* Übergabe (Oct 2026): opened from the tenant card — Einzug or Auszug is passed in, not read from a switch */
+var _rcEU = {};
+function _rcEULabel(roomId) {
+  return _rcEU[roomId] || document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() || 'Einzug';
+}
+function ccOpenUebergabe(roomId, eu) {
+  _rcEU[roomId] = eu === 'Auszug' ? 'Auszug' : 'Einzug';
+  _openContract('ueberg', roomId);
 }
 
 /* Mark as vacant / occupied — instant: the card switches at once, the database
@@ -2025,9 +2025,7 @@ const _RC_FIELDS = {
   mietvertrag: _RC_CG_FIELDS,
   ueberg:      { name: 'ub-mieter-name', adr: 'ub-mieter-adr' },
 };
-function _rcIsEinzug(roomId) {
-  return document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
-}
+function _rcIsEinzug(roomId) { return _rcEULabel(roomId) === 'Einzug'; }
 function _rcSetupFlow(type, room) {
   const body = document.getElementById('contractBody');
   if (!body || typeof ccfForHTML !== 'function') return;
@@ -2412,7 +2410,7 @@ async function _openContract(type, roomId, renew) {
     footer.innerHTML     = ccfFooterHTML();
 
   } else if (type === 'ueberg') {
-    const isEinzug = document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _rcEULabel(roomId) === 'Einzug';
     typeLbl.textContent  = 'Übergabeprotokoll';
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + room.name;
     subLbl.textContent   = (room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '') + (room.floor ? ' · ' + room.floor : '');
@@ -2437,9 +2435,7 @@ async function _openContract(type, roomId, renew) {
 
   // Keep what is typed for 2 hours (restored if the app ever has to restart)
   if (typeof ccDraftAutoSave === 'function') {
-    const euLabel = type === 'ueberg'
-      ? (document.getElementById('eu-' + roomId)?.querySelector('.active')?.textContent?.trim() || null)
-      : null;
+    const euLabel = type === 'ueberg' ? _rcEULabel(roomId) : null;
     ccDraftAutoSave(_ROOM_DRAFT_KEY, body, () =>
       document.getElementById('contractOverlay')?.classList.contains('open') ? { type, roomId, euLabel, renew: _contractRenew || null } : null);
   }
@@ -2492,6 +2488,7 @@ async function _roomReopenContractDraft(d) {
     const tabEl = document.getElementById('tab-rooms');
     if (!fromTenants && tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('rooms');
     // Übergabe: restore the card's Einzug/Auszug choice before opening
+    if (d.meta.type === 'ueberg' && d.meta.euLabel) _rcEU[d.meta.roomId] = d.meta.euLabel;
     if (d.meta.type === 'ueberg' && d.meta.euLabel) {
       document.getElementById('eu-' + d.meta.roomId)?.querySelectorAll('button, span, div').forEach(el => {
         if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
