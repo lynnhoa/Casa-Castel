@@ -65,8 +65,9 @@ function initLandlordAuth() {
     }
     return false;
   };
-  // Throws on network failure
-  const hasSession = () => sbL.auth.getSession().then(({ data }) => !!data.session);
+  // A failed check (connection) throws → handled below as offline, never as a logout
+  const hasSession = () => sbL.auth.getSession().then(({ data, error }) => { if (error) throw error; return !!data.session; });
+  try { localStorage.setItem('mgmt_last_app', 'landlord.html'); } catch (e) {}
   // SECURITY: the landlord app is shown only AFTER the login is confirmed (a browser flag alone is not enough)
   hasSession().then(ok => {
     if (ok) { showApp(); return; }
@@ -138,6 +139,8 @@ async function doTenantLogin() {
     err.classList.add('visible');
   };
   if (!room || !pass || room === CC_LANDLORD_NAME) { showErr(); return; }
+  // Notifications on by default: ask the iPhone INSIDE this tap (must happen before any waiting)
+  if (typeof ccPushPrime === 'function') ccPushPrime();
   let valid = false, noPassword = false;
   try {
     const rooms = await _ccActiveRooms();
@@ -148,6 +151,7 @@ async function doTenantLogin() {
       if (data && data.body) {
         const h = await _hashPassword(pass);
         valid = (h === data.body);
+        if (valid) localStorage.setItem('cc_pwh', h);   // push: this phone's notifications follow the room password
       } else {
         noPassword = true;
       }
@@ -158,6 +162,8 @@ async function doTenantLogin() {
     localStorage.setItem('cc_room', room);
     err?.classList.remove('visible');
     showApp(room);
+    if (typeof ccPwReqLoggedIn === 'function') ccPwReqLoggedIn();   // picked-up password leaves the request
+    if (typeof ccPushAfterLogin === 'function') ccPushAfterLogin(); // notifications on (default)
     if (typeof loadRoomsData === 'function') loadRoomsData();
   } else {
     showErr(noPassword ? 'No password set for this room yet — please ask Casa Castel.' : undefined);
@@ -230,13 +236,15 @@ function initTenantLogin() {
 /* ── LOGOUT ─────────────────────────────────────────────── */
 function logout() {
   const wasTenant = localStorage.getItem('cc_role') === 'tenant';
+  if (wasTenant && typeof ccPushLogout === 'function') { try { ccPushLogout(); } catch (e) {} }   // this phone gets no more pushes
   localStorage.removeItem('cc_role');
   localStorage.removeItem('cc_room');
+  if (wasTenant) localStorage.removeItem('cc_pwh');   // the next login stores the fingerprint again
   if (!wasTenant) {
     if (typeof ccDraftClearAll === 'function') ccDraftClearAll();   // generator drafts
     localStorage.removeItem('rentals_role');
     if (sbL) sbL.auth.signOut().catch(() => {});
   }
   sessionStorage.removeItem('cc_preview_room');
-  location.href = wasTenant ? 'tenant.html' : 'login.html';
+  location.href = wasTenant ? 'tenant.html' : 'login.html?logout=1';
 }

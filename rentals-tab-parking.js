@@ -195,6 +195,9 @@ document.getElementById('tab-parking').innerHTML = `
 .rm-pill-toggle[data-mode="befristet"] .rm-pill-toggle__knob,
 .rm-pill-toggle[data-mode="ja"] .rm-pill-toggle__knob { transform:translateX(18px); }
 .rm-pill-toggle__lbl { font-size:12px; font-weight:500; color:var(--cc-charcoal); min-width:52px; }
+
+/* ── 3.5 FIELD ALIGNMENT — Miete content in line with other sections ── */
+.pk-section--miete { padding-left:11px; }
   `;
   document.head.appendChild(s);
 })();
@@ -207,6 +210,9 @@ function pkEsc(s) {
 
 /* Resolve active tenant profile for a parking space — cache first, Supabase fallback. */
 async function _pkResolveTenantProfile(pkId) {
+  // Preloaded tenant records (same row the database read returns) → instant
+  const fromRec = typeof rntProfileFromRecords === 'function' ? rntProfileFromRecords('pk', pkId) : null;
+  if (fromRec) return fromRec;
   // DB is the source of truth for co-tenants: first_name_2 / first_name_3 live
   // on the SAME record row as Mieter 1, so reading the row directly makes
   // Mieter 2/3 resolve exactly like Mieter 1 (the cache can hold a hollow
@@ -259,7 +265,7 @@ function pkFmtEUR(n) {
 function pkFmtEURCompact(n) {
   const num = Number(n);
   if (!num && num !== 0) return '—';
-  return num.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €';
+  return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';   // 85,00 €
 }
 
 function pkFmtDate(iso) {
@@ -308,8 +314,9 @@ async function loadParking() {
     console.error('[parking] Load failed:', e);
   }
 
-  _renderPkList();
+  _pkRenderIfChanged();
   _pkInitSortable();
+  if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _pkRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
 }
 
@@ -326,7 +333,8 @@ function _updatePkSummary() {
   appParking.forEach(p => {
     if (p.vacant) return;
     occupied++;
-    total += Number(p.pricing?.miete) || 0;
+    const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('pk', p.id) : null;
+    total += cur ? (Number(cur.kalt) || 0) : (Number(p.pricing?.miete) || 0);
   });
 
   bar.style.display = 'flex';
@@ -342,8 +350,46 @@ function _renderPkList() {
     _updatePkSummary();
     return;
   }
-  list.innerHTML = appParking.map(p => _pkCardHTML(p)).join('');
+  const _open = new Set([...list.querySelectorAll('.pk-card.pk--open')].map(c => c.dataset.id));
+  _pkCardCache = {};
+  list.innerHTML = appParking.map(p => (_pkCardCache[p.id] = _pkCardHTML(p))).join('');
+  _open.forEach(id => list.querySelector(`.pk-card[data-id="${id}"]`)?.classList.add('pk--open'));   // open cards stay open
   _updatePkSummary();
+}
+
+/* After a (background) load: repaint only if the data really changed and you
+   are not in the middle of editing here. */
+let _pkRenderedSig = null;
+function _pkRenderIfChanged() {
+  const sig  = ccStableJSON(appParking);
+  const list = document.getElementById('pkList');
+  const shown = !!(list && list.querySelector('.pk-card'));
+  if (shown && sig === _pkRenderedSig) return;
+  if (shown && typeof _rtBusy === 'function' && _rtBusy('parking')) return;
+  if (shown && _pkPatchCards(list)) { _pkRenderedSig = sig; return; }     // no full redraw → no glitch
+  _renderPkList();
+  _pkRenderedSig = sig;
+}
+
+/* Each card's HTML as last drawn (id → html) */
+let _pkCardCache = {};
+
+/* Same cards in the same order → redraw only the cards whose content changed */
+function _pkPatchCards(list) {
+  const cards = [...list.querySelectorAll('.pk-card[data-id]')];
+  if (cards.length !== appParking.length) return false;
+  if (!cards.every((c, i) => String(c.dataset.id) === String(appParking[i].id))) return false;
+  let changed = 0;
+  appParking.forEach((p, i) => {
+    const html = _pkCardHTML(p);
+    if (_pkCardCache[p.id] === html) return;
+    ccSwapCard(cards[i], html, 'pk--open');
+    _pkCardCache[p.id] = html;
+    changed++;
+  });
+  if (changed) _pkInitSortable();
+  _updatePkSummary();
+  return true;
 }
 
 
@@ -355,14 +401,18 @@ function _pkCardHTML(p) {
 
   // Header rent line
   const miete = Number(pr.miete) || 0;
-  const rentHTML = miete
-    ? `<strong>${pkFmtEURCompact(miete)}</strong> / mo`
-    : `<span class="pk-hdr__rent--vacant">No pricing set</span>`;
+  const mieteSet = pr.miete !== null && pr.miete !== undefined && pr.miete !== '';   // 0 € saved = free, not "not set"
+  // Occupied: the tenant's real rent · vacant: the asking rent (labelled)
+  const _cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('pk', p.id) : null;
+  const rentHTML = _cur
+    ? `<strong>${pkFmtEURCompact(_cur.kalt)}</strong> / mo`
+    : mieteSet
+      ? `Asking rent <strong>${pkFmtEURCompact(miete)}</strong> / mo`
+      : `<span class="pk-hdr__rent--vacant">No asking rent set</span>`;
 
-  // Kaution
-  const kaution = (pr.kaution_default !== null && pr.kaution_default !== undefined && pr.kaution_default !== '')
-    ? Number(pr.kaution_default)
-    : miete * 3;
+  // Kaution (shared rule, kaution.js)
+  const _pkK    = ccKaution({ contract: 'parking', kalt: miete, rec: pr });
+  const kaution = _pkK.amount;
 
   return `
 <div class="pk-card${vacant ? '' : ''}" data-id="${p.id}" data-name="${pkEsc(p.name)}">
@@ -390,18 +440,11 @@ function _pkCardHTML(p) {
   <!-- BODY -->
   <div class="pk-body">
 
-    <!-- Status action -->
-    <div class="pk-actions">
-      <button class="pk-act ${vacant ? 'pk-act--mark-occupied' : 'pk-act--mark-vacant'}"
-        onclick="_pkToggleVacant('${p.id}',this)">
-        <i class="ti ${vacant ? 'ti-door-enter' : 'ti-door-exit'}" style="font-size:11px"></i>
-        ${vacant ? 'Mark as Occupied' : 'Mark as Vacant'}
-      </button>
-    </div>
+    <!-- occupied / vacant is automatic (tenant move-in / move-out) -->
 
     <!-- 1. IDENTITY -->
     <div class="apt-section" id="pk-identity-${p.id}">
-      <div class="pk-stitle">Identity</div>
+      <div class="pk-stitle">Property</div>
       <!-- READ -->
       <div class="pk-sec-read">
         <div class="pk-row"><span class="pk-row__k">Name</span><span class="pk-row__v">${pkEsc(p.name)}</span></div>
@@ -438,19 +481,21 @@ function _pkCardHTML(p) {
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('identity','${p.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_pkSaveIdentity('${p.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_pkSaveIdentity('${p.id}')">Save</button>
         </div>
       </div>
     </div>
 
     <!-- 2. MIETE -->
     <div class="pk-section--miete" id="pk-miete-${p.id}">
-      <div class="pk-stitle">Miete</div>
+      <div class="pk-stitle">Asking rent</div>
       <!-- READ -->
       <div class="pk-sec-read">
-        ${miete
+        ${mieteSet && !miete
+          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(0)} / mo · free</span></div>`
+          : miete
           ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
-             <div class="pk-row"><span class="pk-row__k" style="padding-left:8px;color:var(--cc-stone)">↳ Kaution</span><span class="pk-row__v pk-row__v--muted">${pkFmtEURCompact(kaution)} · 3× Miete${pr.kaution_override ? ' (override)' : ''}</span></div>`
+             <div class="pk-row"><span class="pk-row__k">Kaution</span><span class="pk-row__v">${pkFmtEURCompact(kaution)}<small class="cc-ask-note">${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</small></span></div>`
           : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">
@@ -460,24 +505,24 @@ function _pkCardHTML(p) {
       </div>
       <!-- EDIT -->
       <div class="pk-sec-edit" style="display:none">
-        <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-f="miete" value="${pr.miete||''}"/></div>
+        <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-cc-num="2" data-f="miete" value="${pr.miete||''}"/></div>
         <div class="apt-toggle-row">
-          <span class="apt-tlabel">Custom Kaution</span>
+          <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${pr.kaution_override?'checked':''} onchange="_pkToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${pr.kaution_override?'':'display:none'}">
-          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('miete','${p.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_pkSaveMiete('${p.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_pkSaveMiete('${p.id}')">Save</button>
         </div>
       </div>
     </div>
 
     <!-- 3. SCHLÜSSEL -->
     <div class="apt-section" id="pk-schlussel-${p.id}">
-      <div class="pk-stitle">Schlüssel</div>
+      <div class="pk-stitle">Keys</div>
       <!-- READ -->
       <div class="pk-sec-read">
         <div class="pk-keys">
@@ -512,14 +557,15 @@ function _pkCardHTML(p) {
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('schlussel','${p.id}')">Cancel</button>
-          <button class="apt-btn--save" onclick="_pkSaveSchlussel('${p.id}')">Save</button>
+          <button class="apt-btn--save cc-save" onclick="_pkSaveSchlussel('${p.id}')">Save</button>
         </div>
       </div>
     </div>
 
+
     <!-- 4. CONTRACT -->
     <div class="pk-contracts">
-      <div class="pk-contracts-title">Contract</div>
+      <div class="pk-contracts-title">Create contracts</div>
       <div class="pk-doc-row">
         <button class="pk-doc-btn" onclick="_pkOpenContract('mietvertrag','${p.id}')">
           Mietvertrag <i class="ti ti-chevron-right"></i>
@@ -567,6 +613,7 @@ function _pkEnterSection(section, pkId) {
   if (!el) return;
   el.querySelector('.pk-sec-read').style.display = 'none';
   el.querySelector('.pk-sec-edit').style.display = '';
+  el.classList.add('apt-edit-active');   // same editing highlight as Apartments
   el.querySelector('.apt-input, .apt-stepper__v')?.focus?.();
 }
 
@@ -584,74 +631,69 @@ function _pkCancelSection(section, pkId) {
 
 /* ── SAVE: IDENTITY ──────────────────────────────────────── */
 async function _pkSaveIdentity(pkId) {
-  const el  = document.getElementById(`pk-identity-${pkId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
+  const el   = document.getElementById(`pk-identity-${pkId}`);
+  const spot = appParking.find(p => p.id === pkId);
+  if (!el || !spot) return;
 
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
-    data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+    data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
   });
 
-  if (_pkSbClient) {
-    let { error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId);
-    if (error) {
-      // First attempt can fail on a cold connection / momentary schema-cache lag — retry once
-      await new Promise(r => setTimeout(r, 400));
-      ({ error } = await _pkSbClient.from('rentals_parking').update(data).eq('id', pkId));
-    }
-    if (error) {
-      console.error('[parking] identity save failed:', error);
-      alert('Konnte nicht speichern:\n' + (error.message || 'Unbekannter Fehler') +
-            (error.hint ? '\n\n' + error.hint : ''));
-      btn.textContent = 'Error'; btn.disabled = false;
-      setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000);
+  // Direct save: card first, database in the background (direct-save.js)
+  const before = {};
+  Object.keys(data).forEach(k => { before[k] = spot[k]; });
+  Object.assign(spot, data);
+  _pkRerenderCard(pkId);
+  if (!_pkSbClient) return;
+  ccQueueWrite('pk-' + pkId, () => _pkSbClient.from('rentals_parking').update(data).eq('id', pkId))
+    .then(({ error }) => {
+      if (!error) return;
+      Object.assign(spot, before);
+      _pkRerenderCard(pkId);
+      ccSaveFailed(error, 'parking identity');
+    });
+}
+
+/* ── DIRECT SAVE for a 1:1 row (pricing / schlüssel) — same as apartments ── */
+function _pkDirectSaveRow(pkId, key, table, data) {
+  const spot = appParking.find(p => p.id === pkId);
+  if (!spot) return;
+  const hadRow = !!(spot[key] && Object.keys(spot[key]).length);
+  const before = hadRow ? { ...spot[key] } : null;
+  if (hadRow) Object.assign(spot[key], data); else spot[key] = { parking_id: pkId, ...data };
+  _pkRerenderCard(pkId);
+  if (!_pkSbClient) return;
+  ccQueueWrite('pk-' + key + '-' + pkId, () => {
+    const rowId = spot[key]?.id;
+    return rowId
+      ? _pkSbClient.from(table).update(data).eq('id', rowId)
+      : _pkSbClient.from(table).insert({ parking_id: pkId, ...data }).select().single();
+  }).then(res => {
+    if (res.error) {
+      spot[key] = before || {};
+      _pkRerenderCard(pkId);
+      ccSaveFailed(res.error, 'parking ' + key);
       return;
     }
-  }
-
-  const spot = appParking.find(p => p.id === pkId);
-  if (spot) Object.assign(spot, data);
-  _pkRerenderCard(pkId);
+    if (res.data && res.data.id && !spot[key].id) spot[key].id = res.data.id;
+  });
 }
 
 
 /* ── SAVE: MIETE ─────────────────────────────────────────── */
 async function _pkSaveMiete(pkId) {
-  const el  = document.getElementById(`pk-miete-${pkId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
-
+  const el = document.getElementById(`pk-miete-${pkId}`);
+  if (!el) return;
   const data = {};
   el.querySelectorAll('[data-f]').forEach(inp => {
     const k = inp.dataset.f;
     if (inp.type === 'checkbox') data[k] = inp.checked;
-    else if (inp.type === 'number') data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
+    else if (ccIsNumInput(inp)) data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
     else data[k] = inp.value;
   });
-
-  const spot = appParking.find(p => p.id === pkId);
-  if (!spot) return;
-
-  if (_pkSbClient) {
-    const prId = spot.pricing?.id;
-    let error;
-    if (prId) {
-      ({ error } = await _pkSbClient.from('rentals_parking_pricing').update(data).eq('id', prId));
-    } else {
-      const res = await _pkSbClient.from('rentals_parking_pricing').insert({ parking_id: pkId, ...data }).select().single();
-      error = res.error;
-      if (!error) spot.pricing = res.data;
-    }
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
-  }
-
-  if (spot.pricing) Object.assign(spot.pricing, data);
-  else spot.pricing = data;
-  _pkRerenderCard(pkId);
+  _pkDirectSaveRow(pkId, 'pricing', 'rentals_parking_pricing', data);
 }
 
 
@@ -675,15 +717,7 @@ function _pkKfSelect(prefix, val, clickedBtn) {
 
 /* ── KAUTION FÄLLIGKEIT READER (PARKING) ─────────────────── */
 function _pkReadKautionFael() {
-  const active = document.querySelector('.rm-fael-btn.active[data-prefix="pk-mv"]');
-  const val    = active ? (active.dataset.val || active.textContent.trim()) : null;
-  if (!val || val === '5' || val === '5 Tage') return '5';
-  if (val === 'sofort' || val === 'Sofort')    return 'sofort';
-  if (val === 'custom' || val === 'Individuell') {
-    const custom = document.getElementById('pk-mv-fael-custom-val')?.value.trim();
-    return custom && !isNaN(custom) ? custom : '5';
-  }
-  return '5';
+  return 'sofort';   // Oct 2026: Kaution always due right after signing (no choice any more)
 }
 
 
@@ -764,7 +798,7 @@ function _pkAddStaffel(force) {
   row.className = 'pk-mv-staffel-row';
   row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
   row.innerHTML = `
-    <input class="rm-input pk-mv-staffel-betrag" type="number" step="0.01"
+    <input class="rm-input pk-mv-staffel-betrag" type="number" data-cc-num="2" step="0.01"
       placeholder="${miete ? (miete + (count+1)*5).toFixed(2) : (85 + count*5) + '.00'}"
       style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
     <span style="font-size:11px;color:var(--cc-stone);">€ ab</span>
@@ -784,35 +818,13 @@ function _pkRemoveStaffel() {
 
 /* ── SAVE: SCHLÜSSEL ─────────────────────────────────────── */
 async function _pkSaveSchlussel(pkId) {
-  const el  = document.getElementById(`pk-schlussel-${pkId}`);
-  const btn = el?.querySelector('.apt-btn--save');
-  if (!btn) return;
-  btn.textContent = '…'; btn.disabled = true;
-
+  const el = document.getElementById(`pk-schlussel-${pkId}`);
+  if (!el) return;
   const data = {};
   el.querySelectorAll('[data-sf]').forEach(span => {
     data[span.dataset.sf] = parseInt(span.textContent, 10) || 0;
   });
-
-  const spot = appParking.find(p => p.id === pkId);
-  if (!spot) return;
-
-  if (_pkSbClient) {
-    const skId = spot.schlussel?.id;
-    let error;
-    if (skId) {
-      ({ error } = await _pkSbClient.from('rentals_parking_schlussel').update(data).eq('id', skId));
-    } else {
-      const res = await _pkSbClient.from('rentals_parking_schlussel').insert({ parking_id: pkId, ...data }).select().single();
-      error = res.error;
-      if (!error) spot.schlussel = res.data;
-    }
-    if (error) { btn.textContent = 'Error'; btn.disabled = false; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 2000); return; }
-  }
-
-  if (spot.schlussel) Object.assign(spot.schlussel, data);
-  else spot.schlussel = { parking_id: pkId, ...data };
-  _pkRerenderCard(pkId);
+  _pkDirectSaveRow(pkId, 'schlussel', 'rentals_parking_schlussel', data);
 }
 
 
@@ -822,7 +834,7 @@ function _pkRerenderCard(pkId) {
   const card = document.querySelector(`.pk-card[data-id="${pkId}"]`);
   if (!spot || !card) return;
   const newDiv = document.createElement('div');
-  newDiv.innerHTML = _pkCardHTML(spot);
+  newDiv.innerHTML = _pkCardCache[pkId] = _pkCardHTML(spot);   // remembered as drawn
   const newCard = newDiv.firstElementChild;
   newCard.classList.add('pk--open');
   card.parentNode.insertBefore(newCard, card);
@@ -833,21 +845,23 @@ function _pkRerenderCard(pkId) {
 
 
 /* ── TOGGLE VACANT ───────────────────────────────────────── */
-async function _pkToggleVacant(pkId, btn) {
-  btn.disabled = true;
+/* Mark as vacant / occupied — instant, saved in the background (red message + undo if it fails) */
+function _pkToggleVacant(pkId, btn) {
   const spot = appParking.find(p => p.id === pkId);
-  if (!spot) { btn.disabled = false; return; }
-
-  const newVacant = !spot.vacant;
-
-  if (_pkSbClient) {
-    const { error } = await _pkSbClient.from('rentals_parking').update({ vacant: newVacant }).eq('id', pkId);
-    if (error) { btn.disabled = false; return; }
-  }
-
-  spot.vacant = newVacant;
-  _pkRerenderCard(pkId);
+  if (!spot) return;
+  const before = !!spot.vacant, next = !before;
+  spot.vacant = next;
+  _pkRerenderCard(pkId);   // instant
   _updatePkSummary();
+  if (!_pkSbClient) return;
+  ccQueueWrite('pk-vacant-' + pkId, () => _pkSbClient.from('rentals_parking').update({ vacant: next }).eq('id', pkId))
+    .then(r => {
+      if (!r || !r.error) return;
+      spot.vacant = before;
+      _pkRerenderCard(pkId);
+      _updatePkSummary();
+      ccSaveFailed(r.error, 'parking vacancy');
+    });
 }
 
 
@@ -865,6 +879,7 @@ async function _pkOpenContract(type, pkId) {
   _pkContractId = pkId;
   const spot = appParking.find(p => p.id === pkId);
   if (!spot) return;
+  { const b0 = document.getElementById('pkContractBody'); if (b0) b0.innerHTML = ''; }
 
   const pr = spot.pricing   || {};
   const sk = spot.schlussel || {};
@@ -872,13 +887,17 @@ async function _pkOpenContract(type, pkId) {
   document.getElementById('pkContractTypeLbl').textContent  = type === 'mietvertrag' ? 'Mietvertrag' : 'Übergabeprotokoll';
   document.getElementById('pkContractTitleLbl').textContent = spot.name;
   document.getElementById('pkContractSubLbl').textContent   = spot.parking_type || '';
+  // the sheet appears at once; the form follows as soon as the tenant data is there
+  document.getElementById('pkContractFooter').innerHTML = '';
+  document.getElementById('pkContractBody').innerHTML = '<p class="ccf-hint" style="padding:24px 0;text-align:center">Loading…</p>';
+  document.getElementById('pkContractOverlay').classList.add('open');
 
   if (type === 'mietvertrag') {
     const _pkMvProfile = await _pkResolveTenantProfile(pkId);
     document.getElementById('pkContractBody').innerHTML   = _pkBodyMietvertrag(spot, pr, sk, _pkMvProfile);
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
-       <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+       <button class="rm-btn--pdf" id="pkMvPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
 
     document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
       if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
@@ -898,7 +917,7 @@ async function _pkOpenContract(type, pkId) {
     document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug, _pkUbProfile);
     document.getElementById('pkContractFooter').innerHTML =
       `<button class="rm-btn--cancel" id="pkContractCancelBtn">Cancel</button>
-       <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-printer"></i> Generate PDF</button>`;
+       <button class="rm-btn--pdf" id="pkUebergPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
 
     document.getElementById('pkContractCancelBtn')?.addEventListener('click', () => {
       if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
@@ -910,10 +929,12 @@ async function _pkOpenContract(type, pkId) {
       try {
         await pkGenerateUebergPDF(isEinzug);
       } finally {
-        if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+        if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
       }
     });
   }
+
+  _pkSetupFlow(type, spot);   // For line, Draft PDF / Approve (cc-contract-flow.js)
 
   // Keep what is typed for 2 hours (restored if the app ever has to restart)
   if (typeof ccDraftAutoSave === 'function') {
@@ -928,15 +949,51 @@ async function _pkOpenContract(type, pkId) {
 }
 
 document.getElementById('pkContractClose')?.addEventListener('click', () => {
-  if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
   document.getElementById('pkContractOverlay').classList.remove('open');
 });
 document.getElementById('pkContractOverlay')?.addEventListener('click', e => {
   if (e.target === document.getElementById('pkContractOverlay')) {
-    if (typeof ccDraftClear === 'function') ccDraftClear(_PK_DRAFT_KEY);
     document.getElementById('pkContractOverlay').classList.remove('open');
   }
 });
+
+
+/* ── CONTRACT FLOW (cc-contract-flow.js) — Parking generators ── */
+const _PK_MV_FIELDS = { name: 'pk-mv-name', adr: 'pk-mv-adr', dob: 'pk-mv-dob', email: 'pk-mv-email', tel: 'pk-mv-tel', kaution: 'pk-mv-kaution',
+  t2: { name: 'pk-mv-name2', adr: 'pk-mv-adr2', dob: 'pk-mv-dob2', email: 'pk-mv-email2', tel: 'pk-mv-tel2', wrap: 'pk-mv-mieter2' },
+  t3: { name: 'pk-mv-name3', adr: 'pk-mv-adr3', dob: 'pk-mv-dob3', email: 'pk-mv-email3', tel: 'pk-mv-tel3', wrap: 'pk-mv-mieter3' }, addBtn: 'pk-mv-addbtn' };
+const _PK_UB_FIELDS = { name: 'pk-ub-mieter-name', adr: 'pk-ub-mieter-adr',
+  t2: { name: 'pk-ub-mieter-name2', adr: 'pk-ub-mieter-adr2', wrap: 'pk-ub-t2-wrap' },
+  t3: { name: 'pk-ub-mieter-name3', adr: 'pk-ub-mieter-adr3', wrap: 'pk-ub-t3-wrap' }, addBtn: 'pk-ub-addbtn' };
+function _pkSetupFlow(type, spot) {
+  if (typeof ccfSetupGenerator !== 'function') return;
+  const unit = 'pk:' + spot.id;
+  const v = id => document.getElementById(id)?.value || '';
+  if (type === 'ueberg') {
+    const isEinzug = document.getElementById('pk-eu-' + spot.id)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    ccfSetupGenerator({ body: 'pkContractBody', footer: 'pkContractFooter', draftId: 'pkUebergPdfBtn', mode: 'ueberg', unit,
+      occasion: isEinzug ? 'einzug' : 'auszug', fields: _PK_UB_FIELDS,
+      read: () => ({ kind: 'ueberg', occasion: isEinzug ? 'einzug' : 'auszug', room: unit, forId: ccfForValue(),
+        date: v('pk-ub-datum'), newAddress: isEinzug ? '' : v('pk-ub-neue-adr').trim(), readings: [] }) });
+    return;
+  }
+  ccfSetupGenerator({ body: 'pkContractBody', footer: 'pkContractFooter', draftId: 'pkMvPdfBtn', mode: 'contract', unit,
+    fields: _PK_MV_FIELDS,
+    read: () => {
+      const sp = appParking.find(p => p.id === _pkContractId) || spot;
+      const staffelOn = document.getElementById('pk-mv-staffel-btn')?.dataset.mode === 'ja';
+      const staffel = !staffelOn ? [] : [...document.querySelectorAll('.pk-mv-staffel-row')].map(row => ({
+        betrag: ccfNum(row.querySelector('.pk-mv-staffel-betrag')?.value),
+        datum: row.querySelector('.pk-mv-staffel-datum')?.textContent?.trim() })).filter(x => x.betrag && x.datum && x.datum !== '—');
+      const anf = ccfNum(v('pk-mv-staffel-anfang'));
+      const miete = staffelOn && anf > 0 ? anf : (Number((sp.pricing || {}).miete) || 0);
+      return { kind: 'contract', ctype: 'mietvertrag', room: unit, forId: ccfForValue(),
+        tenant: ccfReadTenant(_PK_MV_FIELDS), coTenants: ccfReadCoTenants(_PK_MV_FIELDS),
+        start: v('pk-mv-start'), end: document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet' ? v('pk-mv-end') : null,
+        rent: { mode: 'kalt_nk', kalt: miete, nk: 0, total: miete }, staffel, staffelTable: 'rnt_staffelmiete_history',
+        first_month: 'anteilig', last_month: 'anteilig', docLabel: 'Parkplatz-Mietvertrag' };
+    } });
+}
 
 /* ── CONTRACT DRAFT RESTORE (Phase 1 safety net) ───────────── */
 const _PK_DRAFT_KEY = 'cc_draft_parking_contract';
@@ -969,9 +1026,11 @@ async function _pkReopenContractDraft(d) {
         if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
       });
     }
+    window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
     await _pkOpenContract(d.meta.type, d.meta.pkId);
     await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
     await ccDraftApply(document.getElementById('pkContractBody'), d);
+    if (typeof ccUbRevealFilled === 'function') ccUbRevealFilled('pk-ub');   // Übergabe: show restored Mieter 2/3
   } catch (e) { console.warn('[parking draft] restore skipped:', e); }
 }
 
@@ -1030,9 +1089,8 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
   const _t3Tel   = _t3?.phone || '';
 
   const miete   = Number(pr.miete) || 0;
-  const kaution = (pr.kaution_default !== null && pr.kaution_default !== undefined && pr.kaution_default !== '')
-    ? Number(pr.kaution_default)
-    : miete * 3;
+  const _pkK    = ccKaution({ contract: 'parking', kalt: miete, rec: pr });
+  const kaution = _pkK.amount;
 
   return `
     <div class="rm-prefilled">
@@ -1044,7 +1102,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
       ${spot.level_position ? `<div class="rm-pre-row"><span>Position</span><span>${pkEsc(spot.level_position)}</span></div>` : ''}
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${pkEsc(spot.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${pkFmtEURCompact(miete)} / mo</span></div>
-      <div class="rm-pre-row"><span>Kaution</span><span>${pkFmtEURCompact(kaution)}${pr.kaution_override ? ' (override)' : ' · 3× Miete'}</span></div>
+      <div class="rm-pre-row"><span>Kaution</span><span>${pkFmtEURCompact(kaution)}${_pkK.source === 'override' ? ' · Individuell' : ' · 3× Miete'}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Parking ×${sk.parking_schluessel ?? 1}${sk.haustuerschluessel > 0 ? ' · Haustür ×' + sk.haustuerschluessel : ''}</span></div>
     </div>
 
@@ -1095,7 +1153,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-field--toggle">
       <div class="rm-toggle-row">
         <div>
-          <div class="rm-toggle-label">Befristung</div>
+          <div class="rm-toggle-label">Befristet</div>
           <div class="rm-toggle-sub" id="pk-mv-befristung-sub">Unbefristet</div>
         </div>
         <button type="button" class="rm-pill-toggle" id="pk-mv-befristung-btn" data-mode="unbefristet">
@@ -1162,22 +1220,11 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-kaution-row" style="align-items:flex-end;gap:12px">
       <div>
         <div class="rm-kaution-lbl">Kaution (§ 551 BGB)</div>
-        <div class="rm-kaution-rule">3 × Monatsmiete</div>
+        <div class="rm-kaution-rule">${_pkK.source === 'override' ? 'Individuelle Kaution (Karte)' : '3 × Monatsmiete'}</div>
       </div>
-      <input class="rm-input" id="pk-mv-kaution" type="number" style="width:90px;text-align:right;font-size:13px" value="${kaution}"/>
+      <input class="rm-input" id="pk-mv-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
     </div>
-    <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','5',this)">5 Tage</button>
-      <button class="rm-fael-btn active" data-prefix="pk-mv" data-val="sofort" onclick="_pkKfSelect('pk-mv','sofort',this)">Sofort</button>
-      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','custom',this)">Individuell</button>
-    </div>
-    <div id="pk-mv-fael-custom" style="display:none">
-      <div class="rm-field">
-        <label>Tage nach Unterzeichnung</label>
-        <input class="rm-input" id="pk-mv-fael-custom-val" type="number" placeholder="z.B. 14"/>
-      </div>
-    </div>`;
+`;
 }
 
 function _pkToggleMvBefristung() {
@@ -1243,6 +1290,13 @@ function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
   const _pkUbTenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   const _pkUbTenantAdr  = profile.address || '';
   const _pkUbHasTenant  = !!_pkUbTenantName;
+  const _pkUbT2 = profile.tenant2 || null;
+  const _pkUbT3 = profile.tenant3 || null;
+  const _pkUbT2Name = _pkUbT2 ? [_pkUbT2.firstName, _pkUbT2.lastName].filter(Boolean).join(' ') : '';
+  const _pkUbT2Adr  = _pkUbT2 ? (_pkUbT2.address || '') : '';
+  const _pkUbT3Name = _pkUbT3 ? [_pkUbT3.firstName, _pkUbT3.lastName].filter(Boolean).join(' ') : '';
+  const _pkUbT3Adr  = _pkUbT3 ? (_pkUbT3.address || '') : '';
+  const _pkUbMulti  = !!(_pkUbT2Name || _pkUbT3Name);
   return `
     <div class="rm-fields-title">Mieter</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
@@ -1256,8 +1310,21 @@ function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
       </div>
       <span style="font-size:11px;color:var(--cc-stone);" id="pkUbMieterManualLbl">Manuell</span>
     </div>
-    <div class="rm-field"><label>Mieter Name</label><input class="rm-input" id="pk-ub-mieter-name" value="${pkEsc(_pkUbTenantName)}" placeholder="Vor- und Nachname…"/></div>
-    <div class="rm-field"><label>Mieter Adresse</label><input class="rm-input" id="pk-ub-mieter-adr" value="${pkEsc(_pkUbTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
+    <div class="rm-field"><label>${_pkUbMulti ? 'Mieter 1 Name' : 'Mieter Name'}</label><input class="rm-input" id="pk-ub-mieter-name" value="${pkEsc(_pkUbTenantName)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>${_pkUbMulti ? 'Mieter 1 Adresse' : 'Mieter Adresse'}</label><input class="rm-input" id="pk-ub-mieter-adr" value="${pkEsc(_pkUbTenantAdr)}" placeholder="Aktuelle Adresse…"/></div>
+
+    <div id="pk-ub-t2-wrap" style="${_pkUbT2Name ? '' : 'display:none'}">
+    <div class="rm-field"><label>Mieter 2 Name</label><input class="rm-input" id="pk-ub-mieter-name2" value="${pkEsc(_pkUbT2Name)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter 2 Adresse</label><input class="rm-input" id="pk-ub-mieter-adr2" value="${pkEsc(_pkUbT2Adr)}" placeholder="Aktuelle Adresse…"/></div>
+    </div>
+    <div id="pk-ub-t3-wrap" style="${_pkUbT3Name ? '' : 'display:none'}">
+    <div class="rm-field"><label>Mieter 3 Name</label><input class="rm-input" id="pk-ub-mieter-name3" value="${pkEsc(_pkUbT3Name)}" placeholder="Vor- und Nachname…"/></div>
+    <div class="rm-field"><label>Mieter 3 Adresse</label><input class="rm-input" id="pk-ub-mieter-adr3" value="${pkEsc(_pkUbT3Adr)}" placeholder="Aktuelle Adresse…"/></div>
+    </div>
+    <button type="button" id="pk-ub-addbtn" onclick="ccUbAddTenant('pk-ub')"
+      style="font-size:11px;padding:6px 12px;border-radius:6px;border:.5px solid var(--cc-rule);background:none;color:var(--cc-taupe);cursor:pointer;font-family:inherit;display:${(_pkUbT2Name && _pkUbT3Name) ? 'none' : 'flex'};align-items:center;gap:6px;margin-top:4px;margin-bottom:12px;">
+      <i class="ti ti-plus" style="font-size:13px;"></i> Mieter hinzuf\u00fcgen
+    </button>
     <div class="rm-field"><label>Übergabedatum</label><input class="rm-input" id="pk-ub-datum" type="text" placeholder="TT.MM.JJJJ"/></div>
     ${!isEinzug ? `
     <div class="rm-field"><label>Neue Adresse des Mieters</label><input class="rm-input" id="pk-ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/></div>` : ''}
@@ -1277,6 +1344,7 @@ function _pkBodyUeberg(spot, sk, isEinzug, profile = {}) {
       <label>Allgemeine Bemerkungen</label>
       <textarea class="rm-input" id="pk-ub-bemerkungen" rows="2" style="resize:vertical;line-height:1.5" placeholder="Sonstige Anmerkungen…"></textarea>
     </div>
+    ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('pk-ub') : ''}
     <div class="rm-field" style="margin-top:4px">
       <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0">(optional)</span></label>
       <input class="rm-input" id="pk-ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}"/>
@@ -1313,6 +1381,8 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
 
   // Override save for new card
   const saveBtn = identitySection?.querySelector('.apt-btn--save');
+  // New unit: this Save creates it → always dark SAVE, "Saving…" while waiting
+  if (saveBtn) { saveBtn.classList.add('cc-save--create'); delete saveBtn.dataset.ccSave; saveBtn.textContent = 'Save'; }
   if (saveBtn) {
     saveBtn.onclick = async () => {
       const name = identitySection.querySelector('[data-f="name"]')?.value.trim();
@@ -1321,10 +1391,10 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
       const data = { vacant: true, sort_order: appParking.length };
       identitySection.querySelectorAll('[data-f]').forEach(inp => {
         const k = inp.dataset.f;
-        data[k] = inp.type === 'number' ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
+        data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
       });
 
-      saveBtn.textContent = '…'; saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…'; saveBtn.disabled = true;
 
       if (_pkSbClient) {
         const { data: newSpot, error } = await _pkSbClient.from('rentals_parking').insert(data).select().single();

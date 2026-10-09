@@ -70,7 +70,7 @@ async function pkGenerateUebergPDF(isEinzug) {
   } catch (err) {
     console.error('[Parking Übergabe PDF]', err);
     alert('PDF generation failed. Please try again.');
-    if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+    if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   }
 }
 
@@ -111,6 +111,10 @@ function _pkCollectUebergData(spot, isEinzug) {
     // Mieter
     mieterName:  document.getElementById('pk-ub-mieter-name')?.value?.trim() || '',
     mieterAdr:   document.getElementById('pk-ub-mieter-adr')?.value?.trim()  || '',
+    mieterName2: document.getElementById('pk-ub-mieter-name2')?.value?.trim() || '',
+    mieterAdr2:  document.getElementById('pk-ub-mieter-adr2')?.value?.trim()  || '',
+    mieterName3: document.getElementById('pk-ub-mieter-name3')?.value?.trim() || '',
+    mieterAdr3:  document.getElementById('pk-ub-mieter-adr3')?.value?.trim()  || '',
     neueAdr:     document.getElementById('pk-ub-neue-adr')?.value?.trim()    || '',
     // Zustand removed — not on one-pager
     bemerkungen: document.getElementById('pk-ub-bemerkungen')?.value?.trim() || '',
@@ -168,7 +172,7 @@ async function _pkOpenUebergPreview(d, container) {
   });
 
   const btn = document.getElementById('pkUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
 }
 
 
@@ -177,7 +181,7 @@ async function _pkSaveUebergPDF(d, container) {
   await _pkSaveUebergPDFFromData(d, container);
   container?.remove();
   const btn = document.getElementById('pkUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   document.getElementById('pkContractOverlay')?.classList.add('open');
 }
 
@@ -195,25 +199,14 @@ async function _pkSaveUebergPDFFromData(d, existingContainer) {
     await new Promise(r => setTimeout(r, 300));
   }
 
-  const { jsPDF } = window.jspdf;
-  const pdf   = new jsPDF({ unit: 'px', format: 'a4', orientation: 'portrait' });
-  const pdfW  = pdf.internal.pageSize.getWidth();
-  const pdfH  = pdf.internal.pageSize.getHeight();
-  const pages = container.querySelectorAll('.pdf-page');
-
-  for (let i = 0; i < pages.length; i++) {
-    const canvas = await html2canvas(pages[i], {
-      scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false
-    });
-    if (i > 0) pdf.addPage();
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
-    canvas.width = 0; canvas.height = 0;   // free memory right away
-  }
+  // One shared render at print quality, with automatic page flow (pdf-open.js)
+  // Optional photo pages, as pages of this same document (cc-ueberg-photos.js)
+  if (typeof ccUbAddPhotoPages === 'function') await ccUbAddPhotoPages('pk-ub', container, { isEinzug: d.isEinzug, objekt: d.spotName, mieter: d.mieterName });
+  const pdf = await ccRenderPagesToPdf(container);
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
-  const safeName = (d.mieterName || d.spotName).replace(/\s+/g, '_');
   // Phase 1: opened on top of the app instead of replacing it (pdf-open.js)
-  await ccOpenPdf(pdf, `Übergabeprotokoll_Stellplatz_${typ}_${safeName}.pdf`);
+  await ccOpenPdf(pdf, ccPdfFileName('Übergabeprotokoll', typ, d.spotName, d.mieterName));
 
   if (!existingContainer) container.remove();
 }
@@ -222,6 +215,7 @@ async function _pkSaveUebergPDFFromData(d, existingContainer) {
 /* ── HTML RENDERER ───────────────────────────────────────── */
 function _pkRenderUebergHTML(d) {
   const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const pkHasExtra = !!(d.mieterName2 || d.mieterName3);
 
   /* ── CSS — identical to Wohnungen version ── */
   const CSS = `
@@ -384,8 +378,12 @@ function _pkRenderUebergHTML(d) {
     ${d.propertyRef    ? kv('Property',            d.propertyRef)    : ''}
     ${kv('Art des Stellplatzes', d.parkingType)}
     ${kv('Vermieter',            d.vermieter)}
-    ${kv('Mieter',               d.mieterName)}
-    ${kv('Adresse Mieter',       d.mieterAdr)}
+    ${kv(pkHasExtra ? 'Mieter 1' : 'Mieter', d.mieterName)}
+    ${kv(pkHasExtra ? 'Adresse Mieter 1' : 'Adresse Mieter', d.mieterAdr)}
+    ${d.mieterName2 ? kv('Mieter 2', d.mieterName2) : ''}
+    ${d.mieterName2 && d.mieterAdr2 ? kv('Adresse Mieter 2', d.mieterAdr2) : ''}
+    ${d.mieterName3 ? kv('Mieter 3', d.mieterName3) : ''}
+    ${d.mieterName3 && d.mieterAdr3 ? kv('Adresse Mieter 3', d.mieterAdr3) : ''}
     ${!d.isEinzug && d.neueAdr ? kv('Neue Adresse', d.neueAdr) : ''}
 
     <div class="sec">Allgemeine Anmerkungen</div>
@@ -404,10 +402,20 @@ function _pkRenderUebergHTML(d) {
       <div class="sig-col">
         ${sigDate}
         <hr class="sig-line"/>
-        <div class="sig-role">Mieter</div>
+        <div class="sig-role">${pkHasExtra ? 'Mieter 1' : 'Mieter'}</div>
         <div class="sig-name">${esc(d.mieterName)}</div>
       </div>
     </div>
+    ${[['Mieter 2', d.mieterName2], ['Mieter 3', d.mieterName3]].filter(x => x[1]).map(([role, name]) => `
+    <div class="sig-block" style="margin-top:36px;">
+      <div class="sig-col"></div>
+      <div class="sig-col">
+        ${sigDate}
+        <hr class="sig-line"/>
+        <div class="sig-role">${role}</div>
+        <div class="sig-name">${esc(name)}</div>
+      </div>
+    </div>`).join('')}
   </div>
 </div>
 

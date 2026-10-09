@@ -1,0 +1,279 @@
+/* ═════════════════════════════════════════════════════════════
+   TENANT STATUS — one set of rules, wording and colours for the
+   Tenants tab of BOTH apps (Casa Castel rooms · Rentals apartments/parking).
+   Each app only supplies its data; nothing here reads app state.
+
+   Colours    red = overdue · amber = to do / open · green = done / paid
+              blue = money held (info) · grey = neutral state
+   Wording    English status words, German domain nouns (Kaution, Staffel, NK)
+
+   Collapsed card
+     Row 1  ······················· [Kaution 1.500 €] [Occupied] ›   ← state, always the same spot
+     Row 2  UNIT NAME (full width, wraps — never cut)   · Rentals apartments: address
+     Row 2b Tenant name  dates
+     Row 3  650 € warm · 500 + 150 Kalt + NK · Mietvertrag          ← info
+     Row 4  [red to-dos] [amber to-dos]  ← only if any · wraps · max 3 + "+N"
+   ═════════════════════════════════════════════════════════════ */
+
+const CC_TN_MOVEOUT_WINDOW = 30;   // "Move-out in N days" shows from 30 days before
+
+function _ccTnPill(cls, text) { return `<span class="tnp ${cls}">${text}</span>`; }
+
+/* Days from today until an ISO date (negative = in the past) */
+function ccTnDaysUntil(iso) {
+  if (!iso) return null;
+  const d = new Date(iso); if (isNaN(d)) return null;
+  const t = new Date(); t.setHours(0, 0, 0, 0); d.setHours(0, 0, 0, 0);
+  return Math.round((d - t) / 86400000);
+}
+
+/* ── KAUTION ─────────────────────────────────────────────────── */
+/* Held = received − returned. Status: Pending → Held → Partly returned → Returned – settle? → Settled */
+function ccTnKaution(k) {
+  const recv = Number(k?.received) || 0, ret = Number(k?.returned) || 0, settled = !!k?.settled;
+  return { recv, ret, settled, held: Math.max(0, recv - ret) };
+}
+function ccTnKautionStatus(recv, ret, settled) {
+  recv = Number(recv) || 0; ret = Number(ret) || 0;
+  if (settled)          return { label: 'Settled',            cls: 'tnp-green' };
+  if (recv === 0)       return { label: 'Pending',            cls: 'tnp-amber' };
+  if (ret <= 0)         return { label: 'Held',               cls: 'tnp-blue'  };
+  if (ret < recv)       return { label: 'Partly returned',    cls: 'tnp-amber' };
+  return                       { label: 'Returned \u2013 settle?', cls: 'tnp-amber' };
+}
+/* Row-1 Kaution pill for the ACTIVE tenant. sollAmount > 0 = a Kaution is expected. */
+function ccTnKautionPill(k, sollAmount, fmtEUR) {
+  const x = ccTnKaution(k);
+  if (x.settled) return '';
+  const soll = Number(sollAmount) || 0;
+  if (x.recv > 0 && x.ret === 0 && soll > 0 && x.recv < soll - 0.005)
+    return _ccTnPill('tnp-amber', 'Kaution ' + fmtEUR(soll - x.recv) + ' open');   // shortfall
+  // Card header = the tenant who lives there: a refund only planned (not paid) doesn't reduce what is held
+  if (x.recv > 0) return _ccTnPill('tnp-green', 'Kaution ' + fmtEUR(x.recv));
+  if (Number(sollAmount) > 0)   return _ccTnPill('tnp-amber', 'Kaution open');
+  return '';
+}
+/* Former tenant row */
+function ccTnFormerKautionPill(k, fmtEUR, fmtDate) {
+  const x = ccTnKaution(k);
+  if (!x.recv) return '';
+  if (x.settled) return _ccTnPill('tnp-gray', 'Kaution ' + fmtEUR(x.ret) + ' returned');   // done → quiet; date is in the pop-up
+  if (x.held > 0) return _ccTnPill('tnp-amber', 'Kaution ' + fmtEUR(x.held) + ' open');
+  return _ccTnPill('tnp-amber', 'Kaution settle?');
+}
+/* Tab summary: money currently held (unsettled, received − returned) */
+function ccTnHeldTotal(records, kautionById) {
+  return (records || []).reduce((sum, r) => {
+    const x = ccTnKaution(kautionById[r.id]);
+    return sum + (x.settled ? 0 : x.held);
+  }, 0);
+}
+
+/* ── TO-DOS ──────────────────────────────────────────────────── */
+function ccTnMoveOutTodo(rec) {
+  if (!rec || !rec.mietende) return null;
+  const d = ccTnDaysUntil(rec.mietende);
+  if (d === null) return null;
+  if (d < 0) return { level: 'red', text: `Move-out overdue ${-d} day${-d === 1 ? '' : 's'}` };
+  if (d === 0) return { level: 'amber', text: 'Move-out today' };
+  if (d <= CC_TN_MOVEOUT_WINDOW) return { level: 'amber', text: `Move-out in ${d} day${d === 1 ? '' : 's'}` };
+  return null;
+}
+/* Unit marked vacant but the tenant was never moved out (a future end date is planned, not a to-do) */
+function ccTnStillActiveTodo(vacant, rec) {
+  if (!vacant || !rec) return null;
+  { const m = ccTnDaysUntil(rec.mietbeginn); if (m !== null && m > 0) return null; }   // signed, moves in later — not a to-do
+  const d = ccTnDaysUntil(rec.mietende);
+  if (d !== null && d >= 0) return null;
+  return { level: 'amber', text: 'Tenant still active' };
+}
+/* Contract ends within 60 days and no move-out recorded → renew or record the move-out */
+function ccTnRenewalTodo(rec) {
+  if (!rec || !rec.vertragsende || rec.mietende || rec.status !== 'active') return null;
+  const d = ccTnDaysUntil(rec.vertragsende);
+  if (d === null || d > 60) return null;
+  const s = String(rec.vertragsende).slice(0, 10).split('-');
+  return { level: d < 0 ? 'red' : 'amber', text: (d < 0 ? 'Contract ended ' : 'Contract ends ') + s[2] + '.' + s[1] + '.' + s[0] };
+}
+function ccTnStaffelTodo(state, fmtDateISO) {
+  if (!state) return null;
+  if (state.state === 'overdue')  return { level: 'red',   text: `Mieterhöhung overdue ${state.days} day${state.days === 1 ? '' : 's'}` };
+  if (state.state === 'reminder') return { level: 'amber', text: `Mieterhöhung from ${fmtDateISO(state.entry.effective_date)}` };
+  return null;
+}
+/* ── MIETERHÖHUNG (Staffel + typed increases) — one tenancy owns its steps ──
+   A step linked to a tenant belongs to that tenant only. A step without a link belongs to the tenancy
+   whose dates cover it — never to a later tenant (the same rule as Controlling, _cxOwnsStep).
+   When a tenant moves out, their steps stay with them (info); the next tenant starts with none.     */
+function ccTnStepOwned(e, rec, recsOfUnit) {
+  if (!e || !rec) return false;
+  if (e.tenant_id !== undefined && e.tenant_id !== null && e.tenant_id !== '') return String(e.tenant_id) === String(rec.id);
+  const d = ccTnIso(e.effective_date), from = ccTnIso(rec.mietbeginn), to = rec.mietende ? ccTnIso(rec.mietende) : '9999-12-31';
+  if (!d || !from || d < from || d > to) return false;
+  if (e.created_at && rec.created_at && String(e.created_at) < String(rec.created_at)
+      && (recsOfUnit || []).some(x => x !== rec && ccTnIso(x.mietbeginn) && ccTnIso(x.mietbeginn) < from)) return false;
+  return true;
+}
+/* Next open step of a tenancy → null · { state: 'reminder' (≤30 days) | 'overdue' (date passed, not adjusted / skipped), entry, days } */
+function ccTnStepState(steps) {
+  const open = (steps || []).filter(e => !e.tenant_adjusted && !e.ignored && e.kind !== 'start')
+    .sort((a, b) => ccTnIso(a.effective_date).localeCompare(ccTnIso(b.effective_date)));
+  for (const e of open) {
+    const d = ccTnDaysUntil(ccTnIso(e.effective_date));
+    if (d === null || d > 30) continue;
+    return d >= 0 ? { state: 'reminder', entry: e, days: d } : { state: 'overdue', entry: e, days: -d };
+  }
+  return null;
+}
+/* Card row meta: "next 545,00 € from 01.05.2027" · "none planned" */
+function ccTnStepNext(steps, fmtEUR, fmtDate) {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  const nx = (steps || []).filter(e => !e.ignored && e.kind !== 'start' && ccTnIso(e.effective_date) >= today)
+    .sort((a, b) => ccTnIso(a.effective_date).localeCompare(ccTnIso(b.effective_date)))[0];
+  return nx ? 'next ' + fmtEUR(nx.amount) + ' from ' + fmtDate(nx.effective_date) : 'none planned';
+}
+/* ── NK-VORAUSZAHLUNG sheet — one layout for both apps ──────────────────
+   o = { sec, rid, entries (this tenancy's, any order), cur {amount, since, fromContract}, fmtEUR,
+         onAdd, onNotified(id), onAdjusted(id), onSkip(id), onHistory }   (actions = JS call strings)
+   Each Änderung: upcoming · adjusted · skipped · open (date passed, not adjusted) · start (from the contract) */
+function ccNkvSheetHTML(o) {
+  const fd = d => { const s = ccTnIso(d); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; };
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  const list = (o.entries || []).slice().sort((a, b) => ccTnIso(b.effective_date).localeCompare(ccTnIso(a.effective_date)));
+  const next = list.filter(e => !e.tenant_adjusted && !e.ignored).sort((a, b) => ccTnIso(a.effective_date).localeCompare(ccTnIso(b.effective_date)))[0];
+  const st = e => e.ignored ? ['tnp-gray', 'skipped'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : ccTnIso(e.effective_date) > today ? ['tnp-amber', 'upcoming'] : ['tnp-red', 'open'];
+  const call = (fn, id) => fn ? fn.replace('$ID', id) : '';
+  const nextBox = next ? `
+    <div style="border-radius:10px;background:#FAEEDA;border:.5px solid #EF9F27;padding:10px 12px;margin:0 0 10px">
+      <div class="tn-flbl" style="color:#8A6535">Next change</div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b style="font-size:16px">${o.fmtEUR(next.amount)}/mo</b><span style="font-size:12px;color:#633806">from ${fd(next.effective_date)}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+        ${next.tenant_notified ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informed</span>`
+          : `<button type="button" class="tn-nkv-pill pending" onclick="${call(o.onNotified, next.id)}"><i class="ti ti-mail" aria-hidden="true"></i> Informed?</button>`}
+        <button type="button" class="tn-nkv-pill pending" onclick="${call(o.onAdjusted, next.id)}"><i class="ti ti-check" aria-hidden="true"></i> Adjusted</button>
+        ${o.onSkip ? `<button type="button" class="tn-nkv-pill pending" onclick="${call(o.onSkip, next.id)}"><i class="ti ti-ban" aria-hidden="true"></i> Skip</button>` : ''}
+      </div>
+    </div>` : '';
+  const rows = list.map(e => { const s = st(e);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:var(--cc-border);font-size:12.5px">
+      <span style="flex:1;min-width:0;${e.ignored ? 'text-decoration:line-through;color:var(--cc-taupe)' : ''}">From ${fd(e.effective_date)} · ${o.fmtEUR(e.amount)}/mo</span>
+      ${e.ignored && o.onSkip ? `<button type="button" class="tn-nkv-pill pending" onclick="${call(o.onSkip, e.id)}">Apply again</button>` : ''}
+      <span class="tnp ${s[0]}">${s[1]}</span></div>`; }).join('')
+    + (o.cur && o.cur.fromContract ? `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:var(--cc-border);font-size:12.5px">
+      <span style="flex:1">From ${fd(o.cur.since)} · ${o.fmtEUR(o.cur.amount)}/mo</span><span class="tnp tnp-gray">start</span></div>` : '');
+  return `
+<div class="${o.sec}" id="nkv-sec-${o.rid}"><div class="tn-sec-body" style="padding-top:10px">
+  <div style="margin-bottom:10px"><span class="tn-flbl" style="display:block">NK-Vorauszahlung now</span>
+    ${o.cur ? `<b style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:500">${o.fmtEUR(o.cur.amount)}</b> <span class="tn-flbl">/mo · since ${fd(o.cur.since)}${o.cur.fromContract ? ' · contract' : ''}</span>`
+      : `<p class="tn-empty" style="margin:2px 0 0">Not set yet.</p>`}</div>
+  ${nextBox}
+  ${rows ? `<div class="tn-msec-lbl" style="margin:4px 0 2px">All Änderungen</div>${rows}` : ''}
+  <div class="cc-sec-foot"><button type="button" onclick="${o.onAdd}"><i class="ti ti-plus"></i> NK-Vorauszahlung change</button>
+    ${o.onHistory && list.length > 1 ? `<button type="button" onclick="${o.onHistory}"><i class="ti ti-history"></i> History</button>` : ''}</div>
+</div></div>`;
+}
+
+/* Rent form: the Kaltmiete is read-only (a rent increase goes through Mieterhöhung) — "Correct" unlocks it for a typo */
+function ccMhUnlock(a) {
+  const box = a && a.closest('.tn-rf'); const inp = box && box.querySelector('input[data-mh-lock]');
+  if (!inp) return;
+  inp.removeAttribute('readonly'); inp.focus();
+  const hint = a.closest('.tn-rf-hint'); if (hint) hint.textContent = 'Correcting – leave "Gilt ab" empty to fix a typo';
+}
+const CC_MH_KINDS = { staffel: 'Staffel', mieterhoehung: 'Mieterhöhung', index: 'Index', korrektur: 'Korrektur', start: 'start', verlaengerung: 'Verlängerung' };
+/* NK-Vorauszahlung change not yet confirmed with the tenant — same timing as Staffel:
+   nothing until 30 days before · amber "NK change from 01.01." · red once the date has passed.
+   Only this tenancy's changes (linked to the tenant, or dated after the move-in). */
+function ccTnNkChangeTodo(entries, rec) {
+  if (!rec) return null;
+  const iso = v => String(v || '').slice(0, 10);
+  const mb = rec.mietbeginn ? ccTnIso(rec.mietbeginn) : '';
+  const mine = (entries || []).filter(e => e && !e.tenant_adjusted && !e.ignored &&
+      (e.tenant_id ? String(e.tenant_id) === String(rec.id) : (!mb || iso(e.effective_date) >= mb)))
+    .sort((a, b) => iso(a.effective_date).localeCompare(iso(b.effective_date)));
+  for (const e of mine) {
+    const d = ccTnDaysUntil(e.effective_date);
+    if (d === null || d > 30) continue;
+    const s = iso(e.effective_date).split('-');
+    if (d >= 0) return { level: 'amber', text: 'NK change from ' + s[2] + '.' + s[1] + '.' };
+    return { level: 'red', text: `NK change overdue ${-d} day${-d === 1 ? '' : 's'}` };
+  }
+  return null;
+}
+function ccTnIso(v) {
+  const s = String(v || '').trim();
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : s.slice(0, 10);
+}
+
+/* ── OCCUPANCY — one rule for Rooms · Apartments · Parking (both apps) ──
+   A unit is occupied today when a tenancy covers today: move-in ≤ today ≤ move-out
+   (no move-out = open-ended; an active tenant without a move-in date counts).
+   A signed tenant who moves in later leaves the unit vacant until then, so the gap
+   between two tenants is Leerstand by itself. Units that never had a tenant in
+   the app are left as they are. An active tenant whose move-out has passed
+   becomes former.
+   units: [{ key, vacant }] · unitOf(rec) → unit key · returns what has to change */
+function ccOccupancyPlan(units, records, unitOf, todayIso) {
+  const occ = new Set(), known = new Set();
+  (records || []).forEach(r => {
+    if (!r) return;
+    const k = unitOf(r); if (k == null || k === '') return;
+    known.add(String(k));
+    if (r.status === 'archived') return;
+    const mb = r.mietbeginn ? ccTnIso(r.mietbeginn) : '', me = r.mietende ? ccTnIso(r.mietende) : '';
+    if (mb ? mb > todayIso : r.status !== 'active') return;
+    if (me && me < todayIso) return;
+    occ.add(String(k));
+  });
+  const unitChanges = (units || [])
+    .filter(u => known.has(String(u.key)) && !!u.vacant === occ.has(String(u.key)))
+    .map(u => ({ key: u.key, vacant: !occ.has(String(u.key)) }));
+  const toFormer = (records || []).filter(r => r && r.status === 'active' && r.mietende && ccTnIso(r.mietende) < todayIso);
+  return { unitChanges, toFormer };
+}
+
+/* Row 4: red first, then amber; max 3 + "+N" */
+function ccTnTodoRow(todos) {
+  const list = (todos || []).filter(Boolean).sort((a, b) => (a.level === 'red' ? 0 : 1) - (b.level === 'red' ? 0 : 1));
+  if (!list.length) return '';
+  const shown = list.slice(0, 3).map(t => _ccTnPill(t.level === 'red' ? 'tnp-red' : 'tnp-amber', t.text));
+  if (list.length > 3) shown.push(_ccTnPill('tnp-gray', '+' + (list.length - 3)));
+  return shown.join('');
+}
+/* Row 1 */
+/* A signed tenant who moves in later: "Moves in 01.10." (the unit stays vacant until then) */
+function ccTnMovesIn(vacant, rec) {
+  if (!vacant || !rec || !rec.mietbeginn) return null;
+  const d = ccTnDaysUntil(rec.mietbeginn);
+  if (d === null || d <= 0) return null;
+  const s = String(rec.mietbeginn).slice(0, 10).split('-');
+  return s.length === 3 ? s[2] + '.' + s[1] + '.' : null;
+}
+function ccTnRow1(vacant, kautionPill, movesIn) {
+  if (movesIn) return (kautionPill || '') + _ccTnPill('tnp-amber', 'Moves in ' + movesIn);
+  if (vacant) return _ccTnPill('tnp-gray', 'Vacant');
+  return (kautionPill || '') + _ccTnPill('tnp-occ', 'Occupied');
+}
+/* Put the computed pills into a rendered card (after any save) */
+function ccTnApplyPills(rid, row1, todo) {
+  const r1 = document.getElementById('hdr-kpill-' + rid);
+  if (r1) r1.innerHTML = row1;
+  const r4 = document.getElementById('hdr-todo-' + rid);
+  if (r4) { r4.innerHTML = todo; r4.style.display = todo ? '' : 'none'; }
+}
+
+(function () {
+  const s = document.createElement('style');
+  s.id = 'cc-tenant-status-styles';
+  s.textContent = `
+html .tnp-occ { background:transparent; color:#27500A; border:.5px solid #97C459; }
+html .tn-hdr-top > [id^="hdr-kpill-"] { flex-shrink:0 !important; min-width:auto; flex-wrap:nowrap; }
+/* Pills on top (always the same spot), unit name underneath at full width — wraps, never cut */
+html .tn-unit-line { display:block; white-space:normal; overflow-wrap:anywhere; margin-top:6px; line-height:1.35; }
+html .tn-todo-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; padding-top:8px; border-top:.5px solid var(--cc-rule); }
+`;
+  document.head.appendChild(s);
+})();

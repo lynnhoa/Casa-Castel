@@ -58,7 +58,7 @@ async function aptGenerateUebergPDF(isEinzug) {
   } catch(err) {
     console.error('[Übergabe PDF]', err);
     alert('PDF generation failed. Please try again.');
-    if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+    if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   }
 }
 
@@ -164,7 +164,7 @@ async function _aptOpenUebergPreview(d, container) {
 
   // Re-enable modal button
   const btn = document.getElementById('aptUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
 }
 
 
@@ -173,7 +173,7 @@ async function _aptSaveUebergPDF(d, container) {
   await _aptSaveUebergPDFFromData(d, container);
   container?.remove();
   const btn = document.getElementById('aptUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-printer"></i> Generate PDF'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
   document.getElementById('aptContractOverlay')?.classList.add('open');
 }
 
@@ -192,11 +192,12 @@ async function _aptSaveUebergPDFFromData(d, existingContainer) {
   }
 
   // Phase 1: one render at print quality, opened on top of the app (pdf-open.js)
+  // Optional photo pages, as pages of this same document (cc-ueberg-photos.js)
+  if (typeof ccUbAddPhotoPages === 'function') await ccUbAddPhotoPages('apt-ub', container, { isEinzug: d.isEinzug, objekt: d.aptName, mieter: d.mieterName });
   const pdf = await ccRenderPagesToPdf(container);
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
-  const safeName = (d.mieterName || d.aptName).replace(/\s+/g, '_');
-  await ccOpenPdf(pdf, `Übergabeprotokoll_${typ}_${safeName}.pdf`);
+  await ccOpenPdf(pdf, ccPdfFileName('Übergabeprotokoll', typ, d.aptName, d.mieterName));
 
   if (!existingContainer) container.remove();
 }

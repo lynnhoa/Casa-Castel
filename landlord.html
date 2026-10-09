@@ -8,7 +8,7 @@
   <!-- iOS PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  <meta name="apple-mobile-web-app-title" content="Casa Castel"/>
+  <meta name="apple-mobile-web-app-title" content="LT Real Estate"/>
   <meta name="theme-color" content="#F5F2ED"/>
 
   <title>Casa Castel — Management</title>
@@ -17,6 +17,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="mgmt-favicon-32.png"/>
 
   <link rel="stylesheet" href="casa-castel.css"/>
+  <link rel="stylesheet" href="cc-cards.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
 </head>
 <body class="is-landlord">
@@ -61,6 +62,7 @@
               <button class="nav-profile-menu-item" onclick="location.href='properties.html'">Properties</button>
               <button class="nav-profile-menu-item" onclick="location.href='rentals-index.html'">Rentals</button>
               <button class="nav-profile-menu-item" onclick="location.href='controlling.html'">Controlling</button>
+              <button class="nav-profile-menu-item" onclick="location.href='settlements.html'">Settlements</button>
               <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
               <button class="nav-profile-menu-item" id="profileBtn" data-i18n="nav_profile">Profile</button>
               <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
@@ -132,24 +134,40 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="cc-german-format.js"></script>
+  <script src="cc-ueberg-photos.js"></script>
   <script src="constants.js"></script>
+  <script src="cc-rent-engine.js?v=2026-10-15pn"></script>
   <script src="supabase-client.js"></script>
-  <script src="pdf-open.js"></script>
+  <script src="pdf-open.js?v=2026-10-09-b2"></script>
   <script src="utils.js"></script>
+  <script src="room-profiles.js"></script>
+  <script src="pw-requests-admin.js?v=2026-10-09-C2"></script>
+  <script src="chat-compose.js"></script>
+  <script src="kaution.js?v=2026-10-09-b5"></script>
+  <script src="direct-save.js"></script>
+  <script src="cc-nk-settle.js?v=2026-10-13m"></script>
+  <script src="cc-controls.js"></script>
+  <script src="cc-tenant-status.js?v=2026-10-11a"></script>
+  <script src="cc-kaution-card.js?v=2026-09-30b"></script>
+  <script src="cc-contract-flow.js?v=2026-10-09-C5"></script>
   <script src="storage.js"></script>
   <script src="auth.js"></script>
   <script src="chat-viewport.js"></script>
   <script src="layout.js"></script>
   <script src="nav.js"></script>
   <script src="settings.js"></script>
-  <script src="rooms-data.js"></script>
+  <script src="rooms-data.js?v=2026-10-09-b3"></script>
   <script src="profile-modal.js"></script>
   <!-- Tab modules — inject innerHTML into tab divs above -->
   <script src="tab-lounge.js"></script>
   <script src="tab-cleaning.js"></script>
   <script src="tab-kitchen.js"></script>
-  <script src="tab-rooms.js"></script>
-  <script src="tab-tenants.js"></script>
+  <script src="tab-rooms.js?v=2026-10-09-C4"></script>
+  <script src="tab-tenants.js?v=2026-10-09-C4"></script>
+  <script src="cc-contract-master.js?v=2026-10-09-b5"></script>
+  <script src="cc-generator.js?v=2026-10-09-C3"></script>
+  <script src="cc-buergschaft.js"></script>
   <script>
     initProfileModal();
     initSettingsRealtime();

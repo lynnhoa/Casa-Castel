@@ -99,10 +99,8 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     kennzeichen: kennzeichen || '',
     fahrzeug:    fahrzeug    || '',
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
-    kaution:         kautionVal !== null && kautionVal !== '' ? Number(kautionVal) : miete * 3,
-    kautionFaelText: kautionFael === 'sofort'
-      ? 'sofort nach Vertragsunterzeichnung'
-      : `binnen ${kautionFael}\u00a0Tagen nach Vertragsunterzeichnung`,
+    kaution:         ccKaution({ contract: 'parking', kalt: miete, rec: pr, manual: kautionVal }).amount,
+    kautionFaelText: 'sofort nach Vertragsunterzeichnung',   // Oct 2026: always sofort
     staffelAn,
     staffeln:     staffeln.map(s => ({ datum: s.datum || '', betrag: Number(s.betrag) || 0 })),
     anfangsmiete: anfangsmiete !== null ? Number(anfangsmiete) : miete,
@@ -507,6 +505,7 @@ function _wirePkMvPdfBtn() {
     const sigVal      = document.getElementById('pk-mv-sig')?.value          || '';
     const befristet   = document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet';
     const endVal      = befristet ? (document.getElementById('pk-mv-end')?.value || '') : '';
+    if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) return;
     const kennzeichen = document.getElementById('pk-mv-kennzeichen')?.value.trim() || '';
     const fahrzeug    = document.getElementById('pk-mv-fahrzeug')?.value.trim()    || '';
     const kautionVal  = document.getElementById('pk-mv-kaution')?.value || null;
@@ -525,7 +524,7 @@ function _wirePkMvPdfBtn() {
     // Load latest settings if available
     if (typeof loadSettings === 'function') await loadSettings();
 
-    const resetHtml = '<i class="ti ti-printer"></i> Generate PDF';
+    const resetHtml = '<i class="ti ti-file-text"></i> Draft PDF';
     btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026';
     btn.disabled  = true;
 
@@ -538,6 +537,8 @@ function _wirePkMvPdfBtn() {
         kautionVal, kautionFael,
         staffelAn, staffeln, anfangsmiete,
       });
+      if (typeof ccfContractData === 'function') ccfContractData(data, kautionVal);
+      ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : []));   // empty dates → line to fill in by hand
 
       const html = _renderPkMietvertragHTML(data);
 
@@ -551,7 +552,7 @@ function _wirePkMvPdfBtn() {
       document.body.appendChild(container);
       await document.fonts.ready;
 
-      const filename = `Parkplatz_Mietvertrag_${(spot.name||'').replace(/\s+/g,'_')}_${(mieterName||'Mieter').replace(/\s+/g,'_')}.pdf`;
+      const filename = ccPdfFileName(data.isTG ? 'Garagenmietvertrag' : 'Stellplatzmietvertrag', spot.name, mieterName);   // = the PDF's own title
 
       await _aptGenericPdfAction(container, filename, btn, resetHtml);
 

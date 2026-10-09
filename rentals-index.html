@@ -12,6 +12,7 @@
   <link rel="apple-touch-icon" href="mgmt-apple-touch-icon.png"/>
   <title>Rentals — Management</title>
   <link rel="stylesheet" href="casa-castel.css"/>
+  <link rel="stylesheet" href="cc-cards.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
 </head>
 <body class="is-landlord">
@@ -29,6 +30,8 @@
           <div class="nav-profile-menu" id="navProfileMenu">
             <button class="nav-profile-menu-item" onclick="location.href='properties.html'">Properties</button>
             <button class="nav-profile-menu-item" onclick="location.href='landlord.html'">Casa Castel</button>
+            <button class="nav-profile-menu-item" onclick="location.href='controlling.html'">Controlling</button>
+            <button class="nav-profile-menu-item" onclick="location.href='settlements.html'">Settlements</button>
             <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
             <button class="nav-profile-menu-item" id="rpProfileBtn">Profile</button>
             <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
@@ -99,10 +102,20 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 
   <!-- Shared constants & Supabase client (defines SB_URL, SB_KEY, sbL) -->
+  <script src="cc-german-format.js"></script>
+  <script src="cc-ueberg-photos.js"></script>
   <script src="constants.js"></script>
+  <script src="cc-rent-engine.js?v=2026-10-15pn"></script>
   <script src="supabase-client.js"></script>
-  <script src="pdf-open.js"></script>
+  <script src="pdf-open.js?v=2026-10-09-b2"></script>
   <script src="settings.js"></script>
+  <script src="kaution.js?v=2026-10-09-b5"></script>
+  <script src="direct-save.js"></script>
+  <script src="cc-nk-settle.js?v=2026-10-13m"></script>
+  <script src="cc-controls.js"></script>
+  <script src="cc-tenant-status.js?v=2026-10-11a"></script>
+  <script src="cc-kaution-card.js?v=2026-09-30b"></script>
+  <script src="cc-contract-flow.js?v=2026-10-09-C5"></script>
 
   <!-- Nav helpers -->
   <script>
@@ -130,37 +143,75 @@
     }
   </script>
 
-  <script src="rentals-tab-apartments.js"></script>
-  <script src="rentals-tab-parking.js"></script>
-  <script src="rentals-tab-tenants.js"></script>
-  <script src="rentals-parking-mietvertrag.js"></script>
+  <script src="rentals-tab-apartments.js?v=2026-10-09-b1"></script>
+  <script src="rentals-tab-parking.js?v=2026-10-09-b1"></script>
+  <script src="rentals-tab-tenants.js?v=2026-10-11a"></script>
+  <script src="rentals-parking-mietvertrag.js?v=2026-10-09-b1"></script>
   <!-- PDF libs loaded after app shell — don't block apartment cards rendering -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="rentals-ueberg-pdf.js"></script>
   <script src="rentals-parking-ueberg-pdf.js"></script>
-  <script src="rentals-kurzzeit.js"></script>
-  <script src="rentals-mietvertrag.js"></script>
-  <script src="rentals-gewerbe-mietvertrag.js"></script>
+  <script src="rentals-kurzzeit.js?v=2026-10-09-b1"></script>
+  <script src="rentals-mietvertrag.js?v=2026-10-09-b1"></script>
+  <script src="rentals-gewerbe-mietvertrag.js?v=2026-10-09-b1"></script>
+  <script src="cc-buergschaft.js"></script>
   <script src="rentals-profile.js"></script>
 
   <script>
+    /* ── TAB SWITCHING — instant, no repaint glitch ─────────────────
+       The tab shows immediately with what is already on screen. Fresh data is
+       fetched in the background (one request at a time per tab) and the list is
+       only repainted if something actually changed and you are not editing
+       there. Open cards and each tab's scroll position are kept. After start,
+       the other tabs are preloaded so their first visit is instant too. */
+    const _rtLoaders = {
+      apartments: () => (typeof loadApartments === 'function' ? loadApartments() : null),
+      parking:    () => (typeof loadParking    === 'function' ? loadParking()    : null),
+      tenants:    () => (typeof loadRntTenants === 'function' ? loadRntTenants() : null),
+    };
+    const _rtInflight = {}, _rtScroll = {}, _rtLoadedAt = {};
+    let _rtCurrent = null;
+    // "Busy" = something unsaved or an editor / add form is open in that tab
+    function _rtBusy(tab) {
+      const el = document.getElementById('tab-' + tab);
+      return !!(el && el.querySelector('.cc-save[data-cc-save="dirty"], .apt-edit-active, .tn-nk-add-form, .tn-nkv-add-form, .apt-hg-add-form'));
+    }
+    function _rtLoad(tab) {
+      if (!_rtLoaders[tab]) return Promise.resolve();
+      if (_rtInflight[tab]) return _rtInflight[tab];
+      const p = Promise.resolve().then(_rtLoaders[tab])
+        .catch(e => console.warn('[rentals] load ' + tab + ':', e))
+        .finally(() => { delete _rtInflight[tab]; _rtLoadedAt[tab] = Date.now(); });
+      _rtInflight[tab] = p;
+      return p;
+    }
+
     function switchTab(tabName) {
+      if (_rtCurrent) _rtScroll[_rtCurrent] = window.scrollY;
       try { localStorage.setItem('rentals_last_tab', tabName); } catch(e) {}
       // Close any open sheets / preview overlays so none flash or carry across tabs
       document.querySelectorAll('.rm-overlay.open, .rm-confirm-overlay.open')
         .forEach(o => o.classList.remove('open'));
       ['aptContractPdfPreviewOverlay','pkUebergPreviewOverlay','aptUebergPreviewOverlay']
         .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      // B17: the new tab is laid out hidden, scrolled to its own position, then shown in the
+      // next frame — iOS never paints it at the old tab's scroll offset (the "double" flash)
       const tabEl = document.getElementById('tab-' + tabName);
-      if (tabEl) tabEl.style.display = 'block';
+      if (tabEl) { tabEl.style.visibility = 'hidden'; tabEl.style.display = 'block'; }
+      document.querySelectorAll('.tab-content').forEach(c => { if (c !== tabEl) c.style.display = 'none'; });
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === tabName);
       });
-      if (tabName === 'apartments') loadApartments?.();
-      if (tabName === 'parking')    loadParking?.();
-      if (tabName === 'tenants')    loadRntTenants?.();
+      _rtCurrent = tabName;
+      window.scrollTo(0, _rtScroll[tabName] || 0);   // each tab keeps its own scroll position
+      requestAnimationFrame(() => { if (tabEl) tabEl.style.visibility = ''; });
+      if (tabName === 'tenants') {                     // first visit while still loading: say so
+        const l = document.getElementById('rntTenantsList');
+        if (l && !l.querySelector('.tn-card')) l.innerHTML = '<p class="tn-empty">Loading tenants…</p>';
+      }
+      // B17: no background reload when this tab was loaded less than a minute ago
+      if (!_rtLoadedAt[tabName] || Date.now() - _rtLoadedAt[tabName] > 60000) _rtLoad(tabName);
     }
 
     function initTabs() {
@@ -200,7 +251,12 @@
 
     const saved     = (() => { try { return localStorage.getItem('rentals_last_tab'); } catch(e) { return null; } })();
     const available = new Set(['apartments','parking','tenants']);
-    switchTab((saved && available.has(saved)) ? saved : 'apartments');
+    const _rtFirst = (saved && available.has(saved)) ? saved : 'apartments';
+    switchTab(_rtFirst);
+    // Preload the other tabs in the background (one after another) → their first visit is instant
+    (_rtInflight[_rtFirst] || Promise.resolve()).then(() =>
+      ['apartments', 'parking', 'tenants'].filter(t => t !== _rtFirst)
+        .reduce((p, t) => p.then(() => _rtLoad(t)), Promise.resolve()));
   </script>
 
 </body>

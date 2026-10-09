@@ -31,7 +31,7 @@ function _buildRentalMietvertragData(room, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
-  kautionFael = '5',
+  kautionFael = '5', kautionVal = null,
   staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
@@ -59,15 +59,34 @@ function _buildRentalMietvertragData(room, s, {
 
   // Pauschal: kaution base = full monthly charge (kaltmiete + NK)
   // Kalt+NK:  kaution base = kaltmiete only (§ 551 BGB)
-  const kautionBase = pricingMode === 'pauschal' ? kaltmiete + nkVorauszahlung : kaltmiete;
-  const kaution = room.kaution_override && room.kaution_default
-    ? Number(room.kaution_default)
-    : kautionBase * 3;
+  // Staffelmiete: the first Staffel (Anfangsmiete) is the Kaltmiete that is printed,
+  // so the monthly Summe must use it too.
+  if (staffelAn && anfangsmiete !== null && anfangsmiete !== '' && Number(anfangsmiete) > 0) {
+    gesamtmiete = Number(anfangsmiete) + nkVorauszahlung;
+  }
+  // First partial month (move-in not on the 1st): share of the full Miete + NK
+  let ersterMonatNote = '';
+  if (startVal) {
+    const st = new Date(startVal);
+    if (!isNaN(st) && st.getDate() !== 1) {
+      const dim  = new Date(st.getFullYear(), st.getMonth() + 1, 0).getDate();
+      const tage = dim - st.getDate() + 1;
+      const r2   = v => Math.round(v * 100) / 100;
+      const kaltM = gesamtmiete - nkVorauszahlung;
+      const anteil = r2(gesamtmiete / dim * tage), kaltA = r2(kaltM / dim * tage), nkA = r2(anteil - kaltA);
+      const e = v => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
+      ersterMonatNote = `Erster Monat anteilig: ${tage} von ${dim} Tagen = ${e(anteil)}` +
+        (pricingMode === 'kalt_nk' ? ` (${e(kaltA)} Kaltmiete + ${e(nkA)} NK).` : ' (pauschal inkl. NK).');
+    }
+  }
+  // Kaution: generator value → card override (toggle ON) → 3× base (kaution.js)
+  const kaution = ccKaution({ contract: 'mietvertrag', mode: pricingMode, kalt: kaltmiete,
+                              nk: nkVorauszahlung, rec: room, manual: kautionVal }).amount;
 
   const grundLabels = {
     eigenbedarf: 'Eigenbedarf (§\u00a0575 Abs.\u00a01 Nr.\u00a01 BGB)',
-    abriss:      'Abriss / wesentliche Umbaumaßnahmen (§\u00a0575 Abs.\u00a01 Nr.\u00a03 BGB)',
-    dienst:      'Dienstwohnung (§\u00a0575 Abs.\u00a01 Nr.\u00a02 BGB)',
+    abriss:      'Abriss / wesentliche Umbaumaßnahmen (§\u00a0575 Abs.\u00a01 Nr.\u00a02 BGB)',
+    dienst:      'Dienstwohnung (§\u00a0575 Abs.\u00a01 Nr.\u00a03 BGB)',
   };
 
   return {
@@ -108,8 +127,9 @@ function _buildRentalMietvertragData(room, s, {
     kaltmiete,
     nkVorauszahlung,
     gesamtmiete,
+    ersterMonatNote,
     kaution,
-    kautionFaelText: kautionFael === 'sofort' ? 'sofort nach Vertragsunterzeichnung' : `binnen ${kautionFael}\u00a0Tagen`,
+    kautionFaelText: 'sofort nach Vertragsunterzeichnung',   // Oct 2026: always sofort
     hausstuerschluessel: room.haustuerschluessel ?? 1,
     zimmerschluessel:    room.zimmerschluessel    ?? 1,
     briefkastenschluessel: room.briefkastenschluessel ?? 0,
@@ -251,7 +271,7 @@ function _contractBodyRentalMietvertrag(room) {
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:300;color:var(--cc-charcoal);text-transform:none;letter-spacing:0;">
             <input type="radio" name="rv-grund" value="dienst"
               style="width:16px;height:16px;accent-color:var(--cc-ink);flex-shrink:0;" onchange="_updateRentalMvGrundDetail()"/>
-            Dienstwohnung (§ 575 Abs. 1 Nr. 2 BGB)
+            Dienstwohnung (§ 575 Abs. 1 Nr. 3 BGB)
           </label>
         </div>
       </div>
@@ -457,7 +477,7 @@ function _renderRentalMietvertragHTML(d) {
 
   const mieteRestBlock = `
     ${kv('F\u00e4lligkeit','Sp\u00e4testens 3.\u00a0Werktag des Monats (\u00a7\u00a0556b BGB)')}
-    ${kv('Kaution',eur(d.kaution)+'\u2002(f\u00e4llig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)'))}
+    ${kv('Kaution', d.kautionBestehend ? (d.kaution ? eur(d.kaution) + '\u2002(bereits geleistet)' : 'bereits geleistet') : eur(d.kaution)+'\u2002(f\u00e4llig '+(d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText+', \u00a7\u00a0551 BGB)' : d.kautionFaelText+' nach Vertragsunterschrift, \u00a7\u00a0551 BGB)'))}
     <div class="kv-gap"></div>
     ${kv('Kontoinhaber',d.kontoinhaber)}${d.bankname?kv('Bank',d.bankname):''}${kv('IBAN',d.iban)}${kv('BIC',d.bic)}
     <p class="note">Alle Zahlungen per \u00dcberweisung. Verwendungszweck: ${d.zimmerName} \u2013 Miete Monat Jahr / Kaution.</p>`;
@@ -484,7 +504,7 @@ function _renderRentalMietvertragHTML(d) {
     cl(String(4+pOff),'Schlüsselübergabe',
       `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel${(d.briefkastenschluessel > 0) ? ` sowie ${d.briefkastenschluessel}\u00a0Briefkastenschlüssel` : ''}. Weitere Schlüssel bedürfen der vorherigen Zustimmung (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`),
     cl(String(5+pOff),'Kaution',
-      `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Unterzeichnung dieses Vertrages'} auf das oben genannte Konto. Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`),
+      `${d.kautionBestehend ? 'Die vom Mieter bereits geleistete Kaution' + (d.kaution ? ' von ' + eur(d.kaution) : '') + ' bleibt bestehen und sichert auch dieses Mietverhältnis; eine erneute Zahlung ist nicht erforderlich.' : `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kautionFaelText.startsWith('sofort') ? d.kautionFaelText : d.kautionFaelText + ' nach Unterzeichnung dieses Vertrages'} auf das oben genannte Konto.`} Der Vermieter legt die Barkaution getrennt von seinem Vermögen auf einem Kautionskonto an (\u00a7\u00a0551 BGB). Rückzahlung nach Prüfung des Zustands bei Auszug.`),
     cl(String(6+pOff),'Schönheitsreparaturen &amp; Kleinreparaturen',
       'Schönheitsreparaturen je nach Abnutzungsgrad auf Kosten des Mieters. Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.'),
     cl(String(7+pOff),'Tierhaltung',
@@ -544,6 +564,7 @@ function _renderRentalMietvertragHTML(d) {
     ${kv('M\u00f6blierung','M\u00f6bliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit',false,false)}
     ${kv('Mietbeginn',d.mietbeginn||'\u2014')}
+    ${d.ersterMonatNote ? kv('Erster Monat', d.ersterMonatNote) : ''}
     ${!d.befristet
       ? kv('K\u00fcndigung','3\u00a0Monate (Mieter) / gestaffelt (Vermieter) \u00b7 \u00a7\u00a0573c BGB \u00b7 Schriftform')
         + kv('\u00a7\u00a0545 BGB','Keine stillschweigende Verl\u00e4ngerung')

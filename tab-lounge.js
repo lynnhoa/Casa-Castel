@@ -33,18 +33,13 @@ document.getElementById('tab-lounge').innerHTML = `
     <div class="l-chat-hdr">
       <span class="l-chat-lbl">House chat</span>
       <div style="display:flex;gap:10px;align-items:center;">
-        <button class="l-chat-tlink" onclick="loadLounge()">↺ Refresh</button>
-        <button class="l-chat-tlink" onclick="loungeOpenModal('actions')" style="background:var(--cc-ink);color:var(--cc-white);border:none;border-radius:var(--cc-r-sm);padding:4px 10px;text-decoration:none;font-size:10px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;">⋯ More</button>
+        ${ccRefreshBtnHtml('loadLounge()')}
       </div>
     </div>
     <div class="l-feed" id="lounge-feed">
       <p class="cc-note" style="padding:8px 0 4px;">No messages yet.</p>
     </div>
-    <div class="l-compose">
-      <button class="l-action-btn" onclick="loungeOpenModal('actions')" title="Actions">⊕</button>
-      <input class="l-compose-input" id="lounge-input" type="text" placeholder="Message as Casa Castel…"/>
-      <button class="l-compose-send" id="lounge-send">↑</button>
-    </div>
+    <div id="lounge-compose-mob"></div>
   </div>
 
   <!-- ② Desktop 2-column layout — hidden on mobile via CSS -->
@@ -62,7 +57,7 @@ document.getElementById('tab-lounge').innerHTML = `
       </div>
 
       <div class="l-dsk-section">
-        <p class="l-dsk-compose-lbl">New announcement</p>
+        <p class="l-dsk-compose-lbl" id="ann-compose-lbl">New announcement</p>
         <div class="cc-input-wrap cc-mb-8">
           <label class="cc-input-label" for="ann-title-input">Title (optional)</label>
           <input class="cc-input" id="ann-title-input" type="text" placeholder="e.g. Important: bin day change"/>
@@ -79,6 +74,7 @@ document.getElementById('tab-lounge').innerHTML = `
           <button class="cc-btn cc-btn--primary" id="ann-post-btn" style="flex:1;">Post to app</button>
           <a class="btn-email" id="ann-email-btn" href="#" target="_blank" style="flex:1;justify-content:center;">✉ Email all</a>
         </div>
+        <button type="button" class="ann-cancel-edit" onclick="cancelAnnEdit()" style="display:none;">Cancel editing</button>
       </div>
 
       <div class="l-dsk-section" style="border-bottom:none;">
@@ -108,7 +104,7 @@ document.getElementById('tab-lounge').innerHTML = `
       <div class="l-dsk-chat-hdr">
         <span class="l-dsk-chat-lbl">House chat</span>
         <div style="display:flex;gap:10px;align-items:center;">
-          <button class="l-dsk-chat-link" onclick="loadLounge()">↺ Refresh</button>
+          ${ccRefreshBtnHtml('loadLounge()')}
           <a class="l-dsk-chat-link" id="lounge-email-all-desktop" href="#" target="_blank">✉ Email all</a>
           <button class="l-dsk-chat-link l-dsk-chat-link--danger" id="lounge-reset-btn">↺ Reset chat</button>
         </div>
@@ -121,10 +117,7 @@ document.getElementById('tab-lounge').innerHTML = `
       <div class="lounge-feed" id="lounge-feed-desktop">
         <p class="cc-note" style="padding:8px 0 4px;">No messages yet.</p>
       </div>
-      <div class="compose-bar">
-        <textarea class="compose-input" id="lounge-input-desktop" placeholder="Message as Casa Castel… @London @Paris @Oslo" rows="1"></textarea>
-        <button class="compose-send" id="lounge-send-desktop">↑</button>
-      </div>
+      <div id="lounge-compose-dsk"></div>
     </div><!-- /.l-desktop-right -->
 
   </div><!-- /.l-desktop-grid -->
@@ -142,7 +135,7 @@ document.getElementById('tab-lounge').innerHTML = `
         <p style="font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:8px;">Currently posted</p>
         <div id="ann-list-modal"><p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p></div>
         <div style="height:0.5px;background:var(--cc-rule);margin:14px 0;"></div>
-        <p style="font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:10px;">Post new announcement</p>
+        <p id="ann-compose-lbl-mob" style="font-size:9px;font-weight:500;letter-spacing:0.12em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:10px;">Post new announcement</p>
         <div class="cc-input-wrap cc-mb-8">
           <label class="cc-input-label" for="ann-title-input-mob">Title (optional)</label>
           <input class="cc-input" id="ann-title-input-mob" type="text" placeholder="e.g. Important: bin day change"/>
@@ -159,6 +152,7 @@ document.getElementById('tab-lounge').innerHTML = `
           <button class="cc-btn cc-btn--primary" id="ann-post-btn-mob" style="flex:1;">Post to app</button>
           <a class="btn-email" id="ann-email-btn-mob" href="#" target="_blank" style="flex:1;justify-content:center;">✉ Email all</a>
         </div>
+        <button type="button" class="ann-cancel-edit" onclick="cancelAnnEdit()" style="display:none;">Cancel editing</button>
       </div>
     </div>
   </div>
@@ -195,27 +189,27 @@ document.getElementById('tab-lounge').innerHTML = `
     <div class="cc-modal-sheet" style="max-height:60vh;">
       <div class="cc-modal-hdr">
         <span class="cc-modal-title">Lounge actions</span>
-        <button class="cc-modal-close" onclick="loungeCloseModal('actions')">✕</button>
+        <button class="cc-modal-close" onclick="loungeCloseModal('actions')" aria-label="Close"><i class="ti ti-x"></i></button>
       </div>
-      <div class="cc-modal-body" style="padding:0;">
-        <button onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('ann'),120);" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:none;border:none;border-bottom:0.5px solid var(--cc-rule);cursor:pointer;text-align:left;font-family:inherit;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">📢</div>
-          <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);margin:0 0 2px;">Post announcement</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Push a message to all tenants</p></div>
-          <span style="margin-left:auto;color:var(--cc-stone);font-size:16px;">›</span>
+      <div class="cc-modal-body l-act-list">
+        <button type="button" class="l-act-row" onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('ann'),120);">
+          <span class="l-act-icon"><i class="ti ti-speakerphone"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Post announcement</span><span class="l-act-sub">Push a message to all tenants</span></span>
+          <i class="ti ti-chevron-right l-act-chev"></i>
         </button>
-        <button onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('notice'),120);" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:none;border:none;border-bottom:0.5px solid var(--cc-rule);cursor:pointer;text-align:left;font-family:inherit;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">ℹ</div>
-          <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);margin:0 0 2px;">Post notice</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Info strip above the chat</p></div>
-          <span style="margin-left:auto;color:var(--cc-stone);font-size:16px;">›</span>
+        <button type="button" class="l-act-row" onclick="loungeCloseModal('actions');setTimeout(()=>loungeOpenModal('notice'),120);">
+          <span class="l-act-icon"><i class="ti ti-info-circle"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Post notice</span><span class="l-act-sub">Info strip above the chat</span></span>
+          <i class="ti ti-chevron-right l-act-chev"></i>
         </button>
-        <a id="lounge-email-all-mob" href="#" target="_blank" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;border-bottom:0.5px solid var(--cc-rule);text-decoration:none;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">✉</div>
-          <div><p style="font-size:13px;font-weight:500;color:var(--cc-ink);margin:0 0 2px;">Email all tenants</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Open email to all rooms</p></div>
-          <span style="margin-left:auto;color:var(--cc-stone);font-size:16px;">›</span>
+        <a id="lounge-email-all-mob" class="l-act-row" href="#" target="_blank">
+          <span class="l-act-icon"><i class="ti ti-mail"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Email all tenants</span><span class="l-act-sub">Open email to all rooms</span></span>
+          <i class="ti ti-chevron-right l-act-chev"></i>
         </a>
-        <button id="lounge-reset-btn-mob" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;background:none;border:none;cursor:pointer;text-align:left;font-family:inherit;">
-          <div style="width:36px;height:36px;border-radius:var(--cc-r-md);background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">↺</div>
-          <div><p style="font-size:13px;font-weight:500;color:#9F1239;margin:0 0 2px;">Reset chat</p><p style="font-size:11px;font-weight:300;color:var(--cc-taupe);margin:0;">Delete all messages</p></div>
+        <button type="button" id="lounge-reset-btn-mob" class="l-act-row l-act-row--danger">
+          <span class="l-act-icon"><i class="ti ti-trash"></i></span>
+          <span class="l-act-text"><span class="l-act-title">Reset chat</span><span class="l-act-sub">Delete all messages</span></span>
         </button>
       </div>
     </div>
@@ -237,6 +231,7 @@ function loungeOpenModal(name) {
 }
 function loungeCloseModal(name) {
   document.getElementById('lounge-modal-' + name)?.classList.remove('open');
+  if (name === 'ann' && _annEditId) cancelAnnEdit();
 }
 
 /* ── STATE ──────────────────────────────────────────────── */
@@ -245,6 +240,8 @@ let _loungeSub   = null;
 
 /* ── ANNOUNCEMENTS ──────────────────────────────────────── */
 let _lastRenderedAnnId = null;
+let _annCur    = null;   // the announcement currently posted
+let _annEditId = null;   // editing it (Save changes) instead of posting a new one
 async function loadAnnouncements() {
   const el = document.getElementById('ann-list');
   if (!sbL) { el.innerHTML = '<p class="cc-note" style="padding:4px 0;">Connect Supabase.</p>'; return; }
@@ -254,6 +251,7 @@ async function loadAnnouncements() {
 }
 
 function _renderAnn(data) {
+  _annCur = data || null;
   if (data && data.id && data.id === _lastRenderedAnnId) return;
   if (data && data.id) _lastRenderedAnnId = data.id;
   const emptyHtml = '<p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p>';
@@ -265,7 +263,7 @@ function _renderAnn(data) {
     </div>
     ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
     <p class="ann-body-text">${esc(data.body)}</p>
-    <div class="ann-actions"><button class="ann-del" onclick="deleteAnn('${data.id}')">Delete announcement</button></div>
+    <div class="ann-actions"><button class="ann-edit" onclick="editAnn()">Edit</button><button class="ann-del" onclick="deleteAnn('${data.id}')">Delete announcement</button></div>
   </div>`;
   const el    = document.getElementById('ann-list');
   const elDsk = document.getElementById('ann-list-desktop');
@@ -287,6 +285,7 @@ async function _populateAnnModal() {
   if (!sbL) { el.innerHTML = '<p class="cc-note">Connect Supabase.</p>'; return; }
   const { data } = await sbL.from('lounge_data').select('*')
     .eq('type','announcement').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  _annCur = data || null;
   if (!data) { el.innerHTML = '<p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p>'; return; }
   el.innerHTML = `<div class="ann-card${data.pinned ? ' ann-card--pinned' : ''}">
     <div class="ann-top">
@@ -296,7 +295,10 @@ async function _populateAnnModal() {
     </div>
     ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
     <p class="ann-body-text">${esc(data.body)}</p>
-    <button onclick="deleteAnn('${data.id}')" style="font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:#9F1239;background:none;border:none;cursor:pointer;margin-top:10px;padding:0;font-family:inherit;">Delete announcement</button>
+    <div style="display:flex;gap:18px;margin-top:10px;">
+      <button onclick="editAnn()" style="font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:var(--cc-ink,#1E1A17);background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">Edit announcement</button>
+      <button onclick="deleteAnn('${data.id}')" style="font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:#9F1239;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;">Delete announcement</button>
+    </div>
   </div>`;
 }
 
@@ -307,8 +309,22 @@ async function _postAnn(titleId, bodyId, pinId, closeAfter) {
   const body   = document.getElementById(bodyId).value.trim();
   if (!body) return;
   const pinned = document.getElementById(pinId).checked;
-  await sbL.from('lounge_data').delete().eq('type','announcement');
-  const { data } = await sbL.from('lounge_data').insert({ type:'announcement', title, body, pinned }).select().maybeSingle();
+  let data = null;
+  if (_annEditId) {
+    // Edit: same announcement (same date), new text — tenants see it change live
+    const keep = _annCur && _annCur.id === _annEditId ? _annCur.created_at : null;
+    ({ data } = await sbL.from('lounge_data').update({ title, body, pinned }).eq('id', _annEditId).select().maybeSingle());
+    if (!data) {   // update not allowed here → replace it, keeping its original date
+      await sbL.from('lounge_data').delete().eq('type','announcement');
+      const row = { type:'announcement', title, body, pinned };
+      if (keep) row.created_at = keep;
+      ({ data } = await sbL.from('lounge_data').insert(row).select().maybeSingle());
+    }
+    _setAnnEditMode(false);
+  } else {
+    await sbL.from('lounge_data').delete().eq('type','announcement');
+    ({ data } = await sbL.from('lounge_data').insert({ type:'announcement', title, body, pinned }).select().maybeSingle());
+  }
   document.getElementById(titleId).value = '';
   document.getElementById(bodyId).value  = '';
   document.getElementById(pinId).checked = false;
@@ -317,8 +333,40 @@ async function _postAnn(titleId, bodyId, pinId, closeAfter) {
   if (closeAfter) loungeCloseModal('ann');
 }
 
+/* ── Edit the posted announcement ── */
+function _setAnnEditMode(on) {
+  _annEditId = on && _annCur ? _annCur.id : null;
+  const lm = document.getElementById('ann-compose-lbl-mob'); if (lm) lm.textContent = on ? 'Edit announcement' : 'Post new announcement';
+  const ld = document.getElementById('ann-compose-lbl');     if (ld) ld.textContent = on ? 'Edit announcement' : 'New announcement';
+  ['ann-post-btn-mob', 'ann-post-btn'].forEach(id => { const b = document.getElementById(id); if (b) b.textContent = on ? 'Save changes' : 'Post to app'; });
+  document.querySelectorAll('.ann-cancel-edit').forEach(b => { b.style.display = on ? '' : 'none'; });
+}
+function editAnn() {
+  if (!_annCur) return;
+  const modal = document.getElementById('lounge-modal-ann');
+  const desktopVisible = !!document.getElementById('ann-list-desktop')?.offsetParent;
+  if (!desktopVisible && modal && !modal.classList.contains('open')) loungeOpenModal('ann');
+  _setAnnEditMode(true);
+  [['ann-title-input-mob', 'ann-body-input-mob', 'ann-pin-check-mob'], ['ann-title-input', 'ann-body-input', 'ann-pin-check']]
+    .forEach(([t, b, p]) => {
+      const te = document.getElementById(t), be = document.getElementById(b), pe = document.getElementById(p);
+      if (te) te.value = _annCur.title || '';
+      if (be) be.value = _annCur.body || '';
+      if (pe) pe.checked = !!_annCur.pinned;
+    });
+  _updateAnnEmailBtn();
+  const focus = document.getElementById(desktopVisible ? 'ann-body-input' : 'ann-body-input-mob');
+  if (focus) setTimeout(() => { focus.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 150);
+}
+function cancelAnnEdit() {
+  _setAnnEditMode(false);
+  ['ann-title-input-mob', 'ann-body-input-mob', 'ann-title-input', 'ann-body-input'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  ['ann-pin-check-mob', 'ann-pin-check'].forEach(id => { const e = document.getElementById(id); if (e) e.checked = false; });
+}
+
 async function deleteAnn(id) {
   if (!sbL) return;
+  if (_annEditId === id) cancelAnnEdit();
   _lastRenderedAnnId = null;
   await sbL.from('lounge_data').delete().eq('id', id);
   loadAnnouncements();
@@ -334,14 +382,20 @@ function _updateAnnEmailBtn() {
 }
 
 /* ── NOTICE ─────────────────────────────────────────────── */
+/* Every render counts up; a load whose answer arrives after a newer render is dropped */
+let _noticeSeq = 0;
+
 async function loadNotice() {
   if (!sbL) return;
+  const my = ++_noticeSeq;
   const { data } = await sbL.from('lounge_data').select('*')
     .eq('type','notice').order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if (my !== _noticeSeq) return;   // a newer notice was shown meanwhile
   _renderNotice(data || null);
 }
 
 function _renderNotice(data) {
+  _noticeSeq++;
   const strip    = document.getElementById('notice-posted');
   const clearBtn  = document.getElementById('notice-clear-btn');
   const bannerDsk = document.getElementById('lounge-notice-banner-desktop');
@@ -468,27 +522,28 @@ async function loadLounge() {
   _renderMsgs(data || []);
 }
 
-/* Mobile compose bar markup — kept in one place so it can be
-   re-inserted if any chat operation ever removes it. */
-const _MOBILE_COMPOSE_HTML = `
-    <div class="l-compose">
-      <button class="l-action-btn" onclick="loungeOpenModal('actions')" title="Actions">⊕</button>
-      <input class="l-compose-input" id="lounge-input" type="text" placeholder="Message as Casa Castel…"/>
-      <button class="l-compose-send" id="lounge-send">↑</button>
-    </div>`;
-
-/* Guarantees the mobile compose bar is present + wired. Safe to call
-   any number of times: it does nothing if the bar already exists, and
-   only ever ADDS it back — it never removes anything. */
+/* ── COMPOSE CARD ─────────────────────────────────────────
+   Same card on phone and iPad/laptop. + opens the Lounge actions
+   (phone only — the laptop layout shows them in the left column),
+   camera lets you take a photo or pick one from the library.     */
+function _mountLoungeCompose(el) {
+  if (!el || el.classList.contains('cc-dock')) return;
+  ccCompose(el, {
+    placeholder: 'Message as Casa Castel…',
+    plus: () => loungeOpenModal('actions'),
+    plusMobileOnly: true,
+    camera: 'choice',
+    onSend: _loungeSend,
+  });
+}
+/* Guarantees the mobile compose card is present. Safe to call any
+   number of times: only ever ADDS it back, never removes anything. */
 function _ensureMobileCompose() {
   const chat = document.querySelector('#tab-lounge .l-chat');
-  if (!chat || chat.querySelector('.l-compose')) return;   // already there → no-op
-  chat.insertAdjacentHTML('beforeend', _MOBILE_COMPOSE_HTML);
-  document.getElementById('lounge-send')
-    ?.addEventListener('click', sendLounge);
-  document.getElementById('lounge-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLounge(); }});
-  if (typeof wireComposeBlur === 'function') wireComposeBlur(document.getElementById('lounge-input'));
+  if (!chat) return;
+  let m = document.getElementById('lounge-compose-mob');
+  if (!m) { chat.insertAdjacentHTML('beforeend', '<div id="lounge-compose-mob"></div>'); m = document.getElementById('lounge-compose-mob'); }
+  _mountLoungeCompose(m);
 }
 
 function _renderMsgs(msgs) {
@@ -504,16 +559,23 @@ function _renderMsgs(msgs) {
   _ensureMobileCompose();   // re-show the compose bar if a render ever dropped it
 }
 
+/* A message is text, or a photo ("[photo] <url>") */
+function _loungeBodyHtml(body, me) {
+  const url = typeof body === 'string' && body.startsWith('[photo] ') ? ccPhotoUrl(body.slice(8)) : '';
+  if (url) return `<img class="msg-photo" src="${esc(url)}" alt="Photo" loading="lazy" onclick="ccOpenPhoto(this.src)" onerror="this.style.display='none'"/>`;
+  return `<p class="msg-text">${parseMsg(body, me)}</p>`;
+}
+
 function _msgHtml(m, canDelete) {
   const isCC = m.room === 'Casa Castel';
   return `<div class="msg-row" data-id="${m.id}">
-    <div class="msg-avatar${isCC ? ' msg-avatar--mgmt' : ''}">${roomInitials(m.room)}</div>
+    <div class="msg-avatar${isCC ? ' msg-avatar--mgmt' : ''}"${ccAvAttrs(m.room)}>${roomInitials(m.room)}</div>
     <div class="msg-content">
       <div class="msg-meta">
-        <span class="msg-name${isCC ? ' msg-name--mgmt' : ''}">${esc(m.room)}</span>
+        <span class="msg-name${isCC ? ' msg-name--mgmt' : ''}"${ccNameAttrs(m.room)}>${esc(ccNameText(m.room))}</span>
         <span class="msg-time">${fmtTs(new Date(m.created_at).getTime())}</span>
       </div>
-      <p class="msg-text">${parseMsg(m.body, 'Casa Castel')}</p>
+      ${_loungeBodyHtml(m.body, 'Casa Castel')}
     </div>
     ${canDelete ? `<button class="msg-del" title="Delete" onclick="deleteMsg('${m.id}')">✕</button>` : ''}
   </div>`;
@@ -539,44 +601,44 @@ function _removeOptimistic() {
   });
 }
 
-async function sendLounge() {
-  if (!sbL) return;
-  const input = document.getElementById('lounge-input');
-  const text  = input.value.trim(); if (!text) return;
-  input.value = '';
+/* Send one chat message (text or photo) with an instant "sending" row */
+async function _loungeInsert(body) {
   const tmpId = '_tmp_' + Date.now();
-  const opt = { id: tmpId, room:'Casa Castel', body:text, created_at: new Date().toISOString(), type:'message' };
-  _appendMsg(opt);
-  const { data } = await sbL.from('lounge_data').insert({ type:'message', room:'Casa Castel', body:text }).select().maybeSingle();
-  // Remove optimistic row — realtime subscription will append the real one,
-  // or we append it directly if realtime is slow
+  _appendMsg({ id: tmpId, room:'Casa Castel', body, created_at: new Date().toISOString(), type:'message' });
+  const { data, error } = await sbL.from('lounge_data').insert({ type:'message', room:'Casa Castel', body }).select().maybeSingle();
   _removeOptimistic();
+  if (error) throw error;
   if (data) _appendMsg(data);
+  return true;
 }
-
-async function sendLoungeDesktop() {
-  if (!sbL) return;
-  const input = document.getElementById('lounge-input-desktop');
-  const text  = input.value.trim(); if (!text) return;
-  input.value = '';
-  const tmpId = '_tmp_' + Date.now();
-  const opt = { id: tmpId, room:'Casa Castel', body:text, created_at: new Date().toISOString(), type:'message' };
-  _appendMsg(opt);
-  const { data } = await sbL.from('lounge_data').insert({ type:'message', room:'Casa Castel', body:text }).select().maybeSingle();
-  _removeOptimistic();
-  if (data) _appendMsg(data);
+/* Compose card → photo first (if any), then the text */
+async function _loungeSend({ text, photo }) {
+  if (!sbL) return false;
+  if (photo) {
+    const url = await ccUploadPhoto(photo, 'lounge/mgmt-' + Date.now() + '.jpg');
+    await _loungeInsert('[photo] ' + url);
+  }
+  if (text) await _loungeInsert(text);
+  return true;
 }
 
 async function deleteMsg(id) {
   if (!sbL) return;
   document.querySelectorAll(`.msg-row[data-id="${id}"]`).forEach(el => el.remove());
+  const { data } = await sbL.from('lounge_data').select('body').eq('id', id).maybeSingle();
   await sbL.from('lounge_data').delete().eq('id', id);
+  const path = data && data.body && data.body.startsWith('[photo] ') ? ccPhotoPathFromUrl(data.body.slice(8)) : '';
+  if (path) sbL.storage.from('kitchen-proofs').remove([path]).catch(() => {});
 }
 
 async function resetChat() {
   if (!sbL) return;
   if (!confirm('Delete all chat messages? This cannot be undone.')) return;
   _renderMsgs([]);
+  // Photos of the chat go with it
+  const { data: photos } = await sbL.from('lounge_data').select('body').eq('type','message').like('body', '[photo] %');
+  const paths = (photos || []).map(p => ccPhotoPathFromUrl(p.body.slice(8))).filter(Boolean);
+  if (paths.length) sbL.storage.from('kitchen-proofs').remove(paths).catch(() => {});
   await sbL.from('lounge_data').delete().eq('type','message');
   _ensureMobileCompose();   // realtime delete events can re-render — keep the bar
 }
@@ -602,7 +664,8 @@ function subscribeLounge() {
       } else if (old.type === 'announcement') {
         loadAnnouncements();
       } else if (old.type === 'notice') {
-        _renderNotice(null);
+        // Re-load instead of hiding: when the birthday notice is removed, the notice underneath comes back
+        setTimeout(loadNotice, 500);
       } else {
         // Unknown type — full reload as fallback
         loadLoungeAll();
@@ -658,20 +721,12 @@ async function loadLoungeAll() {
   });
   document.getElementById('notice-clear-btn')?.addEventListener('click', clearNotice);
 
-  // Mobile chat send
-  document.getElementById('lounge-send')
-    ?.addEventListener('click', sendLounge);
-  document.getElementById('lounge-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLounge(); }});
+  // Compose cards (phone + iPad/laptop)
+  _mountLoungeCompose(document.getElementById('lounge-compose-mob'));
+  _mountLoungeCompose(document.getElementById('lounge-compose-dsk'));
 
-  // v2 keyboard fix — replaces old blur scrollTo(0,0)
-  wireComposeBlur(document.getElementById('lounge-input'));
-
-  // Desktop chat send
-  document.getElementById('lounge-send-desktop')
-    ?.addEventListener('click', sendLoungeDesktop);
-  document.getElementById('lounge-input-desktop')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendLoungeDesktop(); }});
+  // Messages normally arrive live; also reload when the app comes back to the front
+  ccOnResume(() => { if (typeof loadLoungeAll === 'function') loadLoungeAll(); else loadLounge(); });
 
   // Email hrefs
   _setEmailHref('lounge-email-all-desktop');

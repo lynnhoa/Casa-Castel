@@ -6,13 +6,17 @@
   <meta name="robots" content="noindex, nofollow"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  <meta name="apple-mobile-web-app-title" content="Controlling"/>
+  <meta name="apple-mobile-web-app-title" content="LT Real Estate"/>
   <meta name="theme-color" content="#F5F2ED"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="mgmt-apple-touch-icon.png"/>
   <title>Controlling — Management</title>
   <link rel="stylesheet" href="casa-castel.css"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="cc-german-format.js"></script>
   <script src="constants.js"></script>
+  <script src="cc-rent-engine.js?v=2026-10-15pn"></script>
   <style>
     html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     /* ══ CONTROLLING-SPECIFIC ══ */
@@ -37,16 +41,67 @@
     .ct-kpi__sub   { font-size:10px; color:var(--cc-taupe); margin-top:4px; letter-spacing:.06em; }
 
     /* Month tile strip */
-    .ct-months     { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:24px; }
-    @media (min-width:700px){ .ct-months { grid-template-columns:repeat(12,1fr); } }
-    .ct-month      { padding:10px 4px; text-align:center; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background .12s, border-color .12s, box-shadow .18s, transform .18s; }
+    .ct-months     { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-bottom:24px; }   /* share the width, never wider than the screen */
+    @media (min-width:700px){ .ct-months { grid-template-columns:repeat(12,minmax(0,1fr)); } }
+    .ct-month      { padding:10px 2px; min-width:0; text-align:center; background:var(--cc-white); border:0.5px solid var(--cc-rule); border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background .12s, border-color .12s, box-shadow .18s, transform .18s; }
     .ct-month__lbl { font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); }
-    .ct-month__val { font-size:12px; font-weight:500; color:var(--cc-ink); margin-top:4px; }
+    .ct-month__val { font-size:12px; font-weight:500; color:var(--cc-ink); margin-top:4px; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums; }
+    .ct-month__val--long { font-size:10.5px; letter-spacing:-.01em; }   /* 5-digit / negative amounts */
+
+    /* ── Dashboard (executive view) ── */
+    .cd              { display:flex; flex-direction:column; gap:12px; }
+    .cd-card         { background:var(--cc-white); border:.5px solid var(--cc-rule); border-radius:12px; }
+    .cd-lbl          { font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--cc-taupe); }
+    .cd-hero         { padding:16px; }
+    .cd-per          { display:flex; justify-content:space-between; align-items:center; }
+    .cd-per .cd-lbl  { font-size:10px; }
+    .cd-arw          { width:30px; height:30px; border-radius:50%; border:.5px solid var(--cc-rule); background:transparent; color:var(--cc-taupe);
+                       display:flex; align-items:center; justify-content:center; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cd-arw:disabled { opacity:.3; cursor:default; }
+    .cd-big          { font-family:'Cormorant Garamond',Georgia,serif; font-size:50px; line-height:1; color:var(--cc-ink); text-align:center;
+                       margin-top:12px; font-variant-numeric:lining-nums; white-space:nowrap; }
+    .cd-big.neg      { color:#A0533A; }
+    .cd-cap          { font-size:12px; color:var(--cc-taupe); text-align:center; margin:6px 0 14px; }
+    .cd-bar          { height:10px; border-radius:5px; background:#E3D5BF; overflow:hidden; }
+    .cd-bar > div    { height:100%; background:#8A6535; border-radius:5px 0 0 5px; transition:width .25s; }
+    .cd-bar > div.over { background:#A0533A; border-radius:5px; }
+    .cd-io           { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .cd-io__v        { font-size:17px; font-weight:500; color:var(--cc-ink); margin-top:3px; font-variant-numeric:tabular-nums; }
+    .cd-sw           { display:inline-block; width:7px; height:7px; border-radius:2px; margin-right:5px; vertical-align:0; }
+    .cd-sw--in       { background:#E3D5BF; border:.5px solid #D4B896; }
+    .cd-sw--out      { background:#8A6535; }
+    .cd-stat         { display:flex; align-items:center; gap:8px; margin-top:14px; padding-top:12px; border-top:.5px solid var(--cc-surface); font-size:12px; }
+    .cd-dot          { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+    .cd-stat--ok     { color:#27500A; }  .cd-stat--ok .cd-dot   { background:#97C459; }
+    .cd-stat--open   { color:#633806; }  .cd-stat--open .cd-dot { background:#EF9F27; }
+    .cd-stat--muted  { color:var(--cc-taupe); } .cd-stat--muted .cd-dot { background:var(--cc-stone); }
+    .cd-head         { display:flex; justify-content:space-between; padding:4px 4px 0; }
+    .cd-list         { overflow:hidden; }
+    .cd-prop + .cd-prop { border-top:.5px solid var(--cc-surface); }
+    .cd-prop__row    { all:unset; box-sizing:border-box; width:100%; display:flex; justify-content:space-between; align-items:center; gap:10px;
+                       padding:11px 16px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cd-prop__l      { display:flex; flex-direction:column; min-width:0; }
+    .cd-prop__n      { font-family:'Cormorant Garamond',Georgia,serif; font-size:19px; line-height:1.2; color:var(--cc-ink); }
+    .cd-prop__s      { font-size:10.5px; color:var(--cc-taupe); margin-top:2px; font-variant-numeric:tabular-nums; }
+    .cd-open         { color:#8C5A30; font-weight:500; }
+    .cd-prop__v      { font-family:'Cormorant Garamond',Georgia,serif; font-size:21px; color:#8A6535; white-space:nowrap; font-variant-numeric:lining-nums; }
+    .cd-prop__v.neg  { color:#A0533A; }
+    .cd-prop.open    { background:#FBF8F3; }
+    .cd-prop__d      { padding:0 16px 12px; }
+    .cd-d            { display:flex; justify-content:space-between; gap:10px; padding:5px 0; font-size:12px; color:var(--cc-charcoal);
+                       border-top:.5px solid var(--cc-surface); font-variant-numeric:tabular-nums; }
+    .cd-d span:first-child { color:var(--cc-taupe); }
+    .cd-erf          { margin-top:10px; width:100%; height:36px; border-radius:8px; border:.5px solid var(--cc-ink); background:var(--cc-ink); color:var(--cc-white);
+                       font-family:inherit; font-size:11px; font-weight:500; letter-spacing:.07em; text-transform:uppercase;
+                       display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; }
+    .cd-year         { padding:14px 16px; display:flex; justify-content:space-between; align-items:baseline; }
+    .cd-year__v      { font-family:'Cormorant Garamond',Georgia,serif; font-size:24px; color:var(--cc-ink); font-variant-numeric:lining-nums; }
+    .cd-year__v.neg  { color:#A0533A; }
 
     /* Done — past/current month with income entered */
     .ct-month.done                 { background:var(--cc-avail-bg); border-color:var(--cc-avail-bdr); }
     .ct-month.done .ct-month__lbl  { color:var(--cc-avail-text); font-weight:600; }
-    .ct-month.done .ct-month__val  { color:var(--cc-ink); font-weight:600; }
+    .ct-month.done .ct-month__val  { color:#5C3D1E; font-weight:600; }   /* brown, not black */
 
     /* Pending — past/current month, income missing */
     .ct-month.pending                 { background:var(--cc-notice-bg); border-color:var(--cc-notice-bdr); }
@@ -369,6 +424,8 @@
         text-transform:uppercase; color:var(--cc-taupe); font-weight:500; padding-right:100px;
       }
     }
+
+    /* Controlling design system (cx): injected by controlling-ui.js */
   </style>
 </head>
 <body class="is-landlord">
@@ -385,22 +442,29 @@
             <button class="nav-profile-menu-item" onclick="location.href='properties.html'">Properties</button>
             <button class="nav-profile-menu-item" onclick="location.href='rentals-index.html'">Rentals</button>
             <button class="nav-profile-menu-item" onclick="location.href='landlord.html'">Casa Castel</button>
+            <button class="nav-profile-menu-item" onclick="location.href='settlements.html'">Settlements</button>
             <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
             <button class="nav-profile-menu-item" onclick="switchTab('setup'); document.getElementById('navProfileMenu').classList.remove('open');">Setup</button>
+            <button class="nav-profile-menu-item" onclick="document.getElementById('navProfileMenu').classList.remove('open'); openRentalsProfile();">Profile</button>
             <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
           </div>
         </div>
       </nav>
       <div class="cc-tabs" id="appTabs">
         <button class="cc-tab active" data-tab="dashboard">Dashboard</button>
-        <button class="cc-tab"        data-tab="income">Einnahmen</button>
-        <button class="cc-tab"        data-tab="expenses">Ausgaben</button>
-        <button class="cc-tab"        data-tab="onetime">Einmalig</button>
+        <button class="cc-tab"        data-tab="rentals">Rentals</button>
+        <button class="cc-tab"        data-tab="casa">Casa Castel</button>
       </div>
     </div>
 
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
+        <!-- Rentals / Casa Castel: Income · Expenses · One-off (same screens, filtered to the area) -->
+        <div class="cx-subnav" id="ctlSubNav" style="display:none;" role="group" aria-label="Bereich">
+          <button data-sub="income">Income</button>
+          <button data-sub="expenses">Expenses</button>
+          <button data-sub="onetime">One-off</button>
+        </div>
         <div class="tab-content" id="tab-dashboard"></div>
         <div class="tab-content" id="tab-income"   style="display:none;"></div>
         <div class="tab-content" id="tab-expenses" style="display:none;"></div>
@@ -408,15 +472,6 @@
         <div class="tab-content" id="tab-setup"    style="display:none;"></div>
       </div>
     </div>
-  </div>
-
-  <!-- Monthly entry drawer (available from Dashboard Month-view row clicks) -->
-  <div class="ct-drawer" id="ctDrawer">
-    <div class="ct-drawer__hdr">
-      <button class="ct-drawer__close" id="ctDrawerClose" aria-label="Close"><i class="ti ti-x"></i></button>
-      <div class="ct-drawer__ttl" id="ctDrawerTitle">—</div>
-    </div>
-    <div class="ct-drawer__body" id="ctDrawerBody"></div>
   </div>
 
   <!-- Toast + loading -->
@@ -435,32 +490,60 @@
       }
     });
     /* Tab switching */
+    /* Tabs: Dashboard · Rentals · Casa Castel. Rentals / Casa Castel show the
+       Income · Expenses · One-off screens filtered to that area (CX.area).
+       switchTab('income' | 'expenses' | 'onetime') opens that screen in the
+       current area (from the Dashboard: Rentals). */
     function switchTab(tab) {
+      const SUB = ['income', 'expenses', 'onetime'];
+      if (SUB.includes(tab)) { CX.sub = tab; tab = CX.area === 'casa' ? 'casa' : 'rentals'; }
+      const area = tab === 'rentals' || tab === 'casa';
+      CX.area = area ? tab : null;
+      const show = area ? (CX.sub || 'income') : tab;
       document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
-      const el = document.getElementById('tab-' + tab);
+      const el = document.getElementById('tab-' + show);
       if (el) el.style.display = 'block';
       document.querySelectorAll('.cc-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+      const sub = document.getElementById('ctlSubNav');
+      if (sub) {
+        sub.style.display = area ? '' : 'none';
+        sub.querySelectorAll('button[data-sub]').forEach(b => b.classList.toggle('on', b.dataset.sub === show));
+      }
       window.scrollTo(0, 0);
-      if (tab === 'dashboard') window.renderDashboard?.();
-      if (tab === 'income')    window.renderIncome?.();
-      if (tab === 'expenses')  window.renderExpenses?.();
-      if (tab === 'onetime')   window.renderOneTime?.();
-      if (tab === 'setup')     window.renderSetup?.();
+      if (show === 'dashboard') window.renderDashboard?.();
+      if (show === 'income')    window.renderIncome?.();
+      if (show === 'expenses')  window.renderExpenses?.();
+      if (show === 'onetime')   window.renderOneTime?.();
+      if (show === 'setup')     window.renderSetup?.();
     }
     document.getElementById('appTabs').addEventListener('click', e => {
       const btn = e.target.closest('.cc-tab[data-tab]');
       if (btn) switchTab(btn.dataset.tab);
     });
+    document.getElementById('ctlSubNav').addEventListener('click', e => {
+      const b = e.target.closest('button[data-sub]');
+      if (b) switchTab(b.dataset.sub);
+    });
   </script>
 
-  <script src="controlling-auth.js"></script>
-  <script src="controlling-data.js"></script>
-  <script src="controlling-tab-dashboard.js"></script>
-  <script src="controlling-tab-income.js"></script>
-  <script src="controlling-tab-expenses.js"></script>
-  <script src="controlling-tab-entry.js"></script>
-  <script src="controlling-tab-onetime.js"></script>
-  <script src="controlling-tab-setup.js"></script>
+  <script src="controlling-auth.js?v=2026-09-27l"></script>
+  <script src="controlling-data.js?v=2026-10-15ap"></script>
+  <script src="controlling-soll.js?v=2026-10-09-C4"></script>
+  <script src="controlling-ui.js?v=2026-10-07a"></script>
+  <script src="controlling-abr.js?v=2026-10-13l"></script>
+  <script src="controlling-tab-dashboard.js?v=2026-10-13b"></script>
+  <script src="controlling-tab-income.js?v=2026-10-13b"></script>
+  <script src="controlling-tab-expenses.js?v=2026-10-13b"></script>
+  <script src="controlling-tab-onetime.js?v=2026-10-15ab"></script>
+  <script src="pdf-open.js?v=2026-10-09-b2"></script>
+  <script src="controlling-export.js?v=2026-10-12g"></script>
+  <script src="controlling-tab-setup.js?v=2026-10-14c"></script>
+  <script src="controlling-tab-history.js?v=2026-10-07e"></script>
+  <!-- Profile panel (same one as Rentals). Reuses this page's Supabase client
+       instead of creating a second one, so the login session is shared safely. -->
+  <script>var sbL = _ctlSupa;</script>
+  <script src="settings.js"></script>
+  <script src="rentals-profile.js"></script>
   <script>
     /* Kick off boot() defined in controlling-auth.js */
     boot();

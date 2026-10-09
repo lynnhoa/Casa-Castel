@@ -48,6 +48,13 @@ const CC_APT_DRAFT_KEY     = 'rnt_apt_contract_draft';   // existing Rentals apa
 /* ── FILE NAME ──────────────────────────────────────────────
    ASCII only (Übergabeprotokoll → Uebergabeprotokoll): iOS and some
    browsers mishandle umlauts in file names.                      */
+/* Uniform file name for every generated PDF:
+     Dokument _ [Einzug|Auszug] _ Objekt _ [Mieter] .pdf
+   Empty parts are left out (no "Los_Angeles_Los_Angeles" when no tenant is typed).
+   ccPdfSafeName() then turns umlauts/spaces into iPhone-safe characters.   */
+function ccPdfFileName(...parts) {
+  return parts.map(p => String(p == null ? '' : p).trim()).filter(Boolean).join('_') + '.pdf';
+}
 function ccPdfSafeName(name) {
   let n = String(name || 'document.pdf')
     .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')
@@ -66,6 +73,8 @@ function ccPdfSafeName(name) {
    page at 2× (≈190 dpi, sharp in print) and each canvas is released
    straight away — the old code rendered twice at up to 3×.       */
 async function ccRenderPagesToPdf(container, opts = {}) {
+  _ccBlankOutBroken(container);
+  try { await ccFlowPages(container); } catch (e) { console.warn('[pdf] page flow skipped:', e); }
   const pages = container ? container.querySelectorAll('.pdf-page') : [];
   if (!pages.length) { _ccCloseWaitingTab(); throw new Error('no .pdf-page nodes rendered'); }
   try { return await _ccRender(pages, opts); }
@@ -77,13 +86,129 @@ async function _ccRender(pages, opts) {
   for (let i = 0; i < pages.length; i++) {
     if (i > 0) pdf.addPage();
     const canvas = await html2canvas(pages[i], {
-      scale: opts.scale || 2, useCORS: true, backgroundColor: '#ffffff',
+      scale: opts.scale || 3, useCORS: true, backgroundColor: '#ffffff',   // 3× = sharp print (was 2×)
       width: 794, height: 1123, windowWidth: 794,
     });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);   // was 0.85
     canvas.width = 0; canvas.height = 0;   // free the memory right away
   }
   return pdf;
+}
+
+/* ── AUTOMATIC PAGE FLOW (nothing is cut off) ──────────────
+   Every PDF page is a fixed A4 block; text that does not fit used to be cut
+   off at the bottom (Verwendungszweck, rent lines, Mietzeit with 2–3 tenants,
+   long inventory lists). Before rendering, each page is measured:
+   · what does not fit moves on — to the top of the next page if it fits there,
+     otherwise onto a new page with the same header and footer;
+   · a section moves together with its heading (never a heading alone at the
+     bottom), so bank details or signatures are not torn apart;
+   · long tables (inventory, meters) continue on the next page, header repeated;
+   · page numbers in the footer are renumbered afterwards.            */
+const CC_FLOW_HEADINGS = '.sec, .doc-title, .doc-subtitle';
+function _ccFlowKids(content) {
+  return [...content.children].filter(k => {
+    const cs = getComputedStyle(k);
+    return cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed';
+  });
+}
+function _ccFlowLimit(content) {
+  const r = content.getBoundingClientRect();
+  return r.top + content.clientHeight;
+}
+function _ccOverflowing(content) {
+  const limit = _ccFlowLimit(content);
+  return _ccFlowKids(content).some(k => k.getBoundingClientRect().bottom > limit + 0.5);
+}
+// Splits a table (or a block holding one table) at the first row that does not
+// fit. Returns the continuation block (header rows kept), or null.
+function _ccSplitTable(el, limit) {
+  const table = el.tagName === 'TABLE' ? el : el.querySelector('table');
+  if (!table) return null;
+  const dataRows = t => [...t.querySelectorAll('tr')].filter(tr => !tr.closest('thead') && !tr.querySelector('th'));
+  const rows = dataRows(table);
+  const r = rows.findIndex(tr => tr.getBoundingClientRect().bottom > limit + 0.5);
+  if (r <= 0) return null;
+  const clone = el.cloneNode(true);
+  const cTable = clone.tagName === 'TABLE' ? clone : clone.querySelector('table');
+  // continuation keeps only the table (no repeated title text around it)
+  if (clone !== cTable) {
+    let n = cTable;
+    while (n && n !== clone) {
+      [...n.parentElement.children].forEach(sib => { if (sib !== n && !sib.contains(cTable)) sib.remove(); });
+      n = n.parentElement;
+    }
+  }
+  dataRows(cTable).slice(0, r).forEach(tr => tr.remove());
+  rows.slice(r).forEach(tr => tr.remove());
+  clone.setAttribute('data-cc-continued', '1');
+  return clone;
+}
+function _ccCanReceive(content) {
+  const first = _ccFlowKids(content)[0];
+  if (!first) return true;
+  if (first.matches('.doc-title')) return false;                         // a new document part
+  return !/^\s*Anlage/i.test(first.textContent || '');                  // an annex starts its own page
+}
+function _ccPlaceAfter(container, pg, moved) {
+  const pages = [...container.querySelectorAll('.pdf-page')];
+  const next = pages[pages.indexOf(pg) + 1];
+  const nextContent = next && next.querySelector(':scope > .content');
+  if (nextContent && _ccCanReceive(nextContent)) {
+    const anchor = nextContent.firstChild;
+    moved.forEach(m => nextContent.insertBefore(m, anchor));
+    if (!_ccOverflowing(nextContent)) return;
+    moved.forEach(m => m.remove());                                      // does not fit there → new page
+  }
+  const np = pg.cloneNode(true);
+  const npc = np.querySelector(':scope > .content');
+  npc.innerHTML = '';
+  moved.forEach(m => npc.appendChild(m));
+  pg.after(np);
+}
+function _ccRenumberPages(container) {
+  const spans = [...container.querySelectorAll('.pdf-page')].map(p => p.querySelector('.ftr__row > span:last-child'));
+  if (spans.length && spans.every(sp => sp && /^\s*\d+\s*$/.test(sp.textContent)))
+    spans.forEach((sp, i) => { sp.textContent = String(i + 1); });
+}
+async function ccFlowPages(container) {
+  if (!container) return;
+  try { if (document.fonts) await document.fonts.ready; } catch (e) {}
+  let guard = 0;
+  for (let i = 0; i < container.querySelectorAll('.pdf-page').length && guard < 200; i++) {
+    const pg = container.querySelectorAll('.pdf-page')[i];
+    const content = pg.querySelector(':scope > .content');
+    if (!content) continue;
+    for (let round = 0; round < 40 && guard < 200; round++, guard++) {
+      const limit = _ccFlowLimit(content);
+      const kids = _ccFlowKids(content);
+      const idx = kids.findIndex(k => k.getBoundingClientRect().bottom > limit + 0.5);
+      if (idx < 0) break;
+      const el = kids[idx];
+      let moved = null;
+      // 1) a table that partly fits → continue its rows on the next page
+      if (el.getBoundingClientRect().top < limit - 30) {
+        const cont = _ccSplitTable(el, limit);
+        if (cont) moved = [cont, ...kids.slice(idx + 1)];
+      }
+      if (!moved) {
+        // 2) move the whole section (from its heading) — unless it is very long
+        let start = idx;
+        for (let s = idx; s >= 0; s--) { if (kids[s].matches(CC_FLOW_HEADINGS)) { start = s; break; } }
+        const pageH = content.clientHeight;
+        if (start === 0 || (limit - kids[start].getBoundingClientRect().top) > pageH * 0.5) start = idx;
+        while (start > 0 && kids[start - 1].matches(CC_FLOW_HEADINGS)) start--;   // never leave a heading alone
+        if (start === 0) {
+          if (kids.length > 1 && idx > 0) start = idx;                       // page starts with this section
+          else break;                                                        // one block taller than a page
+        }
+        moved = kids.slice(start);
+      }
+      if (!moved.length) break;
+      _ccPlaceAfter(container, pg, moved);
+    }
+  }
+  _ccRenumberPages(container);
 }
 
 /* ── OPEN THE PDF TAB RIGHT AT THE TAP ───────────────────────
@@ -91,7 +216,7 @@ async function _ccRender(pages, opts) {
    tab/viewer immediately (a tap is the only moment phones allow it). The
    tab shows "Creating PDF…" until the finished PDF is loaded into it. */
 const CC_PDF_TRIGGERS = '#contractPdfBtn, #aptKzPdfBtn, #aptGwPdfBtn, #aptMvPdfBtn, #aptUebergPdfBtn, '
-                      + '#pkMvPdfBtn, #pkUebergPdfBtn, [onclick*="ViewDoc("]';
+                      + '#pkMvPdfBtn, #pkUebergPdfBtn, [onclick*="ViewDoc("], [data-cc-pdf]';   // [data-cc-pdf]: Settlements
 const CC_WAITING_PAGE =
   '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
   '<title>Creating PDF…</title></head>' +
@@ -119,6 +244,7 @@ const CC_PDF_RETURN_MS  = 15 * 60 * 1000;
 document.addEventListener('click', e => {
   const t = e.target && e.target.closest ? e.target.closest(CC_PDF_TRIGGERS) : null;
   if (!t || t.disabled || t.classList.contains('off')) return;
+  if (_ccCapture) return;                                // Approve: the PDF comes back to the app, no tab
   _ccLastTrigger = t;
   if (CC_STANDALONE) return;                             // installed app: see _ccShowReady
   _ccOpenWaitingTab();
@@ -153,10 +279,13 @@ async function ccOpenPdf(pdfOrBlob, filename) {
   const name = ccPdfSafeName(filename);
   const blob = (pdfOrBlob && typeof pdfOrBlob.output === 'function')
     ? pdfOrBlob.output('blob') : pdfOrBlob;
+  if (_ccCapture) { const c = _ccCapture; _ccCapture = null; c.done({ blob, name }); return; }
+  try { if (typeof window.ccOnPdfReady === 'function') window.ccOnPdfReady(blob, name); } catch (e) {}   // contract flow: this draft = the version to approve
   const url = await _ccUploadTempPdf(blob, name);
   if (CC_STANDALONE) return _ccShowReady(url, blob, name);
-  if (url) return ccOpenUrl(url, name);
-  return _ccFallbackDeliver(blob, name);
+  const res = url ? ccOpenUrl(url, name) : _ccFallbackDeliver(blob, name);
+  _ccPdfOpened();
+  return res;
 }
 
 /* ── INSTALLED APP: "Open PDF" + "Save / Share" in place of Generate ──
@@ -178,10 +307,12 @@ function _ccShowReady(url, blob, name) {
     const open = document.createElement('a');
     open.className = 'cc-pdf-ready__open';
     open.href = url; open.target = '_blank'; open.rel = 'noopener';
-    open.textContent = 'Open PDF';
+    open.innerHTML = '<i class="ti ti-file-text"></i> Open PDF';
     // Safety net: if the iPhone ever reloads the app while the viewer is open,
     // you still come back into this generator (marker is dropped on normal return).
     open.addEventListener('click', () => {
+      // Seen → back in the app the footer shows Draft PDF again (+ Approve for contracts)
+      setTimeout(() => { _ccClearReady(footer); _ccPdfOpened(); }, 400);
       try { sessionStorage.setItem(CC_PDF_RETURN_KEY, String(Date.now())); } catch (e) {}
       const back = () => {
         if (document.visibilityState !== 'visible') return;
@@ -190,24 +321,18 @@ function _ccShowReady(url, blob, name) {
       };
       setTimeout(() => document.addEventListener('visibilitychange', back), 500);
     });
-    open.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;padding:11px 16px;border-radius:10px;' +
-      'background:#B8976A;color:#fff;font-weight:600;font-size:14px;text-decoration:none;white-space:nowrap;';
+    open.style.cssText = 'flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:48px;padding:0 16px;' +
+      'border-radius:var(--cc-r-md,10px);background:#B8976A;color:#fff;font-weight:500;font-size:13px;text-decoration:none;white-space:nowrap;';
     box.appendChild(open);
   }
-  const share = document.createElement('button');
-  share.type = 'button';
-  share.className = 'cc-pdf-ready__share';
-  share.textContent = url ? 'Save / Share' : 'Save / Share PDF';
-  share.style.cssText = 'padding:11px 14px;border-radius:10px;border:1px solid #D9CFC2;background:#fff;color:#3A3530;' +
-    'font:inherit;font-size:14px;cursor:pointer;white-space:nowrap;';
-  share.onclick = () => _ccSharePdf(blob, name);
-  box.appendChild(share);
+  // No Save / Share here: the iPhone PDF viewer has its own share button
   trigger.style.display = 'none';
   footer.appendChild(box);
   // Anything changed in the generator → this PDF is outdated → Generate button back
   const sheet = footer.closest('.rm-sheet') || footer.parentElement;
   const reset = e => {
     if (e && box.contains(e.target)) return;
+    try { window.dispatchEvent(new CustomEvent('cc-pdf-outdated')); } catch (x) {}
     sheet.removeEventListener('input', reset, true);
     sheet.removeEventListener('change', reset, true);
     _ccClearReady(footer);
@@ -217,6 +342,8 @@ function _ccShowReady(url, blob, name) {
   setTimeout(() => { if (box.isConnected) reset(); }, 25 * 60 * 1000);   // link valid 30 min
   return 'ready';
 }
+/* The PDF was shown (browser tab opened, or Open PDF tapped in the installed app) */
+function _ccPdfOpened() { try { window.dispatchEvent(new CustomEvent('cc-pdf-opened')); } catch (e) {} }
 function _ccClearReady(footer) {
   footer.querySelectorAll('.cc-pdf-ready').forEach(b => b.remove());
   footer.querySelectorAll(CC_PDF_TRIGGERS).forEach(b => { if (b.style.display === 'none') b.style.display = ''; });
@@ -365,10 +492,13 @@ function ccDraftSnapshot(root) {
   });
   root.querySelectorAll('input[type=radio]:checked').forEach(r => { if (r.name) radios[r.name] = r.value; });
   root.querySelectorAll('[id][data-mode]').forEach(el => { modes[el.id] = el.dataset.mode; });
+  // Two-state switches kept in data-state (e.g. Mieter: Prefill / Manuell)
+  const states = {};
+  root.querySelectorAll('[id][data-state]').forEach(el => { states[el.id] = el.dataset.state; });
   root.querySelectorAll('[data-val]').forEach(el => {
     if (_ccIsActive(el)) { const sel = _ccOptSelector(el); if (sel) actives.push(sel); }
   });
-  return { fields, radios, modes, actives };
+  return { fields, radios, modes, actives, states };
 }
 function ccDraftSave(key, root, meta) {
   if (!root || !meta) return;
@@ -419,6 +549,11 @@ async function ccDraftApply(root, d) {
     for (let i = 0; i < 3 && own(el) && el.dataset.mode !== mode; i++) el.click();
   });
   applyModes();
+  // Mieter Prefill / Manuell first — switching it may clear the tenant fields, which are refilled below
+  Object.entries(d.states || {}).forEach(([id, state]) => {
+    const el = document.getElementById(id);
+    for (let i = 0; i < 2 && own(el) && el.dataset.state !== state; i++) el.click();
+  });
   (d.actives || []).forEach(sel => {
     try { const el = root.querySelector(sel); if (el && !_ccIsActive(el)) el.click(); } catch (e) {}
   });
@@ -439,8 +574,78 @@ async function ccDraftApply(root, d) {
 
 
 /* ── HELPERS FOR THE GENERATORS ──────────────────────────── */
+/* Missing contract dates: warn, don't block. You may leave a date empty on purpose
+   and write it by hand — the PDF then shows a line to fill in. Cancel = back to the form. */
+const CC_BLANK_DATE = '__.__.____';
+function ccConfirmMissingDates(labels) {
+  const miss = (labels || []).filter(Boolean);
+  if (!miss.length) return true;
+  const ok = confirm(miss.join(' und ') + ' fehlt \u2013 trotzdem erstellen?\n\nIm PDF bleibt eine Linie zum Ausfüllen von Hand.');
+  if (!ok && typeof ccCancelPdf === 'function') ccCancelPdf();
+  return ok;
+}
+/* Übergabe: "+ Mieter hinzufügen" — reveals Mieter 2, then Mieter 3 (like the contract generators) */
+function ccUbAddTenant(prefix) {
+  for (const n of [2, 3]) {
+    const w = document.getElementById(`${prefix}-t${n}-wrap`);
+    if (w && w.style.display === 'none') { w.style.display = ''; document.getElementById(`${prefix}-mieter-name${n}`)?.focus(); break; }
+  }
+  ccUbSyncAddBtn(prefix);
+}
+function ccUbSyncAddBtn(prefix) {
+  const anyHidden = [2, 3].some(n => document.getElementById(`${prefix}-t${n}-wrap`)?.style.display === 'none');
+  const b = document.getElementById(`${prefix}-addbtn`);
+  if (b) b.style.display = anyHidden ? 'flex' : 'none';
+}
+/* After a draft / template restore: show Mieter 2/3 if they have a name */
+function ccUbRevealFilled(prefix) {
+  [2, 3].forEach(n => {
+    const i = document.getElementById(`${prefix}-mieter-name${n}`), w = document.getElementById(`${prefix}-t${n}-wrap`);
+    if (i && w && i.value.trim()) w.style.display = '';
+  });
+  ccUbSyncAddBtn(prefix);
+}
+
+/* Dates you left empty → a line to fill in by hand (only the keys that belong in THIS contract) */
+function ccBlankFill(d, keys) {
+  if (!d) return d;
+  const empty = v => v === undefined || v === null || v === '' || v === '\u2014' || /NaN|Invalid/.test(String(v));
+  (keys || []).forEach(k => { if (empty(d[k])) d[k] = CC_BLANK_DATE; });
+  if (Array.isArray(d.staffeln)) d.staffeln.forEach(x => { if (x && empty(x.datum)) x.datum = CC_BLANK_DATE; });
+  return d;
+}
+/* Safety net for every PDF: a value that could not be calculated (a date is missing) is
+   printed as a line to fill in — never "NaN", "Invalid Date" or "undefined". */
+function _ccBlankOutBroken(root) {
+  if (!root) return;
+  const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+    const t = n.nodeValue;
+    if (!/NaN|Invalid Date|undefined/.test(t)) continue;
+    n.nodeValue = t.replace(/NaN\.NaN\.NaN/g, CC_BLANK_DATE).replace(/Invalid Date/g, CC_BLANK_DATE)
+                   .replace(/-?NaN(,NaN)?/g, '______').replace(/undefined/g, '______');
+  }
+}
 // A generator that stops without creating a PDF → close the waiting tab.
-function ccCancelPdf() { _ccCloseWaitingTab(); }
+function ccCancelPdf() { _ccCloseWaitingTab(); if (_ccCapture) { const c = _ccCapture; _ccCapture = null; c.done(null); } }
+
+/* Contract flow "Approve": run a generator's own PDF code, but hand the finished
+   PDF back instead of opening it (same pages, same file name as Draft PDF).
+   Resolves { blob, name } — or null when the generator stopped (a question
+   answered with Cancel, an error). */
+let _ccCapture = null;
+function ccCapturePdf(run, ms) {
+  return new Promise(resolve => {
+    let t = null;
+    const alert0 = window.alert;
+    const done = v => { clearTimeout(t); window.alert = alert0; _ccCapture = null; resolve(v); };
+    _ccCapture = { done };
+    t = setTimeout(() => done(null), ms || 90000);
+    const onErr = () => { if (_ccCapture && _ccCapture.done === done) done(null); };
+    window.alert = m => { alert0.call(window, m); onErr(); };   // the generator reported a problem → stop waiting
+    try { Promise.resolve(run()).catch(onErr); } catch (e) { onErr(); }
+  });
+}
 
 // True once, right after the PDF viewer was closed (installed app).
 function ccCameBackFromPdf() {

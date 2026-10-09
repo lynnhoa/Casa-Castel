@@ -93,21 +93,24 @@ function ctlPropertyMonth(pid, month) {
     }
   }
 
-  // One-time expenses returned SEPARATELY. Dashboard toggle decides
-  // whether to include them in the totals shown to the user.
-  let oneTime = 0;
+  // One-time entries: out (direction −1, the default) and in (+1)
+  let oneTime = 0, oneTimeIn = 0;
   for (const ot of window._ctrl.one_time) {
-    if (ot.property_id !== pid) continue;
+    if (ot.property_id !== pid || ot.kind === 'Kaufnebenkosten') continue;   // Kaufnebenkosten: part of the purchase, not the cashflow
     const d = ctlParseDate(ot.invoice_date);
     if (d.year !== y || d.month !== month) continue;
-    oneTime += Number(ot.amount || 0);
+    if (Number(ot.direction) === 1) oneTimeIn += Number(ot.amount || 0);
+    else                            oneTime   += Number(ot.amount || 0);
   }
 
   const expNet = expTotal - expPassthru;
   return {
     kalt, neben, warm: kalt + neben,
     exp_total: expTotal, exp_passthru: expPassthru, exp_net: expNet,
-    one_time: oneTime,
+    one_time: oneTime, one_time_in: oneTimeIn,
+    rein: kalt + neben + oneTimeIn,                           // Cashflow · Konto: everything in
+    raus: expTotal + oneTime,                                  //                  everything out
+    konto: (kalt + neben + oneTimeIn) - (expTotal + oneTime),
     gesamt:     (kalt + neben) - expTotal,   // recurring only
     netto_kalt: kalt - expNet,               // recurring only
   };
@@ -115,8 +118,9 @@ function ctlPropertyMonth(pid, month) {
 
 /* ── Portfolio + annual rollups ─────────────────────────────── */
 function ctlPortfolioMonth(month) {
-  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, gesamt:0, netto_kalt:0 };
+  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, one_time_in:0, rein:0, raus:0, konto:0, gesamt:0, netto_kalt:0 };
   for (const p of window._ctrl.properties.filter(x => x.active)) {
+    if (typeof ctlPropOwned === 'function' && !ctlPropOwned(p, window._ctrl.year, month)) continue;   // not bought yet
     const m = ctlPropertyMonth(p.id, month);
     for (const k of Object.keys(m)) {
       acc[k] = (Number(acc[k]) || 0) + (Number(m[k]) || 0);
@@ -148,12 +152,20 @@ function ctlMonthStatus(month) {
 }
 
 /* ── Writes (upsert) ────────────────────────────────────────── */
-async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten) {
+async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
   const y = window._ctrl.year;
   const payload = { unit_id, year: y, month, kaltmiete, nebenkosten };
-  const { data, error } = await _ctlSupa.from('ctrl_income_months')
-    .upsert(payload, { onConflict: 'unit_id,year,month' }).select().single();
+  if (split !== undefined) payload.split = split;                    // per tenant in change months (G1)
+  const up = pl => _ctlSupa.from('ctrl_income_months').upsert(pl, { onConflict: 'unit_id,year,month' }).select().single();
+  let { data, error } = await up(payload);
+  if (error && 'split' in payload && /split/.test(String(error.message || '')) ) {   // SQL not run yet
+    delete payload.split;
+    ({ data, error } = await up(payload));
+    if (!error && typeof ctlToast === 'function') ctlToast('Gespeichert – Aufteilung pro Mieter erst nach dem SQL-Update');
+  }
   if (error) throw error;
+  const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
+  if (all) { const j = all.findIndex(r => r.unit_id === unit_id && r.year === y && r.month === month); if (j >= 0) all[j] = data; else all.push(data); }
   const idx = window._ctrl.income.findIndex(r => r.unit_id === unit_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.income[idx] = data;
   else window._ctrl.income.push(data);
@@ -181,6 +193,104 @@ async function ctlUpsertCastel(category_id, month, amount) {
   const idx = window._ctrl.castel_expenses.findIndex(r => r.category_id === category_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.castel_expenses[idx] = data;
   else window._ctrl.castel_expenses.push(data);
+  return data;
+}
+
+async function ctlDeleteIncome(unit_id, month) {
+  const y = window._ctrl.year;
+  const { error } = await _ctlSupa.from('ctrl_income_months').delete().eq('unit_id', unit_id).eq('year', y).eq('month', month);
+  if (error) throw error;
+  window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+  if (window._src && window._src.incAll) window._src.incAll = window._src.incAll.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+}
+
+async function ctlDeleteCastel(category_id, month) {
+  const y = window._ctrl.year;
+  const { error } = await _ctlSupa.from('ctrl_expense_castel').delete().eq('category_id', category_id).eq('year', y).eq('month', month);
+  if (error) throw error;
+  window._ctrl.castel_expenses = window._ctrl.castel_expenses.filter(r => !(r.category_id === category_id && r.year === y && r.month === month));
+}
+
+/* New unit (e.g. a Casa Castel room like Berlin) — created on its first save */
+async function ctlCreateUnit(fields) {
+  const sort = Math.max(0, ...window._ctrl.units.filter(u => u.property_id === fields.property_id).map(u => Number(u.sort_order) || 0)) + 1;
+  let { data, error } = await _ctlSupa.from('ctrl_units').insert({ sort_order: sort, ...fields }).select().single();
+  // Old rows were imported with fixed ids, so the database's own counter can hand out an id
+  // that is already taken (duplicate) — or the column has no counter at all (null).
+  // Then retry once with the next free id.
+  if (error && /duplicate key|23505|null value|23502/i.test(String((error.code || '') + ' ' + (error.message || '')))) {
+    const { data: mx } = await _ctlSupa.from('ctrl_units').select('id').order('id', { ascending: false }).limit(1);
+    const next = Math.max(0, ...(mx || []).map(r => Number(r.id) || 0), ...window._ctrl.units.map(u => Number(u.id) || 0)) + 1;
+    ({ data, error } = await _ctlSupa.from('ctrl_units').insert({ id: next, sort_order: sort, ...fields }).select().single());
+  }
+  if (error) throw error;
+  window._ctrl.units.push(data);
+  return data;
+}
+
+/* Setup: update one row of ctrl_properties / ctrl_units / ctrl_castel_categories */
+const _CTL_MEM = { ctrl_properties: 'properties', ctrl_units: 'units', ctrl_castel_categories: 'categories' };
+async function ctlUpdateRow(table, id, fields) {
+  const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
+  if (error) throw error;
+  if (!data) throw new Error('nicht gespeichert – Zeile ' + id + ' nicht gefunden');   // never replace the row with nothing
+  const list = window._ctrl[_CTL_MEM[table]] || [];
+  const i = list.findIndex(r => r.id === id);
+  if (i >= 0) list[i] = data;
+  if (typeof ctlSollReset === 'function') ctlSollReset();
+  return data;
+}
+
+/* New property (a new purchase): added at the end, so the list stays in purchase order.
+   Old rows were imported with fixed ids → the counter can hand out a taken id: retry once with the next free one. */
+async function ctlCreateProperty(name) {
+  const fields = { name: String(name || '').trim(), active: true };
+  let { data, error } = await _ctlSupa.from('ctrl_properties').insert(fields).select().single();
+  if (error && /duplicate key|23505|null value|23502/i.test(String((error.code || '') + ' ' + (error.message || '')))) {
+    const { data: mx } = await _ctlSupa.from('ctrl_properties').select('id').order('id', { ascending: false }).limit(1);
+    const next = Math.max(0, ...(mx || []).map(r => Number(r.id) || 0), ...window._ctrl.properties.map(p => Number(p.id) || 0)) + 1;
+    ({ data, error } = await _ctlSupa.from('ctrl_properties').insert({ id: next, ...fields }).select().single());
+  }
+  if (error) throw error;
+  window._ctrl.properties.push(data);
+  window._ctrl.properties.sort((a, b) => a.id - b.id);
+  return data;
+}
+
+/* Kaufnebenkosten type (Makler · Notar · Grundbuch · Grunderwerbsteuer · Sonstiges) and part (Kauf · Grundschuld):
+   if the columns are not there yet (SQL not run), the entry is saved without them */
+const _ctlNoKnkCol = e => /knk_(type|part)/i.test(String((e && e.message) || ''));
+const _ctlStripKnk = f => { const x = { ...f }; delete x.knk_type; delete x.knk_part; return x; };
+
+/* One-time entry: in (+1) or out (−1), with type and optional link to a settlement */
+async function ctlAddOneTime(o) {
+  const payload = { property_id: o.property_id, invoice_date: o.invoice_date, item: o.item, amount: o.amount,
+                    company: o.company ?? null, kind: o.kind || 'Rechnung', direction: o.direction === 1 ? 1 : -1,
+                    source_ref: o.source_ref ?? null };
+  if (o.nk_umlage !== undefined) payload.nk_umlage = !!o.nk_umlage;                 // Casa Castel: goes into the NK-Abrechnung
+  if (o.nk_category_id !== undefined) payload.nk_category_id = o.nk_category_id;   // … as this Casa cost type (key + booking from Setup)
+  if (o.knk_type !== undefined) payload.knk_type = o.knk_type;                     // Kaufnebenkosten: Makler, Notar, …
+  if (o.knk_part !== undefined) payload.knk_part = o.knk_part;                     // … Notar / Grundbuch: Kauf or Grundschuld
+  if (o.nk_from) payload.nk_from = o.nk_from;                                      // Casa Versorger-Jahresabrechnung: its own Abrechnungsjahr
+  if (o.nk_to) payload.nk_to = o.nk_to;
+  const ins = pl => _ctlSupa.from('ctrl_expense_one_time').insert(pl).select().single();
+  let { data, error } = await ins(payload);
+  if (error && /nk_from|nk_to/.test(String(error.message || ''))) { delete payload.nk_from; delete payload.nk_to; ({ data, error } = await ins(payload)); }
+  if (error && _ctlNoKnkCol(error)) ({ data, error } = await ins(_ctlStripKnk(payload)));
+  if (error) throw error;
+  window._ctrl.one_time.push(data);
+  return data;
+}
+
+/* Edit a one-time entry (One-off edit form · Abrechnungen amount) */
+async function ctlUpdateOneTime(id, fields) {
+  const upd = f => _ctlSupa.from('ctrl_expense_one_time').update(f).eq('id', id).select().single();
+  let { data, error } = await upd(fields);
+  if (error && _ctlNoKnkCol(error)) ({ data, error } = await upd(_ctlStripKnk(fields)));
+  if (error) throw error;
+  if (!data) throw new Error('nicht gespeichert – Eintrag ' + id + ' nicht gefunden');
+  const i = window._ctrl.one_time.findIndex(r => r.id === id);
+  if (i >= 0) window._ctrl.one_time[i] = data;
   return data;
 }
 
@@ -253,11 +363,41 @@ async function ctlUpdateCategoryDefault(cat_id, default_amount) {
 
 /* ── Format helpers ─────────────────────────────────────────── */
 const ctlEur = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
-const ctlEur0 = v => Math.round(Number(v) || 0).toLocaleString('de-DE') + '\u202f€';
-/* Signed variant for cashflow: +170 €, −340 €, 0 € */
+const ctlEur0 = v => ctlEur(v);   // always with cents: 1.200,00 €
+/* Signed variant for cashflow: +170,00 €, −340,00 €, 0,00 € */
+/* Month cards only: whole euros ("1.139 €") so 6 cards always fit the width.
+   Everywhere else amounts keep their cents (ctlEur / ctlEur0). */
+const ctlEurWhole = v => Math.round(Number(v) || 0).toLocaleString('de-DE') + '\u202f€';
+function ctlMonthValHTML(v) {
+  const t = ctlEurWhole(v);
+  return '<div class="ct-month__val' + (t.length > 7 ? ' ct-month__val--long' : '') + '">' + t + '</div>';
+}
+/* Every month amount fits its card: if it is wider than the card, the font
+   steps down (to min. 8.5 px). Runs whenever month cards are drawn or the
+   screen width changes — one place for Dashboard, Einnahmen and Ausgaben. */
+function ctlFitMonthVals(root) {
+  (root || document).querySelectorAll('.ct-month__val').forEach(el => {
+    el.style.fontSize = '';
+    let fs = parseFloat(getComputedStyle(el).fontSize) || 12;
+    while (el.scrollWidth > el.clientWidth + 0.5 && fs > 8.5) { fs -= 0.5; el.style.fontSize = fs + 'px'; }
+  });
+}
+(function () {
+  if (typeof document === 'undefined') return;
+  let t = null;
+  const later = () => { clearTimeout(t); t = setTimeout(() => ctlFitMonthVals(document), 0); };
+  const start = () => {
+    new MutationObserver(ms => { if (ms.some(m => m.target.closest && m.target.closest('.ct-months'))) later(); })
+      .observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', later);
+    later();
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
+
 const ctlEur0Signed = v => {
-  const n = Math.round(Number(v) || 0);
-  const s = Math.abs(n).toLocaleString('de-DE') + '\u202f€';
+  const n = Math.round((Number(v) || 0) * 100) / 100;
+  const s = Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
   if (n > 0) return '+\u202f' + s;
   if (n < 0) return '\u2212\u202f' + s;   // real minus sign
   return s;

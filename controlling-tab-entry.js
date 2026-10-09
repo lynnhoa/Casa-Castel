@@ -79,7 +79,7 @@ function renderDrawerBody(pid, month) {
   const units = ctlUnitsOf(pid);
   const isCasa = pid === CASA_PROP_ID;
 
-  const fmtChip = v => (Number(v) % 1 === 0 ? String(Number(v)) : Number(v).toFixed(2).replace('.', ','));
+  const fmtChip = v => ccFmtNum(Number(v), 2);   // 1.200,00
 
   /* One entry row: input shows ONLY the saved value; suggestions are chips outside. */
   function entryRow(lbl, sub, isOpen, val, chips, dataAttrs) {
@@ -100,7 +100,7 @@ function renderDrawerBody(pid, month) {
       '<div class="ct-row" style="grid-template-columns:1fr 96px minmax(52px,auto);">' +
         '<div class="ct-row__lbl">' + lbl + (sub || openTag ? '<small>' + (sub || '') + openTag + '</small>' : '') + '</div>' +
         '<input class="ct-input" type="text" inputmode="decimal" ' +
-          dataAttrs + ' value="' + (val === '' ? '' : String(val).replace('.', ',')) + '" placeholder=""/>' +
+          dataAttrs + ' value="' + (val === '' ? '' : ccFmtNum(val, 2)) + '" placeholder=""/>' +
         '<div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap;">' +
           savedMark + chipsHtml +
         '</div>' +
@@ -282,16 +282,20 @@ function wireDrawerActions() {
   document.getElementById('ctFillExpPrev')       ?.addEventListener('click', () => fillExpense('prev'));
 }
 
-// Parse a user-entered amount, accepting the German decimal comma (e.g. "263,51")
+// Parse a user-entered amount in German format: 1.200,50 · 1200,5 · 1.200 (cc-german-format.js)
+// Empty → null · not a number → NaN (saveOne stops and says so)
 function _ctlNum(el) {
   const v = ((el && el.value) || '').trim();
-  return v === '' ? null : Number(v.replace(',', '.'));
+  if (v === '') return null;
+  const n = ccParseEUR(v);
+  return n === null ? NaN : n;
 }
 
 async function saveOne(inp) {
   const { pid, month } = _ctlDrawer;
   const kind = inp.dataset.kind;
   const val  = _ctlNum(inp);
+  if (Number.isNaN(val)) { ctlToast('Betrag ungültig – z. B. 1.200,50'); inp.focus(); return; }
   try {
     if (kind === 'income-kalt' || kind === 'income-neben') {
       const unitId = Number(inp.dataset.unit);
@@ -299,6 +303,7 @@ async function saveOne(inp) {
       const nebenInp = document.querySelector('input[data-kind="income-neben"][data-unit="' + unitId + '"]');
       const kalt  = _ctlNum(kaltInp);
       const neben = _ctlNum(nebenInp);
+      if (Number.isNaN(kalt) || Number.isNaN(neben)) { ctlToast('Betrag ungültig – z. B. 1.200,50'); return; }
       await ctlUpsertIncome(unitId, month, kalt, neben);
     }
     else if (kind === 'apt') {

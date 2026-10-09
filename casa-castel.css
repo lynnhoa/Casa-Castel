@@ -342,6 +342,7 @@ img { display: block; max-width: 100%; }
 /* ── CARDS ──────────────────────────────────────────────────
 ──────────────────────────────────────────────────────────── */
 .cc-card {
+  position: relative; z-index: 41;          /* stays above the + menu scrim */
   background: var(--cc-white);
   border: var(--cc-border);
   border-radius: var(--cc-r-lg);
@@ -915,6 +916,8 @@ img { display: block; max-width: 100%; }
 .ann-body-text{font-size:12px;font-weight:300;color:var(--cc-charcoal);line-height:1.6;}
 .ann-actions{display:flex;gap:8px;margin-top:10px;align-items:center;}
 .ann-del{font-size:9px;color:#9F1239;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px;font-family:inherit;}
+.ann-edit{font-size:9px;color:var(--cc-ink,#1E1A17);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px;font-family:inherit;margin-right:6px;}
+.ann-cancel-edit{display:block;width:100%;margin-top:10px;padding:6px 0;font-size:9px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;color:var(--cc-taupe);background:none;border:none;cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:2px;}
 .ann-compose{background:var(--cc-white);border:0.5px solid var(--cc-rule);border-radius:var(--cc-r-lg);padding:20px;margin-bottom:24px;}
 .ann-compose-title{font-size:10px;font-weight:500;letter-spacing:0.11em;text-transform:uppercase;color:var(--cc-taupe);margin-bottom:14px;}
 .ann-compose-actions{display:flex;gap:8px;margin-top:12px;}
@@ -1502,7 +1505,42 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 .k-nudge-send-btn:hover  { opacity: 0.85; }
 .k-nudge-send-btn:active { opacity: 0.70; }
 .k-nudge-send-btn:disabled { opacity: 0.35; cursor: default; }
-.k-dsk-nudge-banner-text {\n  flex: 1;\n  font-size: 11px;\n  color: #78640A;\n}\n\n/* Rotation list items in desktop left column */\n.k-dsk-rot-item {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 5px 0;\n  border-bottom: 0.5px solid var(--cc-rule);\n  font-size: 11px;\n}\n.k-dsk-rot-item:last-child { border-bottom: none; }\n.k-dsk-rot-dot {\n  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;\n}\n.k-dsk-rot-room { flex: 1; color: var(--cc-ink); }\n.k-dsk-rot-date { font-size: 9px; color: var(--cc-stone); }\n.k-dsk-rot-status { font-size: 8px; font-weight: 500; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }\n.rs-done  { background: #EAF3DE; color: #27500A; border: 0.5px solid #9AC87A; }\n.rs-missed{ background: #FDEEED; color: #7A2020; border: 0.5px solid #F5A8A5; }\n.rs-now   { background: #FDF5E8; color: #633806; border: 0.5px solid #E8C97A; }\n.rs-next  { background: #EBF4FF; color: #1A5896; border: 0.5px solid #90C2F5; }\n\n/* Desktop feed — mirrors mobile k-mob-feed scroll behaviour */\n.k-desktop-right .k-dsk-feed {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n  scroll-behavior: smooth;\n  padding: 10px 14px;\n  background: var(--cc-bg);\n}
+.k-dsk-nudge-banner-text {
+  flex: 1;
+  font-size: 11px;
+  color: #78640A;
+}
+
+/* Rotation list items in desktop left column */
+.k-dsk-rot-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 0.5px solid var(--cc-rule);
+  font-size: 11px;
+}
+.k-dsk-rot-item:last-child { border-bottom: none; }
+.k-dsk-rot-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.k-dsk-rot-room { flex: 1; color: var(--cc-ink); }
+.k-dsk-rot-date { font-size: 9px; color: var(--cc-stone); }
+.k-dsk-rot-status { font-size: 8px; font-weight: 500; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
+.rs-done  { background: #EAF3DE; color: #27500A; border: 0.5px solid #9AC87A; }
+.rs-missed{ background: #FDEEED; color: #7A2020; border: 0.5px solid #F5A8A5; }
+.rs-now   { background: #FDF5E8; color: #633806; border: 0.5px solid #E8C97A; }
+.rs-next  { background: #EBF4FF; color: #1A5896; border: 0.5px solid #90C2F5; }
+
+/* Desktop feed — mirrors mobile k-mob-feed scroll behaviour */
+.k-desktop-right .k-dsk-feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 10px 14px;
+  background: var(--cc-bg);
+}
 
 .msg-row{display:flex;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--cc-rule);}
 .msg-row:last-child{border-bottom:none;}
@@ -1981,3 +2019,688 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 }
 .k-ten-dsk-camera:hover { border-color: var(--cc-taupe); color: var(--cc-taupe); }
 .k-ten-dsk-camera:active { background: var(--cc-surface); }
+
+
+/* ═══════════════════════════════════════════════════════════
+   iPAD + LAPTOP LAYOUT  (Sep 2026)
+   Everything here starts at 701px, so the iPhone layout
+   (≤700px) is not touched. Layout only — no function changes.
+   Breakpoints:  701px  = iPad portrait and up
+                1000px  = iPad landscape and laptop
+═══════════════════════════════════════════════════════════ */
+
+@media (min-width: 701px) {
+
+  /* ── 1. Header lines up with the page content ───────────
+     The content column is max 1200px wide with 36px inner
+     padding. Nav + tabs use the same edges, so the logo sits
+     straight above the page title. (100% = header width.)   */
+  .cc-header .cc-nav {
+    padding-left:  max(36px, calc((100% - 1200px) / 2 + 36px));
+    padding-right: max(36px, calc((100% - 1200px) / 2 + 36px));
+  }
+  .cc-header .cc-tabs {
+    /* tab buttons have 4px inner padding → start 4px earlier
+       so the tab text lines up with the logo */
+    padding-left:  max(32px, calc((100% - 1200px) / 2 + 32px));
+    padding-right: max(32px, calc((100% - 1200px) / 2 + 32px));
+  }
+
+  /* ── 2. Lounge + Kitchen fill the screen height ─────────
+     Was: 100vh − 160px, capped at 800px → big empty area on
+     iPad portrait and a small page scroll on laptops.
+     179px = header (115) + page padding top/bottom (32 + 32).
+     Safe areas cover the iPad home indicator / status bar.   */
+  .l-desktop-grid,
+  .k-desktop-grid {
+    height: calc(100vh - 179px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 179px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: none;
+    min-height: 480px;
+  }
+  /* Slightly wider side column on iPad portrait so the
+     announcement form isn't squeezed */
+  .l-desktop-grid { grid-template-columns: 280px minmax(0, 1fr); }
+  .k-desktop-grid { grid-template-columns: 300px minmax(0, 1fr); }
+
+  /* Side columns scroll inside their card, with room at the end */
+  .l-desktop-left,
+  .k-desktop-left {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+
+  /* ── 5. Landlord kitchen compose bar — flag + camera ────
+     These buttons were only styled for iPhone, so on iPad /
+     laptop they showed as plain browser buttons. Same look as
+     the tenant kitchen + lounge compose bars.               */
+  #tab-kitchen .k-desktop-right .k-mob-compose-input { height: 40px; font-size: 14px; }
+  .k-desktop-right .k-mob-nudge-flag-btn,
+  .k-desktop-right .k-mob-camera-btn {
+    width: 40px; height: 40px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--cc-surface); color: var(--cc-taupe);
+    border: 0.5px solid var(--cc-rule); border-radius: 50%;
+    font-size: 16px; line-height: 1; padding: 0;
+    cursor: pointer; font-family: inherit;
+    transition: border-color 0.15s, color 0.15s, opacity 0.15s;
+  }
+  .k-desktop-right .k-mob-camera-btn i { font-size: 16px !important; }
+  .k-desktop-right .k-mob-nudge-flag-btn:hover,
+  .k-desktop-right .k-mob-camera-btn:hover { border-color: var(--cc-taupe); color: var(--cc-charcoal); }
+  .k-desktop-right .k-mob-nudge-flag-btn:active,
+  .k-desktop-right .k-mob-camera-btn:active { opacity: 0.65; }
+  .k-desktop-right .k-mob-nudge-flag-btn.absent {
+    background: var(--cc-notice-bg); color: var(--cc-notice-text); border-color: var(--cc-notice-bdr);
+  }
+}
+
+/* ── 3. Card lists: 2 per row on iPad landscape + laptop ───
+   Rooms, Apartments, Parking and both Tenants tabs. Cards
+   keep their DOM order (drag-to-sort unchanged). An opened
+   card grows in its own column, the card next to it stays
+   as it is (align-items:start). Group titles, empty notes
+   and anything that isn't a card use the full row.         */
+@media (min-width: 1000px) {
+  .cc-main .rp-list,
+  .cc-main .tn-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  .cc-main .rp-list > :not(.rc):not(.apt-card):not(.pk-card),
+  .cc-main .tn-list > :not(.tn-card) {
+    grid-column: 1 / -1;
+  }
+  /* Summary bar above the grid: same spacing as between cards */
+  .cc-main .rp-summary { margin-bottom: 12px; }
+  /* Rentals › Tenants group titles: spacing comes from the grid gap */
+  .cc-main .tn-list > .rnt-group-hdr { margin-top: 12px !important; }
+  .cc-main .tn-list > .rnt-group-hdr:first-child { margin-top: 0 !important; }
+
+  /* ── 4. Cleaning: "This week" left, rotation right ─────── */
+  #tab-cleaning > .cc-section:nth-of-type(1) {
+    float: left;
+    width: 340px;
+    margin-right: 28px;
+    padding-top: 0;
+    border-bottom: none;
+  }
+  #tab-cleaning > .cc-section:nth-of-type(2) {
+    display: flow-root;           /* sits next to the floated column */
+    padding-top: 0;
+    border-bottom: none;
+  }
+  #tab-cleaning::after { content: ""; display: table; clear: both; }
+
+  /* Lounge + kitchen side columns a bit wider on big screens */
+  .l-desktop-grid { grid-template-columns: 320px minmax(0, 1fr); }
+  .k-desktop-grid { grid-template-columns: 340px minmax(0, 1fr); }
+}
+
+/* ── iPad (touch, no mouse): easier-to-hit small links ─────
+   Refresh / Clear / Reset chat / + New / history ›, which are
+   tiny 9px text links on the big-screen layout.            */
+@media (min-width: 701px) and (hover: none) {
+  .l-dsk-section-action,
+  .l-dsk-chat-link,
+  .k-dsk-chat-link,
+  .k-dsk-section-link {
+    font-size: 10.5px;
+    padding: 8px 4px;
+    margin: -8px -4px;
+  }
+}
+
+
+/* ── LOUNGE ACTIONS SHEET (landlord "More") ─────────────────
+   Line icons in the app's tile style instead of emoji.      */
+.l-act-list { padding: 0 0 max(8px, env(safe-area-inset-bottom, 0px)); }
+.l-act-row {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 14px 16px;
+  background: none; border: none; border-bottom: 0.5px solid var(--cc-rule);
+  text-align: left; text-decoration: none; font-family: inherit;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.l-act-row:last-child { border-bottom: none; }
+.l-act-row:active { background: var(--cc-surface); }
+.l-act-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-surface); border: 0.5px solid var(--cc-rule);
+  border-radius: var(--cc-r-md);
+  color: var(--cc-taupe); font-size: 18px;
+}
+.l-act-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.l-act-title { line-height: 1.35; font-size: 13px; font-weight: 500; color: var(--cc-ink); }
+.l-act-sub   { line-height: 1.35; font-size: 11px; font-weight: 300; color: var(--cc-taupe); }
+.l-act-chev  { margin-left: auto; color: var(--cc-stone); font-size: 16px; flex-shrink: 0; }
+.l-act-row--danger .l-act-icon  { color: #9F1239; background: #FFF1F2; border-color: #FECDD3; }
+.l-act-row--danger .l-act-title { color: #9F1239; }
+#lounge-modal-actions .cc-modal-close { display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   KITCHEN PROOF UPDATE (Sep 2026)
+   Week-card note line · late proof · last-week card · flag
+   sheet · nudge log state · proof photo steps · absence hint
+═══════════════════════════════════════════════════════════ */
+
+/* One short line under the week dates: what happens next */
+.k-note { display: block; margin-top: 4px; font-size: 10.5px; line-height: 1.35; color: var(--cc-taupe); }
+.k-note--flag { color: #8C3A2A; }
+
+/* Rotation: proof waiting for review (finished week) */
+.k-mob-rot-badge.review { background: #FDF5E8; color: #633806; border: 0.5px solid #E8C97A; }
+/* Kitchen strip (K1/K3/K4): words, a line segment per week, "Late" and "No result" */
+.k-mob-rot-badge.late { background:#EAF3DE; color:#27500A; border:0.5px solid #97C459; }
+.k-mob-rot-badge.none { background:transparent; color:var(--cc-taupe); border:0.5px dashed #B8AE9F; font-weight:500; }
+.k-mob-rot-badge.upcoming { min-width:8px; }
+.k-mob-rot-item.none .k-mob-rot-room { color:var(--cc-stone); font-style:italic; }
+.k-mob-rot-item.done .k-mob-rot-room, .k-mob-rot-item.late .k-mob-rot-room { color:#27500A; }
+.k-mob-rot-segs { position:absolute; top:25px; left:8px; right:8px; height:1.5px; display:flex; z-index:1; pointer-events:none; }
+.k-mob-rot-seg { flex:1; }
+.k-mob-rot-seg.done, .k-mob-rot-seg.late { background:#9AC87A; }
+.k-mob-rot-seg.missed { background:#F5A8A5; }
+.k-mob-rot-seg.review { background:#E8C97A; }
+.k-mob-rot-item.review .k-mob-rot-room { color: #633806; }
+
+/* Chat: late proof label + "marked missed" line */
+.k-late-badge { font-size: 9px; font-weight: 500; background: #FDF5E8; color: #633806; border: 0.5px solid #E8C97A; border-radius: 3px; padding: 1px 5px; }
+.k-sys-event__text--missed { color: #8C3A2A; }
+
+/* Tenant: late proof strip under the week card */
+.k-late {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
+  background: var(--cc-notice-bg);
+  border-bottom: 0.5px solid var(--cc-notice-bdr);
+}
+.k-late--dsk { margin-top: 10px; border: 0.5px solid var(--cc-notice-bdr); border-radius: var(--cc-r-md); }
+.k-late__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.k-late__text strong { font-size: 11px; font-weight: 600; color: var(--cc-notice-text); }
+.k-late__text span { font-size: 10.5px; color: var(--cc-notice-text); line-height: 1.35; }
+.k-late__btn {
+  flex-shrink: 0; display: flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 12px;
+  background: var(--cc-ink); color: var(--cc-white);
+  border: none; border-radius: var(--cc-r-pill);
+  font-family: inherit; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.k-late__btn i { font-size: 14px; }
+.k-late__btn:active { opacity: 0.75; }
+
+/* Landlord: last week card (a proof still waiting for review) */
+.k-last {
+  flex-shrink: 0;
+  padding: 10px 14px 12px;
+  background: #FFFBF3;
+  border-bottom: 0.5px solid #E8C97A;
+}
+#k-dsk-last .k-last__top { margin-bottom: 8px; }
+.k-last__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.k-last__info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.k-last__room { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; font-weight: 300; color: var(--cc-ink); line-height: 1; }
+.k-last__meta { font-size: 10px; color: var(--cc-taupe); line-height: 1.3; }
+.k-last__body { display: flex; align-items: flex-end; gap: 10px; margin-top: 2px; }
+.k-last__photos { flex: 1; min-width: 0; max-width: 180px; }
+.k-last .k-mob-status-chip, #k-dsk-last .k-mob-status-chip { flex-shrink: 0; }
+
+/* Flag sheet */
+.k-flag-reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.k-flag-reasons .k-mob-n-chip {
+  font-size: 12px; padding: 7px 12px; line-height: 1.2;
+  background: var(--cc-surface); color: var(--cc-charcoal);
+  border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-pill);
+  cursor: pointer; font-family: inherit; -webkit-tap-highlight-color: transparent;
+}
+.k-flag-reasons .k-mob-n-chip.selected { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+.k-flag-err { font-size: 11px; color: #8C3A2A; margin: -4px 0 10px; }
+
+/* Nudge log: open / resolved */
+.k-nudge-state { display: inline-block; margin-top: 3px; font-size: 10px; color: var(--cc-taupe); }
+.k-nudge-state--done { color: #3A6A1A; }
+
+/* Proof photo steps — same layout on every step, camera only on tap */
+.k-wiz-step { text-align: center; padding: 4px 0 14px; }
+.k-wiz-step__icon {
+  width: 44px; height: 44px; margin: 0 auto 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-surface); border: 0.5px solid var(--cc-rule);
+  border-radius: var(--cc-r-md); color: var(--cc-taupe); font-size: 22px;
+}
+.k-wiz-step__title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 28px; font-weight: 400; color: var(--cc-ink); line-height: 1.1; margin: 0 0 6px; }
+.k-wiz-step__hint { font-size: 13px; line-height: 1.45; color: var(--cc-charcoal); margin: 0 auto; max-width: 300px; }
+.k-wiz-frame {
+  position: relative; width: 100%; max-width: calc(46vh * 3 / 4); max-width: calc(46svh * 3 / 4);
+  aspect-ratio: 3 / 4; margin: 0 auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: var(--cc-surface); border: 1px dashed var(--cc-stone); border-radius: var(--cc-r-md);
+  overflow: hidden; cursor: pointer; color: var(--cc-stone);
+}
+.k-wiz-frame i { font-size: 34px; }
+.k-wiz-frame span { font-size: 11px; color: var(--cc-taupe); }
+.k-wiz-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.k-wiz-frame--done { border: 1.5px solid var(--cc-gold); }
+.k-wiz-shoot {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; max-width: calc(46vh * 3 / 4); max-width: calc(46svh * 3 / 4);
+  height: 48px; margin: 14px auto 0;
+  background: var(--cc-ink); color: var(--cc-white);
+  border: none; border-radius: var(--cc-r-pill);
+  font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.k-wiz-shoot i { font-size: 17px; }
+.k-wiz-shoot--again { background: var(--cc-white); color: var(--cc-charcoal); border: 0.5px solid var(--cc-rule); }
+.k-wiz-shoot:active { opacity: 0.75; }
+/* In-app camera: live view inside the same frame */
+.k-wiz-frame--live { border: 1.5px solid var(--cc-ink); background: var(--cc-ink); }
+.k-wiz-live, .k-wiz-live video { position: absolute; inset: 0; width: 100%; height: 100%; }
+.k-wiz-live video { object-fit: cover; display: block; }
+
+/* Absence form: whole-week rule + which weeks are excused */
+.abs-rule { margin: 0 0 14px; padding: 9px 11px; background: var(--cc-surface); border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-sm); }
+.abs-rule__hint { font-size: 11px; line-height: 1.4; color: var(--cc-charcoal); margin: 0; }
+.abs-rule__preview { font-size: 11px; line-height: 1.4; color: #3A6A1A; margin: 4px 0 0; }
+.abs-rule__preview--none { color: #8C3A2A; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   CHAT COMPOSE CARD (Sep 2026) — Lounge + Kitchen, all devices
+   The beige chat background runs to the bottom of the screen;
+   the compose bar is a white card floating on it.
+═══════════════════════════════════════════════════════════ */
+
+/* Chat screens on the phone: no white strip under the chat */
+@media (max-width: 700px) {
+  .app-shell.visible.lounge-active,
+  .app-shell.visible.kitchen-active {
+    padding-bottom: 0;
+    background: var(--cc-bg);
+  }
+}
+
+.cc-dock {
+  position: relative;
+  flex-shrink: 0;
+  padding: 8px 12px 12px;
+  background: var(--cc-bg);
+}
+@media (max-width: 700px) {
+  .cc-dock { padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); }
+  body.browser-mode .cc-dock { padding-bottom: 12px; }
+  body.cc-kb-open .cc-dock  { padding-bottom: 8px; }
+}
+@media (min-width: 701px) {
+  .cc-dock { padding: 10px 14px 14px; }
+  .cc-mobile-only { display: none !important; }
+}
+
+.cc-card {
+  background: var(--cc-white);
+  border: 0.5px solid var(--cc-rule);
+  border-radius: 22px;
+  box-shadow: 0 2px 14px rgba(30, 27, 24, 0.07);
+  padding: 10px 8px 8px 14px;
+  transition: border-color 0.15s;
+}
+.cc-card:focus-within { border-color: var(--cc-stone); }
+.cc-card--err { border-color: #E3A39B; }
+
+.cc-field {
+  display: block; width: 100%; box-sizing: border-box;
+  min-height: 24px; max-height: 112px;
+  padding: 2px 6px 0 0; margin: 0;
+  border: none; outline: none; background: transparent; resize: none; overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px; font-weight: 300; line-height: 22px;
+  color: var(--cc-charcoal);
+}
+.cc-field::placeholder { color: var(--cc-stone); }
+@media (min-width: 701px) and (hover: hover) { .cc-field { font-size: 14px; } }
+
+.cc-tools { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.cc-spacer { flex: 1; }
+.cc-note { font-size: 10px; color: var(--cc-taupe); }
+
+/* Round icon buttons of the chat composer (+ and camera) — scoped, so the
+   normal .cc-btn buttons (Enter, Save new password, Post to app) keep their look */
+.cc-btn.cc-plus, .cc-btn.cc-cam {
+  width: 36px; height: 36px; min-height: 0; flex-shrink: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-bg); color: var(--cc-taupe);
+  border: 0.5px solid var(--cc-rule); border-radius: 50%;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.cc-btn.cc-plus:hover, .cc-btn.cc-cam:hover { color: var(--cc-charcoal); border-color: var(--cc-stone); }
+.cc-btn.cc-plus:active, .cc-btn.cc-cam:active { opacity: 0.7; }
+
+/* Tenant app: login + change password — full-width, easy to tap */
+#tenantLoginBtn, #changePwSubmit {
+  min-height: 48px; margin-top: 6px; border-radius: 12px;
+  font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none;
+}
+.cc-plus[aria-expanded="true"] { background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+
+.cc-send {
+  width: 36px; height: 36px; flex-shrink: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-rule); color: var(--cc-white);
+  border: none; border-radius: 50%;
+  cursor: default; -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, opacity 0.15s;
+}
+.cc-send--on { background: var(--cc-ink); cursor: pointer; }
+.cc-send--on:active { opacity: 0.75; }
+.cc-card--busy .cc-send { background: var(--cc-ink); opacity: 0.45; }
+
+.cc-err { font-size: 11px; color: #8C3A2A; margin: 6px 0 0; }
+
+/* Photo waiting to be sent */
+.cc-att { margin-bottom: 8px; }
+.cc-thumb {
+  position: relative; width: 56px; height: 56px;
+  border-radius: 12px; overflow: hidden;
+  border: 0.5px solid var(--cc-rule); background: var(--cc-surface);
+}
+.cc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cc-thumb-x {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 20px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(30, 27, 24, 0.7); color: #fff;
+  border: none; border-radius: 50%; cursor: pointer;
+}
+.cc-thumb-bar { display: none; position: absolute; left: 6px; right: 6px; bottom: 6px; height: 3px; border-radius: 2px; background: rgba(253, 252, 250, 0.7); overflow: hidden; }
+.cc-thumb-bar span { display: block; width: 40%; height: 100%; border-radius: 2px; background: var(--cc-ink); animation: cc-load 1.1s ease-in-out infinite; }
+.cc-card--busy .cc-thumb-bar { display: block; }
+.cc-card--busy .cc-thumb-x { display: none; }
+@keyframes cc-load { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .cc-thumb-bar span { animation: none; width: 100%; } }
+
+/* + menu (above the card) */
+.cc-menu-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(30, 27, 24, 0.12); }
+.cc-menu {
+  position: absolute; left: 12px; bottom: calc(100% - 4px); z-index: 41;
+  width: 260px; max-width: calc(100% - 24px); box-sizing: border-box;
+  padding: 6px;
+  background: var(--cc-white);
+  border: 0.5px solid var(--cc-rule); border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(30, 27, 24, 0.14);
+}
+.cc-mi {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 10px; border: none; border-radius: 10px;
+  background: none; text-align: left; font-family: inherit; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cc-mi:hover, .cc-mi:active { background: var(--cc-bg); }
+.cc-mi-ico {
+  width: 32px; height: 32px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--cc-surface); color: var(--cc-taupe);
+  border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-md);
+}
+.cc-mi-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cc-mi-t { font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--cc-ink); }
+.cc-mi-s { font-size: 11px; font-weight: 300; line-height: 1.3; color: var(--cc-taupe); }
+.cc-mi--danger .cc-mi-t { color: #9F1239; }
+.cc-mi--danger .cc-mi-ico { color: #9F1239; background: #FFF1F2; border-color: #FECDD3; }
+.cc-menu-sep { height: 0.5px; background: var(--cc-rule); margin: 4px 10px; }
+
+/* Chat header: small refresh icon instead of the text link */
+.cc-hdr-refresh {
+  width: 26px; height: 26px; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: none; color: var(--cc-taupe);
+  border: 0.5px solid var(--cc-rule); border-radius: 50%;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cc-hdr-refresh:hover { color: var(--cc-charcoal); border-color: var(--cc-stone); }
+.cc-hdr-refresh:active { opacity: 0.7; }
+.l-chat-hdr, .k-mob-chat-hdr { min-height: 34px; }
+
+/* Photos in the lounge chat */
+.msg-photo {
+  display: block; max-width: min(240px, 100%); max-height: 260px; margin-top: 5px;
+  border-radius: 10px; border: 0.5px solid var(--cc-rule);
+  object-fit: cover; cursor: pointer;
+}
+
+/* Tenant on a laptop: kitchen photos only from the phone */
+.k-phone-only { margin: 8px 0 0; font-size: 10.5px; color: var(--cc-taupe); }
+
+
+/* ── "Back to Settlements" bar (after "Mieter nachtragen") ── */
+.cc-return-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 14px; padding: 10px 12px;
+  background: #F3EADC; border: .5px solid #D4B896; border-radius: 12px;
+}
+.cc-return-bar button {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 12px;
+  background: #3D3027; color: #fff; border: none; border-radius: 17px;
+  font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.cc-return-bar span { font-size: 12px; color: #6E5230; }
+
+
+/* ── TURN MARKERS (tenant app) ──────────────────────────────
+   While this room's turn this week is open, the tab shows a small
+   symbol after its name: House Cleaning = blue broom, Kitchen =
+   yellow sponge. Class .turn-open is set by turn-markers.js.
+──────────────────────────────────────────────────────────── */
+.tenant-shell .cc-tab.turn-open::after {
+  content: ""; display: inline-block; width: 14px; height: 14px;
+  margin: -4px 0 -4px 4px; vertical-align: -3px;   /* negative margins: the tab text stays on the same line height */
+  background: no-repeat center / contain;
+}
+.tenant-shell .cc-tab[data-tab="cleaning"].turn-open::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M12.6 1.6 8.3 7.9' stroke='%23185FA5' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3Cpath d='M6 7.1 10.4 9.5 8.6 14.6 2.4 11.4Z' fill='%23185FA5'/%3E%3Cpath d='M4.4 12.4l1.2-2.6M6.6 13.5l1.1-2.6' stroke='%23EBF4FF' stroke-width='.9' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.tenant-shell .cc-tab[data-tab="kitchen"].turn-open::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1.6' y='4.4' width='12.8' height='7.6' rx='1.8' fill='%23E2B33A'/%3E%3Ccircle cx='5' cy='7.4' r='.9' fill='%23B98A1C'/%3E%3Ccircle cx='8.6' cy='9.2' r='.8' fill='%23B98A1C'/%3E%3Ccircle cx='11.2' cy='6.8' r='.7' fill='%23B98A1C'/%3E%3C/svg%3E");
+}
+
+
+/* ── PASSWORD REQUEST (tenant login page, pw-request-tenant.js) ─── */
+.pwr-links { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
+.pwr-link { background: none; border: none; padding: 4px 2px; font-family: inherit; font-size: 12px; color: var(--cc-taupe);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pwr-dot { color: var(--cc-stone); font-size: 12px; }
+.pwr-card { margin-top: 16px; padding: 14px 14px 12px; border-radius: var(--cc-r-md, 10px); background: var(--cc-bg);
+  border: 0.5px solid var(--cc-rule); text-align: left; }
+.pwr-card--ok { background: #F0FDF4; border-color: #86EFAC; }
+.pwr-card--warn { background: #F5EEE8; border-color: #D4A87A; }
+.pwr-card__title { font-size: 13px; font-weight: 500; color: var(--cc-ink); margin: 0 0 6px; }
+.pwr-card__text { font-size: 12px; line-height: 1.5; color: var(--cc-taupe); margin: 0 0 8px; }
+.pwr-card__hint { font-size: 11px; line-height: 1.45; color: var(--cc-taupe); margin: 10px 0 0; text-align: center; }
+.pwr-pw { font-size: 22px; font-weight: 500; letter-spacing: 0.08em; text-align: center; color: var(--cc-ink);
+  background: var(--cc-white); border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-sm); padding: 12px 8px;
+  margin: 8px 0 12px; user-select: all; -webkit-user-select: all; word-break: break-all; }
+.pwr-textbtn { background: none; border: none; padding: 2px 0; font-family: inherit; font-size: 12px; color: var(--cc-taupe);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+
+/* ── PASSWORD REQUESTS + ROOM PASSWORDS (management app, pw-requests-admin.js) ── */
+.pwa-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 10px 20px; background: var(--cc-gold-lt); color: #6E5230; border: none; border-bottom: 0.5px solid #D9C3A0;
+  font-family: inherit; font-size: 12px; font-weight: 500; text-align: left; cursor: pointer; }
+.pwa-banner__go { flex-shrink: 0; text-decoration: underline; text-underline-offset: 3px; }
+.pwa-push { display: block; width: 100%; margin: 0 0 14px; padding: 9px 12px; background: var(--cc-bg);
+  border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-sm); font-family: inherit; font-size: 12px;
+  color: var(--cc-taupe); text-align: left; cursor: pointer; }
+.pwa-card { border: 0.5px solid var(--cc-rule); border-radius: var(--cc-r-md, 10px); background: var(--cc-white);
+  padding: 12px 14px; margin-bottom: 12px; }
+.pwa-card--done { background: var(--cc-bg); }
+.pwa-card__top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.pwa-room { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; color: var(--cc-ink); }
+.pwa-kind { font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-taupe);
+  background: var(--cc-surface); border: 0.5px solid var(--cc-rule); border-radius: 10px; padding: 2px 8px; }
+.pwa-time { margin-left: auto; font-size: 11px; color: var(--cc-stone); }
+.pwa-msg { font-size: 12px; font-style: italic; color: var(--cc-taupe); margin: 0 0 8px; }
+.pwa-cmp { width: 100%; border-collapse: collapse; font-size: 12px; margin: 4px 0 8px; table-layout: fixed; }
+.pwa-cmp th { font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cc-stone); text-align: left; padding: 0 6px 4px 0; }
+.pwa-cmp th:first-child, .pwa-cmp td:first-child { width: 70px; color: var(--cc-taupe); }
+.pwa-cmp td { padding: 5px 6px 5px 0; border-top: 0.5px solid var(--cc-rule); color: var(--cc-ink); word-break: break-word; }
+.pwa-match { font-size: 12px; font-weight: 500; padding: 7px 10px; border-radius: var(--cc-r-sm); margin: 0 0 10px; }
+.pwa-match--ok   { background: #F0FDF4; color: #14532D; border: 0.5px solid #86EFAC; }
+.pwa-match--warn { background: #FEFCE8; color: #78640A; border: 0.5px solid #EAD96B; }
+.pwa-match--info { background: #EBF4FF; color: #185FA5; border: 0.5px solid #90C2F5; }
+.pwa-match--bad  { background: #FFF1F2; color: #9F1239; border: 0.5px solid #FECDD3; }
+.pwa-btns { display: flex; gap: 8px; }
+.pwa-btns .cc-btn { flex: 1; }
+.pwa-link { display: block; margin: 8px auto 0; background: none; border: none; font-family: inherit; font-size: 11px;
+  color: var(--cc-taupe); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pwa-note { font-size: 11px; line-height: 1.45; color: #78640A; background: #FEFCE8; border: 0.5px solid #EAD96B;
+  border-radius: var(--cc-r-sm); padding: 7px 10px; margin: 0 0 10px; }
+.pwa-state { font-size: 12px; color: var(--cc-taupe); margin: 0; }
+.pwa-sent { font-size: 12px; color: #14532D; }
+.pwa-sent__pw { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px;
+  padding: 8px 10px; background: var(--cc-white); border: 0.5px solid #86EFAC; border-radius: var(--cc-r-sm); }
+.pwa-sent__pw b { font-size: 16px; letter-spacing: 0.06em; color: var(--cc-ink); user-select: all; -webkit-user-select: all; }
+.pwa-hist { margin-top: 6px; font-size: 12px; color: var(--cc-taupe); }
+.pwa-hist summary { cursor: pointer; padding: 6px 0; }
+.pwa-hist__row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 0.5px solid var(--cc-rule); }
+.pwa-pw { letter-spacing: 0.05em; color: var(--cc-ink); user-select: all; -webkit-user-select: all; }
+.pwa-pw--none { font-weight: 400; color: var(--cc-stone); letter-spacing: 0; user-select: none; -webkit-user-select: none; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   TURN CARD — Kitchen + House Cleaning (this week)
+   Bold room name, bigger status chip with icon, card tinted by status.
+   Same layout in every state — only the values change.
+══════════════════════════════════════════════════════════════ */
+.k-mob-week-room{font-size:28px;font-weight:500;}
+.k-mob-week-dates-sm{font-size:11px;}
+.k-note{font-size:11px;}
+.k-note--flag{color:#7A2020;}
+.k-note--wait{color:#854F0B;}
+.k-note--done{color:#3B6D11;}
+.cc-turn-you{font-family:'Inter',system-ui,sans-serif;font-size:10px;font-weight:600;color:var(--cc-gold);letter-spacing:0.06em;margin-left:6px;}
+.k-mob-status-chip{gap:5px;font-size:11px;font-weight:600;padding:4px 11px;border-radius:12px;letter-spacing:0.02em;line-height:1.2;}
+.k-mob-status-chip i{font-size:13px;}
+.k-mob-status-chip.submitted{background:#FDF5E8;border:1px solid #E8C97A;color:#633806;}
+.k-mob-status-chip.approved{background:#EAF3DE;border:1px solid #639922;color:#27500A;}
+.k-mob-status-chip.pending{background:var(--cc-surface);border:1px solid var(--cc-rule);color:#6B5E4E;}
+.k-mob-status-chip.missed{background:#FDEEED;border:1px solid #F5A8A5;color:#7A2020;}
+.k-mob-status-chip.flagged{background:#FDEEED;border:1px solid #F5A8A5;color:#7A2020;}
+.k-mob-status-chip.resubmitted{background:#FDF0D8;border:1px solid #E8C97A;color:#633806;}
+.k-mob-status-chip.skipped{background:#F5F3FF;border:1px solid #C4B5FD;color:#5B21B6;}
+.k-mob-status-chip.not-your-turn{background:var(--cc-surface);border:1px solid var(--cc-rule);color:var(--cc-taupe);}
+.k-mob-status-chip.myturn{background:var(--cc-ink);border:1px solid var(--cc-ink);color:var(--cc-white);}
+.k-mob-week[data-turn="turn"],.k-mob-week[data-turn="wait"]{background:#FFFAF1;}
+.k-mob-week[data-turn="redo"]{background:#FEF6F5;}
+.k-mob-week[data-turn="done"]{background:#F6FAF1;}
+.hc-current-card[data-turn="turn"]{background:#FFFAF1;border:1px solid #E8C97A;}
+.hc-current-card[data-turn="done"]{background:#F6FAF1;border:1px solid #97C459;}
+
+
+/* ── NEW ANNOUNCEMENT (tenant app, tab-lounge-tenant.js) ────────
+   Pop-up once per announcement, gold dot on the Lounge tab until seen,
+   gold "New" chip on the card (unseen or posted in the last 3 days). */
+.ann-new{font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--cc-white);background:var(--cc-gold);border-radius:var(--cc-r-sm);padding:2px 7px;flex-shrink:0;}
+.tenant-shell .cc-tab.ann-unseen::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cc-gold);margin-left:5px;vertical-align:2px;}
+.ann-new-sheet .cc-modal-body{padding:16px 18px 18px;}
+.ann-new-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--cc-gold);margin-right:7px;vertical-align:1px;}
+.ann-new-meta{display:flex;justify-content:space-between;gap:8px;font-size:9px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:#9C8060;padding-bottom:9px;margin-bottom:12px;border-bottom:0.5px solid #EAE0D0;}
+.ann-new-meta span:last-child{font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;color:#B4A890;}
+.ann-new-title{font-size:24px;margin-bottom:8px;}
+.ann-new-body{font-size:13px;white-space:pre-line;margin-bottom:18px;}
+.ann-new-btn{width:100%;height:42px;background:var(--cc-gold);border:none;border-radius:var(--cc-r-sm);color:#fff;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;font-family:inherit;}
+
+
+/* ══════════════════════════════════════════════════════════════
+   HOUSE CLEANING — ROTATION AS A SCHEDULE (tenant + management app)
+   Last week · This week · then the rest of the round in time order.
+   Colours: gold = now · ink = your action · blue = next only ·
+   green = done · red = missed · sand = away · purple = vacant · grey = later
+══════════════════════════════════════════════════════════════ */
+.hc-sch{display:flex;flex-direction:column;gap:3px;}
+.hc-sch-row{height:30px;display:flex;align-items:center;border-radius:8px;padding:0 8px 0 10px;border:0.5px solid transparent;-webkit-tap-highlight-color:transparent;}
+.hc-sch-row--tap{cursor:pointer;}
+.hc-sch-row--tap:active{opacity:0.7;}
+.hc-sch-when{width:76px;flex-shrink:0;font-size:10px;color:var(--cc-taupe);}
+.hc-sch-name{flex:1;min-width:0;font-size:13px;font-weight:500;color:var(--cc-charcoal);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hc-sch-name .cc-turn-you{margin-left:5px;}
+.hc-sch-dates{font-size:10px;color:#B4A890;white-space:nowrap;}
+.hc-sch-row--last{opacity:0.75;}
+.hc-sch-row--last .hc-sch-name{color:var(--cc-taupe);}
+.hc-sch-row--now{background:#FDF5E8;border-color:#E8C97A;}
+.hc-sch-row--now .hc-sch-when,.hc-sch-row--now .hc-sch-dates{color:#A0860E;}
+.hc-sch-row--now .hc-sch-when{font-weight:600;}
+.hc-sch-row--now .hc-sch-name{color:#6B5A0E;}
+.hc-sch-row--done{background:#F6FAF1;border-color:#97C459;}
+.hc-sch-row--done .hc-sch-when{color:#3B6D11;font-weight:600;}
+.hc-sch-row--done .hc-sch-name{color:#27500A;}
+.hc-sch-row--next{background:#EBF4FF;border-color:#90C2F5;}
+.hc-sch-row--next .hc-sch-when,.hc-sch-row--next .hc-sch-dates{color:#185FA5;}
+.hc-sch-row--next .hc-sch-when{font-weight:600;}
+.hc-sch-row--next .hc-sch-name{color:#0C447C;}
+.hc-sch-row--off .hc-sch-name{color:#B4A890;}
+.hc-sch-badge{font-size:8px;font-weight:500;letter-spacing:0.07em;text-transform:uppercase;padding:2px 7px;border-radius:20px;border:0.5px solid;white-space:nowrap;}
+.hc-sch-badge--done{background:#EDF5E8;color:#3A6A1A;border-color:#9AC87A;}
+.hc-sch-badge--missed{background:#FEF2F2;color:#991B1B;border-color:#FCA5A5;}
+.hc-sch-badge--away{background:#F5EEE8;color:#8C5A30;border-color:#D4A87A;}
+.hc-sch-badge--vacant{background:#F5F3FF;color:#5B21B6;border-color:#C4B5FD;}
+.hc-sch-mail{width:24px;height:24px;flex-shrink:0;margin-left:8px;border-radius:5px;background:var(--cc-surface);border:0.5px solid var(--cc-rule);display:inline-flex;align-items:center;justify-content:center;color:var(--cc-taupe);font-size:13px;text-decoration:none;}
+.hc-sch-mail--none{visibility:hidden;}
+/* Ink = "you have to act" (tenant action buttons) */
+.k-mob-wact.ink{background:var(--cc-ink);color:var(--cc-white);}
+.k-mob-wact.ink i{color:var(--cc-white);}
+/* Done (late) — Monday until 12:00, last week still open */
+.hc-late{display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:8px;background:#FDEEED;border:0.5px solid #F5A8A5;border-radius:var(--cc-r-sm);}
+.hc-late__text{flex:1;font-size:11px;line-height:1.35;color:#7A2020;}
+.hc-late__btn{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;height:30px;padding:0 10px;border:none;border-radius:8px;background:var(--cc-ink);color:var(--cc-white);font-size:10px;font-weight:600;letter-spacing:0.03em;cursor:pointer;font-family:inherit;}
+
+
+/* ── TURN CARD — "Not your turn" (Kitchen + House Cleaning, tenant app) ──
+   Big line is about the viewer; the line below says whose week it is; the
+   blue line is the viewer's own next turn (blue = next). */
+.turn-who{color:var(--cc-charcoal);font-weight:500;}
+.turn-st{font-weight:500;}
+.turn-st--done{color:#3B6D11;}
+.turn-st--away{color:#8C5A30;}
+.turn-st--vacant{color:#5B21B6;}
+.turn-st--wait{color:#854F0B;}
+.turn-mine{display:flex;align-items:center;gap:8px;margin-top:9px;padding:7px 10px;border-radius:8px;background:#EBF4FF;border:0.5px solid #90C2F5;font-size:11px;line-height:1.3;color:#1A5896;}
+.turn-mine i{font-size:14px;color:#185FA5;flex-shrink:0;}
+.turn-mine b{font-weight:600;color:#0C447C;}
+.k-mob-status-chip.away{background:#F5EEE8;border:1px solid #D4A87A;color:#8C5A30;}
+
+
+/* ── ROTATION v2 — pill at the front of each row (colour map) ───────────
+   This week = biggest row · next real turn = medium · the rest small.
+   Pill colours = the agreed status colours (soft tints). */
+.hc-pill{width:92px;height:24px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:12px;border:1px solid;font-size:11px;font-weight:600;white-space:nowrap;}
+.hc-pill i{font-size:13px;}
+.hc-pill--sm{width:auto;height:22px;padding:0 9px;font-size:10px;}
+.hc-pill--now{background:#FDF0D8;border-color:#E8C97A;color:#633806;}
+.hc-pill--next{background:#EBF4FF;border-color:#90C2F5;color:#0C447C;}
+.hc-pill--later{background:#EDE8E0;border-color:#E0DAD0;color:#6B5E4E;}
+.hc-pill--done{background:#EAF3DE;border-color:#639922;color:#27500A;}
+.hc-pill--missed{background:#FDEEED;border-color:#F5A8A5;color:#7A2020;}
+.hc-pill--away{background:#F5EEE8;border-color:#D4A87A;color:#8C5A30;}
+.hc-pill--vacant{background:#F5F3FF;border-color:#C4B5FD;color:#5B21B6;}
+.hc-pill--last{background:transparent;border-color:#D9CFC0;color:#9A8E7E;}
+.hc-sch{gap:4px;}
+.hc-sch-row{height:28px;gap:10px;padding:0 10px;}
+.hc-sch-row--last{height:30px;opacity:0.85;}
+.hc-sch-row--now{height:48px;background:#FFFAF1;border:1px solid #E8C97A;}
+.hc-sch-row--now .hc-pill{width:100px;height:28px;font-size:12px;}
+.hc-sch-row--now .hc-sch-name{font-family:'Cormorant Garamond',Georgia,serif;font-size:24px;font-weight:500;color:#4A3D0A;}
+.hc-sch-row--now .hc-sch-dates{font-size:11px;font-weight:500;color:#A0860E;}
+.hc-sch-row--next{height:36px;background:transparent;border-color:transparent;}
+.hc-sch-row--next .hc-sch-name{font-size:15px;color:#0C447C;}
+.hc-sch-row--next .hc-sch-dates{color:#185FA5;}
+.hc-sch-row--off .hc-sch-name{color:#B4A890;font-weight:400;}
+.hc-sch-row--mine{background:#FFFAF1;border-color:#E8C97A;}
+.hc-sch-row--mine .hc-sch-dates{color:#A0860E;font-weight:500;}
