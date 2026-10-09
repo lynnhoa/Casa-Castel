@@ -2420,7 +2420,8 @@ async function _openContract(type, roomId, renew) {
 
   // Contract flow: For line, Miete block, Draft PDF / Approve (cc-contract-flow.js)
   _rcSetupFlow(type, room);
-  if (document.querySelector('#contractBody .cg') && typeof ccgInit === 'function') ccgInit();
+  if (document.querySelector('#contractBody .cg:not(.cg--ub)') && typeof ccgInit === 'function') ccgInit();
+  if (type === 'ueberg' && typeof _ubWire === 'function') _ubWire();
 
   // Cancel: use fresh clone to avoid stale listener accumulation
   const cancelBtn = document.getElementById('contractCancelBtn');
@@ -2506,97 +2507,61 @@ async function _roomReopenContractDraft(d) {
 
 /* ── CONTRACT BODY: ÜBERGABEPROTOKOLL ───────────────────── */
 function _contractBodyUeberg(room, isEinzug) {
+  // C3 (Oct 2026): same layout as the three contract generators (cc-generator.js styles) —
+  // same fields and ids as before, so the PDF, drafts and Approve work unchanged
   const s = appSettings;
   const profile   = (typeof _getProfile === 'function') ? _getProfile(room.name) : {};
   const tenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
   const tenantAdr  = profile.address || '';
-
   const zaehler = _parseArr(s.zaehler);
   const strom   = zaehler.find(z => z.type === 'Strom');
   const gas     = zaehler.find(z => z.type === 'Gas');
   const wasser  = zaehler.find(z => z.type === 'Wasser');
-
-  return `
-    <!-- Mieter toggle — iOS-style pill -->
-    <div class="rm-fields-title" style="margin-bottom:10px;">Mieter</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-      <span style="font-size:12px;color:var(--cc-taupe);font-weight:400;">${esc(room.name)} Mieter</span>
-      <div class="ub-mieter-pill" id="uebergMieterPill" data-state="room" onclick="_toggleUebergMieter('${room.id}')">
-        <div class="ub-mieter-pill__knob"></div>
-      </div>
-      <span style="font-size:12px;color:var(--cc-stone);" id="uebergMieterManualLbl">Manuell</span>
-    </div>
-    <div class="rm-field" id="uebergMieterNameWrap">
-      <label>Mieter Name</label>
-      <input class="rm-input" id="ub-mieter-name" value="${esc(tenantName)}" placeholder="Vor- und Nachname…"/>
-    </div>
-    <div class="rm-field">
-      <label>Mieter Adresse <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(frei eingeben)</span></label>
-      <input class="rm-input" id="ub-mieter-adr" value="${esc(tenantAdr)}" placeholder="Aktuelle Adresse…"/>
-    </div>
-
-    <!-- Übergabedatum -->
-    <div class="rm-field" style="margin-top:4px;">
-      <label>Übergabedatum</label>
-      <input class="rm-input" id="ub-datum" type="text" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"/>
-    </div>
-    ${!isEinzug ? `
-    <!-- Neue Adresse — Auszug only -->
-    <div class="rm-field">
-      <label>Neue Adresse des Mieters</label>
-      <input class="rm-input" id="ub-neue-adr" placeholder="Neue Adresse nach Auszug…"/>
-    </div>` : '<input type="hidden" id="ub-neue-adr"/>'}
-
-    <!-- Mängelbeschreibung -->
-    <div class="rm-field" style="margin-top:8px;">
-      <label>Mängelbeschreibung / Zustand</label>
-      <textarea class="rm-input" id="ub-maengel" rows="3" style="resize:vertical;line-height:1.5;" placeholder="Zustand des Zimmers bei Übergabe…"></textarea>
-    </div>
-
-    <!-- Zählerstände -->
-    <div class="rm-fields-title" style="margin-top:6px;margin-bottom:8px;">Zählerstände</div>
-    <div class="rm-field-row">
-      <div class="rm-field">
-        <label>Strom <span style="font-size:9px;color:var(--cc-stone);">${strom ? strom.nummer : ''}</span></label>
-        <input class="rm-input" id="ub-strom" placeholder="Stand…"/>
-      </div>
-      <div class="rm-field">
-        <label>Gas <span style="font-size:9px;color:var(--cc-stone);">${gas ? gas.nummer : ''}</span></label>
-        <input class="rm-input" id="ub-gas" placeholder="Stand…"/>
-      </div>
-    </div>
-    <div class="rm-field" style="max-width:50%;padding-right:4px;">
-      <label>Wasser <span style="font-size:9px;color:var(--cc-stone);">${wasser ? wasser.nummer : ''}</span></label>
-      <input class="rm-input" id="ub-wasser" placeholder="Stand…"/>
-    </div>
-
-    <!-- Schlüssel -->
-    <div class="rm-fields-title" style="margin-top:6px;margin-bottom:8px;">Schlüsselübergabe</div>
-    <div class="rm-field-row">
-      <div class="rm-field">
-        <label>Haustür</label>
-        <input class="rm-input" type="number" id="ub-haustur" value="${room.haustuerschluessel || 1}" min="0"/>
-      </div>
-      <div class="rm-field">
-        <label>Zimmertür</label>
-        <input class="rm-input" type="number" id="ub-zimmertur" value="${room.zimmerschluessel || 1}" min="0"/>
-      </div>
-    </div>
-
-    <!-- Allgemeine Bemerkungen -->
-    <div class="rm-field" style="margin-top:4px;">
-      <label>Allgemeine Bemerkungen</label>
-      <textarea class="rm-input" id="ub-bemerkungen" rows="3" style="resize:vertical;line-height:1.5;" placeholder="Sonstige Anmerkungen…"></textarea>
-    </div>
-
-    <!-- Fotos (optional, cc-ueberg-photos.js) -->
+  const nr = z => z && z.nummer ? ` <span class="ub-nr">Nr. ${esc(z.nummer)}</span>` : '';
+  const f = (id, label, attrs, hint) => `<div class="cg-f"><label for="${id}" class="cg-lbl">${label}</label><input class="rm-input" id="${id}" ${attrs}/>${hint ? `<p class="cg-hint" style="margin-top:6px">${hint}</p>` : ''}</div>`;
+  const ta = (id, label, ph) => `<div class="cg-f"><label for="${id}" class="cg-lbl">${label}</label><textarea class="rm-input ub-ta" id="${id}" rows="3" placeholder="${ph}"></textarea></div>`;
+  return `<div class="cg cg--ub" data-type="ueberg">
+  <section class="cg-sec"><h3 class="cg-h">Mieter</h3>
+    <div id="cg-for-slot"></div>
+    <div style="display:none"><div class="ub-mieter-pill" id="uebergMieterPill" data-state="room" onclick="_toggleUebergMieter('${room.id}')"><div class="ub-mieter-pill__knob"></div></div><span id="uebergMieterManualLbl"></span></div>
+    <div id="uebergMieterNameWrap">${f('ub-mieter-name', 'Name', `type="text" value="${esc(tenantName)}" placeholder="Vor- und Nachname" autocomplete="off"`)}</div>
+    ${f('ub-mieter-adr', isEinzug ? 'Aktuelle Adresse' : 'Adresse', `type="text" value="${esc(tenantAdr)}" placeholder="Straße, PLZ Ort"`)}
+  </section>
+  <section class="cg-sec"><h3 class="cg-h">${isEinzug ? 'Einzug' : 'Auszug'}</h3>
+    ${f('ub-datum', 'Übergabedatum', 'type="text" inputmode="numeric" placeholder="TT.MM.JJJJ" oninput="_autoFormatGermanDate(event)"')}
+    ${!isEinzug ? f('ub-neue-adr', 'Neue Adresse des Mieters', 'type="text" placeholder="Adresse nach dem Auszug"') : '<input type="hidden" id="ub-neue-adr"/>'}
+    ${ta('ub-maengel', 'Zustand / Mängel', 'Zustand des Zimmers bei Übergabe …')}
+  </section>
+  <section class="cg-sec"><h3 class="cg-h">Zählerstände</h3>
+    <div class="cg-row">${f('ub-strom', 'Strom' + nr(strom), 'type="text" inputmode="decimal" placeholder="Stand"')}${f('ub-gas', 'Gas' + nr(gas), 'type="text" inputmode="decimal" placeholder="Stand"')}</div>
+    <div class="cg-row">${f('ub-wasser', 'Wasser' + nr(wasser), 'type="text" inputmode="decimal" placeholder="Stand"')}<div class="cg-f"></div></div>
+  </section>
+  <section class="cg-sec"><h3 class="cg-h">Schlüssel</h3>
+    <div class="cg-row">${f('ub-haustur', 'Haustür', `type="number" min="0" value="${room.haustuerschluessel || 1}"`)}${f('ub-zimmertur', 'Zimmertür', `type="number" min="0" value="${room.zimmerschluessel || 1}"`)}</div>
+  </section>
+  <section class="cg-sec"><h3 class="cg-h">Notizen &amp; Fotos</h3>
+    ${ta('ub-bemerkungen', 'Allgemeine Bemerkungen', 'Sonstige Anmerkungen …')}
     ${typeof ccUbPhotosHTML === 'function' ? ccUbPhotosHTML('room-ub') : ''}
-    <!-- Unterzeichnungsdatum — at end -->
-    <div class="rm-field" style="margin-top:4px;">
-      <label>Unterzeichnungsdatum <span style="font-size:9px;color:var(--cc-stone);text-transform:none;letter-spacing:0;">(optional)</span></label>
-      <input class="rm-input" id="ub-sig" type="date" onclick="try{this.showPicker()}catch(e){}" />
-    </div>
-  `;
+  </section>
+  <section class="cg-sec"><h3 class="cg-h">Options</h3>
+    ${f('ub-sig', 'Unterzeichnungsdatum', 'type="date" onclick="try{this.showPicker()}catch(e){}"', 'optional — leave empty to sign by hand')}
+  </section>
+  <div class="cg-summary" id="ub-summary"></div>
+</div>`;
+}
+/* Übergabe: live summary line above the buttons (like the contract generators) */
+function _ubSummary() {
+  const el = document.getElementById('ub-summary'); if (!el) return;
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const eu = typeof _rcEULabel === 'function' && typeof _contractRoomId !== 'undefined' ? _rcEULabel(_contractRoomId) : 'Übergabe';
+  const meters = ['ub-strom', 'ub-gas', 'ub-wasser'].filter(id => v(id)).length;
+  const keys = (Number(v('ub-haustur')) || 0) + (Number(v('ub-zimmertur')) || 0);
+  el.textContent = [eu + (v('ub-datum') ? ' ' + v('ub-datum') : ' · Datum fehlt'), meters + ' / 3 Zählerstände', keys + ' Schlüssel', v('ub-mieter-name') || 'Name fehlt'].join(' · ');
+}
+function _ubWire() {
+  const body = document.getElementById('contractBody'); if (!body) return;
+  if (!body._ubWired) { body.addEventListener('input', _ubSummary); body.addEventListener('change', _ubSummary); body._ubWired = true; }
+  setTimeout(_ubSummary, 60);
 }
 
 function _initUebergMieterToggle(room) {
@@ -5159,6 +5124,9 @@ function _roomBaseSave() {
 .rb-sw input:checked + .rb-sw__t { background:var(--cc-ink); }
 .rb-sw input:checked + .rb-sw__t::after { transform:translateX(18px); }
 
+/* Übergabe in the generator layout (C3) */
+.cg--ub .ub-nr { font-weight:400; letter-spacing:0; text-transform:none; color:#9A8E7E; margin-left:4px; }
+.cg--ub .ub-ta { min-height:84px; padding-top:10px; resize:vertical; line-height:1.5; }
 /* Soll (Rooms) / IST (Tenants) summary — no card: a small, centred strip under the title */
 html .cc-sumline { display:flex; flex-direction:column; gap:8px; padding:2px 0 0; margin:0 0 18px; background:none; border:none; }
 html .cc-sumline__top { display:flex; justify-content:center; align-items:baseline; gap:6px; flex-wrap:wrap;

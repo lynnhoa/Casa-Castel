@@ -208,7 +208,7 @@ function _cgIso(id) {
 }
 /* Everything that depends on other fields: visible switches, Kaution, summary */
 function ccgUpdate() {
-  if (!_cgIn('contractBody') || !document.querySelector('#contractBody .cg')) return;
+  if (!_cgIn('contractBody') || !document.querySelector('#contractBody .cg:not(.cg--ub)')) return;   // not the Übergabe form
   const type = _cgType;
   const start = _cgIso('cg-start');
   const term = type === 'mietvertrag' ? (_cgOpt('term') || 'unb') : null;
