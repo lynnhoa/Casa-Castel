@@ -96,62 +96,164 @@ function stRenderDashboard() {
   }
   const ren = sdRentals(Y), casa = sdCasa(Y);
   const casaLabel = casa ? stNkLabel(casa.M.per.from, casa.M.per.to) : '';
-  // needs you — both areas in one list
-  const steps = (ren ? ren.steps : []).slice();
-  if (casa && casa.sendable) {
-    if (!casa.locked) steps.push({ o: 2, ic: 'lock', t: 'Lock house costs', s: 'Casa Castel · ' + casaLabel, go: { tab: 'casa', view: 'costs', y: Y } });
-    else if (casa.open) steps.push({ o: 5, ic: 'send', t: casa.open + (casa.open === 1 ? ' letter ready' : ' letters ready'), s: 'Casa Castel · ' + casaLabel, go: { tab: 'casa', view: 'start', y: Y } });
-  }
-  if (casa) casa.confirm.forEach(t => steps.push({ o: 2, ic: 'check', t: 'Confirm settlement ' + (t.st.res.via === 'miete' ? 'with the rent' : 'via Kaution'), s: 'Casa Castel · ' + t.name + ' · ' + stEur(t.st.res.amount), go: { tab: 'casa', view: 'settle', key: t.key, y: Y } }));
-  if (ren && ren.toSend) steps.push({ o: 6, ic: 'send', t: ren.toSend + (ren.toSend === 1 ? ' letter ready' : ' letters ready'), s: 'Rentals · periods ending in ' + Y, go: { tab: 'rentals', y: Y } });
-  steps.sort((a, b) => a.o - b.o);
-  SD.steps = steps;
-  const need = stNeeds(steps.map((x, i) => ({ tone: x.red ? 'red' : 'gold', icon: x.ic, t: x.t, s: x.s, act: 'data-sd="go" data-i="' + i + '"' })), 'periods ending in ' + Y + ' are on track');
-  // two area cards — the same numbers and colours as the tabs
-  const line = (label, net, emptyTxt) => '<span class="sd-ml"><small>' + label + '</small>' + (net === null || net === undefined
-    ? '<b class="is-nil">' + stEsc(emptyTxt) + '</b>' : '<b class="' + (net > 0.004 ? 'pos' : net < -0.004 ? 'neg' : 'is-nil') + '">' + (net > 0.004 ? 'you get ' : net < -0.004 ? 'you pay ' : 'balanced ') + (Math.abs(net) >= 0.005 ? sdE(Math.abs(net)) : '') + '</b>') + '</span>';
-  const area = (tab, name, n, sent, t, frist, l1, l2) => {
-    const left = sdLeft(frist);
-    return '<button class="sc-card sd-area" data-sd="tab" data-t="' + tab + '"><span class="sd-area__n">' + name + '</span>' +
-      '<span class="sd-area__r">' + stRing(n, sent, t, '', 58) + '<span class="sd-area__s">settled' + (left !== null ? '<br><b class="' + (left < 60 ? 'is-warn' : '') + '">' + (left >= 0 ? left + ' days left' : 'Frist passed') + '</b>' : '') + '</span></span>' +
-      '<span class="sd-area__ls">' + l1 + l2 + '</span></button>';
-  };
-  const areas = '<div class="sd-areas">' +
-    (ren ? area('rentals', 'Rentals', ren.settled, 0, ren.live, ren.frist, line('Tenants', ren.ten, 'waiting for the Jahresabrechnungen'), line('Hausgeld', ren.hg, 'no Jahresabrechnung yet')) : '') +
-    (casa ? area('casa', 'Casa Castel', casa.done, casa.sent, casa.total, casa.frist, line('Tenants', casa.ten, 'no house costs yet'), line('Hausgeld', casa.hg, 'no Jahresabrechnung yet')) : '') + '</div>';
+  // ── Read-only overview (Oct 2026): no reminders or to-dos here — those live in the tabs
+  const O = sdOverview(Y, casa);
+  const fr = [ren && ren.frist, casa && casa.frist].filter(Boolean).sort()[0] || null;
   const yearNav = '<div class="sc-yr">' +
     '<button class="cx-arw" data-sd="year" data-d="-1" aria-label="Previous year"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
-    '<div class="sc-yr__t"><div class="sc-yr__m">' + Y + '</div><div class="sc-yr__s">periods ending in ' + Y + ' · status ' + stDe(cxToday()) + '</div></div>' +
+    '<div class="sc-yr__t"><div class="sc-yr__m">' + Y + '</div><div class="sc-yr__s">NK periods ending in ' + Y + (fr ? ' · Frist ' + stDe(fr) : '') + '</div></div>' +
     '<button class="cx-arw" data-sd="year" data-d="1" aria-label="Next year"' + (Y >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
-  // the cute one: manual NK-Abrechnung (older years or anything not in the app)
+  // the cute one stays as it was: manual NK-Abrechnung (older years or anything not in the app)
   const create = '<button class="sd-c4" data-sd="new"><span class="sd-c4__i" aria-hidden="true">🏡<span class="sd-c4__s">✨</span></span>' +
     '<span class="sd-c4__t"><b>NK-Abrechnung erstellen</b><small>manual · older years</small></span><span class="sd-c4__p" aria-hidden="true"><i class="ti ti-plus"></i></span></button>';
-  // house costs per year (Casa Castel)
-  const yrs = (typeof SC !== 'undefined' ? SC.rows : []).filter(r => r.snapshot && r.snapshot.total !== undefined).map(r => ({ y: Number(r.year), v: Number(r.snapshot.total) || 0, locked: true }));
-  if (casa && !casa.locked && !yrs.some(x => x.y === Y)) yrs.push({ y: Y, v: casa.M.R.check.total, locked: false });
-  yrs.sort((a, b) => a.y - b.y);
-  const last4 = yrs.slice(-4), mx = Math.max(1, ...last4.map(x => x.v));
-  let chart = '';
-  if (last4.length) {
-    const lastTwo = last4.slice(-2), ch = lastTwo.length === 2 && lastTwo[0].v ? (lastTwo[1].v - lastTwo[0].v) / lastTwo[0].v * 100 : null;
-    chart = stSec('House costs Casa Castel') + '<div class="sc-card"><div class="sd-ch">' +
-      last4.map((x, i) => '<div class="sd-ch__c"><span class="sd-ch__v">' + Math.round(x.v).toLocaleString('de-DE') + '</span><span class="sd-ch__b' + (i === last4.length - 1 ? ' is-last' : '') + (x.locked ? '' : ' is-prev') + '" style="height:' + Math.max(4, Math.round(x.v / mx * 70)) + 'px"></span><span class="sd-ch__y">' + x.y + '</span></div>').join('') + '</div>' +
-      (ch !== null ? '<p class="sd-ch__f">' + lastTwo[1].y + ': ' + (ch >= 0 ? '+ ' : '− ') + Math.abs(ch).toFixed(1).replace('.', ',') + ' % vs. ' + lastTwo[0].y + (last4[last4.length - 1].locked ? '' : ' · preview') + '</p>' : '') + '</div>';
-  }
-  // drafts + last letters
   const drafts = SD.drafts.filter(d => d.status !== 'sent');
-  const draftsHtml = drafts.length ? '<div class="sc-sec">Drafts <span>' + drafts.length + '</span></div><div class="sc-card sc-list">' + drafts.map(d =>
-    '<button class="sc-row" data-sd="openDraft" data-id="' + stEsc(d.id) + '"><span class="sc-av sc-av--doc"><i class="ti ti-pencil" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">' + stEsc(d.tenant_name || 'Tenant') + '</span>' +
-    '<span class="sc-row__p">' + stEsc(sdPropName(d) + ' · NK ' + String(d.period_to || '').slice(0, 4)) + '</span></span><span class="sc-open">Open</span></button>').join('') + '</div>' : '';
-  const letters = (typeof SC !== 'undefined' ? SC.letters : []).slice(0, 3);
-  const lettersHtml = letters.length ? '<div class="sc-sec">Last letters</div><div class="sc-card sc-list">' + letters.map(l =>
-    '<button class="sc-row" data-sd="letter" data-id="' + stEsc(l.id) + '"><span class="sc-av sc-av--doc"><i class="ti ti-file-text" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">' + stEsc((l.tenant_name || '') + (l.unit_label ? ' · ' + l.unit_label : '')) + '</span>' +
-    '<span class="sc-row__p">' + stEsc((l.source === 'manual' ? 'manual · ' : '') + 'NK ' + l.year + ' · sent ' + stDate(String(l.sent_at).slice(0, 10)) + ' · ' + (Number(l.direction) > 0 ? 'Nachzahlung ' + sdE(l.amount) : Number(l.direction) < 0 ? 'Guthaben ' + sdE(l.amount) : 'balanced')) + '</span></span><span class="sc-open">Open</span></button>').join('') + '</div>' : '';
+  const draftsHtml = drafts.length ? '<div class="sdo-dr"><button class="sdo-drb" data-sd="drafts" aria-expanded="' + !!SD.showDrafts + '"><i class="ti ti-pencil" aria-hidden="true"></i>' + drafts.length + (drafts.length === 1 ? ' draft' : ' drafts') + ' <i class="ti ti-chevron-' + (SD.showDrafts ? 'up' : 'down') + '" aria-hidden="true"></i></button></div>' +
+    (SD.showDrafts ? '<div class="sc-card sc-list" style="margin-top:6px">' + drafts.map(d =>
+      '<button class="sc-row" data-sd="openDraft" data-id="' + stEsc(d.id) + '"><span class="sc-av sc-av--doc"><i class="ti ti-pencil" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">' + stEsc(d.tenant_name || 'Tenant') + '</span>' +
+      '<span class="sc-row__p">' + stEsc(sdPropName(d) + ' · NK ' + String(d.period_to || '').slice(0, 4)) + '</span></span><span class="sc-open">Open</span></button>').join('') + '</div>' : '') : '';
   const sql = SD.missing ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>The table nk_abrechnung_manual is missing – the SQL is in the chat.</span></div></div>' : '';
 
-  el.innerHTML = '<div class="st-page sc-page sd-page">' + create + yearNav + sql +
-    need + areas + chart + draftsHtml + lettersHtml + '</div>';
+  el.innerHTML = '<div class="st-page sc-page sd-page">' + create + draftsHtml + yearNav + sql + sdOverviewHTML(Y, O) + '</div>';
   sdRenderModal();
+}
+
+
+/* ── Overview data (read only) ───────────────────────────────
+   Stages per tenant settlement: 0 waiting for costs · 1 calculated · 2 sent · 3 settled.
+   Money: > 0 comes to you · < 0 you pay (sent = the real result, otherwise the calculated preview). */
+function sdOverview(Y, casa) {
+  const O = { stages: [0, 0, 0, 0], get: 0, pay: 0, ten: null, hg: null, ren: null, casa: null };
+  const add = (a, v) => v === null || v === undefined ? a : (a === null ? 0 : a) + v;
+  // Rentals
+  let infos = [];
+  try { infos = _srYearModel(Y).map(_srCardInfo4).filter(i => i.k !== 'before'); } catch (e) { console.warn('[settlements] overview rentals', e); }
+  if (infos.length) {
+    const S = srSummary(infos);
+    const R = { stages: [0, 0, 0, 0], ten: S.ten, hg: S.hg, get: 0, pay: 0, props: [] };
+    const rk = r => r.skipped || r.k === 'settled' ? 3 : r.k === 'sent' ? 2 : r.k === 'open' ? 1 : 0;
+    const hk = hv => !hv ? 3 : hv.k === 'fertig' ? 3 : hv.k === 'zahlung' ? 2 : hv.k === 'weg' ? 1 : 0;
+    const order = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder).map(p => p.id);
+    for (const i of infos) {
+      const rows = i.rows.filter(r => r.kind === 'ten');
+      rows.forEach(r => R.stages[rk(r)]++);
+      const tr = S.tenRows.filter(x => x.i === i);
+      const w = i.hv && i.hv.wegSt && i.hv.wegSt.res ? i.hv.wegSt.res.dir * i.hv.wegSt.res.amount : null;
+      R.props.push({ name: i.c.p.name, who: rows.map(r => r.name).filter(Boolean).join(', '),
+        stage: Math.min(hk(i.hv), ...(rows.length ? rows.map(rk) : [3])), ten: tr.length ? cxR(tr.reduce((a, x) => a + x.v, 0)) : null,
+        hg: w === null ? null : cxR(w), waitHv: !!i.hv && hk(i.hv) === 0, o: order.indexOf(i.c.p.id) });
+    }
+    S.tenRows.forEach(x => { if (x.v > 0) R.get += x.v; else R.pay -= x.v; });
+    S.hgRows.forEach(x => { if (!x.w) return; const v = x.w.dir * x.w.amount; if (v > 0) R.get += v; else R.pay -= v; });
+    R.props.sort((a, b) => a.o - b.o);
+    R.n = R.stages.reduce((a, v) => a + v, 0); R.done = R.stages[3];
+    O.ren = R;
+  }
+  // Casa Castel
+  if (casa && casa.M) {
+    const M = casa.M, C = { stages: [0, 0, 0, 0], ten: M.money.ten, hg: M.money.hg, get: M.money.get || 0, pay: M.money.back || 0, rows: [] };
+    (M.money.hgLines || []).forEach(l => { const t = Number(l.total) || 0; if (t > 0) C.pay += t; else C.get -= t; });
+    let vz = 0, share = 0;
+    for (const t of M.ten) {
+      if (t.k === 'none') { C.rows.push({ room: t.room, name: t.name, former: t.movedOut, stage: -1, v: null }); continue; }
+      const st = t.k === 'done' ? 3 : t.k === 'sent' ? 2 : M.locked ? 1 : 0;
+      C.stages[st]++;
+      const v = t.st && t.st.res ? t.st.res.dir * t.st.res.amount : (M.R.lines.length ? t.saldo : null);
+      C.rows.push({ room: t.room, name: t.name, former: t.movedOut, stage: st, v: v === null ? null : cxR(v) });
+      vz += Number(t.vz) || 0; share += Number(t.sum) || 0;
+    }
+    const total = M.R && M.R.check ? Number(M.R.check.total) || 0 : 0;
+    const prevRow = (typeof SC !== 'undefined' ? SC.rows : []).find(r => Number(r.year) === Y - 1 && r.snapshot && r.snapshot.total !== undefined);
+    const rooms = ((window._src && window._src.rooms) || []).filter(r => r.active !== false).length;
+    C.costs = { total: cxR(total), prev: prevRow ? cxR(Number(prevRow.snapshot.total) || 0) : null, rooms,
+                vz: cxR(vz), share: cxR(share), locked: M.locked,
+                cats: (M.R.lines || []).filter(l => l.group !== 'hausgeld' && Number(l.total) > 0).sort((a, b) => b.total - a.total).slice(0, 4).map(l => ({ label: l.label, total: cxR(l.total) })) };
+    C.n = C.stages.reduce((a, v) => a + v, 0); C.done = C.stages[3];
+    if (C.n || C.rows.length || total) O.casa = C;
+  }
+  for (const X of [O.ren, O.casa]) {
+    if (!X) continue;
+    X.stages.forEach((v, k) => O.stages[k] += v);
+    O.get += X.get; O.pay += X.pay;
+    O.ten = add(O.ten, X.ten); O.hg = add(O.hg, X.hg);
+  }
+  O.get = cxR(O.get); O.pay = cxR(O.pay);
+  O.n = O.stages.reduce((a, v) => a + v, 0); O.done = O.stages[3];
+  return O;
+}
+
+const SDO_ST = [['Waiting for costs', '#DDD5C9'], ['Calculated', '#CDB894'], ['Sent', '#A9BFD3'], ['Settled', '#9DBF7A']];
+function sdOverviewHTML(Y, O) {
+  if (!O.ren && !O.casa) return '<div class="sdo-card sdo-empty">No settlements for ' + Y + '.</div>';
+  const W = v => v === null || v === undefined ? '\u2014' : cxWS(v);
+  const cls = v => v === null || v === undefined ? 'nil' : v < -0.4 ? 'neg' : v > 0.4 ? 'pos' : 'nil';
+  const pipe = st => '<span class="sdo-pipe">' + st.map((v, k) => v ? '<i style="flex:' + v + ';background:' + SDO_ST[k][1] + '"></i>' : '').join('') + '</span>';
+  // Total
+  const net = cxR(O.get - O.pay), sc = Math.max(O.get, O.pay, 1);
+  const total = '<div class="sdo-card">' +
+    '<div class="sdo-hrow"><span class="sdo-lbl">NK ' + Y + ' \u00b7 all properties</span><span class="sdo-mut">result</span></div>' +
+    '<div class="sdo-kpis">' +
+      '<div class="sdo-kpi"><div class="sdo-k">TENANTS</div><div class="sdo-v sdo-f ' + cls(O.ten) + '">' + W(O.ten) + '</div><div class="sdo-d">' + (O.ten === null ? 'not calculated yet' : 'Nachzahlungen \u2212 Guthaben') + '</div></div>' +
+      '<div class="sdo-kpi"><div class="sdo-k">HV \u00b7 VERSORGER</div><div class="sdo-v sdo-f ' + cls(O.hg) + '">' + W(O.hg) + '</div><div class="sdo-d">' + (O.hg === null ? 'no results yet' : 'Hausgeld \u00b7 Strom \u00b7 Gas \u00b7 Wasser') + '</div></div>' +
+    '</div>' +
+    '<div class="sdo-wf">' +
+      '<div class="sdo-wr"><span class="sdo-wn">You get</span><span class="sdo-bar"><i style="width:' + (O.get / sc * 100).toFixed(1) + '%;background:#9DBF7A"></i></span><span class="sdo-wa pos">' + cxWS(O.get) + '</span></div>' +
+      '<div class="sdo-wr"><span class="sdo-wn">You pay</span><span class="sdo-bar"><i style="width:' + (O.pay / sc * 100).toFixed(1) + '%;background:#E3A895"></i></span><span class="sdo-wa neg">' + cxW(-O.pay) + '</span></div>' +
+      '<div class="sdo-wr"><span class="sdo-wn sdo-wn--b">Net</span><span class="sdo-bar"><i style="width:' + (Math.abs(net) / sc * 100).toFixed(1) + '%;background:' + (net < 0 ? '#D98B74' : '#C9B38F') + '"></i></span><span class="sdo-wa ' + cls(net) + '">' + cxWS(net) + '</span></div>' +
+    '</div>' +
+    (O.n ? '<div class="sdo-prog"><div class="sdo-ph"><span>Settled</span><span><b class="sdo-f">' + O.done + '</b> of ' + O.n + '</span></div>' + pipe(O.stages) +
+      '<div class="sdo-leg">' + SDO_ST.map((x, k) => '<span><i style="background:' + x[1] + '"></i>' + x[0] + ' ' + O.stages[k] + '</span>').join('') + '</div></div>' : '') +
+  '</div>';
+  // Tiles
+  const sec = SD.sec || '';
+  const tile = (key, name, icon, X, hgLabel) => '<button class="sdo-tile' + (sec === key ? ' on' : '') + '" data-sd="sec" data-k="' + key + '" aria-expanded="' + (sec === key) + '">' +
+    '<span class="sdo-tn"><span class="sdo-ic sdo-ic--' + key + '"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span>' + name + '</span>' +
+    '<span class="sdo-tvr"><span class="sdo-k">TENANTS</span><span class="sdo-v2 sdo-f ' + cls(X.ten) + '">' + W(X.ten) + '</span></span>' +
+    '<span class="sdo-tvr"><span class="sdo-k">' + hgLabel + '</span><span class="sdo-v2 sdo-f ' + cls(X.hg) + '">' + W(X.hg) + '</span></span>' +
+    pipe(X.stages).replace('sdo-pipe', 'sdo-pipe sdo-pipe--s') +
+    '<span class="sdo-tf"><span>' + X.done + ' of ' + X.n + ' settled</span><span class="' + cls(cxR(X.get - X.pay)) + '">net ' + cxWS(cxR(X.get - X.pay)) + '</span></span></button>';
+  const both = O.ren && O.casa;
+  const tiles = '<div class="sdo-two' + (both ? '' : ' sdo-one') + '">' +
+    (O.ren ? tile('r', 'Rentals', 'building', O.ren, 'HV \u00b7 WEG') : '') +
+    (O.casa ? tile('c', 'Casa Castel', 'home-heart', O.casa, 'VERSORGER') : '') + '</div>' +
+    '<div class="sdo-hint">Tap ' + (both ? 'Rentals or Casa Castel' : 'it') + ' for the overview</div>';
+  // Panels (one at a time)
+  const stTag = k => k < 0 ? '<span class="sdo-st"><i style="background:#EFE8DD"></i>Pauschal</span>' : '<span class="sdo-st"><i style="background:' + SDO_ST[k][1] + '"></i>' + SDO_ST[k][0].replace(' for costs', '') + '</span>';
+  let panel = '';
+  if (sec === 'r' && O.ren) {
+    panel = '<div class="sdo-card"><span class="sdo-lbl">Rentals \u00b7 per property</span>' +
+      '<div class="sdo-lh"><span>PROPERTY</span><span>STATUS</span><span>TENANTS</span></div>' +
+      O.ren.props.map(x => '<div class="sdo-lr"><span class="sdo-lm"><span class="sdo-ln">' + stEsc(x.name) + '</span><span class="sdo-ls">' +
+        stEsc([x.who, x.waitHv ? 'waiting for the HV' : x.hg !== null ? 'HV ' + cxWS(x.hg) : ''].filter(Boolean).join(' \u00b7 ')) + '</span></span>' +
+        stTag(x.stage) + '<b class="sdo-lv ' + cls(x.ten) + '">' + W(x.ten) + '</b></div>').join('') + '</div>';
+  } else if (sec === 'c' && O.casa) {
+    panel = '<div class="sdo-card"><span class="sdo-lbl">Casa Castel \u00b7 per tenant</span>' +
+      '<div class="sdo-lh"><span>ROOM \u00b7 TENANT</span><span>STATUS</span><span>RESULT</span></div>' +
+      O.casa.rows.map(x => '<div class="sdo-lr"><span class="sdo-lm"><span class="sdo-ln">' + stEsc(x.room || '\u2014') + '</span><span class="sdo-ls">' +
+        stEsc([x.name, x.former ? 'former' : ''].filter(Boolean).join(' \u00b7 ')) + '</span></span>' +
+        stTag(x.stage) + (x.stage < 0 ? '<b class="sdo-lv sdo-lv--t">in the rent</b>' : '<b class="sdo-lv ' + cls(x.v) + '">' + W(x.v) + '</b>') + '</div>').join('') + '</div>';
+  }
+  // Casa Castel house costs
+  let costs = '';
+  const K = O.casa && O.casa.costs;
+  if (K && K.total) {
+    const ch = K.prev ? (K.total - K.prev) / K.prev * 100 : null;
+    const sc2 = Math.max(K.share, K.vz, 1), cov = K.share > 0 ? Math.round(K.vz / K.share * 100) : null;
+    const mx = Math.max(1, ...K.cats.map(c => c.total));
+    costs = '<div class="sdo-card"><span class="sdo-lbl">Casa Castel \u00b7 house costs ' + Y + (K.locked ? '' : ' \u00b7 preview') + '</span>' +
+      '<div class="sdo-cst">' +
+        '<div><div class="sdo-k">TOTAL</div><div class="sdo-v3 sdo-f">' + cxW(K.total) + '</div><div class="sdo-d">for the year</div></div>' +
+        (K.rooms ? '<div><div class="sdo-k">PER ROOM</div><div class="sdo-v3 sdo-f">' + cxW(K.total / K.rooms) + '</div><div class="sdo-d">\u00d8 \u00b7 ' + K.rooms + ' rooms</div></div>' : '') +
+        (ch !== null ? '<div><div class="sdo-k">VS ' + (Y - 1) + '</div><div class="sdo-v3 sdo-f ' + (ch > 0 ? 'neg' : 'pos') + '">' + (ch >= 0 ? '+ ' : '\u2212 ') + Math.abs(ch).toFixed(0) + ' %</div><div class="sdo-d">' + cxWS(K.total - K.prev) + '</div></div>' : '') +
+      '</div>' +
+      (K.share > 0 ? '<div class="sdo-cmp">' +
+        '<div class="sdo-cr"><span>Their share</span><span class="sdo-bar"><i style="width:' + (K.share / sc2 * 100).toFixed(1) + '%;background:#C9B38F"></i></span><span>' + cxW(K.share) + '</span></div>' +
+        '<div class="sdo-cr"><span>Vorauszahlungen</span><span class="sdo-bar"><i style="width:' + (K.vz / sc2 * 100).toFixed(1) + '%;background:#9DBF7A"></i></span><span>' + cxW(K.vz) + '</span></div>' +
+        '<div class="sdo-cov">NK tenants \u00b7 prepayments cover ' + cov + ' % of their share</div></div>' : '') +
+      (K.cats.length ? '<div class="sdo-cats"><div class="sdo-k" style="margin-bottom:4px">BIGGEST COSTS</div>' +
+        K.cats.map(c => '<div class="sdo-cat"><span>' + stEsc(c.label) + '</span><span class="sdo-bar sdo-bar--s"><i style="width:' + (c.total / mx * 100).toFixed(1) + '%;background:#D9C6AE"></i></span><span>' + cxW(c.total) + '</span></div>').join('') + '</div>' : '') +
+    '</div>';
+  }
+  return total + tiles + panel + costs;
 }
 
 /* ── Jump from the dashboard ── */
@@ -587,6 +689,8 @@ async function sdClick(e) {
   if (a === 'go') return sdGo((SD.steps || [])[Number(b.dataset.i)] && SD.steps[Number(b.dataset.i)].go);
   if (a === 'year') { SD.year = (SD.year || Number(cxToday().slice(0, 4)) - 1) + Number(b.dataset.d); return stRenderDashboard(); }
   if (a === 'tab') return stSwitchTab(b.dataset.t);
+  if (a === 'sec') { SD.sec = SD.sec === b.dataset.k ? '' : b.dataset.k; return stRenderDashboard(); }
+  if (a === 'drafts') { SD.showDrafts = !SD.showDrafts; return stRenderDashboard(); }
   if (a === 'letter') return scOpenLetter(b.dataset.id);
   if (!d) return;
   if (a === 'close') { if (SD.dirty && !(await stConfirm({ title: 'Close without saving?', ok: 'Close', danger: true }))) return; SD.modal = null; SD.d = null; SD.dirty = false; return sdRenderModal(); }

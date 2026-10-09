@@ -1292,3 +1292,65 @@ button.st-sg__r { cursor: pointer; }
 .sc-hgr--gap { padding-top: 2px; border-top: none; }
 .sc-per { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--cx-mut); }
 .sc-per .st-sel { width: auto; height: 34px; }
+
+/* ── Dashboard overview (Oct 2026): read only · Total · Rentals | Casa Castel · house costs ── */
+.sdo-dr { display:flex; justify-content:flex-end; margin-top:8px; }
+.sdo-drb { display:inline-flex; align-items:center; gap:6px; border:.5px solid #E0DAD0; background:#FDFCFA; border-radius:12px; padding:6px 11px; font:500 12px 'Inter',system-ui,sans-serif; color:#8A6535; cursor:pointer; }
+.sdo-card { background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:18px; padding:16px; margin-top:12px; font-family:'Inter',system-ui,sans-serif; color:#3A3530; }
+.sdo-empty { text-align:center; color:#9A8E7E; font-size:13px; padding:28px 16px; }
+.sdo-f { font-family:'Cormorant Garamond',Georgia,serif; font-weight:600; font-variant-numeric:lining-nums tabular-nums; letter-spacing:-.01em; }
+.sdo-card .pos, .sdo-tile .pos { color:#4F7A2C; } .sdo-card .neg, .sdo-tile .neg { color:#A0533A; } .sdo-card .nil, .sdo-tile .nil { color:#C8BFB0; }
+.sdo-hrow { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.sdo-lbl { font-size:10.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:#8A6535; }
+.sdo-mut { font-size:11px; color:#9A8E7E; }
+.sdo-kpis { display:grid; grid-template-columns:1fr 1fr; margin-top:12px; }
+.sdo-kpi { text-align:center; padding:2px 6px; min-width:0; } .sdo-kpi + .sdo-kpi { border-left:.5px solid #EDE8E0; }
+.sdo-k { display:block; font-size:9.5px; font-weight:600; letter-spacing:.14em; color:#9A8E7E; }
+.sdo-v { font-size:clamp(25px, 8vw, 32px); line-height:1.05; margin-top:3px; white-space:nowrap; }
+.sdo-d { font-size:10.5px; margin-top:4px; color:#9A8E7E; }
+.sdo-wf { margin-top:16px; padding-top:14px; border-top:.5px solid #EDE8E0; }
+.sdo-wr { display:grid; grid-template-columns:62px 1fr 86px; align-items:center; gap:10px; font-size:12.5px; margin:7px 0; }
+.sdo-wn { color:#7A6F62; } .sdo-wn--b { font-weight:600; color:#3D3027; }
+.sdo-wa { text-align:right; font-weight:500; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.sdo-bar { height:12px; border-radius:6px; background:#F3EEE6; position:relative; overflow:hidden; display:block; }
+.sdo-bar i { position:absolute; left:0; top:0; bottom:0; border-radius:6px; }
+.sdo-bar--s { height:7px; }
+.sdo-prog { margin-top:16px; padding-top:14px; border-top:.5px solid #EDE8E0; }
+.sdo-ph { display:flex; justify-content:space-between; align-items:baseline; font-size:12.5px; color:#7A6F62; }
+.sdo-ph b { font-size:20px; color:#3D3027; }
+.sdo-pipe { display:flex; height:10px; border-radius:6px; overflow:hidden; gap:2px; margin-top:8px; background:#F3EEE6; }
+.sdo-pipe i { display:block; height:100%; }
+.sdo-pipe--s { height:5px; margin-top:10px; gap:1px; }
+.sdo-leg { display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:8px; font-size:10.5px; color:#9A8E7E; }
+.sdo-leg i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; vertical-align:0; }
+.sdo-two { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; } .sdo-two.sdo-one { grid-template-columns:1fr; }
+.sdo-tile { display:flex; flex-direction:column; align-items:stretch; text-align:left; min-width:0; margin:0; background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:18px; padding:13px; font-family:'Inter',system-ui,sans-serif; color:#3A3530; cursor:pointer; -webkit-appearance:none; appearance:none; transition:border-color .15s, box-shadow .15s; }
+.sdo-tile.on { border-color:#3D3027; box-shadow:0 0 0 1px #3D3027 inset; }
+.sdo-tn { display:flex; align-items:center; gap:8px; font-weight:600; font-size:13.5px; color:#3D3027; margin-bottom:4px; }
+.sdo-ic { width:28px; height:28px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:15px; flex:0 0 auto; }
+.sdo-ic--r { background:#EEF2EC; color:#46604A; } .sdo-ic--c { background:#F6EEDD; color:#7A5A22; }
+.sdo-tvr { display:flex; justify-content:space-between; align-items:baseline; gap:6px; margin-top:4px; min-width:0; }
+.sdo-v2 { font-size:clamp(15px, 4.4vw, 18px); white-space:nowrap; }
+.sdo-tvr .sdo-k { font-size:9px; letter-spacing:.1em; }
+.sdo-lv.sdo-lv--t { font-family:'Inter',system-ui,sans-serif; font-size:11px; font-weight:400; color:#B0A596; }
+.sdo-tf { display:flex; flex-wrap:wrap; justify-content:space-between; gap:2px 6px; font-size:10.5px; color:#9A8E7E; margin-top:6px; }
+.sdo-tf > span { white-space:nowrap; }
+.sdo-hint { font-size:11px; color:#9A8E7E; text-align:center; margin-top:8px; }
+.sdo-lh, .sdo-lr { display:grid; grid-template-columns:1fr 88px 76px; gap:6px; align-items:center; }
+.sdo-lh { font-size:9.5px; font-weight:600; letter-spacing:.14em; color:#9A8E7E; padding:12px 0 6px; border-bottom:.5px solid #EDE8E0; }
+.sdo-lh span { text-align:right; } .sdo-lh span:first-child { text-align:left; color:#8A6535; }
+.sdo-lr { padding:9px 0; border-bottom:.5px solid #EDE8E0; } .sdo-lr:last-child { border-bottom:0; }
+.sdo-lm { display:flex; flex-direction:column; min-width:0; }
+.sdo-ln { font-size:13px; font-weight:500; color:#3D3027; } .sdo-ls { font-size:10.5px; color:#9A8E7E; margin-top:2px; }
+.sdo-st { justify-self:end; display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:#7A6F62; white-space:nowrap; }
+.sdo-st i { display:inline-block; width:8px; height:8px; border-radius:50%; }
+.sdo-lv { font-family:'Cormorant Garamond',Georgia,serif; font-size:17px; font-weight:600; text-align:right; white-space:nowrap; }
+.sdo-cst { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; margin-top:12px; }
+.sdo-cst > div { text-align:center; padding:0 4px; } .sdo-cst > div + div { border-left:.5px solid #EDE8E0; }
+.sdo-v3 { font-size:22px; color:#3D3027; margin-top:2px; white-space:nowrap; }
+.sdo-cmp { margin-top:14px; }
+.sdo-cr, .sdo-cat { display:grid; grid-template-columns:100px 1fr 66px; align-items:center; gap:8px; font-size:12px; margin:7px 0; color:#7A6F62; }
+.sdo-cr span:last-child, .sdo-cat span:last-child { text-align:right; font-weight:500; color:#3D3027; white-space:nowrap; }
+.sdo-cov { font-size:11px; color:#9A8E7E; text-align:right; margin-top:2px; }
+.sdo-cats { margin-top:12px; border-top:.5px solid #EDE8E0; padding-top:10px; }
+.sdo-cat { font-size:11.5px; margin:5px 0; }
