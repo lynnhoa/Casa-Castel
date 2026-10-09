@@ -576,7 +576,19 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-fg { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .tn-fg > .tn-field { min-width:0; }
 .tn-fg > .tn-field:has(> input):not(:has(> input[data-f="mietbeginn"])):not(:has(> input[data-f="mietende"])) { grid-column:1/-1; }
-  `;
+  
+/* Rent bar (Oct 2026): title · three equal value columns · buttons in their own row — numbers never squeezed */
+#tab-tenants .tn-rent-wrap { display:flex !important; flex-direction:column !important; }
+#tab-tenants .tn-rent-wrap .tn-rtitle { width:100%; box-sizing:border-box; }
+#tab-tenants .tn-rent-wrap .tn-rent-bar { display:grid !important; grid-template-columns:repeat(3, minmax(0, 1fr)); width:100%; }
+#tab-tenants .tn-rent-wrap .tn-rc { min-width:0; padding:8px 12px !important; border-right:var(--cc-border); }
+#tab-tenants .tn-rent-wrap .tn-rc:nth-child(3) { border-right:none; }
+#tab-tenants .tn-rent-wrap .tn-rc:last-child { grid-column:1 / -1; border-right:none; border-top:var(--cc-border); padding:8px 12px 10px !important; }
+#tab-tenants .tn-rent-wrap .tn-rc:last-child > div { width:100%; flex-direction:row !important; justify-content:flex-end; align-items:center !important; gap:8px !important; }
+#tab-tenants .tn-rent-wrap .tn-rval { white-space:nowrap; overflow:visible !important; }
+#tab-tenants .tn-rent-wrap .tn-rlbl { overflow:visible !important; }
+#tab-tenants .tn-rent-wrap .tn-edit-rent-btn { min-height:36px; padding:0 14px !important; }
+`;
   document.head.appendChild(s);
 })();
 
