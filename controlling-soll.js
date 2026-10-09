@@ -457,7 +457,8 @@ function _cxTenancies(link) {
   else if (link.type === 'rentals_parking') list = S.rntTen.filter(t => String(t.parking_id) === link.ref);
   else if (link.type === 'casa_room') list = S.casaTen.filter(t => _cxNorm(t.room) === _cxNorm(link.ref));   // "New york" = "New York"
   const today = _cxToday();
-  const ws = list.map(t => ({ t, id: String(t.id), name: _cxTName(t), from: _cxD(t.mietbeginn), to: _cxD(t.mietende),
+  const ws = list.map(t => ({ t, id: String(t.id), name: _cxTName(t) + (t.status === 'active' && _cxD(t.mietbeginn) && _cxD(t.mietbeginn) > today ? ' · planned' : ''),
+                              from: _cxD(t.mietbeginn), to: _cxD(t.mietende),
                               noStart: !_cxD(t.mietbeginn), noEnd: false, created: String(t.created_at || '') }));
   const dated = ws.filter(w => w.from).sort((a, b) => a.from.localeCompare(b.from));
   dated.forEach((w, i) => {
