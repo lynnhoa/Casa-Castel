@@ -17,7 +17,7 @@ document.getElementById('tab-tenants').innerHTML = `
     <h1 class="cc-h1">Tenants</h1>
   </div>
   <!-- IST line: what the tenants living here pay today + Kaution held (Rooms shows the Soll) -->
-  <div class="cc-sumline" id="tn-ist" style="display:none;margin-bottom:10px"></div>
+  <div class="cc-sumline" id="tn-ist" style="display:none;margin-bottom:14px"></div>
   <div id="tn-open-summary" class="tn-open-summary" style="display:none"></div>
   <div class="tn-list" id="tenantsList"></div>
 
@@ -619,6 +619,12 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .tn-app-row { margin:10px 0 2px; }
 #tab-tenants .tn-vac-pw { padding:0 14px 2px; }
 #tab-tenants .tn-vac-pw .tn-pw-test { margin:0 0 12px; }
+
+/* Contract type pills (C1): the same colours as Rooms and the generators */
+.tn-ctp { display:inline-flex; align-items:center; height:20px; padding:0 8px; border-radius:10px; font-size:11px; font-weight:500; letter-spacing:.02em; white-space:nowrap; margin-left:6px; }
+.tn-ctp--kurzzeit    { background:#F1EEF6; color:#5B4A7A; border:.5px solid #CFC4E0; }
+.tn-ctp--jahres      { background:#F6EEDD; color:#7A5A22; border:.5px solid #E2CFA6; }
+.tn-ctp--mietvertrag { background:#EEF2EC; color:#46604A; border:.5px solid #C3D1C0; }
 `;
   document.head.appendChild(s);
 })();
@@ -707,7 +713,7 @@ function _tnRoomPricing(room, ctypeArg) {
     kaltmiete   = Number(r.kurzzeit_kaltmiete) || null;
     nebenkosten = Number(r.kurzzeit_nk)        || null;
   }
-  const kaution_override = !!(r.kaution_override && r.kaution_default);
+  const kaution_override = ctype !== 'kurzzeit' && !!(r.kaution_override && r.kaution_default);   // Kurzzeit: own rule only
   const kaution_fixed    = kaution_override ? Number(r.kaution_default) : null;
   return { kaltmiete, nebenkosten, kaution_override, kaution_fixed };
 }
@@ -874,6 +880,7 @@ function _tnKautionSoll(room, mietbeginn, mietende, ctypeArg) {
   const ctype = ctypeArg || _tnRoomContractType(room);
   const isPauschal = ctype === 'kurzzeit'
     ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+    : ctype === 'jahres' && typeof ccRoomJahresOwn === 'function' && ccRoomJahresOwn(r) ? r.jahres_pricing === 'pauschal'
     : r?.mietvertrag_pricing !== 'kalt_nk';
   // Shared rule (kaution.js): Mietvertrag 3× · Kurzzeit ≤ 3 Monate 1×, > 3 Monate 3×
   return ccKaution({
@@ -976,7 +983,8 @@ function _tnContractState(rec) {
   if (r === -1) r = 0;
   return { all, cur: all[r], next: all[r + 1] || null, earlier: all.slice(0, r).reverse() };
 }
-function _tnTypeWord(t) { return t === 'kurzzeit' ? 'befristet' : t === 'jahres' ? 'Jahresvertrag' : t === 'mietvertrag' ? 'unbefristet' : ''; }
+function _tnTypeWord(t) { return t === 'kurzzeit' ? 'Kurzzeit' : t === 'jahres' ? 'Jahresvertrag' : t === 'mietvertrag' ? 'Mietvertrag' : ''; }
+function _tnTypePill(t) { const w = _tnTypeWord(t); return w ? `<span class="tn-ctp tn-ctp--${t}">${w}</span>` : ''; }
 function _tnContractDates(c) {
   if (!c || !c.start) return '';
   if (c.end) return _ccFmtD(c.start) + ' \u2013 ' + _ccFmtD(c.end);
@@ -1022,7 +1030,7 @@ function _tnContractStripHTML(rid, room, rec) {
   return '';
 }
 /* Kurzzeit that stays on → a Jahresvertrag; every other fixed contract → Renew */
-function _tnRenewLabel(type) { return type === 'kurzzeit' ? 'Continue as Jahresvertrag' : 'Renew'; }
+function _tnRenewLabel(type) { return 'Renew'; }   // Kurzzeit staying on → the generator makes a Jahresvertrag
 /* Reminders of the rent (Mieterhöhung due · NK change due) — shown inside the contract box */
 function _tnRentTodoPills(room, rec) {
   if (!rec) return '';
@@ -1242,9 +1250,8 @@ function _tnNkHasOpen(tid) {
 }
 
 /* Open items of a FORMER tenant as pills (NK with year · Kaution still to settle) — '' when nothing is open */
-function _tnFormerOpenPills(r) {
+function _tnFormerOpenPills(r) {   // Kaution only — NK status lives in More → NK-Abrechnungen and in Settlements
   const out = [];
-  if (_tnNkHasOpen(r.id)) out.push(`<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(r))}</span>`);
   if (_tnKautionOpen(r.id)) {
     const held = _tnKautionKept(r.id);
     out.push(`<span class="tnp tnp-amber">${held > 0 ? 'Kaution ' + _tnFmtEUR(held) + ' to settle' : 'Kaution: mark settled'}</span>`);
@@ -1304,8 +1311,7 @@ function _tnSummaryUpdate() {
   const oc = document.getElementById('tn-open-summary');
   if (oc) {
     const c = _tnOpenCounts(), miss = _tnKautionMissingCount();
-    const pills = (c.nk ? `<span class="tnp tnp-amber">NK \u00b7 ${c.nk}</span>` : '')
-      + (miss ? `<span class="tnp tnp-amber">Kaution missing \u00b7 ${miss}</span>` : '')
+    const pills = (miss ? `<span class="tnp tnp-amber">Kaution missing \u00b7 ${miss}</span>` : '')
       + (c.kaution ? `<span class="tnp tnp-amber">Kaution to settle \u00b7 ${c.kaution}</span>` : '');
     oc.innerHTML = pills ? `<span class="tn-open-lbl">Open:</span>${pills}` : '';
     oc.style.display = pills ? 'flex' : 'none';
@@ -1378,11 +1384,9 @@ function _tnCardPills(room, activeRec) {
   if (activeRec) {
     todos.push(ccTnMoveOutTodo(activeRec));
     if (_tnIsFixed(tnContractType(activeRec))) todos.push(ccTnRenewalTodo(activeRec));   // Kurzzeit + Jahresvertrag are renewed
-    const planned = _tnIsPlanned(activeRec);
-    if (planned) todos.push({ level: 'amber', text: 'Planned · no contract yet' });
+    const planned = _tnIsPlanned(activeRec);   // not moved in yet: no "contract end missing" / "still active"
     if (!planned && _tnIsFixed(tnContractType(activeRec)) && !activeRec.vertragsende && !activeRec.mietende)
       todos.push({ level: 'amber', text: 'Contract end missing' });
-    if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: _tnNkOpenLabel(activeRec) });   // Settlements + old tracking
     if (_tnIsKaltNK(activeRec, room.name) && typeof ccTnNkChangeTodo === 'function')
       todos.push(ccTnNkChangeTodo(_tnNKVoraus[room.name], activeRec));
     if (typeof ccTnStepState === 'function')                                          // "Mieterhöhung from 01.05." · overdue
@@ -1675,7 +1679,7 @@ function _tnCardHTML(room) {
 function _tnIsPlanned(rec) {
   if (!rec || rec.status !== 'active') return false;
   const mb = _ccIso(rec.mietbeginn);
-  if (mb && mb < _ccAddDaysIso(_ccTodayIso(), -60)) return false;
+  if (mb && mb <= _ccTodayIso()) return false;          // lives here already → has a contract (maybe on paper)
   const docs = typeof ccfDocsOf === 'function' ? ccfDocsOf(rec.id) : (_tnDocs[rec.id] || []);
   return !docs.some(d => /^(mietvertrag|kurzzeitmietvertrag|kurzzeitvertrag|verlaengerung_)/.test(d.type || ''));
 }
@@ -1720,7 +1724,7 @@ function _tnNextSheet(roomName) {
         <div class="tn-cr-seg" id="tn-next-ct" data-ct="jahres">${seg('kurzzeit')}${seg('jahres')}${seg('mietvertrag')}</div></div>
       <div class="tn-cr-f"><label class="tn-cr-lbl" for="tn-next-email">E-mail (optional)</label>
         <input class="tn-cr-in" id="tn-next-email" type="email" autocomplete="off" placeholder="name@mail.de"/></div>
-      <p class="tn-cr-hint" style="margin:0">Saved as <b>Planned</b> with the room’s baseline rent. Create the contract later from the tenant card — Approve fills this same entry.</p>
+      <p class="tn-cr-hint" style="margin:0">Saved with the room’s baseline rent. Create the contract later from the tenant card — Approve fills this same entry.</p>
       <div class="tn-cr-btns">
         <button type="button" class="tn-btn tn-btn-sm" onclick="ccSheetClose()">Cancel</button>
         <button type="button" class="tn-btn tn-btn-primary" onclick="_tnSaveNext('${esc(roomName)}')">Save</button></div>
@@ -1760,7 +1764,7 @@ async function _tnSaveNext(roomName) {
   if (error) { ccSaveFailed(error, 'next tenant'); return; }
   _tnRecords.push(data);
   ccSheetClose();
-  if (typeof ccSavedToast === 'function') ccSavedToast('Planned: ' + name);
+  if (typeof ccSavedToast === 'function') ccSavedToast('Saved: ' + name);
   _tnRender();
 }
 
@@ -1801,7 +1805,7 @@ function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
   if (rec) {   // the next tenancy of this room: add one, or open it
     const nx = _ccPickTenancy(_tnRecords.filter(r => r.room === room.name && r.status === 'active')).next;
     rows.push(nx && nx !== rec
-      ? ccRowHTML({ icon: 'user-plus', title: 'Next tenant', meta: esc([nx.first_name, nx.last_name].filter(Boolean).join(' ')) + (nx.mietbeginn ? ' \u00b7 ' + _ccFmtD(_ccIso(nx.mietbeginn)) : '') + (_tnIsPlanned(nx) ? ' <span class="tnp tnp-blue">Planned</span>' : ''), onclick: `_tnOpenModal('${nx.id}')` })
+      ? ccRowHTML({ icon: 'user-plus', title: 'Next tenant', meta: esc([nx.first_name, nx.last_name].filter(Boolean).join(' ')) + (nx.mietbeginn ? ' \u00b7 ' + _ccFmtD(_ccIso(nx.mietbeginn)) : ''), onclick: `_tnOpenModal('${nx.id}')` })
       : nx === rec ? '' : ccRowHTML({ icon: 'user-plus', title: 'Next tenant', meta: 'add', onclick: `_tnNextSheet('${esc(room.name)}')` }));
   }
   rows.push(ccRowHTML({ icon: 'clipboard-check', title: 'Übergabe', meta: esc(_tnUebergMeta(rec)),
@@ -1916,7 +1920,7 @@ function _tnHeaderHTML(rid, room, activeRec) {
   const dateStr = mietbeginn && mietende
     ? `${mietbeginn} \u2013 ${mietende} (move-out)`
     : mietbeginn ? `${_movesIn ? 'from' : 'since'} ${mietbeginn}${_lastC && _lastC.end ? ' \u00b7 contract until ' + _ccFmtD(_lastC.end) : ''}`
-    : _plannedNoDate ? 'Planned \u00b7 move-in not set yet' : '';
+    : _plannedNoDate ? 'Move-in not set yet' : '';
   const _nextC = _cs ? _cs.next : null;
   const _mhN = activeRec ? _tnMhNext(activeRec, room.name) : null;   // next Mieterhöhung
   const hdrNext = _nextC && _nextC.amt && curR && _nextC.amt.total !== curR.total
@@ -1945,7 +1949,7 @@ function _tnHeaderHTML(rid, room, activeRec) {
       <div class="tn-hdr-bot">
         ${warm != null ? `<span class="tn-warm">${_tnFmtEUR(warm)}</span><span class="tn-dim">${isKaltNK ? 'warm' : 'pauschal'}</span>` : ''}
         ${(kalt != null && nk != null && isKaltNK) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_tnFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_tnFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
-        ${ctLabel ? `<div class="tn-dot-sep"></div><span class="tn-dim">${ctLabel}</span>` : ''}
+        ${ctLabel ? _tnTypePill(tnContractType(activeRec)) : ''}
         ${hdrNext}
       </div>`;
   } else {
@@ -2323,8 +2327,7 @@ function _tnRentBarHTML(rid, room, rec) {
   const strip = rec ? _tnContractStripHTML(rid, room, rec) : '';
   const renewInBox = /data-renew-in-box/.test(strip);
   let todo = _tnRentTodoPills(room, rec);
-  if (rec && _tnIsPlanned(rec)) todo = `<span class="tnp tnp-blue">Planned · no contract yet</span>
-    <button type="button" class="tn-btn tn-btn-primary tn-btn-sm" onclick="_tnCreateContract('${esc(room.name)}','${rec.id}')">Create contract</button>` + todo;
+  if (rec && _tnIsPlanned(rec)) todo = `<button type="button" class="tn-btn tn-btn-sm" onclick="_tnCreateContract('${esc(room.name)}','${rec.id}')"><i class="ti ti-file-plus" aria-hidden="true"></i> Create contract</button>` + todo;
   const status = strip || todo ? `<div class="tn-rbox-status">${strip}${todo ? `<div class="tn-rbox-todo">${todo}</div>` : ''}</div>` : '';
 
   return `
@@ -2489,7 +2492,7 @@ function _ccNextTenantHTML(rec, name, fmtDate, openFn) {
     <span class="cc-next-tenant__lbl">Next tenant</span>
     <span class="cc-next-tenant__name">${name}</span>
     <span class="cc-next-tenant__date">from ${fmtDate(rec.mietbeginn)}</span>
-    ${planned ? `<span class="tnp tnp-blue">Planned</span><button type="button" class="tn-btn tn-btn-sm" onclick="event.stopPropagation();_tnCreateContract('${esc(rec.room)}','${rec.id}')">Contract ›</button>` : ''}
+    ${planned ? `<button type="button" class="tn-btn tn-btn-sm" onclick="event.stopPropagation();_tnCreateContract('${esc(rec.room)}','${rec.id}')">Contract ›</button>` : ''}
     <i class="ti ti-chevron-right" aria-hidden="true"></i>
   </div>`;
 }
@@ -2936,7 +2939,7 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs, bare) {
         <div class="tn-former-name">${esc(name)}</div>
         <div class="tn-former-period">${esc(period)}</div>
       </div>
-      <div class="tn-former-pills">${_tnNkHasOpen(rec.id) ? `<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(rec))}</span>` : ''}${kPill}</div>
+      <div class="tn-former-pills">${kPill}</div>
       ${canHide
         ? `<button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Archive this tenant">
              <i class="ti ti-eye-off" style="font-size:11px"></i></button>`

@@ -268,12 +268,11 @@ function ccfForDefault(o) {
   const ts = ccfChoices(o.room, o.mode, o.occasion);
   if (o.mode === 'contract') {
     const nx = ts.find(t => t.role === 'next'); if (nx) return String(nx.rec.id);
-    // Casa: a tenant added in Tenants within the last 60 days who has no contract yet → that tenant,
-    // never "New tenancy" (Approve then fills the same entry — no second tenant). Older tenants whose
-    // contract was simply never uploaded are not picked: a new contract from Rooms is for a new person.
+    // Casa: a tenant entered by name without a move-in date and without a contract → that tenant.
+    // Anyone who already lives there is never preselected (their contract may be on paper) —
+    // for them use "Create contract" on the tenant card.
     if (ccfA().app === 'casa') {
-      const recent = ccfAddDays(ccfToday(), -60);
-      const added = ts.find(t => t.role === 'current' && ccfIso(t.rec.mietbeginn) >= recent
+      const added = ts.find(t => !ccfIso(t.rec.mietbeginn)
         && !ccfDocsOf(t.rec.id).some(d => /^(mietvertrag|kurzzeitmietvertrag|kurzzeitvertrag|verlaengerung_)/.test(d.type || '')));
       if (added) return String(added.rec.id);
     }

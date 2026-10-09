@@ -5159,7 +5159,7 @@ function _roomBaseSave() {
 .rb-sw input:checked + .rb-sw__t { background:var(--cc-ink); }
 .rb-sw input:checked + .rb-sw__t::after { transform:translateX(18px); }
 
-.cc-sumline { display:flex; flex-direction:column; gap:8px; padding:0 0 12px; margin:0 0 12px; border-bottom:var(--cc-border); }
+.cc-sumline { display:flex; flex-direction:column; gap:8px; padding:0; margin:0 0 16px; }
 .cc-sumline__top { font-size:13px; color:#7A6F62; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
 .cc-sumline__vals { display:flex; gap:12px; }
 .cc-sumline__vals > div { flex:1 1 0; min-width:0; }
