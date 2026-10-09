@@ -5159,20 +5159,17 @@ function _roomBaseSave() {
 .rb-sw input:checked + .rb-sw__t { background:var(--cc-ink); }
 .rb-sw input:checked + .rb-sw__t::after { transform:translateX(18px); }
 
-/* Soll (Rooms) / IST (Tenants) summary — a quiet card above the list, three centred figures */
-html .cc-sumline { display:flex; flex-direction:column; gap:0; padding:0; margin:0 0 16px; background:var(--cc-white);
-  border:.5px solid var(--cc-rule); border-radius:12px; overflow:hidden; }
-html .cc-sumline__top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap;
-  padding:12px 16px 0; font-size:12px; color:#7A6F62; }
+/* Soll (Rooms) / IST (Tenants) summary — no card: a small, centred strip under the title */
+html .cc-sumline { display:flex; flex-direction:column; gap:8px; padding:2px 0 0; margin:0 0 18px; background:none; border:none; }
+html .cc-sumline__top { display:flex; justify-content:center; align-items:baseline; gap:6px; flex-wrap:wrap;
+  padding:0; font-size:12px; color:#9A8E7E; text-align:center; }
 html .cc-sumline__top b { font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#8A6535; }
-html .cc-sumline__vals { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0; padding:12px 0 14px; }
-html .cc-sumline__vals > div { min-width:0; padding:0 6px; text-align:center; border-left:.5px solid var(--cc-rule); }
-html .cc-sumline__vals > div:first-child { border-left:none; }
-html .cc-sumline__vals span { display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#9A8E7E; margin:0 0 3px; }
-html .cc-sumline__vals b { display:block; font-family:'Cormorant Garamond', Georgia, serif; font-size:clamp(19px, 5.4vw, 24px);
-  font-weight:500; line-height:1.15; color:var(--cc-ink); white-space:nowrap; letter-spacing:0; }
-html .cc-sumline__foot { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:10px 16px 12px; border-top:.5px solid var(--cc-rule);
-  background:var(--cc-bg); font-size:12px; color:#7A6F62; }
+html .cc-sumline__top b::after { content:'·'; margin-left:6px; color:#C8BFB0; letter-spacing:0; }
+html .cc-sumline__vals { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px; padding:0; }
+html .cc-sumline__vals > div { min-width:0; text-align:center; }
+html .cc-sumline__vals span { display:block; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:#A89C8C; margin:0 0 2px; }
+html .cc-sumline__vals b { display:block; font-size:15px; font-weight:600; line-height:1.25; color:var(--cc-charcoal); white-space:nowrap; }
+html .cc-sumline__foot { display:flex; justify-content:center; align-items:center; gap:6px; flex-wrap:wrap; padding:0; font-size:11px; color:#9A8E7E; }
 .rc-who { display:block; margin-top:6px; font-size:14px; color:var(--cc-ink); }
 .rc-who b { font-weight:600; }
 .rc-who__sub { display:block; margin-top:2px; color:#7A6F62; font-size:13px; }
