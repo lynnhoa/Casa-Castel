@@ -958,10 +958,10 @@ function _updateRoomsSummary(rooms) {
   let kalt = 0, nk = 0, kau = 0, occ = 0;
   list.forEach(r => {
     if (r.vacant === false) occ++;
-    const b = _roomMvPricing(r);
-    kalt += b.mode === 'pauschal' ? Math.max(0, b.total - b.nk) : b.kalt;
+    const b = ccRoomSoll(r);          // the baseline of the room's current contract type (vacant → Jahresvertrag)
+    kalt += b.kalt || 0;               // Pauschal: the part without NK
     nk   += b.nk || 0;
-    kau  += ccKaution({ contract: 'mietvertrag', mode: b.mode, kalt: b.kalt, nk: b.nk, rec: r }).amount || 0;
+    kau  += b.kaution || 0;
   });
   bar.style.display = '';
   bar.innerHTML = `<div class="cc-sumline__top">Baseline (Soll) · ${list.length} rooms · ${occ} occupied · ${list.length - occ} vacant</div>
@@ -1312,33 +1312,45 @@ function _roomCardHTML(r) {
 
   // ── Who lives here (Tenants is the one home for tenant data — this is a read-only pointer)
   const who = typeof tnRoomWhoLine === 'function' ? tnRoomWhoLine(r.name) : null;
-  const mvB = _roomMvPricing(r);
   const roomJs = esc(r.name).replace(/'/g, "\\'");
-  // Closed card: the room's Soll (Jahres- / Mietvertrag baseline) — the tenant is inside the card
+  // Closed card: the room's Soll (baseline of its current tenant's contract type; vacant → Jahresvertrag)
+  const soll = ccRoomSoll(r);
+  const _n = v => fmtEUR(v).replace(/\s?€$/, '');
   let whoLine = '';
-  if (mvB.total) {
-    const kSoll = ccKaution({ contract: 'mietvertrag', mode: mvB.mode, kalt: mvB.kalt, nk: mvB.nk, rec: r }).amount || 0;
-    const split = mvB.mode === 'pauschal' ? 'pauschal' : fmtEUR(mvB.kalt).replace(/\s?€$/, '') + ' + ' + fmtEUR(mvB.nk).replace(/\s?€$/, '') + ' Kalt + NK';
-    whoLine = `<span class="rc-who"><b>Soll ${fmtEUR(mvB.total)}</b> ${mvB.mode === 'pauschal' ? '' : 'warm'}<span class="rc-who__sub">${split} · Kaution ${fmtEUR(kSoll)}</span></span>`;
+  if (soll.total) {
+    const split = soll.mode === 'pauschal' ? 'davon NK ' + _n(soll.nk) : _n(soll.kalt) + ' + ' + _n(soll.nk) + ' Kalt + NK';
+    whoLine = `<span class="rc-who"><b>Soll ${fmtEUR(soll.total)}</b> ${soll.mode === 'pauschal' ? 'pauschal' : 'warm'} · ${_RC_BASE_LBL[soll.type]}<span class="rc-who__sub">${split} · Kaution ${fmtEUR(soll.kaution)}</span></span>`;
   } else {
-    whoLine = `<span class="rc-who rc-who--vac">Soll not set — Baseline rent › Edit</span>`;
+    whoLine = `<span class="rc-who rc-who--vac">Soll not set · ${_RC_BASE_LBL[soll.type]} baseline › Edit</span>`;
   }
   const metaParts = [r.flaeche_m2 ? r.flaeche_m2 + ' m²' : '', r.floor || '', r.room_type || '', hasKitchen ? 'Kitchen' : ''].filter(Boolean);
 
-  // ── Baselines (default offer for the NEXT tenant — never changes a running tenancy)
-  const kzK = Number(r.kurzzeit_kaltmiete) || 0, kzN = Number(r.kurzzeit_nk) || 0;
-  const kzP = (r.kurzzeit_pricing || 'pauschal') !== 'kalt_nk';
-  const kzCard = (kzK || kzN)
-    ? `<div class="rc-base__big">${kzP ? fmtEUR(kzK + kzN) + ' pauschal' : fmtEUR(kzK) + ' + ' + fmtEUR(kzN)}</div>
-       <div class="rc-base__sub">${kzP ? fmtEUR(kzK) + ' + ' + fmtEUR(kzN) + ' NK' : 'Kalt + NK'}</div>
-       <div class="rc-base__sub">Kaution 1× / 3× (by length)</div>`
-    : `<div class="rc-base__sub">Not set</div>`;
-  const _kMvB = ccKaution({ contract: 'mietvertrag', mode: mvB.mode, kalt: mvB.kalt, nk: mvB.nk, rec: r });
-  const mvCard = mvB.total
-    ? `<div class="rc-base__big">${mvB.mode === 'pauschal' ? fmtEUR(mvB.total) + ' pauschal' : fmtEUR(mvB.kalt) + ' + ' + fmtEUR(mvB.nk)}</div>
-       <div class="rc-base__sub">${mvB.mode === 'pauschal' ? fmtEUR(mvB.kalt) + ' + ' + fmtEUR(mvB.nk) + ' NK' : 'Kalt + NK'}</div>
-       <div class="rc-base__sub">Kaution ${fmtEUR(_kMvB.amount)}${_kMvB.source === 'override' ? ' · individual' : ''}</div>`
-    : `<div class="rc-base__sub">Not set</div>`;
+  // ── Baselines: one row per contract type — price, Kaution, its generator (Contract ›) and Edit
+  const baseRow = type => {
+    const b = ccRoomBaseline(r, type);
+    let big, sub1, sub2;
+    if (!b.total) { big = '<span class="rc-brow__none">Not set</span>'; sub1 = ''; sub2 = ''; }
+    else if (b.mode === 'pauschal') {
+      big = `${fmtEUR(b.total)} <span>pauschal</span>`;
+      sub1 = `davon NK ${fmtEUR(b.nk)} · ohne NK ${fmtEUR(b.kalt)}`;
+    } else {
+      big = `${fmtEUR(b.total)} <span>warm</span>`;
+      sub1 = `${_n(b.kalt)} Kalt + ${_n(b.nk)} NK`;
+    }
+    if (b.total) {
+      if (type === 'kurzzeit') sub2 = 'Kaution 1× · 3× over 3 months';
+      else { const k = ccRoomBaselineKaution(r, type); sub2 = `Kaution ${fmtEUR(k.amount)} ${b.kautionFixed ? '· individual' : '(3× Kalt)'}`; }
+    }
+    if (type === 'jahres' && b.total && !b.own) sub2 = (sub2 ? sub2 + ' · ' : '') + 'as Mietvertrag';
+    return `<div class="rc-brow">
+      <div class="rc-brow__bar rc-brow__bar--${type}"></div>
+      <div class="rc-brow__main"><div class="rc-brow__t">${_RC_BASE_LBL[type]}</div>
+        <div class="rc-brow__big">${big}</div>${sub1 ? `<div class="rc-brow__sub">${sub1}</div>` : ''}${sub2 ? `<div class="rc-brow__sub">${sub2}</div>` : ''}</div>
+      ${isNew ? '' : `<div class="rc-brow__btns">
+        <button type="button" class="rc-brow__go" onclick="_openContract('${type}','${r.id}')">Contract ›</button>
+        <button type="button" class="rc-brow__edit" onclick="_roomBaseOpen('${type}','${r.id}')">Edit</button></div>`}
+    </div>`;
+  };
   const keysTxt = `Haustür ${r.haustuerschluessel || 1} · Zimmer ${r.zimmerschluessel || 1} · Briefkasten ${r.briefkastenschluessel || 0}`;
   const roomRow = (k, v) => `<div class="rc-row"><span class="rc-row__k">${k}</span><span class="rc-row__v">${v}</span></div>`;
 
@@ -1379,16 +1391,10 @@ function _roomCardHTML(r) {
         </div>
       </div>
 
-      <div class="rc-section" id="rc-baseline-${r.id}">
-        <div class="rc-stitle">Baseline rent</div>
-        <div class="rc-sec-read">
-          <div class="rc-base">
-            <div class="rc-base__card"><div class="rc-base__t">Kurzzeit</div>${kzCard}</div>
-            <div class="rc-base__card"><div class="rc-base__t">Jahres- / Mietvertrag</div>${mvCard}</div>
-          </div>
-          <p class="rc-base__hint">Default for the next tenant only — never changes a running tenancy.</p>
-          ${isNew ? '' : `<div class="rc-section-edit"><button class="rc-sec-edit-btn" onclick="_roomSheetOpen('baseline','${r.id}')"><i class="ti ti-pencil" style="font-size:10px"></i> Edit</button></div>`}
-        </div>
+      <div class="rc-section rc-section--base" id="rc-baseline-${r.id}">
+        <div class="rc-stitle">Baseline rent · Soll</div>
+        ${baseRow('kurzzeit')}${baseRow('jahres')}${baseRow('mietvertrag')}
+        <p class="rc-base__hint">Default for the next tenant only — never changes a running tenancy.</p>
       </div>
 
       <div class="rc-inv-row">
@@ -1400,12 +1406,6 @@ function _roomCardHTML(r) {
       </div>
 
       <div class="rc-contracts">
-        <div class="rc-contracts-title">New contract</div>
-        <div class="rc-newc">
-          <button type="button" class="rc-newc__btn rc-newc--kz" onclick="_openContract('kurzzeit','${r.id}')">Kurzzeit</button>
-          <button type="button" class="rc-newc__btn rc-newc--jv" onclick="_openContract('jahres','${r.id}')">Jahresvertrag</button>
-          <button type="button" class="rc-newc__btn rc-newc--mv" onclick="_openContract('mietvertrag','${r.id}')">Mietvertrag</button>
-        </div>
         <div class="rc-doc-row">
           <button class="rc-doc-btn" onclick="_openContract('ueberg','${r.id}')">
             Übergabeprotokoll <i class="ti ti-chevron-right"></i>
@@ -2049,12 +2049,14 @@ function _rcSetupFlow(type, room) {
       if (k === 'Rent' || k === 'Miete' || k === 'Gesamtmiete') row.style.display = 'none';
     });
     const base = _rcContractRoom(room);   // no Miete block yet: the room's price, or the renewal's rent
-    const m = type === 'kurzzeit'
-      ? { mode: (base.kurzzeit_pricing || 'pauschal') === 'kalt_nk' ? 'kalt_nk' : 'pauschal',
-          kalt: Number(base.kurzzeit_kaltmiete) || 0, nk: Number(base.kurzzeit_nk) || 0 }
-      : _roomMvPricing(base);
+    const m = rn
+      ? (type === 'kurzzeit'
+          ? { mode: (base.kurzzeit_pricing || 'pauschal') === 'kalt_nk' ? 'kalt_nk' : 'pauschal',
+              kalt: Number(base.kurzzeit_kaltmiete) || 0, nk: Number(base.kurzzeit_nk) || 0 }
+          : _roomMvPricing(base))
+      : ccRoomBaseline(room, type);        // the baseline row of this contract type
     const note = rn ? 'Prefilled with the current rent — type the new one if it changes.'
-                    : 'From the ' + (type === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag') + ' baseline — change it for this tenant.';
+                    : 'From the ' + (_RC_BASE_LBL[type] || 'Mietvertrag') + ' baseline — change it for this tenant.';
     const html = ccfMieteHTML({ mode: m.mode, kalt: m.kalt, nk: m.nk, note });
     const mSlot = document.getElementById('cg-miete-slot');
     const anchor = body.querySelector('.rm-kaution-row');
@@ -3206,6 +3208,56 @@ function _roomMvPricing(room) {
   if (kalt) return { mode: 'pauschal', kalt, nk, total: kalt + nk };
   const old = Number(room.mietvertrag_miete) || Number(room.monatl_miete) || 0;
   return { mode: 'pauschal', kalt: Math.max(0, old - nk), nk: old ? nk : 0, total: old };
+}
+
+
+/* ── THREE BASELINES (Oct 2026) ───────────────────────────────
+   One per contract type, each the prefill of its own generator and the Soll in Rooms + Controlling:
+     Kurzzeit       always Pauschal — Pauschalmiete and the NK part inside it (kurzzeit_*)
+     Jahresvertrag  own price (jahres_*); until it is saved once it uses the Mietvertrag price
+     Mietvertrag    kaltmiete / nk_pauschale / mietvertrag_pricing, individual Kaution (kaution_*)
+   Soll of a room = the baseline of its current tenant's contract type; vacant → Jahresvertrag. */
+function ccRoomJahresOwn(room) {
+  return !!room && room.jahres_kaltmiete !== null && room.jahres_kaltmiete !== undefined && room.jahres_kaltmiete !== '';
+}
+function ccRoomBaseline(room, type) {
+  if (!room) return { type, mode: 'kalt_nk', kalt: 0, nk: 0, total: 0, kautionFixed: null, own: false };
+  if (type === 'kurzzeit') {
+    const kalt = Number(room.kurzzeit_kaltmiete) || 0, nk = Number(room.kurzzeit_nk) || 0;
+    return { type, mode: 'pauschal', kalt, nk, total: kalt + nk, kautionFixed: null, own: !!(kalt || nk) };
+  }
+  if (type === 'jahres' && ccRoomJahresOwn(room)) {
+    const kalt = Number(room.jahres_kaltmiete) || 0, nk = Number(room.jahres_nk) || 0;
+    const fixed = Number(room.jahres_kaution) > 0 ? Number(room.jahres_kaution) : null;
+    return { type, mode: room.jahres_pricing === 'pauschal' ? 'pauschal' : 'kalt_nk', kalt, nk, total: kalt + nk, kautionFixed: fixed, own: true };
+  }
+  const mv = _roomMvPricing(room);
+  const fixed = room.kaution_override && Number(room.kaution_default) > 0 ? Number(room.kaution_default) : null;
+  return { type, mode: mv.mode, kalt: mv.kalt, nk: mv.nk, total: mv.total, kautionFixed: fixed, own: type !== 'jahres' && !!mv.total };
+}
+/* The room as ccKaution should read it for one contract type (individual Kaution of that row) */
+function ccRoomKautionRec(room, type) {
+  if (!room) return room;
+  if (type === 'kurzzeit') return { ...room, kaution_override: false };
+  const b = ccRoomBaseline(room, type);
+  return { ...room, kaution_override: !!b.kautionFixed, kaution_default: b.kautionFixed };
+}
+function ccRoomBaselineKaution(room, type, start, end) {
+  const b = ccRoomBaseline(room, type);
+  return ccKaution({ contract: type === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', mode: b.mode, kalt: b.kalt, nk: b.nk,
+    rec: ccRoomKautionRec(room, type), start, end, noOverride: type === 'kurzzeit' });
+}
+/* Which baseline is this room's Soll: its current tenant's contract type, vacant → Jahresvertrag */
+function ccRoomSollType(room) {
+  const t = room && typeof tnCurrentTenancyOf === 'function' ? tnCurrentTenancyOf(room.name) : null;
+  const ct = t && t.ctype;
+  return { type: ct === 'kurzzeit' || ct === 'mietvertrag' || ct === 'jahres' ? ct : 'jahres', ten: t };
+}
+function ccRoomSoll(room) {
+  const { type, ten } = ccRoomSollType(room);
+  const b = ccRoomBaseline(room, type);
+  const k = ccRoomBaselineKaution(room, type, ten && ten.start, ten && ten.end);
+  return { ...b, kaution: Number(k.amount) || 0 };
 }
 
 /* ── RENDER KURZZEIT HTML FOR PRINT ──────────────────────── */
@@ -4964,10 +5016,152 @@ function _roomSheetSave() {
     });
 }
 
+
+/* ── BASELINE SHEET: one contract type at a time (Oct 2026) ─────────────────── */
+var _RC_BASE_LBL = { kurzzeit: 'Kurzzeit', jahres: 'Jahresvertrag', mietvertrag: 'Mietvertrag' };
+let _roomBaseCur = null;
+function _rbNum(id) {   // German or plain input: 1.300,00 · 1300,5 · 1300.50
+  let v = String(document.getElementById(id)?.value ?? '').trim().replace(/[\s€]/g, '');
+  if (!v) return null;
+  if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(v); return isNaN(n) ? null : Math.round(n * 100) / 100;
+}
+function _rbField(id, label, val) {
+  return `<div class="rb-f"><label class="rb-lbl" for="${id}">${label}</label>
+    <input class="rb-in" id="${id}" type="text" inputmode="decimal" autocomplete="off" value="${val || val === 0 ? Number(val).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }) : ''}" oninput="_roomBaseCalc()"/></div>`;
+}
+function _roomBaseOpen(type, id) {
+  const r = getRoomById(id); if (!r) return;
+  const ov = _roomSheetEnsure();
+  const b = ccRoomBaseline(r, type);
+  _roomBaseCur = { type, id };
+  document.getElementById('roomSheetKicker').textContent = 'Rooms · ' + r.name;
+  document.getElementById('roomSheetTitle').textContent = _RC_BASE_LBL[type] + ' baseline';
+  document.getElementById('roomSheetSub').textContent = 'Default for new ' + _RC_BASE_LBL[type] + ' contracts — never changes a running tenancy';
+  let html;
+  if (type === 'kurzzeit') {
+    html = `${_rbField('rb-total', 'Pauschalmiete €', b.total || '')}${_rbField('rb-nk', 'davon NK €', b.total ? b.nk : '')}
+      <div class="rb-calc"><span>Miete ohne NK</span><b id="rb-calc">—</b></div>
+      <p class="rb-hint">Kurzzeit is always Pauschal. The NK part is used for the NK settlement and Controlling.
+        Kaution follows the Kurzzeit rule: 1× Pauschale up to 3 months, 3× above.</p>`;
+  } else {
+    const pa = b.mode === 'pauschal';
+    html = `<div class="rb-seg" id="rb-mode" data-mode="${pa ? 'pauschal' : 'kalt_nk'}">
+        <button type="button" data-v="kalt_nk" onclick="_roomBaseMode('kalt_nk')">Kalt + NK</button>
+        <button type="button" data-v="pauschal" onclick="_roomBaseMode('pauschal')">Pauschal</button></div>
+      <div class="rb-two">${_rbField('rb-kalt', pa ? 'Miete ohne NK €' : 'Kaltmiete €', b.total ? b.kalt : '')}${_rbField('rb-nk', pa ? 'davon NK €' : 'Nebenkosten €', b.total ? b.nk : '')}</div>
+      <div class="rb-calc"><span id="rb-calc-l">${pa ? 'Pauschalmiete' : 'Warmmiete'}</span><b id="rb-calc">—</b></div>
+      <label class="rb-sw"><input type="checkbox" id="rb-kon"${b.kautionFixed ? ' checked' : ''} onchange="_roomBaseCalc()"/>
+        <span class="rb-sw__t" aria-hidden="true"></span><span>Individual Kaution</span></label>
+      <div id="rb-kwrap">${_rbField('rb-kaution', 'Kaution €', b.kautionFixed || '')}</div>
+      <p class="rb-hint" id="rb-khint"></p>
+      ${type === 'jahres' && !b.own ? '<p class="rb-hint">Starts with the Mietvertrag price. Saving makes it the Jahresvertrag’s own price.</p>' : ''}`;
+  }
+  document.getElementById('roomSheetBody').innerHTML = `<div class="rb">${html}</div>`;
+  document.getElementById('roomSheetFooter').innerHTML =
+    `<button type="button" class="rm-btn--cancel" onclick="_roomSheetClose()">${t('rooms_cancel')}</button>
+     <button type="button" class="rm-btn rm-btn--primary cc-save cc-save--create" style="flex:1" onclick="_roomBaseSave()">${t('rooms_save')}</button>`;
+  ov.classList.add('open');
+  _roomBaseCalc();
+}
+function _roomBaseMode(mode) {
+  const seg = document.getElementById('rb-mode'); if (!seg) return;
+  seg.dataset.mode = mode;
+  const pa = mode === 'pauschal';
+  const lk = document.querySelector('label[for="rb-kalt"]'), ln = document.querySelector('label[for="rb-nk"]');
+  if (lk) lk.textContent = pa ? 'Miete ohne NK €' : 'Kaltmiete €';
+  if (ln) ln.textContent = pa ? 'davon NK €' : 'Nebenkosten €';
+  const cl = document.getElementById('rb-calc-l'); if (cl) cl.textContent = pa ? 'Pauschalmiete' : 'Warmmiete';
+  _roomBaseCalc();
+}
+function _roomBaseCalc() {
+  const cur = _roomBaseCur; if (!cur) return;
+  const out = document.getElementById('rb-calc'); if (!out) return;
+  if (cur.type === 'kurzzeit') {
+    const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk');
+    out.textContent = tot == null ? '—' : fmtEUR(Math.max(0, tot - (nk || 0)));
+    out.style.color = nk != null && tot != null && nk > tot ? '#A3402A' : '';
+    return;
+  }
+  const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nk');
+  out.textContent = k == null ? '—' : fmtEUR(k + (nk || 0));
+  const on = !!document.getElementById('rb-kon')?.checked;
+  const wrap = document.getElementById('rb-kwrap'); if (wrap) wrap.style.display = on ? '' : 'none';
+  const hint = document.getElementById('rb-khint');
+  if (hint) hint.textContent = on ? 'This amount is used for new contracts of this type.' : 'Kaution: 3× Kalt' + (k != null ? ' = ' + fmtEUR(3 * k) : '') + '.';
+}
+function _roomBaseSave() {
+  const cur = _roomBaseCur; if (!cur) return;
+  const room = getRoomById(cur.id); if (!room) return;
+  let patch;
+  if (cur.type === 'kurzzeit') {
+    const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk') || 0;
+    if (tot == null) { ccToast('Enter the Pauschalmiete', true); return; }
+    if (nk > tot) { ccToast('The NK part can’t be more than the Pauschalmiete', true); return; }
+    patch = { kurzzeit_kaltmiete: Math.round((tot - nk) * 100) / 100, kurzzeit_nk: nk, kurzzeit_pricing: 'pauschal' };
+  } else {
+    const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nk') || 0;
+    const mode = document.getElementById('rb-mode')?.dataset.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';
+    const on = !!document.getElementById('rb-kon')?.checked, kau = _rbNum('rb-kaution');
+    if (k == null) { ccToast('Enter the rent', true); return; }
+    if (on && !(kau > 0)) { ccToast('Enter the individual Kaution or switch it off', true); return; }
+    patch = cur.type === 'jahres'
+      ? { jahres_kaltmiete: k, jahres_nk: nk, jahres_pricing: mode, jahres_kaution: on ? kau : null }
+      : { kaltmiete: k, nk_pauschale: nk, mietvertrag_pricing: mode, kaution_override: on, kaution_default: on ? kau : null };
+  }
+  const before = {}; Object.keys(patch).forEach(f => { before[f] = room[f]; });
+  Object.assign(room, patch);
+  _roomSheetClose();
+  _roomRerenderCard(cur.id);
+  _updateRoomsSummary(appRooms);
+  if (!sbL) return;
+  ccQueueWrite('room-' + cur.id, () => sbL.from('rooms').update(patch).eq('id', cur.id))
+    .then(({ error }) => {
+      if (!error) { if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', room); return; }
+      Object.assign(room, before); _roomRerenderCard(cur.id); _updateRoomsSummary(appRooms);
+      if (cur.type === 'jahres' && /jahres_|column|schema cache/i.test(String(error.message || ''))) {
+        ccToast('Jahresvertrag baseline not saved — run the SQL for the new rooms columns first.', true); return;
+      }
+      ccSaveFailed(error, 'baseline');
+    });
+}
+
 (function () {
   if (document.getElementById('rooms-v2-styles')) return;
   const st = document.createElement('style'); st.id = 'rooms-v2-styles';
   st.textContent = `
+.rc-section--base { padding-bottom:6px; }
+.rc-brow { display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-top:var(--cc-border); }
+.rc-section--base .rc-stitle + .rc-brow { border-top:none; padding-top:6px; }
+.rc-brow__bar { flex:0 0 4px; align-self:stretch; border-radius:2px; }
+.rc-brow__bar--kurzzeit { background:#B9A6D6; } .rc-brow__bar--jahres { background:#C9A55A; } .rc-brow__bar--mietvertrag { background:#8FA88F; }
+.rc-brow__main { flex:1 1 auto; min-width:0; }
+.rc-brow__t { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#8A6535; }
+.rc-brow__big { font-size:18px; font-weight:600; color:var(--cc-ink); margin-top:2px; }
+.rc-brow__big span { font-size:13px; font-weight:400; color:#7A6F62; }
+.rc-brow__none { font-size:14px; font-weight:400; color:#7A6F62; }
+.rc-brow__sub { font-size:13px; color:#7A6F62; line-height:1.5; }
+.rc-brow__btns { flex:0 0 auto; display:flex; flex-direction:column; gap:6px; }
+.rc-brow__go, .rc-brow__edit { min-height:36px; padding:0 12px; border-radius:var(--cc-r-md); font-family:inherit; font-size:13px; background:var(--cc-white); cursor:pointer; white-space:nowrap; }
+.rc-brow__go { border:.5px solid var(--cc-ink); color:var(--cc-ink); font-weight:500; }
+.rc-brow__edit { border:.5px solid var(--cc-stone); color:var(--cc-charcoal); }
+.rb { display:flex; flex-direction:column; gap:12px; }
+.rb-two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+.rb-lbl { display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-charcoal); margin-bottom:6px; }
+.rb-in { width:100%; box-sizing:border-box; min-height:44px; padding:0 14px; border:.5px solid var(--cc-rule); border-radius:var(--cc-r-md); background:var(--cc-bg); font-family:inherit; font-size:16px; text-align:right; color:var(--cc-ink); }
+.rb-calc { display:flex; justify-content:space-between; align-items:center; min-height:44px; padding:0 14px; border-radius:var(--cc-r-md); background:#F2E9DA; color:#7A5A22; font-size:14px; }
+.rb-calc b { color:var(--cc-ink); font-size:16px; }
+.rb-hint { margin:0; font-size:12.5px; line-height:1.5; color:#7A6F62; }
+.rb-seg { display:flex; border:.5px solid var(--cc-rule); border-radius:var(--cc-r-md); overflow:hidden; }
+.rb-seg button { flex:1; min-height:40px; border:none; background:var(--cc-white); font-family:inherit; font-size:14px; color:var(--cc-charcoal); cursor:pointer; }
+.rb-seg[data-mode="kalt_nk"] button[data-v="kalt_nk"], .rb-seg[data-mode="pauschal"] button[data-v="pauschal"] { background:var(--cc-ink); color:var(--cc-white); }
+.rb-sw { display:flex; align-items:center; gap:12px; font-size:14px; color:var(--cc-ink); cursor:pointer; }
+.rb-sw input { position:absolute; opacity:0; width:1px; height:1px; }
+.rb-sw__t { flex:0 0 44px; height:26px; border-radius:13px; background:var(--cc-stone); position:relative; transition:background .15s; }
+.rb-sw__t::after { content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .15s; }
+.rb-sw input:checked + .rb-sw__t { background:var(--cc-ink); }
+.rb-sw input:checked + .rb-sw__t::after { transform:translateX(18px); }
+
 .cc-sumline { display:flex; flex-direction:column; gap:8px; padding:0 0 12px; margin:0 0 12px; border-bottom:var(--cc-border); }
 .cc-sumline__top { font-size:13px; color:#7A6F62; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
 .cc-sumline__vals { display:flex; gap:12px; }

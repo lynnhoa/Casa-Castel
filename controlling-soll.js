@@ -240,10 +240,13 @@ const _cxActiveOn = (t, iso) => (!t.mietbeginn || _cxD(t.mietbeginn) <= iso) && 
 
 function _cxRoomPricing(room, t) {
   if (!room) return { k: null, nk: null };
-  const hasMv = !!(room.kaltmiete || room.mietvertrag_miete), hasKz = !!room.kurzzeit_kaltmiete;
-  let type = t && t.contract_type === 'kurzzeit' ? 'kurzzeit' : (t && (t.contract_type === 'mietvertrag' || t.contract_type === 'jahres') ? 'mietvertrag' : null);
-  if (!type) type = room.active_price_type === 'kurzzeit' && hasKz ? 'kurzzeit' : (hasMv ? 'mietvertrag' : (hasKz ? 'kurzzeit' : null));
-  if (type === 'kurzzeit' && hasKz) return { k: _cxNum(room.kurzzeit_kaltmiete), nk: _cxNum(room.kurzzeit_nk) };
+  // Oct 2026: three baselines — the tenancy's own type; a vacant room counts the Jahresvertrag baseline
+  const hasKz = !!(room.kurzzeit_kaltmiete || room.kurzzeit_nk);
+  const ct = t && t.contract_type;
+  const type = ct === 'kurzzeit' || ct === 'mietvertrag' || ct === 'jahres' ? ct : 'jahres';
+  if (type === 'kurzzeit' && hasKz) return { k: _cxNum(room.kurzzeit_kaltmiete), nk: _cxNum(room.kurzzeit_nk) };   // Pauschal: part without NK + NK part
+  if (type === 'jahres' && room.jahres_kaltmiete !== null && room.jahres_kaltmiete !== undefined && room.jahres_kaltmiete !== '')
+    return { k: _cxNum(room.jahres_kaltmiete), nk: _cxN0(room.jahres_nk) };
   if (room.kaltmiete) return { k: _cxNum(room.kaltmiete), nk: _cxNum(room.nk_pauschale) };
   if (room.mietvertrag_miete) { const nk = _cxN0(room.nk_pauschale); return { k: _cxN0(room.mietvertrag_miete) - nk, nk }; }
   return { k: null, nk: null };

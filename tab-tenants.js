@@ -611,7 +611,12 @@ function _tnRoomPricing(room, ctypeArg) {
   if (!r) return {};
   const ctype = ctypeArg || _tnRoomContractType(room);   // the tenancy's type; the room's offer only as a fallback
   let kaltmiete = null, nebenkosten = null;
-  if (ctype === 'mietvertrag' || ctype === 'jahres') {   // Jahresvertrag uses the Mietvertrag prices
+  if (ctype === 'jahres' && typeof ccRoomJahresOwn === 'function' && ccRoomJahresOwn(r)) {   // its own baseline
+    const fx = Number(r.jahres_kaution) > 0 ? Number(r.jahres_kaution) : null;
+    return { kaltmiete: Number(r.jahres_kaltmiete) || null, nebenkosten: Number(r.jahres_nk) || null,
+             kaution_override: !!fx, kaution_fixed: fx };
+  }
+  if (ctype === 'mietvertrag' || ctype === 'jahres') {   // Jahresvertrag without its own price: the Mietvertrag price
     if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
       kaltmiete   = Number(r.kaltmiete)    || null;
       nebenkosten = Number(r.nk_pauschale) || null;
@@ -3856,7 +3861,7 @@ function tnCurrentTenancyOf(roomName) {
   const renewed = !!st.next;
   const then = renewed && last && last.type === 'mietvertrag' ? 'mietvertrag' : null;
   return {
-    ctype: tnContractType(cur), renewed, then,
+    ctype: tnContractType(cur), renewed, then, start: _ccIso(cur.mietbeginn || ''),
     end: renewed ? (then ? _ccAddDaysIso(st.next.start, -1) : (last.end || '')) : _ccIso(cur.vertragsende || cur.mietende || ''),
     rent: r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode } : null,
   };

@@ -251,7 +251,7 @@ function ccgUpdate() {
   if (kIn && m && typeof ccKaution === 'function') {
     const room = typeof getRoomById === 'function' && typeof _contractRoomId !== 'undefined' ? getRoomById(_contractRoomId) : null;
     const k = ccKaution({ contract: type === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', mode: m.mode, kalt: m.kalt, nk: m.nk,
-      rec: room, start, end, noOverride: type === 'kurzzeit' });
+      rec: typeof ccRoomKautionRec === 'function' ? ccRoomKautionRec(room, type) : room, start, end, noOverride: type === 'kurzzeit' });
     if (kIn.hasAttribute('data-auto') && !renewK) { kIn.value = String(k.amount); }
     if (rule && !renewK) rule.textContent = (k.source === 'override' ? 'Individual Kaution of this room' : k.rule) + ' · fällig sofort nach Vertragsunterzeichnung';
   }
@@ -287,7 +287,7 @@ async function ccgBuild(type, forApprove) {
   let kautionAmount = manual;
   if (kautionAmount == null) {
     kautionAmount = ccKaution({ contract: type === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', mode: m.mode, kalt: m.kalt, nk: m.nk,
-      rec: room0, start, end, noOverride: type === 'kurzzeit' }).amount;
+      rec: typeof ccRoomKautionRec === 'function' ? ccRoomKautionRec(room0, type) : room0, start, end, noOverride: type === 'kurzzeit' }).amount;
   }
   const s = typeof appSettings !== 'undefined' ? appSettings : {};
   const d = ccContractData({
