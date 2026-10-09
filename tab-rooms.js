@@ -1425,7 +1425,13 @@ function _roomCardHTML(r) {
 
         <div class="rc-doc-row">
           <button class="rc-doc-btn" onclick="_openContract('kurzzeit','${r.id}')">
-            Kurzzeitmiete <i class="ti ti-chevron-right"></i>
+            Kurzzeit <i class="ti ti-chevron-right"></i>
+          </button>
+        </div>
+
+        <div class="rc-doc-row">
+          <button class="rc-doc-btn" onclick="_openContract('jahres','${r.id}')">
+            Jahresvertrag <i class="ti ti-chevron-right"></i>
           </button>
         </div>
 
@@ -2021,7 +2027,7 @@ function _rcContractRoom(room) {
   // Contract flow: the generator's own Miete block (cc-contract-flow.js) is this contract's rent
   const m = room && typeof ccfMieteGet === 'function' && room.id === _contractRoomId ? ccfMieteGet() : null;
   if (m && _contractType === 'kurzzeit')    return { ...room, kurzzeit_kaltmiete: m.kalt, kurzzeit_nk: m.nk, kurzzeit_pricing: m.mode };
-  if (m && _contractType === 'mietvertrag') return { ...room, kaltmiete: m.kalt, nk_pauschale: m.nk, mietvertrag_pricing: m.mode };
+  if (m && (_contractType === 'mietvertrag' || _contractType === 'jahres')) return { ...room, kaltmiete: m.kalt, nk_pauschale: m.nk, mietvertrag_pricing: m.mode };
   const rn = _contractRenew;
   if (!room || !rn || rn.roomId !== room.id) return room;
   const pausch = rn.mode === 'pauschal';
@@ -2037,8 +2043,8 @@ function _rcContractRoom(room) {
 /* Renewal: dates filled in + a note on top saying which rent the contract uses */
 function _rcApplyRenew(type, room) {
   const rn = _contractRenew;
-  if (!rn || (type !== 'kurzzeit' && type !== 'mietvertrag')) return;
-  const pre = type === 'kurzzeit' ? 'cm' : 'mv';
+  if (!rn || (type !== 'kurzzeit' && type !== 'mietvertrag' && type !== 'jahres')) return;
+  const pre = document.getElementById('cg-start') ? 'cg' : (type === 'kurzzeit' ? 'cm' : 'mv');
   const set = (id, v) => {
     const el = document.getElementById(id); if (!el || !v) return;
     el.value = v;
@@ -2055,9 +2061,11 @@ function _rcApplyRenew(type, room) {
    Draft PDF: as often as you like, nothing is saved.
    Approve:   the same PDF + a summary → the tenant (For), rent history,
               Kaution Soll, Zählerstände and Documents › Unsigned.       */
+const _RC_CG_FIELDS = { name: 'cg-name', adr: 'cg-adr', dob: 'cg-dob', email: 'cg-email', tel: 'cg-tel', kaution: 'cg-kaution', start: 'cg-start', end: 'cg-end' };
 const _RC_FIELDS = {
-  kurzzeit:    { name: 'cm-name', adr: 'cm-adr', dob: 'cm-dob', email: 'cm-email', tel: 'cm-tel', kaution: 'cm-kaution', start: 'cm-start', end: 'cm-end' },
-  mietvertrag: { name: 'mv-name', adr: 'mv-adr', dob: 'mv-dob', email: 'mv-email', tel: 'mv-tel', kaution: 'mv-kaution', start: 'mv-start', end: 'mv-end' },
+  kurzzeit:    _RC_CG_FIELDS,   // the three contract generators share one layout (cc-generator.js)
+  jahres:      _RC_CG_FIELDS,
+  mietvertrag: _RC_CG_FIELDS,
   ueberg:      { name: 'ub-mieter-name', adr: 'ub-mieter-adr' },
 };
 function _rcIsEinzug(roomId) {
@@ -2067,15 +2075,16 @@ function _rcSetupFlow(type, room) {
   const body = document.getElementById('contractBody');
   if (!body || typeof ccfForHTML !== 'function') return;
   const rn = _contractRenew;
-  const isContract = type === 'kurzzeit' || type === 'mietvertrag';
+  const isContract = type === 'kurzzeit' || type === 'mietvertrag' || type === 'jahres';
   // "For" replaces the old room-tenant / Manuell switch
   ['cmMieterPill', 'mvMieterPill', 'uebergMieterPill'].forEach(id => {
     const p = document.getElementById(id); if (p && p.parentElement) p.parentElement.style.display = 'none';
   });
   const o = { mode: isContract ? 'contract' : 'ueberg', room: room.name, renew: rn,
               occasion: _rcIsEinzug(room.id) ? 'einzug' : 'auszug', fields: _RC_FIELDS[type],
-              switchTo: rn && rn.tid ? (type === 'kurzzeit' ? 'mietvertrag' : 'kurzzeit') : null };
-  body.insertAdjacentHTML('afterbegin', ccfForHTML(o));
+              switchTo: rn && rn.tid ? (type === 'mietvertrag' ? 'jahres' : 'mietvertrag') : null };
+  const forSlot = document.getElementById('cg-for-slot');
+  if (forSlot) forSlot.innerHTML = ccfForHTML(o); else body.insertAdjacentHTML('afterbegin', ccfForHTML(o));
   if (isContract) {
     // The rent lives in the Miete block now — the pre-filled box would show a stale copy
     body.querySelectorAll('.rm-prefilled .rm-pre-row').forEach(row => {
@@ -2088,10 +2097,12 @@ function _rcSetupFlow(type, room) {
           kalt: Number(base.kurzzeit_kaltmiete) || 0, nk: Number(base.kurzzeit_nk) || 0 }
       : _roomMvPricing(base);
     const note = rn ? 'Prefilled with the current rent — type the new one if it changes.'
-                    : 'Prefilled from the room’s asking rent — change it for this contract.';
+                    : 'From the room’s ' + (type === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag') + ' price — change it for this tenant.';
     const html = ccfMieteHTML({ mode: m.mode, kalt: m.kalt, nk: m.nk, note });
+    const mSlot = document.getElementById('cg-miete-slot');
     const anchor = body.querySelector('.rm-kaution-row');
-    if (anchor) anchor.insertAdjacentHTML('beforebegin', html); else body.insertAdjacentHTML('beforeend', html);
+    if (mSlot) mSlot.innerHTML = html;
+    else if (anchor) anchor.insertAdjacentHTML('beforebegin', html); else body.insertAdjacentHTML('beforeend', html);
     const nkWrap = document.getElementById('cm-nk-wrap'); if (nkWrap) nkWrap.style.display = 'none';
     const mk = document.getElementById('mv-kaution');
     if (mk && !mk.hasAttribute('data-auto')) {
@@ -2111,6 +2122,7 @@ function _rcSetupFlow(type, room) {
 }
 /* The Miete block drives the pricing mode and the Kaution rule (until you type a Kaution) */
 function _rcMieteChanged(type) {
+  if (document.querySelector('#contractBody .cg') && typeof ccgUpdate === 'function') { ccgUpdate(); return; }
   const m = ccfMieteGet(); if (!m) return;
   if (type === 'kurzzeit') {
     const b = document.getElementById('cm-nk-btn'); if (b) b.dataset.mode = m.mode;
@@ -2125,6 +2137,12 @@ function _rcMieteChanged(type) {
 }
 function _rcRenewKautionField(type) {
   const soll = _contractRenew && _contractRenew.kautionSoll;
+  if (document.getElementById('cg-kaution')) {          // new layout: the first Kaution stays, no rule line
+    ccfSetKaution('cg-kaution', 0, 'Renewal — the first Kaution stays' + (soll ? ' (' + fmtEUR(soll) + ')' : '') + '. Type an amount only for a new Kaution.');
+    const r = document.getElementById('cg-kaution-rule'); if (r) r.style.display = 'none';
+    if (typeof ccgUpdate === 'function') ccgUpdate();
+    return;
+  }
   const px = type === 'kurzzeit' ? 'cm' : 'mv';
   ccfSetKaution(px + '-kaution', 0,
     'Renewal — no new Kaution. The PDF keeps the first Kaution' + (soll ? ' (' + fmtEUR(soll) + ')' : '') +
@@ -2159,6 +2177,7 @@ function _rcWireFooter(type) {
   appr?.addEventListener('click', () => { if (!appr.disabled) ccfApproveDraft(); });
 }
 function _rcBuild(type, forApprove) {
+  if ((type === 'kurzzeit' || type === 'jahres' || type === 'mietvertrag') && typeof ccgBuild === 'function') return ccgBuild(type, forApprove);
   if (type === 'kurzzeit')    return _rcBuildKurzzeit(forApprove);
   if (type === 'mietvertrag') return _rcBuildMietvertrag(forApprove);
   return _rcBuildUeberg();
@@ -2410,7 +2429,14 @@ async function _openContract(type, roomId, renew) {
   const body     = document.getElementById('contractBody');
   const footer   = document.getElementById('contractFooter');
 
-  if (type === 'kurzzeit') {
+  if ((type === 'kurzzeit' || type === 'jahres' || type === 'mietvertrag') && typeof ccgBodyHTML === 'function') {
+    typeLbl.textContent  = type === 'kurzzeit' ? 'Kurzzeitmietvertrag' : type === 'jahres' ? 'Mietvertrag · Jahresvertrag' : 'Mietvertrag';
+    titleLbl.textContent = `New contract — ${room.name}`;
+    subLbl.textContent   = [room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '', room.floor, room.room_type].filter(Boolean).join(' · ');
+    body.innerHTML       = ccgBodyHTML(type, room, _contractRenew);
+    footer.innerHTML     = ccfFooterHTML();
+
+  } else if (type === 'kurzzeit') {
     typeLbl.textContent  = 'Kurzzeitmietvertrag';
     titleLbl.textContent = `New contract — ${room.name}`;
     subLbl.textContent   = `${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''} · ${room.floor || ''} · ${room.room_type || ''}`;
@@ -2437,6 +2463,7 @@ async function _openContract(type, roomId, renew) {
 
   // Contract flow: For line, Miete block, Draft PDF / Approve (cc-contract-flow.js)
   _rcSetupFlow(type, room);
+  if (document.querySelector('#contractBody .cg') && typeof ccgInit === 'function') ccgInit();
 
   // Cancel: use fresh clone to avoid stale listener accumulation
   const cancelBtn = document.getElementById('contractCancelBtn');
@@ -2459,6 +2486,7 @@ async function _openContract(type, roomId, renew) {
   }
 
   _rcApplyRenew(type, room);   // opened from a renewal in Tenants → dates + that renewal's rent
+  if (typeof ccgUpdate === 'function') ccgUpdate();
 
   document.getElementById('contractOverlay').classList.add('open');
 }

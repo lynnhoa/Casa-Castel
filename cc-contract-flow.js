@@ -55,12 +55,21 @@ const CCF_CASA = {
     if (b && typeof _rcOpenTenant === 'function') _rcOpenTenant(b.room, '.tn-cstrip');   // the new Verlängerung line in view
   },
   viewDoc: (doc, label, rec) => { if (typeof _tnViewDoc === 'function') _tnViewDoc(doc.file_url, label, rec ? rec.room : ''); },
-  contractDocType: (p, rec) => (p.ctype === 'kurzzeit' ? 'kurzzeitmietvertrag' : 'mietvertrag'),
+  // An older "Mietvertrag befristet" (kurzzeitmietvertrag) of this tenancy keeps its slot, so nothing is stored twice;
+  // a new Kurzzeit contract is filed as 'kurzzeitvertrag' (Kurzzeitmietvertrag)
+  contractDocType: (p, rec) => {
+    const legacy = !!rec && ccfDocsOf(rec.id).some(d => d.type === 'kurzzeitmietvertrag');
+    if (p.ctype === 'kurzzeit') return legacy ? 'kurzzeitmietvertrag' : 'kurzzeitvertrag';
+    if (p.ctype === 'jahres' && legacy) return 'kurzzeitmietvertrag';
+    return 'mietvertrag';
+  },
   firstContract(rec, docs) {
     const base = (typeof _tnBaseContractType === 'function' && _tnBaseContractType(rec))
       || (typeof _tnRoomContractType === 'function' && _tnRoomContractType(rec.room)) || rec.contract_type;
-    const out = [base === 'kurzzeit' || (base === 'jahres' && docs.some(d => d.type === 'kurzzeitmietvertrag')) ? 'kurzzeitmietvertrag' : 'mietvertrag'];
-    ['mietvertrag', 'kurzzeitmietvertrag'].forEach(t => { if (!out.includes(t) && docs.some(d => d.type === t)) out.push(t); });
+    const legacy = docs.some(d => d.type === 'kurzzeitmietvertrag');
+    const out = [legacy && (base === 'kurzzeit' || base === 'jahres') ? 'kurzzeitmietvertrag'
+      : base === 'kurzzeit' ? 'kurzzeitvertrag' : 'mietvertrag'];
+    ['mietvertrag', 'kurzzeitmietvertrag', 'kurzzeitvertrag'].forEach(t => { if (!out.includes(t) && docs.some(d => d.type === t)) out.push(t); });
     // Once renewed, the first contract is called "Erstvertrag" (same name as in the rent bar)
     const renewed = typeof _tnContracts === 'function' && _tnContracts(rec).length > 1;
     return out.map((t, i) => ({ type: t, label: renewed && i === 0 ? 'Erstvertrag' : ccfDocLabel(t, rec) }));
@@ -272,7 +281,7 @@ function ccfForHTML(o) {
       <div class="ccf-for-row"><label class="ccf-for-lbl" for="rc-for">For</label>
         <select id="rc-for" class="ccf-for-sel" disabled><option value="${ccfEsc(sel)}" selected>${ccfEsc(ccfName(rec))}</option></select></div>
       <div class="ccf-for-hint">Renewal of this tenancy — same tenant, the first Kaution stays.${o.switchTo
-        ? ` <button type="button" class="ccf-link" onclick="ccfRenewSwitch('${o.switchTo}')">Switch to ${o.switchTo === 'mietvertrag' ? 'Mietvertrag' : 'Kurzzeit'}</button>` : ''}</div>
+        ? ` <button type="button" class="ccf-link" onclick="ccfRenewSwitch('${o.switchTo}')">Switch to ${ccfCtLabel(o.switchTo) || 'Mietvertrag'}</button>` : ''}</div>
     </div>`;
   }
   return `<div class="ccf-for" id="ccf-for-box">
@@ -816,7 +825,7 @@ function ccfPlan(p) {
     endBefore: rec ? recEnd : null,
     moveOutRemoved: renewal && rec.mietende ? ccfIso(rec.mietende) : null,
     docType: renewal ? 'verlaengerung_' + start : ccfA().contractDocType(p, rec),
-    docLabel: renewal ? renewN + '. Verlängerung' : (p.docLabel || (p.ctype === 'kurzzeit' ? 'Mietvertrag befristet' : 'Mietvertrag')),
+    docLabel: renewal ? renewN + '. Verlängerung' : (p.docLabel || (p.ctype === 'kurzzeit' ? 'Kurzzeitmietvertrag' : 'Mietvertrag')),
   };
 }
 function ccfDocOf(tid, type, variant) {
@@ -1294,7 +1303,8 @@ function _ccfLoadImageEl(file) {
 /* ── TENANTS TAB: DOCUMENTS SECTION ────────────────────────── */
 const _ccfDocEdit = {};
 function ccfDocLabel(type, rec) {
-  if (type === 'kurzzeitmietvertrag') return 'Mietvertrag befristet';
+  if (type === 'kurzzeitmietvertrag') return 'Mietvertrag befristet';   // older contracts, label unchanged
+  if (type === 'kurzzeitvertrag') return 'Kurzzeitmietvertrag';
   if (type === 'mietvertrag' && rec && ccfA().app === 'rentals') { const f = ccfA().firstContract(rec, []); return f[0] ? f[0].label : 'Mietvertrag'; }
   if (type === 'mietvertrag') return 'Mietvertrag';
   if (type === 'parkplatz_mietvertrag') return 'Parkplatz-Mietvertrag';
@@ -1524,17 +1534,17 @@ function ccfRefreshTenant(tid) {
 /* ── RENEW: opens the generator, prefilled ─────────────────── */
 function ccfRenewOpen(tid) {
   const rec = ccfRec(tid); if (!rec) return;
+  const casa = ccfA().app === 'casa';
   const endNow = ccfIso(rec.vertragsende) || ccfIso(rec.mietende);
   const start = endNow ? ccfAddDays(endNow, 1) : '';
-  const end = start ? ccfAddDays(ccfAddYears(start, 1), -1) : '';
+  // Casa: a renewal is a Jahresvertrag to the next 31.08. (also when a Kurzzeit tenant stays on)
+  const end = !start ? '' : casa && typeof ccNext3108 === 'function' ? ccNext3108(start) : ccfAddDays(ccfAddYears(start, 1), -1);
   const cur = ccfA().currentRent(rec) || {};
   const n = ccfA().renewalRows(rec).length + 1;
   const ct = (ccfA().app === 'casa' ? (typeof tnContractType === 'function' ? tnContractType(rec) : rec.contract_type)
                                     : (typeof rntContractType === 'function' ? rntContractType(rec) : rec.contract_type)) || 'kurzzeit';
-  // A Jahresvertrag is renewed with the befristet generator and saved as Jahresvertrag again
-  const saveAs = ct === 'jahres' ? 'jahres' : null;
   ccfA().openRenew(rec, {
-    ct: saveAs ? 'kurzzeit' : ct, saveAs, tid: rec.id, label: n + '. Verlängerung', start, end,
+    ct: casa ? 'jahres' : ct, tid: rec.id, label: n + '. Verlängerung', start, end,
     mode: cur.mode, kalt: cur.kalt, nk: cur.nk, total: cur.total,
     kautionSoll: Number(rec.kaution_soll) > 0 ? Number(rec.kaution_soll) : null,
   });

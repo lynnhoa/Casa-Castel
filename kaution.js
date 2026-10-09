@@ -91,13 +91,15 @@ function ccKautionRuleText(contract, mode, start, end) {
    returns { amount, source:'manual'|'override'|'rule', rule } */
 function ccKaution(opts = {}) {
   const { contract = 'mietvertrag', mode = 'kalt_nk', kalt = 0, nk = 0,
-          rec = null, start = null, end = null, manual = null } = opts;
+          rec = null, start = null, end = null, manual = null, noOverride = false } = opts;
   const ruleTxt = ccKautionRuleText(contract, mode, start, end);
 
   const m = ccKautionManual(manual);
   if (m !== null) return { amount: ccKautionRound(m), source: 'manual', rule: ruleTxt };
 
-  const o = ccKautionOverride(rec);
+  // Casa Castel generators: the room's individual Kaution belongs to the Mietvertrag
+  // baseline — a Kurzzeit contract follows its own rule (noOverride)
+  const o = noOverride ? null : ccKautionOverride(rec);
   if (o !== null) return { amount: ccKautionRound(o), source: 'override', rule: 'Individuelle Kaution (Karte)' };
 
   const amount = ccKautionBase(contract === 'parking' ? 'kalt_nk' : mode, kalt, nk)
