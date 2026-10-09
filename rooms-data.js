@@ -43,11 +43,9 @@ async function loadRoomsData() {
 
   if (error) {
     console.warn('[rooms-data] fetch error:', error.message);
-    loadRoomsData.lastOk = false;          // a failed load is never "no rooms" (no default rooms seeded)
     return appRooms;
   }
 
-  loadRoomsData.lastOk = true;
   appRooms = data || [];
   return appRooms;
 }

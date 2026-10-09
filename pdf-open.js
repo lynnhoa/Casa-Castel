@@ -86,10 +86,10 @@ async function _ccRender(pages, opts) {
   for (let i = 0; i < pages.length; i++) {
     if (i > 0) pdf.addPage();
     const canvas = await html2canvas(pages[i], {
-      scale: opts.scale || 3, useCORS: true, backgroundColor: '#ffffff',   // 3× = sharp print (was 2×)
+      scale: opts.scale || 2, useCORS: true, backgroundColor: '#ffffff',
       width: 794, height: 1123, windowWidth: 794,
     });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, 210, 297);
     canvas.width = 0; canvas.height = 0;   // free the memory right away
   }
   return pdf;
