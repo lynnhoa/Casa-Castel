@@ -1203,7 +1203,7 @@ function _roomCardHTML(r) {
   let whoLine = '';
   if (soll.total) {
     const split = soll.mode === 'pauschal' ? 'davon NK ' + _n(soll.nk) : _n(soll.kalt) + ' + ' + _n(soll.nk) + ' Kalt + NK';
-    whoLine = `<span class="rc-who"><b>Soll ${fmtEUR(soll.total)}</b> ${soll.mode === 'pauschal' ? 'pauschal' : 'warm'} · ${_RC_BASE_LBL[soll.type]}<span class="rc-who__sub">${split} · Kaution ${fmtEUR(soll.kaution)}</span></span>`;
+    whoLine = `<span class="rc-who rc-who--slim">${typeof _tnTypePill === 'function' ? _tnTypePill(soll.type) : _RC_BASE_LBL[soll.type]}<span class="rc-u">Soll <b>${fmtEUR(soll.total)}</b> ${soll.mode === 'pauschal' ? 'pauschal' : 'warm'}</span><span class="rc-u">Kaution ${fmtEUR(soll.kaution)}</span></span>`;
   } else {
     whoLine = `<span class="rc-who rc-who--vac">Soll not set · ${_RC_BASE_LBL[soll.type]} baseline › Edit</span>`;
   }
@@ -4542,6 +4542,10 @@ html .cc-sumline__foot { display:flex; justify-content:center; align-items:cente
 .rc-who { display:block; margin-top:6px; font-size:14px; color:var(--cc-ink); }
 .rc-who b { font-weight:600; }
 .rc-who__sub { display:block; margin-top:2px; color:#7A6F62; font-size:13px; }
+.rc-who--slim { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; font-size:13px; color:#9A8E7E; }
+.rc-who--slim b { font-weight:500; color:var(--cc-charcoal); }
+.rc-who--slim .tn-ctp { margin-left:0; }
+.rc-who--slim .rc-u { white-space:nowrap; }
 .rc-who--vac { color:#7A4E22; }
 .rc-tenantlink { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; background:var(--cc-bg); border-bottom:var(--cc-border); font-size:13px; color:#7A6F62; }
 .rc-tenantlink span { min-width:0; color:var(--cc-ink); line-height:1.4; }

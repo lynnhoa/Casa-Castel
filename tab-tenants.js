@@ -625,6 +625,17 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-ctp--kurzzeit    { background:#F1EEF6; color:#5B4A7A; border:.5px solid #CFC4E0; }
 .tn-ctp--jahres      { background:#F6EEDD; color:#7A5A22; border:.5px solid #E2CFA6; }
 .tn-ctp--mietvertrag { background:#EEF2EC; color:#46604A; border:.5px solid #C3D1C0; }
+
+/* Slim closed card (Oct 2026) */
+#tab-tenants .tn-slim .tn-slim-top { align-items:center; gap:8px; }
+#tab-tenants .tn-slim .tn-slim-top .tn-room-lbl { margin:0; }
+#tab-tenants .tn-slim .tn-hdr-mid { margin-top:2px; }
+#tab-tenants .tn-slim-info { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; margin-top:4px; font-size:13px; color:#9A8E7E; }
+#tab-tenants .tn-slim-info .tn-ctp { margin-left:0; }
+#tab-tenants .tn-slim-txt { white-space:nowrap; }
+#tab-tenants .tn-slim-txt b { font-weight:500; color:var(--cc-charcoal); }
+#tab-tenants .tn-slim-next { white-space:nowrap; }
+#tab-tenants .tn-slim-next { color:#8C5A30; font-size:12.5px; }
 `;
   document.head.appendChild(s);
 })();
@@ -1365,8 +1376,9 @@ function _tnCardPills(room, activeRec) {
     if (!planned) todos.push(ccTnStillActiveTodo(vacant, activeRec));   // a planned tenancy is not "still active"
   }
   const movesIn = ccTnMovesIn(vacant, activeRec);
-  const kPill = ((!vacant || movesIn) && activeRec)
+  let kPill = ((!vacant || movesIn) && activeRec)
     ? ccTnKautionPill(_tnKaution[activeRec.id], (_tnKautionSollInfo(activeRec) || {}).amount, _tnFmtEUR) : '';
+  if (/tnp-green/.test(kPill)) kPill = kPill.replace(/>Kaution [^<]*</, '>Kaution \u2713<');   // fully received
   return { row1: ccTnRow1(vacant, kPill, movesIn), todo: ccTnTodoRow(todos) };
 }
 function _tnRefreshCardPills(roomName) {
@@ -1880,10 +1892,16 @@ function _tnHeaderHTML(rid, room, activeRec) {
     : _plannedNoDate ? 'Move-in not set yet' : '';
   const _nextC = _cs ? _cs.next : null;
   const _mhN = activeRec ? _tnMhNext(activeRec, room.name) : null;   // next Mieterhöhung
-  const hdrNext = _nextC && _nextC.amt && curR && _nextC.amt.total !== curR.total
-    ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_tnFmtEUR(_nextC.amt.total)} ab ${_ccFmtD(_nextC.start)}</span>`
-    : _mhN && curR
-    ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_tnFmtEUR(curR.mode === 'pauschal' ? Number(_mhN.amount) : Number(_mhN.amount) + (Number(curR.nk) || 0))} ab ${_ccFmtD(String(_mhN.effective_date).slice(0, 10))}</span>` : '';
+  // the next rent change (as Controlling will count it): next contract · next Mieterhöhung · next NK-Anpassung
+  const _nkN = activeRec && curR && curR.mode !== 'pauschal' ? (_tnNKVoraus[room.name] || []).filter(x => !x.ignored && String(x.effective_date).slice(0, 10) > _ccTodayIso()
+      && (x.tenant_id ? String(x.tenant_id) === String(activeRec.id) : (!activeRec.mietbeginn || String(x.effective_date).slice(0, 10) >= _ccIso(activeRec.mietbeginn))))
+      .sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)))[0] || null : null;
+  const _chg = [];
+  if (_nextC && _nextC.amt && curR && _nextC.amt.total !== curR.total) _chg.push({ d: _nextC.start, amt: _nextC.amt.total });
+  if (_mhN && curR) _chg.push({ d: String(_mhN.effective_date).slice(0, 10), amt: curR.mode === 'pauschal' ? Number(_mhN.amount) : Number(_mhN.amount) + (Number(curR.nk) || 0) });
+  if (_nkN && curR) _chg.push({ d: String(_nkN.effective_date).slice(0, 10), amt: (Number(curR.kalt) || 0) + Number(_nkN.amount) });
+  _chg.sort((a, b) => a.d.localeCompare(b.d));
+  const hdrNext = _chg.length ? `<span class="tn-slim-next">\u2192 ${_tnFmtEUR(_chg[0].amt)} ab ${_ccFmtD(_chg[0].d)}</span>` : '';
 
   const pills = _tnCardPills(room, activeRec);
   const ctLabel = activeRec ? (_tnTypeWord(tnContractType(activeRec)) || '') : '';
@@ -1898,15 +1916,20 @@ function _tnHeaderHTML(rid, room, activeRec) {
     // rooms.vacant = true → always Vacant regardless of tenant records
     midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>`;
   } else if (activeRec) {
-    // rooms.vacant = false AND has active tenant record → Occupied with full info
-    midLine = `
-      <span class="tn-tenant-name">${esc(fullName || 'Unnamed tenant')}</span>
-      ${dateStr ? `<span class="tn-tenant-dates">${esc(dateStr)}</span>` : ''}`;
+    // Slim closed card (Oct 2026): name, then ONE line — type · until/since · warm rent · next change
+    midLine = `<span class="tn-tenant-name">${esc(fullName || 'Unnamed tenant')}</span>`;
+    const ct = tnContractType(activeRec);
+    const endC = _lastC && _lastC.end ? _lastC.end : null;
+    const when = activeRec.mietende ? (_tnIsPast(activeRec.mietende) ? 'moved out ' : 'moves out ') + mietende
+      : _movesIn && mietbeginn ? 'from ' + mietbeginn
+      : _plannedNoDate ? 'move-in not set yet'
+      : endC && _tnIsFixed(ct) ? 'bis ' + _ccFmtD(endC)
+      : mietbeginn ? 'since ' + mietbeginn : '';
     botLine = `
-      <div class="tn-hdr-bot">
-        ${warm != null ? `<span class="tn-warm">${_tnFmtEUR(warm)}</span><span class="tn-dim">${isKaltNK ? 'warm' : 'pauschal'}</span>` : ''}
-        ${(kalt != null && nk != null && isKaltNK) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_tnFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_tnFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
-        ${ctLabel ? _tnTypePill(tnContractType(activeRec)) : ''}
+      <div class="tn-slim-info">
+        ${ctLabel ? _tnTypePill(ct) : ''}
+        ${when ? `<span class="tn-slim-txt">${esc(when)}</span>` : ''}
+        ${warm != null ? `<span class="tn-slim-txt"><b>${_tnFmtEUR(warm)}</b> ${isKaltNK ? 'warm' : 'pauschal'}</span>` : ''}
         ${hdrNext}
       </div>`;
   } else {
@@ -1915,12 +1938,12 @@ function _tnHeaderHTML(rid, room, activeRec) {
   }
 
   return `
-<div class="tn-hdr-wrap" onclick="_tnToggleCard('tc-${rid}')">
-  <div class="tn-hdr-top">
+<div class="tn-hdr-wrap tn-slim" onclick="_tnToggleCard('tc-${rid}')">
+  <div class="tn-hdr-top tn-slim-top">
+    <div class="tn-room-lbl tn-unit-line">${esc(room.name)}</div>
     <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
-  <div class="tn-room-lbl tn-unit-line">${esc(room.name)}</div>
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
   <div class="tn-todo-row" id="hdr-todo-${rid}" style="${pills.todo ? '' : 'display:none'}">${pills.todo}</div>
