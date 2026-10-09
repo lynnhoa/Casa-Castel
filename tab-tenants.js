@@ -614,6 +614,11 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .cc-next-tenant .tnp { margin-left:6px; }
 #tab-tenants .cc-next-tenant .tn-btn-sm { margin-left:auto; }
 #tab-tenants .tn-rbox-todo { align-items:center; }
+
+/* App row (B6) */
+#tab-tenants .tn-app-row { margin:10px 0 2px; }
+#tab-tenants .tn-vac-pw { padding:0 14px 2px; }
+#tab-tenants .tn-vac-pw .tn-pw-test { margin:0 0 12px; }
 `;
   document.head.appendChild(s);
 })();
@@ -1494,6 +1499,26 @@ function _tnNeedsPw(rec) {
   const at = _tnPwAt[rec.room];
   return !at || String(at).slice(0, 10) < inAt;
 }
+
+/* Tenant-app password (B6): only from the move-in day, only after the tenant asks for it in the app
+   (“First time here?” / “Forgot password?”) and you approve the request. No direct “Give” / “Reset”
+   on the card any more — the request sheet (banner under the tabs) sends it. */
+function _tnAppRowHTML(room, rec) {
+  if (!rec) return '';
+  const mb = _ccIso(rec.mietbeginn), today = _ccTodayIso();
+  const pend = typeof _pwaOpen === 'function' ? _pwaOpen().filter(q => q.room === room) : [];
+  const review = pend.length ? `<button type="button" class="tn-btn tn-btn-sm" onclick="ccPwRequestsOpen()">Review request</button>` : '';
+  const row = (txt, btn, need) => `<div class="${need ? 'tn-pw-need' : 'tn-pw-test'} tn-app-row"><i class="ti ti-key" aria-hidden="true"></i><span>${txt}</span>${btn || ''}</div>`;
+  if (!mb || mb > today) return row(`App · from the move-in day${mb ? ' ' + _ccFmtD(mb) : ''} — the tenant asks for it in the app`, review, false);
+  if (pend.length) return row('App · password request waiting', review, true);
+  if (_tnNeedsPw(rec)) return row('App · not given yet — the tenant asks for it in the app (“First time here?”)', '', true);
+  const at = _tnPwAt[room];
+  const r = esc(room);
+  return `<div class="tn-pw-test pwa-pwline tn-app-row"><i class="ti ti-key" aria-hidden="true"></i>
+    <span>App · given${at ? ' ' + _tnFmtDate(String(at).slice(0, 10)) : ''}${typeof ccRoomPwInline === 'function' ? ccRoomPwInline(room) : ''}</span>
+    <button type="button" class="tn-btn tn-btn-sm" data-cc-pw-copy="${r}"><i class="ti ti-copy"></i> Copy</button></div>`;
+}
+
 /* Empty room (T2): a password to log into the tenant app yourself and test.
    The next tenant gets their own (amber reminder from move-in day) — then this one stops working. */
 function _tnEmptyRoomPwHTML(room) {
@@ -1523,6 +1548,7 @@ async function _tnGivePw(room, name) {
 let _tnRenderedSig = null;
 function _tnRenderIfChanged() {
   const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache, _tnPwAt,
+                              (typeof _pwaOpen === 'function' ? _pwaOpen().map(q => q.room) : []),
                               (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
                               (typeof CC_RP !== 'undefined' ? CC_RP.rows.filter(r => r.app === 'casa') : []),
                               (typeof appRooms !== 'undefined' ? appRooms : []).map(r => [r.id, r.name, r.active, r.vacant, r.sort_order,
@@ -1667,6 +1693,7 @@ function _tnVacantAddHTML(rid, room) {
   return `<div class="tn-rent-wrap tn-newc" id="vacadd-${rid}">
     <div class="tn-rtitle"><span class="tn-rt-name">No tenant</span><span class="tn-rt-dates">add the next one — name is enough</span></div>
     <div class="tn-vac-add"><button type="button" class="tn-btn tn-btn-primary" onclick="_tnNextSheet('${esc(room.name)}')"><i class="ti ti-user-plus" aria-hidden="true"></i> Add next tenant</button></div>
+    <div class="tn-vac-pw">${_tnEmptyRoomPwHTML(room.name)}</div>
   </div>`;
 }
 function _tnNextSheet(roomName) {
@@ -2556,8 +2583,6 @@ function _tnProfileSectionHTML(rid, room, rec) {
   <div class="tn-sec-footer-split" id="pfoot-read-${rid}" ${startEdit ? 'style="display:none"' : ''}>
     ${email ? `<button class="tn-btn tn-btn-sm" onclick="window.location.href=buildMailto('${email}','Message from Casa Castel','')">
       <i class="ti ti-mail"></i> Email</button>` : ''}
-    <button class="tn-btn tn-btn-sm" onclick="_tnResetPw('${esc(room.name)}')">
-      <i class="ti ti-key"></i> Reset pw</button>
 
     <div class="tn-spacer"></div>
     <button class="tn-btn tn-btn-sm" id="pedit-btn-${rid}" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">
@@ -2581,11 +2606,8 @@ function _tnProfileSectionHTML(rid, room, rec) {
     <div style="margin-bottom:8px"><span class="tn-sec-lbl">Tenant</span></div>
     ${!rec ? _tnEmptyRoomPwHTML(room.name) : ''}
     ${readView}
-    ${rec && typeof ccRoomPwLineHTML === 'function' ? ccRoomPwLineHTML(room.name) : ''}
+    ${rec ? _tnAppRowHTML(room.name, rec) : ''}
     ${editView}
-    ${rec && _tnNeedsPw(rec) ? `<div class="tn-pw-need"><i class="ti ti-key"></i>
-      <span>Tenant-app password not given yet · moved in ${_tnFmtDate(rec.mietbeginn)}</span>
-      <button class="tn-btn tn-btn-sm" onclick="_tnGivePw('${esc(room.name)}','${esc([rec.first_name, rec.last_name].filter(Boolean).join(' '))}')">Give password</button></div>` : ''}
   </div>
   ${footerRead}
   ${footerEdit}

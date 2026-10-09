@@ -44,7 +44,7 @@ function ccRoomPwInline(room) {
 function ccPwApply() {
   document.querySelectorAll('[data-cc-pw]').forEach(el => {
     const pw = CC_ROOM_PW[el.dataset.ccPw];
-    el.textContent = pw || '— reset once to see it';
+    el.textContent = pw || 'older password, not shown';
     el.classList.toggle('pwa-pw--none', !pw);
   });
   document.querySelectorAll('[data-cc-pw-copy]').forEach(b => { b.style.display = CC_ROOM_PW[b.dataset.ccPwCopy] ? '' : 'none'; });
@@ -175,6 +175,7 @@ async function ccPwRequestsLoad() {
     if (error) return;
     _pwaList = Array.isArray(data) ? data : [];
     _pwaRender();
+    if (typeof _tnRenderIfChanged === 'function') _tnRenderIfChanged();   // tenant card: "request waiting"
   } catch (e) {}
 }
 function ccPwRequestsOpen() {
@@ -203,6 +204,7 @@ async function _pwaSend(id, makeNew) {
   }
   _pwaJustSent[id] = data.password;
   ccPwRemember(q.room, data.password);
+  if (typeof _tnLoadPwDates === 'function') await _tnLoadPwDates();         // tenant card: "App · given …"
   await ccPwRequestsLoad();
 }
 async function _pwaDecline(id) {
