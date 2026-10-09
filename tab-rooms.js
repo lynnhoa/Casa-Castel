@@ -1314,15 +1314,14 @@ function _roomCardHTML(r) {
   const who = typeof tnRoomWhoLine === 'function' ? tnRoomWhoLine(r.name) : null;
   const mvB = _roomMvPricing(r);
   const roomJs = esc(r.name).replace(/'/g, "\\'");
+  // Closed card: the room's Soll (Jahres- / Mietvertrag baseline) — the tenant is inside the card
   let whoLine = '';
-  if (who && who.kind !== 'vacant') {
-    whoLine = `<span class="rc-who">${esc(who.text)}</span>`;
-  } else if (!vacant && !who) {
-    whoLine = '';
+  if (mvB.total) {
+    const kSoll = ccKaution({ contract: 'mietvertrag', mode: mvB.mode, kalt: mvB.kalt, nk: mvB.nk, rec: r }).amount || 0;
+    const split = mvB.mode === 'pauschal' ? 'pauschal' : fmtEUR(mvB.kalt).replace(/\s?€$/, '') + ' + ' + fmtEUR(mvB.nk).replace(/\s?€$/, '') + ' Kalt + NK';
+    whoLine = `<span class="rc-who"><b>Soll ${fmtEUR(mvB.total)}</b> ${mvB.mode === 'pauschal' ? '' : 'warm'}<span class="rc-who__sub">${split} · Kaution ${fmtEUR(kSoll)}</span></span>`;
   } else {
-    const since = who && who.since ? 'Vacant since ' + who.since : 'Vacant';
-    const base = mvB.total ? ' · Baseline ' + fmtEUR(mvB.kalt) + (mvB.mode === 'pauschal' ? ' pauschal' : ' + ' + fmtEUR(mvB.nk) + ' NK') : '';
-    whoLine = `<span class="rc-who rc-who--vac">${esc(since + base)}</span>`;
+    whoLine = `<span class="rc-who rc-who--vac">Soll not set — Baseline rent › Edit</span>`;
   }
   const metaParts = [r.flaeche_m2 ? r.flaeche_m2 + ' m²' : '', r.floor || '', r.room_type || '', hasKitchen ? 'Kitchen' : ''].filter(Boolean);
 
@@ -1361,7 +1360,8 @@ function _roomCardHTML(r) {
 
     <!-- ── OPEN CARD ── -->
     <div class="rc-read">
-      ${who && who.kind !== 'vacant' ? `<div class="rc-tenantlink"><span>${who.kind === 'next' ? 'Next tenant' : 'Tenant details'}</span>
+      ${who && who.kind === 'vacant' ? `<div class="rc-tenantlink"><span>${esc(who.since ? 'Vacant since ' + who.since : 'Vacant')}</span></div>` : ''}
+      ${who && who.kind !== 'vacant' ? `<div class="rc-tenantlink"><span>${esc(who.text)}</span>
         <button type="button" onclick="_rcOpenTenant('${roomJs}')">Open in Tenants <i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>` : ''}
       <div class="rc-section" id="rc-room-${r.id}">
         <div class="rc-stitle">Room</div>
@@ -4975,9 +4975,11 @@ function _roomSheetSave() {
 .cc-sumline__vals span { display:block; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#8A6535; }
 .cc-sumline__vals b { display:block; font-size:15px; font-weight:600; color:var(--cc-ink); margin-top:2px; white-space:nowrap; }
 .rc-who { display:block; margin-top:6px; font-size:14px; color:var(--cc-ink); }
+.rc-who b { font-weight:600; }
+.rc-who__sub { display:block; margin-top:2px; color:#7A6F62; font-size:13px; }
 .rc-who--vac { color:#7A4E22; }
 .rc-tenantlink { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; background:var(--cc-bg); border-bottom:var(--cc-border); font-size:13px; color:#7A6F62; }
-.rc-tenantlink span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rc-tenantlink span { min-width:0; color:var(--cc-ink); line-height:1.4; }
 .rc-tenantlink button { flex:0 0 auto; min-height:36px; padding:0 12px; border:var(--cc-border); border-radius:var(--cc-r-md); background:var(--cc-white); font-family:inherit; font-size:13px; font-weight:500; color:var(--cc-ink); cursor:pointer; }
 .rc-tenantlink button i { font-size:12px; }
 .rc-base { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; grid-column:1 / -1; }

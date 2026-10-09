@@ -3874,7 +3874,7 @@ function tnRoomWhoLine(roomName) {
     const end = _ccIso(r.mietende) || (last && last.end) || _ccIso(r.vertragsende);
     const tail = r.mietende ? 'moves out ' + _ccFmtD(r.mietende)
       : end && _tnIsFixed(ct) ? 'bis ' + _ccFmtD(end) : (r.mietbeginn ? 'since ' + _ccFmtD(r.mietbeginn) : '');
-    return { kind: 'current', text: [nm(r), _tnContractLabel(ct), tail].filter(Boolean).join(' · ') };
+    return { kind: 'current', text: [nm(r), _tnTypeWord(ct), tail].filter(Boolean).join(' · ') };
   }
   if (pick.next) return { kind: 'next', text: 'Moves in ' + _ccFmtD(pick.next.mietbeginn) + ' · ' + nm(pick.next) };
   const lastOut = recs.map(r => _ccIso(r.mietende)).filter(Boolean).sort().pop();
