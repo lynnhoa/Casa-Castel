@@ -636,6 +636,9 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .tn-slim-txt b { font-weight:500; color:var(--cc-charcoal); }
 #tab-tenants .tn-slim-next { white-space:nowrap; }
 #tab-tenants .tn-slim-next { color:#8C5A30; font-size:12.5px; }
+
+/* Instant start: the last view is shown until fresh data arrives (taps wait a moment) */
+#tenantsList.tn-snap { pointer-events:none; }
 `;
   document.head.appendChild(s);
 })();
@@ -1565,9 +1568,31 @@ function _getProfile(room) {
 /* ══════════════════════════════════════════════════════════════
    9. RENDER
 ══════════════════════════════════════════════════════════════ */
+/* Instant start (Oct 2026): the list as it looked last time is shown at once from this phone,
+   then replaced by the fresh data the moment it arrives — never "No tenant added" while loading.
+   Only on the landlord's device, replaced on every load; taps wait for the fresh list. */
+const _TN_SNAP = 'cc_tn_snapshot_v1';
+function _tnSnapPaint(list) {
+  if (list.querySelector('.tn-card')) return;
+  let snap = null;
+  try { if (localStorage.getItem('cc_role') === 'landlord') snap = JSON.parse(localStorage.getItem(_TN_SNAP) || 'null'); } catch (e) {}
+  if (!snap || !snap.list) return;
+  list.innerHTML = snap.list;
+  list.classList.add('tn-snap');
+  const ist = document.getElementById('tn-ist');
+  if (ist && snap.ist) { ist.innerHTML = snap.ist; ist.style.display = ''; }
+}
+function _tnSnapSave(cardsHTML) {
+  try {
+    const ist = document.getElementById('tn-ist');
+    localStorage.setItem(_TN_SNAP, JSON.stringify({ list: cardsHTML, ist: ist && ist.style.display !== 'none' ? ist.innerHTML : '', at: Date.now() }));
+  } catch (e) {}
+}
 function _tnRender() {
   const list = document.getElementById('tenantsList');
   if (!list) return;
+  if (!_tnLoadedOnce) { _tnSnapPaint(list); return; }   // data not here yet: last view, never empty cards
+  list.classList.remove('tn-snap');
 
   const rooms = (typeof appRooms !== 'undefined' && appRooms.length)
     ? appRooms.filter(r => r.active).sort((a,b) => (a.sort_order||0) - (b.sort_order||0))
@@ -1584,6 +1609,7 @@ function _tnRender() {
   // Same cards in the same order as on screen → swap only the cards whose content changed
   // (Rentals does the same): no flash, no jump, and an open form in another card stays open
   const cards = rooms.map(r => ({ id: 'tc-' + esc(r.name.replace(/\s+/g,'_').toLowerCase()), html: _tnCardHTML(r) }));
+  _tnSnapSave(cards.map(c => c.html).join(''));   // the start view for next time (cards closed)
   const onScreen = [...list.querySelectorAll(':scope > .tn-card')];
   if (typeof ccSwapCard === 'function' && onScreen.length === cards.length && onScreen.every((c, i) => c.id === cards[i].id)) {
     cards.forEach((c, i) => {
