@@ -78,6 +78,36 @@ document.getElementById('tab-tenants').innerHTML = `
   const s = document.createElement('style');
   s.id = 'tn-styles';
   s.textContent = `
+.tn-cr { display:flex; flex-direction:column; gap:12px; padding:14px 16px 10px; }
+.tn-cr-now { display:flex; flex-direction:column; gap:2px; padding:12px 14px; border-radius:10px; background:var(--cc-bg); border:var(--cc-border); }
+.tn-cr-now b { font-size:15px; font-weight:600; color:var(--cc-ink); }
+.tn-cr-lbl { display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-charcoal); margin-bottom:6px; }
+.tn-cr-seg { display:flex; border:.5px solid var(--cc-rule); border-radius:8px; overflow:hidden; }
+.tn-cr-seg button { flex:1; min-height:40px; border:none; background:var(--cc-white); font-family:inherit; font-size:13.5px; color:var(--cc-charcoal); cursor:pointer; }
+.tn-cr-seg button.on, .tn-cr-mode[data-mode="kalt_nk"] button[data-v="kalt_nk"], .tn-cr-mode[data-mode="pauschal"] button[data-v="pauschal"] { background:var(--cc-ink); color:var(--cc-white); }
+.tn-cr-hint { margin:-4px 0 0; font-size:12.5px; line-height:1.5; color:#7A6F62; }
+.tn-cr-two { display:flex; gap:10px; }
+.tn-cr-two > .tn-cr-f { flex:1 1 0; min-width:0; }
+.tn-cr-in { width:100%; box-sizing:border-box; min-height:44px; padding:0 14px; border:.5px solid var(--cc-rule); border-radius:8px; background:var(--cc-bg); font-family:inherit; font-size:16px; color:var(--cc-ink); }
+.tn-cr-num { text-align:right; }
+.tn-cr-calc { display:flex; justify-content:space-between; align-items:center; min-height:44px; padding:0 14px; border-radius:8px; background:#F2E9DA; color:#7A5A22; font-size:14px; }
+.tn-cr-calc b { color:var(--cc-ink); font-size:16px; }
+.tn-cr-sw { display:flex; align-items:center; gap:12px; cursor:pointer; }
+.tn-cr-sw input { position:absolute; opacity:0; width:1px; height:1px; }
+.tn-cr-sw__t { flex:0 0 44px; height:26px; border-radius:13px; background:var(--cc-stone); position:relative; transition:background .15s; }
+.tn-cr-sw__t::after { content:''; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:transform .15s; }
+.tn-cr-sw input:checked + .tn-cr-sw__t { background:var(--cc-ink); }
+.tn-cr-sw input:checked + .tn-cr-sw__t::after { transform:translateX(18px); }
+.tn-cr-sw b { display:block; font-size:14px; font-weight:500; color:var(--cc-ink); }
+.tn-cr-sw small { display:block; font-size:12px; color:#7A6F62; }
+.tn-cr-btns { display:flex; justify-content:flex-end; gap:8px; }
+.tn-cr-btns .tn-btn-primary { min-height:42px; padding:0 18px; }
+.tn-cr-list { border-top:var(--cc-border); padding-top:12px; }
+.tn-cr-row { padding:10px 0; border-top:var(--cc-border); }
+.tn-cr-list .tn-cr-lbl + .tn-cr-row { border-top:none; }
+.tn-cr-row__t { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; color:var(--cc-ink); }
+.tn-cr-row__a { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px; }
+
 
 /* ── PAGE ── */
 .tn-hdr { margin-bottom: 20px; }
@@ -1566,14 +1596,7 @@ function _tnNkGroupHTML(rid, room, rec) {
       meta: open ? `<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(rec))}</span>` : 'none due',
       onclick: `_tnSheet('nk','${rid}','${rec.id}')` }));
   }
-  if (_tnIsKaltNK(rec, room.name)) {
-    const c = _tnNKVorausCurFor(room.name);
-    const pend = typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_tnNKVoraus[room.name], rec) : null;
-    rows.push(ccRowHTML({ icon: 'coin-euro', title: 'NK-Vorauszahlung',
-      meta: pend ? `<span class="tnp ${pend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${esc(pend.text)}</span>`
-                 : c ? `${_tnFmtEUR(c.amount)}/mo` : 'not set',
-      onclick: `_tnSheet('nkv','${rid}','${rec.id}')` }));
-  }
+  // NK-Vorauszahlung changes: in "Change rent" (one place for every rent change)
   return rows.length ? ccGroupHTML('Nebenkosten', rows.join('')) : '';
 }
 function _tnDetailsGroupHTML(rid, rec) {
@@ -1711,7 +1734,11 @@ function _tnMhRowHTML(rid, room, rec) {
   const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">Mieterhöhung overdue</span>`
     : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">Mieterhöhung from ${fd(st.entry.effective_date)}</span>`
     : (typeof ccTnStepNext === 'function' ? ccTnStepNext(own, _tnFmtEUR, fd) : '');
-  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Mieterhöhung', meta, onclick: `_tnSheet('mh','${rid}','${rec.id}')` }));
+  // NK changes now live in the same sheet: an NK change that is due shows here too
+  const nkPend = _tnIsKaltNK(rec, room.name) && typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_tnNKVoraus[room.name], rec) : null;
+  const meta2 = nkPend && !(st && (st.state === 'overdue' || st.state === 'reminder'))
+    ? `<span class="tnp ${nkPend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${esc(nkPend.text)}</span>` : meta;
+  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Change rent', meta: meta2, onclick: `_tnChangeRentOpen('${rid}','${rec.id}')` }));
 }
 function _tnMhHTML(rid, roomName, rec) {
   const own = _tnOwnMh(roomName, rec).slice().sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
@@ -1787,6 +1814,233 @@ async function _tnMhDelete(id, roomName) {
   _tnMh[roomName] = (_tnMh[roomName] || []).filter(x => String(x.id) !== String(id));
   _tnRender(); if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
 }
+
+/* ══════════════════════════════════════════════════════════════
+   CHANGE RENT — one sheet for every rent change of the running tenancy (Oct 2026)
+   Reason              stored in (unchanged tables, so Controlling + Settlements read it as before)
+   · Mieterhöhung      casa_mieterhoehung_history  (new Kaltmiete / Pauschalmiete from a date)
+   · NK-Anpassung      nk_vorauszahlung_history    (new NK-Vorauszahlung from a date, informed yes/no)
+   · Korrektur         rent_periods                (fixes the current rent entry — no date)
+   Below the form: all planned and past changes with their buttons (Adjusted · Skip · Informed).
+══════════════════════════════════════════════════════════════ */
+const _tnCR = {};   // tid → { reason, mode } while the sheet is open
+function _tnCrNum(id) {
+  let v = String(document.getElementById(id)?.value ?? '').trim().replace(/[\s€]/g, '');
+  if (!v) return null;
+  if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(v); return isNaN(n) ? null : Math.round(n * 100) / 100;
+}
+function _tnCrDe(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }); }
+function _tnCrNow(rec) {
+  const cur = _tnCurrentRent(rec, rec.room);
+  if (!cur) return null;
+  if (cur.mode === 'pauschal') {
+    const nkIn = Number(cur.period && cur.period.nebenkosten) || 0;
+    return { mode: 'pauschal', total: Number(cur.total) || 0, kalt: Math.max(0, (Number(cur.total) || 0) - nkIn), nk: nkIn };
+  }
+  const nkC = _tnNKVorausCurFor(rec.room);
+  const nk = nkC ? Number(nkC.amount) : (Number(cur.nk) || 0);
+  return { mode: 'kalt_nk', kalt: Number(cur.kalt) || 0, nk, total: (Number(cur.kalt) || 0) + nk };
+}
+function _tnChangeRentOpen(rid, tid, reason) {
+  const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec) return;
+  const now = _tnCrNow(rec);
+  _tnCR[tid] = { reason: reason || 'mieterhoehung', mode: now ? now.mode : _tnLegacyMode(rec.room, rec), rid };
+  ccSheetOpen({
+    title: 'Change rent',
+    kicker: rec.room + ' \u00b7 ' + ([rec.first_name, rec.last_name].filter(Boolean).join(' ') || ''),
+    build: () => _tnChangeRentHTML(rid, tid),
+  });
+  _tnCrRefresh(tid);
+}
+function _tnChangeRentHTML(rid, tid) {
+  const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec) return '';
+  const st = _tnCR[tid] || (_tnCR[tid] = { reason: 'mieterhoehung', mode: 'kalt_nk', rid });
+  const now = _tnCrNow(rec);
+  const pa = now ? now.mode === 'pauschal' : st.mode === 'pauschal';
+  if (pa && st.reason === 'nk') st.reason = 'mieterhoehung';
+  const ctLbl = _tnContractLabel(tnContractType(rec)) || '';
+  const seg = (v, l) => `<button type="button" data-v="${v}"${v === st.reason ? ' class="on"' : ''} onclick="_tnCrReason('${tid}','${v}')">${l}</button>`;
+  const _v = l => l.split(' ').includes(st.reason) ? '' : ' style="display:none"';   // right state also after a redraw
+  setTimeout(() => _tnCrRefresh(tid), 0);                                           // the "New" line after a redraw
+  const nowTxt = !now ? 'not set'
+    : pa ? `${_tnFmtEUR(now.total)} pauschal${now.nk ? ' \u00b7 davon NK ' + _tnFmtEUR(now.nk) : ''}`
+         : `${_tnFmtEUR(now.total)} warm \u00b7 ${_tnFmtEUR(now.kalt)} Kalt + ${_tnFmtEUR(now.nk)} NK`;
+  return `
+<div class="tn-cr" id="tn-cr-${tid}" data-reason="${st.reason}" data-pa="${pa ? 1 : 0}">
+  <div class="tn-cr-now"><span class="tn-flbl">Now${ctLbl ? ' \u00b7 ' + esc(ctLbl) : ''}</span><b>${nowTxt}</b></div>
+  <div class="tn-cr-lbl">Reason</div>
+  <div class="tn-cr-seg" id="tn-cr-seg-${tid}">${seg('mieterhoehung', 'Mieterhöhung')}${pa ? '' : seg('nk', 'NK-Anpassung')}${seg('korrektur', 'Korrektur')}</div>
+  <p class="tn-cr-hint" data-only="mieterhoehung"${_v('mieterhoehung')}>New ${pa ? 'Pauschalmiete' : 'Kaltmiete'} from a date. Controlling counts it from that day; mark it “Adjusted” once the tenant pays it.</p>
+  <p class="tn-cr-hint" data-only="nk"${_v('nk')}>New NK-Vorauszahlung from a date. Tell the tenant in Textform before it takes effect.</p>
+  <p class="tn-cr-hint" data-only="korrektur"${_v('korrektur')}>Fixes the current rent entry if it was entered wrong. No date — the old amount is replaced.</p>
+  ${pa ? `<p class="tn-cr-hint" data-only="mieterhoehung nk"${_v('mieterhoehung nk')}>Pauschal: the NK are inside the Pauschalmiete — change the NK part with Korrektur.</p>` : ''}
+
+  <div class="tn-cr-f" data-only="mieterhoehung nk"${_v('mieterhoehung nk')}><label class="tn-cr-lbl" for="tn-cr-from-${tid}">Gilt ab</label>
+    <input class="tn-cr-in" id="tn-cr-from-${tid}" type="text" inputmode="numeric" placeholder="TT.MM.JJJJ" autocomplete="off" oninput="_tnCrRefresh('${tid}')"/></div>
+
+  <div class="tn-cr-f" data-only="korrektur"${_v('korrektur')}><span class="tn-cr-lbl">Rent</span>
+    <div class="tn-cr-seg tn-cr-mode" id="tn-cr-mode-${tid}" data-mode="${pa ? 'pauschal' : 'kalt_nk'}">
+      <button type="button" data-v="kalt_nk" onclick="_tnCrMode('${tid}','kalt_nk')">Kalt + NK</button>
+      <button type="button" data-v="pauschal" onclick="_tnCrMode('${tid}','pauschal')">Pauschal</button></div></div>
+
+  <div class="tn-cr-two">
+    <div class="tn-cr-f" data-only="mieterhoehung korrektur"${_v('mieterhoehung korrektur')}><label class="tn-cr-lbl" for="tn-cr-kalt-${tid}" id="tn-cr-kl-${tid}">${pa ? 'Pauschalmiete €' : 'Kaltmiete €'}</label>
+      <input class="tn-cr-in tn-cr-num" id="tn-cr-kalt-${tid}" type="text" inputmode="decimal" autocomplete="off"
+        value="${now ? _tnCrDe(pa ? now.total : now.kalt) : ''}" oninput="_tnCrRefresh('${tid}')"/></div>
+    <div class="tn-cr-f" data-only="nk korrektur"${_v('nk korrektur')}><label class="tn-cr-lbl" for="tn-cr-nk-${tid}" id="tn-cr-nl-${tid}">${pa ? 'davon NK €' : 'Nebenkosten €'}</label>
+      <input class="tn-cr-in tn-cr-num" id="tn-cr-nk-${tid}" type="text" inputmode="decimal" autocomplete="off"
+        value="${now ? _tnCrDe(now.nk) : ''}" oninput="_tnCrRefresh('${tid}')"/></div>
+  </div>
+
+  <div class="tn-cr-calc"><span id="tn-cr-calc-l-${tid}">New</span><b id="tn-cr-calc-${tid}">—</b></div>
+
+  <div data-only="nk"${_v('nk')}>
+    <label class="tn-cr-sw"><input type="checkbox" id="tn-cr-inf-${tid}" onchange="_tnCrRefresh('${tid}')"/><span class="tn-cr-sw__t" aria-hidden="true"></span>
+      <span><b>Tenant informed</b><small>Informed in Textform</small></span></label>
+    <div class="tn-cr-f" id="tn-cr-infd-wrap-${tid}" style="display:none;margin-top:10px"><label class="tn-cr-lbl" for="tn-cr-infd-${tid}">Informed on</label>
+      <input class="tn-cr-in" id="tn-cr-infd-${tid}" type="text" inputmode="numeric" placeholder="TT.MM.JJJJ" value="${_ccFmtD(_ccTodayIso())}"/></div>
+  </div>
+
+  <div class="tn-cr-btns">
+    <button type="button" class="tn-btn tn-btn-sm" onclick="ccSheetClose()">Cancel</button>
+    <button type="button" class="tn-btn tn-btn-primary" onclick="_tnCrSave('${tid}')">Save change</button>
+  </div>
+
+  ${_tnCrListHTML(rid, rec)}
+</div>`;
+}
+/* All planned and past changes of this tenancy (Mieterhöhung + NK) with their buttons */
+function _tnCrListHTML(rid, rec) {
+  const fd = d => _ccFmtD(String(d).slice(0, 10));
+  const today = _ccTodayIso();
+  const room = rec.room;
+  const mh = _tnOwnMh(room, rec).map(e => ({ t: 'mh', e, d: String(e.effective_date).slice(0, 10) }));
+  const who = _tnNKVorausWho(room);
+  const mb = rec.mietbeginn ? _ccIso(rec.mietbeginn) : '';
+  const nk = (who && String(who.id) === String(rec.id) ? (_tnNKVoraus[room] || []) : [])
+    .filter(x => x.tenant_id ? String(x.tenant_id) === String(rec.id) : (!mb || String(x.effective_date).slice(0, 10) >= mb))
+    .map(e => ({ t: 'nk', e, d: String(e.effective_date).slice(0, 10) }));
+  const all = mh.concat(nk).sort((a, b) => b.d.localeCompare(a.d));
+  if (!all.length) return `<div class="tn-cr-list"><div class="tn-cr-lbl" style="margin-top:6px">Changes</div><p class="tn-empty" style="margin:4px 0 0">No rent changes yet.</p></div>`;
+  const rows = all.map(({ t, e, d }) => {
+    const fut = d > today;
+    const state = e.ignored ? ['tnp-gray', 'skipped'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : fut ? ['tnp-amber', 'upcoming'] : ['tnp-red', 'open'];
+    const btn = (on, lbl, call) => `<button type="button" class="tn-nkv-pill ${on ? 'done' : 'pending'}" onclick="${call}">${lbl}</button>`;
+    let actions = '';
+    if (t === 'mh') {
+      actions = (e.ignored ? '' : btn(e.tenant_adjusted, '<i class="ti ti-check" aria-hidden="true"></i> Adjusted', `_tnMhToggle('${e.id}','${esc(room)}','adj')`))
+        + btn(e.ignored, '<i class="ti ti-ban" aria-hidden="true"></i> ' + (e.ignored ? 'Skipped' : 'Skip'), `_tnMhToggle('${e.id}','${esc(room)}','ign')`)
+        + `<button class="tn-icon-btn" style="color:var(--cc-stone)" aria-label="Delete" onclick="_tnMhDelete('${e.id}','${esc(room)}')"><i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i></button>`;
+    } else {
+      actions = (e.tenant_notified ? `<span class="tn-nkv-pill done"><i class="ti ti-mail" aria-hidden="true"></i> Informed</span>`
+                  : btn(false, '<i class="ti ti-mail" aria-hidden="true"></i> Informed?', `_tnNKVorausMarkNotified('${e.id}','${esc(room)}','${rid}')`))
+        + (e.ignored ? '' : e.tenant_adjusted ? `<span class="tn-nkv-pill done"><i class="ti ti-check" aria-hidden="true"></i> Adjusted</span>`
+                  : btn(false, '<i class="ti ti-check" aria-hidden="true"></i> Adjusted?', `_tnNKVorausMarkAdjusted('${e.id}','${esc(room)}','${rid}')`))
+        + btn(e.ignored, '<i class="ti ti-ban" aria-hidden="true"></i> ' + (e.ignored ? 'Skipped' : 'Skip'), `_tnNkvSkip('${e.id}','${esc(room)}')`);
+    }
+    const what = t === 'mh' ? (_tnMhKind(e) === 'Korrektur' ? 'Korrektur' : 'Mieterhöhung') + ' \u00b7 ' + (_tnIsKaltNK(rec, room) ? 'Kalt ' : 'Pauschal ') + _tnFmtEUR(e.amount)
+                            : 'NK-Anpassung \u00b7 NK ' + _tnFmtEUR(e.amount);
+    return `<div class="tn-cr-row"><div class="tn-cr-row__t"><span${e.ignored ? ' style="text-decoration:line-through;color:var(--cc-taupe)"' : ''}>${fut ? 'from ' : ''}${fd(d)} \u00b7 ${what}</span>
+      <span class="tnp ${state[0]}">${state[1]}</span></div><div class="tn-cr-row__a">${actions}</div></div>`;
+  }).join('');
+  return `<div class="tn-cr-list"><div class="tn-cr-lbl" style="margin-top:6px">Changes</div>${rows}</div>`;
+}
+function _tnCrReason(tid, reason) { if (_tnCR[tid]) _tnCR[tid].reason = reason; _tnCrRefresh(tid); }
+function _tnCrMode(tid, mode) {
+  if (_tnCR[tid]) _tnCR[tid].mode = mode;
+  const box = document.getElementById('tn-cr-mode-' + tid); if (box) box.dataset.mode = mode;
+  const kl = document.getElementById('tn-cr-kl-' + tid), nl = document.getElementById('tn-cr-nl-' + tid);
+  if (kl) kl.textContent = mode === 'pauschal' ? 'Pauschalmiete €' : 'Kaltmiete €';
+  if (nl) nl.textContent = mode === 'pauschal' ? 'davon NK €' : 'Nebenkosten €';
+  _tnCrRefresh(tid);
+}
+function _tnCrRefresh(tid) {
+  const box = document.getElementById('tn-cr-' + tid); if (!box) return;
+  const st = _tnCR[tid] || {}; const reason = st.reason || 'mieterhoehung';
+  box.dataset.reason = reason;
+  box.querySelectorAll('[data-only]').forEach(el => { el.style.display = el.dataset.only.split(' ').includes(reason) ? '' : 'none'; });
+  document.querySelectorAll('#tn-cr-seg-' + tid + ' button').forEach(b => b.classList.toggle('on', b.dataset.v === reason));
+  const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec) return;
+  const now = _tnCrNow(rec) || { mode: st.mode, kalt: 0, nk: 0, total: 0 };
+  const k = _tnCrNum('tn-cr-kalt-' + tid), n = _tnCrNum('tn-cr-nk-' + tid);
+  const from = _tnParseDate(document.getElementById('tn-cr-from-' + tid)?.value || '');
+  let txt = '—', lbl = 'New';
+  if (reason === 'mieterhoehung') {
+    const tot = now.mode === 'pauschal' ? k : (k == null ? null : k + (now.nk || 0));
+    if (tot != null) txt = _tnFmtEUR(tot) + (now.mode === 'pauschal' ? ' pauschal' : ' warm');
+    lbl = from ? 'From ' + _ccFmtD(from) : 'New';
+  } else if (reason === 'nk') {
+    if (n != null) txt = _tnFmtEUR((now.kalt || 0) + n) + ' warm';
+    lbl = from ? 'From ' + _ccFmtD(from) : 'New';
+  } else {
+    const pa = (st.mode || now.mode) === 'pauschal';
+    if (k != null) txt = pa ? _tnFmtEUR(k) + ' pauschal' + (n ? ' \u00b7 ohne NK ' + _tnFmtEUR(Math.max(0, k - n)) : '') : _tnFmtEUR(k + (n || 0)) + ' warm';
+    lbl = 'Corrected';
+  }
+  const c = document.getElementById('tn-cr-calc-' + tid), cl = document.getElementById('tn-cr-calc-l-' + tid);
+  if (c) c.textContent = txt; if (cl) cl.textContent = lbl;
+  const inf = document.getElementById('tn-cr-inf-' + tid)?.checked;
+  const w = document.getElementById('tn-cr-infd-wrap-' + tid); if (w) w.style.display = inf ? '' : 'none';
+}
+async function _tnCrSave(tid) {
+  const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec || !sbL) return;
+  const st = _tnCR[tid] || {}; const reason = st.reason || 'mieterhoehung';
+  const room = rec.room;
+  const now = _tnCrNow(rec);
+  const k = _tnCrNum('tn-cr-kalt-' + tid), n = _tnCrNum('tn-cr-nk-' + tid);
+  const fromRaw = document.getElementById('tn-cr-from-' + tid)?.value || '';
+  const from = _tnParseDate(fromRaw);
+  document.activeElement && document.activeElement.blur && document.activeElement.blur();
+  if (reason === 'mieterhoehung' || reason === 'nk') {
+    if (!from) { ccToast('Gilt ab: TT.MM.JJJJ', true); return; }
+    if (reason === 'mieterhoehung') {
+      if (!(k > 0)) { ccToast('Enter the new ' + (now && now.mode === 'pauschal' ? 'Pauschalmiete' : 'Kaltmiete'), true); return; }
+      const { data, error } = await sbL.from('casa_mieterhoehung_history')
+        .insert({ room, tenant_id: String(rec.id), effective_date: from, amount: k, kind: 'mieterhoehung', tenant_adjusted: false, ignored: false }).select().single();
+      if (error) { ccSaveFailed(error, 'Mieterhöhung'); return; }
+      (_tnMh[room] = _tnMh[room] || []).unshift(data);
+      if (typeof ccSavedToast === 'function') ccSavedToast('Mieterhöhung saved');
+    } else {
+      if (n == null || n < 0) { ccToast('Enter the new Nebenkosten', true); return; }
+      const inf = !!document.getElementById('tn-cr-inf-' + tid)?.checked;
+      const infd = inf ? (_tnParseDate(document.getElementById('tn-cr-infd-' + tid)?.value || '') || _ccTodayIso()) : null;
+      const nkRow = { room, effective_date: from, amount: n, tenant_notified: inf, tenant_adjusted: false };
+      if (inf) nkRow.notified_date = infd;
+      const { data, error } = typeof ccRpInsertWithTenant === 'function'
+        ? await ccRpInsertWithTenant(sbL, 'nk_vorauszahlung_history', nkRow, rec.id)
+        : await sbL.from('nk_vorauszahlung_history').insert(nkRow).select().single();
+      if (error) { ccSaveFailed(error, 'NK-Anpassung'); return; }
+      (_tnNKVoraus[room] = _tnNKVoraus[room] || []).unshift(data);
+      _tnNKVoraus[room].sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
+      if (typeof ccSavedToast === 'function') ccSavedToast('NK-Anpassung saved');
+    }
+  } else {
+    // Korrektur: the current rent entry itself (rent history), and the tenant record
+    const mode = (st.mode || (now && now.mode)) === 'pauschal' ? 'pauschal' : 'kalt_nk';
+    if (k == null || (mode !== 'pauschal' && n == null)) { ccToast('Enter the rent', true); return; }
+    if (mode === 'pauschal' && n != null && n > k) { ccToast('The NK part can’t be more than the Pauschalmiete', true); return; }
+    const fields = mode === 'pauschal' ? { mode, pauschale: k, kaltmiete: null, nebenkosten: n || null }
+                                       : { mode, kaltmiete: k, nebenkosten: n, pauschale: null };
+    try {
+      const per = ccRpAt(ccRpFor('casa', rec.id), ccRpToday());
+      if (per) await ccRpUpdate(sbL, per.id, fields);
+      else {
+        const cst = _tnContractState(rec), cc = cst && cst.cur;
+        await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: (cc && cc.start) || _ccIso(rec.mietbeginn), mode, kalt: k, nk: n || 0,
+                                 pauschale: k, nkIncl: n || null, kind: 'migrated', source: 'tenant_form', legacyMode: _tnLegacyMode(room, rec) });
+      }
+    } catch (e) { ccSaveFailed(e, 'rent'); return; }
+    const upd = mode === 'pauschal' ? { kaltmiete: k, nebenkosten: null } : { kaltmiete: k, nebenkosten: n };
+    Object.assign(rec, upd);
+    const { error } = await sbL.from('tenant_records').update(upd).eq('id', rec.id);
+    if (error) { ccSaveFailed(error, 'rent'); return; }
+    if (typeof ccSavedToast === 'function') ccSavedToast('Rent corrected');
+  }
+  _tnRender();
+  ccSheetClose();
+}
+
 /* Former tenant: their Mieterhöhungen stay with them as read-only info */
 function _tnMhInfoHTML(rec) {
   const own = _tnOwnMh(rec.room, rec).slice().sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)));
@@ -1836,8 +2090,9 @@ function _tnRentBarHTML(rid, room, rec) {
   <div class="tn-rc">
     <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
       ${priceLabel ? `<span class="tnp tnp-gray">${esc(priceLabel)}</span>` : ''}
+      ${rec ? `<button class="tn-edit-rent-btn" onclick="_tnChangeRentOpen('${rid}','${rec.id}')">Change rent</button>` : ''}
       <button class="tn-edit-rent-btn" onclick="_tnToggleRentEdit('${rid}')">
-        <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+        <i class="ti ti-pencil" style="font-size:10px"></i> Contract
       </button>
     </div>
   </div>
@@ -1872,29 +2127,11 @@ function _tnRentFormHTML(rid, room, rec) {
   <div class="tn-rf" data-cc="endwrap"${c.last && ct === 'mietvertrag' ? ' style="display:none"' : ''}><span class="tn-flbl">Contract end</span>${c.last
       ? `<input type="text" id="rf-end-${rid}" value="${c.end ? _ccFmtD(c.end) : ''}" placeholder="TT.MM.JJJJ"/>`
       : `<div class="tn-rf-derived">${_ccFmtD(c.end)}</div>`}</div>
-  <div class="tn-rf" style="grid-column:1/-1"><span class="tn-flbl">Rent</span>${_tnModeSegHTML('data-rf', mode)}</div>` : ''}
-  <div class="tn-rf">
-    <span class="tn-flbl"><span data-kaltlbl>${pausch ? 'Pauschalmiete' : 'Kaltmiete'}</span> \u20ac/mo</span>
-    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${kalt}" placeholder="${hintK}" readonly data-mh-lock
-      oninput="_tnUpdateWarm('${rid}')"/>
-    <span class="tn-rf-hint" style="margin:3px 0 0">Raise it with <a href="#" onclick="event.preventDefault();_tnSheet('mh','${rid}','${tid}')">Mieterhöhung</a> · <a href="#" onclick="event.preventDefault();ccMhUnlock(this)">Correct</a></span>
-  </div>
-  <div class="tn-rf" data-nkwrap${pausch ? ' style="display:none"' : ''}>
-    <span class="tn-flbl">Nebenkosten \u20ac/mo</span>
-    <input type="number" data-cc-num="2" id="rf-nk-${rid}" value="${nk}" placeholder="${liveP.nebenkosten ?? ''}"
-      oninput="_tnUpdateWarm('${rid}')"/>
-  </div>
-  <div class="tn-rf">
-    <span class="tn-flbl">Warmmiete</span>
-    <div class="tn-rf-derived" id="rf-warm-${rid}">${warm !== '' ? _tnFmtEUR(warm) : '\u2014'}</div>
-  </div>
-  <div class="tn-rf">
-    <span class="tn-flbl">Gilt ab</span>
-    <input type="text" id="rf-from-${rid}" value="" placeholder="TT.MM.JJJJ"/>
-  </div>
+  ` : ''}
+  <!-- Rent amounts: in "Change rent" (Mieterhöhung · NK-Anpassung · Korrektur) -->
   <!-- Kaution Soll: only in the Kaution section -->
   <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
-    <span class="tn-rf-hint" style="margin:0">${c ? `Changes only the ${esc(c.name)}${st.next ? ` \u2014 the ${esc(st.next.name)} keeps its own rent` : ''}. ` : ''}Gilt ab leer = correct it \u00b7 a date = change from that day (e.g. NK)</span>
+    <span class="tn-rf-hint" style="margin:0">${c ? `Contract type and end of the ${esc(c.name)}. ` : ''}Rent: <a href="#" onclick="event.preventDefault();_tnChangeRentOpen('${rid}','${tid}')">Change rent</a></span>
     <div style="display:flex;gap:6px">
       <button class="tn-btn tn-btn-sm" onclick="_tnToggleRentEdit('${rid}')">Cancel</button>
       <button class="tn-btn tn-btn-primary cc-save" onclick="_tnSaveRent('${rid}','${tid}','${esc(room.name)}')">
@@ -3110,12 +3347,13 @@ async function _tnSaveRent(rid, tid, roomName) {
   if (endInp && endInp.value.trim() && !endNew) { ccToast('Contract end: TT.MM.JJJJ', true); return; }
   if (endInp && (ctNew || (cc && cc.type)) === 'mietvertrag') endNew = null;             // unbefristet = no end
   if (endInp && _tnIsFixed(ctNew || (cc && cc.type)) && !endNew) { ccToast('Befristet / Jahresvertrag needs a contract end', true); return; }
-  // ── 2 · a rent is required (an empty field would save 0,00 €)
-  if (kalt == null || (mode !== 'pauschal' && nk == null)) { ccToast('Please enter the rent', true); return; }
+  // ── 2 · a rent is required (an empty field would save 0,00 €) — only when the form has rent fields
+  const hasRent = !!document.getElementById('rf-kalt-' + rid);
+  if (hasRent && (kalt == null || (mode !== 'pauschal' && nk == null))) { ccToast('Please enter the rent', true); return; }
 
   // Rent history (rent_periods). Table missing → only the tenant record is saved.
   let histOk = true;
-  try {
+  if (hasRent) try {
     const sameDay = from ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) === from) : null;
     if (sameDay) {
       // that day already starts an entry (Erstvertrag, Verlängerung…): correct it, keep what it is
@@ -3142,7 +3380,7 @@ async function _tnSaveRent(rid, tid, roomName) {
 
   // The tenant record keeps the rent in effect today (a future rent waits in the history)
   const upd = { kaution_soll: ksoll };
-  if (!from || from <= today || !histOk) { upd.kaltmiete = kalt; upd.nebenkosten = nk; }
+  if (hasRent && (!from || from <= today || !histOk)) { upd.kaltmiete = kalt; upd.nebenkosten = nk; }
   // Contract type of the running contract (+ the tenancy's type when it is the latest contract)
   if (ctNew && cc && ctNew !== cc.type) {
     _tnSyncTypePeriod(rec, ctNew);
