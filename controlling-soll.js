@@ -476,7 +476,9 @@ function _cxLegacyMode(link, t) {
   const r = link.obj;
   let ctype = t && t.contract_type;
   if (!ctype) ctype = r.active_price_type === 'kurzzeit' && r.kurzzeit_kaltmiete ? 'kurzzeit' : ((r.kaltmiete || r.mietvertrag_miete) ? 'mietvertrag' : (r.kurzzeit_kaltmiete ? 'kurzzeit' : 'mietvertrag'));
-  const isP = ctype === 'kurzzeit' ? (r.kurzzeit_pricing || 'pauschal') !== 'kalt_nk' : r.mietvertrag_pricing !== 'kalt_nk';
+  const own = ctype === 'jahres' && r.jahres_kaltmiete !== null && r.jahres_kaltmiete !== undefined && r.jahres_kaltmiete !== '';
+  const isP = ctype === 'kurzzeit' ? (r.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+    : own ? r.jahres_pricing === 'pauschal' : r.mietvertrag_pricing !== 'kalt_nk';
   return isP ? 'pauschal' : 'kalt_nk';
 }
 

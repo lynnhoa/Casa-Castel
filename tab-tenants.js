@@ -15,8 +15,9 @@
 document.getElementById('tab-tenants').innerHTML = `
   <div class="tn-hdr" style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
     <h1 class="cc-h1">Tenants</h1>
-    <div id="tn-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--cc-stone);"></div>
   </div>
+  <!-- IST line: what the tenants living here pay today + Kaution held (Rooms shows the Soll) -->
+  <div class="cc-sumline" id="tn-ist" style="display:none;margin-bottom:10px"></div>
   <div id="tn-open-summary" class="tn-open-summary" style="display:none"></div>
   <div class="tn-list" id="tenantsList"></div>
 
@@ -739,7 +740,9 @@ function _tnLockRentMode() {
 function _tnLegacyMode(roomName, rec) {
   const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === roomName) : null;
   const ctype = (rec && tnContractType(rec)) || _tnRoomContractType(roomName);
-  const isP = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk' : r?.mietvertrag_pricing !== 'kalt_nk';
+  const own = ctype === 'jahres' && typeof ccRoomJahresOwn === 'function' && ccRoomJahresOwn(r);
+  const isP = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+    : own ? r.jahres_pricing === 'pauschal' : r?.mietvertrag_pricing !== 'kalt_nk';
   return isP ? 'pauschal' : 'kalt_nk';
 }
 /* The tenant's rent today: rent history first, else the rent stored on the tenant.
@@ -1169,17 +1172,54 @@ function _tnOpenCounts() {
     kaution: act.filter(r => r.status === 'former' && _tnKautionOpen(r.id)).length,
   };
 }
+/* IST today: the rent of every tenant living in the house now (rent history first).
+   Pauschal: the NK part inside the Pauschale counts as NK, the rest as Kalt. */
+function _tnIstTotals() {
+  let kalt = 0, nk = 0, n = 0;
+  const rooms = [...new Set(_tnRecords.filter(r => r.status === 'active').map(r => r.room))];
+  rooms.forEach(room => {
+    const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === room && r.status === 'active')).current;
+    if (!cur) return;
+    n++;
+    const r = _tnCurrentRent(cur, room); if (!r) return;
+    if (r.mode === 'pauschal') {
+      const nkIn = Math.min(Number(r.total) || 0, Number(r.period && r.period.nebenkosten) || 0);
+      kalt += Math.max(0, (Number(r.total) || 0) - nkIn); nk += nkIn;
+    } else { kalt += Number(r.kalt) || 0; nk += Number(r.nk) || 0; }
+  });
+  const total = typeof appRooms !== 'undefined' ? appRooms.filter(r => r && r.active !== false).length : rooms.length;
+  return { kalt, nk, tenants: n, rooms: total };
+}
+/* Current tenants whose Kaution is not (fully) received — same rule as the card pill */
+function _tnKautionMissingCount() {
+  let c = 0;
+  const rooms = [...new Set(_tnRecords.filter(r => r.status === 'active').map(r => r.room))];
+  rooms.forEach(room => {
+    const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === room && r.status === 'active')).current;
+    if (!cur) return;
+    const x = ccTnKaution(_tnKaution[cur.id]);
+    if (x.settled) return;
+    const soll = Number((_tnKautionSollInfo(cur) || {}).amount) || 0;
+    if (soll > 0 && x.recv < soll - 0.005 && x.ret === 0) c++;
+  });
+  return c;
+}
 function _tnSummaryUpdate() {
-  const el = document.getElementById('tn-kaution-summary');
   const held = ccTnHeldTotal(_tnRecords, _tnKaution);
-  if (el) {
-    el.innerHTML = held > 0 ? `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_tnFmtEUR(held)}</strong>` : '';
-    el.style.display = held > 0 ? 'flex' : 'none';
+  const ist = document.getElementById('tn-ist');
+  if (ist) {
+    const t = _tnIstTotals();
+    const vac = Math.max(0, t.rooms - t.tenants);
+    ist.innerHTML = `<div class="cc-sumline__top">Actual (IST) · ${t.tenants} living here${vac ? ' · ' + vac + ' vacant' : ''} · today</div>
+      <div class="cc-sumline__vals"><div><span>Kalt</span><b>${_tnFmtEUR(t.kalt)}</b></div><div><span>NK</span><b>${_tnFmtEUR(t.nk)}</b></div><div><span>Kaution held</span><b>${_tnFmtEUR(held)}</b></div></div>`;
+    ist.style.display = _tnRecords.length ? '' : 'none';
   }
   const oc = document.getElementById('tn-open-summary');
   if (oc) {
-    const c = _tnOpenCounts();
-    const pills = (c.nk ? `<span class="tnp tnp-amber">NK \u00b7 ${c.nk}</span>` : '') + (c.kaution ? `<span class="tnp tnp-amber">Kaution \u00b7 ${c.kaution}</span>` : '');
+    const c = _tnOpenCounts(), miss = _tnKautionMissingCount();
+    const pills = (c.nk ? `<span class="tnp tnp-amber">NK \u00b7 ${c.nk}</span>` : '')
+      + (miss ? `<span class="tnp tnp-amber">Kaution missing \u00b7 ${miss}</span>` : '')
+      + (c.kaution ? `<span class="tnp tnp-amber">Kaution to settle \u00b7 ${c.kaution}</span>` : '');
     oc.innerHTML = pills ? `<span class="tn-open-lbl">Open:</span>${pills}` : '';
     oc.style.display = pills ? 'flex' : 'none';
   }
