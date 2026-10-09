@@ -836,11 +836,25 @@ function _tnCurrentRent(rec, roomName) {
     const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
     out = mode === 'pauschal' ? { mode, kalt: k + n, nk: 0, total: k + n, src: 'tenant' } : { mode, kalt: k, nk: n, total: k + n, src: 'tenant' };
   }
+  // an NK-Anpassung that has started (not skipped) is today's NK-Vorauszahlung — the same as Controlling (C2)
+  if (out && out.mode !== 'pauschal') {
+    const nkSt = _tnNkStepAt(rec, roomName || rec.room, ccRpToday(), per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn));
+    if (nkSt) out = { ...out, nk: Number(nkSt.amount) || 0, total: (Number(out.kalt) || 0) + (Number(nkSt.amount) || 0), nkStep: nkSt };
+  }
   // a Mieterhöhung that has started (not skipped) is today's rent — Kaltmiete, or the Pauschalmiete — the same as Controlling
   const st = out ? _tnMhAt(rec, roomName || rec.room, ccRpToday(), per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn)) : null;
   if (st) out = out.mode === 'pauschal' ? { ...out, kalt: Number(st.amount), total: Number(st.amount), src: 'mh', step: st }
                                         : { ...out, kalt: Number(st.amount), total: Number(st.amount) + (Number(out.nk) || 0), src: 'mh', step: st };
   return out;
+}
+/* The NK-Anpassung of this tenancy in effect on a day (latest date ≤ day, ≥ base, not skipped) */
+function _tnNkStepAt(rec, roomName, iso, base) {
+  if (!rec || typeof _tnNKVoraus === 'undefined') return null;
+  const mb = rec.mietbeginn ? _ccIso(rec.mietbeginn) : '';
+  return (_tnNKVoraus[roomName] || [])
+    .filter(x => !x.ignored && (x.tenant_id ? String(x.tenant_id) === String(rec.id) : (!mb || String(x.effective_date).slice(0, 10) >= mb)))
+    .filter(x => { const d = String(x.effective_date).slice(0, 10); return d <= iso && (!base || d >= base); })
+    .sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)))[0] || null;
 }
 function _tnMhAt(rec, roomName, iso, base) {
   if (typeof _tnOwnMh !== 'function') return null;
@@ -1523,6 +1537,15 @@ function _tnAppRowHTML(room, rec) {
     <button type="button" class="tn-btn tn-btn-sm" data-cc-pw-copy="${r}"><i class="ti ti-copy"></i> Copy</button></div>`;
 }
 
+
+/* Password requests (C2): does this room's tenant still need their own password?
+   (moved in after the last password was set → the room needs a NEW one for them) */
+function tnRoomNeedsNewPw(room) {
+  if (typeof _tnRecords === 'undefined' || !_tnPwLoaded) return false;
+  const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === room && r.status === 'active')).current;
+  return !!cur && _tnNeedsPw(cur);
+}
+
 /* Empty room (T2): a password to log into the tenant app yourself and test.
    The next tenant gets their own (amber reminder from move-in day) — then this one stops working. */
 function _tnEmptyRoomPwHTML(room) {
@@ -2093,9 +2116,8 @@ function _tnCrNow(rec) {
     const nkIn = Number(cur.period && cur.period.nebenkosten) || 0;
     return { mode: 'pauschal', total: Number(cur.total) || 0, kalt: Math.max(0, (Number(cur.total) || 0) - nkIn), nk: nkIn };
   }
-  const nkC = _tnNKVorausCurFor(rec.room);
-  const nk = nkC ? Number(nkC.amount) : (Number(cur.nk) || 0);
-  return { mode: 'kalt_nk', kalt: Number(cur.kalt) || 0, nk, total: (Number(cur.kalt) || 0) + nk };
+  const nk = Number(cur.nk) || 0;   // already includes an NK-Anpassung in effect (_tnCurrentRent)
+  return { mode: 'kalt_nk', kalt: Number(cur.kalt) || 0, nk, total: (Number(cur.kalt) || 0) + nk, nkStep: cur.nkStep || null };
 }
 function _tnChangeRentOpen(rid, tid, reason) {
   const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec) return;
@@ -2286,6 +2308,11 @@ async function _tnCrSave(tid) {
                                  pauschale: k, nkIncl: n || null, kind: 'migrated', source: 'tenant_form', legacyMode: _tnLegacyMode(room, rec) });
       }
     } catch (e) { ccSaveFailed(e, 'rent'); return; }
+    if (mode !== 'pauschal' && now && now.nkStep && Number(now.nkStep.amount) !== n) {
+      const { error: e2 } = await sbL.from('nk_vorauszahlung_history').update({ amount: n }).eq('id', now.nkStep.id);
+      if (e2) { ccSaveFailed(e2, 'NK-Anpassung'); return; }
+      now.nkStep.amount = n;
+    }
     const upd = mode === 'pauschal' ? { kaltmiete: k, nebenkosten: null } : { kaltmiete: k, nebenkosten: n };
     Object.assign(rec, upd);
     const { error } = await sbL.from('tenant_records').update(upd).eq('id', rec.id);
@@ -2321,6 +2348,10 @@ function _tnRentBarHTML(rid, room, rec) {
         && (!st || !st.next || ccRpIso(p.valid_from) < st.next.start)) : null;
   const pausch = cur && cur.mode === 'pauschal';
   const _nkIn = pausch ? Number(cur.period && cur.period.nebenkosten) || 0 : 0;   // NK part inside a Pauschale
+  // the next NK-Anpassung of this tenancy (after today, not skipped) → "neu ab" under Nebenkosten
+  const _nkNext = rec && !pausch ? (_tnNKVoraus[room.name] || []).filter(x => !x.ignored && String(x.effective_date).slice(0, 10) > _ccTodayIso()
+      && (x.tenant_id ? String(x.tenant_id) === String(rec.id) : (!rec.mietbeginn || String(x.effective_date).slice(0, 10) >= _ccIso(rec.mietbeginn))))
+      .sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)))[0] || null : null;
   const _mhN0 = rec ? _tnMhNext(rec, room.name) : null;          // next Mieterhöhung → "neu ab" under the rent
   const title = c ? `<div class="tn-rtitle"><span class="tn-rt-name">${esc(c.name)}</span><span class="tn-rt-dates">${esc(_tnContractSub(c))}</span></div>` : '';
   // status inside the box: renewal line (Ends … / due / next contract) + rent reminders
@@ -2342,7 +2373,7 @@ function _tnRentBarHTML(rid, room, rec) {
   <div class="tn-rc">
     <div class="tn-rlbl">Nebenkosten</div>
     <div class="tn-rval">${!cur ? '\u2014' : pausch ? (_nkIn ? _tnFmtEUR(_nkIn) : 'inkl.') : _tnFmtEUR(cur.nk)}</div>
-    <div class="tn-rsub">${nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : pausch && _nkIn ? 'in the Pauschale' : 'per month'}</div>
+    <div class="tn-rsub">${nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : _nkNext ? '<span style="color:#8C5A30">neu ab ' + _ccFmtD(String(_nkNext.effective_date).slice(0, 10)) + '</span>' : pausch && _nkIn ? 'in the Pauschale' : 'per month'}</div>
   </div>
   <div class="tn-rc">
     <div class="tn-rlbl">Warmmiete</div>

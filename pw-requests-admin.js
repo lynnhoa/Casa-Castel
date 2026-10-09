@@ -112,6 +112,13 @@ function _pwaCardHtml(q) {
   } else if (q.locked_until) {
     actions = `<p class="pwa-note">Moves in ${_pwaDate(q.locked_until)} — you can send the password from that day (one password per room).</p>
       <button type="button" class="cc-btn cc-btn--ghost" data-pwa="decline" data-id="${q.id}">Decline</button>`;
+  } else if (q.readable && q.kind === 'first' && typeof tnRoomNeedsNewPw === 'function' && tnRoomNeedsNewPw(q.room)) {
+    // a new tenant in this room: always a NEW password, so the previous tenant's password stops working
+    actions = `<p class="pwa-note">New tenant in ${_pwaEsc(q.room)} → a new password is created. The previous password stops working.</p>
+      <div class="pwa-btns">
+        <button type="button" class="cc-btn cc-btn--primary" data-pwa="sendnewtenant" data-id="${q.id}">Create &amp; send new password</button>
+        <button type="button" class="cc-btn cc-btn--secondary" data-pwa="decline" data-id="${q.id}">Decline</button>
+      </div>`;
   } else {
     actions = `${q.readable ? '' : `<p class="pwa-note">This room has no readable password yet → a new one is created. The room's other phones are logged out once.</p>`}
       <div class="pwa-btns">
@@ -184,9 +191,9 @@ function ccPwRequestsOpen() {
   ccPwRequestsLoad();
 }
 
-async function _pwaSend(id, makeNew) {
+async function _pwaSend(id, makeNew, noAsk) {
   const q = _pwaList.find(x => x.id === id); if (!q) return;
-  if (makeNew && typeof ccDialog === 'function') {
+  if (makeNew && !noAsk && typeof ccDialog === 'function') {
     const ok = await ccDialog({ icon: 'ti-key', title: 'Send a new password?',
       body: `${_pwaEsc(q.room)} gets a new password. All phones of this room are logged out and the old password stops working.`,
       actions: [{ label: 'Cancel', value: false }, { label: 'New password', primary: true, value: true }] });
@@ -272,6 +279,7 @@ document.addEventListener('click', async e => {
   const act = b.dataset.pwa, id = b.dataset.id;
   if (act === 'send')    _pwaSend(id, false);
   if (act === 'sendnew') _pwaSend(id, true);
+  if (act === 'sendnewtenant') _pwaSend(id, true, true);   // new tenant: new password without the extra question
   if (act === 'decline') _pwaDecline(id);
   if (act === 'push')    _pwaPushToggle(b);
 });
