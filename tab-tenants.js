@@ -639,6 +639,21 @@ document.getElementById('tab-tenants').innerHTML = `
 
 /* Instant start: the last view is shown until fresh data arrives (taps wait a moment) */
 #tenantsList.tn-snap { pointer-events:none; }
+
+/* Tenant-app password block (C8) */
+#tab-tenants .tn-app { margin:10px 0 2px; padding:10px 12px; border-radius:10px; border:.5px solid var(--cc-rule); background:var(--cc-bg); font-size:13px; color:#5C534A; }
+#tab-tenants .tn-app--amber { background:#FDF6EA; border-color:#F0D2A0; }
+#tab-tenants .tn-app--green { background:#F2F7EC; border-color:#C9DDB0; }
+#tab-tenants .tn-app--blue  { background:#EEF4FB; border-color:#BFD6EE; }
+#tab-tenants .tn-app-top { display:flex; align-items:center; gap:6px; }
+#tab-tenants .tn-app-lbl { font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#8A6535; }
+#tab-tenants .tn-app-st { font-weight:500; color:var(--cc-charcoal); }
+#tab-tenants .tn-app--green .tn-app-st { color:#27500A; } #tab-tenants .tn-app--amber .tn-app-st { color:#633806; } #tab-tenants .tn-app--blue .tn-app-st { color:#0C447C; }
+#tab-tenants .tn-app-pw { margin-top:6px; color:#7A6F62; }
+#tab-tenants .tn-app-sub { margin-top:4px; font-size:12px; color:#9A8E7E; line-height:1.45; }
+#tab-tenants .tn-app-btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+#tab-tenants .tn-app-btns .tn-btn { background:var(--cc-white); }
+#tab-tenants .tn-app-btns .tn-btn-primary { background:var(--cc-charcoal); color:#fff; }
 `;
   document.head.appendChild(s);
 })();
@@ -1424,7 +1439,8 @@ async function _tnLoad() {
     typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'casa') : Promise.resolve([]),   // rent history (rent_periods)
     typeof ccNksLoad === 'function' ? ccNksLoad() : Promise.resolve(),               // NK-Abrechnungen (Settlements)
     typeof ccfLoadReadings === 'function' ? ccfLoadReadings(tids) : Promise.resolve(), // Zählerstände (meter_readings)
-    _tnLoadPwDates(),                                                                  // when each room's tenant-app password was given
+    _tnLoadPwDates(),                                                                  // when each room's tenant-app password was set
+    _tnLoadPwReqs(),                                                                   // the tenants' password requests (status on the card)
     sbL.from('casa_mieterhoehung_history').select('*').in('room', rooms).order('effective_date', { ascending: false })
       .then(r => r, () => ({ data: [] })),                                             // Mieterhöhungen (table missing → none)
   ]);
@@ -1495,18 +1511,92 @@ function _tnNeedsPw(rec) {
    on the card any more — the request sheet (banner under the tabs) sends it. */
 function _tnAppRowHTML(room, rec) {
   if (!rec) return '';
+  const st = _tnPwStatus(room, rec);
+  const r = esc(room), tid = rec.id;
+  const name = esc([rec.first_name].filter(Boolean).join(' ') || 'the tenant');
+  const pw = typeof ccRoomPwInline === 'function' ? ccRoomPwInline(room) : '';
+  const btn = (label, js, primary) => `<button type="button" class="tn-btn tn-btn-sm${primary ? ' tn-btn-primary' : ''}" onclick="event.stopPropagation();${js}">${label}</button>`;
+  const copy = `<button type="button" class="tn-btn tn-btn-sm" data-cc-pw-copy="${r}"><i class="ti ti-copy" aria-hidden="true"></i> Copy</button>`;
+  const actions = st.key === 'future' ? (st.review ? btn('Review request', 'ccPwRequestsOpen()', true) : '')
+    : [st.review ? btn('Review request', 'ccPwRequestsOpen()', true) : '',
+       st.canGive ? btn('Given \u2713', `_tnPwGiven('${tid}')`) : '',
+       copy, btn('Reset', `_tnPwReset('${r}','${tid}')`)].join('');
+  return `<div class="tn-app tn-app--${st.tone}">
+    <div class="tn-app-top"><i class="ti ti-key" aria-hidden="true"></i><span class="tn-app-lbl">App</span><span class="tn-app-st">${st.text}</span></div>
+    ${st.key === 'future' ? '' : `<div class="tn-app-pw">Password${pw}</div>`}
+    ${st.sub ? `<div class="tn-app-sub">${st.sub.replace('{name}', name)}</div>` : ''}
+    ${actions ? `<div class="tn-app-btns">${actions}</div>` : ''}
+  </div>`;
+}
+
+/* ── TENANT-APP PASSWORD STATUS (C8) ───────────────────────────────────────
+   Real events only: a request the tenant made (sent / logged in), or you tapped "Given ✓".
+   Test passwords and resets never count as "given". One password per room. */
+let _tnPwReqs = [];
+async function _tnLoadPwReqs() {
+  try {
+    const { data, error } = await sbL.rpc('pw_requests_list', { p_days: 3650 });
+    if (!error && Array.isArray(data)) _tnPwReqs = data;
+  } catch (e) {}
+}
+function _tnPwStatus(room, rec) {
+  const d = iso => _tnFmtDate(String(iso).slice(0, 10));
   const mb = _ccIso(rec.mietbeginn), today = _ccTodayIso();
+  const pend = (typeof _pwaOpen === 'function' ? _pwaOpen() : _tnPwReqs.filter(q => q.status === 'pending')).filter(q => q.room === room);
+  if (!mb || mb > today) return { key: 'future', tone: 'grey', text: 'from the move-in day' + (mb ? ' ' + _ccFmtD(mb) : ''), review: pend.length > 0 };
+  if (pend.length) return { key: 'request', tone: 'amber', text: 'Request waiting', review: true, sub: 'Decide in the request: send the same password, or a new one.' };
+  const since = _ccAddDaysIso(mb, -45);   // a request made shortly before moving in counts too
+  const reqs = _tnPwReqs.filter(q => q.room === room && ['done', 'approved', 'expired'].includes(q.status) && String(q.created_at).slice(0, 10) >= since)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const req = reqs[0] || null;
+  const given = rec.app_pw_given_at ? String(rec.app_pw_given_at) : null;
+  const pwAt = _tnPwAt[room] ? String(_tnPwAt[room]) : null;
+  const reqT = req ? String(req.created_at) : null;
+  const plus3 = t => { const ms = Date.parse(String(t).replace(' ', 'T')); return isNaN(ms) ? String(t) : new Date(ms + 3 * 864e5).toISOString(); };
+  // the newest real event wins: you handed it over, or the tenant's request
+  if (given && given >= mb && (!pwAt || given >= pwAt) && (!reqT || given >= reqT)) return { key: 'given', tone: 'green', text: 'Given ' + d(given) };
+  if (req && (!pwAt || pwAt <= plus3(reqT))) {
+    if (req.status === 'done') return { key: 'done', tone: 'green', text: 'Logged in \u2713 ' + d(reqT) };
+    const old = Date.now() - (Date.parse(String(reqT).replace(' ', 'T')) || Date.now()) > 864e5;
+    return { key: 'sent', tone: 'blue', text: 'Sent ' + d(reqT) + (old || req.status === 'expired' ? ' \u00b7 not picked up' : ' \u00b7 waiting for pickup'),
+             canGive: true, sub: old || req.status === 'expired' ? 'The pickup on {name}’s phone has expired — give the password directly (Copy), then tap Given ✓.' : '' };
+  }
+  const changed = pwAt && pwAt.slice(0, 10) >= mb ? ' \u00b7 password changed ' + d(pwAt) : '';
+  return { key: 'none', tone: 'amber', text: 'Not given yet' + changed, canGive: true,
+           sub: '{name} asks for it on the login page (“First time here?”) — or give it directly, then tap Given ✓.' };
+}
+async function _tnPwGiven(tid) {
+  const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec || !sbL) return;
+  const at = new Date().toISOString();
+  const { error } = await sbL.from('tenant_records').update({ app_pw_given_at: at }).eq('id', tid);
+  if (error) { ccSaveFailed(error, 'password status'); return; }
+  rec.app_pw_given_at = at;
+  if (typeof ccSavedToast === 'function') ccSavedToast('Marked as given');
+  _tnRender();
+}
+/* Reset at any time (current tenant only — the room has one password) */
+async function _tnPwReset(room, tid) {
+  if (!sbL) return;
+  const rec = _tnRecords.find(r => String(r.id) === String(tid));
+  const name = rec ? (rec.first_name || 'the tenant') : 'the tenant';
   const pend = typeof _pwaOpen === 'function' ? _pwaOpen().filter(q => q.room === room) : [];
-  const review = pend.length ? `<button type="button" class="tn-btn tn-btn-sm" onclick="ccPwRequestsOpen()">Review request</button>` : '';
-  const row = (txt, btn, need) => `<div class="${need ? 'tn-pw-need' : 'tn-pw-test'} tn-app-row"><i class="ti ti-key" aria-hidden="true"></i><span>${txt}</span>${btn || ''}</div>`;
-  if (!mb || mb > today) return row(`App · from the move-in day${mb ? ' ' + _ccFmtD(mb) : ''} — the tenant asks for it in the app`, review, false);
-  if (pend.length) return row('App · password request waiting', review, true);
-  if (_tnNeedsPw(rec)) return row('App · not given yet — the tenant asks for it in the app (“First time here?”)', '', true);
-  const at = _tnPwAt[room];
-  const r = esc(room);
-  return `<div class="tn-pw-test pwa-pwline tn-app-row"><i class="ti ti-key" aria-hidden="true"></i>
-    <span>App · given${at ? ' ' + _tnFmtDate(String(at).slice(0, 10)) : ''}${typeof ccRoomPwInline === 'function' ? ccRoomPwInline(room) : ''}</span>
-    <button type="button" class="tn-btn tn-btn-sm" data-cc-pw-copy="${r}"><i class="ti ti-copy"></i> Copy</button></div>`;
+  if (pend.length && typeof ccDialog === 'function') {
+    const v = await ccDialog({ icon: 'ti-key', title: 'A request is waiting',
+      body: esc(name) + ' asked for the password. Answer the request instead? (You can send the same password or a new one there.)',
+      actions: [{ label: 'Reset anyway', value: 'reset' }, { label: 'Answer request', primary: true, value: 'answer' }] });
+    if (v === 'answer') { ccPwRequestsOpen(); return; }
+    if (v !== 'reset') return;
+  } else if (!(await ccConfirm('Reset password · ' + esc(room), 'The old password stops working and every phone of ' + esc(room) + ' is logged out. The new one is shown next.', 'Reset'))) return;
+  const pw = await ccSetNewRoomPassword(room, 'New password');
+  if (!pw) return;
+  _tnPwAt[room] = new Date().toISOString();
+  if (rec && typeof ccDialog === 'function') {
+    const g = await ccDialog({ icon: 'ti-key', title: 'Given to ' + esc(name) + '?',
+      body: 'Tap Given ✓ once ' + esc(name) + ' has the new password. You can also do it later on the card.',
+      actions: [{ label: 'Later', value: false }, { label: 'Given \u2713', primary: true, value: true }] });
+    if (g) { await _tnPwGiven(tid); return; }
+  }
+  _tnRender();
 }
 
 
@@ -1525,8 +1615,8 @@ function _tnEmptyRoomPwHTML(room) {
   const at = _tnPwAt[room];
   const r = esc(room);
   return `<div class="tn-pw-test"><i class="ti ti-key"></i>
-    <span>Tenant app: ${at ? 'password set ' + _tnFmtDate(String(at).slice(0, 10)) + (typeof ccRoomPwInline === 'function' ? ccRoomPwInline(room) : '') : 'no password'}</span>
-    <button class="tn-btn tn-btn-sm" onclick="_tnSetTestPw('${r}')">${at ? 'New password' : 'Set password'}</button></div>`;
+    <span>Test password${at ? ' · set ' + _tnFmtDate(String(at).slice(0, 10)) + (typeof ccRoomPwInline === 'function' ? ccRoomPwInline(room) : '') : ': none'}</span>
+    <button class="tn-btn tn-btn-sm" onclick="_tnSetTestPw('${r}')">${at ? 'New test password' : 'Set test password'}</button></div>`;
 }
 async function _tnSetTestPw(room) {
   if (!sbL) { alert('No database connection.'); return; }
@@ -1541,7 +1631,7 @@ async function _tnSetTestPw(room) {
    Otherwise the screen stays exactly as it is — nothing typed gets lost. */
 let _tnRenderedSig = null;
 function _tnRenderIfChanged() {
-  const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache, _tnPwAt,
+  const sig = ccStableJSON([_tnRecords, _tnKaution, _tnNK, _tnDocs, _tnNKVoraus, _tnProfileCache, _tnPwAt, _tnPwReqs.map(q => [q.id, q.status]),
                               (typeof _pwaOpen === 'function' ? _pwaOpen().map(q => q.room) : []),
                               (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
                               (typeof CC_RP !== 'undefined' ? CC_RP.rows.filter(r => r.app === 'casa') : []),
