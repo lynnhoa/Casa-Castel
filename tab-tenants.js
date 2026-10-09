@@ -588,6 +588,15 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .tn-rent-wrap .tn-rval { white-space:nowrap; overflow:visible !important; }
 #tab-tenants .tn-rent-wrap .tn-rlbl { overflow:visible !important; }
 #tab-tenants .tn-rent-wrap .tn-edit-rent-btn { min-height:36px; padding:0 14px !important; }
+
+/* Contract box (B3): status line inside the box, between the numbers and the buttons */
+#tab-tenants .tn-rent-wrap .tn-rbox-status { grid-column:1 / -1; border-top:var(--cc-border); }
+#tab-tenants .tn-rent-wrap .tn-rbox-status .tn-cstrip { border:none !important; background:transparent; margin:0; padding:10px 12px; }
+#tab-tenants .tn-rent-wrap .tn-rbox-status .tn-cstrip--due { background:#FBEFE6; }
+#tab-tenants .tn-rent-wrap .tn-rbox-todo { display:flex; gap:6px; flex-wrap:wrap; padding:0 12px 10px; }
+#tab-tenants .tn-rent-wrap .tn-rbox-status .tn-cstrip + .tn-rbox-todo { padding-top:0; }
+#tab-tenants .tn-rent-wrap .tn-rbox-status > .tn-rbox-todo:first-child { padding-top:10px; }
+#tab-tenants .tn-rent-wrap .tn-rc:last-child > div { flex-wrap:wrap; }
 `;
   document.head.appendChild(s);
 })();
@@ -975,20 +984,34 @@ function _tnContractStripHTML(rid, room, rec) {
     return `<div class="tn-cstrip" id="cstrip-${rid}">${_tnContractRowHTML(rec, st.next, `<span class="tnp tnp-blue">ab ${_ccFmtD(st.next.start)}</span>`, rid, 'cstrip-' + rid)}</div>`;
   }
   const c = st.cur;
+  const rl = _tnRenewLabel(c && c.type);
   if (c && c.last && _tnIsFixed(c.type) && c.end && !rec.mietende && rec.status === 'active' && typeof ccTnDaysUntil === 'function') {
     const d = ccTnDaysUntil(c.end);
     if (d !== null && d <= 60) {
       return `<div class="tn-cstrip tn-cstrip--due" id="cstrip-${rid}">
         <span class="tn-cstrip-txt">${d < 0 ? 'Contract ended ' + _ccFmtD(c.end) + ' \u2014 not renewed yet' : 'No contract after ' + _ccFmtD(c.end) + ' yet'}</span>
-        <button type="button" class="tn-btn tn-btn-primary" onclick="ccfRenewOpen('${rec.id}')"><i class="ti ti-refresh"></i> Renew</button></div>`;
+        <button type="button" class="tn-btn tn-btn-primary" onclick="ccfRenewOpen('${rec.id}')"><i class="ti ti-refresh"></i> ${rl}</button></div>`;
     }
-    if (d !== null) {   // earlier: a quiet line — renewing ahead of time is always possible
-      return `<div class="tn-cstrip tn-cstrip--quiet" id="cstrip-${rid}">
-        <span class="tn-cstrip-qtxt">Ends ${_ccFmtD(c.end)} \u00b7 not renewed yet</span>
-        <button type="button" class="tn-btn tn-btn-sm" onclick="ccfRenewOpen('${rec.id}')"><i class="ti ti-refresh"></i> Renew</button></div>`;
+    if (d !== null) {   // earlier: a quiet line — renewing ahead of time is always possible (the button sits in the box row)
+      return `<div class="tn-cstrip tn-cstrip--quiet" id="cstrip-${rid}" data-renew-in-box="1">
+        <span class="tn-cstrip-qtxt">Ends ${_ccFmtD(c.end)} \u00b7 not renewed yet</span></div>`;
     }
   }
   return '';
+}
+/* Kurzzeit that stays on → a Jahresvertrag; every other fixed contract → Renew */
+function _tnRenewLabel(type) { return type === 'kurzzeit' ? 'Continue as Jahresvertrag' : 'Renew'; }
+/* Reminders of the rent (Mieterhöhung due · NK change due) — shown inside the contract box */
+function _tnRentTodoPills(room, rec) {
+  if (!rec) return '';
+  const out = [];
+  const st = typeof ccTnStepState === 'function' ? ccTnStepState(_tnOwnMh(room.name, rec)) : null;
+  const fd = d => _ccFmtD(String(d).slice(0, 10));
+  if (st && st.state === 'overdue') out.push(`<span class="tnp tnp-red">Mieterhöhung overdue</span>`);
+  else if (st && st.state === 'reminder') out.push(`<span class="tnp tnp-amber">Mieterhöhung from ${fd(st.entry.effective_date)}</span>`);
+  const nk = _tnIsKaltNK(rec, room.name) && typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_tnNKVoraus[room.name], rec) : null;
+  if (nk) out.push(`<span class="tnp ${nk.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${esc(nk.text)}</span>`);
+  return out.join('');
 }
 function _tnRenewDueShown(rec) { return !!rec && /tn-cstrip--due/.test(_tnContractStripHTML('x', null, rec)); }
 
@@ -1586,7 +1609,7 @@ function _tnCardHTML(room) {
   ${formerNudges}
   <div class="tn-body" id="tb-${rid}">
     ${activeRec
-      ? _tnRentBarHTML(rid, room, activeRec) + _tnRentFormHTML(rid, room, activeRec) + _tnContractStripHTML(rid, room, activeRec) + _tnMhRowHTML(rid, room, activeRec)
+      ? _tnRentBarHTML(rid, room, activeRec) + _tnRentFormHTML(rid, room, activeRec)   // contract box: rent · status · Change rent · Renew · Contract
       : _tnNewContractHTML(rid, room)}
     ${_ccNextTenantHTML(nextRec, nextRec ? esc([nextRec.first_name, nextRec.last_name].filter(Boolean).join(' ')) : '', _tnFmtDate, '_tnOpenModal')}
     ${_tnProfileSectionHTML(rid, room, activeRec)}
@@ -2077,8 +2100,14 @@ function _tnRentBarHTML(rid, room, rec) {
     ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday() && p.kind !== 'renewal'
         && (!st || !st.next || ccRpIso(p.valid_from) < st.next.start)) : null;
   const pausch = cur && cur.mode === 'pauschal';
+  const _nkIn = pausch ? Number(cur.period && cur.period.nebenkosten) || 0 : 0;   // NK part inside a Pauschale
   const _mhN0 = rec ? _tnMhNext(rec, room.name) : null;          // next Mieterhöhung → "neu ab" under the rent
   const title = c ? `<div class="tn-rtitle"><span class="tn-rt-name">${esc(c.name)}</span><span class="tn-rt-dates">${esc(_tnContractSub(c))}</span></div>` : '';
+  // status inside the box: renewal line (Ends … / due / next contract) + rent reminders
+  const strip = rec ? _tnContractStripHTML(rid, room, rec) : '';
+  const renewInBox = /data-renew-in-box/.test(strip);
+  const todo = _tnRentTodoPills(room, rec);
+  const status = strip || todo ? `<div class="tn-rbox-status">${strip}${todo ? `<div class="tn-rbox-todo">${todo}</div>` : ''}</div>` : '';
 
   return `
 <div class="tn-rent-wrap" id="rbar-${rid}">
@@ -2091,18 +2120,20 @@ function _tnRentBarHTML(rid, room, rec) {
   </div>
   <div class="tn-rc">
     <div class="tn-rlbl">Nebenkosten</div>
-    <div class="tn-rval">${!cur ? '\u2014' : pausch ? 'inkl.' : _tnFmtEUR(cur.nk)}</div>
-    <div class="tn-rsub">${nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : 'per month'}</div>
+    <div class="tn-rval">${!cur ? '\u2014' : pausch ? (_nkIn ? _tnFmtEUR(_nkIn) : 'inkl.') : _tnFmtEUR(cur.nk)}</div>
+    <div class="tn-rsub">${nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : pausch && _nkIn ? 'in the Pauschale' : 'per month'}</div>
   </div>
   <div class="tn-rc">
     <div class="tn-rlbl">Warmmiete</div>
     <div class="tn-rval">${cur ? _tnFmtEUR(cur.total) : '\u2014'}</div>
     <div class="tn-rsub">${pausch ? 'pauschal' : 'Kalt + NK'}</div>
   </div>
+  ${status}
   <div class="tn-rc">
     <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
       ${priceLabel ? `<span class="tnp tnp-gray">${esc(priceLabel)}</span>` : ''}
       ${rec ? `<button class="tn-edit-rent-btn" onclick="_tnChangeRentOpen('${rid}','${rec.id}')">Change rent</button>` : ''}
+      ${renewInBox ? `<button class="tn-edit-rent-btn" onclick="ccfRenewOpen('${rec.id}')"><i class="ti ti-refresh" style="font-size:11px"></i> ${_tnRenewLabel(c && c.type)}</button>` : ''}
       <button class="tn-edit-rent-btn" onclick="_tnToggleRentEdit('${rid}')">
         <i class="ti ti-pencil" style="font-size:10px"></i> Contract
       </button>
