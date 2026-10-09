@@ -1059,6 +1059,8 @@ async function _ccfStepTenant(A) {
   } else {
     if ((ccfIso(rec.vertragsende) || null) !== (pl.end || null)) upd.vertragsende = pl.end || null;
     if (rec.mietende) upd.mietende = null;                 // renewed → not moving out
+    // C5: the tenant entry carries the type of the latest contract too (e.g. a Kurzzeit that stays on → Jahresvertrag)
+    if (p.ctype && rec.contract_type !== p.ctype) upd.contract_type = p.ctype;
   }
   if (pl.kautionNew != null) upd.kaution_soll = pl.kautionNew;
   if (!Object.keys(upd).length) return;
