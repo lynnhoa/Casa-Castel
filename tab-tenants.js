@@ -3861,6 +3861,25 @@ function tnCurrentTenancyOf(roomName) {
     rent: r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode } : null,
   };
 }
+/* One line for the Rooms card: who lives in the room (read-only pointer — Tenants is the
+   one place where tenant data is kept and edited) */
+function tnRoomWhoLine(roomName) {
+  if (!_tnLoadedOnce) return null;
+  const recs = _tnRecords.filter(r => r.room === roomName);
+  const pick = _ccPickTenancy(recs.filter(r => r.status === 'active'));
+  const nm = r => [r.first_name, r.last_name].filter(Boolean).join(' ') || 'Unnamed tenant';
+  if (pick.current) {
+    const r = pick.current, ct = tnContractType(r);
+    const st = _tnContractState(r), last = st.all[st.all.length - 1];
+    const end = _ccIso(r.mietende) || (last && last.end) || _ccIso(r.vertragsende);
+    const tail = r.mietende ? 'moves out ' + _ccFmtD(r.mietende)
+      : end && _tnIsFixed(ct) ? 'bis ' + _ccFmtD(end) : (r.mietbeginn ? 'since ' + _ccFmtD(r.mietbeginn) : '');
+    return { kind: 'current', text: [nm(r), _tnContractLabel(ct), tail].filter(Boolean).join(' · ') };
+  }
+  if (pick.next) return { kind: 'next', text: 'Moves in ' + _ccFmtD(pick.next.mietbeginn) + ' · ' + nm(pick.next) };
+  const lastOut = recs.map(r => _ccIso(r.mietende)).filter(Boolean).sort().pop();
+  return { kind: 'vacant', since: lastOut ? _ccFmtD(_ccAddDaysIso(lastOut, 1)) : '' };
+}
 function tnWarmTenants() {
   if (_tnLoadedOnce) return Promise.resolve();
   if (!_tnWarmPromise) {
