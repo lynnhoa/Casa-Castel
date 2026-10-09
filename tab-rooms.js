@@ -188,6 +188,7 @@ document.getElementById('tab-rooms').innerHTML = `
 .rc-ct i { font-size:11px; }
 .rc-ct--mv    { background:var(--cc-white); color:var(--cc-charcoal); border:.5px solid var(--cc-stone); }
 .rc-ct--kz    { background:#F1EEF6; color:#5B4A7A; border:.5px solid #CFC4E0; }
+.rc-ct--jv    { background:#F6EEDD; color:#7A5A22; border:.5px solid #E2CFA6; }
 .rc-ct--offer { background:transparent; color:var(--cc-taupe); border:.5px dashed var(--cc-stone); }
 .rc-ct--none  { background:var(--cc-surface); color:var(--cc-stone); border:.5px solid var(--cc-rule); }
 /* Asking rent → Offer: which contract the room is offered on next */
@@ -1081,6 +1082,11 @@ function _roomCtPill(ctype, endIso, ten) {
     const end = _rcFmtD(endIso);
     const more = ten && ten.renewed ? (ten.then === 'mietvertrag' ? ' \u00b7 then Mietvertrag' : ' \u00b7 verlängert') : '';
     return `<span class="rc-rent-badge rc-ct rc-ct--kz"><i class="ti ti-clock" aria-hidden="true"></i>Kurzzeit${end ? ' bis ' + end : ''}${more}</span>`;
+  }
+  if (ctype === 'jahres') {
+    const end = _rcFmtD(endIso);
+    const more = ten && ten.renewed ? (ten.then === 'mietvertrag' ? ' \u00b7 then Mietvertrag' : ' \u00b7 verlängert') : '';
+    return `<span class="rc-rent-badge rc-ct rc-ct--jv"><i class="ti ti-calendar" aria-hidden="true"></i>Jahresvertrag${end ? ' bis ' + end : ''}${more}</span>`;
   }
   if (ctype === 'mietvertrag') return `<span class="rc-rent-badge rc-ct rc-ct--mv"><i class="ti ti-file-text" aria-hidden="true"></i>Mietvertrag</span>`;
   return `<span class="rc-rent-badge rc-ct rc-ct--none">Contract not set</span>`;
@@ -2200,7 +2206,7 @@ async function _rcBuildKurzzeit(forApprove) {
   await document.fonts.ready;
   await new Promise(r => setTimeout(r, 300));
   return { container, filename: ccPdfFileName('Mietvertrag_befristet', room2.name, mieterName),
-    payload: { kind: 'contract', ctype: 'kurzzeit', room: room2.name, forId: ccfForValue(), renew: _contractRenew,
+    payload: { kind: 'contract', ctype: (_contractRenew && _contractRenew.saveAs) || 'kurzzeit', room: room2.name, forId: ccfForValue(), renew: _contractRenew,
       tenant: { name: mieterName, address: mieterAdr, birthday: mieterDob, email: mieterEmail, phone: mieterTel },
       start: startVal, end: endVal, rent: m, kaution,
       first_month: ersterMonatVoll ? 'voll' : 'anteilig', last_month: letzterMonatVoll ? 'voll' : 'anteilig' } };

@@ -59,7 +59,7 @@ const CCF_CASA = {
   firstContract(rec, docs) {
     const base = (typeof _tnBaseContractType === 'function' && _tnBaseContractType(rec))
       || (typeof _tnRoomContractType === 'function' && _tnRoomContractType(rec.room)) || rec.contract_type;
-    const out = [base === 'kurzzeit' ? 'kurzzeitmietvertrag' : 'mietvertrag'];
+    const out = [base === 'kurzzeit' || (base === 'jahres' && docs.some(d => d.type === 'kurzzeitmietvertrag')) ? 'kurzzeitmietvertrag' : 'mietvertrag'];
     ['mietvertrag', 'kurzzeitmietvertrag'].forEach(t => { if (!out.includes(t) && docs.some(d => d.type === t)) out.push(t); });
     // Once renewed, the first contract is called "Erstvertrag" (same name as in the rent bar)
     const renewed = typeof _tnContracts === 'function' && _tnContracts(rec).length > 1;
@@ -194,7 +194,7 @@ function ccfSplitName(full) {
 function ccfRecs() { return ccfA().recs(); }
 function ccfDocsOf(tid) { return ccfA().docs()[tid] || []; }
 function ccfRec(id) { return ccfRecs().find(r => String(r.id) === String(id)) || null; }
-function ccfCtLabel(ct) { return ct === 'kurzzeit' ? 'Kurzzeit' : ct === 'mietvertrag' ? 'Mietvertrag' : ''; }
+function ccfCtLabel(ct) { return ct === 'kurzzeit' ? 'Kurzzeit' : ct === 'jahres' ? 'Jahresvertrag' : ct === 'mietvertrag' ? 'Mietvertrag' : ''; }
 function ccfToast(msg, isError) {
   if (typeof ccToast === 'function') return ccToast(msg, isError);
   if (isError) alert(msg);
@@ -1531,8 +1531,10 @@ function ccfRenewOpen(tid) {
   const n = ccfA().renewalRows(rec).length + 1;
   const ct = (ccfA().app === 'casa' ? (typeof tnContractType === 'function' ? tnContractType(rec) : rec.contract_type)
                                     : (typeof rntContractType === 'function' ? rntContractType(rec) : rec.contract_type)) || 'kurzzeit';
+  // A Jahresvertrag is renewed with the befristet generator and saved as Jahresvertrag again
+  const saveAs = ct === 'jahres' ? 'jahres' : null;
   ccfA().openRenew(rec, {
-    ct, tid: rec.id, label: n + '. Verlängerung', start, end,
+    ct: saveAs ? 'kurzzeit' : ct, saveAs, tid: rec.id, label: n + '. Verlängerung', start, end,
     mode: cur.mode, kalt: cur.kalt, nk: cur.nk, total: cur.total,
     kautionSoll: Number(rec.kaution_soll) > 0 ? Number(rec.kaution_soll) : null,
   });

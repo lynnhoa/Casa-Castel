@@ -575,6 +575,11 @@ let _tnMh           = {}; // room → Mieterhöhungen [{id, room, tenant_id, eff
 /* ══════════════════════════════════════════════════════════════
    4. PRICING HELPERS
 ══════════════════════════════════════════════════════════════ */
+/* Contract types of a Casa Castel tenancy (Oct 2026):
+   'kurzzeit' (shown as befristet / Kurzzeit) · 'jahres' (Jahresvertrag, ends 31.08.,
+   renewed yearly, Mietvertrag prices) · 'mietvertrag' (unbefristet).
+   Kurzzeit + Jahresvertrag have a contract end and can be renewed.            */
+function _tnIsFixed(t) { return t === 'kurzzeit' || t === 'jahres'; }
 function _tnRoomContractType(room) {
   if (typeof appRooms === 'undefined') return null;
   const r = appRooms.find(x => x.name === room);
@@ -606,7 +611,7 @@ function _tnRoomPricing(room, ctypeArg) {
   if (!r) return {};
   const ctype = ctypeArg || _tnRoomContractType(room);   // the tenancy's type; the room's offer only as a fallback
   let kaltmiete = null, nebenkosten = null;
-  if (ctype === 'mietvertrag') {
+  if (ctype === 'mietvertrag' || ctype === 'jahres') {   // Jahresvertrag uses the Mietvertrag prices
     if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
       kaltmiete   = Number(r.kaltmiete)    || null;
       nebenkosten = Number(r.nk_pauschale) || null;
@@ -818,6 +823,7 @@ function _tnPriceLabel(room) {
 function _tnContractLabel(type) {
   if (type === 'mietvertrag') return 'Mietvertrag';
   if (type === 'kurzzeit')    return 'Kurzzeit';
+  if (type === 'jahres')      return 'Jahresvertrag';
   return null;
 }
 
@@ -832,7 +838,7 @@ function _tnContractLabel(type) {
    read on the move-in day.                                                    */
 function _tnTypedPeriods(rec) {
   if (!rec || !rec.id || typeof ccRpFor !== 'function') return [];
-  return ccRpFor('casa', rec.id).filter(p => p.contract_type === 'mietvertrag' || p.contract_type === 'kurzzeit');
+  return ccRpFor('casa', rec.id).filter(p => p.contract_type === 'mietvertrag' || p.contract_type === 'kurzzeit' || p.contract_type === 'jahres');
 }
 function _tnTypeDay(rec) {
   const today = typeof ccRpToday === 'function' ? ccRpToday() : _ccTodayIso();
@@ -877,7 +883,7 @@ function _tnContracts(rec) {
     const pAt  = c.start && typeof ccRpAt === 'function' ? ccRpAt(per, c.start) : null;
     const own  = pAt && _ccIso(pAt.valid_from) === c.start ? pAt : null;   // the entry that starts this contract
     const amt  = pAt ? ccRpAmount(pAt) : (i === 0 ? _tnCurrentRent(rec, rec.room) : null);
-    const name = i === 0 ? (list.length > 1 || type === 'kurzzeit' ? 'Erstvertrag' : 'Mietvertrag') : i + '. Verlängerung';
+    const name = i === 0 ? (list.length > 1 || _tnIsFixed(type) ? 'Erstvertrag' : 'Mietvertrag') : i + '. Verlängerung';
     return { i, name, start: c.start, end, type, amt, period: own, renewal: c.renewal, last };
   });
 }
@@ -889,7 +895,7 @@ function _tnContractState(rec) {
   if (r === -1) r = 0;
   return { all, cur: all[r], next: all[r + 1] || null, earlier: all.slice(0, r).reverse() };
 }
-function _tnTypeWord(t) { return t === 'kurzzeit' ? 'befristet' : t === 'mietvertrag' ? 'unbefristet' : ''; }
+function _tnTypeWord(t) { return t === 'kurzzeit' ? 'befristet' : t === 'jahres' ? 'Jahresvertrag' : t === 'mietvertrag' ? 'unbefristet' : ''; }
 function _tnContractDates(c) {
   if (!c || !c.start) return '';
   if (c.end) return _ccFmtD(c.start) + ' \u2013 ' + _ccFmtD(c.end);
@@ -919,7 +925,7 @@ function _tnContractStripHTML(rid, room, rec) {
     return `<div class="tn-cstrip" id="cstrip-${rid}">${_tnContractRowHTML(rec, st.next, `<span class="tnp tnp-blue">ab ${_ccFmtD(st.next.start)}</span>`, rid, 'cstrip-' + rid)}</div>`;
   }
   const c = st.cur;
-  if (c && c.last && c.type === 'kurzzeit' && c.end && !rec.mietende && rec.status === 'active' && typeof ccTnDaysUntil === 'function') {
+  if (c && c.last && _tnIsFixed(c.type) && c.end && !rec.mietende && rec.status === 'active' && typeof ccTnDaysUntil === 'function') {
     const d = ccTnDaysUntil(c.end);
     if (d !== null && d <= 60) {
       return `<div class="tn-cstrip tn-cstrip--due" id="cstrip-${rid}">
@@ -983,7 +989,7 @@ function _tnContractEdit(rid, tid, i, secId) {
       endNew = raw ? (_tnParseDate(raw) || false) : null;
       if (endNew === false) { ccToast('Contract end: TT.MM.JJJJ', true); return false; }
       if (ctNew === 'mietvertrag') endNew = null;
-      if (ctNew === 'kurzzeit' && !endNew) { ccToast('Befristet needs a contract end', true); return false; }
+      if (_tnIsFixed(ctNew) && !endNew) { ccToast('Befristet / Jahresvertrag needs a contract end', true); return false; }
       if (endNew && c.start && endNew < c.start) { ccToast('Contract end is before the start', true); return false; }
     }
     const fields = mNew === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: null }
@@ -1062,11 +1068,11 @@ function _tnAllPauschal(rec) {
   return cs.length > 0 && cs.every(c => c.amt && c.amt.mode === 'pauschal');
 }
 
-/* The choice Mietvertrag | Kurzzeit (tenant form, pop-up, Renew) — value in a hidden field */
+/* The choice Mietvertrag | Kurzzeit | Jahresvertrag (tenant form, pop-up, Renew) — value in a hidden field */
 function _tnCtSegHTML(attr, value) {
-  const v = value === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag';
+  const v = value === 'kurzzeit' || value === 'jahres' ? value : 'mietvertrag';
   const opt = (t, l) => `<button type="button" class="cc-seg__opt${v === t ? ' is-on' : ''}" role="radio" aria-checked="${v === t}" data-ct="${t}" onclick="_tnSetCt(this)">${l}</button>`;
-  return `<div class="cc-seg tn-contract-toggle" role="radiogroup" aria-label="Contract">${opt('mietvertrag', 'Mietvertrag')}${opt('kurzzeit', 'Kurzzeit')}<input type="hidden" ${attr}="${attr === 'data-cc' ? 'ct' : 'contract_type'}" value="${v}"/></div>`;
+  return `<div class="cc-seg tn-contract-toggle" role="radiogroup" aria-label="Contract">${opt('mietvertrag', 'Mietvertrag')}${opt('kurzzeit', 'Kurzzeit')}${opt('jahres', 'Jahresvertrag')}<input type="hidden" ${attr}="${attr === 'data-cc' ? 'ct' : 'contract_type'}" value="${v}"/></div>`;
 }
 function _tnSetCt(btn) {
   const seg = btn.closest('.cc-seg');
@@ -1239,8 +1245,8 @@ function _tnCardPills(room, activeRec) {
   const todos = [];
   if (activeRec) {
     todos.push(ccTnMoveOutTodo(activeRec));
-    if (tnContractType(activeRec) === 'kurzzeit') todos.push(ccTnRenewalTodo(activeRec));   // only Kurzzeit is renewed
-    if (tnContractType(activeRec) === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende)
+    if (_tnIsFixed(tnContractType(activeRec))) todos.push(ccTnRenewalTodo(activeRec));   // Kurzzeit + Jahresvertrag are renewed
+    if (_tnIsFixed(tnContractType(activeRec)) && !activeRec.vertragsende && !activeRec.mietende)
       todos.push({ level: 'amber', text: 'Contract end missing' });
     if (_tnNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: _tnNkOpenLabel(activeRec) });   // Settlements + old tracking
     if (_tnIsKaltNK(activeRec, room.name) && typeof ccTnNkChangeTodo === 'function')
@@ -1980,7 +1986,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
   const hasVE  = _ccHasVE(_tnRecords);
   // Contract end: a Mietvertrag without an end date is unbefristet; a Kurzzeit always needs one
   const veRead    = rec && rec.vertragsende ? _tnFmtDate(rec.vertragsende) : (ct === 'mietvertrag' ? 'unbefristet' : '');
-  const veMissing = !!(rec && ct === 'kurzzeit' && !rec.vertragsende && !rec.mietende);
+  const veMissing = !!(rec && _tnIsFixed(ct) && !rec.vertragsende && !rec.mietende);
 
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
@@ -3058,7 +3064,7 @@ async function _tnSaveRent(rid, tid, roomName) {
   let endNew = endInp ? (_tnParseDate(endInp.value.trim()) || null) : undefined;
   if (endInp && endInp.value.trim() && !endNew) { ccToast('Contract end: TT.MM.JJJJ', true); return; }
   if (endInp && (ctNew || (cc && cc.type)) === 'mietvertrag') endNew = null;             // unbefristet = no end
-  if (endInp && (ctNew || (cc && cc.type)) === 'kurzzeit' && !endNew) { ccToast('Befristet needs a contract end', true); return; }
+  if (endInp && _tnIsFixed(ctNew || (cc && cc.type)) && !endNew) { ccToast('Befristet / Jahresvertrag needs a contract end', true); return; }
   // ── 2 · a rent is required (an empty field would save 0,00 €)
   if (kalt == null || (mode !== 'pauschal' && nk == null)) { ccToast('Please enter the rent', true); return; }
 
