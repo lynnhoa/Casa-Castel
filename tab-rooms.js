@@ -100,6 +100,12 @@ document.getElementById('tab-rooms').innerHTML = `
 `;
 
 
+/* The generator, Inventar and delete sheets live on the page itself, not inside the
+   Rooms tab: a generator opened from Tenants (Renew) appears over Tenants — no tab jump */
+['inventarOverlay', 'contractOverlay', 'confirmOverlay'].forEach(id => {
+  const el = document.getElementById(id); if (el) document.body.appendChild(el);
+});
+
 /* ── STYLES ──────────────────────────────────────────────── */
 (function() {
   if (document.getElementById('rooms-tab-styles')) return;
@@ -2519,7 +2525,7 @@ async function _roomRestoreContractDraft() {
   if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf()) return _roomReopenContractDraft(d);
   if (typeof ccOfferDraft !== 'function') return;
   ccOfferDraft({
-    label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + room.name,
+    label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', jahres:'Jahresvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + room.name,
     ts: d.ts,
     onContinue: () => _roomReopenContractDraft(ccDraftGet(_ROOM_DRAFT_KEY) || d),
     onDiscard:  () => ccDraftClear(_ROOM_DRAFT_KEY),
@@ -2528,8 +2534,10 @@ async function _roomRestoreContractDraft() {
 async function _roomReopenContractDraft(d) {
   if (!d || !d.meta || !getRoomById(d.meta.roomId)) return;
   try {
+    // a renewal started in Tenants reopens over Tenants; everything else on the Rooms tab
+    const fromTenants = !!(d.meta.renew && d.meta.renew.back === 'tenants');
     const tabEl = document.getElementById('tab-rooms');
-    if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('rooms');
+    if (!fromTenants && tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('rooms');
     // Übergabe: restore the card's Einzug/Auszug choice before opening
     if (d.meta.type === 'ueberg' && d.meta.euLabel) {
       document.getElementById('eu-' + d.meta.roomId)?.querySelectorAll('button, span, div').forEach(el => {

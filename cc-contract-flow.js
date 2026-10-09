@@ -78,8 +78,7 @@ const CCF_CASA = {
   openRenew(rec, renew) {
     const room = typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === rec.room) : null;
     if (!room || typeof _openContract !== 'function') return;
-    if (typeof switchTab === 'function') switchTab('rooms');
-    _openContract(renew.ct, room.id, { ...renew, roomId: room.id, back: 'tenants' });   // Approve returns to this tenant
+    _openContract(renew.ct, room.id, { ...renew, roomId: room.id, back: 'tenants' });   // opens over Tenants — no jump to Rooms
   },
   renewSwitch(type) {
     if (typeof _contractRenew === 'undefined' || !_contractRenew || typeof _openContract !== 'function') return;
@@ -267,7 +266,19 @@ let _ccfFor = null;
 function ccfForDefault(o) {
   if (o.renew && o.renew.tid) return String(o.renew.tid);
   const ts = ccfChoices(o.room, o.mode, o.occasion);
-  if (o.mode === 'contract') { const nx = ts.find(t => t.role === 'next'); return nx ? String(nx.rec.id) : 'new'; }
+  if (o.mode === 'contract') {
+    const nx = ts.find(t => t.role === 'next'); if (nx) return String(nx.rec.id);
+    // Casa: a tenant added in Tenants within the last 60 days who has no contract yet → that tenant,
+    // never "New tenancy" (Approve then fills the same entry — no second tenant). Older tenants whose
+    // contract was simply never uploaded are not picked: a new contract from Rooms is for a new person.
+    if (ccfA().app === 'casa') {
+      const recent = ccfAddDays(ccfToday(), -60);
+      const added = ts.find(t => t.role === 'current' && ccfIso(t.rec.mietbeginn) >= recent
+        && !ccfDocsOf(t.rec.id).some(d => /^(mietvertrag|kurzzeitmietvertrag|kurzzeitvertrag|verlaengerung_)/.test(d.type || '')));
+      if (added) return String(added.rec.id);
+    }
+    return 'new';
+  }
   const pick = o.occasion === 'einzug'
     ? (ts.find(t => t.role === 'next') || ts.find(t => t.role === 'current'))
     : (ts.find(t => t.role === 'current') || ts.find(t => t.role === 'former'));
