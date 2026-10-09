@@ -717,15 +717,7 @@ function _pkKfSelect(prefix, val, clickedBtn) {
 
 /* ── KAUTION FÄLLIGKEIT READER (PARKING) ─────────────────── */
 function _pkReadKautionFael() {
-  const active = document.querySelector('.rm-fael-btn.active[data-prefix="pk-mv"]');
-  const val    = active ? (active.dataset.val || active.textContent.trim()) : null;
-  if (!val || val === '5' || val === '5 Tage') return '5';
-  if (val === 'sofort' || val === 'Sofort')    return 'sofort';
-  if (val === 'custom' || val === 'Individuell') {
-    const custom = document.getElementById('pk-mv-fael-custom-val')?.value.trim();
-    return custom && !isNaN(custom) ? custom : '5';
-  }
-  return '5';
+  return 'sofort';   // Oct 2026: Kaution always due right after signing (no choice any more)
 }
 
 
@@ -1232,18 +1224,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
       </div>
       <input class="rm-input" id="pk-mv-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
     </div>
-    <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-      <button class="rm-fael-btn active" data-prefix="pk-mv" data-val="sofort" onclick="_pkKfSelect('pk-mv','sofort',this)">Sofort</button>
-      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','5',this)">5 Tage</button>
-      <button class="rm-fael-btn" data-prefix="pk-mv" onclick="_pkKfSelect('pk-mv','custom',this)">Individuell</button>
-    </div>
-    <div id="pk-mv-fael-custom" style="display:none">
-      <div class="rm-field">
-        <label>Tage nach Unterzeichnung</label>
-        <input class="rm-input" id="pk-mv-fael-custom-val" type="number" placeholder="z.B. 14"/>
-      </div>
-    </div>`;
+    <p style="font-size:12px;color:#7A6F62;margin:-6px 0 10px">Kaution fällig sofort nach Vertragsunterzeichnung.</p>`;
 }
 
 function _pkToggleMvBefristung() {

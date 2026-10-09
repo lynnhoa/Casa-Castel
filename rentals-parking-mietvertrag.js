@@ -21,7 +21,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   kennzeichen = '', fahrzeug = '',
-  kautionVal = null, kautionFael = '5',
+  kautionVal = null, kautionFael = 'sofort',
   staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
@@ -100,9 +100,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     fahrzeug:    fahrzeug    || '',
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
     kaution:         ccKaution({ contract: 'parking', kalt: miete, rec: pr, manual: kautionVal }).amount,
-    kautionFaelText: kautionFael === 'sofort'
-      ? 'sofort nach Vertragsunterzeichnung'
-      : `binnen ${kautionFael}\u00a0Tagen nach Vertragsunterzeichnung`,
+    kautionFaelText: 'sofort nach Vertragsunterzeichnung',   // Oct 2026: always sofort
     staffelAn,
     staffeln:     staffeln.map(s => ({ datum: s.datum || '', betrag: Number(s.betrag) || 0 })),
     anfangsmiete: anfangsmiete !== null ? Number(anfangsmiete) : miete,

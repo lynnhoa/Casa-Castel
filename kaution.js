@@ -87,17 +87,21 @@ function ccKautionRuleText(contract, mode, start, end) {
    opts: { contract:'mietvertrag'|'kurzzeit'|'gewerbe'|'parking',
            mode:'kalt_nk'|'pauschal', kalt, nk,
            rec   (card pricing row with kaution_override / kaution_default),
-           start, end (Kurzzeit dates), manual (generator field value) }
+           start, end (Kurzzeit dates), manual (generator field value),
+           noOverride (true = ignore the card override) }
+   'jahres' (Casa Jahresvertrag) is handled like 'mietvertrag' (3×).
    returns { amount, source:'manual'|'override'|'rule', rule } */
 function ccKaution(opts = {}) {
   const { contract = 'mietvertrag', mode = 'kalt_nk', kalt = 0, nk = 0,
-          rec = null, start = null, end = null, manual = null } = opts;
+          rec = null, start = null, end = null, manual = null, noOverride = false } = opts;
   const ruleTxt = ccKautionRuleText(contract, mode, start, end);
 
   const m = ccKautionManual(manual);
   if (m !== null) return { amount: ccKautionRound(m), source: 'manual', rule: ruleTxt };
 
-  const o = ccKautionOverride(rec);
+  // Casa Castel: the room's individual Kaution belongs to the Mietvertrag baseline only —
+  // a Kurzzeit contract always follows its own rule (noOverride)
+  const o = noOverride ? null : ccKautionOverride(rec);
   if (o !== null) return { amount: ccKautionRound(o), source: 'override', rule: 'Individuelle Kaution (Karte)' };
 
   const amount = ccKautionBase(contract === 'parking' ? 'kalt_nk' : mode, kalt, nk)

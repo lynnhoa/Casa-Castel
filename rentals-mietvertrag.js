@@ -31,7 +31,7 @@ function _buildRentalMietvertragData(room, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
-  kautionFael = '5', kautionVal = null,
+  kautionFael = 'sofort', kautionVal = null,
   staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
@@ -129,7 +129,7 @@ function _buildRentalMietvertragData(room, s, {
     gesamtmiete,
     ersterMonatNote,
     kaution,
-    kautionFaelText: kautionFael === 'sofort' ? 'sofort nach Vertragsunterzeichnung' : `binnen ${kautionFael}\u00a0Tagen`,
+    kautionFaelText: 'sofort nach Vertragsunterzeichnung',   // Oct 2026: always sofort
     hausstuerschluessel: room.haustuerschluessel ?? 1,
     zimmerschluessel:    room.zimmerschluessel    ?? 1,
     briefkastenschluessel: room.briefkastenschluessel ?? 0,

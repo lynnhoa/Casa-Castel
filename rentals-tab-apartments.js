@@ -2648,15 +2648,6 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
       </div>
       <input class="rm-input" id="apt-cm-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kzK.amount}" placeholder="€" data-auto="1" oninput="this.removeAttribute('data-auto')"/>
     </div>
-    <div style="margin-bottom:20px">
-      <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="rm-fael-btn active" data-prefix="cm" data-val="sofort" onclick="_aptKfSelect('cm','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','5',this)">5 Tage</button>
-        <button class="rm-fael-btn" data-prefix="cm" onclick="_aptKfSelect('cm','custom',this)">Individuell</button>
-        <input type="number" id="apt-cm-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
-      </div>
-    </div>
 
     ${_aptTenantBlockHTML('cm', 1, tenant1, { required: true, aptName: apt.name })}
     ${_aptTenantBlockHTML('cm', 2, tenant2, { required: false })}
@@ -2695,15 +2686,6 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
         <div class="rm-kaution-rule">${ccKautionOverride(p) !== null ? 'Individuelle Kaution (Karte)' : '3 × Kaltmiete'}</div>
       </div>
       <input class="rm-input" id="apt-mv-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
-    </div>
-    <div style="margin-bottom:20px">
-      <div class="rm-kaution-lbl" style="margin-bottom:6px">Kaution Fälligkeit</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="rm-fael-btn active" data-prefix="mv" data-val="sofort" onclick="_aptKfSelect('mv','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','5',this)">5 Tage</button>
-        <button class="rm-fael-btn" data-prefix="mv" onclick="_aptKfSelect('mv','custom',this)">Individuell</button>
-        <input type="number" id="apt-mv-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit" placeholder="Tage"/>
-      </div>
     </div>
 
     ${_aptTenantBlockHTML('mv', 1, tenant1, { required: true, aptName: apt.name })}
@@ -3078,15 +3060,6 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
     <div class="rm-field">
       <label>Kaution</label>
       <input class="rm-input" id="apt-gw-kaution" type="number" data-cc-num="2" step="0.01" value="${kaution || ''}" placeholder="3 × Kaltmiete" data-auto="1" oninput="this.removeAttribute('data-auto')" style="-webkit-appearance:textfield;appearance:textfield;"/>
-    </div>
-    <div style="margin-bottom:16px;">
-      <div class="rm-kaution-lbl" style="margin-bottom:6px;">Kaution Fälligkeit</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="rm-fael-btn active" data-prefix="gw" data-val="sofort" onclick="_aptKfSelect('gw','sofort',this)">Sofort</button>
-        <button class="rm-fael-btn" data-prefix="gw" onclick="_aptKfSelect('gw','5',this)">5 Tage</button>
-        <button class="rm-fael-btn" data-prefix="gw" onclick="_aptKfSelect('gw','custom',this)">Individuell</button>
-        <input type="number" id="apt-gw-fael-custom" style="width:64px;font-size:12px;padding:3px 6px;border:.5px solid var(--cc-rule);border-radius:6px;display:none;font-family:inherit;-webkit-appearance:textfield;appearance:textfield;" placeholder="Tage"/>
-      </div>
     </div>
 
     <div class="rm-field--toggle">
@@ -3658,15 +3631,7 @@ document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
 
 /* ── KAUTION FÄLLIGKEIT READER ───────────────────────────── */
 function _aptReadKautionFael(prefix) {
-  const active = document.querySelector(`.rm-fael-btn.active[data-prefix="${prefix}"]`);
-  const val    = active ? (active.dataset.val || active.textContent.trim()) : null;
-  if (!val || val === '5' || val === '5 Tage') return '5';
-  if (val === 'sofort' || val === 'Sofort')    return 'sofort';
-  if (val === 'custom' || val === 'Individuell') {
-    const custom = document.getElementById(`apt-${prefix}-fael-custom`)?.value.trim();
-    return custom && !isNaN(custom) ? custom : '5';
-  }
-  return '5';
+  return 'sofort';   // Oct 2026: Kaution always due right after signing (no choice any more)
 }
 
 

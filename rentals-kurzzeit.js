@@ -25,7 +25,7 @@ function _buildRentalKurzzeitData(apt, s, {
   mieterName2 = '', mieterAdr2 = '', mieterDob2 = '', mieterEmail2 = '', mieterTel2 = '',
   mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal, endVal, sigVal,
-  kautionVal, kautionFael = '5',
+  kautionVal, kautionFael = 'sofort',
 }) {
   const fmt = d => {
     const dt = new Date(d);
@@ -176,7 +176,7 @@ function _buildRentalKurzzeitData(apt, s, {
     kaution:              ccKaution({ contract: 'kurzzeit', mode: kzNk > 0 ? 'kalt_nk' : 'pauschal',
                                       kalt: kzKalt, nk: kzNk, rec: p, start: startVal, end: endVal,
                                       manual: kautionVal }).amount,
-    kautionFaelText:      kautionFael === 'sofort' ? 'sofort nach Vertragsunterzeichnung' : `binnen ${kautionFael}\u00a0Tagen`,
+    kautionFaelText:      'sofort nach Vertragsunterzeichnung',   // Oct 2026: always sofort
     hausstuerschluessel:  sk.haustuerschluessel  ?? 1,
     wohnungsschluessel:   sk.wohnungsschluessel   ?? 1,
     inventar,
