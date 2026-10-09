@@ -1193,142 +1193,82 @@ const _srSigned = (p, v) => (v || 0) * (_srKind(p.kind).neg ? -1 : 1);
 
 /* ── Window A · Hausgeld-Jahresabrechnung (you ↔ WEG): all costs · WEG result · check ── */
 function _srHvView(c) {
-  const title = 'Hausgeld ' + c.per.label;
-  if (c.before) return _srHead4(title, c.p.name) + '<div class="srm__pickwrap">' + _srPicker(c) + '</div><div class="srm__b"><div class="srm__card"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(_srBought(c.p)) + '). The seller settles this period.</p></div></div>';
+  // Oct 2026 · one level: the result on top, two switch rows, the costs below — no steps, no edit mode
+  const hvName = c.verw && c.verw.hv_name ? c.verw.hv_name : '';
+  const head = stMHead('Jahresabrechnung ' + c.per.label, c.p.name + (hvName ? ' · ' + hvName : ''), 'bld', 'data-sr="close"') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>';
+  if (c.before) return head + '<div class="srm__b mx-b"><div class="mx-det"><p class="st-note">' + stEsc(c.per.label) + ' is before your purchase (' + stDate(_srBought(c.p)) + '). The seller settles this period.</p></div></div>';
   const d = _srEnsureDraft(c), rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt), hv = _srHvState(c, rec, sum);
   const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
-  let status = '';
-  if (!hv.received) {
-    status = '<div class="srm__banner' + (hv.k === 'ueberfaellig' ? ' is-warn' : '') + '"><div><p class="srm__banner-t">' +
-      (c.running ? 'Period runs until ' + stDate(c.per.to) : hv.k === 'ueberfaellig' ? 'Overdue – expected ' + (hv.exp ? hv.exp.label : '') : 'Expected ' + (hv.exp ? '~' + hv.exp.label : '– month not set')) + '</p>' +
-      '<p class="srm__banner-s">' + (c.running ? 'You can prepare it already. ' : '') + 'Frist for the NK: ' + stDate(hv.per.frist) + (hv.asked.length ? ' · asked ' + hv.asked.map(stDM).join(', ') : '') + '</p></div>' +
-      (mail && !c.running ? '<a class="cx-btn cx-btn--s srm__ask" data-sr="ask" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srAskMail(c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Ask HV</a>' : '') + '</div>';
-  }
   const U = [], N = [];
   (d.positions || []).forEach((p, i) => { if (!_srIsNkOnly(p)) (p.u ? U : N).push([p, i]); });
-  const tot = arr => cxR(arr.reduce((s, [p]) => s + _srSigned(p, _srAmtOf(d, p, c.apt)), 0));
+  const tot = arr => cxR(arr.reduce((t, [p]) => t + _srSigned(p, _srAmtOf(d, p, c.apt)), 0));
   const tu = tot(U), tn = tot(N), tt = cxR(tu + tn);
-  const row = ([p, i]) => {
-    const k = _srKind(p.kind), custom = p.kind === 'sonst' || p.kind === 'nu_sonst' || p.label;
-    const lab = custom ? '<input class="ct-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || '') + '"/>' : '<span class="ct-lab">' + stEsc(k.l) + '</span>';
-    const calc = _srNum(p.amount) === null ? _srUnitAmt(d, p, c.apt) : null;
-    return '<div class="ct-r"><span class="ct-l">' + lab + '</span><span class="ct-a"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" placeholder="' + stEsc(calc !== null ? cxE2(Math.abs(calc)) : '') + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
-  };
-  const block = (arr, u, label, total) => '<div class="ct"><div class="ct-h"><span class="st-f__l">' + label + '</span><b data-sr-tot="' + (u ? 'u' : 'n') + '">' + stEur(total) + '</b></div>' + arr.map(row).join('') +
-    '<button class="ct-add" data-sr="rowAdd" data-u="' + (u ? 1 : 0) + '"><i class="ti ti-plus" aria-hidden="true"></i> Add row</button></div>';
-  const costs = SR.costsOpen
-    ? '<div class="ct-top"><span class="st-f__l">Kosten · your Wohnung’s amounts from the Einzelabrechnung</span>' + (sum.ok ? '<button class="ct-hide" data-sr="costs">hide</button>' : '') + '</div>' +
-      '<div class="ct-2">' + block(U, true, 'Umlagefähig', tu) + block(N, false, 'Nicht umlagefähig', tn) + '</div>' +
-      '<div class="ct-tot"><span>Total costs per Jahresabrechnung</span><b data-sr-tot="t">' + stEur(tt) + '</b></div>' +
-      '<datalist id="srKindList">' + SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist>'
-    : '<button class="ct-fold" data-sr="costs"><span class="ct-fold__l"><span class="ct-fold__t">Kosten · ' + (U.length + N.length) + ' items</span><span class="ct-fold__s">umlagefähig ' + stEur(tu) + ' · nicht umlagefähig ' + stEur(tn) + '</span></span><span class="ct-fold__r">' + stEur(tt) + ' <i class="ti ti-chevron-down" aria-hidden="true"></i></span></button>';
   const wDir = d.weg_direction === null || d.weg_direction === undefined ? null : Number(d.weg_direction);
-  const seg = (v, on, t, s) => '<button type="button" class="st-seg__b' + (on ? ' is-on' : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + on + '">' + t + '<small>' + (s || '&nbsp;') + '</small></button>';
+  const wAmt = _srNum(d.weg_amount);
+  const jaDone = _srJaDone(rec, sum), settled = hv.k === 'fertig';
+  // ── the result (on top)
+  const seg = '<div class="mx-seg" role="group" aria-label="Result with the WEG">' + [[-1, 'Nachzahlung', 'p'], [1, 'Guthaben', 'g'], [0, 'balanced', 'z']].map(([v, t, k]) =>
+    '<button type="button" class="' + (wDir === v ? 'is-on is-' + k : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + (wDir === v) + '">' + t + '</button>').join('') + '</div>';
+  const amtF = wDir ? '<div class="mx-hf"><label class="mx-f"><span>Amount per HV</span><span class="mx-amt"><input inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '" placeholder="0,00"/><em>€</em></span></label>' +
+    '<label class="mx-f"><span>Due</span><input type="date" data-srf="weg_due" value="' + stEsc(_srD(d.weg_due) || '') + '"/></label></div>' : '';
+  const hero = stMHero({ tone: wDir === 1 ? 'get' : wDir === -1 ? 'pay' : wDir === 0 ? 'zero' : 'none',
+    label: wDir === 1 ? (settled ? 'The WEG paid you' : 'The WEG pays you') : wDir === -1 ? (settled ? 'You paid the WEG' : 'You pay the WEG') : wDir === 0 ? 'Balanced with the WEG' : 'Result of the Jahresabrechnung',
+    amount: wDir === null ? null : wDir === 0 ? 0 : wAmt,
+    sub: wDir === null ? 'choose what the HV says' : wDir && d.weg_due ? 'due ' + stDate(d.weg_due) : '',
+    extra: seg + amtF, settled });
+  // ── switch rows
+  const recvSub = hv.received ? (d.hv_date ? 'statement ' + stDate(d.hv_date) : 'add the statement date below') :
+    (c.running ? 'period runs until ' + stDate(c.per.to) : (hv.k === 'ueberfaellig' ? '<b class="neg">overdue</b> · ' : '') + 'expected ' + (hv.exp ? '~' + stEsc(hv.exp.label) : '–') + (hv.asked.length ? ' · asked ' + hv.asked.map(stDM).join(', ') : ''));
+  const ask = !hv.received && mail && !c.running ? '<a class="mx-pill" data-sr="ask" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srAskMail(c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i>Ask HV</a>' : '';
+  const rowRecv = stMRow({ icon: 'inbox', title: 'Jahresabrechnung received', sub: recvSub, on: !!hv.received,
+    right: ask + '<input class="mx-date" type="date" data-srf="received_on" aria-label="Received on" value="' + stEsc(_srD(d.received_on) || '') + '"/>',
+    below: '<div class="mx-sub2"><label class="mx-f mx-f--row"><span>Statement date</span><input type="date" data-srf="hv_date" value="' + stEsc(_srD(d.hv_date) || '') + '"/></label></div>' });
+  let rowMoney = '';
+  if (wDir !== 0) {
+    const x = _srSetCtx(c.ck, null, true), res = x && x.st && x.st.res, b = x && x.st && x.st.booking;
+    const missing = [!(d.received_on || d.hv_date) ? 'received date' : '', !d.hv_date ? 'statement date' : '', !sum.n || sum.missing ? 'costs' : '', wDir === null ? 'result' : wDir && !(wAmt > 0) ? 'amount' : ''].filter(Boolean);
+    const can = jaDone && !!res;
+    const sub = settled ? (b ? (wDir > 0 ? 'received ' : 'paid ') + stDate(b.invoice_date) + ' · ' + stEur(cxR(b.amount)) : 'settled')
+      : !can ? 'first add: ' + (missing.join(' · ') || 'the result') : 'flip it when it’s ' + (wDir > 0 ? 'on your account' : 'paid');
+    rowMoney = stMRow({ icon: 'coins', title: wDir < 0 ? 'Money paid' : 'Money received', sub: stEsc(sub), on: settled, disabled: !can && !settled,
+      switchAttrs: settled ? 'data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-w="1"' : 'data-sr="payOnW" data-k="' + stEsc(c.ck) + '"' });
+  }
+  // ── costs (summary; all rows editable behind "Show all costs")
   const hgPaid = _srNum(d.keys.hg_paid) ?? _srHausgeldPaid(c);
-  const calc = cxR(tt - hgPaid), entered = wDir === null ? null : cxR(wDir === 0 ? 0 : -wDir * (_srNum(d.weg_amount) || 0));
-  const diff = entered === null ? null : cxR(calc - entered);
-  const check = tt ? '<div class="srm__chk' + (diff !== null && Math.abs(diff) >= 0.01 ? ' is-warn' : '') + '">' +
-      '<span>Costs</span><span>' + stEur(tt) + '</span>' +
-      '<span>− Hausgeld paid <small>(per Rentals · editable)</small></span><span class="srm__hg"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld paid" value="' + stEsc(cxE2(hgPaid)) + '"/> €</span>' +
-      '<span><b>= ' + (calc > 0 ? 'Nachzahlung' : calc < 0 ? 'Guthaben' : 'balanced') + '</b>' + (diff === null ? '' : Math.abs(diff) < 0.01 ? ' · matches the HV' : ' · HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff))) + '</span><span><b>' + stEur(Math.abs(calc)) + '</b></span></div>' : '';
-  const weg = '<fieldset class="st-f"><legend class="st-f__l">WEG result</legend><div class="st-seg st-seg--3" role="group">' +
-      seg(-1, wDir === -1, 'Nachzahlung', 'to WEG') + seg(1, wDir === 1, 'Guthaben', 'from WEG') + seg(0, wDir === 0, 'balanced', '') + '</div>' +
-      (wDir ? '<div class="sr-grid2" style="margin-top:10px"><label class="st-f"><span class="st-f__l">Amount per HV</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '"/><span>€</span></span></label>' +
-        _srDateF('weg_due', d.weg_due, 'Due') + '</div>' : '') + '</fieldset>';
+  const calc = cxR(tt - hgPaid), entered = wDir === null ? null : cxR(wDir === 0 ? 0 : -wDir * (wAmt || 0)), diff = entered === null ? null : cxR(calc - entered);
+  const mx = Math.max(Math.abs(tu) + Math.abs(tn), 1);
+  let costs = '<div class="mx-mini"><i style="flex:' + Math.max(1, Math.abs(tu) / mx * 100) + ';background:#9DBF7A"></i><i style="flex:' + Math.max(1, Math.abs(tn) / mx * 100) + ';background:#E8C98F"></i></div>' +
+    '<div class="mx-dr"><span class="mx-d" style="background:#9DBF7A"></span><span>Umlagefähig<small>goes into the tenants’ NK</small></span><span class="mx-a" data-sr-tot="u">' + stEur(tu) + '</span></div>' +
+    '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Nicht umlagefähig<small>Verwaltung, Rücklage …</small></span><span class="mx-a" data-sr-tot="n">' + stEur(tn) + '</span></div>' +
+    '<div class="mx-dr is-b"><span class="mx-d"></span><span>Total</span><span class="mx-a" data-sr-tot="t">' + stEur(tt) + '</span></div>';
+  if (SR.costsOpen) {
+    const row = ([p, i]) => {
+      const k = _srKind(p.kind), custom = p.kind === 'sonst' || p.kind === 'nu_sonst';
+      const calcA = _srNum(p.amount) === null ? _srUnitAmt(d, p, c.apt) : null;
+      const name = custom ? '<input class="mx-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || '') + '"/>' : '<span>' + stEsc(p.label || k.l) + '</span>';
+      return '<div class="mx-er">' + name + '<span class="mx-amt"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" placeholder="' + stEsc(calcA !== null ? cxE2(Math.abs(calcA)) : '') + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
+    };
+    const grp = (arr, u, label) => '<p class="mx-grp">' + label + '</p>' + (arr.map(row).join('') || '<p class="st-hint">No rows yet.</p>') +
+      '<button class="mx-add" data-sr="rowAdd" data-u="' + (u ? 1 : 0) + '"><i class="ti ti-plus" aria-hidden="true"></i> Add a cost</button>';
+    costs += '<div class="mx-edit">' + grp(U, true, 'Umlagefähig') + grp(N, false, 'Nicht umlagefähig') +
+      '<datalist id="srKindList">' + SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist>' +
+      '<div class="mx-er"><span>− Hausgeld paid <small>per Rentals</small></span><span class="mx-amt"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld paid" value="' + stEsc(cxE2(hgPaid)) + '"/><em>€</em></span></div>' +
+      '<div class="mx-er is-b"><span>= calculated <span data-sr-tot="cl">' + (calc > 0 ? 'Nachzahlung' : calc < 0 ? 'Guthaben' : 'balanced') + '</span></span><span data-sr-tot="c">' + stEur(Math.abs(calc)) + '</span></div>' +
+      (diff === null ? '' : Math.abs(diff) < 0.01 ? '<p class="mx-ok"><i class="ti ti-check" aria-hidden="true"></i> matches the HV result</p>' : '<p class="mx-ok is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff)) + '</p>') + '</div>';
+  }
+  costs += '<button class="mx-lnk" data-sr="costs">' + (SR.costsOpen ? 'Hide the costs' : 'Show all ' + (U.length + N.length) + ' costs · edit') + '</button>';
+  // ── settings (period · expected month) — folded at the end
   const expTxt = Number(c.p.hv_expected_month) ? SR_MON[Number(c.p.hv_expected_month) - 1] : '—';
-  const settings = '<details class="srm__set"' + (SR.expEdit || ST.perEdit === c.p.id ? ' open' : '') + '><summary>Settings · Period ' + stEsc(stDM(c.per.from) + '–' + stDM(c.per.to)) + ' · HV usually sends in ' + stEsc(expTxt) + '</summary>' +
+  const settings = '<details class="mx-set"' + (SR.expEdit || ST.perEdit === c.p.id ? ' open' : '') + '><summary>Settings · period ' + stEsc(stDM(c.per.from) + '–' + stDM(c.per.to)) + ' · HV usually sends in ' + stEsc(expTxt) + '</summary>' +
     _stPeriodRow(c.p) +
     (SR.expEdit ? '<div class="sr-exp"><span>HV usually sends in</span><span class="cx-f cx-f--l sr-sel"><select id="srExpM" aria-label="Month"><option value="">—</option>' + SR_MON.map((mm, i) => '<option value="' + (i + 1) + '"' + (Number(c.p.hv_expected_month) === i + 1 ? ' selected' : '') + '>' + mm + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></span><button class="cx-link" data-sr="expCancel">Cancel</button><button class="cx-link sr-acc" data-sr="expSave">Save</button></div>'
                 : '<div class="sr-exp"><span>HV usually sends in</span><b>' + stEsc(expTxt) + '</b><button class="cx-link" data-sr="expEdit">Change</button></div>') +
     '<div class="sr-grid2" style="margin-top:8px">' + _srDateF('per_from', d.period_from, 'This Abrechnung from') + _srDateF('per_to', d.period_to, 'to') + '</div>' +
     '<p class="st-hint">Only change the dates if the HV settles a different period (max. 12 months).</p></details>';
-  const jaDone = _srJaDone(rec, sum), editing = !jaDone || SR.jaEdit;
-  const step = !hv.received ? 0 : !jaDone ? 1 : hv.k === 'fertig' ? 3 : 2;
-  const prog = '<section class="srm__card sr-progcard">' + _srSteps(['Received', 'Entered', 'Settled'], step) +
-    (jaDone && !SR.jaEdit ? '<p class="sr-progmeta">Received ' + stDate(rec.received_on || rec.hv_date) + (rec.hv_date ? ' · statement ' + stDate(rec.hv_date) : '') + (c.verw && c.verw.hv_name ? ' · ' + stEsc(c.verw.hv_name) : '') + '</p>' : '') +
-    (editing ? status + '<div class="sr-grid2">' + _srDateF('received_on', d.received_on, 'Received on') + _srDateF('hv_date', d.hv_date, 'Statement date') + '</div>' : '') + '</section>';
-  if (editing) {
-    const tab = SR.jaTab === 'n' ? 'n' : 'u', list = tab === 'u' ? U : N;
-    const erow = ([p, i]) => {
-      const k = _srKind(p.kind), custom = p.kind === 'sonst' || p.kind === 'nu_sonst';     // only own rows get a name field
-      const calcA = _srNum(p.amount) === null ? _srUnitAmt(d, p, c.apt) : null, v = _srNum(p.amount);
-      const name = custom ? '<label class="sr-er__n is-c"><input list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || '') + '"/><i class="ti ti-pencil" aria-hidden="true"></i></label>'
-                          : '<span class="sr-er__n">' + stEsc(p.label || k.l) + '</span>';
-      return '<div class="sr-er">' + name + '<label class="sr-amt' + (v !== null && _srSigned(p, v) < 0 ? ' is-neg' : '') + '"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" placeholder="' + stEsc(calcA !== null ? cxE2(Math.abs(calcA)) : '') + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></label></div>';
-    };
-    const tabs = '<div class="sr-tabs" role="tablist">' +
-      '<button class="sr-tab' + (tab === 'u' ? ' is-on' : '') + '" data-sr="jaTab" data-g="u" role="tab" aria-selected="' + (tab === 'u') + '">Umlagefähig<b data-sr-tot="u">' + stEur(tu) + '</b></button>' +
-      '<button class="sr-tab' + (tab === 'n' ? ' is-on' : '') + '" data-sr="jaTab" data-g="n" role="tab" aria-selected="' + (tab === 'n') + '">Nicht umlagefähig<b data-sr-tot="n">' + stEur(tn) + '</b></button></div>';
-    const kosten = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Kosten</p><span class="srm__cs">amounts of your Wohnung</span></div>' + tabs +
-      '<div class="sr-erlist">' + (list.map(erow).join('') || '<p class="st-hint">No rows yet.</p>') + '</div>' +
-      '<button class="sr-addrow2" data-sr="rowAdd" data-u="' + (tab === 'u' ? 1 : 0) + '"><i class="ti ti-plus" aria-hidden="true"></i> Add row</button>' +
-      '<datalist id="srKindList">' + SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist></section>';
-    const resWord = v => v > 0 ? 'Nachzahlung' : v < 0 ? 'Guthaben' : 'balanced';
-    const ergebnis = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Ergebnis</p></div><div>' +
-      '<div class="sr-tl"><span>Kosten gesamt</span><b data-sr-tot="t">' + stEur(tt) + '</b></div>' +
-      '<div class="sr-tl"><span>− Hausgeld paid <small>per Rentals</small></span><label class="sr-amt"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld paid" value="' + stEsc(cxE2(hgPaid)) + '"/><em>€</em></label></div>' +
-      '<div class="sr-tl sr-tl--res' + (calc < 0 ? ' is-g' : '') + '"><span><b>= <span data-sr-tot="cl">' + resWord(calc) + '</span></b> <small>calculated</small></span><b data-sr-tot="c">' + stEur(Math.abs(calc)) + '</b></div></div>' +
-      '<p class="st-f__l" style="margin:6px 0 0">WEG result per HV</p>' +
-      '<div class="sr-seg3" role="group">' + [[-1, 'Nachzahlung'], [1, 'Guthaben'], [0, 'balanced']].map(([v, t]) => '<button type="button" class="' + (wDir === v ? 'is-on' : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + (wDir === v) + '">' + t + '</button>').join('') + '</div>' +
-      (wDir ? '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Amount</span><span class="sr-amt sr-amt--l"><input inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '"/><em>€</em></span></label>' + _srDateF('weg_due', d.weg_due, 'Due') + '</div>' : '') +
-      (diff === null ? '' : Math.abs(diff) < 0.01 ? '<p class="sr-okline"><i class="ti ti-check" aria-hidden="true"></i> matches the calculation</p>'
-        : '<p class="sr-okline is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff)) + '</p>') +
-      '</section>';
-    return _srHead4(title, c.p.name + ' · you ↔ WEG') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
-      '<div class="srm__b"><div class="srm__one srm__wide">' + prog + kosten + ergebnis + settings + '</div></div>' +
-      '<div class="srm__bar sr-bar--ja"><span class="sr-saved" id="srSaved">' + (SR.dirty ? '' : (rec ? '✓ saved' : '')) + '</span>' +
-        '<button class="cx-btn cx-btn--p" data-sr="jaDone">' + (jaDone ? 'Done' : 'Mark complete') + '</button></div>';
-  }
-  // complete: the Abrechnung as an overview, then the money with the WEG
-  const wDone = _srNum(rec.weg_direction) === null ? null : Number(rec.weg_direction), wAmt = _srNum(rec.weg_amount) || 0;
-  const hgP = _srNum((rec.keys || {}).hg_paid) ?? _srHausgeldPaid(c);
-  const grp = u => (rec.positions || []).filter(p => !_srIsNkOnly(p) && !!p.u === u && _srAmtOf(rec, p, c.apt) !== null)
-    .map(p => ({ l: p.label || _srKind(p.kind).l, v: _srSigned(p, _srAmtOf(rec, p, c.apt)) }));
-  const GU = grp(true), GN = grp(false);
-  const sU = cxR(GU.reduce((a, x) => a + x.v, 0)), sN = cxR(GN.reduce((a, x) => a + x.v, 0)), totK = cxR(sU + sN);
-  const fold = (g, label, sub, list, total) => {
-    const on = !!(SR.jaOpen && SR.jaOpen[g]);
-    return '<button class="sr-acc" data-sr="jaFold" data-g="' + g + '" aria-expanded="' + on + '"><span class="sr-acc__t">' + label + '<small>' + list.length + ' items · ' + sub + '</small></span>' +
-      '<span class="sr-acc__r">' + stEur(total) + '<i class="ti ti-chevron-' + (on ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
-      (on ? '<div class="sr-items">' + list.map(x => '<div class="sr-it' + (x.v < 0 ? ' is-neg' : '') + '"><span>' + stEsc(x.l) + '</span><span>' + stEur(x.v) + '</span></div>').join('') + '</div>' : '');
-  };
-  const kv = (k, v, strong) => '<div class="sr-tl"><span>' + (strong ? '<b>' + k + '</b>' : k) + '</span>' + (strong ? '<b>' + v + '</b>' : '<span>' + v + '</span>') + '</div>';
-  const resBox = wDone ? '<div class="sr-sum ' + (wDone > 0 ? 'sr-sum--g' : 'sr-sum--n') + '"><span><b class="sr-sum__t">' + (wDone > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG') + '</b><small>' + (rec.weg_due ? 'due ' + stDate(rec.weg_due) : 'no due date') + ' · ' + (rec.weg_via === 'hausgeld' ? 'with the Hausgeld' : 'bank transfer') + '</small></span><b class="sr-sum__a">' + stEur(wAmt) + '</b></div>'
-    : '<div class="sr-sum"><span><b class="sr-sum__t">Balanced with the WEG</b><small>nothing to pay or receive</small></span><b class="sr-sum__a">' + stEur(0) + '</b></div>';
-  const over = '<section class="srm__card"><div class="srm__ch"><p class="srm__ct">Abrechnung</p><button class="cx-link" data-sr="jaEdit">edit</button></div>' +
-    '<div>' + fold('u', 'Umlagefähig', 'go into the NK', GU, sU) + fold('n', 'Nicht umlagefähig', 'your costs', GN, sN) +
-      kv('Kosten gesamt', stEur(totK), true) + kv('− Hausgeld paid', stEur(hgP)) + '</div>' + resBox + '</section>';
-  const wegSt = hv.wegSt, wRes = wegSt && wegSt.res, settled = !!(wRes && (wegSt.booking || wegSt.k === 'erledigt'));
-  let money = '';
-  if (wDone) {
-    const what = wDone > 0 ? 'Guthaben from the WEG' : 'Nachzahlung to the WEG';
-    if (settled) {
-      const b = wegSt.booking, bd = b ? _srD(b.invoice_date) : '';
-      money = '<section class="sr-money is-done"><div class="sr-money__top"><div><p class="sr-money__l">' + what + '</p>' +
-        '<p class="sr-money__ok"><i class="ti ti-check" aria-hidden="true"></i> ' + (wDone > 0 ? 'received' : 'paid') + (bd ? ' ' + stDate(bd) : '') + '</p></div>' +
-        '<b class="sr-money__a">' + stEur(b ? cxR(Math.abs(Number(b.amount))) : wAmt) + '</b></div>' +
-        '<p class="sr-money__h">' + (b ? 'Booked in Controlling › ' + stEsc(c.p.name) + ' · ' + SR_MON[Number(bd.slice(5, 7)) - 1] + ' ' + bd.slice(0, 4) : stEsc(_srSettledTxt({ st: wegSt, ts: {} }, true) || 'settled')) +
-        ' · <button class="cx-link" data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-w="1">undo</button></p></section>';
-    } else {
-      const late = rec.weg_due && cxToday() > _srD(rec.weg_due);
-      const ago = rec.hv_date ? Math.max(0, _srDays(rec.hv_date, cxToday()) - 1) : null;
-      const sub = [rec.weg_due ? 'due ' + stDate(rec.weg_due) + (late ? ' – overdue' : '') : '', ago !== null ? 'statement ' + ago + ' days ago' : ''].filter(Boolean).join(' · ');
-      const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
-      money = '<section class="sr-money is-open"><div class="sr-money__top"><div><p class="sr-money__l">' + what + '</p>' +
-        '<p class="sr-money__st"><i class="ti ti-alert-circle" aria-hidden="true"></i> ' + (wDone > 0 ? 'not received yet' : 'not paid yet') + '</p>' + (sub ? '<p class="sr-money__h">' + stEsc(sub) + '</p>' : '') + '</div>' +
-        '<b class="sr-money__a">' + stEur(wAmt) + '</b></div>' +
-        (wRes ? '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">' + (wDone > 0 ? 'Received on' : 'Paid on') + '</span><input class="st-in" type="date" id="srWegDate" value="' + cxToday() + '"/></label>' +
-            '<label class="st-f"><span class="st-f__l">Amount</span><span class="sr-amt sr-amt--l"><input inputmode="decimal" id="srWegAmt" value="' + stEsc(cxE2(wAmt)) + '" aria-label="Amount"/><em>€</em></span></label></div>' +
-          '<div class="sr-money__b">' + (wDone > 0 && mail ? '<a class="cx-btn cx-btn--s" data-sr="remind" href="' + stEsc(_srRemindMail(c, rec, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Remind HV</a>' : '') +
-            '<button class="cx-btn cx-btn--p" data-sr="wegRecv" data-k="' + stEsc(c.ck) + '">' + (wDone > 0 ? 'Mark received' : 'Mark paid') + '</button></div>' +
-          '<p class="sr-money__h">Books into Controlling › ' + stEsc(c.p.name) + ' on the date you enter.</p>'
-        : '<p class="sr-money__h">Getting ready …</p>') + '</section>';
-    }
-  }
-  return _srHead4(title, c.p.name + ' · you ↔ WEG') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
-    '<div class="srm__b"><div class="srm__one srm__wide">' + prog + money + over + '</div></div>';
+  return head + '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + rowRecv + rowMoney + '</div>' +
+    stMCard('Costs in the Jahresabrechnung', 'receipt', costs) + settings +
+    '<p class="mx-saved" id="srSaved">' + (SR.dirty ? '' : (rec ? '✓ saved automatically' : '')) + '</p></div>';
 }
-/* Progress line: done · current · open */
 function _srSteps(names, cur) {
   return '<div class="sr-steps">' + names.map((n, i) => '<span class="sr-step' + (i < cur ? ' is-done' : i === cur ? ' is-cur' : '') + '"><i></i>' + stEsc(n) + '</span>').join('') + '</div>';
 }
@@ -1373,6 +1313,11 @@ async function _srAutoSave() {
   try {
     const clean = _srCleanRec(d, c);
     if (!(d.keys || {}).ja_v && !wasDone) clean.keys.ja_done = null;
+    {                                                               // Oct 2026: complete by itself once dates, costs and the WEG result are in
+      const sm = _srRecSummary(clean, c.apt), wd = clean.weg_direction;
+      const ready = !!(clean.received_on || clean.hv_date) && !!clean.hv_date && sm.n && !sm.missing && wd !== null && wd !== undefined && (Number(wd) === 0 || _srNum(clean.weg_amount) > 0);
+      if (ready && !wasDone && !clean.keys.ja_done) { clean.keys.ja_v = 2; clean.keys.ja_done = cxToday(); }
+    }
     if (wasDone && !clean.keys.ja_done) clean.keys.ja_done = (d.keys || {}).ja_done || cxToday();   // an older complete record stays complete
     const saved = await srSaveRow(clean);
     d.id = saved.id; d.keys = Object.assign({}, d.keys, { ja_v: 2, ja_done: saved.keys && saved.keys.ja_done || null });
@@ -1439,7 +1384,7 @@ function _srNkView(c) {
     '</section>';
   }
   const tenCard = '<section class="srm__card" id="srNkTens">' + _srNkTens(c, d, rec, hvReady) + '</section>';
-  return _srHead4(title, c.p.name + ' · you ↔ tenants') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
+  return stMHead(title, c.p.name + ' · you ↔ tenants', 'receipt', 'data-sr="close"') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
     '<div class="srm__b"><div class="srm__cols">' + costCard + tenCard + '</div>' +
     (hvReady ? '<p class="sr-saved sr-saved--b" id="srSaved">' + (SR.dirty ? '' : '✓ saved') + '</p>' : '') + '</div>';
 }
@@ -1486,96 +1431,96 @@ function _srRefreshTotals() {
 
 /* View 2 · one tenant */
 function _srTenView(c) {
+  // Oct 2026 · one level: amount on top · "Letter sent" and "Paid back / Received" as switches · details below
   const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
   const it = c.items.find(x => String(x.r.id) === String(SR.modal.tid));
-  if (!it) return _srHead4('Tenant', '', 'back') + '<div class="srm__b"><p class="cx-empty">Not found.</p></div>';
+  if (!it) return stMHead('Tenant', '', 'calc', 'data-sr="close"') + '<div class="srm__b mx-b"><p class="cx-empty">Not found.</p></div>';
   const ti = _srTenInfo(c, it, rec, sum.ok && (_srJaDone(rec, sum) || !!_srLine(c, it).state.res)), x = ti.x;
-  const head = _srHead4(ti.name, 'NK ' + c.per.label + ' · ' + c.p.name, 'back');
-  if (!x) return head + '<div class="srm__b"><div class="srm__card"><p class="st-note">The NK for ' + stEsc(ti.name) + ' is calculated here once the Hausgeld-Jahresabrechnung ' + stEsc(c.per.label) + ' is complete.</p></div></div>';
+  const ini = String(ti.name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  const first = String(ti.name || '').split(/\s+/)[0] || ti.name;
+  const head = stMHead(ti.name, c.p.name + ' · NK ' + c.per.label, { ini, bg: '#F6E3E3', fg: '#8A4040' }, 'data-sr="close"');
+  if (!x) return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'none', label: 'NK-Abrechnung ' + c.per.label, amount: null, sub: 'calculated once the Hausgeld-Jahresabrechnung is complete' }) + '</div>';
+  const idAttr = 'data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '"';
   if (ti.skipped) {
-    const v = x.saldo, prev = !x.missing && Math.abs(v) >= 0.005 ? (v > 0 ? 'Nachzahlung ' : 'Guthaben ') + stEur(Math.abs(v)) : 'balanced';
-    return head + '<div class="srm__b"><div class="srm__one">' +
-      '<section class="srm__card sr-skip"><p class="sr-skip__t"><i class="ti ti-player-skip-forward" aria-hidden="true"></i> This NK is skipped</p>' +
-      '<p class="sr-skip__s">No letter and no result for ' + stEsc(ti.name) + ' (' + stEsc(stDM(x.from) + '–' + stDate(x.to)) + ') – it counts as done.' +
-        (ti.ts.settle_note ? ' Note: ' + stEsc(ti.ts.settle_note) + '.' : '') + '</p>' +
-      '<p class="sr-skip__s">If you bring it back, the NK is calculated again: currently <b>' + stEsc(prev) + '</b>.</p></section>' +
-    '</div></div>' +
-    '<div class="srm__bar"><button type="button" class="cx-btn cx-btn--p" data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '"><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Undo skip</button></div>';
+    return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'zero', label: 'This NK is skipped', amount: null, sub: 'no letter and no result – it counts as done' + (ti.ts.settle_note ? ' · ' + ti.ts.settle_note : '') }) +
+      '<div class="mx-rows">' + stMRow({ icon: 'doc', title: 'Skipped', sub: 'bring it back to calculate it again', on: true, switchAttrs: 'data-sr="setUndo" ' + idAttr }) + '</div></div>';
   }
-  const ts = x.ts, sent = !!ti.st.res, date = ts.date || cxToday(), days = _srNum(ts.days) ?? 30, via = _srViaOf(x);
+  const ts = x.ts, sent = !!ti.st.res, settledT = ti.k === 'settled', date = ts.date || cxToday(), days = _srNum(ts.days) ?? 30, via = _srViaOf(x);
   SR.sign = _srSign(x);
   const perC = _srPer(c, rec);
+  const v = sent ? ti.st.res.dir * ti.st.res.amount : x.saldo;           // > 0 the tenant pays you
+  const hero = stMHero({ tone: v > 0.004 ? 'get' : v < -0.004 ? 'pay' : 'zero',
+    label: v > 0.004 ? first + (settledT ? ' paid you' : ' pays you') : v < -0.004 ? first + (settledT ? ' got back' : ' gets back') : 'All even',
+    amount: Math.abs(v) < 0.005 ? 0 : v, sub: x.missing ? 'some costs are still missing' : '', settled: settledT });
+  // ── switches
+  const rowLetter = stMRow({ icon: 'mail', title: 'Letter sent', on: sent, disabled: !!x.missing && !sent,
+    sub: sent ? 'sent ' + stDate(ti.st.res.date) : 'Frist ' + stDate(perC.frist),
+    right: '<button type="button" class="mx-pill" data-sr="pdf" data-cc-pdf="1"' + (x.missing ? ' disabled' : '') + '>' + stIc('doc', 15) + 'PDF</button>',
+    switchAttrs: sent ? 'data-sr="reopen"' : 'data-sr="send"' });
+  let rowMoney = '';
+  if (Math.abs(v) >= 0.005) {
+    const how = { zahlung: 'bank transfer', miete: 'with the rent', kaution: 'via Kaution' };
+    const resVia = sent ? (ti.st.res.via || 'zahlung') : via;
+    const b = ti.st.booking;
+    const sub = settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : !sent ? 'after the letter · ' + how[resVia] : 'open · ' + how[resVia];
+    const ways = !sent ? '<div class="mx-ways">' + [['zahlung', 'bank', 'bank transfer'], ['miete', 'house', 'with the rent'], ['kaution', 'safe', 'via Kaution']].map(([k, ic, l]) =>
+      '<button type="button" class="' + (via === k ? 'is-on' : '') + '" data-sr="via" data-v="' + k + '" aria-pressed="' + (via === k) + '">' + stIc(ic, 18) + l + '</button>').join('') + '</div>' : '';
+    void b;
+    rowMoney = stMRow({ icon: 'coins', title: v > 0 ? 'Received' : 'Paid back', sub, on: settledT, disabled: !sent,
+      switchAttrs: settledT ? 'data-sr="setUndo" ' + idAttr : 'data-sr="payOn" ' + idAttr, below: ways });
+  }
+  const late = !sent && perC.frist && date > perC.frist && x.saldo > 0;
+  // ── calculation (period · share · Vorauszahlungen · per item)
   const since = _srBought(c.p);
-  // result
-  const status = sent ? '<div class="srm__state' + (ti.k === 'settled' ? ' is-ok' : '') + '"><span>' + (ti.k === 'settled' ? '<i class="ti ti-check" aria-hidden="true"></i> Settled · ' + stEsc(_srSettledTxt(ti, false)) : 'Sent ' + stDate(ti.st.res.date) + ' · waiting to be settled') + '</span>' +
-    '<span class="srm__state-a">' + (ti.k === 'settled' ? '<button class="cx-link" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '">edit</button>' : '<button class="cx-btn cx-btn--p" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '">Settle</button>') +
-    '<button class="cx-link" data-sr="reopen">Back to open</button></span></div>' : '';
   const perRow = SR.perEdit && !sent
     ? '<div class="sr-peredit"><div class="sr-grid2"><label class="st-f"><span class="st-f__l">From</span><input class="st-in" type="date" id="srTpF" value="' + stEsc(_srD(it.r.period_from)) + '"/></label>' +
       '<label class="st-f"><span class="st-f__l">To</span><input class="st-in" type="date" id="srTpT" value="' + stEsc(_srD(it.r.period_to)) + '"/></label></div>' +
       '<div class="sr-peredit__b"><button class="cx-link" data-sr="tenPerCancel">Cancel</button><button class="cx-link sr-acc" data-sr="tenPerSave">Save</button></div></div>'
-    : '<div class="cx-kv"><span>Period<small class="srm__sm">from Rentals · a change applies to this NK only</small></span><span>' + stEsc(stDM(x.from) + '–' + stDate(x.to)) + ' · ' + x.tDays + ' days' + (sent ? '' : ' <button class="cx-link sr-inl" data-sr="tenPerEdit">edit</button>') + '</span></div>';
+    : '<div class="mx-dr"><span class="mx-d" style="background:#D7CCEA"></span><span>Period<small>' + x.tDays + ' days · a change applies to this NK only</small></span><span class="mx-a">' + stEsc(stDM(x.from) + '–' + stDate(x.to)) + (sent ? '' : ' <button class="cx-link sr-inl" data-sr="tenPerEdit">edit</button>') + '</span></div>';
   const vzSrc = x.vzOv !== null ? (x.vzSoll !== null && Math.abs(x.vzOv - x.vzSoll) < 0.005 ? 'per contract' : 'by hand') : x.vzIst !== null ? 'paid per Controlling' : 'per contract';
   const vzAlt = [];
   if (!sent && x.vzIst !== null && (x.vzOv !== null || Math.abs(x.vz - x.vzIst) >= 0.01)) vzAlt.push(['ist', 'Controlling ' + stEur(x.vzIst)]);
   if (!sent && x.vzSoll !== null && Math.abs(x.vz - x.vzSoll) >= 0.01) vzAlt.push(['soll', 'Contract ' + stEur(x.vzSoll)]);
-  const figs = '<div class="st-block">' + perRow +
-    (since && perC.from < since && x.from >= since && !sent ? '<p class="sr-hint2">Bought on ' + stDate(since) + ': if ' + stEsc(ti.name) + ' already lived there before, extend the period to ' + stDM(perC.from) + ' – the NK covers the whole year.</p>' : '') +
-    '<div class="cx-kv"><span>Tenant share (' + x.lines.length + ' items)</span><span class="sr-strong" data-sr-sum>' + stEur(x.sum) + '</span></div>' +
-    '<div class="cx-kv sr-kv-in"><span>Vorauszahlungen<small>' + stEsc(vzSrc) + ' · editable</small></span>' +
-      (sent ? '<span>− ' + stEur(x.vz) + '</span>' : '<label class="cx-f sr-in-s"><span>−</span><input type="text" inputmode="decimal" data-srt="vz" value="' + stEsc(cxE2(x.vz)) + '" aria-label="Vorauszahlungen"><span>€</span></label>') + '</div>' +
-    (vzAlt.length ? '<div class="sr-vzalt"><span>use instead:</span>' + vzAlt.map(([k, t]) => '<button class="sr-vzalt__b" data-sr="vzUse" data-v="' + k + '">' + stEsc(t) + '</button>').join('') + '</div>' : '') +
-    (x.pre ? '<p class="sr-hint2">Before the purchase (' + stDM(x.pre.from) + '–' + stDate(x.pre.to) + '): ' + stEur(x.pre.soll) + ' per contract – check with the seller.</p>' : '') +
-  '</div>';
-  let calc = '';
+  let lines = '';
   for (const ln of x.lines) {
     const label = ln.pos.label || _srKind(ln.pos.kind).l, direct = ln.pos.split === 'mieter';
     const small = direct ? 'per tenant · Zwischenablesung' : x.partial ? stEur(ln.unit ?? 0) + ' × ' + x.tDays + '/' + x.perDays + ' days' : 'Kosten der Wohnung';
-    calc += '<div class="sr-cl"><span class="sr-cl__t">' + stEsc(label) + '<small>' + stEsc(small) + '</small></span>' +
+    lines += '<div class="sr-cl"><span class="sr-cl__t">' + stEsc(label) + '<small>' + stEsc(small) + '</small></span>' +
       (direct && !sent ? '<label class="cx-f sr-in-s"><input type="text" inputmode="decimal" data-srt="direct.' + stEsc(ln.pos.id) + '" value="' + stEsc(_srE2in(ts.direct && ts.direct[ln.pos.id])) + '" aria-label="' + stEsc(label) + ' for this tenant"><span>€</span></label>'
                        : '<span class="sr-cl__v">' + (ln.amt === null ? '<em class="sr-miss">missing</em>' : stEur(ln.amt)) + '</span>') + '</div>';
   }
-  const calcBlock = '<details class="sr-more"' + (x.missing ? ' open' : '') + '><summary>Breakdown per item</summary><div class="sr-calc">' + calc + '</div></details>';
-  const kau = x.einbehalt > 0 ? '<div class="st-block sr-kau"><p class="st-f__l">Kaution-Einbehalt</p>' +
-    '<div class="cx-kv"><span>Held back until the NK</span><span>' + stEur(x.einbehalt) + '</span></div>' +
-    '<div class="cx-kv"><span><b>' + (cxR(x.einbehalt - x.saldo) >= 0 ? 'Pay back to the tenant' : 'Tenant still pays') + '</b></span><span><b>' + stEur(Math.abs(cxR(x.einbehalt - x.saldo))) + '</b></span></div></div>' : '';
-  // letter
-  const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
-  const isNach = x.saldo > 0, moved = _srMovedOut(ti.t);
+  const calc = perRow +
+    (since && perC.from < since && x.from >= since && !sent ? '<p class="sr-hint2">Bought on ' + stDate(since) + ': if ' + stEsc(ti.name) + ' already lived there before, extend the period to ' + stDM(perC.from) + ' – the NK covers the whole year.</p>' : '') +
+    '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Costs<small>' + stEsc(first) + '’s share · ' + x.lines.length + ' items</small></span><span class="mx-a" data-sr-sum>' + stEur(x.sum) + '</span></div>' +
+    '<div class="mx-dr"><span class="mx-d" style="background:#A9BFD3"></span><span>− Vorauszahlungen<small>' + stEsc(vzSrc) + (sent ? '' : ' · editable') + '</small></span>' +
+      (sent ? '<span class="mx-a">' + stEur(x.vz) + '</span>' : '<label class="cx-f sr-in-s"><input type="text" inputmode="decimal" data-srt="vz" value="' + stEsc(cxE2(x.vz)) + '" aria-label="Vorauszahlungen"><span>€</span></label>') + '</div>' +
+    (vzAlt.length ? '<div class="sr-vzalt"><span>use instead:</span>' + vzAlt.map(([k, t]) => '<button class="sr-vzalt__b" data-sr="vzUse" data-v="' + k + '">' + stEsc(t) + '</button>').join('') + '</div>' : '') +
+    (x.pre ? '<p class="sr-hint2">Before the purchase (' + stDM(x.pre.from) + '–' + stDate(x.pre.to) + '): ' + stEur(x.pre.soll) + ' per contract – check with the seller.</p>' : '') +
+    '<div class="mx-dr is-b"><span class="mx-d" style="background:' + (x.saldo < 0 ? '#D9785E' : '#9DBF7A') + '"></span><span>= ' + (x.saldo > 0 ? first + ' pays you' : x.saldo < 0 ? first + ' gets back' : 'all even') + '</span><span class="mx-a" data-sr-res>' + stEur(Math.abs(x.saldo)) + '</span></div>' +
+    '<details class="mx-more"' + (x.missing ? ' open' : '') + '><summary>Breakdown per item</summary><div class="sr-calc">' + lines + '</div></details>' +
+    (x.einbehalt > 0 ? '<div class="mx-dr"><span class="mx-d" style="background:#D7CCEA"></span><span>Kaution held back<small>' + (cxR(x.einbehalt - x.saldo) >= 0 ? 'pay back to the tenant ' : 'tenant still pays ') + stEur(Math.abs(cxR(x.einbehalt - x.saldo))) + '</small></span><span class="mx-a">' + stEur(x.einbehalt) + '</span></div>' : '') +
+    (sent ? '' : '<div data-sr-check>' + _srCheckHtml(c, it, rec, x) + '</div>');
+  // ── letter details (fields always here, folded) · payment details once sent
   let letter = '';
   if (!sent) {
-    if (!SR.briefOpen) {
-      letter = '<div><p class="st-f__l">Letter</p><div class="cx-kv"><span>To</span><span>' + stEsc(addr.split('\n').filter(Boolean).join(', ') || '— missing —') + '</span></div>' +
-        '<div class="cx-kv"><span>Date · payment term</span><span>' + stDate(date) + ' · ' + days + ' days</span></div>' +
-        '<div class="cx-kv"><span>Settled by</span><span>' + ({ zahlung: 'bank transfer', miete: 'with the rent', kaution: 'with the Kaution' }[via]) + '</span></div>' +
-        '<button class="cx-link sr-acc" data-sr="brief">Edit letter</button></div>';
-    } else {
-      const vias = [['zahlung', 'Transfer'], ['miete', 'With rent'], ['kaution', 'Kaution']];
-      letter = '<div class="st-form"><p class="st-f__l">Letter</p>' +
-        '<label class="st-f"><span class="st-f__l">Address' + (moved ? ' (new address after moving out)' : '') + '</span><textarea class="st-in sr-ta" rows="3" data-srt="addr">' + stEsc(addr) + '</textarea></label>' +
-        (!isNach && x.saldo ? '<label class="st-f"><span class="st-f__l">Tenant IBAN · for the Guthaben (optional)</span><input class="st-in" data-srt="iban" value="' + stEsc(ts.iban || '') + '" placeholder="DE…"/></label>' : '') +
-        '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Date</span><input class="st-in" type="date" data-srt="date" value="' + stEsc(date) + '"/></label>' +
-          '<label class="st-f"><span class="st-f__l">Payment term (days)</span><input class="st-in" inputmode="numeric" data-srt="days" value="' + days + '"/></label></div>' +
-        (x.saldo ? '<fieldset class="st-f"><legend class="st-f__l">' + (isNach ? 'Nachzahlung' : 'Guthaben') + ' settled by</legend><div class="st-seg st-seg--3" role="group">' +
-          vias.map(([v, tx]) => '<button type="button" class="st-seg__b' + (via === v ? ' is-on' : '') + '" data-sr="via" data-v="' + v + '" aria-pressed="' + (via === v) + '">' + tx + '</button>').join('') + '</div></fieldset>' : '') +
-        (!moved ? '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">New NK / month (optional)</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srt="new_vz" value="' + stEsc(_srE2in(ts.new_vz)) + '"/><span>€</span></span></label>' +
-          '<label class="st-f"><span class="st-f__l">from</span><input class="st-in" type="date" data-srt="new_vz_from" value="' + stEsc(ts.new_vz_from || '') + '"/></label></div>' : '') +
-        '<label class="st-f"><span class="st-f__l">Anlage</span><input class="st-in" data-srt="anlagen" value="' + stEsc(ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec)) + '"/></label>' +
-        '<button class="cx-link sr-acc" data-sr="brief">Done</button></div>';
-    }
+    const addr = ts.addr !== undefined && ts.addr !== null ? ts.addr : _srDefaultAddr(c, it, x);
+    const isNach = x.saldo > 0, moved = _srMovedOut(ti.t);
+    letter = '<details class="mx-more"' + (SR.briefOpen ? ' open' : '') + '><summary>Letter details · ' + stEsc(addr.split('\n').filter(Boolean).slice(0, 2).join(', ') || 'address missing') + ' · ' + stDate(date) + '</summary><div class="st-form">' +
+      '<label class="st-f"><span class="st-f__l">Address' + (moved ? ' (new address after moving out)' : '') + '</span><textarea class="st-in sr-ta" rows="3" data-srt="addr">' + stEsc(addr) + '</textarea></label>' +
+      (!isNach && x.saldo ? '<label class="st-f"><span class="st-f__l">Tenant IBAN · for the Guthaben (optional)</span><input class="st-in" data-srt="iban" value="' + stEsc(ts.iban || '') + '" placeholder="DE…"/></label>' : '') +
+      '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">Date</span><input class="st-in" type="date" data-srt="date" value="' + stEsc(date) + '"/></label>' +
+        '<label class="st-f"><span class="st-f__l">Payment term (days)</span><input class="st-in" inputmode="numeric" data-srt="days" value="' + days + '"/></label></div>' +
+      (!moved ? '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">New NK / month (optional)</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srt="new_vz" value="' + stEsc(_srE2in(ts.new_vz)) + '"/><span>€</span></span></label>' +
+        '<label class="st-f"><span class="st-f__l">from</span><input class="st-in" type="date" data-srt="new_vz_from" value="' + stEsc(ts.new_vz_from || '') + '"/></label></div>' : '') +
+      '<label class="st-f"><span class="st-f__l">Anlage</span><input class="st-in" data-srt="anlagen" value="' + stEsc(ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec)) + '"/></label></div></details>';
+  } else if (Math.abs(v) >= 0.005) {
+    const o = _srSetObj(c, ti.st, ti, false);
+    if (o) letter = '<details class="mx-more"' + (SR.setEdit ? ' open' : '') + '><summary>Payment details · amount and date</summary><div class="st-sg">' + stSetRow(o) + '</div></details>';
   }
-  const late = !sent && perC.frist && date > perC.frist && x.saldo > 0;
-  const tStep = ti.k === 'settled' ? 3 : sent ? 2 : x.missing ? 0 : 1;
-  return head + '<div class="srm__b"><div class="srm__one">' +
-    '<section class="srm__card sr-progcard">' + _srSteps(['Checked', 'Sent', 'Settled'], tStep) + '</section>' +
-    '<div data-sr-res>' + _srBig(x, date, days, via) + '</div>' + status + figs + calcBlock + kau + letter +
-    (sent ? '' : '<div data-sr-check>' + _srCheckHtml(c, it, rec, x) + '</div>') +
+  return head + '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + rowLetter + rowMoney + '</div>' +
     (late ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> The Frist (' + stDate(perC.frist) + ') has passed: a Nachzahlung can no longer be claimed; a Guthaben must still be paid.</div>' : '') +
-    (sent ? '' : '<button class="cx-link sr-skip" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '" data-skip="1">Skip this NK</button>') +
-  '</div></div>' +
-  '<div class="srm__bar srm__bar--2 srm__bar--doc"><button type="button" class="cx-btn cx-btn--s" data-sr="pdf" data-cc-pdf="1"' + (x.missing ? ' disabled' : '') + '><i class="ti ti-file-text" aria-hidden="true"></i> Create PDF</button>' +
-    (sent ? '<button type="button" class="cx-btn cx-btn--p" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ti.l.id)) + '">' + (ti.k === 'settled' ? 'Edit settlement' : 'Settle') + '</button>'
-          : '<button type="button" class="cx-btn cx-btn--p" data-sr="send"' + (x.missing ? ' disabled' : '') + '><i class="ti ti-send" aria-hidden="true"></i> Mark sent</button>') + '</div>';
+    stMCard('Calculation', 'calc', calc + letter) +
+    (sent ? '' : '<button class="mx-skip" data-sr="settle" ' + idAttr + ' data-skip="1">Skip this NK-Abrechnung</button>') + '</div>';
 }
 
 /* View 3 · settle one line (tenant NK or WEG result) — the same settle line as in the Tenants / Hausgeld sheets */
@@ -1802,11 +1747,22 @@ function srIsRentalsLine() { return false; }
       const inp = document.querySelector('#srPanel input[data-stset="' + SR.setEdit + '"]'); if (inp) { inp.focus(); inp.select(); } return; }
     if (a === 'setCancel') { e.stopPropagation(); SR.setEdit = null; _srRerenderPanel(); return; }
     if (a === 'setUndo') { e.stopPropagation(); await _srSetUndo(b.dataset.k, b.dataset.id, b.dataset.w === '1'); return; }
-    if (a === 'settle') {
+    if (a === 'settle') {                                           // Oct 2026: no separate settle level — the item's own modal opens
       e.stopPropagation();
-      const from = SR.modal ? SR.modal.view : 'tracker';
-      SR.modal = { ck: b.dataset.k, view: 'settle', tid: b.dataset.id || null, weg: b.dataset.w === '1', from: from === 'tracker' ? 'tracker' : from, back: from === 'tracker' ? null : from };
-      SR.setEdit = null; stRenderRentals(); return;
+      SR.modal = b.dataset.w === '1' ? { ck: b.dataset.k, view: 'hv', from: 'tracker' } : { ck: b.dataset.k, view: 'tenant', tid: b.dataset.id || null, from: 'tracker' };
+      SR.setEdit = null; SR.draft = null; stRenderRentals(); return;
+    }
+    if (a === 'payOn' || a === 'payOnW') {                          // the money switch: full amount, today (change it under "Payment details")
+      e.stopPropagation();
+      const weg = a === 'payOnW', x = _srSetCtx(b.dataset.k, weg ? null : b.dataset.id, weg);
+      if (!x || !x.st || !x.st.res) { stSay(weg ? 'Add the result of the Jahresabrechnung first' : 'Send the letter first'); return; }
+      const res = x.st.res;
+      if (!weg && res.via && res.via !== 'zahlung') {               // settled with the rent / via Kaution: confirm, no booking
+        b.disabled = true;
+        try { await _stConfirmSettled(x.l, res.via, cxToday()); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
+        ctlSettlementInvalidate(); stSay('Settled'); _srAfterSettle(x); return;
+      }
+      await _srSetAmount(b.dataset.k, weg ? null : b.dataset.id, weg, cxE2(res.amount), b, cxToday()); return;
     }
     if (a === 'tick') {
       e.preventDefault(); e.stopPropagation();

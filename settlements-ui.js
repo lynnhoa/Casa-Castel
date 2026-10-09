@@ -72,6 +72,52 @@ function stNeeds(items, emptyText) {
                  : '<div class="st-need__r">' + inner + (x.btn || '') + '</div>';
   }).join('') + '</div>';
 }
+/* ── One-level modals (Oct 2026): amount on top · switches with dates · details below ─────────
+   Own duotone icon set in the app's colours (no emoji) · the same frame in Rentals and Casa Castel */
+const ST_ICONS = {
+  bld: '<rect x="5" y="3.5" width="14" height="17" rx="2" fill="#BFD0E0"/><path d="M5 20.5h14M8.5 7.5h2M13.5 7.5h2M8.5 11h2M13.5 11h2M8.5 14.5h2M13.5 14.5h2M10.5 20.5v-3h3v3" fill="none" stroke="#2F5470" stroke-width="1.5" stroke-linecap="round"/><rect x="5" y="3.5" width="14" height="17" rx="2" fill="none" stroke="#2F5470" stroke-width="1.5"/>',
+  inbox: '<path d="M4 13l2.5-7.5h11L20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#D7CCEA"/><path d="M4 13l2.5-7.5h11L20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 13h4.5l1 2h5l1-2H20" fill="none" stroke="#5B4A7A" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 3.5v6M9.5 7l2.5 2.5L14.5 7" fill="none" stroke="#5B4A7A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  coins: '<ellipse cx="10" cy="7" rx="6" ry="2.6" fill="#C9DDB0"/><path d="M4 7v4c0 1.4 2.7 2.6 6 2.6s6-1.2 6-2.6V7" fill="#C9DDB0"/><path d="M4 7c0 1.4 2.7 2.6 6 2.6S16 8.4 16 7s-2.7-2.6-6-2.6S4 5.6 4 7zm0 0v4c0 1.4 2.7 2.6 6 2.6M16 7v2.4" fill="none" stroke="#46682A" stroke-width="1.5"/><ellipse cx="15" cy="15" rx="5" ry="2.2" fill="#E8C98F"/><path d="M10 15c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2-2.2-2.2-5-2.2-5 1-5 2.2zm0 0v3c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2v-3" fill="none" stroke="#7A5A22" stroke-width="1.5"/>',
+  mail: '<rect x="3.5" y="6" width="17" height="12.5" rx="2.2" fill="#F1D9A8"/><rect x="3.5" y="6" width="17" height="12.5" rx="2.2" fill="none" stroke="#7A5A22" stroke-width="1.5"/><path d="M4.5 7.5l7.5 5.5 7.5-5.5" fill="none" stroke="#7A5A22" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  doc: '<path d="M6.5 3.5h7.5l4 4v12a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19.5v-14.5a1.5 1.5 0 0 1 1.5-1.5z" fill="#F1D9A8"/><path d="M6.5 3.5h7.5l4 4v12a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19.5v-14.5a1.5 1.5 0 0 1 1.5-1.5zM14 3.5v4h4M8.5 12h7M8.5 15.5h5" fill="none" stroke="#7A5A22" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  bank: '<path d="M3.5 9L12 4l8.5 5z" fill="#BFD0E0"/><path d="M3.5 9L12 4l8.5 5zM5.5 9.5v7M10 9.5v7M14 9.5v7M18.5 9.5v7M3.5 19.5h17" fill="none" stroke="#2F5470" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  house: '<path d="M5 10.5L12 4.5l7 6v8.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19z" fill="#C9DDB0"/><path d="M3.5 11.5L12 4.5l8.5 7M5.5 10v9a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-9M10 20.5v-5h4v5" fill="none" stroke="#46682A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  safe: '<rect x="4" y="4.5" width="16" height="15" rx="2.5" fill="#D7CCEA"/><rect x="4" y="4.5" width="16" height="15" rx="2.5" fill="none" stroke="#5B4A7A" stroke-width="1.5"/><circle cx="12" cy="12" r="3.2" fill="none" stroke="#5B4A7A" stroke-width="1.5"/><path d="M12 8.8v1.2M12 14v1.2M8.8 12H10M14 12h1.2" stroke="#5B4A7A" stroke-width="1.5" stroke-linecap="round"/>',
+  receipt: '<path d="M6 3.5h12v17l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3z" fill="#F1D9A8"/><path d="M6 3.5h12v17l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3zM9 8h6M9 11.5h6M9 15h3.5" fill="none" stroke="#7A5A22" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+  calc: '<rect x="5" y="3.5" width="14" height="17" rx="2.5" fill="#BFD0E0"/><rect x="5" y="3.5" width="14" height="17" rx="2.5" fill="none" stroke="#2F5470" stroke-width="1.5"/><rect x="8" y="6.5" width="8" height="3.5" rx="1" fill="none" stroke="#2F5470" stroke-width="1.5"/><path d="M8.5 13.5h.01M12 13.5h.01M15.5 13.5h.01M8.5 17h.01M12 17h.01M15.5 17h.01" stroke="#2F5470" stroke-width="2.2" stroke-linecap="round"/>',
+  lock: '<rect x="5" y="10" width="14" height="10.5" rx="2.5" fill="#E8C98F"/><rect x="5" y="10" width="14" height="10.5" rx="2.5" fill="none" stroke="#7A5A22" stroke-width="1.5"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10M12 14v2.5" fill="none" stroke="#7A5A22" stroke-width="1.5" stroke-linecap="round"/>',
+  bolt: '<path d="M13 3L5.5 13.5H11L10 21l7.5-10.5H12z" fill="#F1D9A8"/><path d="M13 3L5.5 13.5H11L10 21l7.5-10.5H12z" fill="none" stroke="#7A5A22" stroke-width="1.5" stroke-linejoin="round"/>',
+  seal: '<path d="M12 2.5l2.1 1.6 2.6-.3 1 2.4 2.4 1-.3 2.6L21.5 12l-1.6 2.1.3 2.6-2.4 1-1 2.4-2.6-.3L12 21.5l-2.1-1.6-2.6.3-1-2.4-2.4-1 .3-2.6L2.5 12l1.6-2.1-.3-2.6 2.4-1 1-2.4 2.6.3z" fill="#9DBF7A"/><path d="M8.3 12.2l2.5 2.5 5-5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+};
+const ST_TINT = { bld: '#E6EEF6', inbox: '#EFEAF6', coins: '#EAF3E0', mail: '#FAF0DC', doc: '#F8EDD6', bank: '#E6EEF6', house: '#EAF3E0', safe: '#EFEAF6', receipt: '#FAF0DC', calc: '#E6EEF6', lock: '#FAF0DC', bolt: '#FAF0DC' };
+const stIc = (k, size) => '<svg class="mx-svg" viewBox="0 0 24 24" width="' + (size || 24) + '" height="' + (size || 24) + '" aria-hidden="true">' + (ST_ICONS[k] || '') + '</svg>';
+/* Header: tile (icon or initials) · title · sub · close */
+function stMHead(title, sub, tile, closeAttr) {
+  const t = tile && tile.ini ? '<span class="mx-tile" style="background:' + (tile.bg || '#F3EEE6') + ';color:' + (tile.fg || '#8A6535') + '"><span class="mx-ini">' + stEsc(tile.ini) + '</span></span>'
+    : '<span class="mx-tile" style="background:' + (ST_TINT[tile] || '#F3EEE6') + '">' + stIc(tile, 26) + '</span>';
+  return '<div class="mx-hd">' + t + '<div class="mx-hd__m"><p class="mx-t">' + stEsc(title) + '</p><p class="mx-s">' + stEsc(sub || '') + '</p></div>' +
+    '<button class="mx-x" ' + closeAttr + ' aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
+}
+/* The amount card: tone get (money to you) · pay (you pay) · zero · none */
+function stMHero(o) {
+  const v = o.amount === null || o.amount === undefined ? '\u2014' : stEur(cxR(Math.abs(o.amount)));
+  return '<div class="mx-hero mx-hero--' + (o.tone || 'none') + '">' +
+    '<svg class="mx-orn" viewBox="0 0 120 120" aria-hidden="true"><circle cx="70" cy="50" r="40" fill="none" stroke="#fff" stroke-width="10" opacity=".6"/><circle cx="70" cy="50" r="22" fill="#fff" opacity=".35"/></svg>' +
+    '<svg class="mx-orn2" viewBox="0 0 100 100" aria-hidden="true"><circle cx="40" cy="60" r="34" fill="#fff" opacity=".45"/></svg>' +
+    '<p class="mx-hl">' + stEsc(o.label || '') + '</p><p class="mx-hv">' + v + '</p>' + (o.sub ? '<p class="mx-hs">' + stEsc(o.sub) + '</p>' : '') +
+    (o.extra || '') + (o.settled ? '<span class="mx-done">' + stIc('seal', 22) + 'All settled</span>' : '') + '</div>';
+}
+/* A switch row: icon · title · sub · (right) · switch (attrs = the action) */
+function stMRow(o) {
+  const sw = o.switchAttrs === undefined ? '' : '<button type="button" class="mx-tg' + (o.on ? ' is-on' : '') + '" role="switch" aria-checked="' + !!o.on + '" aria-label="' + stEsc(o.title) + '" ' + o.switchAttrs + (o.disabled ? ' disabled' : '') + '></button>';
+  return '<div class="mx-row' + (o.on ? ' is-on' : '') + (o.disabled ? ' is-off' : '') + '"><span class="mx-ic" style="background:' + (ST_TINT[o.icon] || '#F3EEE6') + '">' + stIc(o.icon, 24) + '</span>' +
+    '<div class="mx-row__m"><p class="mx-rt">' + stEsc(o.title) + '</p>' + (o.sub ? '<p class="mx-rs">' + o.sub + '</p>' : '') + '</div>' + (o.right || '') + sw + '</div>' + (o.below || '');
+}
+/* A details card below the switches */
+function stMCard(title, icon, inner) {
+  return '<p class="mx-lbl">' + (icon ? stIc(icon, 16) : '') + stEsc(title) + '</p><div class="mx-det">' + inner + '</div>';
+}
+
 /* Money word for one result: dir > 0 = money comes to you */
 function stMoneySay(dir, amount, name) {
   if (!dir || !amount) return ['', 'balanced'];
