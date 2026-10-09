@@ -900,17 +900,23 @@ async function loadRooms() {
 
   // If Supabase returned no rooms, seed the defaults directly via Supabase
   // bypassing saveRoom() to do a single bulk insert
-  if (appRooms.length === 0 && sbL) {
-    console.log('[rooms] No rooms found — seeding defaults...');
-    const { data, error } = await sbL
-      .from('rooms')
-      .insert(_DEFAULT_ROOMS.map(r => ({ ...r })))
-      .select();
-    if (!error && data) {
-      appRooms.push(...data);
-      appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  if (appRooms.length === 0 && sbL && loadRoomsData.lastOk === true) {   // only a really empty table, never a failed load
+    // Seed once only: the app may load the Rooms tab twice at start — both would insert the defaults
+    if (!loadRooms._seed) {
+      console.log('[rooms] No rooms found — seeding defaults...');
+      // a real Promise (runs the insert once) — awaiting the query itself twice would send it twice
+      loadRooms._seed = (async () => await sbL.from('rooms').insert(_DEFAULT_ROOMS.map(r => ({ ...r }))).select())();
+      const { data, error } = await loadRooms._seed;
+      if (!error && data) {
+        appRooms.push(...data);
+        appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      } else {
+        console.warn('[rooms] Seed failed:', error?.message);
+        loadRooms._seed = null;              // a failed seed may be tried again later
+      }
     } else {
-      console.warn('[rooms] Seed failed:', error?.message);
+      await loadRooms._seed;                 // the other load is seeding — just wait for it
+      await loadRoomsData();
     }
   }
 

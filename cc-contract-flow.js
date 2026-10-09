@@ -611,10 +611,9 @@ function ccfApproveDraft() {
 
 /* ── FORM MEMORY per unit (B4) ─────────────────────────────────
    What you type stays with that room / apartment / parking spot and
-   generator until you Approve or Cancel — for up to 30 days. X or tapping
+   generator until you Approve or Cancel — for 2 hours. X or tapping
    outside only closes. Nothing is saved to Tenants by this.               */
-const CCF_FORM_DAYS = 30;
-const CCF_FORM_MS = CCF_FORM_DAYS * 86400000;
+const CCF_FORM_MS = 2 * 3600000;   // 2 hours (was 30 days)
 function ccfFormKey(unit, gen) { return 'cc_draft_form_' + ccfA().app + '_' + String(unit).replace(/\s+/g, '_') + '_' + gen; }
 function ccfFormGet(key) {
   try {
