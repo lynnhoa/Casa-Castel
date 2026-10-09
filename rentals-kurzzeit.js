@@ -25,7 +25,7 @@ function _buildRentalKurzzeitData(apt, s, {
   mieterName2 = '', mieterAdr2 = '', mieterDob2 = '', mieterEmail2 = '', mieterTel2 = '',
   mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal, endVal, sigVal,
-  kautionVal, kautionFael = 'sofort',
+  kautionVal, kautionFael = '5',
 }) {
   const fmt = d => {
     const dt = new Date(d);

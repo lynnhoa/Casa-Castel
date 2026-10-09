@@ -25,7 +25,7 @@ function _buildGewerbeMietvertragData(apt, s, {
   mieterName3 = '', mieterAdr3 = '', mieterDob3 = '', mieterEmail3 = '', mieterTel3 = '',
   startVal = '', festNum = 0, festUnit = 'Jahre',
   kaltmiete = 0, nkVZ = 0,
-  kautionVal = 0, kautionFael = 'sofort', sigVal = '',
+  kautionVal = 0, kautionFael = '5', sigVal = '',
   // §2 Abs. 7 — Sonderkündigungsrecht Nutzungserweiterung (optional)
   sonderkAn = false, sonderkEnde = '',
   // S1
@@ -75,10 +75,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     }
   }
 
-  kautionFael = 'sofort';   // Oct 2026: Kaution always due right after signing
-  const kautionFaelText = kautionFael === 'sofort'
-    ? 'sofort nach Vertragsunterzeichnung'
-    : `binnen\u00a0${kautionFael}\u00a0Tagen nach Unterzeichnung`;
+  const kautionFaelText = 'sofort nach Vertragsunterzeichnung';   // Oct 2026: always sofort
 
   const gesamtmiete = Number(kaltmiete) + Number(nkVZ);
 

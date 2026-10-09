@@ -31,7 +31,7 @@ function _buildRentalMietvertragData(room, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   grundVal = '', eigenbedarfPerson = '',
-  kautionFael = 'sofort', kautionVal = null,
+  kautionFael = '5', kautionVal = null,
   staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {

@@ -1224,7 +1224,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
       </div>
       <input class="rm-input" id="pk-mv-kaution" type="number" data-cc-num="2" style="width:90px;text-align:right;font-size:13px" value="${kaution}" placeholder="€"/>
     </div>
-    <p style="font-size:12px;color:#7A6F62;margin:-6px 0 10px">Kaution fällig sofort nach Vertragsunterzeichnung.</p>`;
+`;
 }
 
 function _pkToggleMvBefristung() {

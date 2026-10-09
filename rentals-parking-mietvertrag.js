@@ -21,7 +21,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
   startVal, sigVal,
   befristet = false, endVal = null,
   kennzeichen = '', fahrzeug = '',
-  kautionVal = null, kautionFael = 'sofort',
+  kautionVal = null, kautionFael = '5',
   staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
