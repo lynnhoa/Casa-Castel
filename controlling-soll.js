@@ -57,7 +57,7 @@ const _CX_SRC = [
   ['rntNk', 'rnt_nk_entries'], ['rooms', 'rooms'], ['casaTen', 'tenant_records'],
   ['casaNkV', 'nk_vorauszahlung_history'], ['casaNk', 'nk_entries'], ['loans', 'properties'],
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
-  ['abr', 'abr_results'], ['vac', 'unit_vacancies'], ['loanHist', 'loan_terms_history'], ['casaMh', 'casa_mieterhoehung_history'],
+  ['abr', 'abr_results'], ['loanHist', 'loan_terms_history'], ['casaMh', 'casa_mieterhoehung_history'],
   ['castelHist', 'ctrl_castel_amount_history'],          // Casa Castel cost Soll by month (B22)
 ];
 
@@ -1220,12 +1220,7 @@ function ctlSettlementModel() {
           x.note === 'leer:' + c.unit.name && _cxD(x.period_from) === g.from && _cxD(x.period_to) === g.to);
         if (r) used.add(r.id);
         // A planned Leerstand (unit card) that covers the whole gap confirms it by itself
-        let vac = null;
-        if (!r && c.link) {
-          const vApp = c.link.type === 'casa_room' ? 'casa' : c.link.type === 'rentals_apartment' ? 'apt' : c.link.type === 'rentals_parking' ? 'pk' : null;
-          const v = (window._src.vac || []).find(x => x.app === vApp && String(x.unit_ref) === String(c.link.ref) && _cxD(x.von) <= g.from && _cxD(x.bis) >= g.to);
-          if (v) vac = { id: 'vac:' + v.id, vacancy: true, grund: v.grund || '', note: 'leer:' + c.unit.name };
-        }
+        const vac = null;   // manual Leerstand module removed (Oct 2026) — vacancy comes from tenant dates
         // Automatic Leerstand: the gap follows a recorded move-out → nobody lived there, nothing to confirm.
         // Only a gap with no tenant recorded before it (missing history) still asks "Mieter nachtragen / War leer".
         let auto = null;

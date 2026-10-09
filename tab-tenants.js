@@ -673,17 +673,7 @@ function _tnRoomContractType(room) {
   return null;
 }
 
-function _tnRoomContractTypes(room) {
-  if (typeof appRooms === 'undefined') return [];
-  const r = appRooms.find(x => x.name === room);
-  if (!r) return [];
-  const types = [];
-  const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
-  const hasKz = !!r.kurzzeit_kaltmiete;
-  if (hasMv) types.push('mietvertrag');
-  if (hasKz) types.push('kurzzeit');
-  return types;
-}
+
 
 function _tnRoomPricing(room, ctypeArg) {
   if (typeof appRooms === 'undefined') return {};
@@ -718,13 +708,7 @@ function _tnRoomPricing(room, ctypeArg) {
   return { kaltmiete, nebenkosten, kaution_override, kaution_fixed };
 }
 
-function _tnToggleKautionOverride(el, inputId, hintId) {
-  const on = el.checked;
-  const inp = document.getElementById(inputId);
-  const hint = document.getElementById(hintId);
-  if (inp) { inp.disabled = !on; inp.style.opacity = on ? '1' : '.4'; if (on) inp.focus(); }
-  if (hint) hint.style.display = on ? 'none' : '';
-}
+
 
 /* Soll + where it comes from — ONE source for Kaution section, rent form and pop-up.
    Individuell · Mieter (set on the tenant) → Individuell · Karte (room card) → Standard (rule). */
@@ -1057,22 +1041,11 @@ function _tnRentTodoPills(room, rec) {
   if (nk) out.push(`<span class="tnp ${nk.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${esc(nk.text)}</span>`);
   return out.join('');
 }
-function _tnRenewDueShown(rec) { return !!rec && /tn-cstrip--due/.test(_tnContractStripHTML('x', null, rec)); }
+
 
 /* Bottom of the card: contracts that were renewed (newest first), folded */
 const _tnEarlierOpen = {};
-function _tnEarlierContractsHTML(rid, rec) {
-  if (!rec) return '';
-  const e = _tnContractState(rec).earlier;
-  if (!e.length) return '';
-  const open = !!_tnEarlierOpen[rid];
-  return `<div class="tn-sec tn-earlier" id="earlier-${rid}">
-    <button type="button" class="tn-arc-toggle" onclick="_tnEarlierOpen['${rid}']=!_tnEarlierOpen['${rid}'];_tnRender()">
-      <i class="ti ti-file-text" style="font-size:13px" aria-hidden="true"></i> Earlier contracts (${e.length})
-      <span style="flex:1"></span><i class="ti ti-chevron-${open ? 'down' : 'right'}" style="font-size:13px" aria-hidden="true"></i></button>
-    ${open ? `<div class="tn-earlier-body">${e.map(c => _tnContractRowHTML(rec, c, '<span class="tnp tnp-gray">Renewed</span>', rid, 'earlier-' + rid)).join('')}</div>` : ''}
-  </div>`;
-}
+
 
 /* Correct ONE contract (the next one or an earlier one) — only its own rent entry changes */
 function _tnContractEdit(rid, tid, i, secId) {
@@ -1238,10 +1211,7 @@ function _tnParseDate(s) {
 }
 
 
-/* ══════════════════════════════════════════════════════════════
-   6. STATUS HELPERS
-══════════════════════════════════════════════════════════════ */
-function _tnKautionStatus(recv, ret, settled) { return ccTnKautionStatus(recv, ret, settled); }   // shared (cc-tenant-status.js)
+   // shared (cc-tenant-status.js)
 
 /* Kalt + NK on any day between from and to (the tenant's own rent history; old tenants: as entered) */
 function _tnHasKaltNKBetween(rec, from, to) {
@@ -1354,12 +1324,7 @@ function _tnFormerVisible(rec) {
   return monthsAgo < 12;
 }
 
-function _tnDaysToMoveOut(rec) {
-  if (!rec || !rec.mietende) return null;
-  const diff = new Date(rec.mietende) - new Date();
-  const days = Math.ceil(diff / (24 * 3600 * 1000));
-  return days;
-}
+
 
 // True if dateStr (ISO or DD.MM.YYYY) is today or in the past
 function _tnIsPast(dateStr) {
@@ -1379,15 +1344,8 @@ function _tnIsKaltNK(rec, roomName) {
   return (cur ? cur.mode : _tnLegacyMode(roomName || rec.room, rec)) !== 'pauschal';
 }
 
-/* ── NK VORAUSZAHLUNG HELPERS ── */
-function _tnNKVorausCurrent(room) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  return (_tnNKVoraus[room] || []).find(e => new Date(e.effective_date) <= today) || null;
-}
-function _tnNKVorausHasOpen(room) {
-  // true if any entry is not yet fully adjusted
-  return (_tnNKVoraus[room] || []).some(e => !e.tenant_adjusted);
-}
+
+
 
 /* Card pills (row 1 state + row 4 to-dos) — ONE function, used for the first render
    and for every refresh after a save. Rules/wording/colours: cc-tenant-status.js */
@@ -1561,12 +1519,7 @@ async function _tnSetTestPw(room) {
   const pw = await ccSetNewRoomPassword(room, 'Tenant-app password');
   if (pw) { _tnPwAt[room] = new Date().toISOString(); _tnRender(); }
 }
-async function _tnGivePw(room, name) {
-  if (!sbL) { alert('No database connection.'); return; }
-  if (!confirm(`Give ${name || 'the tenant'} a tenant-app password for ${room}? A previous password stops working.`)) return;
-  const pw = await ccSetNewRoomPassword(room, 'Login password');
-  if (pw) { _tnPwAt[room] = new Date().toISOString(); _tnRender(); }
-}
+
 
 /* After a (re)load: repaint only if the data really changed and you are not in
    the middle of editing here (unsaved Kaution / rent / profile, an open NK form).
@@ -1862,37 +1815,19 @@ function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
   return ccGroupHTML('More', html);
 }
 
-/* ── NEBENKOSTEN + DETAILS: one row each, the full section opens in a sheet ── */
-function _tnNkGroupHTML(rid, room, rec) {
-  const rows = [];
-  if (!_tnAllPauschal(rec)) {
-    const open = _tnNkHasOpen(rec.id);
-    rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen',
-      meta: open ? `<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(rec))}</span>` : 'none due',
-      onclick: `_tnSheet('nk','${rid}','${rec.id}')` }));
-  }
-  // NK-Vorauszahlung changes: in "Change rent" (one place for every rent change)
-  return rows.length ? ccGroupHTML('Nebenkosten', rows.join('')) : '';
-}
-function _tnDetailsGroupHTML(rid, rec) {
-  if (typeof ccfDocsSectionHTML !== 'function') return '';
-  return ccGroupHTML('Details',
-    ccRowHTML({ icon: 'file-text', title: 'Documents', meta: esc(ccfDocsSummary(rec)), onclick: `_tnSheet('docs','${rid}','${rec.id}')` }) +
-    ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: esc(ccfMetersSummary(rec)), onclick: `_tnSheet('meters','${rid}','${rec.id}')` }));
-}
+
+
 function _tnSheet(kind, rid, tid) {
   const rec0 = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec0) return;
-  const titles = { nk: 'NK-Abrechnungen', nkv: 'NK-Vorauszahlung', docs: 'Documents', meters: 'Zählerstände', mh: 'Mieterhöhung' };
+  const titles = { nk: 'NK-Abrechnungen', docs: 'Documents', meters: 'Zählerstände' };   // rent changes: Change rent
   ccSheetOpen({
     title: titles[kind],
     kicker: rec0.room + ' \u00b7 ' + ([rec0.first_name, rec0.last_name].filter(Boolean).join(' ') || ''),
     build: () => {
       const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec) return '';
       if (kind === 'nk')     return _tnNKHTML(rid, rec.id, 'card');
-      if (kind === 'nkv')    return _tnNKVorausHTML(rid, rec.room, 'card');
       if (kind === 'docs')   return ccfDocsSectionHTML(rec, 'card');
       if (kind === 'meters') return ccfMetersSectionHTML(rec, 'card');
-      if (kind === 'mh')     return _tnMhHTML(rid, rec.room, rec);
       return '';
     },
   });
@@ -2003,77 +1938,9 @@ function _tnOwnMh(roomName, rec) {
   return (_tnMh[roomName] || []).filter(e => typeof ccTnStepOwned === 'function' ? ccTnStepOwned(e, rec, recs) : true);
 }
 const _tnMhKind = e => (typeof CC_MH_KINDS !== 'undefined' && CC_MH_KINDS[e.kind || 'mieterhoehung']) || 'Mieterhöhung';
-function _tnMhRowHTML(rid, room, rec) {
-  if (!rec) return '';
-  const own = _tnOwnMh(room.name, rec);
-  const st = typeof ccTnStepState === 'function' ? ccTnStepState(own) : null;
-  const fd = d => _ccFmtD(String(d).slice(0, 10));
-  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">Mieterhöhung overdue</span>`
-    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">Mieterhöhung from ${fd(st.entry.effective_date)}</span>`
-    : (typeof ccTnStepNext === 'function' ? ccTnStepNext(own, _tnFmtEUR, fd) : '');
-  // NK changes now live in the same sheet: an NK change that is due shows here too
-  const nkPend = _tnIsKaltNK(rec, room.name) && typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_tnNKVoraus[room.name], rec) : null;
-  const meta2 = nkPend && !(st && (st.state === 'overdue' || st.state === 'reminder'))
-    ? `<span class="tnp ${nkPend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${esc(nkPend.text)}</span>` : meta;
-  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Change rent', meta: meta2, onclick: `_tnChangeRentOpen('${rid}','${rec.id}')` }));
-}
-function _tnMhHTML(rid, roomName, rec) {
-  const own = _tnOwnMh(roomName, rec).slice().sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const fd = d => _ccFmtD(String(d).slice(0, 10));
-  const pausch = !_tnIsKaltNK(rec, roomName);
-  const cur = _tnCurrentRent(rec, roomName);
-  const st = e => e.ignored ? ['tnp-gray', 'skipped'] : e.tenant_adjusted ? ['tnp-green', 'adjusted']
-    : new Date(e.effective_date) > today ? ['tnp-amber', 'upcoming'] : ['tnp-red', 'open'];
-  const next = own.filter(e => !e.ignored && !e.tenant_adjusted).sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)))[0];
-  const ren = (typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id) : []).filter(p => p.kind === 'renewal')
-    .map(p => ({ renewal: true, effective_date: ccRpIso(p.valid_from), amount: (ccRpAmount(p) || {})[pausch ? 'total' : 'kalt'] }));
-  const all = own.concat(ren).sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
-  const btn = (e, k, on, lbl) => `<button type="button" class="tn-nkv-pill ${on ? (k === 'adj' ? 'done' : 'ignored') : 'pending'}" onclick="_tnMhToggle('${e.id}','${esc(roomName)}','${k}')">${lbl}</button>`;
-  const rows = all.map(e => {
-    if (e.renewal) return `<div class="tn-mh-r"><span class="tn-mh-t">From ${fd(e.effective_date)} · ${e.amount != null ? _tnFmtEUR(e.amount) : '—'}</span><span class="tnp tnp-gray">Verlängerung</span></div>`;
-    const s = st(e);
-    return `<div class="tn-mh-r"><span class="tn-mh-t"${e.ignored ? ' style="text-decoration:line-through;color:var(--cc-taupe)"' : ''}>From ${fd(e.effective_date)} · ${_tnFmtEUR(e.amount)}</span>
-      <span class="tnp tnp-gray">${_tnMhKind(e)}</span><span class="tnp ${s[0]}">${s[1]}</span>
-      <button class="tn-icon-btn" style="color:var(--cc-stone)" aria-label="Delete" onclick="_tnMhDelete('${e.id}','${esc(roomName)}')"><i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i></button></div>`;
-  }).join('');
-  return `
-<div class="tn-sec" id="mh-sec-${rid}"><div class="tn-sec-body" style="padding-top:10px">
-  <style>.tn-mh-r{display:flex;align-items:center;gap:6px;padding:8px 0;border-top:var(--cc-border);font-size:12.5px}.tn-mh-r:first-of-type{border-top:none}.tn-mh-t{flex:1;min-width:0}</style>
-  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px">
-    <span><span class="tn-flbl" style="display:block">${pausch ? 'Pauschalmiete' : 'Kaltmiete'} now</span>
-      <b style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:500">${cur ? _tnFmtEUR(pausch ? cur.total : cur.kalt) : '—'}</b> <span class="tn-flbl">/mo</span></span>
-  </div>
-  ${next ? `<div style="border-radius:10px;background:#FAEEDA;border:.5px solid #EF9F27;padding:10px 12px;margin-bottom:10px">
-      <div class="tn-flbl" style="color:#8A6535">Next Mieterhöhung</div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b style="font-size:16px">${_tnFmtEUR(next.amount)}</b><span style="font-size:12px;color:#633806">from ${fd(next.effective_date)}</span></div>
-      <div style="display:flex;gap:6px;margin-top:6px">${btn(next, 'adj', false, '<i class="ti ti-check"></i> Adjusted')}${btn(next, 'ign', false, '<i class="ti ti-ban"></i> Skip')}</div></div>`
-    : `<p class="tn-empty" style="margin:0 0 10px">No Mieterhöhung planned.</p>`}
-  ${rows ? `<div class="tn-msec-lbl" style="margin:4px 0 2px">All Mieterhöhungen</div>${rows}` : ''}
-  <div id="mh-add-${rid}" style="display:none;margin-top:12px;border-top:var(--cc-border);padding-top:12px">
-    <div class="cc-add-grid">
-      <label class="cc-add-f"><span class="tn-flbl">From</span><input type="date" id="mh-date-${rid}" value="${ccTodayPlusYearsISO(1)}"/></label>
-      <label class="cc-add-f"><span class="tn-flbl">New ${pausch ? 'Pauschalmiete' : 'Kaltmiete'} €</span><input type="number" data-cc-num="2" id="mh-amt-${rid}" placeholder="0,00" step="0.01" min="0"/></label>
-      <label class="cc-add-f"><span class="tn-flbl">Type</span><select class="cc-select" id="mh-kind-${rid}"><option value="mieterhoehung">Mieterhöhung</option><option value="index">Index</option><option value="korrektur">Korrektur</option></select></label>
-    </div>
-    <div class="cc-add-slot"><button type="button" class="cc-add-btn" onclick="document.getElementById('mh-add-${rid}').style.display='none'">Cancel</button>
-      <button type="button" class="cc-add-btn is-primary" onclick="_tnMhAdd('${rid}','${esc(roomName)}','${rec.id}')">Save</button></div>
-  </div>
-  <div class="cc-sec-foot"><button type="button" onclick="const f=document.getElementById('mh-add-${rid}');f.style.display='block';f.querySelector('input[type=number]')?.focus()"><i class="ti ti-plus"></i> Mieterhöhung</button></div>
-</div></div>`;
-}
-async function _tnMhAdd(rid, roomName, tid) {
-  const date = document.getElementById('mh-date-' + rid)?.value?.trim();
-  const amount = parseFloat(document.getElementById('mh-amt-' + rid)?.value);
-  const kind = document.getElementById('mh-kind-' + rid)?.value || 'mieterhoehung';
-  if (!date || isNaN(amount) || amount <= 0) { ccToast('Please enter the date and the new rent', true); return; }
-  const { data, error } = await sbL.from('casa_mieterhoehung_history')
-    .insert({ room: roomName, tenant_id: String(tid), effective_date: date, amount, kind, tenant_adjusted: false, ignored: false }).select().single();
-  if (error) { ccSaveFailed(error, 'Mieterhöhung (SQL run?)'); return; }
-  (_tnMh[roomName] = _tnMh[roomName] || []).unshift(data);
-  if (typeof ccSavedToast === 'function') ccSavedToast('Mieterhöhung saved');
-  _tnRender(); if (typeof ccSheetRefresh === 'function') ccSheetRefresh();
-}
+
+
+
 async function _tnMhToggle(id, roomName, k) {
   const e = (_tnMh[roomName] || []).find(x => String(x.id) === String(id)); if (!e) return;
   const upd = k === 'adj' ? { tenant_adjusted: !e.tenant_adjusted } : { ignored: !e.ignored };
@@ -2527,27 +2394,7 @@ function _ccNextTenantHTML(rec, name, fmtDate, openFn) {
   </div>`;
 }
 
-/* Empty room: the next tenant's contract, in the beige bar's place — same layout as an occupied room */
-function _tnNewContractHTML(rid, room) {
-  const ct = _tnRoomContractType(room.name) || 'mietvertrag';
-  const hasVE = _ccHasVE(_tnRecords);
-  return `
-<div class="tn-rent-wrap tn-newc" id="newc-${rid}">
-  <div class="tn-rtitle"><span class="tn-rt-name">New contract</span><span class="tn-rt-dates">for the next tenant</span></div>
-  <div class="tn-fg" style="padding:8px 14px 12px">
-    <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_tnCtSegHTML('data-f', ct)}</div>
-    ${hasVE ? `<div class="tn-field" data-cc="endwrap"${ct === 'mietvertrag' ? ' style="display:none"' : ''}><span class="tn-flbl">Contract end</span>
-      <input data-f="vertragsende" type="text" value="" placeholder="TT.MM.JJJJ"/></div>` : ''}
-    <div class="tn-field tn-field-full"><span class="tn-flbl">Rent</span>${_tnModeSegHTML('data-f', 'kalt_nk')}</div>
-    <div class="tn-field"><span class="tn-flbl" data-kaltlbl>Kaltmiete</span>
-      <input data-f="kaltmiete" type="number" data-cc-num="2" inputmode="decimal" value="" placeholder="0,00"/></div>
-    <div class="tn-field" data-nkwrap><span class="tn-flbl">Nebenkosten</span>
-      <input data-f="nebenkosten" type="number" data-cc-num="2" inputmode="decimal" value="" placeholder="0,00"/></div>
-    <div class="tn-field"><span class="tn-flbl">Kaution</span>
-      <input data-f="kaution_soll" type="number" data-cc-num="2" inputmode="decimal" value="" placeholder="0,00"/></div>
-  </div>
-</div>`;
-}
+
 
 function _tnProfileSectionHTML(rid, room, rec) {
   const isEmpty = !rec || (!rec.first_name && !rec.last_name && !rec.email && !rec.mietbeginn);
@@ -3186,20 +3033,9 @@ function _tnToggleModalProfile(tid) {
   if (fedit) fedit.style.display = isEditing ? 'none' : '';
 }
 
-function _tnModalSetCt(type, btn) {
-  btn.closest('.tn-contract-toggle').querySelectorAll('.tn-btn').forEach(b => {
-    b.classList.remove('tn-btn-primary');
-    b.classList.add('tn-btn-sm');
-  });
-  btn.classList.add('tn-btn-primary');
-}
 
-function _tnModalUpdateWarm() {
-  const body = document.getElementById('tnModalBody');
-  if (!body) return;
-  const k  = parseFloat(body.querySelector('[data-mf="kaltmiete"]')?.value)   || 0;
-  const nk = parseFloat(body.querySelector('[data-mf="nebenkosten"]')?.value) || 0;
-}
+
+
 
 function _tnCloseModal() {
   // Unsaved changes in the edit view → ask (instead of silently dropping them)
@@ -3279,12 +3115,7 @@ function _tnToggleRentEdit(rid) {
   bar.style.display  = show ? 'none' : 'flex';
 }
 
-function _tnUpdateWarm(rid) {
-  const k  = parseFloat(document.getElementById('rf-kalt-' + rid)?.value) || 0;
-  const nk = parseFloat(document.getElementById('rf-nk-'   + rid)?.value) || 0;
-  const el = document.getElementById('rf-warm-' + rid);
-  if (el) el.textContent = (k || nk) ? _tnFmtEUR(k + nk) : '\u2014';
-}
+
 
 function _tnToggleProfile(rid, tid, room) {
   const read    = document.getElementById('pread-'     + rid);
@@ -3424,43 +3255,9 @@ async function _tnSaveNewTenant(rid, roomName) {
   await _tnLoad();
 }
 
-// Manual "move to former": two-tap confirm on the button, then force status→former
-// (keeps whatever move-out date is entered — even a future one — so the room frees up now)
-function _tnMoveToFormerConfirm(btn, rid, tid, roomName) {
-  if (btn.dataset.armed === '1') {
-    _tnSaveProfile(rid, tid, roomName, true);
-    return;
-  }
-  const orig = btn.innerHTML;
-  btn.dataset.armed = '1';
-  btn.classList.add('tn-btn-armed');
-  btn.innerHTML = '<i class="ti ti-check"></i> Confirm';
-  setTimeout(() => {
-    if (btn && btn.dataset.armed === '1') {
-      btn.dataset.armed = '0';
-      btn.classList.remove('tn-btn-armed');
-      btn.innerHTML = orig;
-    }
-  }, 3500);
-}
 
-/* Record move-out: the last day the tenant pays → then former + vacant (automatic) */
-function _tnMoveOutOpen(rid, tid) {
-  const rec = _tnRecords.find(r => r.id === tid); if (!rec) return;
-  _ccPanelOpen('psec-' + rid, 'Record move-out', `
-    <div class="tn-fg"><div class="tn-field"><span class="tn-flbl">Move-out (last day)</span>
-      <input data-cc="date" type="text" placeholder="TT.MM.JJJJ" value="${_tnFmtDate(rec.vertragsende || '')}"/></div></div>
-    <p class="cc-inline-hint">After this date the tenant becomes a former tenant and the room is vacant — automatically.
-    Then: Übergabe Auszug (Documents) · settle the Kaution · NK-Abrechnung in Settlements.</p>`, async p => {
-    const iso = _tnParseDate(p.querySelector('[data-cc="date"]').value || '');
-    if (!iso) { p.querySelector('[data-cc="date"]').style.borderBottomColor = '#C4705A'; return false; }
-    const upd = { mietende: iso };
-    if (_tnIsPast(iso)) upd.status = 'former';
-    const { error } = await sbL.from('tenant_records').update(upd).eq('id', tid);
-    if (error) { alert('Could not save — ' + error.message); return false; }
-    Object.assign(rec, upd); _tnRender(); return true;
-  });
-}
+
+
 /* Renew (Casa 1-year contracts): same tenant, same Kaution — new contract end, optional new rent */
 /* The renewals of a tenancy, oldest first: "1. Verlängerung ab 01.10.2026" (+ type if it switches) */
 function _tnRenewalRows(rec) {
@@ -3816,63 +3613,9 @@ async function _tnModalSaveProfile(tid) {
 }
 
 
-/* ══════════════════════════════════════════════════════════════
-   14. KAUTION INTERACTIONS
-══════════════════════════════════════════════════════════════ */
-function _tnCalcKaution(pfx, tid) {
-  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
-  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
-  const kept = recv - ret;
 
-  // Update kept display
-  const el = document.getElementById('kk-' + pfx);
-  if (el) {
-    el.textContent = _tnFmtEUR(Math.max(0, kept));
-    el.className   = 'tn-kc-val' + (kept > 0 ? ' gold' : '');
-  }
 
-  // Update status pill live (using current settled state from cache)
-  const k = tid ? _tnKaution[tid] : null;
-  const settled = k?.settled || false;
-  const st = _tnKautionStatus(recv, ret, settled);
-  const pill = document.getElementById('kstat-' + pfx);
-  if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
 
-  // Show/hide Mark settled button based on whether recv > 0
-  const footer = document.getElementById('kset-' + pfx)?.parentElement;
-  if (footer && !document.getElementById('kset-' + pfx) && recv > 0 && tid) {
-    const btn = document.createElement('button');
-    btn.className = 'tn-btn tn-btn-sm';
-    btn.id = 'kset-' + pfx;
-    btn.innerHTML = '<i class="ti ti-check"></i> Mark settled';
-    btn.onclick = () => _tnToggleSettle(pfx, tid);
-    footer.insertBefore(btn, footer.firstChild);
-  }
-
-  // Mark save button as dirty
-  const saveBtn = document.getElementById('ksave-' + pfx);
-  if (saveBtn) ccSaveSet(saveBtn, 'dirty');     // unsaved change → dark SAVE
-}
-
-async function _tnSaveKautionBtn(pfx, tid) {
-  if (!sbL || !tid) return;
-  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
-  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
-  const saveBtn = document.getElementById('ksave-' + pfx);
-  _tnSaveKaution(tid, recv, ret);   // memory now, database in the background
-  // Update section status pill
-  const k    = _tnKaution[tid];
-  const st   = _tnKautionStatus(recv, ret, k?.settled || false);
-  const pill = document.getElementById('kstat-' + pfx);
-  if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
-  // Update card header pill — find rid from tenant record
-  const _rec = _tnRecords.find(r => r.id === tid);
-  if (_rec) {
-    const _rid = _rec.room.replace(/\s+/g,'_').toLowerCase();
-    _tnRefreshCardPills(_rec.room);   // same rules as the first render — nothing gets dropped
-  }
-  if (saveBtn) ccSaveSet(saveBtn, 'saved');     // saved → grey ✓ SAVED until the next change
-}
 
 async function _tnSaveKaution(tid, received, returned) {
   if (!sbL) return;
@@ -3902,46 +3645,7 @@ async function _tnSaveKaution(tid, received, returned) {
   }
 }
 
-async function _tnToggleSettle(pfx, tid) {
-  if (!sbL || !tid) return;
-  if (!_tnKaution[tid]) await _tnEnsureKaution(tid);
-  const k = _tnKaution[tid];
-  if (!k?.id) return;
 
-  // Toggle immediately in local cache
-  k.settled = !k.settled;
-
-  // Snapshot the amounts the user typed at the moment of settling
-  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
-  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
-
-  const upd = { settled: k.settled };
-  if (k.settled) {
-    k.received = recv; k.returned = ret;
-    k.settled_at = new Date().toISOString();
-    upd.received = recv; upd.returned = ret; upd.settled_at = k.settled_at;
-  } else {
-    k.settled_at = null;
-    upd.settled_at = null;
-  }
-
-  // Update DOM instantly
-  const btn = document.getElementById('kset-' + pfx);
-  if (btn) {
-    btn.innerHTML = `<i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}`;
-    btn.className = `tn-btn ${k.settled ? 'tn-btn-done' : 'tn-btn-sm'}`;
-  }
-  const st   = _tnKautionStatus(recv, ret, k.settled);
-  const pill = document.getElementById('kstat-' + pfx);
-  if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
-
-  // Fire to Supabase in background
-  sbL.from('kaution').update(upd).eq('id', k.id)
-    .then(({ error }) => { if (error) { ccSaveFailed(error, 'Kaution settled'); _tnLoad(); } });
-  { const _r = _tnRecords.find(r => r.id === tid); if (_r) _tnRefreshCardPills(_r.room); }
-
-  _tnRefreshFormerBadges(tid);
-}
 
 async function _tnEnsureKaution(tid) {
   if (!sbL || _tnKaution[tid]) return;
@@ -4335,15 +4039,7 @@ function _tnRefreshFormerBadges(tid) {
 }
 
 
-/* ══════════════════════════════════════════════════════════════
-   19. PASSWORD RESET
-══════════════════════════════════════════════════════════════ */
-async function _tnResetPw(room) {   // the new password also shows in the card (pw-requests-admin.js)
-  if (!sbL) { alert('No database connection.'); return; }
-  if (!(await ccConfirm('Reset password · ' + esc(room), 'The old password stops working. The new one is shown once.', 'Reset'))) return;
-  const pw = await ccSetNewRoomPassword(room, 'New password');
-  if (pw) { _tnPwAt[room] = new Date().toISOString(); _tnRender(); }
-}
+
 
 
 /* ══════════════════════════════════════════════════════════════

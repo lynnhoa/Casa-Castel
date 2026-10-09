@@ -779,10 +779,7 @@ function fmtEUR(n) {
   const num = Number(n);
   return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 }
-// German number without € (for inline use)
-function fmtNum(n) {
-  return Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+
 
 /* ── SHARED HELPER — parse JSONB arrays from Supabase ────── */
 // Supabase sometimes returns JSONB as a raw string instead of parsed array
@@ -1000,119 +997,17 @@ function _renderRoomsList() {
 }
 
 
-/* ── CARD HTML ───────────────────────────────────────────── */
-function _getRentInfo(r, type) {
-  // Returns {kalt, nk, total, detail} for a given type
-  if (type === 'mietvertrag') {
-    if (r.mietvertrag_pricing === 'kalt_nk' && r.kaltmiete) {
-      const kalt = Number(r.kaltmiete)||0, nk = Number(r.nk_pauschale)||0;
-      return { kalt, nk, total: kalt+nk, detail: fmtEUR(kalt)+' kalt + '+fmtEUR(nk)+' NK' };
-    }
-    if (r.mietvertrag_miete) {
-      const tot = Number(r.mietvertrag_miete)||0;
-      const nk  = Number(r.nk_pauschale)||0;
-      return { kalt: tot - nk, nk, total: tot, detail: 'pauschal inkl. NK' };
-    }
-  }
-  if (type === 'kurzzeit' && r.kurzzeit_kaltmiete) {
-    const kalt = Number(r.kurzzeit_kaltmiete)||0;
-    const nk   = Number(r.kurzzeit_nk)||0;
-    const isPauschal = (r.kurzzeit_pricing || 'pauschal') === 'pauschal';
-    const detail = isPauschal
-      ? fmtEUR(kalt+nk) + ' pauschal inkl. NK'
-      : fmtEUR(kalt) + ' kalt + ' + fmtEUR(nk) + ' NK';
-    return { kalt, nk, total: kalt+nk, detail };
-  }
-  return null;
-}
 
-function _getActiveType(r) {
-  const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
-  const hasKz = !!r.kurzzeit_kaltmiete;
 
-  // Honour the persisted toggle choice as the source of truth — even if that
-  // type's price isn't filled in yet (room freshly switched to Kurzzeit).
-  if (r.active_price_type === 'mietvertrag') return 'mietvertrag';
-  if (r.active_price_type === 'kurzzeit')    return 'kurzzeit';
 
-  // No explicit choice yet: fall back to whichever price exists.
-  if (hasMv) return 'mietvertrag';
-  if (hasKz) return 'kurzzeit';
-  return null;
-}
 
-/* The room's OFFER (Mietvertrag | Kurzzeit): the asking rent shown while the room
-   is vacant and the contract type pre-selected for the next tenant. It never
-   changes a tenancy — every tenant keeps their own contract type (Tenants tab). */
-function _setOfferType(roomId, type) {
-  const r = appRooms.find(x => x.id === roomId);
-  if (!r || !sbL || _getActiveType(r) === type && r.active_price_type === type) return;
-  const before = r.active_price_type ?? null;
-  r.active_price_type = type;
-  _roomVacancyRerender(roomId);   // instant: header + Offer choice
-  if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', r);
-  ccQueueWrite('room-offer-' + roomId, () => sbL.from('rooms').update({ active_price_type: type }).eq('id', roomId))
-    .then(res => {
-      if (!res || !res.error) return;
-      r.active_price_type = before;
-      _roomVacancyRerender(roomId);
-      if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', r);
-      ccSaveFailed(res.error, 'room offer');
-    });
-}
-// Old name (header toggle) — kept so nothing that still calls it breaks
-function _toggleRentType(btn) {
-  const card = btn && btn.closest('.rc');
-  if (card && btn.dataset.type) _setOfferType(card.dataset.id, btn.dataset.type);
-}
 
-function _rcFmtD(iso) { const s = String(iso || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; }
-/* Header pill for a tenancy: Mietvertrag (neutral) · Kurzzeit with its end date (lilac — not a status colour) */
-function _roomCtPill(ctype, endIso, ten) {
-  if (ctype === 'kurzzeit') {
-    const end = _rcFmtD(endIso);
-    const more = ten && ten.renewed ? (ten.then === 'mietvertrag' ? ' \u00b7 then Mietvertrag' : ' \u00b7 verlängert') : '';
-    return `<span class="rc-rent-badge rc-ct rc-ct--kz"><i class="ti ti-clock" aria-hidden="true"></i>Kurzzeit${end ? ' bis ' + end : ''}${more}</span>`;
-  }
-  if (ctype === 'jahres') {
-    const end = _rcFmtD(endIso);
-    const more = ten && ten.renewed ? (ten.then === 'mietvertrag' ? ' \u00b7 then Mietvertrag' : ' \u00b7 verlängert') : '';
-    return `<span class="rc-rent-badge rc-ct rc-ct--jv"><i class="ti ti-calendar" aria-hidden="true"></i>Jahresvertrag${end ? ' bis ' + end : ''}${more}</span>`;
-  }
-  if (ctype === 'mietvertrag') return `<span class="rc-rent-badge rc-ct rc-ct--mv"><i class="ti ti-file-text" aria-hidden="true"></i>Mietvertrag</span>`;
-  return `<span class="rc-rent-badge rc-ct rc-ct--none">Contract not set</span>`;
-}
 
-function _rentRowHTML(r) {
-  const row = (pill, detail, amount) => `<div class="rc-hdr__rent">
-    <div class="rc-hdr__rent-left">
-      <div class="rc-hdr__rent-top">${pill}</div>
-      ${detail ? `<div class="rc-hdr__rent-info"><span class="rc-rent-detail">${detail}</span></div>` : ''}
-    </div>
-    <span class="rc-rent-amount">${amount || ''}</span>
-  </div>`;
 
-  // Someone lives here now: their contract type and their own rent (Tenants tab)
-  const ten = typeof tnCurrentTenancyOf === 'function' ? tnCurrentTenancyOf(r.name) : null;
-  if (ten) {
-    const cur = ten.rent;
-    const d = !cur ? 'Rent not set' : cur.mode === 'pauschal' ? fmtEUR(cur.total) + ' pauschal' : fmtEUR(cur.kalt) + ' kalt + ' + fmtEUR(cur.nk) + ' NK';
-    // The tenant's contract is edited in Tenants — pill and link take you there (one place to correct it)
-    const go = `event.stopPropagation();_rcOpenTenant('${esc(r.name).replace(/'/g, "\\'")}')`;
-    const pillBtn = `<button type="button" class="rc-ct-link" title="Edit in Tenants" onclick="${go}">${_roomCtPill(ten.ctype, ten.end, ten)}</button>`;
-    const more = `${d} \u00b7 <button type="button" class="rc-ct-link rc-ct-link__txt" onclick="${go}">Edit in Tenants \u203a</button>`;
-    return row(pillBtn, more, cur ? fmtEUR(cur.total) : '');
-  }
 
-  // Nobody lives here: the room's offer (chosen in Asking rent → Offer)
-  const hasMv = !!(r.kaltmiete || r.mietvertrag_miete);
-  const hasKz = !!r.kurzzeit_kaltmiete;
-  if (!hasMv && !hasKz) return row(`<span class="rc-rent-badge rc-rent-badge--none">Nicht gesetzt</span>`, '', '');
-  const activeType = _getActiveType(r);
-  const info = activeType ? _getRentInfo(r, activeType) : null;
-  const pill = `<span class="rc-rent-badge rc-ct rc-ct--offer">Offer · ${activeType === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag'}</span>`;
-  return row(pill, info ? info.detail : 'Preis nicht gesetzt', info ? fmtEUR(info.total) : '');
-}
+
+
+
 
 /* Rooms header → the tenant's card in Tenants, opened at the running contract */
 function _rcOpenTenant(roomName, target) {
@@ -1134,18 +1029,7 @@ function _rcOpenTenant(roomName, target) {
   document.head.appendChild(st);
 })();
 
-/* Asking rent → Offer: the one place to choose it (vacant and occupied rooms alike) */
-function _offerChoiceHTML(r) {
-  if (!r.id || !(r.kaltmiete || r.mietvertrag_miete || r.kurzzeit_kaltmiete)) return '';
-  const t = _getActiveType(r);
-  const opt = (v, l) => `<button type="button" class="cc-seg__opt${t === v ? ' is-on' : ''}" role="radio" aria-checked="${t === v}"
-      onclick="event.stopPropagation();_setOfferType('${r.id}','${v}')">${l}</button>`;
-  return `<div class="rc-offer">
-      <span class="rc-offer__lbl">Offer</span>
-      <div class="cc-seg cc-seg--sm" role="radiogroup" aria-label="Offer">${opt('mietvertrag', 'Mietvertrag')}${opt('kurzzeit', 'Kurzzeit')}</div>
-    </div>
-    <p class="rc-offer__hint">Pre-selected for the next tenant. Each tenant's own contract is set in Tenants.</p>`;
-}
+
 
 const _roomFrags = {};   // room id → the edit fragments of its card (used by the Edit sheets)
 function _roomCardHTML(r) {
@@ -1461,10 +1345,7 @@ function _toggleCard(card) {
   }
 }
 
-function _enterEdit(card) {
-  card.classList.add('rc--expanded', 'rc--editing');
-  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
+
 
 function _cancelEdit(card) {
   card.classList.remove('rc--editing');
@@ -1587,15 +1468,9 @@ function _roomSaveSection(sec, id) {
     });
 }
 
-function _onKzToggle(chk) {
-  const label = chk.closest('.rc-toggle-row').querySelector('.rc-tlabel');
-  label.textContent = chk.checked ? 'Kalt + NK' : 'Pauschal';
-}
 
-function _onMvToggle(chk) {
-  const label = chk.closest('.rc-toggle-row').querySelector('.rc-tlabel');
-  label.textContent = chk.checked ? 'Pauschal' : 'Kalt + NK';
-}
+
+
 
 function _toggleKautionOverride(chk) {
   const field = chk.closest('.rc-edit-section, .rc-sec-edit')?.querySelector('[data-kautionoverridefield]');
@@ -1609,12 +1484,7 @@ function _step(btn, delta) {
   val.textContent = n;
 }
 
-function _setEU(roomId, idx, btn) {
-  _rcEU[roomId] = idx === 1 ? 'Auszug' : 'Einzug';
-  const tog = document.getElementById('eu-' + roomId);
-  if (!tog) return;
-  tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
-}
+
 /* Übergabe (Oct 2026): opened from the tenant card — Einzug or Auszug is passed in, not read from a switch */
 var _rcEU = {};
 function _rcEULabel(roomId) {
@@ -1625,76 +1495,10 @@ function ccOpenUebergabe(roomId, eu) {
   _openContract('ueberg', roomId);
 }
 
-/* Mark as vacant / occupied — instant: the card switches at once, the database
-   write runs in the background. If it fails, the card switches back + red message. */
-function _roomVacancyRerender(roomId) {
-  const room = getRoomById(roomId);
-  const card = document.querySelector(`.rc[data-id="${roomId}"]`);
-  if (!card || !room) return;
-  const wasExpanded = card.classList.contains('rc--expanded');
-  // Insert new card before old one, then remove old — more reliable than outerHTML on iOS
-  const newDiv = document.createElement('div');
-  newDiv.innerHTML = _roomCardHTML(room);
-  const newCard = newDiv.firstElementChild;
-  card.parentNode.insertBefore(newCard, card);
-  card.remove();
-  if (wasExpanded) newCard.classList.add('rc--expanded');
-  _bindAllCards();
-  _initSortable();
-  _updateRoomsSummary(appRooms);
-}
-function _toggleVacant(roomId, btn) {
-  const room = getRoomById(roomId);
-  if (!room || !sbL) return;
-  const before = !!room.vacant, next = !before;
-  room.vacant = next;
-  _roomVacancyRerender(roomId);   // instant
-  ccQueueWrite('room-' + roomId, () => sbL.from('rooms')
-      .update({ vacant: next, updated_at: new Date().toISOString() }).eq('id', roomId))
-    .then(r => {
-      if (r && r.error) {
-        room.vacant = before;
-        _roomVacancyRerender(roomId);
-        ccSaveFailed(r.error, 'room vacancy');
-        return;
-      }
-      if (typeof roomAfterVacancyChange === 'function') roomAfterVacancyChange(room, next);
-    });
-}
 
-async function _toggleKitchenRoom(roomName, btn) {
-  btn.disabled = true;
 
-  // Toggle kitchenRooms[] in memory and sync to Supabase lounge_data (realtime to tenants)
-  const rooms = typeof getKitchenRooms === 'function' ? getKitchenRooms() : [];
-  const idx   = rooms.indexOf(roomName);
-  if (idx === -1) rooms.push(roomName);
-  else            rooms.splice(idx, 1);
-  if (typeof syncKitchenRoomsToSupabase === 'function') syncKitchenRoomsToSupabase(rooms);
 
-  // Also persist kitchen_enabled on the rooms row (persistent source of truth)
-  const nowEnabled = rooms.includes(roomName);
-  const roomObj = appRooms.find(r => r.name === roomName);
-  if (roomObj) roomObj.kitchen_enabled = nowEnabled;
-  if (sbL) sbL.from('rooms').update({ kitchen_enabled: nowEnabled }).eq('name', roomName);
 
-  // Re-render just this card to reflect new badge + button state
-  const card = document.querySelector(`.rc[data-room="${CSS.escape(roomName)}"]`);
-  const room = appRooms.find(r => r.name === roomName);
-  if (card && room) {
-    const wasExpanded = card.classList.contains('rc--expanded');
-    const newDiv = document.createElement('div');
-    newDiv.innerHTML = _roomCardHTML(room);
-    const newCard = newDiv.firstElementChild;
-    card.parentNode.insertBefore(newCard, card);
-    card.remove();
-    if (wasExpanded) newCard.classList.add('rc--expanded');
-    _bindAllCards();
-    _initSortable();
-  } else {
-    btn.disabled = false;
-  }
-}
 
 
 /* ── SAVE CARD ───────────────────────────────────────────── */
@@ -2134,93 +1938,15 @@ function _rcWireFooter(type) {
   appr?.addEventListener('click', () => { if (!appr.disabled) ccfApproveDraft(); });
 }
 function _rcBuild(type, forApprove) {
-  if ((type === 'kurzzeit' || type === 'jahres' || type === 'mietvertrag') && typeof ccgBuild === 'function') return ccgBuild(type, forApprove);
-  if (type === 'kurzzeit')    return _rcBuildKurzzeit(forApprove);
-  if (type === 'mietvertrag') return _rcBuildMietvertrag(forApprove);
+  if (type === 'kurzzeit' || type === 'jahres' || type === 'mietvertrag') return ccgBuild(type, forApprove);   // cc-generator.js
   return _rcBuildUeberg();
 }
-function _rcMakeContainer(html, bg) {
-  document.getElementById('_pdfRenderContainer')?.remove();
-  const c = document.createElement('div');
-  c.id = '_pdfRenderContainer';
-  c.style.cssText = `position:fixed;top:0;left:-9999px;width:794px;background:${bg};z-index:-1;font-size:11.33px;`;
-  c.innerHTML = html;
-  document.body.appendChild(c);
-  return c;
-}
+
 function _rcVal(id) { return (document.getElementById(id)?.value || '').trim(); }
-function _rcFael(prefix) {
-  let v = 'sofort';
-  document.querySelectorAll('.' + prefix + '-fael-opt').forEach(b => { if (b.classList.contains('active-fael') || b.dataset.active === '1') v = b.dataset.val; });
-  return v === 'custom' ? (parseInt(document.getElementById(prefix + '-faelligkeit-custom')?.value) || 5) : v === 'sofort' ? 'sofort' : 5;
-}
-/* Renewal without a new Kaution: the PDF keeps the first contract's Kaution ("bleibt bestehen") */
-function _rcRenewKaution(data, manual) {
-  const rn = _contractRenew;
-  if (!rn || !rn.tid || (manual != null && manual > 0)) return;
-  data.kautionBestehend = true;
-  data.kaution = Number(rn.kautionSoll) || 0;
-}
-async function _rcBuildKurzzeit(forApprove) {
-  const room2 = _rcContractRoom(getRoomById(_contractRoomId)); if (!room2) return null;
-  const mieterName = _rcVal('cm-name'), mieterAdr = _rcVal('cm-adr'), mieterDob = _rcVal('cm-dob');
-  const mieterEmail = _rcVal('cm-email'), mieterTel = _rcVal('cm-tel');
-  const startVal = document.getElementById('cm-start')?.value, endVal = document.getElementById('cm-end')?.value;
-  const sigVal = document.getElementById('cm-sig')?.value;
-  const ersterMonatVoll  = document.getElementById('cm-erster-btn')?.dataset.mode === 'voll';
-  const letzterMonatVoll = document.getElementById('cm-letzter-btn')?.dataset.mode === 'voll';
-  const m = ccfMieteGet() || { mode: 'pauschal', kalt: 0, nk: 0, total: 0 };
-  if (!forApprove && !ccConfirmMissingDates([!startVal && 'Mietbeginn', !endVal && 'Mietende'])) return null;
-  const kautionOverride = ccKautionManual(document.getElementById('cm-kaution')?.value);
-  const data = _buildMietvertragData(room2, appSettings, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
-    startVal, endVal, sigVal, ersterMonatVoll, letzterMonatVoll, kautionOverride,
-    kautionFaelligkeit: _rcFael('cm'), kzPricingOverride: m.mode });
-  _rcRenewKaution(data, kautionOverride);
-  const kaution = data.kautionBestehend ? null : (Number(data.kaution) || 0);
-  ccBlankFill(data, ['mietbeginn', 'mietende']);   // empty dates → line to fill in by hand
-  const container = _rcMakeContainer(_renderKurzzeitHTML(data), '#faf9f7');
-  await document.fonts.ready;
-  await new Promise(r => setTimeout(r, 300));
-  return { container, filename: ccPdfFileName('Mietvertrag_befristet', room2.name, mieterName),
-    payload: { kind: 'contract', ctype: (_contractRenew && _contractRenew.saveAs) || 'kurzzeit', room: room2.name, forId: ccfForValue(), renew: _contractRenew,
-      tenant: { name: mieterName, address: mieterAdr, birthday: mieterDob, email: mieterEmail, phone: mieterTel },
-      start: startVal, end: endVal, rent: m, kaution,
-      first_month: ersterMonatVoll ? 'voll' : 'anteilig', last_month: letzterMonatVoll ? 'voll' : 'anteilig' } };
-}
-async function _rcBuildMietvertrag(forApprove) {
-  const room2 = _rcContractRoom(getRoomById(_contractRoomId)); if (!room2) return null;
-  const mieterName = _rcVal('mv-name'), mieterAdr = _rcVal('mv-adr'), mieterDob = _rcVal('mv-dob');
-  const mieterEmail = _rcVal('mv-email'), mieterTel = _rcVal('mv-tel');
-  const startVal = document.getElementById('mv-start')?.value, sigVal = document.getElementById('mv-sig')?.value;
-  const befristet = document.getElementById('mv-befristung-btn')?.dataset.mode === 'befristet';
-  const endVal = befristet ? document.getElementById('mv-end')?.value : null;
-  const grundVal = befristet ? (document.querySelector('input[name=\'mv-grund\']:checked')?.value || '') : '';
-  const eigenbedarfPerson = grundVal === 'eigenbedarf' ? _rcVal('mv-eigenbedarf-person') : '';
-  if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) { alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return null; }
-  if (!forApprove && !ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) return null;
-  const ersterMonatVoll = document.getElementById('mv-erster-btn')?.dataset.mode === 'voll';
-  const kautionOverride = ccKautionManual(document.getElementById('mv-kaution')?.value);
-  let mindestlaufzeitJahre = 0;   // Kündigungsverzicht — unbefristet only, cap 4 Jahre (BGH)
-  if (!befristet && document.getElementById('mv-mindest-btn')?.dataset.mode === 'ja') {
-    const selMl = document.querySelector('.mv-mindest-opt.active-mindest');
-    mindestlaufzeitJahre = selMl ? Math.min(4, Math.max(1, Number(selMl.dataset.val))) : 1;
-  }
-  const data = _buildMietvertragOnlyData(room2, appSettings, {
-    mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
-    befristet, endVal, grundVal, eigenbedarfPerson, ersterMonatVoll,
-    kautionOverride, kautionFaelligkeit: _rcFael('mv'), mindestlaufzeitJahre });
-  _rcRenewKaution(data, kautionOverride);
-  const kaution = data.kautionBestehend ? null : (Number(data.kaution) || 0);
-  ccBlankFill(data, ['mietbeginn'].concat(data.befristet ? ['mietende'] : [], data.hasMindestlaufzeit ? ['mindestlaufzeitBis'] : []));
-  const container = _rcMakeContainer(_renderMietvertragHTML(data), '#ffffff');
-  await document.fonts.ready;
-  await new Promise(r => setTimeout(r, 300));
-  const m = ccfMieteGet() || _roomMvPricing(room2);
-  return { container, filename: ccPdfFileName('Mietvertrag', room2.name, mieterName),
-    payload: { kind: 'contract', ctype: 'mietvertrag', room: room2.name, forId: ccfForValue(), renew: _contractRenew,
-      tenant: { name: mieterName, address: mieterAdr, birthday: mieterDob, email: mieterEmail, phone: mieterTel },
-      start: startVal, end: endVal, rent: m, kaution, first_month: ersterMonatVoll ? 'voll' : 'anteilig' } };
-}
+
+
+
+
 async function _rcBuildUeberg() {
   const isEinzug = _rcIsEinzug(_contractRoomId);
   await _generateUebergPreviewContainer(isEinzug);
@@ -2280,35 +2006,7 @@ function _roomDeliverPdf(pdf, filename) {
   return ccOpenPdf(pdf, _pdfSafeName(filename));
 }
 
-/* Renders every .pdf-page of `srcHtml` into a fresh offscreen container at full
-   quality (scale 3) and saves it as a real A4 PDF — identical settings to the
-   Apartments tab (_aptGenericPdfAction). One page is captured at a time so the
-   canvases are released as we go. */
-async function _roomRenderPdfAtFullQuality(srcHtml, containerStyle, filename) {
-  const { jsPDF } = window.jspdf;
-  let tmp = document.getElementById('_pdfRenderContainer');
-  if (tmp) tmp.remove();
-  tmp = document.createElement('div');
-  tmp.id = '_pdfRenderContainer';
-  tmp.style.cssText = containerStyle;
-  tmp.innerHTML = srcHtml;
-  document.body.appendChild(tmp);
-  try {
-    await document.fonts.ready;
-    await new Promise(r => setTimeout(r, 200));
-    const pgs = tmp.querySelectorAll('.pdf-page');
-    if (!pgs.length) throw new Error('no .pdf-page nodes rendered');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    for (let i = 0; i < pgs.length; i++) {
-      if (i > 0) pdf.addPage();
-      const canvas = await html2canvas(pgs[i], { scale: 3, useCORS: true, backgroundColor: '#ffffff', width: 794, height: 1123, windowWidth: 794 });
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
-    }
-    _roomDeliverPdf(pdf, filename);
-  } finally {
-    tmp.remove();
-  }
-}
+
 
 /* Shared helper — captures all .pdf-page nodes, shows the in-app preview
    overlay (all screen sizes — the preview never leaves the app), and saves a
@@ -2391,22 +2089,6 @@ async function _openContract(type, roomId, renew) {
     titleLbl.textContent = `New contract — ${room.name}`;
     subLbl.textContent   = [room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '', room.floor, room.room_type].filter(Boolean).join(' · ');
     body.innerHTML       = ccgBodyHTML(type, room, _contractRenew);
-    footer.innerHTML     = ccfFooterHTML();
-
-  } else if (type === 'kurzzeit') {
-    typeLbl.textContent  = 'Kurzzeitmietvertrag';
-    titleLbl.textContent = `New contract — ${room.name}`;
-    subLbl.textContent   = `${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''} · ${room.floor || ''} · ${room.room_type || ''}`;
-    body.innerHTML       = _contractBodyKurzzeit(_rcContractRoom(room));
-    footer.innerHTML     = ccfFooterHTML();
-    document.getElementById('cm-start')?.addEventListener('change', _updateMonatToggles);
-    document.getElementById('cm-end')?.addEventListener('change', _updateMonatToggles);
-
-  } else if (type === 'mietvertrag') {
-    typeLbl.textContent  = 'Mietvertrag';
-    titleLbl.textContent = `New contract — ${room.name}`;
-    subLbl.textContent   = `${room.flaeche_m2 ? room.flaeche_m2 + ' m²' : ''} · ${room.floor || ''}`;
-    body.innerHTML       = _contractBodyMietvertrag(_rcContractRoom(room));
     footer.innerHTML     = ccfFooterHTML();
 
   } else if (type === 'ueberg') {
@@ -2564,32 +2246,7 @@ function _ubWire() {
   setTimeout(_ubSummary, 60);
 }
 
-function _initUebergMieterToggle(room) {
-  // Pill toggle is handled by _toggleUebergMieter via onclick
-  // Just store tenant name on the pill for reference
-  const profile    = (typeof _getProfile === 'function') ? _getProfile(room.name) : {};
-  const tenantName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
-  const pill = document.getElementById('uebergMieterPill');
-  if (pill) {
-    pill.dataset.tenantName  = tenantName;
-    pill.dataset.tenantEmail = profile.email   || '';
-    pill.dataset.tenantAdr   = profile.address || '';
-    pill.dataset.tenantDob   = (() => {
-      let dob = profile.birthday || '';
-      if (dob && dob.includes('-') && dob.length === 10) {
-        const [y,m,d] = dob.split('-'); dob = d+'.'+m+'.'+y;
-      }
-      return dob;
-    })();
-    // Also update name field if pill is still in room state
-    if (pill.dataset.state === 'room') {
-      const nameInput = document.getElementById('ub-mieter-name');
-      if (nameInput) nameInput.value = tenantName;
-      const adrInput = document.getElementById('ub-mieter-adr');
-      if (adrInput && !adrInput.value) adrInput.value = profile.address || '';
-    }
-  }
-}
+
 
 function _toggleUebergMieter(roomId) {
   const pill      = document.getElementById('uebergMieterPill');
@@ -2691,49 +2348,7 @@ function _toggleErsterMonat() {
   sub.textContent  = isVoll ? 'Voller Monat — pauschal' : 'Anteilig — wird berechnet';
 }
 
-function _updateMonatToggles() {
-  const startVal = document.getElementById('cm-start')?.value;
-  const endVal   = document.getElementById('cm-end')?.value;
 
-  // — Kaution display update —
-  _roomKzUpdateKaution();
-
-  // — Erster Monat toggle —
-  const ersterWrap = document.getElementById('cm-erster-wrap');
-  if (ersterWrap) {
-    const show = startVal && new Date(startVal).getDate() !== 1;
-    ersterWrap.style.display = show ? '' : 'none';
-    if (!show || startVal !== (ersterWrap._lastStart || '')) {
-      const btn = document.getElementById('cm-erster-btn');
-      const lbl = document.getElementById('cm-erster-lbl');
-      const sub = document.getElementById('cm-erster-sub');
-      if (btn) { btn.dataset.mode = 'anteilig'; lbl.textContent = 'Anteilig'; sub.textContent = 'Anteilig — wird berechnet'; }
-    }
-    ersterWrap._lastStart = startVal;
-  }
-
-  // — Letzter Monat toggle —
-  const letzterWrap = document.getElementById('cm-letzter-wrap');
-  if (letzterWrap) {
-    let show = false;
-    if (startVal && endVal) {
-      const s = new Date(startVal);
-      const e = new Date(endVal);
-      const sameMonth = e.getFullYear() === s.getFullYear() && e.getMonth() === s.getMonth();
-      const lastDayOfEndMonth = new Date(e.getFullYear(), e.getMonth() + 1, 0).getDate();
-      const letzterAnteilig = e.getDate() !== lastDayOfEndMonth;
-      show = !sameMonth && letzterAnteilig;
-    }
-    letzterWrap.style.display = show ? '' : 'none';
-    if (!show || endVal !== (letzterWrap._lastEnd || '')) {
-      const btn = document.getElementById('cm-letzter-btn');
-      const lbl = document.getElementById('cm-letzter-lbl');
-      const sub = document.getElementById('cm-letzter-sub');
-      if (btn) { btn.dataset.mode = 'anteilig'; lbl.textContent = 'Anteilig'; sub.textContent = 'Anteilig — wird berechnet'; }
-    }
-    letzterWrap._lastEnd = endVal;
-  }
-}
 
 function _toggleLetzterMonat() {
   const btn = document.getElementById('cm-letzter-btn');
@@ -2935,228 +2550,14 @@ function _contractBodyKurzzeit(room) {
     </div>`;
 }
 
-function _contractBodyComingSoon(name) {
-  return `
-    <div class="rm-coming-soon">
-      <i class="ti ti-file-off"></i>
-      <h3>${esc(name)}</h3>
-      <p>Template is being finalised. The structure and fields are ready — PDF generation will be activated once the template is complete.</p>
-    </div>`;
-}
+
 
 
 /* ── PDF GENERATION — KURZZEITMIETVERTRAG ────────────────── */
 /* removed: orphaned direct-save generator (superseded by _roomGenericPdfAction) */
 
 
-/* ── BUILD MIETVERTRAG DATA ──────────────────────────────── */
-function _buildMietvertragData(room, s, { mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel = '', startVal, endVal, sigVal, ersterMonatVoll = false, letzterMonatVoll = false, kautionOverride = null, kautionFaelligkeit = 5, kzPricingOverride = null }) {
-  const fmt = d => {
-    const dt = new Date(d);
-    return String(dt.getDate()).padStart(2,'0') + '.' +
-           String(dt.getMonth()+1).padStart(2,'0') + '.' +
-           dt.getFullYear();
-  };
 
-  const start     = new Date(startVal);
-  const end       = new Date(endVal);
-  const kzKalt    = Number(room.kurzzeit_kaltmiete) || 0;
-  const kzNk      = Number(room.kurzzeit_nk) || 0;
-  const kzPricing = kzPricingOverride || room.kurzzeit_pricing || 'pauschal';
-  const rent      = kzKalt + kzNk;  // full total used for all pro-rata math
-  const gemStr    = _parseArr(room.gemeinschaftsraeume).join(', ');
-
-  // Partial first month
-  const firstDayOfMonth = new Date(start.getFullYear(), start.getMonth(), 1);
-  let   ersterAnteilig  = start.getDate() !== 1;
-  let ersterTage = 0, ersterBetrag = 0, ersterTagespreis = 0;
-  if (ersterAnteilig) {
-    const daysInFirstMonth = new Date(start.getFullYear(), start.getMonth()+1, 0).getDate();
-    ersterTage       = daysInFirstMonth - start.getDate() + 1;
-    ersterTagespreis = rent / daysInFirstMonth;
-    if (ersterMonatVoll) {
-      ersterBetrag = rent;
-    } else {
-      ersterBetrag = Math.round(ersterTagespreis * ersterTage * 100) / 100;
-    }
-  }
-
-  // Partial last month
-  const lastDayOfMonth  = new Date(end.getFullYear(), end.getMonth()+1, 0);
-  let   letzterAnteilig = end.getDate() !== lastDayOfMonth.getDate();
-  const sameCalendarMonth = end.getFullYear() === start.getFullYear() && end.getMonth() === start.getMonth();
-  const letzteZahlungNoetig = !sameCalendarMonth;
-  let letzterTage = 0, letzterBetrag = 0, letzterTagespreis = 0;
-  if (letzterAnteilig) {
-    const daysInLastMonth = lastDayOfMonth.getDate();
-    letzterTage       = end.getDate();
-    letzterTagespreis = rent / daysInLastMonth;
-    if (letzterMonatVoll) {
-      letzterBetrag = rent;
-    } else {
-      letzterBetrag = Math.round(letzterTagespreis * letzterTage * 100) / 100;
-    }
-  }
-
-  // Stay inside ONE calendar month (e.g. 01.–14.11. or 10.–25.11.): exactly the
-  // days of the stay are charged, once — never a full month on top.
-  if (sameCalendarMonth) {
-    const dim  = lastDayOfMonth.getDate();
-    const stay = end.getDate() - start.getDate() + 1;
-    letzterAnteilig = false; letzterTage = 0; letzterBetrag = 0;
-    if (stay === dim) {
-      ersterAnteilig = false; ersterTage = 0; ersterBetrag = 0;          // a whole month = normal month
-    } else {
-      ersterAnteilig   = true;
-      ersterTage       = stay;
-      ersterTagespreis = rent / dim;
-      ersterBetrag     = ersterMonatVoll ? rent : Math.round(ersterTagespreis * stay * 100) / 100;
-    }
-  }
-
-  // Count full months between
-  let fullMonths = 0;
-  const ms = new Date(ersterAnteilig ? new Date(start.getFullYear(), start.getMonth()+1, 1) : start);
-  const me = new Date(letzterAnteilig ? new Date(end.getFullYear(), end.getMonth(), 1) : new Date(end.getFullYear(), end.getMonth()+1, 1));
-  fullMonths = (me.getFullYear() - ms.getFullYear()) * 12 + (me.getMonth() - ms.getMonth());
-  if (fullMonths < 0) fullMonths = 0;
-
-  // Beige box = the normal full-month Miete + NK. A move-in mid-month is shown in
-  // its own line ("Anteil erster Monat") and in the Zahlungsplan — never in the box.
-  const gesamtmiete = Math.round(rent * 100) / 100;
-
-  // Kaution — shared rule (kaution.js). Base follows the pricing mode of THIS
-  // contract (generator toggle wins over the card): Pauschal → Pauschal, Kalt+NK → Kalt
-  const _kzMode = (kzPricingOverride || room.kurzzeit_pricing || 'pauschal') === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
-  const kaution = ccKaution({ contract: 'kurzzeit', mode: _kzMode, kalt: kzKalt, nk: kzNk, rec: room,
-                              start: startVal, end: endVal, manual: kautionOverride }).amount;
-
-  // Kaution Fälligkeit text
-  const _kf = kautionFaelligkeit;
-  const kautionFaelligkeitShort = _kf === 'sofort'
-    ? 'sofort fällig nach Vertragsunterzeichnung'
-    : `fällig binnen ${_kf} Tagen nach Vertragsunterzeichnung`;
-  const kautionFaelligkeitLong = _kf === 'sofort'
-    ? 'sofort nach Vertragsunterzeichnung'
-    : `binnen ${_kf} Tagen nach Vertragsunterzeichnung`;
-
-  // Zahlungsplan
-  const firstPayDate = new Date(start.getFullYear(), start.getMonth(), 1);
-  // 1. Zahlung = partial first month (if any) + first full month
-  let z1Betrag, z1Desc;
-  if (ersterAnteilig && fullMonths > 0) {
-    const firstFullMonthName = new Date(start.getFullYear(), start.getMonth()+1, 1)
-      .toLocaleString('de-DE',{month:'long'});
-    const firstPartMonthName = start.toLocaleString('de-DE',{month:'long'});
-    z1Betrag = Math.round((ersterBetrag + rent) * 100) / 100;
-    z1Desc   = ersterMonatVoll
-      ? `${firstPartMonthName} (voll) + ${firstFullMonthName}`
-      : `Anteil ${firstPartMonthName} + ${firstFullMonthName}`;
-  } else if (ersterAnteilig) {
-    z1Betrag = ersterBetrag;
-    z1Desc   = ersterMonatVoll
-      ? `${start.toLocaleString('de-DE',{month:'long'})} (voll)`
-      : `Anteil ${start.toLocaleString('de-DE',{month:'long'})}`;
-  } else {
-    z1Betrag = rent;
-    z1Desc   = start.toLocaleString('de-DE',{month:'long'});
-  }
-  const z1Faellig = fmt(start);
-
-  // Weitere Zahlungen (> 2 full months remaining after z1)
-  const remainingAfterZ1 = ersterAnteilig ? fullMonths - 1 : fullMonths - 1;
-  const weitereZahlungen = remainingAfterZ1 > 1;
-  const weitereZahlungenBetrag = weitereZahlungen ? rent : null;
-
-  // Last payment
-  let zlBetrag, zlDesc;
-  if (letzterAnteilig) {
-    zlBetrag = letzterBetrag;
-    zlDesc   = letzterMonatVoll
-      ? `${end.toLocaleString('de-DE',{month:'long'})} (voll)`
-      : `Anteil ${end.toLocaleString('de-DE',{month:'long'})}`;
-  } else {
-    zlBetrag = rent;
-    zlDesc   = end.toLocaleString('de-DE',{month:'long'});
-  }
-  // Due date = 3rd of that month
-  const zlFaellig = fmt(new Date(end.getFullYear(), end.getMonth(), 3));
-
-  return {
-    // Vermieter
-    vermieterName:    s.vermieter_name || '',
-    vermieterAdresse: s.vermieter_adresse || '',
-    vermieterEmail:   s.vermieter_email || '',
-    vermieterSig:     s.vermieter_name || '',
-    // Objekt
-    objektAdresse:    s.objekt_adresse || '',
-    objektPLZOrt:     s.objekt_plz_ort || '',
-    // Bank
-    kontoinhaber:     s.kontoinhaber || '',
-    bankname:         s.bankname || '',
-    iban:             s.iban || '',
-    bic:              s.bic || '',
-    // Gerichtsstand
-    gerichtsstand:    s.gerichtsstand || 'Wiesbaden',
-    unterschriftOrt:  s.unterschrift_ort || 'Wiesbaden',
-    footerAdresse:    s.objekt_adresse ? (s.objekt_plz_ort && s.objekt_adresse.includes(s.objekt_plz_ort) ? s.objekt_adresse : s.objekt_adresse + ' \u00b7 ' + (s.objekt_plz_ort || '')) : '',
-    // Mieter
-    mieterName,
-    mieterAdresse:      mieterAdr,
-    mieterGeburtsdatum: mieterDob,
-    mieterEmail:        mieterEmail || '',
-    mieterTelefon:      mieterTel   || '',
-    // Zimmer
-    zimmerName:       room.name,
-    zimmerFlaeche:    room.flaeche_m2 || 0,
-    gemeinschaftsraeume: gemStr,
-    // Mietzeit
-    mietbeginn:       fmt(start),
-    mietende:         fmt(end),
-    // Partial months
-    ersterMonatAnteilig:  ersterAnteilig,
-    ersterMonatVoll:      ersterAnteilig && ersterMonatVoll,
-    ersterMonatTage:      ersterAnteilig ? ersterTage : null,
-    ersterMonatTagespreis:ersterAnteilig ? ersterTagespreis : null,
-    ersterMonatBetrag:    ersterAnteilig ? ersterBetrag : null,
-    letzterMonatAnteilig: letzterAnteilig,
-    letzterMonatVoll:     letzterAnteilig && letzterMonatVoll,
-    letzteZahlungNoetig,
-    letzterMonatTage:     letzterAnteilig ? letzterTage : null,
-    letzterMonatTagespreis:letzterAnteilig ? letzterTagespreis : null,
-    letzterMonatBetrag:   letzterAnteilig ? letzterBetrag : null,
-    // Miete
-    monatlMiete:  rent,
-    kzKaltmiete:  kzKalt,
-    kzNk:         kzNk,
-    kzPricing:    kzPricing,
-    gesamtmiete,
-    // Zahlungsplan
-    weitereZahlungen,
-    zahlung1Betrag:   z1Betrag,
-    zahlung1Beschreibung: z1Desc,
-    zahlung1Faellig:  z1Faellig,
-    weitereZahlungenBetrag,
-    letzteZahlungBetrag:  zlBetrag,
-    letzteZahlungBeschreibung: zlDesc,
-    letzteZahlungFaellig: zlFaellig,
-    // Kaution
-    kaution,
-    kautionFaelligkeitShort,
-    kautionFaelligkeitLong,
-    // Schlüssel
-    hausstuerschluessel: room.haustuerschluessel || 1,
-    zimmerschluessel:    room.zimmerschluessel || 1,
-    // Inventar
-    inventar: Array.isArray(room.inventar) ? room.inventar : [],
-    // Signing
-    unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
-    // Energieausweis — house-level, from appSettings
-    energieklasse:     s.energieklasse     || '',
-    endenergiebedarf:  s.endenergiebedarf  || '',
-    energieausweisart: s.energieausweisart || '',
-  };
-}
 
 
 /* ── MIETVERTRAG RENT (one rule for PDF, form and Kaution) ──
