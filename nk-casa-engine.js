@@ -316,10 +316,13 @@ const NkCasa = (() => {
     const perMonths = m2d(monthsOf(R.period.from, R.period.to));
     const rate = M ? r2(total / M) : 0;
     const lines = R.lines.map(l => Object.assign({}, l, { byTenant: {}, range: {} }));
-    let pauschal = 0;
+    let pauschal = 0, pCov = 0;
     const tenants = R.tenants.map(t => {
       const months = m2d(t.months), share = r2(rate * months);
-      if (t.mode === 'pauschal') { pauschal += share; return Object.assign({}, t, { months, lines: [], sum: 0, saldo: 0, quotaShare: share }); }
+      if (t.mode === 'pauschal') {
+        pauschal += share; const pc = r2((Number(t.pnk) || 0) * months); pCov += pc;
+        return Object.assign({}, t, { months, lines: [], sum: 0, saldo: 0, quotaShare: share, pnkPaid: pc });
+      }
       // split the share over the lines (largest remainder → exact sum)
       const base = Math.abs(total) > 0.004 ? lines.map(l => share * l.total / total) : lines.map(() => 0);
       const amts = base.map(v => r2(v));
@@ -345,7 +348,7 @@ const NkCasa = (() => {
     return Object.assign({}, R, {
       method: 'quota', lines, tenants,
       quota: { total, months: M, rate, perMonths, persons: perMonths ? Math.round(M / perMonths * 10) / 10 : 0 },
-      landlord: { total: landTotal, pauschal, vacancy: 0, rounding: r2(landTotal - pauschal) },
+      landlord: { total: landTotal, pauschal, pauschalCovered: r2(pCov), vacancy: 0, rounding: r2(landTotal - pauschal) },
       check: { total, allocated, landlord: landTotal, diff: r2(total - allocated - landTotal), ok: Math.abs(total - allocated - landTotal) < 0.005 },
     });
   }

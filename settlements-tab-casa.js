@@ -105,6 +105,16 @@ function scContractNk(t, ym, day) {
   const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId));
   return Number(tr && tr.nebenkosten) || 0;
 }
+/* Pauschal tenants: the NK part inside the Pauschale (rent history "davon NK", per month) */
+function scPauschalNk(input) {
+  const P = input.period || {};
+  for (const t of (input.tenancies || [])) {
+    if (t.mode !== 'pauschal' || t.extra) continue;
+    const rp = (window._src.rentP || []).filter(r => r.app === 'casa' && String(r.tenant_id) === String(t.tenantId) && String(r.valid_from || '') <= String(P.to || '9999'))
+      .sort((a, b) => String(b.valid_from).localeCompare(String(a.valid_from)))[0];
+    t.pnk = rp && rp.mode === 'pauschal' ? Number(rp.nebenkosten) || 0 : 0;
+  }
+}
 function scVzMonths(input, y) {
   const T = input.tenancies, inc = window._src.incAll || [];
   for (const t of T) { t.vzMap = {}; t.vzAuto = 0; t.vzContract = 0; }
@@ -164,6 +174,7 @@ function scInputFor(y) {
                            from, to, mode: 'nk', unitId: (units.find(u => scNorm(u.name) === scNorm(x.room)) || {}).id ?? null, contractNk: Number(x.nk) || 0, addr: x.addr || '' });
   }
   scVzMonths(input, y);
+  scPauschalNk(input);
   input.warn = (input.warn || []).filter(w => !/NK paid missing/.test(w));
   return input;
 }
@@ -363,7 +374,7 @@ function scNextStart(open) {
 }
 function scSay(t) {
   const s = t.saldo, a = scE(Math.abs(s));
-  if (t.k === 'none') return ['', 'Pauschal – no NK'];
+  if (t.k === 'none') return ['', 'Pauschal – no NK' + (t.quotaShare ? ' · share ' + scE(t.quotaShare) + (t.pnkPaid ? ' · NK in Pauschale ' + scE(t.pnkPaid) : ' · you carry it') : '')];
   if (t.k === 'done') {
     if (t.skipped) return ['', 'skipped · tap to undo'];
     const r = t.st.res, b = t.st.booking;
@@ -676,7 +687,7 @@ function scCostsView(M) {
       '<div class="sr-tl sr-tl--res is-g"><span><b>= per month lived</b></span><b>' + scE(q.rate) + '</b></div>'
       : '<div class="sr-tl"><span>Split day by day among the people living there</span><span></span></div>') +
     '<div class="sr-tl"><span>Tenants</span><span>' + scE(Lc.allocated) + '</span></div>' +
-    (lnd.pauschal ? '<div class="sr-tl"><span>You · Pauschal tenants</span><span>' + scE(lnd.pauschal) + '</span></div>' : '') +
+    (lnd.pauschal ? '<div class="sr-tl"><span>You · Pauschal tenants <small>share ' + scE(lnd.pauschal) + (lnd.pauschalCovered ? ' − NK in their Pauschale ' + scE(lnd.pauschalCovered) : '') + '</small></span><span>' + scE(Math.round((lnd.pauschal - (lnd.pauschalCovered || 0)) * 100) / 100) + '</span></div>' : '') +
     (lnd.vacancy ? '<div class="sr-tl"><span>You · empty days</span><span>' + scE(lnd.vacancy) + '</span></div>' : '') +
     '<p class="sr-okline' + (Lc.ok ? '' : ' is-warn') + '"><i class="ti ti-' + (Lc.ok ? 'check' : 'alert-triangle') + '" aria-hidden="true"></i> ' + (Lc.ok ? 'adds up' : 'does not add up') + '</p></div>' +
     (anySent ? '<p class="sc-hg__note">Letters already sent – the split stays as it is.</p>' : '') + '</div>' : '';
@@ -711,7 +722,12 @@ function scTenView(M, m) {
   const head = '<div class="srm__h sc-th"><div class="srm__ht">' + flow + '<div class="sc-th__r"><span class="sc-av sc-av--m" style="background:' + c[0] + ';color:' + c[1] + '">' + stEsc(scAbbr(t.room)) + '</span>' +
     '<span><p class="srm__t">' + stEsc(t.name) + '</p><p class="srm__s">' + stEsc(t.room + (t.m2 ? ' · ' + String(t.m2).replace('.', ',') + ' m²' : '') + (t.movedOut ? ' · moved out' : '')) + '</p></span></div></div>' +
     '<button class="srm__x" data-sc="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
-  if (t.k === 'none') return head + '<div class="srm__b"><div class="srm__one"><div class="sc-res"><span class="sc-res__l">' + stEsc(first) + ' pays Pauschal</span><span class="sc-res__v">no NK</span><span class="sc-res__w">The Nebenkosten are included in the rent – this share stays with you.</span></div></div></div>';
+  if (t.k === 'none') {
+    const sh = Number(t.quotaShare) || 0, pc = Number(t.pnkPaid) || 0, rest = Math.round((sh - pc) * 100) / 100;
+    return head + '<div class="srm__b"><div class="srm__one"><div class="sc-res"><span class="sc-res__l">' + stEsc(first) + ' pays Pauschal</span><span class="sc-res__v">no NK letter</span>' +
+      '<span class="sc-res__w">' + (sh ? 'Share of the house costs ' + scE(sh) + ' · NK inside the Pauschale ' + scE(pc) + ' (davon NK in the contract) · ' + (rest >= 0 ? 'you carry ' + scE(rest) : 'you keep ' + scE(-rest)) + '.'
+        : 'The Nebenkosten are included in the rent – this share stays with you.') + '</span></div></div></div>';
+  }
   if (t.skipped) {
     const v = t.saldo, prev = Math.abs(v || 0) >= 0.005 ? (v > 0 ? 'Nachzahlung ' : 'Guthaben ') + scE(Math.abs(v)) : 'balanced';
     return head + '<div class="srm__b"><div class="srm__one sc-sheet">' +

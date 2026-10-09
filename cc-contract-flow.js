@@ -351,8 +351,8 @@ function ccfPrefillFromTenancy(o, rec) {
   if (box && c.mode && c.total != null) {
     const pa = c.mode === 'pauschal';
     if (seg) seg.dataset.mode = pa ? 'pauschal' : 'kalt_nk';
-    if (kIn) kIn.value = ccfNumFmt(pa ? c.total : c.kalt);
-    if (nIn) nIn.value = ccfNumFmt(pa ? 0 : c.nk);
+    if (kIn) kIn.value = ccfNumFmt(pa ? c.total - (Number(c.nkIncl) || 0) : c.kalt);
+    if (nIn) nIn.value = ccfNumFmt(pa ? (Number(c.nkIncl) || 0) : c.nk);
     if (hint) hint.textContent = 'Prefilled from ' + ccfName(rec) + '’s ' + (c.name || 'contract') + ' — change it only if this contract differs.';
     box.dataset.filled = '1'; changed();
   }
@@ -415,6 +415,10 @@ function ccfMieteRefresh() {
   const m = ccfMieteGet(); if (!m) return;
   const w = document.getElementById('rc-warm'), l = document.getElementById('rc-warm-lbl');
   if (l) l.textContent = m.mode === 'pauschal' ? 'Pauschalmiete' : 'Warmmiete';
+  // Pauschal: the second field is the NK part inside the Pauschale (0 = no NK) – used by the NK-Abrechnung
+  const lk = document.querySelector('label[for="rc-kalt"]'), ln = document.querySelector('label[for="rc-nk"]');
+  if (lk) lk.textContent = m.mode === 'pauschal' ? 'Miete ohne NK €' : 'Kaltmiete €';
+  if (ln) ln.textContent = m.mode === 'pauschal' ? 'davon NK €' : 'Nebenkosten €';
   if (w) w.textContent = ccfEur(m.total);
 }
 let _ccfMieteOnChange = null;
@@ -1059,7 +1063,7 @@ function ccfCoTenantFields(list, all) {
 function _ccfRpFields(r, extra) {
   const pa = r.mode === 'pauschal';
   return { mode: pa ? 'pauschal' : 'kalt_nk', pauschale: pa ? r.total : null,
-           kaltmiete: pa ? null : r.kalt, nebenkosten: pa ? null : r.nk, ...extra };
+           kaltmiete: pa ? null : r.kalt, nebenkosten: pa ? (r.nk || null) : r.nk, ...extra };   // Pauschal: "davon NK"
 }
 async function _ccfStepRent(A) {
   const p = A.p, pl = A.plan, rec = pl.rec, r = p.rent || {};
@@ -1067,7 +1071,7 @@ async function _ccfStepRent(A) {
   if (typeof CC_RP !== 'undefined' && !CC_RP.loaded[ccfA().app] && !CC_RP.loaded['*'] && typeof ccRpLoad === 'function') await ccRpLoad(sbL, ccfA().app);
   const months = { first_month: p.first_month || 'anteilig', last_month: p.last_month || 'anteilig' };
   const common = { mode: r.mode, kalt: r.mode === 'pauschal' ? r.total : r.kalt, nk: r.mode === 'pauschal' ? 0 : r.nk,
-    pauschale: r.mode === 'pauschal' ? r.total : null, ...months, contract_type: p.ctype, contract_end: pl.end || null,
+    pauschale: r.mode === 'pauschal' ? r.total : null, nkIncl: r.mode === 'pauschal' ? (r.nk || null) : null, ...months, contract_type: p.ctype, contract_end: pl.end || null,
     legacyMode: r.mode };
   if (pl.renewal) {
     if (pl.renewPid) {

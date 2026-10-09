@@ -165,7 +165,7 @@ async function ccRpSetRent(db, o) {
   const row = {
     app, tenant_id: String(rec.id), valid_from: from, kind: o.kind || 'manual', mode,
     pauschale: mode === 'pauschal' ? ccRpNum(o.pauschale ?? o.kalt) : null,
-    kaltmiete: mode === 'pauschal' ? null : ccRpNum(o.kalt), nebenkosten: mode === 'pauschal' ? null : ccRpNum(o.nk),
+    kaltmiete: mode === 'pauschal' ? null : ccRpNum(o.kalt), nebenkosten: mode === 'pauschal' ? (ccRpNum(o.nkIncl) || null) : ccRpNum(o.nk),   // Pauschal: NK part inside the Pauschale
     source: o.source || 'tenant_form',
   };
   ['first_month', 'last_month', 'contract_type', 'note'].forEach(k => { if (o[k] !== undefined) row[k] = o[k]; });
