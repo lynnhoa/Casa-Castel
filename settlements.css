@@ -1448,3 +1448,50 @@ button.st-sg__r { cursor: pointer; }
 .mx-pay { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; margin:-2px 0 0; padding:10px 14px; background:#FDFCFA; border:.5px solid #E6DED2; border-radius:14px; }
 .mx-pay .mx-f input { width:100%; box-sizing:border-box; background:#FAF8F4; height:38px; }
 .mx-pay .mx-amt input { background:#FAF8F4; height:38px; }
+
+/* ── Manual NK-Abrechnung · lean modal (Oct 2026): result on top, chips, inline positions ── */
+.sd-lean { display: flex; flex-direction: column; gap: 10px; }
+.sd-lean .sd-hero { padding: 16px 18px 14px; gap: 2px; }
+.sd-lean .sd-hero .sc-hero__v { font-size: 44px; }
+.sd-hero__s { font-size: 11.5px; color: var(--cx-mut); line-height: 1.4; }
+.sd-cap2 { display: flex; align-items: center; gap: 6px; margin: 8px 2px 0; font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #8A6535; }
+.sd-cap2 i { font-size: 13px; }
+.sd-lean .sd-card { padding: 12px 14px 14px; gap: 10px; }
+.sd-lean .sd-card .sd-f { border-top: none; padding: 0; grid-template-columns: 62px minmax(0, 1fr); }
+.sd-lean .sd-card .sd-f > span { font-size: 12px; }
+.sd-lean .sd-f[hidden] { display: none; }
+.sd-lab { font-size: 12px; color: var(--cx-mut); }
+.sd-col { display: flex; flex-direction: column; gap: 6px; }
+.sd-lean .sc-opt { height: 32px; font-size: 12.5px; }
+.sd-lean .sc-opt[disabled], .sd-lean .sc-qa__b[disabled] { cursor: default; opacity: .6; }
+.sd-lean .sc-tg { padding-top: 10px; }
+.sd-sugg { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -4px; font-size: 11.5px; color: var(--cx-mut); }
+.sd-sugg .sc-qa__b.is-on { border-style: solid; background: #F3EBDD; }
+.sd-pos { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: none; border-top: .5px solid var(--cx-line); background: none; font: inherit; text-align: left; color: inherit; cursor: pointer; }
+.sd-pos[disabled] { cursor: default; }
+.sd-pos__t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sd-pos__t b { font-size: 14px; font-weight: 500; color: var(--cx-ink); overflow-wrap: anywhere; }
+.sd-pos__t small, .sd-pos__v small { font-size: 11.5px; color: var(--cx-mut); }
+.sd-pos__v { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.sd-pos__v b { font-size: 14px; font-weight: 600; color: var(--cx-ink); white-space: nowrap; }
+.sd-pos__v small.is-warn { color: #A04A3A; }
+.sd-pos > i { color: #B7AC9E; font-size: 15px; }
+.sd-pos-open { border-top: .5px solid var(--cx-line); padding: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.sd-pos-open__h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; color: var(--cx-ink); }
+.sd-pos-open__h > b { font-weight: 600; overflow-wrap: anywhere; }
+.sd-pos-open__h span { color: var(--cx-mut); font-size: 12px; white-space: nowrap; }
+.sd-pos-open__h span b { color: var(--cx-ink); font-weight: 600; }
+.sd-ped { display: flex; flex-direction: column; gap: 8px; background: #FBF8F3; border: .5px solid var(--cx-line); border-radius: 12px; padding: 10px; }
+.sd-ped__r { display: flex; gap: 8px; align-items: center; }
+.sd-ped__r > .sd-in { flex: 1; }
+.sd-ped__r .sd-lab { flex: 1; }
+.sd-ped__b { display: flex; justify-content: space-between; }
+.sd-ped__b .cx-link { font-size: 13px; padding: 4px 0; }
+.sd-lean .sd-del { color: #A04A3A; }
+.sd-lean .sd-done { color: var(--cx-acc); font-weight: 500; }
+.sd-due { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sd-due__d { font-size: 12.5px; color: var(--cx-mut); }
+.sd-due__d b { color: var(--cx-ink); font-weight: 600; }
+.sd-lean .sd-tot { margin-top: 2px; }
+.sd-lean .sd-add { align-self: flex-start; padding: 0; }
+.sd-trash { flex: 0 0 auto !important; }
