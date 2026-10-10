@@ -19,20 +19,17 @@
 document.getElementById('tab-parking').innerHTML = `
 
   <div class="rp-hdr">
-    <h1 class="rp-title">Parking</h1>
+    <h1 class="cc-h1">Parking</h1>
     <button class="rp-add-btn" id="pkAddBtn">
       <i class="ti ti-plus"></i> Add
     </button>
   </div>
 
-  <div class="rp-summary" id="pkSummary" style="display:none">
-    <div>
-      <div class="rp-summary__label">Total Miete / Monat</div>
-      <div class="rp-summary__breakdown" id="pkSummaryBreakdown"></div>
-    </div>
-    <div>
-      <div class="rp-summary__total" id="pkSummaryTotal"></div>
-      <div class="rp-summary__sub">occupied only</div>
+  <!-- Summary line (Casa Castel layout): same numbers as before -->
+  <div class="cc-sumline pk-sumline" id="pkSummary" style="display:none">
+    <div class="cc-sumline__top"><b>Total Miete / Monat</b><span id="pkSummaryBreakdown"></span></div>
+    <div class="cc-sumline__vals">
+      <div><span>Miete</span><b id="pkSummaryTotal"></b></div>
     </div>
   </div>
 
@@ -198,6 +195,26 @@ document.getElementById('tab-parking').innerHTML = `
 
 /* ── 3.5 FIELD ALIGNMENT — Miete content in line with other sections ── */
 .pk-section--miete { padding-left:11px; }
+
+/* ── Parking tab in the Casa Castel layout (same as Rooms / Apartments) ── */
+#tab-parking .rp-hdr { padding-top:0; margin-bottom:20px; }
+#tab-parking .rp-add-btn { min-height:36px; font-size:12px; border-radius:var(--cc-r-sm); }
+#tab-parking .rp-add-btn i { font-size:14px; }
+html .pk-sumline .cc-sumline__vals { grid-template-columns:minmax(0, 1fr); }
+#tab-parking .pk-hdr { padding:16px 16px 14px 12px; }
+#tab-parking .pk-drag { display:flex; align-items:center; justify-content:center; width:26px; height:26px; font-size:15px; margin-top:4px; }
+#tab-parking .pk-hdr__namerow { align-items:baseline; justify-content:space-between; flex-wrap:nowrap; margin-bottom:0; }
+#tab-parking .pk-hdr__addr { font-size:12px; color:var(--cc-taupe); margin:3px 0 0; }
+#tab-parking .pk-hdr__who { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; margin-top:6px; font-size:13px; color:#9A8E7E; }
+#tab-parking .pk-hdr__who .pk-hdr__rent { font-size:13px; color:#9A8E7E; margin:0; }
+#tab-parking .pk-hdr__who .pk-hdr__rent strong { color:var(--cc-charcoal); font-weight:500; }
+#tab-parking .pk-hdr__who .pk-hdr__rent--vacant { font-size:13px; }
+#tab-parking .pk-chevron { font-size:18px; }
+#tab-parking .pk-card.pk--open { box-shadow:0 4px 24px rgba(30,27,24,.10); }
+#tab-parking .pk-section--miete { border-left:none; padding-left:14px; }
+.pk-sec-read > .rc-brow:first-child { border-top:none; padding-top:6px; }
+.rc-brow__bar--miete { background:var(--cc-gold); }
+@media(min-width:701px) { #tab-parking .pk-hdr { padding:18px 18px 16px 14px; } }
   `;
   document.head.appendChild(s);
 })();
@@ -338,7 +355,7 @@ function _updatePkSummary() {
   });
 
   bar.style.display = 'flex';
-  bd.textContent  = occupied + ' / ' + appParking.length + ' occupied';
+  bd.textContent  = occupied + ' / ' + appParking.length + ' occupied · occupied only';
   tot.textContent = pkFmtEURCompact(total);
 }
 
@@ -428,11 +445,11 @@ function _pkCardHTML(p) {
         </span>
       </div>
       ${p.adresse ? `<div class="pk-hdr__addr">${pkEsc(p.adresse)}${p.plz_ort ? ', ' + pkEsc(p.plz_ort) : ''}</div>` : ''}
-      <div class="pk-hdr__tags">
+      <div class="pk-hdr__who">
         ${p.parking_type ? `<span class="pk-tag ${_pkTypeTagClass(p.parking_type)}">${pkEsc(p.parking_type)}</span>` : ''}
         ${p.level_position ? `<span class="pk-tag pk-tag--sp">${pkEsc(p.level_position)}</span>` : ''}
+        <span class="pk-hdr__rent">${rentHTML}</span>
       </div>
-      <div class="pk-hdr__rent">${rentHTML}</div>
     </div>
     <i class="ti ti-chevron-right pk-chevron"></i>
   </div>
@@ -491,12 +508,19 @@ function _pkCardHTML(p) {
       <div class="pk-stitle">Asking rent</div>
       <!-- READ -->
       <div class="pk-sec-read">
-        ${mieteSet && !miete
-          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(0)} / mo · free</span></div>`
-          : miete
-          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
-             <div class="pk-row"><span class="pk-row__k">Kaution</span><span class="pk-row__v">${pkFmtEURCompact(kaution)}<small class="cc-ask-note">${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</small></span></div>`
-          : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
+        <div class="rc-brow">
+          <div class="rc-brow__bar rc-brow__bar--miete"></div>
+          <div class="rc-brow__main"><div class="rc-brow__t">Miete</div>
+            ${mieteSet && !miete
+              ? `<div class="rc-brow__big">${pkFmtEURCompact(0)} <span>/ mo · free</span></div>`
+              : miete
+              ? `<div class="rc-brow__big">${pkFmtEURCompact(miete)} <span>/ mo</span></div>
+            <div class="rc-brow__sub">Kaution ${pkFmtEURCompact(kaution)}</div>
+            <div class="rc-brow__sub rc-brow__note">${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</div>`
+              : `<div class="rc-brow__none">Not set</div>`}
+          </div>
+          <div class="rc-brow__btns"><button type="button" class="rc-brow__go" onclick="_pkOpenContract('mietvertrag','${p.id}')">Mietvertrag ›</button></div>
+        </div>
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -566,11 +590,7 @@ function _pkCardHTML(p) {
     <!-- 4. CONTRACT -->
     <div class="pk-contracts">
       <div class="pk-contracts-title">Create contracts</div>
-      <div class="pk-doc-row">
-        <button class="pk-doc-btn" onclick="_pkOpenContract('mietvertrag','${p.id}')">
-          Mietvertrag <i class="ti ti-chevron-right"></i>
-        </button>
-      </div>
+      <!-- Mietvertrag: in the Asking rent block above -->
       <div class="pk-doc-row">
         <button class="pk-doc-btn" onclick="_pkOpenContract('ueberg','${p.id}')">
           Übergabeprotokoll <i class="ti ti-chevron-right"></i>
