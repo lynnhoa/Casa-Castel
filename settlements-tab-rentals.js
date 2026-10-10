@@ -847,8 +847,9 @@ function _srFindBooking(c, res, rec) {
     (o.direction === undefined || o.direction === null || Number(o.direction) === res.dir)) || null;
 }
 async function _srLinkBooking(b, res) {
-  const d = await ctlUpdateOneTime(b.id, { source_ref: 'abr:' + res.id, kind: 'Hausgeldabrechnung' });
-  const row = d || Object.assign({}, b, { source_ref: 'abr:' + res.id, kind: 'Hausgeldabrechnung' });
+  const f = { source_ref: 'abr:' + res.id, kind: 'Hausgeldabrechnung', before_link: _stBeforeLink(b) };   // #12: remember your type
+  const d = await _stUpdOT(b.id, f);
+  const row = d || Object.assign({}, b, f);
   window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id).concat([row]);
   const k = (window._ctrl.one_time || []).findIndex(o => o.id === b.id); if (k >= 0) window._ctrl.one_time[k] = row;
 }

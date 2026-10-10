@@ -418,9 +418,30 @@ function _stFindManualNk(pid, res, amt) {
     (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
     Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
 }
+/* #12: the type (and direction) you gave an entry is remembered in before_link when it gets linked,
+   and restored when it is unlinked. Without the before_link column (SQL not run) it works as before. */
+const ST_ABR_KINDS = ['NK-Abrechnung', 'Hausgeldabrechnung'];
+async function _stUpdOT(id, fields) {
+  try { return await ctlUpdateOneTime(id, fields); }
+  catch (e) {
+    if (!('before_link' in fields) || !/before_link/i.test(String((e && (e.message || e.details)) || e))) throw e;
+    const f = Object.assign({}, fields); delete f.before_link;
+    return ctlUpdateOneTime(id, f);
+  }
+}
+function _stBL(o) {                                                   // remembered type → { kind, direction } or null
+  let v = o && o.before_link;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+  return v && typeof v === 'object' ? v : null;
+}
+function _stBeforeLink(o) {
+  if (ST_ABR_KINDS.includes(o.kind)) return _stBL(o);                 // already an Abrechnung type: keep what was remembered
+  return { kind: o.kind || null, direction: o.direction === undefined ? null : o.direction };
+}
 async function _stLinkManualNk(o, res) {
-  const d = await ctlUpdateOneTime(o.id, { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir });
-  const row = d || Object.assign({}, o, { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir });
+  const f = { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir, before_link: _stBeforeLink(o) };
+  const d = await _stUpdOT(o.id, f);
+  const row = d || Object.assign({}, o, f);
   window._src.abrPay = (window._src.abrPay || []).filter(x => x.id !== o.id).concat([row]);
   const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;
   return row;
@@ -433,7 +454,11 @@ const _stIsOwnBooking = b => ST_AUTO_ITEM.test(String((b && b.item) || ''));
 async function _stUndoBooking(b) {
   window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
   if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); return 'deleted'; }
-  const d = await ctlUpdateOneTime(b.id, { source_ref: null, kind: 'Sonstiges' });
+  const cur = (window._ctrl.one_time || []).find(x => x.id === b.id);
+  const bl = _stBL(b) || _stBL(cur);                                  // #12: back to the type you gave it
+  const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges', before_link: null };
+  if (bl && bl.kind && bl.direction !== undefined) f.direction = bl.direction;
+  const d = await _stUpdOT(b.id, f);
   const k = (window._ctrl.one_time || []).findIndex(x => x.id === b.id); if (k >= 0 && d) window._ctrl.one_time[k] = d;
   return 'unlinked';
 }
