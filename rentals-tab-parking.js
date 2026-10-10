@@ -587,20 +587,7 @@ function _pkCardHTML(p) {
     </div>
 
 
-    <!-- 4. CONTRACT -->
-    <div class="pk-contracts">
-      <div class="pk-contracts-title">Create contracts</div>
-      <!-- Mietvertrag: in the Asking rent block above -->
-      <div class="pk-doc-row">
-        <button class="pk-doc-btn" onclick="_pkOpenContract('ueberg','${p.id}')">
-          Übergabeprotokoll <i class="ti ti-chevron-right"></i>
-        </button>
-        <div class="apt-doc-toggle" id="pk-eu-${p.id}">
-          <button class="active" onclick="event.stopPropagation();_pkSetEU('${p.id}',0,this)">Einzug</button>
-          <button onclick="event.stopPropagation();_pkSetEU('${p.id}',1,this)">Auszug</button>
-        </div>
-      </div>
-    </div>
+    <!-- Übergabeprotokoll (Einzug / Auszug): on the Tenants card · Mietvertrag: in the Asking rent block -->
 
     <!-- FOOTER: delete -->
     <div class="pk-card-footer">
@@ -888,11 +875,14 @@ function _pkToggleVacant(pkId, btn) {
 /* ── CONTRACT MODAL ──────────────────────────────────────── */
 let _pkContractId = null;
 
+/* Einzug / Auszug of the Übergabe button (on the Tenants card), kept per spot. 0 = Einzug (default) · 1 = Auszug */
+const _pkEU = {};
 function _pkSetEU(pkId, idx, btn) {
-  const tog = document.getElementById('pk-eu-' + pkId);
-  if (!tog) return;
-  tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+  _pkEU[pkId] = idx ? 1 : 0;
+  document.querySelectorAll('[id="pk-eu-' + pkId + '"]').forEach(tog =>
+    tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === _pkEU[pkId])));
 }
+function _pkEuIsEinzug(pkId) { return !_pkEU[pkId]; }
 
 async function _pkOpenContract(type, pkId) {
   if (typeof ccDismissDraftOffer === 'function') ccDismissDraftOffer();   // you opened a generator yourself
@@ -931,7 +921,7 @@ async function _pkOpenContract(type, pkId) {
     document.getElementById('pk-mv-staffel-anfang')?.addEventListener('input', function() { this.dataset.edited = '1'; });
 
   } else if (type === 'ueberg') {
-    const isEinzug = document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _pkEuIsEinzug(pkId);
     document.getElementById('pkContractTitleLbl').textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + spot.name;
     const _pkUbProfile = await _pkResolveTenantProfile(pkId);
     document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug, _pkUbProfile);
@@ -959,7 +949,7 @@ async function _pkOpenContract(type, pkId) {
   // Keep what is typed for 2 hours (restored if the app ever has to restart)
   if (typeof ccDraftAutoSave === 'function') {
     const euLabel = type === 'ueberg'
-      ? (document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() || null)
+      ? (_pkEuIsEinzug(pkId) ? 'Einzug' : 'Auszug')
       : null;
     ccDraftAutoSave(_PK_DRAFT_KEY, document.getElementById('pkContractBody'), () =>
       document.getElementById('pkContractOverlay')?.classList.contains('open') ? { type, pkId, euLabel } : null);
@@ -990,7 +980,7 @@ function _pkSetupFlow(type, spot) {
   const unit = 'pk:' + spot.id;
   const v = id => document.getElementById(id)?.value || '';
   if (type === 'ueberg') {
-    const isEinzug = document.getElementById('pk-eu-' + spot.id)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _pkEuIsEinzug(spot.id);
     ccfSetupGenerator({ body: 'pkContractBody', footer: 'pkContractFooter', draftId: 'pkUebergPdfBtn', mode: 'ueberg', unit,
       occasion: isEinzug ? 'einzug' : 'auszug', fields: _PK_UB_FIELDS,
       read: () => ({ kind: 'ueberg', occasion: isEinzug ? 'einzug' : 'auszug', room: unit, forId: ccfForValue(),
@@ -1041,11 +1031,7 @@ async function _pkReopenContractDraft(d) {
   try {
     const tabEl = document.getElementById('tab-parking');
     if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('parking');
-    if (d.meta.type === 'ueberg' && d.meta.euLabel) {
-      document.getElementById('pk-eu-' + d.meta.pkId)?.querySelectorAll('button, span, div').forEach(el => {
-        if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
-      });
-    }
+    if (d.meta.type === 'ueberg' && d.meta.euLabel) _pkSetEU(d.meta.pkId, d.meta.euLabel === 'Auszug' ? 1 : 0);
     window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
     await _pkOpenContract(d.meta.type, d.meta.pkId);
     await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first

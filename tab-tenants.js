@@ -621,6 +621,16 @@ document.getElementById('tab-tenants').innerHTML = `
 #tab-tenants .tn-vac-pw .tn-pw-test { margin:0 0 12px; }
 
 /* Contract type pills (C1): the same colours as Rooms and the generators */
+/* Übergabe button (same look as the Rentals cards) */
+#tab-tenants .tn-ub-block { padding:11px 14px; }
+.apt-contracts-title { font-size:9px; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--cc-stone); margin-bottom:8px; }
+.apt-doc-row { display:flex; align-items:center; gap:7px; margin-bottom:6px; }
+.apt-doc-row:last-child { margin-bottom:0; }
+.apt-doc-btn { flex:1; height:40px; display:flex; align-items:center; justify-content:space-between; padding:0 13px; background:#F5EFE6; color:#5C3D1E; border:.5px solid #D4B896; border-radius:var(--cc-r-md); font-family:inherit; font-size:13px; font-weight:500; cursor:pointer; }
+.apt-doc-btn i { font-size:13px; color:#B8956A; opacity:.8; }
+.apt-doc-toggle { display:flex; background:var(--cc-surface); border:.5px solid var(--cc-rule); border-radius:var(--cc-r-pill); padding:3px; gap:2px; height:40px; align-items:center; flex-shrink:0; }
+.apt-doc-toggle button { height:100%; padding:0 10px; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; border:none; cursor:pointer; font-family:inherit; color:var(--cc-taupe); background:none; border-radius:var(--cc-r-pill); transition:all .15s; }
+.apt-doc-toggle button.active { background:var(--cc-white); color:var(--cc-charcoal); box-shadow:0 1px 3px rgba(30,27,24,.10); }
 .tn-ctp { display:inline-flex; align-items:center; height:20px; padding:0 8px; border-radius:10px; font-size:11px; font-weight:500; letter-spacing:.02em; white-space:nowrap; margin-left:6px; }
 .tn-ctp--kurzzeit    { background:#F1EEF6; color:#5B4A7A; border:.5px solid #CFC4E0; }
 .tn-ctp--jahres      { background:#F6EEDD; color:#7A5A22; border:.5px solid #E2CFA6; }
@@ -1912,8 +1922,7 @@ function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
       ? ccRowHTML({ icon: 'user-plus', title: 'Next tenant', meta: esc([nx.first_name, nx.last_name].filter(Boolean).join(' ')) + (nx.mietbeginn ? ' \u00b7 ' + _ccFmtD(_ccIso(nx.mietbeginn)) : ''), onclick: `_tnOpenModal('${nx.id}')` })
       : nx === rec ? '' : ccRowHTML({ icon: 'user-plus', title: 'Next tenant', meta: 'add', onclick: `_tnNextSheet('${esc(room.name)}')` }));
   }
-  rows.push(ccRowHTML({ icon: 'clipboard-check', title: 'Übergabe', meta: esc(_tnUebergMeta(rec)),
-    onclick: `_tnUebergSheet('${esc(room.name)}','${rec ? rec.id : ''}')` }));
+  // Übergabe: its own button below More (above Former tenants) — see _tnUebergHTML
   if (rec && typeof ccfDocsSectionHTML === 'function') {
     rows.push(ccRowHTML({ icon: 'file-text', title: 'Documents', meta: esc(ccfDocsSummary(rec)), onclick: `_tnSheet('docs','${rid}','${rec.id}')` }));
     rows.push(ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: esc(ccfMetersSummary(rec)), onclick: `_tnSheet('meters','${rid}','${rec.id}')` }));
@@ -1932,16 +1941,47 @@ function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
     html += ccRowHTML({ icon: 'files', title: 'Earlier contracts', meta: String(earlier.length), onclick: `_tnMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
     if (open) html += `<div class="tn-more-in" id="earlier-${rid}">${earlier.map(c => _tnContractRowHTML(rec, c, '<span class="tnp tnp-gray">Renewed</span>', rid, 'earlier-' + rid)).join('')}</div>`;
   }
-  // Former tenants — open inline (the full list with Add former tenant, archive …)
+  // Former tenants — its own row under the Übergabe button, opens inline (list, Add former tenant, archive …)
+  let fhtml = '';
   {
     const k = rid + ':former', open = !!_tnMoreOpen[k];
     const nOpen = formerRecs.filter(r => _tnFormerOpenPills(r)).length;
     const meta = !formerRecs.length && !archivedRecs.length ? 'none'
       : nOpen ? `<span class="tnp tnp-amber">${nOpen} open</span>` : String(formerRecs.length + archivedRecs.length);
-    html += ccRowHTML({ icon: 'users', title: 'Former tenants', meta, onclick: `_tnMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
-    if (open) html += `<div class="tn-more-in">${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs, true)}</div>`;
+    fhtml += ccRowHTML({ icon: 'users', title: 'Former tenants', meta, onclick: `_tnMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
+    if (open) fhtml += `<div class="tn-more-in">${_tnFormerSectionHTML(rid, room.name, formerRecs, archivedRecs, true)}</div>`;
   }
-  return ccGroupHTML('More', html);
+  return (html ? ccGroupHTML('More', html) : '') + _tnUebergHTML(room) + ccGroupHTML('', fhtml);
+}
+/* Übergabe — the same button as on the Rentals cards: Übergabeprotokoll + Einzug / Auszug,
+   below everything, directly above Former tenants (also on a vacant room) */
+const _tnUbEU = {};   // room id → 0 Einzug (default) · 1 Auszug
+function _tnUbSet(roomId, idx) {
+  _tnUbEU[roomId] = idx ? 1 : 0;
+  document.querySelectorAll('[id="tn-eu-' + roomId + '"]').forEach(t =>
+    t.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === _tnUbEU[roomId])));
+}
+function _tnUbOpen(roomId) {
+  if (typeof ccOpenUebergabe === 'function') ccOpenUebergabe(roomId, _tnUbEU[roomId] ? 'Auszug' : 'Einzug');
+}
+function _tnUebergHTML(room) {
+  const rm = typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === room.name) : null;
+  const id = rm ? rm.id : room.id;
+  if (id === undefined || id === null || typeof ccOpenUebergabe !== 'function') return '';
+  const au = !!_tnUbEU[id];
+  return `
+<div class="tn-sec apt-contracts tn-ub-block">
+  <div class="apt-contracts-title">Create contracts</div>
+  <div class="apt-doc-row">
+    <button class="apt-doc-btn" onclick="_tnUbOpen('${esc(String(id))}')">
+      Übergabeprotokoll <i class="ti ti-chevron-right"></i>
+    </button>
+    <div class="apt-doc-toggle" id="tn-eu-${esc(String(id))}">
+      <button class="${au ? '' : 'active'}" onclick="event.stopPropagation();_tnUbSet('${esc(String(id))}',0)">Einzug</button>
+      <button class="${au ? 'active' : ''}" onclick="event.stopPropagation();_tnUbSet('${esc(String(id))}',1)">Auszug</button>
+    </div>
+  </div>
+</div>`;
 }
 
 

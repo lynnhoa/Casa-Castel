@@ -1298,20 +1298,7 @@ function _aptCardHTML(a) {
     </div>
 
 
-    <!-- 7. CONTRACTS -->
-    <div class="apt-contracts">
-      <div class="apt-contracts-title">Create contracts</div>
-      <!-- Kurzzeitmiete / Mietvertrag / Gewerbemietvertrag: in the Asking rent blocks above -->
-      <div class="apt-doc-row">
-        <button class="apt-doc-btn" onclick="_aptOpenContract('ueberg','${a.id}')">
-          Übergabeprotokoll <i class="ti ti-chevron-right"></i>
-        </button>
-        <div class="apt-doc-toggle" id="apt-eu-${a.id}">
-          <button class="active" onclick="event.stopPropagation();_aptSetEU('${a.id}',0,this)">Einzug</button>
-          <button onclick="event.stopPropagation();_aptSetEU('${a.id}',1,this)">Auszug</button>
-        </div>
-      </div>
-    </div>
+    <!-- Übergabeprotokoll (Einzug / Auszug): on the Tenants card · Contracts: in the Asking rent blocks -->
 
     <!-- FOOTER: delete -->
     <div class="apt-card-footer">
@@ -1388,11 +1375,15 @@ function _aptToggle(card) {
   }
 }
 
+/* Einzug / Auszug of the Übergabe button (the button sits on the Tenants card).
+   Kept per unit, so it never depends on which tab is on screen. 0 = Einzug (default) · 1 = Auszug */
+const _aptEU = {};
 function _aptSetEU(aptId, idx, btn) {
-  const tog = document.getElementById('apt-eu-' + aptId);
-  if (!tog) return;
-  tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+  _aptEU[aptId] = idx ? 1 : 0;
+  document.querySelectorAll('[id="apt-eu-' + aptId + '"]').forEach(tog =>
+    tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === _aptEU[aptId])));
 }
+function _aptEuIsEinzug(aptId) { return !_aptEU[aptId]; }
 
 
 /* ── SECTION EDIT ────────────────────────────────────────── */
@@ -2064,8 +2055,7 @@ function _aptSaveContractDraft() {
     // Übergabe: Einzug/Auszug is chosen on the card, not in the sheet
     let euLabel = null;
     if (_aptContractType === 'ueberg') {
-      euLabel = document.getElementById('apt-eu-' + _aptContractId)
-        ?.querySelector('.active')?.textContent?.trim() || null;
+      euLabel = _aptEuIsEinzug(_aptContractId) ? 'Einzug' : 'Auszug';
     }
 
     localStorage.setItem(_APT_DRAFT_KEY, JSON.stringify({
@@ -2112,12 +2102,7 @@ async function _aptReopenContractDraft(d) {
     if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('apartments');
     // Übergabe: restore the card's Einzug/Auszug choice BEFORE opening,
     // because _aptOpenContract reads it from the card
-    if (d.type === 'ueberg' && d.euLabel) {
-      const eu = document.getElementById('apt-eu-' + d.aptId);
-      eu?.querySelectorAll('button, span, div').forEach(el => {
-        if (el.textContent?.trim() === d.euLabel && !el.classList.contains('active')) el.click?.();
-      });
-    }
+    if (d.type === 'ueberg' && d.euLabel) _aptSetEU(d.aptId, d.euLabel === 'Auszug' ? 1 : 0);
 
     window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
     await _aptOpenContract(d.type, d.aptId);
@@ -2547,7 +2532,7 @@ async function _aptOpenContract(type, aptId, renew) {
     } // end Wohnraum else
 
   } else if (type === 'ueberg') {
-    const isEinzug = document.getElementById('apt-eu-' + aptId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _aptEuIsEinzug(aptId);
     typeLbl.textContent  = 'Übergabeprotokoll';
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + apt.name;
     const _ubProfile = await _aptResolveTenantProfile(apt.id);
@@ -2615,7 +2600,7 @@ function _aptSetupFlow(type, apt) {
   const rn = _aptContractRenew;
   const isGw = type === 'mietvertrag' && apt.zimmer_type === 'Gewerbefläche';
   if (type === 'ueberg') {
-    const isEinzug = document.getElementById('apt-eu-' + apt.id)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _aptEuIsEinzug(apt.id);
     ccfSetupGenerator({ body: 'aptContractBody', footer: 'aptContractFooter', draftId: 'aptUebergPdfBtn', mode: 'ueberg', unit,
       occasion: isEinzug ? 'einzug' : 'auszug', fields: _APT_UB_FIELDS,
       read: () => {

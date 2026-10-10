@@ -15,10 +15,11 @@
    1. HTML INJECT
 ══════════════════════════════════════════════════════════════ */
 document.getElementById('tab-tenants').innerHTML = `
-  <div class="tn-hdr" style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+  <div class="tn-hdr">
     <h1 class="cc-h1">Tenants</h1>
-    <div id="rnt-kaution-summary" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--cc-stone);"></div>
   </div>
+  <!-- Casa Castel layout: the same "Kaution held" figure as a line under the title -->
+  <div class="cc-sumline rnt-ist" id="rnt-kaution-summary" style="display:none"></div>
   <div class="tn-list" id="rntTenantsList"></div>
 
 
@@ -95,6 +96,29 @@ document.getElementById('tab-tenants').innerHTML = `
   s.textContent = `
 /* ── PAGE ── */
 .tn-hdr { margin-bottom: 20px; }
+/* ── Casa Castel layout (Oct 2026): Kaution line · slim card · rent title · Übergabe · Former row ── */
+html .rnt-ist .cc-sumline__vals { grid-template-columns:minmax(0, 1fr); }
+.tn-ctp { display:inline-flex; align-items:center; height:20px; padding:0 8px; border-radius:10px; font-size:11px; font-weight:500; letter-spacing:.02em; white-space:nowrap; margin-left:6px; }
+.tn-ctp--kurzzeit    { background:#F1EEF6; color:#5B4A7A; border:.5px solid #CFC4E0; }
+.tn-ctp--mietvertrag { background:#EEF2EC; color:#46604A; border:.5px solid #C3D1C0; }
+.tn-ctp--gewerbe     { background:#E6F1FB; color:#0C447C; border:.5px solid #85B7EB; }
+#tab-tenants .tn-slim .tn-slim-top { align-items:center; gap:8px; }
+#tab-tenants .tn-slim .tn-slim-top .tn-room-lbl { margin:0; }
+#tab-tenants .tn-slim .tn-hdr-mid { margin-top:2px; }
+#tab-tenants .tn-slim-info { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; margin-top:4px; font-size:13px; color:#9A8E7E; }
+#tab-tenants .tn-slim-info .tn-ctp { margin-left:0; }
+#tab-tenants .tn-slim-txt { white-space:nowrap; }
+#tab-tenants .tn-slim-txt b { font-weight:500; color:var(--cc-charcoal); }
+#tab-tenants .tn-slim-next { white-space:nowrap; color:#8C5A30; font-size:12.5px; }
+.tn-rent-wrap { background:var(--cc-surface); border-bottom:var(--cc-border); flex-direction:column; }
+.tn-rent-wrap .tn-rent-bar { border-bottom:none; background:transparent; }
+.tn-rtitle { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; padding:10px 14px 0; }
+.tn-rent-wrap .tn-rc:first-child { padding-left:14px; }
+.tn-rt-name { font-size:13px; font-weight:500; color:var(--cc-charcoal); }
+.tn-rt-dates { font-size:11px; color:var(--cc-taupe); }
+#tab-tenants .rnt-ub { padding:11px 14px; }
+#tab-tenants .tn-more-in { margin:0 -14px; border-top:var(--cc-border); background:var(--cc-bg); }
+#tab-tenants .tn-more-in > .tn-sec { border-bottom:none; background:transparent; }
 .tn-list { display:flex; flex-direction:column; gap:8px;
   padding-bottom: max(40px, env(safe-area-inset-bottom, 40px)); }
 
@@ -689,6 +713,91 @@ function _rntDetailsGroupHTML(rid, unit, rec) {
     (kind === 'apt' ? ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: _rntEsc(ccfMetersSummary(rec)), onclick: `_rntSheet('meters','${rid}','${rec.id}','${kind}','${unit.id}')` }) : '') +   // parking has no Zähler
     (n >= 2 ? ccRowHTML({ icon: 'history', title: 'Rent history', meta: n + ' entries', onclick: `_rntSheet('rent','${rid}','${rec.id}','${kind}','${unit.id}')` }) : ''));
 }
+/* ── Casa Castel layout (Oct 2026): Kaution line · More list · Übergabe button · Former tenants row ── */
+function _rntKautionLine(el, totalHeld) {
+  if (!el) return;
+  if (totalHeld > 0) {
+    el.innerHTML = `<div class="cc-sumline__vals"><div><span>Kaution held</span><b>${_rntFmtEUR(totalHeld)}</b></div></div>`;
+    el.style.display = 'flex';
+  } else el.style.display = 'none';
+}
+/* One "More" list = the former Nebenkosten + Details groups (same rows, same sheets) */
+function _rntMoreHTML(rid, type, unit, rec) {
+  const isApt = type === 'apt', kind = isApt ? 'apt' : 'pk', rows = [];
+  if (typeof ccfDocsSectionHTML === 'function') {
+    rows.push(ccRowHTML({ icon: 'file-text', title: 'Documents', meta: _rntEsc(ccfDocsSummary(rec)), onclick: `_rntSheet('docs','${rid}','${rec.id}','${kind}','${unit.id}')` }));
+    if (isApt) rows.push(ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: _rntEsc(ccfMetersSummary(rec)), onclick: `_rntSheet('meters','${rid}','${rec.id}','${kind}','${unit.id}')` }));   // parking has no Zähler
+  }
+  if (isApt) {
+    if (!_rntAllPauschal(rec.id)) {
+      const open = _rntNkHasOpen(rec.id);
+      rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen',
+        meta: open ? `<span class="tnp tnp-amber">${_rntEsc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _rntNK[rec.id], _rntNkDue(rec)) : 'NK open')}</span>` : 'none due',
+        onclick: `_rntSheet('nk','${rid}','${rec.id}','apt','${unit.id}')` }));
+    }
+    const c = _rntNKVorausCurFor(unit.id, rec);
+    const pend = typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_rntNKVoraus[unit.id], rec) : null;
+    rows.push(ccRowHTML({ icon: 'coin-euro', title: 'NK-Vorauszahlung',
+      meta: pend ? `<span class="tnp ${pend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${_rntEsc(pend.text)}</span>`
+                 : c ? `${_rntFmtEUR(c.amount)}/mo` : 'not set',
+      onclick: `_rntSheet('nkv','${rid}','${rec.id}','apt','${unit.id}')` }));
+  }
+  const n = typeof ccRpFor === 'function' ? ccRpFor('rentals', rec.id).length : 0;
+  if (n >= 2) rows.push(ccRowHTML({ icon: 'history', title: 'Rent history', meta: n + ' entries', onclick: `_rntSheet('rent','${rid}','${rec.id}','${kind}','${unit.id}')` }));
+  return rows.length ? ccGroupHTML('More', rows.join('')) : '';
+}
+/* Übergabe — the Apartments-card button, moved here: below everything, above Former tenants */
+function _rntUebergHTML(type, unit) {
+  const isApt = type === 'apt', pre = isApt ? 'apt' : 'pk', setFn = isApt ? '_aptSetEU' : '_pkSetEU';
+  const ein = isApt ? (typeof _aptEuIsEinzug === 'function' ? _aptEuIsEinzug(unit.id) : true)
+                    : (typeof _pkEuIsEinzug === 'function' ? _pkEuIsEinzug(unit.id) : true);
+  return `
+<div class="tn-sec apt-contracts rnt-ub">
+  <div class="apt-contracts-title">Create contracts</div>
+  <div class="apt-doc-row">
+    <button class="apt-doc-btn" onclick="_rntUbOpen('${pre}','${unit.id}')">
+      Übergabeprotokoll <i class="ti ti-chevron-right"></i>
+    </button>
+    <div class="apt-doc-toggle" id="${pre}-eu-${unit.id}">
+      <button class="${ein ? 'active' : ''}" onclick="event.stopPropagation();${setFn}('${unit.id}',0,this)">Einzug</button>
+      <button class="${ein ? '' : 'active'}" onclick="event.stopPropagation();${setFn}('${unit.id}',1,this)">Auszug</button>
+    </div>
+  </div>
+</div>`;
+}
+/* The Übergabe generator lives in the Apartments / Parking tab: that tab shows while it is open
+   (like Renew), and Tenants comes back as soon as it closes. */
+function _rntUbOpen(pre, unitId) {
+  const isApt = pre === 'apt';
+  const ov = document.getElementById(isApt ? 'aptContractOverlay' : 'pkContractOverlay');
+  if (ov && !ov._rntBack) {
+    ov._rntBack = true;
+    new MutationObserver(() => {
+      if (!ov.classList.contains('open') && window._rntUbReturn) {
+        const t = window._rntUbReturn; window._rntUbReturn = null;
+        if (typeof switchTab === 'function') switchTab(t);
+      }
+    }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+  }
+  if (typeof switchTab === 'function') switchTab(isApt ? 'apartments' : 'parking');
+  setTimeout(() => {
+    window._rntUbReturn = 'tenants';
+    if (isApt) _aptOpenContract('ueberg', unitId); else _pkOpenContract('ueberg', unitId);
+  }, 80);
+}
+/* Former tenants — one row that opens the same list (Show older · Add former tenant · Archived) */
+const _rntMoreOpen = {};
+function _rntMoreToggle(key) { _rntMoreOpen[key] = !_rntMoreOpen[key]; _rntRender(); }
+function _rntFormerRowHTML(rid, type, unit, formerRecs, archivedRecs) {
+  const k = rid + ':former', open = !!_rntMoreOpen[k];
+  const nOpen = formerRecs.filter(r => _rntNkHasOpen(r.id) || _rntKautionOpen(r.id)).length;
+  const meta = !formerRecs.length && !archivedRecs.length ? 'none'
+    : nOpen ? `<span class="tnp tnp-amber">${nOpen} open</span>` : String(formerRecs.length + archivedRecs.length);
+  let html = ccRowHTML({ icon: 'users', title: 'Former tenants', meta, onclick: `_rntMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
+  if (open) html += `<div class="tn-more-in">${_rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs, true)}</div>`;
+  return ccGroupHTML('', html);
+}
+
 function _rntSheet(kind, rid, tid, ukind, unitId) {
   const rec0 = _rntRecords.find(r => String(r.id) === String(tid)); if (!rec0) return;
   const unit = (ukind === 'apt' ? (typeof appApartments !== 'undefined' ? appApartments : []) : (typeof appParking !== 'undefined' ? appParking : []))
@@ -1118,15 +1227,7 @@ function _rntRender() {
 
   // Kaution held summary
   const totalHeld = ccTnHeldTotal(_rntRecords, _rntKaution);   // received − returned, unsettled
-  const summaryEl = document.getElementById('rnt-kaution-summary');
-  if (summaryEl) {
-    if (totalHeld > 0) {
-      summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_rntFmtEUR(totalHeld)}</strong>`;
-      summaryEl.style.display = 'flex';
-    } else {
-      summaryEl.style.display = 'none';
-    }
-  }
+  _rntKautionLine(document.getElementById('rnt-kaution-summary'), totalHeld);
 
   // Same cards in the same order as on screen → redraw only the cards whose
   // content changed (no full rebuild → no flash / jump when you open the tab)
@@ -1231,9 +1332,9 @@ function _rntCardHTML({ type, unit }) {
     ${_ccNextTenantHTML(nextRec, nextRec ? _rntEsc(_rntFullTenantNames(nextRec)) : '', _rntFmtDate, '_rntOpenModal')}
     ${_rntProfileSectionHTML(rid, type, unit, activeRec)}
     ${activeRec ? _rntKautionHTML(rid, activeRec.id, 'card', activeRec) : ''}
-    ${activeRec && isApt ? _rntNkGroupHTML(rid, unit, activeRec) : ''}
-    ${activeRec ? _rntDetailsGroupHTML(rid, unit, activeRec) : ''}
-    ${_rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs)}
+    ${activeRec ? _rntMoreHTML(rid, type, unit, activeRec) : ''}
+    ${_rntUebergHTML(type, unit)}
+    ${_rntFormerRowHTML(rid, type, unit, formerRecs, archivedRecs)}
   </div>
 </div>`;
 }
@@ -1281,20 +1382,22 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
   if (vacant) {
     midLine = `<span class="tn-tenant-name" style="color:var(--cc-stone);font-weight:400;font-style:italic">No current tenant</span>`;
   } else if (activeRec) {
-    midLine = `
-      <span class="tn-tenant-name">${_rntEsc(fullName || 'Unnamed tenant')}</span>
-      ${dateStr ? `<span class="tn-tenant-dates">${_rntEsc(dateStr)}</span>` : ''}`;
+    // Slim closed card (Casa Castel layout): name, then ONE line — contract · since/bis · rent · next change
+    midLine = `<span class="tn-tenant-name">${_rntEsc(fullName || 'Unnamed tenant')}</span>`;
+    const ctCls = !ctLabel ? '' : ctLabel === 'Gewerbe' ? 'gewerbe' : /kurz/i.test(ctLabel) ? 'kurzzeit' : 'mietvertrag';
     if (isApt) {
-      botLine = `<div class="tn-hdr-bot">
-        ${warm != null ? `<span class="tn-warm">${_rntFmtEUR(warm)}</span><span class="tn-dim">warm</span>` : ''}
-        ${(kalt != null && nk != null) ? `<div class="tn-dot-sep"></div><span class="tn-dim">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
-        ${ctLabel ? `<div class="tn-dot-sep"></div><span class="tn-dim">${ctLabel}</span>` : ''}
-        ${_mhN && nk != null ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_rntFmtEUR(Number(_mhN.amount) + Number(nk))} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
+      botLine = `<div class="tn-slim-info">
+        ${ctLabel ? `<span class="tn-ctp tn-ctp--${ctCls}">${_rntEsc(ctLabel)}</span>` : ''}
+        ${dateStr ? `<span class="tn-slim-txt">${_rntEsc(dateStr)}</span>` : ''}
+        ${warm != null ? `<span class="tn-slim-txt"><b>${_rntFmtEUR(warm)}</b> warm</span>` : ''}
+        ${(kalt != null && nk != null) ? `<span class="tn-slim-txt">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
+        ${_mhN && nk != null ? `<span class="tn-slim-next">\u2192 ${_rntFmtEUR(Number(_mhN.amount) + Number(nk))} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
       </div>`;
     } else {
-      botLine = `<div class="tn-hdr-bot">
-        ${miete != null ? `<span class="tn-warm">${_rntFmtEUR(miete)}</span><span class="tn-dim">Miete</span>` : ''}
-        ${_mhN ? `<div class="tn-dot-sep"></div><span class="tn-dim" style="color:#8C5A30">\u2192 ${_rntFmtEUR(_mhN.amount)} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
+      botLine = `<div class="tn-slim-info">
+        ${dateStr ? `<span class="tn-slim-txt">${_rntEsc(dateStr)}</span>` : ''}
+        ${miete != null ? `<span class="tn-slim-txt"><b>${_rntFmtEUR(miete)}</b> Miete</span>` : ''}
+        ${_mhN ? `<span class="tn-slim-next">\u2192 ${_rntFmtEUR(_mhN.amount)} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
       </div>`;
     }
   } else {
@@ -1302,12 +1405,12 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
   }
 
   return `
-<div class="tn-hdr-wrap" onclick="_rntToggleCard('${rid}')">
-  <div class="tn-hdr-top">
+<div class="tn-hdr-wrap tn-slim" onclick="_rntToggleCard('${rid}')">
+  <div class="tn-hdr-top tn-slim-top">
+    <div class="tn-room-lbl tn-unit-line">${_rntEsc(unitLabel)}</div>
     <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
-  <div class="tn-room-lbl tn-unit-line">${_rntEsc(unitLabel)}</div>
   ${isApt && unit.adresse ? `<div class="tn-hdr-addr">${_rntEsc(unit.adresse)}</div>` : ''}
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
@@ -1325,10 +1428,16 @@ function _rntRentBarHTML(rid, type, unit, rec) {
     ? ccRpFor('rentals', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday()) : null;
   const nextM = _rntMhNext(rec);                                   // next Mieterhöhung → "neu ab" under the Kaltmiete
   const kSub  = nextM ? `<span style="color:#8C5A30">neu ab ${ccRpFmt(nextM.effective_date)}</span>` : src;
+  // title row: contract · dates (the same words as on the closed card)
+  const _mi  = rec && typeof ccTnMovesIn === 'function' ? ccTnMovesIn(!!unit.vacant, rec) : null;
+  const _mb  = rec ? _rntFmtDate(rec.mietbeginn) : '', _me = rec ? _rntFmtDate(rec.mietende) : '';
+  const _dt  = _mb && _me ? `${_mb} \u2013 ${_me}` : _mb ? `${_mi ? 'from' : 'since'} ${_mb}` : '';
+  const _ct  = !isApt ? '' : (unit.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : (_rntContractLabel(rntContractType(rec)) || 'Mietvertrag'));
+  const rTitle = (_ct || _dt) ? `<div class="tn-rtitle">${_ct ? `<span class="tn-rt-name">${_rntEsc(_ct)}</span>` : ''}${_dt ? `<span class="tn-rt-dates">${_rntEsc(_dt)}</span>` : ''}</div>` : '';
 
   if (isApt) {
     return `
-<div class="tn-rent-bar" id="rbar-${rid}">
+<div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar">
   <div class="tn-rc">
     <div class="tn-rlbl">Kaltmiete</div>
     <div class="tn-rval">${cur ? _rntFmtEUR(cur.kalt) : '\u2014'}</div>
@@ -1349,10 +1458,10 @@ function _rntRentBarHTML(rid, type, unit, rec) {
       <i class="ti ti-pencil" style="font-size:10px"></i> Edit
     </button>
   </div>
-</div>`;
+</div></div>`;
   } else {
     return `
-<div class="tn-rent-bar" id="rbar-${rid}">
+<div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar">
   <div class="tn-rc">
     <div class="tn-rlbl">Parkmiete</div>
     <div class="tn-rval">${cur ? _rntFmtEUR(cur.kalt) : '\u2014'}</div>
@@ -1363,7 +1472,7 @@ function _rntRentBarHTML(rid, type, unit, rec) {
       <i class="ti ti-pencil" style="font-size:10px"></i> Edit
     </button>
   </div>
-</div>`;
+</div></div>`;
   }
 }
 
@@ -2599,7 +2708,7 @@ function _rntStaffelModalOutside(e) { if (e.target === document.getElementById('
 
 
 /* ── FORMER SECTION ── */
-function _rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs) {
+function _rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs, bare) {
   const visible = formerRecs.filter(r =>  _rntFormerVisible(r));
   const hidden  = formerRecs.filter(r => !_rntFormerVisible(r) && !r.done);
   const showOld = !!_rntShowOlder[rid];
@@ -2648,9 +2757,9 @@ function _rntFormerSectionHTML(rid, type, unit, formerRecs, archivedRecs) {
 
   return `
 <div class="tn-sec">
-  <div class="tn-sec-body" style="padding-top:10px;padding-bottom:0">
+  ${bare ? '<div style="height:8px"></div>' : `<div class="tn-sec-body" style="padding-top:10px;padding-bottom:0">
     <div style="margin-bottom:6px"><span class="tn-sec-lbl">Former tenants</span></div>
-  </div>
+  </div>`}
   ${toShow.length ? toShow.map(formerRow).join('') : `<p class="tn-empty" style="padding:0 14px 6px">None with open business.</p>`}
   ${hidden.length ? `<button class="tn-show-older" onclick="_rntToggleOlder('${rid}')">
     <i class="ti ti-${showOld ? 'eye-off' : 'eye'}"></i>
@@ -3761,16 +3870,7 @@ function _rntRefreshFormerBadges(tid) {
     }
   });
 
-  const summaryEl = document.getElementById('rnt-kaution-summary');
-  if (summaryEl) {
-    const totalHeld = ccTnHeldTotal(_rntRecords, _rntKaution);
-    if (totalHeld > 0) {
-      summaryEl.innerHTML = `<i class="ti ti-safe" style="font-size:13px"></i> Kaution held: <strong>${_rntFmtEUR(totalHeld)}</strong>`;
-      summaryEl.style.display = 'flex';
-    } else {
-      summaryEl.style.display = 'none';
-    }
-  }
+  _rntKautionLine(document.getElementById('rnt-kaution-summary'), ccTnHeldTotal(_rntRecords, _rntKaution));
 }
 
 
