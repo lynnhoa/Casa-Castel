@@ -32,7 +32,7 @@ const SC_TABLE = 'nk_abrechnung_casa', SC_LETTERS = 'nk_letters', SC_BUCKET = 'n
 const SC_AV = [['#E8D5B5', '#6B4A1E'], ['#D6E3D0', '#3E5A30'], ['#E3D6E6', '#5E3F66'], ['#D3DEE8', '#2F4A63'],
                ['#F0D9D2', '#7A3B2A'], ['#F3E3C3', '#7A5A12'], ['#D4E6E1', '#2C5A50'], ['#E2E0D8', '#5A574E']];
 
-const scD = iso => String(iso || '').slice(0, 10);
+const scD = iso => typeof ccDayOf === 'function' ? ccDayOf(iso) : String(iso || '').slice(0, 10);   // #8: a stored moment → its German day
 const scDate = iso => stDate(scD(iso));
 const scE = v => stEur(cxR(v));
 const scAbbr = room => ({ 'new york': 'NY', 'los angeles': 'LA' })[String(room || '').trim().toLowerCase()] || String(room || '?').trim().slice(0, 3).toUpperCase();

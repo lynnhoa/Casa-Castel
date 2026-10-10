@@ -1540,13 +1540,14 @@ async function _tnLoadPwReqs() {
   } catch (e) {}
 }
 function _tnPwStatus(room, rec) {
-  const d = iso => _tnFmtDate(String(iso).slice(0, 10));
+  const day = iso => typeof ccDayOf === 'function' ? ccDayOf(iso) : String(iso || '').slice(0, 10);   // #8: German day of a moment
+  const d = iso => _tnFmtDate(day(iso));
   const mb = _ccIso(rec.mietbeginn), today = _ccTodayIso();
   const pend = (typeof _pwaOpen === 'function' ? _pwaOpen() : _tnPwReqs.filter(q => q.status === 'pending')).filter(q => q.room === room);
   if (!mb || mb > today) return { key: 'future', tone: 'grey', text: 'from the move-in day' + (mb ? ' ' + _ccFmtD(mb) : ''), review: pend.length > 0 };
   if (pend.length) return { key: 'request', tone: 'amber', text: 'Request waiting', review: true, sub: 'Decide in the request: send the same password, or a new one.' };
   const since = _ccAddDaysIso(mb, -45);   // a request made shortly before moving in counts too
-  const reqs = _tnPwReqs.filter(q => q.room === room && ['done', 'approved', 'expired'].includes(q.status) && String(q.created_at).slice(0, 10) >= since)
+  const reqs = _tnPwReqs.filter(q => q.room === room && ['done', 'approved', 'expired'].includes(q.status) && day(q.created_at) >= since)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const req = reqs[0] || null;
   const given = rec.app_pw_given_at ? String(rec.app_pw_given_at) : null;
@@ -1554,14 +1555,14 @@ function _tnPwStatus(room, rec) {
   const reqT = req ? String(req.created_at) : null;
   const plus3 = t => { const ms = Date.parse(String(t).replace(' ', 'T')); return isNaN(ms) ? String(t) : new Date(ms + 3 * 864e5).toISOString(); };
   // the newest real event wins: you handed it over, or the tenant's request
-  if (given && given >= mb && (!pwAt || given >= pwAt) && (!reqT || given >= reqT)) return { key: 'given', tone: 'green', text: 'Given ' + d(given) };
+  if (given && day(given) >= mb && (!pwAt || given >= pwAt) && (!reqT || given >= reqT)) return { key: 'given', tone: 'green', text: 'Given ' + d(given) };
   if (req && (!pwAt || pwAt <= plus3(reqT))) {
     if (req.status === 'done') return { key: 'done', tone: 'green', text: 'Logged in \u2713 ' + d(reqT) };
     const old = Date.now() - (Date.parse(String(reqT).replace(' ', 'T')) || Date.now()) > 864e5;
     return { key: 'sent', tone: 'blue', text: 'Sent ' + d(reqT) + (old || req.status === 'expired' ? ' \u00b7 not picked up' : ' \u00b7 waiting for pickup'),
              canGive: true, sub: old || req.status === 'expired' ? 'The pickup on {name}’s phone has expired — give the password directly (Copy), then tap Given ✓.' : '' };
   }
-  const changed = pwAt && pwAt.slice(0, 10) >= mb ? ' \u00b7 password changed ' + d(pwAt) : '';
+  const changed = pwAt && day(pwAt) >= mb ? ' \u00b7 password changed ' + d(pwAt) : '';
   return { key: 'none', tone: 'amber', text: 'Not given yet' + changed, canGive: true,
            sub: '{name} asks for it on the login page (“First time here?”) — or give it directly, then tap Given ✓.' };
 }

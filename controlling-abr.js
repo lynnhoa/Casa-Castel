@@ -59,7 +59,7 @@ function ctlAbrResults() {
     if (!amt || !p || over.has(ref) || newRes.has(String(e.tenant_id) + '|' + yr(e))) return;
     const dir = amt > 0 ? 1 : -1, y = yr(e) || '';
     out.push({ key: ref, refs: [ref], pid: p.id, kind: 'nk_tenant', year: y, dir, amount: cxR(Math.abs(amt)),
-               date: String(e.created_at || cxToday()).slice(0, 10), via: 'zahlung',
+               date: e.created_at ? (typeof ccDayOf === 'function' ? ccDayOf(e.created_at) : String(e.created_at).slice(0, 10)) : cxToday(), via: 'zahlung',
                label: _cxAbrLabel('nk_tenant', y, dir, unit, t ? [t.first_name, t.last_name].filter(Boolean).join(' ') : ''), tenantTab: true });
   };
   for (const e of (S.rntNk || [])) {

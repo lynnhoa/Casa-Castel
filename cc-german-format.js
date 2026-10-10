@@ -105,6 +105,20 @@ function ccParseDate(v, strict = false) {
   return null;
 }
 
+/* The German calendar day of a stored moment (#8, Oct 2026).
+   "2026-10-09T23:30:00+00:00" → "2026-10-10" (01:30 in Germany) · summer/winter time included.
+   A plain date ("2026-10-10") or anything else stays as it is (first 10 characters).            */
+function ccDayOf(v) {
+  if (!v) return '';
+  if (v instanceof Date) return isNaN(v) ? '' : _ccBerlinYMD(v);
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+    const t = new Date(s.replace(' ', 'T'));
+    if (!isNaN(t)) return _ccBerlinYMD(t);
+  }
+  return s.slice(0, 10);
+}
+
 /* → "26.09.2026". Text that is not a date (e.g. "2019") is returned as is. */
 function ccFmtDate(v) {
   if (!v) return '';

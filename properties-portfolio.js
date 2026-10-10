@@ -326,7 +326,7 @@ async function saveEdit() {
   // Rate / Tilgung / Zinsen / what the bank debits changed → Controlling uses the new terms from that month on only
   const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
   const termsChanged = ['rate', 'tilgung', 'zinsen'].some(k => r2(fields[k]) !== r2(p[k])) || (fields.bank_debit || null) !== (p.bank_debit || null);
-  const validFrom = (g('e-valid-from') || new Date().toISOString().slice(0, 10)).slice(0, 8) + '01';
+  const validFrom = (g('e-valid-from') || (typeof ccTodayISO === 'function' ? ccTodayISO() : new Date().toISOString().slice(0, 10))).slice(0, 8) + '01';   // #8: German today
 
   try {
     showLoading(true);

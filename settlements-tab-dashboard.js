@@ -415,7 +415,7 @@ function sdCalcView() {
       row('Letter', '<input class="sd-in" type="date" data-sdf="letter_date" value="' + stEsc(d.letter_date || cxToday()) + '"' + dis + '/>') +
       (d.property_id ? row('Controlling', '<label class="sd-chk"><input type="checkbox" data-sd="tg" data-f="book"' + (d.book ? ' checked aria-pressed="true"' : ' aria-pressed="false"') + dis + '/> also book the result</label>') : '') +
     '</div>';
-  const head = '<div class="srm__h"><div class="srm__ht"><p class="srm__t">' + (d.id ? 'NK-Abrechnung' : 'New NK-Abrechnung') + '</p><p class="srm__s">manual · ' + (sent ? 'sent ' + stDate(String(d.sent_at || '').slice(0, 10)) : SD.dirty ? 'not saved yet' : 'draft') + '</p></div>' +
+  const head = '<div class="srm__h"><div class="srm__ht"><p class="srm__t">' + (d.id ? 'NK-Abrechnung' : 'New NK-Abrechnung') + '</p><p class="srm__s">manual · ' + (sent ? 'sent ' + stDate(typeof ccDayOf === 'function' ? ccDayOf(d.sent_at) : String(d.sent_at || '').slice(0, 10)) : SD.dirty ? 'not saved yet' : 'draft') + '</p></div>' +
     '<button class="srm__x" data-sd="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
   const bar = sent ? '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sd="close">Close</button><button class="cx-btn cx-btn--p" data-sd="pdf"><i class="ti ti-file-text" aria-hidden="true"></i> PDF</button></div>'
     : '<div class="srm__bar srm__bar--2">' + (d.id ? '<button class="cx-btn cx-btn--s" data-sd="delDraft" aria-label="Delete draft"><i class="ti ti-trash" aria-hidden="true"></i></button>' : '') +

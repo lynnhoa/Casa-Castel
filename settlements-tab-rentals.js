@@ -1034,7 +1034,7 @@ function _srHistoryView(c) {
       tens.map(a => '<div class="sc-li"><span>' + stEsc(a.tenant_name || 'Tenant') + '<small>' + stEsc(a.settle_via === 'kaution' ? 'with the Kaution' : a.settle_via === 'miete' ? 'with the rent' : 'by bank transfer') + '</small></span><span class="sr5-hy__v">' +
         stEsc(Number(a.direction) > 0 ? 'Nachzahlung ' + stEur(a.amount) : Number(a.direction) < 0 ? 'Guthaben ' + stEur(a.amount) : 'balanced') + '</span></div>').join('') +
       letters.map(l => '<button class="sc-row" data-sr="letterOpen" data-id="' + stEsc(l.id) + '"><span class="sc-av sc-av--doc"><i class="ti ti-file-text" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">' +
-        stEsc(l.tenant_name || '') + (l.source === 'manual' ? ' · manual' : '') + '</span><span class="sc-row__p">letter sent ' + stDate(String(l.sent_at).slice(0, 10)) + '</span></span><span class="sc-open">Open</span></button>').join('') +
+        stEsc(l.tenant_name || '') + (l.source === 'manual' ? ' · manual' : '') + '</span><span class="sc-row__p">letter sent ' + stDate(typeof ccDayOf === 'function' ? ccDayOf(l.sent_at) : String(l.sent_at).slice(0, 10)) + '</span></span><span class="sc-open">Open</span></button>').join('') +
       (!tens.length && !letters.length ? '<p class="sr5-empty">No tenant results saved for this year.</p>' : '') + '</div>';
   }).join('');
   return _srHead4('History · ' + p.name, 'every year since ' + (bought ? 'the purchase ' + stDate(bought) : since), '') +
