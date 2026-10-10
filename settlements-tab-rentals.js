@@ -111,6 +111,10 @@ async function srLoadRows() {
       SR.letters = l.error ? [] : (l.data || []);
     } catch (e) { SR.letters = []; }
     SR.cols = !!(SR.rows[0] ? Object.prototype.hasOwnProperty.call(SR.rows[0], 'received_on') : true);
+    try {                                               // #11: Hausgeld Ist per month (Controlling) — read only, for the hint
+      const h = await _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld');
+      SR.hgIst = h.error ? [] : (h.data || []);
+    } catch (e) { SR.hgIst = []; }
     try {                                               // Kaution-Einbehalt (Rentals › Tenants) — read only here
       const k = await _ctlSupa.from('rnt_kaution').select('*');
       SR.kaution = {}; (k.data || []).forEach(x => { if (x.tenant_id) SR.kaution[String(x.tenant_id)] = x; });
@@ -746,6 +750,27 @@ function _srHausgeldPaid(c) {
   }
   return cxR(sum);
 }
+/* #11: Hausgeld actually paid (Ist) in Controlling for the same months as the Soll — shown as a hint only */
+function _srHausgeldIst(c) {
+  let sum = 0, need = 0, got = 0;
+  const since = _srBought(c.p), rows = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id));
+  for (let d = c.per.from; d <= c.per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
+    const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+    if (since && _srLastOfMonth(y, m) < since) continue;
+    need++;
+    const hit = rows.filter(x => Number(x.year) === y && Number(x.month) === m && x.hausgeld !== null && x.hausgeld !== undefined && x.hausgeld !== '');
+    if (hit.length) { got++; hit.forEach(x => { sum += Number(x.hausgeld) || 0; }); }
+  }
+  return { sum: cxR(sum), need, got };
+}
+function _srIstHint(c, soll) {
+  const I = _srHausgeldIst(c);
+  if (!I.got) return '';                                              // nothing entered in Controlling for these months
+  const line = t => '<p class="mx-ok is-info"><i class="ti ti-info-circle" aria-hidden="true"></i> Controlling (Ist): ' + stEur(I.sum) + ' paid · ' + t + '</p>';
+  if (I.got < I.need) return line(I.got + ' of ' + I.need + ' months entered');
+  const diff = cxR(I.sum - (Number(soll) || 0));
+  return Math.abs(diff) < 0.01 ? '' : line(stEur(Math.abs(diff)) + (diff < 0 ? ' less' : ' more') + ' than Soll');
+}
 
 /* ── One tenant line: what it is, what to show ── */
 function _srTenInfo(c, it, rec, sumOk) {
@@ -1253,9 +1278,10 @@ function _srHvView(c) {
       '<button class="mx-add" data-sr="rowAdd" data-u="' + (u ? 1 : 0) + '"><i class="ti ti-plus" aria-hidden="true"></i> Add a cost</button>';
     costs += '<div class="mx-edit">' + grp(U, true, 'Umlagefähig') + grp(N, false, 'Nicht umlagefähig') +
       '<datalist id="srKindList">' + SR_KINDS.map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist>' +
-      '<div class="mx-er"><span>− Hausgeld paid <small>per Rentals</small></span><span class="mx-amt"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld paid" value="' + stEsc(cxE2(hgPaid)) + '"/><em>€</em></span></div>' +
+      '<div class="mx-er"><span>− Hausgeld Soll <small>per Rentals</small></span><span class="mx-amt"><input inputmode="decimal" data-srf="keys.hg_paid" aria-label="Hausgeld Soll" value="' + stEsc(cxE2(hgPaid)) + '"/><em>€</em></span></div>' +
       '<div class="mx-er is-b"><span>= calculated <span data-sr-tot="cl">' + (calc > 0 ? 'Nachzahlung' : calc < 0 ? 'Guthaben' : 'balanced') + '</span></span><span data-sr-tot="c">' + stEur(Math.abs(calc)) + '</span></div>' +
-      (diff === null ? '' : Math.abs(diff) < 0.01 ? '<p class="mx-ok"><i class="ti ti-check" aria-hidden="true"></i> matches the HV result</p>' : '<p class="mx-ok is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff)) + '</p>') + '</div>';
+      (diff === null ? '' : Math.abs(diff) < 0.01 ? '<p class="mx-ok"><i class="ti ti-check" aria-hidden="true"></i> matches the HV result</p>' : '<p class="mx-ok is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> HV says ' + stEur(Math.abs(entered)) + ' – difference ' + stEur(Math.abs(diff)) + '</p>') +
+      _srIstHint(c, hgPaid) + '</div>';
   }
   costs += '<button class="mx-lnk" data-sr="costs">' + (SR.costsOpen ? 'Hide the costs' : 'Show all ' + (U.length + N.length) + ' costs · edit') + '</button>';
   // ── settings (period · expected month) — folded at the end

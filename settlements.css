@@ -1434,6 +1434,7 @@ button.st-sg__r { cursor: pointer; }
 .mx-add { display:inline-flex; align-items:center; gap:5px; margin:2px 0 6px; border:0; background:none; padding:4px 0; font:500 12px 'Inter',system-ui,sans-serif; color:#8A6535; cursor:pointer; }
 .mx-ok { display:flex; align-items:center; gap:6px; margin:6px 0 4px; font-size:11.5px; color:#3D5F22; }
 .mx-ok.is-warn { color:#9A4A33; }
+.mx-ok.is-info { color:var(--cc-taupe, #8A7B6B); }
 .mx-set, .mx-more { margin-top:12px; background:#FDFCFA; border:.5px solid #E6DED2; border-radius:16px; padding:10px 14px; font-size:12.5px; color:#5C534A; }
 .mx-det .mx-more { margin:8px 0 4px; background:#F8F5F0; border:0; }
 .mx-set summary, .mx-more summary { cursor:pointer; font-weight:500; color:#8A6535; list-style:none; }
@@ -1443,3 +1444,7 @@ button.st-sg__r { cursor: pointer; }
 .mx-letter { margin:8px 0 4px; }
 .mx-b > .srm__card { margin-top:12px; border-radius:18px; }
 .mx-b > .srm__banner { margin-top:12px; }
+/* Money switch fields (Oct 2026): the day the money moved + the amount */
+.mx-pay { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; margin:-2px 0 0; padding:10px 14px; background:#FDFCFA; border:.5px solid #E6DED2; border-radius:14px; }
+.mx-pay .mx-f input { width:100%; box-sizing:border-box; background:#FAF8F4; height:38px; }
+.mx-pay .mx-amt input { background:#FAF8F4; height:38px; }
