@@ -1412,7 +1412,7 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
     <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
-  ${isApt && unit.adresse ? `<div class="tn-hdr-addr">${_rntEsc(unit.adresse)}</div>` : ''}
+  ${isApt && (unit.adresse || unit.wohnungsnummer) ? `<div class="tn-hdr-addr">${_rntEsc([unit.adresse, unit.wohnungsnummer].filter(Boolean).join(' \u00b7 '))}</div>` : ''}
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
   <div class="tn-todo-row" id="hdr-todo-${rid}" style="${pills.todo ? '' : 'display:none'}">${pills.todo}</div>

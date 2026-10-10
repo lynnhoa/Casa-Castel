@@ -1025,7 +1025,7 @@ function _aptCardHTML(a) {
           ${vacant ? 'Vacant' : 'Occupied'}
         </span>
       </div>
-      ${a.adresse ? `<div class="apt-hdr__addr">${aptEsc(a.adresse)}</div>` : ''}
+      ${a.adresse || a.wohnungsnummer ? `<div class="apt-hdr__addr">${aptEsc([a.adresse, a.wohnungsnummer].filter(Boolean).join(' \u00b7 '))}</div>` : ''}
       <div class="apt-hdr__who">
         ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
         <span class="apt-hdr__rent">${rentHTML}</span>
