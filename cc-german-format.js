@@ -2,7 +2,7 @@
    cc-german-format.js — German numbers & dates (all management apps)
 
    Loaded by: rentals-index.html, landlord.html, controlling.html,
-              properties.html  (NOT tenant.html)
+              properties.html, settlements.html, tenant.html (absence dates)
 
    What you see / type          What the code and database get
    1.200,00 €  (1.200 / 1200,5) 1200.5   (plain number, unchanged)
@@ -58,6 +58,14 @@ function ccFmtNum(n, dec = 2) {
   const max = dec === 'auto' ? 2 : dec;
   return v.toLocaleString('de-DE', { minimumFractionDigits: min, maximumFractionDigits: max });
 }
+
+/* Sizes (m²) and other plain numbers: 16.5 → "16,5" · 68.25 → "68,25" · 28 → "28" */
+function ccM2(v) {
+  const n = Number(v);
+  return v === null || v === undefined || v === '' || !isFinite(n) ? String(v ?? '') : ccFmtNum(n, 'auto');
+}
+/* Percent: 22.15 → "22,15 %" (always 2 decimals) */
+function ccFmtPct(v) { const n = Number(v); return (isFinite(n) ? ccFmtNum(Math.round(n * 100) / 100, 2) : '0,00') + '\u00a0%'; }
 
 /* 1200.5 → "1.200,50 €" */
 function ccFmtEUR(n) {

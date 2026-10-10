@@ -1015,7 +1015,7 @@ function _aptCardHTML(a) {
         <div class="apt-row"><span class="apt-row__k">Heizungsart</span><span class="apt-row__v">${aptEsc(a.heizungsart || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Rooms</span><span class="apt-row__v">${aptEsc(a.zimmer_type || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Floor</span><span class="apt-row__v">${aptEsc(a.floor || '—')}</span></div>
-        <div class="apt-row"><span class="apt-row__k">Size</span><span class="apt-row__v">${a.flaeche_m2 ? a.flaeche_m2 + ' m²' : '—'}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Size</span><span class="apt-row__v">${a.flaeche_m2 ? ccM2(a.flaeche_m2) + ' m²' : '—'}</span></div>
         <div class="apt-row"><span class="apt-row__k">Energieklasse</span><span class="apt-row__v">${aptEsc(a.energieklasse || '—')}</span></div>
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('identity','${a.id}')">
@@ -2203,7 +2203,7 @@ async function _aptOpenContract(type, aptId, renew) {
   const body     = document.getElementById('aptContractBody');
   const footer   = document.getElementById('aptContractFooter');
 
-  const aptInfo = [apt.zimmer_type, apt.heizungsart, apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : ''].filter(Boolean).join(' · ');
+  const aptInfo = [apt.zimmer_type, apt.heizungsart, apt.flaeche_m2 ? ccM2(apt.flaeche_m2) + ' m²' : ''].filter(Boolean).join(' · ');
   subLbl.textContent = aptInfo;
   // the sheet appears at once; the form follows as soon as the tenant data is there
   titleLbl.textContent = apt.name; footer.innerHTML = '';
@@ -2636,7 +2636,7 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
       <div class="rm-pre-row"><span>Etage</span><span>${aptEsc(apt.floor || '—')}</span></div>
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${aptEsc(apt.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Unterzeichnung</span><span>${aptEsc(apt.unterschrift_ort || '—')}</span></div>
-      <div class="rm-pre-row"><span>Size</span><span>${apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : '—'}</span></div>
+      <div class="rm-pre-row"><span>Size</span><span>${apt.flaeche_m2 ? ccM2(apt.flaeche_m2) + ' m²' : '—'}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${rentDisplay}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Haustür ×${sk.haustuerschluessel ?? 1} · Wohnung ×${sk.wohnungsschluessel ?? 1}</span></div>
     </div>
@@ -2761,7 +2761,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
         </div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <input class="rm-input" id="apt-mv-staffel-anfang" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <input class="rm-input" id="apt-mv-staffel-anfang" type="number" data-cc-num="2" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
           <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
           <span style="font-size:11px;color:var(--cc-taupe);" id="apt-mv-staffel-anfang-ab">ab Mietbeginn</span>
         </div>
@@ -2878,7 +2878,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
       <div class="rm-pre-row"><span>Name</span><span>${aptEsc(apt.name)}</span></div>
       <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse||'—')}</span></div>
       <div class="rm-pre-row"><span>PLZ / Ort</span><span>${aptEsc(apt.plz_ort||'—')}</span></div>
-      <div class="rm-pre-row"><span>Fläche</span><span>${apt.flaeche_m2?apt.flaeche_m2+' m²':'—'}</span></div>
+      <div class="rm-pre-row"><span>Fläche</span><span>${apt.flaeche_m2?ccM2(apt.flaeche_m2)+' m²':'—'}</span></div>
       <div class="rm-pre-row"><span>Kaltmiete</span><span>${kaltFmt(kalt)}</span></div>
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${aptEsc(apt.gerichtsstand||'—')}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>${aptEsc(schluessel)}</span></div>
@@ -3030,7 +3030,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
         </div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete (während Festlaufzeit)</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <input class="rm-input" id="apt-gw-staffel-anfang" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <input class="rm-input" id="apt-gw-staffel-anfang" type="number" data-cc-num="2" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
           <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
           <span style="font-size:11px;color:var(--cc-taupe);" id="apt-gw-staffel-anfang-ab">ab Mietbeginn</span>
         </div>

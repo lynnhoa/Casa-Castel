@@ -50,7 +50,7 @@ function renderPortfolio() {
         <div class="port-row__no">${String(p.sort_order).padStart(2, '0')}</div>
         <div class="port-row__main">
           <div class="port-row__name">${p.name} ${zp} ${sp}</div>
-          <div class="port-row__sub">${p.cat} · ${p.m2} m² · ${p.bank} · ${p.zinssatz.toFixed(2).replace('.', ',')} %</div>
+          <div class="port-row__sub">${p.cat} · ${ccM2(p.m2)} m² · ${p.bank} · ${p.zinssatz.toFixed(2).replace('.', ',')} %</div>
         </div>
         <div class="port-row__nums">
           <div class="port-row__rate">${rd}</div>
@@ -194,7 +194,7 @@ function renderView(p) {
     <span class="mod-sec">Purchase</span>
     <div class="mod-row"><span class="mod-key">Address</span><span class="mod-val" style="font-size:12px">${p.addr}</span></div>
     <div class="mod-row"><span class="mod-key">Type</span><span class="mod-val">${p.cat}</span></div>
-    <div class="mod-row"><span class="mod-key">Size</span><span class="mod-val">${p.m2} m²</span></div>
+    <div class="mod-row"><span class="mod-key">Size</span><span class="mod-val">${ccM2(p.m2)} m²</span></div>
     <div class="mod-row"><span class="mod-key">Purchase price</span><span class="mod-val">${eur(p.kaufpreis)}</span></div>
     <div class="mod-row"><span class="mod-key">Acquisition costs</span><span class="mod-val">${eur(p.nebenkosten)}</span></div>
     <div class="mod-row"><span class="mod-key">Equity</span><span class="mod-val">${eur(p.ek)}</span></div>

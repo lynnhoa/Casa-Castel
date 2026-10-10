@@ -1203,7 +1203,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
         </div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete (während Mindestlaufzeit)</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <input class="rm-input" id="pk-mv-staffel-anfang" type="number" step="0.01" value="${miete||''}" placeholder="80,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <input class="rm-input" id="pk-mv-staffel-anfang" type="number" data-cc-num="2" step="0.01" value="${miete||''}" placeholder="80,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
           <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
           <span style="font-size:11px;color:var(--cc-taupe);" id="pk-mv-staffel-anfang-ab">ab Mietbeginn</span>
         </div>

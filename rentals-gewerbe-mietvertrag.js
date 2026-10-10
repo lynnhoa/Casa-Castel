@@ -372,7 +372,7 @@ function _renderGewerbeMietvertragHTML(d) {
     ${kv('PLZ / Ort',d.objektPLZOrt)}
     ${kv('Bezeichnung',d.aptName)}
     ${d.etage?kv('Etage / Einheit',d.etage):''}
-    ${d.flaeche?kv('Nutzfl\u00e4che','ca.\u00a0'+d.flaeche+'\u00a0m\u00b2'):''}
+    ${d.flaeche?kv('Nutzfl\u00e4che','ca.\u00a0'+ccM2(d.flaeche)+'\u00a0m\u00b2'):''}
     ${kv('Nutzungszweck',d.nutzungszweck || '________________________')}
     ${d.moebliert?kv('M\u00f6blierung','M\u00f6bliert \u00b7 Inventar siehe Anlage\u00a0A'):''}
     ${kv('Schl\u00fcssel',d.schluessel)}

@@ -94,7 +94,7 @@ function _aptCollectUebergData(apt, isEinzug) {
     adresse:         apt.adresse || '',
     wohnungsnummer:  apt.wohnungsnummer || '',
     plzOrt:          apt.plz_ort || '',
-    flaeche:         apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : '',
+    flaeche:         apt.flaeche_m2 ? ccM2(apt.flaeche_m2) + ' m²' : '',
     zimmerType:      apt.zimmer_type || '',
     nutzungszweck:   document.getElementById('apt-ub-nutzungszweck')?.value.trim() || '',
     // Vermieter from shared settings

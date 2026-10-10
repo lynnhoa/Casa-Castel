@@ -193,7 +193,7 @@ function _contractBodyRentalMietvertrag(room) {
     <div class="rm-prefilled">
       <div class="rm-prefilled__title">Pre-filled from room &amp; profile</div>
       <div class="rm-pre-row"><span>Room</span><span>${esc(room.name)}</span></div>
-      <div class="rm-pre-row"><span>Größe</span><span>ca. ${room.flaeche_m2 || '—'} m\u00b2</span></div>
+      <div class="rm-pre-row"><span>Größe</span><span>ca. ${room.flaeche_m2 ? ccM2(room.flaeche_m2) : '—'} m\u00b2</span></div>
       <div class="rm-pre-row"><span>Gemeinschaft</span><span>${esc(gemStr)}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${kaltDisplay}</span></div>
       <div class="rm-pre-row"><span>Gesamtmiete</span><span>${gesamtDisplay} / Monat</span></div>

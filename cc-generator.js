@@ -148,7 +148,7 @@ function ccgBodyHTML(type, room, renew) {
   const set = [
     ['Vermieter', s.vermieter_name || '—'],
     ['Objekt', [s.objekt_adresse, s.objekt_plz_ort].filter(Boolean).join(', ') || '—'],
-    ['Zimmer', [room.name, room.flaeche_m2 ? 'ca. ' + room.flaeche_m2 + ' m²' : '', room.floor].filter(Boolean).join(' · ')],
+    ['Zimmer', [room.name, room.flaeche_m2 ? 'ca. ' + ccM2(room.flaeche_m2) + ' m²' : '', room.floor].filter(Boolean).join(' · ')],
     ['Mitgenutzt', arr(room.gemeinschaftsraeume).join(', ') || '—'],
     ['Bank', s.iban ? 'IBAN ' + s.iban : '—'],
     ['Schlüssel', `Haustür ×${room.haustuerschluessel || 1} · Zimmer ×${room.zimmerschluessel || 1}`],

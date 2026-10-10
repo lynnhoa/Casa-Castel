@@ -1207,7 +1207,7 @@ function _roomCardHTML(r) {
   } else {
     whoLine = `<span class="rc-who rc-who--vac">Soll not set · ${_RC_BASE_LBL[soll.type]} baseline › Edit</span>`;
   }
-  const metaParts = [r.flaeche_m2 ? r.flaeche_m2 + ' m²' : '', r.floor || '', r.room_type || '', hasKitchen ? 'Kitchen' : ''].filter(Boolean);
+  const metaParts = [r.flaeche_m2 ? ccM2(r.flaeche_m2) + ' m²' : '', r.floor || '', r.room_type || '', hasKitchen ? 'Kitchen' : ''].filter(Boolean);
 
   // ── Baselines: one row per contract type — price, Kaution, its generator (Contract ›) and Edit
   const baseRow = type => {
@@ -1265,7 +1265,7 @@ function _roomCardHTML(r) {
           <div class="rc-rows">
             ${roomRow('Typ', esc(r.room_type || '—'))}
             ${roomRow('Etage', esc(r.floor || '—'))}
-            ${roomRow('Größe', r.flaeche_m2 ? r.flaeche_m2 + ' m²' : '—')}
+            ${roomRow('Größe', r.flaeche_m2 ? ccM2(r.flaeche_m2) + ' m²' : '—')}
             ${roomRow('Küche', esc(r.kitchen_type || '—') + (hasKitchen ? ' · in Kitchen rotation' : ''))}
             ${roomRow('Bad', esc(badStr))}
             ${roomRow('Mitgenutzt', esc(gemStr))}
@@ -2087,7 +2087,7 @@ async function _openContract(type, roomId, renew) {
   if ((type === 'kurzzeit' || type === 'jahres' || type === 'mietvertrag') && typeof ccgBodyHTML === 'function') {
     typeLbl.textContent  = type === 'kurzzeit' ? 'Kurzzeitmietvertrag' : type === 'jahres' ? 'Mietvertrag · Jahresvertrag' : 'Mietvertrag';
     titleLbl.textContent = `New contract — ${room.name}`;
-    subLbl.textContent   = [room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '', room.floor, room.room_type].filter(Boolean).join(' · ');
+    subLbl.textContent   = [room.flaeche_m2 ? ccM2(room.flaeche_m2) + ' m²' : '', room.floor, room.room_type].filter(Boolean).join(' · ');
     body.innerHTML       = ccgBodyHTML(type, room, _contractRenew);
     footer.innerHTML     = ccfFooterHTML();
 
@@ -2095,7 +2095,7 @@ async function _openContract(type, roomId, renew) {
     const isEinzug = _rcEULabel(roomId) === 'Einzug';
     typeLbl.textContent  = 'Übergabeprotokoll';
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + room.name;
-    subLbl.textContent   = (room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '') + (room.floor ? ' · ' + room.floor : '');
+    subLbl.textContent   = (room.flaeche_m2 ? ccM2(room.flaeche_m2) + ' m²' : '') + (room.floor ? ' · ' + room.floor : '');
     body.innerHTML       = _contractBodyUeberg(room, isEinzug);
     footer.innerHTML     = ccfFooterHTML(ccfRoomTenancies(room.name).length > 0);
   }
@@ -2448,7 +2448,7 @@ function _contractBodyKurzzeit(room) {
     <div class="rm-prefilled">
       <div class="rm-prefilled__title">Pre-filled from room & profile</div>
       <div class="rm-pre-row"><span>Room</span><span>${esc(room.name)}</span></div>
-      <div class="rm-pre-row"><span>Size</span><span>ca. ${room.flaeche_m2||'—'} m²</span></div>
+      <div class="rm-pre-row"><span>Size</span><span>ca. ${room.flaeche_m2 ? ccM2(room.flaeche_m2) : '—'} m²</span></div>
       <div class="rm-pre-row"><span>Shared</span><span>${esc(gemStr)}</span></div>
       <div class="rm-pre-row"><span>Rent</span><span>${rentDisplay} / Monat</span></div>
       <div class="rm-pre-row"><span>Vermieter</span><span>${esc(s.vermieter_name||'—')}</span></div>
@@ -2966,7 +2966,7 @@ function _renderKurzzeitHTML(d) {
     ${sec('Mietobjekt', false, false)}
     ${kv('Adresse', d.objektAdresse)}
     ${kv('Bezeichnung', d.zimmerName)}
-    ${kv('Wohnfläche', 'ca. ' + d.zimmerFlaeche + ' m²')}
+    ${kv('Wohnfläche', 'ca. ' + ccM2(d.zimmerFlaeche) + ' m²')}
     ${kv('Mitgenutzte Räume', d.gemeinschaftsraeume)}
     ${kv('Möblierung', 'Möbliert · Inventar siehe Anlage A')}
 
@@ -3446,7 +3446,7 @@ function _renderUebergHTML(d) {
 
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Objekt / Adresse', d.objekt)}
-    ${kv('Zimmer', d.zimmer + (d.flaeche ? ' · ca. ' + d.flaeche + ' m²' : '') + (d.floor ? ' · ' + d.floor : ''))}
+    ${kv('Zimmer', d.zimmer + (d.flaeche ? ' · ca. ' + ccM2(d.flaeche) + ' m²' : '') + (d.floor ? ' · ' + d.floor : ''))}
     ${kv('Vermieter', d.vermieter)}
     ${kv('Mieter', d.mieterName)}
     ${kv('Adresse Mieter', d.mieterAdr)}
@@ -4083,7 +4083,7 @@ function _renderMietvertragHTML(d) {
     ${d.mieterTelefon?kv('Telefon',d.mieterTelefon):''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
-    ${kv('Zimmergröße','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
+    ${kv('Zimmergröße','ca.\u00a0'+ccM2(d.zimmerFlaeche)+'\u00a0m\u00b2')}
     ${kv('Mitgenutzte Räume',d.gemeinschaftsraeume||'—')}
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit',false,false)}
