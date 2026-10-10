@@ -25,13 +25,8 @@ document.getElementById('tab-parking').innerHTML = `
     </button>
   </div>
 
-  <!-- Summary line (Casa Castel layout): same numbers as before -->
-  <div class="cc-sumline pk-sumline" id="pkSummary" style="display:none">
-    <div class="cc-sumline__top"><b>Total Miete / Monat</b><span id="pkSummaryBreakdown"></span></div>
-    <div class="cc-sumline__vals">
-      <div><span>Miete</span><b id="pkSummaryTotal"></b></div>
-    </div>
-  </div>
+  <!-- Summary line (small): SOLL — the asking Miete of every spot -->
+  <div class="cc-sum2" id="pkSummary" style="display:none"></div>
 
   <div class="rp-list" id="pkList"></div>
 
@@ -341,22 +336,19 @@ async function loadParking() {
 /* ── RENDER LIST ─────────────────────────────────────────── */
 function _updatePkSummary() {
   const bar = document.getElementById('pkSummary');
-  const bd  = document.getElementById('pkSummaryBreakdown');
-  const tot = document.getElementById('pkSummaryTotal');
   if (!bar) return;
   if (!appParking.length) { bar.style.display = 'none'; return; }
-
-  let total = 0, occupied = 0;
+  let miete = 0, kau = 0, occupied = 0;
   appParking.forEach(p => {
-    if (p.vacant) return;
-    occupied++;
-    const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('pk', p.id) : null;
-    total += cur ? (Number(cur.kalt) || 0) : (Number(p.pricing?.miete) || 0);
+    if (!p.vacant) occupied++;
+    const pr = p.pricing || {};
+    const m  = Number(pr.miete) || 0;
+    miete += m;
+    kau   += ccKaution({ contract: 'parking', kalt: m, rec: pr }).amount || 0;
   });
-
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span>${occupied} / ${appParking.length} occupied</span></div>
+    <div class="cc-sum2__vals"><span><i>Miete</i>${pkFmtEURCompact(miete)}</span><span><i>Kaution</i>${pkFmtEURCompact(kau)}</span></div>`;
   bar.style.display = 'flex';
-  bd.textContent  = occupied + ' / ' + appParking.length + ' occupied · occupied only';
-  tot.textContent = pkFmtEURCompact(total);
 }
 
 function _renderPkList() {

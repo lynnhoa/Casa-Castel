@@ -17,7 +17,7 @@ document.getElementById('tab-tenants').innerHTML = `
     <h1 class="cc-h1">Tenants</h1>
   </div>
   <!-- IST line: what the tenants living here pay today + Kaution held (Rooms shows the Soll) -->
-  <div class="cc-sumline" id="tn-ist" style="display:none"></div>
+  <div class="cc-sum2" id="tn-ist" style="display:none"></div>
   <div id="tn-open-summary" class="tn-open-summary" style="display:none"></div>
   <div class="tn-list" id="tenantsList"></div>
 
@@ -1331,9 +1331,9 @@ function _tnSummaryUpdate() {
     const t = _tnIstTotals();
     const vac = Math.max(0, t.rooms - t.tenants);
     // one quiet card: IST figures, open items as its footer (same card as the Soll in Rooms)
-    ist.innerHTML = `<div class="cc-sumline__top"><b>IST · Actual</b><span>${t.tenants} living here${vac ? ' \u00b7 ' + vac + ' vacant' : ''} \u00b7 today</span></div>
-      <div class="cc-sumline__vals"><div><span>Kalt</span><b>${_tnFmtEUR(t.kalt)}</b></div><div><span>NK</span><b>${_tnFmtEUR(t.nk)}</b></div><div><span>Kaution held</span><b>${_tnFmtEUR(held)}</b></div></div>
-      ${pills ? `<div class="cc-sumline__foot"><span>Open</span>${pills}</div>` : ''}`;
+    ist.innerHTML = `<div class="cc-sum2__meta"><b>Ist</b><span>${t.tenants} living here${vac ? ' \u00b7 ' + vac + ' vacant' : ''}</span></div>
+      <div class="cc-sum2__vals"><span><i>Kalt</i>${_tnFmtEUR(t.kalt)}</span><span><i>NK</i>${_tnFmtEUR(t.nk)}</span><span><i>Kaution held</i>${_tnFmtEUR(held)}</span></div>
+      ${pills ? `<div class="cc-sum2__open"><i>Open</i>${pills}</div>` : ''}`;
     ist.style.display = _tnRecords.length ? '' : 'none';
   }
   const oc = document.getElementById('tn-open-summary');
@@ -1672,7 +1672,7 @@ function _getProfile(room) {
 /* Instant start (Oct 2026): the list as it looked last time is shown at once from this phone,
    then replaced by the fresh data the moment it arrives — never "No tenant added" while loading.
    Only on the landlord's device, replaced on every load; taps wait for the fresh list. */
-const _TN_SNAP = 'cc_tn_snapshot_v1';
+const _TN_SNAP = 'cc_tn_snapshot_v2';   // v2: small summary line (Oct 2026)
 function _tnSnapPaint(list) {
   if (list.querySelector('.tn-card')) return;
   let snap = null;

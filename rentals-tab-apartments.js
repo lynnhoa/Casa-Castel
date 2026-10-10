@@ -25,14 +25,8 @@ document.getElementById('tab-apartments').innerHTML = `
     </button>
   </div>
 
-  <!-- Summary line (Casa Castel layout): same numbers as before -->
-  <div class="cc-sumline apt-sumline" id="aptSummary" style="display:none">
-    <div class="cc-sumline__top"><b>Gesamtkaltmiete / Monat</b><span id="aptSummaryBreakdown"></span></div>
-    <div class="cc-sumline__vals">
-      <div><span>Kalt</span><b id="aptSummaryTotal"></b></div>
-      <div><span>NK separat</span><b id="aptSummaryNk"></b></div>
-    </div>
-  </div>
+  <!-- Summary line (small): SOLL — the asking rent of every apartment -->
+  <div class="cc-sum2" id="aptSummary" style="display:none"></div>
 
   <div class="rp-list" id="aptList"></div>
 
@@ -876,28 +870,30 @@ async function loadApartments() {
 
 
 /* ── RENDER LIST ─────────────────────────────────────────── */
+/* SOLL of one apartment = the asking rent of its current contract type (like Casa Castel Rooms):
+   someone on Kurzzeit → the Kurzzeit price (if set), otherwise Mietvertrag / Gewerbe — vacant ones too. */
+function _aptSoll(a) {
+  const p = a.pricing || {};
+  const kalt = Number(p.kaltmiete) || 0, nk = Number(p.nk_pauschale) || 0;
+  const rec  = typeof rntCurrentRecOf === 'function' ? rntCurrentRecOf('apt', a.id) : null;
+  const type = rec && typeof rntContractType === 'function' ? rntContractType(rec) : null;
+  if (a.zimmer_type !== 'Gewerbefläche' && type === 'kurzzeit' && Number(p.kurzzeit_kaltmiete) > 0)
+    return { kalt: Number(p.kurzzeit_kaltmiete) || 0, nk: Number(p.kurzzeit_nk) || 0, kaution: ccKaution(_aptKzKautionOpts(p)).amount || 0 };
+  return { kalt, nk, kaution: ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: p }).amount || 0 };
+}
 function _updateAptSummary() {
   const bar = document.getElementById('aptSummary');
-  const bd  = document.getElementById('aptSummaryBreakdown');
-  const tot = document.getElementById('aptSummaryTotal');
   if (!bar) return;
   if (!appApartments.length) { bar.style.display = 'none'; return; }
-
-  // Total of the tenants' real rents (asking rent only while tenant data isn't loaded yet)
-  let kalt = 0, nk = 0, occupied = 0;
+  let kalt = 0, nk = 0, kau = 0, occupied = 0;
   appApartments.forEach(a => {
-    if (a.vacant) return;
-    occupied++;
-    const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('apt', a.id) : null;
-    kalt += cur ? (Number(cur.kalt) || 0) : (Number(a.pricing?.kaltmiete) || 0);
-    nk   += cur ? (Number(cur.nk)   || 0) : (Number(a.pricing?.nk_pauschale) || 0);
+    if (!a.vacant) occupied++;
+    const s = _aptSoll(a);
+    kalt += s.kalt; nk += s.nk; kau += s.kaution;
   });
-
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span>${occupied} / ${appApartments.length} belegt</span></div>
+    <div class="cc-sum2__vals"><span><i>Kalt</i>${aptFmtEURCompact(kalt)}</span><span><i>NK</i>${aptFmtEURCompact(nk)}</span><span><i>Kaution</i>${aptFmtEURCompact(kau)}</span></div>`;
   bar.style.display = 'flex';
-  bd.textContent  = occupied + ' / ' + appApartments.length + ' belegt · nur belegte Wohnungen';
-  tot.textContent = aptFmtEURCompact(kalt);
-  const nkEl = document.getElementById('aptSummaryNk');
-  if (nkEl) nkEl.textContent = aptFmtEURCompact(nk);
 }
 
 function _renderAptList() {

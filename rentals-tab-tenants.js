@@ -18,8 +18,8 @@ document.getElementById('tab-tenants').innerHTML = `
   <div class="tn-hdr">
     <h1 class="cc-h1">Tenants</h1>
   </div>
-  <!-- Casa Castel layout: the same "Kaution held" figure as a line under the title -->
-  <div class="cc-sumline rnt-ist" id="rnt-kaution-summary" style="display:none"></div>
+  <!-- Summary line (small): IST — rent of everyone living there today + Kaution held -->
+  <div class="cc-sum2" id="rnt-kaution-summary" style="display:none"></div>
   <div class="tn-list" id="rntTenantsList"></div>
 
 
@@ -716,10 +716,29 @@ function _rntDetailsGroupHTML(rid, unit, rec) {
 /* ── Casa Castel layout (Oct 2026): Kaution line · More list · Übergabe button · Former tenants row ── */
 function _rntKautionLine(el, totalHeld) {
   if (!el) return;
-  if (totalHeld > 0) {
-    el.innerHTML = `<div class="cc-sumline__vals"><div><span>Kaution held</span><b>${_rntFmtEUR(totalHeld)}</b></div></div>`;
-    el.style.display = 'flex';
-  } else el.style.display = 'none';
+  // every apartment and parking spot: who lives there today, and their rent (rent history first)
+  const units = [...(typeof appApartments !== 'undefined' ? appApartments : []).map(a => ['apartment_id', a.id]),
+                 ...(typeof appParking !== 'undefined' ? appParking : []).map(p => ['parking_id', p.id])];
+  if (!units.length) { el.style.display = 'none'; return; }
+  let kalt = 0, nk = 0, living = 0;
+  units.forEach(([col, id]) => {
+    const cur = _ccPickTenancy(_rntRecords.filter(r => r[col] === id && r.status === 'active')).current;
+    if (!cur) return;
+    living++;
+    const r = _rntCurrentRent(cur);
+    if (r) { kalt += Number(r.kalt) || 0; nk += Number(r.nk) || 0; }
+  });
+  const vac = units.length - living;
+  el.innerHTML = `<div class="cc-sum2__meta"><b>Ist</b><span>${living} living here${vac ? ' \u00b7 ' + vac + ' vacant' : ''}</span></div>
+    <div class="cc-sum2__vals"><span><i>Kalt</i>${_rntFmtEUR(kalt)}</span><span><i>NK</i>${_rntFmtEUR(nk)}</span><span><i>Kaution held</i>${_rntFmtEUR(totalHeld)}</span></div>`;
+  el.style.display = 'flex';
+}
+/* the current tenancy of a unit (same pick as the card) — for the Apartments Soll */
+function rntCurrentRecOf(kind, id) {
+  const src = _rntLoadedOnce ? _rntRecords : _rntActiveRecs;
+  if (!src) return null;
+  const col = kind === 'apt' ? 'apartment_id' : 'parking_id';
+  return _ccPickTenancy(src.filter(r => r[col] === id && r.status === 'active')).current || null;
 }
 /* One "More" list = the former Nebenkosten + Details groups (same rows, same sheets) */
 function _rntMoreHTML(rid, type, unit, rec) {
@@ -1172,6 +1191,7 @@ async function _rntLoad() {
   _rntLoadedOnce = true;
 
   _rntSyncOccupancy();       // occupied / vacant from the dates (and former after the move-out)
+  try { if (typeof _updateAptSummary === 'function') _updateAptSummary(); } catch (e) {}   // Soll: contract types now known
   _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _rntFreezeRent();          // existing active tenants: fix their rent once
   _rntRenderIfChanged();
@@ -3898,7 +3918,7 @@ function rntWarmTenants() {
   if (typeof sbL === 'undefined' || !sbL) return Promise.resolve();
   if (!_rntWarmPromise) {
     _rntWarmPromise = sbL.from('rnt_tenant_records')
-      .select('id,apartment_id,parking_id,status,mietbeginn,mietende,kaltmiete,nebenkosten,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll')
+      .select('id,contract_type,apartment_id,parking_id,status,mietbeginn,mietende,kaltmiete,nebenkosten,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll')
       .then(({ data, error }) => {
         if (error) { console.warn('[rentals tenants] preload:', error.message); return; }
         if (!_rntLoadedOnce) { _rntActiveRecs = data || []; _rntSyncOccupancy(); }   // all statuses; readers filter 'active'

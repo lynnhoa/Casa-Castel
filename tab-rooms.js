@@ -31,7 +31,7 @@ document.getElementById('tab-rooms').innerHTML = `
     </div>
 
     <!-- Soll line: the baselines of all rooms (Jahres- / Mietvertrag) -->
-    <div class="cc-sumline" id="roomsSummary" style="display:none;"></div>
+    <div class="cc-sum2" id="roomsSummary" style="display:none;"></div>
 
     <!-- Card list -->
     <div class="rp-list" id="roomsList"></div>
@@ -961,8 +961,8 @@ function _updateRoomsSummary(rooms) {
     kau  += b.kaution || 0;
   });
   bar.style.display = '';
-  bar.innerHTML = `<div class="cc-sumline__top"><b>Soll · Baseline</b><span>${list.length} rooms · ${occ} occupied · ${list.length - occ} vacant</span></div>
-    <div class="cc-sumline__vals"><div><span>Kalt</span><b>${fmtEUR(kalt)}</b></div><div><span>NK</span><b>${fmtEUR(nk)}</b></div><div><span>Kaution</span><b>${fmtEUR(kau)}</b></div></div>`;
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span>${occ} / ${list.length} occupied</span></div>
+    <div class="cc-sum2__vals"><span><i>Kalt</i>${fmtEUR(kalt)}</span><span><i>NK</i>${fmtEUR(nk)}</span><span><i>Kaution</i>${fmtEUR(kau)}</span></div>`;
 }
 
 function _renderRoomsList() {
