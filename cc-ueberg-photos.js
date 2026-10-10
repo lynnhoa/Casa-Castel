@@ -263,14 +263,14 @@ async function ccUbAddPhotoPages(key, container, meta = {}) {
         </div>
         <div style="display:flex;gap:8px;align-items:baseline;margin-top:7px">
           <span style="font-family:'Lato',sans-serif;font-size:7.5px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#4a4540">Foto ${i + 1}</span>
-          <span style="font-family:'Lato',sans-serif;font-size:9px;font-weight:300;color:#8a847c">${p.when || _ccUbWhen(p.ts)}${p.taken === false ? ' (hinzugefügt)' : ''}</span>
+          <span style="font-family:'Lato',sans-serif;font-size:9px;font-weight:400;color:#6b645c">${p.when || _ccUbWhen(p.ts)}${p.taken === false ? ' (hinzugefügt)' : ''}</span>
         </div>
-        ${cap ? `<div style="font-family:'Lato',sans-serif;font-size:10px;font-weight:300;color:#1a1a1a;margin-top:3px;line-height:1.35;max-height:27px;overflow:hidden">${E(cap)}</div>` : ''}
+        ${cap ? `<div style="font-family:'Lato',sans-serif;font-size:10px;font-weight:400;color:#2b2722;margin-top:3px;line-height:1.35">${E(cap)}</div>` : ''}
       </div>`;
     }).join('');
     content.innerHTML = `
       <div class="doc-title" style="font-family:'Playfair Display',serif;font-size:21px;font-weight:400;color:#1a1a1a;line-height:1.15;margin-bottom:4px">Fotodokumentation</div>
-      <div class="doc-subtitle" style="font-family:'Lato',sans-serif;font-size:9.5px;font-weight:300;color:#aaa59e;margin-bottom:22px">${sub}</div>
+      <div class="doc-subtitle" style="font-family:'Lato',sans-serif;font-size:9.5px;font-weight:400;color:#6b645c;margin-bottom:22px">${sub}</div>
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:${GAP_X}px;row-gap:${GAP_Y}px">${cells}</div>`;
     last.after(pg);
     last = pg;

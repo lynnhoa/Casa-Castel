@@ -780,9 +780,10 @@ function _rntUbOpen(pre, unitId) {
     }).observe(ov, { attributes: true, attributeFilter: ['class'] });
   }
   if (typeof switchTab === 'function') switchTab(isApt ? 'apartments' : 'parking');
-  setTimeout(() => {
+  setTimeout(async () => {
     window._rntUbReturn = 'tenants';
-    if (isApt) _aptOpenContract('ueberg', unitId); else _pkOpenContract('ueberg', unitId);
+    try { if (isApt) await _aptOpenContract('ueberg', unitId); else await _pkOpenContract('ueberg', unitId); }
+    finally { if (!ov || !ov.classList.contains('open')) window._rntUbReturn = null; }   // did not open → no jump later
   }, 80);
 }
 /* Former tenants — one row that opens the same list (Show older · Add former tenant · Archived) */

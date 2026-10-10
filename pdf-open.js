@@ -200,13 +200,18 @@ function ccFlowCheck(container) {
       if (!n.textContent.trim()) continue;
       const el = n.parentElement; if (!el) continue;
       const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || el.offsetParent === null && cs.position !== 'fixed') continue;
+      // boxes between the text and the page area that cut what hangs out of them
+      const clips = [];
+      for (let a = el; a && a !== c; a = a.parentElement) {
+        const ac = getComputedStyle(a);
+        if (ac.overflow !== 'visible' || ac.overflowY !== 'visible' || ac.overflowX !== 'visible') clips.push(a.getBoundingClientRect());
+      }
       const r = document.createRange(); r.selectNodeContents(n);
       for (const rc of r.getClientRects()) {
         if (rc.width < 0.5 || rc.height < 0.5) continue;
         // 3 px: the font's own line box (tall capitals, descenders) — not text that is cut
-        if (rc.bottom > cr.bottom + 3 || rc.top < cr.top - 3 || rc.right > cr.right + 1.5 || rc.left < cr.left - 1.5) {
-          cut.push({ page: i + 1, text: n.textContent.trim().slice(0, 40) }); break;
-        }
+        const outside = b => rc.bottom > b.bottom + 3 || rc.top < b.top - 3 || rc.right > b.right + 1.5 || rc.left < b.left - 1.5;
+        if (outside(cr) || clips.some(outside)) { cut.push({ page: i + 1, text: n.textContent.trim().slice(0, 40) }); break; }
       }
     }
   });

@@ -374,6 +374,11 @@ function _renderRentalMietvertragHTML(d) {
     .sig-line { border:none; border-top:0.6px solid #2b2722; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:700; color:#4a4540; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#2b2722; margin-top:4px; }
+  
+    /* Mietbürgschaft page (cc-buergschaft.js): the same darker print as the Casa contracts */
+    .cc-bg-page, .cc-bg-page p, .cc-bg-page span { color:#1a1a1a !important; font-weight:400 !important; }
+    .cc-bg-page div[style*="font-size:9.5px"] { color:#6b645c !important; font-weight:400 !important; }
+    .cc-bg-page > div:first-child { font-weight:700 !important; }
   `;
 
   const hdr = room => `<div class="hdr"><span class="hdr__wordmark">${room}</span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${d.wohnungsnummer || ''}</span></div></div>`;
