@@ -254,7 +254,7 @@ function _renderRentalKurzzeitHTML(d) {
     .cc-bg-page > div:first-child { font-weight:700 !important; }
   `;
 
-  const hdr = name => `<div class="hdr"><span class="hdr__wordmark">${name}</span><div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${d.wohnungsnummer || ''}</span></div></div>`;
+  const hdr = name => `<div class="hdr"><span class="hdr__wordmark">${name}</span>${d.wohnungsnummer ? `<div class="hdr__room"><span class="hdr__room-label">Wohnung</span><span class="hdr__room-name">${d.wohnungsnummer}</span></div>` : ''}</div>`;
   const ftr = n    => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${d.footerAdresse}</span><span>${n}</span></div></div>`;
   const kv  = (k,v)=> `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
   const sec = (t,lg,first) => `<div class="sec${lg?' sec--lg':''}${first?' sec--first':''}">${t}</div>`;

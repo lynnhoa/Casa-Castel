@@ -110,7 +110,7 @@ function nkLetterHtml(d) {
   const nb = s => String(s).replace(/§ /g, '§\u00a0').replace(/Abs\. /g, 'Abs.\u00a0').replace(/Satz /g, 'Satz\u00a0');
   const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300&display=swap');`;
   const CSS = NK_LETTER_CSS;
-  const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand || '')}</span><div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel || '')}</span><span class="hdr__room-name">${esc(d.unitName || '')}</span></div></div>`;
+  const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand || '')}</span>${d.unitName ? `<div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel || '')}</span><span class="hdr__room-name">${esc(d.unitName)}</span></div>` : ''}</div>`;
   const ftr = () => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer || '')}</span><span>Seite <span class="pgn">1</span> von <span class="pgt">1</span></span></div></div>`;
   const kv = (k, v) => `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
   const line = '<span class="fill"></span>';

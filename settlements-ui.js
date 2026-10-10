@@ -74,6 +74,9 @@ function stNeeds(items, emptyText) {
 }
 /* ── One-level modals (Oct 2026): amount on top · switches with dates · details below ─────────
    Own duotone icon set in the app's colours (no emoji) · the same frame in Rentals and Casa Castel */
+/* Wohnungsnummer in an address line: shown as stored ("WHG 03", "WHG 0.71");
+   only a bare number (old style, e.g. "3") gets "Whg." in front. */
+function stWhg(v) { const s = String(v || '').trim(); return !s ? '' : /^\d/.test(s) ? 'Whg. ' + s : s; }
 const ST_ICONS = {
   bld: '<rect x="5" y="3.5" width="14" height="17" rx="2" fill="#BFD0E0"/><path d="M5 20.5h14M8.5 7.5h2M13.5 7.5h2M8.5 11h2M13.5 11h2M8.5 14.5h2M13.5 14.5h2M10.5 20.5v-3h3v3" fill="none" stroke="#2F5470" stroke-width="1.5" stroke-linecap="round"/><rect x="5" y="3.5" width="14" height="17" rx="2" fill="none" stroke="#2F5470" stroke-width="1.5"/>',
   inbox: '<path d="M4 13l2.5-7.5h11L20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#D7CCEA"/><path d="M4 13l2.5-7.5h11L20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 13h4.5l1 2h5l1-2H20" fill="none" stroke="#5B4A7A" stroke-width="1.5" stroke-linejoin="round"/><path d="M12 3.5v6M9.5 7l2.5 2.5L14.5 7" fill="none" stroke="#5B4A7A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',

@@ -357,7 +357,7 @@ function _srBlankRec(c) {
 function _srAskMail(c, hv, to) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const apt = c.apt || {}, per = hv.per;
-  const obj = [apt.adresse, apt.wohnungsnummer ? 'Whg. ' + apt.wohnungsnummer : '', apt.plz_ort].filter(Boolean).join(', ') || c.p.name;
+  const obj = [apt.adresse, stWhg(apt.wohnungsnummer), apt.plz_ort].filter(Boolean).join(', ') || c.p.name;
   const subj = 'Hausgeld-Jahresabrechnung ' + _srPerLabel(per.from, per.to) + ' – ' + obj;
   const body = 'Sehr geehrte Damen und Herren,\n\nfür meine Wohnung ' + obj + ' liegt mir die Hausgeld-Jahresabrechnung für den Zeitraum ' +
     cxFmtDate(per.from) + ' bis ' + cxFmtDate(per.to) + ' noch nicht vor.\n\nDa ich die Betriebskosten gegenüber meinen Mietern bis spätestens ' + cxFmtDate(per.frist) +
@@ -467,7 +467,7 @@ function _srRefreshTenant() {
 }
 function _srDefaultAddr(c, it, x) {
   const t = x.t, apt = x.apt || c.apt;
-  const aptLines = apt ? [[apt.adresse, apt.wohnungsnummer ? 'Whg. ' + apt.wohnungsnummer : ''].filter(Boolean).join(', '), apt.plz_ort || ''].filter(Boolean).join('\n') : '';
+  const aptLines = apt ? [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort || ''].filter(Boolean).join('\n') : '';
   if (_srMovedOut(t) && t.address && String(t.address).trim() && !(apt && apt.adresse && String(t.address).includes(apt.adresse))) return String(t.address).trim().replace(/,\s*(\d{5})/, '\n$1');
   return aptLines;
 }
@@ -577,7 +577,7 @@ function _srLetterData(c, it, rec, x, ts) {
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
-    objekt: [[apt.adresse, apt.wohnungsnummer ? 'Whg. ' + apt.wohnungsnummer : ''].filter(Boolean).join(', '), apt.plz_ort].filter(Boolean).join(', '),
+    objekt: [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort].filter(Boolean).join(', '),
     footer: apt.adresse ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '') : (apt.plz_ort || ''),
     ort: apt.unterschrift_ort || '',
     vermieter: s.vermieter_name || '', sender,
@@ -597,8 +597,8 @@ function _srLetterData(c, it, rec, x, ts) {
   };
 }
 
-/* The letter (Oct 2026 redesign): one page in the shared NK design (nk-letter.js) — header right: Wohnung + name,
-   left empty · Betreff = period the tenant lived there · costs left, monthly NK-Vorauszahlungen right · one result box */
+/* The letter (Oct 2026 redesign): one page in the shared NK design (nk-letter.js) — header: apartment name left,
+   Wohnung + number right (nothing right without a number) · Betreff = period the tenant lived there · costs left, monthly NK-Vorauszahlungen right · one result box */
 function srLetterHtml(d) {
   const dt = iso => cxFmtDate(iso);
   const eur = n => { const v = Number(n) || 0; return (v < -0.004 ? '\u2212\u00a0' : '') + Math.abs(v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };
@@ -608,7 +608,7 @@ function srLetterHtml(d) {
   const vzNew = d.newVz !== null && d.newVz !== undefined
     ? `<p class="p">Auf Grundlage dieser Abrechnung wird die monatliche Betriebskostenvorauszahlung nach §\u00a0560 Abs.\u00a04 BGB ${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> angepasst.</p>` : '';
   return nkLetterHtml({
-    brand: '', unitLabel: 'Wohnung', unitName: d.aptName,
+    brand: d.aptName, unitLabel: 'Wohnung', unitName: d.wohnungsnummer || '',   // name left · Wohnung + number right
     footer: d.footer, sender: d.sender, vermieter: d.vermieter, ort: d.ort, date: d.date, names: d.names, addr: d.addr,
     title: 'Betriebskostenabrechnung ' + dt(d.useFrom) + ' \u2013 ' + dt(d.useTo),
     facts1: [['Wohnung', parts.join(', ') || d.aptName, plz],
@@ -1304,7 +1304,7 @@ function _srSteps(names, cur) {
 function _srRemindMail(c, rec, to) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const apt = c.apt || {};
-  const obj = [apt.adresse, apt.wohnungsnummer ? 'Whg. ' + apt.wohnungsnummer : '', apt.plz_ort].filter(Boolean).join(', ') || c.p.name;
+  const obj = [apt.adresse, stWhg(apt.wohnungsnummer), apt.plz_ort].filter(Boolean).join(', ') || c.p.name;
   const subj = 'Guthaben aus der Hausgeld-Jahresabrechnung ' + _srPerLabel(c.per.from, c.per.to) + ' – ' + obj;
   const body = 'Sehr geehrte Damen und Herren,\n\nlaut Hausgeld-Jahresabrechnung ' + _srPerLabel(c.per.from, c.per.to) + (rec.hv_date ? ' vom ' + cxFmtDate(rec.hv_date) : '') +
     ' ergibt sich für meine Wohnung ' + obj + ' ein Guthaben von ' + stEur(_srNum(rec.weg_amount) || 0) + (rec.weg_due ? ', fällig zum ' + cxFmtDate(rec.weg_due) : '') +

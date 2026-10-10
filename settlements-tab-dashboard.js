@@ -331,7 +331,7 @@ function sdPropAddr(d) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const p = d.property_id ? (window._ctrl.properties || []).find(x => x.id === Number(d.property_id)) : null;
   if (p && p.id === CASA_PROP_ID) return typeof scHouse === 'function' ? scHouse() : String(typeof ADDRESS !== 'undefined' ? ADDRESS : '').split(/\s*,\s*/).filter(Boolean);
-  if (p) { const apt = ctlPropLinks(p).apt || {}; return [[apt.adresse, apt.wohnungsnummer ? 'Whg. ' + apt.wohnungsnummer : ''].filter(Boolean).join(', '), apt.plz_ort || ''].filter(Boolean); }
+  if (p) { const apt = ctlPropLinks(p).apt || {}; return [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort || ''].filter(Boolean); }
   return [];
 }
 

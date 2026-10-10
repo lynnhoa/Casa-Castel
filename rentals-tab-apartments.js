@@ -1069,7 +1069,7 @@ function _aptCardHTML(a) {
           <div class="apt-field"><div class="apt-field__label">Floor</div><input class="apt-input" data-f="floor" value="${aptEsc(a.floor||'')}"/></div>
         </div>
         <div class="apt-field"><div class="apt-field__label">Adresse</div><input class="apt-input" data-f="adresse" value="${aptEsc(a.adresse||'')}"/></div>
-        <div class="apt-field"><div class="apt-field__label">Wohnungsnummer</div><input class="apt-input" data-f="wohnungsnummer" value="${aptEsc(a.wohnungsnummer||'')}" placeholder="z.B. 3 / WE 12"/></div>
+        <div class="apt-field"><div class="apt-field__label">Wohnungsnummer</div><input class="apt-input" data-f="wohnungsnummer" value="${aptEsc(a.wohnungsnummer||'')}" placeholder="z. B. WHG 03"/></div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">PLZ / Ort</div><input class="apt-input" data-f="plz_ort" value="${aptEsc(a.plz_ort||'')}" placeholder="55246 Mainz-Kostheim"/></div>
           <div class="apt-field"><div class="apt-field__label">Gerichtsstand</div><input class="apt-input" data-f="gerichtsstand" value="${aptEsc(a.gerichtsstand||'')}" placeholder="z.B. Wiesbaden"/></div>

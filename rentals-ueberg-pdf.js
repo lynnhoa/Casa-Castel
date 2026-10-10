@@ -304,11 +304,14 @@ function _aptRenderUebergHTML(d) {
   const isGewerbe = d.zimmerType === 'Gewerbefläche';
   const hdr = (n) => `
     <div class="hdr">
-      <span class="hdr__wordmark">${isGewerbe ? esc(d.aptName) : ''}</span>
-      <div class="hdr__apt">
-        <span class="hdr__apt-label">${isGewerbe ? 'Übergabeprotokoll' : 'Wohnung'}</span>
-        <span class="hdr__apt-name">${isGewerbe ? esc(d.nutzungszweck) : esc(d.aptName)}</span>
-      </div>
+      <span class="hdr__wordmark">${esc(d.aptName)}</span>
+      ${isGewerbe ? `<div class="hdr__apt">
+        <span class="hdr__apt-label">Übergabeprotokoll</span>
+        <span class="hdr__apt-name">${esc(d.nutzungszweck)}</span>
+      </div>` : d.wohnungsnummer ? `<div class="hdr__apt">
+        <span class="hdr__apt-label">Wohnung</span>
+        <span class="hdr__apt-name">${esc(d.wohnungsnummer)}</span>
+      </div>` : ''}
     </div>`;
 
   const ftr = (n) => `
