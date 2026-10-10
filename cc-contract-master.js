@@ -173,7 +173,7 @@ const CSS = `
 .cc-ct .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
 .cc-ct .ftr__rule { border:none; border-top:0.6px solid ${RULE}; margin-bottom:7px; }
 .cc-ct .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; font-weight:400; color:${MUTED}; line-height:1; }
-.cc-ct .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:90px; overflow:hidden; }
+.cc-ct .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:110px; overflow:hidden; }
 .cc-ct .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400; color:${INK}; line-height:1.15; margin-bottom:28px; }
 .cc-ct .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:${LABEL}; margin-top:14px; padding-top:2px; padding-bottom:5px; border-bottom:0.7px solid ${RULE}; }
 .cc-ct .sec--lg { font-size:8.5px; margin-top:22px; }

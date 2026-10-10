@@ -133,7 +133,7 @@ function _renderPkMietvertragHTML(d) {
     .ftr__rule { border:none; border-top:0.6px solid #c9c2b8; margin-bottom:7px; }
     .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif;
       font-size:8px; font-weight:400; color:#6b645c; line-height:1; }
-    .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:62px; overflow:hidden; }
+    .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:110px; overflow:hidden; }
     .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400;
       color:#1a1a1a; line-height:1.15; margin-bottom:4px; }
     .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400;

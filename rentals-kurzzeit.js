@@ -213,7 +213,7 @@ function _renderRentalKurzzeitHTML(d) {
     .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
     .ftr__rule { border:none; border-top:0.6px solid #c9c2b8; margin-bottom:7px; }
     .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; font-weight:400; color:#6b645c; line-height:1; }
-    .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:62px; overflow:hidden; }
+    .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:110px; overflow:hidden; }
     .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400; color:#1a1a1a; line-height:1.15; margin-bottom:28px; }
     .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#6b645c; margin-bottom:28px; }
     .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:14px; padding-top:2px; padding-bottom:5px; border-bottom:0.7px solid #c9c2b8; }
