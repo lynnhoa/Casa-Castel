@@ -1,3 +1,6 @@
+/* Apartment in a picker: name + Wohnungsnummer, so two flats in one house stay apart
+   ("Kaiserstr. 36 · WHG 507" / "Kaiserstr. 36 · WHG 516") */
+function _cxAptLabel(a) { return [a && a.name, a && a.wohnungsnummer].filter(Boolean).join(' \u00b7 '); }
 /* ─────────────────────────────────────────────────────────────
    CONTROLLING — SETUP (set up once, via the avatar menu)
    controlling-tab-setup.js
@@ -85,7 +88,7 @@ function _cxSuUnit(u, p, st, kind) {
   let opts = '';
   if (kind === 'parking') opts = S.parking.map(x => opt('rentals_parking|' + x.id, x.name)).join('');
   else if (p.id === CASA_PROP_ID) opts = S.rooms.map(r => opt('casa_room|' + r.name, r.name)).join('');
-  else opts = S.apts.map(a => opt('rentals_apartment|' + a.id, a.name)).join('');
+  else opts = S.apts.map(a => opt('rentals_apartment|' + a.id, _cxAptLabel(a))).join('');
   const editing = !l || _cxSU.edit[u.id];
   let info = '';
   if (kind === 'parking' && l) {
@@ -140,7 +143,7 @@ window.renderSetup = function () {
       body += _cxSuSub('Rentals apartment') +
         '<div class="cx-set__row"><span class="cx-set__k">Hausgeld, Grundsteuer, tenant</span>' + _cxLinkPill(l.apt, l.aptAuto) + '</div>' +
         '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|rentals_apartment_ref" aria-label="Rentals apartment">' +
-          _cxOpt('', '— not linked —', !l.apt) + S.apts.map(a => _cxOpt(a.id, a.name, l.apt && String(l.apt.id) === String(a.id))).join('') +
+          _cxOpt('', '— not linked —', !l.apt) + S.apts.map(a => _cxOpt(a.id, _cxAptLabel(a), l.apt && String(l.apt.id) === String(a.id))).join('') +
         '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
         (l.apt ? '<div class="cx-r__sub">' + cxEsc('Hausgeld ' + (v && v.hausgeld_mtl != null ? cxEur(v.hausgeld_mtl) : '—') + ' · Grundsteuer ' + (v && v.grundsteuer_mtl != null ? cxEur(v.grundsteuer_mtl) + ' / quarter' : '—') + ' · from Rentals') + '</div>'
                : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Hausgeld and Grundsteuer from these values</div>' +
