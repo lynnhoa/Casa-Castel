@@ -115,9 +115,11 @@ function toggleEdit() {
 /* ── VIEW MODE ── */
 function renderView(p) {
   const equity  = n(p.marktwert) - n(p.restschuld);
-  const abbPct  = n(p.darlehen) > 0 ? Math.round(n(p.abbezahlt) / n(p.darlehen) * 1000) / 10 : 0;
-  const tPct    = n(p.rate) > 0 ? Math.round(n(p.tilgung) / n(p.rate) * 1000) / 10 : 0;
-  const zPct    = 100 - tPct;
+  const pct2    = v => Math.round(v * 100) / 100;                    // #13: 2 decimals, shown German (22,15 %)
+  const pctTxt  = v => ccFmtNum(v, 2) + '\u00a0%';
+  const abbPct  = n(p.darlehen) > 0 ? pct2(n(p.abbezahlt) / n(p.darlehen) * 100) : 0;
+  const tPct    = n(p.rate) > 0 ? pct2(n(p.tilgung) / n(p.rate) * 100) : 0;
+  const zPct    = n(p.rate) > 0 ? pct2(100 - tPct) : 0;
 
   const sparvH = p.sparv ? `
     <div class="mod-sparv">
@@ -138,12 +140,12 @@ function renderView(p) {
         <div class="mod-rate__part mod-rate__part--t">
           <div class="mod-rate__part-lbl">Tilgung</div>
           <div class="mod-rate__part-val">${eur(p.tilgung)}</div>
-          <div class="mod-rate__part-pct">${tPct} % of payment</div>
+          <div class="mod-rate__part-pct">${pctTxt(tPct)} of payment</div>
         </div>
         <div class="mod-rate__part mod-rate__part--z">
           <div class="mod-rate__part-lbl">Zinsen</div>
           <div class="mod-rate__part-val">${eur(p.zinsen)}</div>
-          <div class="mod-rate__part-pct">${zPct} % of payment</div>
+          <div class="mod-rate__part-pct">${pctTxt(zPct)} of payment</div>
         </div>
       </div>
       <div class="mini-rb">
@@ -178,7 +180,7 @@ function renderView(p) {
         <div class="mod-prog-fill" style="width:${Math.max(abbPct, 0.3)}%"></div>
       </div>
       <div class="mod-prog-lbls">
-        <span class="mod-prog-lbl">${abbPct} % paid off</span>
+        <span class="mod-prog-lbl">${pctTxt(abbPct)} paid off</span>
         <span class="mod-prog-lbl">${eur(p.abbezahlt)} of ${eur(p.darlehen)}</span>
       </div>
     </div>
