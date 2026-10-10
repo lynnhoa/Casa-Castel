@@ -52,9 +52,11 @@ function ctlAbrResults() {
   const over = new Set((S.abr || []).filter(r => r.status !== 'storniert' && r.source_ref).map(r => r.source_ref));
   const yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
   const aptProp = aptId => props.filter(p => p.active).find(p => { const l = ctlPropLinks(p); return l.apt && String(l.apt.id) === String(aptId); });
+  // #7 (Oct 2026): the same tenant + year already has a result from Settlements → the old Tenants-tab entry is hidden
+  const newRes = new Set((S.abr || []).filter(r => r.status !== 'storniert' && r.kind === 'nk_tenant' && r.tenant_id).map(r => String(r.tenant_id) + '|' + Number(r.year)));
   const add = (e, ref, t, p, unit) => {
     const amt = _cxNum(e.amount);
-    if (!amt || !p || over.has(ref)) return;
+    if (!amt || !p || over.has(ref) || newRes.has(String(e.tenant_id) + '|' + yr(e))) return;
     const dir = amt > 0 ? 1 : -1, y = yr(e) || '';
     out.push({ key: ref, refs: [ref], pid: p.id, kind: 'nk_tenant', year: y, dir, amount: cxR(Math.abs(amt)),
                date: String(e.created_at || cxToday()).slice(0, 10), via: 'zahlung',

@@ -1230,8 +1230,9 @@ function _srHvView(c) {
     const can = jaDone && !!res;
     const sub = settled ? (b ? (wDir > 0 ? 'received ' : 'paid ') + stDate(b.invoice_date) + ' · ' + stEur(cxR(b.amount)) : 'settled')
       : !can ? 'first add: ' + (missing.join(' · ') || 'the result') : 'flip it when it’s ' + (wDir > 0 ? 'on your account' : 'paid');
+    const payBox = (can || settled) ? _srPayFields('w', c.ck, null, b ? _srD(b.invoice_date) : cxToday(), b ? cxR(b.amount) : (res ? res.amount : wAmt), true) : '';
     rowMoney = stMRow({ icon: 'coins', title: wDir < 0 ? 'Money paid' : 'Money received', sub: stEsc(sub), on: settled, disabled: !can && !settled,
-      switchAttrs: settled ? 'data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-w="1"' : 'data-sr="payOnW" data-k="' + stEsc(c.ck) + '"' });
+      switchAttrs: settled ? 'data-sr="setUndo" data-k="' + stEsc(c.ck) + '" data-w="1"' : 'data-sr="payOnW" data-k="' + stEsc(c.ck) + '"', below: payBox });
   }
   // ── costs (summary; all rows editable behind "Show all costs")
   const hgPaid = _srNum(d.keys.hg_paid) ?? _srHausgeldPaid(c);
@@ -1430,6 +1431,27 @@ function _srRefreshTotals() {
 }
 
 /* View 2 · one tenant */
+/* Money switch fields (Oct 2026): the day the money moved + the amount — used when switching on, editable afterwards.
+   kind 'w' = WEG · 't' = tenant · amount only for a bank transfer (rent / Kaution: the date only) */
+function _srPayFields(kind, ck, tid, date, amount, withAmt) {
+  const at = 'data-k="' + stEsc(ck) + '"' + (tid ? ' data-id="' + stEsc(tid) + '"' : '') + (kind === 'w' ? ' data-w="1"' : '');
+  return '<div class="mx-pay">' +
+    '<label class="mx-f"><span>On</span><input type="date" data-srpay="date" ' + at + ' value="' + stEsc(date || '') + '"/></label>' +
+    (withAmt ? '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-srpay="amt" ' + at + ' value="' + stEsc(cxE2(amount || 0)) + '"/><em>€</em></span></label>' : '') + '</div>';
+}
+const _srPayVal = f => { const el = document.querySelector('#srPanel [data-srpay="' + f + '"]'); return el ? el.value : null; };
+/* A change in the fields after the switch is on: the same booking moves / changes (never a second one) */
+async function _srPayEdit(el) {
+  const weg = el.dataset.w === '1', x = _srSetCtx(el.dataset.k, weg ? null : el.dataset.id, weg);
+  if (!x || !x.st || !x.st.res || x.st.k !== 'erledigt') return;                 // not settled yet: used when you flip the switch
+  const date = _srD(_srPayVal('date')) || cxToday(), res = x.st.res;
+  if (!weg && res.via && res.via !== 'zahlung') {
+    try { await _stConfirmSettled(x.l, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
+    ctlSettlementInvalidate(); stSay('Date saved'); _srAfterSettle(x); return;
+  }
+  await _srSetAmount(el.dataset.k, weg ? null : el.dataset.id, weg, _srPayVal('amt') ?? cxE2(res.amount), null, date);
+}
+
 function _srTenView(c) {
   // Oct 2026 · one level: amount on top · "Letter sent" and "Paid back / Received" as switches · details below
   const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
@@ -1465,9 +1487,9 @@ function _srTenView(c) {
     const sub = settledT ? stEsc(_srSettledTxt(ti, false) || 'settled') : !sent ? 'after the letter · ' + how[resVia] : 'open · ' + how[resVia];
     const ways = !sent ? '<div class="mx-ways">' + [['zahlung', 'bank', 'bank transfer'], ['miete', 'house', 'with the rent'], ['kaution', 'safe', 'via Kaution']].map(([k, ic, l]) =>
       '<button type="button" class="' + (via === k ? 'is-on' : '') + '" data-sr="via" data-v="' + k + '" aria-pressed="' + (via === k) + '">' + stIc(ic, 18) + l + '</button>').join('') + '</div>' : '';
-    void b;
+    const payBox = sent ? _srPayFields('t', c.ck, String(ti.l.id), b ? _srD(b.invoice_date) : (_srD(it.r.paid_date) || cxToday()), b ? cxR(b.amount) : ti.st.res.amount, resVia === 'zahlung') : '';
     rowMoney = stMRow({ icon: 'coins', title: v > 0 ? 'Received' : 'Paid back', sub, on: settledT, disabled: !sent,
-      switchAttrs: settledT ? 'data-sr="setUndo" ' + idAttr : 'data-sr="payOn" ' + idAttr, below: ways });
+      switchAttrs: settledT ? 'data-sr="setUndo" ' + idAttr : 'data-sr="payOn" ' + idAttr, below: ways + payBox });
   }
   const late = !sent && perC.frist && date > perC.frist && x.saldo > 0;
   // ── calculation (period · share · Vorauszahlungen · per item)
@@ -1513,10 +1535,7 @@ function _srTenView(c) {
       (!moved ? '<div class="sr-grid2"><label class="st-f"><span class="st-f__l">New NK / month (optional)</span><span class="st-amt"><input class="st-in" inputmode="decimal" data-srt="new_vz" value="' + stEsc(_srE2in(ts.new_vz)) + '"/><span>€</span></span></label>' +
         '<label class="st-f"><span class="st-f__l">from</span><input class="st-in" type="date" data-srt="new_vz_from" value="' + stEsc(ts.new_vz_from || '') + '"/></label></div>' : '') +
       '<label class="st-f"><span class="st-f__l">Anlage</span><input class="st-in" data-srt="anlagen" value="' + stEsc(ts.anlagen !== undefined && ts.anlagen !== null ? ts.anlagen : _srDefaultAnlagen(rec)) + '"/></label></div></details>';
-  } else if (Math.abs(v) >= 0.005) {
-    const o = _srSetObj(c, ti.st, ti, false);
-    if (o) letter = '<details class="mx-more"' + (SR.setEdit ? ' open' : '') + '><summary>Payment details · amount and date</summary><div class="st-sg">' + stSetRow(o) + '</div></details>';
-  }
+  }                                                                 // payment date + amount sit right under the money switch (Oct 2026)
   return head + '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + rowLetter + rowMoney + '</div>' +
     (late ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> The Frist (' + stDate(perC.frist) + ') has passed: a Nachzahlung can no longer be claimed; a Guthaben must still be paid.</div>' : '') +
     stMCard('Calculation', 'calc', calc + letter) +
@@ -1577,7 +1596,8 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   if (!s) { stSay('Type the amount – 0 is fine'); return; }
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
-  const amt = cxR(Math.abs(parsed)), date = _srD(when) || cxToday(), b = x.st.booking;
+  const amt = cxR(Math.abs(parsed)), b = x.st.booking;
+  let date = _srD(when) || cxToday(), linkedManual = null;
   if (btn) btn.disabled = true;
   try {
     if (res.via !== 'zahlung') {
@@ -1587,6 +1607,8 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
     if (b) {
       const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
+    } else if (!weg && amt && (linkedManual = _stFindManualNk(x.c.p.id, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
+      await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);
     } else {
       const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
                         : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
@@ -1596,7 +1618,7 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
     }
     await _stConfirmSettled(x.l, 'zahlung', date);
   } catch (err) { stSay('Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
-  SR.setEdit = null; ctlSettlementInvalidate(); stSay('Settled');
+  SR.setEdit = null; ctlSettlementInvalidate(); stSay(linkedManual ? 'Settled · linked to your entry in Controlling from ' + stDate(date) : 'Settled');
   _srAfterSettle(x);
 }
 /* Back to open: the booking in Controlling goes too (a skipped NK comes back as open) */
@@ -1604,11 +1626,11 @@ async function _srSetUndo(ck, tid, weg) {
   const x = _srSetCtx(ck, tid, weg); if (!x) return;
   const b = x.st.booking, skipped = !!(x.ti && x.ti.skipped);
   if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open',
-    text: b ? 'The booking of ' + stDe(b.invoice_date) + ' (' + stEur(cxR(b.amount)) + ') in Controlling is removed too.' : '' }))) return;
+    text: _stUndoText(b, stDe, v => stEur(cxR(v))) }))) return;
   try {
     if (skipped) await _stUpsertSettlement(x.l, { status: 'offen' });
     else {
-      if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+      if (b) await _stUndoBooking(b);                                // own booking removed · your own entry only unlinked
       if (x.st.res && x.st.res.via !== 'zahlung') {
         await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', x.st.res.id); x.st.res.db.settle_via = 'zahlung';
         await _stUpsertSettlement(x.l, { settled_via: 'zahlung' });
@@ -1630,7 +1652,7 @@ async function _srSkipNk(ck, tid) {
   if (!(await stConfirm({ title: 'Skip this NK?', ok: 'Skip', text: 'No letter and no result – it counts as done. You can undo it later.' }))) return;
   try {
     const res = x.st.res, b = x.st.booking;
-    if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+    if (b) await _stUndoBooking(b);                             // own booking removed · your own entry only unlinked
     if (res) { await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.id); res.db.status = 'storniert'; }
     await _stUpsertSettlement(x.l, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null, result_id: null });
   } catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
@@ -1756,13 +1778,13 @@ function srIsRentalsLine() { return false; }
       e.stopPropagation();
       const weg = a === 'payOnW', x = _srSetCtx(b.dataset.k, weg ? null : b.dataset.id, weg);
       if (!x || !x.st || !x.st.res) { stSay(weg ? 'Add the result of the Jahresabrechnung first' : 'Send the letter first'); return; }
-      const res = x.st.res;
+      const res = x.st.res, date = _srD(_srPayVal('date')) || cxToday();   // the day the money moved (default today)
       if (!weg && res.via && res.via !== 'zahlung') {               // settled with the rent / via Kaution: confirm, no booking
         b.disabled = true;
-        try { await _stConfirmSettled(x.l, res.via, cxToday()); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
+        try { await _stConfirmSettled(x.l, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
         ctlSettlementInvalidate(); stSay('Settled'); _srAfterSettle(x); return;
       }
-      await _srSetAmount(b.dataset.k, weg ? null : b.dataset.id, weg, cxE2(res.amount), b, cxToday()); return;
+      await _srSetAmount(b.dataset.k, weg ? null : b.dataset.id, weg, _srPayVal('amt') ?? cxE2(res.amount), b, date); return;
     }
     if (a === 'tick') {
       e.preventDefault(); e.stopPropagation();
@@ -1891,6 +1913,8 @@ function srIsRentalsLine() { return false; }
     } else if (row.dataset.sr === 'openHv') _srOpen({ ck: k, view: 'hv', from: 'tracker' });
   });
   host.addEventListener('change', async e => {
+    const pay = e.target.closest('[data-srpay]');
+    if (pay) { await _srPayEdit(pay); return; }
     const s = e.target.closest('[data-srs="pick"]');
     if (s) { await _srAutoFlush(); SR.dirty = false; SR.jaEdit = false; _srOpen({ ck: s.value, view: SR.modal && SR.modal.view === 'hv' ? 'hv' : 'nk', from: SR.modal ? SR.modal.from : 'tracker' }); return; }
     const nkcb = e.target.closest('[data-src="innk"]');

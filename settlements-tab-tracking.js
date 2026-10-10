@@ -406,6 +406,41 @@ async function _stSyncStatus() {
   }
 }
 
+/* #6 (Oct 2026): a tenant's NK payment you already typed by hand in Controlling › One-off
+   (same property, same direction, same amount to the cent, on/after the letter date, not linked yet)
+   is LINKED to the result instead of booking the money a second time. */
+function _stFindManualNk(pid, res, amt) {
+  const from = String(res.date || '').slice(0, 10);
+  const linked = new Set((window._src.abrPay || []).map(o => o.id));
+  return (window._ctrl.one_time || []).find(o =>
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    !['Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung'].includes(o.kind) && !o.nk_umlage &&
+    (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
+    Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
+}
+async function _stLinkManualNk(o, res) {
+  const d = await ctlUpdateOneTime(o.id, { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir });
+  const row = d || Object.assign({}, o, { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir });
+  window._src.abrPay = (window._src.abrPay || []).filter(x => x.id !== o.id).concat([row]);
+  const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;
+  return row;
+}
+
+/* Switching a payment off: a booking Settlements made is removed · an entry you typed yourself in
+   Controlling (linked by #6 or the WEG match) is only unlinked — it stays in Controlling as you typed it. */
+const ST_AUTO_ITEM = /^(NK|Hausgeld) \d{2}\.\d{2}\.\d{4}/;
+const _stIsOwnBooking = b => ST_AUTO_ITEM.test(String((b && b.item) || ''));
+async function _stUndoBooking(b) {
+  window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
+  if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); return 'deleted'; }
+  const d = await ctlUpdateOneTime(b.id, { source_ref: null, kind: 'Sonstiges' });
+  const k = (window._ctrl.one_time || []).findIndex(x => x.id === b.id); if (k >= 0 && d) window._ctrl.one_time[k] = d;
+  return 'unlinked';
+}
+const _stUndoText = (b, fmtDate, fmtEur) => !b ? '' : _stIsOwnBooking(b)
+  ? 'The booking of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') in Controlling is removed too.'
+  : 'Your own entry of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') stays in Controlling – it is only unlinked.';
+
 async function _stWriteResult(existing, row) {
   const tryWrite = async payload => existing
     ? _ctlSupa.from('abr_results').update(payload).eq('id', existing.id).select().single()
@@ -477,9 +512,9 @@ async function _stReopen(l) {
   if (s.res) {
     const b = ctlAbrBooking(s.res);
     if (!(await stConfirm({ title: 'Set this NK-Abrechnung back to open?', ok: 'Back to open', danger: true,
-      text: b ? 'The payment of ' + stDate(b.invoice_date) + ' (' + stEur(b.amount) + ') in Controlling is removed too.' : 'The result disappears from Controlling.' }))) return;
+      text: b ? _stUndoText(b, stDate, stEur) : 'The result disappears from Controlling.' }))) return;
     try {
-      if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+      if (b) await _stUndoBooking(b);                             // own booking removed · your own entry only unlinked
       const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', s.res.id);
       if (error) throw error;
       s.res.db.status = 'storniert';

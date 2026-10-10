@@ -192,7 +192,7 @@ function ctlUnitLink(u, p) {
     const ref = String(u.source_ref);
     if (u.source_type === 'rentals_apartment') { const o = S.apts.find(a => String(a.id) === ref);     return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
     if (u.source_type === 'rentals_parking')   { const o = S.parking.find(a => String(a.id) === ref);  return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
-    if (u.source_type === 'casa_room')         { const o = S.rooms.find(r => r.name === ref);          return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
+    if (u.source_type === 'casa_room')         { const o = S.rooms.find(r => _cxNorm(r.name) === _cxNorm(ref)); return o ? { type: u.source_type, ref: o.name, obj: o, auto: false } : null; }   // capitals / spaces don't count
     return null;
   }
   if (!p) return null;
@@ -979,7 +979,8 @@ function ctlOtSuggestions() {
   const taken = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
   // Fix 2: an NK settlement already marked "bezahlt" in the Abrechnungen list is not offered again
   const yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
-  const done = new Set((S.settle || []).filter(r => r.status === 'bezahlt' && r.kind === 'nk_tenant').map(r => String(r.tenant_id) + '|' + r.covers_year));
+  const done = new Set((S.settle || []).filter(r => (r.status === 'bezahlt' || r.status === 'erledigt') && r.kind === 'nk_tenant').map(r => String(r.tenant_id) + '|' + r.covers_year)
+    .concat((S.abr || []).filter(r => r.status !== 'storniert' && r.kind === 'nk_tenant' && r.tenant_id).map(r => String(r.tenant_id) + '|' + r.year)));   // #7: Settlements result → old entry not offered
   const isDone = (tid, e) => done.has(String(tid) + '|' + yr(e));
   const props = window._ctrl.properties.filter(p => p.active);
   const aptProp = aptId => props.find(p => { const l = ctlPropLinks(p); return l.apt && String(l.apt.id) === String(aptId); });

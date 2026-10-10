@@ -765,8 +765,12 @@ function scTenView(M, m) {
     const sub = done ? stEsc(scSay(t)[1]) : !sent ? 'after the letter · ' + how[via] : 'open · ' + how[via];
     const ways = !sent && M.sendable ? '<div class="mx-ways">' + [['zahlung', 'bank', 'bank transfer'], ['miete', 'house', 'with the rent'], ['kaution', 'safe', 'via Kaution']].map(([k, ic, l]) =>
       '<button type="button" class="' + (via === k ? 'is-on' : '') + '" data-sc="viaSet" data-v="' + k + '" ' + kAttr + ' aria-pressed="' + (via === k) + '">' + stIc(ic, 18) + l + '</button>').join('') + '</div>' : '';
+    const bk = t.st && t.st.booking;
+    const payBox = sent && !t.extra ? '<div class="mx-pay">' +
+      '<label class="mx-f"><span>On</span><input type="date" data-scpay="date" ' + kAttr + ' value="' + stEsc(bk ? scD(bk.invoice_date) : (t.it && scD(t.it.r.paid_date)) || cxToday()) + '"/></label>' +
+      (via === 'zahlung' ? '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scpay="amt" ' + kAttr + ' value="' + stEsc(cxE2(bk ? cxR(bk.amount) : res.amount)) + '"/><em>€</em></span></label>' : '') + '</div>' : '';
     rowMoney = stMRow({ icon: 'coins', title: saldo > 0 ? 'Received' : 'Paid back', sub, on: done, disabled: !sent,
-      switchAttrs: done ? 'data-sc="setUndo" ' + kAttr : 'data-sc="payOn" ' + kAttr, below: ways });
+      switchAttrs: done ? 'data-sc="setUndo" ' + kAttr : 'data-sc="payOn" ' + kAttr, below: ways + payBox });
   }
   // ── calculation
   const q = M.quota || {}, vzOpen = SC.pill && SC.pill.k === t.key && SC.pill.p === 'vz';
@@ -806,8 +810,7 @@ function scTenView(M, m) {
       ed + '<p class="sc-hint2">Tap a pill to change it.</p>';
     letter = '<div class="srm__card sc-lcard">' + letter + '</div>';
   }
-  let pay = '';
-  if (sent) { const o = scSetObj(t, M); if (o) pay = '<details class="mx-more"' + (SC.setEdit ? ' open' : '') + '><summary>Payment details · amount and date</summary><div class="st-sg">' + stSetRow(o) + '</div></details>'; }
+  const pay = '';                                                   // payment date + amount sit right under the money switch (Oct 2026)
   const xDel = t.extra && t.k === 'open' ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant from this NK</button>'
     : t.k === 'open' && t.line ? '<button class="mx-skip" data-sc="skip" ' + kAttr + '>Skip this NK-Abrechnung</button>' : '';
   return head + '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + rowLetter + rowMoney + '</div>' +
@@ -879,7 +882,7 @@ function scSetObj(t, M) {
     note: done && !b && SC.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent' }[res.via] || null) : null });
 }
 /* Settled: the typed amount (0 is fine) → booking in Controlling today → the line is done */
-async function scSetAmount(key, raw, btn) {
+async function scSetAmount(key, raw, btn, when) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
   const st = t.st || {}, res = st.res, b = st.booking;
   if (!res || !res.amount) { stSay('Nothing to settle'); return; }
@@ -887,13 +890,16 @@ async function scSetAmount(key, raw, btn) {
   if (!s) { stSay('Type the amount – 0 is fine'); return; }
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
-  const amt = cxR(Math.abs(parsed)), date = cxToday();
+  const amt = cxR(Math.abs(parsed));
+  let date = scD(when) || cxToday(), linkedManual = null;               // Oct 2026: the day the money moved (default today)
   if (btn) btn.disabled = true;
   try {
     if (res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
     if (b) {
       const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
+    } else if (amt && (linkedManual = _stFindManualNk(CASA_PROP_ID, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
+      await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);
     } else {
       const d = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
                                       amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
@@ -901,7 +907,7 @@ async function scSetAmount(key, raw, btn) {
     }
     await _stConfirmSettled(t.line, 'zahlung', date);
   } catch (e) { stSay('Could not save — ' + (e.message || e)); if (btn) btn.disabled = false; return; }
-  SC.setEdit = null; ctlSettlementInvalidate(); stSay('Settled');
+  SC.setEdit = null; ctlSettlementInvalidate(); stSay(linkedManual ? 'Settled · linked to your entry in Controlling from ' + stDate(date) : 'Settled');
   const m = SC.modal;
   SC.model = scModel(M.y); stRenderCasa();
   SC.modal = m && m.view === 'settle' ? (m.back || { view: 'ten', key }) : m; scRenderModal();
@@ -920,11 +926,11 @@ async function scSetUndo(key) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
   const st = t.st || {}, res = st.res, b = st.booking;
   if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open',
-    text: b ? 'The booking of ' + scDate(b.invoice_date) + ' (' + scE(b.amount) + ') in Controlling is removed too.' : '' }))) return;
+    text: _stUndoText(b, scDate, scE) }))) return;
   try {
     if (t.skipped) await _stUpsertSettlement(t.line, { status: 'offen' });
     else {
-      if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+      if (b) await _stUndoBooking(b);                                // own booking removed · your own entry only unlinked
       if (res && res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
       await _stUpsertSettlement(t.line, { status: 'verschickt' });
     }
@@ -1188,12 +1194,13 @@ async function scClick(e) {
     const t = M && M.ten.find(x => x.key === b.dataset.k); if (!t) return;
     if (t.extra) { const s2 = scSet(t.key); if (s2.sent) s2.sent.settled = cxToday(); try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {} SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal(); }
     const res = t.st && t.st.res; if (!res) { stSay('Send the letter first'); return; }
+    const date = scD(scPayVal('date')) || cxToday();
     if (res.via && res.via !== 'zahlung') {
       b.disabled = true;
-      try { await _stConfirmSettled(t.line, res.via, cxToday()); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
+      try { await _stConfirmSettled(t.line, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); b.disabled = false; return; }
       ctlSettlementInvalidate(); stSay('Settled'); const m0 = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m0; return scRenderModal();
     }
-    return scSetAmount(t.key, cxE2(res.amount), b);
+    return scSetAmount(t.key, scPayVal('amt') ?? cxE2(res.amount), b, date);
   }
   if (a === 'backTen') { SC.setEdit = null; const m = SC.modal; SC.modal = (m && m.back) || { view: 'ten', key: m && m.key }; return scRenderModal(); }
   if (a === 'setOk') return scSetAmount(b.dataset.k, stSetVal(b), b);
@@ -1207,8 +1214,20 @@ async function scClick(e) {
     return scReopen(b.dataset.k);
   }
 }
+const scPayVal = f => { const el = document.querySelector('#scModal [data-scpay="' + f + '"]'); return el ? el.value : null; };
+/* A change in the fields after the switch is on: the same booking moves / changes (never a second one) */
+async function scPayEdit(el) {
+  const M = SC.model, t = M && M.ten.find(x => x.key === el.dataset.k); if (!t || t.k !== 'done' || !t.st || !t.st.res) return;
+  const res = t.st.res, date = scD(scPayVal('date')) || cxToday();
+  if (res.via && res.via !== 'zahlung') {
+    try { await _stConfirmSettled(t.line, res.via, date); } catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
+    ctlSettlementInvalidate(); stSay('Date saved'); const m0 = SC.modal; SC.model = scModel(SC.year); stRenderCasa(); SC.modal = m0; return scRenderModal();
+  }
+  return scSetAmount(t.key, scPayVal('amt') ?? cxE2(res.amount), null, date);
+}
 function scInput(e) {
   const el = e.target;
+  if (el && el.dataset && el.dataset.scpay) return scPayEdit(el);
   if (el && el.dataset && el.dataset.scPos) {                         // typed house position
     const r = scRecEnsure(SC.year), p = (r.tenants.__pos || []).find(x => x.id === el.dataset.id); if (!p) return;
     const f = el.dataset.scPos;
@@ -1370,9 +1389,9 @@ async function scReopen(key) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
   const res = t.st && t.st.res, b = res ? ctlAbrBooking(res) : null;
   if (!(await stConfirm({ title: 'Set ' + t.name + ' back to open?', ok: 'Back to open', danger: true,
-    text: b ? 'The payment of ' + scDate(b.invoice_date) + ' (' + scE(b.amount) + ') in Controlling is removed too.' : res ? 'The result disappears from Controlling.' : '' }))) return;
+    text: b ? _stUndoText(b, scDate, scE) : res ? 'The result disappears from Controlling.' : '' }))) return;
   try {
-    if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+    if (b) await _stUndoBooking(b);                             // own booking removed · your own entry only unlinked
     if (res) { const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.id); if (error) throw error; res.db.status = 'storniert'; }
     if (!(t.it.r._virtual || String(t.it.r.id).startsWith('v:'))) {
       try { await _stUpsertSettlement(t.line, { status: 'offen', amount: null, direction: null, settled_via: null, result_id: null }); }
