@@ -101,6 +101,14 @@ function rntContractClauses(d, kind, eur, cl) {
     'Bei Ein- und Auszug wird ein Übergabeprotokoll erstellt und von beiden Parteien unterzeichnet. ' +
     'Bei Vertragsende ist die Wohnung vollständig geräumt, gereinigt und in vertragsgemäßem Zustand mit allen Schlüsseln zurückzugeben; bauliche Änderungen sind zurückzubauen.';
 
+  // §8 Kleinreparaturen — says who pays; above 150 € the tenant pays nothing. Cap on the net cold rent,
+  // or on the Pauschalmiete where the rent has no separate Kaltmiete (all-inclusive).
+  const pausch = isKz ? !(Number(d.kzNk) > 0) : d.pricingMode !== 'kalt_nk';
+  const s8 = 'Die Kosten für kleine Instandhaltungen an Gegenständen, die dem häufigen Zugriff des Mieters ausgesetzt sind ' +
+    '(Installationsgegenstände für Elektrizität, Wasser und Gas, Heiz- und Kocheinrichtungen, Fenster- und Türverschlüsse), ' +
+    'trägt der Mieter bis 150\u00a0\u20ac im Einzelfall, höchstens 8\u202f% der ' + (pausch ? 'Jahrespauschalmiete' : 'Jahresnettokaltmiete') + ' pro Jahr. ' +
+    'Übersteigen die Kosten einer einzelnen Reparatur 150\u00a0\u20ac, trägt der Mieter keinen Anteil.';
+
   // §16 Energieausweis — only when one of the apartment's three fields is filled
   const en = [];
   if (d.energieklasse)     en.push('Energieeffizienzklasse: ' + d.energieklasse + '.');
@@ -115,7 +123,7 @@ function rntContractClauses(d, kind, eur, cl) {
     ['5',  'Untervermietung', 'Eine Untervermietung oder sonstige Überlassung des Mietobjekts an Dritte ist nicht gestattet.'],
     ['6',  'Schlüsselübergabe', s6],
     ['7',  'Kaution', s7],
-    ['8',  'Kleinreparaturen', 'Kleinreparaturen an häufig zugänglichen Gegenständen bis 150\u00a0\u20ac pro Maßnahme, max. 8\u202f% der Jahres-Nettokaltmiete p.\u202fa.'],
+    ['8',  'Kleinreparaturen', s8],
     ['9',  'Tierhaltung', 'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).'],
     ['10', 'Betreten des Mietobjekts', 'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).'],
     ['11', 'Übergabe und Rückgabe', s11],
