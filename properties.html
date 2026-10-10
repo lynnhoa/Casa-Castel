@@ -318,7 +318,9 @@ async function boot() {
   }
 }
 
-boot();
+// Start once every script of the page has run: the dashboard and portfolio scripts load after this
+// one, and a fast data load (cache) used to call renderDashboard before it existed → empty dashboard.
+if (document.readyState !== 'loading') boot(); else document.addEventListener('DOMContentLoaded', boot, { once: true });
 </script>
 
 <script src="cc-german-format.js?v=2026-10-10-F1"></script>
