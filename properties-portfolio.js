@@ -297,23 +297,25 @@ async function saveEdit() {
 
   const p = (window._props || []).find(x => x.id === _pid);
   if (!p) return;
+  // #9: an empty field or 0 saves as 0 (no fallback to the old value); only a missing field keeps it
+  const gz = (id, old, int) => { const s = g(id); if (s === null) return old; const v = int ? parseInt(s) : parseFloat(s); return isNaN(v) ? 0 : v; };
 
   const fields = {
     name:       g('e-name')       || p.name,
     cat:        g('e-cat')        || p.cat,
     addr:       g('e-addr')       || p.addr,
-    m2:         parseInt(g('e-m2')) || p.m2,
+    m2:         gz('e-m2', p.m2, true),
     kaufdatum:  g('e-kaufdatum')  || p.kaufdatum,
-    kaufpreis:  gn('e-kaufpreis') || p.kaufpreis,
-    ek:         gn('e-ek')        || p.ek,
+    kaufpreis:  gz('e-kaufpreis', p.kaufpreis),
+    ek:         gz('e-ek', p.ek),
     nebenkosten:gn('e-nebenkosten'),
-    marktwert:  gn('e-marktwert') || p.marktwert,
+    marktwert:  gz('e-marktwert', p.marktwert),
     bank:       g('e-bank')       || p.bank,
     darlehensnr:g('e-darlehensnr')|| p.darlehensnr,
-    darlehen:   gn('e-darlehen')  || p.darlehen,
+    darlehen:   gz('e-darlehen', p.darlehen),
     restschuld: gn('e-restschuld'),
     abbezahlt:  gn('e-abbezahlt'),
-    zinssatz:   gn('e-zinssatz')  || p.zinssatz,
+    zinssatz:   gz('e-zinssatz', p.zinssatz),
     zb:         g('e-zb')         || p.zb,
     zb_status:  g('e-zb-status')  || 'ok',
     rate:       gn('e-rate'),
