@@ -19,20 +19,18 @@
 document.getElementById('tab-apartments').innerHTML = `
 
   <div class="rp-hdr">
-    <h1 class="rp-title">Apartments</h1>
+    <h1 class="cc-h1">Apartments</h1>
     <button class="rp-add-btn" id="aptAddBtn">
       <i class="ti ti-plus"></i> Add
     </button>
   </div>
 
-  <div class="rp-summary" id="aptSummary" style="display:none">
-    <div>
-      <div class="rp-summary__label">Gesamtkaltmiete / Monat</div>
-      <div class="rp-summary__breakdown" id="aptSummaryBreakdown"></div>
-    </div>
-    <div>
-      <div class="rp-summary__total" id="aptSummaryTotal"></div>
-      <div class="rp-summary__sub">nur belegte Wohnungen</div>
+  <!-- Summary line (Casa Castel layout): same numbers as before -->
+  <div class="cc-sumline apt-sumline" id="aptSummary" style="display:none">
+    <div class="cc-sumline__top"><b>Gesamtkaltmiete / Monat</b><span id="aptSummaryBreakdown"></span></div>
+    <div class="cc-sumline__vals">
+      <div><span>Kalt</span><b id="aptSummaryTotal"></b></div>
+      <div><span>NK separat</span><b id="aptSummaryNk"></b></div>
     </div>
   </div>
 
@@ -134,6 +132,44 @@ document.getElementById('tab-apartments').innerHTML = `
 
 /* Card list */
 .rp-list { display:flex; flex-direction:column; gap:8px; padding-bottom:40px; }
+
+/* ── Apartments tab in the Casa Castel layout (same as Rooms) ── */
+#tab-apartments .rp-hdr { padding-top:0; margin-bottom:20px; }
+#tab-apartments .rp-add-btn { min-height:36px; font-size:12px; border-radius:var(--cc-r-sm); }
+#tab-apartments .rp-add-btn i { font-size:14px; }
+html .cc-sumline { display:flex; flex-direction:column; gap:8px; padding:2px 0 0; margin:0 0 18px; background:none; border:none; }
+html .cc-sumline__top { display:flex; justify-content:center; align-items:baseline; gap:6px; flex-wrap:wrap; padding:0; font-size:12px; color:#9A8E7E; text-align:center; }
+html .cc-sumline__top b { font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#8A6535; }
+html .cc-sumline__top b::after { content:'·'; margin-left:6px; color:#C8BFB0; letter-spacing:0; }
+html .cc-sumline__vals { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px; padding:0; }
+html .apt-sumline .cc-sumline__vals { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+html .cc-sumline__vals > div { min-width:0; text-align:center; }
+html .cc-sumline__vals span { display:block; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:#A89C8C; margin:0 0 2px; }
+html .cc-sumline__vals b { display:block; font-size:15px; font-weight:600; line-height:1.25; color:var(--cc-charcoal); white-space:nowrap; }
+#tab-apartments .apt-hdr { padding:16px 16px 14px 12px; }
+#tab-apartments .apt-drag { display:flex; align-items:center; justify-content:center; width:26px; height:26px; font-size:15px; margin-top:4px; }
+#tab-apartments .apt-hdr__namerow { align-items:baseline; justify-content:space-between; flex-wrap:nowrap; margin-bottom:0; }
+#tab-apartments .apt-hdr__addr { font-size:12px; color:var(--cc-taupe); margin:3px 0 0; }
+#tab-apartments .apt-hdr__who { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; margin-top:6px; font-size:13px; color:#9A8E7E; }
+#tab-apartments .apt-hdr__who .apt-hdr__rent { font-size:13px; color:#9A8E7E; margin:0; }
+#tab-apartments .apt-hdr__who .apt-hdr__rent strong { color:var(--cc-charcoal); font-weight:500; }
+#tab-apartments .apt-hdr__who .apt-hdr__rent--vacant { font-size:13px; }
+#tab-apartments .apt-chevron { font-size:18px; }
+#tab-apartments .apt-card.apt--open { box-shadow:0 4px 24px rgba(30,27,24,.10); }
+#tab-apartments .apt-section--miete { border-left:none; padding-left:14px; }
+.rc-brow { display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-top:var(--cc-border); }
+.apt-sec-read > .rc-brow:first-child { border-top:none; padding-top:6px; }
+.rc-brow__bar { flex:0 0 4px; align-self:stretch; border-radius:2px; }
+.rc-brow__bar--kurzzeit { background:#B9A6D6; } .rc-brow__bar--mietvertrag { background:#8FA88F; } .rc-brow__bar--gewerbe { background:#85B7EB; }
+.rc-brow__main { flex:1 1 auto; min-width:0; }
+.rc-brow__t { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#8A6535; }
+.rc-brow__big { font-size:18px; font-weight:600; color:var(--cc-ink); margin-top:2px; }
+.rc-brow__big span { font-size:13px; font-weight:400; color:#7A6F62; }
+.rc-brow__none { font-size:14px; font-weight:400; color:#7A6F62; font-style:italic; margin-top:2px; }
+.rc-brow__sub { font-size:13px; color:#7A6F62; line-height:1.5; }
+.rc-brow__note { font-size:12px; color:#9A8E7E; }
+.rc-brow__btns { flex:0 0 auto; display:flex; flex-direction:column; gap:6px; }
+.rc-brow__go { min-height:36px; padding:0 12px; border-radius:var(--cc-r-md); font-family:inherit; font-size:13px; background:var(--cc-white); cursor:pointer; white-space:nowrap; border:.5px solid var(--cc-ink); color:var(--cc-ink); font-weight:500; }
 
 /* SortableJS */
 .sortable-ghost  { opacity:.3; background:var(--cc-surface)!important; border:1px dashed var(--cc-stone)!important; }
@@ -464,6 +500,7 @@ document.getElementById('tab-apartments').innerHTML = `
   .rp-summary { margin-bottom:16px; }
   /* Card headers */
   .apt-hdr { padding:16px 18px; }
+  #tab-apartments .apt-hdr { padding:18px 18px 16px 14px; }
   .apt-actions { padding:10px 16px; }
   /* 2-col field rows in modals on wider screens */
   .rm-field-row { grid-template-columns:1fr 1fr; }
@@ -857,8 +894,10 @@ function _updateAptSummary() {
   });
 
   bar.style.display = 'flex';
-  bd.textContent  = occupied + ' / ' + appApartments.length + ' belegt · ' + aptFmtEURCompact(nk) + ' NK separat';
+  bd.textContent  = occupied + ' / ' + appApartments.length + ' belegt · nur belegte Wohnungen';
   tot.textContent = aptFmtEURCompact(kalt);
+  const nkEl = document.getElementById('aptSummaryNk');
+  if (nkEl) nkEl.textContent = aptFmtEURCompact(nk);
 }
 
 function _renderAptList() {
@@ -987,10 +1026,10 @@ function _aptCardHTML(a) {
         </span>
       </div>
       ${a.adresse ? `<div class="apt-hdr__addr">${aptEsc(a.adresse)}</div>` : ''}
-      <div class="apt-hdr__tags">
+      <div class="apt-hdr__who">
         ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
+        <span class="apt-hdr__rent">${rentHTML}</span>
       </div>
-      <div class="apt-hdr__rent">${rentHTML}</div>
       <div id="apt-hg-hdr-${a.id}">${_aptHGHeaderPill(a.id)}</div>
     </div>
     <i class="ti ti-chevron-right apt-chevron"></i>
@@ -1068,12 +1107,15 @@ function _aptCardHTML(a) {
       <div class="apt-stitle">Asking rent</div>
       <!-- READ -->
       <div class="apt-sec-read">
-        ${(kalt || nk || kzKalt) ? ccAskingRentTable([
-          (kalt || nk) ? { title: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : 'Mietvertrag', mode: 'kalt_nk', kalt, nk, kaution: kautionAmt,
-                           note: _kMv.source === 'override' ? 'Individuell' : '3× Kalt' } : null,
-          kzKalt ? { title: 'Kurzzeit', mode: 'kalt_nk', kalt: kzKalt, nk: kzNk, kaution: kzKaution,
-                     note: _kKz.source === 'override' ? 'Individuell' : '1× Kalt · from 3 months 3×' } : null,
-        ], aptFmtEURCompact) : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
+        ${_aptAskBlocksHTML(a, [
+          a.zimmer_type !== 'Gewerbefläche'
+            ? { title: 'Kurzzeit', bar: 'kurzzeit', set: !!kzKalt, kalt: kzKalt, nk: kzNk, kaution: kzKaution,
+                note: _kKz.source === 'override' ? 'Individuell' : '1× Kalt · from 3 months 3×', go: 'kurzzeit', btn: 'Kurzzeitmiete' } : null,
+          { title: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : 'Mietvertrag', bar: a.zimmer_type === 'Gewerbefläche' ? 'gewerbe' : 'mietvertrag',
+            set: !!(kalt || nk), kalt, nk, kaution: kautionAmt,
+            note: _kMv.source === 'override' ? 'Individuell' : '3× Kalt', go: 'mietvertrag',
+            btn: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemietvertrag' : 'Mietvertrag' },
+        ])}
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('miete','${a.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -1259,17 +1301,7 @@ function _aptCardHTML(a) {
     <!-- 7. CONTRACTS -->
     <div class="apt-contracts">
       <div class="apt-contracts-title">Create contracts</div>
-      ${a.zimmer_type !== 'Gewerbefläche' ? `
-      <div class="apt-doc-row">
-        <button class="apt-doc-btn" onclick="_aptOpenContract('kurzzeit','${a.id}')">
-          Kurzzeitmiete <i class="ti ti-chevron-right"></i>
-        </button>
-      </div>` : ''}
-      <div class="apt-doc-row">
-        <button class="apt-doc-btn" onclick="_aptOpenContract('mietvertrag','${a.id}')">
-          ${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemietvertrag' : 'Mietvertrag'} <i class="ti ti-chevron-right"></i>
-        </button>
-      </div>
+      <!-- Kurzzeitmiete / Mietvertrag / Gewerbemietvertrag: in the Asking rent blocks above -->
       <div class="apt-doc-row">
         <button class="apt-doc-btn" onclick="_aptOpenContract('ueberg','${a.id}')">
           Übergabeprotokoll <i class="ti ti-chevron-right"></i>
@@ -1290,6 +1322,29 @@ function _aptCardHTML(a) {
 
   </div>
 </div>`;
+}
+
+
+/* ── ASKING RENT BLOCKS (Casa Castel layout) ─────────────────
+   Same values and rows as the old table: monthly · Kaltmiete · Nebenkosten · Kaution (+ note).
+   A price that is not set shows "Not set" — the block and its contract
+   button always stay, exactly as the old "Create contracts" buttons did. */
+function _aptAskBlocksHTML(a, cols) {
+  const f = n => aptFmtEURCompact(Number(n) || 0);
+  return cols.filter(Boolean).map((c, i) => `
+        <div class="rc-brow">
+          <div class="rc-brow__bar rc-brow__bar--${c.bar}"></div>
+          <div class="rc-brow__main"><div class="rc-brow__t">${c.title}</div>
+            ${c.set
+              ? `<div class="rc-brow__big">${f((Number(c.kalt) || 0) + (Number(c.nk) || 0))} <span>monthly</span></div>
+            <div class="rc-brow__sub">Kaltmiete ${f(c.kalt)}</div>
+            <div class="rc-brow__sub">Nebenkosten ${f(c.nk)}</div>
+            <div class="rc-brow__sub">Kaution ${f(c.kaution)}</div>
+            ${c.note ? `<div class="rc-brow__sub rc-brow__note">${c.note}</div>` : ''}`
+              : `<div class="rc-brow__none">Not set</div>`}
+          </div>
+          <div class="rc-brow__btns"><button type="button" class="rc-brow__go" onclick="_aptOpenContract('${c.go}','${a.id}')">${c.btn} ›</button></div>
+        </div>`).join('');
 }
 
 
