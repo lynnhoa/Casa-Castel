@@ -966,7 +966,8 @@ async function ccfApproveRun() {
     if (!A.blob && p.blob) A.blob = p.blob;
     if (!A.blob) {
       if (p.photos && typeof ccUbAddPhotoPages === 'function') await ccUbAddPhotoPages(p.photos.key, p.container, p.photos.meta || {});
-      const pdf = await ccRenderPagesToPdf(p.container);
+      // Rentals units (apt: / pk:): strict — never file a PDF with text that does not show
+      const pdf = await ccRenderPagesToPdf(p.container, { strict: /^(apt|pk):/.test(String(p.room || p.unit || '')) });
       A.blob = pdf.output('blob');
     }
     step = 'previous tenant';

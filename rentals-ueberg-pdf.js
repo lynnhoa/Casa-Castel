@@ -194,7 +194,7 @@ async function _aptSaveUebergPDFFromData(d, existingContainer) {
   // Phase 1: one render at print quality, opened on top of the app (pdf-open.js)
   // Optional photo pages, as pages of this same document (cc-ueberg-photos.js)
   if (typeof ccUbAddPhotoPages === 'function') await ccUbAddPhotoPages('apt-ub', container, { isEinzug: d.isEinzug, objekt: d.aptName, mieter: d.mieterName });
-  const pdf = await ccRenderPagesToPdf(container);
+  const pdf = await ccRenderPagesToPdf(container, { strict: true });   // never a PDF with hidden text
 
   const typ      = d.isEinzug ? 'Einzug' : 'Auszug';
   await ccOpenPdf(pdf, ccPdfFileName('Übergabeprotokoll', typ, d.aptName, d.mieterName));
@@ -216,61 +216,61 @@ function _aptRenderUebergHTML(d) {
     .hdr { position:absolute; top:0; left:0; right:0; height:83.15px; background:#f0e8da;
       display:flex; align-items:center; justify-content:space-between; padding:0 80px; }
     .hdr__wordmark { font-family:'Playfair Display',serif; font-size:26px; font-weight:400;
-      color:#7a5c30; letter-spacing:0.05em; line-height:1; }
+      color:#6e5128; letter-spacing:0.05em; line-height:1; }
     .hdr__apt { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
-    .hdr__apt-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:400;
-      letter-spacing:0.16em; text-transform:uppercase; color:#b8975a; line-height:1; }
+    .hdr__apt-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:700;
+      letter-spacing:0.16em; text-transform:uppercase; color:#8a6535; line-height:1; }
     .hdr__apt-name { font-family:'Playfair Display',serif; font-size:12px; font-weight:400;
-      color:#7a5c30; line-height:1; }
+      color:#6e5128; line-height:1; }
 
     .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
-    .ftr__rule { border:none; border-top:0.5px solid #e8dbc5; margin-bottom:7px; }
+    .ftr__rule { border:none; border-top:0.5px solid #c9c2b8; margin-bottom:7px; }
     .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif;
-      font-size:8px; font-weight:300; color:#aaa59e; line-height:1; }
+      font-size:8px; font-weight:400; color:#6b645c; line-height:1; }
 
     .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:90px; overflow:hidden; }
 
     .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400;
       color:#1a1a1a; line-height:1.15; margin-bottom:4px; }
-    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:300;
-      color:#aaa59e; margin-bottom:22px; }
+    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400;
+      color:#6b645c; margin-bottom:22px; }
 
     .type-toggle { display:flex; align-items:center; gap:24px; margin-bottom:36px;
       padding:9px 12px; background:#f7f4f0; border-radius:3px; border:0.5px solid #e8e2d8; height:36px; }
     .type-option { display:inline-flex; align-items:center; gap:8px;
       font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a;
       line-height:13px; height:13px; }
-    .type-box { display:inline-block; width:13px; height:13px; border:1px solid #888780;
+    .type-box { display:inline-block; width:13px; height:13px; border:1px solid #4a4540;
       border-radius:2px; flex-shrink:0; vertical-align:middle; position:relative; }
     .type-box--checked { background:#1a1a1a; border-color:#1a1a1a; }
     .type-box--checked::after { content:''; position:absolute; top:2px; left:2px;
       width:7px; height:4px; border-left:1.5px solid white; border-bottom:1.5px solid white;
       transform:rotate(-45deg); display:block; }
     .type-date { margin-left:auto; font-family:'Lato',sans-serif; font-size:10px;
-      font-weight:300; color:#3a3530; display:inline-flex; align-items:center;
+      font-weight:400; color:#2b2722; display:inline-flex; align-items:center;
       gap:10px; line-height:13px; height:13px; }
     .type-date-val { font-weight:400; color:#1a1a1a; }
 
     .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700;
       letter-spacing:0.13em; text-transform:uppercase; color:#4a4540;
-      margin-top:40px; padding-top:2px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
+      margin-top:40px; padding-top:2px; padding-bottom:5px; border-bottom:0.6px solid #c9c2b8; }
     .sec--first { margin-top:12px; }
 
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530;
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#2b2722;
       min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
     .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a;
       flex:1; line-height:1.55; }
 
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
-    .write-area { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
+    .write-area { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
       color:#1a1a1a; line-height:1.55; padding-top:3px; white-space:pre-wrap; word-break:break-word; }
 
     .zaehler-table { width:100%; border-collapse:collapse; margin-top:16px; }
     .zaehler-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700;
-      letter-spacing:0.12em; text-transform:uppercase; color:#888780;
-      border-bottom:0.5px solid #d8d3cc; padding:3px 0 5px; text-align:left; }
-    .zaehler-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
+      letter-spacing:0.12em; text-transform:uppercase; color:#4a4540;
+      border-bottom:0.5px solid #c9c2b8; padding:3px 0 5px; text-align:left; }
+    .zaehler-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
       color:#1a1a1a; padding:5px 0; border-bottom:0.5px solid #f0ece6; }
     .zaehler-table tr:last-child td { border-bottom:none; }
     .stand-val { font-weight:400; }
@@ -278,24 +278,24 @@ function _aptRenderUebergHTML(d) {
 
     .schluessel-row { display:flex; gap:36px; margin-top:22px; }
     .schluessel-item { display:flex; align-items:flex-end; gap:8px; }
-    .schluessel-item__label { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
-      color:#3a3530; white-space:nowrap; padding-bottom:2px; }
+    .schluessel-item__label { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
+      color:#2b2722; white-space:nowrap; padding-bottom:2px; }
     .schluessel-item__val { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
       color:#1a1a1a; padding-bottom:2px; }
 
     .sig-block { margin-top:100px; display:flex; justify-content:space-between; }
     .sig-col { width:44%; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic;
-      font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
-    .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
-      color:#aaa59e; margin-bottom:4px; }
+      font-weight:400; color:#4a4540; margin-bottom:4px; line-height:1.4; }
+    .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:400;
+      color:#6b645c; margin-bottom:4px; }
     .sig-write-gap { height:92px; }
     .sig-write-gap--short { height:58px; }
     .sig-ort-gap { height:22px; }
     .sig-ort-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:5px; }
     .sig-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:7px; }
-    .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
-    .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
+    .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#4a4540; }
+    .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#2b2722; margin-top:4px; }
     .sig-grid { margin-top:24px; }
     .sig-grid .sig-block { margin-top:0; }
     .sig-grid .sig-block + .sig-block { margin-top:56px; }
@@ -335,7 +335,7 @@ function _aptRenderUebergHTML(d) {
           <td>${esc(z.nummer)}</td>
           <td>${z.stand ? `<span class="stand-val">${esc(z.stand)}</span>` : '<span class="stand-empty"></span>'}</td>
         </tr>`).join('')
-    : `<tr><td colspan="3" style="font-style:italic;color:#aaa59e;font-size:10px;">Keine Zähler hinterlegt</td></tr>`;
+    : `<tr><td colspan="3" style="font-style:italic;color:#6b645c;font-size:10px;">Keine Zähler hinterlegt</td></tr>`;
 
   // Prefill needs only the date (Ort always resolves via fallback chain) — same as Mietvertrag.
   // Without a date: blank write line ABOVE the "Ort, Datum" caption for manual fill-in.

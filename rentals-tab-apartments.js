@@ -3690,7 +3690,7 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
   // replaced the app page. The contract sheet (apartment OR parking) simply
   // stays open underneath with everything typed.
   try {
-    const pdf = await ccRenderPagesToPdf(container);
+    const pdf = await ccRenderPagesToPdf(container, { strict: true });   // Rentals: never a PDF with hidden text
     if (btnEl) btnEl.innerHTML = '<i class="ti ti-loader"></i> Opening PDF\u2026';
     await ccOpenPdf(pdf, filename);
   } finally {

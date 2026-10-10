@@ -77,6 +77,15 @@ async function ccRenderPagesToPdf(container, opts = {}) {
   try { await ccFlowPages(container); } catch (e) { console.warn('[pdf] page flow skipped:', e); }
   const pages = container ? container.querySelectorAll('.pdf-page') : [];
   if (!pages.length) { _ccCloseWaitingTab(); throw new Error('no .pdf-page nodes rendered'); }
+  // strict (Rentals): never hand out a PDF with text that does not show — like the Casa Castel contracts
+  if (opts.strict) {
+    const cut = ccFlowCheck(container);
+    if (cut.length) {
+      _ccCloseWaitingTab();
+      console.error('[pdf] text outside the page area:', cut);
+      throw new Error('Some text did not fit on page ' + cut[0].page + ' ("' + cut[0].text + '"). The PDF was not created — nothing may go missing.');
+    }
+  }
   try { return await _ccRender(pages, opts); }
   catch (e) { _ccCloseWaitingTab(); throw e; }
 }
@@ -116,9 +125,92 @@ function _ccFlowLimit(content) {
   const r = content.getBoundingClientRect();
   return r.top + content.clientHeight;
 }
+// The lowest point of a block — including anything that hangs out of it
+function _ccBottom(el) {
+  let b = el.getBoundingClientRect().bottom;
+  el.querySelectorAll('*').forEach(d => {
+    const cs = getComputedStyle(d);
+    if (cs.display === 'none' || cs.position === 'absolute' || cs.position === 'fixed') return;
+    const r = d.getBoundingClientRect();
+    if (r.height > 0 && r.bottom > b) b = r.bottom;
+  });
+  return b;
+}
 function _ccOverflowing(content) {
   const limit = _ccFlowLimit(content);
-  return _ccFlowKids(content).some(k => k.getBoundingClientRect().bottom > limit + 0.5);
+  return _ccFlowKids(content).some(k => _ccBottom(k) > limit + 0.5);
+}
+// A block taller than what is left on the page and nothing else can move (one long
+// paragraph, one big wrapper): split it — a wrapper at its first part that does not
+// fit, a text at the last sentence (else word) that still fits. Returns the
+// continuation (same tag and classes) or null.
+function _ccSplitBlock(el, limit) {
+  const parts = [...el.children].filter(k => getComputedStyle(k).display !== 'none' && getComputedStyle(k).position !== 'absolute');
+  if (parts.length > 1) {
+    const i = parts.findIndex(k => _ccBottom(k) > limit + 0.5);
+    if (i > 0) {
+      const clone = el.cloneNode(false); clone.removeAttribute('id'); clone.setAttribute('data-cc-continued', '1');
+      parts.slice(i).forEach(k => clone.appendChild(k));
+      return clone;
+    }
+    if (i === 0) {
+      const inner = _ccSplitBlock(parts[0], limit);
+      if (inner) {
+        const clone = el.cloneNode(false); clone.removeAttribute('id'); clone.setAttribute('data-cc-continued', '1');
+        clone.appendChild(inner); parts.slice(1).forEach(k => clone.appendChild(k));
+        return clone;
+      }
+    }
+  }
+  return _ccSplitText(el, limit);
+}
+function _ccSplitText(el, limit) {
+  const texts = []; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) if (n.textContent.trim()) texts.push(n);
+  const below = (node, off) => { const r = document.createRange(); r.setStart(node, off); r.setEnd(node, Math.min(off + 1, node.length));
+    const rc = [...r.getClientRects()].pop(); return rc ? rc.bottom > limit + 0.5 : false; };
+  const ti = texts.findIndex(t => below(t, Math.max(0, t.length - 1)));
+  if (ti < 0) return null;
+  const t = texts[ti];
+  let lo = 0, hi = t.length - 1;                       // first character that falls below the line
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (below(t, mid)) hi = mid; else lo = mid + 1; }
+  const txt = t.textContent;
+  let cut = -1;
+  for (let i = lo; i > 0; i--) { if (/[.;:!?]/.test(txt[i - 1]) && /\s/.test(txt[i] || ' ')) { cut = i; break; } }   // sentence end
+  if (cut <= 0) for (let i = lo; i > 0; i--) { if (/\s/.test(txt[i - 1])) { cut = i; break; } }                        // else a word
+  if (cut <= 0 && ti === 0) return null;                // nothing fits on this page at all
+  const r = document.createRange();
+  if (cut > 0) r.setStart(t, cut); else r.setStartBefore(t);
+  r.setEndAfter(el.lastChild);
+  const tail = r.extractContents();
+  const clone = el.cloneNode(false); clone.removeAttribute('id'); clone.setAttribute('data-cc-continued', '1');
+  clone.appendChild(tail);
+  // a continued sentence starts flush: drop the leading space
+  const fw = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT); const f = fw.nextNode(); if (f) f.textContent = f.textContent.replace(/^\s+/, '');
+  return clone;
+}
+// After the flow: every piece of text inside the page area? Returns what would be cut.
+function ccFlowCheck(container) {
+  const cut = [];
+  [...container.querySelectorAll('.pdf-page')].forEach((pg, i) => {
+    const c = pg.querySelector(':scope > .content'); if (!c) return;
+    const cr = c.getBoundingClientRect();
+    const w = document.createTreeWalker(c, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) {
+      if (!n.textContent.trim()) continue;
+      const el = n.parentElement; if (!el) continue;
+      const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || el.offsetParent === null && cs.position !== 'fixed') continue;
+      const r = document.createRange(); r.selectNodeContents(n);
+      for (const rc of r.getClientRects()) {
+        if (rc.width < 0.5 || rc.height < 0.5) continue;
+        // 3 px: the font's own line box (tall capitals, descenders) — not text that is cut
+        if (rc.bottom > cr.bottom + 3 || rc.top < cr.top - 3 || rc.right > cr.right + 1.5 || rc.left < cr.left - 1.5) {
+          cut.push({ page: i + 1, text: n.textContent.trim().slice(0, 40) }); break;
+        }
+      }
+    }
+  });
+  return cut;
 }
 // Splits a table (or a block holding one table) at the first row that does not
 // fit. Returns the continuation block (header rows kept), or null.
@@ -179,10 +271,11 @@ async function ccFlowPages(container) {
     const pg = container.querySelectorAll('.pdf-page')[i];
     const content = pg.querySelector(':scope > .content');
     if (!content) continue;
+    content.style.overflowWrap = 'anywhere';            // a very long word / e-mail wraps instead of running off the page
     for (let round = 0; round < 40 && guard < 200; round++, guard++) {
       const limit = _ccFlowLimit(content);
       const kids = _ccFlowKids(content);
-      const idx = kids.findIndex(k => k.getBoundingClientRect().bottom > limit + 0.5);
+      const idx = kids.findIndex(k => _ccBottom(k) > limit + 0.5);
       if (idx < 0) break;
       const el = kids[idx];
       let moved = null;
@@ -191,8 +284,15 @@ async function ccFlowPages(container) {
         const cont = _ccSplitTable(el, limit);
         if (cont) moved = [cont, ...kids.slice(idx + 1)];
       }
+      // 2) a block that can never fit on one page (one huge paragraph): it starts right here, under
+      //    its heading, and continues on the next page — never a heading alone on a page
+      if (!moved && (_ccBottom(el) - el.getBoundingClientRect().top) > content.clientHeight - 2
+          && el.getBoundingClientRect().top < limit - 40) {
+        const cont = _ccSplitBlock(el, limit);
+        if (cont) moved = [cont, ...kids.slice(idx + 1)];
+      }
       if (!moved) {
-        // 2) move the whole section (from its heading) — unless it is very long
+        // 3) move the whole section (from its heading) — unless it is very long
         let start = idx;
         for (let s = idx; s >= 0; s--) { if (kids[s].matches(CC_FLOW_HEADINGS)) { start = s; break; } }
         const pageH = content.clientHeight;
@@ -200,9 +300,13 @@ async function ccFlowPages(container) {
         while (start > 0 && kids[start - 1].matches(CC_FLOW_HEADINGS)) start--;   // never leave a heading alone
         if (start === 0) {
           if (kids.length > 1 && idx > 0) start = idx;                       // page starts with this section
-          else break;                                                        // one block taller than a page
+          else {                                                             // one block taller than the page: split it
+            const cont = _ccSplitBlock(el, limit);
+            if (!cont) break;
+            moved = [cont, ...kids.slice(idx + 1)];
+          }
         }
-        moved = kids.slice(start);
+        if (!moved) moved = kids.slice(start);
       }
       if (!moved.length) break;
       _ccPlaceAfter(container, pg, moved);

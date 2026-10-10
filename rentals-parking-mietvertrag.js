@@ -123,78 +123,78 @@ function _renderPkMietvertragHTML(d) {
     .hdr { position:absolute; top:0; left:0; right:0; height:83.15px; background:#f0e8da;
       display:flex; align-items:center; justify-content:space-between; padding:0 80px; }
     .hdr__wordmark { font-family:'Playfair Display',serif; font-size:26px; font-weight:400;
-      color:#7a5c30; letter-spacing:0.05em; line-height:1; }
+      color:#6e5128; letter-spacing:0.05em; line-height:1; }
     .hdr__unit { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
-    .hdr__unit-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:400;
-      letter-spacing:0.16em; text-transform:uppercase; color:#b8975a; line-height:1; }
+    .hdr__unit-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:700;
+      letter-spacing:0.16em; text-transform:uppercase; color:#8a6535; line-height:1; }
     .hdr__unit-name { font-family:'Playfair Display',serif; font-size:12px; font-weight:400;
-      color:#7a5c30; line-height:1; }
+      color:#6e5128; line-height:1; }
     .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
-    .ftr__rule { border:none; border-top:0.5px solid #e8dbc5; margin-bottom:7px; }
+    .ftr__rule { border:none; border-top:0.6px solid #c9c2b8; margin-bottom:7px; }
     .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif;
-      font-size:8px; font-weight:300; color:#aaa59e; line-height:1; }
+      font-size:8px; font-weight:400; color:#6b645c; line-height:1; }
     .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:62px; overflow:hidden; }
     .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400;
       color:#1a1a1a; line-height:1.15; margin-bottom:4px; }
-    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:300;
-      color:#aaa59e; margin-bottom:28px; }
+    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400;
+      color:#6b645c; margin-bottom:28px; }
     .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em;
       text-transform:uppercase; color:#4a4540; margin-top:14px; padding-top:2px;
-      padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
+      padding-bottom:5px; border-bottom:0.7px solid #c9c2b8; }
     .sec--first { margin-top:0; }
     .sec--lg { font-size:8.5px; margin-top:22px; }
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530;
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#6b645c;
       min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
     .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a;
       flex:1; line-height:1.55; }
     .kv-gap { height:8px; }
-    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; margin-top:10px; line-height:1.55; }
+    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:400; color:#2b2722; margin-top:10px; line-height:1.55; }
     .staffel-table { width:100%; border-collapse:collapse; margin-top:6px; margin-bottom:14px; }
-    .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .staffel-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#4a4540; border-bottom:0.5px solid #c9c2b8; padding:3px 0 4px; text-align:left; }
+    .staffel-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px;
       display:flex; justify-content:space-between; align-items:center;
       margin-top:10px; margin-bottom:16px; }
     .total-box__label, .total-box__value { font-family:'Lato',sans-serif;
-      font-size:10.5px; font-weight:700; color:#8a6535; line-height:1; }
+      font-size:10.5px; font-weight:700; color:#6e5128; line-height:1; }
     .clause { margin-top:10px; }
     .clause--first { margin-top:0; }
     .clause__title { font-family:'Lato',sans-serif; font-size:12px; font-weight:700;
       color:#4a4540; margin-bottom:2px; line-height:1.4; }
-    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300;
-      color:#3a3530; line-height:1.6; }
+    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
+      color:#2b2722; line-height:1.6; }
     .sig-block { margin-top:48px; display:flex; flex-wrap:wrap; justify-content:space-between; row-gap:8px; }
     .sig-col { width:44%; }
-    .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
-      color:#aaa59e; margin-bottom:4px; }
+    .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:400;
+      color:#6b645c; margin-bottom:4px; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic;
-      font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
+      font-weight:400; color:#2b2722; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:56px; }
     .sig-write-gap--short { height:56px; }
     .sig-ort-gap { height:20px; }
-    .sig-ort-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:5px; }
-    .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
-    .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:#4a4540; margin-top:40px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
-    .comment-line { border-bottom:0.5px solid #e0dbd4; height:26px; margin-top:2px; }
-    .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
-    .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
-      color:#3a3530; margin-top:4px; }
-    .anlage-note { font-family:'Lato',sans-serif; font-size:10px; font-weight:300;
-      color:#3a3530; margin-top:20px; line-height:1.55;
-      border-top:0.5px solid #e8dbc5; padding-top:10px; }
+    .sig-ort-line { border:none; border-top:0.6px solid #2b2722; margin-bottom:5px; }
+    .sig-line { border:none; border-top:0.6px solid #2b2722; margin-bottom:7px; }
+    .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:#4a4540; margin-top:40px; padding-bottom:5px; border-bottom:0.7px solid #c9c2b8; }
+    .comment-line { border-bottom:0.6px solid #c9c2b8; height:26px; margin-top:2px; }
+    .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:700; color:#4a4540; }
+    .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:400;
+      color:#2b2722; margin-top:4px; }
+    .anlage-note { font-family:'Lato',sans-serif; font-size:10px; font-weight:400;
+      color:#2b2722; margin-top:20px; line-height:1.55;
+      border-top:0.5px solid #c9c2b8; padding-top:10px; }
     .anlage-title { font-family:'Playfair Display',serif; font-size:16px; font-weight:400;
       color:#1a1a1a; margin-bottom:3px; }
-    .anlage-subtitle { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
-      letter-spacing:0.1em; text-transform:uppercase; color:#aaa59e; margin-bottom:22px; }
+    .anlage-subtitle { font-family:'Lato',sans-serif; font-size:9px; font-weight:400;
+      letter-spacing:0.1em; text-transform:uppercase; color:#6b645c; margin-bottom:22px; }
     .ordnung-par { margin-top:10px; }
     .ordnung-par__title { font-family:'Lato',sans-serif; font-size:10px; font-weight:700;
       color:#4a4540; margin-bottom:2px; }
-    .ordnung-par__body { font-family:'Lato',sans-serif; font-size:10px; font-weight:300;
-      color:#3a3530; line-height:1.6; }
-    .ordnung-footer { font-family:'Lato',sans-serif; font-size:9px; font-weight:300;
-      font-style:italic; color:#aaa59e; margin-top:18px; padding-top:10px;
-      border-top:0.5px solid #e8dbc5; }
+    .ordnung-par__body { font-family:'Lato',sans-serif; font-size:10px; font-weight:400;
+      color:#2b2722; line-height:1.6; }
+    .ordnung-footer { font-family:'Lato',sans-serif; font-size:9px; font-weight:400;
+      font-style:italic; color:#6b645c; margin-top:18px; padding-top:10px;
+      border-top:0.5px solid #c9c2b8; }
   `;
 
   const hdr = () => `

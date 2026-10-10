@@ -178,54 +178,54 @@ function _renderGewerbeMietvertragHTML(d) {
     html, body { background:#ffffff; }
     .page { position:relative; width:793.71px; height:1122.52px; background:#ffffff; overflow:hidden; }
     .hdr { position:absolute; top:0; left:0; right:0; height:83.15px; background:#f0e8da; display:flex; align-items:center; justify-content:space-between; padding:0 80px; }
-    .hdr__wordmark { font-family:'Playfair Display',serif; font-size:26px; font-weight:400; color:#7a5c30; letter-spacing:0.05em; line-height:1; }
+    .hdr__wordmark { font-family:'Playfair Display',serif; font-size:26px; font-weight:400; color:#6e5128; letter-spacing:0.05em; line-height:1; }
     .hdr__room { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
-    .hdr__room-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:400; letter-spacing:0.16em; text-transform:uppercase; color:#b8975a; line-height:1; }
-    .hdr__room-name { font-family:'Playfair Display',serif; font-size:12px; font-weight:400; color:#7a5c30; line-height:1; }
+    .hdr__room-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase; color:#8a6535; line-height:1; }
+    .hdr__room-name { font-family:'Playfair Display',serif; font-size:12px; font-weight:400; color:#6e5128; line-height:1; }
     .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
-    .ftr__rule { border:none; border-top:0.5px solid #e8dbc5; margin-bottom:7px; }
-    .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; font-weight:300; color:#aaa59e; line-height:1; }
+    .ftr__rule { border:none; border-top:0.6px solid #c9c2b8; margin-bottom:7px; }
+    .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; font-weight:400; color:#6b645c; line-height:1; }
     .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:62px; overflow:hidden; }
     .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400; color:#1a1a1a; line-height:1.15; margin-bottom:4px; }
-    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:300; color:#aaa59e; margin-bottom:28px; }
-    .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:14px; padding-top:2px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
+    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#6b645c; margin-bottom:28px; }
+    .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:14px; padding-top:2px; padding-bottom:5px; border-bottom:0.7px solid #c9c2b8; }
     .sec--first { margin-top:0; }
     .sec--lg { font-size:8.5px; margin-top:22px; }
     .sec--lg.sec--first { margin-top:0; }
     .kv { display:flex; padding:3.5px 0; align-items:baseline; }
-    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
+    .kv__k { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#6b645c; min-width:140px; flex-shrink:0; line-height:1.55; padding-right:10px; }
     .kv__v { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; flex:1; line-height:1.55; }
     .kv-gap { height:10px; }
     .total-box { background:#f0e8d8; border-radius:3px; padding:9px 10px; display:flex; justify-content:space-between; align-items:center; margin-top:10px; margin-bottom:16px; }
-    .total-box__label, .total-box__value { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:700; color:#8a6535; line-height:1; }
+    .total-box__label, .total-box__value { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:700; color:#6e5128; line-height:1; }
     .staffel-table { width:100%; border-collapse:collapse; margin-top:6px; margin-bottom:14px; }
-    .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .staffel-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
-    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; margin-top:10px; line-height:1.55; }
-    .nk-intro { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; margin-top:7px; margin-bottom:10px; }
+    .staffel-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#4a4540; border-bottom:0.5px solid #c9c2b8; padding:3px 0 4px; text-align:left; }
+    .staffel-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .note { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:400; color:#2b2722; margin-top:10px; line-height:1.55; }
+    .nk-intro { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#2b2722; line-height:1.55; margin-top:7px; margin-bottom:10px; }
     .nk-grid { display:grid; grid-template-columns:1fr 1fr; column-gap:24px; }
-    .nk-item { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:300; color:#3a3530; padding:2.5px 0; line-height:1.4; }
+    .nk-item { font-family:'Lato',sans-serif; font-size:10.5px; font-weight:400; color:#2b2722; padding:2.5px 0; line-height:1.4; }
     .nk-item--full { grid-column:1/-1; }
     .clause { margin-top:8px; }
     .clause--first { margin-top:40px; }
     .clause__title { font-family:'Lato',sans-serif; font-size:12px; font-weight:700; color:#4a4540; margin-bottom:2px; line-height:1.4; }
-    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#3a3530; line-height:1.55; }
+    .clause__body { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#2b2722; line-height:1.55; }
     .inv-table { width:100%; border-collapse:collapse; margin-top:6px; }
-    .inv-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#888780; border-bottom:0.5px solid #d8d3cc; padding:3px 0 4px; text-align:left; }
-    .inv-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:300; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
-    .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:32px; padding-bottom:5px; border-bottom:0.6px solid #d8d3cc; }
-    .comment-line { border-bottom:0.5px solid #e0dbd4; height:26px; margin-top:2px; }
+    .inv-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:#4a4540; border-bottom:0.6px solid #c9c2b8; padding:3px 0 4px; text-align:left; }
+    .inv-table td { font-family:'Lato',sans-serif; font-size:12px; font-weight:400; color:#1a1a1a; padding:3.5px 0; line-height:1.55; }
+    .comment-label { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:#4a4540; margin-top:32px; padding-bottom:5px; border-bottom:0.7px solid #c9c2b8; }
+    .comment-line { border-bottom:0.6px solid #c9c2b8; height:26px; margin-top:2px; }
     .sig-block { margin-top:40px; display:flex; justify-content:space-between; }
     .sig-col { width:44%; }
-    .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#aaa59e; margin-bottom:4px; }
-    .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:300; color:#8a7a66; margin-bottom:4px; line-height:1.4; }
+    .sig-date-label { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#6b645c; margin-bottom:4px; }
+    .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:400; color:#2b2722; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:60px; }
     .sig-write-gap--short { height:40px; }
     .sig-ort-gap { height:20px; }
-    .sig-ort-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:5px; }
-    .sig-line { border:none; border-top:0.6px solid #3a3530; margin-bottom:7px; }
-    .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#888780; }
-    .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:300; color:#3a3530; margin-top:4px; }
+    .sig-ort-line { border:none; border-top:0.6px solid #2b2722; margin-bottom:5px; }
+    .sig-line { border:none; border-top:0.6px solid #2b2722; margin-bottom:7px; }
+    .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:700; color:#4a4540; }
+    .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#2b2722; margin-top:4px; }
   `;
 
   const hdr = name => `<div class="hdr"><span class="hdr__wordmark">${name}</span><div class="hdr__room"><span class="hdr__room-label">Gewerbemietvertrag</span><span class="hdr__room-name">${d.nutzungszweck || ''}</span></div></div>`;
@@ -305,7 +305,7 @@ function _renderGewerbeMietvertragHTML(d) {
   // Inventar table
   const invRows = d.inventar.length
     ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
-    : `<tr><td colspan="2" style="color:#aaa59e;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
+    : `<tr><td colspan="2" style="color:#6b645c;font-size:10px;padding-top:6px;">Kein Inventar hinterlegt</td></tr>`;
 
   // Paragraph numbering — shifts if Staffelmiete present
   const pBase = hasStaffel ? 1 : 0; // offset for §§ after Staffelmiete
