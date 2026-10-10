@@ -1272,8 +1272,7 @@ function _rntRender() {
   }
 
   let html = '';
-  if (apts.length) {
-    html += `<div class="rnt-group-hdr">Wohnungen</div>`;
+  if (apts.length) {                                               // no "Wohnungen" label: the title says it
     html += apts.map(a => _rntCardHTML({ type: 'apt', unit: a })).join('');
   }
   if (gewerbe.length) {

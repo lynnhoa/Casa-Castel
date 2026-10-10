@@ -908,8 +908,7 @@ function _renderAptList() {
   const gewerbe    = appApartments.filter(a => a.zimmer_type === 'Gewerbefläche');
   const bothExist  = wohnungen.length && gewerbe.length;
   let html = '';
-  if (wohnungen.length) {
-    if (bothExist) html += `<div class="rnt-group-hdr">Wohnungen</div>`;
+  if (wohnungen.length) {                                          // no "Wohnungen" label: the title says it
     html += wohnungen.map(a => _aptCardHTML(a)).join('');
   }
   if (gewerbe.length) {
@@ -950,7 +949,7 @@ function _aptPatchCards(list) {
   if (cards.length !== order.length) return false;
   if (!cards.every((c, i) => String(c.dataset.id) === String(order[i].id))) return false;
   const bothExist = order.some(isGw) && order.some(a => !isGw(a));
-  if (list.querySelectorAll('.rnt-group-hdr').length !== (bothExist ? 2 : 0)) return false;
+  if (list.querySelectorAll('.rnt-group-hdr').length !== (bothExist ? 1 : 0)) return false;   // only "Gewerbeflächen"
   let changed = 0;
   order.forEach((a, i) => {
     const html = _aptCardHTML(a);
