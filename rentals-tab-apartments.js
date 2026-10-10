@@ -1002,11 +1002,6 @@ function _aptCardHTML(a) {
   // Inventar count
   const invCount = inventar.length;
 
-  // Hausgeld helpers
-  const hgEntries = _aptHausgeld[a.id] || [];
-  const hgHasOpen = hgEntries.some(e => !e.weg_notified);
-  const hgPendingEntry = hgHasOpen ? hgEntries.find(e => !e.weg_notified) : null;
-
   return `
 <div class="apt-card${vacant ? '' : ''}" data-id="${a.id}" data-name="${aptEsc(a.name)}">
 
@@ -1623,8 +1618,13 @@ function _aptHGSorted(aptId) {
   return (_aptHausgeld[aptId] || []).slice().sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
 }
 function _aptHGToday() { const t = new Date(); t.setHours(0, 0, 0, 0); return t; }
+/* A step counts as adjusted once it has started (Oct 2026) — no "Noted?" to-do for old steps.
+   German calendar day, compared as YYYY-MM-DD (a step starting today has started). */
+const _aptHGIso = e => String(e && e.effective_date || '').slice(0, 10);
+const _aptHGStarted = e => _aptHGIso(e) <= ccTodayISO();
 
 function _aptHGPill(e, aptId) {
+  if (_aptHGStarted(e)) return `<span class="tn-nkv-pill done" data-hg-noted="${e.id}"><i class="ti ti-check" aria-hidden="true"></i> Noted</span>`;   // started = adjusted
   const on = !!e.weg_notified;
   return `<button type="button" class="tn-nkv-pill ${on ? 'done' : 'pending'}" data-hg-noted="${e.id}"
     aria-pressed="${on}" onclick="_aptHGToggleNoted('${e.id}','${aptId}')">
@@ -1635,17 +1635,17 @@ function _aptHGDelBtn(e, aptId) {
     onclick="_aptHGDelete('${e.id}','${aptId}')">
     <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i></button>`;
 }
-/* Amber header pill: newest step that is not noted yet */
+/* Card pill: the next Hausgeld change that has not started yet, with its date.
+   Information, not a to-do — it disappears by itself on the start date. */
 function _aptHGHeaderPill(aptId) {
-  const open = _aptHGSorted(aptId).find(e => !e.weg_notified);
-  return open ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld ${aptFmtEURCompact(open.amount)}</span></div>` : '';
+  const next = _aptHGSorted(aptId).filter(e => !_aptHGStarted(e)).pop();   // newest first → last = nearest
+  return next ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-clock" style="font-size:9px" aria-hidden="true"></i> Hausgeld ${aptFmtEURCompact(next.amount)} ab ${_aptHGFmt(_aptHGIso(next))}</span></div>` : '';
 }
 
 function _aptHGSectionHTML(aptId) {
   const entries = _aptHGSorted(aptId);                    // newest first
-  const today   = _aptHGToday();
-  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  const future  = entries.filter(e => new Date(e.effective_date) > today);
+  const current = entries.find(_aptHGStarted) || null;
+  const future  = entries.filter(e => !_aptHGStarted(e));
   const next    = future.length ? future[future.length - 1] : null;   // nearest upcoming step
 
   const curDisplay = current
@@ -1690,16 +1690,15 @@ let _aptHGVerlaufApt = null;   // apartment whose Verlauf sheet is open (refresh
 function _aptHGOpenModal(aptId) {
   _aptHGVerlaufApt = aptId;
   const entries = _aptHGSorted(aptId).reverse();          // oldest first, like Staffel
-  const today   = _aptHGToday();
   const apt     = appApartments.find(a => a.id === aptId);
   const rows = entries.map(e => {
-    const isFuture = new Date(e.effective_date) > today;
+    const isFuture = !_aptHGStarted(e);
     return `
       <div class="tn-nkv-row" style="padding:7px 16px">
         <div class="tn-nkv-top">
           <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-gold)' : 'var(--cc-green,#3B6D11)'};flex-shrink:0" aria-hidden="true"></i>
           <span class="tn-nkv-date">${isFuture ? 'ab' : 'seit'} ${_aptHGFmt(e.effective_date)}</span>
-          <span class="${e.weg_notified ? 'tn-nkv-amount past' : 'tn-nkv-amount'}">${aptFmtEUR(e.amount)}</span>
+          <span class="${e.weg_notified || !isFuture ? 'tn-nkv-amount past' : 'tn-nkv-amount'}">${aptFmtEUR(e.amount)}</span>
           ${_aptHGDelBtn(e, aptId).replace('flex-shrink:0"', 'flex-shrink:0;margin-left:4px"')}
         </div>
         <div class="tn-nkv-pills">${_aptHGPill(e, aptId)}</div>
