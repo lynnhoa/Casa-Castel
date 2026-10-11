@@ -394,6 +394,8 @@ function ccIsNumInput(el) {
     close();
     const ov = document.createElement('div');
     ov.className = 'cccal-ov'; ov.id = 'ccCal';
+    ov._sy = window.scrollY;                              // B23: where the page was — the keyboard of the typing field
+                                                          // pushes the page down on iPhone; close() brings it back
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
     ov.innerHTML = `
       <div class="cccal" role="dialog" aria-modal="true" aria-label="${label.replace(/"/g, '')} wählen">
@@ -463,8 +465,15 @@ function ccIsNumInput(el) {
     writeVal(cur.el, y, m, d); close();
   }
   function close() {
-    document.getElementById('ccCal')?.remove();
+    const ov = document.getElementById('ccCal');
     document.removeEventListener('keydown', onKey);
+    if (!ov) return;
+    const a = document.activeElement;
+    if (a && ov.contains(a)) a.blur();                    // keyboard down first
+    ov.remove();
+    // B23: back to where you were (iPhone moves the page while the keyboard closes → check again shortly after)
+    const y = ov._sy;
+    if (typeof y === 'number') [0, 80, 400].forEach(ms => setTimeout(() => { if (!document.getElementById('ccCal') && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y); }, ms));
   }
   function onKey(e) { if (e.key === 'Escape') close(); }
   function onClick(e) {
