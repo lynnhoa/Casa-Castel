@@ -797,80 +797,72 @@ async function _kTenRenderMobRotation() {
   const el = document.getElementById('k-mob-rot-strip'); if (!el) return;
   const rooms      = _kTenGetRoomList();
   if (!rooms.length) { el.innerHTML = ''; return; }
-  const idx        = kWeekIdx();
-  const cyclePos   = _kCyclePos(rooms, idx, _kTenWeekRow && _kTenWeekRow.week_index === idx ? _kTenWeekRow : null);
-  const cycleStart = idx - cyclePos;
-  const pad = n => String(n).padStart(2, '0');
+  /* B31 (Oct 2026) — SLIDING WINDOW: the strip shows as many weeks as there are kitchen rooms,
+     in time order, with this week in the middle (5 rooms → 2 weeks back · Now · 2 ahead). Every
+     room appears once — a recent turn with its result, or its next turn with the date. Each week
+     the rooms move one step; there is no jump when a round ends.
+     Was: the rooms in fixed order, each with its own week — near the end of a round the next
+     room jumped to the front with a future date, before the past weeks of the others.
+     Display only: who is next (same rule as before), reminders and history are unchanged. */
+  const idx      = kWeekIdx();
+  const n        = rooms.length;
+  const cyclePos = _kCyclePos(rooms, idx, _kTenWeekRow && _kTenWeekRow.week_index === idx ? _kTenWeekRow : null);
+  const back     = Math.floor((n - 1) / 2), ahead = n - 1 - back;
+  const pad = n2 => String(n2).padStart(2, '0');
   const fmt = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
+  const roomAt = k => rooms[(((cyclePos + k) % n) + n) % n];      // rotation order, k weeks from now
 
-  const [dbRowsRaw, absData] = await Promise.all([
-    Promise.all(rooms.map((_, i) => _kTenGetWeek(cycleStart + i))),
+  // Saved weeks for the past weeks + this week (read only — same query as before, other weeks)
+  const pastKs = []; for (let k = -back; k <= 0; k++) pastKs.push(k);
+  const [savedRows, absData] = await Promise.all([
+    Promise.all(pastKs.map(k => _kTenGetWeek(idx + k))),
     sbL ? sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || []) : Promise.resolve([])
   ]);
+  const savedAt = {}; pastKs.forEach((k, j) => { savedAt[k] = savedRows[j] || null; });
 
-  // A saved week only counts for this row when it really belongs to this room
-  const dbRows = dbRowsRaw.map((r, i) => (r && r.room === rooms[i]) ? r : null);
-
-  let approvedCount = 0;
-  for (let i = 0; i < cyclePos; i++) { if (dbRows[i] && dbRows[i].status === 'approved') approvedCount++; }
-  const greenPct = approvedCount > 0 ? ((approvedCount / rooms.length) * 100).toFixed(1) + '%' : '0%';
-
-
-  // Find the one true next room — first future slot that isn't absent or skipped
-  let trueNextI = -1;
-  for (let offset = 1; offset <= rooms.length; offset++) {
-    const ni     = (cyclePos + offset) % rooms.length;
-    const slot   = cycleStart + cyclePos + offset;
-    const nRoom  = rooms[ni];
+  // The one true next room — same rule as before: the first coming week whose room is not away / vacant
+  let nextK = -1;
+  for (let k = 1; k <= n; k++) {
+    const slot = idx + k, nRoom = roomAt(k);
     const nStart = new Date(K_START.getTime() + slot * 7 * 24 * 60 * 60 * 1000);
-    const nWs = _kYmd(nStart);
-    const nWe = _kYmd(_kAddDays(nStart, 6));
-    const nAbsent  = absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe));
-    const nSkipped = kVacantInWeek(nRoom, slot);
-    if (!nAbsent && !nSkipped) { trueNextI = ni; break; }
+    const nWs = _kYmd(nStart), nWe = _kYmd(_kAddDays(nStart, 6));
+    if (!absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe)) && !kVacantInWeek(nRoom, slot)) { nextK = k; break; }
   }
-  const _segStates = [];
-  const items = rooms.map((room, i) => {
-    // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
-    const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
-    const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
-    const info    = kWeekInfo(Math.max(0, slotIdx));
-    const dateStr = info ? fmt(info.start) + '–' + fmt(info.end) : '—';
-    const isPast  = !inNextRound && i < cyclePos;
-    const saved   = isPast ? (dbRows[i] || null) : null;   // fixed room order — a saved week counts only for this room
-    const shown   = room;
-    const dbRow   = inNextRound ? null : (isPast ? saved : dbRows[i]);
-    let state     = _kRotState({
-      isNow:       i === cyclePos,
-      isPast,
-      isNext:      i === trueNextI,
-      dbStatus:    dbRow ? dbRow.status : null,
-      room:        shown,
+
+  // The weeks on screen: past weeks + this week show who really had them (the saved week);
+  // coming weeks follow the rotation.
+  const slots = [];
+  for (let k = -back; k <= ahead; k++) {
+    const slot = idx + k, want = roomAt(k);
+    const row  = k <= 0 ? savedAt[k] : null;
+    const room = row && row.room ? row.room : want;
+    const info = kWeekInfo(Math.max(0, slot));
+    let state  = _kRotState({
+      isNow:       k === 0,
+      isPast:      k < 0,
+      isNext:      k === nextK,
+      dbStatus:    row ? row.status : null,
+      room,
       weekStart:   info ? info.start : null,
       absenceRows: absData,
     });
-    if (state === 'done' && dbRow && dbRow.is_late) state = 'late';
-    _segStates.push(state);
-    return _kRotItemHTML(state, shown, dateStr);
-  }).join('');
+    if (state === 'done' && row && row.is_late) state = 'late';
+    slots.push({ k, slot, room, info, row, state });
+  }
 
+  const _segStates = slots.map(x => x.state);
+  const items = slots.map(x => _kRotItemHTML(x.state, x.room, x.info ? fmt(x.info.start) + '–' + fmt(x.info.end) : '—')).join('');
   el.innerHTML = `<div class="k-mob-rot-line"></div>${_kRotSegsHTML(_segStates)}<div class="k-mob-rot-items">${items}</div>`;
 
-  // Also render desktop rotation list — uses same rot-tl CSS classes as landlord desktop
+  // Also render desktop rotation list — the same weeks, top to bottom
   const dskRot = document.getElementById('k-ten-dsk-rot');
   if (dskRot) {
-    dskRot.innerHTML = '<div class="rot-tl">' + rooms.map((room, i) => {
-      // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
-      const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
-      const slotIdx  = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
+    dskRot.innerHTML = '<div class="rot-tl">' + slots.map(x => {
+      const slotIdx  = x.slot, _shown = x.room, dbRow = x.row;
       const start    = new Date(K_START.getTime() + slotIdx * 7 * 24 * 60 * 60 * 1000);
       const end      = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
       const dateStr  = fmt(start) + ' – ' + fmt(end);
-      const _isPast = !inNextRound && i < cyclePos;
-      const _saved = _isPast ? (dbRows[i] || null) : null;
-      const _shown = room;
-      const dbRow    = inNextRound ? null : (_isPast ? _saved : dbRows[i]);
-      const state    = _kRotState({ isNow: i === cyclePos, isPast: !inNextRound && i < cyclePos, isNext: i === trueNextI, dbStatus: dbRow ? dbRow.status : null, room: _shown, weekStart: start, absenceRows: absData });
+      const state    = x.state === 'late' ? 'done' : x.state;      // the badge says "Done (late)"
       const dotClass = { done:'rot-dot--done', now:'rot-dot--now', missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent' }[state] || 'rot-dot--next';
       const topLine  = state === 'done' || state === 'now' ? 'rot-line-done'
                      : state === 'skipped' ? 'rot-line-skipped'
