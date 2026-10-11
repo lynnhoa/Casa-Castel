@@ -1888,7 +1888,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
     <div class="cc-slot">
-    ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntToggleProfile('${rid}','${tid}')">Cancel</button>` : ''}
+    ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntCancelProfile('${rid}','${tid}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec
         ? `_rntSaveProfile('${rid}','${tid}','${unitType}','${unitId}')`
@@ -3135,6 +3135,24 @@ function _rntToggleProfile(rid, tid) {
   edit.style.display  = editing ? 'none' : '';
   if (fread) fread.style.display = editing ? '' : 'none';
   if (fedit) fedit.style.display = editing ? 'none' : '';
+}
+
+/* B29 (Oct 2026) — Cancel discards: the tenant details are drawn again from the SAVED data — fields,
+   Mieter 2/3 blocks, Save button (clean). Was: Cancel only hid the form; what was typed stayed in it,
+   came back on the next Edit and was saved with the next Save. Only this part of the card is redrawn —
+   Kaution, an open move-out panel etc. stay as they are. */
+function _rntCancelProfile(rid, tid) {
+  const rec   = (_rntRecords || []).find(r => String(r.id) === String(tid));
+  const isApt = String(rid).startsWith('apt_');
+  const key   = u => (isApt ? 'apt_' : 'pk_') + String(u.id).replace(/-/g, '').slice(0, 12);
+  const unit  = ((isApt ? (typeof appApartments !== 'undefined' ? appApartments : []) : (typeof appParking !== 'undefined' ? appParking : [])) || []).find(u => key(u) === rid);
+  if (!rec || !unit) { _rntToggleProfile(rid, tid); return; }       // cannot redraw → at least close (as before)
+  const tmp = document.createElement('div');
+  tmp.innerHTML = _rntProfileSectionHTML(rid, isApt ? 'apt' : 'parking', unit, rec);
+  ['pread-', 'pedit-', 'pfoot-read-', 'pfoot-edit-'].forEach(p => {
+    const now = document.getElementById(p + rid), nu = tmp.querySelector('[id="' + p + rid + '"]');
+    if (now && nu) now.replaceWith(nu);
+  });
 }
 
 /* ── CO-TENANT (Mieter 2/3) ADD/REMOVE ── */

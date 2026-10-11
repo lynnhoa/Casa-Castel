@@ -2653,7 +2653,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
     ${rec ? `<button type="button" class="cc-foot-btn tn-del-btn" onclick="_tnDeleteTenant('${tid}')"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>` : ''}
     <div class="cc-slot">
-    ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnToggleProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
+    ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_tnCancelProfile('${rid}','${tid}','${esc(room.name)}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
       onclick="${rec ? `_tnSaveProfile('${rid}','${tid}','${esc(room.name)}')` : `_tnSaveNewTenant('${rid}','${esc(room.name)}')`}">
       Save</button>
@@ -3296,6 +3296,22 @@ function _tnToggleRentEdit(rid) {
 }
 
 
+
+/* B29 (Oct 2026) — Cancel discards: the tenant details are drawn again from the SAVED data — fields,
+   co-tenant blocks, Save button (clean). Was: Cancel only hid the form; what was typed stayed in it,
+   came back on the next Edit and was saved with the next Save. Only this part of the card is redrawn. */
+function _tnCancelProfile(rid, tid, roomName) {
+  const rec  = (_tnRecords || []).find(r => String(r.id) === String(tid));
+  const room = (typeof appRooms !== 'undefined' ? appRooms : []).find(r => r.name === roomName);
+  if (!rec || !room) { _tnToggleProfile(rid, tid, roomName); return; }   // cannot redraw → at least close (as before)
+  const tmp = document.createElement('div');
+  tmp.innerHTML = _tnProfileSectionHTML(rid, room, rec);
+  ['pread-', 'pedit-', 'pfoot-read-', 'pfoot-edit-'].forEach(p => {
+    const now = document.getElementById(p + rid), nu = tmp.querySelector('[id="' + p + rid + '"]');
+    if (now && nu) now.replaceWith(nu);
+  });
+  if (typeof ccPwApply === 'function') ccPwApply();   // room password display, as after every card draw
+}
 
 function _tnToggleProfile(rid, tid, room) {
   const read    = document.getElementById('pread-'     + rid);
