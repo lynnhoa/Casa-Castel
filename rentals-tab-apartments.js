@@ -549,7 +549,7 @@ html .cc-sumline__vals b { display:block; font-size:15px; font-weight:600; line-
 .apt-input[type=number]::-webkit-inner-spin-button,
 .apt-input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .apt-input[type=number] { -moz-appearance:textfield; }
-[data-zaehler-id] > .apt-field:last-child > button { width:38px !important; height:38px !important; border-radius:var(--cc-r-md) !important; }
+[data-zaehler-id] > .apt-field:last-child > button, [data-new-zaehler] > .apt-field:last-child > button { width:38px !important; height:38px !important; border-radius:var(--cc-r-md) !important; }
 .apt-section--miete { padding-left:11px; }
 /* ── CHOPPED-OFF FIXES — nothing may run past the screen edge ──
    Generator 2-field rows (Mietbeginn / Mietende): both halves may shrink,
@@ -1559,41 +1559,102 @@ async function _aptSaveVerwaltung(aptId) {
 
 
 /* ── SAVE: ZÄHLER ────────────────────────────────────────── */
+/* B27 (Oct 2026) — meters
+   · a meter is removed ONLY with 🗑. An empty number keeps the meter ("number unknown", saved as '').
+     Bug 2: an emptied number — or an added meter without number — made the meter silently disappear.
+   · the database gets only the differences: changed meters updated (same id), new ones inserted (their
+     real id comes back into the app), meters removed with 🗑 deleted — LAST, and only those.
+     Bug 3: "delete all meters, insert all again" — a dropped connection in between left the flat with none.
+   · still not saved after the one retry → the meters are read back: the screen shows what is really saved */
+let _aptZTmp = 0;
 async function _aptSaveZaehler(aptId) {
   const el  = document.getElementById(`apt-zaehler-${aptId}`);
   const apt = appApartments.find(a => a.id === aptId);
   if (!el || !apt) return;
 
-  // Collect current rows from DOM
-  const rows = el.querySelectorAll('[data-zaehler-id]');
-  const newMeters = [];
-  rows.forEach((row, i) => {
-    const nr  = row.querySelector('[data-zf="zaehler_nr"]')?.value?.trim();
-    const typ = row.querySelector('.apt-field__label')?.textContent?.trim();
-    if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: i });
+  // 1 · the form, top to bottom (= sort order). An existing row keeps its meter object (and with it its id).
+  const before = apt.zaehler || [];
+  const beforeCopy = before.map(z => ({ ...z }));                       // only if the read-back fails
+  const byId = new Map(before.map(z => [String(z.id), z]));
+  const next = [], reused = new Set();
+  el.querySelectorAll('[data-zaehler-id], [data-new-zaehler]').forEach(row => {
+    const isNew = row.hasAttribute('data-new-zaehler');
+    const old   = isNew ? null : byId.get(String(row.dataset.zaehlerId)) || null;
+    const typ   = String(isNew ? (row.querySelector('[data-zf="typ"]')?.value || '')
+                               : (old ? old.typ : (row.querySelector('.apt-field__label')?.textContent || ''))).trim();
+    if (!typ) return;
+    const data = { typ, zaehler_nr: String(row.querySelector('[data-zf="zaehler_nr"]')?.value || '').trim(), sort_order: next.length };
+    if (old && !reused.has(old)) { reused.add(old); next.push(Object.assign(old, data)); }
+    else next.push({ id: 'tmp-' + (++_aptZTmp), _tmp: true, apartment_id: aptId, ...data });
   });
-  // Also rows added via "Add meter" (no data-zaehler-id)
-  el.querySelectorAll('[data-new-zaehler]').forEach((row, i) => {
-    const typ = row.querySelector('[data-zf="typ"]')?.value?.trim();
-    const nr  = row.querySelector('[data-zf="zaehler_nr"]')?.value?.trim();
-    if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: rows.length + i });
-  });
+  const removed = before.filter(z => !reused.has(z));                    // taken out with 🗑
 
-  // Direct save: card first; database replaces the meter list in the background
-  const before = apt.zaehler;
-  apt.zaehler = newMeters.map((m, i) => ({ ...m, id: `local-${i}` }));
+  // 2 · the screen at once
+  apt.zaehler = next;
   _aptRerenderCard(aptId, 'zaehler');
   if (!_aptSbClient) return;
-  ccQueueWrite('apt-zaehler-' + aptId, async () => {
-    const del = await _aptSbClient.from('rentals_zaehler').delete().eq('apartment_id', aptId);
-    if (del.error || !newMeters.length) return del;
-    return await _aptSbClient.from('rentals_zaehler').insert(newMeters);
-  }).then(({ error }) => {
-    if (!error) return;
-    apt.zaehler = before;
-    _aptRerenderCard(aptId);
-    ccSaveFailed(error, 'apartment zaehler');
+
+  // 3 · the database — only the differences (queued per flat; ccQueueWrite tries once more on an error)
+  const plan = next.map(o => ({ obj: o, data: { typ: o.typ, zaehler_nr: o.zaehler_nr, sort_order: o.sort_order } }));
+  ccQueueWrite('apt-zaehler-' + aptId, () => _aptZaehlerSync(aptId, plan, removed)).then(async res => {
+    if (!res || !res.error) return;
+    console.error('[apartments] meters:', res.error);
+    await _aptZaehlerReload(aptId, beforeCopy);
+    if (typeof ccToast === 'function') ccToast('Meters not fully saved — connection problem. Shown is what is saved now — please check and save again.', true);
   });
+}
+/* One save → the database. Safe to run twice (the retry): it reads the flat's meters first, and a meter
+   it already finds (same type + number, e.g. an insert whose answer got lost) is taken instead of a duplicate. */
+async function _aptZaehlerSync(aptId, plan, removed) {
+  const db = _aptSbClient, T = 'rentals_zaehler';
+  const cur = await db.from(T).select('*').eq('apartment_id', aptId);
+  if (cur.error) return cur;
+  const rows = cur.data || [];
+  const inDb = new Map(rows.map(r => [String(r.id), r]));
+  const same = (a, b) => String(a ?? '') === String(b ?? '');
+  const known = new Set(plan.filter(p => !p.obj._tmp).map(p => String(p.obj.id)));
+  const goneIds = new Set((removed || []).filter(z => !z._tmp).map(z => String(z.id)));
+  const keep = new Set();
+  // 1 · updates (only what changed) and inserts — nothing is deleted before all of this is safe
+  for (const p of plan) {
+    let row = p.obj._tmp ? null : inDb.get(String(p.obj.id)) || null;
+    if (!row) {
+      row = rows.find(r => !keep.has(String(r.id)) && !known.has(String(r.id)) && !goneIds.has(String(r.id)) &&
+                           same(r.typ, p.data.typ) && same(r.zaehler_nr, p.data.zaehler_nr)) || null;
+      if (row) _aptZaehlerSetId(p.obj, row.id);
+    }
+    if (row) {
+      keep.add(String(row.id));
+      const ch = {};
+      ['typ', 'zaehler_nr', 'sort_order'].forEach(k => { if (!same(row[k], p.data[k])) ch[k] = p.data[k]; });
+      if (Object.keys(ch).length) { const u = await db.from(T).update(ch).eq('id', row.id); if (u.error) return u; }
+      continue;
+    }
+    const ins = await db.from(T).insert({ apartment_id: aptId, ...p.data }).select().single();
+    if (ins.error) return ins;
+    if (ins.data && ins.data.id != null) { _aptZaehlerSetId(p.obj, ins.data.id); keep.add(String(ins.data.id)); }
+  }
+  // 2 · deletes LAST — only the meters removed with 🗑 (never one the app doesn't know, e.g. added elsewhere)
+  const del = [...goneIds].filter(id => inDb.has(id) && !keep.has(id));
+  if (del.length) { const d = await db.from(T).delete().in('id', del); if (d.error) return d; }
+  return { error: null };
+}
+/* The real id (from the database) into the meter object — and into rows already drawn with the temporary id */
+function _aptZaehlerSetId(obj, id) {
+  const old = obj.id;
+  obj.id = id; delete obj._tmp;
+  if (String(old) !== String(id))
+    document.querySelectorAll(`[data-zaehler-id="${String(old).replace(/"/g, '')}"]`).forEach(r => { r.dataset.zaehlerId = id; });
+}
+/* The flat's meters as saved in the database (after a failed save) — the old list only if even that fails */
+async function _aptZaehlerReload(aptId, fallback) {
+  const apt = appApartments.find(a => a.id === aptId); if (!apt) return;
+  try {
+    const r = await _aptSbClient.from('rentals_zaehler').select('*').eq('apartment_id', aptId).order('sort_order');
+    if (r.error) throw r.error;
+    apt.zaehler = r.data || [];
+  } catch (e) { apt.zaehler = fallback; }
+  _aptRerenderCard(aptId);
 }
 
 
@@ -1605,7 +1666,7 @@ function _aptAddZaehlerRow(aptId) {
   if (!container) return;
   const div = document.createElement('div');
   div.setAttribute('data-new-zaehler', '1');
-  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;';
+  div.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 38px;gap:8px;margin-bottom:10px;align-items:end;';
   div.innerHTML = `
     <div class="apt-field">
       <div class="apt-field__label">Typ</div>
@@ -1616,6 +1677,11 @@ function _aptAddZaehlerRow(aptId) {
     <div class="apt-field">
       <div class="apt-field__label">Zählernummer</div>
       <input class="apt-input apt-input--mono" data-zf="zaehler_nr" placeholder="Nr…"/>
+    </div>
+    <div class="apt-field" style="justify-content:flex-end">
+      <button type="button" onclick="this.closest('[data-new-zaehler]').remove()" aria-label="Remove meter" style="width:32px;height:32px;background:none;border:.5px solid var(--cc-rule);border-radius:6px;cursor:pointer;color:var(--cc-stone);display:flex;align-items:center;justify-content:center">
+        <i class="ti ti-trash" style="font-size:12px"></i>
+      </button>
     </div>`;
   container.appendChild(div);
   div.querySelector('input').focus();
