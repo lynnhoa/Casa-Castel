@@ -365,7 +365,9 @@ function _renderPkList() {
   }
   const _open = new Set([...list.querySelectorAll('.pk-card.pk--open')].map(c => c.dataset.id));
   _pkCardCache = {};
+  const _keep = typeof ccKeepForms === 'function' ? ccKeepForms(list, '.apt-edit-active[id]') : [];   // B28
   list.innerHTML = appParking.map(p => (_pkCardCache[p.id] = _pkCardHTML(p))).join('');
+  if (_keep.length) ccPutForms(list, _keep);
   _open.forEach(id => list.querySelector(`.pk-card[data-id="${id}"]`)?.classList.add('pk--open'));   // open cards stay open
   _updatePkSummary();
 }
@@ -632,14 +634,8 @@ function _pkEnterSection(section, pkId) {
 }
 
 function _pkCancelSection(section, pkId) {
-  const spot = appParking.find(p => p.id === pkId);
-  if (!spot) return;
-  const card = document.querySelector(`.pk-card[data-id="${pkId}"]`);
-  if (!card) return;
-  const wasOpen = card.classList.contains('pk--open');
-  card.outerHTML = _pkCardHTML(spot);
-  const newCard = document.querySelector(`.pk-card[data-id="${pkId}"]`);
-  if (wasOpen && newCard) newCard.classList.add('pk--open');
+  // B28: discard the edits of THIS section only — other open sections keep what was typed
+  _pkRerenderCard(pkId, section);
 }
 
 
@@ -659,7 +655,7 @@ async function _pkSaveIdentity(pkId) {
   const before = {};
   Object.keys(data).forEach(k => { before[k] = spot[k]; });
   Object.assign(spot, data);
-  _pkRerenderCard(pkId);
+  _pkRerenderCard(pkId, 'identity');
   if (!_pkSbClient) return;
   ccQueueWrite('pk-' + pkId, () => _pkSbClient.from('rentals_parking').update(data).eq('id', pkId))
     .then(({ error }) => {
@@ -677,7 +673,7 @@ function _pkDirectSaveRow(pkId, key, table, data) {
   const hadRow = !!(spot[key] && Object.keys(spot[key]).length);
   const before = hadRow ? { ...spot[key] } : null;
   if (hadRow) Object.assign(spot[key], data); else spot[key] = { parking_id: pkId, ...data };
-  _pkRerenderCard(pkId);
+  _pkRerenderCard(pkId, { pricing: 'miete', schlussel: 'schlussel' }[key]);
   if (!_pkSbClient) return;
   ccQueueWrite('pk-' + key + '-' + pkId, () => {
     const rowId = spot[key]?.id;
@@ -843,16 +839,22 @@ async function _pkSaveSchlussel(pkId) {
 
 
 /* ── RERENDER CARD ───────────────────────────────────────── */
-function _pkRerenderCard(pkId) {
+/* B28: sections open in edit mode keep everything typed — only `except` (the section just saved or
+   cancelled) is drawn fresh. Was: the whole card from the saved data, so typing in Identity was lost
+   when Miete was saved / cancelled or Vacant was tapped. (Helper: ccKeepForms / ccPutForms, direct-save.js) */
+function _pkRerenderCard(pkId, except) {
   const spot = appParking.find(p => p.id === pkId);
   const card = document.querySelector(`.pk-card[data-id="${pkId}"]`);
   if (!spot || !card) return;
+  const keep = typeof ccKeepForms === 'function'
+    ? ccKeepForms(card, '.apt-edit-active[id]', el => !!except && el.id === `pk-${except}-${pkId}`) : [];
   const newDiv = document.createElement('div');
   newDiv.innerHTML = _pkCardCache[pkId] = _pkCardHTML(spot);   // remembered as drawn
   const newCard = newDiv.firstElementChild;
   newCard.classList.add('pk--open');
   card.parentNode.insertBefore(newCard, card);
   card.remove();
+  if (keep.length) ccPutForms(newCard, keep);
   _pkInitSortable();
   _updatePkSummary();
 }
