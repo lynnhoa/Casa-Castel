@@ -85,7 +85,7 @@ function _cckCell(label, inner, forId) {
   return `<div>${lab}${inner}</div>`;
 }
 function _cckMoney(id, value, oninput, dis) {
-  return `<div class="cck-f"><input id="${id}" type="number" data-cc-num="2" value="${value === '' ? '' : value}" placeholder="0,00" ${dis}
+  return `<div class="cck-f"><input id="${id}" type="number" data-cc-num="2" value="${value === '' || value == null ? '' : _cckEsc(value)}" placeholder="0,00" ${dis}
     oninput="${oninput}"/><span class="cck-eur">€</span></div>`;
 }
 function _cckDate(id, iso, oninput, dis) {
@@ -105,6 +105,18 @@ function _cckRo(v) { return `<div class="cck-ro">${_cckEsc(v)}</div>`; }
    (Settled); empty = not paid yet (the Kaution is still held). After the move-out the form opens by itself.
    Same rows in every state — only values change.                                                       */
 const _cckR2 = v => Math.round((Number(v) || 0) * 100) / 100;
+/* B25 (6): what you typed in the open form, kept in A.ui[tid].draft — a redraw of the tenant card
+   (≈30 actions do that) used to rebuild the form from the saved values and drop it */
+const _CCK_NATIVE = typeof HTMLInputElement !== 'undefined' ? Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value') : null;
+function _cckRaw(el) { try { return _CCK_NATIVE ? _CCK_NATIVE.get.call(el) : el.value; } catch (e) { return el ? el.value : ''; } }
+const _CCK_FIELDS = [['sv', 'cck-sv'], ['r', 'cck-r'], ['rd', 'cck-rd'], ['d', 'cck-d'], ['g', 'cck-g'], ['nk', 'cck-nk'], ['ref', 'cck-ref'], ['fd', 'cck-fd']];
+function _cckDraftRead(pfx) {
+  const out = {};
+  // plain values (amount 1635.5 · date 2026-01-15): the boxes only take that form back when redrawn —
+  // "1.635,00" / "15.01.2026" came back empty
+  _CCK_FIELDS.forEach(([key, id]) => { const el = document.getElementById(id + '-' + pfx); if (el) out[key] = el.value; });
+  return out;
+}
 function _cckHasNk(A) { return Object.values(A.map() || {}).some(r => r && Object.prototype.hasOwnProperty.call(r, 'nk_einbehalt')); }
 
 function ccKautionSectionHTML(app, tid, ctx, rec) {
@@ -138,7 +150,9 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
   const oth     = Math.max(0, _cckR2(ded - nkv));
   const refDate = P.settled ? _cckDateOnly(k.settled_at) : '';
 
-  const money = (id, v) => _cckMoney(`${id}-${pfx}`, v, onIn, dis);
+  const D     = editing && ui.draft ? ui.draft : null;              // B25 (6): typed, not saved yet
+  const dv    = (key, v) => (D && Object.prototype.hasOwnProperty.call(D, key) ? D[key] : v);
+  const money = (id, v) => _cckMoney(`${id}-${pfx}`, dv(id.slice(4), v), onIn, dis);
   const cell  = (label, inner, id) => _cckCell(label, inner, id ? `${id}-${pfx}` : null);
   const roM   = v => _cckRo(f(v));
   const val   = (v, show) => show ? _cckRo(f(v)) : _cckOff;
@@ -147,12 +161,12 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ? `<div class="${grid}">${cell('Kaution Soll', money('cck-sv', soll != null ? soll : ''), 'cck-sv')}${extra ? '<div></div>' : ''}</div>` : '';
   const r1 = editing
     ? cell('Received', money('cck-r', P.recv || ''), 'cck-r') +
-      (extra ? cell('Received on', _cckDate(`cck-rd-${pfx}`, _cckDateOnly(k.received_at), onIn, dis), 'cck-rd') : '')
+      (extra ? cell('Received on', _cckDate(`cck-rd-${pfx}`, dv('rd', _cckDateOnly(k.received_at)), onIn, dis), 'cck-rd') : '')
     : cell('Received', roM(P.recv)) + (extra ? cell('Received on', k.received_at ? _cckRo(A.fmtDate(k.received_at)) : _cckOff) : '');
   const othLbl = hasNk ? 'Kept · other reasons' : 'Kept';
   const r2 = editing
     ? cell(othLbl, money('cck-d', decided ? oth : ''), 'cck-d') +
-      (extra ? cell('Reason', _cckText(`cck-g-${pfx}`, k.deduction_reason, onIn, dis), 'cck-g') : '')
+      (extra ? cell('Reason', _cckText(`cck-g-${pfx}`, dv('g', k.deduction_reason), onIn, dis), 'cck-g') : '')
     : cell(othLbl, val(oth, decided)) + (extra ? cell('Reason', k.deduction_reason ? _cckRo(k.deduction_reason) : _cckOff) : '');
   const nkHint = '<div class="cck-nkhint">offset in Settlements with the NK-Abrechnung</div>';
   const r3 = !hasNk ? '' : `<div class="${grid}">${editing
@@ -160,14 +174,14 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     : cell('Kept · for NK-Abrechnung', val(nkv, decided)) + (extra ? (nkv > 0 ? nkHint : '<div></div>') : '')}</div>`;
   const refRow = editing
     ? cell('Refund to tenant', money('cck-ref', decided ? P.ret : ''), 'cck-ref') +
-      cell('Refunded on', _cckDate(`cck-fd-${pfx}`, refDate, onIn, dis), 'cck-fd')
+      cell('Refunded on', _cckDate(`cck-fd-${pfx}`, dv('fd', refDate), onIn, dis), 'cck-fd')
     : cell('Refund to tenant', val(P.ret, decided)) + cell('Refunded on', P.settled && k.settled_at ? _cckRo(A.fmtDate(k.settled_at)) : _cckOff);
   const note = !decided ? (editing ? 'Type what you keep, or the refund · empty = all still held' : 'Calculated at move-out')
     : hasNk ? `${f(P.recv)} received − ${f(oth)} other − ${f(nkv)} for NK` : `${f(P.recv)} received − ${f(ded)} kept`;
 
   // Buttons (same place in every state): form → Cancel · Save · otherwise Edit
   const B = (label, act, kind) =>
-    `<button type="button" class="${kind === 'save' ? 'tn-btn cc-save' : 'cck-b cck-bs'}" id="cck-${act}-${pfx}" ${dis}
+    `<button type="button" class="${kind === 'save' ? 'tn-btn cc-save' : 'cck-b cck-bs'}" id="cck-${act}-${pfx}" ${dis}${kind === 'save' && D ? ' data-cc-save="dirty" aria-disabled="false"' : ''}
       onclick="ccKautionAct(${q},'${act}')">${label}</button>`;
   const slot = editing ? (tid && ui.mode === 'edit' ? B('Cancel', 'cancel', 's') : '') + B('Save', 'save', 'save')
                        : B('<i class="ti ti-pencil"></i> Edit', 'edit', 's');
@@ -249,6 +263,7 @@ function ccKautionInput(app, pfx, tid, src) {
   }
   const save = $(`cck-save-${pfx}`);
   if (save && typeof ccSaveSet === 'function') ccSaveSet(save, 'dirty');
+  if (tid) { A.ui[tid] = A.ui[tid] || {}; A.ui[tid].draft = _cckDraftRead(pfx); }   // B25 (6): survives a redraw
 }
 
 /* ── buttons: Edit · Cancel · Save ── */
@@ -258,9 +273,20 @@ async function ccKautionAct(app, pfx, tid, act) {
   const ui = A.ui[tid] = A.ui[tid] || {};
   const redraw = () => { _cckRedraw(app, pfx); A.afterChange(tid); };
 
-  if (act === 'edit')   { ui.mode = 'edit'; return redraw(); }
-  if (act === 'cancel') { ui.mode = '';     return redraw(); }
+  if (act === 'edit')   { ui.mode = 'edit'; ui.draft = null; return redraw(); }
+  if (act === 'cancel') { ui.mode = '';     ui.draft = null; return redraw(); }
   if (act !== 'save') return;
+
+  // B25 (5): an unfinished date (e.g. 15.01.202) is never saved as "no date" — say so and stop
+  const badDate = [[`cck-rd-${pfx}`, 'Received on'], [`cck-fd-${pfx}`, 'Refunded on']]
+    .map(([id, label]) => [$(id), label]).find(([el]) => el && String(_cckRaw(el)).trim() && !el.value);
+  if (badDate) {
+    badDate[0].setAttribute('aria-invalid', 'true');
+    const rn0 = $(`cck-rn-${pfx}`);
+    if (rn0) { rn0.classList.add('cck-err'); rn0.textContent = badDate[1] + ': please enter the full date (TT.MM.JJJJ) or leave it empty'; }
+    if (typeof ccToast === 'function') ccToast(badDate[1] + ': date not complete — not saved', true);
+    return;
+  }
 
   const k0 = A.map()[tid];
   const sv = $(`cck-sv-${pfx}`);
@@ -289,8 +315,11 @@ async function ccKautionAct(app, pfx, tid, act) {
   const before = {}; Object.keys(upd).forEach(key => { before[key] = k[key]; });
   Object.assign(k, upd);
   const { error } = await ccQueueWrite(A.writeKey + tid, () => sbL.from(A.table).update(upd).eq('id', k.id));
-  if (error) { Object.assign(k, before); if (typeof ccSaveFailed === 'function') ccSaveFailed(error, A.failLabel); }
-  ui.mode = '';
+  if (error) {                                          // not saved: the form stays open with what you typed
+    Object.assign(k, before); if (typeof ccSaveFailed === 'function') ccSaveFailed(error, A.failLabel);
+    return redraw();
+  }
+  ui.mode = ''; ui.draft = null;
   redraw();
 }
 
