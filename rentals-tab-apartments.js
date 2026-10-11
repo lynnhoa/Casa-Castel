@@ -944,7 +944,12 @@ function _renderAptList() {
   const _open = new Set([...list.querySelectorAll('.apt-card.apt--open')].map(c => c.dataset.id));
   _aptCardCache = {};
   appApartments.forEach(a => { _aptCardCache[a.id] = _aptCardHTML(a); });
+  // B26: sections open in edit mode (any apartment) and open Hausgeld add forms keep what was typed
+  const _keep = typeof ccKeepForms === 'function' ? ccKeepForms(list, '.apt-edit-active[id]') : [];
+  const _hg = [...list.querySelectorAll('.apt-hg-add-form')].map(f => ({ f, id: (f.closest('.apt-card') || {}).dataset?.id }));
   list.innerHTML = html;
+  if (_keep.length) ccPutForms(list, _keep);
+  _hg.forEach(x => { const c = x.id && list.querySelector(`.apt-card[data-id="${x.id}"]`); if (c) _aptPutHgForm(c, x.id, x.f, _keep); });
   _open.forEach(id => list.querySelector(`.apt-card[data-id="${id}"]`)?.classList.add('apt--open'));   // open cards stay open
   _updateAptSummary();
 }
@@ -1436,15 +1441,8 @@ function _aptEnterSection(section, aptId) {
 function _aptCancelSection(section, aptId) {
   const el = document.getElementById(`apt-${section}-${aptId}`);
   if (!el) return;
-  // Re-render just this card from memory to discard edits
-  const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) return;
-  const card = document.querySelector(`.apt-card[data-id="${aptId}"]`);
-  if (!card) return;
-  const wasOpen = card.classList.contains('apt--open');
-  card.outerHTML = _aptCardHTML(apt);
-  const newCard = document.querySelector(`.apt-card[data-id="${aptId}"]`);
-  if (wasOpen && newCard) newCard.classList.add('apt--open');
+  // B26: discard the edits of THIS section only — other open sections keep what was typed
+  _aptRerenderCard(aptId, section);
 }
 
 
@@ -1464,7 +1462,7 @@ async function _aptSaveIdentity(aptId) {
   const before = {};
   Object.keys(data).forEach(k => { before[k] = apt[k]; });
   Object.assign(apt, data);
-  _aptRerenderCard(aptId);
+  _aptRerenderCard(aptId, 'identity');
   if (!_aptSbClient) return;
   ccQueueWrite('apt-' + aptId, () => _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId))
     .then(({ error }) => {
@@ -1485,7 +1483,7 @@ function _aptDirectSaveRow(aptId, key, table, data) {
   const hadRow = !!(apt[key] && Object.keys(apt[key]).length);
   const before = hadRow ? { ...apt[key] } : null;
   if (hadRow) Object.assign(apt[key], data); else apt[key] = { apartment_id: aptId, ...data };
-  _aptRerenderCard(aptId);
+  _aptRerenderCard(aptId, { pricing: 'miete', verwaltung: 'verwaltung', schlussel: 'schlussel' }[key]);
   if (!_aptSbClient) return;
   ccQueueWrite('apt-' + key + '-' + aptId, () => {
     const rowId = apt[key]?.id;     // read at write time: an earlier insert may have set it
@@ -1584,7 +1582,7 @@ async function _aptSaveZaehler(aptId) {
   // Direct save: card first; database replaces the meter list in the background
   const before = apt.zaehler;
   apt.zaehler = newMeters.map((m, i) => ({ ...m, id: `local-${i}` }));
-  _aptRerenderCard(aptId);
+  _aptRerenderCard(aptId, 'zaehler');
   if (!_aptSbClient) return;
   ccQueueWrite('apt-zaehler-' + aptId, async () => {
     const del = await _aptSbClient.from('rentals_zaehler').delete().eq('apartment_id', aptId);
@@ -1666,18 +1664,32 @@ function _aptToggleKautionOverride(chk) {
 
 
 /* ── RERENDER CARD ───────────────────────────────────────── */
-function _aptRerenderCard(aptId) {
+/* B26: sections open in edit mode keep everything typed — only `except` (the section just saved or
+   cancelled, 'hg' = the Hausgeld add form) is drawn fresh. Was: the whole card from the saved data,
+   so typing in Identity was lost when Miete was saved / cancelled or Vacant was tapped. */
+function _aptRerenderCard(aptId, except) {
   const apt  = appApartments.find(a => a.id === aptId);
   const card = document.querySelector(`.apt-card[data-id="${aptId}"]`);
   if (!apt || !card) return;
+  const keep = typeof ccKeepForms === 'function'
+    ? ccKeepForms(card, '.apt-edit-active[id]', el => !!except && el.id === `apt-${except}-${aptId}`) : [];
+  const hgForm = except === 'hg' ? null : card.querySelector('.apt-hg-add-form');
   const newDiv = document.createElement('div');
   newDiv.innerHTML = _aptCardCache[aptId] = _aptCardHTML(apt);   // remembered as drawn
   const newCard = newDiv.firstElementChild;
   newCard.classList.add('apt--open');
   card.parentNode.insertBefore(newCard, card);
   card.remove();
+  if (keep.length) ccPutForms(newCard, keep);
+  _aptPutHgForm(newCard, aptId, hgForm, keep);
   _aptInitSortable();
   _updateAptSummary();
+}
+/* An open Hausgeld add form (it has no id) back into the redrawn card — unless it travelled inside a kept section */
+function _aptPutHgForm(root, aptId, form, keep) {
+  if (!form || (keep || []).some(k => k.contains(form))) return;
+  const body = root.querySelector(`[id="apt-hg-sec-${aptId}"] .apt-hg-body`) || root.querySelector('.apt-hg-body');
+  if (body) body.insertBefore(form, body.querySelector('.cc-sec-foot') || null);
 }
 
 
@@ -1868,7 +1880,7 @@ async function _aptHGConfirmAdd__run(aptId) {
   if (!_aptHausgeld[aptId]) _aptHausgeld[aptId] = [];
   _aptHausgeld[aptId].unshift(data);
   _aptHausgeld[aptId].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
-  _aptRerenderCard(aptId);
+  _aptRerenderCard(aptId, 'hg');                       // the add form closes · other open sections stay
   _aptHGRefreshVerlauf(aptId);
   _aptHGHint(aptId, data.effective_date);
 }
