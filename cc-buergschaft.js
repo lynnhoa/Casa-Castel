@@ -58,9 +58,11 @@
     return a || p;
   }
   /* A fill-in line. Plain block layout (no flex inside): the PDF renderer
-     (html2canvas) then puts the text ON the line, not through it. */
+     (html2canvas) then puts the text ON the line, not through it.
+     Oct 2026: the text keeps the labels' baseline (24px line box) and the line sits 4px lower
+     (padding-bottom), so filled-in text never touches the line. */
   function line(value, flex) {
-    return `<span style="flex:${flex || 1};min-width:0;display:block;box-sizing:content-box;height:24px;line-height:24px;border-bottom:0.8px solid #1a1a1a;padding:0 0 0 6px;font-weight:400;white-space:nowrap;overflow:hidden;">${value ? esc(value) : ''}</span>`;
+    return `<span style="flex:${flex || 1};min-width:0;display:block;box-sizing:content-box;height:24px;line-height:24px;border-bottom:0.8px solid #1a1a1a;padding:0 0 4px 6px;font-weight:400;white-space:nowrap;overflow:hidden;">${value ? esc(value) : ''}</span>`;
   }
   function hint(text, left) {
     return `<div style="font-size:9.5px;font-weight:300;color:#8a8580;margin:3px 0 14px ${left || 0}px;">${text}</div>`;
