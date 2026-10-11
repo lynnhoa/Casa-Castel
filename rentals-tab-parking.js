@@ -306,6 +306,10 @@ async function loadParking() {
   _pkSbClient = typeof sbL !== 'undefined' ? sbL : null;
   if (!_pkSbClient) { console.warn('[parking] No Supabase client'); _renderPkList(); return; }
 
+  // B18: tenant rents load at the same time → the cards are drawn ONCE with the
+  // real rent (no "Asking rent" first and a second redraw a moment later = the blink)
+  const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
+
   try {
     const [
       { data: spots },
@@ -326,9 +330,9 @@ async function loadParking() {
     console.error('[parking] Load failed:', e);
   }
 
+  if (_warm) await Promise.race([Promise.resolve(_warm).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
   _pkRenderIfChanged();
   _pkInitSortable();
-  if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _pkRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
 }
 
@@ -378,6 +382,17 @@ function _pkRenderIfChanged() {
   if (shown && _pkPatchCards(list)) { _pkRenderedSig = sig; return; }     // no full redraw → no glitch
   _renderPkList();
   _pkRenderedSig = sig;
+}
+
+/* B18: refresh from the Tenants side (rents / occupied known) — only the cards
+   that really changed are redrawn, never the whole list. Not drawn yet → the
+   parking load draws it; editing here → left alone until the next load. */
+function _pkRefreshCards() {
+  const list = document.getElementById('pkList');
+  if (!list || !list.querySelector('.pk-card')) return;
+  if (typeof _rtBusy === 'function' && _rtBusy('parking')) return;
+  if (!_pkPatchCards(list)) _renderPkList();
+  _pkRenderedSig = ccStableJSON(appParking);
 }
 
 /* Each card's HTML as last drawn (id → html) */

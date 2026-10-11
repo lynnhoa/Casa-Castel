@@ -844,6 +844,9 @@ async function loadApartments() {
   _aptSbClient = typeof sbL !== 'undefined' ? sbL : null;
   if (!_aptSbClient) { console.warn('[apartments] No Supabase client'); _renderAptList(); return; }
 
+  // B18: tenant rents load at the same time → cards drawn ONCE with the real rent
+  const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
+
   try {
     const [
       { data: apts },
@@ -883,9 +886,9 @@ async function loadApartments() {
     console.error('[apartments] Load failed:', e);
   }
 
+  if (_warm) await Promise.race([Promise.resolve(_warm).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
   _aptRenderIfChanged();
   _aptInitSortable();
-  if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _aptRestoreContractDraft();
 }
 
@@ -958,6 +961,15 @@ function _aptRenderIfChanged() {
   if (shown && _aptPatchCards(list)) { _aptRenderedSig = sig; return; }   // no full redraw → no glitch
   _renderAptList();
   _aptRenderedSig = sig;
+}
+
+/* B18: refresh from the Tenants side — only changed cards are redrawn */
+function _aptRefreshCards() {
+  const list = document.getElementById('aptList');
+  if (!list || !list.querySelector('.apt-card')) return;
+  if (typeof _rtBusy === 'function' && _rtBusy('apartments')) return;
+  if (!_aptPatchCards(list)) _renderAptList();
+  _aptRenderedSig = ccStableJSON([appApartments, _aptHausgeld]);
 }
 
 /* Each card's HTML as last drawn (id → html) */

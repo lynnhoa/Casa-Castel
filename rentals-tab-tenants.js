@@ -2130,8 +2130,9 @@ function _rntSyncOccupancy() {
     ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ status: 'former' }).eq('id', rec.id))
       .then(res => { if (res && res.error) { rec.status = 'active'; ccSaveFailed(res.error, 'tenant status'); } });
   });
-  try { if (a.unitChanges.length && typeof _renderAptList === 'function' && document.getElementById('aptList')) { _renderAptList(); _updateAptSummary?.(); } } catch (e) {}
-  try { if (k.unitChanges.length && typeof _renderPkList === 'function' && document.getElementById('pkList')) { _renderPkList(); _updatePkSummary?.(); } } catch (e) {}
+  // B18: only the cards whose occupied / vacant changed are redrawn
+  try { if (a.unitChanges.length && typeof _aptRefreshCards === 'function') _aptRefreshCards(); } catch (e) {}
+  try { if (k.unitChanges.length && typeof _pkRefreshCards  === 'function') _pkRefreshCards();  } catch (e) {}
 }
 
 /* ── NK VORAUSZAHLUNG SECTION (apartments only) ── */
@@ -3982,8 +3983,9 @@ function rntWarmTenants() {
         if (error) { console.warn('[rentals tenants] preload:', error.message); return; }
         if (!_rntLoadedOnce) { _rntActiveRecs = data || []; _rntSyncOccupancy(); }   // all statuses; readers filter 'active'
         // headers + totals in Apartments / Parking show the tenants' real rent once known
-        try { if (typeof _renderAptList === 'function' && document.getElementById('aptList')) { _renderAptList(); _updateAptSummary(); } } catch (e) {}
-        try { if (typeof _renderPkList === 'function' && document.getElementById('pkList')) { _renderPkList(); _updatePkSummary(); } } catch (e) {}
+        // B18: only the cards that changed — no full redraw of a list you are looking at
+        try { if (typeof _aptRefreshCards === 'function') _aptRefreshCards(); } catch (e) {}
+        try { if (typeof _pkRefreshCards  === 'function') _pkRefreshCards();  } catch (e) {}
       })
       .catch(e => console.warn('[rentals tenants] preload:', e))
       .finally(() => { _rntWarmPromise = null; });
