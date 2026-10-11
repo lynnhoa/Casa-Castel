@@ -894,7 +894,7 @@ async function _kTenRenderMobRotation() {
   _kTenRenderDskHistory();
 }
 
-const K_TEN_HISTORY_FROM = 40;   // history starts with the week 12.10 – 18.10.2026 (earlier weeks were tests)
+const K_TEN_HISTORY_FROM = 39;   // history starts with the week 05.10 – 11.10.2026 (first real week; earlier weeks were tests)
 async function _kTenRenderDskHistory() {
   const el = document.getElementById('k-ten-dsk-hist'); if (!el || !sbL) return;
   const idx = kWeekIdx();

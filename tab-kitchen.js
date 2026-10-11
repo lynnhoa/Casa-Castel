@@ -300,7 +300,7 @@ function _kSysText(t) {
 }
 let _kAutoResetRanFor = null;
 const K_HISTORY_WEEKS = 8;    // history keeps the last 8 weeks (current week included)
-const K_HISTORY_FROM  = 40;   // history starts with the week 12.10 – 18.10.2026 (earlier weeks were tests)
+const K_HISTORY_FROM  = 39;   // history starts with the week 05.10 – 11.10.2026 (first real week; earlier weeks were tests)
 const K_NUDGE_LOG_MAX = 20;   // nudge log keeps the newest 20 nudges
 
 /* Storage paths of one week's proof photos (week row + its chat comments) */
