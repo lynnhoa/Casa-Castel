@@ -468,7 +468,7 @@ function _renderRentalMietvertragHTML(d) {
   // Betriebskosten — now sits on page 2, below Bankverbindung (visually separated)
   const betriebskostenBlock = `
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,false)}
-    <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV in ihrer jeweils geltenden Fassung. Umlageschlüssel: Wohnfläche der Mietwohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.</p>
+    <p class="nk-intro">Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV in ihrer jeweils geltenden Fassung. Umlageschlüssel: wie in der Jahresabrechnung der Eigentümergemeinschaft (\u00a7\u00a0556a Abs.\u00a03 BGB), sonst nach Wohnfläche; verbrauchsabhängige Kosten nach Verbrauch. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.</p>
     <div class="nk-grid">${nkRows}</div>`;
 
   const allClauses = rntContractClauses(d, 'mietvertrag', eur, cl);

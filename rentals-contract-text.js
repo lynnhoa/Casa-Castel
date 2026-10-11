@@ -46,7 +46,8 @@ function rntContractClauses(d, kind, eur, cl) {
   // §2 Nutzung des Mietobjekts — identical
   const s2 = `Die Wohnung darf ausschließlich zu Wohnzwecken durch ${multi ? 'die namentlich genannten Mieter' : 'den namentlich genannten Mieter'} genutzt werden. ` +
     'Der Mieter ist verpflichtet, die Wohnung und die Gemeinschaftsflächen schonend, sauber und ordnungsgemäß zu behandeln, ausreichend zu heizen, zu lüften und von Ungeziefer freizuhalten. ' +
-    'Mängel sind dem Vermieter unverzüglich in Textform anzuzeigen.';
+    'Mängel sind dem Vermieter unverzüglich in Textform anzuzeigen. Der Mieter prüft die Rauchwarnmelder regelmäßig und meldet Störungen unverzüglich.' +
+    (multi ? ' Mehrere Mieter haften als Gesamtschuldner und bevollmächtigen sich gegenseitig zur Entgegennahme von Erklärungen des Vermieters.' : '');
 
   // §3 Kündigung ↔ (Kurzzeit short · Mietvertrag unbefristet 3 months · befristet like Kurzzeit + Verlängerung)
   const noOrdinary = 'Eine ordentliche Kündigung ist ausgeschlossen. Das Recht zur außerordentlichen Kündigung aus wichtigem Grund (\u00a7\u00a0543 BGB) bleibt unberührt.';
@@ -76,7 +77,8 @@ function rntContractClauses(d, kind, eur, cl) {
     }
   }
   s4 += ' Die Miete ist spätestens bis zum dritten Werktag des Monats auf das oben genannte Konto zu überweisen (\u00a7\u00a0556b BGB). ' +
-    'Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß \u00a7\u00a0288 BGB geltend zu machen.';
+    'Bei Zahlungsverzug ist der Vermieter berechtigt, Verzugszinsen gemäß \u00a7\u00a0288 BGB geltend zu machen. ' +
+    'Gegen die Miete kann der Mieter nur mit unbestrittenen oder rechtskräftig festgestellten Forderungen aufrechnen. Mit Forderungen nach \u00a7\u00a7\u00a0536a, 539 BGB oder wegen zu viel gezahlter Miete kann er aufrechnen oder die Miete zurückbehalten, wenn er dies einen Monat vor Fälligkeit in Textform ankündigt.';
 
   // §6 Schlüsselübergabe — identical (Briefkasten only when there is one)
   const hs = d.hausstuerschluessel ?? 1;
@@ -99,7 +101,7 @@ function rntContractClauses(d, kind, eur, cl) {
   const furnished = Array.isArray(d.inventar) && d.inventar.length > 0;
   const s11 = `Die Wohnung wird ${furnished ? 'möbliert und ' : ''}in vertragsgemäßem Zustand übergeben. ` +
     'Bei Ein- und Auszug wird ein Übergabeprotokoll erstellt und von beiden Parteien unterzeichnet. ' +
-    'Bei Vertragsende ist die Wohnung vollständig geräumt, gereinigt und in vertragsgemäßem Zustand mit allen Schlüsseln zurückzugeben; bauliche Änderungen sind zurückzubauen.';
+    'Bei Vertragsende ist die Wohnung vollständig geräumt, gereinigt und in vertragsgemäßem Zustand mit allen Schlüsseln zurückzugeben. Bauliche Veränderungen bedürfen der vorherigen Zustimmung des Vermieters (Textform) und sind bei Auszug zurückzubauen.';
 
   // §8 Kleinreparaturen — says who pays; above 150 € the tenant pays nothing. Cap on the net cold rent,
   // or on the Pauschalmiete where the rent has no separate Kaltmiete (all-inclusive).
@@ -120,12 +122,12 @@ function rntContractClauses(d, kind, eur, cl) {
     ['2',  'Nutzung des Mietobjekts', s2],
     ['3',  'Kündigung', s3],
     ['4',  'Miete', s4],
-    ['5',  'Untervermietung', 'Eine Untervermietung oder sonstige Überlassung des Mietobjekts an Dritte ist nicht gestattet.'],
+    ['5',  'Untervermietung', 'Untervermietung oder sonstige Überlassung an Dritte ist nur mit vorheriger Erlaubnis des Vermieters (Textform) gestattet. Ferienvermietung (z.\u202fB. über Online-Portale) ist nicht gestattet.'],
     ['6',  'Schlüsselübergabe', s6],
     ['7',  'Kaution', s7],
     ['8',  'Kleinreparaturen', s8],
     ['9',  'Tierhaltung', 'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der Zustimmung (Textform).'],
-    ['10', 'Betreten des Mietobjekts', 'Bei Gefahr im Verzug jederzeit. Zur Vorbereitung von Verkauf oder Weitervermietung werktags 9:00–12:00 und 15:00–19:00\u202fUhr, mind. 2\u00a0Werktage Vorankündigung (Textform).'],
+    ['10', 'Betreten des Mietobjekts', 'Der Vermieter darf die Wohnung nach Ankündigung von mindestens 2\u00a0Werktagen (Textform) aus sachlichem Grund betreten, z.\u202fB. für Reparaturen, zur Prüfung gemeldeter Mängel oder für Besichtigungen mit Kauf- oder Mietinteressenten; bei Gefahr im Verzug jederzeit.'],
     ['11', 'Übergabe und Rückgabe', s11],
     ['12', 'Haftpflichtversicherung', 'Der Mieter unterhält für die Dauer des Mietverhältnisses eine private Haftpflichtversicherung und weist sie auf Verlangen nach.'],
     ['13', 'Hausordnung', 'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00–07:00\u202fUhr.'],
