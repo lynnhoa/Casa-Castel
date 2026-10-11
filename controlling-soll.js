@@ -59,6 +59,7 @@ const _CX_SRC = [
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
   ['abr', 'abr_results'], ['loanHist', 'loan_terms_history'], ['casaMh', 'casa_mieterhoehung_history'],
   ['castelHist', 'ctrl_castel_amount_history'],          // Casa Castel cost Soll by month (B22)
+  ['readings', 'meter_readings'], ['zaehler', 'rentals_zaehler'],   // Settlements: consumption by Zählerstand (Oct 2026)
 ];
 
 /* Load every source once. A missing table never blocks Controlling —

@@ -257,14 +257,18 @@ function _srCalc(c, it, rec) {
     if (!_srInNk(pos)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
     if (unit === null && pos.split !== 'mieter') continue;          // no amount typed yet → not part of the NK
-    let amt = null;
+    let amt = null, cons = null;
     if (pos.split === 'mieter') {
       const d = _srNum(ts.direct && ts.direct[pos.id]);
       if (d !== null) { amt = cxR((_srKind(pos.kind).neg ? -1 : 1) * Math.abs(d)); direct = true; } else missing++;
+    } else if (unit !== null && _srIsCons(pos)) {
+      const sp = _srConsSplit(c, rec, pos, unit), id = String(it.r.id);
+      if (sp.g[id] !== undefined) { amt = cxR(sp.g[id] + (sp.v[id] || 0)); cons = sp.active ? { text: _srConsText(sp, id, true), en: _srConsText(sp, id, false), how: sp.how } : null; }
+      else amt = cxR(unit * tDays / perDays);
     } else if (unit !== null) amt = cxR(unit * tDays / perDays);
     else missing++;
     if (amt !== null) sum += amt;
-    lines.push({ pos, unit, amt, keyText: _srKeyText(rec, pos, apt), total: _srNum(pos.total) });
+    lines.push({ pos, unit, amt, keyText: _srKeyText(rec, pos, apt), total: _srNum(pos.total), cons });
   }
   const fig = (a, b) => { try { return ctlSettlementFigures(Object.assign({}, r, { period_from: a, period_to: b })); } catch (e) { return null; } };
   const since = _srBought(c.p);
@@ -296,22 +300,113 @@ function _srCalc(c, it, rec) {
   return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzMonths, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
            tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
 }
+/* ── Consumption costs (Oct 2026) ─────────────────────────────
+   A cost with key "Verbrauch" (Heizung, Warmwasser, metered Wasser) is split in two:
+     Grundkosten  pos.gk % (default 30 for Heizung / Warmwasser by the Heizkostenverordnung, else 0) → by days,
+                  like every fixed cost (the empty days' part stays with you, by law)
+     Verbrauch    the rest → only among the stays that lived there, never the Leerstand:
+                  by Zählerstand when every reading is there (Übergabe Einzug / Auszug + start / end typed
+                  in the NK window), else by the days lived.
+   One stay for the whole period → the same amounts as before. "per tenant" (Zwischenablesung) still wins. */
+const SR_METER_RX = { heizung: /^(heizung|w(ä|ae)rme)/i, warmwasser: /^warmwasser/i, wasser: /^(kaltwasser|warmwasser)/i, abwasser: /^(kaltwasser|warmwasser)/i };
+const _srIsCons = pos => !!pos && pos.key === 'verbrauch' && pos.split !== 'mieter';
+const _srGk = pos => { const v = _srNum(pos.gk); return v !== null ? Math.max(0, Math.min(100, v)) : (['heizung', 'warmwasser'].includes(pos.kind) ? 30 : 0); };
+/* The stays of the period (Kalt + NK tenants and Pauschal stays) with their days */
+function _srStays(c, rec) {
+  const per = _srPer(c, rec);
+  return c.items.filter(it => it.r.tenant_id).map(it => {
+    const e = it.e || it.r, f = _srD(e.period_from), t = _srD(e.period_to);
+    const from = f > per.from ? f : per.from, to = t < per.to ? t : per.to;
+    return { it, id: String(it.r.id), tid: String(it.r.tenant_id), name: _srTName(_srTenantOf(it.r)) || 'Tenant', from, to, days: from <= to ? _srDays(from, to) : 0 };
+  }).filter(x => x.days > 0);
+}
+/* The flat's meter names for one cost kind: apartment card · Übergaben of its stays · what was typed */
+function _srMetersFor(c, rec, rx, stays) {
+  const names = new Set();
+  if (c.apt) {
+    const seen = {};
+    (window._src.zaehler || []).filter(z => String(z.apartment_id) === String(c.apt.id) && (z.typ || z.type)).forEach(z => {
+      const t = z.typ || z.type; seen[t] = (seen[t] || 0) + 1; names.add(seen[t] > 1 ? t + ' ' + seen[t] : t); });
+  }
+  const tids = new Set(stays.map(x => x.tid));
+  (window._src.readings || []).forEach(r => { if (r.app === 'rentals' && tids.has(String(r.tenant_id)) && r.meter) names.add(String(r.meter)); });
+  Object.keys((rec && rec.keys && rec.keys.meters) || {}).forEach(m => names.add(m));
+  return [...names].filter(m => rx.test(m));
+}
+const _srReading = (tid, occasion, meter) => {
+  const r = (window._src.readings || []).find(x => x.app === 'rentals' && String(x.tenant_id) === tid && x.occasion === occasion && String(x.meter) === meter);
+  return r ? _srNum(r.value) : null;
+};
+/* One consumption cost U over the stays → per stay id: g (Grundkosten) + v (Verbrauch); Leerstand: leerG + leerV */
+function _srConsSplit(c, rec, pos, U) {
+  const per = _srPer(c, rec), perDays = _srDays(per.from, per.to);
+  const stays = _srStays(c, rec), occ = stays.reduce((a, x) => a + x.days, 0);
+  const gk = _srGk(pos), G = U * gk / 100, V = U - G;
+  const g = {}, v = {}, units = {}, days = {};
+  stays.forEach(x => { g[x.id] = G * x.days / perDays; days[x.id] = x.days; });
+  const leerG = G * Math.max(0, perDays - occ) / perDays;
+  const rx = SR_METER_RX[pos.kind], missing = [];
+  const M = rx && stays.length ? _srMetersFor(c, rec, rx, stays) : [];
+  let how = 'days', total = 0, leerV = occ > 0 ? 0 : V;
+  if (M.length) {
+    const K = (rec && rec.keys && rec.keys.meters) || {};
+    const at = (x, edge) => {                       // sum over the meters at a stay's start or end
+      let sum = 0, ok = true;
+      for (const m of M) {
+        const inner = edge === 'from' ? x.from > per.from : x.to < per.to;
+        const val = inner ? _srReading(x.tid, edge === 'from' ? 'einzug' : 'auszug', m) : _srNum((K[m] || {})[edge === 'from' ? 'start' : 'end']);
+        if (val === null) { ok = false; missing.push(inner ? x.name + ' ' + (edge === 'from' ? 'Einzug' : 'Auszug') + ' · ' + m : (edge === 'from' ? 'Start' : 'End') + ' · ' + m); }
+        else sum += val;
+      }
+      return ok ? sum : null;
+    };
+    let s0 = 0, s1 = 0, ok = true;
+    for (const m of M) { const a = _srNum((K[m] || {}).start), b = _srNum((K[m] || {}).end); if (a === null || b === null) ok = false; else { s0 += a; s1 += b; } }
+    if (!ok) M.forEach(m => { if (_srNum((K[m] || {}).start) === null) missing.push('Start · ' + m); if (_srNum((K[m] || {}).end) === null) missing.push('End · ' + m); });
+    total = s1 - s0;
+    let used = 0;
+    for (const x of stays) { const a = at(x, 'from'), b = at(x, 'to'); if (a === null || b === null) { ok = false; continue; } units[x.id] = b - a; used += b - a; if (b - a < 0) ok = false; }
+    const vac = total - used;
+    if (ok && total > 0 && vac > -0.0005) {
+      how = 'meter';
+      stays.forEach(x => { v[x.id] = V * units[x.id] / total; });
+      leerV = V * Math.max(0, vac) / total;
+    }
+  }
+  if (how === 'days') stays.forEach(x => { v[x.id] = occ > 0 ? V * x.days / occ : 0; });
+  return { g, v, gk, how, total, units, days, occ, perDays, leerG, leerV, missing: [...new Set(missing)], meters: M,
+           active: stays.length > 1 || occ < perDays };
+}
+const _srN = (v, dec) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec == null ? 3 : dec });
+/* How a consumption line was split — for the NK window and the letter */
+function _srConsText(sp, id, de) {
+  const gkT = sp.gk ? (de ? 'Grundkosten ' + sp.gk + ' % nach Tagen · ' : 'Grundkosten ' + sp.gk + ' % by days · ') : '';
+  return sp.how === 'meter'
+    ? gkT + (de ? 'Verbrauch ' + _srN(sp.units[id]) + ' von ' + _srN(sp.total) + ' lt. Zählerstand' : 'consumption ' + _srN(sp.units[id]) + ' of ' + _srN(sp.total) + ' by meter')
+    : gkT + (de ? 'Verbrauch nach bewohnten Tagen ' + (sp.days[id] || 0) + ' von ' + sp.occ : 'consumption by days lived ' + (sp.days[id] || 0) + ' of ' + sp.occ);
+}
+
 /* ── What stays with you (Oct 2026) ─────────────────────────
    Pauschal stays and Leerstand get their share of the NK costs exactly like a tenant
    (same positions, same days). Pauschal: minus the "davon NK" inside the Pauschale
    (rent history, as in Controlling). Leerstand: fixed costs + consumption — consumption
    by days until the Zählerstände split. Information only: no letter, nothing to do.   */
-function _srSpanShare(c, rec, from, to, apt) {
+function _srSpanShare(c, rec, from, to, apt, stayId) {
   const per = _srPer(c, rec), perDays = _srDays(per.from, per.to);
   const a = from > per.from ? from : per.from, b = to < per.to ? to : per.to;
   const days = a <= b ? _srDays(a, b) : 0;
+  const leerDays = stayId ? 0 : _srVacancies(c, rec).reduce((s, x) => s + _srDays(x.from, x.to), 0) || 1;
   let fixed = 0, cons = 0, missing = 0;
   for (const pos of (rec && rec.positions) || []) {
     if (!_srInNk(pos)) continue;
     const unit = _srUnitAmt(rec, pos, apt);
     if (unit === null) { if (pos.split === 'mieter') missing++; continue; }   // typed per tenant only: unknown here
-    const v = unit * days / perDays;
-    if (pos.key === 'verbrauch' || pos.split === 'mieter') cons += v; else fixed += v;
+    if (_srIsCons(pos)) {                                                     // Grundkosten by days · Verbrauch only where someone lived
+      const sp = _srConsSplit(c, rec, pos, unit);
+      if (stayId) { fixed += sp.g[stayId] || 0; cons += sp.v[stayId] || 0; }
+      else { fixed += sp.leerG * days / leerDays; cons += sp.leerV * days / leerDays; }
+    } else if (pos.split === 'mieter') cons += unit * days / perDays;
+    else fixed += unit * days / perDays;
   }
   return { days, fixed: cxR(fixed), cons: cxR(cons), share: cxR(fixed + cons), missing };
 }
@@ -335,7 +430,7 @@ function _srOnYou(c, rec, sumOk) {
   const rows = []; let pausch = 0, leer = 0;
   for (const it of c.items) {
     const r = it.r; if (r.note !== 'Pauschal' || !r.tenant_id) continue;
-    const t = _srTenantOf(r), sh = _srSpanShare(c, rec, _srD(r.period_from), _srD(r.period_to), _srAptOf(c, t));
+    const t = _srTenantOf(r), sh = _srSpanShare(c, rec, _srD(r.period_from), _srD(r.period_to), _srAptOf(c, t), String(r.id));
     let cov = 0; try { cov = typeof ctlPauschalNkCovered === 'function' ? ctlPauschalNkCovered(Object.assign({}, r, { property_id: c.p.id })) : 0; } catch (e) {}
     const onYou = cxR(sh.share - cov);
     rows.push({ kind: 'pausch', id: String(r.id), name: _srTName(t) || 'Pauschal', from: _srD(r.period_from), to: _srD(r.period_to), ...sh, covered: cxR(cov), onYou });
@@ -435,6 +530,11 @@ function _srCollect() {
     if (['hv_date', 'received_on', 'beschluss_on', 'weg_due'].includes(path[0])) { d[path[0]] = raw ? _srD(raw) : null; return; }
     if (path[0] === 'per_from') { if (raw) d.period_from = _srD(raw); return; }
     if (path[0] === 'per_to') { if (raw) d.period_to = _srD(raw); return; }
+    if (path[0] === 'mtr') {                                                      // Zählerstand at period start / end
+      d.keys = d.keys || {}; d.keys.meters = d.keys.meters || {};
+      const m = inp.dataset.m; (d.keys.meters[m] = d.keys.meters[m] || {})[inp.dataset.w] = raw === '' ? null : cxParse(raw);
+      return;
+    }
     if (path[0] === 'weg_amount') { d.weg_amount = raw === '' ? null : Math.abs(cxParse(raw)); return; }
     const v = path[0] === 'pos' && path[2] === 'label' ? (raw.trim() || null) : (raw === '' ? null : cxParse(raw));
     if (path[0] === 'keys') { d.keys[path[1]] = v; return; }
@@ -671,7 +771,7 @@ function srLetterHtml(d) {
     greeting: d.names.length ? 'Guten Tag ' + _srJoin(d.names) + ',' : 'Sehr geehrte Damen und Herren,',
     introHtml: 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (d.partial ? ' Die Kosten sind nach Tagen anteilig berechnet.' : ''),
     costs: { cols: [{ label: 'Kostenart', w: '70%' }, { label: d.partial ? 'Anteil ' + d.tDays + '/' + d.perDays + ' Tage' : 'Betrag', w: '30%', cls: 'r' }],
-             rows: d.lines.map(l => [(l.pos.label || _srKind(l.pos.kind).l) + (l.pos.split === 'mieter' ? ' (Zwischenablesung)' : ''), eur(l.amt)]) },
+             rows: d.lines.map(l => [(l.pos.label || _srKind(l.pos.kind).l) + (l.pos.split === 'mieter' ? ' (Zwischenablesung)' : l.cons ? ' (' + l.cons.text + ')' : ''), eur(l.amt)]) },
     sum: d.sum, vz: d.vz, vzMonths: d.vzMonths || [], saldo: d.saldo, via: d.via, einbehalt: d.einbehalt, due: d.due,
     bank: d.bank, verwendung: d.verwendung, tenantIban: d.tenantIban, former: d.former, du: false,
     extraHtml: vzNew,
@@ -1475,10 +1575,48 @@ function _srNkView(c) {
     '</section>';
   }
   const tenCard = '<section class="srm__card" id="srNkTens">' + _srNkTens(c, d, rec, hvReady) + '</section>';
+  const consCard = hvReady ? _srConsCard(c, d) : '';
   return stMHead(title, c.p.name + ' · you ↔ tenants', 'receipt', 'data-sr="close"') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
-    '<div class="srm__b"><div class="srm__cols">' + costCard + tenCard + '</div>' +
+    '<div class="srm__b"><div class="srm__cols">' + costCard + consCard + tenCard + '</div>' +
     (hvReady ? '<p class="sr-saved sr-saved--b" id="srSaved">' + (SR.dirty ? '' : '✓ saved') + '</p>' : '') + '</div>';
 }
+/* Consumption card (Oct 2026): Grundkosten % per consumption cost + the Zählerstände — only when the
+   period has more than one stay or a Leerstand (one stay all period: nothing to split). */
+function _srConsCard(c, d) {
+  const stays = _srStays(c, d), per = _srPer(c, d), perDays = _srDays(per.from, per.to);
+  const occ = stays.reduce((a, x) => a + x.days, 0);
+  const cons = (d.positions || []).map((p, i) => [p, i]).filter(([p]) => _srInNk(p) && _srIsCons(p) && _srUnitAmt(d, p, c.apt) !== null);
+  if (!cons.length || (stays.length <= 1 && occ >= perDays)) return '';
+  const rows = cons.map(([p, i]) => {
+    const U = _srUnitAmt(d, p, c.apt), sp = _srConsSplit(c, d, p, U);
+    return '<div class="sr-cons__r"><div class="sr-cons__l"><b>' + stEsc(p.label || _srKind(p.kind).l) + ' · ' + stEur(U) + '</b>' +
+      '<small data-cons-st="' + i + '">' + stEsc(_srConsStatus(sp, perDays)) + '</small></div>' +
+      '<label class="sr-cons__gk"><input inputmode="decimal" data-srf="pos.' + i + '.gk" value="' + sp.gk + '" aria-label="Grundkosten %"/><em>% Grundkosten</em></label></div>';
+  }).join('');
+  const rxs = [...new Set(cons.map(([p]) => p.kind))].map(k => SR_METER_RX[k]).filter(Boolean);
+  const M = [...new Set(rxs.flatMap(rx => _srMetersFor(c, d, rx, stays)))];
+  const K = (d.keys && d.keys.meters) || {};
+  const fv = v => v === null || v === undefined || v === '' ? '' : String(v).replace('.', ',');
+  const meters = M.map(m => {
+    const ch = [];
+    stays.forEach(x => {
+      if (x.from > per.from) { const r = _srReading(x.tid, 'einzug', m); ch.push(x.name + ' · Einzug ' + stDM(x.from) + ': ' + (r === null ? 'missing' : _srN(r))); }
+      if (x.to < per.to) { const r = _srReading(x.tid, 'auszug', m); ch.push(x.name + ' · Auszug ' + stDM(x.to) + ': ' + (r === null ? 'missing' : _srN(r))); }
+    });
+    return '<div class="sr-mtr"><b>' + stEsc(m) + '</b>' +
+      '<label class="sr-mtr__f"><span>Start ' + stDate(per.from) + '</span><input inputmode="decimal" data-srf="mtr" data-m="' + stEsc(m) + '" data-w="start" value="' + stEsc(fv((K[m] || {}).start)) + '"/></label>' +
+      ch.map(t => '<small>' + stEsc(t) + '</small>').join('') +
+      '<label class="sr-mtr__f"><span>End ' + stDate(per.to) + '</span><input inputmode="decimal" data-srf="mtr" data-m="' + stEsc(m) + '" data-w="end" value="' + stEsc(fv((K[m] || {}).end)) + '"/></label></div>';
+  }).join('');
+  return '<section class="srm__card" id="srCons"><div class="srm__ch"><p class="srm__ct">Consumption</p><span class="srm__cs">only among the stays · never the Leerstand</span></div>' + rows +
+    (M.length ? '<p class="st-hint">Zählerstände: start and end from the HV / heat statement · changes from the Übergaben.</p>' + meters
+              : '<p class="st-hint">No Zählerstände for this flat, so consumption is split by the days lived. For meters: add them on the apartment card and record them in the Übergabe.</p>') + '</section>';
+}
+function _srConsStatus(sp, perDays) {
+  return sp.how === 'meter' ? 'by Zählerstand · ' + _srN(sp.total) + ' measured' + (sp.gk ? ' · Grundkosten by days' : '')
+    : 'by the days lived (' + sp.occ + ' of ' + perDays + ')' + (sp.missing.length ? ' · missing: ' + sp.missing.slice(0, 3).join(', ') + (sp.missing.length > 3 ? ' …' : '') : sp.meters.length ? '' : ' · no meters');
+}
+
 /* The tenants of the NK window — previews follow the draft, so a change shows at once */
 function _srNkTens(c, d, rec, hvReady) {
   const calcRec = hvReady ? d : rec, sumOk = hvReady;
@@ -1500,7 +1638,7 @@ function _srNkTens(c, d, rec, hvReady) {
   }).join('');
   const leer = oy ? oy.rows.filter(x => x.kind === 'leer').map(o =>
     '<div class="sr-tenrow is-leer"><span class="sr-tenrow__m"><span class="sr-tenrow__n">Leerstand</span><span class="sr-tenrow__s">' +
-      stEsc(stDM(o.from) + '–' + stDate(o.to) + ' · ' + o.days + ' days · fixed ' + stEur(o.fixed) + ' · consumption ' + stEur(o.cons) + ' (by days)') + '</span></span>' +
+      stEsc(stDM(o.from) + '–' + stDate(o.to) + ' · ' + o.days + ' days · fixed ' + stEur(o.fixed) + (o.cons ? ' · consumption ' + stEur(o.cons) + ' (measured)' : ' · no consumption')) + '</span></span>' +
     '<span class="sr-tenrow__r"><b>' + stEur(o.onYou) + '</b><small>on you</small>' + cxPill('grey', 'Leerstand') + '</span></div>').join('') : '';
   const tot = oy && oy.total > 0 ? '<div class="sr-onyou"><span>Not covered by tenants · on you</span><b>' + stEur(oy.total) + '</b>' +
     '<small>' + [oy.pausch > 0 ? 'Pauschal ' + stEur(oy.pausch) : '', oy.leer > 0 ? 'Leerstand ' + stEur(oy.leer) : ''].filter(Boolean).join(' + ') + '</small></div>' : '';
@@ -1512,6 +1650,11 @@ function _srRefreshNkTens() {
   if (!host || !c || !SR.draft) return;
   _srCollect();
   host.innerHTML = _srNkTens(c, SR.draft, _srRec(c.p, c.per), true);
+  const per = _srPer(c, SR.draft), perDays = _srDays(per.from, per.to);
+  document.querySelectorAll('#srCons [data-cons-st]').forEach(el => {          // consumption: how it is split now
+    const p = SR.draft.positions[Number(el.dataset.consSt)], U = p ? _srUnitAmt(SR.draft, p, c.apt) : null;
+    if (p && U !== null) el.textContent = _srConsStatus(_srConsSplit(c, SR.draft, p, U), perDays);
+  });
 }
 
 function _srRefreshTotals() {
