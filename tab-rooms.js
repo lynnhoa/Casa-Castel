@@ -881,17 +881,13 @@ const _DEFAULT_ROOMS = [
 ];
 
 async function loadRooms() {
-  // Ensure settings are loaded first so chips render correctly
-  if (!appSettings.vermieter_name && typeof loadSettings === 'function') {
-    await loadSettings();
-  }
-
-  // Sync kitchen access config from Supabase into localStorage
-  if (typeof loadKitchenRoomsFromSupabase === 'function') {
-    await loadKitchenRoomsFromSupabase();
-  }
-
-  await loadRoomsData();
+  // Settings (so chips render correctly), kitchen access config and the rooms
+  // load at the same time (B18: was one after the other)
+  await Promise.all([
+    (!appSettings.vermieter_name && typeof loadSettings === 'function') ? loadSettings() : null,
+    typeof loadKitchenRoomsFromSupabase === 'function' ? loadKitchenRoomsFromSupabase() : null,
+    loadRoomsData(),
+  ]);
 
   // If Supabase returned no rooms, seed the defaults directly via Supabase
   // bypassing saveRoom() to do a single bulk insert
@@ -915,9 +911,13 @@ async function loadRooms() {
     }
   }
 
+  // B18: the first time, wait for the tenants (max 2,5 s) → the cards are drawn ONCE
+  // with the real rent, not "asking rent" first and redrawn a moment later (the blink)
+  if (typeof tnWarmTenants === 'function') {
+    await Promise.race([Promise.resolve(tnWarmTenants()).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
+  }
   _renderRoomsList();
   _initSortable();
-  if (typeof tnWarmTenants === 'function') tnWarmTenants();   // preload tenant names for the generators
   _roomRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
   // Re-render if settings change (bathrooms / shared spaces lists update)
   if (!loadRooms._settingsWired) { loadRooms._settingsWired = true; onSettingsChange(() => _renderRoomsList()); }
@@ -980,10 +980,26 @@ function _renderRoomsList() {
   // Keep open cards open, and keep any card you are editing exactly as it is
   // (a background refresh — e.g. the echo of your own save — must not wipe it)
   const openIds = new Set([...list.querySelectorAll('.rc.rc--expanded')].map(c => c.dataset.id));
-  const editing = [...list.querySelectorAll('.rc')]
-    .filter(c => c.classList.contains('rc--editing') || c.querySelector('.rc-sec--editing'));
+  const isEditing = c => c.classList.contains('rc--editing') || !!c.querySelector('.rc-sec--editing, .cc-save[data-cc-save="dirty"]');
+  const editing = [...list.querySelectorAll('.rc')].filter(isEditing);
+  const htmls   = rooms.map(r => _roomCardHTML(r));
 
-  list.innerHTML = rooms.map(r => _roomCardHTML(r)).join('');
+  // B18: same cards in the same order → redraw only the cards whose content
+  // changed (reload on every visit, realtime echo, tenants loaded …) — no blink
+  const onScreen = [...list.querySelectorAll(':scope > .rc')];
+  if (typeof ccSwapCard === 'function' && onScreen.length === rooms.length && list.children.length === rooms.length &&
+      onScreen.every((c, i) => String(c.dataset.id) === String(rooms[i].id))) {
+    onScreen.forEach((c, i) => {
+      if (c._ccHtml === htmls[i] || isEditing(c)) return;
+      ccSwapCard(c, htmls[i], 'rc--expanded')._ccHtml = htmls[i];
+    });
+    _updateRoomsSummary(rooms);
+    _bindAllCards();
+    return;
+  }
+
+  list.innerHTML = htmls.join('');
+  [...list.querySelectorAll(':scope > .rc')].forEach((c, i) => { c._ccHtml = htmls[i]; });   // remembered as drawn
 
   list.querySelectorAll('.rc').forEach(c => { if (openIds.has(c.dataset.id)) c.classList.add('rc--expanded'); });
   editing.forEach(old => {

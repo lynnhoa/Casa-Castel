@@ -633,21 +633,29 @@ function _kBuildFeedHtml(comments, weekRow) {
   }).join('');
 }
 
+/* B18: write a box only when its content really changed (ccSetHTML in direct-save.js) —
+   a reload with the same data leaves the screen alone: no blink, photos not reloaded */
+function _kSet(el, html) {
+  if (!el) return false;
+  if (typeof ccSetHTML === 'function') return ccSetHTML(el, html);
+  el.innerHTML = html; return true;
+}
+
 /* ── FEED RENDER ────────────────────────────────────────── */
 async function _kRenderFeed(weekRow) {
   const el    = document.getElementById('k-feed-mob'); if (!el) return;
   const elDsk = document.getElementById('k-feed-dsk');
   if (!weekRow) {
-    el.innerHTML = '<p class="cc-note" style="padding:8px 0;">No data.</p>';
-    if (elDsk) elDsk.innerHTML = el.innerHTML;
+    const none = '<p class="cc-note" style="padding:8px 0;">No data.</p>';
+    _kSet(el, none);
+    _kSet(elDsk, none);
     return;
   }
   const comments = await _kGetComments(weekRow.id);
   const html = _kBuildFeedHtml(comments, weekRow);
-  el.innerHTML = html;
-  if (elDsk) elDsk.innerHTML = html;
-  // Wire delete buttons on both feeds
-  [el, elDsk].forEach(feed => {
+  const changed = [_kSet(el, html) ? el : null, _kSet(elDsk, html) ? elDsk : null];
+  // Wire delete buttons on both feeds (only a feed that was just redrawn — the others are wired already)
+  changed.forEach(feed => {
     if (!feed) return;
     feed.querySelectorAll('[data-comment-id] .k-delete-btn').forEach(btn => {
       btn.addEventListener('click', async e => {
@@ -667,7 +675,7 @@ async function _kRenderFeed(weekRow) {
 async function _kRenderRotation(weekRow, absData, preRows) {
   const el = document.getElementById('k-mob-rot-strip'); if (!el) return;
   const rooms = _kGetRoomList();
-  if (!rooms.length) { el.innerHTML = ''; return; }
+  if (!rooms.length) { _kSet(el, ''); return; }
   const idx        = kWeekIdx();
   const cyclePos   = _kCyclePos(rooms, idx, weekRow);
   const cycleStart = idx - cyclePos;
@@ -729,12 +737,12 @@ async function _kRenderRotation(weekRow, absData, preRows) {
     return _kRotItemHTML(state, shown, dateStr);
   }).join('');
 
-  el.innerHTML = `<div class="k-mob-rot-line"></div>${_kRotSegsHTML(_segStates)}<div class="k-mob-rot-items">${items}</div>`;
+  _kSet(el, `<div class="k-mob-rot-line"></div>${_kRotSegsHTML(_segStates)}<div class="k-mob-rot-items">${items}</div>`);
 
   // Desktop: rot-tl style matching cleaning tab and tenant
   const elDsk = document.getElementById('k-dsk-rot-list');
   if (elDsk) {
-    elDsk.innerHTML = '<div class="rot-tl">' + rooms.map((room, i) => {
+    _kSet(elDsk, '<div class="rot-tl">' + rooms.map((room, i) => {
       // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
       const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
       const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
@@ -777,7 +785,7 @@ async function _kRenderRotation(weekRow, absData, preRows) {
         ? `<a href="mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}" target="_blank" title="Send reminder to ${esc(room)}" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--cc-r-sm);background:var(--cc-surface);border:0.5px solid var(--cc-rule);color:var(--cc-taupe);text-decoration:none;flex-shrink:0;margin-left:5px;" aria-label="Send reminder to ${esc(room)}"><i class="ti ti-mail" style="font-size:12px;" aria-hidden="true"></i></a>`
         : '';
       return `<div class="${rowClass}"><div class="rot-spine"><div class="rot-spine-top ${topLine}"></div><div class="rot-dot ${dotClass}"></div><div class="rot-spine-bot ${botLine}"></div></div><div class="rot-tl-body"><div class="rot-tl-info"><p class="rot-tl-room">${esc(_shown)}</p><p class="rot-tl-dates">${dateStr}</p></div><div style="display:flex;align-items:center;">${badge}${mailBtn}</div></div></div>`;
-    }).join('') + '</div>';
+    }).join('') + '</div>');
   }
 }
 /* ── WEEK CARD ──────────────────────────────────────────── */
@@ -859,8 +867,8 @@ function _kRenderWeekCard(weekRow, absData) {
   }
   const actEl  = document.getElementById('k-mob-actions');
   const actDsk = document.getElementById('k-dsk-actions');
-  if (actEl)  actEl.innerHTML  = items.join('');
-  if (actDsk) actDsk.innerHTML = items.join('');
+  _kSet(actEl,  items.join(''));
+  _kSet(actDsk, items.join(''));
 }
 
 /* ── LAST WEEK CARD ─────────────────────────────────────────
@@ -900,8 +908,8 @@ async function _kRenderLastWeek(lastRow) {
         <button class="k-mob-wact red"   onclick="kFlag('last')"    aria-label="Flag last week"><i class="ti ti-flag"></i><span>Flag</span></button>
       </div>
     </div>`;
-  if (mob) { mob.innerHTML = html; mob.style.display = ''; }
-  if (dsk) dsk.innerHTML = html;
+  if (mob) { _kSet(mob, html); mob.style.display = ''; }
+  _kSet(dsk, html);
   if (dskSec) dskSec.style.display = '';
 }
 

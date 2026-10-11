@@ -411,10 +411,12 @@ async function loadHouseCleaning() {
 
   /* ── This week card ── */
   const cwEl = document.getElementById('hc-current-week');
+  // B18: written only when it really changed — a reload with the same data leaves it alone
+  const _hcSet = (el, html) => (typeof ccSetHTML === 'function' ? ccSetHTML(el, html) : (el && (el.innerHTML = html), true));
   if (!curInfo) {
-    cwEl.innerHTML = '<p class="cc-note">Not started yet.</p>';
+    _hcSet(cwEl, '<p class="cc-note">Not started yet.</p>');
   } else {
-    cwEl.innerHTML = `
+    _hcSet(cwEl, `
       <div class="hc-current-card${isDone ? ' hc-current-card--done' : ''}" data-turn="${isDone ? 'done' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? '' : 'turn'}">
         <div class="hc-current-top">
           <span class="k-mob-status-chip ${isDone ? 'approved' : (isCurrentRoomAbsent || isCurrentRoomVacant) ? 'skipped' : 'submitted'}">
@@ -458,7 +460,7 @@ async function loadHouseCleaning() {
           <i class="ti ti-calendar-event" style="font-size:14px;color:var(--cc-taupe);flex-shrink:0;" aria-hidden="true"></i>
           <span style="flex:1;font-size:11px;color:var(--cc-taupe);">${esc(a.room)} is away ${f(a.from_date)} – ${f(a.to_date)} · turn still counts</span>
         </div>`;
-      }).join('') + `</div>` : ''}`;
+      }).join('') + `</div>` : ''}`);
   }
 
   /* ── Rotation timeline ── */
@@ -582,7 +584,8 @@ function _hcWeekState(idx, room, curIdx, hcDoneMap, absRows) {
 }
 function _renderHcRotation(curIdx, hcDoneMap, absRows, myRoom) {
   const rotEl = document.getElementById('hc-rotation-list'); if (!rotEl) return;
-  if (curIdx < 0) { rotEl.innerHTML = ''; return; }
+  const _rotSet = html => (typeof ccSetHTML === 'function' ? ccSetHTML(rotEl, html) : (rotEl.innerHTML = html, true));   // B18: only when changed
+  if (curIdx < 0) { _rotSet(''); return; }
   const n      = _hcGetRoomList().length || 1;
   const isMgmt = typeof hcCorrectWeek === 'function';
   const LABEL  = { done: 'Done', late: 'Done (late)', missed: 'Missed', away: 'Away', vacant: 'Vacant' };
@@ -592,7 +595,7 @@ function _renderHcRotation(curIdx, hcDoneMap, absRows, myRoom) {
   const ahead = weeks.length ? n - 1 : n;
   for (let i = 0; i < ahead; i++) weeks.push(curIdx + i);
   let nextSet = false;
-  rotEl.innerHTML = '<div class="hc-sch">' + weeks.map(idx => {
+  _rotSet('<div class="hc-sch">' + weeks.map(idx => {
     const info = _hcWeekInfo(idx); if (!info) return '';
     const room = info.room;
     const s    = _hcWeekState(idx, room, curIdx, hcDoneMap, absRows);
@@ -628,7 +631,7 @@ function _renderHcRotation(curIdx, hcDoneMap, absRows, myRoom) {
       <span class="hc-sch-name">${esc(room)}${you}</span>
       ${right}${mail}
     </div>`;
-  }).join('') + '</div>';
+  }).join('') + '</div>');
 
   if (myRoom && typeof onRoomsChange === 'function' && !loadHouseCleaning._roomsWired) {
     loadHouseCleaning._roomsWired = true;

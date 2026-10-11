@@ -552,10 +552,11 @@ function _renderMsgs(msgs) {
   const html = !msgs.length
     ? '<p class="cc-note" style="padding:8px 0 4px;">No messages yet.</p>'
     : msgs.map(m => _msgHtml(m, true)).join('');
-  if (feed)    feed.innerHTML    = html;
-  if (feedDsk) feedDsk.innerHTML = html;
-  scrollToBottom(feed);
-  scrollToBottom(feedDsk);
+  // B18: redraw (and jump to the newest) only when the messages really changed —
+  // opening the Lounge again with the same messages leaves the feed alone (no blink, photos stay)
+  const _set = el => !!el && (typeof ccSetHTML === 'function' ? ccSetHTML(el, html) : (el.innerHTML = html, true));
+  if (_set(feed))    scrollToBottom(feed);
+  if (_set(feedDsk)) scrollToBottom(feedDsk);
   _ensureMobileCompose();   // re-show the compose bar if a render ever dropped it
 }
 

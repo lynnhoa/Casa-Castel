@@ -213,6 +213,19 @@ function ccSwapCard(card, html, openClass) {
   return nc;
 }
 
+/* B18: write HTML into a box only when it is really different from what is
+   already there — a reload with the same data changes nothing on screen (no
+   blink, photos are not reloaded). Something else changed the box in between
+   (e.g. a chat message appended) → it is written again. true = written. */
+function ccSetHTML(el, html) {
+  if (!el) return false;
+  if (el._ccHtml === html && el._ccKids === el.childElementCount) return false;
+  el.innerHTML = html;
+  el._ccHtml = html;
+  el._ccKids = el.childElementCount;
+  return true;
+}
+
 function ccStableJSON(v) {
   const norm = x => {
     if (Array.isArray(x)) {
