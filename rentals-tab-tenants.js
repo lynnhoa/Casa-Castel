@@ -591,11 +591,9 @@ function _rntKautionSollInfo(rec) {
     const gewerbe = a?.zimmer_type === 'Gewerbefläche';
     const shortStay = !gewerbe && rec.mietbeginn && rec.mietende && ccKzIsLong(rec.mietbeginn, rec.mietende) === false;
     if (shortStay) {
-      const hasKz = pr.kurzzeit_kaltmiete != null && pr.kurzzeit_kaltmiete !== '';
-      const kalt  = hasKz ? Number(pr.kurzzeit_kaltmiete) : (Number(pr.kaltmiete) || 0);
-      const nk    = hasKz ? (Number(pr.kurzzeit_nk) || 0) : (Number(pr.nk_pauschale) || 0);
-      if (!kalt) return null;
-      const k = ccKaution({ contract: 'kurzzeit', mode: nk > 0 ? 'kalt_nk' : 'pauschal', kalt, nk, start: rec.mietbeginn, end: rec.mietende });
+      const o = typeof _aptKzKautionOpts === 'function' ? _aptKzKautionOpts(pr, rec.mietbeginn, rec.mietende) : null;
+      if (!o || !(Number(o.kalt) > 0)) return null;
+      const k = ccKaution(o);
       return { amount: k.amount, text: 'Standard \u00b7 ' + k.rule };
     }
     if (!Number(pr.kaltmiete)) return null;
@@ -1373,6 +1371,7 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
   let warm = null, kalt = null, nk = null, miete = null;
   const curR = _rntCurrentRent(activeRec);   // the tenant's own rent — no unit price fallback (B3)
   const _mhN = activeRec ? _rntMhNext(activeRec) : null;   // next Mieterhöhung → brown "→ … ab …"
+  const pausch = !!(curR && curR.mode === 'pauschal');
   if (isApt) {
     const liveP = _rntAptPricing(unit.id);
     kalt  = curR ? curR.kalt : (activeRec ? null : liveP.kaltmiete);
@@ -1409,9 +1408,10 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
       botLine = `<div class="tn-slim-info">
         ${ctLabel ? `<span class="tn-ctp tn-ctp--${ctCls}">${_rntEsc(ctLabel)}</span>` : ''}
         ${dateStr ? `<span class="tn-slim-txt">${_rntEsc(dateStr)}</span>` : ''}
-        ${warm != null ? `<span class="tn-slim-txt"><b>${_rntFmtEUR(warm)}</b> warm</span>` : ''}
-        ${(kalt != null && nk != null) ? `<span class="tn-slim-txt">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
-        ${_mhN && nk != null ? `<span class="tn-slim-next">\u2192 ${_rntFmtEUR(Number(_mhN.amount) + Number(nk))} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
+        ${pausch ? `<span class="tn-slim-txt"><b>${_rntFmtEUR(curR.total)}</b> pauschal</span>`
+          : warm != null ? `<span class="tn-slim-txt"><b>${_rntFmtEUR(warm)}</b> warm</span>` : ''}
+        ${!pausch && (kalt != null && nk != null) ? `<span class="tn-slim-txt">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
+        ${!pausch && _mhN && nk != null ? `<span class="tn-slim-next">\u2192 ${_rntFmtEUR(Number(_mhN.amount) + Number(nk))} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
       </div>`;
     } else {
       botLine = `<div class="tn-slim-info">
@@ -1455,6 +1455,32 @@ function _rntRentBarHTML(rid, type, unit, rec) {
   const _ct  = !isApt ? '' : (unit.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : (_rntContractLabel(rntContractType(rec)) || 'Mietvertrag'));
   const rTitle = (_ct || _dt) ? `<div class="tn-rtitle">${_ct ? `<span class="tn-rt-name">${_rntEsc(_ct)}</span>` : ''}${_dt ? `<span class="tn-rt-dates">${_rntEsc(_dt)}</span>` : ''}</div>` : '';
 
+  if (isApt && cur && cur.mode === 'pauschal') {
+    const inc = Number(cur.period && cur.period.nebenkosten) || 0;
+    return `
+<div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar">
+  <div class="tn-rc">
+    <div class="tn-rlbl">Pauschalmiete</div>
+    <div class="tn-rval">${_rntFmtEUR(cur.total)}</div>
+    <div class="tn-rsub">${src}</div>
+  </div>
+  <div class="tn-rc">
+    <div class="tn-rlbl">davon NK</div>
+    <div class="tn-rval">${inc ? _rntFmtEUR(inc) : '\u2014'}</div>
+    <div class="tn-rsub">no NK-Abrechnung</div>
+  </div>
+  <div class="tn-rc">
+    <div class="tn-rlbl">Miete ohne NK</div>
+    <div class="tn-rval">${_rntFmtEUR(Math.max(0, cur.total - inc))}</div>
+    <div class="tn-rsub">${nextP ? 'neu ab ' + ccRpFmt(nextP.valid_from) : 'Kaution base'}</div>
+  </div>
+  <div class="tn-rc">
+    <button class="tn-edit-rent-btn" onclick="_rntToggleRentEdit('${rid}')">
+      <i class="ti ti-pencil" style="font-size:10px"></i> Edit
+    </button>
+  </div>
+</div></div>`;
+  }
   if (isApt) {
     return `
 <div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar">
@@ -1511,6 +1537,33 @@ function _rntRentFormHTML(rid, type, unit, rec) {
     <input type="text" id="rf-from-${rid}" value="" placeholder="TT.MM.JJJJ"/>
   </div>`;
 
+  if (isApt && cur && cur.mode === 'pauschal') {
+    const inc = Number(cur.period && cur.period.nebenkosten) || 0;
+    return `
+<div class="tn-rent-form" id="rform-${rid}" style="display:none" data-pausch="1">
+  <div class="tn-rf">
+    <span class="tn-flbl">Pauschalmiete \u20ac/mo</span>
+    <input type="number" data-cc-num="2" id="rf-kalt-${rid}" value="${cur.total}" oninput="_rntUpdateWarm('${rid}')"/>
+  </div>
+  <div class="tn-rf">
+    <span class="tn-flbl">davon NK \u20ac/mo</span>
+    <input type="number" data-cc-num="2" id="rf-nk-${rid}" value="${inc || ''}" placeholder="0" oninput="_rntUpdateWarm('${rid}')"/>
+  </div>
+  <div class="tn-rf">
+    <span class="tn-flbl">Miete ohne NK</span>
+    <div class="tn-rf-derived" id="rf-warm-${rid}">${_rntFmtEUR(Math.max(0, cur.total - inc))}</div>
+  </div>${fromRow}
+  <div class="tn-rf-save-row" style="grid-column:1/-1;justify-content:space-between;align-items:center">
+    <span class="tn-rf-hint" style="margin:0">Pauschal · Gilt ab leer = aktuelle Miete korrigieren · Datum = neue Pauschale ab diesem Tag</span>
+    <div style="display:flex;gap:6px">
+      <button class="tn-btn tn-btn-sm" onclick="_rntToggleRentEdit('${rid}')">Cancel</button>
+      <button class="tn-btn tn-btn-primary cc-save" onclick="_rntSaveRent('${rid}','${tid}','apt','${unit.id}')">
+        Save
+      </button>
+    </div>
+  </div>
+</div>`;
+  }
   if (isApt) {
     const liveP = _rntAptPricing(unit.id);
     const kalt  = cur ? cur.kalt : '';
@@ -3066,7 +3119,8 @@ function _rntUpdateWarm(rid) {
   const k  = parseFloat(document.getElementById('rf-kalt-' + rid)?.value) || 0;
   const nk = parseFloat(document.getElementById('rf-nk-'   + rid)?.value) || 0;
   const el = document.getElementById('rf-warm-' + rid);
-  if (el) el.textContent = (k || nk) ? _rntFmtEUR(k + nk) : '\u2014';
+  const pa = document.getElementById('rform-' + rid)?.dataset.pausch === '1';   // Pauschal: shows the Miete ohne NK
+  if (el) el.textContent = (k || nk) ? _rntFmtEUR(pa ? Math.max(0, k - nk) : k + nk) : '\u2014';
 }
 
 function _rntToggleProfile(rid, tid) {
@@ -3355,16 +3409,22 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   if (!rec) return;
   const beforeRent = { kaltmiete: rec.kaltmiete, nebenkosten: rec.nebenkosten, kaution_soll: rec.kaution_soll };
   const today = ccRpToday();
+  // a Pauschal tenant stays Pauschal: first field = Pauschalmiete, second = davon NK (Kurzzeit, Oct 2026)
+  const pausch = isApt && document.getElementById('rform-' + rid)?.dataset.pausch === '1';
+  if (pausch && kalt != null && nk != null && nk > kalt) { ccToast('davon NK can’t be more than the Pauschalmiete', true); return; }
 
   // Rent history (rent_periods). Table missing → only the tenant record is saved.
   let histOk = true;
   try {
     if (from) {
-      await ccRpSetRent(sbL, { app: 'rentals', rec, validFrom: from, mode: 'kalt_nk', kalt, nk,
-                               kind: 'manual', source: 'tenant_form', legacyMode: 'kalt_nk' });
+      await ccRpSetRent(sbL, pausch
+        ? { app: 'rentals', rec, validFrom: from, mode: 'pauschal', pauschale: kalt, nkIncl: nk, kind: 'manual', source: 'tenant_form', legacyMode: 'pauschal' }
+        : { app: 'rentals', rec, validFrom: from, mode: 'kalt_nk', kalt, nk, kind: 'manual', source: 'tenant_form', legacyMode: 'kalt_nk' });
     } else {
       const per = ccRpAt(ccRpFor('rentals', rec.id), today);
-      if (per) await ccRpUpdate(sbL, per.id, { mode: 'kalt_nk', kaltmiete: kalt, nebenkosten: nk, pauschale: null });
+      if (per) await ccRpUpdate(sbL, per.id, pausch
+        ? { mode: 'pauschal', pauschale: kalt, kaltmiete: null, nebenkosten: nk || null }
+        : { mode: 'kalt_nk', kaltmiete: kalt, nebenkosten: nk, pauschale: null });
     }
   } catch (e) {
     histOk = false;
@@ -3374,7 +3434,7 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
 
   // The tenant record keeps the rent in effect today (a future rent waits in the history)
   const upd = { kaution_soll: ksoll };
-  if (!from || from <= today || !histOk) { upd.kaltmiete = kalt; upd.nebenkosten = nk; }
+  if (!from || from <= today || !histOk) { upd.kaltmiete = kalt; upd.nebenkosten = pausch ? 0 : nk; }   // Pauschal: the tenant keeps one amount, like Approve
   Object.assign(rec, upd);
   _rntRefreshKautionSoll(tid);
   _rntRefreshCardPills(rec.apartment_id || rec.parking_id);

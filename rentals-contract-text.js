@@ -61,7 +61,9 @@ function rntContractClauses(d, kind, eur, cl) {
   // §4 Miete ↔ own first part + the same ending
   let s4;
   if (isKz) {
-    s4 = `Die monatliche Pauschalmiete beträgt ${eur(d.monatlMiete)}. Alle Nebenkosten (Betriebskosten gemäß obiger Liste) sind in der Pauschale enthalten. ` +
+    s4 = (d.kzMode === 'kalt_nk'
+        ? `Die monatliche Miete beträgt ${eur(d.monatlMiete)} (Kaltmiete ${eur(d.kzKaltmiete)} zzgl. Nebenkostenvorauszahlung ${eur(d.kzNk)}); über die Vorauszahlungen wird jährlich abgerechnet. `
+        : `Die monatliche Pauschalmiete beträgt ${eur(d.monatlMiete)}. Alle Nebenkosten (Betriebskosten gemäß obiger Liste) sind in der Pauschale enthalten. `) +
       'Zieht der Mieter nicht zum Ersten eines Monats ein oder zum Letzten eines Monats aus, werden die Tage anteilig berechnet; ' +
       'der Tagespreis ergibt sich aus der Monatsmiete geteilt durch die Kalendertage des jeweiligen Monats.';
   } else {
@@ -105,7 +107,7 @@ function rntContractClauses(d, kind, eur, cl) {
 
   // §8 Kleinreparaturen — says who pays; above 150 € the tenant pays nothing. Cap on the net cold rent,
   // or on the Pauschalmiete where the rent has no separate Kaltmiete (all-inclusive).
-  const pausch = isKz ? !(Number(d.kzNk) > 0) : d.pricingMode !== 'kalt_nk';
+  const pausch = isKz ? d.kzMode !== 'kalt_nk' : d.pricingMode !== 'kalt_nk';   // Kurzzeit: its type (Pauschal | Kalt + NK)
   const s8 = 'Die Kosten für kleine Instandhaltungen an Gegenständen, die dem häufigen Zugriff des Mieters ausgesetzt sind ' +
     '(Installationsgegenstände für Elektrizität, Wasser und Gas, Heiz- und Kocheinrichtungen, Fenster- und Türverschlüsse), ' +
     'trägt der Mieter bis 150\u00a0\u20ac im Einzelfall, höchstens 8\u202f% der ' + (pausch ? 'Jahrespauschalmiete' : 'Jahresnettokaltmiete') + ' pro Jahr. ' +

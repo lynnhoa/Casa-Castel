@@ -2576,7 +2576,7 @@ function _roomMvPricing(room) {
 
 /* ── THREE BASELINES (Oct 2026) ───────────────────────────────
    One per contract type, each the prefill of its own generator and the Soll in Rooms + Controlling:
-     Kurzzeit       always Pauschal — Pauschalmiete and the NK part inside it (kurzzeit_*)
+     Kurzzeit       Pauschal (Pauschalmiete + the NK part inside it) or Kalt + NK (kurzzeit_*, kurzzeit_pricing)
      Jahresvertrag  own price (jahres_*); until it is saved once it uses the Mietvertrag price
      Mietvertrag    kaltmiete / nk_pauschale / mietvertrag_pricing, individual Kaution (kaution_*)
    Soll of a room = the baseline of its current tenant's contract type; vacant → Jahresvertrag. */
@@ -2587,7 +2587,7 @@ function ccRoomBaseline(room, type) {
   if (!room) return { type, mode: 'kalt_nk', kalt: 0, nk: 0, total: 0, kautionFixed: null, own: false };
   if (type === 'kurzzeit') {
     const kalt = Number(room.kurzzeit_kaltmiete) || 0, nk = Number(room.kurzzeit_nk) || 0;
-    return { type, mode: 'pauschal', kalt, nk, total: kalt + nk, kautionFixed: null, own: !!(kalt || nk) };
+    return { type, mode: room.kurzzeit_pricing === 'kalt_nk' ? 'kalt_nk' : 'pauschal', kalt, nk, total: kalt + nk, kautionFixed: null, own: !!(kalt || nk) };
   }
   if (type === 'jahres' && ccRoomJahresOwn(room)) {
     const kalt = Number(room.jahres_kaltmiete) || 0, nk = Number(room.jahres_nk) || 0;
@@ -4403,10 +4403,15 @@ function _roomBaseOpen(type, id) {
   document.getElementById('roomSheetSub').textContent = 'Default for new ' + _RC_BASE_LBL[type] + ' contracts — never changes a running tenancy';
   let html;
   if (type === 'kurzzeit') {
-    html = `${_rbField('rb-total', 'Pauschalmiete €', b.total || '')}${_rbField('rb-nk', 'davon NK €', b.total ? b.nk : '')}
-      <div class="rb-calc"><span>Miete ohne NK</span><b id="rb-calc">—</b></div>
-      <p class="rb-hint">Kurzzeit is always Pauschal. The NK part is used for the NK settlement and Controlling.
-        Kaution follows the Kurzzeit rule: 1× Pauschale up to 3 months, 3× above.</p>`;
+    // Oct 2026: Pauschal (type the Pauschalmiete) or Kalt + NK (Vorauszahlung, settled yearly)
+    const pa = b.mode !== 'kalt_nk';
+    html = `<div class="rb-seg" id="rb-mode" data-mode="${pa ? 'pauschal' : 'kalt_nk'}">
+        <button type="button" data-v="pauschal" onclick="_roomBaseMode('pauschal')">Pauschal</button>
+        <button type="button" data-v="kalt_nk" onclick="_roomBaseMode('kalt_nk')">Kalt + NK</button></div>
+      <div data-rbgroup="pauschal"${pa ? '' : ' style="display:none"'}>${_rbField('rb-total', 'Pauschalmiete €', pa && b.total ? b.total : '')}${_rbField('rb-nk', 'davon NK €', pa && b.total ? b.nk : '')}</div>
+      <div data-rbgroup="kalt_nk"${pa ? ' style="display:none"' : ''}><div class="rb-two">${_rbField('rb-kalt', 'Kaltmiete €', !pa && b.total ? b.kalt : '')}${_rbField('rb-nkv', 'NK-Vorauszahlung €', !pa && b.total ? b.nk : '')}</div></div>
+      <div class="rb-calc"><span id="rb-calc-l">${pa ? 'Miete ohne NK' : 'Warmmiete'}</span><b id="rb-calc">—</b></div>
+      <p class="rb-hint" id="rb-kzhint"></p>`;
   } else {
     const pa = b.mode === 'pauschal';
     html = `<div class="rb-seg" id="rb-mode" data-mode="${pa ? 'pauschal' : 'kalt_nk'}">
@@ -4431,6 +4436,11 @@ function _roomBaseMode(mode) {
   const seg = document.getElementById('rb-mode'); if (!seg) return;
   seg.dataset.mode = mode;
   const pa = mode === 'pauschal';
+  if (_roomBaseCur && _roomBaseCur.type === 'kurzzeit') {          // Kurzzeit: two field groups
+    document.querySelectorAll('[data-rbgroup]').forEach(g => { g.style.display = g.dataset.rbgroup === mode ? '' : 'none'; });
+    const cl = document.getElementById('rb-calc-l'); if (cl) cl.textContent = pa ? 'Miete ohne NK' : 'Warmmiete';
+    return _roomBaseCalc();
+  }
   const lk = document.querySelector('label[for="rb-kalt"]'), ln = document.querySelector('label[for="rb-nk"]');
   if (lk) lk.textContent = pa ? 'Miete ohne NK €' : 'Kaltmiete €';
   if (ln) ln.textContent = pa ? 'davon NK €' : 'Nebenkosten €';
@@ -4441,9 +4451,18 @@ function _roomBaseCalc() {
   const cur = _roomBaseCur; if (!cur) return;
   const out = document.getElementById('rb-calc'); if (!out) return;
   if (cur.type === 'kurzzeit') {
-    const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk');
-    out.textContent = tot == null ? '—' : fmtEUR(Math.max(0, tot - (nk || 0)));
-    out.style.color = nk != null && tot != null && nk > tot ? '#A3402A' : '';
+    const pa = document.getElementById('rb-mode')?.dataset.mode !== 'kalt_nk';
+    const hint = document.getElementById('rb-kzhint');
+    if (pa) {
+      const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk');
+      out.textContent = tot == null ? '—' : fmtEUR(Math.max(0, tot - (nk || 0)));
+      out.style.color = nk != null && tot != null && nk > tot ? '#A3402A' : '';
+      if (hint) hint.textContent = 'Pauschal: no NK-Abrechnung; the NK part counts as NK covered in Settlements. Kaution: 1× Pauschale up to 3 months, 3× above.';
+    } else {
+      const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nkv');
+      out.textContent = k == null ? '—' : fmtEUR(k + (nk || 0)); out.style.color = '';
+      if (hint) hint.textContent = 'Kalt + NK: NK-Vorauszahlung, settled yearly in Settlements. Kaution: 1× Kaltmiete up to 3 months, 3× above.';
+    }
     return;
   }
   const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nk');
@@ -4458,10 +4477,16 @@ function _roomBaseSave() {
   const room = getRoomById(cur.id); if (!room) return;
   let patch;
   if (cur.type === 'kurzzeit') {
-    const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk') || 0;
-    if (tot == null) { ccToast('Enter the Pauschalmiete', true); return; }
-    if (nk > tot) { ccToast('The NK part can’t be more than the Pauschalmiete', true); return; }
-    patch = { kurzzeit_kaltmiete: Math.round((tot - nk) * 100) / 100, kurzzeit_nk: nk, kurzzeit_pricing: 'pauschal' };
+    if (document.getElementById('rb-mode')?.dataset.mode === 'kalt_nk') {
+      const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nkv') || 0;
+      if (k == null) { ccToast('Enter the Kaltmiete', true); return; }
+      patch = { kurzzeit_kaltmiete: k, kurzzeit_nk: nk, kurzzeit_pricing: 'kalt_nk' };
+    } else {
+      const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk') || 0;
+      if (tot == null) { ccToast('Enter the Pauschalmiete', true); return; }
+      if (nk > tot) { ccToast('The NK part can’t be more than the Pauschalmiete', true); return; }
+      patch = { kurzzeit_kaltmiete: Math.round((tot - nk) * 100) / 100, kurzzeit_nk: nk, kurzzeit_pricing: 'pauschal' };
+    }
   } else {
     const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nk') || 0;
     const mode = document.getElementById('rb-mode')?.dataset.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';

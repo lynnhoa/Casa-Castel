@@ -163,6 +163,7 @@ html .cc-sumline__vals b { display:block; font-size:15px; font-weight:600; line-
 .rc-brow__sub { font-size:13px; color:#7A6F62; line-height:1.5; }
 .rc-brow__note { font-size:12px; color:#9A8E7E; }
 .rc-brow__btns { flex:0 0 auto; display:flex; flex-direction:column; gap:6px; }
+.apt-kz-seg { margin:2px 0 10px; } .apt-kz-hint { font-size:12px; color:#7A6F62; line-height:1.4; padding-top:8px; }
 .rc-brow__go { min-height:36px; padding:0 12px; border-radius:var(--cc-r-md); font-family:inherit; font-size:13px; background:var(--cc-white); cursor:pointer; white-space:nowrap; border:.5px solid var(--cc-ink); color:var(--cc-ink); font-weight:500; }
 
 /* SortableJS */
@@ -621,16 +622,36 @@ async function _aptResolveTenantProfile(aptId) {
 }
 
 
+/* ── KURZZEIT PRICE (Oct 2026) ───────────────────────────────
+   Kurzzeit is Pauschal (one amount, no NK-Abrechnung) or Kalt + NK (Vorauszahlung,
+   settled yearly) — kurzzeit_pricing. Pauschal is saved as kurzzeit_kaltmiete = Pauschale,
+   kurzzeit_nk = 0. Rows from before the type existed (Kaltmiete + Nebenkostenpauschale,
+   never settled) read as one Pauschale = the sum. No Kurzzeit price → the generator
+   starts from the Mietvertrag rent as one Pauschale ("set" stays false: card shows Not set). */
+const _aptR2 = v => Math.round((Number(v) || 0) * 100) / 100;
+function _aptKz(p) {
+  p = p || {};
+  const k = Number(p.kurzzeit_kaltmiete) || 0, n = Number(p.kurzzeit_nk) || 0;
+  if (!(k || n)) { const t = _aptR2((Number(p.kaltmiete) || 0) + (Number(p.nk_pauschale) || 0)); return { mode: 'pauschal', kalt: t, nk: 0, total: t, set: false }; }
+  if (p.kurzzeit_pricing === 'kalt_nk') return { mode: 'kalt_nk', kalt: k, nk: n, total: _aptR2(k + n), set: true };
+  return { mode: 'pauschal', kalt: _aptR2(k + n), nk: 0, total: _aptR2(k + n), set: true };
+}
+/* Pauschal: "davon NK" = the part above the normal cold rent (the card's Mietvertrag Kaltmiete), min. 0 */
+function _aptKzNkIncl(p, total) {
+  const K = Number((p || {}).kaltmiete) || 0;
+  return K > 0 ? Math.max(0, _aptR2((Number(total) || 0) - K)) : 0;
+}
+
 /* ── KAUTION (shared rule in kaution.js) ─────────────────────
-   Kurzzeit prices exactly as the Kurzzeit PDF uses them: the Kurzzeit
-   prices when set, otherwise the normal ones. NK shown separately → base
-   Kaltmiete; no NK → pauschal (same amount). */
+   Base is always the cold rent: Kalt + NK → Kaltmiete · Pauschal → Pauschale − davon NK
+   (the generator's own "davon NK" when it is open, else from the card's Kaltmiete). */
 function _aptKzKautionOpts(p, start = null, end = null, manual = null) {
   p = p || {};
-  const hasKz = Number(p.kurzzeit_kaltmiete) > 0;
-  const kalt  = hasKz ? Number(p.kurzzeit_kaltmiete) : (Number(p.kaltmiete) || 0);
-  const nk    = hasKz ? (Number(p.kurzzeit_nk) || 0) : (Number(p.nk_pauschale) || 0);
-  return { contract: 'kurzzeit', mode: nk > 0 ? 'kalt_nk' : 'pauschal', kalt, nk, rec: p, start, end, manual };
+  const kz = _aptKz(p);
+  if (kz.mode === 'kalt_nk') return { contract: 'kurzzeit', mode: 'kalt_nk', kalt: kz.kalt, nk: kz.nk, rec: p, start, end, manual };
+  const inc  = p._kzNkIncl != null ? Math.min(Number(p._kzNkIncl) || 0, kz.total) : _aptKzNkIncl(p, kz.total);
+  const cold = Math.max(0, _aptR2(kz.total - inc));
+  return { contract: 'kurzzeit', mode: inc > 0 ? 'kalt_nk' : 'pauschal', kalt: cold, nk: inc, rec: p, start, end, manual };
 }
 
 /* Kurzzeit generator: Kaution follows the dates until you type your own value */
@@ -877,8 +898,10 @@ function _aptSoll(a) {
   const kalt = Number(p.kaltmiete) || 0, nk = Number(p.nk_pauschale) || 0;
   const rec  = typeof rntCurrentRecOf === 'function' ? rntCurrentRecOf('apt', a.id) : null;
   const type = rec && typeof rntContractType === 'function' ? rntContractType(rec) : null;
-  if (a.zimmer_type !== 'Gewerbefläche' && type === 'kurzzeit' && Number(p.kurzzeit_kaltmiete) > 0)
-    return { kalt: Number(p.kurzzeit_kaltmiete) || 0, nk: Number(p.kurzzeit_nk) || 0, kaution: ccKaution(_aptKzKautionOpts(p)).amount || 0 };
+  if (a.zimmer_type !== 'Gewerbefläche' && type === 'kurzzeit' && _aptKz(p).set) {
+    const kz = _aptKz(p);   // Pauschal counts fully as rent (NK 0), like Controlling
+    return { kalt: kz.mode === 'pauschal' ? kz.total : kz.kalt, nk: kz.mode === 'pauschal' ? 0 : kz.nk, kaution: ccKaution(_aptKzKautionOpts(p)).amount || 0 };
+  }
   return { kalt, nk, kaution: ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: p }).amount || 0 };
 }
 function _updateAptSummary() {
@@ -990,10 +1013,9 @@ function _aptCardHTML(a) {
   const kautionAmt = _kMv.amount;
 
   // Kurzzeit
-  const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
-  const kzNk   = Number(p.kurzzeit_nk) || 0;
-  const kzWarm = kzKalt + kzNk;
-  const _kKz = ccKaution(_aptKzKautionOpts(p));
+  const kzP    = _aptKz(p);
+  const _kzO = _aptKzKautionOpts(p);
+  const _kKz = ccKaution(_kzO);
   const kzKaution = _kKz.amount;
 
   // Zähler grouped by type category
@@ -1099,8 +1121,8 @@ function _aptCardHTML(a) {
       <div class="apt-sec-read">
         ${_aptAskBlocksHTML(a, [
           a.zimmer_type !== 'Gewerbefläche'
-            ? { title: 'Kurzzeit', bar: 'kurzzeit', set: !!kzKalt, kalt: kzKalt, nk: kzNk, kaution: kzKaution,
-                note: _kKz.source === 'override' ? 'Individuell' : '1× Kalt · from 3 months 3×', go: 'kurzzeit', btn: 'Kurzzeitmiete' } : null,
+            ? { title: 'Kurzzeit', bar: 'kurzzeit', set: kzP.set, pausch: kzP.mode === 'pauschal', total: kzP.total, kalt: kzP.kalt, nk: kzP.nk, kaution: kzKaution,
+                note: _kKz.source === 'override' ? 'Individuell' : (_kzO.mode === 'pauschal' ? '1× Pauschale' : '1× Kalt') + ' · from 3 months 3×', go: 'kurzzeit', btn: 'Kurzzeitmiete' } : null,
           { title: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : 'Mietvertrag', bar: a.zimmer_type === 'Gewerbefläche' ? 'gewerbe' : 'mietvertrag',
             set: !!(kalt || nk), kalt, nk, kaution: kautionAmt,
             note: _kMv.source === 'override' ? 'Individuell' : '3× Kalt', go: 'mietvertrag',
@@ -1128,9 +1150,17 @@ function _aptCardHTML(a) {
         </div>
         ${a.zimmer_type !== 'Gewerbefläche' ? `
         <div class="apt-stitle" style="margin-top:10px">Kurzzeit</div>
-        <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kurzzeit_kaltmiete" value="${p.kurzzeit_kaltmiete||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kurzzeit_nk" value="${p.kurzzeit_nk||''}"/></div>
+        <div class="cc-seg apt-kz-seg" role="radiogroup" aria-label="Kurzzeit" data-kzmode="${kzP.mode}">
+          <button type="button" class="cc-seg__opt${kzP.mode === 'pauschal' ? ' is-on' : ''}" role="radio" onclick="_aptKzMode(this,'pauschal')">Pauschal</button>
+          <button type="button" class="cc-seg__opt${kzP.mode === 'kalt_nk' ? ' is-on' : ''}" role="radio" onclick="_aptKzMode(this,'kalt_nk')">Kalt + NK</button>
+        </div>
+        <div class="apt-field-row" data-kzgroup="pauschal"${kzP.mode === 'pauschal' ? '' : ' style="display:none"'}>
+          <div class="apt-field"><div class="apt-field__label">Pauschalmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="pauschale" value="${kzP.set && kzP.mode === 'pauschal' ? kzP.total : ''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">&nbsp;</div><div class="apt-kz-hint">no NK-Abrechnung · price can change per contract</div></div>
+        </div>
+        <div class="apt-field-row" data-kzgroup="kalt_nk"${kzP.mode === 'kalt_nk' ? '' : ' style="display:none"'}>
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="kalt" value="${kzP.set && kzP.mode === 'kalt_nk' ? kzP.kalt : ''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">NK-Vorauszahlung (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="nk" value="${kzP.set && kzP.mode === 'kalt_nk' ? kzP.nk : ''}"/></div>
         </div>` : ''}
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('miete','${a.id}')">Cancel</button>
@@ -1312,7 +1342,12 @@ function _aptAskBlocksHTML(a, cols) {
         <div class="rc-brow">
           <div class="rc-brow__bar rc-brow__bar--${c.bar}"></div>
           <div class="rc-brow__main"><div class="rc-brow__t">${c.title}</div>
-            ${c.set
+            ${c.set && c.pausch
+              ? `<div class="rc-brow__big">${f(c.total)} <span>pauschal</span></div>
+            <div class="rc-brow__sub">no NK-Abrechnung</div>
+            <div class="rc-brow__sub">Kaution ${f(c.kaution)}</div>
+            ${c.note ? `<div class="rc-brow__sub rc-brow__note">${c.note}</div>` : ''}`
+              : c.set
               ? `<div class="rc-brow__big">${f((Number(c.kalt) || 0) + (Number(c.nk) || 0))} <span>monthly</span></div>
             <div class="rc-brow__sub">Kaltmiete ${f(c.kalt)}</div>
             <div class="rc-brow__sub">Nebenkosten ${f(c.nk)}</div>
@@ -1445,7 +1480,18 @@ function _aptDirectSaveRow(aptId, key, table, data) {
     return rowId
       ? _aptSbClient.from(table).update(data).eq('id', rowId)
       : _aptSbClient.from(table).insert({ apartment_id: aptId, ...data }).select().single();
-  }).then(res => {
+  }).then(async res => {
+    if (res.error && 'kurzzeit_pricing' in data && /kurzzeit_pricing/i.test(res.error.message || '')) {
+      // the Kurzzeit type column is missing (SQL not run yet): save the prices, read them as Pauschal for now
+      const d2 = { ...data }; delete d2.kurzzeit_pricing;
+      const rowId = apt[key]?.id;
+      res = rowId ? await _aptSbClient.from(table).update(d2).eq('id', rowId)
+                  : await _aptSbClient.from(table).insert({ apartment_id: aptId, ...d2 }).select().single();
+      if (!res.error) {
+        if (data.kurzzeit_pricing === 'kalt_nk') ccToast('Kalt + NK for Kurzzeit needs the SQL from the update — saved, shown as Pauschal until then', true);
+        delete apt[key].kurzzeit_pricing; _aptRerenderCard(aptId);
+      }
+    }
     if (res.error) {
       apt[key] = before || {};
       _aptRerenderCard(aptId);
@@ -1468,7 +1514,24 @@ async function _aptSaveMiete(aptId) {
     else if (ccIsNumInput(inp)) data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
     else data[k] = inp.value;
   });
+  // Kurzzeit: Pauschal → kurzzeit_kaltmiete = Pauschale, NK 0 · Kalt + NK → both fields
+  const seg = el.querySelector('[data-kzmode]');
+  if (seg) {
+    const mode = seg.dataset.kzmode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
+    const num = q => { const i = el.querySelector(q); return i && i.value !== '' ? parseFloat(i.value) : null; };
+    if (mode === 'pauschal') { const t = num('[data-kz="pauschale"]'); data.kurzzeit_kaltmiete = t; data.kurzzeit_nk = t == null ? null : 0; }
+    else { data.kurzzeit_kaltmiete = num('[data-kz="kalt"]'); data.kurzzeit_nk = num('[data-kz="nk"]'); }
+    data.kurzzeit_pricing = mode;
+  }
   _aptDirectSaveRow(aptId, 'pricing', 'rentals_pricing', data);
+}
+/* Kurzzeit type in the editor: Pauschal | Kalt + NK */
+function _aptKzMode(btn, mode) {
+  const seg = btn.closest('[data-kzmode]'); if (!seg) return;
+  seg.dataset.kzmode = mode;
+  seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  const wrap = seg.parentElement;
+  wrap.querySelectorAll('[data-kzgroup]').forEach(g => { g.style.display = g.dataset.kzgroup === mode ? '' : 'none'; });
 }
 
 
@@ -2191,14 +2254,20 @@ function _aptContractApt(apt) {
   const m = apt && typeof ccfMieteGet === 'function' && apt.id === _aptContractId ? ccfMieteGet() : null;
   if (m && (_aptContractType === 'kurzzeit' || _aptContractType === 'mietvertrag') && apt.zimmer_type !== 'Gewerbefläche') {
     const p = { ...(apt.pricing || {}) };
-    if (_aptContractType === 'kurzzeit') { p.kurzzeit_kaltmiete = m.kalt; p.kurzzeit_nk = m.nk; }
+    if (_aptContractType === 'kurzzeit') {
+      if (m.mode === 'pauschal') { p.kurzzeit_pricing = 'pauschal'; p.kurzzeit_kaltmiete = m.total; p.kurzzeit_nk = 0; p._kzNkIncl = m.nk; }
+      else { p.kurzzeit_pricing = 'kalt_nk'; p.kurzzeit_kaltmiete = m.kalt; p.kurzzeit_nk = m.nk; }
+    }
     else { p.kaltmiete = m.kalt; p.nk_pauschale = m.nk; }
     return { ...apt, pricing: p };
   }
   const rn = _aptContractRenew;
   if (!apt || !rn || rn.aptId !== apt.id) return apt;
   const p = { ...(apt.pricing || {}) };
-  if (_aptContractType === 'kurzzeit') { p.kurzzeit_kaltmiete = Number(rn.kalt) || 0; p.kurzzeit_nk = Number(rn.nk) || 0; }
+  if (_aptContractType === 'kurzzeit') {
+    if (rn.mode === 'pauschal') { p.kurzzeit_pricing = 'pauschal'; p.kurzzeit_kaltmiete = Number(rn.total) || Number(rn.kalt) || 0; p.kurzzeit_nk = 0; }
+    else { p.kurzzeit_pricing = 'kalt_nk'; p.kurzzeit_kaltmiete = Number(rn.kalt) || 0; p.kurzzeit_nk = Number(rn.nk) || 0; }
+  }
   else { p.kaltmiete = Number(rn.kalt) || 0; p.nk_pauschale = Number(rn.nk) || 0; }
   return { ...apt, pricing: p };
 }
@@ -2247,11 +2316,10 @@ async function _aptOpenContract(type, aptId, renew) {
   if (type === 'kurzzeit') {
     typeLbl.textContent  = 'Kurzzeitmiete';
     titleLbl.textContent = apt.name;
-    const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
-    const kzNk   = Number(p.kurzzeit_nk) || 0;
+    const kzP = _aptKz(p);
     const kzK = ccKaution(_aptKzKautionOpts(p));
     const _kzProfile = await _aptResolveTenantProfile(apt.id);
-    body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, _kzProfile);
+    body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzP, null, kzK, _kzProfile);
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
 
     setTimeout(() => {
@@ -2609,10 +2677,18 @@ function _aptSetupFlow(type, apt) {
   const pfx = type === 'kurzzeit' ? 'cm' : isGw ? 'gw' : 'mv';
   const f = _aptFlowFields(pfx);
   const pr = apt.pricing || {};
-  const miete = isGw ? null : {
+  const kz = _aptKz(pr);                                      // Kurzzeit: Pauschal | Kalt + NK, switchable per contract
+  const kzOther = { pauschal: { a: kz.mode === 'pauschal' ? kz.total : _aptR2(kz.kalt + kz.nk), b: _aptKzNkIncl(pr, kz.mode === 'pauschal' ? kz.total : kz.kalt + kz.nk) },
+                    kalt_nk:  { a: kz.mode === 'kalt_nk' ? kz.kalt : (Number(pr.kaltmiete) || kz.total), b: kz.mode === 'kalt_nk' ? kz.nk : (Number(pr.nk_pauschale) || 0) } };
+  const miete = isGw ? null : type === 'kurzzeit' ? {
+    anchor: '.rm-kaution-row', mode: kz.mode, fixedMode: false, pauschTotal: true, nkRef: Number(pr.kaltmiete) || 0, pre: kzOther,
+    kalt: kzOther[kz.mode].a, nk: kzOther[kz.mode].b,
+    note: rn ? 'Prefilled with the current rent — type the new one if it changes.' : 'Prefilled from the apartment’s Kurzzeit price — type the price agreed for this stay.',
+    onChange: () => { if (typeof _aptKzUpdateKaution === 'function') _aptKzUpdateKaution(); },
+  } : {
     anchor: '.rm-kaution-row', mode: 'kalt_nk', fixedMode: true,
-    kalt: type === 'kurzzeit' ? (Number(pr.kurzzeit_kaltmiete) || Number(pr.kaltmiete) || 0) : (Number(pr.kaltmiete) || 0),
-    nk:   type === 'kurzzeit' ? (Number(pr.kurzzeit_nk) || Number(pr.nk_pauschale) || 0) : (Number(pr.nk_pauschale) || 0),
+    kalt: Number(pr.kaltmiete) || 0,
+    nk:   Number(pr.nk_pauschale) || 0,
     note: rn ? 'Prefilled with the current rent — type the new one if it changes.' : 'Prefilled from the apartment’s rent — change it for this contract.',
     onChange: () => {
       if (type === 'kurzzeit') { if (typeof _aptKzUpdateKaution === 'function') _aptKzUpdateKaution(); return; }
@@ -2653,13 +2729,13 @@ function _aptSetupFlow(type, apt) {
 }
 
 /* ── CONTRACT BODY: KURZZEIT ─────────────────────────────── */
-function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
+function _aptBodyKurzzeit(apt, p, sk, kzP, _unused, kzK, profile = {}) {
   const tenant1 = profile.tenant1 || { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone, birthday: profile.birthday, address: profile.address };
   const tenant2 = profile.tenant2 || null;
   const tenant3 = profile.tenant3 || null;
-  const rentDisplay = kzKalt
-    ? `${aptFmtEURCompact(kzKalt)} kalt + ${aptFmtEURCompact(kzNk)} NK / Monat`
-    : `${aptFmtEURCompact(p.kaltmiete || 0)} kalt + ${aptFmtEURCompact(p.nk_pauschale || 0)} NK / Monat`;
+  const rentDisplay = kzP.mode === 'pauschal'
+    ? `${aptFmtEURCompact(kzP.total)} pauschal / Monat`
+    : `${aptFmtEURCompact(kzP.kalt)} kalt + ${aptFmtEURCompact(kzP.nk)} NK / Monat`;
 
   return `
     <div class="rm-prefilled">

@@ -38,12 +38,14 @@ function _buildRentalKurzzeitData(apt, s, {
   const sk = apt.schlussel || {};
 
   const r2 = v => Math.round(v * 100) / 100;
-  // Pricing: the Kurzzeit prices when set (exactly as the generator shows them),
-  // otherwise the normal ones. A Kurzzeit NK of 0 € stays 0 € (no fallback).
-  const hasKzPrice = Number(p.kurzzeit_kaltmiete) > 0;
-  const kzKalt = hasKzPrice ? Number(p.kurzzeit_kaltmiete) : (Number(p.kaltmiete) || 0);
-  const kzNk   = hasKzPrice ? (Number(p.kurzzeit_nk) || 0) : (Number(p.nk_pauschale) || 0);
-  const monatlMiete = r2(kzKalt + kzNk);
+  // Pricing (Oct 2026): Pauschal (one amount, NK included, no settlement) or Kalt + NK
+  // (Vorauszahlung, settled yearly) — exactly as the generator shows it (_aptKz).
+  const kz = typeof _aptKz === 'function' ? _aptKz(p)
+    : { mode: 'kalt_nk', kalt: Number(p.kurzzeit_kaltmiete) || 0, nk: Number(p.kurzzeit_nk) || 0, total: (Number(p.kurzzeit_kaltmiete) || 0) + (Number(p.kurzzeit_nk) || 0) };
+  const kzMode = kz.mode;
+  const kzKalt = kzMode === 'kalt_nk' ? kz.kalt : kz.total;
+  const kzNk   = kzMode === 'kalt_nk' ? kz.nk : 0;
+  const monatlMiete = r2(kz.total);
 
   // Date maths
   const start   = new Date(startVal);
@@ -154,6 +156,7 @@ function _buildRentalKurzzeitData(apt, s, {
     monatlMiete,
     kzKaltmiete: kzKalt,
     kzNk,
+    kzMode,
     gesamtmiete,
     gesamtbetragMietzeit,
     letzteZahlungNoetig,
@@ -173,9 +176,9 @@ function _buildRentalKurzzeitData(apt, s, {
     letzteZahlungBetrag,
     letzteZahlungBeschreibung,
     letzteZahlungFaellig,
-    kaution:              ccKaution({ contract: 'kurzzeit', mode: kzNk > 0 ? 'kalt_nk' : 'pauschal',
-                                      kalt: kzKalt, nk: kzNk, rec: p, start: startVal, end: endVal,
-                                      manual: kautionVal }).amount,
+    kaution:              ccKaution(typeof _aptKzKautionOpts === 'function'    // base = cold rent (Pauschale − davon NK | Kaltmiete)
+                            ? _aptKzKautionOpts(p, startVal, endVal, kautionVal)
+                            : { contract: 'kurzzeit', mode: kzMode, kalt: kzKalt, nk: kzNk, rec: p, start: startVal, end: endVal, manual: kautionVal }).amount,
     kautionFaelText:      'sofort nach Vertragsunterzeichnung',   // Oct 2026: always sofort
     hausstuerschluessel:  sk.haustuerschluessel  ?? 1,
     wohnungsschluessel:   sk.wohnungsschluessel   ?? 1,
@@ -328,9 +331,9 @@ function _renderRentalKurzzeitHTML(d) {
     ${d.ersterMonatAnteilig ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage \u00d7 ' + eur(d.ersterMonatTagespreis) + '/Tag)') : ''}
     ${d.letzterMonatAnteilig ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage \u00d7 ' + eur(d.letzterMonatTagespreis) + '/Tag)') : ''}
     ${sec('Miete',true,false)}
-    ${d.kzNk > 0
-      ? kv('Kaltmiete', eur(d.kzKaltmiete) + '\u2002/ Monat') + kv('Nebenkostenpauschale', eur(d.kzNk) + '\u2002/ Monat')
-      : kv('Monatliche Miete', eur(d.monatlMiete) + '\u2002/ Monat (pauschal inkl. NK)')}
+    ${d.kzMode === 'kalt_nk'
+      ? kv('Kaltmiete', eur(d.kzKaltmiete) + '\u2002/ Monat') + kv('NK-Vorauszahlung', eur(d.kzNk) + '\u2002/ Monat')
+      : kv('Pauschalmiete', eur(d.monatlMiete) + '\u2002/ Monat (inkl. NK)')}
     <div class="total-box"><span class="total-box__label">Gesamtmiete monatlich:</span><span class="total-box__value">${eur(d.gesamtmiete)}</span></div>`;
 
   const mieteRestBlock = `
@@ -394,7 +397,9 @@ function _renderRentalKurzzeitHTML(d) {
   ${hdr(d.wohnungName)}${ftr(2+pageOffset)}
   <div class="content">
     ${sec('Betriebskosten gem. \u00a7\u00a71,\u00a02 BetrKV',true,true)}
-    <p class="nk-intro">Die monatliche Miete versteht sich als Warmmiete pauschal inkl. aller nachfolgenden Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV. Umlageschlüssel: Wohnfläche der Mietwohnung im Verhältnis zur Gesamtwohnfläche des Gebäudes. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.</p>
+    <p class="nk-intro">${d.kzMode === 'kalt_nk'
+      ? 'Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten gemäß §§\u00a01,\u00a02 BetrKV in ihrer jeweils geltenden Fassung. Umlageschlüssel: wie in der Jahresabrechnung der Eigentümergemeinschaft (\u00a7\u00a0556a Abs.\u00a03 BGB), sonst nach Wohnfläche; verbrauchsabhängige Kosten nach Verbrauch. Heizung und Warmwasser werden nach den Vorschriften der Heizkostenverordnung abgerechnet. Entstehen nach Vertragsschluss neue Betriebskosten i.\u202fS.\u202fd. BetrKV, können diese vom Vermieter auf den Mieter umgelegt werden.'
+      : 'In der monatlichen Pauschalmiete sind sämtliche nachfolgenden Betriebskosten (\u00a7\u00a7\u00a01, 2 BetrKV) bereits enthalten. Eine gesonderte Umlage oder Nachforderung erfolgt nicht; die Auflistung dient der Transparenz.'}</p>
     <div class="nk-grid">${nkRows}</div>
     ${rntContractClauses(d, 'kurzzeit', eur, cl)}
   </div>
