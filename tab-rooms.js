@@ -1569,6 +1569,7 @@ function _roomAddOpen() {
   const f = _roomFrags[tmp]; delete _roomFrags[tmp];
   if (!f) return;
   const ov = _roomSheetEnsure();
+  if (!ov.classList.contains('open')) _roomAnchorSet(null);
   _roomSheetCur = { kind: 'new', id: null, kitchenWas: false };
   document.getElementById('roomSheetKicker').textContent = 'Rooms · New room';
   document.getElementById('roomSheetTitle').textContent = 'Add room';
@@ -1616,13 +1617,18 @@ async function _roomAddSave(btn) {
     return;
   }
   const room = result.room;
+  _roomAnchor = null;                                        // we go to the new card instead
   _roomSheetClose();
   _renderRoomsList();
   _initSortable();
   const card = document.querySelector(`.rc[data-id="${room.id}"]`);
   if (card) {
     card.classList.add('rc--expanded');
-    requestAnimationFrame(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    requestAnimationFrame(() => {                            // just below the header, like opening a card
+      const navH = document.querySelector('.cc-nav')?.offsetHeight || 56;
+      const headerH = document.querySelector('.cc-header')?.offsetHeight || 52;
+      window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY - (navH + headerH + 8), behavior: 'smooth' });
+    });
   }
   _updateRoomsSummary(appRooms);
   if (sbL) await ccSetNewRoomPassword(room.name, 'Login password');   // shown once, as before
@@ -1699,6 +1705,7 @@ let _inventarRoomId = null;
 
 function _openInventar(roomId) {
   _inventarRoomId = roomId;
+  if (!document.getElementById('inventarOverlay')?.classList.contains('open')) _roomAnchorSet(roomId);
   const room = getRoomById(roomId);
   document.getElementById('inventarSubtitle').textContent = (room?.name || '') + ' · Anlage A';
 
@@ -1717,17 +1724,20 @@ function _openInventar(roomId) {
 document.getElementById('inventarClose')?.addEventListener('click', () => {
   document.getElementById('inventarOverlay').classList.remove('open');
   _inventarRoomId = null;
+  _roomAnchorRestore();
 });
 
 document.getElementById('inventarCancel')?.addEventListener('click', () => {
   document.getElementById('inventarOverlay').classList.remove('open');
   _inventarRoomId = null;
+  _roomAnchorRestore();
 });
 
 document.getElementById('inventarOverlay')?.addEventListener('click', e => {
   if (e.target === document.getElementById('inventarOverlay')) {
     document.getElementById('inventarOverlay').classList.remove('open');
     _inventarRoomId = null;
+    _roomAnchorRestore();
   }
 });
 
@@ -1773,6 +1783,7 @@ document.getElementById('inventarSave')?.addEventListener('click', async () => {
       _initSortable();
     }
     _inventarRoomId = null;
+    _roomAnchorRestore();
   }
 });
 
@@ -4292,12 +4303,52 @@ function _roomSheetEnsure() {
 function _roomSheetClose() {
   document.getElementById('roomSheetOverlay')?.classList.remove('open');
   _roomSheetCur = null;
+  _roomAnchorRestore();
+}
+
+/* ── KEEP THE PAGE WHERE IT WAS (Oct 2026) ─────────────────────
+   On the iPhone the keyboard of a sheet scrolls the page behind it and does not scroll back.
+   When a sheet opens we remember where the room card sat on the screen; when it closes
+   (Save · Cancel · X · tap outside) the card is put back exactly there — right away, and once
+   more after the keyboard has closed. Anchored on the card, so it also holds when the card
+   got taller or shorter after saving. Your own scrolling after closing is never fought. */
+let _roomAnchor = null;
+function _roomAnchorSet(id) {
+  const c = id != null ? document.querySelector(`.rc[data-id="${id}"]`) : null;
+  _roomAnchor = { id, top: c ? c.getBoundingClientRect().top : null, y: window.scrollY };
+}
+function _roomAnchorRestore() {
+  const a = _roomAnchor; _roomAnchor = null;
+  if (!a) return;
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  window.addEventListener('touchstart', stop, { once: true, passive: true });
+  window.addEventListener('wheel', stop, { once: true, passive: true });
+  const fix = () => {
+    if (stopped) return;
+    const c = a.id != null ? document.querySelector(`.rc[data-id="${a.id}"]`) : null;
+    if (c && a.top != null) {
+      const dy = c.getBoundingClientRect().top - a.top;
+      if (Math.abs(dy) > 1) window.scrollBy(0, dy);
+    } else if (Math.abs(window.scrollY - a.y) > 1) window.scrollTo(0, a.y);
+  };
+  queueMicrotask(fix);                       // after the card was redrawn by the Save
+  requestAnimationFrame(fix);
+  [350, 700].forEach(ms => setTimeout(fix, ms));   // after the keyboard has closed
+  const vv = window.visualViewport;
+  if (vv) {
+    const onVv = () => setTimeout(fix, 60);
+    vv.addEventListener('resize', onVv);
+    setTimeout(() => vv.removeEventListener('resize', onVv), 1200);
+  }
+  setTimeout(() => { window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }, 1300);
 }
 function _roomSheetOpen(kind, id) {
   const r = getRoomById(id); if (!r) return;
   if (!_roomFrags[id]) _roomCardHTML(r);
   const f = _roomFrags[id]; if (!f) return;
   const ov = _roomSheetEnsure();
+  if (!ov.classList.contains('open')) _roomAnchorSet(id);
   _roomSheetCur = { kind, id, kitchenWas: !!f.hasKitchen };
   document.getElementById('roomSheetKicker').textContent = 'Rooms · ' + r.name;
   document.getElementById('roomSheetTitle').textContent = kind === 'room' ? 'Edit room' : 'Baseline rent';
@@ -4430,6 +4481,7 @@ function _rbField(id, label, val) {
 function _roomBaseOpen(type, id) {
   const r = getRoomById(id); if (!r) return;
   const ov = _roomSheetEnsure();
+  if (!ov.classList.contains('open')) _roomAnchorSet(id);
   const b = ccRoomBaseline(r, type);
   _roomBaseCur = { type, id };
   document.getElementById('roomSheetKicker').textContent = 'Rooms · ' + r.name;
@@ -4568,6 +4620,7 @@ function _roomBaseSave() {
 .rc-brow__go { border:.5px solid var(--cc-ink); color:var(--cc-ink); font-weight:500; }
 .rc-brow__edit { border:.5px solid var(--cc-stone); color:var(--cc-charcoal); }
 .rb { display:flex; flex-direction:column; gap:12px; }
+.rb [data-rbgroup] { display:flex; flex-direction:column; gap:12px; }
 .rb-two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
 .rb-lbl { display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-charcoal); margin-bottom:6px; }
 .rb-in { width:100%; box-sizing:border-box; min-height:44px; padding:0 14px; border:.5px solid var(--cc-rule); border-radius:var(--cc-r-md); background:var(--cc-bg); font-family:inherit; font-size:16px; text-align:right; color:var(--cc-ink); }
