@@ -76,9 +76,10 @@ function ccNksPeriods(prop) {
   const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
   const since = _ccNksSince(p), ty = Number(today.slice(0, 4)), out = [];
   for (let y = ty - 3; y <= ty; y++) {
-    let from = y + '-' + st; const to = _nkAdd((y + 1) + '-' + st, -1);
-    if (since && to < since) continue;
-    if (since && from < since) from = since;
+    const from = y + '-' + st, to = _nkAdd((y + 1) + '-' + st, -1);
+    if (since && to < since) continue;                 // ended before the purchase → the seller settles it
+    // B21: the year of the purchase counts in full — the buyer settles the whole running period with the tenant
+    // (same rule as Controlling + Settlements; was cut at the purchase date → the card showed another period)
     const frist = _nkAdd((y + 2) + '-' + st, -1);
     if (to < today && frist >= today) out.push({ from, to, frist, year: Number(to.slice(0, 4)) });
   }
