@@ -125,18 +125,21 @@ window.renderHistory = function (host) {
   }).join('')).join('');
 
   const missing = typeof CC_RP !== 'undefined' && CC_RP.missing;
-  host.innerHTML = '<div class="cx-page" id="cxHist">' +
+  cxPaint(host, '<div class="cx-page" id="cxHist">' +
     '<button class="cx-link" data-h="back"><i class="ti ti-chevron-left" aria-hidden="true"></i> Setup</button>' +
     '<div class="cx-title">Tenant history</div><div class="cx-title__s">Move-in, move-out and rent per tenant · check once, then the Soll is right for every month</div>' +
     (missing ? '<div class="cx-card cx-sum"><div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> The table rent_periods is missing – please run the SQL update first.</div></div>' : '') +
     '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">To check</span>' +
       (nIssues + nOrph ? cxPill('open', (nIssues + nOrph) + (nIssues + nOrph === 1 ? ' point' : ' points')) : cxPill('ok', 'All consistent')) + '</div>' +
       '<div class="cx-r__sub" style="margin-top:6px">"Rent unconfirmed" = the rent is only saved with the tenant. Confirm it once or enter the real rent from move-in.</div></div>' +
-    cards + '</div>';
+    cards + '</div>');   // B18: only what changed
 
   const root = document.getElementById('cxHist');
-  root.addEventListener('click', ev => _cxHClick(ev, host));
-  root.addEventListener('change', ev => _cxHChange(ev, host));
+  if (root && !root._cxHWired) {                       // B18: the page is kept between redraws → wire it once
+    root._cxHWired = true;
+    root.addEventListener('click', ev => _cxHClick(ev, host));
+    root.addEventListener('change', ev => _cxHChange(ev, host));
+  }
 };
 
 async function _cxHClick(ev, host) {

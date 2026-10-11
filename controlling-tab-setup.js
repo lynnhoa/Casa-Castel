@@ -252,7 +252,7 @@ window.renderSetup = function () {
   const statusLine = '<div class="cx-hint-foot">' + (allClear ? '<span>' + (nHidden ? 'No open hints' : 'Everything linked and consistent') + '</span>' : '<span></span>') +
       (nHidden ? '<button class="cx-link" data-cx="hintAll">' + nHidden + ' hidden · show again</button>' : '') + '</div>';
 
-  host.innerHTML = '<div class="cx-page">' +
+  cxPaint(host, '<div class="cx-page">' +
     '<div class="cx-title">Setup</div><div class="cx-title__s">Set up once · after that every Soll comes automatically</div>' +
     (sugg.length && !ctlIsDismissed(suggKey) ? '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Suggestions by name</span><span class="cx-row-sb" style="gap:6px">' + cxPill('beige', sugg.length + ' open') +
       '<button class="cx-x" data-cx="hintX" data-k="' + cxEsc(suggKey) + '" aria-label="Hide suggestions"><span aria-hidden="true">×</span></button></span></div>' +
@@ -265,7 +265,7 @@ window.renderSetup = function () {
     '<div class="cx-head"><span class="cx-lbl">Properties</span></div>' + propCards + _cxSuNewPropHTML() +
     '<div class="cx-head"><span class="cx-lbl">Parking</span></div>' + pkCard +
     '<div class="cx-head"><span class="cx-lbl">Casa Castel · cost types</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">No cost types.</div>') + '</div>' +
-    '</div>';
+    '</div>');   // B18: only what changed
 
   cxWire(host, {
     render: () => window.renderSetup(),

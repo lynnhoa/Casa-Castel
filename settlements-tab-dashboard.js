@@ -29,7 +29,9 @@ const sdDays = (a, b) => Math.round((new Date(sdD(b) + 'T12:00:00Z') - new Date(
 const sdNum = v => { if (v === null || v === undefined || v === '') return null; const n = typeof v === 'number' ? v : cxParse(String(v)); return n === null || isNaN(n) ? null : n; };
 
 /* ── Load ─────────────────────────────────────────────────── */
-async function sdLoad() {
+/* B18: one load at a time — a second caller waits for the running one */
+function sdLoad() { return SD._p || (SD._p = _sdLoadNow().finally(() => { SD._p = null; })); }
+async function _sdLoadNow() {
   SD.loading = true;
   try {
     const tasks = [];
@@ -81,17 +83,18 @@ const sdLeft = iso => iso ? Math.round((new Date(sdD(iso) + 'T12:00:00Z') - new 
 function stRenderDashboard() {
   const el = document.getElementById('tab-dashboard'); if (!el) return;
   sdEnsureHost();
-  if (!SD.loaded) {
-    el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Loading …</p></div>';
-    if (!SD.loading) sdLoad().then(() => { if (ST.tab === 'dashboard') stRenderDashboard(); }).catch(e => { el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Could not load.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'; });
-    return;
-  }
   const ty = Number(cxToday().slice(0, 4));
   if (!SD.year) SD.year = ty - 1;
   const Y = SD.year;
-  if (typeof scLoadYear === 'function' && typeof SC !== 'undefined' && !SC.data[Y] && !((scRec(Y) || {}).locked_at)) {
-    el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Loading …</p></div>';
-    scLoadYear(Y).then(() => { if (ST.tab === 'dashboard') stRenderDashboard(); }).catch(() => { SC.data[Y] = SC.data[Y] || { castel_expenses: [], one_time: [], per: scPeriod(Y) }; stRenderDashboard(); });
+  const needYear = () => typeof scLoadYear === 'function' && typeof SC !== 'undefined' && !SC.data[Y] && !((scRec(Y) || {}).locked_at);
+  if (!SD.loaded || needYear()) {
+    // B18: ONE "Loading …" for everything still missing (was two steps); this year already
+    // on screen → it stays until the fresh data is here
+    if (el._sdShown !== Y) { el._sdShown = null; cxPaint(el, '<div class="st-page sc-page"><p class="cx-empty">Loading …</p></div>'); }
+    (SD.loaded ? Promise.resolve() : sdLoad())
+      .then(() => needYear() ? scLoadYear(Y).catch(() => { SC.data[Y] = SC.data[Y] || { castel_expenses: [], one_time: [], per: scPeriod(Y) }; }) : null)
+      .then(() => { if (ST.tab === 'dashboard' && SD.year === Y) stRenderDashboard(); })
+      .catch(e => { if (ST.tab === 'dashboard') { el._sdShown = null; cxPaint(el, '<div class="st-page sc-page"><p class="cx-empty">Could not load.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'); } });
     return;
   }
   const ren = sdRentals(Y), casa = sdCasa(Y);
@@ -113,7 +116,8 @@ function stRenderDashboard() {
       '<span class="sc-row__p">' + stEsc(sdPropName(d) + ' · NK ' + String(d.period_to || '').slice(0, 4)) + '</span></span><span class="sc-open">Open</span></button>').join('') + '</div>' : '') : '';
   const sql = SD.missing ? '<div class="st-soon"><i class="ti ti-database" aria-hidden="true"></i><div><strong>Run the SQL once</strong><span>The table nk_abrechnung_manual is missing – the SQL is in the chat.</span></div></div>' : '';
 
-  el.innerHTML = '<div class="st-page sc-page sd-page">' + create + draftsHtml + yearNav + sql + sdOverviewHTML(Y, O) + '</div>';
+  cxPaint(el, '<div class="st-page sc-page sd-page">' + create + draftsHtml + yearNav + sql + sdOverviewHTML(Y, O) + '</div>');   // B18: only what changed
+  el._sdShown = Y;
   sdRenderModal();
 }
 

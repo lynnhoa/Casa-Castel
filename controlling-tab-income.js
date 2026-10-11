@@ -86,11 +86,11 @@ window.renderIncome = function () {
                     body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, 1) });   // one extra pill at most
   }).join('');
 
-  host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
+  cxPaint(host, '<div class="cx-page">' + cxMonthBar() +
     cxSummary({ label: 'Rent received', done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
                 confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income'), note: _cxAbrNote(1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · from the tenant tabs</span><span class="cx-lbl">Ist</span></div>' +
-    cards + '</div>';
+    cards + '</div>');   // B18: only what changed
 
   cxWire(host, {
     render: () => window.renderIncome(),

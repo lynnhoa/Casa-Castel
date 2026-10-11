@@ -481,6 +481,84 @@ function cxToastErr(e) {
 }
 
 /* ── Wire a tab host once: month arrows, fold, take-over, inputs ── */
+/* ── B18: PAINT WITHOUT REBUILDING ─────────────────────────────
+   The pages are written with cxPaint(host, html) instead of host.innerHTML.
+   The new HTML is compared with what is on screen and only what really
+   differs is changed:
+   · reload with the same data (app back in front, tab switch) → nothing changes, no blink
+   · after a save only that row / card changes — the rest stays exactly as it is
+   · fields keep focus, typed text and scroll position (a field you are typing in is never touched)
+   A field's value always follows the HTML, like after a full redraw. */
+const _CX_CTRL = 'input,select,textarea';
+function cxPaint(host, html) {
+  if (!host) return;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const a = host.firstElementChild, b = tpl.content.firstElementChild;
+  if (a && b && a.id !== b.id) { host.replaceChildren(...tpl.content.childNodes); return; }   // another page (e.g. Setup ↔ History)
+  _cxMorphKids(host, tpl.content);
+}
+function _cxWant(t) {                                   // the value a field gets from its HTML
+  if (t.tagName === 'SELECT') { const o = t.querySelector('option[selected]') || t.querySelector('option'); return o ? o.value : ''; }
+  if (t.tagName === 'TEXTAREA') return t.textContent;
+  if (t.type === 'checkbox' || t.type === 'radio') return t.hasAttribute('checked');
+  return t.getAttribute('value') || '';
+}
+function _cxApply(c, want) {
+  if (c.type === 'file') return;
+  const typing = c === document.activeElement &&
+    (c.tagName === 'TEXTAREA' || (c.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|range|color)$/i.test(c.type)));
+  if (typing) return;                                   // you are typing here — your text stays
+  if (typeof want === 'boolean') { if (c.checked !== want) c.checked = want; }
+  else if (c.value !== want) c.value = want;
+}
+/* German date / number fields (cc-german-format.js) are converted after drawing: type, placeholder,
+   keyboard and the classes cc-date / cc-cal belong to that converter — a kept field keeps them
+   (otherwise it would turn back into a plain field). Value and data attributes still follow the HTML. */
+const _CX_OWN = /^(type|inputmode|autocomplete|placeholder|step|onclick|aria-invalid)$/;
+function _cxKeepCls(x, v) {
+  ['cc-date', 'cc-cal'].forEach(c => { if (x.classList.contains(c) && !(' ' + v + ' ').includes(' ' + c + ' ')) v = (v + ' ' + c).trim(); });
+  return v;
+}
+function _cxSyncAttrs(x, y) {
+  const own = !!(x._ccDate || x._ccNum || x._ccCal);
+  for (const at of [...x.attributes]) {
+    if (y.hasAttribute(at.name) || (own && (_CX_OWN.test(at.name) || at.name === 'class'))) continue;
+    x.removeAttribute(at.name);
+  }
+  for (const at of [...y.attributes]) {
+    if (own && _CX_OWN.test(at.name)) continue;
+    const v = own && at.name === 'class' ? _cxKeepCls(x, at.value) : at.value;
+    if (x.getAttribute(at.name) !== v) x.setAttribute(at.name, v);
+  }
+  if (own && !y.hasAttribute('class')) {
+    const v = _cxKeepCls(x, '');
+    if (v) { if (x.getAttribute('class') !== v) x.setAttribute('class', v); } else x.removeAttribute('class');
+  }
+}
+function _cxMorphKids(a, b) {
+  const an = [...a.childNodes], bn = [...b.childNodes];
+  for (let i = 0; i < bn.length; i++) {
+    const x = an[i], y = bn[i];
+    if (!x) { a.appendChild(y); continue; }
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y, x); continue; }
+    if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
+    if (x.isEqualNode(y)) {                             // the same → left alone; only field values follow the HTML
+      if (x.matches(_CX_CTRL)) _cxApply(x, _cxWant(y));
+      else if (x.querySelector(_CX_CTRL)) {
+        const xs = x.querySelectorAll(_CX_CTRL), ys = y.querySelectorAll(_CX_CTRL);
+        xs.forEach((c, k) => { if (ys[k]) _cxApply(c, _cxWant(ys[k])); });
+      }
+      continue;
+    }
+    const isCtrl = x.matches(_CX_CTRL), want = isCtrl ? _cxWant(y) : null;
+    _cxSyncAttrs(x, y);
+    _cxMorphKids(x, y);
+    if (isCtrl) _cxApply(x, want);
+  }
+  for (let i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
+}
+
 function cxWire(host, h) {
   if (host._cxWired) return;
   host._cxWired = true;

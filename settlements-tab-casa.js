@@ -44,7 +44,7 @@ function scAv(room) {
 }
 
 /* ── Data ─────────────────────────────────────────────────── */
-async function scLoadRows() {
+async function _scLoadRowsNow() {
   SC.loading = true;
   try {
     const r = await _ctlSupa.from(SC_TABLE).select('*').order('year');
@@ -58,7 +58,14 @@ function scPeriod(y) {
   const p = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID) || {};
   return ctlPeriodEndingIn(p, Number(y));
 }
-async function scLoadYear(y) {
+/* B18: one load at a time — a second caller waits for the running one (never stuck on "Loading …") */
+function scLoadRows() { return SC._rowsP || (SC._rowsP = _scLoadRowsNow().finally(() => { SC._rowsP = null; })); }
+function scLoadYear(y) {
+  if (SC.data[y]) return Promise.resolve(SC.data[y]);
+  const k = String(y); SC._yearP = SC._yearP || {};
+  return SC._yearP[k] || (SC._yearP[k] = _scLoadYearNow(y).finally(() => { delete SC._yearP[k]; }));
+}
+async function _scLoadYearNow(y) {
   if (SC.data[y]) return SC.data[y];
   const per = scPeriod(y), y0 = Number(per.from.slice(0, 4)), y1 = Number(per.to.slice(0, 4));
   const [c, o] = await Promise.all([
@@ -244,28 +251,27 @@ function scModel(y) {
 function stRenderCasa() {
   const el = document.getElementById('tab-casa'); if (!el) return;
   scEnsureHost();
-  if (!SC.loaded) {
-    el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Loading …</p></div>';
-    if (!SC.loading) scLoadRows().then(() => { if (ST.tab === 'casa') stRenderCasa(); });
-    return;
-  }
   const ty = Number(cxToday().slice(0, 4));
   if (!SC.year) SC.year = ty - 1;
   const y = SC.year;
-  const rec = scRec(y);
-  if (!SC.data[y] && !(rec && rec.locked_at)) {
-    el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Loading ' + y + ' …</p></div>';
-    scLoadYear(y).then(() => { if (ST.tab === 'casa' && SC.year === y) stRenderCasa(); })
-      .catch(e => { el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Could not load ' + y + '.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'; });
+  const rec = SC.loaded ? scRec(y) : null;
+  if (!SC.loaded || (!SC.data[y] && !(rec && rec.locked_at))) {
+    // B18: ONE "Loading …" for everything still missing (was two steps = two flashes).
+    // This year already on screen (e.g. after "Unlock costs") → it stays until the fresh data is here.
+    if (el._scShown !== y) { el._scShown = null; cxPaint(el, '<div class="st-page sc-page"><p class="cx-empty">' + (SC.loaded ? 'Loading ' + y + ' …' : 'Loading …') + '</p></div>'); }
+    (SC.loaded ? Promise.resolve() : scLoadRows())
+      .then(() => { const r = scRec(y); return (SC.data[y] || (r && r.locked_at)) ? null : scLoadYear(y); })
+      .then(() => { if (ST.tab === 'casa' && SC.year === y) stRenderCasa(); })
+      .catch(e => { if (ST.tab === 'casa' && SC.year === y) { el._scShown = null; cxPaint(el, '<div class="st-page sc-page"><p class="cx-empty">Could not load ' + y + '.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'); } });
     return;
   }
   let M;
   try { M = scModel(y); } catch (e) {
     console.error('[settlements] casa', e);
-    el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">Could not calculate the NK-Abrechnung.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>';
+    el._scShown = null; cxPaint(el, '<div class="st-page sc-page"><p class="cx-empty">Could not calculate the NK-Abrechnung.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>');
     return;
   }
-  if (M.error) { el.innerHTML = '<div class="st-page sc-page"><p class="cx-empty">' + stEsc(M.error) + '</p></div>'; return; }
+  if (M.error) { el._scShown = null; cxPaint(el, '<div class="st-page sc-page"><p class="cx-empty">' + stEsc(M.error) + '</p></div>'); return; }
   SC.model = M;
 
   const nk = M.ten.filter(t => t.k !== 'none');
@@ -328,9 +334,10 @@ function stRenderCasa() {
   const nRooms = (window._src.rooms || []).filter(r => r.active !== false).length;
 
   void costsCard; void methCard;
-  el.innerHTML = '<div class="st-page sc-page">' + yearNav + sql + progress + tiles + need + scHouseCard(M) + filter +
+  cxPaint(el, '<div class="st-page sc-page">' + yearNav + sql + progress + tiles + need + scHouseCard(M) + filter +
     stSec('Rooms', nRooms) + roomsHtml + letters +
-    (!M.ten.length ? '<p class="cx-empty">No tenants with Kalt + NK in ' + stEsc(stPer(per.from, per.to)) + '.</p>' : '') + '</div>';
+    (!M.ten.length ? '<p class="cx-empty">No tenants with Kalt + NK in ' + stEsc(stPer(per.from, per.to)) + '.</p>' : '') + '</div>');   // B18: only what changed
+  el._scShown = y;
   scRenderModal();
 }
 /* The Casa Castel card: the same two lines as every Rentals apartment */

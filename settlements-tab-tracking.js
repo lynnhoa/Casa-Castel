@@ -163,14 +163,14 @@ function stRenderTracking() {
     '<span class="st-check__r">' + cxPill('open', checks.length + ' prüfen') + '<i class="ti ti-chevron-' + (ST.checkOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span></button>' +
     (ST.checkOpen ? checks.map(_stCheckRow).join('') : '') + '</div>' : '';
 
-  el.innerHTML = '<div class="st-page">' +
+  cxPaint(el, '<div class="st-page">' +
     '<div class="st-split' + (ST.sel ? ' has-panel' : '') + '">' +
       '<div class="st-list">' +
         '<div class="st-head"><h1 class="cx-title">Tracking</h1><p class="cx-title__s">NK- und Hausgeldabrechnungen</p></div>' +
         yearBar + summary + cards + empty + hiddenDone + checkHtml +
       '</div>' +
       '<aside class="st-panel" id="stPanel" aria-label="Abrechnung"' + (ST.sel ? '' : ' hidden') + '>' + (ST.sel ? _stPanelHtml() : '') + '</aside>' +
-    '</div></div>';
+    '</div></div>');   // B18: only what changed
 
   document.getElementById('stScrim').hidden = !ST.sel || stIsWide();
   document.body.classList.toggle('st-panel-open', !!ST.sel);

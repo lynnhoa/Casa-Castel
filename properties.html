@@ -305,7 +305,9 @@ async function boot() {
   try {
     window._props = await fetchAll();
     document.getElementById('appShell').style.display = 'block';
-    setTimeout(renderAll, 0);
+    // B18: drawn right away (same moment the page appears) — was a moment later, so the
+    // empty page showed first. boot() runs after all scripts, so renderAll exists here.
+    try { renderAll(); } catch (e) { console.error('[properties] render failed:', e); }
   } catch(e) {
     console.error('[properties] data load failed:', e);
     document.getElementById('appShell').style.display = 'block';

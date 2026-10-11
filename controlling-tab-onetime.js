@@ -229,7 +229,7 @@ window.renderOneTime = function () {
   const rein = all.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
   const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
 
-  host.innerHTML = '<div class="cx-page">' +
+  cxPaint(host, '<div class="cx-page">' +
     '<div class="cx-seg cx-seg--view" role="group" aria-label="Ansicht">' +
       '<button class="' + (_cxOt.view === 'y' ? 'on' : '') + '" data-cx="otView" data-v="y">Year</button>' +
       '<button class="' + (_cxOt.view === 'm' ? 'on' : '') + '" data-cx="otView" data-v="m">Month</button></div>' +
@@ -249,7 +249,7 @@ window.renderOneTime = function () {
     '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Search · description or company" aria-label="Search" value="' + cxEsc(_cxOt.q) + '"></label>' +
     '<div id="cxOtList">' + _cxOtListHTML() + '</div>' +
     '<div class="cx-r__sub" style="text-align:center;margin-top:8px">NK and Hausgeld Abrechnungen are in Income and Expenses.</div>' +
-  '</div>';
+  '</div>');   // B18: only what changed
 
   if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60); }
   const q = document.getElementById('cxOtQ');

@@ -99,7 +99,9 @@ const _srPerText = (from, to) => stPer(from, to);                 // dd.mm.yyyy�
 function _srPerLabel(from, to) { return stPer(from, to); }
 
 /* ── Data: own table ──────────────────────────────────────── */
-async function srLoadRows() {
+/* B18: one load at a time — a second caller waits for the running one */
+function srLoadRows() { return SR._p || (SR._p = _srLoadRowsNow().finally(() => { SR._p = null; })); }
+async function _srLoadRowsNow() {
   SR.loading = true;
   try {
     if (typeof loadSettings === 'function') { try { await loadSettings(); } catch (e) {} }
@@ -1013,15 +1015,15 @@ async function _srLinkBooking(b, res) {
 function stRenderRentals() {
   const el = document.getElementById('tab-rentals'); if (!el) return;
   if (!SR.loaded) {
-    el.innerHTML = '<div class="st-page"><p class="cx-empty">Loading …</p></div>';
-    if (!SR.loading) srLoadRows().then(() => { if (ST.tab === 'rentals') stRenderRentals(); });
+    cxPaint(el, '<div class="st-page"><p class="cx-empty">Loading …</p></div>');
+    srLoadRows().then(() => { if (ST.tab === 'rentals') stRenderRentals(); });   // B18: also when a load is already running
     return;
   }
   const ty = Number(cxToday().slice(0, 4));
   if (!SR.year) SR.year = ty - 1;
   let infos;
   try { infos = _srYearModel(SR.year).filter(c => !c.before).map(_srCardInfo4); }   // a Wohnung appears from its purchase date (Properties) on
-  catch (e) { console.error('[settlements] rentals', e); el.innerHTML = '<div class="st-page"><p class="cx-empty">Could not calculate the settlements.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'; return; }
+  catch (e) { console.error('[settlements] rentals', e); cxPaint(el, '<div class="st-page"><p class="cx-empty">Could not calculate the settlements.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'); return; }
   _srCards = {}; infos.forEach(i => { _srCards[i.c.ck] = i.c; });
   _srWegSync(infos);
 
@@ -1057,12 +1059,12 @@ function stRenderRentals() {
     stTile('Hausgeld', 'receipt', S.hg, 'WEG · ' + hvIn + ' of ' + nLive + ' in', 'data-sr="sumHg"') + '</div>';
   const next = _srNextSteps(live);
   const wide = SR.modal && (SR.modal.view === 'hv' || SR.modal.view === 'nk' || !SR.modal.view);
-  el.innerHTML = '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +
+  cxPaint(el, '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +
     '<div class="st-filter" role="group" aria-label="Filter">' + chip('all', 'All') + chip('open', 'To do', nO) + chip('settled', 'Done', nS) + '</div>' +
     stSec('Apartments', nLive) +
     (shown.length ? shown.map(_srCard5).join('') : '<p class="cx-empty" style="padding:20px">Nothing in this filter.</p>') +
   '</div>' +
-  (SR.modal ? '<div class="srm" id="srModal"><div class="srm__bg" data-sr="close"></div><div class="srm__win' + (wide ? ' is-wide' : '') + '" id="srPanel" role="dialog" aria-label="NK-Abrechnung">' + _srModalHtml() + '</div></div>' : '');
+  (SR.modal ? '<div class="srm" id="srModal"><div class="srm__bg" data-sr="close"></div><div class="srm__win' + (wide ? ' is-wide' : '') + '" id="srPanel" role="dialog" aria-label="NK-Abrechnung">' + _srModalHtml() + '</div></div>' : ''));   // B18: only what changed
   document.body.classList.toggle('st-panel-open', !!SR.modal);
 }
 

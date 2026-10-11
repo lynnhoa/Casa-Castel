@@ -462,7 +462,7 @@ window.renderDashboard = function () {
     (open ? '<div class="cxn-chipw"><button class="cxn-chip" data-cx="gotoOpen"><i class="ti ti-point-filled" aria-hidden="true"></i>' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button></div>' : '');
 
   if (future) {
-    host.innerHTML = '<div class="cx-page cxn">' + top + '<div class="cxn-card cxn-empty">This ' + (isYear ? 'year' : 'month') + ' is still ahead.</div></div>';
+    cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-card cxn-empty">This ' + (isYear ? 'year' : 'month') + ' is still ahead.</div></div>');   // B18
   } else {
     const isCasa = x => x.p.id === CASA_PROP_ID;
     const renList = per.filter(x => !isCasa(x)), casaList = per.filter(isCasa);
@@ -588,7 +588,7 @@ window.renderDashboard = function () {
         '<div class="cxn-lg"><span><i style="background:#8FA88F"></i>Rentals</span><span><i style="background:#D9B46A"></i>Casa Castel</span></div></div>';
     }
 
-    host.innerHTML = '<div class="cx-page cxn">' + top + totalCard + tiles + panel + chart + '</div>';
+    cxPaint(host, '<div class="cx-page cxn">' + top + totalCard + tiles + panel + chart + '</div>');   // B18: only what changed
   }
 
   cxWire(host, {
