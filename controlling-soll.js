@@ -1340,6 +1340,28 @@ function ctlSettlementFigures(r) {
   return out;
 }
 
+/* Pauschal stays (Oct 2026): the NK part inside the Pauschale ("davon NK" of the rent history) for exactly
+   these days — what the tenant covered towards the NK. Settlements › Rentals shows the rest as "on you". */
+function ctlPauschalNkCovered(r) {
+  const from = _cxD(r.period_from), to = _cxD(r.period_to);
+  const p = ctlProp(r.property_id);
+  if (!p || !from || !to || !r.tenant_id) return 0;
+  for (const u of ctlUnitsFor(p.id)) {
+    const link = ctlUnitLink(u, p); if (!link || link.type === 'rentals_parking') continue;
+    const all = _cxTenancies(link), w = all.find(x => x.id === String(r.tenant_id));
+    if (!w || !w.from) continue;
+    const memo = new Map(); let sum = 0;
+    for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
+      if (d < w.from || d > w.to) continue;
+      const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)), N = new Date(y, m, 0).getDate();
+      const rd = _cxRentDay(link, w, u, y, m, d, all, memo);
+      if (rd.mode === 'pauschal') sum += rd.nk / N;
+    }
+    return _cxR(sum);
+  }
+  return 0;
+}
+
 /* Same expected settlement? (tenant rows by tenant + period, unit rows by unit name) */
 function ctlSettlementSame(x, e) {
   // 4d: a line whose period was adjusted by hand (period_custom) belongs to the same tenant + year

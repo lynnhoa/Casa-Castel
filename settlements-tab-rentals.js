@@ -296,6 +296,60 @@ function _srCalc(c, it, rec) {
   return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzMonths, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
            tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
 }
+/* ── What stays with you (Oct 2026) ─────────────────────────
+   Pauschal stays and Leerstand get their share of the NK costs exactly like a tenant
+   (same positions, same days). Pauschal: minus the "davon NK" inside the Pauschale
+   (rent history, as in Controlling). Leerstand: fixed costs + consumption — consumption
+   by days until the Zählerstände split. Information only: no letter, nothing to do.   */
+function _srSpanShare(c, rec, from, to, apt) {
+  const per = _srPer(c, rec), perDays = _srDays(per.from, per.to);
+  const a = from > per.from ? from : per.from, b = to < per.to ? to : per.to;
+  const days = a <= b ? _srDays(a, b) : 0;
+  let fixed = 0, cons = 0, missing = 0;
+  for (const pos of (rec && rec.positions) || []) {
+    if (!_srInNk(pos)) continue;
+    const unit = _srUnitAmt(rec, pos, apt);
+    if (unit === null) { if (pos.split === 'mieter') missing++; continue; }   // typed per tenant only: unknown here
+    const v = unit * days / perDays;
+    if (pos.key === 'verbrauch' || pos.split === 'mieter') cons += v; else fixed += v;
+  }
+  return { days, fixed: cxR(fixed), cons: cxR(cons), share: cxR(fixed + cons), missing };
+}
+/* Days of the period nobody lives in the flat (a unit without a tenant link: unknown → none) */
+function _srVacancies(c, rec) {
+  const per = _srPer(c, rec), out = [];
+  if (c.items.some(it => !it.r.tenant_id)) return out;
+  const occ = c.items.map(it => [_srD((it.e || it.r).period_from), _srD((it.e || it.r).period_to)]);
+  let start = null;
+  for (let d = per.from; d <= per.to; d = _srAdd(d, 1)) {
+    const busy = occ.some(([f, t]) => f <= d && d <= t);
+    if (!busy && start === null) start = d;
+    if (busy && start !== null) { out.push({ from: start, to: _srAdd(d, -1) }); start = null; }
+  }
+  if (start !== null) out.push({ from: start, to: per.to });
+  return out;
+}
+/* → { rows:[{kind:'pausch'|'leer', ...}], pausch, leer, total } — null while the costs are not complete */
+function _srOnYou(c, rec, sumOk) {
+  if (!rec || !sumOk) return null;
+  const rows = []; let pausch = 0, leer = 0;
+  for (const it of c.items) {
+    const r = it.r; if (r.note !== 'Pauschal' || !r.tenant_id) continue;
+    const t = _srTenantOf(r), sh = _srSpanShare(c, rec, _srD(r.period_from), _srD(r.period_to), _srAptOf(c, t));
+    let cov = 0; try { cov = typeof ctlPauschalNkCovered === 'function' ? ctlPauschalNkCovered(Object.assign({}, r, { property_id: c.p.id })) : 0; } catch (e) {}
+    const onYou = cxR(sh.share - cov);
+    rows.push({ kind: 'pausch', id: String(r.id), name: _srTName(t) || 'Pauschal', from: _srD(r.period_from), to: _srD(r.period_to), ...sh, covered: cxR(cov), onYou });
+    pausch += Math.max(0, onYou);
+  }
+  for (const v of _srVacancies(c, rec)) {
+    const sh = _srSpanShare(c, rec, v.from, v.to, c.apt);
+    rows.push({ kind: 'leer', id: 'leer:' + v.from, name: 'Leerstand', from: v.from, to: v.to, ...sh, covered: 0, onYou: sh.share });
+    leer += sh.share;
+  }
+  return { rows, pausch: cxR(pausch), leer: cxR(leer), total: cxR(pausch + leer) };
+}
+const _srOnYouTxt = o => o.onYou >= 0 ? 'on you ' + stEur(o.onYou) : 'covered · ' + stEur(-o.onYou) + ' more than the costs';
+
 /* Geleistete Vorauszahlungen per month (for the letter): paid per Controlling, else per contract.
    The list always adds up to the Vorauszahlungen of the Abrechnung — cent rounding goes into the last month,
    an amount typed by hand shows as one "Korrektur" line.                                                 */
@@ -811,10 +865,11 @@ function _srCardInfo4(c) {
   const rec = _srRec(c.p, c.per), sum = _srRecSummary(rec, c.apt);
   if (c.before) return { c, rec, sum, rows: [], hv: null, k: 'before' };
   const hv = _srHvState(c, rec, sum);
-  const rows = c.items.map(it => _srTenInfo(c, it, rec, sum.ok && _srJaDone(rec, sum)));
+  const sumOk = sum.ok && _srJaDone(rec, sum);
+  const rows = c.items.map(it => _srTenInfo(c, it, rec, sumOk));
   const hvDone = hv.k === 'fertig';
   const open = !hvDone || rows.some(r => r.k === 'open' || r.k === 'sent' || r.k === 'waiting');
-  return { c, rec, sum, rows, hv, k: open ? 'open' : 'settled' };
+  return { c, rec, sum, rows, hv, k: open ? 'open' : 'settled', onYou: _srOnYou(c, rec, sumOk) };
 }
 
 /* WEG result of a complete Jahresabrechnung → tracker (no "edit → Done" after an import);
@@ -1111,7 +1166,10 @@ function _srTrackerBlock(info) {
     if (ti.skipped) res = '';
     else if (ti.st.res) res = _srMoneyTxt(ti.st.res.dir, ti.st.res.amount, false);
     else if (ti.x && !ti.x.missing) res = _srMoneyTxt(ti.x.saldo > 0 ? 1 : ti.x.saldo < 0 ? -1 : 0, Math.abs(ti.x.saldo), false) + ' · preview';
-    else if (ti.kind === 'pausch') res = 'Pauschal – no NK';
+    else if (ti.kind === 'pausch') {
+      const o = info.onYou && info.onYou.rows.find(x => x.kind === 'pausch' && x.id === String(ti.r.id));
+      res = o ? 'Pauschal · ' + _srOnYouTxt(o) : 'Pauschal – no NK';
+    }
     const kau = ti.x && ti.x.einbehalt > 0 && ti.k !== 'settled' ? '<small>Kaution-Einbehalt ' + stEur(ti.x.einbehalt) + '</small>' : '';
     const canSend = ti.k === 'open';
     const sent = ti.kind !== 'ten' ? '<span class="rk-na">—</span>'
@@ -1129,6 +1187,11 @@ function _srTrackerBlock(info) {
       '<span class="rk-sent">' + sent + '</span>' +
       '<span class="rk-done">' + done + '</span>' +
       '<span class="rk-pdf">' + pdf + '</span></div>';
+  }
+  for (const o of (info.onYou ? info.onYou.rows.filter(x => x.kind === 'leer') : [])) {
+    h += '<div class="rk-row is-dim"><span class="rk-who"><span class="rk-ic"><i class="ti ti-door" aria-hidden="true"></i></span><span class="rk-name">Leerstand</span></span>' +
+      '<span class="rk-per">' + stEsc(stDM(o.from) + '–' + stDate(o.to)) + '</span><span class="rk-st">' + cxPill('grey', 'Leerstand') + '</span>' +
+      '<span class="rk-res">' + stEsc('on you ' + stEur(o.onYou)) + '</span><span class="rk-sent rk-na">—</span><span class="rk-done"><span class="rk-na">—</span></span><span class="rk-pdf"></span></div>';
   }
   if (!info.rows.length) h += '<div class="rk-row is-dim"><span class="rk-who">No tenant with Kalt + NK in this period</span><span></span><span></span><span></span><span></span><span></span><span></span></div>';
   return h + '</section>';
@@ -1419,18 +1482,30 @@ function _srNkView(c) {
 /* The tenants of the NK window — previews follow the draft, so a change shows at once */
 function _srNkTens(c, d, rec, hvReady) {
   const calcRec = hvReady ? d : rec, sumOk = hvReady;
+  const oy = _srOnYou(c, calcRec, sumOk);
   const tens = c.items.map(it => {
     const ti = _srTenInfo(c, it, calcRec, sumOk), id = String(ti.l.id);
     const v = ti.skipped ? null : ti.st.res ? ti.st.res.dir * ti.st.res.amount : ti.x && !ti.x.missing ? ti.x.saldo : null;
-    const res = v === null ? '' : '<b class="' + (v < 0 ? 'is-g' : '') + '">' + stEur(Math.abs(v)) + '</b><small>' + (v > 0 ? 'Nachzahlung' : v < 0 ? 'Guthaben' : 'balanced') + '</small>';
+    const o = ti.kind === 'pausch' && oy ? oy.rows.find(x => x.kind === 'pausch' && x.id === id) : null;
+    const res = o ? '<b>' + stEur(Math.max(0, o.onYou)) + '</b><small>' + (o.onYou >= 0 ? 'on you' : 'covered') + '</small>'
+      : v === null ? '' : '<b class="' + (v < 0 ? 'is-g' : '') + '">' + stEur(Math.abs(v)) + '</b><small>' + (v > 0 ? 'Nachzahlung' : v < 0 ? 'Guthaben' : 'balanced') + '</small>';
     const pill = ti.kind === 'pausch' ? (ti.skipped ? ['ok', 'no NK'] : ['grey', 'Pauschal']) : ti.kind === 'unlinked' ? ['grey', 'no tenant'] :
       ti.skipped ? ['grey', 'skipped'] : ti.k === 'settled' ? ['ok', 'settled'] : ti.k === 'sent' ? ['beige', 'sent ' + stDM(ti.st.res.date)] : ti.k === 'open' ? ['beige', 'letter ready'] : ['grey', 'waiting'];
     const sub = stDM(ti.l.from) + '–' + stDate(ti.l.to) + ' · ' + _srDays(ti.l.from, ti.l.to) + ' days' + (ti.skipped ? ' · tap to undo' : '');
     const act = ti.kind === 'pausch' && !ti.skipped ? 'data-sr="nd" data-id="' + stEsc(id) + '"' : ti.kind === 'ten' ? 'data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '"' : '';
-    return '<button class="sr-tenrow" ' + act + (act ? '' : ' disabled') + '><span class="sr-tenrow__m"><span class="sr-tenrow__n">' + stEsc(ti.name) + '</span><span class="sr-tenrow__s">' + stEsc(ti.kind === 'pausch' && !ti.skipped ? 'Pauschal · tap to mark as no NK' : sub) + '</span></span>' +
+    const sub2 = o ? 'Pauschal · NK share ' + stEur(o.share) + ' − davon NK ' + stEur(o.covered) + (ti.skipped ? '' : ' · tap to mark as no NK')
+      : ti.kind === 'pausch' && !ti.skipped ? 'Pauschal · tap to mark as no NK' : sub;
+    return '<button class="sr-tenrow" ' + act + (act ? '' : ' disabled') + '><span class="sr-tenrow__m"><span class="sr-tenrow__n">' + stEsc(ti.name) + '</span><span class="sr-tenrow__s">' + stEsc(sub2) + '</span></span>' +
       '<span class="sr-tenrow__r">' + res + cxPill(pill[0], pill[1]) + '</span></button>';
-  }).join('') || '<p class="st-hint">No tenant with Kalt + NK in this period.</p>';
-  return '<div class="srm__ch"><p class="srm__ct">Tenants</p><span class="srm__cs">tap to open</span></div>' + tens;
+  }).join('');
+  const leer = oy ? oy.rows.filter(x => x.kind === 'leer').map(o =>
+    '<div class="sr-tenrow is-leer"><span class="sr-tenrow__m"><span class="sr-tenrow__n">Leerstand</span><span class="sr-tenrow__s">' +
+      stEsc(stDM(o.from) + '–' + stDate(o.to) + ' · ' + o.days + ' days · fixed ' + stEur(o.fixed) + ' · consumption ' + stEur(o.cons) + ' (by days)') + '</span></span>' +
+    '<span class="sr-tenrow__r"><b>' + stEur(o.onYou) + '</b><small>on you</small>' + cxPill('grey', 'Leerstand') + '</span></div>').join('') : '';
+  const tot = oy && oy.total > 0 ? '<div class="sr-onyou"><span>Not covered by tenants · on you</span><b>' + stEur(oy.total) + '</b>' +
+    '<small>' + [oy.pausch > 0 ? 'Pauschal ' + stEur(oy.pausch) : '', oy.leer > 0 ? 'Leerstand ' + stEur(oy.leer) : ''].filter(Boolean).join(' + ') + '</small></div>' : '';
+  return '<div class="srm__ch"><p class="srm__ct">Tenants</p><span class="srm__cs">tap to open</span></div>' +
+    ((tens + leer) || '<p class="st-hint">No tenant with Kalt + NK in this period.</p>') + tot;
 }
 function _srRefreshNkTens() {
   const host = document.getElementById('srNkTens'), c = _srCards[SR.modal && SR.modal.ck];
