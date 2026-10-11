@@ -396,6 +396,11 @@ function ccIsNumInput(el) {
     ov.className = 'cccal-ov'; ov.id = 'ccCal';
     ov._sy = window.scrollY;                              // B23: where the page was — the keyboard of the typing field
                                                           // pushes the page down on iPhone; close() brings it back
+    // B24: the page behind is held exactly where it is while the calendar is open (nothing can move it)
+    const bd = document.body;
+    ov._lock = getComputedStyle(bd).position === 'fixed' ? null
+      : { position: bd.style.position, top: bd.style.top, left: bd.style.left, right: bd.style.right, width: bd.style.width };
+    if (ov._lock) Object.assign(bd.style, { position: 'fixed', top: -ov._sy + 'px', left: '0', right: '0', width: '100%' });
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
     ov.innerHTML = `
       <div class="cccal" role="dialog" aria-modal="true" aria-label="${label.replace(/"/g, '')} wählen">
@@ -441,9 +446,11 @@ function ccIsNumInput(el) {
       // and its ✓ only closes the keyboard — the typed date used to get lost.
       if (dm ? /^\d{2}\.\d{2}\.$/.test(tin.value) : /^\d{2}\.\d{2}\.\d{4}$/.test(tin.value)) applyTyped();
     });
-    tin.addEventListener('blur', () => {                  // keyboard closed (✓) with a readable date, e.g. 1.10.25
+    tin.addEventListener('blur', () => {                  // keyboard closed (✓) with a COMPLETE date
       if (!tin._typed || !document.getElementById('ccCal')) return;
-      if (dm ? /^\d{1,2}\.\d{1,2}\.?$/.test(tin.value.trim()) : !!ccParseDate(tin.value.trim())) applyTyped();
+      // B24: 4-digit year only — "01.05.20" on the way to 01.05.2024 is not a date yet (it was taken as 2020
+      // and closed the calendar mid-typing). A short year still works with OK.
+      if (dm ? /^\d{1,2}\.\d{1,2}\.?$/.test(tin.value.trim()) : !!ccParseDate(tin.value.trim(), true)) applyTyped();
     });
     tin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyTyped(); } });
     draw();
@@ -471,9 +478,13 @@ function ccIsNumInput(el) {
     const a = document.activeElement;
     if (a && ov.contains(a)) a.blur();                    // keyboard down first
     ov.remove();
-    // B23: back to where you were (iPhone moves the page while the keyboard closes → check again shortly after)
+    if (ov._lock) Object.assign(document.body.style, ov._lock);     // B24: page free again …
+    // … and back to where you were, at once (no frame at the top) — the iPhone may still move it while the keyboard closes
     const y = ov._sy;
-    if (typeof y === 'number') [0, 80, 400].forEach(ms => setTimeout(() => { if (!document.getElementById('ccCal') && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y); }, ms));
+    if (typeof y === 'number') {
+      window.scrollTo(0, y);
+      [80, 400].forEach(ms => setTimeout(() => { if (!document.getElementById('ccCal') && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y); }, ms));
+    }
   }
   function onKey(e) { if (e.key === 'Escape') close(); }
   function onClick(e) {
