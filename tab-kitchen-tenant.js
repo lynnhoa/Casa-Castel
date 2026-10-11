@@ -1056,6 +1056,34 @@ function _kTenBuildFeedHtml(comments, weekRow) {
   }).join('');
 }
 
+/* ── LAST WEEK IN THE CHAT (Oct 2026) ─────────────────────
+   The chat shows last week's proof + messages first, then this week — each under a small
+   divider. Always only the week before the current one (it moves on every Monday).
+   Display only: the stored data and the 30-day photo clean-up are unchanged. */
+function _kTenWeekDivider(label, row) {
+  const pad = n => String(n).padStart(2, '0');
+  let range = '';
+  if (row && row.week_index != null && typeof K_START !== 'undefined') {
+    const s = new Date(K_START.getTime() + row.week_index * 7 * 24 * 60 * 60 * 1000);
+    const e = new Date(s.getTime() + 6 * 24 * 60 * 60 * 1000);
+    range = pad(s.getDate()) + '.' + pad(s.getMonth() + 1) + '. – ' + pad(e.getDate()) + '.' + pad(e.getMonth() + 1) + '.';
+  }
+  return `<div class="k-sys-event k-week-div"><div class="k-sys-event__line"></div>
+    <span class="k-sys-event__text">${esc(label)}${row && row.room ? ' · ' + esc(row.room) : ''}${range ? ' · ' + range : ''}</span>
+    <div class="k-sys-event__line"></div></div>`;
+}
+async function _kTenPrevWeekHtml(weekRow) {
+  if (!sbL || !weekRow || weekRow.week_index == null) return '';
+  try {
+    const { data: prev } = await sbL.from('kitchen_weeks').select('*').eq('week_index', weekRow.week_index - 1).maybeSingle();
+    if (!prev) return '';
+    const comments = await _kTenGetComments(prev.id);
+    const body = _kTenBuildFeedHtml(comments, prev);
+    if (/^<p class="cc-note"/.test(body)) return '';          // nothing happened last week → no section
+    return _kTenWeekDivider('Last week', prev) + body;
+  } catch (e) { return ''; }
+}
+
 async function _kTenRenderFeed() {
   const row = _kTenWeekRow;
   const empty  = '<p class="cc-note" style="padding:8px 0;">No data.</p>';
@@ -1067,10 +1095,16 @@ async function _kTenRenderFeed() {
     if (elDsk) elDsk.innerHTML = empty;
     return;
   }
-  const comments = await _kTenGetComments(row.id);
-  const html = _kTenBuildFeedHtml(comments, row);
-  if (elMob) { elMob.innerHTML = html; scrollToBottom(elMob); }
-  if (elDsk) { elDsk.innerHTML = html; scrollToBottom(elDsk); }
+  const [comments, prevHtml] = await Promise.all([_kTenGetComments(row.id), _kTenPrevWeekHtml(row)]);
+  let html = _kTenBuildFeedHtml(comments, row);
+  if (prevHtml) html = prevHtml + _kTenWeekDivider('This week', row) + html;   // last week first, then this week
+  // same content as on screen → leave it (no blink, photos are not reloaded)
+  [elMob, elDsk].forEach(el => {
+    if (!el) return;
+    if (el._kFeedHtml === html && el.childElementCount === el._kFeedKids) return;
+    el.innerHTML = html; el._kFeedHtml = html; el._kFeedKids = el.childElementCount;
+    scrollToBottom(el);
+  });
 }
 
 /* ── HISTORY MODAL ──────────────────────────────────────── */
