@@ -733,7 +733,7 @@ function _rntKautionLine(el, totalHeld) {
 }
 /* the current tenancy of a unit (same pick as the card) — for the Apartments Soll */
 function rntCurrentRecOf(kind, id) {
-  const src = _rntLoadedOnce ? _rntRecords : _rntActiveRecs;
+  const src = (_rntLoadedOnce || _rntCopyShown) ? _rntRecords : _rntActiveRecs;
   if (!src) return null;
   const col = kind === 'apt' ? 'apartment_id' : 'parking_id';
   return _ccPickTenancy(src.filter(r => r[col] === id && r.status === 'active')).current || null;
@@ -808,7 +808,7 @@ const _rntMoreOpen = {};
 function _rntMoreToggle(key) { _rntMoreOpen[key] = !_rntMoreOpen[key]; _rntRender(); }
 function _rntFormerRowHTML(rid, type, unit, formerRecs, archivedRecs) {
   const k = rid + ':former', open = !!_rntMoreOpen[k];
-  const nOpen = formerRecs.filter(r => _rntNkHasOpen(r.id) || _rntKautionOpen(r.id)).length;
+  const nOpen = formerRecs.filter(r => _rntKautionOpen(r.id)).length;   // B30: Kaution only, like Casa (NK → Settlements)
   const meta = !formerRecs.length && !archivedRecs.length ? 'none'
     : nOpen ? `<span class="tnp tnp-amber">${nOpen} open</span>` : String(formerRecs.length + archivedRecs.length);
   let html = ccRowHTML({ icon: 'users', title: 'Former tenants', meta, onclick: `_rntMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
@@ -890,7 +890,7 @@ function _rntMhNext(rec) {
 
 /* Contract generators: the active tenant's fixed Kaution Soll (or null) */
 function rntFixedKautionSoll(kind, id) {
-  const src = _rntLoadedOnce ? _rntRecords : _rntActiveRecs;
+  const src = (_rntLoadedOnce || _rntCopyShown) ? _rntRecords : _rntActiveRecs;
   const col = kind === 'apt' ? 'apartment_id' : 'parking_id';
   const rec = (src || []).filter(r => r[col] === id && r.status === 'active')
     .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
@@ -1055,14 +1055,18 @@ function _rntCardPills(unit, isApt, activeRec) {
     if (!_rntHasCt(unit, isApt) || _ct === 'kurzzeit') todos.push(ccTnRenewalTodo(activeRec));   // Mietvertrag is never renewed
     if (_ct === 'kurzzeit' && !activeRec.vertragsende && !activeRec.mietende) todos.push({ level: 'amber', text: 'Contract end missing' });
     todos.push(ccTnStaffelTodo(_rntStaffelPillState(unit.id), d => { const [y, m, day] = d.split('-'); return `${day}.${m}.`; }));
-    if (isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(activeRec.id, _rntNK[activeRec.id]) : 'NK open' });   // Settlements + old tracking
+    // B30: no "NK … open" pill on the closed card — like Casa Castel; NK is tracked in Settlements
+    // (still shown inside the card: More → NK)
+    if (false && isApt && _rntNkHasOpen(activeRec.id)) todos.push({ level: 'amber', text: typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(activeRec.id, _rntNK[activeRec.id]) : 'NK open' });   // Settlements + old tracking
     if (isApt && typeof ccTnNkChangeTodo === 'function') todos.push(ccTnNkChangeTodo(_rntNKVoraus[unit.id], activeRec));
     todos.push(ccTnStillActiveTodo(vacant, activeRec));
   }
   const movesIn = ccTnMovesIn(vacant, activeRec);
   const kPill = ((!vacant || movesIn) && activeRec)
     ? ccTnKautionPill(_rntKaution[activeRec.id], (_rntKautionSollInfo(activeRec) || {}).amount, _rntFmtEUR) : '';
-  return { row1: ccTnRow1(vacant, kPill, movesIn), todo: ccTnTodoRow(todos) };
+  // B30: like Casa Castel — fully received shows "Kaution ✓" (the amount is in the card and in "Kaution held")
+  const kPill2 = /tnp-green/.test(kPill) ? kPill.replace(/>Kaution [^<]*</, '>Kaution \u2713<') : kPill;
+  return { row1: ccTnRow1(vacant, kPill2, movesIn), todo: ccTnTodoRow(todos) };
 }
 function _rntRefreshCardPills(unitId) {
   const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === unitId);
@@ -1079,61 +1083,49 @@ function _rntRefreshCardPills(unitId) {
 /* ══════════════════════════════════════════════════════════════
    7. SUPABASE LOAD
 ══════════════════════════════════════════════════════════════ */
-async function _rntLoad() {
-  if (!sbL) return;
+async function _rntLoad(unitsReady) {
+  /* B30 (Oct 2026) — ONE round trip. The tenant tables load at the same time as the apartments /
+     parking spaces (unitsReady); no unit or tenant filter is needed (these tables hold only Rentals
+     rows) — the rows are matched to the units afterwards, exactly as the filtered queries did.
+     Was: units → 4 tables → 6 tables, one after another, before anything was drawn. */
+  const rdApp = (typeof ccfA === 'function' && ccfA() && ccfA().app) || 'rentals';
+  const [, recAll, vorausAll, staffelAll, kAll, nkAll, docAll, , , readAll] = await Promise.all([
+    unitsReady || null,
+    sbL.from('rnt_tenant_records').select('*').order('mietbeginn', { ascending: false }),
+    sbL.from('rnt_nk_vorauszahlung_history').select('*').order('effective_date', { ascending: false }),
+    sbL.from('rnt_staffelmiete_history').select('*').order('effective_date', { ascending: false }),
+    sbL.from('rnt_kaution').select('*'),
+    sbL.from('rnt_nk_entries').select('*').order('period', { ascending: false }),
+    sbL.from('rnt_tenant_documents').select('*'),
+    typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'rentals') : null,    // rent history (rent_periods)
+    typeof ccNksLoad === 'function' ? ccNksLoad() : null,                // NK-Abrechnungen (Settlements)
+    sbL.from('meter_readings').select('*').eq('app', rdApp),             // Zählerstände
+  ]);
+  // The tenant list could not be loaded (connection): keep what is on screen — never an empty list
+  if (recAll && recAll.error) {
+    console.warn('[tenants] load:', recAll.error.message || recAll.error);
+    if (!document.querySelector('#rntTenantsList .tn-card')) _rntRender();
+    return;
+  }
   if (!appApartments?.length && !appParking?.length) { _rntRender(); return; }
 
-  const aptIds = (appApartments || []).map(a => a.id);
-  const pkIds  = (appParking    || []).map(p => p.id);
-
-  // Load all tenant records for apartments
-  const aptQuery = aptIds.length
-    ? sbL.from('rnt_tenant_records').select('*')
-        .in('apartment_id', aptIds).order('mietbeginn', { ascending: false })
-    : Promise.resolve({ data: [] });
-
-  // Load all tenant records for parking
-  const pkQuery = pkIds.length
-    ? sbL.from('rnt_tenant_records').select('*')
-        .in('parking_id', pkIds).order('mietbeginn', { ascending: false })
-    : Promise.resolve({ data: [] });
-
-  // Vorauszahlung + Staffelmiete only need apartment/parking ids — they do
-  // NOT depend on tenant ids, so they run in the same round-trip as the
-  // records instead of waiting for them.
-  const vorausQuery = aptIds.length
-    ? sbL.from('rnt_nk_vorauszahlung_history').select('*')
-         .in('apartment_id', aptIds).order('effective_date', { ascending: false })
-    : Promise.resolve({ data: [] });
-
-  const staffelQuery = (aptIds.length || pkIds.length)
-    ? (() => {
-        let q = sbL.from('rnt_staffelmiete_history').select('*');
-        if (aptIds.length && pkIds.length)
-          q = q.or(`apartment_id.in.(${aptIds.join(',')}),parking_id.in.(${pkIds.join(',')})`);
-        else if (aptIds.length)
-          q = q.in('apartment_id', aptIds);
-        else
-          q = q.in('parking_id', pkIds);
-        return q.order('effective_date', { ascending: false });
-      })()
-    : Promise.resolve({ data: [] });
-
-  const [aptRes, pkRes, vorausRes, staffelRes] =
-    await Promise.all([aptQuery, pkQuery, vorausQuery, staffelQuery]);
-  _rntRecords = [...(aptRes.data || []), ...(pkRes.data || [])];
+  const aptSet = new Set((appApartments || []).map(a => String(a.id)));
+  const pkSet  = new Set((appParking    || []).map(p => String(p.id)));
+  const recs   = (recAll && recAll.data) || [];
+  _rntRecords = [...recs.filter(r => r.apartment_id != null && aptSet.has(String(r.apartment_id))),
+                 ...recs.filter(r => r.parking_id   != null && pkSet.has(String(r.parking_id)))];
+  const vorausRes  = { data: ((vorausAll && vorausAll.data) || []).filter(e => e.apartment_id != null && aptSet.has(String(e.apartment_id))) };
+  const staffelRes = { data: ((staffelAll && staffelAll.data) || []).filter(e =>
+    (e.apartment_id != null && aptSet.has(String(e.apartment_id))) || (e.parking_id != null && pkSet.has(String(e.parking_id)))) };
 
   const tids = _rntRecords.map(r => r.id);
-  if (!tids.length) { _rntProfileCache = {}; _rntLoadedOnce = true; _rntRender(); return; }
-
-  const [kRes, nkRes, docRes] = await Promise.all([
-    sbL.from('rnt_kaution').select('*').in('tenant_id', tids),
-    sbL.from('rnt_nk_entries').select('*').in('tenant_id', tids).order('period', { ascending: false }),
-    sbL.from('rnt_tenant_documents').select('*').in('tenant_id', tids),
-    typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'rentals') : Promise.resolve([]),   // rent history (rent_periods)
-    typeof ccNksLoad === 'function' ? ccNksLoad() : Promise.resolve(),                  // NK-Abrechnungen (Settlements)
-    typeof ccfLoadReadings === 'function' ? ccfLoadReadings(tids) : Promise.resolve(),  // Zählerstände (meter_readings)
-  ]);
+  if (!tids.length) { _rntProfileCache = {}; _rntLoadedOnce = true; _rntRender(); _rntSaveCopy([]); return; }
+  const tidSet = new Set(tids.map(String));
+  const forTenants = res => ((res && res.data) || []).filter(x => tidSet.has(String(x.tenant_id)));
+  const kRes = { data: forTenants(kAll) }, nkRes = { data: forTenants(nkAll) }, docRes = { data: forTenants(docAll) };
+  const readings = forTenants(readAll);
+  if (readAll && readAll.error) console.warn('[meters] load:', readAll.error.message);
+  else if (typeof ccfReadingsSet === 'function') ccfReadingsSet(readings);
 
   _rntKaution = {};
   (kRes.data || []).forEach(k => { _rntKaution[k.tenant_id] = k; });
@@ -1193,6 +1185,7 @@ async function _rntLoad() {
   _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _rntFreezeRent();          // existing active tenants: fix their rent once
   _rntRenderIfChanged();
+  _rntSaveCopy(readings);    // B30: the next start draws from this at once
 }
 
 /* After a (background) load: repaint only if the data really changed and you
@@ -1201,7 +1194,7 @@ let _rntRenderedSig = null;
 function _rntRenderIfChanged() {
   const sig = ccStableJSON([_rntRecords, _rntKaution, _rntNK, _rntDocs, _rntNKVoraus, _rntStaffel, _rntProfileCache,
                               (typeof _ccfReadings !== 'undefined' ? _ccfReadings : {}),
-                              (appApartments || []).map(a => [a.id, a.name, a.vacant, a.zimmer_type, a.pricing, a.adresse]),
+                              (appApartments || []).map(a => [a.id, a.name, a.vacant, a.zimmer_type, a.pricing, a.adresse, a.wohnungsnummer]),
                               (appParking    || []).map(p => [p.id, p.name, p.vacant, p.pricing, p.adresse])]);
   const list  = document.getElementById('rntTenantsList');
   const shown = !!(list && list.querySelector('.tn-card'));
@@ -1388,8 +1381,10 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
     ? `${mietbeginn} \u2013 ${mietende}`
     : mietbeginn ? `${_movesIn ? 'from' : 'since'} ${mietbeginn}` : '';
 
+  // B30: the flat number joins the name (the address line is gone — Kaiserstr. 36 has two flats)
+  const _whg = (() => { const w = String(unit.wohnungsnummer || '').trim(); return /^\d/.test(w) ? 'WHG ' + w : w; })();
   const unitLabel = isApt
-    ? unit.name
+    ? (_whg ? `${unit.name} \u00b7 ${_whg}` : unit.name)
     : `${unit.name} \u00b7 ${unit.parking_type || 'Stellplatz'}`;
 
   const pills = _rntCardPills(unit, isApt, activeRec);
@@ -1410,7 +1405,6 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
         ${dateStr ? `<span class="tn-slim-txt">${_rntEsc(dateStr)}</span>` : ''}
         ${pausch ? `<span class="tn-slim-txt"><b>${_rntFmtEUR(curR.total)}</b> pauschal</span>`
           : warm != null ? `<span class="tn-slim-txt"><b>${_rntFmtEUR(warm)}</b> warm</span>` : ''}
-        ${!pausch && (kalt != null && nk != null) ? `<span class="tn-slim-txt">${_rntFmtEUR(kalt).replace('\u00a0\u20ac','')} + ${_rntFmtEUR(nk).replace('\u00a0\u20ac','')} Kalt + NK</span>` : ''}
         ${!pausch && _mhN && nk != null ? `<span class="tn-slim-next">\u2192 ${_rntFmtEUR(Number(_mhN.amount) + Number(nk))} ab ${_rntFmtDate(_mhN.effective_date)}</span>` : ''}
       </div>`;
     } else {
@@ -1431,7 +1425,6 @@ function _rntHeaderHTML(rid, type, unit, activeRec) {
     <div id="hdr-kpill-${rid}" style="margin-left:auto;display:flex;align-items:center;gap:4px">${pills.row1}</div>
     <i class="ti ti-chevron-right tn-chev" aria-hidden="true"></i>
   </div>
-  ${isApt && (unit.adresse || unit.wohnungsnummer) ? `<div class="tn-hdr-addr">${_rntEsc([unit.adresse, unit.wohnungsnummer].filter(Boolean).join(' \u00b7 '))}</div>` : ''}
   <div class="tn-hdr-mid">${midLine}</div>
   ${botLine}
   <div class="tn-todo-row" id="hdr-todo-${rid}" style="${pills.todo ? '' : 'display:none'}">${pills.todo}</div>
@@ -3989,6 +3982,45 @@ function _rntBindCards() {
    instantly. Deliberately not loadRntTenants() — that would also load the other
    units' tab (and its draft restore) behind your back. */
 let _rntLoadedOnce  = false;   // full Tenants-tab load done (_rntRecords is current)
+
+/* ── B30 (Oct 2026) · INSTANT OPEN — a copy of the last loaded tenant data on this phone ──────
+   The Tenants tab is drawn from it at once (no "Loading tenants…"); the fresh data follows in the
+   background and only cards that changed are redrawn. Only on this phone; deleted at logout
+   (login.html). Nothing is ever written to the database from the copy: the occupancy sync and the
+   one-time fixes run only after a fresh load (_rntLoad). */
+const RNT_COPY_KEY = 'rnt_copy_v1';
+let _rntCopyShown = false;       // the list on screen came from the copy (until the fresh load)
+let _rntUnitsFromCopy = false;   // apartments / parking came from the copy → always loaded fresh
+function _rntSaveCopy(readings) {
+  try {
+    const nks = typeof CC_NKS !== 'undefined'
+      ? { rows: CC_NKS.rows, res: CC_NKS.res, props: CC_NKS.props, buys: CC_NKS.buys, casaProp: CC_NKS.casaProp } : null;
+    const rp  = typeof CC_RP !== 'undefined' ? (CC_RP.rows || []).filter(r => r.app === 'rentals') : [];
+    localStorage.setItem(RNT_COPY_KEY, JSON.stringify({ v: 1, at: Date.now(),
+      apts: appApartments || [], pks: appParking || [], records: _rntRecords, kaution: _rntKaution, nk: _rntNK,
+      docs: _rntDocs, voraus: _rntNKVoraus, staffel: _rntStaffel, profile: _rntProfileCache, rp, nks, readings: readings || [] }));
+  } catch (e) { try { localStorage.removeItem(RNT_COPY_KEY); } catch (e2) {} }   // full / blocked → simply no copy
+}
+/* Called when the Tenants tab is shown before its data is loaded. true = drawn from the copy */
+function rntDrawFromCopy() {
+  if (_rntLoadedOnce || _rntCopyShown) return false;
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem(RNT_COPY_KEY) || 'null'); } catch (e) { c = null; }
+  if (!c || c.v !== 1 || !Array.isArray(c.records)) return false;
+  if (!appApartments?.length) { appApartments = c.apts || []; _rntUnitsFromCopy = true; }
+  if (!appParking?.length)    { appParking    = c.pks  || []; _rntUnitsFromCopy = true; }
+  _rntRecords = c.records; _rntKaution = c.kaution || {}; _rntNK = c.nk || {}; _rntDocs = c.docs || {};
+  _rntNKVoraus = c.voraus || {}; _rntStaffel = c.staffel || {}; _rntProfileCache = c.profile || {};
+  if (typeof CC_RP !== 'undefined' && !(CC_RP.loaded && CC_RP.loaded.rentals)) {
+    CC_RP.rows = (CC_RP.rows || []).filter(r => r.app !== 'rentals').concat(c.rp || []);
+    if (CC_RP.loaded) CC_RP.loaded.rentals = true;
+  }
+  if (typeof CC_NKS !== 'undefined' && c.nks && !(CC_NKS.rows && CC_NKS.rows.length)) Object.assign(CC_NKS, c.nks);
+  if (typeof ccfReadingsSet === 'function' && Array.isArray(c.readings)) ccfReadingsSet(c.readings);
+  _rntCopyShown = true;
+  _rntRenderIfChanged();
+  return true;
+}
 let _rntActiveRecs  = null;    // preloaded active records (until the full load)
 let _rntWarmPromise = null;
 function rntWarmTenants() {
@@ -4048,12 +4080,16 @@ function rntProfileFromRecords(kind, id) {
 }
 
 async function loadRntTenants() {
-  // Load missing prerequisites in parallel (was: apartments, THEN parking)
-  await Promise.all([
-    !appApartments?.length ? loadApartments?.() : Promise.resolve(),
-    !appParking?.length    ? loadParking?.()    : Promise.resolve(),
-  ]);
-  await _rntLoad();
+  // B30: apartments / parking and the tenant tables load at the same time (one round trip).
+  // Through _rtLoad: a load already running for that tab is shared, not started twice.
+  // Units drawn from the phone's copy are always loaded fresh.
+  const viaTab = t => (typeof _rtLoad === 'function' ? _rtLoad(t)
+                       : (t === 'apartments' ? loadApartments?.() : loadParking?.()));
+  const needApt = !appApartments?.length || _rntUnitsFromCopy;
+  const needPk  = !appParking?.length    || _rntUnitsFromCopy;
+  const unitsReady = Promise.all([needApt ? viaTab('apartments') : null, needPk ? viaTab('parking') : null])
+    .then(() => { _rntUnitsFromCopy = false; });
+  await _rntLoad(unitsReady);
   const h = _ccTakeFormerHandoff('rentals');
   if (h && h.aptId != null) {
     const apt = (appApartments || []).find(a => String(a.id) === String(h.aptId));

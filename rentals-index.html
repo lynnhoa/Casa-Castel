@@ -145,7 +145,7 @@
 
   <script src="rentals-tab-apartments.js?v=2026-10-11-B27"></script>
   <script src="rentals-tab-parking.js?v=2026-10-11-B28"></script>
-  <script src="rentals-tab-tenants.js?v=2026-10-11-B29"></script>
+  <script src="rentals-tab-tenants.js?v=2026-10-11-B30"></script>
   <script src="rentals-parking-mietvertrag.js?v=2026-10-10-PB1"></script>
   <!-- PDF libs loaded after app shell — don't block apartment cards rendering -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -209,7 +209,9 @@
       requestAnimationFrame(() => { if (tabEl) tabEl.style.visibility = ''; });
       if (tabName === 'tenants') {                     // first visit while still loading: say so
         const l = document.getElementById('rntTenantsList');
-        if (l && !l.querySelector('.tn-card')) l.innerHTML = '<p class="tn-empty">Loading tenants…</p>';
+        // B30: drawn at once from the copy on this phone; "Loading…" only without one (first start, after logout)
+        if (l && !l.querySelector('.tn-card') && !(typeof rntDrawFromCopy === 'function' && rntDrawFromCopy()))
+          l.innerHTML = '<p class="tn-empty">Loading tenants…</p>';
       }
       // B17: no background reload when this tab was loaded less than a minute ago
       if (!_rtLoadedAt[tabName] || Date.now() - _rtLoadedAt[tabName] > 60000) _rtLoad(tabName);
@@ -241,6 +243,7 @@
             if (!ok2) {
               localStorage.removeItem('rentals_role');
               localStorage.removeItem('cc_role');
+              localStorage.removeItem('rnt_copy_v1');   // B30: the tenant copy goes with the login
               location.replace('login.html');
             }
           });
@@ -254,10 +257,13 @@
     const available = new Set(['apartments','parking','tenants']);
     const _rtFirst = (saved && available.has(saved)) ? saved : 'apartments';
     switchTab(_rtFirst);
-    // Preload the other tabs in the background (one after another) → their first visit is instant
+    // B30: Tenants loads right away, next to the first tab (was: last, after the other two)
+    if (_rtFirst !== 'tenants') _rtLoad('tenants');
+    // Preload the other tabs in the background (one after another) → their first visit is instant;
+    // a tab loaded meanwhile (e.g. by Tenants) is not loaded twice
     (_rtInflight[_rtFirst] || Promise.resolve()).then(() =>
       ['apartments', 'parking', 'tenants'].filter(t => t !== _rtFirst)
-        .reduce((p, t) => p.then(() => _rtLoad(t)), Promise.resolve()));
+        .reduce((p, t) => p.then(() => (_rtLoadedAt[t] && Date.now() - _rtLoadedAt[t] < 60000) ? null : _rtLoad(t)), Promise.resolve()));
   </script>
 
 </body>
