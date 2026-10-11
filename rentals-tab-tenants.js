@@ -3048,17 +3048,35 @@ function _rntToggleModalProfile(tid) {
   if (fedit) fedit.style.display = isEditing ? 'none' : '';
 }
 
+let _rntModalAsking = false;
 function _rntCloseModal() {
   // Unsaved changes in the edit view → ask (instead of silently dropping them)
   if (_rntModalTid) {
     const ed = document.getElementById('mprof-edit-' + _rntModalTid);
     if (ed && ed.style.display !== 'none' && ed.dataset.snap && ed.dataset.snap !== _rntModalSnap(ed)) {
       const tid = _rntModalTid;
-      if (confirm('Änderungen speichern?')) {
-        ed.dataset.snap = '';                           // answered once — the save may close the view itself
-        Promise.resolve(_rntModalSaveProfile(tid)).then(() => { if (_rntModalTid === tid) _rntCloseModal(); });
-        return;
-      }
+      if (_rntModalAsking) return;                       // the question is already on screen
+      _rntModalAsking = true;
+      ccDialog({ icon: 'ti-help-circle', title: 'Save changes?', body: 'You changed something in this pop-up.',
+        actions: [{ label: 'Discard', value: 'discard' }, { label: 'Save', value: 'save', primary: true }] })
+        .then(v => {
+          _rntModalAsking = false;
+          if (_rntModalTid !== tid) return;
+          if (v === 'save') {
+            const snap0 = ed.dataset.snap;
+            ed.dataset.snap = '';                       // answered once
+            Promise.resolve(_rntModalSaveProfile(tid)).then(() => {
+              const e2 = document.getElementById('mprof-edit-' + tid);   // saved = back in read view → now close
+              if (_rntModalTid !== tid) return;
+              if (!e2 || e2.style.display === 'none') _rntCloseModal();
+              else e2.dataset.snap = snap0;             // not saved (e.g. a date is wrong) → stay; X asks again
+            });
+          } else if (v === 'discard') {
+            ed.dataset.snap = '';
+            _rntCloseModal();
+          }                                             // tap outside the question → stay and keep editing
+        });
+      return;
     }
   }
   if (_rntModalTid) {

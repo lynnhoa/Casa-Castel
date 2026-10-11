@@ -376,3 +376,65 @@ function _ccSheetTidy(body) {
 `;
   document.head.appendChild(s);
 })();
+
+/* ── IN-APP DIALOG for apps without utils.js (Rentals) — same look and code as utils.js.
+   Casa Castel keeps its own copy from utils.js (loaded first). ── */
+if (typeof window.ccDialog !== 'function') {
+window._ccDlgCss = function () {
+  if (document.getElementById('cc-dlg-css')) return;
+  const st = document.createElement('style'); st.id = 'cc-dlg-css';
+  st.textContent = `
+.cc-dlg-ov { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center;
+  padding:24px; background:rgba(30,27,24,.35); -webkit-tap-highlight-color:transparent; }
+.cc-dlg { background:var(--cc-white,#FDFCFA); border-radius:var(--cc-r-lg,12px); padding:24px 20px 18px;
+  width:100%; max-width:320px; box-shadow:0 10px 40px rgba(30,27,24,.18); font-family:'Inter',system-ui,sans-serif;
+  animation:ccDlgPop .2s cubic-bezier(.32,.72,0,1); }
+@keyframes ccDlgPop { from{transform:scale(.94);opacity:0} to{transform:scale(1);opacity:1} }
+.cc-dlg__icon { font-size:26px; color:var(--cc-gold,#B8956A); margin-bottom:10px; }
+.cc-dlg--danger .cc-dlg__icon { color:#C4705A; }
+.cc-dlg__title { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:400;
+  color:var(--cc-ink,#1E1B18); margin:0 0 6px; }
+.cc-dlg__body { font-size:13px; color:var(--cc-taupe,#9A8E7E); line-height:1.55; margin:0 0 18px; }
+.cc-dlg__body strong { color:var(--cc-charcoal,#3A3530); font-weight:500; }
+.cc-dlg__btns { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+.cc-dlg__btn { height:36px; padding:0 14px; border-radius:18px; font:inherit; font-size:12px; font-weight:500;
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer; border:.5px solid var(--cc-rule,#E0DAD0);
+  background:var(--cc-white,#FDFCFA); color:var(--cc-taupe,#9A8E7E); }
+.cc-dlg__btn:active { opacity:.75; }
+.cc-dlg__btn--primary { background:var(--cc-ink,#1E1B18); border-color:var(--cc-ink,#1E1B18); color:var(--cc-white,#FDFCFA); }
+.cc-dlg__btn--danger  { background:none; color:#A32D2D; border-color:#F09595; }
+.cc-dlg__pw { display:flex; align-items:center; gap:10px; margin:4px 0 12px; padding:12px 12px 12px 14px;
+  background:var(--cc-surface,#EDE8E0); border-radius:var(--cc-r-md,8px); }
+.cc-dlg__pwtxt { flex:1; font-size:19px; letter-spacing:.04em; color:var(--cc-ink,#1E1B18);
+  font-variant-numeric:tabular-nums; user-select:all; -webkit-user-select:all; word-break:break-all; }
+.cc-dlg__copy { flex-shrink:0; height:34px; padding:0 11px; border-radius:17px; border:.5px solid var(--cc-rule,#E0DAD0);
+  background:var(--cc-white,#FDFCFA); color:var(--cc-taupe,#9A8E7E); font:inherit; font-size:11px; font-weight:500;
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
+.cc-dlg__copy i { font-size:15px; }
+.cc-dlg__copy.is-done { background:#EAF3DE; border-color:#97C459; color:#27500A; }`;
+  document.head.appendChild(st);
+}
+window.ccDialog = function (opts) {
+  _ccDlgCss();
+  const o = opts || {};
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'cc-dlg-ov';
+    const acts = (o.actions && o.actions.length) ? o.actions : [{ label: 'OK', primary: true, value: true }];
+    ov.innerHTML = `<div class="cc-dlg${o.tone === 'danger' ? ' cc-dlg--danger' : ''}" role="dialog" aria-modal="true">
+      ${o.icon ? `<div class="cc-dlg__icon"><i class="ti ${o.icon}" aria-hidden="true"></i></div>` : ''}
+      <p class="cc-dlg__title">${o.title || ''}</p>
+      ${o.body ? `<div class="cc-dlg__body">${o.body}</div>` : ''}
+      <div class="cc-dlg__btns">${acts.map((a, i) =>
+        `<button type="button" class="cc-dlg__btn${a.primary ? ' cc-dlg__btn--primary' : ''}${a.danger ? ' cc-dlg__btn--danger' : ''}" data-i="${i}">${a.icon ? `<i class="ti ${a.icon}" aria-hidden="true"></i>` : ''}${a.label}</button>`).join('')}</div>
+    </div>`;
+    const close = v => { ov.remove(); resolve(v); };
+    ov.addEventListener('click', e => { if (e.target === ov && !o.modal) close(null); });
+    ov.querySelectorAll('.cc-dlg__btn').forEach(b => b.addEventListener('click', () => {
+      const a = acts[+b.dataset.i]; close(a.value === undefined ? null : a.value);
+    }));
+    document.body.appendChild(ov);
+    if (typeof o.onOpen === 'function') o.onOpen(ov);
+  });
+};
+}

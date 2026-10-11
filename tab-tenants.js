@@ -1840,8 +1840,8 @@ function _tnNextSheet(roomName) {
         <input class="tn-cr-in" id="tn-next-email" type="email" autocomplete="off" placeholder="name@mail.de"/></div>
       <p class="tn-cr-hint" style="margin:0">Saved with the room’s baseline rent. Create the contract later from the tenant card — Approve fills this same entry.</p>
       <div class="tn-cr-btns">
-        <button type="button" class="tn-btn tn-btn-sm" onclick="ccSheetClose()">Cancel</button>
-        <button type="button" class="tn-btn tn-btn-primary" onclick="_tnSaveNext('${esc(roomName)}')">Save</button></div>
+        <button type="button" class="rm-btn--cancel" onclick="ccSheetClose()">Cancel</button>
+        <button type="button" class="rm-btn rm-btn--primary cc-save cc-save--create" onclick="_tnSaveNext('${esc(roomName)}')">Save</button></div>
     </div>`,
   });
 }
@@ -2226,8 +2226,8 @@ function _tnChangeRentHTML(rid, tid) {
   </div>
 
   <div class="tn-cr-btns">
-    <button type="button" class="tn-btn tn-btn-sm" onclick="ccSheetClose()">Cancel</button>
-    <button type="button" class="tn-btn tn-btn-primary" onclick="_tnCrSave('${tid}')">Save change</button>
+    <button type="button" class="rm-btn--cancel" onclick="ccSheetClose()">Cancel</button>
+    <button type="button" class="rm-btn rm-btn--primary cc-save cc-save--create" onclick="_tnCrSave('${tid}')">Save</button>
   </div>
 
   ${_tnCrListHTML(rid, rec)}
@@ -3220,17 +3220,35 @@ function _tnToggleModalProfile(tid) {
 
 
 
+let _tnModalAsking = false;
 function _tnCloseModal() {
   // Unsaved changes in the edit view → ask (instead of silently dropping them)
   if (_tnModalTid) {
     const ed = document.getElementById('mprof-edit-' + _tnModalTid);
     if (ed && ed.style.display !== 'none' && ed.dataset.snap && ed.dataset.snap !== _ccModalSnap(ed)) {
       const tid = _tnModalTid;
-      if (confirm('Änderungen speichern?')) {
-        ed.dataset.snap = '';                           // answered once — the save may close the view itself
-        Promise.resolve(_tnModalSaveProfile(tid)).then(() => { if (_tnModalTid === tid) _tnCloseModal(); });
-        return;
-      }
+      if (_tnModalAsking) return;                       // the question is already on screen
+      _tnModalAsking = true;
+      ccDialog({ icon: 'ti-help-circle', title: 'Save changes?', body: 'You changed something in this pop-up.',
+        actions: [{ label: 'Discard', value: 'discard' }, { label: 'Save', value: 'save', primary: true }] })
+        .then(v => {
+          _tnModalAsking = false;
+          if (_tnModalTid !== tid) return;
+          if (v === 'save') {
+            const snap0 = ed.dataset.snap;
+            ed.dataset.snap = '';                       // answered once
+            Promise.resolve(_tnModalSaveProfile(tid)).then(() => {
+              const e2 = document.getElementById('mprof-edit-' + tid);   // saved = back in read view → now close
+              if (_tnModalTid !== tid) return;
+              if (!e2 || e2.style.display === 'none') _tnCloseModal();
+              else e2.dataset.snap = snap0;             // not saved (e.g. a date is wrong) → stay; X asks again
+            });
+          } else if (v === 'discard') {
+            ed.dataset.snap = '';
+            _tnCloseModal();
+          }                                             // tap outside the question → stay and keep editing
+        });
+      return;
     }
   }
   // If profile is in edit mode, cancel it first (x = cancel, not save)
