@@ -2865,11 +2865,13 @@ function _tnNKVorausOpenModal(room) {
 
   document.getElementById('tnNKVorausModalSub').textContent = room.charAt(0).toUpperCase() + room.slice(1);
   document.getElementById('tnNKVorausModalBody').innerHTML = rows || `<p class="tn-empty" style="padding:12px 16px">Noch keine Einträge.</p>`;
+  if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('tnNKVorausModal').classList.add('open');
 }
 
 function _tnNKVorausModalClose() {
   document.getElementById('tnNKVorausModal').classList.remove('open');
+  if (typeof ccAnchorRestore === 'function') ccAnchorRestore();
 }
 function _tnNKVorausModalOutside(e) {
   if (e.target === document.getElementById('tnNKVorausModal')) _tnNKVorausModalClose();
@@ -3066,6 +3068,7 @@ function _tnOpenModal(tid) {
   document.getElementById('tnModalBody').innerHTML = _tnModalBodyHTML(rec);
   document.getElementById('tnModalFooter').innerHTML = _tnModalFooterHTML(rec, allDone);
 
+  if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('tnModal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -3249,6 +3252,7 @@ function _tnCloseModal() {
   modal.classList.remove('open');
   document.body.style.overflow = '';
   _tnModalTid = null;
+  if (typeof ccAnchorRestore === 'function') ccAnchorRestore();
 }
 
 function _tnModalOutside(e) {
@@ -4057,6 +4061,7 @@ function _tnOpenModalDraft(draft) {
   if (fread) fread.style.display = 'none';
   if (fedit) fedit.style.display = 'none';
 
+  if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('tnModal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }

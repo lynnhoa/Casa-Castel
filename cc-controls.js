@@ -245,6 +245,58 @@ function ccRowHTML(o) {
     <i class="ti ti-chevron-right cc-grow-ch" aria-hidden="true"></i></button>`;
 }
 
+/* ── KEEP THE PAGE WHERE IT WAS (Oct 2026) ─────────────────────────────────
+   On the iPhone the keyboard of a sheet / pop-up scrolls the page behind it and does not
+   scroll back. When the first sheet opens we remember the card you tapped and where it sat
+   on the screen; when the last sheet closes it is put back exactly there — right away, and
+   once more after the keyboard has closed. Anchored on the card (found again by its id), so
+   it also holds when the card was redrawn after a save. Your own scrolling is never fought. */
+let _ccLastTap = null, _ccAnchor = null;
+document.addEventListener('pointerdown', e => { _ccLastTap = e.target; }, true);
+const _CC_ANCHOR_CARDS = '.tn-card, .apt-card, .pk-card, .rnt-card, .rc, [data-cc-anchor]';
+const _CC_OPEN_SHEETS  = '.tn-overlay.open, .rm-overlay.open';
+function _ccCardSel(card) {
+  if (!card) return null;
+  const q = v => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  if (card.id) return '[id="' + q(card.id) + '"]';
+  if (card.dataset && card.dataset.id) return '.' + card.classList[0] + '[data-id="' + q(card.dataset.id) + '"]';
+  return null;
+}
+function ccAnchorSet() {
+  if (document.querySelector(_CC_OPEN_SHEETS)) return;             // a sheet is already open → keep the first anchor
+  const t = _ccLastTap && _ccLastTap.isConnected ? _ccLastTap : null;
+  const card = t && t.closest ? t.closest(_CC_ANCHOR_CARDS) : null;
+  const sel = _ccCardSel(card);
+  _ccAnchor = { sel, top: card ? card.getBoundingClientRect().top : null, y: window.scrollY };
+}
+function ccAnchorRestore() {
+  const a = _ccAnchor; if (!a) return;
+  if (document.querySelector(_CC_OPEN_SHEETS)) return;             // another sheet is still open → later
+  _ccAnchor = null;
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  window.addEventListener('touchstart', stop, { once: true, passive: true });
+  window.addEventListener('wheel', stop, { once: true, passive: true });
+  const fix = () => {
+    if (stopped) return;
+    const c = a.sel ? document.querySelector(a.sel) : null;
+    if (c && a.top != null) {
+      const dy = c.getBoundingClientRect().top - a.top;
+      if (Math.abs(dy) > 1) window.scrollBy(0, dy);
+    } else if (Math.abs(window.scrollY - a.y) > 1) window.scrollTo(0, a.y);
+  };
+  queueMicrotask(fix);                                             // after a redraw by the Save
+  requestAnimationFrame(fix);
+  [350, 700].forEach(ms => setTimeout(fix, ms));                   // after the keyboard has closed
+  const vv = window.visualViewport;
+  if (vv) {
+    const onVv = () => setTimeout(fix, 60);
+    vv.addEventListener('resize', onVv);
+    setTimeout(() => vv.removeEventListener('resize', onVv), 1200);
+  }
+  setTimeout(() => { window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }, 1300);
+}
+
 let _ccSheetCur = null;   // { title, kicker, build }
 function _ccSheetEl() {
   let el = document.getElementById('ccSheetModal');
@@ -263,6 +315,7 @@ function _ccSheetEl() {
 }
 function ccSheetOpen(o) {
   const el = _ccSheetEl();
+  if (!el.classList.contains('open')) ccAnchorSet();
   _ccSheetCur = o;
   document.getElementById('ccSheetTitle').textContent = o.title || '';
   document.getElementById('ccSheetSub').textContent = o.kicker || '';
@@ -279,6 +332,7 @@ function ccSheetClose() {
   _ccSheetCur = null;
   document.getElementById('ccSheetBody').innerHTML = '';
   if (!document.querySelector('.tn-overlay.open')) document.body.style.overflow = '';
+  ccAnchorRestore();
 }
 /* After a card redraw: the open sheet shows the fresh data too — unless you are typing in it */
 function ccSheetRefresh() {
