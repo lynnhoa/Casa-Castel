@@ -550,13 +550,17 @@ function _cxRentDay(link, w, u, y, m, iso, all, memo) {
     if (!c.legacy) c.legacy = _cxTenantBase(link, w.t, u, y, m);
     mode = _cxLegacyMode(link, w.t);
     k = _cxN0(c.legacy.k); nk = _cxN0(c.legacy.nk); src = c.legacy.src; base = w.from;
-    if (mode === 'pauschal') { k = k + nk; nk = 0; }
   }
   if (mode !== 'pauschal') {                               // Pauschal: one amount, steps don't apply (D5)
     const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) k = sk;
     const sn = _cxStepFrom(c.nk, iso, base); if (sn !== null) nk = sn;
-  } else if (link.type === 'casa_room') {                  // Casa Castel Pauschal: a Mieterhöhung sets the new Pauschalmiete
-    const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) k = sk;
+  } else {
+    // Pauschal (Oct 2026): one amount = rent + the NK part inside it ("davon NK" of the rent entry,
+    // the same figure Settlements counts as covered NK). The total never changes; no part known → all rent.
+    let T = per ? _cxN0(_cxAmount(per).total) : _cxR(_cxN0(k) + _cxN0(nk));
+    let N = per ? _cxN0(per.nebenkosten) : _cxN0(nk);
+    if (link.type === 'casa_room') { const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) T = sk; }   // Casa Pauschal: a Mieterhöhung sets the new Pauschalmiete
+    N = Math.max(0, Math.min(N, T)); k = _cxR(T - N); nk = _cxR(N);
   }
   return { k, nk, mode, src, period: per };
 }
@@ -1303,7 +1307,8 @@ function ctlSettlementFigures(r) {
     for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
       if (d < w.from || d > w.to) continue;
       const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)), N = new Date(y, m, 0).getDate();
-      const nk = _cxRentDay(link, w, u, y, m, d, all, memo).nk / N;
+      const rd = _cxRentDay(link, w, u, y, m, d, all, memo);
+      const nk = (rd.mode === 'pauschal' ? 0 : rd.nk) / N;   // Pauschal: no Vorauszahlung (its "davon NK" is not billed)
       soll += nk; months.set(y + '-' + m, (months.get(y + '-' + m) || 0) + nk);
       mDays.set(y + '-' + m, (mDays.get(y + '-' + m) || 0) + 1);
     }
