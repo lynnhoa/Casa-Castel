@@ -51,6 +51,10 @@ async function _scLoadRowsNow() {
     if (r.error) { SC.missing = true; SC.rows = []; } else { SC.missing = false; SC.rows = r.data || []; }
     const l = await _ctlSupa.from(SC_LETTERS).select('*').order('sent_at', { ascending: false });
     if (l.error) { SC.lettersMissing = true; SC.letters = []; } else { SC.lettersMissing = false; SC.letters = l.data || []; }
+    try {                                                  // B20: Kaution kept for the NK (Casa Castel › Tenants)
+      const k = await _ctlSupa.from('kaution').select('*');
+      SC.kaution = {}; (k.data || []).forEach(x => { if (x.tenant_id != null) SC.kaution[String(x.tenant_id)] = x; });
+    } catch (e) { SC.kaution = {}; }
   } finally { SC.loaded = true; SC.loading = false; }
 }
 /* The Casa Castel period that ends in year y — from "beginnt am" in Controlling › Setup */
@@ -221,7 +225,9 @@ function scModel(y) {
     const xs = src.extra ? (ts[t.key] || {}).sent : null;
     if (src.extra && xs) st = { res: { dir: xs.dir, amount: xs.amount, date: xs.date, via: xs.via }, k: xs.settled ? 'erledigt' : 'verschickt', booking: null };
     const skipped = !!(it && it.r.status === 'nicht durchgeführt');
-    const kau = null, einbehalt = 0;                       // Kaution stays in Casa Castel › Tenants (handled by hand)
+    const kAvail = t.mode === 'pauschal' ? 0 : scEinbehalt(t.tenantId, t.from);   // B20: Kaution kept for this NK
+    const kau = kAvail > 0 ? { amount: kAvail } : null;
+    const einbehalt = kAvail > 0 && (((ts[t.key] || {}).via) || 'kaution') === 'kaution' ? kAvail : 0;
     const k = t.mode === 'pauschal' ? 'none' : skipped ? 'done' : st && st.res ? (st.k === 'erledigt' ? 'done' : 'sent') : 'open';
     const tr = (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId)) || null;
     const movedOut = t.to < input.period.to || !!(tr && tr.mietende && scD(tr.mietende) < today);
@@ -836,7 +842,20 @@ function scLetterBtn(t) {
            : '<button class="cx-btn cx-btn--s" data-sc="pdf" data-k="' + stEsc(t.key) + '"><i class="ti ti-file-text" aria-hidden="true"></i> PDF (recreated)</button>';
 }
 /* How the result is settled: chosen in the sheet, else Kaution when part of it is held back for the NK */
-const scVia = t => (t.set && t.set.via) || 'zahlung';
+/* Kaution-Einbehalt (B20, Oct 2026): Tenants › Kaution › "Kept · for NK-Abrechnung" (column nk_einbehalt,
+   once the Kaution is settled). It is offset in the tenant's NK-Abrechnung when the letter says "With the Kaution"
+   (the default while it is unused) — only once: an NK already sent with the Kaution for another period has used it.
+   Controlling gets the NK result itself; the Kaution never shows there. */
+function scEinbehalt(tid, from) {
+  const k = SC.kaution && tid != null ? SC.kaution[String(tid)] : null;
+  const E = k && k.settled ? cxR(Number(k.nk_einbehalt) || 0) : 0;
+  if (!(E > 0)) return 0;
+  const f = String(from || '').slice(0, 10);
+  const used = (window._src.abr || []).some(a => a && a.kind === 'nk_tenant' && (!a.app || a.app === 'casa') && a.status !== 'storniert' &&
+    String(a.tenant_id) === String(tid) && a.settle_via === 'kaution' && String(a.period_from || '').slice(0, 10) !== f);
+  return used ? 0 : E;
+}
+const scVia = t => (t.set && t.set.via) || (t.kau && t.kau.amount > 0 ? 'kaution' : 'zahlung');
 /* First year to show: the purchase of Casa Castel (Properties › Purchase date) */
 function scMinYear() {
   const ty = Number(cxToday().slice(0, 4));
@@ -885,6 +904,7 @@ function scSetObj(t, M) {
   if (!res.amount || !res.dir) return null;
   const b = t.st.booking, done = t.k === 'done';
   return Object.assign(base, { state: SC.setEdit === key ? 'edit' : done ? 'settled' : 'open', dir: res.dir, soll: res.amount,
+    sub: base.sub + (res.via === 'kaution' && t.einbehalt > 0 ? ' · offset with the Kaution-Einbehalt ' + stEur(t.einbehalt) : ''),   // B20
     ist: b ? cxR(b.amount) : done ? res.amount : null, date: b ? scD(b.invoice_date) : null,
     note: done && !b && SC.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent' }[res.via] || null) : null });
 }
@@ -1322,7 +1342,7 @@ async function scSend(key, btn) {
   if (!t.line) { stSay('This tenant is not in the settlement list – check move-in / move-out in Casa Castel'); return; }
   const s = t.set || {};
   const amount = Math.abs(t.saldo), dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0;
-  const via = dir ? scVia(t) : 'zahlung';
+  const via = t.einbehalt > 0 ? 'kaution' : dir ? scVia(t) : 'zahlung';   // B20: settled with the Kaution-Einbehalt
   const amountRec = amount;
   const date = s.date || cxToday();
   const reset = btn ? btn.innerHTML : '';

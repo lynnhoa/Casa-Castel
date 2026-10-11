@@ -10,13 +10,16 @@
      1 Open       nothing received          Received (+ Received on) editable
      2 X € open   received < Soll           Received (+ Received on) editable
      3 Held       received ≥ Soll           read-only · EDIT · SETTLE
-     4 Settle     at move-out               Deduction (+ Reason) editable, refund calculated
+     4 Settle     at move-out               Kept · other reasons (+ Reason) and Kept · for NK-Abrechnung
+                                            editable (e.g. 50 € + 50 €), refund calculated
      5 Settled    settled                   read-only · UNDO
 
    Data: received, returned, settled, settled_at (exist)
          received_at, deduction_reason (new, optional — shown only when the
          database has them; see the SQL in the release notes)
-   Deduction = received − returned  ·  Refund to tenant = returned
+   Deduction = received − returned = other reasons + nk_einbehalt  ·  Refund to tenant = returned
+   nk_einbehalt (Kept · for NK-Abrechnung) is offset in Settlements with the tenant's NK-Abrechnung;
+   Kaution itself never shows in Controlling.
    ───────────────────────────────────────────────────────────── */
 
 const _CCK = {};                               // app key → adapter + ui state
@@ -124,33 +127,37 @@ function ccKautionSectionHTML(app, tid, ctx, rec) {
     ? _cckCell('Received on', _cckDate(`cck-rd-${pfx}`, _cckDateOnly(k.received_at), onIn, dis), `cck-rd-${pfx}`)
     : _cckCell('Received on', k.received_at ? _cckRo(A.fmtDate(k.received_at)) : _cckOff);
 
-  // Row 2 · Deduction + Reason
-  // Not yet refunded (returned 0, not settled) = no deduction yet → full refund.
-  const ded = (P.phase === 5 || P.ret > 0) ? Math.max(0, P.recv - P.ret) : 0;
+  // Row 2 · Kept for other reasons + Reason · Row 3 · Kept for the NK-Abrechnung (B20, Oct 2026)
+  // One deduction can be split: e.g. 50 € other reasons + 50 € for the NK. Only the NK part is offset in
+  // Settlements. Without the column nk_einbehalt (SQL not run) the card works as before: one Deduction.
+  const hasNk = Object.values(A.map() || {}).some(r => r && Object.prototype.hasOwnProperty.call(r, 'nk_einbehalt'));
+  const nkv   = hasNk ? _cckNum(k.nk_einbehalt) : 0;
+  // Not yet refunded (returned 0, nothing kept for the NK, not settled) = no deduction yet → full refund.
+  const typed = P.phase === 5 || P.ret > 0 || nkv > 0;
+  const ded   = typed ? Math.max(0, P.recv - P.ret) : 0;                    // everything kept back
+  const oth   = Math.max(0, Math.round((ded - nkv) * 100) / 100);           // … of it for other reasons
+  const othLbl = hasNk ? 'Kept · other reasons' : 'Deduction';
   const r2a = P.phase === 4
-    ? _cckCell('Deduction', _cckMoney(`cck-d-${pfx}`, P.ret > 0 ? Math.round(ded * 100) / 100 : '', onIn, dis), `cck-d-${pfx}`)
-    : P.phase === 5 ? _cckCell('Deduction', _cckRo(f(ded))) : _cckCell('Deduction', _cckOff);
+    ? _cckCell(othLbl, _cckMoney(`cck-d-${pfx}`, typed ? oth : '', onIn, dis), `cck-d-${pfx}`)
+    : P.phase === 5 ? _cckCell(othLbl, _cckRo(f(oth))) : _cckCell(othLbl, _cckOff);
   const r2b = !extra ? '' : P.phase === 4
     ? _cckCell('Reason', _cckText(`cck-g-${pfx}`, k.deduction_reason, onIn, dis), `cck-g-${pfx}`)
     : P.phase === 5 ? _cckCell('Reason', k.deduction_reason ? _cckRo(k.deduction_reason) : _cckOff) : _cckCell('Reason', _cckOff);
-
-  // NK-Einbehalt: part of the deduction held back until the NK-Abrechnung (Rentals only — column nk_einbehalt)
-  const hasNk = Object.values(A.map() || {}).some(r => r && Object.prototype.hasOwnProperty.call(r, 'nk_einbehalt'));
-  const nkv = _cckNum(k.nk_einbehalt);
-  let nkRow = '';
-  if (hasNk && P.phase === 4) {
-    nkRow = `<div class="${grid}">${_cckCell('davon Einbehalt bis NK-Abrechnung', _cckMoney(`cck-nk-${pfx}`, nkv || '', onIn, dis), `cck-nk-${pfx}`)}${extra ? '<div class="cck-nkhint">wird in Settlements mit der NK-Abrechnung verrechnet</div>' : ''}</div>`;
-  } else if (hasNk && P.phase === 5 && nkv > 0) {
-    nkRow = `<div class="${grid}">${_cckCell('davon Einbehalt bis NK-Abrechnung', _cckRo(f(nkv)))}${extra ? '<div class="cck-nkhint">offen – wird in Settlements verrechnet</div>' : ''}</div>`;
-  }
+  const nkLbl = 'Kept · for NK-Abrechnung';
+  const nkHint = '<div class="cck-nkhint">offset in Settlements with the NK-Abrechnung</div>';
+  const nkRow = !hasNk ? '' : `<div class="${grid}">${
+    P.phase === 4 ? _cckCell(nkLbl, _cckMoney(`cck-nk-${pfx}`, nkv || '', onIn, dis), `cck-nk-${pfx}`) + (extra ? nkHint : '')
+    : P.phase === 5 ? _cckCell(nkLbl, _cckRo(f(nkv))) + (extra ? (nkv > 0 ? nkHint : '<div></div>') : '')
+    : _cckCell(nkLbl, _cckOff) + (extra ? '<div></div>' : '')}</div>`;
+  const keptNote = (recv, o, n, d) => hasNk ? `${f(recv)} held − ${f(o)} other − ${f(n)} for NK` : `${f(recv)} held − ${f(d)} deduction`;
 
   // Refund box
   let refund = '—', note = 'Calculated at move-out', r3b;
   if (P.phase === 4) {
-    refund = f(P.recv - ded); note = `${f(P.recv)} held − ${f(ded)} deduction`;
+    refund = f(P.recv - ded); note = keptNote(P.recv, oth, nkv, ded);
     r3b = _cckCell('Refunded on', _cckDate(`cck-fd-${pfx}`, ui.refDate || (typeof ccTodayISO === 'function' ? ccTodayISO() : ''), onIn, dis), `cck-fd-${pfx}`);
   } else if (P.phase === 5) {
-    refund = f(P.ret); note = `${f(P.recv)} − ${f(ded)} deduction` + (nkv > 0 ? ` (davon ${f(nkv)} bis zur NK-Abrechnung)` : '');
+    refund = f(P.ret); note = keptNote(P.recv, oth, nkv, ded);
     r3b = _cckCell('Refunded on', k.settled_at ? _cckRo(A.fmtDate(k.settled_at)) : _cckOff);
   } else {
     r3b = _cckCell('Refunded on', _cckOff);
@@ -231,16 +238,20 @@ function ccKautionInput(app, pfx, tid) {
     const bar = $(`cck-bar-${pfx}`); if (bar) { bar.style.width = L.bar[0] + '%'; bar.style.background = L.bar[1]; }
     const cap = $(`cck-cap-${pfx}`); if (cap) cap.textContent = L.cap;
   }
-  if (dIn) {                                           // phase 4
+  if (dIn) {                                           // phase 4 · other reasons + for the NK (B20)
     const recv = _cckNum(k.received);
-    const raw = dIn.value, d = _cckNum(raw);
-    const rv = $(`cck-rv-${pfx}`), rn = $(`cck-rn-${pfx}`);
-    const bad = raw !== '' && (d < 0 || d > recv + 0.005);
+    const d = _cckNum(dIn.value);
     const nkIn = $(`cck-nk-${pfx}`), nk = nkIn ? _cckNum(nkIn.value) : 0;
-    const nkBad = !!nkIn && (nk < 0 || nk > d + 0.005);
-    if (nkIn) nkIn.classList.toggle('cck-err', nkBad);
-    if (rn) { rn.classList.toggle('cck-err', bad || nkBad); rn.textContent = bad ? `Enter a deduction up to ${A.fmt(recv)}` : nkBad ? `Einbehalt für die NK höchstens ${A.fmt(d)} (Teil der Deduction)` : `${A.fmt(recv)} held − ${A.fmt(d)} deduction` + (nk > 0 ? ` (davon ${A.fmt(nk)} bis zur NK-Abrechnung)` : ''); }
-    if (rv) rv.textContent = bad ? '—' : A.fmt(recv - d);
+    const rv = $(`cck-rv-${pfx}`), rn = $(`cck-rn-${pfx}`);
+    const bad = d < 0 || nk < 0 || d + nk > recv + 0.005;
+    dIn.classList.toggle('cck-err', bad);
+    if (nkIn) nkIn.classList.toggle('cck-err', bad);
+    if (rn) {
+      rn.classList.toggle('cck-err', bad);
+      rn.textContent = bad ? `Keep at most ${A.fmt(recv)} in total`
+        : nkIn ? `${A.fmt(recv)} held − ${A.fmt(d)} other − ${A.fmt(nk)} for NK` : `${A.fmt(recv)} held − ${A.fmt(d)} deduction`;
+    }
+    if (rv) rv.textContent = bad ? '—' : A.fmt(recv - d - nk);
   }
   const fd = $(`cck-fd-${pfx}`);
   if (fd && tid) { A.ui[tid] = A.ui[tid] || {}; A.ui[tid].refDate = fd.value; }
@@ -264,10 +275,14 @@ async function ccKautionAct(app, pfx, tid, act) {
     if (k0 && Number(k0.returned) > 0) {
       await A.saveAmounts(tid, _cckNum(k0.received), 0);
       const k = A.map()[tid];
-      if (k && k.id && _cckHasExtra(A) && k.deduction_reason) {
-        const before = k.deduction_reason; k.deduction_reason = null;
-        const { error } = await ccQueueWrite(A.writeKey + tid, () => sbL.from(A.table).update({ deduction_reason: null }).eq('id', k.id));
-        if (error) { k.deduction_reason = before; if (typeof ccSaveFailed === 'function') ccSaveFailed(error, A.failLabel); }
+      const upd = {};
+      if (k && _cckHasExtra(A) && k.deduction_reason) upd.deduction_reason = null;
+      if (k && Number(k.nk_einbehalt) > 0) upd.nk_einbehalt = 0;          // nothing kept for the NK either (B20)
+      if (k && k.id && Object.keys(upd).length) {
+        const before = {}; Object.keys(upd).forEach(key => { before[key] = k[key]; });
+        Object.assign(k, upd);
+        const { error } = await ccQueueWrite(A.writeKey + tid, () => sbL.from(A.table).update(upd).eq('id', k.id));
+        if (error) { Object.assign(k, before); if (typeof ccSaveFailed === 'function') ccSaveFailed(error, A.failLabel); }
       }
     }
     return redraw();
@@ -283,12 +298,14 @@ async function ccKautionAct(app, pfx, tid, act) {
       const nv = sv.value === '' ? null : Number(sv.value);
       if (nv !== cur && (nv === null || nv >= 0)) await A.saveSoll(tid, nv);
     }
-    let returned = _cckNum(k0 && k0.returned);
-    const dIn = $(`cck-d-${pfx}`);
-    if (dIn) {
-      const d = _cckNum(dIn.value);
-      if (dIn.value !== '' && (d < 0 || d > recvNow + 0.005)) { dIn.focus(); return; }
-      returned = Math.round((recvNow - d) * 100) / 100;
+    let returned = _cckNum(k0 && k0.returned), nkNew = null;
+    const dIn = $(`cck-d-${pfx}`), nkIn0 = $(`cck-nk-${pfx}`);
+    if (dIn) {                                          // kept = other reasons + for the NK (B20)
+      const d = _cckNum(dIn.value), nk = nkIn0 ? _cckNum(nkIn0.value) : 0;
+      if (d < 0 || d + nk > recvNow + 0.005) { dIn.focus(); return; }
+      if (nk < 0) { nkIn0.focus(); return; }
+      returned = Math.round((recvNow - d - nk) * 100) / 100;
+      if (nkIn0) nkNew = Math.round(nk * 100) / 100;
     }
     await A.saveAmounts(tid, recvNow, returned);        // memory + database (existing path)
     const k = A.map()[tid];
@@ -299,13 +316,7 @@ async function ccKautionAct(app, pfx, tid, act) {
       if (rd) upd.received_at = rd.value || null;
       if (g)  upd.deduction_reason = g.value.trim() || null;
     }
-    const nkIn = $(`cck-nk-${pfx}`);
-    if (nkIn && Object.prototype.hasOwnProperty.call(k, 'nk_einbehalt')) {      // NK-Einbehalt ≤ deduction
-      const nk = nkIn.value === '' ? 0 : _cckNum(nkIn.value);
-      const dedNow = Math.max(0, recvNow - returned);
-      if (nk < 0 || nk > dedNow + 0.005) { nkIn.focus(); return; }
-      upd.nk_einbehalt = Math.round(nk * 100) / 100;
-    }
+    if (nkNew !== null && Object.prototype.hasOwnProperty.call(k, 'nk_einbehalt')) upd.nk_einbehalt = nkNew;   // Kept · for NK-Abrechnung
     if (act === 'paid') {
       const fd = $(`cck-fd-${pfx}`);
       upd.settled = true;

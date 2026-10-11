@@ -297,7 +297,9 @@ function _srCalc(c, it, rec) {
   const vz = vzOv !== null ? vzOv : (vzIst !== null ? vzIst : (vzSoll || 0));
   const f = { istPartial: vzPartialFlag };
   sum = cxR(sum);
-  const kau = null, einbehalt = 0;
+  const kauAvail = _srEinbehalt(r);                                 // B20: Kaution kept for this NK
+  const kau = kauAvail > 0 ? { amount: kauAvail } : null;
+  const einbehalt = kauAvail > 0 && ((ts && ts.via) || 'kaution') === 'kaution' ? kauAvail : 0;
   const vzMonths = _srVzMonths(mlist, vzIst !== null && (vzOv === null || Math.abs(vzOv - vzIst) < 0.005) ? 'ist' : 'soll', cxR(vz));
   return { lines, sum, vz: cxR(vz), vzSoll, vzIst, vzOv, vzMonths, vzPartial: !!(f && f.istPartial), pre, saldo: cxR(sum - vz),
            tDays, perDays, from, to, per, partial: tDays < perDays, missing, direct, t, apt, ts, kau, einbehalt };
@@ -579,8 +581,21 @@ async function _srWriteWeg(c, rec) {
 }
 
 const _srSign = x => x.missing ? 'm' : String(Math.sign(x.saldo));
+/* Kaution-Einbehalt (B20, Oct 2026): Tenants › Kaution › "Kept · for NK-Abrechnung" (column nk_einbehalt,
+   once the Kaution is settled). It is offset in the tenant's NK-Abrechnung when the letter says "With the Kaution"
+   (the default while it is unused) — only once: an NK already sent with the Kaution for another period has used it.
+   Controlling gets the NK result itself; the Kaution never shows there. */
+function _srEinbehalt(r) {
+  const k = SR.kaution && r && r.tenant_id != null ? SR.kaution[String(r.tenant_id)] : null;
+  const E = k && k.settled ? cxR(Number(k.nk_einbehalt) || 0) : 0;
+  if (!(E > 0)) return 0;
+  const from = String(r.period_from || '').slice(0, 10);
+  const used = (window._src.abr || []).some(a => a && a.kind === 'nk_tenant' && (!a.app || a.app === 'rentals') && a.status !== 'storniert' &&
+    String(a.tenant_id) === String(r.tenant_id) && a.settle_via === 'kaution' && String(a.period_from || '').slice(0, 10) !== from);
+  return used ? 0 : E;
+}
 /* How the result is settled: chosen in the letter, else Kaution when part of it is held back, else transfer */
-const _srViaOf = x => (x.ts && x.ts.via) || 'zahlung';
+const _srViaOf = x => (x.ts && x.ts.via) || (x.kau && x.kau.amount > 0 ? 'kaution' : 'zahlung');
 function _srBig(x, date, days, via) {
   if (x.missing) return '<div class="sr-res sr-res--open"><span><b>Result</b><small>amounts per tenant missing</small></span><strong>—</strong></div>';
   const due = _srAdd(date || cxToday(), days ?? 30);
@@ -791,9 +806,10 @@ async function _srSend(btn) {
   if (x.missing) { stSay('Please enter all amounts first'); return; }
   const l = _srLine(c, it), r = it.r, t = x.t;
   const amount = Math.abs(x.saldo), dir = x.saldo > 0 ? 1 : x.saldo < 0 ? -1 : 0;
-  let via = dir ? _srViaOf(x) : 'zahlung';
-  let amountRec = amount;
-  if (via === 'kaution' && x.einbehalt > 0 && x.saldo > x.einbehalt) { via = 'zahlung'; amountRec = cxR(x.saldo - x.einbehalt); }   // Einbehalt too small → tenant pays the rest
+  // B20: with a Kaution-Einbehalt the result is settled with the Kaution (Nachzahlung, Guthaben or 0 €) and Controlling
+  // gets the NK result itself — the part taken from the Kaution is NK income too (was: only the rest the tenant transfers)
+  const via = x.einbehalt > 0 ? 'kaution' : dir ? _srViaOf(x) : 'zahlung';
+  const amountRec = amount;
   const date = ts.date || cxToday();
   const unit = (it.e && it.e.unit_name) || (x.apt && x.apt.name) || null;
   if (btn) btn.disabled = true;
@@ -1832,6 +1848,7 @@ function _srSetObj(c, st, ti, weg, idx) {
   if (!res.amount || !res.dir) return null;
   const b = st.booking, done = st.k === 'erledigt';
   return Object.assign(base, { state: SR.setEdit === key ? 'edit' : done ? 'settled' : 'open', dir: res.dir, soll: res.amount,
+    sub: base.sub + (res.via === 'kaution' && ti.x && ti.x.einbehalt > 0 ? ' · offset with the Kaution-Einbehalt ' + stEur(ti.x.einbehalt) : ''),   // B20
     ist: b ? cxR(b.amount) : done ? res.amount : null, date: b ? _srD(b.invoice_date) : null,
     note: done && !b && SR.setEdit !== key ? ({ kaution: 'Settled via Kaution', miete: 'Settled with the rent', hausgeld: 'Settled with the Hausgeld' }[res.via] || null) : null });
 }
