@@ -2427,6 +2427,7 @@ async function _rntStaffelConfirmAdd__run(aptId, rid) {
   _rntStaffel[aptId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
   _rntStaffelModalClose();
   _rntRender();
+  if (typeof ccSavedToast === 'function') ccSavedToast('Staffel saved');
 }
 
 async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
@@ -2446,6 +2447,7 @@ async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
   _rntStaffel[pkId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
   _rntStaffelModalClose();
   _rntRender();
+  if (typeof ccSavedToast === 'function') ccSavedToast('Staffel saved');
 }
 
 
@@ -2866,6 +2868,7 @@ function _rntOpenModal(tid) {
 
   document.getElementById('rntModalBody').innerHTML   = _rntModalBodyHTML(rec, isApt);
   document.getElementById('rntModalFooter').innerHTML = _rntModalFooterHTML(rec, allDone);
+  if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('rntModal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -3074,6 +3077,7 @@ function _rntCloseModal() {
   if (modal) { modal._draft = null; modal.classList.remove('open'); }
   document.body.style.overflow = '';
   _rntModalTid = null;
+  if (typeof ccAnchorRestore === 'function') ccAnchorRestore();
 }
 
 function _rntModalOutside(e) {
@@ -3527,11 +3531,16 @@ async function _rntModalSaveProfile(tid) {
       if (!error) return;
       if (rec && beforeRec) Object.keys(update).forEach(k => { rec[k] = beforeRec[k]; });
       _rntRender();
+      if (_rntModalTid === tid && document.getElementById('rntModal')?.classList.contains('open')) _rntOpenModal(tid);   // old values back in the pop-up
       ccSaveFailed(error, 'tenant');
     });
 
-  _rntCloseModal();
+  // Oct 2026: Save → the same pop-up shows the saved values in read view (closes only via X / outside).
+  // Moved back in (no move-out any more) → the tenant lives on the card again, the pop-up closes.
   _rntRender();
+  if (toActive || !rec) _rntCloseModal();
+  else if (_rntModalTid === tid) _rntOpenModal(tid);
+  if (typeof ccSavedToast === 'function') ccSavedToast();
 }
 
 
@@ -3814,6 +3823,7 @@ function _rntOpenModalDraft(draft) {
   if (fread) fread.style.display = 'none';
   if (fedit) fedit.style.display = 'none';
 
+  if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('rntModal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -3862,8 +3872,9 @@ async function _rntModalSaveDraft() {
 
   _rntCloseModal();
   if (window._ccReturnTo) { location.href = window._ccReturnTo; return; }  // came from Settlements → straight back
-  _rntOpenModal(data.id);
+  _rntOpenModal(data.id);                                                    // the new tenant in read view
   _rntRender();
+  if (typeof ccSavedToast === 'function') ccSavedToast('Saved: ' + ([data.first_name, data.last_name].filter(Boolean).join(' ') || 'former tenant'));
 }
 
 async function _rntMarkDone(tid) {

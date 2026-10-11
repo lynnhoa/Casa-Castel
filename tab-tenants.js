@@ -3805,11 +3805,16 @@ async function _tnModalSaveProfile(tid) {
       if (!error) return;
       if (rec && beforeRec) Object.keys(update).forEach(k => { rec[k] = beforeRec[k]; });
       _tnRender();
+      if (_tnModalTid === tid && document.getElementById('tnModal')?.classList.contains('open')) _tnOpenModal(tid);   // old values back in the pop-up
       ccSaveFailed(error, 'tenant');
     });
 
-  _tnCloseModal();
+  // Oct 2026: Save → the same pop-up shows the saved values in read view (closes only via X / outside).
+  // Moved back in (no move-out any more) → the tenant lives on the card again, the pop-up closes.
   _tnRender();
+  if (toActive || !rec) _tnCloseModal();
+  else if (_tnModalTid === tid) _tnOpenModal(tid);
+  if (typeof ccSavedToast === 'function') ccSavedToast();
 }
 
 
@@ -4121,8 +4126,9 @@ async function _tnModalSaveDraft() {
 
   _tnCloseModal();
   if (window._ccReturnTo) { location.href = window._ccReturnTo; return; }   // came from Settlements → straight back
-  _tnOpenModal(data.id);
+  _tnOpenModal(data.id);                                                      // the new tenant in read view
   _tnRender();
+  if (typeof ccSavedToast === 'function') ccSavedToast('Saved: ' + ([data.first_name, data.last_name].filter(Boolean).join(' ') || 'former tenant'));
 }
 
 async function _tnMarkDone(tid) {

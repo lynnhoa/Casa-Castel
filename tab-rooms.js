@@ -1632,6 +1632,7 @@ async function _roomAddSave(btn) {
   }
   _updateRoomsSummary(appRooms);
   if (sbL) await ccSetNewRoomPassword(room.name, 'Login password');   // shown once, as before
+  if (typeof ccSavedToast === 'function') ccSavedToast('Room added');
   if (kOn) _roomSetKitchen(room.name, true, room.id).then(ok => { if (ok) _roomRerenderCard(room.id); });
 }
 
@@ -1784,6 +1785,7 @@ document.getElementById('inventarSave')?.addEventListener('click', async () => {
     }
     _inventarRoomId = null;
     _roomAnchorRestore();
+    if (typeof ccSavedToast === 'function') ccSavedToast();
   }
 });
 
@@ -4450,6 +4452,7 @@ function _roomSheetSave() {
   _roomSheetClose();
   _roomRerenderCard(cur.id);
   _updateRoomsSummary(appRooms);
+  if (typeof ccSavedToast === 'function') ccSavedToast();
   if (!sbL) return;
   ccQueueWrite('room-' + cur.id, () => sbL.from('rooms').update(data).eq('id', cur.id))
     .then(({ error }) => {
@@ -4588,6 +4591,7 @@ function _roomBaseSave() {
   _roomSheetClose();
   _roomRerenderCard(cur.id);
   _updateRoomsSummary(appRooms);
+  if (typeof ccSavedToast === 'function') ccSavedToast();
   if (!sbL) return;
   ccQueueWrite('room-' + cur.id, () => sbL.from('rooms').update(patch).eq('id', cur.id))
     .then(({ error }) => {

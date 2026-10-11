@@ -2142,6 +2142,7 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
   document.getElementById('aptInventarOverlay').classList.remove('open');
   _aptRerenderCard(aptId);
   _aptInventarId = null;
+  if (typeof ccSavedToast === 'function') ccSavedToast();
 });
 
 
