@@ -1308,31 +1308,6 @@ function _roomCardHTML(r) {
       <!-- Übergabeprotokoll: on the tenant card (Tenants · More · Übergabe) -->
     </div>
 
-    <!-- EDIT MODE — only for a NEW room (existing rooms edit per section) -->
-    ${isNew ? `
-    <div class="rc-edit">
-      <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Identity</div>
-        ${editIdentity}
-      </div>
-      <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Mietobjekt</div>
-        ${editMietobjekt}
-      </div>
-      <div class="rc-edit-section">
-        ${editPricing}
-      </div>
-      <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Schlüssel</div>
-        ${editKeys}
-      </div>
-      <div class="rc-edit-footer">
-        <div class="rc-save-row">
-          <button class="rm-btn rm-btn--ghost" onclick="_cancelEdit(this.closest('.rc'))" data-i18n="rooms_cancel">${t('rooms_cancel')}</button>
-          <button class="rm-btn rm-btn--primary cc-save cc-save--create" onclick="_saveCard(this.closest('.rc'))" data-i18n="rooms_save">${t('rooms_save')}</button>
-        </div>
-      </div>
-    </div>` : ''}
   </div>`;
 }
 
@@ -1577,73 +1552,82 @@ async function _saveCard(card) {
 }
 
 
-/* ── ADD NEW ROOM ────────────────────────────────────────── */
-document.getElementById('roomAddBtn')?.addEventListener('click', () => {
-  const list = document.getElementById('roomsList');
-  const tempId = 'new-' + Date.now();
+/* ── ADD NEW ROOM (Oct 2026) ─────────────────────────────────
+   Same sheet as "Edit room", just empty — Room · Mietobjekt · Schlüssel, Cancel · Save.
+   No baselines here: they are set on the card after saving (one place for everything).
+   New room = Vacant, at the end of the list; then the password popup; then the card opens. */
+document.getElementById('roomAddBtn')?.addEventListener('click', () => _roomAddOpen());
 
-  const blank = {
-    id: null, name: '', room_type: 'WG Zimmer', active: true, vacant: false,
-    floor: '', flaeche_m2: null, kitchen_type: 'Geteilte Küche',
-    badezimmer: [], gemeinschaftsraeume: [],
-    monatl_miete: null, mietvertrag_pricing: 'kalt_nk',
-    kurzzeit_pricing: 'pauschal', kurzzeit_kaltmiete: null, kurzzeit_nk: null,
-    mietvertrag_miete: null, kaltmiete: null, nk_pauschale: null,
-    active_price_type: null,
+const _ROOM_ADD_BLANK = {
+  name: '', room_type: 'WG Zimmer', floor: '', flaeche_m2: null, kitchen_type: 'Geteilte Küche',
+  badezimmer: [], gemeinschaftsraeume: [],
+  haustuerschluessel: 1, zimmerschluessel: 1, briefkastenschluessel: 0,
+};
+function _roomAddOpen() {
+  const tmp = '__new__';
+  _roomCardHTML({ ..._ROOM_ADD_BLANK, id: tmp, active: true, vacant: true });   // builds the same edit fragments
+  const f = _roomFrags[tmp]; delete _roomFrags[tmp];
+  if (!f) return;
+  const ov = _roomSheetEnsure();
+  _roomSheetCur = { kind: 'new', id: null, kitchenWas: false };
+  document.getElementById('roomSheetKicker').textContent = 'Rooms · New room';
+  document.getElementById('roomSheetTitle').textContent = 'Add room';
+  document.getElementById('roomSheetSub').textContent = 'Baselines are set on the card after saving';
+  const kitchenSw = `<label class="cg-switch" for="rs-kitchen" style="margin-top:4px"><input type="checkbox" id="rs-kitchen"/><span class="cg-switch__t" aria-hidden="true"></span>
+      <span class="cg-switch__txt"><b>Kitchen rotation</b><small>This room takes turns in the shared kitchen</small></span></label>`;
+  const body = document.getElementById('roomSheetBody');
+  body.innerHTML =
+    `<div class="rc-edit-section rs-sec"><div class="rc-edit-stitle">Room</div>${f.editIdentity}</div>
+     <div class="rc-edit-section rs-sec"><div class="rc-edit-stitle">Mietobjekt</div>${f.editMietobjekt}${kitchenSw}</div>
+     <div class="rc-edit-section rs-sec"><div class="rc-edit-stitle">Schlüssel</div>${f.editKeys}</div>
+     <p class="cg-hint" style="margin:6px 0 0">The new room starts as Vacant. A login password is created and shown once after saving.</p>`;
+  body.scrollTop = 0;
+  const ph = { name: 'e.g. Rome', floor: 'e.g. EG' };
+  Object.keys(ph).forEach(k => body.querySelector(`[data-f="${k}"]`)?.setAttribute('placeholder', ph[k]));
+  document.getElementById('roomSheetFooter').innerHTML =
+    `<button type="button" class="rm-btn--cancel" onclick="_roomSheetClose()">${t('rooms_cancel')}</button>
+     <button type="button" class="rm-btn rm-btn--primary cc-save cc-save--create" style="flex:0 0 140px" onclick="_roomAddSave(this)">${t('rooms_save')}</button>`;
+  if (typeof ccGermanFormatScan === 'function') ccGermanFormatScan(ov);
+  ov.classList.add('open');
+}
+
+async function _roomAddSave(btn) {
+  const cur = _roomSheetCur; if (!cur || cur.kind !== 'new') return;
+  if (btn && btn.disabled) return;                           // a second tap while saving does nothing
+  const scope = document.getElementById('roomSheetBody'); if (!scope) return;
+  const data = _roomCollectFields(scope);
+  data.name = String(data.name || '').trim();
+  const problem = _roomNameProblem(data.name, null);
+  if (problem !== '') { _roomNameError(scope, problem); return; }
+  if (!Array.isArray(data.badezimmer)) data.badezimmer = [];
+  if (!Array.isArray(data.gemeinschaftsraeume)) data.gemeinschaftsraeume = [];
+  const kOn = !!document.getElementById('rs-kitchen')?.checked;
+  const row = {
+    ...data, active: true, vacant: true, inventar: [],
+    mietvertrag_pricing: 'kalt_nk', kurzzeit_pricing: 'pauschal',
+    kaltmiete: null, nk_pauschale: null, kurzzeit_kaltmiete: null, kurzzeit_nk: null,
     kaution_override: false, kaution_default: null,
-    haustuerschluessel: 1, zimmerschluessel: 1, briefkastenschluessel: 0,
-    inventar: [], sort_order: appRooms.length,
   };
-
-  const div = document.createElement('div');
-  div.innerHTML = _roomCardHTML(blank);
-  const card = div.firstElementChild;
-  card.id = tempId;
-  card.classList.add('rc--expanded', 'rc--editing');
-  list.insertBefore(card, list.firstChild);
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  card.querySelector('.rc-input[data-f="name"]')?.focus();
-
-  // Override save for new card
-  card.querySelector('.rm-btn--primary').onclick = async () => {
-    const name = card.querySelector('[data-f="name"]')?.value.trim();
-    if (!name) { alert('Room name is required.'); return; }
-
-    const data = { active: true, vacant: false };
-    card.querySelectorAll('[data-f]').forEach(el => {
-      const key = el.dataset.f;
-      if (el.tagName === 'INPUT' && el.type === 'checkbox') data[key] = el.checked;
-      else if (el.tagName === 'INPUT' && ccIsNumInput(el)) data[key] = el.value !== '' ? parseFloat(el.value) : null;
-      else if (el.classList.contains('rc-stepper__v')) data[key] = parseInt(el.textContent, 10);
-      else data[key] = el.value;
-    });
-    const spaceChips = card.querySelectorAll('[data-chipgroup="gemeinschaftsraeume"] .rc-chip.on');
-    data.gemeinschaftsraeume = [...spaceChips].map(c => c.dataset.space);
-    const badChips = card.querySelectorAll('[data-chipgroup="badezimmer"] .rc-chip.on');
-    data.badezimmer = [...badChips].map(c => c.dataset.bad);
-    const kzToggle = card.querySelector('[data-kztoggle]');
-    if (kzToggle) data.kurzzeit_pricing = kzToggle.checked ? 'kalt_nk' : 'pauschal';
-    const mvToggle = card.querySelector('[data-mvtoggle]');
-    if (mvToggle) data.mietvertrag_pricing = mvToggle.checked ? 'pauschal' : 'kalt_nk';
-    const activePriceType = card.querySelector('.rc-price-toggle__opt.active--mietvertrag, .rc-price-toggle__opt.active--kurzzeit');
-    if (activePriceType) data.active_price_type = activePriceType.dataset.type;
-    data.inventar = [];
-
-    const result = await saveRoom(data);
-    if (!result.ok) { alert('Save failed: ' + result.error); return; }
-    // New room gets a strong random password (shown once to the landlord)
-    if (sbL && name) await ccSetNewRoomPassword(name, 'Login password');
-    card.remove();
-    _renderRoomsList();
-    _initSortable();
-  };
-
-  card.querySelector('.rm-btn--ghost').onclick = () => {
-    card.style.transition = 'opacity .15s';
-    card.style.opacity = '0';
-    setTimeout(() => card.remove(), 150);
-  };
-});
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const result = await saveRoom(row);                        // sort_order = end of the list
+  if (!result.ok) {
+    if (btn) { btn.disabled = false; btn.textContent = t('rooms_save'); }
+    ccToast('Room not added — connection problem. Please try again.', true);
+    return;
+  }
+  const room = result.room;
+  _roomSheetClose();
+  _renderRoomsList();
+  _initSortable();
+  const card = document.querySelector(`.rc[data-id="${room.id}"]`);
+  if (card) {
+    card.classList.add('rc--expanded');
+    requestAnimationFrame(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+  _updateRoomsSummary(appRooms);
+  if (sbL) await ccSetNewRoomPassword(room.name, 'Login password');   // shown once, as before
+  if (kOn) _roomSetKitchen(room.name, true, room.id).then(ok => { if (ok) _roomRerenderCard(room.id); });
+}
 
 
 /* ── DELETE ──────────────────────────────────────────────── */
@@ -4339,19 +4323,61 @@ function _roomSheetDelete() {
   _roomSheetClose();
   if (card) _confirmDelete(card);
 }
-/* Kitchen rotation on / off for one room — with a clear message if it fails */
-function _roomSetKitchen(roomName, on) {
+/* Kitchen rotation on / off for one room — with a clear message if it fails.
+   Order: the kitchen list first; the room's kitchen flag only after the list is saved,
+   so list and flag never disagree. Fails → old list, old flag, card redrawn, "Not saved". */
+function _roomSetKitchen(roomName, on, roomId) {
   const rooms = typeof getKitchenRooms === 'function' ? getKitchenRooms().slice() : [];
   const has = rooms.includes(roomName);
-  if (on === has) return;
+  if (on === has) return Promise.resolve(true);
   if (on) rooms.push(roomName); else rooms.splice(rooms.indexOf(roomName), 1);
-  if (typeof syncKitchenRoomsToSupabase === 'function') {
-    Promise.resolve(syncKitchenRoomsToSupabase(rooms)).catch(e => ccSaveFailed(e, 'kitchen rotation'));
-  }
-  const roomObj = appRooms.find(r => r.name === roomName);
+  const roomObj = roomId != null ? getRoomById(roomId) : appRooms.find(r => r.name === roomName);
+  const flagWas = roomObj ? roomObj.kitchen_enabled : undefined;
   if (roomObj) roomObj.kitchen_enabled = on;
-  if (sbL) sbL.from('rooms').update({ kitchen_enabled: on }).eq('name', roomName)
-    .then(res => { if (res && res.error) ccSaveFailed(res.error, 'kitchen rotation'); });
+  if (typeof syncKitchenRoomsToSupabase !== 'function') return Promise.resolve(true);
+  return Promise.resolve(syncKitchenRoomsToSupabase(rooms))
+    .then(() => {
+      if (!sbL) return true;
+      const id = roomObj ? roomObj.id : null;
+      const q = () => id != null ? sbL.from('rooms').update({ kitchen_enabled: on }).eq('id', id)
+                                 : sbL.from('rooms').update({ kitchen_enabled: on }).eq('name', roomName);
+      return ccQueueWrite('room-' + (id != null ? id : roomName), q)
+        .then(res => { if (res && res.error) ccSaveFailed(res.error, 'kitchen rotation'); return true; });
+    })
+    .catch(e => {
+      if (roomObj) roomObj.kitchen_enabled = flagWas;
+      if (roomObj && document.querySelector(`.rc[data-id="${roomObj.id}"]`)) _roomRerenderCard(roomObj.id);
+      ccSaveFailed(e, 'kitchen rotation');
+      return false;
+    });
+}
+/* Room name problem: red field + one short line under the Name row (no message over the buttons) */
+function _roomNameError(scope, msg) {
+  const inp = scope && scope.querySelector('[data-f="name"]');
+  if (!inp) return;
+  inp.style.borderColor = '#C4705A';
+  const row = inp.closest('.rc-field-row') || inp.parentNode;
+  scope.querySelectorAll('.rs-name-err').forEach(e => e.remove());
+  if (msg) {
+    const m = document.createElement('div');
+    m.className = 'rs-name-err'; m.setAttribute('role', 'alert'); m.textContent = msg;
+    row.after(m);
+  }
+  if (!inp._rsErrWired) {
+    inp._rsErrWired = true;
+    inp.addEventListener('input', () => { inp.style.borderColor = ''; scope.querySelectorAll('.rs-name-err').forEach(e => e.remove()); });
+  }
+  inp.focus();
+}
+/* Name check shared by Edit room and Add room: '' = ok, otherwise the message (null = empty name) */
+function _roomNameProblem(name, ownId) {
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  const other = appRooms.find(r => String(r.id) !== String(ownId) && String(r.name || '').trim().toLowerCase() === lower);
+  if (other) return `A room called ${other.name} already exists.`;
+  const landlordName = (typeof CC_LANDLORD_NAME !== 'undefined' ? CC_LANDLORD_NAME : 'Casa Castel').toLowerCase();
+  if (lower === landlordName) return `"${name}" is reserved for the landlord login.`;
+  return '';
 }
 function _roomSheetSave() {
   const cur = _roomSheetCur; if (!cur) return;
@@ -4361,18 +4387,10 @@ function _roomSheetSave() {
   const oldName = room.name;
   if (cur.kind === 'room') {
     data.name = String(data.name || '').trim();
-    const inp = scope.querySelector('[data-f="name"]');
-    if (!data.name) { if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); } return; }
-    const lower = data.name.toLowerCase();
-    const clash = appRooms.some(r => String(r.id) !== String(cur.id) && String(r.name || '').trim().toLowerCase() === lower);
-    const landlordName = (typeof CC_LANDLORD_NAME !== 'undefined' ? CC_LANDLORD_NAME : 'Casa Castel').toLowerCase();
-    if (clash || lower === landlordName) {
-      if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
-      ccToast(clash ? `A room called "${data.name}" already exists. Choose another name.` : `"${data.name}" is reserved for the landlord login.`, true);
-      return;
-    }
+    const problem = _roomNameProblem(data.name, cur.id);
+    if (problem !== '') { _roomNameError(scope, problem); return; }
     const kOn = !!document.getElementById('rs-kitchen')?.checked;
-    if (kOn !== cur.kitchenWas) _roomSetKitchen(oldName, kOn);   // before a rename: the rename moves the list entry
+    if (kOn !== cur.kitchenWas) _roomSetKitchen(oldName, kOn, cur.id);   // before a rename: the rename moves the list entry
   }
   const renamed = cur.kind === 'room' && data.name !== oldName;
   const before = {};
@@ -4609,6 +4627,7 @@ html .cc-sumline__foot { display:flex; justify-content:center; align-items:cente
 #roomSheetBody .rc-field-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; margin-bottom:12px; }
 #roomSheetBody .rc-input { font-size:16px; min-height:44px; font-weight:400; color:var(--cc-ink); }
 #roomSheetBody .rc-field__label { color:var(--cc-charcoal); }
+.rs-name-err { margin:-4px 0 12px; font-size:12.5px; line-height:1.4; color:#A3402A; }
 `;
   document.head.appendChild(st);
 })();
