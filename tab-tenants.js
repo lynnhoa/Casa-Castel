@@ -2496,19 +2496,54 @@ function _ccPickTenancy(actives) {
 }
 
 /* Move-in is required; overlapping tenancies on one unit need a confirmation */
-function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
+async function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
   const reset = () => { if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; } };
+  const field = f => container && container.querySelector('[' + attr + '="' + f + '"]');
+  // Oct 2026: a wrong date gets a red field + one short line under it (no message over the buttons)
+  const dateErr = (inp, msg) => {
+    if (container) container.querySelectorAll('.cc-date-err').forEach(e => e.remove());
+    if (!inp) { if (typeof ccToast === 'function') ccToast(msg, true); return; }
+    inp.style.borderColor = '#C4705A';
+    const m = document.createElement('div');
+    m.className = 'cc-date-err'; m.setAttribute('role', 'alert'); m.textContent = msg;
+    m.style.cssText = 'grid-column:1/-1;margin:-2px 0 10px;font-size:12.5px;line-height:1.4;color:#A3402A;';
+    // full width under the row with Move-in / Move-out, so the two fields stay side by side
+    let cell = inp.parentElement || inp;
+    const nx = cell.nextElementSibling;
+    if (nx && nx.querySelector && nx.querySelector('input[' + attr + '="mietende"], input[' + attr + '="mietbeginn"], input[' + attr + '="vertragsende"]')) cell = nx;
+    cell.after(m);
+    const clear = () => { inp.style.borderColor = ''; m.remove(); };
+    inp.addEventListener('input', clear, { once: true });
+    inp.addEventListener('change', clear, { once: true });
+  };
+  if (container) container.querySelectorAll('.cc-date-err').forEach(e => e.remove());
   if (!p.mietbeginn) {
-    const inp = container && container.querySelector('[' + attr + '="mietbeginn"]');
+    const inp = field('mietbeginn');
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); inp.placeholder = 'Move-in required'; }
     reset(); return false;
   }
   const a1 = _ccIso(p.mietbeginn), a2 = p.mietende ? _ccIso(p.mietende) : '9999-12-31';
+  const de = iso => (typeof ccFmtDate === 'function' ? ccFmtDate(iso) : iso);
+  // Dates in the right order: move-out / contract end never before the move-in
+  if (p.mietende && a2 < a1) {
+    dateErr(field('mietende'), 'Move-out must be on or after the move-in (' + de(a1) + ').'); reset(); return false;
+  }
+  if (p.vertragsende && _ccIso(p.vertragsende) < a1) {
+    dateErr(field('vertragsende'), 'Contract end must be on or after the move-in (' + de(a1) + ').'); reset(); return false;
+  }
   const hit = (sameUnit || []).find(o => o.id !== selfId && o.status !== 'archived' && o.mietbeginn &&
     _ccIso(o.mietbeginn) <= a2 && (o.mietende ? _ccIso(o.mietende) : '9999-12-31') >= a1);
   if (hit) {
     const nm = nameOf(hit) || 'another tenant';
-    const ok = confirm('This tenancy overlaps with ' + nm + ' on the same unit.\n\nFor a renewal, keep the existing tenant and extend it instead of adding a new one.\n\nSave anyway?');
+    const h = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    let ok;
+    if (typeof ccDialog === 'function') {                // the app's own pop-up (Oct 2026), not the iPhone box
+      ok = (await ccDialog({ icon: 'ti-alert-triangle', title: 'Dates overlap',
+        body: 'This tenancy overlaps with <strong>' + h(nm) + '</strong> on the same unit. For a renewal, keep the existing tenant and extend it instead of adding a new one.',
+        actions: [{ label: 'Cancel', value: false }, { label: 'Save anyway', value: true, primary: true }] })) === true;
+    } else {
+      ok = confirm('This tenancy overlaps with ' + nm + ' on the same unit.\n\nFor a renewal, keep the existing tenant and extend it instead of adding a new one.\n\nSave anyway?');
+    }
     if (!ok) { reset(); return false; }
   }
   return true;
@@ -3428,7 +3463,7 @@ async function _tnSaveNewTenant(rid, roomName) {
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
     return;
   }
-  if (!_ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return;
+  if (!(await _ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return;
 
   const mietende  = p.mietende;
   // Only transition to former if mietende is actually reached (today or past)
@@ -3521,7 +3556,7 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
     return;
   }
-  if (!_ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return;
+  if (!(await _ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return;
 
   // Fix 7: "To former" needs a move-out date (default today, editable) — a former tenant
   // without Auszug would otherwise keep a Soll until the next tenant moves in
@@ -3732,7 +3767,7 @@ async function _tnModalSaveProfile(tid) {
 
   const p     = _tnCollectProfile(body, 'data-mf');
   { const _r = _tnRecords.find(r => r.id === tid);
-    if (_r && !_ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === _r.room), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return; }
+    if (_r && !(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === _r.room), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return; }
   const rec = _tnRecords.find(r => r.id === tid);
   const ctBefore  = rec ? tnContractType(rec) : null;
   const ctype     = p.contract_type || rec?.contract_type || null;
@@ -4101,7 +4136,7 @@ async function _tnModalSaveDraft() {
 
   const btn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
-  if (!_ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === draft.room), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' '))) return;
+  if (!(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === draft.room), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return;
 
   const { data, error } = await sbL.from('tenant_records')
     .insert({
