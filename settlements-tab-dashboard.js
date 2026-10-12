@@ -658,10 +658,10 @@ async function sdLetterData(d) {
     note2: x.lines.some(l => l.split === 'days') ? 'Anteil nach Tagen: Kosten × Nutzungstage (' + x.useDays + ') / Tage des Abrechnungszeitraums (' + x.perDays + '). Nicht umlagefähige Kosten sind nicht enthalten.' : 'Nicht umlagefähige Kosten sind nicht enthalten.',
     extra: null,
   };
-  // One-page letter (Oct 2026): header left only for Casa Castel · costs left · monthly Vorauszahlungen right
+  // One-page letter (Oct 2026): costs left · monthly Vorauszahlungen right.
+  // Header as in the Rentals tab: name left, "Wohnung" + Wohnungsnr right (nothing right without a number);
+  // Casa Castel: "Casa Castel" left, "Zimmer" + room right — both set above in D (brand / unitLabel / unitName).
   const MON = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-  D.brand = casa ? 'Casa Castel' : '';
-  D.unitName = casa ? (d.unit_label || '') : (brand || '');
   D.title = 'Betriebskostenabrechnung ' + dt(x.uf) + ' \u2013 ' + dt(x.ut);
   D.facts1 = [[unit, casa ? (d.unit_label || '') : (addr[0] || brand), casa ? 'Casa Castel \u00b7 ' + (addr[0] || '') : (addr[1] || '')],
               ['Zeitraum', dt(x.uf) + ' \u2013 ' + dt(x.ut), x.partial ? x.useDays + ' von ' + x.perDays + ' Tagen' : x.perDays + ' Tage'],
