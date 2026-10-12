@@ -4475,11 +4475,18 @@ function _roomSheetSave() {
 /* ── BASELINE SHEET: one contract type at a time (Oct 2026) ─────────────────── */
 var _RC_BASE_LBL = { kurzzeit: 'Kurzzeit', jahres: 'Jahresvertrag', mietvertrag: 'Mietvertrag' };
 let _roomBaseCur = null;
-function _rbNum(id) {   // German or plain input: 1.300,00 · 1300,5 · 1300.50
-  let v = String(document.getElementById(id)?.value ?? '').trim().replace(/[\s€]/g, '');
+function _rbNum(id) {   // #1 (Oct 2026): the app's German reader — 1.950 · 1.950,00 · 1950,5 · 850.50 (was: 1.950 → 1,95)
+  const v = String(document.getElementById(id)?.value ?? '').trim();
   if (!v) return null;
-  if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
-  const n = parseFloat(v); return isNaN(n) ? null : Math.round(n * 100) / 100;
+  let n;
+  if (typeof ccParseEUR === 'function') n = ccParseEUR(v);
+  else {                                                   // same rule if the reader is missing
+    let s = v.replace(/[\s€\u00a0\u202f]/g, '');
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+    n = s === '' ? null : Number(s);
+  }
+  return n === null || !isFinite(n) ? null : Math.round(n * 100) / 100;
 }
 function _rbField(id, label, val) {
   return `<div class="rb-f"><label class="rb-lbl" for="${id}">${label}</label>

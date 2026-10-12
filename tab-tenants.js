@@ -2247,11 +2247,18 @@ async function _tnMhDelete(id, roomName) {
    Below the form: all planned and past changes with their buttons (Adjusted · Skip · Informed).
 ══════════════════════════════════════════════════════════════ */
 const _tnCR = {};   // tid → { reason, mode } while the sheet is open
-function _tnCrNum(id) {
-  let v = String(document.getElementById(id)?.value ?? '').trim().replace(/[\s€]/g, '');
+function _tnCrNum(id) {   // #1 (Oct 2026): the app's German reader — 1.050 · 1.050,00 · 650,5 · 650.50 (was: 1.050 → 1,05)
+  const v = String(document.getElementById(id)?.value ?? '').trim();
   if (!v) return null;
-  if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
-  const n = parseFloat(v); return isNaN(n) ? null : Math.round(n * 100) / 100;
+  let n;
+  if (typeof ccParseEUR === 'function') n = ccParseEUR(v);
+  else {                                                   // same rule if the reader is missing
+    let s = v.replace(/[\s€\u00a0\u202f]/g, '');
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+    n = s === '' ? null : Number(s);
+  }
+  return n === null || !isFinite(n) ? null : Math.round(n * 100) / 100;
 }
 function _tnCrDe(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }); }
 function _tnCrNow(rec) {
