@@ -607,7 +607,9 @@ function ccDraftSnapshot(root) {
   root.querySelectorAll('[data-val]').forEach(el => {
     if (_ccIsActive(el)) { const sel = _ccOptSelector(el); if (sel) actives.push(sel); }
   });
-  return { fields, radios, modes, actives, states };
+  // Oct 2026: which fields still follow the rule (data-auto, e.g. the Kaution) — restored as such
+  const autos = [...root.querySelectorAll('input[id][data-auto], textarea[id][data-auto], select[id][data-auto]')].map(el => el.id);
+  return { fields, radios, modes, actives, states, autos };
 }
 function ccDraftSave(key, root, meta) {
   if (!root || !meta) return;
@@ -679,6 +681,19 @@ async function ccDraftApply(root, d) {
       if (r && !r.checked) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); }
     } catch (e) {}
   });
+  // Oct 2026: a field that followed the rule (Kaution …) keeps following it; one you typed stays as typed.
+  // Drafts saved before this update have no list → unchanged behaviour.
+  if (Array.isArray(d.autos)) {
+    const auto = new Set(d.autos);
+    Object.keys(d.fields || {}).forEach(id => {
+      const el = document.getElementById(id); if (!own(el)) return;
+      if (auto.has(id)) el.setAttribute('data-auto', '1'); else el.removeAttribute('data-auto');
+    });
+    // recalculate from the restored rent / dates (each only acts on its own open generator)
+    ['ccgUpdate', '_aptKzUpdateKaution', '_aptGwUpdateKaution'].forEach(fn => {
+      try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
+    });
+  }
 }
 
 

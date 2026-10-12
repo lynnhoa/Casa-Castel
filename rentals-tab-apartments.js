@@ -2789,8 +2789,14 @@ function _aptSetupFlow(type, apt) {
         inp.value = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt: m.kalt, nk: m.nk, rec: a2.pricing }).amount;
       }
     } };
+  // Oct 2026: a new contract — the Kaution follows the Kaltmiete typed here (3× Kalt or the card's individual Kaution);
+  // only your own typing stops it. Renewal / existing tenant: ccfSetupGenerator sets their Kaution and stops it.
   const mk = document.getElementById('apt-mv-kaution');
-  if (mk && !mk.hasAttribute('data-auto') && !mk.value) { mk.setAttribute('data-auto', '1'); mk.addEventListener('input', () => mk.removeAttribute('data-auto')); }
+  if (mk && !mk._ccAutoWired) {
+    mk._ccAutoWired = true;
+    mk.setAttribute('data-auto', '1');
+    mk.addEventListener('input', e => { if (e.isTrusted) mk.removeAttribute('data-auto'); });
+  }
   ccfSetupGenerator({ body: 'aptContractBody', footer: 'aptContractFooter',
     draftId: type === 'kurzzeit' ? 'aptKzPdfBtn' : isGw ? 'aptGwPdfBtn' : 'aptMvPdfBtn', mode: 'contract', unit, renew: rn,
     fields: f, switchTo: rn && rn.tid ? (type === 'kurzzeit' ? 'mietvertrag' : 'kurzzeit') : null, miete,
