@@ -1008,7 +1008,7 @@ button.st-need__r { cursor: pointer; }
 .st-need__i.is-red { background: #F7E4DC; color: #8A3B22; } .st-need__i.is-gold { background: #FAEEDA; color: #7A4A12; } .st-need__i.is-calm { background: #F5EFE6; color: #8A6535; }
 .st-need__t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .st-need__t b { font-size: 14px; font-weight: 500; color: var(--cx-ink); }
-.st-need__t span { font-size: 12px; color: var(--cx-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-need__t span { font-size: 12px; color: var(--cx-mut); white-space: normal; overflow-wrap: break-word; }   /* Oct 2026: wraps, never cut with … */
 
 /* Dashboard: the cute button (C4 · butter house) + area cards */
 .sd-c4 { width: 100%; height: 58px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 16px; border: .5px solid #EFDCA6;
@@ -1260,7 +1260,7 @@ button.st-sg__r { cursor: pointer; }
 .sc-lfold { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border: .5px solid var(--cx-rule); border-radius: 10px; background: #fff; font-family: inherit; text-align: left; cursor: pointer; }
 .sc-lfold span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sc-lfold b { font-size: 13px; font-weight: 500; color: var(--cx-ink); }
-.sc-lfold small { font-size: 11px; color: var(--cx-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-lfold small { font-size: 11px; color: var(--cx-mut); white-space: normal; overflow-wrap: break-word; }   /* Oct 2026: wraps, never cut with … */
 .sc-lfold i { color: var(--cx-sub); }
 
 /* ── Money with the WEG (Oct 2026): red while open · green once settled ── */

@@ -109,7 +109,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     objektAdresse:   apt.adresse     || '',
     objektPLZOrt:    apt.plz_ort     || '',
     gerichtsstand:   apt.gerichtsstand || '',
-    unterschriftOrt: apt.unterschrift_ort || '',
+    unterschriftOrt: apt.unterschrift_ort || (s && s.unterschrift_ort) || '',   // Oct 2026: else Profile › Unterzeichnung
     footerAdresse:   apt.adresse
                        ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '')
                        : (apt.plz_ort || ''),
@@ -237,12 +237,12 @@ function _renderGewerbeMietvertragHTML(d) {
 
   const sigBlock = () => `<div class="sig-block">
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
+      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${[d.unterschriftOrt, d.unterzeichnungsDatum].filter(Boolean).join(', ')}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
       <hr class="sig-line"/>
       <div class="sig-role">Vermieter</div><div class="sig-name">${d.vermieterSig}</div>
     </div>
     <div class="sig-col">
-      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
+      ${d.unterzeichnungsDatum ? `<div class="sig-prefill">${[d.unterschriftOrt, d.unterzeichnungsDatum].filter(Boolean).join(', ')}</div><div class="sig-write-gap"></div>` : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
       <hr class="sig-line"/>
       <div class="sig-role">Mieter${(d.hasMieter2||d.hasMieter3)?' 1':''}</div><div class="sig-name">${d.mieterName}</div>
       ${d.hasMieter2 ? `

@@ -1027,7 +1027,7 @@ function _tnContractDates(c) {
   if (c.end) return _ccFmtD(c.start) + ' \u2013 ' + _ccFmtD(c.end);
   return (c.start > _ccTodayIso() ? 'from ' : 'since ') + _ccFmtD(c.start);
 }
-function _tnContractSub(c) { return [_tnTypeWord(c.type), _tnContractDates(c)].filter(Boolean).join(' \u00b7 '); }
+function _tnContractSub(c) { const w = _tnTypeWord(c.type); return [w && w !== c.name ? w : '', _tnContractDates(c)].filter(Boolean).join(' \u00b7 '); }   // Oct 2026: never "Mietvertrag · Mietvertrag"
 function _tnAmtShort(a) {
   if (!a) return '';
   return a.mode === 'pauschal' ? 'pauschal' : _tnFmtEUR(a.kalt).replace('\u00a0\u20ac', '') + ' + ' + _tnFmtEUR(a.nk).replace('\u00a0\u20ac', '');
@@ -1463,6 +1463,7 @@ async function _tnLoad() {
     typeof ccfLoadReadings === 'function' ? ccfLoadReadings(tids) : Promise.resolve(), // Zählerstände (meter_readings)
     _tnLoadPwDates(),                                                                  // when each room's tenant-app password was set
     _tnLoadPwReqs(),                                                                   // the tenants' password requests (status on the card)
+    _tnLoadLogins(),                                                                   // Oct 2026: who logged in (status on the card, automatic)
     sbL.from('casa_mieterhoehung_history').select('*').in('room', rooms).order('effective_date', { ascending: false })
       .then(r => r, () => ({ data: [] })),                                             // Mieterhöhungen (table missing → none)
   ]);
@@ -1542,11 +1543,11 @@ function _tnAppRowHTML(room, rec) {
   const actions = st.key === 'future' ? (st.review ? btn('Review request', 'ccPwRequestsOpen()', true) : '')
     : [st.review ? btn('Review request', 'ccPwRequestsOpen()', true) : '',
        st.canGive ? btn('Given \u2713', `_tnPwGiven('${tid}')`) : '',
-       copy, btn('Reset', `_tnPwReset('${r}','${tid}')`)].join('');
+       st.noPw ? btn('Create password', `_tnPwReset('${r}','${tid}')`, true) : copy + btn('Reset', `_tnPwReset('${r}','${tid}')`)].join('');
   return `<div class="tn-app tn-app--${st.tone}">
     <div class="tn-app-top"><i class="ti ti-key" aria-hidden="true"></i><span class="tn-app-lbl">App</span><span class="tn-app-st">${st.text}</span></div>
     ${st.key === 'future' ? '' : `<div class="tn-app-pw">Password${pw}</div>`}
-    ${st.sub ? `<div class="tn-app-sub">${st.sub.replace('{name}', name)}</div>` : ''}
+    ${st.sub ? `<div class="tn-app-sub">${st.sub.split('{name}').join(name)}</div>` : ''}
     ${actions ? `<div class="tn-app-btns">${actions}</div>` : ''}
   </div>`;
 }
@@ -1555,6 +1556,16 @@ function _tnAppRowHTML(room, rec) {
    Real events only: a request the tenant made (sent / logged in), or you tapped "Given ✓".
    Test passwords and resets never count as "given". One password per room. */
 let _tnPwReqs = [];
+/* Oct 2026: real logins (room_logins, written by the tenant app via room_seen) — null while the table is missing */
+let _tnLogins = null;
+async function _tnLoadLogins() {
+  try {
+    const { data, error } = await sbL.from('room_logins').select('*');
+    if (error) { _tnLogins = null; return; }
+    _tnLogins = {};
+    (data || []).forEach(r => { if (r.room_key) _tnLogins[r.room_key] = r; });
+  } catch (e) { _tnLogins = null; }
+}
 async function _tnLoadPwReqs() {
   try {
     const { data, error } = await sbL.rpc('pw_requests_list', { p_days: 3650 });
@@ -1568,6 +1579,22 @@ function _tnPwStatus(room, rec) {
   const pend = (typeof _pwaOpen === 'function' ? _pwaOpen() : _tnPwReqs.filter(q => q.status === 'pending')).filter(q => q.room === room);
   if (!mb || mb > today) return { key: 'future', tone: 'grey', text: 'from the move-in day' + (mb ? ' ' + _ccFmtD(mb) : ''), review: pend.length > 0 };
   if (pend.length) return { key: 'request', tone: 'amber', text: 'Request waiting', review: true, sub: 'Decide in the request: send the same password, or a new one.' };
+  // Oct 2026 · automatic status (once room_logins exists): no password → logged in → not logged in yet. No "Given ✓" any more.
+  if (_tnLogins) {
+    const pwAt0 = _tnPwAt[room] ? String(_tnPwAt[room]) : null;
+    if (_tnPwLoaded && !pwAt0) return { key: 'nopw', tone: 'amber', text: 'No password yet', noPw: true,
+      sub: '{name} cannot log in yet — Create password, then give it to {name}.' };
+    const L = _tnLogins[String(room || '').trim().toLowerCase()];
+    const seenAt = L && L.last_seen_at ? String(L.last_seen_at) : null;
+    if (seenAt && day(seenAt) >= mb && (!pwAt0 || seenAt >= pwAt0))
+      return { key: 'login', tone: 'green', text: 'Logged in \u2713 \u00b7 last seen ' + d(seenAt) };
+    const sent = _tnPwReqs.filter(q => q.room === room && q.status === 'approved' && day(q.created_at) >= _ccAddDaysIso(mb, -45))
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+    if (sent && (!pwAt0 || String(sent.created_at) >= pwAt0.slice(0, 10)))
+      return { key: 'sent', tone: 'blue', text: 'Password sent ' + d(sent.created_at) + ' \u00b7 not logged in yet' };
+    return { key: 'none', tone: 'amber', text: 'Not logged in yet',
+      sub: '{name} logs in with the room password — or asks for it on the login page (\u201cFirst time here?\u201d).' };
+  }
   const since = _ccAddDaysIso(mb, -45);   // a request made shortly before moving in counts too
   const reqs = _tnPwReqs.filter(q => q.room === room && ['done', 'approved', 'expired'].includes(q.status) && day(q.created_at) >= since)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));

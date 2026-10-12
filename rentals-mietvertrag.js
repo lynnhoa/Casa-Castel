@@ -105,7 +105,7 @@ function _buildRentalMietvertragData(room, s, {
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    room.gerichtsstand    || '',
-    unterschriftOrt:  room.unterschrift_ort || '',
+    unterschriftOrt:  room.unterschrift_ort || (s && s.unterschrift_ort) || '',   // Oct 2026: else Profile › Unterzeichnung
     energieklasse:     room.energieklasse     || '',
     endenergiebedarf:  room.endenergiebedarf  || '',
     energieausweisart: room.energieausweisart || '',
@@ -388,7 +388,7 @@ function _renderRentalMietvertragHTML(d) {
   const cl  = (num,title,body,first) => `<div class="clause${first?' clause--first':''}"><div class="clause__title">\u00a7\u00a0${num}\u2002${title}</div><div class="clause__body">${body}</div></div>`;
 
   const sigDate = d.unterzeichnungsDatum
-    ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>`
+    ? `<div class="sig-prefill">${[d.unterschriftOrt, d.unterzeichnungsDatum].filter(Boolean).join(', ')}</div><div class="sig-write-gap"></div>`
     : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>';
 
   const sigBlock = () => `<div class="sig-block">

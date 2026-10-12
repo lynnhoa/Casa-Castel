@@ -44,7 +44,8 @@ function ccRoomPwInline(room) {
 function ccPwApply() {
   document.querySelectorAll('[data-cc-pw]').forEach(el => {
     const pw = CC_ROOM_PW[el.dataset.ccPw];
-    el.textContent = pw || 'older password, not shown';
+    const anyPw = typeof _tnPwAt === 'undefined' || !_tnPwAt || !!_tnPwAt[el.dataset.ccPw];   // Oct 2026: a room may have none at all
+    el.textContent = pw || (anyPw ? 'older password, not shown' : 'no password yet');
     el.classList.toggle('pwa-pw--none', !pw);
   });
   document.querySelectorAll('[data-cc-pw-copy]').forEach(b => { b.style.display = CC_ROOM_PW[b.dataset.ccPwCopy] ? '' : 'none'; });

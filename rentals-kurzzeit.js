@@ -140,7 +140,7 @@ function _buildRentalKurzzeitData(apt, s, {
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    apt.gerichtsstand    || '',
-    unterschriftOrt:  apt.unterschrift_ort || '',
+    unterschriftOrt:  apt.unterschrift_ort || (s && s.unterschrift_ort) || '',   // Oct 2026: else Profile › Unterzeichnung
     mieterName,
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
@@ -197,6 +197,10 @@ function _buildRentalKurzzeitData(apt, s, {
 
 
 /* ── PDF HTML RENDERER ────────────────────────────────────────────────────── */
+
+/* Oct 2026: a partial month is shown as "(16 Tage, Basis November)" like Casa Castel — a rounded day price never adds up to the cent */
+const _KZ_MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+function _kzMonat(de) { const m = String(de || '').match(/^\d{1,2}\.(\d{1,2})\.\d{4}$/); return m ? _KZ_MONATE[Number(m[1]) - 1] : ''; }
 
 function _renderRentalKurzzeitHTML(d) {
 
@@ -270,7 +274,7 @@ function _renderRentalKurzzeitHTML(d) {
   const hasMultiMieter = d.hasMieter2 || d.hasMieter3;
 
   const sigDate = d.unterzeichnungsDatum
-    ? `<div class="sig-prefill">${d.unterschriftOrt}, ${d.unterzeichnungsDatum}</div><div class="sig-write-gap"></div>`
+    ? `<div class="sig-prefill">${[d.unterschriftOrt, d.unterzeichnungsDatum].filter(Boolean).join(', ')}</div><div class="sig-write-gap"></div>`
     : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>';
 
   const sigBlock = () => `<div class="sig-block">
@@ -328,8 +332,8 @@ function _renderRentalKurzzeitHTML(d) {
   const mieteTopBlock = `
     ${sec('Mietzeit',false,false)}
     ${kv('Mietbeginn',d.mietbeginn||'\u2014')}${kv('Mietende',d.mietende||'\u2014')}
-    ${d.ersterMonatAnteilig ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage \u00d7 ' + eur(d.ersterMonatTagespreis) + '/Tag)') : ''}
-    ${d.letzterMonatAnteilig ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage \u00d7 ' + eur(d.letzterMonatTagespreis) + '/Tag)') : ''}
+    ${d.ersterMonatAnteilig ? kv('Anteil erster Monat', eur(d.ersterMonatBetrag) + '\u2002(' + d.ersterMonatTage + ' Tage, Basis ' + _kzMonat(d.mietbeginn) + ')') : ''}
+    ${d.letzterMonatAnteilig ? kv('Anteil letzter Monat', eur(d.letzterMonatBetrag) + '\u2002(' + d.letzterMonatTage + ' Tage, Basis ' + _kzMonat(d.mietende) + ')') : ''}
     ${sec('Miete',true,false)}
     ${d.kzMode === 'kalt_nk'
       ? kv('Kaltmiete', eur(d.kzKaltmiete) + '\u2002/ Monat') + kv('NK-Vorauszahlung', eur(d.kzNk) + '\u2002/ Monat')

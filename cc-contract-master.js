@@ -292,7 +292,7 @@ function partTwo(d) {
     + `<p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel – ${esc(d.zimmerName)} – Miete Monat Jahr / Kaution.</p>` });
   const intro = d.pausch
     ? 'In der monatlichen Pauschalmiete sind sämtliche nachfolgenden Betriebskosten (§§\u00a01, 2 BetrKV) bereits enthalten. Eine gesonderte Umlage oder Nachforderung erfolgt nicht; die Auflistung dient der Transparenz.'
-    : 'Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.';
+    : 'Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Die Betriebskosten des Abrechnungszeitraums werden durch die Summe der von allen Mietern bewohnten Monate geteilt (Ein- und Auszugsmonat tageweise); der Mieter trägt diesen einheitlichen Betrag für jeden Monat seiner Mietzeit.';
   b.push(sec('Betriebskosten gem. §§\u00a01, 2 BetrKV', true), { html: `<p class="nk-intro">${intro}</p>` },
     { html: `<div class="nk-grid">${NK_ITEMS.map(i => `<div class="nk-item">${i}</div>`).join('')}<div class="nk-item nk-item--full">Hauswart / sonstige anfallende Betriebskosten i.\u202fs.\u202fv. §\u00a02 Nr.\u00a017 BetrKV</div></div>` },
     { html: '<p class="nk-intro nk-note">Winterdienst wird grundsätzlich vom Mieter erledigt. Unter Umständen wird dieser gelegentlich organisiert, sofern nicht erledigt, wird dieser in den Nebenkosten berücksichtigt.</p>' });
@@ -351,7 +351,7 @@ function partThree(d) {
     C('16', 'Energieausweis (§\u00a016a GEG)', `Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Energieeffizienzklasse: ${esc(d.energieklasse) || '—'}. Endenergiebedarf: ${d.endenergiebedarf ? esc(d.endenergiebedarf) : '—'}. Art des Ausweises: ${esc(d.energieausweisart) || '—'}.`);
 
   const sigCol = (role, name) => `<div class="sig-col">
-      ${d.sigDate ? `<div class="sig-prefill">${esc(d.unterschriftOrt)}, ${d.sigDate}</div><div class="sig-write-gap"></div>`
+      ${d.sigDate ? `<div class="sig-prefill">${[esc(d.unterschriftOrt), d.sigDate].filter(Boolean).join(', ')}</div><div class="sig-write-gap"></div>`
                   : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
       <hr class="sig-line"/><div class="sig-role">${role}</div><div class="sig-name">${esc(name)}</div></div>`;
   b.push({ html: `<div class="sigwrap"><div class="comment-label">Sonstige Anmerkungen</div>${'<div class="comment-line"></div>'.repeat(5)}
