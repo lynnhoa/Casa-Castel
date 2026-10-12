@@ -1323,6 +1323,10 @@ function _bindAllCards() {
 /* ── CARD INTERACTIONS ───────────────────────────────────── */
 function _toggleCard(card) {
   if (card.classList.contains('rc--editing')) return;
+  if (card.classList.contains('rc--expanded') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('rc--expanded'));
+    return;
+  }
   card.classList.toggle('rc--expanded');
   // When expanding: scroll card top into view just below the sticky nav
   if (card.classList.contains('rc--expanded')) {

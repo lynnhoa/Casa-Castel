@@ -438,3 +438,43 @@ window.ccDialog = function (opts) {
   });
 };
 }
+
+/* ── KEEP PLACE (Oct 2026) ─────────────────────────────────────
+   A card that closes (or a list that redraws) keeps its header exactly where it is on screen.
+   Without this the page gets shorter, the phone snaps back and the header jumps (lower cards).
+   mutate() does the change (class toggle or redraw) · find() returns the header afterwards.
+   A spacer at the end fills the missing height and shrinks away as soon as you scroll up.   */
+function ccKeepPlace(el, mutate, find) {
+  if (typeof mutate !== 'function') return;
+  if (!el || !el.isConnected) return mutate();
+  const before = el.getBoundingClientRect().top;
+  const res = mutate();
+  const now = (typeof find === 'function' ? find() : el) || null;
+  if (!now || !now.isConnected) return res;
+  const shift = now.getBoundingClientRect().top - before;          // > 0 → the page was pulled back
+  if (Math.abs(shift) < 1) return res;
+  let sp = document.getElementById('ccEndSpace');
+  if (!sp) { sp = document.createElement('div'); sp.id = 'ccEndSpace'; sp.setAttribute('aria-hidden', 'true'); sp.style.cssText = 'height:0;pointer-events:none;'; document.body.appendChild(sp); }
+  const target = Math.max(0, window.scrollY + shift);
+  const need = Math.ceil(target + window.innerHeight - document.documentElement.scrollHeight);
+  if (need > 0) sp.style.height = ((parseFloat(sp.style.height) || 0) + need) + 'px';
+  try { window.scrollTo({ top: target, behavior: 'instant' }); } catch (e) { window.scrollTo(0, target); }
+  _ccEndSpaceWatch();
+  return res;
+}
+let _ccEndWatching = false;
+function _ccEndSpaceWatch() {
+  if (_ccEndWatching) return;
+  _ccEndWatching = true;
+  const trim = () => {
+    const sp = document.getElementById('ccEndSpace'), h = sp ? (parseFloat(sp.style.height) || 0) : 0;
+    if (!h) return stop();
+    const content = document.documentElement.scrollHeight - h;     // the page without the spacer
+    const need = Math.max(0, Math.ceil(window.scrollY + window.innerHeight - content));
+    if (need < h) sp.style.height = need + 'px';
+    if (!need) stop();
+  };
+  const stop = () => { window.removeEventListener('scroll', trim); window.removeEventListener('resize', trim); _ccEndWatching = false; };
+  window.addEventListener('scroll', trim, { passive: true });
+  window.addEventListener('resize', trim, { passive: true });
+}

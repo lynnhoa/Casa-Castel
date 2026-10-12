@@ -612,6 +612,10 @@ function _pkCardHTML(p) {
 
 /* ── CARD INTERACTIONS ───────────────────────────────────── */
 function _pkToggle(card) {
+  if (card.classList.contains('pk--open') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('pk--open'));
+    return;
+  }
   card.classList.toggle('pk--open');
   if (card.classList.contains('pk--open')) {
     requestAnimationFrame(() => {

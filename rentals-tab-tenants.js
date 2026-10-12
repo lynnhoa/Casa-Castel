@@ -3144,6 +3144,11 @@ function _rntModalOutside(e) {
 function _rntToggleCard(rid) {
   const card = document.getElementById('tc-' + rid);
   if (!card) return;
+  if (card.classList.contains('open') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('open'));
+    _rntOpenCards.delete('tc-' + rid);
+    return;
+  }
   card.classList.toggle('open');
   if (card.classList.contains('open')) {
     _rntOpenCards.add('tc-' + rid);

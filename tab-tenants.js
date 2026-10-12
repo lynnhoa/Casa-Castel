@@ -3358,6 +3358,11 @@ function _tnModalOutside(e) {
 function _tnToggleCard(id) {
   const card = document.getElementById(id);
   if (!card) return;
+  if (card.classList.contains('open') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('open'));
+    _tnOpenCards.delete(id);
+    return;
+  }
   card.classList.toggle('open');
   if (card.classList.contains('open')) {
     _tnOpenCards.add(id);

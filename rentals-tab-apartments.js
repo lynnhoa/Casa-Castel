@@ -1407,6 +1407,10 @@ function _groupZaehler(zaehler) {
 
 /* ── CARD INTERACTIONS ───────────────────────────────────── */
 function _aptToggle(card) {
+  if (card.classList.contains('apt--open') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('apt--open'));
+    return;
+  }
   card.classList.toggle('apt--open');
   if (card.classList.contains('apt--open')) {
     requestAnimationFrame(() => {

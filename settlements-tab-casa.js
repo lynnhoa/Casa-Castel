@@ -588,7 +588,12 @@ function scRenderModal() {
   else if (m.view === 'extra') inner = scExtraView(M, m);
   else if (m.view === 'sumTen') inner = scSumTen(M);
   else if (m.view === 'sumHg') inner = scSumHg(M);
+  // Oct 2026: a redraw of the SAME pop-up (fold, edit, settle) keeps its scroll position — a new pop-up starts at the top
+  const viewKey = m.view + '|' + (m.tid || m.key || m.id || '');
+  const oldBody = h.querySelector('.srm__b'), keep = oldBody && h._scViewKey === viewKey ? oldBody.scrollTop : 0;
   h.innerHTML = '<div class="srm" role="dialog" aria-label="NK-Abrechnung Casa Castel"><div class="srm__bg" data-sc="close"></div><div class="srm__win sc-win">' + inner + '</div></div>';
+  h._scViewKey = viewKey;
+  if (keep) { const nb = h.querySelector('.srm__b'); if (nb) nb.scrollTop = keep; }
   document.body.classList.add('st-panel-open');
 }
 const scHead = (t, s, back, pre) => '<div class="srm__h"><div class="srm__ht">' + (back ? '<button class="srm__back" data-sc="' + back + '"><i class="ti ti-chevron-left" aria-hidden="true"></i> Back</button>' : '') +
