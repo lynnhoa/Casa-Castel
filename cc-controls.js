@@ -459,8 +459,31 @@ function ccKeepPlace(el, mutate, find) {
   const need = Math.ceil(target + window.innerHeight - document.documentElement.scrollHeight);
   if (need > 0) sp.style.height = ((parseFloat(sp.style.height) || 0) + need) + 'px';
   try { window.scrollTo({ top: target, behavior: 'instant' }); } catch (e) { window.scrollTo(0, target); }
-  _ccEndSpaceWatch();
+  if (need > 0) _ccGlideToEnd(); else _ccEndSpaceWatch();   // Oct 2026 (B): at the end of the list the page then glides down — no empty space left
   return res;
+}
+/* The page glides (~0.35 s) from the kept place to its natural end; the spacer shrinks with it.
+   A touch / wheel during the glide stops it (then the spacer shrinks as you scroll).          */
+function _ccGlideToEnd() {
+  const sp = document.getElementById('ccEndSpace'); if (!sp) return;
+  const from = window.scrollY, spH = parseFloat(sp.style.height) || 0;
+  const content = document.documentElement.scrollHeight - spH;              // the page without the spacer
+  const to = Math.max(0, Math.min(from, content - window.innerHeight));
+  if (from - to < 1) { sp.style.height = '0px'; return; }
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  window.addEventListener('touchstart', stop, { once: true, passive: true });
+  window.addEventListener('wheel', stop, { once: true, passive: true });
+  const t0 = performance.now(), dur = Math.min(550, 280 + (from - to) * 0.5), ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = now => {
+    if (stopped) { _ccEndSpaceWatch(); return; }
+    const k = Math.min(1, (now - t0) / dur), y = from + (to - from) * ease(k);
+    try { window.scrollTo({ top: y, behavior: 'instant' }); } catch (e) { window.scrollTo(0, y); }
+    sp.style.height = Math.max(0, Math.ceil(y + window.innerHeight - content)) + 'px';
+    if (k < 1) requestAnimationFrame(step);
+    else { sp.style.height = '0px'; window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }
+  };
+  requestAnimationFrame(step);
 }
 let _ccEndWatching = false;
 function _ccEndSpaceWatch() {
