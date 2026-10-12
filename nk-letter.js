@@ -99,6 +99,7 @@ const NK_LETTER_CSS = `
     .two__l { flex:1 1 58%; min-width:0; } .two__r { flex:0 0 36%; }
     .two .nk td { padding:3.2px 0; }
     .two .nk tr.s td { padding-top:9px; border-top:0.6px solid #d9d0c3; }
+    .two .nk tr:nth-last-child(2) td { padding-bottom:9px; }
     .calc { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#8c8379; margin-left:10px; }
     .note2 { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#6f675e; line-height:1.55; margin-top:14px; }
   `;

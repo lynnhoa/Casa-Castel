@@ -1403,7 +1403,7 @@ button.st-sg__r { cursor: pointer; }
 .mx-tg:disabled { cursor:default; }
 .mx-pill { display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; border:0; border-radius:11px; padding:7px 10px; background:#F8EDD6; color:#7A5A22; font:500 12px 'Inter',system-ui,sans-serif; text-decoration:none; white-space:nowrap; cursor:pointer; }
 .mx-pill:disabled { opacity:.5; }
-.mx-date { height:36px; border:.5px solid #DDD5C9; border-radius:11px; background:#F3EEE6; padding:0 8px; font:500 13px 'Inter',system-ui,sans-serif; color:#3D3027; max-width:138px; }
+.mx-date { height:36px; border:.5px solid #DDD5C9; border-radius:11px; background:#F3EEE6; padding:0 8px; font:500 13px 'Inter',system-ui,sans-serif; color:#3D3027; width:152px; max-width:152px; flex:0 0 auto; }
 .mx-sub2 { margin:-4px 0 0; padding:8px 14px; background:#FDFCFA; border:.5px solid #E6DED2; border-radius:14px; }
 .mx-f--row { flex-direction:row; align-items:center; justify-content:space-between; }
 .mx-f--row input { height:34px; max-width:150px; }
@@ -1427,8 +1427,9 @@ button.st-sg__r { cursor: pointer; }
 .mx-edit { border-top:.5px solid #EFE9E0; padding-top:6px; }
 .mx-grp { margin:10px 0 4px; font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#8A6535; }
 .mx-er { display:flex; align-items:center; gap:10px; padding:6px 0; font-size:12.5px; color:#3A3530; }
-.mx-er > span:first-child, .mx-er > input:first-child { flex:1; min-width:0; overflow-wrap:anywhere; }
-.mx-er .mx-amt { flex:0 0 118px; }
+.mx-er > span:first-child, .mx-er > input:first-child { flex:1; min-width:0; overflow-wrap:break-word; }
+.mx-er .mx-amt { flex:0 0 118px; min-width:0; }
+.mx-er .mx-amt input { width:0; }
 .mx-er.is-b { font-weight:600; border-top:.5px solid #EFE9E0; margin-top:4px; padding-top:9px; }
 .mx-name { height:36px; border:.5px solid #DDD5C9; border-radius:10px; background:#FAF8F4; padding:0 10px; font:400 13px 'Inter',system-ui,sans-serif; }
 .mx-add { display:inline-flex; align-items:center; gap:5px; margin:2px 0 6px; border:0; background:none; padding:4px 0; font:500 12px 'Inter',system-ui,sans-serif; color:#8A6535; cursor:pointer; }

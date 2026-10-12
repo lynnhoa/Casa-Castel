@@ -1357,6 +1357,18 @@ function _srSumSheet(view) {
     groups: [{ title: 'You pay', rows: rows.filter(r => r.amount && r.dir < 0) }, { title: 'You get', rows: rows.filter(r => r.amount && r.dir > 0) },
              { title: 'Not in yet', rows: rows.filter(r => r.wait) }, { title: 'Balanced', rows: rows.filter(r => !r.amount && !r.wait) }] }, close);
 }
+/* Jahresabrechnung (Oct 2026): after an autosave only the two status rows ("Jahresabrechnung received",
+   "Money paid / received") are redrawn from the saved data — the hero and the cost fields stay as they are,
+   so the field you type in keeps its focus. A field inside the rows that has focus → redraw when you leave it. */
+function _srRefreshHvRows() {
+  if (!SR.modal || SR.modal.view !== 'hv') return;
+  const host = document.getElementById('srPanel'), box = host && host.querySelector('.mx-rows'); if (!box) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = _srModalHtml();
+  const nb = tmp.querySelector('.mx-rows'); if (!nb || nb.innerHTML === box.innerHTML) return;
+  const a = document.activeElement;
+  if (a && box.contains(a)) { a.addEventListener('blur', () => setTimeout(_srRefreshHvRows, 0), { once: true }); return; }
+  box.innerHTML = nb.innerHTML;
+}
 function _srRerenderPanel() {
   const host = document.getElementById('srPanel'); if (!host || !SR.modal) return;
   const b = host.querySelector('.srm__b'), top = b ? b.scrollTop : 0;
@@ -1533,6 +1545,7 @@ async function _srAutoSave() {
     if (_srJaDone(saved, _srRecSummary(saved, c.apt))) await _srWriteWeg(c, saved);    // after "complete": the WEG result follows your edits
     SR.dirty = false; _srSavedTxt('✓ saved');
     ctlSettlementInvalidate();
+    _srRefreshHvRows();                                             // the status rows follow what was just saved
   } catch (err) { _srSavedTxt('not saved'); stSay('Could not save — ' + (err.message || err)); }
 }
 /* Mark complete: every entry is in → the WEG result goes to the tracker, the NK can start */
