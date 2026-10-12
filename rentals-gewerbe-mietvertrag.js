@@ -58,7 +58,8 @@ function _buildGewerbeMietvertragData(apt, s, {
   if ((szenario === 'S1' || szenario === 'S3') && staffelAn && mietendeRaw) {
     const intervall = 1; // from staffeln data or default
     staffeln.forEach((st, i) => {
-      staffelnBuilt.push({ datum: st.datum || '', betrag: Number(st.betrag) || 0 });
+      const betrag = Number(st.betrag) || 0;
+      if (betrag > 0 && st.datum) staffelnBuilt.push({ datum: st.datum, betrag });   // Oct 2026: a step without an amount is never printed (no "0,00 €")
     });
   }
 
