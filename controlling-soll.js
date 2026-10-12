@@ -656,7 +656,16 @@ function _cxUnitSollV2(u, pid, y, m) {
       changed = true;
     }
     for (const h of c.st) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
-      notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
+      if (link.type === 'casa_room') {
+        // Casa Castel has no Staffel: it is a Mieterhöhung. Pauschal → the whole Pauschalmiete before → after;
+        // Kalt + NK → the Kaltmiete before → after (text only — the amounts are calculated as before)
+        const pau = b ? b.mode === 'pauschal' : ((_cxPerAt(c.per, d) || {}).mode === 'pauschal');
+        const old = b ? (pau ? _cxR(b.k + b.nk) : b.k) : null;
+        notes.push('Mieterhöhung · ' + (old !== null && old !== _cxNum(h.amount) ? _cxEurS(old) + ' → ' : '') + _cxEurS(h.amount) + (pau ? ' Pauschal' : ' Kalt') + ' from ' + _cxFmtD(d));
+      } else {
+        notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d));
+      }
+      changed = true; }
     for (const h of c.nk) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
       notes.push('NK changed · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
   }

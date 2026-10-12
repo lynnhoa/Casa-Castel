@@ -54,7 +54,7 @@ window.renderIncome = function () {
   const cards = model.map(g => {
     const src = g.p.id === CASA_PROP_ID ? 'from Casa Castel' : (g.rows.some(r => r.s.link) ? 'from Rentals' : 'plan value');
     // #11: "Änderung" only for a real change (Einzug, Auszug, new rent, Staffel, NK) — not for info notes
-    const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Tenant change|Newly let|Move-out|Staffel|NK changed|Renewal|New rent)/.test(n)));
+    const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Tenant change|Newly let|Move-out|Staffel|Mieterhöhung|NK changed|Renewal|New rent)/.test(n)));
     const vis = r => ctlVisibleCheck(g.p.name, r.u.name, r.s.check);      // × in Setup hides a hint here too
     const warned = g.rows.some(r => vis(r) || (!r.soll && r.ist));
     const body = g.rows.map(r => {
