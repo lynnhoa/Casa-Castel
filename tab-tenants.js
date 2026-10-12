@@ -1629,20 +1629,43 @@ function _tnPwStatus(room, rec) {
   if (!mb || mb > today) return { key: 'future', tone: 'grey', text: 'from the move-in day' + (mb ? ' ' + _ccFmtD(mb) : ''), review: pend.length > 0 };
   if (pend.length) return { key: 'request', tone: 'amber', text: 'Request waiting', review: true, sub: 'Decide in the request: send the same password, or a new one.' };
   // Oct 2026 · automatic status (once room_logins exists): no password → logged in → not logged in yet. No "Given ✓" any more.
+  // D7 (Oct 2026) · one clear status per tenant, from data that is already loaded:
+  //   app visits with the current password (room_logins) · password pickups (requests "done") · the room's password date
+  //   → Logged in since … · last seen …  ·  Password sent …  ·  Logged out … · password changed  ·  No login yet
+  //   App visits decide when there are any; a pickup counts for the current password only if that password was set
+  //   before the request or within 24 h after it (= the handover of that request).
   if (_tnLogins) {
     const pwAt0 = _tnPwAt[room] ? String(_tnPwAt[room]) : null;
     if (_tnPwLoaded && !pwAt0) return { key: 'nopw', tone: 'amber', text: 'No password yet', noPw: true,
       sub: '{name} cannot log in yet — Create password, then give it to {name}.' };
+    const ms = t => { const v = Date.parse(String(t || '').replace(' ', 'T')); return isNaN(v) ? null : v; };
+    const iso = v => new Date(v).toISOString();
+    const ds = t => {                                   // "11.10." this year · "11.10.2025" otherwise · "today"
+      const x = day(t); if (!x) return '';
+      return x === today ? 'today' : x.slice(8, 10) + '.' + x.slice(5, 7) + '.' + (x.slice(0, 4) === today.slice(0, 4) ? '' : x.slice(0, 4));
+    };
+    const pwMs = ms(pwAt0), D1 = 864e5;
+    const fits = c => pwMs === null || pwMs <= c + D1;  // the current password belongs to this request
+    const mine = _tnPwReqs.filter(q => q.room === room && day(q.created_at) >= _ccAddDaysIso(mb, -45));   // shortly before the move-in counts too
+    const picks = mine.filter(q => q.status === 'done').map(q => ({ c: ms(q.created_at), own: day(q.created_at) >= mb })).filter(x => x.c !== null);
+    const pickOk  = picks.filter(x => fits(x.c)).map(x => ({ c: x.c, p: Math.max(x.c, pwMs === null ? x.c : pwMs) }));
+    const pickOld = picks.filter(x => !fits(x.c) && x.own);
     const L = _tnLogins[String(room || '').trim().toLowerCase()];
-    const seenAt = L && L.last_seen_at ? String(L.last_seen_at) : null;
-    if (seenAt && day(seenAt) >= mb && (!pwAt0 || seenAt >= pwAt0))
-      return { key: 'login', tone: 'green', text: 'Logged in \u2713 \u00b7 last seen ' + d(seenAt) };
-    const sent = _tnPwReqs.filter(q => q.room === room && q.status === 'approved' && day(q.created_at) >= _ccAddDaysIso(mb, -45))
-      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
-    if (sent && (!pwAt0 || String(sent.created_at) >= pwAt0.slice(0, 10)))
-      return { key: 'sent', tone: 'blue', text: 'Password sent ' + d(sent.created_at) + ' \u00b7 not logged in yet' };
-    return { key: 'none', tone: 'amber', text: 'Not logged in yet',
-      sub: '{name} logs in with the room password — or asks for it on the login page (\u201cFirst time here?\u201d).' };
+    const seenMs = L ? ms(L.last_seen_at) : null;
+    const visit  = seenMs !== null && day(L.last_seen_at) >= mb;          // this tenant opened the app
+    const seenOk = visit && (pwMs === null || seenMs >= pwMs);            // … with the current password
+    let since;
+    if (seenOk) { const f = ms(L.first_login_at); since = [f !== null && day(L.first_login_at) >= mb ? f : seenMs, ...pickOk.map(x => x.p)]; }
+    else since = (visit ? pickOk.filter(x => x.c > seenMs) : pickOk).map(x => x.p);   // after an older visit only a newer pickup counts
+    if (since.length) return { key: 'login', tone: 'green',
+      text: 'Logged in since ' + ds(iso(Math.min(...since))) + (seenOk ? ' \u00b7 last seen ' + ds(L.last_seen_at) : '') };
+    const sent = mine.filter(q => (q.status === 'approved' || q.status === 'expired') && fits(ms(q.created_at) || 0))
+      .sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)))[0];
+    if (sent) return { key: 'sent', tone: 'blue', text: 'Password sent ' + ds(sent.created_at) + ' \u00b7 not picked up yet' };
+    if (visit || pickOld.length) return { key: 'out', tone: 'grey', text: 'Logged out ' + ds(pwAt0) + ' \u00b7 password changed',
+      sub: '{name} logs in again with the new password — or asks for it on the login page (\u201cForgot password?\u201d).' };
+    return { key: 'none', tone: 'amber', text: 'No login yet \u00b7 no request',
+      sub: 'Switches by itself once {name} opens the app. {name} logs in with the room password — or asks for it on the login page (\u201cFirst time here?\u201d).' };
   }
   const since = _ccAddDaysIso(mb, -45);   // a request made shortly before moving in counts too
   const reqs = _tnPwReqs.filter(q => q.room === room && ['done', 'approved', 'expired'].includes(q.status) && day(q.created_at) >= since)
