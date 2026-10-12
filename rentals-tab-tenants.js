@@ -96,6 +96,7 @@ document.getElementById('tab-tenants').innerHTML = `
   s.textContent = `
 /* ── PAGE ── */
 .tn-hdr { margin-bottom: 20px; }
+#tab-tenants .tn-del-btn { color:#A32D2D !important; border-color:#F09595 !important; margin-right:auto; }   /* D5: Edit → Delete (same as Casa) */
 /* ── Casa Castel layout (Oct 2026): Kaution line · slim card · rent title · Übergabe · Former row ── */
 html .rnt-ist .cc-sumline__vals { grid-template-columns:minmax(0, 1fr); }
 .tn-ctp { display:inline-flex; align-items:center; height:20px; padding:0 8px; border-radius:10px; font-size:11px; font-weight:500; letter-spacing:.02em; white-space:nowrap; margin-left:6px; }
@@ -944,6 +945,14 @@ function _rntParseDate(s) {
   return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
 }
 
+/* D3 (Oct 2026): a former tenant moves back to current ONLY when this save changes the move-out
+   date — cleared, or moved after today. Editing anything else keeps them former (same as Casa). */
+function _rntReopens(rec, newMietende, hasField) {
+  if (!rec || rec.status !== 'former' || !hasField) return false;
+  const was = _ccIso(rec.mietende) || '', now = _ccIso(newMietende) || '';
+  if (was === now) return false;                     // move-out date not touched
+  return !now || now > _ccTodayIso();                // cleared, or moved after today
+}
 function _rntIsPast(dateStr) {
   if (!dateStr) return false;
   const iso = _rntParseDate(dateStr);
@@ -1915,6 +1924,7 @@ function _rntProfileSectionHTML(rid, type, unit, rec) {
 
   const footerEdit = `
   <div class="tn-sec-footer" id="pfoot-edit-${rid}" ${startEdit ? '' : 'style="display:none"'}>
+    ${rec ? `<button type="button" class="cc-foot-btn tn-del-btn" onclick="_rntDeleteTenant('${tid}')"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>` : ''}
     <div class="cc-slot">
     ${rec ? `<button class="tn-btn tn-btn-sm" onclick="_rntCancelProfile('${rid}','${tid}')">Cancel</button>` : ''}
     <button class="tn-btn tn-btn-primary cc-save${rec ? '' : ' cc-save--create'}"
@@ -3408,6 +3418,8 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
   const p   = _rntCollectProfile(sec, 'data-f');
   const rec = _rntRecords.find(r => r.id === tid);
   if (!p.first_name && !p.last_name && !p.email) {
+    // D5: name and e-mail cleared → the tenant should go: ask, never delete silently (same as Casa)
+    if (rec) { await _rntDeleteTenant(tid); return; }
     const inp = sec.querySelector('[data-f="name"]');
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
     return;
@@ -3428,7 +3440,7 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
 
   const isApt    = unitType === 'apt';
   const toFormer = !!forceFormer || !!(p.mietende && _rntIsPast(p.mietende) && rec?.status === 'active');
-  const toActive = rec?.status === 'former' && (!p.mietende || !_rntIsPast(p.mietende));
+  const toActive = _rntReopens(rec, p.mietende, !!sec.querySelector('[data-f="mietende"]'));   // D3
 
   const update = {
     first_name: p.first_name, last_name: p.last_name,
@@ -3577,7 +3589,7 @@ async function _rntModalSaveProfile(tid) {
         .catch(e => ccSaveFailed(e, 'rent history'));
   }
 
-  const toActive = rec?.status === 'former' && (!p.mietende || !_rntIsPast(p.mietende));
+  const toActive = _rntReopens(rec, p.mietende, !!body.querySelector('[data-mf="mietende"]'));   // D3
   if (toActive) { update.status = 'active'; update.done = false; }   // the contract type stays with the tenancy
 
   const beforeRec = rec ? { ...rec } : null;
@@ -3982,18 +3994,80 @@ async function _rntConfirmDelete() {
   if (!_rntDeleteId || !sbL) return;
   const btn = document.getElementById('rntConfirmOk');
   if (btn) btn.disabled = true;
-  const { error } = await sbL.from('rnt_tenant_records').delete().eq('id', _rntDeleteId);
-  if (error) ccSaveFailed(error, 'delete tenant');
+  const tid = _rntDeleteId, rec = _rntRecords.find(r => r.id === tid) || null;
+  const ok = await _rntDeleteCascade(tid);                 // D5: the tenant and everything linked to them
   document.getElementById('rntConfirm').classList.remove('open');
-  if (!error) {
-    _rntRecords = _rntRecords.filter(r => r.id !== _rntDeleteId);
-    delete _rntKaution[_rntDeleteId];
-    delete _rntNK[_rntDeleteId];
-    delete _rntDocs[_rntDeleteId];
-  }
   _rntDeleteId = null;
   if (btn) btn.disabled = false;
   _rntCloseModal();
+  if (ok && rec) await _rntAfterDelete(rec); else _rntRender();
+}
+
+/* ── D5 (Oct 2026) · DELETE A TENANT — same as Casa Castel ────────────────────
+   Edit → Delete, or name + e-mail cleared → Save. One delete removes the tenant and
+   everything linked to them (Kaution, NK, NK-Vorauszahlung, Staffel, rent history,
+   Zählerstände, documents + files). Settlements results and sent letters stay (history). */
+async function _rntDeleteTenant(tid) {
+  const rec = _rntRecords.find(r => r.id === tid); if (!rec || !sbL) return;
+  const name = _rntFullTenantNames(rec) || 'this tenant';
+  const title = 'Delete ' + _rntEsc(name) + '?';
+  const body = `Removes <strong>${_rntEsc(name)}</strong> and everything linked: Kaution, NK, NK-Vorauszahlung, Staffel, rent history, Zählerstände and documents. Cannot be undone.`;
+  let yes;
+  if (typeof ccConfirm === 'function') yes = await ccConfirm(title, body, 'Delete', true);
+  else if (typeof ccDialog === 'function') {
+    yes = (await ccDialog({ icon: 'ti-alert-triangle', tone: 'danger', title, body,
+      actions: [{ label: 'Cancel', value: false }, { label: 'Delete', value: true, danger: true, icon: 'ti-trash' }] })) === true;
+  } else yes = confirm('Delete ' + name + '?');
+  if (!yes) return;
+  if (await _rntDeleteCascade(tid)) {
+    await _rntAfterDelete(rec);
+    if (typeof ccToast === 'function') ccToast(name + ' deleted');
+  }
+}
+async function _rntDeleteCascade(tid) {
+  if (!sbL || !tid) return false;
+  const docs = _rntDocs[tid] || [];
+  const soft = async (q, what) => {
+    try { const { error } = await q; if (error && !/does not exist|schema cache|Could not find/i.test(error.message || '')) console.warn('[rentals] delete ' + what + ':', error.message); }
+    catch (e) { console.warn('[rentals] delete ' + what + ':', e); }
+  };
+  await Promise.all([
+    soft(sbL.from('rnt_kaution').delete().eq('tenant_id', tid), 'Kaution'),
+    soft(sbL.from('rnt_nk_entries').delete().eq('tenant_id', tid), 'NK'),
+    soft(sbL.from('rnt_nk_vorauszahlung_history').delete().eq('tenant_id', String(tid)), 'NK-Vorauszahlung'),
+    soft(sbL.from('rnt_staffelmiete_history').delete().eq('tenant_id', String(tid)), 'Staffel'),
+    soft(sbL.from('rent_periods').delete().eq('app', 'rentals').eq('tenant_id', String(tid)), 'rent history'),
+    soft(sbL.from('meter_readings').delete().eq('app', 'rentals').eq('tenant_id', String(tid)), 'Zählerstände'),
+    soft(sbL.from('rnt_tenant_documents').delete().eq('tenant_id', tid), 'documents'),
+  ]);
+  const paths = docs.map(d => d && d.file_url).filter(Boolean);
+  if (paths.length) { try { await sbL.storage.from('rnt-tenant-documents').remove(paths); } catch (e) {} }
+  const { error } = await sbL.from('rnt_tenant_records').delete().eq('id', tid);
+  if (error) { ccSaveFailed(error, 'delete tenant'); return false; }
+  _rntRecords = _rntRecords.filter(r => r.id !== tid);
+  delete _rntKaution[tid]; delete _rntNK[tid]; delete _rntDocs[tid];
+  if (typeof CC_RP !== 'undefined') CC_RP.rows = CC_RP.rows.filter(r => !(r.app === 'rentals' && String(r.tenant_id) === String(tid)));
+  return true;
+}
+/* After a delete: nobody lives in the unit any more → Vacant (the dates rule only knows units that
+   still have a tenant entry), then a fresh load so every section shows the real data. */
+async function _rntAfterDelete(rec) {
+  const isApt = !!rec.apartment_id, col = isApt ? 'apartment_id' : 'parking_id', uid = rec[col];
+  const list = isApt ? (typeof appApartments !== 'undefined' ? appApartments : []) : (typeof appParking !== 'undefined' ? appParking : []);
+  const u = (list || []).find(x => String(x.id) === String(uid));
+  const today = _ccTodayIso();
+  const lives = _rntRecords.some(r => String(r[col]) === String(uid) && r.status === 'active'
+    && (!r.mietbeginn || _ccIso(r.mietbeginn) <= today) && (!r.mietende || _ccIso(r.mietende) >= today));
+  if (u && !u.vacant && !lives) {
+    u.vacant = true;
+    ccQueueWrite('occ-' + u.id, () => sbL.from(isApt ? 'rentals_apartments' : 'rentals_parking').update({ vacant: true }).eq('id', u.id))
+      .then(res => { if (res && res.error) { u.vacant = false; ccSaveFailed(res.error, 'occupancy'); } });
+    try {
+      if (isApt && typeof _aptRefreshCards === 'function') _aptRefreshCards();
+      if (!isApt && typeof _pkRefreshCards === 'function') _pkRefreshCards();
+    } catch (e) {}
+  }
+  await _rntLoad();
   _rntRender();
 }
 

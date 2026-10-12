@@ -828,9 +828,17 @@ function _tnLockRentMode() {
     if (ccRpFor('casa', rec.id).length) return;                                          // already has its own entry
     const mode = _tnLegacyMode(rec.room, rec);
     const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
+    // D4: a Pauschale taken from the room's baseline (Add next tenant, move-in added later) keeps that
+    // baseline's "davon NK" — only when it is exactly that baseline's Pauschale; otherwise it stays empty as before
+    let nkIncl;
+    if (mode === 'pauschal' && typeof ccRoomBaseline === 'function' && typeof appRooms !== 'undefined') {
+      const room = appRooms.find(r => r.name === rec.room), ct = tnContractType(rec);
+      const b = room && ct ? ccRoomBaseline(room, ct) : null;
+      if (b && b.mode === 'pauschal' && b.nk > 0 && Math.round(b.total * 100) === Math.round((k + n) * 100)) nkIncl = Math.min(b.nk, b.total);
+    }
     _tnModeLocking.add(rec.id);
     ccRpSetRent(sbL, { app: 'casa', rec, validFrom: _ccIso(rec.mietbeginn), mode,
-      kalt: mode === 'pauschal' ? k + n : k, nk: mode === 'pauschal' ? null : n, pauschale: k + n,
+      kalt: mode === 'pauschal' ? k + n : k, nk: mode === 'pauschal' ? null : n, pauschale: k + n, nkIncl,
       contract_type: tnContractType(rec) || undefined, kind: 'migrated', source: 'migration',
       note: 'Rent mode locked from the tenant card', legacyMode: mode })
       .catch(e => { _tnModeLocking.delete(rec.id); console.warn('[tenants] lock rent mode:', e && e.message || e); });
@@ -1091,6 +1099,21 @@ const _tnEarlierOpen = {};
    prev = the rent entry before this save. Staying Pauschal → its NK part is kept;
    switching Kalt + NK → Pauschal → the NK it had becomes the NK part; never more than the Pauschale.
    Changing the NK part on purpose: Change rent → Korrektur.                                           */
+/* D4: "davon NK" typed in the tenant pop-up (Pauschal only) → number | null.
+   false = more than the Pauschalmiete (field marked red, nothing saved).      */
+function _tnNkInclOf(body, p) {
+  const inp = body && body.querySelector('[data-mf="nk_incl"]');
+  if (!inp || body.querySelector('[data-mf="rent_mode"]')?.value !== 'pauschal' || inp.value === '') return null;
+  const v = Math.round(Number(inp.value) * 100) / 100;
+  if (!isFinite(v) || v <= 0) return null;
+  const tot = (Number(p.kaltmiete) || 0) + (Number(p.nebenkosten) || 0);
+  if (p.kaltmiete != null && v > tot + 0.004) {
+    inp.style.borderColor = '#C4705A'; inp.focus();
+    if (typeof ccToast === 'function') ccToast('The NK part can’t be more than the Pauschalmiete', true);
+    return false;
+  }
+  return v;
+}
 function _tnKeepNkIncl(prev, total) {
   const n = prev ? Number(prev.nebenkosten) || 0 : 0;
   if (!(n > 0)) return null;
@@ -1183,7 +1206,9 @@ function _tnModeSegHTML(attr, value) {
 function _tnSetMode(btn) {
   const seg = btn.closest('.cc-seg'); if (!seg) return;
   seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
-  const inp = seg.querySelector('input[type=hidden]'); if (inp) inp.value = btn.dataset.rmode;
+  const inp = seg.querySelector('input[type=hidden]');
+  const prevMode = seg.dataset.last || (inp ? inp.value : '');   // D4: the mode before this tap
+  if (inp) inp.value = btn.dataset.rmode;
   if (seg.closest('#tnModalBody')) setTimeout(_tnDraftSollUpdate, 0);
   const box = seg.closest('.tn-rent-form, .tn-fg'); if (!box) return;
   const p = btn.dataset.rmode === 'pauschal';
@@ -1191,10 +1216,25 @@ function _tnSetMode(btn) {
     const kIn = box.querySelector('[data-mf="kaltmiete"],[data-f="kaltmiete"],[data-cc="k"],input[id^="rf-kalt-"]');
     const nIn = box.querySelector('[data-mf="nebenkosten"],[data-f="nebenkosten"],[data-cc="n"],input[id^="rf-nk-"]');
     const k = parseFloat(kIn && kIn.value), n = parseFloat(nIn && nIn.value);
-    if (kIn && !isNaN(k) && !isNaN(n) && n) { kIn.value = +(k + n).toFixed(2); nIn.value = ''; kIn.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (kIn && !isNaN(k) && !isNaN(n) && n) {
+      kIn.value = +(k + n).toFixed(2); nIn.value = '';
+      const iIn = box.querySelector('[data-mf="nk_incl"]'); if (iIn && iIn.value === '') iIn.value = +n.toFixed(2);   // D4: the NK becomes "davon NK"
+      kIn.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+  // D4: back to Kalt + NK in the pop-up → Kaltmiete = Pauschale − davon NK, Nebenkosten = davon NK
+  if (!p && prevMode === 'pauschal') {
+    const iIn = box.querySelector('[data-mf="nk_incl"]');
+    const kIn = box.querySelector('[data-mf="kaltmiete"]'), nIn = box.querySelector('[data-mf="nebenkosten"]');
+    const t = parseFloat(kIn && kIn.value), i = parseFloat(iIn && iIn.value);
+    if (iIn && kIn && nIn && nIn.value === '' && !isNaN(t) && !isNaN(i) && i > 0 && i <= t) {
+      kIn.value = +(t - i).toFixed(2); nIn.value = +i.toFixed(2); iIn.value = '';
+      kIn.dispatchEvent(new Event('input', { bubbles: true }));
+    }
   }
   seg.dataset.last = btn.dataset.rmode;
   box.querySelectorAll('[data-nkwrap]').forEach(el => { el.style.display = p ? 'none' : ''; });
+  box.querySelectorAll('[data-nkinclwrap]').forEach(el => { el.style.display = p ? '' : 'none'; });
   box.querySelectorAll('[data-kaltlbl]').forEach(el => { el.textContent = p ? 'Pauschalmiete' : 'Kaltmiete'; });
 }
 /* The mode a tenant pays on a day (rent history first, else the room's offer as before) */
@@ -1378,6 +1418,15 @@ function _tnFormerVisible(rec) {
 
 
 // True if dateStr (ISO or DD.MM.YYYY) is today or in the past
+/* D3 (Oct 2026): a former tenant moves back to current ONLY when this save changes the move-out
+   date — cleared, or moved after today. Editing anything else (address, phone …) keeps them former.
+   hasField: the form really has a Move-out field (no field = the date was not edited).          */
+function _tnReopens(rec, newMietende, hasField) {
+  if (!rec || rec.status !== 'former' || !hasField) return false;
+  const was = _ccIso(rec.mietende) || '', now = _ccIso(newMietende) || '';
+  if (was === now) return false;                     // move-out date not touched
+  return !now || now > _ccTodayIso();                // cleared, or moved after today
+}
 function _tnIsPast(dateStr) {
   if (!dateStr) return false;
   const iso = _tnParseDate(dateStr);
@@ -1915,6 +1964,17 @@ async function _tnSaveNext(roomName) {
   if (type === 'jahres' && from && typeof ccNext3108 === 'function') payload.vertragsende = ccNext3108(from);
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
   if (error) { ccSaveFailed(error, 'next tenant'); return; }
+  // D4: the baseline's rent goes into the rent history right away — Pauschal with its "davon NK" —
+  // the same entry Approve fills later, so Controlling and Settlements know the NK part even with a paper contract
+  if (data.mietbeginn && b && b.total && typeof ccRpSetRent === 'function') {
+    const pa = b.mode === 'pauschal';
+    try {
+      await ccRpSetRent(sbL, { app: 'casa', rec: data, validFrom: _ccIso(data.mietbeginn), mode: pa ? 'pauschal' : 'kalt_nk',
+        kalt: pa ? b.total : b.kalt, nk: pa ? null : b.nk, pauschale: pa ? b.total : null,
+        nkIncl: pa && b.nk > 0 ? Math.min(b.nk, b.total) : undefined,
+        contract_type: type, kind: 'migrated', source: 'tenant_form', legacyMode: pa ? 'pauschal' : 'kalt_nk' });
+    } catch (e) { ccSaveFailed(e, 'rent history'); }
+  }
   _tnRecords.push(data);
   ccSheetClose();
   if (typeof ccSavedToast === 'function') ccSavedToast('Saved: ' + name);
@@ -3155,6 +3215,9 @@ function _tnModalBodyHTML(rec) {
   const dMode = _tnModeAt(rec, [_ccIso(rec.mietende) || ccRpToday(), ccRpToday()].sort()[0]);
   const dPau = dMode === 'pauschal';
   const dK   = rec.kaltmiete   != null ? Number(rec.kaltmiete) + (dPau && rec.nebenkosten != null ? Number(rec.nebenkosten) : 0) : null;
+  // D4: "davon NK" = the NK part inside the Pauschale (rent history entry of that day)
+  const dPer = rec.id && typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('casa', rec.id), [_ccIso(rec.mietende) || ccRpToday(), ccRpToday()].sort()[0]) : null;
+  const dNI  = dPer && dPer.mode === 'pauschal' && Number(dPer.nebenkosten) > 0 ? Number(dPer.nebenkosten) : null;
   const dNK  = rec.nebenkosten != null ? Number(rec.nebenkosten) : null;
   const dKS  = rec.kaution_soll != null ? Number(rec.kaution_soll) : null;
   const warm = (dK != null && dNK != null) ? dK + dNK : dK;
@@ -3184,10 +3247,10 @@ function _tnModalBodyHTML(rec) {
           <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <span class="tn-fval">${_tnFmtDate(rec.mietende) || '<span class="muted">—</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Kaltmiete</span>
+        <div class="tn-field"><span class="tn-flbl">${dPau ? 'Pauschalmiete' : 'Kaltmiete'}</span>
           <span class="tn-fval">${dK != null ? _tnFmtEUR(dK) : '<span class="muted">—</span>'}</span></div>
-        <div class="tn-field"><span class="tn-flbl">Nebenkosten</span>
-          <span class="tn-fval">${dNK != null ? _tnFmtEUR(dNK) : '<span class="muted">—</span>'}</span></div>
+        <div class="tn-field"><span class="tn-flbl">${dPau ? 'davon NK' : 'Nebenkosten'}</span>
+          <span class="tn-fval">${(dPau ? dNI : dNK) != null ? _tnFmtEUR(dPau ? dNI : dNK) : '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
           <span class="tn-fval">${(() => {
             const live = _tnKautionSoll(rec.room, rec.mietbeginn, rec.mietende, ctK);
@@ -3223,6 +3286,8 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="kaltmiete" type="number" data-cc-num="2" value="${dK ?? ''}"/></div>
         <div class="tn-field" data-nkwrap${dPau ? ' style="display:none"' : ''}><span class="tn-flbl">Nebenkosten</span>
           <input data-mf="nebenkosten" type="number" data-cc-num="2" value="${dPau ? '' : (dNK ?? '')}"/></div>
+        <div class="tn-field" data-nkinclwrap${dPau ? '' : ' style="display:none"'}><span class="tn-flbl">davon NK</span>
+          <input data-mf="nk_incl" type="number" data-cc-num="2" value="${dNI ?? ''}"/></div>
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
@@ -3617,8 +3682,8 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   // Manual "To former" (forceFormer) demotes even when mietende is today/future,
   // so the room frees up now; auto-demote on a past move-out date still applies.
   const toFormer = !!forceFormer || !!(p.mietende && _tnIsPast(p.mietende) && rec?.status === 'active');
-  // Reverse: former tenant whose mietende is cleared or set to future → back to active
-  const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
+  // Reverse (D3): a former tenant comes back only when you clear the move-out or move it after today
+  const toActive = _tnReopens(rec, p.mietende, !!sec.querySelector('[data-f="mietende"]'));
   const update   = {
     first_name: p.first_name, last_name: p.last_name,
     email: p.email, phone: p.phone, birthday: p.birthday,
@@ -3811,6 +3876,8 @@ async function _tnModalSaveProfile(tid) {
   }
 
   const p     = _tnCollectProfile(body, 'data-mf');
+  const nkInc = _tnNkInclOf(body, p);                       // D4: Pauschal → "davon NK"
+  if (nkInc === false) return;
   { const _r = _tnRecords.find(r => r.id === tid);
     if (_r && !(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === _r.room), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return; }
   const rec = _tnRecords.find(r => r.id === tid);
@@ -3837,21 +3904,26 @@ async function _tnModalSaveProfile(tid) {
     const per = ccRpAt(hist, lastDay);
     const k = Number(p.kaltmiete) || 0, n = pauNew ? 0 : (Number(p.nebenkosten) || 0);
     const mode = modeNew || (per ? per.mode : _tnLegacyMode(rec.room, rec));
-    const f = mode === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: _tnKeepNkIncl(per, k) }
+    // D4: Pauschal keeps the "davon NK" typed in the pop-up (field shown) — else the one already saved
+    const hasNi = !!body.querySelector('[data-mf="nk_incl"]');
+    const ni = mode === 'pauschal' ? (hasNi ? (nkInc ? Math.min(nkInc, k) : null) : _tnKeepNkIncl(per, k)) : null;
+    const f = mode === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: ni }
                                   : { mode: 'kalt_nk', kaltmiete: p.kaltmiete ?? null, nebenkosten: p.nebenkosten ?? null, pauschale: null };
     if (per) {
       const a = ccRpAmount(per) || {};
-      if ((per.mode === 'pauschal' ? 'pauschal' : 'kalt_nk') !== mode || k + n !== a.total || (mode !== 'pauschal' && k !== a.kalt)) {
+      const niChanged = mode === 'pauschal' && Math.round((Number(per.nebenkosten) || 0) * 100) !== Math.round((ni || 0) * 100);
+      if ((per.mode === 'pauschal' ? 'pauschal' : 'kalt_nk') !== mode || k + n !== a.total || (mode !== 'pauschal' && k !== a.kalt) || niChanged) {
         ccRpUpdate(sbL, per.id, f).catch(e => ccSaveFailed(e, 'rent history'));
       }
     } else if (ccRpIso(p.mietbeginn) && (p.kaltmiete != null || modeNew)) {
       ccRpSetRent(sbL, { app: 'casa', rec: { ...rec, ...update }, validFrom: ccRpIso(p.mietbeginn), mode, kalt: k, nk: n, pauschale: k,
+                         nkIncl: ni || undefined,   // D4
                          kind: 'migrated', source: 'tenant_form', legacyMode: _tnLegacyMode(rec.room, rec) })
         .catch(e => ccSaveFailed(e, 'rent history'));
     }
   }
 
-  const toActive = rec?.status === 'former' && (!p.mietende || !_tnIsPast(p.mietende));
+  const toActive = _tnReopens(rec, p.mietende, !!body.querySelector('[data-mf="mietende"]'));   // D3
   if (toActive) {
     update.status        = 'active';   // the contract type stays with the tenancy
     update.done          = false;
@@ -4178,6 +4250,8 @@ async function _tnModalSaveDraft() {
   const body = document.getElementById('tnModalBody');
   const p    = _tnCollectProfile(body, 'data-mf');
   const ctype = p.contract_type || draft.contract_type || null;
+  const nkInc = _tnNkInclOf(body, p);                       // D4: Pauschal → "davon NK"
+  if (nkInc === false) return;
 
   const btn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
@@ -4209,6 +4283,7 @@ async function _tnModalSaveDraft() {
     try {
       await ccRpSetRent(sbL, { app: 'casa', rec: data, validFrom: _ccIso(data.mietbeginn), mode: modeSel,
         kalt: modeSel === 'pauschal' ? k + n : k, nk: modeSel === 'pauschal' ? null : n, pauschale: k + n,
+        nkIncl: modeSel === 'pauschal' && nkInc ? Math.min(nkInc, k + n) : undefined,   // D4
         contract_type: ctype || undefined, kind: 'migrated', source: 'tenant_form', legacyMode: modeSel });
       if (modeSel === 'pauschal' && n) { data.kaltmiete = k + n; data.nebenkosten = null;
         sbL.from('tenant_records').update({ kaltmiete: k + n, nebenkosten: null }).eq('id', data.id).then(() => {}); }
@@ -4291,7 +4366,7 @@ async function _tnDeleteTenant(tid) {
   const rec = _tnRecords.find(r => r.id === tid); if (!rec || !sbL) return;
   const name = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || 'this tenant';
   const yes = await ccConfirm('Delete ' + esc(name) + '?',
-    `Removes <strong>${esc(name)}</strong> (${esc(rec.room)}) and everything linked: Kaution, NK, rent history, Zählerstände and documents. Cannot be undone.`,
+    `Removes <strong>${esc(name)}</strong> (${esc(rec.room)}) and everything linked: Kaution, NK, rent history, Mieterhöhungen, Zählerstände and documents. Cannot be undone.`,
     'Delete', true);
   if (!yes) return;
   if (await _tnDeleteCascade(tid)) {
@@ -4321,6 +4396,7 @@ async function _tnDeleteCascade(tid) {
     soft(sbL.from('kaution').delete().eq('tenant_id', tid), 'Kaution'),
     soft(sbL.from('nk_entries').delete().eq('tenant_id', tid), 'NK'),
     soft(sbL.from('nk_vorauszahlung_history').delete().eq('tenant_id', String(tid)), 'NK-Vorauszahlung'),
+    soft(sbL.from('casa_mieterhoehung_history').delete().eq('tenant_id', String(tid)), 'Mieterhöhung'),   // D5
     soft(sbL.from('rent_periods').delete().eq('app', 'casa').eq('tenant_id', String(tid)), 'rent history'),
     soft(sbL.from('meter_readings').delete().eq('app', 'casa').eq('tenant_id', String(tid)), 'Zählerstände'),
     soft(sbL.from('tenant_documents').delete().eq('tenant_id', tid), 'documents'),
