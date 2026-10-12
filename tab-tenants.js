@@ -1087,6 +1087,16 @@ const _tnEarlierOpen = {};
 
 
 /* Correct ONE contract (the next one or an earlier one) — only its own rent entry changes */
+/* Pauschal: the "davon NK" part inside the Pauschale is never wiped by a save (Oct 2026).
+   prev = the rent entry before this save. Staying Pauschal → its NK part is kept;
+   switching Kalt + NK → Pauschal → the NK it had becomes the NK part; never more than the Pauschale.
+   Changing the NK part on purpose: Change rent → Korrektur.                                           */
+function _tnKeepNkIncl(prev, total) {
+  const n = prev ? Number(prev.nebenkosten) || 0 : 0;
+  if (!(n > 0)) return null;
+  return Math.min(n, Math.max(0, Number(total) || 0)) || null;
+}
+
 function _tnContractEdit(rid, tid, i, secId) {
   const rec = _tnRecords.find(r => r.id === tid); if (!rec) return;
   const c = _tnContracts(rec)[i]; if (!c) return;
@@ -1121,12 +1131,14 @@ function _tnContractEdit(rid, tid, i, secId) {
       if (_tnIsFixed(ctNew) && !endNew) { ccToast('Befristet / Jahresvertrag needs a contract end', true); return false; }
       if (endNew && c.start && endNew < c.start) { ccToast('Contract end is before the start', true); return false; }
     }
-    const fields = mNew === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: null }
+    const prevAt = c.period || (c.start ? ccRpAt(ccRpFor('casa', rec.id), c.start) : null);   // the entry before this save
+    const fields = mNew === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: _tnKeepNkIncl(prevAt, k) }
                                        : { mode: 'kalt_nk', kaltmiete: k, nebenkosten: n, pauschale: null };
     if (ctNew) fields.contract_type = ctNew;
     try {
       if (c.period) await ccRpUpdate(sbL, c.period.id, fields);          // keeps its kind (Start / Verlängerung)
       else await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: c.start, mode: mNew, kalt: k, nk: n, pauschale: k,
+                                    nkIncl: mNew === 'pauschal' ? _tnKeepNkIncl(prevAt, k) : undefined,
                                     contract_type: ctNew || undefined,
                                     kind: c.i === 0 ? 'migrated' : 'renewal', source: 'tenant_form', legacyMode: _tnLegacyMode(rec.room, rec) });
     } catch (e) { ccSaveFailed(e, 'contract'); return false; }
@@ -3698,14 +3710,15 @@ async function _tnSaveRent(rid, tid, roomName) {
     const sameDay = from ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) === from) : null;
     if (sameDay) {
       // that day already starts an entry (Erstvertrag, Verlängerung…): correct it, keep what it is
-      await ccRpUpdate(sbL, sameDay.id, mode === 'pauschal' ? { mode, pauschale: kalt, kaltmiete: null, nebenkosten: null }
+      await ccRpUpdate(sbL, sameDay.id, mode === 'pauschal' ? { mode, pauschale: kalt, kaltmiete: null, nebenkosten: _tnKeepNkIncl(sameDay, kalt) }
                                                            : { mode, kaltmiete: kalt, nebenkosten: nk, pauschale: null });
     } else if (from) {
       await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: from, mode, kalt, nk, pauschale: kalt,
+                               nkIncl: mode === 'pauschal' ? _tnKeepNkIncl(ccRpAt(ccRpFor('casa', rec.id), from), kalt) : undefined,
                                kind: 'manual', source: 'tenant_form', legacyMode });
     } else {
       const per = ccRpAt(ccRpFor('casa', rec.id), today);
-      if (per) await ccRpUpdate(sbL, per.id, mode === 'pauschal' ? { mode, pauschale: kalt, kaltmiete: null, nebenkosten: null }
+      if (per) await ccRpUpdate(sbL, per.id, mode === 'pauschal' ? { mode, pauschale: kalt, kaltmiete: null, nebenkosten: _tnKeepNkIncl(per, kalt) }
                                                                  : { mode, kaltmiete: kalt, nebenkosten: nk, pauschale: null });
       else if (cc && cc.start) {
         // no rent history yet: the contract's own entry keeps rent + mode (never the room's offer again)
@@ -3792,7 +3805,7 @@ async function _tnModalSaveProfile(tid) {
     const per = ccRpAt(hist, lastDay);
     const k = Number(p.kaltmiete) || 0, n = pauNew ? 0 : (Number(p.nebenkosten) || 0);
     const mode = modeNew || (per ? per.mode : _tnLegacyMode(rec.room, rec));
-    const f = mode === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: null }
+    const f = mode === 'pauschal' ? { mode: 'pauschal', pauschale: k, kaltmiete: null, nebenkosten: _tnKeepNkIncl(per, k) }
                                   : { mode: 'kalt_nk', kaltmiete: p.kaltmiete ?? null, nebenkosten: p.nebenkosten ?? null, pauschale: null };
     if (per) {
       const a = ccRpAmount(per) || {};
