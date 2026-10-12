@@ -273,6 +273,19 @@ async function _kUpdateRow(row, patch) {
   if (res.error) alert('Could not save — ' + (res.error.message || 'please try again.'));
   return res;
 }
+/* D6 (Oct 2026): the same update, also setting "waits for you" (no_auto: no 48h auto-approve).
+   Undo → on (you decide) · Flag / Reopen → off (the tenant's next proof gets the normal 48h).
+   A database without that column runs the same update without it — the action never fails because of it. */
+async function _kUpdateRowAuto(row, patch) {
+  if (!sbL || !row) return { error: 'no row' };
+  let res = await sbL.from('kitchen_weeks').update(patch).eq('id', row.id);
+  if (res.error && 'no_auto' in patch && /no_auto/.test(String(res.error.message || res.error.details || ''))) {
+    const p2 = { ...patch }; delete p2.no_auto;
+    res = await sbL.from('kitchen_weeks').update(p2).eq('id', row.id);
+  }
+  if (res.error) alert('Could not save — ' + (res.error.message || 'please try again.'));
+  return res;
+}
 async function _kGetComments(weekId) {
   if (!sbL) return [];
   const { data } = await sbL.from('kitchen_comments').select('*').eq('week_id', weekId).order('created_at', { ascending: true });
@@ -1143,13 +1156,13 @@ async function _kFlagConfirm() {
   const reason = [reasons.join(', '), note].filter(Boolean).join(' — ');
   kitchenCloseModal('flag');
   await _kRun(_kFlagTarget === 'last' ? 'last' : 'now', async row => {
-    const { error } = await _kUpdateRow(row, { flagged:true, status:'flagged', flag_reason: reason });
+    const { error } = await _kUpdateRowAuto(row, { flagged:true, status:'flagged', flag_reason: reason, no_auto:false });   // D6
     if (!error) await _kAddComment(row.id, 'Casa Castel', '⚑ Redo: ' + reason, true);
   });
 }
 function kUnapprove(which) {
   return _kRun(which, async row => {
-    const { error } = await _kUpdateRow(row, { status:'submitted', flagged:false, approved_at:null });
+    const { error } = await _kUpdateRowAuto(row, { status:'submitted', flagged:false, approved_at:null, no_auto:true });   // D6: waits for you
     if (!error) await _kAddComment(row.id, 'Casa Castel', '↩ Approval undone.', false);
   });
 }
@@ -1172,7 +1185,7 @@ function kReopen() {
   const row = _kWeekRow; if (!row) return;
   if (!confirm(`Reopen week for ${row.room}? They can upload proof again.`)) return;
   return _kRun('now', async r => {
-    await _kUpdateRow(r, { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null });
+    await _kUpdateRowAuto(r, { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null, no_auto:false });   // D6
   });
 }
 function kReminder() {
