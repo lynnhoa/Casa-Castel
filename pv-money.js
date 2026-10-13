@@ -126,7 +126,7 @@ function _pvmMonthLine(mo, visits, d) {
   if (mo.mode !== 'none' && mo.status === 'closed') {
     act = `<p style="font-size:13px;color:#1E1B18;margin-top:6px;display:flex;align-items:center;gap:5px;">${pvPic('closed_line', 14)}Closed ${pvDM(String(mo.closed_at).slice(0, 10))} · <b style="font-weight:600;">${pvEur(mo.closed_sum)}</b> · ${mo.paid_at ? 'paid ✓' : 'not paid yet'}</p>
       ${mo.changed ? '<span class="k-note k-note--flag">Changed after it was paid ✓ — confirm again in Controlling.</span>' : ''}
-      <div class="cc-sec-foot" style="margin-top:8px;"><button class="cc-foot-btn is-left" type="button" onclick="pvaMonthReopen('${mo.month}')">Reopen month</button><button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="location.href='controlling.html'">${pvPic('ctrl_open', 12)}Open in Controlling</button></div>`;
+      <div class="cc-sec-foot" style="margin-top:8px;"><button class="cc-foot-btn is-left" type="button" onclick="pvaMonthReopen('${mo.month}')">Reopen month</button><button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaOpenControlling('${mo.month}')">${pvPic('ctrl_open', 12)}Open in Controlling</button></div>`;
   } else if (mo.mode !== 'none' && past && (vs.length || inv.length)) {
     const off = toCheck > 0;
     act = `${mo.status === 'reopened' ? '<span class="k-note">Reopened — close again to update Controlling.</span>' : ''}${mo.changed ? '<span class="k-note k-note--flag">Changed after it was paid ✓ — confirm again in Controlling.</span>' : ''}
@@ -247,4 +247,9 @@ function pvaVisitInvoiceOpen(v) {                /* History filter "Open invoice
   const inv = _pvmInvOf(v);
   if (inv) return inv.status === 'to_check' || inv.status === 'returned';
   return ['done', 'sent', 'redo'].includes(v.status) && !(v.unplanned && v.status !== 'done');
+}
+
+function pvaOpenControlling(month) {              /* Controlling opens on that month: Casa Castel · Expenses */
+  try { sessionStorage.setItem('pv_ctl_goto', JSON.stringify({ year: +String(month).slice(0, 4), month: +String(month).slice(5, 7) })); } catch (e) {}
+  location.href = 'controlling.html';
 }

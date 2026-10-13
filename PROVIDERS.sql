@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
---  PROVIDERS — complete database · Phases 1–6 · 13.10.2026
+--  PROVIDERS — complete database · Phases 1–6b · 13.10.2026
 --  Supabase → SQL Editor → paste all → Run. Safe to run twice.
 --
 --  Creates only NEW things: 12 provider_* tables, the pv_* functions,
@@ -1570,21 +1570,6 @@ end $$;
 -- ═══════════════════════════════════════════════════════════════
 -- MONEY (Phase 6): the job's Controlling cost type · the Soll hand-over · invoice to-dos
 -- ═══════════════════════════════════════════════════════════════
--- the sum of every closed month mapped to this cost type → ctrl_expense_castel (the row Controlling shows)
-create or replace function pv_ctrl_soll_write(p_category text, p_month date) returns numeric
-language plpgsql security definer set search_path = public as $$
-declare m date := pv_month_of(p_month); s numeric;
-begin
-  if p_category is null or to_regclass('public.ctrl_expense_castel') is null then return null; end if;
-  select coalesce(sum(pm.closed_sum), 0) into s
-  from provider_months pm join providers j on j.id = pm.job_id
-  where j.ctrl_category_id = p_category and pm.month = m and pm.status = 'closed';
-  execute format('insert into public.ctrl_expense_castel (category_id, year, month, amount) values (%L, %s, %s, %s) '
-                 'on conflict (category_id, year, month) do update set amount = excluded.amount',
-                 p_category, extract(year from m)::int, extract(month from m)::int, s);
-  return s;
-end $$;
-
 -- your Casa Castel cost types in Controlling (read-only) — the People modal picks one per job
 create or replace function pv_admin_ctrl_categories() returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -1628,6 +1613,96 @@ begin
                   and not pv_month_closed(p_job, lm)
                 then jsonb_build_object('month', lm, 'visits', (select count(*) from provider_visits x where x.job_id = p_job
                                           and pv_month_of(x.date) = lm and x.status in ('done', 'sent', 'redo'))) end);
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════
+-- WIRING (Phase 6b): Controlling reads the Soll · tenant notice · 19:00 push · login dot
+-- ═══════════════════════════════════════════════════════════════
+-- Controlling: every closed (or reopened) Providers month of a year, per cost type — the read-only Soll + drill-down
+create or replace function pv_ctrl_year(p_year int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  perform pv_admin_guard();
+  return (select coalesce(jsonb_agg(x.g order by x.cat, x.m), '[]'::jsonb) from (
+    select j.ctrl_category_id as cat, pm.month as m, jsonb_build_object(
+      'category_id', j.ctrl_category_id, 'month', extract(month from pm.month)::int, 'month_iso', pm.month,
+      'sum', sum(pm.closed_sum),
+      'status', case when bool_or(pm.status = 'reopened') then 'reopened' else 'closed' end,
+      'changed', bool_or(pm.changed_after_confirmation),
+      'paid', bool_and(pm.confirmed_paid_at is not null),
+      'jobs', jsonb_agg(jsonb_build_object('job_id', j.id, 'name', j.name, 'sum', pm.closed_sum, 'status', pm.status,
+                'paid_at', pm.confirmed_paid_at, 'changed', pm.changed_after_confirmation) order by j.sort, j.name),
+      'invoices', (select coalesce(jsonb_agg(jsonb_build_object('job', jj.name, 'amount', i.amount, 'invoice_date', i.invoice_date,
+                     'visit_date', v.date, 'path', i.pdf_path, 'by', pp.name) order by v.date nulls last, i.invoice_date), '[]'::jsonb)
+                   from provider_invoices i join providers jj on jj.id = i.job_id
+                   left join provider_visits v on v.id = i.visit_id left join provider_people pp on pp.id = i.uploaded_by
+                   where jj.ctrl_category_id = j.ctrl_category_id and i.month = pm.month and i.status = 'checked')) as g
+    from provider_months pm join providers j on j.id = pm.job_id
+    where j.ctrl_category_id is not null and extract(year from pm.month)::int = p_year and pm.status in ('closed', 'reopened')
+    group by j.ctrl_category_id, pm.month) x);
+end $$;
+
+-- login tile dot: anything waiting in any job
+create or replace function pv_admin_dot_any() returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  perform pv_admin_guard();
+  return exists (select 1 from providers j where j.deleted_at is null and pv_job_dot(j.id));
+end $$;
+
+-- tenant app: the next visit of a job with "Tell tenants" on (only date, time and areas — nothing else)
+create or replace function pv_tenant_areas(p_job uuid, p_list uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare fl jsonb; z text[]; de text[] := '{}'; en text[] := '{}';
+begin
+  select l.floors into fl from provider_lists l
+  where l.job_id = p_job and l.deleted_at is null and (l.id = p_list or p_list is null)
+  order by (l.id = p_list) desc nulls last, l.sort, l.created_at limit 1;
+  select array_agg(distinct f->>'zone') into z from jsonb_array_elements(coalesce(fl, '[]'::jsonb)) f;
+  if 'b' = any(z) then de := de || 'Bäder'::text; en := en || 'bathrooms'::text; end if;
+  if 'g' = any(z) then de := de || 'Gäste-WC'::text; en := en || 'guest WC'::text; end if;
+  if 'k' = any(z) then de := de || 'Küche'::text; en := en || 'kitchen'::text; end if;
+  if exists (select 1 from jsonb_array_elements(coalesce(fl, '[]'::jsonb)) f
+             where (f->'block'->>'vacuum')::boolean or (f->'block'->>'mop')::boolean) then
+    de := de || 'Flure'::text; en := en || 'hallways'::text;
+  end if;
+  return jsonb_build_object('de', array_to_string(de, ', '), 'en', array_to_string(en, ', '));
+end $$;
+
+create or replace function pv_tenant_notice() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v record; t date := pv_today();
+begin
+  select x.job_id, x.list_id, x.date, x.at_time into v
+  from provider_visits x join providers j on j.id = x.job_id
+  where j.deleted_at is null and j.tell_tenants and x.status in ('planned', 'in_progress')
+    and x.date between t and t + 6
+  order by x.date, x.at_time nulls last limit 1;
+  if v.date is null then return null; end if;
+  return jsonb_build_object('date', v.date, 'time', to_char(v.at_time, 'HH24:MI'), 'areas', pv_tenant_areas(v.job_id, v.list_id));
+end $$;
+
+-- 19:00 the evening before: what the push says (once per visit date) · p_test = the next visit now, nothing marked
+alter table provider_visits add column if not exists tenant_notified_for date;
+create or replace function pv_tenant_push_due(p_test boolean default false) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v record; t date := pv_today(); tm text; d text;
+begin
+  if not coalesce(p_test, false) and extract(hour from now() at time zone 'Europe/Berlin') <> 19 then return null; end if;
+  select x.id, x.date, x.at_time into v
+  from provider_visits x join providers j on j.id = x.job_id
+  where j.deleted_at is null and j.tell_tenants and x.status = 'planned'
+    and (case when coalesce(p_test, false) then x.date >= t else x.date = t + 1 and x.tenant_notified_for is distinct from x.date end)
+  order by x.date, x.at_time nulls last limit 1;
+  if v.id is null then return null; end if;
+  if not coalesce(p_test, false) then update provider_visits set tenant_notified_for = v.date where id = v.id; end if;
+  tm := to_char(v.at_time, 'HH24:MI');
+  d := case when v.date = t + 1 then 'Morgen' else 'Am ' || to_char(v.date, 'DD.MM.') end;
+  return jsonb_build_object('title', 'Casa Castel',
+    'body', d || ' kommt die Putzhilfe' || case when tm is not null then ' (ab ' || tm || ')' else '' end
+            || '. Bitte Bäder frei und Geschirr weg. · Cleaning '
+            || case when v.date = t + 1 then 'tomorrow' else 'on ' || to_char(v.date, 'DD.MM.') end
+            || case when tm is not null then ' from ' || tm else '' end || '.');
 end $$;
 
 -- ═══════════════════════════════════════════════════════════════
@@ -1707,7 +1782,7 @@ end $$;
 -- Close month: every invoice checked; visits without invoice need p_force (confirm) · sum → Controlling (app)
 create or replace function pv_admin_close_month(p_job uuid, p_month date, p_force boolean default false) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare m date := pv_month_of(p_month); open_n int; miss_n int; s numeric; cat text; soll numeric;
+declare m date := pv_month_of(p_month); open_n int; miss_n int; s numeric; cat text;
 begin
   perform pv_admin_guard();
   if m >= pv_month_of(pv_today()) then return jsonb_build_object('error', 'not_over'); end if;
@@ -1726,8 +1801,7 @@ begin
   insert into provider_months (job_id, month, status, closed_sum, closed_at)
   values (p_job, m, 'closed', s, now())
   on conflict (job_id, month) do update set status = 'closed', closed_sum = excluded.closed_sum, closed_at = now();
-  soll := pv_ctrl_soll_write(cat, m);                                  -- the one hand-over into Controlling (Phase 6)
-  return jsonb_build_object('ok', true, 'sum', s, 'month', m, 'soll', soll);
+  return jsonb_build_object('ok', true, 'sum', s, 'month', m);        -- Controlling reads it as the Soll (pv_ctrl_year)
 end $$;
 
 create or replace function pv_admin_reopen_month(p_job uuid, p_month date) returns jsonb
@@ -2133,15 +2207,22 @@ begin
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
     if f.proname in ('pv_jobs', 'pv_login', 'pv_logout', 'pv_ping', 'pv_request_password', 'pv_state', 'pv_catch_up',
                      'pv_start', 'pv_take_photo', 'pv_mark_np', 'pv_send', 'pv_cancel_visit', 'pv_undo_cancel',
-                     'pv_start_unplanned', 'pv_report', 'pv_message', 'pv_upload_invoice', 'pv_history',
+                     'pv_start_unplanned', 'pv_report', 'pv_message', 'pv_upload_invoice', 'pv_history', 'pv_tenant_notice',
                      'pv_storage_proof_ok', 'pv_storage_invoice_ok') then
       execute format('grant execute on function %s to anon, authenticated', f.sig);
     elsif f.proname like 'pv\_admin\_%' and f.proname not in ('pv_admin_guard', 'pv_admin_visit', 'pv_admin_check_refs') then
       execute format('grant execute on function %s to authenticated', f.sig);
-    elsif f.proname = 'pv_confirm_paid' then
+    elsif f.proname in ('pv_confirm_paid', 'pv_ctrl_year') then
       execute format('grant execute on function %s to authenticated', f.sig);
     end if;
   end loop;
+end $$;
+
+
+do $$ begin                                             -- the push function reads the 19:00 text with the service key
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function pv_tenant_push_due(boolean) to service_role';
+  end if;
 end $$;
 
 
@@ -2154,6 +2235,14 @@ do $$ begin
   if to_regclass('cron.job') is not null then
     perform cron.schedule('pv-catch-up', '*/15 * * * *', 'select public.pv_catch_up_all()');
     perform cron.schedule('pv-nightly', '0 1 * * *', 'select public.pv_nightly()');
+    -- hourly: the small function "push-providers" sends the tenant reminder at 19:00 Berlin (only with "Tell tenants" on)
+    perform cron.schedule('pv-tenant-push', '0 * * * *', $job$
+      select net.http_post(
+        url     := 'https://nqxsonmmcnmdastcpiff.supabase.co/functions/v1/push-providers',
+        body    := '{"kind":"tick"}'::jsonb,
+        headers := jsonb_build_object('Content-Type', 'application/json',
+                     'x-push-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cc_push_secret')));
+    $job$);
   end if;
 end $$;
 

@@ -76,6 +76,7 @@ function pvaGenPassword() {
     const copy = JSON.parse(localStorage.getItem('pva_copy') || 'null');
     if (copy && copy.jobs) { _pvaData = copy; pvaRenderShell(); }
   } catch (e) {}
+  try { localStorage.setItem('mgmt_last_app', 'providers.html'); } catch (e) {}
   if (typeof pvaMountCompose === 'function') pvaMountCompose();
   pvaLoad().then(() => { if (typeof pvaCleanup === 'function') pvaCleanup(); });
 })();
