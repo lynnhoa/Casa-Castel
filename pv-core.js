@@ -153,36 +153,53 @@ function _pvListBtn(total, light) {
       ${light && total ? `<span class="pv-big__count" style="background:#EDE8E0;color:#6B5E4E;">${total}</span>` : ''}
     </button>`;
 }
+function _pvStartAnyway(compact) {           /* no visit in the photo window → unplanned start */
+  const btn = `<button class="pv-big pv-big--light" type="button" data-act="unplanned"${compact ? ' style="min-height:48px;margin-top:8px;"' : ''}>
+      <span class="pv-big__ico"${compact ? ' style="width:32px;height:32px;"' : ''}>${_pvIco('btn_unplanned', compact ? 17 : 20)}</span>
+      <span class="pv-big__txt"><span class="pv-big__de"${compact ? ' style="font-size:14px;"' : ''}>Trotzdem starten</span><span class="pv-big__en">Start anyway · unplanned</span></span>
+    </button>`;
+  return compact ? `<div style="margin-top:12px;padding-top:10px;border-top:.5px solid var(--cc-rule);"><span class="k-note" style="margin-top:0;">Heute trotzdem geputzt? Starte hier – Casa Castel prüft es. · Cleaned anyway? Casa Castel checks it.</span>${btn}</div>` : btn;
+}
+function _pvCovered(v) { const c = v.counts || {}; return (c.done || 0) + (c.np || 0); }
+function _pvSpan(v) {                        /* 10:12–11:40 */
+  const a = pvHM(v.first_photo_at || v.started_at), b = pvHM(v.sent_at);
+  return a && b ? a + '–' + b : (a || b || '');
+}
 function pvProviderCardHTML(s) {
   const v = s && s.card;
   if (!v) {
     return { turn: '', html: `
-      <div class="k-mob-week-top-row"><span class="k-mob-status-chip">${_pvIco('chip_next', 13)}Kein Termin <span class="en">· No visit</span></span></div>
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip">${_pvIco('chip_later', 13)}Kein Termin heute <span class="en">· No visit today</span></span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">Kein Termin geplant</span>
-        <span class="k-mob-week-dates-sm">No visit planned</span>
-      </div></div>` };
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(s.today))}</span>
+        <span class="k-mob-week-dates-sm">Kein nächster Termin · no next visit</span>
+        <span class="k-note">Heute trotzdem geputzt? Starte hier – Casa Castel prüft es. · Cleaned anyway? Casa Castel checks it.</span>
+      </div></div>
+      ${_pvStartAnyway(false)}` };
   }
   const counts = v.counts || {};
   const total = counts.total || 0;
   const n = pvDaysUntil(v.date, s.today);
+  const open = !!(v.window && v.window.open);
+  const dayChip = n === 0 ? 'Heute <span class="en">· Today</span>' : n === 1 ? 'Morgen <span class="en">· Tomorrow</span>' : 'Noch offen <span class="en">· Still open</span>';
   const lastLine = () => {
     const lv = v.last_visit;
     return lv && lv.status === 'done' ? `<span class="k-note k-note--done">Letzter Termin ${pvDM(lv.date)}: erledigt ✓ · Last visit: done</span>` : '';
   };
   const movedLine = () => v.moved_from && v.moved_from !== v.date
     ? `<span class="k-note">Neuer Termin (vorher ${pvDM(v.moved_from)}) · New date (was ${pvDM(v.moved_from)})</span>` : '';
+  const unplannedLine = v.unplanned ? '<span class="k-note">Ohne Termin – Casa Castel prüft es. · Unplanned – Casa Castel checks it.</span>' : '';
 
-  if (v.status === 'planned' && n <= 0) {                  /* visit day (or still open from yesterday) */
+  if (v.status === 'planned' && open) {                     /* photo window open: yellow to-do */
     return { turn: 'turn', html: `
-      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${n === 0 ? 'Heute <span class="en">· Today</span>' : 'Noch offen <span class="en">· Still open</span>'}</span></div>
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${dayChip}</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${total} Fotos · ${total} photos</span>
         <span class="k-note">Erst putzen, dann fotografieren. · Clean first, then take photos.</span>
         ${_pvExtraNote(v)}${movedLine()}
       </div></div>
-      <button class="pv-big pv-big--off" type="button" data-act="start">
+      <button class="pv-big" type="button" data-act="start">
         <span class="pv-big__ico">${_pvIco('btn_cam', 20)}</span>
         <span class="pv-big__txt"><span class="pv-big__de">Fotos starten</span><span class="pv-big__en">Start photos</span></span>
         <span class="pv-big__count">0 / ${total}</span>
@@ -191,7 +208,7 @@ function pvProviderCardHTML(s) {
       ${v.can_cancel ? _pvCancelLink() : ''}` };
   }
 
-  if (v.status === 'planned') {                             /* next visit */
+  if (v.status === 'planned') {                             /* next visit (window not open yet) */
     const inDays = n === 1 ? 'morgen · tomorrow' : `in ${n} Tagen · in ${n} days`;
     return { turn: '', html: `
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip next">${_pvIco('chip_next', 13)}Nächster Termin <span class="en">· Next visit</span></span></div>
@@ -201,7 +218,79 @@ function pvProviderCardHTML(s) {
         ${lastLine()}${_pvExtraNote(v)}${movedLine()}
       </div></div>
       ${_pvListBtn(total, true)}
-      ${v.can_cancel ? _pvCancelLink() : ''}` };
+      ${v.can_cancel ? _pvCancelLink() : ''}
+      ${_pvStartAnyway(true)}` };
+  }
+
+  if (v.status === 'in_progress') {                         /* paused / running: continue where you were */
+    const cov = _pvCovered(v);
+    const all = total > 0 && cov >= total;
+    return { turn: 'turn', html: `
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${dayChip}</span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
+        <span class="k-mob-week-dates-sm">${cov} von ${total} Fotos · since ${pvHM(v.started_at)}</span>
+        <span class="k-note">${all ? 'Alles fotografiert – jetzt senden. · All done – now send.' : 'Pausiert – mach weiter, wo du warst. · Paused – continue where you were.'}</span>
+        ${unplannedLine}${_pvExtraNote(v)}
+      </div></div>
+      <div class="pv-prog"><span style="width:${total ? Math.round(cov / total * 1000) / 10 : 0}%"></span></div>
+      <button class="pv-big" type="button" data-act="continue">
+        <span class="pv-big__ico">${_pvIco(all ? 'send' : 'btn_continue', 20)}</span>
+        <span class="pv-big__txt"><span class="pv-big__de">${all ? 'Senden' : 'Weiter'}</span><span class="pv-big__en">${all ? 'Send' : 'Continue'}</span></span>
+        <span class="pv-big__count">${cov} / ${total}</span>
+      </button>` };
+  }
+
+  if (v.status === 'redo') {                                /* Lynn asked for some areas again */
+    const fl = (v.points || []).filter(p => p.flagged);
+    const redone = fl.filter(p => p.redone && (p.path || p.np)).length;
+    const names = fl.map(p => p.de).join(', ');
+    return { turn: 'redo', html: `
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip flagged">${_pvIco('chip_redo', 13)}Nochmal <span class="en">· Redo</span></span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
+        <span class="k-mob-week-dates-sm">Nur ${fl.length} ${fl.length === 1 ? 'Bereich' : 'Bereiche'} neu · only ${fl.length} ${fl.length === 1 ? 'area' : 'areas'} again${v.redo_until ? ' · bis ' + pvWdDM(v.redo_until) : ''}</span>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:7px;">${fl.slice(0, 3).map(p => `<span class="pic pic--${pvEsc(p.zone || 'c')}" style="width:36px;height:36px;border-radius:10px;">${_pvIco(p.pic, 22)}</span>`).join('')}<span class="k-note k-note--flag" style="margin-top:0;">${pvEsc(names)}${v.flag_note ? ': „' + pvEsc(v.flag_note) + '“' : ''}</span></div>
+      </div></div>
+      <button class="pv-big" type="button" data-act="redo">
+        <span class="pv-big__ico">${_pvIco('btn_redo', 20)}</span>
+        <span class="pv-big__txt"><span class="pv-big__de">${fl.length} ${fl.length === 1 ? 'Foto' : 'Fotos'} neu machen</span><span class="pv-big__en">Retake ${fl.length} ${fl.length === 1 ? 'photo' : 'photos'}</span></span>
+        <span class="pv-big__count">${redone} / ${fl.length}</span>
+      </button>` };
+  }
+
+  if (v.status === 'sent') {
+    return { turn: 'wait', html: `
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${_pvIco('chip_sent', 13)}Gesendet <span class="en">· Sent</span></span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
+        <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>
+        <span class="k-note k-note--wait">Wird geprüft. · Waiting for review.</span>${unplannedLine}
+      </div></div>
+      <button class="pv-big pv-big--light" type="button" data-act="list" style="min-height:48px;margin-top:8px;">
+        <span class="pv-big__ico">${_pvIco('btn_list', 20)}</span>
+        <span class="pv-big__txt"><span class="pv-big__de">Putzliste ansehen</span><span class="pv-big__en">View cleaning list</span></span>
+        <span class="pv-big__count">${_pvCovered(v)} / ${total}</span>
+      </button>` };
+  }
+
+  if (v.status === 'done') {
+    return { turn: 'done', html: `
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip approved">${_pvIco('chip_photos', 13)}Erledigt <span class="en">· Done</span></span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
+        <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>
+        <span class="k-note k-note--done">Danke! · Thank you!</span>
+      </div></div>` };
+  }
+
+  if (v.status === 'missed') {
+    return { turn: 'redo', html: `
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip missed">${_pvIco('chip_cancel', 13)}Nicht gesendet <span class="en">· Not sent</span></span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
+        <span class="k-note k-note--flag">Casa Castel meldet sich. · Casa Castel will get in touch.</span>
+      </div></div>` };
   }
 
   if (v.status === 'cancelled_by_provider') {
@@ -216,25 +305,6 @@ function pvProviderCardHTML(s) {
         <span class="k-note k-note--flag">Casa Castel plant einen neuen Termin. · Casa Castel plans a new date.</span>
       </div></div>
       ${v.can_undo_cancel ? `<button type="button" data-act="undo" style="display:flex;align-items:center;gap:6px;margin:8px auto 0;min-height:36px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#6B5E4E;text-decoration:underline;text-underline-offset:3px;">${_pvIco('undo', 14)}Rückgängig <span style="font-weight:400;color:#9A8E7E;">· Undo</span></button>` : ''}` };
-  }
-
-  if (v.status === 'in_progress') {
-    return { turn: 'turn', html: `
-      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}Heute <span class="en">· Today</span></span></div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">${counts.done || 0} von ${total} Fotos · since ${pvHM(v.started_at)}</span>
-      </div></div>` };
-  }
-
-  if (v.status === 'sent') {
-    return { turn: 'wait', html: `
-      <div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">↑ Gesendet <span class="en">· Sent</span></span></div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">Gesendet ${pvTs(v.sent_at)}</span>
-        <span class="k-note k-note--wait">Wird geprüft. · Waiting for review.</span>
-      </div></div>` };
   }
 
   return { turn: '', html: `
@@ -294,6 +364,18 @@ function pvChatRowHTML(m, opts) {
   if (pl.text) body += `<p class="k-chat-text">${pvEsc(pl.text)}</p>`;
   return `<div class="k-chat-row"><span class="k-chat-avatar">${pvEsc(av)}</span><div class="k-chat-body"><div class="k-chat-meta"><span class="k-chat-name">${pvEsc(name)}</span><span class="k-chat-time">${pvTs(m.at)}</span></div>${body}</div>${del}</div>`;
 }
+function _pvSentBlock(m, state, en) {         /* "Gesendet" block: name · badge · time · first photos */
+  const pl = m.payload || {};
+  const re = pl.code === 'resent';
+  const shots = (state.photos[m.visit_id] || []).filter(p => p.path || p.np);
+  const show = shots.slice(0, 4), more = shots.length - show.length;
+  const grid = show.map(p => p.path
+      ? `<div class="pv-ph" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${pvEsc(p.de || '')}</span></div>`
+      : `<div class="pv-ph pv-ph--np"${en ? ' style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;"' : ''}>–<span>${pvEsc(p.de || '')}</span></div>`).join('')
+    + (more > 0 ? `<div class="pv-ph pv-ph--more">+${more}</div>` : '');
+  const badge = re ? (en ? '↑↑ Re-sent' : '↑↑ Neu gesendet · Re-sent') : (en ? '↑ Submitted' : '↑ Gesendet · Sent');
+  return `<div class="pv-sub"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${badge}</span><span class="pv-time">${pvTs(m.at)}</span></div>${grid ? `<div class="pv-grid">${grid}</div>` : ''}</div>`;
+}
 function pvFeedHTML(state, opts) {
   opts = opts || {};
   const chat = (state && state.chat) || [];
@@ -309,7 +391,10 @@ function pvFeedHTML(state, opts) {
       const today = day === state.today;
       html += pvDivider(today ? (opts.en ? 'Today · ' : 'Heute · Today · ') + pvDM(day) : pvDM(day));
     }
-    if (m.kind === 'system') html += _pvSysLine(m, opts.en);
+    if (m.kind === 'system') {
+      const code = (m.payload || {}).code;
+      html += (code === 'sent' || code === 'resent') && state.photos && state.photos[m.visit_id] ? _pvSentBlock(m, state, opts.en) : _pvSysLine(m, opts.en);
+    }
     else html += pvChatRowHTML(m, m.person_id == null ? { en: opts.en } : opts);
   });
   return html;

@@ -126,6 +126,12 @@ function pvaRenderShell() {
   feed.scrollTop = feed.scrollHeight;
 }
 
+function _pvaNpNote(v) {                   /* "Bad 2 – WC: not possible (occupied)" — red on Lynn's side */
+  const why = { besetzt: 'occupied', kaputt: 'broken' };
+  const nps = (v.points || []).filter(p => p.np);
+  if (!nps.length) return '';
+  return `<span class="k-note k-note--flag">${nps.map(p => `${p.room_de && p.room_de !== p.de ? esc(p.room_de) + ' – ' : ''}${esc(p.de)}: not possible (${esc(why[p.np] || p.np_note || 'other')})`).join(' · ')}</span>`;
+}
 function _pvaCardHTML(s) {
   const v = s.card;
   const cal = pvPic('chip_next', 13);
@@ -145,7 +151,7 @@ function _pvaCardHTML(s) {
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
         <span class="k-mob-week-dates-sm">${(counts.done || 0) + (counts.np || 0)} / ${counts.total || 0} areas · since ${pvHM(v.started_at)}</span>
-        <div class="pv-prog"><span style="width:${pct}%"></span></div>${extra}
+        <div class="pv-prog"><span style="width:${pct}%"></span></div>${_pvaNpNote(v)}${extra}
       </div></div>` };
   }
   if (v.status === 'cancelled_by_provider') {
@@ -175,9 +181,14 @@ function _pvaCardHTML(s) {
       </div></div>` };
   }
   if (v.status === 'sent') {
-    return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">↑ Sent · to review</span></div>
+    const span = (pvHM(v.first_photo_at || v.started_at) && pvHM(v.sent_at)) ? pvHM(v.first_photo_at || v.started_at) + '–' + pvHM(v.sent_at) : '';
+    return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${pvPic('chip_sent', 13)}${v.unplanned ? 'Unplanned visit' : 'Sent · to review'}</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
-        <span class="k-mob-week-dates-sm">Sent ${pvTs(v.sent_at)}</span></div></div>` };
+        <span class="k-mob-week-dates-sm">${counts.total || 0} photos${span ? ' · ' + span : ''}</span>
+        ${_pvaNpNote(v)}
+        <span class="k-note k-note--wait">${v.unplanned ? 'No visit was planned. Approve / Reject follow with Phase 4.'
+          : v.auto_due_at ? 'Counts as done on ' + pvWdDM(String(v.auto_due_at).slice(0, 10), true) + ' ' + pvHM(v.auto_due_at) + ' unless you review it first (review: Phase 4).' : 'Waiting for your review.'}</span>
+      </div></div>` };
   }
   return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">${cal}${esc(v.status)}</span></div>
     <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span></div></div>` };

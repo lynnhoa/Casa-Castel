@@ -2,7 +2,8 @@
    CASA CASTEL — PROVIDERS · SERVICE APP (the provider's phone)
    pv-service.js — login · install help · Abmelden · Today screen
    (strip, card, chat read view) · Phase 2: Putzliste view,
-   Kann nicht kommen + Rückgängig.
+   Kann nicht kommen + Rückgängig · Phase 3: Fotos starten /
+   Weiter / Nochmal / Trotzdem starten → camera (pv-camera.js).
 
    Device keys (this app only — never the management keys):
      pv_token · pv_person · pv_person_name · pv_job · pv_job_name
@@ -156,6 +157,7 @@ function _pvEnterApp(fresh) {
 }
 
 function _pvToLogin() {
+  if (typeof pvCamKill === 'function') pvCamKill();
   _pvState = null;
   ['pv_token', 'pv_person', 'pv_person_name', 'pv_job_name', 'pv_state_copy'].forEach(k => localStorage.removeItem(k));
   pvCloseScrim('pv-install-scrim');
@@ -206,6 +208,9 @@ function _pvRender(s) {
   $id('pv-card').innerHTML = c.html;
   $id('pv-card').setAttribute('data-turn', c.turn);
 
+  /* camera open → it follows the fresh state (2nd phone, window end, cancel) */
+  if (typeof pvCamOnState === 'function') pvCamOnState();
+
   /* feed */
   $id('pv-feed').innerHTML = pvFeedHTML(s, {});
   const feed = $id('pv-feed');
@@ -218,6 +223,32 @@ function _pvOpenList() {
   if (!s || !s.list) { pvToast('Keine Putzliste · No cleaning list'); return; }
   $id('pv-pl-inner').innerHTML = pvPutzlisteHTML(s.list, s.card);
   $id('pv-pl').classList.remove('pv-hidden');
+}
+
+/* ── FOTOS STARTEN · WEITER · NOCHMAL · TROTZDEM STARTEN ── */
+async function _pvStartCamera() {
+  const v = _pvState && _pvState.card;
+  if (!v || _pvBusy) return;
+  _pvBusy = true;
+  const { data, error } = await pvRpc('pv_start', { p_token: localStorage.getItem('pv_token'), p_visit: v.id });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error) { pvToast('Keine Verbindung · No connection'); return; }
+  if (data && data.error === 'window') { pvToast('Fotos erst ab dem Vortag · Photos from the day before'); return; }
+  if (data && data.error) { pvToast('Schon geändert · Already changed'); _pvLoad(); return; }
+  await _pvLoad();
+  pvCamOpen((data && data.visit) || v.id);
+}
+async function _pvStartUnplanned() {
+  if (_pvBusy) return;
+  _pvBusy = true;
+  const { data, error } = await pvRpc('pv_start_unplanned', { p_token: localStorage.getItem('pv_token') });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error) { pvToast('Keine Verbindung · No connection'); return; }
+  if (data && data.error) { pvToast('Schon geändert · Already changed'); _pvLoad(); return; }
+  await _pvLoad();
+  pvCamOpen(data.visit);
 }
 
 /* ── KANN NICHT KOMMEN (board P8) ───────────────────────── */
@@ -316,7 +347,8 @@ async function _pvUndoCancel() {
     if (a === 'list') _pvOpenList();
     else if (a === 'cancel') _pvOpenCancel();
     else if (a === 'undo') _pvUndoCancel();
-    else if (a === 'start') pvToast('Kamera kommt mit dem nächsten Update · Camera comes with the next update');
+    else if (a === 'start' || a === 'continue' || a === 'redo') _pvStartCamera();
+    else if (a === 'unplanned') _pvStartUnplanned();
   });
   $id('pv-pl').addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
@@ -329,6 +361,9 @@ async function _pvUndoCancel() {
     }
   });
   document.addEventListener('visibilitychange', () => {
+    if (typeof _cam !== 'undefined' && _cam.open) {           /* camera off in the background, back on return */
+      if (document.hidden) _camStopLive(); else _camStartLive().then(_camRender);
+    }
     if (document.hidden || !localStorage.getItem('pv_token')) return;
     if (Date.now() - _pvLastLoad > 60000) _pvLoad(); else _pvPing();
   });
