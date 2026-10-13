@@ -227,11 +227,12 @@ async function pvaLoadCtrlCats() {
   _pvmCats = !error && Array.isArray(data) ? data : [];
   return _pvmCats;
 }
+const PVA_SERVICE_CATS = ['gärtner', 'putzdienst', 'winterdienst'];   /* only service costs can take a Providers month */
 function pvaCtrlCatHTML(j) {
   if ((j.next_mode || j.invoice_mode) === 'none' && j.invoice_mode === 'none') return '';
-  const cats = _pvmCats || [];
+  const cats = (_pvmCats || []).filter(c => PVA_SERVICE_CATS.includes(String(c.name || '').trim().toLowerCase()) || String(c.id) === String(j.ctrl_category_id));
   return `<div style="margin-top:10px;"><p class="pv-k">Controlling cost type <span style="color:#9A8E7E;">· where a closed month goes</span></p>
-      <div class="pv-chips">${cats.length ? cats.map(c => `<span class="k-mob-n-chip${String(j.ctrl_category_id) === String(c.id) ? ' selected' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvaSetCtrlCat('${esc(c.id)}')">${esc(c.name)}</span>`).join('') : '<span class="pv-k">No Casa Castel cost types found in Controlling.</span>'}</div>
+      <div class="pv-chips">${cats.length ? cats.map(c => `<span class="k-mob-n-chip${String(j.ctrl_category_id) === String(c.id) ? ' selected' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvaSetCtrlCat('${esc(c.id)}')">${esc(c.name)}</span>`).join('') : '<span class="pv-k">No service cost type (Gärtner, Putzdienst, Winterdienst) found in Controlling.</span>'}</div>
       ${j.ctrl_category_id ? '' : '<span class="k-note k-note--flag">Pick one — closing a month needs it.</span>'}</div>`;
 }
 async function pvaSetCtrlCat(id) {
