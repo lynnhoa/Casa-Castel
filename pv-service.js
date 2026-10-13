@@ -399,6 +399,18 @@ async function _pvUndoCancel() {
   _pvLoad();
 }
 
+async function _pvTakeOver() {
+  const v = _pvState && _pvState.card;
+  if (_pvBusy || !v) return;
+  _pvBusy = true;
+  const { data, error } = await pvRpc('pv_take_over', { p_token: localStorage.getItem('pv_token'), p_visit: v.id });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error) { pvToast('Keine Verbindung · No connection'); return; }
+  pvToast(data && data.error ? 'Schon geändert · Already changed' : 'Übernommen · Taken over');
+  _pvLoad();
+}
+
 /* ── BOOT ───────────────────────────────────────────────── */
 (function pvBoot() {
   $id('pv-login-btn').onclick = _pvDoLogin;
@@ -441,6 +453,14 @@ async function _pvUndoCancel() {
     };
     if (a === 'list') _pvOpenList();
     else if (a === 'cancel') _pvOpenCancel();
+    else if (a === 'takeover') {                /* tap once = ask, tap again = take over */
+      if (b.getAttribute('data-sure') !== '1') {
+        b.setAttribute('data-sure', '1');
+        b.innerHTML = 'Sicher? Nochmal tippen <span style="font-weight:400;color:#9A8E7E;">· Tap again to take over</span>';
+        return;
+      }
+      run(_pvTakeOver);
+    }
     else if (a === 'undo') run(_pvUndoCancel);
     else if (a === 'start' || a === 'continue' || a === 'redo') run(() => _pvStartCamera());
     else if (a === 'redo-other') run(() => _pvStartCamera(_pvState && _pvState.card && _pvState.card.redo_other && _pvState.card.redo_other.id));

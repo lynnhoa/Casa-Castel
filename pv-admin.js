@@ -22,6 +22,7 @@ let _pvaLastLoad = 0;
 let _pvaEditJob = false;     // People modal: job section in edit mode
 let _pvaEditPerson = null;   // person id being edited
 let _pvaNewPerson = false;   // "+ Person" form open
+let _pvaNpReq = null;        // { id, name } when the form was opened from a password request
 
 const $a = id => document.getElementById(id);
 
@@ -303,7 +304,8 @@ function pvaRenderPeople() {
     <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;margin-bottom:4px;border-radius:10px;background:#FDF0D8;border:.5px solid #E8C97A;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;color:#633806;"><circle cx="8" cy="15" r="4"></circle><path d="M10.85 12.15L19 4M18 5l2 2M15 8l2 2"></path></svg>
       <p style="flex:1;font-size:12.5px;color:#633806;line-height:1.35;">${esc(r.name)} asked for a new password · ${pvTs(r.at)}${r.note ? `<span style="display:block;color:#8A6A2E;">„${esc(r.note)}“</span>` : ''}${r.person_id ? '' : '<span style="display:block;color:#8A6A2E;">No person with this name — check it.</span>'}</p>
-      ${r.person_id ? `<button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaNewPassword('${r.person_id}')">New password</button>` : ''}
+      ${r.person_id ? `<button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaNewPassword('${r.person_id}')">New password</button>`
+                    : `<button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaAddFromRequest('${r.id}')">Add as person</button>`}
       <button class="cc-foot-btn" type="button" aria-label="Dismiss" onclick="pvaDismissRequest('${r.id}')">✕</button>
     </div>`).join('');
 
@@ -352,7 +354,7 @@ function pvaRenderPeople() {
     addHtml = `
       <div style="padding:10px 0;border-top:.5px solid #E0DAD0;">
         <div class="pv-kv">
-          <div><label class="pv-k" for="pvaNpName">Name</label><input id="pvaNpName" class="pv-field" maxlength="40"/></div>
+          <div><label class="pv-k" for="pvaNpName">Name</label><input id="pvaNpName" class="pv-field" maxlength="40" value="${esc(_pvaNpReq ? _pvaNpReq.name : '')}"/></div>
           <div><label class="pv-k" for="pvaNpPhone">Phone (optional)</label><input id="pvaNpPhone" class="pv-field" maxlength="30"/></div>
         </div>
         <div style="margin-top:12px;"><label class="pv-k" for="pvaNpPw">Password (made for you)</label>
@@ -361,7 +363,7 @@ function pvaRenderPeople() {
             <button class="cc-foot-btn" type="button" onclick="pvaCopy(document.getElementById('pvaNpPw').value)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>Copy</button>
             <button class="cc-foot-btn" type="button" onclick="document.getElementById('pvaNpPw').value = pvaGenPassword()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="M10.85 12.15L19 4M18 5l2 2M15 8l2 2"></path></svg>New</button>
           </div></div>
-        <div class="cc-sec-foot" style="margin-top:12px;"><button class="cc-foot-btn" type="button" onclick="_pvaNewPerson=false;pvaRenderPeople()">Cancel</button><button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaAddPerson()">Add</button></div>
+        <div class="cc-sec-foot" style="margin-top:12px;"><button class="cc-foot-btn" type="button" onclick="_pvaNewPerson=false;_pvaNpReq=null;pvaRenderPeople()">Cancel</button><button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaAddPerson()">Add</button></div>
       </div>`;
   } else {
     addHtml = `<div class="cc-sec-foot"><button class="cc-foot-btn" type="button" onclick="_pvaNewPerson=true;pvaRenderPeople()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Person</button></div>`;
@@ -541,7 +543,19 @@ async function pvaAddPerson() {
   if (data.error === 'pw_taken') { $a('pvaNpPw').value = pvaGenPassword(); pvaToast('Password was taken — here is a new one.'); return; }
   if (data.error) { pvaToast('Could not add — try again.'); return; }
   _pvaNewPerson = false;
+  if (_pvaNpReq && _pvaNpReq.name.trim().toLowerCase() === name.toLowerCase())   /* the request is answered by the new person */
+    await pvaRpc('pv_admin_dismiss_request', { p_id: _pvaNpReq.id });
+  _pvaNpReq = null;
   pvaLoad();
+  pvaToast('Added — copy or share the password below.');
+}
+
+function pvaAddFromRequest(id) {
+  const r = ((_pvaData && _pvaData.requests) || []).find(x => x.id === id);
+  if (!r) return;
+  _pvaNpReq = { id: r.id, name: r.name || '' };
+  _pvaNewPerson = true;
+  pvaRenderPeople();
 }
 
 async function pvaDismissRequest(id) {

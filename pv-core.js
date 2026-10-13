@@ -143,6 +143,9 @@ function _pvExtraNote(v) {
   if (!x || !x.de) return '';
   return `<span class="k-note" style="color:#A3512A;">Extra heute: ${pvEsc(x.de)}${x.en ? ' · ' + pvEsc(x.en) : ''}</span>`;
 }
+function _pvTakeOverLink() {
+  return `<button type="button" data-act="takeover" style="display:block;margin:8px auto 0;min-height:36px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#6B5E4E;text-decoration:underline;text-underline-offset:3px;">Ich übernehme <span style="font-weight:400;color:#9A8E7E;">· I'll take over</span></button>`;
+}
 function _pvCancelLink() {
   return `<button type="button" data-act="cancel" style="display:block;margin:8px auto 0;min-height:36px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#A32D2D;text-decoration:underline;text-underline-offset:3px;">Kann nicht kommen <span style="font-weight:400;color:#C07070;">· Can't come</span></button>`;
 }
@@ -212,6 +215,19 @@ function _pvProviderCard(s) {
   const forLine = () => v.person_id && v.person_id !== localStorage.getItem('pv_person') && v.person
     ? `<span class="k-note">Geplant für ${pvEsc(v.person)} · planned for ${pvEsc(v.person)}</span>` : '';
   const reopenLine = v.reopen_until && new Date(v.reopen_until) > new Date() ? `<span class="k-note">Wieder offen bis ${pvWdDM(String(v.reopen_until).slice(0, 10))} ${pvHM(v.reopen_until)} · Reopened</span>` : '';
+
+  if (v.status === 'planned' && v.other_person && v.person) {   /* a colleague's visit: calm, with takeover */
+    const when = n === 0 ? 'heute · today' : n === 1 ? 'morgen · tomorrow' : `in ${n} Tagen · in ${n} days`;
+    return { turn: '', html: `
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip next">${_pvIco('chip_next', 13)}${pvEsc(v.person)} kommt <span class="en">· ${pvEsc(v.person)}'s visit</span></span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
+        <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${when}</span>
+        ${_pvExtraNote(v)}${movedLine()}
+      </div></div>
+      ${_pvListBtn(total, true)}
+      ${v.can_take_over ? _pvTakeOverLink() : ''}` };
+  }
 
   if (v.status === 'planned' && open) {                     /* photo window open: yellow to-do */
     return { turn: 'turn', html: `
@@ -433,7 +449,8 @@ const _PV_SYS = {
   cancelled:          ['Abgesagt', 'Cancelled', 'Cancelled'],
   cancelled_provider: ['Abgesagt', 'Cancelled', 'Cancelled'],
   cancel_undone:      ['Absage zurückgenommen', 'Cancellation undone', 'Cancellation undone'],
-  restored:           ['Wieder geplant', 'Planned again', 'Planned again']
+  restored:           ['Wieder geplant', 'Planned again', 'Planned again'],
+  taken_over:         ['Übernommen', 'Taken over', 'Taken over']
 };
 function _pvSysLine(m, en) {
   const pl = m.payload || {};
@@ -441,7 +458,7 @@ function _pvSysLine(m, en) {
   let txt = en ? t[2] : t[0] + ' · ' + t[1];
   if ((pl.code === 'moved' || pl.code === 'replanned') && pl.from && pl.to) txt += ' · ' + pvDM(pl.from) + ' → ' + pvDM(pl.to);
   else if (pl.date) txt += ' · ' + pvWdDM(pl.date, en);                 /* which visit the line is about */
-  if ((pl.code === 'cancelled_provider' || pl.code === 'cancel_undone' || pl.code === 'sent' || pl.code === 'resent') && pl.person) txt = pvEsc(pl.person) + ': ' + txt;
+  if ((pl.code === 'cancelled_provider' || pl.code === 'cancel_undone' || pl.code === 'sent' || pl.code === 'resent' || pl.code === 'taken_over') && pl.person) txt = pvEsc(pl.person) + ': ' + txt;
   const cls = pl.code === 'approved' ? ' k-sys-event__text--approved' : '';
   return `<div class="k-sys-event"><div class="k-sys-event__line"></div><span class="k-sys-event__text${cls}">${txt} · ${pvTs(m.at)}</span><div class="k-sys-event__line"></div></div>`;
 }

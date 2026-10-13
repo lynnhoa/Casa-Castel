@@ -162,6 +162,13 @@ async function pvaMonthClose(month, missing) {
   if (missing && !(await ccConfirm('Close anyway?', `${missing} ${missing === 1 ? 'visit has' : 'visits have'} no invoice. Closing hands the sum of the checked invoices to Controlling.`, 'Close month', false))) return;
   const { data, error } = await pvaRpc('pv_admin_close_month', { p_job: _pvaJob, p_month: month, p_force: !!missing });
   if (error) { pvaToast('No connection — try again.'); return; }
+  if (data && data.error === 'open') {
+    const end = new Date(new Date(data.until).getTime() - 60000);
+    const p = Object.fromEntries(new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+                .formatToParts(end).map(x => [x.type, x.value]));
+    pvaToast(`Visit on ${pvDM(data.date)} is still open until ${p.day}.${p.month}. ${p.hour}:${p.minute} — close after that.`);
+    return;
+  }
   if (data && data.error) {
     pvaToast({ no_category: 'Pick the Controlling cost type in People first.', unchecked: 'Check all invoices first.', not_over: 'The month isn\u2019t over yet.',
                review: `${data.n || ''} visit${data.n === 1 ? '' : 's'} still wait${data.n === 1 ? 's' : ''} for review — approve or flag first.` }[data.error] || 'Already changed — refreshed.');
