@@ -1,8 +1,9 @@
 /* ─────────────────────────────────────────────────────────────
    CASA CASTEL — PROVIDERS · LYNN'S APP
-   pv-admin.js — Phase 1: shell (gate · tabs with dots · strip ·
-   card · chat read view) + People modal complete + New job +
-   Preview (read-only provider view).
+   pv-admin.js — shell (gate · tabs with dots · strip · card ·
+   chat read view) + People modal + New job + Preview (read-only
+   provider view) · Phase 2: planning card states, Agenda tool
+   (pv-agenda.js).
 
    Gate + authenticated client: controlling-auth.js (_ctlSupa,
    ctlGetSession) — the same login as the other management apps.
@@ -52,14 +53,16 @@ function pvaGenPassword() {
   $a('pvaPreviewBtn').onclick = () => pvaOpenPreview();
   document.addEventListener('click', e => {
     const c = e.target.closest('[data-close]');
-    if (c) { $a(c.getAttribute('data-close')).classList.add('pv-hidden'); return; }
-    if (e.target.classList && e.target.classList.contains('pv-scrim')) e.target.classList.add('pv-hidden');
+    const shut = id => { $a(id).classList.add('pv-hidden'); if (id === 'pvaAgendaScrim') pvaLoad(); };   /* Agenda closed → card + strip fresh */
+    if (c) { shut(c.getAttribute('data-close')); return; }
+    if (e.target.classList && e.target.classList.contains('pv-scrim')) shut(e.target.id);
     if (!e.target.closest('.nav-actions')) $a('navProfileMenu').classList.remove('open');
   });
   document.querySelectorAll('.pv-tool').forEach(b => b.onclick = () => {
     const t = b.getAttribute('data-tool');
     if (t === 'people') pvaOpenPeople();
-    else pvaToast(t === 'agenda' ? 'Agenda follows with Phase 2.' : t === 'list' ? 'List follows with Phase 2.' : 'History follows with Phase 5.');
+    else if (t === 'agenda') pvaOpenAgenda();
+    else pvaToast(t === 'list' ? 'The list editor follows with Phase 5.' : 'History follows with Phase 4.');
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && Date.now() - _pvaLastLoad > 60000) pvaLoad();
@@ -104,6 +107,7 @@ function pvaRenderShell() {
 
   if (!d.job) {
     $a('pvaStrip').style.display = 'none';
+    $a('pvaCardWrap').setAttribute('data-turn', '');
     $a('pvaCard').innerHTML = `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">No jobs yet</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">Create the first job with +</span></div></div>`;
     $a('pvaFeed').innerHTML = '';
@@ -114,7 +118,9 @@ function pvaRenderShell() {
   const stripHtml = pvStripHTML(s.strip, s.today, true);
   $a('pvaStrip').innerHTML = stripHtml;
   $a('pvaStrip').style.display = stripHtml ? '' : 'none';
-  $a('pvaCard').innerHTML = _pvaCardHTML(s);
+  const card = _pvaCardHTML(s);
+  $a('pvaCard').innerHTML = card.html;
+  $a('pvaCardWrap').setAttribute('data-turn', card.turn);
   $a('pvaFeed').innerHTML = pvFeedHTML(s, { en: true });
   const feed = $a('pvaFeed');
   feed.scrollTop = feed.scrollHeight;
@@ -122,35 +128,59 @@ function pvaRenderShell() {
 
 function _pvaCardHTML(s) {
   const v = s.card;
-  const cal = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M4 11h16"></path></svg>';
+  const cal = pvPic('chip_next', 13);
   if (!v) {
-    return `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">${cal}No visit planned</span></div>
+    return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">${cal}No visit planned</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">Nothing planned yet</span>
-        <span class="k-mob-week-dates-sm">The schedule is set in the Agenda (next phase).</span>
-      </div></div>`;
+        <span class="k-mob-week-dates-sm">Set a rhythm or an extra date in the Agenda.</span>
+      </div></div>` };
   }
   const counts = v.counts || {};
+  const who = v.person ? esc(v.person) : 'anyone';
+  const extra = v.extra_task && v.extra_task.de ? `<span class="k-note" style="color:#A3512A;">Extra: ${esc(v.extra_task.de)}${v.extra_task.photo ? ' · photo' : ''}</span>` : '';
   if (v.status === 'in_progress') {
     const pct = counts.total ? Math.round(((counts.done || 0) + (counts.np || 0)) / counts.total * 1000) / 10 : 0;
-    return `<div class="k-mob-week-top-row"><span class="k-mob-status-chip now"><span class="pv-live"></span>Today · in progress</span><span class="k-mob-week-dates-sm">last photo ${pvHM(v.last_photo_at)}</span></div>
+    return { turn: 'turn', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip now"><span class="pv-live"></span>Today · in progress</span><span class="k-mob-week-dates-sm">last photo ${pvHM(v.last_photo_at)}</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
         <span class="k-mob-week-dates-sm">${(counts.done || 0) + (counts.np || 0)} / ${counts.total || 0} areas · since ${pvHM(v.started_at)}</span>
-        <div class="pv-prog"><span style="width:${pct}%"></span></div>
-      </div></div>`;
+        <div class="pv-prog"><span style="width:${pct}%"></span></div>${extra}
+      </div></div>` };
   }
-  const chip = v.status === 'sent' ? `<span class="k-mob-status-chip submitted">↑ Sent · to review</span>`
-    : v.status === 'planned' && v.date === s.today ? `<span class="k-mob-status-chip now">${cal}Today</span>`
-    : v.status === 'planned' ? `<span class="k-mob-status-chip next">${cal}Next visit</span>`
-    : `<span class="k-mob-status-chip">${cal}${esc(v.status)}</span>`;
-  const line2 = v.status === 'sent' ? 'Sent ' + pvTs(v.sent_at)
-    : v.time ? v.time + (v.person ? ' · ' + esc(v.person) : '') : (v.person ? esc(v.person) : '');
-  return `<div class="k-mob-week-top-row">${chip}</div>
-    <div class="k-mob-week-body"><div class="k-mob-week-left">
-      <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
-      ${line2 ? `<span class="k-mob-week-dates-sm">${line2}</span>` : ''}
-    </div></div>`;
+  if (v.status === 'cancelled_by_provider') {
+    const why = { krank: 'sick', termin: 'other plans', anderes: 'other' }[v.cancel_reason] || 'cancelled';
+    return { turn: 'redo', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip missed">${pvPic('chip_cancel_by', 13)}Cancelled by ${esc(v.cancelled_person || 'provider')}</span></div>
+      <div class="k-mob-week-body">
+        <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+          <span class="k-mob-week-dates-sm">${v.time ? v.time + ' · ' : ''}reason: ${why}${v.cancel_note ? ' · „' + esc(v.cancel_note) + '“' : ''}</span>
+          <span class="k-note k-note--flag">Plan a new date: move it in the Agenda.</span></div>
+        <div class="k-mob-week-acts"><button class="k-mob-wact blue" type="button" aria-label="Open Agenda" onclick="pvaOpenAgenda('${v.id}')">${pvPic('agenda', 14)}<span>Agenda</span></button></div>
+      </div>` };
+  }
+  if (v.status === 'planned' && v.date <= s.today) {
+    return { turn: 'turn', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip now">${pvPic('chip_now', 13)}${v.date === s.today ? 'Today' : 'Open'} · not started</span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+        <span class="k-mob-week-dates-sm">${v.time ? v.time + ' · ' : ''}${who} · no photos yet</span>
+        <span class="k-note">Closes as Missed after ${pvWdDM(pvAddDays(v.date, 1), true)}, 23:59.</span>${extra}
+      </div></div>` };
+  }
+  if (v.status === 'planned') {
+    const n = pvDaysUntil(v.date, s.today);
+    return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip next">${cal}Next visit</span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+        <span class="k-mob-week-dates-sm">${v.time ? v.time + ' · ' : ''}${who} · ${n === 1 ? 'tomorrow' : 'in ' + n + ' days'}</span>${extra}
+      </div></div>` };
+  }
+  if (v.status === 'sent') {
+    return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">↑ Sent · to review</span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+        <span class="k-mob-week-dates-sm">Sent ${pvTs(v.sent_at)}</span></div></div>` };
+  }
+  return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">${cal}${esc(v.status)}</span></div>
+    <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span></div></div>` };
 }
 
 /* ── PEOPLE MODAL ───────────────────────────────────────── */
@@ -524,6 +554,7 @@ async function pvaOpenPreview(personId) {
   const chips = people.length ? `<div class="pv-chips" style="padding:8px 14px;background:var(--cc-white);border-bottom:.5px solid var(--cc-rule);margin:0;">
       ${people.map(p => `<span class="k-mob-n-chip${p.id === personId ? ' selected' : ''}" style="cursor:pointer;" onclick="pvaOpenPreview('${p.id}')">${esc(p.name)}</span>`).join('')}</div>` : '';
   const stripHtml = pvStripHTML(s.strip, s.today, false);
+  const pc = pvProviderCardHTML(s);                         /* the provider's own card renderer */
   $a('pvaPreviewBody').innerHTML = `${chips}
     <div style="padding:8px 14px;background:#FDF0D8;border-bottom:.5px solid #E8C97A;font-size:11px;color:#633806;">What ${s.person ? esc(s.person.name) : 'the provider'} sees · read only</div>
     <div id="pvaPreviewScreen">
@@ -531,22 +562,10 @@ async function pvaOpenPreview(personId) {
         <div class="nav-actions"><button class="nav-role-pill" type="button">${esc((s.person && s.person.name) || '—')}</button></div></nav>
         <div class="cc-tabs"><button class="cc-tab active" type="button">${esc(s.job.name)}</button></div></div>
       ${stripHtml ? `<div class="k-mob-rot">${stripHtml}</div>` : ''}
-      <div class="k-mob-week">${_pvaPreviewCard(s)}</div>
+      <div class="k-mob-week" data-turn="${pc.turn}">${pc.html}</div>
       <div class="k-mob-chat" style="min-height:140px;"><div class="k-mob-chat-hdr"><span class="k-mob-chat-lbl">Fotos &amp; Chat · Photos &amp; chat</span></div>
         <div class="k-mob-feed" style="display:flex;flex-direction:column;justify-content:flex-end;">${pvFeedHTML(s, {})}</div></div>
     </div>`;
   $a('pvaPreviewScreen').querySelectorAll('button, input, select, textarea').forEach(el => { el.disabled = true; el.style.pointerEvents = 'none'; });
   $a('pvaPreviewScrim').classList.remove('pv-hidden');
-}
-function _pvaPreviewCard(s) {
-  const v = s.card;
-  const cal = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M4 11h16"></path></svg>';
-  if (!v) return `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">${cal}Kein Termin <span class="en">· No visit</span></span></div>
-    <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">Kein Termin geplant</span><span class="k-mob-week-dates-sm">No visit planned</span></div></div>`;
-  const today = v.date === s.today;
-  const label = v.status === 'planned' && today ? 'Heute <span class="en">· Today</span>'
-    : v.status === 'planned' ? 'Nächster Termin <span class="en">· Next visit</span>'
-    : esc(v.status);
-  return `<div class="k-mob-week-top-row"><span class="k-mob-status-chip ${v.status === 'planned' && today ? 'myturn' : 'next'}">${cal}${label}</span></div>
-    <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${esc(pvWdFull(v.date))}</span>${v.time ? `<span class="k-mob-week-dates-sm">ab ${esc(v.time)}</span>` : ''}</div></div>`;
 }

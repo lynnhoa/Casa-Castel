@@ -1,13 +1,15 @@
 /* ─────────────────────────────────────────────────────────────
    CASA CASTEL — PROVIDERS · SERVICE APP (the provider's phone)
-   pv-service.js — Phase 1: login · install help · Abmelden ·
-   Today screen (strip, card, chat read view).
+   pv-service.js — login · install help · Abmelden · Today screen
+   (strip, card, chat read view) · Phase 2: Putzliste view,
+   Kann nicht kommen + Rückgängig.
 
    Device keys (this app only — never the management keys):
      pv_token · pv_person · pv_person_name · pv_job · pv_job_name
      pv_install_seen (install-help modal shown once per device)
 
-   Depends on: constants.js, cc-german-format.js, pv-core.js
+   Depends on: constants.js, cc-german-format.js, pv-core.js, pv-pics.js,
+               pv-putzliste.js
    ───────────────────────────────────────────────────────────── */
 
 let _pvState   = null;    // last pv_state payload
@@ -157,6 +159,8 @@ function _pvToLogin() {
   _pvState = null;
   ['pv_token', 'pv_person', 'pv_person_name', 'pv_job_name', 'pv_state_copy'].forEach(k => localStorage.removeItem(k));
   pvCloseScrim('pv-install-scrim');
+  pvCloseScrim('pv-cancel-scrim');
+  $id('pv-pl').classList.add('pv-hidden');
   $id('pv-app').classList.add('pv-hidden');
   $id('pv-login-screen').style.display = '';
   $id('pv-name-menu').classList.add('pv-hidden');
@@ -197,11 +201,10 @@ function _pvRender(s) {
   stripEl.innerHTML = stripHtml;
   stripEl.style.display = stripHtml ? '' : 'none';
 
-  /* card */
-  $id('pv-card').innerHTML = _pvCardHTML(s);
-  const card = s.card;
-  $id('pv-card').setAttribute('data-turn',
-    card && (card.status === 'in_progress' || card.status === 'redo' || (card.status === 'planned' && card.date === s.today)) ? 'turn' : '');
+  /* card (shared renderer in pv-core.js — Lynn's preview shows the same) */
+  const c = pvProviderCardHTML(s);
+  $id('pv-card').innerHTML = c.html;
+  $id('pv-card').setAttribute('data-turn', c.turn);
 
   /* feed */
   $id('pv-feed').innerHTML = pvFeedHTML(s, {});
@@ -209,99 +212,77 @@ function _pvRender(s) {
   feed.scrollTop = feed.scrollHeight;
 }
 
-function _pvCardHTML(s) {
-  const v = s.card;
-  const chipCal = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M4 11h16"></path></svg>';
-  const chipCam = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h1a2 2 0 0 0 2-2 1 1 0 0 1 1-1h6a1 1 0 0 1 1 1 2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2"></path><circle cx="12" cy="13" r="3"></circle></svg>';
+/* ── PUTZLISTE (board P3b) ──────────────────────────────── */
+function _pvOpenList() {
+  const s = _pvState || _pvLoadCopy();
+  if (!s || !s.list) { pvToast('Keine Putzliste · No cleaning list'); return; }
+  $id('pv-pl-inner').innerHTML = pvPutzlisteHTML(s.list, s.card);
+  $id('pv-pl').classList.remove('pv-hidden');
+}
 
-  const lastLine = () => {
-    const lv = v && v.last_visit;
-    if (!lv || lv.status !== 'done') return '';
-    return `<span class="k-note k-note--done">Letzter Termin ${pvDM(lv.date)}: erledigt ✓ · Last visit: done</span>`;
-  };
-
-  if (!v) {
-    return `
-      <div class="k-mob-week-top-row">
-        <span class="k-mob-status-chip">${chipCal}Kein Termin <span class="en">· No visit</span></span>
-      </div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">Kein Termin geplant</span>
-        <span class="k-mob-week-dates-sm">No visit planned</span>
-      </div></div>`;
-  }
-
-  const today = v.date === s.today;
-  const n = pvDaysUntil(v.date, s.today);
-  const counts = v.counts || {};
-  const fotos = counts.total ? `${counts.total} Fotos · ${counts.total} photos` : '';
-
-  if (v.status === 'planned' && !today) {
-    const inDays = n === 1 ? 'morgen · tomorrow' : `in ${n} Tagen · in ${n} days`;
-    return `
-      <div class="k-mob-week-top-row">
-        <span class="k-mob-status-chip next">${chipCal}Nächster Termin <span class="en">· Next visit</span></span>
-      </div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${inDays}</span>
-        ${lastLine()}
-      </div></div>`;
-  }
-
-  if (v.status === 'planned' && today) {
-    return `
-      <div class="k-mob-week-top-row">
-        <span class="k-mob-status-chip myturn">${chipCam}Heute <span class="en">· Today</span></span>
-      </div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) : ''}${fotos ? ' · ' + fotos : ''}</span>
-        <span class="k-note">Erst putzen, dann fotografieren. · Clean first, then take photos.</span>
-      </div></div>`;
-  }
-
-  if (v.status === 'in_progress') {
-    return `
-      <div class="k-mob-week-top-row">
-        <span class="k-mob-status-chip myturn">${chipCam}Heute <span class="en">· Today</span></span>
-      </div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">${counts.done || 0} / ${counts.total || 0} · ab ${pvHM(v.started_at)}</span>
-      </div></div>`;
-  }
-
-  if (v.status === 'sent') {
-    return `
-      <div class="k-mob-week-top-row">
-        <span class="k-mob-status-chip submitted">↑ Gesendet <span class="en">· Sent</span></span>
-      </div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">Gesendet ${pvTs(v.sent_at)} · Casa Castel schaut es an. · Casa Castel is checking.</span>
-      </div></div>`;
-  }
-
-  if (v.status === 'cancelled_by_provider') {
-    return `
-      <div class="k-mob-week-top-row">
-        <span class="k-mob-status-chip">${chipCal}Abgesagt <span class="en">· Cancelled</span></span>
-      </div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left">
-        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">Du hast abgesagt. · You cancelled.</span>
-      </div></div>`;
-  }
-
-  /* redo / done / other states get their full cards in later phases — show the facts */
-  return `
-    <div class="k-mob-week-top-row">
-      <span class="k-mob-status-chip">${chipCal}${pvEsc(v.status)}</span>
+/* ── KANN NICHT KOMMEN (board P8) ───────────────────────── */
+let _pvCancelReason = null;
+function _pvCancelReady() {
+  const note = $id('pv-cancel-note');
+  const ok = !!_pvCancelReason && (_pvCancelReason !== 'anderes' || note.value.trim() !== '');
+  const btn = $id('pv-cancel-send');
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '.45';
+}
+function _pvOpenCancel() {
+  const s = _pvState; const v = s && s.card;
+  if (!v || !v.can_cancel) return;
+  _pvCancelReason = null;
+  const reasons = [['krank', 'sick', 'Krank', 'Sick'], ['termin', 'other_date', 'Anderer Termin', 'Other plans'], ['anderes', 'other', 'Anderes', 'Other']];
+  $id('pv-cancel-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="pic pic--k" style="width:44px;height:44px;border-radius:13px;">${pvPic('cal_big', 26)}</span>
+      <div><p style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:500;line-height:1;color:#1E1B18;">${pvEsc(pvWdFull(v.date))}</p>
+        <p style="font-size:12px;color:#9A8E7E;margin-top:3px;">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${pvEsc((s.job && s.job.name) || '')}</p></div>
     </div>
-    <div class="k-mob-week-body"><div class="k-mob-week-left">
-      <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-    </div></div>`;
+    <p style="font-size:13px;font-weight:600;color:#1E1B18;margin-top:16px;">Warum? <span style="font-weight:400;color:#9A8E7E;">· Why?</span></p>
+    <div style="display:flex;gap:8px;margin-top:8px;">${reasons.map(r => `<button type="button" data-reason="${r[0]}" style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px 10px;border-radius:14px;border:1px solid #E0DAD0;background:#FDFCFA;"><span class="pic pic--np" style="width:48px;height:48px;border-radius:14px;border-style:solid;">${pvPic(r[1], 28)}</span><span style="font-size:13.5px;font-weight:600;color:#1E1B18;line-height:1.15;">${r[2]}</span><span style="font-size:10.5px;color:#9A8E7E;line-height:1.15;">${r[3]}</span></button>`).join('')}</div>
+    <textarea id="pv-cancel-note" class="cc-input pv-textarea pv-hidden" rows="2" maxlength="200" placeholder="Kurz erklären · explain briefly" style="font-family:inherit;height:auto;padding-top:10px;margin-top:10px;width:100%;"></textarea>
+    <p style="display:flex;align-items:flex-start;gap:6px;margin-top:12px;font-size:12px;line-height:1.4;color:#6B5E4E;">${pvPic('info', 14)}<span>Casa Castel plant einen neuen Termin.<span style="display:block;color:#9A8E7E;">Casa Castel plans a new date.</span></span></p>
+    <button type="button" id="pv-cancel-send" disabled style="width:100%;min-height:54px;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:10px;border-radius:14px;border:none;background:#A32D2D;color:#FFFFFF;opacity:.45;">${pvPic('btn_cancel', 20)}<span style="text-align:left;line-height:1.2;"><span style="display:block;font-size:16px;font-weight:600;">Absagen</span><span style="display:block;font-size:11px;color:#F7C1C1;">Cancel visit</span></span></button>
+    <button class="pv-big pv-big--light" type="button" data-close="pv-cancel-scrim" style="justify-content:center;min-height:48px;margin-top:8px;"><span class="pv-big__txt" style="flex:0 1 auto;align-items:center;"><span class="pv-big__de" style="font-size:15px;">Zurück</span><span class="pv-big__en">Back</span></span></button>`;
+  $id('pv-cancel-body').querySelectorAll('[data-reason]').forEach(b => b.onclick = () => {
+    _pvCancelReason = b.getAttribute('data-reason');
+    $id('pv-cancel-body').querySelectorAll('[data-reason]').forEach(x => {
+      const on = x === b;
+      x.style.border = on ? '1.5px solid #A32D2D' : '1px solid #E0DAD0';
+      x.style.background = on ? '#FCEBEB' : '#FDFCFA';
+    });
+    $id('pv-cancel-note').classList.toggle('pv-hidden', _pvCancelReason !== 'anderes');
+    _pvCancelReady();
+  });
+  $id('pv-cancel-note').addEventListener('input', _pvCancelReady);
+  $id('pv-cancel-send').onclick = _pvCancelSend;
+  pvOpenScrim('pv-cancel-scrim');
+}
+async function _pvCancelSend() {
+  const v = _pvState && _pvState.card;
+  if (_pvBusy || !v || !_pvCancelReason) return;
+  _pvBusy = true;
+  const note = $id('pv-cancel-note').value.trim();
+  const { data, error } = await pvRpc('pv_cancel_visit', { p_token: localStorage.getItem('pv_token'), p_visit: v.id, p_reason: _pvCancelReason, p_note: note || null });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error) { pvToast('Keine Verbindung · No connection'); return; }
+  pvCloseScrim('pv-cancel-scrim');
+  pvToast(data && data.error ? 'Schon geändert · Already changed' : 'Abgesagt · Cancelled');
+  _pvLoad();
+}
+async function _pvUndoCancel() {
+  const v = _pvState && _pvState.card;
+  if (_pvBusy || !v) return;
+  _pvBusy = true;
+  const { data, error } = await pvRpc('pv_undo_cancel', { p_token: localStorage.getItem('pv_token'), p_visit: v.id });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error) { pvToast('Keine Verbindung · No connection'); return; }
+  pvToast(data && data.error ? 'Schon geändert · Already changed' : 'Termin bleibt · Visit is back');
+  _pvLoad();
 }
 
 /* ── BOOT ───────────────────────────────────────────────── */
@@ -328,6 +309,25 @@ function _pvCardHTML(s) {
     _pvToLogin();
   };
   $id('pv-refresh').onclick = _pvLoad;
+  $id('pv-card').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const a = b.getAttribute('data-act');
+    if (a === 'list') _pvOpenList();
+    else if (a === 'cancel') _pvOpenCancel();
+    else if (a === 'undo') _pvUndoCancel();
+    else if (a === 'start') pvToast('Kamera kommt mit dem nächsten Update · Camera comes with the next update');
+  });
+  $id('pv-pl').addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    if (b.getAttribute('data-act') === 'pl-close') $id('pv-pl').classList.add('pv-hidden');
+    if (b.getAttribute('data-act') === 'muell') {
+      const s = _pvState || _pvLoadCopy();
+      const url = s && s.list ? pvMuellUrl(s.list.muell) : '';
+      if (url) window.open(url, '_blank');
+    }
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !localStorage.getItem('pv_token')) return;
     if (Date.now() - _pvLastLoad > 60000) _pvLoad(); else _pvPing();

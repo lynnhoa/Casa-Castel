@@ -432,3 +432,6 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 .pv-hidden{display:none !important}
 .pv-spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:pvspin .7s linear infinite;vertical-align:-2px}
 @keyframes pvspin{to{transform:rotate(360deg)}}
+
+/* Providers feed: long neutral lines wrap instead of running off the screen */
+.k-mob-feed .k-sys-event__text{white-space:normal;text-align:center;line-height:1.35}
