@@ -568,3 +568,17 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 @keyframes cc-load { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 
 .pv-ph[data-view]{cursor:pointer}
+
+/* ── Lynn's app on iPad landscape / laptop (Phase 5, layout only):
+      card left, chat right, modals as centred windows ── */
+@media (min-width: 900px) {
+  body.pva .scr { max-width: 1180px; display: grid; grid-template-columns: minmax(380px, 440px) minmax(0, 1fr);
+                  grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+  body.pva .scr > .scr-top, body.pva .scr > .cc-header { grid-column: 1 / -1; }
+  body.pva #pvaStrip { grid-column: 1; grid-row: 3; }
+  body.pva #pvaCardWrap { grid-column: 1; grid-row: 4; align-self: start; max-height: 100%; overflow-y: auto; }
+  body.pva .scr > .k-mob-chat { grid-column: 2; grid-row: 3 / 5; min-height: 0; border-left: .5px solid var(--cc-rule); }
+  body.pva #pvaCompose { grid-column: 2; grid-row: 5; border-left: .5px solid var(--cc-rule); }
+  body.pva .pv-scrim { justify-content: center; align-items: center; }
+  body.pva .pv-scrim > .cc-modal-sheet { width: min(640px, 92%); max-height: 86vh !important; border-radius: 14px; padding-bottom: 0; }
+}

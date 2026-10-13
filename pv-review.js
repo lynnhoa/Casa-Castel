@@ -34,7 +34,10 @@ async function pvaAct(kind, visitId) {
   const a = _PVA_ACT[kind];
   if (!a) return;
   _pvaActBusy = true;
+  const btns = Array.from(document.querySelectorAll('#pvaCardWrap .k-mob-wact'));
+  btns.forEach(b => { b.disabled = true; b.style.opacity = '.55'; });
   const { data, error } = await pvaRpc(a[0], { p_visit: visitId });
+  btns.forEach(b => { b.disabled = false; b.style.opacity = ''; });
   _pvaActBusy = false;
   if (error) { pvaToast('No connection — try again.'); return; }
   if (data && data.error) pvaToast(data.error === 'closed' ? 'That month is closed — reopen the month first.' : 'Already changed — refreshed.');

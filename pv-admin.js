@@ -4,7 +4,8 @@
    chat read view) + People modal + New job + Preview (read-only
    provider view) · Phase 2: planning card states, Agenda tool
    (pv-agenda.js) · Phase 4: review card states + actions, reports,
-   chat compose, History (pv-review.js).
+   chat compose, History (pv-review.js) · Phase 5: List modal
+   (pv-lists.js), iPad/laptop layout, no-blink rendering.
 
    Gate + authenticated client: controlling-auth.js (_ctlSupa,
    ctlGetSession) — the same login as the other management apps.
@@ -49,7 +50,8 @@ function pvaGenPassword() {
 (async function pvaBoot() {
   const session = await ctlGetSession();
   if (!session) { location.replace('login.html'); return; }
-  /* Log out is wired by controlling-auth.js (#logoutBtn → ctlSignOut) */
+  /* Log out is wired by controlling-auth.js (#logoutBtn → ctlSignOut); the device copy goes with it */
+  $a('logoutBtn').addEventListener('click', () => { ['pva_copy', 'pva_job', 'pva_cleanup_day'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); });
   $a('pvaRefresh').onclick = () => pvaLoad();
   $a('pvaPreviewBtn').onclick = () => pvaOpenPreview();
   document.addEventListener('click', e => {
@@ -64,7 +66,7 @@ function pvaGenPassword() {
     if (t === 'people') pvaOpenPeople();
     else if (t === 'agenda') pvaOpenAgenda();
     else if (t === 'history') pvaOpenHistory();
-    else pvaToast('The list editor follows with Phase 5.');
+    else if (t === 'list') pvaOpenLists();
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && Date.now() - _pvaLastLoad > 60000) pvaLoad();
@@ -105,30 +107,28 @@ function pvaRenderShell() {
   /* tabs */
   const tabs = (d.jobs || []).map(j =>
     `<button class="cc-tab${j.id === (d.job && d.job.id) ? ' active' : ''}${j.dot ? ' cc-tab--dot' : ''}" type="button" onclick="pvaLoad('${j.id}')">${esc(j.name)}</button>`).join('');
-  $a('pvaTabs').innerHTML = tabs +
-    `<button class="cc-tab cc-tab--add" type="button" aria-label="New job" onclick="pvaOpenNewJob()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>`;
+  pvSetHTML($a('pvaTabs'), tabs +
+    `<button class="cc-tab cc-tab--add" type="button" aria-label="New job" onclick="pvaOpenNewJob()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>`);
 
   if (!d.job) {
     $a('pvaStrip').style.display = 'none';
     $a('pvaCardWrap').setAttribute('data-turn', '');
-    $a('pvaCard').innerHTML = `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">No jobs yet</span></div>
-      <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">Create the first job with +</span></div></div>`;
-    $a('pvaFeed').innerHTML = '';
-    $a('pvaReports').innerHTML = '';
+    pvSetHTML($a('pvaCard'), `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">No jobs yet</span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">Create the first job with +</span></div></div>`);
+    pvSetHTML($a('pvaFeed'), '');
+    pvSetHTML($a('pvaReports'), '');
     return;
   }
 
   const s = d.state;
   const stripHtml = pvStripHTML(s.strip, s.today, true);
-  $a('pvaStrip').innerHTML = stripHtml;
+  pvSetHTML($a('pvaStrip'), stripHtml);
   $a('pvaStrip').style.display = stripHtml ? '' : 'none';
   const card = _pvaCardHTML(s);
-  $a('pvaCard').innerHTML = card.html;
+  pvSetHTML($a('pvaCard'), card.html);
   $a('pvaCardWrap').setAttribute('data-turn', card.turn);
-  $a('pvaReports').innerHTML = typeof pvaReportsHTML === 'function' ? pvaReportsHTML(s) : '';
-  $a('pvaFeed').innerHTML = pvFeedHTML(s, { en: true, canDelete: true, onDelete: 'pvaDeleteMsg' });
-  const feed = $a('pvaFeed');
-  feed.scrollTop = feed.scrollHeight;
+  pvSetHTML($a('pvaReports'), typeof pvaReportsHTML === 'function' ? pvaReportsHTML(s) : '');
+  pvSetFeed($a('pvaFeed'), pvFeedHTML(s, { en: true, canDelete: true, onDelete: 'pvaDeleteMsg' }));
 }
 
 function _pvaNpNote(v) {                   /* "Bad 2 – WC: not possible (occupied)" — red on Lynn's side */
@@ -159,7 +159,7 @@ function _pvaCardHTML(s) {
 
   if (v.status === 'in_progress') {
     const pct = counts.total ? Math.round(cov / counts.total * 1000) / 10 : 0;
-    return { turn: 'turn', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip now"><span class="pv-live"></span>Today · in progress</span><span class="k-mob-week-dates-sm">last photo ${pvHM(v.last_photo_at)}</span></div>
+    return { turn: 'turn', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip now"><span class="pv-live"></span>Today · in progress</span><span class="k-mob-week-dates-sm">${v.last_photo_at ? 'last photo ' + pvHM(v.last_photo_at) : 'no photos yet'}</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
         <span class="k-mob-week-dates-sm">${cov} / ${counts.total || 0} areas · since ${pvHM(v.started_at)}</span>

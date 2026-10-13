@@ -203,21 +203,19 @@ function _pvRender(s) {
   /* strip */
   const stripEl = $id('pv-strip');
   const stripHtml = pvStripHTML(s.strip, s.today, false);
-  stripEl.innerHTML = stripHtml;
+  pvSetHTML(stripEl, stripHtml);
   stripEl.style.display = stripHtml ? '' : 'none';
 
   /* card (shared renderer in pv-core.js — Lynn's preview shows the same) */
   const c = pvProviderCardHTML(s);
-  $id('pv-card').innerHTML = c.html;
+  pvSetHTML($id('pv-card'), c.html);
   $id('pv-card').setAttribute('data-turn', c.turn);
 
   /* camera open → it follows the fresh state (2nd phone, window end, cancel) */
   if (typeof pvCamOnState === 'function') pvCamOnState();
 
   /* feed */
-  $id('pv-feed').innerHTML = pvFeedHTML(s, {});
-  const feed = $id('pv-feed');
-  feed.scrollTop = feed.scrollHeight;
+  pvSetFeed($id('pv-feed'), pvFeedHTML(s, {}));
 }
 
 /* ── PUTZLISTE (board P3b) ──────────────────────────────── */
@@ -435,12 +433,16 @@ async function _pvUndoCancel() {
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.getAttribute('data-act');
+    const run = fn => {                         /* the button waits while its call runs */
+      b.disabled = true; b.style.opacity = '.6';
+      Promise.resolve(fn()).finally(() => { b.disabled = false; b.style.opacity = ''; });
+    };
     if (a === 'list') _pvOpenList();
     else if (a === 'cancel') _pvOpenCancel();
-    else if (a === 'undo') _pvUndoCancel();
-    else if (a === 'start' || a === 'continue' || a === 'redo') _pvStartCamera();
-    else if (a === 'redo-other') _pvStartCamera(_pvState && _pvState.card && _pvState.card.redo_other && _pvState.card.redo_other.id);
-    else if (a === 'unplanned') _pvStartUnplanned();
+    else if (a === 'undo') run(_pvUndoCancel);
+    else if (a === 'start' || a === 'continue' || a === 'redo') run(() => _pvStartCamera());
+    else if (a === 'redo-other') run(() => _pvStartCamera(_pvState && _pvState.card && _pvState.card.redo_other && _pvState.card.redo_other.id));
+    else if (a === 'unplanned') run(_pvStartUnplanned);
     else if (a === 'supplies') _pvOpenSupplies();
   });
   $id('pv-pl').addEventListener('click', e => {

@@ -511,6 +511,19 @@ function pvFeedHTML(state, opts) {
   return html;
 }
 
+/* ── NO BLINKS: patch only what changed · the chat keeps the reader's place ── */
+function pvSetHTML(el, html) {
+  if (!el || el.__pvHtml === html) return false;
+  el.innerHTML = html;
+  el.__pvHtml = html;
+  return true;
+}
+function pvSetFeed(el, html) {
+  if (!el) return;
+  const atEnd = el.__pvHtml === undefined || el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  if (pvSetHTML(el, html) && atEnd) el.scrollTop = el.scrollHeight;
+}
+
 /* ── TOAST ──────────────────────────────────────────────── */
 let _pvToastT = null;
 function pvToast(msg) {
