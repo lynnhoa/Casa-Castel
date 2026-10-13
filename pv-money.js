@@ -163,7 +163,8 @@ async function pvaMonthClose(month, missing) {
   const { data, error } = await pvaRpc('pv_admin_close_month', { p_job: _pvaJob, p_month: month, p_force: !!missing });
   if (error) { pvaToast('No connection — try again.'); return; }
   if (data && data.error) {
-    pvaToast({ no_category: 'Pick the Controlling cost type in People first.', unchecked: 'Check all invoices first.', not_over: 'The month isn\u2019t over yet.' }[data.error] || 'Already changed — refreshed.');
+    pvaToast({ no_category: 'Pick the Controlling cost type in People first.', unchecked: 'Check all invoices first.', not_over: 'The month isn\u2019t over yet.',
+               review: `${data.n || ''} visit${data.n === 1 ? '' : 's'} still wait${data.n === 1 ? 's' : ''} for review — approve or flag first.` }[data.error] || 'Already changed — refreshed.');
     _pvmRefreshHistory(); return;
   }
   if (data && data.confirm) { pvaMonthClose(month, data.n); return; }
@@ -230,13 +231,15 @@ async function pvaLoadCtrlCats() {
 const PVA_SERVICE_CATS = ['gärtner', 'putzdienst', 'winterdienst'];   /* only service costs can take a Providers month */
 function pvaCtrlCatHTML(j) {
   if ((j.next_mode || j.invoice_mode) === 'none' && j.invoice_mode === 'none') return '';
-  const cats = (_pvmCats || []).filter(c => PVA_SERVICE_CATS.includes(String(c.name || '').trim().toLowerCase()) || String(c.id) === String(j.ctrl_category_id));
+  let cats = (_pvmCats || []).filter(c => PVA_SERVICE_CATS.includes(String(c.name || '').trim().toLowerCase()) || String(c.id) === String(j.ctrl_category_id));
+  if (!cats.length) cats = (_pvmCats || []);                       /* renamed types still pickable */
   return `<div style="margin-top:10px;"><p class="pv-k">Controlling cost type <span style="color:#9A8E7E;">· where a closed month goes</span></p>
       <div class="pv-chips">${cats.length ? cats.map(c => `<span class="k-mob-n-chip${String(j.ctrl_category_id) === String(c.id) ? ' selected' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvaSetCtrlCat('${esc(c.id)}')">${esc(c.name)}</span>`).join('') : '<span class="pv-k">No service cost type (Gärtner, Putzdienst, Winterdienst) found in Controlling.</span>'}</div>
       ${j.ctrl_category_id ? '' : '<span class="k-note k-note--flag">Pick one — closing a month needs it.</span>'}</div>`;
 }
 async function pvaSetCtrlCat(id) {
   const { data, error } = await pvaRpc('pv_admin_set_ctrl_category', { p_job: _pvaJob, p_category: id });
+  if (data && data.error === 'taken') { pvaToast(`Already used by ${data.name} — one cost type per job.`); return; }
   if (error || (data && data.error)) { pvaToast('Could not save — try again.'); return; }
   pvaToast('Cost type saved.');
   pvaLoad();

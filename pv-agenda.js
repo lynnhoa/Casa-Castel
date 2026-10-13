@@ -311,12 +311,21 @@ function pvagSaveVisit(id) {
       const who = _pvagSel.who || null;
       const list = _pvagSel.list || null;
       if (!v) {
-        const r = await _pvagCall('pv_admin_add_visit', { p_job: _pvaJob, p_date: date, p_time: time, p_person: who, p_list: list });
-        if (!r) return;
+        let r = await _pvagCall('pv_admin_add_visit', { p_job: _pvaJob, p_date: date, p_time: time, p_person: who, p_list: list });
+        if (r && r.confirm === 'day_taken') {
+          if (!await ccConfirm('Day already booked', 'There is already a visit on that day. Plan a second one anyway?', 'Plan anyway', false)) return;
+          r = await _pvagCall('pv_admin_add_visit', { p_job: _pvaJob, p_date: date, p_time: time, p_person: who, p_list: list, p_force: true });
+        }
+        if (!r || r.confirm) return;
         visitId = r.id;
       } else if (v.status !== 'planned' || date !== v.date || (time || '') !== (v.time || '') || who !== (v.person_id || null)
                  || (list || _pvagFirstList()) !== (v.list_id || _pvagFirstList())) {
-        if (!await _pvagCall('pv_admin_move_visit', { p_visit: id, p_date: date, p_time: time, p_person: who, p_list: list })) return;
+        let mr = await _pvagCall('pv_admin_move_visit', { p_visit: id, p_date: date, p_time: time, p_person: who, p_list: list });
+        if (mr && mr.confirm === 'day_taken') {
+          if (!await ccConfirm('Day already booked', 'There is already a visit on that day. Move it there anyway?', 'Move anyway', false)) return;
+          mr = await _pvagCall('pv_admin_move_visit', { p_visit: id, p_date: date, p_time: time, p_person: who, p_list: list, p_force: true });
+        }
+        if (!mr || mr.confirm) return;
       }
     }
     if (taskChanged && !await _pvagCall('pv_admin_set_extra_task', { p_visit: visitId, p_task: task })) { await _pvagDone(); return; }

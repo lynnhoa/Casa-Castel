@@ -209,6 +209,8 @@ function _pvProviderCard(s) {
   const movedLine = () => v.moved_from && v.moved_from !== v.date
     ? `<span class="k-note">Neuer Termin (vorher ${pvDM(v.moved_from)}) · New date (was ${pvDM(v.moved_from)})</span>` : '';
   const unplannedLine = v.unplanned ? '<span class="k-note">Ohne Termin – Casa Castel prüft es. · Unplanned – Casa Castel checks it.</span>' : '';
+  const forLine = () => v.person_id && v.person_id !== localStorage.getItem('pv_person') && v.person
+    ? `<span class="k-note">Geplant für ${pvEsc(v.person)} · planned for ${pvEsc(v.person)}</span>` : '';
   const reopenLine = v.reopen_until && new Date(v.reopen_until) > new Date() ? `<span class="k-note">Wieder offen bis ${pvWdDM(String(v.reopen_until).slice(0, 10))} ${pvHM(v.reopen_until)} · Reopened</span>` : '';
 
   if (v.status === 'planned' && open) {                     /* photo window open: yellow to-do */
@@ -218,7 +220,7 @@ function _pvProviderCard(s) {
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${total} Fotos · ${total} photos</span>
         <span class="k-note">Erst putzen, dann fotografieren. · Clean first, then take photos.</span>
-        ${reopenLine}${_pvExtraNote(v)}${movedLine()}
+        ${forLine()}${reopenLine}${_pvExtraNote(v)}${movedLine()}
       </div></div>
       <button class="pv-big" type="button" data-act="start">
         <span class="pv-big__ico">${_pvIco('btn_cam', 20)}</span>
@@ -236,7 +238,7 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${inDays}</span>
-        ${lastLine()}${_pvExtraNote(v)}${movedLine()}
+        ${forLine()}${lastLine()}${_pvExtraNote(v)}${movedLine()}
       </div></div>
       ${_pvListBtn(total, true)}
       ${v.can_cancel ? _pvCancelLink() : ''}

@@ -28,16 +28,17 @@
       if (h) h.insertAdjacentElement('afterend', el); else tab.prepend(el);
     }
     const a = n.areas || {};
+    const tips = /Bäder|Küche/.test(a.de || '');
     const line = [n.time ? 'ab ' + esc(n.time) : '', a.de ? esc(a.de) + (a.en ? ' · ' + esc(a.en) : '') : ''].filter(Boolean).join(' · ');
     el.innerHTML = `<div class="k-mob-week" data-turn="turn" style="border:.5px solid #E0DAD0;border-radius:12px;margin:0 0 18px;">
-        <div class="k-mob-week-top-row"><span class="k-mob-status-chip now">${IC.chip}Putzhilfe · Cleaning</span></div>
+        <div class="k-mob-week-top-row"><span class="k-mob-status-chip now">${IC.chip}${esc(n.job || 'Putzhilfe')} · visit</span></div>
         <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${day(n.date)}</span>${line ? `<span class="k-mob-week-dates-sm">${line}</span>` : ''}</div></div>
-        <p style="font-size:12px;font-weight:600;color:#3A3530;margin-top:10px;">Bitte vorher · please before</p>
+        ${tips ? `<p style="font-size:12px;font-weight:600;color:#3A3530;margin-top:10px;">Bitte vorher · please before</p>
         <div style="display:flex;gap:6px;margin-top:8px;">
-          ${tip('#E2EEFC', '#1E5A9A', IC.bath, 'Bäder frei', 'Bathrooms free')}
-          ${tip('#FBF0D0', '#8A6A10', IC.dishes, 'Geschirr weg', 'Dishes away')}
-          ${tip('#FBF0D0', '#8A6A10', IC.fridge, 'Kühlschrank ordnen', 'Tidy your shelf')}
-        </div>
+          ${/Bäder/.test(a.de || '') ? tip('#E2EEFC', '#1E5A9A', IC.bath, 'Bäder frei', 'Bathrooms free') : ''}
+          ${/Küche/.test(a.de || '') ? tip('#FBF0D0', '#8A6A10', IC.dishes, 'Geschirr weg', 'Dishes away') : ''}
+          ${/Küche/.test(a.de || '') ? tip('#FBF0D0', '#8A6A10', IC.fridge, 'Kühlschrank ordnen', 'Tidy your shelf') : ''}
+        </div>` : ''}
       </div>`;
   }
   async function load() {

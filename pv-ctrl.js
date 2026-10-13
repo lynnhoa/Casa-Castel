@@ -75,26 +75,42 @@
   };
 
   /* paid ✓ back: booking (or clearing) the cost in Controlling is the confirmation */
-  function paid(catId, m, on) {
+  function note(msg) {
+    let el = document.getElementById('pv-ctrl-note');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'pv-ctrl-note';
+      el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;background:#1E1B18;color:#FDFCFA;font-size:13px;padding:10px 16px;border-radius:12px;max-width:86vw;text-align:center;';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    clearTimeout(el._t); el._t = setTimeout(() => el.remove(), 3200);
+  }
+  async function paid(catId, m, on) {
     const pv = find(catId, window._ctrl.year, m);
     if (!pv) return;
-    (pv.jobs || []).forEach(j => {
-      if (j.status !== 'closed') return;
-      _ctlSupa.rpc('pv_confirm_paid', { p_job: j.job_id, p_month: pv.month_iso, p_paid: on }).then(() => {}, () => {});
+    let failed = false;
+    for (const j of (pv.jobs || [])) {
+      if (j.status !== 'closed') continue;
+      try {
+        const { error } = await _ctlSupa.rpc('pv_confirm_paid', { p_job: j.job_id, p_month: pv.month_iso, p_paid: on });
+        if (error) { failed = true; continue; }
+      } catch (e) { failed = true; continue; }
       j.paid_at = on ? new Date().toISOString() : null; j.changed = false;
-    });
+    }
+    if (failed) { note('Paid \u2713 kam nicht in Providers an \u2014 bitte noch einmal best\u00e4tigen.'); return; }
     pv.paid = on; pv.changed = false;
   }
   const _ups = ctlUpsertCastel;
   ctlUpsertCastel = async function (category_id, month) {
     const res = await _ups.apply(this, arguments);
-    paid(category_id, month, true);
+    await paid(category_id, month, true);
     return res;
   };
   const _del = ctlDeleteCastel;
   ctlDeleteCastel = async function (category_id, month) {
     const res = await _del.apply(this, arguments);
-    paid(category_id, month, false);
+    await paid(category_id, month, false);
     return res;
   };
 
