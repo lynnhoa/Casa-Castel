@@ -244,6 +244,7 @@ function _pvaCardHTML(s) {
 const _PVA_AV = [['#E2EEFC','#1E5A9A'],['#EEE8FB','#5B3FA6'],['#E1F1EA','#2F6B55'],['#FCEFC9','#7A5600'],['#FDE4D0','#8A3E12'],['#F6E3EA','#9A3558']];
 
 function pvaOpenPeople() {
+  if (typeof pvaLoadCtrlCats === 'function') pvaLoadCtrlCats().then(() => { if (!$a('pvaPeopleScrim').classList.contains('pv-hidden')) pvaRenderPeople(); });
   if (!_pvaData || !_pvaData.job) { pvaToast('Create a job first.'); return; }
   _pvaEditJob = false; _pvaEditPerson = null; _pvaNewPerson = false;
   pvaRenderPeople();
@@ -279,7 +280,8 @@ function pvaRenderPeople() {
         <div><p class="pv-k">Invoice sender</p><p class="pv-v"${j.sender_name ? '' : ' style="color:#9A8E7E;"'}>${j.sender_name ? esc(j.sender_name) : '+ company / name'}</p></div>
         <div><p class="pv-k">Address</p><p class="pv-v"${j.sender_address ? '' : ' style="color:#9A8E7E;"'}>${j.sender_address ? esc(j.sender_address) : '+ address'}</p></div>
       </div>
-      <div style="margin-top:10px;"><p class="pv-k">Invoices</p><div class="pv-chips">${modeChip('per_visit', 'Per visit')}${modeChip('monthly', 'Monthly')}${modeChip('none', 'None')}</div>${modeNote}</div>
+      <div style="margin-top:10px;"><p class="pv-k">Invoices</p><div class="pv-chips">${modeChip('per_visit', 'Per visit')}${modeChip('monthly', 'Monthly')}${modeChip('none', 'None')}</div>${modeNote}
+        ${typeof pvaCtrlCatHTML === 'function' ? pvaCtrlCatHTML(j) : ''}</div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;">
         <div><p class="pv-v">Tell tenants</p><p class="pv-k">Next cleaning in the tenant app + reminder the evening before</p></div>
         <span class="pv-toggle${j.tell_tenants ? '' : ' pv-toggle--off'}" role="button" tabindex="0" aria-label="Tell tenants" onclick="pvaToggleTellTenants()"></span>

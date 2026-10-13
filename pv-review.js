@@ -61,6 +61,9 @@ function pvaCardActs(v, today) {
 
 /* ── REPORTS UNDER THE CARD ─────────────────────────────── */
 function pvaReportsHTML(s) {
+  return (typeof pvaInvoiceCardsHTML === 'function' ? pvaInvoiceCardsHTML(_pvaData) : '') + _pvaReportCards(s);
+}
+function _pvaReportCards(s) {
   const reps = (s && s.reports) || [];
   const nextV = (s.strip || []).find(x => x.status === 'planned' && x.date >= s.today);
   return reps.map(r => {
@@ -239,7 +242,7 @@ async function pvaOpenHistory() {
   $a('pvaHistoryScrim').classList.remove('pv-hidden');
   const { data, error } = await pvaRpc('pv_admin_history', { p_job: _pvaJob, p_before: null, p_months: 3 });
   if (error || !data || data.error) { pvaToast('Could not load the history.'); return; }
-  _pvh.visits = data.visits || []; _pvh.next = data.next_before;
+  Object.assign(_pvh, { visits: data.visits || [], next: data.next_before, invoices: data.invoices || [], months: data.months || [], today: data.today, monthsLoaded: 3 });
   _pvhRender();
 }
 async function pvaHistoryMore() {
@@ -247,20 +250,24 @@ async function pvaHistoryMore() {
   const { data, error } = await pvaRpc('pv_admin_history', { p_job: _pvaJob, p_before: _pvh.next, p_months: 6 });
   if (error || !data || data.error) { pvaToast('Could not load more.'); return; }
   _pvh.visits = _pvh.visits.concat(data.visits || []); _pvh.next = data.next_before;
+  _pvh.invoices = (data.invoices || []).concat((_pvh.invoices || []).filter(i => !(data.invoices || []).some(x => x.id === i.id)));
+  _pvh.months = (_pvh.months || []).concat((data.months || []).filter(m => !(_pvh.months || []).some(x => x.month === m.month)));
+  _pvh.monthsLoaded = (_pvh.monthsLoaded || 3) + 6;
   _pvhRender();
 }
 function pvaHistoryFilter(f) { _pvh.filter = f; _pvhRender(); }
 function _pvhRender() {
   const people = Array.from(new Set(_pvh.visits.flatMap(v => v.people || []))).sort();
-  const chips = [['all', 'All'], ['review', 'To review'], ['issues', 'Issues']].concat(people.map(n => ['p:' + n, n]));
+  const chips = [['all', 'All'], ['review', 'To review'], ['issues', 'Issues']].concat(typeof pvaVisitInvoiceOpen === 'function' ? [['inv', 'Open invoices']] : [], people.map(n => ['p:' + n, n]));
   const f = _pvh.filter;
   const list = _pvh.visits.filter(v => f === 'all' ? true
     : f === 'review' ? v.status === 'sent'
     : f === 'issues' ? ['redo', 'missed', 'cancelled_by_provider', 'rejected'].includes(v.status) || (v.counts && v.counts.np) || (v.flagged_names || []).length
+    : f === 'inv' ? pvaVisitInvoiceOpen(v)
     : (v.people || []).includes(f.slice(2)));
   $a('pvaHistoryBody').innerHTML = `
     <div class="pv-chips" style="margin-bottom:10px;">${chips.map(c => `<span class="k-mob-n-chip${f === c[0] ? ' selected' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvaHistoryFilter('${esc(c[0])}')">${esc(c[1])}</span>`).join('')}</div>
-    ${pvHistoryHTML(list, true, n => _pvagAvatarByName(n).replace('width:20px;height:20px', 'width:22px;height:22px').replace('font-size:8px', 'font-size:9px'))}
+    ${typeof pvaHistoryMoneyHTML === 'function' ? pvaHistoryMoneyHTML(list, _pvh) : pvHistoryHTML(list, true, n => _pvagAvatarByName(n).replace('width:20px;height:20px', 'width:22px;height:22px').replace('font-size:8px', 'font-size:9px'))}
     ${_pvh.next ? `<div class="cc-sec-foot" style="justify-content:center;"><button class="cc-foot-btn" type="button" onclick="pvaHistoryMore()">Load older</button></div>` : ''}`;
 }
 

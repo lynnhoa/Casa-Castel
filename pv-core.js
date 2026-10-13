@@ -179,7 +179,9 @@ function pvProviderCardHTML(s) {
   const c0 = _pvProviderCard(s);
   const v = s && s.card;
   let extra = '';
+  if (v && ['sent', 'done'].includes(v.status) && typeof pvInvoiceCardButton === 'function') extra += pvInvoiceCardButton(s);
   if (v && v.redo_other) extra += _pvRedoStrip(v.redo_other);
+  if (typeof pvInvoiceBlocks === 'function') extra += pvInvoiceBlocks(s);
   if (!v || ['planned', 'in_progress', 'sent', 'done', 'redo'].includes(v.status)) extra += _pvSuppliesLink();
   return { turn: c0.turn, html: c0.html + extra };
 }

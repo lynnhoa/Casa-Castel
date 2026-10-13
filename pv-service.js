@@ -4,7 +4,8 @@
    (strip, card, chat read view) · Phase 2: Putzliste view,
    Kann nicht kommen + Rückgängig · Phase 3: Fotos starten /
    Weiter / Nochmal / Trotzdem starten → camera (pv-camera.js) ·
-   Phase 4: chat compose, Fehlt etwas?, Verlauf (read-only), redo strip.
+   Phase 4: chat compose, Fehlt etwas?, Verlauf (read-only), redo strip ·
+   Phase 6a: invoice blocks + sheet (pv-invoice.js).
 
    Device keys (this app only — never the management keys):
      pv_token · pv_person · pv_person_name · pv_job · pv_job_name
@@ -165,6 +166,7 @@ function _pvToLogin() {
   pvCloseScrim('pv-cancel-scrim');
   pvCloseScrim('pv-sup-scrim');
   pvCloseScrim('pv-hist-scrim');
+  pvCloseScrim('pv-inv-scrim');
   $id('pv-pl').classList.add('pv-hidden');
   $id('pv-app').classList.add('pv-hidden');
   $id('pv-login-screen').style.display = '';
@@ -444,6 +446,7 @@ async function _pvUndoCancel() {
     else if (a === 'redo-other') run(() => _pvStartCamera(_pvState && _pvState.card && _pvState.card.redo_other && _pvState.card.redo_other.id));
     else if (a === 'unplanned') run(_pvStartUnplanned);
     else if (a === 'supplies') _pvOpenSupplies();
+    else if (a === 'inv') pvInvOpen({ visit: b.getAttribute('data-visit') || null, month: b.getAttribute('data-month'), label: b.getAttribute('data-label') });
   });
   $id('pv-pl').addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
