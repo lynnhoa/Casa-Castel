@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="CC Service"/>
+  <meta name="theme-color" content="#F5F2ED"/>
+  <link rel="manifest" href="manifest-service.json"/>
+  <link rel="apple-touch-icon" href="pv-apple-touch-icon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="pv-favicon-32.png"/>
+  <title>Casa Castel · Service</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="cc-german-format.js?v=2026-10-11-B25"></script>
+  <script src="constants.js"></script>
+  <link rel="stylesheet" href="pv.css?v=2026-10-13-P1"/>
+  <style>
+    html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+    .scr input::placeholder { color:#C8BFB0; }
+  </style>
+</head>
+<body>
+
+  <div class="scr">
+    <div class="scr-top"></div>
+
+    <!-- ══ LOGIN ══ -->
+    <div class="login-screen" id="pv-login-screen">
+      <p class="login-logo">Casa Castel</p>
+      <p class="login-sub">Alsenstraße 60 · 55252 Mainz-Kastel</p>
+      <div class="login-box">
+        <p class="login-title">Service login</p>
+        <div style="margin-bottom:12px;">
+          <label class="pv-lbl" for="pv-login-job">Dein Bereich <span class="en">Your service</span></label>
+          <div style="position:relative;">
+            <select id="pv-login-job" class="cc-select" style="appearance:none;-webkit-appearance:none;display:block;font-family:inherit;"></select>
+            <svg style="position:absolute;right:14px;top:50%;margin-top:-6px;color:#C8BFB0;pointer-events:none;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="pv-lbl" for="pv-login-pw">Passwort <span class="en">Password</span></label>
+          <div style="position:relative;">
+            <input id="pv-login-pw" class="cc-input" type="password" autocomplete="current-password" style="font-family:inherit;padding-right:52px;"/>
+            <button type="button" id="pv-login-eye" aria-label="Passwort zeigen · show password" style="position:absolute;right:2px;top:50%;margin-top:-22px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#9A8E7E;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+        </div>
+        <p id="pv-login-err" class="pv-hidden" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;padding:9px 12px;border-radius:6px;background:#F5EEE8;border:.5px solid #D4A87A;font-size:12px;line-height:1.4;color:#8C3A2A;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16v.01"></path></svg>
+          <span id="pv-login-err-text"></span>
+        </p>
+        <button class="pv-login-btn" type="button" id="pv-login-btn"><b>Anmelden</b><small>Log in</small></button>
+        <p class="pv-login-note">Das Passwort bekommst du von Casa Castel.<br/>You get the password from Casa Castel.</p>
+        <button type="button" id="pv-forgot-link" style="display:block;margin:10px auto 0;min-height:40px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#6B5E4E;text-decoration:underline;text-underline-offset:3px;">Passwort vergessen? <span style="font-weight:400;color:#9A8E7E;">· Forgot password? → Anfrage an Casa Castel</span></button>
+      </div>
+    </div>
+
+    <!-- ══ APP ══ -->
+    <div id="pv-app" class="pv-hidden" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+      <div class="cc-header">
+        <nav class="cc-nav">
+          <span class="cc-nav__logo">Casa Castel</span>
+          <div class="nav-actions" style="position:relative;">
+            <button class="nav-role-pill" type="button" id="pv-name-pill" aria-expanded="false"></button>
+            <div id="pv-name-menu" class="pv-hidden" style="position:absolute;top:calc(100% + 6px);right:0;z-index:20;min-width:190px;padding:4px;background:#FDFCFA;border:.5px solid #E0DAD0;border-radius:10px;box-shadow:0 6px 18px rgba(30,27,24,.14);">
+              <button type="button" id="pv-logout-btn" style="display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 12px;background:none;border:none;text-align:left;color:#3A3530;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2"></path><path d="M9 12h12l-3-3m0 6 3-3"></path></svg>
+                <span style="font-size:14px;font-weight:500;line-height:1.2;">Abmelden<span style="display:block;font-size:11px;font-weight:400;color:#9A8E7E;">Log out</span></span>
+              </button>
+            </div>
+          </div>
+        </nav>
+        <div class="cc-tabs"><button class="cc-tab active" type="button" id="pv-job-tab"></button></div>
+      </div>
+
+      <div class="k-mob-rot" id="pv-strip" style="display:none;"></div>
+      <div class="k-mob-week" id="pv-card"></div>
+
+      <div class="k-mob-chat">
+        <div class="k-mob-chat-hdr">
+          <span class="k-mob-chat-lbl">Fotos &amp; Chat · Photos &amp; chat</span>
+          <button class="cc-hdr-refresh" type="button" id="pv-refresh" aria-label="Aktualisieren · Refresh">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 1 0 18 16.5M20 5v6h-6"></path></svg>
+          </button>
+        </div>
+        <div class="k-mob-feed" id="pv-feed" style="display:flex;flex-direction:column;justify-content:flex-end;"></div>
+      </div>
+    </div>
+
+    <!-- ══ FORGOT PASSWORD SHEET ══ -->
+    <div class="pv-scrim pv-hidden" id="pv-forgot-scrim">
+      <div class="cc-modal-sheet">
+        <div class="cc-modal-hdr">
+          <span class="cc-modal-title">Passwort vergessen · Forgot password</span>
+          <button class="cc-modal-close" type="button" data-close="pv-forgot-scrim" aria-label="Schließen · Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+        </div>
+        <div class="cc-modal-body" style="background:#FDFCFA;padding:16px;" id="pv-forgot-body"></div>
+      </div>
+    </div>
+
+    <!-- ══ INSTALL HELP (first login) ══ -->
+    <div class="pv-scrim pv-hidden" id="pv-install-scrim">
+      <div class="cc-modal-sheet">
+        <div class="cc-modal-hdr">
+          <span class="cc-modal-title">Zum Home-Bildschirm · Add to home screen</span>
+          <button class="cc-modal-close" type="button" data-close="pv-install-scrim" aria-label="Schließen · Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+        </div>
+        <div class="cc-modal-body" style="background:#FDFCFA;padding:16px;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:5px;"><span style="position:relative;width:62px;height:62px;border-radius:15px;background:#1E1B18;display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',Georgia,serif;font-size:27px;font-weight:400;letter-spacing:.06em;color:#F5F2ED;">CC<span style="position:absolute;right:-4px;bottom:-4px;width:22px;height:22px;border-radius:11px;background:#A9CBF2;border:2px solid #FDFCFA;color:#1E5A9A;display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></span></span><span style="font-size:11px;color:#3A3530;">CC Service</span></div>
+            <p style="font-size:16px;font-weight:500;color:#1E1B18;line-height:1.3;">Einmal als App speichern.<span style="display:block;font-size:12px;font-weight:400;color:#9A8E7E;">Save it once as an app. Then just tap the icon.</span></p>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:16px;">
+            <div style="flex:1;min-width:0;padding:12px;border-radius:12px;background:#F5F2ED;border:.5px solid #E0DAD0;"><p style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9A8E7E;">iPhone</p><div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span style="width:20px;height:20px;border-radius:10px;background:#1E1B18;color:#FDFCFA;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</span><span style="width:36px;height:36px;border-radius:10px;background:#EDE8E0;color:#1E1B18;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M8.5 6.5 12 3l3.5 3.5"></path><path d="M8 9H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2"></path></svg></span><span style="font-size:12.5px;font-weight:500;color:#1E1B18;line-height:1.25;">Teilen tippen<span style="display:block;font-size:10.5px;font-weight:400;color:#9A8E7E;">Tap Share</span></span></div><div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span style="width:20px;height:20px;border-radius:10px;background:#1E1B18;color:#FDFCFA;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</span><span style="width:36px;height:36px;border-radius:10px;background:#EDE8E0;color:#1E1B18;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"></rect><path d="M12 8v8M8 12h8"></path></svg></span><span style="font-size:12.5px;font-weight:500;color:#1E1B18;line-height:1.25;">Zum Home-Bildschirm<span style="display:block;font-size:10.5px;font-weight:400;color:#9A8E7E;">Add to Home Screen</span></span></div></div>
+            <div style="flex:1;min-width:0;padding:12px;border-radius:12px;background:#F5F2ED;border:.5px solid #E0DAD0;"><p style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9A8E7E;">Android</p><div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span style="width:20px;height:20px;border-radius:10px;background:#1E1B18;color:#FDFCFA;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</span><span style="width:36px;height:36px;border-radius:10px;background:#EDE8E0;color:#1E1B18;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.3"></circle><circle cx="12" cy="12" r="1.3"></circle><circle cx="12" cy="19" r="1.3"></circle></svg></span><span style="font-size:12.5px;font-weight:500;color:#1E1B18;line-height:1.25;">Menü tippen<span style="display:block;font-size:10.5px;font-weight:400;color:#9A8E7E;">Tap the menu</span></span></div><div style="display:flex;align-items:center;gap:10px;margin-top:10px;"><span style="width:20px;height:20px;border-radius:10px;background:#1E1B18;color:#FDFCFA;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</span><span style="width:36px;height:36px;border-radius:10px;background:#EDE8E0;color:#1E1B18;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"></rect><path d="M12 8v8M8 12h8"></path></svg></span><span style="font-size:12.5px;font-weight:500;color:#1E1B18;line-height:1.25;">App installieren<span style="display:block;font-size:10.5px;font-weight:400;color:#9A8E7E;">Install app</span></span></div></div>
+          </div>
+          <button class="pv-big" type="button" data-close="pv-install-scrim" style="justify-content:center;min-height:52px;margin-top:16px;"><span class="pv-big__txt" style="flex:0 1 auto;align-items:center;"><span class="pv-big__de">Verstanden</span><span class="pv-big__en">Got it</span></span></button>
+          <p style="text-align:center;font-size:11px;color:#9A8E7E;margin-top:8px;">Kommt nur beim ersten Login · only at first login</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="pv-core.js?v=2026-10-13-P1"></script>
+  <script src="pv-service.js?v=2026-10-13-P1"></script>
+</body>
+</html>
