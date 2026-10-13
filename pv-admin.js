@@ -3,7 +3,8 @@
    pv-admin.js — shell (gate · tabs with dots · strip · card ·
    chat read view) + People modal + New job + Preview (read-only
    provider view) · Phase 2: planning card states, Agenda tool
-   (pv-agenda.js).
+   (pv-agenda.js) · Phase 4: review card states + actions, reports,
+   chat compose, History (pv-review.js).
 
    Gate + authenticated client: controlling-auth.js (_ctlSupa,
    ctlGetSession) — the same login as the other management apps.
@@ -62,7 +63,8 @@ function pvaGenPassword() {
     const t = b.getAttribute('data-tool');
     if (t === 'people') pvaOpenPeople();
     else if (t === 'agenda') pvaOpenAgenda();
-    else pvaToast(t === 'list' ? 'The list editor follows with Phase 5.' : 'History follows with Phase 4.');
+    else if (t === 'history') pvaOpenHistory();
+    else pvaToast('The list editor follows with Phase 5.');
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && Date.now() - _pvaLastLoad > 60000) pvaLoad();
@@ -72,7 +74,8 @@ function pvaGenPassword() {
     const copy = JSON.parse(localStorage.getItem('pva_copy') || 'null');
     if (copy && copy.jobs) { _pvaData = copy; pvaRenderShell(); }
   } catch (e) {}
-  pvaLoad();
+  if (typeof pvaMountCompose === 'function') pvaMountCompose();
+  pvaLoad().then(() => { if (typeof pvaCleanup === 'function') pvaCleanup(); });
 })();
 
 function pvaToast(msg) {
@@ -111,6 +114,7 @@ function pvaRenderShell() {
     $a('pvaCard').innerHTML = `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">No jobs yet</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">Create the first job with +</span></div></div>`;
     $a('pvaFeed').innerHTML = '';
+    $a('pvaReports').innerHTML = '';
     return;
   }
 
@@ -121,7 +125,8 @@ function pvaRenderShell() {
   const card = _pvaCardHTML(s);
   $a('pvaCard').innerHTML = card.html;
   $a('pvaCardWrap').setAttribute('data-turn', card.turn);
-  $a('pvaFeed').innerHTML = pvFeedHTML(s, { en: true });
+  $a('pvaReports').innerHTML = typeof pvaReportsHTML === 'function' ? pvaReportsHTML(s) : '';
+  $a('pvaFeed').innerHTML = pvFeedHTML(s, { en: true, canDelete: true, onDelete: 'pvaDeleteMsg' });
   const feed = $a('pvaFeed');
   feed.scrollTop = feed.scrollHeight;
 }
@@ -143,15 +148,22 @@ function _pvaCardHTML(s) {
       </div></div>` };
   }
   const counts = v.counts || {};
+  const cov = (counts.done || 0) + (counts.np || 0);
   const who = v.person ? esc(v.person) : 'anyone';
   const extra = v.extra_task && v.extra_task.de ? `<span class="k-note" style="color:#A3512A;">Extra: ${esc(v.extra_task.de)}${v.extra_task.photo ? ' · photo' : ''}</span>` : '';
+  const acts = typeof pvaCardActs === 'function' ? pvaCardActs(v, s.today) : '';
+  const actsHtml = acts ? `<div class="k-mob-week-acts">${acts}</div>` : '';
+  const span = (pvHM(v.first_photo_at || v.started_at) && pvHM(v.sent_at)) ? pvHM(v.first_photo_at || v.started_at) + '–' + pvHM(v.sent_at) : '';
+  const reopen = v.reopen_until && new Date(v.reopen_until) > new Date() ? `<span class="k-note">Reopened until ${pvWdDM(String(v.reopen_until).slice(0, 10), true)} ${pvHM(v.reopen_until)}.</span>` : '';
+  const body = (left, turn) => ({ turn, html: left + '' });
+
   if (v.status === 'in_progress') {
-    const pct = counts.total ? Math.round(((counts.done || 0) + (counts.np || 0)) / counts.total * 1000) / 10 : 0;
+    const pct = counts.total ? Math.round(cov / counts.total * 1000) / 10 : 0;
     return { turn: 'turn', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip now"><span class="pv-live"></span>Today · in progress</span><span class="k-mob-week-dates-sm">last photo ${pvHM(v.last_photo_at)}</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
-        <span class="k-mob-week-dates-sm">${(counts.done || 0) + (counts.np || 0)} / ${counts.total || 0} areas · since ${pvHM(v.started_at)}</span>
-        <div class="pv-prog"><span style="width:${pct}%"></span></div>${_pvaNpNote(v)}${extra}
+        <span class="k-mob-week-dates-sm">${cov} / ${counts.total || 0} areas · since ${pvHM(v.started_at)}</span>
+        <div class="pv-prog"><span style="width:${pct}%"></span></div>${_pvaNpNote(v)}${extra}${reopen}
       </div></div>` };
   }
   if (v.status === 'cancelled_by_provider') {
@@ -169,8 +181,8 @@ function _pvaCardHTML(s) {
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
         <span class="k-mob-week-dates-sm">${v.time ? v.time + ' · ' : ''}${who} · no photos yet</span>
-        <span class="k-note">Closes as Missed after ${pvWdDM(pvAddDays(v.date, 1), true)}, 23:59.</span>${extra}
-      </div></div>` };
+        <span class="k-note">${reopen ? '' : 'Closes as Missed after ' + pvWdDM(pvAddDays(v.date, 1), true) + ', 23:59.'}</span>${reopen}${extra}
+      </div>${actsHtml}</div>` };
   }
   if (v.status === 'planned') {
     const n = pvDaysUntil(v.date, s.today);
@@ -181,14 +193,48 @@ function _pvaCardHTML(s) {
       </div></div>` };
   }
   if (v.status === 'sent') {
-    const span = (pvHM(v.first_photo_at || v.started_at) && pvHM(v.sent_at)) ? pvHM(v.first_photo_at || v.started_at) + '–' + pvHM(v.sent_at) : '';
-    return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${pvPic('chip_sent', 13)}${v.unplanned ? 'Unplanned visit' : 'Sent · to review'}</span></div>
+    const due = v.auto_due_at ? `Auto-approves ${pvWdDM(String(v.auto_due_at).slice(0, 10), true)} ${pvHM(v.auto_due_at)}` : 'Waiting for your review.';
+    return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${pvPic('chip_sent', 13)}${v.unplanned ? 'Unplanned visit' : 'Submitted'}</span><span class="k-mob-week-dates-sm">sent ${pvHM(v.sent_at)}</span></div>
+      <div class="k-mob-week-body">
+        <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+          <span class="k-mob-week-dates-sm">${counts.total || 0} areas${span ? ' · ' + span : ''}${counts.np ? ' · ' + counts.np + ' not possible' : ''}</span>
+          ${_pvaNpNote(v)}
+          <span class="k-note k-note--wait">${v.unplanned ? 'No visit was planned. Approve to count it.' : due}</span></div>
+        ${actsHtml}
+      </div>` };
+  }
+  if (v.status === 'done') {
+    return { turn: 'done', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip approved">${pvPic('chip_done', 13)}Done</span></div>
+      <div class="k-mob-week-body">
+        <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+          <span class="k-mob-week-dates-sm">${counts.total || 0} photos${span ? ' · ' + span : ''}</span>
+          <span class="k-note k-note--done">Approved ${pvTs(v.done_at)}.</span></div>
+        ${actsHtml}
+      </div>` };
+  }
+  if (v.status === 'redo') {
+    const fl = (v.points || []).filter(p => p.flagged);
+    return { turn: 'redo', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip flagged">${pvPic('chip_flagged', 13)}Redo · ${fl.length} ${fl.length === 1 ? 'area' : 'areas'}</span></div>
+      <div class="k-mob-week-body">
+        <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+          <span class="k-mob-week-dates-sm">${esc(fl.map(p => p.de).join(', '))}</span>
+          <span class="k-note k-note--flag">${v.flag_note ? '„' + esc(v.flag_note) + '“ ' : ''}${v.redo_until ? 'Open until ' + pvDM(v.redo_until) + '.' : ''}</span></div>
+        ${actsHtml}
+      </div>` };
+  }
+  if (v.status === 'missed') {
+    return { turn: 'redo', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip missed">${pvPic('chip_missed', 13)}Missed</span></div>
+      <div class="k-mob-week-body">
+        <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
+          <span class="k-mob-week-dates-sm">${cov ? cov + ' / ' + (counts.total || 0) + ' photos, not sent' : 'No photos sent'}</span>
+          <span class="k-note k-note--flag">Nothing sent by ${pvWdDM(pvAddDays(v.date, 1), true)}, 23:59.</span></div>
+        ${actsHtml}
+      </div>` };
+  }
+  if (v.status === 'rejected') {
+    return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip" style="background:#EDE8E0;border:1px solid #E0DAD0;color:#6B5E4E;">Not counted</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
-        <span class="k-mob-week-dates-sm">${counts.total || 0} photos${span ? ' · ' + span : ''}</span>
-        ${_pvaNpNote(v)}
-        <span class="k-note k-note--wait">${v.unplanned ? 'No visit was planned. Approve / Reject follow with Phase 4.'
-          : v.auto_due_at ? 'Counts as done on ' + pvWdDM(String(v.auto_due_at).slice(0, 10), true) + ' ' + pvHM(v.auto_due_at) + ' unless you review it first (review: Phase 4).' : 'Waiting for your review.'}</span>
-      </div></div>` };
+        <span class="k-note">Rejected unplanned visit — no invoice possible.</span></div></div>` };
   }
   return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">${cal}${esc(v.status)}</span></div>
     <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span></div></div>` };

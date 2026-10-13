@@ -3,7 +3,8 @@
    pv-service.js — login · install help · Abmelden · Today screen
    (strip, card, chat read view) · Phase 2: Putzliste view,
    Kann nicht kommen + Rückgängig · Phase 3: Fotos starten /
-   Weiter / Nochmal / Trotzdem starten → camera (pv-camera.js).
+   Weiter / Nochmal / Trotzdem starten → camera (pv-camera.js) ·
+   Phase 4: chat compose, Fehlt etwas?, Verlauf (read-only), redo strip.
 
    Device keys (this app only — never the management keys):
      pv_token · pv_person · pv_person_name · pv_job · pv_job_name
@@ -162,6 +163,8 @@ function _pvToLogin() {
   ['pv_token', 'pv_person', 'pv_person_name', 'pv_job_name', 'pv_state_copy'].forEach(k => localStorage.removeItem(k));
   pvCloseScrim('pv-install-scrim');
   pvCloseScrim('pv-cancel-scrim');
+  pvCloseScrim('pv-sup-scrim');
+  pvCloseScrim('pv-hist-scrim');
   $id('pv-pl').classList.add('pv-hidden');
   $id('pv-app').classList.add('pv-hidden');
   $id('pv-login-screen').style.display = '';
@@ -226,18 +229,19 @@ function _pvOpenList() {
 }
 
 /* ── FOTOS STARTEN · WEITER · NOCHMAL · TROTZDEM STARTEN ── */
-async function _pvStartCamera() {
+async function _pvStartCamera(visitId) {
   const v = _pvState && _pvState.card;
   if (!v || _pvBusy) return;
+  const vid = visitId || v.id;
   _pvBusy = true;
-  const { data, error } = await pvRpc('pv_start', { p_token: localStorage.getItem('pv_token'), p_visit: v.id });
+  const { data, error } = await pvRpc('pv_start', { p_token: localStorage.getItem('pv_token'), p_visit: vid });
   _pvBusy = false;
   if (_pvIsAuthError(error)) { _pvToLogin(); return; }
   if (error) { pvToast('Keine Verbindung · No connection'); return; }
   if (data && data.error === 'window') { pvToast('Fotos erst ab dem Vortag · Photos from the day before'); return; }
   if (data && data.error) { pvToast('Schon geändert · Already changed'); _pvLoad(); return; }
   await _pvLoad();
-  pvCamOpen((data && data.visit) || v.id);
+  pvCamOpen((data && data.visit) || vid);
 }
 async function _pvStartUnplanned() {
   if (_pvBusy) return;
@@ -249,6 +253,85 @@ async function _pvStartUnplanned() {
   if (data && data.error) { pvToast('Schon geändert · Already changed'); _pvLoad(); return; }
   await _pvLoad();
   pvCamOpen(data.visit);
+}
+
+/* ── CHAT: text + live photo (chat-compose.js, as in the kitchen) ── */
+let _pvCompose = null;
+function _pvChatVisit() {                    /* chat photos live in a visit folder: the card's, else the latest */
+  const s = _pvState;
+  if (!s) return null;
+  if (s.card && s.card.id) return s.card.id;
+  const past = (s.strip || []).filter(v => v.date <= s.today);
+  const v = past.length ? past[past.length - 1] : (s.strip || [])[0];
+  return v ? v.id : null;
+}
+function _pvMountCompose() {
+  if (_pvCompose || typeof ccCompose !== 'function') return;
+  _pvCompose = ccCompose($id('pv-compose'), {
+    placeholder: 'Nachricht · Message', camera: 'live',
+    onSend: async ({ text, photo }) => {
+      const tok = localStorage.getItem('pv_token');
+      if (!tok) return false;
+      let path = null;
+      if (photo) {
+        const vid = _pvChatVisit();
+        if (!vid) { pvToast('Foto nur mit Termin · Photo only with a visit'); return false; }
+        path = `${vid}/chat-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.jpg`;
+        const up = await pvSupa.storage.from('provider-proofs').upload(path, photo, { contentType: 'image/jpeg', upsert: false });
+        if (up && up.error) return false;
+      }
+      const { data, error } = await pvRpc('pv_message', { p_token: tok, p_text: text || '', p_path: path });
+      if (_pvIsAuthError(error)) { _pvToLogin(); return false; }
+      if (error || (data && data.error)) return false;
+      _pvLoad();
+      return true;
+    }
+  });
+}
+
+/* ── FEHLT ETWAS? (board P9) ────────────────────────────── */
+let _pvSupSel = new Set(), _pvSupNote = '';
+function _pvOpenSupplies() { _pvSupSel = new Set(); _pvSupNote = ''; _pvSupRender(); pvOpenScrim('pv-sup-scrim'); }
+function _pvSupRender() {
+  const n = _pvSupSel.size;
+  $id('pv-sup-body').innerHTML = `
+    <p style="font-size:13px;color:#6B5E4E;">Antippen, was fehlt. · Tap what's missing.</p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;">
+      ${PV_SUPPLIES.map(it => { const on = _pvSupSel.has(it[0]); return `<button type="button" data-sup="${it[0]}" style="position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;border:${on ? '1.5px solid #1E1B18' : '1px solid #E0DAD0'};background:#FDFCFA;text-align:left;"><span class="pic pic--${it[3]}" style="width:40px;height:40px;border-radius:12px;">${pvPic(it[4], 24)}</span><span style="line-height:1.2;"><span style="display:block;font-size:13.5px;font-weight:600;color:#1E1B18;">${it[1]}</span><span style="display:block;font-size:10.5px;color:#9A8E7E;">${it[2]}</span></span>${on ? `<span class="pic__ok" style="top:6px;right:6px;">${pvPic('tile_ok', 9)}</span>` : ''}</button>`; }).join('')}
+    </div>
+    ${_pvSupSel.has('other') ? `<input id="pv-sup-note" class="cc-input" maxlength="200" placeholder="Was fehlt? · What is missing?" value="${pvEsc(_pvSupNote)}" style="margin-top:10px;font-family:inherit;width:100%;"/>` : ''}
+    <p style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;color:#6B5E4E;">${pvPic('sup_info', 14)}Casa Castel sieht es sofort. · Casa Castel sees it right away.</p>
+    <button class="pv-big${n ? '' : ' pv-big--off'}" type="button" id="pv-sup-send" style="justify-content:center;margin-top:12px;"${n ? '' : ' disabled'}><span class="pv-big__ico">${pvPic('sup_send', 20)}</span><span class="pv-big__txt" style="flex:0 1 auto;"><span class="pv-big__de">Senden${n ? ' · ' + n : ''}</span><span class="pv-big__en">Send</span></span></button>`;
+  const note = $id('pv-sup-note');
+  if (note) note.addEventListener('input', () => { _pvSupNote = note.value; });
+}
+async function _pvSupSend() {
+  if (!_pvSupSel.size || _pvBusy) return;
+  const note = _pvSupSel.has('other') ? _pvSupNote.trim() : '';
+  if (_pvSupSel.has('other') && !note) { pvToast('Bitte kurz schreiben, was fehlt · Please write what is missing'); return; }
+  _pvBusy = true;
+  const vid = _pvState && _pvState.card ? _pvState.card.id : null;
+  const { data, error } = await pvRpc('pv_report', { p_token: localStorage.getItem('pv_token'), p_kind: 'supplies',
+    p_payload: { items: Array.from(_pvSupSel), note: note || null }, p_visit: vid });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error || (data && data.error)) { pvToast('Keine Verbindung · No connection'); return; }
+  pvCloseScrim('pv-sup-scrim');
+  pvToast('Gesendet · Sent');
+  _pvLoad();
+}
+
+/* ── VERLAUF (her own visits, read-only) ────────────────── */
+const _pvHist = { visits: [], next: null };
+async function _pvOpenHistory(more) {
+  $id('pv-name-menu').classList.add('pv-hidden');
+  if (!more) { _pvHist.visits = []; _pvHist.next = null; $id('pv-hist-body').innerHTML = '<p style="padding:14px 2px;font-size:13px;color:#9A8E7E;">Lädt … · Loading …</p>'; pvOpenScrim('pv-hist-scrim'); }
+  const { data, error } = await pvRpc('pv_history', { p_token: localStorage.getItem('pv_token'), p_before: more ? _pvHist.next : null, p_months: more ? 6 : 3 });
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error || !data || data.error) { pvToast('Keine Verbindung · No connection'); return; }
+  _pvHist.visits = _pvHist.visits.concat(data.visits || []); _pvHist.next = data.next_before;
+  $id('pv-hist-body').innerHTML = pvHistoryHTML(_pvHist.visits, false, null)
+    + (_pvHist.next ? `<button class="pv-big pv-big--light" type="button" data-more="1" style="justify-content:center;min-height:46px;margin-top:8px;"><span class="pv-big__txt" style="flex:0 1 auto;align-items:center;"><span class="pv-big__de" style="font-size:14px;">Ältere laden</span><span class="pv-big__en">Load older</span></span></button>` : '');
 }
 
 /* ── KANN NICHT KOMMEN (board P8) ───────────────────────── */
@@ -340,6 +423,14 @@ async function _pvUndoCancel() {
     _pvToLogin();
   };
   $id('pv-refresh').onclick = _pvLoad;
+  _pvMountCompose();
+  $id('pv-hist-btn').onclick = () => _pvOpenHistory(false);
+  $id('pv-hist-body').addEventListener('click', e => { if (e.target.closest('[data-more]')) _pvOpenHistory(true); });
+  $id('pv-sup-body').addEventListener('click', e => {
+    const b = e.target.closest('[data-sup]');
+    if (b) { const k = b.getAttribute('data-sup'); if (_pvSupSel.has(k)) _pvSupSel.delete(k); else _pvSupSel.add(k); _pvSupRender(); return; }
+    if (e.target.closest('#pv-sup-send')) _pvSupSend();
+  });
   $id('pv-card').addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -348,7 +439,9 @@ async function _pvUndoCancel() {
     else if (a === 'cancel') _pvOpenCancel();
     else if (a === 'undo') _pvUndoCancel();
     else if (a === 'start' || a === 'continue' || a === 'redo') _pvStartCamera();
+    else if (a === 'redo-other') _pvStartCamera(_pvState && _pvState.card && _pvState.card.redo_other && _pvState.card.redo_other.id);
     else if (a === 'unplanned') _pvStartUnplanned();
+    else if (a === 'supplies') _pvOpenSupplies();
   });
   $id('pv-pl').addEventListener('click', e => {
     const b = e.target.closest('[data-act]');

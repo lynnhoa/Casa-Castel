@@ -165,7 +165,25 @@ function _pvSpan(v) {                        /* 10:12–11:40 */
   const a = pvHM(v.first_photo_at || v.started_at), b = pvHM(v.sent_at);
   return a && b ? a + '–' + b : (a || b || '');
 }
+function _pvSuppliesLink() {
+  return `<button type="button" data-act="supplies" style="display:block;margin:6px auto 0;min-height:32px;padding:0 12px;background:none;border:none;font-size:12.5px;font-weight:500;color:#6B5E4E;text-decoration:underline;text-underline-offset:3px;">Fehlt etwas? <span style="font-weight:400;color:#9A8E7E;">· Something missing?</span></button>`;
+}
+function _pvRedoStrip(r) {                   /* a redo still open on another visit's day → red strip under the card */
+  const fl = (r.points || []).filter(p => p.flagged);
+  return `<div style="margin-top:12px;padding:10px 12px;border-radius:12px;background:#FEF6F5;border:1px solid #F5A8A5;display:flex;align-items:center;gap:10px;">
+      <span style="flex:1;min-width:0;font-size:12.5px;line-height:1.35;color:#7A2020;"><b style="font-weight:600;">Nochmal offen · Redo open</b><br>${pvEsc(pvWdDM(r.date))}: ${pvEsc(fl.map(p => p.de).join(', '))}${r.redo_until ? ' · bis ' + pvWdDM(r.redo_until) : ''}</span>
+      <button type="button" data-act="redo-other" style="flex-shrink:0;min-height:40px;padding:0 14px;border-radius:12px;border:1px solid #D9B878;background:#F3DDB0;color:#4A3410;font-size:13px;font-weight:600;">Neu machen</button>
+    </div>`;
+}
 function pvProviderCardHTML(s) {
+  const c0 = _pvProviderCard(s);
+  const v = s && s.card;
+  let extra = '';
+  if (v && v.redo_other) extra += _pvRedoStrip(v.redo_other);
+  if (!v || ['planned', 'in_progress', 'sent', 'done', 'redo'].includes(v.status)) extra += _pvSuppliesLink();
+  return { turn: c0.turn, html: c0.html + extra };
+}
+function _pvProviderCard(s) {
   const v = s && s.card;
   if (!v) {
     return { turn: '', html: `
@@ -189,6 +207,7 @@ function pvProviderCardHTML(s) {
   const movedLine = () => v.moved_from && v.moved_from !== v.date
     ? `<span class="k-note">Neuer Termin (vorher ${pvDM(v.moved_from)}) · New date (was ${pvDM(v.moved_from)})</span>` : '';
   const unplannedLine = v.unplanned ? '<span class="k-note">Ohne Termin – Casa Castel prüft es. · Unplanned – Casa Castel checks it.</span>' : '';
+  const reopenLine = v.reopen_until && new Date(v.reopen_until) > new Date() ? `<span class="k-note">Wieder offen bis ${pvWdDM(String(v.reopen_until).slice(0, 10))} ${pvHM(v.reopen_until)} · Reopened</span>` : '';
 
   if (v.status === 'planned' && open) {                     /* photo window open: yellow to-do */
     return { turn: 'turn', html: `
@@ -197,7 +216,7 @@ function pvProviderCardHTML(s) {
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${total} Fotos · ${total} photos</span>
         <span class="k-note">Erst putzen, dann fotografieren. · Clean first, then take photos.</span>
-        ${_pvExtraNote(v)}${movedLine()}
+        ${reopenLine}${_pvExtraNote(v)}${movedLine()}
       </div></div>
       <button class="pv-big" type="button" data-act="start">
         <span class="pv-big__ico">${_pvIco('btn_cam', 20)}</span>
@@ -284,6 +303,15 @@ function pvProviderCardHTML(s) {
       </div></div>` };
   }
 
+  if (v.status === 'rejected') {
+    return { turn: '', html: `
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip" style="background:#EDE8E0;border:1px solid #E0DAD0;color:#6B5E4E;">Nicht gezählt <span class="en">· Not counted</span></span></div>
+      <div class="k-mob-week-body"><div class="k-mob-week-left">
+        <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
+        <span class="k-note">Casa Castel hat diesen Termin nicht gezählt. · Casa Castel did not count this visit.</span>
+      </div></div>` };
+  }
+
   if (v.status === 'missed') {
     return { turn: 'redo', html: `
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip missed">${_pvIco('chip_cancel', 13)}Nicht gesendet <span class="en">· Not sent</span></span></div>
@@ -310,6 +338,78 @@ function pvProviderCardHTML(s) {
   return { turn: '', html: `
     <div class="k-mob-week-top-row"><span class="k-mob-status-chip">${_pvIco('chip_next', 13)}${pvEsc(v.status)}</span></div>
     <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span></div></div>` };
+}
+
+/* ── SUPPLIES ("Fehlt etwas?", board P9) ────────────────── */
+const PV_SUPPLIES = [
+  ['bags', 'Müllbeutel', 'Bin bags', 'k', 'sup_bags'], ['soap', 'Spülmittel', 'Dish soap', 'k', 'sup_soap'],
+  ['paper', 'WC-Papier', 'Toilet paper', 'b', 'sup_paper'], ['cleaner', 'Putzmittel', 'Cleaner', 'c', 'sup_cleaner'],
+  ['vacbags', 'Staubsaugerbeutel', 'Vacuum bags', 'f', 'sup_vacbags'], ['other', 'Anderes', 'Other', 'x', 'sup_other']
+];
+function pvSuppliesText(pl, en) {
+  const names = [].concat(pl.items || []).filter(k => k !== 'other').map(k => {
+    const it = PV_SUPPLIES.find(x => x[0] === k);
+    return it ? (en ? it[2] : it[1]) : k;
+  });
+  if (pl.note) names.push('„' + pl.note + '“');
+  return names.join(', ');
+}
+
+/* ── HISTORY ROW (Lynn M8 · provider read-only) ──────────── */
+function _pvMonthName(iso, en) {
+  const [y, m] = String(iso).slice(0, 7).split('-').map(Number);
+  return new Intl.DateTimeFormat(en ? 'en-GB' : 'de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, 1)));
+}
+function _pvHistPill(v, en) {
+  const t = {
+    done: ['hc-pill--done', 'Done', 'Erledigt'], sent: ['', 'To review', 'Gesendet'], redo: ['hc-pill--missed', 'Redo', 'Nochmal'],
+    missed: ['hc-pill--missed', 'Missed', 'Verpasst'], rejected: ['hc-pill--later', 'Not counted', 'Nicht gezählt'],
+    cancelled: ['hc-pill--away', v.cancelled_by === 'pause' ? 'Pause' : 'Cancelled', v.cancelled_by === 'pause' ? 'Pause' : 'Abgesagt'],
+    cancelled_by_provider: ['hc-pill--missed', 'Cancelled by ' + (v.cancelled_person || 'provider'), 'Abgesagt'],
+    in_progress: ['hc-pill--now', 'In progress', 'Läuft']
+  }[v.status] || ['hc-pill--later', v.status, v.status];
+  const st = t[0] ? '' : ' style="background:#FDE4D0;border-color:#F0A877;color:#8A3E12;"';
+  return `<span class="hc-pill ${t[0]}"${st}>${pvEsc(en ? t[1] : t[2])}</span>`;
+}
+function pvHistoryRowHTML(v, en, avatar) {
+  const th = v.thumbs || [];
+  const c = v.counts || {};
+  const span = (v.first_photo_at || v.started_at) && v.sent_at ? pvHM(v.first_photo_at || v.started_at) + '–' + pvHM(v.sent_at) : '';
+  const meta = [];
+  if (span) meta.push(span);
+  if (c.done) meta.push(c.done + (en ? ' photos' : ' Fotos'));
+  if (c.np) meta.push(c.np + (en ? ' not possible' : ' nicht möglich'));
+  if ((v.people || []).length > 1) meta.push(v.people.join(' + '));
+  if (v.unplanned) meta.push(en ? 'unplanned' : 'ohne Termin');
+  const notes = [];
+  if ((v.flagged_names || []).length) notes.push((en ? 'Redo ' : 'Nochmal: ') + v.flagged_names.join(', ') + (v.flag_note ? ' · „' + v.flag_note + '“' : ''));
+  if (v.status === 'cancelled_by_provider' && v.cancel_reason) notes.push((en ? 'Reason: ' : 'Grund: ') + ({ krank: en ? 'sick' : 'krank', termin: en ? 'other plans' : 'anderer Termin', anderes: en ? 'other' : 'anderes' }[v.cancel_reason] || '') + (v.cancel_note ? ' · „' + v.cancel_note + '“' : ''));
+  if (v.moved_from && v.moved_from !== v.date) notes.push((en ? 'moved from ' : 'verschoben von ') + pvDM(v.moved_from));
+  const show = th.slice(0, 7), more = th.length - show.length;
+  const strip = show.map(p => p.path
+      ? `<div class="pv-ph"${en ? ` data-view="${pvEsc(v.id)}|${pvEsc(p.key)}"` : ''} style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"></div>`
+      : `<div class="pv-ph pv-ph--np"${en ? ` data-view="${pvEsc(v.id)}|${pvEsc(p.key)}" style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;"` : ''}>–</div>`).join('')
+    + (more > 0 ? `<div class="pv-ph pv-ph--more" style="font-size:11px;"${en ? ` data-view="${pvEsc(v.id)}|${pvEsc(th[7].key)}"` : ''}>+${more}</div>` : '');
+  return `<div class="pv-hv">
+      <div class="pv-hv__top"><p class="pv-hv__d">${pvWdDM(v.date, en)}${String(v.date).slice(0, 4)}</p>${(v.people || []).map(n => avatar ? avatar(n) : '').join('')}${_pvHistPill(v, en)}</div>
+      ${meta.length ? `<p class="pv-hv__meta">${pvEsc(meta.join(' · '))}</p>` : ''}
+      ${strip ? `<div class="pv-strip">${strip}</div>` : ''}
+      ${notes.length ? `<p class="pv-hv__note">${pvEsc(notes.join(' · '))}</p>` : ''}
+    </div>`;
+}
+function pvHistoryHTML(visits, en, avatar) {
+  if (!visits.length) return `<p class="pv-k" style="padding:10px 2px;">${en ? 'No visits yet.' : 'Noch keine Termine · No visits yet'}</p>`;
+  let h = '', month = '';
+  visits.forEach(v => {
+    const mo = String(v.month || v.date).slice(0, 7);
+    if (mo !== month) {
+      month = mo;
+      const n = visits.filter(x => String(x.month || x.date).slice(0, 7) === mo).length;
+      h += `<div class="pv-sec" style="padding:10px 12px;margin:${h ? '6px' : '0'} 0 8px;"><p style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9A8E7E;">${pvEsc(_pvMonthName(mo + '-01', en))}</p><p style="font-size:13px;color:#1E1B18;margin-top:2px;">${n} ${en ? (n === 1 ? 'visit' : 'visits') : (n === 1 ? 'Termin · visit' : 'Termine · visits')}</p></div>`;
+    }
+    h += pvHistoryRowHTML(v, en, avatar);
+  });
+  return h;
 }
 
 /* ── CHAT FEED (read view, both apps) ───────────────────── */
@@ -354,20 +454,31 @@ function _pvInitials(name) {
 function pvChatRowHTML(m, opts) {
   opts = opts || {};
   const name = m.name || 'Casa Castel';
-  const av = name === 'Casa Castel' ? 'CC' : _pvInitials(name).toUpperCase();
+  const av = name === 'Casa Castel' ? 'CC' : String(name).trim().charAt(0).toUpperCase();
   const del = opts.canDelete ? `<button type="button" aria-label="Delete message" onclick="${opts.onDelete}('${m.id}')" style="align-self:center;width:28px;height:28px;border-radius:50%;border:.5px solid var(--cc-rule);background:var(--cc-white);color:var(--cc-taupe);display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"></path></svg></button>` : '';
   const pl = m.payload || {};
   let body = '';
   if (m.kind === 'photo' && pl.path) body += `<img src="${pvEsc(pvProofUrl(pl.path))}" alt="" style="max-width:180px;border-radius:8px;display:block;margin-top:2px;" loading="lazy"/>`;
-  if (m.kind === 'supplies') body += `<p class="k-chat-text">${opts.en ? 'Supplies needed' : 'Material fehlt · Supplies needed'}${pl.items ? ': ' + pvEsc([].concat(pl.items).join(', ')) : ''}</p>`;
-  if (m.kind === 'damage')   body += `<p class="k-chat-text">${opts.en ? 'Damage' : 'Schaden · Damage'}${pl.note ? ': ' + pvEsc(pl.note) : ''}</p>`;
-  if (pl.text) body += `<p class="k-chat-text">${pvEsc(pl.text)}</p>`;
+  if (m.kind === 'supplies') body += `<p class="k-chat-text">${opts.en ? 'Missing supplies' : 'Fehlt · Missing'}: ${pvEsc(pvSuppliesText(pl, opts.en))}</p>`;
+  if (m.kind === 'damage') {
+    body += `<p class="k-chat-text">${opts.en ? 'Damage reported' : 'Schaden gemeldet · Damage reported'}${pl.note ? ': „' + pvEsc(pl.note) + '“' : ''}</p>`;
+    if (pl.path) body += `<img src="${pvEsc(pvProofUrl(pl.path))}" alt="" style="max-width:180px;border-radius:8px;display:block;margin-top:4px;" loading="lazy"${opts.en ? ` data-photo="${pvEsc(pl.path)}"` : ''}/>`;
+  }
+  if (pl.text && m.kind !== 'damage') body += `<p class="k-chat-text">${pvEsc(pl.text)}</p>`;
   return `<div class="k-chat-row"><span class="k-chat-avatar">${pvEsc(av)}</span><div class="k-chat-body"><div class="k-chat-meta"><span class="k-chat-name">${pvEsc(name)}</span><span class="k-chat-time">${pvTs(m.at)}</span></div>${body}</div>${del}</div>`;
 }
-function _pvSentBlock(m, state, en) {         /* "Gesendet" block: name · badge · time · first photos */
+function _pvSentBlock(m, state, en) {         /* "Gesendet" block · Lynn: the review grid (every photo, tap = viewer) */
   const pl = m.payload || {};
   const re = pl.code === 'resent';
   const shots = (state.photos[m.visit_id] || []).filter(p => p.path || p.np);
+  if (en) {
+    const why = { besetzt: 'occupied', kaputt: 'broken', anderes: 'other' };
+    const grid = shots.map(p => p.path
+        ? `<div class="pv-ph" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${pvEsc(p.de || '')}</span></div>`
+        : `<div class="pv-ph pv-ph--np" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;">–<span>${pvEsc(p.de || '')}</span></div>`).join('');
+    const nps = shots.filter(p => p.np && !p.path).map(p => `<p class="pv-np">${pvPic('np_line', 12)}${pvEsc(p.de)} not possible (${why[p.np] || p.np})</p>`).join('');
+    return `<div class="pv-sub"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)} · tap a photo to enlarge</span></div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}</div>`;
+  }
   const show = shots.slice(0, 4), more = shots.length - show.length;
   const grid = show.map(p => p.path
       ? `<div class="pv-ph" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${pvEsc(p.de || '')}</span></div>`
@@ -395,7 +506,7 @@ function pvFeedHTML(state, opts) {
       const code = (m.payload || {}).code;
       html += (code === 'sent' || code === 'resent') && state.photos && state.photos[m.visit_id] ? _pvSentBlock(m, state, opts.en) : _pvSysLine(m, opts.en);
     }
-    else html += pvChatRowHTML(m, m.person_id == null ? { en: opts.en } : opts);
+    else html += pvChatRowHTML(m, opts.canDelete || m.person_id != null ? opts : { en: opts.en });
   });
   return html;
 }
