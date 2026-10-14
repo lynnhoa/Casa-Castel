@@ -32,6 +32,10 @@
                · D2: a return is its own row (return_of = its receipt), shown
                  under the receipt, own slip no. / date / photo; Net per receipt
                · D2: receipt / slip no. already used elsewhere → asks first
+               · D3: every receipt / return is booked in Controlling One-off by a
+                 database rule (MAINTENANCE-D3.sql) — switch off per entry or per
+                 receipt ("Controlling: Not booked"); returns follow their receipt.
+                 Controlling opens an entry here with maintenance.html#cost=<id>
                · the row's photos / PDFs are documents linked to the row (cost_id)
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
@@ -310,6 +314,7 @@ function mtReadHTML(c) {
         ${f('Type', v(MT_KIND[c.kind].one))}
         ${f('Status', mtPill(c.kind, c.status))}
         ${c.kind === 'schaden' ? f('Paid by', v(mtPaidLabel(c.paid_by))) : ''}
+        ${f('Controlling', v(c.book_ctrl === false ? 'Not booked' : 'Booked'))}
         ${f('Description', v(c.description, 'mt-v--text'), true)}
       </div>
       ${mtActive(c) ? '' : '<div class="cc-sec-foot"><button type="button" class="cc-foot-btn" data-mt="edit"><i class="ti ti-pencil" aria-hidden="true"></i> Edit</button></div>'}
@@ -320,6 +325,7 @@ function mtEditHTML(c, s) {
   const d = s.draft || {
     kind: c.kind, title: c.title, property_id: c.property_id, property_name: c.property_name, area: c.area,
     case_date: c.case_date, end_date: c.end_date, status: c.status, paid_by: c.paid_by, description: c.description,
+    book_ctrl: c.book_ctrl !== false,
   };
   const pid = d.property_id === null || d.property_id === undefined ? '' : String(d.property_id);
   let props = `<option value=""${pid ? '' : ' selected'}>Choose</option>` +
@@ -344,6 +350,8 @@ function mtEditHTML(c, s) {
         <div class="mt-f"><label class="mt-k" for="mtF-kind">Type</label><select class="mt-in" id="mtF-kind">${kinds}</select></div>
         <div class="mt-f"><label class="mt-k" for="mtF-status">Status</label><select class="mt-in" id="mtF-status">${stats}</select></div>
         <div class="mt-f" data-only="schaden"${d.kind === 'schaden' ? '' : ' hidden'}><label class="mt-k" for="mtF-paid">Paid by</label><select class="mt-in" id="mtF-paid">${paid}</select></div>
+        <div class="mt-f"><label class="mt-k" for="mtF-book">Controlling</label><select class="mt-in" id="mtF-book">
+          <option value="1"${d.book_ctrl === false ? '' : ' selected'}>Booked</option><option value="0"${d.book_ctrl === false ? ' selected' : ''}>Not booked</option></select></div>
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-desc">Description</label>
           <textarea class="mt-in mt-ta" id="mtF-desc" rows="3" maxlength="2000">${mtEsc(d.description || '')}</textarea></div>
       </div>
@@ -386,7 +394,7 @@ function mtRenderPanel() {
 
 /* What the form says right now (to notice unsaved changes) */
 function mtFormSnap() {
-  return ['mtF-title', 'mtF-prop', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-paid', 'mtF-desc']
+  return ['mtF-title', 'mtF-prop', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-paid', 'mtF-book', 'mtF-desc']
     .map(id => { const el = document.getElementById(id); return el ? el.value : ''; })
     .join('\u0001');
 }
@@ -446,6 +454,7 @@ function mtReadForm() {
     status: g('mtF-status').value || 'open',
     paid_by: kind === 'schaden' ? (g('mtF-paid').value || null) : null,
     description: g('mtF-desc').value.trim() || null,
+    book_ctrl: g('mtF-book') ? g('mtF-book').value !== '0' : true,
   };
 }
 
@@ -462,7 +471,7 @@ async function mtNew() {
   if (MT.sel && !(await mtClose())) return;
   MT.sel = {
     id: null, isNew: true, edit: true,
-    draft: { kind: MT.tab, title: '', property_id: '', area: '', case_date: ccTodayISO(), end_date: '', status: 'open', paid_by: '', description: '' },
+    draft: { kind: MT.tab, title: '', property_id: '', area: '', case_date: ccTodayISO(), end_date: '', status: 'open', paid_by: '', description: '', book_ctrl: true },
   };
   mtRenderPanel();
   mtRender();
@@ -517,6 +526,7 @@ async function mtSave() {
   const payload = {
     kind: f.kind, title: f.title, property_id: f.property_id, property_name: f.property_name, area: f.area,
     case_date: f.case_date, end_date: f.end_date, status: f.status, paid_by: f.paid_by, description: f.description,
+    book_ctrl: f.book_ctrl !== false,
   };
   const r = await mtTry(() => (isNew ? sb.from('maint_cases').insert({ id, ...payload }) : sb.from('maint_cases').update(payload).eq('id', id)));
   MT.busy = false;
@@ -524,13 +534,14 @@ async function mtSave() {
 
   // 3 · not stored: everything back as it was, the form comes back with what you typed
   console.error('[maintenance] save failed:', r.error);
+  const sqlMissing = /book_ctrl|maint_cost_id/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
   if (isNew) MT.cases = MT.cases.filter(c => c.id !== id);
   else Object.assign(mtCase(id), oldRow);
   MT.sel = { id: isNew ? null : id, isNew, edit: true, draft: { ...f } };
   const backTo = isNew ? MT.tab : oldRow.kind;
   if (backTo !== MT.tab) mtSwitchTab(backTo); else mtRender();
   mtRenderPanel();
-  mtSay('Not saved. Check the connection and save again.');
+  mtSay(sqlMissing ? 'Not saved: run MAINTENANCE-D3.sql in Supabase first.' : 'Not saved. Check the connection and save again.');
 }
 
 async function mtDelete() {
@@ -964,6 +975,7 @@ function mtCostsHTML(c) {
   const tap = !busy && !f && !upAny;
   const isForm = r => f && !f.isNew && String(f.id) === String(r.id);
   let h = '<section class="mt-sec mt-costs" id="mtCosts"><p class="mt-sec__t">Costs</p>';
+  if (c.book_ctrl === false) h += '<p class="mt-off-note"><i class="ti ti-unlink" aria-hidden="true"></i>Not booked in Controlling</p>';
   if (f && f.isNew && !f.return_of) h += mtCostFormHTML(f);
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!rows.length && !(f && f.isNew)) h += '<p class="mt-docs-empty">No receipts yet.</p>';
@@ -998,10 +1010,12 @@ function mtCostsHTML(c) {
 
 function mtCostRowHTML(r, tap) {
   const n = mtCostFiles(r.id).length, ret = !!r.return_of;
+  const parent = ret ? mtCostById(r.return_of) : null;
+  const off = ret ? !!parent && parent.book_ctrl === false : r.book_ctrl === false;
   const no = ret ? (r.receipt_no ? 'Slip ' + r.receipt_no : 'Return') : (r.receipt_no || '—');
   const desc = ret ? (r.description ? 'Return · ' + r.description : 'Return') : (r.description || '');
   return `<button type="button" class="mt-cr${ret ? ' mt-cr--ret' : ''}" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}"${tap ? '' : ' tabindex="-1"'}>
-      <span class="mt-cr__a"><span class="mt-cr__no">${ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : ''}${mtEsc(no)}</span><span class="mt-cr__desc">${mtEsc(desc)}</span></span>
+      <span class="mt-cr__a"><span class="mt-cr__no">${ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : ''}${mtEsc(no)}</span><span class="mt-cr__desc">${mtEsc(desc)}${off ? '<span class="mt-off">not in Controlling</span>' : ''}</span></span>
       <span class="mt-cr__amt">${ret ? mtNeg(r.amount) : mtEur(r.amount)}</span>
       <span class="mt-cr__b"><span class="mt-cr__who">${ret ? '' : mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
       <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ''}</span>
@@ -1010,6 +1024,7 @@ function mtCostRowHTML(r, tap) {
 
 function mtCostFormHTML(f) {
   const ret = !!f.return_of, parent = ret ? mtCostById(f.return_of) : null;
+  const cs = MT.sel ? mtCase(MT.sel.id) : null, caseOff = !!cs && cs.book_ctrl === false;
   const amt = f.amount === null || f.amount === undefined || f.amount === '' ? '' : String(f.amount);
   const chips = f.files.map((x, i) => `
       <span class="mt-chip${x.file ? ' is-new' : ''}">
@@ -1042,6 +1057,9 @@ function mtCostFormHTML(f) {
           <div class="mt-chips">${chips}
             <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-camera" aria-hidden="true"></i> Photo / PDF</button>
           </div></div>
+        ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
+          ? '<p class="mt-hint">This entry is not booked in Controlling.</p>'
+          : `<label class="mt-chk"><input type="checkbox" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/><span>Book in Controlling</span></label>`}</div>`}
       </div>
       <div class="cc-sec-foot">
         ${left ? `<span class="is-left mt-foot-l">${left}</span>` : ''}
@@ -1063,9 +1081,10 @@ function mtCostCapture() {
   if (g('mtC-who')) f.brand = g('mtC-who').value;
   f.amount = g('mtC-amount').value;                         // "1250.5" (German field) or ''
   f.cost_date = g('mtC-date').value || '';
+  if (g('mtC-book')) f.book_ctrl = g('mtC-book').checked;
 }
 const mtCostSnapOf = f => JSON.stringify([f.kind, f.receipt_no || '', f.description || '', f.brand || '', String(f.amount ?? ''), f.cost_date || '',
-  f.files.map(x => x.id || x.name).join('|')]);
+  f.book_ctrl !== false, f.files.map(x => x.id || x.name).join('|')]);
 function mtCostChanged() {
   const f = MT.sel && MT.sel.cost;
   if (!f) return false;
@@ -1078,7 +1097,7 @@ function mtCostNew(kind) {
   const c = mtOpenCase();
   if (!c || mtActive(c)) return;
   MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', return_of: null, receipt_no: '', description: '', brand: '',
-    amount: '', cost_date: ccTodayISO(), files: [], delIds: [] };
+    amount: '', cost_date: ccTodayISO(), book_ctrl: true, files: [], delIds: [] };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
   document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
@@ -1088,7 +1107,7 @@ function mtCostEdit(id) {
   const c = mtOpenCase(), r = mtCostById(id);
   if (!c || !r || mtActive(c)) return;
   MT.sel.cost = { isNew: false, id: r.id, kind: r.kind, return_of: r.return_of || null, receipt_no: r.receipt_no || '', description: r.description || '',
-    brand: r.brand || '', amount: r.amount ?? '', cost_date: r.cost_date || '', delIds: [], files: mtCostFilesOf(r.id) };
+    brand: r.brand || '', amount: r.amount ?? '', cost_date: r.cost_date || '', book_ctrl: r.book_ctrl !== false, delIds: [], files: mtCostFilesOf(r.id) };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
 }
@@ -1192,6 +1211,7 @@ async function mtCostSave() {
   const row = {
     id, case_id: c.id, kind: ret ? parent.kind : f.kind, receipt_no: String(f.receipt_no).trim() || null, description: String(f.description).trim() || null,
     brand: ret ? null : String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: ret ? parent.id : null,
+    book_ctrl: ret ? true : f.book_ctrl !== false,                 // a return follows its receipt
   };
   const kindChanged = !ret && old && old.kind !== row.kind;
   const rets = kindChanged ? mtReturnsOf(id) : [];
@@ -1212,6 +1232,7 @@ async function mtCostSave() {
   if (!r.error && rets.length) r = await mtTry(() => sb.from('maint_costs').update({ kind: row.kind }).eq('return_of', id));
   if (r.error) {
     console.error('[maintenance] cost save failed:', r.error);
+    const sqlMissing = /book_ctrl|maint_cost_id/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
     if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
     else Object.assign(mtCostById(id), old);
     rets.forEach(t => { t.kind = old.kind; });
@@ -1219,7 +1240,7 @@ async function mtCostSave() {
     MT.busy = false;
     if (MT.sel && String(MT.sel.id) === String(c.id)) MT.sel.cost = f;          // the form comes back with what you typed
     mtRefresh(c.id);
-    mtSay('Not saved. Check the connection and save again.');
+    mtSay(sqlMissing ? 'Not saved: run MAINTENANCE-D3.sql in Supabase first.' : 'Not saved. Check the connection and save again.');
     return;
   }
 
@@ -1358,6 +1379,26 @@ function mtWire() {
   });
 }
 
+/* ── Link from Controlling: #cost=<cost id> · #c=<entry id> → open that entry ── */
+function mtOpenLink() {
+  const h = String(location.hash || '').replace(/^#/, '');
+  if (!h) return;
+  const q = {};
+  h.split('&').forEach(kv => { const i = kv.indexOf('='); if (i > 0) q[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); });
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  if (!q.cost && !q.c) return;
+  const r = q.cost ? mtCostById(q.cost) : null;
+  const c = mtCase(r ? r.case_id : q.c);
+  if (!c) { mtSay('This entry is no longer in Maintenance.'); return; }
+  mtSwitchTab(c.kind);
+  mtOpen(c.id).then(() => setTimeout(() => {
+    const sel = r && (window.CSS && CSS.escape ? CSS.escape(String(r.id)) : String(r.id));
+    const row = sel ? document.querySelector(`#mtCosts .mt-cr[data-id="${sel}"]`) : null;
+    (row || document.getElementById('mtCosts'))?.scrollIntoView({ block: 'center' });
+    if (row) { row.classList.add('is-flash'); setTimeout(() => row.classList.remove('is-flash'), 1600); }
+  }, 60));
+}
+
 /* ── Boot ─────────────────────────────────────────────────── */
 async function mtBoot() {
   ctlShowLoading(true);
@@ -1369,6 +1410,7 @@ async function mtBoot() {
     await mtLoad();
     document.getElementById('appShell').style.display = 'block';
     mtSwitchTab(MT.tab);
+    mtOpenLink();
   } catch (e) {
     console.error('[maintenance] boot failed:', e);
     MT.loadError = e;

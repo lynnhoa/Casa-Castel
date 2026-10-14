@@ -269,3 +269,12 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 @container (min-width: 520px) {
   .mt-cr--ret { padding-left:0; }
 }
+
+/* ── D3 · Controlling switch ── */
+.mt-off-note { display:flex; align-items:center; gap:6px; margin:-4px 0 10px; font-size:11.5px; color:var(--cc-taupe); }
+.mt-off-note i { font-size:13px; }
+.mt-off { margin-left:6px; padding:1px 7px; border:.5px solid var(--cc-rule); border-radius:var(--cc-r-pill);
+  font-size:10px; font-weight:500; color:var(--cc-taupe); background:var(--cc-surface); white-space:nowrap; }
+.mt-chk { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--cc-charcoal); cursor:pointer; }
+.mt-chk input { width:18px; height:18px; margin:0; accent-color:var(--cc-ink); }
+.mt-cr.is-flash { background:#FBF3E4; transition:background 1.2s; }
