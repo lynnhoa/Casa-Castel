@@ -76,6 +76,7 @@ function pvaGenPassword() {
     else if (t === 'tool-link') return;
     else if (t === 'agenda') pvaOpenAgenda();
     else if (t === 'history') pvaOpenHistory();
+    else if (t === 'invoices') pvaOpenInvoices();
     else if (t === 'list') pvaOpenLists();
   });
   document.addEventListener('visibilitychange', () => {
@@ -118,6 +119,7 @@ async function pvaLoad(jobId) {
 }
 
 function pvaRenderShell() {
+  if (typeof _pviBadge === 'function') setTimeout(() => { _pviBadge(); if (_pviIsOpen() && !_pviFix && !_pvmUpload) _pviRender(); }, 0);   /* never wipe a note / upload being typed */
   const d = _pvaData;
   /* tabs */
   const tabs = (d.jobs || []).map(j =>
@@ -219,7 +221,7 @@ function pvaOffenGo(go) {
     }
     pvaOpenHistory(); return;
   }
-  if (go === 'inv' || go === 'close') { pvaOpenHistory(); return; }
+  if (go === 'inv' || go === 'close') { pvaOpenInvoices(); return; }
 }
 function _pvaNpNote(v) {                   /* "Bad 2 – WC: not possible (occupied)" — red on Lynn's side */
   const why = { besetzt: 'occupied', kaputt: 'broken' };

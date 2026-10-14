@@ -60,7 +60,7 @@ function pvaCardActs(v, today) {
 
 /* ── REPORTS UNDER THE CARD ─────────────────────────────── */
 function pvaReportsHTML(s) {
-  return (typeof pvaInvoiceCardsHTML === 'function' ? pvaInvoiceCardsHTML(_pvaData) : '') + _pvaReportCards(s);
+  return _pvaReportCards(s);                     /* invoices live in the Invoices sheet now */
 }
 function _pvaReportCards(s) {                /* FIX11 · one thin line per report — Got it right there */
   const reps = (s && s.reports) || [];
@@ -257,7 +257,7 @@ async function pvaHistoryMore() {
 function pvaHistoryFilter(f) { _pvh.filter = f; _pvhRender(); }
 function _pvhRender() {
   const people = Array.from(new Set(_pvh.visits.flatMap(v => v.people || []))).sort();
-  const chips = [['all', 'All'], ['review', 'To review'], ['issues', 'Issues']].concat(typeof pvaVisitInvoiceOpen === 'function' ? [['inv', 'Open invoices']] : [], people.map(n => ['p:' + n, n]));
+  const chips = [['all', 'All']].concat(people.map(n => ['p:' + n, n]));   /* History = archive: people only */
   const f = _pvh.filter;
   const list = _pvh.visits.filter(v => f === 'all' ? true
     : f === 'review' ? v.status === 'sent'

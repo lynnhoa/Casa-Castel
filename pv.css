@@ -696,3 +696,30 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 .pv-inv-line--now{background:#FFF6DC;border:.5px solid #E8CF8A;color:#6B4A0E}
 .pv-inv-line--wait{background:#FFF1E6;border:.5px solid #F0A877;color:#8A3E12}
 .scr .pv-inv-line__b{flex-shrink:0;height:28px;padding:0 10px;border-radius:8px;border:1px solid #D9B878;background:#F3DDB0;color:#4A3410;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+
+/* ── 5th tool button: Invoices (violet) + its red number ── */
+.pv-tools{gap:5px}
+.scr .pv-tool-pill{gap:3px;padding:0 2px;position:relative}
+.scr .pv-tool-pill--in{background:#EEE8FB;border-color:#B6A4E6;color:#5B3FA6}
+.pv-tool-bdg{position:absolute;top:-7px;right:-4px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:#A32D2D;color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center}
+/* ── Invoices sheet: only the open money to-dos ── */
+.pvi-sec{background:#FDFCFA;border:.5px solid #E0DAD0;border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.pvi-sec--close{background:#FFF9E6;border-color:#E8CF8A}
+.pvi-st{display:flex;align-items:center;justify-content:space-between;font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#9A8E7E;margin-bottom:2px}
+.pvi-st__r{letter-spacing:0;text-transform:none;font-size:12.5px;font-weight:600;color:#3A3530}
+.pvi-row{display:flex;align-items:center;gap:8px;min-height:46px;padding:4px 0;border-top:.5px solid #EDE8E0}
+.pvi-st + .pvi-row{border-top:none}
+.pvi-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pvi-tx b{font-size:13.5px;font-weight:500;color:#1E1B18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pvi-tx span{font-size:11.5px;color:#9A8E7E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-scrim .pvi-b{flex-shrink:0;display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 9px;border-radius:8px;border:.5px solid #E0DAD0;background:#FDFCFA;color:#3A3530;font-family:inherit;font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer}
+.pv-scrim .pvi-b:active{transform:scale(.96)}
+.pv-scrim .pvi-b--ok{background:#DEF3E3;border-color:#88C99A;color:#2C6E40}
+.pv-scrim .pvi-b--gold{background:#F3DDB0;border-color:#D9B878;color:#4A3410}
+.pv-scrim .pvi-all{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:38px;margin-top:8px;border-radius:10px;border:1px solid #88C99A;background:#DEF3E3;color:#2C6E40;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.pvi-wait{flex-shrink:0;display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:11px;background:#FEF6F5;border:.5px solid #F5A8A5;color:#A32D2D;font-size:10.5px;font-weight:600}
+.pvi-fix{padding:4px 0 10px}
+.pvi-clear{display:flex;flex-direction:column;align-items:center;gap:4px;padding:28px 10px;text-align:center;color:#2C6E40}
+.pvi-clear b{font-size:15px;font-weight:600}
+.pvi-clear span{font-size:12.5px;color:#9A8E7E}
+.pv-scrim .pvi-link{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:0;background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:600;color:#5B3FA6;cursor:pointer}
