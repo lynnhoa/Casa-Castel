@@ -61,6 +61,11 @@ function _plBins(list) {
     </div>`;
 }
 
+/* ── The three PDFs (repo root) — the same buttons in your list and in her Putzliste ── */
+const PV_DOCS = [['Putzanleitung-DE.pdf', 'DE', 'pdf'], ['Cleaning-Guide-EN.pdf', 'EN', 'pdf'], ['Casa-Castel-Muell.pdf', 'Müll', 'trash']];
+function pvDocsHTML() {
+  return `<span class="pv-docs">${PV_DOCS.map(d => `<a class="pv-doc" href="${d[0]}" target="_blank" rel="noopener">${pvPic(d[2], 13)}${d[1]}</a>`).join('')}</span>`;
+}
 function pvPutzlisteHTML(list, card) {
   const floors = (list && list.floors) || [];
   const extra = card && card.extra_task && card.extra_task.de ? card.extra_task : null;
@@ -77,6 +82,7 @@ function pvPutzlisteHTML(list, card) {
         <div class="pl-title"><b>Putzliste</b><span>Anleitung · cleaning instructions</span></div>
         <button class="pl-x" type="button" data-act="pl-close" aria-label="Schließen · Close">${pvPic('close', 20)}</button>
       </div>
+      <div class="pl-docs">${pvDocsHTML()}</div>
       <p class="pl-hint">Von oben nach unten, Etage für Etage. <span class="ph-chip" style="height:20px;padding:0 7px;vertical-align:1px;">${pvPic('cam', 11)}</span> = Foto machen.<span class="en">Top to bottom, floor by floor. Camera = take a photo.</span></p>
       ${floors.length ? `<div class="pl-route" style="align-items:center;padding:10px 14px;">${route}</div>` : ''}
     </div>
