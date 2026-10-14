@@ -777,7 +777,7 @@ function mtDocsHTML(c) {
       : `<div class="cc-sec-foot">
           <span class="is-left mt-foot-l">
             <button type="button" class="cc-foot-btn" data-mt="photos"><i class="ti ti-camera" aria-hidden="true"></i> Photos</button>
-            <button type="button" class="cc-foot-btn" data-mt="upload"><i class="ti ti-upload" aria-hidden="true"></i> Upload</button>
+            <button type="button" class="cc-foot-btn" data-mt="upload"><i class="ti ti-file-plus" aria-hidden="true"></i> Document</button>
           </span>
           ${docs.length ? '<button type="button" class="cc-foot-btn" data-mt="docsEdit"><i class="ti ti-pencil" aria-hidden="true"></i> Edit</button>' : '<span aria-hidden="true"></span>'}
         </div>`;
@@ -898,19 +898,74 @@ async function mtAddPhotos(files) {
   else mtSay(`${ok} of ${imgs.length} photos saved. Add the others again.`);
 }
 
-/* Upload: one file → its Type (+ Betrag and Rechnungsdatum for a Rechnung) → Save */
+/* Document: a PDF from Files is kept as it is · photos (camera or library) become ONE PDF,
+   a page per photo (e.g. a 3-page Angebot) → its Type → Save. Documents never land in the photo grid;
+   documentation photos go through "Photos". */
 function mtPickFile() {
   if (!mtOpenCase()) return;
   if (MT.up) { mtSay('Wait until the upload is finished.'); return; }
-  mtFileInput('mtFileInput', 'application/pdf,image/*', false, files => {
-    const f = files[0], c = mtOpenCase();
-    if (!f || !c) return;
-    if (!mtIsPdf(f) && !mtIsImage(f)) { mtSay('Choose a PDF or a photo.'); return; }
-    if (f.size > MT_MAX_MB * 1024 * 1024) { mtSay(`This file is too big (max ${MT_MAX_MB} MB).`); return; }
+  mtFileInput('mtDocInput', 'application/pdf,image/*', true, async files => {
+    const c = mtOpenCase();
+    if (!c) return;
+    const pdfs = files.filter(mtIsPdf), imgs = files.filter(f => !mtIsPdf(f) && mtIsImage(f));
+    let file = null, pages = 0;
+    if (pdfs.length) {
+      if (files.length > 1) mtSay('One PDF at a time – the first one is used.');
+      file = pdfs[0];
+    } else if (imgs.length) {
+      if (imgs.some(f => f.size > MT_MAX_MB * 1024 * 1024)) { mtSay(`A photo is too big (max ${MT_MAX_MB} MB).`); return; }
+      mtSay(imgs.length === 1 ? 'Making a PDF…' : `Making a PDF with ${imgs.length} pages…`);
+      file = await mtPhotosToPdf(imgs);
+      if (!file) { mtSay('The PDF could not be made. Try again.'); return; }
+      pages = imgs.length;
+    } else { mtSay('Choose a PDF or a photo.'); return; }
+    if (file.size > MT_MAX_MB * 1024 * 1024) { mtSay(`This file is too big (max ${MT_MAX_MB} MB).`); return; }
+    const now = mtOpenCase();
+    if (!now || String(now.id) !== String(c.id)) return;            // another entry was opened meanwhile
     MT.sel.docEdit = false; MT.sel.fix = null;
-    MT.sel.add = { file: f, name: f.name || 'Document', isImg: mtIsImage(f), type: mtGuessType(f.name, mtIsImage(f)), amount: '', date: ccTodayISO() };
+    MT.sel.add = { file, name: (file.name || 'Document.pdf') + (pages > 1 ? ` · ${pages} pages` : ''), isImg: false,
+      type: mtGuessType(file.name, false), amount: '', date: ccTodayISO() };
     mtRenderPanel();
     document.getElementById('mtDocs')?.scrollIntoView({ block: 'nearest' });
+  });
+}
+/* Photos → one A4 PDF (portrait or landscape per photo, the whole photo, nothing cut off) */
+async function mtPhotosToPdf(imgs) {
+  try {
+    if (!window.jspdf) await mtLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    const { jsPDF } = window.jspdf;
+    let pdf = null;
+    for (const f of imgs) {
+      const p = await mtImageData(f, 2000, 0.85);
+      if (!p) return null;
+      const land = p.w > p.h, W = land ? 297 : 210, H = land ? 210 : 297, M = 8;
+      if (!pdf) pdf = new jsPDF({ orientation: land ? 'landscape' : 'portrait', unit: 'mm', format: 'a4', compress: true });
+      else pdf.addPage('a4', land ? 'landscape' : 'portrait');
+      const k = Math.min((W - 2 * M) / p.w, (H - 2 * M) / p.h), w = p.w * k, h = p.h * k;
+      pdf.addImage(p.url, 'JPEG', (W - w) / 2, (H - h) / 2, w, h);
+    }
+    const base = imgs.length === 1 ? String(imgs[0].name || 'Scan').replace(/\.[a-z0-9]+$/i, '') : 'Scan ' + mtDate(ccTodayISO());
+    return new File([pdf.output('blob')], base + '.pdf', { type: 'application/pdf' });
+  } catch (e) {
+    console.error('[maintenance] photo → PDF:', e);
+    return null;
+  }
+}
+/* A photo → JPEG data, longest side max px (upright, as the phone shows it) */
+function mtImageData(file, max, quality) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const k = Math.min(1, max / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+      const w = Math.max(1, Math.round(img.naturalWidth * k)), h = Math.max(1, Math.round(img.naturalHeight * k));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+      resolve({ url: cv.toDataURL('image/jpeg', quality), w, h });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
   });
 }
 async function mtAddSave() {
