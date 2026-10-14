@@ -1,4 +1,5 @@
 -- ═══ PROVIDERS · BUILD 2 · guest link for one-time cleaners (no account) ═══
+-- ⚠ 48h auto-approve here is SUPERSEDED by PROVIDERS-NO-AUTO.sql — if you re-run this file, run that one again afterwards.
 -- Run AFTER Build 1. A guest = a hidden person (not in People) with a link code that ends 23:59 the next day.
 
 -- 1 · guest columns

@@ -1,4 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
+-- ⚠ 48h auto-approve here is SUPERSEDED by PROVIDERS-NO-AUTO.sql — if you re-run this file, run that one again afterwards.
 --  PROVIDERS · FIX 1 (bugs 1–15 from the Bug Map) · 13.10.2026
 --  Supabase → SQL Editor → paste all → Run. Safe to run twice.
 --  Only pv_* functions change, plus ONE new column on provider_months.

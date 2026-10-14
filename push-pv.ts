@@ -27,8 +27,8 @@ async function flush() {
   for (const [person, list] of by) {
     const last = list[list.length - 1];
     sent += await sendTo(person, list.length === 1
-      ? { title: last.title, body: last.body, tag: last.tag ?? 'pv', url: '/service.html' }
-      : { title: 'Casa Castel', body: `${list.length} Neuigkeiten · ${list.length} updates`, tag: 'pv-sum', url: '/service.html' });
+      ? { title: last.title, body: last.body, tag: last.tag ?? 'pv', url: '/providers' }
+      : { title: 'Casa Castel', body: `${list.length} Neuigkeiten · ${list.length} updates`, tag: 'pv-sum', url: '/providers' });
   }
   return { sent };
 }
@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     if (b.kind === 'test') {
       const { data } = await sb.from('provider_push_subscriptions').select('person_id');
       let n = 0;
-      for (const pid of new Set((data ?? []).map((x) => x.person_id))) n += await sendTo(pid, { title: 'Casa Castel · Test', body: 'Push funktioniert 👍 · It works', tag: 'pv-test', url: '/service.html' });
+      for (const pid of new Set((data ?? []).map((x) => x.person_id))) n += await sendTo(pid, { title: 'Casa Castel · Test', body: 'Push funktioniert 👍 · It works', tag: 'pv-test', url: '/providers' });
       return Response.json({ sent: n });
     }
     const h = hour();

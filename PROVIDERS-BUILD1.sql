@@ -1,4 +1,5 @@
 -- ═══ PROVIDERS · BUILD 1 · kitchen check · one rule for every visit · start logic ═══
+-- ⚠ 48h auto-approve here is SUPERSEDED by PROVIDERS-NO-AUTO.sql — if you re-run this file, run that one again afterwards.
 
 -- 1 · every visit that gets sent waits 48 h, then counts (with or without a date) — not after Undo / Unflag
 create or replace function pv_visit_auto_48h() returns trigger language plpgsql as $$

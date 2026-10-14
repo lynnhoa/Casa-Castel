@@ -143,13 +143,24 @@ function pvaRenderShell() {
   $a('pvaStrip').style.display = stripHtml ? '' : 'none';
   const card = _pvaCardHTML(s);
   const offen = _pvaOffen(d, s);
-  let html = card.html, turn = card.turn;
+  let turn = card.turn;
+  const box = document.createElement('div');                 /* DOM swap — the old regex broke on the pv-live span */
+  box.innerHTML = card.html;
   if (offen) {
-    html = html.replace(/<span class="k-mob-status-chip[^"]*"[^>]*>[\s\S]*?<\/span>/,
-      `<span class="k-mob-status-chip ${offen.cls}" style="cursor:pointer;" onclick="pvaOffenGo('${offen.go}')">${offen.ico}${offen.label}</span>`);
+    const chip = box.querySelector('.k-mob-status-chip');
+    if (chip) {
+      const nc = document.createElement('span');
+      nc.className = 'k-mob-status-chip ' + offen.cls;
+      nc.style.cursor = 'pointer';
+      nc.setAttribute('onclick', `pvaOffenGo('${offen.go}')`);
+      nc.innerHTML = offen.ico + offen.label;
+      chip.replaceWith(nc);
+    }
     if (offen.turn) turn = 'turn';
   }
-  html = html.replace(/(<div class="k-mob-week-top-row">[\s\S]*?)(<\/div>)/, '$1' + _pvaGuestChip() + '$2');   /* Build 2 */
+  const top = box.querySelector('.k-mob-week-top-row');      /* Build 2 · guest chip, appended safely */
+  if (top) top.insertAdjacentHTML('beforeend', _pvaGuestChip());
+  const html = box.innerHTML;
   pvSetHTML($a('pvaCard'), html);
   $a('pvaCardWrap').setAttribute('data-turn', turn);
   pvSetHTML($a('pvaReports'), typeof pvaReportsHTML === 'function' ? pvaReportsHTML(s) : '');
@@ -285,7 +296,7 @@ function _pvaCardHTML(s) {
       </div></div>` };
   }
   if (v.status === 'sent') {
-    const due = v.auto_due_at ? `Auto-approves ${pvWdDM(String(v.auto_due_at).slice(0, 10), true)} ${pvHM(v.auto_due_at)}` : 'Waiting for your review.';
+    const due = 'Waiting for your review.';                 /* no auto-approve — a sent visit waits for you */
     return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${pvPic('chip_sent', 13)}Submitted</span><span class="k-mob-week-dates-sm">sent ${pvHM(v.sent_at)}</span></div>
       <div class="k-mob-week-body">
         <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
