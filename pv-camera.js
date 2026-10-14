@@ -172,7 +172,7 @@ async function _camShoot() {
     const ratio = fr && fr.clientWidth && fr.clientHeight ? fr.clientWidth / fr.clientHeight : 3 / 4;
     const blob = await ccCamSnap(_cam.video, ratio);         /* saved photo = what the frame showed */
     _cam.busy = false;
-    if (blob) _camGot(blob);
+    if (blob) await _camGotChecked(blob);
     return;
   }
   const fi = document.getElementById('pv-cam-file');         /* phone camera — capture, no library */
@@ -180,9 +180,26 @@ async function _camShoot() {
   fi.onchange = async e => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-    _camGot(await ccCompressImage(f));
+    await _camGotChecked(await ccCompressImage(f));
   };
   fi.click();
+}
+async function _camTooDark(blob) {           /* FIX11 · mean brightness of a 24×24 copy */
+  try {
+    const url = URL.createObjectURL(blob);
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+    const c = document.createElement('canvas'); c.width = 24; c.height = 24;
+    const x = c.getContext('2d'); x.drawImage(img, 0, 0, 24, 24);
+    URL.revokeObjectURL(url);
+    const d = x.getImageData(0, 0, 24, 24).data; let sum = 0;
+    for (let k = 0; k < d.length; k += 4) sum += 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2];
+    return sum / (d.length / 4) < 16;
+  } catch (e) { return false; }                  /* can't measure → never block a photo */
+}
+async function _camGotChecked(blob) {
+  if (!blob) return;
+  if (await _camTooDark(blob)) { pvToast('Zu dunkel – bitte nochmal · Too dark – try again'); return; }
+  _camGot(blob);
 }
 function _camGot(blob) {
   const v = _camVisit();

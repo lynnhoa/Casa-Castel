@@ -606,3 +606,38 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 /* ── FIX7: Putzliste as a quiet chip in the card's top row ── */
 .pv-chip-list{margin-left:auto;background:#FFFFFF;border:1px solid #E3DCCE;color:#6B5E4E;cursor:pointer;font-family:inherit}
 .pv-chip-list:active{transform:scale(.95)}
+
+/* ══ FIX11 ══════════════════════════════════════════════════════════════
+   #3 · chat scrolls like the kitchen: older messages reachable, new ones at the bottom */
+.k-mob-feed{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.k-mob-feed>*{flex-shrink:0}
+.k-mob-feed>:first-child{margin-top:auto}
+/* provider card in kitchen layout: square actions on the right */
+.k-mob-week-acts{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.scr .pv-wact{width:58px;padding:9px 4px 8px;gap:4px;border:1px solid transparent;cursor:pointer}
+.scr .pv-wact span{font-size:10px;font-weight:600;letter-spacing:0;line-height:1.15}
+.scr .k-mob-wact.gold{background:#F3DDB0;border-color:#D9B878;color:#4A3410}
+.scr .k-mob-wact.red.pv-wact{border-color:#F0A8A2}
+.scr .pv-link{display:block;margin:8px auto 0;min-height:32px;padding:0 10px;background:none;border:none;font-family:inherit;font-size:12.5px;font-weight:500;color:#6B5E4E;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+/* #5 · review buttons: two pills side by side */
+.pv-actrow{display:flex;gap:8px;margin-top:8px}
+.scr .pv-actbtn{flex:1;min-width:0;height:36px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid;border-radius:10px;font-family:inherit;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer}
+.scr .pv-actbtn--ok{background:#DEF3E3;border-color:#88C99A;color:#2C6E40}
+.scr .pv-actbtn--redo{background:#FCE3DE;border-color:#E79A8C;color:#A8412F}
+.scr .pv-actbtn:active{transform:scale(.97)}
+/* #12 · two bathrooms: the room on its own small line */
+.pv-ph>span b{display:block;font-weight:600;opacity:.8}
+/* #13 · "Fehlt etwas?" as a chip at the end of the chat (board P9) */
+.pv-sup-row{display:flex;padding:10px 0 4px}
+.scr .pv-sup-chip{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 14px 0 11px;border-radius:17px;border:1px solid #E0DAD0;background:#FDFCFA;color:#3A3530;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.scr .pv-sup-chip .en{font-weight:400;color:#9A8E7E}
+/* #10 · reports as thin lines */
+.pva-rep-line{display:flex;align-items:center;gap:8px;min-height:34px;margin-top:10px;padding-top:8px;border-top:.5px solid var(--cc-rule);font-size:12px;color:#3A3530}
+.pva-rep-line svg{flex-shrink:0;color:#185FA5}
+.pva-rep-line--dmg svg{color:#A32D2D}
+.pva-rep-txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pva-rep-txt b{font-weight:600}
+.pva-rep-line--dmg .pva-rep-txt b{color:#7A2020}
+.pva-rep-at{color:#9A8E7E}
+.scr .pva-rep-open{flex-shrink:0;background:none;border:none;padding:0 4px;font-family:inherit;font-size:12px;font-weight:600;color:#185FA5;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.scr .pva-rep-ok{flex-shrink:0;height:28px;padding:0 10px;border-radius:8px;border:1px solid #88C99A;background:#DEF3E3;color:#2C6E40;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer}

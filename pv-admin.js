@@ -147,6 +147,7 @@ function pvaRenderShell() {
   $a('pvaCardWrap').setAttribute('data-turn', turn);
   pvSetHTML($a('pvaReports'), typeof pvaReportsHTML === 'function' ? pvaReportsHTML(s) : '');
   pvSetFeed($a('pvaFeed'), pvFeedHTML(s, { en: true, canDelete: true, onDelete: 'pvaDeleteMsg' }));
+  if (typeof _pvrReapply === 'function') _pvrReapply();     /* FIX11: marked photos stay marked */
 }
 
 function _pvaOffen(d, s) {                 /* the one thing that needs you — kitchen chip */
@@ -154,13 +155,13 @@ function _pvaOffen(d, s) {                 /* the one thing that needs you — k
   const rev = Number(o.reviews || 0);
   const inv = Number(o.invoices || 0);
   if (rev) return { cls: 'myturn', turn: true, ico: pvPic('chip_today', 13), go: 'review',
-                    label: `${rev} Review${rev === 1 ? '' : 's'} warten` };
+                    label: `${rev} review${rev === 1 ? '' : 's'} waiting` };
   if (inv) return { cls: 'myturn', turn: true, ico: pvPic('chip_invoice', 13), go: 'inv',
-                    label: `${inv} ${inv === 1 ? 'Rechnung' : 'Rechnungen'} prüfen` };
+                    label: `${inv} invoice${inv === 1 ? '' : 's'} to check` };
   if (o.close_month) return { cls: 'myturn', turn: true, ico: pvPic('closed_line', 13), go: 'close',
-                    label: `${_pvMonthName(o.close_month, true).split(' ')[0]} abschließen` };
+                    label: `Close ${_pvMonthName(o.close_month, true).split(' ')[0]}` };
   if (s && s.card) return null;                               /* a visit: the state's own chip */
-  return { cls: '', turn: false, ico: '', go: 'none', label: 'Nichts offen ✓' };
+  return { cls: '', turn: false, ico: '', go: 'none', label: 'All clear ✓' };
 }
 function pvaOffenGo(go) {
   if (go === 'review') {

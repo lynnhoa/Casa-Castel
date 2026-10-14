@@ -217,7 +217,7 @@ function _pvRender(s) {
   if (typeof pvCamOnState === 'function') pvCamOnState();
 
   /* feed */
-  pvSetFeed($id('pv-feed'), pvFeedHTML(s, {}));
+  pvSetFeed($id('pv-feed'), pvFeedHTML(s, {}) + (pvSuppliesOk(s) ? pvSuppliesChipHTML() : ''));
 }
 
 /* ── PUTZLISTE (board P3b) ──────────────────────────────── */
@@ -347,6 +347,7 @@ function _pvOpenCancel() {
   const s = _pvState; const v = s && s.card;
   if (!v || !v.can_cancel) return;
   _pvCancelReason = null;
+  _pvSheetTitle('Termin absagen? · Cancel visit?');
   const reasons = [['krank', 'sick', 'Krank', 'Sick'], ['termin', 'other_date', 'Anderer Termin', 'Other plans'], ['anderes', 'other', 'Anderes', 'Other']];
   $id('pv-cancel-body').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;">
@@ -373,6 +374,42 @@ function _pvOpenCancel() {
   $id('pv-cancel-note').addEventListener('input', _pvCancelReady);
   $id('pv-cancel-send').onclick = _pvCancelSend;
   pvOpenScrim('pv-cancel-scrim');
+}
+function _pvSheetTitle(t) {
+  const el = $id('pv-cancel-scrim') && $id('pv-cancel-scrim').querySelector('.cc-modal-title');
+  if (el) el.textContent = t;
+}
+function _pvOpenAbort() {                    /* FIX11 · "Abbrechen": photos deleted, nothing reaches Casa Castel */
+  const s = _pvState; const v = s && s.card;
+  if (!v || v.status !== 'in_progress') return;
+  _pvSheetTitle('Abbrechen? · Stop?');
+  $id('pv-cancel-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="pic pic--k" style="width:44px;height:44px;border-radius:13px;">${pvPic('cal_big', 26)}</span>
+      <div><p style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:500;line-height:1;color:#1E1B18;">${pvEsc(pvWdFull(v.date))}</p>
+        <p style="font-size:12px;color:#9A8E7E;margin-top:3px;">${_pvCovered(v)} von ${(v.counts && v.counts.total) || 0} Fotos · ${pvEsc((s.job && s.job.name) || '')}</p></div>
+    </div>
+    <p style="font-size:14px;font-weight:600;color:#1E1B18;margin-top:16px;line-height:1.35;">Alle Fotos von diesem Termin werden gelöscht.<span style="display:block;font-weight:400;font-size:12.5px;color:#9A8E7E;">All photos of this visit will be deleted.</span></p>
+    <p style="display:flex;align-items:flex-start;gap:6px;margin-top:10px;font-size:12px;line-height:1.4;color:#6B5E4E;">${pvPic('info', 14)}<span>${v.unplanned
+      ? 'Der Besuch ohne Termin wird ganz entfernt.<span style="display:block;color:#9A8E7E;">The unplanned visit is removed completely.</span>'
+      : 'Der Termin bleibt – du kannst neu starten.<span style="display:block;color:#9A8E7E;">The visit stays – you can start again.</span>'}</span></p>
+    <button type="button" id="pv-abort-send" style="width:100%;min-height:54px;margin-top:14px;display:flex;align-items:center;justify-content:center;gap:10px;border-radius:14px;border:none;background:#A32D2D;color:#FFFFFF;font-family:inherit;cursor:pointer;">${pvPic('btn_cancel', 18)}<span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;"><span style="font-size:15px;font-weight:600;">Ja, abbrechen</span><span style="font-size:11.5px;opacity:.85;">Yes, stop</span></span></button>
+    <button class="pv-big pv-big--light" type="button" data-close="pv-cancel-scrim" style="justify-content:center;min-height:48px;margin-top:8px;"><span class="pv-big__txt" style="flex:0 1 auto;align-items:center;"><span class="pv-big__de">Zurück</span><span class="pv-big__en">Back</span></span></button>`;
+  $id('pv-abort-send').onclick = _pvAbortSend;
+  pvOpenScrim('pv-cancel-scrim');
+}
+async function _pvAbortSend() {
+  const v = _pvState && _pvState.card;
+  if (_pvBusy || !v) return;
+  _pvBusy = true;
+  const { data, error } = await pvRpc('pv_abort', { p_token: localStorage.getItem('pv_token'), p_visit: v.id });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error) { pvToast('Keine Verbindung · No connection'); return; }
+  pvCloseScrim('pv-cancel-scrim');
+  if (data && data.error === 'team') pvToast('Andere Fotos sind dabei – schreib Casa Castel. · Someone else\'s photos are in it.');
+  else pvToast(data && data.error ? 'Schon geändert · Already changed' : 'Abgebrochen · Stopped');
+  _pvLoad();
 }
 async function _pvCancelSend() {
   const v = _pvState && _pvState.card;
@@ -443,6 +480,7 @@ async function _pvTakeOver() {
     if (b) { const k = b.getAttribute('data-sup'); if (_pvSupSel.has(k)) _pvSupSel.delete(k); else _pvSupSel.add(k); _pvSupRender(); return; }
     if (e.target.closest('#pv-sup-send')) _pvSupSend();
   });
+  $id('pv-feed').addEventListener('click', e => { if (e.target.closest('[data-act="supplies"]')) _pvOpenSupplies(); });
   $id('pv-card').addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
@@ -453,6 +491,7 @@ async function _pvTakeOver() {
     };
     if (a === 'list') _pvOpenList();
     else if (a === 'cancel') _pvOpenCancel();
+    else if (a === 'abort') _pvOpenAbort();
     else if (a === 'takeover') {                /* tap once = ask, tap again = take over */
       if (b.getAttribute('data-sure') !== '1') {
         b.setAttribute('data-sure', '1');
@@ -464,7 +503,17 @@ async function _pvTakeOver() {
     else if (a === 'undo') run(_pvUndoCancel);
     else if (a === 'start' || a === 'continue' || a === 'redo') run(() => _pvStartCamera());
     else if (a === 'redo-other') run(() => _pvStartCamera(_pvState && _pvState.card && _pvState.card.redo_other && _pvState.card.redo_other.id));
-    else if (a === 'unplanned') run(_pvStartUnplanned);
+    else if (a === 'unplanned') {              /* FIX11: tap once = ask, tap again = start (no accidental visits) */
+      if (b.getAttribute('data-sure') !== '1') {
+        const lbl = b.querySelector('[data-lbl]') || b;
+        const was = lbl.innerHTML;
+        b.setAttribute('data-sure', '1');
+        lbl.innerHTML = b.getAttribute('data-sure-label') || 'Sicher?';
+        setTimeout(() => { if (b.isConnected) { b.removeAttribute('data-sure'); lbl.innerHTML = was; } }, 5000);
+        return;
+      }
+      run(_pvStartUnplanned);
+    }
     else if (a === 'supplies') _pvOpenSupplies();
     else if (a === 'inv') pvInvOpen({ visit: b.getAttribute('data-visit') || null, month: b.getAttribute('data-month'), label: b.getAttribute('data-label') });
   });

@@ -63,33 +63,15 @@ function pvaCardActs(v, today) {
 function pvaReportsHTML(s) {
   return (typeof pvaInvoiceCardsHTML === 'function' ? pvaInvoiceCardsHTML(_pvaData) : '') + _pvaReportCards(s);
 }
-function _pvaReportCards(s) {
+function _pvaReportCards(s) {                /* FIX11 · one thin line per report — Got it right there */
   const reps = (s && s.reports) || [];
-  const nextV = (s.strip || []).find(x => x.status === 'planned' && x.date >= s.today);
   return reps.map(r => {
     const pl = r.payload || {};
-    const who = r.name ? `<span class="k-mob-week-dates-sm">${_pvagAvatarByName(r.name)}</span>` : '';
-    if (r.kind === 'supplies') {
-      return `<div class="pva-rep" style="margin-top:12px;padding-top:12px;border-top:.5px solid var(--cc-rule);">
-          <div class="k-mob-week-top-row"><span class="k-mob-status-chip next">${pvPic('chip_supplies', 13)}Missing supplies</span>${who}</div>
-          <div class="k-mob-week-body">
-            <div class="k-mob-week-left"><span class="k-mob-week-room">${nextV ? 'Next · ' + pvWdDM(nextV.date, true) : 'Supplies'}</span>
-              <span class="k-mob-week-dates-sm">reported ${pvTs(r.at)}</span>
-              <span class="k-note">${esc(pvSuppliesText(pl, true))}</span></div>
-            <div class="k-mob-week-acts"><button class="k-mob-wact green" type="button" aria-label="Got it" onclick="pvaAck('${r.id}')">${pvPic('act_gotit', 14)}<span>Got it</span></button></div>
-          </div></div>`;
-    }
-    return `<div class="pva-rep" style="margin-top:12px;padding-top:12px;border-top:.5px solid var(--cc-rule);">
-        <div class="k-mob-week-top-row"><span class="k-mob-status-chip flagged">${pvPic('chip_damage', 13)}Damage reported</span>${who}</div>
-        <div class="k-mob-week-body">
-          <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(String(r.at).slice(0, 10), true)}</span>
-            <span class="k-mob-week-dates-sm">${pl.path ? '1 photo · ' : ''}${pvTs(r.at)}</span>
-            ${pl.note ? `<span class="k-note k-note--flag">„${esc(pl.note)}“</span>` : ''}</div>
-          <div class="k-mob-week-acts">
-            ${pl.path ? `<button class="k-mob-wact blue" type="button" aria-label="Open" onclick="pvaViewPhoto('${esc(pl.path)}', 'Damage reported', '${esc((r.name || '') + ' · ' + pvTs(r.at))}')">${pvPic('act_open', 14)}<span>Open</span></button>` : ''}
-            <button class="k-mob-wact green" type="button" aria-label="Got it" onclick="pvaAck('${r.id}')">${pvPic('act_gotit', 14)}<span>Got it</span></button>
-          </div>
-        </div></div>`;
+    const sup = r.kind === 'supplies';
+    const txt = sup ? `<b>Missing supplies</b> · ${esc(pvSuppliesText(pl, true))}`
+                    : `<b>Damage reported</b>${pl.note ? ' · „' + esc(pl.note) + '“' : ''}`;
+    const open = !sup && pl.path ? `<button class="pva-rep-open" type="button" onclick="pvaViewPhoto('${esc(pl.path)}', 'Damage reported', '${esc((r.name || '') + ' · ' + pvTs(r.at))}')">Open</button>` : '';
+    return `<div class="pva-rep-line${sup ? '' : ' pva-rep-line--dmg'}">${pvPic(sup ? 'chip_supplies' : 'chip_damage', 14)}<span class="pva-rep-txt">${txt}<span class="pva-rep-at"> · ${pvTs(r.at)}${r.name ? ' · ' + esc(r.name) : ''}</span></span>${open}<button class="pva-rep-ok" type="button" onclick="pvaAck('${r.id}')">Got it</button></div>`;
   }).join('');
 }
 function _pvagAvatarByName(name) {
@@ -381,3 +363,15 @@ document.addEventListener('click', e => {
 
 /* compose bar mounts once the page is parsed (this file loads after pv-admin.js) */
 document.addEventListener('DOMContentLoaded', () => pvaMountCompose());
+
+function _pvrReapply() {                       /* FIX11 · a refreshed chat keeps the photos you marked */
+  Object.keys(_pvrSel).forEach(visit => {
+    const box = document.querySelector('#pvaFeed [data-anchor="sent"][data-sent="' + visit + '"]');
+    if (!box) { delete _pvrSel[visit]; return; }
+    box.querySelectorAll('[data-view]').forEach(el => {
+      const on = _pvrSel[visit].has(el.getAttribute('data-view').split('|')[1]);
+      el.style.outline = on ? '2.5px solid #A32D2D' : ''; el.style.outlineOffset = on ? '2px' : '';
+    });
+    _pvrRow(visit);
+  });
+}
