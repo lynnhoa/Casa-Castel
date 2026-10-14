@@ -161,15 +161,18 @@ function _pvRow(left, acts) {                /* kitchen card body: text left, sq
 function _pvNote1() {                        /* one line of text at most: the first that applies */
   return Array.prototype.find.call(arguments, Boolean) || '';
 }
+function _pvIsGuest() { try { return localStorage.getItem('pv_guest') === '1'; } catch (e) { return false; } }   /* Build 2 */
 function _pvMyName() { try { return localStorage.getItem('pv_person_name') || ''; } catch (e) { return ''; } }
 function _pvMayAbort(v) {                    /* only my own photos on it → I may stop and start over */
   const me = _pvMyName();
   return (v.points || []).every(p => !(p.path || p.np) || !p.by || p.by === me);
 }
 function _pvUnplannedLink() {                /* no visit in the photo window → start without a date (one tap) */
+  if (_pvIsGuest()) return '';
   return `<button type="button" class="pv-link" data-act="unplanned">Heute geputzt? Starten · Cleaned today? Start</button>`;
 }
 function _pvAnotherLink() {                  /* Build 1 · a second cleaning on the same day */
+  if (_pvIsGuest()) return '';
   return `<button type="button" class="pv-link" data-act="unplanned">Noch eine Reinigung heute? Starten · Start another</button>`;
 }
 function pvRoomMap(state) {                 /* point key → room (Bad 1, Bad 2 …) from the list */
@@ -238,8 +241,8 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip">${_pvIco('chip_later', 13)}Kein Termin heute <span class="en">· No visit today</span></span></div>
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(s.today))}</span>
         <span class="k-mob-week-dates-sm">Kein nächster Termin · no next visit</span>`,
-        _pvWact('unplanned', 'gold', 'btn_unplanned', 'Starten'))}
-      <span class="k-note">Heute geputzt? Starte hier. · Cleaned today? Start here.</span>` };
+        _pvIsGuest() ? '' : _pvWact('unplanned', 'gold', 'btn_unplanned', 'Starten'))}
+      <span class="k-note">${_pvIsGuest() ? 'Kein Termin offen. · No visit open.' : 'Heute geputzt? Starte hier. · Cleaned today? Start here.'}</span>` };
   }
   const counts = v.counts || {};
   const total = counts.total || 0;

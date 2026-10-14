@@ -644,3 +644,9 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 
 /* ── FIX12 · unplanned visit: the same review + "Nicht zählen" ── */
 .scr .pv-dontcount{display:block;margin:6px 0 0;padding:4px 0;background:none;border:none;font-family:inherit;font-size:12px;font-weight:600;color:#A32D2D;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+
+/* ── Build 2 · guest link chip on your card (top row, right) ── */
+#pvaCard .k-mob-week-top-row{justify-content:flex-start;gap:8px}
+#pvaCard .k-mob-week-top-row>:nth-child(2){margin-left:auto}
+.scr .pva-guest-chip{background:#DCEBFB;border:1px solid #7FAEE3;color:#2B629E;cursor:pointer;font-family:inherit}
+.pva-guest-chip .ti{font-size:13px}

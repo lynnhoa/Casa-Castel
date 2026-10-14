@@ -106,6 +106,10 @@ async function pvaLoad(jobId) {
   const { data, error } = await pvaRpc('pv_admin_load', { p_job: _pvaJob });
   if (error && String(error).indexOf('pv_admin_only') !== -1) { location.replace('login.html'); return; }
   if (error || !data) { pvaToast('No connection — showing the last view.'); return; }
+  if (data && Array.isArray(data.people)) {          /* Build 2: guests stay out of People, pickers and previews */
+    data.guests = data.people.filter(p => p.is_guest);
+    data.people = data.people.filter(p => !p.is_guest);
+  }
   _pvaData = data;
   if (data.job) { _pvaJob = data.job.id; localStorage.setItem('pva_job', _pvaJob); }
   try { localStorage.setItem('pva_copy', JSON.stringify(data)); } catch (e) {}
@@ -143,6 +147,7 @@ function pvaRenderShell() {
       `<span class="k-mob-status-chip ${offen.cls}" style="cursor:pointer;" onclick="pvaOffenGo('${offen.go}')">${offen.ico}${offen.label}</span>`);
     if (offen.turn) turn = 'turn';
   }
+  html = html.replace(/(<div class="k-mob-week-top-row">[\s\S]*?)(<\/div>)/, '$1' + _pvaGuestChip() + '$2');   /* Build 2 */
   pvSetHTML($a('pvaCard'), html);
   $a('pvaCardWrap').setAttribute('data-turn', turn);
   pvSetHTML($a('pvaReports'), typeof pvaReportsHTML === 'function' ? pvaReportsHTML(s) : '');
@@ -150,6 +155,47 @@ function pvaRenderShell() {
   if (typeof _pvrReapply === 'function') _pvrReapply();     /* FIX11: marked photos stay marked */
 }
 
+/* ── Build 2 · GUEST LINK: one tap → share sheet (WhatsApp / SMS) ── */
+function _pvaGuestChip() {
+  return `<button class="k-mob-status-chip pva-guest-chip" type="button" aria-label="Guest link" onclick="pvaGuestLink()"><i class="ti ti-link" aria-hidden="true"></i>Guest</button>`;
+}
+async function pvaGuestLink(date) {
+  if (!_pvaJob) return;
+  const { data, error } = await pvaRpc('pv_admin_guest_link', { p_job: _pvaJob, p_date: date || null });
+  if (error || !data || data.error) { pvaToast(data && data.error === 'past' ? 'Pick today or a later day.' : 'Could not create the link — try again.'); return; }
+  const url = new URL('service.html?g=' + encodeURIComponent(data.token), location.href).href;
+  const today = (_pvaData && _pvaData.state && _pvaData.state.today) || data.date;
+  const tmr = pvAddDays(today, 1);
+  const de = data.date === today ? 'heute' : data.date === tmr ? 'morgen' : 'am ' + pvWdDM(data.date);
+  const en = data.date === today ? 'today' : data.date === tmr ? 'tomorrow' : 'on ' + pvWdDM(data.date, true);
+  const until = pvDM(pvAddDays(data.date, 1)) + ' 23:59';
+  const text = `Hallo! Dein Link für die Reinigung ${de} in der Casa Castel:\n${url}\n(gültig bis ${until})\n\nHello! Your link for the cleaning ${en} at Casa Castel:\n${url}\n(valid until ${until})`;
+  pvaLoad();
+  if (navigator.share) {
+    try { await navigator.share({ text }); return; }
+    catch (e) {
+      if (e && e.name === 'AbortError') return;
+      if (await ccConfirm('Guest link ready', 'Share it via WhatsApp or SMS.', 'Share', false)) {   /* iOS wants a fresh tap */
+        try { await navigator.share({ text }); return; } catch (e2) { if (e2 && e2.name === 'AbortError') return; }
+      }
+    }
+  }
+  try { await navigator.clipboard.writeText(text); pvaToast('Link copied — paste it into WhatsApp.'); }
+  catch (e) { window.prompt('Copy the guest link:', url); }
+}
+function _pvaGuestsHtml(d) {                 /* recent named guests (30 days) → "Add as person" */
+  const since = Date.now() - 30 * 864e5;
+  const gs = (d.guests || []).filter(g => g.name && g.name !== 'Gast' && Date.parse(g.created_at) >= since);
+  if (!gs.length) return '';
+  return `<div class="pv-sec"><p class="pv-sec__t">Recent guests <span class="en">one-time, via guest link</span></p>${gs.map(g =>
+    `<div class="pv-ag"><p class="pv-ag__d">${esc(g.name)}<small>${g.last_login ? 'opened ' + pvTs(g.last_login) : 'link not opened'}</small></p><button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaGuestPromote('${g.id}')">Add as person</button></div>`).join('')}</div>`;
+}
+async function pvaGuestPromote(id) {
+  const { data, error } = await pvaRpc('pv_admin_guest_promote', { p_person: id });
+  if (error || (data && data.error)) { pvaToast('Could not add — try again.'); return; }
+  await pvaLoad();
+  pvaNewPassword(id);                          /* shows the new password to copy / share */
+}
 function _pvaOffen(d, s) {                 /* the one thing that needs you — kitchen chip */
   const o = d.offen || {};
   const rev = Number(o.reviews || 0);
@@ -436,7 +482,7 @@ function pvaRenderPeople() {
   if (!_pvaEditJob && _pvaJobOpen) jobHtml += `<div class="cc-sec-foot" style="margin-top:4px;"><button class="cc-foot-btn" type="button" onclick="_pvaJobOpen=false;pvaRenderPeople()">Done</button></div>`;
   $a('pvaPeopleBody').innerHTML = `
     <div class="pv-sec"><p class="pv-sec__t">Job</p>${jobHtml}</div>
-    <div class="pv-sec"><p class="pv-sec__t">People</p>${reqHtml}${peopleHtml || '<p class="pv-k" style="padding:8px 0;">No people yet — add the first one below.</p>'}${addHtml}</div>`;
+    <div class="pv-sec"><p class="pv-sec__t">People</p>${reqHtml}${peopleHtml || '<p class="pv-k" style="padding:8px 0;">No people yet — add the first one below.</p>'}${addHtml}</div>${_pvaGuestsHtml(d)}`;
 }
 
 /* ── PEOPLE ACTIONS ─────────────────────────────────────── */

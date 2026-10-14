@@ -184,11 +184,17 @@ function _pvagPauseRow(p) {
     </div>`;
 }
 
+function _pvagGuestRow() {                   /* Build 2 · a guest link for another day */
+  const t = (_pvaData && _pvaData.state && _pvaData.state.today) || '';
+  return `<div class="pv-sec"><p class="pv-sec__t">Guest link <span class="en">one-time cleaner · no account</span></p>
+    <div style="display:flex;gap:8px;align-items:center;"><input type="date" id="pvagGuestDate" class="cc-input" value="${t}" min="${t}" style="flex:1;min-width:0;font-family:inherit;"/>
+    <button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaGuestLink(document.getElementById('pvagGuestDate').value)">Share link</button></div></div>`;
+}
 function pvagRender() {
   const d = _pvag;
   if (!d) return;
   const ed = _pvagEdit || {};
-  let h = `<div class="pv-sec"><p class="pv-sec__t">Rhythms <span class="en">tap one to change</span></p>`;
+  let h = _pvagGuestRow() + `<div class="pv-sec"><p class="pv-sec__t">Rhythms <span class="en">tap one to change</span></p>`;
   if (ed.kind === 'rhythm' && !ed.id) h += _pvagRhythmForm(null);
   if (!d.rhythms.length && !(ed.kind === 'rhythm' && !ed.id)) h += '<p class="pv-k" style="padding:2px 0 4px;">No rhythm yet. Add one — the visits of the next 12 weeks then appear below.</p>';
   d.rhythms.forEach(r => {

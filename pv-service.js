@@ -59,6 +59,9 @@ function _pvLoginError(code, extra) {
   } else if (code === 'off') {
     de = 'Dieser Zugang ist nicht aktiv. Bitte melde dich bei Casa Castel.';
     en = 'This login is not active. Please contact Casa Castel.';
+  } else if (code === 'guest') {
+    de = 'Dieser Gast-Link ist abgelaufen. Für den nächsten Termin schickt dir Casa Castel einen neuen Link.';
+    en = 'This guest link has expired. Casa Castel sends you a new link for the next visit.';
   } else if (code === 'network') {
     de = 'Keine Verbindung. Bitte versuche es gleich nochmal.';
     en = 'No connection. Please try again in a moment.';
@@ -159,6 +162,8 @@ function _pvEnterApp(fresh) {
 }
 
 function _pvToLogin() {
+  const wasGuest = localStorage.getItem('pv_guest') === '1';
+  localStorage.removeItem('pv_guest');
   if (typeof pvCamKill === 'function') pvCamKill();
   _pvState = null;
   ['pv_token', 'pv_person', 'pv_person_name', 'pv_job_name', 'pv_state_copy'].forEach(k => localStorage.removeItem(k));
@@ -172,6 +177,7 @@ function _pvToLogin() {
   $id('pv-login-screen').style.display = '';
   $id('pv-name-menu').classList.add('pv-hidden');
   _pvFillJobs();
+  if (wasGuest) _pvLoginError('guest');                /* Build 2: the guest link has ended */
 }
 
 async function _pvLoad() {
@@ -199,6 +205,7 @@ async function _pvPing() {
 /* ── RENDER ─────────────────────────────────────────────── */
 function _pvRender(s) {
   if (!s) return;
+  $id('pv-hist-btn').style.display = _pvIsGuest() ? 'none' : '';      /* Build 2: a guest sees today only */
   if (s.person && s.person.name) { $id('pv-name-pill').textContent = s.person.name; localStorage.setItem('pv_person_name', s.person.name); }
   if (s.job && s.job.name)       { $id('pv-job-tab').textContent = s.job.name;      localStorage.setItem('pv_job_name', s.job.name); }
 
@@ -443,6 +450,38 @@ async function _pvStartInstead(id) {
   await _pvLoad();
   pvCamOpen(data.visit);
 }
+async function _pvGuestOpen(g) {              /* Build 2 · opened from a guest link */
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  const { data, error } = await pvRpc('pv_guest_open', { p_token: g });
+  if (error || !data || data.error) {
+    if (localStorage.getItem('pv_token') && localStorage.getItem('pv_guest') !== '1') { _pvEnterApp(false); return; }
+    _pvFillJobs(); _pvLoginError(error ? 'network' : 'guest'); return;
+  }
+  localStorage.setItem('pv_token', data.token);
+  localStorage.setItem('pv_person', data.person.id);
+  localStorage.setItem('pv_person_name', data.person.name);
+  localStorage.setItem('pv_job', data.job.id);
+  localStorage.setItem('pv_job_name', data.job.name);
+  localStorage.setItem('pv_guest', '1');
+  _pvEnterApp(false);
+  if (!data.named) _pvGuestNameSheet();
+}
+function _pvGuestNameSheet() {                /* first name once — "Gast · Maria" on Casa Castel's side */
+  _pvSheetTitle('Willkommen · Welcome');
+  $id('pv-cancel-body').innerHTML = `
+    <p style="font-size:14px;font-weight:600;color:#1E1B18;line-height:1.35;">Wie heißt du? <span style="font-weight:400;color:#9A8E7E;">· Your first name</span></p>
+    <input id="pv-guest-name" class="cc-input" maxlength="30" autocomplete="given-name" placeholder="Vorname · First name" style="margin-top:10px;width:100%;font-family:inherit;"/>
+    <p style="font-size:12px;color:#9A8E7E;margin-top:6px;line-height:1.35;">Damit Casa Castel weiß, wer heute putzt. · So Casa Castel knows who is cleaning today.</p>
+    <button class="pv-big" type="button" id="pv-guest-go" style="justify-content:center;min-height:52px;margin-top:14px;"><span class="pv-big__txt" style="flex:0 1 auto;align-items:center;"><span class="pv-big__de">Weiter</span><span class="pv-big__en">Continue</span></span></button>`;
+  $id('pv-guest-go').onclick = async () => {
+    const n = ($id('pv-guest-name').value || '').trim();
+    pvCloseScrim('pv-cancel-scrim');
+    if (!n) return;
+    const { data } = await pvRpc('pv_guest_name', { p_token: localStorage.getItem('pv_token'), p_name: n });
+    if (data && data.name) { localStorage.setItem('pv_person_name', data.name); _pvLoad(); }
+  };
+  pvOpenScrim('pv-cancel-scrim');
+}
 async function _pvCancelSend() {
   const v = _pvState && _pvState.card;
   if (_pvBusy || !v || !_pvCancelReason) return;
@@ -558,6 +597,8 @@ async function _pvTakeOver() {
   });
   setInterval(_pvPing, 60000);
 
-  if (localStorage.getItem('pv_token')) _pvEnterApp(false);
+  const g = new URLSearchParams(location.search).get('g');
+  if (g) _pvGuestOpen(g);                               /* Build 2 · guest link: no password */
+  else if (localStorage.getItem('pv_token')) _pvEnterApp(false);
   else _pvFillJobs();
 })();
