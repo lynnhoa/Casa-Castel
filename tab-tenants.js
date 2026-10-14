@@ -1661,7 +1661,13 @@ function _tnPwStatus(room, rec) {
       text: 'Logged in since ' + ds(iso(Math.min(...since))) + (seenOk ? ' \u00b7 last seen ' + ds(L.last_seen_at) : '') };
     const sent = mine.filter(q => (q.status === 'approved' || q.status === 'expired') && fits(ms(q.created_at) || 0))
       .sort((x, y) => String(y.created_at).localeCompare(String(x.created_at)))[0];
-    if (sent) return { key: 'sent', tone: 'blue', text: 'Password sent ' + ds(sent.created_at) + ' \u00b7 not picked up yet' };
+    if (sent) {                                         // Oct 2026 · the pickup waits 5 days
+      const endMs = ms(sent.expires_at);
+      if (sent.status === 'expired' || (endMs !== null && endMs <= Date.now()))
+        return { key: 'sent', tone: 'amber', text: 'Pickup expired \u00b7 sent ' + ds(sent.created_at),
+                 sub: 'Give the password to {name} directly (Copy) \u2014 or {name} asks again on the login page.' };
+      return { key: 'sent', tone: 'blue', text: 'Password sent ' + ds(sent.created_at) + ' \u00b7 not picked up yet' + (endMs !== null ? ' \u00b7 until ' + ds(sent.expires_at) : '') };
+    }
     if (visit || pickOld.length) return { key: 'out', tone: 'grey', text: 'Logged out ' + ds(pwAt0) + ' \u00b7 password changed',
       sub: '{name} logs in again with the new password — or asks for it on the login page (\u201cForgot password?\u201d).' };
     return { key: 'none', tone: 'amber', text: 'No login yet \u00b7 no request',
@@ -1679,7 +1685,7 @@ function _tnPwStatus(room, rec) {
   if (given && day(given) >= mb && (!pwAt || given >= pwAt) && (!reqT || given >= reqT)) return { key: 'given', tone: 'green', text: 'Given ' + d(given) };
   if (req && (!pwAt || pwAt <= plus3(reqT))) {
     if (req.status === 'done') return { key: 'done', tone: 'green', text: 'Logged in \u2713 ' + d(reqT) };
-    const old = Date.now() - (Date.parse(String(reqT).replace(' ', 'T')) || Date.now()) > 864e5;
+    const old = Date.now() - (Date.parse(String(reqT).replace(' ', 'T')) || Date.now()) > 5 * 864e5;   // pickup waits 5 days
     return { key: 'sent', tone: 'blue', text: 'Sent ' + d(reqT) + (old || req.status === 'expired' ? ' \u00b7 not picked up' : ' \u00b7 waiting for pickup'),
              canGive: true, sub: old || req.status === 'expired' ? 'The pickup on {name}’s phone has expired — give the password directly (Copy), then tap Given ✓.' : '' };
   }
