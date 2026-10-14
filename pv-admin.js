@@ -53,16 +53,23 @@ function pvaGenPassword() {
   const session = await ctlGetSession();
   if (!session) { location.replace('login.html'); return; }
   /* Log out is wired by controlling-auth.js (#logoutBtn → ctlSignOut); the device copy goes with it */
-  $a('logoutBtn').addEventListener('click', () => { ['pva_copy', 'pva_job', 'pva_cleanup_day'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} }); });
+  $a('logoutBtn').addEventListener('click', () => { ['pva_copy', 'pva_job', 'pva_cleanup_day'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+    try { Object.keys(localStorage).filter(k => k.startsWith('pvag_copy_') || k.startsWith('pvh_copy_')).forEach(k => localStorage.removeItem(k)); } catch (e) {} });
   $a('pvaRefresh').onclick = () => pvaLoad();
   $a('pvaPreviewBtn').onclick = () => pvaOpenPreview();
   document.addEventListener('click', e => {
     const c = e.target.closest('[data-close]');
-    const shut = id => { $a(id).classList.add('pv-hidden'); if (id === 'pvaAgendaScrim') pvaLoad(); };   /* Agenda closed → card + strip fresh */
+    const shut = id => {
+      const sc = $a(id);
+      sc.classList.add('pv-closed');
+      setTimeout(() => { sc.classList.add('pv-hidden'); sc.classList.remove('pv-closed'); }, 230);
+      if (id === 'pvaAgendaScrim') pvaLoad();                 /* Agenda closed → card + strip fresh */
+    };
     if (c) { shut(c.getAttribute('data-close')); return; }
     if (e.target.classList && e.target.classList.contains('pv-scrim')) shut(e.target.id);
     if (!e.target.closest('.nav-actions')) $a('navProfileMenu').classList.remove('open');
   });
+  document.querySelectorAll('.pv-scrim').forEach(sc => sc.classList.add('pv-anim'));
   document.querySelectorAll('.pv-tool').forEach(b => b.onclick = () => {
     const t = b.getAttribute('data-tool');
     if (t === 'people') pvaOpenPeople();
@@ -275,12 +282,23 @@ function _pvaCardHTML(s) {
 /* ── PEOPLE MODAL ───────────────────────────────────────── */
 const _PVA_AV = [['#E2EEFC','#1E5A9A'],['#EEE8FB','#5B3FA6'],['#E1F1EA','#2F6B55'],['#FCEFC9','#7A5600'],['#FDE4D0','#8A3E12'],['#F6E3EA','#9A3558']];
 
+
+/* ── Lean Pass: sheets open softly; content never pops in after ── */
+function pvaSheetOpen(id) {
+  const sc = $a(id);
+  sc.classList.add('pv-closed');
+  sc.classList.remove('pv-hidden');
+  requestAnimationFrame(() => requestAnimationFrame(() => sc.classList.remove('pv-closed')));
+}
+function pvaSkeleton() {
+  return '<div class="pv-skel"><span></span><span></span><span></span></div>';
+}
 function pvaOpenPeople() {
   if (typeof pvaLoadCtrlCats === 'function') pvaLoadCtrlCats().then(() => { if (!$a('pvaPeopleScrim').classList.contains('pv-hidden')) pvaRenderPeople(); });
   if (!_pvaData || !_pvaData.job) { pvaToast('Create a job first.'); return; }
   _pvaEditJob = false; _pvaEditPerson = null; _pvaNewPerson = false;
-  pvaRenderPeople();
-  $a('pvaPeopleScrim').classList.remove('pv-hidden');
+  pvaRenderPeople();                                        /* data is already loaded — renders instantly */
+  pvaSheetOpen('pvaPeopleScrim');
 }
 
 function pvaRenderPeople() {

@@ -237,12 +237,17 @@ const _pvh = { visits: [], next: null, filter: 'all', job: null };
 async function pvaOpenHistory() {
   if (!_pvaData || !_pvaData.job) { pvaToast('Create a job first.'); return; }
   $a('pvaHistoryTitle').innerHTML = `History · <b>${esc(_pvaData.job.name)}</b>`;
-  if (_pvh.job !== _pvaJob) { _pvh.visits = []; _pvh.next = null; _pvh.filter = 'all'; _pvh.job = _pvaJob; }
-  $a('pvaHistoryBody').innerHTML = '<p class="pv-k" style="padding:14px 2px;">Loading…</p>';
-  $a('pvaHistoryScrim').classList.remove('pv-hidden');
+  if (_pvh.job !== _pvaJob) {
+    _pvh.visits = []; _pvh.next = null; _pvh.filter = 'all'; _pvh.job = _pvaJob;
+    try { const c = JSON.parse(localStorage.getItem('pvh_copy_' + _pvaJob) || 'null'); if (c) Object.assign(_pvh, c); } catch (e) {}
+  }
+  if (_pvh.visits && _pvh.visits.length) _pvhRender();        /* last history, shown instantly */
+  else $a('pvaHistoryBody').innerHTML = pvaSkeleton();
+  pvaSheetOpen('pvaHistoryScrim');
   const { data, error } = await pvaRpc('pv_admin_history', { p_job: _pvaJob, p_before: null, p_months: 3 });
   if (error || !data || data.error) { pvaToast('Could not load the history.'); return; }
   Object.assign(_pvh, { visits: data.visits || [], next: data.next_before, invoices: data.invoices || [], months: data.months || [], today: data.today, monthsLoaded: 3 });
+  try { localStorage.setItem('pvh_copy_' + _pvaJob, JSON.stringify({ visits: _pvh.visits.slice(0, 40), next: _pvh.next, invoices: _pvh.invoices, months: _pvh.months, today: _pvh.today, monthsLoaded: 3 })); } catch (e) {}
   _pvhRender();
 }
 async function pvaHistoryMore() {

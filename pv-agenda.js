@@ -27,9 +27,12 @@ async function pvaOpenAgenda(visitId) {
   if (!_pvaData || !_pvaData.job) { pvaToast('Create a job first.'); return; }
   $a('pvaAgendaTitle').innerHTML = `Agenda · <b>${esc(_pvaData.job.name)}</b>`;
   _pvagEdit = null;
+  if (!_pvag || _pvag.job !== _pvaJob) {                      /* last agenda from this phone, shown instantly */
+    try { const c = JSON.parse(localStorage.getItem('pvag_copy_' + _pvaJob) || 'null'); if (c) _pvag = c; } catch (e) {}
+  }
   if (_pvag && _pvag.job === _pvaJob) pvagRender();
-  else $a('pvaAgendaBody').innerHTML = '<p class="pv-k" style="padding:14px 2px;">Loading…</p>';
-  $a('pvaAgendaScrim').classList.remove('pv-hidden');
+  else $a('pvaAgendaBody').innerHTML = pvaSkeleton();
+  pvaSheetOpen('pvaAgendaScrim');
   await pvagLoad();
   if (visitId) pvagOpen('visit', visitId);
 }
@@ -39,6 +42,7 @@ async function pvagLoad() {
   const { data, error } = await pvaRpc('pv_admin_agenda', { p_job: job });
   if (error || !data || data.error) { pvaToast('Could not load the agenda — try again.'); return; }
   _pvag = Object.assign(data, { job });
+  try { localStorage.setItem('pvag_copy_' + job, JSON.stringify(_pvag)); } catch (e) {}
   pvagRender();
 }
 
