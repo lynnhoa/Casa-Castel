@@ -112,13 +112,13 @@ function _pvInvRender() {
       <div><label class="pv-lbl" for="pv-inv-date" style="margin-bottom:4px;">Datum <span class="en">Date</span></label><input id="pv-inv-date" class="cc-input" type="date" value="${pvEsc(_pvInv.date)}" style="font-family:inherit;"/></div>
     </div>
     <p style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11.5px;color:#6B5E4E;">${pvPic('inv_info', 14)}Nur Casa Castel sieht die Rechnung. · Only Casa Castel can see it.</p>
-    <button class="pv-big${ready ? '' : ' pv-big--off'}" type="button" id="pv-inv-send" style="justify-content:center;margin-top:14px;"${ready ? '' : ' disabled'}><span class="pv-big__ico">${_pvInv.busy ? '<span class="pv-spin"></span>' : pvPic('inv_send', 20)}</span><span class="pv-big__txt" style="flex:0 1 auto;"><span class="pv-big__de">Senden</span><span class="pv-big__en">Send</span></span></button>
+    <button class="pv-send" type="button" id="pv-inv-send"${ready ? '' : ' disabled'}${_pvInv.busy ? ' aria-busy="true"' : ''}><span class="pv-send__ico">${_pvInv.busy ? '<span class="pv-spin"></span>' : pvPic('inv_send', 20)}</span><span class="pv-send__de">Senden <span class="pv-send__en">· Send</span></span></button>
     <input type="file" id="pv-inv-file" style="display:none;"/>`;
   const amt = $id('pv-inv-amt'), dt = $id('pv-inv-date');
   amt.addEventListener('input', () => {
     _pvInv.amount = amt.value;
     const b = $id('pv-inv-send'), ok = _pvInv.files.length && ccParseEUR(_pvInv.amount) > 0;
-    b.disabled = !ok; b.classList.toggle('pv-big--off', !ok);
+    b.disabled = !ok;
   });
   dt.addEventListener('change', () => { _pvInv.date = dt.value; });
   dt.addEventListener('input', () => { _pvInv.date = dt.value; });

@@ -741,3 +741,12 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 .scr .login-box .pv-login-btn:active{transform:scale(.98);opacity:.85}
 .login-box .pwr-links{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px}
 .scr .login-box .pwr-link{background:none;border:none;padding:4px 2px;font-family:inherit;font-size:12px;color:var(--cc-taupe);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+
+/* ── Invoice sheet · "Senden" button: one calm row, same layout in every state ── */
+.scr .pv-send{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:54px;margin-top:14px;padding:0 16px;border:1px solid #D9B878;border-radius:14px;background:#F3DDB0;color:#4A3410;font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,opacity .15s}
+.scr .pv-send:active{transform:scale(.98);opacity:.88}
+.pv-send__ico{display:flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0}
+.pv-send__de{font-size:16px;font-weight:500;line-height:1}
+.pv-send__en{font-size:14px;font-weight:400;line-height:1;color:#7A5A2A}
+.scr .pv-send:disabled{background:#F1ECE4;border-color:#E6DFD4;color:#B3A898;cursor:default;transform:none;opacity:1}
+.scr .pv-send:disabled .pv-send__en{color:#C3B9AA}
