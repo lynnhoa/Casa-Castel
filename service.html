@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="cc-german-format.js?v=2026-10-11-B25"></script>
   <script src="constants.js"></script>
-  <link rel="stylesheet" href="pv.css?v=2026-10-14-PS"/>
+  <link rel="stylesheet" href="pv.css?v=2026-10-14-LG"/>
   <style>
     html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     .scr input::placeholder { color:#C8BFB0; }
@@ -34,29 +34,21 @@
       <p class="login-sub">Alsenstraße 60 · 55252 Mainz-Kastel</p>
       <div class="login-box">
         <p class="login-title">Service login</p>
-        <div style="margin-bottom:12px;">
-          <label class="pv-lbl" for="pv-login-job">Dein Bereich <span class="en">Your service</span></label>
+        <p class="pv-login-for">Für Dienstleister · For service providers</p>
+        <div id="pv-login-err" class="pv-login-err pv-hidden"><span id="pv-login-err-text"></span></div>
+        <div class="cc-input-wrap cc-mb-12">
+          <label class="cc-input-label" for="pv-login-job">Bereich · Service</label>
+          <select class="cc-select" id="pv-login-job"></select>
+        </div>
+        <div class="cc-input-wrap cc-mb-16">
+          <label class="cc-input-label" for="pv-login-pw">Passwort · Password</label>
           <div style="position:relative;">
-            <select id="pv-login-job" class="cc-select" style="appearance:none;-webkit-appearance:none;display:block;font-family:inherit;"></select>
-            <svg style="position:absolute;right:14px;top:50%;margin-top:-6px;color:#C8BFB0;pointer-events:none;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            <input class="cc-input" id="pv-login-pw" type="password" placeholder="Passwort eingeben · Enter password" autocomplete="current-password" style="padding-right:48px;"/>
+            <button type="button" class="pv-eye" id="pv-login-eye" aria-label="Passwort zeigen · show password"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
           </div>
         </div>
-        <div style="margin-bottom:12px;">
-          <label class="pv-lbl" for="pv-login-pw">Passwort <span class="en">Password</span></label>
-          <div style="position:relative;">
-            <input id="pv-login-pw" class="cc-input" type="password" autocomplete="current-password" style="font-family:inherit;padding-right:52px;"/>
-            <button type="button" id="pv-login-eye" aria-label="Passwort zeigen · show password" style="position:absolute;right:2px;top:50%;margin-top:-22px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#9A8E7E;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-            </button>
-          </div>
-        </div>
-        <p id="pv-login-err" class="pv-hidden" style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;padding:9px 12px;border-radius:6px;background:#F5EEE8;border:.5px solid #D4A87A;font-size:12px;line-height:1.4;color:#8C3A2A;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16v.01"></path></svg>
-          <span id="pv-login-err-text"></span>
-        </p>
-        <button class="pv-login-btn" type="button" id="pv-login-btn"><b>Anmelden</b><small>Log in</small></button>
-        <p class="pv-login-note">Das Passwort bekommst du von Casa Castel.<br/>You get the password from Casa Castel.</p>
-        <button type="button" id="pv-forgot-link" style="display:block;margin:10px auto 0;min-height:40px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#6B5E4E;text-decoration:underline;text-underline-offset:3px;">Passwort vergessen? <span style="font-weight:400;color:#9A8E7E;">· Forgot password? → Anfrage an Casa Castel</span></button>
+        <button class="pv-login-btn" type="button" id="pv-login-btn">Anmelden · Log in</button>
+        <div class="pwr-links"><button type="button" class="pwr-link" id="pv-forgot-link">Passwort vergessen? · Forgot password?</button></div>
       </div>
     </div>
 
@@ -188,6 +180,6 @@
   <script src="pv-camera.js?v=2026-10-14-F11"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="pv-invoice.js?v=2026-10-14-PS"></script>
-  <script src="pv-service.js?v=2026-10-14-PS"></script>
+  <script src="pv-service.js?v=2026-10-14-LG"></script>
 </body>
 </html>

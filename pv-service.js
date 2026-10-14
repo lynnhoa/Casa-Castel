@@ -85,11 +85,11 @@ async function _pvDoLogin() {
   if (!job) { _pvLoginError('other'); return; }
   _pvBusy = true;
   const btn = $id('pv-login-btn');
-  btn.innerHTML = '<b><span class="pv-spin"></span></b><small>Anmelden · Log in</small>';
+  btn.innerHTML = '<span class="pv-spin"></span>';
   const pushP = _pvPushAsk();                   /* push on by default: asked inside the login tap (iPhone) */
   const { data, error } = await pvRpc('pv_login', { p_job: job, p_password: pw });
   _pvBusy = false;
-  btn.innerHTML = '<b>Anmelden</b><small>Log in</small>';
+  btn.textContent = 'Anmelden · Log in';
   if (error)        { _pvLoginError('network'); return; }
   if (data.error)   { _pvLoginError(data.error, data.left != null ? data.left : data.minutes); return; }
   _pvLoginErrorClear();
