@@ -173,90 +173,70 @@ function _pvlFloorForm(fi, isNew) {
 }
 
 /* ── READ VIEW ──────────────────────────────────────────── */
-function _pvlStepRow(st, fi, si, nums, L) {
+function _pvlStepRow(st, fi, si, nums, L) {   /* one line: photo no. · icon · name · camera — tap = edit */
   const pts = (st.photo === 'required' || st.photo === 'optional') ? (st.points || []) : [];
-  const chips = pts.map(pt => `<span class="ph-chip">${pvPic('cam', 12)}${nums[pt.key] || ''}${pts.length > 1 ? ` <small>${esc(pt.de || '')}</small>` : ''}</span>`).join('');
-  const mode = st.photo === 'optional' ? '<span class="ph-chip ph-chip--opt">optional</span>' : (!st.photo || st.photo === 'off') ? '<span class="ph-chip ph-chip--none">no photo</span>' : '';
-  const muell = st.bins ? `<div class="pl-chips"><span class="ph-chip ph-chip--none" style="border-style:solid;">${pvPic('pdf', 12)}${L.muell ? 'Müll-Plan (PDF) attached' : 'No Müll-Plan PDF yet'}</span><button class="cc-foot-btn" type="button" onclick="event.stopPropagation();pvlPickMuell()">${L.muell ? 'Replace PDF' : 'Attach PDF'}</button></div>` : '';
-  return `<div class="pv-li" style="cursor:pointer;" onclick="pvlOpen('step',${fi},${si})"><span class="pic pic--${esc(st.zone || 'c')}">${pvPic(st.pic, 22)}</span>
-      <div class="pv-li__main"><p class="pv-li__name">${esc(st.de || '—')}<span class="en">${esc(st.en || '')}</span></p>
-        ${st.ins_de ? `<p class="pv-li__ins">${esc(st.ins_de)}${st.ins_en ? ` <span class="en">· ${esc(st.ins_en)}</span>` : ''}</p>` : ''}
-        ${chips || mode ? `<div class="pl-chips">${chips}${mode}</div>` : ''}${muell}
-      </div></div>`;
+  const no = pts.map(pt => nums[pt.key]).filter(Boolean).join('·');
+  const cam = pts.length ? `<span class="pvl-cam${st.photo === 'optional' ? ' pvl-cam--opt' : ''}">${pvPic('cam', 12)}${st.photo === 'optional' ? '<small>opt.</small>' : ''}</span>` : '';
+  return `<div class="pvl-row" onclick="pvlOpen('step',${fi},${si})"><span class="pvl-no">${esc(no)}</span><span class="pic pic--${esc(st.zone || 'c')} pvl-ic">${pvPic(st.pic, 17)}</span><span class="pvl-nm">${esc(st.de || '—')}</span>${cam}</div>`;
 }
-function _pvlBlockRow(f, nums) {
+function _pvlBlockRow(f, nums) {             /* end of the floor, one line */
   const b = f.block || {};
-  const items = [b.surfaces ? ['c', 'surfaces', 'Oberflächen sauber machen'] : null, b.vacuum ? ['f', 'vacuum', 'saugen'] : null, b.mop ? ['f', 'mop', 'wischen'] : null].filter(Boolean);
+  const items = [b.surfaces ? 'surfaces' : null, b.vacuum ? 'vacuum' : null, b.mop ? 'mop' : null].filter(Boolean);
   const bp = b.photo && typeof b.photo === 'object' ? b.photo : null;
   if (!items.length && !bp) return '';
-  return `<div class="pv-li" style="align-items:center;"><span style="display:flex;gap:3px;">${items.map(i => `<span class="pic pic--${i[0]}" style="width:26px;height:26px;border-radius:8px;">${pvPic(i[1], 16)}</span>`).join('')}</span>
-      <div class="pv-li__main"><p class="pv-li__ins" style="margin-top:0;">Then: ${items.map(i => i[2]).join(', ') || 'photo of the floor'}${f.stairs ? ' (incl. stairs down)' : ''}</p></div>
-      ${bp && nums[bp.key] ? `<span class="ph-chip">${pvPic('cam', 12)}${nums[bp.key]} <small>${esc(bp.de || '')}</small></span>` : ''}</div>`;
+  return `<div class="pvl-row pvl-row--end"><span class="pvl-no">${bp && nums[bp.key] ? nums[bp.key] : ''}</span><span class="pic pic--c pvl-ic">${pvPic(f.stairs ? 'fl_arrow' : 'surfaces', 16)}</span><span class="pvl-nm pvl-nm--end">Then: ${items.join(' · ') || 'photo of the floor'}${f.stairs ? ' · incl. stairs' : ''}</span>${bp ? `<span class="pvl-cam">${pvPic('cam', 12)}</span>` : ''}</div>`;
 }
+let _pvlMoreOpen = false;
+function pvlMore() { _pvlMoreOpen = !_pvlMoreOpen; _pvlEdit = null; _pvlDraft = null; _pvlRender(); }
 function _pvlRender() {
   const body = $a('pvaListBody');
   if (!body || !_pvl) return;
   const L = _pvlList();
   const ed = _pvlEdit || {};
   const top = body.scrollTop;
-  let h = `<p class="pv-intro">One list = the provider's full instruction, floor by floor, top to bottom. Steps with a camera need a photo (number = camera order); the others are instruction only. Planned visits follow your changes at once — running and past visits keep their list.</p>`;
-  h += `<div class="pv-sec" style="padding-bottom:10px;"><p class="pv-sec__t">Lists <span class="en">a visit uses one of them</span></p>
-      <div class="pv-chips">${_pvl.lists.map(l => `<span class="k-mob-n-chip${l.id === _pvl.sel ? ' selected' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvlSelect('${l.id}')">${esc(l.name)}</span>`).join('')}<span class="k-mob-n-chip" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvlOpen('newlist')">${pvPic('plus', 12)}List</span></div>
-      <span class="k-note">+ List starts empty or as a copy of this one.${L ? ` Used by ${L.planned} planned ${L.planned === 1 ? 'visit' : 'visits'}${L.rhythms ? ' and ' + L.rhythms + ' ' + (L.rhythms === 1 ? 'rhythm' : 'rhythms') : ''}.` : ''}</span>
-      ${ed.kind === 'newlist' ? `<div class="pv-edit-row" style="margin-top:10px;">${_pvlIn('name', 'Name of the new list', _pvlDraft.name, 'z. B. Grundreinigung', 40)}
+  /* ── Slim list (Oct 2026): list chips · ✎ · settings chips · one line per step (tap = edit, as before) ── */
+  let h = `<div class="pvl-top"><div class="pv-chips" style="flex:1;min-width:0;">${_pvl.lists.map(l => `<span class="k-mob-n-chip${l.id === _pvl.sel ? ' selected' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvlSelect('${l.id}')">${esc(l.name)}</span>`).join('')}<span class="k-mob-n-chip" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvlOpen('newlist')">${pvPic('plus', 12)}List</span></div>${L ? `<button class="pvl-more${_pvlMoreOpen ? ' on' : ''}" type="button" aria-label="Rename or delete the list" onclick="pvlMore()">${pvPic('edit', 14)}</button>` : ''}</div>`;
+  if (ed.kind === 'newlist') h += `<div class="pv-edit-row" style="margin-top:10px;">${_pvlIn('name', 'Name of the new list', _pvlDraft.name, 'z. B. Grundreinigung', 40)}
           <div style="margin-top:10px;"><p class="pv-k">Start</p><div class="pv-chips">${_pvlChip('copy', '', 'Empty', !_pvlDraft.copy)}${L ? _pvlChip('copy', L.id, 'Copy “' + esc(L.name) + '”', _pvlDraft.copy === L.id) : ''}</div></div>
-          ${_pvlFoot('', 'pvlCreateList()')}</div>`
-        : ed.kind === 'list' ? `<div class="pv-edit-row" style="margin-top:10px;">${_pvlIn('name', 'Name', _pvlDraft.name, '', 40)}${_pvlFoot('', 'pvlRename()')}</div>`
-        : L ? `<div class="cc-sec-foot">${_pvl.lists.length > 1 ? `<button class="cc-foot-btn cc-foot-btn--danger is-left" type="button" onclick="pvlDeleteList()">Delete list</button>` : ''}<button class="cc-foot-btn" type="button" onclick="pvlOpen('list')">${pvPic('edit', 12)}Rename</button></div>` : ''}
-    </div>`;
+          ${_pvlFoot('', 'pvlCreateList()')}</div>`;
+  else if (ed.kind === 'list') h += `<div class="pv-edit-row" style="margin-top:10px;">${_pvlIn('name', 'Name', _pvlDraft.name, '', 40)}${_pvlFoot('', 'pvlRename()')}</div>`;
+  else if (L && _pvlMoreOpen) h += `<div class="pv-sec"><span class="k-note" style="margin-top:0;">Used by ${L.planned} planned ${L.planned === 1 ? 'visit' : 'visits'}${L.rhythms ? ' and ' + L.rhythms + ' ' + (L.rhythms === 1 ? 'rhythm' : 'rhythms') : ''}. + List starts empty or as a copy of this one.</span>
+      <div class="cc-sec-foot">${_pvl.lists.length > 1 ? `<button class="cc-foot-btn cc-foot-btn--danger is-left" type="button" onclick="pvlDeleteList()">Delete list</button>` : ''}<button class="cc-foot-btn" type="button" onclick="pvlOpen('list')">${pvPic('edit', 12)}Rename</button></div></div>`;
   if (!L) { body.innerHTML = h; return; }
 
   const hi = L.house_info || {};
   const rows = [['access', 'c', 'access', 'Access'], ['supplies', 'f', 'supplies', 'Supplies'], ['emergency', 'x', 'emergency', 'Emergency']];
   const filled = rows.filter(r => hi[r[0]] && (hi[r[0]].de || hi[r[0]].en));
-  h += `<div class="pv-sec"><p class="pv-sec__t">House info <span class="en">top of the Putzliste</span></p>`;
-  if (ed.kind === 'house') {
-    h += `<div class="pv-edit-row">${rows.map(r => `<p class="pv-k" style="margin-top:8px;">${r[3]}</p><div class="pv-kv"><div><input class="pv-field" data-hi="${r[0]}" data-lang="de" maxlength="160" placeholder="Deutsch" value="${esc((_pvlDraft[r[0]] || {}).de || '')}"/></div><div><input class="pv-field" data-hi="${r[0]}" data-lang="en" maxlength="160" placeholder="English" value="${esc((_pvlDraft[r[0]] || {}).en || '')}"/></div></div>`).join('')}
-      <span class="k-note">Empty lines stay hidden for the provider.</span>${_pvlFoot('', 'pvlSaveHouse()')}</div>`;
-  } else {
-    h += (filled.length ? filled.map(r => `<div style="display:flex;gap:10px;align-items:flex-start;padding:6px 0;"><span class="pic pic--${r[1]}" style="width:30px;height:30px;border-radius:9px;">${pvPic(r[2], 18)}</span><div><p class="pv-k">${r[3]}</p><p class="pv-v" style="font-size:13.5px;">${esc(hi[r[0]].de || '')}${hi[r[0]].en ? ' · ' + esc(hi[r[0]].en) : ''}</p></div></div>`).join('')
-         : '<p class="pv-k" style="padding:2px 0 4px;">Empty — hidden on the Putzliste.</p>')
-      + `<div class="cc-sec-foot"><button class="cc-foot-btn" type="button" onclick="pvlOpen('house')">${pvPic('edit', 12)}Edit</button></div>`;
-  }
-  h += `</div>`;
-
   const cnt = _pvlCounts(L.floors);
   const spotN = Math.min(L.spot_size || 6, Math.max(cnt.req - cnt.wc, 0)) + cnt.wc;
-  h += `<div class="pv-sec"><p class="pv-sec__t">Photos per visit</p>`;
-  if (ed.kind === 'rule') {
-    h += `<div class="pv-edit-row"><div class="pv-chips">${_pvlChip('rule', 'all', 'All photo steps', !_pvlDraft.spot)}${_pvlChip('rule', 'spot', 'Spot check', _pvlDraft.spot)}</div>
+  const bins = (L.floors || []).some(f => (f.steps || []).some(st => st.bins));
+  h += `<div class="pvl-sets">
+      <button class="pvl-set${ed.kind === 'rule' ? ' on' : ''}" type="button" onclick="pvlOpen('rule')">${pvPic('cam', 13)}${L.spot_check ? `Spot check · ${spotN} of ${cnt.req}` : `All ${cnt.req} photos`}</button>
+      <button class="pvl-set${ed.kind === 'house' ? ' on' : ''}" type="button" onclick="pvlOpen('house')">${pvPic('info', 13)}House info · ${filled.length ? filled.length + ' ✓' : 'empty'}</button>
+      ${bins ? `<button class="pvl-set ${L.muell ? 'pvl-set--ok' : 'pvl-set--warn'}" type="button" onclick="pvlPickMuell()">${pvPic('pdf', 13)}Müll PDF${L.muell ? ' ✓' : ' · add'}</button>` : ''}
+    </div>`;
+  if (ed.kind === 'house') h += `<div class="pv-sec"><p class="pv-sec__t">House info <span class="en">top of the Putzliste</span></p>` + `<div class="pv-edit-row">${rows.map(r => `<p class="pv-k" style="margin-top:8px;">${r[3]}</p><div class="pv-kv"><div><input class="pv-field" data-hi="${r[0]}" data-lang="de" maxlength="160" placeholder="Deutsch" value="${esc((_pvlDraft[r[0]] || {}).de || '')}"/></div><div><input class="pv-field" data-hi="${r[0]}" data-lang="en" maxlength="160" placeholder="English" value="${esc((_pvlDraft[r[0]] || {}).en || '')}"/></div></div>`).join('')}
+      <span class="k-note">Empty lines stay hidden for the provider.</span>${_pvlFoot('', 'pvlSaveHouse()')}</div>` + `</div>`;
+  if (ed.kind === 'rule') h += `<div class="pv-sec"><p class="pv-sec__t">Photos per visit</p>` + `<div class="pv-edit-row"><div class="pv-chips">${_pvlChip('rule', 'all', 'All photo steps', !_pvlDraft.spot)}${_pvlChip('rule', 'spot', 'Spot check', _pvlDraft.spot)}</div>
       ${_pvlDraft.spot ? `<div style="margin-top:10px;max-width:160px;"><label class="pv-k">Random photos (+ all WCs)</label><input class="pv-field" data-k="size" inputmode="numeric" maxlength="2" value="${esc(String(_pvlDraft.size))}"/></div>` : ''}
-      <span class="k-note">${_pvlDraft.spot ? 'A new pick every visit, taken when she starts — she can’t choose. All WCs are always in.' : `Every photo step, every visit · ${cnt.req} photos.`}</span>${_pvlFoot('', 'pvlSaveRule()')}</div>`;
-  } else {
-    h += `<div><p class="pv-k">Rule</p><p class="pv-v">${L.spot_check ? `Spot check · ${L.spot_size} random + all WCs · ${spotN} of ${cnt.req} photos` : `All photo steps · ${cnt.req} photos`}</p></div>
-      <span class="k-note">${L.spot_check ? 'A new pick every visit.' : `Or spot check: ${L.spot_size || 6} random + all WCs, a new pick every visit.`}</span>
-      <div class="cc-sec-foot"><button class="cc-foot-btn" type="button" onclick="pvlOpen('rule')">${pvPic('edit', 12)}Edit</button></div>`;
-  }
-  h += `</div>`;
+      <span class="k-note">${_pvlDraft.spot ? 'A new pick every visit, taken when she starts — she can’t choose. All WCs are always in.' : `Every photo step, every visit · ${cnt.req} photos.`}</span>${_pvlFoot('', 'pvlSaveRule()')}</div>` + `</div>`;
 
   const nums = pvPutzlisteNumbers(L.floors, null);
   (L.floors || []).forEach((f, fi) => {
     const here = (ed.kind === 'floor' || ed.kind === 'step' || ed.kind === 'newstep') && ed.fi === fi;
     h += `<div class="pv-sec"${here ? ' style="border:1px solid #B8956A;"' : ''}>
-      <p class="pv-sec__t" style="justify-content:flex-start;"><span style="display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 9px 0 7px;border-radius:12px;background:#1E1B18;color:#FDFCFA;font-size:11px;font-weight:700;letter-spacing:.02em;line-height:1;white-space:nowrap;">${pvPic((typeof _PL_BADGE !== 'undefined' && _PL_BADGE[f.zone]) || 'badge_b', 9)}${esc(f.label || '—')}</span><span>${esc(f.room_de || '')} <span class="en">${esc(f.room_en || '')}</span></span></p>
+      <p class="pv-sec__t" style="justify-content:flex-start;"><span style="display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px 0 6px;border-radius:10px;background:#1E1B18;color:#FDFCFA;font-size:10.5px;font-weight:700;letter-spacing:.02em;line-height:1;white-space:nowrap;">${pvPic((typeof _PL_BADGE !== 'undefined' && _PL_BADGE[f.zone]) || 'badge_b', 9)}${esc(f.label || '—')}</span><span>${esc(f.room_de || '')}</span></p>
       ${ed.kind === 'floor' && ed.fi === fi ? _pvlFloorForm(fi, false) : ''}
       ${(f.steps || []).map((st, si) => ed.kind === 'step' && ed.fi === fi && ed.si === si ? _pvlStepForm(fi, si, false) : _pvlStepRow(st, fi, si, nums, L)).join('')}
       ${!(f.steps || []).length && !(ed.kind === 'newstep' && ed.fi === fi) ? '<p class="pv-k" style="padding:4px 0;">No steps yet.</p>' : ''}
       ${ed.kind === 'newstep' && ed.fi === fi ? _pvlStepForm(fi, (f.steps || []).length, true) : ''}
       ${_pvlBlockRow(f, nums)}
-      ${ed.kind === 'floor' && ed.fi === fi ? '' : `<div class="cc-sec-foot"><button class="cc-foot-btn is-left" type="button" onclick="pvlOpen('newstep',${fi})">${pvPic('plus', 12)}Step</button><button class="cc-foot-btn" type="button" onclick="pvlOpen('floor',${fi})">${pvPic('edit', 12)}Edit</button></div>`}
+      ${ed.kind === 'floor' && ed.fi === fi ? '' : `<div class="pvl-foot"><button class="pvl-link" type="button" onclick="pvlOpen('newstep',${fi})">+ Step</button><button class="pvl-link" type="button" onclick="pvlOpen('floor',${fi})">Edit floor</button></div>`}
     </div>`;
   });
   if (ed.kind === 'newfloor') h += `<div class="pv-sec" style="border:1px solid #B8956A;"><p class="pv-sec__t">New floor</p>${_pvlFloorForm(null, true)}</div>`;
-  h += `<div class="pv-sec"><p class="pv-sec__t"><span>Extras <span class="en">optional</span></span></p>
-      <div class="pv-li"><span class="pic pic--x">${pvPic('extras', 22)}</span><div class="pv-li__main"><p class="pv-li__name">Extras<span class="en">Extras</span></p><p class="pv-li__ins">Alles Zusätzliche oder Schäden. <span class="en">· Anything extra or damage.</span></p><div class="pl-chips"><span class="ph-chip ph-chip--opt">${pvPic('cam_opt', 12)}Foto optional · photo optional</span></div></div></div>
-    </div>
-    <div class="cc-sec-foot" style="margin-top:2px;"><button class="cc-foot-btn is-left" type="button" onclick="pvlOpen('newfloor')">${pvPic('plus', 12)}Floor</button></div>
+  h += `<div class="pv-sec pvl-extra"><span class="pic pic--x pvl-ic">${pvPic('extras', 16)}</span><span class="pvl-nm">Extras <span class="pvl-mut">· optional extra photos</span></span></div>
+    <div class="pvl-foot" style="border:none;padding:0 4px;"><button class="pvl-link" type="button" onclick="pvlOpen('newfloor')">+ Floor</button></div>
     <input type="file" id="pvlMuellFile" accept="application/pdf" style="display:none;"/>`;
   body.innerHTML = h;
   body.scrollTop = top;

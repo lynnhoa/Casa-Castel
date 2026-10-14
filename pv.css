@@ -650,3 +650,26 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 #pvaCard .k-mob-week-top-row>:nth-child(2){margin-left:auto}
 .scr .pva-guest-chip{background:#DCEBFB;border:1px solid #7FAEE3;color:#2B629E;cursor:pointer;font-family:inherit}
 .pva-guest-chip .ti{font-size:13px}
+
+/* ── Slim list (your editor): one line per step · photo no. in front · camera at the end ── */
+.pvl-top{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
+.scr .pvl-more{width:32px;height:32px;border-radius:50%;border:.5px solid var(--cc-rule);background:var(--cc-white);color:#6E5E48;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+.scr .pvl-more.on{background:#1E1B18;color:#FDFCFA;border-color:#1E1B18}
+.pvl-sets{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.scr .pvl-set{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:14px;border:none;background:#EDE8E0;color:#3A3530;font-family:inherit;font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer}
+.scr .pvl-set.on{background:#1E1B18;color:#FDFCFA}
+.scr .pvl-set--ok{background:#E1F1EA;color:#2F6B55}
+.scr .pvl-set--warn{background:#FCEFC9;color:#7A5600}
+.pvl-row{display:flex;align-items:center;gap:8px;min-height:44px;border-top:.5px solid #EDE8E0;cursor:pointer}
+.pvl-row--end{cursor:default}
+.pvl-no{width:20px;flex-shrink:0;text-align:right;font-size:12.5px;font-weight:600;color:#6E5E48;font-variant-numeric:tabular-nums}
+.pic.pvl-ic{width:28px;height:28px;border-radius:8px;margin:0;border:none}
+.pvl-nm{flex:1;min-width:0;font-size:14px;font-weight:500;color:var(--cc-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pvl-nm--end{font-size:12.5px;font-weight:400;color:#6E5E48}
+.pvl-cam{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 7px;border-radius:11px;background:#1E1B18;color:#FDFCFA;flex-shrink:0}
+.pvl-cam small{font-size:10px;font-weight:600}
+.pvl-cam--opt{background:#EDE8E0;color:#6E5E48}
+.pvl-foot{display:flex;justify-content:space-between;border-top:.5px solid #EDE8E0;padding:2px 0}
+.scr .pvl-link{background:none;border:none;padding:8px 0;font-family:inherit;font-size:12.5px;font-weight:500;color:#9A8E7E;cursor:pointer}
+.pvl-extra{display:flex;align-items:center;gap:8px;padding:8px 12px}
+.pvl-mut{color:#9A8E7E;font-weight:400}
