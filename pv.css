@@ -584,10 +584,10 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 }
 
 /* ── Lean Pass: tool buttons — Soft line (pastel fill, same-hue line + text) ── */
-.pv-tools{display:flex;gap:6px;border:none;padding:10px 0 2px;margin:0}
-.scr .pv-tool-pill{flex:1;min-width:0;height:36px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid;border-radius:10px;padding:0 4px;font-family:'Inter',system-ui,sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.01em;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,opacity .15s}
+.pv-tools{display:flex;gap:6px;border:none;padding:8px 0 2px;margin:0}
+.scr .pv-tool-pill{flex:1;min-width:0;height:30px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid;border-radius:9px;padding:0 4px;font-family:'Inter',system-ui,sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.01em;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,opacity .15s}
 .scr .pv-tool-pill:active{transform:scale(.96);opacity:.88}
-.pv-tool-pill .ti{font-size:15px;line-height:1;flex-shrink:0}
+.pv-tool-pill .ti{font-size:13px;line-height:1;flex-shrink:0}
 .pv-tool-pill span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scr .pv-tool-pill--ag{background:#DCEBFB;border-color:#7FAEE3;color:#2B629E}
 .scr .pv-tool-pill--li{background:#FCE3DE;border-color:#E79A8C;color:#A8412F}
