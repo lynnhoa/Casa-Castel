@@ -14,8 +14,9 @@
 
    Data:       maint_cases · maint_docs · bucket maintenance-docs
                (MAINTENANCE.sql)
-   Properties: read only, from `properties` (Properties app)
-   Rules:      Kosten = sum of the Rechnungen (year by Rechnungsdatum)
+   Properties: read only, from Controlling's list (`ctrl_properties`) — the same
+               ids as Controlling, so costs land on exactly that property there
+   Rules:      Kosten = the Costs table (receipts − returns; year by each line's date)
                · one status field: open / in_progress / done
                  ("Planned" in Renovierungen, "Open" in Schäden)
                · the property name is saved with the case, so the case
@@ -23,11 +24,15 @@
                · Save shows at once and retries once by itself; a toast
                  only when it really failed (the form comes back)
 
+   Costs (per case, in the panel, D1): one row = one receipt / invoice
+               Receipt no. · Description · Brand / Provider · Amount · Date · Photos
+               grouped Self-bought / Provider · tap a row = edit it in place
+               · the row's photos / PDFs are documents linked to the row (cost_id)
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
                          (shrunk to 2000 px + a small preview in /thumbs/)
-               Upload  = one file + its Type; a Rechnung also gets Betrag and
-                         Rechnungsdatum → Kosten everywhere
+               Upload  = one file + its Type (Angebot, Schadenbericht, Photo, Other;
+                         invoices / receipts belong in Costs)
                Edit    = × deletes a file, tapping a file fixes Type / Betrag / date
                Files are private (bucket maintenance-docs, one folder per case);
                a tap opens them with a short-lived link.
@@ -42,13 +47,14 @@ const MT = {
   })(),
   props: [],        // properties: id, name, sort_order
   cases: [],        // maint_cases rows
-  docs:  [],        // maint_docs rows (no file contents)
+  docs:  [],        // maint_docs rows (no file contents) · cost_id = file of a cost row
+  costs: [],        // maint_costs rows: one per receipt / invoice
   loaded: false,
   loadError: null,
   open: {},         // unfolded "Done" groups: { 'schaden|p:4': true }
-  sel: null,        // panel: { id, isNew, edit, draft, snap, docEdit, add, fix }
+  sel: null,        // panel: { id, isNew, edit, draft, snap, docEdit, add, fix, cost }
   busy: false,      // a save / delete is running
-  up: null,         // upload running: { caseId, total, done }
+  up: null,         // upload running: { caseId, total, done, where: 'docs' | 'costs' }
   links: {},        // file path → { url, exp } (short-lived private links)
 };
 
@@ -63,6 +69,11 @@ const MT_DOC = {
   schadenbericht: { label: 'Schadenbericht', icon: 'ti-file-description' },
   photo:          { label: 'Photo',          icon: 'ti-photo' },
   other:          { label: 'Other',          icon: 'ti-file' },
+  receipt:        { label: 'Receipt',        icon: 'ti-receipt' },      // file of a cost row
+};
+const MT_COST = {
+  self:     { label: 'Self-bought', who: 'Brand' },
+  provider: { label: 'Provider',    who: 'Provider' },
 };
 const MT_DOC_ORDER = ['schadenbericht', 'angebot', 'rechnung', 'other', 'photo'];
 const MT_BUCKET = 'maintenance-docs';
@@ -91,13 +102,15 @@ function mtUuid() {
 const mtNativeVal = el => (el ? Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').get.call(el) : '');
 const mtFine = () => window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-/* Kosten: the Rechnungen of these cases (optionally one year, by Rechnungsdatum) */
-function mtCost(caseIds, year) {
+/* Kosten: the Costs table of these cases — receipts minus returns, optionally one year
+   (each line counts in the year of its own date, the same as in Controlling) */
+const mtSign = r => (r.return_of ? -1 : 1);
+function mtCost(caseIds, year, kind) {
   const ids = new Set(caseIds.map(String));
-  const sum = MT.docs.reduce((a, d) => {
-    if (d.doc_type !== 'rechnung' || !ids.has(String(d.case_id))) return a;
-    if (year && String(d.doc_date || ccDayOf(d.created_at) || '').slice(0, 4) !== year) return a;
-    return a + (Number(d.amount) || 0);
+  const sum = MT.costs.reduce((a, r) => {
+    if (!ids.has(String(r.case_id)) || (kind && r.kind !== kind)) return a;
+    if (year && String(r.cost_date || '').slice(0, 4) !== year) return a;
+    return a + mtSign(r) * (Number(r.amount) || 0);
   }, 0);
   return Math.round(sum * 100) / 100;
 }
@@ -115,9 +128,10 @@ async function mtTry(fn) {
 async function mtLoad() {
   const sb = _ctlSupa;
   const once = () => Promise.all([
-    sb.from('properties').select('id,name,sort_order').order('sort_order', { ascending: true }),
+    sb.from('ctrl_properties').select('id,name,sort_order,active'),
     sb.from('maint_cases').select('*'),
-    sb.from('maint_docs').select('id,case_id,doc_type,file_path,file_name,amount,doc_date,created_at'),
+    sb.from('maint_docs').select('id,case_id,cost_id,doc_type,file_path,file_name,amount,doc_date,created_at'),
+    sb.from('maint_costs').select('*'),
   ]);
   let res = await once();
   if (res.some(r => r.error)) {
@@ -126,7 +140,8 @@ async function mtLoad() {
   }
   const bad = res.find(r => r.error);
   if (bad) throw bad.error;
-  [MT.props, MT.cases, MT.docs] = res.map(r => r.data || []);
+  [MT.props, MT.cases, MT.docs, MT.costs] = res.map(r => r.data || []);
+  MT.props.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999) || (Number(a.id) || 0) - (Number(b.id) || 0));
   MT.loaded = true;
 }
 
@@ -223,12 +238,13 @@ function mtRender() {
 
 function mtErrorHTML(e) {
   const msg = String((e && (e.message || e.code)) || e || '');
-  const missing = /maint_(cases|docs)/i.test(msg);
+  const d1 = /maint_costs|cost_id/i.test(msg);
+  const missing = d1 || /maint_(cases|docs)/i.test(msg);
   const again = t => `<a href="#" onclick="location.reload();return false;">${t}</a>`;
   return `
     <div class="mt-hdr"><h1 class="cc-h1">${MT_KIND[MT.tab].title}</h1></div>
     <p class="mt-note">${missing
-      ? `The Maintenance tables are missing. Run MAINTENANCE.sql in Supabase, then ${again('try again')}.`
+      ? `The Maintenance tables are missing. Run ${d1 ? 'MAINTENANCE-D1.sql' : 'MAINTENANCE.sql'} in Supabase, then ${again('try again')}.`
       : `The data could not be loaded. ${again('Try again')}`}</p>
     <p class="mt-muted">${mtEsc(msg)}</p>`;
 }
@@ -248,7 +264,7 @@ function mtPanelHTML() {
       <button type="button" class="mt-ph__x" data-mt="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
     ${s.edit ? mtEditHTML(c, s) : mtReadHTML(c)}
-    ${s.isNew ? `<section class="mt-sec"><p class="mt-sec__t">Documents</p><p class="mt-docs-empty">Photos and documents can be added after Save.</p></section>` : mtDocsHTML(c)}`;
+    ${s.isNew ? `<section class="mt-sec"><p class="mt-sec__t">Costs and documents</p><p class="mt-docs-empty">Receipts, photos and documents can be added after Save.</p></section>` : mtCostsHTML(c) + mtDocsHTML(c)}`;
 }
 
 function mtReadHTML(c) {
@@ -266,7 +282,7 @@ function mtReadHTML(c) {
         ${c.kind === 'schaden' ? f('Paid by', v(mtPaidLabel(c.paid_by))) : ''}
         ${f('Description', v(c.description, 'mt-v--text'), true)}
       </div>
-      ${mtDocsBusy(c) ? '' : '<div class="cc-sec-foot"><button type="button" class="cc-foot-btn" data-mt="edit"><i class="ti ti-pencil" aria-hidden="true"></i> Edit</button></div>'}
+      ${mtActive(c) ? '' : '<div class="cc-sec-foot"><button type="button" class="cc-foot-btn" data-mt="edit"><i class="ti ti-pencil" aria-hidden="true"></i> Edit</button></div>'}
     </section>`;
 }
 
@@ -277,7 +293,8 @@ function mtEditHTML(c, s) {
   };
   const pid = d.property_id === null || d.property_id === undefined ? '' : String(d.property_id);
   let props = `<option value=""${pid ? '' : ' selected'}>Choose</option>` +
-    MT.props.map(p => `<option value="${mtEsc(p.id)}"${String(p.id) === pid ? ' selected' : ''}>${mtEsc(p.name)}</option>`).join('');
+    MT.props.filter(p => p.active !== false || String(p.id) === pid)
+      .map(p => `<option value="${mtEsc(p.id)}"${String(p.id) === pid ? ' selected' : ''}>${mtEsc(p.name)}</option>`).join('');
   if (pid && !mtProp(pid)) props += `<option value="${mtEsc(pid)}" selected>${mtEsc(d.property_name || 'Property')} (removed)</option>`;
   const kinds = Object.keys(MT_KIND).map(k => `<option value="${k}"${d.kind === k ? ' selected' : ''}>${MT_KIND[k].one}</option>`).join('');
   const stats = ['open', 'in_progress', 'done'].map(st => `<option value="${st}"${(d.status || 'open') === st ? ' selected' : ''}>${mtStatusLabel(d.kind, st)}</option>`).join('');
@@ -323,6 +340,7 @@ function mtRenderPanel() {
   }
   const who = MT.sel.isNew ? 'new' : String(MT.sel.id);
   const keep = p._key === who ? p.scrollTop : 0;             // same entry → keep the scroll position
+  mtCostCapture();                                           // an open cost form keeps what is typed
   p.innerHTML = html;
   p.hidden = false;
   if (sc) sc.hidden = false;
@@ -343,7 +361,7 @@ function mtFormSnap() {
 }
 const mtDirty = () => !!(MT.sel && (
   (MT.sel.edit && MT.sel.snap !== undefined && mtFormSnap() !== MT.sel.snap) ||
-  MT.sel.add || (MT.sel.fix && mtFixChanged())));
+  MT.sel.add || (MT.sel.fix && mtFixChanged()) || (MT.sel.cost && mtCostChanged())));
 
 /* Type changed in the form: status words, "Paid by" and the new-entry title follow */
 function mtKindChanged() {
@@ -417,7 +435,7 @@ async function mtNew() {
 }
 
 function mtEdit() {
-  if (!MT.sel || MT.sel.isNew || mtDocsBusy(mtCase(MT.sel.id))) return;
+  if (!MT.sel || MT.sel.isNew || mtActive(mtCase(MT.sel.id))) return;
   MT.sel = { id: MT.sel.id, isNew: false, edit: true };
   mtRenderPanel();
 }
@@ -485,28 +503,33 @@ async function mtDelete() {
   if (!c || MT.busy) return;
   if (MT.up && String(MT.up.caseId) === String(c.id)) { mtSay('Wait until the upload is finished.'); return; }
   const n = MT.docs.filter(d => String(d.case_id) === String(c.id)).length;
+  const k = MT.costs.filter(r => String(r.case_id) === String(c.id) && !r.return_of).length;
+  const parts = [k ? `${k} receipt${k === 1 ? '' : 's'}` : '', n ? `${n} file${n === 1 ? '' : 's'}` : ''].filter(Boolean);
   const ok = await mtConfirm({
     title: 'Delete this entry?',
-    text: `"${c.title}"${n ? ` and its ${n} document${n === 1 ? '' : 's'}` : ''} will be deleted for good.`,
+    text: `"${c.title}"${parts.length ? ' and its ' + parts.join(' and ') : ''} will be deleted for good.`,
     ok: 'Delete', danger: true,
   });
   if (!ok) return;
   MT.busy = true;
   const idx = MT.cases.indexOf(c);
   const docs = MT.docs.filter(d => String(d.case_id) === String(c.id));
+  const costs = MT.costs.filter(r => String(r.case_id) === String(c.id));
   MT.cases.splice(idx, 1);
   MT.docs = MT.docs.filter(d => String(d.case_id) !== String(c.id));
+  MT.costs = MT.costs.filter(r => String(r.case_id) !== String(c.id));
   MT.sel = null;
   mtRenderPanel();
   mtRender();
 
   const sb = _ctlSupa;
-  const r = await mtTry(() => sb.from('maint_cases').delete().eq('id', c.id));      // its document rows go with it
+  const r = await mtTry(() => sb.from('maint_cases').delete().eq('id', c.id));      // its cost + document rows go with it
   MT.busy = false;
   if (r.error) {
     console.error('[maintenance] delete failed:', r.error);
     MT.cases.splice(idx, 0, c);
     MT.docs.push(...docs);
+    MT.costs.push(...costs);
     mtRender();
     mtSay('Not deleted. Check the connection and try again.');
     return;
@@ -526,16 +549,18 @@ const mtDocsOf = caseId => MT.docs.filter(d => String(d.case_id) === String(case
 const mtIsImage = f => /^image\//.test(f.type || '') || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name || '');
 const mtIsPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
 const mtLinkNow = p => { const l = MT.links[p]; return l && l.exp > Date.now() + 5000 ? l.url : null; };
-/* Documents are being changed (form open / edit mode / upload) → Details waits */
-const mtDocsBusy = c => !!(MT.sel && (MT.sel.docEdit || MT.sel.add || MT.sel.fix || (c && MT.up && String(MT.up.caseId) === String(c.id))));
+/* Something in the panel is open or running (an edit, a form, an upload) → the other buttons wait */
+const mtUpFor = c => (c && MT.up && String(MT.up.caseId) === String(c.id) ? MT.up : null);
+const mtActive = c => !!(MT.sel && (MT.sel.edit || MT.sel.docEdit || MT.sel.add || MT.sel.fix || MT.sel.cost || mtUpFor(c)));
+/* Documents of the Documents section (files of cost rows live in Costs) */
+const mtCaseDocs = caseId => MT.docs.filter(d => String(d.case_id) === String(caseId) && !d.cost_id);
 
-/* Rechnung, Angebot … from the file name (you can change it) */
-function mtGuessType(name) {
+/* Angebot, Schadenbericht … from the file name (you can change it); invoices belong in Costs */
+function mtGuessType(name, isImg) {
   const n = String(name || '').toLowerCase();
-  if (/rechnung|invoice|\bre[-_ .]?\d|\brg[-_ .]?\d/.test(n)) return 'rechnung';
   if (/angebot|kostenvoranschlag|\bkva?\b|offer|quote/.test(n)) return 'angebot';
   if (/schaden|bericht|gutachten|report/.test(n)) return 'schadenbericht';
-  return 'rechnung';
+  return isImg ? 'photo' : 'other';
 }
 /* The day a photo was taken (file date), else today */
 function mtFileDay(f) {
@@ -613,14 +638,14 @@ function mtOpenDoc(id) {
 
 /* ── Documents: drawing ── */
 function mtDocsHTML(c) {
-  const s = MT.sel, docs = mtDocsOf(c.id);
+  const s = MT.sel, docs = mtCaseDocs(c.id);
   const byDate = (a, b) => String(a.doc_date || '').localeCompare(String(b.doc_date || '')) || String(a.created_at || '').localeCompare(String(b.created_at || ''));
   const photos = docs.filter(d => d.doc_type === 'photo').sort(byDate);
   const files = docs.filter(d => d.doc_type !== 'photo')
     .sort((a, b) => MT_DOC_ORDER.indexOf(a.doc_type) - MT_DOC_ORDER.indexOf(b.doc_type) || byDate(a, b));
-  const locked = !!s.edit;                                 // Details in edit → documents only to look at
+  const locked = !!(s.edit || s.cost);                     // Details / a cost row in edit → documents only to look at
   const ed = !!s.docEdit && !locked;
-  const up = MT.up && String(MT.up.caseId) === String(c.id) ? MT.up : null;
+  const upAny = mtUpFor(c), up = upAny && upAny.where !== 'costs' ? upAny : null;
 
   let h = '<section class="mt-sec" id="mtDocs"><p class="mt-sec__t">Documents</p>';
   if (s.add && !locked) h += mtDocFormHTML('mtA', s.add, s.add.name, s.add.isImg, 'add');
@@ -639,9 +664,8 @@ function mtDocsHTML(c) {
       ? mtDocFormHTML('mtX', { type: d.doc_type, amount: d.amount, date: d.doc_date }, d.file_name || MT_DOC[d.doc_type].label, false, 'fix')
       : mtDocRowHTML(d, ed)).join('') + '</div>';
   }
-  if (docs.some(d => d.doc_type === 'rechnung')) h += `<div class="mt-su"><span>Kosten</span><b>${mtEur(mtCost([c.id]))}</b></div>`;
   if (ed && !s.fix) h += '<p class="mt-hint">Tap a document to change its type, Betrag or date. The × deletes it.</p>';
-  if (!locked && !s.add && !s.fix && !up) {
+  if (!locked && !s.add && !s.fix && !upAny) {
     h += ed
       ? '<div class="cc-sec-foot"><button type="button" class="cc-foot-btn mt-save" data-mt="docsDone">Done</button></div>'
       : `<div class="cc-sec-foot">
@@ -670,7 +694,7 @@ function mtDocRowHTML(d, ed) {
 
 /* One form for a new file (pre = mtA) and for fixing one (pre = mtX) */
 function mtDocFormHTML(pre, v, name, isImg, mode) {
-  const types = ['rechnung', 'angebot', 'schadenbericht', ...(isImg || v.type === 'photo' ? ['photo'] : []), 'other'];
+  const types = [...(v.type === 'rechnung' ? ['rechnung'] : []), 'angebot', 'schadenbericht', ...(isImg || v.type === 'photo' ? ['photo'] : []), 'other'];
   const isRe = v.type === 'rechnung';
   const amt = v.amount === null || v.amount === undefined || v.amount === '' ? '' : String(v.amount);
   return `<div class="mt-ab" id="${pre}-form">
@@ -754,7 +778,7 @@ async function mtAddPhotos(files) {
   if (!c || MT.up) return;
   const imgs = files.filter(mtIsImage);
   if (!imgs.length) { mtSay('Choose photos (JPG, PNG or HEIC).'); return; }
-  MT.up = { caseId: c.id, total: imgs.length, done: 0 };
+  MT.up = { caseId: c.id, total: imgs.length, done: 0, where: 'docs' };
   mtRefresh(c.id);
   let ok = 0;
   for (const f of imgs) {
@@ -778,7 +802,7 @@ function mtPickFile() {
     if (!mtIsPdf(f) && !mtIsImage(f)) { mtSay('Choose a PDF or a photo.'); return; }
     if (f.size > MT_MAX_MB * 1024 * 1024) { mtSay(`This file is too big (max ${MT_MAX_MB} MB).`); return; }
     MT.sel.docEdit = false; MT.sel.fix = null;
-    MT.sel.add = { file: f, name: f.name || 'Document', isImg: mtIsImage(f), type: mtGuessType(f.name), amount: '', date: ccTodayISO() };
+    MT.sel.add = { file: f, name: f.name || 'Document', isImg: mtIsImage(f), type: mtGuessType(f.name, mtIsImage(f)), amount: '', date: ccTodayISO() };
     mtRenderPanel();
     document.getElementById('mtDocs')?.scrollIntoView({ block: 'nearest' });
   });
@@ -790,7 +814,7 @@ async function mtAddSave() {
   if (!v) return;
   const add = s.add;
   s.add = null;
-  MT.up = { caseId: c.id, total: 1, done: 0 };
+  MT.up = { caseId: c.id, total: 1, done: 0, where: 'docs' };
   mtRefresh(c.id);
   const ok = await mtUploadOne(c, add.file, v);
   MT.up = null;
@@ -800,7 +824,7 @@ async function mtAddSave() {
 }
 
 /* Store one file: shrink a photo → upload (one retry) → its row; nothing is left half-saved */
-async function mtUploadOne(c, file, v) {
+async function mtUploadOne(c, file, v, extra) {
   const sb = _ctlSupa, store = sb.storage.from(MT_BUCKET);
   const id = mtUuid(), img = mtIsImage(file);
   let blob = file, ext = (String(file.name || '').match(/\.([a-z0-9]{1,5})$/i) || [, img ? 'jpg' : 'pdf'])[1].toLowerCase();
@@ -825,6 +849,7 @@ async function mtUploadOne(c, file, v) {
     id, case_id: c.id, doc_type: v.type, file_path: path,
     file_name: String(file.name || (img ? 'Photo.jpg' : 'Document')).slice(0, 180),
     amount: v.type === 'rechnung' ? v.amount : null, doc_date: v.date || null,
+    ...(extra || {}),
   };
   const ins = await mtTry(() => sb.from('maint_docs').insert(row));
   if (ins.error) {
@@ -876,6 +901,265 @@ async function mtDelDoc(id) {
     return;
   }
   try { await sb.storage.from(MT_BUCKET).remove(mtFilesOf(d)); } catch (e) { console.warn('[maintenance] file not removed:', e); }
+}
+
+/* ── Costs (D1) ───────────────────────────────────────────────
+   One row = one receipt / invoice: Receipt no. · Description · Brand / Provider ·
+   Amount · Date · Photos. Grouped Self-bought / Provider. A tap on a row opens it
+   in place (one form at a time); its photos / PDFs are added in the form and
+   stored on Save. Returns (D2) are rows with return_of = their receipt. */
+const mtCostsOf = caseId => MT.costs.filter(r => String(r.case_id) === String(caseId));
+const mtCostFiles = costId => MT.docs.filter(d => String(d.cost_id) === String(costId));
+const mtCostByDate = (a, b) => String(a.cost_date || '').localeCompare(String(b.cost_date || '')) ||
+                               String(a.created_at || '').localeCompare(String(b.created_at || ''));
+
+function mtCostsHTML(c) {
+  const s = MT.sel, f = s.cost;
+  const rows = mtCostsOf(c.id);
+  const busy = !!(s.edit || s.docEdit || s.add || s.fix);          // another part of the panel is being changed
+  const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
+  const tap = !busy && !f && !upAny;
+  let h = '<section class="mt-sec mt-costs" id="mtCosts"><p class="mt-sec__t">Costs</p>';
+  if (f && f.isNew) h += mtCostFormHTML(f);
+  if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
+  if (!rows.length && !(f && f.isNew)) h += '<p class="mt-docs-empty">No receipts yet.</p>';
+
+  Object.keys(MT_COST).forEach(kind => {
+    const list = rows.filter(r => r.kind === kind && !r.return_of).sort(mtCostByDate);
+    if (!list.length) return;
+    h += `<div class="mt-cg">
+      <div class="mt-cg__h"><span class="mt-cg__t">${MT_COST[kind].label} · ${list.length}</span><span class="mt-cg__s">${mtEur(mtCost([c.id], null, kind))}</span></div>
+      <div class="mt-ch" aria-hidden="true"><span>Receipt no.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
+      ${list.map(r => (f && !f.isNew && String(f.id) === String(r.id)) ? mtCostFormHTML(f) : mtCostRowHTML(r, tap)).join('')}
+    </div>`;
+  });
+  if (rows.length) h += `<div class="mt-su"><span>Kosten</span><b>${mtEur(mtCost([c.id]))}</b></div>`;
+  if (!busy && !f && !upAny) {
+    h += `<div class="cc-sec-foot">
+      <span class="is-left mt-foot-l">
+        <button type="button" class="cc-foot-btn" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i> Self-bought</button>
+        <button type="button" class="cc-foot-btn" data-mt="costNew" data-k="provider"><i class="ti ti-plus" aria-hidden="true"></i> Provider</button>
+      </span><span aria-hidden="true"></span>
+    </div>`;
+  }
+  return h + '</section>';
+}
+
+function mtCostRowHTML(r, tap) {
+  const n = mtCostFiles(r.id).length;
+  return `<button type="button" class="mt-cr" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}"${tap ? '' : ' tabindex="-1"'}>
+      <span class="mt-cr__a"><span class="mt-cr__no">${mtEsc(r.receipt_no || '—')}</span><span class="mt-cr__desc">${mtEsc(r.description || '')}</span></span>
+      <span class="mt-cr__amt">${mtEur(r.amount)}</span>
+      <span class="mt-cr__b"><span class="mt-cr__who">${mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
+      <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ''}</span>
+    </button>`;
+}
+
+function mtCostFormHTML(f) {
+  const amt = f.amount === null || f.amount === undefined || f.amount === '' ? '' : String(f.amount);
+  const chips = f.files.map((x, i) => `
+      <span class="mt-chip${x.file ? ' is-new' : ''}">
+        ${x.id ? `<button type="button" class="mt-chip__n" data-mt="openDoc" data-id="${mtEsc(x.id)}">` : '<span class="mt-chip__n">'}<i class="ti ${x.img ? 'ti-photo' : 'ti-file-text'}" aria-hidden="true"></i>${mtEsc(x.name)}${x.id ? '</button>' : '</span>'}
+        <button type="button" class="mt-chip__x" data-mt="costFileDel" data-i="${i}" aria-label="Remove ${mtEsc(x.name)}"><i class="ti ti-x" aria-hidden="true"></i></button>
+      </span>`).join('');
+  return `<div class="mt-ab mt-cf-form" id="mtC-form">
+      <div class="mt-seg" role="group" aria-label="Type">
+        ${Object.keys(MT_COST).map(k => `<button type="button" class="mt-seg__b${f.kind === k ? ' is-on' : ''}" data-mt="costKind" data-k="${k}" aria-pressed="${f.kind === k}">${MT_COST[k].label}</button>`).join('')}
+      </div>
+      <div class="mt-grid">
+        <div class="mt-f"><label class="mt-k" for="mtC-no">Receipt no.</label>
+          <input class="mt-in" id="mtC-no" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.receipt_no || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtC-desc">Description</label>
+          <input class="mt-in" id="mtC-desc" type="text" maxlength="160" autocomplete="off" value="${mtEsc(f.description || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtC-who" id="mtC-whoLbl">${MT_COST[f.kind].who}</label>
+          <input class="mt-in" id="mtC-who" type="text" maxlength="80" autocomplete="off" value="${mtEsc(f.brand || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtC-amount">Amount (€)</label>
+          <input class="mt-in" id="mtC-amount" data-cc-num="2" inputmode="decimal" autocomplete="off" value="${mtEsc(amt)}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtC-date">Date</label>
+          <input class="mt-in" id="mtC-date" type="date" value="${mtEsc(f.cost_date || '')}"/></div>
+        <div class="mt-f mt-f--full"><span class="mt-k">Photos</span>
+          <div class="mt-chips">${chips}
+            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-camera" aria-hidden="true"></i> Photo / PDF</button>
+          </div></div>
+      </div>
+      <div class="cc-sec-foot">
+        ${f.isNew ? '' : '<button type="button" class="cc-foot-btn mt-del is-left" data-mt="costDel"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>'}
+        <span class="cc-foot-right">
+          <button type="button" class="cc-foot-btn" data-mt="costCancel">Cancel</button>
+          <button type="button" class="cc-foot-btn mt-save" data-mt="costSave">Save</button>
+        </span>
+      </div>
+    </div>`;
+}
+
+/* What is typed in the open cost form → its state (so a redraw keeps it) */
+function mtCostCapture() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || !document.getElementById('mtC-form')) return;
+  const g = id => document.getElementById(id);
+  f.receipt_no = g('mtC-no').value;
+  f.description = g('mtC-desc').value;
+  f.brand = g('mtC-who').value;
+  f.amount = g('mtC-amount').value;                         // "1250.5" (German field) or ''
+  f.cost_date = g('mtC-date').value || '';
+}
+const mtCostSnapOf = f => JSON.stringify([f.kind, f.receipt_no || '', f.description || '', f.brand || '', String(f.amount ?? ''), f.cost_date || '',
+  f.files.map(x => x.id || x.name).join('|')]);
+function mtCostChanged() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f) return false;
+  mtCostCapture();
+  return mtCostSnapOf(f) !== f.snap;
+}
+
+function mtCostNew(kind) {
+  const c = mtOpenCase();
+  if (!c || mtActive(c)) return;
+  MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', receipt_no: '', description: '', brand: '',
+    amount: '', cost_date: ccTodayISO(), files: [], delIds: [] };
+  MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
+  mtRenderPanel();
+  document.getElementById('mtCosts')?.scrollIntoView({ block: 'nearest' });
+  if (mtFine()) document.getElementById('mtC-no')?.focus();
+}
+function mtCostEdit(id) {
+  const c = mtOpenCase(), r = MT.costs.find(x => String(x.id) === String(id));
+  if (!c || !r || mtActive(c)) return;
+  MT.sel.cost = { isNew: false, id: r.id, kind: r.kind, receipt_no: r.receipt_no || '', description: r.description || '', brand: r.brand || '',
+    amount: r.amount ?? '', cost_date: r.cost_date || '', delIds: [],
+    files: mtCostFiles(r.id).map(d => ({ id: d.id, name: d.file_name || 'File', img: d.file_path && /\.(jpe?g|png|webp|heic|gif)$/i.test(d.file_path) })) };
+  MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
+  mtRenderPanel();
+}
+function mtCostKind(kind) {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || !MT_COST[kind]) return;
+  f.kind = kind;
+  document.querySelectorAll('#mtC-form .mt-seg__b').forEach(b => { const on = b.dataset.k === kind; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
+  const l = document.getElementById('mtC-whoLbl');
+  if (l) l.textContent = MT_COST[kind].who;
+}
+function mtCostPickFiles() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f) return;
+  mtFileInput('mtCostInput', 'image/*,application/pdf', true, files => {
+    const g = MT.sel && MT.sel.cost;
+    if (!g) return;
+    const ok = files.filter(x => (mtIsImage(x) || mtIsPdf(x)) && x.size <= MT_MAX_MB * 1024 * 1024);
+    if (ok.length < files.length) mtSay(`Only photos and PDFs up to ${MT_MAX_MB} MB.`);
+    mtCostCapture();
+    ok.forEach(x => g.files.push({ id: null, file: x, name: x.name || (mtIsImage(x) ? 'Photo.jpg' : 'Document.pdf'), img: mtIsImage(x) }));
+    mtRenderPanel();
+  });
+}
+function mtCostFileDel(i) {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || !f.files[i]) return;
+  mtCostCapture();
+  const [x] = f.files.splice(i, 1);
+  if (x.id) f.delIds.push(x.id);
+  mtRenderPanel();
+}
+function mtCostCancel() {
+  if (!MT.sel) return;
+  MT.sel.cost = null;
+  mtRenderPanel();
+}
+
+async function mtCostSave() {
+  const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
+  if (!f || !c || MT.busy) return;
+  mtCostCapture();
+  const g = id => document.getElementById(id);
+  const fail = (id, msg) => { const el = g(id); if (el) { el.setAttribute('aria-invalid', 'true'); if (!el.classList.contains('cc-cal')) el.focus(); } mtSay(msg); };
+  const amount = f.amount === '' || !isFinite(Number(f.amount)) ? null : Math.round(Number(f.amount) * 100) / 100;
+  if (!String(f.receipt_no).trim() && !String(f.description).trim()) return fail('mtC-no', 'Enter the receipt no. or a description.');
+  if (amount === null || amount < 0) return fail('mtC-amount', 'Enter the amount.');
+  if (!f.cost_date) return fail('mtC-date', mtNativeVal(g('mtC-date')).trim() ? 'Check the date (TT.MM.JJJJ).' : 'Enter the date.');
+
+  MT.busy = true;
+  const isNew = f.isNew, id = f.id;
+  const now = new Date().toISOString();
+  const old = isNew ? null : { ...MT.costs.find(x => String(x.id) === String(id)) };
+  const row = {
+    id, case_id: c.id, kind: f.kind, receipt_no: String(f.receipt_no).trim() || null, description: String(f.description).trim() || null,
+    brand: String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: old ? old.return_of || null : null,
+  };
+  const pending = f.files.filter(x => x.file), dels = f.delIds.slice();
+
+  // 1 · show it at once
+  if (isNew) MT.costs.push({ ...row, created_at: now, updated_at: now });
+  else Object.assign(MT.costs.find(x => String(x.id) === String(id)), row, { updated_at: now });
+  s.cost = null;
+  if (pending.length) MT.up = { caseId: c.id, total: pending.length, done: 0, where: 'costs' };
+  mtRefresh(c.id);
+
+  // 2 · store the row (one retry)
+  const sb = _ctlSupa;
+  const { id: _id, ...fields } = row;
+  const r = await mtTry(() => (isNew ? sb.from('maint_costs').insert(row) : sb.from('maint_costs').update(fields).eq('id', id)));
+  if (r.error) {
+    console.error('[maintenance] cost save failed:', r.error);
+    if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
+    else Object.assign(MT.costs.find(x => String(x.id) === String(id)), old);
+    MT.up = null;
+    MT.busy = false;
+    if (MT.sel && String(MT.sel.id) === String(c.id)) MT.sel.cost = f;          // the form comes back with what you typed
+    mtRefresh(c.id);
+    mtSay('Not saved. Check the connection and save again.');
+    return;
+  }
+
+  // 3 · files: removed ones go, new ones are stored with the row
+  for (const docId of dels) {
+    const d = MT.docs.find(x => String(x.id) === String(docId));
+    if (!d) continue;
+    MT.docs = MT.docs.filter(x => x !== d);
+    const del = await mtTry(() => sb.from('maint_docs').delete().eq('id', d.id));
+    if (del.error) { MT.docs.push(d); continue; }
+    try { await sb.storage.from(MT_BUCKET).remove(mtFilesOf(d)); } catch (e) { console.warn('[maintenance] file not removed:', e); }
+  }
+  let failed = 0;
+  for (const x of pending) {
+    const ok = await mtUploadOne(c, x.file, { type: 'receipt', amount: null, date: row.cost_date }, { cost_id: id });
+    if (!ok) failed++;
+    if (MT.up) MT.up.done++;
+    mtRefresh(c.id);
+  }
+  MT.up = null;
+  MT.busy = false;
+  mtRefresh(c.id);
+  if (failed) mtSay(`${pending.length - failed} of ${pending.length} files saved. Add the others again.`);
+}
+
+async function mtCostDelete() {
+  const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
+  const r0 = f && !f.isNew ? MT.costs.find(x => String(x.id) === String(f.id)) : null;
+  if (!r0 || !c || MT.busy) return;
+  const files = mtCostFiles(r0.id);
+  const name = r0.receipt_no ? 'Receipt ' + r0.receipt_no : (r0.description || 'This receipt');
+  const ok = await mtConfirm({ title: 'Delete this receipt?', text: `${name}${files.length ? ` and its ${files.length} file${files.length === 1 ? '' : 's'}` : ''} will be deleted for good.`, ok: 'Delete', danger: true });
+  if (!ok) return;
+  MT.busy = true;
+  const rows = MT.costs.filter(x => String(x.id) === String(r0.id) || String(x.return_of) === String(r0.id));   // with its returns
+  const docs = MT.docs.filter(d => rows.some(x => String(x.id) === String(d.cost_id)));
+  MT.costs = MT.costs.filter(x => !rows.includes(x));
+  MT.docs = MT.docs.filter(d => !docs.includes(d));
+  s.cost = null;
+  mtRefresh(c.id);
+  const sb = _ctlSupa;
+  const r = await mtTry(() => sb.from('maint_costs').delete().eq('id', r0.id));          // its returns + file rows go with it
+  MT.busy = false;
+  if (r.error) {
+    console.error('[maintenance] cost delete failed:', r.error);
+    MT.costs.push(...rows);
+    MT.docs.push(...docs);
+    mtRefresh(c.id);
+    mtSay('Not deleted. Check the connection and try again.');
+    return;
+  }
+  const paths = docs.flatMap(mtFilesOf);
+  if (paths.length) { try { await sb.storage.from(MT_BUCKET).remove(paths); } catch (e) { console.warn('[maintenance] files not removed:', e); } }
 }
 
 /* ── In-app confirm sheet (instead of confirm()) ─────────────
@@ -933,6 +1217,14 @@ function mtWire() {
     else if (a === 'delDoc') mtDelDoc(b.dataset.id);
     else if (a === 'addCancel') { if (MT.sel) { MT.sel.add = null; mtRenderPanel(); } }
     else if (a === 'addSave') mtAddSave();
+    else if (a === 'costNew') mtCostNew(b.dataset.k);
+    else if (a === 'costEdit') mtCostEdit(b.dataset.id);
+    else if (a === 'costKind') mtCostKind(b.dataset.k);
+    else if (a === 'costFile') mtCostPickFiles();
+    else if (a === 'costFileDel') mtCostFileDel(Number(b.dataset.i));
+    else if (a === 'costCancel') mtCostCancel();
+    else if (a === 'costSave') mtCostSave();
+    else if (a === 'costDel') mtCostDelete();
   });
   document.addEventListener('change', e => {
     const t = e.target;

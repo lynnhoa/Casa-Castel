@@ -177,3 +177,72 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-up { display:flex; align-items:center; gap:8px; margin:0 0 10px; font-size:12px; color:var(--cc-taupe); }
 .mt-spin { width:14px; height:14px; flex-shrink:0; border:1.5px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%;
   animation:mt-spin .8s linear infinite; }
+
+/* ── Costs (D1): one row per receipt / invoice ── */
+.mt-costs { container-type:inline-size; }
+.mt-cg { margin:0 0 12px; }
+.mt-cg__h { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:0 0 6px; }
+.mt-cg__t { font-size:11px; color:var(--cc-taupe); }
+.mt-cg__s { font-size:13px; font-weight:500; color:var(--cc-charcoal); white-space:nowrap; }
+.mt-ch { display:none; }
+
+/* phone: 2 lines — receipt no. · description | amount  /  brand · date | photos */
+.mt-cr { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"a amt" "b f"; column-gap:12px; row-gap:1px;
+  width:100%; margin:0; padding:9px 0; border:none; border-top:var(--cc-border); border-radius:0; background:none;
+  font:inherit; color:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-cr:active { background:#F7F3EC; }
+.mt-cr__a { grid-area:a; display:flex; gap:6px; min-width:0; font-size:13px; line-height:1.35; color:var(--cc-charcoal); }
+.mt-cr__no { flex-shrink:0; font-weight:500; color:var(--cc-ink); }
+.mt-cr__desc { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-cr__amt { grid-area:amt; font-size:13px; font-weight:500; line-height:1.35; color:var(--cc-charcoal); white-space:nowrap; text-align:right; }
+.mt-cr__b { grid-area:b; display:flex; gap:0; min-width:0; font-size:11px; line-height:1.4; color:var(--cc-taupe); }
+.mt-cr__who { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-cr__who:empty { display:none; }
+.mt-cr__who:not(:empty) + .mt-cr__date::before { content:'\00a0·\00a0'; }
+.mt-cr__date { flex-shrink:0; white-space:nowrap; }
+.mt-cr__f { grid-area:f; justify-self:end; display:inline-flex; align-items:center; gap:2px; font-size:11px; line-height:1.4; color:var(--cc-taupe); }
+.mt-cr__f i { font-size:12px; }
+
+/* wide panel (laptop): a real table in your column order */
+@container (min-width: 520px) {
+  .mt-ch, .mt-cr { grid-template-columns:66px minmax(0,1.5fr) minmax(0,1fr) 86px 80px 24px; grid-template-areas:none; column-gap:10px; }
+  .mt-ch { display:grid; padding:0 0 6px; font-size:11px; color:var(--cc-taupe); }
+  .mt-ch .r { text-align:right; }
+  .mt-cr__a, .mt-cr__b { display:contents; }
+  .mt-cr__no   { order:1; }
+  .mt-cr__desc { order:2; }
+  .mt-cr__who  { order:3; display:block !important; font-size:13px; color:var(--cc-charcoal); }
+  .mt-cr__amt  { order:4; }
+  .mt-cr__date { order:5; font-size:13px; color:var(--cc-charcoal); }
+  .mt-cr__date::before { content:none !important; }
+  .mt-cr__f    { order:6; }
+  .mt-cr > span, .mt-cr__a > span, .mt-cr__b > span { grid-area:auto; align-self:center; }
+}
+
+/* Type switch in the cost form (Self-bought | Provider) */
+.mt-seg { display:inline-flex; gap:2px; padding:2px; margin:0 0 12px; background:var(--cc-surface); border:var(--cc-border); border-radius:var(--cc-r-pill); }
+.mt-seg__b { padding:5px 12px; border:none; border-radius:var(--cc-r-pill); background:none; cursor:pointer;
+  font-family:inherit; font-size:11px; font-weight:500; color:var(--cc-taupe); -webkit-tap-highlight-color:transparent; }
+.mt-seg__b.is-on { background:var(--cc-white); color:var(--cc-ink); box-shadow:0 0 0 .5px var(--cc-rule); }
+.mt-cg .mt-ab { margin:8px 0; }
+
+/* Files of a cost row */
+.mt-chips { display:flex; flex-wrap:wrap; gap:6px; width:100%; }
+.mt-chip { display:inline-flex; align-items:center; gap:4px; max-width:100%; min-height:30px; padding:0 4px 0 10px;
+  background:var(--cc-white); border:var(--cc-border); border-radius:15px; font-size:12px; color:var(--cc-charcoal); }
+.mt-chip.is-new { border-style:dashed; }
+.mt-chip__n { display:inline-flex; align-items:center; gap:5px; min-width:0; max-width:180px; padding:0; border:none; background:none;
+  font:inherit; color:inherit; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-chip__n i { font-size:13px; color:var(--cc-taupe); flex-shrink:0; }
+.mt-chip__x { width:22px; height:22px; flex-shrink:0; display:flex; align-items:center; justify-content:center; padding:0;
+  border:none; border-radius:50%; background:none; color:var(--cc-stone); cursor:pointer; font-size:12px; }
+.mt-chip--add { padding:0 12px; border-style:dashed; color:var(--cc-taupe); cursor:pointer; font-family:inherit; }
+.mt-chip--add i { font-size:13px; }
+
+/* Laptop: a wider side panel so Costs reads as a table */
+@media (min-width: 1200px) {
+  .mt-split.has-panel { grid-template-columns:minmax(0,1fr) 560px; }
+}
+@media (min-width: 1300px) {
+  .mt-split.has-panel { grid-template-columns:minmax(0,1fr) 620px; }
+}
