@@ -4,8 +4,10 @@
 
    Seventh management app (login tile + profile menus of all apps).
    Tabs: Renovierungen · Schäden. Each tab lists its cases grouped
-   by property, in the order of the Properties app; a property
-   without cases is not shown. Done cases fold per property.
+   by property (Controlling's order) and inside by year of the start
+   date, newest first; a property without cases is not shown. A year
+   is open when it is this year or still has a case that is not done.
+   Each case: Start + optional End (D2).
 
    Two levels only: the list and ONE panel (read view ⇄ edit).
    Panel: bottom sheet (phone) · centred window (iPad) ·
@@ -27,6 +29,9 @@
    Costs (per case, in the panel, D1): one row = one receipt / invoice
                Receipt no. · Description · Brand / Provider · Amount · Date · Photos
                grouped Self-bought / Provider · tap a row = edit it in place
+               · D2: a return is its own row (return_of = its receipt), shown
+                 under the receipt, own slip no. / date / photo; Net per receipt
+               · D2: receipt / slip no. already used elsewhere → asks first
                · the row's photos / PDFs are documents linked to the row (cost_id)
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
@@ -184,11 +189,28 @@ function mtGroups(kind) {
                            String(b.created_at || '').localeCompare(String(a.created_at || ''));
   return [...groups.values()]
     .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, 'de'))
-    .map(g => ({ ...g, active: g.cases.filter(c => c.status !== 'done').sort(byDate), done: g.cases.filter(c => c.status === 'done').sort(byDate) }));
+    .map(g => {
+      const years = new Map();
+      g.cases.forEach(c => {
+        const y = mtCaseYear(c);
+        if (!years.has(y)) years.set(y, []);
+        years.get(y).push(c);
+      });
+      return { ...g, years: [...years.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([y, cs]) => ({ y, cases: cs.sort(byDate) })) };
+    });
+}
+/* The year an entry belongs to: its start date (else when it was created) */
+const mtCaseYear = c => String(c.case_date || ccDayOf(c.created_at) || '').slice(0, 4) || '—';
+/* Start – End as text: "16.01.2026 – 20.03.2026" · "from 16.01.2026" · "" */
+function mtSpan(c) {
+  const a = mtDate(c.case_date), b = mtDate(c.end_date);
+  if (a && b) return a === b ? a : a + ' – ' + b;
+  if (a) return 'from ' + a;
+  return b ? 'until ' + b : '';
 }
 
 function mtRowHTML(c) {
-  const sub = [c.area, mtDate(c.case_date)].filter(Boolean).map(mtEsc).join(' · ');
+  const sub = [c.area, mtSpan(c)].filter(Boolean).map(mtEsc).join(' · ');
   const cost = mtCost([c.id]);
   const sel = MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id) ? ' is-sel' : '';
   return `<button type="button" class="mt-row${sel}" data-mt="open" data-id="${mtEsc(c.id)}">
@@ -221,15 +243,22 @@ function mtRender() {
 
   const cards = mtGroups(kind).map(g => {
     const total = mtCost(g.cases.map(c => c.id));
-    const fk = kind + '|' + g.key, open = !!MT.open[fk];
-    const fold = g.done.length ? `
-      <button type="button" class="mt-fold" data-mt="fold" data-key="${mtEsc(fk)}" aria-expanded="${open}">
-        <span>Done (${g.done.length})</span><i class="ti ti-chevron-down" aria-hidden="true"></i>
-      </button>${open ? g.done.map(mtRowHTML).join('') : ''}` : '';
+    const years = g.years.map(Y => {
+      const fk = kind + '|' + g.key + '|' + Y.y;
+      // open by default: this year, or a year that still has something not done
+      const auto = Y.y === y || Y.cases.some(c => c.status !== 'done');
+      const open = MT.open[fk] === undefined ? auto : !!MT.open[fk];
+      const sumY = mtCost(Y.cases.map(c => c.id));
+      return `
+        <button type="button" class="mt-yr" data-mt="fold" data-key="${mtEsc(fk)}" data-auto="${auto ? 1 : 0}" aria-expanded="${open}">
+          <span class="mt-yr__y">${mtEsc(Y.y)}</span><span class="mt-yr__n">${Y.cases.length} ${Y.cases.length === 1 ? 'entry' : 'entries'}</span>
+          <span class="mt-yr__s${sumY ? '' : ' mt-mu'}">${mtAmt(sumY)}</span><i class="ti ti-chevron-down" aria-hidden="true"></i>
+        </button>${open ? Y.cases.map(mtRowHTML).join('') : ''}`;
+    }).join('');
     return `
       <section class="mt-card" aria-label="${mtEsc(g.name)}">
         <div class="mt-card__hd"><h2 class="mt-card__name">${mtEsc(g.name)}</h2><span class="mt-card__sum${total ? '' : ' mt-mu'}">${mtAmt(total)}</span></div>
-        ${g.active.map(mtRowHTML).join('')}${fold}
+        ${years}
       </section>`;
   }).join('');
 
@@ -276,8 +305,9 @@ function mtReadHTML(c) {
       <div class="mt-grid">
         ${f('Property', v(mtPropName(c)))}
         ${f('Area', v(c.area))}
+        ${f('Start', v(mtDate(c.case_date)))}
+        ${f('End', v(mtDate(c.end_date)))}
         ${f('Type', v(MT_KIND[c.kind].one))}
-        ${f('Date', v(mtDate(c.case_date)))}
         ${f('Status', mtPill(c.kind, c.status))}
         ${c.kind === 'schaden' ? f('Paid by', v(mtPaidLabel(c.paid_by))) : ''}
         ${f('Description', v(c.description, 'mt-v--text'), true)}
@@ -289,7 +319,7 @@ function mtReadHTML(c) {
 function mtEditHTML(c, s) {
   const d = s.draft || {
     kind: c.kind, title: c.title, property_id: c.property_id, property_name: c.property_name, area: c.area,
-    case_date: c.case_date, status: c.status, paid_by: c.paid_by, description: c.description,
+    case_date: c.case_date, end_date: c.end_date, status: c.status, paid_by: c.paid_by, description: c.description,
   };
   const pid = d.property_id === null || d.property_id === undefined ? '' : String(d.property_id);
   let props = `<option value=""${pid ? '' : ' selected'}>Choose</option>` +
@@ -309,8 +339,9 @@ function mtEditHTML(c, s) {
         <div class="mt-f"><label class="mt-k" for="mtF-prop">Property</label><select class="mt-in" id="mtF-prop">${props}</select></div>
         <div class="mt-f"><label class="mt-k" for="mtF-area">Area</label>
           <input class="mt-in" id="mtF-area" type="text" maxlength="80" autocomplete="off" placeholder="e.g. Bad 1. OG" value="${mtEsc(d.area || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtF-date">Start</label><input class="mt-in" id="mtF-date" type="date" value="${mtEsc(d.case_date || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtF-end">End</label><input class="mt-in" id="mtF-end" type="date" value="${mtEsc(d.end_date || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtF-kind">Type</label><select class="mt-in" id="mtF-kind">${kinds}</select></div>
-        <div class="mt-f"><label class="mt-k" for="mtF-date">Date</label><input class="mt-in" id="mtF-date" type="date" value="${mtEsc(d.case_date || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtF-status">Status</label><select class="mt-in" id="mtF-status">${stats}</select></div>
         <div class="mt-f" data-only="schaden"${d.kind === 'schaden' ? '' : ' hidden'}><label class="mt-k" for="mtF-paid">Paid by</label><select class="mt-in" id="mtF-paid">${paid}</select></div>
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-desc">Description</label>
@@ -355,7 +386,7 @@ function mtRenderPanel() {
 
 /* What the form says right now (to notice unsaved changes) */
 function mtFormSnap() {
-  return ['mtF-title', 'mtF-prop', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-status', 'mtF-paid', 'mtF-desc']
+  return ['mtF-title', 'mtF-prop', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-paid', 'mtF-desc']
     .map(id => { const el = document.getElementById(id); return el ? el.value : ''; })
     .join('\u0001');
 }
@@ -394,11 +425,14 @@ function mtReadForm() {
   const title = g('mtF-title').value.trim();
   const pid = g('mtF-prop').value;
   const kind = g('mtF-kind').value;
-  const dateEl = g('mtF-date');
+  const dateEl = g('mtF-date'), endEl = g('mtF-end');
   const date = dateEl.value || '';                         // ISO, or '' when empty / not a date
+  const end = endEl ? endEl.value || '' : '';
   if (!title) return bad('mtF-title', 'Add a title.');
   if (!pid) return bad('mtF-prop', MT.props.length ? 'Choose the property.' : 'No properties yet. Add them in the Properties app first.');
-  if (!date && mtNativeVal(dateEl).trim()) return bad('mtF-date', 'Check the date (TT.MM.JJJJ).');
+  if (!date && mtNativeVal(dateEl).trim()) return bad('mtF-date', 'Check the start date (TT.MM.JJJJ).');
+  if (endEl && !end && mtNativeVal(endEl).trim()) return bad('mtF-end', 'Check the end date (TT.MM.JJJJ).');
+  if (date && end && end < date) return bad('mtF-end', 'The end can\'t be before the start.');
   const p = mtProp(pid);
   const old = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
   return {
@@ -408,6 +442,7 @@ function mtReadForm() {
     property_name: p ? p.name : ((MT.sel.draft && MT.sel.draft.property_name) || (old && old.property_name) || ''),
     area: g('mtF-area').value.trim() || null,
     case_date: date || null,
+    end_date: end || null,
     status: g('mtF-status').value || 'open',
     paid_by: kind === 'schaden' ? (g('mtF-paid').value || null) : null,
     description: g('mtF-desc').value.trim() || null,
@@ -427,7 +462,7 @@ async function mtNew() {
   if (MT.sel && !(await mtClose())) return;
   MT.sel = {
     id: null, isNew: true, edit: true,
-    draft: { kind: MT.tab, title: '', property_id: '', area: '', case_date: ccTodayISO(), status: 'open', paid_by: '', description: '' },
+    draft: { kind: MT.tab, title: '', property_id: '', area: '', case_date: ccTodayISO(), end_date: '', status: 'open', paid_by: '', description: '' },
   };
   mtRenderPanel();
   mtRender();
@@ -481,7 +516,7 @@ async function mtSave() {
   const sb = _ctlSupa;
   const payload = {
     kind: f.kind, title: f.title, property_id: f.property_id, property_name: f.property_name, area: f.area,
-    case_date: f.case_date, status: f.status, paid_by: f.paid_by, description: f.description,
+    case_date: f.case_date, end_date: f.end_date, status: f.status, paid_by: f.paid_by, description: f.description,
   };
   const r = await mtTry(() => (isNew ? sb.from('maint_cases').insert({ id, ...payload }) : sb.from('maint_cases').update(payload).eq('id', id)));
   MT.busy = false;
@@ -903,15 +938,23 @@ async function mtDelDoc(id) {
   try { await sb.storage.from(MT_BUCKET).remove(mtFilesOf(d)); } catch (e) { console.warn('[maintenance] file not removed:', e); }
 }
 
-/* ── Costs (D1) ───────────────────────────────────────────────
+/* ── Costs (D1 + D2) ──────────────────────────────────────────
    One row = one receipt / invoice: Receipt no. · Description · Brand / Provider ·
    Amount · Date · Photos. Grouped Self-bought / Provider. A tap on a row opens it
    in place (one form at a time); its photos / PDFs are added in the form and
-   stored on Save. Returns (D2) are rows with return_of = their receipt. */
+   stored on Save.
+   D2 · A return is its own row (return_of = its receipt): own slip no., date,
+   amount and photo, shown under its receipt, then the receipt's Net. It can't be
+   more than what is left of the receipt, nor before the receipt's date.
+   D2 · A receipt / slip no. that is already used anywhere → asks before saving. */
 const mtCostsOf = caseId => MT.costs.filter(r => String(r.case_id) === String(caseId));
 const mtCostFiles = costId => MT.docs.filter(d => String(d.cost_id) === String(costId));
+const mtCostById = id => MT.costs.find(x => String(x.id) === String(id)) || null;
+const mtReturnsOf = id => MT.costs.filter(x => String(x.return_of) === String(id)).sort(mtCostByDate);
 const mtCostByDate = (a, b) => String(a.cost_date || '').localeCompare(String(b.cost_date || '')) ||
                                String(a.created_at || '').localeCompare(String(b.created_at || ''));
+const mtNum = n => Math.round((Number(n) || 0) * 100) / 100;
+const mtNeg = n => '\u2212' + mtEur(n);                      // −30,00 €
 
 function mtCostsHTML(c) {
   const s = MT.sel, f = s.cost;
@@ -919,8 +962,9 @@ function mtCostsHTML(c) {
   const busy = !!(s.edit || s.docEdit || s.add || s.fix);          // another part of the panel is being changed
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
   const tap = !busy && !f && !upAny;
+  const isForm = r => f && !f.isNew && String(f.id) === String(r.id);
   let h = '<section class="mt-sec mt-costs" id="mtCosts"><p class="mt-sec__t">Costs</p>';
-  if (f && f.isNew) h += mtCostFormHTML(f);
+  if (f && f.isNew && !f.return_of) h += mtCostFormHTML(f);
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!rows.length && !(f && f.isNew)) h += '<p class="mt-docs-empty">No receipts yet.</p>';
 
@@ -930,7 +974,14 @@ function mtCostsHTML(c) {
     h += `<div class="mt-cg">
       <div class="mt-cg__h"><span class="mt-cg__t">${MT_COST[kind].label} · ${list.length}</span><span class="mt-cg__s">${mtEur(mtCost([c.id], null, kind))}</span></div>
       <div class="mt-ch" aria-hidden="true"><span>Receipt no.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
-      ${list.map(r => (f && !f.isNew && String(f.id) === String(r.id)) ? mtCostFormHTML(f) : mtCostRowHTML(r, tap)).join('')}
+      ${list.map(r => {
+        const rets = mtReturnsOf(r.id);
+        let x = isForm(r) ? mtCostFormHTML(f) : mtCostRowHTML(r, tap);
+        rets.forEach(t => { x += isForm(t) ? mtCostFormHTML(f) : mtCostRowHTML(t, tap); });
+        if (f && f.isNew && String(f.return_of) === String(r.id)) x += mtCostFormHTML(f);   // a new return sits under its receipt
+        if (rets.length) x += `<div class="mt-net"><span>Net</span><b>${mtEur(mtNum(r.amount) - rets.reduce((a, t) => a + mtNum(t.amount), 0))}</b></div>`;
+        return x;
+      }).join('')}
     </div>`;
   });
   if (rows.length) h += `<div class="mt-su"><span>Kosten</span><b>${mtEur(mtCost([c.id]))}</b></div>`;
@@ -946,33 +997,43 @@ function mtCostsHTML(c) {
 }
 
 function mtCostRowHTML(r, tap) {
-  const n = mtCostFiles(r.id).length;
-  return `<button type="button" class="mt-cr" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}"${tap ? '' : ' tabindex="-1"'}>
-      <span class="mt-cr__a"><span class="mt-cr__no">${mtEsc(r.receipt_no || '—')}</span><span class="mt-cr__desc">${mtEsc(r.description || '')}</span></span>
-      <span class="mt-cr__amt">${mtEur(r.amount)}</span>
-      <span class="mt-cr__b"><span class="mt-cr__who">${mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
+  const n = mtCostFiles(r.id).length, ret = !!r.return_of;
+  const no = ret ? (r.receipt_no ? 'Slip ' + r.receipt_no : 'Return') : (r.receipt_no || '—');
+  const desc = ret ? (r.description ? 'Return · ' + r.description : 'Return') : (r.description || '');
+  return `<button type="button" class="mt-cr${ret ? ' mt-cr--ret' : ''}" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}"${tap ? '' : ' tabindex="-1"'}>
+      <span class="mt-cr__a"><span class="mt-cr__no">${ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : ''}${mtEsc(no)}</span><span class="mt-cr__desc">${mtEsc(desc)}</span></span>
+      <span class="mt-cr__amt">${ret ? mtNeg(r.amount) : mtEur(r.amount)}</span>
+      <span class="mt-cr__b"><span class="mt-cr__who">${ret ? '' : mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
       <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ''}</span>
     </button>`;
 }
 
 function mtCostFormHTML(f) {
+  const ret = !!f.return_of, parent = ret ? mtCostById(f.return_of) : null;
   const amt = f.amount === null || f.amount === undefined || f.amount === '' ? '' : String(f.amount);
   const chips = f.files.map((x, i) => `
       <span class="mt-chip${x.file ? ' is-new' : ''}">
         ${x.id ? `<button type="button" class="mt-chip__n" data-mt="openDoc" data-id="${mtEsc(x.id)}">` : '<span class="mt-chip__n">'}<i class="ti ${x.img ? 'ti-photo' : 'ti-file-text'}" aria-hidden="true"></i>${mtEsc(x.name)}${x.id ? '</button>' : '</span>'}
         <button type="button" class="mt-chip__x" data-mt="costFileDel" data-i="${i}" aria-label="Remove ${mtEsc(x.name)}"><i class="ti ti-x" aria-hidden="true"></i></button>
       </span>`).join('');
-  return `<div class="mt-ab mt-cf-form" id="mtC-form">
-      <div class="mt-seg" role="group" aria-label="Type">
+  const top = ret
+    ? `<p class="mt-ret-t"><i class="ti ti-corner-down-right" aria-hidden="true"></i>Return for ${parent && parent.receipt_no ? 'Receipt ' + mtEsc(parent.receipt_no) : 'this receipt'}${parent && parent.brand ? ' · ' + mtEsc(parent.brand) : ''}</p>`
+    : `<div class="mt-seg" role="group" aria-label="Type">
         ${Object.keys(MT_COST).map(k => `<button type="button" class="mt-seg__b${f.kind === k ? ' is-on' : ''}" data-mt="costKind" data-k="${k}" aria-pressed="${f.kind === k}">${MT_COST[k].label}</button>`).join('')}
-      </div>
+      </div>`;
+  const left = [
+    f.isNew ? '' : `<button type="button" class="cc-foot-btn mt-del" data-mt="costDel"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>`,
+    !ret && !f.isNew ? '<button type="button" class="cc-foot-btn" data-mt="costReturn"><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Return</button>' : '',
+  ].join('');
+  return `<div class="mt-ab mt-cf-form${ret ? ' is-ret' : ''}" id="mtC-form">
+      ${top}
       <div class="mt-grid">
-        <div class="mt-f"><label class="mt-k" for="mtC-no">Receipt no.</label>
+        <div class="mt-f"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt no.'}</label>
           <input class="mt-in" id="mtC-no" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.receipt_no || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtC-desc">Description</label>
-          <input class="mt-in" id="mtC-desc" type="text" maxlength="160" autocomplete="off" value="${mtEsc(f.description || '')}"/></div>
-        <div class="mt-f"><label class="mt-k" for="mtC-who" id="mtC-whoLbl">${MT_COST[f.kind].who}</label>
-          <input class="mt-in" id="mtC-who" type="text" maxlength="80" autocomplete="off" value="${mtEsc(f.brand || '')}"/></div>
+          <input class="mt-in" id="mtC-desc" type="text" maxlength="160" autocomplete="off" value="${mtEsc(f.description || '')}"${ret ? ' placeholder="optional"' : ''}/></div>
+        ${ret ? '' : `<div class="mt-f"><label class="mt-k" for="mtC-who" id="mtC-whoLbl">${MT_COST[f.kind].who}</label>
+          <input class="mt-in" id="mtC-who" type="text" maxlength="80" autocomplete="off" value="${mtEsc(f.brand || '')}"/></div>`}
         <div class="mt-f"><label class="mt-k" for="mtC-amount">Amount (€)</label>
           <input class="mt-in" id="mtC-amount" data-cc-num="2" inputmode="decimal" autocomplete="off" value="${mtEsc(amt)}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtC-date">Date</label>
@@ -983,7 +1044,7 @@ function mtCostFormHTML(f) {
           </div></div>
       </div>
       <div class="cc-sec-foot">
-        ${f.isNew ? '' : '<button type="button" class="cc-foot-btn mt-del is-left" data-mt="costDel"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>'}
+        ${left ? `<span class="is-left mt-foot-l">${left}</span>` : ''}
         <span class="cc-foot-right">
           <button type="button" class="cc-foot-btn" data-mt="costCancel">Cancel</button>
           <button type="button" class="cc-foot-btn mt-save" data-mt="costSave">Save</button>
@@ -999,7 +1060,7 @@ function mtCostCapture() {
   const g = id => document.getElementById(id);
   f.receipt_no = g('mtC-no').value;
   f.description = g('mtC-desc').value;
-  f.brand = g('mtC-who').value;
+  if (g('mtC-who')) f.brand = g('mtC-who').value;
   f.amount = g('mtC-amount').value;                         // "1250.5" (German field) or ''
   f.cost_date = g('mtC-date').value || '';
 }
@@ -1011,29 +1072,46 @@ function mtCostChanged() {
   mtCostCapture();
   return mtCostSnapOf(f) !== f.snap;
 }
+const mtCostFilesOf = id => mtCostFiles(id).map(d => ({ id: d.id, name: d.file_name || 'File', img: !!d.file_path && /\.(jpe?g|png|webp|heic|gif)$/i.test(d.file_path) }));
 
 function mtCostNew(kind) {
   const c = mtOpenCase();
   if (!c || mtActive(c)) return;
-  MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', receipt_no: '', description: '', brand: '',
+  MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', return_of: null, receipt_no: '', description: '', brand: '',
     amount: '', cost_date: ccTodayISO(), files: [], delIds: [] };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
-  document.getElementById('mtCosts')?.scrollIntoView({ block: 'nearest' });
+  document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
   if (mtFine()) document.getElementById('mtC-no')?.focus();
 }
 function mtCostEdit(id) {
-  const c = mtOpenCase(), r = MT.costs.find(x => String(x.id) === String(id));
+  const c = mtOpenCase(), r = mtCostById(id);
   if (!c || !r || mtActive(c)) return;
-  MT.sel.cost = { isNew: false, id: r.id, kind: r.kind, receipt_no: r.receipt_no || '', description: r.description || '', brand: r.brand || '',
-    amount: r.amount ?? '', cost_date: r.cost_date || '', delIds: [],
-    files: mtCostFiles(r.id).map(d => ({ id: d.id, name: d.file_name || 'File', img: d.file_path && /\.(jpe?g|png|webp|heic|gif)$/i.test(d.file_path) })) };
+  MT.sel.cost = { isNew: false, id: r.id, kind: r.kind, return_of: r.return_of || null, receipt_no: r.receipt_no || '', description: r.description || '',
+    brand: r.brand || '', amount: r.amount ?? '', cost_date: r.cost_date || '', delIds: [], files: mtCostFilesOf(r.id) };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
 }
+/* "+ Return" in a receipt's form → a new return under that receipt */
+async function mtCostNewReturn() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || f.isNew || f.return_of) return;
+  if (mtCostChanged()) {
+    const ok = await mtConfirm({ title: 'Discard your changes?', text: 'What you changed in this receipt is not saved.', ok: 'Discard', cancel: 'Keep editing', danger: true });
+    if (!ok) return;
+  }
+  const r = mtCostById(f.id);
+  if (!r || !MT.sel) return;
+  MT.sel.cost = { isNew: true, id: mtUuid(), kind: r.kind, return_of: r.id, receipt_no: '', description: '', brand: '',
+    amount: '', cost_date: ccTodayISO() < String(r.cost_date || '') ? r.cost_date : ccTodayISO(), files: [], delIds: [] };
+  MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
+  mtRenderPanel();
+  document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
+  if (mtFine()) document.getElementById('mtC-no')?.focus();
+}
 function mtCostKind(kind) {
   const f = MT.sel && MT.sel.cost;
-  if (!f || !MT_COST[kind]) return;
+  if (!f || f.return_of || !MT_COST[kind]) return;
   f.kind = kind;
   document.querySelectorAll('#mtC-form .mt-seg__b').forEach(b => { const on = b.dataset.k === kind; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
   const l = document.getElementById('mtC-whoLbl');
@@ -1066,30 +1144,63 @@ function mtCostCancel() {
   mtRenderPanel();
 }
 
+/* Receipt / slip no. already used (anywhere) → where */
+function mtDupOf(no, selfId) {
+  const k = String(no || '').trim().toLowerCase();
+  if (!k) return null;
+  const d = MT.costs.find(r => String(r.id) !== String(selfId) && String(r.receipt_no || '').trim().toLowerCase() === k);
+  if (!d) return null;
+  const c = mtCase(d.case_id);
+  return { row: d, where: c ? `“${c.title}” (${mtPropName(c)})` : 'another entry', same: MT.sel && String(d.case_id) === String(MT.sel.id) };
+}
+
 async function mtCostSave() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
   if (!f || !c || MT.busy) return;
   mtCostCapture();
   const g = id => document.getElementById(id);
   const fail = (id, msg) => { const el = g(id); if (el) { el.setAttribute('aria-invalid', 'true'); if (!el.classList.contains('cc-cal')) el.focus(); } mtSay(msg); };
-  const amount = f.amount === '' || !isFinite(Number(f.amount)) ? null : Math.round(Number(f.amount) * 100) / 100;
-  if (!String(f.receipt_no).trim() && !String(f.description).trim()) return fail('mtC-no', 'Enter the receipt no. or a description.');
-  if (amount === null || amount < 0) return fail('mtC-amount', 'Enter the amount.');
+  const ret = !!f.return_of, parent = ret ? mtCostById(f.return_of) : null;
+  if (ret && !parent) { mtSay('The receipt of this return was deleted.'); f.return_of = null; return; }
+  const amount = f.amount === '' || !isFinite(Number(f.amount)) ? null : mtNum(f.amount);
+  if (!ret && !String(f.receipt_no).trim() && !String(f.description).trim()) return fail('mtC-no', 'Enter the receipt no. or a description.');
+  if (amount === null || amount < 0 || (ret && amount <= 0)) return fail('mtC-amount', 'Enter the amount.');
   if (!f.cost_date) return fail('mtC-date', mtNativeVal(g('mtC-date')).trim() ? 'Check the date (TT.MM.JJJJ).' : 'Enter the date.');
+  if (ret) {
+    const others = mtReturnsOf(parent.id).filter(t => String(t.id) !== String(f.id)).reduce((a, t) => a + mtNum(t.amount), 0);
+    const left = mtNum(mtNum(parent.amount) - others);
+    if (amount > left) return fail('mtC-amount', `The return can't be more than what is left of the receipt (${mtEur(left)}).`);
+    if (parent.cost_date && f.cost_date < parent.cost_date) return fail('mtC-date', `The return can't be before the receipt (${mtDate(parent.cost_date)}).`);
+  } else if (!f.isNew) {
+    const back = mtReturnsOf(f.id).reduce((a, t) => a + mtNum(t.amount), 0);
+    if (amount < back) return fail('mtC-amount', `The receipt can't be less than its returns (${mtEur(back)}).`);
+    const first = mtReturnsOf(f.id)[0];
+    if (first && first.cost_date < f.cost_date) return fail('mtC-date', `The receipt can't be after its return (${mtDate(first.cost_date)}).`);
+  }
+  const dup = mtDupOf(f.receipt_no, f.id);
+  if (dup) {
+    const what = (ret ? 'Slip ' : 'Receipt ') + String(f.receipt_no).trim();
+    const ok = await mtConfirm({ title: `${what} already exists`, text: dup.same ? 'It is already in this entry. Save it anyway?' : `It is already in ${dup.where}. Save it anyway?`, ok: 'Save anyway' });
+    if (!ok) return;
+    if (!MT.sel || MT.sel.cost !== f) return;                  // the panel changed meanwhile
+  }
 
   MT.busy = true;
   const isNew = f.isNew, id = f.id;
   const now = new Date().toISOString();
-  const old = isNew ? null : { ...MT.costs.find(x => String(x.id) === String(id)) };
+  const old = isNew ? null : { ...mtCostById(id) };
   const row = {
-    id, case_id: c.id, kind: f.kind, receipt_no: String(f.receipt_no).trim() || null, description: String(f.description).trim() || null,
-    brand: String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: old ? old.return_of || null : null,
+    id, case_id: c.id, kind: ret ? parent.kind : f.kind, receipt_no: String(f.receipt_no).trim() || null, description: String(f.description).trim() || null,
+    brand: ret ? null : String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: ret ? parent.id : null,
   };
+  const kindChanged = !ret && old && old.kind !== row.kind;
+  const rets = kindChanged ? mtReturnsOf(id) : [];
   const pending = f.files.filter(x => x.file), dels = f.delIds.slice();
 
-  // 1 · show it at once
+  // 1 · show it at once (a receipt's returns follow its type)
   if (isNew) MT.costs.push({ ...row, created_at: now, updated_at: now });
-  else Object.assign(MT.costs.find(x => String(x.id) === String(id)), row, { updated_at: now });
+  else Object.assign(mtCostById(id), row, { updated_at: now });
+  rets.forEach(t => { t.kind = row.kind; });
   s.cost = null;
   if (pending.length) MT.up = { caseId: c.id, total: pending.length, done: 0, where: 'costs' };
   mtRefresh(c.id);
@@ -1097,11 +1208,13 @@ async function mtCostSave() {
   // 2 · store the row (one retry)
   const sb = _ctlSupa;
   const { id: _id, ...fields } = row;
-  const r = await mtTry(() => (isNew ? sb.from('maint_costs').insert(row) : sb.from('maint_costs').update(fields).eq('id', id)));
+  let r = await mtTry(() => (isNew ? sb.from('maint_costs').insert(row) : sb.from('maint_costs').update(fields).eq('id', id)));
+  if (!r.error && rets.length) r = await mtTry(() => sb.from('maint_costs').update({ kind: row.kind }).eq('return_of', id));
   if (r.error) {
     console.error('[maintenance] cost save failed:', r.error);
     if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
-    else Object.assign(MT.costs.find(x => String(x.id) === String(id)), old);
+    else Object.assign(mtCostById(id), old);
+    rets.forEach(t => { t.kind = old.kind; });
     MT.up = null;
     MT.busy = false;
     if (MT.sel && String(MT.sel.id) === String(c.id)) MT.sel.cost = f;          // the form comes back with what you typed
@@ -1134,15 +1247,18 @@ async function mtCostSave() {
 
 async function mtCostDelete() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
-  const r0 = f && !f.isNew ? MT.costs.find(x => String(x.id) === String(f.id)) : null;
+  const r0 = f && !f.isNew ? mtCostById(f.id) : null;
   if (!r0 || !c || MT.busy) return;
-  const files = mtCostFiles(r0.id);
-  const name = r0.receipt_no ? 'Receipt ' + r0.receipt_no : (r0.description || 'This receipt');
-  const ok = await mtConfirm({ title: 'Delete this receipt?', text: `${name}${files.length ? ` and its ${files.length} file${files.length === 1 ? '' : 's'}` : ''} will be deleted for good.`, ok: 'Delete', danger: true });
-  if (!ok) return;
-  MT.busy = true;
+  const ret = !!r0.return_of;
   const rows = MT.costs.filter(x => String(x.id) === String(r0.id) || String(x.return_of) === String(r0.id));   // with its returns
   const docs = MT.docs.filter(d => rows.some(x => String(x.id) === String(d.cost_id)));
+  const nRet = rows.length - 1;
+  const name = ret ? (r0.receipt_no ? 'Slip ' + r0.receipt_no : 'This return') + ' (' + mtNeg(r0.amount) + ')'
+                   : (r0.receipt_no ? 'Receipt ' + r0.receipt_no : (r0.description || 'This receipt'));
+  const extra = [nRet ? `its ${nRet} return${nRet === 1 ? '' : 's'}` : '', docs.length ? `${docs.length} file${docs.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+  const ok = await mtConfirm({ title: ret ? 'Delete this return?' : 'Delete this receipt?', text: `${name}${extra ? ' and ' + extra : ''} will be deleted for good.`, ok: 'Delete', danger: true });
+  if (!ok) return;
+  MT.busy = true;
   MT.costs = MT.costs.filter(x => !rows.includes(x));
   MT.docs = MT.docs.filter(d => !docs.includes(d));
   s.cost = null;
@@ -1200,7 +1316,11 @@ function mtWire() {
     const a = b.dataset.mt;
     if (a === 'new') mtNew();
     else if (a === 'open') mtOpen(b.dataset.id);
-    else if (a === 'fold') { MT.open[b.dataset.key] = !MT.open[b.dataset.key]; mtRender(); }
+    else if (a === 'fold') {
+      const k = b.dataset.key, cur = MT.open[k] === undefined ? b.dataset.auto === '1' : !!MT.open[k];
+      MT.open[k] = !cur;
+      mtRender();
+    }
     else if (a === 'close') mtClose();
     else if (a === 'edit') mtEdit();
     else if (a === 'cancel') mtCancel();
@@ -1225,6 +1345,7 @@ function mtWire() {
     else if (a === 'costCancel') mtCostCancel();
     else if (a === 'costSave') mtCostSave();
     else if (a === 'costDel') mtCostDelete();
+    else if (a === 'costReturn') mtCostNewReturn();
   });
   document.addEventListener('change', e => {
     const t = e.target;

@@ -246,3 +246,26 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 @media (min-width: 1300px) {
   .mt-split.has-panel { grid-template-columns:minmax(0,1fr) 620px; }
 }
+
+/* ── D2 · Year groups inside a property card ── */
+.mt-yr { display:flex; align-items:center; gap:8px; width:100%; margin:0; padding:9px 16px; border:none; border-top:var(--cc-border);
+  border-radius:0; background:var(--cc-bg); cursor:pointer; font-family:inherit; text-align:left; -webkit-tap-highlight-color:transparent; }
+.mt-yr__y { font-size:11px; font-weight:600; letter-spacing:.12em; color:var(--cc-charcoal); }
+.mt-yr__n { font-size:11px; color:var(--cc-taupe); }
+.mt-yr__s { margin-left:auto; font-size:12px; font-weight:500; color:var(--cc-charcoal); white-space:nowrap; }
+.mt-yr i { font-size:14px; color:var(--cc-stone); transition:transform .2s; }
+.mt-yr[aria-expanded="true"] i { transform:rotate(180deg); }
+
+/* ── D2 · Returns under their receipt, then the receipt's Net ── */
+.mt-cr--ret { padding-left:14px; border-top-style:dashed; }
+.mt-cr--ret .mt-cr__no { display:inline-flex; align-items:center; gap:3px; font-weight:400; color:var(--cc-taupe); }
+.mt-cr--ret .mt-cr__no i { font-size:13px; }
+.mt-cr--ret .mt-cr__desc { color:var(--cc-taupe); }
+.mt-cr--ret .mt-cr__amt { color:#3F6B35; }
+.mt-net { display:flex; justify-content:flex-end; align-items:baseline; gap:10px; padding:2px 0 8px; font-size:11px; color:var(--cc-taupe); }
+.mt-net b { font-size:13px; font-weight:600; color:var(--cc-charcoal); }
+.mt-ret-t { display:flex; align-items:center; gap:5px; margin:0 0 12px; font-size:12px; font-weight:500; color:var(--cc-charcoal); }
+.mt-ret-t i { font-size:14px; color:var(--cc-taupe); }
+@container (min-width: 520px) {
+  .mt-cr--ret { padding-left:0; }
+}
