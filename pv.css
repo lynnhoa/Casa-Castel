@@ -641,3 +641,6 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 .pva-rep-at{color:#9A8E7E}
 .scr .pva-rep-open{flex-shrink:0;background:none;border:none;padding:0 4px;font-family:inherit;font-size:12px;font-weight:600;color:#185FA5;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .scr .pva-rep-ok{flex-shrink:0;height:28px;padding:0 10px;border-radius:8px;border:1px solid #88C99A;background:#DEF3E3;color:#2C6E40;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+
+/* ── FIX12 · unplanned visit: the same review + "Nicht zählen" ── */
+.scr .pv-dontcount{display:block;margin:6px 0 0;padding:4px 0;background:none;border:none;font-family:inherit;font-size:12px;font-weight:600;color:#A32D2D;text-decoration:underline;text-underline-offset:3px;cursor:pointer}

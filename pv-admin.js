@@ -239,7 +239,7 @@ function _pvaCardHTML(s) {
         <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
           <span class="k-mob-week-dates-sm">${counts.total || 0} areas${span ? ' · ' + span : ''}${counts.np ? ' · ' + counts.np + ' not possible' : ''}</span>
           ${_pvaNpNote(v)}
-          <span class="k-note k-note--wait">${v.unplanned ? 'No visit was planned. Approve to count it.' : due}</span></div>
+          <span class="k-note k-note--wait">${v.unplanned ? 'No visit was planned · review it in the chat.' : due}</span></div>
         ${actsHtml}
       </div>` };
   }

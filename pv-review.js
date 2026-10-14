@@ -30,7 +30,7 @@ async function pvaAct(kind, visitId) {
   if (_pvaActBusy) return;
   if (kind === 'flag') { pvaOpenFlag(visitId, null); return; }
   if (kind === 'missed' && !(await ccConfirm('Mark as missed?', 'Today\u2019s visit has no photos yet. It turns red; you can reopen it later.', 'Missed', true))) return;
-  if (kind === 'reject' && !(await ccConfirm('Reject this visit?', 'It is not counted and cannot carry an invoice. The provider sees “Nicht gezählt”.', 'Reject', true))) return;
+  if (kind === 'reject' && !(await ccConfirm('Don\u2019t count this visit?', 'It is not counted and cannot carry an invoice. The provider sees “Nicht gezählt”.', 'Don\u2019t count', true))) return;
   const a = _PVA_ACT[kind];
   if (!a) return;
   _pvaActBusy = true;
@@ -50,7 +50,7 @@ function _pvaWact(kind, color, icon, label, id) {
 /* the action buttons for the card (used by _pvaCardHTML in pv-admin.js) */
 function pvaCardActs(v, today) {
   if (!v) return '';
-  if (v.status === 'sent' && v.unplanned) return _pvaWact('approve', 'green', 'act_approve', 'Approve', v.id) + _pvaWact('reject', 'red', 'act_reject', 'Reject', v.id);
+  if (v.status === 'sent' && v.unplanned) return '';                 /* FIX12: decided in the chat, like planned visits */
   if (v.status === 'sent') return '';                       /* review lives on the photo grid in the chat */
   if (v.status === 'done') return _pvaWact('undo', 'amber', 'act_undo', 'Undo', v.id);
   if (v.status === 'redo') return _pvaWact('unflag', 'amber', 'act_unflag', 'Unflag', v.id);
