@@ -43,6 +43,10 @@
                  Versicherung per property, photos in / out + Beschreibung) →
                  PDF in the app's document style (maint-schaden-pdf.js, pdf-open.js,
                  cc-ueberg-photos.js) → saved in Documents, opened in the viewer
+               · D6: slim, descriptive report for the Hausverwaltung (MAINTENANCE-D6.sql):
+                 Details = Schadensart · Festgestellt am · Besichtigung · Ursache ·
+                 Sofortmaßnahmen · Bitte an die HV · (Polizei-Az) · Description =
+                 Schadensbild; form = Zimmer · Mieter · Ort · Dringend · Weitere Anlagen · Fotos
                · the row's photos / PDFs are documents linked to the row (cost_id)
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
@@ -73,6 +77,7 @@ const MT = {
   up: null,         // upload running: { caseId, total, done, where: 'docs' | 'costs' }
   links: {},        // file path → { url, exp } (short-lived private links)
   d5: false,        // MAINTENANCE-D5.sql has been run (Schadensbericht fields)
+  d6: false,        // MAINTENANCE-D6.sql has been run (slim report: Besichtigung, Bitte an HV, Ort …)
   vers: {},         // property id → { versicherer, versicherungsnr } (maint_props)
   sbData: null,     // Schadensbericht: rooms, tenants, apartments, Hausverwaltung (loaded when needed)
 };
@@ -175,6 +180,8 @@ async function mtLoad() {
     MT.d5 = !v.error;
     (v.data || []).forEach(r => { MT.vers[String(r.property_id)] = r; });
   } catch (e) { MT.d5 = false; }
+  try { MT.d6 = MT.d5 && !(await sb.from('maint_cases').select('besichtigung').limit(1)).error; }
+  catch (e) { MT.d6 = false; }
 }
 
 /* ── Tabs ─────────────────────────────────────────────────── */
@@ -354,7 +361,7 @@ function mtEditHTML(c, s) {
     book_ctrl: c.book_ctrl !== false,
     schadensart: c.schadensart, festgestellt_am: c.festgestellt_am, ursache: c.ursache, verursacher: c.verursacher,
     massnahmen: c.massnahmen, schadennummer: c.schadennummer, mieter_informiert: c.mieter_informiert,
-    eigentum: c.eigentum, polizei_az: c.polizei_az,
+    eigentum: c.eigentum, polizei_az: c.polizei_az, besichtigung: c.besichtigung, bitte_hv: c.bitte_hv,
   };
   const pid = d.property_id === null || d.property_id === undefined ? '' : String(d.property_id);
   let props = `<option value=""${pid ? '' : ' selected'}>Choose</option>` +
@@ -382,7 +389,7 @@ function mtEditHTML(c, s) {
           <option value="1"${d.book_ctrl === false ? '' : ' selected'}>Booked</option><option value="0"${d.book_ctrl === false ? ' selected' : ''}>Not booked</option></select></div>
         ${MT.d5 ? mtSbFieldsHTML(d) : ''}
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-desc">Description</label>
-          <textarea class="mt-in mt-ta" id="mtF-desc" rows="3" maxlength="2000">${mtEsc(d.description || '')}</textarea></div>
+          <textarea class="mt-in mt-ta" id="mtF-desc" rows="3" maxlength="2000"${d.kind === 'schaden' ? ' placeholder="One line per point, e.g. Wasser tropft durch die Deckenleuchte"' : ''}>${mtEsc(d.description || '')}</textarea></div>
       </div>
       <div class="cc-sec-foot">
         ${s.isNew ? '' : '<button type="button" class="cc-foot-btn mt-del is-left" data-mt="del"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>'}
@@ -430,7 +437,7 @@ function mtScrollToOpen() {
 /* What the form says right now (to notice unsaved changes) */
 function mtFormSnap() {
   return ['mtF-title', 'mtF-prop', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-paid', 'mtF-book', 'mtF-desc',
-    'mtF-art', 'mtF-found', 'mtF-cause', 'mtF-by', 'mtF-measures', 'mtF-claim', 'mtF-told', 'mtF-own', 'mtF-police']
+    'mtF-art', 'mtF-found', 'mtF-visit', 'mtF-cause', 'mtF-measures', 'mtF-ask', 'mtF-police']
     .map(id => { const el = document.getElementById(id); return el ? el.value : ''; })
     .join('\u0001');
 }
@@ -478,21 +485,22 @@ function mtReadForm() {
   if (date && end && end < date) return bad('mtF-end', 'The end can\'t be before the start.');
   const p = mtProp(pid);
   const old = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
-  let sbf = null;                                          // D5: report fields of a Schaden
+  let sbf = null;                                          // D5/D6: report fields of a Schaden
   if (MT.d5 && kind === 'schaden' && g('mtF-art')) {
-    const found = g('mtF-found').value || '', told = g('mtF-told').value || '';
+    const found = g('mtF-found').value || '';
     if (!found && mtNativeVal(g('mtF-found')).trim()) return bad('mtF-found', 'Check "Festgestellt am" (TT.MM.JJJJ).');
-    if (!told && mtNativeVal(g('mtF-told')).trim()) return bad('mtF-told', 'Check "Mieter informiert am" (TT.MM.JJJJ).');
     if (date && found && found < date) return bad('mtF-found', '"Festgestellt am" can\'t be before the start.');
     const art = g('mtF-art').value || null;
     sbf = {
       schadensart: art, festgestellt_am: found || null,
-      ursache: g('mtF-cause').value.trim() || null, verursacher: g('mtF-by').value || null,
-      massnahmen: g('mtF-measures').value.trim() || null, schadennummer: g('mtF-claim').value.trim() || null,
-      mieter_informiert: told || null,
-      eigentum: mtIsCasa(pid) ? null : (g('mtF-own').value || null),
+      ursache: g('mtF-cause').value.trim() || null,
+      massnahmen: g('mtF-measures').value.trim() || null,
       polizei_az: /Einbruch/.test(art || '') ? (g('mtF-police').value.trim() || null) : null,
     };
+    if (MT.d6 && g('mtF-visit')) {
+      sbf.besichtigung = g('mtF-visit').value.trim() || null;
+      sbf.bitte_hv = mtIsCasa(pid) ? null : (g('mtF-ask').value.trim() || null);
+    }
   }
   return {
     sbf,
@@ -591,7 +599,7 @@ async function mtSave() {
 
   // 3 · not stored: everything back as it was, the form comes back with what you typed
   console.error('[maintenance] save failed:', r.error);
-  const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|in_report|taken_at|caption/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
+  const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|in_report|taken_at|caption|besichtigung|bitte_hv|report_ort|report_dringend|report_anlagen/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
   if (isNew) MT.cases = MT.cases.filter(c => c.id !== id);
   else Object.assign(mtCase(id), oldRow);
   MT.sel = { id: isNew ? null : id, isNew, edit: true, draft: { ...flat } };
@@ -1343,7 +1351,7 @@ async function mtCostSave() {
   if (!r.error && rets.length) r = await mtTry(() => sb.from('maint_costs').update({ kind: row.kind }).eq('return_of', id));
   if (r.error) {
     console.error('[maintenance] cost save failed:', r.error);
-    const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|in_report|taken_at|caption/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
+    const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|in_report|taken_at|caption|besichtigung|bitte_hv|report_ort|report_dringend|report_anlagen/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
     if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
     else Object.assign(mtCostById(id), old);
     rets.forEach(t => { t.kind = old.kind; });
@@ -1451,7 +1459,7 @@ function mtIsCasa(pid) {
 }
 const mtLabelOf = (list, v) => (list.find(x => x[0] === v) || [, ''])[1];
 
-/* Details › the Schaden-only report fields (shown with the Schaden type) */
+/* Details › the Schaden-only report fields (shown with the Schaden type) — D6: only what the report uses */
 function mtSbFieldsHTML(d) {
   const sch = d.kind === 'schaden', hid = sch ? '' : ' hidden';
   const opt = (list, v) => `<option value=""${v ? '' : ' selected'}>—</option>` +
@@ -1459,17 +1467,17 @@ function mtSbFieldsHTML(d) {
   const arten = (typeof MT_SB_ARTEN !== 'undefined' ? MT_SB_ARTEN : []).map(a => [a, a]);
   const casa = mtIsCasa(d.property_id), police = /Einbruch/.test(d.schadensart || '');
   const f = (id, label, field, extra) => `<div class="mt-f${extra && extra.full ? ' mt-f--full' : ''}" data-only="schaden"${extra && extra.sb ? ` data-sb="${extra.sb}"` : ''}${extra && extra.hide !== undefined ? (extra.hide ? ' hidden' : '') : hid}><label class="mt-k" for="${id}">${label}</label>${field}</div>`;
+  const ta = (id, v, ph, rows) => `<textarea class="mt-in mt-ta" id="${id}" rows="${rows || 3}" maxlength="2000" placeholder="${mtEsc(ph)}">${mtEsc(v || '')}</textarea>`;
   return `
         <p class="mt-sbh mt-f--full" data-only="schaden"${hid}>For the Schadensbericht</p>
         ${f('mtF-art', 'Schadensart', `<select class="mt-in" id="mtF-art">${opt(arten, d.schadensart)}</select>`)}
         ${f('mtF-found', 'Festgestellt am', `<input class="mt-in" id="mtF-found" type="date" value="${mtEsc(d.festgestellt_am || '')}"/>`)}
-        ${f('mtF-cause', 'Ursache', `<input class="mt-in" id="mtF-cause" type="text" maxlength="160" autocomplete="off" placeholder="e.g. Spülkasten undicht" value="${mtEsc(d.ursache || '')}"/>`)}
-        ${f('mtF-by', 'Verursacher', `<select class="mt-in" id="mtF-by">${opt(MT_SB_BY, d.verursacher)}</select>`)}
-        ${f('mtF-measures', 'Sofortmaßnahmen', `<textarea class="mt-in mt-ta" id="mtF-measures" rows="2" maxlength="1000" placeholder="e.g. Wasser abgestellt, Notdienst, Trocknung">${mtEsc(d.massnahmen || '')}</textarea>`, { full: true })}
-        ${f('mtF-claim', 'Schadennummer', `<input class="mt-in" id="mtF-claim" type="text" maxlength="60" autocomplete="off" value="${mtEsc(d.schadennummer || '')}"/>`)}
-        ${f('mtF-told', 'Mieter informiert am', `<input class="mt-in" id="mtF-told" type="date" value="${mtEsc(d.mieter_informiert || '')}"/>`)}
-        ${f('mtF-own', 'Betroffen', `<select class="mt-in" id="mtF-own">${opt(MT_SB_OWN, d.eigentum)}</select>`, { sb: 'own', hide: !sch || casa })}
-        ${f('mtF-police', 'Polizei-Aktenzeichen', `<input class="mt-in" id="mtF-police" type="text" maxlength="60" autocomplete="off" value="${mtEsc(d.polizei_az || '')}"/>`, { sb: 'police', hide: !sch || !police })}`;
+        ${MT.d6 ? f('mtF-visit', 'Besichtigung vor Ort', `<input class="mt-in" id="mtF-visit" type="text" maxlength="160" autocomplete="off" placeholder="z. B. 14.10.2026, 20:00 Uhr, durch die Eigentümer" value="${mtEsc(d.besichtigung || '')}"/>`, { full: true }) : ''}
+        ${f('mtF-cause', 'Vermutete Ursache', ta('mtF-cause', d.ursache, 'z. B. Wasser kommt aus der Wohnung zwei Stockwerke darüber – noch ungeklärt', 2), { full: true })}
+        ${f('mtF-measures', 'Sofortmaßnahmen', ta('mtF-measures', d.massnahmen, 'One point per line, e.g. Hausmeister hat das Wasser abgestellt'), { full: true })}
+        ${MT.d6 ? f('mtF-ask', 'Bitte an die Hausverwaltung', ta('mtF-ask', d.bitte_hv, 'One point per line, e.g. Leckortung veranlassen'), { full: true, sb: 'ask', hide: !sch || casa }) : ''}
+        ${f('mtF-police', 'Polizei-Aktenzeichen', `<input class="mt-in" id="mtF-police" type="text" maxlength="60" autocomplete="off" value="${mtEsc(d.polizei_az || '')}"/>`, { sb: 'police', hide: !sch || !police })}
+        <p class="mt-hint mt-f--full" data-only="schaden"${hid}>Description = the Schadensbild in the report: one line per point.</p>`;
 }
 /* Which Schaden fields show: type Schaden · Betroffen only for apartments · Polizei only for Einbruch / Vandalismus */
 function mtSbVis() {
@@ -1479,7 +1487,7 @@ function mtSbVis() {
   const police = /Einbruch/.test(document.getElementById('mtF-art')?.value || '');
   document.querySelectorAll('#mtPanel [data-only="schaden"]').forEach(el => {
     const sb = el.dataset.sb;
-    el.hidden = !sch || (sb === 'own' && casa) || (sb === 'police' && !police);
+    el.hidden = !sch || ((sb === 'own' || sb === 'ask') && casa) || (sb === 'police' && !police);
   });
 }
 
@@ -1564,12 +1572,13 @@ async function mtSbOpen() {
   const casa = mtIsCasa(c.property_id), rooms = MT.sbData.rooms;
   let room = c.report_room || '';
   if (casa && !room) room = rooms.find(r => mtNorm(c.area).includes(mtNorm(r))) || '';       // "Zimmer Oslo" → Oslo
-  const v = MT.vers[String(c.property_id)] || {};
+  const S = (typeof appSettings !== 'undefined' && appSettings) || {}, apt = casa ? null : mtSbApt(c);
   const auto = mtSbTenant(c, room);
   Object.assign(f, {
-    ready: true, room, sig: !!c.report_mieter_sig,
+    ready: true, room,
     mieter: c.report_mieter || auto, mieterAuto: !c.report_mieter,
-    vers: v.versicherer || '', versNr: v.versicherungsnr || '',
+    ort: c.report_ort || S.unterschrift_ort || (apt && apt.unterschrift_ort) || '',
+    dringend: c.report_dringend || '', anlagen: c.report_anlagen || '',
     photosOn: mtSbPhotos(c).length > 0, busy: false, done: '',
   });
   mtRenderPanel();
@@ -1579,9 +1588,9 @@ function mtSbCapture() {
   if (!f || !f.ready || !g('mtSb-form')) return;
   if (g('mtSb-room')) f.room = g('mtSb-room').value;
   if (g('mtSb-mieter')) f.mieter = g('mtSb-mieter').value;
-  if (g('mtSb-sig')) f.sig = g('mtSb-sig').checked;
-  if (g('mtSb-vers')) f.vers = g('mtSb-vers').value;
-  if (g('mtSb-versnr')) f.versNr = g('mtSb-versnr').value;
+  if (g('mtSb-ort')) f.ort = g('mtSb-ort').value;
+  if (g('mtSb-urgent')) f.dringend = g('mtSb-urgent').value;
+  if (g('mtSb-extra')) f.anlagen = g('mtSb-extra').value;
 }
 function mtSbFormHTML(c, f) {
   if (!f.ready) return `<div class="mt-ab mt-sb" id="mtSb-form"><p class="mt-sb__t"><i class="ti ti-file-description" aria-hidden="true"></i>Schadensbericht</p>
@@ -1607,13 +1616,14 @@ function mtSbFormHTML(c, f) {
           <option value=""${f.room ? '' : ' selected'}>Choose</option>
           ${rooms.map(r => `<option value="${mtEsc(r)}"${f.room === r ? ' selected' : ''}>${mtEsc(r)}</option>`).join('')}
           <option value="${MT_SB_ALL}"${f.room === MT_SB_ALL ? ' selected' : ''}>Gemeinschaftsfläche</option></select></div>` : ''}
-        <div class="mt-f mt-f--full"><label class="mt-k" for="mtSb-mieter">Mieter</label>
+        <div class="mt-f"><label class="mt-k" for="mtSb-mieter">Mieter</label>
           <input class="mt-in" id="mtSb-mieter" type="text" maxlength="160" autocomplete="off" placeholder="${casa && f.room === MT_SB_ALL ? 'optional' : ''}" value="${mtEsc(f.mieter || '')}"/></div>
-        <div class="mt-f mt-f--full"><label class="mt-chk"><input type="checkbox" id="mtSb-sig"${f.sig ? ' checked' : ''}/><span>Mieter unterschreibt mit</span></label></div>
-        <div class="mt-f"><label class="mt-k" for="mtSb-vers">Versicherung</label>
-          <input class="mt-in" id="mtSb-vers" type="text" maxlength="120" autocomplete="off" value="${mtEsc(f.vers || '')}"/></div>
-        <div class="mt-f"><label class="mt-k" for="mtSb-versnr">Versicherungsnr.</label>
-          <input class="mt-in" id="mtSb-versnr" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.versNr || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtSb-ort">Ort</label>
+          <input class="mt-in" id="mtSb-ort" type="text" maxlength="60" autocomplete="off" placeholder="z. B. Mainz" value="${mtEsc(f.ort || '')}"/></div>
+        <div class="mt-f mt-f--full"><label class="mt-k" for="mtSb-urgent">Dringend <span class="mt-mu">(optional)</span></label>
+          <input class="mt-in" id="mtSb-urgent" type="text" maxlength="200" autocomplete="off" placeholder="z. B. Wasser tritt aus Decke und Leuchte aus, Elektrik im Bad defekt" value="${mtEsc(f.dringend || '')}"/></div>
+        <div class="mt-f mt-f--full"><label class="mt-k" for="mtSb-extra">Weitere Anlagen <span class="mt-mu">(optional)</span></label>
+          <textarea class="mt-in mt-ta" id="mtSb-extra" rows="2" maxlength="600" placeholder="One per line, e.g. 2 Videos separat (IMG_9009.mov)">${mtEsc(f.anlagen || '')}</textarea></div>
         <div class="mt-f mt-f--full"><span class="mt-k">Fotos</span>
           <div class="mt-seg" role="group" aria-label="Fotos im Bericht">
             <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Ohne Fotos</button>
@@ -1729,7 +1739,7 @@ async function mtSbLibs() {
   }
   try { await Promise.all(['400 26px "Playfair Display"', '400 12px "Lato"', '700 12px "Lato"', 'italic 400 10px "Lato"'].map(x => document.fonts.load(x))); } catch (e) {}
 }
-/* The data for the template (maint-schaden-pdf.js) */
+/* The data for the template (maint-schaden-pdf.js) — only what the Hausverwaltung needs */
 function mtSbData(c, f, photoCount) {
   const S = (typeof appSettings !== 'undefined' && appSettings) || {};
   const casa = mtIsCasa(c.property_id), apt = casa ? null : mtSbApt(c);
@@ -1738,43 +1748,43 @@ function mtSbData(c, f, photoCount) {
   const room = casa && f.room && f.room !== MT_SB_ALL ? f.room : '';
   const unit = casa ? (room ? ['Zimmer', room] : ['Bereich', c.area || 'Gemeinschaftsfläche'])
                     : (apt && apt.wohnungsnummer ? ['Wohnung', String(apt.wohnungsnummer)] : ['', '']);
-  const verw = apt ? ((MT.sbData && MT.sbData.verw) || []).find(v => String(v.apartment_id) === String(apt.id)) : null;
-  const kosten = [];
-  mtCostsOf(c.id).filter(r => !r.return_of).sort(mtCostByDate).forEach(r => {
-    kosten.push({ nr: r.receipt_no || '', text: r.description || '', firma: r.brand || '', datum: mtDate(r.cost_date), betragText: mtEur(r.amount) });
-    mtReturnsOf(r.id).forEach(t => kosten.push({ ret: true, nr: t.receipt_no ? 'Slip ' + t.receipt_no : 'Rückgabe',
-      text: 'Rückgabe' + (t.description ? ' · ' + t.description : ''), firma: r.brand || '', datum: mtDate(t.cost_date), betragText: mtEur(t.amount) }));
-  });
+  const einheit = casa ? (room ? 'Zimmer ' + room : 'Gemeinschaftsfläche')
+                       : (apt && apt.wohnungsnummer ? 'Wohnung ' + apt.wohnungsnummer : '');
+  // the Zimmer is already named → the Area only when it adds something ("Zimmer Oslo" → nothing)
+  const raum = casa && room && new RegExp('(^|[^a-zäöüß0-9])' + room.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-zäöüß0-9])', 'i').test(c.area || '') ? '' : (c.area || '');
+  const found = c.festgestellt_am || c.case_date;
+  const mieter = String(f.mieter || '').trim();
+  const art = c.schadensart || '';
+  const wort = (typeof MT_SB_TITEL !== 'undefined' && art in MT_SB_TITEL) ? MT_SB_TITEL[art] : art;
   const files = mtCaseDocs(c.id).filter(d => d.doc_type !== 'photo' && d.doc_type !== 'receipt' && !d.generated)
     .sort((a, b) => String(a.doc_date || '').localeCompare(String(b.doc_date || '')));
-  const anlagen = files.map(d => ({ name: MT_DOC_DE[d.doc_type] || 'Dokument', info: [d.file_name, mtDate(d.doc_date)].filter(Boolean).join(' · ') }));
-  if (photoCount) anlagen.push({ name: 'Fotodokumentation', info: (photoCount === 1 ? '1 Foto' : photoCount + ' Fotos') + ', am Ende des Berichts' });
+  const anlagen = [];
+  if (photoCount) anlagen.push('Fotodokumentation (' + (photoCount === 1 ? '1 Foto' : photoCount + ' Fotos') + ', am Ende des Berichts)');
+  files.forEach(d => anlagen.push([MT_DOC_DE[d.doc_type] || 'Dokument', d.file_name, mtDate(d.doc_date)].filter(Boolean).join(' · ')));
+  String(f.anlagen || '').split(/\n+/).map(x => x.trim()).filter(Boolean).forEach(x => anlagen.push(x));
+  const stand = mtDate(ccTodayISO());
   return {
     family: casa ? 'casa' : 'rentals',
     objektName: casa ? 'Casa Castel' : ((apt && apt.name) || mtPropName(c)),
-    einheitLabel: unit[0], einheitWert: unit[1],
-    subtitle: (casa ? ['Zimmervermietung', adresse] : [(apt && apt.zimmer_type) || 'Wohnung', adresse]).filter(Boolean).join(' · '),
-    titel: c.title, nummer: f.reportNo, stand: mtDate(ccTodayISO()),
-    schadensart: c.schadensart || '',
-    adresse,
-    // Casa Castel: the Zimmer is already named ("Zimmer Oslo" → only "Oslo"); Gemeinschaftsfläche shows the Area once
-    bereich: casa && (!room || new RegExp('(^|[^a-zäöüß0-9])' + room.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-zäöüß0-9])', 'i').test(c.area || '')) ? '' : (c.area || ''),
-    vermieter: S.vermieter_name || '', vermieterAdresse: S.vermieter_adresse || '',
-    mieter: String(f.mieter || '').trim(),
-    hausverwaltung: verw ? [verw.hausverwaltung, verw.hv_email, verw.hv_telefon].filter(Boolean).join(' · ') : '',
-    versicherung: String(f.vers || '').trim(), versicherungsnr: String(f.versNr || '').trim(),
+    einheitLabel: unit[0], einheitWert: unit[1], einheitKurz: casa ? '' : String((apt && apt.wohnungsnummer) || ''),
+    titel: 'Schadensbericht' + (wort ? ' – ' + wort : ''),
+    subtitle: (casa ? ['Stand ' + stand] : ['an die Hausverwaltung', 'Stand ' + stand]).join(' · '),
+    stand,
+    dringend: String(f.dringend || '').trim(),
+    adresse, einheit, raum,
+    schadenstag: c.case_date && found && c.case_date !== found ? mtDate(c.case_date) : '',
+    feststellung: [mtDate(found), mieter ? 'gemeldet von ' + mieter : ''].filter(Boolean).join(' · '),
+    besichtigung: c.besichtigung || '',
+    behoben: mtDate(c.end_date),
     schadennummer: c.schadennummer || '',
-    schadenstag: mtDate(c.case_date), festgestellt: mtDate(c.festgestellt_am), behoben: mtDate(c.end_date),
-    eigentum: casa ? '' : (c.eigentum || ''),
-    ursache: [c.ursache, mtLabelOf(MT_SB_BY, c.verursacher)].filter(Boolean).join(' · '),
-    mieterInformiert: mtDate(c.mieter_informiert),
-    polizei: /Einbruch/.test(c.schadensart || '') ? (c.polizei_az || '') : '',
-    hergang: c.description || '', massnahmen: c.massnahmen || '',
-    kosten, summeText: mtEur(mtCost([c.id])),
-    kostentraeger: MT_PAID_DE[c.paid_by] || '',
+    polizei: /Einbruch/.test(art) ? (c.polizei_az || '') : '',
+    schadensbild: c.description || '',
+    ursache: c.ursache || '',
+    massnahmen: c.massnahmen || '',
+    bitteHv: casa ? '' : (c.bitte_hv || ''),
     anlagen,
-    ort: (apt && apt.unterschrift_ort) || S.unterschrift_ort || '',
-    mieterZeile: !!f.sig,
+    ort: String(f.ort || '').trim(),
+    vermieter: S.vermieter_name || '', kontakt: S.vermieter_email || '',
     footerAdresse: adresse,
   };
 }
@@ -1807,18 +1817,16 @@ async function mtSbStore(c, blob, name) {
   MT.docs.push({ ...row, created_at: new Date().toISOString() });
   return true;
 }
-/* Remember the report no. and the choices (+ the Versicherung of the property) */
+/* Remember the report no. and the choices of the form for next time */
 async function mtSbRemember(c, f) {
-  const sb = _ctlSupa;
-  const patch = { report_no: f.reportNo, report_room: f.room || null, report_mieter: String(f.mieter || '').trim() || null, report_mieter_sig: !!f.sig };
-  const r = await mtTry(() => sb.from('maint_cases').update(patch).eq('id', c.id));
+  const patch = { report_no: f.reportNo, report_room: f.room || null, report_mieter: String(f.mieter || '').trim() || null };
+  if (MT.d6) Object.assign(patch, {
+    report_ort: String(f.ort || '').trim() || null,
+    report_dringend: String(f.dringend || '').trim() || null,
+    report_anlagen: String(f.anlagen || '').trim() || null,
+  });
+  const r = await mtTry(() => _ctlSupa.from('maint_cases').update(patch).eq('id', c.id));
   if (!r.error) Object.assign(c, patch); else console.warn('[maintenance] report choices not saved:', r.error);
-  const v = { property_id: Number(c.property_id), versicherer: String(f.vers || '').trim() || null, versicherungsnr: String(f.versNr || '').trim() || null, updated_at: new Date().toISOString() };
-  const old = MT.vers[String(c.property_id)] || {};
-  if ((old.versicherer || null) !== v.versicherer || (old.versicherungsnr || null) !== v.versicherungsnr) {
-    const w = await mtTry(() => sb.from('maint_props').upsert(v));
-    if (!w.error) MT.vers[String(c.property_id)] = v; else console.warn('[maintenance] Versicherung not saved:', w.error);
-  }
 }
 async function mtSbMake() {
   const s = MT.sel, c = s && !s.isNew ? mtCase(s.id) : null, f = s && s.sb;
