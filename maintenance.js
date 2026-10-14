@@ -38,6 +38,11 @@
                  database rule (MAINTENANCE-D3.sql) — switch off per entry or per
                  receipt ("Controlling: Not booked"); returns follow their receipt.
                  Controlling opens an entry here with maintenance.html#cost=<id>
+               · D5: Schadensbericht (Schäden) — report fields in Details,
+                 Documents › "Schadensbericht" → short form (Zimmer, Mieter,
+                 Versicherung per property, photos in / out + Beschreibung) →
+                 PDF in the app's document style (maint-schaden-pdf.js, pdf-open.js,
+                 cc-ueberg-photos.js) → saved in Documents, opened in the viewer
                · the row's photos / PDFs are documents linked to the row (cost_id)
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
@@ -67,6 +72,9 @@ const MT = {
   busy: false,      // a save / delete is running
   up: null,         // upload running: { caseId, total, done, where: 'docs' | 'costs' }
   links: {},        // file path → { url, exp } (short-lived private links)
+  d5: false,        // MAINTENANCE-D5.sql has been run (Schadensbericht fields)
+  vers: {},         // property id → { versicherer, versicherungsnr } (maint_props)
+  sbData: null,     // Schadensbericht: rooms, tenants, apartments, Hausverwaltung (loaded when needed)
 };
 
 const MT_KIND = {
@@ -77,7 +85,7 @@ const MT_PAID = [['me', 'Me'], ['versicherung', 'Versicherung'], ['mieter', 'Mie
 const MT_DOC = {
   rechnung:       { label: 'Rechnung',       icon: 'ti-file-invoice' },
   angebot:        { label: 'Angebot',        icon: 'ti-file-text' },
-  schadenbericht: { label: 'Schadenbericht', icon: 'ti-file-description' },
+  schadenbericht: { label: 'Schadensbericht', icon: 'ti-file-description' },
   photo:          { label: 'Photo',          icon: 'ti-photo' },
   other:          { label: 'Other',          icon: 'ti-file' },
   receipt:        { label: 'Receipt',        icon: 'ti-receipt' },      // file of a cost row
@@ -87,6 +95,13 @@ const MT_COST = {
   provider: { label: 'Provider',    who: 'Provider' },
 };
 const MT_DOC_ORDER = ['schadenbericht', 'angebot', 'rechnung', 'other', 'photo'];
+/* Schadensbericht (D5) — MT_SB_ARTEN comes from maint-schaden-pdf.js */
+const MT_SB_BY  = [['mieter', 'Mieter'], ['dritter', 'Dritter'], ['verschleiss', 'Verschleiß / Gebäude'], ['unbekannt', 'Unbekannt']];
+const MT_SB_OWN = [['sonder', 'Sondereigentum'], ['gemeinschaft', 'Gemeinschaftseigentum']];
+const MT_PAID_DE = { me: 'Eigentümer', versicherung: 'Versicherung', mieter: 'Mieter', weg: 'WEG / Hausverwaltung' };
+const MT_DOC_DE  = { rechnung: 'Rechnung', angebot: 'Angebot', schadenbericht: 'Schadensbericht / Gutachten', other: 'Dokument' };
+const MT_CASA_ID = 7;                          // Casa Castel in Controlling (CASA_PROP_ID)
+const MT_SB_ALL  = '__gemeinschaft__';         // Casa Castel: Gemeinschaftsfläche instead of a Zimmer
 const MT_BUCKET = 'maintenance-docs';
 const MT_MAX_MB = 30;
 
@@ -139,9 +154,9 @@ async function mtTry(fn) {
 async function mtLoad() {
   const sb = _ctlSupa;
   const once = () => Promise.all([
-    sb.from('ctrl_properties').select('id,name,sort_order,active'),
+    sb.from('ctrl_properties').select('*'),
     sb.from('maint_cases').select('*'),
-    sb.from('maint_docs').select('id,case_id,cost_id,doc_type,file_path,file_name,amount,doc_date,created_at'),
+    sb.from('maint_docs').select('*'),
     sb.from('maint_costs').select('*'),
   ]);
   let res = await once();
@@ -154,6 +169,12 @@ async function mtLoad() {
   [MT.props, MT.cases, MT.docs, MT.costs] = res.map(r => r.data || []);
   MT.props.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999) || (Number(a.id) || 0) - (Number(b.id) || 0));
   MT.loaded = true;
+  // D5: Schadensbericht fields there? (MAINTENANCE-D5.sql) → Versicherung per property
+  try {
+    const v = await sb.from('maint_props').select('*');
+    MT.d5 = !v.error;
+    (v.data || []).forEach(r => { MT.vers[String(r.property_id)] = r; });
+  } catch (e) { MT.d5 = false; }
 }
 
 /* ── Tabs ─────────────────────────────────────────────────── */
@@ -314,7 +335,7 @@ function mtPanelHTML() {
 
 /* The details at a glance: area · start – end · status (· paid by · not in Controlling), description below */
 function mtSummaryHTML(c) {
-  const bits = [c.area, mtSpan(c)].filter(Boolean).map(mtEsc);
+  const bits = [c.kind === 'schaden' ? c.schadensart : '', c.area, mtSpan(c)].filter(Boolean).map(mtEsc);
   bits.push(mtPill(c.kind, c.status).replace('class="mt-pill ', 'class="mt-pill mt-pill--sm '));
   if (c.kind === 'schaden' && c.paid_by) bits.push('Paid by ' + mtEsc(mtPaidLabel(c.paid_by)));
   if (c.book_ctrl === false) bits.push('<span class="mt-off">not in Controlling</span>');
@@ -331,6 +352,9 @@ function mtEditHTML(c, s) {
     kind: c.kind, title: c.title, property_id: c.property_id, property_name: c.property_name, area: c.area,
     case_date: c.case_date, end_date: c.end_date, status: c.status, paid_by: c.paid_by, description: c.description,
     book_ctrl: c.book_ctrl !== false,
+    schadensart: c.schadensart, festgestellt_am: c.festgestellt_am, ursache: c.ursache, verursacher: c.verursacher,
+    massnahmen: c.massnahmen, schadennummer: c.schadennummer, mieter_informiert: c.mieter_informiert,
+    eigentum: c.eigentum, polizei_az: c.polizei_az,
   };
   const pid = d.property_id === null || d.property_id === undefined ? '' : String(d.property_id);
   let props = `<option value=""${pid ? '' : ' selected'}>Choose</option>` +
@@ -356,6 +380,7 @@ function mtEditHTML(c, s) {
         <div class="mt-f" data-only="schaden"${d.kind === 'schaden' ? '' : ' hidden'}><label class="mt-k" for="mtF-paid">Paid by</label><select class="mt-in" id="mtF-paid">${paid}</select></div>
         <div class="mt-f"><label class="mt-k" for="mtF-book">Controlling</label><select class="mt-in" id="mtF-book">
           <option value="1"${d.book_ctrl === false ? '' : ' selected'}>Booked</option><option value="0"${d.book_ctrl === false ? ' selected' : ''}>Not booked</option></select></div>
+        ${MT.d5 ? mtSbFieldsHTML(d) : ''}
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-desc">Description</label>
           <textarea class="mt-in mt-ta" id="mtF-desc" rows="3" maxlength="2000">${mtEsc(d.description || '')}</textarea></div>
       </div>
@@ -380,6 +405,7 @@ function mtRenderPanel() {
     return;
   }
   mtCostCapture();                                           // an open cost form keeps what is typed
+  mtSbCapture();                                             // … and the Schadensbericht form
   p.innerHTML = html;
   // the date field becomes a German field right after it is drawn → note the form after that
   if (MT.sel.edit) { const sel = MT.sel; delete sel.snap; setTimeout(() => { if (MT.sel === sel && sel.edit) sel.snap = mtFormSnap(); }, 0); }
@@ -403,7 +429,8 @@ function mtScrollToOpen() {
 
 /* What the form says right now (to notice unsaved changes) */
 function mtFormSnap() {
-  return ['mtF-title', 'mtF-prop', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-paid', 'mtF-book', 'mtF-desc']
+  return ['mtF-title', 'mtF-prop', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-paid', 'mtF-book', 'mtF-desc',
+    'mtF-art', 'mtF-found', 'mtF-cause', 'mtF-by', 'mtF-measures', 'mtF-claim', 'mtF-told', 'mtF-own', 'mtF-police']
     .map(id => { const el = document.getElementById(id); return el ? el.value : ''; })
     .join('\u0001');
 }
@@ -417,8 +444,7 @@ function mtKindChanged() {
   if (!MT_KIND[kind]) return;
   const st = document.getElementById('mtF-status');
   if (st) [...st.options].forEach(o => { o.textContent = mtStatusLabel(kind, o.value); });
-  const paid = document.querySelector('#mtPanel [data-only="schaden"]');
-  if (paid) paid.hidden = kind !== 'schaden';
+  mtSbVis();
   if (MT.sel && MT.sel.isNew) {
     MT.sel.draft.kind = kind;
     const t = document.getElementById('mtPanelTitle');
@@ -452,7 +478,24 @@ function mtReadForm() {
   if (date && end && end < date) return bad('mtF-end', 'The end can\'t be before the start.');
   const p = mtProp(pid);
   const old = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
+  let sbf = null;                                          // D5: report fields of a Schaden
+  if (MT.d5 && kind === 'schaden' && g('mtF-art')) {
+    const found = g('mtF-found').value || '', told = g('mtF-told').value || '';
+    if (!found && mtNativeVal(g('mtF-found')).trim()) return bad('mtF-found', 'Check "Festgestellt am" (TT.MM.JJJJ).');
+    if (!told && mtNativeVal(g('mtF-told')).trim()) return bad('mtF-told', 'Check "Mieter informiert am" (TT.MM.JJJJ).');
+    if (date && found && found < date) return bad('mtF-found', '"Festgestellt am" can\'t be before the start.');
+    const art = g('mtF-art').value || null;
+    sbf = {
+      schadensart: art, festgestellt_am: found || null,
+      ursache: g('mtF-cause').value.trim() || null, verursacher: g('mtF-by').value || null,
+      massnahmen: g('mtF-measures').value.trim() || null, schadennummer: g('mtF-claim').value.trim() || null,
+      mieter_informiert: told || null,
+      eigentum: mtIsCasa(pid) ? null : (g('mtF-own').value || null),
+      polizei_az: /Einbruch/.test(art || '') ? (g('mtF-police').value.trim() || null) : null,
+    };
+  }
   return {
+    sbf,
     kind: MT_KIND[kind] ? kind : MT.tab,
     title,
     property_id: Number(pid),
@@ -524,7 +567,9 @@ async function mtSave() {
   const isNew = !!s.isNew, id = isNew ? mtUuid() : s.id;
   const oldRow = isNew ? null : { ...mtCase(id) };
   const now = new Date().toISOString();
-  const row = { ...(oldRow || {}), ...f, id, updated_at: now, created_at: oldRow ? oldRow.created_at : now };
+  const { sbf, ...fv } = f;
+  const flat = { ...fv, ...(sbf || {}) };                  // the Schaden report fields sit with the rest (D5)
+  const row = { ...(oldRow || {}), ...flat, id, updated_at: now, created_at: oldRow ? oldRow.created_at : now };
 
   // 1 · show it at once: list + panel back in the read view
   if (isNew) MT.cases.push(row); else Object.assign(mtCase(id), row);
@@ -538,6 +583,7 @@ async function mtSave() {
     kind: f.kind, title: f.title, property_id: f.property_id, property_name: f.property_name, area: f.area,
     case_date: f.case_date, end_date: f.end_date, status: f.status, paid_by: f.paid_by, description: f.description,
     book_ctrl: f.book_ctrl !== false,
+    ...(f.sbf || {}),
   };
   const r = await mtTry(() => (isNew ? sb.from('maint_cases').insert({ id, ...payload }) : sb.from('maint_cases').update(payload).eq('id', id)));
   MT.busy = false;
@@ -545,14 +591,14 @@ async function mtSave() {
 
   // 3 · not stored: everything back as it was, the form comes back with what you typed
   console.error('[maintenance] save failed:', r.error);
-  const sqlMissing = /book_ctrl|maint_cost_id/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
+  const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|in_report|taken_at|caption/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
   if (isNew) MT.cases = MT.cases.filter(c => c.id !== id);
   else Object.assign(mtCase(id), oldRow);
-  MT.sel = { id: isNew ? null : id, isNew, edit: true, draft: { ...f } };
+  MT.sel = { id: isNew ? null : id, isNew, edit: true, draft: { ...flat } };
   const backTo = isNew ? MT.tab : oldRow.kind;
   if (backTo !== MT.tab) mtSwitchTab(backTo); else mtRender();
   mtRenderPanel();
-  mtSay(sqlMissing ? 'Not saved: run MAINTENANCE-D3.sql in Supabase first.' : 'Not saved. Check the connection and save again.');
+  mtSay(sqlMissing ? 'Not saved: run the newest MAINTENANCE SQL in Supabase first.' : 'Not saved. Check the connection and save again.');
 }
 
 async function mtDelete() {
@@ -608,7 +654,7 @@ const mtIsPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''
 const mtLinkNow = p => { const l = MT.links[p]; return l && l.exp > Date.now() + 5000 ? l.url : null; };
 /* Something in the panel is open or running (an edit, a form, an upload) → the other buttons wait */
 const mtUpFor = c => (c && MT.up && String(MT.up.caseId) === String(c.id) ? MT.up : null);
-const mtActive = c => !!(MT.sel && (MT.sel.edit || MT.sel.docEdit || MT.sel.add || MT.sel.fix || MT.sel.cost || mtUpFor(c)));
+const mtActive = c => !!(MT.sel && (MT.sel.edit || MT.sel.docEdit || MT.sel.add || MT.sel.fix || MT.sel.cost || MT.sel.sb || mtUpFor(c)));
 /* Documents of the Documents section (files of cost rows live in Costs) */
 const mtCaseDocs = caseId => MT.docs.filter(d => String(d.case_id) === String(caseId) && !d.cost_id);
 
@@ -705,6 +751,9 @@ function mtDocsHTML(c) {
   const upAny = mtUpFor(c), up = upAny && upAny.where !== 'costs' ? upAny : null;
 
   let h = '<section class="mt-docs" id="mtDocs"><p class="mt-sec__t">Documents</p>';
+  if (s.sb && !locked) h += mtSbFormHTML(c, s.sb);
+  else if (c.kind === 'schaden' && !locked && !ed && !s.add && !s.fix && !upAny)
+    h += `<button type="button" class="mt-sbbar" data-mt="sbOpen"><i class="ti ti-file-description" aria-hidden="true"></i><span>Schadensbericht</span><em>PDF</em></button>`;
   if (s.add && !locked) h += mtDocFormHTML('mtA', s.add, s.add.name, s.add.isImg, 'add');
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!docs.length && !s.add && !up) h += '<p class="mt-docs-empty">No photos or documents yet.</p>';
@@ -722,7 +771,7 @@ function mtDocsHTML(c) {
       : mtDocRowHTML(d, ed)).join('') + '</div>';
   }
   if (ed && !s.fix) h += '<p class="mt-hint">Tap a document to change its type, Betrag or date. The × deletes it.</p>';
-  if (!locked && !s.add && !s.fix && !upAny) {
+  if (!locked && !s.add && !s.fix && !s.sb && !upAny) {
     h += ed
       ? '<div class="cc-sec-foot"><button type="button" class="cc-foot-btn mt-save" data-mt="docsDone">Done</button></div>'
       : `<div class="cc-sec-foot">
@@ -839,7 +888,7 @@ async function mtAddPhotos(files) {
   mtRefresh(c.id);
   let ok = 0;
   for (const f of imgs) {
-    if (await mtUploadOne(c, f, { type: 'photo', amount: null, date: mtFileDay(f) })) ok++;
+    if (await mtUploadOne(c, f, { type: 'photo', amount: null, date: mtFileDay(f) }, await mtPhotoExtra(f))) ok++;
     MT.up.done++;
     mtRefresh(c.id);
   }
@@ -981,7 +1030,7 @@ const mtNeg = n => '\u2212' + mtEur(n);                      // −30,00 €
 function mtCostsHTML(c) {
   const s = MT.sel, f = s.cost;
   const rows = mtCostsOf(c.id);
-  const busy = !!(s.edit || s.docEdit || s.add || s.fix);          // another part of the panel is being changed
+  const busy = !!(s.edit || s.docEdit || s.add || s.fix || s.sb);  // another part of the panel is being changed
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
   const tap = !busy && !f && !upAny;
   const isForm = r => f && !f.isNew && String(f.id) === String(r.id);
@@ -1239,7 +1288,7 @@ async function mtCostSave() {
   if (!r.error && rets.length) r = await mtTry(() => sb.from('maint_costs').update({ kind: row.kind }).eq('return_of', id));
   if (r.error) {
     console.error('[maintenance] cost save failed:', r.error);
-    const sqlMissing = /book_ctrl|maint_cost_id/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
+    const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|in_report|taken_at|caption/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
     if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
     else Object.assign(mtCostById(id), old);
     rets.forEach(t => { t.kind = old.kind; });
@@ -1332,6 +1381,440 @@ function mtConfirm(o) {
   });
 }
 
+/* ── Schadensbericht (D5) ─────────────────────────────────────
+   Details of a Schaden hold the report fields; Documents › "Schadensbericht"
+   opens a short form in place (only the report choices): Zimmer (Casa
+   Castel) · Mieter · Mieter unterschreibt mit · Versicherung (saved once per
+   property) · photos in / out + Beschreibung. "PDF erstellen" builds the PDF
+   with the app's document code (maint-schaden-pdf.js · cc-ueberg-photos.js ·
+   pdf-open.js), saves it in Documents (a new version each time, the report
+   number stays) and opens it in the viewer.                              */
+const mtNorm = v => String(v || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+function mtIsCasa(pid) {
+  const p = mtProp(pid);
+  return Number(pid) === MT_CASA_ID || (!!p && mtNorm(p.name) === 'casacastel');
+}
+const mtLabelOf = (list, v) => (list.find(x => x[0] === v) || [, ''])[1];
+
+/* Details › the Schaden-only report fields (shown with the Schaden type) */
+function mtSbFieldsHTML(d) {
+  const sch = d.kind === 'schaden', hid = sch ? '' : ' hidden';
+  const opt = (list, v) => `<option value=""${v ? '' : ' selected'}>—</option>` +
+    list.map(([k, l]) => `<option value="${mtEsc(k)}"${v === k ? ' selected' : ''}>${mtEsc(l)}</option>`).join('');
+  const arten = (typeof MT_SB_ARTEN !== 'undefined' ? MT_SB_ARTEN : []).map(a => [a, a]);
+  const casa = mtIsCasa(d.property_id), police = /Einbruch/.test(d.schadensart || '');
+  const f = (id, label, field, extra) => `<div class="mt-f${extra && extra.full ? ' mt-f--full' : ''}" data-only="schaden"${extra && extra.sb ? ` data-sb="${extra.sb}"` : ''}${extra && extra.hide !== undefined ? (extra.hide ? ' hidden' : '') : hid}><label class="mt-k" for="${id}">${label}</label>${field}</div>`;
+  return `
+        <p class="mt-sbh mt-f--full" data-only="schaden"${hid}>For the Schadensbericht</p>
+        ${f('mtF-art', 'Schadensart', `<select class="mt-in" id="mtF-art">${opt(arten, d.schadensart)}</select>`)}
+        ${f('mtF-found', 'Festgestellt am', `<input class="mt-in" id="mtF-found" type="date" value="${mtEsc(d.festgestellt_am || '')}"/>`)}
+        ${f('mtF-cause', 'Ursache', `<input class="mt-in" id="mtF-cause" type="text" maxlength="160" autocomplete="off" placeholder="e.g. Spülkasten undicht" value="${mtEsc(d.ursache || '')}"/>`)}
+        ${f('mtF-by', 'Verursacher', `<select class="mt-in" id="mtF-by">${opt(MT_SB_BY, d.verursacher)}</select>`)}
+        ${f('mtF-measures', 'Sofortmaßnahmen', `<textarea class="mt-in mt-ta" id="mtF-measures" rows="2" maxlength="1000" placeholder="e.g. Wasser abgestellt, Notdienst, Trocknung">${mtEsc(d.massnahmen || '')}</textarea>`, { full: true })}
+        ${f('mtF-claim', 'Schadennummer', `<input class="mt-in" id="mtF-claim" type="text" maxlength="60" autocomplete="off" value="${mtEsc(d.schadennummer || '')}"/>`)}
+        ${f('mtF-told', 'Mieter informiert am', `<input class="mt-in" id="mtF-told" type="date" value="${mtEsc(d.mieter_informiert || '')}"/>`)}
+        ${f('mtF-own', 'Betroffen', `<select class="mt-in" id="mtF-own">${opt(MT_SB_OWN, d.eigentum)}</select>`, { sb: 'own', hide: !sch || casa })}
+        ${f('mtF-police', 'Polizei-Aktenzeichen', `<input class="mt-in" id="mtF-police" type="text" maxlength="60" autocomplete="off" value="${mtEsc(d.polizei_az || '')}"/>`, { sb: 'police', hide: !sch || !police })}`;
+}
+/* Which Schaden fields show: type Schaden · Betroffen only for apartments · Polizei only for Einbruch / Vandalismus */
+function mtSbVis() {
+  const kind = document.getElementById('mtF-kind')?.value;
+  const sch = kind === 'schaden';
+  const casa = mtIsCasa(document.getElementById('mtF-prop')?.value);
+  const police = /Einbruch/.test(document.getElementById('mtF-art')?.value || '');
+  document.querySelectorAll('#mtPanel [data-only="schaden"]').forEach(el => {
+    const sb = el.dataset.sb;
+    el.hidden = !sch || (sb === 'own' && casa) || (sb === 'police' && !police);
+  });
+}
+
+/* Everything the report needs from the other apps (fresh each time the form opens) */
+async function mtSbLoad() {
+  const sb = _ctlSupa;
+  const all = t => sb.from(t).select('*').then(r => (r.error ? [] : r.data || []), () => []);
+  const [rooms, ten, apts, verw, rten, vers] = await Promise.all([
+    all('rooms'), all('tenant_records'), all('rentals_apartments'), all('rentals_verwaltung'), all('rnt_tenant_records'), all('maint_props'),
+  ]);
+  try { if (typeof loadSettings === 'function') await loadSettings(); } catch (e) {}
+  vers.forEach(r => { MT.vers[String(r.property_id)] = r; });
+  MT.sbData = {
+    rooms: rooms.filter(r => r.active !== false).sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999)).map(r => r.name).filter(Boolean),
+    ten, apts, verw, rten,
+  };
+}
+/* The Rentals apartment of a property (link in Controlling, else the same name) */
+function mtSbApt(c) {
+  const p = mtProp(c.property_id), apts = (MT.sbData && MT.sbData.apts) || [];
+  if (!p) return null;
+  if (p.rentals_apartment_ref) return apts.find(a => String(a.id) === String(p.rentals_apartment_ref)) || null;
+  return apts.find(a => mtNorm(a.name) === mtNorm(p.name)) || null;
+}
+/* Any stored date → YYYY-MM-DD */
+function mtIso(v) {
+  const s = String(v || '').trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+}
+const mtSbNames = r => [[r.first_name, r.last_name], [r.first_name_2, r.last_name_2], [r.first_name_3, r.last_name_3]]
+  .map(x => x.filter(Boolean).join(' ')).filter(Boolean).join(', ') || r.name || '';
+/* Who lived there on the Schadenstag (else today) */
+function mtSbTenant(c, room) {
+  const D = MT.sbData; if (!D) return '';
+  const day = c.case_date || ccTodayISO();
+  let list;
+  if (mtIsCasa(c.property_id)) {
+    if (!room || room === MT_SB_ALL) return '';
+    list = D.ten.filter(r => String(r.room || '') === room);
+  } else {
+    const apt = mtSbApt(c); if (!apt) return '';
+    list = D.rten.filter(r => String(r.apartment_id) === String(apt.id));
+  }
+  const inside = r => { const a = mtIso(r.mietbeginn), b = mtIso(r.mietende); return (!a || a <= day) && (!b || b >= day); };
+  let hits = list.filter(inside);
+  if (!hits.length && day >= ccTodayISO()) hits = list.filter(r => r.status === 'active');
+  hits.sort((a, b) => mtIso(b.mietbeginn).localeCompare(mtIso(a.mietbeginn)));
+  return hits.length ? mtSbNames(hits[0]) : '';
+}
+/* The photos of the entry, in the order they were taken */
+function mtSbPhotos(c) {
+  const t = p => String(p.taken_at || p.doc_date || p.created_at || '');
+  return mtCaseDocs(c.id).filter(d => d.doc_type === 'photo').sort((a, b) => t(a).localeCompare(t(b)) || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+}
+function mtSbWhen(p) {
+  if (p.taken_at) {
+    const d = new Date(p.taken_at);
+    if (!isNaN(d)) { const two = n => String(n).padStart(2, '0'); return `${two(d.getDate())}.${two(d.getMonth() + 1)}.${d.getFullYear()} · ${two(d.getHours())}:${two(d.getMinutes())}`; }
+  }
+  return mtDate(p.doc_date || ccDayOf(p.created_at)) || '';
+}
+function mtSbNextNo() {
+  const y = new Date().getFullYear();
+  const n = MT.cases.map(x => String(x.report_no || '').match(/^SB-(\d{4})-(\d+)$/)).filter(m => m && Number(m[1]) === y).map(m => Number(m[2]));
+  return `SB-${y}-${String((n.length ? Math.max(...n) : 0) + 1).padStart(3, '0')}`;
+}
+
+/* ── the form ── */
+async function mtSbOpen() {
+  const c = mtOpenCase();
+  if (!c || c.kind !== 'schaden' || mtActive(c)) return;
+  if (!MT.d5) { mtSay('Run MAINTENANCE-D5.sql in Supabase first.'); return; }
+  MT.sel.sb = { ready: false };
+  mtRenderPanel();
+  document.getElementById('mtDocs')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  await mtSbLoad();
+  const f = MT.sel && MT.sel.sb;
+  if (!f || String(MT.sel.id) !== String(c.id)) return;
+  const casa = mtIsCasa(c.property_id), rooms = MT.sbData.rooms;
+  let room = c.report_room || '';
+  if (casa && !room) room = rooms.find(r => mtNorm(c.area).includes(mtNorm(r))) || '';       // "Zimmer Oslo" → Oslo
+  const v = MT.vers[String(c.property_id)] || {};
+  const auto = mtSbTenant(c, room);
+  Object.assign(f, {
+    ready: true, room, sig: !!c.report_mieter_sig,
+    mieter: c.report_mieter || auto, mieterAuto: !c.report_mieter,
+    vers: v.versicherer || '', versNr: v.versicherungsnr || '',
+    photosOn: mtSbPhotos(c).length > 0, busy: false, done: '',
+  });
+  mtRenderPanel();
+}
+function mtSbCapture() {
+  const f = MT.sel && MT.sel.sb, g = id => document.getElementById(id);
+  if (!f || !f.ready || !g('mtSb-form')) return;
+  if (g('mtSb-room')) f.room = g('mtSb-room').value;
+  if (g('mtSb-mieter')) f.mieter = g('mtSb-mieter').value;
+  if (g('mtSb-sig')) f.sig = g('mtSb-sig').checked;
+  if (g('mtSb-vers')) f.vers = g('mtSb-vers').value;
+  if (g('mtSb-versnr')) f.versNr = g('mtSb-versnr').value;
+}
+function mtSbFormHTML(c, f) {
+  if (!f.ready) return `<div class="mt-ab mt-sb" id="mtSb-form"><p class="mt-sb__t"><i class="ti ti-file-description" aria-hidden="true"></i>Schadensbericht</p>
+    <p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Loading…</p></div>`;
+  const casa = mtIsCasa(c.property_id);
+  const rooms = casa ? MT.sbData.rooms.slice() : [];
+  if (casa && f.room && f.room !== MT_SB_ALL && !rooms.includes(f.room)) rooms.push(f.room);
+  const photos = mtSbPhotos(c);
+  let n = 0;
+  const tiles = photos.map(p => {
+    const on = p.in_report !== false;
+    return `<button type="button" class="mt-sbt${on ? '' : ' is-off'}" data-mt="sbPhoto" data-id="${mtEsc(p.id)}" aria-label="${on ? 'Photo ' + (n + 1) : 'Photo not in the report'}${p.caption ? ': ' + mtEsc(p.caption) : ''}">
+        <img alt="" loading="lazy" data-path="${mtEsc(p.file_path)}" data-thumb="${mtEsc(mtThumbPath(p.file_path))}"/>
+        ${on ? `<span class="mt-sbt__no">${++n}</span>` : '<span class="mt-sbt__off"><i class="ti ti-eye-off" aria-hidden="true"></i></span>'}
+        ${p.caption ? '<span class="mt-sbt__cap" aria-hidden="true"><i class="ti ti-align-left"></i></span>' : ''}
+      </button>`;
+  }).join('');
+  const busy = !!f.busy;
+  return `<div class="mt-ab mt-sb" id="mtSb-form">
+      <p class="mt-sb__t"><i class="ti ti-file-description" aria-hidden="true"></i>Schadensbericht${c.report_no ? ' · ' + mtEsc(c.report_no) : ''}</p>
+      <div class="mt-grid">
+        ${casa ? `<div class="mt-f mt-f--full"><label class="mt-k" for="mtSb-room">Zimmer</label><select class="mt-in" id="mtSb-room">
+          <option value=""${f.room ? '' : ' selected'}>Choose</option>
+          ${rooms.map(r => `<option value="${mtEsc(r)}"${f.room === r ? ' selected' : ''}>${mtEsc(r)}</option>`).join('')}
+          <option value="${MT_SB_ALL}"${f.room === MT_SB_ALL ? ' selected' : ''}>Gemeinschaftsfläche</option></select></div>` : ''}
+        <div class="mt-f mt-f--full"><label class="mt-k" for="mtSb-mieter">Mieter</label>
+          <input class="mt-in" id="mtSb-mieter" type="text" maxlength="160" autocomplete="off" placeholder="${casa && f.room === MT_SB_ALL ? 'optional' : ''}" value="${mtEsc(f.mieter || '')}"/></div>
+        <div class="mt-f mt-f--full"><label class="mt-chk"><input type="checkbox" id="mtSb-sig"${f.sig ? ' checked' : ''}/><span>Mieter unterschreibt mit</span></label></div>
+        <div class="mt-f"><label class="mt-k" for="mtSb-vers">Versicherung</label>
+          <input class="mt-in" id="mtSb-vers" type="text" maxlength="120" autocomplete="off" value="${mtEsc(f.vers || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtSb-versnr">Versicherungsnr.</label>
+          <input class="mt-in" id="mtSb-versnr" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.versNr || '')}"/></div>
+        <div class="mt-f mt-f--full"><span class="mt-k">Fotos</span>
+          <div class="mt-seg" role="group" aria-label="Fotos im Bericht">
+            <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Ohne Fotos</button>
+            <button type="button" class="mt-seg__b${f.photosOn ? ' is-on' : ''}" data-mt="sbFotos" data-v="1" aria-pressed="${!!f.photosOn}">Mit Fotos</button>
+          </div>
+          ${f.photosOn ? `<div class="mt-sbg">${tiles}
+            <button type="button" class="mt-sbt mt-sbt--add" data-mt="sbAddPhoto"><i class="ti ti-camera" aria-hidden="true"></i><span>Foto</span></button></div>
+            <p class="mt-hint">Tap a photo to leave it out or add a Beschreibung. New photos are kept in the entry too.</p>` : ''}
+        </div>
+      </div>
+      ${f.done ? `<p class="mt-sb__ok"><i class="ti ti-check" aria-hidden="true"></i>Saved in Documents · Stand ${mtEsc(f.done)}</p>` : ''}
+      <div class="cc-sec-foot">
+        <span aria-hidden="true"></span>
+        <span class="cc-foot-right">
+          <button type="button" class="cc-foot-btn" data-mt="sbCancel"${busy ? ' disabled' : ''}>${f.done ? 'Close' : 'Cancel'}</button>
+          <button type="button" class="cc-foot-btn mt-save" data-mt="sbMake" data-cc-pdf="1"${busy ? ' disabled' : ''}>${busy ? 'Creating PDF…' : (f.done ? 'PDF again' : 'PDF erstellen')}</button>
+        </span>
+      </div>
+    </div>`;
+}
+function mtSbRoomChanged() {
+  const s = MT.sel, c = s && !s.isNew ? mtCase(s.id) : null, f = s && s.sb;
+  if (!c || !f || !f.ready) return;
+  mtSbCapture();
+  if (f.mieterAuto || !String(f.mieter || '').trim()) { f.mieter = mtSbTenant(c, f.room); f.mieterAuto = true; }
+  mtRenderPanel();
+}
+
+/* Photo sheet: bigger photo · in the report yes / no · Beschreibung (saved to the photo) */
+function mtSbPhotoSheet(id) {
+  const p = MT.docs.find(x => String(x.id) === String(id));
+  if (!p) return;
+  mtSbCapture();
+  document.getElementById('mtSbSheet')?.remove();
+  const url = mtLinkNow(p.file_path) || mtLinkNow(mtThumbPath(p.file_path)) || '';
+  const h = document.createElement('div');
+  h.id = 'mtSbSheet';
+  h.className = 'mt-cf';
+  h.innerHTML = `<div class="mt-cf__bg" data-v="0"></div>
+    <div class="mt-cf__s mt-sbs" role="dialog" aria-modal="true" aria-label="Photo">
+      <div class="mt-sbs__img">${url ? `<img src="${mtEsc(url)}" alt=""/>` : '<span class="mt-mu">…</span>'}</div>
+      <label class="mt-chk mt-sbs__in"><input type="checkbox" id="mtSbsIn"${p.in_report === false ? '' : ' checked'}/><span>In the report</span></label>
+      <label class="mt-k" for="mtSbsCap">Beschreibung <span class="mt-mu">(optional)</span></label>
+      <input class="mt-in" id="mtSbsCap" type="text" maxlength="120" autocomplete="off" placeholder="z. B. Wand hinter dem WC" value="${mtEsc(p.caption || '')}"/>
+      <div class="mt-cf__b">
+        <button type="button" class="mt-btn mt-btn--p" data-v="1">Done</button>
+        <button type="button" class="mt-btn mt-btn--s" data-v="0">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(h);
+  if (!url) mtPrepareLinks([p.file_path]).then(() => { const u = mtLinkNow(p.file_path), box = h.querySelector('.mt-sbs__img'); if (u && box) box.innerHTML = `<img src="${mtEsc(u)}" alt=""/>`; });
+  const done = async save => {
+    document.removeEventListener('keydown', key, true);
+    const inRep = h.querySelector('#mtSbsIn').checked, cap = h.querySelector('#mtSbsCap').value.trim();
+    h.remove();
+    if (!save || (inRep === (p.in_report !== false) && cap === String(p.caption || ''))) return;
+    const old = { in_report: p.in_report, caption: p.caption };
+    p.in_report = inRep; p.caption = cap || null;
+    mtRenderPanel();
+    const r = await mtTry(() => _ctlSupa.from('maint_docs').update({ in_report: inRep, caption: cap || null }).eq('id', p.id));
+    if (r.error) { Object.assign(p, old); mtRenderPanel(); mtSay('Not saved. Check the connection and try again.'); }
+  };
+  const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(false); } };
+  document.addEventListener('keydown', key, true);
+  h.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) { e.stopPropagation(); done(b.dataset.v === '1'); } });
+  h.querySelector('#mtSbsCap').addEventListener('keydown', e => { if (e.key === 'Enter') done(true); });
+}
+
+/* "Foto" in the form: camera or library → saved to the entry (with the time it was taken), in the report */
+function mtSbAddPhoto() {
+  const c = mtOpenCase(), f = MT.sel && MT.sel.sb;
+  if (!c || !f || f.busy || MT.up) return;
+  mtSbCapture();
+  mtFileInput('mtSbPhotoInput', 'image/*', true, async files => {
+    const c2 = mtOpenCase();
+    if (!c2 || String(c2.id) !== String(c.id)) return;
+    const imgs = files.filter(mtIsImage);
+    if (!imgs.length) { mtSay('Choose photos (JPG, PNG or HEIC).'); return; }
+    MT.up = { caseId: c.id, total: imgs.length, done: 0, where: 'docs' };
+    let ok = 0;
+    for (const x of imgs) {
+      if (await mtUploadOne(c, x, { type: 'photo', amount: null, date: mtFileDay(x) }, await mtPhotoExtra(x))) ok++;
+      MT.up.done++;
+    }
+    MT.up = null;
+    mtRefresh(c.id);
+    if (ok < imgs.length) mtSay(`${ok} of ${imgs.length} photos saved. Add the others again.`);
+  });
+}
+/* When a photo was taken (from the photo itself) → saved with it (D5) */
+async function mtPhotoExtra(file) {
+  if (!MT.d5 || typeof _ccUbExifTime !== 'function') return {};
+  try { const t = await _ccUbExifTime(file); return t ? { taken_at: new Date(t.ts).toISOString() } : {}; }
+  catch (e) { return {}; }
+}
+
+/* ── the PDF ── */
+function mtLoadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function mtSbLibs() {
+  if (typeof html2canvas === 'undefined') await mtLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  if (!window.jspdf) await mtLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  if (!document.getElementById('mtPdfFonts')) {
+    const l = document.createElement('link');
+    l.id = 'mtPdfFonts'; l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300;1,400&display=swap';
+    document.head.appendChild(l);
+  }
+  try { await Promise.all(['400 26px "Playfair Display"', '400 12px "Lato"', '700 12px "Lato"', 'italic 400 10px "Lato"'].map(x => document.fonts.load(x))); } catch (e) {}
+}
+/* The data for the template (maint-schaden-pdf.js) */
+function mtSbData(c, f, photoCount) {
+  const S = (typeof appSettings !== 'undefined' && appSettings) || {};
+  const casa = mtIsCasa(c.property_id), apt = casa ? null : mtSbApt(c);
+  const adresse = casa ? [S.objekt_adresse, S.objekt_plz_ort].filter(Boolean).join(', ')
+                       : (apt ? [apt.adresse, apt.plz_ort].filter(Boolean).join(', ') : '');
+  const room = casa && f.room && f.room !== MT_SB_ALL ? f.room : '';
+  const unit = casa ? (room ? ['Zimmer', room] : ['Bereich', c.area || 'Gemeinschaftsfläche'])
+                    : (apt && apt.wohnungsnummer ? ['Wohnung', String(apt.wohnungsnummer)] : ['', '']);
+  const verw = apt ? ((MT.sbData && MT.sbData.verw) || []).find(v => String(v.apartment_id) === String(apt.id)) : null;
+  const kosten = [];
+  mtCostsOf(c.id).filter(r => !r.return_of).sort(mtCostByDate).forEach(r => {
+    kosten.push({ nr: r.receipt_no || '', text: r.description || '', firma: r.brand || '', datum: mtDate(r.cost_date), betragText: mtEur(r.amount) });
+    mtReturnsOf(r.id).forEach(t => kosten.push({ ret: true, nr: t.receipt_no ? 'Slip ' + t.receipt_no : 'Rückgabe',
+      text: 'Rückgabe' + (t.description ? ' · ' + t.description : ''), firma: r.brand || '', datum: mtDate(t.cost_date), betragText: mtEur(t.amount) }));
+  });
+  const files = mtCaseDocs(c.id).filter(d => d.doc_type !== 'photo' && d.doc_type !== 'receipt' && !d.generated)
+    .sort((a, b) => String(a.doc_date || '').localeCompare(String(b.doc_date || '')));
+  const anlagen = files.map(d => ({ name: MT_DOC_DE[d.doc_type] || 'Dokument', info: [d.file_name, mtDate(d.doc_date)].filter(Boolean).join(' · ') }));
+  if (photoCount) anlagen.push({ name: 'Fotodokumentation', info: (photoCount === 1 ? '1 Foto' : photoCount + ' Fotos') + ', am Ende des Berichts' });
+  return {
+    family: casa ? 'casa' : 'rentals',
+    objektName: casa ? 'Casa Castel' : ((apt && apt.name) || mtPropName(c)),
+    einheitLabel: unit[0], einheitWert: unit[1],
+    subtitle: (casa ? ['Zimmervermietung', adresse] : [(apt && apt.zimmer_type) || 'Wohnung', adresse]).filter(Boolean).join(' · '),
+    titel: c.title, nummer: f.reportNo, stand: mtDate(ccTodayISO()),
+    schadensart: c.schadensart || '',
+    adresse,
+    // Casa Castel: the Zimmer is already named ("Zimmer Oslo" → only "Oslo"); Gemeinschaftsfläche shows the Area once
+    bereich: casa && (!room || new RegExp('(^|[^a-zäöüß0-9])' + room.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-zäöüß0-9])', 'i').test(c.area || '')) ? '' : (c.area || ''),
+    vermieter: S.vermieter_name || '', vermieterAdresse: S.vermieter_adresse || '',
+    mieter: String(f.mieter || '').trim(),
+    hausverwaltung: verw ? [verw.hausverwaltung, verw.hv_email, verw.hv_telefon].filter(Boolean).join(' · ') : '',
+    versicherung: String(f.vers || '').trim(), versicherungsnr: String(f.versNr || '').trim(),
+    schadennummer: c.schadennummer || '',
+    schadenstag: mtDate(c.case_date), festgestellt: mtDate(c.festgestellt_am), behoben: mtDate(c.end_date),
+    eigentum: casa ? '' : (c.eigentum || ''),
+    ursache: [c.ursache, mtLabelOf(MT_SB_BY, c.verursacher)].filter(Boolean).join(' · '),
+    mieterInformiert: mtDate(c.mieter_informiert),
+    polizei: /Einbruch/.test(c.schadensart || '') ? (c.polizei_az || '') : '',
+    hergang: c.description || '', massnahmen: c.massnahmen || '',
+    kosten, summeText: mtEur(mtCost([c.id])),
+    kostentraeger: MT_PAID_DE[c.paid_by] || '',
+    anlagen,
+    ort: (apt && apt.unterschrift_ort) || S.unterschrift_ort || '',
+    mieterZeile: !!f.sig,
+    footerAdresse: adresse,
+  };
+}
+/* The photos in the report → as the Übergabe photo pages expect them */
+async function mtSbPhotoData(c) {
+  const out = [];
+  for (const p of mtSbPhotos(c).filter(x => x.in_report !== false)) {
+    let blob = null;
+    for (let i = 0; i < 2 && !blob; i++) {
+      try { const r = await _ctlSupa.storage.from(MT_BUCKET).download(p.file_path); if (!r.error) blob = r.data; } catch (e) {}
+    }
+    if (!blob) throw new Error('A photo could not be loaded.');
+    const img = await _ccUbLoadImage(blob);
+    out.push({ ...img, ts: Date.parse(p.taken_at || p.created_at) || Date.now(), when: mtSbWhen(p), taken: true, caption: p.caption || '' });
+  }
+  return out;
+}
+/* Keep the PDF in Documents (a new version each time) */
+async function mtSbStore(c, blob, name) {
+  const sb = _ctlSupa, id = mtUuid(), path = `${c.id}/${id}.pdf`;
+  const up = await mtTry(() => sb.storage.from(MT_BUCKET).upload(path, blob, { contentType: 'application/pdf', upsert: false, cacheControl: '3600' }));
+  if (up.error) { console.error('[maintenance] report upload failed:', up.error); return false; }
+  const row = { id, case_id: c.id, doc_type: 'schadenbericht', file_path: path, file_name: name, doc_date: ccTodayISO(), generated: true };
+  const ins = await mtTry(() => sb.from('maint_docs').insert(row));
+  if (ins.error) {
+    console.error('[maintenance] report row failed:', ins.error);
+    try { await sb.storage.from(MT_BUCKET).remove([path]); } catch (e) {}
+    return false;
+  }
+  MT.docs.push({ ...row, created_at: new Date().toISOString() });
+  return true;
+}
+/* Remember the report no. and the choices (+ the Versicherung of the property) */
+async function mtSbRemember(c, f) {
+  const sb = _ctlSupa;
+  const patch = { report_no: f.reportNo, report_room: f.room || null, report_mieter: String(f.mieter || '').trim() || null, report_mieter_sig: !!f.sig };
+  const r = await mtTry(() => sb.from('maint_cases').update(patch).eq('id', c.id));
+  if (!r.error) Object.assign(c, patch); else console.warn('[maintenance] report choices not saved:', r.error);
+  const v = { property_id: Number(c.property_id), versicherer: String(f.vers || '').trim() || null, versicherungsnr: String(f.versNr || '').trim() || null, updated_at: new Date().toISOString() };
+  const old = MT.vers[String(c.property_id)] || {};
+  if ((old.versicherer || null) !== v.versicherer || (old.versicherungsnr || null) !== v.versicherungsnr) {
+    const w = await mtTry(() => sb.from('maint_props').upsert(v));
+    if (!w.error) MT.vers[String(c.property_id)] = v; else console.warn('[maintenance] Versicherung not saved:', w.error);
+  }
+}
+async function mtSbMake() {
+  const s = MT.sel, c = s && !s.isNew ? mtCase(s.id) : null, f = s && s.sb;
+  const stop = msg => { if (typeof ccCancelPdf === 'function') ccCancelPdf(); if (msg) mtSay(msg); };
+  if (!c || !f || !f.ready || f.busy || MT.busy || MT.up) return stop();
+  mtSbCapture();
+  if (mtIsCasa(c.property_id) && !f.room) { stop('Choose the Zimmer (or Gemeinschaftsfläche).'); document.getElementById('mtSb-room')?.focus(); return; }
+  if (typeof mtSbHTML !== 'function' || typeof ccRenderPagesToPdf !== 'function' || typeof ccUbAddPhotoPages !== 'function') return stop('The PDF files are missing. Upload all files of this update.');
+  f.busy = true; f.done = '';
+  mtRenderPanel();
+  let box = null;
+  try {
+    await mtSbLibs();
+    f.reportNo = c.report_no || mtSbNextNo();
+    const photos = f.photosOn ? await mtSbPhotoData(c) : [];
+    const d = mtSbData(c, f, photos.length);
+    box = document.createElement('div');
+    box.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#fff;z-index:-1;font-size:11.33px;';
+    box.innerHTML = mtSbHTML(d);
+    document.body.appendChild(box);
+    await document.fonts.ready;
+    await new Promise(r => setTimeout(r, 300));
+    _ccUb['mt-sb'] = { on: photos.length > 0, photos };
+    await ccUbAddPhotoPages('mt-sb', box, { sub: 'Schadensbericht · ' + [c.title, d.objektName].filter(Boolean).join(' · ') });
+    // casa-castel.css "img { display:block }" moves html2canvas' text-measuring image off the line,
+    // which drops text a few px under its tick box → keep that image inline while the PDF is drawn
+    const fix = document.createElement('style');
+    fix.textContent = 'body > div[style*="visibility: hidden"] > img { display:inline !important; }';
+    document.head.appendChild(fix);
+    let pdf;
+    try { pdf = await ccRenderPagesToPdf(box, { strict: true }); }
+    finally { fix.remove(); }
+    const name = `Schadensbericht ${f.reportNo} Stand ${d.stand}.pdf`;
+    if (!(await mtSbStore(c, pdf.output('blob'), name))) throw new Error('store');
+    await mtSbRemember(c, f);
+    f.busy = false; f.done = d.stand;
+    mtRefresh(c.id);
+    await ccOpenPdf(pdf, ccPdfFileName('Schadensbericht', f.reportNo, d.objektName, 'Stand ' + d.stand));
+  } catch (e) {
+    console.error('[maintenance] Schadensbericht:', e);
+    f.busy = false;
+    if (MT.sel && MT.sel.sb === f) mtRenderPanel();
+    const m = String((e && e.message) || '');
+    stop(/did not fit/.test(m) ? m : /photo/i.test(m) ? 'A photo could not be loaded. Check the connection and try again.'
+      : 'The Schadensbericht could not be created. Check the connection and try again.');
+  } finally {
+    if (box) box.remove();
+    try { delete _ccUb['mt-sb']; } catch (e) {}
+  }
+}
+
 /* ── Wiring ───────────────────────────────────────────────── */
 function mtWire() {
   document.querySelectorAll('#appTabs .cc-tab').forEach(b => {
@@ -1374,15 +1857,27 @@ function mtWire() {
     else if (a === 'costSave') mtCostSave();
     else if (a === 'costDel') mtCostDelete();
     else if (a === 'costReturn') mtCostNewReturn();
+    else if (a === 'sbOpen') mtSbOpen();
+    else if (a === 'sbCancel') { if (MT.sel && MT.sel.sb && !MT.sel.sb.busy) { MT.sel.sb = null; mtRenderPanel(); } }
+    else if (a === 'sbFotos') { const f = MT.sel && MT.sel.sb; if (f && !f.busy) { mtSbCapture(); f.photosOn = b.dataset.v === '1'; mtRenderPanel(); } }
+    else if (a === 'sbPhoto') { if (MT.sel && MT.sel.sb && !MT.sel.sb.busy) mtSbPhotoSheet(b.dataset.id); }
+    else if (a === 'sbAddPhoto') mtSbAddPhoto();
+    else if (a === 'sbMake') mtSbMake();
   });
   document.addEventListener('change', e => {
     const t = e.target;
     if (!t) return;
     if (t.id === 'mtF-kind') mtKindChanged();
+    else if (t.id === 'mtF-prop' || t.id === 'mtF-art') mtSbVis();
+    else if (t.id === 'mtSb-room') mtSbRoomChanged();
     else if (t.dataset && t.dataset.docType) mtDocTypeChanged(t.dataset.docType);
   });
+  document.addEventListener('input', e => {             // the Mieter typed by hand is kept when the Zimmer changes
+    if (e.target && e.target.id === 'mtSb-mieter' && MT.sel && MT.sel.sb) MT.sel.sb.mieterAuto = false;
+  });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && MT.sel && !document.getElementById('mtConfirm') && !document.getElementById('ccCal')) mtClose();
+    if (e.key === 'Escape' && MT.sel && !document.getElementById('mtConfirm') && !document.getElementById('ccCal')
+        && !document.getElementById('mtSbSheet') && !document.getElementById('ccPdfSheet')) mtClose();
   });
 }
 

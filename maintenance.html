@@ -28,7 +28,7 @@
     .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:mt-spin .8s linear infinite; }
     @keyframes mt-spin { to { transform:rotate(360deg); } }
   </style>
-  <link rel="stylesheet" href="maintenance.css?v=2026-10-15-D4"/>
+  <link rel="stylesheet" href="maintenance.css?v=2026-10-15-D5"/>
 </head>
 <body class="is-landlord">
 
@@ -87,7 +87,11 @@
 
   <!-- Same login session + logout + toast as Settlements / Controlling -->
   <script src="controlling-auth.js?v=2026-10-01b"></script>
-  <script src="maintenance.js?v=2026-10-15-D4"></script>
+  <!-- Schadensbericht (D5): the app's document code — PDF engine, photo pages, template -->
+  <script src="pdf-open.js?v=2026-10-15-D5"></script>
+  <script src="cc-ueberg-photos.js?v=2026-10-15-D5"></script>
+  <script src="maint-schaden-pdf.js?v=2026-10-15-D5"></script>
+  <script src="maintenance.js?v=2026-10-15-D5"></script>
 
   <!-- Profile panel (same one as Rentals / Controlling), sharing this page's login session -->
   <script>var sbL = _ctlSupa;</script>

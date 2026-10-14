@@ -1,7 +1,8 @@
 /* ─────────────────────────────────────────────────────────────
    cc-ueberg-photos.js — Fotos im Übergabeprotokoll (Einzug & Auszug)
 
-   Used by the 3 Übergabe generators:
+   Used by the 3 Übergabe generators (and the Schadensbericht in Maintenance,
+   maint-schaden-pdf.js, which passes its own subtitle as meta.sub):
      Apartments  (rentals-tab-apartments.js + rentals-ueberg-pdf.js)          key 'apt-ub'
      Parking     (rentals-tab-parking.js    + rentals-parking-ueberg-pdf.js)  key 'pk-ub'
      Casa Castel (tab-rooms.js)                                               key 'room-ub'
@@ -240,8 +241,8 @@ async function ccUbAddPhotoPages(key, container, meta = {}) {
   const cw = (first.querySelector(':scope > .content')?.clientWidth) || 634;
   const frameW = Math.floor((cw - GAP_X) / 2);
   const total = st.photos.length;
-  const sub = ['Übergabeprotokoll ' + (meta.isEinzug ? 'Einzug' : 'Auszug'), meta.objekt, meta.mieter,
-    total === 1 ? '1 Foto' : total + ' Fotos'].filter(Boolean).map(E).join(' · ');
+  const sub = (meta.sub ? [meta.sub] : ['Übergabeprotokoll ' + (meta.isEinzug ? 'Einzug' : 'Auszug'), meta.objekt, meta.mieter])
+    .concat(total === 1 ? '1 Foto' : total + ' Fotos').filter(Boolean).map(E).join(' · ');   // meta.sub: own subtitle (Schadensbericht)
   const imgs = [];
   for (let start = 0; start < total; start += PER) {
     const pg = first.cloneNode(true);
