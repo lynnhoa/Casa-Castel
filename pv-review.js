@@ -19,7 +19,7 @@
 /* ── CARD ACTIONS ───────────────────────────────────────── */
 const _PVA_ACT = {
   approve: ['pv_admin_approve', 'Approved.'],
-  reject:  ['pv_admin_reject', 'Rejected — not counted.'],
+  reject:  ['pv_admin_reject', 'Not counted.'],
   undo:    ['pv_admin_undo', 'Back to review — waiting for you.'],
   unflag:  ['pv_admin_unflag', 'Redo removed — waiting for you.'],
   missed:  ['pv_admin_missed', 'Marked as missed.'],
@@ -30,7 +30,7 @@ async function pvaAct(kind, visitId) {
   if (_pvaActBusy) return;
   if (kind === 'flag') { pvaOpenFlag(visitId, null); return; }
   if (kind === 'missed' && !(await ccConfirm('Mark as missed?', 'Today\u2019s visit has no photos yet. It turns red; you can reopen it later.', 'Missed', true))) return;
-  if (kind === 'reject' && !(await ccConfirm('Don\u2019t count this visit?', 'It is not counted and cannot carry an invoice. The provider sees “Nicht gezählt”.', 'Don\u2019t count', true))) return;
+  if (kind === 'reject' && !(await ccConfirm('Don\u2019t count this visit?', 'It is not counted. An invoice already sent goes back to the provider, who sees “Nicht gezählt”.', 'Don\u2019t count', true))) return;
   const a = _PVA_ACT[kind];
   if (!a) return;
   _pvaActBusy = true;
@@ -50,10 +50,9 @@ function _pvaWact(kind, color, icon, label, id) {
 /* the action buttons for the card (used by _pvaCardHTML in pv-admin.js) */
 function pvaCardActs(v, today) {
   if (!v) return '';
-  if (v.status === 'sent' && v.unplanned) return '';                 /* FIX12: decided in the chat, like planned visits */
-  if (v.status === 'sent') return '';                       /* review lives on the photo grid in the chat */
+  if (v.status === 'sent') return _pvaWact('approve', 'green', 'act_approve', 'Approve', v.id) + _pvaWact('flag', 'red', 'act_flag', 'Flag', v.id);   /* Build 1: the kitchen pattern */
   if (v.status === 'done') return _pvaWact('undo', 'amber', 'act_undo', 'Undo', v.id);
-  if (v.status === 'redo') return _pvaWact('unflag', 'amber', 'act_unflag', 'Unflag', v.id);
+  if (v.status === 'redo') return _pvaWact('unflag', 'amber', 'act_unflag', 'Unflag', v.id) + _pvaWact('reject', 'red', 'act_reject', 'Don’t count', v.id);
   if (v.status === 'missed') return _pvaWact('reopen', 'amber', 'act_reopen', 'Reopen', v.id);
   if (v.status === 'planned' && v.date === today && !v.started_at) return _pvaWact('missed', 'red', 'act_missed', 'Missed', v.id);
   return '';
@@ -197,11 +196,24 @@ function _pvfRender() {
     <div class="cc-sec-foot" style="margin-top:14px;">
       <button class="cc-foot-btn" type="button" data-close="pvaFlagScrim">Cancel</button>
       <button class="cc-foot-btn cc-foot-btn--red" type="button" onclick="pvaFlagSend()"${n ? '' : ' disabled style="opacity:.45;"'}>${pvPic('send_redo', 12)}Send redo · ${n}</button>
-    </div>`;
+    </div>
+    <button class="pv-dontcount" type="button" onclick="pvaFlagDontCount()">Don’t count this visit</button>`;
 }
 function pvaFlagToggle(key) {
   if (_pvf.sel.has(key)) _pvf.sel.delete(key); else _pvf.sel.add(key);
   _pvfRender();
+}
+async function pvaFlagDontCount() {           /* Build 1 · the only extra compared with the kitchen */
+  const id = _pvf.visit;
+  if (!id || _pvaActBusy) return;
+  if (!(await ccConfirm('Don\u2019t count this visit?', 'It is not counted. An invoice already sent goes back to the provider, who sees \u201cNicht gez\u00e4hlt\u201d.', 'Don\u2019t count', true))) return;
+  _pvaActBusy = true;
+  const { data, error } = await pvaRpc('pv_admin_reject', { p_visit: id });
+  _pvaActBusy = false;
+  if (error) { pvaToast('No connection — try again.'); return; }
+  $a('pvaFlagScrim').classList.add('pv-hidden');
+  pvaToast(data && data.error ? 'Already changed — refreshed.' : 'Not counted.');
+  pvaLoad();
 }
 async function pvaFlagSend() {
   if (!_pvf.sel.size || _pvaActBusy) return;

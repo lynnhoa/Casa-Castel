@@ -166,8 +166,11 @@ function _pvMayAbort(v) {                    /* only my own photos on it → I m
   const me = _pvMyName();
   return (v.points || []).every(p => !(p.path || p.np) || !p.by || p.by === me);
 }
-function _pvUnplannedLink() {                /* no visit in the photo window → unplanned start (two taps) */
-  return `<button type="button" class="pv-link" data-act="unplanned" data-sure-label="Sicher? Nochmal tippen · Tap again">Heute ohne Termin geputzt? Starten · Start</button>`;
+function _pvUnplannedLink() {                /* no visit in the photo window → start without a date (one tap) */
+  return `<button type="button" class="pv-link" data-act="unplanned">Heute geputzt? Starten · Cleaned today? Start</button>`;
+}
+function _pvAnotherLink() {                  /* Build 1 · a second cleaning on the same day */
+  return `<button type="button" class="pv-link" data-act="unplanned">Noch eine Reinigung heute? Starten · Start another</button>`;
 }
 function pvRoomMap(state) {                 /* point key → room (Bad 1, Bad 2 …) from the list */
   const m = {}, l = state && state.list;
@@ -235,8 +238,8 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip">${_pvIco('chip_later', 13)}Kein Termin heute <span class="en">· No visit today</span></span></div>
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(s.today))}</span>
         <span class="k-mob-week-dates-sm">Kein nächster Termin · no next visit</span>`,
-        _pvWact('unplanned', 'gold', 'btn_unplanned', 'Starten', ' data-sure-label="Sicher?"'))}
-      <span class="k-note">Trotzdem geputzt? Casa Castel prüft es. · Cleaned anyway? Casa Castel checks it.</span>` };
+        _pvWact('unplanned', 'gold', 'btn_unplanned', 'Starten'))}
+      <span class="k-note">Heute geputzt? Starte hier. · Cleaned today? Start here.</span>` };
   }
   const counts = v.counts || {};
   const total = counts.total || 0;
@@ -291,7 +294,7 @@ function _pvProviderCard(s) {
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${cov} von ${total} Fotos · seit ${pvHM(v.started_at)}</span>`,
         _pvWact('continue', 'gold', all ? 'send' : 'btn_continue', all ? 'Senden' : 'Weiter') + (_pvMayAbort(v) ? _pvWact('abort', 'red', 'btn_cancel', 'Abbrechen') : ''))}
-      ${_pvNote1(v.unplanned ? '<span class="k-note">Ohne Termin – Casa Castel prüft es. · Casa Castel checks it.</span>' : '', _pvExtraNote(v),
+      ${_pvNote1(_pvExtraNote(v),
         `<span class="k-note">${all ? 'Alles fotografiert – jetzt senden. · All done – send now.' : 'Mach weiter, wo du warst. · Continue where you were.'}</span>`)}` };
   }
 
@@ -312,7 +315,7 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${_pvIco('chip_sent', 13)}Gesendet <span class="en">· Sent</span></span>${_pvListBtn(total, true)}</div>
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>`, '')}
-      <span class="k-note k-note--wait">${v.unplanned ? 'Ohne Termin – wird geprüft. · Unplanned – in review.' : 'Wird geprüft. · Waiting for review.'}</span>` };
+      <span class="k-note k-note--wait">Wird geprüft. · Waiting for review.</span>${v.date === s.today ? _pvAnotherLink() : ''}` };
   }
 
   if (v.status === 'done') {
@@ -322,7 +325,7 @@ function _pvProviderCard(s) {
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>
         <span class="k-note k-note--done">Danke! · Thank you!</span>
-      </div></div>` };
+      </div></div>${v.date === s.today ? _pvAnotherLink() : ''}` };
   }
 
   if (v.status === 'rejected') {
@@ -496,19 +499,13 @@ function _pvSentBlock(m, state, en) {         /* "Gesendet" block · Lynn: the r
   const all = state.photos[m.visit_id] || [];
   const shots = all.filter(p => p.path || p.np);
   const rooms = pvRoomMap(state);
-  if (en) {
+  if (en) {                                   /* Build 1: photos only — you decide on the card (kitchen pattern) */
     const why = { besetzt: 'occupied', kaputt: 'broken', anderes: 'other' };
-    const meta = pvVisitMeta(state, m.visit_id);              /* FIX11: decide only while it really waits — never for unplanned */
-    const last = (state.chat || []).filter(x => x.kind === 'system' && x.visit_id === m.visit_id
-      && ['sent', 'resent'].includes((x.payload || {}).code)).pop();    /* only the newest block of a visit */
-    const unpl = !!((meta && meta.unplanned) || pl.unplanned);
-    const live = !!(typeof pvaAct !== 'undefined' && meta && meta.status === 'sent' && last === m);   /* FIX12: unplanned visits get the same review */
     const grid = shots.map(p => p.path
         ? `<div class="pv-ph" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${_pvPhLbl(p, all, rooms)}</span></div>`
         : `<div class="pv-ph pv-ph--np" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;">–<span>${_pvPhLbl(p, all, rooms)}</span></div>`).join('');
     const nps = shots.filter(p => p.np && !p.path).map(p => `<p class="pv-np">${pvPic('np_line', 12)}${pvEsc(pvPtName(p, all, rooms))} not possible (${why[p.np] || p.np})</p>`).join('');
-    const acts = live ? `<div class="pv-actrow"><button class="pv-actbtn pv-actbtn--ok" type="button" onclick="pvaAct('approve','${m.visit_id}')">${pvPic('act_check', 14)}<span>Passt ✓</span></button><button class="pv-actbtn pv-actbtn--redo" type="button" id="pvr-redo-${m.visit_id}" disabled style="opacity:.45;" onclick="pvaTapRedo('${m.visit_id}')">${pvPic('act_fix', 14)}<span>Nochmal senden · <b id="pvr-cnt-${m.visit_id}">0</b></span></button></div><input id="pvr-note-${m.visit_id}" class="cc-input" maxlength="500" placeholder="Note (optional)" style="display:none;margin-top:6px;width:100%;font-family:inherit;"/><p class="pv-k" style="margin-top:6px;color:#9A8E7E;">Tap a photo to mark it for redo · hold it to open${unpl ? ' · Passt ✓ counts it' : ''}</p>${unpl ? `<button class="pv-dontcount" type="button" onclick="pvaAct('reject','${m.visit_id}')">Nicht zählen · Don't count</button>` : ''}` : '';
-    return `<div class="pv-sub"${live ? ` data-anchor="sent"` : ''} data-sent="${m.visit_id}"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : unpl ? '↑ Unplanned' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)}${live ? '' : ' · tap a photo to enlarge'}</span></div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}${acts}</div>`;
+    return `<div class="pv-sub" data-sent="${m.visit_id}"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)} · tap a photo to enlarge</span></div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}</div>`;
   }
   const show = shots.slice(0, 4), more = shots.length - show.length;
   const grid = show.map(p => p.path

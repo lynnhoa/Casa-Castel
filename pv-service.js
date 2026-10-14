@@ -411,6 +411,38 @@ async function _pvAbortSend() {
   else pvToast(data && data.error ? 'Schon geändert · Already changed' : 'Abgebrochen · Stopped');
   _pvLoad();
 }
+function _pvNextOwnPlanned(s) {               /* her next planned visit within 7 days (not today) */
+  const me = localStorage.getItem('pv_person');
+  return ((s && s.strip) || []).filter(x => x && x.status === 'planned' && !x.started_at && s.today && x.date > s.today
+      && pvDaysUntil(x.date, s.today) <= 7 && (!x.person_id || x.person_id === me))
+    .sort((p, q) => String(p.date).localeCompare(String(q.date)))[0] || null;
+}
+function _pvStartChoice() {
+  const nx = _pvNextOwnPlanned(_pvState);
+  if (nx) { _pvOpenInstead(nx); return; }
+  return _pvStartUnplanned();
+}
+function _pvOpenInstead(nx) {                 /* "Heute statt Fr 16.10.?" — Ja moves that visit to today */
+  _pvSheetTitle('Heute statt ' + pvWdDM(nx.date) + '? · Today instead?');
+  $id('pv-cancel-body').innerHTML = `
+    <p style="font-size:14px;font-weight:600;color:#1E1B18;line-height:1.35;">Dein nächster Termin ist ${pvEsc(pvWdFull(nx.date))}${nx.time ? ' ab ' + pvEsc(nx.time) : ''}.<span style="display:block;font-weight:400;font-size:12.5px;color:#9A8E7E;">Your next visit is on ${pvEsc(pvWdDM(nx.date))}.</span></p>
+    <button class="pv-big" type="button" id="pv-inst-yes" style="justify-content:center;min-height:52px;margin-top:14px;"><span class="pv-big__txt" style="flex:0 1 auto;align-items:center;"><span class="pv-big__de">Ja, heute statt ${pvEsc(pvWdDM(nx.date))}</span><span class="pv-big__en">Yes, today instead</span></span></button>
+    <button class="pv-big pv-big--light" type="button" id="pv-inst-no" style="justify-content:center;min-height:48px;margin-top:8px;"><span class="pv-big__txt" style="flex:0 1 auto;align-items:center;"><span class="pv-big__de">Nein, zusätzlich</span><span class="pv-big__en">No, an extra visit</span></span></button>`;
+  $id('pv-inst-yes').onclick = () => { pvCloseScrim('pv-cancel-scrim'); _pvStartInstead(nx.id); };
+  $id('pv-inst-no').onclick = () => { pvCloseScrim('pv-cancel-scrim'); _pvStartUnplanned(); };
+  pvOpenScrim('pv-cancel-scrim');
+}
+async function _pvStartInstead(id) {
+  if (_pvBusy) return;
+  _pvBusy = true;
+  const { data, error } = await pvRpc('pv_start_instead', { p_token: localStorage.getItem('pv_token'), p_visit: id });
+  _pvBusy = false;
+  if (_pvIsAuthError(error)) { _pvToLogin(); return; }
+  if (error) { pvToast('Keine Verbindung · No connection'); return; }
+  if (data && data.error) { pvToast('Schon geändert · Already changed'); _pvLoad(); return; }
+  await _pvLoad();
+  pvCamOpen(data.visit);
+}
 async function _pvCancelSend() {
   const v = _pvState && _pvState.card;
   if (_pvBusy || !v || !_pvCancelReason) return;
@@ -503,17 +535,7 @@ async function _pvTakeOver() {
     else if (a === 'undo') run(_pvUndoCancel);
     else if (a === 'start' || a === 'continue' || a === 'redo') run(() => _pvStartCamera());
     else if (a === 'redo-other') run(() => _pvStartCamera(_pvState && _pvState.card && _pvState.card.redo_other && _pvState.card.redo_other.id));
-    else if (a === 'unplanned') {              /* FIX11: tap once = ask, tap again = start (no accidental visits) */
-      if (b.getAttribute('data-sure') !== '1') {
-        const lbl = b.querySelector('[data-lbl]') || b;
-        const was = lbl.innerHTML;
-        b.setAttribute('data-sure', '1');
-        lbl.innerHTML = b.getAttribute('data-sure-label') || 'Sicher?';
-        setTimeout(() => { if (b.isConnected) { b.removeAttribute('data-sure'); lbl.innerHTML = was; } }, 5000);
-        return;
-      }
-      run(_pvStartUnplanned);
-    }
+    else if (a === 'unplanned') run(_pvStartChoice);   /* Build 1: one tap · asks "instead of …?" when her next visit is near */
     else if (a === 'supplies') _pvOpenSupplies();
     else if (a === 'inv') pvInvOpen({ visit: b.getAttribute('data-visit') || null, month: b.getAttribute('data-month'), label: b.getAttribute('data-label') });
   });

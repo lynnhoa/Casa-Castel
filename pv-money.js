@@ -110,7 +110,7 @@ function _pvmMonthLine(mo, visits, d) {
   const today = (d && d.today) || ccTodayISO();
   const past = key < String(today).slice(0, 7);
   const vs = visits.filter(v => String(v.date).slice(0, 7) === key);
-  const counted = vs.filter(v => ['done', 'sent', 'redo'].includes(v.status) && !(v.unplanned && v.status !== 'done'));
+  const counted = vs.filter(v => ['done', 'sent', 'redo'].includes(v.status));
   const inv = (_pvh.invoices || []).filter(i => String(i.month).slice(0, 7) === key && i.status !== 'replaced');
   const sum = inv.filter(i => i.status === 'checked').reduce((a, i) => a + Number(i.amount || 0), 0);
   const toCheck = inv.filter(i => i.status === 'to_check' || i.status === 'returned').length;
@@ -268,7 +268,7 @@ function pvaVisitInvoiceOpen(v) {                /* History filter "Open invoice
   if (!mo || mo.mode !== 'per_visit' || mo.status === 'closed') return false;
   const inv = _pvmInvOf(v);
   if (inv) return inv.status === 'to_check' || inv.status === 'returned';
-  return ['done', 'sent', 'redo'].includes(v.status) && !(v.unplanned && v.status !== 'done');
+  return ['done', 'sent', 'redo'].includes(v.status);
 }
 
 function pvaOpenControlling(month) {              /* Controlling opens on that month: Casa Castel · Expenses */

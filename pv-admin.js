@@ -164,9 +164,13 @@ function _pvaOffen(d, s) {                 /* the one thing that needs you — k
   return { cls: '', turn: false, ico: '', go: 'none', label: 'All clear ✓' };
 }
 function pvaOffenGo(go) {
-  if (go === 'review') {
-    const el = $a('pvaFeed').querySelector('[data-anchor="sent"]');
-    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  if (go === 'review') {                       /* jump to the photos of the visit that waits */
+    const st = (_pvaData && _pvaData.state) || {};
+    const ids = [].concat(st.card && st.card.status === 'sent' ? [st.card.id] : [], (st.strip || []).filter(x => x.status === 'sent').map(x => x.id));
+    for (const id of ids) {
+      const els = $a('pvaFeed').querySelectorAll('[data-sent="' + id + '"]');
+      if (els.length) { els[els.length - 1].scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    }
     pvaOpenHistory(); return;
   }
   if (go === 'inv' || go === 'close') { pvaOpenHistory(); return; }
@@ -234,12 +238,12 @@ function _pvaCardHTML(s) {
   }
   if (v.status === 'sent') {
     const due = v.auto_due_at ? `Auto-approves ${pvWdDM(String(v.auto_due_at).slice(0, 10), true)} ${pvHM(v.auto_due_at)}` : 'Waiting for your review.';
-    return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${pvPic('chip_sent', 13)}${v.unplanned ? 'Unplanned visit' : 'Submitted'}</span><span class="k-mob-week-dates-sm">sent ${pvHM(v.sent_at)}</span></div>
+    return { turn: 'wait', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${pvPic('chip_sent', 13)}Submitted</span><span class="k-mob-week-dates-sm">sent ${pvHM(v.sent_at)}</span></div>
       <div class="k-mob-week-body">
         <div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
-          <span class="k-mob-week-dates-sm">${counts.total || 0} areas${span ? ' · ' + span : ''}${counts.np ? ' · ' + counts.np + ' not possible' : ''}</span>
+          <span class="k-mob-week-dates-sm">${counts.total || 0} areas${span ? ' · ' + span : ''}${v.unplanned ? ' · no date set' : ''}${counts.np ? ' · ' + counts.np + ' not possible' : ''}</span>
           ${_pvaNpNote(v)}
-          <span class="k-note k-note--wait">${v.unplanned ? 'No visit was planned · review it in the chat.' : due}</span></div>
+          <span class="k-note k-note--wait">${due}</span></div>
         ${actsHtml}
       </div>` };
   }
@@ -274,7 +278,7 @@ function _pvaCardHTML(s) {
   if (v.status === 'rejected') {
     return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip" style="background:#EDE8E0;border:1px solid #E0DAD0;color:#6B5E4E;">Not counted</span></div>
       <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span>
-        <span class="k-note">Rejected unplanned visit — no invoice possible.</span></div></div>` };
+        <span class="k-note">Not counted — no invoice.</span></div></div>` };
   }
   return { turn: '', html: `<div class="k-mob-week-top-row"><span class="k-mob-status-chip">${cal}${esc(v.status)}</span></div>
     <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${pvWdDM(v.date, true)}</span></div></div>` };
