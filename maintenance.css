@@ -57,39 +57,6 @@
 .mt-pill--prog { background:#FDE4D0; border-color:#F0A877; color:#8A3E12; }
 .mt-pill--done { background:#EAF3DE; border-color:#9AC87A; color:#27500A; }
 
-/* ── The one panel ── */
-.mt-scrim { position:fixed; inset:0; z-index:690; background:rgba(30,27,24,.28); }
-.mt-scrim[hidden], .mt-panel[hidden] { display:none; }
-.mt-panel { position:fixed; z-index:700; background:var(--cc-white); overflow-y:auto;
-  -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
-@media (max-width: 700px) {                                   /* phone: bottom sheet */
-  .mt-panel { left:0; right:0; bottom:0; max-height:88vh; max-height:88svh; border-radius:16px 16px 0 0;
-    padding-bottom:env(safe-area-inset-bottom,0px); box-shadow:0 -6px 24px rgba(30,27,24,.12); }
-  body.mt-panel-open { overflow:hidden; }
-}
-@media (min-width: 701px) and (max-width: 999px) {           /* iPad: centred window */
-  .mt-panel { top:50%; left:50%; transform:translate(-50%,-50%); width:460px; max-width:calc(100vw - 48px);
-    max-height:86vh; border-radius:16px; box-shadow:0 10px 40px rgba(30,27,24,.18); }
-  body.mt-panel-open { overflow:hidden; }
-}
-@media (min-width: 1000px) {                                  /* laptop: next to the list */
-  .mt-split.has-panel { display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:16px; align-items:start; }
-  .mt-split:not(.has-panel) .mt-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
-  .mt-panel { position:sticky; top:calc(132px + env(safe-area-inset-top,0px)); max-height:calc(100vh - 150px);
-    border:var(--cc-border); border-radius:var(--cc-r-lg); }
-  .mt-scrim { display:none !important; }
-}
-
-.mt-ph { position:sticky; top:0; z-index:1; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
-  padding:16px 16px 12px; background:var(--cc-white); border-bottom:.5px solid var(--cc-surface); }
-.mt-ph__ht { min-width:0; }
-.mt-ph__t { margin:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400; line-height:1.15;
-  color:#3D3027; overflow-wrap:anywhere; }
-.mt-ph__s { margin:3px 0 0; font-size:11px; color:var(--cc-taupe); }
-.mt-ph__x { width:34px; height:34px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
-  border-radius:50%; border:var(--cc-border); background:none; color:var(--cc-taupe); font-size:16px; cursor:pointer;
-  -webkit-tap-highlight-color:transparent; }
-
 /* Sections: title 10px caps · grid label above value · actions bottom right */
 .mt-sec { padding:14px 16px; border-bottom:var(--cc-border); }
 .mt-sec:last-child { border-bottom:none; padding-bottom:18px; }
@@ -239,13 +206,7 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-chip--add { padding:0 12px; border-style:dashed; color:var(--cc-taupe); cursor:pointer; font-family:inherit; }
 .mt-chip--add i { font-size:13px; }
 
-/* Laptop: a wider side panel so Costs reads as a table */
-@media (min-width: 1200px) {
-  .mt-split.has-panel { grid-template-columns:minmax(0,1fr) 560px; }
-}
-@media (min-width: 1300px) {
-  .mt-split.has-panel { grid-template-columns:minmax(0,1fr) 620px; }
-}
+
 
 /* ── D2 · Year groups inside a property card ── */
 .mt-yr { display:flex; align-items:center; gap:8px; width:100%; margin:0; padding:9px 16px; border:none; border-top:var(--cc-border);
@@ -278,3 +239,44 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-chk { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--cc-charcoal); cursor:pointer; }
 .mt-chk input { width:18px; height:18px; margin:0; accent-color:var(--cc-ink); }
 .mt-cr.is-flash { background:#FBF3E4; transition:background 1.2s; }
+
+
+/* ── D4 · The entry opens in place (inside its property card) ── */
+#appMain .tab-content { max-width:960px; }
+.mt-card--new { border-color:var(--cc-stone); }
+.mt-open { padding:12px 16px 16px; border-top:var(--cc-border); background:var(--cc-white);
+  scroll-margin-top:calc(124px + env(safe-area-inset-top,0px)); }
+.mt-card--new .mt-open { border-top:none; }
+.mt-oh__t { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; width:100%; margin:0; padding:2px 0;
+  border:none; background:none; border-radius:0; font:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-oh__t span { font-size:15px; font-weight:500; line-height:1.35; color:var(--cc-ink); overflow-wrap:anywhere; }
+.mt-oh__t i { flex-shrink:0; margin-top:2px; font-size:16px; color:var(--cc-stone); }
+.mt-oh__s { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-top:4px; }
+.mt-oh__l { font-size:12px; line-height:1.6; color:var(--cc-taupe); }
+.mt-oh__d { margin:4px 0 0; font-size:12px; line-height:1.45; color:var(--cc-charcoal); white-space:pre-line;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.mt-link { flex-shrink:0; margin:0; padding:2px 0; border:none; background:none; font:inherit; font-size:11px; font-weight:500;
+  color:var(--cc-taupe); text-decoration:underline; text-underline-offset:3px; cursor:pointer; white-space:nowrap; }
+.mt-pill--sm { padding:2px 8px; vertical-align:1px; }
+.mt-open .mt-sec--edit { padding:12px 0 4px; border-bottom:none; }
+.mt-after { margin:10px 0 0; }
+
+/* Kosten on top, then "+ Add receipt" */
+.mt-costs { margin-top:14px; }
+.mt-ks { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.mt-ks b { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#8A6535; }
+.mt-ks em { font-style:normal; font-size:16px; font-weight:600; color:var(--cc-charcoal); white-space:nowrap; }
+.mt-kv { margin:2px 0 12px; font-size:11.5px; color:var(--cc-taupe); }
+.mt-addr { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; height:40px; margin:0 0 6px; padding:0;
+  border:.5px dashed #B8AE9F; border-radius:8px; background:none; font-family:inherit; font-size:12px; font-weight:500;
+  color:var(--cc-taupe); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-addr i { font-size:14px; }
+.mt-addr:active { background:var(--cc-bg); }
+.mt-costs .mt-cg { margin:6px 0 4px; }
+.mt-costs > .mt-ab { margin:0 0 6px; }
+
+/* Documents last, compact */
+.mt-docs { margin-top:14px; padding-top:12px; border-top:var(--cc-border); }
+
+/* Photos stay small tiles on a wide screen */
+.mt-docs .mt-pg { grid-template-columns:repeat(auto-fill, minmax(64px, 1fr)); max-width:440px; }

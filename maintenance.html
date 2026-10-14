@@ -28,7 +28,7 @@
     .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:mt-spin .8s linear infinite; }
     @keyframes mt-spin { to { transform:rotate(360deg); } }
   </style>
-  <link rel="stylesheet" href="maintenance.css?v=2026-10-15-D3"/>
+  <link rel="stylesheet" href="maintenance.css?v=2026-10-15-D4"/>
 </head>
 <body class="is-landlord">
 
@@ -61,19 +61,18 @@
 
     <div class="cc-layout" id="appLayout">
       <div class="cc-main" id="appMain">
-        <!-- list left · panel right on a laptop; on phone / iPad the panel lies on top -->
+        <!-- the list; an open entry sits inside its property card -->
         <div class="mt-split" id="mtSplit">
           <div class="mt-col">
             <div class="tab-content" id="tab-renovierung"></div>
             <div class="tab-content" id="tab-schaden" style="display:none;"></div>
           </div>
-          <aside class="mt-panel" id="mtPanel" role="dialog" aria-labelledby="mtPanelTitle" hidden></aside>
+          <!-- the open entry (D4): one element, moved into its place in the list -->
+          <div id="mtPanelHome" hidden><div class="mt-open" id="mtPanel" role="region" aria-labelledby="mtPanelTitle"></div></div>
         </div>
       </div>
     </div>
   </div>
-
-  <div class="mt-scrim" id="mtScrim" data-mt="close" hidden></div>
 
   <div class="ct-toast" id="ctToast" role="status" aria-live="polite"></div>
   <div class="ct-loading" id="ctLoading"><div class="ct-loading__spinner"></div></div>
@@ -88,7 +87,7 @@
 
   <!-- Same login session + logout + toast as Settlements / Controlling -->
   <script src="controlling-auth.js?v=2026-10-01b"></script>
-  <script src="maintenance.js?v=2026-10-15-D3"></script>
+  <script src="maintenance.js?v=2026-10-15-D4"></script>
 
   <!-- Profile panel (same one as Rentals / Controlling), sharing this page's login session -->
   <script>var sbL = _ctlSupa;</script>

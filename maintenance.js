@@ -9,10 +9,12 @@
    is open when it is this year or still has a case that is not done.
    Each case: Start + optional End (D2).
 
-   Two levels only: the list and ONE panel (read view ⇄ edit).
-   Panel: bottom sheet (phone) · centred window (iPad) ·
-          side panel next to the list (laptop) — like Settlements.
-   After Save the panel goes back to its read view.
+   D4 · An entry opens IN PLACE inside its property card (like the Tenants
+   cards) — no pop-up. One entry open at a time; a tap on its title closes it.
+   Open entry = title · one summary line (area · start – end · status) with a
+   small "Edit" → the details form in that spot; then receipts first (Kosten,
+   "+ Add receipt", the table newest first), documents last. "+ New" opens an
+   empty entry on top of the list. After Save it stays open (read view).
 
    Data:       maint_cases · maint_docs · bucket maintenance-docs
                (MAINTENANCE.sql)
@@ -227,14 +229,21 @@ function mtRender() {
   const kind = MT.tab;
   const el = document.getElementById('tab-' + kind);
   if (!el) return;
+  mtParkPanel();                                             // keep the open entry safe while the list is redrawn
   if (MT.loadError) { el.innerHTML = mtErrorHTML(MT.loadError); return; }
   const list = MT.cases.filter(c => c.kind === kind);
+  const newTop = MT.sel && MT.sel.isNew && MT.sel.draft && MT.sel.draft.kind === kind
+    ? '<section class="mt-card mt-card--new" aria-label="New entry"><div class="mt-slot"></div></section>' : '';
   const head = `
     <div class="mt-hdr">
       <h1 class="cc-h1">${MT_KIND[kind].title}</h1>
       <button type="button" class="mt-add" data-mt="new"><i class="ti ti-plus" aria-hidden="true"></i><span>New</span></button>
     </div>`;
-  if (!list.length) { el.innerHTML = head + `<p class="mt-empty">${MT_KIND[kind].empty}</p>`; return; }
+  if (!list.length) {
+    el.innerHTML = head + (newTop ? `<div class="mt-list">${newTop}</div>` : `<p class="mt-empty">${MT_KIND[kind].empty}</p>`);
+    mtPlacePanel(el);
+    return;
+  }
 
   const ids = list.map(c => c.id), y = mtYear();
   const nOpen = list.filter(c => c.status === 'open').length, nProg = list.filter(c => c.status === 'in_progress').length;
@@ -251,13 +260,14 @@ function mtRender() {
       const fk = kind + '|' + g.key + '|' + Y.y;
       // open by default: this year, or a year that still has something not done
       const auto = Y.y === y || Y.cases.some(c => c.status !== 'done');
-      const open = MT.open[fk] === undefined ? auto : !!MT.open[fk];
+      const hasOpen = MT.sel && !MT.sel.isNew && Y.cases.some(c => String(c.id) === String(MT.sel.id));
+      const open = hasOpen || (MT.open[fk] === undefined ? auto : !!MT.open[fk]);
       const sumY = mtCost(Y.cases.map(c => c.id));
       return `
         <button type="button" class="mt-yr" data-mt="fold" data-key="${mtEsc(fk)}" data-auto="${auto ? 1 : 0}" aria-expanded="${open}">
           <span class="mt-yr__y">${mtEsc(Y.y)}</span><span class="mt-yr__n">${Y.cases.length} ${Y.cases.length === 1 ? 'entry' : 'entries'}</span>
           <span class="mt-yr__s${sumY ? '' : ' mt-mu'}">${mtAmt(sumY)}</span><i class="ti ti-chevron-down" aria-hidden="true"></i>
-        </button>${open ? Y.cases.map(mtRowHTML).join('') : ''}`;
+        </button>${open ? Y.cases.map(c => (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) ? '<div class="mt-slot"></div>' : mtRowHTML(c)).join('') : ''}`;
     }).join('');
     return `
       <section class="mt-card" aria-label="${mtEsc(g.name)}">
@@ -266,7 +276,8 @@ function mtRender() {
       </section>`;
   }).join('');
 
-  el.innerHTML = head + sum + `<div class="mt-list">${cards}</div>`;
+  el.innerHTML = head + sum + `<div class="mt-list">${newTop}${cards}</div>`;
+  mtPlacePanel(el);
 }
 
 function mtErrorHTML(e) {
@@ -290,35 +301,29 @@ function mtPanelHTML() {
   if (!s.isNew && !c) return '';
   const kind = s.isNew ? s.draft.kind : c.kind;
   const title = s.isNew ? 'New ' + MT_KIND[kind].one : c.title;
-  const sub = s.isNew ? 'Fill in the details' : `${mtPropName(c)} · ${MT_KIND[c.kind].one}`;
-  return `
-    <div class="mt-ph">
-      <div class="mt-ph__ht"><p class="mt-ph__t" id="mtPanelTitle">${mtEsc(title)}</p><p class="mt-ph__s" id="mtPanelSub">${mtEsc(sub)}</p></div>
-      <button type="button" class="mt-ph__x" data-mt="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
-    </div>
-    ${s.edit ? mtEditHTML(c, s) : mtReadHTML(c)}
-    ${s.isNew ? `<section class="mt-sec"><p class="mt-sec__t">Costs and documents</p><p class="mt-docs-empty">Receipts, photos and documents can be added after Save.</p></section>` : mtCostsHTML(c) + mtDocsHTML(c)}`;
+  const head = `
+    <button type="button" class="mt-oh__t" data-mt="close" aria-label="Close ${mtEsc(title)}" aria-expanded="true">
+      <span id="mtPanelTitle">${mtEsc(title)}</span><i class="ti ti-chevron-up" aria-hidden="true"></i>
+    </button>`;
+  if (s.isNew) {
+    return head + mtEditHTML(c, s) +
+      '<p class="mt-docs-empty mt-after">Receipts, photos and documents can be added after Save.</p>';
+  }
+  return head + (s.edit ? mtEditHTML(c, s) : mtSummaryHTML(c)) + mtCostsHTML(c) + mtDocsHTML(c);
 }
 
-function mtReadHTML(c) {
-  const f = (k, v, full) => `<div class="mt-f${full ? ' mt-f--full' : ''}"><span class="mt-k">${k}</span>${v}</div>`;
-  const v = (t, cls) => (t ? `<span class="mt-v${cls ? ' ' + cls : ''}">${mtEsc(t)}</span>` : '<span class="mt-v mt-mu">—</span>');
+/* The details at a glance: area · start – end · status (· paid by · not in Controlling), description below */
+function mtSummaryHTML(c) {
+  const bits = [c.area, mtSpan(c)].filter(Boolean).map(mtEsc);
+  bits.push(mtPill(c.kind, c.status).replace('class="mt-pill ', 'class="mt-pill mt-pill--sm '));
+  if (c.kind === 'schaden' && c.paid_by) bits.push('Paid by ' + mtEsc(mtPaidLabel(c.paid_by)));
+  if (c.book_ctrl === false) bits.push('<span class="mt-off">not in Controlling</span>');
   return `
-    <section class="mt-sec">
-      <p class="mt-sec__t">Details</p>
-      <div class="mt-grid">
-        ${f('Property', v(mtPropName(c)))}
-        ${f('Area', v(c.area))}
-        ${f('Start', v(mtDate(c.case_date)))}
-        ${f('End', v(mtDate(c.end_date)))}
-        ${f('Type', v(MT_KIND[c.kind].one))}
-        ${f('Status', mtPill(c.kind, c.status))}
-        ${c.kind === 'schaden' ? f('Paid by', v(mtPaidLabel(c.paid_by))) : ''}
-        ${f('Controlling', v(c.book_ctrl === false ? 'Not booked' : 'Booked'))}
-        ${f('Description', v(c.description, 'mt-v--text'), true)}
-      </div>
-      ${mtActive(c) ? '' : '<div class="cc-sec-foot"><button type="button" class="cc-foot-btn" data-mt="edit"><i class="ti ti-pencil" aria-hidden="true"></i> Edit</button></div>'}
-    </section>`;
+    <div class="mt-oh__s">
+      <span class="mt-oh__l">${bits.join(' · ')}</span>
+      ${mtActive(c) ? '' : '<button type="button" class="mt-link" data-mt="edit">Edit</button>'}
+    </div>
+    ${c.description ? `<p class="mt-oh__d">${mtEsc(c.description)}</p>` : ''}`;
 }
 
 function mtEditHTML(c, s) {
@@ -338,7 +343,6 @@ function mtEditHTML(c, s) {
     MT_PAID.map(([v, l]) => `<option value="${v}"${d.paid_by === v ? ' selected' : ''}>${l}</option>`).join('');
   return `
     <section class="mt-sec mt-sec--edit">
-      <p class="mt-sec__t">Details</p>
       <div class="mt-grid">
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-title">Title</label>
           <input class="mt-in" id="mtF-title" type="text" maxlength="120" autocomplete="off" value="${mtEsc(d.title || '')}"/></div>
@@ -366,30 +370,35 @@ function mtEditHTML(c, s) {
 }
 
 function mtRenderPanel() {
-  const p = document.getElementById('mtPanel'), sc = document.getElementById('mtScrim'), split = document.getElementById('mtSplit');
+  const p = document.getElementById('mtPanel');
   if (!p) return;
   const html = mtPanelHTML();
   if (!html) {
     MT.sel = null;
-    p.hidden = true; p.innerHTML = ''; p._key = '';
-    if (sc) sc.hidden = true;
-    split?.classList.remove('has-panel');
-    document.body.classList.remove('mt-panel-open');
+    p.innerHTML = '';
+    mtParkPanel();
     return;
   }
-  const who = MT.sel.isNew ? 'new' : String(MT.sel.id);
-  const keep = p._key === who ? p.scrollTop : 0;             // same entry → keep the scroll position
   mtCostCapture();                                           // an open cost form keeps what is typed
   p.innerHTML = html;
-  p.hidden = false;
-  if (sc) sc.hidden = false;
-  split?.classList.add('has-panel');
-  document.body.classList.add('mt-panel-open');
-  p.scrollTop = keep;
-  p._key = who;
   // the date field becomes a German field right after it is drawn → note the form after that
   if (MT.sel.edit) { const sel = MT.sel; delete sel.snap; setTimeout(() => { if (MT.sel === sel && sel.edit) sel.snap = mtFormSnap(); }, 0); }
   mtAfterPanel();
+}
+/* The open entry is one element that moves into its place in the list (so a redraw of
+   the list never loses what is typed) and back to its hidden home when nothing is open */
+function mtParkPanel() {
+  const p = document.getElementById('mtPanel'), home = document.getElementById('mtPanelHome');
+  if (p && home && p.parentNode !== home) home.appendChild(p);
+}
+function mtPlacePanel(root) {
+  const p = document.getElementById('mtPanel'), slot = root && root.querySelector('.mt-slot');
+  if (!p) return;
+  if (slot && MT.sel) slot.replaceWith(p); else mtParkPanel();
+}
+function mtScrollToOpen() {
+  const p = document.getElementById('mtPanel');
+  if (p && p.parentNode && p.parentNode.id !== 'mtPanelHome') p.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
 /* What the form says right now (to notice unsaved changes) */
@@ -465,6 +474,7 @@ async function mtOpen(id) {
   MT.sel = { id, isNew: false, edit: false };
   mtRenderPanel();
   mtRender();
+  mtScrollToOpen();
 }
 
 async function mtNew() {
@@ -475,6 +485,7 @@ async function mtNew() {
   };
   mtRenderPanel();
   mtRender();
+  mtScrollToOpen();
   if (mtFine()) document.getElementById('mtF-title')?.focus();
 }
 
@@ -693,7 +704,7 @@ function mtDocsHTML(c) {
   const ed = !!s.docEdit && !locked;
   const upAny = mtUpFor(c), up = upAny && upAny.where !== 'costs' ? upAny : null;
 
-  let h = '<section class="mt-sec" id="mtDocs"><p class="mt-sec__t">Documents</p>';
+  let h = '<section class="mt-docs" id="mtDocs"><p class="mt-sec__t">Documents</p>';
   if (s.add && !locked) h += mtDocFormHTML('mtA', s.add, s.add.name, s.add.isImg, 'add');
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!docs.length && !s.add && !up) h += '<p class="mt-docs-empty">No photos or documents yet.</p>';
@@ -974,14 +985,19 @@ function mtCostsHTML(c) {
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
   const tap = !busy && !f && !upAny;
   const isForm = r => f && !f.isNew && String(f.id) === String(r.id);
-  let h = '<section class="mt-sec mt-costs" id="mtCosts"><p class="mt-sec__t">Costs</p>';
+  // D4 · receipts first: Kosten on top, then "+ Add receipt", then the table (newest first)
+  const self = mtCost([c.id], null, 'self'), prov = mtCost([c.id], null, 'provider');
+  let h = `<section class="mt-costs" id="mtCosts">
+    <div class="mt-ks"><b>Kosten</b><em>${mtEur(mtCost([c.id]))}</em></div>
+    <p class="mt-kv">Self-bought ${mtEur(self)} · Provider ${mtEur(prov)}</p>`;
   if (c.book_ctrl === false) h += '<p class="mt-off-note"><i class="ti ti-unlink" aria-hidden="true"></i>Not booked in Controlling</p>';
   if (f && f.isNew && !f.return_of) h += mtCostFormHTML(f);
+  else if (!busy && !f && !upAny) h += '<button type="button" class="mt-addr" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>';
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!rows.length && !(f && f.isNew)) h += '<p class="mt-docs-empty">No receipts yet.</p>';
 
   Object.keys(MT_COST).forEach(kind => {
-    const list = rows.filter(r => r.kind === kind && !r.return_of).sort(mtCostByDate);
+    const list = rows.filter(r => r.kind === kind && !r.return_of).sort((a, b) => mtCostByDate(b, a));   // newest first
     if (!list.length) return;
     h += `<div class="mt-cg">
       <div class="mt-cg__h"><span class="mt-cg__t">${MT_COST[kind].label} · ${list.length}</span><span class="mt-cg__s">${mtEur(mtCost([c.id], null, kind))}</span></div>
@@ -996,15 +1012,6 @@ function mtCostsHTML(c) {
       }).join('')}
     </div>`;
   });
-  if (rows.length) h += `<div class="mt-su"><span>Kosten</span><b>${mtEur(mtCost([c.id]))}</b></div>`;
-  if (!busy && !f && !upAny) {
-    h += `<div class="cc-sec-foot">
-      <span class="is-left mt-foot-l">
-        <button type="button" class="cc-foot-btn" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i> Self-bought</button>
-        <button type="button" class="cc-foot-btn" data-mt="costNew" data-k="provider"><i class="ti ti-plus" aria-hidden="true"></i> Provider</button>
-      </span><span aria-hidden="true"></span>
-    </div>`;
-  }
   return h + '</section>';
 }
 
