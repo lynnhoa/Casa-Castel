@@ -583,16 +583,16 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
   body.pva .pv-scrim > .cc-modal-sheet { width: min(640px, 92%); max-height: 86vh !important; border-radius: 14px; padding-bottom: 0; }
 }
 
-/* ── Lean Pass: tool pills — Color pop, one light row ── */
-.pv-tools{display:flex;gap:6px;border:none;padding:8px 0 2px;margin:0}
-.pv-tool-pill{flex:1;min-width:0;height:36px;display:flex;align-items:center;justify-content:center;gap:5px;border:none;border-radius:999px;padding:0 4px;font-family:inherit;font-size:11.5px;font-weight:600;letter-spacing:.01em;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 2px rgba(60,50,30,.10);transition:transform .12s ease,opacity .15s}
-.pv-tool-pill:active{transform:scale(.95);opacity:.9}
-.pv-tool-pill svg{flex-shrink:0;box-sizing:content-box;width:12px;height:12px;padding:4px;border-radius:50%;background:rgba(255,255,255,.85)}
+/* ── Lean Pass: tool buttons — Soft line (pastel fill, same-hue line + text) ── */
+.pv-tools{display:flex;gap:6px;border:none;padding:10px 0 2px;margin:0}
+.scr .pv-tool-pill{flex:1;min-width:0;height:36px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:5px;border:1px solid;border-radius:10px;padding:0 4px;font-family:'Inter',system-ui,sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.01em;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .12s ease,opacity .15s}
+.scr .pv-tool-pill:active{transform:scale(.96);opacity:.88}
+.pv-tool-pill .ti{font-size:15px;line-height:1;flex-shrink:0}
 .pv-tool-pill span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pv-tool-pill--ag{background:#A9CFF7;color:#123E6B}.pv-tool-pill--ag svg{color:#1A5896}
-.pv-tool-pill--li{background:#F7C5B4;color:#73341A}.pv-tool-pill--li svg{color:#A04A26}
-.pv-tool-pill--pe{background:#A4E0B4;color:#123D1F}.pv-tool-pill--pe svg{color:#1E5C30}
-.pv-tool-pill--hi{background:#E6D3A8;color:#5C4A22}.pv-tool-pill--hi svg{color:#8A6E34}
+.scr .pv-tool-pill--ag{background:#DCEBFB;border-color:#7FAEE3;color:#2B629E}
+.scr .pv-tool-pill--li{background:#FCE3DE;border-color:#E79A8C;color:#A8412F}
+.scr .pv-tool-pill--pe{background:#DEF3E3;border-color:#88C99A;color:#2C6E40}
+.scr .pv-tool-pill--hi{background:#F8ECD3;border-color:#D9B57A;color:#8A5E18}
 /* ── Lean Pass: sheets slide up, the scrim fades — and nothing jumps after ── */
 .pv-scrim{transition:opacity .22s ease}
 .pv-scrim>.cc-modal-sheet{transition:transform .22s cubic-bezier(.3,.9,.3,1);will-change:transform}
