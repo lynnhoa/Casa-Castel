@@ -465,11 +465,21 @@ function _pvPushInit() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   navigator.serviceWorker.register('/pv-sw.js', { scope: '/service.html' })
     .then(r => { _pvSwReg = r; return r.pushManager.getSubscription(); })
-    .then(sub => _pvPushState(!!sub)).catch(() => {});
+    .then(sub => _pvPushAuto(sub)).catch(() => {});
   navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'pv-push' && localStorage.getItem('pv_token')) _pvLoad(); });
 }
-function _pvPushAsk() {                        /* must run inside a tap → subscription promise (or null) */
-  if (!_pvSwReg || _pvIsGuest() || localStorage.getItem('pv_push') === '0') return null;
+function _pvPushAuto(sub) {                   /* every open / refresh: push is on by default */
+  if (_pvIsGuest() || !localStorage.getItem('pv_token')) { _pvPushState(!!sub); return; }
+  if (sub) { _pvPushSave(Promise.resolve(sub)); return; }               /* known phone: register again (heals itself) */
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {   /* allowed before: back on, no tap */
+    let p = null;
+    try { p = _pvSwReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _pvVKey(PV_VAPID) }).catch(() => null); } catch (e) {}
+    _pvPushSave(p); return;
+  }
+  _pvPushState(false);                        /* never asked: one tap on the bar · blocked: the menu says so */
+}
+function _pvPushAsk() {                        /* inside a tap → subscription promise (or null) */
+  if (!_pvSwReg || _pvIsGuest()) return null;
   try { return _pvSwReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _pvVKey(PV_VAPID) }).catch(() => null); }
   catch (e) { return null; }
 }
@@ -479,35 +489,35 @@ async function _pvPushSave(p) {
   const j = sub.toJSON();
   const { data, error } = await pvRpc('pv_push_register', { p_token: localStorage.getItem('pv_token'), p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
   const ok = !error && !!(data && data.ok);
-  if (ok) localStorage.setItem('pv_push', '1');
   _pvPushState(ok);
   return ok;
 }
-async function _pvPushDrop(tok) {              /* logout: this phone gets no more pushes for this person */
+async function _pvPushDrop(tok) {              /* logout / "Aus": this phone gets no pushes for this person */
   try { const sub = _pvSwReg && await _pvSwReg.pushManager.getSubscription(); if (sub) { await pvRpc('pv_push_unregister', { p_token: tok, p_endpoint: sub.endpoint }); await sub.unsubscribe(); } } catch (e) {}
   _pvPushIsOn = false;
 }
-function _pvPushToggle() {
-  if (_pvPushIsOn) { localStorage.setItem('pv_push', '0'); _pvPushDrop(localStorage.getItem('pv_token')).then(() => _pvPushState(false)); return; }
-  localStorage.removeItem('pv_push');
+function _pvPushToggle() {                     /* "Aus" lasts until the app is opened again — then it is back on */
+  if (_pvPushIsOn) { _pvPushDrop(localStorage.getItem('pv_token')).then(() => _pvPushState(false)); return; }
   if (!_pvSwReg) { pvToast('Push nur in der App vom Home-Bildschirm · Only in the Home Screen app'); return; }
-  _pvPushSave(_pvPushAsk()).then(ok => {
-    if (!ok) pvToast(typeof Notification !== 'undefined' && Notification.permission === 'denied' ? 'Push ist in den Einstellungen blockiert · Blocked in Settings' : 'Push nicht möglich · Not possible');
-  });
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+    pvToast('Push erlauben: iPhone-Einstellungen › Mitteilungen › CC Service · Allow it in iPhone Settings › Notifications'); return;
+  }
+  _pvPushSave(_pvPushAsk()).then(ok => { if (!ok) pvToast('Push nicht möglich · Not possible'); });
 }
 function _pvPushState(on) {
   _pvPushIsOn = !!on;
   const lo = $id('pv-logout-btn');
-  if (lo && !$id('pv-push-item')) {             /* "Push · An / Aus" in the name menu */
+  if (lo && !$id('pv-push-item')) {             /* "Push · An / Aus" in the name menu, your Casa Castel style */
     const b = document.createElement('button');
-    b.type = 'button'; b.id = 'pv-push-item'; b.style.cssText = lo.style.cssText; b.onclick = _pvPushToggle;
-    lo.parentNode.insertBefore(b, lo);
+    b.type = 'button'; b.id = 'pv-push-item'; b.className = 'pv-menu-item'; b.onclick = _pvPushToggle;
+    lo.parentNode.insertBefore(b, $id('pv-menu-sep') || lo);
   }
+  const denied = typeof Notification !== 'undefined' && Notification.permission === 'denied';
   const it = $id('pv-push-item');
-  if (it) { it.style.display = _pvIsGuest() ? 'none' : 'flex'; it.textContent = '🔔 Push · ' + (on ? 'An · On' : 'Aus · Off'); }
-  let bar = $id('pv-push-bar');                 /* phones already logged in: one tap to turn it on */
-  const want = !on && !!_pvSwReg && !_pvIsGuest() && !!localStorage.getItem('pv_token') && localStorage.getItem('pv_push') !== '0'
-    && typeof Notification !== 'undefined' && Notification.permission !== 'denied';
+  if (it) { it.style.display = (_pvIsGuest() || !_pvSwReg) ? 'none' : ''; it.textContent = '🔔 Push · ' + (on ? 'An · On' : denied ? 'blockiert · blocked' : 'Aus · Off'); }
+  let bar = $id('pv-push-bar');                 /* only the very first time on a phone (iPhone needs one tap) */
+  const want = !on && !!_pvSwReg && !_pvIsGuest() && !!localStorage.getItem('pv_token')
+    && typeof Notification !== 'undefined' && Notification.permission === 'default';
   if (want && !bar && $id('pv-strip')) {
     bar = document.createElement('button');
     bar.type = 'button'; bar.id = 'pv-push-bar';

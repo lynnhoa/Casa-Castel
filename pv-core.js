@@ -228,7 +228,6 @@ function pvProviderCardHTML(s) {
   const c0 = _pvProviderCard(s);
   const v = s && s.card;
   let extra = '';
-  if (v && ['sent', 'done'].includes(v.status) && typeof pvInvoiceCardButton === 'function') extra += pvInvoiceCardButton(s);
   if (v && v.redo_other) extra += _pvRedoStrip(v.redo_other);
   if (typeof pvInvoiceBlocks === 'function') extra += pvInvoiceBlocks(s);
   return { turn: c0.turn, html: c0.html + extra };           /* "Fehlt etwas?" lives in the chat since FIX11 */
@@ -317,7 +316,7 @@ function _pvProviderCard(s) {
     return { turn: 'wait', html: `
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${_pvIco('chip_sent', 13)}Gesendet <span class="en">· Sent</span></span>${_pvListBtn(total, true)}</div>
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
-        <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>`, '')}
+        <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>`, typeof pvInvoiceWact === 'function' ? pvInvoiceWact(s) : '')}
       <span class="k-note k-note--wait">Wird geprüft. · Waiting for review.</span>${v.date === s.today ? _pvAnotherLink() : ''}` };
   }
 
@@ -328,7 +327,7 @@ function _pvProviderCard(s) {
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>
         <span class="k-note k-note--done">Danke! · Thank you!</span>
-      </div></div>${v.date === s.today ? _pvAnotherLink() : ''}` };
+      </div>${typeof pvInvoiceWact === 'function' && pvInvoiceWact(s) ? `<div class="k-mob-week-acts">${pvInvoiceWact(s)}</div>` : ''}</div>${v.date === s.today ? _pvAnotherLink() : ''}` };
   }
 
   if (v.status === 'rejected') {

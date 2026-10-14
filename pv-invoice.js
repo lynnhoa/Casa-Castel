@@ -55,49 +55,35 @@ function pvInvMonthName(iso, en) { return _pvMonthName(String(iso).slice(0, 7) +
 function pvEur(n) { return typeof ccFmtEUR === 'function' ? ccFmtEUR(Number(n) || 0) : (Number(n) || 0).toFixed(2).replace('.', ',') + ' €'; }
 
 /* ── PROVIDER: the invoice blocks under the day card ────── */
-function pvInvoiceBlocks(s) {
+function pvInvoiceBlocks(s) {                  /* slim: one thin line per open invoice (returned · monthly · missing) */
   const t = s && s.invoice_todo;
   if (!t) return '';
   const card = s.card;
+  const line = (tone, txt, sub, btn, attrs) => `<div class="pv-inv-line pv-inv-line--${tone}">${pvPic('chip_invoice', 14)}<span class="pv-inv-line__t">${txt}${sub ? `<span class="pv-inv-line__s"> · ${sub}</span>` : ''}</span><button class="pv-inv-line__b" type="button" data-act="inv" ${attrs}>${btn}</button></div>`;
   let h = '';
   (t.returned || []).forEach(r => {
     const label = r.visit_date ? pvWdFull(r.visit_date) : pvInvMonthName(r.month, false);
-    h += `<div style="margin-top:12px;padding-top:12px;border-top:.5px solid var(--cc-rule);">
-        <div class="k-mob-week-top-row"><span class="k-mob-status-chip flagged">${pvPic('chip_invoice', 13)}Rechnung <span class="en">· Invoice</span></span></div>
-        <div class="k-mob-week-body"><div class="k-mob-week-left">
-          <span class="k-mob-week-room">${pvEsc(label)}</span>
-          <span class="k-mob-week-dates-sm">${pvEur(r.amount)} · zurückgegeben · returned</span>
-          ${r.note ? `<span class="k-note k-note--flag">Casa Castel: „${pvEsc(r.note)}“</span>` : ''}
-        </div></div>
-        <button class="pv-big" type="button" data-act="inv" data-visit="${pvEsc(r.visit_id || '')}" data-month="${pvEsc(r.month)}" data-label="${pvEsc(label)}"><span class="pv-big__ico">${pvPic('btn_invoice', 20)}</span><span class="pv-big__txt"><span class="pv-big__de">Neue Rechnung hochladen</span><span class="pv-big__en">Upload new invoice</span></span></button>
-      </div>`;
+    h += line('flag', `<b>Rechnung zurück</b> · ${pvEsc(r.visit_date ? pvWdDM(r.visit_date) : label)}`, r.note ? `„${pvEsc(r.note)}“` : pvEsc(pvEur(r.amount)),
+      'Neu · New', `data-visit="${pvEsc(r.visit_id || '')}" data-month="${pvEsc(r.month)}" data-label="${pvEsc(label)}"`);
   });
   if (t.prompt) {
-    const mn = pvInvMonthName(t.prompt.month, false), mshort = mn.split(' ')[0];
-    h += `<div style="margin-top:12px;padding-top:12px;border-top:.5px solid var(--cc-rule);">
-        <div class="k-mob-week-top-row"><span class="k-mob-status-chip now">${pvPic('chip_invoice', 13)}Rechnung <span class="en">· Invoice</span></span></div>
-        <div class="k-mob-week-body"><div class="k-mob-week-left">
-          <span class="k-mob-week-room">${pvEsc(mn)}</span>
-          <span class="k-mob-week-dates-sm">${t.prompt.visits} ${t.prompt.visits === 1 ? 'Termin · visit' : 'Termine · visits'}</span>
-          <span class="k-note">Bitte die Monatsrechnung hochladen. · Please upload the monthly invoice.</span>
-        </div></div>
-        <button class="pv-big" type="button" data-act="inv" data-visit="" data-month="${pvEsc(t.prompt.month)}" data-label="${pvEsc(mn)}"><span class="pv-big__ico">${pvPic('btn_invoice_m', 20)}</span><span class="pv-big__txt"><span class="pv-big__de">Rechnung für ${pvEsc(mshort)}</span><span class="pv-big__en">Upload ${pvEsc(pvInvMonthName(t.prompt.month, true).split(' ')[0])} invoice</span></span></button>
-      </div>`;
+    const mn = pvInvMonthName(t.prompt.month, false);
+    h += line('now', `<b>Monatsrechnung</b> · ${pvEsc(mn)}`, `${t.prompt.visits} ${t.prompt.visits === 1 ? 'Termin' : 'Termine'}`,
+      'Hochladen', `data-visit="" data-month="${pvEsc(t.prompt.month)}" data-label="${pvEsc(mn)}"`);
   }
   (t.missing || []).forEach(m => {
-    if (card && card.id === m.id) return;                    /* the card itself shows the big button */
-    h += `<div style="margin-top:10px;padding:9px 10px;border-radius:12px;background:#FFF1E6;border:.5px solid #F0A877;display:flex;align-items:center;gap:10px;">
-        <span style="flex:1;min-width:0;font-size:12.5px;line-height:1.35;color:#8A3E12;"><b style="font-weight:600;">Rechnung fehlt</b> · ${pvEsc(pvWdDM(m.date))}<span style="display:block;color:#B8652E;">Invoice missing</span></span>
-        <button type="button" data-act="inv" data-visit="${pvEsc(m.id)}" data-month="${pvEsc(String(m.date).slice(0, 7) + '-01')}" data-label="${pvEsc('Termin ' + pvWdDM(m.date))}" style="flex-shrink:0;min-height:40px;padding:0 14px;border-radius:12px;border:1px solid #D9B878;background:#F3DDB0;color:#4A3410;font-size:13px;font-weight:600;">Hochladen</button>
-      </div>`;
+    if (card && card.id === m.id) return;                    /* the card itself shows the "Rechnung" square */
+    h += line('wait', `<b>Rechnung fehlt</b> · ${pvEsc(pvWdDM(m.date))}`, '',
+      'Hochladen', `data-visit="${pvEsc(m.id)}" data-month="${pvEsc(String(m.date).slice(0, 7) + '-01')}" data-label="${pvEsc('Termin ' + pvWdDM(m.date))}"`);
   });
   return h;
 }
-function pvInvoiceCardButton(s) {                /* "Rechnung hochladen" on the sent / done card (board P4) */
+function pvInvoiceWact(s) {                    /* "Rechnung" as a square on the right of the card (like Start) */
   const t = s && s.invoice_todo, v = s && s.card;
   if (!t || !v || !(t.missing || []).some(m => m.id === v.id)) return '';
-  return `<button class="pv-big" type="button" data-act="inv" data-visit="${pvEsc(v.id)}" data-month="${pvEsc(String(v.date).slice(0, 7) + '-01')}" data-label="${pvEsc('Termin ' + pvWdDM(v.date))}" style="margin-top:8px;"><span class="pv-big__ico">${pvPic('btn_invoice', 20)}</span><span class="pv-big__txt"><span class="pv-big__de">Rechnung hochladen</span><span class="pv-big__en">Upload invoice</span></span></button>`;
+  return `<button class="k-mob-wact gold pv-wact" type="button" data-act="inv" data-visit="${pvEsc(v.id)}" data-month="${pvEsc(String(v.date).slice(0, 7) + '-01')}" data-label="${pvEsc('Termin ' + pvWdDM(v.date))}">${pvPic('btn_invoice', 18)}<span>Rechnung</span></button>`;
 }
+function pvInvoiceCardButton() { return ''; }  /* the old full-width button is gone (slim card) */
 
 /* ── PROVIDER: the sheet ────────────────────────────────── */
 const _pvInv = { target: null, files: [], amount: '', date: '', busy: false };
