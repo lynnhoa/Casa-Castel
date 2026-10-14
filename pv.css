@@ -587,7 +587,7 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 .pv-tools{display:flex;gap:6px;border:none;padding:8px 0 2px;margin:0}
 .pv-tool-pill{flex:1;min-width:0;height:36px;display:flex;align-items:center;justify-content:center;gap:5px;border:none;border-radius:999px;padding:0 4px;font-family:inherit;font-size:11.5px;font-weight:600;letter-spacing:.01em;cursor:pointer;-webkit-tap-highlight-color:transparent;box-shadow:0 1px 2px rgba(60,50,30,.10);transition:transform .12s ease,opacity .15s}
 .pv-tool-pill:active{transform:scale(.95);opacity:.9}
-.pv-tool-pill svg{flex-shrink:0;width:12px;height:12px;padding:4px;border-radius:50%;background:rgba(255,255,255,.85)}
+.pv-tool-pill svg{flex-shrink:0;box-sizing:content-box;width:12px;height:12px;padding:4px;border-radius:50%;background:rgba(255,255,255,.85)}
 .pv-tool-pill span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pv-tool-pill--ag{background:#A9CFF7;color:#123E6B}.pv-tool-pill--ag svg{color:#1A5896}
 .pv-tool-pill--li{background:#F7C5B4;color:#73341A}.pv-tool-pill--li svg{color:#A04A26}
