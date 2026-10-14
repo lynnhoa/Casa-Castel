@@ -163,16 +163,20 @@ function _pvNote1() {                        /* one line of text at most: the fi
 }
 function _pvIsGuest() { try { return localStorage.getItem('pv_guest') === '1'; } catch (e) { return false; } }   /* Build 2 */
 function _pvMyName() { try { return localStorage.getItem('pv_person_name') || ''; } catch (e) { return ''; } }
-function _pvMayAbort(v) {                    /* only my own photos on it → I may stop and start over */
-  const me = _pvMyName();
+/* Fix 7 · in Lynn's preview the previewed person counts, never this phone's localStorage */
+function _pvIsGuestS(s) { return s && s.preview ? !!(s.person && s.person.is_guest) : _pvIsGuest(); }
+function _pvMyNameS(s)  { return s && s.preview ? ((s.person && s.person.name) || '') : _pvMyName(); }
+function _pvMeIdS(s)    { return s && s.preview ? ((s.person && s.person.id) || '') : localStorage.getItem('pv_person'); }
+function _pvMayAbort(v, s) {                 /* only my own photos on it → I may stop and start over */
+  const me = _pvMyNameS(s);
   return (v.points || []).every(p => !(p.path || p.np) || !p.by || p.by === me);
 }
-function _pvUnplannedLink() {                /* no visit in the photo window → start without a date (one tap) */
-  if (_pvIsGuest()) return '';
+function _pvUnplannedLink(s) {               /* no visit in the photo window → start without a date (one tap) */
+  if (_pvIsGuestS(s)) return '';
   return `<button type="button" class="pv-link" data-act="unplanned">Heute geputzt? Starten · Cleaned today? Start</button>`;
 }
-function _pvAnotherLink() {                  /* Build 1 · a second cleaning on the same day */
-  if (_pvIsGuest()) return '';
+function _pvAnotherLink(s) {                 /* Build 1 · a second cleaning on the same day */
+  if (_pvIsGuestS(s)) return '';
   return `<button type="button" class="pv-link" data-act="unplanned">Noch eine Reinigung heute? Starten · Start another</button>`;
 }
 function pvRoomMap(state) {                 /* point key → room (Bad 1, Bad 2 …) from the list */
@@ -240,8 +244,8 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip">${_pvIco('chip_later', 13)}Kein Termin heute <span class="en">· No visit today</span></span></div>
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(s.today))}</span>
         <span class="k-mob-week-dates-sm">Kein nächster Termin · no next visit</span>`,
-        _pvIsGuest() ? '' : _pvWact('unplanned', 'gold', 'btn_unplanned', 'Starten'))}
-      <span class="k-note">${_pvIsGuest() ? 'Kein Termin offen. · No visit open.' : 'Heute geputzt? Starte hier. · Cleaned today? Start here.'}</span>` };
+        _pvIsGuestS(s) ? '' : _pvWact('unplanned', 'gold', 'btn_unplanned', 'Starten'))}
+      <span class="k-note">${_pvIsGuestS(s) ? 'Kein Termin offen. · No visit open.' : 'Heute geputzt? Starte hier. · Cleaned today? Start here.'}</span>` };
   }
   const counts = v.counts || {};
   const total = counts.total || 0;
@@ -254,7 +258,7 @@ function _pvProviderCard(s) {
   };
   const movedLine = () => v.moved_from && v.moved_from !== v.date
     ? `<span class="k-note">Neuer Termin (vorher ${pvDM(v.moved_from)}) · New date (was ${pvDM(v.moved_from)})</span>` : '';
-  const forLine = () => v.person_id && v.person_id !== localStorage.getItem('pv_person') && v.person
+  const forLine = () => v.person_id && v.person_id !== _pvMeIdS(s) && v.person
     ? `<span class="k-note">Geplant für ${pvEsc(v.person)} · planned for ${pvEsc(v.person)}</span>` : '';
   const reopenLine = v.reopen_until && new Date(v.reopen_until) > new Date() ? `<span class="k-note">Wieder offen bis ${pvWdDM(String(v.reopen_until).slice(0, 10))} ${pvHM(v.reopen_until)} · Reopened</span>` : '';
 
@@ -285,7 +289,7 @@ function _pvProviderCard(s) {
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${inDays}</span>`,
         v.can_cancel ? _pvWact('cancel', 'red', 'btn_cancel', 'Absage') : '')}
       ${_pvNote1(_pvExtraNote(v), movedLine(), forLine(), lastLine())}
-      ${_pvUnplannedLink()}` };
+      ${_pvUnplannedLink(s)}` };
   }
 
   if (v.status === 'in_progress') {                         /* paused / running: continue · or stop and start over */
@@ -295,7 +299,7 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${dayChip}</span>${_pvListBtn(total, true)}</div>
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${cov} von ${total} Fotos · seit ${pvHM(v.started_at)}</span>`,
-        _pvWact('continue', 'gold', all ? 'send' : 'btn_continue', all ? 'Senden' : 'Weiter') + (_pvMayAbort(v) ? _pvWact('abort', 'red', 'btn_cancel', 'Abbrechen') : ''))}
+        _pvWact('continue', 'gold', all ? 'send' : 'btn_continue', all ? 'Senden' : 'Weiter') + (_pvMayAbort(v, s) ? _pvWact('abort', 'red', 'btn_cancel', 'Abbrechen') : ''))}
       ${_pvNote1(_pvExtraNote(v),
         `<span class="k-note">${all ? 'Alles fotografiert – jetzt senden. · All done – send now.' : 'Mach weiter, wo du warst. · Continue where you were.'}</span>`)}` };
   }
@@ -317,7 +321,7 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${_pvIco('chip_sent', 13)}Gesendet <span class="en">· Sent</span></span>${_pvListBtn(total, true)}</div>
       ${_pvRow(`<span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>`, typeof pvInvoiceWact === 'function' ? pvInvoiceWact(s) : '')}
-      <span class="k-note k-note--wait">Wird geprüft. · Waiting for review.</span>${v.date === s.today ? _pvAnotherLink() : ''}` };
+      <span class="k-note k-note--wait">Wird geprüft. · Waiting for review.</span>${v.date === s.today ? _pvAnotherLink(s) : ''}` };
   }
 
   if (v.status === 'done') {
@@ -327,7 +331,7 @@ function _pvProviderCard(s) {
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${total} Fotos · ${_pvSpan(v)}</span>
         <span class="k-note k-note--done">Danke! · Thank you!</span>
-      </div>${typeof pvInvoiceWact === 'function' && pvInvoiceWact(s) ? `<div class="k-mob-week-acts">${pvInvoiceWact(s)}</div>` : ''}</div>${v.date === s.today ? _pvAnotherLink() : ''}` };
+      </div>${typeof pvInvoiceWact === 'function' && pvInvoiceWact(s) ? `<div class="k-mob-week-acts">${pvInvoiceWact(s)}</div>` : ''}</div>${v.date === s.today ? _pvAnotherLink(s) : ''}` };
   }
 
   if (v.status === 'rejected') {

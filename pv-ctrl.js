@@ -44,6 +44,10 @@
       const { data, error } = await _ctlSupa.rpc('pv_ctrl_year', { p_year: window._ctrl.year });
       st.y = window._ctrl.year; st.rows = !error && Array.isArray(data) ? data : [];
     } catch (e) { st.y = window._ctrl.year; st.rows = []; }
+    try {                                                    /* Fix 6: which cost types Providers owns, and since when */
+      const { data: cl, error: e2 } = await _ctlSupa.rpc('pv_ctrl_claimed', {});
+      st.claimed = !e2 && Array.isArray(cl) ? cl : [];
+    } catch (e) { st.claimed = st.claimed || []; }
     return r;
   };
 
@@ -70,6 +74,22 @@
       r.note = pv.status === 'reopened' ? 'Reopened in Providers — the Soll can still change'
              : pv.changed ? 'Changed in Providers after you confirmed — confirm again' : (r.note || null);
       r.pv = pv;
+    });
+    /* Fix 6: Providers owns this cost type → months without a closed Providers month
+       show no stale Setup Soll (months before Providers took over keep it) */
+    (st.claimed || []).forEach(c => {
+      const cat = catOf(c.category_id);
+      if (!cat || !c.from) return;
+      const fy = +String(c.from).slice(0, 4), fm = +String(c.from).slice(5, 7);
+      if (y < fy || (y === fy && m < fm)) return;
+      if (st.rows.some(pv => same(pv.category_id, c.category_id) && pv.month === m)) return;
+      const i = plan.rows.findIndex(x => same(x.catId, cat.id) && x.src !== 'Providers');
+      if (i !== -1) {
+        plan.rows.splice(i, 1);
+        plan.notDue = plan.notDue || [];
+        const label = cat.name + ' — from Providers, month not closed yet';
+        if (!plan.notDue.some(nd => nd.label === label)) plan.notDue.push({ label });
+      }
     });
     return plan;
   };

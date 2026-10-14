@@ -62,6 +62,9 @@ function _pvLoginError(code, extra) {
   } else if (code === 'guest') {
     de = 'Dieser Gast-Link ist abgelaufen. Für den nächsten Termin schickt dir Casa Castel einen neuen Link.';
     en = 'This guest link has expired. Casa Castel sends you a new link for the next visit.';
+  } else if (code === 'guest_bye') {
+    de = 'Abgemeldet. Dein Link funktioniert weiter – einfach nochmal antippen.';
+    en = 'Logged out. Your link still works — just tap it again.';
   } else if (code === 'network') {
     de = 'Keine Verbindung. Bitte versuche es gleich nochmal.';
     en = 'No connection. Please try again in a moment.';
@@ -86,7 +89,6 @@ async function _pvDoLogin() {
   _pvBusy = true;
   const btn = $id('pv-login-btn');
   btn.innerHTML = '<span class="pv-spin"></span>';
-  const pushP = _pvPushAsk();                   /* push on by default: asked inside the login tap (iPhone) */
   const { data, error } = await pvRpc('pv_login', { p_job: job, p_password: pw });
   _pvBusy = false;
   btn.textContent = 'Anmelden · Log in';
@@ -99,7 +101,7 @@ async function _pvDoLogin() {
   localStorage.setItem('pv_job', data.job.id);
   localStorage.setItem('pv_job_name', data.job.name);
   $id('pv-login-pw').value = '';
-  _pvPushSave(pushP);
+  _pvPushSave(_pvPushAsk());                    /* asked only after a real login — if iOS refuses here, the yellow bar catches it */
   _pvEnterApp(true);
 }
 
@@ -163,7 +165,7 @@ function _pvEnterApp(fresh) {
   _pvLoad();
 }
 
-function _pvToLogin() {
+function _pvToLogin(reason) {
   const wasGuest = localStorage.getItem('pv_guest') === '1';
   localStorage.removeItem('pv_guest');
   if (typeof pvCamKill === 'function') pvCamKill();
@@ -179,7 +181,7 @@ function _pvToLogin() {
   $id('pv-login-screen').style.display = '';
   $id('pv-name-menu').classList.add('pv-hidden');
   _pvFillJobs();
-  if (wasGuest) _pvLoginError('guest');                /* Build 2: the guest link has ended */
+  if (wasGuest) _pvLoginError(reason === 'logout' ? 'guest_bye' : 'guest');   /* Build 2: logout vs really expired */
 }
 
 async function _pvLoad() {
@@ -618,7 +620,7 @@ async function _pvTakeOver() {
   $id('pv-logout-btn').onclick = async () => {
     const tok = localStorage.getItem('pv_token');
     if (tok) { await _pvPushDrop(tok); pvRpc('pv_logout', { p_token: tok }); }
-    _pvToLogin();
+    _pvToLogin('logout');
   };
   $id('pv-refresh').onclick = _pvLoad;
   _pvMountCompose();

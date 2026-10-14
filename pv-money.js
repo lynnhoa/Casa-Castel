@@ -119,7 +119,8 @@ function _pvmMonthLine(mo, visits, d) {         /* History: read-only month summ
   const toCheck = inv.filter(i => i.status === 'to_check' || i.status === 'returned').length;
   const missing = mo.mode === 'per_visit' ? counted.filter(v => !inv.some(i => i.visit_id === v.id)).length
                 : mo.mode === 'monthly' ? (counted.length && !inv.some(i => !i.visit_id) ? 1 : 0) : 0;
-  const parts = [`${vs.length} ${vs.length === 1 ? 'visit' : 'visits'}`];
+  const other = vs.length - counted.length;                  /* Fix 5: headline = billable visits only */
+  const parts = [`${counted.length} ${counted.length === 1 ? 'visit' : 'visits'}${other ? ` <span style="color:#9A8E7E;">· ${other} not counted</span>` : ''}`];
   if (mo.mode !== 'none') {
     parts.push(`invoices <b style="font-weight:600;">${pvEur(sum)}</b>`);
     if (toCheck) parts.push(`${toCheck} to check`);
@@ -154,14 +155,6 @@ function pvaHistoryMoneyHTML(list, d) {
       .map(v => pvHistoryRowHTML(v, true, avatar)).join('');          /* money lives on the month line */
     return _pvmMonthLine(mo, list, d) + rows;
   }).join('');
-}
-async function pvaCheckMonth(month, n, sum) {
-  if (!(await ccConfirm(`${n} ${n === 1 ? 'invoice' : 'invoices'} · ${pvEur(sum)}`, 'Check them all? Fix stays possible until the month closes.', 'Alle ✓', false))) return;
-  const { data, error } = await pvaRpc('pv_admin_check_month', { p_job: _pvaJob, p_month: month });
-  if (error) { pvaToast('No connection — try again.'); return; }
-  if (data && data.error) { pvaToast('Already changed — refreshed.'); }
-  else pvaToast(`${data.n} ✓ · ${pvEur(data.sum)} checked`);
-  pvaLoad(); _pvmRefreshHistory();
 }
 async function pvaMonthClose(month, missing) {
   if (missing && !(await ccConfirm('Close anyway?', `${missing} ${missing === 1 ? 'visit has' : 'visits have'} no invoice. Closing hands the sum of the checked invoices to Controlling.`, 'Close month', false))) return;
@@ -309,8 +302,10 @@ function _pviTodo() {                             /* to check · missing · retu
     if (mo.mode === 'per_visit') counted.filter(v => !inv.some(i => i.visit_id === v.id)).forEach(v => { missing.push({ v, month: mo.month }); miss++; });
     else if (mo.mode === 'monthly' && k < cur && counted.length && !inv.some(i => !i.visit_id)) { missing.push({ v: null, month: mo.month, n: counted.length }); miss++; }
     const open = inv.filter(i => i.status === 'to_check' || i.status === 'returned').length;
+    const review = vs.filter(v => ['sent', 'redo', 'in_progress'].includes(v.status)).length;   /* Fix 4: the server would reject the close */
     if (k < cur && (vs.length || inv.length) && !open) {
-      close.push({ mo, n: vs.length, miss, sum: inv.filter(i => i.status === 'checked').reduce((a, i) => a + Number(i.amount || 0), 0) });
+      close.push({ mo, n: counted.length, other: vs.length - counted.length, review, miss,
+                   sum: inv.filter(i => i.status === 'checked').reduce((a, i) => a + Number(i.amount || 0), 0) });
     }
   });
   return { toCheck, returned, missing, close };
@@ -347,7 +342,12 @@ function _pviRender(cached) {
     `<div class="pvi-row">${av(i.by)}<span class="pvi-tx"><b>${esc((i.by ? i.by + ' · ' : '') + lbl(i))}</b><span>${i.note ? '„' + esc(i.note) + '“ · ' : ''}${pvEur(i.amount)}</span></span><span class="pvi-wait">waiting</span></div>`).join(''));
   t.close.forEach(c => {
     const mn = _pvMonthName(c.mo.month, true);
-    h += sec('Close month', '', `<div class="pvi-row"><span class="pvi-tx"><b>${esc(mn)} · ${c.n} ${c.n === 1 ? 'visit' : 'visits'}</b><span>${pvEur(c.sum)} · ${c.miss ? c.miss + ' without invoice' : 'all checked'} · goes to Controlling</span></span>
+    const head = `<b>${esc(mn)} · ${c.n} ${c.n === 1 ? 'visit' : 'visits'}${c.other ? ` <i style="font-style:normal;font-weight:400;color:#9A8E7E;">· ${c.other} not counted</i>` : ''}</b>`;
+    if (c.review) {                                          /* Fix 4: no button that can only fail */
+      h += sec('Close month', '', `<div class="pvi-row"><span class="pvi-tx">${head}<span>${c.review} ${c.review === 1 ? 'visit waits' : 'visits wait'} for review — approve or flag first</span></span><span class="pvi-wait">waiting</span></div>`, 'pvi-sec--close');
+      return;
+    }
+    h += sec('Close month', '', `<div class="pvi-row"><span class="pvi-tx">${head}<span>${pvEur(c.sum)} · ${c.miss ? c.miss + ' without invoice' : 'all checked'} · goes to Controlling</span></span>
         <button class="pvi-b pvi-b--gold" type="button" style="height:32px;" onclick="pvaMonthClose('${c.mo.month}', ${c.miss})">Close ${esc(mn.split(' ')[0])}</button></div>${c.mo.status === 'reopened' ? '<span class="k-note">Reopened — close again to update Controlling.</span>' : ''}`, 'pvi-sec--close');
   });
   if (!h) h = `<div class="pvi-clear">${pvPic('act_check', 20)}<b>All clear ✓</b><span>No invoice to check, nothing missing, no month to close.</span></div>`;
