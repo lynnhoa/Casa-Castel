@@ -463,7 +463,12 @@ const _PV_SYS = {
   restored:           ['Wieder geplant', 'Planned again', 'Planned again'],
   taken_over:         ['Übernommen', 'Taken over', 'Taken over']
 };
-function _pvSysLine(m, en) {
+function _pvDelBtn(m, opts, size) {           /* tiny ✕ — only in Lynn's feed, keeps the line height */
+  if (!opts || !opts.canDelete || !opts.onDelete) return '';
+  const px = size || 22;
+  return `<button type="button" aria-label="Delete" onclick="${opts.onDelete}('${m.id}')" style="flex-shrink:0;width:${px}px;height:${px}px;border-radius:50%;border:.5px solid var(--cc-rule);background:var(--cc-white);color:var(--cc-taupe);display:inline-flex;align-items:center;justify-content:center;padding:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>`;
+}
+function _pvSysLine(m, en, opts) {
   const pl = m.payload || {};
   const t = _PV_SYS[pl.code] || ['', '', ''];
   let txt = en ? t[2] : t[0] + ' · ' + t[1];
@@ -471,7 +476,8 @@ function _pvSysLine(m, en) {
   else if (pl.date) txt += ' · ' + pvWdDM(pl.date, en);                 /* which visit the line is about */
   if ((pl.code === 'cancelled_provider' || pl.code === 'cancel_undone' || pl.code === 'sent' || pl.code === 'resent' || pl.code === 'taken_over') && pl.person) txt = pvEsc(pl.person) + ': ' + txt;
   const cls = pl.code === 'approved' ? ' k-sys-event__text--approved' : '';
-  return `<div class="k-sys-event"><div class="k-sys-event__line"></div><span class="k-sys-event__text${cls}">${txt} · ${pvTs(m.at)}</span><div class="k-sys-event__line"></div></div>`;
+  const del = _pvDelBtn(m, opts, 20);
+  return `<div class="k-sys-event"${del ? ' style="gap:6px;"' : ''}><div class="k-sys-event__line"></div><span class="k-sys-event__text${cls}">${txt} · ${pvTs(m.at)}</span>${del}<div class="k-sys-event__line"></div></div>`;
 }
 function pvDivider(label) {
   return `<div class="k-sys-event k-week-div"><div class="k-sys-event__line"></div><span class="k-sys-event__text">${label}</span><div class="k-sys-event__line"></div></div>`;
@@ -499,7 +505,7 @@ function pvChatRowHTML(m, opts) {
   if (pl.text && m.kind !== 'damage') body += `<p class="k-chat-text">${pvEsc(pl.text)}</p>`;
   return `<div class="k-chat-row"><span class="k-chat-avatar">${pvEsc(av)}</span><div class="k-chat-body"><div class="k-chat-meta"><span class="k-chat-name">${pvEsc(name)}</span><span class="k-chat-time">${pvTs(m.at)}</span></div>${body}</div>${del}</div>`;
 }
-function _pvSentBlock(m, state, en) {         /* "Gesendet" block · Lynn: the review grid (every photo, tap = viewer) */
+function _pvSentBlock(m, state, en, opts) {   /* "Gesendet" block · Lynn: the review grid (every photo, tap = viewer) */
   const pl = m.payload || {};
   const re = pl.code === 'resent';
   const all = state.photos[m.visit_id] || [];
@@ -511,7 +517,7 @@ function _pvSentBlock(m, state, en) {         /* "Gesendet" block · Lynn: the r
         ? `<div class="pv-ph" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${_pvPhLbl(p, all, rooms)}</span></div>`
         : `<div class="pv-ph pv-ph--np" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;">–<span>${_pvPhLbl(p, all, rooms)}</span></div>`).join('');
     const nps = shots.filter(p => p.np && !p.path).map(p => `<p class="pv-np">${pvPic('np_line', 12)}${pvEsc(pvPtName(p, all, rooms))} not possible (${why[p.np] || p.np})</p>`).join('');
-    return `<div class="pv-sub" data-sent="${m.visit_id}"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)} · tap a photo to enlarge</span></div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}</div>`;
+    return `<div class="pv-sub" data-sent="${m.visit_id}"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)} · tap a photo to enlarge</span>${_pvDelBtn(m, opts, 24)}</div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}</div>`;
   }
   const show = shots.slice(0, 4), more = shots.length - show.length;
   const grid = show.map(p => p.path
@@ -539,7 +545,7 @@ function pvFeedHTML(state, opts) {
     }
     if (m.kind === 'system') {
       const code = (m.payload || {}).code;
-      html += (code === 'sent' || code === 'resent') && state.photos && state.photos[m.visit_id] ? _pvSentBlock(m, state, opts.en) : _pvSysLine(m, opts.en);
+      html += (code === 'sent' || code === 'resent') && state.photos && state.photos[m.visit_id] ? _pvSentBlock(m, state, opts.en, opts) : _pvSysLine(m, opts.en, opts);
     }
     else html += pvChatRowHTML(m, opts.canDelete || m.person_id != null ? opts : { en: opts.en });
   });

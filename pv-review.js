@@ -292,7 +292,7 @@ function pvaMountCompose() {
   });
 }
 async function pvaDeleteMsg(id) {
-  const ok = await ccConfirm('Delete this message?', 'It disappears for both sides.', 'Delete', true);
+  const ok = await ccConfirm('Delete this message?', 'It disappears from the chat for both sides. Photos and history stay.', 'Delete', true);
   if (!ok) return;
   const { data, error } = await pvaRpc('pv_admin_delete_message', { p_id: id });
   if (error || (data && data.error)) { pvaToast('Already changed — refreshed.'); }
