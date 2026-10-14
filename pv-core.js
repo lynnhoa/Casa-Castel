@@ -269,15 +269,16 @@ function _pvProviderCard(s) {
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${cov} von ${total} Fotos · since ${pvHM(v.started_at)}</span>
-        <span class="k-note">${all ? 'Alles fotografiert – jetzt senden. · All done – now send.' : 'Pausiert – mach weiter, wo du warst. · Paused – continue where you were.'}</span>
-        ${unplannedLine}${_pvExtraNote(v)}
+        ${v.unplanned ? unplannedLine
+           : `<span class="k-note">${all ? 'Alles fotografiert – jetzt senden. · All done – now send.' : 'Mach weiter, wo du warst. · Continue where you were.'}</span>`}${_pvExtraNote(v)}
       </div></div>
 
       <button class="pv-big" type="button" data-act="continue">
         <span class="pv-big__ico">${_pvIco(all ? 'send' : 'btn_continue', 20)}</span>
         <span class="pv-big__txt"><span class="pv-big__de">${all ? 'Senden' : 'Weiter'}</span><span class="pv-big__en">${all ? 'Send' : 'Continue'}</span></span>
         <span class="pv-big__count">${cov} / ${total}</span>
-      </button>` };
+      </button>
+      ${_pvListBtn(total, false)}` };
   }
 
   if (v.status === 'redo') {                                /* Lynn asked for some areas again */
