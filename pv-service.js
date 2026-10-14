@@ -86,6 +86,7 @@ async function _pvDoLogin() {
   _pvBusy = true;
   const btn = $id('pv-login-btn');
   btn.innerHTML = '<b><span class="pv-spin"></span></b><small>Anmelden · Log in</small>';
+  const pushP = _pvPushAsk();                   /* push on by default: asked inside the login tap (iPhone) */
   const { data, error } = await pvRpc('pv_login', { p_job: job, p_password: pw });
   _pvBusy = false;
   btn.innerHTML = '<b>Anmelden</b><small>Log in</small>';
@@ -98,6 +99,7 @@ async function _pvDoLogin() {
   localStorage.setItem('pv_job', data.job.id);
   localStorage.setItem('pv_job_name', data.job.name);
   $id('pv-login-pw').value = '';
+  _pvPushSave(pushP);
   _pvEnterApp(true);
 }
 
@@ -205,6 +207,7 @@ async function _pvPing() {
 /* ── RENDER ─────────────────────────────────────────────── */
 function _pvRender(s) {
   if (!s) return;
+  if (_pvSwReg) _pvPushState(_pvPushIsOn);
   $id('pv-hist-btn').style.display = _pvIsGuest() ? 'none' : '';      /* Build 2: a guest sees today only */
   if (s.person && s.person.name) { $id('pv-name-pill').textContent = s.person.name; localStorage.setItem('pv_person_name', s.person.name); }
   if (s.job && s.job.name)       { $id('pv-job-tab').textContent = s.job.name;      localStorage.setItem('pv_job_name', s.job.name); }
@@ -450,6 +453,71 @@ async function _pvStartInstead(id) {
   await _pvLoad();
   pvCamOpen(data.visit);
 }
+/* ── PUSH · on by default · own helper pv-sw.js (scope /service.html) — the tenants' sw.js stays untouched ── */
+const PV_VAPID = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaYncl_SxKGpBceAHzt9T3HF-CV54FV2MSQ';
+let _pvSwReg = null, _pvPushIsOn = false;
+function _pvVKey(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+function _pvPushInit() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  navigator.serviceWorker.register('/pv-sw.js', { scope: '/service.html' })
+    .then(r => { _pvSwReg = r; return r.pushManager.getSubscription(); })
+    .then(sub => _pvPushState(!!sub)).catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'pv-push' && localStorage.getItem('pv_token')) _pvLoad(); });
+}
+function _pvPushAsk() {                        /* must run inside a tap → subscription promise (or null) */
+  if (!_pvSwReg || _pvIsGuest() || localStorage.getItem('pv_push') === '0') return null;
+  try { return _pvSwReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _pvVKey(PV_VAPID) }).catch(() => null); }
+  catch (e) { return null; }
+}
+async function _pvPushSave(p) {
+  const sub = p ? await p : null;
+  if (!sub || _pvIsGuest()) { _pvPushState(false); return false; }
+  const j = sub.toJSON();
+  const { data, error } = await pvRpc('pv_push_register', { p_token: localStorage.getItem('pv_token'), p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+  const ok = !error && !!(data && data.ok);
+  if (ok) localStorage.setItem('pv_push', '1');
+  _pvPushState(ok);
+  return ok;
+}
+async function _pvPushDrop(tok) {              /* logout: this phone gets no more pushes for this person */
+  try { const sub = _pvSwReg && await _pvSwReg.pushManager.getSubscription(); if (sub) { await pvRpc('pv_push_unregister', { p_token: tok, p_endpoint: sub.endpoint }); await sub.unsubscribe(); } } catch (e) {}
+  _pvPushIsOn = false;
+}
+function _pvPushToggle() {
+  if (_pvPushIsOn) { localStorage.setItem('pv_push', '0'); _pvPushDrop(localStorage.getItem('pv_token')).then(() => _pvPushState(false)); return; }
+  localStorage.removeItem('pv_push');
+  if (!_pvSwReg) { pvToast('Push nur in der App vom Home-Bildschirm · Only in the Home Screen app'); return; }
+  _pvPushSave(_pvPushAsk()).then(ok => {
+    if (!ok) pvToast(typeof Notification !== 'undefined' && Notification.permission === 'denied' ? 'Push ist in den Einstellungen blockiert · Blocked in Settings' : 'Push nicht möglich · Not possible');
+  });
+}
+function _pvPushState(on) {
+  _pvPushIsOn = !!on;
+  const lo = $id('pv-logout-btn');
+  if (lo && !$id('pv-push-item')) {             /* "Push · An / Aus" in the name menu */
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = 'pv-push-item'; b.style.cssText = lo.style.cssText; b.onclick = _pvPushToggle;
+    lo.parentNode.insertBefore(b, lo);
+  }
+  const it = $id('pv-push-item');
+  if (it) { it.style.display = _pvIsGuest() ? 'none' : 'flex'; it.textContent = '🔔 Push · ' + (on ? 'An · On' : 'Aus · Off'); }
+  let bar = $id('pv-push-bar');                 /* phones already logged in: one tap to turn it on */
+  const want = !on && !!_pvSwReg && !_pvIsGuest() && !!localStorage.getItem('pv_token') && localStorage.getItem('pv_push') !== '0'
+    && typeof Notification !== 'undefined' && Notification.permission !== 'denied';
+  if (want && !bar && $id('pv-strip')) {
+    bar = document.createElement('button');
+    bar.type = 'button'; bar.id = 'pv-push-bar';
+    bar.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:40px;border:none;border-bottom:.5px solid #E0DAD0;background:#FFF6DC;color:#6B4A0E;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;';
+    bar.innerHTML = '🔔 Push aktivieren <span style="font-weight:400;color:#9A7A3E;">· Turn on notifications</span>';
+    bar.onclick = () => { _pvPushSave(_pvPushAsk()); };
+    $id('pv-strip').parentNode.insertBefore(bar, $id('pv-strip'));
+  }
+  if (bar && !want) bar.remove();
+}
 async function _pvGuestOpen(g) {              /* Build 2 · opened from a guest link */
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
   const { data, error } = await pvRpc('pv_guest_open', { p_token: g });
@@ -539,7 +607,7 @@ async function _pvTakeOver() {
   });
   $id('pv-logout-btn').onclick = async () => {
     const tok = localStorage.getItem('pv_token');
-    if (tok) pvRpc('pv_logout', { p_token: tok });
+    if (tok) { await _pvPushDrop(tok); pvRpc('pv_logout', { p_token: tok }); }
     _pvToLogin();
   };
   $id('pv-refresh').onclick = _pvLoad;
@@ -597,6 +665,7 @@ async function _pvTakeOver() {
   });
   setInterval(_pvPing, 60000);
 
+  _pvPushInit();
   const g = new URLSearchParams(location.search).get('g');
   if (g) _pvGuestOpen(g);                               /* Build 2 · guest link: no password */
   else if (localStorage.getItem('pv_token')) _pvEnterApp(false);

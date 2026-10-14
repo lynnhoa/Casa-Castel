@@ -754,3 +754,47 @@ async function pvaOpenPreview(personId) {
   $a('pvaPreviewScreen').querySelectorAll('button, input, select, textarea').forEach(el => { el.disabled = true; el.style.pointerEvents = 'none'; });
   $a('pvaPreviewScrim').classList.remove('pv-hidden');
 }
+
+/* ── PUSH for you in Providers: "photos sent" · own helper pv-sw.js (scope /providers.html) ── */
+const PVA_VAPID = 'BE2AxWBOQCC02UHpV0UlzmZWwY-Ln2MrqhQG7w12Uql78fQhlZZgIaYncl_SxKGpBceAHzt9T3HF-CV54FV2MSQ';
+let _pvaSwReg = null, _pvaPushIsOn = false;
+function _pvaVKey(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+function _pvaPushLabel(on) {
+  _pvaPushIsOn = !!on;
+  const b = document.getElementById('pvaPushBtn');
+  if (b) b.textContent = '🔔 Push · ' + (on ? 'On' : 'Off');
+}
+function _pvaPushInit() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  navigator.serviceWorker.register('/pv-sw.js', { scope: '/providers.html' })
+    .then(r => { _pvaSwReg = r; return r.pushManager.getSubscription(); })
+    .then(sub => _pvaPushLabel(!!sub)).catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'pv-push') pvaLoad(); });
+}
+function pvaPushToggle() {
+  if (!_pvaSwReg) { pvaToast('Open Providers from your Home Screen app to get notifications.'); return; }
+  if (_pvaPushIsOn) {
+    (async () => {
+      try { const sub = await _pvaSwReg.pushManager.getSubscription(); if (sub) { await pvaRpc('admin_push_unregister', { p_endpoint: sub.endpoint }); await sub.unsubscribe(); } } catch (e) {}
+      _pvaPushLabel(false); pvaToast('Push off.');
+    })();
+    return;
+  }
+  const p = _pvaSwReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _pvaVKey(PVA_VAPID) });   /* inside the tap (iPhone) */
+  (async () => {
+    try {
+      const j = (await p).toJSON();
+      const { data, error } = await pvaRpc('pv_admin_push_register', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+      if (error || data !== 'ok') throw error || new Error(String(data));
+      _pvaPushLabel(true); pvaToast('Push on — you get one when a provider has sent the photos (11:00–23:00).');
+    } catch (e) {
+      _pvaPushLabel(false);
+      pvaToast(typeof Notification !== 'undefined' && Notification.permission === 'denied' ? 'Notifications are blocked — allow them in Settings.' : 'Could not turn on push — try again.');
+    }
+  })();
+}
+_pvaPushInit();

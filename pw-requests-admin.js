@@ -7,7 +7,7 @@
      badge, Send password / Decline (+ "send a new password instead")
    · Room passwords: readable for you, shown in the Tenants card next to
      Reset pw (ccRoomPwLineHTML) with a copy button
-   · Your push for password requests (12:00–20:00): switch in the sheet
+   · Your push for password requests (11:00–23:00): switch in the sheet and in the profile menu
    Needs PASSWORDS.sql (your login only: pw_requests_list / _approve /
    _decline, room_passwords_all, admin_push_register).
    ───────────────────────────────────────────────────────────── */
@@ -161,7 +161,12 @@ function _pwaSheet() {
   return o;
 }
 
+function ccAdminPushLabel() {                 /* the switch in the profile menu */
+  const b = document.getElementById('ccPushMenuBtn');
+  if (b) b.textContent = '🔔 Push · ' + (localStorage.getItem('cc_admin_push') === '1' ? 'On' : 'Off');
+}
 function _pwaRender() {
+  ccAdminPushLabel();
   _pwaBanner();
   const body = document.getElementById('pwaBody');
   if (!body) return;
@@ -170,7 +175,7 @@ function _pwaRender() {
   const rest = _pwaList.filter(q => q.status !== 'pending' && !_pwaJustSent[q.id]);
   const pushOn = localStorage.getItem('cc_admin_push') === '1';
   body.innerHTML = `
-    <button type="button" class="pwa-push" data-pwa="push">🔔 Notify me 12:00–20:00 · <b>${pushOn ? 'On' : 'Off'}</b></button>
+    <button type="button" class="pwa-push" data-pwa="push">🔔 Notify me 11:00–23:00 · <b>${pushOn ? 'On' : 'Off'}</b></button>
     ${open.length || sentNow.length ? [...open, ...sentNow].map(_pwaCardHtml).join('')
       : '<p class="cc-note" style="padding:8px 0 4px;">No open requests. 🎉</p>'}
     ${rest.length ? `<details class="pwa-hist"><summary>Last 30 days · ${rest.length}</summary>
@@ -315,7 +320,7 @@ document.addEventListener('click', async e => {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { ccPwRequestsLoad(); ccRoomPwLoad(); } });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready).then(r => { _pwaReg = r; }).catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready).then(r => { _pwaReg = r; ccAdminPushLabel(); }).catch(() => {});
     navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'cc-pwreq') ccPwRequestsOpen(); });
   }
 })();
