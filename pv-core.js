@@ -185,7 +185,8 @@ function pvProviderCardHTML(s) {
   if (v && ['sent', 'done'].includes(v.status) && typeof pvInvoiceCardButton === 'function') extra += pvInvoiceCardButton(s);
   if (v && v.redo_other) extra += _pvRedoStrip(v.redo_other);
   if (typeof pvInvoiceBlocks === 'function') extra += pvInvoiceBlocks(s);
-  if (!v || ['planned', 'in_progress', 'sent', 'done', 'redo'].includes(v.status)) extra += _pvSuppliesLink();
+  if (!v || v.status === 'in_progress' || v.status === 'redo'
+      || (['planned', 'sent', 'done'].includes(v.status) && v.window && v.window.open && !v.other_person)) extra += _pvSuppliesLink();
   return { turn: c0.turn, html: c0.html + extra };
 }
 function _pvProviderCard(s) {
@@ -243,8 +244,7 @@ function _pvProviderCard(s) {
         <span class="pv-big__txt"><span class="pv-big__de">Fotos starten</span><span class="pv-big__en">Start photos</span></span>
         <span class="pv-big__count">0 / ${total}</span>
       </button>
-      ${_pvListBtn(total, false)}
-      ${v.can_cancel ? _pvCancelLink() : ''}` };
+      ${_pvListBtn(total, false)}` };
   }
 
   if (v.status === 'planned') {                             /* next visit (window not open yet) */
@@ -272,7 +272,7 @@ function _pvProviderCard(s) {
         <span class="k-note">${all ? 'Alles fotografiert – jetzt senden. · All done – now send.' : 'Pausiert – mach weiter, wo du warst. · Paused – continue where you were.'}</span>
         ${unplannedLine}${_pvExtraNote(v)}
       </div></div>
-      <div class="pv-prog"><span style="width:${total ? Math.round(cov / total * 1000) / 10 : 0}%"></span></div>
+
       <button class="pv-big" type="button" data-act="continue">
         <span class="pv-big__ico">${_pvIco(all ? 'send' : 'btn_continue', 20)}</span>
         <span class="pv-big__txt"><span class="pv-big__de">${all ? 'Senden' : 'Weiter'}</span><span class="pv-big__en">${all ? 'Send' : 'Continue'}</span></span>
@@ -498,7 +498,7 @@ function _pvSentBlock(m, state, en) {         /* "Gesendet" block · Lynn: the r
         ? `<div class="pv-ph" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${pvEsc(p.de || '')}</span></div>`
         : `<div class="pv-ph pv-ph--np" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;">–<span>${pvEsc(p.de || '')}</span></div>`).join('');
     const nps = shots.filter(p => p.np && !p.path).map(p => `<p class="pv-np">${pvPic('np_line', 12)}${pvEsc(p.de)} not possible (${why[p.np] || p.np})</p>`).join('');
-    return `<div class="pv-sub"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)} · tap a photo to enlarge</span></div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}</div>`;
+    return `<div class="pv-sub" data-anchor="sent" data-sent="${m.visit_id}"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)} · tap a photo to enlarge</span></div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}${pl.code && typeof pvaAct !== 'undefined' && !pl.unplanned ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;"><button class="k-mob-wact green" type="button" onclick="pvaAct('approve','${m.visit_id}')">${pvPic('act_check', 14)}<span>Passt ✓</span></button><button class="k-mob-wact red" type="button" id="pvr-redo-${m.visit_id}" disabled style="opacity:.45;" onclick="pvaTapRedo('${m.visit_id}')">${pvPic('act_fix', 14)}<span>Nochmal senden · <b id="pvr-cnt-${m.visit_id}">0</b></span></button></div><input id="pvr-note-${m.visit_id}" class="cc-input" maxlength="500" placeholder="Note to her (optional)" style="display:none;margin-top:6px;width:100%;font-family:inherit;"/><p class="pv-k" style="margin-top:6px;color:#9A8E7E;">Tap a photo to mark it for redo · hold it to open</p>` : ''}</div>`;
   }
   const show = shots.slice(0, 4), more = shots.length - show.length;
   const grid = show.map(p => p.path

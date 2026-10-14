@@ -51,7 +51,7 @@ function _pvaWact(kind, color, icon, label, id) {
 function pvaCardActs(v, today) {
   if (!v) return '';
   if (v.status === 'sent' && v.unplanned) return _pvaWact('approve', 'green', 'act_approve', 'Approve', v.id) + _pvaWact('reject', 'red', 'act_reject', 'Reject', v.id);
-  if (v.status === 'sent') return _pvaWact('approve', 'green', 'act_approve', 'Approve', v.id) + _pvaWact('flag', 'red', 'act_flag', 'Flag', v.id);
+  if (v.status === 'sent') return '';                       /* review lives on the photo grid in the chat */
   if (v.status === 'done') return _pvaWact('undo', 'amber', 'act_undo', 'Undo', v.id);
   if (v.status === 'redo') return _pvaWact('unflag', 'amber', 'act_unflag', 'Unflag', v.id);
   if (v.status === 'missed') return _pvaWact('reopen', 'amber', 'act_reopen', 'Reopen', v.id);
@@ -315,8 +315,56 @@ async function pvaCleanup() {
 }
 
 /* ── TAPS IN THE FEED / HISTORY ─────────────────────────── */
+const _pvrSel = {};                                          /* visit → Set of marked point keys */
+let _pvrHold = null, _pvrHeld = false;
+function _pvrRow(visit) {
+  const set = _pvrSel[visit] || new Set();
+  const cnt = document.getElementById('pvr-cnt-' + visit);
+  const btn = document.getElementById('pvr-redo-' + visit);
+  const note = document.getElementById('pvr-note-' + visit);
+  if (cnt) cnt.textContent = set.size;
+  if (btn) { btn.disabled = !set.size; btn.style.opacity = set.size ? '' : '.45'; }
+  if (note) note.style.display = set.size ? '' : 'none';
+}
+function _pvrToggle(visit, key, el) {
+  const set = _pvrSel[visit] = _pvrSel[visit] || new Set();
+  if (set.has(key)) { set.delete(key); el.style.outline = ''; el.style.outlineOffset = ''; }
+  else { set.add(key); el.style.outline = '2.5px solid #A32D2D'; el.style.outlineOffset = '2px'; }
+  _pvrRow(visit);
+}
+async function pvaTapRedo(visit) {
+  const set = _pvrSel[visit];
+  if (!set || !set.size || _pvaActBusy) return;
+  const note = (document.getElementById('pvr-note-' + visit) || { value: '' }).value;
+  _pvaActBusy = true;
+  const { data, error } = await pvaRpc('pv_admin_flag', { p_visit: visit, p_points: Array.from(set), p_note: note });
+  _pvaActBusy = false;
+  if (error) { pvaToast('No connection — try again.'); return; }
+  if (data && data.error) pvaToast(data.error === 'closed' ? 'That month is closed — reopen the month first.' : 'Already changed — refreshed.');
+  else pvaToast('Redo sent · ' + set.size);
+  delete _pvrSel[visit];
+  pvaLoad();
+}
+document.addEventListener('pointerdown', e => {                /* hold a photo = open it */
+  const t = e.target.closest('#pvaFeed [data-anchor="sent"] [data-view]');
+  if (!t) return;
+  _pvrHeld = false;
+  clearTimeout(_pvrHold);
+  _pvrHold = setTimeout(() => {
+    _pvrHeld = true;
+    const [visit, key] = t.getAttribute('data-view').split('|');
+    pvaView(visit, key);
+  }, 450);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => document.addEventListener(ev, () => clearTimeout(_pvrHold)));
 document.addEventListener('click', e => {
   const t = e.target.closest('[data-view]');
+  if (t && t.closest('#pvaFeed') && t.closest('[data-anchor="sent"]')) {
+    if (_pvrHeld) { _pvrHeld = false; return; }                /* the hold already opened the viewer */
+    const [visit, key] = t.getAttribute('data-view').split('|');
+    _pvrToggle(visit, key, t);
+    return;
+  }
   if (t && (t.closest('#pvaFeed') || t.closest('#pvaHistoryBody'))) {
     const [visit, key] = t.getAttribute('data-view').split('|');
     pvaView(visit, key);

@@ -94,7 +94,7 @@ function _pvmInvRow(inv, opts) {
   const open = _pvmUpload && _pvmUpload.key === opts.key;
   return `<div style="margin-top:8px;padding:7px 8px;border-radius:10px;border:1px dashed #C8BFB0;">
       <div style="display:flex;align-items:center;gap:8px;"><span class="pic pic--x" style="width:28px;height:28px;border-radius:8px;">${pvPic('chip_invoice', 16)}</span>
-        <p style="flex:1;font-size:13px;color:#9A8E7E;">No invoice yet</p>
+        <p style="flex:1;font-size:13px;color:#9A8E7E;">${opts.label ? esc(opts.label) : 'No invoice yet'}</p>
         <button class="cc-foot-btn" type="button" onclick="pvaUploadOpen('${opts.key}', '${opts.visit || ''}', '${opts.month}')">${pvPic('upload', 12)}Upload</button></div>
       ${open ? `<div class="pv-edit-row" style="margin-top:8px;">
           <div class="pv-chips"><span class="k-mob-n-chip" style="cursor:pointer;" onclick="pvaUploadPick()">${_pvmFiles.length ? '✓ ' + (_pvmFiles.some(pvInvIsPdf) ? 'PDF' : _pvmFiles.length + ' photo' + (_pvmFiles.length === 1 ? '' : 's')) : 'Choose PDF or photos'}</span></div>
@@ -116,6 +116,9 @@ function _pvmMonthLine(mo, visits, d) {
   const toCheck = inv.filter(i => i.status === 'to_check' || i.status === 'returned').length;
   const missing = mo.mode === 'per_visit' ? counted.filter(v => !inv.some(i => i.visit_id === v.id)).length
                 : mo.mode === 'monthly' ? (counted.length && !inv.some(i => !i.visit_id) ? 1 : 0) : 0;
+  const toCheckOnly = inv.filter(i => i.status === 'to_check');
+  const missingVs = mo.mode === 'per_visit' && mo.status !== 'closed'
+    ? counted.filter(v => !inv.some(i => i.visit_id === v.id)) : [];
   const parts = [`${vs.length} ${vs.length === 1 ? 'visit' : 'visits'}`];
   if (mo.mode !== 'none') {
     parts.push(`invoices <b style="font-weight:600;">${pvEur(sum)}</b>`);
@@ -123,12 +126,17 @@ function _pvmMonthLine(mo, visits, d) {
     if (missing && mo.status !== 'closed') parts.push(`${missing} missing`);
   } else parts.push('no invoices (Controlling by hand)');
   let act = '';
+  if (mo.mode !== 'none' && mo.status !== 'closed' && toCheckOnly.length) {
+    const s2 = toCheckOnly.reduce((a, i) => a + Number(i.amount || 0), 0);
+    act += `<div class="cc-sec-foot" style="margin-top:8px;justify-content:flex-start;"><button class="cc-foot-btn" type="button" style="background:#EAF3DE;color:#27500A;border-color:#BBD49A;" onclick="pvaCheckMonth('${mo.month}', ${toCheckOnly.length}, ${s2})">Alle ✓ · ${toCheckOnly.length}</button></div>`;
+  }
+  act += missingVs.map(v => _pvmInvRow(null, { canUpload: true, key: 'v' + v.id, visit: v.id, month: mo.month, label: 'Rechnung fehlt · ' + pvWdDM(v.date, true) })).join('');
   if (mo.mode !== 'none' && mo.status === 'closed') {
     act = `<p style="font-size:13px;color:#1E1B18;margin-top:6px;display:flex;align-items:center;gap:5px;">${pvPic('closed_line', 14)}Closed ${pvDM(String(mo.closed_at).slice(0, 10))} · <b style="font-weight:600;">${pvEur(mo.closed_sum)}</b> · ${mo.paid_at ? 'paid ✓' : 'not paid yet'}</p>
       ${mo.changed ? '<span class="k-note k-note--flag">Changed after it was paid ✓ — confirm again in Controlling.</span>' : ''}
       <div class="cc-sec-foot" style="margin-top:8px;"><button class="cc-foot-btn is-left" type="button" onclick="pvaMonthReopen('${mo.month}')">Reopen month</button><button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaOpenControlling('${mo.month}')">${pvPic('ctrl_open', 12)}Open in Controlling</button></div>`;
-  } else if (mo.mode !== 'none' && past && (vs.length || inv.length)) {
-    const off = toCheck > 0;
+  } else if (mo.mode !== 'none' && past && (vs.length || inv.length) && toCheck === 0) {
+    const off = false;
     act = `${mo.status === 'reopened' ? '<span class="k-note">Reopened — close again to update Controlling.</span>' : ''}${mo.changed ? '<span class="k-note k-note--flag">Changed after it was paid ✓ — confirm again in Controlling.</span>' : ''}
       <button class="pv-big" type="button" onclick="pvaMonthClose('${mo.month}', ${missing})"${off ? ' disabled style="min-height:46px;margin-top:10px;background:#D9D2C7;"' : ' style="min-height:46px;margin-top:10px;"'}><span class="pv-big__ico">${pvPic('close_month', 18)}</span><span class="pv-big__txt"><span class="pv-big__de" style="font-size:14px;">Close month → Controlling</span><span class="pv-big__en">${off ? 'check all invoices first' : 'sum of the checked invoices'}</span></span></button>`;
   }
@@ -148,15 +156,18 @@ function pvaHistoryMoneyHTML(list, d) {
   const avatar = n => _pvagAvatarByName(n).replace('width:20px;height:20px', 'width:22px;height:22px').replace('font-size:8px', 'font-size:9px');
   return ordered.map(k => {
     const mo = months.find(m => String(m.month).slice(0, 7) === k) || { month: k + '-01', mode: 'per_visit', status: 'open' };
-    const rows = list.filter(v => String(v.date).slice(0, 7) === k).map(v => {
-      const inv = _pvmInvOf(v);
-      const counted = ['done', 'sent', 'redo'].includes(v.status) && !(v.unplanned && v.status !== 'done');
-      const row = pvHistoryRowHTML(v, true, avatar);
-      const invHtml = mo.mode === 'per_visit' ? _pvmInvRow(inv, { canUpload: counted && mo.status !== 'closed', key: 'v' + v.id, visit: v.id, month: mo.month }) : '';
-      return invHtml ? row.replace(/<\/div>\s*$/, invHtml + '</div>') : row;
-    }).join('');
+    const rows = list.filter(v => String(v.date).slice(0, 7) === k)
+      .map(v => pvHistoryRowHTML(v, true, avatar)).join('');          /* money lives on the month line */
     return _pvmMonthLine(mo, list, d) + rows;
   }).join('');
+}
+async function pvaCheckMonth(month, n, sum) {
+  if (!(await ccConfirm(`${n} ${n === 1 ? 'invoice' : 'invoices'} · ${pvEur(sum)}`, 'Check them all? Fix stays possible until the month closes.', 'Alle ✓', false))) return;
+  const { data, error } = await pvaRpc('pv_admin_check_month', { p_job: _pvaJob, p_month: month });
+  if (error) { pvaToast('No connection — try again.'); return; }
+  if (data && data.error) { pvaToast('Already changed — refreshed.'); }
+  else pvaToast(`${data.n} ✓ · ${pvEur(data.sum)} checked`);
+  pvaLoad(); _pvmRefreshHistory();
 }
 async function pvaMonthClose(month, missing) {
   if (missing && !(await ccConfirm('Close anyway?', `${missing} ${missing === 1 ? 'visit has' : 'visits have'} no invoice. Closing hands the sum of the checked invoices to Controlling.`, 'Close month', false))) return;

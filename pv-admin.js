@@ -22,6 +22,7 @@ let _pvaLastLoad = 0;
 let _pvaEditJob = false;     // People modal: job section in edit mode
 let _pvaEditPerson = null;   // person id being edited
 let _pvaNewPerson = false;   // "+ Person" form open
+let _pvaJobOpen = false;     // Job block expanded (folds to a summary after setup)
 let _pvaNpReq = null;        // { id, name } when the form was opened from a password request
 
 const $a = id => document.getElementById(id);
@@ -65,6 +66,7 @@ function pvaGenPassword() {
   document.querySelectorAll('.pv-tool').forEach(b => b.onclick = () => {
     const t = b.getAttribute('data-tool');
     if (t === 'people') pvaOpenPeople();
+    else if (t === 'tool-link') return;
     else if (t === 'agenda') pvaOpenAgenda();
     else if (t === 'history') pvaOpenHistory();
     else if (t === 'list') pvaOpenLists();
@@ -127,12 +129,40 @@ function pvaRenderShell() {
   pvSetHTML($a('pvaStrip'), stripHtml);
   $a('pvaStrip').style.display = stripHtml ? '' : 'none';
   const card = _pvaCardHTML(s);
-  pvSetHTML($a('pvaCard'), card.html);
-  $a('pvaCardWrap').setAttribute('data-turn', card.turn);
+  const offen = _pvaOffen(d, s);
+  let html = card.html, turn = card.turn;
+  if (offen) {
+    html = html.replace(/<span class="k-mob-status-chip[^"]*"[^>]*>[\s\S]*?<\/span>/,
+      `<span class="k-mob-status-chip ${offen.cls}" style="cursor:pointer;" onclick="pvaOffenGo('${offen.go}')">${offen.ico}${offen.label}</span>`);
+    if (offen.turn) turn = 'turn';
+  }
+  pvSetHTML($a('pvaCard'), html);
+  $a('pvaCardWrap').setAttribute('data-turn', turn);
   pvSetHTML($a('pvaReports'), typeof pvaReportsHTML === 'function' ? pvaReportsHTML(s) : '');
   pvSetFeed($a('pvaFeed'), pvFeedHTML(s, { en: true, canDelete: true, onDelete: 'pvaDeleteMsg' }));
 }
 
+function _pvaOffen(d, s) {                 /* the one thing that needs you — kitchen chip */
+  const o = d.offen || {};
+  const rev = Number(o.reviews || 0);
+  const inv = Number(o.invoices || 0);
+  if (rev) return { cls: 'myturn', turn: true, ico: pvPic('chip_today', 13), go: 'review',
+                    label: `${rev} Review${rev === 1 ? '' : 's'} warten` };
+  if (inv) return { cls: 'myturn', turn: true, ico: pvPic('chip_invoice', 13), go: 'inv',
+                    label: `${inv} ${inv === 1 ? 'Rechnung' : 'Rechnungen'} prüfen` };
+  if (o.close_month) return { cls: 'myturn', turn: true, ico: pvPic('closed_line', 13), go: 'close',
+                    label: `${_pvMonthName(o.close_month, true).split(' ')[0]} abschließen` };
+  if (s && s.card) return null;                               /* a visit: the state's own chip */
+  return { cls: '', turn: false, ico: '', go: 'none', label: 'Nichts offen ✓' };
+}
+function pvaOffenGo(go) {
+  if (go === 'review') {
+    const el = $a('pvaFeed').querySelector('[data-anchor="sent"]');
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    pvaOpenHistory(); return;
+  }
+  if (go === 'inv' || go === 'close') { pvaOpenHistory(); return; }
+}
 function _pvaNpNote(v) {                   /* "Bad 2 – WC: not possible (occupied)" — red on Lynn's side */
   const why = { besetzt: 'occupied', kaputt: 'broken' };
   const nps = (v.points || []).filter(p => p.np);
@@ -266,7 +296,18 @@ function pvaRenderPeople() {
     ? `<span class="k-note" style="margin-top:6px;">Switches to ${j.next_mode === 'per_visit' ? 'per visit' : j.next_mode} from ${pvDM(j.next_mode_from)}${String(j.next_mode_from).slice(0,4)} — the open month keeps its rules.</span>` : '';
 
   let jobHtml;
-  if (_pvaEditJob) {
+  if (!_pvaEditJob && !_pvaJobOpen) {
+    const mode = { per_visit: 'Per visit', monthly: 'Monthly', none: 'No invoices' }[j.mode_now || j.invoice_mode] || '';
+    const cat = ((typeof _pvmCats !== 'undefined' && _pvmCats) || []).find(c => String(c.id) === String(j.ctrl_category_id));
+    const bits = [mode, cat ? cat.name : (j.ctrl_category_id ? 'cost type ✓' : 'no cost type'),
+                  'Tell tenants ' + (j.tell_tenants ? 'on' : 'off'), j.contract_path ? 'Vertrag ✓' : null].filter(Boolean);
+    jobHtml = `
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;min-width:0;"><p class="pv-v">${esc(j.name)}</p>
+          <p class="pv-k" style="margin-top:2px;">${bits.map(esc).join(' · ')}</p></div>
+        <button class="cc-foot-btn" type="button" onclick="_pvaJobOpen=true;pvaRenderPeople()">Edit</button>
+      </div>`;
+  } else if (_pvaEditJob) {
     jobHtml = `
       <div class="pv-kv">
         <div><label class="pv-k" for="pvaJobName">Name (tab)</label><input id="pvaJobName" class="pv-field" value="${esc(j.name)}" maxlength="40"/></div>
@@ -369,6 +410,7 @@ function pvaRenderPeople() {
     addHtml = `<div class="cc-sec-foot"><button class="cc-foot-btn" type="button" onclick="_pvaNewPerson=true;pvaRenderPeople()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Person</button></div>`;
   }
 
+  if (!_pvaEditJob && _pvaJobOpen) jobHtml += `<div class="cc-sec-foot" style="margin-top:4px;"><button class="cc-foot-btn" type="button" onclick="_pvaJobOpen=false;pvaRenderPeople()">Done</button></div>`;
   $a('pvaPeopleBody').innerHTML = `
     <div class="pv-sec"><p class="pv-sec__t">Job</p>${jobHtml}</div>
     <div class="pv-sec"><p class="pv-sec__t">People</p>${reqHtml}${peopleHtml || '<p class="pv-k" style="padding:8px 0;">No people yet — add the first one below.</p>'}${addHtml}</div>`;

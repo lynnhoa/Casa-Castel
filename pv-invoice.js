@@ -102,7 +102,8 @@ function pvInvoiceCardButton(s) {                /* "Rechnung hochladen" on the 
 /* ── PROVIDER: the sheet ────────────────────────────────── */
 const _pvInv = { target: null, files: [], amount: '', date: '', busy: false };
 function pvInvOpen(target) {
-  Object.assign(_pvInv, { target, files: [], amount: '', date: ccTodayISO(), busy: false });
+  const last = _pvState && _pvState.invoice_todo && _pvState.invoice_todo.last_amount;
+  Object.assign(_pvInv, { target, files: [], amount: last ? pvEur(last).replace(/\s*€$/, '') : '', date: ccTodayISO(), busy: false });
   _pvInvRender();
   pvOpenScrim('pv-inv-scrim');
 }
