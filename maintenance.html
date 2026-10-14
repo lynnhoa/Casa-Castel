@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+  <meta name="apple-mobile-web-app-title" content="LT Real Estate"/>
+  <meta name="theme-color" content="#F5F2ED"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="mgmt-apple-touch-icon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="mgmt-favicon-32.png"/>
+  <title>Maintenance — Management</title>
+  <link rel="stylesheet" href="casa-castel.css"/>
+  <link rel="stylesheet" href="cc-cards.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="cc-german-format.js?v=2026-10-11-B25"></script>
+  <script src="constants.js"></script>
+  <style>
+    html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+    .ct-toast      { position:fixed; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); padding:8px 16px; background:var(--cc-ink); color:var(--cc-white); border-radius:16px; font-size:12px; letter-spacing:.04em; opacity:0; transition:opacity .2s; pointer-events:none; z-index:900; max-width:90vw; text-align:center; }
+    .ct-toast.show { opacity:1; }
+    .ct-loading    { position:fixed; inset:0; background:rgba(245,242,237,0.7); display:none; align-items:center; justify-content:center; z-index:800; }
+    .ct-loading.show { display:flex; }
+    .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:mt-spin .8s linear infinite; }
+    @keyframes mt-spin { to { transform:rotate(360deg); } }
+  </style>
+  <link rel="stylesheet" href="maintenance.css?v=2026-10-14-C1"/>
+</head>
+<body class="is-landlord">
+
+  <div class="app-shell visible" id="appShell" style="display:none;">
+    <div class="cc-header">
+      <nav class="cc-nav">
+        <a class="cc-nav__logo" href="#">Maintenance</a>
+        <div class="nav-profile" id="navProfile">
+          <button class="cc-nav__icon" onclick="toggleProfileMenu()" aria-label="Menu" aria-haspopup="true">
+            <i class="ti ti-user"></i>
+          </button>
+          <div class="nav-profile-menu" id="navProfileMenu">
+            <button class="nav-profile-menu-item" onclick="location.href='properties.html'">Properties</button>
+            <button class="nav-profile-menu-item" onclick="location.href='rentals-index.html'">Rentals</button>
+            <button class="nav-profile-menu-item" onclick="location.href='landlord.html'">Casa Castel</button>
+            <button class="nav-profile-menu-item" onclick="location.href='controlling.html'">Controlling</button>
+            <button class="nav-profile-menu-item" onclick="location.href='settlements.html'">Settlements</button>
+            <button class="nav-profile-menu-item" onclick="location.href='providers.html'">Providers</button>
+            <div style="height:1px;background:var(--cc-rule);margin:4px 0;"></div>
+            <button class="nav-profile-menu-item" onclick="document.getElementById('navProfileMenu').classList.remove('open'); openRentalsProfile();">Profile</button>
+            <button class="nav-profile-menu-item" id="logoutBtn">Log out</button>
+          </div>
+        </div>
+      </nav>
+      <div class="cc-tabs" id="appTabs">
+        <button class="cc-tab active" data-tab="renovierung">Renovierungen</button>
+        <button class="cc-tab"        data-tab="schaden">Schäden</button>
+      </div>
+    </div>
+
+    <div class="cc-layout" id="appLayout">
+      <div class="cc-main" id="appMain">
+        <!-- list left · panel right on a laptop; on phone / iPad the panel lies on top -->
+        <div class="mt-split" id="mtSplit">
+          <div class="mt-col">
+            <div class="tab-content" id="tab-renovierung"></div>
+            <div class="tab-content" id="tab-schaden" style="display:none;"></div>
+          </div>
+          <aside class="mt-panel" id="mtPanel" role="dialog" aria-labelledby="mtPanelTitle" hidden></aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-scrim" id="mtScrim" data-mt="close" hidden></div>
+
+  <div class="ct-toast" id="ctToast" role="status" aria-live="polite"></div>
+  <div class="ct-loading" id="ctLoading"><div class="ct-loading__spinner"></div></div>
+
+  <script>
+    'use strict';
+    function toggleProfileMenu() { document.getElementById('navProfileMenu')?.classList.toggle('open'); }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.nav-profile')) document.getElementById('navProfileMenu')?.classList.remove('open');
+    });
+  </script>
+
+  <!-- Same login session + logout + toast as Settlements / Controlling -->
+  <script src="controlling-auth.js?v=2026-10-01b"></script>
+  <script src="maintenance.js?v=2026-10-14-C1"></script>
+
+  <!-- Profile panel (same one as Rentals / Controlling), sharing this page's login session -->
+  <script>var sbL = _ctlSupa;</script>
+  <script src="settings.js"></script>
+  <script src="rentals-profile.js"></script>
+  <script>mtBoot();</script>
+</body>
+</html>

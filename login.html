@@ -95,7 +95,8 @@
     }
 
     /* ── APP BUTTONS ──
-       Properties on its own row, then Casa Castel + Rentals, Controlling + Settlements.
+       Properties on its own row, then Casa Castel + Rentals, Controlling + Settlements,
+       Providers + Maintenance.
        Each tile: icon, name (readable, dark), one short line what it's for. */
     .role-tabs {
       display: grid;
@@ -182,6 +183,7 @@
     .role-tab[data-dest="controlling.html"]   { --app: #734E6D; --app-lt: #F1E8EF; --app-fill: #8A6283; }
     .role-tab[data-dest="settlements.html"]   { --app: #3E6E69; --app-lt: #E3EFEE; --app-fill: #4E8580; }
     .role-tab[data-dest="providers.html"]     { --app: #A8654B; --app-lt: #F6E8E1; --app-fill: #A8654B; }
+    .role-tab[data-dest="maintenance.html"]   { --app: #5D6390; --app-lt: #E9EAF3; --app-fill: #6D73A0; }
     .role-tab .role-tab__ico svg { color: var(--app, var(--taupe)); }
     .role-tab.active .role-tab__ico svg { color: #fff; }
     .role-tab__dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #B8956A; margin-left: 6px; vertical-align: 6px; }
@@ -325,9 +327,14 @@
         <span class="role-tab__txt"><span class="role-tab__name">Settlements</span></span>
         <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
       </button>
-      <button class="role-tab role-tab--wide" data-dest="providers.html" aria-pressed="false">
+      <button class="role-tab" data-dest="providers.html" aria-pressed="false">
         <span class="role-tab__ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="2"></rect><path d="M9 14l2 2 4-4"></path></svg></span>
         <span class="role-tab__txt"><span class="role-tab__name">Providers<span class="role-tab__dot" id="pvLoginDot" role="img" aria-label="Photos waiting for review" hidden></span></span></span>
+        <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
+      </button>
+      <button class="role-tab" data-dest="maintenance.html" aria-pressed="false">
+        <span class="role-tab__ico"><i class="ti ti-tool" aria-hidden="true"></i></span>
+        <span class="role-tab__txt"><span class="role-tab__name">Maintenance</span></span>
         <i class="ti ti-circle-check role-tab__check" aria-hidden="true"></i>
       </button>
     </div>
@@ -377,7 +384,7 @@
 
   /* The app you were last in (each app stores it when it opens). You are
      always sent back there — and that app reopens its own last tab. */
-  const MGMT_APPS = ['landlord.html', 'rentals-index.html', 'controlling.html', 'properties.html', 'settlements.html', 'providers.html'];
+  const MGMT_APPS = ['landlord.html', 'rentals-index.html', 'controlling.html', 'properties.html', 'settlements.html', 'providers.html', 'maintenance.html'];
   const lastApp   = (() => { try { return localStorage.getItem('mgmt_last_app'); } catch (e) { return null; } })();
   let selectedDest = MGMT_APPS.includes(lastApp) ? lastApp : 'landlord.html';
   let selectedTab  = null;     // null = the app opens its own last tab
