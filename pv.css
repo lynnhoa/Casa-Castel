@@ -602,3 +602,7 @@ body{font-family:'Inter',system-ui,sans-serif;font-weight:400;color:var(--cc-cha
 .pv-skel span{display:block;height:13px;border-radius:7px;background:#EDE7DC;margin:0 0 12px;animation:pvskel 1.1s ease infinite alternate}
 .pv-skel span:nth-child(2){width:72%}.pv-skel span:nth-child(3){width:45%}
 @keyframes pvskel{from{opacity:.55}to{opacity:1}}
+
+/* ── FIX7: Putzliste as a quiet chip in the card's top row ── */
+.pv-chip-list{margin-left:auto;background:#FFFFFF;border:1px solid #E3DCCE;color:#6B5E4E;cursor:pointer;font-family:inherit}
+.pv-chip-list:active{transform:scale(.95)}

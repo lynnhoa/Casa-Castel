@@ -149,12 +149,8 @@ function _pvTakeOverLink() {
 function _pvCancelLink() {
   return `<button type="button" data-act="cancel" style="display:block;margin:8px auto 0;min-height:36px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#A32D2D;text-decoration:underline;text-underline-offset:3px;">Kann nicht kommen <span style="font-weight:400;color:#C07070;">· Can't come</span></button>`;
 }
-function _pvListBtn(total, light) {
-  return `<button class="pv-big pv-big--light" type="button" data-act="list"${light ? '' : ' style="min-height:48px;margin-top:8px;"'}>
-      <span class="pv-big__ico"${light ? '' : ' style="width:32px;height:32px;"'}>${_pvIco('btn_list', light ? 20 : 17)}</span>
-      <span class="pv-big__txt"><span class="pv-big__de"${light ? '' : ' style="font-size:14px;"'}>Putzliste ansehen</span><span class="pv-big__en">View cleaning list</span></span>
-      ${light && total ? `<span class="pv-big__count" style="background:#EDE8E0;color:#6B5E4E;">${total}</span>` : ''}
-    </button>`;
+function _pvListBtn(total, light) {           /* small chip since FIX7 — opens the same list sheet */
+  return `<button class="k-mob-status-chip pv-chip-list" type="button" data-act="list" aria-label="Putzliste">${_pvIco('btn_list', 12)}Putzliste${total ? ` · ${total}` : ''}</button>`;
 }
 function _pvStartAnyway(compact) {           /* no visit in the photo window → unplanned start */
   const btn = `<button class="pv-big pv-big--light" type="button" data-act="unplanned"${compact ? ' style="min-height:48px;margin-top:8px;"' : ''}>
@@ -226,13 +222,12 @@ function _pvProviderCard(s) {
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${when}</span>
         ${_pvExtraNote(v)}${movedLine()}
       </div></div>
-      ${_pvListBtn(total, true)}
       ${v.can_take_over ? _pvTakeOverLink() : ''}` };
   }
 
   if (v.status === 'planned' && open) {                     /* photo window open: yellow to-do */
     return { turn: 'turn', html: `
-      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${dayChip}</span></div>
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${dayChip}</span>${_pvListBtn(total, true)}</div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${total} Fotos · ${total} photos</span>
@@ -243,20 +238,18 @@ function _pvProviderCard(s) {
         <span class="pv-big__ico">${_pvIco('btn_cam', 20)}</span>
         <span class="pv-big__txt"><span class="pv-big__de">Fotos starten</span><span class="pv-big__en">Start photos</span></span>
         <span class="pv-big__count">0 / ${total}</span>
-      </button>
-      ${_pvListBtn(total, false)}` };
+      </button>` };
   }
 
   if (v.status === 'planned') {                             /* next visit (window not open yet) */
     const inDays = n === 1 ? 'morgen · tomorrow' : `in ${n} Tagen · in ${n} days`;
     return { turn: '', html: `
-      <div class="k-mob-week-top-row"><span class="k-mob-status-chip next">${_pvIco('chip_next', 13)}Nächster Termin <span class="en">· Next visit</span></span></div>
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip next">${_pvIco('chip_next', 13)}Nächster Termin <span class="en">· Next visit</span></span>${_pvListBtn(total, true)}</div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${v.time ? 'ab ' + pvEsc(v.time) + ' · ' : ''}${inDays}</span>
         ${forLine()}${lastLine()}${_pvExtraNote(v)}${movedLine()}
       </div></div>
-      ${_pvListBtn(total, true)}
       ${v.can_cancel ? _pvCancelLink() : ''}
       ${_pvStartAnyway(true)}` };
   }
@@ -265,7 +258,7 @@ function _pvProviderCard(s) {
     const cov = _pvCovered(v);
     const all = total > 0 && cov >= total;
     return { turn: 'turn', html: `
-      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${dayChip}</span></div>
+      <div class="k-mob-week-top-row"><span class="k-mob-status-chip myturn">${_pvIco('chip_today', 13)}${dayChip}</span>${_pvListBtn(total, true)}</div>
       <div class="k-mob-week-body"><div class="k-mob-week-left">
         <span class="k-mob-week-room">${pvEsc(pvWdFull(v.date))}</span>
         <span class="k-mob-week-dates-sm">${cov} von ${total} Fotos · since ${pvHM(v.started_at)}</span>
@@ -277,8 +270,7 @@ function _pvProviderCard(s) {
         <span class="pv-big__ico">${_pvIco(all ? 'send' : 'btn_continue', 20)}</span>
         <span class="pv-big__txt"><span class="pv-big__de">${all ? 'Senden' : 'Weiter'}</span><span class="pv-big__en">${all ? 'Send' : 'Continue'}</span></span>
         <span class="pv-big__count">${cov} / ${total}</span>
-      </button>
-      ${_pvListBtn(total, false)}` };
+      </button>` };
   }
 
   if (v.status === 'redo') {                                /* Lynn asked for some areas again */
