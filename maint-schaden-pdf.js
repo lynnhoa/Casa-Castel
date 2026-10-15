@@ -95,10 +95,10 @@ function mtSbHTML(d) {
       white-space:pre-wrap; word-break:break-word; }
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
 
-    .sig-block { margin-top:84px; display:flex; justify-content:space-between; }
+    .sig-block { margin-top:26px; display:flex; justify-content:space-between; }
     .sig-col { width:44%; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:400; color:#4a4540; margin-bottom:4px; line-height:1.4; }
-    .sig-write-gap { height:34px; }
+    .sig-write-gap { height:92px; }   /* room to sign between "Ort, Datum" and the line (as in the Übergabeprotokoll) */
     .sig-line { border:none; border-top:0.5px solid #b8b3ac; margin-bottom:7px; }
     .sig-role { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#4a4540; }
     .sig-name { font-family:'Lato',sans-serif; font-size:9px; font-weight:400; color:#2b2722; margin-top:4px; }
