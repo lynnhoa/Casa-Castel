@@ -128,52 +128,6 @@ function _pkCollectUebergData(spot, isEinzug) {
 
 
 /* ── DESKTOP PREVIEW ─────────────────────────────────────── */
-async function _pkOpenUebergPreview(d, container) {
-  const overlay = document.getElementById('pkUebergPreviewOverlay');
-  const body    = document.getElementById('pkUebergPreviewBody');
-  if (!overlay || !body) {
-    // Fallback: save directly if no preview overlay in DOM
-    await _pkSaveUebergPDF(d, container);
-    return;
-  }
-  body.innerHTML = '';
-  overlay.style.display = 'flex';
-
-  const pages = container.querySelectorAll('.pdf-page');
-  const bodyW = body.clientWidth - 32;
-  const scale = Math.min(1, bodyW / 794);
-
-  for (const pg of pages) {
-    const canvas = await html2canvas(pg, {
-      scale: 2, useCORS: true, backgroundColor: '#ffffff', width: 794, windowWidth: 794
-    });
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'flex-shrink:0;box-shadow:0 2px 12px rgba(0,0,0,.10);border-radius:2px;overflow:hidden;';
-    const img = document.createElement('img');
-    img.src = canvas.toDataURL('image/jpeg', 0.95);
-    img.style.cssText = `width:${794 * scale}px;height:${1123 * scale}px;display:block;`;
-    wrapper.appendChild(img);
-    body.appendChild(wrapper);
-  }
-  container.remove();
-
-  // Wire save button
-  const saveBtn  = document.getElementById('pkUebergSaveBtn');
-  const freshSave = saveBtn.cloneNode(true);
-  saveBtn.parentNode.replaceChild(freshSave, saveBtn);
-  freshSave.addEventListener('click', async () => {
-    freshSave.innerHTML = '<i class="ti ti-loader"></i> Saving…';
-    freshSave.disabled  = true;
-    await _pkSaveUebergPDFFromData(d);
-    freshSave.innerHTML = '<i class="ti ti-printer" style="font-size:14px;"></i> PDF';
-    freshSave.disabled  = false;
-    overlay.style.display = 'none';
-    document.getElementById('pkContractOverlay')?.classList.add('open');
-  });
-
-  const btn = document.getElementById('pkUebergPdfBtn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; }
-}
 
 
 /* ── MOBILE: GENERATE + SAVE DIRECTLY ───────────────────── */

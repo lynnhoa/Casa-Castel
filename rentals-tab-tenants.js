@@ -687,31 +687,6 @@ function _rntStaffelRowHTML(rid, isApt, unit, rec) {
   return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Mieterhöhung' + (staffel ? ' <span class="tnp tnp-blue">Staffel</span>' : ''), meta,
     onclick: `_rntSheet('staffel','${rid}','${rec.id}','${isApt ? 'apt' : 'pk'}','${unit.id}')` }));
 }
-function _rntNkGroupHTML(rid, unit, rec) {
-  const rows = [];
-  if (!_rntAllPauschal(rec.id)) {
-    const open = _rntNkHasOpen(rec.id);
-    rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen',
-      meta: open ? `<span class="tnp tnp-amber">${_rntEsc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _rntNK[rec.id], _rntNkDue(rec)) : 'NK open')}</span>` : 'none due',
-      onclick: `_rntSheet('nk','${rid}','${rec.id}','apt','${unit.id}')` }));
-  }
-  const c = _rntNKVorausCurFor(unit.id, rec);
-  const pend = typeof ccTnNkChangeTodo === 'function' ? ccTnNkChangeTodo(_rntNKVoraus[unit.id], rec) : null;
-  rows.push(ccRowHTML({ icon: 'coin-euro', title: 'NK-Vorauszahlung',
-    meta: pend ? `<span class="tnp ${pend.level === 'red' ? 'tnp-red' : 'tnp-amber'}">${_rntEsc(pend.text)}</span>`
-               : c ? `${_rntFmtEUR(c.amount)}/mo` : 'not set',
-    onclick: `_rntSheet('nkv','${rid}','${rec.id}','apt','${unit.id}')` }));
-  return ccGroupHTML('Nebenkosten', rows.join(''));
-}
-function _rntDetailsGroupHTML(rid, unit, rec) {
-  if (typeof ccfDocsSectionHTML !== 'function') return '';
-  const kind = rec.apartment_id ? 'apt' : 'pk';
-  const n = typeof ccRpFor === 'function' ? ccRpFor('rentals', rec.id).length : 0;
-  return ccGroupHTML('Details',
-    ccRowHTML({ icon: 'file-text', title: 'Documents', meta: _rntEsc(ccfDocsSummary(rec)), onclick: `_rntSheet('docs','${rid}','${rec.id}','${kind}','${unit.id}')` }) +
-    (kind === 'apt' ? ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: _rntEsc(ccfMetersSummary(rec)), onclick: `_rntSheet('meters','${rid}','${rec.id}','${kind}','${unit.id}')` }) : '') +   // parking has no Zähler
-    (n >= 2 ? ccRowHTML({ icon: 'history', title: 'Rent history', meta: n + ' entries', onclick: `_rntSheet('rent','${rid}','${rec.id}','${kind}','${unit.id}')` }) : ''));
-}
 /* ── Casa Castel layout (Oct 2026): Kaution line · More list · Übergabe button · Former tenants row ── */
 function _rntKautionLine(el, totalHeld) {
   if (!el) return;
@@ -890,23 +865,7 @@ function _rntMhNext(rec) {
 
 
 /* Contract generators: the active tenant's fixed Kaution Soll (or null) */
-function rntFixedKautionSoll(kind, id) {
-  const src = (_rntLoadedOnce || _rntCopyShown) ? _rntRecords : _rntActiveRecs;
-  const col = kind === 'apt' ? 'apartment_id' : 'parking_id';
-  const rec = (src || []).filter(r => r[col] === id && r.status === 'active')
-    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
-  const v = rec && rec.kaution_soll;
-  return v != null && v !== '' && Number(v) > 0 ? Number(v) : null;
-}
 
-
-function _rntToggleKautionOverride(el, inputId, hintId) {
-  const on  = el.checked;
-  const inp  = document.getElementById(inputId);
-  const hint = document.getElementById(hintId);
-  if (inp)  { inp.disabled = !on; inp.style.opacity = on ? '1' : '.4'; if (on) inp.focus(); }
-  if (hint) hint.style.display = on ? 'none' : '';
-}
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -1014,29 +973,6 @@ function _rntFormerVisible(rec) {
   return monthsAgo < 12;
 }
 
-function _rntDaysToMoveOut(rec) {
-  if (!rec || !rec.mietende) return null;
-  const diff = new Date(rec.mietende) - new Date();
-  return Math.ceil(diff / (24 * 3600 * 1000));
-}
-
-function _rntNKVorausCurrent(aptId) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  return (_rntNKVoraus[aptId] || []).find(e => new Date(e.effective_date) <= today) || null;
-}
-
-function _rntNKVorausHasOpen(aptId) {
-  return (_rntNKVoraus[aptId] || []).some(e => !e.tenant_adjusted);
-}
-
-function _rntStaffelNext(aptId) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  return _rntOwnSteps(aptId).find(e => new Date(e.effective_date) > today) || null;
-}
-function _rntStaffelCurrent(aptId) {
-  const today = new Date(); today.setHours(0,0,0,0);
-  return _rntOwnSteps(aptId).find(e => new Date(e.effective_date) <= today) || null;
-}
 function _rntStaffelPillState(aptId) {
   // Returns null (no pill), 'reminder' (amber, ≤30 days), or 'overdue' (red, past + not adjusted) — own steps only
   if (typeof ccTnStepState === 'function') return ccTnStepState(_rntOwnSteps(aptId));
@@ -2769,7 +2705,6 @@ function _rntStaffelToggleAdjusted(id, unitId) {
 }
 
 // Old name, kept so nothing that still calls it breaks
-function _rntStaffelMarkAdjusted(id, unitId) { _rntStaffelToggleAdjusted(id, unitId); }
 
 async function _rntStaffelDelete(id, aptId, rid) {
   if (!sbL) return;
@@ -2780,41 +2715,6 @@ async function _rntStaffelDelete(id, aptId, rid) {
   // Verlauf sheet open? show the list without the deleted step
   const v = _rntStaffelVerlaufOpen;
   if (v && document.getElementById('rntStaffelModal')?.classList.contains('open')) v.fn(v.unitId, v.rid);
-}
-
-function _rntStaffelOpenVerlauf(aptId, rid) {
-  _rntStaffelSetTitle('History');
-  _rntStaffelVerlaufOpen = { fn: _rntStaffelOpenVerlauf, unitId: aptId, rid };   // refreshed in place after a tap
-  const apt = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => a.id === aptId);
-  const pk  = apt ? null : (typeof appParking !== 'undefined' ? appParking : []).find(p => p.id === aptId);
-  const label = apt ? (apt.name || apt.adresse || 'Wohnung') : pk ? (pk.name || pk.adresse || 'Stellplatz') : 'Einheit';
-  const entries = _rntOwnSteps(aptId).slice().reverse();
-  const today   = new Date(); today.setHours(0,0,0,0);
-  const fmtD    = (d) => { if (!d) return ''; const [y,m,day] = d.split('-'); return `${day}.${m}.${y}`; };
-
-  const rows = entries.map(e => {
-    const isFuture = new Date(e.effective_date) > today;
-    const adjTag = _rntStaffelPills(e, aptId);
-    const amtCls = e.tenant_adjusted ? 'tn-nkv-amount past' : 'tn-nkv-amount';
-    return `
-      <div class="tn-nkv-row" style="padding:7px 16px">
-        <div class="tn-nkv-top">
-          <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-gold)' : 'var(--cc-green,#3B6D11)'};flex-shrink:0" aria-hidden="true"></i>
-          <span class="tn-nkv-date">${isFuture ? 'ab' : 'seit'} ${fmtD(e.effective_date)}</span>
-          <span class="${amtCls}">${_rntFmtEUR(e.amount)}</span>
-          <button class="tn-icon-btn" style="margin-left:4px;color:var(--cc-stone)" aria-label="Löschen"
-            onclick="_rntStaffelDelete('${e.id}','${aptId}','${rid}')">
-            <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i>
-          </button>
-        </div>
-        <div class="tn-nkv-pills">${adjTag}</div>
-      </div>`;
-  }).join('');
-
-  document.getElementById('rntStaffelModalSub').textContent = label;
-  document.getElementById('rntStaffelModalBody').innerHTML = rows ||
-    `<p style="padding:14px 16px;font-size:12px;color:var(--cc-stone)">Keine Einträge.</p>`;
-  document.getElementById('rntStaffelModal').classList.add('open');
 }
 
 function _rntStaffelModalClose() { document.getElementById('rntStaffelModal').classList.remove('open'); }
@@ -3366,23 +3266,6 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
 
 // Manual "move to former": two-tap confirm on the button, then force status→former
 // (keeps whatever move-out date is entered — even a future one — so the unit frees up now)
-function _rntMoveToFormerConfirm(btn, rid, tid, unitType, unitId) {
-  if (btn.dataset.armed === '1') {
-    _rntSaveProfile(rid, tid, unitType, unitId, true);
-    return;
-  }
-  const orig = btn.innerHTML;
-  btn.dataset.armed = '1';
-  btn.classList.add('tn-btn-armed');
-  btn.innerHTML = '<i class="ti ti-check"></i> Confirm';
-  setTimeout(() => {
-    if (btn && btn.dataset.armed === '1') {
-      btn.dataset.armed = '0';
-      btn.classList.remove('tn-btn-armed');
-      btn.innerHTML = orig;
-    }
-  }, 3500);
-}
 
 /* Fill a new tenant's form with an existing tenant's contact details (copy only) */
 function _rntCopyTenantInto(rid, tid) {
@@ -3394,22 +3277,6 @@ function _rntCopyTenantInto(rid, tid) {
 }
 
 /* Record move-out: the last day the tenant pays → then former + vacant (automatic) */
-function _rntMoveOutOpen(rid, tid) {
-  const rec = _rntRecords.find(r => r.id === tid); if (!rec) return;
-  _ccPanelOpen('psec-' + rid, 'Record move-out', `
-    <div class="tn-fg"><div class="tn-field"><span class="tn-flbl">Move-out (last day)</span>
-      <input data-cc="date" type="text" placeholder="TT.MM.JJJJ" value="${_rntFmtDate(rec.vertragsende || '')}"/></div></div>
-    <p class="cc-inline-hint">After this date the tenant becomes a former tenant and the unit is vacant — automatically.
-    Then: Übergabe Auszug (Documents) · settle the Kaution · NK-Abrechnung in Settlements.</p>`, async p => {
-    const iso = _rntParseDate(p.querySelector('[data-cc="date"]').value || '');
-    if (!iso) { p.querySelector('[data-cc="date"]').style.borderBottomColor = '#C4705A'; return false; }
-    const upd = { mietende: iso };
-    if (_rntIsPast(iso)) upd.status = 'former';
-    const { error } = await sbL.from('rnt_tenant_records').update(upd).eq('id', tid);
-    if (error) { alert('Could not save — ' + error.message); return false; }
-    Object.assign(rec, upd); _rntRender(); return true;
-  });
-}
 
 async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
   if (!sbL) return;
@@ -3617,40 +3484,6 @@ async function _rntModalSaveProfile(tid) {
 /* ══════════════════════════════════════════════════════════════
    14. KAUTION
 ══════════════════════════════════════════════════════════════ */
-function _rntCalcKaution(pfx, tid) {
-  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
-  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
-  const kept = recv - ret;
-  const el   = document.getElementById('kk-' + pfx);
-  if (el) { el.textContent = _rntFmtEUR(Math.max(0, kept)); el.className = 'tn-kc-val' + (kept > 0 ? ' gold' : ''); }
-  const k       = tid ? _rntKaution[tid] : null;
-  const settled = k?.settled || false;
-  const st      = _rntKautionStatus(recv, ret, settled);
-  const pill    = document.getElementById('kstat-' + pfx);
-  if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
-  const saveBtn = document.getElementById('ksave-' + pfx);
-  if (saveBtn) ccSaveSet(saveBtn, 'dirty');     // unsaved change → dark SAVE
-  const setBtn = document.getElementById('kset-' + pfx);
-  if (setBtn) setBtn.style.display = (recv > 0 && tid) ? '' : 'none';
-}
-
-async function _rntSaveKautionBtn(pfx, tid) {
-  if (!sbL || !tid) return;
-  const recv    = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
-  const ret     = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
-  const saveBtn = document.getElementById('ksave-' + pfx);
-  _rntSaveKaution(tid, recv, ret);   // memory now, database in the background
-  const k   = _rntKaution[tid];
-  const st  = _rntKautionStatus(recv, ret, k?.settled || false);
-  const pill = document.getElementById('kstat-' + pfx);
-  if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
-  const _rec = _rntRecords.find(r => r.id === tid);
-  if (_rec) {
-    const _rid   = (_rec.apartment_id ? 'apt_' : 'pk_') + (_rec.apartment_id || _rec.parking_id).replace(/-/g,'').slice(0,12);
-    _rntRefreshCardPills(_rec.apartment_id || _rec.parking_id);   // same rules as the first render — nothing gets dropped
-  }
-  if (saveBtn) ccSaveSet(saveBtn, 'saved');     // saved → grey ✓ SAVED until the next change
-}
 
 async function _rntSaveKaution(tid, received, returned) {
   if (!sbL) return;
@@ -3674,43 +3507,6 @@ async function _rntSaveKaution(tid, received, returned) {
     _rntRefreshFormerBadges(tid);
     ccSaveFailed(error, 'rentals kaution');
   }
-}
-
-async function _rntToggleSettle(pfx, tid) {
-  if (!sbL || !tid) return;
-  if (!_rntKaution[tid]) await _rntEnsureKaution(tid);
-  const k = _rntKaution[tid];
-  if (!k?.id) return;
-  k.settled = !k.settled;
-
-  // Snapshot the amounts the user typed at the moment of settling.
-  const recv = parseFloat(document.getElementById('kr-'   + pfx)?.value) || 0;
-  const ret  = parseFloat(document.getElementById('kret-' + pfx)?.value) || 0;
-
-  const upd = { settled: k.settled };
-  if (k.settled) {
-    // Record what was returned and the date it was settled.
-    k.received = recv; k.returned = ret;
-    k.settled_at = new Date().toISOString();
-    upd.received = recv; upd.returned = ret; upd.settled_at = k.settled_at;
-  } else {
-    // Un-settling: clear the date, keep the amounts as-is.
-    k.settled_at = null;
-    upd.settled_at = null;
-  }
-
-  const btn = document.getElementById('kset-' + pfx);
-  if (btn) {
-    btn.innerHTML = `<i class="ti ti-check"></i> ${k.settled ? 'Settled' : 'Mark settled'}`;
-    btn.className = `tn-btn ${k.settled ? 'tn-btn-done' : 'tn-btn-sm'}`;
-  }
-  const st   = _rntKautionStatus(recv, ret, k.settled);
-  const pill = document.getElementById('kstat-' + pfx);
-  if (pill) { pill.className = `tnp ${st.cls}`; pill.textContent = st.label; }
-  sbL.from('rnt_kaution').update(upd).eq('id', k.id)
-    .then(({ error }) => { if (error) { ccSaveFailed(error, 'Kaution settled'); _rntLoad(); } });
-  _rntRefreshFormerBadges(tid);
-  { const _r = _rntRecords.find(r => r.id === tid); if (_r) _rntRefreshCardPills(_r.apartment_id || _r.parking_id); }
 }
 
 async function _rntEnsureKaution(tid) {

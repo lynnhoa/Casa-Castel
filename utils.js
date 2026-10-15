@@ -59,12 +59,6 @@ function kWeekInfo(i) {
 }
 
 /* ── HOUSE CLEANING MONTH CALC ──────────────────────────── */
-function currentMonthRoomIdx() {
-  const now = new Date();
-  const months = (now.getFullYear() - HC_START.getFullYear()) * 12
-               + (now.getMonth() - HC_START.getMonth());
-  return ((months % ALL_ROOMS.length) + ALL_ROOMS.length) % ALL_ROOMS.length;
-}
 
 /* ── ROOM PASSWORDS (set by the landlord) ─────────────────── */
 // Strong random password for a room, e.g. "k7Qm-9xKp-3TzR" (no look-alike characters).

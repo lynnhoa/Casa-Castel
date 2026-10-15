@@ -268,22 +268,10 @@ async function _pkResolveTenantProfile(pkId) {
   return {};
 }
 
-function pkFmtEUR(n) {
-  const num = Number(n);
-  if (!num && num !== 0) return '—';
-  return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
-}
-
 function pkFmtEURCompact(n) {
   const num = Number(n);
   if (!num && num !== 0) return '—';
   return num.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';   // 85,00 €
-}
-
-function pkFmtDate(iso) {
-  if (!iso) return '—';
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
 }
 
 const PK_TYPES = ['Tiefgarage', 'Stellplatz', 'Einzelgarage', 'Duplex-Anlage'];
@@ -719,14 +707,6 @@ function _pkToggleKautionOverride(chk) {
 
 
 /* ── KAUTION FÄLLIGKEIT HELPER (PARKING) ─────────────────── */
-function _pkKfSelect(prefix, val, clickedBtn) {
-  const parent = clickedBtn.closest('div');
-  parent.querySelectorAll('.rm-fael-btn').forEach(b => { b.classList.remove('active'); delete b.dataset.val; });
-  clickedBtn.classList.add('active');
-  clickedBtn.dataset.val = val;
-  const custom = document.getElementById(`${prefix}-fael-custom`);
-  if (custom) custom.style.display = val === 'custom' ? '' : 'none';
-}
 
 
 /* ── KAUTION FÄLLIGKEIT READER (PARKING) ─────────────────── */
@@ -866,23 +846,6 @@ function _pkRerenderCard(pkId, except) {
 
 /* ── TOGGLE VACANT ───────────────────────────────────────── */
 /* Mark as vacant / occupied — instant, saved in the background (red message + undo if it fails) */
-function _pkToggleVacant(pkId, btn) {
-  const spot = appParking.find(p => p.id === pkId);
-  if (!spot) return;
-  const before = !!spot.vacant, next = !before;
-  spot.vacant = next;
-  _pkRerenderCard(pkId);   // instant
-  _updatePkSummary();
-  if (!_pkSbClient) return;
-  ccQueueWrite('pk-vacant-' + pkId, () => _pkSbClient.from('rentals_parking').update({ vacant: next }).eq('id', pkId))
-    .then(r => {
-      if (!r || !r.error) return;
-      spot.vacant = before;
-      _pkRerenderCard(pkId);
-      _updatePkSummary();
-      ccSaveFailed(r.error, 'parking vacancy');
-    });
-}
 
 
 /* ── CONTRACT MODAL ──────────────────────────────────────── */

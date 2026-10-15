@@ -988,33 +988,6 @@ function ctlCasaCostRows(p, y, m) {
 }
 
 /* ── NK settlement suggestions for Einmalig ───────────────── */
-function ctlOtSuggestions() {
-  const S = window._src, out = [];
-  const taken = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
-  // Fix 2: an NK settlement already marked "bezahlt" in the Abrechnungen list is not offered again
-  const yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
-  const done = new Set((S.settle || []).filter(r => (r.status === 'bezahlt' || r.status === 'erledigt') && r.kind === 'nk_tenant').map(r => String(r.tenant_id) + '|' + r.covers_year)
-    .concat((S.abr || []).filter(r => r.status !== 'storniert' && r.kind === 'nk_tenant' && r.tenant_id).map(r => String(r.tenant_id) + '|' + r.year)));   // #7: Settlements result → old entry not offered
-  const isDone = (tid, e) => done.has(String(tid) + '|' + yr(e));
-  const props = window._ctrl.properties.filter(p => p.active);
-  const aptProp = aptId => props.find(p => { const l = ctlPropLinks(p); return l.apt && String(l.apt.id) === String(aptId); });
-  for (const e of S.rntNk) {
-    const amt = _cxNum(e.amount);
-    if (!e.paid || !amt || taken.has('rnt_nk:' + e.id) || isDone(e.tenant_id, e)) continue;
-    const t = S.rntTen.find(x => x.id === e.tenant_id);
-    const p = t && t.apartment_id ? aptProp(t.apartment_id) : null;
-    if (!p) continue;
-    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'rnt_nk:' + e.id, pid: p.id, prop: p.name, text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung from tenant' : ' · Guthaben to tenant'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
-  }
-  const casa = props.find(p => p.id === CASA_PROP_ID);
-  if (casa) for (const e of S.casaNk) {
-    const amt = _cxNum(e.amount);
-    if (!e.paid || !amt || taken.has('nk:' + e.id) || isDone(e.tenant_id, e)) continue;
-    const t = S.casaTen.find(x => x.id === e.tenant_id);
-    out.push({ tid: String(e.tenant_id), year: yr(e), ref: 'nk:' + e.id, pid: casa.id, prop: casa.name + (t && t.room ? ' · ' + t.room : ''), text: 'NK-Abrechnung ' + (e.period || '') + (amt > 0 ? ' · Nachzahlung from tenant' : ' · Guthaben to tenant'), amount: Math.abs(amt), direction: amt > 0 ? 1 : -1 });
-  }
-  return out;
-}
 
 
 /* ── Konto | Tatsächlich (change round 3 · D18–D21) ──────────
@@ -1026,44 +999,6 @@ function ctlOtSuggestions() {
    Meine Kosten = Hausgeld − NK (Rentals) · Hauskosten − NK (Casa Castel)
    Abrechnungen count in the month the money moves (D21). Kaution never (D14).
    Invariant: Tatsächlich = Konto + Kreditrate.                              */
-function ctlActualMonth(pid, m) {
-  const y = window._ctrl.year, casa = pid === CASA_PROP_ID;
-  const x = ctlPropertyMonth(pid, m);
-  const lines = [];                                       // [label, signed amount, kontoOnly]
-  const warm = _cxR(x.kalt + x.neben);
-  if (warm) lines.push(['Rent + NK', warm, false]);
-  let rate = 0, costs = 0;
-  if (casa) {
-    const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
-    for (const e of window._ctrl.castel_expenses) if (e.year === y && e.month === m) {
-      if (rateCat && e.category_id === rateCat.id) rate += Number(e.amount) || 0; else costs += Number(e.amount) || 0;
-    }
-    if (costs) lines.push(['Hauskosten', -_cxR(costs), false]);
-  } else {
-    const row = window._ctrl.apt_expenses.find(e => e.property_id === pid && e.year === y && e.month === m) || {};
-    rate = Number(row.rate) || 0;
-    const hg = Number(row.hausgeld) || 0, gs = Number(row.grundsteuer) || 0, st = Number(row.strom) || 0;
-    costs = hg;
-    if (hg) lines.push(['Hausgeld', -_cxR(hg), false]);
-    if (gs) lines.push(['Grundsteuer', -_cxR(gs), false]);
-    if (st) lines.push(['Strom', -_cxR(st), false]);
-  }
-  let abrIn = 0, abrOut = 0;
-  for (const o of (window._ctrl.one_time || [])) {
-    if (o.property_id !== pid || o.kind === 'Kaufnebenkosten') continue;   // Kaufnebenkosten: not in the month result
-    const d = ctlParseDate(o.invoice_date);
-    if (d.year !== y || d.month !== m) continue;
-    const amt = Number(o.amount) || 0, inn = Number(o.direction) === 1;
-    if (/abrechnung/i.test(String(o.kind || ''))) { if (inn) abrIn += amt; else abrOut += amt; }
-    lines.push([[o.company, o.item].filter(Boolean).join(' · ') || o.kind || 'Einmalig', inn ? _cxR(amt) : -_cxR(amt), false]);
-  }
-  if (rate) lines.push(['Kreditrate', -_cxR(rate), true]);
-  return {
-    rein: _cxR(x.rein), raus: _cxR(x.raus - rate), rausKonto: _cxR(x.raus), rate: _cxR(rate),
-    tats: _cxR(x.rein - (x.raus - rate)), konto: _cxR(x.konto),
-    meineKosten: _cxR(costs - x.neben), abr: _cxR(abrIn - abrOut), lines,
-  };
-}
 
 /* ── Phase 5 · Abrechnungen tracker (B13, B14, G3) ──────────
    One row per expected yearly settlement: NK per tenancy period (Kalt + NK
@@ -1271,12 +1206,6 @@ function ctlSettlementModel() {
   _cxSetModelCache = groups;
   return groups;
 }
-function ctlSettlementOverview() {
-  let open = 0, check = 0, frist = null;
-  for (const g of ctlSettlementModel()) { open += g.nOpen; check += g.nCheck; if (g.frist && (!frist || g.frist < frist)) frist = g.frist; }
-  return { open, check, frist };
-}
-function ctlSettlementVirtual(id) { return _cxSetVirtMap[id] || null; }
 
 /* Figures shown on a settlement row (computed live, never stored):
    days · NK Soll for exactly these days · NK paid (from Einnahmen, per-tenant split) ·
@@ -1388,13 +1317,6 @@ function ctlSettlementSame(x, e) {
 /* Fix 2: an NK settlement for this tenant + year already booked in Einmalig from the
    Tenants tab (suggestion taken over)? Then the Abrechnungen list must not book it again.
    A Pauschal span never has a tenant-tab settlement (#24). */
-function ctlSettlementAlreadyBooked(r) {
-  if (r.kind !== 'nk_tenant' || r.note === 'Pauschal' || !r.tenant_id) return false;
-  const S = window._src, yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
-  const refs = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
-  const list = r.app === 'casa' ? (S.casaNk || []).map(e => ['nk:' + e.id, e]) : (S.rntNk || []).map(e => ['rnt_nk:' + e.id, e]);
-  return list.some(([ref, e]) => String(e.tenant_id) === String(r.tenant_id) && yr(e) === Number(r.covers_year) && refs.has(ref));
-}
 
 
 /* ── Setup: links at a glance (Setup review) ──────────────────

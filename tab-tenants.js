@@ -902,12 +902,6 @@ function _tnMhNext(rec, roomName) {
 }
 
 /* Contract generators: the active tenant's fixed Kaution Soll (or null) */
-function tnFixedKautionSoll(roomName) {
-  const rec = (_tnRecords || []).filter(r => r.room === roomName && r.status === 'active')
-    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
-  const v = rec && rec.kaution_soll;
-  return v != null && v !== '' && Number(v) > 0 ? Number(v) : null;
-}
 
 function _tnRefreshKautionSoll(tid) {
   const info = _tnKautionSollInfo(_tnRecords.find(r => r.id === tid));
@@ -2017,34 +2011,6 @@ async function _tnSaveNext(roomName) {
    Übergabe · Documents · Zählerstände · NK-Abrechnungen · Earlier contracts · Former tenants */
 const _tnMoreOpen = {};
 function _tnMoreToggle(key) { _tnMoreOpen[key] = !_tnMoreOpen[key]; _tnRender(); }
-function _tnUebergMeta(rec) {
-  if (!rec || typeof ccfDocsOf !== 'function') return 'Einzug · Auszug protocols';
-  const docs = ccfDocsOf(rec.id);
-  const has = t => docs.some(d => d.type === t);
-  const parts = [];
-  if (has('einzug')) parts.push('Einzug done');
-  if (has('auszug')) parts.push('Auszug done');
-  return parts.length ? parts.join(' \u00b7 ') : 'Einzug · Auszug protocols';
-}
-function _tnUebergSheet(roomName, tid) {
-  const room = typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === roomName) : null;
-  if (!room || typeof ccOpenUebergabe !== 'function') return;
-  const rec = tid ? _tnRecords.find(r => String(r.id) === String(tid)) : null;
-  const nm = rec ? [rec.first_name, rec.last_name].filter(Boolean).join(' ') : '';
-  ccSheetOpen({
-    title: 'Übergabeprotokoll',
-    kicker: roomName + (nm ? ' \u00b7 ' + nm : ''),
-    build: () => {
-      const r2 = tid ? _tnRecords.find(r => String(r.id) === String(tid)) : null;
-      const docs = r2 && typeof ccfDocsOf === 'function' ? ccfDocsOf(r2.id) : [];
-      const st = t => { const d = docs.find(x => x.type === t); return d ? ((d.variant || 'signed') === 'signed' ? 'signed' : 'draft saved') : 'not done yet'; };
-      const btn = (eu, t) => `<button type="button" class="tn-ub-btn" onclick="ccSheetClose();ccOpenUebergabe('${room.id}','${eu}')">
-          <span class="tn-ub-t">${eu}</span><span class="tn-ub-s">${st(t)}</span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>`;
-      return `<div class="tn-ub">${btn('Einzug', 'einzug')}${btn('Auszug', 'auszug')}
-        <p class="tn-cr-hint" style="margin:4px 0 0">Opens the Übergabe generator for this room. The finished protocol is filed under Documents.</p></div>`;
-    },
-  });
-}
 function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
   const rows = [];
   if (rec) {   // the next tenancy of this room: add one, or open it
@@ -4526,13 +4492,6 @@ let _tnLoadedOnce  = false;
 let _tnWarmPromise = null;
 function tnTenantsLoaded() { return _tnLoadedOnce; }
 /* The CURRENT tenant's rent of a room (moved in, active) — null if none / not loaded yet */
-function tnCurrentRentOf(roomName) {
-  if (!_tnLoadedOnce) return null;
-  const cur = _ccPickTenancy(_tnRecords.filter(r => r.room === roomName && r.status === 'active')).current;
-  if (!cur) return null;
-  const r = _tnCurrentRent(cur, roomName);
-  return r ? { kalt: Number(r.kalt) || 0, nk: Number(r.nk) || 0, total: Number(r.total) || 0, mode: r.mode, ctype: tnContractType(cur) } : null;
-}
 /* The CURRENT tenancy of a room for the Rooms header: its contract type, the
    end of a Kurzzeit contract and its rent (rent may be null = not stored yet).
    null = nobody lives there now, or the tenants are not loaded yet.          */

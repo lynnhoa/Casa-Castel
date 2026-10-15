@@ -37,22 +37,6 @@ async function ccNksLoad() {
   return CC_NKS.loading;
 }
 
-function _ccNksResult(r) {
-  const list = CC_NKS.res || [];
-  const x = r.result_id ? list.find(a => String(a.id) === String(r.result_id))
-    : list.find(a => String(a.tenant_id || '') === String(r.tenant_id || '') && a.period_from && String(a.period_from).slice(0, 10) === String(r.period_from).slice(0, 10));
-  if (!x) return '';
-  const amt = Number(x.amount) || 0, dir = Number(x.direction) || 0;
-  if (!amt || !dir) return 'Ausgeglichen';
-  return (dir > 0 ? 'Nachzahlung ' : 'Guthaben ') + _ccNksEur(amt);
-}
-function _ccNksStatus(s) {
-  if (s === 'erledigt' || s === 'bezahlt') return ['tnp-green', 'done'];
-  if (s === 'verschickt') return ['tnp-blue', 'sent'];
-  if (s === 'nicht durchgeführt') return ['tnp-gray', 'skipped'];
-  return ['tnp-amber', 'open'];
-}
-
 /* Is an NK-Abrechnung still open for this tenant? The same data the section shows:
    Settlements (not done / not paid / not "nicht durchgeführt") + old tracking not paid. */
 function ccNksHasOpen(tid, legacy, due) {

@@ -492,19 +492,6 @@ function _ccClearReady(footer) {
   footer.querySelectorAll(CC_PDF_TRIGGERS).forEach(b => { if (b.style.display === 'none') b.style.display = ''; });
 }
 // iPhone share menu with the real file name (Save to Files, Mail, Print); computer: download
-async function _ccSharePdf(blob, name) {
-  let file = null;
-  try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) { file = null; }
-  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); } catch (e) { /* closed */ }
-    return;
-  }
-  const bUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = bUrl; a.download = name; a.style.display = 'none';
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(bUrl); a.remove(); }, 60000);
-}
 
 /* ── OPEN A LINK (new tab / iPhone viewer on top of the app) ── */
 function ccOpenUrl(url, label) {

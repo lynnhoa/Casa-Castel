@@ -117,39 +117,6 @@ function ctlPropertyMonth(pid, month) {
 }
 
 /* ── Portfolio + annual rollups ─────────────────────────────── */
-function ctlPortfolioMonth(month) {
-  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, one_time_in:0, rein:0, raus:0, konto:0, gesamt:0, netto_kalt:0 };
-  for (const p of window._ctrl.properties.filter(x => x.active)) {
-    if (typeof ctlPropOwned === 'function' && !ctlPropOwned(p, window._ctrl.year, month)) continue;   // not bought yet
-    const m = ctlPropertyMonth(p.id, month);
-    for (const k of Object.keys(m)) {
-      acc[k] = (Number(acc[k]) || 0) + (Number(m[k]) || 0);
-    }
-  }
-  return acc;
-}
-function ctlPortfolioYear() {
-  const acc = { kalt:0, neben:0, warm:0, exp_total:0, exp_passthru:0, exp_net:0, one_time:0, gesamt:0, netto_kalt:0, recon:0 };
-  for (let m = 1; m <= 12; m++) {
-    const p = ctlPortfolioMonth(m);
-    for (const k of Object.keys(p)) {
-      acc[k] = (Number(acc[k]) || 0) + (Number(p[k]) || 0);
-    }
-  }
-  for (const r of window._ctrl.recon) acc.recon += Number(r.hausgeld_ausgleich || 0) + Number(r.nebenkosten_ausgleich || 0);
-  acc.gesamt     += acc.recon;
-  acc.netto_kalt += acc.recon;
-  return acc;
-}
-
-function ctlMonthStatus(month) {
-  const y  = window._ctrl.year;
-  const cy = new Date().getFullYear();
-  const cm = new Date().getMonth() + 1;
-  // Future is strictly calendar-based — prefilled forecast rows don't count.
-  if (y > cy || (y === cy && month > cm)) return 'future';
-  return window._ctrl.income.some(r => r.year === y && r.month === month) ? 'done' : 'pending';
-}
 
 /* ── Writes (upsert) ────────────────────────────────────────── */
 async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
@@ -294,14 +261,6 @@ async function ctlUpdateOneTime(id, fields) {
   return data;
 }
 
-async function ctlInsertOneTime(property_id, invoice_date, item, amount, company) {
-  const { data, error } = await _ctlSupa.from('ctrl_expense_one_time')
-    .insert({ property_id, invoice_date, item, amount, company: company ?? null }).select().single();
-  if (error) throw error;
-  window._ctrl.one_time.push(data);
-  return data;
-}
-
 async function ctlDeleteOneTime(id) {
   const { error } = await _ctlSupa.from('ctrl_expense_one_time').delete().eq('id', id);
   if (error) throw error;
@@ -318,48 +277,6 @@ async function ctlLogHistory(entity_type, entity_id, field, oldV, newV) {
     await _ctlSupa.from('ctrl_setup_history').insert({ entity_type, entity_id, field, old_value: a, new_value: b });
   } catch (e) { console.warn('[controlling] history log failed', e); }
 }
-async function ctlFetchHistory(limit) {
-  const { data, error } = await _ctlSupa.from('ctrl_setup_history')
-    .select('*').order('changed_at', { ascending: false }).limit(limit || 100);
-  if (error) throw error;
-  return data || [];
-}
-
-async function ctlUpdateUnitDefaults(unit_id, def_kaltmiete, def_nebenkosten) {
-  const prev = ctlUnit(unit_id);
-  const { data, error } = await _ctlSupa.from('ctrl_units')
-    .update({ def_kaltmiete, def_nebenkosten }).eq('id', unit_id).select().single();
-  if (error) throw error;
-  if (prev) {
-    ctlLogHistory('unit', unit_id, 'def_kaltmiete',   prev.def_kaltmiete,   def_kaltmiete);
-    ctlLogHistory('unit', unit_id, 'def_nebenkosten', prev.def_nebenkosten, def_nebenkosten);
-  }
-  const idx = window._ctrl.units.findIndex(u => u.id === unit_id);
-  if (idx >= 0) window._ctrl.units[idx] = data;
-  return data;
-}
-
-async function ctlUpdatePropertyDefaults(pid, fields) {
-  const prev = ctlProp(pid);
-  const { data, error } = await _ctlSupa.from('ctrl_properties')
-    .update(fields).eq('id', pid).select().single();
-  if (error) throw error;
-  if (prev) for (const k of Object.keys(fields)) ctlLogHistory('property', pid, k, prev[k], fields[k]);
-  const idx = window._ctrl.properties.findIndex(p => p.id === pid);
-  if (idx >= 0) window._ctrl.properties[idx] = data;
-  return data;
-}
-
-async function ctlUpdateCategoryDefault(cat_id, default_amount) {
-  const prev = ctlCat(cat_id);
-  const { data, error } = await _ctlSupa.from('ctrl_castel_categories')
-    .update({ default_amount }).eq('id', cat_id).select().single();
-  if (error) throw error;
-  if (prev) ctlLogHistory('category', cat_id, 'default_amount', prev.default_amount, default_amount);
-  const idx = window._ctrl.categories.findIndex(c => c.id === cat_id);
-  if (idx >= 0) window._ctrl.categories[idx] = data;
-  return data;
-}
 
 /* ── Format helpers ─────────────────────────────────────────── */
 const ctlEur = v => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u202f€';
@@ -368,10 +285,6 @@ const ctlEur0 = v => ctlEur(v);   // always with cents: 1.200,00 €
 /* Month cards only: whole euros ("1.139 €") so 6 cards always fit the width.
    Everywhere else amounts keep their cents (ctlEur / ctlEur0). */
 const ctlEurWhole = v => Math.round(Number(v) || 0).toLocaleString('de-DE') + '\u202f€';
-function ctlMonthValHTML(v) {
-  const t = ctlEurWhole(v);
-  return '<div class="ct-month__val' + (t.length > 7 ? ' ct-month__val--long' : '') + '">' + t + '</div>';
-}
 /* Every month amount fits its card: if it is wider than the card, the font
    steps down (to min. 8.5 px). Runs whenever month cards are drawn or the
    screen width changes — one place for Dashboard, Einnahmen and Ausgaben. */

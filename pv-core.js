@@ -146,9 +146,6 @@ function _pvExtraNote(v) {
 function _pvTakeOverLink() {
   return `<button type="button" data-act="takeover" style="display:block;margin:8px auto 0;min-height:36px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#6B5E4E;text-decoration:underline;text-underline-offset:3px;">Ich übernehme <span style="font-weight:400;color:#9A8E7E;">· I'll take over</span></button>`;
 }
-function _pvCancelLink() {
-  return `<button type="button" data-act="cancel" style="display:block;margin:8px auto 0;min-height:36px;padding:0 12px;background:none;border:none;font-size:13px;font-weight:500;color:#A32D2D;text-decoration:underline;text-underline-offset:3px;">Kann nicht kommen <span style="font-weight:400;color:#C07070;">· Can't come</span></button>`;
-}
 function _pvListBtn(total, light) {           /* small chip since FIX7 — opens the same list sheet */
   return `<button class="k-mob-status-chip pv-chip-list" type="button" data-act="list" aria-label="Putzliste">${_pvIco('btn_list', 12)}Putzliste${total ? ` · ${total}` : ''}</button>`;
 }
@@ -201,12 +198,6 @@ function pvPtName(p, all, rooms) {           /* "Bad 1 · Duschglas" — only wh
 function _pvPhLbl(p, all, rooms) {           /* photo tile label: the room on its own small line */
   const r = _pvRoomIfTwice(p, all, rooms);
   return (r ? `<b>${pvEsc(r)}</b>` : '') + pvEsc((p && p.de) || '');
-}
-function pvVisitMeta(state, id) {            /* status + unplanned of a visit this state knows */
-  const c = state && state.card;
-  if (c && c.id === id) return c;
-  if (c && c.redo_other && c.redo_other.id === id) return c.redo_other;
-  return ((state && state.strip) || []).find(x => x && x.id === id) || null;
 }
 function _pvCovered(v) { const c = v.counts || {}; return (c.done || 0) + (c.np || 0); }
 function _pvSpan(v) {                        /* 10:12–11:40 */
@@ -502,10 +493,6 @@ function pvGoneTile(attrs, label) {
     + '.pv-gone{font-size:11px;line-height:1.35;font-style:italic;color:var(--cc-taupe,#9A8E7E);margin-top:3px;}';
   (document.head || document.documentElement).appendChild(st);
 })();
-function _pvInitials(name) {
-  const p = String(name || '').trim().split(/\s+/);
-  return ((p[0] || '')[0] || '') + ((p[1] || '')[0] || (p[0] || '')[1] || '');
-}
 function pvChatRowHTML(m, opts) {
   opts = opts || {};
   const name = m.name || 'Casa Castel';

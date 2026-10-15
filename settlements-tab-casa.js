@@ -376,15 +376,6 @@ function scHouseCard(M) {
     '<button class="sc-row sr5-ln" data-sc="' + (M.locked && open ? 'start' : 'filter') + '" data-k="open"><span class="sc-av sr5-av--hv"><i class="ti ti-mail" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">NK-Abrechnung</span>' +
       '<span class="sc-row__s">' + stEsc(nkSub) + '</span></span><span class="sc-chip sc-chip--' + nkChip[0] + '">' + stEsc(nkChip[1]) + '</span></button></div>';
 }
-function scNext(icon, t, s, act, btn) {
-  return '<div class="sc-card sc-next"><span class="sc-next__i"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span><div class="sc-next__t"><b>' + t + '</b><span>' + s + '</span></div>' +
-    '<button class="sc-go" data-sc="' + act + '">' + btn + '</button></div>';
-}
-function scNextStart(open) {
-  const av = open.slice(0, 3).map((t, i) => { const c = scAv(t.room); return '<span class="sc-av sc-av--s" style="background:' + c[0] + ';color:' + c[1] + (i ? ';margin-left:-10px' : '') + '">' + stEsc(scAbbr(t.room)) + '</span>'; }).join('');
-  return '<div class="sc-card sc-start"><div class="sc-start__av">' + av + '</div><div class="sc-next__t"><b>' + open.length + (open.length === 1 ? ' letter' : ' letters') + ' ready</b><span>' +
-    stEsc(open.map(t => t.room).join(', ')) + '</span></div><button class="sc-go sc-go--light" data-sc="start">Start <i class="ti ti-arrow-right" aria-hidden="true"></i></button></div>';
-}
 function scSay(t) {
   const s = t.saldo, a = scE(Math.abs(s));
   if (t.k === 'none') return ['', 'Pauschal – no NK' + (t.quotaShare ? ' · share ' + scE(t.quotaShare) + (t.pnkPaid ? ' · NK in Pauschale ' + scE(t.pnkPaid) : ' · you carry it') : '')];
@@ -837,9 +828,6 @@ function scTenView(M, m) {
 function scToggle(f, key, on, t, s, can) {
   return '<button type="button" class="sc-tg' + (on ? ' on' : '') + '" data-sc="tg" data-f="' + f + '" data-k="' + stEsc(key) + '"' + (can ? '' : ' disabled') + ' aria-pressed="' + on + '">' +
     '<span class="sc-tg__t"><b>' + t + '</b><small>' + s + '</small></span><span class="sc-tg__sw" aria-hidden="true"></span></button>';
-}
-function scStep(n, t, s, state, extra) {
-  return '<div class="sc-step is-' + state + '"><span class="sc-step__d">' + (state === 'done' ? '<i class="ti ti-check" aria-hidden="true"></i>' : n) + '</span><span><b>' + t + '</b><small>' + stEsc(s) + (extra ? ' · ' + stEsc(extra) : '') + '</small></span></div>';
 }
 function scLetterBtn(t) {
   const L = SC.letters.find(l => l.app === 'casa' && String(l.tenant_id) === String(t.tenantId) && scD(l.period_from) === t.from);
