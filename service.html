@@ -49,6 +49,7 @@
         </div>
         <button class="pv-login-btn" type="button" id="pv-login-btn">Anmelden · Log in</button>
         <div class="pwr-links"><button type="button" class="pwr-link" id="pv-forgot-link">Passwort vergessen? · Forgot password?</button></div>
+        <div class="pwr-links" style="margin-top:2px;"><a class="pwr-link" href="CC-Service-App-Anleitung.pdf?v=2026-10-15-APP" target="_blank" rel="noopener">PDF-Anleitung · PDF guide</a></div>
       </div>
     </div>
 
@@ -176,10 +177,18 @@
   <script src="chat-compose.js?v=2026-10-13-P6"></script>
   <script src="pv-pics.js?v=2026-10-13-P6"></script>
   <script src="pv-core.js?v=2026-10-14-CD1"></script>
-  <script src="pv-putzliste.js?v=2026-10-14-G2"></script>
+  <script src="pv-putzliste.js?v=2026-10-15-APP"></script>
   <script src="pv-camera.js?v=2026-10-14-F11"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="pv-invoice.js?v=2026-10-14-SB"></script>
+  <script src="cc-install-guide.js?v=2026-10-15-QR1"></script>
+  <script>
+    /* QR1 (Oct 2026) · opened in the phone browser (not from the Home Screen) → "App installieren" first.
+       Guest links (?g=) and a logged-in phone skip it. Runs BEFORE pv-service.js,
+       which opens a guest link and tidies the address. */
+    ccInstallGuide({ screen: '#pv-login-screen', app: 'provider', name: 'CC Service', icon: 'pv-apple-touch-icon-v2.png', pdf: 'CC-Service-App-Anleitung.pdf?v=2026-10-15-APP',
+      skip: () => new URLSearchParams(location.search).has('g') || !!localStorage.getItem('pv_token') });
+  </script>
   <script src="pv-service.js?v=2026-10-14-F47"></script>
 </body>
 </html>

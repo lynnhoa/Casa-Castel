@@ -62,8 +62,8 @@ function _plBins(list) {
 }
 
 /* ── The three PDFs (repo root) — the same buttons in your list and in her Putzliste ── */
-const PV_DOCS_V = '?v=2026-10-14-G2';           /* new version → phones load the new PDFs, not a cached old one */
-const PV_DOCS = [['Putzanleitung-DE.pdf' + PV_DOCS_V, 'DE', 'pdf'], ['Cleaning-Guide-EN.pdf' + PV_DOCS_V, 'EN', 'pdf'], ['Casa-Castel-Muell.pdf' + PV_DOCS_V, 'Müll', 'trash']];
+const PV_DOCS_V = '?v=2026-10-15-APP';           /* new version → phones load the new PDFs, not a cached old one */
+const PV_DOCS = [['Putzanleitung-DE.pdf' + PV_DOCS_V, 'DE', 'pdf'], ['Cleaning-Guide-EN.pdf' + PV_DOCS_V, 'EN', 'pdf'], ['Casa-Castel-Muell.pdf' + PV_DOCS_V, 'Müll', 'trash'], ['CC-Service-App-Anleitung.pdf' + PV_DOCS_V, 'App', 'pdf']];
 function pvDocsHTML() {
   return `<span class="pv-docs">${PV_DOCS.map(d => `<a class="pv-doc" href="${d[0]}" target="_blank" rel="noopener">${pvPic(d[2], 13)}${d[1]}</a>`).join('')}</span>`;
 }

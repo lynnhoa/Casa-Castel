@@ -127,5 +127,11 @@
   <script src="turn-markers.js"></script>
   <script src="profile-tenant.js"></script>
   <script src="push-client.js"></script>
+  <script src="cc-install-guide.js?v=2026-10-15-QR1"></script>
+  <script>
+    /* Oct 2026 · opened in the phone browser (not from the Home Screen) → "Get the app" first */
+    ccInstallGuide({ screen: '#loginScreen', app: 'tenant', name: 'Casa Castel', icon: 'tenant-apple-touch-icon.png',
+      skip: () => new URLSearchParams(location.search).has('preview') || !!localStorage.getItem('cc_role') || !!localStorage.getItem('cc_pwreq') });
+  </script>
 </body>
 </html>

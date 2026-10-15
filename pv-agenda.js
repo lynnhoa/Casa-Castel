@@ -188,7 +188,9 @@ function _pvagGuestRow() {                   /* Build 2 · a guest link for anot
   const t = (_pvaData && _pvaData.state && _pvaData.state.today) || '';
   return `<div class="pv-sec"><p class="pv-sec__t">Guest link <span class="en">one-time cleaner · no account</span></p>
     <div style="display:flex;gap:8px;align-items:center;"><input type="date" id="pvagGuestDate" class="cc-input" value="${t}" min="${t}" style="flex:1;min-width:0;font-family:inherit;"/>
-    <button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaGuestLink(document.getElementById('pvagGuestDate').value)">Share link</button></div></div>`;
+    <button class="cc-foot-btn" type="button" onclick="pvaGuestQr(document.getElementById('pvagGuestDate').value, 'pvagGuestQr')"><i class="ti ti-qrcode" aria-hidden="true"></i>QR</button>
+    <button class="cc-foot-btn cc-foot-btn--save" type="button" onclick="pvaGuestLink(document.getElementById('pvagGuestDate').value)">Share link</button></div>
+    <div id="pvagGuestQr"></div></div>`;
 }
 function pvagRender() {
   const d = _pvag;

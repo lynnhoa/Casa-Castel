@@ -170,12 +170,15 @@ function pvaRenderShell() {
 
 /* ── Build 2 · GUEST LINK: one tap → share sheet (WhatsApp / SMS) ── */
 function _pvaGuestChip() {
-  return `<button class="k-mob-status-chip pva-guest-chip" type="button" aria-label="Guest link" onclick="pvaGuestLink()"><i class="ti ti-link" aria-hidden="true"></i>Guest</button>`;
+  return `<button class="k-mob-status-chip pva-guest-chip" type="button" aria-label="Guest link" onclick="pvaGuestOpen()"><i class="ti ti-link" aria-hidden="true"></i>Guest</button>`;
 }
-async function pvaGuestLink(date) {
-  if (!_pvaJob) return;
+/* QR1 (Oct 2026): one guest link → QR code + Share. The chip opens a pop-up; the Agenda shows it inline
+   (one level). Making the link and sharing it are separate, so a QR and its Share use the SAME link. */
+let _pvaGuest = null;                                         // { url, text, en, until } of the last link made here
+async function _pvaGuestMake(date) {
+  if (!_pvaJob) return null;
   const { data, error } = await pvaRpc('pv_admin_guest_link', { p_job: _pvaJob, p_date: date || null });
-  if (error || !data || data.error) { pvaToast(data && data.error === 'past' ? 'Pick today or a later day.' : 'Could not create the link — try again.'); return; }
+  if (error || !data || data.error) { pvaToast(data && data.error === 'past' ? 'Pick today or a later day.' : 'Could not create the link — try again.'); return null; }
   const url = new URL('service.html?g=' + encodeURIComponent(data.token), location.href).href;
   const today = (_pvaData && _pvaData.state && _pvaData.state.today) || data.date;
   const tmr = pvAddDays(today, 1);
@@ -184,17 +187,46 @@ async function pvaGuestLink(date) {
   const until = pvDM(pvAddDays(data.date, 1)) + ' 23:59';
   const text = `Hallo! Dein Link für die Reinigung ${de} in der Casa Castel:\n${url}\n(gültig bis ${until})\n\nHello! Your link for the cleaning ${en} at Casa Castel:\n${url}\n(valid until ${until})`;
   pvaLoad();
+  return (_pvaGuest = { url, text, en, until });
+}
+async function _pvaGuestSend(g) {
+  if (!g) return;
   if (navigator.share) {
-    try { await navigator.share({ text }); return; }
+    try { await navigator.share({ text: g.text }); return; }
     catch (e) {
       if (e && e.name === 'AbortError') return;
       if (await ccConfirm('Guest link ready', 'Share it via WhatsApp or SMS.', 'Share', false)) {   /* iOS wants a fresh tap */
-        try { await navigator.share({ text }); return; } catch (e2) { if (e2 && e2.name === 'AbortError') return; }
+        try { await navigator.share({ text: g.text }); return; } catch (e2) { if (e2 && e2.name === 'AbortError') return; }
       }
     }
   }
-  try { await navigator.clipboard.writeText(text); pvaToast('Link copied — paste it into WhatsApp.'); }
-  catch (e) { window.prompt('Copy the guest link:', url); }
+  try { await navigator.clipboard.writeText(g.text); pvaToast('Link copied — paste it into WhatsApp.'); }
+  catch (e) { window.prompt('Copy the guest link:', g.url); }
+}
+function _pvaGuestQrHTML(g, shareFn) {
+  return `<div class="pva-qr">
+      <div class="pva-qr__box">${typeof ccQrSvg === 'function' ? ccQrSvg(g.url) : ''}</div>
+      <p class="pva-qr__t">Cleaning ${esc(g.en)}</p>
+      <p class="pva-qr__s">Valid until ${esc(g.until)} · one visit, no password</p>
+      <div class="cc-sec-foot"><button class="cc-foot-btn" type="button" onclick="${shareFn}"><i class="ti ti-send" aria-hidden="true"></i>Share</button></div>
+    </div>`;
+}
+/* Agenda "Share link": straight to the share sheet, as before */
+async function pvaGuestLink(date) { const g = await _pvaGuestMake(date); if (g) await _pvaGuestSend(g); }
+function pvaGuestShare() { _pvaGuestSend(_pvaGuest); }
+/* Guest chip: pop-up with the QR code (to scan from your phone) + Share */
+async function pvaGuestOpen() {
+  const g = await _pvaGuestMake(null);
+  if (!g) return;
+  $a('pvaGuestBody').innerHTML = `<div class="pv-sec" style="margin-bottom:0;">${_pvaGuestQrHTML(g, 'pvaGuestShare()')}</div>`;
+  pvaSheetOpen('pvaGuestScrim');
+}
+/* Agenda: QR right under the date, inside the Agenda pop-up */
+async function pvaGuestQr(date, holderId) {
+  const g = await _pvaGuestMake(date);
+  const el = document.getElementById(holderId);
+  if (!g || !el) return;
+  el.innerHTML = _pvaGuestQrHTML(g, 'pvaGuestShare()');
 }
 function _pvaGuestsHtml(d) {                 /* recent named guests (30 days) → "Add as person" */
   const since = Date.now() - 30 * 864e5;
@@ -357,7 +389,13 @@ function pvaSheetOpen(id) {
 function pvaSkeleton() {
   return '<div class="pv-skel"><span></span><span></span><span></span></div>';
 }
+let _pvaJobQr = false;                                       /* QR1: People › Job › QR open */
+function _pvaJobQrHTML(style) {                             /* QR1: the provider-app QR, right inside People › Job */
+  if (!_pvaJobQr) return '';
+  return `<div class="pva-qr pva-qr--job" style="${style || ''}"><div class="pva-qr__box">${typeof ccQrSvg === 'function' ? ccQrSvg(location.origin + '/providers') : ''}</div><p class="pva-qr__t">Scan with the phone camera</p><p class="pva-qr__s">Tap QR again to hide it.</p></div>`;
+}
 function pvaOpenPeople() {
+  _pvaJobQr = false;
   if (typeof pvaLoadCtrlCats === 'function') pvaLoadCtrlCats().then(() => { if (!$a('pvaPeopleScrim').classList.contains('pv-hidden')) pvaRenderPeople(); });
   if (!_pvaData || !_pvaData.job) { pvaToast('Create a job first.'); return; }
   _pvaEditJob = false; _pvaEditPerson = null; _pvaNewPerson = false;
@@ -387,8 +425,8 @@ function pvaRenderPeople() {
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="flex:1;min-width:0;"><p class="pv-v">${esc(j.name)}</p>
           <p class="pv-k" style="margin-top:2px;">${bits.map(esc).join(' · ')}</p></div>
-        <button class="cc-foot-btn" type="button" onclick="_pvaJobOpen=true;pvaRenderPeople()">Edit</button>
-      </div>`;
+        <button class="cc-foot-btn${_pvaJobQr ? ' cc-foot-btn--save' : ''}" type="button" aria-pressed="${_pvaJobQr}" onclick="_pvaJobQr=!_pvaJobQr;pvaRenderPeople()"><i class="ti ti-qrcode" aria-hidden="true"></i>QR</button><button class="cc-foot-btn" type="button" onclick="_pvaJobOpen=true;pvaRenderPeople()">Edit</button>
+      </div>${_pvaJobQrHTML('margin-top:12px;')}`;
   } else if (_pvaEditJob) {
     jobHtml = `
       <div class="pv-kv">
@@ -401,7 +439,7 @@ function pvaRenderPeople() {
     jobHtml = `
       <div class="pv-kv">
         <div><p class="pv-k">Name (tab)</p><p class="pv-v">${esc(j.name)}</p></div>
-        <div><p class="pv-k">Link</p><p class="pv-v" style="font-size:12.5px;">…vercel.app/providers <button class="cc-foot-btn" type="button" style="margin-left:4px;" onclick="pvaCopy(location.origin + '/providers')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>Copy</button></p></div>
+        <div><p class="pv-k">Link</p><p class="pv-v" style="font-size:12.5px;">…vercel.app/providers</p><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"><button class="cc-foot-btn" type="button" onclick="pvaCopy(location.origin + '/providers')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>Copy</button><button class="cc-foot-btn${_pvaJobQr ? ' cc-foot-btn--save' : ''}" type="button" aria-pressed="${_pvaJobQr}" onclick="_pvaJobQr=!_pvaJobQr;pvaRenderPeople()"><i class="ti ti-qrcode" aria-hidden="true"></i>QR</button><a class="cc-foot-btn" href="CC-Service-App-Anleitung.pdf?v=2026-10-15-APP" target="_blank" rel="noopener"><i class="ti ti-file-text" aria-hidden="true"></i>PDF</a></div></div>${_pvaJobQrHTML('grid-column:1/-1;')}
         <div><p class="pv-k">Invoice sender</p><p class="pv-v"${j.sender_name ? '' : ' style="color:#9A8E7E;"'}>${j.sender_name ? esc(j.sender_name) : '+ company / name'}</p></div>
         <div><p class="pv-k">Address</p><p class="pv-v"${j.sender_address ? '' : ' style="color:#9A8E7E;"'}>${j.sender_address ? esc(j.sender_address) : '+ address'}</p></div>
       </div>
@@ -811,3 +849,21 @@ function pvaPushToggle() {
   })();
 }
 _pvaPushInit();
+
+/* ── QR1 (Oct 2026) · QR blocks: People › Job, guest pop-up, Agenda ── */
+(function () {
+  if (document.getElementById('pvaQrCss')) return;
+  const st = document.createElement('style');
+  st.id = 'pvaQrCss';
+  st.textContent = `
+.pva-qr { text-align:center; }
+.pva-qr--job { background:var(--cc-bg); border-radius:10px; padding:14px 12px 12px; }
+.pva-qr__box { display:inline-block; background:#fff; border:.5px solid var(--cc-rule); border-radius:12px; padding:4px; line-height:0; }
+.pva-qr__box svg { width:180px; height:180px; }
+.pva-qr__t { font-size:14px; color:var(--cc-charcoal); margin:10px 0 0; }
+.pva-qr--job .pva-qr__t { font-size:12px; }
+.pva-qr__s { font-size:11px; color:var(--cc-taupe); margin:2px 0 0; }
+.pva-qr .cc-sec-foot { justify-content:flex-end; }
+#pvagGuestQr:not(:empty) { margin-top:12px; }`;
+  document.head.appendChild(st);
+})();

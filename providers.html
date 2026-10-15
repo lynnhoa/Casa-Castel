@@ -84,6 +84,14 @@
     </div>
   </div>
 
+  <!-- QR1 · Guest link modal: QR code + Share (from the Guest chip) -->
+  <div class="pv-scrim pv-hidden" id="pvaGuestScrim">
+    <div class="cc-modal-sheet" style="max-height:92vh;display:flex;flex-direction:column;">
+      <div class="cc-modal-hdr"><span class="cc-modal-title">Guest link</span><button class="cc-modal-close" type="button" data-close="pvaGuestScrim" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button></div>
+      <div class="cc-modal-body" id="pvaGuestBody" style="overflow-y:auto;"></div>
+    </div>
+  </div>
+
   <!-- New job modal -->
   <div class="pv-scrim pv-hidden" id="pvaNewJobScrim">
     <div class="cc-modal-sheet">
@@ -162,10 +170,12 @@
   <script src="chat-compose.js?v=2026-10-13-P6"></script>
   <script src="pv-pics.js?v=2026-10-13-P6"></script>
   <script src="pv-core.js?v=2026-10-14-CD1"></script>
-  <script src="pv-admin.js?v=2026-10-14-F13"></script>
-  <script src="pv-agenda.js?v=2026-10-14-B2"></script>
+  <script src="qrcode-gen.min.js"></script>
+  <script src="cc-qr.js?v=2026-10-15-QR1"></script>
+  <script src="pv-admin.js?v=2026-10-15-QR1"></script>
+  <script src="pv-agenda.js?v=2026-10-15-QR1"></script>
   <script src="pv-review.js?v=2026-10-14-CD1"></script>
-  <script src="pv-putzliste.js?v=2026-10-14-G2"></script>
+  <script src="pv-putzliste.js?v=2026-10-15-APP"></script>
   <script src="pv-lists.js?v=2026-10-14-DOC"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="pv-invoice.js?v=2026-10-14-PS"></script>

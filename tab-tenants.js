@@ -14,7 +14,10 @@
 ══════════════════════════════════════════════════════════════ */
 document.getElementById('tab-tenants').innerHTML = `
   <div class="tn-hdr" style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-    <h1 class="cc-h1">Tenants</h1>
+    <div style="display:flex;align-items:center;gap:10px">
+      <h1 class="cc-h1">Tenants</h1>
+      <button type="button" class="tn-icon-btn" onclick="_tnQrOpen()" aria-label="QR code for the tenant app" title="QR code for the tenant app"><i class="ti ti-qrcode"></i></button>
+    </div>
   </div>
   <!-- IST line: what the tenants living here pay today + Kaution held (Rooms shows the Soll) -->
   <div class="cc-sum2" id="tn-ist" style="display:none"></div>
@@ -4616,3 +4619,68 @@ function _ccReturnBanner(tabEl) {
 /* ── Double-tap lock (ccOnce in direct-save.js): these add a new row ── */
 async function _tnNKVorausConfirmAdd(...args) { return ccOnce('_tnNKVorausConfirmAdd', () => _tnNKVorausConfirmAdd__run(...args)); }
 async function _tnConfirmAddNk(...args) { return ccOnce('_tnConfirmAddNk', () => _tnConfirmAddNk__run(...args)); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   Oct 2026 · QR CODE FOR THE TENANT APP
+   Button after the "Tenants" title → pop-up (same sheet as the tenant
+   pop-up): QR code + link, "Copy link". A new tenant scans it from your
+   phone; the tenant app then shows how to add it to the Home Screen.
+   Needs qrcode-gen.min.js + cc-qr.js (ccQrSvg) and utils.js (ccCopyText).
+══════════════════════════════════════════════════════════════ */
+function _tnQrUrl() { return location.origin; }      // the tenant app is the bare domain ("/" → tenant.html)
+function _tnQrOpen() {
+  let m = document.getElementById('tnQrModal');
+  if (!m) {
+    if (!document.getElementById('tnQrCss')) {
+      const st = document.createElement('style');
+      st.id = 'tnQrCss';
+      st.textContent = `
+.tn-qr-body { padding:22px 16px 20px; text-align:center; }
+.tn-qr-box { display:inline-block; background:#fff; border:var(--cc-border); border-radius:14px; padding:6px; line-height:0; }
+.tn-qr-box svg { width:212px; height:212px; }
+.tn-qr-t { font-size:12px; color:var(--cc-charcoal); margin:12px 0 0; }
+.tn-qr-s { font-size:11px; color:var(--cc-taupe); margin:3px 0 0; }`;
+      document.head.appendChild(st);
+    }
+    m = document.createElement('div');
+    m.className = 'tn-overlay';
+    m.id = 'tnQrModal';
+    m.addEventListener('click', e => { if (e.target === m) _tnQrClose(); });
+    m.innerHTML = `
+      <div class="tn-sheet" role="dialog" aria-modal="true" aria-labelledby="tnQrTitle">
+        <div class="tn-sheet-hdr">
+          <div style="flex:1;min-width:0">
+            <div class="tn-sheet-name" id="tnQrTitle">Tenant app</div>
+            <div class="tn-sheet-sub" id="tnQrSub"></div>
+          </div>
+          <button class="tn-icon-btn" type="button" onclick="_tnQrClose()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="tn-sheet-body">
+          <div class="tn-qr-body">
+            <div class="tn-qr-box" id="tnQrBox"></div>
+            <p class="tn-qr-t">Scan with the phone camera</p>
+            <p class="tn-qr-s">The app then shows how to add it to the Home Screen.</p>
+          </div>
+        </div>
+        <div class="tn-sheet-footer">
+          <button class="tn-btn tn-btn-ghost" type="button" onclick="_tnQrCopy()"><i class="ti ti-copy"></i> Copy link</button>
+        </div>
+      </div>`;
+    (document.getElementById('tab-tenants') || document.body).appendChild(m);
+  }
+  const url = _tnQrUrl();
+  m.querySelector('#tnQrSub').textContent = url.replace(/^https?:\/\//, '');
+  m.querySelector('#tnQrBox').innerHTML = typeof ccQrSvg === 'function' ? ccQrSvg(url) : '';
+  m.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function _tnQrClose() {
+  const m = document.getElementById('tnQrModal');
+  if (m) m.classList.remove('open');
+  document.body.style.overflow = '';
+}
+async function _tnQrCopy() {
+  const ok = typeof ccCopyText === 'function' ? await ccCopyText(_tnQrUrl()) : false;
+  _tnToast(ok ? 'Link copied' : 'Could not copy the link', !ok);
+}
