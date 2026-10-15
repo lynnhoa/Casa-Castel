@@ -2290,50 +2290,53 @@ function mtBulletFix(el) {                                   // after paste / au
 
 /* ── D20 · Photos: two cards per row — photo (number / "Not in the report", ×), Beschreibung,
    (Vorher | Nachher), "In the report" switch · delete asks on the photo · "Add photo" always there */
+
+/* ── D21 · Photos: one row per photo — thumbnail left (number, ×), a large Beschreibung right;
+   a bar below: (Vorher | Nachher) · "In the report" switch — delete asks in that bar.
+   "Add photo" is a small link next to "Photos". */
 function mtSbPhotosHTML(c, f) {
   const rb = c.kind === 'renovierung';
   const photos = mtSbPhotos(c);
   const u = mtUpFor(c), up = u && u.where === 'sb' ? u : null;
   let n = 0;
-  const cards = !f.photosOn ? '' : photos.map(p => {
+  const rows = !f.photosOn ? '' : photos.map(p => {
     const on = p.in_report !== false, id = mtEsc(p.id), ask = f.askDel === String(p.id);
-    return `<div class="mt-pc${on ? '' : ' is-off'}${ask ? ' is-ask' : ''}">
-        <div class="mt-pc__ph">
-          <img alt="" loading="lazy" data-path="${mtEsc(p.file_path)}" data-thumb="${mtEsc(mtThumbPath(p.file_path))}"/>
-          <span class="mt-pc__no${on ? '' : ' is-off'}">${on ? ++n : 'Not in the report'}</span>
-          <button type="button" class="mt-pc__x" data-mt="sbDelPhoto" data-id="${id}" aria-label="Delete photo"><i class="ti ti-x" aria-hidden="true"></i></button>
-          ${ask ? `<div class="mt-pc__ask" role="alertdialog" aria-label="Delete this photo?"><span>Delete this photo?</span>
-            <div><button type="button" class="mt-pc__del" data-mt="sbDelYes" data-id="${id}">Delete</button><button type="button" class="mt-pc__keep" data-mt="sbDelNo">Keep</button></div></div>` : ''}
+    const vn = rb ? `<span class="mt-pr__vn" role="group" aria-label="Vorher oder Nachher">${['vorher', 'nachher'].map(ph =>
+      `<button type="button" class="${p.phase === ph ? 'is-on' : ''}" data-mt="phase" data-id="${id}" data-v="${ph}" aria-pressed="${p.phase === ph}">${ph === 'vorher' ? 'Vorher' : 'Nachher'}</button>`).join('')}</span>` : '';
+    const bar = ask
+      ? `<span class="mt-pr__ask">Delete this photo?</span><span class="mt-pr__btns"><button type="button" class="mt-pr__del" data-mt="sbDelYes" data-id="${id}">Delete</button><button type="button" class="mt-pr__keep" data-mt="sbDelNo">Keep</button></span>`
+      : vn + `<label class="mt-pr__sw"><span>${on ? 'In the report' : 'Not in the report'}</span><input type="checkbox" data-inrep="${id}"${on ? ' checked' : ''}/><span class="mt-swi" aria-hidden="true"></span></label>`;
+    return `<div class="mt-pr${on ? '' : ' is-off'}${ask ? ' is-ask' : ''}">
+        <div class="mt-pr__t">
+          <div class="mt-pr__th"><img alt="" loading="lazy" data-path="${mtEsc(p.file_path)}" data-thumb="${mtEsc(mtThumbPath(p.file_path))}"/>${on ? `<span class="mt-pr__no">${++n}</span>` : ''}${ask ? '' : `<button type="button" class="mt-pr__x" data-mt="sbDelPhoto" data-id="${id}" aria-label="Delete photo"><i class="ti ti-x" aria-hidden="true"></i></button>`}</div>
+          <div class="mt-pr__tx"><label class="mt-k" for="mtCap-${id}">Beschreibung</label>
+            <textarea class="mt-in mt-ta mt-pr__cap" id="mtCap-${id}" rows="3" maxlength="200" data-cap="${id}" placeholder="Beschreibung (optional)">${mtEsc(p.caption || '')}</textarea></div>
         </div>
-        <div class="mt-pc__b">
-          <textarea class="mt-in mt-ta mt-pc__cap" rows="2" maxlength="200" data-cap="${id}" placeholder="Beschreibung (optional)" aria-label="Beschreibung">${mtEsc(p.caption || '')}</textarea>
-          ${rb ? `<div class="mt-pc__vn" role="group" aria-label="Vorher oder Nachher">${['vorher', 'nachher'].map(ph =>
-            `<button type="button" class="${p.phase === ph ? 'is-on' : ''}" data-mt="phase" data-id="${id}" data-v="${ph}" aria-pressed="${p.phase === ph}">${ph === 'vorher' ? 'Vorher' : 'Nachher'}</button>`).join('')}</div>` : ''}
-          <label class="mt-pc__sw"><span>In the report</span><input type="checkbox" data-inrep="${id}"${on ? ' checked' : ''}/><span class="mt-swi" aria-hidden="true"></span></label>
-        </div>
+        <div class="mt-pr__bar${vn && !ask ? ' has-vn' : ''}">${bar}</div>
       </div>`;
   }).join('');
-  const tile = up
-    ? `<div class="mt-pc mt-pc--add" role="status"><span class="mt-spin" aria-hidden="true"></span><span class="mt-pc__at">Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</span></div>`
-    : `<button type="button" class="mt-pc mt-pc--add" data-mt="sbAddPhoto"><i class="ti ti-camera" aria-hidden="true"></i><span class="mt-pc__at">Add photo</span><span class="mt-pc__as">Camera or library</span></button>`;
-  return `<div class="mt-f mt-f--full" id="mtSb-photos"><span class="mt-k">Photos</span>
+  return `<div class="mt-f mt-f--full" id="mtSb-photos">
+      <div class="mt-pr__hd"><span class="mt-k">Photos${photos.length ? ' · ' + photos.length : ''}</span>
+        ${up ? '' : '<button type="button" class="mt-link mt-pr__add" data-mt="sbAddPhoto"><i class="ti ti-camera" aria-hidden="true"></i>Add photo</button>'}</div>
       <div class="mt-seg" role="group" aria-label="Photos in the report">
         <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Without photos</button>
         <button type="button" class="mt-seg__b${f.photosOn ? ' is-on' : ''}" data-mt="sbFotos" data-v="1" aria-pressed="${!!f.photosOn}">With photos</button>
       </div>
-      <div class="mt-pgr">${cards}${tile}</div>
+      ${up ? `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>` : ''}
+      ${rows ? `<div class="mt-prl">${rows}</div>` : ''}
       <p class="mt-hint">${f.photosOn ? 'Switch a photo off to leave it out. The number is its place in the report.' + (rb ? ' Vorher / Nachher sorts them.' : '')
         : (photos.length ? 'The report goes without photos. Choose "With photos" to show them.' : 'A new photo turns on "With photos".')}</p>
     </div>`;
 }
 function mtSbRenumber() {
   let n = 0;
-  document.querySelectorAll('#mtSbModal .mt-pc').forEach(card => {
-    const cb = card.querySelector('[data-inrep]'), b = card.querySelector('.mt-pc__no');
-    if (!cb || !b) return;
-    card.classList.toggle('is-off', !cb.checked);
-    b.classList.toggle('is-off', !cb.checked);
-    b.textContent = cb.checked ? String(++n) : 'Not in the report';
+  document.querySelectorAll('#mtSbModal .mt-pr').forEach(row => {
+    const cb = row.querySelector('[data-inrep]'), th = row.querySelector('.mt-pr__th'), lbl = row.querySelector('.mt-pr__sw > span:first-child');
+    if (!cb || !th) return;
+    row.classList.toggle('is-off', !cb.checked);
+    th.querySelector('.mt-pr__no')?.remove();
+    if (cb.checked) th.insertAdjacentHTML('beforeend', `<span class="mt-pr__no">${++n}</span>`);
+    if (lbl) lbl.textContent = cb.checked ? 'In the report' : 'Not in the report';
   });
 }
 
