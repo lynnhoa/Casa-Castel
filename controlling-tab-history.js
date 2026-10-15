@@ -70,7 +70,15 @@ function _cxHTenancyHTML(u, pid, w) {
       (w.from ? '<button class="cx-btn cx-btn--full" style="margin-top:6px" data-h="confirm" data-k="' + cxEsc(key) + '"><i class="ti ti-check" aria-hidden="true"></i>Confirm as rent from move-in</button>' : '')
     : '';
 
-  const steps = w.staffel.map(h => 'Staffel from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount) + ' Kalt')
+  // Casa Castel has no Staffel — its steps are Mieterhöhungen (Pauschal or Kalt, by the rent valid on that day)
+  const _stLine = h => {
+    if (w.app !== 'casa') return 'Staffel from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount) + ' Kalt';
+    const d = ccRpIso(h.effective_date);
+    const at = w.periods.filter(p => ccRpIso(p.valid_from) && ccRpIso(p.valid_from) <= d).pop();
+    const pau = (at ? at.mode : w.legacyMode) === 'pauschal';
+    return 'Mieterhöhung from ' + cxFmtDate(d) + ' · ' + cxEur(h.amount) + (pau ? ' Pauschal' : ' Kalt');
+  };
+  const steps = w.staffel.map(_stLine)
     .concat(w.nkSteps.map(h => 'NK from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount)));
 
   const addOpen = !!_cxH.add[key];
@@ -116,7 +124,7 @@ window.renderHistory = function (host) {
         cxEsc(h.istNoTenant.length > 6 ? h.istNoTenant.slice(0, 6).join(', ') + ' …' : h.istNoTenant.join(', ')) +
         ' – check the move-in (maybe overwritten by a renewal)</div>' : '') +
       h.orphans.map(o => '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' +
-        (o.kind === 'staffel' ? 'Staffel step' : 'NK change') + ' from ' + cxFmtDate(ccRpIso(o.h.effective_date)) + ' (' + cxEur(o.h.amount) + ') belongs to no tenant – not used</div>').join('') +
+        (o.kind === 'staffel' ? (h.link.type === 'casa_room' ? 'Mieterhöhung' : 'Staffel step') : 'NK change') + ' from ' + cxFmtDate(ccRpIso(o.h.effective_date)) + ' (' + cxEur(o.h.amount) + ') belongs to no tenant – not used</div>').join('') +
       '</div>';
     return '<div class="cx-card"><button class="cx-ph" data-h="fold" data-k="' + cxEsc(k) + '" aria-expanded="' + isOpen + '">' +
       '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(u.name) + '</span><span class="cx-src">' + cxEsc(p.name) + ' · ' + h.tenancies.length + (h.tenancies.length === 1 ? ' tenant' : ' tenants') + '</span></span>' +
@@ -125,18 +133,21 @@ window.renderHistory = function (host) {
   }).join('')).join('');
 
   const missing = typeof CC_RP !== 'undefined' && CC_RP.missing;
-  host.innerHTML = '<div class="cx-page" id="cxHist">' +
+  cxPaint(host, '<div class="cx-page" id="cxHist">' +
     '<button class="cx-link" data-h="back"><i class="ti ti-chevron-left" aria-hidden="true"></i> Setup</button>' +
     '<div class="cx-title">Tenant history</div><div class="cx-title__s">Move-in, move-out and rent per tenant · check once, then the Soll is right for every month</div>' +
     (missing ? '<div class="cx-card cx-sum"><div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> The table rent_periods is missing – please run the SQL update first.</div></div>' : '') +
     '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">To check</span>' +
       (nIssues + nOrph ? cxPill('open', (nIssues + nOrph) + (nIssues + nOrph === 1 ? ' point' : ' points')) : cxPill('ok', 'All consistent')) + '</div>' +
       '<div class="cx-r__sub" style="margin-top:6px">"Rent unconfirmed" = the rent is only saved with the tenant. Confirm it once or enter the real rent from move-in.</div></div>' +
-    cards + '</div>';
+    cards + '</div>');   // B18: only what changed
 
   const root = document.getElementById('cxHist');
-  root.addEventListener('click', ev => _cxHClick(ev, host));
-  root.addEventListener('change', ev => _cxHChange(ev, host));
+  if (root && !root._cxHWired) {                       // B18: the page is kept between redraws → wire it once
+    root._cxHWired = true;
+    root.addEventListener('click', ev => _cxHClick(ev, host));
+    root.addEventListener('change', ev => _cxHChange(ev, host));
+  }
 };
 
 async function _cxHClick(ev, host) {

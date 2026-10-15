@@ -1,0 +1,477 @@
+/* ─────────────────────────────────────────────────────────────
+   MAINTENANCE — only what casa-castel.css + cc-cards.css don't have
+   maintenance.css
+   Same tokens as the other apps: cream page, white cards, 0.5px rules,
+   Cormorant titles, Inter text, 10px caps section labels,
+   read = edit grid (label 11px above value 13px, fields 36px / 14px).
+   ───────────────────────────────────────────────────────────── */
+
+/* ── Page header: title left, "+ New" right (= Rooms / Apartments) ── */
+.mt-hdr { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }
+.mt-hdr .cc-h1 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-add { display:flex; align-items:center; gap:6px; flex-shrink:0; padding:8px 14px; min-height:36px;
+  background:var(--cc-ink); color:var(--cc-white); border:none; border-radius:var(--cc-r-sm);
+  font-family:inherit; font-size:12px; font-weight:500; letter-spacing:.07em; text-transform:uppercase;
+  white-space:nowrap; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-add i { font-size:14px; }
+.mt-add:active { opacity:.85; transform:scale(.98); }
+
+/* ── Empty tab and load problems ── */
+.mt-empty { font-size:13px; color:var(--cc-stone); font-style:italic; padding:20px 0; }
+.mt-note  { font-size:13px; line-height:1.5; color:var(--cc-charcoal); margin:0 0 6px; }
+.mt-note a { color:#8A6535; text-decoration:underline; text-underline-offset:3px; }
+.mt-muted { font-size:11px; color:var(--cc-taupe); overflow-wrap:anywhere; }
+.mt-mu { color:var(--cc-stone) !important; }
+
+/* ── Property cards ── */
+.mt-list { display:flex; flex-direction:column; gap:12px; }
+.mt-card { background:var(--cc-white); border:var(--cc-border); border-radius:var(--cc-r-lg); overflow:hidden; }
+.mt-card__hd { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:16px 16px 12px; }
+.mt-card__name { margin:0; min-width:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400;
+  line-height:1.1; letter-spacing:0; color:var(--cc-ink); overflow-wrap:anywhere; }
+.mt-card__sum { flex-shrink:0; font-size:14px; font-weight:500; color:var(--cc-charcoal); white-space:nowrap; }
+
+/* One entry: title + area · date left, Kosten + status right */
+.mt-row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; width:100%; margin:0;
+  padding:12px 16px; border:none; border-top:var(--cc-border); background:none; border-radius:0;
+  font:inherit; color:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-row:active, .mt-row.is-sel { background:#F7F3EC; }
+.mt-row__l { flex:1; min-width:0; display:flex; flex-direction:column; }
+.mt-row__t { font-size:14px; font-weight:500; line-height:1.35; color:var(--cc-ink); overflow-wrap:anywhere; }
+.mt-row__s { margin-top:2px; font-size:12px; line-height:1.4; color:var(--cc-taupe); }
+.mt-row__r { flex-shrink:0; display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+.mt-row__a { font-size:13px; font-weight:500; line-height:1.35; color:var(--cc-charcoal); white-space:nowrap; }
+
+/* Done entries fold per property */
+
+/* Status pills: yellow = planned / open · orange = in progress · green = done */
+.mt-pill { display:inline-block; padding:3px 9px; border:.5px solid; border-radius:var(--cc-r-pill);
+  font-size:9px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; line-height:1.5; white-space:nowrap; }
+.mt-pill--open { background:#FDF0D8; border-color:#E8C97A; color:#633806; }
+.mt-pill--prog { background:#FDE4D0; border-color:#F0A877; color:#8A3E12; }
+.mt-pill--done { background:#EAF3DE; border-color:#9AC87A; color:#27500A; }
+
+/* Sections: title 10px caps · grid label above value · actions bottom right */
+.mt-sec { padding:14px 16px; border-bottom:var(--cc-border); }
+.mt-sec:last-child { border-bottom:none; padding-bottom:18px; }
+.mt-sec__t { margin:0 0 10px; font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-taupe); }
+.mt-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px 16px; align-items:start; }
+.mt-f { display:flex; flex-direction:column; align-items:flex-start; gap:2px; min-width:0; }
+.mt-f[hidden] { display:none; }
+.mt-f--full { grid-column:1 / -1; }
+.mt-k { font-size:11px; font-weight:400; line-height:1.4; color:var(--cc-taupe); }
+.mt-v { font-size:13px; line-height:1.35; color:var(--cc-charcoal); overflow-wrap:anywhere; }
+.mt-v--text { white-space:pre-line; }
+.mt-sec--edit .mt-f { gap:4px; align-self:end; }
+
+/* Fields: one size, close to the read value (= cc-cards) */
+.mt-in { display:block; width:100%; height:36px; margin:0; padding:0 10px; box-sizing:border-box;
+  background-color:var(--cc-bg); border:var(--cc-border); border-radius:8px;
+  font-family:inherit; font-size:14px; font-weight:400; color:var(--cc-charcoal); outline:none;
+  -webkit-appearance:none; appearance:none; }
+.mt-in:focus { border-color:var(--cc-gold); background-color:var(--cc-white); }
+.mt-in::placeholder { color:var(--cc-stone); }
+select.mt-in { padding-right:28px; text-overflow:ellipsis;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23C8BFB0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 10px center; background-size:12px; }
+.mt-ta { height:auto; min-height:76px; padding:8px 10px; line-height:1.45; resize:vertical; }
+.cc-sec-foot button.mt-save { background:var(--cc-ink) !important; color:var(--cc-white) !important; border-color:var(--cc-ink) !important; }
+.cc-sec-foot button.mt-del  { color:#A32D2D !important; border-color:#F09595 !important; }
+
+/* ── In-app confirm sheet (= Settlements) ── */
+.mt-cf { position:fixed; inset:0; z-index:2000; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; }
+.mt-cf__bg { position:absolute; inset:0; background:rgba(30,27,24,.34); }
+.mt-cf__s { position:relative; width:100%; max-width:460px; background:var(--cc-white); border-radius:16px 16px 0 0;
+  padding:20px 16px calc(14px + env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; gap:6px;
+  box-shadow:0 -6px 24px rgba(30,27,24,.14); }
+.mt-cf__t { margin:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; line-height:1.1; color:#3D3027; }
+.mt-cf__x { margin:0 0 10px; font-size:13px; line-height:1.5; color:#6E6357; }
+.mt-cf__b { display:flex; flex-direction:column; gap:8px; }
+.mt-btn { width:100%; height:46px; padding:0 16px; border-radius:8px; border:.5px solid transparent; cursor:pointer;
+  font-family:inherit; font-size:12px; font-weight:500; letter-spacing:.07em; text-transform:uppercase;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px; -webkit-tap-highlight-color:transparent; }
+.mt-btn--p { background:var(--cc-ink); color:var(--cc-white); border-color:var(--cc-ink); }
+.mt-btn--s { background:transparent; color:var(--cc-taupe); border-color:var(--cc-rule); }
+.mt-btn--d { background:none; color:#A0533A; border-color:#D9957C; }
+@media (min-width: 701px) {
+  .mt-cf { justify-content:center; }
+  .mt-cf__s { border-radius:16px; padding-bottom:16px; }
+}
+
+/* ── Documents (photos grid · files · Kosten) ── */
+.mt-docs-empty { margin:0 0 4px; font-size:13px; font-style:italic; color:var(--cc-stone); }
+.mt-x { position:absolute; top:-7px; right:-7px; z-index:1; width:22px; height:22px; margin:0; padding:0; border:none; border-radius:50%;
+  background:#A32D2D; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer; }
+.mt-dl { display:flex; flex-direction:column; }
+.mt-dr { display:flex; align-items:center; gap:10px; border-top:var(--cc-border); }
+.mt-dr .mt-x { position:static; flex-shrink:0; }
+.mt-dr__main { flex:1; min-width:0; display:flex; align-items:center; gap:10px; margin:0; padding:9px 0; border:none; background:none;
+  border-radius:0; font:inherit; color:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-di { width:32px; height:32px; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-radius:8px;
+  background:var(--cc-bg); border:var(--cc-border); color:var(--cc-taupe); font-size:16px; }
+.mt-dn { flex:1; min-width:0; display:flex; flex-direction:column; }
+.mt-dt { font-size:13px; line-height:1.35; color:var(--cc-charcoal); }
+.mt-ds { font-size:11px; line-height:1.4; color:var(--cc-taupe); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mt-da { flex-shrink:0; font-size:13px; font-weight:500; color:var(--cc-charcoal); white-space:nowrap; }
+.mt-su { display:flex; justify-content:space-between; align-items:baseline; padding-top:10px; border-top:var(--cc-border); }
+.mt-su span { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#8A6535; }
+.mt-su b { font-size:14px; font-weight:600; color:var(--cc-charcoal); }
+.mt-hint { margin:8px 0 0; font-size:11.5px; line-height:1.45; color:var(--cc-taupe); }
+.mt-foot-l { display:inline-flex; gap:6px; }
+
+/* A new file / fixing a file: the form sits in the list, same fields as everywhere */
+.mt-ab { margin:0 0 12px; padding:12px; background:var(--cc-bg); border:var(--cc-border); border-radius:10px; }
+.mt-dl .mt-ab { margin:8px 0; }
+.mt-ab .mt-in { background-color:var(--cc-white); }
+.mt-ab .cc-sec-foot { margin-top:12px; }
+.mt-fc { display:flex; align-items:center; gap:8px; min-width:0; margin:0 0 10px; font-size:13px; color:var(--cc-charcoal); }
+.mt-fc span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-fc i { flex-shrink:0; font-size:16px; color:var(--cc-taupe); }
+
+/* Upload running */
+.mt-up { display:flex; align-items:center; gap:8px; margin:0 0 10px; font-size:12px; color:var(--cc-taupe); }
+.mt-spin { width:14px; height:14px; flex-shrink:0; border:1.5px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%;
+  animation:mt-spin .8s linear infinite; }
+
+/* ── Costs (D1): one row per receipt / invoice ── */
+.mt-costs { container-type:inline-size; }
+.mt-cg { margin:0 0 12px; }
+.mt-cg__h { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:0 0 6px; }
+.mt-cg__t { font-size:11px; color:var(--cc-taupe); }
+.mt-cg__s { font-size:13px; font-weight:500; color:var(--cc-charcoal); white-space:nowrap; }
+.mt-ch { display:none; }
+
+/* phone: 2 lines — receipt no. · description | amount  /  brand · date | photos */
+.mt-cr { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"a amt" "b f"; column-gap:12px; row-gap:1px;
+  width:100%; margin:0; padding:9px 0; border:none; border-top:var(--cc-border); border-radius:0; background:none;
+  font:inherit; color:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-cr:active { background:#F7F3EC; }
+.mt-cr__a { grid-area:a; display:flex; gap:6px; min-width:0; font-size:13px; line-height:1.35; color:var(--cc-charcoal); }
+.mt-cr__no { flex-shrink:0; font-weight:500; color:var(--cc-ink); }
+.mt-cr__desc { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-cr__amt { grid-area:amt; font-size:13px; font-weight:500; line-height:1.35; color:var(--cc-charcoal); white-space:nowrap; text-align:right; }
+.mt-cr__b { grid-area:b; display:flex; gap:0; min-width:0; font-size:11px; line-height:1.4; color:var(--cc-taupe); }
+.mt-cr__who { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-cr__who:empty { display:none; }
+.mt-cr__who:not(:empty) + .mt-cr__date::before { content:'\00a0·\00a0'; }
+.mt-cr__date { flex-shrink:0; white-space:nowrap; }
+.mt-cr__f { grid-area:f; justify-self:end; display:inline-flex; align-items:center; gap:2px; font-size:11px; line-height:1.4; color:var(--cc-taupe); }
+.mt-cr__f i { font-size:12px; }
+
+/* wide panel (laptop): a real table in your column order */
+@container (min-width: 520px) {
+  .mt-ch, .mt-cr { grid-template-columns:84px minmax(0,1.5fr) minmax(0,1fr) 86px 80px 24px; grid-template-areas:none; column-gap:10px; }
+  .mt-cr__no { min-width:0; overflow-wrap:anywhere; }
+  .mt-ch { display:grid; padding:0 0 6px; font-size:11px; color:var(--cc-taupe); }
+  .mt-ch .r { text-align:right; }
+  .mt-cr__a, .mt-cr__b { display:contents; }
+  .mt-cr__no   { order:1; }
+  .mt-cr__desc { order:2; }
+  .mt-cr__who  { order:3; display:block !important; font-size:13px; color:var(--cc-charcoal); }
+  .mt-cr__amt  { order:4; }
+  .mt-cr__date { order:5; font-size:13px; color:var(--cc-charcoal); }
+  .mt-cr__date::before { content:none !important; }
+  .mt-cr__f    { order:6; }
+  .mt-cr > span, .mt-cr__a > span, .mt-cr__b > span { grid-area:auto; align-self:center; }
+}
+
+/* Type switch in the cost form (Self-bought | Provider) */
+.mt-seg { display:inline-flex; gap:2px; padding:2px; margin:0 0 12px; background:var(--cc-surface); border:var(--cc-border); border-radius:var(--cc-r-pill); }
+.mt-seg__b { padding:5px 12px; border:none; border-radius:var(--cc-r-pill); background:none; cursor:pointer;
+  font-family:inherit; font-size:11px; font-weight:500; color:var(--cc-taupe); -webkit-tap-highlight-color:transparent; }
+.mt-seg__b.is-on { background:var(--cc-white); color:var(--cc-ink); box-shadow:0 0 0 .5px var(--cc-rule); }
+.mt-cg .mt-ab { margin:8px 0; }
+
+/* Files of a cost row */
+.mt-chips { display:flex; flex-wrap:wrap; gap:6px; width:100%; }
+.mt-chip { display:inline-flex; align-items:center; gap:4px; max-width:100%; min-height:30px; padding:0 4px 0 10px;
+  background:var(--cc-white); border:var(--cc-border); border-radius:15px; font-size:12px; color:var(--cc-charcoal); }
+.mt-chip.is-new { border-style:dashed; }
+.mt-chip__n { display:inline-flex; align-items:center; gap:5px; min-width:0; max-width:180px; padding:0; border:none; background:none;
+  font:inherit; color:inherit; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-chip__n i { font-size:13px; color:var(--cc-taupe); flex-shrink:0; }
+.mt-chip__x { width:22px; height:22px; flex-shrink:0; display:flex; align-items:center; justify-content:center; padding:0;
+  border:none; border-radius:50%; background:none; color:var(--cc-stone); cursor:pointer; font-size:12px; }
+.mt-chip--add { padding:0 12px; border-style:dashed; color:var(--cc-taupe); cursor:pointer; font-family:inherit; }
+.mt-chip--add i { font-size:13px; }
+
+
+
+/* ── D2 · Year groups inside a property card ── */
+.mt-yr { display:flex; align-items:center; gap:8px; width:100%; margin:0; padding:9px 16px; border:none; border-top:var(--cc-border);
+  border-radius:0; background:var(--cc-bg); cursor:pointer; font-family:inherit; text-align:left; -webkit-tap-highlight-color:transparent; }
+.mt-yr__y { font-size:11px; font-weight:600; letter-spacing:.12em; color:var(--cc-charcoal); }
+.mt-yr__n { font-size:11px; color:var(--cc-taupe); }
+.mt-yr i { font-size:14px; color:var(--cc-stone); transition:transform .2s; }
+.mt-yr[aria-expanded="true"] i { transform:rotate(180deg); }
+
+/* ── D2 · Returns under their receipt, then the receipt's Net ── */
+.mt-cr--ret { padding-left:14px; border-top-style:dashed; }
+.mt-cr--ret .mt-cr__no { display:inline-flex; align-items:center; gap:3px; font-weight:400; color:var(--cc-taupe); }
+.mt-cr--ret .mt-cr__no i { font-size:13px; }
+.mt-cr--ret .mt-cr__desc { color:var(--cc-taupe); }
+.mt-cr--ret .mt-cr__amt { color:#3F6B35; }
+.mt-net { display:flex; justify-content:flex-end; align-items:baseline; gap:10px; padding:2px 0 8px; font-size:11px; color:var(--cc-taupe); }
+.mt-net b { font-size:13px; font-weight:600; color:var(--cc-charcoal); }
+.mt-ret-t { display:flex; align-items:center; gap:5px; margin:0 0 12px; font-size:12px; font-weight:500; color:var(--cc-charcoal); }
+.mt-ret-t i { font-size:14px; color:var(--cc-taupe); }
+@container (min-width: 520px) {
+  .mt-cr--ret { padding-left:0; }
+}
+
+/* ── D3 · Controlling switch ── */
+.mt-off-note { display:flex; align-items:center; gap:6px; margin:-4px 0 10px; font-size:11.5px; color:var(--cc-taupe); }
+.mt-off-note i { font-size:13px; }
+.mt-off { margin-left:6px; padding:1px 7px; border:.5px solid var(--cc-rule); border-radius:var(--cc-r-pill);
+  font-size:10px; font-weight:500; color:var(--cc-taupe); background:var(--cc-surface); white-space:nowrap; }
+.mt-chk { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--cc-charcoal); cursor:pointer; }
+.mt-chk input { width:18px; height:18px; margin:0; accent-color:var(--cc-ink); }
+.mt-cr.is-flash { background:#FBF3E4; transition:background 1.2s; }
+
+
+/* ── D4 · The entry opens in place (inside its property card) ── */
+#appMain .tab-content { max-width:960px; }
+.mt-card--new { border-color:var(--cc-stone); }
+.mt-open { padding:12px 16px 16px; border-top:var(--cc-border); background:var(--cc-white);
+  scroll-margin-top:calc(124px + env(safe-area-inset-top,0px)); }
+.mt-card--new .mt-open { border-top:none; }
+.mt-oh__t { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; width:100%; margin:0; padding:2px 0;
+  border:none; background:none; border-radius:0; font:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-oh__t span { font-size:15px; font-weight:500; line-height:1.35; color:var(--cc-ink); overflow-wrap:anywhere; }
+.mt-oh__t i { flex-shrink:0; margin-top:2px; font-size:16px; color:var(--cc-stone); }
+.mt-oh__s { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-top:4px; }
+.mt-oh__l { font-size:12px; line-height:1.6; color:var(--cc-taupe); }
+.mt-oh__d { margin:4px 0 0; font-size:12px; line-height:1.45; color:var(--cc-charcoal); white-space:pre-line;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.mt-link { flex-shrink:0; margin:0; padding:2px 0; border:none; background:none; font:inherit; font-size:11px; font-weight:500;
+  color:var(--cc-taupe); text-decoration:underline; text-underline-offset:3px; cursor:pointer; white-space:nowrap; }
+.mt-pill--sm { padding:2px 8px; vertical-align:1px; }
+.mt-open .mt-sec--edit { padding:12px 0 4px; border-bottom:none; }
+.mt-after { margin:10px 0 0; }
+
+/* Kosten on top, then "+ Add receipt" */
+.mt-costs { margin-top:14px; }
+.mt-ks { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.mt-ks b { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#8A6535; }
+.mt-ks em { font-style:normal; font-size:16px; font-weight:600; color:var(--cc-charcoal); white-space:nowrap; }
+.mt-addr { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; height:40px; margin:0 0 6px; padding:0;
+  border:.5px dashed #B8AE9F; border-radius:8px; background:none; font-family:inherit; font-size:12px; font-weight:500;
+  color:var(--cc-taupe); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-addr i { font-size:14px; }
+.mt-addr:active { background:var(--cc-bg); }
+.mt-costs .mt-cg { margin:6px 0 4px; }
+.mt-costs > .mt-ab { margin:0 0 6px; }
+
+/* Documents last, compact */
+.mt-docs { margin-top:14px; padding-top:12px; border-top:var(--cc-border); }
+/* the form */
+.mt-sb { margin-bottom:12px; }
+.mt-sb .mt-seg { margin-top:2px; }
+
+/* D7 · long text fields grow with their text (mtGrow); long text a little smaller on the phone
+   (casa-castel.css sets 16px for zoom; this page never zooms: viewport maximum-scale=1) */
+#mtPanel textarea.mt-ta { resize:none; overflow:hidden; min-height:44px; }
+@media (max-width: 700px) {
+  #mtPanel textarea.mt-ta { font-size:14px !important; line-height:1.45; }
+}
+
+/* ── D8 · "Already in Controlling?" — the line(s) it may be ── */
+.mt-cf__l { margin:0 0 12px; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
+.mt-cf__l li { padding:9px 11px; border:var(--cc-border); border-radius:8px; background:var(--cc-bg);
+  font-size:12.5px; line-height:1.45; color:var(--cc-charcoal); overflow-wrap:anywhere; }
+
+/* ── D9 · Type switch on top · "More" read view · Zimmer line in the report form ── */
+.mt-seg--kind { margin:0; }
+.mt-more { display:inline-block; margin-top:4px; }
+.mt-rd { margin:8px 0 0; display:flex; flex-direction:column; gap:9px; }
+.mt-rd__r dt { font-size:11px; line-height:1.4; color:var(--cc-taupe); }
+.mt-rd__r dd { margin:1px 0 0; font-size:12px; line-height:1.45; color:var(--cc-charcoal); white-space:pre-line; overflow-wrap:anywhere; }
+.mt-sb__room { margin:0; font-size:12px; line-height:1.5; color:var(--cc-taupe); }
+.mt-sb__room b { font-weight:500; color:var(--cc-ink); }
+.mt-sbal { display:flex; flex-direction:column; gap:6px; }
+.mt-sba { display:flex; align-items:center; gap:10px; padding:9px 11px; border:var(--cc-border); border-radius:8px; background:var(--cc-white); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-sba input { width:18px; height:18px; margin:0; flex-shrink:0; accent-color:var(--cc-ink); }
+.mt-sba__t { flex:1; min-width:0; font-size:12.5px; line-height:1.35; color:var(--cc-ink); }
+.mt-sba__t small { display:block; font-size:11px; color:var(--cc-taupe); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-sba em { flex-shrink:0; font-style:normal; font-size:10.5px; color:var(--cc-taupe); }
+.mt-sba.is-off { background:transparent; }
+.mt-sba.is-off .mt-sba__t, .mt-sba.is-off em { opacity:.55; }
+
+/* ── D11 · Move to Kosten (old Rechnung documents) ── */
+.mt-dr .mt-tocost { flex-shrink:0; align-self:center; margin-left:8px; white-space:nowrap; }
+.mt-yr > .ti { margin-left:auto; }
+
+/* ── D12 · PDF overviews: year choice in the summary, PDF buttons ── */
+.mt-row { position:relative; }
+.mt-row__hit { position:absolute; inset:0; z-index:0; width:100%; margin:0; padding:0; border:0; border-radius:inherit; background:transparent;
+  cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-row__hit:focus-visible { outline:2px solid var(--cc-gold); outline-offset:-2px; }
+.mt-row > .mt-row__l, .mt-row > .mt-row__r { position:relative; z-index:1; pointer-events:none; }
+.mt-pdfw { pointer-events:auto; display:inline-flex; align-items:center; gap:6px; vertical-align:1px; }
+.mt-row__t .mt-pdfw { margin-left:2px; }
+.mt-pdf { display:inline-flex; align-items:center; gap:4px; height:24px; margin:0; padding:0 9px; border:var(--cc-border); border-radius:12px;
+  background:var(--cc-white); font:inherit; font-size:10px; font-weight:600; letter-spacing:.08em; line-height:1; color:var(--cc-ink);
+  cursor:pointer; white-space:nowrap; -webkit-tap-highlight-color:transparent; }
+.mt-pdf i { font-size:12px; }
+.mt-pdf.off { color:var(--cc-stone); border-style:dashed; background:transparent; }
+.mt-pdf.is-busy { opacity:.6; pointer-events:none; }
+.mt-pdf .mt-spin { width:10px; height:10px; }
+/* installed app: the shared "Open PDF" appears in place of the button — small here */
+.mt-pdfw > .cc-pdf-ready { display:inline-flex !important; flex:none !important; gap:6px !important; align-items:center !important; }
+.mt-pdfw > .cc-pdf-ready > * { height:26px !important; min-height:0 !important; padding:0 10px !important; font-size:10px !important;
+  line-height:24px !important; border-radius:12px !important; letter-spacing:.06em !important; }
+.mt-oh__h { display:flex; align-items:flex-start; gap:8px; }
+.mt-oh__h .mt-oh__t { width:auto; flex:0 1 auto; min-width:0; }
+.mt-oh__h .mt-pdfw { margin-top:1px; }
+.mt-oh__x { margin:0 0 0 auto; padding:2px 0; border:0; background:none; cursor:pointer; flex-shrink:0; -webkit-tap-highlight-color:transparent; }
+.mt-oh__x i { display:block; margin-top:2px; font-size:16px; color:var(--cc-stone); }
+.cc-sum2__vals .mt-pdfw { margin-left:auto; }
+.cc-sum2__vals .mt-pdf i { font-size:12px; margin:0; letter-spacing:0; color:inherit; text-transform:none; }
+.mt-ysel { position:relative; display:inline-flex; align-items:center; margin-right:4px; }
+.mt-ysel select { -webkit-appearance:none; appearance:none; margin:-6px 0; padding:6px 13px 6px 0; border:0; background:none; cursor:pointer;
+  font:inherit; font-size:9px; font-weight:500; letter-spacing:.12em; color:#A89C8C; }
+.cc-sum2__vals .mt-ysel i { position:absolute; right:0; margin:0; font-size:9px; letter-spacing:0; pointer-events:none; }
+.cc-sum2__vals .mt-ysel select { font-size:9px !important; font-weight:500 !important; line-height:1 !important; height:auto !important;
+  min-height:0 !important; letter-spacing:.12em !important; color:#A89C8C !important; text-transform:uppercase; }
+
+/* ── D16 · entry: Kostenübersicht · Schadensbericht below a divider · the Schadensbericht pop-up ── */
+.mt-ent { border-top:var(--cc-border); }
+.mt-ent > .mt-row { border-top:none; }
+.mt-acts { display:flex; flex-wrap:wrap; gap:8px; margin:0 16px; padding:10px 0 12px; border-top:var(--cc-border); }
+.mt-acts--in { margin:14px 0 0; padding:12px 0 0; }
+.mt-act { display:inline-flex; align-items:center; gap:6px; height:32px; margin:0; padding:0 13px; border:var(--cc-border); border-radius:16px;
+  background:var(--cc-white); font:inherit; font-size:12px; font-weight:500; line-height:1; color:var(--cc-ink); cursor:pointer;
+  white-space:nowrap; -webkit-tap-highlight-color:transparent; }
+.mt-act i { font-size:14px; color:var(--cc-gold); }
+.mt-act.off { color:var(--cc-stone); border-style:dashed; background:transparent; }
+.mt-act.off i { color:var(--cc-stone); }
+.mt-act.is-busy { opacity:.6; pointer-events:none; }
+.mt-act .mt-spin { width:11px; height:11px; }
+.mt-oh__d.is-full { display:block; -webkit-line-clamp:unset; overflow:visible; }
+
+.mt-modal { position:fixed; inset:0; z-index:400; display:flex; align-items:flex-end; justify-content:center; }
+.mt-modal__bg { position:absolute; inset:0; background:rgba(30,27,24,.22); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+.mt-modal__s { position:relative; width:100%; max-width:560px; max-height:92vh; max-height:calc(92dvh - env(safe-area-inset-top, 0px));
+  display:flex; flex-direction:column; background:var(--cc-white); border-radius:20px 20px 0 0; animation:mtSheetUp .26s cubic-bezier(.32,.72,0,1); }
+@keyframes mtSheetUp { from { transform:translateY(40px); opacity:0; } to { transform:none; opacity:1; } }
+@media (min-width:701px) { .mt-modal { align-items:center; } .mt-modal__s { border-radius:var(--cc-r-lg); max-height:86vh; max-height:86dvh; } }
+.mt-modal__h { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:20px 20px 14px; border-bottom:var(--cc-border); flex-shrink:0; }
+.mt-modal__k { margin:0 0 3px; font-size:9px; font-weight:500; letter-spacing:.11em; text-transform:uppercase; color:var(--cc-gold); }
+.mt-modal__t { margin:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:300; line-height:1.15; color:var(--cc-ink); }
+.mt-modal__sub { margin:2px 0 0; font-size:12px; color:var(--cc-taupe); }
+.mt-modal__x { width:30px; height:30px; display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; cursor:pointer;
+  border:var(--cc-border); border-radius:50%; background:var(--cc-surface); color:var(--cc-taupe); font-size:13px; }
+.mt-modal__b { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:16px 20px; }
+.mt-modal__f { flex-shrink:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px 10px; padding:12px 16px;
+  padding-bottom:max(16px, env(safe-area-inset-bottom, 16px)); border-top:var(--cc-border); }
+html.mt-modal-open, html.mt-modal-open body { overflow:hidden; }
+#mtSbModal textarea.mt-ta { resize:none; overflow:hidden; min-height:44px; }
+#mtSbModal .mt-seg { margin:2px 0 10px; }
+.mt-sbp-add { margin-top:2px; }
+@media (max-width: 700px) {
+  #mtSbModal textarea.mt-ta { font-size:14px !important; line-height:1.45; }
+}
+.mt-modal__f .cc-foot-btn.mt-save { background:var(--cc-ink) !important; border-color:var(--cc-ink) !important; color:var(--cc-white) !important; }
+.mt-modal__f .cc-foot-btn.mt-save:disabled { opacity:.55; }
+
+/* ── D17 · Berichte: points/text switch · photo rows with × and Vorher/Nachher · ready view ── */
+.mt-kl { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.mt-sty { display:inline-flex; gap:2px; padding:2px; background:var(--cc-surface); border:var(--cc-border); border-radius:12px; flex-shrink:0; }
+.mt-sty__b { height:22px; margin:0; padding:0 9px; border:0; border-radius:10px; background:none; font:inherit; font-size:10.5px; line-height:1;
+  color:var(--cc-taupe); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-sty__b.is-on { background:var(--cc-white); color:var(--cc-ink); box-shadow:0 0 0 .5px var(--cc-rule); }
+.mt-rbf { margin:2px 0 0; font-size:12.5px; line-height:1.55; color:var(--cc-charcoal); }
+.mt-modal .mt-chk { display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.4; color:var(--cc-charcoal); cursor:pointer; }
+.mt-modal .mt-chk input { width:18px; height:18px; margin:0; flex-shrink:0; accent-color:var(--cc-ink); }
+.mt-ready { display:flex; flex-direction:column; align-items:center; gap:4px; padding:28px 8px 18px; text-align:center; }
+.mt-ready__ic { width:54px; height:54px; display:flex; align-items:center; justify-content:center; margin-bottom:10px; border-radius:50%;
+  background:#EEF4EA; color:#3F6B35; font-size:25px; }
+.mt-ready__t { margin:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:24px; font-weight:400; color:var(--cc-ink); }
+.mt-ready__s { margin:0; font-size:12.5px; color:var(--cc-taupe); }
+.mt-ready__open { display:inline-flex; align-items:center; gap:8px; height:50px; margin-top:20px; padding:0 30px; border:0; border-radius:25px;
+  background:var(--cc-ink); color:var(--cc-white); font:inherit; font-size:15px; font-weight:500; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-ready__open i { font-size:18px; }
+
+/* ── D18 · photos live in the Bericht pop-up: one quiet link in Documents ── */
+.mt-photolink { display:inline-flex; align-items:center; gap:6px; margin:2px 0 8px; }
+.mt-photolink i { font-size:14px; }
+
+/* ── D20 · Uhrzeit like the date fields (time on the left, clock icon) ── */
+input.mt-in.mt-time { position:relative; text-align:left; line-height:34px; padding-right:40px !important;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239A8E7E' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 11px center; background-size:18px 18px; }
+input.mt-in.mt-time::-webkit-date-and-time-value { text-align:left; margin:0; line-height:34px; }
+input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; right:6px; width:28px; height:28px; opacity:0; cursor:pointer; }
+.mt-swi { position:relative; width:34px; height:20px; flex-shrink:0; border-radius:10px; background:#D9D2C8; transition:background .15s; }
+.mt-swi::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#FDFCFA; transition:left .15s; }
+
+/* ── D21 · Photos: one row per photo (thumbnail · large Beschreibung · bar), small "Add photo" link ── */
+.mt-pr__hd { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.mt-pr__add { display:inline-flex; align-items:center; gap:4px; font-size:12px; }
+.mt-pr__add i { font-size:14px; }
+.mt-prl { display:flex; flex-direction:column; gap:8px; }
+.mt-pr { overflow:hidden; border:var(--cc-border); border-radius:12px; background:var(--cc-white); }
+.mt-pr.is-ask { border-color:#E3C2B6; }
+.mt-pr__t { display:flex; gap:10px; padding:10px; }
+.mt-pr__th { position:relative; width:96px; height:96px; flex-shrink:0; overflow:hidden; border-radius:8px; background:var(--cc-surface); }
+.mt-pr__th img { display:block; width:100%; height:100%; object-fit:cover; }
+.mt-pr.is-off .mt-pr__th img { opacity:.4; }
+.mt-pr__no { position:absolute; top:6px; left:6px; min-width:20px; height:20px; padding:0 6px; display:flex; align-items:center; justify-content:center;
+  border-radius:10px; background:rgba(30,27,24,.82); color:#fff; font-size:11px; font-weight:500; line-height:1; }
+.mt-pr__x { position:absolute; top:5px; right:5px; width:26px; height:26px; display:flex; align-items:center; justify-content:center; margin:0; padding:0;
+  border:0; border-radius:50%; background:rgba(253,252,250,.94); color:#6B645C; font-size:13px; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-pr__tx { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+#mtSbModal textarea.mt-pr__cap { flex:1; min-height:76px; padding:7px 9px; font-size:13px !important; line-height:1.45; background-color:var(--cc-bg); }
+.mt-pr__bar { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:40px; padding:6px 10px;
+  border-top:.5px solid #EDE8E0; font-size:12px; color:#6B645C; }
+.mt-pr.is-ask .mt-pr__bar { background:#FBF5F2; }
+.mt-pr__sw { position:relative; flex:1; display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:28px; cursor:pointer; }
+.mt-pr__bar.has-vn .mt-pr__sw { flex:0 0 auto; }
+.mt-pr__sw input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.mt-pr__sw input:checked + .mt-swi { background:var(--cc-ink); }
+.mt-pr__sw input:checked + .mt-swi::after { left:16px; }
+.mt-pr__sw input:focus-visible + .mt-swi { outline:2px solid var(--cc-gold); outline-offset:2px; }
+.mt-pr__vn { display:inline-flex; gap:2px; padding:2px; background:var(--cc-surface); border:var(--cc-border); border-radius:8px; }
+.mt-pr__vn button { height:26px; margin:0; padding:0 10px; border:0; border-radius:6px; background:none; font:inherit; font-size:12px; color:var(--cc-taupe); cursor:pointer; }
+.mt-pr__vn button.is-on { background:var(--cc-white); color:var(--cc-ink); box-shadow:0 0 0 .5px var(--cc-rule); }
+.mt-pr__ask { color:#A0533A; font-size:12.5px; }
+.mt-pr__btns { display:flex; gap:6px; }
+.mt-pr__del, .mt-pr__keep { height:30px; margin:0; padding:0 14px; border-radius:15px; font:inherit; font-size:12px; font-weight:500; cursor:pointer; }
+.mt-pr__del { border:0; background:#A0533A; color:#fff; }
+.mt-pr__keep { border:var(--cc-border); background:var(--cc-white); color:var(--cc-ink); }
+.mt-pr__hd, .mt-prl { align-self:stretch; width:100%; }
+
+/* ── D22 · Both tabs: slim white strip under the tabs (the same in both) ── */
+.mt-both { margin:0 0 16px; padding:8px 14px 9px; background:var(--cc-white); border:var(--cc-border); border-radius:10px; }
+.mt-both__r1 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.mt-both__l { font-size:11px; color:var(--cc-taupe); }
+.mt-both__r1 .mt-ysel { margin:0 auto 0 4px; }
+.mt-both .mt-ysel select { font-size:11px !important; letter-spacing:0 !important; text-transform:none !important; color:var(--cc-taupe) !important;
+  font-weight:400 !important; padding:4px 14px 4px 0; margin:-4px 0; }
+.mt-both .mt-ysel i { position:absolute; right:0; font-size:10px; color:var(--cc-taupe); pointer-events:none; }
+.mt-both__r2 { display:flex; gap:16px; margin-top:2px; font-size:13px; font-weight:500; color:var(--cc-charcoal); }
+.mt-both__r2 i { font-style:normal; font-size:11px; font-weight:400; color:var(--cc-taupe); margin-right:4px; }
+
+/* ── D22 · Kosten: small "+ Add receipt" · the receipt form in a pop-up · questions inside it ── */
+.mt-ks__l { display:inline-flex; align-items:baseline; gap:12px; }
+.mt-ks__add { display:inline-flex; align-items:center; gap:3px; font-size:12px; }
+.mt-ks__add i { font-size:13px; }
+.mt-modal .mt-cf-form { margin:0; padding:0; border:0; background:none; }
+.mt-modal .mt-cf-form .mt-in { background-color:var(--cc-bg); }
+.mt-modal__f .cc-sec-foot { width:100%; margin:0; }
+.mt-askv { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; justify-content:center; gap:10px; padding:24px 20px;
+  background:var(--cc-white); border-radius:inherit; overflow:auto; }
+.mt-askv .mt-cf__b { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+.mt-move { display:inline-flex; align-items:center; gap:4px; margin-left:12px; font-size:12px; }
+.mt-move i { font-size:14px; }
+
+/* ── D24 · Create PDF: what it is doing right now ── */
+.mt-modal__f .mt-sb__status { margin:0 auto 0 0; font-size:12px; color:var(--cc-taupe); }
+.mt-modal__f .cc-foot-btn.mt-save.is-busy { opacity:.75 !important; }
+.mt-modal__f .cc-foot-btn .mt-spin { width:12px; height:12px; margin-right:6px; vertical-align:-1px; border-color:rgba(255,255,255,.35); border-top-color:#fff; }
+
+/* ── D26 · "Copy prompt" next to "+ Add receipt": on a narrow phone it moves under "Kosten"
+      (the total stays on the right) · the text to copy by hand, only if a phone blocks copying ── */
+.mt-ks__l { flex-wrap:wrap; row-gap:2px; min-width:0; }
+.mt-cf .mt-prompt { height:min(40vh, 320px); margin:0 0 12px; padding:8px 10px; resize:none; overflow:auto;
+  font-size:13px !important; line-height:1.45; white-space:pre-wrap; -webkit-user-select:text; user-select:text; }  /* casa-castel.css sets 16px; this page never zooms */

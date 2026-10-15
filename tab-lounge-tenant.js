@@ -21,6 +21,8 @@ document.getElementById('tab-lounge').innerHTML = `
     <span class="l-notice-text" id="notice-strip-text"></span>
   </div>
 
+  ${window.ccGuidesRowHTML ? ccGuidesRowHTML('mob') : ''}
+
   <div class="l-chat">
     <div class="l-chat-hdr">
       <span class="l-chat-lbl">House chat</span>
@@ -44,6 +46,8 @@ document.getElementById('tab-lounge').innerHTML = `
         </div>
         <div id="ann-list-desktop"><p class="cc-note" style="padding:4px 0;">No announcement yet.</p></div>
       </div>
+
+      ${window.ccGuidesRowHTML ? ccGuidesRowHTML('dsk') : ''}
 
     </div><!-- /.l-desktop-left -->
 
@@ -74,6 +78,20 @@ let _annSeq = 0, _noticeSeq = 0;
 let _loungeDelTimer = null;   // one reload after a burst of live deletes
 
 /* ── ANNOUNCEMENTS ──────────────────────────────────────── */
+/* "More" only when the text is longer than 2 lines */
+function annMoreCheck() {
+  requestAnimationFrame(() => document.querySelectorAll('.l-ann-strip .ann-clamp').forEach(p => {
+    const b = p.parentElement.querySelector('.ann-more');
+    if (b && !p.classList.contains('is-open')) b.hidden = !(p.scrollHeight > p.clientHeight + 1);
+  }));
+}
+function annMoreToggle(b) {
+  const p = b.parentElement.querySelector('.ann-clamp'); if (!p) return;
+  const open = p.classList.toggle('is-open');
+  b.textContent = open ? 'Less' : 'More';
+}
+window.addEventListener('resize', () => { clearTimeout(window._annMoreT); window._annMoreT = setTimeout(annMoreCheck, 200); });
+
 async function loadAnnouncements() {
   const el = document.getElementById('ann-list'); if (!el) return;
   if (!sbL) { el.innerHTML = '<p class="cc-note" style="padding:4px 0;">—</p>'; return; }
@@ -98,10 +116,23 @@ function _renderAnn(data) {
       ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
       <p class="ann-body-text">${esc(data.body)}</p>
     </div>`;
+  // Phone strip: slim — "ANNOUNCEMENT · 07.10." in one line (no extra "Casa Castel" line), text in 2 lines with "More"
+  const mobHtml = !data ? emptyHtml : `
+    <div class="ann-card ann-card--slim${data.pinned ? ' ann-card--pinned' : ''}">
+      <div class="ann-slimtop">
+        <span class="ann-slimlbl">Announcement<span class="ann-strip-meta"> · ${fmtTs(new Date(data.created_at).getTime()).split(' · ')[0]}</span></span>
+        ${_annFresh(data) ? '<span class="ann-new">New</span>' : ''}
+        ${data.pinned ? '<span class="ann-pin">Pinned</span>' : ''}
+      </div>
+      ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
+      <p class="ann-body-text ann-clamp">${esc(data.body)}</p>
+      <button type="button" class="ann-more" hidden onclick="annMoreToggle(this)">More</button>
+    </div>`;
   const el    = document.getElementById('ann-list');
   const elDsk = document.getElementById('ann-list-desktop');
-  if (el)    el.innerHTML    = annHtml;
+  if (el)    el.innerHTML    = mobHtml;
   if (elDsk) elDsk.innerHTML = annHtml;
+  annMoreCheck();
   _annCurrent = data || null;
   _annCheckNew();
 }

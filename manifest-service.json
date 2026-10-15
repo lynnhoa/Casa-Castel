@@ -1,0 +1,28 @@
+{
+  "id": "/providers",
+  "name": "CC Service",
+  "short_name": "CC Service",
+  "start_url": "/providers",
+  "scope": "/providers",
+  "display": "standalone",
+  "background_color": "#DDF2EB",
+  "theme_color": "#F5F2ED",
+  "icons": [
+    {
+      "src": "pv-icon-192-v2.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "pv-icon-512-v2.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "pv-icon-maskable-512-v2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

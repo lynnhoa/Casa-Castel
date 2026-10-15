@@ -17,7 +17,7 @@ document.getElementById('tab-lounge').innerHTML = `
   <!-- ① Mobile: ann strip + notice strip + chat — hidden on desktop via CSS -->
   <div class="l-ann-strip">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-      <span style="font-size:9px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:#8C5A1A;">Announcement</span>
+      <span style="font-size:9px;font-weight:500;letter-spacing:0.1em;text-transform:uppercase;color:#8C5A1A;">Announcement<span class="ann-strip-meta" id="ann-strip-meta"></span></span>
       <button onclick="loungeOpenModal('ann')" style="font-size:9px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;color:var(--cc-taupe);background:none;border:none;cursor:pointer;font-family:inherit;text-decoration:underline;text-underline-offset:2px;">Edit ›</button>
     </div>
     <div id="ann-list"><p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p></div>
@@ -28,6 +28,8 @@ document.getElementById('tab-lounge').innerHTML = `
     <span class="l-notice-text" id="notice-posted-text"></span>
     <button class="l-notice-edit" onclick="loungeOpenModal('notice')">Edit ›</button>
   </div>
+
+  ${window.ccGuidesRowHTML ? ccGuidesRowHTML('mob') : ''}
 
   <div class="l-chat">
     <div class="l-chat-hdr">
@@ -55,6 +57,8 @@ document.getElementById('tab-lounge').innerHTML = `
         </div>
         <div id="ann-list-desktop"><p class="cc-note" style="padding:4px 0;">No announcement posted yet.</p></div>
       </div>
+
+      ${window.ccGuidesRowHTML ? ccGuidesRowHTML('dsk') : ''}
 
       <div class="l-dsk-section">
         <p class="l-dsk-compose-lbl" id="ann-compose-lbl">New announcement</p>
@@ -265,12 +269,36 @@ function _renderAnn(data) {
     <p class="ann-body-text">${esc(data.body)}</p>
     <div class="ann-actions"><button class="ann-edit" onclick="editAnn()">Edit</button><button class="ann-del" onclick="deleteAnn('${data.id}')">Delete announcement</button></div>
   </div>`;
+  // Phone strip: slim — the date sits in the header next to "Announcement", one "Edit ›" up there
+  // (Edit and Delete are in its pop-up), the text in 2 lines with "More". Desktop keeps the full card.
+  const mobHtml = !data ? emptyHtml : `<div class="ann-card ann-card--slim${data.pinned ? ' ann-card--pinned' : ''}">
+    ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
+    <p class="ann-body-text ann-clamp">${esc(data.body)}</p>
+    <button type="button" class="ann-more" hidden onclick="annMoreToggle(this)">More</button>
+  </div>`;
+  const meta = document.getElementById('ann-strip-meta');
+  if (meta) meta.textContent = data ? ' · ' + fmtTs(new Date(data.created_at).getTime()).split(' · ')[0] + (data.pinned ? ' · Pinned' : '') : '';
   const el    = document.getElementById('ann-list');
   const elDsk = document.getElementById('ann-list-desktop');
-  if (el)    el.innerHTML    = annHtml;
+  if (el)    el.innerHTML    = mobHtml;
   if (elDsk) elDsk.innerHTML = annHtml;
+  annMoreCheck();
   if (document.getElementById('lounge-modal-ann')?.classList.contains('open')) _populateAnnModal();
 }
+
+/* "More" only when the text is longer than 2 lines */
+function annMoreCheck() {
+  requestAnimationFrame(() => document.querySelectorAll('.l-ann-strip .ann-clamp').forEach(p => {
+    const b = p.parentElement.querySelector('.ann-more');
+    if (b && !p.classList.contains('is-open')) b.hidden = !(p.scrollHeight > p.clientHeight + 1);
+  }));
+}
+function annMoreToggle(b) {
+  const p = b.parentElement.querySelector('.ann-clamp'); if (!p) return;
+  const open = p.classList.toggle('is-open');
+  b.textContent = open ? 'Less' : 'More';
+}
+window.addEventListener('resize', () => { clearTimeout(window._annMoreT); window._annMoreT = setTimeout(annMoreCheck, 200); });
 
 async function _populateAnnModal() {
   const el = document.getElementById('ann-list-modal'); if (!el) return;
@@ -552,10 +580,11 @@ function _renderMsgs(msgs) {
   const html = !msgs.length
     ? '<p class="cc-note" style="padding:8px 0 4px;">No messages yet.</p>'
     : msgs.map(m => _msgHtml(m, true)).join('');
-  if (feed)    feed.innerHTML    = html;
-  if (feedDsk) feedDsk.innerHTML = html;
-  scrollToBottom(feed);
-  scrollToBottom(feedDsk);
+  // B18: redraw (and jump to the newest) only when the messages really changed —
+  // opening the Lounge again with the same messages leaves the feed alone (no blink, photos stay)
+  const _set = el => !!el && (typeof ccSetHTML === 'function' ? ccSetHTML(el, html) : (el.innerHTML = html, true));
+  if (_set(feed))    scrollToBottom(feed);
+  if (_set(feedDsk)) scrollToBottom(feedDsk);
   _ensureMobileCompose();   // re-show the compose bar if a render ever dropped it
 }
 

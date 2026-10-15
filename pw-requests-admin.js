@@ -7,7 +7,7 @@
      badge, Send password / Decline (+ "send a new password instead")
    · Room passwords: readable for you, shown in the Tenants card next to
      Reset pw (ccRoomPwLineHTML) with a copy button
-   · Your push for password requests (12:00–20:00): switch in the sheet
+   · Your push for password requests (11:00–23:00): switch in the sheet and in the profile menu
    Needs PASSWORDS.sql (your login only: pw_requests_list / _approve /
    _decline, room_passwords_all, admin_push_register).
    ───────────────────────────────────────────────────────────── */
@@ -44,7 +44,8 @@ function ccRoomPwInline(room) {
 function ccPwApply() {
   document.querySelectorAll('[data-cc-pw]').forEach(el => {
     const pw = CC_ROOM_PW[el.dataset.ccPw];
-    el.textContent = pw || 'older password, not shown';
+    const anyPw = typeof _tnPwAt === 'undefined' || !_tnPwAt || !!_tnPwAt[el.dataset.ccPw];   // Oct 2026: a room may have none at all
+    el.textContent = pw || (anyPw ? 'older password, not shown' : 'no password yet');
     el.classList.toggle('pwa-pw--none', !pw);
   });
   document.querySelectorAll('[data-cc-pw-copy]').forEach(b => { b.style.display = CC_ROOM_PW[b.dataset.ccPwCopy] ? '' : 'none'; });
@@ -112,20 +113,22 @@ function _pwaCardHtml(q) {
   } else if (q.locked_until) {
     actions = `<p class="pwa-note">Moves in ${_pwaDate(q.locked_until)} — you can send the password from that day (one password per room).</p>
       <button type="button" class="cc-btn cc-btn--ghost" data-pwa="decline" data-id="${q.id}">Decline</button>`;
-  } else if (q.readable && q.kind === 'first' && typeof tnRoomNeedsNewPw === 'function' && tnRoomNeedsNewPw(q.room)) {
+  } else if (q.readable && typeof tnRoomNeedsNewPw === 'function' && tnRoomNeedsNewPw(q.room)) {   // decided by the tenant dates, not by the link tapped
     // a new tenant in this room: always a NEW password, so the previous tenant's password stops working
     actions = `<p class="pwa-note">New tenant in ${_pwaEsc(q.room)} → a new password is created. The previous password stops working.</p>
       <div class="pwa-btns">
         <button type="button" class="cc-btn cc-btn--primary" data-pwa="sendnewtenant" data-id="${q.id}">Create &amp; send new password</button>
         <button type="button" class="cc-btn cc-btn--secondary" data-pwa="decline" data-id="${q.id}">Decline</button>
-      </div>`;
+      </div>
+      <button type="button" class="pwa-link" data-pwa="test" data-id="${q.id}">Test · remove (this was me)</button>`;
   } else {
     actions = `${q.readable ? '' : `<p class="pwa-note">This room has no readable password yet → a new one is created. The room's other phones are logged out once.</p>`}
       <div class="pwa-btns">
-        <button type="button" class="cc-btn cc-btn--primary" data-pwa="send" data-id="${q.id}">${q.readable ? 'Send password' : 'Create &amp; send password'}</button>
+        <button type="button" class="cc-btn cc-btn--primary" data-pwa="send" data-id="${q.id}">${q.readable ? 'Send same password' : 'Create &amp; send password'}</button>
         <button type="button" class="cc-btn cc-btn--secondary" data-pwa="decline" data-id="${q.id}">Decline</button>
       </div>
-      ${q.readable ? `<button type="button" class="pwa-link" data-pwa="sendnew" data-id="${q.id}">Send a new password instead</button>` : ''}`;
+      ${q.readable ? `<button type="button" class="pwa-link" data-pwa="sendnew" data-id="${q.id}">Send a new password instead</button>` : ''}
+      <button type="button" class="pwa-link" data-pwa="test" data-id="${q.id}">Test · remove (this was me)</button>`;
   }
   return `<div class="pwa-card${q.status === 'pending' ? '' : ' pwa-card--done'}">
     <div class="pwa-card__top">
@@ -158,7 +161,12 @@ function _pwaSheet() {
   return o;
 }
 
+function ccAdminPushLabel() {                 /* the switch in the profile menu */
+  const b = document.getElementById('ccPushMenuBtn');
+  if (b) b.textContent = '🔔 Push · ' + (localStorage.getItem('cc_admin_push') === '1' ? 'On' : 'Off');
+}
 function _pwaRender() {
+  ccAdminPushLabel();
   _pwaBanner();
   const body = document.getElementById('pwaBody');
   if (!body) return;
@@ -167,7 +175,7 @@ function _pwaRender() {
   const rest = _pwaList.filter(q => q.status !== 'pending' && !_pwaJustSent[q.id]);
   const pushOn = localStorage.getItem('cc_admin_push') === '1';
   body.innerHTML = `
-    <button type="button" class="pwa-push" data-pwa="push">🔔 Notify me 12:00–20:00 · <b>${pushOn ? 'On' : 'Off'}</b></button>
+    <button type="button" class="pwa-push" data-pwa="push">🔔 Notify me 11:00–23:00 · <b>${pushOn ? 'On' : 'Off'}</b></button>
     ${open.length || sentNow.length ? [...open, ...sentNow].map(_pwaCardHtml).join('')
       : '<p class="cc-note" style="padding:8px 0 4px;">No open requests. 🎉</p>'}
     ${rest.length ? `<details class="pwa-hist"><summary>Last 30 days · ${rest.length}</summary>
@@ -212,7 +220,18 @@ async function _pwaSend(id, makeNew, noAsk) {
   _pwaJustSent[id] = data.password;
   ccPwRemember(q.room, data.password);
   if (typeof _tnLoadPwDates === 'function') await _tnLoadPwDates();         // tenant card: "App · given …"
+  if (typeof _tnLoadPwReqs === 'function') await _tnLoadPwReqs();           // tenant card: "Sent … · waiting for pickup"
   await ccPwRequestsLoad();
+}
+/* Your own test request: gone from the list, never counts as given */
+async function _pwaTestRemove(id) {
+  const q = _pwaList.find(x => x.id === id); if (!q) return;
+  let ok = false;
+  try { const { error } = await sbL.from('pw_requests').delete().eq('id', id); ok = !error; } catch (e) {}
+  if (!ok) { try { await sbL.rpc('pw_request_decline', { p_id: id }); } catch (e) {} }   // fallback: declined (ignored on the card)
+  _pwaList = _pwaList.filter(x => x.id !== id);
+  if (typeof _tnPwReqs !== 'undefined') _tnPwReqs = _tnPwReqs.filter(x => x.id !== id);
+  ccPwRequestsLoad();
 }
 async function _pwaDecline(id) {
   const q = _pwaList.find(x => x.id === id); if (!q) return;
@@ -281,6 +300,7 @@ document.addEventListener('click', async e => {
   if (act === 'sendnew') _pwaSend(id, true);
   if (act === 'sendnewtenant') _pwaSend(id, true, true);   // new tenant: new password without the extra question
   if (act === 'decline') _pwaDecline(id);
+  if (act === 'test') _pwaTestRemove(id);
   if (act === 'push')    _pwaPushToggle(b);
 });
 
@@ -300,7 +320,7 @@ document.addEventListener('click', async e => {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { ccPwRequestsLoad(); ccRoomPwLoad(); } });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready).then(r => { _pwaReg = r; }).catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready).then(r => { _pwaReg = r; ccAdminPushLabel(); }).catch(() => {});
     navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'cc-pwreq') ccPwRequestsOpen(); });
   }
 })();

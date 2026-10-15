@@ -273,6 +273,19 @@ async function _kUpdateRow(row, patch) {
   if (res.error) alert('Could not save — ' + (res.error.message || 'please try again.'));
   return res;
 }
+/* D6 (Oct 2026): the same update, also setting "waits for you" (no_auto: no 48h auto-approve).
+   Undo → on (you decide) · Flag / Reopen → off (the tenant's next proof gets the normal 48h).
+   A database without that column runs the same update without it — the action never fails because of it. */
+async function _kUpdateRowAuto(row, patch) {
+  if (!sbL || !row) return { error: 'no row' };
+  let res = await sbL.from('kitchen_weeks').update(patch).eq('id', row.id);
+  if (res.error && 'no_auto' in patch && /no_auto/.test(String(res.error.message || res.error.details || ''))) {
+    const p2 = { ...patch }; delete p2.no_auto;
+    res = await sbL.from('kitchen_weeks').update(p2).eq('id', row.id);
+  }
+  if (res.error) alert('Could not save — ' + (res.error.message || 'please try again.'));
+  return res;
+}
 async function _kGetComments(weekId) {
   if (!sbL) return [];
   const { data } = await sbL.from('kitchen_comments').select('*').eq('week_id', weekId).order('created_at', { ascending: true });
@@ -300,7 +313,7 @@ function _kSysText(t) {
 }
 let _kAutoResetRanFor = null;
 const K_HISTORY_WEEKS = 8;    // history keeps the last 8 weeks (current week included)
-const K_HISTORY_FROM  = 40;   // history starts with the week 12.10 – 18.10.2026 (earlier weeks were tests)
+const K_HISTORY_FROM  = 39;   // history starts with the week 05.10 – 11.10.2026 (first real week; earlier weeks were tests)
 const K_NUDGE_LOG_MAX = 20;   // nudge log keeps the newest 20 nudges
 
 /* Storage paths of one week's proof photos (week row + its chat comments) */
@@ -359,7 +372,7 @@ async function _kAutoReset(currentIdx) {
   _kAutoResetRanFor = currentIdx;
   const THIRTY = 30 * 24 * 60 * 60 * 1000;
   const { data } = await sbL.from('kitchen_weeks').select('*').lt('week_index', currentIdx).order('week_index', { ascending: false });
-  if (!data || !data.length) { await _kTrimHistory(currentIdx); return; }
+  if (!data || !data.length) { await _kTrimHistory(currentIdx); await _kCleanupMore(currentIdx); return; }
   const cutoff = Date.now() - THIRTY;
   for (const row of data) {
     const ts = row.submitted_at || row.closed_at || row.created_at;
@@ -372,6 +385,42 @@ async function _kAutoReset(currentIdx) {
     await sbL.from('kitchen_weeks').update({ photos: null, photo_path: null, photo_url: null, closed_at: row.closed_at || new Date().toISOString() }).eq('id', row.id);
   }
   await _kTrimHistory(currentIdx);   // history cap: last 8 weeks + newest 20 nudges
+  await _kCleanupMore(currentIdx);   // Oct 2026: test weeks + every kitchen photo older than 30 days
+}
+
+/* Oct 2026 · no proof photo is kept forever (Kitchen):
+   · test weeks before 05.10.2026 (K_HISTORY_FROM) are deleted with their chat — once they have left
+     the rotation strip, so nothing on screen changes
+   · every kitchen PHOTO older than 30 days goes, also leftovers no longer linked to a week, and every
+     photo of the test weeks (list from cc_kitchen_cleanup_due, PHOTO-CLEANUP.sql)
+   Never the Lounge folder, never a PDF. Nothing here may break the Kitchen tab. */
+async function _kCleanupMore(currentIdx) {
+  if (!sbL) return;
+  try {
+    const n = _kGetRoomList().length || 5, back = Math.floor((n - 1) / 2);   // weeks the strip shows back
+    const before = Math.min(K_HISTORY_FROM, currentIdx - back);
+    const { data: test, error } = await sbL.from('kitchen_weeks').select('*').lt('week_index', before);
+    if (!error && test && test.length) {
+      const ids = test.map(r => r.id), paths = [];
+      for (const row of test) paths.push(..._kWeekPhotoPaths(row, await _kGetComments(row.id)));
+      if (paths.length) { try { await sbL.storage.from('kitchen-proofs').remove(paths); } catch (e) {} }
+      const { error: cErr } = await sbL.from('kitchen_comments').delete().in('week_id', ids);
+      if (!cErr) await sbL.from('kitchen_weeks').delete().in('id', ids);
+    }
+  } catch (e) { console.warn('[kitchen] test weeks', e); }
+  try {
+    for (let round = 0; round < 10; round++) {
+      const { data: due, error } = await sbL.rpc('cc_kitchen_cleanup_due', { p_limit: 500 });
+      if (error || !Array.isArray(due) || !due.length) break;          // SQL not run yet / nothing due
+      let gone = 0;
+      for (let i = 0; i < due.length; i += 100) {
+        const { data: del, error: dErr } = await sbL.storage.from('kitchen-proofs').remove(due.slice(i, i + 100));
+        if (dErr) return;
+        gone += (del || []).length;
+      }
+      if (!gone || due.length < 500) break;                             // nothing could be deleted / all done
+    }
+  } catch (e) { console.warn('[kitchen] photo clean-up', e); }
 }
 
 /* ── ROOM LIST + WEEK INFO ──────────────────────────────── */
@@ -633,21 +682,30 @@ function _kBuildFeedHtml(comments, weekRow) {
   }).join('');
 }
 
+/* B18: write a box only when its content really changed (ccSetHTML in direct-save.js) —
+   a reload with the same data leaves the screen alone: no blink, photos not reloaded */
+function _kSet(el, html) {
+  if (!el) return false;
+  if (typeof ccSetHTML === 'function') return ccSetHTML(el, html);
+  el.innerHTML = html; return true;
+}
+
 /* ── FEED RENDER ────────────────────────────────────────── */
 async function _kRenderFeed(weekRow) {
   const el    = document.getElementById('k-feed-mob'); if (!el) return;
   const elDsk = document.getElementById('k-feed-dsk');
   if (!weekRow) {
-    el.innerHTML = '<p class="cc-note" style="padding:8px 0;">No data.</p>';
-    if (elDsk) elDsk.innerHTML = el.innerHTML;
+    const none = '<p class="cc-note" style="padding:8px 0;">No data.</p>';
+    _kSet(el, none);
+    _kSet(elDsk, none);
     return;
   }
-  const comments = await _kGetComments(weekRow.id);
-  const html = _kBuildFeedHtml(comments, weekRow);
-  el.innerHTML = html;
-  if (elDsk) elDsk.innerHTML = html;
-  // Wire delete buttons on both feeds
-  [el, elDsk].forEach(feed => {
+  const [comments, prevHtml] = await Promise.all([_kGetComments(weekRow.id), _kPrevWeekHtml(weekRow)]);
+  let html = _kBuildFeedHtml(comments, weekRow);
+  if (prevHtml) html = prevHtml + _kWeekDivider('This week', weekRow) + html;   // last week first, then this week
+  const changed = [_kSet(el, html) ? el : null, _kSet(elDsk, html) ? elDsk : null];
+  // Wire delete buttons on both feeds (only a feed that was just redrawn — the others are wired already)
+  changed.forEach(feed => {
     if (!feed) return;
     feed.querySelectorAll('[data-comment-id] .k-delete-btn').forEach(btn => {
       btn.addEventListener('click', async e => {
@@ -663,94 +721,110 @@ async function _kRenderFeed(weekRow) {
   });
 }
 
+/* ── LAST WEEK IN THE CHAT (Oct 2026) ─────────────────────
+   The chat shows last week's proof + messages first, then this week — each under a small
+   divider. Always only the week before the current one (it moves on every Monday).
+   Display only: the stored data and the 30-day photo clean-up are unchanged. */
+function _kWeekDivider(label, row) {
+  const pad = n => String(n).padStart(2, '0');
+  let range = '';
+  if (row && row.week_index != null && typeof K_START !== 'undefined') {
+    const s = new Date(K_START.getTime() + row.week_index * 7 * 24 * 60 * 60 * 1000);
+    const e = new Date(s.getTime() + 6 * 24 * 60 * 60 * 1000);
+    range = pad(s.getDate()) + '.' + pad(s.getMonth() + 1) + '. – ' + pad(e.getDate()) + '.' + pad(e.getMonth() + 1) + '.';
+  }
+  return `<div class="k-sys-event k-week-div"><div class="k-sys-event__line"></div>
+    <span class="k-sys-event__text">${esc(label)}${row && row.room ? ' · ' + esc(row.room) : ''}${range ? ' · ' + range : ''}</span>
+    <div class="k-sys-event__line"></div></div>`;
+}
+async function _kPrevWeekHtml(weekRow) {
+  if (!sbL || !weekRow || weekRow.week_index == null) return '';
+  try {
+    const { data: prev } = await sbL.from('kitchen_weeks').select('*').eq('week_index', weekRow.week_index - 1).maybeSingle();
+    if (!prev) return '';
+    const comments = await _kGetComments(prev.id);
+    const body = _kBuildFeedHtml(comments, prev);
+    if (/^<p class="cc-note"/.test(body)) return '';          // nothing happened last week → no section
+    return _kWeekDivider('Last week', prev) + body;
+  } catch (e) { return ''; }
+}
+
 /* ── ROTATION STRIP ─────────────────────────────────────── */
 async function _kRenderRotation(weekRow, absData, preRows) {
   const el = document.getElementById('k-mob-rot-strip'); if (!el) return;
   const rooms = _kGetRoomList();
-  if (!rooms.length) { el.innerHTML = ''; return; }
-  const idx        = kWeekIdx();
-  const cyclePos   = _kCyclePos(rooms, idx, weekRow);
-  const cycleStart = idx - cyclePos;
-  const pad = n => String(n).padStart(2, '0');
+  if (!rooms.length) { _kSet(el, ''); return; }
+  /* B31 (Oct 2026) — SLIDING WINDOW: the strip shows as many weeks as there are kitchen rooms,
+     in time order, with this week in the middle (5 rooms → 2 weeks back · Now · 2 ahead). Every
+     room appears once — a recent turn with its result, or its next turn with the date. Each week
+     the rooms move one step; there is no jump when a round ends.
+     Was: the rooms in fixed order, each with its own week — near the end of a round the next
+     room jumped to the front with a future date, before the past weeks of the others.
+     Display only: who is next (same rule as before), reminders and history are unchanged. */
+  const idx      = kWeekIdx();
+  const n        = rooms.length;
+  const cyclePos = _kCyclePos(rooms, idx, weekRow);              // this week's room (from the saved week)
+  const back     = Math.floor((n - 1) / 2), ahead = n - 1 - back;
+  const pad = n2 => String(n2).padStart(2, '0');
   const fmt = d => pad(d.getDate()) + '.' + pad(d.getMonth() + 1);
 
-  // Cycle rows: use rows prefetched by loadKitchen(); otherwise one ranged
-  // query — never one round-trip per room. Missing weeks map to null,
-  // exactly like _kGetWeek()'s maybeSingle() did.
-  let _rows = preRows;
+  let _rows = preRows;                                            // loadKitchen: weeks idx − n … idx + n
   if (!_rows) {
     if (!sbL) return;
     const { data } = await sbL.from('kitchen_weeks').select('*')
-      .gte('week_index', cycleStart).lte('week_index', cycleStart + rooms.length - 1);
+      .gte('week_index', idx - back).lte('week_index', idx + ahead);
     _rows = data || [];
   }
-  // A saved week only counts for this row when it really belongs to this room
-  const dbRows = rooms.map((room, i) => _rows.find(r => r.week_index === cycleStart + i && r.room === room) || null);
+  const roomAt = k => rooms[(((cyclePos + k) % n) + n) % n];      // rotation order, k weeks from now
 
-  let approvedCount = 0;
-  for (let i = 0; i < cyclePos; i++) { if (dbRows[i] && dbRows[i].status === 'approved') approvedCount++; }
-  const greenPct = approvedCount > 0 ? ((approvedCount / rooms.length) * 100).toFixed(1) + '%' : '0%';
-
-  let trueNextI = -1;
-  for (let offset = 1; offset <= rooms.length; offset++) {
-    const ni     = (cyclePos + offset) % rooms.length;
-    const slot   = cycleStart + cyclePos + offset;
-    const nRoom  = rooms[ni];
+  // The one true next room — same rule as before: the first coming week whose room is not away / vacant
+  let nextK = -1;
+  for (let k = 1; k <= n; k++) {
+    const slot = idx + k, nRoom = roomAt(k);
     const nStart = new Date(K_START.getTime() + slot * 7 * 24 * 60 * 60 * 1000);
-    const nWs = _kYmd(nStart);
-    const nWe = _kYmd(_kAddDays(nStart, 6));
-    if (!absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe)) && !kVacantInWeek(nRoom, slot)) {
-      trueNextI = ni; break;
-    }
+    const nWs = _kYmd(nStart), nWe = _kYmd(_kAddDays(nStart, 6));
+    if (!absData.some(a => a.room === nRoom && absCoversWeek(a, nWs, nWe)) && !kVacantInWeek(nRoom, slot)) { nextK = k; break; }
   }
 
-  const _segStates = [];
-  const items = rooms.map((room, i) => {
-    // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
-    const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
-    const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
-    const info    = kWeekInfo(Math.max(0, slotIdx));
-    const dateStr = info ? fmt(info.start) + '–' + fmt(info.end) : '—';
-    const isPast  = !inNextRound && i < cyclePos;
-    const saved   = isPast ? (dbRows[i] || null) : null;   // fixed room order — a saved week counts only for this room
-    const shown   = room;
-    const dbRow   = inNextRound ? null : (isPast ? saved : dbRows[i]);
-    let state     = _kRotState({
-      isNow:       i === cyclePos,
-      isPast,
-      isNext:      i === trueNextI,
-      dbStatus:    dbRow ? dbRow.status : null,
-      room:        shown,
+  // The weeks on screen: past weeks + this week show who really had them (the saved week);
+  // coming weeks follow the rotation. A saved week counts for its own room only.
+  const slots = [];
+  for (let k = -back; k <= ahead; k++) {
+    const slot = idx + k, want = roomAt(k);
+    const row  = _rows.find(r => r.week_index === slot && r.room === want)
+              || (k <= 0 ? _rows.find(r => r.week_index === slot) : null) || null;
+    const room = row ? row.room : want;
+    const info = kWeekInfo(Math.max(0, slot));
+    let state  = _kRotState({
+      isNow:       k === 0,
+      isPast:      k < 0,
+      isNext:      k === nextK,
+      dbStatus:    row ? row.status : null,
+      room,
       weekStart:   info ? info.start : null,
       absenceRows: absData,
     });
-    if (state === 'done' && dbRow && dbRow.is_late) state = 'late';
-    _segStates.push(state);
-    return _kRotItemHTML(state, shown, dateStr);
-  }).join('');
+    if (state === 'done' && row && row.is_late) state = 'late';
+    slots.push({ k, slot, room, info, row, state });
+  }
 
-  el.innerHTML = `<div class="k-mob-rot-line"></div>${_kRotSegsHTML(_segStates)}<div class="k-mob-rot-items">${items}</div>`;
+  const _segStates = slots.map(x => x.state);
+  const items = slots.map(x => _kRotItemHTML(x.state, x.room, x.info ? fmt(x.info.start) + '–' + fmt(x.info.end) : '—')).join('');
+  _kSet(el, `<div class="k-mob-rot-line"></div>${_kRotSegsHTML(_segStates)}<div class="k-mob-rot-items">${items}</div>`);
 
-  // Desktop: rot-tl style matching cleaning tab and tenant
+  // Desktop timeline — the same weeks, top to bottom
   const elDsk = document.getElementById('k-dsk-rot-list');
   if (elDsk) {
-    elDsk.innerHTML = '<div class="rot-tl">' + rooms.map((room, i) => {
-      // Rows up to the true "next" row belong to the NEXT round once the rotation wraps
-      const inNextRound = trueNextI !== -1 && trueNextI < cyclePos && i <= trueNextI;
-      const slotIdx = inNextRound ? cycleStart + rooms.length + i : cycleStart + i;
-      const info    = kWeekInfo(Math.max(0, slotIdx));
-      const dateStr = info ? fmt(info.start) + ' – ' + fmt(info.end) : '—';
-      const _isPast = !inNextRound && i < cyclePos;
-      const _saved = _isPast ? (dbRows[i] || null) : null;
-      const _shown = room;
-      const dbRow   = inNextRound ? null : (_isPast ? _saved : dbRows[i]);
-      const state   = _kRotState({ isNow:i===cyclePos, isPast:!inNextRound && i<cyclePos, isNext:i===trueNextI, dbStatus:dbRow?dbRow.status:null, room: _shown, weekStart:info?info.start:null, absenceRows:absData });
+    _kSet(elDsk, '<div class="rot-tl">' + slots.map(x => {
+      const room    = x.room, _shown = x.room, dbRow = x.row;
+      const dateStr = x.info ? fmt(x.info.start) + ' – ' + fmt(x.info.end) : '—';
+      const state   = x.state === 'late' ? 'done' : x.state;       // the badge says "Done (late)"
       const dotClass = { done:'rot-dot--done', now:'rot-dot--now', missed:'rot-dot--missed', skipped:'rot-dot--skipped', absent:'rot-dot--absent' }[state] || 'rot-dot--next';
       const topLine  = state === 'done' || state === 'now' ? 'rot-line-done'
                      : state === 'skipped' ? 'rot-line-skipped'
                      : state === 'absent'  ? 'rot-line-absent'
                      : state === 'missed'  ? 'rot-line-missed' : 'rot-line-faded';
-      const botLine  = state === 'done' && i < cyclePos ? 'rot-line-done' : 'rot-line-faded';
+      const botLine  = state === 'done' && x.k < 0 ? 'rot-line-done' : 'rot-line-faded';
       const badge    = {
         done:     `<span class="rot-badge rot-badge--done">✓ ${dbRow && dbRow.is_late ? 'Done (late)' : 'Done'}</span>`,
         review:   '<span class="rot-badge rot-badge--next">↑ Review</span>',
@@ -777,7 +851,7 @@ async function _kRenderRotation(weekRow, absData, preRows) {
         ? `<a href="mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}" target="_blank" title="Send reminder to ${esc(room)}" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--cc-r-sm);background:var(--cc-surface);border:0.5px solid var(--cc-rule);color:var(--cc-taupe);text-decoration:none;flex-shrink:0;margin-left:5px;" aria-label="Send reminder to ${esc(room)}"><i class="ti ti-mail" style="font-size:12px;" aria-hidden="true"></i></a>`
         : '';
       return `<div class="${rowClass}"><div class="rot-spine"><div class="rot-spine-top ${topLine}"></div><div class="rot-dot ${dotClass}"></div><div class="rot-spine-bot ${botLine}"></div></div><div class="rot-tl-body"><div class="rot-tl-info"><p class="rot-tl-room">${esc(_shown)}</p><p class="rot-tl-dates">${dateStr}</p></div><div style="display:flex;align-items:center;">${badge}${mailBtn}</div></div></div>`;
-    }).join('') + '</div>';
+    }).join('') + '</div>');
   }
 }
 /* ── WEEK CARD ──────────────────────────────────────────── */
@@ -859,8 +933,8 @@ function _kRenderWeekCard(weekRow, absData) {
   }
   const actEl  = document.getElementById('k-mob-actions');
   const actDsk = document.getElementById('k-dsk-actions');
-  if (actEl)  actEl.innerHTML  = items.join('');
-  if (actDsk) actDsk.innerHTML = items.join('');
+  _kSet(actEl,  items.join(''));
+  _kSet(actDsk, items.join(''));
 }
 
 /* ── LAST WEEK CARD ─────────────────────────────────────────
@@ -900,8 +974,8 @@ async function _kRenderLastWeek(lastRow) {
         <button class="k-mob-wact red"   onclick="kFlag('last')"    aria-label="Flag last week"><i class="ti ti-flag"></i><span>Flag</span></button>
       </div>
     </div>`;
-  if (mob) { mob.innerHTML = html; mob.style.display = ''; }
-  if (dsk) dsk.innerHTML = html;
+  if (mob) { _kSet(mob, html); mob.style.display = ''; }
+  _kSet(dsk, html);
   if (dskSec) dskSec.style.display = '';
 }
 
@@ -1118,13 +1192,13 @@ async function _kFlagConfirm() {
   const reason = [reasons.join(', '), note].filter(Boolean).join(' — ');
   kitchenCloseModal('flag');
   await _kRun(_kFlagTarget === 'last' ? 'last' : 'now', async row => {
-    const { error } = await _kUpdateRow(row, { flagged:true, status:'flagged', flag_reason: reason });
+    const { error } = await _kUpdateRowAuto(row, { flagged:true, status:'flagged', flag_reason: reason, no_auto:false });   // D6
     if (!error) await _kAddComment(row.id, 'Casa Castel', '⚑ Redo: ' + reason, true);
   });
 }
 function kUnapprove(which) {
   return _kRun(which, async row => {
-    const { error } = await _kUpdateRow(row, { status:'submitted', flagged:false, approved_at:null });
+    const { error } = await _kUpdateRowAuto(row, { status:'submitted', flagged:false, approved_at:null, no_auto:true });   // D6: waits for you
     if (!error) await _kAddComment(row.id, 'Casa Castel', '↩ Approval undone.', false);
   });
 }
@@ -1147,7 +1221,7 @@ function kReopen() {
   const row = _kWeekRow; if (!row) return;
   if (!confirm(`Reopen week for ${row.room}? They can upload proof again.`)) return;
   return _kRun('now', async r => {
-    await _kUpdateRow(r, { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null });
+    await _kUpdateRowAuto(r, { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null, no_auto:false });   // D6
   });
 }
 function kReminder() {

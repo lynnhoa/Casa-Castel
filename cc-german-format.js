@@ -2,7 +2,7 @@
    cc-german-format.js — German numbers & dates (all management apps)
 
    Loaded by: rentals-index.html, landlord.html, controlling.html,
-              properties.html  (NOT tenant.html)
+              properties.html, settlements.html, tenant.html (absence dates)
 
    What you see / type          What the code and database get
    1.200,00 €  (1.200 / 1200,5) 1200.5   (plain number, unchanged)
@@ -59,6 +59,14 @@ function ccFmtNum(n, dec = 2) {
   return v.toLocaleString('de-DE', { minimumFractionDigits: min, maximumFractionDigits: max });
 }
 
+/* Sizes (m²) and other plain numbers: 16.5 → "16,5" · 68.25 → "68,25" · 28 → "28" */
+function ccM2(v) {
+  const n = Number(v);
+  return v === null || v === undefined || v === '' || !isFinite(n) ? String(v ?? '') : ccFmtNum(n, 'auto');
+}
+/* Percent: 22.15 → "22,15 %" (always 2 decimals) */
+function ccFmtPct(v) { const n = Number(v); return (isFinite(n) ? ccFmtNum(Math.round(n * 100) / 100, 2) : '0,00') + '\u00a0%'; }
+
 /* 1200.5 → "1.200,50 €" */
 function ccFmtEUR(n) {
   return ccFmtNum(Number(n) || 0, 2) + '\u00a0€';
@@ -103,6 +111,20 @@ function ccParseDate(v, strict = false) {
     return _ccValidYMD(y, +m[2], +m[1]);
   }
   return null;
+}
+
+/* The German calendar day of a stored moment (#8, Oct 2026).
+   "2026-10-09T23:30:00+00:00" → "2026-10-10" (01:30 in Germany) · summer/winter time included.
+   A plain date ("2026-10-10") or anything else stays as it is (first 10 characters).            */
+function ccDayOf(v) {
+  if (!v) return '';
+  if (v instanceof Date) return isNaN(v) ? '' : _ccBerlinYMD(v);
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) {
+    const t = new Date(s.replace(' ', 'T'));
+    if (!isNaN(t)) return _ccBerlinYMD(t);
+  }
+  return s.slice(0, 10);
 }
 
 /* → "26.09.2026". Text that is not a date (e.g. "2019") is returned as is. */
@@ -362,16 +384,31 @@ function ccIsNumInput(el) {
   function open(el) {
     if (el.disabled || el.readOnly) return;
     el.blur();                                            // no keyboard under the calendar
+    // B25 (4): another field still has the keyboard (e.g. "Received") → close it first, so your typing
+    // goes into the calendar and not into that field behind it
+    const ae = document.activeElement;
+    if (ae && ae !== el && ae !== document.body && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) ae.blur();
     const today = ccTodayISO().split('-').map(Number);
     const v = readVal(el);
     const dm = el._ccCal === 'daymonth';
     let y = v && v.y ? v.y : (isBirthday(el) ? today[0] - 35 : today[0]);
     let m = v ? v.m : (isBirthday(el) ? 1 : today[1]);
     cur = { el, y: dm ? 2024 : y, m, sel: v, dm, bday: isBirthday(el), today };   // 2024: day+month grid allows 29.02.
-    const label = (el.closest('.rm-field, .apt-field, .tn-field, .e-field, .ct-row, div')?.querySelector('label, .apt-field__label, .tn-flbl, .e-lbl')?.textContent || 'Datum').replace(/\*/g, '').trim();
+    // B25 (7): the field's own label ("Received on") — was "Datum" for fields whose label sits next to the box
+    const own = el.id && typeof CSS !== 'undefined' && CSS.escape ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
+    const wrapLbl = el.closest('label') && el.closest('label').textContent.trim();        // <label>Text <input></label>
+    const label = ((own && own.textContent) || el.getAttribute('aria-label') || wrapLbl ||
+      el.closest('.rm-field, .apt-field, .tn-field, .e-field, .ct-row, div')?.querySelector('label, .apt-field__label, .tn-flbl, .e-lbl')?.textContent || 'Datum').replace(/\*/g, '').trim();
     close();
     const ov = document.createElement('div');
     ov.className = 'cccal-ov'; ov.id = 'ccCal';
+    ov._sy = window.scrollY;                              // B23: where the page was — the keyboard of the typing field
+                                                          // pushes the page down on iPhone; close() brings it back
+    // B24: the page behind is held exactly where it is while the calendar is open (nothing can move it)
+    const bd = document.body;
+    ov._lock = getComputedStyle(bd).position === 'fixed' ? null
+      : { position: bd.style.position, top: bd.style.top, left: bd.style.left, right: bd.style.right, width: bd.style.width };
+    if (ov._lock) Object.assign(bd.style, { position: 'fixed', top: -ov._sy + 'px', left: '0', right: '0', width: '100%' });
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
     ov.innerHTML = `
       <div class="cccal" role="dialog" aria-modal="true" aria-label="${label.replace(/"/g, '')} wählen">
@@ -398,6 +435,16 @@ function ccIsNumInput(el) {
         </div>
       </div>`;
     document.body.appendChild(ov);
+    // B25 (3): nothing behind the calendar can take the focus — the keyboard's ⌃ ⌄ stay inside it
+    ov._inert = [...document.body.children].filter(n => n !== ov && n.nodeType === 1 && n.tagName !== 'SCRIPT' && !n.inert);
+    ov._inert.forEach(n => { n.inert = true; });
+    document.addEventListener('focusin', onTrap, true);
+    // a tap inside the calendar (day, OK, ×, arrows, outside the sheet) does its own job — the typing field's
+    // "keyboard closed" rule below must not act on it
+    const markTap = e => { if (!(e.target && e.target.closest && e.target.closest('.cccal__typein'))) ov._tap = Date.now(); };
+    ov.addEventListener('pointerdown', markTap, true);
+    ov.addEventListener('touchstart', markTap, { capture: true, passive: true });
+    ov.addEventListener('mousedown', markTap, true);
     ov.addEventListener('click', onClick);
     ov.addEventListener('change', e => {
       if (e.target.dataset.a === 'month') cur.m = +e.target.value;
@@ -407,19 +454,33 @@ function ccIsNumInput(el) {
     document.addEventListener('keydown', onKey);
     const tin = ov.querySelector('.cccal__typein');
     if (v) tin.value = dm ? `${String(v.d).padStart(2, '0')}.${String(v.m).padStart(2, '0')}.` : ccFmtDate(`${v.y}-${String(v.m).padStart(2, '0')}-${String(v.d).padStart(2, '0')}`);
+    // B25: the field starts with the current date — tapping into it selects it, so typing REPLACES it
+    // (the cursor sat at the end and the 8-digit limit ignored every new digit: "only up to 202")
+    const selNow = () => { try { tin.setSelectionRange(0, tin.value.length); } catch (_) {} };
+    const selAll = () => { selNow(); setTimeout(selNow, 0); };                 // at once + again after the phone's own tap handling
+    tin.addEventListener('focus', selAll);
+    tin.addEventListener('mouseup', e => { if (tin._selOnce) return; tin._selOnce = true; e.preventDefault(); selAll(); });
     tin.addEventListener('input', e => {                   // 2609 → 26.09 · 26092026 → 26.09.2026
       tin.removeAttribute('aria-invalid');
       tin._typed = true;
       if (e.inputType && !e.inputType.startsWith('insert')) return;
       const out = ccDateTyping(tin.value, dm);
       if (out !== tin.value) tin.value = out;
-      // A complete date is applied at once: the phone's number keypad has no Enter,
-      // and its ✓ only closes the keyboard — the typed date used to get lost.
-      if (dm ? /^\d{2}\.\d{2}\.$/.test(tin.value) : /^\d{2}\.\d{2}\.\d{4}$/.test(tin.value)) applyTyped();
+      // B25 (1): a complete date is NOT taken at once any more (it closed the calendar the moment the year was
+      // typed). It shows in the grid; OK or the keyboard's ✓ takes it.
+      const iso = dm ? null : ccParseDate(tin.value, true);
+      if (iso) { const [yy, mm, dd] = iso.split('-').map(Number); cur.y = yy; cur.m = mm; cur.sel = { y: yy, m: mm, d: dd }; draw(); }
     });
-    tin.addEventListener('blur', () => {                  // keyboard closed (✓) with a readable date, e.g. 1.10.25
-      if (!tin._typed || !document.getElementById('ccCal')) return;
-      if (dm ? /^\d{1,2}\.\d{1,2}\.?$/.test(tin.value.trim()) : !!ccParseDate(tin.value.trim())) applyTyped();
+    tin.addEventListener('blur', e => {                   // the keyboard's ✓ (keyboard closed)
+      const ovNow = document.getElementById('ccCal');
+      if (!tin._typed || !ovNow || ovNow._closing) return;
+      if (e.relatedTarget && ovNow.contains(e.relatedTarget)) return;        // ⌃ ⌄ to the month / year — still choosing
+      if (Date.now() - (ovNow._tap || 0) < 700) return;                      // a tap inside the calendar does its own job
+      const t = tin.value.trim();
+      if (!t) return;
+      // B24/B25 (2): only a COMPLETE date (4-digit year) is taken · anything else: red outline, the calendar stays open
+      if (dm ? /^\d{1,2}\.\d{1,2}\.?$/.test(t) : !!ccParseDate(t, true)) applyTyped();
+      else tin.setAttribute('aria-invalid', 'true');
     });
     tin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyTyped(); } });
     draw();
@@ -441,10 +502,31 @@ function ccIsNumInput(el) {
     writeVal(cur.el, y, m, d); close();
   }
   function close() {
-    document.getElementById('ccCal')?.remove();
+    const ov = document.getElementById('ccCal');
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('focusin', onTrap, true);
+    if (!ov) return;
+    ov._closing = true;
+    (ov._inert || []).forEach(n => { n.inert = false; });          // B25: page usable again
+    const a = document.activeElement;
+    if (a && ov.contains(a)) a.blur();                    // keyboard down first
+    ov.remove();
+    if (ov._lock) Object.assign(document.body.style, ov._lock);     // B24: page free again …
+    // … and back to where you were, at once (no frame at the top) — the iPhone may still move it while the keyboard closes
+    const y = ov._sy;
+    if (typeof y === 'number') {
+      window.scrollTo(0, y);
+      [80, 400].forEach(ms => setTimeout(() => { if (!document.getElementById('ccCal') && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y); }, ms));
+    }
   }
   function onKey(e) { if (e.key === 'Escape') close(); }
+  // B25 (3): focus may not leave the open calendar (older phones without "inert") → back to its typing field
+  function onTrap(e) {
+    const ov = document.getElementById('ccCal');
+    if (!ov || ov.contains(e.target)) return;
+    try { e.target.blur(); } catch (_) {}
+    ov.querySelector('.cccal__typein')?.focus();
+  }
   function onClick(e) {
     const b = e.target.closest('[data-a], [data-d]'); if (!b || !cur) return;
     if (b.dataset.d) { writeVal(cur.el, cur.dm ? null : cur.y, cur.m, +b.dataset.d); close(); return; }
@@ -501,6 +583,11 @@ function ccIsNumInput(el) {
   document.addEventListener('click', e => {
     if (isCal(e.target)) { e.preventDefault(); open(e.target); }
   }, true);
+  // B25 (1): reached with the keyboard's ⌃ ⌄ (or Tab), or by a tap that slid a little → the calendar opens
+  // instead of typing straight into the field (there, an unfinished date used to be saved as empty)
+  document.addEventListener('focusin', e => {
+    if (isCal(e.target) && !document.getElementById('ccCal')) open(e.target);
+  }, true);
 
   window.ccOpenCalendar = open;                           // e.g. for tests
 
@@ -550,3 +637,16 @@ html input.cc-cal { cursor:pointer; caret-color:transparent; }
   if (document.body) scan(document.body);
   document.addEventListener('DOMContentLoaded', () => scan(document.body));
 })();
+
+
+/* ── Signing place (Unterzeichnungsort) of a property = its city ─────────────
+   "55118 Mainz" → Mainz · "55122 Mainz-Gonsenheim" → Mainz ·
+   "55246 Mainz-Kostheim" / Mainz-Kastel / Mainz-Amöneburg → Wiesbaden (they belong to Wiesbaden).
+   Used when an apartment card has no Unterzeichnungsort; Casa Castel uses Profile › Unterzeichnung. */
+function ccPlaceOf(plzOrt) {
+  const city = String(plzOrt || '').replace(/^\s*\d{4,5}\s*/, '').split(',')[0].trim();
+  if (!city) return '';
+  if (/^mainz-(kastel|kostheim|am(ö|oe)neburg)\b/i.test(city)) return 'Wiesbaden';
+  const m = city.match(/^(mainz|wiesbaden)-/i);
+  return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : city;
+}

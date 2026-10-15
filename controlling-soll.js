@@ -59,6 +59,7 @@ const _CX_SRC = [
   ['rentP', 'rent_periods'], ['incAll', 'ctrl_income_months'], ['settle', 'ctrl_settlements'],
   ['abr', 'abr_results'], ['loanHist', 'loan_terms_history'], ['casaMh', 'casa_mieterhoehung_history'],
   ['castelHist', 'ctrl_castel_amount_history'],          // Casa Castel cost Soll by month (B22)
+  ['readings', 'meter_readings'], ['zaehler', 'rentals_zaehler'],   // Settlements: consumption by Zählerstand (Oct 2026)
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -192,7 +193,7 @@ function ctlUnitLink(u, p) {
     const ref = String(u.source_ref);
     if (u.source_type === 'rentals_apartment') { const o = S.apts.find(a => String(a.id) === ref);     return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
     if (u.source_type === 'rentals_parking')   { const o = S.parking.find(a => String(a.id) === ref);  return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
-    if (u.source_type === 'casa_room')         { const o = S.rooms.find(r => r.name === ref);          return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
+    if (u.source_type === 'casa_room')         { const o = S.rooms.find(r => _cxNorm(r.name) === _cxNorm(ref)); return o ? { type: u.source_type, ref: o.name, obj: o, auto: false } : null; }   // capitals / spaces don't count
     return null;
   }
   if (!p) return null;
@@ -550,13 +551,17 @@ function _cxRentDay(link, w, u, y, m, iso, all, memo) {
     if (!c.legacy) c.legacy = _cxTenantBase(link, w.t, u, y, m);
     mode = _cxLegacyMode(link, w.t);
     k = _cxN0(c.legacy.k); nk = _cxN0(c.legacy.nk); src = c.legacy.src; base = w.from;
-    if (mode === 'pauschal') { k = k + nk; nk = 0; }
   }
   if (mode !== 'pauschal') {                               // Pauschal: one amount, steps don't apply (D5)
     const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) k = sk;
     const sn = _cxStepFrom(c.nk, iso, base); if (sn !== null) nk = sn;
-  } else if (link.type === 'casa_room') {                  // Casa Castel Pauschal: a Mieterhöhung sets the new Pauschalmiete
-    const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) k = sk;
+  } else {
+    // Pauschal (Oct 2026): one amount = rent + the NK part inside it ("davon NK" of the rent entry,
+    // the same figure Settlements counts as covered NK). The total never changes; no part known → all rent.
+    let T = per ? _cxN0(_cxAmount(per).total) : _cxR(_cxN0(k) + _cxN0(nk));
+    let N = per ? _cxN0(per.nebenkosten) : _cxN0(nk);
+    if (link.type === 'casa_room') { const sk = _cxStepFrom(c.st, iso, base); if (sk !== null) T = sk; }   // Casa Pauschal: a Mieterhöhung sets the new Pauschalmiete
+    N = Math.max(0, Math.min(N, T)); k = _cxR(T - N); nk = _cxR(N);
   }
   return { k, nk, mode, src, period: per };
 }
@@ -651,7 +656,16 @@ function _cxUnitSollV2(u, pid, y, m) {
       changed = true;
     }
     for (const h of c.st) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
-      notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
+      if (link.type === 'casa_room') {
+        // Casa Castel has no Staffel: it is a Mieterhöhung. Pauschal → the whole Pauschalmiete before → after;
+        // Kalt + NK → the Kaltmiete before → after (text only — the amounts are calculated as before)
+        const pau = b ? b.mode === 'pauschal' : ((_cxPerAt(c.per, d) || {}).mode === 'pauschal');
+        const old = b ? (pau ? _cxR(b.k + b.nk) : b.k) : null;
+        notes.push('Mieterhöhung · ' + (old !== null && old !== _cxNum(h.amount) ? _cxEurS(old) + ' → ' : '') + _cxEurS(h.amount) + (pau ? ' Pauschal' : ' Kalt') + ' from ' + _cxFmtD(d));
+      } else {
+        notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d));
+      }
+      changed = true; }
     for (const h of c.nk) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
       notes.push('NK changed · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
   }
@@ -979,7 +993,8 @@ function ctlOtSuggestions() {
   const taken = new Set((window._ctrl.one_time || []).map(o => o.source_ref).filter(Boolean));
   // Fix 2: an NK settlement already marked "bezahlt" in the Abrechnungen list is not offered again
   const yr = e => { const m = String(e.period || '').match(/20\d\d/g); return m ? Number(m[m.length - 1]) : null; };
-  const done = new Set((S.settle || []).filter(r => r.status === 'bezahlt' && r.kind === 'nk_tenant').map(r => String(r.tenant_id) + '|' + r.covers_year));
+  const done = new Set((S.settle || []).filter(r => (r.status === 'bezahlt' || r.status === 'erledigt') && r.kind === 'nk_tenant').map(r => String(r.tenant_id) + '|' + r.covers_year)
+    .concat((S.abr || []).filter(r => r.status !== 'storniert' && r.kind === 'nk_tenant' && r.tenant_id).map(r => String(r.tenant_id) + '|' + r.year)));   // #7: Settlements result → old entry not offered
   const isDone = (tid, e) => done.has(String(tid) + '|' + yr(e));
   const props = window._ctrl.properties.filter(p => p.active);
   const aptProp = aptId => props.find(p => { const l = ctlPropLinks(p); return l.apt && String(l.apt.id) === String(aptId); });
@@ -1302,7 +1317,8 @@ function ctlSettlementFigures(r) {
     for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
       if (d < w.from || d > w.to) continue;
       const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)), N = new Date(y, m, 0).getDate();
-      const nk = _cxRentDay(link, w, u, y, m, d, all, memo).nk / N;
+      const rd = _cxRentDay(link, w, u, y, m, d, all, memo);
+      const nk = (rd.mode === 'pauschal' ? 0 : rd.nk) / N;   // Pauschal: no Vorauszahlung (its "davon NK" is not billed)
       soll += nk; months.set(y + '-' + m, (months.get(y + '-' + m) || 0) + nk);
       mDays.set(y + '-' + m, (mDays.get(y + '-' + m) || 0) + 1);
     }
@@ -1332,6 +1348,28 @@ function ctlSettlementFigures(r) {
     return out;
   }
   return out;
+}
+
+/* Pauschal stays (Oct 2026): the NK part inside the Pauschale ("davon NK" of the rent history) for exactly
+   these days — what the tenant covered towards the NK. Settlements › Rentals shows the rest as "on you". */
+function ctlPauschalNkCovered(r) {
+  const from = _cxD(r.period_from), to = _cxD(r.period_to);
+  const p = ctlProp(r.property_id);
+  if (!p || !from || !to || !r.tenant_id) return 0;
+  for (const u of ctlUnitsFor(p.id)) {
+    const link = ctlUnitLink(u, p); if (!link || link.type === 'rentals_parking') continue;
+    const all = _cxTenancies(link), w = all.find(x => x.id === String(r.tenant_id));
+    if (!w || !w.from) continue;
+    const memo = new Map(); let sum = 0;
+    for (let d = from; d <= to; d = _cxAddDays(d, 1)) {
+      if (d < w.from || d > w.to) continue;
+      const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7)), N = new Date(y, m, 0).getDate();
+      const rd = _cxRentDay(link, w, u, y, m, d, all, memo);
+      if (rd.mode === 'pauschal') sum += rd.nk / N;
+    }
+    return _cxR(sum);
+  }
+  return 0;
 }
 
 /* Same expected settlement? (tenant rows by tenant + period, unit rows by unit name) */

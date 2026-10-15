@@ -19,22 +19,14 @@
 document.getElementById('tab-apartments').innerHTML = `
 
   <div class="rp-hdr">
-    <h1 class="rp-title">Apartments</h1>
+    <h1 class="cc-h1">Apartments</h1>
     <button class="rp-add-btn" id="aptAddBtn">
       <i class="ti ti-plus"></i> Add
     </button>
   </div>
 
-  <div class="rp-summary" id="aptSummary" style="display:none">
-    <div>
-      <div class="rp-summary__label">Gesamtkaltmiete / Monat</div>
-      <div class="rp-summary__breakdown" id="aptSummaryBreakdown"></div>
-    </div>
-    <div>
-      <div class="rp-summary__total" id="aptSummaryTotal"></div>
-      <div class="rp-summary__sub">nur belegte Wohnungen</div>
-    </div>
-  </div>
+  <!-- Summary line (small): SOLL — the asking rent of every apartment -->
+  <div class="cc-sum2" id="aptSummary" style="display:none"></div>
 
   <div class="rp-list" id="aptList"></div>
 
@@ -134,6 +126,45 @@ document.getElementById('tab-apartments').innerHTML = `
 
 /* Card list */
 .rp-list { display:flex; flex-direction:column; gap:8px; padding-bottom:40px; }
+
+/* ── Apartments tab in the Casa Castel layout (same as Rooms) ── */
+#tab-apartments .rp-hdr { padding-top:0; margin-bottom:20px; }
+#tab-apartments .rp-add-btn { min-height:36px; font-size:12px; border-radius:var(--cc-r-sm); }
+#tab-apartments .rp-add-btn i { font-size:14px; }
+html .cc-sumline { display:flex; flex-direction:column; gap:8px; padding:2px 0 0; margin:0 0 18px; background:none; border:none; }
+html .cc-sumline__top { display:flex; justify-content:center; align-items:baseline; gap:6px; flex-wrap:wrap; padding:0; font-size:12px; color:#9A8E7E; text-align:center; }
+html .cc-sumline__top b { font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#8A6535; }
+html .cc-sumline__top b::after { content:'·'; margin-left:6px; color:#C8BFB0; letter-spacing:0; }
+html .cc-sumline__vals { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px; padding:0; }
+html .apt-sumline .cc-sumline__vals { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+html .cc-sumline__vals > div { min-width:0; text-align:center; }
+html .cc-sumline__vals span { display:block; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:#A89C8C; margin:0 0 2px; }
+html .cc-sumline__vals b { display:block; font-size:15px; font-weight:600; line-height:1.25; color:var(--cc-charcoal); white-space:nowrap; }
+#tab-apartments .apt-hdr { padding:16px 16px 14px 12px; }
+#tab-apartments .apt-drag { display:flex; align-items:center; justify-content:center; width:26px; height:26px; font-size:15px; margin-top:4px; }
+#tab-apartments .apt-hdr__namerow { align-items:baseline; justify-content:space-between; flex-wrap:nowrap; margin-bottom:0; }
+#tab-apartments .apt-hdr__addr { font-size:12px; color:var(--cc-taupe); margin:3px 0 0; }
+#tab-apartments .apt-hdr__who { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; margin-top:6px; font-size:13px; color:#9A8E7E; }
+#tab-apartments .apt-hdr__who .apt-hdr__rent { font-size:13px; color:#9A8E7E; margin:0; }
+#tab-apartments .apt-hdr__who .apt-hdr__rent strong { color:var(--cc-charcoal); font-weight:500; }
+#tab-apartments .apt-hdr__who .apt-hdr__rent--vacant { font-size:13px; }
+#tab-apartments .apt-chevron { font-size:18px; }
+#tab-apartments .apt-card.apt--open { box-shadow:0 4px 24px rgba(30,27,24,.10); }
+#tab-apartments .apt-section--miete { border-left:none; padding-left:14px; }
+.rc-brow { display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-top:var(--cc-border); }
+.apt-sec-read > .rc-brow:first-child { border-top:none; padding-top:6px; }
+.rc-brow__bar { flex:0 0 4px; align-self:stretch; border-radius:2px; }
+.rc-brow__bar--kurzzeit { background:#B9A6D6; } .rc-brow__bar--mietvertrag { background:#8FA88F; } .rc-brow__bar--gewerbe { background:#85B7EB; }
+.rc-brow__main { flex:1 1 auto; min-width:0; }
+.rc-brow__t { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#8A6535; }
+.rc-brow__big { font-size:18px; font-weight:600; color:var(--cc-ink); margin-top:2px; }
+.rc-brow__big span { font-size:13px; font-weight:400; color:#7A6F62; }
+.rc-brow__none { font-size:14px; font-weight:400; color:#7A6F62; font-style:italic; margin-top:2px; }
+.rc-brow__sub { font-size:13px; color:#7A6F62; line-height:1.5; }
+.rc-brow__note { font-size:12px; color:#9A8E7E; }
+.rc-brow__btns { flex:0 0 auto; display:flex; flex-direction:column; gap:6px; }
+.apt-kz-seg { margin:2px 0 10px; } .apt-kz-hint { font-size:12px; color:#7A6F62; line-height:1.4; padding-top:8px; }
+.rc-brow__go { min-height:36px; padding:0 12px; border-radius:var(--cc-r-md); font-family:inherit; font-size:13px; background:var(--cc-white); cursor:pointer; white-space:nowrap; border:.5px solid var(--cc-ink); color:var(--cc-ink); font-weight:500; }
 
 /* SortableJS */
 .sortable-ghost  { opacity:.3; background:var(--cc-surface)!important; border:1px dashed var(--cc-stone)!important; }
@@ -464,6 +495,7 @@ document.getElementById('tab-apartments').innerHTML = `
   .rp-summary { margin-bottom:16px; }
   /* Card headers */
   .apt-hdr { padding:16px 18px; }
+  #tab-apartments .apt-hdr { padding:18px 18px 16px 14px; }
   .apt-actions { padding:10px 16px; }
   /* 2-col field rows in modals on wider screens */
   .rm-field-row { grid-template-columns:1fr 1fr; }
@@ -517,7 +549,7 @@ document.getElementById('tab-apartments').innerHTML = `
 .apt-input[type=number]::-webkit-inner-spin-button,
 .apt-input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .apt-input[type=number] { -moz-appearance:textfield; }
-[data-zaehler-id] > .apt-field:last-child > button { width:38px !important; height:38px !important; border-radius:var(--cc-r-md) !important; }
+[data-zaehler-id] > .apt-field:last-child > button, [data-new-zaehler] > .apt-field:last-child > button { width:38px !important; height:38px !important; border-radius:var(--cc-r-md) !important; }
 .apt-section--miete { padding-left:11px; }
 /* ── CHOPPED-OFF FIXES — nothing may run past the screen edge ──
    Generator 2-field rows (Mietbeginn / Mietende): both halves may shrink,
@@ -590,16 +622,36 @@ async function _aptResolveTenantProfile(aptId) {
 }
 
 
+/* ── KURZZEIT PRICE (Oct 2026) ───────────────────────────────
+   Kurzzeit is Pauschal (one amount, no NK-Abrechnung) or Kalt + NK (Vorauszahlung,
+   settled yearly) — kurzzeit_pricing. Pauschal is saved as kurzzeit_kaltmiete = Pauschale,
+   kurzzeit_nk = 0. Rows from before the type existed (Kaltmiete + Nebenkostenpauschale,
+   never settled) read as one Pauschale = the sum. No Kurzzeit price → the generator
+   starts from the Mietvertrag rent as one Pauschale ("set" stays false: card shows Not set). */
+const _aptR2 = v => Math.round((Number(v) || 0) * 100) / 100;
+function _aptKz(p) {
+  p = p || {};
+  const k = Number(p.kurzzeit_kaltmiete) || 0, n = Number(p.kurzzeit_nk) || 0;
+  if (!(k || n)) { const t = _aptR2((Number(p.kaltmiete) || 0) + (Number(p.nk_pauschale) || 0)); return { mode: 'pauschal', kalt: t, nk: 0, total: t, set: false }; }
+  if (p.kurzzeit_pricing === 'kalt_nk') return { mode: 'kalt_nk', kalt: k, nk: n, total: _aptR2(k + n), set: true };
+  return { mode: 'pauschal', kalt: _aptR2(k + n), nk: 0, total: _aptR2(k + n), set: true };
+}
+/* Pauschal: "davon NK" = the part above the normal cold rent (the card's Mietvertrag Kaltmiete), min. 0 */
+function _aptKzNkIncl(p, total) {
+  const K = Number((p || {}).kaltmiete) || 0;
+  return K > 0 ? Math.max(0, _aptR2((Number(total) || 0) - K)) : 0;
+}
+
 /* ── KAUTION (shared rule in kaution.js) ─────────────────────
-   Kurzzeit prices exactly as the Kurzzeit PDF uses them: the Kurzzeit
-   prices when set, otherwise the normal ones. NK shown separately → base
-   Kaltmiete; no NK → pauschal (same amount). */
+   Base is always the cold rent: Kalt + NK → Kaltmiete · Pauschal → Pauschale − davon NK
+   (the generator's own "davon NK" when it is open, else from the card's Kaltmiete). */
 function _aptKzKautionOpts(p, start = null, end = null, manual = null) {
   p = p || {};
-  const hasKz = Number(p.kurzzeit_kaltmiete) > 0;
-  const kalt  = hasKz ? Number(p.kurzzeit_kaltmiete) : (Number(p.kaltmiete) || 0);
-  const nk    = hasKz ? (Number(p.kurzzeit_nk) || 0) : (Number(p.nk_pauschale) || 0);
-  return { contract: 'kurzzeit', mode: nk > 0 ? 'kalt_nk' : 'pauschal', kalt, nk, rec: p, start, end, manual };
+  const kz = _aptKz(p);
+  if (kz.mode === 'kalt_nk') return { contract: 'kurzzeit', mode: 'kalt_nk', kalt: kz.kalt, nk: kz.nk, rec: p, start, end, manual };
+  const inc  = p._kzNkIncl != null ? Math.min(Number(p._kzNkIncl) || 0, kz.total) : _aptKzNkIncl(p, kz.total);
+  const cold = Math.max(0, _aptR2(kz.total - inc));
+  return { contract: 'kurzzeit', mode: inc > 0 ? 'kalt_nk' : 'pauschal', kalt: cold, nk: inc, rec: p, start, end, manual };
 }
 
 /* Kurzzeit generator: Kaution follows the dates until you type your own value */
@@ -792,6 +844,9 @@ async function loadApartments() {
   _aptSbClient = typeof sbL !== 'undefined' ? sbL : null;
   if (!_aptSbClient) { console.warn('[apartments] No Supabase client'); _renderAptList(); return; }
 
+  // B18: tenant rents load at the same time → cards drawn ONCE with the real rent
+  const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
+
   try {
     const [
       { data: apts },
@@ -831,34 +886,40 @@ async function loadApartments() {
     console.error('[apartments] Load failed:', e);
   }
 
+  if (_warm) await Promise.race([Promise.resolve(_warm).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
   _aptRenderIfChanged();
   _aptInitSortable();
-  if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _aptRestoreContractDraft();
 }
 
 
 /* ── RENDER LIST ─────────────────────────────────────────── */
+/* SOLL of one apartment = the asking rent of its current contract type (like Casa Castel Rooms):
+   someone on Kurzzeit → the Kurzzeit price (if set), otherwise Mietvertrag / Gewerbe — vacant ones too. */
+function _aptSoll(a) {
+  const p = a.pricing || {};
+  const kalt = Number(p.kaltmiete) || 0, nk = Number(p.nk_pauschale) || 0;
+  const rec  = typeof rntCurrentRecOf === 'function' ? rntCurrentRecOf('apt', a.id) : null;
+  const type = rec && typeof rntContractType === 'function' ? rntContractType(rec) : null;
+  if (a.zimmer_type !== 'Gewerbefläche' && type === 'kurzzeit' && _aptKz(p).set) {
+    const kz = _aptKz(p);   // Pauschal counts fully as rent (NK 0), like Controlling
+    return { kalt: kz.mode === 'pauschal' ? kz.total : kz.kalt, nk: kz.mode === 'pauschal' ? 0 : kz.nk, kaution: ccKaution(_aptKzKautionOpts(p)).amount || 0 };
+  }
+  return { kalt, nk, kaution: ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt, nk, rec: p }).amount || 0 };
+}
 function _updateAptSummary() {
   const bar = document.getElementById('aptSummary');
-  const bd  = document.getElementById('aptSummaryBreakdown');
-  const tot = document.getElementById('aptSummaryTotal');
   if (!bar) return;
   if (!appApartments.length) { bar.style.display = 'none'; return; }
-
-  // Total of the tenants' real rents (asking rent only while tenant data isn't loaded yet)
-  let kalt = 0, nk = 0, occupied = 0;
+  let kalt = 0, nk = 0, kau = 0, occupied = 0;
   appApartments.forEach(a => {
-    if (a.vacant) return;
-    occupied++;
-    const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('apt', a.id) : null;
-    kalt += cur ? (Number(cur.kalt) || 0) : (Number(a.pricing?.kaltmiete) || 0);
-    nk   += cur ? (Number(cur.nk)   || 0) : (Number(a.pricing?.nk_pauschale) || 0);
+    if (!a.vacant) occupied++;
+    const s = _aptSoll(a);
+    kalt += s.kalt; nk += s.nk; kau += s.kaution;
   });
-
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span>${occupied} / ${appApartments.length} belegt</span></div>
+    <div class="cc-sum2__vals"><span><i>Kalt</i>${aptFmtEURCompact(kalt)}</span><span><i>NK</i>${aptFmtEURCompact(nk)}</span><span><i>Kaution</i>${aptFmtEURCompact(kau)}</span></div>`;
   bar.style.display = 'flex';
-  bd.textContent  = occupied + ' / ' + appApartments.length + ' belegt · ' + aptFmtEURCompact(nk) + ' NK separat';
-  tot.textContent = aptFmtEURCompact(kalt);
 }
 
 function _renderAptList() {
@@ -873,8 +934,7 @@ function _renderAptList() {
   const gewerbe    = appApartments.filter(a => a.zimmer_type === 'Gewerbefläche');
   const bothExist  = wohnungen.length && gewerbe.length;
   let html = '';
-  if (wohnungen.length) {
-    if (bothExist) html += `<div class="rnt-group-hdr">Wohnungen</div>`;
+  if (wohnungen.length) {                                          // no "Wohnungen" label: the title says it
     html += wohnungen.map(a => _aptCardHTML(a)).join('');
   }
   if (gewerbe.length) {
@@ -884,7 +944,12 @@ function _renderAptList() {
   const _open = new Set([...list.querySelectorAll('.apt-card.apt--open')].map(c => c.dataset.id));
   _aptCardCache = {};
   appApartments.forEach(a => { _aptCardCache[a.id] = _aptCardHTML(a); });
+  // B26: sections open in edit mode (any apartment) and open Hausgeld add forms keep what was typed
+  const _keep = typeof ccKeepForms === 'function' ? ccKeepForms(list, '.apt-edit-active[id]') : [];
+  const _hg = [...list.querySelectorAll('.apt-hg-add-form')].map(f => ({ f, id: (f.closest('.apt-card') || {}).dataset?.id }));
   list.innerHTML = html;
+  if (_keep.length) ccPutForms(list, _keep);
+  _hg.forEach(x => { const c = x.id && list.querySelector(`.apt-card[data-id="${x.id}"]`); if (c) _aptPutHgForm(c, x.id, x.f, _keep); });
   _open.forEach(id => list.querySelector(`.apt-card[data-id="${id}"]`)?.classList.add('apt--open'));   // open cards stay open
   _updateAptSummary();
 }
@@ -903,6 +968,15 @@ function _aptRenderIfChanged() {
   _aptRenderedSig = sig;
 }
 
+/* B18: refresh from the Tenants side — only changed cards are redrawn */
+function _aptRefreshCards() {
+  const list = document.getElementById('aptList');
+  if (!list || !list.querySelector('.apt-card')) return;
+  if (typeof _rtBusy === 'function' && _rtBusy('apartments')) return;
+  if (!_aptPatchCards(list)) _renderAptList();
+  _aptRenderedSig = ccStableJSON([appApartments, _aptHausgeld]);
+}
+
 /* Each card's HTML as last drawn (id → html) */
 let _aptCardCache = {};
 
@@ -915,7 +989,7 @@ function _aptPatchCards(list) {
   if (cards.length !== order.length) return false;
   if (!cards.every((c, i) => String(c.dataset.id) === String(order[i].id))) return false;
   const bothExist = order.some(isGw) && order.some(a => !isGw(a));
-  if (list.querySelectorAll('.rnt-group-hdr').length !== (bothExist ? 2 : 0)) return false;
+  if (list.querySelectorAll('.rnt-group-hdr').length !== (bothExist ? 1 : 0)) return false;   // only "Gewerbeflächen"
   let changed = 0;
   order.forEach((a, i) => {
     const html = _aptCardHTML(a);
@@ -956,10 +1030,9 @@ function _aptCardHTML(a) {
   const kautionAmt = _kMv.amount;
 
   // Kurzzeit
-  const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
-  const kzNk   = Number(p.kurzzeit_nk) || 0;
-  const kzWarm = kzKalt + kzNk;
-  const _kKz = ccKaution(_aptKzKautionOpts(p));
+  const kzP    = _aptKz(p);
+  const _kzO = _aptKzKautionOpts(p);
+  const _kKz = ccKaution(_kzO);
   const kzKaution = _kKz.amount;
 
   // Zähler grouped by type category
@@ -967,11 +1040,6 @@ function _aptCardHTML(a) {
 
   // Inventar count
   const invCount = inventar.length;
-
-  // Hausgeld helpers
-  const hgEntries = _aptHausgeld[a.id] || [];
-  const hgHasOpen = hgEntries.some(e => !e.weg_notified);
-  const hgPendingEntry = hgHasOpen ? hgEntries.find(e => !e.weg_notified) : null;
 
   return `
 <div class="apt-card${vacant ? '' : ''}" data-id="${a.id}" data-name="${aptEsc(a.name)}">
@@ -986,11 +1054,11 @@ function _aptCardHTML(a) {
           ${vacant ? 'Vacant' : 'Occupied'}
         </span>
       </div>
-      ${a.adresse ? `<div class="apt-hdr__addr">${aptEsc(a.adresse)}</div>` : ''}
-      <div class="apt-hdr__tags">
+      ${a.adresse || a.wohnungsnummer ? `<div class="apt-hdr__addr">${aptEsc([a.adresse, a.wohnungsnummer].filter(Boolean).join(' \u00b7 '))}</div>` : ''}
+      <div class="apt-hdr__who">
         ${a.zimmer_type ? `<span class="apt-tag ${a.zimmer_type === 'Gewerbefläche' ? 'apt-tag--gew' : 'apt-tag--apt'}">${aptEsc(a.zimmer_type)}</span>` : ''}
+        <span class="apt-hdr__rent">${rentHTML}</span>
       </div>
-      <div class="apt-hdr__rent">${rentHTML}</div>
       <div id="apt-hg-hdr-${a.id}">${_aptHGHeaderPill(a.id)}</div>
     </div>
     <i class="ti ti-chevron-right apt-chevron"></i>
@@ -1015,7 +1083,7 @@ function _aptCardHTML(a) {
         <div class="apt-row"><span class="apt-row__k">Heizungsart</span><span class="apt-row__v">${aptEsc(a.heizungsart || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Rooms</span><span class="apt-row__v">${aptEsc(a.zimmer_type || '—')}</span></div>
         <div class="apt-row"><span class="apt-row__k">Floor</span><span class="apt-row__v">${aptEsc(a.floor || '—')}</span></div>
-        <div class="apt-row"><span class="apt-row__k">Size</span><span class="apt-row__v">${a.flaeche_m2 ? a.flaeche_m2 + ' m²' : '—'}</span></div>
+        <div class="apt-row"><span class="apt-row__k">Size</span><span class="apt-row__v">${a.flaeche_m2 ? ccM2(a.flaeche_m2) + ' m²' : '—'}</span></div>
         <div class="apt-row"><span class="apt-row__k">Energieklasse</span><span class="apt-row__v">${aptEsc(a.energieklasse || '—')}</span></div>
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('identity','${a.id}')">
@@ -1030,7 +1098,7 @@ function _aptCardHTML(a) {
           <div class="apt-field"><div class="apt-field__label">Floor</div><input class="apt-input" data-f="floor" value="${aptEsc(a.floor||'')}"/></div>
         </div>
         <div class="apt-field"><div class="apt-field__label">Adresse</div><input class="apt-input" data-f="adresse" value="${aptEsc(a.adresse||'')}"/></div>
-        <div class="apt-field"><div class="apt-field__label">Wohnungsnummer</div><input class="apt-input" data-f="wohnungsnummer" value="${aptEsc(a.wohnungsnummer||'')}" placeholder="z.B. 3 / WE 12"/></div>
+        <div class="apt-field"><div class="apt-field__label">Wohnungsnummer</div><input class="apt-input" data-f="wohnungsnummer" value="${aptEsc(a.wohnungsnummer||'')}" placeholder="z. B. WHG 03"/></div>
         <div class="apt-field-row">
           <div class="apt-field"><div class="apt-field__label">PLZ / Ort</div><input class="apt-input" data-f="plz_ort" value="${aptEsc(a.plz_ort||'')}" placeholder="55246 Mainz-Kostheim"/></div>
           <div class="apt-field"><div class="apt-field__label">Gerichtsstand</div><input class="apt-input" data-f="gerichtsstand" value="${aptEsc(a.gerichtsstand||'')}" placeholder="z.B. Wiesbaden"/></div>
@@ -1068,12 +1136,15 @@ function _aptCardHTML(a) {
       <div class="apt-stitle">Asking rent</div>
       <!-- READ -->
       <div class="apt-sec-read">
-        ${(kalt || nk || kzKalt) ? ccAskingRentTable([
-          (kalt || nk) ? { title: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : 'Mietvertrag', mode: 'kalt_nk', kalt, nk, kaution: kautionAmt,
-                           note: _kMv.source === 'override' ? 'Individuell' : '3× Kalt' } : null,
-          kzKalt ? { title: 'Kurzzeit', mode: 'kalt_nk', kalt: kzKalt, nk: kzNk, kaution: kzKaution,
-                     note: _kKz.source === 'override' ? 'Individuell' : '1× Kalt · from 3 months 3×' } : null,
-        ], aptFmtEURCompact) : `<div class="apt-row"><span class="apt-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
+        ${_aptAskBlocksHTML(a, [
+          a.zimmer_type !== 'Gewerbefläche'
+            ? { title: 'Kurzzeit', bar: 'kurzzeit', set: kzP.set, pausch: kzP.mode === 'pauschal', total: kzP.total, kalt: kzP.kalt, nk: kzP.nk, kaution: kzKaution,
+                note: _kKz.source === 'override' ? 'Individuell' : (_kzO.mode === 'pauschal' ? '1× Pauschale' : '1× Kalt') + ' · from 3 months 3×', go: 'kurzzeit', btn: 'Kurzzeitmiete' } : null,
+          { title: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbe' : 'Mietvertrag', bar: a.zimmer_type === 'Gewerbefläche' ? 'gewerbe' : 'mietvertrag',
+            set: !!(kalt || nk), kalt, nk, kaution: kautionAmt,
+            note: _kMv.source === 'override' ? 'Individuell' : '3× Kalt', go: 'mietvertrag',
+            btn: a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemietvertrag' : 'Mietvertrag' },
+        ])}
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('miete','${a.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -1096,9 +1167,17 @@ function _aptCardHTML(a) {
         </div>
         ${a.zimmer_type !== 'Gewerbefläche' ? `
         <div class="apt-stitle" style="margin-top:10px">Kurzzeit</div>
-        <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kurzzeit_kaltmiete" value="${p.kurzzeit_kaltmiete||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kurzzeit_nk" value="${p.kurzzeit_nk||''}"/></div>
+        <div class="cc-seg apt-kz-seg" role="radiogroup" aria-label="Kurzzeit" data-kzmode="${kzP.mode}">
+          <button type="button" class="cc-seg__opt${kzP.mode === 'pauschal' ? ' is-on' : ''}" role="radio" onclick="_aptKzMode(this,'pauschal')">Pauschal</button>
+          <button type="button" class="cc-seg__opt${kzP.mode === 'kalt_nk' ? ' is-on' : ''}" role="radio" onclick="_aptKzMode(this,'kalt_nk')">Kalt + NK</button>
+        </div>
+        <div class="apt-field-row" data-kzgroup="pauschal"${kzP.mode === 'pauschal' ? '' : ' style="display:none"'}>
+          <div class="apt-field"><div class="apt-field__label">Pauschalmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="pauschale" value="${kzP.set && kzP.mode === 'pauschal' ? kzP.total : ''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">&nbsp;</div><div class="apt-kz-hint">no NK-Abrechnung · price can change per contract</div></div>
+        </div>
+        <div class="apt-field-row" data-kzgroup="kalt_nk"${kzP.mode === 'kalt_nk' ? '' : ' style="display:none"'}>
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="kalt" value="${kzP.set && kzP.mode === 'kalt_nk' ? kzP.kalt : ''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">NK-Vorauszahlung (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="nk" value="${kzP.set && kzP.mode === 'kalt_nk' ? kzP.nk : ''}"/></div>
         </div>` : ''}
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_aptCancelSection('miete','${a.id}')">Cancel</button>
@@ -1256,30 +1335,7 @@ function _aptCardHTML(a) {
     </div>
 
 
-    <!-- 7. CONTRACTS -->
-    <div class="apt-contracts">
-      <div class="apt-contracts-title">Create contracts</div>
-      ${a.zimmer_type !== 'Gewerbefläche' ? `
-      <div class="apt-doc-row">
-        <button class="apt-doc-btn" onclick="_aptOpenContract('kurzzeit','${a.id}')">
-          Kurzzeitmiete <i class="ti ti-chevron-right"></i>
-        </button>
-      </div>` : ''}
-      <div class="apt-doc-row">
-        <button class="apt-doc-btn" onclick="_aptOpenContract('mietvertrag','${a.id}')">
-          ${a.zimmer_type === 'Gewerbefläche' ? 'Gewerbemietvertrag' : 'Mietvertrag'} <i class="ti ti-chevron-right"></i>
-        </button>
-      </div>
-      <div class="apt-doc-row">
-        <button class="apt-doc-btn" onclick="_aptOpenContract('ueberg','${a.id}')">
-          Übergabeprotokoll <i class="ti ti-chevron-right"></i>
-        </button>
-        <div class="apt-doc-toggle" id="apt-eu-${a.id}">
-          <button class="active" onclick="event.stopPropagation();_aptSetEU('${a.id}',0,this)">Einzug</button>
-          <button onclick="event.stopPropagation();_aptSetEU('${a.id}',1,this)">Auszug</button>
-        </div>
-      </div>
-    </div>
+    <!-- Übergabeprotokoll (Einzug / Auszug): on the Tenants card · Contracts: in the Asking rent blocks -->
 
     <!-- FOOTER: delete -->
     <div class="apt-card-footer">
@@ -1290,6 +1346,34 @@ function _aptCardHTML(a) {
 
   </div>
 </div>`;
+}
+
+
+/* ── ASKING RENT BLOCKS (Casa Castel layout) ─────────────────
+   Same values and rows as the old table: monthly · Kaltmiete · Nebenkosten · Kaution (+ note).
+   A price that is not set shows "Not set" — the block and its contract
+   button always stay, exactly as the old "Create contracts" buttons did. */
+function _aptAskBlocksHTML(a, cols) {
+  const f = n => aptFmtEURCompact(Number(n) || 0);
+  return cols.filter(Boolean).map((c, i) => `
+        <div class="rc-brow">
+          <div class="rc-brow__bar rc-brow__bar--${c.bar}"></div>
+          <div class="rc-brow__main"><div class="rc-brow__t">${c.title}</div>
+            ${c.set && c.pausch
+              ? `<div class="rc-brow__big">${f(c.total)} <span>pauschal</span></div>
+            <div class="rc-brow__sub">no NK-Abrechnung</div>
+            <div class="rc-brow__sub">Kaution ${f(c.kaution)}</div>
+            ${c.note ? `<div class="rc-brow__sub rc-brow__note">${c.note}</div>` : ''}`
+              : c.set
+              ? `<div class="rc-brow__big">${f((Number(c.kalt) || 0) + (Number(c.nk) || 0))} <span>monthly</span></div>
+            <div class="rc-brow__sub">Kaltmiete ${f(c.kalt)}</div>
+            <div class="rc-brow__sub">Nebenkosten ${f(c.nk)}</div>
+            <div class="rc-brow__sub">Kaution ${f(c.kaution)}</div>
+            ${c.note ? `<div class="rc-brow__sub rc-brow__note">${c.note}</div>` : ''}`
+              : `<div class="rc-brow__none">Not set</div>`}
+          </div>
+          <div class="rc-brow__btns"><button type="button" class="rc-brow__go" onclick="_aptOpenContract('${c.go}','${a.id}')">${c.btn} ›</button></div>
+        </div>`).join('');
 }
 
 
@@ -1323,6 +1407,10 @@ function _groupZaehler(zaehler) {
 
 /* ── CARD INTERACTIONS ───────────────────────────────────── */
 function _aptToggle(card) {
+  if (card.classList.contains('apt--open') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('apt--open'));
+    return;
+  }
   card.classList.toggle('apt--open');
   if (card.classList.contains('apt--open')) {
     requestAnimationFrame(() => {
@@ -1333,11 +1421,15 @@ function _aptToggle(card) {
   }
 }
 
+/* Einzug / Auszug of the Übergabe button (the button sits on the Tenants card).
+   Kept per unit, so it never depends on which tab is on screen. 0 = Einzug (default) · 1 = Auszug */
+const _aptEU = {};
 function _aptSetEU(aptId, idx, btn) {
-  const tog = document.getElementById('apt-eu-' + aptId);
-  if (!tog) return;
-  tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+  _aptEU[aptId] = idx ? 1 : 0;
+  document.querySelectorAll('[id="apt-eu-' + aptId + '"]').forEach(tog =>
+    tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === _aptEU[aptId])));
 }
+function _aptEuIsEinzug(aptId) { return !_aptEU[aptId]; }
 
 
 /* ── SECTION EDIT ────────────────────────────────────────── */
@@ -1353,15 +1445,8 @@ function _aptEnterSection(section, aptId) {
 function _aptCancelSection(section, aptId) {
   const el = document.getElementById(`apt-${section}-${aptId}`);
   if (!el) return;
-  // Re-render just this card from memory to discard edits
-  const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) return;
-  const card = document.querySelector(`.apt-card[data-id="${aptId}"]`);
-  if (!card) return;
-  const wasOpen = card.classList.contains('apt--open');
-  card.outerHTML = _aptCardHTML(apt);
-  const newCard = document.querySelector(`.apt-card[data-id="${aptId}"]`);
-  if (wasOpen && newCard) newCard.classList.add('apt--open');
+  // B26: discard the edits of THIS section only — other open sections keep what was typed
+  _aptRerenderCard(aptId, section);
 }
 
 
@@ -1381,7 +1466,7 @@ async function _aptSaveIdentity(aptId) {
   const before = {};
   Object.keys(data).forEach(k => { before[k] = apt[k]; });
   Object.assign(apt, data);
-  _aptRerenderCard(aptId);
+  _aptRerenderCard(aptId, 'identity');
   if (!_aptSbClient) return;
   ccQueueWrite('apt-' + aptId, () => _aptSbClient.from('rentals_apartments').update(data).eq('id', aptId))
     .then(({ error }) => {
@@ -1402,14 +1487,25 @@ function _aptDirectSaveRow(aptId, key, table, data) {
   const hadRow = !!(apt[key] && Object.keys(apt[key]).length);
   const before = hadRow ? { ...apt[key] } : null;
   if (hadRow) Object.assign(apt[key], data); else apt[key] = { apartment_id: aptId, ...data };
-  _aptRerenderCard(aptId);
+  _aptRerenderCard(aptId, { pricing: 'miete', verwaltung: 'verwaltung', schlussel: 'schlussel' }[key]);
   if (!_aptSbClient) return;
   ccQueueWrite('apt-' + key + '-' + aptId, () => {
     const rowId = apt[key]?.id;     // read at write time: an earlier insert may have set it
     return rowId
       ? _aptSbClient.from(table).update(data).eq('id', rowId)
       : _aptSbClient.from(table).insert({ apartment_id: aptId, ...data }).select().single();
-  }).then(res => {
+  }).then(async res => {
+    if (res.error && 'kurzzeit_pricing' in data && /kurzzeit_pricing/i.test(res.error.message || '')) {
+      // the Kurzzeit type column is missing (SQL not run yet): save the prices, read them as Pauschal for now
+      const d2 = { ...data }; delete d2.kurzzeit_pricing;
+      const rowId = apt[key]?.id;
+      res = rowId ? await _aptSbClient.from(table).update(d2).eq('id', rowId)
+                  : await _aptSbClient.from(table).insert({ apartment_id: aptId, ...d2 }).select().single();
+      if (!res.error) {
+        if (data.kurzzeit_pricing === 'kalt_nk') ccToast('Kalt + NK for Kurzzeit needs the SQL from the update — saved, shown as Pauschal until then', true);
+        delete apt[key].kurzzeit_pricing; _aptRerenderCard(aptId);
+      }
+    }
     if (res.error) {
       apt[key] = before || {};
       _aptRerenderCard(aptId);
@@ -1432,7 +1528,24 @@ async function _aptSaveMiete(aptId) {
     else if (ccIsNumInput(inp)) data[k] = inp.value !== '' ? parseFloat(inp.value) : null;
     else data[k] = inp.value;
   });
+  // Kurzzeit: Pauschal → kurzzeit_kaltmiete = Pauschale, NK 0 · Kalt + NK → both fields
+  const seg = el.querySelector('[data-kzmode]');
+  if (seg) {
+    const mode = seg.dataset.kzmode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
+    const num = q => { const i = el.querySelector(q); return i && i.value !== '' ? parseFloat(i.value) : null; };
+    if (mode === 'pauschal') { const t = num('[data-kz="pauschale"]'); data.kurzzeit_kaltmiete = t; data.kurzzeit_nk = t == null ? null : 0; }
+    else { data.kurzzeit_kaltmiete = num('[data-kz="kalt"]'); data.kurzzeit_nk = num('[data-kz="nk"]'); }
+    data.kurzzeit_pricing = mode;
+  }
   _aptDirectSaveRow(aptId, 'pricing', 'rentals_pricing', data);
+}
+/* Kurzzeit type in the editor: Pauschal | Kalt + NK */
+function _aptKzMode(btn, mode) {
+  const seg = btn.closest('[data-kzmode]'); if (!seg) return;
+  seg.dataset.kzmode = mode;
+  seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  const wrap = seg.parentElement;
+  wrap.querySelectorAll('[data-kzgroup]').forEach(g => { g.style.display = g.dataset.kzgroup === mode ? '' : 'none'; });
 }
 
 
@@ -1450,41 +1563,102 @@ async function _aptSaveVerwaltung(aptId) {
 
 
 /* ── SAVE: ZÄHLER ────────────────────────────────────────── */
+/* B27 (Oct 2026) — meters
+   · a meter is removed ONLY with 🗑. An empty number keeps the meter ("number unknown", saved as '').
+     Bug 2: an emptied number — or an added meter without number — made the meter silently disappear.
+   · the database gets only the differences: changed meters updated (same id), new ones inserted (their
+     real id comes back into the app), meters removed with 🗑 deleted — LAST, and only those.
+     Bug 3: "delete all meters, insert all again" — a dropped connection in between left the flat with none.
+   · still not saved after the one retry → the meters are read back: the screen shows what is really saved */
+let _aptZTmp = 0;
 async function _aptSaveZaehler(aptId) {
   const el  = document.getElementById(`apt-zaehler-${aptId}`);
   const apt = appApartments.find(a => a.id === aptId);
   if (!el || !apt) return;
 
-  // Collect current rows from DOM
-  const rows = el.querySelectorAll('[data-zaehler-id]');
-  const newMeters = [];
-  rows.forEach((row, i) => {
-    const nr  = row.querySelector('[data-zf="zaehler_nr"]')?.value?.trim();
-    const typ = row.querySelector('.apt-field__label')?.textContent?.trim();
-    if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: i });
+  // 1 · the form, top to bottom (= sort order). An existing row keeps its meter object (and with it its id).
+  const before = apt.zaehler || [];
+  const beforeCopy = before.map(z => ({ ...z }));                       // only if the read-back fails
+  const byId = new Map(before.map(z => [String(z.id), z]));
+  const next = [], reused = new Set();
+  el.querySelectorAll('[data-zaehler-id], [data-new-zaehler]').forEach(row => {
+    const isNew = row.hasAttribute('data-new-zaehler');
+    const old   = isNew ? null : byId.get(String(row.dataset.zaehlerId)) || null;
+    const typ   = String(isNew ? (row.querySelector('[data-zf="typ"]')?.value || '')
+                               : (old ? old.typ : (row.querySelector('.apt-field__label')?.textContent || ''))).trim();
+    if (!typ) return;
+    const data = { typ, zaehler_nr: String(row.querySelector('[data-zf="zaehler_nr"]')?.value || '').trim(), sort_order: next.length };
+    if (old && !reused.has(old)) { reused.add(old); next.push(Object.assign(old, data)); }
+    else next.push({ id: 'tmp-' + (++_aptZTmp), _tmp: true, apartment_id: aptId, ...data });
   });
-  // Also rows added via "Add meter" (no data-zaehler-id)
-  el.querySelectorAll('[data-new-zaehler]').forEach((row, i) => {
-    const typ = row.querySelector('[data-zf="typ"]')?.value?.trim();
-    const nr  = row.querySelector('[data-zf="zaehler_nr"]')?.value?.trim();
-    if (typ && nr) newMeters.push({ apartment_id: aptId, typ, zaehler_nr: nr, sort_order: rows.length + i });
-  });
+  const removed = before.filter(z => !reused.has(z));                    // taken out with 🗑
 
-  // Direct save: card first; database replaces the meter list in the background
-  const before = apt.zaehler;
-  apt.zaehler = newMeters.map((m, i) => ({ ...m, id: `local-${i}` }));
-  _aptRerenderCard(aptId);
+  // 2 · the screen at once
+  apt.zaehler = next;
+  _aptRerenderCard(aptId, 'zaehler');
   if (!_aptSbClient) return;
-  ccQueueWrite('apt-zaehler-' + aptId, async () => {
-    const del = await _aptSbClient.from('rentals_zaehler').delete().eq('apartment_id', aptId);
-    if (del.error || !newMeters.length) return del;
-    return await _aptSbClient.from('rentals_zaehler').insert(newMeters);
-  }).then(({ error }) => {
-    if (!error) return;
-    apt.zaehler = before;
-    _aptRerenderCard(aptId);
-    ccSaveFailed(error, 'apartment zaehler');
+
+  // 3 · the database — only the differences (queued per flat; ccQueueWrite tries once more on an error)
+  const plan = next.map(o => ({ obj: o, data: { typ: o.typ, zaehler_nr: o.zaehler_nr, sort_order: o.sort_order } }));
+  ccQueueWrite('apt-zaehler-' + aptId, () => _aptZaehlerSync(aptId, plan, removed)).then(async res => {
+    if (!res || !res.error) return;
+    console.error('[apartments] meters:', res.error);
+    await _aptZaehlerReload(aptId, beforeCopy);
+    if (typeof ccToast === 'function') ccToast('Meters not fully saved — connection problem. Shown is what is saved now — please check and save again.', true);
   });
+}
+/* One save → the database. Safe to run twice (the retry): it reads the flat's meters first, and a meter
+   it already finds (same type + number, e.g. an insert whose answer got lost) is taken instead of a duplicate. */
+async function _aptZaehlerSync(aptId, plan, removed) {
+  const db = _aptSbClient, T = 'rentals_zaehler';
+  const cur = await db.from(T).select('*').eq('apartment_id', aptId);
+  if (cur.error) return cur;
+  const rows = cur.data || [];
+  const inDb = new Map(rows.map(r => [String(r.id), r]));
+  const same = (a, b) => String(a ?? '') === String(b ?? '');
+  const known = new Set(plan.filter(p => !p.obj._tmp).map(p => String(p.obj.id)));
+  const goneIds = new Set((removed || []).filter(z => !z._tmp).map(z => String(z.id)));
+  const keep = new Set();
+  // 1 · updates (only what changed) and inserts — nothing is deleted before all of this is safe
+  for (const p of plan) {
+    let row = p.obj._tmp ? null : inDb.get(String(p.obj.id)) || null;
+    if (!row) {
+      row = rows.find(r => !keep.has(String(r.id)) && !known.has(String(r.id)) && !goneIds.has(String(r.id)) &&
+                           same(r.typ, p.data.typ) && same(r.zaehler_nr, p.data.zaehler_nr)) || null;
+      if (row) _aptZaehlerSetId(p.obj, row.id);
+    }
+    if (row) {
+      keep.add(String(row.id));
+      const ch = {};
+      ['typ', 'zaehler_nr', 'sort_order'].forEach(k => { if (!same(row[k], p.data[k])) ch[k] = p.data[k]; });
+      if (Object.keys(ch).length) { const u = await db.from(T).update(ch).eq('id', row.id); if (u.error) return u; }
+      continue;
+    }
+    const ins = await db.from(T).insert({ apartment_id: aptId, ...p.data }).select().single();
+    if (ins.error) return ins;
+    if (ins.data && ins.data.id != null) { _aptZaehlerSetId(p.obj, ins.data.id); keep.add(String(ins.data.id)); }
+  }
+  // 2 · deletes LAST — only the meters removed with 🗑 (never one the app doesn't know, e.g. added elsewhere)
+  const del = [...goneIds].filter(id => inDb.has(id) && !keep.has(id));
+  if (del.length) { const d = await db.from(T).delete().in('id', del); if (d.error) return d; }
+  return { error: null };
+}
+/* The real id (from the database) into the meter object — and into rows already drawn with the temporary id */
+function _aptZaehlerSetId(obj, id) {
+  const old = obj.id;
+  obj.id = id; delete obj._tmp;
+  if (String(old) !== String(id))
+    document.querySelectorAll(`[data-zaehler-id="${String(old).replace(/"/g, '')}"]`).forEach(r => { r.dataset.zaehlerId = id; });
+}
+/* The flat's meters as saved in the database (after a failed save) — the old list only if even that fails */
+async function _aptZaehlerReload(aptId, fallback) {
+  const apt = appApartments.find(a => a.id === aptId); if (!apt) return;
+  try {
+    const r = await _aptSbClient.from('rentals_zaehler').select('*').eq('apartment_id', aptId).order('sort_order');
+    if (r.error) throw r.error;
+    apt.zaehler = r.data || [];
+  } catch (e) { apt.zaehler = fallback; }
+  _aptRerenderCard(aptId);
 }
 
 
@@ -1496,7 +1670,7 @@ function _aptAddZaehlerRow(aptId) {
   if (!container) return;
   const div = document.createElement('div');
   div.setAttribute('data-new-zaehler', '1');
-  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;';
+  div.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 38px;gap:8px;margin-bottom:10px;align-items:end;';
   div.innerHTML = `
     <div class="apt-field">
       <div class="apt-field__label">Typ</div>
@@ -1507,6 +1681,11 @@ function _aptAddZaehlerRow(aptId) {
     <div class="apt-field">
       <div class="apt-field__label">Zählernummer</div>
       <input class="apt-input apt-input--mono" data-zf="zaehler_nr" placeholder="Nr…"/>
+    </div>
+    <div class="apt-field" style="justify-content:flex-end">
+      <button type="button" onclick="this.closest('[data-new-zaehler]').remove()" aria-label="Remove meter" style="width:32px;height:32px;background:none;border:.5px solid var(--cc-rule);border-radius:6px;cursor:pointer;color:var(--cc-stone);display:flex;align-items:center;justify-content:center">
+        <i class="ti ti-trash" style="font-size:12px"></i>
+      </button>
     </div>`;
   container.appendChild(div);
   div.querySelector('input').focus();
@@ -1555,18 +1734,32 @@ function _aptToggleKautionOverride(chk) {
 
 
 /* ── RERENDER CARD ───────────────────────────────────────── */
-function _aptRerenderCard(aptId) {
+/* B26: sections open in edit mode keep everything typed — only `except` (the section just saved or
+   cancelled, 'hg' = the Hausgeld add form) is drawn fresh. Was: the whole card from the saved data,
+   so typing in Identity was lost when Miete was saved / cancelled or Vacant was tapped. */
+function _aptRerenderCard(aptId, except) {
   const apt  = appApartments.find(a => a.id === aptId);
   const card = document.querySelector(`.apt-card[data-id="${aptId}"]`);
   if (!apt || !card) return;
+  const keep = typeof ccKeepForms === 'function'
+    ? ccKeepForms(card, '.apt-edit-active[id]', el => !!except && el.id === `apt-${except}-${aptId}`) : [];
+  const hgForm = except === 'hg' ? null : card.querySelector('.apt-hg-add-form');
   const newDiv = document.createElement('div');
   newDiv.innerHTML = _aptCardCache[aptId] = _aptCardHTML(apt);   // remembered as drawn
   const newCard = newDiv.firstElementChild;
   newCard.classList.add('apt--open');
   card.parentNode.insertBefore(newCard, card);
   card.remove();
+  if (keep.length) ccPutForms(newCard, keep);
+  _aptPutHgForm(newCard, aptId, hgForm, keep);
   _aptInitSortable();
   _updateAptSummary();
+}
+/* An open Hausgeld add form (it has no id) back into the redrawn card — unless it travelled inside a kept section */
+function _aptPutHgForm(root, aptId, form, keep) {
+  if (!form || (keep || []).some(k => k.contains(form))) return;
+  const body = root.querySelector(`[id="apt-hg-sec-${aptId}"] .apt-hg-body`) || root.querySelector('.apt-hg-body');
+  if (body) body.insertBefore(form, body.querySelector('.cc-sec-foot') || null);
 }
 
 
@@ -1582,8 +1775,13 @@ function _aptHGSorted(aptId) {
   return (_aptHausgeld[aptId] || []).slice().sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
 }
 function _aptHGToday() { const t = new Date(); t.setHours(0, 0, 0, 0); return t; }
+/* A step counts as adjusted once it has started (Oct 2026) — no "Noted?" to-do for old steps.
+   German calendar day, compared as YYYY-MM-DD (a step starting today has started). */
+const _aptHGIso = e => String(e && e.effective_date || '').slice(0, 10);
+const _aptHGStarted = e => _aptHGIso(e) <= ccTodayISO();
 
 function _aptHGPill(e, aptId) {
+  if (_aptHGStarted(e)) return `<span class="tn-nkv-pill done" data-hg-noted="${e.id}"><i class="ti ti-check" aria-hidden="true"></i> Noted</span>`;   // started = adjusted
   const on = !!e.weg_notified;
   return `<button type="button" class="tn-nkv-pill ${on ? 'done' : 'pending'}" data-hg-noted="${e.id}"
     aria-pressed="${on}" onclick="_aptHGToggleNoted('${e.id}','${aptId}')">
@@ -1594,17 +1792,17 @@ function _aptHGDelBtn(e, aptId) {
     onclick="_aptHGDelete('${e.id}','${aptId}')">
     <i class="ti ti-trash" style="font-size:13px" aria-hidden="true"></i></button>`;
 }
-/* Amber header pill: newest step that is not noted yet */
+/* Card pill: the next Hausgeld change that has not started yet, with its date.
+   Information, not a to-do — it disappears by itself on the start date. */
 function _aptHGHeaderPill(aptId) {
-  const open = _aptHGSorted(aptId).find(e => !e.weg_notified);
-  return open ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-alert-triangle" style="font-size:9px" aria-hidden="true"></i> Hausgeld ${aptFmtEURCompact(open.amount)}</span></div>` : '';
+  const next = _aptHGSorted(aptId).filter(e => !_aptHGStarted(e)).pop();   // newest first → last = nearest
+  return next ? `<div class="apt-hdr__pills" style="margin-top:5px"><span class="apt-hg-status-pill"><i class="ti ti-clock" style="font-size:9px" aria-hidden="true"></i> Hausgeld ${aptFmtEURCompact(next.amount)} ab ${_aptHGFmt(_aptHGIso(next))}</span></div>` : '';
 }
 
 function _aptHGSectionHTML(aptId) {
   const entries = _aptHGSorted(aptId);                    // newest first
-  const today   = _aptHGToday();
-  const current = entries.find(e => new Date(e.effective_date) <= today) || null;
-  const future  = entries.filter(e => new Date(e.effective_date) > today);
+  const current = entries.find(_aptHGStarted) || null;
+  const future  = entries.filter(e => !_aptHGStarted(e));
   const next    = future.length ? future[future.length - 1] : null;   // nearest upcoming step
 
   const curDisplay = current
@@ -1649,16 +1847,15 @@ let _aptHGVerlaufApt = null;   // apartment whose Verlauf sheet is open (refresh
 function _aptHGOpenModal(aptId) {
   _aptHGVerlaufApt = aptId;
   const entries = _aptHGSorted(aptId).reverse();          // oldest first, like Staffel
-  const today   = _aptHGToday();
   const apt     = appApartments.find(a => a.id === aptId);
   const rows = entries.map(e => {
-    const isFuture = new Date(e.effective_date) > today;
+    const isFuture = !_aptHGStarted(e);
     return `
       <div class="tn-nkv-row" style="padding:7px 16px">
         <div class="tn-nkv-top">
           <i class="ti ${isFuture ? 'ti-clock' : 'ti-circle-check'}" style="font-size:13px;color:${isFuture ? 'var(--cc-gold)' : 'var(--cc-green,#3B6D11)'};flex-shrink:0" aria-hidden="true"></i>
           <span class="tn-nkv-date">${isFuture ? 'ab' : 'seit'} ${_aptHGFmt(e.effective_date)}</span>
-          <span class="${e.weg_notified ? 'tn-nkv-amount past' : 'tn-nkv-amount'}">${aptFmtEUR(e.amount)}</span>
+          <span class="${e.weg_notified || !isFuture ? 'tn-nkv-amount past' : 'tn-nkv-amount'}">${aptFmtEUR(e.amount)}</span>
           ${_aptHGDelBtn(e, aptId).replace('flex-shrink:0"', 'flex-shrink:0;margin-left:4px"')}
         </div>
         <div class="tn-nkv-pills">${_aptHGPill(e, aptId)}</div>
@@ -1753,7 +1950,7 @@ async function _aptHGConfirmAdd__run(aptId) {
   if (!_aptHausgeld[aptId]) _aptHausgeld[aptId] = [];
   _aptHausgeld[aptId].unshift(data);
   _aptHausgeld[aptId].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
-  _aptRerenderCard(aptId);
+  _aptRerenderCard(aptId, 'hg');                       // the add form closes · other open sections stay
   _aptHGRefreshVerlauf(aptId);
   _aptHGHint(aptId, data.effective_date);
 }
@@ -1949,6 +2146,7 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
   document.getElementById('aptInventarOverlay').classList.remove('open');
   _aptRerenderCard(aptId);
   _aptInventarId = null;
+  if (typeof ccSavedToast === 'function') ccSavedToast();
 });
 
 
@@ -2009,8 +2207,7 @@ function _aptSaveContractDraft() {
     // Übergabe: Einzug/Auszug is chosen on the card, not in the sheet
     let euLabel = null;
     if (_aptContractType === 'ueberg') {
-      euLabel = document.getElementById('apt-eu-' + _aptContractId)
-        ?.querySelector('.active')?.textContent?.trim() || null;
+      euLabel = _aptEuIsEinzug(_aptContractId) ? 'Einzug' : 'Auszug';
     }
 
     localStorage.setItem(_APT_DRAFT_KEY, JSON.stringify({
@@ -2057,12 +2254,7 @@ async function _aptReopenContractDraft(d) {
     if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('apartments');
     // Übergabe: restore the card's Einzug/Auszug choice BEFORE opening,
     // because _aptOpenContract reads it from the card
-    if (d.type === 'ueberg' && d.euLabel) {
-      const eu = document.getElementById('apt-eu-' + d.aptId);
-      eu?.querySelectorAll('button, span, div').forEach(el => {
-        if (el.textContent?.trim() === d.euLabel && !el.classList.contains('active')) el.click?.();
-      });
-    }
+    if (d.type === 'ueberg' && d.euLabel) _aptSetEU(d.aptId, d.euLabel === 'Auszug' ? 1 : 0);
 
     window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
     await _aptOpenContract(d.type, d.aptId);
@@ -2157,14 +2349,20 @@ function _aptContractApt(apt) {
   const m = apt && typeof ccfMieteGet === 'function' && apt.id === _aptContractId ? ccfMieteGet() : null;
   if (m && (_aptContractType === 'kurzzeit' || _aptContractType === 'mietvertrag') && apt.zimmer_type !== 'Gewerbefläche') {
     const p = { ...(apt.pricing || {}) };
-    if (_aptContractType === 'kurzzeit') { p.kurzzeit_kaltmiete = m.kalt; p.kurzzeit_nk = m.nk; }
+    if (_aptContractType === 'kurzzeit') {
+      if (m.mode === 'pauschal') { p.kurzzeit_pricing = 'pauschal'; p.kurzzeit_kaltmiete = m.total; p.kurzzeit_nk = 0; p._kzNkIncl = m.nk; }
+      else { p.kurzzeit_pricing = 'kalt_nk'; p.kurzzeit_kaltmiete = m.kalt; p.kurzzeit_nk = m.nk; }
+    }
     else { p.kaltmiete = m.kalt; p.nk_pauschale = m.nk; }
     return { ...apt, pricing: p };
   }
   const rn = _aptContractRenew;
   if (!apt || !rn || rn.aptId !== apt.id) return apt;
   const p = { ...(apt.pricing || {}) };
-  if (_aptContractType === 'kurzzeit') { p.kurzzeit_kaltmiete = Number(rn.kalt) || 0; p.kurzzeit_nk = Number(rn.nk) || 0; }
+  if (_aptContractType === 'kurzzeit') {
+    if (rn.mode === 'pauschal') { p.kurzzeit_pricing = 'pauschal'; p.kurzzeit_kaltmiete = Number(rn.total) || Number(rn.kalt) || 0; p.kurzzeit_nk = 0; }
+    else { p.kurzzeit_pricing = 'kalt_nk'; p.kurzzeit_kaltmiete = Number(rn.kalt) || 0; p.kurzzeit_nk = Number(rn.nk) || 0; }
+  }
   else { p.kaltmiete = Number(rn.kalt) || 0; p.nk_pauschale = Number(rn.nk) || 0; }
   return { ...apt, pricing: p };
 }
@@ -2203,7 +2401,7 @@ async function _aptOpenContract(type, aptId, renew) {
   const body     = document.getElementById('aptContractBody');
   const footer   = document.getElementById('aptContractFooter');
 
-  const aptInfo = [apt.zimmer_type, apt.heizungsart, apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : ''].filter(Boolean).join(' · ');
+  const aptInfo = [apt.zimmer_type, apt.heizungsart, apt.flaeche_m2 ? ccM2(apt.flaeche_m2) + ' m²' : ''].filter(Boolean).join(' · ');
   subLbl.textContent = aptInfo;
   // the sheet appears at once; the form follows as soon as the tenant data is there
   titleLbl.textContent = apt.name; footer.innerHTML = '';
@@ -2213,11 +2411,10 @@ async function _aptOpenContract(type, aptId, renew) {
   if (type === 'kurzzeit') {
     typeLbl.textContent  = 'Kurzzeitmiete';
     titleLbl.textContent = apt.name;
-    const kzKalt = Number(p.kurzzeit_kaltmiete) || 0;
-    const kzNk   = Number(p.kurzzeit_nk) || 0;
+    const kzP = _aptKz(p);
     const kzK = ccKaution(_aptKzKautionOpts(p));
     const _kzProfile = await _aptResolveTenantProfile(apt.id);
-    body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, _kzProfile);
+    body.innerHTML = _aptBodyKurzzeit(apt, p, sk, kzP, null, kzK, _kzProfile);
     footer.innerHTML = `<button class="rm-btn--cancel" id="aptContractCancelBtn">Cancel</button><button class="rm-btn--pdf" id="aptKzPdfBtn"><i class="ti ti-file-text"></i> Draft PDF</button>`;
 
     setTimeout(() => {
@@ -2492,7 +2689,7 @@ async function _aptOpenContract(type, aptId, renew) {
     } // end Wohnraum else
 
   } else if (type === 'ueberg') {
-    const isEinzug = document.getElementById('apt-eu-' + aptId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _aptEuIsEinzug(aptId);
     typeLbl.textContent  = 'Übergabeprotokoll';
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + apt.name;
     const _ubProfile = await _aptResolveTenantProfile(apt.id);
@@ -2560,7 +2757,7 @@ function _aptSetupFlow(type, apt) {
   const rn = _aptContractRenew;
   const isGw = type === 'mietvertrag' && apt.zimmer_type === 'Gewerbefläche';
   if (type === 'ueberg') {
-    const isEinzug = document.getElementById('apt-eu-' + apt.id)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _aptEuIsEinzug(apt.id);
     ccfSetupGenerator({ body: 'aptContractBody', footer: 'aptContractFooter', draftId: 'aptUebergPdfBtn', mode: 'ueberg', unit,
       occasion: isEinzug ? 'einzug' : 'auszug', fields: _APT_UB_FIELDS,
       read: () => {
@@ -2575,10 +2772,18 @@ function _aptSetupFlow(type, apt) {
   const pfx = type === 'kurzzeit' ? 'cm' : isGw ? 'gw' : 'mv';
   const f = _aptFlowFields(pfx);
   const pr = apt.pricing || {};
-  const miete = isGw ? null : {
+  const kz = _aptKz(pr);                                      // Kurzzeit: Pauschal | Kalt + NK, switchable per contract
+  const kzOther = { pauschal: { a: kz.mode === 'pauschal' ? kz.total : _aptR2(kz.kalt + kz.nk), b: _aptKzNkIncl(pr, kz.mode === 'pauschal' ? kz.total : kz.kalt + kz.nk) },
+                    kalt_nk:  { a: kz.mode === 'kalt_nk' ? kz.kalt : (Number(pr.kaltmiete) || kz.total), b: kz.mode === 'kalt_nk' ? kz.nk : (Number(pr.nk_pauschale) || 0) } };
+  const miete = isGw ? null : type === 'kurzzeit' ? {
+    anchor: '.rm-kaution-row', mode: kz.mode, fixedMode: false, pauschTotal: true, nkRef: Number(pr.kaltmiete) || 0, pre: kzOther,
+    kalt: kzOther[kz.mode].a, nk: kzOther[kz.mode].b,
+    note: rn ? 'Prefilled with the current rent — type the new one if it changes.' : 'Prefilled from the apartment’s Kurzzeit price — type the price agreed for this stay.',
+    onChange: () => { if (typeof _aptKzUpdateKaution === 'function') _aptKzUpdateKaution(); },
+  } : {
     anchor: '.rm-kaution-row', mode: 'kalt_nk', fixedMode: true,
-    kalt: type === 'kurzzeit' ? (Number(pr.kurzzeit_kaltmiete) || Number(pr.kaltmiete) || 0) : (Number(pr.kaltmiete) || 0),
-    nk:   type === 'kurzzeit' ? (Number(pr.kurzzeit_nk) || Number(pr.nk_pauschale) || 0) : (Number(pr.nk_pauschale) || 0),
+    kalt: Number(pr.kaltmiete) || 0,
+    nk:   Number(pr.nk_pauschale) || 0,
     note: rn ? 'Prefilled with the current rent — type the new one if it changes.' : 'Prefilled from the apartment’s rent — change it for this contract.',
     onChange: () => {
       if (type === 'kurzzeit') { if (typeof _aptKzUpdateKaution === 'function') _aptKzUpdateKaution(); return; }
@@ -2588,8 +2793,14 @@ function _aptSetupFlow(type, apt) {
         inp.value = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt: m.kalt, nk: m.nk, rec: a2.pricing }).amount;
       }
     } };
+  // Oct 2026: a new contract — the Kaution follows the Kaltmiete typed here (3× Kalt or the card's individual Kaution);
+  // only your own typing stops it. Renewal / existing tenant: ccfSetupGenerator sets their Kaution and stops it.
   const mk = document.getElementById('apt-mv-kaution');
-  if (mk && !mk.hasAttribute('data-auto') && !mk.value) { mk.setAttribute('data-auto', '1'); mk.addEventListener('input', () => mk.removeAttribute('data-auto')); }
+  if (mk && !mk._ccAutoWired) {
+    mk._ccAutoWired = true;
+    mk.setAttribute('data-auto', '1');
+    mk.addEventListener('input', e => { if (e.isTrusted) mk.removeAttribute('data-auto'); });
+  }
   ccfSetupGenerator({ body: 'aptContractBody', footer: 'aptContractFooter',
     draftId: type === 'kurzzeit' ? 'aptKzPdfBtn' : isGw ? 'aptGwPdfBtn' : 'aptMvPdfBtn', mode: 'contract', unit, renew: rn,
     fields: f, switchTo: rn && rn.tid ? (type === 'kurzzeit' ? 'mietvertrag' : 'kurzzeit') : null, miete,
@@ -2619,13 +2830,13 @@ function _aptSetupFlow(type, apt) {
 }
 
 /* ── CONTRACT BODY: KURZZEIT ─────────────────────────────── */
-function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
+function _aptBodyKurzzeit(apt, p, sk, kzP, _unused, kzK, profile = {}) {
   const tenant1 = profile.tenant1 || { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone, birthday: profile.birthday, address: profile.address };
   const tenant2 = profile.tenant2 || null;
   const tenant3 = profile.tenant3 || null;
-  const rentDisplay = kzKalt
-    ? `${aptFmtEURCompact(kzKalt)} kalt + ${aptFmtEURCompact(kzNk)} NK / Monat`
-    : `${aptFmtEURCompact(p.kaltmiete || 0)} kalt + ${aptFmtEURCompact(p.nk_pauschale || 0)} NK / Monat`;
+  const rentDisplay = kzP.mode === 'pauschal'
+    ? `${aptFmtEURCompact(kzP.total)} pauschal / Monat`
+    : `${aptFmtEURCompact(kzP.kalt)} kalt + ${aptFmtEURCompact(kzP.nk)} NK / Monat`;
 
   return `
     <div class="rm-prefilled">
@@ -2636,7 +2847,7 @@ function _aptBodyKurzzeit(apt, p, sk, kzKalt, kzNk, kzK, profile = {}) {
       <div class="rm-pre-row"><span>Etage</span><span>${aptEsc(apt.floor || '—')}</span></div>
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${aptEsc(apt.gerichtsstand || '—')}</span></div>
       <div class="rm-pre-row"><span>Unterzeichnung</span><span>${aptEsc(apt.unterschrift_ort || '—')}</span></div>
-      <div class="rm-pre-row"><span>Size</span><span>${apt.flaeche_m2 ? apt.flaeche_m2 + ' m²' : '—'}</span></div>
+      <div class="rm-pre-row"><span>Size</span><span>${apt.flaeche_m2 ? ccM2(apt.flaeche_m2) + ' m²' : '—'}</span></div>
       <div class="rm-pre-row"><span>Miete</span><span>${rentDisplay}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>Haustür ×${sk.haustuerschluessel ?? 1} · Wohnung ×${sk.wohnungsschluessel ?? 1}</span></div>
     </div>
@@ -2761,7 +2972,7 @@ function _aptBodyMietvertrag(apt, p, sk, kalt, nk, kaution, profile = {}) {
         </div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <input class="rm-input" id="apt-mv-staffel-anfang" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <input class="rm-input" id="apt-mv-staffel-anfang" type="number" data-cc-num="2" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
           <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
           <span style="font-size:11px;color:var(--cc-taupe);" id="apt-mv-staffel-anfang-ab">ab Mietbeginn</span>
         </div>
@@ -2878,7 +3089,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
       <div class="rm-pre-row"><span>Name</span><span>${aptEsc(apt.name)}</span></div>
       <div class="rm-pre-row"><span>Adresse</span><span>${aptEsc(apt.adresse||'—')}</span></div>
       <div class="rm-pre-row"><span>PLZ / Ort</span><span>${aptEsc(apt.plz_ort||'—')}</span></div>
-      <div class="rm-pre-row"><span>Fläche</span><span>${apt.flaeche_m2?apt.flaeche_m2+' m²':'—'}</span></div>
+      <div class="rm-pre-row"><span>Fläche</span><span>${apt.flaeche_m2?ccM2(apt.flaeche_m2)+' m²':'—'}</span></div>
       <div class="rm-pre-row"><span>Kaltmiete</span><span>${kaltFmt(kalt)}</span></div>
       <div class="rm-pre-row"><span>Gerichtsstand</span><span>${aptEsc(apt.gerichtsstand||'—')}</span></div>
       <div class="rm-pre-row"><span>Schlüssel</span><span>${aptEsc(schluessel)}</span></div>
@@ -3030,7 +3241,7 @@ function _aptBodyGewerbe(apt, p, sk, kalt, nk, kaution, profile = {}) {
         </div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete (während Festlaufzeit)</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <input class="rm-input" id="apt-gw-staffel-anfang" type="number" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <input class="rm-input" id="apt-gw-staffel-anfang" type="number" data-cc-num="2" step="0.01" value="${kalt||''}" placeholder="800,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
           <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
           <span style="font-size:11px;color:var(--cc-taupe);" id="apt-gw-staffel-anfang-ab">ab Mietbeginn</span>
         </div>
@@ -3650,7 +3861,7 @@ async function _aptGenericPdfAction(container, filename, btnEl, resetHtml) {
   // replaced the app page. The contract sheet (apartment OR parking) simply
   // stays open underneath with everything typed.
   try {
-    const pdf = await ccRenderPagesToPdf(container);
+    const pdf = await ccRenderPagesToPdf(container, { strict: true });   // Rentals: never a PDF with hidden text
     if (btnEl) btnEl.innerHTML = '<i class="ti ti-loader"></i> Opening PDF\u2026';
     await ccOpenPdf(pdf, filename);
   } finally {

@@ -9,10 +9,18 @@
 const kIsMobile = () => window.innerWidth <= 700;
 
 /* ── TAB SWITCH ─────────────────────────────────────────── */
+/* B18 (landlord app, phone): each tab keeps its own scroll position — the new tab
+   is laid out hidden, scrolled to its own place, then shown in the next frame, so
+   it never appears at the old tab's scroll position first and jumps (same as Rentals) */
+const _ccTabScroll = {};
+let _ccCurTab = null;
 function switchTab(tabName) {
   const mobile    = kIsMobile();
   const isLounge  = tabName === 'lounge';
   const isKitchen = tabName === 'kitchen';
+  const keepScroll = mobile && document.body.classList.contains('is-landlord');
+  const isChat     = t => t === 'lounge' || t === 'kitchen';   // chat tabs lock the page — nothing to remember
+  if (keepScroll && _ccCurTab && !isChat(_ccCurTab)) _ccTabScroll[_ccCurTab] = window.scrollY;
   // Persist active tab so page refresh restores it
   try { localStorage.setItem('cc_last_tab', tabName); } catch(e) {}
 
@@ -23,7 +31,9 @@ function switchTab(tabName) {
   // Lounge + kitchen need display:flex on mobile (column layout for chat viewport lock)
   // On desktop all tabs use display:block — the desktop grid handles its own layout
   const tabEl = document.getElementById('tab-' + tabName);
+  const hideFrame = keepScroll && !isLounge && !isKitchen && tabEl;
   if (tabEl) {
+    if (hideFrame) tabEl.style.visibility = 'hidden';
     tabEl.style.display = ((isLounge || isKitchen) && mobile) ? 'flex' : 'block';
   }
 
@@ -42,6 +52,10 @@ function switchTab(tabName) {
     document.body.style.height             = lockVp ? '100%' : '';
     document.documentElement.style.overflow= lockVp ? 'hidden' : '';
     document.body.style.overflow           = lockVp ? 'hidden' : '';
+    if (hideFrame) {
+      window.scrollTo(0, _ccTabScroll[tabName] || 0);
+      requestAnimationFrame(() => { tabEl.style.visibility = ''; });
+    }
   } else {
     const shell = document.getElementById('appShell');
     shell?.classList.remove('lounge-active', 'kitchen-active');
@@ -53,6 +67,8 @@ function switchTab(tabName) {
     // Restore scroll to top when leaving chat tabs — prevents blank white area
     window.scrollTo(0, 0);
   }
+
+  _ccCurTab = tabName;
 
   // Trigger tab load functions (defined in each tab module)
   // currentRoom is set by showApp for tenants; undefined for landlord (cleaning ignores it)

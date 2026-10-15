@@ -43,6 +43,9 @@ async function stBoot() {
     document.getElementById('appShell').style.display = 'block';
     const link = typeof stReadLink === 'function' ? stReadLink() : null;          // "Open NK-Abrechnung" from a tenant card
     if (link) stOpenLink(link); else stSwitchTab(ST.tab);
+    // B18: Dashboard + Casa Castel load in the background right away → their first visit
+    // shows the page at once instead of "Loading …"
+    if (typeof sdLoad === 'function' && !SD.loaded) setTimeout(() => { sdLoad().catch(() => {}); }, 0);
   } catch (e) {
     console.error('[settlements] boot failed:', e);
     document.getElementById('appShell').style.display = 'block';

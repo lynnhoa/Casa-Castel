@@ -173,7 +173,7 @@ const CSS = `
 .cc-ct .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
 .cc-ct .ftr__rule { border:none; border-top:0.6px solid ${RULE}; margin-bottom:7px; }
 .cc-ct .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; font-weight:400; color:${MUTED}; line-height:1; }
-.cc-ct .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:90px; overflow:hidden; }
+.cc-ct .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:110px; overflow:hidden; }
 .cc-ct .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400; color:${INK}; line-height:1.15; margin-bottom:28px; }
 .cc-ct .sec { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700; letter-spacing:0.13em; text-transform:uppercase; color:${LABEL}; margin-top:14px; padding-top:2px; padding-bottom:5px; border-bottom:0.7px solid ${RULE}; }
 .cc-ct .sec--lg { font-size:8.5px; margin-top:22px; }
@@ -258,7 +258,7 @@ function partOne(d) {
   if (d.mieterTelefon) b.push(K('Telefon', esc(d.mieterTelefon)));
   b.push(sec('Mietobjekt'), K('Adresse', esc([d.objektAdresse, d.objektPLZOrt].filter(Boolean).join(', '))), K('Bezeichnung', esc(d.zimmerName)),
     K('Zimmergröße', 'ca.\u00a0' + esc(d.zimmerFlaeche) + '\u00a0m²'), K('Mitgenutzte Räume', esc(d.gemeinschaftsraeume) || '—'),
-    K('Möblierung', 'Möbliert\u2002·\u2002Inventar siehe Anlage\u00a0A'));
+    K('Möblierung', d.inventar.length ? 'Möbliert\u2002·\u2002Inventar siehe Anlage\u00a0A' : 'Möbliert'));   // Oct 2026: Anlage A only when it is attached (Inventar entered)
   b.push(sec('Mietzeit'), K('Mietbeginn', esc(d.mietbeginn)));
   if (d.type === 'mietvertrag' && !d.befristet) {
     if (d.mindestJahre) b.push(K('Mindestlaufzeit', `${d.mindestJahre}\u00a0Jahr${d.mindestJahre > 1 ? 'e' : ''} ab Mietbeginn (bis ${d.mindestBis})`));
@@ -292,7 +292,7 @@ function partTwo(d) {
     + `<p class="note">Alle Zahlungen per Überweisung. Verwendungszweck: Casa Castel – ${esc(d.zimmerName)} – Miete Monat Jahr / Kaution.</p>` });
   const intro = d.pausch
     ? 'In der monatlichen Pauschalmiete sind sämtliche nachfolgenden Betriebskosten (§§\u00a01, 2 BetrKV) bereits enthalten. Eine gesonderte Umlage oder Nachforderung erfolgt nicht; die Auflistung dient der Transparenz.'
-    : 'Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Gesamtnutzfläche des Mieters (Zimmer + anteilige Gemeinschaftsfläche) im Verhältnis zur Gesamtnutzfläche aller Zimmer. Heizung und Warmwasser nach HeizkostenV.';
+    : 'Neben der Kaltmiete trägt der Mieter anteilig folgende Betriebskosten. Umlageschlüssel: Die Betriebskosten des Abrechnungszeitraums werden durch die Summe der von allen Mietern bewohnten Monate geteilt (Ein- und Auszugsmonat tageweise); der Mieter trägt diesen einheitlichen Betrag für jeden Monat seiner Mietzeit.';
   b.push(sec('Betriebskosten gem. §§\u00a01, 2 BetrKV', true), { html: `<p class="nk-intro">${intro}</p>` },
     { html: `<div class="nk-grid">${NK_ITEMS.map(i => `<div class="nk-item">${i}</div>`).join('')}<div class="nk-item nk-item--full">Hauswart / sonstige anfallende Betriebskosten i.\u202fs.\u202fv. §\u00a02 Nr.\u00a017 BetrKV</div></div>` },
     { html: '<p class="nk-intro nk-note">Winterdienst wird grundsätzlich vom Mieter erledigt. Unter Umständen wird dieser gelegentlich organisiert, sofern nicht erledigt, wird dieser in den Nebenkosten berücksichtigt.</p>' });
@@ -332,26 +332,26 @@ function partThree(d) {
       ? `Die monatliche Pauschalmiete beträgt ${eur(d.rent)}. Alle Nebenkosten (Strom, Wasser, Heizung, WLAN) sind in der Pauschale enthalten.`
       : `Die monatliche Kaltmiete beträgt ${eur(d.kalt)}, zuzüglich einer NK-Vorauszahlung von ${eur(d.nk)}.`)
     + pro + ' Die Miete ist jeweils spätestens bis zum dritten Werktag des Monats zu überweisen (§\u00a0556b BGB); bei Zahlungsverzug kann der Vermieter Verzugszinsen gemäß §\u00a0288 BGB geltend machen.');
-  C('4', 'Untervermietung', 'Eine Untervermietung oder sonstige Überlassung des Zimmers an Dritte ist nicht gestattet.');
+  C('4', 'Untervermietung', 'Untervermietung oder sonstige Überlassung an Dritte ist nur mit vorheriger Erlaubnis des Vermieters (Textform) gestattet. Ferienvermietung (z.\u202fB. über Online-Portale) ist nicht gestattet.');
   C('5', 'Schlüsselübergabe', `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung des Vermieters (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`);
   C('6', 'Kaution', (d.kautionBestehend
       ? `Die vom Mieter bereits geleistete Kaution${d.kaution ? ' von ' + eur(d.kaution) : ''} bleibt bestehen und sichert auch dieses Mietverhältnis; eine erneute Zahlung ist nicht erforderlich.`
       : `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kfLong} auf das oben genannte Konto.`)
-    + ' Der Vermieter legt die Kaution getrennt von seinem Vermögen auf einem Treuhandkonto an (§\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden zu 100\u00a0% von der Kaution abgezogen. Schäden in Gemeinschaftsbereichen werden anteilig auf alle Bewohner aufgeteilt. Der verbleibende Betrag wird nach Prüfung des Zustands bei Auszug zurückerstattet.');
-  C('7', 'Kleinreparaturen', 'Kleinreparaturen an Gegenständen, die dem häufigen Zugriff des Mieters unterliegen, trägt der Mieter bis 150\u00a0€ pro Einzelfall, höchstens jedoch 8\u00a0% der Jahresmiete pro Jahr. Übersteigen die Kosten einer einzelnen Reparatur 150\u00a0€, trägt der Mieter keinen Anteil.');
+    + ' Der Vermieter legt die Kaution getrennt von seinem Vermögen auf einem Treuhandkonto an (§\u00a0551 BGB). Vom Mieter selbstverschuldete Schäden werden zu 100\u00a0% von der Kaution abgezogen. Der verbleibende Betrag wird nach Prüfung des Zustands bei Auszug zurückerstattet.');
+  C('7', 'Kleinreparaturen', 'Kleinreparaturen an Gegenständen, die dem häufigen Zugriff des Mieters unterliegen, trägt der Mieter bis 150\u00a0€ pro Einzelfall, höchstens jedoch 8\u00a0% der Jahresmiete pro Jahr. Übersteigen die Kosten einer einzelnen Reparatur 150\u00a0€, trägt der Mieter keinen Anteil. Für solche Gegenstände in den Gemeinschaftsräumen gilt dasselbe; die Kosten werden zu gleichen Teilen auf die Mieter der vermieteten Zimmer verteilt.');
   C('8', 'Tierhaltung', 'Kleintiere ohne Belästigungspotenzial (Zierfische, Kleinnager) sind erlaubt. Alle weiteren Tiere bedürfen der vorherigen Zustimmung des Vermieters (Textform).');
-  C('9', 'Betreten des Mietobjekts', 'Das Zimmer wird nur nach vorheriger Ankündigung (mindestens 2\u00a0Werktage in Textform) betreten, etwa zur Besichtigung bei Verkauf oder Weitervermietung oder für notwendige Instandhaltungsarbeiten. Bei Gefahr im Verzug ist das Betreten jederzeit ohne Vorankündigung zulässig.');
-  C('10', 'Rückgabe bei Vertragsende', 'Das Zimmer wird möbliert und in vertragsgemäßem Zustand übergeben; ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Bei Vertragsende ist das Zimmer vollständig geräumt, gereinigt und in vertragsgemäßem Zustand zurückzugeben; alle Schlüssel sind auszuhändigen. Bauliche Änderungen sind zurückzubauen.');
-  C('11', 'Aufrechnung &amp; Zurückbehaltungsrecht', 'Der Mieter kann gegen Forderungen des Vermieters nur mit unbestrittenen oder rechtskräftig festgestellten Gegenforderungen aufrechnen. Ein Zurückbehaltungsrecht steht dem Mieter nur wegen Mängeln nach §§\u00a0536\u00a0ff. BGB und nach mindestens einmonatiger vorheriger Ankündigung in Textform zu.');
+  C('9', 'Betreten des Mietobjekts', 'Der Vermieter darf das Zimmer nach Ankündigung von mindestens 2\u00a0Werktagen (Textform) aus sachlichem Grund betreten, z.\u202fB. für Reparaturen, zur Prüfung gemeldeter Mängel oder für Besichtigungen mit Kauf- oder Mietinteressenten; bei Gefahr im Verzug jederzeit.');
+  C('10', 'Rückgabe bei Vertragsende', 'Das Zimmer wird möbliert und in vertragsgemäßem Zustand übergeben; ein Übergabeprotokoll wird bei Ein- und Auszug erstellt und von beiden Parteien unterzeichnet. Bei Vertragsende ist das Zimmer vollständig geräumt, gereinigt und in vertragsgemäßem Zustand zurückzugeben; alle Schlüssel sind auszuhändigen. Bauliche Veränderungen bedürfen der vorherigen Zustimmung des Vermieters (Textform) und sind bei Auszug zurückzubauen.');
+  C('11', 'Aufrechnung &amp; Zurückbehaltungsrecht', 'Gegen die Miete kann der Mieter nur mit unbestrittenen oder rechtskräftig festgestellten Forderungen aufrechnen. Mit Forderungen nach \u00a7\u00a7\u00a0536a, 539 BGB oder wegen zu viel gezahlter Miete kann er aufrechnen oder die Miete zurückbehalten, wenn er dies einen Monat vor Fälligkeit in Textform ankündigt.');
   C('12', 'Haftpflichtversicherung', 'Der Mieter ist verpflichtet, für die Dauer des Mietverhältnisses eine gültige private Haftpflichtversicherung zu unterhalten und dem Vermieter auf Verlangen nachzuweisen.');
-  C('13', 'Hausordnung', 'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00 bis 07:00\u00a0Uhr.');
+  C('13', 'Hausordnung', 'Rauchen ist im gesamten Gebäude nicht gestattet. Nachtruhe gilt von 22:00 bis 07:00\u00a0Uhr. Der Mieter prüft die Rauchwarnmelder regelmäßig und meldet Störungen unverzüglich.');
   C('14', 'Datenschutz', 'Personenbezogene Daten werden ausschließlich zur Vertragsabwicklung verarbeitet (Art.\u00a06 Abs.\u00a01 lit.\u00a0b DSGVO), nur weitergegeben, soweit dies gesetzlich erforderlich ist, und nach Ablauf der gesetzlichen Aufbewahrungsfristen gelöscht.');
   C('15', 'Sonstige Vereinbarungen', `Mündliche Nebenabreden bestehen nicht. Änderungen und Ergänzungen bedürfen der Schriftform. Sollten einzelne Bestimmungen unwirksam sein, bleibt der Vertrag im Übrigen wirksam. Es gilt deutsches Recht. Gerichtsstand ist ${esc(d.gerichtsstand)}.`);
   if (d.energieklasse || d.endenergiebedarf || d.energieausweisart)
     C('16', 'Energieausweis (§\u00a016a GEG)', `Der Vermieter hat dem Mieter vor Vertragsschluss den Energieausweis vorgelegt. Energieeffizienzklasse: ${esc(d.energieklasse) || '—'}. Endenergiebedarf: ${d.endenergiebedarf ? esc(d.endenergiebedarf) : '—'}. Art des Ausweises: ${esc(d.energieausweisart) || '—'}.`);
 
   const sigCol = (role, name) => `<div class="sig-col">
-      ${d.sigDate ? `<div class="sig-prefill">${esc(d.unterschriftOrt)}, ${d.sigDate}</div><div class="sig-write-gap"></div>`
+      ${d.sigDate ? `<div class="sig-prefill">${[esc(d.unterschriftOrt), d.sigDate].filter(Boolean).join(', ')}</div><div class="sig-write-gap"></div>`
                   : '<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>'}
       <hr class="sig-line"/><div class="sig-role">${role}</div><div class="sig-name">${esc(name)}</div></div>`;
   b.push({ html: `<div class="sigwrap"><div class="comment-label">Sonstige Anmerkungen</div>${'<div class="comment-line"></div>'.repeat(5)}

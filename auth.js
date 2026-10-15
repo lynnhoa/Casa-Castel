@@ -151,7 +151,12 @@ async function doTenantLogin() {
       if (data && data.body) {
         const h = await _hashPassword(pass);
         valid = (h === data.body);
-        if (valid) localStorage.setItem('cc_pwh', h);   // push: this phone's notifications follow the room password
+        if (valid) {
+          localStorage.setItem('cc_pwh', h);   // push: this phone's notifications follow the room password
+          // Oct 2026: the landlord sees "Logged in ✓" by itself (room_seen checks the password; no SQL yet → nothing happens)
+          try { sbL.rpc('room_seen', { p_room: room, p_pwh: h }).then(() => {}, () => {}); } catch (e) {}
+          try { localStorage.setItem('cc_seen_day', new Date().toLocaleDateString('sv-SE') + '|' + room); } catch (e) {}
+        }
       } else {
         noPassword = true;
       }

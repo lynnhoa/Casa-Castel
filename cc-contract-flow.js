@@ -132,7 +132,7 @@ const CCF_RENTALS = {
   openRenew(rec, renew) {
     if (!rec.apartment_id || typeof _aptOpenContract !== 'function') return;
     if (typeof switchTab === 'function') switchTab('apartments');
-    setTimeout(() => _aptOpenContract(renew.ct, rec.apartment_id, { ...renew, aptId: rec.apartment_id, mode: 'kalt_nk' }), 80);
+    setTimeout(() => _aptOpenContract(renew.ct, rec.apartment_id, { ...renew, aptId: rec.apartment_id, mode: renew.ct === 'kurzzeit' ? (renew.mode || 'kalt_nk') : 'kalt_nk' }), 80);
   },
   renewSwitch(type) {
     if (typeof _aptContractRenew === 'undefined' || !_aptContractRenew || typeof _aptOpenContract !== 'function') return;
@@ -370,8 +370,9 @@ function ccfPrefillFromTenancy(o, rec) {
   if (box && c.mode && c.total != null) {
     const pa = c.mode === 'pauschal';
     if (seg) seg.dataset.mode = pa ? 'pauschal' : 'kalt_nk';
-    if (kIn) kIn.value = ccfNumFmt(pa ? c.total - (Number(c.nkIncl) || 0) : c.kalt);
-    if (nIn) nIn.value = ccfNumFmt(pa ? (Number(c.nkIncl) || 0) : c.nk);
+    const ptot = box.dataset.ptotal === '1';
+    if (kIn) kIn.value = ccfNumFmt(pa ? (ptot ? c.total : c.total - (Number(c.nkIncl) || 0)) : c.kalt);
+    if (nIn) { nIn.value = ccfNumFmt(pa ? (Number(c.nkIncl) || 0) : c.nk); delete nIn.dataset.auto; }
     if (hint) hint.textContent = 'Prefilled from ' + ccfName(rec) + '’s ' + (c.name || 'contract') + ' — change it only if this contract differs.';
     box.dataset.filled = '1'; changed();
   }
@@ -408,7 +409,12 @@ function ccfSetKaution(id, amount, hintText) {
 /* ── GENERATOR: MIETE BLOCK ────────────────────────────────── */
 function ccfMieteHTML(o) {
   const mode = o.mode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
-  return `<div class="ccf-miete" id="ccf-miete">
+  /* o.pauschTotal (Rentals Kurzzeit, Oct 2026): in Pauschal the first field is the Pauschalmiete itself and
+     "davon NK" fills in by itself = Pauschalmiete − o.nkRef (the normal cold rent, min. 0) until you type it.
+     o.pre = { pauschal:{a,b}, kalt_nk:{a,b} }: the values a switch to the other type starts with. Casa: unchanged. */
+  const pt = o.pauschTotal ? ' data-ptotal="1"' + (o.nkRef != null ? ' data-kref="' + (Number(o.nkRef) || 0) + '"' : '')
+    + (o.pre ? ' data-pre="' + ccfEsc(JSON.stringify(o.pre)) + '"' : '') : '';
+  return `<div class="ccf-miete" id="ccf-miete"${pt}>
     <div class="rm-fields-title">Miete</div>
     <div class="ccf-seg" id="rc-mode" data-mode="${mode}" role="group" aria-label="Nebenkosten">
       <button type="button" data-v="pauschal">Pauschal</button><button type="button" data-v="kalt_nk">Kalt + NK</button>
@@ -426,26 +432,54 @@ function ccfMieteHTML(o) {
 function ccfMieteGet() {
   const box = document.getElementById('ccf-miete'); if (!box) return null;
   const mode = document.getElementById('rc-mode')?.dataset.mode === 'kalt_nk' ? 'kalt_nk' : 'pauschal';
-  const kalt = ccfNum(document.getElementById('rc-kalt')?.value) || 0;
-  const nk   = ccfNum(document.getElementById('rc-nk')?.value) || 0;
-  return { mode, kalt, nk, total: Math.round((kalt + nk) * 100) / 100 };
+  const a  = ccfNum(document.getElementById('rc-kalt')?.value) || 0;
+  const b  = ccfNum(document.getElementById('rc-nk')?.value) || 0;
+  const r2 = v => Math.round(v * 100) / 100;
+  if (mode === 'pauschal' && box.dataset.ptotal === '1') {          // a = Pauschalmiete, b = davon NK
+    const nk = Math.min(b, a);
+    return { mode, kalt: r2(a - nk), nk: r2(nk), total: r2(a) };
+  }
+  return { mode, kalt: a, nk: b, total: r2(a + b) };
 }
 function ccfMieteRefresh() {
   const m = ccfMieteGet(); if (!m) return;
   const w = document.getElementById('rc-warm'), l = document.getElementById('rc-warm-lbl');
-  if (l) l.textContent = m.mode === 'pauschal' ? 'Pauschalmiete' : 'Warmmiete';
+  const pt = document.getElementById('ccf-miete')?.dataset.ptotal === '1';
+  const pa = m.mode === 'pauschal';
+  if (l) l.textContent = pa ? (pt ? 'Miete ohne NK' : 'Pauschalmiete') : 'Warmmiete';
   // Pauschal: the second field is the NK part inside the Pauschale (0 = no NK) – used by the NK-Abrechnung
   const lk = document.querySelector('label[for="rc-kalt"]'), ln = document.querySelector('label[for="rc-nk"]');
-  if (lk) lk.textContent = m.mode === 'pauschal' ? 'Miete ohne NK €' : 'Kaltmiete €';
-  if (ln) ln.textContent = m.mode === 'pauschal' ? 'davon NK €' : 'Nebenkosten €';
-  if (w) w.textContent = ccfEur(m.total);
+  if (lk) lk.textContent = pa ? (pt ? 'Pauschalmiete €' : 'Miete ohne NK €') : 'Kaltmiete €';
+  if (ln) ln.textContent = pa ? 'davon NK €' : (pt ? 'NK-Vorauszahlung €' : 'Nebenkosten €');
+  if (w) w.textContent = ccfEur(pa && pt ? m.kalt : m.total);
 }
 let _ccfMieteOnChange = null;
 function ccfMieteInit(onChange) {
   _ccfMieteOnChange = onChange || null;
   const seg = document.getElementById('rc-mode');
+  const box = document.getElementById('ccf-miete'), pt = !!box && box.dataset.ptotal === '1';
+  const kEl = document.getElementById('rc-kalt'), nEl = document.getElementById('rc-nk');
+  // Pauschalmiete first: "davon NK" follows the Pauschalmiete (− normal cold rent) until you type it yourself
+  const autoNk = () => {
+    if (!pt || !nEl || !kEl || seg?.dataset.mode !== 'pauschal' || nEl.dataset.auto !== '1' || box.dataset.kref === undefined) return;
+    const K = Number(box.dataset.kref) || 0, tot = ccfNum(kEl.value) || 0;
+    nEl.value = ccfNumFmt(K > 0 ? Math.max(0, Math.round((tot - K) * 100) / 100) : 0);
+  };
+  if (pt && nEl && seg?.dataset.mode === 'pauschal' && box.dataset.kref !== undefined) nEl.dataset.auto = '1';
+  // switching type: each type keeps its own values (first time: the card's values for that type)
+  const stash = {};
+  const swap = (from, to) => {
+    if (!pt || !kEl || !nEl || from === to) return;
+    stash[from] = { a: kEl.value, b: nEl.value, auto: nEl.dataset.auto === '1' };
+    let v = stash[to];
+    if (!v) { let pre = null; try { pre = JSON.parse(box.dataset.pre || '{}')[to]; } catch (e) {}
+      v = pre ? { a: ccfNumFmt(pre.a), b: ccfNumFmt(pre.b), auto: to === 'pauschal' } : { a: kEl.value, b: nEl.value, auto: to === 'pauschal' }; }
+    kEl.value = v.a; nEl.value = v.b;
+    if (v.auto && box.dataset.kref !== undefined) nEl.dataset.auto = '1'; else delete nEl.dataset.auto;
+  };
   seg?.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-    seg.dataset.mode = b.dataset.v; ccfMieteRefresh(); if (onChange) onChange();
+    swap(seg.dataset.mode, b.dataset.v);
+    seg.dataset.mode = b.dataset.v; autoNk(); ccfMieteRefresh(); if (onChange) onChange();
   }));
   // A click on the switch itself (the 2-hour draft restores modes this way) toggles it
   seg?.addEventListener('click', e => {
@@ -454,7 +488,9 @@ function ccfMieteInit(onChange) {
   });
   ['rc-kalt', 'rc-nk'].forEach(id => {
     const el = document.getElementById(id); if (!el) return;
-    el.addEventListener('input', () => { ccfMieteRefresh(); if (onChange) onChange(); });
+    el.addEventListener('input', () => {
+      if (id === 'rc-kalt') autoNk(); else delete el.dataset.auto;      // typed "davon NK" stays yours
+      ccfMieteRefresh(); if (onChange) onChange(); });
     el.addEventListener('blur', () => { const n = ccfNum(el.value); if (n != null) el.value = ccfNumFmt(n); ccfMieteRefresh(); });
   });
   ccfMieteRefresh();
@@ -500,7 +536,7 @@ function ccfSetupGenerator(cfg) {
     if (cfg.miete && /^(Rent|Miete|Kaltmiete|Nebenkosten|NK|Gesamtmiete|Warmmiete)$/i.test(k)) row.style.display = 'none';
   });
   if (cfg.miete) {
-    const html = ccfMieteHTML({ mode: cfg.miete.mode || 'kalt_nk', kalt: cfg.miete.kalt, nk: cfg.miete.nk, note: cfg.miete.note });
+    const html = ccfMieteHTML({ ...cfg.miete, mode: cfg.miete.mode || 'kalt_nk' });
     const anchor = cfg.miete.anchor && body.querySelector(cfg.miete.anchor);
     if (anchor) anchor.insertAdjacentHTML('beforebegin', html); else body.insertAdjacentHTML('beforeend', html);
     if (cfg.miete.fixedMode) { const sg = document.getElementById('rc-mode'); if (sg) sg.style.display = 'none'; }
@@ -966,7 +1002,8 @@ async function ccfApproveRun() {
     if (!A.blob && p.blob) A.blob = p.blob;
     if (!A.blob) {
       if (p.photos && typeof ccUbAddPhotoPages === 'function') await ccUbAddPhotoPages(p.photos.key, p.container, p.photos.meta || {});
-      const pdf = await ccRenderPagesToPdf(p.container);
+      // Rentals units (apt: / pk:): strict — never file a PDF with text that does not show
+      const pdf = await ccRenderPagesToPdf(p.container, { strict: /^(apt|pk):/.test(String(p.room || p.unit || '')) });
       A.blob = pdf.output('blob');
     }
     step = 'previous tenant';

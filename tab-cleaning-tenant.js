@@ -556,7 +556,7 @@ async function loadHouseCleaning(room) {
    first: Done / Missed / Away / Skipped (vacant) / This week.
    Weeks older than 12 are deleted by the management app (_hcTrimHistory). */
 const HC_HISTORY_WEEKS = 12;   // current week included
-const HC_HISTORY_FROM  = 40;   // history starts with the week 12.10 – 18.10.2026 (earlier weeks were tests)
+const HC_HISTORY_FROM  = 39;   // history starts with the week 05.10 – 11.10.2026 (first real week; earlier weeks were tests)
 function hcOpenHistory()  { document.getElementById('hc-modal-history')?.classList.add('open'); _hcPopulateHistory(); }
 function hcCloseHistory() { document.getElementById('hc-modal-history')?.classList.remove('open'); }
 async function _hcPopulateHistory() {

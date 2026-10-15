@@ -54,14 +54,14 @@ window.renderIncome = function () {
   const cards = model.map(g => {
     const src = g.p.id === CASA_PROP_ID ? 'from Casa Castel' : (g.rows.some(r => r.s.link) ? 'from Rentals' : 'plan value');
     // #11: "Änderung" only for a real change (Einzug, Auszug, new rent, Staffel, NK) — not for info notes
-    const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Tenant change|Newly let|Move-out|Staffel|NK changed|Renewal|New rent)/.test(n)));
+    const changed = g.rows.some(r => r.s.changed !== undefined ? r.s.changed : r.s.notes.some(n => /^(Tenant change|Newly let|Move-out|Staffel|Mieterhöhung|NK changed|Renewal|New rent)/.test(n)));
     const vis = r => ctlVisibleCheck(g.p.name, r.u.name, r.s.check);      // × in Setup hides a hint here too
     const warned = g.rows.some(r => vis(r) || (!r.soll && r.ist));
     const body = g.rows.map(r => {
       if (r.part) {                                          // one line per tenant (G1)
         const pt = r.part;
         return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: null, soll: r.soll, ist: r.ist,
-                       sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'Pauschal' : cxEur(pt.k) + ' Kalt + ' + cxEur(pt.nk) + ' NK'),
+                       sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'Pauschal' + (pt.nk ? ' · davon NK ' + cxEur(pt.nk) : '') : cxEur(pt.k) + ' Kalt + ' + cxEur(pt.nk) + ' NK'),
                        pills: cxPill('beige', 'partial'), notes: r.first ? r.s.notes : [], emptyText: 'empty', allowEmpty: true,
                        warn: r.first ? vis(r) : null });
       }
@@ -69,7 +69,7 @@ window.renderIncome = function () {
       const sub = r.soll
         ? (r.s.parts && r.s.parts.length > 1
             ? r.s.parts.map(pt => pt.from + '.–' + pt.to + '.: ' + cxEur(pt.amount)).join(' · ')
-            : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' Pauschal'
+            : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' Pauschal' + (r.s.nk ? ' · davon NK ' + cxEur(r.s.nk) : '')
               : (_cxIsParking(r.u) && !r.s.nk ? 'Rent ' + cxEur(r.s.k) : cxEur(r.s.k) + ' Kalt + ' + cxEur(r.s.nk) + ' NK')))
         : (r.s.free ? 'Rent 0,00\u202f€' : r.s.link ? 'not let' : 'no plan value');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'partial' : 'partial ' + r.s.days + '/' + r.s.N) : '';
@@ -86,11 +86,11 @@ window.renderIncome = function () {
                     body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, 1) });   // one extra pill at most
   }).join('');
 
-  host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
+  cxPaint(host, '<div class="cx-page">' + cxMonthBar() +
     cxSummary({ label: 'Rent received', done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
                 confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income'), note: _cxAbrNote(1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · from the tenant tabs</span><span class="cx-lbl">Ist</span></div>' +
-    cards + '</div>';
+    cards + '</div>');   // B18: only what changed
 
   cxWire(host, {
     render: () => window.renderIncome(),
@@ -183,7 +183,7 @@ async function _cxIncSave(e, ist) {
 }
 
 /* B16: one amount per unit is split in the ratio of the Soll (Kalt : NK) —
-   a short payment is short on both, not only on the Kaltmiete. Pauschal: all Kalt. */
+   a short payment is short on both, not only on the Kaltmiete. Pauschal: rent : davon NK (Oct 2026). */
 function _cxIncNkShare(s, ist) {
   if (!s || !s.soll || !s.nk) return 0;
   return Math.max(0, cxR(ist * s.nk / s.soll));

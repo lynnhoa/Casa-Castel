@@ -245,6 +245,58 @@ function ccRowHTML(o) {
     <i class="ti ti-chevron-right cc-grow-ch" aria-hidden="true"></i></button>`;
 }
 
+/* ── KEEP THE PAGE WHERE IT WAS (Oct 2026) ─────────────────────────────────
+   On the iPhone the keyboard of a sheet / pop-up scrolls the page behind it and does not
+   scroll back. When the first sheet opens we remember the card you tapped and where it sat
+   on the screen; when the last sheet closes it is put back exactly there — right away, and
+   once more after the keyboard has closed. Anchored on the card (found again by its id), so
+   it also holds when the card was redrawn after a save. Your own scrolling is never fought. */
+let _ccLastTap = null, _ccAnchor = null;
+document.addEventListener('pointerdown', e => { _ccLastTap = e.target; }, true);
+const _CC_ANCHOR_CARDS = '.tn-card, .apt-card, .pk-card, .rnt-card, .rc, [data-cc-anchor]';
+const _CC_OPEN_SHEETS  = '.tn-overlay.open, .rm-overlay.open';
+function _ccCardSel(card) {
+  if (!card) return null;
+  const q = v => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  if (card.id) return '[id="' + q(card.id) + '"]';
+  if (card.dataset && card.dataset.id) return '.' + card.classList[0] + '[data-id="' + q(card.dataset.id) + '"]';
+  return null;
+}
+function ccAnchorSet() {
+  if (document.querySelector(_CC_OPEN_SHEETS)) return;             // a sheet is already open → keep the first anchor
+  const t = _ccLastTap && _ccLastTap.isConnected ? _ccLastTap : null;
+  const card = t && t.closest ? t.closest(_CC_ANCHOR_CARDS) : null;
+  const sel = _ccCardSel(card);
+  _ccAnchor = { sel, top: card ? card.getBoundingClientRect().top : null, y: window.scrollY };
+}
+function ccAnchorRestore() {
+  const a = _ccAnchor; if (!a) return;
+  if (document.querySelector(_CC_OPEN_SHEETS)) return;             // another sheet is still open → later
+  _ccAnchor = null;
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  window.addEventListener('touchstart', stop, { once: true, passive: true });
+  window.addEventListener('wheel', stop, { once: true, passive: true });
+  const fix = () => {
+    if (stopped) return;
+    const c = a.sel ? document.querySelector(a.sel) : null;
+    if (c && a.top != null) {
+      const dy = c.getBoundingClientRect().top - a.top;
+      if (Math.abs(dy) > 1) window.scrollBy(0, dy);
+    } else if (Math.abs(window.scrollY - a.y) > 1) window.scrollTo(0, a.y);
+  };
+  queueMicrotask(fix);                                             // after a redraw by the Save
+  requestAnimationFrame(fix);
+  [350, 700].forEach(ms => setTimeout(fix, ms));                   // after the keyboard has closed
+  const vv = window.visualViewport;
+  if (vv) {
+    const onVv = () => setTimeout(fix, 60);
+    vv.addEventListener('resize', onVv);
+    setTimeout(() => vv.removeEventListener('resize', onVv), 1200);
+  }
+  setTimeout(() => { window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }, 1300);
+}
+
 let _ccSheetCur = null;   // { title, kicker, build }
 function _ccSheetEl() {
   let el = document.getElementById('ccSheetModal');
@@ -263,6 +315,7 @@ function _ccSheetEl() {
 }
 function ccSheetOpen(o) {
   const el = _ccSheetEl();
+  if (!el.classList.contains('open')) ccAnchorSet();
   _ccSheetCur = o;
   document.getElementById('ccSheetTitle').textContent = o.title || '';
   document.getElementById('ccSheetSub').textContent = o.kicker || '';
@@ -279,6 +332,7 @@ function ccSheetClose() {
   _ccSheetCur = null;
   document.getElementById('ccSheetBody').innerHTML = '';
   if (!document.querySelector('.tn-overlay.open')) document.body.style.overflow = '';
+  ccAnchorRestore();
 }
 /* After a card redraw: the open sheet shows the fresh data too — unless you are typing in it */
 function ccSheetRefresh() {
@@ -322,3 +376,128 @@ function _ccSheetTidy(body) {
 `;
   document.head.appendChild(s);
 })();
+
+/* ── IN-APP DIALOG for apps without utils.js (Rentals) — same look and code as utils.js.
+   Casa Castel keeps its own copy from utils.js (loaded first). ── */
+if (typeof window.ccDialog !== 'function') {
+window._ccDlgCss = function () {
+  if (document.getElementById('cc-dlg-css')) return;
+  const st = document.createElement('style'); st.id = 'cc-dlg-css';
+  st.textContent = `
+.cc-dlg-ov { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center;
+  padding:24px; background:rgba(30,27,24,.35); -webkit-tap-highlight-color:transparent; }
+.cc-dlg { background:var(--cc-white,#FDFCFA); border-radius:var(--cc-r-lg,12px); padding:24px 20px 18px;
+  width:100%; max-width:320px; box-shadow:0 10px 40px rgba(30,27,24,.18); font-family:'Inter',system-ui,sans-serif;
+  animation:ccDlgPop .2s cubic-bezier(.32,.72,0,1); }
+@keyframes ccDlgPop { from{transform:scale(.94);opacity:0} to{transform:scale(1);opacity:1} }
+.cc-dlg__icon { font-size:26px; color:var(--cc-gold,#B8956A); margin-bottom:10px; }
+.cc-dlg--danger .cc-dlg__icon { color:#C4705A; }
+.cc-dlg__title { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:400;
+  color:var(--cc-ink,#1E1B18); margin:0 0 6px; }
+.cc-dlg__body { font-size:13px; color:var(--cc-taupe,#9A8E7E); line-height:1.55; margin:0 0 18px; }
+.cc-dlg__body strong { color:var(--cc-charcoal,#3A3530); font-weight:500; }
+.cc-dlg__btns { display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+.cc-dlg__btn { height:36px; padding:0 14px; border-radius:18px; font:inherit; font-size:12px; font-weight:500;
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer; border:.5px solid var(--cc-rule,#E0DAD0);
+  background:var(--cc-white,#FDFCFA); color:var(--cc-taupe,#9A8E7E); }
+.cc-dlg__btn:active { opacity:.75; }
+.cc-dlg__btn--primary { background:var(--cc-ink,#1E1B18); border-color:var(--cc-ink,#1E1B18); color:var(--cc-white,#FDFCFA); }
+.cc-dlg__btn--danger  { background:none; color:#A32D2D; border-color:#F09595; }
+.cc-dlg__pw { display:flex; align-items:center; gap:10px; margin:4px 0 12px; padding:12px 12px 12px 14px;
+  background:var(--cc-surface,#EDE8E0); border-radius:var(--cc-r-md,8px); }
+.cc-dlg__pwtxt { flex:1; font-size:19px; letter-spacing:.04em; color:var(--cc-ink,#1E1B18);
+  font-variant-numeric:tabular-nums; user-select:all; -webkit-user-select:all; word-break:break-all; }
+.cc-dlg__copy { flex-shrink:0; height:34px; padding:0 11px; border-radius:17px; border:.5px solid var(--cc-rule,#E0DAD0);
+  background:var(--cc-white,#FDFCFA); color:var(--cc-taupe,#9A8E7E); font:inherit; font-size:11px; font-weight:500;
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
+.cc-dlg__copy i { font-size:15px; }
+.cc-dlg__copy.is-done { background:#EAF3DE; border-color:#97C459; color:#27500A; }`;
+  document.head.appendChild(st);
+}
+window.ccDialog = function (opts) {
+  _ccDlgCss();
+  const o = opts || {};
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'cc-dlg-ov';
+    const acts = (o.actions && o.actions.length) ? o.actions : [{ label: 'OK', primary: true, value: true }];
+    ov.innerHTML = `<div class="cc-dlg${o.tone === 'danger' ? ' cc-dlg--danger' : ''}" role="dialog" aria-modal="true">
+      ${o.icon ? `<div class="cc-dlg__icon"><i class="ti ${o.icon}" aria-hidden="true"></i></div>` : ''}
+      <p class="cc-dlg__title">${o.title || ''}</p>
+      ${o.body ? `<div class="cc-dlg__body">${o.body}</div>` : ''}
+      <div class="cc-dlg__btns">${acts.map((a, i) =>
+        `<button type="button" class="cc-dlg__btn${a.primary ? ' cc-dlg__btn--primary' : ''}${a.danger ? ' cc-dlg__btn--danger' : ''}" data-i="${i}">${a.icon ? `<i class="ti ${a.icon}" aria-hidden="true"></i>` : ''}${a.label}</button>`).join('')}</div>
+    </div>`;
+    const close = v => { ov.remove(); resolve(v); };
+    ov.addEventListener('click', e => { if (e.target === ov && !o.modal) close(null); });
+    ov.querySelectorAll('.cc-dlg__btn').forEach(b => b.addEventListener('click', () => {
+      const a = acts[+b.dataset.i]; close(a.value === undefined ? null : a.value);
+    }));
+    document.body.appendChild(ov);
+    if (typeof o.onOpen === 'function') o.onOpen(ov);
+  });
+};
+}
+
+/* ── KEEP PLACE (Oct 2026) ─────────────────────────────────────
+   A card that closes (or a list that redraws) keeps its header exactly where it is on screen.
+   Without this the page gets shorter, the phone snaps back and the header jumps (lower cards).
+   mutate() does the change (class toggle or redraw) · find() returns the header afterwards.
+   A spacer at the end fills the missing height and shrinks away as soon as you scroll up.   */
+function ccKeepPlace(el, mutate, find) {
+  if (typeof mutate !== 'function') return;
+  if (!el || !el.isConnected) return mutate();
+  const before = el.getBoundingClientRect().top;
+  const res = mutate();
+  const now = (typeof find === 'function' ? find() : el) || null;
+  if (!now || !now.isConnected) return res;
+  const shift = now.getBoundingClientRect().top - before;          // > 0 → the page was pulled back
+  if (Math.abs(shift) < 1) return res;
+  let sp = document.getElementById('ccEndSpace');
+  if (!sp) { sp = document.createElement('div'); sp.id = 'ccEndSpace'; sp.setAttribute('aria-hidden', 'true'); sp.style.cssText = 'height:0;pointer-events:none;'; document.body.appendChild(sp); }
+  const target = Math.max(0, window.scrollY + shift);
+  const need = Math.ceil(target + window.innerHeight - document.documentElement.scrollHeight);
+  if (need > 0) sp.style.height = ((parseFloat(sp.style.height) || 0) + need) + 'px';
+  try { window.scrollTo({ top: target, behavior: 'instant' }); } catch (e) { window.scrollTo(0, target); }
+  if (need > 0) _ccGlideToEnd(); else _ccEndSpaceWatch();   // Oct 2026 (B): at the end of the list the page then glides down — no empty space left
+  return res;
+}
+/* The page glides (~0.35 s) from the kept place to its natural end; the spacer shrinks with it.
+   A touch / wheel during the glide stops it (then the spacer shrinks as you scroll).          */
+function _ccGlideToEnd() {
+  const sp = document.getElementById('ccEndSpace'); if (!sp) return;
+  const from = window.scrollY, spH = parseFloat(sp.style.height) || 0;
+  const content = document.documentElement.scrollHeight - spH;              // the page without the spacer
+  const to = Math.max(0, Math.min(from, content - window.innerHeight));
+  if (from - to < 1) { sp.style.height = '0px'; return; }
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  window.addEventListener('touchstart', stop, { once: true, passive: true });
+  window.addEventListener('wheel', stop, { once: true, passive: true });
+  const t0 = performance.now(), dur = Math.min(550, 280 + (from - to) * 0.5), ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = now => {
+    if (stopped) { _ccEndSpaceWatch(); return; }
+    const k = Math.min(1, (now - t0) / dur), y = from + (to - from) * ease(k);
+    try { window.scrollTo({ top: y, behavior: 'instant' }); } catch (e) { window.scrollTo(0, y); }
+    sp.style.height = Math.max(0, Math.ceil(y + window.innerHeight - content)) + 'px';
+    if (k < 1) requestAnimationFrame(step);
+    else { sp.style.height = '0px'; window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }
+  };
+  requestAnimationFrame(step);
+}
+let _ccEndWatching = false;
+function _ccEndSpaceWatch() {
+  if (_ccEndWatching) return;
+  _ccEndWatching = true;
+  const trim = () => {
+    const sp = document.getElementById('ccEndSpace'), h = sp ? (parseFloat(sp.style.height) || 0) : 0;
+    if (!h) return stop();
+    const content = document.documentElement.scrollHeight - h;     // the page without the spacer
+    const need = Math.max(0, Math.ceil(window.scrollY + window.innerHeight - content));
+    if (need < h) sp.style.height = need + 'px';
+    if (!need) stop();
+  };
+  const stop = () => { window.removeEventListener('scroll', trim); window.removeEventListener('resize', trim); _ccEndWatching = false; };
+  window.addEventListener('scroll', trim, { passive: true });
+  window.addEventListener('resize', trim, { passive: true });
+}

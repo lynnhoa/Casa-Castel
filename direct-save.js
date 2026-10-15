@@ -213,6 +213,39 @@ function ccSwapCard(card, html, openClass) {
   return nc;
 }
 
+/* B18: write HTML into a box only when it is really different from what is
+   already there — a reload with the same data changes nothing on screen (no
+   blink, photos are not reloaded). Something else changed the box in between
+   (e.g. a chat message appended) → it is written again. true = written. */
+function ccSetHTML(el, html) {
+  if (!el) return false;
+  if (el._ccHtml === html && el._ccKids === el.childElementCount) return false;
+  el.innerHTML = html;
+  el._ccHtml = html;
+  el._ccKids = el.childElementCount;
+  return true;
+}
+
+/* ── KEEP OPEN FORMS ACROSS A REDRAW (B26, Oct 2026) ─────────────
+   A card is often redrawn from the saved data (a save in another section, a toggle, a refresh).
+   Sections open in edit mode would lose everything typed. ccKeepForms takes those live elements
+   out of the old card — with the typing, the dirty Save, every field state; ccPutForms puts each
+   back in place of its fresh copy (same id) in the new card. skip(el) = the section just saved or
+   cancelled: that one is redrawn fresh, as before. */
+function ccKeepForms(root, selector, skip) {
+  if (!root) return [];
+  return [...root.querySelectorAll(selector)].filter(el => el.id && !(typeof skip === 'function' && skip(el)));
+}
+function ccPutForms(root, kept) {
+  if (!root || !kept || !kept.length) return 0;
+  let n = 0;
+  kept.forEach(old => {
+    const fresh = root.querySelector('[id="' + String(old.id).replace(/"/g, '\\"') + '"]');
+    if (fresh && fresh !== old) { fresh.replaceWith(old); n++; }
+  });
+  return n;
+}
+
 function ccStableJSON(v) {
   const norm = x => {
     if (Array.isArray(x)) {

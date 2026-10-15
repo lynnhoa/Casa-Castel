@@ -19,22 +19,14 @@
 document.getElementById('tab-parking').innerHTML = `
 
   <div class="rp-hdr">
-    <h1 class="rp-title">Parking</h1>
+    <h1 class="cc-h1">Parking</h1>
     <button class="rp-add-btn" id="pkAddBtn">
       <i class="ti ti-plus"></i> Add
     </button>
   </div>
 
-  <div class="rp-summary" id="pkSummary" style="display:none">
-    <div>
-      <div class="rp-summary__label">Total Miete / Monat</div>
-      <div class="rp-summary__breakdown" id="pkSummaryBreakdown"></div>
-    </div>
-    <div>
-      <div class="rp-summary__total" id="pkSummaryTotal"></div>
-      <div class="rp-summary__sub">occupied only</div>
-    </div>
-  </div>
+  <!-- Summary line (small): SOLL — the asking Miete of every spot -->
+  <div class="cc-sum2" id="pkSummary" style="display:none"></div>
 
   <div class="rp-list" id="pkList"></div>
 
@@ -198,6 +190,26 @@ document.getElementById('tab-parking').innerHTML = `
 
 /* ── 3.5 FIELD ALIGNMENT — Miete content in line with other sections ── */
 .pk-section--miete { padding-left:11px; }
+
+/* ── Parking tab in the Casa Castel layout (same as Rooms / Apartments) ── */
+#tab-parking .rp-hdr { padding-top:0; margin-bottom:20px; }
+#tab-parking .rp-add-btn { min-height:36px; font-size:12px; border-radius:var(--cc-r-sm); }
+#tab-parking .rp-add-btn i { font-size:14px; }
+html .pk-sumline .cc-sumline__vals { grid-template-columns:minmax(0, 1fr); }
+#tab-parking .pk-hdr { padding:16px 16px 14px 12px; }
+#tab-parking .pk-drag { display:flex; align-items:center; justify-content:center; width:26px; height:26px; font-size:15px; margin-top:4px; }
+#tab-parking .pk-hdr__namerow { align-items:baseline; justify-content:space-between; flex-wrap:nowrap; margin-bottom:0; }
+#tab-parking .pk-hdr__addr { font-size:12px; color:var(--cc-taupe); margin:3px 0 0; }
+#tab-parking .pk-hdr__who { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; margin-top:6px; font-size:13px; color:#9A8E7E; }
+#tab-parking .pk-hdr__who .pk-hdr__rent { font-size:13px; color:#9A8E7E; margin:0; }
+#tab-parking .pk-hdr__who .pk-hdr__rent strong { color:var(--cc-charcoal); font-weight:500; }
+#tab-parking .pk-hdr__who .pk-hdr__rent--vacant { font-size:13px; }
+#tab-parking .pk-chevron { font-size:18px; }
+#tab-parking .pk-card.pk--open { box-shadow:0 4px 24px rgba(30,27,24,.10); }
+#tab-parking .pk-section--miete { border-left:none; padding-left:14px; }
+.pk-sec-read > .rc-brow:first-child { border-top:none; padding-top:6px; }
+.rc-brow__bar--miete { background:var(--cc-gold); }
+@media(min-width:701px) { #tab-parking .pk-hdr { padding:18px 18px 16px 14px; } }
   `;
   document.head.appendChild(s);
 })();
@@ -294,6 +306,10 @@ async function loadParking() {
   _pkSbClient = typeof sbL !== 'undefined' ? sbL : null;
   if (!_pkSbClient) { console.warn('[parking] No Supabase client'); _renderPkList(); return; }
 
+  // B18: tenant rents load at the same time → the cards are drawn ONCE with the
+  // real rent (no "Asking rent" first and a second redraw a moment later = the blink)
+  const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
+
   try {
     const [
       { data: spots },
@@ -314,9 +330,9 @@ async function loadParking() {
     console.error('[parking] Load failed:', e);
   }
 
+  if (_warm) await Promise.race([Promise.resolve(_warm).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
   _pkRenderIfChanged();
   _pkInitSortable();
-  if (typeof rntWarmTenants === 'function') rntWarmTenants();   // preload tenant names for the generators
   _pkRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
 }
 
@@ -324,22 +340,19 @@ async function loadParking() {
 /* ── RENDER LIST ─────────────────────────────────────────── */
 function _updatePkSummary() {
   const bar = document.getElementById('pkSummary');
-  const bd  = document.getElementById('pkSummaryBreakdown');
-  const tot = document.getElementById('pkSummaryTotal');
   if (!bar) return;
   if (!appParking.length) { bar.style.display = 'none'; return; }
-
-  let total = 0, occupied = 0;
+  let miete = 0, kau = 0, occupied = 0;
   appParking.forEach(p => {
-    if (p.vacant) return;
-    occupied++;
-    const cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('pk', p.id) : null;
-    total += cur ? (Number(cur.kalt) || 0) : (Number(p.pricing?.miete) || 0);
+    if (!p.vacant) occupied++;
+    const pr = p.pricing || {};
+    const m  = Number(pr.miete) || 0;
+    miete += m;
+    kau   += ccKaution({ contract: 'parking', kalt: m, rec: pr }).amount || 0;
   });
-
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span>${occupied} / ${appParking.length} occupied</span></div>
+    <div class="cc-sum2__vals"><span><i>Miete</i>${pkFmtEURCompact(miete)}</span><span><i>Kaution</i>${pkFmtEURCompact(kau)}</span></div>`;
   bar.style.display = 'flex';
-  bd.textContent  = occupied + ' / ' + appParking.length + ' occupied';
-  tot.textContent = pkFmtEURCompact(total);
 }
 
 function _renderPkList() {
@@ -352,7 +365,9 @@ function _renderPkList() {
   }
   const _open = new Set([...list.querySelectorAll('.pk-card.pk--open')].map(c => c.dataset.id));
   _pkCardCache = {};
+  const _keep = typeof ccKeepForms === 'function' ? ccKeepForms(list, '.apt-edit-active[id]') : [];   // B28
   list.innerHTML = appParking.map(p => (_pkCardCache[p.id] = _pkCardHTML(p))).join('');
+  if (_keep.length) ccPutForms(list, _keep);
   _open.forEach(id => list.querySelector(`.pk-card[data-id="${id}"]`)?.classList.add('pk--open'));   // open cards stay open
   _updatePkSummary();
 }
@@ -369,6 +384,17 @@ function _pkRenderIfChanged() {
   if (shown && _pkPatchCards(list)) { _pkRenderedSig = sig; return; }     // no full redraw → no glitch
   _renderPkList();
   _pkRenderedSig = sig;
+}
+
+/* B18: refresh from the Tenants side (rents / occupied known) — only the cards
+   that really changed are redrawn, never the whole list. Not drawn yet → the
+   parking load draws it; editing here → left alone until the next load. */
+function _pkRefreshCards() {
+  const list = document.getElementById('pkList');
+  if (!list || !list.querySelector('.pk-card')) return;
+  if (typeof _rtBusy === 'function' && _rtBusy('parking')) return;
+  if (!_pkPatchCards(list)) _renderPkList();
+  _pkRenderedSig = ccStableJSON(appParking);
 }
 
 /* Each card's HTML as last drawn (id → html) */
@@ -428,11 +454,11 @@ function _pkCardHTML(p) {
         </span>
       </div>
       ${p.adresse ? `<div class="pk-hdr__addr">${pkEsc(p.adresse)}${p.plz_ort ? ', ' + pkEsc(p.plz_ort) : ''}</div>` : ''}
-      <div class="pk-hdr__tags">
+      <div class="pk-hdr__who">
         ${p.parking_type ? `<span class="pk-tag ${_pkTypeTagClass(p.parking_type)}">${pkEsc(p.parking_type)}</span>` : ''}
         ${p.level_position ? `<span class="pk-tag pk-tag--sp">${pkEsc(p.level_position)}</span>` : ''}
+        <span class="pk-hdr__rent">${rentHTML}</span>
       </div>
-      <div class="pk-hdr__rent">${rentHTML}</div>
     </div>
     <i class="ti ti-chevron-right pk-chevron"></i>
   </div>
@@ -491,12 +517,19 @@ function _pkCardHTML(p) {
       <div class="pk-stitle">Asking rent</div>
       <!-- READ -->
       <div class="pk-sec-read">
-        ${mieteSet && !miete
-          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(0)} / mo · free</span></div>`
-          : miete
-          ? `<div class="pk-row"><span class="pk-row__k">Miete</span><span class="pk-row__v pk-row__v--gold">${pkFmtEURCompact(miete)} / mo</span></div>
-             <div class="pk-row"><span class="pk-row__k">Kaution</span><span class="pk-row__v">${pkFmtEURCompact(kaution)}<small class="cc-ask-note">${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</small></span></div>`
-          : `<div class="pk-row"><span class="pk-row__v" style="color:var(--cc-stone);font-style:italic">Not set</span></div>`}
+        <div class="rc-brow">
+          <div class="rc-brow__bar rc-brow__bar--miete"></div>
+          <div class="rc-brow__main"><div class="rc-brow__t">Miete</div>
+            ${mieteSet && !miete
+              ? `<div class="rc-brow__big">${pkFmtEURCompact(0)} <span>/ mo · free</span></div>`
+              : miete
+              ? `<div class="rc-brow__big">${pkFmtEURCompact(miete)} <span>/ mo</span></div>
+            <div class="rc-brow__sub">Kaution ${pkFmtEURCompact(kaution)}</div>
+            <div class="rc-brow__sub rc-brow__note">${_pkK.source === 'override' ? 'Individuell' : '3× Miete'}</div>`
+              : `<div class="rc-brow__none">Not set</div>`}
+          </div>
+          <div class="rc-brow__btns"><button type="button" class="rc-brow__go" onclick="_pkOpenContract('mietvertrag','${p.id}')">Mietvertrag ›</button></div>
+        </div>
         <div class="pk-section-edit">
           <button class="pk-sec-edit-btn" onclick="_pkEnterSection('miete','${p.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -563,24 +596,7 @@ function _pkCardHTML(p) {
     </div>
 
 
-    <!-- 4. CONTRACT -->
-    <div class="pk-contracts">
-      <div class="pk-contracts-title">Create contracts</div>
-      <div class="pk-doc-row">
-        <button class="pk-doc-btn" onclick="_pkOpenContract('mietvertrag','${p.id}')">
-          Mietvertrag <i class="ti ti-chevron-right"></i>
-        </button>
-      </div>
-      <div class="pk-doc-row">
-        <button class="pk-doc-btn" onclick="_pkOpenContract('ueberg','${p.id}')">
-          Übergabeprotokoll <i class="ti ti-chevron-right"></i>
-        </button>
-        <div class="apt-doc-toggle" id="pk-eu-${p.id}">
-          <button class="active" onclick="event.stopPropagation();_pkSetEU('${p.id}',0,this)">Einzug</button>
-          <button onclick="event.stopPropagation();_pkSetEU('${p.id}',1,this)">Auszug</button>
-        </div>
-      </div>
-    </div>
+    <!-- Übergabeprotokoll (Einzug / Auszug): on the Tenants card · Mietvertrag: in the Asking rent block -->
 
     <!-- FOOTER: delete -->
     <div class="pk-card-footer">
@@ -596,6 +612,10 @@ function _pkCardHTML(p) {
 
 /* ── CARD INTERACTIONS ───────────────────────────────────── */
 function _pkToggle(card) {
+  if (card.classList.contains('pk--open') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('pk--open'));
+    return;
+  }
   card.classList.toggle('pk--open');
   if (card.classList.contains('pk--open')) {
     requestAnimationFrame(() => {
@@ -618,14 +638,8 @@ function _pkEnterSection(section, pkId) {
 }
 
 function _pkCancelSection(section, pkId) {
-  const spot = appParking.find(p => p.id === pkId);
-  if (!spot) return;
-  const card = document.querySelector(`.pk-card[data-id="${pkId}"]`);
-  if (!card) return;
-  const wasOpen = card.classList.contains('pk--open');
-  card.outerHTML = _pkCardHTML(spot);
-  const newCard = document.querySelector(`.pk-card[data-id="${pkId}"]`);
-  if (wasOpen && newCard) newCard.classList.add('pk--open');
+  // B28: discard the edits of THIS section only — other open sections keep what was typed
+  _pkRerenderCard(pkId, section);
 }
 
 
@@ -645,7 +659,7 @@ async function _pkSaveIdentity(pkId) {
   const before = {};
   Object.keys(data).forEach(k => { before[k] = spot[k]; });
   Object.assign(spot, data);
-  _pkRerenderCard(pkId);
+  _pkRerenderCard(pkId, 'identity');
   if (!_pkSbClient) return;
   ccQueueWrite('pk-' + pkId, () => _pkSbClient.from('rentals_parking').update(data).eq('id', pkId))
     .then(({ error }) => {
@@ -663,7 +677,7 @@ function _pkDirectSaveRow(pkId, key, table, data) {
   const hadRow = !!(spot[key] && Object.keys(spot[key]).length);
   const before = hadRow ? { ...spot[key] } : null;
   if (hadRow) Object.assign(spot[key], data); else spot[key] = { parking_id: pkId, ...data };
-  _pkRerenderCard(pkId);
+  _pkRerenderCard(pkId, { pricing: 'miete', schlussel: 'schlussel' }[key]);
   if (!_pkSbClient) return;
   ccQueueWrite('pk-' + key + '-' + pkId, () => {
     const rowId = spot[key]?.id;
@@ -829,16 +843,22 @@ async function _pkSaveSchlussel(pkId) {
 
 
 /* ── RERENDER CARD ───────────────────────────────────────── */
-function _pkRerenderCard(pkId) {
+/* B28: sections open in edit mode keep everything typed — only `except` (the section just saved or
+   cancelled) is drawn fresh. Was: the whole card from the saved data, so typing in Identity was lost
+   when Miete was saved / cancelled or Vacant was tapped. (Helper: ccKeepForms / ccPutForms, direct-save.js) */
+function _pkRerenderCard(pkId, except) {
   const spot = appParking.find(p => p.id === pkId);
   const card = document.querySelector(`.pk-card[data-id="${pkId}"]`);
   if (!spot || !card) return;
+  const keep = typeof ccKeepForms === 'function'
+    ? ccKeepForms(card, '.apt-edit-active[id]', el => !!except && el.id === `pk-${except}-${pkId}`) : [];
   const newDiv = document.createElement('div');
   newDiv.innerHTML = _pkCardCache[pkId] = _pkCardHTML(spot);   // remembered as drawn
   const newCard = newDiv.firstElementChild;
   newCard.classList.add('pk--open');
   card.parentNode.insertBefore(newCard, card);
   card.remove();
+  if (keep.length) ccPutForms(newCard, keep);
   _pkInitSortable();
   _updatePkSummary();
 }
@@ -868,11 +888,14 @@ function _pkToggleVacant(pkId, btn) {
 /* ── CONTRACT MODAL ──────────────────────────────────────── */
 let _pkContractId = null;
 
+/* Einzug / Auszug of the Übergabe button (on the Tenants card), kept per spot. 0 = Einzug (default) · 1 = Auszug */
+const _pkEU = {};
 function _pkSetEU(pkId, idx, btn) {
-  const tog = document.getElementById('pk-eu-' + pkId);
-  if (!tog) return;
-  tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === idx));
+  _pkEU[pkId] = idx ? 1 : 0;
+  document.querySelectorAll('[id="pk-eu-' + pkId + '"]').forEach(tog =>
+    tog.querySelectorAll('button').forEach((b, i) => b.classList.toggle('active', i === _pkEU[pkId])));
 }
+function _pkEuIsEinzug(pkId) { return !_pkEU[pkId]; }
 
 async function _pkOpenContract(type, pkId) {
   if (typeof ccDismissDraftOffer === 'function') ccDismissDraftOffer();   // you opened a generator yourself
@@ -911,7 +934,7 @@ async function _pkOpenContract(type, pkId) {
     document.getElementById('pk-mv-staffel-anfang')?.addEventListener('input', function() { this.dataset.edited = '1'; });
 
   } else if (type === 'ueberg') {
-    const isEinzug = document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _pkEuIsEinzug(pkId);
     document.getElementById('pkContractTitleLbl').textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + spot.name;
     const _pkUbProfile = await _pkResolveTenantProfile(pkId);
     document.getElementById('pkContractBody').innerHTML   = _pkBodyUeberg(spot, sk, isEinzug, _pkUbProfile);
@@ -939,7 +962,7 @@ async function _pkOpenContract(type, pkId) {
   // Keep what is typed for 2 hours (restored if the app ever has to restart)
   if (typeof ccDraftAutoSave === 'function') {
     const euLabel = type === 'ueberg'
-      ? (document.getElementById('pk-eu-' + pkId)?.querySelector('.active')?.textContent?.trim() || null)
+      ? (_pkEuIsEinzug(pkId) ? 'Einzug' : 'Auszug')
       : null;
     ccDraftAutoSave(_PK_DRAFT_KEY, document.getElementById('pkContractBody'), () =>
       document.getElementById('pkContractOverlay')?.classList.contains('open') ? { type, pkId, euLabel } : null);
@@ -970,7 +993,7 @@ function _pkSetupFlow(type, spot) {
   const unit = 'pk:' + spot.id;
   const v = id => document.getElementById(id)?.value || '';
   if (type === 'ueberg') {
-    const isEinzug = document.getElementById('pk-eu-' + spot.id)?.querySelector('.active')?.textContent?.trim() === 'Einzug';
+    const isEinzug = _pkEuIsEinzug(spot.id);
     ccfSetupGenerator({ body: 'pkContractBody', footer: 'pkContractFooter', draftId: 'pkUebergPdfBtn', mode: 'ueberg', unit,
       occasion: isEinzug ? 'einzug' : 'auszug', fields: _PK_UB_FIELDS,
       read: () => ({ kind: 'ueberg', occasion: isEinzug ? 'einzug' : 'auszug', room: unit, forId: ccfForValue(),
@@ -1021,11 +1044,7 @@ async function _pkReopenContractDraft(d) {
   try {
     const tabEl = document.getElementById('tab-parking');
     if (tabEl && tabEl.style.display === 'none' && typeof switchTab === 'function') switchTab('parking');
-    if (d.meta.type === 'ueberg' && d.meta.euLabel) {
-      document.getElementById('pk-eu-' + d.meta.pkId)?.querySelectorAll('button, span, div').forEach(el => {
-        if (el.textContent?.trim() === d.meta.euLabel && !el.classList.contains('active')) el.click?.();
-      });
-    }
+    if (d.meta.type === 'ueberg' && d.meta.euLabel) _pkSetEU(d.meta.pkId, d.meta.euLabel === 'Auszug' ? 1 : 0);
     window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
     await _pkOpenContract(d.meta.type, d.meta.pkId);
     await new Promise(r => setTimeout(r, 120));   // let the form's own wiring run first
@@ -1203,7 +1222,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
         </div>
         <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--cc-stone);margin-bottom:6px;">Anfangsmiete (während Mindestlaufzeit)</div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <input class="rm-input" id="pk-mv-staffel-anfang" type="number" step="0.01" value="${miete||''}" placeholder="80,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
+          <input class="rm-input" id="pk-mv-staffel-anfang" type="number" data-cc-num="2" step="0.01" value="${miete||''}" placeholder="80,00" style="width:120px;-webkit-appearance:textfield;appearance:textfield;"/>
           <span style="font-size:11px;color:var(--cc-stone);">€ / Monat</span>
           <span style="font-size:11px;color:var(--cc-taupe);" id="pk-mv-staffel-anfang-ab">ab Mietbeginn</span>
         </div>

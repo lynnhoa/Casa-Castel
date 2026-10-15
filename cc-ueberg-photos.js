@@ -1,7 +1,8 @@
 /* ─────────────────────────────────────────────────────────────
    cc-ueberg-photos.js — Fotos im Übergabeprotokoll (Einzug & Auszug)
 
-   Used by the 3 Übergabe generators:
+   Used by the 3 Übergabe generators (and the Schadensbericht in Maintenance,
+   maint-schaden-pdf.js, which passes its own subtitle as meta.sub):
      Apartments  (rentals-tab-apartments.js + rentals-ueberg-pdf.js)          key 'apt-ub'
      Parking     (rentals-tab-parking.js    + rentals-parking-ueberg-pdf.js)  key 'pk-ub'
      Casa Castel (tab-rooms.js)                                               key 'room-ub'
@@ -240,8 +241,8 @@ async function ccUbAddPhotoPages(key, container, meta = {}) {
   const cw = (first.querySelector(':scope > .content')?.clientWidth) || 634;
   const frameW = Math.floor((cw - GAP_X) / 2);
   const total = st.photos.length;
-  const sub = ['Übergabeprotokoll ' + (meta.isEinzug ? 'Einzug' : 'Auszug'), meta.objekt, meta.mieter,
-    total === 1 ? '1 Foto' : total + ' Fotos'].filter(Boolean).map(E).join(' · ');
+  const sub = (meta.sub ? [meta.sub] : ['Übergabeprotokoll ' + (meta.isEinzug ? 'Einzug' : 'Auszug'), meta.objekt, meta.mieter])
+    .concat(total === 1 ? '1 Foto' : total + ' Fotos').filter(Boolean).map(E).join(' · ');   // meta.sub: own subtitle (Schadensbericht)
   const imgs = [];
   for (let start = 0; start < total; start += PER) {
     const pg = first.cloneNode(true);
@@ -263,20 +264,21 @@ async function ccUbAddPhotoPages(key, container, meta = {}) {
         </div>
         <div style="display:flex;gap:8px;align-items:baseline;margin-top:7px">
           <span style="font-family:'Lato',sans-serif;font-size:7.5px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:#4a4540">Foto ${i + 1}</span>
-          <span style="font-family:'Lato',sans-serif;font-size:9px;font-weight:300;color:#8a847c">${p.when || _ccUbWhen(p.ts)}${p.taken === false ? ' (hinzugefügt)' : ''}</span>
+          <span style="font-family:'Lato',sans-serif;font-size:9px;font-weight:400;color:#6b645c">${p.when || _ccUbWhen(p.ts)}${p.taken === false ? ' (hinzugefügt)' : ''}</span>
         </div>
-        ${cap ? `<div style="font-family:'Lato',sans-serif;font-size:10px;font-weight:300;color:#1a1a1a;margin-top:3px;line-height:1.35;max-height:27px;overflow:hidden">${E(cap)}</div>` : ''}
+        ${cap ? `<div style="font-family:'Lato',sans-serif;font-size:10px;font-weight:400;color:#2b2722;margin-top:3px;line-height:1.35">${E(cap)}</div>` : ''}
       </div>`;
     }).join('');
     content.innerHTML = `
       <div class="doc-title" style="font-family:'Playfair Display',serif;font-size:21px;font-weight:400;color:#1a1a1a;line-height:1.15;margin-bottom:4px">Fotodokumentation</div>
-      <div class="doc-subtitle" style="font-family:'Lato',sans-serif;font-size:9.5px;font-weight:300;color:#aaa59e;margin-bottom:22px">${sub}</div>
+      <div class="doc-subtitle" style="font-family:'Lato',sans-serif;font-size:9.5px;font-weight:400;color:#6b645c;margin-bottom:22px">${sub}</div>
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:${GAP_X}px;row-gap:${GAP_Y}px">${cells}</div>`;
     last.after(pg);
     last = pg;
     imgs.push(...pg.querySelectorAll('img'));
   }
-  await Promise.all(imgs.map(img => (img.decode ? img.decode() : Promise.resolve()).catch(() => {})));
+  // wait for the photos to be ready — at most 4 s each (Safari's decode() can hang with several big photos)
+  await Promise.all(imgs.map(img => Promise.race([(img.decode ? img.decode() : Promise.resolve()).catch(() => {}), new Promise(r => setTimeout(r, 4000))])));
   return Math.ceil(total / PER);
 }
 

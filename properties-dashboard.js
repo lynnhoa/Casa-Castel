@@ -21,9 +21,10 @@ function renderDashboard() {
   const tNK   = props.reduce((s,p) => s + n(p.nebenkosten), 0);
   const tM2   = props.reduce((s,p) => s + n(p.m2), 0);
   const equity = tMw - tRest;
-  const pct   = tDar > 0 ? Math.round(tAbb / tDar * 1000) / 10 : 0;
-  const tPct  = tRate > 0 ? Math.round(tTilg / tRate * 1000) / 10 : 0;
-  const zPct  = 100 - tPct;
+  const p2    = v => Math.round(v * 100) / 100;                       // German %, 2 decimals (17,14 %)
+  const pct   = tDar > 0 ? p2(tAbb / tDar * 100) : 0;
+  const tPct  = tRate > 0 ? p2(tTilg / tRate * 100) : 0;
+  const zPct  = tRate > 0 ? p2(100 - tPct) : 0;
 
   /* ── Alerts ── */
   const urgent = props
@@ -68,7 +69,7 @@ function renderDashboard() {
     <div class="kpi-card">
       <div class="kpi-card__lbl">Paid off</div>
       <div class="kpi-card__val">${mio(tAbb)}</div>
-      <div class="kpi-card__sub">${pct} % of loan</div>
+      <div class="kpi-card__sub">${ccFmtPct(pct)} of loan</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card__lbl">Restschuld</div>
@@ -100,11 +101,11 @@ function renderDashboard() {
       <div class="rate-bar-legend">
         <div class="rbl-item">
           <div class="rbl-dot rbl-dot--t"></div>
-          <span class="rbl-text"><strong>${tPct} %</strong> Tilgung · builds equity</span>
+          <span class="rbl-text"><strong>${ccFmtPct(tPct)}</strong> Tilgung · builds equity</span>
         </div>
         <div class="rbl-item">
           <div class="rbl-dot rbl-dot--z"></div>
-          <span class="rbl-text"><strong>${zPct} %</strong> Zinsen · bank costs</span>
+          <span class="rbl-text"><strong>${ccFmtPct(zPct)}</strong> Zinsen · bank costs</span>
         </div>
       </div>
     </div>`;
@@ -120,7 +121,7 @@ function renderDashboard() {
         <div class="prog-bar-wrap">
           <div class="prog-bar-fill" style="width:${Math.max(pct, 0.5)}%"></div>
         </div>
-        <span class="prog-bar-pct">${pct} %</span>
+        <span class="prog-bar-pct">${ccFmtPct(pct)}</span>
       </div>
       <div class="prog-summary"><strong>${mio(tAbb)}</strong> repaid across ${props.length} loans</div>
     </div>`;
@@ -159,7 +160,7 @@ function renderDashboard() {
     <div class="ins-card">
       <div class="ins-card__lbl">Best repayment ratio</div>
       <div class="ins-card__val">${bestTilg ? bestTilg.name : '—'}</div>
-      <div class="ins-card__sub">${bestTilg ? Math.round(n(bestTilg.tilgung) / n(bestTilg.rate) * 100) + '% repayment' : '—'}</div>
+      <div class="ins-card__sub">${bestTilg ? ccFmtPct(n(bestTilg.tilgung) / n(bestTilg.rate) * 100) + ' repayment' : '—'}</div>
     </div>
     <div class="ins-card">
       <div class="ins-card__lbl">Avg. interest rate</div>

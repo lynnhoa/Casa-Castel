@@ -9,7 +9,7 @@
        phone with that code can pick the password up
      · checks every few seconds while the login page is open
      · after a successful login the password leaves the request
-       (ccPwReqLoggedIn, called by auth.js); pickup expires after 24 h
+       (ccPwReqLoggedIn, called by auth.js); pickup expires after 5 days (Oct 2026)
    ───────────────────────────────────────────────────────────── */
 
 (function () {
@@ -44,10 +44,26 @@
       <button type="button" class="pwr-textbtn" data-pwr-act="cancel">Cancel request</button>
     </div>`;
   }
+  let _until = null, _untilTok = null;          // when the pickup ends (pw_request_until), asked once per request
+  function untilTxt(iso) {
+    const d = new Date(iso); if (!iso || isNaN(d)) return '';
+    const p = o => new Intl.DateTimeFormat('en-GB', Object.assign({ timeZone: 'Europe/Berlin' }, o)).format(d);
+    return 'Shown here until ' + p({ weekday: 'short' }) + ' ' + p({ day: '2-digit' }) + '.' + p({ month: '2-digit' }) + '.';
+  }
+  function loadUntil(r) {
+    if (!r || !r.token || _untilTok === r.token || typeof sbL === 'undefined' || !sbL) return;
+    _untilTok = r.token;
+    sbL.rpc('pw_request_until', { p_token: r.token }).then(({ data }) => {
+      _until = data || null;
+      const el = document.getElementById('pwrUntil');
+      if (el && _until) { el.textContent = untilTxt(_until); el.style.display = ''; }
+    }, () => {});
+  }
   function passwordHtml(r, pw) {
     return `<div class="pwr-card pwr-card--ok">
       <p class="pwr-card__title">🔑 Your password · ${esc(r.room)}</p>
       <div class="pwr-pw" id="pwrPw">${esc(pw)}</div>
+      <p class="pwr-card__hint" id="pwrUntil" style="margin:-4px 0 10px;${_until ? '' : 'display:none;'}">${_until ? untilTxt(_until) : ''}</p>
       <button type="button" class="cc-btn cc-btn--primary cc-mb-12" data-pwr-act="fill">Fill in &amp; log in</button>
       <button type="button" class="cc-btn cc-btn--secondary" data-pwr-act="copy">Copy</button>
       <p class="pwr-card__hint">Keep it somewhere safe — it stays your password. This card disappears after you log in.</p>
@@ -67,13 +83,13 @@
     if (!r) { _pw = null; setCard(''); return; }
     const s = st && st.status;
     if (s === 'pending') { setCard(waitingHtml(r)); return; }
-    if (s === 'approved' && st.password) { _pw = st.password; setCard(passwordHtml(r, st.password)); return; }
+    if (s === 'approved' && st.password) { _pw = st.password; setCard(passwordHtml(r, st.password)); loadUntil(r); return; }
     if (s === 'declined') {
       setCard(infoHtml('Request declined', 'Please contact Casa Castel directly.', { act: 'clear', label: 'OK' }));
       return;
     }
     if (s === 'expired') {
-      setCard(infoHtml('Pickup expired', 'The password was ready for 24 hours. Just send a new request.', { act: 'again', label: 'Request again' }));
+      setCard(infoHtml('Pickup expired', 'The password was ready for 5 days. Just send a new request.', { act: 'again', label: 'Request again' }));
       return;
     }
     // done / cancelled / none → nothing open on this phone any more

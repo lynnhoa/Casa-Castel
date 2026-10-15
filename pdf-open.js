@@ -30,7 +30,7 @@
       (cleared on Cancel / logout) and restored if the app ever restarts.
 
    Public API:
-     ccRenderPagesToPdf(container)   → jsPDF (one render per .pdf-page)
+     ccRenderPagesToPdf(container, opts) → jsPDF (one render per .pdf-page; opts: strict, only, onPage, pageSec)
      ccOpenPdf(pdfOrBlob, filename)  → opens the PDF as described above
      ccOpenUrl(url, label)           → opens an existing (signed) link
      ccDraftAutoSave(key, root, metaFn) / ccDraftGet(key)
@@ -70,13 +70,30 @@ function ccPdfSafeName(name) {
 
 /* ── RENDER ─────────────────────────────────────────────────
    Every .pdf-page (794×1123 px) becomes one A4 page. One render per
-   page at 2× (≈190 dpi, sharp in print) and each canvas is released
-   straight away — the old code rendered twice at up to 3×.       */
+   page at 3× (sharp in print) and each canvas is released straight away.
+   Options (D25, used by Maintenance — other apps are unchanged):
+     only: true   → the hidden copy html2canvas makes for a page holds just that
+                    page: not the app around it (pop-ups, thumbnails, lists) and no
+                    other page's photos. html2canvas makes a fresh copy for EVERY
+                    page and, on the iPhone, waits until every image in it has loaded
+                    again, with no time limit — with the whole app copied that was all
+                    thumbnails + all photos, again for each page (very slow, or stuck).
+     onPage(k, n) → called before page k of n is rendered (status line)
+     pageSec      → time limit per page → Error('timeout:page:k:n')            */
 async function ccRenderPagesToPdf(container, opts = {}) {
   _ccBlankOutBroken(container);
   try { await ccFlowPages(container); } catch (e) { console.warn('[pdf] page flow skipped:', e); }
   const pages = container ? container.querySelectorAll('.pdf-page') : [];
   if (!pages.length) { _ccCloseWaitingTab(); throw new Error('no .pdf-page nodes rendered'); }
+  // strict (Rentals): never hand out a PDF with text that does not show — like the Casa Castel contracts
+  if (opts.strict) {
+    const cut = ccFlowCheck(container);
+    if (cut.length) {
+      _ccCloseWaitingTab();
+      console.error('[pdf] text outside the page area:', cut);
+      throw new Error('Some text did not fit on page ' + cut[0].page + ' ("' + cut[0].text + '"). The PDF was not created — nothing may go missing.');
+    }
+  }
   try { return await _ccRender(pages, opts); }
   catch (e) { _ccCloseWaitingTab(); throw e; }
 }
@@ -85,14 +102,40 @@ async function _ccRender(pages, opts) {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   for (let i = 0; i < pages.length; i++) {
     if (i > 0) pdf.addPage();
-    const canvas = await html2canvas(pages[i], {
+    if (typeof opts.onPage === 'function') { try { opts.onPage(i + 1, pages.length); } catch (e) {} }
+    const shot = html2canvas(pages[i], {
       scale: opts.scale || 3, useCORS: true, backgroundColor: '#ffffff',   // 3× = sharp print (was 2×)
       width: 794, height: 1123, windowWidth: 794,
+      ...(opts.only ? { ignoreElements: _ccOnlyThisPage(pages[i]) } : {}),
     });
+    const canvas = opts.pageSec ? await _ccPageLimit(shot, opts.pageSec, i + 1, pages.length) : await shot;
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);   // was 0.85
     canvas.width = 0; canvas.height = 0;   // free the memory right away
   }
   return pdf;
+}
+/* only: what the copy of one page keeps — <head>, every <style>/<link> (and what holds it, e.g. the
+   PDF's own <style> in the box), the page itself and its ancestors. Other pages stay as empty blocks
+   (same layout, none of their photos); everything else of the app is left out. html2canvas places the
+   page by where it sits in the copy, so leaving things out cannot shift it. */
+function _ccOnlyThisPage(page) {
+  const body = document.body, keep = new Set();
+  body.querySelectorAll('style, link').forEach(st => { for (let n = st; n && n !== body; n = n.parentElement) keep.add(n); });
+  return el => {
+    if (!body.contains(el) || keep.has(el) || el.contains(page) || page.contains(el)) return false;
+    const pg = el.closest('.pdf-page');
+    return !pg || pg !== el;
+  };
+}
+/* pageSec: one page may take at most `sec` seconds; a stuck copy is removed so it frees its memory */
+function _ccPageLimit(shot, sec, k, n) {
+  let t;
+  return Promise.race([shot, new Promise((_, rej) => {
+    t = setTimeout(() => {
+      document.querySelectorAll('iframe.html2canvas-container').forEach(f => f.remove());
+      rej(new Error(`timeout:page:${k}:${n}`));
+    }, sec * 1000);
+  })]).finally(() => clearTimeout(t));
 }
 
 /* ── AUTOMATIC PAGE FLOW (nothing is cut off) ──────────────
@@ -116,9 +159,97 @@ function _ccFlowLimit(content) {
   const r = content.getBoundingClientRect();
   return r.top + content.clientHeight;
 }
+// The lowest point of a block — including anything that hangs out of it
+function _ccBottom(el) {
+  let b = el.getBoundingClientRect().bottom;
+  el.querySelectorAll('*').forEach(d => {
+    const cs = getComputedStyle(d);
+    if (cs.display === 'none' || cs.position === 'absolute' || cs.position === 'fixed') return;
+    const r = d.getBoundingClientRect();
+    if (r.height > 0 && r.bottom > b) b = r.bottom;
+  });
+  return b;
+}
 function _ccOverflowing(content) {
   const limit = _ccFlowLimit(content);
-  return _ccFlowKids(content).some(k => k.getBoundingClientRect().bottom > limit + 0.5);
+  return _ccFlowKids(content).some(k => _ccBottom(k) > limit + 0.5);
+}
+// A block taller than what is left on the page and nothing else can move (one long
+// paragraph, one big wrapper): split it — a wrapper at its first part that does not
+// fit, a text at the last sentence (else word) that still fits. Returns the
+// continuation (same tag and classes) or null.
+function _ccSplitBlock(el, limit) {
+  const parts = [...el.children].filter(k => getComputedStyle(k).display !== 'none' && getComputedStyle(k).position !== 'absolute');
+  if (parts.length > 1) {
+    const i = parts.findIndex(k => _ccBottom(k) > limit + 0.5);
+    if (i > 0) {
+      const clone = el.cloneNode(false); clone.removeAttribute('id'); clone.setAttribute('data-cc-continued', '1');
+      parts.slice(i).forEach(k => clone.appendChild(k));
+      return clone;
+    }
+    if (i === 0) {
+      const inner = _ccSplitBlock(parts[0], limit);
+      if (inner) {
+        const clone = el.cloneNode(false); clone.removeAttribute('id'); clone.setAttribute('data-cc-continued', '1');
+        clone.appendChild(inner); parts.slice(1).forEach(k => clone.appendChild(k));
+        return clone;
+      }
+    }
+  }
+  return _ccSplitText(el, limit);
+}
+function _ccSplitText(el, limit) {
+  const texts = []; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) if (n.textContent.trim()) texts.push(n);
+  const below = (node, off) => { const r = document.createRange(); r.setStart(node, off); r.setEnd(node, Math.min(off + 1, node.length));
+    const rc = [...r.getClientRects()].pop(); return rc ? rc.bottom > limit + 0.5 : false; };
+  const ti = texts.findIndex(t => below(t, Math.max(0, t.length - 1)));
+  if (ti < 0) return null;
+  const t = texts[ti];
+  let lo = 0, hi = t.length - 1;                       // first character that falls below the line
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (below(t, mid)) hi = mid; else lo = mid + 1; }
+  const txt = t.textContent;
+  let cut = -1;
+  for (let i = lo; i > 0; i--) { if (/[.;:!?]/.test(txt[i - 1]) && /\s/.test(txt[i] || ' ')) { cut = i; break; } }   // sentence end
+  if (cut <= 0) for (let i = lo; i > 0; i--) { if (/\s/.test(txt[i - 1])) { cut = i; break; } }                        // else a word
+  if (cut <= 0 && ti === 0) return null;                // nothing fits on this page at all
+  const r = document.createRange();
+  if (cut > 0) r.setStart(t, cut); else r.setStartBefore(t);
+  r.setEndAfter(el.lastChild);
+  const tail = r.extractContents();
+  const clone = el.cloneNode(false); clone.removeAttribute('id'); clone.setAttribute('data-cc-continued', '1');
+  clone.appendChild(tail);
+  // a continued sentence starts flush: drop the leading space
+  const fw = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT); const f = fw.nextNode(); if (f) f.textContent = f.textContent.replace(/^\s+/, '');
+  return clone;
+}
+// After the flow: every piece of text inside the page area? Returns what would be cut.
+function ccFlowCheck(container) {
+  const cut = [];
+  [...container.querySelectorAll('.pdf-page')].forEach((pg, i) => {
+    const c = pg.querySelector(':scope > .content'); if (!c) return;
+    const cr = c.getBoundingClientRect();
+    const w = document.createTreeWalker(c, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) {
+      if (!n.textContent.trim()) continue;
+      const el = n.parentElement; if (!el) continue;
+      const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none' || el.offsetParent === null && cs.position !== 'fixed') continue;
+      // boxes between the text and the page area that cut what hangs out of them
+      const clips = [];
+      for (let a = el; a && a !== c; a = a.parentElement) {
+        const ac = getComputedStyle(a);
+        if (ac.overflow !== 'visible' || ac.overflowY !== 'visible' || ac.overflowX !== 'visible') clips.push(a.getBoundingClientRect());
+      }
+      const r = document.createRange(); r.selectNodeContents(n);
+      for (const rc of r.getClientRects()) {
+        if (rc.width < 0.5 || rc.height < 0.5) continue;
+        // 3 px: the font's own line box (tall capitals, descenders) — not text that is cut
+        const outside = b => rc.bottom > b.bottom + 3 || rc.top < b.top - 3 || rc.right > b.right + 1.5 || rc.left < b.left - 1.5;
+        if (outside(cr) || clips.some(outside)) { cut.push({ page: i + 1, text: n.textContent.trim().slice(0, 40) }); break; }
+      }
+    }
+  });
+  return cut;
 }
 // Splits a table (or a block holding one table) at the first row that does not
 // fit. Returns the continuation block (header rows kept), or null.
@@ -179,10 +310,11 @@ async function ccFlowPages(container) {
     const pg = container.querySelectorAll('.pdf-page')[i];
     const content = pg.querySelector(':scope > .content');
     if (!content) continue;
+    content.style.overflowWrap = 'anywhere';            // a very long word / e-mail wraps instead of running off the page
     for (let round = 0; round < 40 && guard < 200; round++, guard++) {
       const limit = _ccFlowLimit(content);
       const kids = _ccFlowKids(content);
-      const idx = kids.findIndex(k => k.getBoundingClientRect().bottom > limit + 0.5);
+      const idx = kids.findIndex(k => _ccBottom(k) > limit + 0.5);
       if (idx < 0) break;
       const el = kids[idx];
       let moved = null;
@@ -191,8 +323,15 @@ async function ccFlowPages(container) {
         const cont = _ccSplitTable(el, limit);
         if (cont) moved = [cont, ...kids.slice(idx + 1)];
       }
+      // 2) a block that can never fit on one page (one huge paragraph): it starts right here, under
+      //    its heading, and continues on the next page — never a heading alone on a page
+      if (!moved && (_ccBottom(el) - el.getBoundingClientRect().top) > content.clientHeight - 2
+          && el.getBoundingClientRect().top < limit - 40) {
+        const cont = _ccSplitBlock(el, limit);
+        if (cont) moved = [cont, ...kids.slice(idx + 1)];
+      }
       if (!moved) {
-        // 2) move the whole section (from its heading) — unless it is very long
+        // 3) move the whole section (from its heading) — unless it is very long
         let start = idx;
         for (let s = idx; s >= 0; s--) { if (kids[s].matches(CC_FLOW_HEADINGS)) { start = s; break; } }
         const pageH = content.clientHeight;
@@ -200,9 +339,13 @@ async function ccFlowPages(container) {
         while (start > 0 && kids[start - 1].matches(CC_FLOW_HEADINGS)) start--;   // never leave a heading alone
         if (start === 0) {
           if (kids.length > 1 && idx > 0) start = idx;                       // page starts with this section
-          else break;                                                        // one block taller than a page
+          else {                                                             // one block taller than the page: split it
+            const cont = _ccSplitBlock(el, limit);
+            if (!cont) break;
+            moved = [cont, ...kids.slice(idx + 1)];
+          }
         }
-        moved = kids.slice(start);
+        if (!moved) moved = kids.slice(start);
       }
       if (!moved.length) break;
       _ccPlaceAfter(container, pg, moved);
@@ -498,7 +641,9 @@ function ccDraftSnapshot(root) {
   root.querySelectorAll('[data-val]').forEach(el => {
     if (_ccIsActive(el)) { const sel = _ccOptSelector(el); if (sel) actives.push(sel); }
   });
-  return { fields, radios, modes, actives, states };
+  // Oct 2026: which fields still follow the rule (data-auto, e.g. the Kaution) — restored as such
+  const autos = [...root.querySelectorAll('input[id][data-auto], textarea[id][data-auto], select[id][data-auto]')].map(el => el.id);
+  return { fields, radios, modes, actives, states, autos };
 }
 function ccDraftSave(key, root, meta) {
   if (!root || !meta) return;
@@ -570,6 +715,19 @@ async function ccDraftApply(root, d) {
       if (r && !r.checked) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); }
     } catch (e) {}
   });
+  // Oct 2026: a field that followed the rule (Kaution …) keeps following it; one you typed stays as typed.
+  // Drafts saved before this update have no list → unchanged behaviour.
+  if (Array.isArray(d.autos)) {
+    const auto = new Set(d.autos);
+    Object.keys(d.fields || {}).forEach(id => {
+      const el = document.getElementById(id); if (!own(el)) return;
+      if (auto.has(id)) el.setAttribute('data-auto', '1'); else el.removeAttribute('data-auto');
+    });
+    // recalculate from the restored rent / dates (each only acts on its own open generator)
+    ['ccgUpdate', '_aptKzUpdateKaution', '_aptGwUpdateKaution'].forEach(fn => {
+      try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {}
+    });
+  }
 }
 
 

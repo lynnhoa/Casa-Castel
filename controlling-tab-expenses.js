@@ -84,13 +84,13 @@ window.renderExpenses = function () {
                     extraPill: g.rows.some(r => r.note) ? cxPill('beige', 'change') : '', body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, -1) });
   }).join('');
 
-  host.innerHTML = '<div class="cx-page">' + cxMonthBar() +
+  cxPaint(host, '<div class="cx-page">' + cxMonthBar() +
     cxSummary({ label: 'Running costs paid', done, plan, open,
                 confirm: CX.bulk === 'expenses' ? _cxExpBulkList() : null, undo: cxUndoFor('expenses'), note: _cxAbrNote(-1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · from Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
     cards +
     '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Invoices: in the One-off tab</button>' +
-    '</div>';
+    '</div>');   // B18: only what changed
 
   cxWire(host, {
     render: () => window.renderExpenses(),

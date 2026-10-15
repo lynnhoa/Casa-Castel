@@ -481,6 +481,84 @@ function cxToastErr(e) {
 }
 
 /* ── Wire a tab host once: month arrows, fold, take-over, inputs ── */
+/* ── B18: PAINT WITHOUT REBUILDING ─────────────────────────────
+   The pages are written with cxPaint(host, html) instead of host.innerHTML.
+   The new HTML is compared with what is on screen and only what really
+   differs is changed:
+   · reload with the same data (app back in front, tab switch) → nothing changes, no blink
+   · after a save only that row / card changes — the rest stays exactly as it is
+   · fields keep focus, typed text and scroll position (a field you are typing in is never touched)
+   A field's value always follows the HTML, like after a full redraw. */
+const _CX_CTRL = 'input,select,textarea';
+function cxPaint(host, html) {
+  if (!host) return;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const a = host.firstElementChild, b = tpl.content.firstElementChild;
+  if (a && b && a.id !== b.id) { host.replaceChildren(...tpl.content.childNodes); return; }   // another page (e.g. Setup ↔ History)
+  _cxMorphKids(host, tpl.content);
+}
+function _cxWant(t) {                                   // the value a field gets from its HTML
+  if (t.tagName === 'SELECT') { const o = t.querySelector('option[selected]') || t.querySelector('option'); return o ? o.value : ''; }
+  if (t.tagName === 'TEXTAREA') return t.textContent;
+  if (t.type === 'checkbox' || t.type === 'radio') return t.hasAttribute('checked');
+  return t.getAttribute('value') || '';
+}
+function _cxApply(c, want) {
+  if (c.type === 'file') return;
+  const typing = c === document.activeElement &&
+    (c.tagName === 'TEXTAREA' || (c.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|range|color)$/i.test(c.type)));
+  if (typing) return;                                   // you are typing here — your text stays
+  if (typeof want === 'boolean') { if (c.checked !== want) c.checked = want; }
+  else if (c.value !== want) c.value = want;
+}
+/* German date / number fields (cc-german-format.js) are converted after drawing: type, placeholder,
+   keyboard and the classes cc-date / cc-cal belong to that converter — a kept field keeps them
+   (otherwise it would turn back into a plain field). Value and data attributes still follow the HTML. */
+const _CX_OWN = /^(type|inputmode|autocomplete|placeholder|step|onclick|aria-invalid)$/;
+function _cxKeepCls(x, v) {
+  ['cc-date', 'cc-cal'].forEach(c => { if (x.classList.contains(c) && !(' ' + v + ' ').includes(' ' + c + ' ')) v = (v + ' ' + c).trim(); });
+  return v;
+}
+function _cxSyncAttrs(x, y) {
+  const own = !!(x._ccDate || x._ccNum || x._ccCal);
+  for (const at of [...x.attributes]) {
+    if (y.hasAttribute(at.name) || (own && (_CX_OWN.test(at.name) || at.name === 'class'))) continue;
+    x.removeAttribute(at.name);
+  }
+  for (const at of [...y.attributes]) {
+    if (own && _CX_OWN.test(at.name)) continue;
+    const v = own && at.name === 'class' ? _cxKeepCls(x, at.value) : at.value;
+    if (x.getAttribute(at.name) !== v) x.setAttribute(at.name, v);
+  }
+  if (own && !y.hasAttribute('class')) {
+    const v = _cxKeepCls(x, '');
+    if (v) { if (x.getAttribute('class') !== v) x.setAttribute('class', v); } else x.removeAttribute('class');
+  }
+}
+function _cxMorphKids(a, b) {
+  const an = [...a.childNodes], bn = [...b.childNodes];
+  for (let i = 0; i < bn.length; i++) {
+    const x = an[i], y = bn[i];
+    if (!x) { a.appendChild(y); continue; }
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y, x); continue; }
+    if (x.nodeType !== 1) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
+    if (x.isEqualNode(y)) {                             // the same → left alone; only field values follow the HTML
+      if (x.matches(_CX_CTRL)) _cxApply(x, _cxWant(y));
+      else if (x.querySelector(_CX_CTRL)) {
+        const xs = x.querySelectorAll(_CX_CTRL), ys = y.querySelectorAll(_CX_CTRL);
+        xs.forEach((c, k) => { if (ys[k]) _cxApply(c, _cxWant(ys[k])); });
+      }
+      continue;
+    }
+    const isCtrl = x.matches(_CX_CTRL), want = isCtrl ? _cxWant(y) : null;
+    _cxSyncAttrs(x, y);
+    _cxMorphKids(x, y);
+    if (isCtrl) _cxApply(x, want);
+  }
+  for (let i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
+}
+
 function cxWire(host, h) {
   if (host._cxWired) return;
   host._cxWired = true;
@@ -490,7 +568,11 @@ function cxWire(host, h) {
     const a = b.dataset.cx;
     if (a === 'prev') return cxStepMonth(-1);
     if (a === 'next') return cxStepMonth(1);
-    if (a === 'fold') { const k = b.dataset.k; const cur = b.getAttribute('aria-expanded') === 'true'; CX.open[k] = !cur; return h.render(); }
+    if (a === 'fold') {
+      const k = b.dataset.k; const cur = b.getAttribute('aria-expanded') === 'true'; CX.open[k] = !cur;
+      // Oct 2026: the tapped header stays where it is (no jump after the list is redrawn)
+      return cxKeepPlace(b, () => h.render(), () => [...host.querySelectorAll('[data-cx="fold"]')].find(x => x.dataset.k === k));
+    }
     if (h.click) return h.click(a, b, ev);
   });
   host.addEventListener('change', ev => {
@@ -500,4 +582,67 @@ function cxWire(host, h) {
   host.addEventListener('keydown', ev => {
     if (ev.key === 'Enter' && ev.target && ev.target.dataset && ev.target.dataset.cxIn) ev.target.blur();
   });
+}
+
+/* ── KEEP PLACE (Oct 2026) ─────────────────────────────────────
+   A card that closes (or a list that redraws) keeps its header exactly where it is on screen.
+   Without this the page gets shorter, the phone snaps back and the header jumps (lower cards).
+   mutate() does the change (class toggle or redraw) · find() returns the header afterwards.
+   A spacer at the end fills the missing height and shrinks away as soon as you scroll up.   */
+function cxKeepPlace(el, mutate, find) {
+  if (typeof mutate !== 'function') return;
+  if (!el || !el.isConnected) return mutate();
+  const before = el.getBoundingClientRect().top;
+  const res = mutate();
+  const now = (typeof find === 'function' ? find() : el) || null;
+  if (!now || !now.isConnected) return res;
+  const shift = now.getBoundingClientRect().top - before;          // > 0 → the page was pulled back
+  if (Math.abs(shift) < 1) return res;
+  let sp = document.getElementById('ccEndSpace');
+  if (!sp) { sp = document.createElement('div'); sp.id = 'ccEndSpace'; sp.setAttribute('aria-hidden', 'true'); sp.style.cssText = 'height:0;pointer-events:none;'; document.body.appendChild(sp); }
+  const target = Math.max(0, window.scrollY + shift);
+  const need = Math.ceil(target + window.innerHeight - document.documentElement.scrollHeight);
+  if (need > 0) sp.style.height = ((parseFloat(sp.style.height) || 0) + need) + 'px';
+  try { window.scrollTo({ top: target, behavior: 'instant' }); } catch (e) { window.scrollTo(0, target); }
+  if (need > 0) _cxGlideToEnd(); else _cxEndSpaceWatch();   // Oct 2026 (B): at the end of the list the page then glides down — no empty space left
+  return res;
+}
+/* The page glides (~0.35 s) from the kept place to its natural end; the spacer shrinks with it.
+   A touch / wheel during the glide stops it (then the spacer shrinks as you scroll).          */
+function _cxGlideToEnd() {
+  const sp = document.getElementById('ccEndSpace'); if (!sp) return;
+  const from = window.scrollY, spH = parseFloat(sp.style.height) || 0;
+  const content = document.documentElement.scrollHeight - spH;              // the page without the spacer
+  const to = Math.max(0, Math.min(from, content - window.innerHeight));
+  if (from - to < 1) { sp.style.height = '0px'; return; }
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  window.addEventListener('touchstart', stop, { once: true, passive: true });
+  window.addEventListener('wheel', stop, { once: true, passive: true });
+  const t0 = performance.now(), dur = Math.min(550, 280 + (from - to) * 0.5), ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = now => {
+    if (stopped) { _cxEndSpaceWatch(); return; }
+    const k = Math.min(1, (now - t0) / dur), y = from + (to - from) * ease(k);
+    try { window.scrollTo({ top: y, behavior: 'instant' }); } catch (e) { window.scrollTo(0, y); }
+    sp.style.height = Math.max(0, Math.ceil(y + window.innerHeight - content)) + 'px';
+    if (k < 1) requestAnimationFrame(step);
+    else { sp.style.height = '0px'; window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }
+  };
+  requestAnimationFrame(step);
+}
+let _cxEndWatching = false;
+function _cxEndSpaceWatch() {
+  if (_cxEndWatching) return;
+  _cxEndWatching = true;
+  const trim = () => {
+    const sp = document.getElementById('ccEndSpace'), h = sp ? (parseFloat(sp.style.height) || 0) : 0;
+    if (!h) return stop();
+    const content = document.documentElement.scrollHeight - h;     // the page without the spacer
+    const need = Math.max(0, Math.ceil(window.scrollY + window.innerHeight - content));
+    if (need < h) sp.style.height = need + 'px';
+    if (!need) stop();
+  };
+  const stop = () => { window.removeEventListener('scroll', trim); window.removeEventListener('resize', trim); _cxEndWatching = false; };
+  window.addEventListener('scroll', trim, { passive: true });
+  window.addEventListener('resize', trim, { passive: true });
 }

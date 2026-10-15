@@ -163,14 +163,14 @@ function stRenderTracking() {
     '<span class="st-check__r">' + cxPill('open', checks.length + ' prüfen') + '<i class="ti ti-chevron-' + (ST.checkOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span></button>' +
     (ST.checkOpen ? checks.map(_stCheckRow).join('') : '') + '</div>' : '';
 
-  el.innerHTML = '<div class="st-page">' +
+  cxPaint(el, '<div class="st-page">' +
     '<div class="st-split' + (ST.sel ? ' has-panel' : '') + '">' +
       '<div class="st-list">' +
         '<div class="st-head"><h1 class="cx-title">Tracking</h1><p class="cx-title__s">NK- und Hausgeldabrechnungen</p></div>' +
         yearBar + summary + cards + empty + hiddenDone + checkHtml +
       '</div>' +
       '<aside class="st-panel" id="stPanel" aria-label="Abrechnung"' + (ST.sel ? '' : ' hidden') + '>' + (ST.sel ? _stPanelHtml() : '') + '</aside>' +
-    '</div></div>';
+    '</div></div>');   // B18: only what changed
 
   document.getElementById('stScrim').hidden = !ST.sel || stIsWide();
   document.body.classList.toggle('st-panel-open', !!ST.sel);
@@ -406,6 +406,66 @@ async function _stSyncStatus() {
   }
 }
 
+/* #6 (Oct 2026): a tenant's NK payment you already typed by hand in Controlling › One-off
+   (same property, same direction, same amount to the cent, on/after the letter date, not linked yet)
+   is LINKED to the result instead of booking the money a second time. */
+function _stFindManualNk(pid, res, amt) {
+  const from = String(res.date || '').slice(0, 10);
+  const linked = new Set((window._src.abrPay || []).map(o => o.id));
+  return (window._ctrl.one_time || []).find(o =>
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    !['Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung'].includes(o.kind) && !o.nk_umlage &&
+    (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
+    Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
+}
+/* #12: the type (and direction) you gave an entry is remembered in before_link when it gets linked,
+   and restored when it is unlinked. Without the before_link column (SQL not run) it works as before. */
+const ST_ABR_KINDS = ['NK-Abrechnung', 'Hausgeldabrechnung'];
+async function _stUpdOT(id, fields) {
+  try { return await ctlUpdateOneTime(id, fields); }
+  catch (e) {
+    if (!('before_link' in fields) || !/before_link/i.test(String((e && (e.message || e.details)) || e))) throw e;
+    const f = Object.assign({}, fields); delete f.before_link;
+    return ctlUpdateOneTime(id, f);
+  }
+}
+function _stBL(o) {                                                   // remembered type → { kind, direction } or null
+  let v = o && o.before_link;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+  return v && typeof v === 'object' ? v : null;
+}
+function _stBeforeLink(o) {
+  if (ST_ABR_KINDS.includes(o.kind)) return _stBL(o);                 // already an Abrechnung type: keep what was remembered
+  return { kind: o.kind || null, direction: o.direction === undefined ? null : o.direction };
+}
+async function _stLinkManualNk(o, res) {
+  const f = { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir, before_link: _stBeforeLink(o) };
+  const d = await _stUpdOT(o.id, f);
+  const row = d || Object.assign({}, o, f);
+  window._src.abrPay = (window._src.abrPay || []).filter(x => x.id !== o.id).concat([row]);
+  const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;
+  return row;
+}
+
+/* Switching a payment off: a booking Settlements made is removed · an entry you typed yourself in
+   Controlling (linked by #6 or the WEG match) is only unlinked — it stays in Controlling as you typed it. */
+const ST_AUTO_ITEM = /^(NK|Hausgeld) \d{2}\.\d{2}\.\d{4}/;
+const _stIsOwnBooking = b => ST_AUTO_ITEM.test(String((b && b.item) || ''));
+async function _stUndoBooking(b) {
+  window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
+  if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); return 'deleted'; }
+  const cur = (window._ctrl.one_time || []).find(x => x.id === b.id);
+  const bl = _stBL(b) || _stBL(cur);                                  // #12: back to the type you gave it
+  const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges', before_link: null };
+  if (bl && bl.kind && bl.direction !== undefined) f.direction = bl.direction;
+  const d = await _stUpdOT(b.id, f);
+  const k = (window._ctrl.one_time || []).findIndex(x => x.id === b.id); if (k >= 0 && d) window._ctrl.one_time[k] = d;
+  return 'unlinked';
+}
+const _stUndoText = (b, fmtDate, fmtEur) => !b ? '' : _stIsOwnBooking(b)
+  ? 'The booking of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') in Controlling is removed too.'
+  : 'Your own entry of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') stays in Controlling – it is only unlinked.';
+
 async function _stWriteResult(existing, row) {
   const tryWrite = async payload => existing
     ? _ctlSupa.from('abr_results').update(payload).eq('id', existing.id).select().single()
@@ -477,9 +537,9 @@ async function _stReopen(l) {
   if (s.res) {
     const b = ctlAbrBooking(s.res);
     if (!(await stConfirm({ title: 'Set this NK-Abrechnung back to open?', ok: 'Back to open', danger: true,
-      text: b ? 'The payment of ' + stDate(b.invoice_date) + ' (' + stEur(b.amount) + ') in Controlling is removed too.' : 'The result disappears from Controlling.' }))) return;
+      text: b ? _stUndoText(b, stDate, stEur) : 'The result disappears from Controlling.' }))) return;
     try {
-      if (b) { await ctlDeleteOneTime(b.id); window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); }
+      if (b) await _stUndoBooking(b);                             // own booking removed · your own entry only unlinked
       const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', s.res.id);
       if (error) throw error;
       s.res.db.status = 'storniert';

@@ -41,6 +41,17 @@
     if (typeof logout === 'function') logout();
   }
 
+  /* Oct 2026: "last seen" for the landlord's Tenants card — at most once a day, only with the current password */
+  function seen(pwh) {
+    const key = new Date().toLocaleDateString('sv-SE') + '|' + room();
+    try { if (localStorage.getItem('cc_seen_day') === key) return; } catch (e) {}
+    try {
+      sbL.rpc('room_seen', { p_room: room(), p_pwh: pwh }).then(({ error }) => {
+        if (!error) try { localStorage.setItem('cc_seen_day', key); } catch (e) {}
+      }, () => {});
+    } catch (e) {}
+  }
+
   let _checking = false;
   async function check() {
     if (PREVIEW || !isTenant() || typeof sbL === 'undefined' || !sbL || _checking) return;
@@ -53,6 +64,7 @@
         .order('created_at', { ascending: false }).limit(1).maybeSingle();
       if (error || !data || !data.body) return;                    // offline / being replaced → leave as is
       if (localStorage.getItem('cc_pwh') !== data.body) kick('changed');
+      else seen(data.body);
     } catch (e) { /* no connection → no logout */ }
     finally { _checking = false; }
   }

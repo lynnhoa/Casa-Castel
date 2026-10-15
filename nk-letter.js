@@ -99,6 +99,7 @@ const NK_LETTER_CSS = `
     .two__l { flex:1 1 58%; min-width:0; } .two__r { flex:0 0 36%; }
     .two .nk td { padding:3.2px 0; }
     .two .nk tr.s td { padding-top:9px; border-top:0.6px solid #d9d0c3; }
+    .two .nk tr:nth-last-child(2) td { padding-bottom:9px; }
     .calc { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#8c8379; margin-left:10px; }
     .note2 { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#6f675e; line-height:1.55; margin-top:14px; }
   `;
@@ -110,7 +111,7 @@ function nkLetterHtml(d) {
   const nb = s => String(s).replace(/§ /g, '§\u00a0').replace(/Abs\. /g, 'Abs.\u00a0').replace(/Satz /g, 'Satz\u00a0');
   const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300&display=swap');`;
   const CSS = NK_LETTER_CSS;
-  const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand || '')}</span><div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel || '')}</span><span class="hdr__room-name">${esc(d.unitName || '')}</span></div></div>`;
+  const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand || '')}</span>${d.unitName ? `<div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel || '')}</span><span class="hdr__room-name">${esc(d.unitName)}</span></div>` : ''}</div>`;
   const ftr = () => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer || '')}</span><span>Seite <span class="pgn">1</span> von <span class="pgt">1</span></span></div></div>`;
   const kv = (k, v) => `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
   const line = '<span class="fill"></span>';

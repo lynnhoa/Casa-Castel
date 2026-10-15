@@ -31,7 +31,7 @@ document.getElementById('tab-rooms').innerHTML = `
     </div>
 
     <!-- Soll line: the baselines of all rooms (Jahres- / Mietvertrag) -->
-    <div class="cc-sumline" id="roomsSummary" style="display:none;"></div>
+    <div class="cc-sum2" id="roomsSummary" style="display:none;"></div>
 
     <!-- Card list -->
     <div class="rp-list" id="roomsList"></div>
@@ -881,17 +881,13 @@ const _DEFAULT_ROOMS = [
 ];
 
 async function loadRooms() {
-  // Ensure settings are loaded first so chips render correctly
-  if (!appSettings.vermieter_name && typeof loadSettings === 'function') {
-    await loadSettings();
-  }
-
-  // Sync kitchen access config from Supabase into localStorage
-  if (typeof loadKitchenRoomsFromSupabase === 'function') {
-    await loadKitchenRoomsFromSupabase();
-  }
-
-  await loadRoomsData();
+  // Settings (so chips render correctly), kitchen access config and the rooms
+  // load at the same time (B18: was one after the other)
+  await Promise.all([
+    (!appSettings.vermieter_name && typeof loadSettings === 'function') ? loadSettings() : null,
+    typeof loadKitchenRoomsFromSupabase === 'function' ? loadKitchenRoomsFromSupabase() : null,
+    loadRoomsData(),
+  ]);
 
   // If Supabase returned no rooms, seed the defaults directly via Supabase
   // bypassing saveRoom() to do a single bulk insert
@@ -915,9 +911,13 @@ async function loadRooms() {
     }
   }
 
+  // B18: the first time, wait for the tenants (max 2,5 s) → the cards are drawn ONCE
+  // with the real rent, not "asking rent" first and redrawn a moment later (the blink)
+  if (typeof tnWarmTenants === 'function') {
+    await Promise.race([Promise.resolve(tnWarmTenants()).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
+  }
   _renderRoomsList();
   _initSortable();
-  if (typeof tnWarmTenants === 'function') tnWarmTenants();   // preload tenant names for the generators
   _roomRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
   // Re-render if settings change (bathrooms / shared spaces lists update)
   if (!loadRooms._settingsWired) { loadRooms._settingsWired = true; onSettingsChange(() => _renderRoomsList()); }
@@ -961,8 +961,8 @@ function _updateRoomsSummary(rooms) {
     kau  += b.kaution || 0;
   });
   bar.style.display = '';
-  bar.innerHTML = `<div class="cc-sumline__top"><b>Soll · Baseline</b><span>${list.length} rooms · ${occ} occupied · ${list.length - occ} vacant</span></div>
-    <div class="cc-sumline__vals"><div><span>Kalt</span><b>${fmtEUR(kalt)}</b></div><div><span>NK</span><b>${fmtEUR(nk)}</b></div><div><span>Kaution</span><b>${fmtEUR(kau)}</b></div></div>`;
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span>${occ} / ${list.length} occupied</span></div>
+    <div class="cc-sum2__vals"><span><i>Kalt</i>${fmtEUR(kalt)}</span><span><i>NK</i>${fmtEUR(nk)}</span><span><i>Kaution</i>${fmtEUR(kau)}</span></div>`;
 }
 
 function _renderRoomsList() {
@@ -980,10 +980,26 @@ function _renderRoomsList() {
   // Keep open cards open, and keep any card you are editing exactly as it is
   // (a background refresh — e.g. the echo of your own save — must not wipe it)
   const openIds = new Set([...list.querySelectorAll('.rc.rc--expanded')].map(c => c.dataset.id));
-  const editing = [...list.querySelectorAll('.rc')]
-    .filter(c => c.classList.contains('rc--editing') || c.querySelector('.rc-sec--editing'));
+  const isEditing = c => c.classList.contains('rc--editing') || !!c.querySelector('.rc-sec--editing, .cc-save[data-cc-save="dirty"]');
+  const editing = [...list.querySelectorAll('.rc')].filter(isEditing);
+  const htmls   = rooms.map(r => _roomCardHTML(r));
 
-  list.innerHTML = rooms.map(r => _roomCardHTML(r)).join('');
+  // B18: same cards in the same order → redraw only the cards whose content
+  // changed (reload on every visit, realtime echo, tenants loaded …) — no blink
+  const onScreen = [...list.querySelectorAll(':scope > .rc')];
+  if (typeof ccSwapCard === 'function' && onScreen.length === rooms.length && list.children.length === rooms.length &&
+      onScreen.every((c, i) => String(c.dataset.id) === String(rooms[i].id))) {
+    onScreen.forEach((c, i) => {
+      if (c._ccHtml === htmls[i] || isEditing(c)) return;
+      ccSwapCard(c, htmls[i], 'rc--expanded')._ccHtml = htmls[i];
+    });
+    _updateRoomsSummary(rooms);
+    _bindAllCards();
+    return;
+  }
+
+  list.innerHTML = htmls.join('');
+  [...list.querySelectorAll(':scope > .rc')].forEach((c, i) => { c._ccHtml = htmls[i]; });   // remembered as drawn
 
   list.querySelectorAll('.rc').forEach(c => { if (openIds.has(c.dataset.id)) c.classList.add('rc--expanded'); });
   editing.forEach(old => {
@@ -1203,11 +1219,11 @@ function _roomCardHTML(r) {
   let whoLine = '';
   if (soll.total) {
     const split = soll.mode === 'pauschal' ? 'davon NK ' + _n(soll.nk) : _n(soll.kalt) + ' + ' + _n(soll.nk) + ' Kalt + NK';
-    whoLine = `<span class="rc-who"><b>Soll ${fmtEUR(soll.total)}</b> ${soll.mode === 'pauschal' ? 'pauschal' : 'warm'} · ${_RC_BASE_LBL[soll.type]}<span class="rc-who__sub">${split} · Kaution ${fmtEUR(soll.kaution)}</span></span>`;
+    whoLine = `<span class="rc-who rc-who--slim">${typeof _tnTypePill === 'function' ? _tnTypePill(soll.type) : _RC_BASE_LBL[soll.type]}<span class="rc-u">Soll <b>${fmtEUR(soll.total)}</b> ${soll.mode === 'pauschal' ? 'pauschal' : 'warm'}</span><span class="rc-u">Kaution ${fmtEUR(soll.kaution)}</span></span>`;
   } else {
     whoLine = `<span class="rc-who rc-who--vac">Soll not set · ${_RC_BASE_LBL[soll.type]} baseline › Edit</span>`;
   }
-  const metaParts = [r.flaeche_m2 ? r.flaeche_m2 + ' m²' : '', r.floor || '', r.room_type || '', hasKitchen ? 'Kitchen' : ''].filter(Boolean);
+  const metaParts = [r.flaeche_m2 ? ccM2(r.flaeche_m2) + ' m²' : '', r.floor || '', r.room_type || '', hasKitchen ? 'Kitchen' : ''].filter(Boolean);
 
   // ── Baselines: one row per contract type — price, Kaution, its generator (Contract ›) and Edit
   const baseRow = type => {
@@ -1265,7 +1281,7 @@ function _roomCardHTML(r) {
           <div class="rc-rows">
             ${roomRow('Typ', esc(r.room_type || '—'))}
             ${roomRow('Etage', esc(r.floor || '—'))}
-            ${roomRow('Größe', r.flaeche_m2 ? r.flaeche_m2 + ' m²' : '—')}
+            ${roomRow('Größe', r.flaeche_m2 ? ccM2(r.flaeche_m2) + ' m²' : '—')}
             ${roomRow('Küche', esc(r.kitchen_type || '—') + (hasKitchen ? ' · in Kitchen rotation' : ''))}
             ${roomRow('Bad', esc(badStr))}
             ${roomRow('Mitgenutzt', esc(gemStr))}
@@ -1292,31 +1308,6 @@ function _roomCardHTML(r) {
       <!-- Übergabeprotokoll: on the tenant card (Tenants · More · Übergabe) -->
     </div>
 
-    <!-- EDIT MODE — only for a NEW room (existing rooms edit per section) -->
-    ${isNew ? `
-    <div class="rc-edit">
-      <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Identity</div>
-        ${editIdentity}
-      </div>
-      <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Mietobjekt</div>
-        ${editMietobjekt}
-      </div>
-      <div class="rc-edit-section">
-        ${editPricing}
-      </div>
-      <div class="rc-edit-section">
-        <div class="rc-edit-stitle">Schlüssel</div>
-        ${editKeys}
-      </div>
-      <div class="rc-edit-footer">
-        <div class="rc-save-row">
-          <button class="rm-btn rm-btn--ghost" onclick="_cancelEdit(this.closest('.rc'))" data-i18n="rooms_cancel">${t('rooms_cancel')}</button>
-          <button class="rm-btn rm-btn--primary cc-save cc-save--create" onclick="_saveCard(this.closest('.rc'))" data-i18n="rooms_save">${t('rooms_save')}</button>
-        </div>
-      </div>
-    </div>` : ''}
   </div>`;
 }
 
@@ -1332,6 +1323,10 @@ function _bindAllCards() {
 /* ── CARD INTERACTIONS ───────────────────────────────────── */
 function _toggleCard(card) {
   if (card.classList.contains('rc--editing')) return;
+  if (card.classList.contains('rc--expanded') && typeof ccKeepPlace === 'function') {   // Oct 2026: closing keeps the header in place
+    ccKeepPlace(card, () => card.classList.remove('rc--expanded'));
+    return;
+  }
   card.classList.toggle('rc--expanded');
   // When expanding: scroll card top into view just below the sticky nav
   if (card.classList.contains('rc--expanded')) {
@@ -1561,73 +1556,89 @@ async function _saveCard(card) {
 }
 
 
-/* ── ADD NEW ROOM ────────────────────────────────────────── */
-document.getElementById('roomAddBtn')?.addEventListener('click', () => {
-  const list = document.getElementById('roomsList');
-  const tempId = 'new-' + Date.now();
+/* ── ADD NEW ROOM (Oct 2026) ─────────────────────────────────
+   Same sheet as "Edit room", just empty — Room · Mietobjekt · Schlüssel, Cancel · Save.
+   No baselines here: they are set on the card after saving (one place for everything).
+   New room = Vacant, at the end of the list; then the password popup; then the card opens. */
+document.getElementById('roomAddBtn')?.addEventListener('click', () => _roomAddOpen());
 
-  const blank = {
-    id: null, name: '', room_type: 'WG Zimmer', active: true, vacant: false,
-    floor: '', flaeche_m2: null, kitchen_type: 'Geteilte Küche',
-    badezimmer: [], gemeinschaftsraeume: [],
-    monatl_miete: null, mietvertrag_pricing: 'kalt_nk',
-    kurzzeit_pricing: 'pauschal', kurzzeit_kaltmiete: null, kurzzeit_nk: null,
-    mietvertrag_miete: null, kaltmiete: null, nk_pauschale: null,
-    active_price_type: null,
+const _ROOM_ADD_BLANK = {
+  name: '', room_type: 'WG Zimmer', floor: '', flaeche_m2: null, kitchen_type: 'Geteilte Küche',
+  badezimmer: [], gemeinschaftsraeume: [],
+  haustuerschluessel: 1, zimmerschluessel: 1, briefkastenschluessel: 0,
+};
+function _roomAddOpen() {
+  const tmp = '__new__';
+  _roomCardHTML({ ..._ROOM_ADD_BLANK, id: tmp, active: true, vacant: true });   // builds the same edit fragments
+  const f = _roomFrags[tmp]; delete _roomFrags[tmp];
+  if (!f) return;
+  const ov = _roomSheetEnsure();
+  if (!ov.classList.contains('open')) _roomAnchorSet(null);
+  _roomSheetCur = { kind: 'new', id: null, kitchenWas: false };
+  document.getElementById('roomSheetKicker').textContent = 'Rooms · New room';
+  document.getElementById('roomSheetTitle').textContent = 'Add room';
+  document.getElementById('roomSheetSub').textContent = 'Baselines are set on the card after saving';
+  const kitchenSw = `<label class="cg-switch" for="rs-kitchen" style="margin-top:4px"><input type="checkbox" id="rs-kitchen"/><span class="cg-switch__t" aria-hidden="true"></span>
+      <span class="cg-switch__txt"><b>Kitchen rotation</b><small>This room takes turns in the shared kitchen</small></span></label>`;
+  const body = document.getElementById('roomSheetBody');
+  body.innerHTML =
+    `<div class="rc-edit-section rs-sec"><div class="rc-edit-stitle">Room</div>${f.editIdentity}</div>
+     <div class="rc-edit-section rs-sec"><div class="rc-edit-stitle">Mietobjekt</div>${f.editMietobjekt}${kitchenSw}</div>
+     <div class="rc-edit-section rs-sec"><div class="rc-edit-stitle">Schlüssel</div>${f.editKeys}</div>
+     <p class="cg-hint" style="margin:6px 0 0">The new room starts as Vacant. A login password is created and shown once after saving.</p>`;
+  body.scrollTop = 0;
+  const ph = { name: 'e.g. Rome', floor: 'e.g. EG' };
+  Object.keys(ph).forEach(k => body.querySelector(`[data-f="${k}"]`)?.setAttribute('placeholder', ph[k]));
+  document.getElementById('roomSheetFooter').innerHTML =
+    `<button type="button" class="rm-btn--cancel" onclick="_roomSheetClose()">${t('rooms_cancel')}</button>
+     <button type="button" class="rm-btn rm-btn--primary cc-save cc-save--create" style="flex:0 0 140px" onclick="_roomAddSave(this)">${t('rooms_save')}</button>`;
+  if (typeof ccGermanFormatScan === 'function') ccGermanFormatScan(ov);
+  ov.classList.add('open');
+}
+
+async function _roomAddSave(btn) {
+  const cur = _roomSheetCur; if (!cur || cur.kind !== 'new') return;
+  if (btn && btn.disabled) return;                           // a second tap while saving does nothing
+  const scope = document.getElementById('roomSheetBody'); if (!scope) return;
+  const data = _roomCollectFields(scope);
+  data.name = String(data.name || '').trim();
+  const problem = _roomNameProblem(data.name, null);
+  if (problem !== '') { _roomNameError(scope, problem); return; }
+  if (!Array.isArray(data.badezimmer)) data.badezimmer = [];
+  if (!Array.isArray(data.gemeinschaftsraeume)) data.gemeinschaftsraeume = [];
+  const kOn = !!document.getElementById('rs-kitchen')?.checked;
+  const row = {
+    ...data, active: true, vacant: true, inventar: [],
+    mietvertrag_pricing: 'kalt_nk', kurzzeit_pricing: 'pauschal',
+    kaltmiete: null, nk_pauschale: null, kurzzeit_kaltmiete: null, kurzzeit_nk: null,
     kaution_override: false, kaution_default: null,
-    haustuerschluessel: 1, zimmerschluessel: 1, briefkastenschluessel: 0,
-    inventar: [], sort_order: appRooms.length,
   };
-
-  const div = document.createElement('div');
-  div.innerHTML = _roomCardHTML(blank);
-  const card = div.firstElementChild;
-  card.id = tempId;
-  card.classList.add('rc--expanded', 'rc--editing');
-  list.insertBefore(card, list.firstChild);
-  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  card.querySelector('.rc-input[data-f="name"]')?.focus();
-
-  // Override save for new card
-  card.querySelector('.rm-btn--primary').onclick = async () => {
-    const name = card.querySelector('[data-f="name"]')?.value.trim();
-    if (!name) { alert('Room name is required.'); return; }
-
-    const data = { active: true, vacant: false };
-    card.querySelectorAll('[data-f]').forEach(el => {
-      const key = el.dataset.f;
-      if (el.tagName === 'INPUT' && el.type === 'checkbox') data[key] = el.checked;
-      else if (el.tagName === 'INPUT' && ccIsNumInput(el)) data[key] = el.value !== '' ? parseFloat(el.value) : null;
-      else if (el.classList.contains('rc-stepper__v')) data[key] = parseInt(el.textContent, 10);
-      else data[key] = el.value;
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const result = await saveRoom(row);                        // sort_order = end of the list
+  if (!result.ok) {
+    if (btn) { btn.disabled = false; btn.textContent = t('rooms_save'); }
+    ccToast('Room not added — connection problem. Please try again.', true);
+    return;
+  }
+  const room = result.room;
+  _roomAnchor = null;                                        // we go to the new card instead
+  _roomSheetClose();
+  _renderRoomsList();
+  _initSortable();
+  const card = document.querySelector(`.rc[data-id="${room.id}"]`);
+  if (card) {
+    card.classList.add('rc--expanded');
+    requestAnimationFrame(() => {                            // just below the header, like opening a card
+      const navH = document.querySelector('.cc-nav')?.offsetHeight || 56;
+      const headerH = document.querySelector('.cc-header')?.offsetHeight || 52;
+      window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY - (navH + headerH + 8), behavior: 'smooth' });
     });
-    const spaceChips = card.querySelectorAll('[data-chipgroup="gemeinschaftsraeume"] .rc-chip.on');
-    data.gemeinschaftsraeume = [...spaceChips].map(c => c.dataset.space);
-    const badChips = card.querySelectorAll('[data-chipgroup="badezimmer"] .rc-chip.on');
-    data.badezimmer = [...badChips].map(c => c.dataset.bad);
-    const kzToggle = card.querySelector('[data-kztoggle]');
-    if (kzToggle) data.kurzzeit_pricing = kzToggle.checked ? 'kalt_nk' : 'pauschal';
-    const mvToggle = card.querySelector('[data-mvtoggle]');
-    if (mvToggle) data.mietvertrag_pricing = mvToggle.checked ? 'pauschal' : 'kalt_nk';
-    const activePriceType = card.querySelector('.rc-price-toggle__opt.active--mietvertrag, .rc-price-toggle__opt.active--kurzzeit');
-    if (activePriceType) data.active_price_type = activePriceType.dataset.type;
-    data.inventar = [];
-
-    const result = await saveRoom(data);
-    if (!result.ok) { alert('Save failed: ' + result.error); return; }
-    // New room gets a strong random password (shown once to the landlord)
-    if (sbL && name) await ccSetNewRoomPassword(name, 'Login password');
-    card.remove();
-    _renderRoomsList();
-    _initSortable();
-  };
-
-  card.querySelector('.rm-btn--ghost').onclick = () => {
-    card.style.transition = 'opacity .15s';
-    card.style.opacity = '0';
-    setTimeout(() => card.remove(), 150);
-  };
-});
+  }
+  _updateRoomsSummary(appRooms);
+  if (sbL) await ccSetNewRoomPassword(room.name, 'Login password');   // shown once, as before
+  if (typeof ccSavedToast === 'function') ccSavedToast('Room added');
+  if (kOn) _roomSetKitchen(room.name, true, room.id).then(ok => { if (ok) _roomRerenderCard(room.id); });
+}
 
 
 /* ── DELETE ──────────────────────────────────────────────── */
@@ -1699,6 +1710,7 @@ let _inventarRoomId = null;
 
 function _openInventar(roomId) {
   _inventarRoomId = roomId;
+  if (!document.getElementById('inventarOverlay')?.classList.contains('open')) _roomAnchorSet(roomId);
   const room = getRoomById(roomId);
   document.getElementById('inventarSubtitle').textContent = (room?.name || '') + ' · Anlage A';
 
@@ -1717,17 +1729,20 @@ function _openInventar(roomId) {
 document.getElementById('inventarClose')?.addEventListener('click', () => {
   document.getElementById('inventarOverlay').classList.remove('open');
   _inventarRoomId = null;
+  _roomAnchorRestore();
 });
 
 document.getElementById('inventarCancel')?.addEventListener('click', () => {
   document.getElementById('inventarOverlay').classList.remove('open');
   _inventarRoomId = null;
+  _roomAnchorRestore();
 });
 
 document.getElementById('inventarOverlay')?.addEventListener('click', e => {
   if (e.target === document.getElementById('inventarOverlay')) {
     document.getElementById('inventarOverlay').classList.remove('open');
     _inventarRoomId = null;
+    _roomAnchorRestore();
   }
 });
 
@@ -1773,6 +1788,8 @@ document.getElementById('inventarSave')?.addEventListener('click', async () => {
       _initSortable();
     }
     _inventarRoomId = null;
+    _roomAnchorRestore();
+    if (typeof ccSavedToast === 'function') ccSavedToast();
   }
 });
 
@@ -2087,7 +2104,7 @@ async function _openContract(type, roomId, renew) {
   if ((type === 'kurzzeit' || type === 'jahres' || type === 'mietvertrag') && typeof ccgBodyHTML === 'function') {
     typeLbl.textContent  = type === 'kurzzeit' ? 'Kurzzeitmietvertrag' : type === 'jahres' ? 'Mietvertrag · Jahresvertrag' : 'Mietvertrag';
     titleLbl.textContent = `New contract — ${room.name}`;
-    subLbl.textContent   = [room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '', room.floor, room.room_type].filter(Boolean).join(' · ');
+    subLbl.textContent   = [room.flaeche_m2 ? ccM2(room.flaeche_m2) + ' m²' : '', room.floor, room.room_type].filter(Boolean).join(' · ');
     body.innerHTML       = ccgBodyHTML(type, room, _contractRenew);
     footer.innerHTML     = ccfFooterHTML();
 
@@ -2095,7 +2112,7 @@ async function _openContract(type, roomId, renew) {
     const isEinzug = _rcEULabel(roomId) === 'Einzug';
     typeLbl.textContent  = 'Übergabeprotokoll';
     titleLbl.textContent = (isEinzug ? 'Einzug' : 'Auszug') + ' — ' + room.name;
-    subLbl.textContent   = (room.flaeche_m2 ? room.flaeche_m2 + ' m²' : '') + (room.floor ? ' · ' + room.floor : '');
+    subLbl.textContent   = (room.flaeche_m2 ? ccM2(room.flaeche_m2) + ' m²' : '') + (room.floor ? ' · ' + room.floor : '');
     body.innerHTML       = _contractBodyUeberg(room, isEinzug);
     footer.innerHTML     = ccfFooterHTML(ccfRoomTenancies(room.name).length > 0);
   }
@@ -2448,7 +2465,7 @@ function _contractBodyKurzzeit(room) {
     <div class="rm-prefilled">
       <div class="rm-prefilled__title">Pre-filled from room & profile</div>
       <div class="rm-pre-row"><span>Room</span><span>${esc(room.name)}</span></div>
-      <div class="rm-pre-row"><span>Size</span><span>ca. ${room.flaeche_m2||'—'} m²</span></div>
+      <div class="rm-pre-row"><span>Size</span><span>ca. ${room.flaeche_m2 ? ccM2(room.flaeche_m2) : '—'} m²</span></div>
       <div class="rm-pre-row"><span>Shared</span><span>${esc(gemStr)}</span></div>
       <div class="rm-pre-row"><span>Rent</span><span>${rentDisplay} / Monat</span></div>
       <div class="rm-pre-row"><span>Vermieter</span><span>${esc(s.vermieter_name||'—')}</span></div>
@@ -2576,7 +2593,7 @@ function _roomMvPricing(room) {
 
 /* ── THREE BASELINES (Oct 2026) ───────────────────────────────
    One per contract type, each the prefill of its own generator and the Soll in Rooms + Controlling:
-     Kurzzeit       always Pauschal — Pauschalmiete and the NK part inside it (kurzzeit_*)
+     Kurzzeit       Pauschal (Pauschalmiete + the NK part inside it) or Kalt + NK (kurzzeit_*, kurzzeit_pricing)
      Jahresvertrag  own price (jahres_*); until it is saved once it uses the Mietvertrag price
      Mietvertrag    kaltmiete / nk_pauschale / mietvertrag_pricing, individual Kaution (kaution_*)
    Soll of a room = the baseline of its current tenant's contract type; vacant → Jahresvertrag. */
@@ -2587,7 +2604,7 @@ function ccRoomBaseline(room, type) {
   if (!room) return { type, mode: 'kalt_nk', kalt: 0, nk: 0, total: 0, kautionFixed: null, own: false };
   if (type === 'kurzzeit') {
     const kalt = Number(room.kurzzeit_kaltmiete) || 0, nk = Number(room.kurzzeit_nk) || 0;
-    return { type, mode: 'pauschal', kalt, nk, total: kalt + nk, kautionFixed: null, own: !!(kalt || nk) };
+    return { type, mode: room.kurzzeit_pricing === 'kalt_nk' ? 'kalt_nk' : 'pauschal', kalt, nk, total: kalt + nk, kautionFixed: null, own: !!(kalt || nk) };
   }
   if (type === 'jahres' && ccRoomJahresOwn(room)) {
     const kalt = Number(room.jahres_kaltmiete) || 0, nk = Number(room.jahres_nk) || 0;
@@ -2966,7 +2983,7 @@ function _renderKurzzeitHTML(d) {
     ${sec('Mietobjekt', false, false)}
     ${kv('Adresse', d.objektAdresse)}
     ${kv('Bezeichnung', d.zimmerName)}
-    ${kv('Wohnfläche', 'ca. ' + d.zimmerFlaeche + ' m²')}
+    ${kv('Wohnfläche', 'ca. ' + ccM2(d.zimmerFlaeche) + ' m²')}
     ${kv('Mitgenutzte Räume', d.gemeinschaftsraeume)}
     ${kv('Möblierung', 'Möbliert · Inventar siehe Anlage A')}
 
@@ -3446,7 +3463,7 @@ function _renderUebergHTML(d) {
 
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Objekt / Adresse', d.objekt)}
-    ${kv('Zimmer', d.zimmer + (d.flaeche ? ' · ca. ' + d.flaeche + ' m²' : '') + (d.floor ? ' · ' + d.floor : ''))}
+    ${kv('Zimmer', d.zimmer + (d.flaeche ? ' · ca. ' + ccM2(d.flaeche) + ' m²' : '') + (d.floor ? ' · ' + d.floor : ''))}
     ${kv('Vermieter', d.vermieter)}
     ${kv('Mieter', d.mieterName)}
     ${kv('Adresse Mieter', d.mieterAdr)}
@@ -4083,7 +4100,7 @@ function _renderMietvertragHTML(d) {
     ${d.mieterTelefon?kv('Telefon',d.mieterTelefon):''}
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${kv('Bezeichnung',d.zimmerName)}
-    ${kv('Zimmergröße','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
+    ${kv('Zimmergröße','ca.\u00a0'+ccM2(d.zimmerFlaeche)+'\u00a0m\u00b2')}
     ${kv('Mitgenutzte Räume',d.gemeinschaftsraeume||'—')}
     ${kv('Möblierung','Möbliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A')}
     ${sec('Mietzeit',false,false)}
@@ -4292,12 +4309,52 @@ function _roomSheetEnsure() {
 function _roomSheetClose() {
   document.getElementById('roomSheetOverlay')?.classList.remove('open');
   _roomSheetCur = null;
+  _roomAnchorRestore();
+}
+
+/* ── KEEP THE PAGE WHERE IT WAS (Oct 2026) ─────────────────────
+   On the iPhone the keyboard of a sheet scrolls the page behind it and does not scroll back.
+   When a sheet opens we remember where the room card sat on the screen; when it closes
+   (Save · Cancel · X · tap outside) the card is put back exactly there — right away, and once
+   more after the keyboard has closed. Anchored on the card, so it also holds when the card
+   got taller or shorter after saving. Your own scrolling after closing is never fought. */
+let _roomAnchor = null;
+function _roomAnchorSet(id) {
+  const c = id != null ? document.querySelector(`.rc[data-id="${id}"]`) : null;
+  _roomAnchor = { id, top: c ? c.getBoundingClientRect().top : null, y: window.scrollY };
+}
+function _roomAnchorRestore() {
+  const a = _roomAnchor; _roomAnchor = null;
+  if (!a) return;
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  window.addEventListener('touchstart', stop, { once: true, passive: true });
+  window.addEventListener('wheel', stop, { once: true, passive: true });
+  const fix = () => {
+    if (stopped) return;
+    const c = a.id != null ? document.querySelector(`.rc[data-id="${a.id}"]`) : null;
+    if (c && a.top != null) {
+      const dy = c.getBoundingClientRect().top - a.top;
+      if (Math.abs(dy) > 1) window.scrollBy(0, dy);
+    } else if (Math.abs(window.scrollY - a.y) > 1) window.scrollTo(0, a.y);
+  };
+  queueMicrotask(fix);                       // after the card was redrawn by the Save
+  requestAnimationFrame(fix);
+  [350, 700].forEach(ms => setTimeout(fix, ms));   // after the keyboard has closed
+  const vv = window.visualViewport;
+  if (vv) {
+    const onVv = () => setTimeout(fix, 60);
+    vv.addEventListener('resize', onVv);
+    setTimeout(() => vv.removeEventListener('resize', onVv), 1200);
+  }
+  setTimeout(() => { window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }, 1300);
 }
 function _roomSheetOpen(kind, id) {
   const r = getRoomById(id); if (!r) return;
   if (!_roomFrags[id]) _roomCardHTML(r);
   const f = _roomFrags[id]; if (!f) return;
   const ov = _roomSheetEnsure();
+  if (!ov.classList.contains('open')) _roomAnchorSet(id);
   _roomSheetCur = { kind, id, kitchenWas: !!f.hasKitchen };
   document.getElementById('roomSheetKicker').textContent = 'Rooms · ' + r.name;
   document.getElementById('roomSheetTitle').textContent = kind === 'room' ? 'Edit room' : 'Baseline rent';
@@ -4323,19 +4380,61 @@ function _roomSheetDelete() {
   _roomSheetClose();
   if (card) _confirmDelete(card);
 }
-/* Kitchen rotation on / off for one room — with a clear message if it fails */
-function _roomSetKitchen(roomName, on) {
+/* Kitchen rotation on / off for one room — with a clear message if it fails.
+   Order: the kitchen list first; the room's kitchen flag only after the list is saved,
+   so list and flag never disagree. Fails → old list, old flag, card redrawn, "Not saved". */
+function _roomSetKitchen(roomName, on, roomId) {
   const rooms = typeof getKitchenRooms === 'function' ? getKitchenRooms().slice() : [];
   const has = rooms.includes(roomName);
-  if (on === has) return;
+  if (on === has) return Promise.resolve(true);
   if (on) rooms.push(roomName); else rooms.splice(rooms.indexOf(roomName), 1);
-  if (typeof syncKitchenRoomsToSupabase === 'function') {
-    Promise.resolve(syncKitchenRoomsToSupabase(rooms)).catch(e => ccSaveFailed(e, 'kitchen rotation'));
-  }
-  const roomObj = appRooms.find(r => r.name === roomName);
+  const roomObj = roomId != null ? getRoomById(roomId) : appRooms.find(r => r.name === roomName);
+  const flagWas = roomObj ? roomObj.kitchen_enabled : undefined;
   if (roomObj) roomObj.kitchen_enabled = on;
-  if (sbL) sbL.from('rooms').update({ kitchen_enabled: on }).eq('name', roomName)
-    .then(res => { if (res && res.error) ccSaveFailed(res.error, 'kitchen rotation'); });
+  if (typeof syncKitchenRoomsToSupabase !== 'function') return Promise.resolve(true);
+  return Promise.resolve(syncKitchenRoomsToSupabase(rooms))
+    .then(() => {
+      if (!sbL) return true;
+      const id = roomObj ? roomObj.id : null;
+      const q = () => id != null ? sbL.from('rooms').update({ kitchen_enabled: on }).eq('id', id)
+                                 : sbL.from('rooms').update({ kitchen_enabled: on }).eq('name', roomName);
+      return ccQueueWrite('room-' + (id != null ? id : roomName), q)
+        .then(res => { if (res && res.error) ccSaveFailed(res.error, 'kitchen rotation'); return true; });
+    })
+    .catch(e => {
+      if (roomObj) roomObj.kitchen_enabled = flagWas;
+      if (roomObj && document.querySelector(`.rc[data-id="${roomObj.id}"]`)) _roomRerenderCard(roomObj.id);
+      ccSaveFailed(e, 'kitchen rotation');
+      return false;
+    });
+}
+/* Room name problem: red field + one short line under the Name row (no message over the buttons) */
+function _roomNameError(scope, msg) {
+  const inp = scope && scope.querySelector('[data-f="name"]');
+  if (!inp) return;
+  inp.style.borderColor = '#C4705A';
+  const row = inp.closest('.rc-field-row') || inp.parentNode;
+  scope.querySelectorAll('.rs-name-err').forEach(e => e.remove());
+  if (msg) {
+    const m = document.createElement('div');
+    m.className = 'rs-name-err'; m.setAttribute('role', 'alert'); m.textContent = msg;
+    row.after(m);
+  }
+  if (!inp._rsErrWired) {
+    inp._rsErrWired = true;
+    inp.addEventListener('input', () => { inp.style.borderColor = ''; scope.querySelectorAll('.rs-name-err').forEach(e => e.remove()); });
+  }
+  inp.focus();
+}
+/* Name check shared by Edit room and Add room: '' = ok, otherwise the message (null = empty name) */
+function _roomNameProblem(name, ownId) {
+  if (!name) return null;
+  const lower = name.toLowerCase();
+  const other = appRooms.find(r => String(r.id) !== String(ownId) && String(r.name || '').trim().toLowerCase() === lower);
+  if (other) return `A room called ${other.name} already exists.`;
+  const landlordName = (typeof CC_LANDLORD_NAME !== 'undefined' ? CC_LANDLORD_NAME : 'Casa Castel').toLowerCase();
+  if (lower === landlordName) return `"${name}" is reserved for the landlord login.`;
+  return '';
 }
 function _roomSheetSave() {
   const cur = _roomSheetCur; if (!cur) return;
@@ -4345,18 +4444,10 @@ function _roomSheetSave() {
   const oldName = room.name;
   if (cur.kind === 'room') {
     data.name = String(data.name || '').trim();
-    const inp = scope.querySelector('[data-f="name"]');
-    if (!data.name) { if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); } return; }
-    const lower = data.name.toLowerCase();
-    const clash = appRooms.some(r => String(r.id) !== String(cur.id) && String(r.name || '').trim().toLowerCase() === lower);
-    const landlordName = (typeof CC_LANDLORD_NAME !== 'undefined' ? CC_LANDLORD_NAME : 'Casa Castel').toLowerCase();
-    if (clash || lower === landlordName) {
-      if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
-      ccToast(clash ? `A room called "${data.name}" already exists. Choose another name.` : `"${data.name}" is reserved for the landlord login.`, true);
-      return;
-    }
+    const problem = _roomNameProblem(data.name, cur.id);
+    if (problem !== '') { _roomNameError(scope, problem); return; }
     const kOn = !!document.getElementById('rs-kitchen')?.checked;
-    if (kOn !== cur.kitchenWas) _roomSetKitchen(oldName, kOn);   // before a rename: the rename moves the list entry
+    if (kOn !== cur.kitchenWas) _roomSetKitchen(oldName, kOn, cur.id);   // before a rename: the rename moves the list entry
   }
   const renamed = cur.kind === 'room' && data.name !== oldName;
   const before = {};
@@ -4365,6 +4456,7 @@ function _roomSheetSave() {
   _roomSheetClose();
   _roomRerenderCard(cur.id);
   _updateRoomsSummary(appRooms);
+  if (typeof ccSavedToast === 'function') ccSavedToast();
   if (!sbL) return;
   ccQueueWrite('room-' + cur.id, () => sbL.from('rooms').update(data).eq('id', cur.id))
     .then(({ error }) => {
@@ -4383,11 +4475,18 @@ function _roomSheetSave() {
 /* ── BASELINE SHEET: one contract type at a time (Oct 2026) ─────────────────── */
 var _RC_BASE_LBL = { kurzzeit: 'Kurzzeit', jahres: 'Jahresvertrag', mietvertrag: 'Mietvertrag' };
 let _roomBaseCur = null;
-function _rbNum(id) {   // German or plain input: 1.300,00 · 1300,5 · 1300.50
-  let v = String(document.getElementById(id)?.value ?? '').trim().replace(/[\s€]/g, '');
+function _rbNum(id) {   // #1 (Oct 2026): the app's German reader — 1.950 · 1.950,00 · 1950,5 · 850.50 (was: 1.950 → 1,95)
+  const v = String(document.getElementById(id)?.value ?? '').trim();
   if (!v) return null;
-  if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
-  const n = parseFloat(v); return isNaN(n) ? null : Math.round(n * 100) / 100;
+  let n;
+  if (typeof ccParseEUR === 'function') n = ccParseEUR(v);
+  else {                                                   // same rule if the reader is missing
+    let s = v.replace(/[\s€\u00a0\u202f]/g, '');
+    if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+    n = s === '' ? null : Number(s);
+  }
+  return n === null || !isFinite(n) ? null : Math.round(n * 100) / 100;
 }
 function _rbField(id, label, val) {
   return `<div class="rb-f"><label class="rb-lbl" for="${id}">${label}</label>
@@ -4396,6 +4495,7 @@ function _rbField(id, label, val) {
 function _roomBaseOpen(type, id) {
   const r = getRoomById(id); if (!r) return;
   const ov = _roomSheetEnsure();
+  if (!ov.classList.contains('open')) _roomAnchorSet(id);
   const b = ccRoomBaseline(r, type);
   _roomBaseCur = { type, id };
   document.getElementById('roomSheetKicker').textContent = 'Rooms · ' + r.name;
@@ -4403,10 +4503,15 @@ function _roomBaseOpen(type, id) {
   document.getElementById('roomSheetSub').textContent = 'Default for new ' + _RC_BASE_LBL[type] + ' contracts — never changes a running tenancy';
   let html;
   if (type === 'kurzzeit') {
-    html = `${_rbField('rb-total', 'Pauschalmiete €', b.total || '')}${_rbField('rb-nk', 'davon NK €', b.total ? b.nk : '')}
-      <div class="rb-calc"><span>Miete ohne NK</span><b id="rb-calc">—</b></div>
-      <p class="rb-hint">Kurzzeit is always Pauschal. The NK part is used for the NK settlement and Controlling.
-        Kaution follows the Kurzzeit rule: 1× Pauschale up to 3 months, 3× above.</p>`;
+    // Oct 2026: Pauschal (type the Pauschalmiete) or Kalt + NK (Vorauszahlung, settled yearly)
+    const pa = b.mode !== 'kalt_nk';
+    html = `<div class="rb-seg" id="rb-mode" data-mode="${pa ? 'pauschal' : 'kalt_nk'}">
+        <button type="button" data-v="pauschal" onclick="_roomBaseMode('pauschal')">Pauschal</button>
+        <button type="button" data-v="kalt_nk" onclick="_roomBaseMode('kalt_nk')">Kalt + NK</button></div>
+      <div data-rbgroup="pauschal"${pa ? '' : ' style="display:none"'}>${_rbField('rb-total', 'Pauschalmiete €', pa && b.total ? b.total : '')}${_rbField('rb-nk', 'davon NK €', pa && b.total ? b.nk : '')}</div>
+      <div data-rbgroup="kalt_nk"${pa ? ' style="display:none"' : ''}><div class="rb-two">${_rbField('rb-kalt', 'Kaltmiete €', !pa && b.total ? b.kalt : '')}${_rbField('rb-nkv', 'NK-Vorauszahlung €', !pa && b.total ? b.nk : '')}</div></div>
+      <div class="rb-calc"><span id="rb-calc-l">${pa ? 'Miete ohne NK' : 'Warmmiete'}</span><b id="rb-calc">—</b></div>
+      <p class="rb-hint" id="rb-kzhint"></p>`;
   } else {
     const pa = b.mode === 'pauschal';
     html = `<div class="rb-seg" id="rb-mode" data-mode="${pa ? 'pauschal' : 'kalt_nk'}">
@@ -4431,6 +4536,11 @@ function _roomBaseMode(mode) {
   const seg = document.getElementById('rb-mode'); if (!seg) return;
   seg.dataset.mode = mode;
   const pa = mode === 'pauschal';
+  if (_roomBaseCur && _roomBaseCur.type === 'kurzzeit') {          // Kurzzeit: two field groups
+    document.querySelectorAll('[data-rbgroup]').forEach(g => { g.style.display = g.dataset.rbgroup === mode ? '' : 'none'; });
+    const cl = document.getElementById('rb-calc-l'); if (cl) cl.textContent = pa ? 'Miete ohne NK' : 'Warmmiete';
+    return _roomBaseCalc();
+  }
   const lk = document.querySelector('label[for="rb-kalt"]'), ln = document.querySelector('label[for="rb-nk"]');
   if (lk) lk.textContent = pa ? 'Miete ohne NK €' : 'Kaltmiete €';
   if (ln) ln.textContent = pa ? 'davon NK €' : 'Nebenkosten €';
@@ -4441,9 +4551,18 @@ function _roomBaseCalc() {
   const cur = _roomBaseCur; if (!cur) return;
   const out = document.getElementById('rb-calc'); if (!out) return;
   if (cur.type === 'kurzzeit') {
-    const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk');
-    out.textContent = tot == null ? '—' : fmtEUR(Math.max(0, tot - (nk || 0)));
-    out.style.color = nk != null && tot != null && nk > tot ? '#A3402A' : '';
+    const pa = document.getElementById('rb-mode')?.dataset.mode !== 'kalt_nk';
+    const hint = document.getElementById('rb-kzhint');
+    if (pa) {
+      const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk');
+      out.textContent = tot == null ? '—' : fmtEUR(Math.max(0, tot - (nk || 0)));
+      out.style.color = nk != null && tot != null && nk > tot ? '#A3402A' : '';
+      if (hint) hint.textContent = 'Pauschal: no NK-Abrechnung; the NK part counts as NK covered in Settlements. Kaution: 1× Pauschale up to 3 months, 3× above.';
+    } else {
+      const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nkv');
+      out.textContent = k == null ? '—' : fmtEUR(k + (nk || 0)); out.style.color = '';
+      if (hint) hint.textContent = 'Kalt + NK: NK-Vorauszahlung, settled yearly in Settlements. Kaution: 1× Kaltmiete up to 3 months, 3× above.';
+    }
     return;
   }
   const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nk');
@@ -4458,10 +4577,16 @@ function _roomBaseSave() {
   const room = getRoomById(cur.id); if (!room) return;
   let patch;
   if (cur.type === 'kurzzeit') {
-    const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk') || 0;
-    if (tot == null) { ccToast('Enter the Pauschalmiete', true); return; }
-    if (nk > tot) { ccToast('The NK part can’t be more than the Pauschalmiete', true); return; }
-    patch = { kurzzeit_kaltmiete: Math.round((tot - nk) * 100) / 100, kurzzeit_nk: nk, kurzzeit_pricing: 'pauschal' };
+    if (document.getElementById('rb-mode')?.dataset.mode === 'kalt_nk') {
+      const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nkv') || 0;
+      if (k == null) { ccToast('Enter the Kaltmiete', true); return; }
+      patch = { kurzzeit_kaltmiete: k, kurzzeit_nk: nk, kurzzeit_pricing: 'kalt_nk' };
+    } else {
+      const tot = _rbNum('rb-total'), nk = _rbNum('rb-nk') || 0;
+      if (tot == null) { ccToast('Enter the Pauschalmiete', true); return; }
+      if (nk > tot) { ccToast('The NK part can’t be more than the Pauschalmiete', true); return; }
+      patch = { kurzzeit_kaltmiete: Math.round((tot - nk) * 100) / 100, kurzzeit_nk: nk, kurzzeit_pricing: 'pauschal' };
+    }
   } else {
     const k = _rbNum('rb-kalt'), nk = _rbNum('rb-nk') || 0;
     const mode = document.getElementById('rb-mode')?.dataset.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';
@@ -4477,6 +4602,7 @@ function _roomBaseSave() {
   _roomSheetClose();
   _roomRerenderCard(cur.id);
   _updateRoomsSummary(appRooms);
+  if (typeof ccSavedToast === 'function') ccSavedToast();
   if (!sbL) return;
   ccQueueWrite('room-' + cur.id, () => sbL.from('rooms').update(patch).eq('id', cur.id))
     .then(({ error }) => {
@@ -4509,6 +4635,7 @@ function _roomBaseSave() {
 .rc-brow__go { border:.5px solid var(--cc-ink); color:var(--cc-ink); font-weight:500; }
 .rc-brow__edit { border:.5px solid var(--cc-stone); color:var(--cc-charcoal); }
 .rb { display:flex; flex-direction:column; gap:12px; }
+.rb [data-rbgroup] { display:flex; flex-direction:column; gap:12px; }
 .rb-two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
 .rb-lbl { display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-charcoal); margin-bottom:6px; }
 .rb-in { width:100%; box-sizing:border-box; min-height:44px; padding:0 14px; border:.5px solid var(--cc-rule); border-radius:var(--cc-r-md); background:var(--cc-bg); font-family:inherit; font-size:16px; text-align:right; color:var(--cc-ink); }
@@ -4542,6 +4669,10 @@ html .cc-sumline__foot { display:flex; justify-content:center; align-items:cente
 .rc-who { display:block; margin-top:6px; font-size:14px; color:var(--cc-ink); }
 .rc-who b { font-weight:600; }
 .rc-who__sub { display:block; margin-top:2px; color:#7A6F62; font-size:13px; }
+.rc-who--slim { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; font-size:13px; color:#9A8E7E; }
+.rc-who--slim b { font-weight:500; color:var(--cc-charcoal); }
+.rc-who--slim .tn-ctp { margin-left:0; }
+.rc-who--slim .rc-u { white-space:nowrap; }
 .rc-who--vac { color:#7A4E22; }
 .rc-tenantlink { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; background:var(--cc-bg); border-bottom:var(--cc-border); font-size:13px; color:#7A6F62; }
 .rc-tenantlink span { min-width:0; color:var(--cc-ink); line-height:1.4; }
@@ -4564,6 +4695,7 @@ html .cc-sumline__foot { display:flex; justify-content:center; align-items:cente
 #roomSheetBody .rc-field-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; margin-bottom:12px; }
 #roomSheetBody .rc-input { font-size:16px; min-height:44px; font-weight:400; color:var(--cc-ink); }
 #roomSheetBody .rc-field__label { color:var(--cc-charcoal); }
+.rs-name-err { margin:-4px 0 12px; font-size:12.5px; line-height:1.4; color:#A3402A; }
 `;
   document.head.appendChild(st);
 })();

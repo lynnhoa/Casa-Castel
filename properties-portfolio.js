@@ -50,7 +50,7 @@ function renderPortfolio() {
         <div class="port-row__no">${String(p.sort_order).padStart(2, '0')}</div>
         <div class="port-row__main">
           <div class="port-row__name">${p.name} ${zp} ${sp}</div>
-          <div class="port-row__sub">${p.cat} · ${p.m2} m² · ${p.bank} · ${p.zinssatz.toFixed(2).replace('.', ',')} %</div>
+          <div class="port-row__sub">${p.cat} · ${ccM2(p.m2)} m² · ${p.bank} · ${p.zinssatz.toFixed(2).replace('.', ',')} %</div>
         </div>
         <div class="port-row__nums">
           <div class="port-row__rate">${rd}</div>
@@ -115,9 +115,11 @@ function toggleEdit() {
 /* ── VIEW MODE ── */
 function renderView(p) {
   const equity  = n(p.marktwert) - n(p.restschuld);
-  const abbPct  = n(p.darlehen) > 0 ? Math.round(n(p.abbezahlt) / n(p.darlehen) * 1000) / 10 : 0;
-  const tPct    = n(p.rate) > 0 ? Math.round(n(p.tilgung) / n(p.rate) * 1000) / 10 : 0;
-  const zPct    = 100 - tPct;
+  const pct2    = v => Math.round(v * 100) / 100;                    // #13: 2 decimals, shown German (22,15 %)
+  const pctTxt  = v => ccFmtNum(v, 2) + '\u00a0%';
+  const abbPct  = n(p.darlehen) > 0 ? pct2(n(p.abbezahlt) / n(p.darlehen) * 100) : 0;
+  const tPct    = n(p.rate) > 0 ? pct2(n(p.tilgung) / n(p.rate) * 100) : 0;
+  const zPct    = n(p.rate) > 0 ? pct2(100 - tPct) : 0;
 
   const sparvH = p.sparv ? `
     <div class="mod-sparv">
@@ -138,12 +140,12 @@ function renderView(p) {
         <div class="mod-rate__part mod-rate__part--t">
           <div class="mod-rate__part-lbl">Tilgung</div>
           <div class="mod-rate__part-val">${eur(p.tilgung)}</div>
-          <div class="mod-rate__part-pct">${tPct} % of payment</div>
+          <div class="mod-rate__part-pct">${pctTxt(tPct)} of payment</div>
         </div>
         <div class="mod-rate__part mod-rate__part--z">
           <div class="mod-rate__part-lbl">Zinsen</div>
           <div class="mod-rate__part-val">${eur(p.zinsen)}</div>
-          <div class="mod-rate__part-pct">${zPct} % of payment</div>
+          <div class="mod-rate__part-pct">${pctTxt(zPct)} of payment</div>
         </div>
       </div>
       <div class="mini-rb">
@@ -178,7 +180,7 @@ function renderView(p) {
         <div class="mod-prog-fill" style="width:${Math.max(abbPct, 0.3)}%"></div>
       </div>
       <div class="mod-prog-lbls">
-        <span class="mod-prog-lbl">${abbPct} % paid off</span>
+        <span class="mod-prog-lbl">${pctTxt(abbPct)} paid off</span>
         <span class="mod-prog-lbl">${eur(p.abbezahlt)} of ${eur(p.darlehen)}</span>
       </div>
     </div>
@@ -192,7 +194,7 @@ function renderView(p) {
     <span class="mod-sec">Purchase</span>
     <div class="mod-row"><span class="mod-key">Address</span><span class="mod-val" style="font-size:12px">${p.addr}</span></div>
     <div class="mod-row"><span class="mod-key">Type</span><span class="mod-val">${p.cat}</span></div>
-    <div class="mod-row"><span class="mod-key">Size</span><span class="mod-val">${p.m2} m²</span></div>
+    <div class="mod-row"><span class="mod-key">Size</span><span class="mod-val">${ccM2(p.m2)} m²</span></div>
     <div class="mod-row"><span class="mod-key">Purchase price</span><span class="mod-val">${eur(p.kaufpreis)}</span></div>
     <div class="mod-row"><span class="mod-key">Acquisition costs</span><span class="mod-val">${eur(p.nebenkosten)}</span></div>
     <div class="mod-row"><span class="mod-key">Equity</span><span class="mod-val">${eur(p.ek)}</span></div>
@@ -282,7 +284,7 @@ function renderEditForm(p) {
       </div>
     </div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Rate changes valid from</label><input class="cc-input" id="e-valid-from" type="date" value="${new Date().toISOString().slice(0, 8) + '01'}"/></div>
+      <div class="e-field"><label class="e-lbl">Rate changes valid from</label><input class="cc-input" id="e-valid-from" type="date" value="${(typeof ccTodayISO === 'function' ? ccTodayISO() : new Date().toISOString().slice(0, 10)).slice(0, 8) + '01'}"/></div>
       <div class="e-field"><label class="e-lbl">&nbsp;</label><span style="font-size:11px;color:var(--cc-taupe);line-height:1.4">Earlier months in Controlling keep the old rate</span></div>
     </div>
     <button class="cc-btn--primary" onclick="saveEdit()">Save</button>
@@ -297,23 +299,25 @@ async function saveEdit() {
 
   const p = (window._props || []).find(x => x.id === _pid);
   if (!p) return;
+  // #9: an empty field or 0 saves as 0 (no fallback to the old value); only a missing field keeps it
+  const gz = (id, old, int) => { const s = g(id); if (s === null) return old; const v = int ? parseInt(s) : parseFloat(s); return isNaN(v) ? 0 : v; };
 
   const fields = {
     name:       g('e-name')       || p.name,
     cat:        g('e-cat')        || p.cat,
     addr:       g('e-addr')       || p.addr,
-    m2:         parseInt(g('e-m2')) || p.m2,
+    m2:         gz('e-m2', p.m2, true),
     kaufdatum:  g('e-kaufdatum')  || p.kaufdatum,
-    kaufpreis:  gn('e-kaufpreis') || p.kaufpreis,
-    ek:         gn('e-ek')        || p.ek,
+    kaufpreis:  gz('e-kaufpreis', p.kaufpreis),
+    ek:         gz('e-ek', p.ek),
     nebenkosten:gn('e-nebenkosten'),
-    marktwert:  gn('e-marktwert') || p.marktwert,
+    marktwert:  gz('e-marktwert', p.marktwert),
     bank:       g('e-bank')       || p.bank,
     darlehensnr:g('e-darlehensnr')|| p.darlehensnr,
-    darlehen:   gn('e-darlehen')  || p.darlehen,
+    darlehen:   gz('e-darlehen', p.darlehen),
     restschuld: gn('e-restschuld'),
     abbezahlt:  gn('e-abbezahlt'),
-    zinssatz:   gn('e-zinssatz')  || p.zinssatz,
+    zinssatz:   gz('e-zinssatz', p.zinssatz),
     zb:         g('e-zb')         || p.zb,
     zb_status:  g('e-zb-status')  || 'ok',
     rate:       gn('e-rate'),
@@ -325,22 +329,15 @@ async function saveEdit() {
   };
   // Rate / Tilgung / Zinsen / what the bank debits changed → Controlling uses the new terms from that month on only
   const r2 = v => Math.round((Number(v) || 0) * 100) / 100;
-  const termsChanged = ['rate', 'tilgung', 'zinsen'].some(k => r2(fields[k]) !== r2(p[k])) || (fields.bank_debit || null) !== (p.bank_debit || null);
-  const validFrom = (g('e-valid-from') || new Date().toISOString().slice(0, 10)).slice(0, 8) + '01';
+  const termsChanged = ['rate', 'tilgung', 'zinsen'].some(k => r2(fields[k]) !== r2(p[k])) || _propDebitOf(fields) !== _propDebitOf(p);
+  const validFrom = (g('e-valid-from') || (typeof ccTodayISO === 'function' ? ccTodayISO() : new Date().toISOString().slice(0, 10))).slice(0, 8) + '01';   // #8: German today
 
+  let histErr = null;
   try {
     showLoading(true);
-    if (termsChanged && typeof getClient === 'function') {
-      try {
-        const db = getClient();
-        const { data: had } = await db.from('loan_terms_history').select('id').eq('property_id', _pid).limit(1);
-        if (!had || !had.length)                                       // first change: today's terms are the start version
-          await db.from('loan_terms_history').insert({ property_id: _pid, valid_from: '2000-01-01', rate: p.rate, tilgung: p.tilgung, zinsen: p.zinsen, bank_debit: p.bank_debit || null });
-        const same = await db.from('loan_terms_history').select('id').eq('property_id', _pid).eq('valid_from', validFrom).limit(1);
-        const row = { property_id: _pid, valid_from: validFrom, rate: fields.rate, tilgung: fields.tilgung, zinsen: fields.zinsen, bank_debit: fields.bank_debit };
-        if (same.data && same.data.length) await db.from('loan_terms_history').update(row).eq('id', same.data[0].id);
-        else await db.from('loan_terms_history').insert(row);
-      } catch (e) { console.warn('[properties] loan history', e); }
+    if (termsChanged) {
+      try { await _propSaveLoanHistory(_pid, p, fields, validFrom); }
+      catch (e) { histErr = e; console.warn('[properties] loan history', e); }
     }
     await updateProperty(_pid, fields);
     window._props = await fetchAll();
@@ -352,11 +349,40 @@ async function saveEdit() {
     if (updated) renderView(updated);
     document.getElementById('viewMode').classList.add('show');
     document.getElementById('editMode').classList.remove('show');
+    if (histErr) alert('Saved — but the date of the rate change could not be saved (' + (histErr.message || histErr) +
+      '). Controlling would show the new rate for earlier months too.');
   } catch(err) {
     alert('Error saving: ' + err.message);
   } finally {
     showLoading(false);
   }
+}
+
+/* ── LOAN TERMS HISTORY → Controlling (B19) ──────────────────
+   loan_terms_history: one row per change of Rate / Tilgung / Zinsen / bank debit, valid from the
+   1st of a month. Controlling takes, for every month, the latest row from that month or before —
+   so earlier months keep the terms they had. The first change also saves the terms before it
+   (valid from 2000-01-01 = "from the start").
+   Fixed Oct 2026: this used getClient() from properties-data.js, which this page never loads →
+   the history was silently never written. Now: this page's own connection (_supa), and every
+   database answer is checked (an error used to pass silently).                                */
+function _propDebitOf(x) {                    // what the bank really debits — the same rule as Controlling
+  if (x.bank_debit === 'rate' || x.bank_debit === 'split') return x.bank_debit;
+  return x.sparv === true || x.sparv === 'true' ? 'split' : 'rate';   // not set: Bausparvertrag = split
+}
+async function _propSaveLoanHistory(pid, before, after, validFrom) {
+  const db = typeof _supa !== 'undefined' ? _supa : (typeof getClient === 'function' ? getClient() : null);
+  if (!db) throw new Error('no database connection');
+  const T = 'loan_terms_history';
+  const ok = r => { if (r && r.error) throw r.error; return (r && r.data) || []; };
+  const n = v => Math.round((Number(v) || 0) * 100) / 100;
+  if (!ok(await db.from(T).select('id').eq('property_id', pid).limit(1)).length)      // first change: the terms before it
+    ok(await db.from(T).insert({ property_id: pid, valid_from: '2000-01-01',
+      rate: n(before.rate), tilgung: n(before.tilgung), zinsen: n(before.zinsen), bank_debit: _propDebitOf(before) }));
+  const row = { property_id: pid, valid_from: validFrom, rate: n(after.rate), tilgung: n(after.tilgung), zinsen: n(after.zinsen), bank_debit: _propDebitOf(after) };
+  const same = ok(await db.from(T).select('id').eq('property_id', pid).eq('valid_from', validFrom).limit(1));
+  if (same.length) ok(await db.from(T).update(row).eq('id', same[0].id));                // changed twice in one month
+  else ok(await db.from(T).insert(row));
 }
 
 /* ── DELETE ── */

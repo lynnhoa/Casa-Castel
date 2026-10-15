@@ -162,26 +162,40 @@ async function saveRoomOrder(orderedIds) {
    Renaming a room moves all of them to the new name (safe to repeat:
    it only touches rows that still carry the old name). */
 const CC_ROOM_NAME_LINKS = [
-  ['tenant_records',           'room'],
-  ['nk_vorauszahlung_history', 'room'],
-  ['lounge_data',              'room'],      // login password, messages, kitchen nudge
-  ['kitchen_weeks',            'room'],
-  ['kitchen_comments',         'room'],
-  ['kitchen_absences',         'room'],
-  ['cleaning_weeks',           'room'],
-  ['cleaning_weeks',           'done_by'],
+  ['tenant_records',             'room'],
+  ['nk_vorauszahlung_history',   'room'],
+  ['casa_mieterhoehung_history', 'room'],    // Oct 2026: rent increases (Controlling applies them by room)
+  ['pw_requests',                'room'],    // Oct 2026: password requests
+  ['lounge_data',                'room'],    // login password, messages, kitchen nudge
+  ['kitchen_weeks',              'room'],
+  ['kitchen_comments',           'room'],
+  ['kitchen_absences',           'room'],
+  ['cleaning_weeks',             'room'],
+  ['cleaning_weeks',             'done_by'],
 ];
+/* Room names are unique and capital letters / spaces don't count ("New York" = "new york").
+   A case-only change and a real rename both move every row, whatever spelling it was stored with. */
+const _ccRoomNorm = s => String(s || '').trim().toLowerCase();
+const _ccIlikeExact = s => String(s || '').trim().replace(/[\\%_]/g, m => '\\' + m);   // ilike pattern without wildcards
 async function renameRoomLinks(oldName, newName) {
   if (!sbL || !oldName || !newName || oldName === newName) return { error: null };
+  const pat = _ccIlikeExact(oldName);
   const results = await Promise.all(CC_ROOM_NAME_LINKS.map(([table, col]) =>
-    sbL.from(table).update({ [col]: newName }).eq(col, oldName)
-      .then(r => ({ table, col, error: r && r.error }), e => ({ table, col, error: e }))));
+    sbL.from(table).update({ [col]: newName }).ilike(col, pat)
+      .then(r => ({ table, col, error: r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '') ? r.error : null }),
+            e => ({ table, col, error: e }))));
+  // Controlling: the unit of this room (its link + its name) — the rent Soll stays with the room
+  const units = await Promise.all([
+    sbL.from('ctrl_units').update({ source_ref: newName }).eq('source_type', 'casa_room').ilike('source_ref', pat),
+    sbL.from('ctrl_units').update({ name: newName }).eq('property_id', 7).ilike('name', pat),
+  ].map(q => q.then(r => r, e => ({ error: e }))));
+  units.forEach((r, i) => { if (r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '')) results.push({ table: 'ctrl_units', col: i ? 'name' : 'source_ref', error: r.error }); });
   const failed = results.filter(r => r.error).map(r => r.table + '.' + r.col);
   // Kitchen rotation list (kept as a list of names)
   try {
-    if (typeof getKitchenRooms === 'function' && typeof syncKitchenRoomsToSupabase === 'function'
-        && getKitchenRooms().includes(oldName)) {
-      await syncKitchenRoomsToSupabase(getKitchenRooms().map(n => (n === oldName ? newName : n)));
+    const kr = typeof getKitchenRooms === 'function' ? getKitchenRooms() : [];
+    if (typeof syncKitchenRoomsToSupabase === 'function' && kr.some(n => _ccRoomNorm(n) === _ccRoomNorm(oldName))) {
+      await syncKitchenRoomsToSupabase(kr.map(n => (_ccRoomNorm(n) === _ccRoomNorm(oldName) ? newName : n)));
     }
   } catch (e) { failed.push('kitchen list'); }
   if (failed.length) console.error('[rooms] rename links failed:', failed, results.filter(r => r.error));

@@ -209,8 +209,10 @@ function ccTnIso(v) {
 }
 
 /* ── OCCUPANCY — one rule for Rooms · Apartments · Parking (both apps) ──
-   A unit is occupied today when a tenancy covers today: move-in ≤ today ≤ move-out
+   A unit is occupied today when an active tenancy covers today: move-in ≤ today ≤ move-out
    (no move-out = open-ended; an active tenant without a move-in date counts).
+   B22: a tenant set to former has moved out and never occupies the unit — "To former" frees it
+   now, also with a later move-out date or none (rent in Controlling still follows the dates).
    A signed tenant who moves in later leaves the unit vacant until then, so the gap
    between two tenants is Leerstand by itself. Units that never had a tenant in
    the app are left as they are. An active tenant whose move-out has passed
@@ -222,7 +224,7 @@ function ccOccupancyPlan(units, records, unitOf, todayIso) {
     if (!r) return;
     const k = unitOf(r); if (k == null || k === '') return;
     known.add(String(k));
-    if (r.status === 'archived') return;
+    if (r.status === 'archived' || r.status === 'former') return;   // B22: moved out → never occupies
     const mb = r.mietbeginn ? ccTnIso(r.mietbeginn) : '', me = r.mietende ? ccTnIso(r.mietende) : '';
     if (mb ? mb > todayIso : r.status !== 'active') return;
     if (me && me < todayIso) return;
