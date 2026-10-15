@@ -737,7 +737,7 @@ const mtDur = s => (!s ? '' : s < 60 ? s + ' Sek.' : Math.floor(s / 60) + ':' + 
 const mtLinkNow = p => { const l = MT.links[p]; return l && l.exp > Date.now() + 5000 ? l.url : null; };
 /* Something in the panel is open or running (an edit, a form, an upload) → the other buttons wait */
 const mtUpFor = c => (c && MT.up && String(MT.up.caseId) === String(c.id) ? MT.up : null);
-const mtActive = c => !!(MT.sel && (MT.sel.edit || MT.sel.docEdit || MT.sel.add || MT.sel.fix || MT.sel.cost || MT.sel.sb || mtUpFor(c)));
+const mtActive = c => !!(MT.sel && (MT.sel.edit || MT.sel.docEdit || MT.sel.add || MT.sel.fix || MT.sel.cost || mtUpFor(c)));
 /* Documents of the Documents section (files of cost rows live in Costs) */
 const mtCaseDocs = caseId => MT.docs.filter(d => String(d.case_id) === String(caseId) && !d.cost_id);
 
@@ -858,7 +858,7 @@ function mtDocsHTML(c) {
       : mtDocRowHTML(d, ed)).join('') + '</div>';
   }
   if (ed && !s.fix) h += '<p class="mt-hint">Tap a document to change its type, Betrag or date. The × deletes it.</p>';
-  if (!locked && !s.add && !s.fix && !s.sb && !upAny) {
+  if (!locked && !s.add && !s.fix && !upAny) {
     h += ed
       ? '<div class="cc-sec-foot"><button type="button" class="cc-foot-btn mt-save" data-mt="docsDone">Done</button></div>'
       : `<div class="cc-sec-foot">
@@ -979,29 +979,6 @@ function mtRefresh(caseId) {
 }
 
 /* Photos: camera or library, several at once → saved as photos right away */
-function mtPickPhotos() {
-  if (!mtOpenCase()) return;
-  if (MT.up) { mtSay('Wait until the upload is finished.'); return; }
-  mtFileInput('mtPhotoInput', 'image/*', true, mtAddPhotos);
-}
-async function mtAddPhotos(files) {
-  const c = mtOpenCase();
-  if (!c || MT.up) return;
-  const imgs = files.filter(mtIsImage);
-  if (!imgs.length) { mtSay('Choose photos (JPG, PNG or HEIC).'); return; }
-  MT.up = { caseId: c.id, total: imgs.length, done: 0, where: 'docs' };
-  mtRefresh(c.id);
-  let ok = 0;
-  for (const f of imgs) {
-    if (await mtUploadOne(c, f, { type: 'photo', amount: null, date: mtFileDay(f) }, await mtPhotoExtra(f))) ok++;
-    MT.up.done++;
-    mtRefresh(c.id);
-  }
-  MT.up = null;
-  mtRefresh(c.id);
-  if (ok === imgs.length) mtSay(ok === 1 ? 'Photo saved' : ok + ' photos saved');
-  else mtSay(`${ok} of ${imgs.length} photos saved. Add the others again.`);
-}
 
 /* Document: a PDF from Files is kept as it is · photos (camera or library) become ONE PDF,
    a page per photo (e.g. a 3-page Angebot) → its Type → Save. Documents never land in the photo grid;
@@ -1228,7 +1205,7 @@ const mtNeg = n => '\u2212' + mtEur(n);                      // −30,00 €
 function mtCostsHTML(c) {
   const s = MT.sel, f = s.cost;
   const rows = mtCostsOf(c.id);
-  const busy = !!(s.edit || s.docEdit || s.add || s.fix || s.sb);  // another part of the panel is being changed
+  const busy = !!(s.edit || s.docEdit || s.add || s.fix);  // another part of the panel is being changed
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
   const tap = !busy && !f && !upAny;
   const isForm = r => f && !f.isNew && String(f.id) === String(r.id);
@@ -1952,7 +1929,6 @@ function mtWire() {
     else if (a === 'cancel') mtCancel();
     else if (a === 'save') mtSave();
     else if (a === 'del') mtDelete();
-    else if (a === 'photos') mtPickPhotos();
     else if (a === 'upload') mtPickFile();
     else if (a === 'openDoc') mtOpenDoc(b.dataset.id);
     else if (a === 'docToCost') mtDocToCost(b.dataset.id);
@@ -2002,7 +1978,11 @@ function mtWire() {
     else if (t.id === 'mtF-status') mtStatusChanged();
     else if (t.dataset && t.dataset.docType) mtDocTypeChanged(t.dataset.docType);
   });
-  document.addEventListener('input', e => {             // the Mieter typed by hand is kept when the Zimmer changes
+  document.addEventListener('keydown', mtBulletKey, true);
+  document.addEventListener('focusin', e => { const t = e.target; if (mtIsBulletTa(t) && !t.value) mtTaSet(t, MT_BUL, MT_BUL.length); });
+  document.addEventListener('focusout', e => { const t = e.target; if (mtIsBulletTa(t) && /^\s*•?\s*$/.test(t.value)) t.value = ''; });
+  document.addEventListener('input', e => {
+    if (mtIsBulletTa(e.target)) mtBulletFix(e.target);             // the Mieter typed by hand is kept when the Zimmer changes
     if (e.target && e.target.id === 'mtS-mieter' && MT.sb) MT.sb.mieterAuto = false;
     if (e.target && e.target.matches && e.target.matches('#mtPanel textarea.mt-ta, #mtSbModal textarea.mt-ta')) mtGrow(e.target);
   });
@@ -2072,7 +2052,7 @@ function mtStyHTML(c, col) {
 }
 function mtSbTa(c, id, col, label, v, ph, rows) {
   return `<div class="mt-f mt-f--full"><div class="mt-kl"><label class="mt-k" for="${id}">${label}</label>${MT.d17 ? mtStyHTML(c, col) : ''}</div>
-      <textarea class="mt-in mt-ta" id="${id}" rows="${rows || 3}" maxlength="2000" placeholder="${mtEsc(ph)}">${mtEsc(v || '')}</textarea></div>`;
+      <textarea class="mt-in mt-ta" id="${id}" data-col="${col}" data-sty="${MT.d17 ? mtSty(c, col) : 'text'}" rows="${rows || 3}" maxlength="2000" placeholder="${mtEsc(ph)}">${mtEsc(MT.d17 && mtSty(c, col) === 'list' ? mtBulletize(v) : (v || ''))}</textarea></div>`;
 }
 /* Ausführende Firmen: the providers of the entry's Kosten (name – what they did) */
 function mtRbFirmen(c) {
@@ -2088,7 +2068,7 @@ function mtSbFieldsBody(c, f) {
   const art = c.schadensart || '', other = !!art && !arten.includes(art);
   const visit = MT.d17
     ? `<div class="mt-f"><label class="mt-k" for="mtS-vdate">Besichtigung am</label><input class="mt-in" id="mtS-vdate" type="date" value="${mtEsc(c.besichtigung_am || '')}"/></div>
-       <div class="mt-f"><label class="mt-k" for="mtS-vtime">Uhrzeit</label><input class="mt-in" id="mtS-vtime" type="time" value="${mtEsc(c.besichtigung_zeit || '')}"/></div>
+       <div class="mt-f"><label class="mt-k" for="mtS-vtime">Uhrzeit</label><input class="mt-in mt-time" id="mtS-vtime" type="time" value="${mtEsc(c.besichtigung_zeit || '')}"/></div>
        <div class="mt-f mt-f--full"><label class="mt-k" for="mtS-vby">Besichtigung durch</label>
          <input class="mt-in" id="mtS-vby" type="text" maxlength="120" autocomplete="off" placeholder="z. B. die Eigentümer" value="${mtEsc(c.besichtigung_durch || '')}"/></div>`
     : `<div class="mt-f mt-f--full"><label class="mt-k" for="mtS-visit">Besichtigung vor Ort</label>
@@ -2175,39 +2155,6 @@ function mtSbFormHTML(c, f) {
     </div>`;
 }
 /* Photos: one row each — thumbnail (number in the report) · Beschreibung · (Vorher / Nachher) · in the report · × */
-function mtSbPhotosHTML(c, f) {
-  const rb = c.kind === 'renovierung';
-  const photos = mtSbPhotos(c);
-  const u = mtUpFor(c), up = u && u.where === 'sb' ? u : null;
-  let n = 0;
-  const rows = photos.map(p => {
-    const on = p.in_report !== false, id = mtEsc(p.id), ask = f.askDel === String(p.id);
-    const ctl = ask
-      ? `<span class="mt-sbp__ask">Delete this photo?</span>
-         <button type="button" class="mt-sbp__b is-del" data-mt="sbDelYes" data-id="${id}">Delete</button>
-         <button type="button" class="mt-sbp__b" data-mt="sbDelNo">Keep</button>`
-      : `${rb ? ['vorher', 'nachher'].map(ph => `<button type="button" class="mt-sbp__b${p.phase === ph ? ' is-on' : ''}" data-mt="phase" data-id="${id}" data-v="${ph}" aria-pressed="${p.phase === ph}">${ph === 'vorher' ? 'Vorher' : 'Nachher'}</button>`).join('') : ''}
-         <label class="mt-sbp__on"><input type="checkbox" data-inrep="${id}"${on ? ' checked' : ''}/><span>In the report</span></label>
-         <button type="button" class="mt-sbp__x" data-mt="sbDelPhoto" data-id="${id}" aria-label="Delete photo"><i class="ti ti-x" aria-hidden="true"></i></button>`;
-    return `<div class="mt-sbp${on ? '' : ' is-off'}${ask ? ' is-ask' : ''}">
-        <span class="mt-sbp__th"><img alt="" loading="lazy" data-path="${mtEsc(p.file_path)}" data-thumb="${mtEsc(mtThumbPath(p.file_path))}"/>${on ? `<span class="mt-sbt__no">${++n}</span>` : ''}</span>
-        <div class="mt-sbp__m">
-          <input class="mt-in mt-sbp__cap" type="text" maxlength="200" autocomplete="off" data-cap="${id}" placeholder="Beschreibung (optional)" aria-label="Beschreibung" value="${mtEsc(p.caption || '')}"/>
-          <div class="mt-sbp__c">${ctl}</div>
-        </div>
-      </div>`;
-  }).join('');
-  return `<div class="mt-f mt-f--full" id="mtSb-photos"><span class="mt-k">Photos</span>
-      <div class="mt-seg" role="group" aria-label="Photos in the report">
-        <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Without photos</button>
-        <button type="button" class="mt-seg__b${f.photosOn ? ' is-on' : ''}" data-mt="sbFotos" data-v="1" aria-pressed="${!!f.photosOn}">With photos</button>
-      </div>
-      ${f.photosOn ? `<div class="mt-sbpl">${rows}
-          ${up ? `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`
-               : '<button type="button" class="mt-addr mt-sbp-add" data-mt="sbAddPhoto"><i class="ti ti-camera" aria-hidden="true"></i>Add photo</button>'}</div>
-        <p class="mt-hint">Untick a photo to leave it out of the report.${rb ? ' Vorher / Nachher sorts the photos in the PDF.' : ''}</p>` : ''}
-    </div>`;
-}
 async function mtSbStyle(col, v) {
   const c = mtSbCase();
   if (!c) return;
@@ -2215,6 +2162,8 @@ async function mtSbStyle(col, v) {
   const was = c.report_style || null, st = { ...(was || {}), [col]: v };
   c.report_style = st;
   document.querySelectorAll(`#mtSbModal [data-mt="sty"][data-col="${col}"]`).forEach(b => { const on = b.dataset.v === v; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
+  const ta = document.querySelector(`#mtSbModal textarea[data-col="${col}"]`);      // D20: the bullets appear / go in the box
+  if (ta) { ta.value = v === 'list' ? mtBulletize(ta.value) : mtUnbulletClean(ta.value); ta.dataset.sty = v; mtGrow(ta); }
   const r = await mtTry(() => _ctlSupa.from('maint_cases').update({ report_style: st }).eq('id', c.id));
   if (r.error) { c.report_style = was; mtSay('Not saved. Check the connection.'); }
 }
@@ -2256,6 +2205,7 @@ async function mtSbFlush() {
     if ((need === 16 && !MT.d16) || (need === 17 && !MT.d17)) continue;
     if (['besichtigung', 'bitte_hv', 'report_ort', 'report_dringend'].includes(col) && !MT.d6) continue;
     let v = kind === 'date' ? (el.value || '') : String(el.value || '').trim();
+    if (el.dataset && el.dataset.sty === 'list') v = mtUnbulletClean(el.value);       // D20: saved without the bullets
     if (kind === 'date' && !v && mtNativeVal(el).trim()) { mtSay('Check the date (TT.MM.JJJJ).'); continue; }
     v = v || null;
     if ((c[col] ?? null) !== v) patch[col] = v;
@@ -2272,7 +2222,7 @@ async function mtSbFlush() {
     if ((c.report_mieter ?? null) !== want) patch.report_mieter = want;
   }
   if (g('mtS-ort')) f.ort = g('mtS-ort').value;
-  if (g('mtS-urgent')) f.dringend = g('mtS-urgent').value;
+  if (g('mtS-urgent')) f.dringend = g('mtS-urgent').dataset.sty === 'list' ? mtUnbulletClean(g('mtS-urgent').value) : g('mtS-urgent').value;
   if (g('mtS-sdate')) f.signDate = g('mtS-sdate').value || ccTodayISO();
   if (!Object.keys(patch).length) return true;
   const old = {};
@@ -2296,6 +2246,97 @@ function mtSbChange(t) {
   }
   if (t.id && (t.id.startsWith('mtS-') || t.id.startsWith('mtR-'))) mtSbFlush();
 }
+/* ── D20 · Points in the box itself (like Word) ─────────────────────────────
+   Points: every line starts with "• " · Enter = new bullet · Backspace at a bullet joins the
+   line with the one above · pasted lines get bullets. Text: free text. Saved without bullets. */
+const MT_BUL = '• ';
+const mtUnbulletClean = v => String(v || '').split('\n').map(l => l.replace(/^\s*[•\-–*]\s?/, '').trim()).filter(Boolean).join('\n');
+const mtBulletize = v => { const t = mtUnbulletClean(v); return t ? t.split('\n').map(l => MT_BUL + l).join('\n') : ''; };
+const mtIsBulletTa = t => !!(t && t.matches && t.matches('#mtSbModal textarea[data-sty="list"]'));
+function mtTaSet(el, v, caret) {
+  el.value = v;
+  try { el.setSelectionRange(caret, caret); } catch (e) {}
+  mtGrow(el);
+}
+function mtBulletKey(e) {
+  const el = e.target;
+  if (!mtIsBulletTa(el) || e.isComposing) return;
+  const a = el.selectionStart, z = el.selectionEnd, v = el.value;
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const ins = (a > 0 ? '\n' : '') + MT_BUL;
+    mtTaSet(el, v.slice(0, a) + ins + v.slice(z), a + ins.length);
+  } else if (e.key === 'Backspace' && a === z) {
+    const before = v.slice(0, a);
+    if (before.endsWith('\n' + MT_BUL)) { e.preventDefault(); mtTaSet(el, v.slice(0, a - 3) + v.slice(a), a - 3); }
+    else if (before === MT_BUL) { e.preventDefault(); mtTaSet(el, v.slice(2), 0); }
+  }
+}
+function mtBulletFix(el) {                                   // after paste / autocorrect: each line keeps its "• "
+  const v = el.value;
+  if (!v) return;
+  const pos = el.selectionStart;
+  let shift = 0, at = 0;
+  const out = v.split('\n').map(line => {
+    const start = at;
+    at += line.length + 1;
+    if (line.startsWith(MT_BUL)) return line;
+    const fixed = MT_BUL + line.replace(/^\s*[•\-–*]\s?/, '');
+    if (start <= pos) shift += fixed.length - line.length;
+    return fixed;
+  }).join('\n');
+  if (out !== v) mtTaSet(el, out, Math.max(0, pos + shift));
+}
+
+/* ── D20 · Photos: two cards per row — photo (number / "Not in the report", ×), Beschreibung,
+   (Vorher | Nachher), "In the report" switch · delete asks on the photo · "Add photo" always there */
+function mtSbPhotosHTML(c, f) {
+  const rb = c.kind === 'renovierung';
+  const photos = mtSbPhotos(c);
+  const u = mtUpFor(c), up = u && u.where === 'sb' ? u : null;
+  let n = 0;
+  const cards = !f.photosOn ? '' : photos.map(p => {
+    const on = p.in_report !== false, id = mtEsc(p.id), ask = f.askDel === String(p.id);
+    return `<div class="mt-pc${on ? '' : ' is-off'}${ask ? ' is-ask' : ''}">
+        <div class="mt-pc__ph">
+          <img alt="" loading="lazy" data-path="${mtEsc(p.file_path)}" data-thumb="${mtEsc(mtThumbPath(p.file_path))}"/>
+          <span class="mt-pc__no${on ? '' : ' is-off'}">${on ? ++n : 'Not in the report'}</span>
+          <button type="button" class="mt-pc__x" data-mt="sbDelPhoto" data-id="${id}" aria-label="Delete photo"><i class="ti ti-x" aria-hidden="true"></i></button>
+          ${ask ? `<div class="mt-pc__ask" role="alertdialog" aria-label="Delete this photo?"><span>Delete this photo?</span>
+            <div><button type="button" class="mt-pc__del" data-mt="sbDelYes" data-id="${id}">Delete</button><button type="button" class="mt-pc__keep" data-mt="sbDelNo">Keep</button></div></div>` : ''}
+        </div>
+        <div class="mt-pc__b">
+          <textarea class="mt-in mt-ta mt-pc__cap" rows="2" maxlength="200" data-cap="${id}" placeholder="Beschreibung (optional)" aria-label="Beschreibung">${mtEsc(p.caption || '')}</textarea>
+          ${rb ? `<div class="mt-pc__vn" role="group" aria-label="Vorher oder Nachher">${['vorher', 'nachher'].map(ph =>
+            `<button type="button" class="${p.phase === ph ? 'is-on' : ''}" data-mt="phase" data-id="${id}" data-v="${ph}" aria-pressed="${p.phase === ph}">${ph === 'vorher' ? 'Vorher' : 'Nachher'}</button>`).join('')}</div>` : ''}
+          <label class="mt-pc__sw"><span>In the report</span><input type="checkbox" data-inrep="${id}"${on ? ' checked' : ''}/><span class="mt-swi" aria-hidden="true"></span></label>
+        </div>
+      </div>`;
+  }).join('');
+  const tile = up
+    ? `<div class="mt-pc mt-pc--add" role="status"><span class="mt-spin" aria-hidden="true"></span><span class="mt-pc__at">Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</span></div>`
+    : `<button type="button" class="mt-pc mt-pc--add" data-mt="sbAddPhoto"><i class="ti ti-camera" aria-hidden="true"></i><span class="mt-pc__at">Add photo</span><span class="mt-pc__as">Camera or library</span></button>`;
+  return `<div class="mt-f mt-f--full" id="mtSb-photos"><span class="mt-k">Photos</span>
+      <div class="mt-seg" role="group" aria-label="Photos in the report">
+        <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Without photos</button>
+        <button type="button" class="mt-seg__b${f.photosOn ? ' is-on' : ''}" data-mt="sbFotos" data-v="1" aria-pressed="${!!f.photosOn}">With photos</button>
+      </div>
+      <div class="mt-pgr">${cards}${tile}</div>
+      <p class="mt-hint">${f.photosOn ? 'Switch a photo off to leave it out. The number is its place in the report.' + (rb ? ' Vorher / Nachher sorts them.' : '')
+        : (photos.length ? 'The report goes without photos. Choose "With photos" to show them.' : 'A new photo turns on "With photos".')}</p>
+    </div>`;
+}
+function mtSbRenumber() {
+  let n = 0;
+  document.querySelectorAll('#mtSbModal .mt-pc').forEach(card => {
+    const cb = card.querySelector('[data-inrep]'), b = card.querySelector('.mt-pc__no');
+    if (!cb || !b) return;
+    card.classList.toggle('is-off', !cb.checked);
+    b.classList.toggle('is-off', !cb.checked);
+    b.textContent = cb.checked ? String(++n) : 'Not in the report';
+  });
+}
+
 function mtSbOpenPdf() {
   const f = MT.sb;
   if (!f || !f.pdfPath) return;
@@ -2500,16 +2541,6 @@ function mtSbPhotosRender() {
   const u = mtUpFor(c), mk = document.getElementById('mtSb-make');
   if (mk && !f.busy) { mk.disabled = !!(u && u.where === 'sb'); mk.textContent = mk.disabled ? 'Uploading photos' : 'Create PDF'; }
 }
-function mtSbRenumber() {
-  let n = 0;
-  document.querySelectorAll('#mtSbModal .mt-sbp').forEach(row => {
-    const cb = row.querySelector('[data-inrep]'), th = row.querySelector('.mt-sbp__th');
-    if (!cb || !th) return;
-    row.classList.toggle('is-off', !cb.checked);
-    th.querySelector('.mt-sbt__no')?.remove();
-    if (cb.checked) th.insertAdjacentHTML('beforeend', `<span class="mt-sbt__no">${++n}</span>`);
-  });
-}
 async function mtSbInRep(id, on) {
   const d = MT.docs.find(x => String(x.id) === String(id)); if (!d) return;
   const was = d.in_report;
@@ -2548,6 +2579,7 @@ function mtSbAddPhoto() {
     const imgs = files.filter(mtIsImage);
     if (!imgs.length) { mtSay('Choose photos (JPG, PNG or HEIC).'); return; }
     mtSbCapsFlush();
+    f.photosOn = true;                                        // D20: a new photo turns on "With photos"
     MT.up = { caseId: c.id, total: imgs.length, done: 0, where: 'sb' };
     mtSbPhotosRender();
     let ok = 0;
