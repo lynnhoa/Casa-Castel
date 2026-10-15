@@ -324,18 +324,6 @@ async function ccKautionAct(app, pfx, tid, act) {
 }
 
 /* Kaution Soll — the one place to change it (fixed per tenancy) */
-function ccKautionEditSoll(app, pfx, tid) {
-  const f = document.getElementById('cck-sf-' + pfx); if (!f) return;
-  f.hidden = false; document.getElementById('cck-sv-' + pfx)?.focus();
-}
-async function ccKautionSaveSoll(app, pfx, tid) {
-  const A = _CCK[app]; if (!A || !A.saveSoll || !tid) return;
-  const raw = document.getElementById('cck-sv-' + pfx)?.value;
-  const v = raw === '' || raw == null ? null : Number(raw);
-  if (v !== null && !(v >= 0)) return;
-  const ok = await A.saveSoll(tid, v);
-  if (ok !== false) { _cckRedraw(app, pfx); if (A.afterChange) A.afterChange(tid); }
-}
 
 function _cckRedraw(app, pfx) {
   const el = document.getElementById('cck-' + pfx); if (!el) return;
@@ -417,16 +405,3 @@ function ccKautionStartSoll({ current, staffelSoll, mietbeginn, received }) {
 
 /* Contract generators: the current tenant's fixed Kaution Soll goes into the
    Kaution field (instead of a value recalculated from today's rent). */
-function ccApplyFixedKaution(inputId, amount) {
-  if (amount == null || amount === '' || !(Number(amount) > 0)) return;
-  const el = document.getElementById(inputId); if (!el) return;
-  el.removeAttribute('data-auto');                      // no longer follows rent / dates
-  el.value = String(Number(amount));
-  const box = el.closest('.rm-field') || el.parentElement;
-  if (box && !box.querySelector('.cck-fixed-hint')) {
-    const h = document.createElement('div');
-    h.className = 'cck-fixed-hint';
-    h.textContent = 'Kaution-Soll des aktuellen Mieters (fest seit Einzug). Für einen neuen Mieter bitte anpassen.';
-    box.appendChild(h);
-  }
-}

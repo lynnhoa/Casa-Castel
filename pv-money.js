@@ -15,32 +15,6 @@
    ───────────────────────────────────────────────────────────── */
 
 /* ── INVOICE CARDS (reports area) ───────────────────────── */
-function pvaInvoiceCardsHTML(d) {
-  const inv = (d && d.invoices) || [];
-  return inv.map(i => {
-    const label = i.visit_date ? pvWdDM(i.visit_date, true) : pvInvMonthName(i.month, true);
-    const who = i.by ? `<span class="k-mob-week-dates-sm">${_pvagAvatarByName(i.by)}</span>` : '';
-    if (i.status === 'returned') {
-      return `<div class="pva-rep" style="margin-top:12px;padding-top:12px;border-top:.5px solid var(--cc-rule);">
-          <div class="k-mob-week-top-row"><span class="k-mob-status-chip flagged">${pvPic('chip_invoice', 13)}Invoice · returned</span>${who}</div>
-          <div class="k-mob-week-body"><div class="k-mob-week-left"><span class="k-mob-week-room">${esc(label)}</span>
-            <span class="k-mob-week-dates-sm">${pvEur(i.amount)} · waiting for a new invoice</span>
-            ${i.note ? `<span class="k-note k-note--flag">„${esc(i.note)}“</span>` : ''}</div></div></div>`;
-    }
-    return `<div class="pva-rep" style="margin-top:12px;padding-top:12px;border-top:.5px solid var(--cc-rule);">
-        <div class="k-mob-week-top-row"><span class="k-mob-status-chip submitted">${pvPic('chip_invoice', 13)}Invoice · to check</span>${who}</div>
-        <div class="k-mob-week-body">
-          <div class="k-mob-week-left"><span class="k-mob-week-room">${esc(label)}</span>
-            <span class="k-mob-week-dates-sm">${pvEur(i.amount)} · invoice ${pvDM(i.invoice_date)}${String(i.invoice_date).slice(0, 4)}</span>
-            <span class="k-note k-note--wait" style="display:flex;align-items:center;gap:6px;">${pvPic('inv_line', 12)}${i.month_visits} ${i.month_visits === 1 ? 'visit' : 'visits'} in ${esc(pvInvMonthName(i.month, true))}</span></div>
-          <div class="k-mob-week-acts">
-            <button class="k-mob-wact green" type="button" aria-label="Check invoice" onclick="pvaInvCheck('${i.id}')">${pvPic('act_check', 14)}<span>Check</span></button>
-            <button class="k-mob-wact blue" type="button" aria-label="Open invoice" onclick="pvaInvOpen('${esc(i.path)}')">${pvPic('act_open', 14)}<span>Open</span></button>
-            <button class="k-mob-wact red" type="button" aria-label="Ask for correction" onclick="pvaInvFix('${i.id}')">${pvPic('act_fix', 14)}<span>Fix</span></button>
-          </div>
-        </div></div>`;
-  }).join('');
-}
 async function pvaInvCheck(id) {
   const { data, error } = await pvaRpc('pv_admin_check_invoice', { p_id: id });
   if (error) { pvaToast('No connection — try again.'); return; }

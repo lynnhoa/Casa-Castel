@@ -43,7 +43,6 @@ function ccIcon(name, size) {
 }
 
 /* Device helpers */
-function ccIsPhoneLayout() { return window.innerWidth <= 700; }
 function ccIsLaptop() {           // mouse/trackpad and no touch screen → no live camera possible
   try { return window.matchMedia('(hover: hover) and (pointer: fine)').matches && !('ontouchstart' in window); }
   catch (e) { return false; }

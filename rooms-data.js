@@ -54,10 +54,6 @@ async function loadRoomsData() {
 
 
 /* ── GETTERS ─────────────────────────────────────────────── */
-function getActiveRooms()  { return appRooms.filter(r => r.active); }
-function getVacantRooms()  { return appRooms.filter(r => r.vacant && r.active); }
-function getOccupiedRooms(){ return appRooms.filter(r => !r.vacant && r.active); }
-function getRoomByName(name){ return appRooms.find(r => r.name === name) || null; }
 function getRoomById(id)   { return appRooms.find(r => r.id === id) || null; }
 
 
@@ -98,45 +94,8 @@ async function saveRoom(roomData) {
 }
 
 // Toggle vacant state — instant, no full save needed
-async function toggleRoomVacant(roomId) {
-  if (!sbL) return { ok: false };
-  const room = getRoomById(roomId);
-  if (!room) return { ok: false };
-
-  const newVacant = !room.vacant;
-  const { error } = await sbL
-    .from('rooms')
-    .update({ vacant: newVacant, updated_at: new Date().toISOString() })
-    .eq('id', roomId);
-
-  if (error) return { ok: false, error: error.message };
-
-  room.vacant = newVacant;
-  await roomAfterVacancyChange(room, newVacant);
-  return { ok: true, vacant: newVacant };
-}
 
 /* Follow-up after a vacancy change was saved: kitchen reset (when occupied) + tell the other tabs */
-async function roomAfterVacancyChange(room, newVacant) {
-  // When marking occupied: reset any stale 'skipped' kitchen_weeks row for this week
-  if (!newVacant && typeof kWeekIdx === 'function') {
-    try {
-      const idx = kWeekIdx();
-      if (idx >= 0) {
-        const { data: kRow } = await sbL
-          .from('kitchen_weeks')
-          .select('id, status, room')
-          .eq('week_index', idx)
-          .maybeSingle();
-        if (kRow && kRow.status === 'skipped' && kRow.room === room.name) {
-          await sbL.from('kitchen_weeks').update({ status: 'pending' }).eq('id', kRow.id);
-        }
-      }
-    } catch(e) { console.warn('[rooms-data] kitchen reset error:', e); }
-  }
-
-  _notifyRoomsListeners('UPDATE', room);
-}
 
 // Update sort order after drag
 async function saveRoomOrder(orderedIds) {

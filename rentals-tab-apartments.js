@@ -1774,7 +1774,6 @@ function _aptHGFmt(d) { if (!d) return ''; const [y, m, day] = d.split('-'); ret
 function _aptHGSorted(aptId) {
   return (_aptHausgeld[aptId] || []).slice().sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)));
 }
-function _aptHGToday() { const t = new Date(); t.setHours(0, 0, 0, 0); return t; }
 /* A step counts as adjusted once it has started (Oct 2026) — no "Noted?" to-do for old steps.
    German calendar day, compared as YYYY-MM-DD (a step starting today has started). */
 const _aptHGIso = e => String(e && e.effective_date || '').slice(0, 10);
@@ -2025,29 +2024,10 @@ async function _aptHGDelete(id, aptId) {
 }
 
 // Old names, kept so nothing that still calls them breaks
-function _aptHGMarkNotified(id, aptId) { _aptHGToggleNoted(id, aptId); }
-function _aptHGRenderRow(id, aptId) { _aptHGRefreshUI(id, aptId); }
 
 
 /* ── TOGGLE VACANT ───────────────────────────────────────── */
 /* Mark as vacant / occupied — instant, saved in the background (red message + undo if it fails) */
-function _aptToggleVacant(aptId, btn) {
-  const apt = appApartments.find(a => a.id === aptId);
-  if (!apt) return;
-  const before = !!apt.vacant, next = !before;
-  apt.vacant = next;
-  _aptRerenderCard(aptId);   // instant
-  _updateAptSummary();
-  if (!_aptSbClient) return;
-  ccQueueWrite('apt-vacant-' + aptId, () => _aptSbClient.from('rentals_apartments').update({ vacant: next }).eq('id', aptId))
-    .then(r => {
-      if (!r || !r.error) return;
-      apt.vacant = before;
-      _aptRerenderCard(aptId);
-      _updateAptSummary();
-      ccSaveFailed(r.error, 'apartment vacancy');
-    });
-}
 
 
 /* ── INVENTAR MODAL ──────────────────────────────────────── */
@@ -3568,52 +3548,6 @@ function _aptUpdateMvMonatToggle() {
   _aptMvCalcStaffelDates();
 }
 
-function _toggleAptCmMieter() {
-  const pill      = document.getElementById('aptCmMieterPill');
-  const manualLbl = document.getElementById('aptCmMieterManualLbl');
-  if (!pill) return;
-  const isRoom = pill.dataset.state === 'room';
-  if (isRoom) {
-    pill.dataset.state = 'manual';
-    document.getElementById('apt-cm-name').value  = '';
-    document.getElementById('apt-cm-adr').value   = '';
-    document.getElementById('apt-cm-dob').value   = '';
-    document.getElementById('apt-cm-email').value = '';
-    document.getElementById('apt-cm-name').focus();
-    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
-  } else {
-    pill.dataset.state = 'room';
-    document.getElementById('apt-cm-name').value  = pill.dataset.tenantName  || '';
-    document.getElementById('apt-cm-adr').value   = pill.dataset.tenantAdr   || '';
-    document.getElementById('apt-cm-dob').value   = pill.dataset.tenantDob   || '';
-    document.getElementById('apt-cm-email').value = pill.dataset.tenantEmail || '';
-    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
-  }
-}
-
-function _toggleAptMvMieter() {
-  const pill      = document.getElementById('aptMvMieterPill');
-  const manualLbl = document.getElementById('aptMvMieterManualLbl');
-  if (!pill) return;
-  const isRoom = pill.dataset.state === 'room';
-  if (isRoom) {
-    pill.dataset.state = 'manual';
-    document.getElementById('apt-mv-name').value  = '';
-    document.getElementById('apt-mv-adr').value   = '';
-    document.getElementById('apt-mv-dob').value   = '';
-    document.getElementById('apt-mv-email').value = '';
-    document.getElementById('apt-mv-name').focus();
-    if (manualLbl) manualLbl.style.color = 'var(--cc-charcoal)';
-  } else {
-    pill.dataset.state = 'room';
-    document.getElementById('apt-mv-name').value  = pill.dataset.tenantName  || '';
-    document.getElementById('apt-mv-adr').value   = pill.dataset.tenantAdr   || '';
-    document.getElementById('apt-mv-dob').value   = pill.dataset.tenantDob   || '';
-    document.getElementById('apt-mv-email').value = pill.dataset.tenantEmail || '';
-    if (manualLbl) manualLbl.style.color = 'var(--cc-stone)';
-  }
-}
-
 function _toggleAptUbMieter() {
   const pill      = document.getElementById('aptUbMieterPill');
   const manualLbl = document.getElementById('aptUbMieterManualLbl');
@@ -3721,14 +3655,6 @@ function _aptBodyUeberg(apt, sk, isEinzug, profile = {}) {
 
 
 /* ── KAUTION FÄLLIGKEIT HELPER ───────────────────────────── */
-function _aptKfSelect(prefix, val, clickedBtn) {
-  const parent = clickedBtn.closest('div');
-  parent.querySelectorAll('.rm-fael-btn').forEach(b => { b.classList.remove('active'); delete b.dataset.val; });
-  clickedBtn.classList.add('active');
-  clickedBtn.dataset.val = val;
-  const custom = document.getElementById(`apt-${prefix}-fael-custom`);
-  if (custom) custom.style.display = val === 'custom' ? '' : 'none';
-}
 
 
 /* ── ADD APARTMENT ───────────────────────────────────────── */
