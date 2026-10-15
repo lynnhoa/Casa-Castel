@@ -95,13 +95,12 @@ const MT = {
   d16: false,       // MAINTENANCE-D16.sql has been run (own Schadensbild field)
 };
 /* D12 · the year of the summary (and of its PDF): your choice, else this year */
-function mtSumYear(kind) {
-  const v = MT.sumYear[kind];
-  return v && mtCostYears(kind).includes(v) ? v : mtYear();
+function mtSumYear() {                                     // D22: one year for both tabs
+  const v = MT.sumYear.all;
+  return v && mtCostYears().includes(v) ? v : mtYear();
 }
-function mtCostYears(kind) {
-  const ids = new Set(MT.cases.filter(c => c.kind === kind).map(c => String(c.id)));
-  const ys = MT.costs.filter(r => ids.has(String(r.case_id))).map(r => String(r.cost_date || '').slice(0, 4)).filter(y => /^\d{4}$/.test(y));
+function mtCostYears() {
+  const ys = MT.costs.map(r => String(r.cost_date || '').slice(0, 4)).filter(y => /^\d{4}$/.test(y));
   return [...new Set(ys.concat([mtYear()]))].sort().reverse();
 }
 const mtHasCosts = (ids, year) => MT.costs.some(r => ids.includes(String(r.case_id)) && (!year || String(r.cost_date || '').slice(0, 4) === String(year)));
@@ -305,6 +304,7 @@ function mtRender() {
   const kind = MT.tab;
   const el = document.getElementById('tab-' + kind);
   if (!el) return;
+  mtCostModalSync();
   mtParkPanel();                                             // keep the open entry safe while the list is redrawn
   if (MT.loadError) { el.innerHTML = mtErrorHTML(MT.loadError); return; }
   const list = MT.cases.filter(c => c.kind === kind);
@@ -316,18 +316,18 @@ function mtRender() {
       <button type="button" class="mt-add" data-mt="new"><i class="ti ti-plus" aria-hidden="true"></i><span>Add</span></button>
     </div>`;
   if (!list.length) {
-    el.innerHTML = head + (newTop ? `<div class="mt-list">${newTop}</div>` : `<p class="mt-empty">${MT_KIND[kind].empty}</p>`);
+    el.innerHTML = mtBothHTML() + head + (newTop ? `<div class="mt-list">${newTop}</div>` : `<p class="mt-empty">${MT_KIND[kind].empty}</p>`);
     mtPlacePanel(el);
     return;
   }
 
-  const ids = list.map(c => c.id), y = mtYear(), yy = mtSumYear(kind), yrs = mtCostYears(kind);
+  const ids = list.map(c => c.id), y = mtYear(), yy = mtSumYear();
   const nOpen = list.filter(c => c.status === 'open').length, nProg = list.filter(c => c.status === 'in_progress').length;
   const counts = [nOpen ? `${nOpen} ${MT_KIND[kind].openCount}` : '', nProg ? `${nProg} in progress` : ''].filter(Boolean).join(' · ') || 'all done';
   const sum = `
     <div class="cc-sum2">
       <div class="cc-sum2__meta"><b>Kosten</b><span>${counts}</span></div>
-      <div class="cc-sum2__vals"><span><label class="mt-ysel"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span>${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}</div>
+      <div class="cc-sum2__vals"><span><i>${yy}</i>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span></div>
     </div>`;
 
   const cards = mtGroups(kind).map(g => {
@@ -351,7 +351,7 @@ function mtRender() {
       </section>`;
   }).join('');
 
-  el.innerHTML = head + sum + `<div class="mt-list">${newTop}${cards}</div>`;
+  el.innerHTML = mtBothHTML() + head + sum + `<div class="mt-list">${newTop}${cards}</div>`;
   mtPlacePanel(el);
 }
 
@@ -424,14 +424,12 @@ function mtEditHTML(c, s) {
   const roomOpts = `<option value=""${room ? '' : ' selected'}>—</option>` +
     rooms.map(r => `<option value="${mtEsc(r)}"${room === r ? ' selected' : ''}>${mtEsc(r)}</option>`).join('') +
     `<option value="${MT_SB_ALL}"${room === MT_SB_ALL ? ' selected' : ''}>Gemeinschaftsfläche</option>`;
-  const kindSeg = Object.keys(MT_KIND).map(k => `<button type="button" class="mt-seg__b${d.kind === k ? ' is-on' : ''}" data-mt="kindSeg" data-k="${k}" aria-pressed="${d.kind === k}">${MT_KIND[k].one}</button>`).join('');
   const stats = ['open', 'in_progress', 'done'].map(st => `<option value="${st}"${(d.status || 'open') === st ? ' selected' : ''}>${mtStatusLabel(d.kind, st)}</option>`).join('');
   const [l1, l2] = MT_DATE_LBL[sch ? 'schaden' : 'renovierung'];
   return `
     <section class="mt-sec mt-sec--edit">
       <div class="mt-grid">
-        <div class="mt-f mt-f--full"><div class="mt-seg mt-seg--kind" role="group" aria-label="Type">${kindSeg}</div>
-          <input type="hidden" id="mtF-kind" value="${mtEsc(d.kind)}"/></div>
+        <input type="hidden" id="mtF-kind" value="${mtEsc(d.kind)}"/>
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-title">Title</label>
           <input class="mt-in" id="mtF-title" type="text" maxlength="120" autocomplete="off" value="${mtEsc(d.title || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtF-prop">Property</label><select class="mt-in" id="mtF-prop">${props}</select></div>
@@ -445,7 +443,8 @@ function mtEditHTML(c, s) {
           <textarea class="mt-in mt-ta" id="mtF-desc" rows="3" maxlength="2000">${mtEsc(d.description || '')}</textarea></div>
       </div>
       <div class="cc-sec-foot">
-        ${s.isNew ? '' : '<button type="button" class="cc-foot-btn mt-del is-left" data-mt="del"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>'}
+        ${s.isNew ? '' : `<span class="is-left mt-foot-l"><button type="button" class="cc-foot-btn mt-del" data-mt="del"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>
+          <button type="button" class="mt-link mt-move" id="mtF-move" data-mt="moveKind"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Move to ${MT_KIND[d.kind === 'schaden' ? 'renovierung' : 'schaden'].title}</button></span>`}
         <span class="cc-foot-right">
           <button type="button" class="cc-foot-btn" data-mt="cancel">Cancel</button>
           <button type="button" class="cc-foot-btn mt-save" data-mt="save">Save</button>
@@ -502,7 +501,6 @@ function mtKindChanged() {
   const kind = document.getElementById('mtF-kind')?.value;
   if (!MT_KIND[kind]) return;
   const sch = kind === 'schaden', g = id => document.getElementById(id);
-  document.querySelectorAll('#mtPanel [data-mt="kindSeg"]').forEach(b => { const on = b.dataset.k === kind; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
   const st = g('mtF-status');
   if (st) [...st.options].forEach(o => { o.textContent = mtStatusLabel(kind, o.value); });
   const [l1, l2] = MT_DATE_LBL[sch ? 'schaden' : 'renovierung'];
@@ -805,6 +803,7 @@ function mtMoreCheck() {
 }
 function mtAfterPanel() {
   mtMoreCheck();
+  mtCostModalRender();
   document.querySelectorAll('#mtPanel textarea.mt-ta').forEach(mtGrow);
   const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
   if (!c) return;
@@ -898,7 +897,7 @@ function mtDocToCost(id) {
     files: [{ id: d.id, adopt: true, name: d.file_name || 'Rechnung', img: /\.(jpe?g|png|webp|heic|gif)$/i.test(String(d.file_path || '')) }],
   });
   f.snap = '';                                                 // filled in → counts as typed
-  mtRenderPanel();
+  mtCostModalRender();                                         // D22: show the filled-in form (no re-read of the empty one)
   document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
 }
 
@@ -1208,16 +1207,13 @@ function mtCostsHTML(c) {
   const busy = !!(s.edit || s.docEdit || s.add || s.fix);  // another part of the panel is being changed
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
   const tap = !busy && !f && !upAny;
-  const isForm = r => f && !f.isNew && String(f.id) === String(r.id);
   // D4 · receipts first: Kosten on top, then "+ Add receipt", then the table (newest first)
   const self = mtCost([c.id], null, 'self'), prov = mtCost([c.id], null, 'provider');
   let h = `<section class="mt-costs" id="mtCosts">
-    <div class="mt-ks"><b>Kosten</b><em>${mtEur(mtCost([c.id]))}</em></div>
+    <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b>${!busy && !f && !upAny ? '<button type="button" class="mt-link mt-ks__add" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>' : ''}</span><em>${mtEur(mtCost([c.id]))}</em></div>
 `;
-  if (f && f.isNew && !f.return_of) h += mtCostFormHTML(f);
-  else if (!busy && !f && !upAny) h += '<button type="button" class="mt-addr" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>';
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
-  if (!rows.length && !(f && f.isNew)) h += '<p class="mt-docs-empty">No receipts yet.</p>';
+  if (!rows.length) h += '<p class="mt-docs-empty">No receipts yet.</p>';
 
   Object.keys(MT_COST).forEach(kind => {
     const list = rows.filter(r => r.kind === kind && !r.return_of).sort((a, b) => mtCostByDate(b, a));   // newest first
@@ -1227,9 +1223,8 @@ function mtCostsHTML(c) {
       <div class="mt-ch" aria-hidden="true"><span>Receipt no.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
       ${list.map(r => {
         const rets = mtReturnsOf(r.id);
-        let x = isForm(r) ? mtCostFormHTML(f) : mtCostRowHTML(r, tap);
-        rets.forEach(t => { x += isForm(t) ? mtCostFormHTML(f) : mtCostRowHTML(t, tap); });
-        if (f && f.isNew && String(f.return_of) === String(r.id)) x += mtCostFormHTML(f);   // a new return sits under its receipt
+        let x = mtCostRowHTML(r, tap);
+        rets.forEach(t => { x += mtCostRowHTML(t, tap); });
         if (rets.length) x += `<div class="mt-net"><span>Net</span><b>${mtEur(mtNum(r.amount) - rets.reduce((a, t) => a + mtNum(t.amount), 0))}</b></div>`;
         return x;
       }).join('')}
@@ -1270,7 +1265,7 @@ function mtCostFormHTML(f) {
     f.isNew ? '' : `<button type="button" class="cc-foot-btn mt-del" data-mt="costDel"><i class="ti ti-trash" aria-hidden="true"></i> Delete</button>`,
     !ret && !f.isNew ? '<button type="button" class="cc-foot-btn" data-mt="costReturn"><i class="ti ti-arrow-back-up" aria-hidden="true"></i> Return</button>' : '',
   ].join('');
-  return `<div class="mt-ab mt-cf-form${ret ? ' is-ret' : ''}" id="mtC-form">
+  return `<div class="mt-ab mt-cf-form${ret ? ' is-ret' : ''}" id="mtC-form" data-fid="${mtEsc(f.id)}">
       ${top}
       <div class="mt-grid">
         <div class="mt-f"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt no.'}</label>
@@ -1304,8 +1299,8 @@ function mtCostFormHTML(f) {
 
 /* What is typed in the open cost form → its state (so a redraw keeps it) */
 function mtCostCapture() {
-  const f = MT.sel && MT.sel.cost;
-  if (!f || !document.getElementById('mtC-form')) return;
+  const f = MT.sel && MT.sel.cost, el = document.getElementById('mtC-form');
+  if (!f || !el || el.dataset.fid !== String(f.id)) return;   // only the form that is showing (not a new return's)
   const g = id => document.getElementById(id);
   f.receipt_no = g('mtC-no').value;
   f.description = g('mtC-desc').value;
@@ -1629,6 +1624,21 @@ async function mtCostDelete() {
    mtConfirm({ title, text, ok, cancel, danger }) → Promise<boolean>
    mtAsk({ title, text, buttons: [{ v, label, kind: 'p' | 's' | 'd' }] }) → Promise<v | null> (null = closed) */
 function mtAsk(o) {
+  const host = document.querySelector('#mtCostModal .mt-modal__s');
+  if (host) return new Promise(resolve => {                  // D22: inside the receipt pop-up
+    host.querySelector('.mt-askv')?.remove();
+    const v = document.createElement('div');
+    v.className = 'mt-askv';
+    v.setAttribute('role', 'alertdialog');
+    v.innerHTML = `<p class="mt-cf__t">${mtEsc(o.title || 'Are you sure?')}</p>${o.text ? `<p class="mt-cf__x">${mtEsc(o.text)}</p>` : ''}${o.html || ''}
+      <div class="mt-cf__b">${(o.buttons || []).map((b, i) => `<button type="button" class="mt-btn mt-btn--${b.kind || 's'}" data-i="${i}">${mtEsc(b.label)}</button>`).join('')}</div>`;
+    host.appendChild(v);
+    const done = val => { document.removeEventListener('keydown', key, true); v.remove(); resolve(val); };
+    const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
+    document.addEventListener('keydown', key, true);
+    v.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; e.stopPropagation(); done(o.buttons[Number(b.dataset.i)].v); });
+    setTimeout(() => v.querySelector('.mt-btn--p, .mt-btn--d, .mt-btn')?.focus(), 0);
+  });
   return new Promise(resolve => {
     document.getElementById('mtConfirm')?.remove();
     const h = document.createElement('div');
@@ -1960,7 +1970,7 @@ function mtWire() {
     else if (a === 'sbDelYes') mtSbDelPhoto(b.dataset.id);
     else if (a === 'sbBack') { if (MT.sb && !MT.sb.busy) { MT.sb.view = 'form'; mtSbRender(); } }
     else if (a === 'sbOpenPdf') mtSbOpenPdf();
-    else if (a === 'kindSeg') { const k = document.getElementById('mtF-kind'); if (k && k.value !== b.dataset.k) { k.value = b.dataset.k; mtKindChanged(); } }
+    else if (a === 'moveKind') mtMoveKind();
     else if (a === 'more') { if (MT.sel) { MT.sel.more = !MT.sel.more; mtRenderPanel(); } }
 
     else if (a === 'sbFotos') { const f = MT.sb; if (f && !f.busy) { mtSbCapsFlush(); f.photosOn = b.dataset.v === '1'; mtSbPhotosRender(); } }
@@ -1974,7 +1984,7 @@ function mtWire() {
     if (t.id === 'mtF-kind') mtKindChanged();
     else if (t.id === 'mtF-prop' || t.id === 'mtF-art') mtSbVis();
     else if (t.id === 'mtF-end') mtEndChanged();
-    else if (t.dataset && t.dataset.mtYear !== undefined) { MT.sumYear[MT.tab] = t.value; mtRender(); }
+    else if (t.dataset && t.dataset.mtYear !== undefined) { MT.sumYear.all = t.value; mtRender(); }
     else if (t.id === 'mtF-status') mtStatusChanged();
     else if (t.dataset && t.dataset.docType) mtDocTypeChanged(t.dataset.docType);
   });
@@ -1987,6 +1997,7 @@ function mtWire() {
     if (e.target && e.target.matches && e.target.matches('#mtPanel textarea.mt-ta, #mtSbModal textarea.mt-ta')) mtGrow(e.target);
   });
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && MT.sel && MT.sel.cost && document.getElementById('mtCostModal') && !document.querySelector('.mt-askv') && !document.getElementById('ccCal')) { mtCostCancel(); return; }
     if (e.key === 'Escape' && MT.sb && !document.getElementById('mtConfirm') && !document.getElementById('ccCal') && !document.getElementById('ccPdfSheet')) { mtSbClose(); return; }
     if (e.key === 'Escape' && MT.sel && !document.getElementById('mtConfirm') && !document.getElementById('ccCal')
         && !document.getElementById('mtSbSheet') && !document.getElementById('ccPdfSheet')) mtClose();
@@ -2338,6 +2349,58 @@ function mtSbRenumber() {
     if (cb.checked) th.insertAdjacentHTML('beforeend', `<span class="mt-pr__no">${++n}</span>`);
     if (lbl) lbl.textContent = cb.checked ? 'In the report' : 'Not in the report';
   });
+}
+
+/* ── D22 · Both tabs together: a slim white strip under the tabs, the same in both tabs ── */
+function mtBothHTML() {
+  const ids = MT.cases.map(c => c.id), yy = mtSumYear(), yrs = mtCostYears();
+  return `<div class="mt-both">
+      <div class="mt-both__r1"><span class="mt-both__l">Both tabs ·</span><label class="mt-ysel"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>
+        ${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}</div>
+      <div class="mt-both__r2"><span><i>${yy}</i>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span></div>
+    </div>`;
+}
+/* ── D22 · The receipt form as a pop-up (new receipt, a receipt row, a return) ── */
+function mtCostModalSync() {
+  const s = MT.sel;
+  if (s && s.cost) return;
+  const m = document.getElementById('mtCostModal');
+  if (m) { m.remove(); if (!document.getElementById('mtSbModal')) document.documentElement.classList.remove('mt-modal-open'); }
+}
+function mtCostModalRender() {
+  const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
+  if (!f || !c) { mtCostModalSync(); return; }
+  let m = document.getElementById('mtCostModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'mtCostModal'; m.className = 'mt-modal';
+    document.body.appendChild(m);
+    document.documentElement.classList.add('mt-modal-open');
+  }
+  const ret = !!f.return_of;
+  const kk = ret ? (f.isNew ? 'New return' : 'Return') : (f.isNew ? 'New receipt' : 'Receipt');
+  m.innerHTML = `<div class="mt-modal__bg" data-mt="costCancel"></div>
+    <div class="mt-modal__s" role="dialog" aria-modal="true" aria-labelledby="mtCostT">
+      <div class="mt-modal__h">
+        <div><p class="mt-modal__k">${kk}</p><p class="mt-modal__t" id="mtCostT">${mtEsc(c.title)}</p>
+          <p class="mt-modal__sub">${mtEsc([mtPropName(c), mtWhere(c)].filter(Boolean).join(' · '))}</p></div>
+        <button type="button" class="mt-modal__x" data-mt="costCancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
+      </div>
+      <div class="mt-modal__b">${mtCostFormHTML(f)}</div>
+      <div class="mt-modal__f"></div>
+    </div>`;
+  const foot = m.querySelector('#mtC-form > .cc-sec-foot'), mf = m.querySelector('.mt-modal__f');
+  if (foot && mf) mf.appendChild(foot);                     // Cancel · Save (· Delete · Return) at the bottom of the pop-up
+}
+/* ── D22 · "Move to Schäden / Renovierungen" in Edit (instead of the type switch) ── */
+function mtMoveKind() {
+  const k = document.getElementById('mtF-kind'), c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
+  if (!k || !c) return;
+  const orig = c.kind, other = orig === 'schaden' ? 'renovierung' : 'schaden';
+  k.value = k.value === orig ? other : orig;
+  mtKindChanged();
+  const b = document.getElementById('mtF-move');
+  if (b) b.textContent = k.value === orig ? 'Move to ' + MT_KIND[other].title : 'Moves to ' + MT_KIND[other].title + ' on Save · undo';
 }
 
 function mtSbOpenPdf() {

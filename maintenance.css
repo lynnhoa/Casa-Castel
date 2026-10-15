@@ -440,3 +440,27 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 .mt-pr__del { border:0; background:#A0533A; color:#fff; }
 .mt-pr__keep { border:var(--cc-border); background:var(--cc-white); color:var(--cc-ink); }
 .mt-pr__hd, .mt-prl { align-self:stretch; width:100%; }
+
+/* ── D22 · Both tabs: slim white strip under the tabs (the same in both) ── */
+.mt-both { margin:0 0 16px; padding:8px 14px 9px; background:var(--cc-white); border:var(--cc-border); border-radius:10px; }
+.mt-both__r1 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.mt-both__l { font-size:11px; color:var(--cc-taupe); }
+.mt-both__r1 .mt-ysel { margin:0 auto 0 4px; }
+.mt-both .mt-ysel select { font-size:11px !important; letter-spacing:0 !important; text-transform:none !important; color:var(--cc-taupe) !important;
+  font-weight:400 !important; padding:4px 14px 4px 0; margin:-4px 0; }
+.mt-both .mt-ysel i { position:absolute; right:0; font-size:10px; color:var(--cc-taupe); pointer-events:none; }
+.mt-both__r2 { display:flex; gap:16px; margin-top:2px; font-size:13px; font-weight:500; color:var(--cc-charcoal); }
+.mt-both__r2 i { font-style:normal; font-size:11px; font-weight:400; color:var(--cc-taupe); margin-right:4px; }
+
+/* ── D22 · Kosten: small "+ Add receipt" · the receipt form in a pop-up · questions inside it ── */
+.mt-ks__l { display:inline-flex; align-items:baseline; gap:12px; }
+.mt-ks__add { display:inline-flex; align-items:center; gap:3px; font-size:12px; }
+.mt-ks__add i { font-size:13px; }
+.mt-modal .mt-cf-form { margin:0; padding:0; border:0; background:none; }
+.mt-modal .mt-cf-form .mt-in { background-color:var(--cc-bg); }
+.mt-modal__f .cc-sec-foot { width:100%; margin:0; }
+.mt-askv { position:absolute; inset:0; z-index:3; display:flex; flex-direction:column; justify-content:center; gap:10px; padding:24px 20px;
+  background:var(--cc-white); border-radius:inherit; overflow:auto; }
+.mt-askv .mt-cf__b { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
+.mt-move { display:inline-flex; align-items:center; gap:4px; margin-left:12px; font-size:12px; }
+.mt-move i { font-size:14px; }

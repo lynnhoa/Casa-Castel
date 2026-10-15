@@ -146,6 +146,8 @@ function mtCostPdfHTML(d) {
     table.t tr.grp td span { font-weight:400; color:#6b645c; margin-left:6px; }
     .total { display:flex; justify-content:space-between; margin-top:16px; padding-top:8px; border-top:1px solid #6e5128;
       font-family:'Lato',sans-serif; font-size:12px; font-weight:700; color:#1a1a1a; }
+    .tab { display:flex; justify-content:space-between; align-items:baseline; margin-top:24px; padding-bottom:6px; border-bottom:1px solid #6e5128;
+      font-family:'Lato',sans-serif; font-size:9px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase; color:#6e5128; }
     .empty { margin-top:16px; font-family:'Lato',sans-serif; font-size:11px; color:#6b645c; }
   `;
   const colg = '<colgroup><col style="width:17%"><col><col style="width:24%"><col style="width:14%"><col style="width:13%"></colgroup>';
@@ -154,7 +156,14 @@ function mtCostPdfHTML(d) {
     ? `<tr class="net"><td></td><td>Netto</td><td></td><td class="n">${amt(l.amt)}</td><td class="d"></td></tr>`
     : `<tr${l.ret ? ' class="ret"' : ''}><td>${esc(l.no)}</td><td>${esc(l.desc)}</td><td>${esc(l.who)}</td><td class="n">${amt(l.amt)}</td><td class="d">${esc(mtDate(l.date))}</td></tr>`;
   let body = '';
-  if (d.mode === 'year') {
+  const yg = groups => groups.map(g => `<div class="sec"><span>${esc(g.name)}</span><span class="sec__r">${amt(g.sum)}</span></div>
+      <table class="t">${colg}${head(d.cols)}${g.ents.map(e =>
+        `<tr class="grp"><td colspan="3">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
+        e.lines.map(line).join('')).join('')}</table>`).join('');
+  if (d.mode === 'year2') {                                  // D22: Renovierungen, then Schäden
+    body = (d.parts || []).map(pt => `<div class="tab"><span>${esc(pt.title)}</span><span>${amt(pt.sum)}</span></div>` + yg(pt.groups)).join('');
+    if (!(d.parts || []).length) body = '<p class="empty">Keine Belege in diesem Jahr.</p>';
+  } else if (d.mode === 'year') {
     body = d.groups.map(g => `<div class="sec"><span>${esc(g.name)}</span><span class="sec__r">${amt(g.sum)}</span></div>
       <table class="t">${colg}${head(d.cols)}${g.ents.map(e =>
         `<tr class="grp"><td colspan="3">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
@@ -215,10 +224,26 @@ async function mtCpMake(btn, build) {
     if (btn && btn.classList.contains('is-busy')) { btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); btn.innerHTML = keep; }
   }
 }
-function mtPdfYear(btn) {
-  const kind = MT.tab, y = mtSumYear(kind);
+function mtPdfYear(btn) {                                 // D22: one overview for both tabs
+  const y = mtSumYear();
   if (btn && btn.classList.contains('off')) { mtSay(`No receipts in ${y} yet.`); return; }
-  return mtCpMake(btn, () => mtCpYearData(kind, y));
+  return mtCpMake(btn, () => mtCpYearDataAll(y));
+}
+function mtCpYearDataAll(year) {
+  const S = (typeof appSettings !== 'undefined' && appSettings) || {};
+  const stand = mtDate(ccTodayISO()), y = String(year);
+  const all = MT.costs.filter(r => String(r.cost_date || '').slice(0, 4) === y && MT.cases.some(c => String(c.id) === String(r.case_id)));
+  const sumOf = k => mtCpSum(all.filter(r => (mtCase(r.case_id) || {}).kind === k));
+  const parts = ['renovierung', 'schaden'].map(k => ({ k, d: mtCpYearData(k, year) })).filter(x => x.d.groups.length)
+    .map(x => ({ title: MT_KIND[x.k].title, sum: x.d.groups.reduce((s2, g) => s2 + g.sum, 0), groups: x.d.groups }));
+  return {
+    mode: 'year2', family: 'rentals', wordmark: 'Maintenance', rl: 'Jahr', rv: y,
+    title: 'Rechnungsübersicht ' + y, subtitle: ['Renovierungen und Schäden', 'alle Objekte', 'Stand ' + stand].join(' · '),
+    cols: ['Beleg-Nr.', 'Beschreibung', 'Geschäft / Dienstleister'],
+    totals: [['Renovierungen', mtEur(sumOf('renovierung'))], ['Schäden', mtEur(sumOf('schaden'))], ['Gesamt', mtEur(mtCpSum(all))], ['Belege', String(all.filter(r => !r.return_of).length)]],
+    parts, gesamt: mtEur(mtCpSum(all)), footer: S.vermieter_name || '',
+    fileName: ccPdfFileName('Rechnungsuebersicht', y, 'Stand ' + stand),
+  };
 }
 function mtPdfEntry(id, btn) {
   const c = mtCase(id);
