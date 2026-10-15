@@ -43,12 +43,6 @@
 .mt-row__a { font-size:13px; font-weight:500; line-height:1.35; color:var(--cc-charcoal); white-space:nowrap; }
 
 /* Done entries fold per property */
-.mt-fold { display:flex; align-items:center; justify-content:space-between; width:100%; margin:0; padding:10px 16px;
-  border:none; border-top:var(--cc-border); background:none; border-radius:0; cursor:pointer;
-  font-family:inherit; font-size:10px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-taupe);
-  -webkit-tap-highlight-color:transparent; }
-.mt-fold i { font-size:14px; color:var(--cc-stone); transition:transform .2s; }
-.mt-fold[aria-expanded="true"] i { transform:rotate(180deg); }
 
 /* Status pills: yellow = planned / open · orange = in progress · green = done */
 .mt-pill { display:inline-block; padding:3px 9px; border:.5px solid; border-radius:var(--cc-r-pill);
@@ -172,7 +166,8 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 
 /* wide panel (laptop): a real table in your column order */
 @container (min-width: 520px) {
-  .mt-ch, .mt-cr { grid-template-columns:66px minmax(0,1.5fr) minmax(0,1fr) 86px 80px 24px; grid-template-areas:none; column-gap:10px; }
+  .mt-ch, .mt-cr { grid-template-columns:84px minmax(0,1.5fr) minmax(0,1fr) 86px 80px 24px; grid-template-areas:none; column-gap:10px; }
+  .mt-cr__no { min-width:0; overflow-wrap:anywhere; }
   .mt-ch { display:grid; padding:0 0 6px; font-size:11px; color:var(--cc-taupe); }
   .mt-ch .r { text-align:right; }
   .mt-cr__a, .mt-cr__b { display:contents; }
@@ -213,7 +208,6 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
   border-radius:0; background:var(--cc-bg); cursor:pointer; font-family:inherit; text-align:left; -webkit-tap-highlight-color:transparent; }
 .mt-yr__y { font-size:11px; font-weight:600; letter-spacing:.12em; color:var(--cc-charcoal); }
 .mt-yr__n { font-size:11px; color:var(--cc-taupe); }
-.mt-yr__s { margin-left:auto; font-size:12px; font-weight:500; color:var(--cc-charcoal); white-space:nowrap; }
 .mt-yr i { font-size:14px; color:var(--cc-stone); transition:transform .2s; }
 .mt-yr[aria-expanded="true"] i { transform:rotate(180deg); }
 
@@ -266,7 +260,6 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-ks { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
 .mt-ks b { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#8A6535; }
 .mt-ks em { font-style:normal; font-size:16px; font-weight:600; color:var(--cc-charcoal); white-space:nowrap; }
-.mt-kv { margin:2px 0 12px; font-size:11.5px; color:var(--cc-taupe); }
 .mt-addr { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; height:40px; margin:0 0 6px; padding:0;
   border:.5px dashed #B8AE9F; border-radius:8px; background:none; font-family:inherit; font-size:12px; font-weight:500;
   color:var(--cc-taupe); cursor:pointer; -webkit-tap-highlight-color:transparent; }
@@ -337,3 +330,63 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-cf__l { margin:0 0 12px; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
 .mt-cf__l li { padding:9px 11px; border:var(--cc-border); border-radius:8px; background:var(--cc-bg);
   font-size:12.5px; line-height:1.45; color:var(--cc-charcoal); overflow-wrap:anywhere; }
+
+/* ── D9 · Type switch on top · "More" read view · Zimmer line in the report form ── */
+.mt-seg--kind { margin:0; }
+.mt-more { display:inline-block; margin-top:4px; }
+.mt-rd { margin:8px 0 0; display:flex; flex-direction:column; gap:9px; }
+.mt-rd__r dt { font-size:11px; line-height:1.4; color:var(--cc-taupe); }
+.mt-rd__r dd { margin:1px 0 0; font-size:12px; line-height:1.45; color:var(--cc-charcoal); white-space:pre-line; overflow-wrap:anywhere; }
+.mt-sb__room { margin:0; font-size:12px; line-height:1.5; color:var(--cc-taupe); }
+.mt-sb__room b { font-weight:500; color:var(--cc-ink); }
+
+/* ── D10 · Schadensbericht on top · Anlagen on/off ── */
+.mt-sbsec { margin:14px 0 0; }
+.mt-sbsec .mt-sbbar { margin:0; }
+.mt-sbbar span small { display:block; margin-top:1px; font-size:10.5px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--cc-taupe); }
+.mt-sbal { display:flex; flex-direction:column; gap:6px; }
+.mt-sba { display:flex; align-items:center; gap:10px; padding:9px 11px; border:var(--cc-border); border-radius:8px; background:var(--cc-white); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-sba input { width:18px; height:18px; margin:0; flex-shrink:0; accent-color:var(--cc-ink); }
+.mt-sba__t { flex:1; min-width:0; font-size:12.5px; line-height:1.35; color:var(--cc-ink); }
+.mt-sba__t small { display:block; font-size:11px; color:var(--cc-taupe); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mt-sba em { flex-shrink:0; font-style:normal; font-size:10.5px; color:var(--cc-taupe); }
+.mt-sba.is-off { background:transparent; }
+.mt-sba.is-off .mt-sba__t, .mt-sba.is-off em { opacity:.55; }
+.mt-sb__ok[hidden], .mt-sbsec [hidden] { display:none !important; }
+
+/* ── D11 · Move to Kosten (old Rechnung documents) ── */
+.mt-dr .mt-tocost { flex-shrink:0; align-self:center; margin-left:8px; white-space:nowrap; }
+.mt-yr > .ti { margin-left:auto; }
+
+/* ── D12 · PDF overviews: year choice in the summary, PDF buttons ── */
+.mt-row { position:relative; }
+.mt-row__hit { position:absolute; inset:0; z-index:0; width:100%; margin:0; padding:0; border:0; border-radius:inherit; background:transparent;
+  cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-row__hit:focus-visible { outline:2px solid var(--cc-gold); outline-offset:-2px; }
+.mt-row > .mt-row__l, .mt-row > .mt-row__r { position:relative; z-index:1; pointer-events:none; }
+.mt-pdfw { pointer-events:auto; display:inline-flex; align-items:center; gap:6px; vertical-align:1px; }
+.mt-row__t .mt-pdfw { margin-left:2px; }
+.mt-pdf { display:inline-flex; align-items:center; gap:4px; height:24px; margin:0; padding:0 9px; border:var(--cc-border); border-radius:12px;
+  background:var(--cc-white); font:inherit; font-size:10px; font-weight:600; letter-spacing:.08em; line-height:1; color:var(--cc-ink);
+  cursor:pointer; white-space:nowrap; -webkit-tap-highlight-color:transparent; }
+.mt-pdf i { font-size:12px; }
+.mt-pdf.off { color:var(--cc-stone); border-style:dashed; background:transparent; }
+.mt-pdf.is-busy { opacity:.6; pointer-events:none; }
+.mt-pdf .mt-spin { width:10px; height:10px; }
+/* installed app: the shared "Open PDF" appears in place of the button — small here */
+.mt-pdfw > :not(.mt-pdf) { display:inline-flex !important; flex:none !important; gap:6px !important; align-items:center !important; }
+.mt-pdfw > :not(.mt-pdf) > * { height:24px !important; min-height:0 !important; padding:0 10px !important; font-size:10px !important;
+  line-height:24px !important; border-radius:12px !important; letter-spacing:.06em !important; }
+.mt-oh__h { display:flex; align-items:flex-start; gap:8px; }
+.mt-oh__h .mt-oh__t { width:auto; flex:0 1 auto; min-width:0; }
+.mt-oh__h .mt-pdfw { margin-top:1px; }
+.mt-oh__x { margin:0 0 0 auto; padding:2px 0; border:0; background:none; cursor:pointer; flex-shrink:0; -webkit-tap-highlight-color:transparent; }
+.mt-oh__x i { display:block; margin-top:2px; font-size:16px; color:var(--cc-stone); }
+.cc-sum2__vals .mt-pdfw { margin-left:auto; }
+.cc-sum2__vals .mt-pdf i { font-size:12px; margin:0; letter-spacing:0; color:inherit; text-transform:none; }
+.mt-ysel { position:relative; display:inline-flex; align-items:center; margin-right:4px; }
+.mt-ysel select { -webkit-appearance:none; appearance:none; margin:-6px 0; padding:6px 13px 6px 0; border:0; background:none; cursor:pointer;
+  font:inherit; font-size:9px; font-weight:500; letter-spacing:.12em; color:#A89C8C; }
+.cc-sum2__vals .mt-ysel i { position:absolute; right:0; margin:0; font-size:9px; letter-spacing:0; pointer-events:none; }
+.cc-sum2__vals .mt-ysel select { font-size:9px !important; font-weight:500 !important; line-height:1 !important; height:auto !important;
+  min-height:0 !important; letter-spacing:.12em !important; color:#A89C8C !important; text-transform:uppercase; }

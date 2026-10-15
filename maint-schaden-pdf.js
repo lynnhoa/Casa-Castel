@@ -132,7 +132,6 @@ function mtSbHTML(d) {
     kv('Feststellung', d.feststellung) +
     kv('Besichtigung vor Ort', d.besichtigung) +
     kv('Behoben am', d.behoben) +
-    kv('Schadennummer', d.schadennummer) +
     kv('Polizei-Aktenzeichen', d.polizei) });
   parts.push({ key: 'bild', title: 'Schadensbild', body: points(d.schadensbild).length ? list(d.schadensbild)
     : '<div style="margin-top:4px;">' + Array(4).fill('<div class="write-line"></div>').join('') + '</div>' });
