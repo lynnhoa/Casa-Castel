@@ -372,7 +372,7 @@ async function _kAutoReset(currentIdx) {
   _kAutoResetRanFor = currentIdx;
   const THIRTY = 30 * 24 * 60 * 60 * 1000;
   const { data } = await sbL.from('kitchen_weeks').select('*').lt('week_index', currentIdx).order('week_index', { ascending: false });
-  if (!data || !data.length) { await _kTrimHistory(currentIdx); return; }
+  if (!data || !data.length) { await _kTrimHistory(currentIdx); await _kCleanupMore(currentIdx); return; }
   const cutoff = Date.now() - THIRTY;
   for (const row of data) {
     const ts = row.submitted_at || row.closed_at || row.created_at;
@@ -385,6 +385,42 @@ async function _kAutoReset(currentIdx) {
     await sbL.from('kitchen_weeks').update({ photos: null, photo_path: null, photo_url: null, closed_at: row.closed_at || new Date().toISOString() }).eq('id', row.id);
   }
   await _kTrimHistory(currentIdx);   // history cap: last 8 weeks + newest 20 nudges
+  await _kCleanupMore(currentIdx);   // Oct 2026: test weeks + every kitchen photo older than 30 days
+}
+
+/* Oct 2026 · no proof photo is kept forever (Kitchen):
+   · test weeks before 05.10.2026 (K_HISTORY_FROM) are deleted with their chat — once they have left
+     the rotation strip, so nothing on screen changes
+   · every kitchen PHOTO older than 30 days goes, also leftovers no longer linked to a week, and every
+     photo of the test weeks (list from cc_kitchen_cleanup_due, PHOTO-CLEANUP.sql)
+   Never the Lounge folder, never a PDF. Nothing here may break the Kitchen tab. */
+async function _kCleanupMore(currentIdx) {
+  if (!sbL) return;
+  try {
+    const n = _kGetRoomList().length || 5, back = Math.floor((n - 1) / 2);   // weeks the strip shows back
+    const before = Math.min(K_HISTORY_FROM, currentIdx - back);
+    const { data: test, error } = await sbL.from('kitchen_weeks').select('*').lt('week_index', before);
+    if (!error && test && test.length) {
+      const ids = test.map(r => r.id), paths = [];
+      for (const row of test) paths.push(..._kWeekPhotoPaths(row, await _kGetComments(row.id)));
+      if (paths.length) { try { await sbL.storage.from('kitchen-proofs').remove(paths); } catch (e) {} }
+      const { error: cErr } = await sbL.from('kitchen_comments').delete().in('week_id', ids);
+      if (!cErr) await sbL.from('kitchen_weeks').delete().in('id', ids);
+    }
+  } catch (e) { console.warn('[kitchen] test weeks', e); }
+  try {
+    for (let round = 0; round < 10; round++) {
+      const { data: due, error } = await sbL.rpc('cc_kitchen_cleanup_due', { p_limit: 500 });
+      if (error || !Array.isArray(due) || !due.length) break;          // SQL not run yet / nothing due
+      let gone = 0;
+      for (let i = 0; i < due.length; i += 100) {
+        const { data: del, error: dErr } = await sbL.storage.from('kitchen-proofs').remove(due.slice(i, i + 100));
+        if (dErr) return;
+        gone += (del || []).length;
+      }
+      if (!gone || due.length < 500) break;                             // nothing could be deleted / all done
+    }
+  } catch (e) { console.warn('[kitchen] photo clean-up', e); }
 }
 
 /* ── ROOM LIST + WEEK INFO ──────────────────────────────── */

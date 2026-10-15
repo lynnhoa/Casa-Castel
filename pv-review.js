@@ -127,7 +127,8 @@ function _pvvRender() {
         <p style="font-size:12px;color:rgba(253,252,250,.6);line-height:1.3;">${esc(it.sub || '')}</p></div>
     </div>
     <div id="pvaViewerPhoto" style="flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;margin:0 12px;border-radius:14px;background:#2B2622;overflow:hidden;color:rgba(253,252,250,.9);">
-      ${it.path ? `<img src="${esc(pvProofUrl(it.path))}" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:block;"/>`
+      ${it.path && pvGone(it.path) ? `<div style="text-align:center;padding:20px;color:rgba(253,252,250,.75);">${_PV_GONE_SVG.replace(/width="14" height="14"/, 'width="34" height="34" style="display:block;margin:0 auto;"')}<p style="margin-top:10px;font-size:15px;">${PV_GONE_TXT}</p></div>`
+      : it.path ? `<img src="${esc(pvProofUrl(it.path))}" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:block;"/>`
                 : `<div style="text-align:center;padding:20px;"><p style="font-size:40px;line-height:1;">–</p><p style="margin-top:8px;font-size:15px;color:#FAC8C4;">Not possible (${esc(why[it.np] || it.np || '')})</p>${it.note ? `<p style="margin-top:4px;font-size:13px;color:rgba(253,252,250,.7);">„${esc(it.note)}“</p>` : ''}</div>`}
       ${n > 1 ? `<button type="button" aria-label="Previous" onclick="pvaViewStep(-1)" style="position:absolute;left:8px;top:50%;margin-top:-22px;width:44px;height:44px;border-radius:22px;border:none;background:rgba(30,27,24,.45);color:#FDFCFA;display:flex;align-items:center;justify-content:center;">${pvPic('v_prev', 20)}</button>
       <button type="button" aria-label="Next" onclick="pvaViewStep(1)" style="position:absolute;right:8px;top:50%;margin-top:-22px;width:44px;height:44px;border-radius:22px;border:none;background:rgba(30,27,24,.45);color:#FDFCFA;display:flex;align-items:center;justify-content:center;">${pvPic('v_next', 20)}</button>` : ''}
@@ -299,18 +300,25 @@ async function pvaDeleteMsg(id) {
   pvaLoad();
 }
 
-/* ── 12-MONTH PHOTO CLEAN-UP (once a day) ───────────────── */
+/* ── 4-MONTH PHOTO CLEAN-UP (once a day · Oct 2026, was 12 months) ──
+   Every visit photo older than 4 months: proof, supplies/damage, chat (yours and the cleaner's) and
+   leftovers — the list comes from pv_admin_cleanup_due (PHOTO-CLEANUP.sql). Only the files the
+   delete really removed are marked → those show "Foto gelöscht · deleted after 4 months".
+   Never lists/ (Putzliste), never a PDF, never an invoice. */
 async function pvaCleanup() {
   const day = ccTodayISO();
-  try { if (localStorage.getItem('pva_cleanup_day') === day) return; } catch (e) {}
-  const { data, error } = await pvaRpc('pv_admin_cleanup_due', { p_limit: 200 });
-  if (error || !Array.isArray(data)) return;
-  if (data.length) {
-    const { error: e2 } = await _ctlSupa.storage.from('provider-proofs').remove(data);
+  try { if (localStorage.getItem('pva_cleanup4_day') === day) return; } catch (e) {}
+  for (let round = 0; round < 10; round++) {
+    const { data, error } = await pvaRpc('pv_admin_cleanup_due', { p_limit: 200 });
+    if (error || !Array.isArray(data)) return;  /* try again next time */
+    if (!data.length) break;
+    const { data: del, error: e2 } = await _ctlSupa.storage.from('provider-proofs').remove(data);
     if (e2) return;                            /* try again next time */
-    await pvaRpc('pv_admin_cleanup_done', { p_paths: data });
+    const gone = (del || []).map(o => o && o.name).filter(Boolean);
+    if (gone.length) await pvaRpc('pv_admin_cleanup_done', { p_paths: gone });
+    if (!gone.length || data.length < 200) break;
   }
-  try { localStorage.setItem('pva_cleanup_day', day); } catch (e) {}
+  try { localStorage.setItem('pva_cleanup4_day', day); } catch (e) {}
 }
 
 /* ── TAPS IN THE FEED / HISTORY ─────────────────────────── */

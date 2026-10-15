@@ -418,13 +418,15 @@ function pvHistoryRowHTML(v, en, avatar) {
   if (v.moved_from && v.moved_from !== v.date) notes.push((en ? 'moved from ' : 'verschoben von ') + pvDM(v.moved_from));
   const show = th.slice(0, 7), more = th.length - show.length;
   const strip = show.map(p => p.path
-      ? `<div class="pv-ph"${en ? ` data-view="${pvEsc(v.id)}|${pvEsc(p.key)}"` : ''} style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"></div>`
+      ? (pvGone(p.path) ? pvGoneTile(en ? ` data-view="${pvEsc(v.id)}|${pvEsc(p.key)}"` : '')
+        : `<div class="pv-ph"${en ? ` data-view="${pvEsc(v.id)}|${pvEsc(p.key)}"` : ''} style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"></div>`)
       : `<div class="pv-ph pv-ph--np"${en ? ` data-view="${pvEsc(v.id)}|${pvEsc(p.key)}" style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;"` : ''}>–</div>`).join('')
     + (more > 0 ? `<div class="pv-ph pv-ph--more" style="font-size:11px;"${en ? ` data-view="${pvEsc(v.id)}|${pvEsc(th[7].key)}"` : ''}>+${more}</div>` : '');
   return `<div class="pv-hv">
       <div class="pv-hv__top"><p class="pv-hv__d">${pvWdDM(v.date, en)}${String(v.date).slice(0, 4)}</p>${(v.people || []).map(n => avatar ? avatar(n) : '').join('')}${_pvHistPill(v, en)}</div>
       ${meta.length ? `<p class="pv-hv__meta">${pvEsc(meta.join(' · '))}</p>` : ''}
       ${strip ? `<div class="pv-strip">${strip}</div>` : ''}
+      ${th.some(p => pvGone(p.path)) ? `<p class="pv-gone">${PV_GONE_TXT}</p>` : ''}
       ${notes.length ? `<p class="pv-hv__note">${pvEsc(notes.join(' · '))}</p>` : ''}
     </div>`;
 }
@@ -485,6 +487,21 @@ function pvDivider(label) {
 function pvProofUrl(path) {                 /* provider-proofs is a public bucket */
   return SB_URL + '/storage/v1/object/public/provider-proofs/' + String(path || '').split('/').map(encodeURIComponent).join('/');
 }
+/* Oct 2026 · photos deleted by the 4-month clean-up (PHOTO-CLEANUP.sql) keep their place in visits and
+   chat: their path starts with "deleted:" → a quiet tile / line instead of a broken picture */
+const PV_GONE_TXT = 'Foto gelöscht · deleted after 4 months';
+function pvGone(path) { return String(path || '').indexOf('deleted:') === 0; }
+const _PV_GONE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M8.6 5H15l1.5 2H19a2 2 0 0 1 2 2v8.5M18.4 19H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2"/><path d="M10.3 10.3a3 3 0 0 0 4.2 4.2"/></svg>';
+function pvGoneTile(attrs, label) {
+  return `<div class="pv-ph pv-ph--gone"${attrs || ''} title="${PV_GONE_TXT}" aria-label="${PV_GONE_TXT}">${_PV_GONE_SVG}${label || ''}</div>`;
+}
+(function () {
+  if (typeof document === 'undefined' || document.getElementById('pv-gone-css')) return;
+  const st = document.createElement('style'); st.id = 'pv-gone-css';
+  st.textContent = '.pv-ph.pv-ph--gone{background:var(--cc-surface,#F5F2ED);border:1px dashed var(--cc-rule,#E0DAD0);color:var(--cc-stone,#B8AE9F);}'
+    + '.pv-gone{font-size:11px;line-height:1.35;font-style:italic;color:var(--cc-taupe,#9A8E7E);margin-top:3px;}';
+  (document.head || document.documentElement).appendChild(st);
+})();
 function _pvInitials(name) {
   const p = String(name || '').trim().split(/\s+/);
   return ((p[0] || '')[0] || '') + ((p[1] || '')[0] || (p[0] || '')[1] || '');
@@ -496,11 +513,13 @@ function pvChatRowHTML(m, opts) {
   const del = opts.canDelete ? `<button type="button" aria-label="Delete message" onclick="${opts.onDelete}('${m.id}')" style="align-self:center;width:28px;height:28px;border-radius:50%;border:.5px solid var(--cc-rule);background:var(--cc-white);color:var(--cc-taupe);display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"></path></svg></button>` : '';
   const pl = m.payload || {};
   let body = '';
-  if (m.kind === 'photo' && pl.path) body += `<img src="${pvEsc(pvProofUrl(pl.path))}" alt="" style="max-width:180px;border-radius:8px;display:block;margin-top:2px;" loading="lazy"/>`;
+  if (m.kind === 'photo' && pl.path && pvGone(pl.path)) body += `<p class="pv-gone">${PV_GONE_TXT}</p>`;
+  else if (m.kind === 'photo' && pl.path) body += `<img src="${pvEsc(pvProofUrl(pl.path))}" alt="" style="max-width:180px;border-radius:8px;display:block;margin-top:2px;" loading="lazy"/>`;
   if (m.kind === 'supplies') body += `<p class="k-chat-text">${opts.en ? 'Missing supplies' : 'Fehlt · Missing'}: ${pvEsc(pvSuppliesText(pl, opts.en))}</p>`;
   if (m.kind === 'damage') {
     body += `<p class="k-chat-text">${opts.en ? 'Damage reported' : 'Schaden gemeldet · Damage reported'}${pl.note ? ': „' + pvEsc(pl.note) + '“' : ''}</p>`;
-    if (pl.path) body += `<img src="${pvEsc(pvProofUrl(pl.path))}" alt="" style="max-width:180px;border-radius:8px;display:block;margin-top:4px;" loading="lazy"${opts.en ? ` data-photo="${pvEsc(pl.path)}"` : ''}/>`;
+    if (pl.path && pvGone(pl.path)) body += `<p class="pv-gone">${PV_GONE_TXT}</p>`;
+    else if (pl.path) body += `<img src="${pvEsc(pvProofUrl(pl.path))}" alt="" style="max-width:180px;border-radius:8px;display:block;margin-top:4px;" loading="lazy"${opts.en ? ` data-photo="${pvEsc(pl.path)}"` : ''}/>`;
   }
   if (pl.text && m.kind !== 'damage') body += `<p class="k-chat-text">${pvEsc(pl.text)}</p>`;
   return `<div class="k-chat-row"><span class="k-chat-avatar">${pvEsc(av)}</span><div class="k-chat-body"><div class="k-chat-meta"><span class="k-chat-name">${pvEsc(name)}</span><span class="k-chat-time">${pvTs(m.at)}</span></div>${body}</div>${del}</div>`;
@@ -514,14 +533,16 @@ function _pvSentBlock(m, state, en, opts) {   /* "Gesendet" block · Lynn: the r
   if (en) {                                   /* Build 1: photos only — you decide on the card (kitchen pattern) */
     const why = { besetzt: 'occupied', kaputt: 'broken', anderes: 'other' };
     const grid = shots.map(p => p.path
-        ? `<div class="pv-ph" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${_pvPhLbl(p, all, rooms)}</span></div>`
+        ? (pvGone(p.path) ? pvGoneTile(` data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}"`, `<span>${_pvPhLbl(p, all, rooms)}</span>`)
+          : `<div class="pv-ph" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${_pvPhLbl(p, all, rooms)}</span></div>`)
         : `<div class="pv-ph pv-ph--np" data-view="${pvEsc(m.visit_id)}|${pvEsc(p.key)}" style="background:#FEF6F5;border-color:#F5A8A5;color:#A32D2D;">–<span>${_pvPhLbl(p, all, rooms)}</span></div>`).join('');
     const nps = shots.filter(p => p.np && !p.path).map(p => `<p class="pv-np">${pvPic('np_line', 12)}${pvEsc(pvPtName(p, all, rooms))} not possible (${why[p.np] || p.np})</p>`).join('');
     return `<div class="pv-sub" data-sent="${m.visit_id}"><div class="pv-sub__top">${pl.person ? `<span class="pv-name-pill">${pvEsc(pl.person)}</span>` : ''}<span class="pv-badge ${re ? 'pv-badge--re' : 'pv-badge--sub'}">${re ? '↑↑ Re-sent' : '↑ Submitted'}</span><span class="pv-time">${pvTs(m.at)} · tap a photo to enlarge</span>${_pvDelBtn(m, opts, 24)}</div>${grid ? `<div class="pv-grid" style="grid-template-columns:repeat(7,minmax(0,1fr));">${grid}</div>` : ''}${nps}</div>`;
   }
   const show = shots.slice(0, 4), more = shots.length - show.length;
   const grid = show.map(p => p.path
-      ? `<div class="pv-ph" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${_pvPhLbl(p, all, rooms)}</span></div>`
+      ? (pvGone(p.path) ? pvGoneTile('', `<span>${_pvPhLbl(p, all, rooms)}</span>`)
+        : `<div class="pv-ph" style="background:#D9D1C5 url('${pvEsc(pvProofUrl(p.path))}') center/cover no-repeat;"><span>${_pvPhLbl(p, all, rooms)}</span></div>`)
       : `<div class="pv-ph pv-ph--np">–<span>${_pvPhLbl(p, all, rooms)}</span></div>`).join('')
     + (more > 0 ? `<div class="pv-ph pv-ph--more">+${more}</div>` : '');
   const badge = re ? '↑↑ Neu gesendet · Re-sent' : '↑ Gesendet · Sent';
