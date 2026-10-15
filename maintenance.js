@@ -384,7 +384,6 @@ function mtSummaryHTML(c) {
   const sch = c.kind === 'schaden';
   const bits = [sch ? c.schadensart : '', mtWhere(c), mtSpan(c)].filter(Boolean).map(mtEsc);
   bits.push(mtPill(c.kind, c.status).replace('class="mt-pill ', 'class="mt-pill mt-pill--sm '));
-  if (c.book_ctrl === false) bits.push('<span class="mt-off">not in Controlling</span>');
   const desc = c.description || '';
   const det = sch ? [
     ['Festgestellt am', mtDate(c.festgestellt_am)], ['Besichtigung vor Ort', c.besichtigung],
@@ -445,8 +444,6 @@ function mtEditHTML(c, s) {
         <div class="mt-f"><label class="mt-k" for="mtF-date" id="mtF-dateL">${l1}</label><input class="mt-in" id="mtF-date" type="date" value="${mtEsc(d.case_date || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtF-end" id="mtF-endL">${l2}</label><input class="mt-in" id="mtF-end" type="date" value="${mtEsc(d.end_date || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtF-status">Status</label><select class="mt-in" id="mtF-status">${stats}</select></div>
-        <div class="mt-f"><label class="mt-k" for="mtF-book">Controlling</label><select class="mt-in" id="mtF-book">
-          <option value="1"${d.book_ctrl === false ? '' : ' selected'}>Booked</option><option value="0"${d.book_ctrl === false ? ' selected' : ''}>Not booked</option></select></div>
         ${MT.d5 ? mtSbFieldsHTML(d, 'before') : ''}
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-desc" id="mtF-descL">${sch ? 'Schadensbild' : 'Description'}</label>
           <textarea class="mt-in mt-ta" id="mtF-desc" rows="3" maxlength="2000" placeholder="${sch ? 'One point per line, e.g. Wasser tropft durch die Deckenleuchte' : ''}">${mtEsc(d.description || '')}</textarea></div>
@@ -497,7 +494,7 @@ function mtScrollToOpen() {
 
 /* What the form says right now (to notice unsaved changes) */
 function mtFormSnap() {
-  return ['mtF-title', 'mtF-prop', 'mtF-room', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-book', 'mtF-desc',
+  return ['mtF-title', 'mtF-prop', 'mtF-room', 'mtF-area', 'mtF-kind', 'mtF-date', 'mtF-end', 'mtF-status', 'mtF-desc',
     'mtF-art', 'mtF-found', 'mtF-visit', 'mtF-cause', 'mtF-measures', 'mtF-ask', 'mtF-police']
     .map(id => { const el = document.getElementById(id); return el ? el.value : ''; })
     .join('\u0001');
@@ -597,7 +594,6 @@ function mtReadForm() {
     status: g('mtF-status').value || 'open',
     description: g('mtF-desc').value.trim() || null,
     room: MT.d5 ? (mtIsCasa(pid) && g('mtF-room') ? g('mtF-room').value || null : null) : undefined,
-    book_ctrl: g('mtF-book') ? g('mtF-book').value !== '0' : true,
   };
 }
 
@@ -673,7 +669,6 @@ async function mtSave() {
   const payload = {
     kind: f.kind, title: f.title, property_id: f.property_id, property_name: f.property_name, area: f.area,
     case_date: f.case_date, end_date: f.end_date, status: f.status, description: f.description,
-    book_ctrl: f.book_ctrl !== false,
     ...(f.sbf || {}),
     ...(f.room !== undefined ? { report_room: f.room } : {}),
   };
@@ -1258,7 +1253,6 @@ function mtCostsHTML(c) {
   let h = `<section class="mt-costs" id="mtCosts">
     <div class="mt-ks"><b>Kosten</b><em>${mtEur(mtCost([c.id]))}</em></div>
 `;
-  if (c.book_ctrl === false) h += '<p class="mt-off-note"><i class="ti ti-unlink" aria-hidden="true"></i>Not booked in Controlling</p>';
   if (f && f.isNew && !f.return_of) h += mtCostFormHTML(f);
   else if (!busy && !f && !upAny) h += '<button type="button" class="mt-addr" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>';
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
@@ -1333,7 +1327,7 @@ function mtCostFormHTML(f) {
             <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-camera" aria-hidden="true"></i> Photo / PDF</button>
           </div></div>
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
-          ? '<p class="mt-hint">This entry is not booked in Controlling.</p>'
+          ? '<p class="mt-hint">Run MAINTENANCE-D14.sql once, then each receipt has its own switch.</p>'
           : `<label class="mt-chk"><input type="checkbox" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/><span>Book in Controlling</span></label>`}</div>`}
         ${!f.isNew && mtCostById(f.id) && mtCostById(f.id).link_ot && !caseOff ? '<p class="mt-hint mt-f--full">Linked to the line you typed in Controlling — it counts once.</p>' : ''}
       </div>
@@ -1369,11 +1363,17 @@ function mtCostChanged() {
 }
 const mtCostFilesOf = id => mtCostFiles(id).map(d => ({ id: d.id, name: d.file_name || 'File', img: !!d.file_path && /\.(jpe?g|png|webp|heic|gif)$/i.test(d.file_path) }));
 
+/* D14 · Controlling is switched per receipt; a new receipt starts like the last one you saved in this entry */
+function mtLastBook(c) {
+  const last = MT.costs.filter(r => String(r.case_id) === String(c.id) && !r.return_of)
+    .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))[0];
+  return last ? last.book_ctrl !== false : true;
+}
 function mtCostNew(kind) {
   const c = mtOpenCase();
   if (!c || mtActive(c)) return;
   MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', return_of: null, receipt_no: '', description: '', brand: '',
-    amount: '', cost_date: ccTodayISO(), book_ctrl: true, files: [], delIds: [] };
+    amount: '', cost_date: ccTodayISO(), book_ctrl: mtLastBook(c), files: [], delIds: [] };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
   document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
