@@ -1322,10 +1322,10 @@ function mtCostFormHTML(f) {
           <input class="mt-in" id="mtC-amount" data-cc-num="2" inputmode="decimal" autocomplete="off" value="${mtEsc(amt)}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtC-date">Date</label>
           <input class="mt-in" id="mtC-date" type="date" value="${mtEsc(f.cost_date || '')}"/></div>
-        <div class="mt-f mt-f--full"><span class="mt-k">Photos</span>
+        <div class="mt-f mt-f--full"><span class="mt-k">Receipt (PDF)</span>
           <div class="mt-chips">${chips}
             <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-camera" aria-hidden="true"></i> Photo / PDF</button>
-          </div></div>
+          </div>${f.files.some(x => x.file && x.img) ? '<p class="mt-hint">The photos become one PDF when you save.</p>' : ''}</div>
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
           ? '<p class="mt-hint">Run MAINTENANCE-D14.sql once, then each receipt has its own switch.</p>'
           : `<label class="mt-chk"><input type="checkbox" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/><span>Book in Controlling</span></label>`}</div>`}
@@ -1567,7 +1567,7 @@ async function mtCostSave() {
   else Object.assign(mtCostById(id), row, { updated_at: now });
   rets.forEach(t => { t.kind = row.kind; });
   s.cost = null;
-  if (pending.length) MT.up = { caseId: c.id, total: pending.length, done: 0, where: 'costs' };
+  if (pending.length) MT.up = { caseId: c.id, total: 1, done: 0, where: 'costs' };
   mtRefresh(c.id);
 
   // 2 · store the row (one retry)
@@ -1606,9 +1606,18 @@ async function mtCostSave() {
     const mv = await mtTry(() => sb.from('maint_docs').update({ cost_id: id, doc_type: 'receipt' }).eq('id', d.id));
     if (!mv.error) Object.assign(d, { cost_id: id, doc_type: 'receipt' });
   }
+  // D15 · photos → one PDF (one page each, like "Document"); a PDF stays as it is
+  const imgs = pending.filter(x => mtIsImage(x.file)).map(x => x.file);
+  let uploads = pending.filter(x => !mtIsImage(x.file)).map(x => x.file);
+  if (imgs.length) {
+    const pdf = await mtPhotosToPdf(imgs);
+    const nm = ('Beleg ' + (String(row.receipt_no || '').trim() || mtDate(row.cost_date) || mtDate(ccTodayISO())) + '.pdf').replace(/[\\/:*?"<>|]/g, '-');
+    uploads = (pdf ? [new File([pdf], nm, { type: 'application/pdf' })] : imgs).concat(uploads);   // PDF not possible → the photos as before
+  }
+  if (MT.up) MT.up.total = uploads.length;
   let failed = 0;
-  for (const x of pending) {
-    const ok = await mtUploadOne(c, x.file, { type: 'receipt', amount: null, date: row.cost_date }, { cost_id: id });
+  for (const file of uploads) {
+    const ok = await mtUploadOne(c, file, { type: 'receipt', amount: null, date: row.cost_date }, { cost_id: id });
     if (!ok) failed++;
     if (MT.up) MT.up.done++;
     mtRefresh(c.id);
@@ -1616,7 +1625,7 @@ async function mtCostSave() {
   MT.up = null;
   MT.busy = false;
   mtRefresh(c.id);
-  if (failed) mtSay(`${pending.length - failed} of ${pending.length} files saved. Add the others again.`);
+  if (failed) mtSay(`${uploads.length - failed} of ${uploads.length} files saved. Add the others again.`);
 }
 
 async function mtCostDelete() {
