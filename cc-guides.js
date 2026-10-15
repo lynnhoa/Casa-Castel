@@ -8,14 +8,22 @@
      first, then the last choice, kept on this phone)
    · Mülltrennung (Hausmüll + Glas) — plus "Glas-Trolley" as a small extra
    · Rund ums Haus — Bus, Bahn & Supermärkte
-   The PDFs open on top of the app (normal link in a new tab → the phone's
-   PDF viewer). The app page itself is never replaced or reloaded, so the
-   login stays exactly as it is — nobody gets logged out.
+   The PDFs open in the phone's PDF viewer WITH a close button: they come from
+   Supabase Storage (another address than the app, like Documents) — a file
+   from the app's own address would open inside the installed app, with no
+   way back. The app page itself is never replaced → nobody gets logged out.
+   · bucket "house-guides" (public, see HOUSE-GUIDES.sql), folder VF
+   · the landlord app copies the PDFs there by itself (once, after an update)
+   · not there yet → installed app: "ready soon" note · browser: the app's own file
    Class prefix "hgd-" (the contract generator already uses "cg-").
-   New version of a PDF: replace the file and change V below.
+   New version of a PDF: replace the file and change V and VF below.
    ───────────────────────────────────────────────────────────── */
 (function () {
   const V = '?v=2026-10-15-G1';
+  const BUCKET = 'house-guides', VF = 'g1';                   // VF = folder of this version in Storage
+  const STANDALONE = (() => { try { return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches; } catch (e) { return false; } })();
+  const pub = f => (typeof SB_URL !== 'undefined' ? SB_URL : '') + '/storage/v1/object/public/' + BUCKET + '/' + VF + '/' + encodeURIComponent(f);
+  let ready = null;                                           // null = not checked yet · true / false
   const F = {
     appde: 'Casa-Castel-Guide-DE.pdf', appen: 'Casa-Castel-Guide-EN.pdf',
     muell: 'Casa-Castel-Muell.pdf', glas: 'Casa-Castel-Glas-Box.pdf', rund: 'Casa-Castel-Rund-ums-Haus.pdf',
@@ -40,7 +48,8 @@
     de: { t: 'Deine Haus-App', s: 'Login, Lounge, Putzen & Küche · 2 Seiten' },
     en: { t: 'Your house app', s: 'Login, Lounge, cleaning & kitchen · 2 pages' },
   };
-  const link = (file, cls, inner) => `<a class="${cls}" href="${file + V}" target="_blank" rel="noopener">${inner}</a>`;
+  const href = f => (ready === false ? f + V : pub(f));      // checked missing → the app's own file (browser only)
+  const link = (file, cls, inner) => `<a class="${cls}" href="${href(file)}" data-hgd-file="${file}" target="_blank" rel="noopener">${inner}</a>`;
 
   /* The slim row in the Lounge — one line (mobile: between the notice and the House chat · desktop: left column) */
   window.ccGuidesRowHTML = where => `<button type="button" class="hgd-row hgd-row--${where === 'dsk' ? 'dsk' : 'mob'}" data-cc-guides aria-haspopup="dialog">
@@ -67,7 +76,7 @@
                   <button type="button" class="hgd-sw${l === 'en' ? ' is-en' : ''}" data-hgd-lang-sw role="switch" aria-checked="${l === 'en'}" aria-label="English"><span class="hgd-sw__k"></span></button>
                   <button type="button" class="hgd-lang__l${l === 'en' ? ' is-on' : ''}" data-hgd-lang="en">EN</button>
                 </span>
-                <a class="hgd-open" id="hgdAppOpen" href="${F['app' + l] + V}" target="_blank" rel="noopener">Open${svg(P.go, 14)}</a>
+                <a class="hgd-open" id="hgdAppOpen" href="${href(F['app' + l])}" data-hgd-file="${F['app' + l]}" target="_blank" rel="noopener">Open${svg(P.go, 14)}</a>
               </div></div>
           </div>
           <div class="hgd-card hgd-c2">
@@ -81,6 +90,7 @@
               <div class="hgd-r2">${link(F.rund, 'hgd-open', 'Open' + svg(P.go, 14))}</div></div>
           </div>
         </div>
+        <p class="hgd-wait" id="hgdWait" hidden>The guides will be ready here soon.</p>
         <div class="hgd-ft"><span>Opens the PDF · save or share from there</span><button type="button" class="hgd-close" data-hgd-close>Close</button></div>
       </div>`;
   }
@@ -92,14 +102,59 @@
     el.innerHTML = sheetHTML();
     document.body.appendChild(el);
     setTimeout(() => el.querySelector('.hgd-x')?.focus(), 0);
+    check();
   }
+  /* Are the PDFs in Storage? (asked once per app start) */
+  async function check() {
+    if (ready === null) {
+      try { const r = await fetch(pub(F.appde), { method: 'HEAD', cache: 'no-store' }); ready = r.ok; }
+      catch (e) { ready = false; }
+    }
+    applyReady();
+  }
+  function applyReady() {
+    const m = document.getElementById('ccGuides');
+    if (!m) return;
+    m.querySelectorAll('a[data-hgd-file]').forEach(a => {
+      a.href = href(a.dataset.hgdFile);
+      const off = ready === false && STANDALONE;                // installed app: never open the app's own file (no way back)
+      a.classList.toggle('is-off', off);
+      if (off) a.setAttribute('aria-disabled', 'true'); else a.removeAttribute('aria-disabled');
+    });
+    const w = document.getElementById('hgdWait');
+    if (w) w.hidden = !(ready === false && STANDALONE);
+  }
+  /* Landlord app: put the PDFs into Storage once (after an update with a new VF) */
+  async function sync() {
+    if (!document.body.classList.contains('is-landlord') || typeof sbL === 'undefined' || !sbL || !sbL.storage) return;
+    try {
+      const ses = await sbL.auth.getSession();
+      if (!ses || !ses.data || !ses.data.session) return;
+      const st = sbL.storage.from(BUCKET);
+      const { data: have, error } = await st.list(VF, { limit: 50 });
+      if (error) { console.warn('[guides] Storage:', error.message, '— run HOUSE-GUIDES.sql'); return; }
+      const names = new Set((have || []).map(x => x.name));
+      let added = 0;
+      for (const f of Object.values(F)) {
+        if (names.has(f)) continue;
+        const r = await fetch(f + V, { cache: 'no-store' });
+        if (!r.ok) continue;
+        const up = await st.upload(VF + '/' + f, await r.blob(), { contentType: 'application/pdf', upsert: true, cacheControl: '31536000' });
+        if (up && up.error) { console.warn('[guides] upload', f, up.error.message); continue; }
+        added++;
+      }
+      if (added) ready = null;                                  // ask again next time the pop-up opens
+    } catch (e) { console.warn('[guides] sync:', e); }
+  }
+  if (document.readyState === 'complete') setTimeout(sync, 3000);
+  else window.addEventListener('load', () => setTimeout(sync, 3000));
   function close() { document.getElementById('ccGuides')?.remove(); }
   function lang(l) {                                           // the app guide in the other language (same card)
     setLang(l);
     const g = id => document.getElementById(id);
     if (g('hgdAppT')) g('hgdAppT').textContent = APP[l].t;
     if (g('hgdAppS')) g('hgdAppS').textContent = APP[l].s;
-    if (g('hgdAppOpen')) g('hgdAppOpen').href = F['app' + l] + V;
+    if (g('hgdAppOpen')) { g('hgdAppOpen').dataset.hgdFile = F['app' + l]; g('hgdAppOpen').href = href(F['app' + l]); }
     document.querySelectorAll('#ccGuides [data-hgd-lang]').forEach(b => b.classList.toggle('is-on', b.dataset.hgdLang === l));
     const sw = document.querySelector('#ccGuides [data-hgd-lang-sw]');
     if (sw) { sw.classList.toggle('is-en', l === 'en'); sw.setAttribute('aria-checked', l === 'en'); }
@@ -113,6 +168,8 @@
     const m = document.getElementById('ccGuides');
     if (!m || !m.contains(t)) return;
     if (t.closest('[data-hgd-close]')) { close(); return; }
+    const off = t.closest('a.is-off');
+    if (off) { e.preventDefault(); return; }
     if (t.closest('[data-hgd-lang-sw]')) { lang(getLang() === 'en' ? 'de' : 'en'); return; }
     const lb = t.closest('[data-hgd-lang]');
     if (lb) lang(lb.dataset.hgdLang);
@@ -168,6 +225,8 @@
 .hgd-c1 .hgd-open{background:#8B6F47;} .hgd-c2 .hgd-open{background:#2F6B3E;} .hgd-c3 .hgd-open{background:#2F5F8F;}
 .hgd-ext{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;background:var(--cc-white,#FDFCFA);border:.5px solid #C9DCC9;
   color:#2F5D3A;font-size:12px;font-weight:500;text-decoration:none;white-space:nowrap;}
+.hgd-open.is-off,.hgd-ext.is-off{opacity:.4;pointer-events:auto;}
+.hgd-wait{margin:2px 18px 0;padding:8px 12px;border-radius:10px;background:#FBF6EC;font-size:12px;color:#8B6F47;}
 .hgd-ft{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 18px 16px;flex-shrink:0;font-size:11px;color:var(--cc-taupe,#9A8E7E);}
 .hgd-close{min-height:0;margin:0;padding:8px 18px;border-radius:999px;border:.5px solid var(--cc-rule,#E0DAD0);background:none;font:inherit;font-size:12px;font-weight:500;color:#6B645C;cursor:pointer;}
 `;
