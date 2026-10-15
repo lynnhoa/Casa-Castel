@@ -319,3 +319,9 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-sbs__img img { display:block; max-width:100%; max-height:46vh; object-fit:contain; }
 .mt-sbs__in { margin:2px 0 4px; }
 .mt-sbs .mt-in { width:100%; }
+
+/* D6b · the photo grid of the Schadensbericht form always uses the full width
+   (.mt-f aligns its children to the start — with no photos yet the grid shrank to the icon) */
+.mt-sb .mt-sbg { width:100%; align-self:stretch; }
+.mt-sbt--add { min-height:84px; }
+.mt-sbt--add span { line-height:1.2; }

@@ -1748,8 +1748,10 @@ function mtSbData(c, f, photoCount) {
   const room = casa && f.room && f.room !== MT_SB_ALL ? f.room : '';
   const unit = casa ? (room ? ['Zimmer', room] : ['Bereich', c.area || 'Gemeinschaftsfläche'])
                     : (apt && apt.wohnungsnummer ? ['Wohnung', String(apt.wohnungsnummer)] : ['', '']);
+  // "WHG 10" stays as it is; only a bare number gets "Wohnung" ("Wohnung 3")
+  const nr = apt && apt.wohnungsnummer ? String(apt.wohnungsnummer).trim() : '';
   const einheit = casa ? (room ? 'Zimmer ' + room : 'Gemeinschaftsfläche')
-                       : (apt && apt.wohnungsnummer ? 'Wohnung ' + apt.wohnungsnummer : '');
+                       : (nr ? (/^(whg|wohnung|app\.?|apartment|we)(\s|\d|$)/i.test(nr) ? nr : 'Wohnung ' + nr) : '');
   // the Zimmer is already named → the Area only when it adds something ("Zimmer Oslo" → nothing)
   const raum = casa && room && new RegExp('(^|[^a-zäöüß0-9])' + room.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-zäöüß0-9])', 'i').test(c.area || '') ? '' : (c.area || '');
   const found = c.festgestellt_am || c.case_date;
