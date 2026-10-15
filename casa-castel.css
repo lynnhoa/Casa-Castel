@@ -2511,6 +2511,16 @@ body.browser-mode #tab-kitchen .k-mob-compose{padding-bottom:var(--cc-browser-ch
 }
 
 
+/* Broom icon (Oct 2026): the icon set has no broom, so "ti ti-broom" (tenant "Your turn" chip on
+   House Cleaning, your Cleaning pop-up) draws the same broom as the House Cleaning tab marker —
+   in the colour of its place (white on the dark chip, gold in the pop-up). */
+.ti.ti-broom::before {
+  content: ""; display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3Cmask id='m'%3E%3Crect width='16' height='16' fill='white'/%3E%3Cpath d='M4.4 12.4l1.2-2.6M6.6 13.5l1.1-2.6' stroke='black' stroke-width='.9' stroke-linecap='round'/%3E%3C/mask%3E%3C/defs%3E%3Cpath d='M12.6 1.6 8.3 7.9' stroke='black' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3Cpath d='M6 7.1 10.4 9.5 8.6 14.6 2.4 11.4Z' fill='black' mask='url(%23m)'/%3E%3C/svg%3E") no-repeat center / contain;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cdefs%3E%3Cmask id='m'%3E%3Crect width='16' height='16' fill='white'/%3E%3Cpath d='M4.4 12.4l1.2-2.6M6.6 13.5l1.1-2.6' stroke='black' stroke-width='.9' stroke-linecap='round'/%3E%3C/mask%3E%3C/defs%3E%3Cpath d='M12.6 1.6 8.3 7.9' stroke='black' stroke-width='1.5' stroke-linecap='round' fill='none'/%3E%3Cpath d='M6 7.1 10.4 9.5 8.6 14.6 2.4 11.4Z' fill='black' mask='url(%23m)'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
 /* ── PASSWORD REQUEST (tenant login page, pw-request-tenant.js) ─── */
 .pwr-links { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
 .pwr-link { background: none; border: none; padding: 4px 2px; font-family: inherit; font-size: 12px; color: var(--cc-taupe);

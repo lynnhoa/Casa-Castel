@@ -354,6 +354,7 @@ function _cxdCss() {
     .cxn-chipw { text-align:center; margin-top:12px; }
     .cxn-chip { display:inline-flex; align-items:center; gap:6px; font:400 12px 'Inter',system-ui,sans-serif; color:#8C5A30; background:#FAEEDA; border:.5px solid #EFC98B; border-radius:14px; padding:5px 11px; cursor:pointer; }
     .cxn-chip u { text-underline-offset:2px; }
+    .cxn-dot { width:5px; height:5px; margin:0 2px; border-radius:50%; background:currentColor; flex-shrink:0; }   /* the icon set's filled dot isn't loaded */
     .cxn-card { background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:18px; padding:16px; margin-top:12px; }
     .cxn-empty { text-align:center; color:#9A8E7E; font-size:13px; padding:28px 16px; }
     .cxn-hrow { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
@@ -459,7 +460,7 @@ window.renderDashboard = function () {
       '<button class="' + (isYear ? '' : 'on') + '" data-cx="view" data-v="m" aria-pressed="' + !isYear + '">Month</button>' +
       '<button class="' + (isYear ? 'on' : '') + '" data-cx="view" data-v="y" aria-pressed="' + isYear + '">Year</button>' +
     '</div></div>' +
-    (open ? '<div class="cxn-chipw"><button class="cxn-chip" data-cx="gotoOpen"><i class="ti ti-point-filled" aria-hidden="true"></i>' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button></div>' : '');
+    (open ? '<div class="cxn-chipw"><button class="cxn-chip" data-cx="gotoOpen"><span class="cxn-dot" aria-hidden="true"></span>' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button></div>' : '');
 
   if (future) {
     cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-card cxn-empty">This ' + (isYear ? 'year' : 'month') + ' is still ahead.</div></div>');   // B18
@@ -468,7 +469,7 @@ window.renderDashboard = function () {
     const renList = per.filter(x => !isCasa(x)), casaList = per.filter(isCasa);
     const ren = _cxDashSum(renList.map(x => x.r)), casa = _cxDashSum(casaList.map(x => x.r));
     const val = r => isYear ? { k: r.freiKalt, w: r.freiWarm } : { k: r.lfKalt, w: r.lfWarm };
-    const cls = v => v < 0 ? 'neg' : 'pos';
+    const cls = v => { const n = Math.round(Number(v) || 0); return n < 0 ? 'neg' : n > 0 ? 'pos' : ''; };   // 0 € (as shown, whole euros) = normal colour
     const tv = val(t);
 
     // ── vs last month (Month view; January has no loaded December)
@@ -478,7 +479,7 @@ window.renderDashboard = function () {
       const tp = _cxDashSum(pp.map(p => _cxDashProp(p, [m - 1])));
       dK = cxR(tv.k - tp.lfKalt); dW = cxR(tv.w - tp.lfWarm);
     }
-    const delta = d => d === null ? '' : d === 0 ? 'same as ' + EN_M[m - 2]
+    const delta = d => d === null ? '' : Math.round(d) === 0 ? 'same as ' + EN_M[m - 2]
       : '<span class="' + (d > 0 ? 'pos' : 'neg') + '">' + (d > 0 ? '\u25b2 ' : '\u25bc ') + cxW(Math.abs(d)) + '</span> vs ' + EN_M[m - 2];
 
     // ── Income → Expenses → Cashflow (warm)
@@ -487,12 +488,13 @@ window.renderDashboard = function () {
     const pIn = inc / scale * 100, pOut = outW / scale * 100;
     const flow = '<div class="cxn-wf">' +
       '<div class="cxn-wr"><span class="cxn-wn">Income</span><span class="cxn-bar"><i style="left:0;width:' + pIn.toFixed(1) + '%;background:#D9C6AE"></i></span><span class="cxn-wa">' + cxW(inc) + '</span></div>' +
-      '<div class="cxn-wr"><span class="cxn-wn">Expenses</span><span class="cxn-bar"><i style="left:0;width:' + pOut.toFixed(1) + '%;background:#E3A895"></i></span><span class="cxn-wa neg">' + cxW(-outW) + '</span></div>' +
+      '<div class="cxn-wr"><span class="cxn-wn">Expenses</span><span class="cxn-bar"><i style="left:0;width:' + pOut.toFixed(1) + '%;background:#E3A895"></i></span><span class="cxn-wa' + (Math.round(outW) > 0 ? ' neg' : '') + '">' + cxW(-outW) + '</span></div>' +
       '<div class="cxn-wr"><span class="cxn-wn cxn-wn--b">Cashflow</span><span class="cxn-bar">' +
         (cf >= 0 ? '<i style="left:' + pOut.toFixed(1) + '%;width:' + (pIn - pOut).toFixed(1) + '%;background:#9DBF7A"></i>'
                  : '<i style="left:' + pIn.toFixed(1) + '%;width:' + (pOut - pIn).toFixed(1) + '%;background:#D98B74"></i>') +
       '</span><span class="cxn-wa ' + cls(cf) + '">' + cxWS(cf) + '</span></div>' +
-      '<div class="cxn-cap">warm · ' + (inc > 0 && cf >= 0 ? Math.round(cf / inc * 100) + ' % of the income stays' : 'more went out than came in') + '</div></div>';
+      '<div class="cxn-cap">warm · ' + (!Math.round(inc) && !Math.round(outW) ? 'nothing booked yet'
+        : inc > 0 && cf >= 0 ? Math.round(cf / inc * 100) + ' % of the income stays' : 'more went out than came in') + '</div></div>';
 
     // ── the calculation table: Income · rent − Expenses = Cashflow (same everywhere)
     const D = '\u2014';
@@ -505,7 +507,7 @@ window.renderDashboard = function () {
         row(kind === 'casa' || kind === 'prop' ? 'Kreditrate' : 'Kreditraten', cxW(r.rate), cxW(r.rate), 'cxn-g2');
       if (isYear) {
         h += row('One-offs', cxW(r.einmalig), cxW(r.einmalig), 'cxn-g2') +
-             row('\u00b1 ' + (kind === 'casa' ? 'NK-Abrechnungen' : 'Abrechnungen'), D, '<span class="' + (r.abr < 0 ? 'neg' : r.abr > 0 ? 'pos' : '') + '">' + cxWS(r.abr) + '</span>', 'cxn-g2');
+             row('\u00b1 ' + (kind === 'casa' ? 'NK-Abrechnungen' : 'Abrechnungen'), D, '<span class="' + cls(r.abr) + '">' + cxWS(r.abr) + '</span>', 'cxn-g2');
       }
       h += row('= Cashflow', '<span class="' + cls(v.k) + '">' + cxWS(v.k) + '</span>', '<span class="' + cls(v.w) + '">' + cxWS(v.w) + '</span>', 'cxn-rs');
       if (!isYear && (r.einmalig || r.abr)) h += row('One-offs \u00b7 Abrechnungen', 'info only', (r.einmalig ? cxW(-r.einmalig) : '') + (r.einmalig && r.abr ? ' \u00b7 ' : '') + (r.abr ? cxWS(r.abr) : ''), 'cxn-inf');
