@@ -46,7 +46,9 @@
                · D6: slim, descriptive report for the Hausverwaltung (MAINTENANCE-D6.sql):
                  Details = Schadensart · Festgestellt am · Besichtigung · Ursache ·
                  Sofortmaßnahmen · Bitte an die HV · (Polizei-Az) · Description =
-                 Schadensbild; form = Zimmer · Mieter · Ort · Dringend · Weitere Anlagen · Fotos
+                 Schadensbild; form = Zimmer · Mieter · Ort · Dringend · Fotos
+               · D7: Anlagen fill themselves — photos + everything in Documents; "Document"
+                 also takes videos (≤ 50 MB, with their length) and e-mails (PDF / screenshot)
                · the row's photos / PDFs are documents linked to the row (cost_id)
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
@@ -78,6 +80,7 @@ const MT = {
   links: {},        // file path → { url, exp } (short-lived private links)
   d5: false,        // MAINTENANCE-D5.sql has been run (Schadensbericht fields)
   d6: false,        // MAINTENANCE-D6.sql has been run (slim report: Besichtigung, Bitte an HV, Ort …)
+  d7: false,        // MAINTENANCE-D7.sql has been run (Video + E-Mail documents)
   vers: {},         // property id → { versicherer, versicherungsnr } (maint_props)
   sbData: null,     // Schadensbericht: rooms, tenants, apartments, Hausverwaltung (loaded when needed)
 };
@@ -92,6 +95,8 @@ const MT_DOC = {
   angebot:        { label: 'Angebot',        icon: 'ti-file-text' },
   schadenbericht: { label: 'Schadensbericht', icon: 'ti-file-description' },
   photo:          { label: 'Photo',          icon: 'ti-photo' },
+  email:          { label: 'E-Mail',         icon: 'ti-mail' },
+  video:          { label: 'Video',          icon: 'ti-movie' },
   other:          { label: 'Other',          icon: 'ti-file' },
   receipt:        { label: 'Receipt',        icon: 'ti-receipt' },      // file of a cost row
 };
@@ -99,12 +104,13 @@ const MT_COST = {
   self:     { label: 'Self-bought', who: 'Brand' },
   provider: { label: 'Provider',    who: 'Provider' },
 };
-const MT_DOC_ORDER = ['schadenbericht', 'angebot', 'rechnung', 'other', 'photo'];
+const MT_DOC_ORDER = ['schadenbericht', 'angebot', 'rechnung', 'email', 'other', 'video', 'photo'];
+const MT_MAX_VIDEO_MB = 50;                    // a phone video of ~30 s
 /* Schadensbericht (D5) — MT_SB_ARTEN comes from maint-schaden-pdf.js */
 const MT_SB_BY  = [['mieter', 'Mieter'], ['dritter', 'Dritter'], ['verschleiss', 'Verschleiß / Gebäude'], ['unbekannt', 'Unbekannt']];
 const MT_SB_OWN = [['sonder', 'Sondereigentum'], ['gemeinschaft', 'Gemeinschaftseigentum']];
 const MT_PAID_DE = { me: 'Eigentümer', versicherung: 'Versicherung', mieter: 'Mieter', weg: 'WEG / Hausverwaltung' };
-const MT_DOC_DE  = { rechnung: 'Rechnung', angebot: 'Angebot', schadenbericht: 'Schadensbericht / Gutachten', other: 'Dokument' };
+const MT_DOC_DE  = { rechnung: 'Rechnung', angebot: 'Angebot', schadenbericht: 'Schadensbericht / Gutachten', email: 'E-Mail', video: 'Video', other: 'Dokument' };
 const MT_CASA_ID = 7;                          // Casa Castel in Controlling (CASA_PROP_ID)
 const MT_SB_ALL  = '__gemeinschaft__';         // Casa Castel: Gemeinschaftsfläche instead of a Zimmer
 const MT_BUCKET = 'maintenance-docs';
@@ -182,6 +188,8 @@ async function mtLoad() {
   } catch (e) { MT.d5 = false; }
   try { MT.d6 = MT.d5 && !(await sb.from('maint_cases').select('besichtigung').limit(1)).error; }
   catch (e) { MT.d6 = false; }
+  try { MT.d7 = !(await sb.from('maint_docs').select('media_seconds').limit(1)).error; }
+  catch (e) { MT.d7 = false; }
 }
 
 /* ── Tabs ─────────────────────────────────────────────────── */
@@ -659,6 +667,9 @@ const mtFilesOf = d => (d.doc_type === 'photo' ? [d.file_path, mtThumbPath(d.fil
 const mtDocsOf = caseId => MT.docs.filter(d => String(d.case_id) === String(caseId));
 const mtIsImage = f => /^image\//.test(f.type || '') || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name || '');
 const mtIsPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
+const mtIsVideo = f => /^video\//.test(f.type || '') || /\.(mov|mp4|m4v|3gp|webm)$/i.test(f.name || '');
+/* 20 → "20 Sek." · 95 → "1:35 Min." */
+const mtDur = s => (!s ? '' : s < 60 ? s + ' Sek.' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' Min.');
 const mtLinkNow = p => { const l = MT.links[p]; return l && l.exp > Date.now() + 5000 ? l.url : null; };
 /* Something in the panel is open or running (an edit, a form, an upload) → the other buttons wait */
 const mtUpFor = c => (c && MT.up && String(MT.up.caseId) === String(c.id) ? MT.up : null);
@@ -671,6 +682,7 @@ function mtGuessType(name, isImg) {
   const n = String(name || '').toLowerCase();
   if (/angebot|kostenvoranschlag|\bkva?\b|offer|quote/.test(n)) return 'angebot';
   if (/schaden|bericht|gutachten|report/.test(n)) return 'schadenbericht';
+  if (/e-?mail|\bmail\b|nachricht/.test(n)) return 'email';
   return isImg ? 'photo' : 'other';
 }
 /* The day a photo was taken (file date), else today */
@@ -717,7 +729,14 @@ function mtFillThumbs() {
     } else if (full) img.src = full;
   });
 }
+/* A long text field grows with its text (nothing hidden, no scrolling inside the field) */
+function mtGrow(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.max(el.scrollHeight + 2, 44) + 'px';
+}
 function mtAfterPanel() {
+  document.querySelectorAll('#mtPanel textarea.mt-ta').forEach(mtGrow);
   const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
   if (!c) return;
   const paths = mtDocsOf(c.id).flatMap(mtFilesOf);
@@ -795,7 +814,8 @@ function mtDocsHTML(c) {
 
 function mtDocRowHTML(d, ed) {
   const t = MT_DOC[d.doc_type] || MT_DOC.other;
-  const sub = (d.generated ? [mtDate(d.doc_date)] : [d.file_name, mtDate(d.doc_date)]).filter(Boolean).map(mtEsc).join(' · ');   // a made report: just its date
+  const sub = (d.generated ? [mtDate(d.doc_date)] : [d.file_name, d.doc_type === 'video' ? mtDur(d.media_seconds) : '', mtDate(d.doc_date)])
+    .filter(Boolean).map(mtEsc).join(' · ');   // a made report: just its date
   return `<div class="mt-dr">
       <button type="button" class="mt-dr__main" data-mt="${ed ? 'fixDoc' : 'openDoc'}" data-id="${mtEsc(d.id)}">
         <span class="mt-di"><i class="ti ${t.icon}" aria-hidden="true"></i></span>
@@ -808,11 +828,12 @@ function mtDocRowHTML(d, ed) {
 
 /* One form for a new file (pre = mtA) and for fixing one (pre = mtX) */
 function mtDocFormHTML(pre, v, name, isImg, mode) {
-  const types = [...(v.type === 'rechnung' ? ['rechnung'] : []), 'angebot', 'schadenbericht', ...(isImg || v.type === 'photo' ? ['photo'] : []), 'other'];
+  const types = v.type === 'video' ? ['video']
+    : [...(v.type === 'rechnung' ? ['rechnung'] : []), 'angebot', 'schadenbericht', 'email', ...(isImg || v.type === 'photo' ? ['photo'] : []), 'other'];
   const isRe = v.type === 'rechnung';
   const amt = v.amount === null || v.amount === undefined || v.amount === '' ? '' : String(v.amount);
   return `<div class="mt-ab" id="${pre}-form">
-      <div class="mt-fc"><i class="ti ${isImg ? 'ti-photo' : 'ti-file-text'}" aria-hidden="true"></i><span>${mtEsc(name)}</span></div>
+      <div class="mt-fc"><i class="ti ${v.type === 'video' ? 'ti-movie' : isImg ? 'ti-photo' : 'ti-file-text'}" aria-hidden="true"></i><span>${mtEsc(name)}</span></div>
       <div class="mt-grid">
         <div class="mt-f"><label class="mt-k" for="${pre}-type">Type</label>
           <select class="mt-in" id="${pre}-type" data-doc-type="${pre}">${types.map(t => `<option value="${t}"${v.type === t ? ' selected' : ''}>${MT_DOC[t].label}</option>`).join('')}</select></div>
@@ -912,9 +933,14 @@ async function mtAddPhotos(files) {
 function mtPickFile() {
   if (!mtOpenCase()) return;
   if (MT.up) { mtSay('Wait until the upload is finished.'); return; }
-  mtFileInput('mtDocInput', 'application/pdf,image/*', true, async files => {
+  mtFileInput('mtDocInput', 'application/pdf,image/*,video/*', true, async files => {
     const c = mtOpenCase();
     if (!c) return;
+    const vids = files.filter(mtIsVideo);
+    if (vids.length) {
+      if (vids.length < files.length) mtSay('Videos are saved first – add photos or PDFs separately.');
+      return mtAddVideos(c, vids);
+    }
     const pdfs = files.filter(mtIsPdf), imgs = files.filter(f => !mtIsPdf(f) && mtIsImage(f));
     let file = null, pages = 0;
     if (pdfs.length) {
@@ -935,6 +961,39 @@ function mtPickFile() {
       type: mtGuessType(file.name, false), amount: '', date: ccTodayISO() };
     mtRenderPanel();
     document.getElementById('mtDocs')?.scrollIntoView({ block: 'nearest' });
+  });
+}
+/* Videos → saved in Documents right away (type Video, with their length); listed in the Schadensbericht's Anlagen */
+async function mtAddVideos(c, vids) {
+  if (!MT.d7) { mtSay('Run MAINTENANCE-D7.sql in Supabase first.'); return; }
+  const max = MT_MAX_VIDEO_MB * 1024 * 1024, ok = vids.filter(f => f.size <= max);
+  if (ok.length < vids.length) mtSay(`A video is too big (max ${MT_MAX_VIDEO_MB} MB).`);
+  if (!ok.length || MT.up) return;
+  MT.up = { caseId: c.id, total: ok.length, done: 0, where: 'docs' };
+  mtRefresh(c.id);
+  let n = 0;
+  for (const f of ok) {
+    const secs = await mtVideoSeconds(f), t = Number(f.lastModified);
+    const extra = { media_seconds: secs, ...(t ? { taken_at: new Date(t).toISOString() } : {}) };
+    if (await mtUploadOne(c, f, { type: 'video', amount: null, date: mtFileDay(f) }, extra)) n++;
+    MT.up.done++;
+    mtRefresh(c.id);
+  }
+  MT.up = null;
+  mtRefresh(c.id);
+  mtSay(n === ok.length ? (n === 1 ? 'Video saved' : n + ' videos saved') : `${n} of ${ok.length} videos saved. Add the others again.`);
+}
+/* The length of a video in seconds (null if the phone cannot tell) */
+function mtVideoSeconds(file) {
+  return new Promise(resolve => {
+    let done = false;
+    const url = URL.createObjectURL(file), v = document.createElement('video');
+    const end = s => { if (done) return; done = true; URL.revokeObjectURL(url); resolve(s); };
+    v.preload = 'metadata'; v.muted = true;
+    v.onloadedmetadata = () => end(isFinite(v.duration) && v.duration > 0 ? Math.round(v.duration) : null);
+    v.onerror = () => end(null);
+    setTimeout(() => end(null), 8000);
+    v.src = url;
   });
 }
 /* Photos → one A4 PDF (portrait or landscape per photo, the whole photo, nothing cut off) */
@@ -1579,7 +1638,7 @@ async function mtSbOpen() {
     mieter: c.report_mieter || auto, mieterAuto: !c.report_mieter,
     // signing place = the city of the property: Casa Castel → Profile › Unterzeichnung; apartments → their card, else their city
     ort: c.report_ort || (casa ? S.unterschrift_ort : ((apt && apt.unterschrift_ort) || (apt && typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''))) || '',
-    dringend: c.report_dringend || '', anlagen: c.report_anlagen || '',
+    dringend: c.report_dringend || '',
     photosOn: mtSbPhotos(c).length > 0, busy: false, done: '',
   });
   mtRenderPanel();
@@ -1591,7 +1650,6 @@ function mtSbCapture() {
   if (g('mtSb-mieter')) f.mieter = g('mtSb-mieter').value;
   if (g('mtSb-ort')) f.ort = g('mtSb-ort').value;
   if (g('mtSb-urgent')) f.dringend = g('mtSb-urgent').value;
-  if (g('mtSb-extra')) f.anlagen = g('mtSb-extra').value;
 }
 function mtSbFormHTML(c, f) {
   if (!f.ready) return `<div class="mt-ab mt-sb" id="mtSb-form"><p class="mt-sb__t"><i class="ti ti-file-description" aria-hidden="true"></i>Schadensbericht</p>
@@ -1622,9 +1680,7 @@ function mtSbFormHTML(c, f) {
         <div class="mt-f"><label class="mt-k" for="mtSb-ort">Ort</label>
           <input class="mt-in" id="mtSb-ort" type="text" maxlength="60" autocomplete="off" placeholder="z. B. Mainz" value="${mtEsc(f.ort || '')}"/></div>
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtSb-urgent">Dringend <span class="mt-mu">(optional)</span></label>
-          <input class="mt-in" id="mtSb-urgent" type="text" maxlength="200" autocomplete="off" placeholder="z. B. Wasser tritt aus Decke und Leuchte aus, Elektrik im Bad defekt" value="${mtEsc(f.dringend || '')}"/></div>
-        <div class="mt-f mt-f--full"><label class="mt-k" for="mtSb-extra">Weitere Anlagen <span class="mt-mu">(optional)</span></label>
-          <textarea class="mt-in mt-ta" id="mtSb-extra" rows="2" maxlength="600" placeholder="One per line, e.g. 2 Videos separat (IMG_9009.mov)">${mtEsc(f.anlagen || '')}</textarea></div>
+          <textarea class="mt-in mt-ta" id="mtSb-urgent" rows="2" maxlength="300" placeholder="z. B. Wasser tritt aus Decke und Leuchte aus, Elektrik im Bad defekt">${mtEsc(f.dringend || '')}</textarea></div>
         <div class="mt-f mt-f--full"><span class="mt-k">Fotos</span>
           <div class="mt-seg" role="group" aria-label="Fotos im Bericht">
             <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Ohne Fotos</button>
@@ -1634,6 +1690,7 @@ function mtSbFormHTML(c, f) {
             <button type="button" class="mt-sbt mt-sbt--add" data-mt="sbAddPhoto"><i class="ti ti-camera" aria-hidden="true"></i><span>Foto</span></button></div>
             <p class="mt-hint">Tap a photo to leave it out or add a Beschreibung. New photos are kept in the entry too.</p>` : ''}
         </div>
+        <p class="mt-hint mt-f--full">Anlagen in the PDF = the photos + everything in Documents. Add videos and e-mails (PDF or screenshot) with "Document".</p>
       </div>
       ${f.done ? `<p class="mt-sb__ok"><i class="ti ti-check" aria-hidden="true"></i>Saved in Documents · Stand ${mtEsc(f.done)}</p>` : ''}
       <div class="cc-sec-foot">
@@ -1763,8 +1820,10 @@ function mtSbData(c, f, photoCount) {
     .sort((a, b) => String(a.doc_date || '').localeCompare(String(b.doc_date || '')));
   const anlagen = [];
   if (photoCount) anlagen.push('Fotodokumentation (' + (photoCount === 1 ? '1 Foto' : photoCount + ' Fotos') + ', am Ende des Berichts)');
-  files.forEach(d => anlagen.push([MT_DOC_DE[d.doc_type] || 'Dokument', d.file_name, mtDate(d.doc_date)].filter(Boolean).join(' · ')));
-  String(f.anlagen || '').split(/\n+/).map(x => x.trim()).filter(Boolean).forEach(x => anlagen.push(x));
+  files.forEach(d => anlagen.push(
+    d.doc_type === 'video' ? `Video ${d.file_name || ''}${d.media_seconds ? ' (' + mtDur(d.media_seconds) + ')' : ''} – separat beigefügt`
+    : d.doc_type === 'email' ? 'E-Mail' + (d.doc_date ? ' vom ' + mtDate(d.doc_date) : '')
+    : [MT_DOC_DE[d.doc_type] || 'Dokument', d.file_name, mtDate(d.doc_date)].filter(Boolean).join(' · ')));
   const stand = mtDate(ccTodayISO());
   return {
     family: casa ? 'casa' : 'rentals',
@@ -1826,7 +1885,6 @@ async function mtSbRemember(c, f) {
   if (MT.d6) Object.assign(patch, {
     report_ort: String(f.ort || '').trim() || null,
     report_dringend: String(f.dringend || '').trim() || null,
-    report_anlagen: String(f.anlagen || '').trim() || null,
   });
   const r = await mtTry(() => _ctlSupa.from('maint_cases').update(patch).eq('id', c.id));
   if (!r.error) Object.assign(c, patch); else console.warn('[maintenance] report choices not saved:', r.error);
@@ -1947,6 +2005,7 @@ function mtWire() {
   });
   document.addEventListener('input', e => {             // the Mieter typed by hand is kept when the Zimmer changes
     if (e.target && e.target.id === 'mtSb-mieter' && MT.sel && MT.sel.sb) MT.sel.sb.mieterAuto = false;
+    if (e.target && e.target.matches && e.target.matches('#mtPanel textarea.mt-ta')) mtGrow(e.target);
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && MT.sel && !document.getElementById('mtConfirm') && !document.getElementById('ccCal')

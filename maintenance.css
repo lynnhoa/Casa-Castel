@@ -325,3 +325,10 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-sb .mt-sbg { width:100%; align-self:stretch; }
 .mt-sbt--add { min-height:84px; }
 .mt-sbt--add span { line-height:1.2; }
+
+/* D7 · long text fields grow with their text (mtGrow); long text a little smaller on the phone
+   (casa-castel.css sets 16px for zoom; this page never zooms: viewport maximum-scale=1) */
+#mtPanel textarea.mt-ta { resize:none; overflow:hidden; min-height:44px; }
+@media (max-width: 700px) {
+  #mtPanel textarea.mt-ta { font-size:14px !important; line-height:1.45; }
+}
