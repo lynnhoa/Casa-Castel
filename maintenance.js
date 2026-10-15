@@ -55,6 +55,8 @@
                  line becomes the receipt's line: no double cost; it comes back as you typed
                  it when the receipt is deleted or not booked) · "Book separately" (asked once)
                  · "Don't book". Self-bought "Shop" = the Geschäft in Controlling.
+               · D26: "Copy prompt" next to "+ Add receipt" copies the receipt → SQL prompt
+                 for Claude with this case's id in it (same checks as Save; no pop-up)
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
                          (shrunk to 2000 px + a small preview in /thumbs/)
@@ -1210,7 +1212,8 @@ function mtCostsHTML(c) {
   // D4 · receipts first: Kosten on top, then "+ Add receipt", then the table (newest first)
   const self = mtCost([c.id], null, 'self'), prov = mtCost([c.id], null, 'provider');
   let h = `<section class="mt-costs" id="mtCosts">
-    <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b>${!busy && !f && !upAny ? '<button type="button" class="mt-link mt-ks__add" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>' : ''}</span><em>${mtEur(mtCost([c.id]))}</em></div>
+    <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b>${!busy && !f && !upAny ? '<button type="button" class="mt-link mt-ks__add" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>' +
+      '<button type="button" class="mt-link mt-ks__add" data-mt="costPrompt"><i class="ti ti-copy" aria-hidden="true"></i>Copy prompt</button>' : ''}</span><em>${mtEur(mtCost([c.id]))}</em></div>
 `;
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!rows.length) h += '<p class="mt-docs-empty">No receipts yet.</p>';
@@ -1231,6 +1234,191 @@ function mtCostsHTML(c) {
     </div>`;
   });
   return h + '</section>';
+}
+
+/* ── D26 · "Copy prompt" (next to "+ Add receipt") ─────────────────────
+   One tap copies the receipt → SQL prompt for Claude, with THIS case filled in
+   (its id, so the SQL can't hit another case). Paste it in Claude with the photo
+   → run the SQL in Supabase → the row shows here; the photo is added in the row.
+   The SQL does what Save does: same checks (no. used twice · typed by hand in
+   Controlling · returns), and the database books Controlling itself.
+   No pop-up — only if the phone blocks copying, the text is shown to copy by hand. */
+function mtPromptText(c) {
+  const one = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  const title = one(c.title), prop = one(mtPropName(c)), id = String(c.id);
+  const what = [title, prop, (MT_KIND[c.kind] || {}).one].filter(Boolean).join(' · ');
+  return `Beleg → Maintenance (SQL)
+Case: ${what}
+
+I'll send a photo of a receipt or invoice for this case. Read it, fill in
+the SQL template below and give it back as ONE SQL block for Supabase.
+Change only the values in the "fill in" part. Controlling is booked by the
+database itself.
+
+Read it like this:
+- Amount: the final total incl. VAT (Summe / Gesamt / Brutto /
+  Rechnungsbetrag / Zu zahlen). Never cash given, change, netto or a
+  subtotal. Check that the items add up to it.
+- Date: the receipt or invoice date ("26" = 2026).
+- No.: Rechnungs-Nr. on invoices, Beleg-/Bon-Nr. on receipts. On DIY-store
+  receipts (Bauhaus, Hornbach, OBI, toom): the long barcode number, digits
+  only. Never Steuernummer, EAN, TSE, Kunden- or Auftragsnummer.
+- Shop / provider: short shop name (Bauhaus, Hornbach, OBI, IKEA) or the
+  company name from the letterhead.
+- Description: what was bought or done, short German, max 160 characters,
+  no article numbers.
+- Type: 'self' = bought in a shop, 'provider' = invoice from a company that
+  did work.
+- Return or credit note: art = 'return', zu_nr = the no. of its receipt,
+  amount as a positive number.
+- Unreadable or unsure: ask me, don't guess.
+- If I write "nicht buchen": buchen := false.
+
+Before the SQL, write one line with what you read
+(shop · date · amount · no. · description) so I can check it.
+After the SQL, remind me to add the photo in the app
+(open the cost row › Photo / PDF).
+
+If I paste back a message from the SQL:
+- "Already recorded" → only if I reply "save anyway": nr_ok := true.
+- "Already in Controlling" → I reply "take over" (link_id := the id from
+  the message) or "book separately" (separat := true).
+
+SQL template:
+
+-- Beleg → Maintenance · ${what}
+do $$
+#variable_conflict use_variable
+declare
+  -- fill in ↓
+  art     text    := 'receipt';  -- 'receipt' or 'return'
+  typ     text    := 'self';     -- 'self' or 'provider'
+  nr      text    := null;       -- receipt / invoice no. (a return: its slip no.)
+  beschr  text    := null;       -- what was bought or done, German
+  firma   text    := null;       -- shop or provider (a return: null)
+  betrag  numeric := null;       -- the total, e.g. 21.90
+  datum   date    := null;       -- 'YYYY-MM-DD'
+  zu_nr   text    := null;       -- a return: the no. of its receipt
+  buchen  boolean := true;       -- false = "nicht buchen"
+  nr_ok   boolean := false;      -- true = "save anyway"
+  link_id text    := null;       -- "take over": the id of the Controlling line
+  separat boolean := false;      -- true = "book separately"
+  -- fill in ↑
+  cid  uuid := '${id}';
+  c    public.maint_cases%rowtype;
+  p    public.maint_costs%rowtype;
+  n    int;
+  rest numeric;
+  hit  text;
+begin
+  select * into c from public.maint_cases where id = cid;
+  if not found then
+    raise exception 'This case is not in Maintenance – copy the prompt again from the case';
+  end if;
+  art := lower(btrim(art));  typ := lower(btrim(typ));
+  nr := nullif(btrim(nr), '');  beschr := nullif(btrim(beschr), '');  firma := nullif(btrim(firma), '');
+  zu_nr := nullif(btrim(zu_nr), '');  link_id := nullif(btrim(link_id), '');
+  if art is null or art not in ('receipt', 'return') then raise exception 'art must be receipt or return'; end if;
+  if betrag is null or betrag < 0 or (art = 'return' and betrag = 0) then raise exception 'Fill in the amount'; end if;
+  if datum is null then raise exception 'Fill in the date'; end if;
+
+  if art = 'return' then                                   -- a return: to one receipt of this case
+    select count(*) into n from public.maint_costs m
+     where m.case_id = cid and m.return_of is null and lower(btrim(m.receipt_no)) = lower(zu_nr);
+    if n <> 1 then
+      raise exception 'Receipt % is not in this case – which receipt is the return for?', coalesce(zu_nr, '?');
+    end if;
+    select * into p from public.maint_costs m
+     where m.case_id = cid and m.return_of is null and lower(btrim(m.receipt_no)) = lower(zu_nr);
+    select p.amount - coalesce(sum(m.amount), 0) into rest from public.maint_costs m where m.return_of = p.id;
+    if betrag > rest then
+      raise exception 'The return can''t be more than what is left of receipt % (% €)', p.receipt_no, replace(rest::text, '.', ',');
+    end if;
+    if datum < p.cost_date then
+      raise exception 'The return can''t be before its receipt (%)', to_char(p.cost_date, 'DD.MM.YYYY');
+    end if;
+    typ := p.kind;  firma := null;  buchen := true;         -- a return follows its receipt
+  else
+    if typ is null or typ not in ('self', 'provider') then raise exception 'typ must be self or provider'; end if;
+    if nr is null and beschr is null then raise exception 'Fill in the no. or a description'; end if;
+  end if;
+
+  if not nr_ok then                                        -- the same receipt twice?
+    select string_agg(distinct '"' || k.title || '"', ', ') into hit
+      from public.maint_costs m join public.maint_cases k on k.id = m.case_id
+     where (nr is not null and lower(btrim(m.receipt_no)) = lower(nr))
+        or (nr is null and m.case_id = cid and m.amount = betrag and m.cost_date = datum
+            and (m.return_of is null) = (art = 'receipt'));
+    if hit is not null then
+      raise exception 'Already recorded in % – reply "save anyway" only if it is a different receipt', hit;
+    end if;
+  end if;
+
+  if coalesce(c.book_ctrl, true) and buchen and (art = 'receipt' or coalesce(p.book_ctrl, true)) and betrag > 0
+     and exists (select 1 from public.ctrl_properties cp where cp.id = c.property_id) then
+    if link_id is not null then
+      if not exists (select 1 from public.ctrl_expense_one_time o where o.id::text = link_id and o.maint_cost_id is null) then
+        raise exception 'Controlling line % not found', link_id;
+      end if;
+    elsif not separat then                                 -- typed by hand in Controlling already?
+      select string_agg(format('id %s: %s · %s · %s € · %s', o.id, to_char(o.invoice_date, 'DD.MM.YYYY'),
+                               coalesce(o.company, '–'), replace(o.amount::text, '.', ','), coalesce(o.item, '')), ' | ')
+        into hit
+        from public.ctrl_expense_one_time o
+       where o.property_id = c.property_id and o.maint_cost_id is null
+         and o.invoice_date between datum - 7 and datum + 7
+         and abs(o.amount - betrag) < 0.005
+         and coalesce(o.source_ref, '') !~ '^(maint|abr):'
+         and coalesce(o.kind, '') not in ('Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung', 'NK-Abrechnung')
+         and case when art = 'return' then o.direction = 1 else coalesce(o.direction, -1) <> 1 end;
+      if hit is not null then
+        raise exception 'Already in Controlling (typed by hand): % – reply "take over" or "book separately"', hit;
+      end if;
+    end if;
+  end if;
+
+  insert into public.maint_costs
+    (case_id, kind, receipt_no, description, brand, amount, cost_date, return_of, book_ctrl, link_ot, ctrl_dup_ok)
+  values
+    (cid, typ, nr, left(beschr, 160), firma, betrag, datum, p.id, buchen, link_id, separat);
+end $$;
+
+select m.receipt_no as nr, m.description, m.brand, replace(m.amount::text, '.', ',') as betrag,
+       to_char(m.cost_date, 'DD.MM.YYYY') as datum, coalesce(o.item, 'not booked in Controlling') as controlling
+  from public.maint_costs m
+  left join public.ctrl_expense_one_time o on o.maint_cost_id = m.id
+ where m.case_id = '${id}'
+ order by m.created_at desc
+ limit 1;
+`;
+}
+
+/* Copy to the clipboard (Maintenance doesn't load utils.js) */
+async function mtCopyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch (e) { return false; }
+}
+
+async function mtCopyPrompt() {
+  const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
+  if (!c) return;
+  const text = mtPromptText(c);
+  if (await mtCopyText(text)) { mtSay('Prompt copied – paste it in Claude with the photo.'); return; }
+  // the phone blocked copying (rare) → show the text to copy by hand
+  setTimeout(() => {
+    const t = document.querySelector('#mtConfirm .mt-prompt');
+    if (t) t.addEventListener('focus', () => t.setSelectionRange(0, t.value.length));
+  }, 0);
+  await mtAsk({
+    title: 'Copy the prompt', text: 'Copying didn\u2019t work here. Select the text and copy it.',
+    html: `<textarea class="mt-in mt-prompt" readonly aria-label="Prompt">${mtEsc(text)}</textarea>`,
+    buttons: [{ v: 'ok', label: 'Done', kind: 'p' }],
+  });
 }
 
 function mtCostRowHTML(r, tap) {
@@ -1953,6 +2141,7 @@ function mtWire() {
     else if (a === 'addCancel') { if (MT.sel) { MT.sel.add = null; mtRenderPanel(); } }
     else if (a === 'addSave') mtAddSave();
     else if (a === 'costNew') mtCostNew(b.dataset.k);
+    else if (a === 'costPrompt') mtCopyPrompt();
     else if (a === 'costEdit') mtCostEdit(b.dataset.id);
     else if (a === 'costKind') mtCostKind(b.dataset.k);
     else if (a === 'costFile') mtCostPickFiles();
