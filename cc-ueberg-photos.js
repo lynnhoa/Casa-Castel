@@ -285,67 +285,6 @@ async function ccUbAddPhotoPages(key, container, meta = {}) {
 /* ── (previous version, no longer used) photo pages drawn directly with jsPDF ──
    6 per page (2 columns × 3 rows). meta: { isEinzug, objekt, mieter }
    → returns the number of pages added                                   */
-function ccUbAppendPhotos(pdf, key, meta = {}) {
-  const st = _ccUb[key];
-  if (!pdf || !st || !st.on || !st.photos.length) return 0;
-
-  const W = 210, H = 297, M = 15, CW = W - 2 * M;
-  const TOP = M + 22, BOTTOM = H - M - 4;                // content area under the header, above the footer
-  const COLS = 2, ROWS = 3, GAP_X = 8, CAP = 15;
-  const colW = (CW - GAP_X) / COLS;
-  const rowH = (BOTTOM - TOP) / ROWS;
-  const boxH = rowH - CAP;
-  const PER  = COLS * ROWS;
-  const two  = n => String(n).padStart(2, '0');
-  const when = ts => {                                    // 26.09.2026 · 15:56 (German time)
-    if (typeof ccFmtDate === 'function' && typeof ccParseDate === 'function' && typeof ccFmtTs === 'function')
-      return ccFmtDate(ccParseDate(new Date(ts))) + ' · ' + ccFmtTs(ts).split(' · ')[1];
-    const t = new Date(ts);
-    return `${two(t.getDate())}.${two(t.getMonth() + 1)}.${t.getFullYear()} · ${two(t.getHours())}:${two(t.getMinutes())}`;
-  };
-  const sub = ['Übergabeprotokoll ' + (meta.isEinzug ? 'Einzug' : 'Auszug'), meta.objekt, meta.mieter]
-    .filter(Boolean).join(' · ');
-  const pages = Math.ceil(st.photos.length / PER);
-
-  for (let pg = 0; pg < pages; pg++) {
-    pdf.addPage('a4', 'portrait');
-    pdf.setTextColor(30, 27, 24);
-    pdf.setFont('helvetica', 'bold');   pdf.setFontSize(14);
-    pdf.text('Fotodokumentation', M, M + 6);
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(110, 102, 94);
-    pdf.text(pdf.splitTextToSize(sub, CW)[0], M, M + 12);
-    pdf.setDrawColor(200, 194, 186); pdf.setLineWidth(0.2);
-    pdf.line(M, M + 16, W - M, M + 16);
-
-    for (let s = 0; s < PER; s++) {
-      const i = pg * PER + s;
-      const p = st.photos[i];
-      if (!p) break;
-      const x = M + (s % COLS) * (colW + GAP_X);
-      const y = TOP + Math.floor(s / COLS) * rowH;
-      const r = Math.min(colW / p.w, boxH / p.h);        // fit, never crop (upright or landscape)
-      const iw = p.w * r, ih = p.h * r;
-      pdf.addImage(p.dataUrl, 'JPEG', x + (colW - iw) / 2, y + (boxH - ih), iw, ih);   // bottom-aligned: captions line up
-
-      const ty = y + boxH + 4.2;
-      pdf.setFont('helvetica', 'bold');   pdf.setFontSize(8); pdf.setTextColor(30, 27, 24);
-      const label = `Foto ${i + 1}`;
-      pdf.text(label, x, ty);
-      pdf.setFont('helvetica', 'normal'); pdf.setTextColor(110, 102, 94);
-      pdf.text(when(p.ts), x + pdf.getTextWidth(label) + 2.5, ty);
-      const cap = String(p.caption || '').trim();
-      if (cap) {
-        pdf.setFontSize(7.5); pdf.setTextColor(30, 27, 24);
-        pdf.text(pdf.splitTextToSize(cap, colW).slice(0, 2), x, ty + 3.8);
-      }
-    }
-
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(150, 142, 134);
-    pdf.text(`Fotoanhang ${pg + 1} / ${pages}`, W - M, H - M + 4, { align: 'right' });
-  }
-  pdf.setTextColor(0, 0, 0);
-  return pages;
-}
 
 /* ── STYLES (once) — colours from the app: beige tile = Übergabeprotokoll button ── */
 function _ccUbStyles() {

@@ -1124,53 +1124,8 @@ async function _kTenPopulateHistory() {
 }
 
 /* ── SEND — text (identical to landlord, room = currentRoom) */
-async function _kTenMobSendMsg() {
-  const inp  = document.getElementById('k-mob-msg-input');
-  const text = inp.value.trim();
-  if (!text || !_kTenWeekRow || _kTenMobSending) return;
-  await _kTenEnsureCurrentWeek();
-  _kTenMobSending = true; inp.value = '';
-  const room = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
-  const feed = document.getElementById('k-feed-mob');
-  if (feed) {
-    const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-mob-optimistic';
-    tmp.innerHTML = `<div class="k-chat-avatar"${ccAvAttrs(room)}>${_kTenRoomInitials(room)}</div>`
-      + `<div style="flex:1;min-width:0;"><div class="k-chat-meta">`
-      + `<span class="k-chat-name"${ccNameAttrs(room)}>${esc(ccNameText(room))}</span>`
-      + `<span class="k-chat-time" style="opacity:0.5;">sending…</span></div>`
-      + `<p class="k-chat-text">${esc(text)}</p></div>`;
-    feed.appendChild(tmp); scrollToBottom(feed);
-  }
-  _kTenAddComment(_kTenWeekRow.id, room, _kSafeChatText(text), false)
-    .finally(() => { _kTenMobSending = false; });
-}
 
 /* ── SEND — camera photo in chat ────────────────────────── */
-async function _kTenSendPhoto(file, feedId) {
-  if (!file || !_kTenWeekRow) { alert('No active week.'); return; }
-  await _kTenEnsureCurrentWeek();
-  if (file.size > 30 * 1024 * 1024) { alert('Max 30MB.'); return; }
-  const room       = (typeof currentRoom !== 'undefined' ? currentRoom : '') || '';
-  const compressed = await _kTenCompressImage(file);
-  const feed       = document.getElementById(feedId);
-  const localUrl   = URL.createObjectURL(compressed);
-  if (feed) {
-    const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-ten-photo-optimistic';
-    tmp.innerHTML = `<div class="k-chat-avatar"${ccAvAttrs(room)}>${_kTenRoomInitials(room)}</div>`
-      + `<div style="flex:1;min-width:0;"><div class="k-chat-meta">`
-      + `<span class="k-chat-name"${ccNameAttrs(room)}>${esc(ccNameText(room))}</span>`
-      + `<span class="k-chat-time" style="opacity:0.5;">uploading…</span></div>`
-      + `<div style="margin-top:5px;"><img src="${localUrl}" style="max-width:100%;border-radius:6px;object-fit:contain;opacity:0.7;"/></div></div>`;
-    feed.appendChild(tmp); scrollToBottom(feed);
-  }
-  const idx  = kWeekIdx();
-  const path = 'week-' + idx + '-' + room + '-chat-' + Date.now() + '.jpg';
-  const { error } = await sbL.storage.from('kitchen-proofs').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
-  document.getElementById('k-ten-photo-optimistic')?.remove();
-  if (error) { console.error('Chat photo upload', error); alert('Upload failed.'); return; }
-  const { data } = sbL.storage.from('kitchen-proofs').getPublicUrl(path);
-  await _kTenAddComment(_kTenWeekRow.id, room, '[photo] ' + data.publicUrl, false);
-}
 
 /* Status lines in the chat stay neutral — nobody is named (older messages included) */
 function _kTenSysText(t) {

@@ -46,7 +46,6 @@ const _EN = {
 };
 function t(key) { return _EN[key] || key; }
 function applyLang() {} // no-op — kept so _bindAllCards doesn't error
-function getCurrentLang() { return 'en'; }
 
 
 

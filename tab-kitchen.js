@@ -262,10 +262,6 @@ async function _kGetWeek(idx) {
   const { data } = await sbL.from('kitchen_weeks').select('*').eq('week_index', idx).maybeSingle();
   return data;
 }
-async function _kUpdateWeek(idx, patch) {
-  if (!sbL) return;
-  await sbL.from('kitchen_weeks').update(patch).eq('week_index', idx);
-}
 // Actions always write to the exact week that is on screen (by its id)
 async function _kUpdateRow(row, patch) {
   if (!sbL || !row) return { error: 'no row' };
@@ -1083,62 +1079,8 @@ async function kClearChat() {
 }
 
 /* ── SEND MESSAGE ───────────────────────────────────────── */
-async function _kSendMsg() {
-  const mobInp = document.getElementById('k-mob-msg-input');
-  const dskInp = document.getElementById('k-dsk-msg-input');
-  // Use whichever input has content or last had focus
-  const inp  = (dskInp && dskInp.value.trim()) ? dskInp : mobInp;
-  const text = inp ? inp.value.trim() : ''; if (!text || !_kWeekRow || _kMobSending) return;
-  _kMobSending = true; inp.value = '';
-  const feed = document.getElementById('k-feed-mob');
-  if (feed) {
-    const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-mob-optimistic';
-    tmp.innerHTML = '<div class="k-chat-avatar k-chat-avatar--me" style="background:var(--cc-ink);color:var(--cc-white);">CC</div>'
-      + '<div style="flex:1;min-width:0;"><div class="k-chat-meta"><span class="k-chat-name" style="color:var(--cc-gold);">Casa Castel</span>'
-      + '<span class="k-chat-time" style="opacity:0.5;">sending…</span></div><p class="k-chat-text">' + esc(text) + '</p></div>';
-    feed.appendChild(tmp); scrollToBottom(feed);
-  }
-  _kAddComment(_kWeekRow.id, 'Casa Castel', _kSafeChatText(text), false).finally(() => { _kMobSending = false; });
-}
 
 /* ── PHOTO UPLOAD ───────────────────────────────────────── */
-async function _kCompressImage(file, maxPx = 1280, quality = 0.80) {
-  return new Promise(resolve => {
-    const img = new Image(); const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width: w, height: h } = img;
-      if (w > maxPx || h > maxPx) { if (w >= h) { h = Math.round(h * maxPx / w); w = maxPx; } else { w = Math.round(w * maxPx / h); h = maxPx; } }
-      const c = document.createElement('canvas'); c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0, w, h);
-      c.toBlob(b => resolve(b || file), 'image/jpeg', quality);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
-  });
-}
-async function _kSendPhoto(file) {
-  if (!file || !_kWeekRow) { alert('No active week.'); return; }
-  if (file.size > 30 * 1024 * 1024) { alert('Max 30MB.'); return; }
-  const compressed = await _kCompressImage(file);
-  const feed = document.getElementById('k-feed-mob');
-  const localUrl = URL.createObjectURL(compressed);
-  if (feed) {
-    const tmp = document.createElement('div'); tmp.className = 'k-chat-row'; tmp.id = 'k-landlord-photo-optimistic';
-    tmp.innerHTML = '<div class="k-chat-avatar k-chat-avatar--me" style="background:var(--cc-ink);color:var(--cc-white);">CC</div>'
-      + '<div style="flex:1;min-width:0;"><div class="k-chat-meta"><span class="k-chat-name" style="color:var(--cc-gold);">Casa Castel</span>'
-      + '<span class="k-chat-time" style="opacity:0.5;">sending…</span></div>'
-      + '<div style="margin-top:5px;"><img src="' + localUrl + '" style="max-width:100%;border-radius:6px;display:block;object-fit:contain;opacity:0.7;"/></div></div>';
-    feed.appendChild(tmp); scrollToBottom(feed);
-  }
-  const idx  = kWeekIdx();
-  const path = `week-${idx}-mgmt-${Date.now()}.jpg`;
-  const { error } = await sbL.storage.from('kitchen-proofs').upload(path, compressed, { upsert: true, contentType: 'image/jpeg' });
-  document.getElementById('k-landlord-photo-optimistic')?.remove();
-  if (error) { alert('Upload failed.'); return; }
-  const { data } = sbL.storage.from('kitchen-proofs').getPublicUrl(path);
-  await _kAddComment(_kWeekRow.id, 'Casa Castel', '[photo] ' + data.publicUrl, false);
-}
 
 /* ── ACTION HANDLERS ────────────────────────────────────── */
 let _kWeekRow    = null;

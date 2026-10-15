@@ -339,19 +339,6 @@ function _pvrToggle(visit, key, el) {
   else { set.add(key); el.style.outline = '2.5px solid #A32D2D'; el.style.outlineOffset = '2px'; }
   _pvrRow(visit);
 }
-async function pvaTapRedo(visit) {
-  const set = _pvrSel[visit];
-  if (!set || !set.size || _pvaActBusy) return;
-  const note = (document.getElementById('pvr-note-' + visit) || { value: '' }).value;
-  _pvaActBusy = true;
-  const { data, error } = await pvaRpc('pv_admin_flag', { p_visit: visit, p_points: Array.from(set), p_note: note });
-  _pvaActBusy = false;
-  if (error) { pvaToast('No connection — try again.'); return; }
-  if (data && data.error) pvaToast(data.error === 'closed' ? 'That month is closed — reopen the month first.' : 'Already changed — refreshed.');
-  else pvaToast('Redo sent · ' + set.size);
-  delete _pvrSel[visit];
-  pvaLoad();
-}
 document.addEventListener('pointerdown', e => {                /* hold a photo = open it */
   const t = e.target.closest('#pvaFeed [data-anchor="sent"] [data-view]');
   if (!t) return;

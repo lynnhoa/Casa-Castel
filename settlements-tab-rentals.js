@@ -549,11 +549,6 @@ function _srNewPos(kind, d) {
   const k = _srKind(kind);
   return { id: _srUid(), kind: k.k, label: null, u: k.u, total: null, key: 'direkt', ku: null, kt: null, amount: null, split: 'tage' };
 }
-function _srCopyFrom(prev, d) {
-  d.keys = Object.assign({}, prev.keys || {});
-  d.key_mode = prev.key_mode || d.key_mode;
-  d.positions = (prev.positions || []).filter(p => p.u).map(p => Object.assign({}, p, { id: _srUid(), total: null, amount: null, key: 'direkt', ku: null, kt: null }));
-}
 /* The WEG result → Tracking + Controlling (same records Tracking writes) */
 async function _srWriteWeg(c, rec) {
   if (!c || !c.weg || rec.weg_direction === null || rec.weg_direction === undefined) return;
@@ -1248,73 +1243,6 @@ async function _srOpenLetter(id) {
   } catch (e) { stSay('The letter could not be opened — ' + (e.message || e)); }
 }
 
-function _srTrackerBlock(info) {
-  const c = info.c, idx = (window._ctrl.properties || []).filter(p => p.active && p.id !== CASA_PROP_ID).sort(stPropOrder).findIndex(p => p.id === c.p.id) + 1;
-  const hg = c.verw ? _srNum(c.verw.hausgeld_mtl) : null;
-  const sub = c.before ? 'bought ' + stDate(_srBought(c.p))
-    : _srPerText(c.per.from, c.per.to) + (hg ? ' · Hausgeld ' + stEur(hg) + '/mo' : '') + ' · Frist ' + stDate(c.per.frist);
-  let h = '<section class="rk-block"><div class="rk-grp"><div class="rk-grp__n"><span class="rk-grp__i">' + idx + '</span><span class="rk-grp__t">' + stEsc(c.p.name) + '</span><span class="rk-grp__s">' + stEsc(sub) + '</span></div>' +
-    '<button class="rk-lnk" data-sr="openNk" data-k="' + stEsc(c.ck) + '">NK-Abrechnung ›</button></div>';
-  if (c.before) return h + '<div class="rk-row is-dim"><span class="rk-who">' + SR.year + ' before purchase – the seller settles it</span><span></span><span class="rk-st">' + cxPill('grey', 'not yours') + '</span><span></span><span></span><span></span><span></span></div></section>';
-  // Hausgeld line
-  const hv = info.hv, rec = info.rec, wegSt = hv.wegSt;
-  const wRes = wegSt && wegSt.res;
-  const wegMoney = wRes ? _srMoneyTxt(wRes.dir, wRes.amount, true) : (rec && rec.weg_direction !== null && rec.weg_direction !== undefined ? _srMoneyTxt(Number(rec.weg_direction), _srNum(rec.weg_amount), true) : '');
-  const wegDone = wRes && wegSt.k === 'erledigt';
-  const hvPill = hv.k === 'fertig' ? ['ok', 'settled'] : hv.k === 'zahlung' ? ['diff', 'open'] : hv.k === 'weg' || hv.k === 'erfassen' ? ['open', 'to enter']
-    : hv.k === 'ueberfaellig' ? ['diff', 'overdue'] : ['grey', c.running ? 'running' : 'expected'];
-  const hvLine2 = !hv.received ? (c.running ? 'runs until ' + stDate(c.per.to) : (hv.exp ? (hv.k === 'ueberfaellig' ? 'expected ' : 'expected ~') + hv.exp.label : 'expected – month not set'))
-    + (hv.asked.length ? ' · asked ' + stDate(hv.asked[hv.asked.length - 1]) : '') : 'received ' + stDate(rec.received_on || rec.hv_date);
-  const mail = c.verw && c.verw.hv_email ? String(c.verw.hv_email).trim() : '';
-  h += '<div class="rk-row" data-sr="openHv" data-k="' + stEsc(c.ck) + '">' +
-    '<span class="rk-who"><span class="rk-ic"><i class="ti ti-building" aria-hidden="true"></i></span><button class="rk-name" data-sr="openHv" data-k="' + stEsc(c.ck) + '">Hausgeld · Jahresabrechnung</button></span>' +
-    '<span class="rk-per">' + stEsc(hvLine2) + '</span>' +
-    '<span class="rk-st">' + cxPill(hvPill[0], hvPill[1]) + (hv.k === 'ueberfaellig' && mail ? ' <a class="rk-ask" data-sr="ask" data-k="' + stEsc(c.ck) + '" href="' + stEsc(_srAskMail(c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Ask HV</a>' : '') + '</span>' +
-    '<span class="rk-res">' + stEsc(wegMoney) + '</span>' +
-    '<span class="rk-sent rk-na">—</span>' +
-    '<span class="rk-done">' + (wegDone || (wRes && wegSt.booking) ? '<span class="rk-ok"><i class="ti ti-check" aria-hidden="true"></i> ' + stEsc(_srSettledTxt({ st: wegSt, ts: {} }, true)) + ' <button class="rk-edit" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-w="1">edit</button></span>'
-       : wRes && wRes.amount ? '<button class="rk-btn" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-w="1">Settle</button>' : '<span class="rk-na">—</span>') + '</span>' +
-    '<span class="rk-pdf"></span></div>';
-  // tenant lines
-  for (const ti of info.rows) {
-    const id = String(ti.l.id);
-    const pill = ti.kind === 'pausch' ? (ti.skipped ? ['ok', 'no NK'] : ['grey', 'Pauschal']) : ti.kind === 'unlinked' ? ['grey', 'no tenant'] :
-      ti.k === 'settled' ? ['ok', ti.skipped ? 'skipped' : 'settled'] : ti.k === 'sent' ? ['beige', 'sent'] : ti.k === 'open' ? ['open', 'open'] : ['grey', 'waiting for HV'];
-    let res = '';
-    if (ti.skipped) res = '';
-    else if (ti.st.res) res = _srMoneyTxt(ti.st.res.dir, ti.st.res.amount, false);
-    else if (ti.x && !ti.x.missing) res = _srMoneyTxt(ti.x.saldo > 0 ? 1 : ti.x.saldo < 0 ? -1 : 0, Math.abs(ti.x.saldo), false) + ' · preview';
-    else if (ti.kind === 'pausch') {
-      const o = info.onYou && info.onYou.rows.find(x => x.kind === 'pausch' && x.id === String(ti.r.id));
-      res = o ? 'Pauschal · ' + _srOnYouTxt(o) : 'Pauschal – no NK';
-    }
-    const kau = ti.x && ti.x.einbehalt > 0 && ti.k !== 'settled' ? '<small>Kaution-Einbehalt ' + stEur(ti.x.einbehalt) + '</small>' : '';
-    const canSend = ti.k === 'open';
-    const sent = ti.kind !== 'ten' ? '<span class="rk-na">—</span>'
-      : '<label class="rk-tick"><input type="checkbox" data-sr="tick" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '"' + (ti.st.res ? ' checked' : '') + (ti.st.res || canSend ? '' : ' disabled') + '/>' + (ti.st.res ? stDM(ti.st.res.date) : '') + '</label>';
-    const done = ti.k === 'settled' && ti.kind === 'ten' ? '<span class="rk-ok"><i class="ti ti-check" aria-hidden="true"></i> ' + stEsc(_srSettledTxt(ti, false)) + ' <button class="rk-edit" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '">edit</button></span>'
-      : ti.k === 'sent' ? '<button class="rk-btn" data-sr="settle" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '">Settle</button>' : '<span class="rk-na">—</span>';
-    const pdf = ti.kind === 'ten' && (ti.k === 'open' || ti.k === 'sent' || (ti.k === 'settled' && !ti.skipped))
-      ? '<button class="rk-pdfb" data-sr="pdfRow" data-cc-pdf="1" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '" aria-label="PDF ' + stEsc(ti.name) + '"><i class="ti ti-file-text" aria-hidden="true"></i></button>' : '';
-    const per = stDM(ti.l.from) + '–' + stDate(ti.l.to) + (ti.t && _srMovedOut(ti.t) ? ' · moved out' : '');
-    h += '<div class="rk-row" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '">' +
-      '<span class="rk-who"><span class="rk-ic"><i class="ti ti-user" aria-hidden="true"></i></span><button class="rk-name" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(id) + '">' + stEsc(ti.name) + '</button></span>' +
-      '<span class="rk-per">' + stEsc(per) + '</span>' +
-      '<span class="rk-st">' + cxPill(pill[0], pill[1]) + '</span>' +
-      '<span class="rk-res">' + stEsc(res) + kau + '</span>' +
-      '<span class="rk-sent">' + sent + '</span>' +
-      '<span class="rk-done">' + done + '</span>' +
-      '<span class="rk-pdf">' + pdf + '</span></div>';
-  }
-  for (const o of (info.onYou ? info.onYou.rows.filter(x => x.kind === 'leer') : [])) {
-    h += '<div class="rk-row is-dim"><span class="rk-who"><span class="rk-ic"><i class="ti ti-door" aria-hidden="true"></i></span><span class="rk-name">Leerstand</span></span>' +
-      '<span class="rk-per">' + stEsc(stDM(o.from) + '–' + stDate(o.to)) + '</span><span class="rk-st">' + cxPill('grey', 'Leerstand') + '</span>' +
-      '<span class="rk-res">' + stEsc('on you ' + stEur(o.onYou)) + '</span><span class="rk-sent rk-na">—</span><span class="rk-done"><span class="rk-na">—</span></span><span class="rk-pdf"></span></div>';
-  }
-  if (!info.rows.length) h += '<div class="rk-row is-dim"><span class="rk-who">No tenant with Kalt + NK in this period</span><span></span><span></span><span></span><span></span><span></span><span></span></div>';
-  return h + '</section>';
-}
-
 /* ── Modal ── */
 const _srHead4 = (t, s, back) => '<div class="srm__h"><div class="srm__ht">' + (back ? '<button class="srm__back" data-sr="' + back + '"><i class="ti ti-chevron-left" aria-hidden="true"></i> ' + stEsc(_srCards[SR.modal.ck] ? _srCards[SR.modal.ck].p.name + ' ' + _srCards[SR.modal.ck].per.label : 'Back') + '</button>' : '') +
   '<p class="srm__t">' + stEsc(t) + '</p><p class="srm__s">' + stEsc(s) + '</p></div><button class="srm__x" data-sr="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
@@ -1494,16 +1422,6 @@ function _srSteps(names, cur) {
   return '<div class="sr-steps">' + names.map((n, i) => '<span class="sr-step' + (i < cur ? ' is-done' : i === cur ? ' is-cur' : '') + '"><i></i>' + stEsc(n) + '</span>').join('') + '</div>';
 }
 /* E-mail to the HV: the Guthaben of the Jahresabrechnung has not arrived */
-function _srRemindMail(c, rec, to) {
-  const s = (typeof appSettings !== 'undefined' && appSettings) || {};
-  const apt = c.apt || {};
-  const obj = [apt.adresse, stWhg(apt.wohnungsnummer), apt.plz_ort].filter(Boolean).join(', ') || c.p.name;
-  const subj = 'Guthaben aus der Hausgeld-Jahresabrechnung ' + _srPerLabel(c.per.from, c.per.to) + ' – ' + obj;
-  const body = 'Sehr geehrte Damen und Herren,\n\nlaut Hausgeld-Jahresabrechnung ' + _srPerLabel(c.per.from, c.per.to) + (rec.hv_date ? ' vom ' + cxFmtDate(rec.hv_date) : '') +
-    ' ergibt sich für meine Wohnung ' + obj + ' ein Guthaben von ' + stEur(_srNum(rec.weg_amount) || 0) + (rec.weg_due ? ', fällig zum ' + cxFmtDate(rec.weg_due) : '') +
-    '.\n\nBei mir ist der Betrag bisher nicht eingegangen. Ich bitte um Überweisung bzw. um eine kurze Nachricht, wann ich damit rechnen kann.\n\nMit freundlichen Grüßen\n' + (s.vermieter_name || '');
-  return 'mailto:' + encodeURIComponent(to).replace(/%40/g, '@') + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
-}
 
 /* Saves by itself: the draft of this Wohnung (Jahresabrechnung and NK costs) a moment after the last change */
 let _srAutoT = null;

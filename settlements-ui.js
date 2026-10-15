@@ -122,10 +122,6 @@ function stMCard(title, icon, inner) {
 }
 
 /* Money word for one result: dir > 0 = money comes to you */
-function stMoneySay(dir, amount, name) {
-  if (!dir || !amount) return ['', 'balanced'];
-  return dir > 0 ? ['pos', (name ? name + ' pays you ' : 'pays you ') + stEur(cxR(amount))] : ['neg', (name ? name + ' gets ' : 'gets ') + stEur(cxR(amount)) + ' back'];
-}
 
 /* ── Summary sheet (behind a tile) ────────────────────────── */
 /* o = { title, sub, net, sub2, groups: [{ title, rows: [{ av, ab, name, sub, amount, dir, chip, set (→ settle line) }] }] } */

@@ -1342,21 +1342,6 @@ function _toggleCard(card) {
 
 
 
-function _cancelEdit(card) {
-  card.classList.remove('rc--editing');
-  // Re-render this card from cache to discard changes
-  const id = card.dataset.id;
-  const room = getRoomById(id);
-  if (room) {
-    const wasExpanded = card.classList.contains('rc--expanded');
-    card.outerHTML = _roomCardHTML(room);
-    const newCard = document.querySelector(`.rc[data-id="${id}"]`);
-    if (wasExpanded && newCard) newCard.classList.add('rc--expanded');
-  }
-  _bindAllCards();
-  _initSortable();
-}
-
 /* ── PER-SECTION EDIT (existing rooms) ─────────────────────── */
 function _roomEnterSection(sec, id) {
   const el = document.getElementById(`rc-${sec}-${id}`);
@@ -1497,63 +1482,6 @@ function ccOpenUebergabe(roomId, eu) {
 
 
 /* ── SAVE CARD ───────────────────────────────────────────── */
-async function _saveCard(card) {
-  const id   = card.dataset.id;
-  const room = getRoomById(id) || {};
-  const data = { ...room };
-
-  // Collect simple inputs
-  card.querySelectorAll('[data-f]').forEach(el => {
-    const key = el.dataset.f;
-    if (el.tagName === 'INPUT' && el.type === 'checkbox') {
-      data[key] = el.checked;
-    } else if (el.tagName === 'INPUT' && ccIsNumInput(el)) {
-      data[key] = el.value !== '' ? parseFloat(el.value) : null;
-    } else if (el.classList.contains('rc-stepper__v')) {
-      data[key] = parseInt(el.textContent, 10);
-    } else {
-      data[key] = el.value;
-    }
-  });
-
-  // Collect chip selections
-  const spaceChips = card.querySelectorAll('[data-chipgroup="gemeinschaftsraeume"] .rc-chip.on');
-  data.gemeinschaftsraeume = [...spaceChips].map(c => c.dataset.space);
-
-  const badChips = card.querySelectorAll('[data-chipgroup="badezimmer"] .rc-chip.on');
-  data.badezimmer = [...badChips].map(c => c.dataset.bad);
-
-  // Pricing types
-  const kzToggle = card.querySelector('[data-kztoggle]');
-  if (kzToggle) data.kurzzeit_pricing = kzToggle.checked ? 'kalt_nk' : 'pauschal';
-  const mvToggle = card.querySelector('[data-mvtoggle]');
-  if (mvToggle) data.mietvertrag_pricing = mvToggle.checked ? 'pauschal' : 'kalt_nk';
-
-  // Save
-  const saveBtn = card.querySelector('.rm-btn--primary');
-  const origText = saveBtn.innerHTML;
-  saveBtn.innerHTML = 'Saving…';
-  saveBtn.disabled = true;
-
-  const result = await saveRoom(data);
-
-  if (!result.ok) {
-    saveBtn.innerHTML = 'Error';
-    setTimeout(() => { saveBtn.innerHTML = origText; saveBtn.disabled = false; }, 2000);
-    return;
-  }
-
-  // Re-render — use insertBefore/remove (more reliable than outerHTML on iOS)
-  const newDiv = document.createElement('div');
-  newDiv.innerHTML = _roomCardHTML(result.room);
-  const newCard = newDiv.firstElementChild;
-  // Always restore expanded + read mode (never re-enter edit after save)
-  newCard.classList.add('rc--expanded');
-  card.parentNode.insertBefore(newCard, card);
-  card.remove();
-  _bindAllCards();
-  _initSortable();
-}
 
 
 /* ── ADD NEW ROOM (Oct 2026) ─────────────────────────────────

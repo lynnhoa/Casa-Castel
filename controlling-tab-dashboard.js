@@ -25,15 +25,6 @@ if (!CX.dashView) CX.dashView = 'm';                    // default: Monat
 if (CX.dashMode !== 'konto' && CX.dashMode !== 'tats') CX.dashMode = 'konto';   // Konto | Tatsächlich (D18)
 
 /* Konto / Tatsächlich of several properties over several months (change round 3) */
-function _cxActualSum(pids, months) {
-  const s = { rein: 0, raus: 0, rausKonto: 0, rate: 0, tats: 0, konto: 0, meineKosten: 0, abr: 0 };
-  for (const m of months) for (const pid of pids) {
-    const a = ctlActualMonth(pid, m);
-    for (const k in s) s[k] += a[k];
-  }
-  for (const k in s) s[k] = cxR(s[k]);
-  return s;
-}
 
 function _cxIsFuture(y, m) {
   const t = cxToday(), ty = Number(t.slice(0, 4)), tm = Number(t.slice(5, 7));
@@ -66,15 +57,6 @@ function _cxOpenOf(p, y, m) {
   return { inc, exp };
 }
 
-function _cxPeriodBar(isYear) {
-  if (!isYear) return cxMonthBar();
-  return '<div class="cx-month">' +
-    '<button class="cx-arw" data-cx="yprev" aria-label="Vorheriges Jahr"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
-    '<div class="cx-month__t"><div class="cx-month__m">' + window._ctrl.year + '</div>' +
-    '<div class="cx-month__s">Stand ' + cxFmtDate(cxToday()) + '</div></div>' +
-    '<button class="cx-arw" data-cx="ynext" aria-label="Nächstes Jahr"><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
-}
-
 /* ══════════════════════════════════════════════════════════════
    DASHBOARD v2 (Oct 2026) — one question: what is freely available?
    · only switch: Monat | Jahr
@@ -88,21 +70,6 @@ function _cxPeriodBar(isYear) {
    ══════════════════════════════════════════════════════════════ */
 
 /* How many one-off bills / refunds and Abrechnungen results fall in the period (dashboard tiles) */
-function _cxDashCounts(props, months) {
-  const y = window._ctrl.year, ids = new Set(props.map(p => p.id)), ms = new Set(months);
-  const c = { bills: 0, refunds: 0, weg: 0, nk: 0 };
-  for (const o of (window._ctrl.one_time || [])) {
-    if (!ids.has(Number(o.property_id))) continue;
-    const d = ctlParseDate(o.invoice_date);
-    if (d.year !== y || !ms.has(d.month)) continue;
-    if (!ctlPropOwned(ctlProp(Number(o.property_id)), y, d.month)) continue;   // before the purchase
-    if (o.kind === 'Kaufnebenkosten') continue;                   // part of the purchase, not the cashflow
-    if (CX_ABR_KINDS.includes(o.kind)) { if (o.kind === 'NK-Abrechnung') c.nk++; else c.weg++; }
-    else if (Number(o.direction) === 1) c.refunds++;
-    else c.bills++;
-  }
-  return c;
-}
 
 /* One property over some months (all Ist values; loans from Properties) */
 function _cxDashProp(p, months) {
@@ -164,108 +131,11 @@ function _cxDashSum(list) {
 }
 
 /* The calculation: Kalt | Warm, three results */
-function _cxDashCalc(t, note, month) {
-  const D = '\u2014', n = v => cxW(v);                     // always with €
-  const st = (l, k, w) => '<div class="cxd-tr cxd-st"><span>' + l + '</span><span>' + k + '</span><span>' + w + '</span></div>';
-  const res = (l, sub, k, w, fin) => '<div class="cxd-tr cxd-res' + (fin ? ' cxd-fin' : '') + '"><span>' + l + (sub ? '<small>' + sub + '</small>' : '') + '</span>' +
-    '<span' + (k < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(k) + '</span><span' + (w < 0 ? ' style="color:var(--cx-neg)"' : '') + '>' + n(w) + '</span></div>';
-  return '<div class="cxd-tbl">' +
-    '<div class="cxd-tr cxd-th"><span></span><span>KALT<small>without NK</small></span><span>WARM<small>incl. NK</small></span></div>' +
-    st('Rent', n(t.kalt), n(t.warm)) +
-    st('\u2212 Hausgeld, house costs', D, n(t.kosten)) +
-    st('\u2212 Kreditraten', n(t.rate), n(t.rate)) +
-    res('Running cashflow', 'before one-offs & Abrechnungen', t.lfKalt, t.lfWarm) +
-    (month
-      // Month: one-offs & Abrechnungen only for info — the month's cashflow is the running one
-      ? '<div class="cxd-tr cxd-st cxd-info"><span>\u2212 One-offs<em>Info \u00b7 not counted</em></span><span>' + n(t.einmalig) + '</span><span>' + n(t.einmalig) + '</span></div>' +
-        '<div class="cxd-tr cxd-st cxd-info"><span>\u00b1 Abrechnungen<em>Info \u00b7 not counted</em></span><span>' + D + '</span><span>' + cxWS(t.abr) + '</span></div>' +
-        res('Cashflow', 'this month = running cashflow', t.lfKalt, t.lfWarm, true)
-      : st('\u2212 One-offs', n(t.einmalig), n(t.einmalig)) +
-        res('After one-offs', '', t.eiKalt, t.eiWarm) +
-        st('\u00b1 Abrechnungen', D, (t.abr > 0 ? '+ ' : t.abr < 0 ? '\u2212 ' : '') + n(Math.abs(t.abr))) +
-        res('Cashflow', 'after everything', t.freiKalt, t.freiWarm, true)) +
-  '</div>' + (note ? '<div class="cxd-tnote">' + note + '</div>' : '');
-}
 
 /* ── Calculation sheet (tap on the Cashflow number) ─────────────
    Full-screen drawer: Rentals · Casa Castel · Total. Month: one-offs and
    Abrechnungen only for info (the cashflow is the running one); Year:
    both counted. Same layout for both, only values change. */
-function _cxCalcClose() {
-  const el = document.getElementById('cxd-calc');
-  if (!el || !el.classList.contains('open')) return;
-  el.classList.remove('open');
-  document.body.style.overflow = '';
-  const b = document.querySelector('[data-cx="calc"]');
-  if (b) b.focus();
-}
-function _cxCalcSheet(o) {
-  if (!o) return;
-  let el = document.getElementById('cxd-calc');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'cxd-calc';
-    el.className = 'ct-drawer';
-    el.setAttribute('role', 'dialog');
-    el.setAttribute('aria-modal', 'true');
-    el.setAttribute('aria-labelledby', 'cxd-calc-t');
-    el.addEventListener('click', ev => {
-      const b = ev.target.closest('[data-cxs]');
-      if (!b) return;
-      if (b.dataset.cxs === 'close') return _cxCalcClose();
-      if (b.dataset.cxs === 'toProps') { location.href = 'properties.html'; }
-    });
-    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') _cxCalcClose(); });
-    document.body.appendChild(el);
-  }
-  const month = !o.isYear, cols = [o.ren, o.casa, o.tot];
-  const sgn = v => (v < -0.004 ? ' neg' : v > 0.004 ? ' pos' : '');
-  const lab = (l, sub, info) => '<span class="cxs-l"><span>' + l + '</span>' +
-    (sub ? '<small>' + cxEsc(sub) + '</small>' : '') + (info ? '<em>Info \u00b7 not counted</em>' : '') + '</span>';
-  const plain = (l, sub, k) => '<div class="cxs-tr">' + lab(l, sub) +
-    cols.map(c => '<span class="cxs-v">' + cxW(c[k]) + '</span>').join('') + '</div>';
-  const cost = (l, sub, f, info) => '<div class="cxs-tr' + (info ? ' cxs-info' : '') + '">' + lab(l, sub, info) +
-    cols.map(c => { const v = f(c); return '<span class="cxs-v' + (info ? '' : sgn(v)) + '">' + cxWS(v) + '</span>'; }).join('') + '</div>';
-  const res = (l, sub, k, fin, fmt) => '<div class="cxs-tr cxs-res' + (fin ? ' cxs-fin' : '') + '">' + lab(l, sub) +
-    cols.map(c => '<span class="cxs-v' + (c[k] < -0.004 ? ' neg' : '') + '">' + (fmt || cxWS)(c[k]) + '</span>').join('') + '</div>';
-  const t = o.tot, cnt = o.cnt;
-  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
-  const rateSub = t.rate ? ['Zinsen ' + cxW(t.zins), 'Tilgung ' + cxW(t.tilg), t.unknown ? cxW(t.unknown) + ' not split' : ''].filter(Boolean).join(' \u00b7 ') : '';
-  const oneSub = [cnt.bills ? plural(cnt.bills, 'bill', 'bills') : '', cnt.refunds ? plural(cnt.refunds, 'refund', 'refunds') : ''].filter(Boolean).join(' \u00b7 ');
-  const abrN = cnt.weg + cnt.nk;
-  const abrSub = abrN ? [cnt.weg ? cnt.weg + ' WEG' : '', cnt.nk ? cnt.nk + ' NK' : ''].filter(Boolean).join(' \u00b7 ') + (abrN === 1 ? ' result' : ' results') : '';
-  const th = '<div class="cxs-tr cxs-th"><span>How it adds up</span><span>Rentals</span><span>Casa<br>Castel</span><span class="cxs-tot">Total</span></div>';
-  const hint = t.noSplit ? '<button class="cxd-hint" data-cxs="toProps">' + t.noSplit + (t.noSplit === 1 ? ' loan' : ' loans') +
-    ' without Zinsen/Tilgung \u00b7 add in Properties \u203a</button>' : '';
-  const note = month
-    ? 'One-offs and Abrechnungen are shown for info only \u2014 they count in the Year view. Only booked amounts count; Kaution and Kaufnebenkosten stay out.'
-    : 'Only booked amounts count; Kaution and Kaufnebenkosten stay out. Abrechnungen count in the month they were paid or received.';
-  el.innerHTML =
-    '<div class="ct-drawer__hdr"><span class="ct-drawer__ttl" id="cxd-calc-t">' + cxEsc(o.title) + '</span>' +
-      '<button class="ct-drawer__close" data-cxs="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>' +
-    '<div class="ct-drawer__body"><div class="cxs-wrap">' +
-      '<div class="cxs-hero"><div class="cxd-hero__l">' + cxEsc(o.label) + '</div>' +
-        '<div class="cxs-hero__v' + (o.hero < 0 ? ' neg' : '') + '">' + cxWS(o.hero) + '</div></div>' +
-      '<div class="cx-card cxs-card">' + th +
-        plain('Kaltmiete', '', 'kalt') +
-        plain('+ Nebenkosten', 'paid by tenants', 'nk') +
-        res('Warmmiete', '', 'warm', false, cxW) +
-        cost('\u2212 Hausgeld / house costs', '', c => -c.kosten) +
-        cost('\u2212 Kreditraten', rateSub, c => -c.rate) +
-        res('Running cashflow', 'Warmmiete \u2212 running costs', 'lfWarm') +
-        cost('\u2212 One-offs', oneSub, c => -c.einmalig, month) +
-        cost('\u00b1 Abrechnungen', abrSub, c => c.abr, month) +
-        (month ? res('= Cashflow', 'this month = running cashflow', 'lfWarm', true)
-               : res('= Cashflow', 'after one-offs & Abrechnungen', 'freiWarm', true)) +
-      '</div>' + hint +
-      '<div class="cxd-tnote">' + note + '</div>' +
-    '</div></div>';
-  el.classList.add('open');
-  document.body.style.overflow = 'hidden';
-  const x = el.querySelector('.ct-drawer__close');
-  if (x) x.focus();
-
-}
 
 /* The property rows bring their own styles, so they look right even if an
    older controlling-ui.js is still cached */
