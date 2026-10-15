@@ -750,7 +750,7 @@ function _srLetterData(c, it, rec, x, ts) {
     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
     objekt: [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort].filter(Boolean).join(', '),
     footer: apt.adresse ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '') : (apt.plz_ort || ''),
-    ort: apt.unterschrift_ort || '',
+    ort: apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''),   // the city of the property
     vermieter: s.vermieter_name || '', sender,
     bank: { inhaber: s.kontoinhaber || '', bank: s.bankname || '', iban: s.iban || '', bic: s.bic || '' },
     names: _srTNames(t), addr: String(addr || '').split('\n').map(z => z.trim()).filter(Boolean),

@@ -105,7 +105,7 @@ function _buildRentalMietvertragData(room, s, {
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    room.gerichtsstand    || '',
-    unterschriftOrt:  room.unterschrift_ort || (s && s.unterschrift_ort) || '',   // Oct 2026: else Profile › Unterzeichnung
+    unterschriftOrt:  room.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(room.plz_ort) : ''),   // card, else the city of the property (never the Profile)
     energieklasse:     room.energieklasse     || '',
     endenergiebedarf:  room.endenergiebedarf  || '',
     energieausweisart: room.energieausweisart || '',

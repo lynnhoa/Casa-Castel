@@ -1577,7 +1577,8 @@ async function mtSbOpen() {
   Object.assign(f, {
     ready: true, room,
     mieter: c.report_mieter || auto, mieterAuto: !c.report_mieter,
-    ort: c.report_ort || S.unterschrift_ort || (apt && apt.unterschrift_ort) || '',
+    // signing place = the city of the property: Casa Castel → Profile › Unterzeichnung; apartments → their card, else their city
+    ort: c.report_ort || (casa ? S.unterschrift_ort : ((apt && apt.unterschrift_ort) || (apt && typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''))) || '',
     dringend: c.report_dringend || '', anlagen: c.report_anlagen || '',
     photosOn: mtSbPhotos(c).length > 0, busy: false, done: '',
   });

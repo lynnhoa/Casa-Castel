@@ -109,7 +109,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     objektAdresse:   apt.adresse     || '',
     objektPLZOrt:    apt.plz_ort     || '',
     gerichtsstand:   apt.gerichtsstand || '',
-    unterschriftOrt: apt.unterschrift_ort || (s && s.unterschrift_ort) || '',   // Oct 2026: else Profile › Unterzeichnung
+    unterschriftOrt: apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''),   // card, else the city of the property (never the Profile)
     footerAdresse:   apt.adresse
                        ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '')
                        : (apt.plz_ort || ''),

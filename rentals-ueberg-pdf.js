@@ -7,7 +7,7 @@
    Data sources:
      - Vermieter          → appSettings (shared with Casa Castel)
      - Adresse / Objekt   → apt.adresse + apt.plz_ort (per card)
-     - Unterzeichnungsort → apt.unterschrift_ort (per card)
+     - Unterzeichnungsort → apt.unterschrift_ort (per card), else the city of apt.plz_ort
      - Zählerstände       → apt.zaehler[] (per card, dynamic rows)
      - Schlüssel          → apt.schlussel (per card)
      - Inventar           → apt.inventar[] (per card)
@@ -100,8 +100,8 @@ function _aptCollectUebergData(apt, isEinzug) {
     // Vermieter from shared settings
     vermieter:       s.vermieter_name || '',
     vermieterAdresse: s.vermieter_adresse || '',
-    // Unterzeichnungsort from card → shared settings → default (same chain as Mietvertrag)
-    unterschriftOrt: apt.unterschrift_ort || s.unterschrift_ort || 'Wiesbaden',
+    // Unterzeichnungsort from the card, else the city of the property (never the Profile)
+    unterschriftOrt: apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''),
     unterzeichnungsDatum: fmtDate(sigVal),
     // Mieter from form
     mieterName:   document.getElementById('apt-ub-mieter-name')?.value.trim() || '',

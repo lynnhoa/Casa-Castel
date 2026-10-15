@@ -179,7 +179,7 @@ function _fieldsFor(section, s) {
     { key: 'objekt_adresse',   label: 'Adresse' },
     { key: 'objekt_plz_ort',   label: 'PLZ / Ort' },
     { key: 'gerichtsstand',    label: 'Gerichtsstand' },
-    { key: 'unterschrift_ort', label: 'Unterzeichnung' },
+    { key: 'unterschrift_ort', label: 'Unterzeichnung (Casa Castel)' },
   ];
   if (section === 'bank') return [
     { key: 'kontoinhaber', label: 'Kontoinhaber' },

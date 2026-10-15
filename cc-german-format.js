@@ -637,3 +637,16 @@ html input.cc-cal { cursor:pointer; caret-color:transparent; }
   if (document.body) scan(document.body);
   document.addEventListener('DOMContentLoaded', () => scan(document.body));
 })();
+
+
+/* ── Signing place (Unterzeichnungsort) of a property = its city ─────────────
+   "55118 Mainz" → Mainz · "55122 Mainz-Gonsenheim" → Mainz ·
+   "55246 Mainz-Kostheim" / Mainz-Kastel / Mainz-Amöneburg → Wiesbaden (they belong to Wiesbaden).
+   Used when an apartment card has no Unterzeichnungsort; Casa Castel uses Profile › Unterzeichnung. */
+function ccPlaceOf(plzOrt) {
+  const city = String(plzOrt || '').replace(/^\s*\d{4,5}\s*/, '').split(',')[0].trim();
+  if (!city) return '';
+  if (/^mainz-(kastel|kostheim|am(ö|oe)neburg)\b/i.test(city)) return 'Wiesbaden';
+  const m = city.match(/^(mainz|wiesbaden)-/i);
+  return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() : city;
+}

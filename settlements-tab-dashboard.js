@@ -628,7 +628,10 @@ async function sdLetterData(d) {
   const objekt = casa ? (d.former ? 'das ehemalige Zimmer' : 'das Zimmer') + (d.unit_label ? ' „' + d.unit_label + '“ in der Casa Castel' : ' in der Casa Castel')
     : (d.former ? 'die ehemalige Wohnung' : 'die Wohnung') + (addr[0] ? ' ' + addr[0] : '');
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
-  const ort = s.unterschrift_ort || ((String(s.vermieter_adresse || '').match(/\d{5}\s+([^,\n]+)/) || [])[1] || '').trim();
+  // signing place = the city of the property: Casa Castel → Profile › Unterzeichnung; apartments → their card, else their city
+  const ort = casa || !p
+    ? (s.unterschrift_ort || ((String(s.vermieter_adresse || '').match(/\d{5}\s+([^,\n]+)/) || [])[1] || '').trim())
+    : (apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''));
   const date = d.letter_date || cxToday(), due = new Date(date + 'T12:00:00Z'); due.setUTCDate(due.getUTCDate() + (Number(d.due_days ?? 30) || 30));
   const last = String(d.tenant_name || '').split(' ').slice(-1)[0];
   const brand = casa ? 'Casa Castel' : p ? (apt.name || p.name) : (d.title_name || '').trim();

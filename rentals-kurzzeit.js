@@ -140,7 +140,7 @@ function _buildRentalKurzzeitData(apt, s, {
     iban:             s.iban              || '',
     bic:              s.bic               || '',
     gerichtsstand:    apt.gerichtsstand    || '',
-    unterschriftOrt:  apt.unterschrift_ort || (s && s.unterschrift_ort) || '',   // Oct 2026: else Profile › Unterzeichnung
+    unterschriftOrt:  apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''),   // card, else the city of the property (never the Profile)
     mieterName,
     mieterAdresse:      mieterAdr   || '',
     mieterGeburtsdatum: mieterDob   || '',
