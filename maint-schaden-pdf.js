@@ -95,7 +95,7 @@ function mtSbHTML(d) {
       white-space:pre-wrap; word-break:break-word; }
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
 
-    .sig-block { margin-top:26px; display:flex; justify-content:space-between; }
+    .sig-block { margin-top:60px; display:flex; justify-content:space-between; }   /* two lines further from the text above */
     .sig-col { width:44%; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:400; color:#4a4540; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:92px; }   /* room to sign between "Ort, Datum" and the line (as in the Übergabeprotokoll) */
@@ -167,13 +167,7 @@ function mtSbHTML(d) {
       <div class="sig-col">
         <div class="sig-prefill">${esc([d.ort, d.datum || d.stand].filter(Boolean).join(', '))}</div><div class="sig-write-gap"></div>
         <hr class="sig-line"/>
-        <div class="sig-role">Ort, Datum</div>
-      </div>
-      <div class="sig-col">
-        <div class="sig-prefill">&nbsp;</div><div class="sig-write-gap"></div>
-        <hr class="sig-line"/>
-        <div class="sig-role">${esc(['Eigentümer', d.einheit].filter(Boolean).join(' · '))}</div>
-        <div class="sig-name">${esc([d.vermieter, d.kontakt].filter(Boolean).join(' · '))}</div>
+        <div class="sig-role">Unterschrift</div>
       </div>
     </div>`;
   const page = (n, inner) => `
