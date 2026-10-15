@@ -21,6 +21,8 @@ document.getElementById('tab-lounge').innerHTML = `
     <span class="l-notice-text" id="notice-strip-text"></span>
   </div>
 
+  ${window.ccGuidesRowHTML ? ccGuidesRowHTML('mob') : ''}
+
   <div class="l-chat">
     <div class="l-chat-hdr">
       <span class="l-chat-lbl">House chat</span>
@@ -44,6 +46,8 @@ document.getElementById('tab-lounge').innerHTML = `
         </div>
         <div id="ann-list-desktop"><p class="cc-note" style="padding:4px 0;">No announcement yet.</p></div>
       </div>
+
+      ${window.ccGuidesRowHTML ? ccGuidesRowHTML('dsk') : ''}
 
     </div><!-- /.l-desktop-left -->
 
