@@ -50,6 +50,11 @@
                · D7: Anlagen fill themselves — photos + everything in Documents; "Document"
                  also takes videos (≤ 50 MB, with their length) and e-mails (PDF / screenshot)
                · the row's photos / PDFs are documents linked to the row (cost_id)
+               · D8: before a receipt / return is booked, Controlling is checked for a line
+                 you typed by hand (same property + amount, ±7 days) → "Link to it" (that
+                 line becomes the receipt's line: no double cost; it comes back as you typed
+                 it when the receipt is deleted or not booked) · "Book separately" (asked once)
+                 · "Don't book". Self-bought "Shop" = the Geschäft in Controlling.
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
                          (shrunk to 2000 px + a small preview in /thumbs/)
@@ -101,7 +106,7 @@ const MT_DOC = {
   receipt:        { label: 'Receipt',        icon: 'ti-receipt' },      // file of a cost row
 };
 const MT_COST = {
-  self:     { label: 'Self-bought', who: 'Brand' },
+  self:     { label: 'Self-bought', who: 'Shop' },
   provider: { label: 'Provider',    who: 'Provider' },
 };
 const MT_DOC_ORDER = ['schadenbericht', 'angebot', 'rechnung', 'email', 'other', 'video', 'photo'];
@@ -626,7 +631,8 @@ async function mtDelete() {
   const parts = [k ? `${k} receipt${k === 1 ? '' : 's'}` : '', n ? `${n} file${n === 1 ? '' : 's'}` : ''].filter(Boolean);
   const ok = await mtConfirm({
     title: 'Delete this entry?',
-    text: `"${c.title}"${parts.length ? ' and its ' + parts.join(' and ') : ''} will be deleted for good.`,
+    text: `"${c.title}"${parts.length ? ' and its ' + parts.join(' and ') : ''} will be deleted for good.` +
+      mtCtrlNote(MT.costs.filter(r => String(r.case_id) === String(c.id))),
     ok: 'Delete', danger: true,
   });
   if (!ok) return;
@@ -1238,6 +1244,7 @@ function mtCostFormHTML(f) {
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
           ? '<p class="mt-hint">This entry is not booked in Controlling.</p>'
           : `<label class="mt-chk"><input type="checkbox" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/><span>Book in Controlling</span></label>`}</div>`}
+        ${!f.isNew && mtCostById(f.id) && mtCostById(f.id).link_ot && !caseOff ? '<p class="mt-hint mt-f--full">Linked to the line you typed in Controlling — it counts once.</p>' : ''}
       </div>
       <div class="cc-sec-foot">
         ${left ? `<span class="is-left mt-foot-l">${left}</span>` : ''}
@@ -1341,6 +1348,40 @@ function mtCostCancel() {
   mtRenderPanel();
 }
 
+/* D8 · Controlling lines you typed by hand that may be this receipt / return:
+   same property, same amount to the cent, ±7 days, not from Maintenance or Settlements */
+const MT_CTRL_SKIP = ['Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung', 'NK-Abrechnung'];
+const mtAddDays = (iso, n) => { const d = new Date(String(iso).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+async function mtCtrlMatches(pid, amount, day, isRet) {
+  try {
+    const r = await _ctlSupa.from('ctrl_expense_one_time')
+      .select('id,item,company,amount,invoice_date,direction,kind,source_ref,maint_cost_id')
+      .eq('property_id', pid).is('maint_cost_id', null)
+      .gte('invoice_date', mtAddDays(day, -7)).lte('invoice_date', mtAddDays(day, 7));
+    if (r.error) return [];
+    const far = o => Math.abs(Date.parse(String(o.invoice_date).slice(0, 10)) - Date.parse(day));
+    return (r.data || []).filter(o => Math.abs((Number(o.amount) || 0) - amount) < 0.005
+        && !/^(maint|abr):/.test(String(o.source_ref || '')) && !MT_CTRL_SKIP.includes(o.kind)
+        && (isRet ? Number(o.direction) === 1 : Number(o.direction) !== 1))
+      .sort((a, b) => far(a) - far(b)).slice(0, 2);
+  } catch (e) { return []; }
+}
+/* Is this cost row booked in Controlling? (entry switch · its own / its receipt's switch · amount · property) */
+function mtBooked(r) {
+  const c = mtCase(r.case_id);
+  if (!c || c.book_ctrl === false || !(Number(r.amount) > 0) || !mtProp(c.property_id)) return false;
+  if (!r.return_of) return r.book_ctrl !== false;
+  const p = mtCostById(r.return_of);
+  return !!p && p.book_ctrl !== false;
+}
+/* "… Its 2 lines in Controlling go too — a line you linked comes back as you typed it." */
+function mtCtrlNote(rows) {
+  const b = rows.filter(mtBooked), n = b.length;
+  if (!n) return '';
+  const linked = b.some(r => r.link_ot);
+  return ` ${n === 1 ? 'Its line' : 'Its ' + n + ' lines'} in Controlling ${n === 1 ? 'goes' : 'go'} too${linked ? ' — a line you linked comes back as you typed it' : ''}.`;
+}
+
 /* Receipt / slip no. already used (anywhere) → where */
 function mtDupOf(no, selfId) {
   const k = String(no || '').trim().toLowerCase();
@@ -1382,6 +1423,40 @@ async function mtCostSave() {
     if (!MT.sel || MT.sel.cost !== f) return;                  // the panel changed meanwhile
   }
 
+  // D8 · typed by hand in Controlling already? → link it (one line), book separately, or don't book
+  let pick = null;
+  const prev = f.isNew ? null : mtCostById(f.id);
+  const willBook = c.book_ctrl !== false && (ret ? parent.book_ctrl !== false : f.book_ctrl !== false) && amount > 0 && !!mtProp(c.property_id);
+  if (willBook && !(prev && (prev.link_ot || prev.ctrl_dup_ok))) {
+    if (f._chk) return;
+    f._chk = true;
+    let v;
+    try {
+      const cands = await mtCtrlMatches(c.property_id, amount, f.cost_date, ret);
+      if (!MT.sel || MT.sel.cost !== f) return;
+      if (!cands.length) v = 'none';
+      else {
+        const line = o => [o.item, o.company, (Number(o.direction) === 1 ? '+' : '\u2212') + mtEur(o.amount), mtDate(String(o.invoice_date).slice(0, 10))].filter(Boolean).join(' · ');
+        v = await mtAsk({
+          title: 'Already in Controlling?',
+          text: `You may have typed this ${ret ? 'return' : 'receipt'} in Controlling already. Link it, so it counts once.`,
+          html: `<ul class="mt-cf__l">${cands.map(o => `<li>${mtEsc(line(o))}</li>`).join('')}</ul>`,
+          buttons: [
+            ...cands.map((o, i) => ({ v: 'L' + o.id, label: cands.length > 1 ? 'Link to the one from ' + mtDate(String(o.invoice_date).slice(0, 10)) : 'Link to it', kind: i ? 's' : 'p' })),
+            { v: 'sep', label: 'Book separately', kind: 's' },
+            ...(ret ? [] : [{ v: 'off', label: "Don't book in Controlling", kind: 's' }]),
+            { v: 'cancel', label: 'Cancel', kind: 's' },
+          ],
+        });
+      }
+    } finally { f._chk = false; }
+    if (!v || v === 'cancel') return;
+    if (!MT.sel || MT.sel.cost !== f) return;
+    if (v === 'sep') pick = { ctrl_dup_ok: true };
+    else if (v === 'off') pick = { book_ctrl: false };
+    else if (v !== 'none') pick = { link_ot: v.slice(1) };
+  }
+
   MT.busy = true;
   const isNew = f.isNew, id = f.id;
   const now = new Date().toISOString();
@@ -1390,6 +1465,7 @@ async function mtCostSave() {
     id, case_id: c.id, kind: ret ? parent.kind : f.kind, receipt_no: String(f.receipt_no).trim() || null, description: String(f.description).trim() || null,
     brand: ret ? null : String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: ret ? parent.id : null,
     book_ctrl: ret ? true : f.book_ctrl !== false,                 // a return follows its receipt
+    ...(pick || {}),
   };
   const kindChanged = !ret && old && old.kind !== row.kind;
   const rets = kindChanged ? mtReturnsOf(id) : [];
@@ -1410,7 +1486,9 @@ async function mtCostSave() {
   if (!r.error && rets.length) r = await mtTry(() => sb.from('maint_costs').update({ kind: row.kind }).eq('return_of', id));
   if (r.error) {
     console.error('[maintenance] cost save failed:', r.error);
-    const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|in_report|taken_at|caption|besichtigung|bitte_hv|report_ort|report_dringend|report_anlagen/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
+    const emsg = String((r.error && (r.error.message || r.error.details)) || '');
+    const d8Missing = /link_ot|ctrl_dup_ok|maint_before|maint_unbook/i.test(emsg);
+    const sqlMissing = d8Missing || /book_ctrl|maint_cost_id/i.test(emsg);
     if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
     else Object.assign(mtCostById(id), old);
     rets.forEach(t => { t.kind = old.kind; });
@@ -1418,7 +1496,7 @@ async function mtCostSave() {
     MT.busy = false;
     if (MT.sel && String(MT.sel.id) === String(c.id)) MT.sel.cost = f;          // the form comes back with what you typed
     mtRefresh(c.id);
-    mtSay(sqlMissing ? 'Not saved: run MAINTENANCE-D3.sql in Supabase first.' : 'Not saved. Check the connection and save again.');
+    mtSay(sqlMissing ? `Not saved: run ${d8Missing ? 'MAINTENANCE-D8.sql' : 'MAINTENANCE-D3.sql'} in Supabase first.` : 'Not saved. Check the connection and save again.');
     return;
   }
 
@@ -1455,7 +1533,7 @@ async function mtCostDelete() {
   const name = ret ? (r0.receipt_no ? 'Slip ' + r0.receipt_no : 'This return') + ' (' + mtNeg(r0.amount) + ')'
                    : (r0.receipt_no ? 'Receipt ' + r0.receipt_no : (r0.description || 'This receipt'));
   const extra = [nRet ? `its ${nRet} return${nRet === 1 ? '' : 's'}` : '', docs.length ? `${docs.length} file${docs.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
-  const ok = await mtConfirm({ title: ret ? 'Delete this return?' : 'Delete this receipt?', text: `${name}${extra ? ' and ' + extra : ''} will be deleted for good.`, ok: 'Delete', danger: true });
+  const ok = await mtConfirm({ title: ret ? 'Delete this return?' : 'Delete this receipt?', text: `${name}${extra ? ' and ' + extra : ''} will be deleted for good.` + mtCtrlNote(rows), ok: 'Delete', danger: true });
   if (!ok) return;
   MT.busy = true;
   MT.costs = MT.costs.filter(x => !rows.includes(x));
@@ -1477,30 +1555,43 @@ async function mtCostDelete() {
   if (paths.length) { try { await sb.storage.from(MT_BUCKET).remove(paths); } catch (e) { console.warn('[maintenance] files not removed:', e); } }
 }
 
-/* ── In-app confirm sheet (instead of confirm()) ─────────────
-   mtConfirm({ title, text, ok, cancel, danger }) → Promise<boolean> */
-function mtConfirm(o) {
+/* ── In-app sheets (instead of confirm()) ───────────────────
+   mtConfirm({ title, text, ok, cancel, danger }) → Promise<boolean>
+   mtAsk({ title, text, buttons: [{ v, label, kind: 'p' | 's' | 'd' }] }) → Promise<v | null> (null = closed) */
+function mtAsk(o) {
   return new Promise(resolve => {
     document.getElementById('mtConfirm')?.remove();
     const h = document.createElement('div');
     h.id = 'mtConfirm';
     h.className = 'mt-cf';
-    h.innerHTML = `<div class="mt-cf__bg" data-v="0"></div>
+    const btns = (o.buttons || []).map((b, i) =>
+      `<button type="button" class="mt-btn mt-btn--${b.kind || 's'}" data-i="${i}">${mtEsc(b.label)}</button>`).join('');
+    h.innerHTML = `<div class="mt-cf__bg" data-x="1"></div>
       <div class="mt-cf__s" role="alertdialog" aria-modal="true" aria-labelledby="mtCfT">
         <p class="mt-cf__t" id="mtCfT">${mtEsc(o.title || 'Are you sure?')}</p>
         ${o.text ? `<p class="mt-cf__x">${mtEsc(o.text)}</p>` : ''}
-        <div class="mt-cf__b">
-          <button type="button" class="mt-btn ${o.danger ? 'mt-btn--d' : 'mt-btn--p'}" data-v="1">${mtEsc(o.ok || 'OK')}</button>
-          <button type="button" class="mt-btn mt-btn--s" data-v="0">${mtEsc(o.cancel || 'Cancel')}</button>
-        </div>
+        ${o.html || ''}
+        <div class="mt-cf__b">${btns}</div>
       </div>`;
     document.body.appendChild(h);
     const done = v => { document.removeEventListener('keydown', key, true); h.remove(); resolve(v); };
-    const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(false); } };
+    const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
     document.addEventListener('keydown', key, true);
-    h.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) { e.stopPropagation(); done(b.dataset.v === '1'); } });
-    setTimeout(() => h.querySelector('[data-v="1"]')?.focus(), 0);
+    h.addEventListener('click', e => {
+      const b = e.target.closest('[data-i], [data-x]');
+      if (!b) return;
+      e.stopPropagation();
+      done(b.dataset.x ? null : o.buttons[Number(b.dataset.i)].v);
+    });
+    setTimeout(() => h.querySelector('.mt-btn--p, .mt-btn--d, .mt-btn')?.focus(), 0);
   });
+}
+async function mtConfirm(o) {
+  const v = await mtAsk({ title: o.title, text: o.text, buttons: [
+    { v: true, label: o.ok || 'OK', kind: o.danger ? 'd' : 'p' },
+    { v: false, label: o.cancel || 'Cancel', kind: 's' },
+  ] });
+  return v === true;
 }
 
 /* ── Schadensbericht (D5) ─────────────────────────────────────

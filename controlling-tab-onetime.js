@@ -70,7 +70,57 @@ function _cxOtYearBar() {
 }
 
 /* Add / edit form (inline) */
+/* D8 · A line from Maintenance: amount, date and text are kept there (shown here, not editable);
+   the NK switch of a Casa Castel cost works exactly like on every other cost */
+const _cxOtIsMaint = o => !!o && typeof window.mtIsMaintLine === 'function' && window.mtIsMaintLine(o);
+function _cxOtMaintFormHTML(o) {
+  const pid = Number(o.property_id), p = (window._ctrl.properties || []).find(x => Number(x.id) === pid);
+  const inn = Number(o.direction) === 1, casa = pid === CASA_PROP_ID;
+  const nk = o._nk !== undefined ? o._nk : !!o.nk_umlage;
+  const kv = (k, v) => (v ? '<div class="cx-ot-mt__kv"><span>' + k + '</span><b>' + cxEsc(v) + '</b></div>' : '');
+  return '<div class="cx-form cx-ot-form cx-ot-form--mt" data-edit="' + cxEsc(o.id) + '">' +
+    '<div class="cx-ot-mt"><span class="cx-pill cx-pill--maint">Maintenance</span>' +
+      '<span class="cx-ot-mt__t">Amount, date and text are changed in Maintenance' + (casa ? ' · the NK switch here' : '') + '.</span></div>' +
+    '<div class="cx-ot-mt__ro">' +
+      kv('Objekt', p ? p.name : '') + kv('Description', o.item) + kv('Company', o.company) +
+      kv(inn ? 'Income' : 'Expense', (inn ? '+\u202f' : '') + cxEur(o.amount)) + kv('Date', cxFmtDate(o.invoice_date)) +
+    '</div>' +
+    '<input type="hidden" id="cxOtProp" value="' + pid + '">' +
+    (casa ? '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +
+        '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
+        '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
+      _cxOtNkCatHTML(o, nk, pid) +
+      '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
+        '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
+      '<button class="cx-link cx-ot-mtlink" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button>'
+    : '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
+        '<button class="cx-btn cx-btn--p" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button></div>') +
+  '</div>';
+}
+async function _cxOtSaveMaint(o, b) {
+  const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
+  const pid = Number(o.property_id);
+  const nkOn = o._nk !== undefined ? o._nk : !!o.nk_umlage;
+  const nk_umlage = pid === CASA_PROP_ID && !!nkOn;
+  const catV = document.getElementById('cxOtNkCat')?.value || '';
+  const nk_category_id = nk_umlage && catV ? Number(catV) : null;
+  b.disabled = true;
+  try {
+    const saved = await ctlUpdateOneTime(o.id, { nk_umlage, nk_category_id });   // only the NK part — the rest belongs to Maintenance
+    delete o._nk;
+    if (saved) _cxOt.flash = saved.id;
+    _cxOt.form = null; _cxOt.formAt = null;
+    say('Saved');
+  } catch (e) {
+    if (/nk_umlage|nk_category_id/.test(String(e && (e.message || e)))) say('Please run the SQL for the NK cost type first');
+    else cxToastErr(e);
+    b.disabled = false; return;
+  }
+  window.renderOneTime();
+}
+
 function _cxOtFormHTML(o) {
+  if (_cxOtIsMaint(o)) return _cxOtMaintFormHTML(o);
   const props = window._ctrl.properties.filter(p => (p.active && cxAreaOk(p)) || (o && p.id === Number(o.property_id)));
   const pick = [_cxOt.pid, _cxOtLastProp()].find(x => x && props.some(p => p.id === Number(x)));   // stays inside Rentals / Casa Castel
   const pid = o ? Number(o.property_id) : (Number(pick) || (props[0] && props[0].id));
@@ -304,6 +354,12 @@ window.renderOneTime = function () {
       if (a === 'otMore') { const k = b.dataset.k; _cxOt.more[k] = (_cxOt.more[k] || 20) + 20; return window.renderOneTime(); }
       if (a === 'otMonth') { const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
       if (a === 'otEdit') { if (!_cxOtClose()) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
+      if (a === 'otMaint') {                                                      // D8: that entry, at that receipt
+        const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(b.dataset.id));
+        if (!o || !_cxOtClose()) return;
+        location.href = 'maintenance.html#cost=' + encodeURIComponent(o.maint_cost_id || String(o.source_ref || '').replace(/^maint:/, ''));
+        return;
+      }
       if (a === 'otCancel') { if (_cxOtClose()) window.renderOneTime(); return; }
       if (a === 'otKind') {
         _cxOt.kind = b.dataset.v;
@@ -355,6 +411,9 @@ function _cxOtOpen(form, pid) {
 function _cxOtDirty() {
   if (_cxOt.form === null) return false;
   const g = id => document.getElementById(id);
+  const om = _cxOtEditing();
+  if (_cxOtIsMaint(om)) return (om._nk !== undefined && om._nk !== !!om.nk_umlage) ||
+    (!!g('cxOtNkCat') && String(g('cxOtNkCat').value || '') !== String(om.nk_category_id || ''));
   if (!g('cxOtAmt')) return false;
   const o = _cxOtEditing();
   const amt = g('cxOtAmt').value.trim(), text = (g('cxOtText')?.value || '').trim(), co = (g('cxOtCompany')?.value || '').trim();
@@ -390,6 +449,7 @@ function _cxOtKeep(fn) {
 }
 
 async function _cxOtSave(b) {
+  if (_cxOtIsMaint(_cxOtEditing())) return _cxOtSaveMaint(_cxOtEditing(), b);
   const g = id => document.getElementById(id);
   const amt = cxParse(g('cxOtAmt')?.value);
   const text = (g('cxOtText')?.value || '').trim();
