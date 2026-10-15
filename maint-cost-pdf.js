@@ -185,7 +185,7 @@ async function mtCpMake(btn, build) {
   if (MT.pdfBusy) return;
   MT.pdfBusy = true;
   const keep = btn ? btn.innerHTML : '';
-  if (btn) { btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true'); btn.innerHTML = '<span class="mt-spin" aria-hidden="true"></span>PDF'; }
+  if (btn) { btn.classList.add('is-busy'); btn.setAttribute('aria-busy', 'true'); btn.innerHTML = '<span class="mt-spin" aria-hidden="true"></span>' + mtEsc(btn.dataset.label || 'PDF'); }
   let box = null, fix = null;
   try {
     await mtSbLibs();
