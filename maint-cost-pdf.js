@@ -209,7 +209,7 @@ async function mtCpMake(btn, build) {
     fix = document.createElement('style');
     fix.textContent = 'body > div[style*="visibility: hidden"] > img { display:inline !important; }';
     document.head.appendChild(fix);
-    const pdf = await ccRenderPagesToPdf(box, { strict: true });
+    const pdf = await ccRenderPagesToPdf(box, { strict: true, only: true });
     if (btn) { btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); btn.innerHTML = keep; }
     await ccOpenPdf(pdf, d.fileName);
   } catch (e) {
@@ -284,7 +284,7 @@ async function mtBelegPdf(files, c, no) {
     await document.fonts.ready;
     await Promise.all([...box.querySelectorAll('img')].map(i => (i.decode ? i.decode().catch(() => {}) : null)));
     await new Promise(r => setTimeout(r, 150));
-    const pdf = await ccRenderPagesToPdf(box, { strict: false });
+    const pdf = await ccRenderPagesToPdf(box, { strict: false, only: true });
     return pdf.output('blob');
   } finally { box.remove(); }
 }

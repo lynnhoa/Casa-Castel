@@ -2555,9 +2555,14 @@ async function mtSbMake() {
     const fix = document.createElement('style');
     fix.textContent = 'body > div[style*="visibility: hidden"] > img { display:inline !important; }';
     document.head.appendChild(fix);
+    /* D25: each page's hidden copy holds only that page (not the app, its thumbnails or other pages' photos),
+       the line says "Building page 2 of 4", and every page has its own limit of 45 s */
+    const PAGE_SEC = 45, nPg = box.querySelectorAll('.pdf-page').length;
     let pdf;
-    try { pdf = await limit(ccRenderPagesToPdf(box, { strict: true }), 180, 'pages'); }
-    finally { fix.remove(); }
+    try {
+      pdf = await limit(ccRenderPagesToPdf(box, { strict: true, only: true, pageSec: PAGE_SEC,
+        onPage: (k, n) => status(`Building page ${k} of ${n}`) }), 30 + PAGE_SEC * (nPg + 2), 'pages');
+    } finally { fix.remove(); }
     step = 'save'; status('Saving the PDF');
     const blob = await limit(mtSbMerge(pdf.output('blob'), f.att), 60, 'attachments');   // the Anlagen PDFs at the end
     const path = await limit(mtSbStore(c, blob, `${kl} ${f.reportNo} Stand ${d.stand}.pdf`, rb ? 'renovierungsbericht' : 'schadenbericht'), 90, 'save');
@@ -2580,6 +2585,7 @@ async function mtSbMake() {
     stop(MT.sbStoreHint
       || (/did not fit/.test(m) ? m
       : m === 'fields' ? ''                                      // its own message was shown already
+      : /^timeout:page:/.test(m) ? `Building page ${m.split(':')[2]} of ${m.split(':')[3]} took too long. Close the app fully, reopen it and try again.`
       : /^timeout:/.test(m) ? `Creating the PDF took too long (${STEP[m.slice(8)] || 'working'}). Check the connection and try again.`
       : /photo/i.test(m) ? 'A photo could not be loaded. Check the connection and try again.'
       : 'The report could not be created. Check the connection and try again.'));

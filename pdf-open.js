@@ -30,7 +30,7 @@
       (cleared on Cancel / logout) and restored if the app ever restarts.
 
    Public API:
-     ccRenderPagesToPdf(container)   → jsPDF (one render per .pdf-page)
+     ccRenderPagesToPdf(container, opts) → jsPDF (one render per .pdf-page; opts: strict, only, onPage, pageSec)
      ccOpenPdf(pdfOrBlob, filename)  → opens the PDF as described above
      ccOpenUrl(url, label)           → opens an existing (signed) link
      ccDraftAutoSave(key, root, metaFn) / ccDraftGet(key)
@@ -70,8 +70,16 @@ function ccPdfSafeName(name) {
 
 /* ── RENDER ─────────────────────────────────────────────────
    Every .pdf-page (794×1123 px) becomes one A4 page. One render per
-   page at 2× (≈190 dpi, sharp in print) and each canvas is released
-   straight away — the old code rendered twice at up to 3×.       */
+   page at 3× (sharp in print) and each canvas is released straight away.
+   Options (D25, used by Maintenance — other apps are unchanged):
+     only: true   → the hidden copy html2canvas makes for a page holds just that
+                    page: not the app around it (pop-ups, thumbnails, lists) and no
+                    other page's photos. html2canvas makes a fresh copy for EVERY
+                    page and, on the iPhone, waits until every image in it has loaded
+                    again, with no time limit — with the whole app copied that was all
+                    thumbnails + all photos, again for each page (very slow, or stuck).
+     onPage(k, n) → called before page k of n is rendered (status line)
+     pageSec      → time limit per page → Error('timeout:page:k:n')            */
 async function ccRenderPagesToPdf(container, opts = {}) {
   _ccBlankOutBroken(container);
   try { await ccFlowPages(container); } catch (e) { console.warn('[pdf] page flow skipped:', e); }
@@ -94,14 +102,40 @@ async function _ccRender(pages, opts) {
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   for (let i = 0; i < pages.length; i++) {
     if (i > 0) pdf.addPage();
-    const canvas = await html2canvas(pages[i], {
+    if (typeof opts.onPage === 'function') { try { opts.onPage(i + 1, pages.length); } catch (e) {} }
+    const shot = html2canvas(pages[i], {
       scale: opts.scale || 3, useCORS: true, backgroundColor: '#ffffff',   // 3× = sharp print (was 2×)
       width: 794, height: 1123, windowWidth: 794,
+      ...(opts.only ? { ignoreElements: _ccOnlyThisPage(pages[i]) } : {}),
     });
+    const canvas = opts.pageSec ? await _ccPageLimit(shot, opts.pageSec, i + 1, pages.length) : await shot;
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);   // was 0.85
     canvas.width = 0; canvas.height = 0;   // free the memory right away
   }
   return pdf;
+}
+/* only: what the copy of one page keeps — <head>, every <style>/<link> (and what holds it, e.g. the
+   PDF's own <style> in the box), the page itself and its ancestors. Other pages stay as empty blocks
+   (same layout, none of their photos); everything else of the app is left out. html2canvas places the
+   page by where it sits in the copy, so leaving things out cannot shift it. */
+function _ccOnlyThisPage(page) {
+  const body = document.body, keep = new Set();
+  body.querySelectorAll('style, link').forEach(st => { for (let n = st; n && n !== body; n = n.parentElement) keep.add(n); });
+  return el => {
+    if (!body.contains(el) || keep.has(el) || el.contains(page) || page.contains(el)) return false;
+    const pg = el.closest('.pdf-page');
+    return !pg || pg !== el;
+  };
+}
+/* pageSec: one page may take at most `sec` seconds; a stuck copy is removed so it frees its memory */
+function _ccPageLimit(shot, sec, k, n) {
+  let t;
+  return Promise.race([shot, new Promise((_, rej) => {
+    t = setTimeout(() => {
+      document.querySelectorAll('iframe.html2canvas-container').forEach(f => f.remove());
+      rej(new Error(`timeout:page:${k}:${n}`));
+    }, sec * 1000);
+  })]).finally(() => clearTimeout(t));
 }
 
 /* ── AUTOMATIC PAGE FLOW (nothing is cut off) ──────────────
