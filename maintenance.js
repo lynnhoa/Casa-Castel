@@ -795,7 +795,7 @@ function mtDocsHTML(c) {
 
 function mtDocRowHTML(d, ed) {
   const t = MT_DOC[d.doc_type] || MT_DOC.other;
-  const sub = [d.file_name, mtDate(d.doc_date)].filter(Boolean).map(mtEsc).join(' · ');
+  const sub = (d.generated ? [mtDate(d.doc_date)] : [d.file_name, mtDate(d.doc_date)]).filter(Boolean).map(mtEsc).join(' · ');   // a made report: just its date
   return `<div class="mt-dr">
       <button type="button" class="mt-dr__main" data-mt="${ed ? 'fixDoc' : 'openDoc'}" data-id="${mtEsc(d.id)}">
         <span class="mt-di"><i class="ti ${t.icon}" aria-hidden="true"></i></span>
@@ -1852,6 +1852,13 @@ async function mtSbMake() {
     document.body.appendChild(box);
     await document.fonts.ready;
     await new Promise(r => setTimeout(r, 300));
+    // longer than one page → page 2 starts with "Bitte an die Hausverwaltung" (maint-schaden-pdf.js)
+    const c1 = box.querySelector('.pdf-page .content'), last = c1 && c1.lastElementChild;
+    if (last && last.getBoundingClientRect().bottom > c1.getBoundingClientRect().top + c1.clientHeight + 0.5) {
+      d.split = true;
+      box.innerHTML = mtSbHTML(d);
+      await new Promise(r => setTimeout(r, 120));
+    }
     _ccUb['mt-sb'] = { on: photos.length > 0, photos };
     await ccUbAddPhotoPages('mt-sb', box, { sub: 'Schadensbericht · ' + [c.title, d.objektName].filter(Boolean).join(' · ') });
     // casa-castel.css "img { display:block }" moves html2canvas' text-measuring image off the line,

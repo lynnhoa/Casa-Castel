@@ -19,6 +19,8 @@
    03 Vermutete Ursache     04 Sofortmaßnahmen     05 Bitte an die
    Hausverwaltung (apartments)     06 Anlagen      → empty ones are left out
    Ort, Datum · Eigentümer (name, e-mail)
+   Longer than one page (d.split) → page 2 starts with "Bitte an die
+   Hausverwaltung" (else "Anlagen"): page 1 not cramped, page 2 not empty.
 
    Two families, exactly like the other documents:
      d.family 'casa'    → Casa Castel (tab-rooms.js) look
@@ -93,7 +95,7 @@ function mtSbHTML(d) {
       white-space:pre-wrap; word-break:break-word; }
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
 
-    .sig-block { margin-top:26px; display:flex; justify-content:space-between; }
+    .sig-block { margin-top:84px; display:flex; justify-content:space-between; }
     .sig-col { width:44%; }
     .sig-prefill { font-family:'Lato',Georgia,serif; font-size:10px; font-style:italic; font-weight:400; color:#4a4540; margin-bottom:4px; line-height:1.4; }
     .sig-write-gap { height:34px; }
@@ -121,10 +123,8 @@ function mtSbHTML(d) {
   const list = t => `<div class="ul">${points(t).map(x => `<div class="li"><span class="li__b">•</span><span class="li__t">${esc(x)}</span></div>`).join('')}</div>`;
 
   // only the sections that have something to say, numbered in order
-  let n = 0;
-  const sec = (title, first) => `<div class="sec${first ? ' sec--first' : ''}"><span class="sec__n">${String(++n).padStart(2, '0')}</span>${title}</div>`;
   const parts = [];
-  parts.push(sec('Angaben zum Schaden', !d.dringend) +
+  parts.push({ key: 'angaben', title: 'Angaben zum Schaden', body:
     kv('Objekt', d.adresse) +
     kv('Betroffene Einheit', d.einheit) +
     kv('Betroffener Raum', d.raum) +
@@ -133,23 +133,26 @@ function mtSbHTML(d) {
     kv('Besichtigung vor Ort', d.besichtigung) +
     kv('Behoben am', d.behoben) +
     kv('Schadennummer', d.schadennummer) +
-    kv('Polizei-Aktenzeichen', d.polizei));
-  parts.push(sec('Schadensbild') + (points(d.schadensbild).length ? list(d.schadensbild)
-    : '<div style="margin-top:4px;">' + Array(4).fill('<div class="write-line"></div>').join('') + '</div>'));
-  if (String(d.ursache || '').trim()) parts.push(sec('Vermutete Schadensursache') + `<div class="p">${esc(d.ursache)}</div>`);
-  if (points(d.massnahmen).length) parts.push(sec('Durchgeführte Sofortmassnahmen') + list(d.massnahmen));   // caps: ß → SS (html2canvas)
-  if (R && points(d.bitteHv).length) parts.push(sec('Bitte an die Hausverwaltung') + list(d.bitteHv));
-  if ((d.anlagen || []).length) parts.push(sec('Anlagen') + list(d.anlagen.join('\n')));
+    kv('Polizei-Aktenzeichen', d.polizei) });
+  parts.push({ key: 'bild', title: 'Schadensbild', body: points(d.schadensbild).length ? list(d.schadensbild)
+    : '<div style="margin-top:4px;">' + Array(4).fill('<div class="write-line"></div>').join('') + '</div>' });
+  if (String(d.ursache || '').trim()) parts.push({ key: 'ursache', title: 'Vermutete Schadensursache', body: `<div class="p">${esc(d.ursache)}</div>` });
+  if (points(d.massnahmen).length) parts.push({ key: 'massnahmen', title: 'Durchgeführte Sofortmassnahmen', body: list(d.massnahmen) });   // caps: ß → SS (html2canvas)
+  if (R && points(d.bitteHv).length) parts.push({ key: 'ask', title: 'Bitte an die Hausverwaltung', body: list(d.bitteHv) });
+  if ((d.anlagen || []).length) parts.push({ key: 'anlagen', title: 'Anlagen', body: list(d.anlagen.join('\n')) });
 
-  return `<style>${CSS}</style>
-<div class="pdf-page">
-  ${hdr()}
-  ${ftr(1)}
-  <div class="content">
-    <div class="doc-title">${esc(d.titel)}</div>
-    <div class="doc-subtitle">${esc(d.subtitle)}</div>
-    ${d.dringend ? `<div class="alert"><b>Dringend:</b> ${esc(d.dringend)}</div>` : ''}
-    ${parts.join('\n')}
+  // Too long for one page (d.split, measured by maintenance.js) → page 2 starts with
+  // "Bitte an die Hausverwaltung" (else "Anlagen"), so page 1 is not cramped and page 2 not empty
+  let cut = parts.length;
+  if (d.split) {
+    const i = parts.findIndex(x => x.key === 'ask');
+    const j = i >= 0 ? i : parts.findIndex(x => x.key === 'anlagen');
+    if (j > 0) cut = j;
+  }
+  let n = 0;
+  const render = (list, firstOnPage) => list.map((x, k) =>
+    `<div class="sec${k === 0 && firstOnPage ? ' sec--first' : ''}"><span class="sec__n">${String(++n).padStart(2, '0')}</span>${x.title}</div>${x.body}`).join('\n');
+  const sig = `
     <div class="sig-block">
       <div class="sig-col">
         <div class="sig-prefill">${esc([d.ort, d.stand].filter(Boolean).join(', '))}</div><div class="sig-write-gap"></div>
@@ -162,7 +165,21 @@ function mtSbHTML(d) {
         <div class="sig-role">${esc(['Eigentümer', d.einheit].filter(Boolean).join(' · '))}</div>
         <div class="sig-name">${esc([d.vermieter, d.kontakt].filter(Boolean).join(' · '))}</div>
       </div>
-    </div>
-  </div>
+    </div>`;
+  const page = (n, inner) => `
+<div class="pdf-page">
+  ${hdr()}
+  ${ftr(n)}
+  <div class="content">${inner}</div>
 </div>`;
+  const head = `
+    <div class="doc-title">${esc(d.titel)}</div>
+    <div class="doc-subtitle">${esc(d.subtitle)}</div>
+    ${d.dringend ? `<div class="alert"><b>Dringend:</b> ${esc(d.dringend)}</div>` : ''}`;
+  const one = render(parts.slice(0, cut), !d.dringend);
+  const two = cut < parts.length ? render(parts.slice(cut), true) : '';
+
+  return `<style>${CSS}</style>` + (two
+    ? page(1, head + one) + page(2, two + sig)
+    : page(1, head + one + sig));
 }
