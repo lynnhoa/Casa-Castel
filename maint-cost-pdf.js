@@ -226,3 +226,74 @@ function mtPdfEntry(id, btn) {
   if (btn && btn.classList.contains('off')) { mtSay('No receipts in this entry yet.'); return; }
   return mtCpMake(btn, () => mtCpEntryData(c));
 }
+
+/* ─────────────────────────────────────────────────────────────
+   D19 · BELEG PDF — the photos of one receipt as one PDF in the apps' style:
+   beige header (property · Rechnungs-Nr.), "Rechnung", when the photo was taken,
+   the photo below — one page per photo. Plain photo PDF if this fails.
+   ───────────────────────────────────────────────────────────── */
+async function mtBelegPdf(files, c, no) {
+  await mtSbLibs();
+  if (!MT.sbData) await mtSbLoad();
+  const S = (typeof appSettings !== 'undefined' && appSettings) || {};
+  const casa = mtIsCasa(c.property_id), apt = casa ? null : mtSbApt(c);
+  const pages = [];
+  for (const file of files) {
+    const img = await mtImageData(file, 1800, 0.85);
+    if (!img) throw new Error('photo');
+    let t = null;
+    try { if (typeof _ccUbExifTime === 'function') t = await _ccUbExifTime(file); } catch (e) {}
+    const ms = t instanceof Date ? t.getTime() : (typeof t === 'number' && t > 0 ? t : (Date.parse(t) || file.lastModified || Date.now()));
+    pages.push({ img, when: new Date(ms).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' Uhr' });
+  }
+  const d = {
+    family: casa ? 'casa' : 'rentals', wordmark: casa ? 'Casa Castel' : ((apt && apt.name) || mtPropName(c)), no: String(no || '').trim(),
+    footer: casa ? [S.objekt_adresse, S.objekt_plz_ort].filter(Boolean).join(', ') : (apt ? [apt.adresse, apt.plz_ort].filter(Boolean).join(', ') : ''),
+    pages,
+  };
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#fff;z-index:-1;font-size:11.33px;';
+  box.innerHTML = mtBelegHTML(d);
+  document.body.appendChild(box);
+  try {
+    await document.fonts.ready;
+    await Promise.all([...box.querySelectorAll('img')].map(i => (i.decode ? i.decode().catch(() => {}) : null)));
+    await new Promise(r => setTimeout(r, 150));
+    const pdf = await ccRenderPagesToPdf(box, { strict: false });
+    return pdf.output('blob');
+  } finally { box.remove(); }
+}
+function mtBelegHTML(d) {
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const R = d.family === 'rentals';
+  const F = R ? { lbl: 700, ftr: '#c9c2b8' } : { lbl: 400, ftr: '#e8dbc5' };
+  const CSS = `
+    * { margin:0; padding:0; box-sizing:border-box; }
+    .pdf-page { position:relative; width:793.71px; height:1122.52px; background:#ffffff; overflow:hidden; }
+    .hdr { position:absolute; top:0; left:0; right:0; height:83.15px; background:#f0e8da; display:flex; align-items:center; justify-content:space-between; padding:0 80px; }
+    .hdr__wordmark { font-family:'Playfair Display',serif; font-size:26px; font-weight:400; color:#6e5128; letter-spacing:0.05em; line-height:1; }
+    .hdr__room { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+    .hdr__room-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:${F.lbl}; letter-spacing:0.16em; text-transform:uppercase; color:#8a6535; line-height:1; }
+    .hdr__room-name { font-family:'Playfair Display',serif; font-size:12px; font-weight:400; color:#6e5128; line-height:1; }
+    .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
+    .ftr__rule { border:none; border-top:0.5px solid ${F.ftr}; margin-bottom:7px; }
+    .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; color:#6b645c; line-height:1; }
+    .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:90px; overflow:hidden; }
+    .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400; color:#1a1a1a; line-height:1.15; margin-bottom:4px; }
+    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; color:#6b645c; margin-bottom:16px; }
+    .ph { height:780px; display:flex; align-items:flex-start; justify-content:center; }
+    .ph img { display:block; max-width:100%; max-height:100%; object-fit:contain; border:0.5px solid #e6e0d6; }
+  `;
+  const n = d.pages.length;
+  return `<style>${CSS}</style>` + d.pages.map((p, i) => `
+<div class="pdf-page">
+  <div class="hdr"><span class="hdr__wordmark">${esc(d.wordmark)}</span>
+    ${d.no ? `<div class="hdr__room"><span class="hdr__room-label">Rechnungs-Nr.</span><span class="hdr__room-name">${esc(d.no)}</span></div>` : ''}</div>
+  <div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer)}</span><span>${n > 1 ? (i + 1) + ' / ' + n : '1'}</span></div></div>
+  <div class="content">
+    <div class="doc-title">Rechnung</div>
+    <div class="doc-subtitle">Aufgenommen am ${esc(p.when)}</div>
+    <div class="ph"><img src="${p.img.url}" alt=""/></div>
+  </div>
+</div>`).join('');
+}

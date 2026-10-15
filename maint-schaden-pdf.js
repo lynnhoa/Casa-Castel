@@ -122,22 +122,33 @@ function mtSbHTML(d) {
   const points = t => String(t || '').split(/\n+/).map(x => x.replace(/^\s*[-–•*]\s*/, '').trim()).filter(Boolean);
   const list = t => `<div class="ul">${points(t).map(x => `<div class="li"><span class="li__b">•</span><span class="li__t">${esc(x)}</span></div>`).join('')}</div>`;
 
-  // only the sections that have something to say, numbered in order
+  // only the sections that have something to say, numbered in order · D17: points or text per box
+  const S = d.styles || {};
+  const has = t => points(t).length > 0;
+  const txt = (t, st) => (st === 'text' ? `<div class="p">${esc(String(t || '').trim())}</div>` : list(t));
   const parts = [];
-  parts.push({ key: 'angaben', title: 'Angaben zum Schaden', body:
-    kv('Objekt', d.adresse) +
-    kv('Betroffene Einheit', d.einheit) +
-    kv('Betroffener Raum', d.raum) +
-    kv('Schadenstag', d.schadenstag) +
-    kv('Feststellung', d.feststellung) +
-    kv('Besichtigung vor Ort', d.besichtigung) +
-    kv('Behoben am', d.behoben) +
-    kv('Polizei-Aktenzeichen', d.polizei) });
-  parts.push({ key: 'bild', title: 'Schadensbild', body: points(d.schadensbild).length ? list(d.schadensbild)
-    : '<div style="margin-top:4px;">' + Array(4).fill('<div class="write-line"></div>').join('') + '</div>' });
-  if (String(d.ursache || '').trim()) parts.push({ key: 'ursache', title: 'Vermutete Schadensursache', body: `<div class="p">${esc(d.ursache)}</div>` });
-  if (points(d.massnahmen).length) parts.push({ key: 'massnahmen', title: 'Durchgeführte Sofortmassnahmen', body: list(d.massnahmen) });   // caps: ß → SS (html2canvas)
-  if (R && points(d.bitteHv).length) parts.push({ key: 'ask', title: 'Bitte an die Hausverwaltung', body: list(d.bitteHv) });
+  if (d.mode === 'rb') {                                    // Renovierungsbericht
+    parts.push({ key: 'angaben', title: 'Angaben zur Renovierung', body: (d.angaben || []).map(([k, v]) => kv(k, v)).join('') });
+    (d.sections || []).forEach(s2 => {
+      if (s2.kv) { if (s2.kv.length) parts.push({ key: s2.key, title: s2.title, body: s2.kv.map(([k, v]) => kv(k, v)).join('') }); }
+      else if (has(s2.text)) parts.push({ key: s2.key, title: s2.title, body: txt(s2.text, s2.style) });
+    });
+  } else {                                                  // Schadensbericht
+    parts.push({ key: 'angaben', title: 'Angaben zum Schaden', body:
+      kv('Objekt', d.adresse) +
+      kv('Betroffene Einheit', d.einheit) +
+      kv('Betroffener Raum', d.raum) +
+      kv('Schadenstag', d.schadenstag) +
+      kv('Feststellung', d.feststellung) +
+      kv('Besichtigung vor Ort', d.besichtigung) +
+      kv('Behoben am', d.behoben) +
+      kv('Polizei-Aktenzeichen', d.polizei) });
+    parts.push({ key: 'bild', title: 'Schadensbild', body: has(d.schadensbild) ? txt(d.schadensbild, S.schadensbild || 'list')
+      : '<div style="margin-top:4px;">' + Array(4).fill('<div class="write-line"></div>').join('') + '</div>' });
+    if (has(d.ursache)) parts.push({ key: 'ursache', title: 'Vermutete Schadensursache', body: txt(d.ursache, S.ursache || 'text') });
+    if (has(d.massnahmen)) parts.push({ key: 'massnahmen', title: 'Durchgeführte Sofortmassnahmen', body: txt(d.massnahmen, S.massnahmen || 'list') });   // caps: ß → SS (html2canvas)
+    if (R && has(d.bitteHv)) parts.push({ key: 'ask', title: 'Bitte an die Hausverwaltung', body: txt(d.bitteHv, S.bitte_hv || 'list') });
+  }
   if ((d.anlagen || []).length) parts.push({ key: 'anlagen', title: 'Anlagen', body: list(d.anlagen.join('\n')) });
 
   // Too long for one page (d.split, measured by maintenance.js) → page 2 starts with
@@ -154,7 +165,7 @@ function mtSbHTML(d) {
   const sig = `
     <div class="sig-block">
       <div class="sig-col">
-        <div class="sig-prefill">${esc([d.ort, d.stand].filter(Boolean).join(', '))}</div><div class="sig-write-gap"></div>
+        <div class="sig-prefill">${esc([d.ort, d.datum || d.stand].filter(Boolean).join(', '))}</div><div class="sig-write-gap"></div>
         <hr class="sig-line"/>
         <div class="sig-role">Ort, Datum</div>
       </div>
@@ -174,7 +185,7 @@ function mtSbHTML(d) {
   const head = `
     <div class="doc-title">${esc(d.titel)}</div>
     <div class="doc-subtitle">${esc(d.subtitle)}</div>
-    ${d.dringend ? `<div class="alert"><b>Dringend:</b> ${esc(d.dringend)}</div>` : ''}`;
+    ${d.dringend ? `<div class="alert"><b>Dringend:</b> ${S.dringend === 'list' ? list(d.dringend) : esc(d.dringend)}</div>` : ''}`;
   const one = render(parts.slice(0, cut), !d.dringend);
   const two = cut < parts.length ? render(parts.slice(cut), true) : '';
 
