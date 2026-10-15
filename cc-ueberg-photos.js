@@ -277,7 +277,8 @@ async function ccUbAddPhotoPages(key, container, meta = {}) {
     last = pg;
     imgs.push(...pg.querySelectorAll('img'));
   }
-  await Promise.all(imgs.map(img => (img.decode ? img.decode() : Promise.resolve()).catch(() => {})));
+  // wait for the photos to be ready — at most 4 s each (Safari's decode() can hang with several big photos)
+  await Promise.all(imgs.map(img => Promise.race([(img.decode ? img.decode() : Promise.resolve()).catch(() => {}), new Promise(r => setTimeout(r, 4000))])));
   return Math.ceil(total / PER);
 }
 

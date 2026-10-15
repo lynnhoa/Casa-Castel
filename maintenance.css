@@ -464,3 +464,8 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 .mt-askv .mt-cf__b { display:flex; flex-direction:column; gap:8px; margin-top:6px; }
 .mt-move { display:inline-flex; align-items:center; gap:4px; margin-left:12px; font-size:12px; }
 .mt-move i { font-size:14px; }
+
+/* ── D24 · Create PDF: what it is doing right now ── */
+.mt-modal__f .mt-sb__status { margin:0 auto 0 0; font-size:12px; color:var(--cc-taupe); }
+.mt-modal__f .cc-foot-btn.mt-save.is-busy { opacity:.75 !important; }
+.mt-modal__f .cc-foot-btn .mt-spin { width:12px; height:12px; margin-right:6px; vertical-align:-1px; border-color:rgba(255,255,255,.35); border-top-color:#fff; }

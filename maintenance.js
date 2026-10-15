@@ -2159,9 +2159,10 @@ function mtSbFormHTML(c, f) {
         <input class="mt-in" id="mtS-sdate" type="date" value="${mtEsc(f.signDate || ccTodayISO())}"/></div>
     </div></div>
     <div class="mt-modal__f">
+      <p class="mt-sb__status" id="mtSb-status" role="status" hidden></p>
       <span class="cc-foot-right">
         <button type="button" class="cc-foot-btn" data-mt="sbClose"${f.busy ? ' disabled' : ''}>Close</button>
-        <button type="button" class="cc-foot-btn mt-save" id="mtSb-make" data-mt="sbMake" data-cc-pdf="1"${f.busy || up ? ' disabled' : ''}>${f.busy ? 'Creating PDF' : up ? 'Uploading photos' : 'Create PDF'}</button>
+        <button type="button" class="cc-foot-btn mt-save${f.busy ? ' is-busy' : ''}" id="mtSb-make" data-mt="sbMake" data-cc-pdf="1"${f.busy || up ? ' disabled' : ''}>${f.busy ? '<span class="mt-spin" aria-hidden="true"></span>' : ''}${up ? 'Uploading photos' : 'Create PDF'}</button>
       </span>
     </div>`;
 }
@@ -2425,7 +2426,7 @@ function mtSbNextNo(prefix) {
   return `${P}-${y}-${String((n.length ? Math.max(...n) : 0) + 1).padStart(3, '0')}`;
 }
 /* The photos of the report: Renovierung → Vorher first, then Nachher, then the rest (labelled in the PDF) */
-async function mtSbPhotoData(c) {
+async function mtSbPhotoData(c, onStep) {
   const rb = c.kind === 'renovierung', rank = p => (p.phase === 'vorher' ? 0 : p.phase === 'nachher' ? 1 : 2);
   let list = mtSbPhotos(c).filter(x => x.in_report !== false);
   if (rb) list = list.map((p, i) => [p, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
@@ -2433,11 +2434,15 @@ async function mtSbPhotoData(c) {
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     let blob = null;
+    if (onStep) onStep(i + 1, list.length);
     for (let k = 0; k < 2 && !blob; k++) {
-      try { const r = await _ctlSupa.storage.from(MT_BUCKET).download(p.file_path); if (!r.error) blob = r.data; } catch (e) {}
+      try {
+        const r = await Promise.race([_ctlSupa.storage.from(MT_BUCKET).download(p.file_path), new Promise(res => setTimeout(() => res({ error: 'timeout' }), 45000))]);
+        if (!r.error) blob = r.data;
+      } catch (e) {}
     }
     if (!blob) throw new Error('A photo could not be loaded.');
-    const img = await _ccUbLoadImage(blob);
+    const img = await Promise.race([_ccUbLoadImage(blob), new Promise((_, rej) => setTimeout(() => rej(new Error('A photo could not be loaded.')), 30000))]);
     const lbl = rb && p.phase ? (p.phase === 'vorher' ? 'Vorher' : 'Nachher') : '';
     out.push({ ...img, ts: rb ? i : (Date.parse(p.taken_at || p.created_at) || Date.now()), when: mtSbWhen(p), taken: true,
       caption: [lbl, p.caption || ''].filter(Boolean).join(' · ') });
@@ -2507,24 +2512,37 @@ async function mtSbMake() {
   if (!rb && mtIsCasa(c.property_id) && !f.room) return stop('Set the Zimmer in Edit first (or Gemeinschaftsfläche).');
   if (typeof mtSbHTML !== 'function' || typeof ccRenderPagesToPdf !== 'function' || typeof ccUbAddPhotoPages !== 'function') return stop('The PDF files are missing. Upload all files of this update.');
   f.busy = true;
+  /* D24: the button keeps its name "Create PDF" (spinner while working) and a small line says what it is doing.
+     Every step has a time limit → it can never hang on "working" again; Close and × come back in any case. */
   const btn = document.getElementById('mtSb-make');
-  const setBtn = (label, off) => { if (btn) { btn.textContent = label; btn.disabled = off; } document.querySelectorAll('#mtSbModal [data-mt="sbClose"]').forEach(x => { if (x.tagName === 'BUTTON') x.disabled = off; }); };
-  setBtn('Creating PDF', true);
-  mtSbCapsFlush();
-  if (!(await mtSbFlush())) { f.busy = false; setBtn('Create PDF', false); return stop(); }
-  let box = null;
+  const status = t => { const el = document.getElementById('mtSb-status'); if (el) { el.textContent = t || ''; el.hidden = !t; } };
+  const setBusy = on => {
+    if (btn) { btn.disabled = on; btn.classList.toggle('is-busy', on); btn.innerHTML = (on ? '<span class="mt-spin" aria-hidden="true"></span>' : '') + 'Create PDF'; }
+    document.querySelectorAll('#mtSbModal [data-mt="sbClose"]').forEach(x => { if (x.tagName === 'BUTTON') x.disabled = on; });
+    if (!on) status('');
+  };
+  const limit = (pr, sec, step) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout:' + step)), sec * 1000))]);
+  setBusy(true);
+  status('Saving the fields');
+  let box = null, step = 'fields';
   MT.sbStoreHint = '';
   try {
-    await mtSbLibs();
+    mtSbCapsFlush();
+    if (!(await limit(mtSbFlush(), 30, 'fields'))) throw new Error('fields');
+    step = 'libs'; status('Getting ready');
+    await limit(mtSbLibs(), 45, 'libs');
     f.reportNo = c.report_no || mtSbNextNo(rb ? 'RB' : 'SB');
-    const photos = f.photosOn ? await mtSbPhotoData(c) : [];
-    f.att = await mtSbAttachData(c);
+    step = 'photos';
+    const photos = f.photosOn ? await limit(mtSbPhotoData(c, (k, n) => status(`Loading photo ${k} of ${n}`)), 120, 'photos') : [];
+    step = 'attachments';
+    f.att = await limit(mtSbAttachData(c), 60, 'attachments');
+    step = 'pages'; status('Building the pages');
     const d = rb ? mtRbData(c, f, photos.length) : mtSbData(c, f, photos.length);
     box = document.createElement('div');
     box.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#fff;z-index:-1;font-size:11.33px;';
     box.innerHTML = mtSbHTML(d);
     document.body.appendChild(box);
-    await document.fonts.ready;
+    await limit(document.fonts.ready, 15, 'fonts').catch(() => {});
     await new Promise(r => setTimeout(r, 300));
     const c1 = box.querySelector('.pdf-page .content'), last = c1 && c1.lastElementChild;
     if (last && last.getBoundingClientRect().bottom > c1.getBoundingClientRect().top + c1.clientHeight + 0.5) {
@@ -2533,19 +2551,20 @@ async function mtSbMake() {
       await new Promise(r => setTimeout(r, 120));
     }
     _ccUb['mt-sb'] = { on: photos.length > 0, photos };
-    await ccUbAddPhotoPages('mt-sb', box, { sub: kl + ' · ' + [c.title, d.objektName].filter(Boolean).join(' · ') });
+    await limit(ccUbAddPhotoPages('mt-sb', box, { sub: kl + ' · ' + [c.title, d.objektName].filter(Boolean).join(' · ') }), 30, 'pages');
     const fix = document.createElement('style');
     fix.textContent = 'body > div[style*="visibility: hidden"] > img { display:inline !important; }';
     document.head.appendChild(fix);
     let pdf;
-    try { pdf = await ccRenderPagesToPdf(box, { strict: true }); }
+    try { pdf = await limit(ccRenderPagesToPdf(box, { strict: true }), 180, 'pages'); }
     finally { fix.remove(); }
-    const blob = await mtSbMerge(pdf.output('blob'), f.att);   // the Anlagen PDFs at the end
-    const path = await mtSbStore(c, blob, `${kl} ${f.reportNo} Stand ${d.stand}.pdf`, rb ? 'renovierungsbericht' : 'schadenbericht');
+    step = 'save'; status('Saving the PDF');
+    const blob = await limit(mtSbMerge(pdf.output('blob'), f.att), 60, 'attachments');   // the Anlagen PDFs at the end
+    const path = await limit(mtSbStore(c, blob, `${kl} ${f.reportNo} Stand ${d.stand}.pdf`, rb ? 'renovierungsbericht' : 'schadenbericht'), 90, 'save');
     if (!path) throw new Error('store');
-    await mtSbRemember(c, f);
+    await limit(mtSbRemember(c, f), 30, 'save').catch(() => {});
     Object.assign(f, { busy: false, done: d.stand, view: 'ready', pdfPath: path, pdfName: ccPdfFileName(kl, f.reportNo, d.objektName, 'Stand ' + d.stand) });
-    await mtPrepareLinks([path]);
+    await limit(mtPrepareLinks([path]), 30, 'link').catch(() => {});
     const url = mtLinkNow(path), inApp = typeof CC_STANDALONE !== 'undefined' && CC_STANDALONE;
     if (url && !inApp && typeof ccOpenUrl === 'function') ccOpenUrl(url, f.pdfName);   // browser: the tab opened at the tap shows it
     else if (typeof ccCancelPdf === 'function') ccCancelPdf();
@@ -2553,16 +2572,22 @@ async function mtSbMake() {
     if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) mtRenderPanel();
     mtRender();
   } catch (e) {
-    console.error('[maintenance] Bericht:', e);
+    console.error('[maintenance] Bericht:', step, e);
     f.busy = false;
-    setBtn('Create PDF', false);
+    setBusy(false);
     const m = String((e && e.message) || '');
-    stop(MT.sbStoreHint || (/did not fit/.test(m) ? m : /photo/i.test(m) ? 'A photo could not be loaded. Check the connection and try again.'
+    const STEP = { fields: 'saving the fields', libs: 'getting ready', photos: 'loading the photos', attachments: 'adding the Anlagen', pages: 'building the pages', save: 'saving the PDF', link: 'opening it' };
+    stop(MT.sbStoreHint
+      || (/did not fit/.test(m) ? m
+      : m === 'fields' ? ''                                      // its own message was shown already
+      : /^timeout:/.test(m) ? `Creating the PDF took too long (${STEP[m.slice(8)] || 'working'}). Check the connection and try again.`
+      : /photo/i.test(m) ? 'A photo could not be loaded. Check the connection and try again.'
       : 'The report could not be created. Check the connection and try again.'));
   } finally {
     if (box) box.remove();
     try { delete _ccUb['mt-sb']; } catch (e) {}
     f.att = null;
+    if (f.busy) { f.busy = false; setBusy(false); }                // never left on "working"
   }
 }
 
