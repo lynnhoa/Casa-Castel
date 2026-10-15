@@ -4,13 +4,14 @@
 
    One slim row in the Lounge ("House guides · App · Müll · Rund ums Haus")
    opens a pop-up with the house guides as PDFs:
-   · Deine Haus-App — DE | EN like a translation (phone language first,
-     then the last choice, kept on this phone)
+   · Deine Haus-App — DE ◯ EN switch like a translation (phone language
+     first, then the last choice, kept on this phone)
    · Mülltrennung (Hausmüll + Glas) — plus "Glas-Trolley" as a small extra
    · Rund ums Haus — Bus, Bahn & Supermärkte
    The PDFs open on top of the app (normal link in a new tab → the phone's
    PDF viewer). The app page itself is never replaced or reloaded, so the
    login stays exactly as it is — nobody gets logged out.
+   Class prefix "hgd-" (the contract generator already uses "cg-").
    New version of a PDF: replace the file and change V below.
    ───────────────────────────────────────────────────────────── */
 (function () {
@@ -41,62 +42,67 @@
   };
   const link = (file, cls, inner) => `<a class="${cls}" href="${file + V}" target="_blank" rel="noopener">${inner}</a>`;
 
-  /* The slim row in the Lounge (mobile: between the notice and the House chat · desktop: left column) */
-  window.ccGuidesRowHTML = where => `<button type="button" class="cg-row cg-row--${where === 'dsk' ? 'dsk' : 'mob'}" data-cc-guides aria-haspopup="dialog">
-      <span class="cg-dots" aria-hidden="true"><span class="cg-dot cg-c1">${svg(P.phone, 13)}</span><span class="cg-dot cg-c2">${svg(P.bin, 13)}</span><span class="cg-dot cg-c3">${svg(P.bus, 13)}</span></span>
-      <span class="cg-row__t"><b>House guides</b><span> · App · Müll · Rund ums Haus</span></span>
-      <span class="cg-row__go" aria-hidden="true">${svg(P.chev, 16)}</span>
+  /* The slim row in the Lounge — one line (mobile: between the notice and the House chat · desktop: left column) */
+  window.ccGuidesRowHTML = where => `<button type="button" class="hgd-row hgd-row--${where === 'dsk' ? 'dsk' : 'mob'}" data-cc-guides aria-haspopup="dialog">
+      <span class="hgd-dots" aria-hidden="true"><span class="hgd-dot hgd-c1">${svg(P.phone, 12)}</span><span class="hgd-dot hgd-c2">${svg(P.bin, 12)}</span><span class="hgd-dot hgd-c3">${svg(P.bus, 12)}</span></span>
+      <span class="hgd-row__t"><b>House guides</b> · App · Müll · Rund ums Haus</span>
+      <span class="hgd-row__go" aria-hidden="true">${svg(P.chev, 16)}</span>
     </button>`;
 
   function sheetHTML() {
     const l = getLang();
-    return `<div class="cg-bg" data-cg-close></div>
-      <div class="cg-sheet" role="dialog" aria-modal="true" aria-labelledby="cgT">
-        <div class="cg-hdr">
-          <div><p class="cg-k">Casa Castel</p><p class="cg-t" id="cgT">House guides</p><p class="cg-s">Everything about the house, as PDF</p></div>
-          <button type="button" class="cg-x" data-cg-close aria-label="Close">${svg(P.x, 14)}</button>
+    return `<div class="hgd-bg" data-hgd-close></div>
+      <div class="hgd-sheet" role="dialog" aria-modal="true" aria-labelledby="hgdT">
+        <div class="hgd-hdr">
+          <div><p class="hgd-k">Casa Castel</p><p class="hgd-t" id="hgdT">House guides</p><p class="hgd-s">Everything about the house, as PDF</p></div>
+          <button type="button" class="hgd-x" data-hgd-close aria-label="Close">${svg(P.x, 14)}</button>
         </div>
-        <div class="cg-body">
-          <div class="cg-card cg-c1">
-            <span class="cg-ic">${svg(P.phone, 24)}</span>
-            <div class="cg-m"><p class="cg-ct" id="cgAppT">${APP[l].t}</p><p class="cg-cs" id="cgAppS">${APP[l].s}</p>
-              <div class="cg-r2">
-                <span class="cg-seg" role="group" aria-label="Language">${['de', 'en'].map(x =>
-                  `<button type="button" data-cg-lang="${x}" class="${x === l ? 'is-on' : ''}" aria-pressed="${x === l}">${x.toUpperCase()}</button>`).join('')}</span>
-                <a class="cg-open" id="cgAppOpen" href="${F['app' + l] + V}" target="_blank" rel="noopener">Open${svg(P.go, 14)}</a>
+        <div class="hgd-body">
+          <div class="hgd-card hgd-c1">
+            <span class="hgd-ic">${svg(P.phone, 24)}</span>
+            <div class="hgd-m"><p class="hgd-ct" id="hgdAppT">${APP[l].t}</p><p class="hgd-cs" id="hgdAppS">${APP[l].s}</p>
+              <div class="hgd-r2">
+                <span class="hgd-lang">
+                  <button type="button" class="hgd-lang__l${l === 'de' ? ' is-on' : ''}" data-hgd-lang="de">DE</button>
+                  <button type="button" class="hgd-sw${l === 'en' ? ' is-en' : ''}" data-hgd-lang-sw role="switch" aria-checked="${l === 'en'}" aria-label="English"><span class="hgd-sw__k"></span></button>
+                  <button type="button" class="hgd-lang__l${l === 'en' ? ' is-on' : ''}" data-hgd-lang="en">EN</button>
+                </span>
+                <a class="hgd-open" id="hgdAppOpen" href="${F['app' + l] + V}" target="_blank" rel="noopener">Open${svg(P.go, 14)}</a>
               </div></div>
           </div>
-          <div class="cg-card cg-c2">
-            <span class="cg-ic">${svg(P.bin, 24)}</span>
-            <div class="cg-m"><p class="cg-ct">Mülltrennung</p><p class="cg-cs">Was in welche Tonne · Weg zu den Tonnen · Glas</p>
-              <div class="cg-r2">${link(F.glas, 'cg-ext', svg(P.bottle, 14) + 'Glas-Trolley')}${link(F.muell, 'cg-open', 'Open' + svg(P.go, 14))}</div></div>
+          <div class="hgd-card hgd-c2">
+            <span class="hgd-ic">${svg(P.bin, 24)}</span>
+            <div class="hgd-m"><p class="hgd-ct">Mülltrennung</p><p class="hgd-cs">Was in welche Tonne · Weg zu den Tonnen · Glas</p>
+              <div class="hgd-r2">${link(F.glas, 'hgd-ext', svg(P.bottle, 14) + 'Glas-Trolley')}${link(F.muell, 'hgd-open', 'Open' + svg(P.go, 14))}</div></div>
           </div>
-          <div class="cg-card cg-c3">
-            <span class="cg-ic">${svg(P.bus, 24)}</span>
-            <div class="cg-m"><p class="cg-ct">Rund ums Haus</p><p class="cg-cs">Bus, Bahn &amp; Supermärkte in der Nähe</p>
-              <div class="cg-r2">${link(F.rund, 'cg-open', 'Open' + svg(P.go, 14))}</div></div>
+          <div class="hgd-card hgd-c3">
+            <span class="hgd-ic">${svg(P.bus, 24)}</span>
+            <div class="hgd-m"><p class="hgd-ct">Rund ums Haus</p><p class="hgd-cs">Bus, Bahn &amp; Supermärkte in der Nähe</p>
+              <div class="hgd-r2">${link(F.rund, 'hgd-open', 'Open' + svg(P.go, 14))}</div></div>
           </div>
         </div>
-        <div class="cg-ft"><span>Opens the PDF · save or share from there</span><button type="button" class="cg-close" data-cg-close>Close</button></div>
+        <div class="hgd-ft"><span>Opens the PDF · save or share from there</span><button type="button" class="hgd-close" data-hgd-close>Close</button></div>
       </div>`;
   }
   function open() {
     if (document.getElementById('ccGuides')) return;
     const el = document.createElement('div');
     el.id = 'ccGuides';
-    el.className = 'cg-ov';
+    el.className = 'hgd-ov';
     el.innerHTML = sheetHTML();
     document.body.appendChild(el);
-    setTimeout(() => el.querySelector('.cg-x')?.focus(), 0);
+    setTimeout(() => el.querySelector('.hgd-x')?.focus(), 0);
   }
   function close() { document.getElementById('ccGuides')?.remove(); }
   function lang(l) {                                           // the app guide in the other language (same card)
     setLang(l);
     const g = id => document.getElementById(id);
-    if (g('cgAppT')) g('cgAppT').textContent = APP[l].t;
-    if (g('cgAppS')) g('cgAppS').textContent = APP[l].s;
-    if (g('cgAppOpen')) g('cgAppOpen').href = F['app' + l] + V;
-    document.querySelectorAll('#ccGuides [data-cg-lang]').forEach(b => { const on = b.dataset.cgLang === l; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
+    if (g('hgdAppT')) g('hgdAppT').textContent = APP[l].t;
+    if (g('hgdAppS')) g('hgdAppS').textContent = APP[l].s;
+    if (g('hgdAppOpen')) g('hgdAppOpen').href = F['app' + l] + V;
+    document.querySelectorAll('#ccGuides [data-hgd-lang]').forEach(b => b.classList.toggle('is-on', b.dataset.hgdLang === l));
+    const sw = document.querySelector('#ccGuides [data-hgd-lang-sw]');
+    if (sw) { sw.classList.toggle('is-en', l === 'en'); sw.setAttribute('aria-checked', l === 'en'); }
   }
   window.ccGuidesOpen = open;
 
@@ -106,56 +112,64 @@
     if (t.closest('[data-cc-guides]')) { e.preventDefault(); open(); return; }
     const m = document.getElementById('ccGuides');
     if (!m || !m.contains(t)) return;
-    if (t.closest('[data-cg-close]')) { close(); return; }
-    const lb = t.closest('[data-cg-lang]');
-    if (lb) lang(lb.dataset.cgLang);
+    if (t.closest('[data-hgd-close]')) { close(); return; }
+    if (t.closest('[data-hgd-lang-sw]')) { lang(getLang() === 'en' ? 'de' : 'en'); return; }
+    const lb = t.closest('[data-hgd-lang]');
+    if (lb) lang(lb.dataset.hgdLang);
     /* links (Open / Glas-Trolley) open the PDF in a new tab — the app stays as it is */
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('ccGuides')) close(); });
 
   const st = document.createElement('style');
   st.textContent = `
-.cg-row{display:flex;align-items:center;gap:10px;width:100%;margin:0;padding:9px 16px;flex-shrink:0;border:0;border-bottom:.5px solid var(--cc-rule,#E0DAD0);
-  background:var(--cc-white,#FDFCFA);font:inherit;text-align:left;color:var(--cc-charcoal,#3A3530);cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.cg-row:active{background:#F7F3EC;}
-.cg-row--dsk{margin:0 0 12px;padding:10px 14px;border:.5px solid var(--cc-rule,#E0DAD0);border-radius:var(--cc-r-lg,14px);}
-@media(min-width:701px){#tab-lounge .cg-row--mob{display:none !important;}}
-.cg-dots{display:flex;flex-shrink:0;}
-.cg-dot{width:24px;height:24px;margin-left:-6px;display:flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid var(--cc-white,#FDFCFA);}
-.cg-dot:first-child{margin-left:0;}
-.cg-c1{background:#F6EEDF;color:#8B6F47;} .cg-c2{background:#E4EFE3;color:#2F6B3E;} .cg-c3{background:#E3ECF5;color:#2F5F8F;}
-.cg-row__t{flex:1;min-width:0;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.cg-row__t b{font-weight:500;color:var(--cc-ink,#1E1B18);} .cg-row__t span{color:var(--cc-taupe,#9A8E7E);}
-.cg-row__go{display:flex;color:var(--cc-gold,#B8956A);}
-.cg-ov{position:fixed;inset:0;z-index:450;display:flex;align-items:flex-end;justify-content:center;}
-.cg-bg{position:absolute;inset:0;background:rgba(30,27,24,.5);}
-.cg-sheet{position:relative;width:100%;max-width:480px;max-height:88vh;max-height:88svh;display:flex;flex-direction:column;
+.hgd-row{display:grid !important;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:10px;width:100%;height:auto !important;min-height:0 !important;
+  margin:0;padding:9px 16px;flex-shrink:0;border:0;border-bottom:.5px solid var(--cc-rule,#E0DAD0);border-radius:0;background:var(--cc-white,#FDFCFA);
+  font:inherit;text-align:left;color:var(--cc-charcoal,#3A3530);cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-appearance:none;appearance:none;}
+.hgd-row:active{background:#F7F3EC;}
+.hgd-row--dsk{margin:0 0 12px;padding:10px 14px;border:.5px solid var(--cc-rule,#E0DAD0);border-radius:var(--cc-r-lg,14px);}
+@media(min-width:701px){#tab-lounge .hgd-row--mob{display:none !important;}}
+.hgd-dots{display:flex;}
+.hgd-dot{width:22px;height:22px;margin-left:-5px;display:flex;align-items:center;justify-content:center;border-radius:50%;border:1.5px solid var(--cc-white,#FDFCFA);}
+.hgd-dot:first-child{margin-left:0;}
+.hgd-c1{background:#F6EEDF;color:#8B6F47;} .hgd-c2{background:#E4EFE3;color:#2F6B3E;} .hgd-c3{background:#E3ECF5;color:#2F5F8F;}
+.hgd-row__t{min-width:0;font-size:12px !important;line-height:1.3;color:var(--cc-taupe,#9A8E7E);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;}
+.hgd-row__t b{font-weight:500;color:var(--cc-ink,#1E1B18);}
+.hgd-row__go{display:flex;color:var(--cc-gold,#B8956A);}
+.hgd-ov{position:fixed;inset:0;z-index:450;display:flex;align-items:flex-end;justify-content:center;}
+.hgd-bg{position:absolute;inset:0;background:rgba(30,27,24,.5);}
+.hgd-sheet{position:relative;width:100%;max-width:480px;max-height:88vh;max-height:88svh;display:flex;flex-direction:column;
   background:var(--cc-white,#FDFCFA);border-radius:20px 20px 0 0;padding-bottom:env(safe-area-inset-bottom,0px);color:var(--cc-charcoal,#3A3530);
-  animation:cgUp .24s cubic-bezier(.32,.72,0,1);}
-@keyframes cgUp{from{transform:translateY(32px);opacity:0;}to{transform:none;opacity:1;}}
-@media(min-width:701px){.cg-ov{align-items:center;}.cg-sheet{max-width:520px;border-radius:20px;padding-bottom:0;}}
-.cg-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 12px;border-bottom:.5px solid var(--cc-rule,#E0DAD0);flex-shrink:0;}
-.cg-k{margin:0;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--cc-gold,#B8956A);}
-.cg-t{margin:2px 0 0;font-family:'Cormorant Garamond',Georgia,serif;font-size:24px;font-weight:400;line-height:1.1;color:var(--cc-ink,#1E1B18);}
-.cg-s{margin:2px 0 0;font-size:12px;color:var(--cc-taupe,#9A8E7E);}
-.cg-x{width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;border:.5px solid var(--cc-rule,#E0DAD0);
+  animation:hgdUp .24s cubic-bezier(.32,.72,0,1);}
+@keyframes hgdUp{from{transform:translateY(32px);opacity:0;}to{transform:none;opacity:1;}}
+@media(min-width:701px){.hgd-ov{align-items:center;}.hgd-sheet{max-width:520px;border-radius:20px;padding-bottom:0;}}
+.hgd-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:18px 18px 12px;border-bottom:.5px solid var(--cc-rule,#E0DAD0);flex-shrink:0;}
+.hgd-k{margin:0;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--cc-gold,#B8956A);}
+.hgd-t{margin:2px 0 0;font-family:'Cormorant Garamond',Georgia,serif;font-size:24px;font-weight:400;line-height:1.1;color:var(--cc-ink,#1E1B18);}
+.hgd-s{margin:2px 0 0;font-size:12px;color:var(--cc-taupe,#9A8E7E);}
+.hgd-x{width:30px;height:30px;min-height:0;flex-shrink:0;display:flex;align-items:center;justify-content:center;margin:0;padding:0;border:.5px solid var(--cc-rule,#E0DAD0);
   border-radius:50%;background:#EFEAE2;color:var(--cc-taupe,#9A8E7E);cursor:pointer;}
-.cg-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:10px;padding:14px 14px 6px;}
-.cg-card{display:flex;align-items:flex-start;gap:12px;padding:14px;border-radius:16px;}
-.cg-ic{width:46px;height:46px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:14px;background:var(--cc-white,#FDFCFA);}
-.cg-m{flex:1;min-width:0;}
-.cg-ct{margin:0;font-family:'Cormorant Garamond',Georgia,serif;font-size:21px;font-weight:400;line-height:1.1;color:var(--cc-ink,#1E1B18);}
-.cg-cs{margin:3px 0 0;font-size:12px;line-height:1.4;}
-.cg-r2{display:flex;align-items:center;gap:8px;margin-top:10px;}
-.cg-seg{display:inline-flex;gap:2px;padding:2px;border-radius:999px;background:rgba(255,255,255,.75);}
-.cg-seg button{margin:0;padding:5px 12px;border:0;border-radius:999px;background:none;font:inherit;font-size:12px;font-weight:500;color:var(--cc-taupe,#9A8E7E);cursor:pointer;}
-.cg-seg button.is-on{background:var(--cc-ink,#1E1B18);color:#fff;}
-.cg-open{display:inline-flex;align-items:center;gap:5px;margin-left:auto;padding:7px 13px;border-radius:999px;font-size:12px;font-weight:500;color:#fff;text-decoration:none;white-space:nowrap;}
-.cg-c1 .cg-open{background:#8B6F47;} .cg-c2 .cg-open{background:#2F6B3E;} .cg-c3 .cg-open{background:#2F5F8F;}
-.cg-ext{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;background:var(--cc-white,#FDFCFA);border:.5px solid #C9DCC9;
+.hgd-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:10px;padding:14px 14px 6px;}
+.hgd-card{display:flex;align-items:flex-start;gap:12px;padding:14px;border-radius:16px;}
+.hgd-ic{width:46px;height:46px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:14px;background:var(--cc-white,#FDFCFA);}
+.hgd-m{flex:1;min-width:0;}
+.hgd-ct{margin:0;font-family:'Cormorant Garamond',Georgia,serif;font-size:21px;font-weight:400;line-height:1.1;color:var(--cc-ink,#1E1B18);}
+.hgd-cs{margin:3px 0 0;font-size:12px;line-height:1.4;}
+.hgd-r2{display:flex;align-items:center;gap:8px;margin-top:10px;}
+/* DE ◯ EN — a classic switch: the knob shows the language */
+.hgd-lang{display:inline-flex;align-items:center;gap:7px;}
+.hgd-lang__l{margin:0;padding:2px 0;min-height:0;min-width:0;border:0;background:none;font:inherit;font-size:11px;font-weight:500;letter-spacing:.06em;
+  color:var(--cc-taupe,#9A8E7E);cursor:pointer;}
+.hgd-lang__l.is-on{color:var(--cc-ink,#1E1B18);}
+.hgd-sw{position:relative;width:34px;height:20px;min-height:0;min-width:0;flex-shrink:0;margin:0;padding:0;border:0;border-radius:10px;background:#8B6F47;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;}
+.hgd-sw__k{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#FDFCFA;transition:left .15s;}
+.hgd-sw.is-en .hgd-sw__k{left:16px;}
+.hgd-open{display:inline-flex;align-items:center;gap:5px;margin-left:auto;padding:7px 13px;border-radius:999px;font-size:12px;font-weight:500;color:#fff;text-decoration:none;white-space:nowrap;}
+.hgd-c1 .hgd-open{background:#8B6F47;} .hgd-c2 .hgd-open{background:#2F6B3E;} .hgd-c3 .hgd-open{background:#2F5F8F;}
+.hgd-ext{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;background:var(--cc-white,#FDFCFA);border:.5px solid #C9DCC9;
   color:#2F5D3A;font-size:12px;font-weight:500;text-decoration:none;white-space:nowrap;}
-.cg-ft{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 18px 16px;flex-shrink:0;font-size:11px;color:var(--cc-taupe,#9A8E7E);}
-.cg-close{padding:8px 18px;border-radius:999px;border:.5px solid var(--cc-rule,#E0DAD0);background:none;font:inherit;font-size:12px;font-weight:500;color:#6B645C;cursor:pointer;}
+.hgd-ft{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 18px 16px;flex-shrink:0;font-size:11px;color:var(--cc-taupe,#9A8E7E);}
+.hgd-close{min-height:0;margin:0;padding:8px 18px;border-radius:999px;border:.5px solid var(--cc-rule,#E0DAD0);background:none;font:inherit;font-size:12px;font-weight:500;color:#6B645C;cursor:pointer;}
 `;
   document.head.appendChild(st);
 })();
