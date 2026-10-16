@@ -1211,7 +1211,7 @@ async function ccfSaveDoc({ tid, room, type, variant, blob }) {
 }
 async function ccfDeleteDoc(tid, type, variant) {
   const doc = ccfDocOf(tid, type, variant); if (!doc) return;
-  if (!confirm('Delete this document? This cannot be undone.')) return;
+  if (!(await ccConfirm('Delete this document?', 'This cannot be undone.', 'Delete', true))) return;
   const { error } = await sbL.from(ccfA().docTable).delete().eq('id', doc.id);
   if (error) { ccfToast('Not deleted — ' + error.message, true); return; }
   if (doc.file_url) sbL.storage.from(ccfA().bucket).remove([doc.file_url]).catch(() => {});

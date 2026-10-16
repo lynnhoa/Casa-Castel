@@ -143,7 +143,7 @@ async function ccNksOldAction(id, tid) {
   if (!e || !db) return;
   // Rentals has no in-app dialog yet → plain question, "Mark done" only
   if (typeof ccDialog !== 'function') {
-    if (e.paid || !confirm('NK ' + (e.period || '') + ' (old tracking)\n\nMark as done?')) return;
+    if (e.paid || !(await ccConfirm('Mark as done?', 'NK ' + ccEscHtml(e.period || '') + ' (old tracking)', 'Mark as done'))) return;
   }
   const v = typeof ccDialog !== 'function' ? 'done' : await ccDialog({ icon: 'ti-receipt', title: 'NK ' + _ccNksEsc(e.period || ''),
     body: 'An entry from the old NK tracking. New Abrechnungen are made in Settlements.',

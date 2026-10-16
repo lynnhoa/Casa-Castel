@@ -278,7 +278,7 @@ async function ccgBuild(type, forApprove) {
   const grund = term === 'bef' ? _cgV('cg-grund') : '';
   const person = grund === 'eigenbedarf' ? _cgV('cg-person') : '';
   if (term === 'bef' && grund === 'eigenbedarf' && !person) { alert('Bitte angeben, für wen der Eigenbedarf besteht (gesetzliche Pflicht).'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return null; }
-  if (!forApprove && !ccConfirmMissingDates([!start && 'Mietbeginn', hasEnd && !end && 'Mietende'])) return null;
+  if (!forApprove && !(await ccConfirmMissingDates([!start && 'Mietbeginn', hasEnd && !end && 'Mietende']))) return null;
 
   const m = ccfMieteGet() || { mode: 'kalt_nk', kalt: 0, nk: 0, total: 0 };
   const manual = ccKautionManual(_cgIn('cg-kaution')?.value);

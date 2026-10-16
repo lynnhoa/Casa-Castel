@@ -205,11 +205,13 @@ async function ccRpInsertWithTenant(db, table, row, tenantId) {
     if (root.matches && root.matches(SEL)) lock(root);
     if (root.querySelectorAll) root.querySelectorAll(SEL).forEach(lock);
   };
-  document.addEventListener('click', e => {
+  document.addEventListener('click', async e => {
     const el = e.target;
     if (!el || !el._ccEinzug || !el.readOnly) return;
     e.preventDefault(); e.stopPropagation();
-    const ok = window.confirm('Einzug wirklich ändern?\n\nDas Einzugsdatum verschiebt die ganze Miethistorie. ' +
+    const ok = typeof ccConfirm === 'function'
+      ? await ccConfirm('Change the move-in?', 'The move-in date moves the whole rent history. For a renewal or a new rent, enter it at the rent under „Gilt ab“.', 'Change')
+      : window.confirm('Einzug wirklich ändern?\n\nDas Einzugsdatum verschiebt die ganze Miethistorie. ' +
       'Für eine Verlängerung oder eine neue Miete bitte bei der Miete „Gilt ab" eintragen.');
     if (!ok) return;
     el.readOnly = false;

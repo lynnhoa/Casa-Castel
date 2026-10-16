@@ -708,7 +708,7 @@ async function _kRenderFeed(weekRow) {
         e.stopPropagation();
         const row = btn.closest('[data-comment-id]');
         const id  = row && row.dataset.commentId; if (!id) return;
-        if (!confirm('Delete this message?')) return;
+        if (!(await ccConfirm('Delete this message?', '', 'Delete', true))) return;
         await _kDeleteComment(id);
         await _kRenderFeed(_kWeekRow);
       });
@@ -1056,7 +1056,7 @@ async function _kDeleteNudge(id, btn) {
 /* ── CLEAR CHAT ─────────────────────────────────────────── */
 async function kClearChat() {
   if (!_kWeekRow) return;
-  if (!confirm('Clear all messages and delete proof photos? This cannot be undone.')) return;
+  if (!(await ccConfirm('Clear the kitchen chat?', 'All messages and proof photos are deleted. This cannot be undone.', 'Clear all', true))) return;
   const paths = [];
   if (_kWeekRow.photos && Array.isArray(_kWeekRow.photos))
     _kWeekRow.photos.forEach(p => { if (p.path) paths.push(p.path); });
@@ -1151,17 +1151,17 @@ function kUnflag(which) {
   });
 }
 /* Missed keeps the chat and the photos — it only changes the status */
-function kReset() {
+async function kReset() {
   const row = _kWeekRow; if (!row) return;
-  if (!confirm(`Mark this week as missed for ${row.room}?`)) return;
+  if (!(await ccConfirm('Mark this week as missed for ' + ccEscHtml(row.room) + '?', '', 'Mark missed', true))) return;
   return _kRun('now', async r => {
     const { error } = await _kUpdateRow(r, { status:'missed', flagged:false, closed_at:new Date().toISOString() });
     if (!error) await _kAddComment(r.id, 'Casa Castel', '✗ Marked missed.', false);
   });
 }
-function kReopen() {
+async function kReopen() {
   const row = _kWeekRow; if (!row) return;
-  if (!confirm(`Reopen week for ${row.room}? They can upload proof again.`)) return;
+  if (!(await ccConfirm('Reopen the week for ' + ccEscHtml(row.room) + '?', 'They can upload proof again.', 'Reopen'))) return;
   return _kRun('now', async r => {
     await _kUpdateRowAuto(r, { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null, no_auto:false });   // D6
   });

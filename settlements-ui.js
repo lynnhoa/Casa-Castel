@@ -48,7 +48,7 @@ function stRing(done, sent, total, word, size) {
 function stProgress(o) {
   return '<div class="sc-card sc-prog">' + stRing(o.done, o.sent, o.total, 'settled') + '<div class="sc-prog__l">' +
     '<span><i class="sc-dot" style="background:#B8956A"></i>' + o.first + '</span>' +
-    '<span><i class="sc-dot" style="background:#E9B06A"></i>' + o.open + ' to send</span>' +
+    '<span><i class="sc-dot" style="background:#E8C97A"></i>' + o.open + ' to send</span>' +
     '<span><i class="sc-dot" style="background:#D4B896"></i>' + o.sent + ' waiting for money</span>' +
     '<span><i class="sc-dot" style="background:#97C459"></i>' + o.done + ' settled</span></div></div>';
 }

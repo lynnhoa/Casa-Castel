@@ -312,9 +312,9 @@ window.renderOneTime = function () {
   cxWire(host, {
     render: () => window.renderOneTime(),
     click: async (a, b) => {
-      if (a === 'otView') { if (!_cxOtClose()) return; _cxOt.view = b.dataset.v; try { localStorage.setItem('cx_ot_view', _cxOt.view); } catch (e) {} return window.renderOneTime(); }
+      if (a === 'otView') { if (!(await _cxOtClose())) return; _cxOt.view = b.dataset.v; try { localStorage.setItem('cx_ot_view', _cxOt.view); } catch (e) {} return window.renderOneTime(); }
       if (a === 'otYear') {
-        if (!_cxOtClose()) return;
+        if (!(await _cxOtClose())) return;
         const y = window._ctrl.year + Number(b.dataset.v);
         if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
         try { await ctlLoadAll(y); } catch (e) { cxToastErr(e); }
@@ -323,14 +323,14 @@ window.renderOneTime = function () {
         return window.renderOneTime();
       }
       if (a === 'otNew') {
-        if (_cxOt.form === 'new') { if (_cxOtClose()) window.renderOneTime(); return; }
-        if (!_cxOtClose()) return;
+        if (_cxOt.form === 'new') { if ((await _cxOtClose())) window.renderOneTime(); return; }
+        if (!(await _cxOtClose())) return;
         _cxOtOpen('new', null); return window.renderOneTime();
       }
       if (a === 'otAddFor') {
         const k = 'new:' + b.dataset.p;
-        if (_cxOt.form === k) { if (_cxOtClose()) window.renderOneTime(); return; }
-        if (!_cxOtClose()) return;
+        if (_cxOt.form === k) { if ((await _cxOtClose())) window.renderOneTime(); return; }
+        if (!(await _cxOtClose())) return;
         _cxOtOpen(k, Number(b.dataset.p)); window.renderOneTime();
         document.getElementById('cxOtAmt')?.focus();
         return;
@@ -353,14 +353,14 @@ window.renderOneTime = function () {
       }
       if (a === 'otMore') { const k = b.dataset.k; _cxOt.more[k] = (_cxOt.more[k] || 20) + 20; return window.renderOneTime(); }
       if (a === 'otMonth') { const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
-      if (a === 'otEdit') { if (!_cxOtClose()) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
+      if (a === 'otEdit') { if (!(await _cxOtClose())) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
       if (a === 'otMaint') {                                                      // D8: that entry, at that receipt
         const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(b.dataset.id));
-        if (!o || !_cxOtClose()) return;
+        if (!o || !(await _cxOtClose())) return;
         location.href = 'maintenance.html#cost=' + encodeURIComponent(o.maint_cost_id || String(o.source_ref || '').replace(/^maint:/, ''));
         return;
       }
-      if (a === 'otCancel') { if (_cxOtClose()) window.renderOneTime(); return; }
+      if (a === 'otCancel') { if ((await _cxOtClose())) window.renderOneTime(); return; }
       if (a === 'otKind') {
         _cxOt.kind = b.dataset.v;
         return _cxOtKeep(() => {
@@ -389,7 +389,7 @@ window.renderOneTime = function () {
       if (a === 'otSave') return _cxOtSave(b);
       if (a === 'otDel') {
         const id = b.dataset.id, o = (window._ctrl.one_time || []).find(x => String(x.id) === String(id));
-        if (!o || !confirm('Delete "' + (o.item || 'entry') + '" (' + cxEur(o.amount) + ')?')) return;
+        if (!o || !(await ccConfirm('Delete this entry?', ccEscHtml(o.item || 'entry') + ' · ' + cxEur(o.amount), 'Delete', true))) return;
         try {
           await ctlDeleteOneTime(o.id); _cxOt.form = null;
           if (window._src && window._src.knkAll) window._src.knkAll = window._src.knkAll.filter(x => String(x.id) !== String(o.id));
@@ -426,9 +426,9 @@ function _cxOtDirty() {
     (g('cxOtNkCat') && String(g('cxOtNkCat').value || '') !== String(o.nk_category_id || ''));
 }
 /* Close the open form; asks first when something typed would be lost. Returns false if you keep editing. */
-function _cxOtClose() {
+async function _cxOtClose() {
   if (_cxOt.form === null) return true;
-  if (_cxOtDirty() && !confirm('Discard your input?')) return false;
+  if (_cxOtDirty() && !(await ccConfirm('Discard your input?', 'What you typed is not saved yet.', 'Discard', true))) return false;
   const o = _cxOtEditing(); if (o) { delete o._kind; delete o._dir; delete o._nk; }
   _cxOt.form = null; _cxOt.formAt = null;
   return true;
@@ -476,7 +476,7 @@ async function _cxOtSave(b) {
   // soft duplicate hint: same property, amount and date
   const dup = (window._ctrl.one_time || []).find(x => (!o || x.id !== o.id) && Number(x.property_id) === pid &&
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
-  if (dup && !confirm('Possible duplicate: "' + (dup.item || 'entry') + '" · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists.\n\nSave anyway?')) return;
+  if (dup && !(await ccConfirm('Possible duplicate', ccEscHtml(dup.item || 'entry') + ' · ' + cxEur(dup.amount) + ' on ' + cxFmtDate(date) + ' already exists. Save anyway?', 'Save anyway'))) return;
   b.disabled = true;
   try {
     let saved;

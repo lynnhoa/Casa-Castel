@@ -1621,7 +1621,7 @@ async function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
         body: 'This tenancy overlaps with <strong>' + h(nm) + '</strong> on the same unit. For a renewal, keep the existing tenant and extend it instead of adding a new one.',
         actions: [{ label: 'Cancel', value: false }, { label: 'Save anyway', value: true, primary: true }] })) === true;
     } else {
-      ok = confirm('This tenancy overlaps with ' + nm + ' on the same unit.\n\nFor a renewal, keep the existing tenant and extend it instead of adding a new one.\n\nSave anyway?');
+      ok = await ccConfirm('This tenancy overlaps with ' + ccEscHtml(nm), 'Same unit. For a renewal, keep the existing tenant and extend it instead of adding a new one.', 'Save anyway');
     }
     if (!ok) { reset(); return false; }
   }
@@ -2069,7 +2069,7 @@ async function _rntRenewDelete(tid, pid) {
   if (!rec || !per || !sbL) return;
   const prevEnd = ccRpAddDays(_ccIso(per.valid_from), -1);
   const n = _rntRenewalRows(rec).find(x => String(x.p.id) === String(pid))?.n || '';
-  if (!confirm(`Remove the ${n}. Verlängerung ab ${_ccFmtD(per.valid_from)}?\n\nThe contract end goes back to ${_ccFmtD(prevEnd)}.`)) return;
+  if (!(await ccConfirm('Remove the ' + n + '. Verlängerung ab ' + _ccFmtD(per.valid_from) + '?', 'The contract end goes back to ' + _ccFmtD(prevEnd) + '.', 'Remove', true))) return;
   try { await ccRpDelete(sbL, per.id); } catch (e) { ccSaveFailed(e, 'remove renewal'); return; }
   const before = rec.vertragsende;
   rec.vertragsende = prevEnd;
@@ -3297,7 +3297,7 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
   // without Auszug would otherwise keep a Soll until the next tenant moves in
   if (forceFormer && !p.mietende) {
     const today = new Date(), dflt = String(today.getDate()).padStart(2, '0') + '.' + String(today.getMonth() + 1).padStart(2, '0') + '.' + today.getFullYear();
-    const v = prompt('Auszugsdatum (TT.MM.JJJJ):', dflt);
+    const v = await ccPrompt('Move-out date', 'Auszugsdatum (TT.MM.JJJJ)', dflt, 'Save');
     if (v === null) return;
     const iso = _rntParseDate(String(v).trim());
     if (!iso) { if (typeof ccToast === 'function') ccToast('Bitte ein Datum im Format TT.MM.JJJJ eingeben', true); return; }
