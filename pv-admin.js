@@ -201,7 +201,7 @@ async function _pvaGuestSend(g) {
     }
   }
   try { await navigator.clipboard.writeText(g.text); pvaToast('Link copied — paste it into WhatsApp.'); }
-  catch (e) { window.prompt('Copy the guest link:', g.url); }
+  catch (e) { if (typeof ccPrompt === 'function') ccPrompt('Copy the guest link', 'Tap the link and copy it', g.url, 'Done'); else window.prompt('Copy the guest link:', g.url); }
 }
 function _pvaGuestQrHTML(g, shareFn) {
   return `<div class="pva-qr">

@@ -460,7 +460,7 @@ window.renderDashboard = function () {
         '<div class="cxn-lg"><span><i style="background:#8FA88F"></i>Rentals</span><span><i style="background:#D9B46A"></i>Casa Castel</span></div></div>';
     }
 
-    cxPaint(host, '<div class="cx-page cxn">' + top + totalCard + tiles + panel + chart + '</div>');   // B18: only what changed
+    cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-cols"><div class="cxn-l">' + totalCard + '</div><div class="cxn-r">' + tiles + panel + '</div></div>' + chart + '</div>');   // B2: two columns on iPad landscape / laptop (invisible on the phone)   // B18: only what changed
   }
 
   cxWire(host, {

@@ -722,10 +722,12 @@ async function ccDraftApply(root, d) {
 /* Missing contract dates: warn, don't block. You may leave a date empty on purpose
    and write it by hand — the PDF then shows a line to fill in. Cancel = back to the form. */
 const CC_BLANK_DATE = '__.__.____';
-function ccConfirmMissingDates(labels) {
+async function ccConfirmMissingDates(labels) {
   const miss = (labels || []).filter(Boolean);
   if (!miss.length) return true;
-  const ok = confirm(miss.join(' und ') + ' fehlt \u2013 trotzdem erstellen?\n\nIm PDF bleibt eine Linie zum Ausfüllen von Hand.');
+  const ok = typeof ccConfirm === 'function'
+    ? await ccConfirm(miss.join(' and ') + ' missing — create anyway?', 'The PDF keeps a line to fill in by hand.', 'Create anyway')
+    : confirm(miss.join(' und ') + ' fehlt \u2013 trotzdem erstellen?\n\nIm PDF bleibt eine Linie zum Ausfüllen von Hand.');
   if (!ok && typeof ccCancelPdf === 'function') ccCancelPdf();
   return ok;
 }

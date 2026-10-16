@@ -188,7 +188,7 @@ async function _cxAbrBook(e, amount) {
   const r = e.res, y = window._ctrl.year, m = CX.month;
   if (e.legacy) {                                                          // booking without result: edit / delete only
     if (amount === null) {
-      if (!confirm('Delete booking "' + (e.legacy.item || '') + '"?')) return;
+      if (!(await ccConfirm('Delete this booking?', ccEscHtml(e.legacy.item || ''), 'Delete', true))) return;
       await ctlDeleteOneTime(e.legacy.id);
       window._src.abrPay = window._src.abrPay.filter(o => o.id !== e.legacy.id);
     } else {
@@ -227,7 +227,7 @@ async function cxAbrClick(a, b, rerender) {
     const e = _cxAbrIndex[b.dataset.id];
     if (!e || !e.res || !e.res.manual) return true;
     const bk = ctlAbrBooking(e.res);
-    if (!confirm('Cancel Abrechnung "' + e.res.label + '"?' + (bk ? '\n\nThe booking of ' + cxFmtDate(bk.invoice_date) + ' (' + cxEur(bk.amount) + ') will be deleted too.' : ''))) return true;
+    if ((await ccDialog({ icon: 'ti-alert-triangle', tone: 'danger', title: 'Cancel this Abrechnung?', body: ccEscHtml(e.res.label) + (bk ? '<br><br>The booking of ' + cxFmtDate(bk.invoice_date) + ' (' + cxEur(bk.amount) + ') will be deleted too.' : ''), actions: [{ label: 'Keep', value: false }, { label: 'Cancel Abrechnung', value: true, danger: true }] })) !== true) return true;
     try {
       if (bk) { await ctlDeleteOneTime(bk.id); window._src.abrPay = window._src.abrPay.filter(o => o.id !== bk.id); }
       const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', e.res.db.id);

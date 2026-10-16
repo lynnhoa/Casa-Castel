@@ -301,7 +301,7 @@ window.renderSetup = function () {
       if (a === 'suDel') {
         const id = Number(b.dataset.u), u = ctlUnit(id);
         if (!u || _cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Unit has entries – it can\'t be removed'); return; }
-        if (!confirm('Remove "' + u.name + '" from Controlling?')) return;
+        if (!(await ccConfirm('Remove from Controlling?', ccEscHtml(u.name), 'Remove', true))) return;
         try {
           const { error } = await _ctlSupa.from('ctrl_units').delete().eq('id', id);
           if (error) throw error;
@@ -467,7 +467,7 @@ async function _cxPerSave(catId, rid) {
 async function _cxPerDel(catId, rid) {
   const h = ctlCastelPeriods(catId).find(x => String(x.id) === String(rid));
   if (!h || _cxPerIsStart(h)) return false;
-  if (!confirm('Delete the amount from ' + ctlPerMonthLbl(h.valid_from) + '? The amount before it runs on.')) return false;
+  if (!(await ccConfirm('Delete the amount from ' + ctlPerMonthLbl(h.valid_from) + '?', 'The amount before it runs on.', 'Delete', true))) return false;
   const { error } = await _ctlSupa.from(_CX_PER_T).delete().eq('id', h.id);
   if (error) throw error;
   window._src.castelHist = (window._src.castelHist || []).filter(x => String(x.id) !== String(h.id));

@@ -163,7 +163,7 @@ async function _cxHClick(ev, host) {
   const [app, tid] = key.split(':');
   try {
     if (a === 'delP') {
-      if (!confirm('Delete this rent entry?')) return;
+      if (!(await ccConfirm('Delete this rent entry?', '', 'Delete', true))) return;
       await ccRpDelete(db, b.dataset.id);
     }
     if (a === 'confirm') {
@@ -212,7 +212,7 @@ async function _cxHChange(ev, host) {
   const t = _cxHTenant(app, tid); if (!t) return;
   const iso = ccRpIso(el.value) || null;
   if (field === 'mietbeginn' && !iso) { ctlToast('Move-in can\'t be empty'); return window.renderHistory(host); }
-  if (field === 'mietbeginn' && t.mietbeginn && !confirm('Really change the move-in? This moves the whole rent history of this tenant.')) return window.renderHistory(host);
+  if (field === 'mietbeginn' && t.mietbeginn && !(await ccConfirm('Change the move-in?', 'This moves the whole rent history of this tenant.', 'Change'))) return window.renderHistory(host);
   const before = t[field];
   t[field] = iso;
   try {

@@ -1893,7 +1893,7 @@ async function _aptHGSetNu(id, aptId) {
   const e = (_aptHausgeld[aptId] || []).find(x => String(x.id) === String(id));
   if (!e || !_aptSbClient) return;
   const cur = e.nicht_umlagefaehig != null ? String(e.nicht_umlagefaehig).replace('.', ',') : '';
-  const inp = prompt('Davon nicht umlagefähig (€ / Monat, laut Wirtschaftsplan):', cur);
+  const inp = await ccPrompt('Nicht umlagefähig', 'Davon nicht umlagefähig (€ / Monat, laut Wirtschaftsplan)', cur, 'Save');
   if (inp === null) return;
   const v = inp.trim() === '' ? null : (typeof ccParseEUR === 'function' ? ccParseEUR(inp) : parseFloat(inp.replace(',', '.')));
   if (v !== null && (isNaN(v) || v < 0)) return;
@@ -2420,7 +2420,7 @@ async function _aptOpenContract(type, aptId, renew) {
         const sigVal      = document.getElementById('apt-cm-sig')?.value;
         const kautionVal  = document.getElementById('apt-cm-kaution')?.value;
         const kautionFael = _aptReadKautionFael('cm');
-        if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', !endVal && 'Mietende'])) return;
+        if (!(await ccConfirmMissingDates([!startVal && 'Mietbeginn', !endVal && 'Mietende']))) return;
         const btn = document.getElementById('aptKzPdfBtn');
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
@@ -2511,7 +2511,7 @@ async function _aptOpenContract(type, aptId, renew) {
           const sonderkEnde    = document.getElementById('apt-gw-sonderk-ende')?.value || '';
 
           // Validate
-          if (!ccConfirmMissingDates([!startVal && 'Mietbeginn'])) return;
+          if (!(await ccConfirmMissingDates([!startVal && 'Mietbeginn']))) return;
           if (sonderkAn && !sonderkEnde) {
             alert('Bitte Datum für das vorzeitige Vertragsende wählen (§ 2 Abs. 7).');
             return;
@@ -2603,7 +2603,7 @@ async function _aptOpenContract(type, aptId, renew) {
         const endVal            = befristet ? document.getElementById('apt-mv-end')?.value : null;
         const grundVal          = befristet ? (document.querySelector('input[name="apt-mv-grund"]:checked')?.value || '') : '';
         const eigenbedarfPerson = grundVal === 'eigenbedarf' ? document.getElementById('apt-mv-eigenbedarf-person')?.value.trim() : '';
-        if (!ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende'])) return;
+        if (!(await ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende']))) return;
         if (befristet && grundVal === 'eigenbedarf' && !eigenbedarfPerson) {
           alert('Bitte Eigenbedarfsperson angeben (gesetzliche Pflicht).'); return;
         }

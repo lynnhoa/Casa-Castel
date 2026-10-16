@@ -662,7 +662,7 @@ async function deleteMsg(id) {
 
 async function resetChat() {
   if (!sbL) return;
-  if (!confirm('Delete all chat messages? This cannot be undone.')) return;
+  if (!(await ccConfirm('Delete all chat messages?', 'This cannot be undone.', 'Delete all', true))) return;
   _renderMsgs([]);
   // Photos of the chat go with it
   const { data: photos } = await sbL.from('lounge_data').select('body').eq('type','message').like('body', '[photo] %');

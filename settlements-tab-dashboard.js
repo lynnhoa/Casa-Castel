@@ -257,7 +257,8 @@ function sdOverviewHTML(Y, O) {
         K.cats.map(c => '<div class="sdo-cat"><span>' + stEsc(c.label) + '</span><span class="sdo-bar sdo-bar--s"><i style="width:' + (c.total / mx * 100).toFixed(1) + '%;background:#D9C6AE"></i></span><span>' + cxW(c.total) + '</span></div>').join('') + '</div>' : '') +
     '</div>';
   }
-  return total + tiles + panel + costs;
+  // B2: column wrappers — two columns on iPad landscape / laptop, invisible on the phone (same order)
+  return '<div class="sdo-cols"><div class="sdo-l">' + total + '</div><div class="sdo-r">' + tiles + panel + '</div><div class="sdo-l2">' + costs + '</div></div>';
 }
 
 /* ── Jump from the dashboard ── */
