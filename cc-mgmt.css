@@ -31,70 +31,81 @@ html body.is-properties .cc-select { font-size: 14px !important; }
 /* 5 · Main button on the Settlements pages — same as Controlling's */
 html body .sc-go { border-radius: 8px; font-weight: 500; letter-spacing: .07em; }
 
-/* ═════════ P2 (16.10.2026) · pop-ups on the iPhone ═════════
-   Reference = the Rentals / Maintenance sheet: dimmed + blurred background, sheet from the
-   bottom with 20px corners (max 90% of the screen), header 20px padding · serif title 22px ·
-   subtitle 12px · round × 30px, buttons bottom right, fields 36px / 14px with 11px labels.
-   Confirm questions = the in-app dialog: centred card, buttons bottom right.
-   Phone only (≤700px) — iPad / laptop come later. Contract generators keep their big
-   Generate button; PDF previews, date picker, signature pad and photo viewers stay as they are. */
+/* ═════════ P2 (16.10.2026) + B6 (17.10.2026) · pop-ups — one look on every screen ═════════
+   Reference = the Rentals / Maintenance sheet: dimmed + blurred background, header 20px padding ·
+   serif title 22px · subtitle 12px · round × 30px, buttons bottom right, fields 36px / 14px with
+   11px labels. Confirm questions = the in-app dialog: centred card, buttons bottom right.
+   iPhone: sheet from the bottom (P2) · iPad + laptop: centred window (B6).
+   Contract generators keep their big Generate button; PDF previews, date picker, signature pad
+   and photo viewers stay as they are. */
+
+/* 1 · Dimmed background */
+html body :is(.cc-modal-overlay, .tn-overlay, .srm__bg),
+body.is-properties :is(.overlay, .add-overlay),
+body.pva .pv-scrim { background: rgba(30,27,24,.22); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+
+/* 2 · Header: serif title 22px, subtitle 12px, round × 30px */
+html body :is(.cc-modal-hdr, .tn-sheet-hdr, .srm__h),
+body.is-properties .sheet-hdr { padding: 20px 20px 14px; align-items: flex-start; }
+html body :is(.cc-modal-title, .tn-sheet-name, .srm__t),
+body.is-properties .sheet-hdr__name { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 300;
+  line-height: 1.15; letter-spacing: 0; text-transform: none; color: var(--cc-ink); }
+html body :is(.tn-sheet-sub, .rp-prf-hdr__sub) { font-size: 12px; color: var(--cc-taupe); }
+html body :is(.cc-modal-close, .srm__x, .rp-prf-hdr__close, .tn-sheet-hdr .tn-icon-btn),
+body.is-properties .sheet-hdr .btn-close { width: 30px; height: 30px; min-width: 30px; padding: 0; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; background: var(--cc-surface);
+  border: .5px solid var(--cc-rule); border-radius: 50%; color: var(--cc-taupe); font-size: 13px; line-height: 1; }
+body.pva .scr .cc-modal-close { color: var(--cc-taupe); }
+
+/* 3 · Footer: buttons bottom right */
+html body .tn-sheet-footer { background: transparent; }
+html body .srm__bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+html body .srm__bar .cx-btn { flex: 0 0 auto; width: auto; min-width: 0; height: 36px; padding: 0 16px; }
+
+/* 4 · Fields in pop-ups: 36px high, 14px text, labels 11px in normal case (= the cards) */
+html body .srm :is(input.st-in, select.st-in, .srm__sel),
+body.is-properties :is(.sheet, .add-sheet) :is(input.cc-input, select.cc-select),
+html body :is(input.rm-input, select.rm-input) { height: 36px; min-height: 36px; font-size: 14px !important; }
+body.is-properties :is(.sheet, .add-sheet) :is(input.cc-input, select.cc-select) { padding-top: 0; padding-bottom: 0; }
+html body .srm .st-amt input.st-in { height: 36px; min-height: 36px; }   /* B6: amount fields too (they stayed 44px) */
+html body .srm .st-f__l,
+body.is-properties :is(.sheet, .add-sheet) .e-lbl,
+html body :is(.rm-field label, .rm-toggle-label) { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--cc-taupe); }
+html body .rm-fields-title { font-size: 10px; font-weight: 600; letter-spacing: .12em; }
+
+/* 5 · Confirm questions = the in-app dialog (centred card, buttons bottom right) */
+html body :is(.stc, .mt-cf) { justify-content: center; padding: 24px; }
+html body :is(.stc__bg, .mt-cf__bg) { background: rgba(30,27,24,.35); }
+html body :is(.stc__s, .mt-cf__s) { width: 100%; max-width: 320px; border-radius: 12px; padding: 24px 20px 18px;
+  box-shadow: 0 10px 40px rgba(30,27,24,.18); }
+html body :is(.stc__t, .mt-cf__t),
+body.is-properties .confirm-box__title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; font-weight: 400;
+  line-height: 1.2; color: var(--cc-ink); margin: 0 0 6px; }
+html body :is(.stc__x, .mt-cf__x),
+body.is-properties .confirm-box__desc { font-size: 13px; line-height: 1.55; color: var(--cc-taupe); margin: 0 0 18px; }
+body.is-properties .confirm-box { text-align: left; max-width: 320px; padding: 24px 20px 18px; }
+html body :is(.stc__b, .mt-cf__b, .rm-confirm-btns, .tn-confirm-btns),
+body.is-properties .confirm-box__btns { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+html body :is(.stc, .mt-cf, .rm-confirm-overlay, .tn-confirm-overlay) :is(.stc__b, .mt-cf__b, .rm-confirm-btns, .tn-confirm-btns) > button,
+body.is-properties .confirm-box .confirm-box__btns > button { flex: 0 0 auto; width: auto; min-width: 0; height: 36px; min-height: 36px;
+  padding: 0 14px; border-radius: 18px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+html body :is(.stc__b .cx-btn--p, .stc__b .stc__d, .mt-cf__b .mt-btn--p, .mt-cf__b .mt-btn--d) { order: 2; }
+
+/* 6a · iPhone: sheet from the bottom, 20px corners, max 90% (Settlements calculators 92%) */
 @media (max-width: 700px) {
-
-  /* 1 · Dimmed background */
-  html body :is(.cc-modal-overlay, .tn-overlay, .srm__bg),
-  body.is-properties :is(.overlay, .add-overlay),
-  body.pva .pv-scrim { background: rgba(30,27,24,.22); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
-
-  /* 2 · Sheet from the bottom, 20px corners, max 90% (Settlements calculators 92%) */
   html body :is(.cc-modal-sheet, .tn-sheet),
   body.is-properties :is(.sheet, .add-sheet) { border-radius: 20px 20px 0 0; max-height: 90vh; max-height: calc(90dvh - env(safe-area-inset-top, 0px)); }
   html body .srm__win { top: auto; max-height: 92vh; max-height: calc(92dvh - env(safe-area-inset-top, 0px)); border-radius: 20px 20px 0 0; }
+}
 
-  /* 3 · Header: serif title 22px, subtitle 12px, round × 30px */
-  html body :is(.cc-modal-hdr, .tn-sheet-hdr, .srm__h),
-  body.is-properties .sheet-hdr { padding: 20px 20px 14px; align-items: flex-start; }
-  html body :is(.cc-modal-title, .tn-sheet-name, .srm__t),
-  body.is-properties .sheet-hdr__name { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 300;
-    line-height: 1.15; letter-spacing: 0; text-transform: none; color: var(--cc-ink); }
-  html body :is(.tn-sheet-sub, .rp-prf-hdr__sub) { font-size: 12px; color: var(--cc-taupe); }
-  html body :is(.cc-modal-close, .srm__x, .rp-prf-hdr__close, .tn-sheet-hdr .tn-icon-btn),
-  body.is-properties .sheet-hdr .btn-close { width: 30px; height: 30px; min-width: 30px; padding: 0; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; background: var(--cc-surface);
-    border: .5px solid var(--cc-rule); border-radius: 50%; color: var(--cc-taupe); font-size: 13px; line-height: 1; }
-  body.pva .scr .cc-modal-close { color: var(--cc-taupe); }
-
-  /* 4 · Footer: buttons bottom right */
-  html body .tn-sheet-footer { background: transparent; }
-  html body .srm__bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
-  html body .srm__bar .cx-btn { flex: 0 0 auto; width: auto; min-width: 0; height: 36px; padding: 0 16px; }
-
-  /* 5 · Fields in pop-ups: 36px high, 14px text, labels 11px in normal case (= the cards) */
-  html body .srm :is(input.st-in, select.st-in, .srm__sel),
-  body.is-properties :is(.sheet, .add-sheet) :is(input.cc-input, select.cc-select),
-  html body :is(input.rm-input, select.rm-input) { height: 36px; min-height: 36px; font-size: 14px !important; }
-  body.is-properties :is(.sheet, .add-sheet) :is(input.cc-input, select.cc-select) { padding-top: 0; padding-bottom: 0; }
-  html body .srm .st-f__l,
-  body.is-properties :is(.sheet, .add-sheet) .e-lbl,
-  html body :is(.rm-field label, .rm-toggle-label) { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--cc-taupe); }
-  html body .rm-fields-title { font-size: 10px; font-weight: 600; letter-spacing: .12em; }
-
-  /* 6 · Confirm questions = the in-app dialog (centred card, buttons bottom right) */
-  html body :is(.stc, .mt-cf) { justify-content: center; padding: 24px; }
-  html body :is(.stc__bg, .mt-cf__bg) { background: rgba(30,27,24,.35); }
-  html body :is(.stc__s, .mt-cf__s) { width: 100%; max-width: 320px; border-radius: 12px; padding: 24px 20px 18px;
-    box-shadow: 0 10px 40px rgba(30,27,24,.18); }
-  html body :is(.stc__t, .mt-cf__t),
-  body.is-properties .confirm-box__title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; font-weight: 400;
-    line-height: 1.2; color: var(--cc-ink); margin: 0 0 6px; }
-  html body :is(.stc__x, .mt-cf__x),
-  body.is-properties .confirm-box__desc { font-size: 13px; line-height: 1.55; color: var(--cc-taupe); margin: 0 0 18px; }
-  body.is-properties .confirm-box { text-align: left; max-width: 320px; padding: 24px 20px 18px; }
-  html body :is(.stc__b, .mt-cf__b, .rm-confirm-btns, .tn-confirm-btns),
-  body.is-properties .confirm-box__btns { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
-  html body :is(.stc, .mt-cf, .rm-confirm-overlay, .tn-confirm-overlay) :is(.stc__b, .mt-cf__b, .rm-confirm-btns, .tn-confirm-btns) > button,
-  body.is-properties .confirm-box .confirm-box__btns > button { flex: 0 0 auto; width: auto; min-width: 0; height: 36px; min-height: 36px;
-    padding: 0 14px; border-radius: 18px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
-  html body :is(.stc__b .cx-btn--p, .stc__b .stc__d, .mt-cf__b .mt-btn--p, .mt-cf__b .mt-btn--d) { order: 2; }
+/* 6b · iPad + laptop (B6): centred window, one size (560px) for every form pop-up.
+        Settlements' calculator windows keep their large size — their tables need the room. */
+@media (min-width: 701px) {
+  html body :is(.cc-modal-sheet, .tn-sheet, .rm-sheet, .mt-modal__s),
+  body.is-properties :is(.sheet, .add-sheet) { width: calc(100% - 48px); max-width: 560px; padding-bottom: 0;
+    border-radius: 12px !important; max-height: 86vh !important; max-height: 86dvh !important; }
+  html body .srm__win { border-radius: 12px; }
+  html body .srm__h { padding: 20px 22px 14px; }
 }
 
 /* 7 · Properties: Edit (and Save while editing) at the bottom right of the pop-up — all screen sizes */
@@ -226,7 +237,7 @@ html body .ct-toast.show { opacity: 1; }
   body.pva .scr > .k-mob-chat { grid-column: 2; grid-row: 3 / 5; min-height: 0; border-left: .5px solid var(--cc-rule); }
   body.pva #pvaCompose { grid-column: 2; grid-row: 5; border-left: .5px solid var(--cc-rule); }
   body.pva .pv-scrim { position: fixed; justify-content: center; align-items: center; }
-  body.pva .pv-scrim > .cc-modal-sheet { width: min(640px, 92%); max-height: 86vh !important; border-radius: 14px; padding-bottom: 0; }
+  body.pva .pv-scrim > .cc-modal-sheet { width: min(560px, 92%); max-height: 86vh !important; border-radius: 12px; padding-bottom: 0; }   /* B6: same window as all apps */
 }
 
 /* ── B5 · Properties: the same page width and header edges as the other apps
