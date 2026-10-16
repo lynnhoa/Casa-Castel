@@ -137,9 +137,8 @@ html body .ct-toast.show { opacity: 1; }
    · content max 1200px, page edges 36px — header, tabs and content share them
    ═════════════════════════════════════════════════════════════ */
 
-/* ── B1 · Providers: header + tabs like the other apps on big screens
-      (iPad portrait follows with B4, together with the card + chat layout) ── */
-@media (min-width: 900px) {
+/* ── B1 + B4 · Providers: header + tabs like the other apps from iPad portrait up ── */
+@media (min-width: 701px) {
   body.pva .scr { max-width: 1200px; }
   body.pva .scr > .cc-header > .cc-nav { padding-left: 36px; padding-right: 36px; }
   body.pva .scr > .cc-header > .cc-tabs { padding-left: 32px; padding-right: 32px; }
@@ -213,4 +212,19 @@ html body .ct-toast.show { opacity: 1; }
   html body #appMain .mt-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; align-items: start; }
   html body #appMain .mt-list > :not(.mt-card),
   html body #appMain .mt-list > .mt-card:is(.mt-card--new, :has(.mt-open)) { grid-column: 1 / -1; }
+}
+
+
+/* ── B4 · Providers: card + chat side by side from iPad portrait (was a phone column until 900px).
+      Pop-ups as centred windows; the dimmed background covers the whole screen. ── */
+@media (min-width: 701px) {
+  body.pva .scr { display: grid; grid-template-columns: minmax(380px, 440px) minmax(0, 1fr);   /* card column as on iPad landscape: the 5 tool buttons fit */
+                  grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+  body.pva .scr > .scr-top, body.pva .scr > .cc-header { grid-column: 1 / -1; }
+  body.pva #pvaStrip { grid-column: 1; grid-row: 3; }
+  body.pva #pvaCardWrap { grid-column: 1; grid-row: 4; align-self: start; max-height: 100%; overflow-y: auto; }
+  body.pva .scr > .k-mob-chat { grid-column: 2; grid-row: 3 / 5; min-height: 0; border-left: .5px solid var(--cc-rule); }
+  body.pva #pvaCompose { grid-column: 2; grid-row: 5; border-left: .5px solid var(--cc-rule); }
+  body.pva .pv-scrim { position: fixed; justify-content: center; align-items: center; }
+  body.pva .pv-scrim > .cc-modal-sheet { width: min(640px, 92%); max-height: 86vh !important; border-radius: 14px; padding-bottom: 0; }
 }
