@@ -2,8 +2,7 @@
 // PlannerApp — Planner (tabs: Overview, To-do, Manager, Creator).
 // Same frame as Outreach: logo header, nav tabs, account menu
 // with all apps. Phone, iPad and desktop layouts.
-// To-do and Manager are live. Creator and Overview follow in
-// phases 4 and 5.
+// To-do, Manager and Creator are live. Overview follows in phase 5.
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from "react";
@@ -15,6 +14,7 @@ import { usePlanner } from "./usePlanner";
 import { thisMonday } from "./planner";
 import PlannerTodo, { DEFAULT_VIEW } from "./PlannerTodo";
 import PlannerManager from "./PlannerManager";
+import PlannerCreator from "./PlannerCreator";
 import type { PlannerView } from "./PlannerTodo";
 import type { Role } from "./types";
 
@@ -22,7 +22,7 @@ const TABS: { key: string; label: string; soon?: { phase: number; text: string }
   { key: "overview", label: "Overview", soon: { phase: 5, text: "Your read-only scoreboard: stage tracks, audience, portfolio and the weekly goals met." } },
   { key: "todo",     label: "To-do" },
   { key: "manager",  label: "Manager" },
-  { key: "creator",  label: "Creator",  soon: { phase: 4, text: "Your workspace: concept, offer, portfolio, editorial list, content ideas and the weekly learning." } },
+  { key: "creator",  label: "Creator" },
 ];
 
 const VIEW_KEY = "lh_planner_view";
@@ -54,6 +54,8 @@ export default function PlannerApp({ userId, settings, signOut, switchTo, banner
   const tab      = TABS.find(t => t.key === view.tab) || TABS[1];
   const goTab    = (key: string) => { setView({ ...view, tab: key }); window.scrollTo(0, 0); };
   const openOutreach = () => switchTo("outreach");
+  // the Manager app opens straight on Service Catalog (rate cards inside)
+  const openCatalog = () => { try { sessionStorage.setItem("lh_manager_open", "catalog"); } catch { /* ignore */ } switchTo("manager"); };
 
   const avatar = (
     <AvatarMenu settings={settings} roleLabel="Planner" items={[]} apps={appItems("planner", switchTo)} onSignOut={() => { signOut(); }} />
@@ -89,6 +91,8 @@ export default function PlannerApp({ userId, settings, signOut, switchTo, banner
           <PlannerTodo planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} openOutreach={openOutreach} />
         ) : tab.key === "manager" ? (
           <PlannerManager planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} openOutreach={openOutreach} />
+        ) : tab.key === "creator" ? (
+          <PlannerCreator planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} openCatalog={openCatalog} />
         ) : (
           <div>
             <h2 style={{ fontFamily: SERIF, fontSize: isMobile ? 22 : 24, fontWeight: "normal", margin: 0, lineHeight: 1.1 }}>{tab.label}</h2>

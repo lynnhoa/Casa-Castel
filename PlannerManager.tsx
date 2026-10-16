@@ -3,7 +3,7 @@
 // The working tools behind his To-do rows, per account:
 //   Account snapshot · Following log · Community (daily ticks)
 //   Email list (counted from Outreach, by category and tier)
-//   Sales kit (status, links) + new portfolio pieces to add
+//   Sales kit (status, links) + new portfolio pieces to add (one tap: In kit)
 //   Sales sprints (Stage 2, locked until then)
 // Every row opens the same task window as in To-do, and
 // everything he logs here fills the To-do by itself.

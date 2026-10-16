@@ -117,7 +117,7 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
       {accountsOf(view.acc).map((acc, i) => {
         const st = stageOf(stages, acc);
         if (!st) return null;
-        const g = gateOf(st, tasks);
+        const g = gateOf(st, tasks, planner.doneOf);
         const mine = stages.filter(s => s.account === acc);
         const next = mine.find(s => s.num === st.num + 1);
         return (
@@ -148,12 +148,17 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
     const period = periodOf(t, monday);
     const chip   = view.acc === "all" || t.account === "both";
     const meta: string[] = [ownerLabel(t.owner)];
-    if (t.rhythm === "once") {
+    if (t.source === "portfolio_total") {
+      meta.push(`${st.actual ?? 0} / ${st.target ?? "–"} ${t.measure || "pieces"}`);
+    } else if (t.source === "kit_waiting") {
+      meta.push(`${rhythmLabel(t.rhythm)} · ${st.actual ? `${st.actual} ${st.actual === 1 ? "piece" : "pieces"} waiting` : "nothing waiting"}`);
+    } else if (t.rhythm === "once") {
       if (t.status === "in_progress") meta.push("In progress");
       if (t.target != null) meta.push(`Goal ${t.target} ${t.measure || ""}`.trim());
     } else if (kind === "number") {
       meta.push(st.target == null ? `${st.actual ?? 0} ${t.measure} · target in Plan week` : `${st.actual ?? 0} / ${st.target} ${t.measure}`);
       if (t.source === "outreach") meta.push("from Outreach");
+      if (t.source === "ideas" || t.source === "posts" || t.source === "pieces") meta.push("from Creator");
     } else if (kind === "auto") {
       meta.push(`${rhythmLabel(t.rhythm)} · ${st.done ? "entered" : "not entered yet"}`);
     } else if (kind === "days") {
@@ -162,7 +167,7 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
       meta.push(t.rhythm === "monthly" ? `Monthly · ${monthName(period)}` : rhythmLabel(t.rhythm));
     }
     const bar =
-      kind === "number" && st.target ? <Bar value={st.actual ?? 0} max={st.target} done={st.done} /> :
+      (kind === "number" || t.source === "portfolio_total") && st.target ? <Bar value={st.actual ?? 0} max={st.target} done={st.done} /> :
       kind === "days" ? <Bar value={st.daysDone} max={7} done={st.done} /> : null;
 
     const toggleToday = () => { const days = [...st.days]; days[ti] = !days[ti]; quiet(planner.saveEntry(t.id, period, { days })); };

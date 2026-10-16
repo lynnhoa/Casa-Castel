@@ -17,8 +17,9 @@ import {
   accLook, phaseLabel, ownerLabel, rhythmLabel, rowKind, entryKey, periodOf, snapKey,
   addDays, isoWeek, weekRange, weekLabel, thisMonday, monthName, todayIndex, gateOf, stageNumOf, taskAccounts, isVisible, byOrder,
   fmtInt, fmtPct2, parseDec, parseIntDe,
+  ITEM_STATUSES, FORMATS, CLASSIC, formatLook, itemStatusLabel,
 } from "./planner";
-import type { Task, Stage, TaskAccount, AccountFilter, Phase, Rhythm } from "./planner";
+import type { Task, Stage, TaskAccount, AccountFilter, Phase, Rhythm, Item, ItemList, Account, NoteKind } from "./planner";
 import { OUTREACH_CATEGORIES, OUTREACH_TIERS, catOf } from "./outreach";
 import type { PlannerHook } from "./usePlanner";
 
@@ -257,7 +258,8 @@ function TaskRead({ task, planner, monday, openOutreach }: { task: Task; planner
   const periodWord = task.rhythm === "monthly" ? `in ${monthName(period)}` : `in week ${isoWeek(monday)}`;
 
   // last 4 weeks (this one included) for weekly and daily tasks
-  const history = task.rhythm === "daily" || task.rhythm === "weekly"
+  // (the kit handover has no history: it only knows what is waiting now)
+  const history = (task.rhythm === "daily" || task.rhythm === "weekly") && task.source !== "kit_waiting"
     ? [-21, -14, -7, 0].map(off => {
         const p = addDays(monday, off);
         const s = planner.stateOf(task, p);
@@ -274,7 +276,24 @@ function TaskRead({ task, planner, monday, openOutreach }: { task: Task; planner
       </div>
 
       {/* ── the work: one control per kind ── */}
-      {task.rhythm === "once" ? (
+      {task.source === "portfolio_total" ? (
+        <>
+          {bigLine(`${st.actual ?? 0} / ${st.target ?? "–"}`, `${task.measure || "pieces"} posted or in the kit`)}
+          <Bar value={st.actual ?? 0} max={st.target ?? 0} done={st.done} s={{ marginTop: 8 }} />
+          <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Counted from your editorial lists in Creator: portfolio pieces set to Posted or In kit. Ticks itself at {st.target}.</p>
+        </>
+      ) : task.source === "kit_waiting" ? (
+        <KitWaitingBlock task={task} planner={planner} />
+      ) : (task.source === "ideas" || task.source === "posts" || task.source === "pieces") ? (
+        <>
+          {bigLine(`${st.actual ?? 0} / ${st.target ?? "–"}`, `${task.measure} in week ${isoWeek(monday)}`)}
+          <Bar value={st.actual ?? 0} max={st.target ?? 0} done={st.done} s={{ marginTop: 8 }} />
+          <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>
+            {task.source === "ideas" ? "Counted from Creator: ideas added this week." : task.source === "posts" ? "Counted from Creator: items set to Posted this week." : "Counted from Creator: portfolio pieces set to Posted this week."}
+            {" "}{st.target == null ? "Set the target in Plan week." : `Target: ${st.target} (Plan week).`}
+          </p>
+        </>
+      ) : task.rhythm === "once" ? (
         <>
           <Lbl>Status</Lbl>
           <S value={task.status} onChange={(e: any) => quiet(planner.setTaskStatus(task, e.target.value))}>
@@ -457,6 +476,235 @@ function OutreachBlock({ task, planner, monday, openOutreach }: { task: Task; pl
   );
 }
 
+// Pieces posted but not yet in the media kits / pitch deck: one tap each
+function KitWaitingBlock({ task, planner }: { task: Task; planner: PlannerHook }) {
+  const accs = taskAccounts(task);
+  const list = planner.waiting.filter(i => accs.includes(i.account));
+  return (
+    <>
+      <Lbl>Waiting for the kits · {list.length}</Lbl>
+      {list.length === 0 ? (
+        <p style={{ fontSize: 13, color: C.green, margin: 0 }}>Nothing waiting ✓</p>
+      ) : (
+        <div style={{ borderTop: `1px solid ${C.rule}` }}>
+          {list.map(it => (
+            <div key={it.id} style={{ minHeight: 44, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderBottom: `1px solid ${C.rule}` }}>
+              <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                <span style={{ fontSize: 14 }}>{it.title}</span>
+                <AccChip acc={it.account} />
+              </div>
+              <B v="sec" onClick={() => quietP(planner.setItemStatus(it, "in_kit"))} s={{ ...BAR_BTN, height: 28, minHeight: 28, color: C.black, flexShrink: 0 }}>In kit</B>
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0" }}>Add each piece to the media kit or pitch deck, then tap In kit.</p>
+    </>
+  );
+}
+
+export const FormatChip = ({ f }: { f: string }) => {
+  const l = formatLook(f);
+  return <span style={{ fontSize: TYPE.micro.size, padding: "1px 7px", borderRadius: 10, border: `1px solid ${l.border}`, background: l.bg, color: l.color, whiteSpace: "nowrap" as const, flexShrink: 0 }}>{l.label}</span>;
+};
+
+// ═════════════════════════════════════════════════════════════
+// ITEM WINDOW — an idea or an editorial (portfolio piece)
+// Status by dropdown right in the read view; Edit → Save → read view
+// ═════════════════════════════════════════════════════════════
+export function ItemWindow({ planner, itemId, draft, isMobile, onClose }: {
+  planner: PlannerHook; itemId?: string; draft?: Partial<Item>; isMobile: boolean; onClose: () => void;
+}) {
+  const [id, setId]     = useState<string | undefined>(itemId);
+  const it              = planner.items.find(x => x.id === id);
+  const [edit, setEdit] = useState(!itemId);
+  const [f, setF]       = useState<Partial<Item>>(it || draft || {});
+  const [err, setErr]   = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  useEffect(() => { if (!edit && it) setF(it); }, [it, edit]);
+  useEffect(() => { if (id && !it && !planner.loading) onClose(); }, [id, it, planner.loading]);
+
+  const isEditorial = (it?.list || f.list) === "editorial";
+  const kind = isEditorial ? "Editorial" : "Idea";
+  const save = async () => {
+    setErr(null);
+    if (!String(f.title || "").trim()) { setErr(`Give the ${kind.toLowerCase()} a name.`); return; }
+    setBusy(true);
+    try {
+      const fields: Partial<Item> = {
+        title: f.title, account: f.account, list: f.list, format: f.format || "", plannedOn: f.plannedOn || null,
+        direction: f.direction || "", portfolio: !!f.portfolio, link: f.link || "", views: f.views ?? null,
+      };
+      if (it) {
+        // a planned date on an idea makes it Planned
+        if (fields.plannedOn && it.status === "idea") fields.status = "planned";
+        await planner.updateItem(it.id, fields);
+      } else {
+        const n = await planner.createItem({ ...fields, status: fields.plannedOn ? "planned" : "idea" });
+        setId(n.id);
+      }
+      setEdit(false);
+    } catch (e: any) { setErr(e?.message || "Couldn't save."); }
+    finally { setBusy(false); }
+  };
+  const del = async () => {
+    setAskDelete(false);
+    if (!it) return;
+    try { await planner.deleteItem(it.id); onClose(); }
+    catch (e: any) { setErr(e?.message || "Couldn't delete."); }
+  };
+  const acc = (f.account || it?.account || "createbylynn") as Account;
+  const formats = [...FORMATS[acc], CLASSIC];
+
+  return (
+    <>
+      {askDelete && it && <ConfirmDialog title={`Delete “${it.title}”?`} text={`The ${kind.toLowerCase()} is removed from your list.`} okLabel="Delete" danger onOk={del} onCancel={() => setAskDelete(false)} />}
+      <Window title={edit ? (it ? `Edit ${kind.toLowerCase()}` : `New ${kind.toLowerCase()}`) : (it?.title || kind)} isMobile={isMobile}
+        onClose={() => { if (edit && it) { setEdit(false); setErr(null); } else onClose(); }}
+        footer={edit ? (
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <B v="sec" onClick={() => { if (it) { setEdit(false); setErr(null); } else onClose(); }}>Cancel</B>
+            <B onClick={save} s={{ opacity: busy ? 0.5 : 1 }}>{busy ? "Saving…" : "Save"}</B>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+            <MoreMenu items={[{ label: `Delete ${kind.toLowerCase()}`, danger: true, onClick: () => setAskDelete(true) }]} />
+            <B onClick={() => { setF(it!); setEdit(true); }}>Edit</B>
+          </div>
+        )}>
+        {err && <p style={{ fontSize: TYPE.label.size, color: C.red, margin: "0 0 8px" }}>{err}</p>}
+        {!edit && it ? (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+              <span style={microLabel}>{kind}{it.portfolio ? " · portfolio piece" : ""}</span>
+              <AccChip acc={it.account} />
+              {it.format && <FormatChip f={it.format} />}
+            </div>
+            <Lbl>Status</Lbl>
+            <S value={it.status} onChange={(e: any) => quietP(planner.setItemStatus(it, e.target.value))}>
+              {ITEM_STATUSES.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+            </S>
+            <p style={{ fontSize: 12, color: C.muted, margin: "6px 0 0" }}>
+              {it.postedOn ? `Posted on ${fmtD(it.postedOn)}` : it.plannedOn ? `Planned for ${fmtD(it.plannedOn)}` : "No date yet"}
+              {it.portfolio && it.status === "posted" ? " · waiting for the kits" : ""}
+              {it.status === "in_kit" ? " · in the kit" : ""}
+            </p>
+            {textBlock(isEditorial ? "Creative direction" : "Notes", it.direction)}
+            {isEditorial && !it.direction && <p style={{ fontSize: 12, color: "#b07a4a", margin: "10px 0 0" }}>No creative direction yet — tap Edit to write it.</p>}
+            {it.link && (
+              <>
+                <Lbl>Post link</Lbl>
+                <a href={it.link} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: C.black, display: "inline-flex", alignItems: "center", gap: 5, overflowWrap: "anywhere" as const }}><Ico d={IC.link} size={13} />{it.link}</a>
+              </>
+            )}
+            {it.views != null && textBlock("Views", fmtInt(it.views))}
+          </div>
+        ) : (
+          <div>
+            <Lbl>{kind}</Lbl>
+            <I value={f.title || ""} onChange={(e: any) => setF({ ...f, title: e.target.value })} placeholder={isEditorial ? "e.g. Golden water editorial" : "e.g. Espresso makeup"} autoFocus={!it} />
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
+              <div><Lbl>Account</Lbl>
+                <S value={acc} onChange={(e: any) => { const a = e.target.value as Account; setF({ ...f, account: a, format: f.format && ![...FORMATS[a], CLASSIC].includes(f.format) ? (isEditorial ? FORMATS[a][0] : CLASSIC) : f.format }); }}>
+                  {ACCOUNTS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                </S>
+              </div>
+              <div><Lbl>Format</Lbl>
+                <S value={f.format || CLASSIC} onChange={(e: any) => setF({ ...f, format: e.target.value })}>
+                  {formats.map(x => <option key={x} value={x}>{x}</option>)}
+                </S>
+              </div>
+              <div><Lbl>Planned for</Lbl>
+                <I type="date" value={f.plannedOn || ""} onChange={(e: any) => setF({ ...f, plannedOn: e.target.value || null })} />
+              </div>
+              <div><Lbl>Views</Lbl>
+                <I inputMode="numeric" value={f.views == null ? "" : String(f.views)} placeholder="–" onChange={(e: any) => setF({ ...f, views: parseIntDe(e.target.value) })} />
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <Tick on={!!f.portfolio} color={C.green} label="Portfolio piece (counts toward the first set)" onClick={() => setF({ ...f, portfolio: !f.portfolio })} />
+            </div>
+            <Lbl>{isEditorial ? "Creative direction" : "Notes"}</Lbl>
+            <textarea value={f.direction || ""} onChange={(e) => setF({ ...f, direction: e.target.value })} style={{ ...area, minHeight: isEditorial ? 110 : 72 }}
+              placeholder={isEditorial ? "Mood, look, products, shots" : ""} />
+            <Lbl>Post link</Lbl>
+            <I value={f.link || ""} onChange={(e: any) => setF({ ...f, link: e.target.value })} placeholder="https://" inputMode="url" />
+          </div>
+        )}
+      </Window>
+    </>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════
+// NOTE WINDOW — concept, offer or this week's learning
+// Linked To-do task (if any) shows its status as a dropdown.
+// ═════════════════════════════════════════════════════════════
+export function NoteWindow({ planner, acc, kind, period, task, title, action, isMobile, onClose }: {
+  planner: PlannerHook; acc: Account; kind: NoteKind; period: string | null; task?: Task; title: string;
+  action?: { label: string; onClick: () => void }; isMobile: boolean; onClose: () => void;
+}) {
+  const note = planner.noteOf(acc, kind, period);
+  const empty = !note || (!note.body && !note.title);
+  const [edit, setEdit] = useState(empty);
+  const [f, setF]       = useState({ title: note?.title || "", body: note?.body || "" });
+  const [err, setErr]   = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!edit) setF({ title: note?.title || "", body: note?.body || "" }); }, [note, edit]);
+  const isLearning = kind === "learning";
+
+  const save = async () => {
+    setErr(null); setBusy(true);
+    try { await planner.saveNote(acc, kind, period, isLearning ? { title: f.title, body: f.body } : { body: f.body }); setEdit(false); }
+    catch (e: any) { setErr(e?.message || "Couldn't save."); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Window title={title} isMobile={isMobile} onClose={() => { if (edit && !empty) { setEdit(false); setErr(null); } else onClose(); }}
+      footer={edit ? (
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <B v="sec" onClick={() => { if (!empty) { setEdit(false); setErr(null); } else onClose(); }}>Cancel</B>
+          <B onClick={save} s={{ opacity: busy ? 0.5 : 1 }}>{busy ? "Saving…" : "Save"}</B>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+          {action ? <B v="sec" onClick={action.onClick} s={{ gap: 5 }}><Ico d={IC.link} size={12} />{action.label}</B> : <span />}
+          <B onClick={() => setEdit(true)}>Edit</B>
+        </div>
+      )}>
+      {err && <p style={{ fontSize: TYPE.label.size, color: C.red, margin: "0 0 8px" }}>{err}</p>}
+      <AccChip acc={acc} />
+      {edit ? (
+        <div>
+          {isLearning && (
+            <>
+              <Lbl>Top post</Lbl>
+              <I value={f.title} onChange={(e: any) => setF({ ...f, title: e.target.value })} placeholder="e.g. Lip liner that stays put · 8.420 views" />
+            </>
+          )}
+          <Lbl>{isLearning ? "One learning" : kind === "offer" ? "What this account sells" : "Concept"}</Lbl>
+          <textarea value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} style={{ ...area, minHeight: isLearning ? 72 : 140 }} autoFocus />
+        </div>
+      ) : (
+        <div>
+          {isLearning && textBlock("Top post", note?.title || "")}
+          {textBlock(isLearning ? "Learning" : kind === "offer" ? "What this account sells" : "Concept", note?.body || "")}
+        </div>
+      )}
+      {task && (
+        <>
+          <Lbl>{task.title} · To-do</Lbl>
+          <S value={task.status} onChange={(e: any) => quietP(planner.setTaskStatus(task, e.target.value))}>
+            {STATUSES.map(x => <option key={x.key} value={x.key}>{task.phase === "refine" && x.key === "done" ? "Settled" : x.label}</option>)}
+          </S>
+        </>
+      )}
+    </Window>
+  );
+}
+
 function TaskForm({ f, set, stages }: { f: Partial<Task>; set: (p: Partial<Task>) => void; stages: Stage[] }) {
   const stageNames = (n: number) => stages.find(s => s.num === n)?.shortName || STAGE_SHORT[n - 1];
   return (
@@ -601,7 +849,7 @@ export function StageWindow({ planner, stageId, isMobile, onClose }: { planner: 
 
   const mine = planner.stages.filter(s => s.account === stage.account);
   const next = mine.find(s => s.num === stage.num + 1);
-  const gate = gateOf(stage, planner.tasks);
+  const gate = gateOf(stage, planner.tasks, planner.doneOf);
   const isCurrent = stageNumOf(planner.stages, stage.account) === stage.num && stage.status !== "done";
   const canStart = isCurrent && !!next && gate.ready;
 
@@ -670,8 +918,8 @@ export function StageWindow({ planner, stageId, isMobile, onClose }: { planner: 
               <div style={{ borderTop: `1px solid ${C.rule}` }}>
                 {gate.items.map(t => (
                   <div key={t.id} style={{ minHeight: 36, display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.rule}`, fontSize: 14 }}>
-                    <Box on={t.status === "done"} />
-                    <span style={{ flex: 1, minWidth: 0, color: t.status === "done" ? C.muted : C.black }}>{t.title}</span>
+                    <Box on={planner.doneOf(t)} />
+                    <span style={{ flex: 1, minWidth: 0, color: planner.doneOf(t) ? C.muted : C.black }}>{t.title}</span>
                     {taskAccounts(t).length > 1 && <AccChip acc="both" />}
                     <span style={{ ...microLabel, flexShrink: 0 }}>{t.status === "in_progress" ? "In progress" : phaseLabel(t.phase)}</span>
                   </div>

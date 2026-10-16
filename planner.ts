@@ -72,6 +72,37 @@ export interface Snapshot {
   engagement: number | null;   // percent, e.g. 3.1
 }
 
+// Creator lists: content ideas (classic TikTok/Reels) and the editorial list (portfolio pieces)
+export type ItemList   = "idea" | "editorial";
+export type ItemStatus = "idea" | "planned" | "shot" | "posted" | "in_kit";
+export interface Item {
+  id:          string;
+  account:     Account;
+  list:        ItemList;
+  title:       string;
+  format:      string;
+  status:      ItemStatus;
+  plannedOn:   string | null;
+  postedOn:    string | null;
+  direction:   string;           // written creative direction (notes for ideas)
+  portfolio:   boolean;          // counts toward the portfolio
+  link:        string;
+  views:       number | null;
+  sort:        number;
+  createdAt:   string;
+  createdWeek: string;           // Monday of the week it was added
+}
+export type NoteKind = "concept" | "offer" | "learning";
+export interface Note {
+  id:          string;
+  account:     Account;
+  kind:        NoteKind;
+  periodStart: string | null;    // week of a learning
+  title:       string;           // learning: top post
+  body:        string;
+  link:        string;
+}
+
 // ── Accounts (chip colours match Outreach: Fashion / Beauty) ──
 export interface Look { label: string; color: string; bg: string; border: string; }
 export const ACCOUNTS: (Look & { key: Account })[] = [
@@ -103,6 +134,41 @@ export const STATUSES: { key: TaskStatus; label: string }[] = [
   { key: "done",        label: "Done" },
 ];
 export const STAGE_SHORT = ["Setup", "Sales", "Business", "Access", "Luxury"];
+
+export const ITEM_STATUSES: { key: ItemStatus; label: string }[] = [
+  { key: "idea",    label: "Idea" },
+  { key: "planned", label: "Planned" },
+  { key: "shot",    label: "Shot" },
+  { key: "posted",  label: "Posted" },
+  { key: "in_kit",  label: "In kit" },
+];
+export const itemStatusLabel = (k: ItemStatus) => ITEM_STATUSES.find(x => x.key === k)?.label || k;
+
+// Formats per account (portfolio pieces) + classic content
+export const CLASSIC = "TikTok/Reels";
+export const FORMATS: Record<Account, string[]> = {
+  lynnhoa:      ["Fashion editorial", "Branded content"],
+  createbylynn: ["Product video", "Problem → solution", "Beauty editorial", "Brand content"],
+};
+const FORMAT_LOOK: Record<string, Look> = {
+  "Product video":      { label: "Product video",      color: "#5a7a9a", bg: "#eef3f8", border: "#c8d6e6" },
+  "Problem → solution": { label: "Problem → solution", color: "#6f8f6f", bg: "#f0f5f0", border: "#b8d4b8" },
+  "Beauty editorial":   { label: "Beauty editorial",   color: "#6a6aaa", bg: "#f0f0f5", border: "#c8c8e0" },
+  "Fashion editorial":  { label: "Fashion editorial",  color: "#9a6a8a", bg: "#f7f0f4", border: "#e4cfdc" },
+  "Brand content":      { label: "Brand content",      color: "#6b655e", bg: "#f3f1ee", border: "#e8e4df" },
+  "Branded content":    { label: "Branded content",    color: "#6b655e", bg: "#f3f1ee", border: "#e8e4df" },
+};
+export const formatLook = (f: string): Look => FORMAT_LOOK[f] || { label: f || CLASSIC, color: "#888888", bg: "#f5f4f2", border: "#e0dcd6" };
+
+// Order in a list: shot → planned (soonest first) → ideas → posted → in the kit (newest first)
+const RANK: Record<ItemStatus, number> = { shot: 0, planned: 1, idea: 2, posted: 3, in_kit: 4 };
+export const itemOrder = (a: Item, b: Item): number => {
+  const r = RANK[a.status] - RANK[b.status];
+  if (r) return r;
+  if (a.status === "posted" || a.status === "in_kit") return String(b.postedOn || "").localeCompare(String(a.postedOn || "")) || b.createdAt.localeCompare(a.createdAt);
+  if (a.plannedOn || b.plannedOn) return !a.plannedOn ? 1 : !b.plannedOn ? -1 : a.plannedOn.localeCompare(b.plannedOn);
+  return b.createdAt.localeCompare(a.createdAt);
+};
 
 export const phaseLabel  = (p: Phase)  => PHASES.find(x => x.key === p)?.label || p;
 export const ownerLabel  = (o: Owner)  => OWNERS.find(x => x.key === o)?.label || o;
@@ -156,11 +222,11 @@ export const stageOf = (stages: Stage[], acc: Account): Stage | undefined => {
 export const stageNumOf = (stages: Stage[], acc: Account): number => stageOf(stages, acc)?.num ?? 1;
 
 // Gate: the setup and refine tasks of this stage for this account (shared tasks count for both)
-export function gateOf(stage: Stage, tasks: Task[]) {
+export function gateOf(stage: Stage, tasks: Task[], doneOf: (t: Task) => boolean = (t) => t.status === "done") {
   const items = tasks
     .filter(t => t.active && t.stageNum === stage.num && t.phase !== "maintain" && (t.account === stage.account || t.account === "both"))
     .sort((a, b) => (a.phase === b.phase ? a.sort - b.sort : a.phase === "setup" ? -1 : 1));
-  const done = items.filter(t => t.status === "done").length;
+  const done = items.filter(doneOf).length;
   return { items, done, total: items.length, ready: done === items.length };
 }
 
@@ -182,20 +248,21 @@ export function isVisible(t: Task, stages: Stage[], f: AccountFilter): boolean {
 // number → done when this week's number reaches the target
 // auto   → filled in elsewhere (account snapshot); the box ticks itself
 export type RowKind = "check" | "days" | "number" | "auto";
-export const AUTO_DONE = new Set(["snapshot"]);          // done when the data is there
-export const AUTO_COUNT = new Set(["outreach"]);         // the number is counted, not typed
+export const AUTO_DONE  = new Set(["snapshot", "kit_waiting", "portfolio_total"]);  // the box ticks itself
+export const AUTO_COUNT = new Set(["outreach", "ideas", "posts", "pieces"]);          // the number is counted, not typed
 export const rowKind = (t: Task): RowKind =>
-  t.rhythm === "once" ? "check" : AUTO_DONE.has(t.source) ? "auto" : t.measure ? "number" : t.rhythm === "daily" ? "days" : "check";
+  AUTO_DONE.has(t.source) ? "auto" : t.rhythm === "once" ? "check" : t.measure ? "number" : t.rhythm === "daily" ? "days" : "check";
 
 export const NO_DAYS = [false, false, false, false, false, false, false];
 
 export interface RowState { done: boolean; actual: number | null; target: number | null; days: boolean[]; daysDone: number; }
 // auto: what other parts of the app fill in (a counted number, or "the data is there")
-export function rowState(t: Task, e: Entry | undefined, auto?: { actual?: number | null; done?: boolean }): RowState {
+export interface Auto { actual?: number | null; target?: number | null; done?: boolean; }
+export function rowState(t: Task, e: Entry | undefined, auto?: Auto): RowState {
   const days = e?.days?.length === 7 ? e.days : NO_DAYS;
   const daysDone = days.filter(Boolean).length;
   const actual = auto && auto.actual !== undefined ? auto.actual : e?.actual ?? null;
-  const target = e?.target ?? null;
+  const target = auto && auto.target !== undefined ? auto.target : e?.target ?? null;
   const kind = rowKind(t);
   const done =
     kind === "auto"   ? !!auto?.done :

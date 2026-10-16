@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────
 // usePlanner — the Planner's data (tables planner_stages,
-// planner_tasks, planner_entries, planner_snapshots) plus what the
-// Planner reads from elsewhere: new Outreach contacts per week and
-// portfolio pieces waiting for the kits (planner_items).
+// planner_tasks, planner_entries, planner_snapshots, planner_items,
+// planner_notes) plus new Outreach contacts per week. Rows that
+// count themselves (contacts, ideas, posts, pieces, first set,
+// kit handover) read from here.
 // Ticks and numbers save right away; the app-wide toast shows
 // Saving… / Saved ✓, and a failed save reloads what is stored.
 // ─────────────────────────────────────────────────────────────
@@ -11,8 +12,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./useSupabase";
 import { registerReloader } from "./saveStatus";
 import { today, monthStart, ymd } from "./formatters";
-import { addDays, entryKey, snapKey, mondayOf, periodOf, rowState, NO_DAYS } from "./planner";
-import type { Stage, Task, Entry, TaskStatus, Snapshot, Account } from "./planner";
+import { addDays, entryKey, snapKey, mondayOf, periodOf, rowState, taskAccounts, NO_DAYS } from "./planner";
+import type { Stage, Task, Entry, TaskStatus, Snapshot, Account, Item, ItemStatus, Note, NoteKind, Auto } from "./planner";
 
 // a new Outreach contact, as far as the Planner needs it
 export interface NewContact { id: string; category: string; tier: string; week: string; }
@@ -61,6 +62,43 @@ const rowToSnap = (r: any): Snapshot => ({
   engagement: r.engagement == null ? null : Number(r.engagement),
 });
 
+const rowToItem = (r: any): Item => ({
+  id:          r.id,
+  account:     r.account,
+  list:        r.list,
+  title:       r.title ?? "",
+  format:      r.format ?? "",
+  status:      r.status ?? "idea",
+  plannedOn:   r.planned_on ? String(r.planned_on).slice(0, 10) : null,
+  postedOn:    r.posted_on ? String(r.posted_on).slice(0, 10) : null,
+  direction:   r.direction ?? "",
+  portfolio:   !!r.portfolio,
+  link:        r.link ?? "",
+  views:       r.views ?? null,
+  sort:        Number(r.sort) || 0,
+  createdAt:   r.created_at ?? "",
+  createdWeek: mondayOf(ymd(r.created_at ? new Date(r.created_at) : new Date())),
+});
+const itemToRow = (p: Partial<Item>) => {
+  const row: any = {};
+  if (p.account   !== undefined) row.account    = p.account;
+  if (p.list      !== undefined) row.list       = p.list;
+  if (p.title     !== undefined) row.title      = p.title.trim();
+  if (p.format    !== undefined) row.format     = p.format;
+  if (p.status    !== undefined) row.status     = p.status;
+  if (p.plannedOn !== undefined) row.planned_on = p.plannedOn || null;
+  if (p.postedOn  !== undefined) row.posted_on  = p.postedOn || null;
+  if (p.direction !== undefined) row.direction  = p.direction;
+  if (p.portfolio !== undefined) row.portfolio  = p.portfolio;
+  if (p.link      !== undefined) row.link       = p.link.trim();
+  if (p.views     !== undefined) row.views      = p.views;
+  return row;
+};
+const rowToNote = (r: any): Note => ({
+  id: r.id, account: r.account, kind: r.kind, periodStart: r.period_start ? String(r.period_start).slice(0, 10) : null,
+  title: r.title ?? "", body: r.body ?? "", link: r.link ?? "",
+});
+
 const rowToEntry = (r: any): Entry => ({
   id:          r.id,
   taskId:      r.task_id,
@@ -107,7 +145,8 @@ export function usePlanner(userId: string | null, monday: string) {
   const [entries,   setEntries]   = useState<Record<string, Entry>>({});
   const [snaps,     setSnaps]     = useState<Record<string, Snapshot>>({});
   const [contacts,  setContacts]  = useState<NewContact[]>([]);
-  const [waiting,   setWaiting]   = useState<{ id: string; account: Account }[]>([]);
+  const [items,     setItems]     = useState<Item[]>([]);
+  const [notes,     setNotes]     = useState<Note[]>([]);
   const [outreachError, setOutreachError] = useState<string | null>(null);
   const [loading,   setLoading]   = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -153,20 +192,26 @@ export function usePlanner(userId: string | null, monday: string) {
     setSnaps(k);
   }, [userId, from, monday]);
 
-  // From elsewhere: new Outreach contacts (per week) and pieces waiting for the kits
+  // Creator lists and notes, plus new Outreach contacts (per week)
   const loadOutside = useCallback(async () => {
-    if (!userId) { setContacts([]); setWaiting([]); return; }
+    if (!userId) { setContacts([]); setItems([]); setNotes([]); return; }
     const since = new Date(`${from}T00:00:00`).toISOString();
-    const [oc, it]: any[] = await Promise.all([
+    const [oc, it, nt]: any[] = await Promise.all([
       supabase.from("outreach_contacts").select("id, category, tier, created_at").eq("user_id", userId).gte("created_at", since),
-      supabase.from("planner_items").select("id, account").eq("user_id", userId).eq("status", "posted").eq("portfolio", true),
+      supabase.from("planner_items").select("*").eq("user_id", userId).order("created_at"),
+      supabase.from("planner_notes").select("*").eq("user_id", userId),
     ]);
     if (oc?.error) setOutreachError(oc.error.message);
     else {
       setOutreachError(null);
       setContacts((oc?.data || []).map((r: any) => ({ id: r.id, category: r.category || "others", tier: r.tier || "now", week: mondayOf(ymd(new Date(r.created_at))) })));
     }
-    if (!it?.error) setWaiting((it?.data || []).map((r: any) => ({ id: r.id, account: r.account })));
+    const err = it?.error || nt?.error;
+    if (err) setLoadError(isMissing(err.message) ? MISSING : err.message);
+    else {
+      setItems((it?.data || []).map(rowToItem));
+      setNotes((nt?.data || []).map(rowToNote));
+    }
   }, [userId, from]);
 
   useEffect(() => { loadBase(); }, [loadBase]);
@@ -285,28 +330,92 @@ export function usePlanner(userId: string | null, monday: string) {
     if (data) setSnaps(m => ({ ...m, [key]: rowToSnap(data) }));
   }, [userId]);
 
+  // ── Creator lists ───────────────────────────────────────────
+  const itemsRef = useRef(items); itemsRef.current = items;
+  const createItem = useCallback(async (fields: Partial<Item>): Promise<Item> => {
+    const { data, error } = await supabase.from("planner_items").insert(itemToRow(fields)).select().single();
+    fail(error);
+    const it = rowToItem(data);
+    setItems(prev => [...prev, it]);
+    return it;
+  }, []);
+  const updateItem = useCallback(async (id: string, patch: Partial<Item>) => {
+    setItems(prev => prev.map(x => (x.id === id ? { ...x, ...patch } : x)));
+    const { error } = await supabase.from("planner_items").update(itemToRow(patch)).eq("id", id).eq("user_id", userId);
+    fail(error);
+  }, [userId]);
+  // Posted / In kit get today's date (once); back to idea, planned or shot clears it
+  const setItemStatus = useCallback(async (it: Item, status: ItemStatus) => {
+    const posted = status === "posted" || status === "in_kit";
+    const postedOn = posted ? (it.postedOn || today()) : null;
+    await updateItem(it.id, { status, postedOn });
+  }, [updateItem]);
+  const deleteItem = useCallback(async (id: string) => {
+    const { error } = await supabase.from("planner_items").delete().eq("id", id).eq("user_id", userId);
+    fail(error);
+    setItems(prev => prev.filter(x => x.id !== id));
+  }, [userId]);
+
+  // ── notes: concept, offer, weekly learning (one per account / week) ─
+  const notesRef = useRef(notes); notesRef.current = notes;
+  const noteOf = useCallback((acc: Account, kind: NoteKind, period: string | null = null) =>
+    notes.find(n => n.account === acc && n.kind === kind && (n.periodStart || null) === (period || null)), [notes]);
+  const saveNote = useCallback(async (acc: Account, kind: NoteKind, period: string | null, patch: Partial<Pick<Note, "title" | "body" | "link">>) => {
+    const prev = notesRef.current.find(n => n.account === acc && n.kind === kind && (n.periodStart || null) === (period || null));
+    if (prev) {
+      setNotes(m => m.map(n => (n.id === prev.id ? { ...n, ...patch } : n)));
+      const { error } = await supabase.from("planner_notes").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", prev.id).eq("user_id", userId);
+      fail(error);
+    } else {
+      const { data, error } = await supabase.from("planner_notes").insert({ account: acc, kind, period_start: period, ...patch }).select().single();
+      fail(error);
+      if (data) setNotes(m => [...m, rowToNote(data)]);
+    }
+  }, [userId]);
+
+  const waiting = items.filter(i => i.portfolio && i.status === "posted");
+
   // ── what a row shows: its entry plus what is filled in elsewhere ─
   const newContacts = useCallback((week: string) => contacts.filter(c => c.week === week), [contacts]);
-  const autoOf = useCallback((t: Task, period: string): { actual?: number | null; done?: boolean } | undefined => {
-    if (t.source === "outreach") return { actual: contacts.filter(c => c.week === period).length };
-    if (t.source === "snapshot") {
-      const sn = t.account === "both" ? null : snaps[snapKey(t.account, period)];
-      return { done: !!sn && (sn.followers != null || sn.views != null || sn.engagement != null) };
+  const autoOf = useCallback((t: Task, period: string): Auto | undefined => {
+    const accs = taskAccounts(t);
+    const mine = items.filter(i => accs.includes(i.account));
+    const inWeek = (d: string | null) => !!d && d >= period && d <= addDays(period, 6);
+    switch (t.source) {
+      case "outreach": return { actual: contacts.filter(c => c.week === period).length };
+      case "snapshot": {
+        const sn = t.account === "both" ? null : snaps[snapKey(t.account, period)];
+        return { done: !!sn && (sn.followers != null || sn.views != null || sn.engagement != null) };
+      }
+      case "ideas":  return { actual: mine.filter(i => i.list === "idea" && i.createdWeek === period).length };
+      case "posts":  return { actual: mine.filter(i => (i.status === "posted" || i.status === "in_kit") && inWeek(i.postedOn)).length };
+      case "pieces": return { actual: mine.filter(i => i.portfolio && (i.status === "posted" || i.status === "in_kit") && inWeek(i.postedOn)).length };
+      case "portfolio_total": {
+        const n = mine.filter(i => i.portfolio && (i.status === "posted" || i.status === "in_kit")).length;
+        return { actual: n, target: t.target, done: t.target != null && n >= t.target };
+      }
+      case "kit_waiting": {
+        const n = mine.filter(i => i.portfolio && i.status === "posted").length;
+        return { actual: n, done: n === 0 };
+      }
     }
     return undefined;
-  }, [contacts, snaps]);
+  }, [contacts, snaps, items]);
   const stateOf = useCallback((t: Task, monday_: string) => {
     const period = periodOf(t, monday_);
     return rowState(t, entries[entryKey(t.id, period)], autoOf(t, period));
   }, [entries, autoOf]);
+  // done for stage gates (one-time tasks; the first set counts itself)
+  const doneOf = useCallback((t: Task) => stateOf(t, monday).done, [stateOf, monday]);
 
   const reload = useCallback(() => { loadBase(); loadEntries(); loadOutside(); }, [loadBase, loadEntries, loadOutside]);
 
   return {
-    stages, tasks, entries, snaps, waiting, loading, loadError, outreachError, reload,
+    stages, tasks, entries, snaps, items, notes, waiting, loading, loadError, outreachError, reload,
     setTaskStatus, updateTask, createTask, deleteTask,
     saveEntry, planTargets, updateStage, startNextStage,
-    saveSnapshot, newContacts, autoOf, stateOf,
+    saveSnapshot, newContacts, autoOf, stateOf, doneOf,
+    createItem, updateItem, setItemStatus, deleteItem, noteOf, saveNote,
   };
 }
 
