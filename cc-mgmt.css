@@ -161,3 +161,56 @@ html body .ct-toast.show { opacity: 1; }
   /* profile menu: taller rows for a finger — the same in every app */
   html body .nav-profile-menu .nav-profile-menu-item { padding: 12px 16px; }
 }
+
+
+/* ── B2 · Controlling + Settlements: full width on iPad, two columns from 1000px ── */
+
+/* the column wrappers of the two dashboards are invisible on the phone — same order as before */
+.cxn-cols, .cxn-l, .cxn-r, .sdo-cols, .sdo-l, .sdo-r, .sdo-l2 { display: contents; }
+
+@media (min-width: 701px) {
+  /* iPad portrait and up: the full width instead of the 560 / 760px phone column */
+  html body .cx-page, html body .sc-page { max-width: none; margin-left: 0; margin-right: 0; }
+  html body .cx-subnav { max-width: none; margin-left: 0; margin-right: 0; }
+}
+
+@media (min-width: 1000px) {
+  /* period / year switch: arrows next to the title, lined up with the header (like the dashboard) */
+  html body .cx-page > .cx-month, html body .sc-page > .sc-yr { justify-content: flex-start; gap: 8px; }
+  html body .cx-subnav { max-width: 560px; }
+  /* Setup + History: one readable column */
+  html body :is(#tab-setup, #tab-history) > .cx-page { max-width: 760px; }
+
+  /* Controlling · Dashboard: Cashflow left · Rentals / Casa Castel right */
+  html body .cxn .cxn-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; align-items: start; }
+  html body .cxn .cxn-l, html body .cxn .cxn-r { display: block; min-width: 0; }
+
+  /* Controlling · Income · Expenses · One-off: property cards 2 per row */
+  html body :is(#tab-income, #tab-expenses, #tab-onetime) > .cx-page { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 16px; align-items: start; }
+  html body :is(#tab-income, #tab-expenses, #tab-onetime) > .cx-page > :not(.cx-card),
+  html body :is(#tab-income, #tab-expenses, #tab-onetime) > .cx-page > .cx-sum { grid-column: 1 / -1; }
+
+  /* Settlements · Dashboard: year + create card on top · NK totals + house costs left · tiles + list right */
+  html body #tab-dashboard > .sd-page { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; align-items: center; }
+  html body #tab-dashboard > .sd-page > * { grid-column: 1 / -1; }
+  html body #tab-dashboard > .sd-page > .sc-yr { grid-column: 1; grid-row: 1; margin: 0; }
+  html body #tab-dashboard > .sd-page > .sd-c4 { grid-column: 2; grid-row: 1; width: 340px; }
+  html body .sd-page .sdo-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr; column-gap: 16px; align-items: start; }
+  html body .sd-page .sdo-l  { display: block; grid-column: 1; grid-row: 1; min-width: 0; }
+  html body .sd-page .sdo-r  { display: block; grid-column: 2; grid-row: 1 / span 2; min-width: 0; }
+  html body .sd-page .sdo-l2 { display: block; grid-column: 1; grid-row: 2; min-width: 0; }
+
+  /* Settlements · Casa Castel tab: room cards 2 per row, like the Rentals tab */
+  html body #tab-casa > .sc-page { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 16px; align-items: start; }
+  html body #tab-casa > .sc-page > :not(.sc-roomc) { grid-column: 1 / -1; }
+}
+
+
+/* ── B3 · Maintenance: property cards 2 per row from 1000px.
+      The card with the open entry (receipts table) and a new entry use the full row. ── */
+@media (min-width: 1000px) {
+  html body #appMain .mt-col > .tab-content { max-width: none; }   /* was 960px: same width as the other apps */
+  html body #appMain .mt-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; align-items: start; }
+  html body #appMain .mt-list > :not(.mt-card),
+  html body #appMain .mt-list > .mt-card:is(.mt-card--new, :has(.mt-open)) { grid-column: 1 / -1; }
+}
