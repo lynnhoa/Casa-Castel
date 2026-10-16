@@ -18,7 +18,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="cc-german-format.js?v=2026-10-15-ORT"></script>
   <script src="constants.js"></script>
-  <script src="cc-rent-engine.js?v=2026-10-15pn"></script>
+  <script src="cc-rent-engine.js?v=2026-10-16-P4B"></script>
   <style>
     html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
     .ct-toast      { position:fixed; bottom:calc(20px + env(safe-area-inset-bottom,0px)); left:50%; transform:translateX(-50%); padding:8px 16px; background:var(--cc-ink); color:var(--cc-white); border-radius:16px; font-size:12px; letter-spacing:.04em; opacity:0; transition:opacity .2s; pointer-events:none; z-index:900; max-width:90vw; text-align:center; }
@@ -28,7 +28,9 @@
     .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:st-spin .8s linear infinite; }
     @keyframes st-spin { to { transform:rotate(360deg); } }
   </style>
-  <link rel="stylesheet" href="settlements.css?v=2026-10-12-FX1"/>
+  <link rel="stylesheet" href="settlements.css?v=2026-10-16-P1"/>
+  <link rel="stylesheet" href="cc-mgmt.css?v=2026-10-17-B1"/>
+  <script src="cc-toast.js?v=2026-10-16-P4B"></script>
 </head>
 <body class="is-landlord">
 
@@ -89,11 +91,11 @@
   <script src="controlling-auth.js?v=2026-10-01b"></script>
   <script src="controlling-data.js?v=2026-10-15ap"></script>
   <script src="controlling-soll.js?v=2026-10-12-MH1"></script>
-  <script src="controlling-ui.js?v=2026-10-12-KP2"></script>
-  <script src="controlling-abr.js?v=2026-10-10-T8"></script>
+  <script src="controlling-ui.js?v=2026-10-16-P1"></script>
+  <script src="controlling-abr.js?v=2026-10-16-P4A"></script>
 
   <script src="settlements-app.js?v=2026-10-11-B18"></script>
-  <script src="settlements-ui.js?v=2026-10-10-W1"></script>
+  <script src="settlements-ui.js?v=2026-10-16-P1"></script>
   <script src="settlements-tab-tracking.js?v=2026-10-11-B18"></script>
   <script src="settlements-tab-rentals.js?v=2026-10-15-ORT"></script>
   <!-- Casa Castel: day-exact NK engine, shared letter frame, the tab -->
@@ -108,7 +110,7 @@
   <!-- PDF (NK-Abrechnung): same pipeline as the Rentals contracts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="pdf-open.js?v=2026-10-10-PD2"></script>
+  <script src="pdf-open.js?v=2026-10-16-P4B"></script>
   <script src="rentals-profile.js"></script>
   <!-- Maintenance lines are never taken by the automatic payment matching (maint-link.js) -->
   <script src="maint-link.js?v=2026-10-15-D8"></script>

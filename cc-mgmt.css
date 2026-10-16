@@ -1,0 +1,163 @@
+/* ─────────────────────────────────────────────────────────────
+   CC-MGMT.CSS · one shared look for the 7 management apps
+   Casa Castel · Rentals · Properties · Controlling · Settlements · Maintenance · Providers
+   · loaded LAST on every management page — NOT by the tenant app or the cleaners' app
+   · reference = the Casa Castel / Rentals cards
+   · "html body …" where an app adds its own styles later by script (Controlling / Settlements)
+   P1 (16.10.2026) · look only — no layout, no function, iPad / laptop untouched
+   ───────────────────────────────────────────────────────────── */
+
+/* 1 · Header — same colours in every app.
+       Controlling + Settlements keep their brown text inside the page only. */
+.cc-header { --cc-ink: #1E1B18; }
+
+/* 2 · Page titles — 28 px like Casa Castel / Rentals / Maintenance (was 32 px in Controlling) */
+html body .cx-title { font-size: 28px; line-height: 1.1; letter-spacing: .01em; }
+
+/* 3 · Section labels — 10 px · semi-bold · caps, like the card section titles */
+html body .cx-lbl,
+html body .sc-cap,
+html body .sec-lbl { font-size: 10px; font-weight: 600; letter-spacing: .12em; }
+
+/* 4 · Field text — 14 px like the saved values in the cards.
+       (No zoom on tap: every management page has viewport maximum-scale=1.) */
+html body .cx-f input,
+html body .cx-f select,
+html body .st-in,
+html body .mt-in,
+html body.is-properties .cc-input,
+html body.is-properties .cc-select { font-size: 14px !important; }
+
+/* 5 · Main button on the Settlements pages — same as Controlling's */
+html body .sc-go { border-radius: 8px; font-weight: 500; letter-spacing: .07em; }
+
+/* ═════════ P2 (16.10.2026) · pop-ups on the iPhone ═════════
+   Reference = the Rentals / Maintenance sheet: dimmed + blurred background, sheet from the
+   bottom with 20px corners (max 90% of the screen), header 20px padding · serif title 22px ·
+   subtitle 12px · round × 30px, buttons bottom right, fields 36px / 14px with 11px labels.
+   Confirm questions = the in-app dialog: centred card, buttons bottom right.
+   Phone only (≤700px) — iPad / laptop come later. Contract generators keep their big
+   Generate button; PDF previews, date picker, signature pad and photo viewers stay as they are. */
+@media (max-width: 700px) {
+
+  /* 1 · Dimmed background */
+  html body :is(.cc-modal-overlay, .tn-overlay, .srm__bg),
+  body.is-properties :is(.overlay, .add-overlay),
+  body.pva .pv-scrim { background: rgba(30,27,24,.22); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+
+  /* 2 · Sheet from the bottom, 20px corners, max 90% (Settlements calculators 92%) */
+  html body :is(.cc-modal-sheet, .tn-sheet),
+  body.is-properties :is(.sheet, .add-sheet) { border-radius: 20px 20px 0 0; max-height: 90vh; max-height: calc(90dvh - env(safe-area-inset-top, 0px)); }
+  html body .srm__win { top: auto; max-height: 92vh; max-height: calc(92dvh - env(safe-area-inset-top, 0px)); border-radius: 20px 20px 0 0; }
+
+  /* 3 · Header: serif title 22px, subtitle 12px, round × 30px */
+  html body :is(.cc-modal-hdr, .tn-sheet-hdr, .srm__h),
+  body.is-properties .sheet-hdr { padding: 20px 20px 14px; align-items: flex-start; }
+  html body :is(.cc-modal-title, .tn-sheet-name, .srm__t),
+  body.is-properties .sheet-hdr__name { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 22px; font-weight: 300;
+    line-height: 1.15; letter-spacing: 0; text-transform: none; color: var(--cc-ink); }
+  html body :is(.tn-sheet-sub, .rp-prf-hdr__sub) { font-size: 12px; color: var(--cc-taupe); }
+  html body :is(.cc-modal-close, .srm__x, .rp-prf-hdr__close, .tn-sheet-hdr .tn-icon-btn),
+  body.is-properties .sheet-hdr .btn-close { width: 30px; height: 30px; min-width: 30px; padding: 0; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; background: var(--cc-surface);
+    border: .5px solid var(--cc-rule); border-radius: 50%; color: var(--cc-taupe); font-size: 13px; line-height: 1; }
+  body.pva .scr .cc-modal-close { color: var(--cc-taupe); }
+
+  /* 4 · Footer: buttons bottom right */
+  html body .tn-sheet-footer { background: transparent; }
+  html body .srm__bar { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+  html body .srm__bar .cx-btn { flex: 0 0 auto; width: auto; min-width: 0; height: 36px; padding: 0 16px; }
+
+  /* 5 · Fields in pop-ups: 36px high, 14px text, labels 11px in normal case (= the cards) */
+  html body .srm :is(input.st-in, select.st-in, .srm__sel),
+  body.is-properties :is(.sheet, .add-sheet) :is(input.cc-input, select.cc-select),
+  html body :is(input.rm-input, select.rm-input) { height: 36px; min-height: 36px; font-size: 14px !important; }
+  body.is-properties :is(.sheet, .add-sheet) :is(input.cc-input, select.cc-select) { padding-top: 0; padding-bottom: 0; }
+  html body .srm .st-f__l,
+  body.is-properties :is(.sheet, .add-sheet) .e-lbl,
+  html body :is(.rm-field label, .rm-toggle-label) { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--cc-taupe); }
+  html body .rm-fields-title { font-size: 10px; font-weight: 600; letter-spacing: .12em; }
+
+  /* 6 · Confirm questions = the in-app dialog (centred card, buttons bottom right) */
+  html body :is(.stc, .mt-cf) { justify-content: center; padding: 24px; }
+  html body :is(.stc__bg, .mt-cf__bg) { background: rgba(30,27,24,.35); }
+  html body :is(.stc__s, .mt-cf__s) { width: 100%; max-width: 320px; border-radius: 12px; padding: 24px 20px 18px;
+    box-shadow: 0 10px 40px rgba(30,27,24,.18); }
+  html body :is(.stc__t, .mt-cf__t),
+  body.is-properties .confirm-box__title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; font-weight: 400;
+    line-height: 1.2; color: var(--cc-ink); margin: 0 0 6px; }
+  html body :is(.stc__x, .mt-cf__x),
+  body.is-properties .confirm-box__desc { font-size: 13px; line-height: 1.55; color: var(--cc-taupe); margin: 0 0 18px; }
+  body.is-properties .confirm-box { text-align: left; max-width: 320px; padding: 24px 20px 18px; }
+  html body :is(.stc__b, .mt-cf__b, .rm-confirm-btns, .tn-confirm-btns),
+  body.is-properties .confirm-box__btns { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+  html body :is(.stc, .mt-cf, .rm-confirm-overlay, .tn-confirm-overlay) :is(.stc__b, .mt-cf__b, .rm-confirm-btns, .tn-confirm-btns) > button,
+  body.is-properties .confirm-box .confirm-box__btns > button { flex: 0 0 auto; width: auto; min-width: 0; height: 36px; min-height: 36px;
+    padding: 0 14px; border-radius: 18px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+  html body :is(.stc__b .cx-btn--p, .stc__b .stc__d, .mt-cf__b .mt-btn--p, .mt-cf__b .mt-btn--d) { order: 2; }
+}
+
+/* 7 · Properties: Edit (and Save while editing) at the bottom right of the pop-up — all screen sizes */
+body.is-properties .sheet-foot { display: flex; justify-content: flex-end; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 12px 16px; border-top: var(--cc-border); background: var(--cc-white); }
+body.is-properties .sheet-foot :is(.btn-edit, .btn-foot-save) { height: 28px; padding: 0 12px; border-radius: 14px;
+  border: .5px solid var(--cc-rule); background: var(--cc-white); color: var(--cc-taupe); font-family: inherit;
+  font-size: 11px; font-weight: 500; letter-spacing: .02em; text-transform: none; display: inline-flex; align-items: center; cursor: pointer; }
+body.is-properties .sheet-foot .btn-foot-save { display: none; background: var(--cc-ink); color: var(--cc-white); border-color: var(--cc-ink); }
+body.is-properties .sheet-foot:has(#editBtn.on) .btn-foot-save { display: inline-flex; }
+body.is-properties #editMode :is([onclick*="saveEdit"], [onclick*="toggleEdit"]) { display: none; }   /* Save + Cancel now sit in the footer */
+
+/* ═════════ P3 (16.10.2026) · messages: one small toast ═════════
+   cc-toast.js turns the iPhone alert box into this toast. The toasts that were
+   already there (Controlling · Settlements · Maintenance · Providers) get the same
+   look as the "Saved" toast of Casa Castel / Rentals. All screen sizes. */
+.cc-alert-toast,
+html body .ct-toast {
+  position: fixed; left: 50%; bottom: max(28px, env(safe-area-inset-bottom, 28px)); transform: translateX(-50%);
+  width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; padding: 8px 18px; border-radius: 20px;
+  background: var(--cc-ink); color: var(--cc-white); font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px; font-weight: 500; line-height: 1.45; letter-spacing: .02em; text-align: center; white-space: pre-line;
+  opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 9500;
+}
+.cc-alert-toast.show,
+html body .ct-toast.show { opacity: 1; }
+
+
+/* ═════════ P4 (16.10.2026) · the field inside the in-app question (ccPrompt) ═════════ */
+.cc-dlg__lbl { display: block; margin: 2px 0 4px; font-size: 11px; font-weight: 400; color: var(--cc-taupe); }
+.cc-dlg__in { display: block; width: 100%; height: 36px; padding: 0 10px; box-sizing: border-box; background: var(--cc-bg);
+  border: .5px solid var(--cc-rule); border-radius: 8px; font-family: inherit; font-size: 14px !important; color: var(--cc-charcoal); outline: none; }
+.cc-dlg__in:focus { border-color: var(--cc-gold); background: var(--cc-white); }
+
+
+/* ═════════════════════════════════════════════════════════════
+   iPAD + LAPTOP (B-steps, from 17.10.2026) — one system for all 7 apps
+   · phone ≤700px (untouched by every B rule)
+   · iPad portrait 701–999px · iPad landscape + laptop ≥1000px
+   · content max 1200px, page edges 36px — header, tabs and content share them
+   ═════════════════════════════════════════════════════════════ */
+
+/* ── B1 · Providers: header + tabs like the other apps on big screens
+      (iPad portrait follows with B4, together with the card + chat layout) ── */
+@media (min-width: 900px) {
+  body.pva .scr { max-width: 1200px; }
+  body.pva .scr > .cc-header > .cc-nav { padding-left: 36px; padding-right: 36px; }
+  body.pva .scr > .cc-header > .cc-tabs { padding-left: 32px; padding-right: 32px; }
+  body.pva .scr > .cc-header > .cc-tabs > .cc-tab { flex: 0 0 auto; height: 44px; padding: 0 4px; margin-right: 24px;
+    font-size: 12px; letter-spacing: .06em; text-align: left; }
+  body.pva .scr > .cc-header > .cc-tabs > .cc-tab--add { width: 44px; margin-right: 0; justify-content: center; }
+}
+
+/* ── B1 · iPad (touch, no mouse): small text links get a bigger tap area — invisible, layout unchanged ── */
+@media (min-width: 701px) and (hover: none) {
+  :where(.ann-del, .ann-edit, .ann-cancel-edit, .ann-more, .l-notice-edit, .notice-posted__remove, .l-chat-tlink,
+         .hc-del-btn, .preview-banner__exit, .pwr-link, .pwr-textbtn, .pwa-link, .cc-btn--ghost,
+         .st-inline-link, .st-more, .sr-skip, .mt-link, .apt-hg-verlauf-btn, .tn-nkv-verlauf-btn,
+         .cck-soll-edit, .cc-nkb__x, .pv-link, .pva-rep-open) { position: relative; }
+  :where(.ann-del, .ann-edit, .ann-cancel-edit, .ann-more, .l-notice-edit, .notice-posted__remove, .l-chat-tlink,
+         .hc-del-btn, .preview-banner__exit, .pwr-link, .pwr-textbtn, .pwa-link, .cc-btn--ghost,
+         .st-inline-link, .st-more, .sr-skip, .mt-link, .apt-hg-verlauf-btn, .tn-nkv-verlauf-btn,
+         .cck-soll-edit, .cc-nkb__x, .pv-link, .pva-rep-open)::after { content: ''; position: absolute; inset: -10px -2px; }
+  /* profile menu: taller rows for a finger — the same in every app */
+  html body .nav-profile-menu .nav-profile-menu-item { padding: 12px 16px; }
+}

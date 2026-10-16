@@ -18,8 +18,10 @@
 <link rel="stylesheet" href="properties.css"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="cc-mgmt.css?v=2026-10-17-B1"/>
+<script src="cc-toast.js?v=2026-10-16-P4B"></script>
 </head>
-<body>
+<body class="is-properties">
 
 <!-- AUTH: handled centrally on login.html (Supabase session is shared) -->
 
@@ -93,7 +95,6 @@
         <div class="sheet-hdr__name" id="det-name"></div>
       </div>
       <div class="sheet-hdr__btns">
-        <button class="btn-edit" id="editBtn" onclick="toggleEdit()">Edit</button>
         <button class="btn-close" onclick="closeDetail()">✕</button>
       </div>
     </div>
@@ -101,6 +102,7 @@
       <div class="view-mode" id="viewMode"></div>
       <div class="edit-mode" id="editMode"></div>
     </div>
+    <div class="sheet-foot"><button class="btn-edit" id="editBtn" onclick="toggleEdit()">Edit</button><button class="btn-foot-save" type="button" onclick="saveEdit()">Save</button></div>
   </div>
 </div>
 
