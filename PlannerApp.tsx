@@ -2,8 +2,8 @@
 // PlannerApp — Planner (tabs: Overview, To-do, Manager, Creator).
 // Same frame as Outreach: logo header, nav tabs, account menu
 // with all apps. Phone, iPad and desktop layouts.
-// Phase 2: To-do is live. Overview, Manager and Creator follow in
-// phases 5, 3 and 4.
+// To-do and Manager are live. Creator and Overview follow in
+// phases 4 and 5.
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from "react";
@@ -14,13 +14,14 @@ import { AvatarMenu, NavTab, appItems } from "./AppNav";
 import { usePlanner } from "./usePlanner";
 import { thisMonday } from "./planner";
 import PlannerTodo, { DEFAULT_VIEW } from "./PlannerTodo";
+import PlannerManager from "./PlannerManager";
 import type { PlannerView } from "./PlannerTodo";
 import type { Role } from "./types";
 
 const TABS: { key: string; label: string; soon?: { phase: number; text: string } }[] = [
   { key: "overview", label: "Overview", soon: { phase: 5, text: "Your read-only scoreboard: stage tracks, audience, portfolio and the weekly goals met." } },
   { key: "todo",     label: "To-do" },
-  { key: "manager",  label: "Manager",  soon: { phase: 3, text: "His workspace: account snapshot, following log, community, email list and the sales kit." } },
+  { key: "manager",  label: "Manager" },
   { key: "creator",  label: "Creator",  soon: { phase: 4, text: "Your workspace: concept, offer, portfolio, editorial list, content ideas and the weekly learning." } },
 ];
 
@@ -52,6 +53,7 @@ export default function PlannerApp({ userId, settings, signOut, switchTo, banner
   const isWide   = winW >= WIDE;
   const tab      = TABS.find(t => t.key === view.tab) || TABS[1];
   const goTab    = (key: string) => { setView({ ...view, tab: key }); window.scrollTo(0, 0); };
+  const openOutreach = () => switchTo("outreach");
 
   const avatar = (
     <AvatarMenu settings={settings} roleLabel="Planner" items={[]} apps={appItems("planner", switchTo)} onSignOut={() => { signOut(); }} />
@@ -84,7 +86,9 @@ export default function PlannerApp({ userId, settings, signOut, switchTo, banner
       <div style={{ maxWidth: isWide ? 1200 : 960, margin: "0 auto", padding: isMobile ? "14px 14px 28px" : "24px 20px 40px" }}>
         {banners}
         {tab.key === "todo" ? (
-          <PlannerTodo planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} />
+          <PlannerTodo planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} openOutreach={openOutreach} />
+        ) : tab.key === "manager" ? (
+          <PlannerManager planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} openOutreach={openOutreach} />
         ) : (
           <div>
             <h2 style={{ fontFamily: SERIF, fontSize: isMobile ? 22 : 24, fontWeight: "normal", margin: 0, lineHeight: 1.1 }}>{tab.label}</h2>

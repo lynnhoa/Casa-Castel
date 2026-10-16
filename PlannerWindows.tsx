@@ -14,10 +14,12 @@ import { fmtD } from "./formatters";
 import { B, I, S, Lbl, Tick, ConfirmDialog, BAR_BTN } from "./atoms";
 import {
   ACCOUNTS, PHASES, OWNERS, RHYTHMS, STATUSES, STAGE_SHORT, DAY_SHORT,
-  accLook, phaseLabel, ownerLabel, rhythmLabel, rowKind, rowState, entryKey, periodOf,
-  addDays, isoWeek, weekRange, monthName, todayIndex, gateOf, stageNumOf, taskAccounts, isVisible, byOrder,
+  accLook, phaseLabel, ownerLabel, rhythmLabel, rowKind, entryKey, periodOf, snapKey,
+  addDays, isoWeek, weekRange, weekLabel, thisMonday, monthName, todayIndex, gateOf, stageNumOf, taskAccounts, isVisible, byOrder,
+  fmtInt, fmtPct2, parseDec, parseIntDe,
 } from "./planner";
-import type { Task, Stage, TaskAccount, Phase, Rhythm } from "./planner";
+import type { Task, Stage, TaskAccount, AccountFilter, Phase, Rhythm } from "./planner";
+import { OUTREACH_CATEGORIES, OUTREACH_TIERS, catOf } from "./outreach";
 import type { PlannerHook } from "./usePlanner";
 
 // ── small line icons (same drawing style as Outreach) ─────────
@@ -31,6 +33,8 @@ export const IC = {
   right:  "M9 6l6 6-6 6",
   more:   "M5 12h.01M12 12h.01M19 12h.01",
   link:   "M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1",
+  lock:   "M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z",
+  arrow:  "M5 12h14M13 6l6 6-6 6",
 };
 
 // ── pieces ────────────────────────────────────────────────────
@@ -74,6 +78,38 @@ export const StageTrack = ({ stages, current, progress }: { stages: Stage[]; cur
       );
     })}
   </div>
+);
+
+// ── the slim toolbar every Planner tab shares: Account ▾ · ‹ Week › (+ extra) ─
+export function Toolbar({ acc, setAcc, monday, setMonday, isMobile, children }: {
+  acc: AccountFilter; setAcc: (a: AccountFilter) => void; monday: string; setMonday: (m: string) => void; isMobile: boolean; children?: any;
+}) {
+  const ctl: any = { height: 28, border: `1px solid ${C.rule}`, borderRadius: 2, background: "transparent", display: "inline-flex", alignItems: "center", boxSizing: "border-box" as const, color: C.black, fontFamily: SANS };
+  const arrowBtn: any = { width: 28, height: 26, border: "none", background: "none", cursor: "pointer", color: C.muted, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0 };
+  const isThisWeek = monday === thisMonday();
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", position: "relative" }}>
+      <S value={acc} onChange={(e: any) => setAcc(e.target.value)} aria-label="Account"
+        s={{ height: 28, flex: isMobile ? 1 : "0 0 170px", width: isMobile ? "auto" : 170, minWidth: 0, padding: "0 26px 0 8px", backgroundPosition: "right 8px center" }}>
+        <option value="all">All accounts</option>
+        {ACCOUNTS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+      </S>
+      <div style={{ ...ctl, flexShrink: 0 }}>
+        <button onClick={() => setMonday(addDays(monday, -7))} aria-label="Previous week" style={arrowBtn}><Ico d={IC.left} size={13} /></button>
+        <button onClick={() => setMonday(thisMonday())} title={isThisWeek ? "This week" : "Back to this week"}
+          style={{ height: 26, border: "none", background: "none", cursor: "pointer", fontFamily: SANS, fontSize: 13, color: C.black, padding: "0 2px", whiteSpace: "nowrap" as const }}>
+          {weekLabel(monday)}
+        </button>
+        <button onClick={() => setMonday(addDays(monday, 7))} aria-label="Next week" style={arrowBtn}><Ico d={IC.right} size={13} /></button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Small coloured counts (Outreach categories / tiers)
+export const CountChip = ({ label, n, look }: { label: string; n: number; look?: { color: string; bg: string; border: string } }) => (
+  <span style={{ fontSize: TYPE.micro.size, padding: "1px 7px", borderRadius: 10, border: `1px solid ${look?.border || C.rule}`, background: look?.bg || "transparent", color: look?.color || C.muted, whiteSpace: "nowrap" as const }}>{label} {n}</span>
 );
 
 // ── one-level window: full screen on the phone, centred elsewhere ─
@@ -131,8 +167,8 @@ const int = (v: string): number | null => { const n = parseInt(String(v).replace
 // ═════════════════════════════════════════════════════════════
 const EMPTY_DRAFT: Partial<Task> = { title: "", account: "both", owner: "creator", phase: "maintain", rhythm: "weekly", stageNum: 1, measure: null, how: "", doneWhen: "", link: "" };
 
-export function TaskWindow({ planner, taskId, draft, monday, isMobile, onClose }: {
-  planner: PlannerHook; taskId?: string; draft?: Partial<Task>; monday: string; isMobile: boolean; onClose: () => void;
+export function TaskWindow({ planner, taskId, draft, monday, isMobile, onClose, openOutreach }: {
+  planner: PlannerHook; taskId?: string; draft?: Partial<Task>; monday: string; isMobile: boolean; onClose: () => void; openOutreach?: () => void;
 }) {
   const [id, setId]       = useState<string | undefined>(taskId);
   const task              = planner.tasks.find(t => t.id === id);
@@ -197,16 +233,16 @@ export function TaskWindow({ planner, taskId, draft, monday, isMobile, onClose }
           </div>
         )}>
         {err && <p style={{ fontSize: TYPE.label.size, color: C.red, margin: "0 0 8px" }}>{err}</p>}
-        {edit ? <TaskForm f={f} set={set} stages={planner.stages} /> : task ? <TaskRead task={task} planner={planner} monday={monday} /> : null}
+        {edit ? <TaskForm f={f} set={set} stages={planner.stages} /> : task ? <TaskRead task={task} planner={planner} monday={monday} openOutreach={openOutreach} /> : null}
       </Window>
     </>
   );
 }
 
-function TaskRead({ task, planner, monday }: { task: Task; planner: PlannerHook; monday: string }) {
+function TaskRead({ task, planner, monday, openOutreach }: { task: Task; planner: PlannerHook; monday: string; openOutreach?: () => void }) {
   const period = periodOf(task, monday);
   const entry  = planner.entries[entryKey(task.id, period)];
-  const st     = rowState(task, entry);
+  const st     = planner.stateOf(task, monday);
   const kind   = rowKind(task);
   const ti     = todayIndex(monday);
   const [num, setNum] = useState(st.actual == null ? "" : String(st.actual));
@@ -224,7 +260,7 @@ function TaskRead({ task, planner, monday }: { task: Task; planner: PlannerHook;
   const history = task.rhythm === "daily" || task.rhythm === "weekly"
     ? [-21, -14, -7, 0].map(off => {
         const p = addDays(monday, off);
-        const s = rowState(task, planner.entries[entryKey(task.id, p)]);
+        const s = planner.stateOf(task, p);
         const value = kind === "number" ? `${s.actual ?? 0}/${s.target ?? "–"}` : kind === "days" ? `${s.daysDone}/7` : s.done ? "✓" : "–";
         return { p, s, value, current: off === 0 };
       })
@@ -247,6 +283,12 @@ function TaskRead({ task, planner, monday }: { task: Task; planner: PlannerHook;
           {task.target != null && <p style={{ fontSize: 12, color: C.muted, margin: "6px 0 0" }}>Goal: {task.target} {task.measure || ""}{task.doneOn && task.status === "done" ? ` · done on ${fmtD(task.doneOn)}` : ""}</p>}
           {task.target == null && task.doneOn && task.status === "done" && <p style={{ fontSize: 12, color: C.muted, margin: "6px 0 0" }}>Done on {fmtD(task.doneOn)}</p>}
         </>
+      ) : task.source === "snapshot" ? (
+        <SnapshotBlock task={task} planner={planner} monday={monday} />
+      ) : task.source === "following" ? (
+        <FollowingBlock task={task} planner={planner} monday={monday} />
+      ) : task.source === "outreach" ? (
+        <OutreachBlock task={task} planner={planner} monday={monday} openOutreach={openOutreach} />
       ) : kind === "number" ? (
         <>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 14 }}>
@@ -315,6 +357,103 @@ function TaskRead({ task, planner, monday }: { task: Task; planner: PlannerHook;
         </>
       )}
     </div>
+  );
+}
+
+// ── Work blocks for tasks whose numbers come from somewhere specific ─
+const bigLine = (value: any, unit: string) => (
+  <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 14, flexWrap: "wrap" as const }}>
+    <span style={{ fontFamily: SERIF, fontSize: 32, lineHeight: 1 }}>{value}</span>
+    <span style={microLabel}>{unit}</span>
+  </div>
+);
+const targetLine = (target: number | null, unit: string) => (
+  <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0" }}>{target == null ? "Set the target in Plan week." : `Target: ${target} ${unit} (Plan week)`}</p>
+);
+
+// A number field that saves when you leave it (or press Enter)
+function NumField({ label, value, onSave, decimal }: { label: string; value: number | null; onSave: (v: number | null) => void; decimal?: boolean }) {
+  // German format in the field too: 1.180 · 4,85
+  const show = (v: number | null) => (v == null ? "" : decimal
+    ? v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : v.toLocaleString("de-DE"));
+  const [t, setT] = useState(show(value));
+  useEffect(() => { setT(show(value)); }, [value]);
+  const commit = () => {
+    const v = t.trim() === "" ? null : decimal ? parseDec(t) : parseIntDe(t);
+    if (v !== value) onSave(v);
+  };
+  return (
+    <div><Lbl>{label}</Lbl>
+      <I inputMode={decimal ? "decimal" : "numeric"} value={t} placeholder="–" aria-label={label}
+        onChange={(e: any) => setT(e.target.value.replace(/[^\d,.]/g, ""))}
+        onBlur={commit} onKeyDown={(e: any) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+    </div>
+  );
+}
+const grid3: any = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 };
+const quietP = (p: Promise<any>) => p.catch(() => { /* the save toast reports it */ });
+
+function FollowingBlock({ task, planner, monday }: { task: Task; planner: PlannerHook; monday: string }) {
+  const period = periodOf(task, monday);
+  const entry  = planner.entries[entryKey(task.id, period)];
+  const st     = planner.stateOf(task, monday);
+  const data   = entry?.data || {};
+  const num = (v: any): number | null => (v == null || v === "" ? null : Number(v));
+  return (
+    <>
+      {bigLine(`${st.actual ?? 0} / ${st.target ?? "–"}`, `follow-backs in week ${isoWeek(monday)}`)}
+      <Bar value={st.actual ?? 0} max={st.target ?? 0} done={st.done} s={{ marginTop: 8 }} />
+      <div style={grid3}>
+        <NumField label="Followed" value={num(data.followed)} onSave={v => quietP(planner.saveEntry(task.id, period, { data: { ...data, followed: v } }))} />
+        <NumField label="Followed back" value={st.actual} onSave={v => quietP(planner.saveEntry(task.id, period, { actual: v }))} />
+        <NumField label="Unfollowed" value={num(data.unfollowed)} onSave={v => quietP(planner.saveEntry(task.id, period, { data: { ...data, unfollowed: v } }))} />
+      </div>
+      {targetLine(st.target, "follow-backs")}
+    </>
+  );
+}
+
+function SnapshotBlock({ task, planner, monday }: { task: Task; planner: PlannerHook; monday: string }) {
+  if (task.account === "both") return <p style={{ fontSize: 13, color: C.muted, marginTop: 14 }}>Pick one account for a snapshot task (Edit → Account).</p>;
+  const acc  = task.account;
+  const sn   = planner.snaps[snapKey(acc, monday)];
+  const prev = planner.snaps[snapKey(acc, addDays(monday, -7))];
+  const save = (patch: any) => quietP(planner.saveSnapshot(acc, monday, patch));
+  const entered = !!sn && (sn.followers != null || sn.views != null || sn.engagement != null);
+  const diff = sn?.followers != null && prev?.followers != null ? sn.followers - prev.followers : null;
+  return (
+    <>
+      <Lbl>Week {isoWeek(monday)} · from the account insights</Lbl>
+      <div style={grid3}>
+        <NumField label="Followers" value={sn?.followers ?? null} onSave={v => save({ followers: v })} />
+        <NumField label="Views" value={sn?.views ?? null} onSave={v => save({ views: v })} />
+        <NumField label="Engagement %" decimal value={sn?.engagement ?? null} onSave={v => save({ engagement: v })} />
+      </div>
+      <p style={{ fontSize: 12, margin: "8px 0 0", color: entered ? C.green : C.muted }}>
+        {entered ? `Entered ✓${diff != null ? ` · ${diff >= 0 ? "+" : "−"}${fmtInt(Math.abs(diff))} followers since last week` : ""}` : "Not entered yet."}
+      </p>
+      {prev && <p style={{ fontSize: 12, color: C.muted, margin: "4px 0 0" }}>Last week: {fmtInt(prev.followers)} followers · {fmtInt(prev.views)} views · {fmtPct2(prev.engagement)}</p>}
+    </>
+  );
+}
+
+function OutreachBlock({ task, planner, monday, openOutreach }: { task: Task; planner: PlannerHook; monday: string; openOutreach?: () => void }) {
+  const period = periodOf(task, monday);
+  const st     = planner.stateOf(task, monday);
+  const list   = planner.newContacts(period);
+  const byCat  = OUTREACH_CATEGORIES.map(c => ({ c, n: list.filter(x => x.category === c.key).length })).filter(x => x.n);
+  const byTier = OUTREACH_TIERS.map(t => ({ t, n: list.filter(x => x.tier === t.key).length })).filter(x => x.n);
+  return (
+    <>
+      {bigLine(`${st.actual ?? 0} / ${st.target ?? "–"}`, `new contacts in week ${isoWeek(monday)}`)}
+      <Bar value={st.actual ?? 0} max={st.target ?? 0} done={st.done} s={{ marginTop: 8 }} />
+      {byCat.length > 0 && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const, marginTop: 10 }}>{byCat.map(x => <CountChip key={x.c.key} label={x.c.label} n={x.n} look={x.c} />)}</div>}
+      {byTier.length > 0 && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const, alignItems: "center", marginTop: 6 }}><span style={microLabel}>Tiers</span>{byTier.map(x => <CountChip key={x.t.key} label={x.t.label} n={x.n} />)}</div>}
+      <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Counted from Outreach: contacts added this week. {st.target == null ? "Set the target in Plan week." : `Target: ${st.target} contacts (Plan week).`}</p>
+      {planner.outreachError && <p style={{ fontSize: 12, color: C.red, margin: "4px 0 0" }}>Outreach couldn't be read ({planner.outreachError}).</p>}
+      {openOutreach && <B v="sec" onClick={openOutreach} s={{ ...BAR_BTN, height: 28, minHeight: 28, color: C.black, marginTop: 10, gap: 5 }}><Ico d={IC.link} size={12} />Open Outreach</B>}
+    </>
   );
 }
 

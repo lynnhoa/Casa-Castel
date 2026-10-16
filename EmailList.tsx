@@ -2,7 +2,7 @@
 // EmailList — Outreach › Email list
 // Header: count + copy symbol (copies the emails in view),
 //         [Excel columns] [Prompt]
-// Toolbar (28 px): Search · Filter · Sort · Download
+// Toolbar (28 px): Search · Filter (category, tier, city, added) · Sort · Download
 // Phone: two lines per contact · iPad/desktop: one-line table
 // Windows (one level): Filter (sheet on phone), contact, columns
 // ─────────────────────────────────────────────────────────────
@@ -13,12 +13,11 @@ import { C, SANS, SERIF, TYPE, Z } from "./constants";
 import { fmtD } from "./formatters";
 import { B, I, S, Lbl, ConfirmDialog, BAR_BTN } from "./atoms";
 import {
-  OUTREACH_CATEGORIES, OUTREACH_COLUMNS, SORTS, ADDED, DEFAULT_VIEW, catOf, applyView, activeFilters,
+  OUTREACH_CATEGORIES, OUTREACH_TIERS, OUTREACH_COLUMNS, SORTS, ADDED, DEFAULT_VIEW, catOf, tierOf, applyView, activeFilters,
   emailsText, copyText, headerRow, buildPrompt,
 } from "./outreach";
 import type { OutreachContact, OutreachView, SortKey } from "./outreach";
 import { downloadExcel, downloadTemplate, downloadListPdf } from "./outreachExport";
-import { editLock } from "./saveStatus";
 
 // ── small line icons (no icon library needed) ─────────────────
 const Ico = ({ d, size = 14, color = "currentColor" }: { d: string; size?: number; color?: string }) => (
@@ -101,7 +100,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontFamily: SERIF, fontSize: 17 }}>Filter</span>
-        <button onClick={() => set({ cat: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", color: C.muted, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Reset</button>
+        <button onClick={() => set({ cat: "all", tier: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", color: C.muted, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Reset</button>
       </div>
       <Lbl>Category</Lbl>
       <div style={{ border: `1px solid ${C.rule}`, borderRadius: 2, maxHeight: isMobile ? 260 : 300, overflowY: "auto" }}>
@@ -111,6 +110,12 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
+        <div><Lbl>Tier</Lbl>
+          <S value={view.tier} onChange={(e: any) => set({ tier: e.target.value })}>
+            <option value="all">All</option>
+            {OUTREACH_TIERS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+          </S>
+        </div>
         <div><Lbl>City</Lbl>
           <S value={view.city} onChange={(e: any) => set({ city: e.target.value })}>
             <option value="all">All</option>
@@ -170,6 +175,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
   const tags = (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 7 }}>
       {view.cat !== "all" && <button onClick={() => set({ cat: "all" })} style={tagStyle(catOf(view.cat))}>{catOf(view.cat).label} ✕</button>}
+      {view.tier !== "all" && <button onClick={() => set({ tier: "all" })} style={tagStyle()}>{tierOf(view.tier).label} ✕</button>}
       {view.city !== "all" && <button onClick={() => set({ city: "all" })} style={tagStyle()}>{view.city} ✕</button>}
       {view.added !== "any" && <button onClick={() => set({ added: "any" })} style={tagStyle()}>{ADDED.find(a => a.key === view.added)?.label} ✕</button>}
       <span style={{ ...tagStyle(), cursor: "default", padding: "0 8px" }}>{SORTS.find(s => s.key === view.sort)?.short}</span>
@@ -191,7 +197,10 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
         <div key={c.id} onClick={() => setOpenId(c.id)} style={{ padding: "8px 0", borderBottom: `1px solid ${C.rule}`, cursor: "pointer" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{c.company || c.email}</span>
-            <CatPill k={c.category} />
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              {c.tier && c.tier !== "now" && <span style={{ fontSize: TYPE.micro.size, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: C.muted }}>{tierOf(c.tier).label}</span>}
+              <CatPill k={c.category} />
+            </span>
           </div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2, display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
             {c.contactName && <span style={{ flexShrink: 0 }}>{c.contactName} ·</span>}
@@ -207,6 +216,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
     { key: "contactName", label: "Contact", fr: "1fr" },
     { key: "email", label: "Email", fr: "1.8fr" },
     { key: "category", label: "Category", fr: "0.9fr", sort: ["cat"] },
+    { key: "tier", label: "Tier", fr: "0.6fr" },
     { key: "city", label: "City", fr: "0.9fr" },
     { key: "web", label: "Website / IG", fr: "1.2fr" },
     ...(isWide ? [{ key: "added", label: "Added", fr: "0.8fr", sort: ["new", "old"] as SortKey[] }] : []),
@@ -230,6 +240,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
           <div style={{ ...td, color: c.contactName ? C.black : C.light }}>{cut(c.contactName || "—")}</div>
           <div style={td}>{emailCell(c)}</div>
           <div style={td}><CatPill k={c.category} /></div>
+          <div style={{ ...td, color: c.tier && c.tier !== "now" ? C.black : C.muted }}>{cut(tierOf(c.tier).label)}</div>
           <div style={td}>{cut(c.city)}</div>
           <div style={{ ...td, color: C.muted }}>{cut(c.web)}</div>
           {isWide && <div style={{ ...td, color: C.muted }}>{c.createdAt ? fmtD(c.createdAt.slice(0, 10)) : ""}</div>}
@@ -282,7 +293,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
           </p>
         </div>
       ) : shown.length === 0 ? (
-        <p style={{ fontSize: TYPE.label.size, color: C.muted, marginTop: 16 }}>No contacts match. <button onClick={() => set({ q: "", cat: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", padding: 0, color: C.black, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Clear search and filters</button></p>
+        <p style={{ fontSize: TYPE.label.size, color: C.muted, marginTop: 16 }}>No contacts match. <button onClick={() => set({ q: "", cat: "all", tier: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", padding: 0, color: C.black, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Clear search and filters</button></p>
       ) : isMobile ? phoneList : table}
 
       {/* click outside closes a menu */}
@@ -323,7 +334,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
       )}
 
       {toast && createPortal(
-        <div role="status" style={{ position: "fixed", left: "50%", top: stickyTop + 10, transform: "translateX(-50%)", zIndex: Z.toast, background: C.black, color: C.white, fontFamily: SANS, fontSize: 12, padding: "8px 14px", borderRadius: 2, maxWidth: "calc(100vw - 32px)", boxShadow: "0 4px 14px rgba(0,0,0,0.15)" }}>{toast}</div>,
+        <div style={{ position: "fixed", left: "50%", bottom: 24, transform: "translateX(-50%)", zIndex: Z.toast, background: C.black, color: C.white, fontFamily: SANS, fontSize: 12, padding: "8px 14px", borderRadius: 2, maxWidth: "calc(100vw - 32px)" }}>{toast}</div>,
         document.body)}
     </div>
   );
@@ -353,7 +364,6 @@ function ContactWindow({ c, outreach, isMobile, onClose, onCopy }: { c: Outreach
   const [err, setErr] = useState<string | null>(null);
   const [askDelete, setAskDelete] = useState(false);
   useEffect(() => { if (!edit) setF(c); }, [c, edit]);
-  useEffect(() => (edit ? editLock.acquire() : undefined), [edit]);     // no reload while editing
 
   const save = async () => {
     setErr(null);
@@ -401,6 +411,7 @@ function ContactWindow({ c, outreach, isMobile, onClose, onCopy }: { c: Outreach
             {row("Email", c.email)}
             {row("Contact", c.contactName)}
             {row("Category", <CatPill k={c.category} />)}
+            {row("Tier", tierOf(c.tier).label)}
             {row("Website / IG", c.web)}
             {row("City", c.city)}
             {row("Notes", c.notes)}
@@ -415,6 +426,11 @@ function ContactWindow({ c, outreach, isMobile, onClose, onCopy }: { c: Outreach
             <div><Lbl>Category</Lbl>
               <S value={f.category} onChange={(e: any) => setF({ ...f, category: e.target.value })}>
                 {OUTREACH_CATEGORIES.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
+              </S>
+            </div>
+            <div><Lbl>Tier</Lbl>
+              <S value={f.tier || "now"} onChange={(e: any) => setF({ ...f, tier: e.target.value })}>
+                {OUTREACH_TIERS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </S>
             </div>
             {field("Website / Instagram", "web")}

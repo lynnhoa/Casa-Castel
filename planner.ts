@@ -63,6 +63,15 @@ export interface Entry {
   note:        string;
 }
 
+export interface Snapshot {
+  id:         string;
+  account:    Account;
+  weekStart:  string;
+  followers:  number | null;
+  views:      number | null;
+  engagement: number | null;   // percent, e.g. 3.1
+}
+
 // ── Accounts (chip colours match Outreach: Fashion / Beauty) ──
 export interface Look { label: string; color: string; bg: string; border: string; }
 export const ACCOUNTS: (Look & { key: Account })[] = [
@@ -171,20 +180,25 @@ export function isVisible(t: Task, stages: Stage[], f: AccountFilter): boolean {
 // check  → tap the box (one-time tasks, check-in, monthly goal …)
 // days   → a tick per day; done when all 7 are ticked
 // number → done when this week's number reaches the target
-export type RowKind = "check" | "days" | "number";
+// auto   → filled in elsewhere (account snapshot); the box ticks itself
+export type RowKind = "check" | "days" | "number" | "auto";
+export const AUTO_DONE = new Set(["snapshot"]);          // done when the data is there
+export const AUTO_COUNT = new Set(["outreach"]);         // the number is counted, not typed
 export const rowKind = (t: Task): RowKind =>
-  t.rhythm === "once" ? "check" : t.measure ? "number" : t.rhythm === "daily" ? "days" : "check";
+  t.rhythm === "once" ? "check" : AUTO_DONE.has(t.source) ? "auto" : t.measure ? "number" : t.rhythm === "daily" ? "days" : "check";
 
 export const NO_DAYS = [false, false, false, false, false, false, false];
 
 export interface RowState { done: boolean; actual: number | null; target: number | null; days: boolean[]; daysDone: number; }
-export function rowState(t: Task, e: Entry | undefined): RowState {
+// auto: what other parts of the app fill in (a counted number, or "the data is there")
+export function rowState(t: Task, e: Entry | undefined, auto?: { actual?: number | null; done?: boolean }): RowState {
   const days = e?.days?.length === 7 ? e.days : NO_DAYS;
   const daysDone = days.filter(Boolean).length;
-  const actual = e?.actual ?? null;
+  const actual = auto && auto.actual !== undefined ? auto.actual : e?.actual ?? null;
   const target = e?.target ?? null;
   const kind = rowKind(t);
   const done =
+    kind === "auto"   ? !!auto?.done :
     kind === "days"   ? daysDone === 7 :
     kind === "number" ? target != null && actual != null && actual >= target :
     t.rhythm === "once" ? t.status === "done" : !!e?.done;
@@ -192,4 +206,20 @@ export function rowState(t: Task, e: Entry | undefined): RowState {
 }
 
 export const entryKey = (taskId: string, period: string) => `${taskId}|${period}`;
+export const snapKey  = (acc: Account, week: string) => `${acc}|${week}`;
+
+// German formats: 86.214 · 3,10 %
+export const fmtInt = (n: number | null | undefined) => (n == null ? "–" : Math.round(n).toLocaleString("de-DE"));
+export const fmtPct2 = (n: number | null | undefined) => (n == null ? "–" : `${Number(n).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`);
+// "3,1" or "3.1" → 3.1
+export const parseDec = (v: string): number | null => {
+  const t = String(v || "").trim().replace(/\s|%/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+};
+export const parseIntDe = (v: string): number | null => {
+  const t = String(v || "").replace(/[^\d]/g, "");
+  return t ? parseInt(t, 10) : null;
+};
 export const byOrder = (a: Task, b: Task) => a.sort - b.sort;

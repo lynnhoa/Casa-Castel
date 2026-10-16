@@ -6,8 +6,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./useSupabase";
-import { registerReloader, editLock } from "./saveStatus";
-import type { OutreachContact, OutreachCategory } from "./outreach";
+import { registerReloader } from "./saveStatus";
+import type { OutreachContact, OutreachCategory, OutreachTier } from "./outreach";
 
 const rowToContact = (r: any): OutreachContact => ({
   id:          r.id,
@@ -15,6 +15,7 @@ const rowToContact = (r: any): OutreachContact => ({
   contactName: r.contact_name ?? "",
   email:       r.email ?? "",
   category:    (r.category ?? "others") as OutreachCategory,
+  tier:        (r.tier ?? "now") as OutreachTier,
   web:         r.web ?? "",
   city:        r.city ?? "",
   notes:       r.notes ?? "",
@@ -44,15 +45,6 @@ export function useOutreach(userId: string | null) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => registerReloader(() => { load(); }), [load]);
-
-  // Every time you come back to the app (e.g. after running Claude's SQL in
-  // Supabase) the list reloads at once — not while a contact is being edited.
-  useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === "visible" && !editLock.active()) load(); };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", onVisible);
-    return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
-  }, [load]);
   useEffect(() => {
     let cancelled = false;
     try {
@@ -67,6 +59,7 @@ export function useOutreach(userId: string | null) {
     if (patch.contactName !== undefined) row.contact_name = patch.contactName.trim();
     if (patch.email       !== undefined) row.email        = patch.email.trim().toLowerCase();
     if (patch.category    !== undefined) row.category     = patch.category;
+    if (patch.tier        !== undefined) row.tier         = patch.tier;
     if (patch.web         !== undefined) row.web          = patch.web.trim();
     if (patch.city        !== undefined) row.city         = patch.city.trim();
     if (patch.notes       !== undefined) row.notes        = patch.notes;

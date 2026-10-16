@@ -15,12 +15,12 @@ import { createPortal } from "react-dom";
 import { C, SANS, SERIF, TYPE, Z } from "./constants";
 import { B, S, Lbl, Tick, BAR_BTN } from "./atoms";
 import {
-  ACCOUNTS, PHASES, OWNERS, accLook, ownerLabel, rhythmLabel, rowKind, rowState, entryKey, periodOf,
-  addDays, thisMonday, weekLabel, weekRange, monthName, todayIndex, stageOf, gateOf, accountsOf, isVisible, byOrder,
+  PHASES, OWNERS, accLook, ownerLabel, rhythmLabel, rowKind, periodOf,
+  thisMonday, weekLabel, weekRange, monthName, todayIndex, stageOf, gateOf, accountsOf, isVisible, byOrder,
 } from "./planner";
 import type { Task, AccountFilter, Owner, Phase } from "./planner";
 import type { PlannerHook } from "./usePlanner";
-import { Ico, IC, AccChip, Bar, Box, StageTrack, TaskWindow, PlanWeekWindow, StageWindow } from "./PlannerWindows";
+import { Ico, IC, AccChip, Bar, Box, StageTrack, Toolbar, TaskWindow, PlanWeekWindow, StageWindow } from "./PlannerWindows";
 
 export interface PlannerView { tab: string; acc: AccountFilter; owner: "all" | Owner; phase: "all" | Phase; }
 export const DEFAULT_VIEW: PlannerView = { tab: "todo", acc: "all", owner: "all", phase: "all" };
@@ -34,9 +34,10 @@ interface PlannerTodoProps {
   monday:    string;
   setMonday: (m: string) => void;
   isMobile:  boolean;
+  openOutreach?: () => void;
 }
 
-export default function PlannerTodo({ planner, view, setView, monday, setMonday, isMobile }: PlannerTodoProps) {
+export default function PlannerTodo({ planner, view, setView, monday, setMonday, isMobile, openOutreach }: PlannerTodoProps) {
   const { stages, tasks, entries, loading, loadError } = planner;
   const [openTask, setOpenTask]   = useState<string | null>(null);   // task id or "new"
   const [planOpen, setPlanOpen]   = useState(false);
@@ -55,27 +56,13 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
     .filter(t => view.phase === "all" || t.phase === view.phase)
     .sort(byOrder), [inScope, view.owner, view.phase]);
   const nFilters = (view.owner !== "all" ? 1 : 0) + (view.phase !== "all" ? 1 : 0);
-  const stateOf = (t: Task) => rowState(t, entries[entryKey(t.id, periodOf(t, monday))]);
+  const stateOf = (t: Task) => planner.stateOf(t, monday);
 
   // ── toolbar ─────────────────────────────────────────────────
   const ctl: any = { height: 28, border: `1px solid ${C.rule}`, borderRadius: 2, background: "transparent", display: "inline-flex", alignItems: "center", boxSizing: "border-box" as const, color: C.black, fontFamily: SANS };
-  const arrowBtn: any = { width: 28, height: 26, border: "none", background: "none", cursor: "pointer", color: C.muted, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0 };
 
   const toolbar = (
-    <div style={{ display: "flex", gap: 6, alignItems: "center", position: "relative" }}>
-      <S value={view.acc} onChange={(e: any) => set({ acc: e.target.value })} aria-label="Account"
-        s={{ height: 28, flex: isMobile ? 1 : "0 0 170px", width: isMobile ? "auto" : 170, minWidth: 0, padding: "0 26px 0 8px", backgroundPosition: "right 8px center" }}>
-        <option value="all">All accounts</option>
-        {ACCOUNTS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
-      </S>
-      <div style={{ ...ctl, flexShrink: 0 }}>
-        <button onClick={() => setMonday(addDays(monday, -7))} aria-label="Previous week" style={arrowBtn}><Ico d={IC.left} size={13} /></button>
-        <button onClick={() => setMonday(thisMonday())} title={isThisWeek ? "This week" : "Back to this week"}
-          style={{ height: 26, border: "none", background: "none", cursor: "pointer", fontFamily: SANS, fontSize: 13, color: C.black, padding: "0 2px", whiteSpace: "nowrap" as const }}>
-          {weekLabel(monday)}
-        </button>
-        <button onClick={() => setMonday(addDays(monday, 7))} aria-label="Next week" style={arrowBtn}><Ico d={IC.right} size={13} /></button>
-      </div>
+    <Toolbar acc={view.acc} setAcc={(acc) => set({ acc })} monday={monday} setMonday={setMonday} isMobile={isMobile}>
       <div style={{ position: "relative" }}>
         <button onClick={() => setFilterOpen(o => !o)} aria-label="Filter" title="Filter"
           style={{ ...ctl, minWidth: 28, justifyContent: "center", gap: 5, padding: isMobile ? 0 : "0 9px", cursor: "pointer", position: "relative", border: `1px solid ${nFilters ? C.black : C.rule}`, background: nFilters ? C.black : "transparent", color: nFilters ? C.white : C.black, fontSize: TYPE.micro.size, letterSpacing: "0.1em", textTransform: "uppercase" as const }}>
@@ -87,7 +74,7 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
           <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 280, background: C.bg, border: `1px solid ${C.rule}`, borderRadius: 2, boxShadow: "0 6px 20px rgba(0,0,0,0.10)", zIndex: Z.menu, padding: 14 }}>{filterBody()}</div>
         )}
       </div>
-    </div>
+    </Toolbar>
   );
 
   function filterBody() {
@@ -166,6 +153,9 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
       if (t.target != null) meta.push(`Goal ${t.target} ${t.measure || ""}`.trim());
     } else if (kind === "number") {
       meta.push(st.target == null ? `${st.actual ?? 0} ${t.measure} · target in Plan week` : `${st.actual ?? 0} / ${st.target} ${t.measure}`);
+      if (t.source === "outreach") meta.push("from Outreach");
+    } else if (kind === "auto") {
+      meta.push(`${rhythmLabel(t.rhythm)} · ${st.done ? "entered" : "not entered yet"}`);
     } else if (kind === "days") {
       meta.push(`Daily · ${st.daysDone} / 7 days`);
     } else {
@@ -269,7 +259,7 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
 
       {/* ── WINDOWS ── */}
       {openTask && (
-        <TaskWindow key={openTask} planner={planner} monday={monday} isMobile={isMobile} onClose={() => setOpenTask(null)}
+        <TaskWindow key={openTask} planner={planner} monday={monday} isMobile={isMobile} onClose={() => setOpenTask(null)} openOutreach={openOutreach}
           taskId={openTask === "new" ? undefined : openTask}
           draft={openTask === "new" ? newDraft(view, planner) : undefined} />
       )}
