@@ -6,7 +6,8 @@
 //                new followers; 6-week trend from the snapshots
 //   Portfolio  · first set (9), then this month's goal
 //   Weekly goals met · by manager / you / both
-//   Pipeline (from Stage 2) · Money (from Stage 3)
+//   Pipeline (from Stage 2: the running sprint's pitched, replied,
+//   gifted, deals) · Money (from Stage 3)
 // ─────────────────────────────────────────────────────────────
 
 import { useState } from "react";
@@ -19,7 +20,8 @@ import type { Account, Task } from "./planner";
 import { monthStart, monthEnd } from "./formatters";
 import type { PlannerHook } from "./usePlanner";
 import type { PlannerView } from "./PlannerTodo";
-import { Ico, IC, AccChip, Bar, StageTrack, Toolbar, StageWindow } from "./PlannerWindows";
+import { Ico, IC, AccChip, Bar, StageTrack, Toolbar, StageWindow, sprintDay } from "./PlannerWindows";
+import { today } from "./formatters";
 
 const microLabel: any = { fontSize: TYPE.micro.size, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: C.muted };
 
@@ -205,22 +207,43 @@ export default function PlannerOverview({ planner, view, setView, monday, setMon
             <div style={{ ...sub, marginTop: 6 }}>{byOwner.map(x => `${ownerName(x.o)} ${x.n} of ${x.of}`).join(" · ")}{byOwner.length ? " · " : ""}details in To-do</div>
           </div>
 
-          {head("Pipeline", "From Stage 2")}
-          {stage2 && pitching.length > 0 ? (
-            pitching.map(t => {
-              const st = planner.stateOf(t, monday);
-              return (
-                <div key={t.id} style={{ padding: "9px 0", borderBottom: `1px solid ${C.rule}` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>Pitches this week <AccChip acc={t.account} /></span>
-                    <span style={{ fontSize: 14, color: st.done ? C.green : C.black }}>{st.actual ?? 0} / {st.target ?? "–"}</span>
-                  </div>
-                  <Bar value={st.actual ?? 0} max={st.target ?? 0} done={st.done} />
-                  <div style={{ ...sub, marginTop: 4 }}>Replies, gifted and deals come with Outreach tracking.</div>
+          {head("Pipeline", stage2 ? "Running sprint" : "From Stage 2")}
+          {!stage2 ? locked("Pitched · replied · gifted · deals") : planner.stage2Error ? (
+            <p style={{ fontSize: 12, color: C.red, margin: "10px 0 0" }}>{planner.stage2Error}</p>
+          ) : accs.filter(a => stageNumOf(stages, a) >= 2).map((acc, i, arr) => {
+            const sp = planner.activeSprint(acc);
+            const last = i === arr.length - 1;
+            const weekN = planner.pitchesInWeek([acc], monday).filter(p => p.kind === "pitch").length;
+            if (!sp) return (
+              <div key={acc} style={{ padding: "9px 0", borderBottom: last ? "none" : `1px solid ${C.rule}`, display: "flex", alignItems: "center", gap: 6 }}>
+                <AccChip acc={acc} /><span style={{ fontSize: 13, color: C.muted }}>No sprint running · {weekN} {weekN === 1 ? "pitch" : "pitches"} this week</span>
+              </div>
+            );
+            const st = planner.sprintStats(sp);
+            const d = sprintDay(sp, today());
+            const cell = (label: string, value: any, color: string = C.black) => (
+              <div style={{ minWidth: 0 }}>
+                <div style={{ ...microLabel, fontSize: 9 }}>{label}</div>
+                <div style={{ fontFamily: SERIF, fontSize: 20, lineHeight: 1.2, marginTop: 2, color }}>{value}</div>
+              </div>
+            );
+            return (
+              <div key={acc} style={{ padding: "9px 0", borderBottom: last ? "none" : `1px solid ${C.rule}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><AccChip acc={acc} /><span style={{ fontSize: 13 }}>Sprint {sp.num}</span></span>
+                  <span style={{ ...microLabel }}>Day {d.day} of {d.total}</span>
                 </div>
-              );
-            })
-          ) : locked("Pitched · replied · gifted · deals")}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8, marginTop: 8 }}>
+                  {cell("Pitched", `${st.pitches}${sp.pitchGoal != null ? ` / ${sp.pitchGoal}` : ""}`)}
+                  {cell("Replied", st.replied)}
+                  {cell("Gifted", st.gifted, st.gifted ? C.green : C.black)}
+                  {cell("Deals", st.deals, st.deals ? C.green : C.black)}
+                </div>
+                <Bar value={st.pitches} max={sp.pitchGoal ?? 0} done={sp.pitchGoal != null && st.pitches >= sp.pitchGoal} />
+                <div style={{ ...sub, marginTop: 4 }}>{st.rate != null ? `Reply rate ${fmtPct2(st.rate)} · ` : ""}{weekN} {weekN === 1 ? "pitch" : "pitches"} this week</div>
+              </div>
+            );
+          })}
 
           {head("Money", "From Stage 3")}
           {stage3 ? <div style={{ padding: "9px 0", fontSize: 13, color: C.muted }}>Revenue from your invoices comes with the Stage 3 build.</div> : locked("Revenue from your invoices")}

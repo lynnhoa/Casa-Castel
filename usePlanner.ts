@@ -1,9 +1,10 @@
 // ─────────────────────────────────────────────────────────────
 // usePlanner — the Planner's data (tables planner_stages,
 // planner_tasks, planner_entries, planner_snapshots, planner_items,
-// planner_notes) plus new Outreach contacts per week. Rows that
-// count themselves (contacts, ideas, posts, pieces, first set,
-// kit handover) read from here.
+// planner_notes, planner_sprints) plus Outreach: contacts (new per
+// week, status) and the pitch log. Rows that count themselves
+// (contacts, pitches, ideas, posts, pieces, first set, kit
+// handover) read from here.
 // Ticks and numbers save right away; the app-wide toast shows
 // Saving… / Saved ✓, and a failed save reloads what is stored.
 // ─────────────────────────────────────────────────────────────
@@ -13,10 +14,35 @@ import { supabase } from "./useSupabase";
 import { registerReloader } from "./saveStatus";
 import { today, monthStart, ymd } from "./formatters";
 import { addDays, entryKey, snapKey, mondayOf, periodOf, rowState, taskAccounts, NO_DAYS } from "./planner";
-import type { Stage, Task, Entry, TaskStatus, Snapshot, Account, Item, ItemStatus, Note, NoteKind, Auto } from "./planner";
+import { daysBetween } from "./planner";
+import type { Stage, Task, Entry, TaskStatus, Snapshot, Account, Item, ItemStatus, Note, NoteKind, Auto, Sprint, SprintStats } from "./planner";
+import { FOLLOW_UP_DAYS } from "./outreach";
+import type { Pitch } from "./outreach";
 
-// a new Outreach contact, as far as the Planner needs it
-export interface NewContact { id: string; category: string; tier: string; week: string; }
+// an Outreach contact, as far as the Planner needs it
+export interface NewContact { id: string; company: string; category: string; tier: string; status: string; lastContact: string | null; week: string; }
+
+const rowToSprint = (r: any): Sprint => ({
+  id: r.id, account: r.account, num: Number(r.num) || 1,
+  startOn: String(r.start_on).slice(0, 10), endOn: String(r.end_on).slice(0, 10),
+  focusCategory: r.focus_category ?? "", focusTier: r.focus_tier || "now",
+  pitchGoal: r.pitch_goal ?? null, followUpGoal: r.follow_up_goal ?? null,
+  review: r.review ?? "", status: r.status === "done" ? "done" : "active",
+});
+const sprintToRow = (p: Partial<Sprint>) => {
+  const row: any = {};
+  if (p.account       !== undefined) row.account        = p.account;
+  if (p.num           !== undefined) row.num            = p.num;
+  if (p.startOn       !== undefined) row.start_on       = p.startOn;
+  if (p.endOn         !== undefined) row.end_on         = p.endOn;
+  if (p.focusCategory !== undefined) row.focus_category = p.focusCategory;
+  if (p.focusTier     !== undefined) row.focus_tier     = p.focusTier;
+  if (p.pitchGoal     !== undefined) row.pitch_goal     = p.pitchGoal;
+  if (p.followUpGoal  !== undefined) row.follow_up_goal = p.followUpGoal;
+  if (p.review        !== undefined) row.review         = p.review;
+  if (p.status        !== undefined) row.status         = p.status;
+  return row;
+};
 
 const rowToStage = (r: any): Stage => ({
   id:          r.id,
@@ -147,6 +173,9 @@ export function usePlanner(userId: string | null, monday: string) {
   const [contacts,  setContacts]  = useState<NewContact[]>([]);
   const [items,     setItems]     = useState<Item[]>([]);
   const [notes,     setNotes]     = useState<Note[]>([]);
+  const [pitches,   setPitches]   = useState<Pitch[]>([]);
+  const [sprints,   setSprints]   = useState<Sprint[]>([]);
+  const [stage2Error, setStage2Error] = useState<string | null>(null);
   const [outreachError, setOutreachError] = useState<string | null>(null);
   const [loading,   setLoading]   = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -193,20 +222,29 @@ export function usePlanner(userId: string | null, monday: string) {
     setSnaps(k);
   }, [userId, from, monday]);
 
-  // Creator lists and notes, plus new Outreach contacts (per week)
+  // Creator lists and notes, Outreach contacts and (Stage 2) the pitch log and sprints
   const loadOutside = useCallback(async () => {
-    if (!userId) { setContacts([]); setItems([]); setNotes([]); return; }
-    const since = new Date(`${from}T00:00:00`).toISOString();
-    const [oc, it, nt]: any[] = await Promise.all([
-      supabase.from("outreach_contacts").select("id, category, tier, created_at").eq("user_id", userId).gte("created_at", since),
+    if (!userId) { setContacts([]); setItems([]); setNotes([]); setPitches([]); setSprints([]); return; }
+    const [oc, it, nt, pl, sp]: any[] = await Promise.all([
+      supabase.from("outreach_contacts").select("id, company, category, tier, status, last_contact, created_at").eq("user_id", userId),
       supabase.from("planner_items").select("*").eq("user_id", userId).order("created_at"),
       supabase.from("planner_notes").select("*").eq("user_id", userId),
+      supabase.from("outreach_pitches").select("id, contact_id, account, kind, sent_on").eq("user_id", userId),
+      supabase.from("planner_sprints").select("*").eq("user_id", userId).order("start_on"),
     ]);
     if (oc?.error) setOutreachError(oc.error.message);
     else {
       setOutreachError(null);
-      setContacts((oc?.data || []).map((r: any) => ({ id: r.id, category: r.category || "others", tier: r.tier || "now", week: mondayOf(ymd(new Date(r.created_at))) })));
+      setContacts((oc?.data || []).map((r: any) => ({
+        id: r.id, company: r.company || "", category: r.category || "others", tier: r.tier || "now", status: r.status || "new",
+        lastContact: r.last_contact ? String(r.last_contact).slice(0, 10) : null, week: mondayOf(ymd(new Date(r.created_at))),
+      })));
     }
+    // Stage 2 tables (Phase 6 SQL); without them the rest of the Planner still works
+    const e2 = pl?.error || sp?.error;
+    setStage2Error(e2 ? (/outreach_pitches|planner_sprints/.test(e2.message || "") ? "The sprint and pitch log tables don't exist yet — run the Phase 6 SQL in Supabase once." : e2.message) : null);
+    if (!pl?.error) setPitches((pl?.data || []).map((r: any) => ({ id: r.id, contactId: r.contact_id, account: r.account, kind: r.kind === "follow_up" ? "follow_up" : "pitch", sentOn: String(r.sent_on).slice(0, 10) })));
+    if (!sp?.error) setSprints((sp?.data || []).map(rowToSprint));
     const err = it?.error || nt?.error;
     if (err) setLoadError(isMissing(err.message) ? MISSING : err.message);
     else {
@@ -376,6 +414,59 @@ export function usePlanner(userId: string | null, monday: string) {
 
   const waiting = items.filter(i => i.portfolio && i.status === "posted");
 
+  // ── Stage 2: sprints ─────────────────────────────────────────
+  const createSprint = useCallback(async (fields: Partial<Sprint>): Promise<Sprint> => {
+    const num = Math.max(0, ...sprints.filter(x => x.account === fields.account).map(x => x.num)) + 1;
+    const { data, error } = await supabase.from("planner_sprints").insert(sprintToRow({ ...fields, num, status: "active" })).select().single();
+    fail(error);
+    const sp = rowToSprint(data);
+    setSprints(prev => [...prev, sp]);
+    return sp;
+  }, [sprints]);
+  const updateSprint = useCallback(async (id: string, patch: Partial<Sprint>) => {
+    setSprints(prev => prev.map(x => (x.id === id ? { ...x, ...patch } : x)));
+    const { error } = await supabase.from("planner_sprints").update(sprintToRow(patch)).eq("id", id).eq("user_id", userId);
+    fail(error);
+  }, [userId]);
+  const deleteSprint = useCallback(async (id: string) => {
+    const { error } = await supabase.from("planner_sprints").delete().eq("id", id).eq("user_id", userId);
+    fail(error);
+    setSprints(prev => prev.filter(x => x.id !== id));
+  }, [userId]);
+  const activeSprint = useCallback((acc: Account) => sprints.find(x => x.account === acc && x.status === "active"), [sprints]);
+
+  // what a sprint brought: pitches and follow-ups sent in its days, and where those contacts stand now
+  const sprintStats = useCallback((sp: Sprint): SprintStats => {
+    const mine = pitches.filter(p => p.account === sp.account && p.sentOn >= sp.startOn && p.sentOn <= sp.endOn);
+    const pitched = new Set(mine.filter(p => p.kind === "pitch").map(p => p.contactId));
+    const status = new Map(contacts.map(c => [c.id, c.status]));
+    const st = (id: string) => status.get(id) || "new";
+    const replied = [...pitched].filter(id => ["replied", "gifted", "deal"].includes(st(id))).length;
+    return {
+      pitches: mine.filter(p => p.kind === "pitch").length,
+      followUps: mine.filter(p => p.kind === "follow_up").length,
+      contacted: pitched.size,
+      replied,
+      gifted: [...pitched].filter(id => st(id) === "gifted").length,
+      deals: [...pitched].filter(id => st(id) === "deal").length,
+      rate: pitched.size ? (replied / pitched.size) * 100 : null,
+    };
+  }, [pitches, contacts]);
+
+  // pitched contacts of this account without a reply for 7+ days
+  const followUpsDue = useCallback((acc: Account, on: string = today()) => {
+    const last = new Map<string, string>();
+    pitches.filter(p => p.account === acc).forEach(p => { const m = last.get(p.contactId); if (!m || p.sentOn > m) last.set(p.contactId, p.sentOn); });
+    const status = new Map(contacts.map(c => [c.id, c.status]));
+    return [...last.entries()].filter(([id, d]) => status.get(id) === "pitched" && daysBetween(d, on) >= FOLLOW_UP_DAYS).length;
+  }, [pitches, contacts]);
+
+  // pitch log entries of some accounts in one week (newest first)
+  const pitchesInWeek = useCallback((accs: Account[], week: string) =>
+    pitches.filter(p => accs.includes(p.account) && p.sentOn >= week && p.sentOn <= addDays(week, 6))
+      .sort((a, b) => b.sentOn.localeCompare(a.sentOn)), [pitches]);
+  const contactName = useCallback((id: string) => contacts.find(c => c.id === id)?.company || "Contact", [contacts]);
+
   // ── what a row shows: its entry plus what is filled in elsewhere ─
   const newContacts = useCallback((week: string) => contacts.filter(c => c.week === week), [contacts]);
   const autoOf = useCallback((t: Task, period: string): Auto | undefined => {
@@ -384,6 +475,7 @@ export function usePlanner(userId: string | null, monday: string) {
     const inWeek = (d: string | null) => !!d && d >= period && d <= addDays(period, 6);
     switch (t.source) {
       case "outreach": return { actual: contacts.filter(c => c.week === period).length };
+      case "pitches":  return { actual: pitches.filter(p => p.kind === "pitch" && accs.includes(p.account) && inWeek(p.sentOn)).length };
       case "snapshot": {
         const sn = t.account === "both" ? null : snaps[snapKey(t.account, period)];
         return { done: !!sn && (sn.followers != null || sn.views != null || sn.engagement != null) };
@@ -401,7 +493,7 @@ export function usePlanner(userId: string | null, monday: string) {
       }
     }
     return undefined;
-  }, [contacts, snaps, items]);
+  }, [contacts, snaps, items, pitches]);
   const stateOf = useCallback((t: Task, monday_: string) => {
     const period = periodOf(t, monday_);
     return rowState(t, entries[entryKey(t.id, period)], autoOf(t, period));
@@ -417,6 +509,7 @@ export function usePlanner(userId: string | null, monday: string) {
     saveEntry, planTargets, updateStage, startNextStage,
     saveSnapshot, newContacts, autoOf, stateOf, doneOf,
     createItem, updateItem, setItemStatus, deleteItem, noteOf, saveNote,
+    pitches, sprints, stage2Error, createSprint, updateSprint, deleteSprint, activeSprint, sprintStats, followUpsDue, pitchesInWeek, contactName,
   };
 }
 

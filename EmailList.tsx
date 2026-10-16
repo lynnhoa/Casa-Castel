@@ -13,9 +13,10 @@ import { C, SANS, SERIF, TYPE, Z } from "./constants";
 import { fmtD } from "./formatters";
 import { B, I, S, Lbl, ConfirmDialog, BAR_BTN } from "./atoms";
 import {
-  OUTREACH_CATEGORIES, OUTREACH_TIERS, OUTREACH_COLUMNS, SORTS, ADDED, DEFAULT_VIEW, catOf, tierOf, applyView, activeFilters,
-  emailsText, copyText, headerRow, buildPrompt,
+  OUTREACH_CATEGORIES, OUTREACH_TIERS, OUTREACH_COLUMNS, OUTREACH_STATUSES, STATUS_FILTERS, PITCH_ACCOUNTS, SORTS, ADDED, DEFAULT_VIEW,
+  catOf, tierOf, statusOf, followUpDue, applyView, activeFilters, emailsText, copyText, headerRow, buildPrompt,
 } from "./outreach";
+import type { Pitch, PitchAccount } from "./outreach";
 import type { OutreachContact, OutreachView, SortKey } from "./outreach";
 import { downloadExcel, downloadTemplate, downloadListPdf } from "./outreachExport";
 
@@ -48,6 +49,19 @@ interface EmailListProps {
   stickyTop: number;       // height of the app header (table header sticks below it)
 }
 
+// Where a contact stands (Stage 2 tracking): Pitched 12.10. · Follow up · Replied · Gifted · Deal ✓
+const shortD = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
+const StatusText = ({ c }: { c: OutreachContact }) => {
+  if (!c.status || c.status === "new") return null;
+  const due = followUpDue(c);
+  const color = due ? C.amber : c.status === "gifted" || c.status === "deal" ? C.green : c.status === "replied" ? C.black : C.muted;
+  const text = due ? "Follow up" : c.status === "pitched" ? `Pitched${c.lastContact ? " " + shortD(c.lastContact) : ""}` : c.status === "deal" ? "Deal ✓" : statusOf(c.status).label;
+  return <span style={{ fontSize: TYPE.micro.size, letterSpacing: "0.08em", textTransform: "uppercase" as const, color, whiteSpace: "nowrap" as const, flexShrink: 0 }}>{text}</span>;
+};
+const ACC_KEY = "lh_outreach_pitch_account";
+const lastAccount = (): PitchAccount => { try { return (sessionStorage.getItem(ACC_KEY) as PitchAccount) || "lynnhoa"; } catch { return "lynnhoa"; } };
+const rememberAccount = (a: PitchAccount) => { try { sessionStorage.setItem(ACC_KEY, a); } catch { /* ignore */ } };
+
 export default function EmailList({ outreach, settings, isMobile, isWide, stickyTop }: EmailListProps) {
   const { contacts, loading, loadError, loginEmail } = outreach;
   const [view, setView]       = useState<OutreachView>(loadView);
@@ -56,6 +70,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
   const [openId, setOpenId]   = useState<string | null>(null);
   const [toast, setToast]     = useState<string | null>(null);
   const [busy, setBusy]       = useState(false);
+  const [showLog, setShowLog] = useState(false);
 
   useEffect(() => { try { sessionStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch { /* ignore */ } }, [view]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 1800); return () => clearTimeout(t); }, [toast]);
@@ -100,7 +115,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontFamily: SERIF, fontSize: 17 }}>Filter</span>
-        <button onClick={() => set({ cat: "all", tier: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", color: C.muted, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Reset</button>
+        <button onClick={() => set({ cat: "all", tier: "all", status: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", color: C.muted, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Reset</button>
       </div>
       <Lbl>Category</Lbl>
       <div style={{ border: `1px solid ${C.rule}`, borderRadius: 2, maxHeight: isMobile ? 260 : 300, overflowY: "auto" }}>
@@ -114,6 +129,11 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
           <S value={view.tier} onChange={(e: any) => set({ tier: e.target.value })}>
             <option value="all">All</option>
             {OUTREACH_TIERS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+          </S>
+        </div>
+        <div><Lbl>Status</Lbl>
+          <S value={view.status || "all"} onChange={(e: any) => set({ status: e.target.value })}>
+            {STATUS_FILTERS.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
           </S>
         </div>
         <div><Lbl>City</Lbl>
@@ -176,6 +196,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginTop: 7 }}>
       {view.cat !== "all" && <button onClick={() => set({ cat: "all" })} style={tagStyle(catOf(view.cat))}>{catOf(view.cat).label} ✕</button>}
       {view.tier !== "all" && <button onClick={() => set({ tier: "all" })} style={tagStyle()}>{tierOf(view.tier).label} ✕</button>}
+      {view.status && view.status !== "all" && <button onClick={() => set({ status: "all" })} style={tagStyle()}>{STATUS_FILTERS.find(x => x.key === view.status)?.label} ✕</button>}
       {view.city !== "all" && <button onClick={() => set({ city: "all" })} style={tagStyle()}>{view.city} ✕</button>}
       {view.added !== "any" && <button onClick={() => set({ added: "any" })} style={tagStyle()}>{ADDED.find(a => a.key === view.added)?.label} ✕</button>}
       <span style={{ ...tagStyle(), cursor: "default", padding: "0 8px" }}>{SORTS.find(s => s.key === view.sort)?.short}</span>
@@ -205,6 +226,8 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
           <div style={{ fontSize: 12, color: C.muted, marginTop: 2, display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
             {c.contactName && <span style={{ flexShrink: 0 }}>{c.contactName} ·</span>}
             {emailCell(c, true)}
+            <span style={{ flex: 1 }} />
+            <StatusText c={c} />
           </div>
         </div>
       ))}
@@ -217,6 +240,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
     { key: "email", label: "Email", fr: "1.8fr" },
     { key: "category", label: "Category", fr: "0.9fr", sort: ["cat"] },
     { key: "tier", label: "Tier", fr: "0.6fr" },
+    { key: "status", label: "Status", fr: "0.9fr" },
     { key: "city", label: "City", fr: "0.9fr" },
     { key: "web", label: "Website / IG", fr: "1.2fr" },
     ...(isWide ? [{ key: "added", label: "Added", fr: "0.8fr", sort: ["new", "old"] as SortKey[] }] : []),
@@ -241,6 +265,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
           <div style={td}>{emailCell(c)}</div>
           <div style={td}><CatPill k={c.category} /></div>
           <div style={{ ...td, color: c.tier && c.tier !== "now" ? C.black : C.muted }}>{cut(tierOf(c.tier).label)}</div>
+          <div style={td}>{c.status && c.status !== "new" ? <StatusText c={c} /> : <span style={{ color: C.light }}>—</span>}</div>
           <div style={td}>{cut(c.city)}</div>
           <div style={{ ...td, color: C.muted }}>{cut(c.web)}</div>
           {isWide && <div style={{ ...td, color: C.muted }}>{c.createdAt ? fmtD(c.createdAt.slice(0, 10)) : ""}</div>}
@@ -261,10 +286,14 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
         <div>
           <h2 style={{ fontFamily: SERIF, fontSize: isMobile ? 22 : 24, fontWeight: "normal", margin: 0, lineHeight: 1.1 }}>Email list</h2>
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4, fontSize: TYPE.micro.size, letterSpacing: "0.06em", textTransform: "uppercase" as const, color: C.muted }}>
-            <span>{filtered ? `${shown.length} of ${contacts.length}` : contacts.length} {contacts.length === 1 ? "contact" : "contacts"}</span>
+            <span style={{ whiteSpace: "nowrap" as const }}>{filtered ? `${shown.length} of ${contacts.length}` : contacts.length} {contacts.length === 1 ? "contact" : "contacts"}</span>
             {shown.length > 0 && (
               <button onClick={() => copy(emailsText(shown), `${shown.length} ${shown.length === 1 ? "email" : "emails"} copied ✓`)} aria-label="Copy the emails in view" title="Copy the emails in view"
                 style={{ background: "none", border: "none", padding: 2, cursor: "pointer", color: C.black, display: "inline-flex" }}><Ico d={IC.copy} size={13} /></button>
+            )}
+            {shown.length > 0 && !outreach.pitchError && (
+              <button onClick={() => setShowLog(true)} title="Log a pitch for the contacts in view"
+                style={{ background: "none", border: "none", padding: "2px 0 2px 6px", marginLeft: 2, borderLeft: `1px solid ${C.rule}`, cursor: "pointer", color: C.black, fontFamily: SANS, fontSize: TYPE.micro.size, letterSpacing: "0.06em", textTransform: "uppercase" as const, whiteSpace: "nowrap" as const }}>Log pitch</button>
             )}
           </div>
         </div>
@@ -293,7 +322,7 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
           </p>
         </div>
       ) : shown.length === 0 ? (
-        <p style={{ fontSize: TYPE.label.size, color: C.muted, marginTop: 16 }}>No contacts match. <button onClick={() => set({ q: "", cat: "all", tier: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", padding: 0, color: C.black, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Clear search and filters</button></p>
+        <p style={{ fontSize: TYPE.label.size, color: C.muted, marginTop: 16 }}>No contacts match. <button onClick={() => set({ q: "", cat: "all", tier: "all", status: "all", city: "all", added: "any" })} style={{ background: "none", border: "none", padding: 0, color: C.black, textDecoration: "underline", cursor: "pointer", fontFamily: SANS, fontSize: TYPE.label.size }}>Clear search and filters</button></p>
       ) : isMobile ? phoneList : table}
 
       {/* click outside closes a menu */}
@@ -308,6 +337,10 @@ export default function EmailList({ outreach, settings, isMobile, isWide, sticky
 
       {/* ── CONTACT WINDOW ── */}
       {current && <ContactWindow c={current} outreach={outreach} isMobile={isMobile} onClose={() => setOpenId(null)} onCopy={(t) => copy(t, "Email copied ✓")} />}
+
+      {/* ── LOG A PITCH FOR THE CONTACTS IN VIEW ── */}
+      {showLog && <LogWindow ids={shown.map((c: OutreachContact) => c.id)} followUp={view.status === "followup"} outreach={outreach} isMobile={isMobile}
+        onClose={() => setShowLog(false)} onDone={(n) => { setShowLog(false); setToast(`${n} ${n === 1 ? "pitch" : "pitches"} logged ✓`); }} />}
 
       {/* ── EXCEL COLUMNS WINDOW ── */}
       {showCols && (
@@ -364,6 +397,14 @@ function ContactWindow({ c, outreach, isMobile, onClose, onCopy }: { c: Outreach
   const [err, setErr] = useState<string | null>(null);
   const [askDelete, setAskDelete] = useState(false);
   useEffect(() => { if (!edit) setF(c); }, [c, edit]);
+  // pitch log for this contact (newest first); the account defaults to the last one used for them
+  const mine: Pitch[] = (outreach.pitches || []).filter((p: Pitch) => p.contactId === c.id).sort((a: Pitch, b: Pitch) => b.sentOn.localeCompare(a.sentOn));
+  const [acc, setAcc] = useState<PitchAccount>(() => mine[0]?.account || lastAccount());
+  const log = async (kind: "pitch" | "follow_up") => {
+    setErr(null);
+    try { await outreach.logPitches([c.id], acc, kind); }
+    catch (e: any) { setErr(e?.message || "Couldn't log it."); }
+  };
 
   const save = async () => {
     setErr(null);
@@ -405,6 +446,23 @@ function ContactWindow({ c, outreach, isMobile, onClose, onCopy }: { c: Outreach
           </div>
         )}>
         {err && <p style={{ fontSize: TYPE.label.size, color: C.red, margin: "0 0 8px" }}>{err}</p>}
+        {!edit && !outreach.pitchError && (
+          <div style={{ marginBottom: 6 }}>
+            <Lbl>Status</Lbl>
+            <S value={c.status || "new"} onChange={(e: any) => outreach.setStatus(c.id, e.target.value).catch((x: any) => setErr(x?.message || "Couldn't save."))}>
+              {OUTREACH_STATUSES.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+            </S>
+            {followUpDue(c) && <p style={{ fontSize: 12, color: C.amber, margin: "6px 0 0" }}>No reply since {fmtD(c.lastContact!)} — time to follow up.</p>}
+            <Lbl>Log</Lbl>
+            <div style={{ display: "flex", gap: 6 }}>
+              <S value={acc} onChange={(e: any) => { setAcc(e.target.value); rememberAccount(e.target.value); }} s={{ flex: 1, minWidth: 0 }} aria-label="Account">
+                {PITCH_ACCOUNTS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+              </S>
+              <B v="sec" onClick={() => log("pitch")} s={{ ...BAR_BTN, flexShrink: 0, color: C.black }}>+ Pitch</B>
+              <B v="sec" onClick={() => log("follow_up")} s={{ ...BAR_BTN, flexShrink: 0, color: C.black }}>+ Follow-up</B>
+            </div>
+          </div>
+        )}
         {!edit ? (
           <>
             {row("Company", c.company)}
@@ -417,6 +475,23 @@ function ContactWindow({ c, outreach, isMobile, onClose, onCopy }: { c: Outreach
             {row("Notes", c.notes)}
             {row("Added", c.createdAt ? fmtD(c.createdAt.slice(0, 10)) : "")}
             {row("Source", c.source)}
+            {!outreach.pitchError && (
+              <>
+                <Lbl>Pitch log · {mine.length}</Lbl>
+                {mine.length === 0 ? <p style={{ fontSize: 12, color: C.light, margin: 0 }}>Nothing sent yet.</p> : (
+                  <div style={{ borderTop: `1px solid ${C.rule}` }}>
+                    {mine.map((p: Pitch) => (
+                      <div key={p.id} style={{ minHeight: 36, display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.rule}`, fontSize: 13 }}>
+                        <span style={{ width: 86, flexShrink: 0 }}>{fmtD(p.sentOn)}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>{p.kind === "follow_up" ? "Follow-up" : "Pitch"} · <span style={{ color: C.muted }}>{p.account === "lynnhoa" ? "@lynnhoa" : "@createbylynn"}</span></span>
+                        <button onClick={() => outreach.deletePitch(p).catch((x: any) => setErr(x?.message || "Couldn't delete."))} aria-label="Delete this entry" title="Delete this entry"
+                          style={{ width: 32, height: 32, background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </>
         ) : (
           <>
@@ -445,3 +520,49 @@ function ContactWindow({ c, outreach, isMobile, onClose, onCopy }: { c: Outreach
     </>
   );
 }
+
+// ── Log a pitch (or follow-up) for every contact in view ─────────
+function LogWindow({ ids, followUp, outreach, isMobile, onClose, onDone }: { ids: string[]; followUp: boolean; outreach: any; isMobile: boolean; onClose: () => void; onDone: (n: number) => void }) {
+  const [acc, setAcc]   = useState<PitchAccount>(lastAccount);
+  const [kind, setKind] = useState<"pitch" | "follow_up">(followUp ? "follow_up" : "pitch");
+  const [date, setDate] = useState(ymdToday);
+  const [err, setErr]   = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const n = ids.length;
+  const go = async () => {
+    setErr(null);
+    if (!date) { setErr("Pick the day it was sent."); return; }
+    setBusy(true);
+    try { rememberAccount(acc); await outreach.logPitches(ids, acc, kind, date); onDone(n); }
+    catch (e: any) { setErr(e?.message || "Couldn't log it."); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Window title="Log pitch" isMobile={isMobile} onClose={onClose}
+      footer={
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <B v="sec" onClick={onClose}>Cancel</B>
+          <B onClick={go} s={{ opacity: busy ? 0.5 : 1 }}>{busy ? "Logging…" : `Log ${n}`}</B>
+        </div>
+      }>
+      {err && <p style={{ fontSize: TYPE.label.size, color: C.red, margin: "0 0 8px" }}>{err}</p>}
+      <p style={{ fontSize: 13, margin: 0, lineHeight: 1.5 }}>For the {n} {n === 1 ? "contact" : "contacts"} in view — one entry each in the pitch log.</p>
+      <Lbl>Account</Lbl>
+      <S value={acc} onChange={(e: any) => setAcc(e.target.value)}>
+        {PITCH_ACCOUNTS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+      </S>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
+        <div><Lbl>Type</Lbl>
+          <S value={kind} onChange={(e: any) => setKind(e.target.value)}>
+            <option value="pitch">Pitch</option>
+            <option value="follow_up">Follow-up</option>
+          </S>
+        </div>
+        <div><Lbl>Sent on</Lbl><I type="date" value={date} onChange={(e: any) => setDate(e.target.value)} /></div>
+      </div>
+      <p style={{ fontSize: 12, color: C.muted, margin: "10px 0 0", lineHeight: 1.5 }}>Not contacted yet → Pitched. Replied, gifted and deals stay as they are.</p>
+    </Window>
+  );
+}
+// today as yyyy-mm-dd in local time
+function ymdToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }

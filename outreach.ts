@@ -2,9 +2,8 @@
 // outreach — ONE place for the email list's columns, categories
 // and the Claude prompt. The "Excel columns" window, the Prompt
 // button, the Excel template and the Excel/PDF downloads all read
-// from here, so they always match. (Tracking columns — status,
-// last contact — already exist in the table and get added here
-// when tracking is switched on.)
+// from here, so they always match. Stage 2 adds tracking: a status
+// per contact (pitched → replied → gifted / deal) and the pitch log.
 // ─────────────────────────────────────────────────────────────
 
 export type OutreachCategory = "fashion" | "beauty" | "agency" | "ugc" | "hotel" | "restaurants" | "events" | "others";
@@ -30,6 +29,40 @@ export const OUTREACH_TIERS: { key: OutreachTier; label: string }[] = [
 ];
 export const tierOf = (k: string) => OUTREACH_TIERS.find(t => t.key === k) || OUTREACH_TIERS[0];
 
+// Tracking (Stage 2): where a contact stands. "new" = not contacted yet (empty in the table)
+export type OutreachStatus = "new" | "pitched" | "replied" | "gifted" | "deal";
+export const OUTREACH_STATUSES: { key: OutreachStatus; label: string }[] = [
+  { key: "new",     label: "Not contacted" },
+  { key: "pitched", label: "Pitched" },
+  { key: "replied", label: "Replied" },
+  { key: "gifted",  label: "Gifted" },
+  { key: "deal",    label: "Deal" },
+];
+export const statusOf = (k: string) => OUTREACH_STATUSES.find(s => s.key === k) || OUTREACH_STATUSES[0];
+// A follow-up is due when a pitched contact hasn't answered for this many days
+export const FOLLOW_UP_DAYS = 7;
+const daysSince = (ymd: string, now = new Date()) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const a = new Date(y, m - 1, d), b = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((b.getTime() - a.getTime()) / 864e5);
+};
+export const followUpDue = (c: { status: string; lastContact: string | null }, now = new Date()) =>
+  c.status === "pitched" && !!c.lastContact && daysSince(c.lastContact, now) >= FOLLOW_UP_DAYS;
+
+// One pitch or follow-up sent to a contact, for one account
+export type PitchAccount = "lynnhoa" | "createbylynn";
+export interface Pitch {
+  id:        string;
+  contactId: string;
+  account:   PitchAccount;
+  kind:      "pitch" | "follow_up";
+  sentOn:    string;   // yyyy-mm-dd
+}
+export const PITCH_ACCOUNTS: { key: PitchAccount; label: string }[] = [
+  { key: "lynnhoa", label: "@lynnhoa" },
+  { key: "createbylynn", label: "@createbylynn" },
+];
+
 export interface OutreachContact {
   id:          string;
   company:     string;
@@ -37,6 +70,8 @@ export interface OutreachContact {
   email:       string;
   category:    OutreachCategory;
   tier:        OutreachTier;
+  status:      OutreachStatus;
+  lastContact: string | null;   // date of the last pitch or follow-up
   web:         string;          // website or Instagram
   city:        string;
   notes:       string;
@@ -105,8 +140,14 @@ export const ADDED: { key: AddedKey; label: string }[] = [
   { key: "30d",  label: "Last 30 days" },
   { key: "year", label: "This year" },
 ];
-export interface OutreachView { q: string; cat: string; tier: string; city: string; added: AddedKey; sort: SortKey; }
-export const DEFAULT_VIEW: OutreachView = { q: "", cat: "all", tier: "all", city: "all", added: "any", sort: "az" };
+export interface OutreachView { q: string; cat: string; tier: string; status: string; city: string; added: AddedKey; sort: SortKey; }
+export const DEFAULT_VIEW: OutreachView = { q: "", cat: "all", tier: "all", status: "all", city: "all", added: "any", sort: "az" };
+// Status filter: the statuses plus "Follow-up due"
+export const STATUS_FILTERS: { key: string; label: string }[] = [
+  { key: "all", label: "All" },
+  ...OUTREACH_STATUSES.map(s => ({ key: s.key, label: s.label })),
+  { key: "followup", label: "Follow-up due" },
+];
 
 export function applyView(list: OutreachContact[], v: OutreachView, now = new Date()): OutreachContact[] {
   const q = v.q.trim().toLowerCase();
@@ -116,6 +157,7 @@ export function applyView(list: OutreachContact[], v: OutreachView, now = new Da
     (!q || [c.company, c.contactName, c.email].some(x => (x || "").toLowerCase().includes(q))) &&
     (v.cat === "all" || c.category === v.cat) &&
     (v.tier === "all" || (c.tier || "now") === v.tier) &&
+    (!v.status || v.status === "all" || (v.status === "followup" ? followUpDue(c, now) : (c.status || "new") === v.status)) &&
     (v.city === "all" || (c.city || "") === v.city) &&
     (v.added === "any" || (v.added === "30d" ? c.createdAt >= since30 : c.createdAt >= yearStart))
   );
@@ -130,7 +172,7 @@ export function applyView(list: OutreachContact[], v: OutreachView, now = new Da
   return out;
 }
 
-export const activeFilters = (v: OutreachView) => (v.cat !== "all" ? 1 : 0) + (v.tier !== "all" ? 1 : 0) + (v.city !== "all" ? 1 : 0) + (v.added !== "any" ? 1 : 0);
+export const activeFilters = (v: OutreachView) => (v.cat !== "all" ? 1 : 0) + (v.tier !== "all" ? 1 : 0) + (v.status && v.status !== "all" ? 1 : 0) + (v.city !== "all" ? 1 : 0) + (v.added !== "any" ? 1 : 0);
 
 // "a@x.com, b@y.com" — ready for BCC in Gmail, Outlook, Apple Mail
 export const emailsText = (list: OutreachContact[]) => list.map(c => c.email).filter(Boolean).join(", ");

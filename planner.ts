@@ -92,6 +92,23 @@ export interface Item {
   createdAt:   string;
   createdWeek: string;           // Monday of the week it was added
 }
+// Stage 2: a sales sprint (one focus, a pitch goal, follow-ups, then a review)
+export interface Sprint {
+  id:            string;
+  account:       Account;
+  num:           number;
+  startOn:       string;
+  endOn:         string;
+  focusCategory: string;    // Outreach category key, "" = any
+  focusTier:     "now" | "premium" | "luxury";
+  pitchGoal:     number | null;
+  followUpGoal:  number | null;
+  review:        string;
+  status:        "active" | "done";
+}
+// what a sprint brought (from the pitch log and the contacts' status)
+export interface SprintStats { pitches: number; followUps: number; contacted: number; replied: number; gifted: number; deals: number; rate: number | null; }
+
 export type NoteKind = "concept" | "offer" | "learning";
 export interface Note {
   id:          string;
@@ -249,7 +266,7 @@ export function isVisible(t: Task, stages: Stage[], f: AccountFilter): boolean {
 // auto   → filled in elsewhere (account snapshot); the box ticks itself
 export type RowKind = "check" | "days" | "number" | "auto";
 export const AUTO_DONE  = new Set(["snapshot", "kit_waiting", "portfolio_total"]);  // the box ticks itself
-export const AUTO_COUNT = new Set(["outreach", "ideas", "posts", "pieces"]);          // the number is counted, not typed
+export const AUTO_COUNT = new Set(["outreach", "ideas", "posts", "pieces", "pitches"]); // the number is counted, not typed
 export const rowKind = (t: Task): RowKind =>
   AUTO_DONE.has(t.source) ? "auto" : t.rhythm === "once" ? "check" : t.measure ? "number" : t.rhythm === "daily" ? "days" : "check";
 
@@ -273,6 +290,8 @@ export function rowState(t: Task, e: Entry | undefined, auto?: Auto): RowState {
 }
 
 export const entryKey = (taskId: string, period: string) => `${taskId}|${period}`;
+// days between two yyyy-mm-dd dates (b − a)
+export const daysBetween = (a: string, b: string) => Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 864e5);
 export const snapKey  = (acc: Account, week: string) => `${acc}|${week}`;
 
 // German formats: 86.214 · 3,10 %

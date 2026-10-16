@@ -157,7 +157,7 @@ export default function PlannerTodo({ planner, view, setView, monday, setMonday,
       if (t.target != null) meta.push(`Goal ${t.target} ${t.measure || ""}`.trim());
     } else if (kind === "number") {
       meta.push(st.target == null ? `${st.actual ?? 0} ${t.measure} · target in Plan week` : `${st.actual ?? 0} / ${st.target} ${t.measure}`);
-      if (t.source === "outreach") meta.push("from Outreach");
+      if (t.source === "outreach" || t.source === "pitches") meta.push("from Outreach");
       if (t.source === "ideas" || t.source === "posts" || t.source === "pieces") meta.push("from Creator");
     } else if (kind === "auto") {
       meta.push(`${rhythmLabel(t.rhythm)} · ${st.done ? "entered" : "not entered yet"}`);

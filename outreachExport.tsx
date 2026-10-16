@@ -11,20 +11,24 @@ import { fmtD, today } from "./formatters";
 import { SETTINGS_DEFAULT } from "./rateCards";
 import { openPdfWindow, pagesToPdf, deliverPdf } from "./PDFExport";
 import { makeXlsx, saveBytes, XLSX_MIME } from "./xlsxWriter";
-import { OUTREACH_COLUMNS, OUTREACH_CATEGORIES, OUTREACH_TIERS, catOf, tierOf } from "./outreach";
+import { OUTREACH_COLUMNS, OUTREACH_CATEGORIES, OUTREACH_TIERS, catOf, tierOf, statusOf } from "./outreach";
 import type { OutreachContact } from "./outreach";
 
 const addedText = (c: OutreachContact) => (c.createdAt ? fmtD(c.createdAt.slice(0, 10)) : "");
 const cellOf = (c: OutreachContact, key: string): string =>
   key === "category" ? catOf(c.category).label : key === "tier" ? tierOf(c.tier).label : String((c as any)[key] ?? "");
 
+// Stage 2 tracking, after the import columns
+const statusText = (c: OutreachContact) => (c.status && c.status !== "new" ? statusOf(c.status).label : "");
+const lastText   = (c: OutreachContact) => (c.lastContact ? fmtD(c.lastContact) : "");
+
 // ── Excel ─────────────────────────────────────────────────────
 export function downloadExcel(list: OutreachContact[], filename: string) {
-  const head = [...OUTREACH_COLUMNS.map(c => c.label), "Added"];
-  const rows = list.map(c => [...OUTREACH_COLUMNS.map(col => cellOf(c, col.key)), addedText(c)]);
+  const head = [...OUTREACH_COLUMNS.map(c => c.label), "Status", "Last contact", "Added"];
+  const rows = list.map(c => [...OUTREACH_COLUMNS.map(col => cellOf(c, col.key)), statusText(c), lastText(c), addedText(c)]);
   const bytes = makeXlsx([{
     name: "Email list", rows: [head, ...rows], autoFilter: true,
-    widths: [26, 32, 20, 14, 10, 24, 16, 36, 12],
+    widths: [26, 32, 20, 14, 10, 24, 16, 36, 14, 13, 12],
   }]);
   saveBytes(bytes, `${filename}.xlsx`, XLSX_MIME);
 }
@@ -49,10 +53,10 @@ export function downloadTemplate(filename: string) {
 // ── PDF ───────────────────────────────────────────────────────
 const W = 842, H = 595, PX = 40, ROW_H = 17, FIRST = 24, NEXT = 28;
 const COLS: { key: string; label: string; w: number }[] = [
-  { key: "company", label: "Company", w: 130 }, { key: "contactName", label: "Contact", w: 92 },
-  { key: "email", label: "Email", w: 170 }, { key: "category", label: "Category", w: 74 },
-  { key: "tier", label: "Tier", w: 40 },
-  { key: "city", label: "City", w: 82 }, { key: "web", label: "Website / Instagram", w: 110 },
+  { key: "company", label: "Company", w: 120 }, { key: "contactName", label: "Contact", w: 80 },
+  { key: "email", label: "Email", w: 160 }, { key: "category", label: "Category", w: 70 },
+  { key: "tier", label: "Tier", w: 40 }, { key: "status", label: "Status", w: 62 },
+  { key: "city", label: "City", w: 74 }, { key: "web", label: "Website / Instagram", w: 92 },
   { key: "added", label: "Added", w: 64 },
 ];   // sum = 762 = W − 2 × PX
 const cell = (w: number): any => ({ width: w, flexShrink: 0, paddingRight: 6, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", boxSizing: "border-box" });
@@ -80,13 +84,14 @@ function ListPages({ list, title, settings }: { list: OutreachContact[]; title: 
             </div>
             {rows.map(c => (
               <div key={c.id} style={{ display: "flex", alignItems: "center", height: ROW_H, borderBottom: `0.5px solid ${PDF.rule}`, fontSize: 7.5 }}>
-                <div style={cell(130)}>{c.company}</div>
-                <div style={cell(92)}>{c.contactName}</div>
-                <div style={cell(170)}>{c.email}</div>
-                <div style={cell(74)}>{catOf(c.category).label}</div>
+                <div style={cell(120)}>{c.company}</div>
+                <div style={cell(80)}>{c.contactName}</div>
+                <div style={cell(160)}>{c.email}</div>
+                <div style={cell(70)}>{catOf(c.category).label}</div>
                 <div style={cell(40)}>{tierOf(c.tier).label}</div>
-                <div style={cell(82)}>{c.city}</div>
-                <div style={cell(110)}>{c.web}</div>
+                <div style={cell(62)}>{statusText(c)}</div>
+                <div style={cell(74)}>{c.city}</div>
+                <div style={cell(92)}>{c.web}</div>
                 <div style={cell(64)}>{addedText(c)}</div>
               </div>
             ))}

@@ -4,7 +4,8 @@
 //   Account snapshot · Following log · Community (daily ticks)
 //   Email list (counted from Outreach, by category and tier)
 //   Sales kit (status, links) + new portfolio pieces to add (one tap: In kit)
-//   Sales sprints (Stage 2, locked until then)
+//   Sales sprints (Stage 2): the running sprint per account with its
+//   goals and results, past sprints, and this week's pitch log
 // Every row opens the same task window as in To-do, and
 // everything he logs here fills the To-do by itself.
 // ─────────────────────────────────────────────────────────────
@@ -14,13 +15,14 @@ import { C, SANS, SERIF, TYPE } from "./constants";
 import { B, BAR_BTN } from "./atoms";
 import {
   DAY_SHORT, accountsOf, isVisible, byOrder, snapKey, entryKey, periodOf, stageNumOf, todayIndex,
-  weekRange, fmtInt, fmtPct2,
+  weekRange, fmtInt, fmtPct2, addDays, thisMonday, isoWeek,
 } from "./planner";
 import type { Task, Account } from "./planner";
 import type { PlannerHook } from "./usePlanner";
 import type { PlannerView } from "./PlannerTodo";
-import { OUTREACH_CATEGORIES, OUTREACH_TIERS } from "./outreach";
-import { Ico, IC, AccChip, Box, Toolbar, CountChip, TaskWindow } from "./PlannerWindows";
+import { OUTREACH_CATEGORIES, OUTREACH_TIERS, catOf } from "./outreach";
+import { fmtD, today } from "./formatters";
+import { Ico, IC, AccChip, Bar, Box, Toolbar, CountChip, CatChip, TaskWindow, SprintWindow, sprintRange, sprintDay } from "./PlannerWindows";
 
 const microLabel: any = { fontSize: TYPE.micro.size, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: C.muted };
 
@@ -37,6 +39,7 @@ interface PlannerManagerProps {
 export default function PlannerManager({ planner, view, setView, monday, setMonday, isMobile, openOutreach }: PlannerManagerProps) {
   const { stages, tasks, loading, loadError } = planner;
   const [openTask, setOpenTask] = useState<string | null>(null);
+  const [openSprint, setOpenSprint] = useState<{ id?: string; acc?: Account } | null>(null);
   const quiet = (p: Promise<any>) => p.catch(() => { /* the save toast reports it */ });
 
   const accs    = accountsOf(view.acc);
@@ -156,6 +159,90 @@ export default function PlannerManager({ planner, view, setView, monday, setMond
     </div>
   ));
 
+  // ── Stage 2: sprint per account + this week's pitch log ─────
+  function sprintBlock(acc: Account) {
+    const sp = planner.activeSprint(acc);
+    const past = planner.sprints.filter(x => x.account === acc && x.status === "done").sort((a, b) => b.startOn.localeCompare(a.startOn)).slice(0, 3);
+    const st = sp ? planner.sprintStats(sp) : null;
+    const due = planner.followUpsDue(acc);
+    const d = sp ? sprintDay(sp, today()) : null;
+    return (
+      <div key={acc}>
+        {sp && st && d ? (
+          <div role="button" tabIndex={0} className="lh-prow" onClick={() => setOpenSprint({ id: sp.id })} onKeyDown={(e) => { if (e.key === "Enter") setOpenSprint({ id: sp.id }); }}
+            style={{ marginTop: 10, border: `1px solid ${C.rule}`, borderRadius: 2, padding: "9px 10px", cursor: "pointer" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><AccChip acc={acc} /><span style={{ fontSize: 14 }}>Sprint {sp.num}</span></span>
+              <span style={microLabel}>Day {d.day} of {d.total}</span>
+            </div>
+            <div style={{ ...sub, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+              <span>{sprintRange(sp)} · Focus</span>{sp.focusCategory ? <CatChip k={sp.focusCategory} /> : <span>any category</span>}<span>· {OUTREACH_TIERS.find(t => t.key === sp.focusTier)?.label}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 14 }}>
+              <span>Pitches</span><span style={{ color: sp.pitchGoal != null && st.pitches >= sp.pitchGoal ? C.green : C.black }}>{st.pitches} / {sp.pitchGoal ?? "–"}</span>
+            </div>
+            <Bar value={st.pitches} max={sp.pitchGoal ?? 0} done={sp.pitchGoal != null && st.pitches >= sp.pitchGoal} />
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 14 }}>
+              <span>Follow-ups</span>
+              <span>{st.followUps} / {sp.followUpGoal ?? "–"}{due > 0 && <span style={{ color: C.amber }}> · {due} due</span>}</span>
+            </div>
+            <div style={{ ...sub, marginTop: 6 }}>Replied {st.replied} · Gifted {st.gifted} · Deals {st.deals}{st.rate != null ? ` · reply rate ${fmtPct2(st.rate)}` : ""}</div>
+          </div>
+        ) : (
+          <div style={{ padding: "9px 0", borderBottom: `1px solid ${C.rule}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}><AccChip acc={acc} /><span style={{ fontSize: 13, color: C.muted }}>No sprint running{due > 0 ? ` · ${due} follow-ups due` : ""}</span></span>
+            <B v="sec" onClick={() => setOpenSprint({ acc })} s={smallBtn}>Start sprint</B>
+          </div>
+        )}
+        {past.map(p => {
+          const ps = planner.sprintStats(p);
+          return (
+            <div key={p.id} className="lh-prow" onClick={() => setOpenSprint({ id: p.id })} style={{ ...rowStyle(), alignItems: "flex-start" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13 }}>Sprint {p.num} <span style={{ color: C.muted }}>· {sprintRange(p)}</span></div>
+                <div style={sub}>{ps.pitches} pitches · {ps.replied} replied · {ps.gifted} gifted · {ps.deals} {ps.deals === 1 ? "deal" : "deals"}</div>
+              </div>
+              <span style={{ ...microLabel, flexShrink: 0 }}>Done</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const weekPitches = planner.pitchesInWeek(accs, monday);
+  const pitchN = weekPitches.filter(p => p.kind === "pitch").length;
+  const pitchLog = (
+    <>
+      {head(`Pitch log · week ${isoWeek(monday)}`, `${pitchN} ${pitchN === 1 ? "pitch" : "pitches"} · ${weekPitches.length - pitchN} follow-ups`)}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 4, marginTop: 10 }}>
+        {DAY_SHORT.map((dn, k) => {
+          const n = weekPitches.filter(p => p.sentOn === addDays(monday, k)).length;
+          return (
+            <div key={dn} style={{ border: `1px solid ${k === ti ? C.black : C.rule}`, borderRadius: 2, padding: "5px 0", textAlign: "center" as const }}>
+              <div style={{ ...microLabel, fontSize: 9 }}>{dn}</div>
+              <div style={{ fontSize: 14, marginTop: 2, color: n ? C.black : C.light }}>{n}</div>
+            </div>
+          );
+        })}
+      </div>
+      {weekPitches.length === 0 ? (
+        <p style={{ fontSize: 13, color: C.muted, margin: "10px 0 0" }}>Nothing logged this week. Log pitches in Outreach.</p>
+      ) : (
+        <div style={{ marginTop: 8 }}>
+          {weekPitches.slice(0, 8).map((p, i, arr) => (
+            <div key={p.id} style={{ padding: "7px 0", borderBottom: i === arr.length - 1 ? "none" : `1px solid ${C.rule}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{planner.contactName(p.contactId)} <span style={{ color: C.muted }}>· {p.kind === "follow_up" ? "Follow-up" : "Pitch"}</span></span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}><AccChip acc={p.account} /><span style={{ fontSize: 12, color: C.muted }}>{fmtD(p.sentOn).slice(0, 6)}</span></span>
+            </div>
+          ))}
+          {weekPitches.length > 8 && <p style={{ fontSize: 12, color: C.muted, margin: "6px 0 0" }}>+{weekPitches.length - 8} more in Outreach</p>}
+        </div>
+      )}
+      {openOutreach && <B v="sec" onClick={openOutreach} s={{ ...smallBtn, marginTop: 10, gap: 5 }}><Ico d={IC.link} size={12} />Open Outreach</B>}
+    </>
+  );
+
   const current = openTask ? tasks.find(t => t.id === openTask) : undefined;
 
   return (
@@ -192,24 +279,28 @@ export default function PlannerManager({ planner, view, setView, monday, setMond
             </div>
           )}
 
-          {head("Sales sprints", "Stage 2")}
-          <div style={{ padding: "9px 0", color: stage2 ? C.black : C.light }}>
-            {stage2 ? (
-              <>
-                <div style={{ fontSize: 14 }}>{sprintW}-week sprints</div>
-                <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>The sprint board comes in Phase 6. Until then, log pitches in the Pitching task.</div>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}><Ico d={IC.lock} size={14} />Unlocks when Stage 1 is done</div>
-                <div style={{ fontSize: 11, marginTop: 3 }}>{sprintW}-week sprints: focus, pitch goal, follow-ups, review</div>
-              </>
-            )}
-          </div>
+          {head("Sales sprints", stage2 ? `${sprintW}-week sprints` : "Stage 2")}
+          {!stage2 ? (
+            <div style={{ padding: "9px 0", color: C.light }}>
+              <div style={{ fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}><Ico d={IC.lock} size={14} />Unlocks when Stage 1 is done</div>
+              <div style={{ fontSize: 11, marginTop: 3 }}>{sprintW}-week sprints: focus, pitch goal, follow-ups, review</div>
+            </div>
+          ) : planner.stage2Error ? (
+            <p style={{ fontSize: 12, color: C.red, margin: "10px 0 0", lineHeight: 1.5 }}>{planner.stage2Error}</p>
+          ) : (
+            <>
+              {accs.filter(a => stageNumOf(stages, a) >= 2).map(sprintBlock)}
+              {pitchLog}
+            </>
+          )}
         </>
       )}
 
       {current && <TaskWindow key={current.id} planner={planner} taskId={current.id} monday={monday} isMobile={isMobile} onClose={() => setOpenTask(null)} openOutreach={openOutreach} />}
+      {openSprint && (
+        <SprintWindow key={openSprint.id || `new-${openSprint.acc}`} planner={planner} sprintId={openSprint.id} isMobile={isMobile} onClose={() => setOpenSprint(null)}
+          draft={openSprint.acc ? { account: openSprint.acc, startOn: thisMonday(), endOn: addDays(thisMonday(), sprintW * 7 - 1), focusCategory: "", focusTier: "now", pitchGoal: null, followUpGoal: null, review: "" } : undefined} />
+      )}
     </div>
   );
 }

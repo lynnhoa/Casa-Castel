@@ -10,16 +10,16 @@
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { C, SANS, SERIF, TYPE, Z } from "./constants";
-import { fmtD } from "./formatters";
+import { fmtD, today } from "./formatters";
 import { B, I, S, Lbl, Tick, ConfirmDialog, BAR_BTN } from "./atoms";
 import {
   ACCOUNTS, PHASES, OWNERS, RHYTHMS, STATUSES, STAGE_SHORT, DAY_SHORT,
   accLook, phaseLabel, ownerLabel, rhythmLabel, rowKind, entryKey, periodOf, snapKey,
   addDays, isoWeek, weekRange, weekLabel, thisMonday, monthName, todayIndex, gateOf, stageNumOf, taskAccounts, isVisible, byOrder,
   fmtInt, fmtPct2, parseDec, parseIntDe,
-  ITEM_STATUSES, FORMATS, CLASSIC, formatLook, itemStatusLabel,
+  ITEM_STATUSES, FORMATS, CLASSIC, formatLook, itemStatusLabel, daysBetween,
 } from "./planner";
-import type { Task, Stage, TaskAccount, AccountFilter, Phase, Rhythm, Item, ItemList, Account, NoteKind } from "./planner";
+import type { Task, Stage, TaskAccount, AccountFilter, Phase, Rhythm, Item, ItemList, Account, NoteKind, Sprint } from "./planner";
 import { OUTREACH_CATEGORIES, OUTREACH_TIERS, catOf } from "./outreach";
 import type { PlannerHook } from "./usePlanner";
 
@@ -107,6 +107,12 @@ export function Toolbar({ acc, setAcc, monday, setMonday, isMobile, children }: 
     </div>
   );
 }
+
+// An Outreach category as a small coloured chip
+export const CatChip = ({ k }: { k: string }) => {
+  const l = catOf(k);
+  return <span style={{ fontSize: TYPE.micro.size, padding: "1px 7px", borderRadius: 10, border: `1px solid ${l.border}`, background: l.bg, color: l.color, whiteSpace: "nowrap" as const }}>{l.label}</span>;
+};
 
 // Small coloured counts (Outreach categories / tiers)
 export const CountChip = ({ label, n, look }: { label: string; n: number; look?: { color: string; bg: string; border: string } }) => (
@@ -284,6 +290,8 @@ function TaskRead({ task, planner, monday, openOutreach }: { task: Task; planner
         </>
       ) : task.source === "kit_waiting" ? (
         <KitWaitingBlock task={task} planner={planner} />
+      ) : task.source === "pitches" ? (
+        <PitchesBlock task={task} planner={planner} monday={monday} openOutreach={openOutreach} />
       ) : (task.source === "ideas" || task.source === "posts" || task.source === "pieces") ? (
         <>
           {bigLine(`${st.actual ?? 0} / ${st.target ?? "–"}`, `${task.measure} in week ${isoWeek(monday)}`)}
@@ -471,6 +479,34 @@ function OutreachBlock({ task, planner, monday, openOutreach }: { task: Task; pl
       {byTier.length > 0 && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const, alignItems: "center", marginTop: 6 }}><span style={microLabel}>Tiers</span>{byTier.map(x => <CountChip key={x.t.key} label={x.t.label} n={x.n} />)}</div>}
       <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>Counted from Outreach: contacts added this week. {st.target == null ? "Set the target in Plan week." : `Target: ${st.target} contacts (Plan week).`}</p>
       {planner.outreachError && <p style={{ fontSize: 12, color: C.red, margin: "4px 0 0" }}>Outreach couldn't be read ({planner.outreachError}).</p>}
+      {openOutreach && <B v="sec" onClick={openOutreach} s={{ ...BAR_BTN, height: 28, minHeight: 28, color: C.black, marginTop: 10, gap: 5 }}><Ico d={IC.link} size={12} />Open Outreach</B>}
+    </>
+  );
+}
+
+// Pitches: counted from the pitch log in Outreach, with a day-by-day strip
+function PitchesBlock({ task, planner, monday, openOutreach }: { task: Task; planner: PlannerHook; monday: string; openOutreach?: () => void }) {
+  const st   = planner.stateOf(task, monday);
+  const list = planner.pitchesInWeek(taskAccounts(task), monday);
+  const ti   = todayIndex(monday);
+  const per  = DAY_SHORT.map((_, k) => list.filter(p => p.kind === "pitch" && p.sentOn === addDays(monday, k)).length);
+  const fu   = list.filter(p => p.kind === "follow_up").length;
+  return (
+    <>
+      {bigLine(`${st.actual ?? 0} / ${st.target ?? "–"}`, `pitches in week ${isoWeek(monday)}`)}
+      <Bar value={st.actual ?? 0} max={st.target ?? 0} done={st.done} s={{ marginTop: 8 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 4, marginTop: 12 }}>
+        {DAY_SHORT.map((d, k) => (
+          <div key={d} style={{ border: `1px solid ${k === ti ? C.black : C.rule}`, borderRadius: 2, padding: "5px 0", textAlign: "center" as const }}>
+            <div style={{ ...microLabel, fontSize: 9 }}>{d}</div>
+            <div style={{ fontSize: 14, marginTop: 2, color: per[k] ? C.black : C.light }}>{per[k]}</div>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>
+        {fu} {fu === 1 ? "follow-up" : "follow-ups"} sent this week. Counted from the pitch log in Outreach. {st.target == null ? "Set the target in Plan week." : `Target: ${st.target} pitches (Plan week).`}
+      </p>
+      {planner.stage2Error && <p style={{ fontSize: 12, color: C.red, margin: "4px 0 0" }}>{planner.stage2Error}</p>}
       {openOutreach && <B v="sec" onClick={openOutreach} s={{ ...BAR_BTN, height: 28, minHeight: 28, color: C.black, marginTop: 10, gap: 5 }}><Ico d={IC.link} size={12} />Open Outreach</B>}
     </>
   );
@@ -702,6 +738,146 @@ export function NoteWindow({ planner, acc, kind, period, task, title, action, is
         </>
       )}
     </Window>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════
+// SPRINT WINDOW (Stage 2) — focus, goals, results and the review
+// Read view → Edit → Save returns to the read view. End sprint
+// moves it to the past sprints; the review can follow any time.
+// ═════════════════════════════════════════════════════════════
+const shortDM = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.`;
+export const sprintRange = (sp: { startOn: string; endOn: string }) => `${shortDM(sp.startOn)}–${fmtD(sp.endOn)}`;
+export const sprintDay = (sp: { startOn: string; endOn: string }, on: string) => {
+  const total = daysBetween(sp.startOn, sp.endOn) + 1;
+  const day = Math.min(total, Math.max(0, daysBetween(sp.startOn, on) + 1));
+  return { day, total };
+};
+
+export function SprintWindow({ planner, sprintId, draft, isMobile, onClose }: {
+  planner: PlannerHook; sprintId?: string; draft?: Partial<Sprint>; isMobile: boolean; onClose: () => void;
+}) {
+  const [id, setId] = useState<string | undefined>(sprintId);
+  const sp = planner.sprints.find(x => x.id === id);
+  const weeksOf = (x?: Partial<Sprint>) => (x?.startOn && x?.endOn ? Math.max(1, Math.round((daysBetween(x.startOn, x.endOn) + 1) / 7)) : 2);
+  const [edit, setEdit] = useState(!sprintId);
+  const [f, setF]       = useState<Partial<Sprint>>(sp || draft || {});
+  const [weeks, setWeeks] = useState<number>(weeksOf(sp || draft));
+  const [err, setErr]   = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [ask, setAsk]   = useState<null | "end" | "delete">(null);
+  useEffect(() => { if (!edit && sp) { setF(sp); setWeeks(weeksOf(sp)); } }, [sp, edit]);
+  useEffect(() => { if (id && !sp && !planner.loading) onClose(); }, [id, sp, planner.loading]);
+
+  const save = async () => {
+    setErr(null);
+    if (!f.startOn) { setErr("Pick the start day."); return; }
+    if (!weeks || weeks < 1) { setErr("A sprint is at least 1 week."); return; }
+    setBusy(true);
+    try {
+      const fields: Partial<Sprint> = {
+        startOn: f.startOn, endOn: addDays(f.startOn, weeks * 7 - 1), focusCategory: f.focusCategory || "", focusTier: (f.focusTier || "now") as any,
+        pitchGoal: f.pitchGoal ?? null, followUpGoal: f.followUpGoal ?? null, review: f.review || "",
+      };
+      if (sp) await planner.updateSprint(sp.id, fields);
+      else { const n = await planner.createSprint({ ...fields, account: f.account as Account }); setId(n.id); }
+      setEdit(false);
+    } catch (e: any) { setErr(e?.message || "Couldn't save."); }
+    finally { setBusy(false); }
+  };
+  const end = async () => { setAsk(null); if (!sp) return; try { await planner.updateSprint(sp.id, { status: "done" }); } catch (e: any) { setErr(e?.message || "Couldn't end the sprint."); } };
+  const del = async () => { setAsk(null); if (!sp) return; try { await planner.deleteSprint(sp.id); onClose(); } catch (e: any) { setErr(e?.message || "Couldn't delete."); } };
+
+  const st = sp ? planner.sprintStats(sp) : null;
+  const due = sp ? planner.followUpsDue(sp.account) : 0;
+  const d = sp ? sprintDay(sp, today()) : null;
+  const num = (v: any) => (v === "" || v == null ? null : parseIntDe(String(v)));
+  const statRow = (label: string, value: any, extra?: any) => (
+    <div style={{ minHeight: 36, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderBottom: `1px solid ${C.rule}`, fontSize: 14 }}>
+      <span style={microLabel}>{label}</span><span style={{ textAlign: "right" as const }}>{value}{extra}</span>
+    </div>
+  );
+
+  return (
+    <>
+      {ask === "end" && sp && <ConfirmDialog title={`End Sprint ${sp.num}?`} text="It moves to the past sprints. You can still write the review." okLabel="End sprint" onOk={end} onCancel={() => setAsk(null)} />}
+      {ask === "delete" && sp && <ConfirmDialog title={`Delete Sprint ${sp.num}?`} text="The sprint is removed. The pitch log stays in Outreach." okLabel="Delete" danger onOk={del} onCancel={() => setAsk(null)} />}
+      <Window title={sp ? `Sprint ${sp.num}` : "New sprint"} isMobile={isMobile}
+        onClose={() => { if (edit && sp) { setEdit(false); setErr(null); } else onClose(); }}
+        footer={edit ? (
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <B v="sec" onClick={() => { if (sp) { setEdit(false); setErr(null); } else onClose(); }}>Cancel</B>
+            <B onClick={save} s={{ opacity: busy ? 0.5 : 1 }}>{busy ? "Saving…" : sp ? "Save" : "Start sprint"}</B>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+            <MoreMenu items={[{ label: "Delete sprint", danger: true, onClick: () => setAsk("delete") }]} />
+            <div style={{ display: "flex", gap: 8 }}>
+              {sp?.status === "active" && <B v="sec" onClick={() => setAsk("end")}>End sprint</B>}
+              <B onClick={() => setEdit(true)}>Edit</B>
+            </div>
+          </div>
+        )}>
+        {err && <p style={{ fontSize: TYPE.label.size, color: C.red, margin: "0 0 8px" }}>{err}</p>}
+        {!edit && sp && st && d ? (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
+              <AccChip acc={sp.account} />
+              <span style={microLabel}>{sp.status === "active" ? `Running · day ${d.day} of ${d.total}` : "Done"}</span>
+            </div>
+            <p style={{ fontSize: 14, margin: "8px 0 0" }}>{sprintRange(sp)} · {weeksOf(sp)} {weeksOf(sp) === 1 ? "week" : "weeks"}</p>
+            <Lbl>Focus</Lbl>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" as const }}>
+              {sp.focusCategory ? <CatChip k={sp.focusCategory} /> : <span style={{ fontSize: 14 }}>Any category</span>}
+              <span style={{ fontSize: 14 }}>· {OUTREACH_TIERS.find(t => t.key === sp.focusTier)?.label || "Now"}</span>
+            </div>
+            <Lbl>Results</Lbl>
+            <div style={{ borderTop: `1px solid ${C.rule}` }}>
+              {statRow("Pitches", `${st.pitches} / ${sp.pitchGoal ?? "–"}`)}
+              {statRow("Follow-ups", `${st.followUps} / ${sp.followUpGoal ?? "–"}`, due ? <span style={{ color: C.amber }}> · {due} due</span> : null)}
+              {statRow("Replied", st.replied)}
+              {statRow("Gifted", st.gifted)}
+              {statRow("Deals", st.deals)}
+              {statRow("Reply rate", st.rate == null ? "–" : fmtPct2(st.rate))}
+            </div>
+            <Bar value={st.pitches} max={sp.pitchGoal ?? 0} done={sp.pitchGoal != null && st.pitches >= sp.pitchGoal} s={{ marginTop: 10 }} />
+            {textBlock("Review", sp.review)}
+            {!sp.review && <p style={{ fontSize: 12, color: C.muted, margin: "10px 0 0" }}>{sp.status === "active" ? "At the end: what worked, what to change next sprint." : "No review yet — tap Edit to write it."}</p>}
+          </div>
+        ) : (
+          <div>
+            {!sp && (
+              <>
+                <Lbl>Account</Lbl>
+                <S value={f.account || "lynnhoa"} onChange={(e: any) => setF({ ...f, account: e.target.value })}>
+                  {ACCOUNTS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                </S>
+              </>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
+              <div><Lbl>Start</Lbl><I type="date" value={f.startOn || ""} onChange={(e: any) => setF({ ...f, startOn: e.target.value })} /></div>
+              <div><Lbl>Weeks</Lbl><I inputMode="numeric" value={String(weeks || "")} onChange={(e: any) => setWeeks(Number(e.target.value.replace(/[^\d]/g, "")) || 0)} /></div>
+              <div><Lbl>Focus category</Lbl>
+                <S value={f.focusCategory || ""} onChange={(e: any) => setF({ ...f, focusCategory: e.target.value })}>
+                  <option value="">Any category</option>
+                  {OUTREACH_CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </S>
+              </div>
+              <div><Lbl>Focus tier</Lbl>
+                <S value={f.focusTier || "now"} onChange={(e: any) => setF({ ...f, focusTier: e.target.value })}>
+                  {OUTREACH_TIERS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </S>
+              </div>
+              <div><Lbl>Pitch goal</Lbl><I inputMode="numeric" value={f.pitchGoal == null ? "" : String(f.pitchGoal)} placeholder="–" onChange={(e: any) => setF({ ...f, pitchGoal: num(e.target.value) })} /></div>
+              <div><Lbl>Follow-up goal</Lbl><I inputMode="numeric" value={f.followUpGoal == null ? "" : String(f.followUpGoal)} placeholder="–" onChange={(e: any) => setF({ ...f, followUpGoal: num(e.target.value) })} /></div>
+            </div>
+            {f.startOn && weeks > 0 && <p style={{ fontSize: 12, color: C.muted, margin: "8px 0 0" }}>Ends {fmtD(addDays(f.startOn, weeks * 7 - 1))}</p>}
+            <Lbl>Review</Lbl>
+            <textarea value={f.review || ""} onChange={(e) => setF({ ...f, review: e.target.value })} style={{ ...area, minHeight: 80 }} placeholder="What worked, what to change next sprint" />
+          </div>
+        )}
+      </Window>
+    </>
   );
 }
 
