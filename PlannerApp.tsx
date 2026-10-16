@@ -2,7 +2,8 @@
 // PlannerApp — Planner (tabs: Overview, To-do, Manager, Creator).
 // Same frame as Outreach: logo header, nav tabs, account menu
 // with all apps. Phone, iPad and desktop layouts.
-// To-do, Manager and Creator are live. Overview follows in phase 5.
+// All four tabs are live: Overview (read-only scoreboard), To-do,
+// Manager and Creator.
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect } from "react";
@@ -15,11 +16,12 @@ import { thisMonday } from "./planner";
 import PlannerTodo, { DEFAULT_VIEW } from "./PlannerTodo";
 import PlannerManager from "./PlannerManager";
 import PlannerCreator from "./PlannerCreator";
+import PlannerOverview from "./PlannerOverview";
 import type { PlannerView } from "./PlannerTodo";
 import type { Role } from "./types";
 
 const TABS: { key: string; label: string; soon?: { phase: number; text: string } }[] = [
-  { key: "overview", label: "Overview", soon: { phase: 5, text: "Your read-only scoreboard: stage tracks, audience, portfolio and the weekly goals met." } },
+  { key: "overview", label: "Overview" },
   { key: "todo",     label: "To-do" },
   { key: "manager",  label: "Manager" },
   { key: "creator",  label: "Creator" },
@@ -87,7 +89,9 @@ export default function PlannerApp({ userId, settings, signOut, switchTo, banner
       </div>
       <div style={{ maxWidth: isWide ? 1200 : 960, margin: "0 auto", padding: isMobile ? "14px 14px 28px" : "24px 20px 40px" }}>
         {banners}
-        {tab.key === "todo" ? (
+        {tab.key === "overview" ? (
+          <PlannerOverview planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} />
+        ) : tab.key === "todo" ? (
           <PlannerTodo planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} openOutreach={openOutreach} />
         ) : tab.key === "manager" ? (
           <PlannerManager planner={planner} view={view} setView={setView} monday={monday} setMonday={setMonday} isMobile={isMobile} openOutreach={openOutreach} />

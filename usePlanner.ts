@@ -180,7 +180,8 @@ export function usePlanner(userId: string | null, monday: string) {
     if (!userId) { setEntries({}); setSnaps({}); return; }
     const [res, sn]: any[] = await Promise.all([
       supabase.from("planner_entries").select("*").eq("user_id", userId).gte("period_start", from).lte("period_start", monday),
-      supabase.from("planner_snapshots").select("*").eq("user_id", userId).gte("week_start", addDays(from, -7)).lte("week_start", monday),
+      // snapshots: 6 weeks back + 1 (the Overview's trend and "vs last week")
+      supabase.from("planner_snapshots").select("*").eq("user_id", userId).gte("week_start", addDays(monday, -42) < addDays(from, -7) ? addDays(monday, -42) : addDays(from, -7)).lte("week_start", monday),
     ]);
     const err = res?.error || sn?.error;
     if (err) { setLoadError(isMissing(err.message) ? MISSING : err.message); return; }

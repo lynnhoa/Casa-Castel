@@ -837,7 +837,8 @@ export function PlanWeekWindow({ planner, monday, isMobile, onClose }: { planner
 // ═════════════════════════════════════════════════════════════
 // STAGE WINDOW — goal, done-when checklist, Start next stage
 // ═════════════════════════════════════════════════════════════
-export function StageWindow({ planner, stageId, isMobile, onClose }: { planner: PlannerHook; stageId: string; isMobile: boolean; onClose: () => void }) {
+// readOnly: opened from Overview — read the gate, change stages in To-do
+export function StageWindow({ planner, stageId, isMobile, onClose, readOnly }: { planner: PlannerHook; stageId: string; isMobile: boolean; onClose: () => void; readOnly?: boolean }) {
   const stage = planner.stages.find(s => s.id === stageId);
   const [edit, setEdit]   = useState(false);
   const [f, setF]         = useState<Partial<Stage>>(stage || {});
@@ -873,7 +874,9 @@ export function StageWindow({ planner, stageId, isMobile, onClose }: { planner: 
     <>
       {askStart && next && <ConfirmDialog title={`Start Stage ${next.num} · ${next.name}?`} text={`Stage ${stage.num} is marked done for ${accLook(stage.account).label}. Its maintain tasks keep running.`} okLabel={`Start Stage ${next.num}`} onOk={start} onCancel={() => setAskStart(false)} />}
       <Window title={`Stage ${stage.num} · ${stage.name}`} isMobile={isMobile} onClose={() => { if (edit) { setEdit(false); setErr(null); } else onClose(); }}
-        footer={edit ? (
+        footer={readOnly ? (
+          <p style={{ fontSize: 12, color: C.muted, margin: 0, textAlign: "right" as const }}>{canStart ? `Ready · start Stage ${next!.num} in To-do` : "Tick tasks off in To-do"}</p>
+        ) : edit ? (
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <B v="sec" onClick={() => { setEdit(false); setErr(null); }}>Cancel</B>
             <B onClick={save} s={{ opacity: busy ? 0.5 : 1 }}>{busy ? "Saving…" : "Save"}</B>
@@ -928,7 +931,7 @@ export function StageWindow({ planner, stageId, isMobile, onClose }: { planner: 
             )}
             {stage.status === "done" && stage.doneOn && <p style={{ fontSize: 12, color: C.muted, margin: "10px 0 0" }}>Done on {fmtD(stage.doneOn)}.</p>}
             {canStart && <p style={{ fontSize: 12, color: C.green, margin: "10px 0 0" }}>Everything is ticked. Start Stage {next!.num} · {next!.name} when you're ready.</p>}
-            {isCurrent && !gate.ready && next && <p style={{ fontSize: 12, color: C.muted, margin: "10px 0 0" }}>When all are ticked, Start Stage {next.num} appears here.</p>}
+            {isCurrent && !gate.ready && next && <p style={{ fontSize: 12, color: C.muted, margin: "10px 0 0" }}>{readOnly ? `When all are ticked, Stage ${next.num} can begin from To-do.` : `When all are ticked, Start Stage ${next.num} appears here.`}</p>}
           </div>
         )}
       </Window>
