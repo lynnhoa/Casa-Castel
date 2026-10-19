@@ -11,6 +11,12 @@
    2. wireComposeBlur(#k-mob-msg-input) at bottom of this file.
    3. overscroll-behavior:none/.k-mob-feed in casa-castel.css.
 
+   S1 (19.10.2026) · INSTANT BUTTONS — a kitchen button redraws its
+   card at once, the buttons stay grey until the save has answered
+   (max 15 s), error / no answer → back + toast, chat lines in tap
+   order, and an older reload can no longer draw over a newer one.
+   Details at _kRun (ACTION HANDLERS).
+
    Depends on: constants.js, utils.js, storage.js,
                supabase-client.js, chat-viewport.js
    ───────────────────────────────────────────────────────────── */
@@ -687,9 +693,11 @@ function _kSet(el, html) {
 }
 
 /* ── FEED RENDER ────────────────────────────────────────── */
+let _kFeedSeq = 0;   // S1: only the newest chat render draws — an older, slower one never overwrites it
 async function _kRenderFeed(weekRow) {
   const el    = document.getElementById('k-feed-mob'); if (!el) return;
   const elDsk = document.getElementById('k-feed-dsk');
+  const seq   = ++_kFeedSeq;
   if (!weekRow) {
     const none = '<p class="cc-note" style="padding:8px 0;">No data.</p>';
     _kSet(el, none);
@@ -697,6 +705,7 @@ async function _kRenderFeed(weekRow) {
     return;
   }
   const [comments, prevHtml] = await Promise.all([_kGetComments(weekRow.id), _kPrevWeekHtml(weekRow)]);
+  if (seq !== _kFeedSeq) return;
   let html = _kBuildFeedHtml(comments, weekRow);
   if (prevHtml) html = prevHtml + _kWeekDivider('This week', weekRow) + html;   // last week first, then this week
   const changed = [_kSet(el, html) ? el : null, _kSet(elDsk, html) ? elDsk : null];
@@ -936,10 +945,12 @@ function _kRenderWeekCard(weekRow, absData) {
 /* ── LAST WEEK CARD ─────────────────────────────────────────
    Shown only while last week still needs you: a (late) proof is
    waiting for review. Same Approve / Flag as this week.          */
+let _kLastSeq = 0;   // S1: only the newest draw counts — an older one can't bring the card back after it was hidden
 async function _kRenderLastWeek(lastRow) {
   const mob    = document.getElementById('k-mob-last');
   const dsk    = document.getElementById('k-dsk-last');
   const dskSec = document.getElementById('k-dsk-last-sec');
+  const seq    = ++_kLastSeq;
   const hide = () => { if (mob) mob.style.display = 'none'; if (dskSec) dskSec.style.display = 'none'; };
   if (!lastRow || lastRow.status !== 'submitted') { hide(); return; }
 
@@ -950,6 +961,7 @@ async function _kRenderLastWeek(lastRow) {
     const subs = comments.filter(c => c.text && c.text.startsWith('[submission] '));
     if (subs.length) photos = JSON.parse(subs[subs.length - 1].text.slice(13)).photos || photos;
   } catch (e) {}
+  if (seq !== _kLastSeq) return;
 
   const at    = _kAutoAt(lastRow);
   const label = lastRow.is_late ? '↑ Late proof' : '↑ In review';
@@ -1101,19 +1113,96 @@ async function _kEnsureCurrentWeek() {
 // Which week a button acts on: this week (default) or last week
 function _kTarget(which) { return which === 'last' ? _kLastRow : _kWeekRow; }
 
-async function _kRun(which, fn) {
+/* S1 (19.10.2026) — INSTANT BUTTONS
+   Every kitchen button (Approve · Flag · Undo · Unflag · Missed · Reopen) runs through _kRun
+   with its save data + chat line — both exactly as before:
+   · the card is redrawn at once with the new status — same draw code as a reload, so it looks
+     exactly like the result; rotation strip + chat follow with the normal reload
+   · all kitchen buttons stay grey (blocked) until the save has answered, max K_SAVE_LIMIT_MS
+   · not saved → the card goes back (the "Could not save" toast comes from _kUpdateRow);
+     no answer in time → back + toast; a late answer still counts (chat line + reload)
+   · the chat line is written in the background, strictly in tap order (_kQueueChat)
+   · an older reload can no longer draw over the new state (_kLoadSeq); reloads asked for
+     during the save are skipped — the reload right after the save covers them           */
+const K_SAVE_LIMIT_MS = 15000;
+let _kAbsData = [];                 // absences of the last load — the instant redraw needs them
+let _kLoadSeq = 0;                  // newest reload wins (see _kLoad)
+let _kChatQ   = Promise.resolve();  // chat lines one after the other
+
+/* Grey + blocked while a save runs (the style lives here — no CSS file change) */
+(function _kBusyCss() {
+  if (document.getElementById('k-busy-css')) return;
+  const st = document.createElement('style'); st.id = 'k-busy-css';
+  st.textContent = '#tab-kitchen.k-busy .k-mob-wact{opacity:.45;pointer-events:none;}';
+  document.head.appendChild(st);
+})();
+function _kBusyUI(on) {
+  const t = document.getElementById('tab-kitchen');
+  if (t) t.classList.toggle('k-busy', !!on);
+}
+/* Draws one card from a row: this week → week card · last week → last-week card */
+function _kDrawRow(which, r) {
+  if (which === 'last') { _kLastRow = r; _kRenderLastWeek(r); }
+  else                  { _kWeekRow = r; _kRenderWeekCard(r, _kAbsData); }
+}
+/* A promise with a time limit → its own result, or { timeout: true } */
+function _kWithLimit(p, ms) {
+  let t;
+  return Promise.race([
+    Promise.resolve(p).finally(() => clearTimeout(t)),
+    new Promise(res => { t = setTimeout(() => res({ timeout: true }), ms); }),
+  ]);
+}
+/* Chat lines are written one after the other, in tap order */
+function _kQueueChat(weekId, text, isFlag) {
+  _kChatQ = _kChatQ.then(() => _kAddComment(weekId, 'Casa Castel', text, isFlag))
+                   .catch(e => console.warn('[kitchen] chat line', e));
+  return _kChatQ;
+}
+
+/* spec = { patch, auto (true → _kUpdateRowAuto), chat (chat line or none), isFlag } */
+async function _kRun(which, spec) {
   if (!sbL || _kActionBusy) return;
   if (!(await _kEnsureCurrentWeek())) return;
+  if (_kActionBusy) return;                                   // another tap got in first
   const row = _kTarget(which); if (!row) return;
   _kActionBusy = true;
-  try { await fn(row); await loadKitchen(); } finally { _kActionBusy = false; }
+  _kLoadSeq++;                                                // a reload still on its way may no longer draw
+  _kBusyUI(true);
+  const after = Object.assign({}, row, spec.patch);
+  const live  = which === 'last' || row.week_index === kWeekIdx();   // the card on screen shows this row's week
+  try {
+    if (live) _kDrawRow(which, after);
+    const save = spec.auto ? _kUpdateRowAuto(row, spec.patch) : _kUpdateRow(row, spec.patch);
+    const res  = await _kWithLimit(save, K_SAVE_LIMIT_MS);
+    if (res && res.timeout) {
+      if (live) _kDrawRow(which, row);                        // not confirmed → back as it was
+      alert('No answer from the server. If it went through, the kitchen updates by itself — otherwise please try again.');
+      save.then(r => {                                        // a late answer still counts
+        if (!r || r.error) return;
+        if (spec.chat) _kQueueChat(row.id, spec.chat, spec.isFlag);
+        loadKitchen();
+      }).catch(() => {});
+    } else if (!res || res.error) {
+      if (live) _kDrawRow(which, row);                        // not saved → back as it was
+    } else if (spec.chat) {
+      _kQueueChat(row.id, spec.chat, spec.isFlag);
+    }
+  } catch (e) {
+    console.warn('[kitchen] action', e);
+    if (live) _kDrawRow(which, row);
+    alert('Could not save — please try again.');
+  } finally {
+    if (!live) { try { await _kLoad(); } catch (e) {} }      // card was from an older week → redraw before the buttons come back
+    _kActionBusy = false;
+    _kBusyUI(false);
+    if (live) loadKitchen();                                  // strip, chat + exact data — the buttons are free already
+  }
 }
 
 function kApprove(which) {
-  return _kRun(which, async row => {
-    const { error } = await _kUpdateRow(row, { status:'approved', flagged:false, approved_at:new Date().toISOString(), approved_by:'landlord' });
-    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Approved.', false);
-  });
+  return _kRun(which, { patch: { status:'approved', flagged:false, approved_at:new Date().toISOString(), approved_by:'landlord' },
+                        chat: '✓ Approved.' });
 }
 /* Flag opens a small sheet: what has to be redone */
 async function kFlag(which) {
@@ -1133,38 +1222,29 @@ async function _kFlagConfirm() {
   if (!reasons.length && !note) { const err = document.getElementById('k-flag-err'); if (err) err.style.display = ''; return; }
   const reason = [reasons.join(', '), note].filter(Boolean).join(' — ');
   kitchenCloseModal('flag');
-  await _kRun(_kFlagTarget === 'last' ? 'last' : 'now', async row => {
-    const { error } = await _kUpdateRowAuto(row, { flagged:true, status:'flagged', flag_reason: reason, no_auto:false });   // D6
-    if (!error) await _kAddComment(row.id, 'Casa Castel', '⚑ Redo: ' + reason, true);
-  });
+  await _kRun(_kFlagTarget === 'last' ? 'last' : 'now',
+    { patch: { flagged:true, status:'flagged', flag_reason: reason, no_auto:false }, auto: true,   // D6
+      chat: '⚑ Redo: ' + reason, isFlag: true });
 }
 function kUnapprove(which) {
-  return _kRun(which, async row => {
-    const { error } = await _kUpdateRowAuto(row, { status:'submitted', flagged:false, approved_at:null, no_auto:true });   // D6: waits for you
-    if (!error) await _kAddComment(row.id, 'Casa Castel', '↩ Approval undone.', false);
-  });
+  return _kRun(which, { patch: { status:'submitted', flagged:false, approved_at:null, no_auto:true }, auto: true,   // D6: waits for you
+                        chat: '↩ Approval undone.' });
 }
 function kUnflag(which) {
-  return _kRun(which, async row => {
-    const { error } = await _kUpdateRow(row, { flagged:false, status:'submitted', flag_reason:null });
-    if (!error) await _kAddComment(row.id, 'Casa Castel', '✓ Redo cancelled.', false);
-  });
+  return _kRun(which, { patch: { flagged:false, status:'submitted', flag_reason:null },
+                        chat: '✓ Redo cancelled.' });
 }
 /* Missed keeps the chat and the photos — it only changes the status */
 async function kReset() {
   const row = _kWeekRow; if (!row) return;
   if (!(await ccConfirm('Mark this week as missed for ' + ccEscHtml(row.room) + '?', '', 'Mark missed', true))) return;
-  return _kRun('now', async r => {
-    const { error } = await _kUpdateRow(r, { status:'missed', flagged:false, closed_at:new Date().toISOString() });
-    if (!error) await _kAddComment(r.id, 'Casa Castel', '✗ Marked missed.', false);
-  });
+  return _kRun('now', { patch: { status:'missed', flagged:false, closed_at:new Date().toISOString() },
+                        chat: '✗ Marked missed.' });
 }
 async function kReopen() {
   const row = _kWeekRow; if (!row) return;
   if (!(await ccConfirm('Reopen the week for ' + ccEscHtml(row.room) + '?', 'They can upload proof again.', 'Reopen'))) return;
-  return _kRun('now', async r => {
-    await _kUpdateRowAuto(r, { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null, no_auto:false });   // D6
-  });
+  return _kRun('now', { patch: { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null, no_auto:false }, auto: true });   // D6
 }
 function kReminder() {
   if (!_kWeekRow) return;
@@ -1240,13 +1320,20 @@ function _kSubscribe() {
    Called on init and by every realtime event.
    Fetches everything fresh, renders everything, no state deps.
    ─────────────────────────────────────────────────────────── */
+/* S1: while a button's save runs, a reload is skipped — the reload right after the save covers it */
 async function loadKitchen() {
+  if (_kActionBusy) return;
+  return _kLoad();
+}
+async function _kLoad() {
+  const seq = ++_kLoadSeq;   // S1: newest reload wins — an older one stops before it draws anything
   // Stage 1 — rooms master data + kitchen config in parallel (was sequential)
   const _needRooms = (typeof appRooms !== 'undefined' && appRooms.length === 0 && typeof loadRoomsData === 'function');
   await Promise.all([
     _needRooms ? loadRoomsData() : Promise.resolve(),
     loadKitchenRoomsFromSupabase(),
   ]);
+  if (seq !== _kLoadSeq) return;
   _kRefreshNudgeRoomButtons();
 
   const idx  = kWeekIdx();
@@ -1272,6 +1359,7 @@ async function loadKitchen() {
     sbL.from('kitchen_absences').select('room,from_date,to_date').then(r => r.data || []),
     kLoadWeekVacancy(idx - _n, idx + _n),   // vacant per week from move-in / move-out dates
   ]);
+  if (seq !== _kLoadSeq) return;
 
   let weekRow = cycleRows.find(r => r.week_index === idx) || null;
 
@@ -1282,9 +1370,12 @@ async function loadKitchen() {
       .select().single();
     weekRow = data || (await _kGetWeek(idx));
     if (weekRow) cycleRows = cycleRows.concat([weekRow]);
+    if (seq !== _kLoadSeq) return;
   }
+  // S1: from here to the week card nothing waits — the rows and the buttons on screen always match
   _kWeekRow = weekRow;
   _kLastRow = cycleRows.find(r => r.week_index === idx - 1) || null;
+  _kAbsData = absData;
   _kAutoReset(idx).catch(e => console.warn('[kitchen] auto cleanup', e)); // K8: background, once per week
 
   // Render everything — week card is sync; the three async renderers are
