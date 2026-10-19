@@ -22,6 +22,12 @@
    reload timer: a burst of changes gives one reload. A new week is
    created only once. Details at _kScheduleReload (MAIN LOAD).
 
+   S3 (19.10.2026) · AFTER THE WEEK ENDS — Approve, Flag, Undo and
+   Unflag act on the proof you tapped (saved by its ID), also when a
+   new week started while the app was open; Missed / Reopen keep the
+   new-week check. The photo clean-up starts a few seconds after the
+   kitchen is drawn, once a day per device (30-day rule kept).
+
    Depends on: constants.js, utils.js, storage.js,
                supabase-client.js, chat-viewport.js
    ───────────────────────────────────────────────────────────── */
@@ -318,7 +324,6 @@ function _kSysText(t) {
   if (/^✓ Flag removed/.test(t))  return '✓ Redo cancelled';
   return t.replace(/\s+by\s+(the\s+)?(landlord|Casa Castel)\.?$/i, '').replace(/\.$/, '');
 }
-let _kAutoResetRanFor = null;
 const K_HISTORY_WEEKS = 8;    // history keeps the last 8 weeks (current week included)
 const K_HISTORY_FROM  = 39;   // history starts with the week 05.10 – 11.10.2026 (first real week; earlier weeks were tests)
 const K_NUDGE_LOG_MAX = 20;   // nudge log keeps the newest 20 nudges
@@ -373,10 +378,30 @@ async function _kTrimHistory(currentIdx) {
   }
 }
 
+/* S3 (19.10.2026) — CLEAN-UP LATER, ONCE A DAY
+   The clean-up (_kAutoReset: 30-day photos, history trim, test weeks, leftover photos) no longer
+   runs while the kitchen loads — it starts K_CLEANUP_DELAY_MS after the kitchen has been drawn,
+   once a day per device (the day is kept in localStorage). Once a day, not once a week, so no proof
+   photo stays longer than about 31 days. If a button is being saved at that moment, it waits.     */
+const K_CLEANUP_DELAY_MS = 8000;
+let _kCleanupTimer = null;
+function _kCleanupLater() {
+  if (_kCleanupTimer) return;
+  let done = null; try { done = localStorage.getItem('cc_k_cleanup_day'); } catch (e) {}
+  if (done === _kYmd(new Date())) return;                              // already done today on this device
+  _kCleanupTimer = setTimeout(() => {
+    _kCleanupTimer = null;
+    if (_kActionBusy) { _kCleanupLater(); return; }                    // a save is running → a little later
+    const today = _kYmd(new Date());
+    try { if (localStorage.getItem('cc_k_cleanup_day') === today) return; localStorage.setItem('cc_k_cleanup_day', today); } catch (e) {}
+    _kAutoReset(kWeekIdx()).catch(e => console.warn('[kitchen] auto cleanup', e));
+  }, K_CLEANUP_DELAY_MS);
+}
+
 async function _kAutoReset(currentIdx) {
-  // K8: remove proof photos + chat of weeks older than 30 days, then trim history to 8 weeks (runs once per week per landlord session)
-  if (!sbL || _kAutoResetRanFor === currentIdx) return;
-  _kAutoResetRanFor = currentIdx;
+  // K8: remove proof photos + chat of weeks older than 30 days, then trim history to 8 weeks
+  // S3: started only by _kCleanupLater (a few seconds after the kitchen is drawn, once a day per device)
+  if (!sbL) return;
   const THIRTY = 30 * 24 * 60 * 60 * 1000;
   const { data } = await sbL.from('kitchen_weeks').select('*').lt('week_index', currentIdx).order('week_index', { ascending: false });
   if (!data || !data.length) { await _kTrimHistory(currentIdx); await _kCleanupMore(currentIdx); return; }
@@ -1106,11 +1131,14 @@ let _kActionBusy = false;
 let _kMobSending = false;
 let _kChannel    = null;
 let _kFlagTarget = null;
+let _kFlagRow    = null;   // S3: the proof the flag sheet was opened for
 
 /* New-week safety: if the app was left open into a new week, refresh first
-   so a button never acts on the wrong week. Returns false when it refreshed. */
-async function _kEnsureCurrentWeek() {
-  if (!_kWeekRow || _kWeekRow.week_index === kWeekIdx()) return true;
+   so a button never acts on the wrong week. Returns false when it refreshed.
+   S3: row = the week an action is for (default: this week's card) — used by Missed / Reopen + chat send. */
+async function _kEnsureCurrentWeek(row) {
+  const r = row || _kWeekRow;
+  if (!r || r.week_index === kWeekIdx()) return true;
   await loadKitchen();
   alert('A new week has started, so the kitchen tab was refreshed. Please check again.');
   return false;
@@ -1165,17 +1193,24 @@ function _kQueueChat(weekId, text, isFlag) {
   return _kChatQ;
 }
 
-/* spec = { patch, auto (true → _kUpdateRowAuto), chat (chat line or none), isFlag } */
-async function _kRun(which, spec) {
+/* spec = { patch, auto (true → _kUpdateRowAuto), chat (chat line or none), isFlag, thisWeek }
+   rowSeen = the proof a sheet / question was opened for (S3) — that proof is saved, by its ID */
+async function _kRun(which, spec, rowSeen) {
   if (!sbL || _kActionBusy) return;
-  if (!(await _kEnsureCurrentWeek())) return;
+  // S3: only Missed / Reopen mean "this week" — they keep the new-week block. Approve, Flag, Undo and
+  // Unflag act on the proof you tapped (saved by its ID), also when a new week started meanwhile.
+  if (spec.thisWeek && !(await _kEnsureCurrentWeek(rowSeen || _kTarget(which)))) return;
   if (_kActionBusy) return;                                   // another tap got in first
-  const row = _kTarget(which); if (!row) return;
+  const shown = _kTarget(which);                              // what that card shows right now
+  const row   = rowSeen ? (shown && shown.id === rowSeen.id ? shown : rowSeen) : shown;
+  if (!row) return;
   _kActionBusy = true;
   _kLoadSeq++;                                                // a reload still on its way may no longer draw
   _kBusyUI(true);
   const after = Object.assign({}, row, spec.patch);
-  const live  = which === 'last' || row.week_index === kWeekIdx();   // the card on screen shows this row's week
+  // Instant redraw only when the card still shows this proof — and, for this week's card, this week.
+  // A card left over from an older week is not redrawn (it would get this week's dates): grey → save → reload.
+  const live  = !!shown && shown.id === row.id && (which === 'last' || row.week_index === kWeekIdx());
   try {
     if (live) _kDrawRow(which, after);
     const save = spec.auto ? _kUpdateRowAuto(row, spec.patch) : _kUpdateRow(row, spec.patch);
@@ -1209,11 +1244,13 @@ function kApprove(which) {
   return _kRun(which, { patch: { status:'approved', flagged:false, approved_at:new Date().toISOString(), approved_by:'landlord' },
                         chat: '✓ Approved.' });
 }
-/* Flag opens a small sheet: what has to be redone */
+/* Flag opens a small sheet: what has to be redone.
+   S3: no new-week block — the sheet remembers the proof it was opened for, and the flag goes to
+   exactly that proof, even if the screen reloads into a new week while the sheet is open. */
 async function kFlag(which) {
-  if (!(await _kEnsureCurrentWeek())) return;
   const row = _kTarget(which); if (!row) return;
   _kFlagTarget = which === 'last' ? 'last' : 'now';
+  _kFlagRow    = row;
   document.querySelectorAll('#k-flag-reasons .k-mob-n-chip').forEach(b => b.classList.remove('selected'));
   const note = document.getElementById('k-flag-note'); if (note) note.value = '';
   const err  = document.getElementById('k-flag-err');  if (err) err.style.display = 'none';
@@ -1229,7 +1266,7 @@ async function _kFlagConfirm() {
   kitchenCloseModal('flag');
   await _kRun(_kFlagTarget === 'last' ? 'last' : 'now',
     { patch: { flagged:true, status:'flagged', flag_reason: reason, no_auto:false }, auto: true,   // D6
-      chat: '⚑ Redo: ' + reason, isFlag: true });
+      chat: '⚑ Redo: ' + reason, isFlag: true }, _kFlagRow);
 }
 function kUnapprove(which) {
   return _kRun(which, { patch: { status:'submitted', flagged:false, approved_at:null, no_auto:true }, auto: true,   // D6: waits for you
@@ -1244,12 +1281,12 @@ async function kReset() {
   const row = _kWeekRow; if (!row) return;
   if (!(await ccConfirm('Mark this week as missed for ' + ccEscHtml(row.room) + '?', '', 'Mark missed', true))) return;
   return _kRun('now', { patch: { status:'missed', flagged:false, closed_at:new Date().toISOString() },
-                        chat: '✗ Marked missed.' });
+                        chat: '✗ Marked missed.', thisWeek: true }, row);
 }
 async function kReopen() {
   const row = _kWeekRow; if (!row) return;
   if (!(await ccConfirm('Reopen the week for ' + ccEscHtml(row.room) + '?', 'They can upload proof again.', 'Reopen'))) return;
-  return _kRun('now', { patch: { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null, no_auto:false }, auto: true });   // D6
+  return _kRun('now', { patch: { status:'pending', flagged:false, flag_reason:null, closed_at:null, photos:null, photo_path:null, photo_url:null, reupload_count:null, submitted_at:null, no_auto:false }, auto: true, thisWeek: true }, row);   // D6
 }
 function kReminder() {
   if (!_kWeekRow) return;
@@ -1414,7 +1451,6 @@ async function _kLoad() {
   _kWeekRow = weekRow;
   _kLastRow = cycleRows.find(r => r.week_index === idx - 1) || null;
   _kAbsData = absData;
-  _kAutoReset(idx).catch(e => console.warn('[kitchen] auto cleanup', e)); // K8: background, once per week
 
   // Render everything — week card is sync; the three async renderers are
   // independent (different DOM targets, no shared writes) → run in parallel.
@@ -1425,6 +1461,7 @@ async function _kLoad() {
     _kLoadNudgeBanner(weekRow),
     _kRenderLastWeek(_kLastRow),
   ]);
+  _kCleanupLater();   // S3: photo clean-up a few seconds after the kitchen is drawn, once a day (K8)
 
   // Start realtime only once — channel must stay alive permanently
   if (!_kChannel) _kSubscribe();
