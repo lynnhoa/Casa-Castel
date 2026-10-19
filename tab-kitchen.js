@@ -17,6 +17,11 @@
    order, and an older reload can no longer draw over a newer one.
    Details at _kRun (ACTION HANDLERS).
 
+   S2 (19.10.2026) · FEWER RELOADS — realtime events, reopening the
+   app, the new-week check and the reload after a button share one
+   reload timer: a burst of changes gives one reload. A new week is
+   created only once. Details at _kScheduleReload (MAIN LOAD).
+
    Depends on: constants.js, utils.js, storage.js,
                supabase-client.js, chat-viewport.js
    ───────────────────────────────────────────────────────────── */
@@ -1181,7 +1186,7 @@ async function _kRun(which, spec) {
       save.then(r => {                                        // a late answer still counts
         if (!r || r.error) return;
         if (spec.chat) _kQueueChat(row.id, spec.chat, spec.isFlag);
-        loadKitchen();
+        _kScheduleReload();
       }).catch(() => {});
     } else if (!res || res.error) {
       if (live) _kDrawRow(which, row);                        // not saved → back as it was
@@ -1196,7 +1201,7 @@ async function _kRun(which, spec) {
     if (!live) { try { await _kLoad(); } catch (e) {} }      // card was from an older week → redraw before the buttons come back
     _kActionBusy = false;
     _kBusyUI(false);
-    if (live) loadKitchen();                                  // strip, chat + exact data — the buttons are free already
+    if (live) _kScheduleReload();                             // strip, chat + exact data — the buttons are free already
   }
 }
 
@@ -1292,26 +1297,26 @@ function _kRefreshNudgeRoomButtons() {
 }
 
 /* ── REALTIME ───────────────────────────────────────────── */
-// Cleaning tab pattern: any DB change → loadKitchen(). No state, no guards.
+// Any DB change → one bundled reload (S2: _kScheduleReload); plain chat messages redraw only the chat.
 function _kSubscribe() {
   if (_kChannel) { sbL.removeChannel(_kChannel); _kChannel = null; }
   _kChannel = sbL.channel('kitchen-landlord-rt')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kitchen_weeks' },    () => { setTimeout(() => loadKitchen(), 350); })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kitchen_weeks' },    () => _kScheduleReload())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kitchen_comments' }, async payload => {
       // If this is a submission comment, do a full reload so the chip + buttons update.
       // For regular chat messages, only re-render the feed to avoid a premature re-fetch.
       const text = payload.new?.text || '';
       if (text.startsWith('[submission] ') || text.startsWith('[system] ') || text.startsWith('[late] ')) {
-        setTimeout(() => loadKitchen(), 350);
+        _kScheduleReload();
       } else {
         if (_kWeekRow) await _kRenderFeed(_kWeekRow);
       }
     })
-    .on('postgres_changes', { event: '*',      schema: 'public', table: 'kitchen_absences' }, async () => { await loadKitchen(); })
-    .on('postgres_changes', { event: '*',      schema: 'public', table: 'lounge_data' },      async payload => { const t = payload.new?.type || payload.old?.type; const isDelete = payload.eventType === 'DELETE' || (!payload.new?.id && payload.old?.id); if (t === 'kitchen_nudge' || isDelete) { await _kLoadNudgeBanner(_kWeekRow); } else if (t === 'hc_done') { await loadKitchen(); } })
+    .on('postgres_changes', { event: '*',      schema: 'public', table: 'kitchen_absences' }, () => _kScheduleReload())
+    .on('postgres_changes', { event: '*',      schema: 'public', table: 'lounge_data' },      async payload => { const t = payload.new?.type || payload.old?.type; const isDelete = payload.eventType === 'DELETE' || (!payload.new?.id && payload.old?.id); if (t === 'kitchen_nudge' || isDelete) { await _kLoadNudgeBanner(_kWeekRow); } else if (t === 'hc_done') { _kScheduleReload(); } })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms' }, async () => {
       if (typeof loadRoomsData === 'function') await loadRoomsData();
-      await loadKitchen();
+      _kScheduleReload();
     })
     .subscribe();
 }
@@ -1320,6 +1325,40 @@ function _kSubscribe() {
    Called on init and by every realtime event.
    Fetches everything fresh, renders everything, no state deps.
    ─────────────────────────────────────────────────────────── */
+/* S2 (19.10.2026) — ONE RELOAD TIMER
+   Realtime events, reopening the app, the new-week check and the reload after a button all ask
+   for a reload here. Each ask restarts a short timer, so a burst of changes (a photo upload =
+   2–3 events; a button + its own realtime echo) gives ONE reload — at the latest K_RELOAD_MAX_MS
+   after the first ask, so a steady stream can't hold it off. A load that starts anyway (tab
+   switch, ↺ button) takes the waiting reload's place (see _kLoad).                             */
+const K_RELOAD_WAIT_MS = 350, K_RELOAD_MAX_MS = 1500;
+let _kReloadTimer = null, _kReloadFirstAsk = 0;
+function _kScheduleReload(ms) {
+  const now = Date.now();
+  if (!_kReloadTimer) _kReloadFirstAsk = now;
+  const wait = Math.max(0, Math.min(ms == null ? K_RELOAD_WAIT_MS : ms, _kReloadFirstAsk + K_RELOAD_MAX_MS - now));
+  clearTimeout(_kReloadTimer);
+  _kReloadTimer = setTimeout(() => { _kReloadTimer = null; loadKitchen(); }, wait);
+}
+
+/* S2: the new week's entry is created only once — a second load that looked before it was saved
+   gets that same row instead of creating it again. A failed attempt is tried again by the next load. */
+let _kNewWeek = null;   // { idx, p, doneAt }
+function _kCreateWeekOnce(idx, room, askedAt) {
+  const c = _kNewWeek;
+  if (c && c.idx === idx && (!c.doneAt || askedAt < c.doneAt)) return c.p;
+  const entry = { idx, doneAt: 0 };
+  entry.p = (async () => {
+    const { data } = await sbL.from('kitchen_weeks')
+      .insert({ week_index: idx, room, status: 'pending' })
+      .select().single();
+    return data || (await _kGetWeek(idx));
+  })().then(r => { entry.doneAt = Date.now(); return r; },
+            () => { entry.doneAt = Date.now(); return null; });
+  _kNewWeek = entry;
+  return entry.p;
+}
+
 /* S1: while a button's save runs, a reload is skipped — the reload right after the save covers it */
 async function loadKitchen() {
   if (_kActionBusy) return;
@@ -1327,6 +1366,7 @@ async function loadKitchen() {
 }
 async function _kLoad() {
   const seq = ++_kLoadSeq;   // S1: newest reload wins — an older one stops before it draws anything
+  clearTimeout(_kReloadTimer); _kReloadTimer = null;   // S2: this load fetches everything fresh → a waiting reload is covered
   // Stage 1 — rooms master data + kitchen config in parallel (was sequential)
   const _needRooms = (typeof appRooms !== 'undefined' && appRooms.length === 0 && typeof loadRoomsData === 'function');
   await Promise.all([
@@ -1351,6 +1391,7 @@ async function _kLoad() {
   // (range covers last week + the whole rotation cycle around this week)
   const _n = Math.max(_kGetRoomList().length, 1);
 
+  const askedAt = Date.now();   // S2: when this load looked (see _kCreateWeekOnce)
   let [cycleRows, absData] = await Promise.all([
     sbL.from('kitchen_weeks').select('*')
       .gte('week_index', idx - _n)
@@ -1363,12 +1404,9 @@ async function _kLoad() {
 
   let weekRow = cycleRows.find(r => r.week_index === idx) || null;
 
-  // Create row if missing (first visit of a new week only)
+  // Create row if missing (first visit of a new week only) — S2: only once, even when two loads overlap
   if (!weekRow) {
-    const { data } = await sbL.from('kitchen_weeks')
-      .insert({ week_index: idx, room: info.room, status: 'pending' })
-      .select().single();
-    weekRow = data || (await _kGetWeek(idx));
+    weekRow = await _kCreateWeekOnce(idx, info.room, askedAt);
     if (weekRow) cycleRows = cycleRows.concat([weekRow]);
     if (seq !== _kLoadSeq) return;
   }
@@ -1392,7 +1430,7 @@ async function _kLoad() {
   if (!_kChannel) _kSubscribe();
 
   // Rooms change hook
-  if (typeof onRoomsChange === 'function' && !loadKitchen._roomsWired) { loadKitchen._roomsWired = true; onRoomsChange(() => loadKitchen()); }
+  if (typeof onRoomsChange === 'function' && !loadKitchen._roomsWired) { loadKitchen._roomsWired = true; onRoomsChange(() => _kScheduleReload()); }
 }
 
 /* aliases — layout.js calls both */
@@ -1516,7 +1554,7 @@ async function _kComposeSend({ text, photo }) {
 })();
 
 /* Reload the kitchen when the app comes back to the front */
-ccOnResume(() => loadKitchen());
+ccOnResume(() => _kScheduleReload(0));
 
 /* ── FLAG SHEET CHIPS (multi-select) ────────────────────── */
 document.querySelectorAll('#k-flag-reasons .k-mob-n-chip').forEach(btn => {
@@ -1531,7 +1569,7 @@ document.querySelectorAll('#k-flag-reasons .k-mob-n-chip').forEach(btn => {
    a quiet reload (no alert) when nothing was tapped yet.          */
 function _kQuietWeekCheck() {
   if (document.visibilityState !== 'visible' || !_kWeekRow) return;
-  if (_kWeekRow.week_index !== kWeekIdx()) loadKitchen();
+  if (_kWeekRow.week_index !== kWeekIdx()) _kScheduleReload(0);
 }
 document.addEventListener('visibilitychange', _kQuietWeekCheck);
 setInterval(_kQuietWeekCheck, 60 * 1000);
