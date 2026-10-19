@@ -1056,10 +1056,15 @@ function _kTenBuildFeedHtml(comments, weekRow) {
   }).join('');
 }
 
-/* ── LAST WEEK IN THE CHAT (Oct 2026) ─────────────────────
-   The chat shows last week's proof + messages first, then this week — each under a small
-   divider. Always only the week before the current one (it moves on every Monday).
-   Display only: the stored data and the 30-day photo clean-up are unchanged. */
+/* ── EARLIER WEEKS IN THE CHAT (Oct 2026 · W2 19.10.2026) ──
+   The chat shows the earlier weeks first, then this week — each under a small divider:
+   · last week — always (it moves on every Monday)
+   · 2 weeks ago (W2) — only until this week's own first proof is there (↑ Submitted); as soon
+     as it arrives, that section goes. A late proof for last week posted this week doesn't count.
+   Each section shows that week's proof, status lines and messages. A week where nothing happened
+   gets no section; test weeks (before K_TEN_HISTORY_FROM, 05.10.2026) never show.
+   Display only: the stored data and the 30-day photo clean-up are unchanged.
+   The management app (tab-kitchen.js) has the same rule — keep both identical. */
 function _kTenWeekDivider(label, row) {
   const pad = n => String(n).padStart(2, '0');
   let range = '';
@@ -1072,16 +1077,36 @@ function _kTenWeekDivider(label, row) {
     <span class="k-sys-event__text">${esc(label)}${row && row.room ? ' · ' + esc(row.room) : ''}${range ? ' · ' + range : ''}</span>
     <div class="k-sys-event__line"></div></div>`;
 }
-async function _kTenPrevWeekHtml(weekRow) {
-  if (!sbL || !weekRow || weekRow.week_index == null) return '';
+/* Last week + 2 weeks ago with their chat — the same 2 requests as before for one week (rows, then chat) */
+async function _kTenEarlierWeeks(weekRow) {
+  const out = { last: null, before: null };
+  if (!sbL || !weekRow || weekRow.week_index == null) return out;
   try {
-    const { data: prev } = await sbL.from('kitchen_weeks').select('*').eq('week_index', weekRow.week_index - 1).maybeSingle();
-    if (!prev) return '';
-    const comments = await _kTenGetComments(prev.id);
-    const body = _kTenBuildFeedHtml(comments, prev);
-    if (/^<p class="cc-note"/.test(body)) return '';          // nothing happened last week → no section
-    return _kTenWeekDivider('Last week', prev) + body;
-  } catch (e) { return ''; }
+    const w = weekRow.week_index;
+    const idxs = [w - 1, w - 2].filter(i => i >= K_TEN_HISTORY_FROM);        // never a test week
+    if (!idxs.length) return out;
+    const { data: rows } = await sbL.from('kitchen_weeks').select('*').in('week_index', idxs).order('id', { ascending: true });
+    const pick = i => (rows || []).find(r => r.week_index === i) || null;   // the first saved row of that week
+    const last = pick(w - 1), before = pick(w - 2);
+    const ids = [last, before].filter(Boolean).map(r => r.id);
+    if (!ids.length) return out;
+    const { data: cm } = await sbL.from('kitchen_comments').select('*').in('week_id', ids).order('created_at', { ascending: true });
+    const of = r => (r ? { row: r, comments: (cm || []).filter(c => c.week_id === r.id) } : null);
+    out.last = of(last); out.before = of(before);
+  } catch (e) {}
+  return out;
+}
+/* One earlier week as a chat section — '' when nothing happened that week */
+function _kTenEarlierHtml(label, wk) {
+  if (!wk) return '';
+  const body = _kTenBuildFeedHtml(wk.comments, wk.row);
+  if (/^<p class="cc-note"/.test(body)) return '';
+  return _kTenWeekDivider(label, wk.row) + body;
+}
+/* Is this week's own proof there? Same rule the chat uses for "↑ Submitted" ([late] = last week's proof → no) */
+function _kTenHasOwnProof(comments, weekRow) {
+  if ((comments || []).some(c => c.text && c.text.startsWith('[submission] '))) return true;
+  return !!(weekRow && weekRow.submitted_at && weekRow.photos && weekRow.photos.length);
 }
 
 async function _kTenRenderFeed() {
@@ -1095,9 +1120,12 @@ async function _kTenRenderFeed() {
     if (elDsk) elDsk.innerHTML = empty;
     return;
   }
-  const [comments, prevHtml] = await Promise.all([_kTenGetComments(row.id), _kTenPrevWeekHtml(row)]);
+  const [comments, earlier] = await Promise.all([_kTenGetComments(row.id), _kTenEarlierWeeks(row)]);
   let html = _kTenBuildFeedHtml(comments, row);
-  if (prevHtml) html = prevHtml + _kTenWeekDivider('This week', row) + html;   // last week first, then this week
+  // W2: 2 weeks ago only until this week's own proof is there · then last week · then this week
+  const prevHtml = (_kTenHasOwnProof(comments, row) ? '' : _kTenEarlierHtml('2 weeks ago', earlier.before))
+                 + _kTenEarlierHtml('Last week', earlier.last);
+  if (prevHtml) html = prevHtml + _kTenWeekDivider('This week', row) + html;   // earlier weeks first, then this week
   // same content as on screen → leave it (no blink, photos are not reloaded)
   [elMob, elDsk].forEach(el => {
     if (!el) return;

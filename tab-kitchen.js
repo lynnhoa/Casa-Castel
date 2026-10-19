@@ -22,6 +22,9 @@
    reload timer: a burst of changes gives one reload. A new week is
    created only once. Details at _kScheduleReload (MAIN LOAD).
 
+   W2 (19.10.2026) · CHAT SHOWS 2 WEEKS BACK until this week's own
+   proof is there — see EARLIER WEEKS IN THE CHAT.
+
    S3 (19.10.2026) · AFTER THE WEEK ENDS — Approve, Flag, Undo and
    Unflag act on the proof you tapped (saved by its ID), also when a
    new week started while the app was open; Missed / Reopen keep the
@@ -734,10 +737,13 @@ async function _kRenderFeed(weekRow) {
     _kSet(elDsk, none);
     return;
   }
-  const [comments, prevHtml] = await Promise.all([_kGetComments(weekRow.id), _kPrevWeekHtml(weekRow)]);
+  const [comments, earlier] = await Promise.all([_kGetComments(weekRow.id), _kEarlierWeeks(weekRow)]);
   if (seq !== _kFeedSeq) return;
   let html = _kBuildFeedHtml(comments, weekRow);
-  if (prevHtml) html = prevHtml + _kWeekDivider('This week', weekRow) + html;   // last week first, then this week
+  // W2: 2 weeks ago only until this week's own proof is there · then last week · then this week
+  const prevHtml = (_kHasOwnProof(comments, weekRow) ? '' : _kEarlierHtml('2 weeks ago', earlier.before))
+                 + _kEarlierHtml('Last week', earlier.last);
+  if (prevHtml) html = prevHtml + _kWeekDivider('This week', weekRow) + html;   // earlier weeks first, then this week
   const changed = [_kSet(el, html) ? el : null, _kSet(elDsk, html) ? elDsk : null];
   // Wire delete buttons on both feeds (only a feed that was just redrawn — the others are wired already)
   changed.forEach(feed => {
@@ -756,10 +762,15 @@ async function _kRenderFeed(weekRow) {
   });
 }
 
-/* ── LAST WEEK IN THE CHAT (Oct 2026) ─────────────────────
-   The chat shows last week's proof + messages first, then this week — each under a small
-   divider. Always only the week before the current one (it moves on every Monday).
-   Display only: the stored data and the 30-day photo clean-up are unchanged. */
+/* ── EARLIER WEEKS IN THE CHAT (Oct 2026 · W2 19.10.2026) ──
+   The chat shows the earlier weeks first, then this week — each under a small divider:
+   · last week — always (it moves on every Monday)
+   · 2 weeks ago (W2) — only until this week's own first proof is there (↑ Submitted); as soon
+     as it arrives, that section goes. A late proof for last week posted this week doesn't count.
+   Each section shows that week's proof, status lines and messages. A week where nothing happened
+   gets no section; test weeks (before K_HISTORY_FROM, 05.10.2026) never show.
+   Display only: the stored data and the 30-day photo clean-up are unchanged.
+   The tenant app (tab-kitchen-tenant.js) has the same rule — keep both identical. */
 function _kWeekDivider(label, row) {
   const pad = n => String(n).padStart(2, '0');
   let range = '';
@@ -772,16 +783,36 @@ function _kWeekDivider(label, row) {
     <span class="k-sys-event__text">${esc(label)}${row && row.room ? ' · ' + esc(row.room) : ''}${range ? ' · ' + range : ''}</span>
     <div class="k-sys-event__line"></div></div>`;
 }
-async function _kPrevWeekHtml(weekRow) {
-  if (!sbL || !weekRow || weekRow.week_index == null) return '';
+/* Last week + 2 weeks ago with their chat — the same 2 requests as before for one week (rows, then chat) */
+async function _kEarlierWeeks(weekRow) {
+  const out = { last: null, before: null };
+  if (!sbL || !weekRow || weekRow.week_index == null) return out;
   try {
-    const { data: prev } = await sbL.from('kitchen_weeks').select('*').eq('week_index', weekRow.week_index - 1).maybeSingle();
-    if (!prev) return '';
-    const comments = await _kGetComments(prev.id);
-    const body = _kBuildFeedHtml(comments, prev);
-    if (/^<p class="cc-note"/.test(body)) return '';          // nothing happened last week → no section
-    return _kWeekDivider('Last week', prev) + body;
-  } catch (e) { return ''; }
+    const w = weekRow.week_index;
+    const idxs = [w - 1, w - 2].filter(i => i >= K_HISTORY_FROM);            // never a test week
+    if (!idxs.length) return out;
+    const { data: rows } = await sbL.from('kitchen_weeks').select('*').in('week_index', idxs).order('id', { ascending: true });
+    const pick = i => (rows || []).find(r => r.week_index === i) || null;   // the first saved row of that week
+    const last = pick(w - 1), before = pick(w - 2);
+    const ids = [last, before].filter(Boolean).map(r => r.id);
+    if (!ids.length) return out;
+    const { data: cm } = await sbL.from('kitchen_comments').select('*').in('week_id', ids).order('created_at', { ascending: true });
+    const of = r => (r ? { row: r, comments: (cm || []).filter(c => c.week_id === r.id) } : null);
+    out.last = of(last); out.before = of(before);
+  } catch (e) {}
+  return out;
+}
+/* One earlier week as a chat section — '' when nothing happened that week */
+function _kEarlierHtml(label, wk) {
+  if (!wk) return '';
+  const body = _kBuildFeedHtml(wk.comments, wk.row);
+  if (/^<p class="cc-note"/.test(body)) return '';
+  return _kWeekDivider(label, wk.row) + body;
+}
+/* Is this week's own proof there? Same rule the chat uses for "↑ Submitted" ([late] = last week's proof → no) */
+function _kHasOwnProof(comments, weekRow) {
+  if ((comments || []).some(c => c.text && c.text.startsWith('[submission] '))) return true;
+  return !!(weekRow && weekRow.submitted_at && weekRow.photos && weekRow.photos.length);
 }
 
 /* ── ROTATION STRIP ─────────────────────────────────────── */
