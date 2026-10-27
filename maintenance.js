@@ -65,6 +65,9 @@
                Edit    = × deletes a file, tapping a file fixes Type / Betrag / date
                Files are private (bucket maintenance-docs, one folder per case);
                a tap opens them with a short-lived link.
+   Look (L1):  property cards with a 1px edge + soft shadow, 20px apart · year bar light
+               beige · every entry (also when open) has a thin status line on the left in
+               its pill's colour: yellow open / planned · orange in progress · green done
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -144,6 +147,8 @@ const mtYear = () => ccTodayISO().slice(0, 4);
 const mtStatusLabel = (kind, s) => (s === 'done' ? 'Done' : s === 'in_progress' ? 'In progress' : (MT_KIND[kind] || MT_KIND.schaden).open);
 const mtPillCls = s => (s === 'done' ? 'mt-pill--done' : s === 'in_progress' ? 'mt-pill--prog' : 'mt-pill--open');
 const mtPill = (kind, s) => `<span class="mt-pill ${mtPillCls(s)}">${mtStatusLabel(kind, s)}</span>`;
+/* L1 · the thin status line on the left of an entry — the pill's colour (yellow / orange / green) */
+const mtStCls = s => (s === 'done' ? 'mt-st--done' : s === 'in_progress' ? 'mt-st--prog' : 'mt-st--open');
 const mtCase = id => MT.cases.find(c => String(c.id) === String(id)) || null;
 const mtProp = id => (id === null || id === undefined || id === '' ? null : MT.props.find(p => String(p.id) === String(id)) || null);
 const mtPropName = c => { const p = mtProp(c.property_id); return p ? p.name : (c.property_name || 'Unknown property'); };
@@ -292,7 +297,7 @@ function mtRowHTML(c) {
   const sub = [mtWhere(c), mtSpan(c)].filter(Boolean).map(mtEsc).join(' · ');
   const cost = mtCost([c.id]);
   const sel = MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id) ? ' is-sel' : '';
-  return `<div class="mt-ent">
+  return `<div class="mt-ent ${mtStCls(c.status)}">
       <div class="mt-row${sel}">
         <button type="button" class="mt-row__hit" data-mt="open" data-id="${mtEsc(c.id)}" aria-label="Open ${mtEsc(c.title)}"></button>
         <span class="mt-row__l"><span class="mt-row__t">${mtEsc(c.title)}</span>${sub ? `<span class="mt-row__s">${sub}</span>` : ''}</span>
@@ -462,11 +467,13 @@ function mtRenderPanel() {
   if (!html) {
     MT.sel = null;
     p.innerHTML = '';
+    mtPanelStatus(p);
     mtParkPanel();
     return;
   }
   mtCostCapture();                                           // an open cost form keeps what is typed
   p.innerHTML = html;
+  mtPanelStatus(p);
   // the date field becomes a German field right after it is drawn → note the form after that
   if (MT.sel.edit) { const sel = MT.sel; delete sel.snap; setTimeout(() => { if (MT.sel === sel && sel.edit) sel.snap = mtFormSnap(); }, 0); }
   mtAfterPanel();
@@ -480,7 +487,14 @@ function mtParkPanel() {
 function mtPlacePanel(root) {
   const p = document.getElementById('mtPanel'), slot = root && root.querySelector('.mt-slot');
   if (!p) return;
+  mtPanelStatus(p);
   if (slot && MT.sel) slot.replaceWith(p); else mtParkPanel();
+}
+/* L1 · the open entry keeps its status line (a new entry has none yet) */
+function mtPanelStatus(p) {
+  const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
+  p.classList.remove('mt-st--open', 'mt-st--prog', 'mt-st--done');
+  if (c) p.classList.add(mtStCls(c.status));
 }
 function mtScrollToOpen() {
   const p = document.getElementById('mtPanel');

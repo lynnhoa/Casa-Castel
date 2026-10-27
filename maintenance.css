@@ -24,8 +24,9 @@
 .mt-mu { color:var(--cc-stone) !important; }
 
 /* ── Property cards ── */
-.mt-list { display:flex; flex-direction:column; gap:12px; }
-.mt-card { background:var(--cc-white); border:var(--cc-border); border-radius:var(--cc-r-lg); overflow:hidden; }
+.mt-list { display:flex; flex-direction:column; gap:20px; }   /* L1: was 12px */
+.mt-card { background:var(--cc-white); border:1px solid var(--mt-edge); border-radius:var(--cc-r-lg); overflow:hidden;
+  box-shadow:0 1px 2px rgba(58,45,30,.07), 0 10px 24px -12px rgba(58,45,30,.32); }   /* L1: 1px edge + soft shadow */
 .mt-card__hd { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:16px 16px 12px; }
 .mt-card__name { margin:0; min-width:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:400;
   line-height:1.1; letter-spacing:0; color:var(--cc-ink); overflow-wrap:anywhere; }
@@ -198,8 +199,8 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 
 
 /* ── D2 · Year groups inside a property card ── */
-.mt-yr { display:flex; align-items:center; gap:8px; width:100%; margin:0; padding:9px 16px; border:none; border-top:var(--cc-border);
-  border-radius:0; background:var(--cc-bg); cursor:pointer; font-family:inherit; text-align:left; -webkit-tap-highlight-color:transparent; }
+.mt-yr { display:flex; align-items:center; gap:8px; width:100%; margin:0; padding:9px 16px; border:none; border-top:1px solid var(--mt-line);
+  border-radius:0; background:var(--mt-band); cursor:pointer; font-family:inherit; text-align:left; -webkit-tap-highlight-color:transparent; }
 .mt-yr__y { font-size:11px; font-weight:600; letter-spacing:.12em; color:var(--cc-charcoal); }
 .mt-yr__n { font-size:11px; color:var(--cc-taupe); }
 .mt-yr i { font-size:14px; color:var(--cc-stone); transition:transform .2s; }
@@ -232,7 +233,7 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 /* ── D4 · The entry opens in place (inside its property card) ── */
 #appMain .tab-content { max-width:960px; }
 .mt-card--new { border-color:var(--cc-stone); }
-.mt-open { padding:12px 16px 16px; border-top:var(--cc-border); background:var(--cc-white);
+.mt-open { position:relative; padding:12px 16px 16px; border-top:1px solid var(--mt-line); background:var(--cc-white);
   scroll-margin-top:calc(124px + env(safe-area-inset-top,0px)); }
 .mt-card--new .mt-open { border-top:none; }
 .mt-oh__t { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; width:100%; margin:0; padding:2px 0;
@@ -335,9 +336,9 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
   min-height:0 !important; letter-spacing:.12em !important; color:#A89C8C !important; text-transform:uppercase; }
 
 /* ── D16 · entry: Kostenübersicht · Schadensbericht below a divider · the Schadensbericht pop-up ── */
-.mt-ent { border-top:var(--cc-border); }
+.mt-ent { position:relative; border-top:1px solid var(--mt-line); }
 .mt-ent > .mt-row { border-top:none; }
-.mt-acts { display:flex; flex-wrap:wrap; gap:8px; margin:0 16px; padding:10px 0 12px; border-top:var(--cc-border); }
+.mt-acts { display:flex; flex-wrap:wrap; gap:8px; margin:0 16px; padding:10px 0 12px; border-top:1px solid var(--mt-line-in); }
 .mt-acts--in { margin:14px 0 0; padding:12px 0 0; }
 .mt-act { display:inline-flex; align-items:center; gap:6px; height:32px; margin:0; padding:0 13px; border:var(--cc-border); border-radius:16px;
   background:var(--cc-white); font:inherit; font-size:12px; font-weight:500; line-height:1; color:var(--cc-ink); cursor:pointer;
@@ -475,3 +476,25 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 .mt-ks__l { flex-wrap:wrap; row-gap:2px; min-width:0; }
 .mt-cf .mt-prompt { height:min(40vh, 320px); margin:0 0 12px; padding:8px 10px; resize:none; overflow:auto;
   font-size:13px !important; line-height:1.45; white-space:pre-wrap; -webkit-user-select:text; user-select:text; }  /* casa-castel.css sets 16px; this page never zooms */
+
+
+/* ── L1 (27.10.2026) · clearer lines in the list ──────────────────────────────
+      Same layout as before — only the lines: property cards with a 1px edge + soft shadow,
+      20px apart · year bar light beige · 1px lines between the year bar and the entries ·
+      every entry (also when it is open) has a thin status line on the left in its pill's
+      colour. A new entry (not saved yet) has none. ── */
+:root {
+  --mt-edge:    #DED6CA;   /* property card edge                    */
+  --mt-line:    #E2DBD0;   /* year bar · between entries · open entry */
+  --mt-line-in: #ECE6DD;   /* inside an entry, above its buttons     */
+  --mt-band:    #F1ECE4;   /* year bar                              */
+}
+.mt-st--open { --mt-st:#E8C97A; }   /* planned (Renovierungen) / open (Schäden) — yellow */
+.mt-st--prog { --mt-st:#F0A877; }   /* in progress — orange */
+.mt-st--done { --mt-st:#9AC87A; }   /* done — green */
+:is(.mt-ent, .mt-open):is(.mt-st--open, .mt-st--prog, .mt-st--done)::before {
+  content:""; position:absolute; left:0; top:0; bottom:0; width:3px; z-index:2; pointer-events:none; background:var(--mt-st); }
+/* iPad landscape / laptop: the two cards per row (cc-mgmt.css B3) keep 20px between the rows too */
+@media (min-width: 1000px) {
+  #appMain .mt-col .mt-list { row-gap:20px; }
+}
