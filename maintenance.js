@@ -29,7 +29,7 @@
                  only when it really failed (the form comes back)
 
    Costs (per case, in the panel, D1): one row = one receipt / invoice
-               Receipt no. · Description · Brand / Provider · Amount · Date · Photos
+               No. · Receipt / order no. · Description · Brand / Provider · Amount · Date · Photos
                grouped Self-bought / Provider · tap a row = edit it in place
                · D2: a return is its own row (return_of = its receipt), shown
                  under the receipt, own slip no. / date / photo; Net per receipt
@@ -57,6 +57,11 @@
                  · "Don't book". Self-bought "Shop" = the Geschäft in Controlling.
                · D26: "Copy prompt" next to "+ Add receipt" copies the receipt → SQL prompt
                  for Claude with this case's id in it (same checks as Save; no pop-up)
+               · D27: “No.” = your own number per receipt / return (own_no, warns when used
+                 twice); “Receipt no.” → “Receipt / order no.”. Every PDF of the receipt
+                 shows “Nr. <No.>” in bold on top of page 1 (page shrinks a little, same size,
+                 A4 stays A4); the untouched original stays in storage (maint_docs.orig_path,
+                 stamp_no = the No. on the copy) — MAINTENANCE-D27.sql
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
                          (shrunk to 2000 px + a small preview in /thumbs/)
@@ -741,7 +746,7 @@ async function mtDelete() {
 
 /* ── Documents ────────────────────────────────────────────── */
 const mtThumbPath = p => String(p || '').replace(/^([^/]+)\//, '$1/thumbs/');            // <case>/thumbs/<id>.jpg
-const mtFilesOf = d => (d.doc_type === 'photo' ? [d.file_path, mtThumbPath(d.file_path)] : [d.file_path]).filter(Boolean);
+const mtFilesOf = d => (d.doc_type === 'photo' ? [d.file_path, mtThumbPath(d.file_path)] : [d.file_path, d.orig_path]).filter(Boolean);   // D27: + the untouched original
 const mtDocsOf = caseId => MT.docs.filter(d => String(d.case_id) === String(caseId));
 const mtIsImage = f => /^image\//.test(f.type || '') || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name || '');
 const mtIsPdf = f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
@@ -864,7 +869,7 @@ function mtDocsHTML(c) {
 
   let h = '<section class="mt-docs" id="mtDocs"><p class="mt-sec__t">Documents</p>';
   if (s.add && !locked) h += mtDocFormHTML('mtA', s.add, s.add.name, s.add.isImg, 'add');
-  if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
+  if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>${up.what ? mtEsc(up.what) + ' · ' : 'Uploading '}${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!files.length && !s.add && !up) h += '<p class="mt-docs-empty">No documents yet.</p>';
   if (photos.length && !ed && !locked) h += `<button type="button" class="mt-link mt-photolink" data-mt="sbOpen" data-id="${mtEsc(c.id)}"><i class="ti ti-photo" aria-hidden="true"></i>${photos.length} ${photos.length === 1 ? 'photo' : 'photos'} · in the ${mtBerichtLbl(c)}</button>`;
   if (files.length) {
@@ -1229,7 +1234,7 @@ function mtCostsHTML(c) {
     <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b>${!busy && !f && !upAny ? '<button type="button" class="mt-link mt-ks__add" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>' +
       '<button type="button" class="mt-link mt-ks__add" data-mt="costPrompt"><i class="ti ti-copy" aria-hidden="true"></i>Copy prompt</button>' : ''}</span><em>${mtEur(mtCost([c.id]))}</em></div>
 `;
-  if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
+  if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>${up.what ? mtEsc(up.what) + ' · ' : 'Uploading '}${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!rows.length) h += '<p class="mt-docs-empty">No receipts yet.</p>';
 
   Object.keys(MT_COST).forEach(kind => {
@@ -1237,7 +1242,7 @@ function mtCostsHTML(c) {
     if (!list.length) return;
     h += `<div class="mt-cg">
       <div class="mt-cg__h"><span class="mt-cg__t">${MT_COST[kind].label} · ${list.length}</span><span class="mt-cg__s">${mtEur(mtCost([c.id], null, kind))}</span></div>
-      <div class="mt-ch" aria-hidden="true"><span>Receipt no.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
+      <div class="mt-ch" aria-hidden="true"><span>No. · Receipt / order no.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
       ${list.map(r => {
         const rets = mtReturnsOf(r.id);
         let x = mtCostRowHTML(r, tap);
@@ -1274,9 +1279,11 @@ Read it like this:
   Rechnungsbetrag / Zu zahlen). Never cash given, change, netto or a
   subtotal. Check that the items add up to it.
 - Date: the receipt or invoice date ("26" = 2026).
-- No.: Rechnungs-Nr. on invoices, Beleg-/Bon-Nr. on receipts. On DIY-store
-  receipts (Bauhaus, Hornbach, OBI, toom): the long barcode number, digits
-  only. Never Steuernummer, EAN, TSE, Kunden- or Auftragsnummer.
+- Receipt / order no.: Rechnungs-Nr. on invoices, Beleg-/Bon-Nr. on
+  receipts, Bestell-Nr. on orders. On DIY-store receipts (Bauhaus,
+  Hornbach, OBI, toom): the long barcode number, digits only. Never
+  Steuernummer, EAN, TSE or Kundennummer. My own "No." is not on the
+  receipt — leave it out, I add it in the app.
 - Shop / provider: short shop name (Bauhaus, Hornbach, OBI, IKEA) or the
   company name from the letterhead.
 - Description: what was bought or done, short German, max 160 characters,
@@ -1289,7 +1296,7 @@ Read it like this:
 - If I write "nicht buchen": buchen := false.
 
 Before the SQL, write one line with what you read
-(shop · date · amount · no. · description) so I can check it.
+(shop · date · amount · receipt / order no. · description) so I can check it.
 After the SQL, remind me to add the photo in the app
 (open the cost row › Photo / PDF).
 
@@ -1307,7 +1314,7 @@ declare
   -- fill in ↓
   art     text    := 'receipt';  -- 'receipt' or 'return'
   typ     text    := 'self';     -- 'self' or 'provider'
-  nr      text    := null;       -- receipt / invoice no. (a return: its slip no.)
+  nr      text    := null;       -- receipt / order no. (a return: its slip no.)
   beschr  text    := null;       -- what was bought or done, German
   firma   text    := null;       -- shop or provider (a return: null)
   betrag  numeric := null;       -- the total, e.g. 21.90
@@ -1439,10 +1446,11 @@ function mtCostRowHTML(r, tap) {
   const n = mtCostFiles(r.id).length, ret = !!r.return_of;
   const parent = ret ? mtCostById(r.return_of) : null;
   const off = ret ? !!parent && parent.book_ctrl === false : r.book_ctrl === false;
-  const no = ret ? (r.receipt_no ? 'Slip ' + r.receipt_no : 'Return') : (r.receipt_no || '—');
+  const own = String(r.own_no || '').trim();                 // D27: your No. in bold in front
+  const no = ret ? (r.receipt_no ? 'Slip ' + r.receipt_no : 'Return') : (r.receipt_no || (own ? '' : '—'));
   const desc = ret ? (r.description ? 'Return · ' + r.description : 'Return') : (r.description || '');
   return `<button type="button" class="mt-cr${ret ? ' mt-cr--ret' : ''}" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}"${tap ? '' : ' tabindex="-1"'}>
-      <span class="mt-cr__a"><span class="mt-cr__no">${ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : ''}${mtEsc(no)}</span><span class="mt-cr__desc">${mtEsc(desc)}${off ? '<span class="mt-off">not in Controlling</span>' : ''}</span></span>
+      <span class="mt-cr__a"><span class="mt-cr__no">${ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : ''}${own ? `<b>${mtEsc(own)}</b>${no ? ' · ' : ''}` : ''}${mtEsc(no)}</span><span class="mt-cr__desc">${mtEsc(desc)}${off ? '<span class="mt-off">not in Controlling</span>' : ''}</span></span>
       <span class="mt-cr__amt">${ret ? mtNeg(r.amount) : mtEur(r.amount)}</span>
       <span class="mt-cr__b"><span class="mt-cr__who">${ret ? '' : mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
       <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ''}</span>
@@ -1470,7 +1478,9 @@ function mtCostFormHTML(f) {
   return `<div class="mt-ab mt-cf-form${ret ? ' is-ret' : ''}" id="mtC-form" data-fid="${mtEsc(f.id)}">
       ${top}
       <div class="mt-grid">
-        <div class="mt-f"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt no.'}</label>
+        <div class="mt-f"><label class="mt-k" for="mtC-own">No.</label>
+          <input class="mt-in" id="mtC-own" type="text" maxlength="30" autocomplete="off" value="${mtEsc(f.own_no || '')}"/></div>
+        <div class="mt-f"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt / order no.'}</label>
           <input class="mt-in" id="mtC-no" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.receipt_no || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtC-desc">Description</label>
           <input class="mt-in" id="mtC-desc" type="text" maxlength="160" autocomplete="off" value="${mtEsc(f.description || '')}"${ret ? ' placeholder="optional"' : ''}/></div>
@@ -1504,6 +1514,7 @@ function mtCostCapture() {
   const f = MT.sel && MT.sel.cost, el = document.getElementById('mtC-form');
   if (!f || !el || el.dataset.fid !== String(f.id)) return;   // only the form that is showing (not a new return's)
   const g = id => document.getElementById(id);
+  if (g('mtC-own')) f.own_no = g('mtC-own').value;
   f.receipt_no = g('mtC-no').value;
   f.description = g('mtC-desc').value;
   if (g('mtC-who')) f.brand = g('mtC-who').value;
@@ -1511,7 +1522,7 @@ function mtCostCapture() {
   f.cost_date = g('mtC-date').value || '';
   if (g('mtC-book')) f.book_ctrl = g('mtC-book').checked;
 }
-const mtCostSnapOf = f => JSON.stringify([f.kind, f.receipt_no || '', f.description || '', f.brand || '', String(f.amount ?? ''), f.cost_date || '',
+const mtCostSnapOf = f => JSON.stringify([f.kind, f.own_no || '', f.receipt_no || '', f.description || '', f.brand || '', String(f.amount ?? ''), f.cost_date || '',
   f.book_ctrl !== false, f.files.map(x => x.id || x.name).join('|')]);
 function mtCostChanged() {
   const f = MT.sel && MT.sel.cost;
@@ -1530,17 +1541,17 @@ function mtLastBook(c) {
 function mtCostNew(kind) {
   const c = mtOpenCase();
   if (!c || mtActive(c)) return;
-  MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', return_of: null, receipt_no: '', description: '', brand: '',
+  MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', return_of: null, own_no: '', receipt_no: '', description: '', brand: '',
     amount: '', cost_date: ccTodayISO(), book_ctrl: mtLastBook(c), files: [], delIds: [] };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
   document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
-  if (mtFine()) document.getElementById('mtC-no')?.focus();
+  if (mtFine()) document.getElementById('mtC-own')?.focus();
 }
 function mtCostEdit(id) {
   const c = mtOpenCase(), r = mtCostById(id);
   if (!c || !r || mtActive(c)) return;
-  MT.sel.cost = { isNew: false, id: r.id, kind: r.kind, return_of: r.return_of || null, receipt_no: r.receipt_no || '', description: r.description || '',
+  MT.sel.cost = { isNew: false, id: r.id, kind: r.kind, return_of: r.return_of || null, own_no: r.own_no || '', receipt_no: r.receipt_no || '', description: r.description || '',
     brand: r.brand || '', amount: r.amount ?? '', cost_date: r.cost_date || '', book_ctrl: r.book_ctrl !== false, delIds: [], files: mtCostFilesOf(r.id) };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
@@ -1555,12 +1566,12 @@ async function mtCostNewReturn() {
   }
   const r = mtCostById(f.id);
   if (!r || !MT.sel) return;
-  MT.sel.cost = { isNew: true, id: mtUuid(), kind: r.kind, return_of: r.id, receipt_no: '', description: '', brand: '',
+  MT.sel.cost = { isNew: true, id: mtUuid(), kind: r.kind, return_of: r.id, own_no: '', receipt_no: '', description: '', brand: '',
     amount: '', cost_date: ccTodayISO() < String(r.cost_date || '') ? r.cost_date : ccTodayISO(), files: [], delIds: [] };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
   mtRenderPanel();
   document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
-  if (mtFine()) document.getElementById('mtC-no')?.focus();
+  if (mtFine()) document.getElementById('mtC-own')?.focus();
 }
 function mtCostKind(kind) {
   const f = MT.sel && MT.sel.cost;
@@ -1631,6 +1642,15 @@ function mtCtrlNote(rows) {
   return ` ${n === 1 ? 'Its line' : 'Its ' + n + ' lines'} in Controlling ${n === 1 ? 'goes' : 'go'} too${linked ? ' — a line you linked comes back as you typed it' : ''}.`;
 }
 
+/* D27 · your No. already used (anywhere) → where */
+function mtOwnDupOf(no, selfId) {
+  const k = String(no || '').trim().toLowerCase();
+  if (!k) return null;
+  const d = MT.costs.find(r => String(r.id) !== String(selfId) && String(r.own_no || '').trim().toLowerCase() === k);
+  if (!d) return null;
+  const c = mtCase(d.case_id);
+  return { row: d, where: c ? `“${c.title}” (${mtPropName(c)})` : 'another entry', same: MT.sel && String(d.case_id) === String(MT.sel.id) };
+}
 /* Receipt / slip no. already used (anywhere) → where */
 function mtDupOf(no, selfId) {
   const k = String(no || '').trim().toLowerCase();
@@ -1668,6 +1688,13 @@ async function mtCostSave() {
   if (dup) {
     const what = (ret ? 'Slip ' : 'Receipt ') + String(f.receipt_no).trim();
     const ok = await mtConfirm({ title: `${what} already exists`, text: dup.same ? 'It is already in this entry. Save it anyway?' : `It is already in ${dup.where}. Save it anyway?`, ok: 'Save anyway' });
+    if (!ok) return;
+    if (!MT.sel || MT.sel.cost !== f) return;                  // the panel changed meanwhile
+  }
+
+  const dupOwn = mtOwnDupOf(f.own_no, f.id);                  // D27
+  if (dupOwn) {
+    const ok = await mtConfirm({ title: `No. ${String(f.own_no).trim()} already exists`, text: dupOwn.same ? 'It is already in this entry. Save it anyway?' : `It is already in ${dupOwn.where}. Save it anyway?`, ok: 'Save anyway' });
     if (!ok) return;
     if (!MT.sel || MT.sel.cost !== f) return;                  // the panel changed meanwhile
   }
@@ -1710,10 +1737,12 @@ async function mtCostSave() {
   const isNew = f.isNew, id = f.id;
   const now = new Date().toISOString();
   const old = isNew ? null : { ...mtCostById(id) };
+  const own = String(f.own_no || '').trim();                  // D27
   const row = {
     id, case_id: c.id, kind: ret ? parent.kind : f.kind, receipt_no: String(f.receipt_no).trim() || null, description: String(f.description).trim() || null,
     brand: ret ? null : String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: ret ? parent.id : null,
     book_ctrl: ret ? true : f.book_ctrl !== false,                 // a return follows its receipt
+    ...(own || (old && old.own_no) ? { own_no: own || null } : {}),   // D27: only sent when used → saving works before MAINTENANCE-D27.sql
     ...(pick || {}),
   };
   const kindChanged = !ret && old && old.kind !== row.kind;
@@ -1736,8 +1765,9 @@ async function mtCostSave() {
   if (r.error) {
     console.error('[maintenance] cost save failed:', r.error);
     const emsg = String((r.error && (r.error.message || r.error.details)) || '');
+    const d27Missing = /own_no/i.test(emsg);
     const d8Missing = /link_ot|ctrl_dup_ok|maint_before|maint_unbook/i.test(emsg);
-    const sqlMissing = d8Missing || /book_ctrl|maint_cost_id/i.test(emsg);
+    const sqlMissing = d27Missing || d8Missing || /book_ctrl|maint_cost_id/i.test(emsg);
     if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
     else Object.assign(mtCostById(id), old);
     rets.forEach(t => { t.kind = old.kind; });
@@ -1745,7 +1775,7 @@ async function mtCostSave() {
     MT.busy = false;
     if (MT.sel && String(MT.sel.id) === String(c.id)) MT.sel.cost = f;          // the form comes back with what you typed
     mtRefresh(c.id);
-    mtSay(sqlMissing ? `Not saved: run ${d8Missing ? 'MAINTENANCE-D8.sql' : 'MAINTENANCE-D3.sql'} in Supabase first.` : 'Not saved. Check the connection and save again.');
+    mtSay(sqlMissing ? `Not saved: run ${d27Missing ? 'MAINTENANCE-D27.sql' : d8Missing ? 'MAINTENANCE-D8.sql' : 'MAINTENANCE-D3.sql'} in Supabase first.` : 'Not saved. Check the connection and save again.');
     return;
   }
 
@@ -1777,17 +1807,141 @@ async function mtCostSave() {
   }
   if (MT.up) MT.up.total = uploads.length;
   let failed = 0;
+  const fresh = new Map();                                    // D27: just uploaded → no download for the No.
   for (const file of uploads) {
+    const n0 = MT.docs.length;
     const ok = await mtUploadOne(c, file, { type: 'receipt', amount: null, date: row.cost_date }, { cost_id: id });
     if (!ok) failed++;
+    else if (own && mtIsPdf(file) && MT.docs.length > n0) { try { fresh.set(MT.docs[MT.docs.length - 1].file_path, await file.arrayBuffer()); } catch (e) {} }
     if (MT.up) MT.up.done++;
     mtRefresh(c.id);
   }
   MT.up = null;
+  // D27 · your No. on top of the receipt's PDFs (new, moved-in and earlier ones) — or the originals back when it was cleared
+  let st = null;
+  const todo = mtStampTodo(id, own);
+  if (todo.length) {
+    MT.up = { caseId: c.id, total: todo.length, done: 0, where: 'costs', what: 'Adding your No.' };
+    mtRefresh(c.id);
+    try { st = await mtStampSync(c, todo, own, fresh); }
+    catch (e) { console.warn('[maintenance] No. not written:', e); st = { failed: 1, locked: 0 }; }
+    MT.up = null;
+  }
   MT.busy = false;
   mtRefresh(c.id);
   if (failed) mtSay(`${uploads.length - failed} of ${uploads.length} files saved. Add the others again.`);
+  else if (st && st.failed) mtSay('The No. could not be written on the PDF. Check the connection and save the receipt again.');
+  else if (st && st.locked) mtSay(st.locked === 1 ? 'The No. can\'t be written on this PDF (it is locked) — it stays unchanged.'
+                                                   : `The No. can't be written on ${st.locked} PDFs (they are locked) — they stay unchanged.`);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   D27 · YOUR NO. ON THE RECEIPT PDF
+   "No." (own_no) is your own number. Every PDF of the receipt shows it: page 1
+   shrinks a little (same page size, A4 stays A4) and a 1 cm strip on top says
+   "Nr. 17" in bold. The untouched original stays in storage (orig_path); the copy
+   with the number is the file you open (file_path); stamp_no = the No. on it.
+   A changed No. is written again from the original, a cleared No. brings the
+   original back. Each copy gets a new file name (never an old cached copy).
+   A locked / damaged PDF stays as it is (stamp_no '!<No.>' = tried, not possible).
+   ───────────────────────────────────────────────────────────── */
+const MT_STRIP = 28.35;                                       // 1 cm in PDF points
+const mtIsPdfPath = p => /\.pdf$/i.test(String(p || ''));
+async function mtPdfLib() {
+  if (!window.PDFLib) await mtLoadScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js');
+  if (!window.PDFLib) throw new Error('pdf-lib not loaded');
+  return window.PDFLib;
+}
+
+/* PDF bytes + your No. → the same PDF with "Nr. <No.>" in bold on top of page 1 · null = not possible (locked / damaged) */
+async function mtStampNo(bytes, no) {
+  const L = await mtPdfLib();
+  const text = 'Nr. ' + String(no).trim().replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');   // what the PDF font can write
+  let doc;
+  try { doc = await L.PDFDocument.load(bytes); } catch (e) { return null; }
+  if (!doc.getPageCount()) return null;
+  const src = doc.getPage(0);
+  const box = src.getCropBox();                               // what a viewer shows (= MediaBox when there is no CropBox)
+  const rot = (((Number(src.getRotation().angle) || 0) % 360) + 360) % 360;
+  const side = rot === 90 || rot === 270;
+  const W = side ? box.height : box.width, H = side ? box.width : box.height;   // the page as you see it
+  const s = (H - MT_STRIP) / H;
+  if (!(s > 0.5) || !(W > 0)) return null;
+  let emb;
+  try { emb = await doc.embedPage(src, { left: box.x, bottom: box.y, right: box.x + box.width, top: box.y + box.height }); }
+  catch (e) { return null; }
+  const pg = doc.insertPage(0, [W, H]);                       // the same size as before
+  const dx = (W - W * s) / 2;                                 // centred
+  const at = rot === 90  ? { x: dx, y: s * box.width, rotate: L.degrees(-90) }          // a turned page comes out upright
+           : rot === 180 ? { x: dx + s * box.width, y: s * box.height, rotate: L.degrees(180) }
+           : rot === 270 ? { x: dx + s * box.height, y: 0, rotate: L.degrees(90) }
+           :               { x: dx, y: 0 };
+  pg.drawPage(emb, { ...at, xScale: s, yScale: s });          // the old page 1, a little smaller, under the strip
+  const font = await doc.embedFont(L.StandardFonts.HelveticaBold);
+  const margin = Math.min(42, W * 0.08);
+  let size = 20;                                              // bold, black, about twice normal invoice text
+  while (size > 11 && font.widthOfTextAtSize(text, size) > W - 2 * margin) size--;
+  const cap = font.heightAtSize(size, { descender: false });
+  pg.drawText(text, { x: W - margin - font.widthOfTextAtSize(text, size), y: H - MT_STRIP / 2 - cap / 2, size, font, color: L.rgb(0, 0, 0) });
+  doc.removePage(1);                                          // the old page 1 lives on inside the new one
+  return doc.save();
+}
+
+/* The PDFs of one receipt whose written No. is not its current No. */
+function mtStampTodo(costId, own) {
+  const want = String(own || '').trim() || null;
+  return mtCostFiles(costId).filter(d => mtIsPdfPath(d.orig_path || d.file_path)
+    && (d.stamp_no || null) !== want && !(want && d.stamp_no === '!' + want));
+}
+
+/* Bring those PDFs in line with the No. (after Save) → { failed, locked } */
+async function mtStampSync(c, docs, own, fresh) {
+  const want = String(own || '').trim() || null;
+  const sb = _ctlSupa, store = sb.storage.from(MT_BUCKET);
+  const res = { failed: 0, locked: 0 };
+  for (const d of docs) {
+    const orig = d.orig_path || d.file_path;                  // the untouched original
+    const oldCopy = d.orig_path && d.file_path !== d.orig_path ? d.file_path : null;   // the copy with the previous No.
+    let patch, newPath = null;
+    if (!want) patch = { file_path: orig, orig_path: null, stamp_no: null };             // No. cleared → the original again
+    else {
+      let bytes = fresh && fresh.get(orig);
+      if (!bytes) {
+        const r = await mtTry(() => store.download(orig));
+        if (r.error || !r.data) { console.warn('[maintenance] original not loaded:', r.error); res.failed++; mtStampStep(c); continue; }
+        bytes = await r.data.arrayBuffer();
+      }
+      let out;
+      try { out = await mtStampNo(bytes, want); }
+      catch (e) { console.warn('[maintenance] No. not written:', e); res.failed++; mtStampStep(c); continue; }   // e.g. offline → the next Save tries again
+      if (!out) { res.locked++; patch = { file_path: orig, orig_path: null, stamp_no: '!' + want }; }    // stays as it is, never an old No.
+      else {
+        newPath = `${c.id}/${mtUuid()}.pdf`;
+        const blob = new Blob([out], { type: 'application/pdf' });
+        const up = await mtTry(async () => {
+          const r = await store.upload(newPath, blob, { contentType: 'application/pdf', upsert: false, cacheControl: '3600' });
+          if (r && r.error && /exist|duplicate|409/i.test(String(r.error.message || r.error.statusCode || ''))) return {};   // the first try did arrive
+          return r;
+        });
+        if (up.error) { console.warn('[maintenance] copy with the No. not uploaded:', up.error); res.failed++; mtStampStep(c); continue; }
+        patch = { file_path: newPath, orig_path: orig, stamp_no: want };
+      }
+    }
+    const u = await mtTry(() => sb.from('maint_docs').update(patch).eq('id', d.id));
+    if (u.error) {
+      console.warn('[maintenance] file row not updated:', u.error);
+      res.failed++;
+      if (newPath) { try { await store.remove([newPath]); } catch (e) {} }
+      mtStampStep(c);
+      continue;
+    }
+    Object.assign(d, patch);
+    if (oldCopy) { try { await store.remove([oldCopy]); } catch (e) {} }                 // the copy with the previous No.
+    mtStampStep(c);
+  }
+  return res;
+}
+function mtStampStep(c) { if (MT.up) { MT.up.done++; mtRefresh(c.id); } }
 
 async function mtCostDelete() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
@@ -2537,7 +2691,7 @@ function mtSbPhotosHTML(c, f) {
         <button type="button" class="mt-seg__b${f.photosOn ? '' : ' is-on'}" data-mt="sbFotos" data-v="0" aria-pressed="${!f.photosOn}">Without photos</button>
         <button type="button" class="mt-seg__b${f.photosOn ? ' is-on' : ''}" data-mt="sbFotos" data-v="1" aria-pressed="${!!f.photosOn}">With photos</button>
       </div>
-      ${up ? `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Uploading ${Math.min(up.done + 1, up.total)} of ${up.total}</p>` : ''}
+      ${up ? `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>${up.what ? mtEsc(up.what) + ' · ' : 'Uploading '}${Math.min(up.done + 1, up.total)} of ${up.total}</p>` : ''}
       ${rows ? `<div class="mt-prl">${rows}</div>` : ''}
       <p class="mt-hint">${f.photosOn ? 'Switch a photo off to leave it out. The number is its place in the report.' + (rb ? ' Vorher / Nachher sorts them.' : '')
         : (photos.length ? 'The report goes without photos. Choose "With photos" to show them.' : 'A new photo turns on "With photos".')}</p>

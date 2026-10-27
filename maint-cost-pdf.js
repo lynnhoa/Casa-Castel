@@ -10,6 +10,7 @@
      invoices and returns of one entry · Selbst gekauft / Dienstleister
      like the app · returns under their receipt with Netto · split per
      year when the entry spans more than one
+   · D27: first column “Nr.” = your own No. (bold); “Beleg-Nr.” → “Beleg-/Bestell-Nr.”
    Same frame as the Schadensbericht (A4, beige header, Playfair Display +
    Lato, footer); pdf-open.js flows long tables onto the next page (the
    table header repeats). Opened directly, not saved in Documents.
@@ -29,10 +30,10 @@ const mtCpSum = rows => rows.reduce((s, r) => s + mtCpSigned(r), 0);
 
 /* one cost row → one table line (a return names its receipt) */
 function mtCpLine(r) {
-  if (!r.return_of) return { no: r.receipt_no || '', desc: r.description || '', who: r.brand || '', amt: mtCpSigned(r), date: r.cost_date };
+  if (!r.return_of) return { own: r.own_no || '', no: r.receipt_no || '', desc: r.description || '', who: r.brand || '', amt: mtCpSigned(r), date: r.cost_date };
   const p = mtCostById(r.return_of), pk = (p || r).kind === 'provider';
   return {
-    ret: true, no: 'Rückgabe' + (r.receipt_no ? ' · Bon ' + r.receipt_no : ''),
+    ret: true, own: r.own_no || '', no: 'Rückgabe' + (r.receipt_no ? ' · Bon ' + r.receipt_no : ''),
     desc: ['zu ' + (pk ? 'Rechnung' : 'Beleg') + (p && p.receipt_no ? ' ' + p.receipt_no : ''), r.description].filter(Boolean).join(' · '),
     who: p ? p.brand || '' : '', amt: mtCpSigned(r), date: r.cost_date,
   };
@@ -65,7 +66,7 @@ function mtCpYearData(kind, year) {
   return {
     mode: 'year', family: 'rentals', wordmark: MT_KIND[kind].title, rl: 'Jahr', rv: y,
     title: 'Rechnungsübersicht ' + y, subtitle: [MT_KIND[kind].title, 'alle Objekte', 'Stand ' + stand].join(' · '),
-    cols: ['Beleg-Nr.', 'Beschreibung', 'Geschäft / Dienstleister'],
+    cols: ['Beleg-/Bestell-Nr.', 'Beschreibung', 'Geschäft / Dienstleister'],
     totals: mtCpTotals(all), groups, gesamt: mtEur(mtCpSum(all)), footer: S.vermieter_name || '',
     fileName: ccPdfFileName('Rechnungsuebersicht', MT_KIND[kind].title, y, 'Stand ' + stand),
   };
@@ -86,7 +87,7 @@ function mtCpEntryData(c) {
     });
     return {
       title: k === 'self' ? 'Selbst gekauft' : 'Dienstleister',
-      cols: k === 'self' ? ['Beleg-Nr.', 'Beschreibung', 'Geschäft'] : ['Rechnungs-Nr.', 'Leistung', 'Dienstleister'],
+      cols: k === 'self' ? ['Beleg-/Bestell-Nr.', 'Beschreibung', 'Geschäft'] : ['Rechnungs-Nr.', 'Leistung', 'Dienstleister'],
       lines, sum: mtCpSum(rows.filter(r => mtCpKindOf(r) === k)),
     };
   }).filter(b => b.lines.length);
@@ -139,6 +140,7 @@ function mtCostPdfHTML(d) {
       padding:7px 8px 5px 0; border-bottom:0.5px solid #d9d3cb; }
     table.t td { padding:5px 8px 5px 0; border-bottom:0.4px solid #ece7e0; vertical-align:top; line-height:1.4; overflow-wrap:anywhere; }
     table.t .n { text-align:right; white-space:nowrap; padding-right:0; }
+    table.t td.own { font-weight:700; }
     table.t .d { white-space:nowrap; padding-left:10px; padding-right:0; text-align:right; }
     table.t tr.ret td { color:#3f6b35; }
     table.t tr.net td { font-style:italic; color:#6b645c; border-bottom:0.5px solid #d9d3cb; }
@@ -150,15 +152,15 @@ function mtCostPdfHTML(d) {
       font-family:'Lato',sans-serif; font-size:9px; font-weight:700; letter-spacing:0.16em; text-transform:uppercase; color:#6e5128; }
     .empty { margin-top:16px; font-family:'Lato',sans-serif; font-size:11px; color:#6b645c; }
   `;
-  const colg = '<colgroup><col style="width:17%"><col><col style="width:24%"><col style="width:14%"><col style="width:13%"></colgroup>';
-  const head = cols => `<tr><th>${esc(cols[0])}</th><th>${esc(cols[1])}</th><th>${esc(cols[2])}</th><th class="n">Betrag</th><th class="d">Datum</th></tr>`;
+  const colg = '<colgroup><col style="width:8%"><col style="width:15%"><col><col style="width:20%"><col style="width:13%"><col style="width:13%"></colgroup>';
+  const head = cols => `<tr><th>Nr.</th><th>${esc(cols[0])}</th><th>${esc(cols[1])}</th><th>${esc(cols[2])}</th><th class="n">Betrag</th><th class="d">Datum</th></tr>`;
   const line = l => l.net
-    ? `<tr class="net"><td></td><td>Netto</td><td></td><td class="n">${amt(l.amt)}</td><td class="d"></td></tr>`
-    : `<tr${l.ret ? ' class="ret"' : ''}><td>${esc(l.no)}</td><td>${esc(l.desc)}</td><td>${esc(l.who)}</td><td class="n">${amt(l.amt)}</td><td class="d">${esc(mtDate(l.date))}</td></tr>`;
+    ? `<tr class="net"><td></td><td></td><td>Netto</td><td></td><td class="n">${amt(l.amt)}</td><td class="d"></td></tr>`
+    : `<tr${l.ret ? ' class="ret"' : ''}><td class="own">${esc(l.own)}</td><td>${esc(l.no)}</td><td>${esc(l.desc)}</td><td>${esc(l.who)}</td><td class="n">${amt(l.amt)}</td><td class="d">${esc(mtDate(l.date))}</td></tr>`;
   let body = '';
   const yg = groups => groups.map(g => `<div class="sec"><span>${esc(g.name)}</span><span class="sec__r">${amt(g.sum)}</span></div>
       <table class="t">${colg}${head(d.cols)}${g.ents.map(e =>
-        `<tr class="grp"><td colspan="3">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
+        `<tr class="grp"><td colspan="4">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
         e.lines.map(line).join('')).join('')}</table>`).join('');
   if (d.mode === 'year2') {                                  // D22: Renovierungen, then Schäden
     body = (d.parts || []).map(pt => `<div class="tab"><span>${esc(pt.title)}</span><span>${amt(pt.sum)}</span></div>` + yg(pt.groups)).join('');
@@ -166,7 +168,7 @@ function mtCostPdfHTML(d) {
   } else if (d.mode === 'year') {
     body = d.groups.map(g => `<div class="sec"><span>${esc(g.name)}</span><span class="sec__r">${amt(g.sum)}</span></div>
       <table class="t">${colg}${head(d.cols)}${g.ents.map(e =>
-        `<tr class="grp"><td colspan="3">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
+        `<tr class="grp"><td colspan="4">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
         e.lines.map(line).join('')).join('')}</table>`).join('');
     if (!d.groups.length) body = '<p class="empty">Keine Belege in diesem Jahr.</p>';
   } else {
@@ -239,7 +241,7 @@ function mtCpYearDataAll(year) {
   return {
     mode: 'year2', family: 'rentals', wordmark: 'Maintenance', rl: 'Jahr', rv: y,
     title: 'Rechnungsübersicht ' + y, subtitle: ['Renovierungen und Schäden', 'alle Objekte', 'Stand ' + stand].join(' · '),
-    cols: ['Beleg-Nr.', 'Beschreibung', 'Geschäft / Dienstleister'],
+    cols: ['Beleg-/Bestell-Nr.', 'Beschreibung', 'Geschäft / Dienstleister'],
     totals: [['Renovierungen', mtEur(sumOf('renovierung'))], ['Schäden', mtEur(sumOf('schaden'))], ['Gesamt', mtEur(mtCpSum(all))], ['Belege', String(all.filter(r => !r.return_of).length)]],
     parts, gesamt: mtEur(mtCpSum(all)), footer: S.vermieter_name || '',
     fileName: ccPdfFileName('Rechnungsuebersicht', y, 'Stand ' + stand),
@@ -254,7 +256,7 @@ function mtPdfEntry(id, btn) {
 
 /* ─────────────────────────────────────────────────────────────
    D19 · BELEG PDF — the photos of one receipt as one PDF in the apps' style:
-   beige header (property · Rechnungs-Nr.), "Rechnung", when the photo was taken,
+   beige header (property · Beleg-/Bestell-Nr.), "Rechnung", when the photo was taken,
    the photo below — one page per photo. Plain photo PDF if this fails.
    ───────────────────────────────────────────────────────────── */
 async function mtBelegPdf(files, c, no) {
@@ -313,7 +315,7 @@ function mtBelegHTML(d) {
   return `<style>${CSS}</style>` + d.pages.map((p, i) => `
 <div class="pdf-page">
   <div class="hdr"><span class="hdr__wordmark">${esc(d.wordmark)}</span>
-    ${d.no ? `<div class="hdr__room"><span class="hdr__room-label">Rechnungs-Nr.</span><span class="hdr__room-name">${esc(d.no)}</span></div>` : ''}</div>
+    ${d.no ? `<div class="hdr__room"><span class="hdr__room-label">Beleg-/Bestell-Nr.</span><span class="hdr__room-name">${esc(d.no)}</span></div>` : ''}</div>
   <div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer)}</span><span>${n > 1 ? (i + 1) + ' / ' + n : '1'}</span></div></div>
   <div class="content">
     <div class="doc-title">Rechnung</div>
