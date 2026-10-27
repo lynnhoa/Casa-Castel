@@ -29,7 +29,8 @@
                  only when it really failed (the form comes back)
 
    Costs (per case, in the panel, D1): one row = one receipt / invoice
-               No. · Receipt / order no. · Description · Brand / Provider · Amount · Date · Photos
+               No. · Description · Brand / Provider · Amount · Date · Photos
+               (D28: the receipt / order no. only inside the receipt, not in the row)
                grouped Self-bought / Provider · tap a row = edit it in place
                · D2: a return is its own row (return_of = its receipt), shown
                  under the receipt, own slip no. / date / photo; Net per receipt
@@ -1242,7 +1243,7 @@ function mtCostsHTML(c) {
     if (!list.length) return;
     h += `<div class="mt-cg">
       <div class="mt-cg__h"><span class="mt-cg__t">${MT_COST[kind].label} · ${list.length}</span><span class="mt-cg__s">${mtEur(mtCost([c.id], null, kind))}</span></div>
-      <div class="mt-ch" aria-hidden="true"><span>No. · Receipt / order no.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
+      <div class="mt-ch" aria-hidden="true"><span>No.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
       ${list.map(r => {
         const rets = mtReturnsOf(r.id);
         let x = mtCostRowHTML(r, tap);
@@ -1446,11 +1447,13 @@ function mtCostRowHTML(r, tap) {
   const n = mtCostFiles(r.id).length, ret = !!r.return_of;
   const parent = ret ? mtCostById(r.return_of) : null;
   const off = ret ? !!parent && parent.book_ctrl === false : r.book_ctrl === false;
-  const own = String(r.own_no || '').trim();                 // D27: your No. in bold in front
-  const no = ret ? (r.receipt_no ? 'Slip ' + r.receipt_no : 'Return') : (r.receipt_no || (own ? '' : '—'));
-  const desc = ret ? (r.description ? 'Return · ' + r.description : 'Return') : (r.description || '');
+  // D28: the row shows only your No. (bold) + the description — the receipt / order no. only inside the receipt
+  const own = String(r.own_no || '').trim();
+  const no = (ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : '') + (own ? `<b>${mtEsc(own)}</b>` : '');
+  const desc = ret ? (r.description ? 'Return · ' + r.description : 'Return')
+                   : (r.description || r.receipt_no || '—');      // no description → its receipt / order no., never an empty row
   return `<button type="button" class="mt-cr${ret ? ' mt-cr--ret' : ''}" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}"${tap ? '' : ' tabindex="-1"'}>
-      <span class="mt-cr__a"><span class="mt-cr__no">${ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : ''}${own ? `<b>${mtEsc(own)}</b>${no ? ' · ' : ''}` : ''}${mtEsc(no)}</span><span class="mt-cr__desc">${mtEsc(desc)}${off ? '<span class="mt-off">not in Controlling</span>' : ''}</span></span>
+      <span class="mt-cr__a"><span class="mt-cr__no"${no ? '' : ' style="margin-right:-6px"'}>${no}</span><span class="mt-cr__desc">${mtEsc(desc)}${off ? '<span class="mt-off">not in Controlling</span>' : ''}</span></span>
       <span class="mt-cr__amt">${ret ? mtNeg(r.amount) : mtEur(r.amount)}</span>
       <span class="mt-cr__b"><span class="mt-cr__who">${ret ? '' : mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
       <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ''}</span>
