@@ -63,6 +63,11 @@
                  shows “Nr. <No.>” in bold on top of page 1 (page shrinks a little, same size,
                  A4 stays A4); the untouched original stays in storage (maint_docs.orig_path,
                  stamp_no = the No. on the copy) — MAINTENANCE-D27.sql
+               · D29: the No. is automatic (no typing, no duplicates) — see mtNumbers():
+                 R/S + running no. per property and start year, receipts .1 .2 … by date,
+                 returns .1 under their receipt. Label on PDFs "R1.2 · 2026 · <Objekt>"; the
+                 number on a receipt PDF is written again when it moved (on open / save).
+                 "Invoices" (case + strip): only the invoice files, in the list's order.
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
                          (shrunk to 2000 px + a small preview in /thumbs/)
@@ -115,6 +120,10 @@ function mtCostYears() {
   return [...new Set(ys.concat([mtYear()]))].sort().reverse();
 }
 const mtHasCosts = (ids, year) => MT.costs.some(r => ids.includes(String(r.case_id)) && (!year || String(r.cost_date || '').slice(0, 4) === String(year)));
+/* D29 · any invoice file among these cases' receipts (of that year) → the Invoices button is on */
+const mtHasInvoiceFiles = (ids, year) => MT.costs.some(r => ids.includes(String(r.case_id)) && (!year || String(r.cost_date || '').slice(0, 4) === String(year))
+  && MT.docs.some(d => String(d.cost_id) === String(r.id)));
+const mtInvChip = on => `<span class="mt-pdfw"><button type="button" class="mt-pdf${on ? '' : ' off'}" data-mt="invYear" data-cc-pdf="1" data-label="INVOICES" aria-label="Invoices PDF"${on ? '' : ' aria-disabled="true"'}><i class="ti ti-files" aria-hidden="true"></i>INVOICES</button></span>`;
 const mtPdfChip = (a, id, on) => `<span class="mt-pdfw"><button type="button" class="mt-pdf${on ? '' : ' off'}" data-mt="${a}"${id ? ` data-id="${mtEsc(id)}"` : ''} data-cc-pdf="1" aria-label="PDF overview"${on ? '' : ' aria-disabled="true"'}><i class="ti ti-file-text" aria-hidden="true"></i>PDF</button></span>`;
 
 const MT_KIND = {
@@ -845,11 +854,16 @@ function mtOpenUrl(url) {
 function mtOpenDoc(id) {
   const d = MT.docs.find(x => String(x.id) === String(id));
   if (!d) return;
-  const ready = mtLinkNow(d.file_path);
+  // D29: a receipt PDF shows its current automatic No. — written again from the original when it moved
+  const lbl = d.cost_id ? mtNoLabel(d.cost_id) : '';
+  const stale = !!lbl && mtIsPdfPath(d.orig_path || d.file_path) && (d.stamp_no || null) !== lbl && d.stamp_no !== '!' + lbl;
+  const ready = !stale && mtLinkNow(d.file_path);
   if (ready) { mtOpenUrl(ready); return; }
   let w = null;                                           // open the tab inside the tap, fill it when the link is there
   if (!(typeof CC_STANDALONE !== 'undefined' && CC_STANDALONE)) { try { w = window.open('', '_blank'); } catch (e) { w = null; } }
-  mtPrepareLinks([d.file_path]).then(() => {
+  const c0 = mtCase(d.case_id) || { id: d.case_id };
+  (stale ? mtStampSync(c0, [d], lbl).catch(e => console.warn('[maintenance] No. not written:', e)) : Promise.resolve())
+    .then(() => mtPrepareLinks([d.file_path])).then(() => {
     const url = mtLinkNow(d.file_path);
     if (!url) { try { if (w) w.close(); } catch (e) {} mtSay('The file could not be opened. Try again.'); return; }
     if (w) { try { w.location.replace(url); return; } catch (e) {} }
@@ -1220,6 +1234,65 @@ const mtCostById = id => MT.costs.find(x => String(x.id) === String(id)) || null
 const mtReturnsOf = id => MT.costs.filter(x => String(x.return_of) === String(id)).sort(mtCostByDate);
 const mtCostByDate = (a, b) => String(a.cost_date || '').localeCompare(String(b.cost_date || '')) ||
                                String(a.created_at || '').localeCompare(String(b.created_at || ''));
+
+/* ── D29 · Automatic numbers (replace the typed "No.") ──────────────────────
+   Case     R (Renovierung) / S (Schaden) + running number per property and start year,
+            by start date, then the order entered                      → R1, R2 … · S1, S2 …
+   Receipt  the case's number + .n by receipt date, then order entered  → R1.1, R1.2 …
+   Return   its receipt's number + .n                                   → R1.2.1
+   Nothing is typed or stored: the numbers follow the dates, so a forgotten older receipt
+   moves the later ones. Sort key = [start year, case, receipt, return].              */
+const mtEnteredKey = x => String(x.created_at || '9999') + '|' + String(x.id);          // new rows (no created_at yet) last
+const mtByDateThen = f => (a, b) => String(f(a) || '').localeCompare(String(f(b) || '')) || mtEnteredKey(a).localeCompare(mtEnteredKey(b));
+let _mtNoSig = '', _mtNo = null;
+function mtNumbers() {
+  const sig = MT.cases.map(c => [c.id, c.case_date, c.property_id, c.kind].join('~')).join('|') + '#' +
+              MT.costs.map(r => [r.id, r.case_id, r.return_of || '', r.cost_date].join('~')).join('|');
+  if (_mtNo && sig === _mtNoSig) return _mtNo;
+  const cases = new Map(), costs = new Map(), groups = new Map();
+  for (const c of MT.cases) {
+    const k = [c.property_id || c.property_name || '', String(c.case_date || '').slice(0, 4), c.kind].join('|');
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(c);
+  }
+  for (const list of groups.values()) {
+    list.sort(mtByDateThen(c => c.case_date));
+    list.forEach((c, i) => {
+      const year = String(c.case_date || '').slice(0, 4);
+      cases.set(String(c.id), { no: (c.kind === 'schaden' ? 'S' : 'R') + (i + 1), year, key: [Number(year) || 0, i + 1] });
+    });
+  }
+  for (const c of MT.cases) {
+    const cn = cases.get(String(c.id));
+    const rows = MT.costs.filter(r => String(r.case_id) === String(c.id));
+    rows.filter(r => !r.return_of).sort(mtByDateThen(r => r.cost_date)).forEach((r, i) => {
+      const no = cn.no + '.' + (i + 1);
+      costs.set(String(r.id), { no, key: cn.key.concat([i + 1, 0]) });
+      rows.filter(x => String(x.return_of) === String(r.id)).sort(mtByDateThen(x => x.cost_date)).forEach((x, j) =>
+        costs.set(String(x.id), { no: no + '.' + (j + 1), key: cn.key.concat([i + 1, j + 1]) }));
+    });
+  }
+  _mtNoSig = sig; _mtNo = { cases, costs };
+  return _mtNo;
+}
+const mtCaseNo = c => { const n = c && mtNumbers().cases.get(String(c.id)); return n ? n.no : ''; };
+const mtCaseLabel = c => { const n = c && mtNumbers().cases.get(String(c.id)); return n ? n.no + (n.year ? ' · ' + n.year : '') : ''; };   // S2 · 2026
+const mtCostNo = id => { const n = mtNumbers().costs.get(String(id)); return n ? n.no : ''; };
+const mtNoCmp = (a, b) => {                                   // number order (= date order inside a case)
+  const x = (mtNumbers().costs.get(String(a.id)) || { key: [] }).key, y = (mtNumbers().costs.get(String(b.id)) || { key: [] }).key;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const d = (x[i] || 0) - (y[i] || 0); if (d) return d; }
+  return 0;
+};
+const mtCaseCmp = (a, b) => {
+  const x = (mtNumbers().cases.get(String(a.id)) || { key: [] }).key, y = (mtNumbers().cases.get(String(b.id)) || { key: [] }).key;
+  return (x[0] || 0) - (y[0] || 0) || (x[1] || 0) - (y[1] || 0);
+};
+/* what the receipt PDF shows on top: "Nr. R1.2 · 2026 · Kaiserstr. WHG 507" */
+function mtNoLabel(costId) {
+  const r = mtCostById(costId), c = r ? mtCase(r.case_id) : null, n = c && mtNumbers().cases.get(String(c.id));
+  const no = mtCostNo(costId);
+  return no ? [no, n && n.year, c && (mtIsCasa(c.property_id) ? 'Casa Castel' : mtPropName(c))].filter(Boolean).join(' \u00b7 ') : '';
+}
 const mtNum = n => Math.round((Number(n) || 0) * 100) / 100;
 const mtNeg = n => '\u2212' + mtEur(n);                      // −30,00 €
 
@@ -1283,8 +1356,7 @@ Read it like this:
 - Receipt / order no.: Rechnungs-Nr. on invoices, Beleg-/Bon-Nr. on
   receipts, Bestell-Nr. on orders. On DIY-store receipts (Bauhaus,
   Hornbach, OBI, toom): the long barcode number, digits only. Never
-  Steuernummer, EAN, TSE or Kundennummer. My own "No." is not on the
-  receipt — leave it out, I add it in the app.
+  Steuernummer, EAN, TSE or Kundennummer.
 - Shop / provider: short shop name (Bauhaus, Hornbach, OBI, IKEA) or the
   company name from the letterhead.
 - Description: what was bought or done, short German, max 160 characters,
@@ -1447,8 +1519,8 @@ function mtCostRowHTML(r, tap) {
   const n = mtCostFiles(r.id).length, ret = !!r.return_of;
   const parent = ret ? mtCostById(r.return_of) : null;
   const off = ret ? !!parent && parent.book_ctrl === false : r.book_ctrl === false;
-  // D28: the row shows only your No. (bold) + the description — the receipt / order no. only inside the receipt
-  const own = String(r.own_no || '').trim();
+  // D28: the row shows only the No. (bold) + the description — the receipt / order no. only inside the receipt
+  const own = mtCostNo(r.id);                                 // D29: automatic
   const no = (ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : '') + (own ? `<b>${mtEsc(own)}</b>` : '');
   const desc = ret ? (r.description ? 'Return · ' + r.description : 'Return')
                    : (r.description || r.receipt_no || '—');      // no description → its receipt / order no., never an empty row
@@ -1481,8 +1553,6 @@ function mtCostFormHTML(f) {
   return `<div class="mt-ab mt-cf-form${ret ? ' is-ret' : ''}" id="mtC-form" data-fid="${mtEsc(f.id)}">
       ${top}
       <div class="mt-grid">
-        <div class="mt-f"><label class="mt-k" for="mtC-own">No.</label>
-          <input class="mt-in" id="mtC-own" type="text" maxlength="30" autocomplete="off" value="${mtEsc(f.own_no || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt / order no.'}</label>
           <input class="mt-in" id="mtC-no" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.receipt_no || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtC-desc">Description</label>
@@ -1695,12 +1765,6 @@ async function mtCostSave() {
     if (!MT.sel || MT.sel.cost !== f) return;                  // the panel changed meanwhile
   }
 
-  const dupOwn = mtOwnDupOf(f.own_no, f.id);                  // D27
-  if (dupOwn) {
-    const ok = await mtConfirm({ title: `No. ${String(f.own_no).trim()} already exists`, text: dupOwn.same ? 'It is already in this entry. Save it anyway?' : `It is already in ${dupOwn.where}. Save it anyway?`, ok: 'Save anyway' });
-    if (!ok) return;
-    if (!MT.sel || MT.sel.cost !== f) return;                  // the panel changed meanwhile
-  }
 
   // D8 · typed by hand in Controlling already? → link it (one line), book separately, or don't book
   let pick = null;
@@ -1740,12 +1804,10 @@ async function mtCostSave() {
   const isNew = f.isNew, id = f.id;
   const now = new Date().toISOString();
   const old = isNew ? null : { ...mtCostById(id) };
-  const own = String(f.own_no || '').trim();                  // D27
   const row = {
     id, case_id: c.id, kind: ret ? parent.kind : f.kind, receipt_no: String(f.receipt_no).trim() || null, description: String(f.description).trim() || null,
     brand: ret ? null : String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: ret ? parent.id : null,
     book_ctrl: ret ? true : f.book_ctrl !== false,                 // a return follows its receipt
-    ...(own || (old && old.own_no) ? { own_no: own || null } : {}),   // D27: only sent when used → saving works before MAINTENANCE-D27.sql
     ...(pick || {}),
   };
   const kindChanged = !ret && old && old.kind !== row.kind;
@@ -1815,13 +1877,14 @@ async function mtCostSave() {
     const n0 = MT.docs.length;
     const ok = await mtUploadOne(c, file, { type: 'receipt', amount: null, date: row.cost_date }, { cost_id: id });
     if (!ok) failed++;
-    else if (own && mtIsPdf(file) && MT.docs.length > n0) { try { fresh.set(MT.docs[MT.docs.length - 1].file_path, await file.arrayBuffer()); } catch (e) {} }
+    else if (mtIsPdf(file) && MT.docs.length > n0) { try { fresh.set(MT.docs[MT.docs.length - 1].file_path, await file.arrayBuffer()); } catch (e) {} }
     if (MT.up) MT.up.done++;
     mtRefresh(c.id);
   }
   MT.up = null;
-  // D27 · your No. on top of the receipt's PDFs (new, moved-in and earlier ones) — or the originals back when it was cleared
+  // D27/D29 · the automatic No. on top of the receipt's PDFs (new, moved-in and earlier ones)
   let st = null;
+  const own = mtNoLabel(id);
   const todo = mtStampTodo(id, own);
   if (todo.length) {
     MT.up = { caseId: c.id, total: todo.length, done: 0, where: 'costs', what: 'Adding your No.' };
@@ -2242,7 +2305,7 @@ function mtSbData(c, f, photoCount) {
     objektName: casa ? 'Casa Castel' : ((apt && apt.name) || mtPropName(c)),
     einheitLabel: unit[0], einheitWert: unit[1], einheitKurz: casa ? '' : String((apt && apt.wohnungsnummer) || ''),
     titel: 'Schadensbericht' + (wort ? ' – ' + wort : ''),
-    subtitle: (casa ? ['Stand ' + stand] : ['an die Hausverwaltung', 'Stand ' + stand]).join(' · '),
+    subtitle: [mtCaseLabel(c)].concat(casa ? ['Stand ' + stand] : ['an die Hausverwaltung', 'Stand ' + stand]).filter(Boolean).join(' · '),
     stand,
     datum: f.signDate ? mtDate(f.signDate) : '',
     styles: { schadensbild: mtSty(c, 'schadensbild'), ursache: mtSty(c, 'ursache'), massnahmen: mtSty(c, 'massnahmen'), bitte_hv: mtSty(c, 'bitte_hv'), dringend: mtSty(c, 'report_dringend') },
@@ -2303,6 +2366,8 @@ function mtWire() {
     else if (a === 'docToCost') mtDocToCost(b.dataset.id);
     else if (a === 'pdfYear') mtPdfYear(b);
     else if (a === 'pdfEntry') mtPdfEntry(b.dataset.id, b);
+    else if (a === 'invYear') mtPdfInvYear(b);                // D29
+    else if (a === 'invEntry') mtPdfInvEntry(b.dataset.id, b);
     else if (a === 'docsEdit') { if (MT.sel) { MT.sel.docEdit = true; MT.sel.fix = null; mtRenderPanel(); } }
     else if (a === 'docsDone') { if (MT.sel) { MT.sel.docEdit = false; MT.sel.fix = null; mtRenderPanel(); } }
     else if (a === 'fixDoc') { if (MT.sel) { MT.sel.fix = String(b.dataset.id); mtRenderPanel(); } }
@@ -2475,7 +2540,7 @@ function mtRbFieldsBody(c) {
       <label class="mt-chk mt-f--full"><input type="checkbox" id="mtR-kosten"${c.rb_kosten ? ' checked' : ''}/><span>Show the costs in the report (Gesamt · Selbst gekauft · Dienstleister)</span></label>`;
 }
 function mtSbFormHTML(c, f) {
-  const kl = mtBerichtLbl(c), no = f.reportNo || c.report_no;
+  const kl = mtBerichtLbl(c), no = mtCaseLabel(c) || f.reportNo || c.report_no;   // D29: the case number
   const head = `<div class="mt-modal__h">
       <div><p class="mt-modal__k">${kl}${no ? ' · ' + mtEsc(no) : ''}</p>
         <p class="mt-modal__t" id="mtSbT">${mtEsc(c.title)}</p>
@@ -2717,7 +2782,7 @@ function mtBothHTML() {
   const ids = MT.cases.map(c => c.id), yy = mtSumYear(), yrs = mtCostYears();
   return `<div class="mt-both">
       <div class="mt-both__r1"><span class="mt-both__l">Both tabs ·</span><label class="mt-ysel"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>
-        ${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}</div>
+        ${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}${mtInvChip(mtHasInvoiceFiles(ids.map(String), yy))}</div>
       <div class="mt-both__r2"><span><i>${yy}</i>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span></div>
     </div>`;
 }
@@ -2774,9 +2839,10 @@ function mtSbOpenPdf() {
 }
 /* Below the divider of every entry (closed and open): Kostenübersicht · Schadensbericht / Renovierungsbericht */
 function mtActsHTML(c, inPanel) {
-  const has = mtHasCosts([String(c.id)]), id = mtEsc(c.id);
+  const has = mtHasCosts([String(c.id)]), id = mtEsc(c.id), inv = mtHasInvoiceFiles([String(c.id)]);
   return `<div class="mt-acts${inPanel ? ' mt-acts--in' : ''}">
       <span class="mt-pdfw"><button type="button" class="mt-act${has ? '' : ' off'}" data-mt="pdfEntry" data-id="${id}" data-cc-pdf="1" data-label="Kostenübersicht"${has ? '' : ' aria-disabled="true"'}><i class="ti ti-file-text" aria-hidden="true"></i>Kostenübersicht</button></span>
+      <span class="mt-pdfw"><button type="button" class="mt-act${inv ? '' : ' off'}" data-mt="invEntry" data-id="${id}" data-cc-pdf="1" data-label="Invoices"${inv ? '' : ' aria-disabled="true"'}><i class="ti ti-files" aria-hidden="true"></i>Invoices</button></span>
       <button type="button" class="mt-act" data-mt="sbOpen" data-id="${id}"><i class="ti ti-file-description" aria-hidden="true"></i>${mtBerichtLbl(c)}</button>
     </div>`;
 }
@@ -2852,7 +2918,7 @@ function mtRbData(c, f, photoCount) {
     if (p.length) kosten.push(['Dienstleister', mtEur(sum(p))]);
   }
   return Object.assign(b, {
-    mode: 'rb', titel: 'Renovierungsbericht – ' + c.title, subtitle: 'Stand ' + b.stand, dringend: '',
+    mode: 'rb', titel: 'Renovierungsbericht – ' + c.title, subtitle: [mtCaseLabel(c), 'Stand ' + b.stand].filter(Boolean).join(' · '), dringend: '',
     angaben: [['Objekt', b.adresse], ['Einheit', b.einheit], ['Bereich', b.raum], ['Zeitraum', typeof mtCpSpan === 'function' ? mtCpSpan(c) : mtSpan(c)], ['Status', stat]],
     sections: [
       { key: 'anlass', title: 'Ausgangslage', text: c.rb_anlass, style: mtSty(c, 'rb_anlass') },
@@ -2891,7 +2957,7 @@ async function mtSbMake() {
     if (!(await limit(mtSbFlush(), 30, 'fields'))) throw new Error('fields');
     step = 'libs'; status('Getting ready');
     await limit(mtSbLibs(), 45, 'libs');
-    f.reportNo = c.report_no || mtSbNextNo(rb ? 'RB' : 'SB');
+    f.reportNo = mtCaseLabel(c) || c.report_no || mtSbNextNo(rb ? 'RB' : 'SB');   // D29: the case number (S2 · 2026)
     step = 'photos';
     const photos = f.photosOn ? await limit(mtSbPhotoData(c, (k, n) => status(`Loading photo ${k} of ${n}`)), 120, 'photos') : [];
     step = 'attachments';
