@@ -337,6 +337,19 @@ async function knkChange(el) {
   await knkSave(p, it, patch);
 }
 
+/* A property is deleted → its rows and files go too (the bookings in Controlling stay: real payments) */
+async function knkDeleteFor(pid) {
+  if (!KNK.loaded || KNK.missing) return;
+  const rows = KNK.rows.filter(r => Number(r.property_id) === Number(pid));
+  if (!rows.length) return;
+  const { error } = await _supa.from('prop_knk').delete().eq('property_id', pid);
+  if (error) throw error;
+  const files = rows.map(r => r.file_path).filter(Boolean);
+  if (files.length) _supa.storage.from(KNK_BUCKET).remove(files).catch(() => {});
+  KNK.rows = KNK.rows.filter(r => Number(r.property_id) !== Number(pid));
+  if (rows.some(r => r.id === KNK.open)) KNK.open = null;
+}
+
 /* ── Views ── */
 function knkPill(p) {
   if (!KNK.loaded) return '';
@@ -406,7 +419,8 @@ function knkEditorHTML(p, i) {
   const links = [paid ? '' : '<button type="button" data-knk="no" data-id="' + id + '">' + (i.not_needed ? 'Needed after all' : 'Not needed') + '</button>',
                  paid || i.legacy ? '' : '<button type="button" data-knk="del" data-id="' + id + '">Remove</button>'].filter(Boolean).join(' · ');
   return '<div class="knk-ed">' +
-    seg('art', KNK_ARTEN, i.art) +
+    '<div class="knk-chips" role="group" aria-label="Art">' + KNK_ARTEN.map(o =>          // Oct 2026 fix: chips that wrap neatly (not one pill)
+      '<button type="button" class="knk-pick' + (i.art === o ? ' on' : '') + '" data-knk="art" data-id="' + id + '" data-v="' + knkEsc(o) + '" aria-pressed="' + (i.art === o) + '">' + knkEsc(o) + '</button>').join('') + '</div>' +
     (knkHasPart(i.art) ? seg('part', ['Kauf', 'Grundschuld'], i.part) : '') +
     txt('company', i.art === 'Grunderwerbsteuer' ? 'Finanzamt' : 'Firma', i.company, i.art === 'Notar' ? 'z. B. Notariat Dr. Weber' : i.art === 'Grundbuch' ? 'z. B. Amtsgericht Mainz' : '') +
     (i.art === 'Sonstiges' ? txt('note', 'Beschreibung', i.note, 'z. B. Gutachter') : '') +

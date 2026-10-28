@@ -259,7 +259,7 @@ function renderEditForm(p) {
     </div>
     <div class="e-grid">
       <div class="e-field"><label class="e-lbl">Paid off €</label><input class="cc-input" id="e-abbezahlt" type="number" data-cc-num="2" value="${p.abbezahlt}"/></div>
-      <div class="e-field"><label class="e-lbl">Interest rate %</label><input class="cc-input" id="e-zinssatz" type="number" data-cc-num="auto" step="0.01" value="${p.zinssatz}"/></div>
+      <div class="e-field"><label class="e-lbl">Interest rate %</label><input class="cc-input" id="e-zinssatz" type="number" data-cc-num="2" step="0.01" value="${p.zinssatz}"/></div>
     </div>
     <div class="e-grid">
       <div class="e-field"><label class="e-lbl">Fixed rate until</label><input class="cc-input" id="e-zb" value="${p.zb}"/></div>
@@ -405,10 +405,13 @@ function closeConfirm() {
 }
 
 async function doDelete() {
+  const id = _delId;                                          // Oct 2026 fix: closeConfirm() clears _delId — it deleted "null"
   closeConfirm();
+  if (id === null || id === undefined) return;
   try {
     showLoading(true);
-    await deleteProperty(_delId);
+    if (typeof knkDeleteFor === 'function') await knkDeleteFor(id);   // its Kaufnebenkosten rows + files (Controlling bookings stay)
+    await deleteProperty(id);
     window._props = await fetchAll();
     closeDetail();
     renderAll();
@@ -434,14 +437,20 @@ function closeAdd() {
   document.getElementById('addOverlay').classList.remove('open');
 }
 
+let _adding = false;                                          // Oct 2026 fix: a 2nd tap while saving made a 2nd property
 async function saveNew() {
+  if (_adding) return;
   const g  = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
   const gn = id => { const v = parseFloat(g(id)); return isNaN(v) ? 0 : v; };
 
   const name = g('a-name');
   if (!name) { alert('Short name is required.'); return; }
 
-  const nextSort = await getNextSortOrder();
+  _adding = true;
+  showLoading(true);                                          // locks the screen right away (it used to wait for the number)
+  let nextSort;
+  try { nextSort = await getNextSortOrder(); }
+  catch (err) { _adding = false; showLoading(false); alert('Error saving: ' + err.message); return; }
 
   const fields = {
     sort_order:  nextSort,
@@ -484,5 +493,6 @@ async function saveNew() {
     alert('Error saving: ' + err.message);
   } finally {
     showLoading(false);
+    _adding = false;
   }
 }
