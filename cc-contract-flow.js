@@ -849,6 +849,9 @@ function ccfPlan(p) {
   const renewN = renewal ? (same ? same.n : rows.length + 1) : 0;
   // Kaution Soll: new tenancy → this contract; same tenancy → only when it differs; renewal → only a new amount > 0
   const soll = rec ? (Number(rec.kaution_soll) || null) : null;
+  // Oct 2026: with its own Contract start, the Move-in follows only when it was empty or the old contract start
+  const hasVB = (ccfRecs() || []).some(r => r && Object.prototype.hasOwnProperty.call(r, 'vertragsbeginn'));
+  const miFollows = !hasVB || !rec || !ccfIso(rec.mietbeginn) || ccfIso(rec.mietbeginn) === (ccfIso(rec.vertragsbeginn) || '');
   let kautionNew = null;
   if (!rec) kautionNew = p.kaution;
   else if (renewal) kautionNew = p.kaution > 0 && p.kaution !== soll ? p.kaution : null;
@@ -867,7 +870,10 @@ function ccfPlan(p) {
         && !(p.staffel || []).some(x => ccfIso(x.datum || x.date) === ccfIso(h.effective_date))) : [];
   return {
     kind: 'contract', rec, t, renewal, renewPid, renewN, start, end, soll, kautionNew, overlaps, endPrev, endPrevOn: true, staffelOld,
-    moveInChange: rec && !renewal && start && ccfIso(rec.mietbeginn) && ccfIso(rec.mietbeginn) !== start ? ccfIso(rec.mietbeginn) : null,
+    moveInChange: rec && !renewal && start && miFollows && ccfIso(rec.mietbeginn) && ccfIso(rec.mietbeginn) !== start ? ccfIso(rec.mietbeginn) : null,
+    // Oct 2026: Contract start of its own — shown in the preview; a Move-in set differently stays as it is
+    hasVB, csBefore: rec && !renewal && hasVB && ccfIso(rec.vertragsbeginn) && ccfIso(rec.vertragsbeginn) !== start ? ccfIso(rec.vertragsbeginn) : null,
+    moveInKept: rec && !renewal && start && !miFollows && ccfIso(rec.mietbeginn) !== start ? ccfIso(rec.mietbeginn) : null,
     endBefore: rec ? recEnd : null,
     moveOutRemoved: renewal && rec.mietende ? ccfIso(rec.mietende) : null,
     docType: renewal ? 'verlaengerung_' + start : ccfA().contractDocType(p, rec),
@@ -922,7 +928,10 @@ function _ccfSummaryRender() {
       ? _ccfRow('Type', e(ccfCtLabel(p.ctype)), `${pl.renewN}. Verlängerung ab ${ccfFmt(pl.start)}`)
       : _ccfRow('Type', e(ccfCtLabel(p.ctype)), rec && rec.contract_type && rec.contract_type !== p.ctype ? 'was ' + e(ccfCtLabel(rec.contract_type)) : '');
     body += `<div class="ccf-sec"><div class="ccf-sh"><span>Contract</span></div>${ctRow}
-      ${!pl.renewal ? _ccfRow('Move-in', ccfFmt(pl.start), pl.moveInChange ? 'was ' + ccfFmt(pl.moveInChange) + ' · the rent history moves with it' : '') : ''}
+      ${!pl.renewal && pl.hasVB ? _ccfRow('Contract start', ccfFmt(pl.start), pl.csBefore ? 'was ' + ccfFmt(pl.csBefore) : '') : ''}
+      ${!pl.renewal ? (pl.moveInKept
+        ? _ccfRow('Move-in', ccfFmt(pl.moveInKept), 'stays as it is')
+        : _ccfRow('Move-in', ccfFmt(pl.start), pl.moveInChange ? 'was ' + ccfFmt(pl.moveInChange) + ' · the rent history moves with it' : '')) : ''}
       ${pl.end || pl.endBefore ? _ccfRow('Contract end', pl.end ? ccfFmt(pl.end) : 'none (unbefristet)', pl.endBefore && pl.endBefore !== pl.end ? 'was ' + ccfFmt(pl.endBefore) : '') : ''}
       ${pl.moveOutRemoved ? _ccfRow('Move-out', 'removed', ccfFmt(pl.moveOutRemoved) + ' · the tenant stays') : (!rec ? _ccfRow('Move-out', 'not set', 'set it when you know it') : '')}
     </div>`;
@@ -1058,6 +1067,8 @@ async function _ccfStepTenant(A) {
     return;
   }
   const t = p.tenant || {}, nm = ccfSplitName(t.name);
+  // Oct 2026: tenants have their own Contract start (vertragsbeginn) once the SQL ran — the contract's Mietbeginn goes there
+  const hasVB = (ccfRecs() || []).some(r => r && Object.prototype.hasOwnProperty.call(r, 'vertragsbeginn'));
   if (!pl.rec) {
     const r = p.rent || {};
     const row = {
@@ -1068,6 +1079,7 @@ async function _ccfStepTenant(A) {
       kaltmiete: r.mode === 'pauschal' ? r.total : r.kalt, nebenkosten: r.mode === 'pauschal' ? 0 : r.nk,
       kaution_soll: pl.kautionNew ?? null,
     };
+    if (hasVB) row.vertragsbeginn = pl.start || null;     // Contract start = the contract's Mietbeginn (Move-in prefilled the same)
     if (ccfA().coTenants) {
       Object.assign(row, ccfCoTenantFields(p.coTenants, true));
       if (String(p.room).startsWith('pk:')) row.nebenkosten = null;
@@ -1091,7 +1103,12 @@ async function _ccfStepTenant(A) {
   if (ccfA().coTenants) Object.entries(ccfCoTenantFields(p.coTenants, false)).forEach(([k, v]) => put(k, v));
   if (!pl.renewal) {
     if (rec.contract_type !== p.ctype) upd.contract_type = p.ctype;
-    if (pl.start && ccfIso(rec.mietbeginn) !== pl.start) upd.mietbeginn = pl.start;
+    if (pl.start && hasVB) {
+      // Contract start follows the contract; Move-in only when it was empty or still the old contract start
+      const oldCs = ccfIso(rec.vertragsbeginn) || '', mi = ccfIso(rec.mietbeginn) || '';
+      if (oldCs !== pl.start) upd.vertragsbeginn = pl.start;
+      if ((!mi || mi === oldCs) && mi !== pl.start) upd.mietbeginn = pl.start;
+    } else if (pl.start && ccfIso(rec.mietbeginn) !== pl.start) upd.mietbeginn = pl.start;
     if ((ccfIso(rec.vertragsende) || null) !== (pl.end || null)) upd.vertragsende = pl.end || null;
   } else {
     if ((ccfIso(rec.vertragsende) || null) !== (pl.end || null)) upd.vertragsende = pl.end || null;

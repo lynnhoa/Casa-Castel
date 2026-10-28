@@ -7,6 +7,8 @@
    · "Alle offenen wie geplant" takes over every open row at once.
    · One amount per unit (what arrived on the account). It is split in the
      ratio of the Soll (Kalt : NK); Pauschal is stored as Kalt only (B16).
+   · Real Ist (Oct 2026): every amount is saved with its tenant (split), also in
+     a month with one tenant — so it stays theirs if a second line appears later.
    · An empty field = "offen" again (row removed).
    · Casa Castel rooms without a unit yet (e.g. Berlin) show
      automatically; the unit is created on the first save.
@@ -71,11 +73,12 @@ window.renderIncome = function () {
             ? r.s.parts.map(pt => pt.from + '.–' + pt.to + '.: ' + cxEur(pt.amount)).join(' · ')
             : (r.s.parts && r.s.parts[0] && r.s.parts[0].mode === 'pauschal' ? cxEur(r.soll) + ' Pauschal' + (r.s.nk ? ' · davon NK ' + cxEur(r.s.nk) : '')
               : (_cxIsParking(r.u) && !r.s.nk ? 'Rent ' + cxEur(r.s.k) : cxEur(r.s.k) + ' Kalt + ' + cxEur(r.s.nk) + ' NK')))
-        : (r.s.free ? 'Rent 0,00\u202f€' : r.s.link ? 'not let' : 'no plan value');
+        : (r.s.free ? 'Rent 0,00\u202f€' : r.s.noRent ? 'no rent this month (contract dates)' : r.s.link ? 'not let' : 'no plan value');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'partial' : 'partial ' + r.s.days + '/' + r.s.N) : '';
       return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Newly let"
                      notes: r.s.notes, emptyText: r.s.free ? 'free' : 'empty', allowEmpty: true,
-                     warn: vis(r) || (!r.soll && r.ist ? 'Rent entered, but the tenant data says not let – please check the tenant tab' : null) });
+                     warn: vis(r) || (!r.soll && r.ist ? (r.s.noRent ? 'Rent entered, but no rent is due by the contract dates – check Rent from / Rent until in the tenant tab'
+                                                                 : 'Rent entered, but the tenant data says not let – please check the tenant tab') : null) });
     }).join('');
     // NK Nachzahlung vom Mieter · Hausgeld Guthaben von WEG — only finished results (controlling-abr.js)
     const abr = ctlAbrRows(g.p.id, window._ctrl.year, CX.month, 1).filter(r => !r.info);
@@ -178,7 +181,9 @@ async function _cxIncSave(e, ist) {
       if (typeof ctlSollReset === 'function') ctlSollReset();
     }
     const nk = _cxIncNkShare(e.s, ist);
-    await ctlUpsertIncome(e.u.id, m, cxR(ist - nk), nk);
+    // real Ist: the amount belongs to the one tenant of this month (no tenant → nothing to attach)
+    const tp = (e.s.parts || []).filter(pt => pt.tid !== 'room');
+    await ctlUpsertIncome(e.u.id, m, cxR(ist - nk), nk, tp.length === 1 ? { [tp[0].tid]: cxR(ist) } : null);
   } catch (err) { cxToastErr(err); }
 }
 

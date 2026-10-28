@@ -578,7 +578,7 @@ document.getElementById('tab-tenants').innerHTML = `
    Move in / Move out stay side by side */
 .tn-fg { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .tn-fg > .tn-field { min-width:0; }
-.tn-fg > .tn-field:has(> input):not(:has(> input[data-f="mietbeginn"])):not(:has(> input[data-f="mietende"])) { grid-column:1/-1; }
+.tn-fg > .tn-field:has(> input):not(:has(> input[data-f="mietbeginn"])):not(:has(> input[data-f="mietende"])):not(:has(> input[data-f="vertragsbeginn"])) { grid-column:1/-1; }
   
 /* Rent bar (Oct 2026): title · three equal value columns · buttons in their own row — numbers never squeezed */
 #tab-tenants .tn-rent-wrap { display:flex !important; flex-direction:column !important; }
@@ -1001,7 +1001,7 @@ function _tnCtNextChange(rec) {
 function _tnContracts(rec) {
   if (!rec) return [];
   const per = typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id) : [];
-  const mb  = _ccIso(rec.mietbeginn);
+  const mb  = _ccIso(rec.vertragsbeginn) || _ccIso(rec.mietbeginn);   // Oct 2026: the first contract starts at the Contract start
   const ren = per.filter(p => p.kind === 'renewal' && (!mb || _ccIso(p.valid_from) > mb));
   const list = [{ start: mb || (per[0] ? _ccIso(per[0].valid_from) : ''), renewal: null }]
     .concat(ren.map(p => ({ start: _ccIso(p.valid_from), renewal: p })));
@@ -1011,8 +1011,12 @@ function _tnContracts(rec) {
     const end  = !last ? _ccAddDaysIso(list[i + 1].start, -1)
                : (_ccIso(rec.vertragsende) || (c.renewal && c.renewal.contract_end ? _ccIso(c.renewal.contract_end) : ''));
     const pAt  = c.start && typeof ccRpAt === 'function' ? ccRpAt(per, c.start) : null;
-    const own  = pAt && _ccIso(pAt.valid_from) === c.start ? pAt : null;   // the entry that starts this contract
-    const amt  = pAt ? ccRpAmount(pAt) : (i === 0 ? _tnCurrentRent(rec, rec.room) : null);
+    let own    = pAt && _ccIso(pAt.valid_from) === c.start ? pAt : null;   // the entry that starts this contract
+    if (!own && i === 0) {   // Contract start ≠ the date of the first rent entry: that entry still belongs to the first contract
+      const nextStart = list[1] ? list[1].start : '9999-12-31';
+      own = per.find(p => p.kind !== 'renewal' && _ccIso(p.valid_from) < nextStart) || null;
+    }
+    const amt  = pAt ? ccRpAmount(pAt) : own ? ccRpAmount(own) : (i === 0 ? _tnCurrentRent(rec, rec.room) : null);
     const name = i === 0 ? (list.length > 1 || _tnIsFixed(type) ? 'Erstvertrag' : 'Mietvertrag') : i + '. Verlängerung';
     return { i, name, start: c.start, end, type, amt, period: own, renewal: c.renewal, last };
   });
@@ -1988,6 +1992,7 @@ async function _tnSaveNext(roomName) {
     kaution_soll: _tnKautionSoll(roomName, from, null, type) ?? null,
   };
   if (type === 'jahres' && from && typeof ccNext3108 === 'function') payload.vertragsende = ccNext3108(from);
+  if (_ccHasRW(_tnRecords)) payload.vertragsbeginn = from || null;   // rent window (Oct 2026): Contract start = Move-in
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
   if (error) { ccSaveFailed(error, 'next tenant'); return; }
   // D4: the baseline's rent goes into the rent history right away — Pauschal with its "davon NK" —
@@ -2478,9 +2483,9 @@ function _tnMhInfoHTML(rec) {
   const own = _tnOwnMh(rec.room, rec).slice().sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)));
   if (!own.length) return '';
   const end = rec.mietende ? String(rec.mietende).slice(0, 10) : null;
-  // Oct 2026: moved out before the contract end → the rent (and these steps) runs until the contract end (same rule as Controlling)
-  const cs = _tnContracts(rec), ce = (cs.length && cs[cs.length - 1].end) || _ccIso(rec.vertragsende);
-  const payEnd = end && ce && ce > end ? ce : end;
+  // Oct 2026: the rent (and these steps) runs until the chosen rent end — Contract end by default (same rule as Controlling)
+  const cs = _tnContracts(rec), ce = rec.rent_until === 'move' ? '' : ((cs.length && cs[cs.length - 1].end) || _ccIso(rec.vertragsende));
+  const payEnd = end && ce ? ce : end;
   return `<div class="tn-msec"><div class="tn-msec-body" style="padding-top:10px">
     <div style="margin-bottom:4px"><span class="tn-msec-lbl">Mieterhöhungen</span></div>
     ${end ? (payEnd !== end
@@ -2619,7 +2624,7 @@ async function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
     // full width under the row with Move-in / Move-out, so the two fields stay side by side
     let cell = inp.parentElement || inp;
     const nx = cell.nextElementSibling;
-    if (nx && nx.querySelector && nx.querySelector('input[' + attr + '="mietende"], input[' + attr + '="mietbeginn"], input[' + attr + '="vertragsende"]')) cell = nx;
+    if (nx && nx.querySelector && nx.querySelector('input[' + attr + '="mietende"], input[' + attr + '="mietbeginn"], input[' + attr + '="vertragsende"], input[' + attr + '="vertragsbeginn"]')) cell = nx;
     cell.after(m);
     const clear = () => { inp.style.borderColor = ''; m.remove(); };
     inp.addEventListener('input', clear, { once: true });
@@ -2639,6 +2644,9 @@ async function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
   }
   if (p.vertragsende && _ccIso(p.vertragsende) < a1) {
     dateErr(field('vertragsende'), 'Contract end must be on or after the move-in (' + de(a1) + ').'); reset(); return false;
+  }
+  if (p.vertragsbeginn && p.vertragsende && _ccIso(p.vertragsende) < _ccIso(p.vertragsbeginn)) {   // Oct 2026
+    dateErr(field('vertragsende'), 'Contract end must be on or after the contract start (' + de(_ccIso(p.vertragsbeginn)) + ').'); reset(); return false;
   }
   const hit = (sameUnit || []).find(o => o.id !== selfId && o.status !== 'archived' && o.mietbeginn &&
     _ccIso(o.mietbeginn) <= a2 && (o.mietende ? _ccIso(o.mietende) : '9999-12-31') >= a1);
@@ -2664,6 +2672,30 @@ async function _ccTenancyOk(container, attr, p, sameUnit, selfId, btn, nameOf) {
    Renew follows the contract type: Kurzzeit (befristet) is renewed, Mietvertrag
    (unbefristet) never. A renewal removes a planned move-out. */
 function _ccHasVE(list) { return (list || []).some(r => r && Object.prototype.hasOwnProperty.call(r, 'vertragsende')); }
+/* Rent window per tenant (Oct 2026): Contract start + "Rent from" Contract start | Move-in and
+   "Rent until" Contract end | Move-out — default Contract. Shown once the columns exist (SQL), like Contract end. */
+function _ccHasRW(list) { return (list || []).some(r => r && Object.prototype.hasOwnProperty.call(r, 'rent_from')); }
+function _ccRentSegHTML(attr, field, value) {
+  const v = value === 'move' ? 'move' : 'contract';
+  const l = field === 'rent_from' ? ['Contract start', 'Move-in'] : ['Contract end', 'Move-out'];
+  const opt = (t, x) => `<button type="button" class="cc-seg__opt${v === t ? ' is-on' : ''}" role="radio" aria-checked="${v === t}" data-v="${t}" onclick="_ccSetRentSeg(this)">${x}</button>`;
+  return `<div class="cc-seg tn-contract-toggle" role="radiogroup" aria-label="${field === 'rent_from' ? 'Rent from' : 'Rent until'}">${opt('contract', l[0])}${opt('move', l[1])}<input type="hidden" ${attr}="${field}" value="${v}"/></div>`;
+}
+function _ccSetRentSeg(btn) {
+  const seg = btn.closest('.cc-seg'); if (!seg) return;
+  seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  const inp = seg.querySelector('input[type=hidden]'); if (inp) inp.value = btn.dataset.v;
+}
+function _ccRentEditHTML(attr, rec) {
+  return `<div class="tn-field tn-field-full"><span class="tn-flbl">Rent from</span>${_ccRentSegHTML(attr, 'rent_from', rec && rec.rent_from)}</div>
+        <div class="tn-field tn-field-full"><span class="tn-flbl">Rent until</span>${_ccRentSegHTML(attr, 'rent_until', rec && rec.rent_until)}</div>`;
+}
+/* Read view: one small line, only when the tenant doesn't use the default (Contract dates) */
+function _ccRentReadHTML(rec) {
+  if (!rec || (rec.rent_from !== 'move' && rec.rent_until !== 'move')) return '';
+  const f = rec.rent_from === 'move' ? 'Move-in' : 'Contract start', u = rec.rent_until === 'move' ? 'Move-out' : 'Contract end';
+  return `<div class="tn-field tn-field-full"><span class="tn-flbl">Rent</span><span class="tn-fval">from ${f} · until ${u}</span></div>`;
+}
 function _ccAddDaysIso(iso, n) { const d = new Date(_ccIso(iso) + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 function _ccAddYearIso(iso) { const d = new Date(_ccIso(iso) + 'T12:00:00'); d.setFullYear(d.getFullYear() + 1); return d.toISOString().slice(0, 10); }
 function _ccFmtD(iso) { const s = _ccIso(iso); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; }
@@ -2755,6 +2787,9 @@ function _tnProfileSectionHTML(rid, room, rec) {
           <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'open-ended'}</span></div>
         ${veMissing ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
           <span class="tn-fval"><span class="tn-ve-missing">Missing</span> \u00b7 set it in the rent bar (Edit)</span></div>` : ''}
+        ${rec.vertragsbeginn && _ccIso(rec.vertragsbeginn) !== _ccIso(rec.mietbeginn) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
+          <span class="tn-fval">${_tnFmtDate(rec.vertragsbeginn)}</span></div>` : ''}
+        ${_ccHasRW(_tnRecords) ? _ccRentReadHTML(rec) : ''}
       </div>
     </div>
   </div>`;
@@ -2777,6 +2812,9 @@ function _tnProfileSectionHTML(rid, room, rec) {
           <input data-f="mietbeginn" type="text" value="${_tnFmtDate(rec ? rec.mietbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ"/></div>
+        ${_ccHasRW(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
+          <input data-f="vertragsbeginn" type="text" value="${_tnFmtDate(rec ? rec.vertragsbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
+        ${_ccRentEditHTML('data-f', rec)}` : ''}
       </div>
     </div>
   </div>`;
@@ -3251,12 +3289,15 @@ function _tnModalBodyHTML(rec) {
           <span class="tn-fval">${esc(rec.phone||'') || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
           <span class="tn-fval">${esc(rec.address||'') || '<span class="muted">—</span>'}</span></div>
+        ${_ccHasRW(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
+          <span class="tn-fval">${_tnFmtDate(rec.vertragsbeginn) || '<span class="muted">—</span>'}</span></div>` : ''}
         <div class="tn-field"><span class="tn-flbl">Contract end</span>
           <span class="tn-fval">${_tnFmtDate(rec.vertragsende) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <span class="tn-fval">${_tnFmtDate(rec.mietende) || '<span class="muted">—</span>'}</span></div>
+        ${_ccHasRW(_tnRecords) ? _ccRentReadHTML(rec) : ''}
         <div class="tn-field"><span class="tn-flbl">${dPau ? 'Pauschalmiete' : 'Kaltmiete'}</span>
           <span class="tn-fval">${dK != null ? _tnFmtEUR(dK) : '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">${dPau ? 'davon NK' : 'Nebenkosten'}</span>
@@ -3284,12 +3325,15 @@ function _tnModalBodyHTML(rec) {
           <input data-mf="phone" type="tel" value="${esc(rec.phone||'')}"/></div>
         <div class="tn-field tn-field-full"><span class="tn-flbl">Address</span>
           <input data-mf="address" type="text" value="${esc(rec.address||'')}"/></div>
+        ${_ccHasRW(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
+          <input data-mf="vertragsbeginn" type="text" value="${_tnFmtDate(rec.vertragsbeginn)}" placeholder="TT.MM.JJJJ"/></div>` : ''}
         <div class="tn-field"><span class="tn-flbl">Contract end</span>
           <input data-mf="vertragsende" type="text" value="${_tnFmtDate(rec.vertragsende)}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-mf="mietbeginn" type="text" value="${_tnFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-mf="mietende" type="text" value="${_tnFmtDate(rec.mietende)}" placeholder="TT.MM.JJJJ"/></div>
+        ${_ccHasRW(_tnRecords) ? _ccRentEditHTML('data-mf', rec) : ''}
         <div class="tn-field tn-field-full"><span class="tn-flbl">Rent</span>
           ${_tnModeSegHTML('data-mf', dMode)}</div>
         <div class="tn-field"><span class="tn-flbl" data-kaltlbl>${dPau ? 'Pauschalmiete' : 'Kaltmiete'}</span>
@@ -3524,6 +3568,9 @@ function _tnCollectProfile(container, selector) {
     mietbeginn: _tnParseDate(get('mietbeginn')),
     mietende:   _tnParseDate(get('mietende')),
     vertragsende: container.querySelector(`[${selector}="vertragsende"]`) ? _tnParseDate(get('vertragsende')) : undefined,
+    vertragsbeginn: container.querySelector(`[${selector}="vertragsbeginn"]`) ? _tnParseDate(get('vertragsbeginn')) : undefined,
+    rent_from:  container.querySelector(`[${selector}="rent_from"]`)  ? (get('rent_from')  === 'move' ? 'move' : 'contract') : undefined,
+    rent_until: container.querySelector(`[${selector}="rent_until"]`) ? (get('rent_until') === 'move' ? 'move' : 'contract') : undefined,
     contract_type: container.querySelector(`[${selector}="contract_type"]`) ? (get('contract_type') || null) : undefined,
     kaltmiete:     parseFloat(container.querySelector(`[${selector}="kaltmiete"]`)?.value)    || null,
     nebenkosten:   parseFloat(container.querySelector(`[${selector}="nebenkosten"]`)?.value)  || null,
@@ -3604,6 +3651,10 @@ async function _tnSaveNewTenant(rid, roomName) {
     kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende, ctype) ?? null,
   };
   if (p.vertragsende !== undefined) payload.vertragsende = ctype === 'mietvertrag' ? null : (p.vertragsende || null);
+  if (p.vertragsbeginn !== undefined) {                     // rent window (Oct 2026): Contract start = Move-in unless typed
+    payload.vertragsbeginn = p.vertragsbeginn || p.mietbeginn || null;
+    payload.rent_from = p.rent_from || 'contract'; payload.rent_until = p.rent_until || 'contract';
+  }
   if (p._typedRent && p._mode === 'pauschal') payload.nebenkosten = null;
 
   const { data, error } = await sbL.from('tenant_records').insert(payload).select().single();
@@ -3701,6 +3752,9 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     kaution_soll:p.kaution_soll ?? rec?.kaution_soll ?? null,   // a profile save never wipes the fixed Soll
   };
   if (p.vertragsende !== undefined) update.vertragsende = p.vertragsende || null;
+  if (p.vertragsbeginn !== undefined) update.vertragsbeginn = p.vertragsbeginn || null;   // rent window (Oct 2026)
+  if (p.rent_from !== undefined) update.rent_from = p.rent_from;
+  if (p.rent_until !== undefined) update.rent_until = p.rent_until;
   // Contract type belongs to the tenancy — the room's offer never changes it
   const ctBefore  = rec ? tnContractType(rec) : null;
   const ctChanged = !!(rec && p.contract_type && p.contract_type !== ctBefore);
@@ -3903,6 +3957,9 @@ async function _tnModalSaveProfile(tid) {
   };
   if (body.querySelector('[data-mf="address"]')) update.address = p.address || null;
   if (body.querySelector('[data-mf="vertragsende"]')) update.vertragsende = p.vertragsende || null;
+  if (p.vertragsbeginn !== undefined) update.vertragsbeginn = p.vertragsbeginn || null;   // rent window (Oct 2026)
+  if (p.rent_from !== undefined) update.rent_from = p.rent_from;
+  if (p.rent_until !== undefined) update.rent_until = p.rent_until;
   const hasRent = !!body.querySelector('[data-mf="kaltmiete"]');   // B20: only when the form shows the rent
   const modeNew = body.querySelector('[data-mf="rent_mode"]')?.value || null;
   const pauNew  = modeNew === 'pauschal';
