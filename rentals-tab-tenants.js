@@ -2824,9 +2824,12 @@ function _rntMhInfoHTML(rec, unitId) {
   const own = _rntOwnSteps(unitId, rec.id).slice().sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)));
   if (!own.length) return '';
   const end = rec.mietende ? String(rec.mietende).slice(0, 10) : null;
+  // Oct 2026: moved out before the contract end → the rent (and these steps) runs until the contract end (same rule as Controlling)
+  const ce = _ccIso(rec.vertragsende);
+  const payEnd = end && ce && ce > end ? ce : end;
   const rows = own.map(e => {
     const d = String(e.effective_date).slice(0, 10);
-    const st = end && d > end ? ['tnp-gray', 'not reached'] : e.ignored ? ['tnp-gray', 'skipped'] : e.kind === 'start' ? ['tnp-gray', 'start'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : ['tnp-gray', 'not adjusted'];
+    const st = payEnd && d > payEnd ? ['tnp-gray', 'not reached'] : e.ignored ? ['tnp-gray', 'skipped'] : e.kind === 'start' ? ['tnp-gray', 'start'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : ['tnp-gray', 'not adjusted'];
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:var(--cc-border);font-size:12.5px">
       <span style="flex:1;min-width:0">From ${_rntFmtDate(d)} · ${_rntFmtEUR(e.amount)}</span>
       <span class="tnp tnp-gray">${_rntMhKind(e)}</span><span class="tnp ${st[0]}">${st[1]}</span></div>`;
@@ -2835,7 +2838,9 @@ function _rntMhInfoHTML(rec, unitId) {
   <div class="tn-msec">
     <div class="tn-msec-body" style="padding-top:10px">
       <div style="margin-bottom:4px"><span class="tn-msec-lbl">Mieterhöhungen</span></div>
-      ${end ? `<p class="tn-empty" style="margin:0 0 4px">Moved out ${_rntFmtDate(end)} – these steps stay with this tenancy and count nowhere after the move-out.</p>` : ''}
+      ${end ? (payEnd !== end
+        ? `<p class="tn-empty" style="margin:0 0 4px">Moved out ${_rntFmtDate(end)} · rent until the contract end ${_rntFmtDate(payEnd)} – these steps stay with this tenancy and count nowhere after the contract end.</p>`
+        : `<p class="tn-empty" style="margin:0 0 4px">Moved out ${_rntFmtDate(end)} – these steps stay with this tenancy and count nowhere after the move-out.</p>`) : ''}
       ${rows}
     </div>
   </div>`;

@@ -32,6 +32,9 @@
        NK    = latest NK change of THIS tenancy on/after the base date
        Pauschal = one amount (no NK part, NK changes don't apply)
        First / last month "voll" in the contract → the full month's rent.
+     · Contract end (Oct 2026): moved out before the contract end → the rent
+       runs until the contract end. A new tenant in that time pays as well
+       (double rent, one line each). Settlements still use the move-out.
      · A tenancy without Einzug gives no Soll; a former tenant without
        Auszug ends the day before the next Einzug — both flagged.
      · No tenant → "leer" (Soll 0).
@@ -448,9 +451,24 @@ const _cxAddDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDat
 const _cxApp = link => (link.type === 'casa_room' ? 'casa' : 'rentals');
 const _cxTName = t => [t.first_name, t.last_name].filter(Boolean).join(' ') || 'Tenant';
 
-/* Tenancies of a unit → [{ t, id, name, from, to, noStart, noEnd, created }], newest Einzug first.
+/* Contract end of a tenancy (Oct 2026): the tenant's "Contract end" — Casa Castel falls back to
+   the latest renewal's contract end, the same date its Tenants card shows (_tnContracts).       */
+function _cxContractEnd(link, t) {
+  const ve = _cxD(t.vertragsende);
+  if (ve || link.type !== 'casa_room') return ve;
+  const mb = _cxD(t.mietbeginn);
+  const ren = (window._src.rentP || [])
+    .filter(p => p.app === 'casa' && String(p.tenant_id) === String(t.id) && p.kind === 'renewal' && (!mb || _cxD(p.valid_from) > mb))
+    .sort((a, b) => _cxD(b.valid_from).localeCompare(_cxD(a.valid_from)))[0];
+  return ren ? _cxD(ren.contract_end) : '';
+}
+
+/* Tenancies of a unit → [{ t, id, name, from, to, payTo, noStart, noEnd, created }], newest Einzug first.
    Einzug missing → no window (B8). Former tenant without Auszug → ends the day
-   before the next Einzug, or today when nobody followed (B9, flagged).        */
+   before the next Einzug, or today when nobody followed (B9, flagged).
+   payTo = last day with rent: the contract end when the tenant moved out before it
+   (Oct 2026), otherwise the same as `to`. `to` stays the move-out (living there:
+   Settlements, Leerstand, the overlap check).                                   */
 function _cxTenancies(link) {
   const S = window._src;
   let list = [];
@@ -468,6 +486,14 @@ function _cxTenancies(link) {
     const next = dated.slice(i + 1).find(x => x.from > w.from);
     w.to = next ? _cxAddDays(next.from, -1) : today;
     w.noEnd = true;
+  });
+  // Moved out before the contract end → the rent runs on until the contract end (paid, not living there).
+  // Only with a real move-out: no move-out = still there (open), a missing one stays flagged (B9).
+  ws.forEach(w => {
+    w.payTo = w.to;
+    if (!w.from || w.noEnd || !_cxD(w.t.mietende)) return;
+    const ce = _cxContractEnd(link, w.t);
+    if (ce && ce > w.to) w.payTo = ce;
   });
   return ws.sort((a, b) => (b.from || '').localeCompare(a.from || ''));
 }
@@ -588,31 +614,39 @@ function _cxUnitSollV2(u, pid, y, m) {
   const today = _cxToday(), thisMonth = today.slice(0, 8) + '01';
   const roomBusy = link.type === 'casa_room' && link.obj && link.obj.vacant === false;
   const roomFill = roomBusy && !all.length;                 // only a room with NO tenant entries at all
-  let roomGap = false, overlap = 0, occ = 0, roomOnly = 0, noPrice = 0;
+  let roomGap = false, overlap = 0, occ = 0, roomOnly = 0, noPrice = 0, dbl = 0;
   const parts = new Map();
-  for (let d = 1; d <= N; d++) {
-    const iso = _cxIso(y, m, d);
-    const act = dated.filter(w => w.from <= iso && iso <= w.to);
-    if (act.length > 1) overlap++;
-    const w = act[0];                                       // newest Einzug wins, one tenant per day (D4)
-    let dk, dnk, pk, r = null;
-    if (!w) {
-      // days before a move-in / after a move-out in this month are expected to be empty
-      const expectedGap = dated.some(w2 => (inM(w2.from) && iso < w2.from) || (inM(w2.to) && iso > w2.to));
-      const reserved = dated.some(w2 => w2.from > iso);        // #10: room held for a tenant who moves in later
-      if (roomBusy && all.length && iso >= thisMonth && iso <= today && !expectedGap && !reserved) roomGap = true;
-      if (!(roomFill && iso >= thisMonth)) continue;
-      const rp = _cxRoomPricing(link.obj, null);
-      dk = _cxN0(rp.k); dnk = _cxN0(rp.nk); roomOnly++; pk = 'room';
-    } else {
-      r = _cxRentDay(link, w, u, y, m, iso, all, memo);
-      dk = r.k; dnk = r.nk; pk = w.id;
-    }
-    occ++;
+  const addDay = (d, pk, w, r, dk, dnk) => {
     if (!dk && !dnk && !_cxFreeSet(link, r)) noPrice++;       // 0 € saved on purpose = free of charge, not missing (B23)
     const pt = parts.get(pk) || { from: d, to: d, sk: 0, snk: 0, days: 0, w: w || null, r0: r, src: r ? r.src : 'room' };
     pt.to = d; pt.sk += dk; pt.snk += dnk; pt.days++;
     parts.set(pk, pt);
+  };
+  for (let d = 1; d <= N; d++) {
+    const iso = _cxIso(y, m, d);
+    const act = dated.filter(w => w.from <= iso && iso <= w.to);   // living there that day
+    if (act.length > 1) overlap++;
+    // Oct 2026: moved out before the contract end → still pays until the contract end,
+    // on top of whoever lives there that day (= double rent, one part each)
+    const tail = dated.filter(w => w.to < iso && iso <= w.payTo);
+    const pay = (act.length ? [act[0]] : []).concat(tail);   // newest Einzug wins among the residents (D4)
+    if (!pay.length) {
+      // days before a move-in / after a move-out (or contract end) in this month are expected to be empty
+      const expectedGap = dated.some(w2 => (inM(w2.from) && iso < w2.from) || (inM(w2.to) && iso > w2.to) || (inM(w2.payTo) && iso > w2.payTo));
+      const reserved = dated.some(w2 => w2.from > iso);        // #10: room held for a tenant who moves in later
+      if (roomBusy && all.length && iso >= thisMonth && iso <= today && !expectedGap && !reserved) roomGap = true;
+      if (!(roomFill && iso >= thisMonth)) continue;
+      const rp = _cxRoomPricing(link.obj, null);
+      occ++; roomOnly++;
+      addDay(d, 'room', null, null, _cxN0(rp.k), _cxN0(rp.nk));
+      continue;
+    }
+    occ++;                                                  // the day counts once, whoever pays
+    if (pay.length > 1) dbl++;
+    for (const w of pay) {
+      const r = _cxRentDay(link, w, u, y, m, iso, all, memo);
+      addDay(d, w.id, w, r, r.k, r.nk);
+    }
   }
 
   // First / last month "voll" from the contract (B7, D3) → that tenant pays the full month
@@ -622,10 +656,10 @@ function _cxUnitSollV2(u, pid, y, m) {
     const w = pt.w; if (!w) continue;
     const c = _cxTenancyData(link, w, all, memo);
     const inAt = inM(w.from) && w.from !== first ? _cxPerAt(c.per, w.from) : null;
-    const outAt = inM(w.to) && w.to !== last && !w.noEnd ? _cxPerAt(c.per, w.to) : null;
+    const outAt = inM(w.payTo) && w.payTo !== last && !w.noEnd ? _cxPerAt(c.per, w.payTo) : null;   // last rent day (contract end, Oct 2026)
     const fullIn = inAt && inAt.first_month === 'voll', fullOut = outAt && outAt.last_month === 'voll';
     if (fullIn || fullOut) {
-      const r = _cxRentDay(link, w, u, y, m, fullIn ? w.from : w.to, all, memo);
+      const r = _cxRentDay(link, w, u, y, m, fullIn ? w.from : w.payTo, all, memo);
       pt.sk = r.k * N; pt.snk = r.nk * N;
       notes.push((fullIn ? 'First' : 'Last') + ' month in full per contract · ' + w.name);
       fullNote = true;
@@ -645,7 +679,12 @@ function _cxUnitSollV2(u, pid, y, m) {
       changed = true;
       if (!earlier) badge = 'neu';
     }
-    if (inM(w.to) && w.to !== last && !w.noEnd) { notes.push('Move-out ' + _cxFmtD(w.to)); changed = true; }
+    const ceTxt = w.payTo > w.to ? ' · rent until the contract end ' + _cxFmtD(w.payTo) : '';
+    if (inM(w.to) && w.to !== last && !w.noEnd) { notes.push('Move-out ' + _cxFmtD(w.to) + ceTxt); changed = true; }
+    else if (ceTxt && w.to < first && w.payTo >= first) {          // moved out earlier, still pays this month
+      notes.push(w.name + ' moved out ' + _cxFmtD(w.to) + ceTxt);
+      if (inM(w.payTo) && w.payTo !== last) changed = true;     // the rent stops mid-month
+    }
     const c = _cxTenancyData(link, w, all, memo);
     const before = iso => { const dd = _cxAddDays(iso, -1); return dd >= w.from ? _cxRentDay(link, w, u, y, m, dd, all, memo) : null; };
     for (const pr of c.per) {
@@ -670,6 +709,7 @@ function _cxUnitSollV2(u, pid, y, m) {
       notes.push('NK changed · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
   }
   for (const pt of parts.values()) if (pt.src === 'learned') { notes.push('Rent from your earlier entries (not saved with the tenant)'); break; }
+  if (dbl) notes.push('Double rent · ' + dbl + (dbl === 1 ? ' day' : ' days'));   // previous tenant pays until the contract end
 
   // Data check: what doesn't add up is shown, never silently turned into a number or "leer"
   const checks = [];
@@ -702,9 +742,9 @@ function _cxUnitSollV2(u, pid, y, m) {
   if (roomGap && !checks.some(c => /Move-out/.test(c))) checks.push('Room marked as occupied, but no tenant entered for these days – please check the tenant or the room status');
   if (occ === 0 && all.length) {
     const next = dated.filter(w => w.from > last).sort((a, b) => a.from.localeCompare(b.from))[0];
-    const prev = dated.filter(w => w.to < first).sort((a, b) => b.to.localeCompare(a.to))[0];
+    const prev = dated.filter(w => w.payTo < first).sort((a, b) => b.payTo.localeCompare(a.payTo))[0];
     if (next) notes.push('Tenant from ' + _cxFmtD(next.from) + ' (not moved in yet)');
-    else if (prev) notes.push('Last tenant until ' + _cxFmtD(prev.to));
+    else if (prev) notes.push('Last tenant until ' + _cxFmtD(prev.to) + (prev.payTo > prev.to ? ' · rent until the contract end ' + _cxFmtD(prev.payTo) : ''));
   }
   const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)
     .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR((pt.sk + pt.snk) / N), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
@@ -775,7 +815,7 @@ function ctlUnitHistory(u, pid) {
   const tenancies = all.map(w => {
     const c = _cxTenancyData(link, w, all, memo);
     const today = _cxToday();
-    const cur = w.from ? _cxRentDay(link, w, u, Number(today.slice(0, 4)), Number(today.slice(5, 7)), w.to < today ? w.to : today, all, memo) : null;
+    const cur = w.from ? _cxRentDay(link, w, u, Number(today.slice(0, 4)), Number(today.slice(5, 7)), w.payTo < today ? w.payTo : today, all, memo) : null;
     return { ...w, app: _cxApp(link), periods: c.per, staffel: c.st, nkSteps: c.nk, legacyMode: _cxLegacyMode(link, w.t),
              current: cur, balance: ctlTenancyBalance(u, pid, w.id) };
   });
@@ -784,7 +824,7 @@ function ctlUnitHistory(u, pid) {
   const istNoTenant = (window._src.incAll || [])
     .filter(r => u.id != null && r.unit_id === u.id && (_cxN0(r.kaltmiete) + _cxN0(r.nebenkosten)) > 0)
     .filter(r => { const f = _cxIso(r.year, r.month, 1), l = _cxIso(r.year, r.month, new Date(r.year, r.month, 0).getDate());
-                   return !all.some(w => w.from && w.from <= l && w.to >= f); })
+                   return !all.some(w => w.from && w.from <= l && w.payTo >= f); })   // rent until the contract end counts (Oct 2026)
     .sort((a, b) => (a.year - b.year) || (a.month - b.month))
     .map(r => String(r.month).padStart(2, '0') + '.' + r.year);
   return { link, tenancies, orphans: _cxOrphanSteps(link, all), istNoTenant };

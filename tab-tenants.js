@@ -2478,11 +2478,16 @@ function _tnMhInfoHTML(rec) {
   const own = _tnOwnMh(rec.room, rec).slice().sort((a, b) => String(a.effective_date).localeCompare(String(b.effective_date)));
   if (!own.length) return '';
   const end = rec.mietende ? String(rec.mietende).slice(0, 10) : null;
+  // Oct 2026: moved out before the contract end → the rent (and these steps) runs until the contract end (same rule as Controlling)
+  const cs = _tnContracts(rec), ce = (cs.length && cs[cs.length - 1].end) || _ccIso(rec.vertragsende);
+  const payEnd = end && ce && ce > end ? ce : end;
   return `<div class="tn-msec"><div class="tn-msec-body" style="padding-top:10px">
     <div style="margin-bottom:4px"><span class="tn-msec-lbl">Mieterhöhungen</span></div>
-    ${end ? `<p class="tn-empty" style="margin:0 0 4px">Moved out ${_ccFmtD(end)} – these steps stay with this tenancy and count nowhere after the move-out.</p>` : ''}
+    ${end ? (payEnd !== end
+      ? `<p class="tn-empty" style="margin:0 0 4px">Moved out ${_ccFmtD(end)} · rent until the contract end ${_ccFmtD(payEnd)} – these steps stay with this tenancy and count nowhere after the contract end.</p>`
+      : `<p class="tn-empty" style="margin:0 0 4px">Moved out ${_ccFmtD(end)} – these steps stay with this tenancy and count nowhere after the move-out.</p>`) : ''}
     ${own.map(e => { const d = String(e.effective_date).slice(0, 10);
-      const s = end && d > end ? ['tnp-gray', 'not reached'] : e.ignored ? ['tnp-gray', 'skipped'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : ['tnp-gray', 'not adjusted'];
+      const s = payEnd && d > payEnd ? ['tnp-gray', 'not reached'] : e.ignored ? ['tnp-gray', 'skipped'] : e.tenant_adjusted ? ['tnp-green', 'adjusted'] : ['tnp-gray', 'not adjusted'];
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:var(--cc-border);font-size:12.5px"><span style="flex:1">From ${_ccFmtD(d)} · ${_tnFmtEUR(e.amount)}</span><span class="tnp tnp-gray">${_tnMhKind(e)}</span><span class="tnp ${s[0]}">${s[1]}</span></div>`; }).join('')}
   </div></div>`;
 }
