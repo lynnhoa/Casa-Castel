@@ -1518,3 +1518,33 @@ button.st-sg__r { cursor: pointer; }
 .sr-mtr small { font-size: 12px; color: var(--cx-mut); padding-left: 2px; }
 .sr-mtr__f { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--cx-mut); }
 .sr-mtr__f input { width: 120px; height: 34px; border: .5px solid var(--cx-line); border-radius: 8px; text-align: right; padding: 0 8px; font: inherit; font-size: 14px; background: #fff; }
+
+/* ── Jahresabrechnungen pop-up · Casa Castel (Oct 2026) ───────────────────────
+   the Rentals Jahresabrechnung rows (received · result · money), one block per supplier;
+   a paid one folds to one green line */
+.sc-ja__lbl { margin-right: 2px; }
+.sc-ja__n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-ja__v { margin-left: auto; padding-left: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sc-ja__v.pos { color: #3B6D11; }
+.sc-ja__v.neg { color: #8A3B22; }
+.sc-ja__v.is-nil { color: #C8BFB0; }
+.sc-ja__fx { margin-left: 6px; border: 0; background: none; padding: 0; color: #9A8E7E; font-size: 16px; display: inline-flex; cursor: pointer; }
+.sc-ja__box { margin: -4px 0 0; padding: 10px 14px; background: #FDFCFA; border: .5px solid #E6DED2; border-radius: 14px;
+              display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.sc-ja__box .mx-seg { grid-column: 1 / -1; justify-self: start; margin-top: 0; background: #F3EEE6; }
+.sc-ja__box .mx-seg button:disabled { cursor: default; }
+.sc-ja__box .mx-f input { width: 100%; box-sizing: border-box; background: #FAF8F4; height: 38px; }
+.sc-ja__box .mx-amt input { background: #FAF8F4; height: 38px; }
+.sc-ja__full { grid-column: 1 / -1; }
+.sc-ja__pay.is-off { opacity: .62; }
+.sc-ja__fold { display: flex; align-items: center; gap: 12px; width: 100%; background: #F1F7EA; border: .5px solid #C9DDB0; border-radius: 18px;
+               padding: 10px 14px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.sc-ja__fold .mx-row__m { flex: 1; min-width: 0; }
+.sc-ja__fold .mx-rt, .sc-ja__fold .mx-rs { display: block; }
+.sc-ja__fold .mx-rs { color: #4F7A2C; font-weight: 500; }
+.sc-ja__fold > .ti { color: #9A8E7E; font-size: 18px; flex: 0 0 auto; }
+.mx-b .cx-link.sc-ja__more { display: inline-flex; align-items: center; gap: 4px; margin: 8px 4px 0; padding: 4px 0; font-size: 12px; color: var(--cx-acc); }
+.mx-b .cx-link.sc-ja__rm { display: block; margin: 4px 4px 0 auto; padding: 4px 0; font-size: 11.5px; }
+.sc-ja__lock { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 12px 6px 0; font-size: 11.5px; line-height: 1.45; color: #9A8E7E; text-align: center; }
+.sc-ja__note { margin-top: 16px; }
+.sc-hg__note .cx-link.sc-hg__go { display: inline; padding: 0; font-size: inherit; color: var(--cx-acc); text-decoration: underline; text-underline-offset: 2px; }

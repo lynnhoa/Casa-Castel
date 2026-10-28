@@ -92,7 +92,9 @@ async function scSaveRec(r) {
                     snapshot: r.snapshot || null, tenants: r.tenants || {}, updated_at: new Date().toISOString() };
   const { data, error } = await _ctlSupa.from(SC_TABLE).upsert(payload, { onConflict: 'year' }).select().single();
   if (error) throw error;
+  const local = r.tenants;                                 // Oct 2026: what was typed meanwhile stays (the next save sends it)
   Object.assign(r, data);
+  if (local) r.tenants = local;
   return r;
 }
 function scQueueSave(r) {
@@ -279,6 +281,11 @@ function stRenderCasa() {
   }
   if (M.error) { el._scShown = null; cxPaint(el, '<div class="st-page sc-page"><p class="cx-empty">' + stEsc(M.error) + '</p></div>'); return; }
   SC.model = M;
+  for (const yy of [y, y - 1]) {                            // Jahresabrechnungen: this year's bookings (also for a locked year) + last year's month
+    if (SC.data[yy] || (SC._jaLd = SC._jaLd || {})[yy]) continue;
+    SC._jaLd[yy] = true;
+    scLoadYear(yy).then(() => { if (ST.tab === 'casa' && SC.year === y) stRenderCasaQuiet(); }).catch(() => {});
+  }
 
   const nk = M.ten.filter(t => t.k !== 'none');
   const grp = k => M.ten.filter(t => t.k === k);
@@ -297,9 +304,9 @@ function stRenderCasa() {
   const progress = stProgress({ done: nDone, sent: sent.length, total, open: open.length, first: M.locked ? 'House costs locked' : 'House costs not locked' });
   const mo = M.money, pv = !M.locked ? 'preview · ' : '';
   const tenSub = mo.ten === null ? 'no house costs yet' : pv + mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back');
-  const hgN = mo.hgAll.length, hgIn = mo.hgAll.filter(h => h.on).length;
-  const hgSub = !hgN ? 'Strom · Gas · Wasser · no Jahresabrechnung yet' : hgIn + ' of ' + hgN + ' Jahresabrechnung' + (hgN === 1 ? '' : 'en') + ' in the NK';
-  const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub, 'data-sc="sumTen"') + stTile('Hausgeld', 'receipt', mo.hg, hgSub, 'data-sc="costs"') + '</div>';
+  // Oct 2026 · Hausgeld = the Versorger Jahresabrechnungen of the year (the real bills — not the preview share of the NK)
+  const J = scJaModel(M); M.ja = J;
+  const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub, 'data-sc="sumTen"') + stTile('Hausgeld', 'receipt', J.net, J.tile, 'data-sc="ja"') + '</div>';
 
   const L = M.R.check;
   const noData = !M.locked && !M.R.lines.length;
@@ -370,9 +377,13 @@ function scHouseCard(M) {
     : T.length + ' tenants · ' + [open ? open + ' to send' : '', sent ? sent + ' sent' : '', done ? done + ' settled' : ''].filter(Boolean).join(' · ');
   const nkChip = !T.length ? ['grey', 'no NK'] : !M.locked ? ['grey', 'waiting'] : open ? ['send', 'to send'] : sent ? ['wait', 'sent'] : ['done', 'settled'];
   const rooms = (window._src.rooms || []).filter(r => r.active !== false).length;
-  return '<div class="sc-card sr5-card"><div class="sr5-h"><span class="sc-av sr5-pav" style="background:#E9DCC6;color:#6B4A1E">CC</span><span class="sr5-h__t"><span class="sr5-pn">Casa Castel</span><span class="sr5-pm">' + stEsc(scHouse().join(', ') + ' · ' + rooms + ' rooms') + '</span></span></div>' +
+  const J = M.ja || scJaModel(M);                          // Oct 2026 · the Versorger Jahresabrechnungen, like the Rentals Jahresabrechnung line
+  const jaRow = '<button class="sc-row sr5-ln" data-sc="ja"><span class="sc-av sr5-av--hv"><i class="ti ti-receipt" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">Jahresabrechnungen</span>' +
+    '<span class="sc-row__s' + (J.tone ? ' ' + J.tone : '') + '">' + stEsc(J.say) + '</span><span class="sc-row__p">' + stEsc(J.S.map(x => x.l).join(' · ') || 'Strom · Gas · Wasser · Entsorgung') + '</span></span>' +
+    '<span class="sc-chip sc-chip--' + J.chip[0] + '">' + stEsc(J.chip[1]) + '</span></button>';
+  return '<div class="sc-card sr5-card"><div class="sr5-h"><span class="sc-av sr5-pav" style="background:#E9DCC6;color:#6B4A1E">CC</span><span class="sr5-h__t"><span class="sr5-pn">Casa Castel</span><span class="sr5-pm">' + stEsc(scHouse().join(', ') + ' · ' + rooms + ' rooms') + '</span></span></div>' + jaRow +
     '<button class="sc-row sr5-ln" data-sc="costs"><span class="sc-av sr5-av--hv"><i class="ti ti-home" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">Hauskosten</span>' +
-      '<span class="sc-row__s">' + stEsc(hkSub) + '</span><span class="sc-row__p">' + stEsc(scHgSummary(M)) + '</span></span><span class="sc-chip sc-chip--' + hkChip[0] + '">' + stEsc(hkChip[1]) + '</span></button>' +
+      '<span class="sc-row__s">' + stEsc(hkSub) + '</span></span><span class="sc-chip sc-chip--' + hkChip[0] + '">' + stEsc(hkChip[1]) + '</span></button>' +
     '<button class="sc-row sr5-ln" data-sc="' + (M.locked && open ? 'start' : 'filter') + '" data-k="open"><span class="sc-av sr5-av--hv"><i class="ti ti-mail" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">NK-Abrechnung</span>' +
       '<span class="sc-row__s">' + stEsc(nkSub) + '</span></span><span class="sc-chip sc-chip--' + nkChip[0] + '">' + stEsc(nkChip[1]) + '</span></button></div>';
 }
@@ -578,7 +589,7 @@ function scRenderModal() {
   else if (m.view === 'settle') inner = scSettleView(M, m);
   else if (m.view === 'extra') inner = scExtraView(M, m);
   else if (m.view === 'sumTen') inner = scSumTen(M);
-  else if (m.view === 'sumHg') inner = scSumHg(M);
+  else if (m.view === 'sumHg' || m.view === 'ja') inner = scJaView(M);   // Oct 2026: the old Hausgeld sheet → the Jahresabrechnungen pop-up
   // Oct 2026: a redraw of the SAME pop-up (fold, edit, settle) keeps its scroll position — a new pop-up starts at the top
   const viewKey = m.view + '|' + (m.tid || m.key || m.id || '');
   const oldBody = h.querySelector('.srm__b'), keep = oldBody && h._scViewKey === viewKey ? oldBody.scrollTop : 0;
@@ -646,6 +657,332 @@ function scSpreadTxt(M, id) {
   const p = ln.parts[0];
   return p.spread === 'year' ? 'over the period' : p.spread === 'from' ? 'from ' + stDe(p.date) + ' to ' + stDe(M.per.to) : 'in its month';
 }
+/* ── Jahresabrechnungen der Versorger (Oct 2026) ──────────────────────────────
+   Typed only here — Controlling › One-off shows them read-only. The same pieces as the
+   Rentals Jahresabrechnung window, one block per supplier (Strom · Gas · Wasser · Entsorgung =
+   the cost types in Controlling › Setup); each bill:
+     received (switch + date) → result (Nachzahlung / Guthaben · amount · company)
+     → money paid / received (switch + date + amount)
+   The bill lives in the year it was received:
+     nk_abrechnung_casa.tenants.__ja = { strom: [ { id, recv, dir, amt, co, ot, pd, pa } ], … }
+   The money is the one booking in Controlling › One-off (Casa Castel · Versorger · its cost type ·
+   Show in Settlements · source_ref ja:<id>); it counts in the NK year of its date (Abflussprinzip).
+   A booking typed in Controlling before (no bill here) shows as received + paid — received = its date.
+   A paid bill folds to one line, like a settled Rentals card. */
+const SC_JA_ICON = { strom: 'bolt', gas: 'flame', wasser: 'drop', entsorg: 'bin' };
+const scJaIsBk = o => Number(o.property_id) === CASA_PROP_ID && !(typeof CX_ABR_KINDS !== 'undefined' && CX_ABR_KINDS.includes(o.kind)) &&
+  (o.kind === 'Versorger' || /jahresabrechnung/i.test(String(o.item || '')));
+const scLastOfMonth = (y, m) => NkCasa.addDays((m === 12 ? (y + 1) + '-01' : y + '-' + String(m + 1).padStart(2, '0')) + '-01', -1);
+function scJaSupOf(o) {                                    // which supplier a booking belongs to: its cost type, else its text
+  for (const [k] of SC_HG_TYPES) { const c = scHgCat(k); if (c && Number(o.nk_category_id) === Number(c.id)) return k; }
+  const t = String(o.item || '').trim().toLowerCase();
+  return (SC_HG_TYPES.find(([k]) => t.startsWith(k)) || [])[0] || null;
+}
+function scJaFindBk(id) {
+  if (id === null || id === undefined) return null;
+  const k = String(id);
+  for (const y of Object.keys(SC.data)) { const o = (((SC.data[y] || {}).one_time) || []).find(x => String(x.id) === k); if (o) return o; }
+  return (window._ctrl.one_time || []).find(x => String(x.id) === k) || null;
+}
+function scJaOwnerYears() {                                // booking id → the year of the bill that owns it
+  const m = {};
+  for (const r of SC.rows) {
+    const ja = (r.tenants || {}).__ja || {};
+    for (const k of Object.keys(ja)) for (const b of (ja[k] || [])) if (b && b.ot !== null && b.ot !== undefined) m[String(b.ot)] = Number(r.year);
+  }
+  return m;
+}
+/* the bills of one supplier in year y: typed here + older bookings from Controlling */
+function scJaBills(y, k, own) {
+  const r = scRec(y), list = (((r && r.tenants) || {}).__ja || {})[k] || [];
+  own = own || scJaOwnerYears();
+  const out = list.map(b => {
+    const o = b.ot !== null && b.ot !== undefined ? scJaFindBk(b.ot) : null;
+    return Object.assign({}, b, { paid: b.ot !== null && b.ot !== undefined, pd: o ? scD(o.invoice_date) : (b.pd || null), pa: o ? cxR(Number(o.amount) || 0) : (b.pa ?? null) });
+  });
+  for (const o of ((SC.data[y] || {}).one_time || [])) {
+    if (!scJaIsBk(o) || scJaSupOf(o) !== k || own[String(o.id)] !== undefined) continue;
+    const day = scD(o.invoice_date), amt = cxR(Number(o.amount) || 0);
+    out.push({ id: 'ot:' + o.id, legacy: true, recv: day, dir: Number(o.direction) === 1 ? 1 : -1, amt, co: o.company || '', ot: o.id, paid: true, pd: day, pa: amt });
+  }
+  return out.sort((a, b) => String(a.recv || a.pd || '9999').localeCompare(String(b.recv || b.pd || '9999')));
+}
+function scJaExpected(y, k, own) {                         // last year's month (received, else paid) → the same month this year
+  const prev = scJaBills(y - 1, k, own).filter(b => b.recv || b.pd);
+  if (!prev.length) return null;
+  const last = prev[prev.length - 1], m = Number(String(last.recv || last.pd).slice(5, 7));
+  if (!m) return null;
+  return { m, label: SC_MONTHS[m - 1] + ' ' + y, overdue: NkCasa.addDays(scLastOfMonth(y, m), 15) };   // overdue as in Rentals: 15 days after that month
+}
+function scJaSupCo(y, k, own) {                            // the company of the latest bill (this year, else last year)
+  const a = scJaBills(y, k, own).filter(x => x.co), b = scJaBills(y - 1, k, own).filter(x => x.co);
+  return (a.length ? a[a.length - 1] : b.length ? b[b.length - 1] : {}).co || '';
+}
+function scJaModel(M) {
+  const own = scJaOwnerYears(), today = cxToday();
+  const watch = !M.locked && (M.running || M.sendable);   // a missing bill can only be "overdue" while the year is still open
+  const S = SC_HG_TYPES.filter(([k]) => scHgCat(k)).map(([k, l]) => {
+    const bills = scJaBills(M.y, k, own), real = bills.filter(b => b.recv || b.paid);
+    const exp = real.length ? null : scJaExpected(M.y, k, own);
+    const st = real.some(b => !b.paid) ? 'open' : real.length ? 'paid' : exp && watch && today > exp.overdue ? 'overdue' : watch ? 'expected' : 'none';
+    return { k, l, c: scHgCat(k), icon: SC_JA_ICON[k] || 'receipt', bills, real, exp, st, co: scJaSupCo(M.y, k, own) };
+  });
+  const all = S.reduce((a, s) => a.concat(s.real), []);
+  const net = cxR(all.reduce((a, b) => a + (Number(b.dir) === 1 ? 1 : -1) * (Number(b.amt) || 0), 0));   // > 0 = money comes to you
+  const n = S.length, nIn = S.filter(s => s.real.length).length, nPaid = S.filter(s => s.st === 'paid').length;
+  const open = S.filter(s => s.st === 'open'), over = S.filter(s => s.st === 'overdue');
+  const nOpen = all.filter(b => !b.paid).length, nNach = all.filter(b => Number(b.dir) !== 1).length, nGut = all.length - nNach;
+  const netTxt = (net > 0.004 ? 'Guthaben ' : net < -0.004 ? 'Nachzahlung ' : 'balanced') + (Math.abs(net) > 0.004 ? scE(Math.abs(net)) : '');
+  const nx = S.filter(s => s.st === 'expected' && s.exp).sort((a, b) => a.exp.m - b.exp.m), next = nx.length ? nx.filter(s => s.exp.m === nx[0].exp.m) : [];
+  let say, tone = '', chip;
+  if (over.length) { say = over.map(s => s.l).join(' · ') + ' overdue' + (over.length === 1 ? ' · expected ' + over[0].exp.label : ''); tone = 'neg'; chip = ['red', 'overdue']; }
+  else if (open.length) {
+    const ob = open.length === 1 ? open[0].real.filter(b => !b.paid) : [];
+    say = nPaid + ' of ' + n + ' paid · ' + (ob.length === 1 ? open[0].l + ' ' + scE(Number(ob[0].amt) || 0) + ' not ' + (Number(ob[0].dir) === 1 ? 'received' : 'paid') + ' yet' : nOpen + ' not paid yet');
+    tone = 'neg'; chip = ['red', 'open'];
+  }
+  else if (n && nPaid === n) { say = n + ' of ' + n + ' paid · ' + netTxt; tone = net > 0.004 ? 'pos' : net < -0.004 ? 'neg' : ''; chip = ['done', 'settled']; }
+  else if (!watch) { say = nIn + ' of ' + n + ' in' + (nIn ? ' · ' + netTxt : ''); chip = ['grey', nIn ? 'not all in' : 'none']; }
+  else { say = nIn + ' of ' + n + ' in' + (next.length ? ' · next: ' + next.map(s => s.l).join(' and ') + ' ~ ' + SC_MONTHS[next[0].exp.m - 1] : ''); chip = ['grey', 'expected']; }
+  const tile = !n ? 'no Strom · Gas · Wasser cost type yet' : open.length ? nPaid + ' of ' + n + ' paid · ' + nOpen + ' open'
+    : over.length ? nIn + ' of ' + n + ' in · ' + over.length + ' overdue' : nPaid === n ? n + ' of ' + n + ' paid' : nIn + ' of ' + n + ' in';
+  const rng = nx.length ? SC_MONTHS[nx[0].exp.m - 1] + (nx[nx.length - 1].exp.m !== nx[0].exp.m ? '–' + SC_MONTHS[nx[nx.length - 1].exp.m - 1] : '') + ' ' + M.y : '';
+  const heroSub = nIn + ' of ' + n + ' in' + [nNach ? nNach + ' Nachzahlung' : '', nGut ? nGut + ' Guthaben' : '', nOpen ? nOpen + ' not paid yet' : ''].filter(Boolean).map(x => ' · ' + x).join('') +
+    (!nIn && rng ? ' · expected ' + rng : '');
+  return { S, n, nIn, nPaid, net: nIn ? net : null, say, tone, chip, tile, heroSub, done: !!n && nPaid === n };
+}
+/* the NK year a payment counts in, when it is not this one */
+function scJaNkNote(M, d) {
+  const day = d ? scD(d) : ''; if (!day || (day >= M.per.from && day <= M.per.to)) return '';
+  for (const yy of [M.y - 1, M.y + 1]) { const p = scPeriod(yy); if (p && day >= p.from && day <= p.to) return ' · counts in NK ' + yy; }
+  return ' · counts in another NK year';
+}
+function scJaView(M) {
+  const J = scJaModel(M), can = !M.locked;
+  const head = stMHead('Jahresabrechnungen ' + M.y, 'Casa Castel · ' + (J.S.map(s => s.l).join(' · ') || 'Versorger'), 'receipt', 'data-sc="close"');
+  if (!J.n) return head + '<div class="srm__b mx-b"><p class="cx-empty">No Strom, Gas, Wasser or Entsorgung cost type in Controlling › Setup yet.</p></div>';
+  const net = J.net, tone = net === null ? 'none' : net > 0.004 ? 'get' : net < -0.004 ? 'pay' : 'zero';
+  const hero = stMHero({ tone, label: net === null ? 'Result' : net > 0.004 ? 'Guthaben in total' : net < -0.004 ? 'Nachzahlung in total' : 'Balanced',
+                         amount: net, sub: J.heroSub, settled: J.done });
+  const lock = M.locked ? '<p class="sc-ja__lock"><i class="ti ti-lock" aria-hidden="true"></i> House costs ' + M.y + ' are locked – unlock them to change. A late payment dated after ' + stDate(M.per.to) + ' can still be booked.</p>' : '';
+  return head + '<div class="srm__b mx-b">' + hero + lock + J.S.map(s => scJaSupHtml(M, s, can)).join('') +
+    '<p class="sc-hg__note sc-ja__note">Abflussprinzip: each one counts in the NK year it was paid or refunded. \u201cMoney paid / received\u201d books it into Controlling › One-off.</p></div>';
+}
+function scJaSupHtml(M, s, can) {
+  const bills = s.bills.length ? s.bills : [{ id: 'new:' + s.k, blank: true, co: s.co }];
+  // "+ another one" (e.g. a supplier change) only while a paid block of this supplier is open — keeps the list calm
+  const more = can && s.real.length && s.bills.every(b => b.paid) && s.bills.some(b => SC.open['ja:' + b.id])
+    ? '<button type="button" class="cx-link sc-ja__more" data-sc="jaAdd" data-k="' + s.k + '"><i class="ti ti-plus" aria-hidden="true"></i> another Jahresabrechnung ' + stEsc(s.l) + '</button>' : '';
+  return bills.map(b => scJaBillHtml(M, s, b, can)).join('') + more;
+}
+function scJaBillHtml(M, s, b, can) {
+  const at = ' data-k="' + s.k + '" data-b="' + stEsc(b.id) + '"';
+  const dir = Number(b.dir) === 1 ? 1 : Number(b.dir) === -1 ? -1 : 0, paid = !!b.paid, recv = !!b.recv, amt = Number(b.amt) || 0;
+  const open = !!SC.open['ja:' + b.id], nk = scJaNkNote(M, b.pd);
+  const v = amt ? '<span class="sc-ja__v ' + (dir > 0 ? 'pos' : 'neg') + '">' + scE(amt) + '</span>' : '<span class="sc-ja__v is-nil">\u2014</span>';
+  const fx = paid && open ? '<button type="button" class="sc-ja__fx" data-sc="jaFold"' + at + ' aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '';
+  const lbl = '<p class="mx-lbl sc-ja__lbl">' + stIc(s.icon, 16) + '<span class="sc-ja__n">' + stEsc(s.l + (b.co ? ' · ' + b.co : '')) + '</span>' + v + fx + '</p>';
+  if (paid && !open) {                                     // paid → one line (tap to open)
+    return lbl + '<button type="button" class="sc-ja__fold" data-sc="jaFold"' + at + ' aria-expanded="false"><span class="mx-ic" style="background:' + (ST_TINT[s.icon] || '#F3EEE6') + '">' + stIc(s.icon, 24) + '</span>' +
+      '<span class="mx-row__m"><span class="mx-rt">' + (dir > 0 ? 'Guthaben received' : 'Nachzahlung paid') + '</span>' +
+      '<span class="mx-rs">' + stEsc(stDate(b.pd) + ' · booked in Controlling' + nk) + '</span></span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>';
+  }
+  const dis = can ? '' : ' disabled';
+  // ── received
+  const s1 = recv ? 'received ' + stEsc(stDate(b.recv))
+    : s.st === 'overdue' && s.exp ? '<b class="neg">overdue</b> · expected ' + stEsc(s.exp.label)
+    : s.exp && !s.real.length ? 'expected ~ ' + stEsc(s.exp.label) : 'switch on when it\u2019s in';
+  const rowRecv = stMRow({ icon: 'inbox', title: 'Jahresabrechnung received', sub: s1, on: recv, disabled: !can, switchAttrs: 'data-sc="jaRecv"' + at });
+  // ── result (from the bill)
+  const seg = '<div class="mx-seg" role="group" aria-label="Result">' + [[-1, 'Nachzahlung', 'p'], [1, 'Guthaben', 'g']].map(([x, t, c]) =>
+    '<button type="button" class="is-' + c + (dir === x ? ' is-on' : '') + '" data-sc="jaDir" data-v="' + x + '"' + at + ' aria-pressed="' + (dir === x) + '"' + dis + '>' + t + '</button>').join('') + '</div>';
+  const box = '<div class="sc-ja__box">' + seg +
+    '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="amt"' + at + ' value="' + (amt ? cxE2(amt) : '') + '" placeholder="0,00"' + dis + '/><em>\u20ac</em></span></label>' +
+    '<label class="mx-f"><span>Received on</span><input type="date" data-scja="recv"' + at + ' value="' + stEsc(b.recv || '') + '"' + dis + '/></label>' +
+    '<label class="mx-f sc-ja__full"><span>Company</span><input type="text" autocomplete="off" data-scja="co"' + at + ' value="' + stEsc(b.co || '') + '"' + dis + '/></label></div>';
+  // ── money paid / received (= the booking in Controlling)
+  const ready = recv && !!dir && amt > 0;
+  const lockedIn = d => M.locked && !!d && scD(d) <= M.per.to;
+  const s2 = paid ? (dir > 0 ? 'received ' : 'paid ') + stDate(b.pd) + ' · ' + scE(b.pa ?? amt) + nk
+    : ready ? 'flip it when it\u2019s ' + (dir > 0 ? 'on your account' : 'paid')
+    : 'first add: ' + [!recv ? 'received date' : '', !dir ? 'result' : '', !(amt > 0) ? 'amount' : ''].filter(Boolean).join(' · ');
+  const rowPay = stMRow({ icon: 'coins', title: dir > 0 ? 'Money received' : 'Money paid', sub: stEsc(s2), on: paid,
+    disabled: paid ? lockedIn(b.pd) : !ready, switchAttrs: 'data-sc="jaPay"' + at });
+  const pdV = b.pd || (recv ? cxToday() : ''), paV = b.pa ?? (amt || null);
+  const payDis = paid ? (lockedIn(b.pd) ? ' disabled' : '') : (ready ? '' : ' disabled');
+  const pay = '<div class="mx-pay sc-ja__pay' + (!paid && !ready ? ' is-off' : '') + '">' +
+    '<label class="mx-f"><span>On</span><input type="date" data-scja="pd"' + at + ' value="' + stEsc(pdV) + '"' + payDis + '/></label>' +
+    '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="pa"' + at + ' value="' + (paV ? cxE2(paV) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span></label></div>';
+  const rm = can && !paid && !b.blank && !b.legacy ? '<button type="button" class="cx-link sc-ja__rm" data-sc="jaDel"' + at + '>remove</button>' : '';
+  return lbl + '<div class="mx-rows sc-ja__rows">' + rowRecv + box + rowPay + pay + '</div>' + rm;
+}
+
+/* ── actions ── */
+function scJaCan(M) {
+  if (M && M.locked) { stSay('House costs ' + SC.year + ' are locked – unlock them to change'); return false; }
+  return true;
+}
+/* the bill as stored here — a Controlling booking or the empty block becomes a bill on the first change */
+function scJaOwn(k, bid) {
+  const r = scRecEnsure(SC.year), ja = (r.tenants.__ja = r.tenants.__ja || {}), list = (ja[k] = ja[k] || []);
+  let e = list.find(x => x.id === bid);
+  if (e) return e;
+  const id = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const o = String(bid).indexOf('ot:') === 0 ? scJaFindBk(String(bid).slice(3)) : null;
+  e = o ? { id, recv: scD(o.invoice_date), dir: Number(o.direction) === 1 ? 1 : -1, amt: cxR(Number(o.amount) || 0), co: o.company || '', ot: o.id,
+            pd: scD(o.invoice_date), pa: cxR(Number(o.amount) || 0) }
+        : { id, recv: null, dir: null, amt: null, co: scJaSupCo(SC.year, k), ot: null, pd: null, pa: null };
+  list.push(e);
+  (SC.jaIds = SC.jaIds || {})[bid] = id;
+  if (SC.open['ja:' + bid]) SC.open['ja:' + id] = true;
+  return e;
+}
+/* redraw the tab + pop-up (after the field change has moved the focus: keep it on the same field) */
+function scJaRefresh() {
+  setTimeout(() => {
+    const a = document.activeElement, f = a && a.dataset ? a.dataset.scja : null;
+    let bid = f ? a.dataset.b : null;
+    if (bid && SC.jaIds && SC.jaIds[bid]) bid = SC.jaIds[bid];
+    stRenderCasaQuiet();
+    if (f && bid) {
+      const q = window.CSS && CSS.escape ? CSS.escape(bid) : bid;
+      const el = document.querySelector('#scModal [data-scja="' + f + '"][data-b="' + q + '"]');
+      if (el) { try { el.focus(); } catch (e) {} }
+    }
+  }, 0);
+}
+/* the one booking, kept in step in every loaded year and in Controlling's own list */
+function scJaSync(row, goneId) {
+  const id = String(row ? row.id : goneId);
+  for (const y of Object.keys(SC.data)) {
+    const d = SC.data[y]; if (!d) continue;
+    d.one_time = (d.one_time || []).filter(o => String(o.id) !== id);
+    if (row && d.per) { const day = scD(row.invoice_date); if (day >= d.per.from && day <= d.per.to) d.one_time.push(row); }
+  }
+  const L = (window._ctrl.one_time || []).filter(o => String(o.id) !== id);
+  if (row && String(row.invoice_date).slice(0, 4) === String(window._ctrl.year)) L.push(row);
+  window._ctrl.one_time = L;
+}
+function scJaAdd(k) {
+  if (!scJaCan(SC.model)) return;
+  const r = scRecEnsure(SC.year), ja = (r.tenants.__ja = r.tenants.__ja || {});
+  (ja[k] = ja[k] || []).push({ id: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), recv: null, dir: null, amt: null, co: '', ot: null, pd: null, pa: null });
+  scQueueSave(r); scJaRefresh();
+}
+async function scJaAct(a, btn) {
+  const M = SC.model, k = btn.dataset.k, bid = btn.dataset.b;
+  const cur = scJaBills(SC.year, k).find(x => x.id === bid) || { id: bid, blank: true };
+  if (a === 'jaPay') return cur.paid ? scJaUnpay(k, bid, cur) : scJaPay(k, bid, cur, btn);
+  if (!scJaCan(M)) return;
+  if (a === 'jaRecv') {
+    if (cur.recv && cur.paid) { stSay('Switch off \u201c' + (Number(cur.dir) === 1 ? 'Money received' : 'Money paid') + '\u201d first'); return; }
+    const e = scJaOwn(k, bid);
+    e.recv = e.recv ? null : cxToday();
+    scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
+  }
+  if (a === 'jaDir') {
+    const e = scJaOwn(k, bid), v = Number(btn.dataset.v) === 1 ? 1 : -1;
+    if (e.dir === v) return;
+    e.dir = v;
+    if (e.ot !== null && e.ot !== undefined) {               // paid already → the booking turns with it
+      try { scJaSync(await ctlUpdateOneTime(e.ot, { direction: v })); } catch (err) { stSay('Could not change it in Controlling — ' + (err.message || err)); }
+    }
+    scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
+  }
+  if (a === 'jaDel') {
+    const r = scRecEnsure(SC.year), ja = r.tenants.__ja || {}, list = ja[k] || [];
+    const e = list.find(x => x.id === bid); if (!e || (e.ot !== null && e.ot !== undefined)) return;
+    if ((e.recv || e.amt) && !(await stConfirm({ title: 'Remove this Jahresabrechnung?', text: 'Only here – nothing was booked in Controlling for it.', ok: 'Remove', danger: true }))) return;
+    ja[k] = list.filter(x => x.id !== bid);
+    scQueueSave(r); return scJaRefresh();
+  }
+}
+/* Money switch on: the one booking in Controlling › One-off (an identical one already there is used instead) */
+async function scJaPay(k, bid, cur, btn) {
+  const M = SC.model, c = scHgCat(k); if (!c) return;
+  const dir = Number(cur.dir) === 1 ? 1 : Number(cur.dir) === -1 ? -1 : 0, amt = Number(cur.amt) || 0;
+  if (!cur.recv || !dir || !(amt > 0)) { stSay('First add: ' + [!cur.recv ? 'received date' : '', !dir ? 'result' : '', !(amt > 0) ? 'amount' : ''].filter(Boolean).join(' · ')); return; }
+  const q = window.CSS && CSS.escape ? CSS.escape(bid) : bid;
+  const val = f => { const el = document.querySelector('#scModal [data-scja="' + f + '"][data-b="' + q + '"]'); return el ? el.value : ''; };
+  const date = scD(val('pd')) || cxToday();
+  const pn = cxParse(val('pa')), pay = pn === null || !(pn > 0) ? cxR(amt) : cxR(pn);
+  if (M && M.locked && date <= M.per.to) { stSay('House costs ' + SC.year + ' are locked – unlock them, or use a date after ' + stDate(M.per.to)); return; }
+  const own = scJaOwnerYears();
+  const all = Object.keys(SC.data).reduce((x, y) => x.concat((SC.data[y] || {}).one_time || []), []).concat(window._ctrl.one_time || []);
+  const dup = all.find(o => Number(o.property_id) === CASA_PROP_ID && (o.kind === 'Versorger' || o.kind === 'Rechnung') && Number(o.nk_category_id) === Number(c.id) &&
+                            Math.abs(Number(o.amount) - pay) < 0.005 && scD(o.invoice_date) === date && own[String(o.id)] === undefined && String(cur.id) !== 'ot:' + o.id);
+  if (dup && !(await stConfirm({ title: 'Already in Controlling', text: c.name + ' · ' + scE(pay) + ' · ' + stDate(date) + ' is already booked in Controlling › One-off. Use that entry instead of booking it twice?', ok: 'Use it' }))) return;
+  const e = scJaOwn(k, bid);
+  e.pd = date; e.pa = pay;
+  if (btn) btn.disabled = true;
+  let row;
+  try {
+    if (dup) {
+      const fix = {};
+      if (!dup.nk_umlage) fix.nk_umlage = true;
+      if (dup.kind !== 'Versorger') fix.kind = 'Versorger';
+      if (Number(dup.direction) !== dir) fix.direction = dir;
+      row = Object.keys(fix).length ? await ctlUpdateOneTime(dup.id, fix) : dup;
+    } else {
+      row = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: c.name + ' · Jahresabrechnung', company: e.co || null, amount: pay,
+                                  kind: 'Versorger', direction: dir, nk_umlage: true, nk_category_id: c.id, source_ref: 'ja:' + e.id });
+    }
+  } catch (err) { if (btn) btn.disabled = false; stSay('Could not book it in Controlling — ' + (err.message || err)); return; }
+  e.ot = row.id; scJaSync(row);
+  try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
+  stSay(dir > 0 ? 'Guthaben booked in Controlling' : 'Nachzahlung booked in Controlling');
+  scJaRefresh();
+}
+/* Money switch off: the booking goes (it is the same entry) — the bill stays as received */
+async function scJaUnpay(k, bid, cur) {
+  const M = SC.model;
+  if (M && M.locked && cur.pd && scD(cur.pd) <= M.per.to) { stSay('House costs ' + SC.year + ' are locked – unlock them to change'); return; }
+  if (!(await stConfirm({ title: 'Remove the payment?', text: 'The booking in Controlling › One-off (' + stDate(cur.pd) + ' · ' + scE(cur.pa ?? cur.amt) + ') is deleted too – it is the same entry.', ok: 'Remove', danger: true }))) return;
+  const e = scJaOwn(k, bid), id = e.ot;
+  try { await ctlDeleteOneTime(id); } catch (err) { stSay('Could not remove it in Controlling — ' + (err.message || err)); return; }
+  scJaSync(null, id); e.ot = null;
+  try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
+  scJaRefresh();
+}
+/* A field changed (saved on leaving the field) */
+async function scJaInput(el) {
+  const M = SC.model, f = el.dataset.scja, k = el.dataset.k, bid = el.dataset.b;
+  const cur = scJaBills(SC.year, k).find(x => x.id === bid) || { id: bid, blank: true };
+  if (f === 'pd' || f === 'pa') {
+    if (!cur.paid) {                                       // not paid yet: only what the switch will use
+      const e = scJaOwn(k, bid);
+      if (f === 'pd') e.pd = scD(el.value) || null; else { const n = cxParse(el.value); e.pa = n === null || !(n > 0) ? null : cxR(n); }
+      scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
+    }
+    // paid: the same booking moves / changes (never a second one)
+    const fields = {};
+    if (f === 'pd') { const d = scD(el.value); if (!d) return scJaRefresh(); fields.invoice_date = d; }
+    else { const n = cxParse(el.value); if (n === null || !(n > 0)) { stSay('Enter the amount'); return scJaRefresh(); } fields.amount = cxR(n); }
+    if (M && M.locked && (scD(cur.pd) <= M.per.to || (fields.invoice_date && fields.invoice_date <= M.per.to))) { stSay('House costs ' + SC.year + ' are locked – unlock them to change'); return scJaRefresh(); }
+    const e = scJaOwn(k, bid);
+    try { const row = await ctlUpdateOneTime(e.ot, fields); scJaSync(row); e.pd = scD(row.invoice_date); e.pa = cxR(Number(row.amount) || 0); }
+    catch (err) { stSay('Could not change it in Controlling — ' + (err.message || err)); }
+    scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
+  }
+  if (!scJaCan(M)) return scJaRefresh();
+  const e = scJaOwn(k, bid), hasBk = e.ot !== null && e.ot !== undefined;
+  if (f === 'amt') {
+    const n = cxParse(el.value), old = Number(e.amt) || 0;
+    e.amt = n === null || !(n > 0) ? null : cxR(n);
+    if (hasBk && e.amt && Math.abs((Number(cur.pa) || 0) - old) < 0.005) {   // the payment was the bill's amount → it follows
+      try { const row = await ctlUpdateOneTime(e.ot, { amount: e.amt }); scJaSync(row); e.pa = e.amt; } catch (err) { stSay('Could not change it in Controlling — ' + (err.message || err)); }
+    }
+  } else if (f === 'recv') {
+    const d = scD(el.value) || null;
+    if (!d && hasBk) { stSay('Switch off \u201c' + (Number(e.dir) === 1 ? 'Money received' : 'Money paid') + '\u201d first'); return scJaRefresh(); }
+    e.recv = d;
+  } else if (f === 'co') {
+    e.co = String(el.value || '').trim();
+    if (hasBk) { try { scJaSync(await ctlUpdateOneTime(e.ot, { company: e.co || null })); } catch (err) {} }
+  }
+  scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
+}
+
 function scCostsView(M) {
   const R = M.R, Lc = R.check, lnd = R.landlord, can = !M.locked;
   const sup = scHgSuppliers(M), hs = M.money.hgAll || [], missing = sup.filter(x => !x.list.length);
@@ -655,26 +992,22 @@ function scCostsView(M) {
     '<p class="sr-progmeta">' + (M.locked ? 'Locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot · <button class="cx-link" data-sc="unlock">unlock</button>'
       : R.lines.length ? 'Live from Controlling · ' + R.lines.length + ' lines' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : '') : 'Nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet') + '</p></div>';
   const warn = can && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
-  // Jahresabrechnungen: one line each, Guthaben / Nachzahlung written out · switch "in the NK" · "+ add" where one is missing
+  // Jahresabrechnungen: one line each · switch "in the NK" · Belegliste (Oct 2026: typed and paid only in the Jahresabrechnungen pop-up)
   const list = ((M.rec && M.rec.tenants) || {}).__hgList || {};
   const hgRow = (x, h) => {
     const info = h.info || {}, cost = Number(info.amount) || 0, gut = cost < 0;
     return '<div class="sc-hgr' + (h.on ? '' : ' is-off') + '"><span class="sc-hgr__n">' + stEsc(x.l + (info.company ? ' · ' + info.company : '')) +
-      '<small>' + (gut ? 'Guthaben' : 'Nachzahlung') + (info.date ? ' · paid ' + stDate(info.date) : '') + (h.on ? '' : ' · not in the NK') + '</small>' +
+      '<small>' + (gut ? 'Guthaben' : 'Nachzahlung') + (info.date ? (gut ? ' · received ' : ' · paid ') + stDate(info.date) : '') + (h.on ? '' : ' · not in the NK') + '</small>' +
       '<small>' +
-        '<button type="button" class="cx-link sc-hgr__bl' + (list[h.id] ? ' is-on' : '') + '" data-sc="hglist" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') + '>Belegliste ' + (list[h.id] ? 'on' : 'off') + '</button>' +
-        (can && String(h.id).indexOf('ot:') === 0 ? ' · <button type="button" class="cx-link" data-sc="hgDel" data-id="' + stEsc(h.id) + '">remove</button>' : '') + '</small></span>' +
+        '<button type="button" class="cx-link sc-hgr__bl' + (list[h.id] ? ' is-on' : '') + '" data-sc="hglist" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') + '>Belegliste ' + (list[h.id] ? 'on' : 'off') + '</button></small></span>' +
       '<span class="sc-hgr__v ' + (gut ? 'pos' : 'neg') + '">' + stEur(cxR(Math.abs(cost))) + '</span>' +
       '<button type="button" class="sc-hgr__tg' + (h.on ? ' on' : '') + '" data-sc="hgtog" data-id="' + stEsc(h.id) + '" aria-pressed="' + h.on + '" aria-label="In the NK"' + (can ? '' : ' disabled') + '></button></div>';
   };
   const hgRows = sup.map(x => x.list.length ? x.list.map(h => hgRow(x, h)).join('')
-    : '<div class="sc-hgr"><span class="sc-hgr__n">' + stEsc(x.l) + '<small>no Jahresabrechnung paid in ' + M.y + '</small></span><span></span>' +
-      (can ? '<button type="button" class="cx-link sc-hgr__add" data-sc="hgNew" data-t="' + x.k + '">+ add</button>' : '<span></span>') + '</div>').join('');
-  const on = hs.filter(h => h.on), nG = on.filter(h => Number((h.info || {}).amount) < 0).length, nN = on.length - nG, net = M.money.hg;
-  const hgRes = hs.length ? '<div class="sr-tl sr-tl--res' + (net > 0 ? ' is-g' : '') + '"><span><b>Ergebnis</b> <small>' + [nG ? nG + ' Guthaben' : '', nN ? nN + ' Nachzahlung' : ''].filter(Boolean).join(' · ') + '</small></span><b>' +
-    (net > 0.004 ? 'Guthaben ' : net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(net || 0) > 0.004 ? stEur(cxR(Math.abs(net))) : '') + '</b></div>' : '';
-  const hgCard = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p><span class="srm__cs">in the NK</span></div>' + hgRows + hgRes +
-    '<p class="sc-hg__note">Abflussprinzip: a Jahresabrechnung counts in the year it was paid or refunded – the same date as in Controlling. In the letter it is netted into its cost type.</p>' + (can && SC.hgNew ? scHgForm() : '') + '</div>';
+    : '<div class="sc-hgr"><span class="sc-hgr__n">' + stEsc(x.l) + '<small>no Jahresabrechnung paid in ' + M.y + '</small></span><span></span><span></span></div>').join('');
+  const hgCard = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p><span class="srm__cs">in the NK</span></div>' + hgRows +
+    '<p class="sc-hg__note">Entered in <button type="button" class="cx-link sc-hg__go" data-sc="ja">Jahresabrechnungen</button> on the Casa Castel card – here you only choose what goes into the NK. In the letter each one is netted into its cost type.</p></div>';
+
   // Kosten: per group, folded – the classic list behind a tap
   const groups = [['typed', 'Typed by you', 'positions'], ['running', 'Laufende Kosten', 'Expenses · Casa Castel'], ['hausgeld', 'Jahresabrechnungen', 'netted into their cost type'], ['oneoff', 'Einmalig', 'NK one-offs']];
   const fold = ([g, t, sub]) => {
@@ -1131,7 +1464,11 @@ async function scClick(e) {
   if (a === 'close') { SC.modal = null; SC.setEdit = null; return scRenderModal(); }
   if (a === 'fold') { SC.open[b.dataset.k] = !SC.open[b.dataset.k]; return scRenderModal(); }
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
-  if (a === 'sumTen' || a === 'sumHg') { SC.modal = { view: a }; return scRenderModal(); }
+  if (a === 'ja' || a === 'sumHg') { SC.modal = { view: 'ja' }; return scRenderModal(); }
+  if (a === 'jaFold') { const k = 'ja:' + b.dataset.b; SC.open[k] = !SC.open[k]; return scRenderModal(); }
+  if (a === 'jaAdd') return scJaAdd(b.dataset.k);
+  if (a === 'jaRecv' || a === 'jaDir' || a === 'jaPay' || a === 'jaDel') return scJaAct(a, b);
+  if (a === 'sumTen') { SC.modal = { view: a }; return scRenderModal(); }
   if (a === 'hgNew') { SC.hgNew = { type: b.dataset.t || '', dir: '', amt: '', date: '', co: '' }; return scRenderModal(); }
   if (a === 'hgNewCancel') { SC.hgNew = null; return scRenderModal(); }
   if (a === 'hgNewSet') {
@@ -1247,6 +1584,7 @@ async function scPayEdit(el) {
 }
 function scInput(e) {
   const el = e.target;
+  if (el && el.dataset && el.dataset.scja) return scJaInput(el);              // Jahresabrechnungen pop-up
   if (el && el.dataset && el.dataset.scpay) return scPayEdit(el);
   if (el && el.dataset && el.dataset.scPos) {                         // typed house position
     const r = scRecEnsure(SC.year), p = (r.tenants.__pos || []).find(x => x.id === el.dataset.id); if (!p) return;

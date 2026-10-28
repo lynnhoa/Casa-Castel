@@ -97,6 +97,25 @@ function _cxOtMaintFormHTML(o) {
         '<button class="cx-btn cx-btn--p" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button></div>') +
   '</div>';
 }
+/* Oct 2026 · A Casa Castel Jahresabrechnung (Strom · Gas · Wasser · Entsorgung): typed and paid in
+   Settlements › Casa Castel › Jahresabrechnungen — shown here, not editable (one place for it) */
+const _cxOtIsCasaJa = o => !!o && Number(o.property_id) === CASA_PROP_ID && o.kind === 'Versorger';
+function _cxOtJaFormHTML(o) {
+  const inn = Number(o.direction) === 1;
+  const p = (window._ctrl.properties || []).find(x => Number(x.id) === Number(o.property_id));
+  const cat = (window._ctrl.categories || []).find(c => Number(c.id) === Number(o.nk_category_id));
+  const kv = (k, v) => (v ? '<div class="cx-ot-mt__kv"><span>' + k + '</span><b>' + cxEsc(v) + '</b></div>' : '');
+  return '<div class="cx-form cx-ot-form cx-ot-form--mt" data-edit="' + cxEsc(o.id) + '">' +
+    '<div class="cx-ot-mt">' + cxPill('beige', 'Settlements') +
+      '<span class="cx-ot-mt__t">Jahresabrechnungen of Casa Castel are typed and changed in Settlements.</span></div>' +
+    '<div class="cx-ot-mt__ro">' +
+      kv('Objekt', p ? p.name : '') + kv('Cost type', cat ? cat.name : '') + kv('Description', o.item) + kv('Company', o.company) +
+      kv(inn ? 'Guthaben' : 'Nachzahlung', (inn ? '+\u202f' : '') + cxEur(o.amount)) + kv('Date', cxFmtDate(o.invoice_date)) +
+    '</div>' +
+    '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
+      '<button class="cx-btn cx-btn--p" data-cx="otStl" data-id="' + cxEsc(o.id) + '">Open in Settlements</button></div>' +
+  '</div>';
+}
 async function _cxOtSaveMaint(o, b) {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
   const pid = Number(o.property_id);
@@ -121,16 +140,19 @@ async function _cxOtSaveMaint(o, b) {
 
 function _cxOtFormHTML(o) {
   if (_cxOtIsMaint(o)) return _cxOtMaintFormHTML(o);
+  if (_cxOtIsCasaJa(o)) return _cxOtJaFormHTML(o);
   const props = window._ctrl.properties.filter(p => (p.active && cxAreaOk(p)) || (o && p.id === Number(o.property_id)));
   const pick = [_cxOt.pid, _cxOtLastProp()].find(x => x && props.some(p => p.id === Number(x)));   // stays inside Rentals / Casa Castel
   const pid = o ? Number(o.property_id) : (Number(pick) || (props[0] && props[0].id));
-  const kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
+  let kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
+  if (kind === 'Versorger' && pid === CASA_PROP_ID) { kind = 'Rechnung'; if (o) o._kind = 'Rechnung'; else _cxOt.kind = 'Rechnung'; }   // Oct 2026: typed in Settlements
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   const nk  = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
   const all = window._ctrl.one_time || [];
   const uniq = f => [...new Set(all.map(x => String(x[f] || '').trim()).filter(Boolean))].slice(0, 60);
   return '<div class="cx-form cx-ot-form" data-edit="' + (o ? cxEsc(o.id) : '') + '">' +
-    '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '">' + _cxOtKindLbl(k, pid) + '</button>').join('') + '</div>' +
+    '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '"' +
+      (k === 'Versorger' && pid === CASA_PROP_ID ? ' style="display:none"' : '') + '>' + _cxOtKindLbl(k, pid) + '</button>').join('') + '</div>' +
     (kind === 'Kaufnebenkosten' ? _cxOtKnkChipsHTML(o) : '') +
     '<div class="cx-grid2">' +
       '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">' + _cxOtDirLbl(kind)[0] + '</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">' + _cxOtDirLbl(kind)[1] + '</button></div>' +
@@ -360,6 +382,12 @@ window.renderOneTime = function () {
         location.href = 'maintenance.html#cost=' + encodeURIComponent(o.maint_cost_id || String(o.source_ref || '').replace(/^maint:/, ''));
         return;
       }
+      if (a === 'otStl') {                                                       // Oct 2026: that Jahresabrechnung, in Settlements
+        const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(b.dataset.id));
+        if (!o || !(await _cxOtClose())) return;
+        location.href = 'settlements.html#tab=casa&y=' + String(o.invoice_date).slice(0, 4) + '&v=ja&ot=' + encodeURIComponent(o.id);
+        return;
+      }
       if (a === 'otCancel') { if ((await _cxOtClose())) window.renderOneTime(); return; }
       if (a === 'otKind') {
         _cxOt.kind = b.dataset.v;
@@ -465,6 +493,7 @@ async function _cxOtSave(b) {
   const kt = kind === 'Kaufnebenkosten' ? (o ? (o._knkType !== undefined ? o._knkType : o.knk_type || '') : _cxOt.knkType) : '';
   const kp = _cxKnkHasPart(kt) ? (o ? (o._knkPart !== undefined ? o._knkPart : o.knk_part || '') : _cxOt.knkPart) : '';
   if (kind === 'Kaufnebenkosten' && !kt) { say('Please choose what it is · Makler, Notar, …'); return; }
+  if (kind === 'Versorger' && pid === CASA_PROP_ID) { say('Casa Castel Jahresabrechnungen are typed in Settlements › Casa Castel'); return; }
   const knk = kind === 'Kaufnebenkosten' ? { knk_type: kt, knk_part: kp || null } : (o && o.knk_type ? { knk_type: null, knk_part: null } : {});
   const fallback = kt ? kt + (kp ? ' · ' + kp : '') : kind;
   // NK only for Casa Castel costs (Raus); anything else is saved without it
@@ -530,7 +559,13 @@ function _cxOtNkShow() {
   row.style.display = pid === CASA_PROP_ID && kind !== 'Kaufnebenkosten' ? '' : 'none';
   const catRow = document.getElementById('cxOtNkCatRow'); if (catRow && pid !== CASA_PROP_ID) catRow.style.display = 'none';
   const chip = document.querySelector('.cx-ot-form [data-cx="otKind"][data-v="Versorger"]');
-  if (chip) chip.textContent = _cxOtKindLbl('Versorger', pid);       // Hausgeld (Casa Castel) · Jahresabrechnung (Rentals)
+  if (chip) {
+    chip.textContent = _cxOtKindLbl('Versorger', pid);               // Jahresabrechnung (Rentals)
+    chip.style.display = pid === CASA_PROP_ID ? 'none' : '';         // Oct 2026: Casa Castel Jahresabrechnungen are typed in Settlements
+    if (pid === CASA_PROP_ID && chip.classList.contains('on')) {
+      const inv = document.querySelector('.cx-ot-form [data-cx="otKind"][data-v="Rechnung"]'); if (inv) inv.click();
+    }
+  }
 }
 
 

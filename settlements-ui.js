@@ -90,9 +90,14 @@ const ST_ICONS = {
   calc: '<rect x="5" y="3.5" width="14" height="17" rx="2.5" fill="#BFD0E0"/><rect x="5" y="3.5" width="14" height="17" rx="2.5" fill="none" stroke="#2F5470" stroke-width="1.5"/><rect x="8" y="6.5" width="8" height="3.5" rx="1" fill="none" stroke="#2F5470" stroke-width="1.5"/><path d="M8.5 13.5h.01M12 13.5h.01M15.5 13.5h.01M8.5 17h.01M12 17h.01M15.5 17h.01" stroke="#2F5470" stroke-width="2.2" stroke-linecap="round"/>',
   lock: '<rect x="5" y="10" width="14" height="10.5" rx="2.5" fill="#E8C98F"/><rect x="5" y="10" width="14" height="10.5" rx="2.5" fill="none" stroke="#7A5A22" stroke-width="1.5"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10M12 14v2.5" fill="none" stroke="#7A5A22" stroke-width="1.5" stroke-linecap="round"/>',
   bolt: '<path d="M13 3L5.5 13.5H11L10 21l7.5-10.5H12z" fill="#F1D9A8"/><path d="M13 3L5.5 13.5H11L10 21l7.5-10.5H12z" fill="none" stroke="#7A5A22" stroke-width="1.5" stroke-linejoin="round"/>',
+  // Oct 2026 · the Casa Castel Versorger (Jahresabrechnungen): Gas · Wasser · Entsorgung (Strom = bolt)
+  flame: '<path d="M12 3c.8 3 5 5.2 5 10a5 5 0 0 1-10 0c0-2.6 1.4-4.2 2.6-5.2.2 1.9 1.1 2.9 2.4 3.2-.4-3.2-.9-5.4 0-8z" fill="#F4C9B5"/><path d="M12 3c.8 3 5 5.2 5 10a5 5 0 0 1-10 0c0-2.6 1.4-4.2 2.6-5.2.2 1.9 1.1 2.9 2.4 3.2-.4-3.2-.9-5.4 0-8z" fill="none" stroke="#9A4A33" stroke-width="1.5" stroke-linejoin="round"/>',
+  drop: '<path d="M12 3.5c3 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 3-6.5 6-10.5z" fill="#BFD0E0"/><path d="M12 3.5c3 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 3-6.5 6-10.5z" fill="none" stroke="#2F5470" stroke-width="1.5" stroke-linejoin="round"/>',
+  bin: '<path d="M6.5 8h11l-1 12.5h-9z" fill="#C9DDB0"/><path d="M6.5 8h11l-1 12.5h-9zM4.5 8h15M10 8V5h4v3M10.5 11.5v6M13.5 11.5v6" fill="none" stroke="#46682A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
   seal: '<path d="M12 2.5l2.1 1.6 2.6-.3 1 2.4 2.4 1-.3 2.6L21.5 12l-1.6 2.1.3 2.6-2.4 1-1 2.4-2.6-.3L12 21.5l-2.1-1.6-2.6.3-1-2.4-2.4-1 .3-2.6L2.5 12l1.6-2.1-.3-2.6 2.4-1 1-2.4 2.6.3z" fill="#9DBF7A"/><path d="M8.3 12.2l2.5 2.5 5-5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
 };
-const ST_TINT = { bld: '#E6EEF6', inbox: '#EFEAF6', coins: '#EAF3E0', mail: '#FAF0DC', doc: '#F8EDD6', bank: '#E6EEF6', house: '#EAF3E0', safe: '#EFEAF6', receipt: '#FAF0DC', calc: '#E6EEF6', lock: '#FAF0DC', bolt: '#FAF0DC' };
+const ST_TINT = { bld: '#E6EEF6', inbox: '#EFEAF6', coins: '#EAF3E0', mail: '#FAF0DC', doc: '#F8EDD6', bank: '#E6EEF6', house: '#EAF3E0', safe: '#EFEAF6', receipt: '#FAF0DC', calc: '#E6EEF6', lock: '#FAF0DC', bolt: '#FAF0DC',
+                  flame: '#FBEDE6', drop: '#E6EEF6', bin: '#EAF3E0' };
 const stIc = (k, size) => '<svg class="mx-svg" viewBox="0 0 24 24" width="' + (size || 24) + '" height="' + (size || 24) + '" aria-hidden="true">' + (ST_ICONS[k] || '') + '</svg>';
 /* Header: tile (icon or initials) · title · sub · close */
 function stMHead(title, sub, tile, closeAttr) {
@@ -221,7 +226,8 @@ function stConfirm(o) {
 function stNotice(msg) { stSay(msg); }
 
 /* ── Deep links ───────────────────────────────────────────── */
-/* #tab=casa&y=2025&t=12 · #tab=rentals&y=2026&p=4&t=31 — opened from the tenant cards ("Open NK-Abrechnung") */
+/* #tab=casa&y=2025&t=12 · #tab=rentals&y=2026&p=4&t=31 — opened from the tenant cards ("Open NK-Abrechnung")
+   #tab=casa&y=2026&v=ja&ot=812 — a Jahresabrechnung opened from Controlling › One-off */
 function stReadLink() {
   const h = String(location.hash || '').replace(/^#/, ''); if (!h) return null;
   const q = {}; h.split('&').forEach(kv => { const i = kv.indexOf('='); if (i > 0) q[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); });
@@ -235,11 +241,17 @@ function stOpenLink(q) {
   if (q.tab === 'casa') {
     if (y) SC.year = y;
     stSwitchTab('casa');
-    if (!q.t) return;
+    if (!q.t && q.v !== 'ja') return;
     let n = 0;
     const tryOpen = () => {
       const M = SC.model;
       if (M && Number(M.y) === Number(SC.year)) {
+        if (q.v === 'ja') {                       // Oct 2026 · from Controlling › One-off: the Jahresabrechnungen pop-up
+          // the bill that owns this booking may sit in another year (received in Dec, paid in Jan) → that year
+          const oy = q.ot && typeof scJaOwnerYears === 'function' ? scJaOwnerYears()[String(q.ot)] : undefined;
+          if (oy && Number(oy) !== Number(SC.year) && !q._moved) { q._moved = true; SC.year = Number(oy); stRenderCasa(); n = 0; setTimeout(tryOpen, 150); return; }
+          SC.modal = { view: 'ja' }; scRenderModal(); return;
+        }
         const t = M.ten.find(x => String(x.tenantId) === String(q.t));
         if (t) { SC.modal = { view: 'ten', key: t.key }; scRenderModal(); }
         return;
