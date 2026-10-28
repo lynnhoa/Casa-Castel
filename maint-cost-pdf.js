@@ -154,14 +154,14 @@ function mtCostPdfHTML(d) {
     .empty { margin-top:16px; font-family:'Lato',sans-serif; font-size:11px; color:#6b645c; }
   `;
   const colg = '<colgroup><col style="width:10%"><col style="width:15%"><col><col style="width:19%"><col style="width:12%"><col style="width:12%"></colgroup>';
-  const head = cols => `<tr><th>Nr.</th><th>${esc(cols[0])}</th><th>${esc(cols[1])}</th><th>${esc(cols[2])}</th><th class="n">Betrag</th><th class="d">Datum</th></tr>`;
+  const head = cols => `<tr><th>Nr.</th><th>${esc(cols[0])}</th><th>${esc(cols[1])}</th><th>${esc(cols[2])}</th><th class="d">Datum</th><th class="n">Betrag</th></tr>`;   // Betrag last: every sum lines up under it
   const line = l => l.net
-    ? `<tr class="net"><td></td><td></td><td>Netto</td><td></td><td class="n">${amt(l.amt)}</td><td class="d"></td></tr>`
-    : `<tr${l.ret ? ' class="ret"' : ''}><td class="own">${esc(l.own)}${l.nofile ? '<span class="nf">keine Datei</span>' : ''}</td><td>${esc(l.no)}</td><td>${esc(l.desc)}</td><td>${esc(l.who)}</td><td class="n">${amt(l.amt)}</td><td class="d">${esc(mtDate(l.date))}</td></tr>`;
+    ? `<tr class="net"><td></td><td></td><td>Netto</td><td></td><td class="d"></td><td class="n">${amt(l.amt)}</td></tr>`
+    : `<tr${l.ret ? ' class="ret"' : ''}><td class="own">${esc(l.own)}${l.nofile ? '<span class="nf">keine Datei</span>' : ''}</td><td>${esc(l.no)}</td><td>${esc(l.desc)}</td><td>${esc(l.who)}</td><td class="d">${esc(mtDate(l.date))}</td><td class="n">${amt(l.amt)}</td></tr>`;
   let body = '';
   const yg = groups => groups.map(g => `<div class="sec"><span>${esc(g.name)}</span><span class="sec__r">${amt(g.sum)}</span></div>
       <table class="t">${colg}${head(d.cols)}${g.ents.map(e =>
-        `<tr class="grp"><td colspan="4">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
+        `<tr class="grp"><td colspan="4">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td></td><td class="n">${amt(e.sum)}</td></tr>` +
         e.lines.map(line).join('')).join('')}</table>`).join('');
   if (d.mode === 'year2') {                                  // D22: Renovierungen, then Schäden
     body = (d.parts || []).map(pt => `<div class="tab"><span>${esc(pt.title)}</span><span>${amt(pt.sum)}</span></div>` + yg(pt.groups)).join('');
@@ -169,7 +169,7 @@ function mtCostPdfHTML(d) {
   } else if (d.mode === 'year') {
     body = d.groups.map(g => `<div class="sec"><span>${esc(g.name)}</span><span class="sec__r">${amt(g.sum)}</span></div>
       <table class="t">${colg}${head(d.cols)}${g.ents.map(e =>
-        `<tr class="grp"><td colspan="4">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td class="n">${amt(e.sum)}</td><td></td></tr>` +
+        `<tr class="grp"><td colspan="4">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td></td><td class="n">${amt(e.sum)}</td></tr>` +
         e.lines.map(line).join('')).join('')}</table>`).join('');
     if (!d.groups.length) body = '<p class="empty">Keine Belege in diesem Jahr.</p>';
   } else {

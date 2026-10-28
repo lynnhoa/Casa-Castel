@@ -266,7 +266,7 @@ async function cxExportInvoicesPdf(year, pid, btn) {
 }
 
 /* ══ KAUFNEBENKOSTEN · every year, per purchase (for the Steuerberater) ══════════════
-   One PDF / Excel: every line (Art · Kauf/Grundschuld · Beschreibung · Firma · Betrag · Datum),
+   One PDF / Excel: every line (Art · Kauf/Grundschuld · Beschreibung · Firma · Datum · Betrag — Betrag last, under it the sums),
    the sum, subtotals per Art, and Kauf vs Grundschuld (Notar / Grundbuch without it = still open). */
 const _CX_KNK_ORDER = ['Makler', 'Notar', 'Grundbuch', 'Grunderwerbsteuer', 'Sonstiges'];
 function cxKnkData(pid) {
@@ -337,10 +337,10 @@ function cxBuildKnkPdf(pid) {
     if (!single || i > 0) doc.addPage();
     const first = doc.getNumberOfPages();
     pageTitle(g.p.name, 'Kaufnebenkosten · ' + yrs(g) + ' · ' + g.items.length + ' Posten · Stand ' + stand);
-    table(50, ['Nr.', 'Art', 'Für', 'Beschreibung', 'Firma', 'Betrag', 'Datum'],
-      g.items.map(it => [String(it.nr), _cxPdfTxt(it.type || '–'), _cxKnkPartLbl(it), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
-      ['', 'Summe', '', '', '', _cxPdfEur(g.total), ''],
-      { 0: { cellWidth: 9, textColor: C.mut }, 1: { cellWidth: 25 }, 2: { cellWidth: 19 }, 4: { cellWidth: 30 }, 5: { halign: 'right', cellWidth: 23 }, 6: { halign: 'right', cellWidth: 20 } }, 5);
+    table(50, ['Nr.', 'Art', 'Für', 'Beschreibung', 'Firma', 'Datum', 'Betrag'],
+      g.items.map(it => [String(it.nr), _cxPdfTxt(it.type || '–'), _cxKnkPartLbl(it), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfDate(it.date), _cxPdfEur(it.price)]),
+      ['', 'Summe', '', '', '', '', _cxPdfEur(g.total)],
+      { 0: { cellWidth: 9, textColor: C.mut }, 1: { cellWidth: 25 }, 2: { cellWidth: 19 }, 4: { cellWidth: 30 }, 5: { halign: 'right', cellWidth: 20 }, 6: { halign: 'right', cellWidth: 23 } }, 6);
     let y = doc.lastAutoTable.finalY + 12;
     if (y > 225) { doc.addPage(); y = 34; }
     doc.setFont('times', 'normal'); doc.setFontSize(13); doc.setTextColor(...C.ink); doc.text('Zusammenfassung', M, y);
@@ -369,23 +369,23 @@ function cxBuildKnkWorkbook(pid) {
   const eur = '#,##0.00 "€";-#,##0.00 "€"';
   for (const g of groups) {
     count += g.items.length;
-    const aoa = [['Nr.', 'Art', 'Für', 'Beschreibung', 'Firma', 'Betrag', 'Datum']];
-    for (const it of g.items) aoa.push([it.nr, it.type, _cxKnkPartLbl(it), it.item, it.company, it.price,
-      new Date(Number(it.date.slice(0, 4)), Number(it.date.slice(5, 7)) - 1, Number(it.date.slice(8, 10)))]);
+    const aoa = [['Nr.', 'Art', 'Für', 'Beschreibung', 'Firma', 'Datum', 'Betrag']];   // Betrag last, like the PDF
+    for (const it of g.items) aoa.push([it.nr, it.type, _cxKnkPartLbl(it), it.item, it.company,
+      new Date(Number(it.date.slice(0, 4)), Number(it.date.slice(5, 7)) - 1, Number(it.date.slice(8, 10))), it.price]);
     const last = aoa.length;
-    aoa.push([]); aoa.push(['', 'Summe', '', '', '', null, '']);
+    aoa.push([]); aoa.push(['', 'Summe', '', '', '', '', null]);
     aoa.push([]);
-    g.byType.forEach(x => aoa.push(['', 'nach Art · ' + x.t, '', '', '', x.sum, '']));
-    aoa.push(['', 'davon Kauf (Anschaffungsnebenkosten)', '', '', '', g.kauf, '']);
-    aoa.push(['', 'davon Grundschuld (Finanzierung)', '', '', '', g.grund, '']);
-    if (g.open) aoa.push(['', 'davon noch nicht zugeordnet (Notar / Grundbuch)', '', '', '', g.open, '']);
+    g.byType.forEach(x => aoa.push(['', 'nach Art · ' + x.t, '', '', '', '', x.sum]));
+    aoa.push(['', 'davon Kauf (Anschaffungsnebenkosten)', '', '', '', '', g.kauf]);
+    aoa.push(['', 'davon Grundschuld (Finanzierung)', '', '', '', '', g.grund]);
+    if (g.open) aoa.push(['', 'davon noch nicht zugeordnet (Notar / Grundbuch)', '', '', '', '', g.open]);
     const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true });
-    ws[X.utils.encode_cell({ r: last + 1, c: 5 })] = { t: 'n', f: 'SUM(F2:F' + last + ')', v: g.total };
+    ws[X.utils.encode_cell({ r: last + 1, c: 6 })] = { t: 'n', f: 'SUM(G2:G' + last + ')', v: g.total };
     for (let r = 1; r < aoa.length; r++) {
-      const c = ws[X.utils.encode_cell({ r, c: 5 })]; if (c && c.t === 'n') c.z = eur;
-      const d = ws[X.utils.encode_cell({ r, c: 6 })]; if (d && (d.t === 'd' || d.t === 'n')) d.z = 'dd.mm.yyyy';
+      const c = ws[X.utils.encode_cell({ r, c: 6 })]; if (c && c.t === 'n') c.z = eur;
+      const d = ws[X.utils.encode_cell({ r, c: 5 })]; if (d && (d.t === 'd' || d.t === 'n')) d.z = 'dd.mm.yyyy';
     }
-    ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 12 }, { wch: 42 }, { wch: 24 }, { wch: 13 }, { wch: 12 }];
+    ws['!cols'] = [{ wch: 5 }, { wch: 18 }, { wch: 12 }, { wch: 42 }, { wch: 24 }, { wch: 12 }, { wch: 13 }];
     ws['!autofilter'] = { ref: 'A1:G' + last };
     X.utils.book_append_sheet(wb, ws, _cxSheetName(g.p.name, used));
   }
