@@ -39,11 +39,11 @@ const knkSel = id => (window.CSS && CSS.escape ? CSS.escape(id) : String(id));
 const knkNil = v => v === null || v === undefined || v === '';
 
 /* A small message at the bottom (this page has no toast of its own) */
-function knkSay(msg) {
+function knkSay(msg, ms) {                               // ms: how long it stays (a warning stays longer)
   let t = document.getElementById('knkToast');
   if (!t) { t = document.createElement('div'); t.id = 'knkToast'; t.className = 'knk-toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
   t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 3200);
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms || 3200);
 }
 
 /* ── Data ─────────────────────────────────────────────── */
@@ -188,9 +188,9 @@ async function knkSave(p, it, patch) {
 }
 
 /* ── Actions ── */
-async function knkStart(p) {
+async function knkStart(p, opt) {                       // opt.loanLater: a new property — its loan comes later (K3)
   if (KNK.missing) return knkSay('Run PROPERTIES-KNK.sql in Supabase first');
-  const rate = knkRate(p), price = Number(p.kaufpreis) || 0, noLoan = !(Number(p.darlehen) > 0);
+  const rate = knkRate(p), price = Number(p.kaufpreis) || 0, noLoan = !(opt && opt.loanLater) && !(Number(p.darlehen) > 0);
   const rows = [
     { art: 'Grunderwerbsteuer', company: 'Finanzamt', pct: rate, expected: price > 0 ? knkR2(price * rate / 100) : null, sort: 1 },
     { art: 'Notar', part: 'Kauf', sort: 2 }, { art: 'Notar', part: 'Grundschuld', sort: 3, not_needed: noLoan },
@@ -253,7 +253,7 @@ async function knkPay(p, it) {
   knkRender();
 }
 async function knkUnpay(p, it) {
-  if (!confirm('Remove the payment?' + (it.booked ? '\n\nThe booking in Controlling › One-off is deleted too – it is the same entry.' : ''))) return;
+  if (!(await propConfirm('Remove the payment?', it.booked ? 'The booking in Controlling › One-off is deleted too – it is the same entry.' : '', 'Remove', true))) return;
   try {
     const row = await knkEnsureRow(p, it);
     if (!knkNil(row.ot_id)) {
@@ -270,7 +270,7 @@ async function knkUnpay(p, it) {
 }
 async function knkDel(p, it) {
   if (it.paid_on) return knkSay('Switch off “Paid” first');
-  if (!confirm('Remove “' + it.art + (it.part ? ' · ' + it.part : '') + '”?')) return;
+  if (!(await propConfirm('Remove this cost?', it.art + (it.part ? ' · ' + it.part : ''), 'Remove', true))) return;
   try {
     const { error } = await _supa.from('prop_knk').delete().eq('id', it.key);
     if (error) throw error;
@@ -310,7 +310,7 @@ async function knkOpenFile(it) {
   if (w) w.location = data.signedUrl; else location.href = data.signedUrl;
 }
 async function knkFileDel(p, it) {
-  if (!it.file_path || !confirm('Remove the file “' + (it.file_name || 'Rechnung') + '”?')) return;
+  if (!it.file_path || !(await propConfirm('Remove the file?', it.file_name || 'Rechnung', 'Remove', true))) return;
   try {
     const { data, error } = await _supa.from('prop_knk').update({ file_path: null, file_name: null }).eq('id', it.key).select().single();
     if (error) throw error;
@@ -358,7 +358,7 @@ function knkPill(p) {
 }
 function knkSectionHTML(p) {
   if (!KNK.loaded) return '';
-  const head = '<span class="mod-sec" id="knkSec">Kauf</span>';
+  const head = '<p class="ps-l" id="knkSec"><i class="ti ti-coins" aria-hidden="true"></i>Kauf</p>';   // the pop-up's section label
   if (KNK.missing) return head + '<p class="knk-hint">Run PROPERTIES-KNK.sql in Supabase to enter the Kaufnebenkosten here.</p>';
   const S = knkSum(p);
   const kd = p.kaufdatum && p.kaufdatum !== '—' ? knkDate(p.kaufdatum) : '';
@@ -471,7 +471,10 @@ document.addEventListener('click', e => {
   const p = knkProp();
   if (!p) return;
   const a = b.dataset.knk, key = b.dataset.id;
-  if (a === 'open') { KNK.open = KNK.open === key ? null : key; return knkRender(); }
+  if (a === 'open') {                                       // one open section in the pop-up (asks if a form has changes)
+    const go = () => { KNK.open = KNK.open === key ? null : key; knkRender(); };
+    return typeof psCloseInline === 'function' ? psCloseInline().then(ok => { if (ok) go(); }) : go();
+  }
   if (a === 'show') { KNK.show[p.id] = !KNK.show[p.id]; return knkRender(); }
   if (a === 'start') return knkStart(p);
   if (a === 'add') return knkAdd(p);
