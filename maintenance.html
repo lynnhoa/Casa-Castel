@@ -28,7 +28,7 @@
     .ct-loading__spinner { width:32px; height:32px; border:2px solid var(--cc-rule); border-top-color:var(--cc-ink); border-radius:50%; animation:mt-spin .8s linear infinite; }
     @keyframes mt-spin { to { transform:rotate(360deg); } }
   </style>
-  <link rel="stylesheet" href="maintenance.css?v=2026-10-27-L1"/>
+  <link rel="stylesheet" href="maintenance.css?v=2026-10-28-D30"/>
   <link rel="stylesheet" href="cc-mgmt.css?v=2026-10-17-B6"/>
   <script src="cc-toast.js?v=2026-10-16-P4B"></script>
 </head>
@@ -58,6 +58,7 @@
       <div class="cc-tabs" id="appTabs">
         <button class="cc-tab active" data-tab="renovierung">Renovierungen</button>
         <button class="cc-tab"        data-tab="schaden">Schäden</button>
+        <button class="cc-tab"        data-tab="sonstiges">Sonstiges</button>
       </div>
     </div>
 
@@ -68,6 +69,7 @@
           <div class="mt-col">
             <div class="tab-content" id="tab-renovierung"></div>
             <div class="tab-content" id="tab-schaden" style="display:none;"></div>
+            <div class="tab-content" id="tab-sonstiges" style="display:none;"></div>
           </div>
           <!-- the open entry (D4): one element, moved into its place in the list -->
           <div id="mtPanelHome" hidden><div class="mt-open" id="mtPanel" role="region" aria-labelledby="mtPanelTitle"></div></div>
@@ -92,9 +94,9 @@
   <!-- Schadensbericht (D5): the app's document code — PDF engine, photo pages, template -->
   <script src="pdf-open.js?v=2026-10-16-P4B"></script>
   <script src="cc-ueberg-photos.js?v=2026-10-15-D24"></script>
-  <script src="maint-schaden-pdf.js?v=2026-10-15-D23"></script>
-  <script src="maint-cost-pdf.js?v=2026-10-28-D29"></script>
-  <script src="maintenance.js?v=2026-10-28-D29"></script>
+  <script src="maint-schaden-pdf.js?v=2026-10-28-D30"></script>
+  <script src="maint-cost-pdf.js?v=2026-10-28-D30"></script>
+  <script src="maintenance.js?v=2026-10-28-D30"></script>
 
   <!-- Profile panel (same one as Rentals / Controlling), sharing this page's login session -->
   <script>var sbL = _ctlSupa;</script>

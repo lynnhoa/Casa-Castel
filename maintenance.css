@@ -498,3 +498,8 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 @media (min-width: 1000px) {
   #appMain .mt-col .mt-list { row-gap:20px; }
 }
+
+/* ── D30 · Sonstiges › Bericht: Teilnehmer — tap a room to add / remove it ── */
+.mt-so__chips { margin-bottom:6px; }
+.mt-chip--pick { padding:0 12px; cursor:pointer; font-family:inherit; }
+.mt-chip--pick.is-on { background:var(--cc-gold-lt); border-color:var(--cc-gold); color:var(--cc-ink); }

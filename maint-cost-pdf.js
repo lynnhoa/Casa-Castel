@@ -237,13 +237,14 @@ function mtCpYearDataAll(year) {
   const stand = mtDate(ccTodayISO()), y = String(year);
   const all = MT.costs.filter(r => String(r.cost_date || '').slice(0, 4) === y && MT.cases.some(c => String(c.id) === String(r.case_id)));
   const sumOf = k => mtCpSum(all.filter(r => (mtCase(r.case_id) || {}).kind === k));
-  const parts = ['renovierung', 'schaden'].map(k => ({ k, d: mtCpYearData(k, year) })).filter(x => x.d.groups.length)
+  const parts = Object.keys(MT_KIND).map(k => ({ k, d: mtCpYearData(k, year) })).filter(x => x.d.groups.length)   // D30: + Sonstiges
     .map(x => ({ title: MT_KIND[x.k].title, sum: x.d.groups.reduce((s2, g) => s2 + g.sum, 0), groups: x.d.groups }));
+  const nm = parts.map(x => x.title), what = nm.length > 1 ? nm.slice(0, -1).join(', ') + ' und ' + nm[nm.length - 1] : (nm[0] || 'Renovierungen und Schäden');
   return {
     mode: 'year2', family: 'rentals', wordmark: 'Maintenance', rl: 'Jahr', rv: y,
-    title: 'Rechnungsübersicht ' + y, subtitle: ['Renovierungen und Schäden', 'alle Objekte', 'Stand ' + stand].join(' · '),
+    title: 'Rechnungsübersicht ' + y, subtitle: [what, 'alle Objekte', 'Stand ' + stand].join(' · '),
     cols: ['Beleg-/Bestell-Nr.', 'Beschreibung', 'Geschäft / Dienstleister'],
-    totals: [['Renovierungen', mtEur(sumOf('renovierung'))], ['Schäden', mtEur(sumOf('schaden'))], ['Gesamt', mtEur(mtCpSum(all))], ['Belege', String(all.filter(r => !r.return_of).length)]],
+    totals: Object.keys(MT_KIND).filter(k => k !== 'sonstiges' || all.some(r => (mtCase(r.case_id) || {}).kind === k)).map(k => [MT_KIND[k].title, mtEur(sumOf(k))]).concat([['Gesamt', mtEur(mtCpSum(all))], ['Belege', String(all.filter(r => !r.return_of).length)]]),
     parts, gesamt: mtEur(mtCpSum(all)), footer: S.vermieter_name || '',
     fileName: ccPdfFileName('Rechnungsuebersicht', y, 'Stand ' + stand),
   };

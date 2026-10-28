@@ -127,8 +127,8 @@ function mtSbHTML(d) {
   const has = t => points(t).length > 0;
   const txt = (t, st) => (st === 'text' ? `<div class="p">${esc(String(t || '').trim())}</div>` : list(t));
   const parts = [];
-  if (d.mode === 'rb') {                                    // Renovierungsbericht
-    parts.push({ key: 'angaben', title: 'Angaben zur Renovierung', body: (d.angaben || []).map(([k, v]) => kv(k, v)).join('') });
+  if (d.mode === 'rb' || d.mode === 'so') {                // Renovierungsbericht · D30: Sonstiges (Protokoll / Bericht)
+    parts.push({ key: 'angaben', title: d.angabenTitel || 'Angaben zur Renovierung', body: (d.angaben || []).map(([k, v]) => kv(k, v)).join('') });
     (d.sections || []).forEach(s2 => {
       if (s2.kv) { if (s2.kv.length) parts.push({ key: s2.key, title: s2.title, body: s2.kv.map(([k, v]) => kv(k, v)).join('') }); }
       else if (has(s2.text)) parts.push({ key: s2.key, title: s2.title, body: txt(s2.text, s2.style) });
