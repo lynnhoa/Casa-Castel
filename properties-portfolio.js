@@ -49,7 +49,7 @@ function renderPortfolio() {
       <div class="port-row${rc}" onclick="openDetail(${p.id})">
         <div class="port-row__no">${String(p.sort_order).padStart(2, '0')}</div>
         <div class="port-row__main">
-          <div class="port-row__name">${p.name} ${zp} ${sp}</div>
+          <div class="port-row__name">${p.name} ${zp} ${sp} ${typeof knkPill === 'function' ? knkPill(p) : ''}</div>
           <div class="port-row__sub">${p.cat} · ${ccM2(p.m2)} m² · ${p.bank} · ${p.zinssatz.toFixed(2).replace('.', ',')} %</div>
         </div>
         <div class="port-row__nums">
@@ -173,6 +173,7 @@ function renderView(p) {
         <div style="font-size:10px;color:var(--cc-stone);margin-top:2px">Fixed until ${p.zb}</div>
       </div>
     </div>
+    ${typeof knkSectionHTML === 'function' ? knkSectionHTML(p) : ''}
     ${rateH}
     <span class="mod-sec">Repayment progress</span>
     <div style="margin-bottom:14px">
@@ -196,7 +197,7 @@ function renderView(p) {
     <div class="mod-row"><span class="mod-key">Type</span><span class="mod-val">${p.cat}</span></div>
     <div class="mod-row"><span class="mod-key">Size</span><span class="mod-val">${ccM2(p.m2)} m²</span></div>
     <div class="mod-row"><span class="mod-key">Purchase price</span><span class="mod-val">${eur(p.kaufpreis)}</span></div>
-    <div class="mod-row"><span class="mod-key">Acquisition costs</span><span class="mod-val">${eur(p.nebenkosten)}</span></div>
+    <div class="mod-row"><span class="mod-key">Acquisition costs</span><span class="mod-val">${eur(p.nebenkosten)}${typeof knkTotalNote === 'function' && knkTotalNote(p) ? '<small class="knk-from">' + knkTotalNote(p) + '</small>' : ''}</span></div>
     <div class="mod-row"><span class="mod-key">Equity</span><span class="mod-val">${eur(p.ek)}</span></div>
     <div class="mod-row"><span class="mod-key">Purchase date</span><span class="mod-val">${ccFmtDate(p.kaufdatum)}</span></div>
     <div class="mod-row"><span class="mod-key">Est. market value</span><span class="mod-val mod-val--gold">${eur(p.marktwert)}</span></div>`;
@@ -235,7 +236,7 @@ function renderEditForm(p) {
       <div class="e-field"><label class="e-lbl">Equity €</label><input class="cc-input" id="e-ek" type="number" data-cc-num="2" value="${p.ek}"/></div>
     </div>
     <div class="e-grid">
-      <div class="e-field"><label class="e-lbl">Acquisition costs €</label><input class="cc-input" id="e-nebenkosten" type="number" data-cc-num="2" value="${p.nebenkosten}"/></div>
+      <div class="e-field"><label class="e-lbl">Acquisition costs €</label><input class="cc-input" id="e-nebenkosten" type="number" data-cc-num="2" value="${p.nebenkosten}"${typeof knkTotalNote === 'function' && knkTotalNote(p) === 'sum of the Kauf list' ? ' readonly title="The sum of the Kauf list — change the costs there"' : ''}/></div>
       <div class="e-field"><label class="e-lbl">Est. market value €</label><input class="cc-input" id="e-marktwert" type="number" data-cc-num="2" value="${p.marktwert}"/></div>
     </div>
     <span class="e-sec">Financing</span>
@@ -469,10 +470,11 @@ async function saveNew() {
 
   try {
     showLoading(true);
-    await addProperty(fields);
+    const created = await addProperty(fields);
     window._props = await fetchAll();
     closeAdd();
     renderAll();
+    if (created && created.id) openDetail(created.id);       // Oct 2026: straight to the new property — its Kauf card offers the checklist
     // Clear form
     ['a-name','a-addr','a-m2','a-kaufdatum','a-kaufpreis','a-ek','a-nebenkosten',
      'a-darlehen','a-restschuld','a-abbezahlt','a-marktwert','a-bank',

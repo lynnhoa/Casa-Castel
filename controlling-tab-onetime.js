@@ -116,6 +116,22 @@ function _cxOtJaFormHTML(o) {
       '<button class="cx-btn cx-btn--p" data-cx="otStl" data-id="' + cxEsc(o.id) + '">Open in Settlements</button></div>' +
   '</div>';
 }
+/* Oct 2026 · Kaufnebenkosten are typed and paid in Properties (Kauf card of the property) — shown here, not editable */
+const _cxOtIsKnkRO = o => !!o && o.kind === 'Kaufnebenkosten';
+function _cxOtKnkFormHTML(o) {
+  const p = (window._ctrl.properties || []).find(x => Number(x.id) === Number(o.property_id)), inn = Number(o.direction) === 1;
+  const kv = (k, v) => (v ? '<div class="cx-ot-mt__kv"><span>' + k + '</span><b>' + cxEsc(v) + '</b></div>' : '');
+  return '<div class="cx-form cx-ot-form cx-ot-form--mt" data-edit="' + cxEsc(o.id) + '">' +
+    '<div class="cx-ot-mt">' + cxPill('beige', 'Properties') +
+      '<span class="cx-ot-mt__t">Kaufnebenkosten are typed and paid in Properties, on the property\u2019s Kauf card.</span></div>' +
+    '<div class="cx-ot-mt__ro">' +
+      kv('Objekt', p ? p.name : '') + kv('Art', [o.knk_type, o.knk_part].filter(Boolean).join(' · ')) + kv('Description', o.item) + kv('Company', o.company) +
+      kv(inn ? 'Refund' : 'Amount', (inn ? '+\u202f' : '') + cxEur(o.amount)) + kv('Date', cxFmtDate(o.invoice_date)) +
+    '</div>' +
+    '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
+      '<button class="cx-btn cx-btn--p" data-cx="otProps" data-id="' + cxEsc(o.id) + '">Open in Properties</button></div>' +
+  '</div>';
+}
 async function _cxOtSaveMaint(o, b) {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
   const pid = Number(o.property_id);
@@ -141,18 +157,20 @@ async function _cxOtSaveMaint(o, b) {
 function _cxOtFormHTML(o) {
   if (_cxOtIsMaint(o)) return _cxOtMaintFormHTML(o);
   if (_cxOtIsCasaJa(o)) return _cxOtJaFormHTML(o);
+  if (_cxOtIsKnkRO(o)) return _cxOtKnkFormHTML(o);
   const props = window._ctrl.properties.filter(p => (p.active && cxAreaOk(p)) || (o && p.id === Number(o.property_id)));
   const pick = [_cxOt.pid, _cxOtLastProp()].find(x => x && props.some(p => p.id === Number(x)));   // stays inside Rentals / Casa Castel
   const pid = o ? Number(o.property_id) : (Number(pick) || (props[0] && props[0].id));
   let kind = o ? (o._kind || (_CX_KINDS.includes(o.kind) ? o.kind : 'Rechnung')) : _cxOt.kind;
   if (kind === 'Versorger' && pid === CASA_PROP_ID) { kind = 'Rechnung'; if (o) o._kind = 'Rechnung'; else _cxOt.kind = 'Rechnung'; }   // Oct 2026: typed in Settlements
+  if (kind === 'Kaufnebenkosten') { kind = 'Rechnung'; if (o) o._kind = 'Rechnung'; else _cxOt.kind = 'Rechnung'; }                       // Oct 2026: typed in Properties
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   const nk  = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
   const all = window._ctrl.one_time || [];
   const uniq = f => [...new Set(all.map(x => String(x[f] || '').trim()).filter(Boolean))].slice(0, 60);
   return '<div class="cx-form cx-ot-form" data-edit="' + (o ? cxEsc(o.id) : '') + '">' +
     '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '"' +
-      (k === 'Versorger' && pid === CASA_PROP_ID ? ' style="display:none"' : '') + '>' + _cxOtKindLbl(k, pid) + '</button>').join('') + '</div>' +
+      ((k === 'Versorger' && pid === CASA_PROP_ID) || k === 'Kaufnebenkosten' ? ' style="display:none"' : '') + '>' + _cxOtKindLbl(k, pid) + '</button>').join('') + '</div>' +
     (kind === 'Kaufnebenkosten' ? _cxOtKnkChipsHTML(o) : '') +
     '<div class="cx-grid2">' +
       '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">' + _cxOtDirLbl(kind)[0] + '</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">' + _cxOtDirLbl(kind)[1] + '</button></div>' +
@@ -382,6 +400,16 @@ window.renderOneTime = function () {
         location.href = 'maintenance.html#cost=' + encodeURIComponent(o.maint_cost_id || String(o.source_ref || '').replace(/^maint:/, ''));
         return;
       }
+      if (a === 'otProps') {                                                     // Oct 2026: that property's Kauf card in Properties
+        const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(b.dataset.id))
+               || ((window._src && window._src.knkAll) || []).find(x => String(x.id) === String(b.dataset.id));
+        if (!o || !(await _cxOtClose())) return;
+        const p = (window._ctrl.properties || []).find(x => Number(x.id) === Number(o.property_id)) || {};
+        const loans = (window._src && window._src.loans) || [], norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+        const loan = p.loan_ref ? loans.find(l => String(l.id) === String(p.loan_ref)) : loans.find(l => norm(l.name) === norm(p.name));
+        location.href = 'properties.html' + (loan ? '#knk=' + encodeURIComponent(loan.id) : '');
+        return;
+      }
       if (a === 'otStl') {                                                       // Oct 2026: that Jahresabrechnung, in Settlements
         const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(b.dataset.id));
         if (!o || !(await _cxOtClose())) return;
@@ -494,6 +522,7 @@ async function _cxOtSave(b) {
   const kp = _cxKnkHasPart(kt) ? (o ? (o._knkPart !== undefined ? o._knkPart : o.knk_part || '') : _cxOt.knkPart) : '';
   if (kind === 'Kaufnebenkosten' && !kt) { say('Please choose what it is · Makler, Notar, …'); return; }
   if (kind === 'Versorger' && pid === CASA_PROP_ID) { say('Casa Castel Jahresabrechnungen are typed in Settlements › Casa Castel'); return; }
+  if (kind === 'Kaufnebenkosten') { say('Kaufnebenkosten are typed in Properties › the property › Kauf'); return; }
   const knk = kind === 'Kaufnebenkosten' ? { knk_type: kt, knk_part: kp || null } : (o && o.knk_type ? { knk_type: null, knk_part: null } : {});
   const fallback = kt ? kt + (kp ? ' · ' + kp : '') : kind;
   // NK only for Casa Castel costs (Raus); anything else is saved without it
