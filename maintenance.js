@@ -68,6 +68,12 @@
                  returns .1 under their receipt. Label on PDFs "R1.2 · 2026 · <Objekt>"; the
                  number on a receipt PDF is written again when it moved (on open / save).
                  "Invoices" (case + strip): only the invoice files, in the list's order.
+               · D32: a receipt's PDF (and every page of "Invoices") is one A4 invoice page:
+                 the beige band (Objekt · NR. · BELEG-/BESTELL-NR. · DATUM), the invoice
+                 trimmed and fitted into one box, footer address · page x / y — same for an
+                 uploaded PDF, a photo, a scan or a locked PDF (maint-cost-pdf.js). Receipt
+                 photos are kept as they are (the original); stamp_no = what the band says
+                 ("A4 …"), so every older copy is made again from its original when opened.
    Documents (per case, in the panel):
                Photos  = camera or library, several at once, saved as photos
                          (shrunk to 2000 px + a small preview in /thumbs/)
@@ -860,15 +866,15 @@ function mtOpenUrl(url) {
 function mtOpenDoc(id) {
   const d = MT.docs.find(x => String(x.id) === String(id));
   if (!d) return;
-  // D29: a receipt PDF shows its current automatic No. — written again from the original when it moved
-  const lbl = d.cost_id ? mtNoLabel(d.cost_id) : '';
-  const stale = !!lbl && mtIsPdfPath(d.orig_path || d.file_path) && (d.stamp_no || null) !== lbl && d.stamp_no !== '!' + lbl;
+  // D29/D32: a receipt file opens as its A4 page — made again from the original when the band would say something else
+  const lbl = d.cost_id ? mtFrameKey(d.cost_id) : '';
+  const stale = !!lbl && mtFrFrameable(d.orig_path || d.file_path) && (d.stamp_no || null) !== lbl && d.stamp_no !== '!' + lbl;
   const ready = !stale && mtLinkNow(d.file_path);
   if (ready) { mtOpenUrl(ready); return; }
   let w = null;                                           // open the tab inside the tap, fill it when the link is there
   if (!(typeof CC_STANDALONE !== 'undefined' && CC_STANDALONE)) { try { w = window.open('', '_blank'); } catch (e) { w = null; } }
   const c0 = mtCase(d.case_id) || { id: d.case_id };
-  (stale ? mtStampSync(c0, [d], lbl).catch(e => console.warn('[maintenance] No. not written:', e)) : Promise.resolve())
+  (stale ? mtStampSync(c0, [d], lbl).catch(e => console.warn('[maintenance] A4 page not made:', e)) : Promise.resolve())
     .then(() => mtPrepareLinks([d.file_path])).then(() => {
     const url = mtLinkNow(d.file_path);
     if (!url) { try { if (w) w.close(); } catch (e) {} mtSay('The file could not be opened. Try again.'); return; }
@@ -1866,12 +1872,13 @@ async function mtCostSave() {
     if (!mv.error) Object.assign(d, { cost_id: id, doc_type: 'receipt' });
   }
   // D15 · photos → one PDF (one page each, like "Document"); a PDF stays as it is
+  // D32: the photos as they are, each a page of its own size (the original) — the A4 page with the band is the copy below
   const imgs = pending.filter(x => mtIsImage(x.file)).map(x => x.file);
   let uploads = pending.filter(x => !mtIsImage(x.file)).map(x => x.file);
   if (imgs.length) {
-    let pdf = null;                                       // D19: in the apps' style (header · Rechnung · when it was taken)
-    try { if (typeof mtBelegPdf === 'function') pdf = await mtBelegPdf(imgs, c, row.receipt_no); }
-    catch (e) { console.warn('[maintenance] styled Beleg PDF not possible, plain one instead:', e); }
+    let pdf = null;
+    try { pdf = await mtPhotoOrigPdf(imgs); }
+    catch (e) { console.warn('[maintenance] photo PDF not possible, A4 one instead:', e); }
     if (!pdf) pdf = await mtPhotosToPdf(imgs);
     const nm = ('Beleg ' + (String(row.receipt_no || '').trim() || mtDate(row.cost_date) || mtDate(ccTodayISO())) + '.pdf').replace(/[\\/:*?"<>|]/g, '-');
     uploads = (pdf ? [new File([pdf], nm, { type: 'application/pdf' })] : imgs).concat(uploads);   // PDF not possible → the photos as before
@@ -1888,9 +1895,9 @@ async function mtCostSave() {
     mtRefresh(c.id);
   }
   MT.up = null;
-  // D27/D29 · the automatic No. on top of the receipt's PDFs (new, moved-in and earlier ones)
+  // D27/D29/D32 · the receipt's files as A4 pages with the band (new, moved-in and earlier ones)
   let st = null;
-  const own = mtNoLabel(id);
+  const own = mtFrameKey(id);
   const todo = mtStampTodo(id, own);
   if (todo.length) {
     MT.up = { caseId: c.id, total: todo.length, done: 0, where: 'costs', what: 'Adding your No.' };
@@ -1908,16 +1915,15 @@ async function mtCostSave() {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   D27 · YOUR NO. ON THE RECEIPT PDF
-   "No." (own_no) is your own number. Every PDF of the receipt shows it: page 1
-   shrinks a little (same page size, A4 stays A4) and a 1 cm strip on top says
-   "Nr. 17" in bold. The untouched original stays in storage (orig_path); the copy
-   with the number is the file you open (file_path); stamp_no = the No. on it.
-   A changed No. is written again from the original, a cleared No. brings the
-   original back. Each copy gets a new file name (never an old cached copy).
-   A locked / damaged PDF stays as it is (stamp_no '!<No.>' = tried, not possible).
+   D27 · YOUR NO. ON THE RECEIPT PDF — D32: the copy is the A4 invoice page
+   Every file of a receipt (PDF or photo) has a copy you open (file_path): its A4
+   page with the beige band — Objekt · NR. · BELEG-/BESTELL-NR. · DATUM (made in
+   maint-cost-pdf.js, mtFrameFile). The untouched original stays in storage
+   (orig_path); stamp_no = what the band says ("A4 …"). When that changes (the No.
+   moved, a new date / receipt no.) the copy is made again from the original.
+   Each copy gets a new file name (never an old cached copy). A PDF that can't be
+   opened at all (password) stays as it is (stamp_no '!…' = tried, not possible).
    ───────────────────────────────────────────────────────────── */
-const MT_STRIP = 28.35;                                       // 1 cm in PDF points
 const mtIsPdfPath = p => /\.pdf$/i.test(String(p || ''));
 async function mtPdfLib() {
   if (!window.PDFLib) await mtLoadScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js');
@@ -1925,48 +1931,14 @@ async function mtPdfLib() {
   return window.PDFLib;
 }
 
-/* PDF bytes + your No. → the same PDF with "Nr. <No.>" in bold on top of page 1 · null = not possible (locked / damaged) */
-async function mtStampNo(bytes, no) {
-  const L = await mtPdfLib();
-  const text = 'Nr. ' + String(no).trim().replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');   // what the PDF font can write
-  let doc;
-  try { doc = await L.PDFDocument.load(bytes); } catch (e) { return null; }
-  if (!doc.getPageCount()) return null;
-  const src = doc.getPage(0);
-  const box = src.getCropBox();                               // what a viewer shows (= MediaBox when there is no CropBox)
-  const rot = (((Number(src.getRotation().angle) || 0) % 360) + 360) % 360;
-  const side = rot === 90 || rot === 270;
-  const W = side ? box.height : box.width, H = side ? box.width : box.height;   // the page as you see it
-  const s = (H - MT_STRIP) / H;
-  if (!(s > 0.5) || !(W > 0)) return null;
-  let emb;
-  try { emb = await doc.embedPage(src, { left: box.x, bottom: box.y, right: box.x + box.width, top: box.y + box.height }); }
-  catch (e) { return null; }
-  const pg = doc.insertPage(0, [W, H]);                       // the same size as before
-  const dx = (W - W * s) / 2;                                 // centred
-  const at = rot === 90  ? { x: dx, y: s * box.width, rotate: L.degrees(-90) }          // a turned page comes out upright
-           : rot === 180 ? { x: dx + s * box.width, y: s * box.height, rotate: L.degrees(180) }
-           : rot === 270 ? { x: dx + s * box.height, y: 0, rotate: L.degrees(90) }
-           :               { x: dx, y: 0 };
-  pg.drawPage(emb, { ...at, xScale: s, yScale: s });          // the old page 1, a little smaller, under the strip
-  const font = await doc.embedFont(L.StandardFonts.HelveticaBold);
-  const margin = Math.min(42, W * 0.08);
-  let size = 20;                                              // bold, black, about twice normal invoice text
-  while (size > 11 && font.widthOfTextAtSize(text, size) > W - 2 * margin) size--;
-  const cap = font.heightAtSize(size, { descender: false });
-  pg.drawText(text, { x: W - margin - font.widthOfTextAtSize(text, size), y: H - MT_STRIP / 2 - cap / 2, size, font, color: L.rgb(0, 0, 0) });
-  doc.removePage(1);                                          // the old page 1 lives on inside the new one
-  return doc.save();
-}
-
-/* The PDFs of one receipt whose written No. is not its current No. */
+/* The files of one receipt whose A4 copy does not say what the band should say now */
 function mtStampTodo(costId, own) {
   const want = String(own || '').trim() || null;
-  return mtCostFiles(costId).filter(d => mtIsPdfPath(d.orig_path || d.file_path)
+  return mtCostFiles(costId).filter(d => mtFrFrameable(d.orig_path || d.file_path)
     && (d.stamp_no || null) !== want && !(want && d.stamp_no === '!' + want));
 }
 
-/* Bring those PDFs in line with the No. (after Save) → { failed, locked } */
+/* Bring those files in line (after Save / when opened) → { failed, locked } */
 async function mtStampSync(c, docs, own, fresh) {
   const want = String(own || '').trim() || null;
   const sb = _ctlSupa, store = sb.storage.from(MT_BUCKET);
@@ -1984,8 +1956,8 @@ async function mtStampSync(c, docs, own, fresh) {
         bytes = await r.data.arrayBuffer();
       }
       let out;
-      try { out = await mtStampNo(bytes, want); }
-      catch (e) { console.warn('[maintenance] No. not written:', e); res.failed++; mtStampStep(c); continue; }   // e.g. offline → the next Save tries again
+      try { out = await mtFrameFile(bytes, d); }
+      catch (e) { console.warn('[maintenance] A4 page not made:', e); res.failed++; mtStampStep(c); continue; }   // e.g. offline → the next Save / open tries again
       if (!out) { res.locked++; patch = { file_path: orig, orig_path: null, stamp_no: '!' + want }; }    // stays as it is, never an old No.
       else {
         newPath = `${c.id}/${mtUuid()}.pdf`;
@@ -1995,7 +1967,7 @@ async function mtStampSync(c, docs, own, fresh) {
           if (r && r.error && /exist|duplicate|409/i.test(String(r.error.message || r.error.statusCode || ''))) return {};   // the first try did arrive
           return r;
         });
-        if (up.error) { console.warn('[maintenance] copy with the No. not uploaded:', up.error); res.failed++; mtStampStep(c); continue; }
+        if (up.error) { console.warn('[maintenance] A4 copy not uploaded:', up.error); res.failed++; mtStampStep(c); continue; }
         patch = { file_path: newPath, orig_path: orig, stamp_no: want };
       }
     }
@@ -2148,6 +2120,12 @@ async function mtSbLoad() {
     ten, apts, verw, rten,
   };
 }
+/* Street + PLZ/Ort for a PDF — the PLZ/Ort only once, also when the street line already has it */
+function mtAddr(a, p) {
+  a = String(a || '').trim(); p = String(p || '').trim();
+  const k = x => x.toLowerCase().replace(/[\s,]+/g, '');
+  return a && p && k(a).includes(k(p)) ? a : [a, p].filter(Boolean).join(', ');
+}
 /* The Rentals apartment of a property (link in Controlling, else the same name) */
 function mtSbApt(c) {
   const p = mtProp(c.property_id), apts = (MT.sbData && MT.sbData.apts) || [];
@@ -2269,20 +2247,31 @@ async function mtSbMerge(blob, att) {
 async function mtSbLibs() {
   if (typeof html2canvas === 'undefined') await mtLoadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
   if (!window.jspdf) await mtLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
-  if (!document.getElementById('mtPdfFonts')) {
-    const l = document.createElement('link');
+  await mtPdfFonts();
+}
+/* The PDF fonts (Playfair Display · Lato): the stylesheet first, then the faces themselves */
+async function mtPdfFonts() {
+  let l = document.getElementById('mtPdfFonts');
+  if (!l) {
+    l = document.createElement('link');
     l.id = 'mtPdfFonts'; l.rel = 'stylesheet';
     l.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300;1,400&display=swap';
-    document.head.appendChild(l);
+    await new Promise(res => { l.onload = res; l.onerror = res; setTimeout(res, 6000); document.head.appendChild(l); });
   }
-  try { await Promise.all(['400 26px "Playfair Display"', '400 12px "Lato"', '700 12px "Lato"', 'italic 400 10px "Lato"'].map(x => document.fonts.load(x))); } catch (e) {}
+  const faces = ['400 26px "Playfair Display"', '400 12px "Lato"', '700 12px "Lato"', 'italic 400 10px "Lato"'];
+  for (let i = 0; i < 4; i++) {                              // the stylesheet may still be on its way: try again a little later
+    let got = [];
+    try { got = await Promise.all(faces.map(x => document.fonts.load(x))); } catch (e) { return; }
+    if (got.every(x => x && x.length)) return;
+    await new Promise(r => setTimeout(r, 400));
+  }
 }
 /* The data for the template (maint-schaden-pdf.js) — only what the Hausverwaltung needs */
 function mtSbData(c, f, photoCount) {
   const S = (typeof appSettings !== 'undefined' && appSettings) || {};
   const casa = mtIsCasa(c.property_id), apt = casa ? null : mtSbApt(c);
-  const adresse = casa ? [S.objekt_adresse, S.objekt_plz_ort].filter(Boolean).join(', ')
-                       : (apt ? [apt.adresse, apt.plz_ort].filter(Boolean).join(', ') : '');
+  const adresse = casa ? mtAddr(S.objekt_adresse, S.objekt_plz_ort)
+                       : (apt ? mtAddr(apt.adresse, apt.plz_ort) : '');
   const room = casa && f.room && f.room !== MT_SB_ALL ? f.room : '';
   const unit = casa ? (room ? ['Zimmer', room] : ['Bereich', c.area || 'Gemeinschaftsfläche'])
                     : (apt && apt.wohnungsnummer ? ['Wohnung', String(apt.wohnungsnummer)] : ['', '']);

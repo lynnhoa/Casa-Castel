@@ -15,6 +15,11 @@
      order; a receipt without a file says “keine Datei”. The Kostenübersicht is one list in
      number order (the Selbst gekauft / Dienstleister subtotals stay on top).
      “Invoices”: only the invoice files, in exactly the list's order, each with its number.
+   · D32: every invoice page is the same A4 (beige band: Objekt · NR. · BELEG-/BESTELL-NR. ·
+     DATUM, the invoice trimmed and fitted into one box, footer with address · page x / y) —
+     for the receipt PDF of a cost row and for “Invoices”. The all-tabs Rechnungsübersicht:
+     header “Rechnungsübersicht <Jahr>” · STAND, title “Renovierungen und Schäden” ·
+     “Alle Objekte”; a tab heading moves to the next page with its first block.
    Same frame as the Schadensbericht (A4, beige header, Playfair Display +
    Lato, footer); pdf-open.js flows long tables onto the next page (the
    table header repeats). Opened directly, not saved in Documents.
@@ -103,7 +108,7 @@ function mtCpEntryData(c) {
     rv: casa ? mtRoomLabel(room) : nr,
     title: 'Kostenübersicht – ' + c.title, subtitle: [mtCaseLabel(c), MT_KIND[c.kind].one, mtCpSpan(c), 'Stand ' + stand].filter(Boolean).join(' · '),
     totals, blocks, gesamt: mtEur(mtCpSum(rows)),
-    footer: casa ? [S.objekt_adresse, S.objekt_plz_ort].filter(Boolean).join(', ') : (apt ? [apt.adresse, apt.plz_ort].filter(Boolean).join(', ') : ''),
+    footer: casa ? mtAddr(S.objekt_adresse, S.objekt_plz_ort) : (apt ? mtAddr(apt.adresse, apt.plz_ort) : ''),
     fileName: ccPdfFileName('Kostenuebersicht', c.title, 'Stand ' + stand),
   };
 }
@@ -164,7 +169,7 @@ function mtCostPdfHTML(d) {
         `<tr class="grp"><td colspan="4">${esc(e.title)}${e.span ? `<span>${esc(e.span)}</span>` : ''}</td><td></td><td class="n">${amt(e.sum)}</td></tr>` +
         e.lines.map(line).join('')).join('')}</table>`).join('');
   if (d.mode === 'year2') {                                  // D22: Renovierungen, then Schäden
-    body = (d.parts || []).map(pt => `<div class="tab"><span>${esc(pt.title)}</span><span>${amt(pt.sum)}</span></div>` + yg(pt.groups)).join('');
+    body = (d.parts || []).map(pt => `<div class="tab" data-keep-next><span>${esc(pt.title)}</span><span>${amt(pt.sum)}</span></div>` + yg(pt.groups)).join('');
     if (!(d.parts || []).length) body = '<p class="empty">Keine Belege in diesem Jahr.</p>';
   } else if (d.mode === 'year') {
     body = d.groups.map(g => `<div class="sec"><span>${esc(g.name)}</span><span class="sec__r">${amt(g.sum)}</span></div>
@@ -241,8 +246,8 @@ function mtCpYearDataAll(year) {
     .map(x => ({ title: MT_KIND[x.k].title, sum: x.d.groups.reduce((s2, g) => s2 + g.sum, 0), groups: x.d.groups }));
   const nm = parts.map(x => x.title), what = nm.length > 1 ? nm.slice(0, -1).join(', ') + ' und ' + nm[nm.length - 1] : (nm[0] || 'Renovierungen und Schäden');
   return {
-    mode: 'year2', family: 'rentals', wordmark: 'Maintenance', rl: 'Jahr', rv: y,
-    title: 'Rechnungsübersicht ' + y, subtitle: [what, 'alle Objekte', 'Stand ' + stand].join(' · '),
+    mode: 'year2', family: 'rentals', wordmark: 'Rechnungsübersicht ' + y, rl: 'Stand', rv: stand,   // D32: the header names it, the title says what is in it
+    title: what, subtitle: 'Alle Objekte',
     cols: ['Beleg-/Bestell-Nr.', 'Beschreibung', 'Geschäft / Dienstleister'],
     totals: Object.keys(MT_KIND).filter(k => k !== 'sonstiges' || all.some(r => (mtCase(r.case_id) || {}).kind === k)).map(k => [MT_KIND[k].title, mtEur(sumOf(k))]).concat([['Gesamt', mtEur(mtCpSum(all))], ['Belege', String(all.filter(r => !r.return_of).length)]]),
     parts, gesamt: mtEur(mtCpSum(all)), footer: S.vermieter_name || '',
@@ -259,10 +264,11 @@ function mtPdfEntry(id, btn) {
 /* ─────────────────────────────────────────────────────────────
    D29 · INVOICES — only the invoice files, in exactly the order of the list next to
    the button (Kostenübersicht of a case · Rechnungsübersicht of the year, both tabs):
-   each receipt's files one after another (then its returns' files), page 1 of each
-   with "Nr. R1.2 · 2026 · <Objekt>" on top — always from the untouched original —
-   merged into one PDF. A receipt without a file is left out (its line says
-   "keine Datei"); a locked PDF goes in as it is.
+   each receipt's files one after another (then its returns' files) — always from the
+   untouched original — merged into one PDF. A receipt without a file is left out
+   (its line says "keine Datei").
+   D32: every page is an invoice page (below): same A4, same band, page x / y over
+   the whole PDF.
    ───────────────────────────────────────────────────────────── */
 function mtInvIds(d) {                                      // the list's row ids, in its order
   const ids = [], take = lines => lines.forEach(l => { if (l.id && !l.net) ids.push(String(l.id)); });
@@ -270,14 +276,6 @@ function mtInvIds(d) {                                      // the list's row id
   else if (d.mode === 'year2') (d.parts || []).forEach(pt => pt.groups.forEach(g => g.ents.forEach(e => take(e.lines))));
   else (d.groups || []).forEach(g => g.ents.forEach(e => take(e.lines)));
   return ids;
-}
-async function mtInvImagePdf(L, bytes, path) {             // a photo / image of an invoice → one A4 page
-  const doc = await L.PDFDocument.create();
-  const img = /\.png$/i.test(path) ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-  const W = 595.28, H = 841.89, m = 28, s = Math.min((W - 2 * m) / img.width, (H - 2 * m) / img.height, 1);
-  const pg = doc.addPage([W, H]);
-  pg.drawImage(img, { x: (W - img.width * s) / 2, y: (H - img.height * s) / 2, width: img.width * s, height: img.height * s });
-  return doc.save();
 }
 async function mtInvMake(btn, build) {
   if (MT.pdfBusy) return;
@@ -293,25 +291,26 @@ async function mtInvMake(btn, build) {
       .forEach(f => files.push({ id, f })));
     if (!files.length) { mtSay('No invoice files here yet.'); return; }
     const L = await mtPdfLib(), out = await L.PDFDocument.create(), store = _ctlSupa.storage.from(MT_BUCKET);
+    await mtFrPrep();
+    const ready = [];                                       // per file: its pages + its band (page numbers need the total)
     let k = 0, missed = 0;
     for (const { id, f } of files) {
       say(`${++k} / ${files.length}`);
       const path = f.orig_path || f.file_path;            // the untouched original
+      if (!mtFrFrameable(path)) { missed++; continue; }
       const r = await mtTry(() => store.download(path));
       if (r.error || !r.data) { missed++; continue; }
-      let bytes = new Uint8Array(await r.data.arrayBuffer());
       try {
-        if (!mtIsPdfPath(path)) {
-          if (!/\.(jpe?g|png)$/i.test(path)) { missed++; continue; }
-          bytes = await mtInvImagePdf(L, bytes, path);
-        }
-        const lbl = mtNoLabel(id);
-        const st = lbl ? await mtStampNo(bytes, lbl) : null;
-        const src = await L.PDFDocument.load(st || bytes, { ignoreEncryption: true });
-        (await out.copyPages(src, src.getPageIndices())).forEach(pg => out.addPage(pg));
+        const head = mtFrHead(id) || {};
+        const pages = await mtFrSource(out, new Uint8Array(await r.data.arrayBuffer()), path, f.file_name);
+        if (!pages || !pages.length) { missed++; continue; }
+        ready.push({ pages, addr: head.addr || '', band: await out.embedPng(await mtFrPng(mtFrBand(head))) });
       } catch (e) { console.warn('[maintenance] invoice not added:', path, e); missed++; }
     }
-    if (!out.getPageCount()) throw new Error('no pages');
+    const total = ready.reduce((n, x) => n + x.pages.length, 0);
+    if (!total) throw new Error('no pages');
+    let no = 0;
+    for (const x of ready) for (const it of x.pages) await mtFrPage(L, out, it, x.band, x.addr, `${++no} / ${total}`);
     const blob = new Blob([await out.save()], { type: 'application/pdf' });
     if (btn) { btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); btn.innerHTML = keep; }
     await ccOpenPdf(blob, d.invName);
@@ -338,72 +337,335 @@ function mtPdfInvEntry(id, btn) {                          // one case
 }
 
 /* ─────────────────────────────────────────────────────────────
-   D19 · BELEG PDF — the photos of one receipt as one PDF in the apps' style:
-   beige header (property · Beleg-/Bestell-Nr.), "Rechnung", when the photo was taken,
-   the photo below — one page per photo. Plain photo PDF if this fails.
+   D32 · INVOICE PAGES — every invoice page is the same A4, however the invoice came
+   in (an uploaded PDF of any size, a photo, a scan, a locked PDF):
+   · the beige band of the other PDFs: the Objekt on the left · NR. (bold) ·
+     BELEG-/BESTELL-NR. · DATUM on the right, in the list's order
+   · the invoice in one fixed box below it: its white margins trimmed, scaled to fit
+     (nothing cut off), always starting at the same height, a thin edge around it
+   · the footer of the other PDFs: the Objekt's address · page x / y
+   One style for every page (no Casa variant). Band and footer text are drawn with the
+   PDF fonts (Playfair Display · Lato); the invoice itself stays what it is (a PDF page
+   stays sharp text, a photo stays a photo). Used for the receipt PDF you open from a
+   cost row (mtStampSync, always from the untouched original) and for "Invoices".
+   A photo receipt saved as an old beige page (D19) gives only its photo; a locked PDF
+   goes in as a picture of its pages. pdf.js finds the white margins (the text always counts,
+   also when a font could not be drawn) and draws locked PDFs.
    ───────────────────────────────────────────────────────────── */
-async function mtBelegPdf(files, c, no) {
-  await mtSbLibs();
-  if (!MT.sbData) await mtSbLoad();
+const MT_FR = {
+  W: 595.28, H: 841.89, band: 62.3625,                      // A4 · the beige band (83.15 px)
+  box: { x: 60, top: 84, w: 475.28, h: 706 },               // the invoice (pt, from the top of the page)
+  foot: { x: 60, top: 806.265, w: 475.2825, h: 11.625 },    // rule + address · page (80 px in, 32 px up)
+  S: 3,                                                     // canvas pixels per CSS px for band / footer (≈ 288 dpi)
+  old: [0.098, 0.170, 0.902, 0.876],                        // where the photo sits on an old D19 page (left, top, right, bottom)
+};
+const MT_PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
+const MT_FR_PF = '"Playfair Display", Georgia, serif', MT_FR_LA = 'Lato, "Helvetica Neue", Arial, sans-serif';
+const mtFrImgPath = p => /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(String(p || ''));
+const mtFrFrameable = p => mtIsPdfPath(p) || mtFrImgPath(p);
+const mtFrMime = p => (/\.png$/i.test(p) ? 'image/png' : /\.webp$/i.test(p) ? 'image/webp' : /\.gif$/i.test(p) ? 'image/gif' : /\.hei[cf]$/i.test(p) ? 'image/heic' : 'image/jpeg');
+
+async function mtPdfJs() {
+  if (!window.pdfjsLib) await mtLoadScript(MT_PDFJS + 'build/pdf.min.js');
+  const P = window.pdfjsLib;
+  if (!P) throw new Error('pdf.js not loaded');
+  if (P.GlobalWorkerOptions && !P.GlobalWorkerOptions.workerSrc) P.GlobalWorkerOptions.workerSrc = MT_PDFJS + 'build/pdf.worker.min.js';
+  return P;
+}
+function mtFrDocOpts() {                                    // + the fonts a PDF names but does not carry (Helvetica, Arial …)
+  return { isEvalSupported: false, standardFontDataUrl: MT_PDFJS + 'standard_fonts/', cMapUrl: MT_PDFJS + 'cmaps/', cMapPacked: true };
+}
+async function mtFrPrep() {                                 // the fonts on the canvas + the apartment addresses
+  await mtPdfFonts();
+  if (!MT.sbData) { try { await mtSbLoad(); } catch (e) { console.warn('[maintenance] addresses not loaded:', e); } }
+}
+
+/* What the band and footer say for one receipt / return */
+function mtFrHead(costId) {
+  const r = mtCostById(costId), c = r ? mtCase(r.case_id) : null;
+  if (!r || !c) return null;
   const S = (typeof appSettings !== 'undefined' && appSettings) || {};
   const casa = mtIsCasa(c.property_id), apt = casa ? null : mtSbApt(c);
-  const pages = [];
-  for (const file of files) {
-    const img = await mtImageData(file, 1800, 0.85);
-    if (!img) throw new Error('photo');
-    let t = null;
-    try { if (typeof _ccUbExifTime === 'function') t = await _ccUbExifTime(file); } catch (e) {}
-    const ms = t instanceof Date ? t.getTime() : (typeof t === 'number' && t > 0 ? t : (Date.parse(t) || file.lastModified || Date.now()));
-    pages.push({ img, when: new Date(ms).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' Uhr' });
-  }
-  const d = {
-    family: casa ? 'casa' : 'rentals', wordmark: casa ? 'Casa Castel' : ((apt && apt.name) || mtPropName(c)), no: String(no || '').trim(),
-    footer: casa ? [S.objekt_adresse, S.objekt_plz_ort].filter(Boolean).join(', ') : (apt ? [apt.adresse, apt.plz_ort].filter(Boolean).join(', ') : ''),
-    pages,
+  const n = mtNumbers().cases.get(String(c.id)), no = mtCostNo(costId);
+  return {
+    objekt: casa ? 'Casa Castel' : mtPropName(c),
+    nr: no ? [no, n && n.year].filter(Boolean).join(' \u00b7 ') : '',
+    beleg: String(r.receipt_no || '').trim(),
+    datum: mtDate(r.cost_date),
+    addr: casa ? mtAddr(S.objekt_adresse, S.objekt_plz_ort) : (apt ? mtAddr(apt.adresse, apt.plz_ort) : ''),
   };
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;top:0;left:-9999px;width:794px;background:#fff;z-index:-1;font-size:11.33px;';
-  box.innerHTML = mtBelegHTML(d);
-  document.body.appendChild(box);
-  try {
-    await document.fonts.ready;
-    await Promise.all([...box.querySelectorAll('img')].map(i => (i.decode ? i.decode().catch(() => {}) : null)));
-    await new Promise(r => setTimeout(r, 150));
-    const pdf = await ccRenderPagesToPdf(box, { strict: false, only: true });
-    return pdf.output('blob');
-  } finally { box.remove(); }
 }
-function mtBelegHTML(d) {
-  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const R = d.family === 'rentals';
-  const F = R ? { lbl: 700, ftr: '#c9c2b8' } : { lbl: 400, ftr: '#e8dbc5' };
-  const CSS = `
-    * { margin:0; padding:0; box-sizing:border-box; }
-    .pdf-page { position:relative; width:793.71px; height:1122.52px; background:#ffffff; overflow:hidden; }
-    .hdr { position:absolute; top:0; left:0; right:0; height:83.15px; background:#f0e8da; display:flex; align-items:center; justify-content:space-between; padding:0 80px; }
-    .hdr__wordmark { font-family:'Playfair Display',serif; font-size:26px; font-weight:400; color:#6e5128; letter-spacing:0.05em; line-height:1; }
-    .hdr__room { text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
-    .hdr__room-label { font-family:'Lato',sans-serif; font-size:7px; font-weight:${F.lbl}; letter-spacing:0.16em; text-transform:uppercase; color:#8a6535; line-height:1; }
-    .hdr__room-name { font-family:'Playfair Display',serif; font-size:12px; font-weight:400; color:#6e5128; line-height:1; }
-    .ftr { position:absolute; left:80px; right:80px; bottom:32px; }
-    .ftr__rule { border:none; border-top:0.5px solid ${F.ftr}; margin-bottom:7px; }
-    .ftr__row { display:flex; justify-content:space-between; font-family:'Lato',sans-serif; font-size:8px; color:#6b645c; line-height:1; }
-    .content { position:absolute; top:143.63px; left:80px; right:80px; bottom:90px; overflow:hidden; }
-    .doc-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:400; color:#1a1a1a; line-height:1.15; margin-bottom:4px; }
-    .doc-subtitle { font-family:'Lato',sans-serif; font-size:9.5px; color:#6b645c; margin-bottom:16px; }
-    .ph { height:780px; display:flex; align-items:flex-start; justify-content:center; }
-    .ph img { display:block; max-width:100%; max-height:100%; object-fit:contain; border:0.5px solid #e6e0d6; }
-  `;
-  const n = d.pages.length;
-  return `<style>${CSS}</style>` + d.pages.map((p, i) => `
-<div class="pdf-page">
-  <div class="hdr"><span class="hdr__wordmark">${esc(d.wordmark)}</span>
-    ${d.no ? `<div class="hdr__room"><span class="hdr__room-label">Beleg-/Bestell-Nr.</span><span class="hdr__room-name">${esc(d.no)}</span></div>` : ''}</div>
-  <div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer)}</span><span>${n > 1 ? (i + 1) + ' / ' + n : '1'}</span></div></div>
-  <div class="content">
-    <div class="doc-title">Rechnung</div>
-    <div class="doc-subtitle">Aufgenommen am ${esc(p.when)}</div>
-    <div class="ph"><img src="${p.img.url}" alt=""/></div>
-  </div>
-</div>`).join('');
+/* stamp_no of a receipt's A4 copy — when what the band says changes, the copy is made again */
+function mtFrameKey(costId) {
+  const h = mtFrHead(costId);
+  return h ? 'A4 ' + [h.nr, h.objekt, h.beleg, h.datum].join(' | ') : '';
+}
+
+/* ── band + footer: drawn on a canvas in CSS px (the sizes of the other PDFs' header) ── */
+function mtFrCanvas(w, h) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(w * MT_FR.S); cv.height = Math.round(h * MT_FR.S);
+  const ctx = cv.getContext('2d');
+  ctx.scale(MT_FR.S, MT_FR.S);
+  return { cv, ctx };
+}
+function mtFrWidth(ctx, s, ls) {                            // letter-spacing like CSS: after every letter
+  if (!ls) return ctx.measureText(s).width;
+  let w = 0;
+  for (const ch of s) w += ctx.measureText(ch).width + ls;
+  return w;
+}
+function mtFrText(ctx, s, x, y, font, color, ls, right) {
+  ctx.font = font; ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  let cx = right ? x - mtFrWidth(ctx, s, ls) : x;
+  if (!ls) { ctx.fillText(s, cx, y); return; }
+  for (const ch of s) { ctx.fillText(ch, cx, y); cx += ctx.measureText(ch).width + ls; }
+}
+function mtFrFit(ctx, s, max, ls) {                         // too long for its place → cut with …
+  s = String(s || '');
+  if (mtFrWidth(ctx, s, ls) <= max) return s;
+  while (s.length > 1 && mtFrWidth(ctx, s + '\u2026', ls) > max) s = s.slice(0, -1);
+  return s.replace(/\s+$/, '') + '\u2026';
+}
+function mtFrBand(h) {                                      // Objekt · NR. · BELEG-/BESTELL-NR. · DATUM
+  const W = 793.71, H = 83.15, { cv, ctx } = mtFrCanvas(W, H);
+  ctx.fillStyle = '#f0e8da'; ctx.fillRect(0, 0, W, H);
+  const LBL = '700 7px ' + MT_FR_LA, LS = 1.12, GAP = 29.33;
+  const pairs = [
+    ['NR.', h.nr, '700 18px ' + MT_FR_LA, '#1a1a1a', 150],
+    ['BELEG-/BESTELL-NR.', h.beleg, '400 12px ' + MT_FR_PF, '#6e5128', 170],
+    ['DATUM', h.datum, '400 12px ' + MT_FR_PF, '#6e5128', 110],
+  ].filter(p => p[1]);
+  let r = W - 80;                                           // from the right edge, pair by pair
+  for (let i = pairs.length - 1; i >= 0; i--) {
+    const [k, v, font, col, max] = pairs[i];
+    ctx.font = font;
+    const val = mtFrFit(ctx, v, max, 0), vw = ctx.measureText(val).width;
+    ctx.font = LBL;
+    const kw = mtFrWidth(ctx, k, LS);
+    mtFrText(ctx, k, r, 33.33, LBL, '#8a6535', LS, true);
+    mtFrText(ctx, val, r, 52, font, col, 0, true);
+    r -= Math.max(kw, vw) + GAP;
+  }
+  const room = r + GAP - 24 - 80, f = s => `400 ${s}px ${MT_FR_PF}`;   // the Objekt as big as there is room (26 → 18 px)
+  let size = 26;
+  ctx.font = f(size);
+  while (size > 18 && mtFrWidth(ctx, h.objekt || '', size * 0.05) > room) { size--; ctx.font = f(size); }
+  const txt = mtFrFit(ctx, h.objekt || '', room, size * 0.05);
+  mtFrText(ctx, txt, 80, 41.575 + 0.4155 * size, f(size), '#6e5128', size * 0.05, false);   // centred in the band like the other PDFs
+  return cv;
+}
+function mtFrFooter(addr, page) {                           // rule · address … page
+  const W = 633.71, H = 15.5, { cv, ctx } = mtFrCanvas(W, H);
+  ctx.fillStyle = '#c9c2b8'; ctx.fillRect(0, 0, W, 0.5);
+  const F = '400 8px ' + MT_FR_LA;
+  ctx.font = F;
+  const pw = ctx.measureText(page).width;
+  mtFrText(ctx, page, W, 14.6, F, '#6b645c', 0, true);
+  mtFrText(ctx, mtFrFit(ctx, addr || '', W - pw - 24, 0), 0, 14.6, F, '#6b645c', 0, false);
+  return cv;
+}
+const mtFrBytes = (cv, type, q) => new Promise((res, rej) => cv.toBlob(b => (b ? b.arrayBuffer().then(x => res(new Uint8Array(x)), rej) : rej(new Error(type))), type, q));
+const mtFrPng = cv => mtFrBytes(cv, 'image/png');
+const mtFrJpeg = (cv, q) => mtFrBytes(cv, 'image/jpeg', q);
+const mtFrFree = cv => { try { cv.width = cv.height = 0; } catch (e) {} };   // big canvases: give the memory back (iPhone)
+
+/* ── the invoice: where its ink is, trimmed, embedded ── */
+/* the ink (not white) as parts of the page: [left, top, right, bottom] · null = nothing there */
+function mtFrInk(ctx, w, h, area) {
+  const a = area || [0, 0, 1, 1];
+  const X0 = Math.max(0, Math.floor(a[0] * w)), Y0 = Math.max(0, Math.floor(a[1] * h));
+  const X1 = Math.min(w, Math.ceil(a[2] * w)), Y1 = Math.min(h, Math.ceil(a[3] * h)), cw = X1 - X0, ch = Y1 - Y0;
+  if (cw < 1 || ch < 1) return null;
+  const d = ctx.getImageData(X0, Y0, cw, ch).data;
+  let x0 = cw, y0 = ch, x1 = -1, y1 = -1;
+  for (let y = 0, i = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++, i += 4) {
+      if (d[i] < 238 || d[i + 1] < 238 || d[i + 2] < 238) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        y1 = y;
+      }
+    }
+  }
+  return x1 < 0 ? null : [(X0 + x0) / w, (Y0 + y0) / h, (X0 + x1 + 1) / w, (Y0 + y1 + 1) / h];
+}
+const mtFrJoin = (a, b) => (a && b ? [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])] : a || b || null);
+async function mtFrTextInk(pg, v1) {                        // where the page's text is, as parts of the shown page
+  let tc;
+  try { tc = await pg.getTextContent(); } catch (e) { return null; }
+  let b = null;
+  for (const it of (tc && tc.items) || []) {
+    if (!it.str || !it.str.trim() || !it.transform) continue;
+    const [a, q, c, d, e, f] = it.transform;
+    const la = Math.hypot(a, q) || 1, lc = Math.hypot(c, d) || 1, w = Number(it.width) || 0, h = Number(it.height) || lc;
+    [[0, -0.3 * h], [w, -0.3 * h], [0, 1.1 * h], [w, 1.1 * h]].forEach(([u, v]) => {
+      const [x, y] = v1.convertToViewportPoint(e + (a / la) * u + (c / lc) * v, f + (q / la) * u + (d / lc) * v);
+      const fx = Math.min(1, Math.max(0, x / v1.width)), fy = Math.min(1, Math.max(0, y / v1.height));
+      b = mtFrJoin(b, [fx, fy, fx, fy]);
+    });
+  }
+  return b;
+}
+const mtFrPad = (f, k, lim) => {
+  const m = lim || [0, 0, 1, 1];
+  return [Math.max(m[0], f[0] - k), Math.max(m[1], f[1] - k), Math.min(m[2], f[2] + k), Math.min(m[3], f[3] + k)];
+};
+/* an old D19 photo receipt: A4 with the beige band on top */
+function mtFrOldBeleg(ctx, w, h) {
+  if (Math.abs(w / h - 0.7071) > 0.012) return false;
+  const x0 = Math.round(w * 0.02), x1 = Math.round(w * 0.98), y0 = Math.round(h * 0.012), y1 = Math.round(h * 0.06);
+  if (x1 - x0 < 1 || y1 - y0 < 1) return false;
+  const d = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+  let hit = 0, n = 0;
+  for (let i = 0; i < d.length; i += 16) { n++; if (Math.abs(d[i] - 240) < 14 && Math.abs(d[i + 1] - 232) < 14 && Math.abs(d[i + 2] - 218) < 14) hit++; }
+  return n > 0 && hit / n > 0.8;
+}
+async function mtFrRender(pg, long) {                       // a PDF page as it is shown, longest side = long px
+  const v1 = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: long / Math.max(v1.width, v1.height) });
+  const cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(vp.width)); cv.height = Math.max(1, Math.round(vp.height));
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  await pg.render({ canvasContext: ctx, viewport: vp }).promise;
+  return { cv, ctx, v1 };
+}
+function mtFrUser(v1, f) {                                  // parts of the shown page → the page's own PDF coordinates
+  const pts = [[f[0], f[1]], [f[2], f[1]], [f[0], f[3]], [f[2], f[3]]].map(([x, y]) => v1.convertToPdfPoint(x * v1.width, y * v1.height));
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return { left: Math.min(...xs), bottom: Math.min(...ys), right: Math.max(...xs), top: Math.max(...ys) };
+}
+function mtFrDecode(bytes, max, type) {                     // an image file → a canvas, upright as the phone shows it
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const k = Math.min(1, max / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.naturalWidth * k)); cv.height = Math.max(1, Math.round(img.naturalHeight * k));
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      resolve(cv);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+async function mtFrPicture(out, cv, keep) {                 // a picture (photo / drawn page) → trimmed → embedded · keep = parts that must stay
+  let c = cv;
+  const k = Math.min(1, 560 / Math.max(cv.width, cv.height));
+  const sm = document.createElement('canvas');
+  sm.width = Math.max(1, Math.round(cv.width * k)); sm.height = Math.max(1, Math.round(cv.height * k));
+  const sx = sm.getContext('2d', { willReadFrequently: true });
+  sx.drawImage(cv, 0, 0, sm.width, sm.height);
+  const ink = mtFrJoin(mtFrInk(sx, sm.width, sm.height), keep), f = ink && mtFrPad(ink, 0.012);
+  mtFrFree(sm);
+  if (f && (f[0] > 0.01 || f[1] > 0.01 || f[2] < 0.99 || f[3] < 0.99)) {
+    const x = Math.floor(f[0] * cv.width), y = Math.floor(f[1] * cv.height);
+    const w = Math.max(1, Math.ceil((f[2] - f[0]) * cv.width)), h = Math.max(1, Math.ceil((f[3] - f[1]) * cv.height));
+    c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, w, h);
+  }
+  const img = await out.embedJpg(await mtFrJpeg(c, 0.9));
+  const it = { img, w: c.width, h: c.height };
+  if (c !== cv) mtFrFree(c);
+  mtFrFree(cv);
+  return it;
+}
+/* One invoice file → its pages, embedded in `out` and ready for the box · null = not possible (password / damaged) */
+async function mtFrSource(out, bytes, path, name) {
+  if (!mtIsPdfPath(path)) {
+    const cv = await mtFrDecode(bytes, 2400, mtFrMime(path));
+    return cv ? [await mtFrPicture(out, cv)] : null;
+  }
+  const L = await mtPdfLib(), P = await mtPdfJs();           // pdf.js not there (offline) → the caller tries again later
+  let src = null, pj = null;
+  try { src = await L.PDFDocument.load(bytes); } catch (e) { src = null; }          // locked / damaged → pdf.js draws it
+  try { pj = await P.getDocument({ data: bytes.slice(), ...mtFrDocOpts() }).promise; } catch (e) { pj = null; }
+  try {
+    if (!src || !src.getPageCount()) {                       // a picture of each page
+      if (!pj) return null;
+      const pages = [];
+      for (let i = 1; i <= pj.numPages; i++) {
+        const pg = await pj.getPage(i), r = await mtFrRender(pg, 2000);
+        pages.push(await mtFrPicture(out, r.cv, await mtFrTextInk(pg, r.v1)));
+      }
+      return pages.length ? pages : null;
+    }
+    const n = src.getPageCount(), named = /^beleg\b/i.test(String(name || ''));
+    const looks = [];                                        // per page: what pdf.js sees
+    if (pj && pj.numPages === n) {
+      for (let i = 1; i <= n; i++) {
+        const pg = await pj.getPage(i), { cv, ctx, v1 } = await mtFrRender(pg, 560);
+        const old = named && mtFrOldBeleg(ctx, cv.width, cv.height);
+        looks.push({ v1, old, ink: old ? mtFrInk(ctx, cv.width, cv.height, MT_FR.old) : mtFrJoin(mtFrInk(ctx, cv.width, cv.height), await mtFrTextInk(pg, v1)) });
+        mtFrFree(cv);
+      }
+    }
+    // one frame for all pages of a document (page 2 as big as page 1) · an old photo page: just its photo
+    let all = null;
+    looks.forEach(x => { if (!x.old && x.ink) all = all ? [Math.min(all[0], x.ink[0]), Math.min(all[1], x.ink[1]), Math.max(all[2], x.ink[2]), Math.max(all[3], x.ink[3])] : x.ink.slice(); });
+    const pages = [];
+    for (let i = 0; i < n; i++) {
+      const p = src.getPage(i), x = looks[i];
+      const rot = (((Number(p.getRotation().angle) || 0) % 360) + 360) % 360, side = rot === 90 || rot === 270;
+      const cb = p.getCropBox();                             // what a viewer shows
+      let bb = { left: cb.x, bottom: cb.y, right: cb.x + cb.width, top: cb.y + cb.height };
+      const f = x ? (x.old ? (x.ink ? mtFrPad(x.ink, 0.006, MT_FR.old) : MT_FR.old) : (all ? mtFrPad(all, 0.015) : null)) : null;
+      if (f) bb = mtFrUser(x.v1, f);
+      let emb = null;
+      try { emb = await out.embedPage(p, bb); } catch (e) { emb = null; }
+      if (!emb) {                                            // this page can't be taken over → a picture of it
+        if (!pj) return null;
+        const pg = await pj.getPage(i + 1), r = await mtFrRender(pg, 2000);
+        pages.push(await mtFrPicture(out, r.cv, await mtFrTextInk(pg, r.v1)));
+        continue;
+      }
+      const ew = bb.right - bb.left, eh = bb.top - bb.bottom;
+      pages.push({ emb, rot, w: side ? eh : ew, h: side ? ew : eh, max: x && x.old ? Infinity : 1.5 });   // a small PDF page grows at most 1.5×
+    }
+    return pages;
+  } finally { if (pj) { try { pj.destroy(); } catch (e) {} } }
+}
+/* One finished A4 page: the invoice in the box, the band, the footer */
+async function mtFrPage(L, out, it, band, addr, no) {
+  const pg = out.addPage([MT_FR.W, MT_FR.H]), B = MT_FR.box;
+  const s = Math.min(B.w / it.w, B.h / it.h, it.max || Infinity);
+  const w = it.w * s, h = it.h * s, x = B.x + (B.w - w) / 2, y = MT_FR.H - B.top - h;   // centred, from the top of the box
+  if (it.img) pg.drawImage(it.img, { x, y, width: w, height: h });
+  else {
+    const at = it.rot === 90 ? { x, y: y + h, rotate: L.degrees(-90) }                 // a turned page comes out upright
+             : it.rot === 180 ? { x: x + w, y: y + h, rotate: L.degrees(180) }
+             : it.rot === 270 ? { x: x + w, y, rotate: L.degrees(90) }
+             : { x, y };
+    pg.drawPage(it.emb, { ...at, xScale: s, yScale: s });
+  }
+  pg.drawRectangle({ x, y, width: w, height: h, borderColor: L.rgb(230 / 255, 224 / 255, 214 / 255), borderWidth: 0.375 });
+  pg.drawImage(band, { x: 0, y: MT_FR.H - MT_FR.band, width: MT_FR.W, height: MT_FR.band });
+  const foot = await out.embedPng(await mtFrPng(mtFrFooter(addr, no)));
+  pg.drawImage(foot, { x: MT_FR.foot.x, y: MT_FR.H - MT_FR.foot.top - MT_FR.foot.h, width: MT_FR.foot.w, height: MT_FR.foot.h });
+}
+/* One receipt file → its A4 copy (bytes), pages 1 / n … · null = not possible */
+async function mtFrameFile(bytes, d) {
+  const L = await mtPdfLib(), out = await L.PDFDocument.create();
+  await mtFrPrep();
+  const head = mtFrHead(d.cost_id) || {};
+  const pages = await mtFrSource(out, new Uint8Array(bytes), d.orig_path || d.file_path, d.file_name);
+  if (!pages || !pages.length) return null;
+  const band = await out.embedPng(await mtFrPng(mtFrBand(head)));
+  for (let i = 0; i < pages.length; i++) await mtFrPage(L, out, pages[i], band, head.addr || '', (i + 1) + ' / ' + pages.length);
+  return out.save();
+}
+/* The photos of a receipt as they are (each photo one page of its own size) = the original of a photo receipt */
+async function mtPhotoOrigPdf(files) {
+  const L = await mtPdfLib(), doc = await L.PDFDocument.create();
+  for (const f of files) {
+    const p = await mtImageData(f, 2000, 0.85);
+    if (!p) throw new Error('photo');
+    const img = await doc.embedJpg(p.url), w = p.w * 0.75, h = p.h * 0.75;
+    doc.addPage([w, h]).drawImage(img, { x: 0, y: 0, width: w, height: h });
+  }
+  return new Blob([await doc.save()], { type: 'application/pdf' });
 }

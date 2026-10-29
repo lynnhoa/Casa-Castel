@@ -148,7 +148,7 @@ function _ccPageLimit(shot, sec, k, n) {
      bottom), so bank details or signatures are not torn apart;
    · long tables (inventory, meters) continue on the next page, header repeated;
    · page numbers in the footer are renumbered afterwards.            */
-const CC_FLOW_HEADINGS = '.sec, .doc-title, .doc-subtitle';
+const CC_FLOW_HEADINGS = '.sec, .doc-title, .doc-subtitle, [data-keep-next]';   // [data-keep-next]: a heading that moves with what follows it
 function _ccFlowKids(content) {
   return [...content.children].filter(k => {
     const cs = getComputedStyle(k);
