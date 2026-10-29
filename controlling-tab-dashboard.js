@@ -11,6 +11,10 @@
      · one card per property with the period's values; tap for details
                          (Monat: the month's items · Jahr: month by month)
    Jahr = 1 January up to the current month (whole year for past years).
+   Oct 2026 (DB1): a later month counts as soon as something is booked for it
+   (Rentals or Casa Castel: income, expenses, one-off, Abrechnung) — Month shows
+   it ("preliminary"), Jahr runs on to the last month with a booking. Nothing in a
+   later month counts as open (not due yet). Without a booking: "still ahead".
    Oct 2026: Cashflow number — Month = running cashflow (Warmmiete − running
    costs; one-offs & Abrechnungen only shown for info, chips faded) · Year =
    after one-offs & Abrechnungen. Tap the number → calculation sheet
@@ -30,9 +34,23 @@ function _cxIsFuture(y, m) {
   const t = cxToday(), ty = Number(t.slice(0, 4)), tm = Number(t.slice(5, 7));
   return y > ty || (y === ty && m > tm);
 }
-function _cxYearMonths(y) {                             // 1 … current month (all 12 for past years)
+/* DB1 · anything booked for this month — Rentals or Casa Castel (a cleared amount is no booking) */
+const _CX_APT_KEYS = ['hausgeld', 'grundsteuer', 'strom', 'rate', 'zinsen', 'tilgung'];
+function _cxBooked(y, m) {
+  const C = window._ctrl, has = v => v !== null && v !== undefined && v !== '';
+  if ((C.income || []).some(r => r.year === y && r.month === m)) return true;
+  if ((C.castel_expenses || []).some(e => e.year === y && e.month === m)) return true;
+  if ((C.apt_expenses || []).some(e => e.year === y && e.month === m && _CX_APT_KEYS.some(k => has(e[k])))) return true;
+  return (C.one_time || []).some(o => {
+    if (o.kind === 'Kaufnebenkosten') return false;          // never in the cashflow
+    const d = ctlParseDate(o.invoice_date);
+    return d.year === y && d.month === m;
+  });
+}
+function _cxLastBooked(y) { for (let m = 12; m >= 1; m--) if (_cxBooked(y, m)) return m; return 0; }
+function _cxYearMonths(y) {                             // 1 … current month (all 12 for past years) — and on to the last month with a booking
   const t = cxToday(), ty = Number(t.slice(0, 4)), tm = Number(t.slice(5, 7));
-  const last = y < ty ? 12 : y > ty ? 0 : tm;
+  const last = y < ty ? 12 : Math.max(y > ty ? 0 : tm, _cxLastBooked(y));
   return Array.from({ length: last }, (_, i) => i + 1);
 }
 
@@ -293,7 +311,8 @@ window.renderDashboard = function () {
   _cxdCss();
   const isYear = CX.dashView === 'y';
   const y = window._ctrl.year, m = CX.month;
-  const months = isYear ? _cxYearMonths(y) : (_cxIsFuture(y, m) ? [] : [m]);
+  const later = !isYear && _cxIsFuture(y, m);                     // DB1: a month after today …
+  const months = isYear ? _cxYearMonths(y) : (later && !_cxBooked(y, m) ? [] : [m]);   // … shows once something is booked for it
   const future = !months.length;
   const shortM = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const EN_M = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -307,6 +326,7 @@ window.renderDashboard = function () {
   let open = 0, openInc = 0, openCasa = 0;
   const openMonths = new Set();
   for (const p of props) for (const mm of months) {
+    if (_cxIsFuture(y, mm)) continue;                       // DB1: a later month is not due yet → nothing open
     if (!ctlPropOwned(p, y, mm)) continue;                  // before the purchase: nothing is open
     const o = _cxOpenOf(p, y, mm), k = o.inc + o.exp;
     if (k) openMonths.add(mm);
@@ -317,7 +337,8 @@ window.renderDashboard = function () {
   _cxDash.openMonth = openMonths.size ? Math.max(...openMonths) : 0;
 
   const periodTitle = isYear ? String(y) : EN_M[m - 1] + ' ' + y;
-  const periodWord  = isYear ? (months.length && months.length < 12 ? 'Jan – ' + shortM[months.length - 1] : String(y)) : EN_M[m - 1];
+  const lastM = months.length ? months[months.length - 1] : 0;
+  const periodWord  = isYear ? (lastM && lastM < 12 ? 'Jan – ' + shortM[lastM - 1] : String(y)) : EN_M[m - 1];
 
   // ── Top: period + Month | Year
   const top = '<div class="cxd-top">' +
@@ -387,7 +408,7 @@ window.renderDashboard = function () {
     // ── Total card
     const calcOpen = !!CX.open['dash:calc'];
     const totalCard = '<div class="cxn-card">' +
-      '<div class="cxn-hrow"><span class="cxn-lbl">Cashflow \u00b7 all properties</span><span class="cxn-mut">' + (isYear ? cxEsc(periodWord) : (open ? 'preliminary' : '')) + '</span></div>' +
+      '<div class="cxn-hrow"><span class="cxn-lbl">Cashflow \u00b7 all properties</span><span class="cxn-mut">' + (isYear ? cxEsc(periodWord) : (open || later ? 'preliminary' : '')) + '</span></div>' +
       '<div class="cxn-kpis">' +
         '<div class="cxn-kpi"><div class="cxn-k">KALT</div><div class="cxn-v cxn-f ' + cls(tv.k) + '">' + cxWS(tv.k) + '</div><div class="cxn-d">' + (isYear ? 'after one-offs' : delta(dK)) + '</div></div>' +
         '<div class="cxn-kpi"><div class="cxn-k">WARM</div><div class="cxn-v cxn-f ' + cls(tv.w) + '">' + cxWS(tv.w) + '</div><div class="cxn-d">' + (isYear ? 'after one-offs &amp; Abr.' : delta(dW)) + '</div></div>' +
