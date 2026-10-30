@@ -78,6 +78,7 @@ function switchTab(tabName) {
   if (tabName === 'kitchen')  (mobile || typeof initKitchen === 'undefined') ? initKitchenMobile?.(_room) : initKitchen?.(_room);
   if (tabName === 'rooms')    loadRooms?.();
   if (tabName === 'tenants')  loadTenants?.();
+  if (tabName === 'contracts') loadContracts?.();   // Contracts tab (Oct 2026)
 }
 
 /* ── SHOW APP (after login) ─────────────────────────────── */
@@ -127,6 +128,7 @@ function showApp(room) {
   const _savedTab = _openTab || (() => { try { return localStorage.getItem('cc_last_tab'); } catch(e) { return null; } })();
   const _lastTab = (_savedTab && _availableTabs.has(_savedTab)) ? _savedTab : 'lounge';
   switchTab(_lastTab);
+  if (typeof ctrBoot === 'function') ctrBoot();   // Contracts: the gold tab dot before the tab is opened
 }
 
 /* ── WIRE TAB BUTTONS ───────────────────────────────────── */
