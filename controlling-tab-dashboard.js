@@ -20,6 +20,8 @@
    after one-offs & Abrechnungen. Tap the number → calculation sheet
    (Rentals · Casa Castel · Total); it replaces the "Show calculation" card.
    Entering happens only in Einnahmen, Ausgaben and Einmalig.
+   Oct 2026 (R1): "Export <Jahr>" at the end of the page → year export pop-up
+   (Excel like the original controlling sheet · PDF) — controlling-report.js.
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -353,8 +355,11 @@ window.renderDashboard = function () {
     '</div></div>' +
     (open ? '<div class="cxn-chipw"><button class="cxn-chip" data-cx="gotoOpen"><span class="cxn-dot" aria-hidden="true"></span>' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button></div>' : '');
 
+  // Oct 2026 (R1): the whole year as Excel / PDF — always the year on screen (controlling-report.js)
+  const exportBtn = '<button class="cx-btn cx-btn--s cx-btn--full cxr-btn" data-cx="repOpen"><i class="ti ti-download" aria-hidden="true"></i>Export ' + y + '</button>';
+
   if (future) {
-    cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-card cxn-empty">This ' + (isYear ? 'year' : 'month') + ' is still ahead.</div></div>');   // B18
+    cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-card cxn-empty">This ' + (isYear ? 'year' : 'month') + ' is still ahead.</div>' + exportBtn + '</div>');   // B18
   } else {
     const isCasa = x => x.p.id === CASA_PROP_ID;
     const renList = per.filter(x => !isCasa(x)), casaList = per.filter(isCasa);
@@ -481,12 +486,17 @@ window.renderDashboard = function () {
         '<div class="cxn-lg"><span><i style="background:#8FA88F"></i>Rentals</span><span><i style="background:#D9B46A"></i>Casa Castel</span></div></div>';
     }
 
-    cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-cols"><div class="cxn-l">' + totalCard + '</div><div class="cxn-r">' + tiles + panel + '</div></div>' + chart + '</div>');   // B2: two columns on iPad landscape / laptop (invisible on the phone)   // B18: only what changed
+    cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-cols"><div class="cxn-l">' + totalCard + '</div><div class="cxn-r">' + tiles + panel + '</div></div>' + chart + exportBtn + '</div>');   // B2: two columns on iPad landscape / laptop (invisible on the phone)   // B18: only what changed
   }
 
   cxWire(host, {
     render: () => window.renderDashboard(),
     click: async (a, b) => {
+      if (a === 'repOpen') {                                   // R1: year export pop-up
+        if (typeof cxReportOpen === 'function') cxReportOpen();
+        else if (typeof ctlToast === 'function') ctlToast('Export could not be loaded – please reload the page');
+        return;
+      }
       if (a === 'view') { CX.dashView = b.dataset.v; return window.renderDashboard(); }
       if (a === 'dcalc') { CX.open['dash:calc'] = !CX.open['dash:calc']; return window.renderDashboard(); }
       if (a === 'dsec')  { CX.open['dash:sec'] = CX.open['dash:sec'] === b.dataset.k ? '' : b.dataset.k; return window.renderDashboard(); }
