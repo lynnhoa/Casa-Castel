@@ -29,7 +29,9 @@
      Lato (cc-pdf-serif / cc-pdf-sans*.ttf = renamed Latin subsets, OFL —
      cc-pdf-fonts-OFL.txt), numbered section labels, "Seite x von y".
      Opens like the contracts (pdf-open.js · data-cc-pdf on the button).
-   Bucket 3: double rent — one rent per day and unit, you choose whose.
+   Bucket 3 (30.10.2026): double rent — the Soll counts one rent per day and unit
+     (ctlUnitSollOneRent); the pop-up asks whose (previous / new tenant) only when
+     the year has double-rent days. Ist always stays the real money received.
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -38,7 +40,7 @@ const CX_EXCELJS_URL = window.CX_EXCELJS_URL || 'https://cdn.jsdelivr.net/npm/ex
 const CXR_COLORS = ['FFFF99', 'CCFF99', 'CCECFF', 'CC99FF', 'F6C6AD', 'A6CAEC', 'FFCCFF', '8ED973', 'D9F2D0', 'FF7C80'];   // your Excel, in purchase order
 const CXR_SHEETS = ['Dashboard YEAR', 'Dashboard MONTHS', 'Income', 'Expense', 'Expense Castel', 'Expense One Time', 'General'];
 const CXR_EUR = '_-* #,##0.00\\ "€"_-;\\-* #,##0.00\\ "€"_-;_-* "-"??\\ "€"_-;_-@_-';                         // your Excel's € format
-if (!CX.rep) CX.rep = { fmt: 'pdf', scope: 'all' };
+if (!CX.rep) CX.rep = { fmt: 'pdf', scope: 'all', dbl: 'old' };   // dbl: whose rent counts on double-rent days (bucket 3)
 
 /* ── which sheets a scope gets ── */
 function cxRepSheets(scope) {
@@ -94,13 +96,15 @@ function cxRepData(scope) {
   const general = dash.map(d => ({ x: d.x, kalt: d.R.kalt, rate: d.R.rate, cfK: d.R.lfKalt, nk: d.R.nk, hk: d.R.kosten, cfW: d.R.lfWarm }));
 
   // Income — one row per unit (rooms and parking too)
-  const income = [];
+  const income = [], who = CX.rep.dbl === 'new' ? 'new' : 'old';
+  let dblDays = 0;                                           // double-rent days in the export (one rent per day counts)
   for (const x of props) {
     for (const u of ctlUnitsFor(x.p.id)) {
       const mon = {};
       for (const m of M12) {
         if (!owned(x, m)) { mon[m] = null; continue; }
-        const s = ctlUnitSoll(u, x.p.id, y, m) || {};
+        let s = ctlUnitSoll(u, x.p.id, y, m) || {};
+        if (s.dbl && typeof ctlUnitSollOneRent === 'function') { dblDays += s.dbl; s = ctlUnitSollOneRent(u, x.p.id, y, m, who) || s; }
         const rows = counted.has(m) && u.id != null ? C.income.filter(r => r.unit_id === u.id && r.year === y && r.month === m) : [];
         mon[m] = { sW: r2(s.soll), sK: r2(s.k),
                    k: rows.length ? r2(sum(rows, r => r.kaltmiete)) : null,
@@ -163,7 +167,7 @@ function cxRepData(scope) {
   const groups = typeof cxInvoiceData === 'function' ? cxInvoiceData(y, null) : [];
   const oneoff = props.map(x => ({ x, g: groups.find(g => g.p.id === x.p.id) })).filter(o => o.g);
 
-  return { y, scope, today: cxToday(), stand: cxFmtDate(cxToday()), counted, ym, props, dash, kw, general, income, expense, castel, oneoff,
+  return { y, scope, today: cxToday(), stand: cxFmtDate(cxToday()), counted, ym, props, dash, kw, general, income, expense, castel, oneoff, dblDays, who,
            sheets: cxRepSheets(scope).filter(s => (s !== 'Expense Castel' || castel) && (s !== 'Expense' || props.some(x => !x.casa))) };
 }
 
@@ -299,6 +303,8 @@ function _xSheetIncome(wb, d) {
       _xNum(ws, tot + 3, c + 1, _xF(_xA(tot, c + 1) + '-' + _xA(tot, c + 3), S(v => v.sK) - S(v => v.k)), { bd: false });
     }
   }
+  if (d.dblDays) _xSet(ws, tot + 5, 3, 'Doppelmiete an ' + d.dblDays + (d.dblDays === 1 ? ' Tag' : ' Tagen') + ': das Soll zählt je Tag eine Miete – die ' +
+    (d.who === 'new' ? 'des neuen Mieters' : 'des Vormieters') + ' · Ist = das wirklich erhaltene Geld', { sz: 9, grey: 1, i: 1, bd: false, al: 'left' });
   const w = [2.2, 4.7, 22, 14];
   for (let m = 0; m < 12; m++) w.push(13.6, 13.6, 11.7, 11.7, 12.2);
   _xWidths(ws, w);
@@ -631,7 +637,9 @@ function _pIncome(doc, d, a, b, y) {
     return [_pT(''), on ? _pN(S(m, v => v.sK) - S(m, v => v.k)) : _pT(''), _pT(''), _pT(''), _pT('')];
   })), 'cxMu'));
   const labels = []; ms.forEach((m, i) => L.forEach((t, k) => labels.push([3 + i * 5 + k, t])));
-  _pTable(doc, y, head, body, { min: _pMin(doc, labels), cols: { 0: { cellWidth: 6.35 } } });
+  const end = _pTable(doc, y, head, body, { min: _pMin(doc, labels), cols: { 0: { cellWidth: 6.35 } } });
+  if (d.dblDays) _pNote(doc, end, 'Doppelmiete an ' + d.dblDays + (d.dblDays === 1 ? ' Tag' : ' Tagen') + ' im Jahr: das Soll zählt je Tag eine Miete – die ' +
+    (d.who === 'new' ? 'des neuen Mieters' : 'des Vormieters') + ' · Ist = das wirklich erhaltene Geld');
 }
 function _pExpense(doc, d, a, b, y) {
   const ms = []; for (let m = a; m <= b; m++) ms.push(m);
@@ -740,7 +748,7 @@ function cxRepBuildPdf(d) {
    bottom sheet on the iPhone, centred window on iPad / laptop).
    The file is prepared as soon as the pop-up opens or a choice changes;
    the button then hands it over at once (iPhone share sheet / download). */
-const _cxRep = { file: null, pdf: null, key: '', busy: '', err: '' };
+const _cxRep = { file: null, pdf: null, key: '', busy: '', err: '', dbl: null };   // dbl: { key: year|scope, days }
 const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 (function () {
@@ -759,7 +767,7 @@ const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheet
   (document.head || document.documentElement).appendChild(s);
 })();
 
-function _cxRepKey() { return window._ctrl.year + '|' + CX.rep.scope + '|' + CX.rep.fmt; }
+function _cxRepKey() { return window._ctrl.year + '|' + CX.rep.scope + '|' + CX.rep.fmt + '|' + CX.rep.dbl; }
 const _cxRepReady = () => _cxRep.key === _cxRepKey() && !!(CX.rep.fmt === 'pdf' ? _cxRep.pdf : _cxRep.file);
 
 function _cxRepHTML() {
@@ -779,6 +787,11 @@ function _cxRepHTML() {
       '<div class="cx-set__k">Format</div><div class="cx-chips">' + chip('fmt', 'pdf', 'PDF (A4)', pdf) + chip('fmt', 'xlsx', 'Excel', !pdf) + '</div>' +
       '<div class="cx-set__k">Properties</div><div class="cx-chips">' +
         chip('scope', 'all', 'All properties', R.scope === 'all') + chip('scope', 'r', 'Rentals', R.scope === 'r') + chip('scope', 'c', 'Casa Castel', R.scope === 'c') + '</div>' +
+      // only when the year has double-rent days (known once the data is prepared)
+      (_cxRep.dbl && _cxRep.dbl.key === y + '|' + R.scope && _cxRep.dbl.days ?
+        '<div class="cx-set__k">Double rent · whose rent counts</div><div class="cx-chips">' +
+          chip('dbl', 'old', 'Previous tenant', R.dbl !== 'new') + chip('dbl', 'new', 'New tenant', R.dbl === 'new') + '</div>' +
+        '<div class="cx-r__sub">One rent per day and unit · ' + _cxRep.dbl.days + (_cxRep.dbl.days === 1 ? ' day' : ' days') + ' in ' + y + '</div>' : '') +
       '<div class="cx-r__sub cxr-info"><b>' + cxEsc(name) + '</b>' + state + '<br>' + sheets + '</div>' +
     '</div></div>' +
     // data-cc-pdf: pdf-open.js opens the viewer tab inside the tap (browser) / shows "Open PDF" here (installed app)
@@ -815,6 +828,7 @@ async function _cxRepPrepare() {
     if (fmt === 'pdf') await Promise.all([cxPdfPreload(), cxRepFontsPreload()]);
     else if (!window.ExcelJS) await _cxLoadScript(CX_EXCELJS_URL);
     const d = cxRepData(CX.rep.scope);
+    _cxRep.dbl = { key: d.y + '|' + CX.rep.scope, days: d.dblDays };
     if (!d.props.length) throw new Error('No property in ' + d.y);
     if (fmt === 'pdf') {
       const out = cxRepBuildPdf(d);
@@ -844,7 +858,7 @@ function _cxRepClick(ev) {
   if (!b) return;
   const a = b.dataset.cxr;
   if (a === 'close') return cxReportClose();
-  if (a === 'fmt' || a === 'scope') {
+  if (a === 'fmt' || a === 'scope' || a === 'dbl') {
     if (CX.rep[a] === b.dataset.v) return;
     CX.rep[a] = b.dataset.v;
     _cxRep.err = '';

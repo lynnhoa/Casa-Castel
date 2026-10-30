@@ -38,6 +38,8 @@
        a day pays for it — two at once = double rent, one line each. Settlements,
        Leerstand and the tenant status keep the move dates.
      · Ist is always the real amount per tenant (split), never a calculated share.
+     · Year export (Oct 2026): ctlUnitSollOneRent counts one rent per day and unit on
+       double-rent days (previous or new tenant, your pick) — only the export uses it.
      · A tenancy without Einzug gives no Soll; a former tenant without
        Auszug ends the day before the next Einzug — both flagged.
      · No tenant → "leer" (Soll 0).
@@ -298,6 +300,9 @@ function _cxStepAt(hist, t, iso) {
 }
 
 const _cxUnitCache = new Map();
+/* Year export only (bucket 3, Oct 2026): '' = every tenant whose rent window covers a day pays (the app) ·
+   'old' | 'new' = one rent per day and unit on double-rent days (the previous / the new tenant) */
+let _cxOneRent = '';
 function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
 
 /* → { k, nk, soll, empty, link, notes:[..], badge, partial, src } */
@@ -599,7 +604,7 @@ function _cxRentDay(link, w, u, y, m, iso, all, memo) {
 
 /* → { k, nk, soll, empty, link, notes, badge, partial, days, N, parts:[{from,to,amount,tid,name}], check, src } */
 function _cxUnitSollV2(u, pid, y, m) {
-  const key = 'v2|' + [pid, u.id ?? 'v:' + u.name, y, m, u.source_type || '', u.source_ref || ''].join('|');
+  const key = 'v2|' + [pid, u.id ?? 'v:' + u.name, y, m, u.source_type || '', u.source_ref || ''].join('|') + (_cxOneRent ? '|1r:' + _cxOneRent : '');
   if (_cxUnitCache.has(key)) return _cxUnitCache.get(key);
   const p = ctlProp(pid);
   const link = ctlUnitLink(u, p);
@@ -648,7 +653,9 @@ function _cxUnitSollV2(u, pid, y, m) {
     }
     occ++;                                                  // the day counts once, whoever pays
     if (pay.length > 1) dbl++;
-    for (const w of pay) {
+    // year export: one rent per day and unit — on a double-rent day only the chosen tenant counts
+    const payers = pay.length > 1 && _cxOneRent ? [pay.slice().sort((a, b) => a.from.localeCompare(b.from))[_cxOneRent === 'new' ? pay.length - 1 : 0]] : pay;
+    for (const w of payers) {
       const r = _cxRentDay(link, w, u, y, m, iso, all, memo);
       addDay(d, w.id, w, r, r.k, r.nk, w.from <= iso && iso <= w.to);
     }
@@ -664,7 +671,7 @@ function _cxUnitSollV2(u, pid, y, m) {
     const inAt = inM(w.payFrom) && w.payFrom !== first ? _cxPerAt(c.per, w.payFrom) : null;                  // first rent day
     const outAt = inM(w.payTo) && w.payTo !== last && realEnd ? _cxPerAt(c.per, w.payTo) : null;           // last rent day
     const fullIn = inAt && inAt.first_month === 'voll', fullOut = outAt && outAt.last_month === 'voll';
-    if (fullIn || fullOut) {
+    if ((fullIn || fullOut) && !(_cxOneRent && dbl)) {      // export, double-rent month: day by day, one rent per day
       const r = _cxRentDay(link, w, u, y, m, fullIn ? w.payFrom : w.payTo, all, memo);
       pt.sk = r.k * N; pt.snk = r.nk * N;
       notes.push((fullIn ? 'First' : 'Last') + ' month in full per contract · ' + w.name);
@@ -780,7 +787,7 @@ function _cxUnitSollV2(u, pid, y, m) {
   if (free) notes.push('Free of charge' + (partList[0] && partList[0].name && partList[0].name !== 'Room' ? ' · ' + partList[0].name : ''));
   out = { k, nk, soll: _cxR(k + nk), empty: occ === 0, free, link, notes, badge, changed: changed || fullNote,
           noRent: livingNoRent && occ === 0,                // somebody lives there, but no rent this month (contract dates)
-          partial: occ > 0 && (occ < N || partList.length > 1), days: occ, N, parts: partList,
+          partial: occ > 0 && (occ < N || partList.length > 1), days: occ, N, parts: partList, dbl,
           check: checks.length ? [...new Set(checks)].join(' · ') : null,
           src: link.type === 'casa_room' ? 'Casa Castel' : 'Rentals' };
   _cxUnitCache.set(key, out);
@@ -789,6 +796,15 @@ function _cxUnitSollV2(u, pid, y, m) {
 
 function ctlUnitSoll(u, pid, y, m) {
   return window.CC_RENT_ENGINE === 'v1' ? _cxUnitSollV1(u, pid, y, m) : _cxUnitSollV2(u, pid, y, m);
+}
+/* Year export only (bucket 3): Soll with one rent per day and unit on double-rent days —
+   who = 'old' (the previous tenant, whose contract still runs) | 'new' (the new tenant).
+   Dashboard, Income and Settlements keep counting every tenant who pays (ctlUnitSoll). */
+function ctlUnitSollOneRent(u, pid, y, m, who) {
+  if (window.CC_RENT_ENGINE === 'v1') return _cxUnitSollV1(u, pid, y, m);
+  const prev = _cxOneRent;
+  _cxOneRent = who === 'new' ? 'new' : 'old';
+  try { return _cxUnitSollV2(u, pid, y, m); } finally { _cxOneRent = prev; }
 }
 
 /* Income of one unit & month per tenancy — always the real amount (Oct 2026), never a calculated share:
