@@ -23,7 +23,12 @@
      columns; sums and Gesamt as formulas; name columns frozen).
      ExcelJS loads only when the pop-up opens; the file is prepared in the
      background, so the tap can open the iPhone share sheet right away.
-   Bucket 2: PDF in the Casa Castel document design (A4 landscape).
+   Bucket 2 (30.10.2026): PDF in the Casa Castel document design — A4
+     landscape, real text (jsPDF + autoTable, like the One-off PDF), the
+     frame of the Übergabeprotokoll: beige band with wordmark, Playfair +
+     Lato (cc-pdf-serif / cc-pdf-sans*.ttf = renamed Latin subsets, OFL —
+     cc-pdf-fonts-OFL.txt), numbered section labels, "Seite x von y".
+     Opens like the contracts (pdf-open.js · data-cc-pdf on the button).
    Bucket 3: double rent — one rent per day and unit, you choose whose.
    ───────────────────────────────────────────────────────────── */
 
@@ -33,7 +38,7 @@ const CX_EXCELJS_URL = window.CX_EXCELJS_URL || 'https://cdn.jsdelivr.net/npm/ex
 const CXR_COLORS = ['FFFF99', 'CCFF99', 'CCECFF', 'CC99FF', 'F6C6AD', 'A6CAEC', 'FFCCFF', '8ED973', 'D9F2D0', 'FF7C80'];   // your Excel, in purchase order
 const CXR_SHEETS = ['Dashboard YEAR', 'Dashboard MONTHS', 'Income', 'Expense', 'Expense Castel', 'Expense One Time', 'General'];
 const CXR_EUR = '_-* #,##0.00\\ "€"_-;\\-* #,##0.00\\ "€"_-;_-* "-"??\\ "€"_-;_-@_-';                         // your Excel's € format
-if (!CX.rep) CX.rep = { fmt: 'xlsx', scope: 'all' };
+if (!CX.rep) CX.rep = { fmt: 'pdf', scope: 'all' };
 
 /* ── which sheets a scope gets ── */
 function cxRepSheets(scope) {
@@ -442,12 +447,300 @@ async function cxRepBuildXlsx(d) {
   return wb.xlsx.writeBuffer();
 }
 
+/* ══ PDF — the Casa Castel document design (A4 landscape, real text) ══
+   Sizes = the approved mockup (1 px = 0,2646 mm · text px × 0,75 = pt):
+   band 22 mm #F0E8DA · wordmark Playfair 19,5 pt · title Playfair 15,75 pt ·
+   section labels Lato bold 5,6 pt, tracked · table Lato 6,75 pt · column
+   labels 4,9 pt tracked · footer Lato 6 pt. One page group per sheet;
+   wide sheets split by months (6 · 3 · 2 · 6 per page), long tables
+   continue on the next page with their header. */
+const CXR_FONTS = [['cc-pdf-sans.ttf', 'ccsans', 'normal'], ['cc-pdf-sans-bold.ttf', 'ccsans', 'bold'], ['cc-pdf-serif.ttf', 'ccserif', 'normal']];
+const _cxRepFont = {};                                       // file → base64 (loaded once)
+async function cxRepFontsPreload() {
+  await Promise.all(CXR_FONTS.map(async ([f]) => {
+    if (_cxRepFont[f]) return;
+    const r = await fetch(f + '?v=2026-10-30-R2');
+    if (!r.ok) throw new Error('Schrift fehlt: ' + f);
+    const b = new Uint8Array(await r.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    _cxRepFont[f] = btoa(bin);
+  }));
+}
+const _cxRepPdfReady = () => _cxPdfReady() && CXR_FONTS.every(([f]) => _cxRepFont[f]);
+
+const CXP = {
+  W: 297, H: 210, M: 21.17, TOP: 38.0, BOT: 186.19, PT: 25.4 / 72,
+  band: [240, 232, 218], wm: [110, 81, 40], lbl: [138, 101, 53], ink: [26, 26, 26], sub: [107, 100, 92], sec: [74, 69, 64],
+  secLine: [216, 211, 204], rowLine: [237, 231, 221], alt: [248, 244, 238], neg: [168, 85, 58], zero: [184, 179, 172], ftr: [232, 219, 197],
+};
+const CXP_MF = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+
+/* text: font 'sans' | 'bold' | 'serif' · size in pt · track = letter-spacing in em · align */
+function _pTx(doc, s, x, y, o) {
+  s = String(s);
+  doc.setFont(o.font === 'serif' ? 'ccserif' : 'ccsans', o.font === 'bold' ? 'bold' : 'normal');
+  doc.setFontSize(o.size); doc.setTextColor(...o.color);
+  const cs = (o.track || 0) * o.size * CXP.PT;
+  const w = doc.getTextWidth(s) + cs * Math.max(0, s.length - 1);
+  const x0 = o.align === 'right' ? x - w : o.align === 'center' ? x - w / 2 : x;
+  if (cs) doc.text(s, x0, y, { charSpace: cs }); else doc.text(s, x0, y);
+  return w;
+}
+function _pTitle(doc, title, sub) {
+  _pTx(doc, title, CXP.M, 43.5, { font: 'serif', size: 15.75, color: CXP.ink });
+  _pTx(doc, sub, CXP.M, 47.93, { size: 7.125, color: CXP.sub });
+  return 54.29;
+}
+/* numbered section label with its line → returns the y where the table starts */
+function _pSec(doc, y, num, label, right) {
+  const size = 5.625, base = y + 0.53 + 0.987 * size * CXP.PT;
+  const w = _pTx(doc, num, CXP.M, base, { font: 'bold', size, color: CXP.lbl, track: 0.13 });
+  _pTx(doc, label.toUpperCase(), CXP.M + w + 2.12, base, { font: 'bold', size, color: CXP.sec, track: 0.13 });
+  if (right) _pTx(doc, right.toUpperCase(), CXP.W - CXP.M, base, { font: 'bold', size, color: CXP.sec, track: 0.13, align: 'right' });
+  const ly = y + 0.53 + 1.2 * size * CXP.PT + 1.32;
+  doc.setDrawColor(...CXP.secLine); doc.setLineWidth(0.159); doc.line(CXP.M, ly, CXP.W - CXP.M, ly);
+  return ly;
+}
+function _pNote(doc, y, t) { _pTx(doc, t, CXP.M, y + 2.65 + 0.987 * 6 * CXP.PT, { size: 6, color: CXP.sub }); }
+
+/* cells */
+const _pH = (t, o = {}) => ({ content: String(t).toUpperCase().replace(/ /g, o.wrap ? '\n' : ' '), cxT: o.month ? 0.13 : 0.1, colSpan: o.cs, rowSpan: o.rs,
+  styles: Object.assign({}, o.left ? { halign: 'left' } : {}, o.fill ? { fillColor: o.fill } : {},
+    o.month ? { fontSize: 5.625, textColor: CXP.lbl, halign: 'center', cellPadding: { top: 1.85, bottom: 1.06, left: 1.06, right: 1.06 }, lineWidth: { bottom: 0.159 } } : {}) });
+const _pN = (v, o = {}) => {
+  const st = {};
+  if (o.fill) st.fillColor = o.fill;
+  if (o.b) st.fontStyle = 'bold';
+  if (v === null || v === undefined) return { content: '', styles: st };
+  const r = Math.round(Number(v) * 100) / 100;
+  if (Math.abs(r) < 0.005) { st.textColor = CXP.zero; return { content: '–', styles: st }; }
+  if (r < 0) st.textColor = CXP.neg;
+  return { content: (r < 0 ? '−' : '') + Math.abs(r).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: st, cxNeg: r < 0 };
+};
+const _pT = (t, o = {}) => ({ content: String(t == null ? '' : t), colSpan: o.cs,
+  styles: Object.assign({ halign: o.al || 'left' }, o.fill ? { fillColor: o.fill } : {}, o.b ? { fontStyle: 'bold' } : {}, o.color ? { textColor: o.color } : {}) });
+const _pNo = no => ({ content: String(no).padStart(2, '0'), styles: { textColor: CXP.lbl, halign: 'right', cellPadding: { top: 0.85, bottom: 0.85, left: 1.06, right: 0.53 } } });
+const _pRow = (cells, kind) => { if (kind) cells[kind] = true; return cells; };      // kind: cxTot (total) · cxMu (muted line)
+
+/* room for the tracked column labels: the widest word of each label must fit */
+function _pMin(doc, labels) {
+  doc.setFont('ccsans', 'bold'); doc.setFontSize(4.875);
+  const em = 4.875 * CXP.PT, cs = 0.1 * em, out = {};
+  for (const [col, text] of labels) {
+    const w = Math.max(...String(text).toUpperCase().split(' ').map(x => doc.getTextWidth(x) + cs * Math.max(0, x.length - 1)));
+    out[col] = Math.max(out[col] || 0, w + 2.12 + 0.4);
+  }
+  return out;
+}
+function _pTable(doc, startY, head, body, o = {}) {
+  const cols = {};
+  for (const [c, w] of Object.entries(o.min || {})) cols[c] = { minCellWidth: w };
+  for (const [c, st] of Object.entries(o.cols || {})) cols[c] = Object.assign(cols[c] || {}, st);
+  doc.autoTable({
+    startY, head, body, theme: 'plain',
+    margin: { top: CXP.TOP, bottom: CXP.H - CXP.BOT, left: CXP.M, right: CXP.M },
+    tableWidth: o.width || 'auto', showHead: 'everyPage', rowPageBreak: 'avoid',
+    styles: { font: 'ccsans', fontStyle: 'normal', fontSize: 6.75, textColor: CXP.ink, halign: 'right', valign: 'middle', overflow: 'linebreak',
+              cellPadding: { top: 0.85, bottom: 0.85, left: 1.06, right: 1.06 }, lineColor: CXP.rowLine, lineWidth: { bottom: 0.13 } },
+    headStyles: { fontStyle: 'bold', fontSize: 4.875, textColor: CXP.sec, valign: 'bottom',
+                  cellPadding: { top: 1.85, bottom: 1.32, left: 1.06, right: 1.06 }, lineColor: CXP.secLine, lineWidth: { bottom: 0.13 } },
+    columnStyles: cols,
+    didParseCell: d => {
+      const raw = d.row.raw, s = d.cell.styles;
+      if (d.section !== 'body' || !raw) return;
+      if (raw.cxTot) { s.fontStyle = 'bold'; s.lineWidth = { top: 0.159 }; s.lineColor = CXP.wm; s.cellPadding = { top: 1.32, bottom: 0.85, left: 1.06, right: 1.06 }; }
+      if (raw.cxMu) { s.lineWidth = 0; s.cellPadding = { top: 1.06, bottom: 0.85, left: 1.06, right: 1.06 }; if (!(d.cell.raw && d.cell.raw.cxNeg)) s.textColor = CXP.sub; }
+    },
+    willDrawCell: d => { if (d.section === 'head' && d.cell.raw && d.cell.raw.cxT) { if (!d.cell.cxL) d.cell.cxL = d.cell.text; d.cell.text = []; } },   // kept for the repeated header on the next page
+    didDrawCell: d => {                                       // tracked capitals, like the Casa Castel documents
+      const L = d.cell.cxL;
+      if (!L || !L.length) return;
+      const st = d.cell.styles, size = st.fontSize, em = size * CXP.PT, cs = d.cell.raw.cxT * em;
+      doc.setFont('ccsans', 'bold'); doc.setFontSize(size); doc.setTextColor(...st.textColor);
+      const pl = d.cell.padding('left'), pr = d.cell.padding('right'), bottom = d.cell.y + d.cell.height - d.cell.padding('bottom'), lh = em * 1.2;
+      L.forEach((t, i) => {
+        const tw = doc.getTextWidth(t), room = d.cell.width - pl - pr, n = Math.max(1, t.length - 1);
+        const c = Math.max(0, Math.min(cs, (room - tw) / n));   // the spacing never pushes a label into the next column
+        const w = tw + c * (t.length - 1);
+        const x = st.halign === 'right' ? d.cell.x + d.cell.width - pr - w : st.halign === 'center' ? d.cell.x + (d.cell.width - w) / 2 : d.cell.x + pl;
+        doc.text(t, x, bottom - 0.213 * em - (L.length - 1 - i) * lh, { charSpace: c });
+      });
+    },
+  });
+  return doc.lastAutoTable.finalY;
+}
+const _pRange = (a, b) => CXP_MF[a - 1] + (a === b ? '' : ' – ' + CXP_MF[b - 1]);
+
+/* the pages */
+function _pYear(doc, d, y) {
+  const fixed = 254.66 - 6.35 - 50.27, eq = { cellWidth: fixed / 5 };
+  y = _pSec(doc, y, '01', 'Ergebnis je Objekt');
+  const head = [[_pH('Immobilie', { cs: 2, left: 1 }), _pH('Gesamt'), _pH('Income'), _pH('Expenses One Time'), _pH('Hausgeldausgleich'), _pH('Nebenkostenausgleich')]];
+  const t = { inc: 0, one: 0, hg: 0, nk: 0 };
+  const body = d.dash.map(x => {
+    const Y = x.year, g = Y.income - Y.oneoff + Y.hg + Y.nk;
+    t.inc += Y.income; t.one += Y.oneoff; t.hg += Y.hg; t.nk += Y.nk;
+    return [_pNo(x.x.no), _pT(x.x.p.name), _pN(g, { b: 1 }), _pN(Y.income), _pN(Y.oneoff), _pN(Y.hg), _pN(Y.nk)];
+  });
+  body.push(_pRow([_pT('Gesamt', { cs: 2 }), _pN(t.inc - t.one + t.hg + t.nk), _pN(t.inc), _pN(t.one), _pN(t.hg), _pN(t.nk)], 'cxTot'));
+  y = _pTable(doc, y, head, body, { cols: { 0: { cellWidth: 6.35 }, 1: { cellWidth: 50.27 }, 2: eq, 3: eq, 4: eq, 5: eq, 6: eq } });
+  y = _pSec(doc, y + 7.41, '02', 'Cashflow · Kalt und Warm');
+  const rows = [];
+  if (d.kw.ren) rows.push(['Rentals', d.kw.ren]);
+  if (d.kw.casa) rows.push(['Casa Castel', d.kw.casa]);
+  const b2 = rows.map(([n, v]) => [_pT(n), _pN(v.k), _pN(v.w)]);
+  b2.push(_pRow([_pT('Total'), _pN(rows.reduce((s, r) => s + r[1].k, 0)), _pN(rows.reduce((s, r) => s + r[1].w, 0))], 'cxTot'));
+  _pTable(doc, y, [[_pH('Bereich', { left: 1 }), _pH('Kalt'), _pH('Warm')]], b2, { width: 111.13, cols: { 0: { cellWidth: 55 } } });
+}
+function _pMonths(doc, d, a, b, y) {
+  const ms = []; for (let m = a; m <= b; m++) ms.push(m);
+  const f = i => (i % 2 ? CXP.alt : null), L = ['Gesamt', 'Income', 'Expenses'];
+  const head = [[_pH('Immobilie', { cs: 2, rs: 2, left: 1 })].concat(ms.map((m, i) => _pH(CXP_MF[m - 1], { cs: 3, month: 1, fill: f(i) }))),
+                [].concat(...ms.map((m, i) => L.map(t => _pH(t, { fill: f(i) }))))];
+  const body = d.dash.map(x => [_pNo(x.x.no), _pT(x.x.p.name)].concat(...ms.map((m, i) => {
+    const v = x.mon[m];
+    return [_pN(v ? v.ges : null, { b: 1, fill: f(i) }), _pN(v ? v.inc : null, { fill: f(i) }), _pN(v ? v.exp : null, { fill: f(i) })];
+  })));
+  body.push(_pRow([_pT('Gesamt', { cs: 2 })].concat(...ms.map((m, i) => {
+    const on = d.counted.has(m), S = k => d.dash.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0);
+    return ['ges', 'inc', 'exp'].map(k => _pN(on ? S(k) : null, { fill: f(i) }));
+  })), 'cxTot'));
+  const labels = []; ms.forEach((m, i) => L.forEach((t, k) => labels.push([2 + i * 3 + k, t])));
+  _pTable(doc, y, head, body, { min: _pMin(doc, labels), cols: { 0: { cellWidth: 6.35 } } });
+}
+function _pIncome(doc, d, a, b, y) {
+  const ms = []; for (let m = a; m <= b; m++) ms.push(m);
+  const f = i => (i % 2 ? CXP.alt : null), L = ['Soll warm', 'Soll kalt', 'Warmmiete', 'Kaltmiete', 'NK'];
+  const head = [[_pH('Immobilie · Unit', { cs: 3, rs: 2, left: 1 })].concat(ms.map((m, i) => _pH(CXP_MF[m - 1], { cs: 5, month: 1, fill: f(i) }))),
+                [].concat(...ms.map((m, i) => L.map(t => _pH(t, { fill: f(i), wrap: 1 }))))];   // SOLL / WARM on two lines
+  const body = d.income.map(u => [_pNo(u.x.no), _pT(u.x.p.name), _pT(u.name)].concat(...ms.map((m, i) => {
+    const v = u.mon[m], ist = v && v.k !== null;
+    return [_pN(v ? v.sW : null, { fill: f(i) }), _pN(v ? v.sK : null, { fill: f(i) }), _pN(ist ? v.k + (v.nk || 0) : null, { b: 1, fill: f(i) }),
+            _pN(ist ? v.k : null, { fill: f(i) }), _pN(ist ? (v.nk || 0) : null, { fill: f(i) })];
+  })));
+  const S = (m, fn) => d.income.reduce((s, u) => s + (u.mon[m] ? fn(u.mon[m]) || 0 : 0), 0);
+  body.push(_pRow([_pT('Gesamt', { cs: 3 })].concat(...ms.map((m, i) => {
+    const has = d.income.some(u => u.mon[m]), on = has && d.counted.has(m);
+    return [_pN(has ? S(m, v => v.sW) : null, { fill: f(i) }), _pN(has ? S(m, v => v.sK) : null, { fill: f(i) }),
+            _pN(on ? S(m, v => (v.k === null ? 0 : v.k + (v.nk || 0))) : null, { fill: f(i) }), _pN(on ? S(m, v => v.k) : null, { fill: f(i) }),
+            _pN(on ? S(m, v => v.nk) : null, { fill: f(i) })];
+  })), 'cxTot'));
+  body.push(_pRow([_pT('Kaltmiete fehlt', { cs: 3 })].concat(...ms.map(m => {
+    const on = d.counted.has(m) && d.income.some(u => u.mon[m]);
+    return [_pT(''), on ? _pN(S(m, v => v.sK) - S(m, v => v.k)) : _pT(''), _pT(''), _pT(''), _pT('')];
+  })), 'cxMu'));
+  const labels = []; ms.forEach((m, i) => L.forEach((t, k) => labels.push([3 + i * 5 + k, t])));
+  _pTable(doc, y, head, body, { min: _pMin(doc, labels), cols: { 0: { cellWidth: 6.35 } } });
+}
+function _pExpense(doc, d, a, b, y) {
+  const ms = []; for (let m = a; m <= b; m++) ms.push(m);
+  const f = i => (i % 2 ? CXP.alt : null), L = ['Soll', 'Gesamt', 'Rate', 'Zinsen', 'Tilgung', 'Hausgeld', 'Grundsteuer', 'Strom'];
+  const K = ['rate', 'zins', 'tilg', 'hg', 'grst', 'strom'];
+  const head = [[_pH('Immobilie', { cs: 2, rs: 2, left: 1 })].concat(ms.map((m, i) => _pH(CXP_MF[m - 1], { cs: 8, month: 1, fill: f(i) }))),
+                [].concat(...ms.map((m, i) => L.map(t => _pH(t, { fill: f(i) }))))];
+  const body = d.expense.map(e => [_pNo(e.x.no), _pT(e.x.p.name)].concat(...ms.map((m, i) => {
+    const v = e.mon[m], c = [_pN(v ? v.soll : null, { fill: f(i) }), _pN(v ? v.ges : null, { b: 1, fill: f(i) })];
+    if (e.x.casa) return c.concat([_pN(v ? v.rate : null, { fill: f(i) })], [0, 1, 2, 3, 4].map(() => _pN(null, { fill: f(i) })));
+    return c.concat(K.map(k => _pN(v ? v[k] : null, { fill: f(i) })));
+  })));
+  body.push(_pRow([_pT('Gesamt', { cs: 2 })].concat(...ms.map((m, i) => {
+    const has = d.expense.some(e => e.mon[m]), on = has && d.counted.has(m);
+    const S = fn => d.expense.reduce((s, e) => s + (e.mon[m] ? fn(e.mon[m]) || 0 : 0), 0);
+    return [_pN(has ? S(v => v.soll) : null, { fill: f(i) }), _pN(on ? S(v => v.ges) : null, { fill: f(i) })]
+      .concat(K.map(k => _pN(on ? S(v => v[k]) : null, { fill: f(i) })));
+  })), 'cxTot'));
+  const labels = []; ms.forEach((m, i) => L.forEach((t, k) => labels.push([2 + i * 8 + k, t])));
+  const end = _pTable(doc, y, head, body, { min: _pMin(doc, labels), cols: { 0: { cellWidth: 6.35 } } });
+  if (d.expense.some(e => e.x.casa)) _pNote(doc, end, 'Casa Castel: Gesamt aus Expense Castel, Rate = Kreditrate · Einzelkosten unter Expense Castel');
+}
+function _pCastel(doc, d, a, b, y) {
+  const ms = []; for (let m = a; m <= b; m++) ms.push(m);
+  const f = i => (i % 2 ? CXP.alt : null);
+  const head = [[_pH('Kostenart', { cs: 2, rs: 2, left: 1 }), _pH('Kosten', { rs: 2 }), _pH('Häufigkeit', { rs: 2, left: 1 })]
+                  .concat(ms.map((m, i) => _pH(CXP_MF[m - 1], { cs: 2, month: 1, fill: f(i) }))),
+                [].concat(...ms.map((m, i) => [_pH('Soll', { fill: f(i) }), _pH('Ist', { fill: f(i) })]))];
+  const body = d.castel.map((k, j) => [_pNo(j + 1), _pT(k.name), _pN(k.base), _pT(k.freq)].concat(...ms.map((m, i) => {
+    const v = k.mon[m];
+    return [_pN(v ? v.soll : null, { fill: f(i) }), _pN(v && d.counted.has(m) ? v.ist : null, { b: 1, fill: f(i) })];
+  })));
+  body.push(_pRow([_pT('Gesamt', { cs: 4 })].concat(...ms.map((m, i) => {
+    const has = d.castel.some(k => k.mon[m]), on = has && d.counted.has(m);
+    return [_pN(has ? d.castel.reduce((s, k) => s + (k.mon[m] ? k.mon[m].soll : 0), 0) : null, { fill: f(i) }),
+            _pN(on ? d.castel.reduce((s, k) => s + (k.mon[m] && k.mon[m].ist ? k.mon[m].ist : 0), 0) : null, { fill: f(i) })];
+  })), 'cxTot'));
+  const labels = [[2, 'Kosten'], [3, 'Häufigkeit']]; ms.forEach((m, i) => { labels.push([4 + i * 2, 'Soll'], [5 + i * 2, 'Ist']); });
+  _pTable(doc, y, head, body, { min: _pMin(doc, labels), cols: { 0: { cellWidth: 6.35 } } });
+}
+function _pOneOff(doc, d, y) {
+  if (!d.oneoff.length) { _pTx(doc, 'Keine Rechnungen in ' + d.y, CXP.M, y + 3, { size: 6.75, color: CXP.sub }); return; }
+  const cols = { 0: { cellWidth: 9 }, 1: { cellWidth: 254.66 * 0.38 }, 2: { cellWidth: 254.66 * 0.26 }, 3: { cellWidth: (254.66 * 0.36 - 9) / 2 }, 4: { cellWidth: (254.66 * 0.36 - 9) / 2 } };
+  const head = [[_pH('Nr.', { left: 1 }), _pH('Item', { left: 1 }), _pH('Geschäft', { left: 1 }), _pH('Kosten'), _pH('Rechnungsdatum')]];
+  const rows = list => list.map(it => [{ content: String(it.nr), styles: { textColor: CXP.lbl, halign: 'right' } }, _pT(it.item),
+    it.company ? _pT(it.company) : _pT('–', { color: CXP.zero }), _pN(it.price), _pT(cxFmtDate(it.date), { al: 'right' })]);
+  let first = true;
+  const block = (num, label, sum, list) => {
+    if (!first && y + 22 > CXP.BOT) { doc.addPage('a4', 'landscape'); y = CXP.TOP; first = true; }
+    y = _pSec(doc, first ? y : y + 7.41, num, label, 'Summe ' + _pN(sum).content + ' €');
+    first = false;
+    y = _pTable(doc, y, head, rows(list), { cols });
+  };
+  for (const o of d.oneoff) {
+    if (o.g.items.length) block(String(o.x.no).padStart(2, '0'), o.x.p.name, o.g.total, o.g.items);
+    if (o.g.knk && o.g.knk.length) block(String(o.x.no).padStart(2, '0'), o.x.p.name + ' · Kaufnebenkosten · nicht im Cashflow', o.g.knkTotal, o.g.knk);
+  }
+  _pNote(doc, y, 'Ohne NK- und Hausgeld-Abrechnungen · diese stehen im Dashboard ' + d.y);
+}
+function _pGeneral(doc, d, y) {
+  const eq = { cellWidth: (254.66 - 6.35 - 50.27) / 6 };
+  const head = [[_pH('Immobilie', { cs: 2, left: 1 }), _pH('Kaltmiete'), _pH('Rate'), _pH('Cashflow Kalt'), _pH('Nebenkosten'), _pH('Hausgeld & Kosten'), _pH('Cashflow Warm')]];
+  const body = d.general.map(g => [_pNo(g.x.no), _pT(g.x.p.name), _pN(g.kalt), _pN(g.rate), _pN(g.cfK, { b: 1 }), _pN(g.nk), _pN(g.hk), _pN(g.cfW, { b: 1 })]);
+  const S = k => d.general.reduce((s, g) => s + (g[k] || 0), 0);
+  body.push(_pRow([_pT('Gesamt', { cs: 2 }), _pN(S('kalt')), _pN(S('rate')), _pN(S('cfK')), _pN(S('nk')), _pN(S('hk')), _pN(S('cfW'))], 'cxTot'));
+  _pTable(doc, y, head, body, { cols: { 0: { cellWidth: 6.35 }, 1: { cellWidth: 50.27 }, 2: eq, 3: eq, 4: eq, 5: eq, 6: eq, 7: eq } });
+}
+
+function cxRepBuildPdf(d) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+  for (const [f, fam, st] of CXR_FONTS) { doc.addFileToVFS(f, _cxRepFont[f]); doc.addFont(f, fam, st); }
+  doc.setLineHeightFactor(1.2);
+  doc.setProperties({ title: 'Controlling ' + d.y, creator: 'Controlling' });
+  const scopeL = d.scope === 'r' ? 'Rentals' : d.scope === 'c' ? 'Casa Castel' : 'Alle Objekte';
+  const SUB = scopeL + ' · Stand ' + d.stand + ' · Beträge in €';
+  let firstPage = true;
+  const page = (title, sub) => { if (!firstPage) doc.addPage('a4', 'landscape'); firstPage = false; return _pTitle(doc, title, sub); };
+  for (const s of d.sheets) {
+    if (s === 'Dashboard YEAR') _pYear(doc, d, page('Dashboard ' + d.y, SUB));
+    if (s === 'Dashboard MONTHS') [[1, 6], [7, 12]].forEach(([a, b]) => _pMonths(doc, d, a, b, page('Dashboard · Monate', _pRange(a, b) + ' ' + d.y + ' · ' + SUB)));
+    if (s === 'Income') [[1, 3], [4, 6], [7, 9], [10, 12]].forEach(([a, b]) => _pIncome(doc, d, a, b, page('Income', _pRange(a, b) + ' ' + d.y + ' · ' + SUB)));
+    if (s === 'Expense') [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12]].forEach(([a, b]) => _pExpense(doc, d, a, b, page('Expense', _pRange(a, b) + ' ' + d.y + ' · ' + SUB)));
+    if (s === 'Expense Castel') [[1, 6], [7, 12]].forEach(([a, b]) => _pCastel(doc, d, a, b, page('Expense Castel', _pRange(a, b) + ' ' + d.y + ' · Casa Castel · Stand ' + d.stand + ' · Beträge in €')));
+    if (s === 'Expense One Time') _pOneOff(doc, d, page('Expense One Time', d.y + ' · ' + SUB));
+    if (s === 'General') _pGeneral(doc, d, page('Rental Cashflow Dashboard', d.y + ' · laufend, ohne One-offs und Abrechnungen · ' + SUB));
+  }
+  // frame on every page: beige band with the wordmark, footer with "Seite x von y"
+  const n = doc.getNumberOfPages(), mark = d.scope === 'c' ? 'Casa Castel' : 'Controlling';
+  const foot = 'Controlling ' + d.y + ' · ' + scopeL + ' · Stand ' + d.stand;
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i);
+    doc.setFillColor(...CXP.band); doc.rect(0, 0, CXP.W, 22, 'F');
+    _pTx(doc, mark, CXP.M, 13.86, { font: 'serif', size: 19.5, color: CXP.wm, track: 0.05 });
+    _pTx(doc, 'JAHR', CXP.W - CXP.M, 9.6, { size: 5.25, color: CXP.lbl, track: 0.16, align: 'right' });
+    _pTx(doc, String(d.y), CXP.W - CXP.M, 13.77, { font: 'serif', size: 9, color: CXP.wm, align: 'right' });
+    doc.setDrawColor(...CXP.ftr); doc.setLineWidth(0.132); doc.line(CXP.M, 197.56, CXP.W - CXP.M, 197.56);
+    _pTx(doc, foot, CXP.M, 201.29, { size: 6, color: CXP.sub });
+    _pTx(doc, 'Seite ' + i + ' von ' + n, CXP.W - CXP.M, 201.29, { size: 6, color: CXP.sub, align: 'right' });
+  }
+  return { doc, pages: n, name: cxRepFileName(d.y, d.scope, 'pdf') };
+}
+
 /* ══ POP-UP ═════════════════════════════════════════════════════
    One modal in the shared pop-up look (cc-modal, restyled by cc-mgmt.css:
    bottom sheet on the iPhone, centred window on iPad / laptop).
    The file is prepared as soon as the pop-up opens or a choice changes;
    the button then hands it over at once (iPhone share sheet / download). */
-const _cxRep = { file: null, key: '', busy: '', err: '' };
+const _cxRep = { file: null, pdf: null, key: '', busy: '', err: '' };
 const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 (function () {
@@ -467,16 +760,17 @@ const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheet
 })();
 
 function _cxRepKey() { return window._ctrl.year + '|' + CX.rep.scope + '|' + CX.rep.fmt; }
+const _cxRepReady = () => _cxRep.key === _cxRepKey() && !!(CX.rep.fmt === 'pdf' ? _cxRep.pdf : _cxRep.file);
 
 function _cxRepHTML() {
   const y = window._ctrl.year, R = CX.rep, pdf = R.fmt === 'pdf';
   const chip = (act, v, label, on) => '<button class="cx-chip' + (on ? ' on' : '') + '" data-cxr="' + act + '" data-v="' + v + '">' + label + '</button>';
   const sheets = cxRepSheets(R.scope).map(s => s.replace(/ /g, '\u00a0')).join(' · ');
   const name = cxRepFileName(y, R.scope, pdf ? 'pdf' : 'xlsx');
-  const ready = !pdf && _cxRep.file && _cxRep.key === _cxRepKey();
+  const ready = _cxRepReady();
   const state = _cxRep.err ? ' · <span style="color:var(--cx-neg,#A0533A)">' + cxEsc(_cxRep.err) + '</span>'
-    : pdf ? ' · A4 landscape · comes with the next step'
-    : ready ? ' · ' + cxRepSheets(R.scope).length + ' sheets like your Excel' : ' · preparing …';
+    : !ready ? ' · preparing …'
+    : pdf ? ' · A4 landscape · ' + _cxRep.pdf.pages + ' pages' : ' · ' + cxRepSheets(R.scope).length + ' sheets like your Excel';
   return '<div class="cc-modal-sheet cxr-sheet" role="dialog" aria-modal="true" aria-label="Export ' + y + '">' +
     '<div class="cc-modal-hdr"><div><div class="cc-modal-title">Export ' + y + '</div>' +
       '<div class="cxr-sub">Whole year · Stand ' + cxFmtDate(cxToday()) + '</div></div>' +
@@ -487,7 +781,8 @@ function _cxRepHTML() {
         chip('scope', 'all', 'All properties', R.scope === 'all') + chip('scope', 'r', 'Rentals', R.scope === 'r') + chip('scope', 'c', 'Casa Castel', R.scope === 'c') + '</div>' +
       '<div class="cx-r__sub cxr-info"><b>' + cxEsc(name) + '</b>' + state + '<br>' + sheets + '</div>' +
     '</div></div>' +
-    '<div class="cxr-foot"><button class="cx-btn cx-btn--p" data-cxr="go">' + (pdf ? 'Create PDF' : 'Export Excel') + '</button></div>' +
+    // data-cc-pdf: pdf-open.js opens the viewer tab inside the tap (browser) / shows "Open PDF" here (installed app)
+    '<div class="cxr-foot"><button class="cx-btn cx-btn--p" data-cxr="go"' + (pdf ? ' data-cc-pdf' : '') + '>' + (pdf ? 'Create PDF' : 'Export Excel') + '</button></div>' +
   '</div>';
 }
 function _cxRepPaint() { const ov = document.getElementById('cxRepOv'); if (ov) ov.innerHTML = _cxRepHTML(); }
@@ -501,38 +796,44 @@ function cxReportOpen() {
     ov.addEventListener('click', _cxRepClick);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) cxReportClose(); });
   }
-  _cxRep.file = null; _cxRep.key = ''; _cxRep.err = '';     // fresh data every time it opens
+  _cxRep.file = null; _cxRep.pdf = null; _cxRep.key = ''; _cxRep.err = '';     // fresh data every time it opens
   _cxRepPaint();
   ov.classList.add('open');
   _cxRepPrepare();
 }
 function cxReportClose() {
   document.getElementById('cxRepOv')?.classList.remove('open');
-  _cxRep.file = null; _cxRep.key = ''; _cxRep.busy = ''; _cxRep.err = '';
+  _cxRep.file = null; _cxRep.pdf = null; _cxRep.key = ''; _cxRep.busy = ''; _cxRep.err = '';
 }
 
-/* load the library and prepare the file for the current choice (in the background) */
+/* load what the format needs and prepare the file for the current choice (in the background) */
 async function _cxRepPrepare() {
-  if (CX.rep.fmt !== 'xlsx') return;
-  const key = _cxRepKey();
-  if ((_cxRep.file && _cxRep.key === key) || _cxRep.busy === key) return;
+  const key = _cxRepKey(), fmt = CX.rep.fmt;
+  if (_cxRepReady() || _cxRep.busy === key) return;
   _cxRep.busy = key; _cxRep.err = '';
   try {
-    if (!window.ExcelJS) await _cxLoadScript(CX_EXCELJS_URL);
+    if (fmt === 'pdf') await Promise.all([cxPdfPreload(), cxRepFontsPreload()]);
+    else if (!window.ExcelJS) await _cxLoadScript(CX_EXCELJS_URL);
     const d = cxRepData(CX.rep.scope);
     if (!d.props.length) throw new Error('No property in ' + d.y);
-    const buf = await cxRepBuildXlsx(d);
-    if (_cxRep.busy !== key) return;                          // the choice changed meanwhile
-    const name = cxRepFileName(d.y, CX.rep.scope, 'xlsx');
-    _cxRep.file = typeof File === 'function' ? new File([buf], name, { type: CXR_XLSX_MIME }) : new Blob([buf], { type: CXR_XLSX_MIME });
-    _cxRep.file.cxName = name;
+    if (fmt === 'pdf') {
+      const out = cxRepBuildPdf(d);
+      if (_cxRep.busy !== key) return;                          // the choice changed meanwhile
+      _cxRep.pdf = out; _cxRep.file = null;
+    } else {
+      const buf = await cxRepBuildXlsx(d);
+      if (_cxRep.busy !== key) return;
+      const name = cxRepFileName(d.y, CX.rep.scope, 'xlsx');
+      _cxRep.file = typeof File === 'function' ? new File([buf], name, { type: CXR_XLSX_MIME }) : new Blob([buf], { type: CXR_XLSX_MIME });
+      _cxRep.file.cxName = name; _cxRep.pdf = null;
+    }
     _cxRep.key = key;
   } catch (e) {
     console.error('[controlling] export', e);
     if (_cxRep.busy === key) _cxRep.err = String((e && e.message) || e).slice(0, 80);
   } finally {
     if (_cxRep.busy === key) _cxRep.busy = '';
-    if (document.getElementById('cxRepOv')?.classList.contains('open')) _cxRepPaint();
+    if (document.getElementById('cxRepOv')?.classList.contains('open') && _cxRepKey() === key) _cxRepPaint();
   }
 }
 
@@ -544,6 +845,7 @@ function _cxRepClick(ev) {
   const a = b.dataset.cxr;
   if (a === 'close') return cxReportClose();
   if (a === 'fmt' || a === 'scope') {
+    if (CX.rep[a] === b.dataset.v) return;
     CX.rep[a] = b.dataset.v;
     _cxRep.err = '';
     _cxRepPaint();
@@ -552,17 +854,26 @@ function _cxRepClick(ev) {
   if (a === 'go') return _cxRepGo();
 }
 
-/* Hand the file over — nothing is awaited before the share sheet, so the iPhone allows it */
+/* Hand the file over — nothing is awaited before the share sheet / viewer, so the iPhone allows it */
 function _cxRepGo() {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
-  if (CX.rep.fmt === 'pdf') { say('PDF comes with the next step'); return; }
-  const f = _cxRep.file;
-  if (!f || _cxRep.key !== _cxRepKey()) {
-    say(_cxRep.err ? 'Export failed – ' + _cxRep.err : 'Excel wird vorbereitet … bitte gleich noch einmal tippen');
+  const pdf = CX.rep.fmt === 'pdf';
+  if (!_cxRepReady()) {
+    if (pdf && typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab();   // the tab pdf-open.js opened at the tap
+    say(_cxRep.err ? 'Export failed – ' + _cxRep.err : (pdf ? 'PDF' : 'Excel') + ' wird vorbereitet … bitte gleich noch einmal tippen');
     if (!_cxRep.busy) _cxRepPrepare();
     return;
   }
-  const name = f.cxName || cxRepFileName(window._ctrl.year, CX.rep.scope, 'xlsx');
+  if (pdf) {                                                   // same way as the contracts: iPhone viewer on top of the app
+    const P = _cxRep.pdf;
+    if (typeof window.sbL === 'undefined' && typeof _ctlSupa !== 'undefined') window.sbL = _ctlSupa;
+    if (typeof ccOpenPdf === 'function') {
+      ccOpenPdf(P.doc, P.name).catch(e => { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); say('PDF failed: ' + ((e && e.message) || e)); });
+      return;
+    }
+    return _cxRepDownload(P.doc.output('blob'), P.name);
+  }
+  const f = _cxRep.file, name = f.cxName || cxRepFileName(window._ctrl.year, CX.rep.scope, 'xlsx');
   if (typeof File === 'function' && f instanceof File && navigator.canShare && navigator.canShare({ files: [f] })) {
     navigator.share({ files: [f], title: name }).then(() => cxReportClose()).catch(e => {
       if (e && e.name === 'AbortError') return;               // share sheet closed — the pop-up stays
