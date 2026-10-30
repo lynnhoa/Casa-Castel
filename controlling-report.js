@@ -29,6 +29,10 @@
      Lato (cc-pdf-serif / cc-pdf-sans*.ttf = renamed Latin subsets, OFL —
      cc-pdf-fonts-OFL.txt), numbered section labels, "Seite x von y".
      Opens like the contracts (pdf-open.js · data-cc-pdf on the button).
+   Fix round (30.10.2026): switched-off Casa costs with bookings stay listed · no
+     double taps · the pop-up knows its sheets and double-rent days at once (no jump) ·
+     narrower button on wide screens · browser: pop-up closes once the PDF is open ·
+     messages in English.
    Bucket 3 (30.10.2026): double rent — the Soll counts one rent per day and unit
      (ctlUnitSollOneRent); the pop-up asks whose (previous / new tenant) only when
      the year has double-rent days. Ist always stays the real money received.
@@ -48,6 +52,21 @@ function cxRepSheets(scope) {
 }
 function cxRepFileName(y, scope, ext) {
   return 'Controlling_' + y + (scope === 'r' ? '_Rentals' : scope === 'c' ? '_Casa_Castel' : '') + '.' + ext;
+}
+
+/* What the pop-up needs at once (fast, before the file is built): how many properties,
+   which sheets the file will really have, how many double-rent days — same rules as cxRepData */
+function cxRepQuick(scope) {
+  const C = window._ctrl, y = C.year;
+  const props = C.properties.filter(p => p.active && ctlPropOwnedYear(p, y) && (scope === 'all' || (scope === 'c') === (p.id === CASA_PROP_ID)));
+  let dblDays = 0;
+  for (const p of props) for (const u of ctlUnitsFor(p.id)) for (let m = 1; m <= 12; m++) {
+    if (!ctlPropOwned(p, y, m)) continue;
+    const s = ctlUnitSoll(u, p.id, y, m);
+    if (s && s.dbl) dblDays += s.dbl;
+  }
+  const hasCasa = props.some(p => p.id === CASA_PROP_ID), hasRen = props.some(p => p.id !== CASA_PROP_ID);
+  return { n: props.length, dblDays, sheets: cxRepSheets(scope).filter(s => (s !== 'Expense Castel' || hasCasa) && (s !== 'Expense' || hasRen)) };
 }
 
 /* ══ THE ONE DATA FUNCTION ══════════════════════════════════════ */
@@ -150,7 +169,8 @@ function cxRepData(scope) {
   if (casaX) {
     const ref = ym.length ? ym[ym.length - 1] : 1;            // "Kosten" = the Soll amount valid at the Stand
     const loan = ctlPropLinks(casaX.p).loan;
-    castel = (C.categories || []).filter(c => c.active !== false).map(c => {
+    const booked = c => (C.castel_expenses || []).some(e => e.category_id === c.id && e.year === y);
+    castel = (C.categories || []).filter(c => c.active !== false || booked(c)).map(c => {   // switched off in Setup, but booked this year → still listed, so the totals match
       const isRate = c.code === 'RATE';
       const base = isRate && loan ? r2(loan.rate) : r2(ctlCastelAmountAt(c, y, ref).amount);
       const mon = {};
@@ -466,7 +486,7 @@ async function cxRepFontsPreload() {
   await Promise.all(CXR_FONTS.map(async ([f]) => {
     if (_cxRepFont[f]) return;
     const r = await fetch(f + '?v=2026-10-30-R2');
-    if (!r.ok) throw new Error('Schrift fehlt: ' + f);
+    if (!r.ok) throw new Error('Font missing: ' + f);
     const b = new Uint8Array(await r.arrayBuffer());
     let bin = '';
     for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
@@ -748,7 +768,7 @@ function cxRepBuildPdf(d) {
    bottom sheet on the iPhone, centred window on iPad / laptop).
    The file is prepared as soon as the pop-up opens or a choice changes;
    the button then hands it over at once (iPhone share sheet / download). */
-const _cxRep = { file: null, pdf: null, key: '', busy: '', err: '', dbl: null };   // dbl: { key: year|scope, days }
+const _cxRep = { file: null, pdf: null, key: '', busy: '', err: '', quick: null, sharing: false, opening: false };
 const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 (function () {
@@ -757,6 +777,8 @@ const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheet
   s.id = 'cxr-css';
   s.textContent = `
     .cxr-btn { margin-top:12px; }
+    /* iPad landscape / laptop (two columns): the button sits under the left column, not across the page */
+    @media (min-width:1000px) { html body .cxn .cxr-btn { width:calc((100% - 16px) / 2); align-self:flex-start; } }
     .cxr-sheet .cc-modal-body { padding:14px 20px 4px; }
     .cxr-sub { font-size:12px; color:var(--cc-taupe,#9A8E7E); margin-top:2px; }
     .cxr-form { display:flex; flex-direction:column; gap:8px; font-family:'Inter',system-ui,sans-serif; }
@@ -769,16 +791,30 @@ const CXR_XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheet
 
 function _cxRepKey() { return window._ctrl.year + '|' + CX.rep.scope + '|' + CX.rep.fmt + '|' + CX.rep.dbl; }
 const _cxRepReady = () => _cxRep.key === _cxRepKey() && !!(CX.rep.fmt === 'pdf' ? _cxRep.pdf : _cxRep.file);
+/* sheets + double-rent days for the year and the chosen properties — known before the file is built */
+function _cxRepQuickFor() {
+  const k = window._ctrl.year + '|' + CX.rep.scope;
+  if (_cxRep.quick && _cxRep.quick.key === k) return _cxRep.quick;
+  try { _cxRep.quick = Object.assign({ key: k }, cxRepQuick(CX.rep.scope)); }
+  catch (e) { console.error('[controlling] export', e); _cxRep.quick = { key: k, n: 1, dblDays: 0, sheets: cxRepSheets(CX.rep.scope) }; }
+  return _cxRep.quick;
+}
+const _cxRepMsg = e => {                                     // messages in English, like the labels
+  const m = String((e && e.message) || e || '');
+  return /Bibliothek|Font missing|Failed to fetch|NetworkError|Load failed|network/i.test(m) ? 'Could not load – check the internet connection' : m.slice(0, 80);
+};
 
 function _cxRepHTML() {
-  const y = window._ctrl.year, R = CX.rep, pdf = R.fmt === 'pdf';
+  const y = window._ctrl.year, R = CX.rep, pdf = R.fmt === 'pdf', q = _cxRepQuickFor();
   const chip = (act, v, label, on) => '<button class="cx-chip' + (on ? ' on' : '') + '" data-cxr="' + act + '" data-v="' + v + '">' + label + '</button>';
-  const sheets = cxRepSheets(R.scope).map(s => s.replace(/ /g, '\u00a0')).join(' · ');
+  const sheets = q.sheets.map(s => s.replace(/ /g, '\u00a0')).join(' · ');
   const name = cxRepFileName(y, R.scope, pdf ? 'pdf' : 'xlsx');
   const ready = _cxRepReady();
-  const state = _cxRep.err ? ' · <span style="color:var(--cx-neg,#A0533A)">' + cxEsc(_cxRep.err) + '</span>'
+  const warn = t => ' · <span style="color:var(--cx-neg,#A0533A)">' + cxEsc(t) + '</span>';
+  const state = !q.n ? warn('No property in ' + y)
+    : _cxRep.err ? warn(_cxRep.err)
     : !ready ? ' · preparing …'
-    : pdf ? ' · A4 landscape · ' + _cxRep.pdf.pages + ' pages' : ' · ' + cxRepSheets(R.scope).length + ' sheets like your Excel';
+    : pdf ? ' · A4 landscape · ' + _cxRep.pdf.pages + ' pages' : ' · ' + q.sheets.length + ' sheets like your Excel';
   return '<div class="cc-modal-sheet cxr-sheet" role="dialog" aria-modal="true" aria-label="Export ' + y + '">' +
     '<div class="cc-modal-hdr"><div><div class="cc-modal-title">Export ' + y + '</div>' +
       '<div class="cxr-sub">Whole year · Stand ' + cxFmtDate(cxToday()) + '</div></div>' +
@@ -787,11 +823,11 @@ function _cxRepHTML() {
       '<div class="cx-set__k">Format</div><div class="cx-chips">' + chip('fmt', 'pdf', 'PDF (A4)', pdf) + chip('fmt', 'xlsx', 'Excel', !pdf) + '</div>' +
       '<div class="cx-set__k">Properties</div><div class="cx-chips">' +
         chip('scope', 'all', 'All properties', R.scope === 'all') + chip('scope', 'r', 'Rentals', R.scope === 'r') + chip('scope', 'c', 'Casa Castel', R.scope === 'c') + '</div>' +
-      // only when the year has double-rent days (known once the data is prepared)
-      (_cxRep.dbl && _cxRep.dbl.key === y + '|' + R.scope && _cxRep.dbl.days ?
+      // only when the year has double-rent days — known at once, so the pop-up does not jump
+      (q.dblDays ?
         '<div class="cx-set__k">Double rent · whose rent counts</div><div class="cx-chips">' +
           chip('dbl', 'old', 'Previous tenant', R.dbl !== 'new') + chip('dbl', 'new', 'New tenant', R.dbl === 'new') + '</div>' +
-        '<div class="cx-r__sub">One rent per day and unit · ' + _cxRep.dbl.days + (_cxRep.dbl.days === 1 ? ' day' : ' days') + ' in ' + y + '</div>' : '') +
+        '<div class="cx-r__sub">One rent per day and unit · ' + q.dblDays + (q.dblDays === 1 ? ' day' : ' days') + ' in ' + y + '</div>' : '') +
       '<div class="cx-r__sub cxr-info"><b>' + cxEsc(name) + '</b>' + state + '<br>' + sheets + '</div>' +
     '</div></div>' +
     // data-cc-pdf: pdf-open.js opens the viewer tab inside the tap (browser) / shows "Open PDF" here (installed app)
@@ -809,26 +845,28 @@ function cxReportOpen() {
     ov.addEventListener('click', _cxRepClick);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) cxReportClose(); });
   }
-  _cxRep.file = null; _cxRep.pdf = null; _cxRep.key = ''; _cxRep.err = '';     // fresh data every time it opens
+  _cxRep.file = null; _cxRep.pdf = null; _cxRep.key = ''; _cxRep.err = ''; _cxRep.quick = null;   // fresh data every time it opens
+  _cxRep.sharing = false; _cxRep.opening = false;
+  _cxRepQuickFor();
   _cxRepPaint();
   ov.classList.add('open');
   _cxRepPrepare();
 }
 function cxReportClose() {
   document.getElementById('cxRepOv')?.classList.remove('open');
-  _cxRep.file = null; _cxRep.pdf = null; _cxRep.key = ''; _cxRep.busy = ''; _cxRep.err = '';
+  _cxRep.file = null; _cxRep.pdf = null; _cxRep.key = ''; _cxRep.busy = ''; _cxRep.err = ''; _cxRep.quick = null;
+  _cxRep.sharing = false; _cxRep.opening = false;
 }
 
 /* load what the format needs and prepare the file for the current choice (in the background) */
 async function _cxRepPrepare() {
   const key = _cxRepKey(), fmt = CX.rep.fmt;
-  if (_cxRepReady() || _cxRep.busy === key) return;
+  if (_cxRepReady() || _cxRep.busy === key || !_cxRepQuickFor().n) return;
   _cxRep.busy = key; _cxRep.err = '';
   try {
     if (fmt === 'pdf') await Promise.all([cxPdfPreload(), cxRepFontsPreload()]);
     else if (!window.ExcelJS) await _cxLoadScript(CX_EXCELJS_URL);
     const d = cxRepData(CX.rep.scope);
-    _cxRep.dbl = { key: d.y + '|' + CX.rep.scope, days: d.dblDays };
     if (!d.props.length) throw new Error('No property in ' + d.y);
     if (fmt === 'pdf') {
       const out = cxRepBuildPdf(d);
@@ -844,7 +882,7 @@ async function _cxRepPrepare() {
     _cxRep.key = key;
   } catch (e) {
     console.error('[controlling] export', e);
-    if (_cxRep.busy === key) _cxRep.err = String((e && e.message) || e).slice(0, 80);
+    if (_cxRep.busy === key) _cxRep.err = _cxRepMsg(e);
   } finally {
     if (_cxRep.busy === key) _cxRep.busy = '';
     if (document.getElementById('cxRepOv')?.classList.contains('open') && _cxRepKey() === key) _cxRepPaint();
@@ -862,6 +900,7 @@ function _cxRepClick(ev) {
     if (CX.rep[a] === b.dataset.v) return;
     CX.rep[a] = b.dataset.v;
     _cxRep.err = '';
+    _cxRepQuickFor();                                         // new properties → their sheets and double-rent days at once
     _cxRepPaint();
     return _cxRepPrepare();
   }
@@ -872,25 +911,34 @@ function _cxRepClick(ev) {
 function _cxRepGo() {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
   const pdf = CX.rep.fmt === 'pdf';
+  const closeTab = () => { if (pdf && typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); };   // the tab pdf-open.js opened at the tap
+  if (pdf && _cxRep.opening) return;                           // second tap while the PDF is on its way
+  if (!pdf && _cxRep.sharing) return;                          // second tap while the share sheet opens
+  if (!_cxRepQuickFor().n) { closeTab(); say('No property in ' + window._ctrl.year); return; }
   if (!_cxRepReady()) {
-    if (pdf && typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab();   // the tab pdf-open.js opened at the tap
-    say(_cxRep.err ? 'Export failed – ' + _cxRep.err : (pdf ? 'PDF' : 'Excel') + ' wird vorbereitet … bitte gleich noch einmal tippen');
+    closeTab();
+    say(_cxRep.err ? 'Export failed – ' + _cxRep.err : 'Preparing the ' + (pdf ? 'PDF' : 'Excel') + ' … tap again in a moment');
     if (!_cxRep.busy) _cxRepPrepare();
     return;
   }
   if (pdf) {                                                   // same way as the contracts: iPhone viewer on top of the app
     const P = _cxRep.pdf;
     if (typeof window.sbL === 'undefined' && typeof _ctlSupa !== 'undefined') window.sbL = _ctlSupa;
-    if (typeof ccOpenPdf === 'function') {
-      ccOpenPdf(P.doc, P.name).catch(e => { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); say('PDF failed: ' + ((e && e.message) || e)); });
-      return;
-    }
-    return _cxRepDownload(P.doc.output('blob'), P.name);
+    if (typeof ccOpenPdf !== 'function') return _cxRepDownload(P.doc.output('blob'), P.name);
+    _cxRep.opening = true;
+    ccOpenPdf(P.doc, P.name).then(res => {
+      _cxRep.opening = false;
+      const installed = typeof CC_STANDALONE !== 'undefined' && CC_STANDALONE;
+      if (!installed && (res === 'opened' || res === 'shared')) cxReportClose();   // browser: the PDF has its own tab now
+    }).catch(e => { _cxRep.opening = false; closeTab(); say('PDF failed – ' + _cxRepMsg(e)); });
+    return;
   }
   const f = _cxRep.file, name = f.cxName || cxRepFileName(window._ctrl.year, CX.rep.scope, 'xlsx');
   if (typeof File === 'function' && f instanceof File && navigator.canShare && navigator.canShare({ files: [f] })) {
-    navigator.share({ files: [f], title: name }).then(() => cxReportClose()).catch(e => {
-      if (e && e.name === 'AbortError') return;               // share sheet closed — the pop-up stays
+    _cxRep.sharing = true;
+    navigator.share({ files: [f], title: name }).then(() => { _cxRep.sharing = false; cxReportClose(); }).catch(e => {
+      _cxRep.sharing = false;
+      if (e && (e.name === 'AbortError' || e.name === 'InvalidStateError')) return;   // closed, or already open — the pop-up stays
       _cxRepDownload(f, name);
     });
     return;
@@ -901,6 +949,6 @@ function _cxRepDownload(f, name) {
   const url = URL.createObjectURL(f), a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  if (typeof ctlToast === 'function') ctlToast(name + ' exportiert');
+  if (typeof ctlToast === 'function') ctlToast(name + ' exported');
   cxReportClose();
 }
