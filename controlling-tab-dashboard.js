@@ -117,7 +117,7 @@ function _cxDashProp(p, months) {
       const d = ctlParseDate(o.invoice_date);
       if (d.year !== y || d.month !== m) continue;
       const signed = (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);
-      if (CX_ABR_KINDS.includes(o.kind)) r.abr += signed;     // Hausgeld / NK results
+      if (CX_ABR_KINDS.includes(o.kind) || ctlIsCasaJa(o)) r.abr += signed;   // Hausgeld / NK results · Fix 3: Casa Jahresabrechnungen
       else r.einmalig -= signed;                                // one-off costs (a refund lowers them)
     }
   }
@@ -403,7 +403,7 @@ window.renderDashboard = function () {
         row(kind === 'casa' || kind === 'prop' ? 'Kreditrate' : 'Kreditraten', cxW(r.rate), cxW(r.rate), 'cxn-g2');
       if (isYear) {
         h += row('One-offs', cxW(r.einmalig), cxW(r.einmalig), 'cxn-g2') +
-             row('\u00b1 ' + (kind === 'casa' ? 'NK-Abrechnungen' : 'Abrechnungen'), D, '<span class="' + cls(r.abr) + '">' + cxWS(r.abr) + '</span>', 'cxn-g2');
+             row('\u00b1 Abrechnungen', D, '<span class="' + cls(r.abr) + '">' + cxWS(r.abr) + '</span>', 'cxn-g2');
       }
       h += row('= Cashflow', '<span class="' + cls(v.k) + '">' + cxWS(v.k) + '</span>', '<span class="' + cls(v.w) + '">' + cxWS(v.w) + '</span>', 'cxn-rs');
       if (!isYear && (r.einmalig || r.abr)) h += row('One-offs \u00b7 Abrechnungen', 'info only', (r.einmalig ? cxW(-r.einmalig) : '') + (r.einmalig && r.abr ? ' \u00b7 ' : '') + (r.abr ? cxWS(r.abr) : ''), 'cxn-inf');

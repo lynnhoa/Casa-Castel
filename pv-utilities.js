@@ -17,6 +17,10 @@
                    (reminders, prices, PDFs, bonuses — no Soll in Controlling)
      all           house_contracts · house_contract_bonuses · house_contract_docs
                    (storage 'contract-docs') · house_utility_props (properties shown)
+   Owner (Fix 2, Oct 2026): every Casa cost type owned by Utilities shows here — all except
+   the Rate (Properties) and Putzdienst / Winterdienst (Providers jobs); stored once in
+   ctrl_castel_categories.owner_app (CONTROLLING-OWNER.sql). "Selected months" (stored as
+   sporadisch) = a cost only in its chosen months, e.g. Gärtner Apr–Okt; months are required.
    Money is confirmed only in Controlling (bonuses paid to the account).
    No calculations here: raw data (Abschlag, Arbeitspreis, Grundpreis), dates,
    countdowns and the cost changes — the Abrechnung lives in Settlements.
@@ -33,11 +37,17 @@
 
 const PVU_CASA = 7;                                          // Casa Castel = ctrl_properties 7 (CASA_PROP_ID)
 const PVU_KINDS = ['Strom', 'Gas', 'Wasser', 'Internet', 'Versicherung', 'Other'];
-const CTR_SKIP = ['RATE', 'GAERTNER', 'PUTZDIENST', 'WINTERDIENST'];
+/* Fix 2: the owner of a Casa cost type (before CONTROLLING-OWNER.sql runs: the same split by code) */
+const _pvuOwner = c => {
+  const o = String((c && c.owner_app) || '').toLowerCase();
+  if (o === 'utilities' || o === 'properties' || o === 'providers') return o;
+  const k = String((c && c.code) || '').toUpperCase();
+  return k === 'RATE' ? 'properties' : (k === 'PUTZDIENST' || k === 'WINTERDIENST') ? 'providers' : 'utilities';
+};
 const CTR_NOTICE = [['unknown', 'not known'], ['none', "can't be cancelled"], ['2w', '2 weeks'], ['4w', '4 weeks'], ['6w', '6 weeks'],
   ['1m', '1 month'], ['2m', '2 months'], ['3m', '3 months'], ['6m', '6 months'], ['12m', '12 months']];
-const CTR_FREQ = [['monatlich', 'Monthly'], ['vierteljährlich', 'Quarterly'], ['jährlich', 'Yearly'], ['sporadisch', 'As needed']];
-const CTR_FREQ_K = CTR_FREQ.slice(0, 3);                     // other properties: no "as needed"
+const CTR_FREQ = [['monatlich', 'Monthly'], ['vierteljährlich', 'Quarterly'], ['jährlich', 'Yearly'], ['sporadisch', 'Selected months']];
+const CTR_FREQ_K = CTR_FREQ.slice(0, 3);                     // other properties: no "selected months"
 const CTR_BONUS_KINDS = ['Neukundenbonus', 'Sofortbonus', 'Cashback', 'Gutschein', 'Punkte', 'Bonus'];
 const CTR_DOC_KINDS = [['contract', 'Contract'], ['price', 'Price letter'], ['cancellation', 'Kündigung'], ['confirmation', 'Confirmation'], ['other', 'Other']];
 const CTR_BUCKET = 'contract-docs';
@@ -121,7 +131,7 @@ function _ctrShownProps() {
   return list.sort((a, b) => Number(a.id) - Number(b.id));
 }
 const _ctrCat = id => CTR.cats.find(c => _ctrId(c.id) === _ctrId(id));
-const _ctrSkip = c => CTR_SKIP.includes(String(c.code || '').toUpperCase());
+const _ctrSkip = c => _pvuOwner(c) !== 'utilities';
 const _ctrName = c => CTR_SHORT[String(c.code || '').toUpperCase()] || c.name || '';   // short name in the table
 const _ctrRows = () => CTR.cats.filter(c => c.active !== false && !_ctrSkip(c))
   .sort((a, b) => (_ctrN(a.sort_order) || 999) - (_ctrN(b.sort_order) || 999) || String(a.name).localeCompare(String(b.name)));
@@ -164,7 +174,7 @@ function _ctrFreq(src) {
   if (/jähr|jahr/.test(f)) return 'year';
   return 'month';
 }
-const _ctrPer = src => ({ month: 'month', quarter: 'quarter', half: 'half-year', year: 'year', need: 'as needed' })[_ctrFreq(src)];
+const _ctrPer = src => ({ month: 'month', quarter: 'quarter', half: 'half-year', year: 'year', need: 'month' })[_ctrFreq(src)];   // need = selected months: the price per chosen month
 const _ctrDue = src => (Array.isArray(src.due_months) ? src.due_months.map(Number).filter(n => n >= 1 && n <= 12) : []);
 function _ctrPerYear(src, amount) {
   const f = _ctrFreq(src), dm = _ctrDue(src);
@@ -469,8 +479,8 @@ if (typeof document !== 'undefined') document.addEventListener('visibilitychange
 
 /* ── the Utilities page ────────────────────────────────────── */
 function _ctrRowHTML(s) {
-  const st = _ctrState(s), k = st.k, src = st.src, amt = st.now.amount, f = _ctrFreq(src);
-  const cost = amt > 0 ? `<b>${_ctrEur(amt)}</b><span>${f === 'need' ? 'as needed' : '/ ' + _ctrPer(src)}</span>` : '<b>—</b>';
+  const st = _ctrState(s), k = st.k, src = st.src, amt = st.now.amount;
+  const cost = amt > 0 ? `<b>${_ctrEur(amt)}</b><span>/ ${_ctrPer(src)}</span>` : '<b>—</b>';
   const who = k ? (k.provider || 'provider missing') : 'no contract';
   const next = st.pill ? _ctrPillHTML(st.pill) : st.next + (st.ahead ? '<br>' + _ctrAheadHTML(st.ahead) : '');
   return { st, py: _ctrPerYear(src, amt), html: `<button type="button" class="ctr-tr" data-ctr="open" data-s="${_ctrE(s.key)}"><span class="ctr-c1"><b lang="de">${_ctrE(s.short)}</b><span>${_ctrE(who)}</span></span>` +
@@ -640,7 +650,7 @@ function _ctrPriceSec(s, st) {
   }).join('');
   const r = now.row || {};
   return _ctrSec('Price', _ctrBtn('New price', 'form', ' data-f="price"'),
-    _ctrKV('Now', now.amount ? _ctrEur(now.amount) + (f === 'need' ? ' · as needed' : ' / ' + _ctrPer(src)) : '') +
+    _ctrKV('Now', now.amount ? _ctrEur(now.amount) + ' / ' + _ctrPer(src) + (f === 'need' ? ' · selected months' : '') : '') +
     _ctrKV('Since', since) +
     (energy ? _ctrKV('Arbeitspreis', r.work_price !== null && r.work_price !== undefined ? _ctrE(_ctrCt(r.work_price)) : '') +
               _ctrKV('Grundpreis', r.base_price !== null && r.base_price !== undefined ? _ctrE(_ctrGp(r.base_price)) : '') : '') +
@@ -873,7 +883,7 @@ function _ctrChange(e) {
     const pts = e.target.value === 'Punkte';
     if (pts !== !!document.getElementById('ctrBoPts')) _ctrSwapPts(pts);
   }
-  if (e.target.hasAttribute('data-rhythm')) {              // due months only for quarterly / yearly / as needed
+  if (e.target.hasAttribute('data-rhythm')) {              // due months only for quarterly / yearly / selected months
     const w = e.target.closest('.cc-modal-sheet').querySelector('[data-mons-wrap]');
     if (w) w.hidden = e.target.value === 'monatlich';
   }
@@ -1094,6 +1104,7 @@ async function _ctrSaveEdit() {
   const dms = _ctrMonsVal();
   const freq = _ctrVal('eFreq') || (s.cat ? s.cat.frequency : 'monatlich') || 'monatlich';
   const due = freq === 'monatlich' ? null : (dms.length ? dms : null);
+  if (s.cat && freq !== 'monatlich' && !due) { _ctrToast('Choose the months it is due'); return; }   // Fix 2: no cost type without its months
   let newKey = CTR.open;
   if (k) {
     const d = {};
@@ -1152,7 +1163,7 @@ async function _ctrSaveNew() {
   if (fromTxt && !from) { _ctrToast('From: MM.JJJJ'); return; }
   const freq = _ctrVal('nFreq') || 'monatlich', dms = _ctrMonsVal();
   const due = freq === 'monatlich' ? null : (dms.length ? dms : null);
-  if (freq !== 'monatlich' && freq !== 'sporadisch' && !due) { _ctrToast('Choose the months it is due'); return; }
+  if (freq !== 'monatlich' && !due) { _ctrToast('Choose the months it is due'); return; }
   const kind = casa ? null : (_ctrVal('nKind') || 'Other');
   if (casa && catId === '__new') {
     const name = _ctrVal('nName');

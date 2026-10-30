@@ -7,7 +7,8 @@
      Income   (+1)  NK Nachzahlung vom Mieter · Hausgeld Guthaben von WEG
      Expenses (−1)  NK Guthaben an Mieter   · Hausgeld Nachzahlung an WEG
    Sources of results
-     · abr_results            (manual "+ Abrechnung" now, Settlements app later)
+     · abr_results            (written by Settlements; the old manual
+                               "+ Abrechnung" form is gone — Fix 1, Oct 2026)
      · tenant-tab NK entries  (Casa Castel / Rentals, with an amount) — interim
    When a row shows
      · nothing before a result exists (no placeholders)
@@ -17,13 +18,18 @@
      · settled via Kaution / Miete / Hausgeld or 0 € → once, as information
    Bookings stay in ctrl_expense_one_time (kind NK-Abrechnung / Hausgeldabrechnung,
    source_ref 'abr:<id>' or the tenant-tab ref) → Dashboard unchanged.
+   Fix 3 (Oct 2026): Casa Castel's Versorger Jahresabrechnungen (Strom · Gas · Wasser ·
+   Entsorgung, typed and paid in Settlements › Casa Castel, kind Versorger) show here too —
+   read-only, in the month paid: Guthaben in Income, Nachzahlung in Expenses. One-off no
+   longer lists them; the Dashboard counts them with the Abrechnungen.
    Never part of "Alle offenen wie geplant".
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
 
 const CX_ABR_KINDS = ['NK-Abrechnung', 'Hausgeldabrechnung'];
-const _cxAbr = { form: null };                         // 'pid|dir' of the open "+ Abrechnung" form
+/* Fix 3: a Casa Castel Versorger Jahresabrechnung (Strom · Gas · Wasser · Entsorgung) — an Abrechnung, not a one-off */
+function ctlIsCasaJa(o) { return !!o && Number(o.property_id) === CASA_PROP_ID && o.kind === 'Versorger'; }
 let _cxAbrIndex = {};                                   // row id → { res | legacy }
 
 const _cxYm = iso => { const s = String(iso || '').slice(0, 10); return s ? Number(s.slice(0, 4)) * 12 + Number(s.slice(5, 7)) : null; };
@@ -104,6 +110,14 @@ function ctlAbrRows(pid, y, m, dir) {
     if (results.some(r => r.refs.includes(o.source_ref))) continue;
     rows.push({ id: 'abrL:' + o.id, legacy: o, soll: cxR(o.amount), ist: cxR(o.amount) });
   }
+  // Fix 3: Casa Castel's Versorger Jahresabrechnungen — typed and paid in Settlements, shown read-only in the month paid
+  if (Number(pid) === CASA_PROP_ID) {
+    for (const o of (window._ctrl.one_time || [])) {
+      if (!ctlIsCasaJa(o) || _cxYm(o.invoice_date) !== ym) continue;
+      if ((Number(o.direction) === 1 ? 1 : -1) !== dir) continue;
+      rows.push({ id: 'abrV:' + o.id, ja: o, info: true });
+    }
+  }
   return rows;
 }
 /* open results of a property in a month (for card status, summaries, Dashboard) */
@@ -114,12 +128,18 @@ function ctlAbrOpenCount(pid, y, m, dir) {
 /* ── HTML: the "Abrechnungen" section of a property card ── */
 function cxAbrSection(p, y, m, dir) {
   const rows = ctlAbrRows(p.id, y, m, dir);
-  const fk = p.id + '|' + dir, formOpen = _cxAbr.form === fk;
   const mon = ym => CX_MONTHS[(ym - 1) % 12].slice(0, 3);
   let h = '<div class="cx-abr-h"><span class="cx-lbl">Abrechnungen</span>' +
     '<a class="cx-link" href="settlements.html" style="color:var(--cx-acc)">open in Settlements ›</a></div>';
   for (const r of rows) {
     _cxAbrIndex[r.id] = Object.assign({ p, dir }, r);
+    if (r.ja) {                                                            // Fix 3: Versorger Jahresabrechnung · read-only
+      const inn = Number(r.ja.direction) === 1;
+      h += '<div class="cx-r"><div class="cx-r__top"><span class="cx-r__u">' + cxEsc(r.ja.item || 'Jahresabrechnung') + '</span>' +
+        cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung') + '</div>' +
+        '<div class="cx-r__sub">' + cxEsc(cxEur(r.ja.amount) + ' · ' + (inn ? 'received ' : 'paid ') + cxFmtDate(r.ja.invoice_date) + ' · from Settlements') + '</div></div>';
+      continue;
+    }
     if (r.info) {
       h += '<div class="cx-r"><div class="cx-r__top"><span class="cx-r__u">' + cxEsc(r.res.label) + '</span>' + cxPill('grey', 'settled') + '</div>' +
         '<div class="cx-r__sub">' + cxEsc((r.res.amount ? cxEur(r.res.amount) + ' · ' : '') + (_cxAbrVia[r.res.via] || 'balanced') + ' – no payment') + '</div>' +
@@ -134,45 +154,9 @@ function cxAbrSection(p, y, m, dir) {
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
                  sub: cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
   }
-  if (formOpen) h += _cxAbrFormHTML(p, dir);
-  return '<div class="cx-abr' + (!rows.length && !formOpen ? ' cx-abr--empty' : '') + '">' + h + '</div>';
+  return '<div class="cx-abr' + (!rows.length ? ' cx-abr--empty' : '') + '">' + h + '</div>';
 }
 
-function _cxAbrFormHTML(p, dir) {
-  const casa = p.id === CASA_PROP_ID, f = _cxAbr.f || {};
-  const kind = casa ? 'nk_tenant' : (f.kind || 'nk_tenant');
-  const ty = Number(cxToday().slice(0, 4));
-  const years = [ty - 1, ty - 2, ty - 3, ty];
-  // tenants of the property's living units (every tenancy, newest first)
-  const opts = [];
-  for (const u of ctlUnitsFor(p.id)) {
-    if (_cxIsParking(u)) continue;
-    const l = ctlUnitLink(u, p); if (!l) continue;
-    for (const w of _cxTenancies(l)) opts.push({ v: _cxApp(l) + '|' + w.id + '|' + u.name + '|' + w.name,
-      t: u.name + ' · ' + w.name + (w.from ? ' · from ' + cxFmtDate(w.from) : '') });
-  }
-  const res = kind === 'weg_hausgeld' ? (dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG') : (dir > 0 ? 'Nachzahlung from tenant' : 'Guthaben to tenant');
-  const vias = kind === 'weg_hausgeld' ? [['zahlung', 'by bank transfer'], ['hausgeld', 'settled with Hausgeld']]
-                                       : [['zahlung', 'by bank transfer'], ['kaution', 'settled with Kaution'], ['miete', 'settled with rent']];
-  return '<div class="cx-form cx-abr-form">' +
-    (casa ? '' : '<div class="cx-chips">' + [['nk_tenant', 'NK · tenant'], ['weg_hausgeld', 'Hausgeld · WEG']].map(([v, l]) =>
-      '<button class="cx-chip' + (kind === v ? ' on' : '') + '" data-cx="abrKind" data-v="' + v + '">' + l + '</button>').join('') + '</div>') +
-    '<div class="cx-r__sub">Result: <b style="font-weight:500">' + cxEsc(res) + '</b> · ' + (dir > 0 ? 'money comes to you' : 'money goes to ' + (kind === 'weg_hausgeld' ? 'the WEG' : 'the tenant')) + '</div>' +
-    (kind === 'nk_tenant' ? '<label class="cx-f cx-f--l"><select id="cxAbrTen" aria-label="Tenant"><option value="">— choose tenant —</option>' +
-      opts.map(o => '<option value="' + cxEsc(o.v) + '">' + cxEsc(o.t) + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' : '') +
-    '<div class="cx-grid2">' +
-      '<label class="cx-f cx-f--l"><select id="cxAbrYear" aria-label="Abrechnung year">' + years.map(x => '<option value="' + x + '"' + (x === ty - 1 ? ' selected' : '') + '>Year ' + x + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-      '<label class="cx-f"><input type="text" inputmode="decimal" id="cxAbrAmt" placeholder="Amount" aria-label="Amount"><span>€</span></label>' +
-    '</div>' +
-    '<div class="cx-grid2">' +
-      '<div><div class="cx-set__k">Abrechnung date</div><label class="cx-f cx-f--l"><input type="date" id="cxAbrDate" value="' + cxToday() + '" aria-label="Abrechnung date"></label></div>' +
-      '<div><div class="cx-set__k">Due on (optional)</div><label class="cx-f cx-f--l"><input type="date" id="cxAbrDue" aria-label="Due on (optional)"></label></div>' +
-    '</div>' +
-    '<label class="cx-f cx-f--l"><select id="cxAbrVia" aria-label="How">' + vias.map(([v, l]) => '<option value="' + v + '">' + l + '</option>').join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-    '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="abrAdd" data-k="' + p.id + '|' + dir + '">Cancel</button>' +
-      '<button class="cx-btn cx-btn--p" data-cx="abrSave" data-p="' + p.id + '" data-d="' + dir + '" data-kind="' + kind + '">Save</button></div>' +
-  '</div>';
-}
 
 /* Booking date: today when looking at the current month, else the result's date if it lies in the viewed month,
    else the last (past) or first (future) day of the viewed month */
@@ -216,8 +200,6 @@ async function _cxAbrBook(e, amount) {
 
 /* Handles every Abrechnungen action of a tab. Returns true when it was one. */
 async function cxAbrClick(a, b, rerender) {
-  if (a === 'abrAdd') { const k = b.dataset.k; _cxAbr.form = _cxAbr.form === k ? null : k; _cxAbr.f = {}; rerender(); return true; }
-  if (a === 'abrKind') { _cxAbr.f = { kind: b.dataset.v }; rerender(); return true; }
   if (a === 'take' && /^abr/.test(b.dataset.id || '')) {
     const e = _cxAbrIndex[b.dataset.id];
     if (e && !e.info && e.ist === null) { try { await _cxAbrBook(e, e.soll); } catch (err) { cxToastErr(err); } }
@@ -236,38 +218,6 @@ async function cxAbrClick(a, b, rerender) {
     } catch (err) { cxToastErr(err); }
     rerender(); return true;
   }
-  if (a === 'abrSave') {
-    const pid = Number(b.dataset.p), dir = Number(b.dataset.d), kind = b.dataset.kind, p = ctlProp(pid);
-    const amt = cxParse(document.getElementById('cxAbrAmt')?.value);
-    const year = Number(document.getElementById('cxAbrYear')?.value);
-    const rdate = String(document.getElementById('cxAbrDate')?.value || '').slice(0, 10) || cxToday();
-    const due = String(document.getElementById('cxAbrDue')?.value || '').slice(0, 10) || null;
-    const via = document.getElementById('cxAbrVia')?.value || 'zahlung';
-    const ten = kind === 'nk_tenant' ? (document.getElementById('cxAbrTen')?.value || '') : '';
-    const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
-    if (!(amt > 0)) { say('Please enter the amount'); document.getElementById('cxAbrAmt')?.focus(); return true; }
-    if (kind === 'nk_tenant' && !ten) { say('Please choose the tenant'); return true; }
-    const [app, tid, unit, name] = ten ? ten.split('|') : [null, null, null, null];
-    const row = { property_id: pid, kind, year, app: app || (pid === CASA_PROP_ID ? 'casa' : 'rentals'), tenant_id: tid || null,
-                  unit_label: unit || null, tenant_name: name || null, direction: dir, amount: cxR(amt),
-                  result_date: rdate, due_date: due, settle_via: via, status: 'fertig', source: 'manual' };
-    b.disabled = true;
-    try {
-      const { data, error } = await _ctlSupa.from('abr_results').insert(row).select().single();
-      if (error) throw error;
-      window._src.abr = (window._src.abr || []).concat([data]);
-      _cxAbr.form = null;
-      say('Abrechnung saved');
-    } catch (err) {
-      const msg = String((err && (err.message || err.code)) || err);
-      if (/abr_results_one_weg|duplicate|23505/i.test(msg)) say(kind === 'weg_hausgeld' ? 'There is already a Hausgeldabrechnung for ' + (p ? p.name : '') + ' ' + year : 'This Abrechnung already exists');
-      else if (/abr_results|relation|does not exist|42P01/i.test(msg)) say('Please run the SQL (abr_results) first');
-      else cxToastErr(err);
-      b.disabled = false;
-      return true;
-    }
-    rerender(); return true;
-  }
   return false;
 }
 async function cxAbrInput(id, val, rerender) {
@@ -283,6 +233,7 @@ function _cxAbrNote(dir) {
   const y = window._ctrl.year, m = CX.month;
   let open = 0, openSum = 0, done = 0;
   for (const p of window._ctrl.properties.filter(x => x.active && ctlPropOwned(x, y, m))) for (const r of ctlAbrRows(p.id, y, m, dir)) {
+    if (r.ja) { done += cxR(r.ja.amount); continue; }                    // Fix 3: Jahresabrechnung, already paid
     if (r.info) continue;
     if (r.ist === null) { open++; openSum += r.soll; } else done += r.ist;
   }

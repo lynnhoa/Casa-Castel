@@ -87,11 +87,11 @@ function cxRepData(scope) {
   const abr = x => {
     let hg = 0, nk = 0;
     for (const o of (C.one_time || [])) {
-      if (Number(o.property_id) !== x.p.id || !CX_ABR_KINDS.includes(o.kind)) continue;
+      if (Number(o.property_id) !== x.p.id || !(CX_ABR_KINDS.includes(o.kind) || ctlIsCasaJa(o))) continue;   // Fix 3: + Casa Jahresabrechnungen
       const d = ctlParseDate(o.invoice_date);
       if (d.year !== y || !counted.has(d.month) || !owned(x, d.month)) continue;
       const v = (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);
-      if (o.kind === 'Hausgeldabrechnung') hg += v; else nk += v;
+      if (o.kind === 'Hausgeldabrechnung' || ctlIsCasaJa(o)) hg += v; else nk += v;     // Casa's Versorger results = its "Hausgeld"
     }
     return { hg: r2(hg), nk: r2(nk) };
   };

@@ -2,9 +2,11 @@
    CONTROLLING — ONE-OFF (invoices and other one-time costs)
    controlling-tab-onetime.js
 
-   Process: invoice arrives → "+ Rechnung erfassen" → it lands under its
-   property and year and counts in its month on the Dashboard (real cost)
-   → tap to edit or delete.
+   Process (Fix 1, Oct 2026): One-off is read-only. Receipts are added in
+   Maintenance (Renovierungen · Schäden · Sonstiges), Kaufnebenkosten in
+   Properties; they land here under their property and year and count in
+   their month on the Dashboard. "Add in Maintenance" opens Maintenance on
+   its Sonstiges tab. Invoices typed here before stay correctable (tap).
    · Jahr (default) or Monat view · search by description / company
    · one card per property WITH entries, same card as Income / Expenses:
      name, count, total · rows: Beschreibung │ amount │ date · Firma ·
@@ -13,7 +15,8 @@
      their old entries
    · NK / Hausgeld results are not here — they live in Income / Expenses
      (controlling-abr.js); their bookings (kinds NK-Abrechnung /
-     Hausgeldabrechnung) are hidden in this tab
+     Hausgeldabrechnung) are hidden in this tab — and since Fix 3 (Oct 2026)
+     Casa Castel's Versorger Jahresabrechnungen too (ctlIsCasaJa)
    · Bonuses to confirm (Oct 2026): bonuses from Providers › Utilities that are paid to
      your account wait here; "Received" books them as income of that property (Other · Income)
    ───────────────────────────────────────────────────────────── */
@@ -49,7 +52,8 @@ const _cxOtLastProp = () => { try { return Number(localStorage.getItem('cx_ot_pr
 
 function _cxOtAll() {
   const y = window._ctrl.year;
-  return (window._ctrl.one_time || []).filter(o => !CX_ABR_KINDS.includes(o.kind) && Number(String(o.invoice_date || '').slice(0, 4)) === y && cxAreaPid(o.property_id));
+  return (window._ctrl.one_time || []).filter(o => !CX_ABR_KINDS.includes(o.kind) && !ctlIsCasaJa(o) &&   // Fix 3: Casa Jahresabrechnungen are in Abrechnungen
+    Number(String(o.invoice_date || '').slice(0, 4)) === y && cxAreaPid(o.property_id));
 }
 function _cxOtVisible() {
   const q = _cxOt.q.trim().toLowerCase();
@@ -262,11 +266,8 @@ function _cxOtListHTML() {
     const knkSum = knk.reduce((s, o) => s - _cxOtSigned(o), 0);
     const out = list.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
     const inn = list.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-    const here = _cxOt.form === 'new:' + p.id;
-    // "+ Rechnung" sits at the TOP of the card (no scrolling past 100 invoices); the form opens right below it
-    let body = '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'By month' : CX_MONTHS[CX.month - 1]) + '</span>' +
-      '<button class="cx-link" data-cx="otAddFor" data-p="' + p.id + '">' + (here ? '× Close' : '+ Invoice') + '</button></div>' +
-      (here ? '<div class="cx-ot-edit cx-ot-edit--top">' + _cxOtFormHTML(null) + '</div>' : '');
+    const here = false;                                                  // Fix 1: nothing is typed in One-off any more
+    let body = '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'By month' : CX_MONTHS[CX.month - 1]) + '</span></div>';
     if (_cxOt.view === 'm') body += _cxOtRowsLimited(list, p.id + '|m|' + window._ctrl.year + '|' + CX.month);
     else {
       // Jahr view: one foldable block per month. Many invoices → only the newest month open at first
@@ -332,17 +333,15 @@ window.renderOneTime = function () {
       '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxW(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
       (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '') +
       '<div class="cx-grid2" style="margin-top:4px">' +
-        '<button class="cx-btn cx-btn--s" data-cx="otNew">' +
-          (_cxOt.form === 'new' ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-plus" aria-hidden="true"></i>Invoice') + '</button>' +
+        '<button class="cx-btn cx-btn--s" data-cx="otToMaint"><i class="ti ti-plus" aria-hidden="true"></i>Add in Maintenance</button>' +
         '<button class="cx-btn cx-btn--s" data-cx="otExp">' + (_cxOt.exp.open ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-download" aria-hidden="true"></i>Export') + '</button>' +
       '</div>' + (_cxOt.exp.open ? _cxOtExportHTML() : '') +
-      (_cxOt.form === 'new' ? _cxOtFormHTML(null) : '') +
     '</div>' +
     _cxOtBonusHTML() +
     '<div class="cx-head"><span class="cx-lbl">Invoices per property</span><span class="cx-lbl">Amount</span></div>' +
     '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Search · description or company" aria-label="Search" value="' + cxEsc(_cxOt.q) + '"></label>' +
     '<div id="cxOtList">' + _cxOtListHTML() + '</div>' +
-    '<div class="cx-r__sub" style="text-align:center;margin-top:8px">NK and Hausgeld Abrechnungen are in Income and Expenses.</div>' +
+    '<div class="cx-r__sub" style="text-align:center;margin-top:8px">New receipts go in Maintenance. Jahresabrechnungen, NK and Hausgeld results are in Income and Expenses.</div>' +
   '</div>');   // B18: only what changed
 
   if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60); }
@@ -366,17 +365,10 @@ window.renderOneTime = function () {
         _cxOt.form = null;
         return window.renderOneTime();
       }
-      if (a === 'otNew') {
-        if (_cxOt.form === 'new') { if ((await _cxOtClose())) window.renderOneTime(); return; }
+      if (a === 'otToMaint') {                                                    // Fix 1: new receipts are added in Maintenance › Sonstiges
         if (!(await _cxOtClose())) return;
-        _cxOtOpen('new', null); return window.renderOneTime();
-      }
-      if (a === 'otAddFor') {
-        const k = 'new:' + b.dataset.p;
-        if (_cxOt.form === k) { if ((await _cxOtClose())) window.renderOneTime(); return; }
-        if (!(await _cxOtClose())) return;
-        _cxOtOpen(k, Number(b.dataset.p)); window.renderOneTime();
-        document.getElementById('cxOtAmt')?.focus();
+        try { localStorage.setItem('mt_last_tab', 'sonstiges'); } catch (e) {}
+        location.href = 'maintenance.html';
         return;
       }
       if (a === 'otExp') {

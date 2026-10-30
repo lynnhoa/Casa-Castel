@@ -47,6 +47,7 @@ const _cxPdfReady = () => !!(window.jspdf && window.jspdf.jsPDF && window.jspdf.
 function cxInvoiceData(year, pid) {
   const rows = (window._ctrl.one_time || []).filter(o =>
     !(typeof CX_ABR_KINDS !== 'undefined' && CX_ABR_KINDS.includes(o.kind)) && Number(String(o.invoice_date || '').slice(0, 4)) === year &&
+    !(typeof ctlIsCasaJa === 'function' && ctlIsCasaJa(o)) &&          // Fix 3: Casa Jahresabrechnungen are Abrechnungen, not invoices
     (!pid || Number(o.property_id) === Number(pid)));
   const order = window._ctrl.properties.slice().sort((a, b) => (b.active === a.active ? 0 : a.active ? -1 : 1) || a.id - b.id);
   const groups = [];

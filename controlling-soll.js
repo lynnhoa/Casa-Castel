@@ -905,7 +905,7 @@ function ctlDataChecks(y, m) {
 
 /* ── Cost Soll per property and month ─────────────────────── */
 const _CX_Q = [2, 5, 8, 11];
-const _cxFreqLbl = f => ({ monatlich: 'monthly', 'vierteljährlich': 'quarterly', 'jährlich': 'yearly', sporadisch: 'as needed' })[f] || f;   // stored values stay German
+const _cxFreqLbl = f => ({ monatlich: 'monthly', 'vierteljährlich': 'quarterly', 'jährlich': 'yearly', sporadisch: 'selected months' })[f] || f;   // stored values stay German · sporadisch = only in its chosen months (Fix 2)
 const _cxMonthShort = m => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1];
 function _cxNextDue(months, m) {
   const s = months.map(Number).filter(x => x >= 1 && x <= 12).sort((a, b) => a - b);
@@ -1018,11 +1018,32 @@ function ctlCostRows(p, y, m) {
 }
 
 /* Casa Castel: cost types by frequency / due months
-   → { rows, notDue, bedarf:[{catId,label}], checks:[label] }
-   · sporadisch with months (e.g. Gärtner Apr–Okt) → Soll in those months (B18)
-   · sporadisch otherwise → no Soll, but always enterable ("bei Bedarf")
-   · vierteljährlich / jährlich without months → flagged, never silently gone (B19) */
+   → { rows, notDue, bedarf:[] (always empty since Fix 2), checks:[label] }
+   · sporadisch = "Selected months" (e.g. Gärtner Apr–Okt) → Soll in those months (B18)
+   · Fix 2 (Oct 2026): no more "As needed" lines — nothing is typed in Controlling without a Soll
+   · vierteljährlich / jährlich / selected months without months → flagged, never silently gone (B19)
+   · a cost type owned by Providers (Putzdienst, Winterdienst) has no Soll here from its start
+     month on — pv-ctrl.js adds the months you close in Providers */
 const _cxBedarf = f => /sporad|bedarf/i.test(String(f || ''));
+
+/* Fix 2 (Oct 2026) · one owner per Casa cost type (ctrl_castel_categories.owner_app / owner_from,
+   CONTROLLING-OWNER.sql): utilities = Providers › Utilities · properties = the Rate · providers = a
+   Providers job. Before that SQL runs: the same split by code. */
+const CTL_OWNER_FROM = '2026-11-01';
+function ctlCatOwner(c) {
+  const o = String((c && c.owner_app) || '').toLowerCase();
+  if (o === 'utilities' || o === 'properties' || o === 'providers') return o;
+  const code = String((c && c.code) || '').toUpperCase();
+  if (code === 'RATE') return 'properties';
+  if (code === 'PUTZDIENST' || code === 'WINTERDIENST') return 'providers';
+  return 'utilities';
+}
+/* Providers owns this cost type in month y/m → no Soll from Setup / Utilities (months before keep theirs) */
+function ctlCatProvidersOwns(c, y, m) {
+  if (ctlCatOwner(c) !== 'providers') return false;
+  const from = String((c && c.owner_from) || (c && c.owner_app ? '' : CTL_OWNER_FROM)).slice(0, 7);
+  return !from || (y + '-' + String(m).padStart(2, '0')) >= from;
+}
 
 /* Casa Castel cost Soll with a date (B22) — ctrl_castel_amount_history (category_id, valid_from, amount).
    A month takes the period that started on or before its 1st; months before the first period
@@ -1083,20 +1104,22 @@ function ctlCasaCostRows(p, y, m) {
   const pl = ctlPropLinks(p), rows = [], notDue = [], bedarf = [], checks = [];
   for (const c of (window._ctrl.categories || [])) {
     if (c.active === false) continue;
+    if (ctlCatProvidersOwns(c, y, m)) continue;                       // Fix 2: its Soll comes only from Providers (pv-ctrl.js)
     const isRate = c.code === 'RATE';
     const label = c.name || (isRate ? 'Kreditrate' : 'Cost');
     const cov = isRate ? null : ctlContractCovers(c.id, y, m);
     const off = cov === false || cov === 'off';                      // no contract covers this month
     const noCon = () => { if (cov === false) notDue.push({ label: label + ' — no contract this month', next: '' }); };
-    const srcName = cov === true ? 'Utilities' : 'Setup';            // where its price is set
+    const srcName = cov === true || ctlCatOwner(c) === 'utilities' ? 'Utilities' : 'Setup';   // where its price is set
     const freq = c.frequency || 'monatlich';
     const dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
     const at = isRate && pl.loan ? null : ctlCastelAmountAt(c, y, m);
     const amount = at ? at.amount : _cxN0(pl.loan.rate);
     const note = _cxPerNote(at, y, m);
-    if (_cxBedarf(freq)) {
-      if (dm.includes(m)) { if (off) { if (amount) noCon(); } else rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'as needed · planned', src: srcName, split: null, note }); }
-      else if (!off) bedarf.push({ catId: c.id, label });
+    if (_cxBedarf(freq)) {                                            // "Selected months" — Fix 2: no "As needed" line any more
+      if (!dm.length) { if (amount && !off) checks.push(label); continue; }
+      if (dm.includes(m)) { if (off) { if (amount) noCon(); } else rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'selected months', src: srcName, split: null, note }); }
+      else if (!off) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }
       continue;
     }
     if (freq !== 'monatlich' && !dm.length) {

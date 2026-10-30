@@ -9,6 +9,8 @@
        until you confirm again.
    Everything else in Controlling stays as it is. If Providers isn't
    set up, nothing here does anything.
+   Fix 2 (Oct 2026): Putzdienst / Winterdienst are owned by Providers
+   (ctlCatOwner) — Controlling gives them no Soll of its own from 11.2026.
    ───────────────────────────────────────────────────────────── */
 (function () {
   'use strict';
@@ -84,12 +86,11 @@
       if (y < fy || (y === fy && m < fm)) return;
       if (st.rows.some(pv => same(pv.category_id, c.category_id) && pv.month === m)) return;
       const i = plan.rows.findIndex(x => same(x.catId, cat.id) && x.src !== 'Providers');
-      if (i !== -1) {
-        plan.rows.splice(i, 1);
-        plan.notDue = plan.notDue || [];
-        const label = cat.name + ' — from Providers, month not closed yet';
-        if (!plan.notDue.some(nd => nd.label === label)) plan.notDue.push({ label });
-      }
+      if (i !== -1) plan.rows.splice(i, 1);
+      /* Fix 2 (Oct 2026): a Providers-owned type has no Setup row any more — the note shows either way */
+      plan.notDue = (plan.notDue || []).filter(nd => nd.label !== cat.name);
+      const label = cat.name + ' — from Providers, month not closed yet';
+      if (!plan.notDue.some(nd => nd.label === label)) plan.notDue.push({ label });
     });
     return plan;
   };

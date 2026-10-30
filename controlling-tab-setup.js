@@ -198,6 +198,7 @@ window.renderSetup = function () {
     const freq = c.frequency || 'monatlich', isRate = c.code === 'RATE', freqL = typeof _cxFreqLbl === 'function' ? _cxFreqLbl(freq) : freq;
     const fromLoan = isRate && casaLoan;
     if (_cxInContracts(c)) return _cxSuContractCatHTML(c, freq, freqL);   // Oct 2026: set in Providers › Utilities, read here
+    if (ctlCatOwner(c) === 'providers') return _cxSuProvCatHTML(c);       // Fix 2: Soll from Providers › Jobs, read-only here
     return '<div class="cx-cat">' +
       '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || (isRate ? 'Kreditrate' : 'Cost')) + '</span>' +
         (isRate ? cxPill(fromLoan ? 'ok' : 'beige', fromLoan ? 'from Properties' : 'plan value') : cxPill(freq === 'monatlich' ? 'grey' : 'beige', freqL)) + '</div>' +
@@ -266,7 +267,7 @@ window.renderSetup = function () {
     '<div class="cx-head"><span class="cx-lbl">Properties</span></div>' + propCards + _cxSuNewPropHTML() +
     '<div class="cx-head"><span class="cx-lbl">Parking</span></div>' + pkCard +
     '<div class="cx-head"><span class="cx-lbl">Casa Castel · cost types</span></div><div class="cx-card">' +
-      '<div class="cx-r__sub" style="margin:0 0 8px">Price, dates and NK split are set in Providers › Utilities. Rate comes from Properties.</div>' +
+      '<div class="cx-r__sub" style="margin:0 0 8px">Price, dates and NK split are set in Providers › Utilities. Rate comes from Properties, Putzdienst and Winterdienst from Providers › Jobs.</div>' +
       (cats || '<div class="cx-empty">No cost types.</div>') + '</div>' +
     '</div>');   // B18: only what changed
 
@@ -388,22 +389,31 @@ window.renderSetup = function () {
 };
 
 
-/* ── Casa Castel cost types that live in Providers › Utilities (Oct 2026) ──────
-   Every Casa cost type except the Rate (Properties) and the services Putzdienst · Gärtner ·
-   Winterdienst (Providers jobs) is set in Providers › Utilities: price + from-month, rhythm,
-   due months, NK split. Setup shows it read-only with a link to its contract. */
-const _CX_CTR_SKIP = ['RATE', 'GAERTNER', 'PUTZDIENST', 'WINTERDIENST'];
-const _cxInContracts = c => !_CX_CTR_SKIP.includes(String(c.code || '').toUpperCase());
+/* ── Casa Castel cost types and their owner (Fix 2, Oct 2026 · ctlCatOwner) ─────
+   utilities  → set in Providers › Utilities (price + from-month, rhythm, due months, NK split);
+                Setup shows it read-only with a link to its contract
+   properties → the Rate (from the Properties loan)
+   providers  → Putzdienst · Winterdienst: Soll from the months closed in Providers › Jobs;
+                Setup shows it read-only, only its NK setting is set here */
+const _cxInContracts = c => ctlCatOwner(c) === 'utilities';
+function _cxSuProvCatHTML(c) {
+  const from = c.owner_from ? ctlPerMonthLbl(c.owner_from) : 'November 2026';
+  return '<div class="cx-cat">' +
+    '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || 'Cost') + '</span>' + cxPill('ok', 'from Providers') + '</div>' +
+    '<div class="cx-r__sub">' + cxEsc('Soll = the months you close in Providers › Jobs · since ' + from) + '</div>' +
+    _cxNkSetupHTML(c, false) +
+  '</div>';
+}
 function _cxSuContractCatHTML(c, freq, freqL) {
   const t = cxToday(), now = _cxPerNowOf(c);
   const ks = (typeof ctlContractsOf === 'function' ? ctlContractsOf(c.id) : []).slice().sort((a, b) => _cxD(a.starts_on).localeCompare(_cxD(b.starts_on)));
   const live = ks.filter(k => { const e = ctlContractEnd(k); return !e || e >= t; });
   const cur = live.filter(k => !k.starts_on || _cxD(k.starts_on) <= t).pop() || live[0] || ks[ks.length - 1] || null;
-  const per = freq === 'monatlich' ? '/ month' : freq === 'vierteljährlich' ? '/ quarter' : freq === 'jährlich' ? '/ year' : 'as needed';
+  const per = freq === 'monatlich' ? '/ month' : freq === 'vierteljährlich' ? '/ quarter' : freq === 'jährlich' ? '/ year' : '/ month';   // selected months: per chosen month
   const dm = Array.isArray(c.due_months) ? c.due_months.map(Number).filter(m => m >= 1 && m <= 12) : [];
   const since = now.period && !_cxPerIsStart(now.period) ? 'since ' + _cxPerMMYYYY(now.period.valid_from) : '';
   const nk = c.nk_key === 'none' ? 'not in NK · stays with you' : 'by person · ' + (c.nk_spread === 'year' ? 'over the year' : 'in its month');
-  const noMonths = freq !== 'monatlich' && !_cxBedarf(freq) && !dm.length && Number(now.amount);
+  const noMonths = freq !== 'monatlich' && !dm.length && Number(now.amount);       // Fix 2: selected months need their months too
   return '<div class="cx-cat">' +
     '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || 'Cost') + '</span>' + cxPill(freq === 'monatlich' ? 'grey' : 'beige', freqL) + '</div>' +
     '<div class="cx-r__sub">' + cxEsc([now.amount ? cxEur(now.amount) + ' ' + per : 'no amount', cur ? (cur.provider || 'provider not set') : 'no contract', since].filter(Boolean).join(' · ')) + '</div>' +

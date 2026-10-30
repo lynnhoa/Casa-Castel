@@ -209,10 +209,14 @@ async function pvaLoadCtrlCats() {
   _pvmCats = !error && Array.isArray(data) ? data : [];
   return _pvmCats;
 }
-const PVA_SERVICE_CATS = ['gärtner', 'putzdienst', 'winterdienst'];   /* only service costs can take a Providers month */
+/* Fix 2 (Oct 2026): only cost types owned by Providers can take a Providers month (owner_app from
+   CONTROLLING-OWNER.sql) — Putzdienst and Winterdienst; before that SQL runs, the same two by name */
+const PVA_SERVICE_CATS = ['putzdienst', 'winterdienst'];
+const _pvmIsService = c => !!c && (c.owner_app ? String(c.owner_app).toLowerCase() === 'providers'
+                                               : PVA_SERVICE_CATS.includes(String(c.name || '').trim().toLowerCase()));
 function pvaCtrlCatHTML(j) {
   if ((j.next_mode || j.invoice_mode) === 'none' && j.invoice_mode === 'none') return '';
-  let cats = (_pvmCats || []).filter(c => PVA_SERVICE_CATS.includes(String(c.name || '').trim().toLowerCase()) || String(c.id) === String(j.ctrl_category_id));
+  let cats = (_pvmCats || []).filter(c => _pvmIsService(c) || String(c.id) === String(j.ctrl_category_id));
   if (!cats.length) cats = (_pvmCats || []);                       /* renamed types still pickable */
   return `<div style="margin-top:10px;"><p class="pv-k">Controlling cost type <span style="color:#9A8E7E;">· where a closed month goes</span></p>
       <div class="pv-chips">${cats.length ? cats.map(c => `<span class="k-mob-n-chip${String(j.ctrl_category_id) === String(c.id) ? ' selected' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;" onclick="pvaSetCtrlCat('${esc(c.id)}')">${esc(c.name)}</span>`).join('') : '<span class="pv-k">No service cost type (Gärtner, Putzdienst, Winterdienst) found in Controlling.</span>'}</div>
