@@ -45,6 +45,10 @@
      · No tenant → "leer" (Soll 0).
      · Costs: value valid on the 1st of the month; Grundsteuer only in
        its months; Casa costs by frequency / due months.
+     · Contracts (Oct 2026): a Casa cost type with contracts (Providers › Utilities) has a
+       Soll only in the months a contract covers — its start month to its end month.
+       A cost type without contracts works as before. Contracts of other properties are
+       reminders only (no Soll here).
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -68,6 +72,7 @@ const _CX_SRC = [
   ['abr', 'abr_results'], ['loanHist', 'loan_terms_history'], ['casaMh', 'casa_mieterhoehung_history'],
   ['castelHist', 'ctrl_castel_amount_history'],          // Casa Castel cost Soll by month (B22)
   ['readings', 'meter_readings'], ['zaehler', 'rentals_zaehler'],   // Settlements: consumption by Zählerstand (Oct 2026)
+  ['hContracts', 'house_contracts'], ['hBonus', 'house_contract_bonuses'],   // Providers › Utilities (Oct 2026)
 ];
 
 /* Load every source once. A missing table never blocks Controlling —
@@ -1044,32 +1049,67 @@ function _cxPerNote(at, y, m) {
   return 'New Soll · ' + _cxEurS(at.prev.amount) + ' → ' + _cxEurS(at.period.amount) + ' from ' + ctlPerMonthLbl(at.period.valid_from);
 }
 
+/* Contracts (Oct 2026) — Providers › Utilities is the source for a Casa cost type's contract dates.
+   A contract covers its start month to its end month (start empty = from the beginning;
+   end = the end date after a cancellation, or "runs until" when it simply ends; none = open).
+   → null: the cost type has no contract (Soll as before) · true: covered in that month ·
+     false: not covered (a note shows when the cost would be due) · 'off': after a contract you
+     marked "Not needed" — nothing to note */
+function _cxAddMonths(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number), t = new Date(y, m - 1 + n, 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  return _cxIso(t.getFullYear(), t.getMonth() + 1, Math.min(d, last));
+}
+function ctlContractEnd(k) {
+  if (k.cancelled_on) return _cxD(k.ends_on) || null;
+  if (k.then_rule === 'ends') return _cxD(k.runs_until) || (k.starts_on && Number(k.min_months) > 0 ? _cxAddMonths(_cxD(k.starts_on), Number(k.min_months)) : null);
+  return null;
+}
+function ctlContractsOf(catId) {
+  return (window._src.hContracts || []).filter(k => !k.deleted_at && Number(k.category_id) === Number(catId));
+}
+function ctlContractCovers(catId, y, m) {
+  const list = ctlContractsOf(catId);
+  if (!list.length) return null;
+  const first = _cxIso(y, m, 1), last = _cxIso(y, m, new Date(y, m, 0).getDate());
+  if (list.some(k => { const s = _cxD(k.starts_on), e = ctlContractEnd(k); return (!s || s <= last) && (!e || e >= first); })) return true;
+  const ended = list.filter(k => { const e = ctlContractEnd(k); return e && e < first; })
+    .sort((a, b) => ctlContractEnd(b).localeCompare(ctlContractEnd(a)));
+  if (ended.length && ended[0].no_successor && !list.some(k => _cxD(k.starts_on) > first)) return 'off';
+  return false;
+}
+
 function ctlCasaCostRows(p, y, m) {
   const pl = ctlPropLinks(p), rows = [], notDue = [], bedarf = [], checks = [];
   for (const c of (window._ctrl.categories || [])) {
     if (c.active === false) continue;
     const isRate = c.code === 'RATE';
     const label = c.name || (isRate ? 'Kreditrate' : 'Cost');
+    const cov = isRate ? null : ctlContractCovers(c.id, y, m);
+    const off = cov === false || cov === 'off';                      // no contract covers this month
+    const noCon = () => { if (cov === false) notDue.push({ label: label + ' — no contract this month', next: '' }); };
+    const srcName = cov === true ? 'Utilities' : 'Setup';            // where its price is set
     const freq = c.frequency || 'monatlich';
     const dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
     const at = isRate && pl.loan ? null : ctlCastelAmountAt(c, y, m);
     const amount = at ? at.amount : _cxN0(pl.loan.rate);
     const note = _cxPerNote(at, y, m);
     if (_cxBedarf(freq)) {
-      if (dm.includes(m)) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'as needed · planned', src: 'Setup', split: null, note });
-      else bedarf.push({ catId: c.id, label });
+      if (dm.includes(m)) { if (off) { if (amount) noCon(); } else rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount), sub: 'as needed · planned', src: srcName, split: null, note }); }
+      else if (!off) bedarf.push({ catId: c.id, label });
       continue;
     }
     if (freq !== 'monatlich' && !dm.length) {
-      if (amount) checks.push(label);
+      if (amount && !off) checks.push(label);
       continue;
     }
     const due = freq === 'monatlich' ? (!dm.length || dm.includes(m)) : dm.includes(m);
+    if (due && off) { if (amount) noCon(); continue; }                // only when something would really be due
     if (due) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount),
       sub: isRate && pl.loan ? 'Zinsen ~' + _cxEurS(_cxN0(pl.loan.zinsen)) + ' · Tilgung ~' + _cxEurS(_cxN0(pl.loan.tilgung)) : _cxFreqLbl(freq),
-      src: isRate && pl.loan ? 'Properties' : 'Setup', note,
+      src: isRate && pl.loan ? 'Properties' : srcName, note,
       split: isRate && pl.loan ? { zinsen: _cxN0(pl.loan.zinsen), tilgung: _cxN0(pl.loan.tilgung) } : null });
-    else if (dm.length) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }
+    else if (dm.length && !off) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }
   }
   return { rows, notDue, bedarf, checks };
 }

@@ -24,6 +24,8 @@ let _pvaEditPerson = null;   // person id being edited
 let _pvaNewPerson = false;   // "+ Person" form open
 let _pvaJobOpen = false;     // Job block expanded (folds to a summary after setup)
 let _pvaNpReq = null;        // { id, name } when the form was opened from a password request
+/* Utilities (Oct 2026): first tab, not a job (pv-utilities.js). 'util' | 'job' · first visit → Utilities */
+let _pvaView = (() => { try { return localStorage.getItem('pva_view') === 'job' ? 'job' : 'util'; } catch (e) { return 'util'; } })();
 
 const $a = id => document.getElementById(id);
 
@@ -82,7 +84,11 @@ function pvaGenPassword() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && Date.now() - _pvaLastLoad > 60000) pvaLoad();
   });
+  try { if (sessionStorage.getItem('pva_open') === 'util') { sessionStorage.removeItem('pva_open'); _pvaSetView('util'); } } catch (e) {}   /* Controlling › Open in Utilities */
   $a('pvApp').style.display = '';
+  pvaRenderTabs();                        /* Utilities is always there, even before the jobs load */
+  if (_pvaView === 'util' && typeof pvuShow === 'function') pvuShow();
+  else if (typeof pvuBoot === 'function') pvuBoot().then(() => pvaRenderTabs());   /* its gold dot */
   try {                                   /* last view shows at once, fresh data follows */
     const copy = JSON.parse(localStorage.getItem('pva_copy') || 'null');
     if (copy && copy.jobs) { _pvaData = copy; pvaRenderShell(); }
@@ -102,7 +108,7 @@ function pvaToast(msg) {
 
 /* ── LOAD + RENDER SHELL ────────────────────────────────── */
 async function pvaLoad(jobId) {
-  if (jobId !== undefined) _pvaJob = jobId;
+  if (jobId !== undefined) { _pvaJob = jobId; if (_pvaView !== 'job') { _pvaSetView('job'); pvaRenderTabs(); } }
   _pvaLastLoad = Date.now();
   const { data, error } = await pvaRpc('pv_admin_load', { p_job: _pvaJob });
   if (error && String(error).indexOf('pv_admin_only') !== -1) { location.replace('login.html'); return; }
@@ -118,14 +124,34 @@ async function pvaLoad(jobId) {
   if (!$a('pvaPeopleScrim').classList.contains('pv-hidden')) pvaRenderPeople();  // keep the open modal fresh
 }
 
+/* ── Utilities tab (Oct 2026) — first tab; hides the job view (strip, card, chat) while it is open ── */
+function _pvaSetView(v) { _pvaView = v === 'util' ? 'util' : 'job'; try { localStorage.setItem('pva_view', _pvaView); } catch (e) {} }
+function pvaRenderTabs() {
+  const d = _pvaData || {}, util = _pvaView === 'util';
+  const ut = `<button class="cc-tab${util ? ' active' : ''}${typeof pvuTodo === 'function' && pvuTodo() ? ' cc-tab--dot' : ''}" type="button" data-util onclick="pvaShowUtil()">Utilities</button>`;
+  const tabs = (d.jobs || []).map(j =>
+    `<button class="cc-tab${!util && j.id === (d.job && d.job.id) ? ' active' : ''}${j.dot ? ' cc-tab--dot' : ''}" type="button" onclick="pvaLoad('${j.id}')">${esc(j.name)}</button>`).join('');
+  pvSetHTML($a('pvaTabs'), ut + tabs +
+    `<button class="cc-tab cc-tab--add" type="button" aria-label="New job" onclick="pvaOpenNewJob()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>`);
+  pvaApplyView();
+}
+function pvaApplyView() {
+  const util = _pvaView === 'util';
+  ['pvaStrip', 'pvaCardWrap', 'pvaCompose', 'pvaPreviewBtn'].forEach(id => $a(id)?.classList.toggle('pva-off', util));
+  document.querySelector('#pvApp > .k-mob-chat')?.classList.toggle('pva-off', util);
+  $a('pvaUtil')?.classList.toggle('pva-off', !util);
+}
+function pvaShowUtil() {
+  _pvaSetView('util');
+  pvaRenderTabs();
+  if (typeof pvuShow === 'function') pvuShow();
+}
+
 function pvaRenderShell() {
   if (typeof _pviBadge === 'function') setTimeout(() => { _pviBadge(); if (_pviIsOpen() && !_pviFix && !_pvmUpload) _pviRender(); }, 0);   /* never wipe a note / upload being typed */
   const d = _pvaData;
-  /* tabs */
-  const tabs = (d.jobs || []).map(j =>
-    `<button class="cc-tab${j.id === (d.job && d.job.id) ? ' active' : ''}${j.dot ? ' cc-tab--dot' : ''}" type="button" onclick="pvaLoad('${j.id}')">${esc(j.name)}</button>`).join('');
-  pvSetHTML($a('pvaTabs'), tabs +
-    `<button class="cc-tab cc-tab--add" type="button" aria-label="New job" onclick="pvaOpenNewJob()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>`);
+  pvaRenderTabs();
+
 
   if (!d.job) {
     $a('pvaStrip').style.display = 'none';

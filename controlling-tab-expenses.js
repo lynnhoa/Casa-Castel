@@ -41,7 +41,7 @@ function _cxExpModel() {
         rows.push({ key: 'cat:' + bd.catId, catId: bd.catId, label: bd.label, soll: 0, sub: 'as needed', src: '', ist: null, bedarf: true });
       }
       // quarterly / yearly without due months: shown as a check, never silently gone (B19)
-      if (plan.checks && plan.checks.length) rows.warn = 'Due months missing: ' + plan.checks.join(', ') + ' – choose the months in Setup';
+      if (plan.checks && plan.checks.length) rows.warn = 'Due months missing: ' + plan.checks.join(', ') + ' – choose the months in Providers › Utilities';
     } else {
       const row = window._ctrl.apt_expenses.find(e => e.property_id === p.id && e.year === y && e.month === m);
       for (const r of rows) r.ist = row && row[r.key] !== null && row[r.key] !== undefined ? cxR(row[r.key]) : null;

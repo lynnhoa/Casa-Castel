@@ -14,6 +14,8 @@
    · NK / Hausgeld results are not here — they live in Income / Expenses
      (controlling-abr.js); their bookings (kinds NK-Abrechnung /
      Hausgeldabrechnung) are hidden in this tab
+   · Bonuses to confirm (Oct 2026): bonuses from Providers › Utilities that are paid to
+     your account wait here; "Received" books them as income of that property (Other · Income)
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -41,6 +43,7 @@ let _cxOt = {
   nk: false,                                           // new entry: "In NK-Abrechnung umlegen" (Casa Castel only)
   nkCat: '',                                           // new entry: Casa cost type for the NK ('' = general house costs)
   knkType: '', knkPart: '',                            // new entry: Kaufnebenkosten type · Kauf / Grundschuld
+  bonus: null, bonusNk: null,                          // Bonuses to confirm: the bonus being confirmed · its NK switch
 };
 const _cxOtLastProp = () => { try { return Number(localStorage.getItem('cx_ot_prop')) || null; } catch (e) { return null; } };
 
@@ -335,6 +338,7 @@ window.renderOneTime = function () {
       '</div>' + (_cxOt.exp.open ? _cxOtExportHTML() : '') +
       (_cxOt.form === 'new' ? _cxOtFormHTML(null) : '') +
     '</div>' +
+    _cxOtBonusHTML() +
     '<div class="cx-head"><span class="cx-lbl">Invoices per property</span><span class="cx-lbl">Amount</span></div>' +
     '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Search · description or company" aria-label="Search" value="' + cxEsc(_cxOt.q) + '"></label>' +
     '<div id="cxOtList">' + _cxOtListHTML() + '</div>' +
@@ -443,6 +447,10 @@ window.renderOneTime = function () {
         return _cxOtKeep(() => {});
       }
       if (a === 'otSave') return _cxOtSave(b);
+      if (a === 'otBoOpen') { if (!(await _cxOtClose())) return; _cxOt.bonus = b.dataset.id; _cxOt.bonusNk = null; return window.renderOneTime(); }
+      if (a === 'otBoCancel') { _cxOt.bonus = null; _cxOt.bonusNk = null; return window.renderOneTime(); }
+      if (a === 'otBoNk') { const on = !b.classList.contains('on'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); _cxOt.bonusNk = on; return; }
+      if (a === 'otBoSave') return _cxOtBonusSave(b);
       if (a === 'otDel') {
         const id = b.dataset.id, o = (window._ctrl.one_time || []).find(x => String(x.id) === String(id));
         if (!o || !(await ccConfirm('Delete this entry?', ccEscHtml(o.item || 'entry') + ' · ' + cxEur(o.amount), 'Delete', true))) return;
@@ -455,6 +463,81 @@ window.renderOneTime = function () {
     },
   });
 };
+
+/* ── Bonuses to confirm (Oct 2026) ───────────────────────────
+   Providers › Utilities notes the bonuses (Neukundenbonus, Cashback …) of every property. One that is
+   paid to your account waits here — under Casa Castel or Rentals, by its property — until the money is
+   in: "Received" → amount + date → a one-off income of that property (Other · Income) and the bonus is
+   "received" in Utilities. Casa Castel only: the NK switch (preset from the bonus) lowers that cost type
+   in the NK-Abrechnung. On the bill or in points: never here. */
+const _cxMY = iso => { const d = _cxD(iso); return d ? d.slice(5, 7) + '.' + d.slice(0, 4) : ''; };
+const _cxOtBoPid = k => Number(k.property_id ?? CASA_PROP_ID);      // the contract's property (Casa Castel before Oct 2026)
+function _cxOtBonuses() {
+  const S = window._src || {}, ks = (S.hContracts || []).filter(k => !k.deleted_at);
+  return (S.hBonus || [])
+    .filter(b => b.paid === 'account' && (b.status === 'open' || b.status === 'claimed') && Number(b.amount) > 0)
+    .map(b => ({ b, k: ks.find(k => String(k.id) === String(b.contract_id)) })).filter(x => x.k && cxAreaPid(_cxOtBoPid(x.k)))
+    .sort((x, y) => String(_cxD(x.b.expected_on) || '9999').localeCompare(String(_cxD(y.b.expected_on) || '9999')));
+}
+function _cxOtBonusHTML() {
+  const list = _cxOtBonuses(); if (!list.length) return '';
+  const catOf = id => (window._ctrl.categories || []).find(c => Number(c.id) === Number(id));
+  const propOf = id => (window._ctrl.properties || []).find(p => Number(p.id) === Number(id));
+  const rows = list.map(({ b, k }) => {
+    const pid = _cxOtBoPid(k), casa = pid === CASA_PROP_ID;
+    const c = casa ? catOf(k.category_id) : null, open = String(_cxOt.bonus) === String(b.id);
+    const sub = [casa ? '' : ((propOf(pid) || {}).name || ''), c ? c.name : (k.kind || ''), k.provider || '', b.source === 'check24' ? 'via CHECK24' : '',
+      b.expected_on ? 'expected ' + _cxMY(b.expected_on) : (b.status === 'claimed' ? 'claimed' : '')].filter(Boolean).join(' · ');
+    const head = '<div class="cx-row-sb" style="gap:10px;padding:9px 0;border-top:.5px solid var(--cx-rule)"><span style="min-width:0">' +
+      '<span style="display:block;font-size:13.5px;font-weight:500;color:var(--cx-ink)">' + cxEsc(b.kind || 'Bonus') + '</span>' +
+      '<span class="cx-r__sub" style="display:block;margin:1px 0 0">' + cxEsc(sub) + '</span></span>' +
+      '<span style="display:flex;align-items:center;gap:8px;flex-shrink:0"><b style="font-weight:600;color:var(--cx-ink)">' + cxEur(b.amount) + '</b>' +
+      (open ? '' : '<button class="cx-btn cx-btn--s" data-cx="otBoOpen" data-id="' + cxEsc(b.id) + '">Received</button>') + '</span></div>';
+    if (!open) return head;
+    const nk = _cxOt.bonusNk !== null ? _cxOt.bonusNk : !!b.in_nk;
+    const inNk = c && c.code !== 'RATE' && c.nk_key !== 'none';
+    return head + '<div class="cx-form" style="margin:0 0 8px">' +
+      '<div class="cx-grid2"><label class="cx-f"><input type="text" inputmode="decimal" id="cxBoAmt" aria-label="Amount received" value="' + cxE2(b.amount) + '"><span>€</span></label>' +
+      '<label class="cx-f cx-f--l"><input type="date" id="cxBoDate" value="' + cxToday() + '" aria-label="Date received"></label></div>' +
+      (!casa ? '' : '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" data-cx="otBoNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +
+        '<span class="cx-ot-nk__sw" aria-hidden="true"></span><span class="cx-ot-nk__t"><b>Show in Settlements</b><small>' +
+        cxEsc(inNk ? 'lowers ' + c.name + ' in the NK-Abrechnung' : 'lowers the house costs in the NK-Abrechnung') + '</small></span></button>') +
+      '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otBoCancel">Cancel</button>' +
+        '<button class="cx-btn cx-btn--p" data-cx="otBoSave" data-id="' + cxEsc(b.id) + '">Save</button></div></div>';
+  }).join('');
+  return '<div class="cx-card cx-sum"><div class="cx-row-sb"><span class="cx-lbl">Bonuses to confirm</span>' +
+    cxPill('beige', list.length + (list.length === 1 ? ' bonus' : ' bonuses')) + '</div>' +
+    '<div class="cx-r__sub" style="margin:4px 0 6px">From Providers › Utilities · confirm once the money is in your account.</div>' + rows + '</div>';
+}
+async function _cxOtBonusSave(btn) {
+  const x = _cxOtBonuses().find(r => String(r.b.id) === String(btn.dataset.id)); if (!x) return;
+  const { b, k } = x, g = i => document.getElementById(i), say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
+  const amt = cxParse(g('cxBoAmt')?.value), date = String(g('cxBoDate')?.value || '').slice(0, 10);
+  if (!(amt > 0)) { say('Please enter the amount'); g('cxBoAmt')?.focus(); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { say('Please enter the date'); g('cxBoDate')?.focus(); return; }
+  const pid = _cxOtBoPid(k), casa = pid === CASA_PROP_ID;
+  const nk = casa && (_cxOt.bonusNk !== null ? _cxOt.bonusNk : !!b.in_nk);          // the NK switch is Casa Castel only
+  const c = casa ? (window._ctrl.categories || []).find(cc => Number(cc.id) === Number(k.category_id)) : null;
+  const nkCat = nk && c && c.code !== 'RATE' && c.nk_key !== 'none' ? Number(c.id) : null;
+  btn.disabled = true;
+  let saved = null;
+  try {
+    saved = await ctlAddOneTime({ property_id: pid, invoice_date: date, item: (b.kind || 'Bonus') + (k.provider ? ' · ' + k.provider : ''),
+      company: b.source === 'check24' ? 'CHECK24' : (k.provider || null), amount: cxR(amt), kind: 'Sonstiges', direction: 1,
+      nk_umlage: nk, nk_category_id: nkCat, source_ref: 'bonus:' + b.id });
+    const f = { status: 'received', status_on: date, in_nk: nk, onetime_id: saved ? String(saved.id) : null };
+    const { error } = await _ctlSupa.from('house_contract_bonuses').update(f).eq('id', b.id);
+    if (error) throw error;
+    Object.assign(b, f);
+  } catch (e) {
+    if (saved) { try { await ctlDeleteOneTime(saved.id); } catch (e2) { console.warn('[controlling] bonus rollback', e2); } }   // no booking without the bonus marked
+    cxToastErr(e); btn.disabled = false; return;
+  }
+  _cxOt.bonus = null; _cxOt.bonusNk = null;
+  if (saved) { _cxOt.flash = saved.id; delete CX.open['ot:' + pid + ':' + _cxOt.view]; }
+  say(Number(date.slice(0, 4)) !== window._ctrl.year ? 'Saved in ' + date.slice(0, 4) : 'Bonus booked · ' + cxEur(amt));
+  window.renderOneTime();
+}
 
 function _cxOtEditing() {
   return _cxOt.form && !/^new/.test(String(_cxOt.form)) ? (window._ctrl.one_time || []).find(x => String(x.id) === String(_cxOt.form)) || null : null;

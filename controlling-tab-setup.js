@@ -197,6 +197,7 @@ window.renderSetup = function () {
   const cats = (window._ctrl.categories || []).map(c => {
     const freq = c.frequency || 'monatlich', isRate = c.code === 'RATE', freqL = typeof _cxFreqLbl === 'function' ? _cxFreqLbl(freq) : freq;
     const fromLoan = isRate && casaLoan;
+    if (_cxInContracts(c)) return _cxSuContractCatHTML(c, freq, freqL);   // Oct 2026: set in Providers › Utilities, read here
     return '<div class="cx-cat">' +
       '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || (isRate ? 'Kreditrate' : 'Cost')) + '</span>' +
         (isRate ? cxPill(fromLoan ? 'ok' : 'beige', fromLoan ? 'from Properties' : 'plan value') : cxPill(freq === 'monatlich' ? 'grey' : 'beige', freqL)) + '</div>' +
@@ -264,13 +265,20 @@ window.renderSetup = function () {
       '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="openHist"><i class="ti ti-history" aria-hidden="true"></i>Check tenant history</button></div>' +
     '<div class="cx-head"><span class="cx-lbl">Properties</span></div>' + propCards + _cxSuNewPropHTML() +
     '<div class="cx-head"><span class="cx-lbl">Parking</span></div>' + pkCard +
-    '<div class="cx-head"><span class="cx-lbl">Casa Castel · cost types</span></div><div class="cx-card">' + (cats || '<div class="cx-empty">No cost types.</div>') + '</div>' +
+    '<div class="cx-head"><span class="cx-lbl">Casa Castel · cost types</span></div><div class="cx-card">' +
+      '<div class="cx-r__sub" style="margin:0 0 8px">Price, dates and NK split are set in Providers › Utilities. Rate comes from Properties.</div>' +
+      (cats || '<div class="cx-empty">No cost types.</div>') + '</div>' +
     '</div>');   // B18: only what changed
 
   cxWire(host, {
     render: () => window.renderSetup(),
     click: async (a, b) => {
       if (a === 'openHist') { CX.hist = true; window.scrollTo(0, 0); return window.renderSetup(); }
+      if (a === 'openContracts') {                                   // that cost type's pop-up in Providers › Utilities
+        try { sessionStorage.setItem('pva_open', 'util'); sessionStorage.setItem('pvu_open', 'c:' + String(b.dataset.c || '')); } catch (e) {}
+        location.href = 'providers.html';
+        return;
+      }
       if (a === 'propNew') { _cxSU.newProp = !_cxSU.newProp; return window.renderSetup(); }
       if (a === 'propAdd') {
         const inp = document.getElementById('cxSuNewProp'), name = (inp?.value || '').trim();
@@ -379,6 +387,32 @@ window.renderSetup = function () {
   }
 };
 
+
+/* ── Casa Castel cost types that live in Providers › Utilities (Oct 2026) ──────
+   Every Casa cost type except the Rate (Properties) and the services Putzdienst · Gärtner ·
+   Winterdienst (Providers jobs) is set in Providers › Utilities: price + from-month, rhythm,
+   due months, NK split. Setup shows it read-only with a link to its contract. */
+const _CX_CTR_SKIP = ['RATE', 'GAERTNER', 'PUTZDIENST', 'WINTERDIENST'];
+const _cxInContracts = c => !_CX_CTR_SKIP.includes(String(c.code || '').toUpperCase());
+function _cxSuContractCatHTML(c, freq, freqL) {
+  const t = cxToday(), now = _cxPerNowOf(c);
+  const ks = (typeof ctlContractsOf === 'function' ? ctlContractsOf(c.id) : []).slice().sort((a, b) => _cxD(a.starts_on).localeCompare(_cxD(b.starts_on)));
+  const live = ks.filter(k => { const e = ctlContractEnd(k); return !e || e >= t; });
+  const cur = live.filter(k => !k.starts_on || _cxD(k.starts_on) <= t).pop() || live[0] || ks[ks.length - 1] || null;
+  const per = freq === 'monatlich' ? '/ month' : freq === 'vierteljährlich' ? '/ quarter' : freq === 'jährlich' ? '/ year' : 'as needed';
+  const dm = Array.isArray(c.due_months) ? c.due_months.map(Number).filter(m => m >= 1 && m <= 12) : [];
+  const since = now.period && !_cxPerIsStart(now.period) ? 'since ' + _cxPerMMYYYY(now.period.valid_from) : '';
+  const nk = c.nk_key === 'none' ? 'not in NK · stays with you' : 'by person · ' + (c.nk_spread === 'year' ? 'over the year' : 'in its month');
+  const noMonths = freq !== 'monatlich' && !_cxBedarf(freq) && !dm.length && Number(now.amount);
+  return '<div class="cx-cat">' +
+    '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || 'Cost') + '</span>' + cxPill(freq === 'monatlich' ? 'grey' : 'beige', freqL) + '</div>' +
+    '<div class="cx-r__sub">' + cxEsc([now.amount ? cxEur(now.amount) + ' ' + per : 'no amount', cur ? (cur.provider || 'provider not set') : 'no contract', since].filter(Boolean).join(' · ')) + '</div>' +
+    (freq !== 'monatlich' && dm.length ? '<div class="cx-r__sub">' + cxEsc('Due in ' + dm.map(_cxMonthShort).join(' · ')) + '</div>' : '') +
+    (noMonths ? '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Due months missing – set them in Providers › Utilities › Edit, otherwise the item is missing in the Soll</div>' : '') +
+    '<div class="cx-nkset"><span class="cx-nkset__k">NK-Abrechnung</span><span class="cx-nkset__v">' + cxEsc(nk) + '</span></div>' +
+    '<button class="cx-link" data-cx="openContracts" data-c="' + cxEsc(c.id) + '">Open in Utilities <i class="ti ti-arrow-up-right" aria-hidden="true"></i></button>' +
+  '</div>';
+}
 
 /* ── Casa Castel cost Soll by month (B22) ─────────────────────────────────────
    The amount field = the Soll that applies now: typing there CORRECTS that period.
