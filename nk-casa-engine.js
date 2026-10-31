@@ -398,11 +398,17 @@ const NkCasa = (() => {
     return out;
   }
   /* the suggested Zeitraum of a bill that came (or was paid) on `day`: the last Abrechnungsjahr that ended
-     before it · without a history: the 12 months up to the end of the month before */
+     before it · none ended yet → the one a year (or more) earlier in the same rhythm (Nov 2026)
+     · without a history: the 12 months up to the end of the month before */
   function jaSuggest(hist, day) {
     day = D(day); if (!isDay(day)) return null;
     const P = jaPeriods(hist, day).filter(p => p.to < day);
     if (P.length) { const p = P[P.length - 1]; return { from: p.from, to: p.to, src: 'providers' }; }
+    const H = jaHist(hist);
+    if (H.length) for (let n = 1; n <= 10; n++) {
+      const from = addYears(H[0].from, -n), to = addDays(addYears(H[0].from, -n + 1), -1);
+      if (to < day) return { from, to, src: 'providers' };
+    }
     const to = addDays(day.slice(0, 7) + '-01', -1);
     return { from: addDays(addYears(to, -1), 1), to, src: 'guess' };
   }
@@ -415,22 +421,30 @@ const NkCasa = (() => {
     return (p.bill >= em ? ey : ey + 1) + '-' + String(p.bill).padStart(2, '0') + '-01';
   }
   /* one bill { from, to, amount } over the NK periods [{ y, from, to }] → { y: { amount, days, of } }
-     amount × days in the period ÷ days of the Zeitraum, in cents; the last period takes the rest,
-     so the parts add up exactly to the bill (when the periods cover all of its days) */
-  function jaShares(bill, periods) {
+     amount × days in the period ÷ days of the Zeitraum, in cents — rounded along the timeline
+     (each part = rounded share up to its end − rounded share up to its start), so the parts add up
+     exactly to the bill and a split inside one period never moves a cent into another one
+     since (Nov 2026, optional): the purchase date — days before it are the seller's and count in no
+     NK period; that part is returned as out.before (not enumerable: the keys stay the years) */
+  function jaShares(bill, periods, since) {
     const a = D(bill && bill.from), b = D(bill && bill.to), amt = r2(bill && bill.amount), out = {};
     if (!isDay(a) || !isDay(b) || b < a || !amt) return out;
-    const N = daysBetween(a, b);
-    const hits = (periods || []).map(p => {
-      const f = a > D(p.from) ? a : D(p.from), t = b < D(p.to) ? b : D(p.to);
-      return f <= t ? { y: p.y, from: f, days: daysBetween(f, t) } : null;
-    }).filter(Boolean).sort((x, z) => x.from.localeCompare(z.from));
-    const all = hits.reduce((s, h) => s + h.days, 0) === N;
-    let used = 0;
-    hits.forEach((h, i) => {
-      const v = all && i === hits.length - 1 ? r2(amt - used) : r2(amt * h.days / N);
-      out[h.y] = { amount: v, days: h.days, of: N }; used = r2(used + v);
-    });
+    const N = daysBetween(a, b), s = isDay(D(since)) ? D(since) : null;
+    const segs = [];
+    if (s && a < s) segs.push({ y: null, from: a, to: b < s ? b : addDays(s, -1) });            // the seller's days
+    for (const p of (periods || [])) {
+      let f = a > D(p.from) ? a : D(p.from); if (s && f < s) f = s;
+      const t = b < D(p.to) ? b : D(p.to);
+      if (f <= t) segs.push({ y: p.y, from: f, to: t });
+    }
+    segs.sort((x, z) => x.from.localeCompare(z.from));
+    const at = d => r2(amt * d / N);                                   // rounded share of the first d days
+    for (const g of segs) {
+      const d0 = daysBetween(a, g.from) - 1, d1 = daysBetween(a, g.to);
+      const v = r2(at(d1) - at(d0)), part = { amount: v, days: d1 - d0, of: N };
+      if (g.y === null) Object.defineProperty(out, 'before', { value: part, enumerable: false });
+      else out[g.y] = part;
+    }
     return out;
   }
   /* the days of `range` { from, to } that no Zeitraum in `covers` [{ from, to }] reaches → [{ from, to, days }] */

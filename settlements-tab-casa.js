@@ -746,7 +746,9 @@ function scJaSupCo(y, k, own) {                            // the company of the
 /* ── Nov 2026 · each Jahresabrechnung counts by its own Abrechnungszeitraum ─────────────────
    amount × its days in the NK year ÷ all days of its Zeitraum (NkCasa.jaShares) — the parts add
    up exactly to the bill. Its Zeitraum: typed here from the bill, else suggested from the usual
-   Abrechnungsjahr in Providers › Utilities (shown as "suggested" until confirmed).
+   Abrechnungsjahr in Providers › Utilities (shown as "suggested" until confirmed; when none has
+   ended yet, the one a year earlier in the same rhythm). Days before the purchase (Properties ›
+   Purchase date) are the seller's: they count in no NK and need no bill.
    A NK year is complete when every day is covered by a bill — or marked "no bill":
      nk_abrechnung_casa.tenants.__noBill = { gas: [ { from, to, at } ], … } */
 const SC_MONTHS_L = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -801,15 +803,19 @@ function scJaNkPeriods(z) {                                // the NK periods a Z
   for (let y = y0; y <= y1; y++) { const p = scPeriod(y); if (p && p.from && p.to) out.push({ y, from: p.from, to: p.to }); }
   return out;
 }
-const scJaShares = (z, cost) => z && cost && typeof NkCasa.jaShares === 'function' ? NkCasa.jaShares({ from: z.from, to: z.to, amount: cost }, scJaNkPeriods(z)) : {};
-const scJaSplitTxt = sh => Object.keys(sh).sort().map(y => 'NK ' + y + ': ' + scE(Math.abs(sh[y].amount))).join(' · ');
+/* Nov 2026: the purchase date (Properties › Purchase date) — days before it are the seller's and count in no NK */
+const scJaSince = () => { const p = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID); return p && typeof ctlPropSince === 'function' ? ctlPropSince(p) : ''; };
+const scJaShares = (z, cost) => z && cost && typeof NkCasa.jaShares === 'function' ? NkCasa.jaShares({ from: z.from, to: z.to, amount: cost }, scJaNkPeriods(z), scJaSince()) : {};
+const scJaSplitTxt = sh => Object.keys(sh).sort().map(y => 'NK ' + y + ': ' + scE(Math.abs(sh[y].amount)))
+  .concat(sh.before ? ['before the purchase (seller): ' + scE(Math.abs(sh.before.amount))] : []).join(' · ');
 /* this NK year's share of every Jahresabrechnung → the engine's src.ja (running year: its days up to the preview) */
 function scJaLinesFor(y, per, cutoff) {
   const out = [], e2 = v => cxE2(Math.abs(Number(v) || 0)) + '\u00a0\u20ac';
   for (const b of scJaAll()) {
     const N = NkCasa.daysBetween(b.from, b.to); let share, days;
     if (cutoff) {
-      const f = b.from > per.from ? b.from : per.from, t = b.to < cutoff ? b.to : cutoff;
+      const since = scJaSince(); let f = b.from > per.from ? b.from : per.from; if (since && f < since) f = since;
+      const t = b.to < cutoff ? b.to : cutoff;
       if (f > t) continue;
       days = NkCasa.daysBetween(f, t); share = NkCasa.r2(b.cost * days / N);
     } else {
@@ -832,7 +838,8 @@ function scJaCover(M) {
   for (const [k, l] of SC_HG_TYPES) {
     if (!scHgCat(k)) continue;
     const H = NkCasa.jaHist(scJaHist(k)); if (!H.length) continue;      // no Abrechnungsjahr in Providers → not watched
-    const from = H[0].from > M.per.from ? H[0].from : M.per.from; if (from > end) continue;
+    const since = scJaSince();                               // Nov 2026: nothing is missing before the purchase
+    let from = H[0].from > M.per.from ? H[0].from : M.per.from; if (since && from < since) from = since; if (from > end) continue;
     for (const g of NkCasa.jaGaps({ from, to: end }, all.filter(b => b.k === k).concat(nb[k] || []))) {
       const ex = NkCasa.jaExpect(scJaHist(k), g.to);
       const late = !!ex && NkCasa.addDays(scLastOfMonth(Number(ex.slice(0, 4)), Number(ex.slice(5, 7))), 15) < today;   // as in Rentals: 15 days after that month
