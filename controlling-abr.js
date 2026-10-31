@@ -18,6 +18,7 @@
      · settled via Kaution / Miete / Hausgeld or 0 € → once, as information
    Bookings stay in ctrl_expense_one_time (kind NK-Abrechnung / Hausgeldabrechnung,
    source_ref 'abr:<id>' or the tenant-tab ref) → Dashboard unchanged.
+   Nov 2026: such a bill shows its Abrechnungszeitraum (nk_from / nk_to, typed in Settlements).
    Fix 3 (Oct 2026): Casa Castel's Versorger Jahresabrechnungen (Strom · Gas · Wasser ·
    Entsorgung, typed and paid in Settlements › Casa Castel, kind Versorger) show here too —
    read-only, in the month paid: Guthaben in Income, Nachzahlung in Expenses. One-off no
@@ -137,7 +138,8 @@ function cxAbrSection(p, y, m, dir) {
       const inn = Number(r.ja.direction) === 1;
       h += '<div class="cx-r"><div class="cx-r__top"><span class="cx-r__u">' + cxEsc(r.ja.item || 'Jahresabrechnung') + '</span>' +
         cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung') + '</div>' +
-        '<div class="cx-r__sub">' + cxEsc(cxEur(r.ja.amount) + ' · ' + (inn ? 'received ' : 'paid ') + cxFmtDate(r.ja.invoice_date) + ' · from Settlements') + '</div></div>';
+        '<div class="cx-r__sub">' + cxEsc(cxEur(r.ja.amount) + ' · ' + (inn ? 'received ' : 'paid ') + cxFmtDate(r.ja.invoice_date) + ' · from Settlements') + '</div>' +
+        (r.ja.nk_from && r.ja.nk_to ? '<div class="cx-r__sub">' + cxEsc('Abrechnungszeitraum ' + cxFmtDate(r.ja.nk_from) + '–' + cxFmtDate(r.ja.nk_to) + ' · split by days into the NK years') + '</div>' : '') + '</div>';   // Nov 2026
       continue;
     }
     if (r.info) {

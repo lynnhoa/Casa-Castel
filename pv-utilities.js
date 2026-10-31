@@ -24,6 +24,10 @@
    Money is confirmed only in Controlling (bonuses paid to the account).
    No calculations here: raw data (Abschlag, Arbeitspreis, Grundpreis), dates,
    countdowns and the cost changes — the Abrechnung lives in Settlements.
+   Abrechnung (Nov 2026, Casa Strom · Gas · Wasser · Entsorgung): the source of truth for the
+   usual Abrechnungsjahr and the month its bill usually arrives — a dated history per cost type
+   (ctrl_castel_categories.abr_hist = [{ from, bill }]). Settlements reads it to suggest each
+   bill's Zeitraum and to say when a missing bill should come. A change counts from its date.
 
    Reminder pills (calculated, nothing stored but your click-away):
      red   No contract from …   it ends within 8 weeks and nothing follows
@@ -607,7 +611,7 @@ function _ctrSheetHTML() {
   if (f === 'edit') return _ctrHeadHTML(s, st, true) + `<div class="ctr-body ctr-full">${_ctrEditHTML(s, k)}</div>`;
   const portal = k && _ctrUrl(k.portal);
   const ed = !f ? (portal ? `<a class="ctr-b gold" href="${_ctrE(portal)}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>Portal</a>` : '') + _ctrBtn('Edit', 'form', ' data-f="edit"') : '';
-  return _ctrHeadHTML(s, st, false, ed) + `<div class="ctr-body">${f ? '' : _ctrReminderHTML(s, st)}${_ctrPriceSec(s, st)}${_ctrDatesSec(s, st)}${k ? _ctrBonusSec(k) + _ctrDetailsSec(s, k) + _ctrDocsSec(k) : _ctrNoContractSec(s)}</div>`;
+  return _ctrHeadHTML(s, st, false, ed) + `<div class="ctr-body">${f ? '' : _ctrReminderHTML(s, st)}${_ctrPriceSec(s, st)}${_ctrDatesSec(s, st)}${_ctrAbrSec(s)}${k ? _ctrBonusSec(k) + _ctrDetailsSec(s, k) + _ctrDocsSec(k) : _ctrNoContractSec(s)}</div>`;
 }
 function _ctrHeadHTML(s, st, edit, ed = '') {
   const k = st.k, kick = s.cat ? s.name : _ctrPropName(s.pid) + ' · ' + s.kind;
@@ -701,6 +705,39 @@ function _ctrDatesSec(s, st) {
   }
   const btn = !k.cancelled_on && _ctrCancellable(k.notice) ? _ctrBtn('Cancel', 'form', ' data-f="cancel"') : '';
   return _ctrSec('Dates', btn, rows);
+}
+
+/* Abrechnung (Nov 2026) — Casa Castel Versorger: when the Abrechnungsjahr starts and when its bill usually arrives.
+   One dated history per cost type: from = the first day of an Abrechnungsjahr (every one then runs 12 months),
+   bill = the month the Jahresabrechnung usually comes. A later start ends the one before (a switch to
+   01.01. → that last bill is shorter). Settlements › Casa Castel reads it; bills already there keep their Zeitraum. */
+const _CTR_MON_F = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const _ctrAbrOk = s => !!(s && s.pid === PVU_CASA && s.cat && /^(strom|gas|wasser|entsorg)/i.test(String(s.cat.name || '')));
+const _ctrAbrHist = s => (Array.isArray(s && s.cat && s.cat.abr_hist) ? s.cat.abr_hist : [])
+  .map(h => ({ from: _ctrD(h && h.from), bill: Math.round(Number(h && h.bill)) || null }))
+  .filter(h => /^\d{4}-\d{2}-\d{2}$/.test(h.from)).sort((a, b) => a.from.localeCompare(b.from));
+const _ctrDM = iso => (iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' : '');
+const _ctrAbrYear = from => _ctrDM(from) + '–' + _ctrDM(_ctrAddD(_ctrAddM(from, 12), -1));      // 01.07.–30.06.
+function _ctrAbrSec(s) {
+  if (!_ctrAbrOk(s)) return '';
+  const H = _ctrAbrHist(s), cur = H[H.length - 1] || null;
+  if (CTR.form === 'abr') {
+    const korr = !!cur && CTR.arg === 'korr', v = korr ? cur : { from: '', bill: cur ? cur.bill : null };
+    const prev = korr ? H[H.length - 2] : cur;
+    return _ctrSec('Abrechnung · ' + (korr ? 'Korrektur' : cur ? 'New Abrechnungsjahr' : 'Abrechnungsjahr'), '',
+      (cur ? `<label class="ctr-fl">What</label>${_ctrSegH('reason', [['new', 'New from a date'], ['korr', 'Korrektur']], korr ? 'korr' : 'new')}` : '') +
+      `<div class="ctr-2">${_ctrDateInp('ctrAbFrom', 'Abrechnungsjahr starts on', v.from)}` +
+      `${_ctrSel('ctrAbBill', 'Bill usually arrives', [['', '—']].concat(_CTR_MON_F.map((m, i) => [String(i + 1), m])), v.bill ? String(v.bill) : '')}</div>` +
+      `<p class="ctr-hint">${korr ? 'Korrektur fixes the current Abrechnungsjahr – its start day and the month its bill comes. Nothing new starts.'
+        : 'The first day of an Abrechnungsjahr, e.g. 01.07.2024. From then on every Abrechnungsjahr runs 12 months.' +
+          (prev ? ' The one before (' + _ctrE(_ctrAbrYear(prev.from)) + ') ends the day before – its last bill is shorter.' : '') + ' Bills already in Settlements keep their Zeitraum.'}</p>` +
+      _ctrFoot('saveabr', korr ? `<button type="button" class="pvu-bg" data-ctr="delabr">Remove</button>` : ''), true);
+  }
+  const hist = H.length > 1 ? `<div class="ctr-hist">${H.slice(0, -1).map((h, i) => `<div><div class="r"><span>${_ctrF(h.from)} – ${_ctrF(_ctrAddD(H[i + 1].from, -1))}</span>` +
+    `<span>${_ctrE(_ctrAbrYear(h.from))}${h.bill ? ' · bill ' + _CTR_MON_F[h.bill - 1] : ''}</span></div></div>`).reverse().join('')}</div>` : '';
+  const body = cur ? _ctrKV('Abrechnungsjahr', _ctrE(_ctrAbrYear(cur.from))) + _ctrKV('Since', _ctrF(cur.from)) + _ctrKV('Bill usually arrives', cur.bill ? _CTR_MON_F[cur.bill - 1] : '') + hist
+    : _ctrKV('Abrechnungsjahr', '') + `<p class="ctr-hint">When does its Abrechnungsjahr start, and when does the bill usually come? Settlements splits each bill by it and says when one is missing.</p>`;
+  return _ctrSec('Abrechnung', _ctrBtn(cur ? 'Change' : 'Add', 'form', ' data-f="abr"'), body);
 }
 
 /* Bonus — money paid to your account is confirmed only in Controlling */
@@ -917,7 +954,7 @@ async function _ctrClick(e) {
   const run = {
     act: () => _ctrAct(t.dataset.a, t.dataset),
     saveprice: _ctrSavePrice, savecancel: _ctrSaveCancel, savebonus: _ctrSaveBonus, savedoc: _ctrSaveDoc,
-    saveedit: _ctrSaveEdit, savenew: _ctrSaveNew,
+    saveedit: _ctrSaveEdit, savenew: _ctrSaveNew, saveabr: _ctrSaveAbr, delabr: _ctrDelAbr,
     delbonus: () => _ctrDelBonus(t.dataset.b), deldoc: () => _ctrDelDoc(t.dataset.d), delcontract: _ctrDelContract,
   }[a];
   if (!run) return;
@@ -1023,6 +1060,34 @@ async function _ctrSavePrice() {
   if (g !== null) row.base_price = g;
   _ctrQ(await db.from(T).insert(row));
   return _ctrAfter('New price from ' + _ctrMY(from));
+}
+
+/* Abrechnung (Nov 2026): a new Abrechnungsjahr from a date · Korrektur of the current one · remove it */
+async function _ctrSaveAbr() {
+  const { s } = _ctrCur(); if (!s || !s.cat) return;
+  const H = _ctrAbrHist(s), cur = H[H.length - 1], korr = !!cur && _ctrSegVal('reason') === 'korr';
+  const from = _ctrDateInSafe('ctrAbFrom'); if (from === false) return;
+  if (!from) { _ctrToast('Abrechnungsjahr starts on: TT.MM.JJJJ'); return; }
+  const bill = Number(_ctrVal('ctrAbBill')) || null;
+  let next;
+  if (korr) {
+    const prev = H[H.length - 2];
+    if (prev && from <= prev.from) { _ctrToast('It has to start after ' + _ctrF(prev.from) + ' – the Abrechnungsjahr before'); return; }
+    next = H.slice(0, -1).concat([{ from, bill }]);
+  } else {
+    if (H.some(h => h.from === from)) { _ctrToast('There is already one from ' + _ctrF(from) + ' – use Korrektur'); return; }
+    next = H.concat([{ from, bill }]).sort((a, b) => a.from.localeCompare(b.from));
+  }
+  _ctrQ(await _pvuDb().from('ctrl_castel_categories').update({ abr_hist: next }).eq('id', s.cat.id));
+  return _ctrAfter(korr ? 'Abrechnungsjahr corrected' : 'Abrechnungsjahr from ' + _ctrF(from));
+}
+async function _ctrDelAbr() {
+  const { s } = _ctrCur(); if (!s || !s.cat) return;
+  const H = _ctrAbrHist(s); if (!H.length) return;
+  const ok = typeof ccConfirm === 'function' ? await ccConfirm('Remove this Abrechnungsjahr?', H.length > 1 ? 'The one before applies again.' : 'Settlements then guesses each bill\u2019s Zeitraum.', 'Remove') : true;
+  if (!ok) return;
+  _ctrQ(await _pvuDb().from('ctrl_castel_categories').update({ abr_hist: H.slice(0, -1) }).eq('id', s.cat.id));
+  return _ctrAfter('Abrechnungsjahr removed');
 }
 
 /* Cancel */

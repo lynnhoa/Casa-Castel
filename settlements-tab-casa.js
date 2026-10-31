@@ -14,6 +14,12 @@
      archive       every letter marked as sent is stored (storage "nk-letters",
                    table nk_letters) and listed under "Letters" — the history
 
+   Versorger-Jahresabrechnungen (Nov 2026): each bill counts by its own Abrechnungszeitraum,
+   split by days into the NK years (NkCasa.jaShares). The usual Abrechnungsjahr per supplier is
+   set in Providers › Utilities (ctrl_castel_categories.abr_hist) — it suggests each bill's
+   Zeitraum and says when a missing bill should come. Locking waits until every day of the
+   NK year is covered by a bill (or marked "no bill").
+
    Results go the same way as in Rentals: ctrl_settlements + abr_results →
    Controlling › Casa Castel › Income / Expenses › Abrechnungen.
    Own data: nk_abrechnung_casa (one row per year).
@@ -55,6 +61,10 @@ async function _scLoadRowsNow() {
       const k = await _ctlSupa.from('kaution').select('*');
       SC.kaution = {}; (k.data || []).forEach(x => { if (x.tenant_id != null) SC.kaution[String(x.tenant_id)] = x; });
     } catch (e) { SC.kaution = {}; }
+    try {                                                  // Nov 2026: every Casa Versorger-Jahresabrechnung in Controlling (all years) — split by its Zeitraum
+      const j = await _ctlSupa.from('ctrl_expense_one_time').select('*').eq('property_id', CASA_PROP_ID).or('kind.eq.Versorger,item.ilike.*jahresabrechnung*');
+      SC.jaBk = j.error ? null : (j.data || []);
+    } catch (e) { SC.jaBk = null; }
   } finally { SC.loaded = true; SC.loading = false; }
 }
 /* The Casa Castel period that ends in year y — from "beginnt am" in Controlling › Setup */
@@ -134,18 +144,23 @@ function scVzMonths(input, y) {
   for (const ym of (input.months || [])) {
     const yy = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)), dim = new Date(yy, m, 0).getDate();
     const mFrom = ym + '-01', mTo = ym + '-' + String(dim).padStart(2, '0');
-    const groups = {};
+    const groups = {}, pausch = {};
     for (const t of T) {
-      if (t.mode !== 'nk') continue;
       const a = t.from > mFrom ? t.from : mFrom, b = t.to < mTo ? t.to : mTo; if (a > b) continue;
-      const days = NkCasa.daysBetween(a, b), g = t.unitId === null || t.unitId === undefined ? 'solo:' + t.key : t.unitId;
+      const days = NkCasa.daysBetween(a, b);
+      if (t.mode !== 'nk') {                                   // Nov 2026: a Pauschal stay's "davon NK" is booked in the same room-month —
+        if (t.unitId !== null && t.unitId !== undefined && Number(t.pnk) > 0) pausch[String(t.unitId)] = (pausch[String(t.unitId)] || 0) + Number(t.pnk) * days / dim;
+        continue;                                              // … it is not NK the Kalt + NK tenant paid (e.g. Dhruv → Yuika, LA)
+      }
+      const g = t.unitId === null || t.unitId === undefined ? 'solo:' + t.key : t.unitId;
       (groups[g] = groups[g] || []).push({ t, days, a });
     }
     for (const g of Object.keys(groups)) {
       const list = groups[g], row = g.startsWith('solo:') ? null : inc.find(r => String(r.unit_id) === String(g) && Number(r.year) === yy && Number(r.month) === m);
       const sumDays = list.reduce((a, x) => a + x.days, 0);
+      const nkRow = row ? Math.max(0, (Number(row.nebenkosten) || 0) - (pausch[String(g)] || 0)) : 0;
       for (const x of list) {
-        const amt = row ? (Number(row.nebenkosten) || 0) * x.days / sumDays : scContractNk(x.t, ym, x.a) * x.days / dim;
+        const amt = row ? nkRow * x.days / sumDays : scContractNk(x.t, ym, x.a) * x.days / dim;
         x.t.vzMap[ym] = { amt: cxR(amt), src: row ? 'paid' : 'contract' };
         x.t.vzAuto += amt; if (!row) x.t.vzContract++;
       }
@@ -160,7 +175,8 @@ function scInputFor(y) {
   // running year: preview up to the end of the last completed month (costs, lived days and NK paid alike)
   const today = cxToday(), lastDone = NkCasa.addDays(today.slice(0, 7) + '-01', -1);
   const cutoff = per0.to >= today && lastDone >= per0.from ? lastDone : null;
-  const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [], period: per0, tenancies, cutoff });
+  const ja = typeof NkCasa.jaShares === 'function' ? scJaLinesFor(y, per0, cutoff) : undefined;   // Nov 2026: by their Abrechnungszeitraum
+  const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [], period: per0, tenancies, cutoff, ja });
   if (input.error) return input;
   const ts = (scRec(y) || {}).tenants || {};
   // Hausgeld (Versorger Jahresabrechnungen "shown in Settlements"): each one counts unless switched off here
@@ -186,8 +202,8 @@ function scInputFor(y) {
     input.tenancies.push({ key: 'x:' + x.id, tenantId: 'x:' + x.id, extra: true, name: x.name || 'Tenant', room: x.room || '', m2: room ? Number(room.flaeche_m2) || 0 : 0,
                            from, to, mode: 'nk', unitId: (units.find(u => scNorm(u.name) === scNorm(x.room)) || {}).id ?? null, contractNk: Number(x.nk) || 0, addr: x.addr || '' });
   }
+  scPauschalNk(input);                                     // first: the "davon NK" of Pauschal stays (scVzMonths keeps it apart)
   scVzMonths(input, y);
-  scPauschalNk(input);
   input.warn = (input.warn || []).filter(w => !/NK paid missing/.test(w));
   return input;
 }
@@ -213,7 +229,7 @@ function scModel(y) {
   // Split method (Oct 2026): 'quota' = Kostenquote (default) · 'days' = day-exact by person present
   // (an older nk-casa-engine.js without quota → falls back to day-exact instead of failing)
   const Rd = NkCasa.calc(input), Rq = typeof NkCasa.quota === 'function' ? NkCasa.quota(Rd) : Rd;
-  const method = ts.__method === 'days' || Rq === Rd ? 'days' : 'quota';
+  const method = Rq === Rd ? 'days' : 'quota';               // Nov 2026: Kostenquote only (the Day-exact switch is gone)
   const R = method === 'quota' ? Rq : Rd, Ralt = method === 'quota' ? Rd : Rq;
   const g = (typeof ctlSettlementModel === 'function' ? ctlSettlementModel() : []).find(x => x.p.id === CASA_PROP_ID);
   const perM = g ? g.periods.find(pp => pp.to.slice(0, 4) === String(y)) : null;
@@ -251,8 +267,10 @@ function scModel(y) {
   money.hgLines = R.lines.filter(l => l.group === 'hausgeld');              // Strom · Gas · Wasser yearly results (One-off · Versorger)
   if (money.hgLines.length) money.hg = cxR(-money.hgLines.reduce((a, l) => a + l.total, 0));   // a cost (Nachzahlung) = you pay
   const perFull = input.fullPeriod || input.period;
-  return { p, y, rec, locked, input, R, Rd, Rq, method, quota: Rq.quota, ten, perM, frist, per: perFull, running: perFull.to >= today,
+  const out = { p, y, rec, locked, input, R, Rd, Rq, method, quota: Rq.quota, ten, perM, frist, per: perFull, running: perFull.to >= today,
            pv: input.preview || null, sendable: !!perM, warn: input.warn || [], money, today };
+  out.jaGaps = scJaCover(out);                               // Nov 2026: days of this NK year still without a Jahresabrechnung
+  return out;
 }
 
 /* ── Overview ─────────────────────────────────────────────── */
@@ -315,6 +333,11 @@ function stRenderCasa() {
   if (M.running) needs.push({ tone: 'calm', icon: 'clock', t: 'Still running', s: 'NK-Abrechnung after ' + stDe(per.to) + ' · preview as of ' + (M.pv ? stDe(M.pv.cutoff) : 'today') + ' – costs, months and NK paid up to then' });
   else if (!M.sendable) needs.push({ tone: 'calm', icon: 'archive', t: 'Frist passed', s: 'letters and results stay here as history' });
   if (noData) needs.push({ tone: 'gold', icon: 'pencil', t: 'Type the house costs', s: 'nothing booked in Controlling for ' + stPer(per.from, per.to), act: 'data-sc="costs"' });
+  else if (M.sendable && !M.locked && (M.jaGaps || []).length) {
+    const jg = M.jaGaps;
+    needs.push({ tone: 'gold', icon: 'receipt', t: jg.length === 1 ? 'Jahresabrechnung missing' : jg.length + ' Jahresabrechnungen missing',
+                 s: jg.map(g => g.l + ' ' + scJaSpan(g.from, g.to) + (g.expTxt ? ' · ' + g.expTxt : '')).join(' · ') + ' · then lock the house costs', act: 'data-sc="ja"' });
+  }
   else if (M.sendable && !M.locked) needs.push({ tone: 'gold', icon: 'lock', t: 'Lock house costs', s: label + ' · then the letters can be sent', act: 'data-sc="costs"' });
   else if (M.sendable && open.length) needs.push({ tone: 'gold', icon: 'send', t: open.length + (open.length === 1 ? ' letter ready' : ' letters ready'), s: open.map(t => t.room).join(', '), act: 'data-sc="start"' });
   for (const t of sent) if (t.st && t.st.confirm) needs.push({ tone: 'gold', icon: 'check', t: 'Confirm ' + (t.st.res.via === 'miete' ? 'settlement with the rent' : 'settlement via Kaution'),
@@ -666,7 +689,8 @@ function scSpreadTxt(M, id) {
    The bill lives in the year it was received:
      nk_abrechnung_casa.tenants.__ja = { strom: [ { id, recv, dir, amt, co, ot, pd, pa } ], … }
    The money is the one booking in Controlling › One-off (Casa Castel · Versorger · its cost type ·
-   Show in Settlements · source_ref ja:<id>); it counts in the NK year of its date (Abflussprinzip).
+   Show in Settlements · source_ref ja:<id>). Nov 2026: it counts by its Abrechnungszeitraum
+   (bill.from / bill.to, also on the booking as nk_from / nk_to), split by days into the NK years.
    A booking typed in Controlling before (no bill here) shows as received + paid — received = its date.
    A paid bill folds to one line, like a settled Rentals card. */
 const SC_JA_ICON = { strom: 'bolt', gas: 'flame', wasser: 'drop', entsorg: 'bin' };
@@ -682,6 +706,7 @@ function scJaFindBk(id) {
   if (id === null || id === undefined) return null;
   const k = String(id);
   for (const y of Object.keys(SC.data)) { const o = (((SC.data[y] || {}).one_time) || []).find(x => String(x.id) === k); if (o) return o; }
+  const j = (SC.jaBk || []).find(x => String(x.id) === k); if (j) return j;
   return (window._ctrl.one_time || []).find(x => String(x.id) === k) || null;
 }
 function scJaOwnerYears() {                                // booking id → the year of the bill that owns it
@@ -718,6 +743,110 @@ function scJaSupCo(y, k, own) {                            // the company of the
   const a = scJaBills(y, k, own).filter(x => x.co), b = scJaBills(y - 1, k, own).filter(x => x.co);
   return (a.length ? a[a.length - 1] : b.length ? b[b.length - 1] : {}).co || '';
 }
+/* ── Nov 2026 · each Jahresabrechnung counts by its own Abrechnungszeitraum ─────────────────
+   amount × its days in the NK year ÷ all days of its Zeitraum (NkCasa.jaShares) — the parts add
+   up exactly to the bill. Its Zeitraum: typed here from the bill, else suggested from the usual
+   Abrechnungsjahr in Providers › Utilities (shown as "suggested" until confirmed).
+   A NK year is complete when every day is covered by a bill — or marked "no bill":
+     nk_abrechnung_casa.tenants.__noBill = { gas: [ { from, to, at } ], … } */
+const SC_MONTHS_L = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const scJaHist = k => { const c = scHgCat(k); return c && Array.isArray(c.abr_hist) ? c.abr_hist : []; };
+const scJaSpan = (a, b) => stDate(a) + '\u2013' + stDate(b);
+const scJaMonY = iso => iso ? SC_MONTHS_L[Number(iso.slice(5, 7)) - 1] + ' ' + iso.slice(0, 4) : '';
+function scJaYearOf(day) {                                 // the NK year whose period holds a day
+  const y = Number(String(day || '').slice(0, 4)); if (!y) return null;
+  for (const yy of [y, y + 1, y - 1]) { const p = scPeriod(yy); if (p && day >= p.from && day <= p.to) return yy; }
+  return y;
+}
+function scJaBkAll() {                                     // the bookings: all years (loaded once) + what a loaded year holds
+  const m = new Map();
+  for (const o of (SC.jaBk || [])) if (scJaIsBk(o)) m.set(String(o.id), o);
+  for (const y of Object.keys(SC.data)) for (const o of (((SC.data[y] || {}).one_time) || [])) if (scJaIsBk(o)) m.set(String(o.id), o);
+  return [...m.values()];
+}
+function scJaZr(k, b, o) {                                 // a bill's Zeitraum → { from, to, ok } (ok = from the bill)
+  if (b && b.from && b.to) return { from: scD(b.from), to: scD(b.to), ok: true };
+  if (o && o.nk_from && o.nk_to) return { from: scD(o.nk_from), to: scD(o.nk_to), ok: true };
+  const day = (b && (b.recv || b.pd)) || (o && scD(o.invoice_date)) || null;
+  const sg = day && typeof NkCasa.jaSuggest === 'function' ? NkCasa.jaSuggest(scJaHist(k), day) : null;
+  return sg ? { from: sg.from, to: sg.to, ok: false, src: sg.src } : null;
+}
+/* every Jahresabrechnung of every year: typed here (received or paid) + older bookings from Controlling */
+function scJaAll() {
+  const own = scJaOwnerYears(), bks = scJaBkAll(), out = [];
+  const bk = id => bks.find(o => String(o.id) === String(id)) || scJaFindBk(id);
+  for (const r of SC.rows) {
+    const ja = (r.tenants || {}).__ja || {};
+    for (const k of Object.keys(ja)) for (const b of (ja[k] || [])) {
+      if (!b) continue;
+      const paid = b.ot !== null && b.ot !== undefined, o = paid ? bk(b.ot) : null;
+      const dir = Number(b.dir) === 1 ? 1 : Number(b.dir) === -1 ? -1 : 0, amt = cxR(Number(b.amt) || (o ? Number(o.amount) || 0 : 0));
+      if (!(b.recv || paid) || !dir || !(amt > 0)) continue;
+      const z = scJaZr(k, b, o); if (!z) continue;
+      out.push({ k, y: Number(r.year), bid: b.id, id: paid ? 'ot:' + b.ot : 'ja:' + b.id, dir, amt, cost: dir === 1 ? -amt : amt,
+                 day: b.recv || (o && scD(o.invoice_date)) || b.pd || null, co: b.co || (o && o.company) || '', from: z.from, to: z.to, ok: z.ok });
+    }
+  }
+  for (const o of bks) {                                   // booked in Controlling before (no bill typed here)
+    if (!o.nk_umlage || own[String(o.id)] !== undefined) continue;
+    const k = scJaSupOf(o); if (!k) continue;
+    const z = scJaZr(k, null, o), amt = cxR(Number(o.amount) || 0); if (!z || !(amt > 0)) continue;
+    const dir = Number(o.direction) === 1 ? 1 : -1, day = scD(o.invoice_date);
+    out.push({ k, y: scJaYearOf(day), bid: 'ot:' + o.id, id: 'ot:' + o.id, dir, amt, cost: dir === 1 ? -amt : amt, day, co: o.company || '', from: z.from, to: z.to, ok: z.ok, legacy: true });
+  }
+  return out;
+}
+function scJaNkPeriods(z) {                                // the NK periods a Zeitraum touches → [{ y, from, to }]
+  const out = [], y0 = Number(z.from.slice(0, 4)) - 1, y1 = Number(z.to.slice(0, 4)) + 1;
+  for (let y = y0; y <= y1; y++) { const p = scPeriod(y); if (p && p.from && p.to) out.push({ y, from: p.from, to: p.to }); }
+  return out;
+}
+const scJaShares = (z, cost) => z && cost && typeof NkCasa.jaShares === 'function' ? NkCasa.jaShares({ from: z.from, to: z.to, amount: cost }, scJaNkPeriods(z)) : {};
+const scJaSplitTxt = sh => Object.keys(sh).sort().map(y => 'NK ' + y + ': ' + scE(Math.abs(sh[y].amount))).join(' · ');
+/* this NK year's share of every Jahresabrechnung → the engine's src.ja (running year: its days up to the preview) */
+function scJaLinesFor(y, per, cutoff) {
+  const out = [], e2 = v => cxE2(Math.abs(Number(v) || 0)) + '\u00a0\u20ac';
+  for (const b of scJaAll()) {
+    const N = NkCasa.daysBetween(b.from, b.to); let share, days;
+    if (cutoff) {
+      const f = b.from > per.from ? b.from : per.from, t = b.to < cutoff ? b.to : cutoff;
+      if (f > t) continue;
+      days = NkCasa.daysBetween(f, t); share = NkCasa.r2(b.cost * days / N);
+    } else {
+      const sh = scJaShares(b, b.cost)[y]; if (!sh) continue;
+      share = sh.amount; days = sh.days;
+    }
+    if (Math.abs(share) < 0.005) continue;
+    const c = scHgCat(b.k), name = c ? c.name : b.k;
+    out.push({ id: b.id, catId: c ? c.id : null, share, label: name,
+      info: { date: b.day, company: b.co, amount: share, full: b.cost, from: b.from, to: b.to, ok: b.ok, days, of: N, y: b.y, k: b.k, bid: b.bid,
+              item: name + ' · Jahresabrechnung ' + scJaSpan(b.from, b.to) + ' · ' + (b.dir === 1 ? 'Guthaben ' : 'Nachzahlung ') + e2(b.amt) + ' · anteilig ' + days + ' von ' + N + ' Tagen' } });
+  }
+  return out;
+}
+/* the days of this NK year still without a Jahresabrechnung — per supplier with an Abrechnungsjahr in Providers */
+function scJaCover(M) {
+  if (!M || M.locked || typeof NkCasa.jaGaps !== 'function') return [];
+  const end = M.running ? (M.pv ? M.pv.cutoff : null) : M.per.to; if (!end) return [];
+  const all = scJaAll(), today = cxToday(), nb = ((M.rec && M.rec.tenants) || {}).__noBill || {}, out = [];
+  for (const [k, l] of SC_HG_TYPES) {
+    if (!scHgCat(k)) continue;
+    const H = NkCasa.jaHist(scJaHist(k)); if (!H.length) continue;      // no Abrechnungsjahr in Providers → not watched
+    const from = H[0].from > M.per.from ? H[0].from : M.per.from; if (from > end) continue;
+    for (const g of NkCasa.jaGaps({ from, to: end }, all.filter(b => b.k === k).concat(nb[k] || []))) {
+      const ex = NkCasa.jaExpect(scJaHist(k), g.to);
+      const late = !!ex && NkCasa.addDays(scLastOfMonth(Number(ex.slice(0, 4)), Number(ex.slice(5, 7))), 15) < today;   // as in Rentals: 15 days after that month
+      out.push({ k, l, from: g.from, to: g.to, days: g.days, exp: ex, late, expTxt: ex ? 'expected around ' + scJaMonY(ex) : '' });
+    }
+  }
+  return out;
+}
+/* the Zeitraum also on the booking (Controlling shows it there) — the bill here stays the source */
+async function scJaMirror(e) {
+  if (!e || e.ot === null || e.ot === undefined) return;
+  try { scJaSync(await ctlUpdateOneTime(e.ot, { nk_from: e.from || null, nk_to: e.to || null })); }
+  catch (err) { console.warn('[settlements] Zeitraum not copied to the booking', err); }
+}
 function scJaModel(M) {
   const own = scJaOwnerYears(), today = cxToday();
   const watch = !M.locked && (M.running || M.sendable);   // a missing bill can only be "overdue" while the year is still open
@@ -751,12 +880,6 @@ function scJaModel(M) {
     (!nIn && rng ? ' · expected ' + rng : '');
   return { S, n, nIn, nPaid, net: nIn ? net : null, say, tone, chip, tile, heroSub, done: !!n && nPaid === n };
 }
-/* the NK year a payment counts in, when it is not this one */
-function scJaNkNote(M, d) {
-  const day = d ? scD(d) : ''; if (!day || (day >= M.per.from && day <= M.per.to)) return '';
-  for (const yy of [M.y - 1, M.y + 1]) { const p = scPeriod(yy); if (p && day >= p.from && day <= p.to) return ' · counts in NK ' + yy; }
-  return ' · counts in another NK year';
-}
 function scJaView(M) {
   const J = scJaModel(M), can = !M.locked;
   const head = stMHead('Jahresabrechnungen ' + M.y, 'Casa Castel · ' + (J.S.map(s => s.l).join(' · ') || 'Versorger'), 'receipt', 'data-sc="close"');
@@ -765,8 +888,38 @@ function scJaView(M) {
   const hero = stMHero({ tone, label: net === null ? 'Result' : net > 0.004 ? 'Guthaben in total' : net < -0.004 ? 'Nachzahlung in total' : 'Balanced',
                          amount: net, sub: J.heroSub, settled: J.done });
   const lock = M.locked ? '<p class="sc-ja__lock"><i class="ti ti-lock" aria-hidden="true"></i> House costs ' + M.y + ' are locked – unlock them to change. A late payment dated after ' + stDate(M.per.to) + ' can still be booked.</p>' : '';
-  return head + '<div class="srm__b mx-b">' + hero + lock + J.S.map(s => scJaSupHtml(M, s, can)).join('') +
-    '<p class="sc-hg__note sc-ja__note">Abflussprinzip: each one counts in the NK year it was paid or refunded. \u201cMoney paid / received\u201d books it into Controlling › One-off.</p></div>';
+  return head + '<div class="srm__b mx-b">' + hero + lock + J.S.map(s => scJaSupHtml(M, s, can)).join('') + scJaNkHtml(M) +
+    '<p class="sc-hg__note sc-ja__note">\u201cMoney paid / received\u201d books it into Controlling › One-off.</p></div>';
+}
+/* Nov 2026 · what counts in this NK year: every bill touching it (also those that came the year after) + the days still missing */
+function scJaNkHtml(M) {
+  const can = !M.locked, nb = ((M.rec && M.rec.tenants) || {}).__noBill || {}, hs = M.money.hgAll || [], gaps = M.jaGaps || [];
+  const blocks = SC_HG_TYPES.filter(([k]) => scHgCat(k)).map(([k, l]) => {
+    const c = scHgCat(k), watched = NkCasa.jaHist ? NkCasa.jaHist(scJaHist(k)).length > 0 : false;
+    const mine = hs.filter(h => (h.info || {}).k ? h.info.k === k : Number(h.catId) === Number(c.id))
+      .sort((a, b) => String((a.info || {}).from || '').localeCompare(String((b.info || {}).from || '')) || String(a.id).localeCompare(String(b.id)));
+    const rows = mine.map(h => {
+      const i = h.info || {}, full = Number(i.full ?? i.amount) || 0, other = i.y && Number(i.y) !== Number(M.y);
+      return [String(i.from || ''), '<div class="sc-jn__r' + (h.on ? '' : ' is-off') + '"><span class="sc-jn__m"><b>' + stEsc(i.from && i.to ? scJaSpan(i.from, i.to) : h.label) + '</b>' +
+        '<small>' + stEsc((full < 0 ? 'Guthaben ' : 'Nachzahlung ') + scE(Math.abs(full)) + (i.days && i.of ? ' · ' + i.days + ' of ' + i.of + ' days' : '') + (h.on ? '' : ' · not in the NK')) + '</small>' +
+        (i.ok === false ? '<small class="sc-jn__sg">suggested Zeitraum – confirm it from the bill</small>' : '') +
+        (other ? '<button type="button" class="cx-link sc-jn__go" data-sc="jaYear" data-y="' + Number(i.y) + '">came in ' + Number(i.y) + ' \u203a</button>' : '') + '</span>' +
+        '<span class="sc-jn__v ' + (Number(i.amount) < 0 ? 'pos' : 'neg') + '">' + scE(Math.abs(Number(i.amount) || 0)) + '</span></div>'];
+    });
+    const gp = gaps.filter(g => g.k === k).map(g => [g.from, '<div class="sc-jn__r is-gap"><span class="sc-jn__m"><b>' + stEsc(scJaSpan(g.from, g.to)) + '</b>' +
+      '<small class="' + (M.running ? '' : 'neg') + '">' + stEsc((M.running ? 'still to come' : g.late ? 'missing · overdue' : 'missing') + (g.expTxt ? ' · ' + g.expTxt : '')) + '</small></span>' +
+      (can && !M.running ? '<button type="button" class="cx-link sc-jn__nb" data-sc="jaNoBill" data-k="' + k + '" data-f="' + g.from + '" data-t="' + g.to + '">no bill</button>' : '') + '</div>']);
+    const nbs = (nb[k] || []).map((x, i) => [String(x.from || ''), '<div class="sc-jn__r is-nb"><span class="sc-jn__m"><b>' + stEsc(scJaSpan(x.from, x.to)) + '</b><small>no bill – marked by you</small></span>' +
+      (can ? '<button type="button" class="cx-link sc-jn__nb" data-sc="jaNoBillUndo" data-k="' + k + '" data-i="' + i + '">undo</button>' : '') + '</div>']);
+    const list = rows.concat(gp, nbs).sort((a, b) => a[0].localeCompare(b[0])).map(x => x[1]).join('');   // one list in date order
+    const none = list ? '' : '<div class="sc-jn__r"><span class="sc-jn__m"><small>nothing in NK ' + M.y + '</small></span></div>';
+    const hint = watched || M.locked ? '' : '<p class="sc-jn__h">Set its Abrechnungsjahr in Providers › Utilities – then a missing bill shows here.</p>';
+    return '<div class="sc-jn__s"><p class="sc-jn__t">' + stIc(SC_JA_ICON[k] || 'receipt', 15) + '<span>' + stEsc(l) + '</span></p>' + list + none + hint + '</div>';
+  }).join('');
+  const sum = cxR(hs.filter(h => h.on).reduce((a, h) => a + (Number((h.info || {}).amount) || 0), 0));
+  return '<div class="srm__card sc-jn"><div class="srm__ch"><p class="srm__ct">In NK ' + M.y + '</p><span class="srm__cs ' + (sum < -0.004 ? 'pos' : sum > 0.004 ? 'neg' : '') + '">' +
+    (hs.length ? (sum < -0.004 ? 'Guthaben ' : sum > 0.004 ? 'Nachzahlung ' : '') + scE(Math.abs(sum)) : '\u2014') + '</span></div>' + blocks +
+    '<p class="sc-hg__note">Each counts with its days in ' + M.y + ' ÷ all its days. The usual Abrechnungsjahr comes from Providers › Utilities.</p></div>';
 }
 function scJaSupHtml(M, s, can) {
   const bills = s.bills.length ? s.bills : [{ id: 'new:' + s.k, blank: true, co: s.co }];
@@ -778,7 +931,12 @@ function scJaSupHtml(M, s, can) {
 function scJaBillHtml(M, s, b, can) {
   const at = ' data-k="' + s.k + '" data-b="' + stEsc(b.id) + '"';
   const dir = Number(b.dir) === 1 ? 1 : Number(b.dir) === -1 ? -1 : 0, paid = !!b.paid, recv = !!b.recv, amt = Number(b.amt) || 0;
-  const open = !!SC.open['ja:' + b.id], nk = scJaNkNote(M, b.pd);
+  const open = !!SC.open['ja:' + b.id];
+  // Nov 2026 · its Abrechnungszeitraum (from the bill, else suggested) and what it adds to each NK year
+  const bo = b.ot !== null && b.ot !== undefined ? scJaFindBk(b.ot) : null;
+  const z = !b.blank && (recv || paid) ? scJaZr(s.k, b, bo) : null, base = amt || Number(b.pa) || 0;
+  const split = z && base && dir ? scJaSplitTxt(scJaShares(z, dir === 1 ? -base : base)) : '';
+  const nk = z ? ' · ' + scJaSpan(z.from, z.to) + (z.ok ? '' : ' (suggested)') + (split ? ' · ' + split : '') : '';
   const v = amt ? '<span class="sc-ja__v ' + (dir > 0 ? 'pos' : 'neg') + '">' + scE(amt) + '</span>' : '<span class="sc-ja__v is-nil">\u2014</span>';
   const fx = paid && open ? '<button type="button" class="sc-ja__fx" data-sc="jaFold"' + at + ' aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '';
   const lbl = '<p class="mx-lbl sc-ja__lbl">' + stIc(s.icon, 16) + '<span class="sc-ja__n">' + stEsc(s.l + (b.co ? ' · ' + b.co : '')) + '</span>' + v + fx + '</p>';
@@ -799,11 +957,16 @@ function scJaBillHtml(M, s, b, can) {
   const box = '<div class="sc-ja__box">' + seg +
     '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="amt"' + at + ' value="' + (amt ? cxE2(amt) : '') + '" placeholder="0,00"' + dis + '/><em>\u20ac</em></span></label>' +
     '<label class="mx-f"><span>Received on</span><input type="date" data-scja="recv"' + at + ' value="' + stEsc(b.recv || '') + '"' + dis + '/></label>' +
-    '<label class="mx-f sc-ja__full"><span>Company</span><input type="text" autocomplete="off" data-scja="co"' + at + ' value="' + stEsc(b.co || '') + '"' + dis + '/></label></div>';
+    '<label class="mx-f sc-ja__full"><span>Company</span><input type="text" autocomplete="off" data-scja="co"' + at + ' value="' + stEsc(b.co || '') + '"' + dis + '/></label>' +
+    (z ? '<p class="sc-ja__zl">Abrechnungszeitraum<span class="sc-ja__zs' + (z.ok ? ' is-ok' : '') + '">' + (z.ok ? 'from the bill' : 'suggested') + '</span></p>' +
+      '<label class="mx-f"><span>From</span><input type="date" data-scja="zf"' + at + ' value="' + stEsc(z.from) + '"' + dis + '/></label>' +
+      '<label class="mx-f"><span>To</span><input type="date" data-scja="zt"' + at + ' value="' + stEsc(z.to) + '"' + dis + '/></label>' +
+      '<p class="sc-ja__split">' + stEsc(split || 'outside every NK year') +
+        (!z.ok && can ? '<button type="button" class="cx-link sc-ja__zok" data-sc="jaZok"' + at + '>matches the bill</button>' : '') + '</p>' : '') + '</div>';
   // ── money paid / received (= the booking in Controlling)
   const ready = recv && !!dir && amt > 0;
   const lockedIn = d => M.locked && !!d && scD(d) <= M.per.to;
-  const s2 = paid ? (dir > 0 ? 'received ' : 'paid ') + stDate(b.pd) + ' · ' + scE(b.pa ?? amt) + nk
+  const s2 = paid ? (dir > 0 ? 'received ' : 'paid ') + stDate(b.pd) + ' · ' + scE(b.pa ?? amt)
     : ready ? 'flip it when it\u2019s ' + (dir > 0 ? 'on your account' : 'paid')
     : 'first add: ' + [!recv ? 'received date' : '', !dir ? 'result' : '', !(amt > 0) ? 'amount' : ''].filter(Boolean).join(' · ');
   const rowPay = stMRow({ icon: 'coins', title: dir > 0 ? 'Money received' : 'Money paid', sub: stEsc(s2), on: paid,
@@ -862,6 +1025,7 @@ function scJaSync(row, goneId) {
   const L = (window._ctrl.one_time || []).filter(o => String(o.id) !== id);
   if (row && String(row.invoice_date).slice(0, 4) === String(window._ctrl.year)) L.push(row);
   window._ctrl.one_time = L;
+  if (Array.isArray(SC.jaBk)) { SC.jaBk = SC.jaBk.filter(o => String(o.id) !== id); if (row && scJaIsBk(row)) SC.jaBk.push(row); }   // Nov 2026: all years
 }
 function scJaAdd(k) {
   if (!scJaCan(SC.model)) return;
@@ -888,6 +1052,13 @@ async function scJaAct(a, btn) {
       try { scJaSync(await ctlUpdateOneTime(e.ot, { direction: v })); } catch (err) { stSay('Could not change it in Controlling — ' + (err.message || err)); }
     }
     scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
+  }
+  if (a === 'jaZok') {                                     // Nov 2026: the suggested Abrechnungszeitraum is the one on the bill
+    const e = scJaOwn(k, bid), z = scJaZr(k, e, e.ot !== null && e.ot !== undefined ? scJaFindBk(e.ot) : null);
+    if (!z) return;
+    e.from = z.from; e.to = z.to;
+    await scJaMirror(e);
+    scQueueSave(scRecEnsure(SC.year)); stSay('Abrechnungszeitraum confirmed'); return scJaRefresh();
   }
   if (a === 'jaDel') {
     const r = scRecEnsure(SC.year), ja = r.tenants.__ja || {}, list = ja[k] || [];
@@ -925,10 +1096,12 @@ async function scJaPay(k, bid, cur, btn) {
       row = Object.keys(fix).length ? await ctlUpdateOneTime(dup.id, fix) : dup;
     } else {
       row = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: c.name + ' · Jahresabrechnung', company: e.co || null, amount: pay,
-                                  kind: 'Versorger', direction: dir, nk_umlage: true, nk_category_id: c.id, source_ref: 'ja:' + e.id });
+                                  kind: 'Versorger', direction: dir, nk_umlage: true, nk_category_id: c.id, source_ref: 'ja:' + e.id,
+                                  nk_from: e.from || null, nk_to: e.to || null });       // Nov 2026: its Abrechnungszeitraum (when typed)
     }
   } catch (err) { if (btn) btn.disabled = false; stSay('Could not book it in Controlling — ' + (err.message || err)); return; }
   e.ot = row.id; scJaSync(row);
+  if (dup && e.from && e.to) await scJaMirror(e);
   try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
   stSay(dir > 0 ? 'Guthaben booked in Controlling' : 'Nachzahlung booked in Controlling');
   scJaRefresh();
@@ -943,6 +1116,14 @@ async function scJaUnpay(k, bid, cur) {
   scJaSync(null, id); e.ot = null;
   try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) { stSay('Saving failed — ' + (err.message || err)); }
   scJaRefresh();
+}
+/* Nov 2026 · a gap without a bill (e.g. a supplier that sent none): the NK year counts as complete there */
+function scJaNoBill(a, b) {
+  if (!scJaCan(SC.model)) return;
+  const r = scRecEnsure(SC.year), nb = (r.tenants.__noBill = r.tenants.__noBill || {}), k = b.dataset.k, list = (nb[k] = nb[k] || []);
+  if (a === 'jaNoBill') list.push({ from: b.dataset.f, to: b.dataset.t, at: cxToday() });
+  else { list.splice(Number(b.dataset.i), 1); if (!list.length) delete nb[k]; }
+  scQueueSave(r); stRenderCasaQuiet();
 }
 /* A field changed (saved on leaving the field) */
 async function scJaInput(el) {
@@ -965,6 +1146,17 @@ async function scJaInput(el) {
     scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
   }
   if (!scJaCan(M)) return scJaRefresh();
+  if (f === 'zf' || f === 'zt') {                          // Nov 2026: the Abrechnungszeitraum from the bill (emptied → suggested again)
+    const e = scJaOwn(k, bid), z = scJaZr(k, e, e.ot !== null && e.ot !== undefined ? scJaFindBk(e.ot) : null) || {}, v = scD(el.value) || null;
+    if (!v) { delete e.from; delete e.to; }
+    else {
+      const from = f === 'zf' ? v : (e.from || z.from), to = f === 'zt' ? v : (e.to || z.to);
+      if (!from || !to || to < from) { stSay('The Abrechnungszeitraum has to end after it starts'); return scJaRefresh(); }
+      e.from = from; e.to = to;
+    }
+    await scJaMirror(e);
+    scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
+  }
   const e = scJaOwn(k, bid), hasBk = e.ot !== null && e.ot !== undefined;
   if (f === 'amt') {
     const n = cxParse(el.value), old = Number(e.amt) || 0;
@@ -987,7 +1179,7 @@ function scCostsView(M) {
   const R = M.R, Lc = R.check, lnd = R.landlord, can = !M.locked;
   const sup = scHgSuppliers(M), hs = M.money.hgAll || [], missing = sup.filter(x => !x.list.length);
   const step = !R.lines.length ? 0 : M.locked ? 3 : 2;
-  const perRow = '<p class="sr-progmeta">NK period ' + stDate(M.per.from) + '–' + stDate(M.per.to) + ' · Abflussprinzip</p>';
+  const perRow = '<p class="sr-progmeta">NK period ' + stDate(M.per.from) + '–' + stDate(M.per.to) + ' · Jahresabrechnungen by their Abrechnungszeitraum</p>';
   const prog = '<div class="srm__card sr-progcard">' + scSteps(['Collected', 'Jahresabrechnungen', 'Locked'], step) + perRow +
     '<p class="sr-progmeta">' + (M.locked ? 'Locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot · <button class="cx-link" data-sc="unlock">unlock</button>'
       : R.lines.length ? 'Live from Controlling · ' + R.lines.length + ' lines' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : '') : 'Nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet') + '</p></div>';
@@ -995,18 +1187,20 @@ function scCostsView(M) {
   // Jahresabrechnungen: one line each · switch "in the NK" · Belegliste (Oct 2026: typed and paid only in the Jahresabrechnungen pop-up)
   const list = ((M.rec && M.rec.tenants) || {}).__hgList || {};
   const hgRow = (x, h) => {
-    const info = h.info || {}, cost = Number(info.amount) || 0, gut = cost < 0;
+    // Nov 2026: the value is this year's share · below: the whole bill and its Abrechnungszeitraum
+    const info = h.info || {}, cost = Number(info.amount) || 0, full = Number(info.full ?? info.amount) || 0, gut = full < 0;
+    const zr = info.from && info.to ? ' · ' + scJaSpan(info.from, info.to) + (info.ok === false ? ' (suggested)' : '') + (info.days && info.of ? ' · ' + info.days + ' of ' + info.of + ' days' : '') : (info.date ? (gut ? ' · received ' : ' · paid ') + stDate(info.date) : '');
     return '<div class="sc-hgr' + (h.on ? '' : ' is-off') + '"><span class="sc-hgr__n">' + stEsc(x.l + (info.company ? ' · ' + info.company : '')) +
-      '<small>' + (gut ? 'Guthaben' : 'Nachzahlung') + (info.date ? (gut ? ' · received ' : ' · paid ') + stDate(info.date) : '') + (h.on ? '' : ' · not in the NK') + '</small>' +
+      '<small>' + (gut ? 'Guthaben ' : 'Nachzahlung ') + stEsc(scE(Math.abs(full)) + zr) + (h.on ? '' : ' · not in the NK') + '</small>' +
       '<small>' +
         '<button type="button" class="cx-link sc-hgr__bl' + (list[h.id] ? ' is-on' : '') + '" data-sc="hglist" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') + '>Belegliste ' + (list[h.id] ? 'on' : 'off') + '</button></small></span>' +
       '<span class="sc-hgr__v ' + (gut ? 'pos' : 'neg') + '">' + stEur(cxR(Math.abs(cost))) + '</span>' +
       '<button type="button" class="sc-hgr__tg' + (h.on ? ' on' : '') + '" data-sc="hgtog" data-id="' + stEsc(h.id) + '" aria-pressed="' + h.on + '" aria-label="In the NK"' + (can ? '' : ' disabled') + '></button></div>';
   };
   const hgRows = sup.map(x => x.list.length ? x.list.map(h => hgRow(x, h)).join('')
-    : '<div class="sc-hgr"><span class="sc-hgr__n">' + stEsc(x.l) + '<small>no Jahresabrechnung paid in ' + M.y + '</small></span><span></span><span></span></div>').join('');
+    : '<div class="sc-hgr"><span class="sc-hgr__n">' + stEsc(x.l) + '<small>nothing counted in NK ' + M.y + '</small></span><span></span><span></span></div>').join('');
   const hgCard = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p><span class="srm__cs">in the NK</span></div>' + hgRows +
-    '<p class="sc-hg__note">Entered in <button type="button" class="cx-link sc-hg__go" data-sc="ja">Jahresabrechnungen</button> on the Casa Castel card – here you only choose what goes into the NK. In the letter each one is netted into its cost type.</p></div>';
+    '<p class="sc-hg__note">Entered in <button type="button" class="cx-link sc-hg__go" data-sc="ja">Jahresabrechnungen</button> on the Casa Castel card – here you only choose what goes into the NK. Each counts with its days in ' + M.y + ' and is netted into its cost type in the letter.</p></div>';
 
   // Kosten: per group, folded – the classic list behind a tap
   const groups = [['typed', 'Typed by you', 'positions'], ['running', 'Laufende Kosten', 'Expenses · Casa Castel'], ['hausgeld', 'Jahresabrechnungen', 'netted into their cost type'], ['oneoff', 'Einmalig', 'NK one-offs']];
@@ -1023,7 +1217,7 @@ function scCostsView(M) {
   const q = M.quota || {}, anySent = M.ten.some(t => t.k === 'sent' || (t.k === 'done' && !t.skipped));
   const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const verteilung = R.lines.length ? '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Verteilung</p></div>' +
-    '<div class="sr-seg3 sc-seg2" role="group">' + [['quota', 'Kostenquote'], ['days', 'Day-exact']].map(([v, l]) => '<button type="button" class="' + (M.method === v ? 'is-on' : '') + '" data-sc="method" data-v="' + v + '" aria-pressed="' + (M.method === v) + '"' + (anySent || M.locked ? ' disabled' : '') + '>' + l + '</button>').join('') + '</div>' +
+    '<p class="sc-meth1">Kostenquote · all house costs ÷ all months lived</p>' +
     '<div><div class="sr-tl"><span>Kosten gesamt</span><b>' + scE(Lc.total) + '</b></div>' +
     (M.method === 'quota' && q.months ? '<div class="sr-tl"><span>÷ months lived <small>all rooms · Ø ' + nf(q.persons, 1) + ' people</small></span><span>' + scMo(q.months) + '</span></div>' +
       '<div class="sr-tl sr-tl--res is-g"><span><b>= per month lived</b></span><b>' + scE(q.rate) + '</b></div>'
@@ -1043,8 +1237,10 @@ function scCostsView(M) {
   const hero = stMHero({ tone: 'none', label: 'House costs ' + M.y, amount: R.lines.length ? Lc.total : null,
     sub: R.lines.length ? 'NK ' + stDate(M.per.from) + '–' + stDate(M.per.to) + ' · ' + (M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot' : 'live from Controlling · ' + R.lines.length + ' lines' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : ''))
       : 'nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet' });
-  const lockRow = stMRow({ icon: 'lock', title: 'House costs locked', on: M.locked, disabled: !M.locked && (!M.sendable || !R.lines.length),
-    sub: M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · letters can be sent' : M.running ? 'lock after ' + stDe(M.per.to) : !R.lines.length ? 'nothing to lock yet' : 'lock to send the letters',
+  const gaps = M.locked || M.running ? [] : (M.jaGaps || []);   // Nov 2026: every day of the year needs its Jahresabrechnung first
+  const lockRow = stMRow({ icon: 'lock', title: 'House costs locked', on: M.locked, disabled: !M.locked && (!M.sendable || !R.lines.length || gaps.length > 0),
+    sub: M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · letters can be sent' : M.running ? 'lock after ' + stDe(M.per.to) : !R.lines.length ? 'nothing to lock yet'
+      : gaps.length ? (gaps.length === 1 ? 'waiting for the ' + gaps[0].l + ' bill' : 'waiting for ' + gaps.length + ' bills') + ' · see Jahresabrechnungen' : 'lock to send the letters',
     right: hasList ? '<button type="button" class="mx-pill" data-sc="listPdf">' + stIc('doc', 15) + 'Belegliste</button>' : '',
     switchAttrs: M.locked ? 'data-sc="unlock"' : 'data-sc="lock"' });
   return stMHead('House costs ' + M.y, 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to), 'house', 'data-sc="close"') +
@@ -1120,7 +1316,7 @@ function scTenView(M, m) {
   const vzOver = s.vz !== undefined && s.vz !== null && s.vz !== '';
   const vzSrc = (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length)) ? 'changed by you' : t.vzContract ? t.vzContract + ' month(s) per contract' : 'per Controlling';
   const lk = 'tl:' + t.key, lo = !!SC.open[lk];
-  const altV = t.altSaldo, altTxt = altV === undefined ? '' : (M.method === 'quota' ? 'Day-exact' : 'Kostenquote') + ' would be: ' + (altV > 0.004 ? first + ' pays you ' + scE(altV) : altV < -0.004 ? first + ' gets back ' + scE(-altV) : 'all even');
+  const altTxt = '';                                         // Nov 2026: Kostenquote only — no comparison line
   const calc = '<div class="mx-dr"><span class="mx-d" style="background:#D7CCEA"></span><span>Lived here<small>' + stEsc(stPer(t.from, t.to)) + '</small></span><span class="mx-a">' + (M.method === 'quota' ? scMo(t.months) + ' months' : t.days + ' days') + '</span></div>' +
     '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Share<small>' + stEsc(M.method === 'quota' && q.months ? scMo(t.months) + ' × ' + scE(q.rate) + ' · Kostenquote' : 'day by day') + '</small></span><span class="mx-a">' + scE(t.sum) + '</span></div>' +
     '<button class="mx-dr mx-drb" data-sc="pill" data-p="vz" ' + kAttr + '><span class="mx-d" style="background:#A9BFD3"></span><span>− Vorauszahlungen<small>' + stEsc(vzSrc) + ' · per month ' + (vzOpen ? '⌃' : '›') + '</small></span><span class="mx-a">' + scE(t.vz) + '</span></button>' + vzEd +
@@ -1405,7 +1601,7 @@ async function scLetterData(M, t) {
              'Monatliche Kosten zählen im jeweiligen Monat, Jahresbeträge gleichmäßig über alle Tage, Einzelrechnungen ab dem Rechnungsdatum bis zum Ende des Zeitraums.',
              ...(merged ? ['Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
              'Nicht umlagefähige Kosten sind nicht enthalten.'],
-    extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: extraLines.some(l => l.group === 'hausgeld') ? 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung auf Seite 2 eingeflossen sind. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.' : 'Die Einzelrechnungen, die auf Seite 2 in die Aufstellung eingeflossen sind – ohne eigene Kostenart unter „Allgemeine Hauskosten“.',
+    extra: list && extraLines.length ? { title: 'Belegliste ' + y, sumLabel: 'Summe Belege', intro: extraLines.some(l => l.group === 'hausgeld') ? 'Einzelrechnungen und Jahresabrechnungen der Versorger, die in die Aufstellung eingeflossen sind – Jahresabrechnungen mit ihrem Anteil für ' + y + '. Laufende Abschläge stehen dort mit ihrem Jahresbetrag.' : 'Die Einzelrechnungen, die auf Seite 2 in die Aufstellung eingeflossen sind – ohne eigene Kostenart unter „Allgemeine Hauskosten“.',
       rows: extraLines.map(l => [l.info.date, l.info.item || l.label, l.info.company || '', l.info.amount]), sum: cxR(extraLines.reduce((a, l) => a + l.info.amount, 0)) } : null,
   };
   if (!Q) return scLetterLayout(D, M, t, { SL, Q, merged, list, extraLines, house, partial });
@@ -1422,8 +1618,8 @@ async function scLetterData(M, t) {
     mo + ' Monate × ' + eur(Q.rate) + ' = <strong>' + eur(t.sum) + '</strong>. Das sind ' + qPct + ' der Kosten – so verteilt sich der Betrag auf die Kostenarten:';
   D.table.cols = [{ label: 'Kostenart', w: '52%' }, { label: 'Kosten Haus', w: '24%', cls: 'r' }, { label: 'Dein Betrag', w: '24%', cls: 'r' }];
   D.notes2 = ['Alle umlagefähigen Kosten des Jahres werden zusammengezählt und gleichmäßig auf alle bewohnten Monate verteilt (Personenmonate). Ein- und Auszugsmonate zählen tagesgenau.',
-              'Jeder bewohnte Monat kostet dadurch gleich viel – egal, wann im Jahr und wie viele Personen gerade im Haus wohnen. Monate ohne Bewohner zählen nicht mit.',
-              ...(merged ? ['Jahresabrechnungen der Versorger sind direkt mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
+              'Jeder bewohnte Monat kostet dadurch gleich viel – egal, wann im Jahr und wie viele Personen gerade im Haus wohnen.',
+              ...(merged ? ['Jahresabrechnungen der Versorger zählen anteilig nach ihrem Abrechnungszeitraum und sind mit den Abschlägen der jeweiligen Kostenart verrechnet.'] : []),
               'Nicht umlagefähige Kosten sind nicht enthalten.'];
   return scLetterLayout(D, M, t, { SL, Q, merged, list, extraLines, house, partial });
 }
@@ -1446,9 +1642,9 @@ function scLetterLayout(D, M, t, o) {
   const ov = (t.set && t.set.vzMonths) || {};
   D.vzMonths = Object.keys(t.vzMap || {}).sort().map(ym => ({ label: SC_MON[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4), amt: ov[ym] !== undefined ? Number(ov[ym]) || 0 : t.vzMap[ym].amt }));
   const beleg = o.list && o.extraLines.length;
-  D.hints = [Q ? 'Verteilung: Hauskosten \u00f7 alle bewohnten Monate im Haus = gleicher Betrag je Monat für alle Zimmer; leere Zimmer gehen nicht zu Lasten einzelner Mieter.'
+  D.hints = [Q ? 'Verteilung: Hauskosten \u00f7 alle bewohnten Monate im Haus = gleicher Betrag je Monat für alle Zimmer.'
                : 'Verteilung: Die Kosten jedes Tages werden zu gleichen Teilen auf alle Personen verteilt, die an diesem Tag im Haus wohnen.',
-             'Abgerechnet nach dem Abflussprinzip: enthalten sind die im Abrechnungszeitraum gezahlten Kosten. Versorger-Jahresabrechnungen, die in diesem Zeitraum gezahlt oder erstattet wurden, sind mit den Abschlägen der jeweiligen Kostenart verrechnet.',
+             'Enthalten sind die im Abrechnungszeitraum gezahlten Kosten. Versorger-Jahresabrechnungen zählen anteilig nach ihrem eigenen Abrechnungszeitraum (tagesgenau) und sind mit den Abschlägen der jeweiligen Kostenart verrechnet.',
              ...(beleg ? ['Die Einzelrechnungen stehen in der Belegliste auf Seite 2.'] : [])];
   D.anlagen = beleg ? 'Belegliste (Seite 2)' : '';
   D.outro = ''; D.table = null;
@@ -1467,7 +1663,9 @@ async function scClick(e) {
   if (a === 'ja' || a === 'sumHg') { SC.modal = { view: 'ja' }; return scRenderModal(); }
   if (a === 'jaFold') { const k = 'ja:' + b.dataset.b; SC.open[k] = !SC.open[k]; return scRenderModal(); }
   if (a === 'jaAdd') return scJaAdd(b.dataset.k);
-  if (a === 'jaRecv' || a === 'jaDir' || a === 'jaPay' || a === 'jaDel') return scJaAct(a, b);
+  if (a === 'jaRecv' || a === 'jaDir' || a === 'jaPay' || a === 'jaDel' || a === 'jaZok') return scJaAct(a, b);
+  if (a === 'jaYear') { SC.year = Number(b.dataset.y) || SC.year; SC.modal = { view: 'ja' }; return stRenderCasa(); }   // a bill that came the year after
+  if (a === 'jaNoBill' || a === 'jaNoBillUndo') return scJaNoBill(a, b);
   if (a === 'sumTen') { SC.modal = { view: a }; return scRenderModal(); }
   if (a === 'hgNew') { SC.hgNew = { type: b.dataset.t || '', dir: '', amt: '', date: '', co: '' }; return scRenderModal(); }
   if (a === 'hgNewCancel') { SC.hgNew = null; return scRenderModal(); }
@@ -1618,6 +1816,8 @@ function scFlowNext() {
 
 async function scLock(btn) {
   const M = SC.model; if (!M || M.locked) return;
+  const gaps = M.running ? [] : (M.jaGaps || []);           // Nov 2026: every day of the year covered by a Jahresabrechnung (or "no bill")
+  if (gaps.length) { stSay('Jahresabrechnung missing: ' + gaps.map(g => g.l + ' ' + scJaSpan(g.from, g.to)).join(' · ') + ' – add it or mark \u201cno bill\u201d under Jahresabrechnungen'); return; }
   if (M.warn.length && !(await stConfirm({ title: 'Lock the house costs anyway?', text: M.warn.length + ' point(s) to check:\n' + M.warn.join('\n'), ok: 'Lock anyway' }))) return;
   const r = scRecEnsure(M.y);
   const input = scInputFor(M.y);

@@ -31,6 +31,10 @@
             landlord:{ total, pauschal, vacancy, rounding }, check:{ total, allocated, landlord, diff, ok } }
 
    Adapter NkCasa.fromControlling(year) builds the input from Controlling + Casa data.
+
+   Versorger-Jahresabrechnungen (Nov 2026): each bill counts by its own Abrechnungszeitraum —
+     amount × its days inside the NK period ÷ all days of its Zeitraum (jaShares). Settlements
+     passes them as src.ja with their share; Abschläge stay in the month they were paid.
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -237,10 +241,12 @@ const NkCasa = (() => {
 
     // one-offs with the NK switch (Casa Castel only, settlement results excluded)
     const ABR = typeof CX_ABR_KINDS !== 'undefined' ? CX_ABR_KINDS : ['NK-Abrechnung', 'Hausgeldabrechnung'];
+    const jaIn = src && Array.isArray(src.ja) ? src.ja : null;   // Nov 2026: the Jahresabrechnungen with their share of this period
     for (const o of (C.one_time || [])) {
       if (Number(o.property_id) !== CASA || !o.nk_umlage || ABR.includes(o.kind)) continue;
       const d = D(o.invoice_date);
       const hg = o.kind === 'Versorger' || /jahresabrechnung/i.test(String(o.item || ''));   // Strom · Gas · Wasser yearly result
+      if (hg && jaIn) continue;                                  // … counted below by their Abrechnungszeitraum, not by the payment day
       // Abflussprinzip (Oct 2026): everything counts in the NK year it was paid – Abschläge, yearly costs,
       // single invoices and the Versorger-Jahresabrechnungen (Nachzahlung +, Guthaben −) alike
       if (d < period.from || d > period.to) continue;
@@ -253,6 +259,15 @@ const NkCasa = (() => {
                    parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',
                    info: { date: d, company: o.company || '', item: o.item || '', amount: amt } });
       if (hg && !c) warn.push('Hausgeld entry ' + d + ' has no cost type – split by person');
+    }
+    // Versorger-Jahresabrechnungen (Nov 2026): each with its share of this period (Settlements: amount × days in it ÷ days of its Zeitraum)
+    for (const j of (jaIn || [])) {
+      const share = r2(j && j.share);
+      if (!j || Math.abs(share) < 0.005) continue;
+      const c = catOf(j.catId);
+      lines.push({ id: String(j.id), label: (c ? c.name : (j.label || 'Versorger')) + ' · Jahresabrechnung', group: 'hausgeld', key: keyOf(c),
+                   parts: [{ amount: share, spread: 'year' }], catId: c ? c.id : null, catName: c ? c.name : '', info: j.info || null });
+      if (!c) warn.push('Jahresabrechnung ' + ((j.info && j.info.date) || '') + ' has no cost type – split by person');
     }
 
     // tenants (spans of equal type) from the settlement model
@@ -353,7 +368,87 @@ const NkCasa = (() => {
     });
   }
 
-  return { calc, quota, fromControlling, r2, daysBetween, addDays };
+  /* ── Versorger-Jahresabrechnungen by their own Abrechnungszeitraum (Nov 2026) ─────────────────
+     The usual Abrechnungsjahr per cost type comes from Providers › Utilities as a dated history
+       hist = [ { from: 'YYYY-MM-DD', bill: 1–12 } ]
+       from = the first day of an Abrechnungsjahr · bill = the month its bill usually arrives
+     Every Abrechnungsjahr runs 12 months from `from`; a later row ends the one before it
+     (a switch to 01.01.2027 → the last bill runs 01.07.2026–31.12.2026). */
+  const isLeap = y => y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  const addYears = (iso, n) => { const y = Number(iso.slice(0, 4)) + n, md = iso.slice(5, 10); return y + '-' + (md === '02-29' && !isLeap(y) ? '02-28' : md); };
+  const isDay = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
+  function jaHist(hist) {
+    return (Array.isArray(hist) ? hist : []).map(h => ({ from: D(h && h.from), bill: Math.round(Number(h && h.bill)) || null }))
+      .filter(h => isDay(h.from)).map(h => (h.bill >= 1 && h.bill <= 12 ? h : { from: h.from, bill: null }))
+      .sort((a, b) => a.from.localeCompare(b.from));
+  }
+  /* every Abrechnungsjahr of a history that starts on or before `until` → [{ from, to, bill }] */
+  function jaPeriods(hist, until) {
+    const H = jaHist(hist), out = [], u = until ? D(until) : null;
+    H.forEach((h, i) => {
+      const stop = H[i + 1] ? addDays(H[i + 1].from, -1) : null;
+      for (let n = 0; n < 200; n++) {
+        const s = n ? addYears(h.from, n) : h.from;
+        if ((stop && s > stop) || (u && s > u)) break;
+        let e = addDays(addYears(h.from, n + 1), -1);
+        if (stop && e > stop) e = stop;
+        out.push({ from: s, to: e, bill: h.bill });
+      }
+    });
+    return out;
+  }
+  /* the suggested Zeitraum of a bill that came (or was paid) on `day`: the last Abrechnungsjahr that ended
+     before it · without a history: the 12 months up to the end of the month before */
+  function jaSuggest(hist, day) {
+    day = D(day); if (!isDay(day)) return null;
+    const P = jaPeriods(hist, day).filter(p => p.to < day);
+    if (P.length) { const p = P[P.length - 1]; return { from: p.from, to: p.to, src: 'providers' }; }
+    const to = addDays(day.slice(0, 7) + '-01', -1);
+    return { from: addDays(addYears(to, -1), 1), to, src: 'guess' };
+  }
+  /* when the bill of the Abrechnungsjahr holding `day` usually arrives → 'YYYY-MM-01' (null without a month) */
+  function jaExpect(hist, day) {
+    day = D(day); if (!isDay(day)) return null;
+    const P = jaPeriods(hist, day), p = P.filter(x => x.from <= day && x.to >= day).pop() || P[P.length - 1];
+    if (!p || !p.bill) return null;
+    const ey = Number(p.to.slice(0, 4)), em = Number(p.to.slice(5, 7));
+    return (p.bill >= em ? ey : ey + 1) + '-' + String(p.bill).padStart(2, '0') + '-01';
+  }
+  /* one bill { from, to, amount } over the NK periods [{ y, from, to }] → { y: { amount, days, of } }
+     amount × days in the period ÷ days of the Zeitraum, in cents; the last period takes the rest,
+     so the parts add up exactly to the bill (when the periods cover all of its days) */
+  function jaShares(bill, periods) {
+    const a = D(bill && bill.from), b = D(bill && bill.to), amt = r2(bill && bill.amount), out = {};
+    if (!isDay(a) || !isDay(b) || b < a || !amt) return out;
+    const N = daysBetween(a, b);
+    const hits = (periods || []).map(p => {
+      const f = a > D(p.from) ? a : D(p.from), t = b < D(p.to) ? b : D(p.to);
+      return f <= t ? { y: p.y, from: f, days: daysBetween(f, t) } : null;
+    }).filter(Boolean).sort((x, z) => x.from.localeCompare(z.from));
+    const all = hits.reduce((s, h) => s + h.days, 0) === N;
+    let used = 0;
+    hits.forEach((h, i) => {
+      const v = all && i === hits.length - 1 ? r2(amt - used) : r2(amt * h.days / N);
+      out[h.y] = { amount: v, days: h.days, of: N }; used = r2(used + v);
+    });
+    return out;
+  }
+  /* the days of `range` { from, to } that no Zeitraum in `covers` [{ from, to }] reaches → [{ from, to, days }] */
+  function jaGaps(range, covers) {
+    const a = D(range && range.from), b = D(range && range.to); if (!isDay(a) || !isDay(b) || b < a) return [];
+    const C = (covers || []).map(c => ({ from: D(c && c.from), to: D(c && c.to) }))
+      .filter(c => isDay(c.from) && isDay(c.to) && c.to >= c.from && c.to >= a && c.from <= b).sort((x, z) => x.from.localeCompare(z.from));
+    const out = []; let cur = a;
+    for (const c of C) {
+      if (cur > b) break;
+      if (c.from > cur) out.push({ from: cur, to: addDays(c.from, -1) });
+      const nx = addDays(c.to, 1); if (nx > cur) cur = nx;
+    }
+    if (cur <= b) out.push({ from: cur, to: b });
+    return out.map(g => ({ from: g.from, to: g.to > b ? b : g.to })).filter(g => g.from <= g.to).map(g => Object.assign(g, { days: daysBetween(g.from, g.to) }));
+  }
+
+  return { calc, quota, fromControlling, r2, daysBetween, addDays, jaHist, jaPeriods, jaSuggest, jaExpect, jaShares, jaGaps };
 })();
 
 if (typeof module !== 'undefined') module.exports = NkCasa;     // node tests
