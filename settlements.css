@@ -1585,3 +1585,44 @@ button.st-sg__r { cursor: pointer; }
 .sc-meth1 { margin: 0 0 6px; font-size: 12px; color: var(--cx-mut); }
 .sc-hg__note.sc-plan { margin: 10px 0 0; }
 .sc-hg__note .cx-link.sc-hg__go { display: inline; padding: 0; font-size: inherit; color: var(--cx-acc); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── Nov 2026 · House costs: one pop-up — each Versorger cost type with its Jahresabrechnungen, other costs, who carries it ── */
+.sc-ct { background: #FDFCFA; border: .5px solid #E0DAD0; border-radius: 18px; padding: 12px 14px; margin-top: 8px; }
+.sc-ct__h { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0; background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.sc-ct__h > .ti { flex: 0 0 auto; font-size: 16px; color: #9A8E7E; }
+.mx-ic.sc-ct__ic { width: 34px; height: 34px; border-radius: 11px; }
+.sc-ct__n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; color: #3D3027; }
+.sc-ct__t { font-size: 14px; font-weight: 600; color: #3D3027; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sc-ct__l { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 3px 0 0 44px; font-size: 12.5px; color: #7A6F62; font-variant-numeric: tabular-nums; }
+.sc-ct__l .pos, .sc-ct__v.pos { color: #3B6D11; } .sc-ct__l .neg, .sc-ct__v.neg { color: #8A3B22; } .sc-ct__v.mut { color: #9A8E7E; }
+.sc-ct__b { margin-top: 6px; }
+.sc-ct__r { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; width: calc(100% - 44px); margin: 0 0 0 44px; padding: 8px 0;
+            background: none; border: 0; border-top: .5px solid #EDE8E0; font: inherit; color: inherit; text-align: left; }
+button.sc-ct__r { cursor: pointer; }
+.sc-ct__r.is-open .sc-ct__m b { color: #8A6535; }
+.sc-ct__m { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-ct__m b { font-size: 12.5px; font-weight: 500; color: #3D3027; font-variant-numeric: tabular-nums; }
+.sc-ct__m small { font-size: 11px; line-height: 1.4; color: #9A8E7E; }
+.sc-ct__m small .cx-link { display: inline; padding: 0; font-size: 11px; color: var(--cx-acc); grid-column: auto; vertical-align: baseline; }
+.sc-ct__v { font-style: normal; font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sc-ct__r.is-gap .sc-ct__m b { color: #8A3B22; }
+.sc-ct__r.is-nb .sc-ct__m b { color: #9A8E7E; text-decoration: line-through; text-decoration-color: #C8BFB0; }
+.sc-ct__ms, .sc-ct__off, .sc-ct__tg { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 10.5px; font-weight: 500; line-height: 1.5; vertical-align: 1px; }
+.sc-ct__ms { background: #FBE9E2; color: #8A3B22; }
+.sc-ct__off, .sc-ct__tg { background: #EFEAE2; color: #5F5649; }
+.sc-ct__ed { margin: 2px 0 10px; }
+.sc-ct__ed .mx-rows { gap: 8px; }
+.sc-ct__sw { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px; background: #FDFCFA; border: .5px solid #E6DED2; border-radius: 18px;
+             font-size: 13.5px; font-weight: 500; color: #3D3027; }
+.mx-b .cx-link.sc-ct__add { display: inline-flex; align-items: center; gap: 4px; margin: 6px 0 0 44px; padding: 4px 0; font-size: 12px; color: var(--cx-acc); }
+.sc-ct--o { padding-top: 4px; }
+.mx-b .sc-ct--o .cx-link.sc-ct__add { margin-left: 0; }
+.sc-ct__o { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: .5px solid #EDE8E0; font-size: 12.5px; color: #3D3027; font-variant-numeric: tabular-nums; }
+.sc-ct__o:first-child { border-top: 0; }
+.sc-ct__o > span:last-child { white-space: nowrap; }
+.sc-ct__o .sc-ct__m b { font-weight: 400; }
+.sc-ct__o.is-sum { font-weight: 600; }
+.sc-ct__none { margin: 8px 0 2px; font-size: 11.5px; color: #9A8E7E; }
+.sc-ct--o .sr-okline { margin: 6px 0 2px; }
+.sc-ct__r { align-items: start; } .sc-ct__r .sc-ct__v { padding-top: 1px; }
+.sc-ct__m b .sc-ja__sg, .sc-ct__m b .sc-ct__ms, .sc-ct__m b .sc-ct__off { margin-left: 5px; padding: 0 6px; font-size: 10px; }

@@ -250,7 +250,7 @@ function stOpenLink(q) {
           // the bill that owns this booking may sit in another year (received in Dec, paid in Jan) → that year
           const oy = q.ot && typeof scJaOwnerYears === 'function' ? scJaOwnerYears()[String(q.ot)] : undefined;
           if (oy && Number(oy) !== Number(SC.year) && !q._moved) { q._moved = true; SC.year = Number(oy); stRenderCasa(); n = 0; setTimeout(tryOpen, 150); return; }
-          SC.modal = { view: 'ja' }; scRenderModal(); return;
+          SC.modal = { view: 'costs' }; if (typeof scJaFocus === 'function') scJaFocus(q.ot); scRenderModal(); return;   // Nov 2026: House costs, the bill opened
         }
         const t = M.ten.find(x => String(x.tenantId) === String(q.t));
         if (t) { SC.modal = { view: 'ten', key: t.key }; scRenderModal(); }

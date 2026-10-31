@@ -421,13 +421,15 @@ function scHouseCard(M) {
     : T.length + ' tenants · ' + [open ? open + ' to send' : '', sent ? sent + ' sent' : '', done ? done + ' settled' : ''].filter(Boolean).join(' · ');
   const nkChip = !T.length ? ['grey', 'no NK'] : !M.locked ? ['grey', 'waiting'] : open ? ['send', 'to send'] : sent ? ['wait', 'sent'] : ['done', 'settled'];
   const rooms = (window._src.rooms || []).filter(r => r.active !== false).length;
-  const J = M.ja || scJaModel(M);                          // Oct 2026 · the Versorger Jahresabrechnungen, like the Rentals Jahresabrechnung line
-  const jaRow = '<button class="sc-row sr5-ln" data-sc="ja"><span class="sc-av sr5-av--hv"><i class="ti ti-receipt" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">Jahresabrechnungen</span>' +
-    '<span class="sc-row__s' + (J.tone ? ' ' + J.tone : '') + '">' + stEsc(J.say) + '</span><span class="sc-row__p">' + stEsc(J.S.map(x => x.l).join(' · ') || 'Strom · Gas · Wasser · Entsorgung') + '</span></span>' +
-    '<span class="sc-chip sc-chip--' + J.chip[0] + '">' + stEsc(J.chip[1]) + '</span></button>';
-  return '<div class="sc-card sr5-card"><div class="sr5-h"><span class="sc-av sr5-pav" style="background:#E9DCC6;color:#6B4A1E">CC</span><span class="sr5-h__t"><span class="sr5-pn">Casa Castel</span><span class="sr5-pm">' + stEsc(scHouse().join(', ') + ' · ' + rooms + ' rooms') + '</span></span></div>' + jaRow +
+  const J = M.ja || scJaModel(M);                          // Nov 2026 · one row: the house costs with their Jahresabrechnungen
+  const gapsN = M.locked || M.running ? 0 : (M.jaGaps || []).length, q = M.quota || {};
+  const hkMain = noData ? 'nothing booked yet' : scE(L.total) + (q.rate ? ' · ' + scE(q.rate) + ' per month' : '') + (M.pv ? ' · preview' : '');
+  const hkMeta = J.n ? (gapsN ? gapsN + (gapsN === 1 ? ' Jahresabrechnung missing' : ' Jahresabrechnungen missing') : J.nIn + ' of ' + J.n + ' Jahresabrechnungen in') : '';
+  const hkChip2 = M.locked ? ['done', 'locked'] : noData ? ['grey', 'empty'] : M.running ? ['grey', 'running'] : gapsN ? ['red', 'bill missing'] : M.sendable ? ['send', 'ready to lock'] : ['grey', 'preview'];
+  void hkChip; void hkSub;
+  return '<div class="sc-card sr5-card"><div class="sr5-h"><span class="sc-av sr5-pav" style="background:#E9DCC6;color:#6B4A1E">CC</span><span class="sr5-h__t"><span class="sr5-pn">Casa Castel</span><span class="sr5-pm">' + stEsc(scHouse().join(', ') + ' · ' + rooms + ' rooms') + '</span></span></div>' +
     '<button class="sc-row sr5-ln" data-sc="costs"><span class="sc-av sr5-av--hv"><i class="ti ti-home" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">Hauskosten</span>' +
-      '<span class="sc-row__s">' + stEsc(hkSub) + '</span></span><span class="sc-chip sc-chip--' + hkChip[0] + '">' + stEsc(hkChip[1]) + '</span></button>' +
+      '<span class="sc-row__s">' + stEsc(hkMain) + '</span>' + (hkMeta ? '<span class="sc-row__p' + (gapsN ? ' neg' : '') + '">' + stEsc(hkMeta) + '</span>' : '') + '</span><span class="sc-chip sc-chip--' + hkChip2[0] + '">' + stEsc(hkChip2[1]) + '</span></button>' +
     '<button class="sc-row sr5-ln" data-sc="' + (M.locked && open ? 'start' : 'filter') + '" data-k="open"><span class="sc-av sr5-av--hv"><i class="ti ti-mail" aria-hidden="true"></i></span><span class="sc-row__m"><span class="sc-row__n">NK-Abrechnung</span>' +
       '<span class="sc-row__s">' + stEsc(nkSub) + '</span></span><span class="sc-chip sc-chip--' + nkChip[0] + '">' + stEsc(nkChip[1]) + '</span></button></div>';
 }
@@ -633,7 +635,7 @@ function scRenderModal() {
   else if (m.view === 'settle') inner = scSettleView(M, m);
   else if (m.view === 'extra') inner = scExtraView(M, m);
   else if (m.view === 'sumTen') inner = scSumTen(M);
-  else if (m.view === 'sumHg' || m.view === 'ja') inner = scJaView(M);   // Oct 2026: the old Hausgeld sheet → the Jahresabrechnungen pop-up
+  else if (m.view === 'sumHg' || m.view === 'ja') inner = scCostsView(M);   // Nov 2026: Jahresabrechnungen are part of House costs
   // Oct 2026: a redraw of the SAME pop-up (fold, edit, settle) keeps its scroll position — a new pop-up starts at the top
   const viewKey = m.view + '|' + (m.tid || m.key || m.id || '');
   const oldBody = h.querySelector('.srm__b'), keep = oldBody && h._scViewKey === viewKey ? oldBody.scrollTop : 0;
@@ -894,6 +896,14 @@ function scJaCover(M) {
   }
   return out;
 }
+/* Nov 2026 · deep link from Controlling › One-off: open the cost type card and the bill of that booking */
+function scJaFocus(ot) {
+  if (ot === null || ot === undefined || ot === '') return;
+  const r = scRec(SC.year), ja = ((r && r.tenants) || {}).__ja || {};
+  for (const k of Object.keys(ja)) for (const b of (ja[k] || [])) if (b && String(b.ot) === String(ot)) { SC.open['ct:' + k] = true; SC.open['ja:' + b.id] = true; return; }
+  const o = scJaFindBk(ot), k = o ? scJaSupOf(o) : null;
+  if (k) { SC.open['ct:' + k] = true; SC.open['ja:ot:' + ot] = true; }
+}
 /* the Zeitraum also on the booking (Controlling shows it there) — the bill here stays the source */
 async function scJaMirror(e) {
   if (!e || e.ot === null || e.ot === undefined) return;
@@ -992,7 +1002,7 @@ function scJaSupHtml(M, s, can) {
     ? '<button type="button" class="cx-link sc-ja__more" data-sc="jaAdd" data-k="' + s.k + '"><i class="ti ti-plus" aria-hidden="true"></i> another Jahresabrechnung ' + stEsc(s.l) + '</button>' : '';
   return bills.map(b => scJaBillHtml(M, s, b, can)).join('') + more;
 }
-function scJaBillHtml(M, s, b, can) {
+function scJaBillHtml(M, s, b, can, bodyOnly) {           // Nov 2026 · bodyOnly: the fields only, opened in place in the House costs pop-up
   const at = ' data-k="' + s.k + '" data-b="' + stEsc(b.id) + '"';
   const dir = Number(b.dir) === 1 ? 1 : Number(b.dir) === -1 ? -1 : 0, paid = !!b.paid, recv = !!b.recv, amt = Number(b.amt) || 0;
   const zero = scJaZero(b), done = paid || (zero && recv), pab = Number(b.pab) || 0;   // Nov 2026: balanced · Abschlag in the same payment
@@ -1006,6 +1016,7 @@ function scJaBillHtml(M, s, b, can) {
   const fx = done && open ? '<button type="button" class="sc-ja__fx" data-sc="jaFold"' + at + ' aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '';
   const lbl = '<p class="mx-lbl sc-ja__lbl">' + stIc(s.icon, 16) + '<span class="sc-ja__n">' + stEsc(s.l + (b.co ? ' · ' + b.co : '')) + '</span>' + v + fx + '</p>';
   const absTxt = pab ? (dir > 0 ? ' · Abschlag ' + scE(pab) + ' kept' : ' · + Abschlag ' + scE(pab)) : '';
+  if (bodyOnly) return scJaBodyHtml(M, s, b, can, { at, dir, paid, recv, amt, zero, pab, z, split, absTxt, line: bodyOnly.line || null });
   if (done && !open) {                                     // Nov 2026 · lean: result + date · its Zeitraum (+ "suggested") — the split, seller part and Abschlag one tap away
     const t = zero ? 'Balanced · received ' + stDate(b.recv) : (dir > 0 ? 'Guthaben received ' : 'Nachzahlung paid ') + stDate(b.pd);
     return lbl + '<button type="button" class="sc-ja__fold" data-sc="jaFold"' + at + ' aria-expanded="false"><span class="mx-ic" style="background:' + (ST_TINT[s.icon] || '#F3EEE6') + '">' + stIc(s.icon, 24) + '</span>' +
@@ -1013,6 +1024,16 @@ function scJaBillHtml(M, s, b, can) {
       (z ? '<span class="mx-rs">' + stEsc(scJaSpan(z.from, z.to)) + (z.ok ? '' : '<span class="sc-ja__sg">suggested</span>') + '</span>' : '') +
       '</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>';
   }
+  return lbl + scJaBodyHtml(M, s, b, can, { at, dir, paid, recv, amt, zero, pab, z, split, absTxt });
+}
+
+/* Nov 2026 · the fields of one bill (received · result · amount · Zeitraum · money) — in the House costs pop-up
+   opened in place under its row; o.line = its NK line here ("in the NK" and Belegliste switches) */
+function scJaBodyHtml(M, s, b, can, o) {
+  const { at, dir, paid, recv, amt, zero, pab, z, split, absTxt } = o;
+  const ln = o.line || null, list = ((M.rec && M.rec.tenants) || {}).__hgList || {};
+  const extra = ln ? '<div class="sc-ct__sw"><span>In the NK</span><button type="button" class="mx-tg' + (ln.on ? ' is-on' : '') + '" role="switch" aria-checked="' + !!ln.on + '" aria-label="In the NK" data-sc="hgtog" data-id="' + stEsc(ln.id) + '"' + (can ? '' : ' disabled') + '></button></div>' +
+    '<div class="sc-ct__sw"><span>In the Belegliste</span><button type="button" class="mx-tg' + (list[ln.id] ? ' is-on' : '') + '" role="switch" aria-checked="' + !!list[ln.id] + '" aria-label="In the Belegliste" data-sc="hglist" data-id="' + stEsc(ln.id) + '"' + (can ? '' : ' disabled') + '></button></div>' : '';
   const dis = can ? '' : ' disabled';
   // ── received
   const s1 = recv ? 'received ' + stEsc(stDate(b.recv))
@@ -1034,7 +1055,7 @@ function scJaBillHtml(M, s, b, can) {
       '<p class="sc-ja__split">' + stEsc(split || 'outside every NK year') +
         (!z.ok && can ? '<button type="button" class="cx-link sc-ja__zok" data-sc="jaZok"' + at + '>matches the bill</button>' : '') + '</p>' : '') + '</div>';
   const rm = can && !paid && !b.blank && !b.legacy ? '<button type="button" class="cx-link sc-ja__rm" data-sc="jaDel"' + at + '>remove</button>' : '';
-  if (zero) return lbl + '<div class="mx-rows sc-ja__rows">' + rowRecv + box + '</div>' + rm;   // balanced: nothing to pay or receive
+  if (zero) return '<div class="mx-rows sc-ja__rows">' + rowRecv + box + extra + '</div>' + rm;   // balanced: nothing to pay or receive
   // ── money paid / received (= the booking in Controlling)
   const ready = recv && !!dir && amt > 0;
   const lockedIn = d => M.locked && !!d && scD(d) <= M.per.to;
@@ -1055,7 +1076,7 @@ function scJaBillHtml(M, s, b, can) {
     '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="pa"' + at + ' value="' + (paV ? cxE2(paV) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span></label>' +
     '<label class="mx-f sc-ja__full"><span>' + (dir > 0 ? 'Abschlag kept from it' : 'Abschlag in the same payment') + '</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="pab"' + at + ' value="' + (pab ? cxE2(pab) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span></label>' +
     absHint + '</div>';
-  return lbl + '<div class="mx-rows sc-ja__rows">' + rowRecv + box + rowPay + pay + '</div>' + rm;
+  return '<div class="mx-rows sc-ja__rows">' + rowRecv + box + rowPay + pay + extra + '</div>' + rm;
 }
 
 /* ── actions ── */
@@ -1108,7 +1129,9 @@ function scJaSync(row, goneId) {
 function scJaAdd(k) {
   if (!scJaCan(SC.model)) return;
   const r = scRecEnsure(SC.year), ja = (r.tenants.__ja = r.tenants.__ja || {});
-  (ja[k] = ja[k] || []).push({ id: 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), recv: null, dir: null, amt: null, co: '', ot: null, pd: null, pa: null });
+  const id = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  (ja[k] = ja[k] || []).push({ id, recv: null, dir: null, amt: null, co: '', ot: null, pd: null, pa: null });
+  SC.open['ja:' + id] = true; SC.open['ct:' + k] = true;     // Nov 2026: opens in place, in its cost type card
   scQueueSave(r); scJaRefresh();
 }
 async function scJaAct(a, btn) {
@@ -1312,78 +1335,123 @@ async function scJaInput(el) {
   scQueueSave(scRecEnsure(SC.year)); return scJaRefresh();
 }
 
+/* ── House costs (Nov 2026 · one pop-up: the Jahresabrechnungen are part of their cost type) ─────────────
+   Paid during the year (Controlling) → Jahresabrechnungen netted against it → the result per cost type →
+   all house costs ÷ all months lived = the price per month → lock. Each fact once; tags only where you're needed.
+   A bill is edited in place under its row (one level); bills that came in another year link to that year. */
+function scCtLines(M) {                                    // the NK lines, split: Strom · Gas · Wasser · Entsorgung | everything else
+  const lines = M.R.lines || [], used = new Set(), types = [];
+  for (const [k, l] of SC_HG_TYPES) {
+    const c = scHgCat(k); if (!c) continue;
+    const mine = ln => Number(ln.catId) === Number(c.id) || (ln.group === 'hausgeld' && ln.catId == null && String(ln.label || '').toLowerCase().startsWith(k));
+    const paidL = lines.filter(ln => (ln.group === 'running' || ln.group === 'oneoff') && Number(ln.catId) === Number(c.id));
+    const jaL = lines.filter(ln => ln.group === 'hausgeld' && mine(ln));
+    paidL.concat(jaL).forEach(ln => used.add(ln.id));
+    const paid = cxR(paidL.reduce((a, x) => a + x.total, 0)), ja = cxR(jaL.reduce((a, x) => a + x.total, 0));
+    types.push({ k, l, c, paid, ja, total: cxR(paid + ja), hasJa: jaL.length > 0,
+                 hg: (M.money.hgAll || []).filter(h => (h.info || {}).k ? h.info.k === k : mine(h)) });
+  }
+  return { types, other: lines.filter(ln => !used.has(ln.id)) };
+}
 function scCostsView(M) {
-  const R = M.R, Lc = R.check, lnd = R.landlord, can = !M.locked;
-  const sup = scHgSuppliers(M), hs = M.money.hgAll || [], missing = sup.filter(x => !x.list.length);
-  const step = !R.lines.length ? 0 : M.locked ? 3 : 2;
-  const perRow = '<p class="sr-progmeta">NK period ' + stDate(M.per.from) + '–' + stDate(M.per.to) + ' · Jahresabrechnungen by their Abrechnungszeitraum</p>';
-  const prog = '<div class="srm__card sr-progcard">' + scSteps(['Collected', 'Jahresabrechnungen', 'Locked'], step) + perRow +
-    '<p class="sr-progmeta">' + (M.locked ? 'Locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot · <button class="cx-link" data-sc="unlock">unlock</button>'
-      : R.lines.length ? 'Live from Controlling · ' + R.lines.length + ' lines' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : '') : 'Nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet') + '</p></div>';
-  const warn = can && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
-  // Jahresabrechnungen: one line each · switch "in the NK" · Belegliste (Oct 2026: typed and paid only in the Jahresabrechnungen pop-up)
-  const list = ((M.rec && M.rec.tenants) || {}).__hgList || {};
-  const hgRow = (x, h) => {
-    // Nov 2026: the value is this year's share · below: the whole bill and its Abrechnungszeitraum
-    const info = h.info || {}, cost = Number(info.amount) || 0, full = Number(info.full ?? info.amount) || 0, gut = full < 0;
-    const zr = info.from && info.to ? ' · ' + scJaSpan(info.from, info.to) + (info.ok === false ? ' (suggested)' : '') + (info.days && info.of ? ' · ' + info.days + ' of ' + info.of + ' days' : '') : (info.date ? (gut ? ' · received ' : ' · paid ') + stDate(info.date) : '');
-    return '<div class="sc-hgr' + (h.on ? '' : ' is-off') + '"><span class="sc-hgr__n">' + stEsc(x.l + (info.company ? ' · ' + info.company : '')) +
-      '<small>' + (gut ? 'Guthaben ' : 'Nachzahlung ') + stEsc(scE(Math.abs(full)) + zr) + (h.on ? '' : ' · not in the NK') + '</small>' +
-      '<small>' +
-        '<button type="button" class="cx-link sc-hgr__bl' + (list[h.id] ? ' is-on' : '') + '" data-sc="hglist" data-id="' + stEsc(h.id) + '"' + (can ? '' : ' disabled') + '>Belegliste ' + (list[h.id] ? 'on' : 'off') + '</button></small></span>' +
-      '<span class="sc-hgr__v ' + (gut ? 'pos' : 'neg') + '">' + stEur(cxR(Math.abs(cost))) + '</span>' +
-      '<button type="button" class="sc-hgr__tg' + (h.on ? ' on' : '') + '" data-sc="hgtog" data-id="' + stEsc(h.id) + '" aria-pressed="' + h.on + '" aria-label="In the NK"' + (can ? '' : ' disabled') + '></button></div>';
-  };
-  const hgRows = sup.map(x => x.list.length ? x.list.map(h => hgRow(x, h)).join('')
-    : '<div class="sc-hgr"><span class="sc-hgr__n">' + stEsc(x.l) + '<small>nothing counted in NK ' + M.y + '</small></span><span></span><span></span></div>').join('');
-  const hgCard = '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Jahresabrechnungen</p><span class="srm__cs">in the NK</span></div>' + hgRows +
-    '<p class="sc-hg__note">Entered in <button type="button" class="cx-link sc-hg__go" data-sc="ja">Jahresabrechnungen</button> on the Casa Castel card – here you only choose what goes into the NK. Each counts with its days in ' + M.y + ' and is netted into its cost type in the letter.</p></div>';
-
-  // Kosten: per group, folded – the classic list behind a tap
-  const groups = [['typed', 'Typed by you', 'positions'], ['running', 'Laufende Kosten', 'Expenses · Casa Castel'], ['hausgeld', 'Jahresabrechnungen', 'netted into their cost type'], ['oneoff', 'Einmalig', 'NK one-offs']];
-  const fold = ([g, t, sub]) => {
-    if (g === 'typed' && can) return '';
-    const ls = R.lines.filter(l => l.group === g); if (!ls.length) return '';
-    const sum = cxR(ls.reduce((a, l) => a + l.total, 0)), k = 'cg:' + g, o = !!SC.open[k];
-    return '<button class="sr-acc" data-sc="fold" data-k="' + k + '" aria-expanded="' + o + '"><span class="sr-acc__t">' + t + '<small>' + ls.length + (ls.length === 1 ? ' line' : ' lines') + ' · ' + sub + '</small></span>' +
-      '<span class="sr-acc__r">' + scE(sum) + '<i class="ti ti-chevron-' + (o ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
-      (o ? '<div class="sr-items">' + ls.map(l => '<div class="sr-it' + (l.total < 0 ? ' is-neg' : '') + '"><span>' + stEsc(l.label) + '<small class="sr-it__s">' + stEsc(scSpreadTxt(M, l.id)) + '</small></span><span>' + scE(l.total) + '</span></div>').join('') + '</div>' : '');
-  };
-  const kosten = R.lines.length || can ? '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Kosten</p><span class="srm__cs">' + scE(Lc.total) + '</span></div><div>' + groups.map(fold).join('') + '</div></div>' + (can ? scTypedHtml(M) : '') : '';
-  // Verteilung: method + what one month costs + who pays
-  const q = M.quota || {}, anySent = M.ten.some(t => t.k === 'sent' || (t.k === 'done' && !t.skipped));
+  const R = M.R, Lc = R.check, lnd = R.landlord, can = !M.locked, q = M.quota || {};
   const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-  const verteilung = R.lines.length ? '<div class="srm__card"><div class="srm__ch"><p class="srm__ct">Verteilung</p></div>' +
-    '<p class="sc-meth1">Kostenquote · all house costs ÷ all months lived</p>' +
-    '<div><div class="sr-tl"><span>Kosten gesamt</span><b>' + scE(Lc.total) + '</b></div>' +
-    (M.method === 'quota' && q.months ? '<div class="sr-tl"><span>÷ months lived <small>all rooms · Ø ' + nf(q.persons, 1) + ' people</small></span><span>' + scMo(q.months) + '</span></div>' +
-      '<div class="sr-tl sr-tl--res is-g"><span><b>= per month lived</b></span><b>' + scE(q.rate) + '</b></div>'
-      : '<div class="sr-tl"><span>Split day by day among the people living there</span><span></span></div>') +
-    '<div class="sr-tl"><span>Tenants</span><span>' + scE(Lc.allocated) + '</span></div>' +
-    (lnd.pauschal ? '<div class="sr-tl"><span>You · Pauschal tenants <small>share ' + scE(lnd.pauschal) + (lnd.pauschalCovered ? ' − NK in their Pauschale ' + scE(lnd.pauschalCovered) : '') + '</small></span><span>' + scE(Math.round((lnd.pauschal - (lnd.pauschalCovered || 0)) * 100) / 100) + '</span></div>' : '') +
-    (lnd.vacancy ? '<div class="sr-tl"><span>You · empty days</span><span>' + scE(lnd.vacancy) + '</span></div>' : '') +
-    '<p class="sr-okline' + (Lc.ok ? '' : ' is-warn') + '"><i class="ti ti-' + (Lc.ok ? 'check' : 'alert-triangle') + '" aria-hidden="true"></i> ' + (Lc.ok ? 'adds up' : 'does not add up') + '</p></div>' +
-    (anySent ? '<p class="sc-hg__note">Letters already sent – the split stays as it is.</p>' : '') + '</div>' : '';
-  const hasList = R.lines.some(l => l.group !== 'running');
-  const bar = M.locked ? (hasList ? '<div class="srm__bar"><button class="cx-btn cx-btn--s" data-sc="listPdf"><i class="ti ti-file-text" aria-hidden="true"></i> Belegliste PDF</button></div>' : '')
-    : '<div class="srm__bar srm__bar--2">' + (hasList ? '<button class="cx-btn cx-btn--s" data-sc="listPdf"><i class="ti ti-file-text" aria-hidden="true"></i> Belegliste PDF</button>' : '') +
-      (M.sendable ? '<button class="cx-btn cx-btn--p" data-sc="lock"' + (R.lines.length ? '' : ' disabled') + '><i class="ti ti-lock" aria-hidden="true"></i> Lock costs</button>'
-        : M.running ? '<button class="cx-btn cx-btn--p" disabled><i class="ti ti-lock" aria-hidden="true"></i> Lock after ' + stDe(M.per.to) + '</button>' : '') + '</div>';
-  void prog; void bar; void step;
-  // Oct 2026 · one level: the total on top · "Locked" as a switch · then Jahresabrechnungen, costs, split — no step bar
-  const hero = stMHero({ tone: 'none', label: 'House costs ' + M.y, amount: R.lines.length ? Lc.total : null,
-    sub: R.lines.length ? 'NK ' + stDate(M.per.from) + '–' + stDate(M.per.to) + ' · ' + (M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot' : 'live from Controlling · ' + R.lines.length + ' lines' + (M.pv ? ' · preview as of ' + stDe(M.pv.cutoff) : ''))
-      : 'nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet' });
-  const gaps = M.locked || M.running ? [] : (M.jaGaps || []);   // Nov 2026: every day of the year needs its Jahresabrechnung first
-  const lockRow = stMRow({ icon: 'lock', title: 'House costs locked', on: M.locked, disabled: !M.locked && (!M.sendable || !R.lines.length || gaps.length > 0),
-    sub: M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · letters can be sent' : M.running ? 'lock after ' + stDe(M.per.to) : !R.lines.length ? 'nothing to lock yet'
-      : gaps.length ? (gaps.length === 1 ? 'waiting for the ' + gaps[0].l + ' bill' : 'waiting for ' + gaps.length + ' bills') + ' · see Jahresabrechnungen' : 'lock to send the letters',
+  const has = R.lines.length > 0, hasList = R.lines.some(l => l.group !== 'running');
+  // ── top: the total · ÷ months lived = the price per month
+  const hero = stMHero({ tone: 'none', label: 'House costs ' + M.y, amount: has ? Lc.total : null,
+    sub: !has ? 'nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet'
+      : M.method === 'quota' && q.months ? '÷ ' + scMo(q.months) + ' months lived = ' + scE(q.rate) + ' per month' : 'split day by day among the people living there',
+    extra: has && (M.locked || M.pv) ? '<p class="mx-hs">' + stEsc(M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot' : 'preview as of ' + stDe(M.pv.cutoff)) + '</p>' : '' });
+  const gaps = M.locked || M.running ? [] : (M.jaGaps || []);
+  const lockRow = stMRow({ icon: 'lock', title: M.locked ? 'House costs locked' : 'Lock house costs', on: M.locked,
+    disabled: !M.locked && (!M.sendable || !has || gaps.length > 0),
+    sub: M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · letters can be sent' : M.running ? 'lock after ' + stDe(M.per.to) : !has ? 'nothing to lock yet'
+      : gaps.length ? (gaps.length === 1 ? 'waiting for the ' + gaps[0].l + ' bill' : 'waiting for ' + gaps.length + ' bills') + ' · see below' : 'all bills in · then the letters can be sent',
     right: hasList ? '<button type="button" class="mx-pill" data-sc="listPdf">' + stIc('doc', 15) + 'Belegliste</button>' : '',
     switchAttrs: M.locked ? 'data-sc="unlock"' : 'data-sc="lock"' });
-  const pl = !M.locked && M.input.planned && M.input.planned.length ? '<p class="sc-hg__note sc-plan">' + stEsc(SC_MONTHS_L[Number(M.input.planned[0].month.slice(5, 7)) - 1] +
-    ' not booked yet – counted with the planned amount: ' + M.input.planned.map(x => x.label + ' ' + scE(x.amount)).join(' · ')) + '</p>' : '';
+  const warn = can && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
+  const planned = !M.locked && M.input.planned ? M.input.planned : [];
+  const plTag = catId => { const p = planned.find(x => Number(x.catId) === Number(catId)); return p ? '<span class="sc-ja__sg">incl. planned ' + stEsc(SC_MONTHS[Number(p.month.slice(5, 7)) - 1]) + '</span>' : ''; };
+  const paidLbl = M.pv ? 'Paid until ' + stDate(M.pv.cutoff) : 'Paid in ' + M.y;
+  const { types, other } = scCtLines(M);
+  const J = scJaModel(M), own = scJaOwnerYears(), since = scJaSince(), zeros = scJaAll().filter(b => b.zero);
+  const nb = ((M.rec && M.rec.tenants) || {}).__noBill || {}, gapsAll = M.jaGaps || [];
+  const val = v => '<em class="sc-ct__v ' + (v < -0.004 ? 'pos' : v > 0.004 ? 'neg' : 'mut') + '">' + (v < -0.004 ? '−' : v > 0.004 ? '+' : '') + scE(Math.abs(v)) + '</em>';   // − Guthaben · + Nachzahlung
+  // ── one card per Versorger cost type
+  const typeCard = t => {
+    const S = J.S.find(x => x.k === t.k) || { k: t.k, l: t.l, icon: SC_JA_ICON[t.k] || 'receipt', bills: [], real: [], st: 'none', exp: null };
+    const ownBills = scJaBills(M.y, t.k, own);
+    const rows = [], shown = new Set();
+    const billRow = (key, bid, ownY, head, tags, small, value, line) => {
+      const mine = Number(ownY) === Number(M.y), ob = mine ? ownBills.find(x => String(x.id) === String(bid)) : null, open = ob && !!SC.open['ja:' + bid];
+      if (ob) shown.add(String(ob.id));
+      const other = !mine && ownY ? ' · <button type="button" class="cx-link sc-jn__go" data-sc="jaYear" data-y="' + Number(ownY) + '">came in ' + Number(ownY) + ' \u203a</button>' : '';
+      const inner = '<span class="sc-ct__m"><b>' + stEsc(head) + tags + '</b><small>' + stEsc(small) + other + '</small></span>' + value;
+      rows.push([key, (ob ? '<button type="button" class="sc-ct__r' + (open ? ' is-open' : '') + '" data-sc="jaFold" data-k="' + t.k + '" data-b="' + stEsc(bid) + '" aria-expanded="' + open + '">' + inner + '</button>'
+                         : '<div class="sc-ct__r">' + inner + '</div>') +
+        (open ? '<div class="sc-ct__ed">' + scJaBillHtml(M, S, ob, can, { line }) + '</div>' : '')]);
+    };
+    for (const h of t.hg) {
+      const i = h.info || {}, full = Number(i.full ?? i.amount) || 0;
+      billRow(String(i.from || ''), i.bid, i.y, i.from && i.to ? scJaSpan(i.from, i.to) : h.label,
+        (i.ok === false ? '<span class="sc-ja__sg">suggested</span>' : '') + (h.on ? '' : '<span class="sc-ct__off">not in the NK</span>'),
+        (full < 0 ? 'Guthaben ' : 'Nachzahlung ') + scE(Math.abs(full)) + (i.days && i.of ? ' · ' + i.days + ' of ' + i.of + ' days' : ''), val(Number(i.amount) || 0), h);
+    }
+    for (const b of zeros.filter(x => x.k === t.k)) {
+      let f = b.from > M.per.from ? b.from : M.per.from; if (since && f < since) f = since;
+      const to = b.to < M.per.to ? b.to : M.per.to; if (f > to) continue;
+      billRow(String(b.from), b.bid, b.y, scJaSpan(b.from, b.to), b.ok === false ? '<span class="sc-ja__sg">suggested</span>' : '',
+        'balanced · ' + NkCasa.daysBetween(f, to) + ' of ' + NkCasa.daysBetween(b.from, b.to) + ' days', '<em class="sc-ct__v mut">' + scE(0) + '</em>', null);
+    }
+    for (const g of gapsAll.filter(x => x.k === t.k)) rows.push([g.from, '<div class="sc-ct__r is-gap"><span class="sc-ct__m"><b>' + stEsc(scJaSpan(g.from, g.to)) +
+      (M.running ? '' : '<span class="sc-ct__ms">missing</span>') + '</b><small>' + stEsc((M.running ? 'still to come' : g.late ? 'overdue' : 'not in yet') + (g.expTxt ? ' · ' + g.expTxt : '')) +
+      (can && !M.running ? ' · <button type="button" class="cx-link sc-jn__nb" data-sc="jaNoBill" data-k="' + t.k + '" data-f="' + g.from + '" data-t="' + g.to + '">no bill</button>' : '') + '</small></span><em class="sc-ct__v mut">\u2014</em></div>']);
+    (nb[t.k] || []).forEach((x, i) => rows.push([String(x.from || ''), '<div class="sc-ct__r is-nb"><span class="sc-ct__m"><b>' + stEsc(scJaSpan(x.from, x.to)) + '</b><small>no bill – marked by you' +
+      (can ? ' · <button type="button" class="cx-link sc-jn__nb" data-sc="jaNoBillUndo" data-k="' + t.k + '" data-i="' + i + '">undo</button>' : '') + '</small></span><em class="sc-ct__v mut">\u2014</em></div>']));
+    // this year's bills that count in no line here (not received yet, or for another NK year)
+    for (const b of ownBills.filter(x => !shown.has(String(x.id)))) {
+      const open = !!SC.open['ja:' + b.id], z = (b.recv || b.paid) ? scJaZr(t.k, b, b.ot != null ? scJaFindBk(b.ot) : null) : null;
+      const head = z ? scJaSpan(z.from, z.to) : 'New Jahresabrechnung', small = !b.recv && !b.paid ? 'not received yet' : 'counts in another NK year';
+      rows.push(['9999' + b.id, '<button type="button" class="sc-ct__r' + (open ? ' is-open' : '') + '" data-sc="jaFold" data-k="' + t.k + '" data-b="' + stEsc(b.id) + '" aria-expanded="' + open + '"><span class="sc-ct__m"><b>' + stEsc(head) + '</b><small>' + stEsc(small) + '</small></span><em class="sc-ct__v mut">\u2014</em></button>' +
+        (open ? '<div class="sc-ct__ed">' + scJaBillHtml(M, S, b, can, { line: null }) + '</div>' : '')]);
+    }
+    const attn = gapsAll.some(g => g.k === t.k) || t.hg.some(h => (h.info || {}).ok === false) || ownBills.some(b => !scJaDone(b));
+    const open = SC.open['ct:' + t.k] !== undefined ? !!SC.open['ct:' + t.k] : attn;
+    const co = scJaSupCo(M.y, t.k, own);
+    const head = '<button type="button" class="sc-ct__h" data-sc="fold" data-k="ct:' + t.k + '" aria-expanded="' + open + '"><span class="mx-ic sc-ct__ic" style="background:' + (ST_TINT[S.icon] || '#F3EEE6') + '">' + stIc(S.icon, 20) + '</span>' +
+      '<span class="sc-ct__n">' + stEsc(t.l + (co ? ' · ' + co : '')) + '</span><span class="sc-ct__t">' + scE(t.total) + '</span><i class="ti ti-chevron-' + (open ? 'up' : 'down') + '" aria-hidden="true"></i></button>';
+    const sum = '<div class="sc-ct__l"><span>' + stEsc(paidLbl) + plTag(t.c.id) + '</span><span>' + scE(t.paid) + '</span></div>' +
+      '<div class="sc-ct__l"><span>Jahresabrechnungen</span><span class="' + (t.ja < -0.004 ? 'pos' : t.ja > 0.004 ? 'neg' : '') + '">' + (t.hasJa ? (t.ja < -0.004 ? '−' : t.ja > 0.004 ? '+' : '') + scE(Math.abs(t.ja)) : '\u2014') + '</span></div>';
+    const body = open ? '<div class="sc-ct__b">' + rows.sort((a, b) => a[0].localeCompare(b[0])).map(x => x[1]).join('') +
+      (can ? '<button type="button" class="cx-link sc-ct__add" data-sc="jaAdd" data-k="' + t.k + '"><i class="ti ti-plus" aria-hidden="true"></i> Jahresabrechnung</button>' : '') + '</div>' : '';
+    return '<div class="sc-ct">' + head + sum + body + '</div>';
+  };
+  // ── other house costs: one line each (one-offs and typed costs tagged)
+  const pos = ((scRec(M.y) || {}).tenants || {}).__pos || [];
+  const oRow = ln => {
+    const i = ln.info || {}, tag = ln.group === 'oneoff' ? '<span class="sc-ct__tg">one-off</span>' : ln.group === 'typed' ? '<span class="sc-ct__tg">typed</span>' : ln.group === 'hausgeld' ? '<span class="sc-ct__tg">Jahresabrechnung</span>' : plTag(ln.catId);
+    const sub = ln.group === 'oneoff' && i.date ? 'paid ' + stDate(i.date) : '';
+    return '<div class="sc-ct__o"><span class="sc-ct__m"><b>' + stEsc(ln.label) + tag + '</b>' + (sub ? '<small>' + stEsc(sub) + '</small>' : '') + '</span><span>' + scE(ln.total) + '</span></div>';
+  };
+  const oSum = cxR(other.reduce((a, x) => a + x.total, 0)), editOpen = !!SC.open['ct:typed'];
+  const otherCard = other.length || can ? '<p class="mx-lbl">Other house costs</p><div class="sc-ct sc-ct--o">' +
+    other.slice().sort((a, b) => (a.group === 'running' ? 0 : 1) - (b.group === 'running' ? 0 : 1) || b.total - a.total).map(oRow).join('') +
+    (other.length ? '<div class="sc-ct__o is-sum"><span>Other house costs</span><span>' + scE(oSum) + '</span></div>' : '<p class="sc-ct__none">Nothing else booked yet.</p>') +
+    (can ? '<button type="button" class="cx-link sc-ct__add" data-sc="fold" data-k="ct:typed"><i class="ti ti-' + (editOpen ? 'minus' : 'plus') + '" aria-hidden="true"></i> ' + (editOpen ? 'Done' : pos.length ? 'Add or change a cost' : 'Add a cost') + '</button>' : '') +
+    '</div>' + (can && editOpen ? scTypedHtml(M) : '') : '';
+  // ── who carries it
+  const anySent = M.ten.some(t => t.k === 'sent' || (t.k === 'done' && !t.skipped));
+  const youSub = [lnd.pauschal ? 'Pauschal tenants ' + scE(lnd.pauschal) + (lnd.pauschalCovered ? ' · NK in their Pauschale ' + scE(lnd.pauschalCovered) : '') : '',
+                  lnd.vacancy ? 'empty days ' + scE(lnd.vacancy) : '', Math.abs(lnd.rounding || 0) > 0.004 ? 'rounding ' + scE(lnd.rounding) : ''].filter(Boolean).join(' · ');
+  const who = has ? '<p class="mx-lbl">Who carries it</p><div class="sc-ct sc-ct--o">' +
+    '<div class="sc-ct__o"><span>Tenants</span><span>' + scE(Lc.allocated) + '</span></div>' +
+    '<div class="sc-ct__o"><span class="sc-ct__m"><b>You · Pauschal and empty days</b>' + (youSub ? '<small>' + stEsc(youSub) + '</small>' : '') + '</span><span>' + scE(Lc.landlord) + '</span></div>' +
+    '<p class="sr-okline' + (Lc.ok ? '' : ' is-warn') + '"><i class="ti ti-' + (Lc.ok ? 'check' : 'alert-triangle') + '" aria-hidden="true"></i> ' + (Lc.ok ? 'adds up' : 'does not add up') + '</p>' +
+    (anySent ? '<p class="sc-ct__none">Letters already sent – the split stays as it is.</p>' : '') + '</div>' : '';
+  void nf;
   return stMHead('House costs ' + M.y, 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to), 'house', 'data-sc="close"') +
-    '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + lockRow + '</div>' + warn + pl + hgCard + kosten + verteilung + '</div>';
+    '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + lockRow + '</div>' + warn +
+    (types.length ? '<p class="mx-lbl">With Jahresabrechnung</p>' + types.map(typeCard).join('') : '') + otherCard + who + '</div>';
 }
 /* The add form for a Jahresabrechnung (books into Controlling: One-off · Versorger) */
 function scHgForm() {
@@ -1797,13 +1865,16 @@ async function scClick(e) {
   const a = b.dataset.sc, M = SC.model;
   if (a === 'year') { SC.year += Number(b.dataset.d); SC.modal = null; return stRenderCasa(); }
   if (a === 'close') { SC.modal = null; SC.setEdit = null; return scRenderModal(); }
-  if (a === 'fold') { SC.open[b.dataset.k] = !SC.open[b.dataset.k]; return scRenderModal(); }
+  if (a === 'fold') {                                      // Nov 2026: a cost type card can start open (needs you) → toggle what is shown
+    const k = b.dataset.k, shown = b.getAttribute('aria-expanded') === 'true';
+    SC.open[k] = String(k).indexOf('ct:') === 0 && b.hasAttribute('aria-expanded') ? !shown : !SC.open[k]; return scRenderModal();
+  }
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
-  if (a === 'ja' || a === 'sumHg') { SC.modal = { view: 'ja' }; return scRenderModal(); }
+  if (a === 'ja' || a === 'sumHg') { SC.modal = { view: 'costs' }; return scRenderModal(); }   // Nov 2026: one pop-up
   if (a === 'jaFold') { const k = 'ja:' + b.dataset.b; SC.open[k] = !SC.open[k]; return scRenderModal(); }
   if (a === 'jaAdd') return scJaAdd(b.dataset.k);
   if (a === 'jaRecv' || a === 'jaDir' || a === 'jaPay' || a === 'jaDel' || a === 'jaZok') return scJaAct(a, b);
-  if (a === 'jaYear') { SC.year = Number(b.dataset.y) || SC.year; SC.modal = { view: 'ja' }; return stRenderCasa(); }   // a bill that came the year after
+  if (a === 'jaYear') { SC.year = Number(b.dataset.y) || SC.year; SC.modal = { view: 'costs' }; return stRenderCasa(); }   // a bill that came the year after
   if (a === 'jaNoBill' || a === 'jaNoBillUndo') return scJaNoBill(a, b);
   if (a === 'sumTen') { SC.modal = { view: a }; return scRenderModal(); }
   if (a === 'hgNew') { SC.hgNew = { type: b.dataset.t || '', dir: '', amt: '', date: '', co: '' }; return scRenderModal(); }
