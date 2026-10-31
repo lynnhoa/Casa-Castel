@@ -1575,4 +1575,5 @@ button.st-sg__r { cursor: pointer; }
 .sc-jn__h { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--cx-mut); }
 .sc-jn .sc-hg__note { margin-top: 10px; }
 .sc-meth1 { margin: 0 0 6px; font-size: 12px; color: var(--cx-mut); }
+.sc-hg__note.sc-plan { margin: 10px 0 0; }
 .sc-hg__note .cx-link.sc-hg__go { display: inline; padding: 0; font-size: inherit; color: var(--cx-acc); text-decoration: underline; text-underline-offset: 2px; }

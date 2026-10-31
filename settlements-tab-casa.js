@@ -168,15 +168,36 @@ function scVzMonths(input, y) {
   }
   for (const t of T) { t.vzAuto = cxR(t.vzAuto); t.vz = t.vzAuto; t.vzMissing = []; }
 }
+/* Nov 2026: the latest month (of this period, up to now) with NK booked for a Casa room → 'YYYY-MM' */
+function scLastNkMonth(per, today) {
+  const units = new Set((typeof ctlUnitsOf === 'function' ? ctlUnitsOf(CASA_PROP_ID) : []).map(u => String(u.id)));
+  const top = today.slice(0, 7), lo = per.from.slice(0, 7), hi = per.to.slice(0, 7) < top ? per.to.slice(0, 7) : top;
+  let best = null;
+  for (const r of (window._src.incAll || [])) {
+    if (!units.has(String(r.unit_id)) || !(Number(r.nebenkosten) > 0)) continue;
+    const ym = r.year + '-' + String(r.month).padStart(2, '0');
+    if (ym >= lo && ym <= hi && (!best || ym > best)) best = ym;
+  }
+  return best;
+}
 function scInputFor(y) {
   const d = SC.data[y], per0 = d.per || scPeriod(y);
   const casa = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID);
   const tenancies = casa && typeof ctlTenanciesFor === 'function' ? ctlTenanciesFor(casa, per0, false) : null;
   // running year: preview up to the end of the last completed month (costs, lived days and NK paid alike)
+  // Nov 2026: … or further, to the end of the latest month whose NK is already booked (e.g. October once
+  // the October rents are in) — that month's monthly costs not booked yet count with their planned amount
   const today = cxToday(), lastDone = NkCasa.addDays(today.slice(0, 7) + '-01', -1);
-  const cutoff = per0.to >= today && lastDone >= per0.from ? lastDone : null;
+  let cutoff = per0.to >= today && lastDone >= per0.from ? lastDone : null, planMonth = null;
+  if (per0.to >= today) {
+    const nkM = scLastNkMonth(per0, today);
+    if (nkM) {
+      let end = scLastOfMonth(Number(nkM.slice(0, 4)), Number(nkM.slice(5, 7))); if (end > per0.to) end = per0.to;
+      if (!cutoff || end > cutoff) { cutoff = end; if (nkM === today.slice(0, 7)) planMonth = nkM; }
+    }
+  }
   const ja = typeof NkCasa.jaShares === 'function' ? scJaLinesFor(y, per0, cutoff) : undefined;   // Nov 2026: by their Abrechnungszeitraum
-  const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [], period: per0, tenancies, cutoff, ja });
+  const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: d.one_time, income: window._src.incAll || [], period: per0, tenancies, cutoff, ja, planMonth });
   if (input.error) return input;
   const ts = (scRec(y) || {}).tenants || {};
   // Hausgeld (Versorger Jahresabrechnungen "shown in Settlements"): each one counts unless switched off here
@@ -1250,8 +1271,10 @@ function scCostsView(M) {
       : gaps.length ? (gaps.length === 1 ? 'waiting for the ' + gaps[0].l + ' bill' : 'waiting for ' + gaps.length + ' bills') + ' · see Jahresabrechnungen' : 'lock to send the letters',
     right: hasList ? '<button type="button" class="mx-pill" data-sc="listPdf">' + stIc('doc', 15) + 'Belegliste</button>' : '',
     switchAttrs: M.locked ? 'data-sc="unlock"' : 'data-sc="lock"' });
+  const pl = !M.locked && M.input.planned && M.input.planned.length ? '<p class="sc-hg__note sc-plan">' + stEsc(SC_MONTHS_L[Number(M.input.planned[0].month.slice(5, 7)) - 1] +
+    ' not booked yet – counted with the planned amount: ' + M.input.planned.map(x => x.label + ' ' + scE(x.amount)).join(' · ')) + '</p>' : '';
   return stMHead('House costs ' + M.y, 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to), 'house', 'data-sc="close"') +
-    '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + lockRow + '</div>' + warn + hgCard + kosten + verteilung + '</div>';
+    '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + lockRow + '</div>' + warn + pl + hgCard + kosten + verteilung + '</div>';
 }
 /* The add form for a Jahresabrechnung (books into Controlling: One-off · Versorger) */
 function scHgForm() {

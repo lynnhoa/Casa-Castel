@@ -217,6 +217,24 @@ const NkCasa = (() => {
       if (preview && c.nk_spread === 'year') { L.booked = (L.booked || 0) + amt; continue; }   // preview: scaled below
       L.parts.push(c.nk_spread === 'year' ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'month', month: ym });
     }
+    // Nov 2026 · running year: the preview's last month (src.planMonth, e.g. the current month once its NK is booked)
+    // — a monthly cost type due then but not booked yet counts with its planned amount (Controlling › Setup)
+    const planned = [];
+    const pm = src && src.planMonth && months.includes(src.planMonth) ? src.planMonth : null;
+    if (pm && typeof ctlCastelAmountAt === 'function') {
+      const py = Number(pm.slice(0, 4)), pmm = Number(pm.slice(5, 7));
+      for (const c of cats) {
+        if (!inNk(c) || c.nk_spread === 'year' || c.active === false) continue;
+        if ((C.castel_expenses || []).some(e => Number(e.category_id) === Number(c.id) && Number(e.year) === py && Number(e.month) === pmm)) continue;
+        const freq = c.frequency || 'monatlich', dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
+        const due = /sporad|bedarf/i.test(String(freq)) ? dm.includes(pmm) : freq === 'monatlich' ? (!dm.length || dm.includes(pmm)) : dm.includes(pmm);
+        const amt = due ? r2(Number(ctlCastelAmountAt(c, py, pmm).amount) || 0) : 0;
+        if (!amt) continue;
+        const L = byCat[c.id] || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [], catId: c.id });
+        L.parts.push({ amount: amt, spread: 'month', month: pm });
+        planned.push({ catId: c.id, label: c.name, amount: amt, month: pm });
+      }
+    }
     if (preview) {
       // yearly cost types: full-year amount = booked so far + what is still due after the cutoff (booked early, else Setup) → × elapsed share
       for (const c of cats) {
@@ -310,7 +328,7 @@ const NkCasa = (() => {
     }
     for (const t of tenancies) { t.vz = r2(t.vz); if (t.vzMissing.length) warn.push(t.name + ': NK paid missing in Controlling for ' + t.vzMissing.length + ' month(s)'); }
 
-    return { period, fullPeriod: full, preview: preview ? { cutoff: cut, share: shareYear } : null, months, lines, tenancies, warn };
+    return { period, fullPeriod: full, preview: preview ? { cutoff: cut, share: shareYear } : null, months, lines, tenancies, warn, planned };
   }
 
   /* ── Kostenquote (Oct 2026) ─────────────────────────────────
