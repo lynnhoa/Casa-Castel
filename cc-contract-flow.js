@@ -171,7 +171,7 @@ function ccfIso(v) {
 function ccfFmt(v) { const i = ccfIso(v); return i ? i.slice(8, 10) + '.' + i.slice(5, 7) + '.' + i.slice(0, 4) : ''; }
 function ccfFmtShort(v) {   // "29.09." this year · "29.09.2025" otherwise (the year only where it isn't clear)
   const i = ccfIso(v); if (!i) return '';
-  return i.slice(8, 10) + '.' + i.slice(5, 7) + '.' + (i.slice(0, 4) !== ccfToday().slice(0, 4) ? i.slice(0, 4) : '');
+  return i.slice(8, 10) + '.' + i.slice(5, 7) + '.' + i.slice(0, 4);   // Oct 2026: always dd.mm.yyyy
 }
 function ccfToday() { return typeof ccTodayISO === 'function' ? ccTodayISO() : new Date().toISOString().slice(0, 10); }
 function ccfAddDays(iso, n) {

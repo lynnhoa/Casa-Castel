@@ -27,7 +27,7 @@ const ST = {
 
 const stEsc = s => (typeof cxEsc === 'function' ? cxEsc(s) : String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
 const stDate = iso => (typeof cxFmtDate === 'function' ? cxFmtDate(iso) : String(iso || ''));
-const stDM = iso => { const s = String(iso || '').slice(0, 10); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' : ''; };
+const stDM = iso => { const s = String(iso || '').slice(0, 10); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; };   // Oct 2026: always dd.mm.yyyy
 const stEur = v => (typeof cxEur === 'function' ? cxEur(v) : String(v));
 function stSay(msg) { if (typeof ctlToast === 'function') ctlToast(msg); }
 function stIsWide() { return window.innerWidth >= 1000; }

@@ -462,7 +462,7 @@ window.renderOneTime = function () {
    in: "Received" → amount + date → a one-off income of that property (Other · Income) and the bonus is
    "received" in Utilities. Casa Castel only: the NK switch (preset from the bonus) lowers that cost type
    in the NK-Abrechnung. On the bill or in points: never here. */
-const _cxMY = iso => { const d = _cxD(iso); return d ? d.slice(5, 7) + '.' + d.slice(0, 4) : ''; };
+const _cxMY = iso => cxFmtDate(_cxD(iso));                 // Oct 2026: the full day (was MM.JJJJ)
 const _cxOtBoPid = k => Number(k.property_id ?? CASA_PROP_ID);      // the contract's property (Casa Castel before Oct 2026)
 function _cxOtBonuses() {
   const S = window._src || {}, ks = (S.hContracts || []).filter(k => !k.deleted_at);

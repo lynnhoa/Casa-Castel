@@ -32,7 +32,9 @@
                                  (term · special cancel right · price guarantee)
      amber Claim …               a bonus needs something from you
      amber Bonus?                a bonus is 4 weeks late
-     grey  New price MM.JJJJ     8 weeks before a known new price (info, not a to-do)
+     grey  New price TT.MM.JJJJ  8 weeks before a known new price (info, not a to-do)
+   Dates (Oct 2026): always the full day — a price counts from the MONTH its date falls in
+   (Gilt ab 15.06.2026 → June has the new price), the same rule as Controlling.
    ───────────────────────────────────────────────────────────── */
 
 const PVU_CASA = 7;                                          // Casa Castel = ctrl_properties 7 (CASA_PROP_ID)
@@ -77,7 +79,7 @@ const _ctrD = v => (v ? String(v).slice(0, 10) : '');
 const _ctrT = () => ccTodayISO();
 const _ctrF = iso => (iso ? ccFmtDate(iso) : '');
 const _ctrFS = iso => (iso ? ccFmtDateShort(iso) : '');
-const _ctrMY = iso => (iso ? iso.slice(5, 7) + '.' + iso.slice(0, 4) : '');
+const _ctrMY = iso => _ctrF(iso);                          // Oct 2026: the full day everywhere (was MM.JJJJ)
 const _ctrId = v => String(v ?? '');
 function _ctrAddM(iso, n) {
   const [y, m, d] = iso.split('-').map(Number);
@@ -92,7 +94,9 @@ function _ctrNotice(iso, notice, sign) {
 }
 const _ctrCancellable = n => !!n && n !== 'unknown' && n !== 'none';
 const _ctrNoticeLbl = n => (CTR_NOTICE.find(x => x[0] === n) || CTR_NOTICE[0])[1];
-function _ctrParseMonth(v) {
+function _ctrParseMonth(v) {                               // Oct 2026: a day (15.06.2026 · 1.6.26) — a month alone (06.2026) still means its 1st
+  const day = typeof ccParseDate === 'function' ? ccParseDate(String(v || '').trim()) : null;
+  if (day) return day;
   const m = String(v || '').trim().match(/^(\d{1,2})[.\/-](\d{4})$/) || String(v || '').trim().match(/^(\d{4})-(\d{2})(?:-\d{2})?$/);
   if (!m) return null;
   const [mo, y] = m[1].length === 4 ? [+m[2], +m[1]] : [+m[1], +m[2]];
@@ -195,12 +199,12 @@ function _ctrPriceAt(s, first) {            // same rule as Controlling: the per
   const list = _ctrPeriodsOf(s);
   if (!list.length) return { amount: s.cat ? _ctrN(s.cat.default_amount) : 0, row: null };
   let i = 0;
-  list.forEach((h, k) => { if (_ctrD(h.valid_from) <= first) i = k; });
+  list.forEach((h, k) => { if (_ctrD(h.valid_from).slice(0, 7) <= first.slice(0, 7)) i = k; });   // its month counts
   return { amount: _ctrN(list[i].amount), row: list[i] };
 }
 const _ctrNow = s => _ctrPriceAt(s, _ctrT().slice(0, 7) + '-01');
 /* a known price CHANGE ahead (the first price of a contract that has not started is no change) */
-const _ctrNextPrice = s => { const first = _ctrT().slice(0, 7) + '-01', list = _ctrPeriodsOf(s); return list.find((h, i) => i > 0 && _ctrD(h.valid_from) > first) || null; };
+const _ctrNextPrice = s => { const first = _ctrT().slice(0, 7) + '-01', list = _ctrPeriodsOf(s); return list.find((h, i) => i > 0 && _ctrD(h.valid_from).slice(0, 7) > first.slice(0, 7)) || null; };
 
 /* ── contract dates ────────────────────────────────────────── */
 function _ctrTerm(k) {
@@ -567,7 +571,7 @@ const _ctrFoot = (save, del) => `<div class="ctr-ft">${del || ''}<button type="b
 const _ctrSegH = (name, opts, cur) => `<div class="ctr-seg" data-seg="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${_ctrE(v)}"${String(v) === String(cur) ? ' class="on"' : ''}>${_ctrE(l)}</button>`).join('')}</div>`;
 const _ctrInp = (id, label, val, ph = '', cls = '', extra = '') => `<div><label class="ctr-fl" for="${id}">${label}</label><input class="ctr-in${cls ? ' ' + cls : ''}" id="${id}" type="text" value="${_ctrE(val ?? '')}" placeholder="${_ctrE(ph)}"${extra}></div>`;
 const _ctrDateInp = (id, label, iso) => _ctrInp(id, label, iso ? _ctrF(iso) : '', 'TT.MM.JJJJ', '', ' inputmode="numeric" autocomplete="off"');
-const _ctrMonInp = (id, label, iso) => _ctrInp(id, label, iso ? _ctrMY(iso) : '', 'MM.JJJJ', '', ' inputmode="numeric" autocomplete="off"');
+const _ctrMonInp = (id, label, iso) => _ctrDateInp(id, label, iso);   // Oct 2026: a real date field (typing + calendar)
 const _ctrAmtInp = (id, label, v, extra = '') => _ctrInp(id, label, v === null || v === undefined || v === '' ? '' : ccFmtNum(v, 2), '0,00', 'r', ' inputmode="decimal" autocomplete="off"' + extra);
 const _ctrSel = (id, label, opts, cur, extra = '') => `<div><label class="ctr-fl" for="${id}">${label}</label><select class="ctr-in" id="${id}"${extra}>${opts.map(([v, l]) => `<option value="${_ctrE(v)}"${String(v) === String(cur) ? ' selected' : ''}>${_ctrE(l)}</option>`).join('')}</select></div>`;
 const _ctrFileInp = label => `<label class="ctr-fl">${label}</label><label class="ctr-file"><i class="ti ti-upload" aria-hidden="true"></i><span data-file-name>Add PDF</span><input type="file" id="ctrFile" accept="application/pdf,.pdf"></label>`;
@@ -631,9 +635,9 @@ function _ctrPriceSec(s, st) {
     const reason = CTR.arg || 'Preiserhöhung', korr = reason === 'Korrektur', r = now.row || {};
     return _ctrSec('Price · New price', '', _ctrKV('Now', now.amount ? _ctrEur(now.amount) + ' / ' + _ctrPer(src) : '') +
       `<label class="ctr-fl">Reason</label>${_ctrSegH('reason', [['Preiserhöhung', 'Preiserhöhung'], ['Neuer Abschlag', 'Neuer Abschlag'], ['Korrektur', 'Korrektur']], reason)}` +
-      (korr ? `<div class="ctr-2">${_ctrAmtInp('ctrPrAmt', 'Correct price €', now.amount)}<div></div></div>` +
+      (korr ? `<div class="ctr-2">${_ctrAmtInp('ctrPrAmt', 'Correct price €', now.amount)}${r.id && _ctrD(r.valid_from) > '2000-01-01' ? _ctrDateInp('ctrPrKFrom', 'Gilt ab', _ctrD(r.valid_from)) : '<div></div>'}</div>` +
           (energy ? `<div class="ctr-2">${_ctrAmtInp('ctrPrWork', 'Arbeitspreis ct/kWh', r.work_price)}${_ctrAmtInp('ctrPrBase', 'Grundpreis €/month', r.base_price)}</div>` : '') +
-          `<p class="ctr-hint">Korrektur fixes or fills in the current price, from the same month as before. Nothing new starts.</p>`
+          `<p class="ctr-hint">Korrektur fixes the current price — its amount and its date (Gilt ab). Nothing new starts.</p>`
         : `<div class="ctr-2">${_ctrMonInp('ctrPrFrom', 'Gilt ab', '')}${_ctrAmtInp('ctrPrAmt', 'Price €', '')}</div>` +
           (reason === 'Preiserhöhung' ? `<div class="ctr-2">${_ctrDateInp('ctrPrSpec', 'Special cancel until', '')}<div></div></div>` : '') +
           (energy ? `<div class="ctr-2">${_ctrAmtInp('ctrPrWork', 'Arbeitspreis ct/kWh', '')}${_ctrAmtInp('ctrPrBase', 'Grundpreis €/month', '')}</div>` : '') +
@@ -983,20 +987,28 @@ async function _ctrSavePrice() {
   if (reason === 'Korrektur') {
     const f = { amount: _ctrR(amt) };
     if (energy) { f.work_price = w; f.base_price = g; }
+    if (now.row && _ctrD(now.row.valid_from) > '2000-01-01' && document.getElementById('ctrPrKFrom')) {   // Oct 2026: the real day of this price
+      const kf = _ctrParseMonth(_ctrVal('ctrPrKFrom'));
+      if (!kf) { _ctrToast('Gilt ab: TT.MM.JJJJ'); return; }
+      const ix = list.findIndex(h => h.id === now.row.id), pv = ix > 0 ? list[ix - 1] : null, nx = ix >= 0 ? list[ix + 1] : null;
+      if ((pv && kf <= _ctrD(pv.valid_from)) || (nx && kf >= _ctrD(nx.valid_from))) { _ctrToast('Gilt ab must lie between the price before and the one after'); return; }
+      f.valid_from = kf;
+    }
     if (now.row) _ctrQ(await db.from(T).update(f).eq('id', now.row.id));
     else if (s.cat) {
       if (energy && (w !== null || g !== null)) _ctrQ(await db.from(T).insert(Object.assign({ category_id: s.cat.id, valid_from: '2000-01-01', reason: 'Start' }, f)));
       _ctrQ(await db.from('ctrl_castel_categories').update({ default_amount: _ctrR(amt) }).eq('id', s.cat.id));
     } else {
       if (!k) return;
-      const from = k.starts_on ? _ctrD(k.starts_on).slice(0, 7) + '-01' : _ctrT().slice(0, 7) + '-01';
+      const from = k.starts_on ? _ctrD(k.starts_on) : _ctrT();
       _ctrQ(await db.from(T).insert(Object.assign({ contract_id: k.id, valid_from: from, reason: 'Start' }, f)));
     }
     return _ctrAfter('Price corrected');
   }
   const from = _ctrParseMonth(_ctrVal('ctrPrFrom'));
-  if (!from) { _ctrToast('Gilt ab: MM.JJJJ'); return; }
-  if (list.some(h => _ctrD(h.valid_from) === from)) { _ctrToast('There is already a price from ' + _ctrMY(from) + ' – use Korrektur'); return; }
+  if (!from) { _ctrToast('Gilt ab: TT.MM.JJJJ'); return; }
+  const twin = list.find(h => _ctrD(h.valid_from).slice(0, 7) === from.slice(0, 7));   // one price per month (its month counts)
+  if (twin) { _ctrToast('There is already a price in that month (from ' + _ctrMY(_ctrD(twin.valid_from)) + ') – use Korrektur'); return; }
   if (!s.cat && !k) { _ctrToast('Add the contract first'); return; }
   const spec = _ctrDateInSafe('ctrPrSpec'); if (spec === false) return;
   const letter = await _ctrUpload(k, 'price');
@@ -1035,7 +1047,7 @@ async function _ctrSaveBonus() {
   if (pts) { const p = parseInt(_ctrVal('ctrBoPts'), 10); if (!(p > 0)) { _ctrToast('Enter the points'); return; } row.points = p; row.amount = null; row.paid = 'points'; }
   else { const a = ccParseEUR(_ctrVal('ctrBoAmt')); if (a === null || a <= 0) { _ctrToast('Enter the amount'); return; } row.amount = _ctrR(a); row.points = null; row.paid = _ctrSegVal('bpaid') || 'account'; }
   const ex = _ctrVal('ctrBoExp');
-  if (ex) { const m = _ctrParseMonth(ex); if (!m) { _ctrToast('Expected: MM.JJJJ'); return; } row.expected_on = m; } else row.expected_on = null;
+  if (ex) { const m = _ctrParseMonth(ex); if (!m) { _ctrToast('Expected: TT.MM.JJJJ'); return; } row.expected_on = m; } else row.expected_on = null;
   const db = _pvuDb();
   if (b) {
     let st = _ctrSegVal('bstat') || b.status;
@@ -1159,8 +1171,8 @@ async function _ctrSaveNew() {
   const amtTxt = _ctrVal('nAmt'), amt = amtTxt ? ccParseEUR(amtTxt) : null;
   if (amtTxt && (amt === null || amt < 0)) { _ctrToast('Price: e.g. 56,00'); return; }
   const fromTxt = _ctrVal('nFrom');
-  const from = fromTxt ? _ctrParseMonth(fromTxt) : (start ? start.slice(0, 7) + '-01' : null);
-  if (fromTxt && !from) { _ctrToast('From: MM.JJJJ'); return; }
+  const from = fromTxt ? _ctrParseMonth(fromTxt) : (start || null);   // Oct 2026: the real day (default: the contract start)
+  if (fromTxt && !from) { _ctrToast('From: TT.MM.JJJJ'); return; }
   const freq = _ctrVal('nFreq') || 'monatlich', dms = _ctrMonsVal();
   const due = freq === 'monatlich' ? null : (dms.length ? dms : null);
   if (freq !== 'monatlich' && !due) { _ctrToast('Choose the months it is due'); return; }
@@ -1177,8 +1189,9 @@ async function _ctrSaveNew() {
   } else if (casa && amt !== null) {
     const c = _ctrCat(catId), sl = _ctrCatSlot(c), now = from ? _ctrPriceAt(sl, from) : _ctrNow(sl), list = _ctrPeriods(c.id);
     if (_ctrR(amt) !== _ctrR(now.amount)) {
-      if (!from) { _ctrToast('From: the month the new price starts'); return; }
-      if (list.some(h => _ctrD(h.valid_from) === from)) _ctrQ(await db.from('ctrl_castel_amount_history').update({ amount: _ctrR(amt) }).eq('category_id', c.id).eq('valid_from', from));
+      if (!from) { _ctrToast('From: the date the new price starts'); return; }
+      const twin = list.find(h => _ctrD(h.valid_from).slice(0, 7) === from.slice(0, 7));   // same month: that price gets the new amount and day
+      if (twin) _ctrQ(await db.from('ctrl_castel_amount_history').update({ amount: _ctrR(amt), valid_from: from }).eq('id', twin.id));
       else {
         if (!list.length) _ctrQ(await db.from('ctrl_castel_amount_history').insert({ category_id: c.id, valid_from: '2000-01-01', amount: _ctrR(_ctrN(c.default_amount)), reason: 'Start' }));
         _ctrQ(await db.from('ctrl_castel_amount_history').insert({ category_id: c.id, valid_from: from, amount: _ctrR(amt), reason: 'Neuer Vertrag' }));
@@ -1196,7 +1209,7 @@ async function _ctrSaveNew() {
   };
   const k = _ctrQ(await db.from('house_contracts').insert(row).select().single());
   if (k && !casa && amt !== null)
-    _ctrQ(await db.from('house_contract_prices').insert({ contract_id: k.id, valid_from: from || _ctrT().slice(0, 7) + '-01', amount: _ctrR(amt), reason: 'Start' }));
+    _ctrQ(await db.from('house_contract_prices').insert({ contract_id: k.id, valid_from: from || _ctrT(), amount: _ctrR(amt), reason: 'Start' }));
   if (k && document.getElementById('ctrFile')?.files?.[0]) await _ctrUpload(k, 'contract');
   if (!CTR.uprops.some(u => Number(u.property_id) === pid))
     await db.from('house_utility_props').insert({ property_id: pid });   // the property shows in Utilities from now on

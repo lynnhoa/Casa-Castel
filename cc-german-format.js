@@ -18,6 +18,11 @@
    3) Date fields   <input type="date">  become text fields TT.MM.JJJJ.
       They SHOW 26.09.2026 but .value still RETURNS "2026-09-26" and
       still ACCEPTS "2026-09-26". Dots are added while typing.
+   Dates (Oct 2026): always the full day, dd.mm.yyyy. Every date field takes typing
+   (keypad with a separator key — a German iPhone shows "," there, it becomes ".";
+   26062026 → 26.06.2026; 1.6.26 → 01.06.2026) and the German calendar (the icon on
+   the right of the field). An unfinished or wrong date is never saved: the field goes
+   back to its last date and turns red for a moment.
    ───────────────────────────────────────────────────────────── */
 
 const CC_TZ = 'Europe/Berlin';
@@ -136,12 +141,11 @@ function ccFmtDate(v) {
   return `${d}.${m}.${y}`;
 }
 
-/* → "26.09." */
+/* → "26.09.2026" — Oct 2026: dates are always the full day (dd.mm.yyyy); the name stays for its callers */
 function ccFmtDateShort(v) {
   const iso = ccParseDate(v);
   if (!iso) return v ? String(v) : '';
-  const [, m, d] = iso.split('-');
-  return `${d}.${m}.`;
+  return ccFmtDate(iso);
 }
 
 /* Today in Germany as "YYYY-MM-DD" — correct in summer time, winter time and abroad */
@@ -171,6 +175,7 @@ function ccFmtTs(ts) {
    Dots the person typed themselves (1.10.2026) are left alone.
    dm = day + month only (01.01.) */
 function ccDateTyping(value, dm = false) {
+  value = String(value ?? '').replace(/,/g, '.');           // German iPhone keypad: the separator key types "," → "."
   if (!/^(\d{2}\.){0,2}\d*$/.test(value)) return value;   // own dots (e.g. 1.10.) → keep as typed
   const digits = value.replace(/\D/g, '').slice(0, dm ? 4 : 8);
   if (!dm && digits.length > 4) return digits.slice(0, 2) + '.' + digits.slice(2, 4) + '.' + digits.slice(4);
@@ -231,7 +236,7 @@ function ccIsNumInput(el) {
     el._ccDate = true;
     const raw = nget(el);                                // "2026-09-26" from the template
     el.setAttribute('type', 'text');
-    el.setAttribute('inputmode', 'numeric');
+    el.setAttribute('inputmode', 'decimal');               // Oct 2026: digits + the separator key (typed "," → ".")
     el.setAttribute('autocomplete', 'off');
     el.setAttribute('placeholder', 'TT.MM.JJJJ');
     el.classList.add('cc-date');
@@ -279,16 +284,7 @@ function ccIsNumInput(el) {
       const n = ccParseEUR(txt);
       if (n === null) { el.setAttribute('aria-invalid', 'true'); return; }
       nset(el, ccFmtNum(n, el._ccDec));
-    } else {
-      const iso = ccParseDate(txt);
-      if (!iso) { el.setAttribute('aria-invalid', 'true'); return; }
-      const shown = ccFmtDate(iso);
-      if (shown !== txt) {
-        nset(el, shown);
-        el.dispatchEvent(new Event('input',  { bubbles: true }));   // e.g. 26.09.26 → pages recalculate
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    }
+    } else return;                                          // dates: settled in the calendar block below (ccDateSettle)
     el.removeAttribute('aria-invalid');
   }, true);
 
@@ -307,11 +303,14 @@ function ccIsNumInput(el) {
   document.addEventListener('DOMContentLoaded', () => scan(document.body));
 })();
 
-/* ── GERMAN CALENDAR ─────────────────────────────────────────
-   Every date field in the 4 management apps opens a German calendar when
-   you tap it (September 2026, Mo–So, Heute) — no keyboard. Always German,
-   whatever language the phone is set to. For quick typing, the calendar
-   has its own field at the top ("Eintippen").
+/* ── GERMAN CALENDAR + TYPING ────────────────────────────────
+   Oct 2026: every date field takes BOTH
+     · typing — tap into the field: keypad with the separator key ("," → "."),
+       dots are added while typing, 1.6.26 → 01.06.2026 when you leave the field
+     · the calendar — tap the calendar icon on the right of the field: the German
+       calendar (September 2026, Mo–So, Heute), whatever language the phone is set to
+   An unfinished or wrong date is never saved: the field goes back to its last date
+   and turns red for a moment (it is settled before the page's own change handler runs).
 
    Which fields:
      • converted date pickers (input.cc-date — Mietbeginn, Mietende,
@@ -349,6 +348,8 @@ function ccIsNumInput(el) {
     const k = kindOf(el); if (!k) return;
     el._ccCal = k;
     el.classList.add('cc-cal');
+    el.setAttribute('inputmode', 'decimal');               // Oct 2026: typing with the separator key
+    el.setAttribute('autocomplete', el.getAttribute('autocomplete') === 'bday' ? 'bday' : 'off');
   }
   function scan(root) {
     if (!root || root.nodeType !== 1) return;
@@ -417,7 +418,7 @@ function ccIsNumInput(el) {
           <button type="button" class="cccal__x" aria-label="Schließen" data-a="close"><i class="ti ti-x"></i></button>
         </div>
         <div class="cccal__type">
-          <input class="cccal__typein" type="text" inputmode="numeric" autocomplete="off"
+          <input class="cccal__typein" type="text" inputmode="decimal" autocomplete="off"
             placeholder="${dm ? 'TT.MM.' : 'TT.MM.JJJJ'}" aria-label="Datum eintippen"/>
           <button type="button" class="cccal__typeok" data-a="typeok">OK</button>
         </div>
@@ -565,8 +566,10 @@ function ccIsNumInput(el) {
     ov.querySelector('.cccal__grid').innerHTML = h;
   }
 
-  /* tap on a date field → calendar (the field itself never gets the keyboard) */
+  /* Oct 2026 · tap on the calendar icon (right end of the field) → calendar · tap anywhere else → typing */
   const isCal = el => !!(el && el._ccCal && !el.disabled && !el.readOnly);
+  const ICON_ZONE = 44;                                   // px from the right edge (icon 18 px + padding)
+  const onIcon = (el, x) => { const r = el.getBoundingClientRect(); return typeof x === 'number' && x >= r.right - ICON_ZONE; };
   let t0 = null;                                          // a swipe that starts on the icon is a scroll, not a tap
   document.addEventListener('touchstart', e => {
     const t = e.touches && e.touches[0]; t0 = t ? { x: t.clientX, y: t.clientY } : null;
@@ -575,18 +578,81 @@ function ccIsNumInput(el) {
     const el = e.target; if (!el || !el._ccCal) return;
     const t = e.changedTouches && e.changedTouches[0];
     if (!t || (t0 && Math.hypot(t.clientX - t0.x, t.clientY - t0.y) > 10)) return;
-    if (isCal(el)) { e.preventDefault(); open(el); }
+    if (isCal(el) && onIcon(el, t.clientX)) { e.preventDefault(); open(el); }
   }, { capture: true, passive: false });
   document.addEventListener('mousedown', e => {
-    if (isCal(e.target)) e.preventDefault();
+    if (isCal(e.target) && onIcon(e.target, e.clientX)) e.preventDefault();
   }, true);
   document.addEventListener('click', e => {
-    if (isCal(e.target)) { e.preventDefault(); open(e.target); }
+    if (isCal(e.target) && onIcon(e.target, e.clientX)) { e.preventDefault(); open(e.target); }
   }, true);
-  // B25 (1): reached with the keyboard's ⌃ ⌄ (or Tab), or by a tap that slid a little → the calendar opens
-  // instead of typing straight into the field (there, an unfinished date used to be saved as empty)
+
+  /* ── typing straight into a date field (Oct 2026) ── */
+  const DM_RE = /^(\d{1,2})\.(\d{1,2})\.?$/;
+  const validDM = t => { const m = String(t).match(DM_RE); return !!m && +m[2] >= 1 && +m[2] <= 12 && +m[1] >= 1 && +m[1] <= new Date(2024, +m[2], 0).getDate(); };
+  // the date it had when you came in — where it goes back to if what you typed isn't a date
   document.addEventListener('focusin', e => {
-    if (isCal(e.target) && !document.getElementById('ccCal')) open(e.target);
+    const el = e.target;
+    if (el && el._ccCal && !el.closest('.cccal')) el._ccLast = nget(el);
+  }, true);
+  // dots while typing (the converted fields get theirs in the block above)
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (!el || !el._ccCal || el._ccDate) return;
+    if (e.inputType && !e.inputType.startsWith('insert')) return;     // deleting: leave alone
+    const v = nget(el), out = ccDateTyping(v, el._ccCal === 'daymonth');
+    if (out !== v) { nset(el, out); try { el.setSelectionRange(out.length, out.length); } catch (_) {} }
+  }, true);
+  /* a short note at the bottom (the app's own toast where there is one) */
+  function note(msg) {
+    if (typeof ccToast === 'function') { ccToast(msg, true); return; }
+    let n = document.getElementById('ccDateNote');
+    if (!n) {
+      n = document.createElement('div'); n.id = 'ccDateNote';
+      n.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;background:#3D3027;color:#FDFCFA;' +
+        'font:13px/1.4 Inter,system-ui,sans-serif;padding:10px 16px;border-radius:12px;max-width:86vw;text-align:center;';
+      document.body.appendChild(n);
+    }
+    n.textContent = msg;
+    clearTimeout(n._t); n._t = setTimeout(() => n.remove(), 3200);
+  }
+  /* tidy or go back: 1.6.26 → 01.06.2026 · "15.6" → the last date + red · empty stays empty (cleared on purpose) */
+  function settle(el) {
+    if (!el || !el._ccCal || el._ccSettling || !el.closest || el.closest('.cccal')) return null;
+    const txt = nget(el).trim();
+    if (!txt) { el.removeAttribute('aria-invalid'); el._ccLast = ''; return null; }
+    let shown = null;
+    if (el._ccCal === 'daymonth') {
+      if (validDM(txt)) { const m = txt.match(DM_RE); shown = String(m[1]).padStart(2, '0') + '.' + String(m[2]).padStart(2, '0') + '.'; }
+    } else {
+      const iso = ccParseDate(txt);
+      if (iso) shown = ccFmtDate(iso);
+    }
+    if (shown === null) {                                 // not a date → back to the last one, red for a moment
+      const last = el._ccLast !== undefined ? el._ccLast : '';
+      nset(el, last);
+      el.setAttribute('aria-invalid', 'true');
+      clearTimeout(el._ccRed); el._ccRed = setTimeout(() => el.removeAttribute('aria-invalid'), 2500);
+      note('Not a complete date — kept ' + (last || 'empty') + '. Type TT.MM.JJJJ or use the calendar.');
+      return 'reverted';
+    }
+    el.removeAttribute('aria-invalid');
+    el._ccLast = shown;
+    if (shown !== txt) { nset(el, shown); return 'tidied'; }
+    return null;
+  }
+  window.ccDateSettle = settle;
+  // before the page's own change handler (capture on the document runs first): it reads a real date or the old one
+  document.addEventListener('change', e => { settle(e.target); }, true);
+  document.addEventListener('focusout', e => {
+    const el = e.target;
+    if (settle(el)) {                                     // let the page recalculate / save with the settled date
+      el._ccSettling = true;                              // (these two events must not settle again — it would clear the red)
+      try {
+        el.dispatchEvent(new Event('input',  { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      } finally { el._ccSettling = false; }
+    }
   }, true);
 
   window.ccOpenCalendar = open;                           // e.g. for tests
@@ -611,7 +677,7 @@ html input.cc-cal { background-image:url("${ICON}") !important; background-repea
 .cccal__typein[aria-invalid="true"] { border-color:#C0392B; box-shadow:0 0 0 1px #C0392B; }
 .cccal__typeok { height:42px; padding:0 16px; border:.5px solid var(--cc-rule, #E0DAD0); border-radius:8px; background:var(--cc-white, #FDFCFA);
   color:var(--cc-ink, #1E1B18); font-family:inherit; font-size:13px; font-weight:500; cursor:pointer; }
-html input.cc-cal { cursor:pointer; caret-color:transparent; }
+html input.cc-cal { cursor:text; }
 .cccal__nav { display:flex; align-items:center; gap:6px; margin-bottom:8px; }
 .cccal__arw { width:40px; height:40px; flex-shrink:0; border:.5px solid var(--cc-rule, #E0DAD0); border-radius:8px; background:var(--cc-white, #FDFCFA);
   color:var(--cc-charcoal, #3A3530); display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer; }

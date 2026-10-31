@@ -206,7 +206,10 @@ function ctlUnitLink(u, p) {
     const ref = String(u.source_ref);
     if (u.source_type === 'rentals_apartment') { const o = S.apts.find(a => String(a.id) === ref);     return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
     if (u.source_type === 'rentals_parking')   { const o = S.parking.find(a => String(a.id) === ref);  return o ? { type: u.source_type, ref, obj: o, auto: false } : null; }
-    if (u.source_type === 'casa_room')         { const o = S.rooms.find(r => _cxNorm(r.name) === _cxNorm(ref)); return o ? { type: u.source_type, ref: o.name, obj: o, auto: false } : null; }   // capitals / spaces don't count
+    if (u.source_type === 'casa_room') {                     // Build A (Oct 2026): linked by the room's ID — ref = its current name (only shown / used for the tenant lists)
+      const o = S.rooms.find(r => String(r.id) === ref) || S.rooms.find(r => _cxNorm(r.name) === _cxNorm(ref));   // name links still work until CONTROLLING-ROOM-IDS.sql has run
+      return o ? { type: u.source_type, ref: o.name, id: String(o.id), obj: o, auto: false } : null;
+    }
     return null;
   }
   if (!p) return null;
@@ -217,7 +220,7 @@ function ctlUnitLink(u, p) {
   }
   if (p.id === CASA_PROP_ID) {
     const r = S.rooms.find(r => _cxNorm(r.name) === _cxNorm(u.name));
-    return r ? { type: 'casa_room', ref: r.name, obj: r, auto: true } : null;
+    return r ? { type: 'casa_room', ref: r.name, id: String(r.id), obj: r, auto: true } : null;
   }
   const pl = ctlPropLinks(p);
   if (!pl.apt) return null;
@@ -226,7 +229,7 @@ function ctlUnitLink(u, p) {
 }
 
 /* Units of a property + Casa Castel rooms that have no unit yet (e.g. Berlin).
-   A virtual unit gets its database row on the first save.                */
+   A virtual unit gets its database row on the first save — linked by the room's ID (Build A). */
 function ctlUnitsFor(pid) {
   const units = ctlUnitsOf(pid).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   if (pid !== CASA_PROP_ID) return units;
@@ -234,7 +237,7 @@ function ctlUnitsFor(pid) {
   const taken = new Set(units.map(u => { const l = ctlUnitLink(u, p); return l && l.type === 'casa_room' ? l.ref : null; }).filter(Boolean));
   const extra = (window._src.rooms || [])
     .filter(r => r.active !== false && !taken.has(r.name))
-    .map(r => ({ id: null, virtual: true, property_id: pid, name: r.name, unit_type: 'Zimmer', source_type: 'casa_room', source_ref: r.name }));
+    .map(r => ({ id: null, virtual: true, property_id: pid, name: r.name, unit_type: 'Zimmer', source_type: 'casa_room', source_ref: String(r.id) }));
   return units.concat(extra);
 }
 
@@ -925,7 +928,7 @@ function ctlLoanDebit(L) {
 /* The terms valid in month y/m: the latest history entry from that month or before, else today's Properties values */
 function ctlLoanTerms(L, y, m) {
   const first = _cxIso(y, m, 1);
-  const hist = (window._src.loanHist || []).filter(h => String(h.property_id) === String(L.id) && _cxD(h.valid_from) && _cxD(h.valid_from) <= first)
+  const hist = (window._src.loanHist || []).filter(h => String(h.property_id) === String(L.id) && _cxD(h.valid_from) && _cxD(h.valid_from).slice(0, 7) <= first.slice(0, 7))   // Build A: its month counts
     .sort((a, b) => _cxD(b.valid_from).localeCompare(_cxD(a.valid_from)));
   const h = hist[0];
   if (!h) return L;
@@ -991,15 +994,14 @@ function ctlCostRows(p, y, m) {
   if (pl.apt) {
     const hist = S.hgHist.filter(h => String(h.apt_id ?? h.apartment_id) === String(pl.apt.id));   // B21: Rentals column is apt_id
     let cur = null;
-    for (const h of hist) { const d = _cxD(h.effective_date); if (d && d <= first && (!cur || d > _cxD(cur.effective_date))) cur = h; }
+    for (const h of hist) { const d = _cxD(h.effective_date); if (d && d.slice(0, 7) <= first.slice(0, 7) && (!cur || d > _cxD(cur.effective_date))) cur = h; }   // Build A: a change counts from the month of its date
     const v = S.verw.find(x => String(x.apartment_id) === String(pl.apt.id));
     hg = cur ? _cxNum(cur.amount) : (v ? _cxNum(v.hausgeld_mtl) : null);
     const ch = hist.find(h => { const d = _cxD(h.effective_date); return d >= first && d <= last; });
     if (ch) {
       let pv = null;
       for (const h of hist) { const d = _cxD(h.effective_date); if (d < _cxD(ch.effective_date) && (!pv || d > _cxD(pv.effective_date))) pv = h; }
-      hgNote = 'New Hausgeld · ' + (pv ? _cxEurS(pv.amount) + ' → ' : '') + _cxEurS(ch.amount) + ' from ' + _cxFmtD(ch.effective_date) +
-               (_cxD(ch.effective_date) > first ? ' (applies from next month)' : '');
+      hgNote = 'New Hausgeld · ' + (pv ? _cxEurS(pv.amount) + ' → ' : '') + _cxEurS(ch.amount) + ' from ' + _cxFmtD(ch.effective_date);
     }
   }
   if (hg === null) hg = _cxNum(p.def_hausgeld);
@@ -1051,7 +1053,7 @@ function ctlCatProvidersOwns(c, y, m) {
    before it; correcting a period changes only that period's months.                           */
 const CX_PER_START = '2000-01-01';                         // "from start" period = the amount before any change
 const _CX_PER_MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const ctlPerMonthLbl = iso => { const d = _cxD(iso); return d ? _CX_PER_MN[Number(d.slice(5, 7)) - 1] + ' ' + d.slice(0, 4) : ''; };
+const ctlPerMonthLbl = iso => _cxFmtD(iso);                // Oct 2026: the full day (was "June 2026") — dd.mm.yyyy everywhere
 function ctlCastelPeriods(catId) {
   return (window._src.castelHist || []).filter(h => Number(h.category_id) === Number(catId))
     .sort((a, b) => _cxD(a.valid_from).localeCompare(_cxD(b.valid_from)));
@@ -1061,7 +1063,7 @@ function ctlCastelAmountAt(c, y, m) {
   if (!list.length) return { amount: _cxN0(c.default_amount), period: null, prev: null };
   const first = _cxIso(y, m, 1);
   let i = 0;
-  list.forEach((h, k) => { if (_cxD(h.valid_from) <= first) i = k; });
+  list.forEach((h, k) => { if (_cxD(h.valid_from).slice(0, 7) <= first.slice(0, 7)) i = k; });   // Oct 2026: a price counts from the month its day is in
   return { amount: _cxN0(list[i].amount), period: list[i], prev: i > 0 ? list[i - 1] : null };
 }
 function _cxPerNote(at, y, m) {
@@ -1488,7 +1490,7 @@ function ctlSetupLinkState() {
   for (const p of props) for (const u of ctlUnitsOf(p.id)) {
     const l = ctlUnitLink(u, p);
     units.push({ p, u, l, parking: _cxIsParking(u) });
-    if (l) { const k = l.type + '|' + l.ref; if (!used.has(k)) used.set(k, []); used.get(k).push({ p, u }); }
+    if (l) { const k = l.type + '|' + (l.type === 'casa_room' && l.id ? l.id : l.ref); if (!used.has(k)) used.set(k, []); used.get(k).push({ p, u }); }
   }
   const issues = [];
   for (const [k, list] of used) if (list.length > 1)

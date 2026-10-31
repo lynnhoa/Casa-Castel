@@ -10,7 +10,7 @@ function _cxAptLabel(a) { return [a && a.name, a && a.wohnungsnummer].filter(Boo
      parking or Casa Castel room (rent). Name matches are suggested;
      "Alle Vorschläge übernehmen" saves them in one go.
    · Grundsteuer months per property (default Feb · Mai · Aug · Nov).
-   · Casa Castel cost types: amount, frequency, due months.
+   · Casa Castel cost types: not here any more (Build A, Oct 2026) — Providers › Utilities, Properties (Rate), Providers (Putzdienst, Winterdienst).
    · Planwerte: only for what has no link (fallback).
    ───────────────────────────────────────────────────────────── */
 
@@ -29,7 +29,7 @@ function _cxSetupSuggestions() {
     if (Object.keys(f).length) out.push(['ctrl_properties', p.id, f]);
     for (const u of ctlUnitsOf(p.id)) {
       const ul = ctlUnitLink(u, p);
-      if (ul && ul.auto) out.push(['ctrl_units', u.id, { source_type: ul.type, source_ref: String(ul.ref) }]);
+      if (ul && ul.auto) out.push(['ctrl_units', u.id, { source_type: ul.type, source_ref: String(ul.type === 'casa_room' && ul.id ? ul.id : ul.ref) }]);   // Build A: rooms by ID
     }
   }
   return out;
@@ -72,7 +72,7 @@ const _cxMoney = (table, id, field, val, label) =>
                  living units (Zimmer / Wohnung). A missing link shows its one fallback field inline.
    Stellplätze · every parking unit of every property, linked to Rentals › Parking (rent from
                  Rentals, no NK) + Rentals spaces that are in no property yet ("hinzufügen")
-   Kostenarten · Casa Castel cost types
+   Kostenarten · Casa Castel cost types — removed in Build A (Oct 2026)
    The separate "Planwerte" card and the Strom field are gone (no Strom in the apartments).  */
 const _cxSU = { edit: {} };
 const _cxUnitHasEntries = uid => (window._src.incAll || []).concat(window._ctrl.income || []).some(r => r.unit_id === uid);
@@ -82,12 +82,12 @@ function _cxSuSelect(u, opts, cur) {
 }
 /* One unit line: linked → name · source + "ändern"; not linked (or editing) → the select */
 function _cxSuUnit(u, p, st, kind) {
-  const S = window._src, l = ctlUnitLink(u, p), cur = l ? l.type + '|' + l.ref : '';
+  const S = window._src, l = ctlUnitLink(u, p), cur = l ? l.type + '|' + (l.type === 'casa_room' && l.id ? l.id : l.ref) : '';
   const takenBy = k => { const list = st.used.get(k) || []; const o = list.find(x => x.u.id !== u.id); return o ? o.p.name + ' · ' + o.u.name : null; };
   const opt = (v, label) => { const tb = takenBy(v); return '<option value="' + cxEsc(v) + '"' + (cur === v ? ' selected' : '') + (tb && cur !== v ? ' disabled' : '') + '>' + cxEsc(label + (tb ? ' – already used by ' + tb : '')) + '</option>'; };
   let opts = '';
   if (kind === 'parking') opts = S.parking.map(x => opt('rentals_parking|' + x.id, x.name)).join('');
-  else if (p.id === CASA_PROP_ID) opts = S.rooms.map(r => opt('casa_room|' + r.name, r.name)).join('');
+  else if (p.id === CASA_PROP_ID) opts = S.rooms.map(r => opt('casa_room|' + r.id, r.name)).join('');   // Build A: saved by the room's ID
   else opts = S.apts.map(a => opt('rentals_apartment|' + a.id, _cxAptLabel(a))).join('');
   const editing = !l || _cxSU.edit[u.id];
   let info = '';
@@ -157,7 +157,7 @@ window.renderSetup = function () {
         _cxOpt('', '— not linked —', !l.loan) + S.loans.map(x => _cxOpt(x.id, (x.name || 'Loan') + (x.rate ? ' · ' + cxEur(x.rate) : ''), l.loan && String(l.loan.id) === String(x.id))).join('') +
       '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
       (l.loan ? '<div class="cx-r__sub">' + cxEsc('Rate ' + cxEur(l.loan.rate || 0) + ' · Zinsen ' + cxEur(l.loan.zinsen || 0) + ' · Tilgung ' + cxEur(l.loan.tilgung || 0)) + '</div>'
-        : casa ? '<div class="cx-r__sub">Kreditrate from the cost type "Kreditrate" below</div>'
+        : casa ? '<div class="cx-r__sub">Kreditrate: comes from the Properties loan once it is linked here — until then the amount saved for it stays</div>'
         : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Kreditrate from these values</div>' +
           _cxMoney('ctrl_properties', p.id, 'def_rate', p.def_rate, 'Kreditrate') + _cxMoney('ctrl_properties', p.id, 'def_zinsen', p.def_zinsen, 'of which Zinsen'));
     // Abrechnungszeitraum: set later in the Abrechnungen app (placeholder until then, stored value untouched)
@@ -192,30 +192,8 @@ window.renderSetup = function () {
   const pkCard = cxCard({ key: 'set:parking', title: 'Parking', sub: 'Rent from Rentals › Parking · no NK',
                           status: pkOpen ? ['open', pkOpen + ' to check'] : ['ok', 'linked'], body: pkBody });
 
-  /* ── Kostenarten (Casa Castel) ── */
-  const casaP = props.find(p => p.id === CASA_PROP_ID), casaLoan = casaP ? ctlPropLinks(casaP).loan : null;
-  const cats = (window._ctrl.categories || []).map(c => {
-    const freq = c.frequency || 'monatlich', isRate = c.code === 'RATE', freqL = typeof _cxFreqLbl === 'function' ? _cxFreqLbl(freq) : freq;
-    const fromLoan = isRate && casaLoan;
-    if (_cxInContracts(c)) return _cxSuContractCatHTML(c, freq, freqL);   // Oct 2026: set in Providers › Utilities, read here
-    if (ctlCatOwner(c) === 'providers') return _cxSuProvCatHTML(c);       // Fix 2: Soll from Providers › Jobs, read-only here
-    return '<div class="cx-cat">' +
-      '<div class="cx-set__row"><span class="cx-pn cx-pn--s">' + cxEsc(c.name || (isRate ? 'Kreditrate' : 'Cost')) + '</span>' +
-        (isRate ? cxPill(fromLoan ? 'ok' : 'beige', fromLoan ? 'from Properties' : 'plan value') : cxPill(freq === 'monatlich' ? 'grey' : 'beige', freqL)) + '</div>' +
-      (fromLoan ? '<div class="cx-r__sub">' + cxEsc(cxEur(casaLoan.rate || 0) + ' monthly · from the linked loan') + '</div>' :
-      '<div class="cx-grid2">' +
-        '<label class="cx-f"><input type="text" inputmode="decimal" data-cx-in="ctrl_castel_categories|' + c.id + '|default_amount" value="' + (c.default_amount === null || c.default_amount === undefined ? '' : cxE2(c.default_amount)) + '" placeholder="0,00" aria-label="Amount"><span>€</span></label>' +
-        '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_castel_categories|' + c.id + '|frequency" aria-label="Frequency">' +
-          _CX_FREQ.map(f => _cxOpt(f, typeof _cxFreqLbl === 'function' ? _cxFreqLbl(f) : f, f === freq)).join('') + '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-      '</div>' + _cxPerHTML(c)) +
-      (freq === 'monatlich' || fromLoan ? '' :
-        '<div class="cx-set__k" style="margin-top:6px">' + (_cxBedarf(freq) ? 'Planned in (optional)' : 'Due in') + '</div>' +
-        _cxMonthChips('ctrl_castel_categories|due_months', c.id, c.due_months) +
-        (!_cxBedarf(freq) && !(Array.isArray(c.due_months) && c.due_months.length) && Number(c.default_amount)
-          ? '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Due months missing – choose the months, otherwise the item is missing in the Soll</div>' : '')) +
-      _cxNkSetupHTML(c, isRate) +
-    '</div>';
-  }).join('');
+  /* ── Kostenarten (Casa Castel): Build A — no longer here. Prices, dates and NK split are set in
+     Providers › Utilities, the Rate comes from Properties, Putzdienst / Winterdienst from Providers. ── */
 
   /* ── Prüfen ── */
   // grouped: serious ones one by one, the rest as one line per kind with a pointer to the section
@@ -266,9 +244,6 @@ window.renderSetup = function () {
       '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="openHist"><i class="ti ti-history" aria-hidden="true"></i>Check tenant history</button></div>' +
     '<div class="cx-head"><span class="cx-lbl">Properties</span></div>' + propCards + _cxSuNewPropHTML() +
     '<div class="cx-head"><span class="cx-lbl">Parking</span></div>' + pkCard +
-    '<div class="cx-head"><span class="cx-lbl">Casa Castel · cost types</span></div><div class="cx-card">' +
-      '<div class="cx-r__sub" style="margin:0 0 8px">Price, dates and NK split are set in Providers › Utilities. Rate comes from Properties, Putzdienst and Winterdienst from Providers › Jobs.</div>' +
-      (cats || '<div class="cx-empty">No cost types.</div>') + '</div>' +
     '</div>');   // B18: only what changed
 
   cxWire(host, {
@@ -430,8 +405,10 @@ function _cxSuContractCatHTML(c, freq, freqL) {
    Each period can be corrected (month / amount) or deleted (the one before runs on). */
 const _cxPer = { open: {} };                                // catId → period id | 'new' | null
 const _CX_PER_T = 'ctrl_castel_amount_history';
-const _cxPerMMYYYY = iso => { const d = _cxD(iso); return d ? d.slice(5, 7) + '.' + d.slice(0, 4) : ''; };
-function _cxPerParse(v) {                                   // 07.2026 · 7.2026 · 15.07.2026 · 2026-07 → 2026-07-01
+const _cxPerMMYYYY = iso => _cxFmtD(iso);                 // Oct 2026: the full day (was MM.JJJJ)
+function _cxPerParse(v) {                                   // Oct 2026: 15.07.2026 · 1.7.26 → that day · 07.2026 / 2026-07 → its 1st
+  const day = typeof ccParseDate === 'function' ? ccParseDate(String(v || '').trim()) : null;
+  if (day) return day;
   const s = String(v || '').trim(), iso = (y, m) => (m >= 1 && m <= 12 && y > 2000 && y < 2100) ? y + '-' + String(m).padStart(2, '0') + '-01' : null;
   let x = s.match(/^(\d{1,2})[.\/-](\d{4})$/); if (x) return iso(+x[2], +x[1]);
   x = s.match(/^\d{1,2}\.(\d{1,2})\.(\d{4})$/); if (x) return iso(+x[2], +x[1]);
@@ -449,7 +426,7 @@ function _cxPerHTML(c) {
     return '<div class="cx-set" style="margin-top:8px">' +
       '<div class="cx-set__row"><span class="cx-set__k">Valid from</span>' + (start
         ? '<span class="cx-r__sub">start</span>'
-        : '<label class="cx-f cx-f--l"><input type="text" inputmode="numeric" placeholder="MM.JJJJ" id="cxPerF-' + k + '" value="' + cxEsc(_cxPerMMYYYY(h ? h.valid_from : cxToday())) + '" aria-label="Valid from (month)"></label>') + '</div>' +
+        : '<label class="cx-f cx-f--l"><input type="text" inputmode="decimal" placeholder="TT.MM.JJJJ" id="cxPerF-' + k + '" value="' + cxEsc(_cxPerMMYYYY(h ? h.valid_from : cxToday())) + '" aria-label="Valid from (month)"></label>') + '</div>' +
       '<div class="cx-set__row"><span class="cx-set__k">Amount</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="cxPerA-' + k + '" value="' + (h ? cxE2(h.amount) : '') + '" aria-label="Amount"><span>€</span></label></div>' +
       '<div style="display:flex;gap:8px;margin-top:8px">' +
         (h && !start ? '<button class="cx-btn cx-btn--del" style="flex:1" data-cx="perDel" data-c="' + k + '" data-r="' + cxEsc(h.id) + '">Delete</button>' : '') +
@@ -490,10 +467,10 @@ async function _cxPerSave(catId, rid) {
   const amt = cxParse(document.getElementById('cxPerA-' + catId)?.value);
   if (amt === null) { ctlToast('Please enter the amount'); return false; }
   const from = _cxPerIsStart(cur) ? CX_PER_START : _cxPerParse(document.getElementById('cxPerF-' + catId)?.value);
-  if (!from) { ctlToast('Please enter the month as MM.JJJJ'); return false; }
-  const same = list.find(h => h !== cur && _cxD(h.valid_from) === from);
+  if (!from) { ctlToast('Please enter the date (TT.MM.JJJJ)'); return false; }
+  const same = list.find(h => h !== cur && _cxD(h.valid_from).slice(0, 7) === from.slice(0, 7));   // one amount per month
   if (cur) {                                                // correction of one period
-    if (same) { ctlToast('There is already an amount from ' + ctlPerMonthLbl(from)); return false; }
+    if (same) { ctlToast('There is already an amount in that month (from ' + ctlPerMonthLbl(same.valid_from) + ')'); return false; }
     await _cxPerUpdate(cur.id, { valid_from: from, amount: cxR(amt) });
     ctlLogHistory('category', catId, 'soll ' + from.slice(0, 7), cur.amount, cxR(amt));
   } else {                                                  // new amount from a month

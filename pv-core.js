@@ -44,7 +44,7 @@ function _pvDow(iso) {                      /* day of week of a YYYY-MM-DD, TZ-s
   const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
-function pvDM(iso)      { const s = String(iso).slice(0, 10).split('-'); return s[2] + '.' + s[1] + '.'; }
+function pvDM(iso)      { const s = String(iso).slice(0, 10).split('-'); return s[2] + '.' + s[1] + '.' + s[0]; }   // Oct 2026: always dd.mm.yyyy
 function pvWdDM(iso, en){ return (en ? _pvWdEN : _pvWdDE)[_pvDow(iso)] + ' ' + pvDM(iso); }
 function pvWdFull(iso)  { return _pvWdDEFull[_pvDow(iso)] + ' ' + pvDM(iso); }
 function pvHM(ts) {                         /* timestamp → HH:MM Berlin */

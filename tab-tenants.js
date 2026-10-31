@@ -1641,9 +1641,9 @@ function _tnPwStatus(room, rec) {
       sub: '{name} cannot log in yet — Create password, then give it to {name}.' };
     const ms = t => { const v = Date.parse(String(t || '').replace(' ', 'T')); return isNaN(v) ? null : v; };
     const iso = v => new Date(v).toISOString();
-    const ds = t => {                                   // "11.10." this year · "11.10.2025" otherwise · "today"
+    const ds = t => {                                   // "today" · otherwise the full day "11.10.2026" (Oct 2026)
       const x = day(t); if (!x) return '';
-      return x === today ? 'today' : x.slice(8, 10) + '.' + x.slice(5, 7) + '.' + (x.slice(0, 4) === today.slice(0, 4) ? '' : x.slice(0, 4));
+      return x === today ? 'today' : x.slice(8, 10) + '.' + x.slice(5, 7) + '.' + x.slice(0, 4);
     };
     const pwMs = ms(pwAt0), D1 = 864e5;
     const fits = c => pwMs === null || pwMs <= c + D1;  // the current password belongs to this request
