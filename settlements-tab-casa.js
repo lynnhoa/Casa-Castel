@@ -930,7 +930,7 @@ function scJaModel(M) {
   const tile = !n ? 'no Strom · Gas · Wasser cost type yet' : open.length ? nPaid + ' of ' + n + ' paid · ' + nOpen + ' open'
     : over.length ? nIn + ' of ' + n + ' in · ' + over.length + ' overdue' : nPaid === n ? n + ' of ' + n + ' paid' : nIn + ' of ' + n + ' in';
   const rng = nx.length ? SC_MONTHS[nx[0].exp.m - 1] + (nx[nx.length - 1].exp.m !== nx[0].exp.m ? '–' + SC_MONTHS[nx[nx.length - 1].exp.m - 1] : '') + ' ' + M.y : '';
-  const heroSub = nIn + ' of ' + n + ' in' + [nNach ? nNach + ' Nachzahlung' : '', nGut ? nGut + ' Guthaben' : '', nZero ? nZero + ' balanced' : '', nOpen ? nOpen + ' not paid yet' : ''].filter(Boolean).map(x => ' · ' + x).join('') +
+  const heroSub = nIn + ' of ' + n + ' in' + (nOpen ? ' · ' + nOpen + ' not paid yet' : '') +   // Nov 2026 · lean
     (!nIn && rng ? ' · expected ' + rng : '');
   return { S, n, nIn, nPaid, net: nIn ? net : null, say, tone, chip, tile, heroSub, done: !!n && nPaid === n };
 }
@@ -942,8 +942,7 @@ function scJaView(M) {
   const hero = stMHero({ tone, label: net === null ? 'Result' : net > 0.004 ? 'Guthaben in total' : net < -0.004 ? 'Nachzahlung in total' : 'Balanced',
                          amount: net, sub: J.heroSub, settled: J.done });
   const lock = M.locked ? '<p class="sc-ja__lock"><i class="ti ti-lock" aria-hidden="true"></i> House costs ' + M.y + ' are locked – unlock them to change. A late payment dated after ' + stDate(M.per.to) + ' can still be booked.</p>' : '';
-  return head + '<div class="srm__b mx-b">' + hero + lock + J.S.map(s => scJaSupHtml(M, s, can)).join('') + scJaNkHtml(M) +
-    '<p class="sc-hg__note sc-ja__note">\u201cMoney paid / received\u201d books it into Controlling › One-off.</p></div>';
+  return head + '<div class="srm__b mx-b">' + hero + lock + J.S.map(s => scJaSupHtml(M, s, can)).join('') + scJaNkHtml(M) + '</div>';   // Nov 2026 · lean: no footer note
 }
 /* Nov 2026 · what counts in this NK year: every bill touching it (also those that came the year after) + the days still missing */
 function scJaNkHtml(M) {
@@ -955,20 +954,20 @@ function scJaNkHtml(M) {
       .sort((a, b) => String((a.info || {}).from || '').localeCompare(String((b.info || {}).from || '')) || String(a.id).localeCompare(String(b.id)));
     const rows = mine.map(h => {
       const i = h.info || {}, full = Number(i.full ?? i.amount) || 0, other = i.y && Number(i.y) !== Number(M.y);
-      return [String(i.from || ''), '<div class="sc-jn__r' + (h.on ? '' : ' is-off') + '"><span class="sc-jn__m"><b>' + stEsc(i.from && i.to ? scJaSpan(i.from, i.to) : h.label) + '</b>' +
-        '<small>' + stEsc((full < 0 ? 'Guthaben ' : 'Nachzahlung ') + scE(Math.abs(full)) + (i.days && i.of ? ' · ' + i.days + ' of ' + i.of + ' days' : '') + (h.on ? '' : ' · not in the NK')) + '</small>' +
-        (i.ok === false ? '<small class="sc-jn__sg">suggested Zeitraum – confirm it from the bill</small>' : '') +
-        (other ? '<button type="button" class="cx-link sc-jn__go" data-sc="jaYear" data-y="' + Number(i.y) + '">came in ' + Number(i.y) + ' \u203a</button>' : '') + '</span>' +
+      const sub = [i.days && i.of ? i.days + ' of ' + i.of + ' days' : (full < 0 ? 'Guthaben ' : 'Nachzahlung ') + scE(Math.abs(full)), h.on ? '' : 'not in the NK'].filter(Boolean).join(' · ');
+      return [String(i.from || ''), '<div class="sc-jn__r' + (h.on ? '' : ' is-off') + '"><span class="sc-jn__m"><b>' + stEsc(i.from && i.to ? scJaSpan(i.from, i.to) : h.label) +
+        (i.ok === false ? '<span class="sc-ja__sg">suggested</span>' : '') + '</b>' +
+        '<small>' + stEsc(sub) + (other ? ' · <button type="button" class="cx-link sc-jn__go" data-sc="jaYear" data-y="' + Number(i.y) + '">came in ' + Number(i.y) + ' \u203a</button>' : '') + '</small></span>' +
         '<span class="sc-jn__v ' + (Number(i.amount) < 0 ? 'pos' : 'neg') + '">' + scE(Math.abs(Number(i.amount) || 0)) + '</span></div>'];
     });
     const zr = zeros.filter(b => b.k === k).map(b => {
       let f = b.from > M.per.from ? b.from : M.per.from; if (since && f < since) f = since;
       const t = b.to < M.per.to ? b.to : M.per.to; if (f > t) return null;
       const other = b.y && Number(b.y) !== Number(M.y);
-      return [String(b.from), '<div class="sc-jn__r is-zero"><span class="sc-jn__m"><b>' + stEsc(scJaSpan(b.from, b.to)) + '</b>' +
-        '<small>' + stEsc('balanced ' + scE(0) + ' · ' + NkCasa.daysBetween(f, t) + ' of ' + NkCasa.daysBetween(b.from, b.to) + ' days') + '</small>' +
-        (b.ok === false ? '<small class="sc-jn__sg">suggested Zeitraum – confirm it from the bill</small>' : '') +
-        (other ? '<button type="button" class="cx-link sc-jn__go" data-sc="jaYear" data-y="' + Number(b.y) + '">came in ' + Number(b.y) + ' \u203a</button>' : '') + '</span>' +
+      return [String(b.from), '<div class="sc-jn__r is-zero"><span class="sc-jn__m"><b>' + stEsc(scJaSpan(b.from, b.to)) +
+        (b.ok === false ? '<span class="sc-ja__sg">suggested</span>' : '') + '</b>' +
+        '<small>' + stEsc('balanced · ' + NkCasa.daysBetween(f, t) + ' of ' + NkCasa.daysBetween(b.from, b.to) + ' days') +
+        (other ? ' · <button type="button" class="cx-link sc-jn__go" data-sc="jaYear" data-y="' + Number(b.y) + '">came in ' + Number(b.y) + ' \u203a</button>' : '') + '</small></span>' +
         '<span class="sc-jn__v">' + scE(0) + '</span></div>'];
     }).filter(Boolean);
     const gp = gaps.filter(g => g.k === k).map(g => [g.from, '<div class="sc-jn__r is-gap"><span class="sc-jn__m"><b>' + stEsc(scJaSpan(g.from, g.to)) + '</b>' +
@@ -984,7 +983,7 @@ function scJaNkHtml(M) {
   const sum = cxR(hs.filter(h => h.on).reduce((a, h) => a + (Number((h.info || {}).amount) || 0), 0));
   return '<div class="srm__card sc-jn"><div class="srm__ch"><p class="srm__ct">In NK ' + M.y + '</p><span class="srm__cs ' + (sum < -0.004 ? 'pos' : sum > 0.004 ? 'neg' : '') + '">' +
     (hs.length ? (sum < -0.004 ? 'Guthaben ' : sum > 0.004 ? 'Nachzahlung ' : '') + scE(Math.abs(sum)) : '\u2014') + '</span></div>' + blocks +
-    '<p class="sc-hg__note">Each counts with its days in ' + M.y + ' ÷ all its days. The usual Abrechnungsjahr comes from Providers › Utilities.</p></div>';
+    '<p class="sc-hg__note">Each bill counts with its days in ' + M.y + '.</p></div>';
 }
 function scJaSupHtml(M, s, can) {
   const bills = s.bills.length ? s.bills : [{ id: 'new:' + s.k, blank: true, co: s.co }];
@@ -1007,10 +1006,12 @@ function scJaBillHtml(M, s, b, can) {
   const fx = done && open ? '<button type="button" class="sc-ja__fx" data-sc="jaFold"' + at + ' aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '';
   const lbl = '<p class="mx-lbl sc-ja__lbl">' + stIc(s.icon, 16) + '<span class="sc-ja__n">' + stEsc(s.l + (b.co ? ' · ' + b.co : '')) + '</span>' + v + fx + '</p>';
   const absTxt = pab ? (dir > 0 ? ' · Abschlag ' + scE(pab) + ' kept' : ' · + Abschlag ' + scE(pab)) : '';
-  if (done && !open) {                                     // paid (or balanced and received) → one line (tap to open)
+  if (done && !open) {                                     // Nov 2026 · lean: result + date · its Zeitraum (+ "suggested") — the split, seller part and Abschlag one tap away
+    const t = zero ? 'Balanced · received ' + stDate(b.recv) : (dir > 0 ? 'Guthaben received ' : 'Nachzahlung paid ') + stDate(b.pd);
     return lbl + '<button type="button" class="sc-ja__fold" data-sc="jaFold"' + at + ' aria-expanded="false"><span class="mx-ic" style="background:' + (ST_TINT[s.icon] || '#F3EEE6') + '">' + stIc(s.icon, 24) + '</span>' +
-      '<span class="mx-row__m"><span class="mx-rt">' + (zero ? 'Balanced · nothing to pay' : dir > 0 ? 'Guthaben received' : 'Nachzahlung paid') + '</span>' +
-      '<span class="mx-rs">' + stEsc(zero ? 'received ' + stDate(b.recv) + nk : stDate(b.pd) + ' · booked in Controlling' + absTxt + nk) + '</span></span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>';
+      '<span class="mx-row__m"><span class="mx-rt">' + stEsc(t) + '</span>' +
+      (z ? '<span class="mx-rs">' + stEsc(scJaSpan(z.from, z.to)) + (z.ok ? '' : '<span class="sc-ja__sg">suggested</span>') + '</span>' : '') +
+      '</span><i class="ti ti-chevron-down" aria-hidden="true"></i></button>';
   }
   const dis = can ? '' : ' disabled';
   // ── received
