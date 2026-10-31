@@ -60,7 +60,7 @@ const NkCasa = (() => {
       key: t.key || String(i), tenantId: t.tenantId ?? null, name: t.name || '', room: t.room || '',
       m2: Number(t.m2) || 0, mode: t.mode === 'pauschal' ? 'pauschal' : 'nk',
       from: D(t.from) < per.from ? per.from : D(t.from), to: !t.to || D(t.to) > per.to ? per.to : D(t.to),
-      vz: t.vz, vzMonthly: t.vzMonthly,
+      vz: t.vz, vzMonthly: t.vzMonthly, pnk: Number(t.pnk) || 0,     // Pauschal: the "davon NK" per month (kept for the Kostenquote)
     })).filter(t => t.from <= t.to);
 
     // who lives there each day (indexes into ten)
@@ -136,7 +136,7 @@ const NkCasa = (() => {
       const sum = r2(tl.reduce((s, l) => s + l.amount, 0));
       const months = monthsShare(t);
       const vz = t.mode === 'pauschal' ? 0 : r2(t.vz !== undefined && t.vz !== null ? t.vz : (Number(t.vzMonthly) || 0) * months);
-      return { key: t.key, tenantId: t.tenantId, name: t.name, room: t.room, m2: t.m2, mode: t.mode,
+      return { key: t.key, tenantId: t.tenantId, name: t.name, room: t.room, m2: t.m2, mode: t.mode, pnk: t.pnk,
                from: t.from, to: t.to, days: daysBetween(t.from, t.to), months, lines: tl, sum, vz,
                saldo: t.mode === 'pauschal' ? 0 : r2(sum - vz) };            // > 0 Nachzahlung · < 0 Guthaben
     });
