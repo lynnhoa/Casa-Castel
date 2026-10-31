@@ -214,7 +214,7 @@ const NkCasa = (() => {
       if (!inNk(c)) continue;
       const amt = Number(e.amount) || 0; if (!amt) continue;
       const L = byCat[c.id] || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [], catId: c.id });
-      if (preview && c.nk_spread === 'year') { L.booked = (L.booked || 0) + amt; continue; }   // preview: scaled below
+      // Nov 2026 · real only: in a preview too, a yearly cost counts as booked (in full, once paid) — nothing scaled or planned
       L.parts.push(c.nk_spread === 'year' ? { amount: amt, spread: 'year' } : { amount: amt, spread: 'month', month: ym });
     }
     // Nov 2026 · running year: the preview's last month (src.planMonth, e.g. the current month once its NK is booked)
@@ -235,26 +235,7 @@ const NkCasa = (() => {
         planned.push({ catId: c.id, label: c.name, amount: amt, month: pm });
       }
     }
-    if (preview) {
-      // yearly cost types: full-year amount = booked so far + what is still due after the cutoff (booked early, else Setup) → × elapsed share
-      for (const c of cats) {
-        if (!inNk(c) || c.nk_spread !== 'year' || c.active === false) continue;
-        const freq = c.frequency || 'monatlich', dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
-        const asNeeded = /sporad|bedarf/i.test(String(freq));
-        let rest = 0;
-        for (let ym = nextYm(cut.slice(0, 7)); ym <= full.to.slice(0, 7); ym = nextYm(ym)) {
-          const yy = Number(ym.slice(0, 4)), mm = Number(ym.slice(5, 7));
-          const bk = (C.castel_expenses || []).filter(e => Number(e.category_id) === Number(c.id) && Number(e.year) === yy && Number(e.month) === mm);
-          if (bk.length) { rest += bk.reduce((a, e) => a + (Number(e.amount) || 0), 0); continue; }
-          const due = asNeeded ? dm.includes(mm) : freq === 'monatlich' ? (!dm.length || dm.includes(mm)) : dm.includes(mm);
-          if (due && typeof ctlCastelAmountAt === 'function') rest += Number(ctlCastelAmountAt(c, yy, mm).amount) || 0;
-        }
-        const L = byCat[c.id] || null, booked = L ? (L.booked || 0) : 0, yearAmt = booked + rest;
-        if (!yearAmt) continue;
-        const LL = L || (byCat[c.id] = { id: 'cat:' + c.id, label: c.name, group: 'running', key: keyOf(c), parts: [], catId: c.id });
-        LL.parts.push({ amount: r2(yearAmt * shareYear), spread: 'year' });
-      }
-    }
+    // Nov 2026 · real only: no "still due per Setup" for yearly cost types in a preview (removed)
     Object.values(byCat).forEach(l => { delete l.booked; if (l.parts.length) lines.push(l); });
 
     // one-offs with the NK switch (Casa Castel only, settlement results excluded)
@@ -274,7 +255,7 @@ const NkCasa = (() => {
       const amt = (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0);      // Guthaben / refund lowers the costs
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
-                   parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt * shareFrom(d)), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',
+                   parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',   // Nov 2026: a paid one-off counts in full
                    info: { date: d, company: o.company || '', item: o.item || '', amount: amt } });
       if (hg && !c) warn.push('Hausgeld entry ' + d + ' has no cost type – split by person');
     }

@@ -160,13 +160,30 @@ function scVzMonths(input, y) {
       const sumDays = list.reduce((a, x) => a + x.days, 0);
       const nkRow = row ? Math.max(0, (Number(row.nebenkosten) || 0) - (pausch[String(g)] || 0)) : 0;
       for (const x of list) {
-        const amt = row ? nkRow * x.days / sumDays : scContractNk(x.t, ym, x.a) * x.days / dim;
-        x.t.vzMap[ym] = { amt: cxR(amt), src: row ? 'paid' : 'contract' };
-        x.t.vzAuto += amt; if (!row) x.t.vzContract++;
+        // Nov 2026 · real only in the running year: not booked yet = 0 € ("open") · finished years: the contract, flagged as a to-do
+        const live = !!input.preview, amt = row ? nkRow * x.days / sumDays : live ? 0 : scContractNk(x.t, ym, x.a) * x.days / dim;
+        x.t.vzMap[ym] = { amt: cxR(amt), src: row ? 'paid' : live ? 'open' : 'contract' };
+        x.t.vzAuto += amt; if (!row && !live) x.t.vzContract++;
       }
     }
   }
   for (const t of T) { t.vzAuto = cxR(t.vzAuto); t.vz = t.vzAuto; t.vzMissing = []; }
+}
+/* Nov 2026 · real-only preview: the latest month (of this period, up to now) in which EVERY Kalt + NK tenant
+   living there has the rent booked for that month (Controlling › Income) → 'YYYY-MM' · early payers alone don't move it */
+function scLastFullNkMonth(per, today, tenancies) {
+  const units = typeof ctlUnitsOf === 'function' ? ctlUnitsOf(CASA_PROP_ID) : [], inc = window._src.incAll || [];
+  const unitOf = name => (units.find(u => scNorm(u.name) === scNorm(name)) || {}).id;
+  const nk = (tenancies || []).filter(e => Number(e.property_id) === CASA_PROP_ID && e.kind === 'nk_tenant' && e.tenant_id && e.note !== 'Pauschal');
+  const top = today.slice(0, 7), lo = per.from.slice(0, 7), hi = per.to.slice(0, 7) < top ? per.to.slice(0, 7) : top;
+  for (let ym = hi; ym >= lo; ) {
+    const yy = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)), mFrom = ym + '-01', mTo = scLastOfMonth(yy, m);
+    const here = nk.filter(e => String(e.period_from || '').slice(0, 10) <= mTo && String(e.period_to || '9999-12-31').slice(0, 10) >= mFrom);
+    const paid = e => { const u = unitOf(e.unit_name); return u !== undefined && inc.some(r => String(r.unit_id) === String(u) && Number(r.year) === yy && Number(r.month) === m); };
+    if (here.length && here.every(paid)) return ym;
+    ym = m === 1 ? (yy - 1) + '-12' : yy + '-' + String(m - 1).padStart(2, '0');
+  }
+  return null;
 }
 /* Nov 2026: the latest month (of this period, up to now) with NK booked for a Casa room → 'YYYY-MM' */
 function scLastNkMonth(per, today) {
@@ -184,16 +201,18 @@ function scInputFor(y) {
   const d = SC.data[y], per0 = d.per || scPeriod(y);
   const casa = (window._ctrl.properties || []).find(x => x.id === CASA_PROP_ID);
   const tenancies = casa && typeof ctlTenanciesFor === 'function' ? ctlTenanciesFor(casa, per0, false) : null;
-  // running year: preview up to the end of the last completed month (costs, lived days and NK paid alike)
-  // Nov 2026: … or further, to the end of the latest month whose NK is already booked (e.g. October once
-  // the October rents are in) — that month's monthly costs not booked yet count with their planned amount
+  // running year (Nov 2026 · real only): as if the year ended on the preview date — only what is booked as paid
+  // counts (costs, NK-Vorauszahlungen), nothing planned or taken from a contract. The preview runs to the end of
+  // the last completed month, or further to the end of the latest month in which every Kalt + NK tenant's rent is
+  // booked (e.g. November once all November rents are in) — a few early payers don't move it.
   const today = cxToday(), lastDone = NkCasa.addDays(today.slice(0, 7) + '-01', -1);
-  let cutoff = per0.to >= today && lastDone >= per0.from ? lastDone : null, planMonth = null;
+  let cutoff = per0.to >= today && lastDone >= per0.from ? lastDone : null;
+  const planMonth = null;
   if (per0.to >= today) {
-    const nkM = scLastNkMonth(per0, today);
+    const nkM = scLastFullNkMonth(per0, today, tenancies);
     if (nkM) {
       let end = scLastOfMonth(Number(nkM.slice(0, 4)), Number(nkM.slice(5, 7))); if (end > per0.to) end = per0.to;
-      if (!cutoff || end > cutoff) { cutoff = end; if (nkM === today.slice(0, 7)) planMonth = nkM; }
+      if (!cutoff || end > cutoff) cutoff = end;
     }
   }
   const ja = typeof NkCasa.jaShares === 'function' ? scJaLinesFor(y, per0, cutoff) : undefined;   // Nov 2026: by their Abrechnungszeitraum
@@ -365,8 +384,9 @@ function stRenderCasa() {
     s: t.name + ' · ' + t.room + ' · ' + scE(t.st.res.amount), act: 'data-sc="settle" data-k="' + stEsc(t.key) + '"' });
   const nowYm = cxToday().slice(0, 7);
   for (const t of open) {                                   // NK paid not booked in Controlling → taken from the contract
-    const miss = Object.keys(t.vzMap || {}).filter(ym => ym < nowYm && t.vzMap[ym].src === 'contract' && !(t.set && t.set.vzMonths && t.set.vzMonths[ym] !== undefined));
-    if (miss.length && !t.extra) needs.push({ tone: 'gold', icon: 'alert-circle', t: 'NK-Vorauszahlung not booked', s: t.room + ' · ' + miss.map(ym => SC_MONTHS[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4)).join(', ') + ' · taken from the contract', act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"' });
+    const miss = Object.keys(t.vzMap || {}).filter(ym => ym < nowYm && (t.vzMap[ym].src === 'contract' || t.vzMap[ym].src === 'open') && !(t.set && t.set.vzMonths && t.set.vzMonths[ym] !== undefined));
+    const live = miss.some(ym => t.vzMap[ym].src === 'open');
+    if (miss.length && !t.extra) needs.push({ tone: 'gold', icon: 'alert-circle', t: 'NK-Vorauszahlung not booked', s: t.room + ' · ' + miss.map(ym => SC_MONTHS[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4)).join(', ') + (live ? ' · counted as 0 € until it\u2019s booked' : ' · taken from the contract'), act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"' });
   }
   const need = stNeeds(needs, total && nDone === total ? label + ' is settled' : '');
   const costsCard = '<button class="sc-card sc-costs" data-sc="costs"><span class="sc-costs__i"><i class="ti ti-home" aria-hidden="true"></i></span>' +
@@ -489,7 +509,9 @@ function scRowHtml(t, M, inRoom) {
   const c = scAv(t.room), say = scSay(t);
   const chip = t.k === 'open' ? (M.locked ? ['send', 'to send'] : ['grey', 'preview']) : t.k === 'sent' ? (t.st.confirm ? ['send', 'confirm'] : ['wait', 'sent ' + stDM(t.st.res.date)]) :
     t.k === 'done' ? ['done', t.skipped ? 'skipped' : t.st.res && t.st.res.dir < 0 ? 'returned' : t.st.booking ? 'paid' : 'settled'] : ['grey', 'Pauschal'];
-  const per = stPer(t.from, t.to) + (t.movedOut ? ' · moved out' : '');
+  const op = Object.keys(t.vzMap || {}).filter(ym => t.vzMap[ym].src === 'open' && !(t.set && t.set.vzMonths && t.set.vzMonths[ym] !== undefined)).sort();
+  const per = stPer(t.from, t.to) + (t.movedOut ? ' · moved out' : '') +
+    (op.length ? ' · ' + op.map(ym => SC_MONTHS_L[Number(ym.slice(5, 7)) - 1]).join(', ') + ' not paid yet' : '');   // Nov 2026: real-only preview
   const amt = say[1].replace(/(\d[\d.]*,\d{2}\s?€)/, '<b>$1</b>');
   return '<button class="sc-row' + (inRoom ? ' sc-row--in' : '') + '" data-sc="ten" data-k="' + stEsc(t.key) + '">' +
     (inRoom ? '' : '<span class="sc-av" style="background:' + c[0] + ';color:' + c[1] + '">' + stEsc(scAbbr(t.room)) + '</span>') +
@@ -674,9 +696,11 @@ function scVzEditor(t, can) {
   if (!yms.length) return '';
   const vals = yms.map(ym => ov[ym] !== undefined ? Number(ov[ym]) || 0 : t.vzMap[ym].amt);
   const allContract = yms.every(ym => t.vzMap[ym].src === 'contract'), allPaid = yms.every(ym => t.vzMap[ym].src === 'paid');
+  const opn = yms.filter(ym => t.vzMap[ym].src === 'open');                 // Nov 2026: running year, not booked yet → 0 €
   const nk = allContract ? scContractNk(t, yms[0]) : 0, changed = Object.keys(ov).length > 0;
   const title = changed ? 'Changed by you' : allContract ? 'As per contract' + (nk ? ' · ' + scE(nk) + ' per month' : '') : allPaid ? 'As booked in Controlling' : 'Controlling + contract';
-  const sub = allContract ? 'no NK payments in Controlling for these months' : allPaid ? 'NK part of the rent, by day' : t.vzContract + ' month(s) from the contract';
+  const sub = opn.length ? 'not paid yet: ' + opn.map(ym => SC_MONTHS[Number(ym.slice(5, 7)) - 1]).join(', ') + ' · counts once it\u2019s booked'
+    : allContract ? 'no NK payments in Controlling for these months' : allPaid ? 'NK part of the rent, by day' : t.vzContract + ' month(s) from the contract';
   return '<div class="sc-vz"><div class="sc-vz__h"><span><b>' + stEsc(title) + '</b><small>' + stEsc(sub) + '</small></span><b>' + scE(t.vz) + '</b></div>' +
     '<div class="sc-vz__m">' + yms.map((ym, i) => '<label class="sc-vz__c' + (ov[ym] !== undefined ? ' is-ov' : '') + '"><small>' + SC_MONTHS[Number(ym.slice(5, 7)) - 1] + '</small>' +
       (can ? '<input inputmode="decimal" data-sc-in="vzm" data-ym="' + ym + '" data-k="' + stEsc(t.key) + '" value="' + stEsc(cxE2(vals[i])) + '"/>' : '<b>' + stEsc(cxE2(vals[i])) + '</b>') + '</label>').join('') + '</div>' +
