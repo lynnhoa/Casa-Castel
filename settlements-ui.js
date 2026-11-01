@@ -136,6 +136,34 @@ function stMCard(title, icon, inner) {
 
 /* Money word for one result: dir > 0 = money comes to you */
 
+/* ── Nov 2026 · tenant pop-up building blocks (Rentals + Casa Castel, one look) ─────────────
+   compact hero with a costs-vs-paid bar · steps with labelled buttons (no unlabelled switches) ·
+   rows with one right-hand column for every amount · folds for the breakdown and the letter details */
+function stTpHero(o) {            // { tone: get|pay|zero|none, label, amount, sub, bars: [[label, value, colour]], settled }
+  const v = o.amount === null || o.amount === undefined ? '\u2014' : stEur(cxR(Math.abs(o.amount)));
+  const bars = (o.bars || []).filter(b => b && b[1] !== null && b[1] !== undefined);
+  const mx = Math.max(1, ...bars.map(b => Math.abs(Number(b[1]) || 0)));
+  return '<div class="tp-hero tp-hero--' + (o.tone || 'none') + '"><div class="tp-hero__top"><p class="tp-hero__l">' + stEsc(o.label || '') +
+      (o.settled ? ' <span class="tp-chip is-ok"><i class="ti ti-check" aria-hidden="true"></i> settled</span>' : '') + '</p><p class="tp-hero__v">' + v + '</p></div>' +
+    (bars.length ? '<div class="tp-bars">' + bars.map(b => '<div class="tp-bar"><span class="tp-bar__l">' + stEsc(b[0]) + '</span><span class="tp-bar__t"><i style="width:' +
+      Math.max(2, Math.round(Math.abs(Number(b[1]) || 0) / mx * 100)) + '%;background:' + b[2] + '"></i></span><b>' + stEur(cxR(Number(b[1]) || 0)) + '</b></div>').join('') + '</div>' : '') +
+    (o.sub ? '<p class="tp-hero__s">' + stEsc(o.sub) + '</p>' : '') + '</div>';
+}
+const stTpLbl = (icon, bg, fg, text) => '<p class="tp-lbl"><span class="tp-tile" style="background:' + bg + ';color:' + fg + '"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span>' + stEsc(text) + '</p>';
+const stTpBtn = (attrs, icon, text, primary, disabled) => '<button type="button" class="tp-btn' + (primary ? ' is-p' : '') + '" ' + attrs + (disabled ? ' disabled' : '') + '><i class="ti ti-' + icon + '" aria-hidden="true"></i> ' + stEsc(text) + '</button>';
+function stTpSteps(steps) {       // [{ n, state: done|open|wait, title, sub (html), body (html), undo (html) }]
+  return stTpLbl('route', '#FAF0DC', '#854F0B', 'Steps') + '<div class="tp-card tp-steps">' + steps.filter(Boolean).map(s =>
+    '<div class="tp-step is-' + s.state + '"><div class="tp-step__h"><span class="tp-dot">' + (s.state === 'done' ? '<i class="ti ti-check" aria-hidden="true"></i>' : s.n) + '</span>' +
+    '<span class="tp-step__m"><b>' + stEsc(s.title) + '</b><small>' + (s.sub || '') + '</small></span>' + (s.undo || '') + '</div>' +
+    (s.body ? '<div class="tp-step__b">' + s.body + '</div>' : '') + '</div>').join('') + '</div>';
+}
+function stTpRow(o) {             // { title, sub (html), value (html), vAttr, act (attrs → the row is a button), icon, tone: pos|neg, tot }
+  const inner = '<span class="tp-r__m"><b>' + stEsc(o.title) + '</b>' + (o.sub ? '<small>' + o.sub + '</small>' : '') + '</span>' +
+    '<span class="tp-r__v' + (o.tone ? ' is-' + o.tone : '') + '"' + (o.vAttr ? ' ' + o.vAttr : '') + '>' + (o.value || '') + '</span>' +
+    '<span class="tp-r__i">' + (o.icon ? '<i class="ti ti-' + o.icon + '" aria-hidden="true"></i>' : '') + '</span>';
+  return o.act ? '<button type="button" class="tp-r' + (o.tot ? ' is-tot' : '') + '" ' + o.act + '>' + inner + '</button>'
+               : '<div class="tp-r' + (o.tot ? ' is-tot' : '') + '">' + inner + '</div>';
+}
 /* ── Summary sheet (behind a tile) ────────────────────────── */
 /* o = { title, sub, net, sub2, groups: [{ title, rows: [{ av, ab, name, sub, amount, dir, chip, set (→ settle line) }] }] } */
 function stSumSheet(o, closeAttr) {

@@ -1520,7 +1520,7 @@ function scTenView(M, m) {
   }
   if (t.skipped) {
     return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'zero', label: 'This NK is skipped', amount: null, sub: 'no letter and no result – it counts as done' }) +
-      '<div class="mx-rows">' + stMRow({ icon: 'doc', title: 'Skipped', sub: 'bring it back to calculate it again', on: true, switchAttrs: 'data-sc="setUndo" ' + kAttr }) + '</div>' + flowLnk + '</div>';
+      '<div class="tp-acts" style="margin-top:12px">' + stTpBtn('data-sc="setUndo" ' + kAttr, 'arrow-back-up', 'Bring it back', false) + '</div>' + flowLnk + '</div>';   // Nov 2026: labelled
   }
   const res = t.k === 'sent' || t.k === 'done' ? t.st && t.st.res : null;
   const saldo = res ? res.dir * res.amount : t.saldo;
@@ -1529,75 +1529,74 @@ function scTenView(M, m) {
     '<div class="mx-rows">' + stMRow({ icon: 'receipt', title: 'House costs', sub: 'nothing booked yet', right: '<button type="button" class="mx-pill" data-sc="costs">Type house costs</button>' }) + '</div>' +
     (t.extra ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant</button>' : '') + '</div>';
   const sent = t.k === 'sent' || t.k === 'done', done = t.k === 'done';
-  const hero = stMHero({ tone: saldo > 0.004 ? 'get' : saldo < -0.004 ? 'pay' : 'zero',
+  const hero = stTpHero({ tone: saldo > 0.004 ? 'get' : saldo < -0.004 ? 'pay' : 'zero',
     label: saldo > 0.004 ? first + (done ? ' paid you' : ' pays you') : saldo < -0.004 ? first + (done ? ' got back' : ' gets back') : 'All even',
     amount: Math.abs(saldo) < 0.005 ? 0 : saldo,
-    sub: !sent && !M.locked ? (M.pv ? 'preview as of ' + stDe(M.pv.cutoff) : 'preview until the house costs are locked') : '', settled: done });
-  // ── switches
+    sub: !sent && !M.locked ? (M.pv ? 'preview as of ' + stDe(M.pv.cutoff) : 'preview until the house costs are locked') : '', settled: done,
+    bars: [['Share', t.sum, '#E3B9A6'], ['Paid', t.vz, '#A9BFD3']] });                 // Nov 2026: why, at a glance
+  // ── Nov 2026 · steps with labelled buttons (no unlabelled switches) · the PDF is a real button
   const canSend = M.sendable && M.locked && !noData;
-  const pdfBtn = sent ? scLetterBtn(t).replace('cx-btn cx-btn--s', 'mx-pill').replace(/<i class="ti ti-file-text"[^>]*><\/i>\s*/, stIc('doc', 15)).replace('Open letter', 'Letter').replace('PDF (recreated)', 'PDF')
-    : '<button type="button" class="mx-pill" data-sc="pdf" ' + kAttr + '>' + stIc('doc', 15) + 'PDF</button>';
-  const rowLetter = stMRow({ icon: 'mail', title: 'Letter sent', on: sent, disabled: !sent && !canSend,
-    sub: sent ? 'sent ' + stDate(res.date) : !M.locked ? 'lock the house costs first' : 'Frist ' + stDate(M.frist),
-    right: pdfBtn, switchAttrs: sent ? 'data-sc="reopen" ' + kAttr : 'data-sc="send" ' + kAttr });
-  let rowMoney = '';
-  if (Math.abs(saldo) >= 0.005) {
-    const how = { zahlung: 'bank transfer', miete: 'with the rent', kaution: 'via Kaution' };
-    const via = sent ? (res.via || 'zahlung') : scVia(t);
-    const sub = done ? stEsc(scSay(t)[1]) : !sent ? 'after the letter · ' + how[via] : 'open · ' + how[via];
-    const ways = !sent && M.sendable ? '<div class="mx-ways">' + [['zahlung', 'bank', 'bank transfer'], ['miete', 'house', 'with the rent'], ['kaution', 'safe', 'via Kaution']].map(([k, ic, l]) =>
-      '<button type="button" class="' + (via === k ? 'is-on' : '') + '" data-sc="viaSet" data-v="' + k + '" ' + kAttr + ' aria-pressed="' + (via === k) + '">' + stIc(ic, 18) + l + '</button>').join('') + '</div>' : '';
+  const how = { zahlung: 'bank transfer', miete: 'with the rent', kaution: 'via Kaution' };
+  const hasMoney = Math.abs(saldo) >= 0.005;
+  const via = sent ? (res.via || 'zahlung') : scVia(t);
+  const pdf = sent ? scLetterBtn(t).replace('cx-btn cx-btn--s', 'tp-btn').replace('Open letter', 'Open letter (PDF)').replace('PDF (recreated)', 'Open letter (PDF)')
+    : stTpBtn('data-sc="pdf" ' + kAttr, 'file-text', 'Open letter (PDF)', false);
+  const ways = !sent && hasMoney && M.sendable ? '<p class="tp-mini">Settle by</p><div class="mx-ways tp-ways">' + [['zahlung', 'bank', 'bank transfer'], ['miete', 'house', 'with the rent'], ['kaution', 'safe', 'via Kaution']].map(([k, ic, l]) =>
+    '<button type="button" class="' + (via === k ? 'is-on' : '') + '" data-sc="viaSet" data-v="' + k + '" ' + kAttr + ' aria-pressed="' + (via === k) + '">' + stIc(ic, 16) + l + '</button>').join('') + '</div>' : '';
+  const s1 = { n: 1, state: sent ? 'done' : canSend ? 'open' : 'wait', title: 'Letter',
+    sub: sent ? 'sent ' + stDate(res.date) : !M.sendable ? 'Frist passed' : !M.locked ? 'lock the house costs first' : 'not sent yet · Frist ' + stDate(M.frist),
+    undo: sent && !done ? '<button type="button" class="tp-undo" data-sc="reopen" ' + kAttr + '>undo</button>' : '',
+    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sc="send" ' + kAttr, 'check', 'Mark as sent', true, !canSend) + '</div>' };
+  let s2 = null;
+  if (hasMoney) {
     const bk = t.st && t.st.booking;
-    const payBox = sent && !t.extra ? '<div class="mx-pay">' +
+    const payBox = sent && !done && !t.extra ? '<div class="mx-pay">' +
       '<label class="mx-f"><span>On</span><input type="date" data-scpay="date" ' + kAttr + ' value="' + stEsc(bk ? scD(bk.invoice_date) : (t.it && scD(t.it.r.paid_date)) || cxToday()) + '"/></label>' +
       (via === 'zahlung' ? '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scpay="amt" ' + kAttr + ' value="' + stEsc(cxE2(bk ? cxR(bk.amount) : res.amount)) + '"/><em>€</em></span></label>' : '') + '</div>' : '';
-    rowMoney = stMRow({ icon: 'coins', title: saldo > 0 ? 'Received' : 'Paid back', sub, on: done, disabled: !sent,
-      switchAttrs: done ? 'data-sc="setUndo" ' + kAttr : 'data-sc="payOn" ' + kAttr, below: ways + payBox });
+    s2 = { n: 2, state: done ? 'done' : sent ? 'open' : 'wait', title: 'Money',
+      sub: done ? stEsc(scSay(t)[1]) : sent ? stEsc((saldo > 0 ? first + ' pays you ' : first + ' gets back ') + scE(Math.abs(saldo)) + ' · ' + how[via]) : 'after the letter',
+      undo: done ? '<button type="button" class="tp-undo" data-sc="setUndo" ' + kAttr + '>undo</button>' : '',
+      body: sent && !done ? payBox + '<div class="tp-acts">' + stTpBtn('data-sc="payOn" ' + kAttr, 'check', saldo > 0 ? 'Received' : 'Paid back', true) + '</div>' : '' };
   }
-  // ── calculation
+  // ── calculation · one right-hand column for every amount
   const q = M.quota || {}, vzOpen = SC.pill && SC.pill.k === t.key && SC.pill.p === 'vz';
   const vzEd = vzOpen ? scVzEditor(t, t.k === 'open' && M.sendable && !(t.st && t.st.res)) : '';
   const vzOver = s.vz !== undefined && s.vz !== null && s.vz !== '';
   const vzSrc = (vzOver || (s.vzMonths && Object.keys(s.vzMonths).length)) ? 'changed by you' : t.vzContract ? t.vzContract + ' month(s) per contract' : 'per Controlling';
   const lk = 'tl:' + t.key, lo = !!SC.open[lk];
-  const altTxt = '';                                         // Nov 2026: Kostenquote only — no comparison line
-  const calc = '<div class="mx-dr"><span class="mx-d" style="background:#D7CCEA"></span><span>Lived here<small>' + stEsc(stPer(t.from, t.to)) + '</small></span><span class="mx-a">' + (M.method === 'quota' ? scMo(t.months) + ' months' : t.days + ' days') + '</span></div>' +
-    '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>Share<small>' + stEsc(M.method === 'quota' && q.months ? scMo(t.months) + ' × ' + scE(q.rate) + ' · Kostenquote' : 'day by day') + '</small></span><span class="mx-a">' + scE(t.sum) + '</span></div>' +
-    '<button class="mx-dr mx-drb" data-sc="pill" data-p="vz" ' + kAttr + '><span class="mx-d" style="background:#A9BFD3"></span><span>− Vorauszahlungen<small>' + stEsc(vzSrc) + ' · per month ' + (vzOpen ? '⌃' : '›') + '</small></span><span class="mx-a">' + scE(t.vz) + '</span></button>' + vzEd +
-    '<div class="mx-dr is-b"><span class="mx-d" style="background:' + (saldo < 0 ? '#D9785E' : '#9DBF7A') + '"></span><span>= ' + (saldo > 0 ? first + ' pays you' : saldo < 0 ? first + ' gets back' : 'all even') + '</span><span class="mx-a">' + scE(Math.abs(saldo)) + '</span></div>' +
-    '<button class="mx-lnk" data-sc="fold" data-k="' + lk + '" aria-expanded="' + lo + '">' + (lo ? 'Hide the breakdown' : 'Breakdown per cost type') + '</button>' +
-    (lo ? '<div class="sr-items">' + scShareLines(t).map(g => '<div class="sr-it"><span>' + stEsc(g.label) + '<small class="sr-it__s">' + stEsc(scPct(g)) + ' of ' + scE(g.total) + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') + '</div>' + (altTxt ? '<p class="sc-cmp"><i class="ti ti-arrows-exchange" aria-hidden="true"></i> ' + stEsc(altTxt) + '</p>' : '') : '');
-  // ── letter details (as before) · payment details once sent
-  // the letter as pills
+  const calc = stTpRow({ title: 'Lived here', sub: stEsc(stPer(t.from, t.to)), value: M.method === 'quota' ? scMo(t.months) + ' months' : t.days + ' days' }) +
+    stTpRow({ title: 'Share', sub: stEsc(M.method === 'quota' && q.months ? scMo(t.months) + ' × ' + scE(q.rate) + ' · per cost type' : 'day by day · per cost type'), value: scE(t.sum),
+      act: 'data-sc="fold" data-k="' + lk + '" aria-expanded="' + lo + '"', icon: lo ? 'chevron-up' : 'chevron-down' }) +
+    (lo ? '<div class="sr-items tp-fold__b">' + scShareLines(t).map(g => '<div class="sr-it"><span>' + stEsc(g.label) + '<small class="sr-it__s">' + stEsc(scPct(g)) + ' of ' + scE(g.total) + '</small></span><span>' + scE(g.amount) + '</span></div>').join('') + '</div>' : '') +
+    stTpRow({ title: '− Vorauszahlungen', sub: stEsc(vzSrc) + ' · per month', value: scE(t.vz), act: 'data-sc="pill" data-p="vz" ' + kAttr, icon: vzOpen ? 'chevron-up' : 'chevron-down' }) + vzEd +
+    stTpRow({ title: '= ' + (saldo > 0 ? first + ' pays you' : saldo < 0 ? first + ' gets back' : 'all even'), value: scE(Math.abs(saldo)), tone: saldo > 0 ? 'pos' : saldo < 0 ? 'neg' : '', tot: true });
+  // ── letter details: one folded line with ✓ complete / what is missing (opens by itself when something is missing)
   let letter = '';
   if (M.sendable && t.k === 'open') {
     const addr = String(s.addr !== undefined ? s.addr : scAddrDefault(t).join('\n'));
     const addrShort = addr.split('\n').filter(Boolean).slice(0, 2).join(', ') || 'address missing';
-    const via = scVia(t), viaTxt = { zahlung: 'Bank transfer', kaution: 'With the Kaution', miete: 'With the rent' }[via] + ' · ' + (s.days ?? 30) + ' days';
     const list = s.list !== undefined ? !!s.list : scListDefault();
-    const pill = SC.pill && SC.pill.k === t.key ? SC.pill.p : null;
-    const pl = (p, ic, txt, warn) => '<button class="sc-pill' + (pill === p ? ' is-on' : '') + (warn ? ' is-warn' : '') + '" data-sc="pill" data-p="' + p + '" data-k="' + stEsc(t.key) + '"><i class="ti ti-' + ic + '" aria-hidden="true"></i>' + stEsc(txt) + '</button>';
-    let ed = '';
-    if (pill === 'addr') ed = '<div class="sc-ed"><label class="st-f"><span class="st-f__l">Address' + (t.movedOut ? ' · new address after moving out' : '') + '</span><textarea class="st-in sc-ta" rows="3" data-sc-in="addr" data-k="' + stEsc(t.key) + '">' + stEsc(addr) + '</textarea></label>' +
-      (saldo < 0 || t.einbehalt > 0 ? '<label class="st-f"><span class="st-f__l">' + stEsc(first) + '\'s IBAN (optional)</span><input class="st-in" data-sc-in="iban" data-k="' + stEsc(t.key) + '" value="' + stEsc(s.iban || '') + '" placeholder="DE…"/></label>' : '') +
-      scToggle('former', t.key, s.former !== undefined ? !!s.former : t.movedOut, 'Former tenant', 'the letter says "das ehemalige Zimmer"', true) + '</div>';
-    if (pill === 'via') ed = '<div class="sc-ed"><div class="sc-opts">' + [['zahlung', 'Bank transfer'], ['kaution', 'With the Kaution'], ['miete', 'With the rent']].map(([v, l]) =>
-      '<button class="sc-opt' + (via === v ? ' is-on' : '') + '" data-sc="viaSet" data-v="' + v + '" data-k="' + stEsc(t.key) + '">' + l + '</button>').join('') + '</div>' +
-      '<label class="st-f"><span class="st-f__l">Pay within (days)</span><input class="st-in" inputmode="numeric" data-sc-in="days" data-k="' + stEsc(t.key) + '" value="' + stEsc(s.days ?? 30) + '"/></label></div>';
-    const lOpen = pill === 'letter' || pill === 'addr' || pill === 'via';
-    const lSum = '<button class="sc-lfold" data-sc="pill" data-p="letter" data-k="' + stEsc(t.key) + '" aria-expanded="' + lOpen + '"><span><b>Letter</b><small>' + stEsc([addrShort, scDate(s.date || cxToday()), viaTxt, 'Belegliste ' + (list ? 'on' : 'off')].join(' · ')) + '</small></span><i class="ti ti-chevron-' + (lOpen ? 'up' : 'down') + '" aria-hidden="true"></i></button>';
-    if (!lOpen) letter = lSum;
-    else letter = lSum + '<div class="sc-pills">' + pl('addr', 'mail', addrShort, !addr.trim()) + (saldo || t.einbehalt ? pl('via', 'building-bank', viaTxt) : '') +
-      '<button class="sc-pill' + (list ? ' is-ok' : '') + '" data-sc="tg" data-f="list" data-k="' + stEsc(t.key) + '" aria-pressed="' + list + '"><i class="ti ti-' + (list ? 'check' : 'list') + '" aria-hidden="true"></i>Invoice list ' + (list ? 'on' : 'off') + '</button></div>' +
-      ed + '<p class="sc-hint2">Tap a pill to change it.</p>';
-    letter = '<div class="srm__card sc-lcard">' + letter + '</div>';
+    const pill = SC.pill && SC.pill.k === t.key ? SC.pill.p : null, miss = !addr.trim();
+    const lOpen = pill === 'letter' || pill === 'addr' || pill === 'via' || miss;
+    const chip = miss ? '<span class="tp-chip is-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> needs: address</span>' : '<span class="tp-chip is-ok"><i class="ti ti-check" aria-hidden="true"></i> complete</span>';
+    const lsub = [addrShort, scDate(s.date || cxToday()), (s.days ?? 30) + ' days', 'Belegliste ' + (list ? 'on' : 'off')].join(' · ');
+    letter = stTpLbl('mail', '#FAF0DC', '#854F0B', 'Letter') + '<div class="tp-card">' +
+      '<button type="button" class="tp-r" data-sc="pill" data-p="letter" ' + kAttr + ' aria-expanded="' + lOpen + '"><span class="tp-r__m"><b>Letter details ' + chip + '</b><small>' + stEsc(lsub) + '</small></span><span class="tp-r__v"></span>' +
+        '<span class="tp-r__i"><i class="ti ti-chevron-' + (lOpen ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
+      (lOpen ? '<div class="tp-form">' +
+        '<label class="tp-f"><span>Address' + (t.movedOut ? ' · new address after moving out' : '') + '</span><textarea class="st-in sc-ta" rows="2" data-sc-in="addr" ' + kAttr + '>' + stEsc(addr) + '</textarea></label>' +
+        (saldo < 0 || t.einbehalt > 0 ? '<label class="tp-f"><span>' + stEsc(first) + '’s IBAN · for the Guthaben</span><input class="st-in" data-sc-in="iban" ' + kAttr + ' value="' + stEsc(s.iban || '') + '" placeholder="DE…"/></label>' : '') +
+        '<div class="tp-g2"><label class="tp-f"><span>Pay within (days)</span><input class="st-in" inputmode="numeric" data-sc-in="days" ' + kAttr + ' value="' + stEsc(s.days ?? 30) + '"/></label>' +
+          '<div class="tp-f"><span>Belegliste</span><button class="sc-pill' + (list ? ' is-ok' : '') + '" data-sc="tg" data-f="list" ' + kAttr + ' aria-pressed="' + list + '"><i class="ti ti-' + (list ? 'check' : 'list') + '" aria-hidden="true"></i>' + (list ? 'on' : 'off') + '</button></div></div>' +
+        scToggle('former', t.key, s.former !== undefined ? !!s.former : t.movedOut, 'Former tenant', 'the letter says "das ehemalige Zimmer"', true) +
+      '</div>' : '') + '</div>';
   }
-  const pay = '';                                                   // payment date + amount sit right under the money switch (Oct 2026)
   const xDel = t.extra && t.k === 'open' ? '<button class="mx-skip" data-sc="extraDel" ' + kAttr + '>Remove this tenant from this NK</button>'
     : t.k === 'open' && t.line ? '<button class="mx-skip" data-sc="skip" ' + kAttr + '>Skip this NK-Abrechnung</button>' : '';
-  return head + '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + rowLetter + rowMoney + '</div>' +
-    stMCard('Calculation', 'calc', calc + (letter ? '<div class="mx-letter">' + letter.replace('srm__card sc-lcard', 'sc-lcard') + '</div>' : '') + pay) + xDel + flowLnk + '</div>';
+  return head + '<div class="srm__b mx-b tp-b">' + hero + stTpSteps([s1, s2]) +
+    stTpLbl('calculator', '#E6EEF6', '#2F5470', 'Calculation') + '<div class="tp-card">' + calc + '</div>' + letter + xDel + flowLnk + '</div>';
 }
+
 function scToggle(f, key, on, t, s, can) {
   return '<button type="button" class="sc-tg' + (on ? ' on' : '') + '" data-sc="tg" data-f="' + f + '" data-k="' + stEsc(key) + '"' + (can ? '' : ' disabled') + ' aria-pressed="' + on + '">' +
     '<span class="sc-tg__t"><b>' + t + '</b><small>' + s + '</small></span><span class="sc-tg__sw" aria-hidden="true"></span></button>';
