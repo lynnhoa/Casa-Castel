@@ -1149,10 +1149,14 @@ function _srCard5(info) {
   if (c.before) return '<div class="sc-card sr5-fold"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">bought ' + stDate(_srBought(c.p)) + ' · ' + SR.year + ' settled by the seller</span></span><span class="sc-chip sc-chip--grey">not yours</span></div></div>';
   const k5 = 'c5:' + c.ck;
   if (info.k === 'settled' && !SR.open[k5]) return '<button class="sc-card sr5-fold" data-sr="fold5" data-k="' + stEsc(k5) + '"><span class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span></span><span class="sc-chip sc-chip--done"><i class="ti ti-check" aria-hidden="true"></i> all settled</span><i class="ti ti-chevron-down sc-chev" aria-hidden="true"></i></span></button>';
-  const hg = c.verw ? _srNum(c.verw.hausgeld_mtl) : null;
-  const meta = stNkLabel(c.per.from, c.per.to) + (hg ? ' · Hausgeld ' + stEur(hg) + '/mo' : '') + ' · Frist ' + stDe(c.per.frist);
+  // Nov 2026 · like a Casa Castel room card: period · Frist and one status chip in the header
+  const meta = stNkLabel(c.per.from, c.per.to) + ' · Frist ' + stDe(c.per.frist);
+  const T5 = info.rows.filter(r => r.kind === 'ten'), n5 = k => T5.filter(r => r.k === k).length;
+  const hChip = info.hv && info.hv.k === 'ueberfaellig' ? ['red', 'ask HV'] : n5('open') ? ['send', 'to send'] : n5('sent') ? ['wait', 'sent']
+    : info.k === 'settled' ? ['done', 'settled'] : n5('waiting') ? ['grey', 'waiting'] : null;
   let h = '<div class="sc-card sr5-card"><div class="sr5-h">' + num + '<span class="sr5-h__t"><span class="sr5-pn">' + stEsc(c.p.name) + '</span><span class="sr5-pm">' + stEsc(meta) + '</span></span>' +
-    '<button class="cx-link sr5-hist" data-sr="history" data-k="' + stEsc(c.ck) + '"><i class="ti ti-history" aria-hidden="true"></i> History</button>' +
+    '<button class="cx-link sr5-hist" data-sr="history" data-k="' + stEsc(c.ck) + '" aria-label="History"><i class="ti ti-history" aria-hidden="true"></i></button>' +
+    (hChip ? '<span class="sc-chip sc-chip--' + hChip[0] + '">' + stEsc(hChip[1]) + '</span>' : '') +
     (info.k === 'settled' ? '<button class="cx-link" data-sr="fold5" data-k="' + stEsc(k5) + '" aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '') + '</div>';
   // Jahresabrechnung line
   const hv = info.hv, rec = info.rec, wegSt = hv.wegSt, wRes = wegSt && wegSt.res;
@@ -1169,12 +1173,38 @@ function _srCard5(info) {
   h += '<button class="sc-row sr5-ln" data-sr="openHv" data-k="' + stEsc(c.ck) + '"><span class="sc-av sr5-av--hv"><i class="ti ti-building" aria-hidden="true"></i></span>' +
     '<span class="sc-row__m"><span class="sc-row__n">Hausgeld-Jahresabrechnung</span><span class="sc-row__s ' + tone + '">' + stEsc(say) + '</span></span>' +
     '<span class="sc-chip sc-chip--' + hvChip[0] + '">' + stEsc(hvChip[1]) + '</span></button>';
-  // NK line: one line for all tenants of this period
-  const nk = _srNkSummary(info);
-  h += '<button class="sc-row sr5-ln" data-sr="openNk" data-k="' + stEsc(c.ck) + '"><span class="sc-av sr5-av--hv"><i class="ti ti-mail" aria-hidden="true"></i></span>' +
-    '<span class="sc-row__m"><span class="sc-row__n">NK-Abrechnung</span><span class="sc-row__s ' + nk.tone + '">' + stEsc(nk.say) + '</span></span>' +
-    '<span class="sc-chip sc-chip--' + nk.chip[0] + '">' + stEsc(nk.chip[1]) + '</span></button>';
+  // Nov 2026 · option 2: the NK costs keep their own pop-up · the tenants get their own lines (like Casa Castel rooms)
+  const jaOk = _srJaDone(info.rec, info.sum), nkTot = jaOk ? _srNkCostTotal(info.rec, c.apt) : null;
+  const nkSay = !T5.length ? (info.rows.length ? 'Pauschal / no tenant – no NK' : 'no tenant with Kalt + NK')
+    : !jaOk ? 'waiting for the Jahresabrechnung' : stEur(nkTot) + ' · ' + T5.length + (T5.length === 1 ? ' tenant' : ' tenants');
+  h += '<button class="sc-row sr5-ln" data-sr="openNk" data-k="' + stEsc(c.ck) + '"><span class="sc-av sr5-av--hv"><i class="ti ti-receipt" aria-hidden="true"></i></span>' +
+    '<span class="sc-row__m"><span class="sc-row__n">NK costs</span><span class="sc-row__s">' + stEsc(nkSay) + '</span></span>' +
+    '<i class="ti ti-chevron-right sc-chev" aria-hidden="true"></i></button>';
+  for (const r of info.rows) h += _srTenLine(c, r);
   return h + '</div>';
+}
+/* Nov 2026 · the costs for the NK of one apartment (as the NK pop-up adds them): umlagefähig "in the NK" + NK-only */
+function _srNkCostTotal(rec, apt) {
+  let t = 0;
+  for (const p of (rec && rec.positions) || []) {
+    if (!_srInNk(p)) continue;
+    const a = _srAmtOf(rec, p, apt); if (a === null || a === undefined) continue;
+    t += _srSigned(p, a);
+  }
+  return cxR(t);
+}
+/* Nov 2026 · one tenant on the apartment card (like a Casa Castel room line): result · period · status → that tenant */
+function _srTenLine(c, r) {
+  const per = stPer(r.l.from, r.l.to);
+  if (r.kind !== 'ten') return '<div class="sc-row sr5-ln sc-row--in sr5-tl is-dim"><span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span>' +
+    '<span class="sc-row__s">' + stEsc((r.kind === 'pausch' ? 'Pauschal – no NK' : 'no NK') + ' · ' + per) + '</span></span></div>';
+  const res = r.st.res, v = res ? res.dir * res.amount : r.x && !r.x.missing ? r.x.saldo : null;
+  const say = v === null ? 'waiting for the Jahresabrechnung' : Math.abs(v) < 0.005 ? 'balanced' : v > 0 ? 'pays you ' + stEur(v) : 'gets ' + stEur(-v) + ' back';
+  const tone = v === null || Math.abs(v) < 0.005 ? '' : v > 0 ? 'pos' : 'neg';
+  const chip = r.k === 'open' ? ['send', 'letter ready'] : r.k === 'sent' ? ['wait', 'sent'] : r.k === 'settled' ? ['done', r.skipped ? 'skipped' : 'settled'] : ['grey', 'waiting'];
+  return '<button class="sc-row sr5-ln sc-row--in sr5-tl" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(r.it.r.id)) + '">' +
+    '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span><span class="sc-row__s"><b class="sr5-tl__v ' + tone + '">' + stEsc(say) + '</b> · ' + stEsc(per) + '</span></span>' +
+    '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></button>';
 }
 /* The NK line of a card: one summary for all tenants of the period */
 function _srNkSummary(info) {

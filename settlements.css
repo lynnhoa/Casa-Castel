@@ -1633,3 +1633,7 @@ button.sc-ct__r { cursor: pointer; }
 .st-tile__d.is-warn { color: #8A3B22 !important; }
 .cx-btn.st-sendall { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .sc-ct__q { margin: -4px 4px 6px; font-size: 11.5px; color: #9A8E7E; font-variant-numeric: tabular-nums; }
+/* Nov 2026 · Rentals apartment card (option 2): header chip · "NK costs" row · one line per tenant */
+.sr5-h .sc-chip { margin-left: 4px; }
+.sr5-tl__v { font-weight: 500; } .sr5-tl__v.pos { color: #3B6D11; } .sr5-tl__v.neg { color: #A0533A; }
+.sr5-tl.is-dim { cursor: default; } .sr5-tl.is-dim .sc-row__n { color: var(--cx-mut); font-weight: 400; }
