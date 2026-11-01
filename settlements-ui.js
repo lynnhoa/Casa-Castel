@@ -61,6 +61,13 @@ function stTile(label, icon, net, sub, act) {
     '<span class="st-tile__l"><i class="ti ti-' + icon + '" aria-hidden="true"></i>' + label + '<i class="ti ti-chevron-right st-tile__c" aria-hidden="true"></i></span>' +
     '<span class="st-tile__d">' + dir + '</span><b>' + val + '</b><small>' + stEsc(sub || '') + '</small></button>';
 }
+/* Nov 2026 · a tile that shows a total, not money in or out (Casa · Hauskosten): status · value · up to two small lines */
+function stTileInfo(label, icon, status, value, lines, act, warn) {
+  return '<button class="st-tile st-tile--info"' + (act ? ' ' + act : '') + '>' +
+    '<span class="st-tile__l"><i class="ti ti-' + icon + '" aria-hidden="true"></i>' + label + '<i class="ti ti-chevron-right st-tile__c" aria-hidden="true"></i></span>' +
+    '<span class="st-tile__d' + (warn ? ' is-warn' : '') + '">' + stEsc(status || '') + '</span><b>' + stEsc(value) + '</b>' +
+    (lines || []).filter(Boolean).map(x => '<small>' + stEsc(x) + '</small>').join('') + '</button>';
+}
 const stSec = (t, n) => '<div class="sc-sec">' + stEsc(t) + (n !== undefined && n !== null ? ' <span>' + n + '</span>' : '') + '</div>';
 /* "Needs you": items { tone: red|gold|calm, icon, t, s, btn (html) | act (data attributes → whole row taps) } */
 function stNeeds(items, emptyText) {
@@ -146,7 +153,7 @@ function stSumSheet(o, closeAttr) {
   }).join('');
   return '<div class="srm__h"><div class="srm__ht"><p class="srm__t">' + stEsc(o.title) + '</p><p class="srm__s">' + stEsc(o.sub || '') + '</p></div>' +
     '<button class="srm__x" ' + closeAttr + ' aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>' +
-    '<div class="srm__b"><div class="srm__one">' + hero + (groups || '<p class="cx-empty">Nothing yet.</p>') + '</div></div>';
+    '<div class="srm__b"><div class="srm__one">' + hero + (o.action || '') + (groups || '<p class="cx-empty">Nothing yet.</p>') + '</div></div>';   // Nov 2026: o.action — e.g. "Send 10 letters"
 }
 
 /* ── Settle right in the sheet ─────────────────────────────── */

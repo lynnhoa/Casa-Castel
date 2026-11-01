@@ -1100,27 +1100,9 @@ function _srMinYear() {                                   // the year switch goe
 }
 const _srInit = name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
 function _srNextSteps(live) {
+  // Nov 2026 · Needs you only shows what the apartment cards don't: the confirmations. Overdue / enter costs / WEG result /
+  // money not paid show on each card's Jahresabrechnung row (and in "To do"); the letters start from the Tenants tile.
   const steps = [];
-  for (const i of live) {
-    const hv = i.hv; if (!hv) continue;
-    if (hv.k === 'ueberfaellig') {
-      const mail = i.c.verw && i.c.verw.hv_email ? String(i.c.verw.hv_email).trim() : '';
-      steps.push({ o: 1, ic: 'alert-circle', tone: 'red', t: 'Jahresabrechnung overdue', s: i.c.p.name + (hv.exp ? ' · expected ' + hv.exp.label : ''),
-        btn: mail ? '<a class="sc-go sr5-go--warn" data-sr="ask" data-k="' + stEsc(i.c.ck) + '" href="' + stEsc(_srAskMail(i.c, hv, mail)) + '"><i class="ti ti-mail" aria-hidden="true"></i> Ask HV</a>'
-                  : '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
-    } else if (hv.k === 'zahlung' && hv.wegSt && hv.wegSt.res) {
-      const r = hv.wegSt.res;
-      steps.push({ o: 0, ic: 'coin-euro', tone: 'red', t: r.dir > 0 ? 'Guthaben from the WEG not received' : 'Nachzahlung to the WEG not paid',
-        s: i.c.p.name + ' · ' + stEur(r.amount) + (i.rec && i.rec.hv_date ? ' · statement ' + stDate(i.rec.hv_date) : ''),
-        btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
-    } else if (hv.k === 'erfassen') steps.push({ o: 2, ic: 'pencil', t: 'Enter costs', s: i.c.p.name + (hv.received ? ' · received' : ''), btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
-    else if (hv.k === 'weg') steps.push({ o: 3, ic: 'scale', t: 'Enter the WEG result', s: i.c.p.name, btn: '<button class="sc-go" data-sr="openHv" data-k="' + stEsc(i.c.ck) + '">Open</button>' });
-  }
-  const ready = [];
-  for (const i of live) for (const r of i.rows) if (r.kind === 'ten' && r.k === 'open') ready.push({ i, r });
-  if (ready.length) steps.push({ o: 4, ic: 'send', t: ready.length + (ready.length === 1 ? ' letter ready' : ' letters ready'),
-    s: [...new Set(ready.map(x => x.i.c.p.name))].join(' · '),
-    btn: '<button class="sc-go" data-sr="openTen" data-k="' + stEsc(ready[0].i.c.ck) + '" data-id="' + stEsc(String(ready[0].r.l.id)) + '">Start <i class="ti ti-arrow-right" aria-hidden="true"></i></button>' });
   // settled with the rent / via Kaution / with the Hausgeld: waiting for your Confirm
   for (const i of live) {
     for (const r of i.rows) if (r.kind === 'ten' && r.k === 'sent' && r.st.confirm) steps.push({ o: 5, ic: 'check', t: 'Settled ' + (r.st.res.via === 'miete' ? 'with the rent' : 'via Kaution') + '?',
@@ -1266,8 +1248,10 @@ function _srSumSheet(view) {
     const rows = S.tenRows.map(x => { const av = stAv(x.idx);
       return { av, ab: stAbbr(x.i.c.p.name), name: x.r.name, sub: x.i.c.p.name + ' · ' + stPer(x.r.l.from, x.r.l.to) + (x.r.k === 'open' ? ' · to send' : x.r.k === 'sent' ? ' · sent' : ''),
                amount: Math.abs(x.v) >= 0.005 ? Math.abs(x.v) : 0, dir: x.v > 0 ? 1 : -1, act: 'data-sr="openTen" data-k="' + stEsc(x.i.c.ck) + '" data-id="' + stEsc(String(x.r.it.r.id)) + '"',
-               set: Math.abs(x.v) >= 0.005 ? _srSetObj(x.i.c, x.r.st, x.r, false, x.idx) : null }; });
-    return stSumSheet({ title: 'Tenants', sub: 'Rentals · periods ending in ' + SR.year, net: S.ten,
+               set: Math.abs(x.v) >= 0.005 && x.r.k !== 'open' ? _srSetObj(x.i.c, x.r.st, x.r, false, x.idx) : null }; });   // Nov 2026: not sent yet = just its amount
+    const ready = S.tenRows.filter(x => x.r.k === 'open');          // Nov 2026 · the one action: send the letters (starts with the first one)
+    const action = ready.length ? '<button class="cx-btn cx-btn--p st-sendall" data-sr="openTen" data-k="' + stEsc(ready[0].i.c.ck) + '" data-id="' + stEsc(String(ready[0].r.it.r.id)) + '"><i class="ti ti-send" aria-hidden="true"></i> Send ' + ready.length + (ready.length === 1 ? ' letter' : ' letters') + '</button>' : '';
+    return stSumSheet({ title: 'Tenants ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action,
       sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back') + _srSetCount(rows),
       groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
                { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, close);

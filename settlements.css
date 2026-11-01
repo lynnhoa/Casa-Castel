@@ -1626,3 +1626,10 @@ button.sc-ct__r { cursor: pointer; }
 .sc-ct--o .sr-okline { margin: 6px 0 2px; }
 .sc-ct__r { align-items: start; } .sc-ct__r .sc-ct__v { padding-top: 1px; }
 .sc-ct__m b .sc-ja__sg, .sc-ct__m b .sc-ct__ms, .sc-ct__m b .sc-ct__off { margin-left: 5px; padding: 0 6px; font-size: 10px; }
+
+/* ── Nov 2026 · Casa Castel: the Hauskosten tile (a total, not money in or out) · "Send … letters" in the Tenants sheets ── */
+.st-tile--info { background: #EFEAE2; }
+.st-tile--info .st-tile__l { color: #5F5649; } .st-tile--info .st-tile__d { color: #7A6F62; } .st-tile--info b { color: #5F5649; } .st-tile--info small { color: #8C8072; }
+.st-tile__d.is-warn { color: #8A3B22 !important; }
+.cx-btn.st-sendall { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.sc-ct__q { margin: -4px 4px 6px; font-size: 11.5px; color: #9A8E7E; font-variant-numeric: tabular-nums; }

@@ -364,22 +364,21 @@ function stRenderCasa() {
   const tenSub = mo.ten === null ? 'no house costs yet' : pv + mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back');
   // Oct 2026 · Hausgeld = the Versorger Jahresabrechnungen of the year (the real bills — not the preview share of the NK)
   const J = scJaModel(M); M.ja = J;
-  const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub, 'data-sc="sumTen"') + stTile('Hausgeld', 'receipt', J.net, J.tile, 'data-sc="ja"') + '</div>';
+  // Nov 2026 · the two tiles carry what the Casa Castel card showed: Tenants (letters) · Hauskosten (costs, lock, Versorger)
+  const nOpenL = M.ten.filter(t => t.k === 'open').length, gapsT = M.locked || M.running ? 0 : (M.jaGaps || []).length, qT = M.quota || {};
+  const hkStatus = M.locked ? 'locked' : !M.R.lines.length ? 'nothing booked yet' : M.running ? 'running · preview' : gapsT ? gapsT + (gapsT === 1 ? ' Jahresabrechnung missing' : ' Jahresabrechnungen missing') : M.sendable ? 'ready to lock' : 'not locked';
+  const vNet = J.net === null || J.net === undefined ? '' : 'Versorger: ' + (J.net > 0.004 ? 'Guthaben ' : J.net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(J.net) > 0.004 ? scE(Math.abs(J.net)) : '');
+  const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub + (M.locked && M.sendable && nOpenL ? ' · ' + nOpenL + ' to send' : ''), 'data-sc="sumTen"') +
+    stTileInfo('Hauskosten', 'home', hkStatus, M.R.lines.length ? scE(M.R.check.total) : '\u2014', [qT.rate ? scE(qT.rate) + ' per month' : '', vNet.trim()], 'data-sc="costs"', gapsT > 0) + '</div>';
 
   const L = M.R.check;
   const noData = !M.locked && !M.R.lines.length;
   const label = stNkLabel(per.from, per.to);
   const needs = [];
-  if (M.running) needs.push({ tone: 'calm', icon: 'clock', t: 'Still running', s: 'NK-Abrechnung after ' + stDe(per.to) + ' · preview as of ' + (M.pv ? stDe(M.pv.cutoff) : 'today') + ' – costs, months and NK paid up to then' });
-  else if (!M.sendable) needs.push({ tone: 'calm', icon: 'archive', t: 'Frist passed', s: 'letters and results stay here as history' });
-  if (noData) needs.push({ tone: 'gold', icon: 'pencil', t: 'Type the house costs', s: 'nothing booked in Controlling for ' + stPer(per.from, per.to), act: 'data-sc="costs"' });
-  else if (M.sendable && !M.locked && (M.jaGaps || []).length) {
-    const jg = M.jaGaps;
-    needs.push({ tone: 'gold', icon: 'receipt', t: jg.length === 1 ? 'Jahresabrechnung missing' : jg.length + ' Jahresabrechnungen missing',
-                 s: jg.map(g => g.l + ' ' + scJaSpan(g.from, g.to) + (g.expTxt ? ' · ' + g.expTxt : '')).join(' · ') + ' · then lock the house costs', act: 'data-sc="ja"' });
-  }
-  else if (M.sendable && !M.locked) needs.push({ tone: 'gold', icon: 'lock', t: 'Lock house costs', s: label + ' · then the letters can be sent', act: 'data-sc="costs"' });
-  else if (M.sendable && open.length) needs.push({ tone: 'gold', icon: 'send', t: open.length + (open.length === 1 ? ' letter ready' : ' letters ready'), s: open.map(t => t.room).join(', '), act: 'data-sc="start"' });
+  // Nov 2026 · Needs you only shows what the Casa Castel card doesn't: "still running" / "Frist passed" (year line),
+  // "type the house costs", "Jahresabrechnung missing", "lock" (Hauskosten row + chip) and "letters ready"
+  // (NK-Abrechnung row) are gone — what stays are the per-tenant to-dos
+  void noData;
   for (const t of sent) if (t.st && t.st.confirm) needs.push({ tone: 'gold', icon: 'check', t: 'Confirm ' + (t.st.res.via === 'miete' ? 'settlement with the rent' : 'settlement via Kaution'),
     s: t.name + ' · ' + t.room + ' · ' + scE(t.st.res.amount), act: 'data-sc="settle" data-k="' + stEsc(t.key) + '"' });
   const nowYm = cxToday().slice(0, 7);
@@ -411,7 +410,7 @@ function stRenderCasa() {
   const nRooms = (window._src.rooms || []).filter(r => r.active !== false).length;
 
   void costsCard; void methCard;
-  cxPaint(el, '<div class="st-page sc-page">' + yearNav + sql + progress + tiles + need + scHouseCard(M) + filter +
+  cxPaint(el, '<div class="st-page sc-page">' + yearNav + sql + progress + tiles + need + filter +
     stSec('Rooms', nRooms) + roomsHtml + letters +
     (!M.ten.length ? '<p class="cx-empty">No tenants with Kalt + NK in ' + stEsc(stPer(per.from, per.to)) + '.</p>' : '') + '</div>');   // B18: only what changed
   el._scShown = y;
@@ -536,11 +535,16 @@ function scSumTen(M) {
     const v = t.st && t.st.res ? t.st.res.dir * t.st.res.amount : t.saldo, c = scAv(t.room);
     return { av: c, ab: scAbbr(t.room), name: t.name, sub: t.room + ' · ' + stPer(t.from, t.to) + (t.k === 'open' && !M.locked ? ' · preview' : ''),
              amount: Math.abs(v) >= 0.005 ? Math.abs(v) : 0, dir: v > 0 ? 1 : -1, act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"',
-             set: Math.abs(v) >= 0.005 ? scSetObj(t, M) : null };
+             set: Math.abs(v) >= 0.005 && t.k !== 'open' ? scSetObj(t, M) : null };   // Nov 2026: a letter not sent yet = just its amount
   });
+  // Nov 2026 · the one action: send the letters (replaces the NK-Abrechnung row and the "letters ready" to-do)
+  const nOpen = M.ten.filter(t => t.k === 'open').length;
+  const action = !nOpen || !M.sendable ? '' : M.locked
+    ? '<button class="cx-btn cx-btn--p st-sendall" data-sc="start"><i class="ti ti-send" aria-hidden="true"></i> Send ' + nOpen + (nOpen === 1 ? ' letter' : ' letters') + '</button>'
+    : '<button class="cx-btn cx-btn--s st-sendall" data-sc="costs"><i class="ti ti-lock" aria-hidden="true"></i> Lock the house costs first</button>';
   const mo = M.money, all = rows.filter(r => r.set && r.set.state !== 'locked');
   const cnt = all.length ? ' · ' + all.filter(r => r.set.state === 'settled').length + ' of ' + all.length + ' settled' : '';
-  return stSumSheet({ title: 'Tenants', sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten,
+  return stSumSheet({ title: 'Tenants ' + M.y, sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten, action,
     sub2: mo.ten === null ? 'no house costs yet' : mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back') + cnt,
     groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
              { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');
@@ -1475,7 +1479,9 @@ function scCostsView(M) {
   void nf;
   return stMHead('House costs ' + M.y, 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to), 'house', 'data-sc="close"') +
     '<div class="srm__b mx-b">' + hero + '<div class="mx-rows">' + lockRow + '</div>' + warn +
-    (types.length ? '<p class="mx-lbl">With Jahresabrechnung</p>' + types.map(typeCard).join('') : '') + otherCard + who + '</div>';
+    (types.length ? '<p class="mx-lbl">With Jahresabrechnung</p>' +
+      (J.n && J.net !== null && J.net !== undefined ? '<p class="sc-ct__q">' + stEsc('Paid in ' + M.y + ': ' + (J.net > 0.004 ? 'Guthaben ' : J.net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(J.net) > 0.004 ? scE(Math.abs(J.net)) : '') + ' · ' + J.nIn + ' of ' + J.n + ' in') + '</p>' : '') +   // Nov 2026: the supplier money of the year (also on the tile)
+      types.map(typeCard).join('') : '') + otherCard + who + '</div>';
 }
 /* The add form for a Jahresabrechnung (books into Controlling: One-off · Versorger) */
 function scHgForm() {
