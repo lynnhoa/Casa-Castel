@@ -460,7 +460,7 @@ function scHouseCard(M) {
 }
 function scSay(t) {
   const s = t.saldo, a = scE(Math.abs(s));
-  if (t.k === 'none') return ['', 'Pauschal – no NK' + (t.quotaShare ? ' · share ' + scE(t.quotaShare) + (t.pnkPaid ? ' · NK in Pauschale ' + scE(t.pnkPaid) : ' · you carry it') : '')];
+  if (t.k === 'none') return ['', 'Pauschal – no NK letter' + (t.pnkPaid ? ' · NK in the Pauschale ' + scE(t.pnkPaid) : ' · counts like an empty room')];   // Nov 2026: Kurzzeitvermietung
   if (t.k === 'done') {
     if (t.skipped) return ['', 'skipped · tap to undo'];
     const r = t.st.res, b = t.st.booking;
@@ -1480,11 +1480,13 @@ function scCostsView(M) {
     '</div>' + (can && editOpen ? scTypedHtml(M) : '') : '';
   // ── who carries it
   const anySent = M.ten.some(t => t.k === 'sent' || (t.k === 'done' && !t.skipped));
-  const youSub = [lnd.pauschal ? 'Pauschal tenants ' + scE(lnd.pauschal) + (lnd.pauschalCovered ? ' · NK in their Pauschale ' + scE(lnd.pauschalCovered) : '') : '',
-                  lnd.vacancy ? 'empty days ' + scE(lnd.vacancy) : '', Math.abs(lnd.rounding || 0) > 0.004 ? 'rounding ' + scE(lnd.rounding) : ''].filter(Boolean).join(' · ');
+  const kurzC = M.method === 'quota' ? cxR(lnd.pauschalCovered || 0) : 0, youV = cxR((Lc.landlord || 0) - kurzC);   // Nov 2026: you at 0
+  const youSub = M.method === 'quota' ? (Math.abs(youV) > 0.004 ? (M.quota && !M.quota.months ? 'nobody on Kalt + NK in this period' : 'rounding') : '')
+    : [lnd.pauschal ? 'Pauschal tenants ' + scE(lnd.pauschal) : '', lnd.vacancy ? 'empty days ' + scE(lnd.vacancy) : '', Math.abs(lnd.rounding || 0) > 0.004 ? 'rounding ' + scE(lnd.rounding) : ''].filter(Boolean).join(' · ');
   const who = has ? '<p class="mx-lbl">Who carries it</p><div class="sc-ct sc-ct--o">' +
     '<div class="sc-ct__o"><span>Tenants</span><span>' + scE(Lc.allocated) + '</span></div>' +
-    '<div class="sc-ct__o"><span class="sc-ct__m"><b>You · Pauschal and empty days</b>' + (youSub ? '<small>' + stEsc(youSub) + '</small>' : '') + '</span><span>' + scE(Lc.landlord) + '</span></div>' +
+    (kurzC ? '<div class="sc-ct__o"><span class="sc-ct__m"><b>Kurzzeitvermietung</b><small>NK inside the Pauschalen</small></span><span>' + scE(kurzC) + '</span></div>' : '') +
+    '<div class="sc-ct__o"><span class="sc-ct__m"><b>You</b>' + (youSub ? '<small>' + stEsc(youSub) + '</small>' : '') + '</span><span>' + scE(M.method === 'quota' ? youV : Lc.landlord) + '</span></div>' +
     '<p class="sr-okline' + (Lc.ok ? '' : ' is-warn') + '"><i class="ti ti-' + (Lc.ok ? 'check' : 'alert-triangle') + '" aria-hidden="true"></i> ' + (Lc.ok ? 'adds up' : 'does not add up') + '</p>' +
     (anySent ? '<p class="sc-ct__none">Letters already sent – the split stays as it is.</p>' : '') + '</div>' : '';
   void nf;
@@ -1518,9 +1520,9 @@ function scTenView(M, m) {
   const head = stMHead(t.name, t.room + (t.m2 ? ' · ' + String(t.m2).replace('.', ',') + ' m²' : '') + ' · ' + stNkLabel(M.per.from, M.per.to) + (t.movedOut ? ' · moved out' : ''), { ini: scAbbr(t.room), bg: c[0], fg: c[1] }, 'data-sc="close"');
   const flowLnk = m.flow ? '<button class="mx-skip" data-sc="flowNext">' + (m.i + 1) + ' of ' + m.flow.length + ' · next ›</button>' : '';
   if (t.k === 'none') {
-    const sh = Number(t.quotaShare) || 0, pc = Number(t.pnkPaid) || 0, rest = Math.round((sh - pc) * 100) / 100;
+    const pc = Number(t.pnkPaid) || 0;                     // Nov 2026: a short-term stay carries only the NK inside its Pauschale
     return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'zero', label: first + ' pays Pauschal', amount: null, sub: 'no NK letter' }) +
-      stMCard('Share of the house costs', 'calc', '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>' + (sh ? 'Share ' + scE(sh) + ' · NK inside the Pauschale ' + scE(pc) : 'The Nebenkosten are included in the rent') + '<small>' + (sh ? (rest >= 0 ? 'you carry ' + scE(rest) : 'you keep ' + scE(-rest)) : 'this share stays with you') + '</small></span><span></span></div>') + '</div>';
+      stMCard('House costs', 'calc', '<div class="mx-dr"><span class="mx-d" style="background:#E8C98F"></span><span>' + (pc ? 'NK inside the Pauschale ' + scE(pc) : 'No NK inside the Pauschale') + '<small>' + (pc ? 'counts as \u201cAnteil Kurzzeitvermietung\u201d · the rest is shared by the Kalt + NK tenants' : 'counts like an empty room · the Kalt + NK tenants share the house costs') + '</small></span><span></span></div>') + '</div>';
   }
   if (t.skipped) {
     return head + '<div class="srm__b mx-b">' + stMHero({ tone: 'zero', label: 'This NK is skipped', amount: null, sub: 'no letter and no result – it counts as done' }) +
@@ -1857,11 +1859,12 @@ async function scLetterData(M, t) {
   D.introHtml = 'anbei die Abrechnung der Betriebskosten für das ' + (former ? 'ehemalige ' : '') + 'Zimmer „' + t.room + '“ in der Casa Castel für den Zeitraum vom <strong>' + dt(per.from) + ' bis ' + dt(per.to) + '</strong>.' +
     ' Die Kosten des Hauses werden gleichmäßig auf alle bewohnten Monate verteilt – jeder Monat, in dem jemand im Haus gewohnt hat, trägt den gleichen Betrag.' +
     (partial ? ' Das Zimmer wurde vom ' + dt(t.from) + ' bis ' + dt(t.to) + ' bewohnt (' + mo + ' Monate).' : '');
+  const kz = Number(Q.kurz) || 0, base = kz ? Q.pool : Q.total;           // Nov 2026: − Anteil Kurzzeitvermietung
   D.facts = [['Abrechnungszeitraum', span(per.from, per.to), M.R.days + ' Tage'],
              ['Bewohnte Monate im Haus', scMo(Q.months), 'Ø ' + nf(Q.persons, 1) + ' Personen'],
-             ['Kosten je Monat', eur(Q.rate), eur(Q.total) + ' ÷ ' + scMo(Q.months)],
+             ['Kosten je Monat', eur(Q.rate), eur(base) + ' ÷ ' + scMo(Q.months)],
              ['Dein Anteil', qPct, 'deine ' + mo + ' Monate ÷ ' + scMo(Q.months)]];
-  D.intro2 = 'Kosten des Hauses ' + eur(Q.total) + ' ÷ ' + scMo(Q.months) + ' bewohnte Monate = <strong>' + eur(Q.rate) + ' je Monat</strong>. ' +
+  D.intro2 = 'Kosten des Hauses ' + eur(Q.total) + (kz ? ' − Anteil Kurzzeitvermietung ' + eur(kz) + ' = ' + eur(base) : '') + ' ÷ ' + scMo(Q.months) + ' bewohnte Monate = <strong>' + eur(Q.rate) + ' je Monat</strong>. ' +
     mo + ' Monate × ' + eur(Q.rate) + ' = <strong>' + eur(t.sum) + '</strong>. Das sind ' + qPct + ' der Kosten – so verteilt sich der Betrag auf die Kostenarten:';
   D.table.cols = [{ label: 'Kostenart', w: '52%' }, { label: 'Kosten Haus', w: '24%', cls: 'r' }, { label: 'Dein Betrag', w: '24%', cls: 'r' }];
   D.notes2 = ['Alle umlagefähigen Kosten des Jahres werden zusammengezählt und gleichmäßig auf alle bewohnten Monate verteilt (Personenmonate). Ein- und Auszugsmonate zählen tagesgenau.',
@@ -1883,13 +1886,14 @@ function scLetterLayout(D, M, t, o) {
               Q ? ['Anteil', nf(t.months / Q.months * 100, 2) + '\u00a0%', mo + ' von ' + scMo(Q.months) + ' bewohnten Monaten']
                 : ['Abrechnungsjahr', dt(per.from) + ' \u2013 ' + dt(per.to), 'Verteilung nach Personen']];
   D.introHtml = 'anbei die Betriebskostenabrechnung für den genannten Zeitraum.' + (o.partial ? ' Berechnet werden nur die bewohnten ' + (Q ? 'Monate.' : 'Tage.') : '');
+  const kz = Q ? Number(Q.kurz) || 0 : 0;                                   // Nov 2026: one line before the split, only when there is one
   D.costs = { cols: [{ label: 'Kostenart', w: '52%' }, { label: 'Haus gesamt', w: '24%', cls: 'r' }, { label: 'Anteil', w: '24%', cls: 'r' }],
-              rows: o.SL.map(g => [g.label, eur(g.total), eur(g.amount)]),
-              sumMid: Q ? Q.total : cxR(o.SL.reduce((a, g) => a + (Number(g.total) || 0), 0)) };
+              rows: o.SL.map(g => [g.label, eur(g.total), eur(g.amount)]).concat(kz ? [['abzüglich Anteil Kurzzeitvermietung', eur(-kz), '']] : []),
+              sumMid: Q ? (kz ? Q.pool : Q.total) : cxR(o.SL.reduce((a, g) => a + (Number(g.total) || 0), 0)) };
   const ov = (t.set && t.set.vzMonths) || {};
   D.vzMonths = Object.keys(t.vzMap || {}).sort().map(ym => ({ label: SC_MON[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4), amt: ov[ym] !== undefined ? Number(ov[ym]) || 0 : t.vzMap[ym].amt }));
   const beleg = o.list && o.extraLines.length;
-  D.hints = [Q ? 'Verteilung: Hauskosten \u00f7 alle bewohnten Monate im Haus = gleicher Betrag je Monat für alle Zimmer.'
+  D.hints = [Q ? 'Verteilung: Hauskosten' + (kz ? ' abzüglich Anteil Kurzzeitvermietung' : '') + ' \u00f7 alle bewohnten Monate im Haus = gleicher Betrag je Monat für alle Zimmer.'
                : 'Verteilung: Die Kosten jedes Tages werden zu gleichen Teilen auf alle Personen verteilt, die an diesem Tag im Haus wohnen.',
              'Enthalten sind die im Abrechnungszeitraum gezahlten Kosten. Versorger-Jahresabrechnungen zählen anteilig nach ihrem eigenen Abrechnungszeitraum (tagesgenau) und sind mit den Abschlägen der jeweiligen Kostenart verrechnet.',
              ...(beleg ? ['Die Einzelrechnungen stehen in der Belegliste auf Seite 2.'] : [])];

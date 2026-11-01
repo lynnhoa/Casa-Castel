@@ -322,21 +322,35 @@ const NkCasa = (() => {
      so the letter can still list every cost type (the lines add up exactly to rate × months).
      Input: the result of calc() → same shape back, with .method = 'quota' and .quota{…}. */
   function quota(R) {
+    // Nov 2026 · short-term (Pauschal) stays carry only the NK inside their Pauschale ("Anteil Kurzzeitvermietung");
+    // everything else is shared by the Kalt + NK tenants by their months — like empty days. The landlord carries 0
+    // (only if nobody is on Kalt + NK, the rest stays with the landlord). Rounding cents go to the tenants (largest remainder).
     if (!R || !R.tenants) return R;
     const monthsOf = (a, b) => { let m = 0; for (let d = a; d <= b; d = addDays(d, 1)) m += 1 / daysInMonth(d.slice(0, 7)); return m; };
     const m2d = v => Math.round(v * 100) / 100;                       // months as shown (2 decimals)
     const total = r2(R.lines.reduce((s, l) => s + l.total, 0));
-    const M = m2d(R.tenants.reduce((s, t) => s + m2d(t.months), 0));
+    const isP = t => t.mode === 'pauschal';
+    const M = m2d(R.tenants.filter(t => !isP(t)).reduce((s, t) => s + m2d(t.months), 0));            // months of the Kalt + NK tenants
+    const Mall = m2d(R.tenants.reduce((s, t) => s + m2d(t.months), 0));
     const perMonths = m2d(monthsOf(R.period.from, R.period.to));
-    const rate = M ? r2(total / M) : 0;
+    const kurz = r2(R.tenants.filter(isP).reduce((s, t) => s + r2((Number(t.pnk) || 0) * m2d(t.months)), 0));   // NK inside the Pauschalen
+    const pool = M ? Math.max(0, r2(total - kurz)) : 0;
+    const rate = M ? r2(pool / M) : 0;
+    // the shares: pool × own months ÷ M, cents by largest remainder → they add up exactly to the pool
+    const knk = R.tenants.filter(t => !isP(t)), exact = knk.map(t => M ? pool * m2d(t.months) / M : 0);
+    const cents = exact.map(v => Math.floor(Math.round(v * 1e6) / 1e4) / 100);
+    let left = Math.round((pool - cents.reduce((a, v) => a + v, 0)) * 100);
+    exact.map((v, k) => [v - cents[k], k]).sort((a, b) => b[0] - a[0]).forEach(([, k]) => { if (left > 0) { cents[k] = r2(cents[k] + 0.01); left--; } });
+    const shareOf = new Map(knk.map((t, k) => [t.key, r2(cents[k])]));
     const lines = R.lines.map(l => Object.assign({}, l, { byTenant: {}, range: {} }));
-    let pauschal = 0, pCov = 0;
+    let pauschal = 0;
     const tenants = R.tenants.map(t => {
-      const months = m2d(t.months), share = r2(rate * months);
-      if (t.mode === 'pauschal') {
-        pauschal += share; const pc = r2((Number(t.pnk) || 0) * months); pCov += pc;
-        return Object.assign({}, t, { months, lines: [], sum: 0, saldo: 0, quotaShare: share, pnkPaid: pc });
+      const months = m2d(t.months);
+      if (isP(t)) {
+        const pc = r2((Number(t.pnk) || 0) * months); pauschal += pc;
+        return Object.assign({}, t, { months, lines: [], sum: 0, saldo: 0, quotaShare: pc, pnkPaid: pc });
       }
+      const share = shareOf.get(t.key) || 0;
       // split the share over the lines (largest remainder → exact sum)
       const base = Math.abs(total) > 0.004 ? lines.map(l => share * l.total / total) : lines.map(() => 0);
       const amts = base.map(v => r2(v));
@@ -357,12 +371,12 @@ const NkCasa = (() => {
     });
     lines.forEach(l => { l.landlord = r2(l.total - Object.values(l.byTenant).reduce((s, v) => s + v, 0)); });
     const allocated = r2(tenants.reduce((s, t) => s + t.sum, 0));
-    const landTotal = r2(total - allocated);
+    const landTotal = r2(total - allocated);                                   // = the short-term stays' NK (+ 0 · or all, without Kalt + NK tenants)
     pauschal = r2(pauschal);
     return Object.assign({}, R, {
       method: 'quota', lines, tenants,
-      quota: { total, months: M, rate, perMonths, persons: perMonths ? Math.round(M / perMonths * 10) / 10 : 0 },
-      landlord: { total: landTotal, pauschal, pauschalCovered: r2(pCov), vacancy: 0, rounding: r2(landTotal - pauschal) },
+      quota: { total, kurz, pool, months: M, monthsAll: Mall, rate, perMonths, persons: perMonths ? Math.round(M / perMonths * 10) / 10 : 0 },
+      landlord: { total: landTotal, pauschal, pauschalCovered: pauschal, vacancy: 0, rounding: r2(landTotal - pauschal) },
       check: { total, allocated, landlord: landTotal, diff: r2(total - allocated - landTotal), ok: Math.abs(total - allocated - landTotal) < 0.005 },
     });
   }
