@@ -494,7 +494,9 @@ async function pvuShow() {
     try { await _ctrFetch(); } catch (e) { console.error('[utilities] load', e); CTR.err = _ctrErrText(e); }
   }
   pvuRender();
-  _ctrPutzLoad().then(() => { if (CTR.putz) pvuRender(); });  // Nov 2026: the Putzdienst summary (its own calls, after the list shows)
+  if (!CTR.jobsAt || Date.now() - CTR.jobsAt > 60000) {      // Nov 2026: the job summaries (their own calls, after the list shows) · at most once a minute
+    CTR.jobsAt = Date.now(); _ctrJobsLoad().then(() => pvuRender());
+  }
   let want = null;                                           // Controlling › Setup › "Open in Utilities"
   try { want = sessionStorage.getItem('pvu_open'); if (want) sessionStorage.removeItem('pvu_open'); } catch (e) {}
   if (want && CTR.loaded && _ctrSlot(want) && (!want.startsWith('c:') || _ctrCat(want.slice(2)))) ctrOpen(want);
@@ -527,16 +529,9 @@ function _ctrRowHTML(s) {
   return { st, kind, py: _ctrPerYear(src, amt), html: `<button type="button" class="pvu-r" data-ctr="open" data-s="${_ctrE(s.key)}">${_ctrIco(s.cat ? s.cat.name : s.kind)}` +
     `<span class="pvu-r__m"><b lang="de">${_ctrE(s.short)}</b><small>${who ? _ctrE(who) : ''}${pill}</small></span><span class="pvu-r__a">${cost}</span></button>` };
 }
-/* Putzdienst (a job) in the Services group: a summary of its visits, invoices and Controlling — tap → the summary pop-up */
-function _ctrPutzRow() {
-  const P = CTR.putz; if (!P) return null;
-  const pill = P.pill ? `<span class="pvu-p ${P.pill[0]}">${_ctrE(P.pill[1])}</span>` : '';
-  return { kind: 'service', py: P.year || 0, todo: P.pill && P.pill[0] !== 'gry' ? 1 : 0,
-    html: `<button type="button" class="pvu-r" data-ctr="open" data-s="putz">${_ctrIco('Putzdienst')}<span class="pvu-r__m"><b>Putzdienst</b><small>${_ctrE(P.name || '')}${pill}</small></span>` +
-      `<span class="pvu-r__a">${P.avg ? `<b>≈ ${_ctrEur(P.avg)}</b><span>/ month</span>` : '<b class="mu">—</b>'}</span></button>` };
-}
-function pvuRender() {
+function pvuRender(force) {
   const host = document.getElementById('pvaUtil'); if (!host) return;
+  if (!force && CTR.open !== null && CTR.open !== undefined && CTR.loaded) { CTR.relist = true; return; }   // Nov 2026: no redraw behind an open pop-up
   const todo = _ctrDot();
   if (!CTR.loaded) { host.innerHTML = `<div class="pvu-pg"><div class="ctr-empty">${_ctrE(CTR.err || 'Loading utilities …')}</div></div>`; return; }
   let yearAll = 0, nK = 0;
@@ -545,7 +540,7 @@ function pvuRender() {
     const pid = Number(p.id), casa = pid === PVU_CASA, slots = _ctrSlots(pid);
     let year = 0, todoP = 0;
     const rows = slots.map(s => { const r = _ctrRowHTML(s); year += r.py; if (r.st.pill) todoP++; return r; });
-    if (casa) { const pz = _ctrPutzRow(); if (pz) { rows.push(pz); todoP += pz.todo; } }
+    if (casa) for (const jr of _ctrJobRows()) { rows.push(jr); todoP += jr.todo; year += jr.py; }   // Nov 2026: the jobs (Putzdienst …) in Services
     yearAll += year;
     const nCons = CTR.cons.filter(k => _ctrPid(k) === pid && !k.deleted_at).length; nK += nCons;
     const open = CTR.fold[pid] !== false;
@@ -570,66 +565,77 @@ function pvuRender() {
         `<div class="ctr-ft"><button type="button" class="pvu-bg" data-ctr="addpropno">Cancel</button><button type="button" class="pvu-bp" data-ctr="addpropok">Add</button></div>`
         : `<p class="ctr-hint">All properties are here already.</p><div class="ctr-ft"><button type="button" class="pvu-bg" data-ctr="addpropno">Close</button></div>`) + `</div>`
     : `<button type="button" class="pvu-addp" data-ctr="addprop"><i class="ti ti-plus" aria-hidden="true"></i> Add property</button>`;
-  host.innerHTML = `<div class="pvu-pg">
+  const html = `<div class="pvu-pg">
     <div class="pvu-ttl"><h1 class="pvu-h1">Utilities</h1>${todo ? `<span class="ctr-chip">${todo} to do</span>` : ''}
       <button type="button" class="ctr-plus" data-ctr="new" aria-label="New contract"><i class="ti ti-plus" aria-hidden="true"></i></button></div>
     <div class="pvu-sum"><div class="pvu-sum1"><b>Running costs</b><span>${props.length} ${props.length === 1 ? 'property' : 'properties'} · ${nK} ${nK === 1 ? 'contract' : 'contracts'}</span></div>
       <div class="pvu-sum2"><span><i>Per year</i>${_ctrEur(yearAll)}</span><span><i>Ø month</i>${_ctrEur(yearAll / 12)}</span></div></div>
     ${cards}${addProp}
-    <p class="ctr-foot">The Rate comes from Properties. Putzdienst shows its visits and invoices here; you check and close months in its job tab.</p></div>`;
+    <p class="ctr-foot">The Rate comes from Properties. Jobs (Putzdienst …) show their visits and invoices here; you check and close months in their tab.</p></div>`;
+  if (host._pvuHtml === html) return;                        // Nov 2026: nothing changed → no redraw (no blink)
+  host._pvuHtml = html; host.innerHTML = html;
 }
 
-/* ── Nov 2026 · Putzdienst (a job of this app) in Utilities: a read-only summary of the year — its visits (Agenda),
-   the invoices the cleaner uploads and you check (Money) and Controlling (paid ✓, and the months before the job existed).
-   You check invoices and close months in its job tab, as before — nothing is confirmed in two places. */
-async function _ctrPutzLoad() {
+/* ── Nov 2026 · jobs of this app (Putzdienst, Winterdienst, Gärtner …) in Utilities: a read-only summary of the year —
+   visits (Agenda), the invoices the provider uploads and you check (Money) and Controlling (paid ✓, months before the job).
+   Only for jobs whose cost type is not a Utilities row already (no doubles). You check invoices and close months
+   in the job's tab, as before — nothing is confirmed in two places. */
+async function _ctrJobsLoad() {
   try {
-    const cat = (CTR.cats || []).find(c => /^PUTZ/i.test(String(c.code || '')) || /putz/i.test(String(c.name || '')));
     const jobs = (typeof _pvaData !== 'undefined' && _pvaData && _pvaData.jobs) || [];
-    if (!jobs.length || typeof pvaRpc !== 'function') { CTR.putz = null; return; }
-    const t = _ctrT(), y = Number(t.slice(0, 4)), mNow = Number(t.slice(5, 7));
-    const likely = j => (/putz|reinig|clean/i.test(String(j.name || '')) ? 1 : 0);
-    let hit = null;
-    for (const j of jobs.slice().sort((a, b) => likely(b) - likely(a))) {
+    if (!jobs.length || typeof pvaRpc !== 'function') { CTR.jobs = []; return; }
+    const t = _ctrT(), y = Number(t.slice(0, 4)), mNow = Number(t.slice(5, 7)), shown = new Set(_ctrRows().map(c => _ctrId(c.id)));
+    const out = [];
+    for (const j of jobs) {
       const { data, error } = await pvaRpc('pv_admin_history', { p_job: j.id, p_before: null, p_months: mNow });
       if (error || !data) continue;
-      if (cat ? String(data.ctrl_category_id || '') === String(cat.id) : likely(j)) { hit = { j, data }; break; }
+      const cat = data.ctrl_category_id ? _ctrCat(data.ctrl_category_id) : (CTR.cats || []).find(c => /putz/i.test(c.name) && /putz|reinig|clean/i.test(String(j.name || '')));
+      if (cat && shown.has(_ctrId(cat.id))) continue;                       // already a Utilities row
+      let ctl = [];
+      if (cat) { try { const r = await _pvuDb().from('ctrl_expense_castel').select('month,amount').eq('category_id', cat.id).eq('year', y); ctl = r.error ? [] : (r.data || []); } catch (e) {} }
+      const months = [];
+      for (let m = 1; m <= mNow; m++) {
+        const key = y + '-' + String(m).padStart(2, '0');
+        const vis = (data.visits || []).filter(v => String(v.month || v.date || '').slice(0, 7) === key && ['done', 'sent', 'redo'].includes(v.status)).length;
+        const inv = (data.invoices || []).filter(i => String(i.month || '').slice(0, 7) === key && i.status !== 'replaced');
+        const invSum = inv.reduce((a, i) => a + (Number(i.amount) || 0), 0), toCheck = inv.filter(i => i.status === 'to_check' || i.status === 'returned').length;
+        const mo = (data.months || []).find(x => String(x.month || '').slice(0, 7) === key) || {};
+        const c = ctl.filter(x => Number(x.month) === m).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+        const amount = mo.closed_sum !== null && mo.closed_sum !== undefined ? Number(mo.closed_sum) : (invSum || c);
+        months.push({ m, vis, invSum, toCheck, status: mo.status || (c ? 'booked' : 'open'), paid: !!mo.paid_at || (!mo.status && c > 0), amount });
+      }
+      const year = months.reduce((a, x) => a + (x.amount || 0), 0), used = months.filter(x => x.amount > 0).length;
+      const toCheck = months.reduce((a, x) => a + x.toCheck, 0), last = months[months.length - 2];
+      const pill = toCheck ? ['amb', toCheck + (toCheck === 1 ? ' invoice to check' : ' invoices to check')]
+        : last && last.vis && !last.invSum && last.status === 'open' ? ['red', 'Invoice missing · ' + CTR_MON_L[last.m - 1]]
+        : last && last.vis && last.status === 'open' ? ['amb', 'Close ' + CTR_MON_L[last.m - 1]] : null;
+      out.push({ jobId: j.id, name: j.name, label: cat ? cat.name : j.name, ord: cat ? _ctrN(cat.sort_order) || 900 : 900, months, year,
+                 avg: used ? year / used : 0, visits: months.reduce((a, x) => a + x.vis, 0), pill });
     }
-    if (!hit) { CTR.putz = null; return; }
-    let ctl = [];
-    if (cat) { try { const r = await _pvuDb().from('ctrl_expense_castel').select('month,amount').eq('category_id', cat.id).eq('year', y); ctl = r.error ? [] : (r.data || []); } catch (e) {} }
-    const D = hit.data, months = [];
-    for (let m = 1; m <= mNow; m++) {
-      const key = y + '-' + String(m).padStart(2, '0');
-      const vis = (D.visits || []).filter(v => String(v.month || v.date || '').slice(0, 7) === key && ['done', 'sent', 'redo'].includes(v.status)).length;
-      const inv = (D.invoices || []).filter(i => String(i.month || '').slice(0, 7) === key && i.status !== 'replaced');
-      const invSum = inv.reduce((a, i) => a + (Number(i.amount) || 0), 0), toCheck = inv.filter(i => i.status === 'to_check' || i.status === 'returned').length;
-      const mo = (D.months || []).find(x => String(x.month || '').slice(0, 7) === key) || {};
-      const c = ctl.filter(x => Number(x.month) === m).reduce((a, x) => a + (Number(x.amount) || 0), 0);
-      const amount = mo.closed_sum !== null && mo.closed_sum !== undefined ? Number(mo.closed_sum) : (invSum || c);
-      months.push({ m, vis, invSum, toCheck, status: mo.status || (c ? 'booked' : 'open'), paid: !!mo.paid_at || (!mo.status && c > 0), amount });
-    }
-    const year = months.reduce((a, x) => a + (x.amount || 0), 0), used = months.filter(x => x.amount > 0).length;
-    const toCheck = months.reduce((a, x) => a + x.toCheck, 0), last = months[months.length - 2];
-    const pill = toCheck ? ['amb', toCheck + (toCheck === 1 ? ' invoice to check' : ' invoices to check')]
-      : last && last.vis && !last.invSum && last.status === 'open' ? ['red', 'Invoice missing · ' + CTR_MON_L[last.m - 1]]
-      : last && last.vis && last.status === 'open' ? ['amb', 'Close ' + CTR_MON_L[last.m - 1]] : null;
-    CTR.putz = { jobId: hit.j.id, name: hit.j.name, months, year, avg: used ? year / used : 0, visits: months.reduce((a, x) => a + x.vis, 0), pill };
-  } catch (e) { console.warn('[utilities] Putzdienst', e); CTR.putz = null; }
+    CTR.jobs = out.sort((a, b) => a.ord - b.ord || String(a.label).localeCompare(String(b.label)));
+  } catch (e) { console.warn('[utilities] jobs', e); CTR.jobs = []; }
 }
-function _ctrPutzHTML() {
-  const P = CTR.putz; if (!P) return '';
-  const head = `<div class="ctr-hd"><div class="ctr-hd-t"><div class="ctr-kk">Putzdienst</div><div class="ctr-st">${_ctrE(P.name || 'Putzdienst')}</div>` +
+const _ctrJob = id => (CTR.jobs || []).find(x => String(x.jobId) === String(id));
+function _ctrJobRows() {
+  return (CTR.jobs || []).map(P => ({ kind: 'service', py: P.year || 0, todo: P.pill && P.pill[0] !== 'gry' ? 1 : 0,
+    html: `<button type="button" class="pvu-r" data-ctr="open" data-s="job:${_ctrE(P.jobId)}">${_ctrIco(P.label)}<span class="pvu-r__m"><b>${_ctrE(P.label)}</b>` +
+      `<small>${P.label !== P.name ? _ctrE(P.name || '') : 'a job of this app'}${P.pill ? `<span class="pvu-p ${P.pill[0]}">${_ctrE(P.pill[1])}</span>` : ''}</small></span>` +
+      `<span class="pvu-r__a">${P.avg ? `<b>≈ ${_ctrEur(P.avg)}</b><span>/ month</span>` : '<b class="mu">—</b>'}</span></button>` }));
+}
+function _ctrJobHTML(id) {
+  const P = _ctrJob(id); if (!P) return '';
+  const head = `<div class="ctr-hd"><div class="ctr-hd-t"><div class="ctr-kk">${_ctrE(P.label)}</div><div class="ctr-st">${_ctrE(P.name || P.label)}</div>` +
     `<div class="pvu-hinf">a job · visits and invoices come from its tab</div></div><div class="ctr-hb"><button type="button" class="ctr-x" data-ctr="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div></div>`;
   const rows = P.months.slice().reverse().filter(x => x.vis || x.amount).map(x => {
     const st = x.toCheck ? ['amb', 'to check'] : x.paid ? ['ok', 'paid ✓'] : x.status === 'closed' ? ['gry', 'closed'] : x.status === 'booked' ? ['ok', 'booked'] : x.vis ? ['amb', 'open'] : null;
     return `<div class="pvu-li"><span>${CTR_MON_L[x.m - 1]} <small>· ${x.vis} ${x.vis === 1 ? 'visit' : 'visits'}</small></span><b>${x.amount ? _ctrEur(x.amount) : '—'}</b>${st ? `<span class="pvu-p ${st[0]}">${st[1]}</span>` : ''}</div>`;
   }).join('');
+  const go = `data-j="${_ctrE(P.jobId)}"`;
   return head + `<div class="ctr-body">` +
-    (P.pill ? `<div class="ctr-rem${P.pill[0] === 'red' ? ' red' : ''}"><p><b>${_ctrE(P.pill[1])}</b> · you do this in the Putzdienst tab.</p><div class="ctr-ra">${_ctrBtn('Open Putzdienst', 'putzjob', '', true)}</div></div>` : '') +
-    _ctrSec(_ctrT().slice(0, 4) + ' so far', '', `<div class="pvu-big"><b>${_ctrEur(P.year)}</b><span>${P.visits} ${P.visits === 1 ? 'visit' : 'visits'}</span></div><p class="pvu-sm">≈ ${_ctrEur(P.avg)} per month</p>`) +
-    _ctrSec('Per month', '', `<div class="pvu-list pvu-list--open">${rows || '<div class="ctr-sm">No visits yet this year.</div>'}</div>`) +
-    `<div class="pvu-acts"><button type="button" class="pvu-lk" data-ctr="putzjob"><i class="ti ti-arrow-right" aria-hidden="true"></i>Open the Putzdienst tab</button></div></div>`;
+    (P.pill ? `<div class="ctr-rem${P.pill[0] === 'red' ? ' red' : ''}"><p><b>${_ctrE(P.pill[1])}</b> · you do this in the ${_ctrE(P.name || P.label)} tab.</p><div class="ctr-ra">${_ctrBtn('Open ' + _ctrE(P.name || P.label), 'jobtab', ' ' + go, true)}</div></div>` : '') +
+    _ctrSec(_ctrT().slice(0, 4) + ' so far', '', `<div class="pvu-big"><b>${_ctrEur(P.year)}</b><span>${P.visits} ${P.visits === 1 ? 'visit' : 'visits'}</span></div>${P.avg ? `<p class="pvu-sm">≈ ${_ctrEur(P.avg)} per month</p>` : ''}`) +
+    _ctrSec('Per month', '', `<div class="pvu-list">${rows || '<div class="ctr-sm">No visits yet this year.</div>'}</div>`) +
+    `<div class="pvu-acts"><button type="button" class="pvu-lk" data-ctr="jobtab" ${go}><i class="ti ti-arrow-right" aria-hidden="true"></i>Open the ${_ctrE(P.name || P.label)} tab</button></div></div>`;
 }
 
 /* ── the provider pop-up (Providers modal: bottom sheet on the phone, window on iPad / laptop) ── */
@@ -655,14 +661,16 @@ function ctrClose() {
   const el = document.getElementById('pvuScrim'); if (!el) return;
   CTR.open = null; CTR.form = ''; CTR.arg = null; CTR.add = null;
   el.classList.add('pv-closed');
-  setTimeout(() => { if (CTR.open === null) { el.classList.add('pv-hidden'); el.classList.remove('pv-closed'); el.firstElementChild.innerHTML = ''; } }, 230);
+  setTimeout(() => { if (CTR.open === null) { el.classList.add('pv-hidden'); el.classList.remove('pv-closed'); el.firstElementChild.innerHTML = ''; CTR.painted = null;
+    if (CTR.relist) { CTR.relist = false; pvuRender(); } } }, 230);   // Nov 2026: the list redraw that waited for the pop-up
 }
 function _ctrPaint() {
   const el = document.getElementById('pvuScrim'); if (!el) return;
   const box = el.firstElementChild;
   const body = box.querySelector('.ctr-body'), y = body ? body.scrollTop : 0;
+  const same = CTR.painted === CTR.open; CTR.painted = CTR.open;
   box.innerHTML = CTR.open === 'new' ? _ctrNewHTML() : _ctrSheetHTML();
-  const nb = box.querySelector('.ctr-body'); if (nb) nb.scrollTop = CTR.form ? y : 0;
+  const nb = box.querySelector('.ctr-body'); if (nb) nb.scrollTop = CTR.form || same ? y : 0;   // Nov 2026: the same pop-up keeps its place
 }
 const _ctrKV = (k, v) => `<div class="ctr-kv"><span>${_ctrE(k)}</span><b${v === '' || v === null || v === undefined ? ' class="e"' : ''}>${v === '' || v === null || v === undefined ? '—' : v}</b></div>`;
 const _ctrBtn = (txt, act, extra = '', dk = false) => `<button type="button" class="ctr-b${dk ? ' dk' : ''}" data-ctr="${act}"${extra}>${txt}</button>`;
@@ -702,7 +710,7 @@ function _ctrReminderHTML(s, st) {
 }
 
 function _ctrSheetHTML() {
-  if (CTR.open === 'putz') return _ctrPutzHTML();             // Nov 2026: the Putzdienst summary
+  if (String(CTR.open || '').startsWith('job:')) return _ctrJobHTML(String(CTR.open).slice(4));   // Nov 2026: a job's summary
   const s = _ctrSlot(CTR.open); if (!s) return '';
   const st = _ctrState(s), k = st.k, f = CTR.form;
   if (f === 'edit') return _ctrHeadHTML(s, st, true) + `<div class="ctr-body ctr-full">${_ctrEditHTML(s, k)}</div>`;
@@ -999,7 +1007,7 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('#pvaUtil [data-ctr]'); if (!t || CTR.busy) return;
   const a = t.dataset.ctr, pid = Number(t.dataset.p);
   if (a === 'open') return ctrOpen(t.dataset.s);
-  if (a === 'putzjob') { const id = CTR.putz && CTR.putz.jobId; ctrClose(); if (id && typeof pvaLoad === 'function') pvaLoad(id); return; }   // Nov 2026: its job tab
+  if (a === 'jobtab') { const id = t.dataset.j; ctrClose(); if (id && typeof pvaLoad === 'function') pvaLoad(id); return; }   // Nov 2026: the job's tab
   if (a === 'new') { CTR.add = { pid: PVU_CASA }; return ctrOpen('new'); }
   if (a === 'newfor') { CTR.add = { pid }; return ctrOpen('new'); }
   if (a === 'fold') { CTR.fold[pid] = CTR.fold[pid] === false; try { localStorage.setItem('pvu_fold', JSON.stringify(CTR.fold)); } catch (er) {} return pvuRender(); }
@@ -1060,6 +1068,8 @@ function _ctrSwapPts(pts) {
   cell.outerHTML = pts ? _ctrInp('ctrBoPts', 'Points', '', '0', 'r', ' inputmode="numeric"') : _ctrAmtInp('ctrBoAmt', 'Amount €', '');
 }
 async function _ctrClick(e) {
+  const jt = e.target.closest('#pvuScrim [data-ctr="jobtab"]');   // Nov 2026: a job summary → its tab
+  if (jt) { const id = jt.dataset.j; ctrClose(); if (id && typeof pvaLoad === 'function') pvaLoad(id); return; }
   const seg = e.target.closest('#pvuScrim .ctr-seg button');
   if (seg) {
     seg.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === seg));
@@ -1446,7 +1456,7 @@ async function _ctrSaveNew() {
 .pvu-fold > summary::-webkit-details-marker { display:none; } .pvu-fold[open] > summary i { transform:rotate(180deg); }
 .pvu-list { margin-top:7px; border-radius:11px; background:#F5F1EA; padding:2px 11px; }
 .pvu-li { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:12px; border-top:1px solid #EAE3D8; font-variant-numeric:tabular-nums; }
-.pvu-li:first-child { border-top:0; } .pvu-li span { flex:1; color:#7A6F62; } .pvu-li small { color:#B5AA9A; } .pvu-li b { font-weight:500; color:var(--cc-charcoal, #3D3027); }
+.pvu-li:first-child { border-top:0; } .pvu-li > span:first-child { flex:1; color:#7A6F62; } .pvu-li small { color:#B5AA9A; } .pvu-li b { font-weight:500; color:var(--cc-charcoal, #3D3027); }
 .ctr-body > .ctr-rem:first-child { margin-top:12px; }
 .ctr-st.pvu-st0 { font-style:normal; color:var(--cc-charcoal, #3D3027); }
 `;
