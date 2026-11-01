@@ -372,9 +372,9 @@ function stRenderCasa() {
   const vNet = J.net === null || J.net === undefined ? '' : 'Versorger: ' + (J.net > 0.004 ? 'Guthaben ' : J.net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(J.net) > 0.004 ? scE(Math.abs(J.net)) : '');
   // Nov 2026 · Hausgeld first (the bills come in first), then Tenants — the same order in both tabs and on the Dashboard
   const tiles = '<div class="st-money">' +
-    stTile('Hausgeld', 'receipt', J.net, [gapsT ? gapsT + (gapsT === 1 ? ' Jahresabrechnung missing' : ' Jahresabrechnungen missing') : '',
+    stTile('Jahresabrechnungen', 'receipt', J.net, [gapsT ? gapsT + (gapsT === 1 ? ' Jahresabrechnung missing' : ' Jahresabrechnungen missing') : '',
       M.R.lines.length ? 'Hauskosten ' + scE(M.R.check.total) + (qT.rate ? ' · ' + scE(qT.rate) + '/month' : '') : 'no house costs yet'], 'data-sc="costs"') +
-    stTile('Tenants', 'users', mo.ten, tenSub + (M.locked && M.sendable && nOpenL ? ' · ' + nOpenL + ' to send' : ''), 'data-sc="sumTen"') + '</div>';
+    stTile('NK-Abrechnungen', 'users', mo.ten, tenSub + (M.locked && M.sendable && nOpenL ? ' · ' + nOpenL + ' to send' : ''), 'data-sc="sumTen"') + '</div>';
   void hkStatus; void vNet;
 
   const L = M.R.check;
@@ -550,7 +550,7 @@ function scSumTen(M) {
     : '<button class="cx-btn cx-btn--s st-sendall" data-sc="costs"><i class="ti ti-lock" aria-hidden="true"></i> Lock the house costs first</button>';
   const mo = M.money, all = rows.filter(r => r.set && r.set.state !== 'locked');
   const cnt = all.length ? ' · ' + all.filter(r => r.set.state === 'settled').length + ' of ' + all.length + ' settled' : '';
-  return stSumSheet({ title: 'Tenants ' + M.y, sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten, action,
+  return stSumSheet({ title: 'NK-Abrechnungen ' + M.y, sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten, action,
     sub2: mo.ten === null ? 'no house costs yet' : mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back') + cnt,
     groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
              { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');

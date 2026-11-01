@@ -196,8 +196,8 @@ function sdOverviewHTML(Y, O) {
   const total = '<div class="sdo-card">' +
     '<div class="sdo-hrow"><span class="sdo-lbl">NK ' + Y + ' \u00b7 all properties</span><span class="sdo-mut">result</span></div>' +
     '<div class="sdo-kpis">' +
-      '<div class="sdo-kpi"><div class="sdo-k">HV \u00b7 VERSORGER</div><div class="sdo-v sdo-f ' + cls(O.hg) + '">' + W(O.hg) + '</div><div class="sdo-d">' + (O.hg === null ? 'no results yet' : 'Hausgeld \u00b7 Strom \u00b7 Gas \u00b7 Wasser') + '</div></div>' +
-      '<div class="sdo-kpi"><div class="sdo-k">TENANTS</div><div class="sdo-v sdo-f ' + cls(O.ten) + '">' + W(O.ten) + '</div><div class="sdo-d">' + (O.ten === null ? 'not calculated yet' : 'Nachzahlungen \u2212 Guthaben') + '</div></div>' +
+      '<div class="sdo-kpi"><div class="sdo-k">JAHRESABRECHNUNGEN</div><div class="sdo-v sdo-f ' + cls(O.hg) + '">' + W(O.hg) + '</div><div class="sdo-d">' + (O.hg === null ? 'no results yet' : 'Hausgeld \u00b7 Strom \u00b7 Gas \u00b7 Wasser') + '</div></div>' +
+      '<div class="sdo-kpi"><div class="sdo-k">NK-ABRECHNUNGEN</div><div class="sdo-v sdo-f ' + cls(O.ten) + '">' + W(O.ten) + '</div><div class="sdo-d">' + (O.ten === null ? 'not calculated yet' : 'Nachzahlungen \u2212 Guthaben') + '</div></div>' +
     '</div>' +
     '<div class="sdo-wf">' +
       '<div class="sdo-wr"><span class="sdo-wn">You get</span><span class="sdo-bar"><i style="width:' + (O.get / sc * 100).toFixed(1) + '%;background:#9DBF7A"></i></span><span class="sdo-wa pos">' + cxWS(O.get) + '</span></div>' +
@@ -211,14 +211,14 @@ function sdOverviewHTML(Y, O) {
   const sec = SD.sec || '';
   const tile = (key, name, icon, X, hgLabel) => '<button class="sdo-tile' + (sec === key ? ' on' : '') + '" data-sd="sec" data-k="' + key + '" aria-expanded="' + (sec === key) + '">' +
     '<span class="sdo-tn"><span class="sdo-ic sdo-ic--' + key + '"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span>' + name + '</span>' +
-    '<span class="sdo-tvr"><span class="sdo-k">TENANTS</span><span class="sdo-v2 sdo-f ' + cls(X.ten) + '">' + W(X.ten) + '</span></span>' +
-    '<span class="sdo-tvr"><span class="sdo-k">' + hgLabel + '</span><span class="sdo-v2 sdo-f ' + cls(X.hg) + '">' + W(X.hg) + '</span></span>' +
+    '<span class="sdo-tvr"><span class="sdo-k">' + hgLabel + '</span><span class="sdo-v2 sdo-f ' + cls(X.hg) + '">' + W(X.hg) + '</span></span>' +   // Nov 2026: Jahresabrechnungen first
+    '<span class="sdo-tvr"><span class="sdo-k">NK-ABRECHNUNGEN</span><span class="sdo-v2 sdo-f ' + cls(X.ten) + '">' + W(X.ten) + '</span></span>' +
     pipe(X.stages).replace('sdo-pipe', 'sdo-pipe sdo-pipe--s') +
     '<span class="sdo-tf"><span>' + X.done + ' of ' + X.n + ' settled</span><span class="' + cls(cxR(X.get - X.pay)) + '">net ' + cxWS(cxR(X.get - X.pay)) + '</span></span></button>';
   const both = O.ren && O.casa;
   const tiles = '<div class="sdo-two' + (both ? '' : ' sdo-one') + '">' +
-    (O.ren ? tile('r', 'Rentals', 'building', O.ren, 'HV \u00b7 WEG') : '') +
-    (O.casa ? tile('c', 'Casa Castel', 'home-heart', O.casa, 'VERSORGER') : '') + '</div>' +
+    (O.ren ? tile('r', 'Rentals', 'building', O.ren, 'JAHRESABRECHNUNGEN') : '') +
+    (O.casa ? tile('c', 'Casa Castel', 'home-heart', O.casa, 'JAHRESABRECHNUNGEN') : '') + '</div>' +
     '<div class="sdo-hint">Tap ' + (both ? 'Rentals or Casa Castel' : 'it') + ' for the overview</div>';
   // Panels (one at a time)
   const stTag = k => k < 0 ? '<span class="sdo-st"><i style="background:#EFE8DD"></i>Pauschal</span>' : '<span class="sdo-st"><i style="background:' + SDO_ST[k][1] + '"></i>' + SDO_ST[k][0].replace(' for costs', '') + '</span>';

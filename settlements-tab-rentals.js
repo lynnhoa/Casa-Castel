@@ -1067,8 +1067,8 @@ function stRenderRentals() {
     first: hvIn + ' of ' + nLive + ' Jahresabrechnungen in' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') });
   // Nov 2026 · Hausgeld first, then Tenants (as in Casa Castel) · the "x of y in" count is in the ring
   const money = '<div class="st-money">' +
-    stTile('Hausgeld', 'receipt', S.hg, '', 'data-sr="sumHg"') +
-    stTile('Tenants', 'users', S.ten, S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') + '</div>';
+    stTile('Jahresabrechnungen', 'receipt', S.hg, '', 'data-sr="sumHg"') +
+    stTile('NK-Abrechnungen', 'users', S.ten, S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') + '</div>';
   const next = _srNextSteps(live);
   const wide = SR.modal && (SR.modal.view === 'hv' || SR.modal.view === 'nk' || !SR.modal.view);
   cxPaint(el, '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +
@@ -1159,30 +1159,39 @@ function _srCard5(info) {
     '<button class="cx-link sr5-hist" data-sr="history" data-k="' + stEsc(c.ck) + '" aria-label="History"><i class="ti ti-history" aria-hidden="true"></i></button>' +
     (hChip ? '<span class="sc-chip sc-chip--' + hChip[0] + '">' + stEsc(hChip[1]) + '</span>' : '') +
     (info.k === 'settled' ? '<button class="cx-link" data-sr="fold5" data-k="' + stEsc(k5) + '" aria-label="Fold"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>' : '') + '</div>';
-  // Nov 2026 · Jahresabrechnung and NK costs as two compact boxes side by side (they are not tenants) — each opens its own pop-up
+  // Nov 2026 · two small tiles in the top-tile style (green = you get · rose = you pay · plain = nothing yet):
+  // Jahresabrechnung (result with the WEG + Hausgeld costs) · NK-Abrechnung (result with the tenants + NK costs)
   const hv = info.hv, rec = info.rec, wegSt = hv.wegSt, wRes = wegSt && wegSt.res;
   const bk = wegSt && wegSt.booking, bDate = bk && bk.invoice_date ? ' ' + stDe(bk.invoice_date) : '';
-  let jaV = '\u2014', jaTone = 'n', jaS, jaST = '';
+  let jaNet = null, jaD, jaS, jaWarn = false;
   if (wRes && (hv.k === 'fertig' || hv.k === 'zahlung')) {
-    jaV = stEur(wRes.amount || 0); jaTone = !wRes.dir || !wRes.amount ? 'n' : wRes.dir > 0 ? 'g' : 'r';
-    jaS = !wRes.dir || !wRes.amount ? 'balanced with the WEG'
-      : hv.k === 'fertig' ? (wRes.dir > 0 ? 'Guthaben · received' : 'Nachzahlung · paid') + bDate
-      : (wRes.dir > 0 ? 'Guthaben · not received yet' : 'Nachzahlung · not paid yet');
-    jaST = hv.k === 'fertig' ? 'ok' : 'bad';
-  } else if (hv.k === 'fertig') { jaS = 'settled'; jaST = 'ok'; }
-  else if (hv.k === 'weg') { jaS = 'costs entered · enter the WEG result'; jaST = 'warn'; }
-  else if (hv.k === 'erfassen') { jaS = 'received' + (rec && (rec.received_on || rec.hv_date) ? ' ' + stDe(rec.received_on || rec.hv_date) : '') + ' · to enter'; jaST = 'warn'; }
-  else if (hv.k === 'ueberfaellig') { jaS = 'overdue · ask HV' + (hv.exp ? ' · expected ' + hv.exp.label : ''); jaST = 'bad'; }
-  else jaS = c.running ? 'runs until ' + stDe(c.per.to) : (hv.exp ? 'expected ' + hv.exp.label : 'expected');
+    jaNet = (wRes.dir || 0) * (wRes.amount || 0);
+    jaS = hv.k === 'fertig' ? (!jaNet ? 'settled' : (jaNet > 0 ? 'received' : 'paid') + bDate) : (jaNet > 0 ? 'not received yet' : 'not paid yet');
+  } else if (hv.k === 'fertig') { jaNet = 0; jaS = 'settled'; }
+  else if (hv.k === 'weg') { jaD = 'to enter'; jaS = 'enter the WEG result'; }
+  else if (hv.k === 'erfassen') { jaD = 'to enter'; jaS = 'received' + (rec && (rec.received_on || rec.hv_date) ? ' ' + stDe(rec.received_on || rec.hv_date) : ''); }
+  else if (hv.k === 'ueberfaellig') { jaD = 'not in yet'; jaS = 'overdue · ask HV'; jaWarn = true; }
+  else { jaD = c.running ? 'running' : 'not in yet'; jaS = c.running ? 'runs until ' + stDe(c.per.to) : (hv.exp ? 'expected ' + hv.exp.label : 'expected'); }
+  const hgCost = info.sum && (info.sum.u || info.sum.nu) ? cxR((info.sum.u || 0) + (info.sum.nu || 0)) : null;
   const jaOk = _srJaDone(info.rec, info.sum), nkTot = jaOk ? _srNkCostTotal(info.rec, c.apt) : null;
-  const nkS = !T5.length ? (info.rows.length ? 'Pauschal / no tenant – no NK' : 'no tenant with Kalt + NK')
-    : !jaOk ? 'waiting for the Jahresabrechnung' : T5.length + (T5.length === 1 ? ' tenant' : ' tenants');
-  const box = (act, icon, label, v, tone, sub, st) => '<button class="sr5-bx__b" data-sr="' + act + '" data-k="' + stEsc(c.ck) + '">' +
-    '<span class="sr5-bx__l"><i class="ti ti-' + icon + '" aria-hidden="true"></i><span>' + label + '</span><i class="ti ti-chevron-right" aria-hidden="true"></i></span>' +
-    '<b class="sr5-bx__v is-' + tone + '">' + v + '</b><span class="sr5-bx__s' + (st ? ' is-' + st : '') + '">' + stEsc(sub) + '</span></button>';
-  h += '<div class="sr5-bx">' + box('openHv', 'building', 'Jahresabrechnung', jaV, jaTone, jaS, jaST) +
-    box('openNk', 'receipt', 'NK costs', nkTot === null ? '\u2014' : stEur(nkTot), 'n', nkS, '') + '</div>';
-  for (const r of info.rows) h += _srTenLine(c, r);
+  const vals = T5.map(r => r.st.res ? r.st.res.dir * r.st.res.amount : r.x && !r.x.missing ? r.x.saldo : null);
+  const nkNet = T5.length && vals.every(v => v !== null) ? cxR(vals.reduce((a, v) => a + v, 0)) : null;
+  const nkD = !T5.length ? 'no NK' : nkNet === null ? 'not yet' : null;
+  const nkS = !T5.length ? (info.rows.length ? 'Pauschal / no tenant' : 'no tenant with Kalt + NK')
+    : nkNet === null ? 'waiting for the Jahresabrechnung' : T5.length === 1 ? '1 tenant' : 'net · ' + T5.length + ' tenants';
+  const mini = (act, icon, label, net, dirWord, lines) => {
+    const k = net === null || net === undefined ? 'nil' : net > 0.004 ? 'in' : net < -0.004 ? 'out' : 'nil';
+    const d = dirWord || (k === 'in' ? 'you get' : k === 'out' ? (act === 'openNk' ? 'you pay back' : 'you pay') : 'balanced');
+    return '<button class="st-tile st-tile--' + k + ' sr5-mini" data-sr="' + act + '" data-k="' + stEsc(c.ck) + '">' +
+      '<span class="st-tile__l"><i class="ti ti-' + icon + '" aria-hidden="true"></i>' + label + '<i class="ti ti-chevron-right st-tile__c" aria-hidden="true"></i></span>' +
+      '<span class="st-tile__d">' + stEsc(d) + '</span><b>' + (net === null || net === undefined ? '\u2014' : stEur(cxR(Math.abs(net)))) + '</b>' +
+      lines.filter(x => x && x[0]).map(x => '<small' + (x[1] ? ' class="' + x[1] + '"' : '') + '>' + stEsc(x[0]) + '</small>').join('') + '</button>';
+  };
+  h += '<div class="sr5-bx">' +
+    mini('openHv', 'receipt', 'Jahresabrechnung', jaNet, jaD, [[jaS, jaWarn ? 'is-warn' : ''], [hgCost !== null ? 'Hausgeld costs ' + stEur(hgCost) : '', 'sr5-mini__c']]) +
+    mini('openNk', 'users', 'NK-Abrechnung', nkNet, nkD, [[nkS, ''], [nkTot !== null ? 'NK costs ' + stEur(nkTot) : '', 'sr5-mini__c']]) + '</div>';
+  const oneTen = T5.length === 1;                               // one tenant: the amount is in the NK box, the line shows who and when
+  for (const r of info.rows) h += _srTenLine(c, r, oneTen);
   return h + '</div>';
 }
 /* Nov 2026 · the costs for the NK of one apartment (as the NK pop-up adds them): umlagefähig "in the NK" + NK-only */
@@ -1196,7 +1205,7 @@ function _srNkCostTotal(rec, apt) {
   return cxR(t);
 }
 /* Nov 2026 · one tenant on the apartment card (like a Casa Castel room line): result · period · status → that tenant */
-function _srTenLine(c, r) {
+function _srTenLine(c, r, noAmt) {
   const per = stPer(r.l.from, r.l.to);
   if (r.kind !== 'ten') return '<div class="sc-row sr5-ln sr5-tl is-dim"><span class="sr5-ini">' + stEsc(_srInit(r.name)) + '</span><span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span>' +
     '<span class="sc-row__s">' + stEsc((r.kind === 'pausch' ? 'Pauschal – no NK' : 'no NK') + ' · ' + per) + '</span></span></div>';
@@ -1206,7 +1215,7 @@ function _srTenLine(c, r) {
   const chip = r.k === 'open' ? ['send', 'letter ready'] : r.k === 'sent' ? ['wait', 'sent'] : r.k === 'settled' ? ['done', r.skipped ? 'skipped' : 'settled'] : ['grey', 'waiting'];
   return '<button class="sc-row sr5-ln sr5-tl" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(r.it.r.id)) + '">' +
     '<span class="sr5-ini">' + stEsc(_srInit(r.name)) + '</span>' +
-    '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span><span class="sc-row__s"><b class="sr5-tl__v ' + tone + '">' + stEsc(say) + '</b> · ' + stEsc(per) + '</span></span>' +
+    '<span class="sc-row__m"><span class="sc-row__n">' + stEsc(r.name) + '</span><span class="sc-row__s">' + (noAmt && v !== null ? '' : '<b class="sr5-tl__v ' + tone + '">' + stEsc(say) + '</b> · ') + stEsc(per) + '</span></span>' +
     '<span class="sc-chip sc-chip--' + chip[0] + '">' + stEsc(chip[1]) + '</span></button>';
 }
 /* The NK line of a card: one summary for all tenants of the period */
@@ -1284,7 +1293,7 @@ function _srSumSheet(view) {
                set: Math.abs(x.v) >= 0.005 && x.r.k !== 'open' ? _srSetObj(x.i.c, x.r.st, x.r, false, x.idx) : null }; });   // Nov 2026: not sent yet = just its amount
     const ready = S.tenRows.filter(x => x.r.k === 'open');          // Nov 2026 · the one action: send the letters (starts with the first one)
     const action = ready.length ? '<button class="cx-btn cx-btn--p st-sendall" data-sr="openTen" data-k="' + stEsc(ready[0].i.c.ck) + '" data-id="' + stEsc(String(ready[0].r.it.r.id)) + '"><i class="ti ti-send" aria-hidden="true"></i> Send ' + ready.length + (ready.length === 1 ? ' letter' : ' letters') + '</button>' : '';
-    return stSumSheet({ title: 'Tenants ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action,
+    return stSumSheet({ title: 'NK-Abrechnungen ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action,
       sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back') + _srSetCount(rows),
       groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
                { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, close);
@@ -1297,7 +1306,7 @@ function _srSumSheet(view) {
     const over = hv.k === 'ueberfaellig';
     return { av, ab: stAbbr(x.i.c.p.name), name: x.i.c.p.name, sub: x.i.c.running ? 'runs until ' + stDe(x.i.c.per.to) : hv.exp ? 'expected ' + (over ? '' : '~ ') + hv.exp.label : 'expected', chip: over ? ['red', 'overdue'] : ['grey', x.i.c.running ? 'running' : 'expected'], act, wait: true };
   });
-  return stSumSheet({ title: 'Hausgeld', sub: 'Rentals · WEG Jahresabrechnungen · periods ending in ' + SR.year, net: S.hg,
+  return stSumSheet({ title: 'Jahresabrechnungen ' + SR.year, sub: 'Rentals · WEG · periods ending in ' + SR.year, net: S.hg,
     sub2: rows.filter(r => r.amount && r.dir < 0).length + ' Nachzahlung · ' + rows.filter(r => r.amount && r.dir > 0).length + ' Guthaben · ' + rows.filter(r => r.wait).length + ' not in yet' + _srSetCount(rows),
     groups: [{ title: 'You pay', rows: rows.filter(r => r.amount && r.dir < 0) }, { title: 'You get', rows: rows.filter(r => r.amount && r.dir > 0) },
              { title: 'Not in yet', rows: rows.filter(r => r.wait) }, { title: 'Balanced', rows: rows.filter(r => !r.amount && !r.wait) }] }, close);

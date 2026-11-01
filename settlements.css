@@ -1652,3 +1652,9 @@ button.sc-ct__r { cursor: pointer; }
 .sr5-ini { width: 30px; height: 30px; border-radius: 50%; background: #F3EEE6; color: #7A6F62; display: flex; align-items: center; justify-content: center;
   font-size: 10.5px; font-weight: 600; flex: 0 0 auto; }
 .sr5-tl { padding-left: 4px; }
+/* Nov 2026 · Rentals apartment card: the two boxes are small copies of the top tiles (same colours, fonts, layout) */
+.st-tile.sr5-mini { padding: 9px 10px 10px; border-radius: 13px; min-width: 0; font: inherit; text-align: left; cursor: pointer; }
+.st-tile.sr5-mini b { font-size: 21px; }
+.st-tile.sr5-mini .st-tile__l { white-space: nowrap; overflow: hidden; }
+.st-tile.sr5-mini small.sr5-mini__c { opacity: .75; }
+.st-tile.sr5-mini small.is-warn { color: #A0533A !important; }
