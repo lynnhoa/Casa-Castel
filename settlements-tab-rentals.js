@@ -1355,7 +1355,7 @@ function _srSumSheet(view) {
                act: 'data-sr="openTen" data-k="' + stEsc(x.i.c.ck) + '" data-id="' + stEsc(String(x.r.it.r.id)) + '"' }; });
     const action = '';                                       // Nov 2026: each line opens its tenant — a button for the first one was the same way in
     const nSet = rows.filter(r => r.k === 'settled').length, nAll = rows.length;
-    return stSumSheet({ title: 'NK-Abrechnungen ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action,
+    return stSumSheet({ title: 'NK-Abrechnungen ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action, dots: { done: nSet, total: nAll },
       sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back') + (nAll ? ' · ' + nSet + ' of ' + nAll + ' settled' : ''),
       groups: [{ title: 'To send', count: true, rows: rows.filter(r => r.k === 'open') }, { title: 'Waiting for money', count: true, rows: rows.filter(r => r.k === 'sent') },
                { title: 'Not yet', count: true, rows: rows.filter(r => r.k === 'waiting') }, { title: 'Settled', count: true, rows: rows.filter(r => r.k === 'settled') }] }, close);
@@ -1371,7 +1371,7 @@ function _srSumSheet(view) {
                                  chip: over ? ['red', 'overdue'] : null });
   });
   const nIn = rows.filter(r => r.g !== 'wait').length, nSet = rows.filter(r => r.g === 'done').length;
-  return stSumSheet({ title: 'Jahresabrechnungen ' + SR.year, sub: 'Rentals · WEG · periods ending in ' + SR.year, net: S.hg,
+  return stSumSheet({ title: 'Jahresabrechnungen ' + SR.year, sub: 'Rentals · WEG · periods ending in ' + SR.year, net: S.hg, dots: { done: nSet, total: rows.length },
     sub2: nIn + ' of ' + rows.length + ' in · ' + nSet + ' of ' + rows.length + ' settled',
     groups: [{ title: 'Money open', count: true, rows: rows.filter(r => r.g === 'money') }, { title: 'To enter', count: true, rows: rows.filter(r => r.g === 'enter') },
              { title: 'Not in yet', count: true, rows: rows.filter(r => r.g === 'wait') }, { title: 'Settled', count: true, rows: rows.filter(r => r.g === 'done') }] }, close);
@@ -1449,7 +1449,7 @@ function _srHvView(c) {
     '<button type="button" class="' + (wDir === v ? 'is-on is-' + k : '') + '" data-sr="wegDir" data-v="' + v + '" aria-pressed="' + (wDir === v) + '">' + t + '</button>').join('') + '</div>';
   const amtF = wDir ? '<div class="mx-hf"><label class="mx-f"><span>Amount per HV</span><span class="mx-amt"><input inputmode="decimal" data-srf="weg_amount" value="' + stEsc(_srE2in(d.weg_amount)) + '" placeholder="0,00"/><em>€</em></span></label>' +
     '<label class="mx-f"><span>Due</span><input type="date" data-srf="weg_due" value="' + stEsc(_srD(d.weg_due) || '') + '"/></label></div>' : '';
-  const hero = stMHero({ tone: wDir === 1 ? 'get' : wDir === -1 ? 'pay' : wDir === 0 ? 'zero' : 'none',
+  let hero = stMHero({ tone: wDir === 1 ? 'get' : wDir === -1 ? 'pay' : wDir === 0 ? 'zero' : 'none',
     label: wDir === 1 ? (settled ? 'The WEG paid you' : 'The WEG pays you') : wDir === -1 ? (settled ? 'You paid the WEG' : 'You pay the WEG') : wDir === 0 ? 'Balanced with the WEG' : 'Result of the Jahresabrechnung',
     amount: wDir === null ? null : wDir === 0 ? 0 : wAmt,
     sub: wDir === null ? 'enter it in step 2' : (wDir > 0 ? 'Guthaben' : wDir < 0 ? 'Nachzahlung' : 'balanced') + ' · Hausgeld costs ' + stEur(tt) + (wDir && d.weg_due && !settled ? ' · due ' + stDate(d.weg_due) : ''),
@@ -1530,6 +1530,11 @@ function _srHvView(c) {
     step(1, s1, 'Received', recvSub, body1) +
     step(2, s2, 'Costs and result entered', sub2, body2) +
     step(3, s3, wDir === 0 ? 'Nothing to pay' : wDir < 0 ? 'Money paid' : 'Money received', sub3, wDir === 0 ? '' : rowMoney) + '</div>';
+  hero = stMHero({ tone: wDir === 1 ? 'get' : wDir === -1 ? 'pay' : wDir === 0 ? 'zero' : 'none',   // Nov 2026: option C — costs and paid as chips
+    label: wDir === 1 ? (settled ? 'The WEG paid you' : 'The WEG pays you') : wDir === -1 ? (settled ? 'You paid the WEG' : 'You pay the WEG') : wDir === 0 ? 'Balanced with the WEG' : 'Result of the Jahresabrechnung',
+    amount: wDir === null ? null : wDir === 0 ? 0 : wAmt, settled,
+    chips: [['Hausgeld costs', tt ? stEur(tt) : null, '#E3B9A6'], ['Hausgeld paid', hgPaid ? stEur(hgPaid) : null, '#A9BFD3']],
+    sub: wDir === null ? 'enter the result in step 2' : wDir && d.weg_due && !settled ? 'due ' + stDate(d.weg_due) : '' });
   return head + '<div class="srm__b mx-b"><div class="mx-rows">' + hero + steps + '</div>' +
     stMCard('Hausgeld costs', 'receipt', costs) + settings +
     '<p class="mx-saved" id="srSaved">' + (SR.dirty ? '' : (rec ? '✓ saved automatically' : '')) + '</p></div>';
@@ -1659,7 +1664,8 @@ function _srNkView(c) {
   const nkSum = hvReady ? _srNkCostTotal(d, c.apt) : null;
   const hero = stMHero({ tone: net === null ? 'none' : net > 0.004 ? 'get' : net < -0.004 ? 'pay' : 'zero',
     label: net === null ? 'NK-Abrechnung' : net > 0.004 ? 'you get' : net < -0.004 ? 'you pay back' : 'balanced',
-    amount: net, sub: !hvReady ? 'waiting for the Jahresabrechnung' : (nkSum !== null ? 'NK costs ' + stEur(nkSum) + ' · ' : '') + (!TI.length ? 'no tenant' : TI.length + (TI.length === 1 ? ' tenant' : ' tenants')),
+    amount: net, sub: !hvReady ? 'waiting for the Jahresabrechnung' : (!TI.length ? 'no tenant' : TI.length + (TI.length === 1 ? ' tenant' : ' tenants')),
+    chips: hvReady ? [['NK costs', nkSum !== null ? stEur(nkSum) : null, '#E3B9A6'], ['NK paid', TI.length ? stEur(cxR(TI.reduce((a, t) => a + (t.x ? t.x.vz || 0 : 0), 0))) : null, '#A9BFD3']] : [],
     settled: TI.length > 0 && TI.every(t => t.k === 'settled') });
   const send = '';                                          // Nov 2026: no second way in — tap the tenant under "Who carries it"
   return stMHead(title, c.p.name + ' · you ↔ tenants', 'receipt', 'data-sr="close"') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +

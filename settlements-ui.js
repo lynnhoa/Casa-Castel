@@ -115,13 +115,18 @@ function stMHead(title, sub, tile, closeAttr) {
     '<button class="mx-x" ' + closeAttr + ' aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>';
 }
 /* The amount card: tone get (money to you) · pay (you pay) · zero · none */
+/* Nov 2026 · one compact hero for every pop-up (option C): label (+ ✓ settled) · the number ·
+   small chips for the amounts behind it (o.chips: [[label, text, colour]]) or dots for progress (o.dots: { done, total }) · one quiet line */
 function stMHero(o) {
   const v = o.amount === null || o.amount === undefined ? '\u2014' : stEur(cxR(Math.abs(o.amount)));
-  return '<div class="mx-hero mx-hero--' + (o.tone || 'none') + '">' +
-    '<svg class="mx-orn" viewBox="0 0 120 120" aria-hidden="true"><circle cx="70" cy="50" r="40" fill="none" stroke="#fff" stroke-width="10" opacity=".6"/><circle cx="70" cy="50" r="22" fill="#fff" opacity=".35"/></svg>' +
-    '<svg class="mx-orn2" viewBox="0 0 100 100" aria-hidden="true"><circle cx="40" cy="60" r="34" fill="#fff" opacity=".45"/></svg>' +
-    '<p class="mx-hl">' + stEsc(o.label || '') + '</p><p class="mx-hv">' + v + '</p>' + (o.sub ? '<p class="mx-hs">' + stEsc(o.sub) + '</p>' : '') +
-    (o.extra || '') + (o.settled ? '<span class="mx-done">' + stIc('seal', 22) + 'All settled</span>' : '') + '</div>';
+  const chips = (o.chips || []).filter(c => c && c[1] !== null && c[1] !== undefined && c[1] !== '');
+  const dots = o.dots && o.dots.total ? '<div class="hc-dots" aria-label="' + o.dots.done + ' of ' + o.dots.total + '">' +
+    Array.from({ length: Math.min(o.dots.total, 24) }, (_, i) => '<i class="' + (i < o.dots.done ? 'is-on' : '') + '"></i>').join('') + '</div>' : '';
+  return '<div class="mx-hero hc mx-hero--' + (o.tone || 'none') + '">' +
+    '<p class="mx-hl">' + stEsc(o.label || '') + (o.settled ? ' <span class="hc-ok"><i class="ti ti-check" aria-hidden="true"></i> settled</span>' : '') + '</p>' +
+    '<p class="mx-hv">' + v + '</p>' +
+    (chips.length ? '<div class="hc-chips">' + chips.map(c => '<span class="hc-chip"><i style="background:' + (c[2] || '#C8BFB0') + '"></i>' + stEsc(c[0]) + ' ' + stEsc(c[1]) + '</span>').join('') + '</div>' : '') +
+    dots + (o.sub ? '<p class="mx-hs">' + stEsc(o.sub) + '</p>' : '') + (o.extra || '') + '</div>';
 }
 /* A switch row: icon · title · sub · (right) · switch (attrs = the action) */
 function stMRow(o) {
@@ -139,7 +144,11 @@ function stMCard(title, icon, inner) {
 /* ── Nov 2026 · tenant pop-up building blocks (Rentals + Casa Castel, one look) ─────────────
    compact hero with a costs-vs-paid bar · steps with labelled buttons (no unlabelled switches) ·
    rows with one right-hand column for every amount · folds for the breakdown and the letter details */
-function stTpHero(o) {            // { tone: get|pay|zero|none, label, amount, sub, bars: [[label, value, colour]], settled }
+function stTpHero(o) {            // Nov 2026: the same hero as every pop-up (option C) — bars become chips
+  return stMHero({ tone: o.tone, label: o.label, amount: o.amount, sub: o.sub, settled: o.settled,
+    chips: (o.bars || []).filter(b => b && b[1] !== null && b[1] !== undefined).map(b => [b[0], stEur(cxR(Number(b[1]) || 0)), b[2]]) });
+}
+function stTpHeroOld(o) {         // (the bar version, kept for reference)
   const v = o.amount === null || o.amount === undefined ? '\u2014' : stEur(cxR(Math.abs(o.amount)));
   const bars = (o.bars || []).filter(b => b && b[1] !== null && b[1] !== undefined);
   const mx = Math.max(1, ...bars.map(b => Math.abs(Number(b[1]) || 0)));
@@ -168,8 +177,8 @@ function stTpRow(o) {             // { title, sub (html), value (html), vAttr, a
 /* o = { title, sub, net, sub2, groups: [{ title, rows: [{ av, ab, name, sub, amount, dir, chip, set (→ settle line) }] }] } */
 function stSumSheet(o, closeAttr) {
   const k = o.net === null || o.net === undefined ? 'nil' : o.net > 0.004 ? 'in' : o.net < -0.004 ? 'out' : 'nil';
-  const hero = '<div class="st-hero st-hero--' + k + '"><span>' + (k === 'in' ? 'you get' : k === 'out' ? 'you pay' : o.net === null ? 'nothing yet' : 'balanced') + '</span>' +
-    '<b>' + (o.net === null || o.net === undefined ? '—' : stEur(cxR(Math.abs(o.net)))) + '</b><small>' + stEsc(o.sub2 || '') + '</small></div>';
+  const hero = stMHero({ tone: k === 'in' ? 'get' : k === 'out' ? 'pay' : 'zero', label: k === 'in' ? 'you get' : k === 'out' ? 'you pay' : o.net === null ? 'nothing yet' : 'balanced',
+    amount: o.net === null || o.net === undefined ? null : o.net, dots: o.dots, sub: o.sub2 || '' });   // Nov 2026: the one hero (option C)
   const groups = o.groups.filter(g => g.rows.length).map(g => {
     const tot = g.rows.reduce((a, r) => a + (r.amount && !r.dim ? (r.dir || 0) * r.amount : 0), 0);   // faded rows (not counted) stay out
     const gk = tot > 0.004 ? 'pos' : tot < -0.004 ? 'neg' : '';

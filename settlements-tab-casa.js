@@ -550,7 +550,7 @@ function scSumTen(M) {
     : '<p class="st-sendnote"><i class="ti ti-lock" aria-hidden="true"></i> Lock the house costs first (Jahresabrechnungen) \u2014 then the letters can be sent</p>';   // Nov 2026: info, not a second way in
   const mo = M.money, nSet = rows.filter(r => r.k === 'done').length;
   const cnt = rows.length ? ' · ' + nSet + ' of ' + rows.length + ' settled' : '';
-  return stSumSheet({ title: 'NK-Abrechnungen ' + M.y, sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten, action,
+  return stSumSheet({ title: 'NK-Abrechnungen ' + M.y, sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten, action, dots: { done: nSet, total: rows.length },
     sub2: mo.ten === null ? 'no house costs yet' : mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back') + cnt,
     groups: [{ title: M.locked && M.sendable ? 'To send' : 'Not sent yet', count: true, rows: rows.filter(r => r.k === 'open') },
              { title: 'Waiting for money', count: true, rows: rows.filter(r => r.k === 'sent') },
@@ -1393,10 +1393,10 @@ function scCostsView(M) {
   const nf = (v, d) => (Number(v) || 0).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
   const has = R.lines.length > 0, hasList = R.lines.some(l => l.group !== 'running');
   // ── top: the total · ÷ months lived = the price per month
-  const hero = stMHero({ tone: 'none', label: 'House costs ' + M.y, amount: has ? Lc.total : null,
+  const hero = stMHero({ tone: 'none', label: 'House costs ' + M.y, amount: has ? Lc.total : null,   // Nov 2026: option C
+    chips: has && M.method === 'quota' && q.months ? [['Months lived', scMo(q.months), '#D7CCEA'], ['per month', scE(q.rate), '#E8C98F']] : [],
     sub: !has ? 'nothing booked in Controlling for ' + stPer(M.per.from, M.per.to) + ' yet'
-      : M.method === 'quota' && q.months ? '÷ ' + scMo(q.months) + ' months lived = ' + scE(q.rate) + ' per month' : 'split day by day among the people living there',
-    extra: has && (M.locked || M.pv) ? '<p class="mx-hs">' + stEsc(M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot' : 'preview as of ' + stDe(M.pv.cutoff)) + '</p>' : '' });
+      : M.locked ? 'locked ' + scDate(M.rec.locked_at) + ' · the letters use this snapshot' : M.pv ? 'preview as of ' + stDe(M.pv.cutoff) : M.method === 'quota' ? '' : 'split day by day among the people living there' });
   const gaps = M.locked || M.running ? [] : (M.jaGaps || []);
   const lockRow = stMRow({ icon: 'lock', title: M.locked ? 'House costs locked' : 'Lock house costs', on: M.locked,
     disabled: !M.locked && (!M.sendable || !has || gaps.length > 0),
