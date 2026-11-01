@@ -168,7 +168,10 @@ function sdOverview(Y, casa) {
     const total = M.R && M.R.check ? Number(M.R.check.total) || 0 : 0;
     const prevRow = (typeof SC !== 'undefined' ? SC.rows : []).find(r => Number(r.year) === Y - 1 && r.snapshot && r.snapshot.total !== undefined);
     const rooms = ((window._src && window._src.rooms) || []).filter(r => r.active !== false).length;
+    const Q = M.quota || (M.R && M.R.quota) || null, L = M.R && M.R.check ? M.R.check : null;   // Nov 2026: months lived · per month · you
     C.costs = { total: cxR(total), prev: prevRow ? cxR(Number(prevRow.snapshot.total) || 0) : null, rooms,
+                months: Q ? Q.months : null, rate: Q ? Q.rate : null, pv: !!M.pv,
+                you: L ? cxR((Number(L.landlord) || 0) - (M.method === 'quota' ? Number((M.R.landlord || {}).pauschalCovered) || 0 : 0)) : null,
                 vz: cxR(vz), share: cxR(share), locked: M.locked,
                 cats: (M.R.lines || []).filter(l => l.group !== 'hausgeld' && Number(l.total) > 0).sort((a, b) => b.total - a.total).slice(0, 4).map(l => ({ label: l.label, total: cxR(l.total) })) };
     C.n = C.stages.reduce((a, v) => a + v, 0); C.done = C.stages[3];
@@ -186,40 +189,37 @@ function sdOverview(Y, casa) {
 }
 
 const SDO_ST = [['Waiting for costs', '#DDD5C9'], ['Calculated', '#CDB894'], ['Sent', '#A9BFD3'], ['Settled', '#9DBF7A']];
+/* Nov 2026 · lean: one big number (net) · two boxes · one in/out line · settled · one full-width row per side · house costs in two lines */
 function sdOverviewHTML(Y, O) {
   if (!O.ren && !O.casa) return '<div class="sdo-card sdo-empty">No settlements for ' + Y + '.</div>';
   const W = v => v === null || v === undefined ? '\u2014' : cxWS(v);
   const cls = v => v === null || v === undefined ? 'nil' : v < -0.4 ? 'neg' : v > 0.4 ? 'pos' : 'nil';
-  const pipe = st => '<span class="sdo-pipe">' + st.map((v, k) => v ? '<i style="flex:' + v + ';background:' + SDO_ST[k][1] + '"></i>' : '').join('') + '</span>';
-  // Total
-  const net = cxR(O.get - O.pay), sc = Math.max(O.get, O.pay, 1);
-  const total = '<div class="sdo-card">' +
-    '<div class="sdo-hrow"><span class="sdo-lbl">NK ' + Y + ' \u00b7 all properties</span><span class="sdo-mut">result</span></div>' +
-    '<div class="sdo-kpis">' +
-      '<div class="sdo-kpi"><div class="sdo-k">JAHRESABRECHNUNGEN</div><div class="sdo-v sdo-f ' + cls(O.hg) + '">' + W(O.hg) + '</div><div class="sdo-d">' + (O.hg === null ? 'no results yet' : 'Hausgeld \u00b7 Strom \u00b7 Gas \u00b7 Wasser') + '</div></div>' +
-      '<div class="sdo-kpi"><div class="sdo-k">NK-ABRECHNUNGEN</div><div class="sdo-v sdo-f ' + cls(O.ten) + '">' + W(O.ten) + '</div><div class="sdo-d">' + (O.ten === null ? 'not calculated yet' : 'Nachzahlungen \u2212 Guthaben') + '</div></div>' +
-    '</div>' +
-    '<div class="sdo-wf">' +
-      '<div class="sdo-wr"><span class="sdo-wn">You get</span><span class="sdo-bar"><i style="width:' + (O.get / sc * 100).toFixed(1) + '%;background:#9DBF7A"></i></span><span class="sdo-wa pos">' + cxWS(O.get) + '</span></div>' +
-      '<div class="sdo-wr"><span class="sdo-wn">You pay</span><span class="sdo-bar"><i style="width:' + (O.pay / sc * 100).toFixed(1) + '%;background:#E3A895"></i></span><span class="sdo-wa neg">' + cxW(-O.pay) + '</span></div>' +
-      '<div class="sdo-wr"><span class="sdo-wn sdo-wn--b">Net</span><span class="sdo-bar"><i style="width:' + (Math.abs(net) / sc * 100).toFixed(1) + '%;background:' + (net < 0 ? '#D98B74' : '#C9B38F') + '"></i></span><span class="sdo-wa ' + cls(net) + '">' + cxWS(net) + '</span></div>' +
-    '</div>' +
-    (O.n ? '<div class="sdo-prog"><div class="sdo-ph"><span>Settled</span><span><b class="sdo-f">' + O.done + '</b> of ' + O.n + '</span></div>' + pipe(O.stages) +
-      '<div class="sdo-leg">' + SDO_ST.map((x, k) => '<span><i style="background:' + x[1] + '"></i>' + x[0] + ' ' + O.stages[k] + '</span>').join('') + '</div></div>' : '') +
+  const pipe = (st, c) => '<span class="' + (c || 'sd2-seg') + '">' + st.map((v, k) => v ? '<i style="flex:' + v + ';background:' + SDO_ST[k][1] + '"></i>' : '').join('') + '</span>';
+  const net = cxR(O.get - O.pay), sc = Math.max(O.get + O.pay, 1);
+  const box = (k, v, sub) => '<div class="sd2-st"><div class="sd2-k">' + k + '</div><div class="sd2-v sdo-f ' + cls(v) + '">' + W(v) + '</div><div class="sd2-s">' + sub + '</div></div>';
+  const total = '<div class="sdo-card sd2-card">' +
+    '<div class="sd2-lb">NK ' + Y + ' \u00b7 all properties<span>net for you</span></div>' +
+    '<div class="sd2-big"><b class="sdo-f ' + cls(net) + '">' + cxWS(net) + '</b>' +
+      (O.hg !== null && O.ten !== null ? '<small>' + cxWS(O.hg) + ' ' + cxWS(O.ten) + '</small>' : '') + '</div>' +
+    '<div class="sd2-two">' + box('Jahresabrechnungen', O.hg, O.hg === null ? 'no results yet' : 'Hausgeld \u00b7 Versorger') +
+      box('NK-Abrechnungen', O.ten, O.ten === null ? 'not calculated yet' : 'with the tenants') + '</div>' +
+    (O.get || O.pay ? '<div class="sd2-io"><span class="pos">in ' + cxW(O.get) + '</span><span class="sd2-bar"><i style="flex:' + (O.get / sc * 100).toFixed(1) + ';background:#9DBF7A"></i><i style="flex:' + (O.pay / sc * 100).toFixed(1) + ';background:#E3A895"></i></span><span class="neg">out ' + cxW(O.pay) + '</span></div>' : '') +
+    (O.n ? '<div class="sd2-sep"></div><div class="sd2-prog"><span>Settled</span><span><b class="sdo-f">' + O.done + '</b> of ' + O.n + '</span></div>' + pipe(O.stages) +
+      '<div class="sd2-leg">' + SDO_ST.map((x, k) => O.stages[k] || k === 3 ? '<span><i style="background:' + x[1] + '"></i>' + O.stages[k] + ' ' + x[0].toLowerCase() + '</span>' : '').join('') + '</div>' : '') +
   '</div>';
-  // Tiles
+  // one full-width row per side · tap → its panel below
   const sec = SD.sec || '';
-  const tile = (key, name, icon, X, hgLabel) => '<button class="sdo-tile' + (sec === key ? ' on' : '') + '" data-sd="sec" data-k="' + key + '" aria-expanded="' + (sec === key) + '">' +
-    '<span class="sdo-tn"><span class="sdo-ic sdo-ic--' + key + '"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span>' + name + '</span>' +
-    '<span class="sdo-tvr"><span class="sdo-k">' + hgLabel + '</span><span class="sdo-v2 sdo-f ' + cls(X.hg) + '">' + W(X.hg) + '</span></span>' +   // Nov 2026: Jahresabrechnungen first
-    '<span class="sdo-tvr"><span class="sdo-k">NK-ABRECHNUNGEN</span><span class="sdo-v2 sdo-f ' + cls(X.ten) + '">' + W(X.ten) + '</span></span>' +
-    pipe(X.stages).replace('sdo-pipe', 'sdo-pipe sdo-pipe--s') +
-    '<span class="sdo-tf"><span>' + X.done + ' of ' + X.n + ' settled</span><span class="' + cls(cxR(X.get - X.pay)) + '">net ' + cxWS(cxR(X.get - X.pay)) + '</span></span></button>';
-  const both = O.ren && O.casa;
-  const tiles = '<div class="sdo-two' + (both ? '' : ' sdo-one') + '">' +
-    (O.ren ? tile('r', 'Rentals', 'building', O.ren, 'JAHRESABRECHNUNGEN') : '') +
-    (O.casa ? tile('c', 'Casa Castel', 'home-heart', O.casa, 'JAHRESABRECHNUNGEN') : '') + '</div>' +
-    '<div class="sdo-hint">Tap ' + (both ? 'Rentals or Casa Castel' : 'it') + ' for the overview</div>';
+  const row = (key, name, icon, X) => {
+    const n2 = cxR(X.get - X.pay);
+    return '<button class="sdo-card sd2-pr' + (sec === key ? ' on' : '') + '" data-sd="sec" data-k="' + key + '" aria-expanded="' + (sec === key) + '">' +
+      '<span class="sd2-ph"><span class="sd2-ic sd2-ic--' + key + '"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span>' +
+        '<span class="sd2-pn"><b>' + name + '</b><small>' + X.done + ' of ' + X.n + ' settled</small></span>' +
+        '<span class="sd2-net"><small>net</small><b class="sdo-f ' + cls(n2) + '">' + cxWS(n2) + '</b></span>' +
+        '<i class="ti ti-chevron-' + (sec === key ? 'up' : 'down') + ' sd2-chv" aria-hidden="true"></i></span>' +
+      '<span class="sd2-kv"><span><em>Jahresabr.</em><b class="' + cls(X.hg) + '">' + W(X.hg) + '</b></span><span><em>NK-Abr.</em><b class="' + cls(X.ten) + '">' + W(X.ten) + '</b></span></span>' +
+      pipe(X.stages, 'sd2-seg sd2-seg--s') + '</button>';
+  };
+  const rows = (O.ren ? row('r', 'Rentals', 'building', O.ren) : '') + (O.casa ? row('c', 'Casa Castel', 'home-heart', O.casa) : '');
   // Panels (one at a time)
   const stTag = k => k < 0 ? '<span class="sdo-st"><i style="background:#EFE8DD"></i>Pauschal</span>' : '<span class="sdo-st"><i style="background:' + SDO_ST[k][1] + '"></i>' + SDO_ST[k][0].replace(' for costs', '') + '</span>';
   let panel = '';
@@ -236,30 +236,21 @@ function sdOverviewHTML(Y, O) {
         stEsc([x.name, x.former ? 'former' : ''].filter(Boolean).join(' \u00b7 ')) + '</span></span>' +
         stTag(x.stage) + (x.stage < 0 ? '<b class="sdo-lv sdo-lv--t">in the rent</b>' : '<b class="sdo-lv ' + cls(x.v) + '">' + W(x.v) + '</b>') + '</div>').join('') + '</div>';
   }
-  // Casa Castel house costs
+  // Casa Castel house costs: two lines
   let costs = '';
   const K = O.casa && O.casa.costs;
   if (K && K.total) {
     const ch = K.prev ? (K.total - K.prev) / K.prev * 100 : null;
-    const sc2 = Math.max(K.share, K.vz, 1), cov = K.share > 0 ? Math.round(K.vz / K.share * 100) : null;
-    const mx = Math.max(1, ...K.cats.map(c => c.total));
-    costs = '<div class="sdo-card"><span class="sdo-lbl">Casa Castel \u00b7 house costs ' + Y + (K.locked ? '' : ' \u00b7 preview') + '</span>' +
-      '<div class="sdo-cst">' +
-        '<div><div class="sdo-k">TOTAL</div><div class="sdo-v3 sdo-f">' + cxW(K.total) + '</div><div class="sdo-d">for the year</div></div>' +
-        (K.rooms ? '<div><div class="sdo-k">PER ROOM</div><div class="sdo-v3 sdo-f">' + cxW(K.total / K.rooms) + '</div><div class="sdo-d">\u00d8 \u00b7 ' + K.rooms + ' rooms</div></div>' : '') +
-        (ch !== null ? '<div><div class="sdo-k">VS ' + (Y - 1) + '</div><div class="sdo-v3 sdo-f ' + (ch > 0 ? 'neg' : 'pos') + '">' + (ch >= 0 ? '+ ' : '\u2212 ') + Math.abs(ch).toFixed(0) + ' %</div><div class="sdo-d">' + cxWS(K.total - K.prev) + '</div></div>' : '') +
-      '</div>' +
-      (K.share > 0 ? '<div class="sdo-cmp">' +
-        '<div class="sdo-cr"><span>Their share</span><span class="sdo-bar"><i style="width:' + (K.share / sc2 * 100).toFixed(1) + '%;background:#C9B38F"></i></span><span>' + cxW(K.share) + '</span></div>' +
-        '<div class="sdo-cr"><span>Vorauszahlungen</span><span class="sdo-bar"><i style="width:' + (K.vz / sc2 * 100).toFixed(1) + '%;background:#9DBF7A"></i></span><span>' + cxW(K.vz) + '</span></div>' +
-        '<div class="sdo-cov">NK tenants \u00b7 prepayments cover ' + cov + ' % of their share</div></div>' : '') +
-      (K.cats.length ? '<div class="sdo-cats"><div class="sdo-k" style="margin-bottom:4px">BIGGEST COSTS</div>' +
-        K.cats.map(c => '<div class="sdo-cat"><span>' + stEsc(c.label) + '</span><span class="sdo-bar sdo-bar--s"><i style="width:' + (c.total / mx * 100).toFixed(1) + '%;background:#D9C6AE"></i></span><span>' + cxW(c.total) + '</span></div>').join('') + '</div>' : '') +
-    '</div>';
+    const pills = [K.months ? scMo(K.months) + ' months lived' : '', K.rate ? cxW2(K.rate) + ' per month' : '',
+      ch !== null ? 'vs ' + (Y - 1) + ' ' + (ch >= 0 ? '+' : '\u2212') + Math.abs(ch).toFixed(0) + '\u00a0%' : ''].filter(Boolean);
+    costs = '<div class="sdo-card sd2-card"><div class="sd2-lb">Casa Castel \u00b7 house costs ' + Y + '<span>' + (K.locked ? 'locked' : K.pv ? 'preview' : 'not locked') + '</span></div>' +
+      '<div class="sd2-hc"><b class="sdo-f">' + cxW2(K.total) + '</b>' + (K.you !== null ? '<span>you ' + cxW2(K.you) + '</span>' : '') + '</div>' +
+      (pills.length ? '<div class="sd2-pills">' + pills.map(t => '<span>' + stEsc(t) + '</span>').join('') + '</div>' : '') + '</div>';
   }
   // B2: column wrappers — two columns on iPad landscape / laptop, invisible on the phone (same order)
-  return '<div class="sdo-cols"><div class="sdo-l">' + total + '</div><div class="sdo-r">' + tiles + panel + '</div><div class="sdo-l2">' + costs + '</div></div>';
+  return '<div class="sdo-cols"><div class="sdo-l">' + total + '</div><div class="sdo-r">' + rows + panel + '</div><div class="sdo-l2">' + costs + '</div></div>';
 }
+const cxW2 = v => (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
 
 /* ── Jump from the dashboard ── */
 function sdGo(g) {

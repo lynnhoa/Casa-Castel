@@ -342,21 +342,21 @@ window.renderDashboard = function () {
   const lastM = months.length ? months[months.length - 1] : 0;
   const periodWord  = isYear ? (lastM && lastM < 12 ? 'Jan – ' + shortM[lastM - 1] : String(y)) : EN_M[m - 1];
 
-  // ── Top: period + Month | Year
-  const top = '<div class="cxd-top">' +
-    '<div class="cxd-per">' +
+  // ── Top (Nov 2026, lean): ‹ period › (+ "preliminary") · Month | Year under it · read only, no open-items chip
+  const prelim = !isYear && (open || later);
+  const top = '<div class="cx2-top">' +
+    '<div class="cx2-per">' +
       '<button class="cx-arw" data-cx="' + (isYear ? 'yprev' : 'prev') + '" aria-label="Previous"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
-      '<span class="cxd-per__t">' + cxEsc(periodTitle) + '</span>' +
+      '<span class="cx2-pt"><b>' + cxEsc(periodTitle) + '</b>' + (prelim ? '<small>preliminary</small>' : isYear && lastM && lastM < 12 ? '<small>' + cxEsc(periodWord) + '</small>' : '') + '</span>' +
       '<button class="cx-arw" data-cx="' + (isYear ? 'ynext' : 'next') + '" aria-label="Next"><i class="ti ti-chevron-right" aria-hidden="true"></i></button>' +
     '</div>' +
-    '<div class="cx-seg cx-seg--view" role="group" aria-label="Period">' +
+    '<div class="cx2-sw" role="group" aria-label="Period">' +
       '<button class="' + (isYear ? '' : 'on') + '" data-cx="view" data-v="m" aria-pressed="' + !isYear + '">Month</button>' +
       '<button class="' + (isYear ? 'on' : '') + '" data-cx="view" data-v="y" aria-pressed="' + isYear + '">Year</button>' +
-    '</div></div>' +
-    (open ? '<div class="cxn-chipw"><button class="cxn-chip" data-cx="gotoOpen"><span class="cxn-dot" aria-hidden="true"></span>' + open + (open === 1 ? ' item' : ' items') + ' still open · <u>enter</u></button></div>' : '');
+    '</div></div>';
 
   // Oct 2026 (R1): the whole year as Excel / PDF — always the year on screen (controlling-report.js)
-  const exportBtn = '<button class="cx-btn cx-btn--s cx-btn--full cxr-btn" data-cx="repOpen"><i class="ti ti-download" aria-hidden="true"></i>Export ' + y + '</button>';
+  const exportBtn = '<button class="cx2-lnk cxr-btn" data-cx="repOpen"><i class="ti ti-download" aria-hidden="true"></i>Export ' + y + '</button>';   // Nov 2026: a small link
 
   if (future) {
     cxPaint(host, '<div class="cx-page cxn">' + top + '<div class="cxn-card cxn-empty">This ' + (isYear ? 'year' : 'month') + ' is still ahead.</div>' + exportBtn + '</div>');   // B18
@@ -378,19 +378,13 @@ window.renderDashboard = function () {
     const delta = d => d === null ? '' : Math.round(d) === 0 ? 'same as ' + EN_M[m - 2]
       : '<span class="' + (d > 0 ? 'pos' : 'neg') + '">' + (d > 0 ? '\u25b2 ' : '\u25bc ') + cxW(Math.abs(d)) + '</span> vs ' + EN_M[m - 2];
 
-    // ── Income → Expenses → Cashflow (warm)
+    // ── Income / Expenses (warm) — the cashflow is the big number above them (Nov 2026)
     const inc = t.warm, cf = tv.w, outW = cxR(inc - cf);
     const scale = Math.max(inc, outW, 1);
-    const pIn = inc / scale * 100, pOut = outW / scale * 100;
-    const flow = '<div class="cxn-wf">' +
-      '<div class="cxn-wr"><span class="cxn-wn">Income</span><span class="cxn-bar"><i style="left:0;width:' + pIn.toFixed(1) + '%;background:#D9C6AE"></i></span><span class="cxn-wa">' + cxW(inc) + '</span></div>' +
-      '<div class="cxn-wr"><span class="cxn-wn">Expenses</span><span class="cxn-bar"><i style="left:0;width:' + pOut.toFixed(1) + '%;background:#E3A895"></i></span><span class="cxn-wa' + (Math.round(outW) > 0 ? ' neg' : '') + '">' + cxW(-outW) + '</span></div>' +
-      '<div class="cxn-wr"><span class="cxn-wn cxn-wn--b">Cashflow</span><span class="cxn-bar">' +
-        (cf >= 0 ? '<i style="left:' + pOut.toFixed(1) + '%;width:' + (pIn - pOut).toFixed(1) + '%;background:#9DBF7A"></i>'
-                 : '<i style="left:' + pIn.toFixed(1) + '%;width:' + (pOut - pIn).toFixed(1) + '%;background:#D98B74"></i>') +
-      '</span><span class="cxn-wa ' + cls(cf) + '">' + cxWS(cf) + '</span></div>' +
-      '<div class="cxn-cap">warm · ' + (!Math.round(inc) && !Math.round(outW) ? 'nothing booked yet'
-        : inc > 0 && cf >= 0 ? Math.round(cf / inc * 100) + ' % of the income stays' : 'more went out than came in') + '</div></div>';
+    const flow = '<div class="cx2-fl">' +
+      '<div class="cx2-fr"><span>Income</span><span class="cx2-bar"><i style="width:' + (inc / scale * 100).toFixed(1) + '%;background:#D9C6AE"></i></span><b>' + cxW(inc) + '</b></div>' +
+      '<div class="cx2-fr"><span>Expenses</span><span class="cx2-bar"><i style="width:' + (outW / scale * 100).toFixed(1) + '%;background:#E3A895"></i></span><b class="' + (Math.round(outW) > 0 ? 'neg' : '') + '">' + cxW(-outW) + '</b></div></div>';
+    const stays = inc > 0 && cf >= 0 ? Math.round(cf / inc * 100) : null;
 
     // ── the calculation table: Income · rent − Expenses = Cashflow (same everywhere)
     const D = '\u2014';
@@ -410,35 +404,35 @@ window.renderDashboard = function () {
       return '<div class="cxn-tbl">' + h + '</div>';
     };
 
-    // ── Total card
+    // ── Total card (Nov 2026, lean): the warm cashflow big · Kalt and Stays as two boxes · Income / Expenses · the calculation on tap
     const calcOpen = !!CX.open['dash:calc'];
-    const totalCard = '<div class="cxn-card">' +
-      '<div class="cxn-hrow"><span class="cxn-lbl">Cashflow \u00b7 all properties</span><span class="cxn-mut">' + (isYear ? cxEsc(periodWord) : (open || later ? 'preliminary' : '')) + '</span></div>' +
-      '<div class="cxn-kpis">' +
-        '<div class="cxn-kpi"><div class="cxn-k">KALT</div><div class="cxn-v cxn-f ' + cls(tv.k) + '">' + cxWS(tv.k) + '</div><div class="cxn-d">' + (isYear ? 'after one-offs' : delta(dK)) + '</div></div>' +
-        '<div class="cxn-kpi"><div class="cxn-k">WARM</div><div class="cxn-v cxn-f ' + cls(tv.w) + '">' + cxWS(tv.w) + '</div><div class="cxn-d">' + (isYear ? 'after one-offs &amp; Abr.' : delta(dW)) + '</div></div>' +
-      '</div>' + flow +
-      '<button class="cxn-calc" data-cx="dcalc" aria-expanded="' + calcOpen + '"><i class="ti ti-calculator" aria-hidden="true"></i>' + (calcOpen ? 'Hide' : 'Show') + ' the calculation</button>' +
+    const box = (k, v, sub) => '<div class="cx2-st"><div class="cx2-k">' + k + '</div><div class="cx2-v cxn-f ' + (v === null ? '' : cls(v)) + '">' + (v === null ? '\u2014' : cxWS(v)) + '</div><div class="cx2-s">' + sub + '</div></div>';
+    const totalCard = '<div class="cxn-card cx2-card">' +
+      '<div class="cx2-lb">Cashflow \u00b7 all properties<span>warm</span></div>' +
+      '<div class="cx2-big"><b class="cxn-f ' + cls(tv.w) + '">' + cxWS(tv.w) + '</b><small>' + (isYear ? 'after one-offs &amp; Abrechnungen' : delta(dW) || '&nbsp;') + '</small></div>' +
+      '<div class="cx2-two">' + box('Kalt', tv.k, isYear ? 'after one-offs' : (delta(dK) || 'without NK')) +
+        '<div class="cx2-st"><div class="cx2-k">Stays</div><div class="cx2-v cxn-f">' + (stays === null ? '\u2014' : stays + '\u00a0%') + '</div><div class="cx2-s">' + (stays === null ? (!Math.round(inc) && !Math.round(outW) ? 'nothing booked yet' : 'more went out') : 'of the income') + '</div></div></div>' +
+      flow +
+      '<button class="cx2-lnk" data-cx="dcalc" aria-expanded="' + calcOpen + '"><i class="ti ti-calculator" aria-hidden="true"></i>' + (calcOpen ? 'Hide' : 'Show') + ' the calculation</button>' +
       (calcOpen ? tbl(t, 'total') : '') +
       (t.noSplit ? '<button class="cxd-hint" data-cx="toProps">' + t.noSplit + (t.noSplit === 1 ? ' loan' : ' loans') + ' without Zinsen/Tilgung \u00b7 add in Properties \u203a</button>' : '') +
     '</div>';
 
-    // ── Two tiles: Rentals · Casa Castel
+    // ── Rentals · Casa Castel as full-width rows (Nov 2026) · tap → its calculation below
     const sec = CX.open['dash:sec'] || '';
     const roomsN = (window._src && window._src.rooms ? window._src.rooms.filter(r => r.active !== false).length : 0);
-    const tile = (key, name, icon, r, count, color) => {
-      const v = val(r), stays = r.warm > 0 && v.w > 0 ? Math.round(v.w / r.warm * 100) : 0;
-      return '<button class="cxn-tile' + (sec === key ? ' on' : '') + '" data-cx="dsec" data-k="' + key + '" aria-expanded="' + (sec === key) + '">' +
-        '<span class="cxn-tn"><span class="cxn-ic cxn-ic--' + key + '"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span>' + name + '</span>' +
-        '<span class="cxn-tv"><span class="cxn-tvr"><span class="cxn-k">KALT</span><span class="cxn-v2 cxn-f ' + cls(v.k) + '">' + cxWS(v.k) + '</span></span>' +
-          '<span class="cxn-tvr"><span class="cxn-k">WARM</span><span class="cxn-v2 cxn-f ' + cls(v.w) + '">' + cxWS(v.w) + '</span></span></span>' +
-        '<span class="cxn-stay"><i style="width:' + Math.min(100, stays) + '%;background:' + color + '"></i></span>' +
-        '<span class="cxn-st"><span>' + count + '</span><span>' + (v.w < 0 ? 'out > in' : stays + ' % stays') + '</span></span></button>';
+    const rowOf = (key, name, icon, r, count, color) => {
+      const v = val(r), st = r.warm > 0 && v.w > 0 ? Math.round(v.w / r.warm * 100) : 0;
+      return '<button class="cxn-card cx2-pr' + (sec === key ? ' on' : '') + '" data-cx="dsec" data-k="' + key + '" aria-expanded="' + (sec === key) + '">' +
+        '<span class="cx2-ph"><span class="cxn-ic cxn-ic--' + key + '"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span>' +
+          '<span class="cx2-pn"><b>' + name + '</b><small>' + count + ' \u00b7 ' + (v.w < 0 ? 'out > in' : st + ' % stays') + '</small></span>' +
+          '<span class="cx2-net"><small>warm</small><b class="cxn-f ' + cls(v.w) + '">' + cxWS(v.w) + '</b></span>' +
+          '<i class="ti ti-chevron-' + (sec === key ? 'up' : 'down') + ' cx2-chv" aria-hidden="true"></i></span>' +
+        '<span class="cx2-kv"><span><em>Kalt</em><b class="' + cls(v.k) + '">' + cxWS(v.k) + '</b></span><span><em>Income</em><b>' + cxW(r.warm) + '</b></span></span>' +
+        '<span class="cx2-thin"><i style="width:' + Math.min(100, st) + '%;background:' + color + '"></i></span></button>';
     };
-    const tiles = (renList.length || casaList.length) ? '<div class="cxn-two' + (renList.length && casaList.length ? '' : ' cxn-one') + '">' +
-        (renList.length ? tile('r', 'Rentals', 'building', ren, renList.length + (renList.length === 1 ? ' property' : ' properties'), '#8FA88F') : '') +
-        (casaList.length ? tile('c', 'Casa Castel', 'home-heart', casa, roomsN ? roomsN + ' rooms' : 'one house', '#D9B46A') : '') +
-      '</div><div class="cxn-hint2">Tap ' + (renList.length && casaList.length ? 'Rentals or Casa Castel' : 'it') + ' for the calculation</div>' : '';
+    const tiles = (renList.length ? rowOf('r', 'Rentals', 'building', ren, renList.length + (renList.length === 1 ? ' property' : ' properties'), '#8FA88F') : '') +
+      (casaList.length ? rowOf('c', 'Casa Castel', 'home-heart', casa, roomsN ? roomsN + ' rooms' : 'one house', '#D9B46A') : '');
 
     // ── Section panel (one at a time)
     let panel = '';
@@ -522,3 +516,47 @@ window.renderDashboard = function () {
     },
   });
 };
+
+/* ── Nov 2026 · lean dashboard styles (same look as Settlements): one big number · two boxes · full-width rows ── */
+(function () {
+  if (typeof document === 'undefined' || document.getElementById('cx2-css')) return;
+  const st = document.createElement('style'); st.id = 'cx2-css';
+  st.textContent = `
+.cx2-top { display:flex; flex-direction:column; align-items:center; gap:8px; margin:2px 0 10px; }
+.cx2-per { display:flex; align-items:center; justify-content:space-between; width:100%; }
+.cx2-pt { text-align:center; display:flex; flex-direction:column; }
+.cx2-pt b { font-family:'Cormorant Garamond', Georgia, serif; font-size:24px; font-weight:500; line-height:1.05; color:#3D3027; }
+.cx2-pt small { font-size:10.5px; color:#9A8E7E; }
+.cx2-sw { display:inline-flex; background:#EAE3D8; border-radius:9px; padding:2px; gap:2px; }
+.cx2-sw button { border:0; background:none; border-radius:7px; padding:5px 12px; font:400 11.5px 'Inter', system-ui, sans-serif; color:#7A6F62; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.cx2-sw button.on { background:#FDFCFA; color:#3D3027; font-weight:600; box-shadow:0 1px 2px rgba(61,48,39,.12); }
+.cx2-card { padding:13px 15px; }
+.cx2-lb { display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:10px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#8A6535; }
+.cx2-lb span { font-weight:400; letter-spacing:0; text-transform:none; font-size:11px; color:#9A8E7E; }
+.cx2-big { text-align:center; margin:6px 0 2px; }
+.cx2-big b { display:block; font-size:40px; line-height:1.05; white-space:nowrap; }
+.cx2-big small { display:block; font-size:11px; color:#9A8E7E; margin-top:2px; }
+.cx2-two { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; margin-top:10px; }
+.cx2-st { border-radius:12px; background:#F7F3EC; padding:8px 10px; min-width:0; }
+.cx2-k { font-size:11px; font-weight:500; color:#8C8072; }
+.cx2-v { font-size:22px; line-height:1.15; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#3D3027; }
+.cx2-s { font-size:10.5px; color:#9A8E7E; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cx2-fl { display:flex; flex-direction:column; gap:5px; margin-top:10px; }
+.cx2-fr { display:grid; grid-template-columns:62px minmax(0,1fr) auto; align-items:center; gap:8px; font-size:11.5px; color:#7A6F62; }
+.cx2-fr b { text-align:right; font-weight:600; color:#3D3027; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cx2-bar { height:7px; border-radius:4px; background:#F0EBE3; overflow:hidden; } .cx2-bar i { display:block; height:100%; border-radius:4px; }
+.cx2-lnk { display:flex; align-items:center; justify-content:center; gap:5px; width:100%; margin-top:9px; padding:4px 0; border:0; background:none; font:500 11.5px 'Inter', system-ui, sans-serif; color:#8A6535; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.cx2-pr { display:flex; flex-direction:column; gap:8px; width:100%; padding:12px 14px; text-align:left; font:inherit; color:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.cx2-pr.on { border-color:#D9CBB4; }
+.cx2-ph { display:flex; align-items:center; gap:9px; }
+.cx2-pn { flex:1; min-width:0; display:flex; flex-direction:column; } .cx2-pn b { font-size:14px; font-weight:600; } .cx2-pn small { font-size:11px; color:#9A8E7E; }
+.cx2-net { text-align:right; display:flex; flex-direction:column; } .cx2-net small { font-size:10px; color:#9A8E7E; } .cx2-net b { font-size:21px; line-height:1.05; white-space:nowrap; }
+.cx2-chv { color:#C8BFB0; font-size:15px; }
+.cx2-kv { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:6px; }
+.cx2-kv > span { display:flex; justify-content:space-between; align-items:baseline; gap:6px; border-radius:10px; background:#F7F3EC; padding:6px 9px; min-width:0; }
+.cx2-kv em { font-style:normal; font-size:10.5px; color:#8C8072; } .cx2-kv b { font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cx2-thin { height:5px; border-radius:3px; background:#F0EBE3; overflow:hidden; display:block; } .cx2-thin i { display:block; height:100%; }
+.cx2-big b.pos, .cx2-v.pos, .cx2-net b.pos, .cx2-kv b.pos { color:#3B6D11; } .cx2-big b.neg, .cx2-v.neg, .cx2-net b.neg, .cx2-kv b.neg, .cx2-fr b.neg { color:#8A3B22; }
+`;
+  document.head.appendChild(st);
+})();
