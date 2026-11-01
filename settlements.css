@@ -1774,3 +1774,39 @@ button.tp-r { cursor: pointer; }
 .mx-hero--get .hc-dots i.is-on { background: #9DBF7A; box-shadow: none; } .mx-hero--pay .hc-dots i.is-on { background: #D9946F; box-shadow: none; }
 .mx-hero--zero .hc-dots i.is-on, .mx-hero--none .hc-dots i.is-on { background: #B5AA9A; box-shadow: none; }
 .srm__one > .mx-hero.hc { margin-bottom: 4px; }
+/* ── Nov 2026 · one supplier bill, compact (House costs › Strom · Gas · Wasser · Entsorgung) ── */
+.jb { margin: 2px 0 8px; padding: 8px 9px 9px; border-radius: 12px; background: #F7F3EC; display: flex; flex-direction: column; gap: 6px; }
+.jb-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px; border-radius: 9px; background: #EAE3D8; }
+.jb-seg button { border: 0; background: none; border-radius: 7px; padding: 5px 0; font: 400 11.5px 'Inter', system-ui, sans-serif; color: #7A6F62; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.jb-seg button.is-on { background: #FDFCFA; color: #3D3027; font-weight: 600; box-shadow: 0 1px 2px rgba(61,48,39,.12); }
+.jb-g2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.jb-f { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.jb-f > span:first-child { font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #8C8072; }
+.jb input { width: 100%; min-width: 0; height: 34px; box-sizing: border-box; border: .5px solid #DDD5C9; border-radius: 8px; background: #FDFCFA; padding: 0 8px;
+  font: 400 16px 'Inter', system-ui, sans-serif; color: #3D3027; font-variant-numeric: tabular-nums; }
+.jb input[disabled] { opacity: .6; }
+.jb-amt { display: flex; align-items: center; gap: 4px; } .jb-amt input { text-align: right; } .jb-amt em { font-style: normal; font-size: 12px; color: #B5AA9A; }
+.jb-zl { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #8C8072; }
+.jb-tag { letter-spacing: 0; text-transform: none; font-size: 10px; font-weight: 500; border-radius: 7px; padding: 1px 6px; background: #FDF0D8; color: #854F0B; }
+.jb-tag.is-ok { background: #EAF3DE; color: #27500A; }
+.jb-zok { margin-left: auto; font-size: 11px; letter-spacing: 0; text-transform: none; font-weight: 500; }
+.jb-z { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 4px; }
+.jb-z em { font-style: normal; color: #B5AA9A; font-size: 12px; }
+.jb-split { margin: 0; font-size: 10.5px; color: #9A8E7E; line-height: 1.35; }
+.jb-pay { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; align-items: end; }
+.jb-go { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 11px; border: 0; border-radius: 8px; background: #3D3027; color: #FDFCFA;
+  font: 500 12px 'Inter', system-ui, sans-serif; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.jb-go[disabled] { opacity: .4; cursor: default; }
+.jb-money { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 9px; background: #EEF5E6; font-size: 12px; color: #27500A; }
+.jb-money > span { flex: 1; min-width: 0; } .jb-money .ti { font-size: 15px; }
+.jb-ch, .jb-add, .jb-undo, .jb-rm { font-size: 11.5px; padding: 0; align-self: flex-start; }
+.jb-ch { align-self: auto; color: #8A6535; }
+.jb-foot { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 1px; }
+.jb-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 14px; border: .5px solid #DDD5C9; background: #FDFCFA;
+  font: 400 11.5px 'Inter', system-ui, sans-serif; color: #7A6F62; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.jb-chip.is-on { background: #3D3027; border-color: #3D3027; color: #FDFCFA; }
+.jb-more { margin-left: auto; width: 28px; height: 28px; border-radius: 50%; border: .5px solid #E0DAD0; background: #FDFCFA; color: #9A8E7E; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.jb-more.is-on { background: #EFEAE2; color: #3D3027; }
+.jb-moreb { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+.jb-pay { grid-template-columns: minmax(0, 1.2fr) minmax(0, .9fr) auto; } .jb input[type=date] { padding: 0 6px; }

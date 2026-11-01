@@ -1067,53 +1067,54 @@ function scJaBillHtml(M, s, b, can, bodyOnly) {           // Nov 2026 · bodyOnl
 /* Nov 2026 · the fields of one bill (received · result · amount · Zeitraum · money) — in the House costs pop-up
    opened in place under its row; o.line = its NK line here ("in the NK" and Belegliste switches) */
 function scJaBodyHtml(M, s, b, can, o) {
+  // Nov 2026 · compact: the result · amount + received on · Zeitraum (one row) · the money as one line · NK / Belegliste chips ·
+  // the rare things (company, Abschlag in the same payment, remove) behind ⋯ — every value once
   const { at, dir, paid, recv, amt, zero, pab, z, split, absTxt } = o;
-  const ln = o.line || null, list = ((M.rec && M.rec.tenants) || {}).__hgList || {};
-  const extra = ln ? '<div class="sc-ct__sw"><span>In the NK</span><button type="button" class="mx-tg' + (ln.on ? ' is-on' : '') + '" role="switch" aria-checked="' + !!ln.on + '" aria-label="In the NK" data-sc="hgtog" data-id="' + stEsc(ln.id) + '"' + (can ? '' : ' disabled') + '></button></div>' +
-    '<div class="sc-ct__sw"><span>In the Belegliste</span><button type="button" class="mx-tg' + (list[ln.id] ? ' is-on' : '') + '" role="switch" aria-checked="' + !!list[ln.id] + '" aria-label="In the Belegliste" data-sc="hglist" data-id="' + stEsc(ln.id) + '"' + (can ? '' : ' disabled') + '></button></div>' : '';
-  const dis = can ? '' : ' disabled';
-  // ── received
-  const s1 = recv ? 'received ' + stEsc(stDate(b.recv))
-    : s.st === 'overdue' && s.exp ? '<b class="neg">overdue</b> · expected ' + stEsc(s.exp.label)
-    : s.exp && !s.real.length ? 'expected ~ ' + stEsc(s.exp.label) : 'switch on when it\u2019s in';
-  const rowRecv = stMRow({ icon: 'inbox', title: 'Jahresabrechnung received', sub: s1, on: recv, disabled: !can, switchAttrs: 'data-sc="jaRecv"' + at });
-  // ── result (from the bill)
+  const ln = o.line || null, list = ((M.rec && M.rec.tenants) || {}).__hgList || {}, dis = can ? '' : ' disabled';
+  const opn = k => !!SC.open[k + b.id], tg = (k, inner, cls) => '<button type="button" class="' + cls + '" data-sc="jaOpen" data-o="' + k + stEsc(b.id) + '">' + inner + '</button>';
+  // ── result · amount · received on
   const sel = zero ? 0 : dir || null;
-  const seg = '<div class="mx-seg" role="group" aria-label="Result">' + [[-1, 'Nachzahlung', 'p'], [1, 'Guthaben', 'g'], [0, 'balanced', 'z']].map(([x, t, c]) =>
-    '<button type="button" class="is-' + c + (sel === x ? ' is-on' : '') + '" data-sc="jaDir" data-v="' + x + '"' + at + ' aria-pressed="' + (sel === x) + '"' + dis + '>' + t + '</button>').join('') + '</div>';
-  // balanced: no amount (as in Rentals) — received date and company side by side
-  const box = '<div class="sc-ja__box">' + seg +
-    (zero ? '' : '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="amt"' + at + ' value="' + (amt ? cxE2(amt) : '') + '" placeholder="0,00"' + dis + '/><em>\u20ac</em></span></label>') +
-    '<label class="mx-f"><span>Received on</span><input type="date" data-scja="recv"' + at + ' value="' + stEsc(b.recv || '') + '"' + dis + '/></label>' +
-    '<label class="mx-f' + (zero ? '' : ' sc-ja__full') + '"><span>Company</span><input type="text" autocomplete="off" data-scja="co"' + at + ' value="' + stEsc(b.co || '') + '"' + dis + '/></label>' +
-    (z ? '<p class="sc-ja__zl">Abrechnungszeitraum<span class="sc-ja__zs' + (z.ok ? ' is-ok' : '') + '">' + (z.ok ? 'from the bill' : 'suggested') + '</span></p>' +
-      '<label class="mx-f"><span>From</span><input type="date" data-scja="zf"' + at + ' value="' + stEsc(z.from) + '"' + dis + '/></label>' +
-      '<label class="mx-f"><span>To</span><input type="date" data-scja="zt"' + at + ' value="' + stEsc(z.to) + '"' + dis + '/></label>' +
-      '<p class="sc-ja__split">' + stEsc(split || 'outside every NK year') +
-        (!z.ok && can ? '<button type="button" class="cx-link sc-ja__zok" data-sc="jaZok"' + at + '>matches the bill</button>' : '') + '</p>' : '') + '</div>';
-  const rm = can && !paid && !b.blank && !b.legacy ? '<button type="button" class="cx-link sc-ja__rm" data-sc="jaDel"' + at + '>remove</button>' : '';
-  if (zero) return '<div class="mx-rows sc-ja__rows">' + rowRecv + box + extra + '</div>' + rm;   // balanced: nothing to pay or receive
-  // ── money paid / received (= the booking in Controlling)
-  const ready = recv && !!dir && amt > 0;
-  const lockedIn = d => M.locked && !!d && scD(d) <= M.per.to;
-  const s2 = paid ? (dir > 0 ? 'received ' : 'paid ') + stDate(b.pd) + ' · ' + scE(b.pa ?? amt) + absTxt
-    : ready ? 'flip it when it\u2019s ' + (dir > 0 ? 'on your account' : 'paid')
-    : 'first add: ' + [!recv ? 'received date' : '', !dir ? 'result' : '', !(amt > 0) ? 'amount' : ''].filter(Boolean).join(' · ');
-  const rowPay = stMRow({ icon: 'coins', title: dir > 0 ? 'Money received' : 'Money paid', sub: stEsc(s2), on: paid,
-    disabled: paid ? lockedIn(b.pd) : !ready, switchAttrs: 'data-sc="jaPay"' + at });
-  const pdV = b.pd || (recv ? cxToday() : ''), paV = b.pa ?? (amt || null);
-  // with an Abschlag in the same payment the three fields stay as booked — switch the money off to change them
-  const payDis = paid ? (lockedIn(b.pd) || pab ? ' disabled' : '') : (ready ? '' : ' disabled');
-  const c = scHgCat(s.k), ym = String(paid ? b.pabYm || b.pd || '' : pdV || '').slice(0, 7);
-  const bank = cxR((Number(paV) || 0) + (dir > 0 ? -pab : pab));
-  const absHint = pab && paV ? '<p class="sc-ja__pn">' + stEsc((dir > 0 ? 'Received ' : 'Bank ') + scE(bank) + ' · the ' + scE(pab) + ' Abschlag ' +
-    (paid && !b.pabAdd ? 'was already in ' : 'goes to ') + (c ? c.name : 'its cost type') + (ym ? ' in ' + SC_MONTHS_L[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4) : '') + ' (Controlling › Expenses)') + '</p>' : '';
-  const pay = '<div class="mx-pay sc-ja__pay' + (!paid && !ready ? ' is-off' : '') + '">' +
-    '<label class="mx-f"><span>On</span><input type="date" data-scja="pd"' + at + ' value="' + stEsc(pdV) + '"' + payDis + '/></label>' +
-    '<label class="mx-f"><span>Amount</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="pa"' + at + ' value="' + (paV ? cxE2(paV) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span></label>' +
-    '<label class="mx-f sc-ja__full"><span>' + (dir > 0 ? 'Abschlag kept from it' : 'Abschlag in the same payment') + '</span><span class="mx-amt"><input inputmode="decimal" autocomplete="off" data-scja="pab"' + at + ' value="' + (pab ? cxE2(pab) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span></label>' +
-    absHint + '</div>';
-  return '<div class="mx-rows sc-ja__rows">' + rowRecv + box + rowPay + pay + extra + '</div>' + rm;
+  const seg = '<div class="jb-seg" role="group" aria-label="Result">' + [[-1, 'Nachzahlung'], [1, 'Guthaben'], [0, 'balanced']].map(([x, t]) =>
+    '<button type="button" class="' + (sel === x ? 'is-on' : '') + '" data-sc="jaDir" data-v="' + x + '"' + at + ' aria-pressed="' + (sel === x) + '"' + dis + '>' + t + '</button>').join('') + '</div>';
+  const f = (lbl, input) => '<label class="jb-f"><span>' + lbl + '</span>' + input + '</label>';
+  const top = '<div class="jb-g2">' + (zero ? '' : f('Amount', '<span class="jb-amt"><input inputmode="decimal" autocomplete="off" data-scja="amt"' + at + ' value="' + (amt ? cxE2(amt) : '') + '" placeholder="0,00"' + dis + '/><em>\u20ac</em></span>')) +
+    f('Received on', '<input type="date" data-scja="recv"' + at + ' value="' + stEsc(b.recv || '') + '"' + dis + '/>') + '</div>';
+  // ── Abrechnungszeitraum: one row · how it splits over the NK years
+  const zr = z ? '<p class="jb-zl">Zeitraum<span class="jb-tag' + (z.ok ? ' is-ok' : '') + '">' + (z.ok ? 'from the bill' : 'suggested') + '</span>' +
+      (!z.ok && can ? '<button type="button" class="cx-link jb-zok" data-sc="jaZok"' + at + '>matches the bill</button>' : '') + '</p>' +
+    '<div class="jb-z"><input type="date" data-scja="zf"' + at + ' value="' + stEsc(z.from) + '"' + dis + ' aria-label="From"/><em>–</em><input type="date" data-scja="zt"' + at + ' value="' + stEsc(z.to) + '"' + dis + ' aria-label="To"/></div>' +
+    '<p class="jb-split">' + stEsc(split || 'outside every NK year') + '</p>' : '';
+  // ── the money (= the booking in Controlling): one line once it moved · date + amount + one button before
+  let money = '';
+  if (!zero) {
+    const ready = recv && !!dir && amt > 0, lockedIn = d => M.locked && !!d && scD(d) <= M.per.to;
+    const pdV = b.pd || (recv ? cxToday() : ''), paV = b.pa ?? (amt || null);
+    const c = scHgCat(s.k), ym = String(paid ? b.pabYm || b.pd || '' : pdV || '').slice(0, 7), bank = cxR((Number(paV) || 0) + (dir > 0 ? -pab : pab));
+    const absHint = pab && paV ? '<p class="jb-split">' + stEsc((dir > 0 ? 'Received ' : 'Bank ') + scE(bank) + ' · the ' + scE(pab) + ' Abschlag ' +
+      (paid && !b.pabAdd ? 'was already in ' : 'goes to ') + (c ? c.name : 'its cost type') + (ym ? ' in ' + SC_MONTHS_L[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4) : '')) + '</p>' : '';
+    const payDis = paid ? (lockedIn(b.pd) || pab ? ' disabled' : '') : (ready ? '' : ' disabled');
+    const fields = '<div class="jb-pay">' + f(dir > 0 ? 'Received on' : 'Paid on', '<input type="date" data-scja="pd"' + at + ' value="' + stEsc(pdV) + '"' + payDis + '/>') +
+      f('Amount', '<span class="jb-amt"><input inputmode="decimal" autocomplete="off" data-scja="pa"' + at + ' value="' + (paV ? cxE2(paV) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span>') +
+      (paid ? '' : '<button type="button" class="jb-go" data-sc="jaPay"' + at + (ready && can ? '' : ' disabled') + '><i class="ti ti-check" aria-hidden="true"></i> ' + (dir > 0 ? 'Received' : 'Paid') + '</button>') + '</div>';
+    const pabF = (pab || opn('jaPab:')) ? '<div class="jb-g2 jb-pab">' + f(dir > 0 ? 'Abschlag kept from it' : 'Abschlag in the same payment',
+      '<span class="jb-amt"><input inputmode="decimal" autocomplete="off" data-scja="pab"' + at + ' value="' + (pab ? cxE2(pab) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span>') + '</div>' + absHint : '';
+    if (paid) {
+      const lk = opn('jaPayOpen:');
+      money = '<div class="jb-money"><i class="ti ti-circle-check" aria-hidden="true"></i><span>' + stEsc((dir > 0 ? 'Received ' : 'Paid ') + stDate(b.pd) + ' · ' + scE(b.pa ?? amt) + absTxt) + '</span>' +
+        tg('jaPayOpen:', lk ? 'done' : 'change', 'cx-link jb-ch') + '</div>' +
+        (lk ? fields + pabF + (lockedIn(b.pd) ? '' : '<button type="button" class="cx-link jb-undo" data-sc="jaPay"' + at + '>undo the payment</button>') : '');
+    } else money = ready ? fields + pabF + (pab || opn('jaPab:') ? '' : tg('jaPab:', '+ Abschlag in the same payment', 'cx-link jb-add'))
+      : '<p class="jb-split">first add: ' + stEsc([!recv ? 'received on' : '', !dir ? 'result' : '', !(amt > 0) ? 'amount' : ''].filter(Boolean).join(' · ')) + '</p>';
+  }
+  // ── in the NK · in the Belegliste (labelled chips) · ⋯ for company and remove
+  const chip = (on, act, icon, t) => '<button type="button" class="jb-chip' + (on ? ' is-on' : '') + '" data-sc="' + act + '" data-id="' + stEsc(ln.id) + '" aria-pressed="' + !!on + '"' + dis + '>' +
+    '<i class="ti ti-' + (on ? 'check' : icon) + '" aria-hidden="true"></i> ' + t + '</button>';
+  const more = opn('jaMore:');
+  const foot = '<div class="jb-foot">' + (ln ? chip(!!ln.on, 'hgtog', 'circle', 'In the NK') + chip(!!list[ln.id], 'hglist', 'list', 'Belegliste') : '') +
+    tg('jaMore:', '<i class="ti ti-dots" aria-hidden="true"></i>', 'jb-more' + (more ? ' is-on' : '')) + '</div>' +
+    (more ? '<div class="jb-moreb">' + f('Company', '<input type="text" autocomplete="off" data-scja="co"' + at + ' value="' + stEsc(b.co || '') + '"' + dis + '/>') +
+      (can && !paid && !b.blank && !b.legacy ? '<button type="button" class="cx-link jb-rm" data-sc="jaDel"' + at + '>remove this bill</button>' : '') + '</div>' : '');
+  return '<div class="jb">' + seg + top + zr + money + foot + '</div>';
 }
 
 /* ── actions ── */
@@ -1911,6 +1912,7 @@ async function scClick(e) {
   if (a === 'costs') { SC.modal = { view: 'costs' }; return scRenderModal(); }
   if (a === 'ja' || a === 'sumHg') { SC.modal = { view: 'costs' }; return scRenderModal(); }   // Nov 2026: one pop-up
   if (a === 'jaFold') { const k = 'ja:' + b.dataset.b; SC.open[k] = !SC.open[k]; return scRenderModal(); }
+  if (a === 'jaOpen') { const k = b.dataset.o; SC.open[k] = !SC.open[k]; return scRenderModal(); }   // Nov 2026: the bill's small folds (change · Abschlag · ⋯)
   if (a === 'jaAdd') return scJaAdd(b.dataset.k);
   if (a === 'jaRecv' || a === 'jaDir' || a === 'jaPay' || a === 'jaDel' || a === 'jaZok') return scJaAct(a, b);
   if (a === 'jaYear') { SC.year = Number(b.dataset.y) || SC.year; SC.modal = { view: 'costs' }; return stRenderCasa(); }   // a bill that came the year after
