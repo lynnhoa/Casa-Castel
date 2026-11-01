@@ -359,7 +359,9 @@ function stRenderCasa() {
 
   // progress · Tenants + Hausgeld (one net amount each) · Needs you · house costs · rooms
   const total = nk.length, nDone = done.length;
-  const progress = stProgress({ done: nDone, sent: sent.length, total, open: open.length, first: M.locked ? 'House costs locked' : 'House costs not locked' });
+  // Nov 2026: the lock status lives here (the Hausgeld tile shows money) — "ready to lock" once all bills are in
+  const rdy = !M.locked && M.sendable && M.R.lines.length && !(M.jaGaps || []).length;
+  const progress = stProgress({ done: nDone, sent: sent.length, total, open: open.length, first: M.locked ? 'House costs locked' : rdy ? 'House costs ready to lock' : 'House costs not locked' });
   const mo = M.money, pv = !M.locked ? 'preview · ' : '';
   const tenSub = mo.ten === null ? 'no house costs yet' : pv + mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back');
   // Oct 2026 · Hausgeld = the Versorger Jahresabrechnungen of the year (the real bills — not the preview share of the NK)
@@ -369,7 +371,10 @@ function stRenderCasa() {
   const hkStatus = M.locked ? 'locked' : !M.R.lines.length ? 'nothing booked yet' : M.running ? 'running · preview' : gapsT ? gapsT + (gapsT === 1 ? ' Jahresabrechnung missing' : ' Jahresabrechnungen missing') : M.sendable ? 'ready to lock' : 'not locked';
   const vNet = J.net === null || J.net === undefined ? '' : 'Versorger: ' + (J.net > 0.004 ? 'Guthaben ' : J.net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(J.net) > 0.004 ? scE(Math.abs(J.net)) : '');
   const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub + (M.locked && M.sendable && nOpenL ? ' · ' + nOpenL + ' to send' : ''), 'data-sc="sumTen"') +
-    stTileInfo('Hauskosten', 'home', hkStatus, M.R.lines.length ? scE(M.R.check.total) : '\u2014', [qT.rate ? scE(qT.rate) + ' per month' : '', vNet.trim()], 'data-sc="costs"', gapsT > 0) + '</div>';
+    // Nov 2026 · matched with Rentals: the right tile = money with the house side (Versorger), green/red · own small lines
+    stTile('Hausgeld', 'receipt', J.net, [J.n ? 'Versorger ' + J.nIn + ' of ' + J.n + ' in' + (gapsT ? ' · ' + gapsT + ' missing' : '') : '',
+      M.R.lines.length ? 'Hauskosten ' + scE(M.R.check.total) + (qT.rate ? ' · ' + scE(qT.rate) + '/month' : '') : 'no house costs yet'], 'data-sc="costs"') + '</div>';
+  void hkStatus; void vNet;
 
   const L = M.R.check;
   const noData = !M.locked && !M.R.lines.length;

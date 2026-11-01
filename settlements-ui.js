@@ -59,7 +59,8 @@ function stTile(label, icon, net, sub, act) {
   const val = net === null || net === undefined ? '—' : stEur(cxR(Math.abs(net)));
   return '<button class="st-tile st-tile--' + k + '"' + (act ? ' ' + act : '') + '>' +
     '<span class="st-tile__l"><i class="ti ti-' + icon + '" aria-hidden="true"></i>' + label + '<i class="ti ti-chevron-right st-tile__c" aria-hidden="true"></i></span>' +
-    '<span class="st-tile__d">' + dir + '</span><b>' + val + '</b><small>' + stEsc(sub || '') + '</small></button>';
+    '<span class="st-tile__d">' + dir + '</span><b>' + val + '</b>' +
+    (Array.isArray(sub) ? sub.filter(Boolean).map(x => '<small>' + stEsc(x) + '</small>').join('') : '<small>' + stEsc(sub || '') + '</small>') + '</button>';   // Nov 2026: sub may be lines
 }
 /* Nov 2026 · a tile that shows a total, not money in or out (Casa · Hauskosten): status · value · up to two small lines */
 function stTileInfo(label, icon, status, value, lines, act, warn) {
