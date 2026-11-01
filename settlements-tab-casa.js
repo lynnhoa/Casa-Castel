@@ -557,6 +557,8 @@ function scSumTen(M) {
              { title: 'Settled', count: true, rows: rows.filter(r => r.k === 'done') }] }, 'data-sc="close"');
 }
 const SC_HG_TYPES = [['strom', 'Strom'], ['gas', 'Gas'], ['wasser', 'Wasser'], ['entsorg', 'Entsorgung']];   // Versorger with a Jahresabrechnung
+/* Nov 2026 · one order everywhere: the cost types' sort order (Providers › Utilities: By law · Contracts · Services) */
+const scCatOrd = id => { const c = id === null || id === undefined ? null : (window._ctrl.categories || []).find(x => Number(x.id) === Number(id)); return c && c.sort_order !== null && c.sort_order !== undefined ? Number(c.sort_order) : 900; };
 const scHgCat = k => (window._ctrl.categories || []).find(c => c.code !== 'RATE' && String(c.name || '').toLowerCase().startsWith(k)) || null;
 function scSumHg(M) {
   // every Jahresabrechnung with "Show in Settlements" (Controlling) · per position: Include in NK · Show in Belegliste
@@ -1386,6 +1388,7 @@ function scCtLines(M) {                                    // the NK lines, spli
     types.push({ k, l, c, paid, ja, total: cxR(paid + ja), hasJa: jaL.length > 0,
                  hg: (M.money.hgAll || []).filter(h => (h.info || {}).k ? h.info.k === k : mine(h)) });
   }
+  types.sort((a, b) => scCatOrd(a.c.id) - scCatOrd(b.c.id));      // Nov 2026: Wasser · Entsorgung · Strom · Gas (the one order)
   return { types, other: lines.filter(ln => !used.has(ln.id)) };
 }
 function scCostsView(M) {
@@ -1470,7 +1473,7 @@ function scCostsView(M) {
   };
   const oSum = cxR(other.reduce((a, x) => a + x.total, 0)), editOpen = !!SC.open['ct:typed'];
   const otherCard = other.length || can ? '<p class="mx-lbl">Other house costs</p><div class="sc-ct sc-ct--o">' +
-    other.slice().sort((a, b) => (a.group === 'running' ? 0 : 1) - (b.group === 'running' ? 0 : 1) || b.total - a.total).map(oRow).join('') +
+    other.slice().sort((a, b) => scCatOrd(a.catId) - scCatOrd(b.catId) || (a.group === 'running' ? 0 : 1) - (b.group === 'running' ? 0 : 1) || b.total - a.total).map(oRow).join('') +   // Nov 2026: the one order
     (other.length ? '<div class="sc-ct__o is-sum"><span>Other house costs</span><span>' + scE(oSum) + '</span></div>' : '<p class="sc-ct__none">Nothing else booked yet.</p>') +
     (can ? '<button type="button" class="cx-link sc-ct__add" data-sc="fold" data-k="ct:typed"><i class="ti ti-' + (editOpen ? 'minus' : 'plus') + '" aria-hidden="true"></i> ' + (editOpen ? 'Done' : pos.length ? 'Add or change a cost' : 'Add a cost') + '</button>' : '') +
     '</div>' + (can && editOpen ? scTypedHtml(M) : '') : '';
@@ -1746,7 +1749,7 @@ function scShareLines(t) {
     let g = byKey[k];
     if (!g) {
       g = byKey[k] = { id: k === 'allg' ? 'allg' : l.id, label: k === 'allg' ? 'Allgemeine Hauskosten' : (l.group === 'running' ? l.label : (l.catName || l.label)),
-                       key: l.key, total: 0, amount: 0, range: null, run: 0, hg: 0, nHg: 0, inv: 0, nInv: 0, allg: k === 'allg' };
+                       key: l.key, total: 0, amount: 0, range: null, run: 0, hg: 0, nHg: 0, inv: 0, nInv: 0, allg: k === 'allg', catId: hasCat ? l.catId : null };
       out.push(g);
     }
     g.total += l.total; g.amount += l.amount;
@@ -1757,7 +1760,7 @@ function scShareLines(t) {
   }
   out.forEach(g => { g.total = cxR(g.total); g.amount = cxR(g.amount); g.hg = cxR(g.hg); g.run = cxR(g.run); g.inv = cxR(g.inv);
                      g.merged = !g.allg && (g.nHg > 0 || (g.nInv > 0 && g.run)); });
-  return out.filter(g => !g.allg).concat(out.filter(g => g.allg));     // Allgemeine Hauskosten always last
+  return out.filter(g => !g.allg).sort((a, b) => scCatOrd(a.catId) - scCatOrd(b.catId)).concat(out.filter(g => g.allg));     // the one order · Allgemeine Hauskosten always last
 }
 const scMo = v => (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('de-DE', { maximumFractionDigits: 2 });   // 7 · 6,5 · 0,77
 function scPct(g) {                                     // share of the house cost, e.g. "10,21 %"
