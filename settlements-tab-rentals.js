@@ -1353,8 +1353,7 @@ function _srSumSheet(view) {
       return { av, ab: stAbbr(x.i.c.p.name), name: x.r.name, sub: x.i.c.p.name + ' · ' + stPer(x.r.l.from, x.r.l.to) + (x.r.skipped ? ' · skipped' : ''),
                amount: amt, dir: x.v > 0 ? 1 : -1, chip: amt ? null : ['grey', 'balanced'], k: x.r.k,
                act: 'data-sr="openTen" data-k="' + stEsc(x.i.c.ck) + '" data-id="' + stEsc(String(x.r.it.r.id)) + '"' }; });
-    const ready = S.tenRows.filter(x => x.r.k === 'open');
-    const action = ready.length ? '<button class="cx-btn cx-btn--p st-sendall" data-sr="openTen" data-k="' + stEsc(ready[0].i.c.ck) + '" data-id="' + stEsc(String(ready[0].r.it.r.id)) + '"><i class="ti ti-send" aria-hidden="true"></i> Send ' + ready.length + (ready.length === 1 ? ' letter' : ' letters') + '</button>' : '';
+    const action = '';                                       // Nov 2026: each line opens its tenant — a button for the first one was the same way in
     const nSet = rows.filter(r => r.k === 'settled').length, nAll = rows.length;
     return stSumSheet({ title: 'NK-Abrechnungen ' + SR.year, sub: 'Rentals · periods ending in ' + SR.year, net: S.ten, action,
       sub2: S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back') + (nAll ? ' · ' + nSet + ' of ' + nAll + ' settled' : ''),
@@ -1662,9 +1661,7 @@ function _srNkView(c) {
     label: net === null ? 'NK-Abrechnung' : net > 0.004 ? 'you get' : net < -0.004 ? 'you pay back' : 'balanced',
     amount: net, sub: !hvReady ? 'waiting for the Jahresabrechnung' : (nkSum !== null ? 'NK costs ' + stEur(nkSum) + ' · ' : '') + (!TI.length ? 'no tenant' : TI.length + (TI.length === 1 ? ' tenant' : ' tenants')),
     settled: TI.length > 0 && TI.every(t => t.k === 'settled') });
-  const ready = TI.filter(t => t.k === 'open');
-  const send = ready.length ? '<button class="cx-btn cx-btn--p st-sendall" data-sr="openTen" data-k="' + stEsc(c.ck) + '" data-id="' + stEsc(String(ready[0].l.id)) + '"><i class="ti ti-send" aria-hidden="true"></i> ' +
-    (ready.length === 1 ? 'Send letter to ' + stEsc(ready[0].name) : 'Send ' + ready.length + ' letters') + '</button>' : '';
+  const send = '';                                          // Nov 2026: no second way in — tap the tenant under "Who carries it"
   return stMHead(title, c.p.name + ' · you ↔ tenants', 'receipt', 'data-sr="close"') + '<div class="srm__pickwrap">' + _srPicker(c) + '</div>' +
     '<div class="srm__b mx-b mx-nk">' + hero + send + costCard + consCard + tenCard +
     (hvReady ? '<p class="sr-saved sr-saved--b" id="srSaved">' + (SR.dirty ? '' : '✓ saved') + '</p>' : '') + '</div>';
@@ -1715,7 +1712,7 @@ function _srNkTens(c, d, rec, hvReady) {
     const v = ti.skipped ? null : ti.st.res ? ti.st.res.dir * ti.st.res.amount : ti.x && !ti.x.missing ? ti.x.saldo : null;
     const o = ti.kind === 'pausch' && oy ? oy.rows.find(x => x.kind === 'pausch' && x.id === id) : null;
     const res = o ? '<b>' + stEur(Math.max(0, o.onYou)) + '</b><small>' + (o.onYou >= 0 ? 'on you' : 'covered') + '</small>'
-      : v === null ? '' : '<b class="' + (v < 0 ? 'is-g' : '') + '">' + stEur(Math.abs(v)) + '</b><small>' + (v > 0 ? 'Nachzahlung' : v < 0 ? 'Guthaben' : 'balanced') + '</small>';
+      : v === null ? '' : '<b class="' + (v > 0 ? 'is-g' : v < 0 ? '' : 'is-z') + '">' + stEur(Math.abs(v)) + '</b><small>' + (v > 0 ? 'pays you' : v < 0 ? 'gets back' : 'balanced') + '</small>';   // Nov 2026: your side
     const pill = ti.kind === 'pausch' ? (ti.skipped ? ['ok', 'no NK'] : ['grey', 'Pauschal']) : ti.kind === 'unlinked' ? ['grey', 'no tenant'] :
       ti.skipped ? ['grey', 'skipped'] : ti.k === 'settled' ? ['ok', 'settled'] : ti.k === 'sent' ? ['beige', 'sent ' + stDM(ti.st.res.date)] : ti.k === 'open' ? ['beige', 'letter ready'] : ['grey', 'waiting'];
     const sub = stDM(ti.l.from) + '–' + stDate(ti.l.to) + ' · ' + _srDays(ti.l.from, ti.l.to) + ' days' + (ti.skipped ? ' · tap to undo' : '');
@@ -1723,7 +1720,7 @@ function _srNkTens(c, d, rec, hvReady) {
     const sub2 = o ? 'Pauschal · NK share ' + stEur(o.share) + ' − davon NK ' + stEur(o.covered) + (ti.skipped ? '' : ' · tap to mark as no NK')
       : ti.kind === 'pausch' && !ti.skipped ? 'Pauschal · tap to mark as no NK' : sub;
     return '<button class="sr-tenrow" ' + act + (act ? '' : ' disabled') + '><span class="sr-tenrow__m"><span class="sr-tenrow__n">' + stEsc(ti.name) + '</span><span class="sr-tenrow__s">' + stEsc(sub2) + '</span></span>' +
-      '<span class="sr-tenrow__r">' + res + cxPill(pill[0], pill[1]) + '</span></button>';
+      '<span class="sr-tenrow__r">' + res + cxPill(pill[0], pill[1]) + '</span>' + (act ? '<i class="ti ti-chevron-right sr-tenrow__c" aria-hidden="true"></i>' : '') + '</button>';
   }).join('');
   const leer = oy ? oy.rows.filter(x => x.kind === 'leer').map(o =>
     '<div class="sr-tenrow is-leer"><span class="sr-tenrow__m"><span class="sr-tenrow__n">Leerstand</span><span class="sr-tenrow__s">' +

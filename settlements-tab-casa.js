@@ -547,7 +547,7 @@ function scSumTen(M) {
   const nOpen = M.ten.filter(t => t.k === 'open').length;
   const action = !nOpen || !M.sendable ? '' : M.locked
     ? '<button class="cx-btn cx-btn--p st-sendall" data-sc="start"><i class="ti ti-send" aria-hidden="true"></i> Send ' + nOpen + (nOpen === 1 ? ' letter' : ' letters') + '</button>'
-    : '<button class="cx-btn cx-btn--s st-sendall" data-sc="costs"><i class="ti ti-lock" aria-hidden="true"></i> Lock the house costs first</button>';
+    : '<p class="st-sendnote"><i class="ti ti-lock" aria-hidden="true"></i> Lock the house costs first (Jahresabrechnungen) \u2014 then the letters can be sent</p>';   // Nov 2026: info, not a second way in
   const mo = M.money, nSet = rows.filter(r => r.k === 'done').length;
   const cnt = rows.length ? ' · ' + nSet + ' of ' + rows.length + ' settled' : '';
   return stSumSheet({ title: 'NK-Abrechnungen ' + M.y, sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten, action,
