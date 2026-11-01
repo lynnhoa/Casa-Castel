@@ -1065,9 +1065,10 @@ function stRenderRentals() {
     '<button class="cx-arw" data-sr="year" data-d="1" aria-label="Next year"' + (SR.year >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
   const prog = stProgress({ done: nSet, sent: nSent, total: nOpen + nSent + nSet + nWait, open: nOpen,
     first: hvIn + ' of ' + nLive + ' Jahresabrechnungen in' + (hvOver ? ' · <b class="rk-red">' + hvOver + ' overdue</b>' : '') });
+  // Nov 2026 · Hausgeld first, then Tenants (as in Casa Castel) · the "x of y in" count is in the ring
   const money = '<div class="st-money">' +
-    stTile('Tenants', 'users', S.ten, S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') +
-    stTile('Hausgeld', 'receipt', S.hg, 'WEG · ' + hvIn + ' of ' + nLive + ' in', 'data-sr="sumHg"') + '</div>';
+    stTile('Hausgeld', 'receipt', S.hg, '', 'data-sr="sumHg"') +
+    stTile('Tenants', 'users', S.ten, S.ten === null ? 'waiting for the Jahresabrechnungen' : S.nIn + (S.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + S.nOut + (S.nOut === 1 ? ' gets back' : ' get back'), 'data-sr="sumTen"') + '</div>';
   const next = _srNextSteps(live);
   const wide = SR.modal && (SR.modal.view === 'hv' || SR.modal.view === 'nk' || !SR.modal.view);
   cxPaint(el, '<div class="st-page sc-page sr5-page">' + yearNav + sqlNote + prog + money + next +

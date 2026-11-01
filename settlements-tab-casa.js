@@ -370,10 +370,11 @@ function stRenderCasa() {
   const nOpenL = M.ten.filter(t => t.k === 'open').length, gapsT = M.locked || M.running ? 0 : (M.jaGaps || []).length, qT = M.quota || {};
   const hkStatus = M.locked ? 'locked' : !M.R.lines.length ? 'nothing booked yet' : M.running ? 'running · preview' : gapsT ? gapsT + (gapsT === 1 ? ' Jahresabrechnung missing' : ' Jahresabrechnungen missing') : M.sendable ? 'ready to lock' : 'not locked';
   const vNet = J.net === null || J.net === undefined ? '' : 'Versorger: ' + (J.net > 0.004 ? 'Guthaben ' : J.net < -0.004 ? 'Nachzahlung ' : 'balanced ') + (Math.abs(J.net) > 0.004 ? scE(Math.abs(J.net)) : '');
-  const tiles = '<div class="st-money">' + stTile('Tenants', 'users', mo.ten, tenSub + (M.locked && M.sendable && nOpenL ? ' · ' + nOpenL + ' to send' : ''), 'data-sc="sumTen"') +
-    // Nov 2026 · matched with Rentals: the right tile = money with the house side (Versorger), green/red · own small lines
-    stTile('Hausgeld', 'receipt', J.net, [J.n ? 'Versorger ' + J.nIn + ' of ' + J.n + ' in' + (gapsT ? ' · ' + gapsT + ' missing' : '') : '',
-      M.R.lines.length ? 'Hauskosten ' + scE(M.R.check.total) + (qT.rate ? ' · ' + scE(qT.rate) + '/month' : '') : 'no house costs yet'], 'data-sc="costs"') + '</div>';
+  // Nov 2026 · Hausgeld first (the bills come in first), then Tenants — the same order in both tabs and on the Dashboard
+  const tiles = '<div class="st-money">' +
+    stTile('Hausgeld', 'receipt', J.net, [gapsT ? gapsT + (gapsT === 1 ? ' Jahresabrechnung missing' : ' Jahresabrechnungen missing') : '',
+      M.R.lines.length ? 'Hauskosten ' + scE(M.R.check.total) + (qT.rate ? ' · ' + scE(qT.rate) + '/month' : '') : 'no house costs yet'], 'data-sc="costs"') +
+    stTile('Tenants', 'users', mo.ten, tenSub + (M.locked && M.sendable && nOpenL ? ' · ' + nOpenL + ' to send' : ''), 'data-sc="sumTen"') + '</div>';
   void hkStatus; void vNet;
 
   const L = M.R.check;

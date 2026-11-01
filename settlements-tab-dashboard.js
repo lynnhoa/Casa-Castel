@@ -196,8 +196,8 @@ function sdOverviewHTML(Y, O) {
   const total = '<div class="sdo-card">' +
     '<div class="sdo-hrow"><span class="sdo-lbl">NK ' + Y + ' \u00b7 all properties</span><span class="sdo-mut">result</span></div>' +
     '<div class="sdo-kpis">' +
-      '<div class="sdo-kpi"><div class="sdo-k">TENANTS</div><div class="sdo-v sdo-f ' + cls(O.ten) + '">' + W(O.ten) + '</div><div class="sdo-d">' + (O.ten === null ? 'not calculated yet' : 'Nachzahlungen \u2212 Guthaben') + '</div></div>' +
       '<div class="sdo-kpi"><div class="sdo-k">HV \u00b7 VERSORGER</div><div class="sdo-v sdo-f ' + cls(O.hg) + '">' + W(O.hg) + '</div><div class="sdo-d">' + (O.hg === null ? 'no results yet' : 'Hausgeld \u00b7 Strom \u00b7 Gas \u00b7 Wasser') + '</div></div>' +
+      '<div class="sdo-kpi"><div class="sdo-k">TENANTS</div><div class="sdo-v sdo-f ' + cls(O.ten) + '">' + W(O.ten) + '</div><div class="sdo-d">' + (O.ten === null ? 'not calculated yet' : 'Nachzahlungen \u2212 Guthaben') + '</div></div>' +
     '</div>' +
     '<div class="sdo-wf">' +
       '<div class="sdo-wr"><span class="sdo-wn">You get</span><span class="sdo-bar"><i style="width:' + (O.get / sc * 100).toFixed(1) + '%;background:#9DBF7A"></i></span><span class="sdo-wa pos">' + cxWS(O.get) + '</span></div>' +
