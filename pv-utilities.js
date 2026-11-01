@@ -71,6 +71,36 @@ const CTR = {
 
 /* ── small helpers ─────────────────────────────────────────── */
 const _pvuDb = () => (typeof _ctlSupa !== 'undefined' && _ctlSupa) || (typeof sbL !== 'undefined' && sbL) || null;
+/* ── Nov 2026 · four kinds of utilities: the kind decides the group in the list and which sections its pop-up shows ──
+   law       Grundsteuer · Wasser · Entsorgung · Schornsteinfeger — by Bescheid, nothing to register or cancel
+   contract  Strom · Gas · Internet · Wohngebäudeversicherung · Haftpflicht — you chose them, can cancel, bonuses
+   service   Wartung Heizung · Wartung Enthärtung · Regeneriersalz · Putzdienst · Gärtner — services and self-bought
+   ctrl_castel_categories.ut_kind (UTILITIES-ORDER.sql) wins; without it the kind follows the name. */
+const PVU_KIND_ORDER = ['law', 'contract', 'service'];
+const PVU_KIND_LBL = { law: ['By law', 'Bescheid · nothing to cancel'], contract: ['Contracts', 'you chose them · can cancel'], service: ['Services & self-bought', ''] };
+function _ctrKindOf(s) {
+  const raw = String((s && s.cat && s.cat.ut_kind) || '').toLowerCase();
+  if (PVU_KIND_ORDER.includes(raw)) return raw;
+  const t = (s && s.cat ? (s.cat.code || '') + ' ' + (s.cat.name || '') : (s && s.kind) || '').toUpperCase();
+  if (/GRUNDSTEUER|WASSER|ENTSORG|SCHORNSTEIN|MÜLL|MUELL|ABWASSER/.test(t)) return 'law';
+  if (/STROM|GAS|INTERNET|VERSICHER|HAFTPFLICHT|TELEFON|KABEL/.test(t)) return 'contract';
+  if (/WARTUNG|SALZ|PUTZ|GÄRTNER|GAERTNER|GARTEN|WINTER|HAUSMEISTER/.test(t)) return 'service';
+  return s && s.cat ? 'service' : 'contract';
+}
+const _ctrIsIns = s => /VERSICHER|HAFTPFLICHT/i.test(s && s.cat ? (s.cat.code || '') + ' ' + (s.cat.name || '') : (s && s.kind) || '');
+const _ctrHasMeter = s => /STROM|GAS|WASSER/i.test(s && s.cat ? (s.cat.code || '') + ' ' + (s.cat.name || '') : (s && s.kind) || '');
+const _ctrBescheid = s => _ctrKindOf(s) === 'law' && !/WASSER/i.test(s && s.cat ? (s.cat.code || '') + ' ' + (s.cat.name || '') : (s && s.kind) || '');
+function _ctrIco(name) {                                     // a colour tile per type
+  const n = String(name || '').toLowerCase();
+  const M = [[/strom/, 'bolt', '#FAF0DC', '#854F0B'], [/gas/, 'flame', '#FBE9E2', '#9A4A33'], [/wasser/, 'droplet', '#E6EEF6', '#2F5470'],
+    [/entsorg|müll|muell/, 'trash', '#EAF3E0', '#46682A'], [/grundsteuer/, 'building-community', '#EFEAF6', '#5B4A7A'], [/schornstein/, 'building-factory-2', '#F1ECE4', '#7A6F62'],
+    [/internet|telefon/, 'wifi', '#EAF0F6', '#2F5470'], [/haftpflicht/, 'shield', '#EAF3E0', '#3B6D11'], [/versicher/, 'shield-check', '#EAF3E0', '#3B6D11'],
+    [/heizung/, 'tool', '#FBE9E2', '#9A4A33'], [/enthärt|enthaert/, 'filter', '#E6EEF6', '#2F5470'], [/salz/, 'salt', '#F5F1EA', '#8A6535'],
+    [/putz/, 'sparkles', '#FAF0DC', '#854F0B'], [/gärtner|gaertner|garten/, 'plant-2', '#EAF3E0', '#3B6D11'], [/winter/, 'snowflake', '#E6EEF6', '#2F5470']];
+  const m = M.find(x => x[0].test(n)) || [null, 'receipt', '#F1ECE4', '#7A6F62'];
+  return `<span class="pvu-ic" style="background:${m[2]};color:${m[3]}"><i class="ti ti-${m[1]}" aria-hidden="true"></i></span>`;
+}
+
 const _ctrToast = m => { if (typeof pvaToast === 'function') pvaToast(m); else console.log('[utilities]', m); };
 function _ctrFail(e) { console.error('[utilities]', e); _ctrToast('Not saved – ' + String((e && (e.message || e.code)) || 'please try again').slice(0, 70)); }
 const _ctrE = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -464,6 +494,7 @@ async function pvuShow() {
     try { await _ctrFetch(); } catch (e) { console.error('[utilities] load', e); CTR.err = _ctrErrText(e); }
   }
   pvuRender();
+  _ctrJobsLoad().then(() => { if ((CTR.jobs || []).length) pvuRender(); });   // Nov 2026: the job summaries (their own calls, after the list shows)
   let want = null;                                           // Controlling › Setup › "Open in Utilities"
   try { want = sessionStorage.getItem('pvu_open'); if (want) sessionStorage.removeItem('pvu_open'); } catch (e) {}
   if (want && CTR.loaded && _ctrSlot(want) && (!want.startsWith('c:') || _ctrCat(want.slice(2)))) ctrOpen(want);
@@ -485,14 +516,16 @@ if (typeof document !== 'undefined') document.addEventListener('visibilitychange
   if (CTR.open !== null) _ctrPaint();
 });
 
-/* ── the Utilities page ────────────────────────────────────── */
+/* ── the Utilities page (Nov 2026) ── one card per property · rows grouped By law · Contracts · Services & self-bought ·
+   each row: colour tile · type · provider + at most one status pill · amount / rhythm */
 function _ctrRowHTML(s) {
-  const st = _ctrState(s), k = st.k, src = st.src, amt = st.now.amount;
-  const cost = amt > 0 ? `<b>${_ctrEur(amt)}</b><span>/ ${_ctrPer(src)}</span>` : '<b>—</b>';
-  const who = k ? (k.provider || 'provider missing') : 'no contract';
-  const next = st.pill ? _ctrPillHTML(st.pill) : st.next + (st.ahead ? '<br>' + _ctrAheadHTML(st.ahead) : '');
-  return { st, py: _ctrPerYear(src, amt), html: `<button type="button" class="ctr-tr" data-ctr="open" data-s="${_ctrE(s.key)}"><span class="ctr-c1"><b lang="de">${_ctrE(s.short)}</b><span>${_ctrE(who)}</span></span>` +
-    `<span class="ctr-c2">${cost}</span><span class="ctr-c3${st.pill || st.ahead || !st.mu ? '' : ' mu'}">${next}</span></button>` };
+  const st = _ctrState(s), k = st.k, src = st.src, amt = st.now.amount, kind = _ctrKindOf(s);
+  const cost = amt > 0 ? `<b>${_ctrEur(amt)}</b><span>/ ${_ctrPer(src)}</span>` : '<b class="mu">—</b>';
+  const who = k ? (k.provider || '') : (kind === 'contract' ? 'no contract yet' : '');
+  const pill = st.pill ? `<span class="pvu-p ${st.pill.lvl === 'red' ? 'red' : 'amb'}">${_ctrE(st.pill.text)}</span>`
+    : st.ahead ? `<span class="pvu-p gry">new price ${_ctrFS(_ctrD(st.ahead.valid_from))}</span>` : '';
+  return { st, kind, py: _ctrPerYear(src, amt), html: `<button type="button" class="pvu-r" data-ctr="open" data-s="${_ctrE(s.key)}">${_ctrIco(s.cat ? s.cat.name : s.kind)}` +
+    `<span class="pvu-r__m"><b lang="de">${_ctrE(s.short)}</b><small>${who ? _ctrE(who) : ''}${pill}</small></span><span class="pvu-r__a">${cost}</span></button>` };
 }
 function pvuRender() {
   const host = document.getElementById('pvaUtil'); if (!host) return;
@@ -503,20 +536,22 @@ function pvuRender() {
   const cards = props.map(p => {
     const pid = Number(p.id), casa = pid === PVU_CASA, slots = _ctrSlots(pid);
     let year = 0, todoP = 0;
-    const rows = slots.map(s => { const r = _ctrRowHTML(s); year += r.py; if (r.st.pill) todoP++; return r.html; }).join('');
+    const rows = slots.map(s => { const r = _ctrRowHTML(s); year += r.py; if (r.st.pill) todoP++; return r; });
+    if (casa) for (const jr of _ctrJobRows()) { rows.push(jr); todoP += jr.todo; year += jr.py; }   // Nov 2026: the jobs (Putzdienst …) in Services
     yearAll += year;
     const nCons = CTR.cons.filter(k => _ctrPid(k) === pid && !k.deleted_at).length; nK += nCons;
     const open = CTR.fold[pid] !== false;
-    const cnt = casa ? slots.length + ' cost types' : (slots.length ? slots.length + (slots.length === 1 ? ' contract' : ' contracts') : 'No contracts');
-    const body = !open ? '' : (slots.length
-      ? `<div class="ctr-th"><span>Contract</span><span>Cost</span><span>Next</span></div>${rows}` +
-        `<div class="ctr-tf"><b>Total</b><span class="ctr-c2"><b>${_ctrEur(year)}</b><span>/ year</span></span><span class="ctr-c3">Ø ${_ctrEur(year / 12)}<br>/ month</span></div>` +
+    const cnt = casa ? rows.length + ' utilities' : (slots.length ? slots.length + (slots.length === 1 ? ' contract' : ' contracts') : 'No contracts');
+    const groups = PVU_KIND_ORDER.map(kd => { const rs = rows.filter(r => r.kind === kd); if (!rs.length) return '';
+      const L = PVU_KIND_LBL[kd]; return `<p class="pvu-gl">${L[0]}${L[1] ? ` <small>· ${L[1]}</small>` : ''}</p>` + rs.map(r => r.html).join(''); }).join('');
+    const body = !open ? '' : (rows.length
+      ? groups + `<div class="pvu-tot"><span>Total</span><b>${_ctrEur(year)}<small> / year · Ø ${_ctrEur(year / 12)} / month</small></b></div>` +
         (casa ? '' : `<div class="pvu-acts"><button type="button" class="pvu-lk" data-ctr="newfor" data-p="${pid}"><i class="ti ti-plus" aria-hidden="true"></i>Add contract</button></div>`)
       : `<div class="pvu-empty">No utilities for ${_ctrE(p.name)} yet.</div><div class="pvu-acts"><button type="button" class="pvu-lk" data-ctr="newfor" data-p="${pid}"><i class="ti ti-plus" aria-hidden="true"></i>Add contract</button>` +
         `<button type="button" class="pvu-lk mu" data-ctr="rmprop" data-p="${pid}">Remove from Utilities</button></div>`);
-    return `<section class="pvu-card" aria-label="${_ctrE(p.name)}"><div class="pvu-card__hd"><h2 class="pvu-card__name">${_ctrE(p.name)}</h2>` +
-      `<span class="pvu-card__sum${year ? '' : ' mu'}">${year ? _ctrEur(year) + ' / year' : '—'}</span></div>` +
-      `<button type="button" class="pvu-band" data-ctr="fold" data-p="${pid}" aria-expanded="${open}"><b>${_ctrE(cnt)}</b>${todoP ? `<span>· ${todoP} to do</span>` : ''}<i class="ti ti-chevron-down" aria-hidden="true"></i></button>${body}</section>`;
+    return `<section class="pvu-card" aria-label="${_ctrE(p.name)}"><button type="button" class="pvu-ch" data-ctr="fold" data-p="${pid}" aria-expanded="${open}">` +
+      `<span class="pvu-ch__m"><b class="pvu-card__name">${_ctrE(p.name)}</b><small>${_ctrE(cnt)}${year ? ' · ' + _ctrEur(year) + ' / year' : ''}</small></span>` +
+      (todoP ? `<span class="pvu-need">${todoP} need${todoP === 1 ? 's' : ''} you</span>` : '') + `<i class="ti ti-chevron-down pvu-ch__c" aria-hidden="true"></i></button>${body}</section>`;
   }).join('');
   const shown = new Set(props.map(p => Number(p.id)));
   const free = CTR.props.filter(p => p.active !== false && !shown.has(Number(p.id)));
@@ -533,7 +568,69 @@ function pvuRender() {
     <div class="pvu-sum"><div class="pvu-sum1"><b>Running costs</b><span>${props.length} ${props.length === 1 ? 'property' : 'properties'} · ${nK} ${nK === 1 ? 'contract' : 'contracts'}</span></div>
       <div class="pvu-sum2"><span><i>Per year</i>${_ctrEur(yearAll)}</span><span><i>Ø month</i>${_ctrEur(yearAll / 12)}</span></div></div>
     ${cards}${addProp}
-    <p class="ctr-foot">Rate comes from Properties. Putzdienst, Gärtner and Winterdienst are the job tabs here.</p></div>`;
+    <p class="ctr-foot">The Rate comes from Properties. Jobs (Putzdienst …) show their visits and invoices here; you check and close months in their tab.</p></div>`;
+}
+
+/* ── Nov 2026 · jobs of this app (Putzdienst, Winterdienst, Gärtner …) in Utilities: a read-only summary of the year —
+   visits (Agenda), the invoices the provider uploads and you check (Money) and Controlling (paid ✓, months before the job).
+   Only for jobs whose cost type is not a Utilities row already (no doubles). You check invoices and close months
+   in the job's tab, as before — nothing is confirmed in two places. */
+async function _ctrJobsLoad() {
+  try {
+    const jobs = (typeof _pvaData !== 'undefined' && _pvaData && _pvaData.jobs) || [];
+    if (!jobs.length || typeof pvaRpc !== 'function') { CTR.jobs = []; return; }
+    const t = _ctrT(), y = Number(t.slice(0, 4)), mNow = Number(t.slice(5, 7)), shown = new Set(_ctrRows().map(c => _ctrId(c.id)));
+    const out = [];
+    for (const j of jobs) {
+      const { data, error } = await pvaRpc('pv_admin_history', { p_job: j.id, p_before: null, p_months: mNow });
+      if (error || !data) continue;
+      const cat = data.ctrl_category_id ? _ctrCat(data.ctrl_category_id) : (CTR.cats || []).find(c => /putz/i.test(c.name) && /putz|reinig|clean/i.test(String(j.name || '')));
+      if (cat && shown.has(_ctrId(cat.id))) continue;                       // already a Utilities row
+      let ctl = [];
+      if (cat) { try { const r = await _pvuDb().from('ctrl_expense_castel').select('month,amount').eq('category_id', cat.id).eq('year', y); ctl = r.error ? [] : (r.data || []); } catch (e) {} }
+      const months = [];
+      for (let m = 1; m <= mNow; m++) {
+        const key = y + '-' + String(m).padStart(2, '0');
+        const vis = (data.visits || []).filter(v => String(v.month || v.date || '').slice(0, 7) === key && ['done', 'sent', 'redo'].includes(v.status)).length;
+        const inv = (data.invoices || []).filter(i => String(i.month || '').slice(0, 7) === key && i.status !== 'replaced');
+        const invSum = inv.reduce((a, i) => a + (Number(i.amount) || 0), 0), toCheck = inv.filter(i => i.status === 'to_check' || i.status === 'returned').length;
+        const mo = (data.months || []).find(x => String(x.month || '').slice(0, 7) === key) || {};
+        const c = ctl.filter(x => Number(x.month) === m).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+        const amount = mo.closed_sum !== null && mo.closed_sum !== undefined ? Number(mo.closed_sum) : (invSum || c);
+        months.push({ m, vis, invSum, toCheck, status: mo.status || (c ? 'booked' : 'open'), paid: !!mo.paid_at || (!mo.status && c > 0), amount });
+      }
+      const year = months.reduce((a, x) => a + (x.amount || 0), 0), used = months.filter(x => x.amount > 0).length;
+      const toCheck = months.reduce((a, x) => a + x.toCheck, 0), last = months[months.length - 2];
+      const pill = toCheck ? ['amb', toCheck + (toCheck === 1 ? ' invoice to check' : ' invoices to check')]
+        : last && last.vis && !last.invSum && last.status === 'open' ? ['red', 'Invoice missing · ' + CTR_MON_L[last.m - 1]]
+        : last && last.vis && last.status === 'open' ? ['amb', 'Close ' + CTR_MON_L[last.m - 1]] : null;
+      out.push({ jobId: j.id, name: j.name, label: cat ? cat.name : j.name, ord: cat ? _ctrN(cat.sort_order) || 900 : 900, months, year,
+                 avg: used ? year / used : 0, visits: months.reduce((a, x) => a + x.vis, 0), pill });
+    }
+    CTR.jobs = out.sort((a, b) => a.ord - b.ord || String(a.label).localeCompare(String(b.label)));
+  } catch (e) { console.warn('[utilities] jobs', e); CTR.jobs = []; }
+}
+const _ctrJob = id => (CTR.jobs || []).find(x => String(x.jobId) === String(id));
+function _ctrJobRows() {
+  return (CTR.jobs || []).map(P => ({ kind: 'service', py: P.year || 0, todo: P.pill && P.pill[0] !== 'gry' ? 1 : 0,
+    html: `<button type="button" class="pvu-r" data-ctr="open" data-s="job:${_ctrE(P.jobId)}">${_ctrIco(P.label)}<span class="pvu-r__m"><b>${_ctrE(P.label)}</b>` +
+      `<small>${P.label !== P.name ? _ctrE(P.name || '') : 'a job of this app'}${P.pill ? `<span class="pvu-p ${P.pill[0]}">${_ctrE(P.pill[1])}</span>` : ''}</small></span>` +
+      `<span class="pvu-r__a">${P.avg ? `<b>≈ ${_ctrEur(P.avg)}</b><span>/ month</span>` : '<b class="mu">—</b>'}</span></button>` }));
+}
+function _ctrJobHTML(id) {
+  const P = _ctrJob(id); if (!P) return '';
+  const head = `<div class="ctr-hd"><div class="ctr-hd-t"><div class="ctr-kk">${_ctrE(P.label)}</div><div class="ctr-st">${_ctrE(P.name || P.label)}</div>` +
+    `<div class="pvu-hinf">a job · visits and invoices come from its tab</div></div><div class="ctr-hb"><button type="button" class="ctr-x" data-ctr="close" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div></div>`;
+  const rows = P.months.slice().reverse().filter(x => x.vis || x.amount).map(x => {
+    const st = x.toCheck ? ['amb', 'to check'] : x.paid ? ['ok', 'paid ✓'] : x.status === 'closed' ? ['gry', 'closed'] : x.status === 'booked' ? ['ok', 'booked'] : x.vis ? ['amb', 'open'] : null;
+    return `<div class="pvu-li"><span>${CTR_MON_L[x.m - 1]} <small>· ${x.vis} ${x.vis === 1 ? 'visit' : 'visits'}</small></span><b>${x.amount ? _ctrEur(x.amount) : '—'}</b>${st ? `<span class="pvu-p ${st[0]}">${st[1]}</span>` : ''}</div>`;
+  }).join('');
+  const go = `data-j="${_ctrE(P.jobId)}"`;
+  return head + `<div class="ctr-body">` +
+    (P.pill ? `<div class="ctr-rem${P.pill[0] === 'red' ? ' red' : ''}"><p><b>${_ctrE(P.pill[1])}</b> · you do this in the ${_ctrE(P.name || P.label)} tab.</p><div class="ctr-ra">${_ctrBtn('Open ' + _ctrE(P.name || P.label), 'jobtab', ' ' + go, true)}</div></div>` : '') +
+    _ctrSec(_ctrT().slice(0, 4) + ' so far', '', `<div class="pvu-big"><b>${_ctrEur(P.year)}</b><span>${P.visits} ${P.visits === 1 ? 'visit' : 'visits'}</span></div>${P.avg ? `<p class="pvu-sm">≈ ${_ctrEur(P.avg)} per month</p>` : ''}`) +
+    _ctrSec('Per month', '', `<div class="pvu-list">${rows || '<div class="ctr-sm">No visits yet this year.</div>'}</div>`) +
+    `<div class="pvu-acts"><button type="button" class="pvu-lk" data-ctr="jobtab" ${go}><i class="ti ti-arrow-right" aria-hidden="true"></i>Open the ${_ctrE(P.name || P.label)} tab</button></div></div>`;
 }
 
 /* ── the provider pop-up (Providers modal: bottom sheet on the phone, window on iPad / laptop) ── */
@@ -606,21 +703,31 @@ function _ctrReminderHTML(s, st) {
 }
 
 function _ctrSheetHTML() {
+  if (String(CTR.open || '').startsWith('job:')) return _ctrJobHTML(String(CTR.open).slice(4));   // Nov 2026: a job's summary
   const s = _ctrSlot(CTR.open); if (!s) return '';
   const st = _ctrState(s), k = st.k, f = CTR.form;
   if (f === 'edit') return _ctrHeadHTML(s, st, true) + `<div class="ctr-body ctr-full">${_ctrEditHTML(s, k)}</div>`;
   const portal = k && _ctrUrl(k.portal);
   const ed = !f ? (portal ? `<a class="ctr-b gold" href="${_ctrE(portal)}" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>Portal</a>` : '') + _ctrBtn('Edit', 'form', ' data-f="edit"') : '';
-  return _ctrHeadHTML(s, st, false, ed) + `<div class="ctr-body">${f ? '' : _ctrReminderHTML(s, st)}${_ctrPriceSec(s, st)}${_ctrDatesSec(s, st)}${_ctrAbrSec(s)}${k ? _ctrBonusSec(k) + _ctrDetailsSec(s, k) + _ctrDocsSec(k) : _ctrNoContractSec(s)}</div>`;
+  // Nov 2026 · by kind: law = price · Abrechnung (Wasser, ELW) · details · documents — contract = everything — service = price · dates if any · details · documents
+  const kind = _ctrKindOf(s), dates = kind === 'contract' || (kind === 'service' && k && (k.starts_on || k.runs_until || k.cancelled_on));
+  return _ctrHeadHTML(s, st, false, ed) + `<div class="ctr-body">${f ? '' : _ctrReminderHTML(s, st)}${_ctrPriceSec(s, st)}${dates ? _ctrDatesSec(s, st) : ''}${_ctrAbrSec(s)}` +
+    `${k ? (kind === 'contract' ? _ctrBonusSec(k) : '') + _ctrDetailsSec(s, k) + _ctrDocsSec(k) : _ctrNoContractSec(s)}</div>`;
 }
 function _ctrHeadHTML(s, st, edit, ed = '') {
   const k = st.k, kick = s.cat ? s.name : _ctrPropName(s.pid) + ' · ' + s.kind;
   return `<div class="ctr-hd"><div class="ctr-hd-t"><div class="ctr-kk">${_ctrE(kick)}${edit ? ' · edit' : ''}</div>` +
-    `<div class="ctr-st${k && k.provider ? '' : ' mu'}">${_ctrE(k ? (k.provider || 'Provider not set') : 'No contract yet')}</div>` +
-    (k && k.tariff ? `<div class="ctr-sub">${_ctrE(k.tariff)}</div>` : '') + (!edit && st.pill ? _ctrPillHTML(st.pill) : '') +
+    `<div class="ctr-st${k && k.provider ? '' : ' mu'}${!k && _ctrKindOf(s) !== 'contract' ? ' pvu-st0' : ''}">${_ctrE(k ? (k.provider || 'Provider not set') : _ctrKindOf(s) !== 'contract' ? s.name : 'No contract yet')}</div>` +   // Nov 2026: by-law / service costs need no contract
+    (k && k.tariff ? `<div class="ctr-sub">${_ctrE(k.tariff)}</div>` : '') + (!edit ? _ctrHeadInfo(s) : '') +
     `</div><div class="ctr-hb">${ed}<button type="button" class="ctr-x" data-ctr="${edit ? 'fcancel' : 'close'}" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div></div>`;
 }
 
+/* Nov 2026 · one plain line under the name: when the yearly bill usually comes · or that it comes by Bescheid */
+function _ctrHeadInfo(s) {
+  const H = _ctrAbrOk(s) ? _ctrAbrHist(s) : [], td = _ctrT(), cur = H.filter(h => h.from <= td).pop() || H[0];
+  const t = cur && cur.bill ? 'Bill usually in ' + _CTR_MON_F[cur.bill - 1] : _ctrBescheid(s) ? 'by Bescheid · nothing to cancel' : _ctrKindOf(s) === 'law' ? 'comes with the house' : '';
+  return t ? `<div class="pvu-hinf">${cur && cur.bill ? '<i class="ti ti-mail" aria-hidden="true"></i> ' : ''}${_ctrE(t)}</div>` : '';
+}
 /* Price — raw data and the cost changes; no calculations */
 const _ctrCt = v => _ctrNum2(v) + ' ct/kWh';
 const _ctrGp = v => _ctrNum2(v) + ' € / month';
@@ -649,23 +756,20 @@ function _ctrPriceSec(s, st) {
           `<p class="ctr-hint">Gilt ab is the month the new amount is for${s.cat ? ', the way you book it in Controlling' : ''}. Earlier months keep their price.</p>`) +
       _ctrFoot('saveprice'), true);
   }
-  const since = now.row && _ctrD(now.row.valid_from) > '2000-01-01' ? _ctrMY(_ctrD(now.row.valid_from)) : 'start';
-  const py = _ctrPerYear(src, now.amount), nx = _ctrNextPrice(s);
-  const hist = list.filter(h => _ctrD(h.valid_from) > '2000-01-01').slice(0, 5).map(h => {
-    const j = list.indexOf(h), prev = list[j + 1], raw = energy ? _ctrRawLine(h, prev) : '';
-    return `<div><div class="r"><span>${_ctrMY(_ctrD(h.valid_from))}${h.reason ? ' · ' + _ctrE(h.reason) : ''}</span><span>${prev ? _ctrEur(prev.amount) + ' → ' : ''}${_ctrEur(h.amount)}</span></div>` +
-      (raw ? `<div class="raw">${_ctrE(raw)}</div>` : '') + `</div>`;
-  }).join('');
-  const r = now.row || {};
-  return _ctrSec('Price', _ctrBtn('New price', 'form', ' data-f="price"'),
-    _ctrKV('Now', now.amount ? _ctrEur(now.amount) + ' / ' + _ctrPer(src) + (f === 'need' ? ' · selected months' : '') : '') +
-    _ctrKV('Since', since) +
-    (energy ? _ctrKV('Arbeitspreis', r.work_price !== null && r.work_price !== undefined ? _ctrE(_ctrCt(r.work_price)) : '') +
-              _ctrKV('Grundpreis', r.base_price !== null && r.base_price !== undefined ? _ctrE(_ctrGp(r.base_price)) : '') : '') +
-    (nx ? _ctrKV('Next', _ctrEur(nx.amount) + ' from ' + _ctrMY(_ctrD(nx.valid_from)) + ` <small>· ${_ctrE(_ctrIn(_ctrD(nx.valid_from)))}</small>`) : '') +
-    (f !== 'month' && dm.length ? _ctrKV('Due in', dm.map(m => CTR_MON_L[m - 1]).join(' · ')) : '') +
-    (py ? _ctrKV('Per year', _ctrEur(py)) : '') +
-    (hist ? `<div class="ctr-hist">${hist}</div>` : ''));
+  // Nov 2026 · lean read view: one line · since · per year (· AP/GP) · due months as a strip · earlier prices folded
+  const sinceD = now.row && _ctrD(now.row.valid_from) > '2000-01-01' ? _ctrD(now.row.valid_from) : '';
+  const py = _ctrPerYear(src, now.amount), nx = _ctrNextPrice(s), r = now.row || {};
+  const raw = energy ? [r.work_price !== null && r.work_price !== undefined ? _ctrCt(r.work_price) : '', r.base_price !== null && r.base_price !== undefined ? 'Grundpreis ' + _ctrGp(r.base_price) : ''].filter(Boolean).join(' · ') : '';
+  const sub = [sinceD ? 'since ' + _ctrF(sinceD) : '', py ? _ctrEur(py) + ' a year' : '', raw].filter(Boolean).join(' · ');
+  const earlier = list.filter(h => _ctrD(h.valid_from) > '2000-01-01' && _ctrR(h.amount) > 0 && (!now.row || h.id !== now.row.id) && _ctrD(h.valid_from) <= _ctrT());
+  const strip = f !== 'month' && dm.length ? `<div class="pvu-strip">${CTR_MON.map((m, i) => `<i${dm.includes(i + 1) ? ' class="on"' : ''}>${m}</i>`).join('')}</div>` : '';
+  const btn = _ctrBescheid(s) ? 'New Bescheid' : 'New price';
+  return _ctrSec('Price', _ctrBtn(btn, 'form', ' data-f="price"'),
+    `<div class="pvu-big"><b>${now.amount ? _ctrEur(now.amount) : '—'}</b><span>per ${_ctrE(_ctrPer(src))}${f === 'need' ? ' · selected months' : ''}</span></div>` +
+    (sub ? `<p class="pvu-sm">${_ctrE(sub)}</p>` : '') + strip +
+    (nx ? `<p class="pvu-sm pvu-next">from ${_ctrF(_ctrD(nx.valid_from))}: ${_ctrEur(nx.amount)} <small>· ${_ctrE(_ctrIn(_ctrD(nx.valid_from)))}</small></p>` : '') +
+    (earlier.length ? `<details class="pvu-fold"><summary><i class="ti ti-chevron-down" aria-hidden="true"></i> Earlier prices (${earlier.length})</summary><div class="pvu-list">` +
+      earlier.map(h => `<div class="pvu-li"><span>from ${_ctrF(_ctrD(h.valid_from))}</span><b>${_ctrEur(h.amount)}</b></div>`).join('') + `</div></details>` : ''));
 }
 
 /* Dates — with the time left */
@@ -733,9 +837,17 @@ function _ctrAbrSec(s) {
           (prev ? ' The one before (' + _ctrE(_ctrAbrYear(prev.from)) + ') ends the day before – its last bill is shorter.' : '') + ' Bills already in Settlements keep their Zeitraum.'}</p>` +
       _ctrFoot('saveabr', korr ? `<button type="button" class="pvu-bg" data-ctr="delabr">Remove</button>` : ''), true);
   }
-  const hist = H.length > 1 ? `<div class="ctr-hist">${H.slice(0, -1).map((h, i) => `<div><div class="r"><span>${_ctrF(h.from)} – ${_ctrF(_ctrAddD(H[i + 1].from, -1))}</span>` +
-    `<span>${_ctrE(_ctrAbrYear(h.from))}${h.bill ? ' · bill ' + _CTR_MON_F[h.bill - 1] : ''}</span></div></div>`).reverse().join('')}</div>` : '';
-  const body = cur ? _ctrKV('Abrechnungsjahr', _ctrE(_ctrAbrYear(cur.from))) + _ctrKV('Since', _ctrF(cur.from)) + _ctrKV('Bill usually arrives', cur.bill ? _CTR_MON_F[cur.bill - 1] : '') + hist
+  // Nov 2026 · one line: the Abrechnungsjahr running now · a change still ahead · earlier ones folded (periods only — when a bill really came is in Settlements)
+  const t = _ctrT(), ix = Math.max(0, H.map(h => h.from <= t).lastIndexOf(true)), on = H[ix] || null, nxt = H[ix + 1] || null;
+  let nowFrom = on ? on.from : null;
+  while (nowFrom && _ctrAddM(nowFrom, 12) <= t && (!nxt || _ctrAddM(nowFrom, 12) < nxt.from)) nowFrom = _ctrAddM(nowFrom, 12);
+  let nowTo = nowFrom ? _ctrAddD(_ctrAddM(nowFrom, 12), -1) : null;
+  if (nxt && nowTo && nowTo >= nxt.from) nowTo = _ctrAddD(nxt.from, -1);
+  const past = H.slice(0, ix).map((h, i) => [h.from, _ctrAddD(H[i + 1].from, -1)]).reverse();
+  const hist = past.length ? `<details class="pvu-fold"><summary><i class="ti ti-chevron-down" aria-hidden="true"></i> Earlier (${past.length})</summary><div class="pvu-list">` +
+    past.map(([a, b]) => `<div class="pvu-li"><span>${_ctrF(a)}–${_ctrF(b)}</span></div>`).join('') + `</div></details>` : '';
+  const ahead = nxt && nxt.from > t ? `<p class="pvu-sm pvu-next">from ${_ctrF(nxt.from)}: ${_ctrE(_ctrAbrYear(nxt.from))}${nxt.bill ? ' · bill usually in ' + _CTR_MON_F[nxt.bill - 1] : ''}</p>` : '';
+  const body = cur ? `<div class="pvu-big"><b class="pvu-per">${_ctrF(nowFrom)}–${_ctrF(nowTo)}</b></div><p class="pvu-sm">Abrechnungsjahr now</p>` + ahead + hist
     : _ctrKV('Abrechnungsjahr', '') + `<p class="ctr-hint">When does its Abrechnungsjahr start, and when does the bill usually come? Settlements splits each bill by it and says when one is missing.</p>`;
   return _ctrSec('Abrechnung', _ctrBtn(cur ? 'Change' : 'Add', 'form', ' data-f="abr"'), body);
 }
@@ -791,10 +903,13 @@ function _ctrDetailsSec(s, k) {
   const phone = !k.phone ? '' : tel ? `<a class="ctr-a" href="tel:${_ctrE(tel)}"><i class="ti ti-phone" aria-hidden="true"></i>${_ctrE(k.phone)}</a>` : _ctrE(k.phone);
   const email = !mail ? '' : /@/.test(mail) ? `<a class="ctr-a" href="mailto:${_ctrE(mail)}"><i class="ti ti-mail" aria-hidden="true"></i>${_ctrE(mail)}</a>` : _ctrE(mail);
   const nk = s.cat ? _ctrKV('NK-Abrechnung', s.cat.nk_key === 'none' ? 'not in NK' : 'by person · ' + (s.cat.nk_spread === 'year' ? 'over the year' : 'in its month')) : '';
-  return _ctrSec('Details', '', _ctrKV('Holder', _ctrE(k.holder)) + _ctrKV('Customer no.', _ctrE(k.customer_no)) + _ctrKV('Contract no.', _ctrE(k.contract_no)) +
-    _ctrKV('Meter no.', _ctrE(k.meter_no)) + (k.malo_id || _ctrIsEnergy(s) ? _ctrKV('MaLo-ID', _ctrE(k.malo_id)) : '') +
-    _ctrKV('Booked via', _ctrE(bv)) + _ctrKV('Phone', phone) + _ctrKV('Email', email) + _ctrKV('Portal', portal) + nk +
-    (k.note ? `<div class="ctr-sm">${_ctrE(k.note)}</div>` : ''));
+  // Nov 2026 · only filled fields, in the words of the kind
+  const kind = _ctrKindOf(s), KV = (l, v) => (v === '' || v === null || v === undefined ? '' : _ctrKV(l, v));
+  const rows = KV('Holder', _ctrE(k.holder)) + KV(kind === 'law' ? 'Kassenzeichen / customer no.' : 'Customer no.', _ctrE(k.customer_no)) +
+    KV(_ctrIsIns(s) ? 'Policy no.' : 'Contract no.', _ctrE(k.contract_no)) + KV('Meter no.', _ctrE(k.meter_no)) + KV('MaLo-ID', _ctrE(k.malo_id)) +
+    KV('Booked via', _ctrE(bv)) + KV('Phone', phone) + KV('Email', email) + KV('Portal', portal) + nk +
+    (k.note ? `<div class="ctr-sm">${_ctrE(k.note)}</div>` : '');
+  return _ctrSec('Details', '', rows || '<div class="ctr-sm">Nothing noted yet — Edit adds the numbers.</div>');
 }
 
 /* Documents */
@@ -808,6 +923,10 @@ function _ctrDocsSec(k) {
   return _ctrSec('Documents', _ctrBtn('+ PDF', 'form', ' data-f="doc"'), rows || '<div class="ctr-sm">No documents yet.</div>');
 }
 function _ctrNoContractSec(s) {
+  if (_ctrKindOf(s) !== 'contract') {                         // Nov 2026: nothing to sign — just who it is and the numbers
+    const nk = s.cat ? _ctrKV('NK-Abrechnung', s.cat.nk_key === 'none' ? 'not in NK' : 'by person · ' + (s.cat.nk_spread === 'year' ? 'over the year' : 'in its month')) : '';
+    return _ctrSec('Details', _ctrBtn('+ Add', 'act', ' data-a="addnext"'), nk + `<div class="ctr-sm">Add who it is${_ctrKindOf(s) === 'law' ? ' and the Kassenzeichen' : ''} when you need it.</div>`);
+  }
   return _ctrSec('Contract', _ctrBtn('+ Add contract', 'act', ' data-a="addnext"'),
     `<div class="ctr-sm">No contract for ${_ctrE(s.short)} yet. Add one when you have it, then its dates and reminders show up here.</div>`);
 }
@@ -816,21 +935,24 @@ function _ctrNoContractSec(s) {
 function _ctrEditHTML(s, k) {
   const src = s.cat || (k ? { frequency: k.rhythm || 'monatlich', due_months: k.due_months } : { frequency: 'monatlich' });
   const f = src.frequency || 'monatlich', dm = _ctrDue(src);
+  // Nov 2026 · only the fields its kind uses — the others stay in the form (hidden), so nothing already saved is lost
+  const kind = _ctrKindOf(s), con = kind === 'contract', law = kind === 'law', meter = _ctrHasMeter(s), ins = _ctrIsIns(s);
+  const H = (show, html) => (show ? html : `<div hidden>${html}</div>`);
   const kHTML = !k ? '' :
     `<div class="ctr-fs">Provider</div>` +
     (s.cat ? '' : `<div class="ctr-2">${_ctrSel('eKind', 'Type', PVU_KINDS.map(x => [x, x]).concat(PVU_KINDS.includes(k.kind) ? [] : [[k.kind, k.kind]]), k.kind || 'Other')}<div></div></div>`) +
-    `<div class="ctr-2">${_ctrInp('eProv', 'Name', k.provider)}${_ctrInp('eTariff', 'Tariff', k.tariff, 'optional')}</div>` +
-    `<div class="ctr-2">${_ctrInp('eHolder', 'Holder', k.holder, 'optional')}${_ctrInp('eVia', 'Booked via', k.booked_via, 'e.g. CHECK24')}</div>` +
-    `<div class="ctr-2">${_ctrInp('eViaNo', 'Its number', k.booking_no, 'optional')}<div></div></div>` +
-    `<div class="ctr-fs">Numbers</div><div class="ctr-2">${_ctrInp('eCust', 'Customer no.', k.customer_no, 'optional')}${_ctrInp('eNo', 'Contract / policy no.', k.contract_no, 'optional')}</div>` +
-    `<div class="ctr-2">${_ctrInp('eMeter', 'Meter no.', k.meter_no, 'optional')}${_ctrInp('eMalo', 'MaLo-ID', k.malo_id, 'optional')}</div>` +
+    `<div class="ctr-2">${_ctrInp('eProv', 'Name', k.provider)}${H(con, _ctrInp('eTariff', 'Tariff', k.tariff, 'optional'))}</div>` +
+    H(con, `<div class="ctr-2">${_ctrInp('eHolder', 'Holder', k.holder, 'optional')}${_ctrInp('eVia', 'Booked via', k.booked_via, 'e.g. CHECK24')}</div>` +
+      `<div class="ctr-2">${_ctrInp('eViaNo', 'Its number', k.booking_no, 'optional')}<div></div></div>`) +
+    `<div class="ctr-fs">Numbers</div><div class="ctr-2">${_ctrInp('eCust', law ? 'Kassenzeichen / customer no.' : 'Customer no.', k.customer_no, 'optional')}${H(con || kind === 'service', _ctrInp('eNo', ins ? 'Policy no.' : 'Contract no.', k.contract_no, 'optional'))}</div>` +
+    H(meter, `<div class="ctr-2">${_ctrInp('eMeter', 'Meter no.', k.meter_no, 'optional')}${H(con, _ctrInp('eMalo', 'MaLo-ID', k.malo_id, 'optional'))}</div>`) +
     `<div class="ctr-fs">Contact</div><div class="ctr-2">${_ctrInp('ePhone', 'Phone', k.phone, 'optional', '', ' inputmode="tel"')}${_ctrInp('eMail', 'Email', k.email, 'optional', '', ' inputmode="email"')}</div>` +
     _ctrInp('ePortal', 'Portal (web address)', k.portal, 'e.g. eprimo.de or the login link', '', ' inputmode="url" autocapitalize="off"') +
-    `<div class="ctr-fs">Dates</div><div class="ctr-2">${_ctrDateInp('eStart', 'Start', _ctrD(k.starts_on))}${_ctrInp('eMin', 'Minimum (months)', k.min_months, 'optional', 'r', ' inputmode="numeric"')}</div>` +
-    `<div class="ctr-2">${_ctrDateInp('eUntil', 'Runs until', _ctrD(k.runs_until))}${_ctrSel('eNotice', 'Notice', CTR_NOTICE, k.notice || 'unknown')}</div>` +
+    H(!law, `<div class="ctr-fs">Dates</div><div class="ctr-2">${_ctrDateInp('eStart', 'Start', _ctrD(k.starts_on))}${_ctrInp('eMin', 'Minimum (months)', k.min_months, 'optional', 'r', ' inputmode="numeric"')}</div>` +
+    `<div class="ctr-2">${_ctrDateInp('eUntil', 'Runs until', _ctrD(k.runs_until))}${_ctrSel('eNotice', 'Notice', CTR_NOTICE, k.notice || (law ? 'none' : 'unknown'))}</div>` +
     `<label class="ctr-fl">Then</label>${_ctrSegH('then', [['renew', 'Renews'], ['monthly', 'Monthly'], ['ends', 'Ends'], ['unknown', 'Not sure']], k.then_rule || 'unknown')}` +
-    `<div class="ctr-2">${_ctrInp('eRenew', 'Renews by (months)', k.renew_months || (k.then_rule === 'renew' ? 12 : ''), '12', 'r', ' inputmode="numeric"')}${_ctrDateInp('eFixed', 'Price fixed until', _ctrD(k.price_fixed_until))}</div>` +
-    `<div class="ctr-2">${_ctrDateInp('eRead', 'Next meter reading', _ctrD(k.next_reading))}<div></div></div>`;
+    `<div class="ctr-2">${_ctrInp('eRenew', 'Renews by (months)', k.renew_months || (k.then_rule === 'renew' ? 12 : ''), '12', 'r', ' inputmode="numeric"')}${H(con && !ins, _ctrDateInp('eFixed', 'Price fixed until', _ctrD(k.price_fixed_until)))}</div>`) +
+    H(meter && !law, `<div class="ctr-2">${_ctrDateInp('eRead', 'Next meter reading', _ctrD(k.next_reading))}<div></div></div>`);
   const cost = `<div class="ctr-fs">Cost · ${_ctrE(s.cat ? s.name : s.kind)}</div>` +
     `<div class="ctr-2">${_ctrSel('eFreq', 'Rhythm', s.cat ? CTR_FREQ : CTR_FREQ_K, (s.cat ? CTR_FREQ : CTR_FREQ_K).some(x => x[0] === f) ? f : 'monatlich', ' data-rhythm')}<div></div></div>` +
     _ctrMonsH(dm, f === 'monatlich') +
@@ -856,7 +978,8 @@ function _ctrNewHTML() {
     `<div class="ctr-2">${_ctrSel('nProp', 'Property', props.map(p => [p.id, p.name]), pid, ' data-keep')}` +
     (casa ? _ctrSel('nCat', 'Cost type', [['', 'choose']].concat(_ctrRows().map(c => [c.id, c.name])).concat([['__new', '+ New cost type']]), a.catId || '', ' data-keep')
           : _ctrSel('nKind', 'Type', PVU_KINDS.map(x => [x, x]), a.kind || 'Strom')) + `</div>` +
-    (isNew ? _ctrInp('nName', 'New cost type', '', 'e.g. Haftpflicht') : '') +
+    (isNew ? _ctrInp('nName', 'New cost type', '', 'e.g. Haftpflicht') +
+      `<label class="ctr-fl">Kind</label>${_ctrSegH('ukind', [['law', 'By law'], ['contract', 'Contract'], ['service', 'Service / self-bought']], 'contract')}` : '') +
     (isNew || !casa ? `<div class="ctr-2">${_ctrSel('nFreq', 'Rhythm', isNew ? CTR_FREQ : CTR_FREQ_K, rhythm, ' data-rhythm')}<div></div></div>` + _ctrMonsH(a.due || [], rhythm === 'monatlich') : '') +
     `<div class="ctr-2">${_ctrInp('nProv', 'Provider', a.provider || '', 'name')}${_ctrInp('nTariff', 'Tariff', '', 'optional')}</div>` +
     `<div class="ctr-fs">Price</div><div class="ctr-2">${_ctrAmtInp('nAmt', 'Price €', isNew || !casa ? '' : (now.amount || ''))}${_ctrMonInp('nFrom', 'From', a.start || '')}</div>` +
@@ -877,6 +1000,7 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('#pvaUtil [data-ctr]'); if (!t || CTR.busy) return;
   const a = t.dataset.ctr, pid = Number(t.dataset.p);
   if (a === 'open') return ctrOpen(t.dataset.s);
+  if (a === 'jobtab') { const id = t.dataset.j; ctrClose(); if (id && typeof pvaLoad === 'function') pvaLoad(id); return; }   // Nov 2026: the job's tab
   if (a === 'new') { CTR.add = { pid: PVU_CASA }; return ctrOpen('new'); }
   if (a === 'newfor') { CTR.add = { pid }; return ctrOpen('new'); }
   if (a === 'fold') { CTR.fold[pid] = CTR.fold[pid] === false; try { localStorage.setItem('pvu_fold', JSON.stringify(CTR.fold)); } catch (er) {} return pvuRender(); }
@@ -1247,8 +1371,11 @@ async function _ctrSaveNew() {
     if (!name) { _ctrToast('Name the new cost type'); return; }
     const code = name.toUpperCase().replace(/[ÄÖÜ]/g, x => ({ 'Ä': 'AE', 'Ö': 'OE', 'Ü': 'UE' }[x])).replace(/ß/g, 'SS').replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) || 'COST';
     const maxSort = Math.max(0, ...CTR.cats.map(x => _ctrN(x.sort_order)));
-    const ins = _ctrQ(await db.from('ctrl_castel_categories').insert({ name, code, frequency: freq, due_months: due, default_amount: amt !== null ? _ctrR(amt) : 0,
-      active: true, sort_order: maxSort + 1, nk_key: 'personen', nk_spread: 'month' }).select().single());
+    const row = { name, code, frequency: freq, due_months: due, default_amount: amt !== null ? _ctrR(amt) : 0,
+      active: true, sort_order: maxSort + 1, nk_key: 'personen', nk_spread: 'month', ut_kind: _ctrSegVal('ukind') || 'contract' };   // Nov 2026: its kind
+    let r1 = await db.from('ctrl_castel_categories').insert(row).select().single();
+    if (r1.error && /ut_kind/i.test(String(r1.error.message || ''))) { delete row.ut_kind; r1 = await db.from('ctrl_castel_categories').insert(row).select().single(); }   // before UTILITIES-ORDER.sql
+    const ins = _ctrQ(r1);
     catId = ins ? ins.id : null;
     if (!catId) throw new Error('cost type not saved');
   } else if (casa && amt !== null) {
@@ -1281,3 +1408,48 @@ async function _ctrSaveNew() {
   CTR.open = casa ? 'c:' + catId : 'p:' + pid + ':' + kind; CTR.add = null; CTR.fold[pid] = true;
   return _ctrAfter('Contract added');
 }
+
+/* ── Nov 2026 · styles: grouped rows with colour tiles · one pill per row · lean price / Abrechnung · folds ── */
+(function () {
+  if (typeof document === 'undefined' || document.getElementById('pvu-css2')) return;
+  const st = document.createElement('style'); st.id = 'pvu-css2';
+  st.textContent = `
+.pvu-ch { display:flex; align-items:center; gap:10px; width:100%; padding:13px 16px; border:0; background:none; font-family:inherit; text-align:left; cursor:pointer; color:inherit; }
+.pvu-ch__m { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.pvu-ch__m .pvu-card__name { margin:0; } .pvu-ch__m small { font-size:11.5px; color:#9A8E7E; }
+.pvu-ch__c { color:#C8BFB0; font-size:15px; transition:transform .2s; } .pvu-ch[aria-expanded="true"] .pvu-ch__c { transform:rotate(180deg); }
+.pvu-need { font-size:11px; font-weight:500; color:#854F0B; background:#FDF0D8; border-radius:9px; padding:2px 8px; white-space:nowrap; }
+.pvu-gl { margin:0; padding:10px 16px 3px; border-top:1px solid #EDE8E0; font-size:10px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#B5AA9A; }
+.pvu-gl small { letter-spacing:0; text-transform:none; font-weight:400; font-size:10.5px; color:#C8BFB0; }
+.pvu-r { display:flex; align-items:center; gap:11px; width:100%; padding:8px 16px; border:0; background:none; font-family:inherit; text-align:left; cursor:pointer; color:inherit; }
+@media (hover:hover) { .pvu-r:hover { background:#FBF8F3; } }
+.pvu-ic { width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:16px; flex:0 0 auto; }
+.pvu-r__m { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.pvu-r__m b { font-size:13.5px; font-weight:500; color:var(--cc-charcoal, #3D3027); }
+.pvu-r__m small { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11.5px; color:#9A8E7E; }
+.pvu-r__a { flex:0 0 auto; text-align:right; display:flex; flex-direction:column; }
+.pvu-r__a b { font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--cc-charcoal, #3D3027); } .pvu-r__a b.mu { color:#C8BFB0; font-weight:400; }
+.pvu-r__a span { font-size:10.5px; color:#9A8E7E; }
+.pvu-p { display:inline-flex; align-items:center; font-size:10.5px; font-weight:500; border-radius:8px; padding:1px 7px; white-space:nowrap; }
+.pvu-p.red { background:#FBE1DA; color:#8A2C14; } .pvu-p.amb { background:#FDF0D8; color:#854F0B; } .pvu-p.gry { background:#EFEAE2; color:#7A6F62; } .pvu-p.ok { background:#EAF3DE; color:#27500A; }
+.pvu-tot { display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:10px 16px 12px; border-top:1px solid #EDE8E0; font-size:12px; color:#7A6F62; }
+.pvu-tot b { font-size:13px; font-weight:600; color:var(--cc-charcoal, #3D3027); font-variant-numeric:tabular-nums; } .pvu-tot small { font-weight:400; font-size:11px; color:#9A8E7E; }
+.pvu-hinf { display:flex; align-items:center; gap:5px; margin-top:4px; font-size:11.5px; color:#9A8E7E; }
+.pvu-big { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.pvu-big b { font-family:'Cormorant Garamond', Georgia, serif; font-size:26px; font-weight:600; line-height:1.05; font-variant-numeric:tabular-nums; color:var(--cc-charcoal, #3D3027); }
+.pvu-big b.pvu-per { font-family:inherit; font-size:15px; } .pvu-big span { font-size:12px; color:#9A8E7E; }
+.pvu-sm { margin:4px 0 0; font-size:11.5px; color:#9A8E7E; } .pvu-next { color:#7A5A22; }
+.pvu-strip { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:3px; margin-top:9px; }
+.pvu-strip i { font-style:normal; text-align:center; font-size:10px; border-radius:6px; padding:3px 0; background:#F1ECE4; color:#C2B8A9; }
+.pvu-strip i.on { background:#E6EEF6; color:#2F5470; font-weight:600; }
+.pvu-fold { margin-top:9px; padding-top:9px; border-top:1px dashed #E6DED2; }
+.pvu-fold > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:6px; font-size:12px; color:#8A6535; }
+.pvu-fold > summary::-webkit-details-marker { display:none; } .pvu-fold[open] > summary i { transform:rotate(180deg); }
+.pvu-list { margin-top:7px; border-radius:11px; background:#F5F1EA; padding:2px 11px; }
+.pvu-li { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:12px; border-top:1px solid #EAE3D8; font-variant-numeric:tabular-nums; }
+.pvu-li:first-child { border-top:0; } .pvu-li > span:first-child { flex:1; color:#7A6F62; } .pvu-li small { color:#B5AA9A; } .pvu-li b { font-weight:500; color:var(--cc-charcoal, #3D3027); }
+.ctr-body > .ctr-rem:first-child { margin-top:12px; }
+.ctr-st.pvu-st0 { font-style:normal; color:var(--cc-charcoal, #3D3027); }
+`;
+  document.head.appendChild(st);
+})();
