@@ -537,23 +537,24 @@ function scLettersHtml(y) {
 
 /* ── Detail sheets behind the two tiles ── */
 function scSumTen(M) {
+  // Nov 2026 · an overview: one line per tenant, grouped by what is next — tap a name to check, send or settle (not here)
   const rows = M.ten.filter(t => t.k !== 'none' && !t.skipped).map(t => {
-    const v = t.st && t.st.res ? t.st.res.dir * t.st.res.amount : t.saldo, c = scAv(t.room);
+    const v = t.st && t.st.res ? t.st.res.dir * t.st.res.amount : t.saldo, c = scAv(t.room), amt = Math.abs(v) >= 0.005 ? Math.abs(v) : 0;
     return { av: c, ab: scAbbr(t.room), name: t.name, sub: t.room + ' · ' + stPer(t.from, t.to) + (t.k === 'open' && !M.locked ? ' · preview' : ''),
-             amount: Math.abs(v) >= 0.005 ? Math.abs(v) : 0, dir: v > 0 ? 1 : -1, act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"',
-             set: Math.abs(v) >= 0.005 && t.k !== 'open' ? scSetObj(t, M) : null };   // Nov 2026: a letter not sent yet = just its amount
+             amount: amt, dir: v > 0 ? 1 : -1, chip: amt ? null : ['grey', 'balanced'], k: t.k, act: 'data-sc="ten" data-k="' + stEsc(t.key) + '"' };
   });
-  // Nov 2026 · the one action: send the letters (replaces the NK-Abrechnung row and the "letters ready" to-do)
+  // the one action: send the letters (replaces the NK-Abrechnung row and the "letters ready" to-do)
   const nOpen = M.ten.filter(t => t.k === 'open').length;
   const action = !nOpen || !M.sendable ? '' : M.locked
     ? '<button class="cx-btn cx-btn--p st-sendall" data-sc="start"><i class="ti ti-send" aria-hidden="true"></i> Send ' + nOpen + (nOpen === 1 ? ' letter' : ' letters') + '</button>'
     : '<button class="cx-btn cx-btn--s st-sendall" data-sc="costs"><i class="ti ti-lock" aria-hidden="true"></i> Lock the house costs first</button>';
-  const mo = M.money, all = rows.filter(r => r.set && r.set.state !== 'locked');
-  const cnt = all.length ? ' · ' + all.filter(r => r.set.state === 'settled').length + ' of ' + all.length + ' settled' : '';
+  const mo = M.money, nSet = rows.filter(r => r.k === 'done').length;
+  const cnt = rows.length ? ' · ' + nSet + ' of ' + rows.length + ' settled' : '';
   return stSumSheet({ title: 'NK-Abrechnungen ' + M.y, sub: 'Casa Castel · ' + stNkLabel(M.per.from, M.per.to) + (M.locked ? '' : ' · preview' + (M.pv ? ' as of ' + stDe(M.pv.cutoff) : '')), net: mo.ten, action,
     sub2: mo.ten === null ? 'no house costs yet' : mo.nIn + (mo.nIn === 1 ? ' pays you' : ' pay you') + ' · ' + mo.nOut + (mo.nOut === 1 ? ' gets back' : ' get back') + cnt,
-    groups: [{ title: 'Pay you', rows: rows.filter(r => r.amount && r.dir > 0) }, { title: 'Get back', rows: rows.filter(r => r.amount && r.dir < 0) },
-             { title: 'Balanced', rows: rows.filter(r => !r.amount).map(r => Object.assign(r, { chip: ['grey', 'balanced'] })) }] }, 'data-sc="close"');
+    groups: [{ title: M.locked && M.sendable ? 'To send' : 'Not sent yet', count: true, rows: rows.filter(r => r.k === 'open') },
+             { title: 'Waiting for money', count: true, rows: rows.filter(r => r.k === 'sent') },
+             { title: 'Settled', count: true, rows: rows.filter(r => r.k === 'done') }] }, 'data-sc="close"');
 }
 const SC_HG_TYPES = [['strom', 'Strom'], ['gas', 'Gas'], ['wasser', 'Wasser'], ['entsorg', 'Entsorgung']];   // Versorger with a Jahresabrechnung
 const scHgCat = k => (window._ctrl.categories || []).find(c => c.code !== 'RATE' && String(c.name || '').toLowerCase().startsWith(k)) || null;
