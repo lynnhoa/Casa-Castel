@@ -87,13 +87,13 @@ function _cxOtMaintFormHTML(o) {
   const kv = (k, v) => (v ? '<div class="cx-ot-mt__kv"><span>' + k + '</span><b>' + cxEsc(v) + '</b></div>' : '');
   return '<div class="cx-form cx-ot-form cx-ot-form--mt" data-edit="' + cxEsc(o.id) + '">' +
     '<div class="cx-ot-mt"><span class="cx-pill cx-pill--maint">Maintenance</span>' +
-      '<span class="cx-ot-mt__t">Amount, date and text are changed in Maintenance' + (casa ? ' · the NK switch here' : '') + '.</span></div>' +
+      '<span class="cx-ot-mt__t">Amount, date and text are changed in Maintenance · the NK switch here.</span></div>' +
     '<div class="cx-ot-mt__ro">' +
       kv('Objekt', p ? p.name : '') + kv('Description', o.item) + kv('Company', o.company) +
       kv(inn ? 'Income' : 'Expense', (inn ? '+\u202f' : '') + cxEur(o.amount)) + kv('Date', cxFmtDate(o.invoice_date)) +
     '</div>' +
     '<input type="hidden" id="cxOtProp" value="' + pid + '">' +
-    (casa ? '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +
+    (true ? '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +   // Nov 2026: every property
         '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
         '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
       _cxOtNkCatHTML(o, nk, pid) +
@@ -143,7 +143,7 @@ async function _cxOtSaveMaint(o, b) {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
   const pid = Number(o.property_id);
   const nkOn = o._nk !== undefined ? o._nk : !!o.nk_umlage;
-  const nk_umlage = pid === CASA_PROP_ID && !!nkOn;
+  const nk_umlage = !!nkOn;                                  // Nov 2026: every property can mark a cost for its NK
   const catV = document.getElementById('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;
   b.disabled = true;
@@ -191,7 +191,7 @@ function _cxOtFormHTML(o) {
     '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Date"></label>' +
     // Casa Castel costs that tenants pay via the NK-Abrechnung — for you still a normal cost (tax export unchanged)
     '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '"' +
-      (pid === CASA_PROP_ID && kind !== 'Kaufnebenkosten' ? '' : ' style="display:none"') + '>' +
+      (kind !== 'Kaufnebenkosten' ? '' : ' style="display:none"') + '>' +
       '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
       '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
     _cxOtNkCatHTML(o, nk, pid) +
@@ -602,10 +602,10 @@ async function _cxOtSave(b) {
   const fallback = kt ? kt + (kp ? ' · ' + kp : '') : kind;
   // NK only for Casa Castel costs (Raus); anything else is saved without it
   const nkOn = o ? (o._nk !== undefined ? o._nk : !!o.nk_umlage) : _cxOt.nk;
-  const nk_umlage = pid === CASA_PROP_ID && !!nkOn && kind !== 'Kaufnebenkosten';          // Raus adds to the NK costs, Rein (e.g. Versorger-Guthaben) lowers them
+  const nk_umlage = !!nkOn && kind !== 'Kaufnebenkosten';                                  // Nov 2026: every property          // Raus adds to the NK costs, Rein (e.g. Versorger-Guthaben) lowers them
   const catV = g('cxOtNkCat')?.value || '';
   const nk_category_id = nk_umlage && catV ? Number(catV) : null;   // '' = general house costs (split by person)
-  if (nk_umlage && kind === 'Versorger' && !catV) { say('Please choose the cost type, e.g. Gas or Strom'); g('cxOtNkCat')?.focus(); return; }
+  if (nk_umlage && kind === 'Versorger' && !catV && pid === CASA_PROP_ID) { say('Please choose the cost type, e.g. Gas or Strom'); g('cxOtNkCat')?.focus(); return; }
   // soft duplicate hint: same property, amount and date
   const dup = (window._ctrl.one_time || []).find(x => (!o || x.id !== o.id) && Number(x.property_id) === pid &&
     cxR(x.amount) === cxR(amt) && String(x.invoice_date).slice(0, 10) === date);
@@ -660,7 +660,7 @@ function _cxOtNkShow() {
   const o = _cxOtEditing();
   const dir = o ? (o._dir || (Number(o.direction) === 1 ? 1 : -1)) : _cxOt.dir;
   const kind = o ? (o._kind || o.kind) : _cxOt.kind;
-  row.style.display = pid === CASA_PROP_ID && kind !== 'Kaufnebenkosten' ? '' : 'none';
+  row.style.display = kind !== 'Kaufnebenkosten' ? '' : 'none';
   const catRow = document.getElementById('cxOtNkCatRow'); if (catRow && pid !== CASA_PROP_ID) catRow.style.display = 'none';
   const chip = document.querySelector('.cx-ot-form [data-cx="otKind"][data-v="Versorger"]');
   if (chip) {

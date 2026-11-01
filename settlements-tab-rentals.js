@@ -114,9 +114,14 @@ async function _srLoadRowsNow() {
     } catch (e) { SR.letters = []; }
     SR.cols = !!(SR.rows[0] ? Object.prototype.hasOwnProperty.call(SR.rows[0], 'received_on') : true);
     try {                                               // #11: Hausgeld Ist per month (Controlling) — read only, for the hint
-      const h = await _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld');
+      let h = await _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld,grundsteuer');
+      if (h.error) h = await _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld');
       SR.hgIst = h.error ? [] : (h.data || []);
     } catch (e) { SR.hgIst = []; }
+    try {                                               // Nov 2026: one-off costs marked for the NK (Controlling › One-off, Maintenance) — any year
+      const o = await _ctlSupa.from('ctrl_expense_one_time').select('*').eq('nk_umlage', true);
+      SR.nkOt = o.error ? [] : (o.data || []);
+    } catch (e) { SR.nkOt = []; }
     try {                                               // Kaution-Einbehalt (Rentals › Tenants) — read only here
       const k = await _ctlSupa.from('rnt_kaution').select('*');
       SR.kaution = {}; (k.data || []).forEach(x => { if (x.tenant_id) SR.kaution[String(x.tenant_id)] = x; });
@@ -232,7 +237,7 @@ function _srKeyText(rec, pos, apt) {
 /* A cost belongs to the Hausgeld-Jahresabrechnung (origin 'hv', the default) or only to the NK (origin 'nk').
    A Hausgeld cost goes into the NK when it is umlagefähig and not unticked ('nk' false). */
 const _srIsNkOnly = p => p.origin === 'nk';
-const _srInNk = p => _srIsNkOnly(p) || (p.u && p.nk !== false);
+const _srInNk = p => (_srIsNkOnly(p) || p.u) && p.nk !== false;      // Nov 2026: NK-only costs can be switched off too
 function _srRecSummary(rec, apt) {                     // the Hausgeld side only
   let u = 0, nu = 0, missing = 0, n = 0;
   for (const pos of (rec && rec.positions) || []) {
@@ -987,6 +992,60 @@ function _srCardInfo4(c) {
 
 /* WEG result of a complete Jahresabrechnung → tracker (no "edit → Done" after an import);
    money already booked in Controlling with the same amount → linked instead of booked twice */
+/* Nov 2026 · what comes into "NK only" by itself (you can untick each):
+   Grundsteuer — booked in Controlling for the months of the NK period, else the Rentals amount per quarter due then;
+   every one-off of the apartment marked "Show in Settlements" (Controlling › One-off, also from Maintenance) dated in the period */
+function _srAutoNkItems(c) {
+  const out = [], since = _srBought(c.p), per = c.per;
+  let gs = 0, nBk = 0, nSoll = 0;
+  const ist = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id));
+  for (let d = per.from; d <= per.to; d = _srAdd(_srLastOfMonth(Number(d.slice(0, 4)), Number(d.slice(5, 7))), 1)) {
+    const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+    if (since && _srLastOfMonth(y, m) < since) continue;
+    const hit = ist.filter(x => Number(x.year) === y && Number(x.month) === m && x.grundsteuer !== null && x.grundsteuer !== undefined && x.grundsteuer !== '');
+    if (hit.length) { nBk++; hit.forEach(x => { gs += Number(x.grundsteuer) || 0; }); continue; }
+    try { const r = ctlCostRows(c.p, y, m).rows.find(x => x.key === 'grundsteuer'); if (r && Number(r.soll)) { gs += Number(r.soll); nSoll++; } } catch (e) {}
+  }
+  if (gs > 0.004) out.push({ auto: 'gs', kind: 'grundsteuer', label: 'Grundsteuer', amount: cxR(gs),
+    src: nBk && nSoll ? 'booked in Controlling + from Rentals' : nBk ? 'booked in Controlling' : 'from Rentals · ' + nSoll + (nSoll === 1 ? ' quarter' : ' quarters') });
+  for (const o of (SR.nkOt || [])) {
+    const d = _srD(o.invoice_date);
+    if (Number(o.property_id) !== Number(c.p.id) || !o.nk_umlage || !d || d < per.from || d > per.to || (since && d < since)) continue;
+    if (['NK-Abrechnung', 'Hausgeldabrechnung', 'Kaufnebenkosten'].includes(o.kind)) continue;
+    out.push({ auto: 'ot:' + o.id, kind: 'sonst', label: o.item || o.company || 'Cost', amount: cxR((Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0)),
+               src: 'marked for the NK · ' + stDe(d) });
+  }
+  return out;
+}
+let _srNkAutoBusy = false;
+function _srNkAutoSync(infos) {
+  if (_srNkAutoBusy) return;
+  const jobs = [];
+  for (const i of infos) {
+    const c = i.c, rec = i.rec;
+    if (c.before || !rec || !rec.id) continue;
+    if ((i.rows || []).some(r => r.kind === 'ten' && r.st && r.st.res)) continue;            // a letter went out: the NK stays as it was sent
+    if (SR.draft && SR.draft._ck === c.ck && SR.dirty) continue;                             // you are typing in it right now
+    const pos = rec.positions || [], want = _srAutoNkItems(c);
+    const manualGs = pos.some(p => !p.auto && p.kind === 'grundsteuer' && _srIsNkOnly(p));
+    const list = want.filter(w => !(w.auto === 'gs' && manualGs));
+    const next = pos.filter(p => !p.auto || list.some(w => w.auto === p.auto)).map(p => {
+      if (!p.auto) return p;
+      const w = list.find(x => x.auto === p.auto);
+      return Object.assign({}, p, { label: w.label, amount: w.amount, src: w.src });
+    });
+    for (const w of list) if (!pos.some(p => p.auto === w.auto)) next.push({ id: _srUid(), kind: w.kind, origin: 'nk', u: true, auto: w.auto, label: w.label, amount: w.amount, src: w.src, key: 'direkt' });
+    const sig = x => JSON.stringify((x || []).filter(p => p.auto).map(p => [p.auto, p.label, p.amount, p.src, p.nk !== false]));
+    if (sig(next) === sig(pos)) continue;
+    jobs.push(async () => { rec.positions = next; await srSaveRow(rec); if (SR.draft && SR.draft._ck === c.ck && !SR.dirty) SR.draft = null; });
+  }
+  if (!jobs.length) return;
+  _srNkAutoBusy = true;
+  (async () => {
+    for (const j of jobs) { try { await j(); } catch (e) { console.warn('[settlements] NK auto', e); } }
+    _srNkAutoBusy = false; stRenderRentals();
+  })();
+}
 function _srWegSync(infos) {
   SR._wegSync = SR._wegSync || {};
   const jobs = [];
@@ -1037,6 +1096,7 @@ function stRenderRentals() {
   catch (e) { console.error('[settlements] rentals', e); cxPaint(el, '<div class="st-page"><p class="cx-empty">Could not calculate the settlements.</p><p class="st-muted">' + stEsc(e.message || e) + '</p></div>'); return; }
   _srCards = {}; infos.forEach(i => { _srCards[i.c.ck] = i.c; });
   _srWegSync(infos);
+  _srNkAutoSync(infos);                                       // Nov 2026: Grundsteuer + costs marked for the NK come in by themselves
 
   // numbers for the year
   const live = infos.filter(i => i.k !== 'before');
@@ -1562,12 +1622,18 @@ function _srNkView(c) {
         '<span class="ct-ro">' + (a === null ? '—' : stEur(_srSigned(p, a))) + '</span></div>';
     }).join('');
     const xRows = X.map(([p, i]) => {
+      if (p.auto) {                                            // Nov 2026: came in by itself (Grundsteuer, a cost marked for the NK) — untick to leave it out
+        const on = p.nk !== false;
+        return '<div class="ct-r ct-r--nk ct-r--auto' + (on ? '' : ' is-off') + '"><label class="ct-l"><input type="checkbox" class="ct-cb" data-src="innk" data-i="' + i + '"' + (on ? ' checked' : '') + '/>' +
+          '<span class="ct-lab">' + stEsc(p.label || 'Cost') + ' <small class="ct-src">' + stEsc(p.src || '') + '</small></span></label>' +
+          '<span class="ct-ro">' + stEur(_srSigned(p, _srNum(p.amount) || 0)) + '</span></div>';
+      }
       const k = _srKind(p.kind), named = p.kind !== 'grundsteuer' || p.label;
       const lab = named ? '<input class="ct-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || (p.kind === 'sonst' ? '' : k.l)) + '"/>' : '<span class="ct-lab">' + stEsc(k.l) + ' <small class="ct-src">from Rentals</small></span>';
       return '<div class="ct-r"><span class="ct-l">' + lab + '</span><span class="ct-a"><input inputmode="decimal" enterkeyhint="next" autocomplete="off" data-srf="pos.' + i + '.amount" aria-label="' + stEsc(p.label || k.l) + '" value="' + stEsc(_srE2in(p.amount)) + '"/><em>€</em></span></div>';
     }).join('');
     const tHv = cxR(HV.reduce((s, [p]) => s + (p.nk !== false ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
-    const tX = cxR(X.reduce((s, [p]) => s + _srSigned(p, _srAmtOf(d, p, c.apt)), 0));
+    const tX = cxR(X.reduce((s, [p]) => s + (p.nk !== false ? _srSigned(p, _srAmtOf(d, p, c.apt)) : 0), 0));
     const hasGs = (d.positions || []).some(p => p.kind === 'grundsteuer');
     const gsQ = c.verw ? _srNum(c.verw.grundsteuer_mtl) : null;
     // Nov 2026 · two folded lines (tap to see the positions) + the total · the fields stay in the page, so totals keep updating
@@ -1577,9 +1643,9 @@ function _srNkView(c) {
         '<span class="mx-fold__m"><b>From the Jahresabrechnung</b><small>umlagefähig · ' + nOn + ' of ' + HV.length + ' in the NK</small></span><b class="mx-fold__v" data-sr-tot="hvnk">' + stEur(tHv) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
         '<div class="ct">' + hvRows + '<button class="ct-add" data-sr="toHv"><i class="ti ti-pencil" aria-hidden="true"></i> Amounts are in the Jahresabrechnung</button></div></details>' +
       '<details class="mx-fold"' + (SR.nkOpenX || X.length ? ' open' : '') + ' data-fold="X"><summary><span class="mx-fold__i" style="background:#FAF0DC;color:#854F0B"><i class="ti ti-plus" aria-hidden="true"></i></span>' +
-        '<span class="mx-fold__m"><b>NK only</b><small>not in the Hausgeld, e.g. Grundsteuer</small></span><b class="mx-fold__v" data-sr-tot="x">' + stEur(tX) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
+        '<span class="mx-fold__m"><b>NK only</b><small>' + (X.length ? X.filter(([p]) => p.nk !== false).length + ' of ' + X.length + ' in the NK · Grundsteuer, costs marked for the NK' : 'not in the Hausgeld, e.g. Grundsteuer') + '</small></span><b class="mx-fold__v" data-sr-tot="x">' + stEur(tX) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
         '<div class="ct">' + xRows +
-        '<div class="ct-adds">' + (!hasGs && gsQ ? '<button class="ct-add" data-sr="nkGs"><i class="ti ti-plus" aria-hidden="true"></i> Grundsteuer from Rentals</button>' : '') +
+        '<div class="ct-adds">' + (void hasGs, void gsQ, '') +   // Nov 2026: Grundsteuer comes in by itself
         '<button class="ct-add" data-sr="nkAdd"><i class="ti ti-plus" aria-hidden="true"></i> Add a cost</button></div></div></details>' +
       '<div class="ct-tot"><span>Total for the NK</span><b data-sr-tot="nk">' + stEur(cxR(tHv + tX)) + '</b></div>' +
       '<datalist id="srKindList">' + SR_KINDS.filter(k => k.u).map(k => '<option value="' + stEsc(k.l) + '"></option>').join('') + '</datalist>' +
@@ -1685,7 +1751,7 @@ function _srRefreshTotals() {
   const d = SR.draft, t = { u: 0, n: 0, hvnk: 0, x: 0 };
   (d.positions || []).forEach(p => {
     const v = _srSigned(p, _srAmtOf(d, p, c.apt));
-    if (_srIsNkOnly(p)) t.x += v; else { if (p.u) t.u += v; else t.n += v; if (p.u && p.nk !== false) t.hvnk += v; }
+    if (_srIsNkOnly(p)) { if (p.nk !== false) t.x += v; } else { if (p.u) t.u += v; else t.n += v; if (p.u && p.nk !== false) t.hvnk += v; }
   });
   const set = (k, v) => { const el = document.querySelector('#srPanel [data-sr-tot="' + k + '"]'); if (el) el.textContent = stEur(cxR(v)); };
   set('u', t.u); set('n', t.n); set('t', t.u + t.n); set('hvnk', t.hvnk); set('x', t.x); set('nk', t.hvnk + t.x);

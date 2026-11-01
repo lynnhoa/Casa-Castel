@@ -1692,3 +1692,6 @@ button.sc-ct__r { cursor: pointer; }
 .mx-step__go { width: 100%; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .mx-step__undo { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; font-size: 12px; }
 .st-sg__s { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }   /* Nov 2026: periods are never cut off */
+.ct-r--auto .ct-lab { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; line-height: 1.3; }
+.ct-r--auto .ct-src { display: block; margin: 1px 0 0; white-space: normal; }   /* Nov 2026: where an automatic NK cost comes from, never cut off */
+.ct-r--auto { padding-top: 6px !important; padding-bottom: 6px !important; }
