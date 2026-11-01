@@ -655,14 +655,16 @@ function ctrOpen(key) {
   const el = _ctrSheet();
   CTR.open = key; CTR.form = ''; CTR.arg = null;
   _ctrPaint();
-  el.classList.remove('pv-hidden', 'pv-closed');
+  el.classList.remove('pv-hidden', 'pv-closed');             // Nov 2026: opens at once, like Settlements' pop-ups
+  document.body.classList.add('pvu-open');                    // the page behind stays still (like st-panel-open)
 }
 function ctrClose() {
+  // Nov 2026 · closes at once, like Settlements' pop-ups (no fade) · a list update that waited runs in the same moment
   const el = document.getElementById('pvuScrim'); if (!el) return;
-  CTR.open = null; CTR.form = ''; CTR.arg = null; CTR.add = null;
-  el.classList.add('pv-closed');
-  setTimeout(() => { if (CTR.open === null) { el.classList.add('pv-hidden'); el.classList.remove('pv-closed'); el.firstElementChild.innerHTML = ''; CTR.painted = null;
-    if (CTR.relist) { CTR.relist = false; pvuRender(); } } }, 230);   // Nov 2026: the list redraw that waited for the pop-up
+  CTR.open = null; CTR.form = ''; CTR.arg = null; CTR.add = null; CTR.painted = null;
+  el.classList.add('pv-hidden'); el.classList.remove('pv-closed'); el.firstElementChild.innerHTML = '';
+  document.body.classList.remove('pvu-open');
+  if (CTR.relist) { CTR.relist = false; pvuRender(); }
 }
 function _ctrPaint() {
   const el = document.getElementById('pvuScrim'); if (!el) return;
@@ -1459,6 +1461,9 @@ async function _ctrSaveNew() {
 .pvu-li:first-child { border-top:0; } .pvu-li > span:first-child { flex:1; color:#7A6F62; } .pvu-li small { color:#B5AA9A; } .pvu-li b { font-weight:500; color:var(--cc-charcoal, #3D3027); }
 .ctr-body > .ctr-rem:first-child { margin-top:12px; }
 .ctr-st.pvu-st0 { font-style:normal; color:var(--cc-charcoal, #3D3027); }
+.pvu-scrim, .pvu-scrim > .cc-modal-sheet { transition:none !important; }                      /* opens and closes at once, like Settlements */
+.pvu-r, .pvu-ch, .pvu-lk, .pvu-addp, .pvu-fold > summary { -webkit-tap-highlight-color:transparent; }   /* no grey marking on the tapped row */
+body.pvu-open { overflow:hidden; }
 `;
   document.head.appendChild(st);
 })();
