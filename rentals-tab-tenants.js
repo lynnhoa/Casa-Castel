@@ -3292,6 +3292,7 @@ async function _rntSaveNewTenant(rid, unitType, unitId) {
     kaution_soll: p.kaution_soll ?? (_rntKautionSollInfo({ apartment_id: isApt ? unitId : null, parking_id: isApt ? null : unitId,
       mietbeginn: p.mietbeginn, mietende }) || {}).amount ?? null,
   };
+  if (p.vertragsende !== undefined) payload.vertragsende = p.vertragsende || null;   // Nov 2026: the form's Contract end was not saved for a new tenant
   if (p.vertragsbeginn !== undefined) {                     // rent window (Oct 2026): Contract start = Move-in unless typed
     payload.vertragsbeginn = p.vertragsbeginn || p.mietbeginn || null;
     payload.rent_from = p.rent_from || 'contract'; payload.rent_until = p.rent_until || 'contract';
