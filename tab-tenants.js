@@ -578,7 +578,7 @@ document.getElementById('tab-tenants').innerHTML = `
    Move in / Move out stay side by side */
 .tn-fg { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .tn-fg > .tn-field { min-width:0; }
-.tn-fg > .tn-field:has(> input):not(:has(> input[data-f="mietbeginn"])):not(:has(> input[data-f="mietende"])):not(:has(> input[data-f="vertragsbeginn"])) { grid-column:1/-1; }
+.tn-fg > .tn-field:has(> input):not(:has(> input[data-f="mietbeginn"])):not(:has(> input[data-f="mietende"])):not(:has(> input[data-f="vertragsbeginn"])):not(:has(> input[data-f="vertragsende"])) { grid-column:1/-1; }
   
 /* Rent bar (Oct 2026): title · three equal value columns · buttons in their own row — numbers never squeezed */
 #tab-tenants .tn-rent-wrap { display:flex !important; flex-direction:column !important; }
@@ -1131,7 +1131,7 @@ function _tnContractEdit(rid, tid, i, secId) {
   const body = `<div class="tn-fg" style="margin-top:4px">
       <div class="tn-field tn-field-full"><span class="tn-flbl">Contract</span>${_tnCtSegHTML('data-cc', c.type || 'mietvertrag')}</div>
       <div class="tn-field"><span class="tn-flbl">Start</span><span class="tn-fval">${_ccFmtD(c.start)}</span></div>
-      <div class="tn-field" data-cc="endwrap"${c.type === 'mietvertrag' && !c.end ? ' style="display:none"' : ''}><span class="tn-flbl">Contract end</span>${c.last
+      <div class="tn-field" data-cc="endwrap"><span class="tn-flbl">Contract end</span>${c.last
         ? `<input type="text" data-cc="end" value="${c.end ? _ccFmtD(c.end) : ''}" placeholder="TT.MM.JJJJ"/>`
         : `<span class="tn-fval">${_ccFmtD(c.end)}</span>`}</div>
       <div class="tn-field tn-field-full"><span class="tn-flbl">Rent</span>${_tnModeSegHTML('data-cc', mode)}</div>
@@ -1151,7 +1151,6 @@ function _tnContractEdit(rid, tid, i, secId) {
       const raw = (panel.querySelector('[data-cc="end"]')?.value || '').trim();
       endNew = raw ? (_tnParseDate(raw) || false) : null;
       if (endNew === false) { ccToast('Contract end: TT.MM.JJJJ', true); return false; }
-      if (ctNew === 'mietvertrag') endNew = null;
       if (_tnIsFixed(ctNew) && !endNew) { ccToast('Befristet / Jahresvertrag needs a contract end', true); return false; }
       if (endNew && c.start && endNew < c.start) { ccToast('Contract end is before the start', true); return false; }
     }
@@ -1263,7 +1262,7 @@ function _tnSetCt(btn) {
   const inp = seg.querySelector('input[type=hidden]');
   if (inp) inp.value = btn.dataset.ct;
   const endWrap = seg.closest('.cc-inline-panel, .tn-newc, .tn-rent-form')?.querySelector('[data-cc="endwrap"]');
-  if (endWrap) endWrap.style.display = btn.dataset.ct === 'mietvertrag' ? 'none' : '';
+  if (endWrap) endWrap.style.display = '';   // Nov 2026: a Mietvertrag can have a contract end too (empty = unbefristet)
   // "Add former tenant": the suggested Kaution Soll and rent hint follow the chosen type
   const modal = document.getElementById('tnModal');
   if (modal && modal._draft && seg.closest('#tnModalBody')) {
@@ -2579,7 +2578,7 @@ function _tnRentFormHTML(rid, room, rec) {
 <div class="tn-rent-form" id="rform-${rid}" data-mode="${mode}" style="display:none">
   ${c ? `<div class="tn-rf" style="grid-column:1/-1"><span class="tn-flbl">Contract \u00b7 ${esc(c.name)}</span>${_tnCtSegHTML('data-rf', ct)}</div>
   <div class="tn-rf"><span class="tn-flbl">Start</span><div class="tn-rf-derived">${c.start ? _ccFmtD(c.start) : '\u2014'}</div></div>
-  <div class="tn-rf" data-cc="endwrap"${c.last && ct === 'mietvertrag' ? ' style="display:none"' : ''}><span class="tn-flbl">Contract end</span>${c.last
+  <div class="tn-rf" data-cc="endwrap"><span class="tn-flbl">Contract end</span>${c.last
       ? `<input type="text" id="rf-end-${rid}" value="${c.end ? _ccFmtD(c.end) : ''}" placeholder="TT.MM.JJJJ"/>`
       : `<div class="tn-rf-derived">${_ccFmtD(c.end)}</div>`}</div>
   ` : ''}
@@ -2765,9 +2764,11 @@ function _tnProfileSectionHTML(rid, room, rec) {
     : '<span class="muted">Not set</span>';
   const ctEdit = ct || _tnRoomContractType(room.name) || 'mietvertrag';   // a new tenant starts with the room's offer
   const hasVE  = _ccHasVE(_tnRecords);
-  // Contract end: a Mietvertrag without an end date is unbefristet; a Kurzzeit always needs one
+  // Contract end: a Mietvertrag without an end date is unbefristet (with one: after a Kündigung, typed by hand);
+  // a Kurzzeit / Jahresvertrag always needs one
   const veRead    = rec && rec.vertragsende ? _tnFmtDate(rec.vertragsende) : (ct === 'mietvertrag' ? 'unbefristet' : '');
   const veMissing = !!(rec && _tnIsFixed(ct) && !rec.vertragsende && !rec.mietende);
+  const veInForm  = hasVE && (!rec || (ct || 'mietvertrag') === 'mietvertrag');   // Kurzzeit / Jahres: in the rent bar (keeps renewals in sync)
 
   const readView = !rec ? '' : `
   <div class="tn-fg" id="pread-${rid}">
@@ -2785,6 +2786,8 @@ function _tnProfileSectionHTML(rid, room, rec) {
           <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'open-ended'}</span></div>
+        ${rec && veInForm ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${esc(veRead)}</span></div>` : ''}
         ${veMissing ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
           <span class="tn-fval"><span class="tn-ve-missing">Missing</span> \u00b7 set it in the rent bar (Edit)</span></div>` : ''}
         ${rec.vertragsbeginn && _ccIso(rec.vertragsbeginn) !== _ccIso(rec.mietbeginn) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
@@ -2813,8 +2816,10 @@ function _tnProfileSectionHTML(rid, room, rec) {
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <input data-f="mietende" type="text" value="${_tnFmtDate(rec ? rec.mietende : '')}" placeholder="TT.MM.JJJJ"/></div>
         ${_ccHasRW(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
-          <input data-f="vertragsbeginn" type="text" value="${_tnFmtDate(rec ? rec.vertragsbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>
-        ${_ccRentEditHTML('data-f', rec)}` : ''}
+          <input data-f="vertragsbeginn" type="text" value="${_tnFmtDate(rec ? rec.vertragsbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
+        ${veInForm ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
+          <input data-f="vertragsende" type="text" value="${_tnFmtDate(rec ? rec.vertragsende : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
+        ${_ccHasRW(_tnRecords) ? _ccRentEditHTML('data-f', rec) : ''}
       </div>
     </div>
   </div>`;
@@ -3597,6 +3602,8 @@ async function _tnSaveNewTenant(rid, roomName) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
   if (!sec) return;
+  { const ve = sec.querySelector('[data-f="vertragsende"]');   // Nov 2026: a mistyped contract end never clears the saved one
+    if (ve && ve.value.trim() && !_tnParseDate(ve.value)) { ve.style.borderColor = '#C4705A'; ve.focus(); ccToast('Contract end: TT.MM.JJJJ', true); return; } }
   const btn = document.getElementById('pfoot-edit-' + rid)?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
 
@@ -3650,7 +3657,7 @@ async function _tnSaveNewTenant(rid, roomName) {
     nebenkosten:  p.nebenkosten ?? (_tnNewIsCurrent(p.mietbeginn) ? liveP.nebenkosten : null) ?? null,
     kaution_soll: p.kaution_soll ?? _tnKautionSoll(roomName, p.mietbeginn, mietende, ctype) ?? null,
   };
-  if (p.vertragsende !== undefined) payload.vertragsende = ctype === 'mietvertrag' ? null : (p.vertragsende || null);
+  if (p.vertragsende !== undefined) payload.vertragsende = p.vertragsende || null;   // Nov 2026: also a Mietvertrag (empty = unbefristet)
   if (p.vertragsbeginn !== undefined) {                     // rent window (Oct 2026): Contract start = Move-in unless typed
     payload.vertragsbeginn = p.vertragsbeginn || p.mietbeginn || null;
     payload.rent_from = p.rent_from || 'contract'; payload.rent_until = p.rent_until || 'contract';
@@ -3717,6 +3724,8 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   if (!sbL) return;
   const sec = document.getElementById('pedit-' + rid);
   if (!sec) return;
+  { const ve = sec.querySelector('[data-f="vertragsende"]');   // Nov 2026: a mistyped contract end never clears the saved one
+    if (ve && ve.value.trim() && !_tnParseDate(ve.value)) { ve.style.borderColor = '#C4705A'; ve.focus(); ccToast('Contract end: TT.MM.JJJJ', true); return; } }
   const p   = _tnCollectProfile(sec, 'data-f');
   const rec = _tnRecords.find(r => r.id === tid);
   if (!p.first_name && !p.last_name && !p.email) {
@@ -3859,7 +3868,6 @@ async function _tnSaveRent(rid, tid, roomName) {
   const endInp = document.getElementById('rf-end-' + rid);
   let endNew = endInp ? (_tnParseDate(endInp.value.trim()) || null) : undefined;
   if (endInp && endInp.value.trim() && !endNew) { ccToast('Contract end: TT.MM.JJJJ', true); return; }
-  if (endInp && (ctNew || (cc && cc.type)) === 'mietvertrag') endNew = null;             // unbefristet = no end
   if (endInp && _tnIsFixed(ctNew || (cc && cc.type)) && !endNew) { ccToast('Befristet / Jahresvertrag needs a contract end', true); return; }
   // ── 2 · a rent is required (an empty field would save 0,00 €) — only when the form has rent fields
   const hasRent = !!document.getElementById('rf-kalt-' + rid);
