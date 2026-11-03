@@ -2786,12 +2786,12 @@ function _tnProfileSectionHTML(rid, room, rec) {
           <span class="tn-fval">${_tnFmtDate(rec.mietbeginn) || '<span class="muted">—</span>'}</span></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
           <span class="tn-fval ${rec.mietende ? '' : 'muted'}">${_tnFmtDate(rec.mietende) || 'open-ended'}</span></div>
+        ${rec.vertragsbeginn || _ccHasRW(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
+          <span class="tn-fval">${_tnFmtDate(rec.vertragsbeginn || rec.mietbeginn) || '<span class="muted">\u2014</span>'}</span></div>` : ''}
         ${rec && veInForm ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
           <span class="tn-fval ${rec.vertragsende ? '' : 'muted'}">${esc(veRead)}</span></div>` : ''}
         ${veMissing ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
           <span class="tn-fval"><span class="tn-ve-missing">Missing</span> \u00b7 set it in the rent bar (Edit)</span></div>` : ''}
-        ${rec.vertragsbeginn && _ccIso(rec.vertragsbeginn) !== _ccIso(rec.mietbeginn) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
-          <span class="tn-fval">${_tnFmtDate(rec.vertragsbeginn)}</span></div>` : ''}
         ${_ccHasRW(_tnRecords) ? _ccRentReadHTML(rec) : ''}
       </div>
     </div>
