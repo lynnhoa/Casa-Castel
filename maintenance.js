@@ -2970,7 +2970,8 @@ function mtCostModalSync() {
 }
 function mtCostModalRender() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
-  if (!f || !c) { mtCostModalSync(); return; }
+  if (!f || !c) { mtCostModalSync(); mtDraftClosed(); return; }
+  mtDraftSoon();
   let m = document.getElementById('mtCostModal');
   if (!m) {
     m = document.createElement('div');
@@ -3361,6 +3362,7 @@ async function mtBoot() {
     document.getElementById('appShell').style.display = 'block';
     mtSwitchTab(MT.tab);
     mtOpenLink();
+    setTimeout(mtDraftOffer, 300);                         // D34: a receipt you were writing when the phone restarted the app
   } catch (e) {
     console.error('[maintenance] boot failed:', e);
     MT.loadError = e;
@@ -3369,4 +3371,103 @@ async function mtBoot() {
   } finally {
     ctlShowLoading(false);
   }
+}
+
+
+/* ── D34 (Nov 2026) · The pop-up stays where you left it ──────────────────────────────
+   1 · Editing mode: from the first tap into a field the pop-up is full height and stays there until
+       Save / Cancel / × — closing the keyboard (switching to Photos, a website …) moves nothing.
+   2 · Back where you were: the field you were in is in view again with a gold outline; one tap = go on
+       typing (the iPhone only opens the keyboard after a tap).
+   3 · Draft on the device: the open receipt (photos too) is kept in this phone's storage with every change.
+       If the phone restarted the app meanwhile: "Unsaved receipt · Continue?". Save / Cancel deletes it. */
+const MT_ED = { last: null, scroll: 0, active: false, t: null };
+const MT_ED_FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), textarea, select';
+document.addEventListener('focusin', e => {
+  const t = e.target, m = t && t.closest && t.closest('.mt-modal');
+  if (!m || !t.matches(MT_ED_FIELD)) return;
+  m.classList.add('is-editing');                         // 1 · full height from now on
+  MT_ED.last = { modal: m.id, field: t.id || null };
+  t.classList.remove('mt-resume');
+}, true);
+document.addEventListener('scroll', e => {
+  const b = e.target && e.target.classList && e.target.classList.contains('mt-modal__b') ? e.target : null;
+  if (b) MT_ED.scroll = b.scrollTop;
+}, true);
+document.addEventListener('input', e => { if (e.target && e.target.closest && e.target.closest('#mtCostModal')) mtDraftSoon(); }, true);
+document.addEventListener('change', e => { if (e.target && e.target.closest && e.target.closest('#mtCostModal')) mtDraftSoon(); }, true);
+
+function mtResumeMark(fieldId, scroll) {
+  const m = document.querySelector('.mt-modal'); if (!m) return;
+  const b = m.querySelector('.mt-modal__b');
+  if (b && typeof scroll === 'number') b.scrollTop = scroll;
+  const f = fieldId && document.getElementById(fieldId);
+  if (!f || document.activeElement === f) return;
+  m.classList.add('is-editing');
+  f.classList.add('mt-resume');
+  try { f.scrollIntoView({ block: 'center' }); } catch (_) {}
+  clearTimeout(f._mtRes); f._mtRes = setTimeout(() => f.classList.remove('mt-resume'), 12000);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { mtDraftNow(); return; }
+  if (MT_ED.last) mtResumeMark(MT_ED.last.field, MT_ED.scroll);   // 2 · back in the app
+});
+window.addEventListener('pagehide', () => mtDraftNow());
+
+/* 3 · the draft: IndexedDB (keeps the photos as files), one entry */
+function mtDraftDb() {
+  return new Promise((res, rej) => {
+    try {
+      const r = indexedDB.open('mt-drafts', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    } catch (e) { rej(e); }
+  });
+}
+async function mtDraftIO(mode, val) {
+  try {
+    const db = await mtDraftDb();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction('kv', mode === 'get' ? 'readonly' : 'readwrite'), st = tx.objectStore('kv');
+      const q = mode === 'get' ? st.get('receipt') : mode === 'put' ? st.put(val, 'receipt') : st.delete('receipt');
+      q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+    });
+  } catch (e) { console.warn('[maintenance] draft:', e); return null; }
+}
+function mtDraftSoon() { clearTimeout(MT_ED.t); MT_ED.t = setTimeout(mtDraftNow, 400); }
+function mtDraftNow() {
+  clearTimeout(MT_ED.t);
+  const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
+  if (!f || !c || !document.getElementById('mtCostModal')) return;
+  mtCostCapture();
+  MT_ED.active = true;
+  const files = f.files.map(x => ({ id: x.id || null, file: x.file || null, name: x.name, img: !!x.img, adopt: x.adopt || null }));
+  mtDraftIO('put', { v: 1, at: Date.now(), caseId: c.id, caseTitle: c.title || '', last: MT_ED.last, scroll: MT_ED.scroll,
+    f: { ...f, files } });
+}
+function mtDraftClosed() {                                 // Save / Cancel / × → the draft goes
+  if (!MT_ED.active) return;
+  MT_ED.active = false; MT_ED.last = null; MT_ED.scroll = 0;
+  clearTimeout(MT_ED.t);
+  mtDraftIO('del');
+}
+async function mtDraftOffer() {
+  if (MT.sel && MT.sel.cost) return;
+  const d = await mtDraftIO('get');
+  if (!d || !d.f) return;
+  const c = mtCase(d.caseId);
+  const old = Date.now() - (d.at || 0) > 14 * 864e5;
+  if (!c || old || (!d.f.isNew && !mtCostById(d.f.id))) { mtDraftIO('del'); return; }
+  const what = [d.f.receipt_no, d.f.description, d.f.amount !== '' && d.f.amount != null ? ccFmtNum(Number(d.f.amount), 2) + ' €' : ''].filter(Boolean).join(' · ');
+  const ok = await mtConfirm({ title: 'Unsaved receipt', text: (c.title || 'Receipt') + (what ? ' — ' + what : '') + '. Continue where you left off?',
+    ok: 'Continue', cancel: 'Discard' });
+  if (!ok) { mtDraftIO('del'); return; }
+  mtSwitchTab(c.kind);
+  await mtOpen(c.id);
+  if (!MT.sel || String(MT.sel.id) !== String(c.id)) return;
+  MT.sel.cost = d.f;
+  MT_ED.active = true;
+  mtRenderPanel();
+  MT_ED.last = d.last || null;
+  setTimeout(() => mtResumeMark(d.last && d.last.field, d.scroll), 120);
 }
