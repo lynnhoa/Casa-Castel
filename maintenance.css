@@ -503,3 +503,29 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 .mt-so__chips { margin-bottom:6px; }
 .mt-chip--pick { padding:0 12px; cursor:pointer; font-family:inherit; }
 .mt-chip--pick.is-on { background:var(--cc-gold-lt); border-color:var(--cc-gold); color:var(--cc-ink); }
+
+/* ── D31 (Nov 2026) · buttons that fit on the phone · one big Save where the thumb is ──
+   1 · Delete + "Move to …" wrap instead of running out of the card
+   2 · Save / Cancel: 44 px (Apple's minimum touch size); in the pop-ups Save fills the row */
+.mt-foot-l { flex-wrap:wrap; min-width:0; row-gap:8px; }
+.mt-move { margin-left:0; }
+.mt-sec--edit .cc-sec-foot { row-gap:12px; }
+.mt-sec--edit .cc-sec-foot .mt-foot-l { flex:1 1 100%; }
+.mt-sec--edit .cc-sec-foot .cc-foot-right { flex:1 1 100%; justify-content:flex-end; gap:8px; }
+.mt-sec--edit .cc-sec-foot .cc-foot-right .cc-foot-btn {
+  height:44px !important; padding:0 20px !important; border-radius:22px !important; font-size:13px !important; }
+.mt-sec--edit .cc-sec-foot .cc-foot-right .cc-foot-btn.mt-save {
+  min-width:120px; justify-content:center; background:var(--cc-ink) !important; border-color:var(--cc-ink) !important; color:var(--cc-white) !important; }
+
+/* Pop-ups (new receipt · report): Delete / Return on their own row, then Cancel | big Save */
+.mt-modal__f { gap:10px; }
+.mt-modal__f .cc-sec-foot { flex-wrap:wrap; row-gap:10px; margin:0; }
+.mt-modal__f .mt-foot-l { flex:1 1 100%; }
+.mt-modal__f .cc-foot-right { flex:1 1 100%; display:flex !important; gap:10px; margin-left:0 !important; }
+.mt-modal__f .cc-foot-right .cc-foot-btn {
+  height:48px !important; padding:0 18px !important; border-radius:24px !important; font-size:14px !important; justify-content:center; }
+.mt-modal__f .cc-foot-right .cc-foot-btn:not(.mt-save) { flex:0 0 auto; }
+.mt-modal__f .cc-foot-right .cc-foot-btn.mt-save,
+.mt-modal__f .cc-foot-right .cc-foot-btn:last-child { flex:1 1 auto; font-weight:600 !important; }
+.mt-modal__f .cc-foot-right .cc-foot-btn.mt-save { background:var(--cc-ink) !important; border-color:var(--cc-ink) !important; color:var(--cc-white) !important; }
+.mt-modal__f .mt-sb__status { flex:1 1 100%; margin:0; }
