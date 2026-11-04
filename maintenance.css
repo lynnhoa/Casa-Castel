@@ -474,7 +474,6 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 /* ── D26 · "Copy prompt" next to "+ Add receipt": on a narrow phone it moves under "Kosten"
       (the total stays on the right) · the text to copy by hand, only if a phone blocks copying ── */
 .mt-ks__l { flex-wrap:wrap; row-gap:2px; min-width:0; }
-.mt-cf .mt-prompt { height:min(40vh, 320px); margin:0 0 12px; padding:8px 10px; resize:none; overflow:auto;
   font-size:13px !important; line-height:1.45; white-space:pre-wrap; -webkit-user-select:text; user-select:text; }  /* casa-castel.css sets 16px; this page never zooms */
 
 
@@ -563,3 +562,106 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 .mt-card__rows > .mt-ent:first-child .mt-row, .mt-card__rows > .mt-open:first-child { border-top:1px solid var(--mt-line); }
 .mt-yempty { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
 .mt-yempty .mt-link { display:inline-flex; align-items:center; gap:4px; font-size:13px; }
+
+/* ── D38 (Nov 2026) · Balanced layout: nothing larger than the page title ─────────────
+   List: a slim pinned bar under the tabs (year pill · the tab's sum), one quiet meta line,
+   lean rows. Opened entry: pencil next to close, three equal report buttons, a compact
+   receipt list with a switch. Receipt + Edit pop-ups: 38px fields, 14px text, 42px buttons. */
+.mt-ybar { position:-webkit-sticky; position:sticky; top:var(--mt-hdr-h, 0px); z-index:40;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin:-32px -36px 20px; padding:8px 36px; background:var(--cc-bg); border-bottom:.5px solid var(--cc-rule); }
+@media (max-width:700px) { .mt-ybar { margin:-20px -20px 16px; padding:8px 16px; } }
+.mt-ypill { display:inline-flex; align-items:center; height:36px; border:.5px solid var(--cc-stone); border-radius:18px; background:var(--cc-white); }
+.mt-ypill__a { width:34px; height:34px; display:flex; align-items:center; justify-content:center; padding:0; border:0; border-radius:50%;
+  background:none; color:var(--cc-ink); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-ypill__a i { font-size:15px; }
+.mt-ypill__a:disabled { color:var(--cc-stone); cursor:default; }
+.mt-ypill__y { display:inline-flex; }
+.mt-ypill__y select { -webkit-appearance:none; appearance:none; min-width:46px; margin:0; padding:0 2px; border:0; background:none; cursor:pointer;
+  font-family:inherit !important; font-size:15px !important; font-weight:600 !important; letter-spacing:.01em !important; text-transform:none !important;
+  text-align:center; text-align-last:center; color:var(--cc-ink) !important; font-variant-numeric:tabular-nums; }
+.mt-ybar__r { text-align:right; line-height:1.25; min-width:0; }
+.mt-ybar__r b { display:block; font-size:14px; font-weight:600; color:var(--cc-ink); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mt-ybar__r span { font-size:11px; color:var(--cc-taupe); }
+.mt-hdr { margin-bottom:6px; }
+.mt-add { min-height:32px; padding:6px 12px; font-size:12px; }
+.mt-meta { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; margin:0 0 16px;
+  font-size:12.5px; color:var(--cc-taupe); }
+.mt-meta em { font-style:normal; color:var(--cc-charcoal); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mt-meta__chips { display:inline-flex; gap:6px; }
+.mt-card__hd { padding:14px 14px 10px; }
+.mt-card__name { font-size:19px; font-weight:500; }
+.mt-card__sum { font-size:13px; }
+
+/* opened entry */
+.mt-oh__e { margin:0 0 0 auto; width:28px; height:24px; display:flex; align-items:center; justify-content:center; padding:0; border:0;
+  border-radius:6px; background:none; cursor:pointer; flex-shrink:0; color:var(--cc-taupe); -webkit-tap-highlight-color:transparent; }
+.mt-oh__e i { font-size:16px; }
+.mt-oh__e:active { background:var(--cc-bg); }
+.mt-oh__e + .mt-oh__x { margin-left:2px; }
+.mt-acts--in { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; }
+.mt-acts--in .mt-pdfw { display:contents; }
+.mt-acts--in .mt-act { flex-direction:column; justify-content:center; gap:3px; width:100%; height:auto; min-height:54px; padding:8px 4px;
+  border-radius:10px; font-size:11.5px; line-height:1.2; text-align:center; white-space:normal; }
+.mt-acts--in .mt-act i { font-size:17px; }
+.mt-ks { align-items:center; }
+.mt-ks__l { gap:10px; }
+.mt-ks__l em { font-size:15px; }
+.mt-ks__new { display:inline-flex; align-items:center; gap:4px; height:30px; margin:0; padding:0 12px; border:.5px solid var(--cc-ink);
+  border-radius:15px; background:var(--cc-white); font-family:inherit; font-size:12px; font-weight:500; color:var(--cc-ink); cursor:pointer;
+  flex-shrink:0; -webkit-tap-highlight-color:transparent; }
+.mt-ks__new i { font-size:13px; }
+.mt-ks__new:active { background:var(--cc-bg); }
+.mt-cgs { display:flex; gap:2px; margin:10px 0 2px; padding:2px; background:var(--cc-surface); border:var(--cc-border); border-radius:var(--cc-r-pill); }
+.mt-cgs__b { flex:1 1 0; min-width:0; height:28px; padding:0 6px; border:0; border-radius:var(--cc-r-pill); background:none; cursor:pointer;
+  font-family:inherit; font-size:12px; color:var(--cc-taupe); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mt-cgs__b.is-on { background:var(--cc-white); color:var(--cc-ink); font-weight:500; box-shadow:0 0 0 .5px var(--cc-rule); }
+.mt-cl { margin-top:6px; }
+.mt-cl .mt-cr { padding-top:8px; padding-bottom:8px; }
+.mt-cl__all { display:block; margin:8px auto 0; font-size:12px; }
+.mt-costs .mt-ch { display:none; }
+.mt-nofile { color:#B0661E; font-size:11px; }
+
+/* pop-ups (receipt + edit) */
+.mt-modal__h { padding:14px 16px 10px; }
+.mt-modal__t { font-size:18px; font-weight:500; }
+.mt-modal__k { font-size:10px; }
+.mt-modal__b { padding:14px 16px; }
+.mt-modal .mt-grid { gap:10px 12px; }
+.mt-modal .mt-k { font-size:10.5px; }
+.mt-modal .mt-in { height:38px; font-size:14px; border-radius:8px; }
+.mt-modal textarea.mt-in { height:auto; min-height:76px; }
+.mt-modal .mt-in--amt { font-weight:600; font-variant-numeric:tabular-nums; }
+.mt-opt { color:var(--cc-stone); }
+.mt-modal .mt-seg--kind { margin:0 0 12px; }
+.mt-modal .mt-seg--kind .mt-seg__b { height:28px; padding:0 12px; font-size:12px; }
+.mt-modal .mt-chip { min-height:30px; font-size:11.5px; }
+.mt-modal .mt-chip--add { padding:0 11px; }
+.mt-modal .mt-chk.mt-sw { display:flex; align-items:center; justify-content:space-between; width:100%; gap:12px; margin-top:4px; padding:10px 0 0;
+  border-top:.5px solid var(--cc-rule); font-size:13px; }
+.mt-sw input[type=checkbox] { -webkit-appearance:none; appearance:none; position:relative; width:38px !important; height:22px !important; margin:0;
+  flex-shrink:0; border-radius:11px; background:var(--cc-stone); cursor:pointer; transition:background .15s; }
+.mt-sw input[type=checkbox]::after { content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+  background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .15s; }
+.mt-sw input[type=checkbox]:checked { background:var(--cc-ink); }
+.mt-sw input[type=checkbox]:checked::after { transform:translateX(16px); }
+.mt-sw input[type=checkbox]:focus-visible { outline:2px solid var(--cc-gold); outline-offset:2px; }
+.mt-modal__f .cc-foot-right .cc-foot-btn { height:42px !important; font-size:13px !important; }
+.mt-stseg { display:flex; gap:2px; width:100%; padding:2px; box-sizing:border-box; background:var(--cc-surface); border:var(--cc-border); border-radius:10px; }
+.mt-stseg__b { flex:1 1 0; min-width:0; height:34px; padding:0 4px; border:0; border-radius:8px; background:none; cursor:pointer;
+  font-family:inherit; font-size:12.5px; color:var(--cc-taupe); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mt-stseg__b.is-on { background:var(--cc-white); color:var(--cc-ink); font-weight:500; box-shadow:0 0 0 .5px var(--cc-rule); }
+/* Edit pop-up: full height on phones · Delete / Move to quietly under Cancel · Save */
+@media (max-width:700px) { .mt-modal--edit .mt-modal__s { height:calc(100dvh - env(safe-area-inset-top, 0px) - 12px); max-height:none; } }
+.mt-modal--edit .mt-sec--edit { margin:0; padding:0; border:0; background:none; }
+.mt-modal--edit .mt-sec--edit .mt-in { background-color:var(--cc-bg); }
+.mt-modal--edit .mt-modal__f .cc-sec-foot { flex-direction:column-reverse; align-items:stretch; }
+.mt-modal--edit .mt-modal__f .mt-foot-l { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px 12px; }
+.mt-modal--edit .mt-modal__f .mt-foot-l .cc-foot-btn { height:auto !important; padding:2px 0 !important; border:0 !important; background:none !important;
+  font-size:12px !important; font-weight:400 !important; color:var(--cc-taupe) !important; }
+.mt-modal--edit .mt-modal__f .mt-foot-l .cc-foot-btn[data-mt="del"] { color:#A33B2B !important; }
+.mt-in[hidden] { display:none !important; }
+.mt-modal--edit .mt-modal__f .mt-foot-l .mt-move { height:auto !important; margin:0; padding:2px 0 !important; border:0 !important; background:none !important;
+  font-size:12px !important; color:var(--cc-taupe) !important; }
+/* while a pop-up is open the entry gets a bit shorter (add buttons hide) → room at the end, so the page can't snap up */
+html.mt-modal-open .cc-main { padding-bottom:calc(20px + 60vh); }
