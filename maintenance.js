@@ -352,7 +352,6 @@ function mtRowHTML(c, since) {
         <span class="mt-row__l"><span class="mt-row__t">${mtEsc(c.title)}</span>${sub ? `<span class="mt-row__s">${sub}</span>` : ''}</span>
         <span class="mt-row__r"><span class="mt-row__a${cost ? '' : ' mt-mu'}">${mtAmt(cost)}</span>${mtPill(c.kind, c.status)}</span>
       </div>
-      ${mtActsHTML(c, false)}
     </div>`;
 }
 
@@ -377,7 +376,7 @@ function mtRenderList() {
       <button type="button" class="mt-add" data-mt="new"><i class="ti ti-plus" aria-hidden="true"></i><span>Add</span></button>
     </div>`;
   if (!list.length) {
-    el.innerHTML = mtBothHTML() + head + (newTop ? `<div class="mt-list">${newTop}</div>` : `<p class="mt-empty">${MT_KIND[kind].empty}</p>`);
+    el.innerHTML = mtBarHTML(0, '') + head + mtMetaHTML(0, 0) + (newTop ? `<div class="mt-list">${newTop}</div>` : `<p class="mt-empty">${MT_KIND[kind].empty}</p>`);
     mtPlacePanel(el);
     return;
   }
@@ -386,11 +385,7 @@ function mtRenderList() {
   const shown = list.filter(c => mtInYear(c, yy));                   // D37: the year on top decides the list
   const nOpen = shown.filter(c => c.status === 'open').length, nProg = shown.filter(c => c.status === 'in_progress').length;
   const counts = [nOpen ? `${nOpen} ${MT_KIND[kind].openCount}` : '', nProg ? `${nProg} in progress` : ''].filter(Boolean).join(' · ') || 'all done';
-  const sum = `
-    <div class="cc-sum2">
-      <div class="cc-sum2__meta"><b>Kosten</b><span>${counts}</span></div>
-      <div class="cc-sum2__vals"><span><i>${yy}</i>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span></div>
-    </div>`;
+  const sum = mtMetaHTML(mtCost(ids, yy), mtCost(ids));          // D38: one quiet line (the year's sum is in the bar)
 
   const cards = mtGroups(kind).map(g => {
     const cs = g.cases.filter(c => mtInYear(c, yy)).sort((a, b) =>
@@ -409,7 +404,7 @@ function mtRenderList() {
   const empty = cards ? '' : `<div class="mt-yempty"><p class="mt-empty">No ${MT_KIND[kind].title} in ${mtEsc(yy)}.</p>
       ${older ? `<button type="button" class="mt-link" data-mt="yrGo" data-v="${older}"><i class="ti ti-chevron-left" aria-hidden="true"></i> ${older}</button>` : ''}</div>`;
 
-  el.innerHTML = mtBothHTML() + head + sum + `<div class="mt-list">${newTop}${cards}</div>` + empty;
+  el.innerHTML = mtBarHTML(mtCost(ids, yy), counts) + head + sum + `<div class="mt-list">${newTop}${cards}</div>` + empty;
   mtPlacePanel(el);
 }
 
@@ -437,13 +432,14 @@ function mtPanelHTML() {
   const head = `
     <div class="mt-oh__h">
       <button type="button" class="mt-oh__t" data-mt="close" aria-label="Close ${mtEsc(title)}" aria-expanded="true"><span id="mtPanelTitle">${mtEsc(title)}</span></button>
+      ${!s.isNew && c && !mtActive(c) ? `<button type="button" class="mt-oh__e" data-mt="edit" aria-label="Edit ${mtEsc(title)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>` : ''}
       <button type="button" class="mt-oh__x" data-mt="close" aria-label="Close ${mtEsc(title)}" tabindex="-1"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>
     </div>`;
   if (s.isNew) {
     return head + mtEditHTML(c, s) +
       '<p class="mt-docs-empty mt-after">Receipts, photos and documents can be added after Save.</p>';
   }
-  return head + (s.edit ? mtEditHTML(c, s) : mtSummaryHTML(c) + mtActsHTML(c, true)) + mtCostsHTML(c) + mtDocsHTML(c);
+  return head + mtSummaryHTML(c) + mtActsHTML(c, true) + mtCostsHTML(c) + mtDocsHTML(c);   // D38: Edit = a pop-up (mtEditModalSync)
 }
 
 /* The details at a glance: Schadensart · Zimmer · Area · dates · status (· not in Controlling).
@@ -455,7 +451,6 @@ function mtSummaryHTML(c) {
   return `
     <div class="mt-oh__s">
       <span class="mt-oh__l">${bits.join(' · ')}</span>
-      ${mtActive(c) ? '' : '<button type="button" class="mt-link" data-mt="edit">Edit</button>'}
     </div>
     ${desc ? `<p class="mt-oh__d${more ? ' is-full' : ''}">${mtEsc(desc)}</p>
       <button type="button" class="mt-link mt-more" data-mt="more" aria-expanded="${more}"${more ? '' : ' data-auto="1" hidden'}>${more ? 'Less' : 'More'}</button>` : ''}`;
@@ -496,7 +491,8 @@ function mtEditHTML(c, s) {
           <input class="mt-in" id="mtF-area" type="text" maxlength="80" autocomplete="off" placeholder="e.g. Bad 1. OG" value="${mtEsc(d.area || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtF-date" id="mtF-dateL">${l1}</label><input class="mt-in" id="mtF-date" type="date" value="${mtEsc(d.case_date || '')}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtF-end" id="mtF-endL">${l2}</label><input class="mt-in" id="mtF-end" type="date" value="${mtEsc(d.end_date || '')}"/></div>
-        <div class="mt-f"><label class="mt-k" for="mtF-status">Status</label><select class="mt-in" id="mtF-status">${stats}</select></div>
+        <div class="mt-f mt-f--full"><span class="mt-k" id="mtF-statusL">Status</span><select class="mt-in" id="mtF-status" hidden>${stats}</select>
+          <div class="mt-stseg" role="group" aria-labelledby="mtF-statusL">${['open', 'in_progress', 'done'].map(st => `<button type="button" class="mt-stseg__b mt-stseg__b--${st}${(d.status || 'open') === st ? ' is-on' : ''}" data-mt="stSet" data-v="${st}" aria-pressed="${(d.status || 'open') === st}">${mtStatusLabel(d.kind, st)}</button>`).join('')}</div></div>
         <div class="mt-f mt-f--full"><label class="mt-k" for="mtF-desc" id="mtF-descL">Description</label>
           <textarea class="mt-in mt-ta" id="mtF-desc" rows="3" maxlength="2000">${mtEsc(d.description || '')}</textarea></div>
       </div>
@@ -520,6 +516,7 @@ function mtRenderPanel() {
     p.innerHTML = '';
     mtPanelStatus(p);
     mtParkPanel();
+    mtEditModalSync();
     return;
   }
   mtCostCapture();                                           // an open cost form keeps what is typed
@@ -570,6 +567,7 @@ function mtKindChanged() {
   const sch = kind === 'schaden', g = id => document.getElementById(id);
   const st = g('mtF-status');
   if (st) [...st.options].forEach(o => { o.textContent = mtStatusLabel(kind, o.value); });
+  document.querySelectorAll('.mt-stseg__b').forEach(b => { b.textContent = mtStatusLabel(kind, b.dataset.v); });
   const [l1, l2] = MT_DATE_LBL[kind] || MT_DATE_LBL.renovierung;
   if (g('mtF-dateL')) g('mtF-dateL').textContent = l1;
   if (g('mtF-endL')) g('mtF-endL').textContent = l2;
@@ -583,7 +581,7 @@ function mtKindChanged() {
 /* D9 · Status and date stay in line (both visible before Save, you can change them back) */
 function mtEndChanged() {
   const g = id => document.getElementById(id), end = g('mtF-end')?.value, st = g('mtF-status');
-  if (st && end && end <= ccTodayISO() && st.value !== 'done') { st.value = 'done'; mtSay('Status set to Done'); }
+  if (st && end && end <= ccTodayISO() && st.value !== 'done') { st.value = 'done'; mtStSegSync(); mtSay('Status set to Done'); }
 }
 function mtStatusChanged() {
   const g = id => document.getElementById(id), st = g('mtF-status'), end = g('mtF-end');
@@ -684,9 +682,15 @@ function mtEdit() {
   mtRenderPanel();
 }
 
-function mtCancel() {
+async function mtCancel() {
   if (!MT.sel) return;
   if (MT.sel.isNew) { mtClose(true); return; }
+  // D38: Edit is a pop-up now (a tap beside it closes it) → typed changes ask first
+  const sel = MT.sel;
+  if (sel.edit && sel.snap !== undefined && mtFormSnap() !== sel.snap) {
+    const ok = await mtConfirm({ title: 'Discard your changes?', text: 'What you typed in this entry is not saved.', ok: 'Discard', cancel: 'Keep editing', danger: true });
+    if (!ok || MT.sel !== sel) return;
+  }
   MT.sel = { id: MT.sel.id, isNew: false, edit: false };
   mtRenderPanel();
 }
@@ -872,6 +876,7 @@ function mtMoreCheck() {
 }
 function mtAfterPanel() {
   mtMoreCheck();
+  mtEditModalSync();                                         // D38: Edit as a pop-up
   mtCostModalRender();
   document.querySelectorAll('#mtPanel textarea.mt-ta').forEach(mtGrow);
   const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
@@ -1058,8 +1063,9 @@ function mtRefresh(caseId) {
 function mtAnchor() {
   const vh = window.innerHeight || 800;
   const vis = el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 70 && r.top < vh; };
-  let el = [...document.querySelectorAll('#mtPanel .mt-cr[data-id]')].find(vis), key = null;
-  if (el) key = { k: 'row', id: el.dataset.id };
+  // D38: receipts are newest first (6, then "Show all") → hold the Kosten section, not one row
+  let el = [...document.querySelectorAll('#mtPanel .mt-cr[data-id]')].find(vis) ? document.getElementById('mtCosts') : null, key = null;
+  if (el) key = { k: 'costs' };
   else {
     const p = document.getElementById('mtPanel');
     if (p && p.parentNode && p.parentNode.id !== 'mtPanelHome' && vis(p)) { el = p; key = { k: 'panel' }; }
@@ -1071,6 +1077,7 @@ function mtAnchor() {
   return el ? { key, tab: MT.tab, top: el.getBoundingClientRect().top } : null;
 }
 function mtAnchorEl(key) {
+  if (key.k === 'costs') return document.querySelector('#mtPanel #mtCosts');
   if (key.k === 'row') {
     const id = window.CSS && CSS.escape ? CSS.escape(String(key.id)) : String(key.id);
     return document.querySelector(`#mtPanel .mt-cr[data-id="${id}"]`);
@@ -1089,7 +1096,13 @@ function mtRestore(a) {
 function mtFlashRow(id) {
   setTimeout(() => {
     const sel = window.CSS && CSS.escape ? CSS.escape(String(id)) : String(id);
-    const row = document.querySelector(`#mtPanel .mt-cr[data-id="${sel}"]`);
+    let row = document.querySelector(`#mtPanel .mt-cr[data-id="${sel}"]`);
+    const cs = !row && MT.sel && !MT.sel.isNew ? mtCostById(id) : null;   // D38: saved into the hidden part → "Show all"
+    if (cs && String(cs.case_id) === String(MT.sel.id)) {
+      MT.cAll = MT.cAll || {}; MT.cAll[MT.sel.id] = true; MT.cgrp = 'all';
+      mtRefresh(MT.sel.id);
+      row = document.querySelector(`#mtPanel .mt-cr[data-id="${sel}"]`);
+    }
     if (!row) return;
     row.classList.add('is-flash'); clearTimeout(row._fl); row._fl = setTimeout(() => row.classList.remove('is-flash'), 1800);
   }, 60);
@@ -1384,218 +1397,32 @@ function mtCostsHTML(c) {
   const busy = !!(s.edit || s.docEdit || s.add || s.fix);  // another part of the panel is being changed
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
   const tap = !busy && !f && !upAny;
-  // D4 · receipts first: Kosten on top, then "+ Add receipt", then the table (newest first)
-  const self = mtCost([c.id], null, 'self'), prov = mtCost([c.id], null, 'provider');
+  // D38 · Kosten + its sum · "+ Receipt" · a switch All / Self-bought / Provider · 6 lines, then "Show all"
   let h = `<section class="mt-costs" id="mtCosts">
-    <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b>${!busy && !f && !upAny ? '<button type="button" class="mt-link mt-ks__add" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Add receipt</button>' +
-      '<button type="button" class="mt-link mt-ks__add" data-mt="costPrompt"><i class="ti ti-copy" aria-hidden="true"></i>Copy prompt</button>' : ''}</span><em>${mtEur(mtCost([c.id]))}</em></div>
-`;
+    <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b><em>${mtEur(mtCost([c.id]))}</em></span>
+      ${tap ? '<button type="button" class="mt-ks__new" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Receipt</button>' : ''}</div>`;
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>${up.what ? mtEsc(up.what) + ' · ' : 'Uploading '}${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
-  if (!rows.length) h += '<p class="mt-docs-empty">No receipts yet.</p>';
-
-  Object.keys(MT_COST).forEach(kind => {
-    const list = rows.filter(r => r.kind === kind && !r.return_of).sort((a, b) => mtCostByDate(b, a));   // newest first
-    if (!list.length) return;
-    h += `<div class="mt-cg">
-      <div class="mt-cg__h"><span class="mt-cg__t">${MT_COST[kind].label} · ${list.length}</span><span class="mt-cg__s">${mtEur(mtCost([c.id], null, kind))}</span></div>
-      <div class="mt-ch" aria-hidden="true"><span>No.</span><span>Description</span><span>${MT_COST[kind].who}</span><span class="r">Amount</span><span>Date</span><span></span></div>
-      ${list.map(r => {
-        const rets = mtReturnsOf(r.id);
-        let x = mtCostRowHTML(r, tap);
-        rets.forEach(t => { x += mtCostRowHTML(t, tap); });
-        if (rets.length) x += `<div class="mt-net"><span>Net</span><b>${mtEur(mtNum(r.amount) - rets.reduce((a, t) => a + mtNum(t.amount), 0))}</b></div>`;
-        return x;
-      }).join('')}
+  if (!rows.length) return h + '<p class="mt-docs-empty">No receipts yet.</p></section>';
+  const main = rows.filter(r => !r.return_of);
+  const kinds = Object.keys(MT_COST).filter(k => main.some(r => r.kind === k));
+  const g = kinds.length > 1 && MT_COST[MT.cgrp] && kinds.includes(MT.cgrp) ? MT.cgrp : 'all';
+  if (kinds.length > 1) h += `<div class="mt-cgs" role="group" aria-label="Show">
+      <button type="button" class="mt-cgs__b${g === 'all' ? ' is-on' : ''}" data-mt="cgrp" data-v="all" aria-pressed="${g === 'all'}">All ${main.length}</button>
+      ${kinds.map(k => `<button type="button" class="mt-cgs__b${g === k ? ' is-on' : ''}" data-mt="cgrp" data-v="${k}" aria-pressed="${g === k}">${MT_COST[k].label} ${main.filter(r => r.kind === k).length}</button>`).join('')}
     </div>`;
-  });
+  const list = main.filter(r => g === 'all' || r.kind === g).sort((a, b) => mtCostByDate(b, a));   // newest first
+  const all = !!(MT.cAll && MT.cAll[c.id]), LIM = 6, shown = all ? list : list.slice(0, LIM);
+  h += '<div class="mt-cl">' + shown.map(r => {
+    const rets = mtReturnsOf(r.id);
+    let x = mtCostRowHTML(r, tap);
+    rets.forEach(t => { x += mtCostRowHTML(t, tap); });
+    if (rets.length) x += `<div class="mt-net"><span>Net</span><b>${mtEur(mtNum(r.amount) - rets.reduce((a, t) => a + mtNum(t.amount), 0))}</b></div>`;
+    return x;
+  }).join('') + '</div>';
+  if (list.length > LIM) h += `<button type="button" class="mt-link mt-cl__all" data-mt="cAll" data-id="${mtEsc(c.id)}">${all ? 'Show less' : 'Show all ' + list.length}</button>`;
   return h + '</section>';
 }
 
-/* ── D26 · "Copy prompt" (next to "+ Add receipt") ─────────────────────
-   One tap copies the receipt → SQL prompt for Claude, with THIS case filled in
-   (its id, so the SQL can't hit another case). Paste it in Claude with the photo
-   → run the SQL in Supabase → the row shows here; the photo is added in the row.
-   The SQL does what Save does: same checks (no. used twice · typed by hand in
-   Controlling · returns), and the database books Controlling itself.
-   No pop-up — only if the phone blocks copying, the text is shown to copy by hand. */
-function mtPromptText(c) {
-  const one = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
-  const title = one(c.title), prop = one(mtPropName(c)), id = String(c.id);
-  const what = [title, prop, (MT_KIND[c.kind] || {}).one].filter(Boolean).join(' · ');
-  return `Beleg → Maintenance (SQL)
-Case: ${what}
-
-I'll send a photo of a receipt or invoice for this case. Read it, fill in
-the SQL template below and give it back as ONE SQL block for Supabase.
-Change only the values in the "fill in" part. Controlling is booked by the
-database itself.
-
-Read it like this:
-- Amount: the final total incl. VAT (Summe / Gesamt / Brutto /
-  Rechnungsbetrag / Zu zahlen). Never cash given, change, netto or a
-  subtotal. Check that the items add up to it.
-- Date: the receipt or invoice date ("26" = 2026).
-- Receipt / order no.: Rechnungs-Nr. on invoices, Beleg-/Bon-Nr. on
-  receipts, Bestell-Nr. on orders. On DIY-store receipts (Bauhaus,
-  Hornbach, OBI, toom): the long barcode number, digits only. Never
-  Steuernummer, EAN, TSE or Kundennummer.
-- Shop / provider: short shop name (Bauhaus, Hornbach, OBI, IKEA) or the
-  company name from the letterhead.
-- Description: what was bought or done, short German, max 160 characters,
-  no article numbers.
-- Type: 'self' = bought in a shop, 'provider' = invoice from a company that
-  did work.
-- Return or credit note: art = 'return', zu_nr = the no. of its receipt,
-  amount as a positive number.
-- Unreadable or unsure: ask me, don't guess.
-- If I write "nicht buchen": buchen := false.
-
-Before the SQL, write one line with what you read
-(shop · date · amount · receipt / order no. · description) so I can check it.
-After the SQL, remind me to add the photo in the app
-(open the cost row › Photo / PDF).
-
-If I paste back a message from the SQL:
-- "Already recorded" → only if I reply "save anyway": nr_ok := true.
-- "Already in Controlling" → I reply "take over" (link_id := the id from
-  the message) or "book separately" (separat := true).
-
-SQL template:
-
--- Beleg → Maintenance · ${what}
-do $$
-#variable_conflict use_variable
-declare
-  -- fill in ↓
-  art     text    := 'receipt';  -- 'receipt' or 'return'
-  typ     text    := 'self';     -- 'self' or 'provider'
-  nr      text    := null;       -- receipt / order no. (a return: its slip no.)
-  beschr  text    := null;       -- what was bought or done, German
-  firma   text    := null;       -- shop or provider (a return: null)
-  betrag  numeric := null;       -- the total, e.g. 21.90
-  datum   date    := null;       -- 'YYYY-MM-DD'
-  zu_nr   text    := null;       -- a return: the no. of its receipt
-  buchen  boolean := true;       -- false = "nicht buchen"
-  nr_ok   boolean := false;      -- true = "save anyway"
-  link_id text    := null;       -- "take over": the id of the Controlling line
-  separat boolean := false;      -- true = "book separately"
-  -- fill in ↑
-  cid  uuid := '${id}';
-  c    public.maint_cases%rowtype;
-  p    public.maint_costs%rowtype;
-  n    int;
-  rest numeric;
-  hit  text;
-begin
-  select * into c from public.maint_cases where id = cid;
-  if not found then
-    raise exception 'This case is not in Maintenance – copy the prompt again from the case';
-  end if;
-  art := lower(btrim(art));  typ := lower(btrim(typ));
-  nr := nullif(btrim(nr), '');  beschr := nullif(btrim(beschr), '');  firma := nullif(btrim(firma), '');
-  zu_nr := nullif(btrim(zu_nr), '');  link_id := nullif(btrim(link_id), '');
-  if art is null or art not in ('receipt', 'return') then raise exception 'art must be receipt or return'; end if;
-  if betrag is null or betrag < 0 or (art = 'return' and betrag = 0) then raise exception 'Fill in the amount'; end if;
-  if datum is null then raise exception 'Fill in the date'; end if;
-
-  if art = 'return' then                                   -- a return: to one receipt of this case
-    select count(*) into n from public.maint_costs m
-     where m.case_id = cid and m.return_of is null and lower(btrim(m.receipt_no)) = lower(zu_nr);
-    if n <> 1 then
-      raise exception 'Receipt % is not in this case – which receipt is the return for?', coalesce(zu_nr, '?');
-    end if;
-    select * into p from public.maint_costs m
-     where m.case_id = cid and m.return_of is null and lower(btrim(m.receipt_no)) = lower(zu_nr);
-    select p.amount - coalesce(sum(m.amount), 0) into rest from public.maint_costs m where m.return_of = p.id;
-    if betrag > rest then
-      raise exception 'The return can''t be more than what is left of receipt % (% €)', p.receipt_no, replace(rest::text, '.', ',');
-    end if;
-    if datum < p.cost_date then
-      raise exception 'The return can''t be before its receipt (%)', to_char(p.cost_date, 'DD.MM.YYYY');
-    end if;
-    typ := p.kind;  firma := null;  buchen := true;         -- a return follows its receipt
-  else
-    if typ is null or typ not in ('self', 'provider') then raise exception 'typ must be self or provider'; end if;
-    if nr is null and beschr is null then raise exception 'Fill in the no. or a description'; end if;
-  end if;
-
-  if not nr_ok then                                        -- the same receipt twice?
-    select string_agg(distinct '"' || k.title || '"', ', ') into hit
-      from public.maint_costs m join public.maint_cases k on k.id = m.case_id
-     where (nr is not null and lower(btrim(m.receipt_no)) = lower(nr))
-        or (nr is null and m.case_id = cid and m.amount = betrag and m.cost_date = datum
-            and (m.return_of is null) = (art = 'receipt'));
-    if hit is not null then
-      raise exception 'Already recorded in % – reply "save anyway" only if it is a different receipt', hit;
-    end if;
-  end if;
-
-  if coalesce(c.book_ctrl, true) and buchen and (art = 'receipt' or coalesce(p.book_ctrl, true)) and betrag > 0
-     and exists (select 1 from public.ctrl_properties cp where cp.id = c.property_id) then
-    if link_id is not null then
-      if not exists (select 1 from public.ctrl_expense_one_time o where o.id::text = link_id and o.maint_cost_id is null) then
-        raise exception 'Controlling line % not found', link_id;
-      end if;
-    elsif not separat then                                 -- typed by hand in Controlling already?
-      select string_agg(format('id %s: %s · %s · %s € · %s', o.id, to_char(o.invoice_date, 'DD.MM.YYYY'),
-                               coalesce(o.company, '–'), replace(o.amount::text, '.', ','), coalesce(o.item, '')), ' | ')
-        into hit
-        from public.ctrl_expense_one_time o
-       where o.property_id = c.property_id and o.maint_cost_id is null
-         and o.invoice_date between datum - 7 and datum + 7
-         and abs(o.amount - betrag) < 0.005
-         and coalesce(o.source_ref, '') !~ '^(maint|abr):'
-         and coalesce(o.kind, '') not in ('Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung', 'NK-Abrechnung')
-         and case when art = 'return' then o.direction = 1 else coalesce(o.direction, -1) <> 1 end;
-      if hit is not null then
-        raise exception 'Already in Controlling (typed by hand): % – reply "take over" or "book separately"', hit;
-      end if;
-    end if;
-  end if;
-
-  insert into public.maint_costs
-    (case_id, kind, receipt_no, description, brand, amount, cost_date, return_of, book_ctrl, link_ot, ctrl_dup_ok)
-  values
-    (cid, typ, nr, left(beschr, 160), firma, betrag, datum, p.id, buchen, link_id, separat);
-end $$;
-
-select m.receipt_no as nr, m.description, m.brand, replace(m.amount::text, '.', ',') as betrag,
-       to_char(m.cost_date, 'DD.MM.YYYY') as datum, coalesce(o.item, 'not booked in Controlling') as controlling
-  from public.maint_costs m
-  left join public.ctrl_expense_one_time o on o.maint_cost_id = m.id
- where m.case_id = '${id}'
- order by m.created_at desc
- limit 1;
-`;
-}
-
-/* Copy to the clipboard (Maintenance doesn't load utils.js) */
-async function mtCopyText(text) {
-  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
-    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
-    const ok = document.execCommand('copy'); ta.remove(); return ok;
-  } catch (e) { return false; }
-}
-
-async function mtCopyPrompt() {
-  const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
-  if (!c) return;
-  const text = mtPromptText(c);
-  if (await mtCopyText(text)) { mtSay('Prompt copied – paste it in Claude with the photo.'); return; }
-  // the phone blocked copying (rare) → show the text to copy by hand
-  setTimeout(() => {
-    const t = document.querySelector('#mtConfirm .mt-prompt');
-    if (t) t.addEventListener('focus', () => t.setSelectionRange(0, t.value.length));
-  }, 0);
-  await mtAsk({
-    title: 'Copy the prompt', text: 'Copying didn\u2019t work here. Select the text and copy it.',
-    html: `<textarea class="mt-in mt-prompt" readonly aria-label="Prompt">${mtEsc(text)}</textarea>`,
-    buttons: [{ v: 'ok', label: 'Done', kind: 'p' }],
-  });
-}
 
 function mtCostRowHTML(r, tap) {
   const n = mtCostFiles(r.id).length, ret = !!r.return_of;
@@ -1610,7 +1437,7 @@ function mtCostRowHTML(r, tap) {
       <span class="mt-cr__a"><span class="mt-cr__no"${no ? '' : ' style="margin-right:-6px"'}>${no}</span><span class="mt-cr__desc">${mtEsc(desc)}${off ? '<span class="mt-off">not in Controlling</span>' : ''}</span></span>
       <span class="mt-cr__amt">${ret ? mtNeg(r.amount) : mtEur(r.amount)}</span>
       <span class="mt-cr__b"><span class="mt-cr__who">${ret ? '' : mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
-      <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ''}</span>
+      <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ret ? '' : '<span class="mt-nofile">no file</span>'}</span>
     </button>`;
 }
 
@@ -1635,25 +1462,25 @@ function mtCostFormHTML(f) {
   return `<div class="mt-ab mt-cf-form${ret ? ' is-ret' : ''}" id="mtC-form" data-fid="${mtEsc(f.id)}">
       ${top}
       <div class="mt-grid">
-        <div class="mt-f"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt / order no.'}</label>
-          <input class="mt-in" id="mtC-no" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.receipt_no || '')}"/></div>
-        <div class="mt-f"><label class="mt-k" for="mtC-desc">Description</label>
-          <input class="mt-in" id="mtC-desc" type="text" maxlength="160" autocomplete="off" value="${mtEsc(f.description || '')}"${ret ? ' placeholder="optional"' : ''}/></div>
-        ${ret ? '' : `<div class="mt-f"><label class="mt-k" for="mtC-who" id="mtC-whoLbl">${MT_COST[f.kind].who}</label>
-          <input class="mt-in" id="mtC-who" type="text" maxlength="80" autocomplete="off" value="${mtEsc(f.brand || '')}"/></div>`}
         <div class="mt-f"><label class="mt-k" for="mtC-amount">Amount (€)</label>
-          <input class="mt-in" id="mtC-amount" data-cc-num="2" inputmode="decimal" autocomplete="off" value="${mtEsc(amt)}"/></div>
+          <input class="mt-in mt-in--amt" id="mtC-amount" data-cc-num="2" inputmode="decimal" autocomplete="off" value="${mtEsc(amt)}"/></div>
         <div class="mt-f"><label class="mt-k" for="mtC-date">Date</label>
           <input class="mt-in" id="mtC-date" type="date" value="${mtEsc(f.cost_date || '')}"/></div>
-        <div class="mt-f mt-f--full"><span class="mt-k">Receipt (PDF)</span>
+        ${ret ? '' : `<div class="mt-f"><label class="mt-k" for="mtC-who" id="mtC-whoLbl">${MT_COST[f.kind].who}</label>
+          <input class="mt-in" id="mtC-who" type="text" maxlength="80" autocomplete="off" value="${mtEsc(f.brand || '')}"/></div>`}
+        <div class="mt-f${ret ? ' mt-f--full' : ''}"><label class="mt-k" for="mtC-desc">What</label>
+          <input class="mt-in" id="mtC-desc" type="text" maxlength="160" autocomplete="off" value="${mtEsc(f.description || '')}"${ret ? ' placeholder="optional"' : ''}/></div>
+        <div class="mt-f mt-f--full"><label class="mt-k" for="mtC-no">${ret ? 'Slip no.' : 'Receipt / order no.'} <span class="mt-opt">optional</span></label>
+          <input class="mt-in" id="mtC-no" type="text" maxlength="60" autocomplete="off" value="${mtEsc(f.receipt_no || '')}"/></div>
+        <div class="mt-f mt-f--full"><span class="mt-k">Receipt</span>
           <div class="mt-chips">${chips}
-            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-camera" aria-hidden="true"></i> Photo / PDF</button>
+            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-upload" aria-hidden="true"></i> Photo / PDF</button>
             ${f.files.some(x => x.file && x.img) ? `<button type="button" class="mt-chip mt-chip--add mt-chip--next" data-mt="costCam"><i class="ti ti-plus" aria-hidden="true"></i> Next part</button>` : ''}
           </div>${f.files.filter(x => x.file && x.img).length > 1 ? '<p class="mt-hint">The photos go onto one page, top to bottom, when you save.</p>'
             : f.files.some(x => x.file && x.img) ? '<p class="mt-hint">Long receipt? “Next part” adds the next photo — all parts go onto one page.</p>' : ''}</div>
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
           ? '<p class="mt-hint">Run MAINTENANCE-D14.sql once, then each receipt has its own switch.</p>'
-          : `<label class="mt-chk"><input type="checkbox" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/><span>Book in Controlling</span></label>`}</div>`}
+          : `<label class="mt-chk mt-sw"><span>Book in Controlling</span><input type="checkbox" role="switch" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/></label>`}</div>`}
         ${!f.isNew && mtCostById(f.id) && mtCostById(f.id).link_ot && !caseOff ? '<p class="mt-hint mt-f--full">Linked to the line you typed in Controlling — it counts once.</p>' : ''}
       </div>
       <div class="cc-sec-foot">
@@ -1873,7 +1700,7 @@ function mtCamClose(keep) {
   MT_CAM.open = false; MT_CAM.shots = [];
   mtCamStop();
   if (el) { (el.querySelector('.mt-cam__strip')._urls || []).forEach(u => URL.revokeObjectURL(u)); el.remove(); }
-  if (!document.getElementById('mtCostModal') && !document.getElementById('mtSbModal')) document.documentElement.classList.remove('mt-modal-open');
+  if (!document.querySelector('.mt-modal')) document.documentElement.classList.remove('mt-modal-open');
   const g = MT.sel && MT.sel.cost;
   if (!keep || !g || !shots.length) return;
   shots.forEach(x => g.files.push({ id: null, file: x, name: x.name, img: true }));
@@ -2325,7 +2152,7 @@ function mtSbVis() {
   const sch = kind === 'schaden';
   const casa = mtIsCasa(document.getElementById('mtF-prop')?.value);
   const police = /Einbruch/.test(document.getElementById('mtF-art')?.value || '');
-  document.querySelectorAll('#mtPanel [data-only="schaden"]').forEach(el => {
+  document.querySelectorAll('#mtPanel [data-only="schaden"], #mtEditModal [data-only="schaden"]').forEach(el => {
     const sb = el.dataset.sb;
     el.hidden = !sch || (sb === 'ask' && casa) || (sb === 'police' && !police);
   });
@@ -2589,6 +2416,9 @@ function mtWire() {
     else if (a === 'docToCost') mtDocToCost(b.dataset.id);
     else if (a === 'pdfYear') mtPdfYear(b);
     else if (a === 'yrGo') mtYearGo(b.dataset.v);
+    else if (a === 'cgrp') { MT.cgrp = b.dataset.v; mtRefresh(MT.sel && MT.sel.id); }
+    else if (a === 'cAll') { MT.cAll = MT.cAll || {}; MT.cAll[b.dataset.id] = !MT.cAll[b.dataset.id]; mtRefresh(b.dataset.id); }
+    else if (a === 'stSet') mtStatusSet(b.dataset.v);
     else if (a === 'pdfEntry') mtPdfEntry(b.dataset.id, b);
     else if (a === 'invYear') mtPdfInvYear(b);                // D29
     else if (a === 'invEntry') mtPdfInvEntry(b.dataset.id, b);
@@ -2601,7 +2431,6 @@ function mtWire() {
     else if (a === 'addCancel') { if (MT.sel) { MT.sel.add = null; mtRenderPanel(); } }
     else if (a === 'addSave') mtAddSave();
     else if (a === 'costNew') mtCostNew(b.dataset.k);
-    else if (a === 'costPrompt') mtCopyPrompt();
     else if (a === 'costEdit') mtCostEdit(b.dataset.id);
     else if (a === 'costKind') mtCostKind(b.dataset.k);
     else if (a === 'costFile') mtCostPickFiles();
@@ -2646,7 +2475,7 @@ function mtWire() {
   document.addEventListener('input', e => {
     if (mtIsBulletTa(e.target)) mtBulletFix(e.target);             // the Mieter typed by hand is kept when the Zimmer changes
     if (e.target && e.target.id === 'mtS-mieter' && MT.sb) MT.sb.mieterAuto = false;
-    if (e.target && e.target.matches && e.target.matches('#mtPanel textarea.mt-ta, #mtSbModal textarea.mt-ta')) mtGrow(e.target);
+    if (e.target && e.target.matches && e.target.matches('#mtPanel textarea.mt-ta, #mtSbModal textarea.mt-ta, #mtEditModal textarea.mt-ta')) mtGrow(e.target);
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && MT.sel && MT.sel.cost && document.getElementById('mtCostModal') && !document.querySelector('.mt-askv') && !document.getElementById('ccCal')) { mtCostCancel(); return; }
@@ -3055,24 +2884,30 @@ function mtSbRenumber() {
 }
 
 /* ── D22 · Both tabs together: a slim white strip under the tabs, the same in both tabs ── */
-function mtBothHTML() {
-  const ids = MT.cases.map(c => c.id), yy = mtSumYear(), yrs = mtListYears(), yi = yrs.indexOf(yy);
-  return `<div class="mt-both">
-      <div class="mt-yb" role="group" aria-label="Year">
-        <button type="button" class="mt-yb__arw" data-mt="yrGo" data-v="prev" aria-label="Previous year"${yi < yrs.length - 1 ? '' : ' disabled'}><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
-        <label class="mt-yb__sel"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>
-        <button type="button" class="mt-yb__arw" data-mt="yrGo" data-v="next" aria-label="Next year"${yi > 0 ? '' : ' disabled'}><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+/* D38 · the slim bar under the tabs (pinned): year pill ‹ 2026 › · this tab's sum for the year + what is open */
+function mtBarHTML(sum, counts) {
+  const yy = mtSumYear(), yrs = mtListYears(), yi = yrs.indexOf(yy);
+  return `<div class="mt-ybar">
+      <div class="mt-ypill" role="group" aria-label="Year">
+        <button type="button" class="mt-ypill__a" data-mt="yrGo" data-v="prev" aria-label="Previous year"${yi < yrs.length - 1 ? '' : ' disabled'}><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
+        <label class="mt-ypill__y"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+        <button type="button" class="mt-ypill__a" data-mt="yrGo" data-v="next" aria-label="Next year"${yi > 0 ? '' : ' disabled'}><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <div class="mt-both__r2"><span><i>${yy} · all tabs</i>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span>
-        <span class="mt-both__chips">${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}${mtInvChip(mtHasInvoiceFiles(ids.map(String), yy))}</span></div>
+      <span class="mt-ybar__r"><b>${mtEur(sum)}</b><span>${mtEsc(counts)}</span></span>
     </div>`;
+}
+/* D38 · under the title: all tabs of the year (· the tab's all-time total when it differs) + PDF / Invoices */
+function mtMetaHTML(tabYear, tabTotal) {
+  const ids = MT.cases.map(c => c.id), yy = mtSumYear();
+  return `<div class="mt-meta"><span>All tabs <em>${mtEur(mtCost(ids, yy))}</em>${Math.abs(tabTotal - tabYear) > 0.004 ? ` · Total <em>${mtEur(tabTotal)}</em>` : ''}</span>
+      <span class="mt-meta__chips">${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}${mtInvChip(mtHasInvoiceFiles(ids.map(String), yy))}</span></div>`;
 }
 /* ── D22 · The receipt form as a pop-up (new receipt, a receipt row, a return) ── */
 function mtCostModalSync() {
   const s = MT.sel;
   if (s && s.cost) return;
   const m = document.getElementById('mtCostModal');
-  if (m) { m.remove(); if (!document.getElementById('mtSbModal')) document.documentElement.classList.remove('mt-modal-open'); }
+  if (m) { m.remove(); if (!document.querySelector('.mt-modal')) document.documentElement.classList.remove('mt-modal-open'); }
 }
 function mtCostModalRender() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
@@ -3106,7 +2941,7 @@ function mtMoveKind(to) {                                   // D30: three tabs �
   if (!k || !c || !MT_KIND[to] || to === c.kind) return;
   k.value = k.value === to ? c.kind : to;
   mtKindChanged();
-  document.querySelectorAll('#mtPanel [data-mt="moveKind"]').forEach(b => {
+  document.querySelectorAll('#mtPanel [data-mt="moveKind"], #mtEditModal [data-mt="moveKind"]').forEach(b => {
     const t = b.dataset.v;
     b.innerHTML = '<i class="ti ti-arrows-exchange" aria-hidden="true"></i>' + (k.value === t ? 'Moves to ' + MT_KIND[t].title + ' on Save · undo' : 'Move to ' + MT_KIND[t].title);
   });
@@ -3126,7 +2961,7 @@ function mtActsHTML(c, inPanel) {
   return `<div class="mt-acts${inPanel ? ' mt-acts--in' : ''}">
       <span class="mt-pdfw"><button type="button" class="mt-act${has ? '' : ' off'}" data-mt="pdfEntry" data-id="${id}" data-cc-pdf="1" data-label="Kostenübersicht"${has ? '' : ' aria-disabled="true"'}><i class="ti ti-file-text" aria-hidden="true"></i>Kostenübersicht</button></span>
       <span class="mt-pdfw"><button type="button" class="mt-act${inv ? '' : ' off'}" data-mt="invEntry" data-id="${id}" data-cc-pdf="1" data-label="Invoices"${inv ? '' : ' aria-disabled="true"'}><i class="ti ti-files" aria-hidden="true"></i>Invoices</button></span>
-      <button type="button" class="mt-act" data-mt="sbOpen" data-id="${id}"><i class="ti ti-file-description" aria-hidden="true"></i>${mtBerichtLbl(c)}</button>
+      <button type="button" class="mt-act" data-mt="sbOpen" data-id="${id}"><i class="ti ti-file-description" aria-hidden="true"></i>${inPanel ? 'Bericht' : mtBerichtLbl(c)}</button>
     </div>`;
 }
 function mtSbNextNo(prefix) {
@@ -3593,4 +3428,52 @@ async function mtDraftOffer() {
     const dx = t.clientX - sx, dy = t.clientY - sy; sx = null; ok = false;
     if (Math.abs(dx) > 70 && Math.abs(dy) < 45) mtYearGo(dx < 0 ? 'next' : 'prev');
   }, { passive: true });
+})();
+
+
+/* ── D38 (Nov 2026) · Edit of an entry as a pop-up (like a receipt): full height, big Save at the bottom,
+      Delete / Move to quietly underneath. The form is drawn once when Edit opens (what you type stays). ── */
+function mtEditModalSync() {
+  const s = MT.sel, c = s && !s.isNew && s.edit ? mtCase(s.id) : null;
+  let m = document.getElementById('mtEditModal');
+  if (!c) {
+    if (m) { m.remove(); if (!document.querySelector('.mt-modal')) document.documentElement.classList.remove('mt-modal-open'); }
+    return;
+  }
+  if (m && m.dataset.id === String(c.id)) return;            // already open: keep what is typed
+  if (m) m.remove();
+  m = document.createElement('div');
+  m.id = 'mtEditModal'; m.className = 'mt-modal mt-modal--edit'; m.dataset.id = String(c.id);
+  m.innerHTML = `<div class="mt-modal__bg" data-mt="cancel"></div>
+    <div class="mt-modal__s" role="dialog" aria-modal="true" aria-labelledby="mtEditT">
+      <div class="mt-modal__h">
+        <div><p class="mt-modal__k">Edit ${mtEsc(MT_KIND[c.kind].one)}</p><p class="mt-modal__t" id="mtEditT">${mtEsc(c.title)}</p></div>
+        <button type="button" class="mt-modal__x" data-mt="cancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
+      </div>
+      <div class="mt-modal__b">${mtEditHTML(c, s)}</div>
+      <div class="mt-modal__f"></div>
+    </div>`;
+  document.body.appendChild(m);
+  document.documentElement.classList.add('mt-modal-open');
+  const foot = m.querySelector('.mt-sec--edit > .cc-sec-foot'), mf = m.querySelector('.mt-modal__f');
+  if (foot && mf) mf.appendChild(foot);
+  m.querySelectorAll('textarea.mt-ta').forEach(mtGrow);
+  mtSbVis();
+}
+/* Status buttons → the (hidden) select, so the existing change logic runs */
+function mtStatusSet(v) {
+  const sel = document.getElementById('mtF-status'); if (!sel) return;
+  sel.value = v;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  mtStSegSync();
+}
+function mtStSegSync() {
+  const v = document.getElementById('mtF-status')?.value;
+  document.querySelectorAll('.mt-stseg__b').forEach(b => { const on = b.dataset.v === v; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
+}
+/* The pinned bar sits right under the app's header (its height changes with the phone) */
+(function () {
+  const set = () => { const h = document.querySelector('.cc-header'); if (h) document.documentElement.style.setProperty('--mt-hdr-h', h.getBoundingClientRect().height + 'px'); };
+  if (typeof ResizeObserver === 'function') { const ro = new ResizeObserver(set); const t = () => { const h = document.querySelector('.cc-header'); if (h) { ro.observe(h); set(); } else setTimeout(t, 200); }; t(); }
+  window.addEventListener('resize', set);
 })();
