@@ -537,3 +537,6 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
     animation:none; }
 }
 .mt-modal .mt-resume { border-color:var(--cc-gold) !important; box-shadow:0 0 0 2px var(--cc-gold) !important; }
+
+/* D35 · "+ Next part": the camera that stays open, after the first photo of a receipt */
+.mt-chip--next { border-style:solid !important; border-color:var(--cc-ink) !important; color:var(--cc-ink) !important; font-weight:500; }

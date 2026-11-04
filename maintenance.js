@@ -1577,10 +1577,10 @@ function mtCostFormHTML(f) {
           <input class="mt-in" id="mtC-date" type="date" value="${mtEsc(f.cost_date || '')}"/></div>
         <div class="mt-f mt-f--full"><span class="mt-k">Receipt (PDF)</span>
           <div class="mt-chips">${chips}
-            <button type="button" class="mt-chip mt-chip--add" data-mt="costCam"><i class="ti ti-camera" aria-hidden="true"></i> Camera</button>
-            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-photo" aria-hidden="true"></i> Photo / PDF</button>
+            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-camera" aria-hidden="true"></i> Photo / PDF</button>
+            ${f.files.some(x => x.file && x.img) ? `<button type="button" class="mt-chip mt-chip--add mt-chip--next" data-mt="costCam"><i class="ti ti-plus" aria-hidden="true"></i> Next part</button>` : ''}
           </div>${f.files.filter(x => x.file && x.img).length > 1 ? '<p class="mt-hint">The photos go onto one page, top to bottom, when you save.</p>'
-            : f.files.some(x => x.file && x.img) ? '<p class="mt-hint">The photo becomes a PDF when you save.</p>' : ''}</div>
+            : f.files.some(x => x.file && x.img) ? '<p class="mt-hint">Long receipt? “Next part” adds the next photo — all parts go onto one page.</p>' : ''}</div>
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
           ? '<p class="mt-hint">Run MAINTENANCE-D14.sql once, then each receipt has its own switch.</p>'
           : `<label class="mt-chk"><input type="checkbox" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/><span>Book in Controlling</span></label>`}</div>`}
@@ -1685,7 +1685,7 @@ function mtCostPickFiles() {
    A long receipt in 2–3 parts: snap, snap, snap → Done. The parts are added to the receipt in the
    order taken (× on a thumbnail takes one off). When the live camera isn't possible (no permission,
    older phone) the same screen uses the phone's own camera, one photo per tap, and stays open. */
-const MT_CAM = { open: false, stream: null, shots: [] };
+const MT_CAM = { open: false, stream: null, shots: [], base: 0 };   // base = photos already in the receipt (part numbers go on)
 function mtCamCss() {
   if (document.getElementById('mt-cam-css')) return;
   const st = document.createElement('style'); st.id = 'mt-cam-css';
@@ -1719,10 +1719,10 @@ async function mtCamOpen() {
   if (!f || MT_CAM.open) return;
   mtCostCapture();
   mtCamCss();
-  MT_CAM.open = true; MT_CAM.shots = [];
+  MT_CAM.open = true; MT_CAM.shots = []; MT_CAM.base = f.files.filter(x => x.file && x.img).length;
   const el = document.createElement('div');
   el.className = 'mt-cam'; el.id = 'mtCam'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Receipt camera');
-  el.innerHTML = `<div class="mt-cam__top"><span class="mt-cam__ttl">Receipt · photos in a row</span>
+  el.innerHTML = `<div class="mt-cam__top"><span class="mt-cam__ttl">Receipt · next parts</span>
       <button type="button" class="mt-cam__x" data-cam="cancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>
     <div class="mt-cam__view"><video playsinline webkit-playsinline muted autoplay></video><div class="mt-cam__flash"></div></div>
     <div class="mt-cam__strip" aria-label="Photos taken"></div>
@@ -1778,7 +1778,7 @@ async function mtCamSnap() {
   const fl = el.querySelector('.mt-cam__flash'); if (fl) { fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60); }
   const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.88));
   if (!blob || !MT_CAM.open) return;
-  MT_CAM.shots.push(new File([blob], 'Teil ' + (MT_CAM.shots.length + 1) + '.jpg', { type: 'image/jpeg' }));
+  MT_CAM.shots.push(new File([blob], 'Teil ' + (MT_CAM.base + MT_CAM.shots.length + 1) + '.jpg', { type: 'image/jpeg' }));
   mtCamDraw();
 }
 function mtCamDraw() {
@@ -1786,13 +1786,15 @@ function mtCamDraw() {
   const strip = el.querySelector('.mt-cam__strip');
   (strip._urls || []).forEach(u => URL.revokeObjectURL(u));
   strip._urls = MT_CAM.shots.map(x => URL.createObjectURL(x));
-  strip.innerHTML = MT_CAM.shots.map((x, i) => `<div class="mt-cam__th"><img src="${strip._urls[i]}" alt="Part ${i + 1}"/><b>${i + 1}</b>
-      <button type="button" data-cam="del" data-i="${i}" aria-label="Remove part ${i + 1}"><i class="ti ti-x" aria-hidden="true"></i></button></div>`).join('');
+  const b0 = MT_CAM.base;
+  strip.innerHTML = MT_CAM.shots.map((x, i) => `<div class="mt-cam__th"><img src="${strip._urls[i]}" alt="Part ${b0 + i + 1}"/><b>${b0 + i + 1}</b>
+      <button type="button" data-cam="del" data-i="${i}" aria-label="Remove part ${b0 + i + 1}"><i class="ti ti-x" aria-hidden="true"></i></button></div>`).join('');
   strip.scrollLeft = strip.scrollWidth;
   const n = MT_CAM.shots.length, done = el.querySelector('[data-cam="done"]');
   done.disabled = !n; done.textContent = n ? 'Done · ' + n : 'Done';
-  el.querySelector('.mt-cam__hint').textContent = n ? (n === 1 ? '1 part — snap the next part, or Done.' : n + ' parts — they go onto one page, top to bottom.')
-    : 'A long receipt: photograph it in parts, top to bottom.';
+  const tot = b0 + n;
+  el.querySelector('.mt-cam__hint').textContent = n ? 'Part ' + tot + ' taken — the next part, or Done. All parts go onto one page, top to bottom.'
+    : 'Photograph part ' + (b0 + 1) + ' — the camera stays open for more.';
 }
 function mtCamClose(keep) {
   const el = document.getElementById('mtCam');
