@@ -529,3 +529,11 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 .mt-modal__f .cc-foot-right .cc-foot-btn:last-child { flex:1 1 auto; font-weight:600 !important; }
 .mt-modal__f .cc-foot-right .cc-foot-btn.mt-save { background:var(--cc-ink) !important; border-color:var(--cc-ink) !important; color:var(--cc-white) !important; }
 .mt-modal__f .mt-sb__status { flex:1 1 100%; margin:0; }
+
+/* ── D34 (Nov 2026) · Editing mode: once you tap a field the pop-up is full height and stays there
+      (the keyboard closing, switching apps and coming back move nothing) · the field you were in: gold ── */
+@media (max-width:700px) {
+  .mt-modal.is-editing .mt-modal__s { height:calc(100dvh - env(safe-area-inset-top, 0px) - 8px); max-height:calc(100dvh - env(safe-area-inset-top, 0px) - 8px);
+    animation:none; }
+}
+.mt-modal .mt-resume { border-color:var(--cc-gold) !important; box-shadow:0 0 0 2px var(--cc-gold) !important; }
