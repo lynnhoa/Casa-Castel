@@ -118,9 +118,31 @@ const MT = {
   d30: false,       // MAINTENANCE-D30.sql has been run (Sonstiges: Art · Ort · Uhrzeit · Teilnehmer)
 };
 /* D12 · the year of the summary (and of its PDF): your choice, else this year */
-function mtSumYear() {                                     // D22: one year for both tabs
+function mtSumYear() {                                     // D22: one year for both tabs · D37: also the list
   const v = MT.sumYear.all;
-  return v && mtCostYears().includes(v) ? v : mtYear();
+  return v && mtListYears().includes(v) ? v : mtYear();
+}
+/* D37 · the years you can go to: years with receipts or entries, and this year */
+function mtListYears() {
+  const ys = mtCostYears().concat(MT.cases.map(c => mtCaseYear(c)).filter(y => /^\d{4}$/.test(y)));
+  return [...new Set(ys)].sort().reverse();
+}
+/* D37 · is an entry shown in year Y? its own year · still open from an earlier year (in this year) · the open entry */
+function mtInYear(c, Y) {
+  const cy = mtCaseYear(c);
+  if (cy === Y) return true;
+  if (Y === mtYear() && c.status !== 'done' && cy < Y) return true;
+  return !!(MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id));
+}
+/* D37 · ‹ › and swipe: older / newer year (an open entry closes first — asks if something is not saved) */
+async function mtYearGo(v) {
+  const ys = mtListYears(), cur = mtSumYear();
+  const to = v === 'prev' ? ys[ys.indexOf(cur) + 1] : v === 'next' ? ys[ys.indexOf(cur) - 1] : v;
+  if (!to || to === cur || !ys.includes(to)) return;
+  if (MT.sel && !(await mtClose())) { mtRender(); return; }
+  MT.sumYear.all = to;
+  mtRender();
+  window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function mtCostYears() {
   const ys = MT.costs.map(r => String(r.cost_date || '').slice(0, 4)).filter(y => /^\d{4}$/.test(y));
@@ -320,8 +342,8 @@ function mtSpan(c) {
   return b ? 'until ' + b : '';
 }
 
-function mtRowHTML(c) {
-  const sub = [mtWhere(c), mtSpan(c)].filter(Boolean).map(mtEsc).join(' · ');
+function mtRowHTML(c, since) {
+  const sub = [mtWhere(c), mtSpan(c), since ? 'since ' + since : ''].filter(Boolean).map(mtEsc).join(' · ');
   const cost = mtCost([c.id]);
   const sel = MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id) ? ' is-sel' : '';
   return `<div class="mt-ent ${mtStCls(c.status)}">
@@ -360,8 +382,9 @@ function mtRenderList() {
     return;
   }
 
-  const ids = list.map(c => c.id), y = mtYear(), yy = mtSumYear();
-  const nOpen = list.filter(c => c.status === 'open').length, nProg = list.filter(c => c.status === 'in_progress').length;
+  const ids = list.map(c => c.id), yy = mtSumYear();
+  const shown = list.filter(c => mtInYear(c, yy));                   // D37: the year on top decides the list
+  const nOpen = shown.filter(c => c.status === 'open').length, nProg = shown.filter(c => c.status === 'in_progress').length;
   const counts = [nOpen ? `${nOpen} ${MT_KIND[kind].openCount}` : '', nProg ? `${nProg} in progress` : ''].filter(Boolean).join(' · ') || 'all done';
   const sum = `
     <div class="cc-sum2">
@@ -370,27 +393,23 @@ function mtRenderList() {
     </div>`;
 
   const cards = mtGroups(kind).map(g => {
-    const total = mtCost(g.cases.map(c => c.id));
-    const years = g.years.map(Y => {
-      const fk = kind + '|' + g.key + '|' + Y.y;
-      // open by default: this year, or a year that still has something not done
-      const auto = Y.y === y || Y.cases.some(c => c.status !== 'done');
-      const hasOpen = MT.sel && !MT.sel.isNew && Y.cases.some(c => String(c.id) === String(MT.sel.id));
-      const open = hasOpen || (MT.open[fk] === undefined ? auto : !!MT.open[fk]);
-      return `
-        <button type="button" class="mt-yr" data-mt="fold" data-key="${mtEsc(fk)}" data-auto="${auto ? 1 : 0}" aria-expanded="${open}">
-          <span class="mt-yr__y">${mtEsc(Y.y)}</span><span class="mt-yr__n">${Y.cases.length} ${Y.cases.length === 1 ? 'entry' : 'entries'}</span>
-          <i class="ti ti-chevron-down" aria-hidden="true"></i>
-        </button>${open ? Y.cases.map(c => (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) ? '<div class="mt-slot"></div>' : mtRowHTML(c)).join('') : ''}`;
-    }).join('');
+    const cs = g.cases.filter(c => mtInYear(c, yy)).sort((a, b) =>
+      String(b.case_date || '').localeCompare(String(a.case_date || '')) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    if (!cs.length) return '';                                        // D37: nothing in this year → the property is not shown
+    const total = mtCost(cs.map(c => c.id), yy);
+    const rows = cs.map(c => (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) ? '<div class="mt-slot"></div>'
+      : mtRowHTML(c, mtCaseYear(c) !== yy && /^\d{4}$/.test(mtCaseYear(c)) ? mtCaseYear(c) : '')).join('');
     return `
       <section class="mt-card" aria-label="${mtEsc(g.name)}">
         <div class="mt-card__hd"><h2 class="mt-card__name">${mtEsc(g.name)}</h2><span class="mt-card__sum${total ? '' : ' mt-mu'}">${mtAmt(total)}</span></div>
-        ${years}
+        <div class="mt-card__rows">${rows}</div>
       </section>`;
   }).join('');
+  const older = mtListYears().filter(v => v < yy && list.some(c => mtCaseYear(c) === v))[0];
+  const empty = cards ? '' : `<div class="mt-yempty"><p class="mt-empty">No ${MT_KIND[kind].title} in ${mtEsc(yy)}.</p>
+      ${older ? `<button type="button" class="mt-link" data-mt="yrGo" data-v="${older}"><i class="ti ti-chevron-left" aria-hidden="true"></i> ${older}</button>` : ''}</div>`;
 
-  el.innerHTML = mtBothHTML() + head + sum + `<div class="mt-list">${newTop}${cards}</div>`;
+  el.innerHTML = mtBothHTML() + head + sum + `<div class="mt-list">${newTop}${cards}</div>` + empty;
   mtPlacePanel(el);
 }
 
@@ -639,6 +658,8 @@ function mtReadForm() {
 async function mtOpen(id) {
   if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(id) && !MT.sel.edit) return;
   if (MT.sel && !(await mtClose())) return;
+  { const c0 = mtCase(id), cy = c0 && mtCaseYear(c0);                 // D37: an entry of another year → go to its year
+    if (c0 && /^\d{4}$/.test(cy) && !mtInYear(c0, mtSumYear())) MT.sumYear.all = cy; }
   MT.sel = { id, isNew: false, edit: false };
   mtRenderPanel();
   mtRender();
@@ -2567,6 +2588,7 @@ function mtWire() {
     else if (a === 'openDoc') mtOpenDoc(b.dataset.id);
     else if (a === 'docToCost') mtDocToCost(b.dataset.id);
     else if (a === 'pdfYear') mtPdfYear(b);
+    else if (a === 'yrGo') mtYearGo(b.dataset.v);
     else if (a === 'pdfEntry') mtPdfEntry(b.dataset.id, b);
     else if (a === 'invYear') mtPdfInvYear(b);                // D29
     else if (a === 'invEntry') mtPdfInvEntry(b.dataset.id, b);
@@ -2614,7 +2636,7 @@ function mtWire() {
     if (t.id === 'mtF-kind') mtKindChanged();
     else if (t.id === 'mtF-prop' || t.id === 'mtF-art') mtSbVis();
     else if (t.id === 'mtF-end') mtEndChanged();
-    else if (t.dataset && t.dataset.mtYear !== undefined) { MT.sumYear.all = t.value; mtRender(); }
+    else if (t.dataset && t.dataset.mtYear !== undefined) mtYearGo(t.value);
     else if (t.id === 'mtF-status') mtStatusChanged();
     else if (t.dataset && t.dataset.docType) mtDocTypeChanged(t.dataset.docType);
   });
@@ -3034,11 +3056,15 @@ function mtSbRenumber() {
 
 /* ── D22 · Both tabs together: a slim white strip under the tabs, the same in both tabs ── */
 function mtBothHTML() {
-  const ids = MT.cases.map(c => c.id), yy = mtSumYear(), yrs = mtCostYears();
+  const ids = MT.cases.map(c => c.id), yy = mtSumYear(), yrs = mtListYears(), yi = yrs.indexOf(yy);
   return `<div class="mt-both">
-      <div class="mt-both__r1"><span class="mt-both__l">All tabs ·</span><label class="mt-ysel"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>
-        ${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}${mtInvChip(mtHasInvoiceFiles(ids.map(String), yy))}</div>
-      <div class="mt-both__r2"><span><i>${yy}</i>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span></div>
+      <div class="mt-yb" role="group" aria-label="Year">
+        <button type="button" class="mt-yb__arw" data-mt="yrGo" data-v="prev" aria-label="Previous year"${yi < yrs.length - 1 ? '' : ' disabled'}><i class="ti ti-chevron-left" aria-hidden="true"></i></button>
+        <label class="mt-yb__sel"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>
+        <button type="button" class="mt-yb__arw" data-mt="yrGo" data-v="next" aria-label="Next year"${yi > 0 ? '' : ' disabled'}><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+      </div>
+      <div class="mt-both__r2"><span><i>${yy} · all tabs</i>${mtEur(mtCost(ids, yy))}</span><span><i>Total</i>${mtEur(mtCost(ids))}</span>
+        <span class="mt-both__chips">${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}${mtInvChip(mtHasInvoiceFiles(ids.map(String), yy))}</span></div>
     </div>`;
 }
 /* ── D22 · The receipt form as a pop-up (new receipt, a receipt row, a return) ── */
@@ -3551,3 +3577,20 @@ async function mtDraftOffer() {
   MT_ED.last = d.last || null;
   setTimeout(() => mtResumeMark(d.last && d.last.field, d.scroll), 120);
 }
+
+
+/* D37 · swipe left / right over the list = next / previous year (not inside an open entry or a pop-up) */
+(function () {
+  let sx = null, sy = null, ok = false;
+  document.addEventListener('touchstart', e => {
+    const t = e.touches && e.touches[0], el = e.target;
+    ok = !!(t && el && el.closest && el.closest('#appMain') && !el.closest('#mtPanel, .mt-modal, .cccal-ov, input, textarea, select, .mt-chips'));
+    if (ok) { sx = t.clientX; sy = t.clientY; }
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!ok || sx === null) return;
+    const t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+    const dx = t.clientX - sx, dy = t.clientY - sy; sx = null; ok = false;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 45) mtYearGo(dx < 0 ? 'next' : 'prev');
+  }, { passive: true });
+})();
