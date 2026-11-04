@@ -335,6 +335,11 @@ function mtRowHTML(c) {
 }
 
 function mtRender() {
+  const a = mtAnchor();                                      // D36: the list redraw keeps your place
+  mtRenderList();
+  mtRestore(a);
+}
+function mtRenderList() {
   const kind = MT.tab;
   const el = document.getElementById('tab-' + kind);
   if (!el) return;
@@ -1021,8 +1026,52 @@ function mtFileInput(id, accept, multiple, onPick) {
 }
 const mtOpenCase = () => (MT.sel && !MT.sel.isNew && !MT.sel.edit ? mtCase(MT.sel.id) : null);
 function mtRefresh(caseId) {
+  const a = mtAnchor();                                      // D36: the screen stays where it is
   if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(caseId)) mtRenderPanel();
   mtRender();
+  mtRestore(a);
+}
+/* D36 (Nov 2026) · Keep your place: a redraw takes the open entry out of the list for a moment (shorter page →
+   the iPhone moves the scroll position and Safari doesn't move it back). Before a redraw note where the thing you
+   look at sits on the screen (a receipt row, else the open entry, else a property card) — afterwards put it back. */
+function mtAnchor() {
+  const vh = window.innerHeight || 800;
+  const vis = el => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 70 && r.top < vh; };
+  let el = [...document.querySelectorAll('#mtPanel .mt-cr[data-id]')].find(vis), key = null;
+  if (el) key = { k: 'row', id: el.dataset.id };
+  else {
+    const p = document.getElementById('mtPanel');
+    if (p && p.parentNode && p.parentNode.id !== 'mtPanelHome' && vis(p)) { el = p; key = { k: 'panel' }; }
+    else {
+      el = [...document.querySelectorAll('#tab-' + MT.tab + ' .mt-card')].find(vis);
+      if (el) key = { k: 'card', name: el.getAttribute('aria-label') };
+    }
+  }
+  return el ? { key, tab: MT.tab, top: el.getBoundingClientRect().top } : null;
+}
+function mtAnchorEl(key) {
+  if (key.k === 'row') {
+    const id = window.CSS && CSS.escape ? CSS.escape(String(key.id)) : String(key.id);
+    return document.querySelector(`#mtPanel .mt-cr[data-id="${id}"]`);
+  }
+  if (key.k === 'panel') { const p = document.getElementById('mtPanel'); return p && p.parentNode && p.parentNode.id !== 'mtPanelHome' ? p : null; }
+  return [...document.querySelectorAll('#tab-' + MT.tab + ' .mt-card')].find(c => c.getAttribute('aria-label') === key.name) || null;
+}
+function mtRestore(a) {
+  if (!a || a.tab !== MT.tab) return;
+  const el = mtAnchorEl(a.key);
+  if (!el || !el.getClientRects().length) return;
+  const d = el.getBoundingClientRect().top - a.top;
+  if (Math.abs(d) > 1) window.scrollTo({ top: window.scrollY + d, left: 0, behavior: 'instant' });
+}
+/* D36 · the receipt you just saved lights up where it is (no scrolling) */
+function mtFlashRow(id) {
+  setTimeout(() => {
+    const sel = window.CSS && CSS.escape ? CSS.escape(String(id)) : String(id);
+    const row = document.querySelector(`#mtPanel .mt-cr[data-id="${sel}"]`);
+    if (!row) return;
+    row.classList.add('is-flash'); clearTimeout(row._fl); row._fl = setTimeout(() => row.classList.remove('is-flash'), 1800);
+  }, 60);
 }
 
 /* Photos: camera or library, several at once → saved as photos right away */
@@ -1590,6 +1639,7 @@ function mtCostFormHTML(f) {
         ${left ? `<span class="is-left mt-foot-l">${left}</span>` : ''}
         <span class="cc-foot-right">
           <button type="button" class="cc-foot-btn" data-mt="costCancel">Cancel</button>
+          ${f.isNew && !ret ? '<button type="button" class="cc-foot-btn mt-save-next" data-mt="costSaveNext">Save + next</button>' : ''}
           <button type="button" class="cc-foot-btn mt-save" data-mt="costSave">Save</button>
         </span>
       </div>
@@ -1876,6 +1926,31 @@ function mtDupOf(no, selfId) {
   return { row: d, where: c ? `“${c.title}” (${mtPropName(c)})` : 'another entry', same: MT.sel && String(d.case_id) === String(MT.sel.id) };
 }
 
+/* D36 · "Save + next": saves this receipt, then the next empty one opens for the same entry —
+   Shop, Date, Self-bought / Provider and "Book in Controlling" carried over (often the same for a batch) */
+async function mtCostSaveNext() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || !f.isNew || f.return_of || MT.busy) return;
+  mtCostCapture();
+  const keep = { kind: f.kind, brand: f.brand || '', cost_date: f.cost_date || '', book_ctrl: f.book_ctrl }, id = f.id, caseId = MT.sel.id;
+  const btn = document.querySelector('#mtCostModal [data-mt="costSaveNext"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving …'; }
+  await mtCostSave();
+  if (!MT.sel || String(MT.sel.id) !== String(caseId) || MT.sel.cost || !mtCostById(id)) {   // not saved: the form stays / came back
+    const b2 = document.querySelector('#mtCostModal [data-mt="costSaveNext"]');
+    if (b2) { b2.disabled = false; b2.textContent = 'Save + next'; }
+    return;
+  }
+  mtCostNew(keep.kind);
+  const g = MT.sel && MT.sel.cost;
+  if (!g) return;
+  g.brand = keep.brand;
+  if (keep.cost_date) g.cost_date = keep.cost_date;
+  if (keep.book_ctrl !== undefined) g.book_ctrl = keep.book_ctrl;
+  g.snap = mtCostSnapOf(g);                                   // carried-over values don't count as a change (Cancel asks nothing)
+  mtCostModalRender();                                        // draw from g (mtRenderPanel would first read the empty fields back)
+  mtSay('Saved · next receipt');
+}
 async function mtCostSave() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
   if (!f || !c || MT.busy) return;
@@ -1963,6 +2038,7 @@ async function mtCostSave() {
   s.cost = null;
   if (pending.length) MT.up = { caseId: c.id, total: 1, done: 0, where: 'costs' };
   mtRefresh(c.id);
+  mtFlashRow(id);
 
   // 2 · store the row (one retry)
   const sb = _ctlSupa;
@@ -2038,6 +2114,7 @@ async function mtCostSave() {
   }
   MT.busy = false;
   mtRefresh(c.id);
+  if (pending.length || todo.length) mtFlashRow(id);
   if (failed) mtSay(`${uploads.length - failed} of ${uploads.length} files saved. Add the others again.`);
   else if (st && st.failed) mtSay('The No. could not be written on the PDF. Check the connection and save the receipt again.');
   else if (st && st.locked) mtSay(st.locked === 1 ? 'The No. can\'t be written on this PDF (it is locked) — it stays unchanged.'
@@ -2510,6 +2587,7 @@ function mtWire() {
     else if (a === 'costFileDel') mtCostFileDel(Number(b.dataset.i));
     else if (a === 'costCancel') mtCostCancel();
     else if (a === 'costSave') mtCostSave();
+    else if (a === 'costSaveNext') mtCostSaveNext();
     else if (a === 'costDel') mtCostDelete();
     else if (a === 'costReturn') mtCostNewReturn();
     else if (a === 'sbOpen') mtSbOpen(b.dataset.id || (MT.sel && MT.sel.id));

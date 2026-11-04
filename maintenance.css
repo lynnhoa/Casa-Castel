@@ -540,3 +540,8 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 
 /* D35 · "+ Next part": the camera that stays open, after the first photo of a receipt */
 .mt-chip--next { border-style:solid !important; border-color:var(--cc-ink) !important; color:var(--cc-ink) !important; font-weight:500; }
+
+/* D36 · "Save + next" in a new receipt: between Cancel and Save, outlined */
+.mt-modal__f .cc-foot-right .cc-foot-btn.mt-save-next { flex:0 0 auto; border-color:var(--cc-ink) !important; color:var(--cc-ink) !important; font-weight:500 !important; }
+.mt-modal__f .cc-foot-right .cc-foot-btn.mt-save-next:disabled { opacity:.55; }
+#appMain { overflow-anchor:none; }   /* D36: the app keeps your place itself (no second correction by the browser) */
