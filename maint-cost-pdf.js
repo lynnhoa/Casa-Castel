@@ -658,6 +658,38 @@ async function mtFrameFile(bytes, d) {
   for (let i = 0; i < pages.length; i++) await mtFrPage(L, out, pages[i], band, head.addr || '', (i + 1) + ' / ' + pages.length);
   return out.save();
 }
+/* D33 (Nov 2026) · the parts of ONE receipt (2–3 photos of a long receipt) → one page, top to bottom,
+   all at the same width — so the receipt reads as one, and its A4 copy / the Invoices PDF is one page.
+   Very many parts: a new page starts once a page is ~4.5 × as tall as wide (still readable on A4). */
+async function mtPhotoStackPdf(files) {
+  const L = await mtPdfLib(), doc = await L.PDFDocument.create();
+  const W = 1400, MAX_RATIO = 4.5, GAP = 6;
+  const parts = [];
+  for (const f of files) {
+    const p = await mtImageData(f, 2400, 0.9);
+    if (!p) throw new Error('photo');
+    parts.push(p);
+  }
+  const load = url => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+  let i = 0;
+  while (i < parts.length) {
+    const page = []; let h = 0;
+    while (i < parts.length) {
+      const ph = Math.round(parts[i].h * W / parts[i].w);
+      if (page.length && (h + GAP + ph) / W > MAX_RATIO) break;
+      page.push({ p: parts[i], h: ph }); h += (page.length > 1 ? GAP : 0) + ph; i++;
+    }
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = h;
+    const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, h);
+    let y = 0;
+    for (const it of page) { ctx.drawImage(await load(it.p.url), 0, y, W, it.h); y += it.h + GAP; }
+    const img = await doc.embedJpg(cv.toDataURL('image/jpeg', 0.86));
+    const pw = W * 0.5, ph = h * 0.5;
+    doc.addPage([pw, ph]).drawImage(img, { x: 0, y: 0, width: pw, height: ph });
+  }
+  return new Blob([await doc.save()], { type: 'application/pdf' });
+}
+
 /* The photos of a receipt as they are (each photo one page of its own size) = the original of a photo receipt */
 async function mtPhotoOrigPdf(files) {
   const L = await mtPdfLib(), doc = await L.PDFDocument.create();

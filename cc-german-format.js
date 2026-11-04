@@ -175,12 +175,25 @@ function ccFmtTs(ts) {
    Dots the person typed themselves (1.10.2026) are left alone.
    dm = day + month only (01.01.) */
 function ccDateTyping(value, dm = false) {
-  value = String(value ?? '').replace(/,/g, '.');           // German iPhone keypad: the separator key types "," → "."
+  value = String(value ?? '');
+  if (/^\d{4}-/.test(value)) return value;                 // 2026-09-26 typed as ISO: leave alone
+  value = value.replace(/[,\/\- ]/g, '.').replace(/\.{2,}/g, '.');   // Nov 2026: , - / space all work as "." (German keypad types ",")
   if (!/^(\d{2}\.){0,2}\d*$/.test(value)) return value;   // own dots (e.g. 1.10.) → keep as typed
   const digits = value.replace(/\D/g, '').slice(0, dm ? 4 : 8);
   if (!dm && digits.length > 4) return digits.slice(0, 2) + '.' + digits.slice(2, 4) + '.' + digits.slice(4);
   if (digits.length > 2) return digits.slice(0, 2) + '.' + digits.slice(2) + (dm && digits.length === 4 ? '.' : '');
   return digits;
+}
+
+/* Nov 2026 · what you typed → a date ccParseDate reads: "1-5-26" · "1/5/2026" · "1 5 26" → "1.5.26";
+   "1.5." / "1.5" (no year) → this year. ISO and anything else come back unchanged. */
+function ccDateComplete(t) {
+  let s = String(t ?? '').trim();
+  if (!s || /^\d{4}-\d{2}-\d{2}/.test(s)) return s;
+  s = s.replace(/[,\/\- ]+/g, '.').replace(/\.{2,}/g, '.');
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.?$/);
+  if (m) s = m[1] + '.' + m[2] + '.' + ccTodayISO().slice(0, 4);
+  return s;
 }
 
 /* Is this input a (converted) number field? Used by the save functions. */
@@ -380,6 +393,33 @@ function ccIsNumInput(el) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  function labelOf(el) {
+    // B25 (7): the field's own label ("Received on") — was "Datum" for fields whose label sits next to the box
+    const own = el.id && typeof CSS !== 'undefined' && CSS.escape ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
+    const wrapLbl = el.closest('label') && el.closest('label').textContent.trim();        // <label>Text <input></label>
+    return ((own && own.textContent) || el.getAttribute('aria-label') || wrapLbl ||
+      el.closest('.rm-field, .apt-field, .tn-field, .e-field, .ct-row, div')?.querySelector('label, .apt-field__label, .tn-flbl, .e-lbl')?.textContent || 'Datum').replace(/\*/g, '').trim();
+  }
+  /* Nov 2026 · an "end" field (End · Bis · Move-out · Contract end · Auszug …) and the start it belongs to:
+     the nearest date field BEFORE it in the same form that has a date. The calendar of an empty end field
+     opens at that month, and days before it can't be picked. */
+  const END_RE = /(^|[\s_\-:(])(end|ende|enddatum|end_date|endet|bis|until|auszug|move-?out|mietende|vertragsende|abreise)(?=$|[\s_\-:.)])/i;
+  function isEnd(el) {
+    const tag = [el.id, el.name, el.dataset.f, el.dataset.mf, el.dataset.vf, el.getAttribute('aria-label'), labelOf(el)].filter(Boolean).join(' ');
+    return END_RE.test(tag);
+  }
+  function startOf(el) {
+    if (el._ccCal === 'daymonth' || isBirthday(el) || !isEnd(el)) return null;
+    const box = el.closest('form, .mt-grid, .tn-fg, .tn-rent-form, .cc-add-form, .cc-inline-panel, .cck, .mt-modal__b, .rm-sheet, .tn-sheet, .cc-modal-sheet, section') || el.parentElement;
+    if (!box) return null;
+    const all = [...box.querySelectorAll('input.cc-cal')];
+    for (let k = all.indexOf(el) - 1; k >= 0; k--) { const v = readVal(all[k]); if (v && v.y) return v; }
+    return null;
+  }
+  const ymd = (y, m, d) => y * 10000 + m * 100 + d;
+  const lastDay = (y, m) => new Date(y, m, 0).getDate();
+  const p2 = n => String(n).padStart(2, '0');
+
   /* ── the calendar sheet ── */
   let cur = null;                                         // { el, y, m, sel }
   function open(el) {
@@ -392,14 +432,11 @@ function ccIsNumInput(el) {
     const today = ccTodayISO().split('-').map(Number);
     const v = readVal(el);
     const dm = el._ccCal === 'daymonth';
-    let y = v && v.y ? v.y : (isBirthday(el) ? today[0] - 35 : today[0]);
-    let m = v ? v.m : (isBirthday(el) ? 1 : today[1]);
-    cur = { el, y: dm ? 2024 : y, m, sel: v, dm, bday: isBirthday(el), today };   // 2024: day+month grid allows 29.02.
-    // B25 (7): the field's own label ("Received on") — was "Datum" for fields whose label sits next to the box
-    const own = el.id && typeof CSS !== 'undefined' && CSS.escape ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
-    const wrapLbl = el.closest('label') && el.closest('label').textContent.trim();        // <label>Text <input></label>
-    const label = ((own && own.textContent) || el.getAttribute('aria-label') || wrapLbl ||
-      el.closest('.rm-field, .apt-field, .tn-field, .e-field, .ct-row, div')?.querySelector('label, .apt-field__label, .tn-flbl, .e-lbl')?.textContent || 'Datum').replace(/\*/g, '').trim();
+    const start = startOf(el);                            // Nov 2026: End opens at the Start's month
+    let y = v && v.y ? v.y : start ? start.y : (isBirthday(el) ? today[0] - 35 : today[0]);
+    let m = v ? v.m : start ? start.m : (isBirthday(el) ? 1 : today[1]);
+    cur = { el, y: dm ? 2024 : y, m, sel: v, dm, bday: isBirthday(el), today, start, end: !dm && !isBirthday(el) && isEnd(el) };   // 2024: day+month grid allows 29.02.
+    const label = labelOf(el);
     close();
     const ov = document.createElement('div');
     ov.className = 'cccal-ov'; ov.id = 'ccCal';
@@ -432,7 +469,11 @@ function ccIsNumInput(el) {
         <div class="cccal__grid" role="grid"></div>
         <div class="cccal__btns">
           <button type="button" class="cccal__clr" data-a="clear">Leeren</button>
-          ${dm ? '' : `<button type="button" class="cccal__today" data-a="today">Heute</button>`}
+          <span class="cccal__quick">
+            ${cur.end && cur.start ? `<button type="button" class="cccal__q" data-a="plus1"></button>` : ''}
+            ${cur.end ? `<button type="button" class="cccal__q" data-a="monthend"></button>` : ''}
+            ${dm ? '' : `<button type="button" class="cccal__today" data-a="today">Heute</button>`}
+          </span>
         </div>
       </div>`;
     document.body.appendChild(ov);
@@ -447,6 +488,14 @@ function ccIsNumInput(el) {
     ov.addEventListener('touchstart', markTap, { capture: true, passive: true });
     ov.addEventListener('mousedown', markTap, true);
     ov.addEventListener('click', onClick);
+    { const g = ov.querySelector('.cccal__grid'); let sx = null, sy = null;   // Nov 2026: swipe ← → changes the month
+      g.addEventListener('touchstart', e => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; }, { passive: true });
+      g.addEventListener('touchend', e => {
+        const t = e.changedTouches[0]; if (sx === null) return;
+        const dx = t.clientX - sx, dy = t.clientY - sy; sx = null;
+        if (Math.abs(dx) > 50 && Math.abs(dy) < 40) { ov._tap = Date.now(); ov._swiped = Date.now(); step(dx < 0 ? 1 : -1); }
+      }, { passive: true });
+    }
     ov.addEventListener('change', e => {
       if (e.target.dataset.a === 'month') cur.m = +e.target.value;
       if (e.target.dataset.a === 'year')  cur.y = +e.target.value;
@@ -480,7 +529,7 @@ function ccIsNumInput(el) {
       const t = tin.value.trim();
       if (!t) return;
       // B24/B25 (2): only a COMPLETE date (4-digit year) is taken · anything else: red outline, the calendar stays open
-      if (dm ? /^\d{1,2}\.\d{1,2}\.?$/.test(t) : !!ccParseDate(t, true)) applyTyped();
+      if (dm ? /^\d{1,2}\.\d{1,2}\.?$/.test(t) : !!ccParseDate(ccDateComplete(t))) applyTyped();
       else tin.setAttribute('aria-invalid', 'true');
     });
     tin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyTyped(); } });
@@ -497,7 +546,7 @@ function ccIsNumInput(el) {
       if (!ok) { tin.setAttribute('aria-invalid', 'true'); return; }
       writeVal(cur.el, null, +m[2], +m[1]); close(); return;
     }
-    const iso = ccParseDate(t);
+    const iso = ccParseDate(ccDateComplete(t));
     if (!iso) { tin.setAttribute('aria-invalid', 'true'); return; }
     const [y, m, d] = iso.split('-').map(Number);
     writeVal(cur.el, y, m, d); close();
@@ -528,16 +577,31 @@ function ccIsNumInput(el) {
     try { e.target.blur(); } catch (_) {}
     ov.querySelector('.cccal__typein')?.focus();
   }
+  function step(n) {
+    if (!cur) return;
+    cur.m += n;
+    if (cur.m < 1)  { cur.m = 12; if (!cur.dm) cur.y--; }
+    if (cur.m > 12) { cur.m = 1;  if (!cur.dm) cur.y++; }
+    draw();
+  }
+  function plus1() {                                      // the Start + 1 month (31.01. → 28./29.02.)
+    const s = cur.start; let y = s.y, m = s.m + 1; if (m > 12) { m = 1; y++; }
+    return { y, m, d: Math.min(s.d, lastDay(y, m)) };
+  }
   function onClick(e) {
+    const ov = document.getElementById('ccCal');
+    if (ov && ov._swiped && Date.now() - ov._swiped < 400) return;      // the swipe was not a tap on a day
     const b = e.target.closest('[data-a], [data-d]'); if (!b || !cur) return;
-    if (b.dataset.d) { writeVal(cur.el, cur.dm ? null : cur.y, cur.m, +b.dataset.d); close(); return; }
+    if (b.dataset.d) { if (b.disabled) return; writeVal(cur.el, cur.dm ? null : cur.y, cur.m, +b.dataset.d); close(); return; }
     const a = b.dataset.a;
     if (a === 'close') close();
     else if (a === 'typeok') applyTyped();
-    else if (a === 'prev') { cur.m--; if (cur.m < 1) { cur.m = 12; if (!cur.dm) cur.y--; } draw(); }
-    else if (a === 'next') { cur.m++; if (cur.m > 12) { cur.m = 1; if (!cur.dm) cur.y++; } draw(); }
+    else if (a === 'prev') step(-1);
+    else if (a === 'next') step(1);
     else if (a === 'today') { const t = cur.today; writeVal(cur.el, t[0], t[1], t[2]); close(); }
     else if (a === 'clear') { writeVal(cur.el, null, null, null); close(); }
+    else if (a === 'plus1' && cur.start) { const r = plus1(); writeVal(cur.el, r.y, r.m, r.d); close(); }
+    else if (a === 'monthend') { writeVal(cur.el, cur.y, cur.m, lastDay(cur.y, cur.m)); close(); }
   }
   function draw() {
     const ov = document.getElementById('ccCal'); if (!ov || !cur) return;
@@ -557,13 +621,22 @@ function ccIsNumInput(el) {
     const lead = dm ? 0 : (new Date(y, m - 1, 1).getDay() + 6) % 7;   // Monday first
     let h = '';
     for (let i = 0; i < lead; i++) h += '<span></span>';
+    const st = cur.start, min = st ? ymd(st.y, st.m, st.d) : 0;
     for (let d = 1; d <= days; d++) {
       const isSel = sel && sel.d === d && sel.m === m && (dm || sel.y === y);
       const isToday = !dm && today[0] === y && today[1] === m && today[2] === d;
-      h += `<button type="button" class="cccal__day${isSel ? ' is-sel' : ''}${isToday ? ' is-today' : ''}" data-d="${d}"
-              aria-label="${d}. ${MONTHS[m - 1]}${dm ? '' : ' ' + y}"${isSel ? ' aria-pressed="true"' : ''}>${d}</button>`;
+      const before = !dm && min && ymd(y, m, d) < min;    // Nov 2026: an end is never before its start
+      const isStart = !dm && st && st.y === y && st.m === m && st.d === d;
+      h += `<button type="button" class="cccal__day${isSel ? ' is-sel' : ''}${isToday ? ' is-today' : ''}${isStart ? ' is-start' : ''}" data-d="${d}"
+              aria-label="${d}. ${MONTHS[m - 1]}${dm ? '' : ' ' + y}${isStart ? ' (Start)' : ''}"${isSel ? ' aria-pressed="true"' : ''}${before ? ' disabled' : ''}>${d}</button>`;
     }
     ov.querySelector('.cccal__grid').innerHTML = h;
+    const q1 = ov.querySelector('[data-a="plus1"]'), q2 = ov.querySelector('[data-a="monthend"]');
+    if (q1 && st) { const r = plus1(); q1.innerHTML = '<b>+1 Monat</b><span>' + p2(r.d) + '.' + p2(r.m) + '.</span>'; }
+    if (q2) {
+      const ld = lastDay(y, m), off = min && ymd(y, m, ld) < min;
+      q2.innerHTML = '<b>Monatsende</b><span>' + ld + '.' + p2(m) + '.</span>'; q2.disabled = !!off;
+    }
   }
 
   /* Oct 2026 · tap on the calendar icon (right end of the field) → calendar · tap anywhere else → typing */
@@ -603,6 +676,17 @@ function ccIsNumInput(el) {
     const v = nget(el), out = ccDateTyping(v, el._ccCal === 'daymonth');
     if (out !== v) { nset(el, out); try { el.setSelectionRange(out.length, out.length); } catch (_) {} }
   }, true);
+  /* Nov 2026 · a tap into a date field selects the whole date: type the new one straight away (no deleting) */
+  document.addEventListener('focusin', e => {
+    const el = e.target;
+    if (!el || !el._ccCal || el.disabled || el.readOnly || (el.closest && el.closest('.cccal'))) return;
+    const selAll = () => { try { if (document.activeElement === el) el.setSelectionRange(0, nget(el).length); } catch (_) {} };
+    selAll(); setTimeout(selAll, 0); setTimeout(selAll, 80);   // again after the phone has placed its cursor
+    el._ccSelUp = true;
+  }, true);
+  document.addEventListener('mouseup', e => { const el = e.target; if (el && el._ccSelUp) { el._ccSelUp = false; e.preventDefault(); } }, true);
+  document.addEventListener('focusout', e => { if (e.target) e.target._ccSelUp = false; }, true);
+
   /* a short note at the bottom (the app's own toast where there is one) */
   function note(msg) {
     if (typeof ccToast === 'function') { ccToast(msg, true); return; }
@@ -623,9 +707,10 @@ function ccIsNumInput(el) {
     if (!txt) { el.removeAttribute('aria-invalid'); el._ccLast = ''; return null; }
     let shown = null;
     if (el._ccCal === 'daymonth') {
-      if (validDM(txt)) { const m = txt.match(DM_RE); shown = String(m[1]).padStart(2, '0') + '.' + String(m[2]).padStart(2, '0') + '.'; }
+      const dmt = txt.replace(/[,\/\- ]+/g, '.');               // Nov 2026: any separator
+      if (validDM(dmt)) { const m = dmt.match(DM_RE); shown = String(m[1]).padStart(2, '0') + '.' + String(m[2]).padStart(2, '0') + '.'; }
     } else {
-      const iso = ccParseDate(txt);
+      const iso = ccParseDate(ccDateComplete(txt));             // Nov 2026: 1.5. → 01.05.<this year> · 1-5-26 → 01.05.2026
       if (iso) shown = ccFmtDate(iso);
     }
     if (shown === null) {                                 // not a date → back to the last one, red for a moment
@@ -695,6 +780,19 @@ html input.cc-cal { cursor:text; }
 .cccal__today { height:40px; padding:0 18px; border:.5px solid #D4B896; border-radius:8px; background:#F5EFE6; color:#5C3D1E;
   font-family:inherit; font-size:13px; font-weight:500; cursor:pointer; }
 .cccal button:focus-visible, .cccal select:focus-visible { outline:2px solid var(--cc-ink, #1E1B18); outline-offset:2px; }
+.cccal__day:disabled { color:var(--cc-stone, #C8BFB0); opacity:.45; cursor:default; }
+.cccal__day.is-start:not(.is-sel) { background:#F5EFE6; color:#5C3D1E; font-weight:600; }
+.cccal__btns:has(.cccal__q) { flex-wrap:wrap; }
+.cccal__btns:has(.cccal__q) .cccal__quick { order:-1; flex:1 1 100%; }
+.cccal__btns:has(.cccal__q) .cccal__quick > button { flex:1 1 0; min-width:0; padding:0 6px; }
+.cccal__quick { display:flex; justify-content:flex-end; gap:6px; }
+.cccal__q { height:40px; padding:0 12px; border:.5px solid var(--cc-rule, #E0DAD0); border-radius:8px; background:var(--cc-white, #FDFCFA);
+  color:var(--cc-charcoal, #3A3530); font-family:inherit; font-size:12.5px; font-weight:500; cursor:pointer; font-variant-numeric:tabular-nums; }
+.cccal__q:disabled { opacity:.45; cursor:default; }
+.cccal__q { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; height:44px; line-height:1.15; }
+.cccal__q b { font-weight:500; font-size:12.5px; } .cccal__q span { font-size:11px; color:var(--cc-taupe, #9A8E7E); }
+.cccal__btns:has(.cccal__q) .cccal__today { height:44px; }
+.cccal__btns { gap:8px; }
 @media (prefers-reduced-motion: reduce) { .cccal { animation:none; } }`;
   (document.head || document.documentElement).appendChild(st);
 

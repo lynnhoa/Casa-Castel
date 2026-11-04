@@ -1577,8 +1577,10 @@ function mtCostFormHTML(f) {
           <input class="mt-in" id="mtC-date" type="date" value="${mtEsc(f.cost_date || '')}"/></div>
         <div class="mt-f mt-f--full"><span class="mt-k">Receipt (PDF)</span>
           <div class="mt-chips">${chips}
-            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-camera" aria-hidden="true"></i> Photo / PDF</button>
-          </div>${f.files.some(x => x.file && x.img) ? '<p class="mt-hint">The photos become one PDF when you save.</p>' : ''}</div>
+            <button type="button" class="mt-chip mt-chip--add" data-mt="costCam"><i class="ti ti-camera" aria-hidden="true"></i> Camera</button>
+            <button type="button" class="mt-chip mt-chip--add" data-mt="costFile"><i class="ti ti-photo" aria-hidden="true"></i> Photo / PDF</button>
+          </div>${f.files.filter(x => x.file && x.img).length > 1 ? '<p class="mt-hint">The photos go onto one page, top to bottom, when you save.</p>'
+            : f.files.some(x => x.file && x.img) ? '<p class="mt-hint">The photo becomes a PDF when you save.</p>' : ''}</div>
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
           ? '<p class="mt-hint">Run MAINTENANCE-D14.sql once, then each receipt has its own switch.</p>'
           : `<label class="mt-chk"><input type="checkbox" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/><span>Book in Controlling</span></label>`}</div>`}
@@ -1679,6 +1681,132 @@ function mtCostPickFiles() {
     mtRenderPanel();
   });
 }
+/* ── D33 (Nov 2026) · Camera for receipts: several photos in a row, the camera stays open ──
+   A long receipt in 2–3 parts: snap, snap, snap → Done. The parts are added to the receipt in the
+   order taken (× on a thumbnail takes one off). When the live camera isn't possible (no permission,
+   older phone) the same screen uses the phone's own camera, one photo per tap, and stays open. */
+const MT_CAM = { open: false, stream: null, shots: [] };
+function mtCamCss() {
+  if (document.getElementById('mt-cam-css')) return;
+  const st = document.createElement('style'); st.id = 'mt-cam-css';
+  st.textContent = `
+.mt-cam { position:fixed; inset:0; z-index:900; display:flex; flex-direction:column; background:#14110F; color:#fff; }
+.mt-cam__top { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; }
+.mt-cam__ttl { font-size:13px; font-weight:500; letter-spacing:.02em; }
+.mt-cam__x { width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,.14); color:#fff; font-size:16px; display:flex; align-items:center; justify-content:center; }
+.mt-cam__view { flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; }
+.mt-cam__view video { width:100%; height:100%; object-fit:contain; display:block; }
+.mt-cam__alt { padding:24px; text-align:center; font-size:14px; line-height:1.5; color:rgba(255,255,255,.8); }
+.mt-cam__flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s; }
+.mt-cam__flash.on { opacity:.7; transition:none; }
+.mt-cam__strip { display:flex; gap:8px; overflow-x:auto; padding:10px 16px 0; min-height:84px; -webkit-overflow-scrolling:touch; }
+.mt-cam__th { position:relative; flex:0 0 auto; width:58px; height:74px; border-radius:6px; overflow:hidden; background:#2A2521; }
+.mt-cam__th img { width:100%; height:100%; object-fit:cover; display:block; }
+.mt-cam__th b { position:absolute; left:4px; bottom:3px; font-size:10px; font-weight:600; text-shadow:0 1px 2px #000; }
+.mt-cam__th button { position:absolute; top:2px; right:2px; width:24px; height:24px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; font-size:12px; display:flex; align-items:center; justify-content:center; }
+.mt-cam__hint { margin:0; padding:6px 16px 0; font-size:11.5px; color:rgba(255,255,255,.6); min-height:16px; }
+.mt-cam__bar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; padding:12px 20px calc(16px + env(safe-area-inset-bottom, 0px)); }
+.mt-cam__shut { width:74px; height:74px; border-radius:50%; border:4px solid #fff; background:none; padding:5px; -webkit-tap-highlight-color:transparent; }
+.mt-cam__shut span { display:block; width:100%; height:100%; border-radius:50%; background:#fff; }
+.mt-cam__shut:active span { transform:scale(.9); }
+.mt-cam__done { justify-self:end; height:48px; min-width:110px; padding:0 18px; border-radius:24px; border:none; background:#fff; color:#14110F; font:inherit; font-size:15px; font-weight:600; }
+.mt-cam__done:disabled { opacity:.35; }
+.mt-cam__cancel { justify-self:start; height:44px; padding:0 14px; border-radius:22px; border:.5px solid rgba(255,255,255,.35); background:none; color:#fff; font:inherit; font-size:14px; }`;
+  document.head.appendChild(st);
+}
+async function mtCamOpen() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || MT_CAM.open) return;
+  mtCostCapture();
+  mtCamCss();
+  MT_CAM.open = true; MT_CAM.shots = [];
+  const el = document.createElement('div');
+  el.className = 'mt-cam'; el.id = 'mtCam'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Receipt camera');
+  el.innerHTML = `<div class="mt-cam__top"><span class="mt-cam__ttl">Receipt · photos in a row</span>
+      <button type="button" class="mt-cam__x" data-cam="cancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+    <div class="mt-cam__view"><video playsinline webkit-playsinline muted autoplay></video><div class="mt-cam__flash"></div></div>
+    <div class="mt-cam__strip" aria-label="Photos taken"></div>
+    <p class="mt-cam__hint">A long receipt: photograph it in parts, top to bottom.</p>
+    <div class="mt-cam__bar">
+      <button type="button" class="mt-cam__cancel" data-cam="cancel">Cancel</button>
+      <button type="button" class="mt-cam__shut" data-cam="snap" aria-label="Take photo"><span></span></button>
+      <button type="button" class="mt-cam__done" data-cam="done" disabled>Done</button>
+    </div>`;
+  document.body.appendChild(el);
+  document.documentElement.classList.add('mt-modal-open');
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-cam]'); if (!b) return;
+    const a = b.dataset.cam;
+    if (a === 'snap') mtCamSnap();
+    else if (a === 'done') mtCamClose(true);
+    else if (a === 'cancel') mtCamClose(false);
+    else if (a === 'del') { MT_CAM.shots.splice(Number(b.dataset.i), 1); mtCamDraw(); }
+  });
+  const v = el.querySelector('video');
+  try {
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) throw new Error('no camera api');
+    MT_CAM.stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1920 } } });
+    if (!MT_CAM.open) { mtCamStop(); return; }
+    v.srcObject = MT_CAM.stream;
+    const pl = v.play(); if (pl && pl.catch) pl.catch(() => {});
+  } catch (e) {
+    MT_CAM.stream = null;                                 // the phone's own camera, one photo per tap — this screen stays open
+    el.querySelector('.mt-cam__view').innerHTML = '<p class="mt-cam__alt">Tap the white button for each part of the receipt.<br>Your phone\'s camera opens for one photo and comes back here.</p>';
+  }
+  mtCamDraw();
+}
+function mtCamStop() { try { if (MT_CAM.stream) MT_CAM.stream.getTracks().forEach(t => t.stop()); } catch (e) {} MT_CAM.stream = null; }
+async function mtCamSnap() {
+  const el = document.getElementById('mtCam'); if (!el) return;
+  const v = el.querySelector('video');
+  if (!MT_CAM.stream || !v || !v.videoWidth) {          // fallback: the phone's own camera
+    let inp = document.getElementById('mtCamInput');
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.type = 'file'; inp.id = 'mtCamInput'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
+      inp.style.display = 'none'; inp.setAttribute('aria-hidden', 'true');
+      inp.addEventListener('change', () => { const x = inp.files && inp.files[0]; inp.value = ''; if (x && MT_CAM.open) { MT_CAM.shots.push(x); mtCamDraw(); } });
+      document.body.appendChild(inp);
+    }
+    inp.value = ''; inp.click();
+    return;
+  }
+  const max = 2000, k = Math.min(1, max / Math.max(v.videoWidth, v.videoHeight));
+  const cv = document.createElement('canvas'); cv.width = Math.round(v.videoWidth * k); cv.height = Math.round(v.videoHeight * k);
+  cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+  const fl = el.querySelector('.mt-cam__flash'); if (fl) { fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60); }
+  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.88));
+  if (!blob || !MT_CAM.open) return;
+  MT_CAM.shots.push(new File([blob], 'Teil ' + (MT_CAM.shots.length + 1) + '.jpg', { type: 'image/jpeg' }));
+  mtCamDraw();
+}
+function mtCamDraw() {
+  const el = document.getElementById('mtCam'); if (!el) return;
+  const strip = el.querySelector('.mt-cam__strip');
+  (strip._urls || []).forEach(u => URL.revokeObjectURL(u));
+  strip._urls = MT_CAM.shots.map(x => URL.createObjectURL(x));
+  strip.innerHTML = MT_CAM.shots.map((x, i) => `<div class="mt-cam__th"><img src="${strip._urls[i]}" alt="Part ${i + 1}"/><b>${i + 1}</b>
+      <button type="button" data-cam="del" data-i="${i}" aria-label="Remove part ${i + 1}"><i class="ti ti-x" aria-hidden="true"></i></button></div>`).join('');
+  strip.scrollLeft = strip.scrollWidth;
+  const n = MT_CAM.shots.length, done = el.querySelector('[data-cam="done"]');
+  done.disabled = !n; done.textContent = n ? 'Done · ' + n : 'Done';
+  el.querySelector('.mt-cam__hint').textContent = n ? (n === 1 ? '1 part — snap the next part, or Done.' : n + ' parts — they go onto one page, top to bottom.')
+    : 'A long receipt: photograph it in parts, top to bottom.';
+}
+function mtCamClose(keep) {
+  const el = document.getElementById('mtCam');
+  const shots = MT_CAM.shots.slice();
+  MT_CAM.open = false; MT_CAM.shots = [];
+  mtCamStop();
+  if (el) { (el.querySelector('.mt-cam__strip')._urls || []).forEach(u => URL.revokeObjectURL(u)); el.remove(); }
+  if (!document.getElementById('mtCostModal') && !document.getElementById('mtSbModal')) document.documentElement.classList.remove('mt-modal-open');
+  const g = MT.sel && MT.sel.cost;
+  if (!keep || !g || !shots.length) return;
+  shots.forEach(x => g.files.push({ id: null, file: x, name: x.name, img: true }));
+  mtRenderPanel();
+}
+
 function mtCostFileDel(i) {
   const f = MT.sel && MT.sel.cost;
   if (!f || !f.files[i]) return;
@@ -1877,7 +2005,7 @@ async function mtCostSave() {
   let uploads = pending.filter(x => !mtIsImage(x.file)).map(x => x.file);
   if (imgs.length) {
     let pdf = null;
-    try { pdf = await mtPhotoOrigPdf(imgs); }
+    try { pdf = imgs.length > 1 ? await mtPhotoStackPdf(imgs) : await mtPhotoOrigPdf(imgs); }   // D33: parts of one receipt = one page
     catch (e) { console.warn('[maintenance] photo PDF not possible, A4 one instead:', e); }
     if (!pdf) pdf = await mtPhotosToPdf(imgs);
     const nm = ('Beleg ' + (String(row.receipt_no || '').trim() || mtDate(row.cost_date) || mtDate(ccTodayISO())) + '.pdf').replace(/[\\/:*?"<>|]/g, '-');
@@ -2376,6 +2504,7 @@ function mtWire() {
     else if (a === 'costEdit') mtCostEdit(b.dataset.id);
     else if (a === 'costKind') mtCostKind(b.dataset.k);
     else if (a === 'costFile') mtCostPickFiles();
+    else if (a === 'costCam') mtCamOpen();
     else if (a === 'costFileDel') mtCostFileDel(Number(b.dataset.i));
     else if (a === 'costCancel') mtCostCancel();
     else if (a === 'costSave') mtCostSave();
