@@ -20,6 +20,7 @@ let _cxIncIndex = {};                                   // row id → { p, u, s 
 
 function _cxIncModel() {
   const y = window._ctrl.year, m = CX.month;
+  const marks = ctlDiffOn('inc');                         // CP2: C1 SQL run → rows can be marked "On purpose"
   _cxIncIndex = {};
   return window._ctrl.properties.filter(p => p.active && cxAreaOk(p) && ctlPropOwned(p, y, m)).map(p => {   // from the purchase month on
     const rows = [];
@@ -28,17 +29,18 @@ function _cxIncModel() {
       const inc = u.id != null ? window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === m) : null;
       const base = 'inc:' + p.id + ':' + (u.id != null ? u.id : 'v:' + u.name);
       const tenantParts = (s.parts || []).filter(pt => pt.tid !== 'room');
+      const mark = marks ? (ctlDiffMark(inc) || { ok: false }) : undefined;   // one mark per unit and month (a tenant change: both lines)
       if (tenantParts.length > 1) {
         // G1: tenant change in the month → one line per tenant, each with its own Soll and Ist
         tenantParts.forEach((pt, i) => {
           const id = base + ':t:' + pt.tid;
           _cxIncIndex[id] = { p, u, s, part: pt, inc };
-          rows.push({ id, u, s, part: pt, first: i === 0, soll: pt.amount, ist: typeof ctlIstFor === 'function' ? ctlIstFor(inc, s, pt.tid) : null });
+          rows.push({ id, u, s, part: pt, first: i === 0, soll: pt.amount, ist: typeof ctlIstFor === 'function' ? ctlIstFor(inc, s, pt.tid) : null, mark });
         });
       } else {
         const ist = inc ? cxR((Number(inc.kaltmiete) || 0) + (Number(inc.nebenkosten) || 0)) : null;
         _cxIncIndex[base] = { p, u, s };
-        rows.push({ id: base, u, s, soll: s.soll, ist });
+        rows.push({ id: base, u, s, soll: s.soll, ist, mark });
       }
     }
     return { p, rows };
@@ -50,7 +52,10 @@ window.renderIncome = function () {
   if (!host) return;
   CX.tab = 'income';
   const model = _cxIncModel();
+  const future = cxFuture(window._ctrl.year, CX.month);   // CP2 (#4): nothing due yet → no "Book all"
+  if (future && CX.bulk === 'income') CX.bulk = null;
   let done = 0, plan = 0, open = 0, partialOpen = 0;
+  const difRows = [];                                     // CP2 (#10): every row, for "2 differences · 1 on purpose"
   model.forEach(g => g.rows.forEach(r => { plan += r.soll; if (r.ist !== null) done += r.ist; else if (r.soll) { open++; if (r.s.partial) partialOpen++; } }));
 
   const cards = model.map(g => {
@@ -62,7 +67,7 @@ window.renderIncome = function () {
     const body = g.rows.map(r => {
       if (r.part) {                                          // one line per tenant (G1)
         const pt = r.part;
-        return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: null, soll: r.soll, ist: r.ist,
+        return cxRow({ id: r.id, label: r.u.name + ' · ' + pt.name, badge: null, soll: r.soll, ist: r.ist, dir: 1, mark: r.u.id != null ? r.mark : undefined,
                        sub: pt.from + '.–' + pt.to + '. · ' + (pt.mode === 'pauschal' ? 'Pauschal' + (pt.nk ? ' · davon NK ' + cxEur(pt.nk) : '') : cxEur(pt.k) + ' Kalt + ' + cxEur(pt.nk) + ' NK'),
                        pills: cxPill('beige', 'partial'), notes: r.first ? r.s.notes : [], emptyText: 'empty', allowEmpty: true,
                        warn: r.first ? vis(r) : null });
@@ -75,7 +80,7 @@ window.renderIncome = function () {
               : (_cxIsParking(r.u) && !r.s.nk ? 'Rent ' + cxEur(r.s.k) : cxEur(r.s.k) + ' Kalt + ' + cxEur(r.s.nk) + ' NK')))
         : (r.s.free ? 'Rent 0,00\u202f€' : r.s.noRent ? 'no rent this month (contract dates)' : r.s.link ? 'not let' : 'no plan value');
       const pills = r.s.partial ? cxPill('beige', r.s.parts && r.s.parts.length > 1 ? 'partial' : 'partial ' + r.s.days + '/' + r.s.N) : '';
-      return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills,   // #20: the note says "Newly let"
+      return cxRow({ id: r.id, label: r.u.name, badge: null, soll: r.soll, ist: r.ist, sub, pills, dir: 1, mark: r.u.id != null ? r.mark : undefined,   // #20: the note says "Newly let"
                      notes: r.s.notes, emptyText: r.s.free ? 'free' : 'empty', allowEmpty: true,
                      warn: vis(r) || (!r.soll && r.ist ? (r.s.noRent ? 'Rent entered, but no rent is due by the contract dates – check Rent from / Rent until in the tenant tab'
                                                                  : 'Rent entered, but the tenant data says not let – please check the tenant tab') : null) });
@@ -83,7 +88,8 @@ window.renderIncome = function () {
     // NK Nachzahlung vom Mieter · Hausgeld Guthaben von WEG — only finished results (controlling-abr.js)
     const abr = ctlAbrRows(g.p.id, window._ctrl.year, CX.month, 1).filter(r => !r.info);
     const all = g.rows.concat(abr);
-    return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(all),
+    difRows.push(...all);
+    return cxCard({ key: 'inc:' + g.p.id, title: g.p.name, sub: src, status: cxGroupStatus(all, 1), statusWas: cxGroupStatus(all.map(cxUnmarked), 1),
                     sum: all.reduce((s, r) => s + (r.ist || 0), 0), plan: all.reduce((s, r) => s + (r.soll || 0), 0),
                     extraPill: warned ? cxPill('open', 'check') : (changed ? cxPill('beige', 'change') : ''),
                     body: body + cxAbrSection(g.p, window._ctrl.year, CX.month, 1) });   // one extra pill at most
@@ -91,6 +97,7 @@ window.renderIncome = function () {
 
   cxPaint(host, '<div class="cx-page">' + cxMonthBar() +
     cxSummary({ label: 'Rent received', dir: 1, done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
+                future, diffs: cxDiffCount(difRows),
                 confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income'), note: _cxAbrNote(1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · from the tenant tabs</span><span class="cx-lbl">Ist</span></div>' +
     cards + '</div>');   // B18: only what changed
@@ -99,11 +106,12 @@ window.renderIncome = function () {
     render: () => window.renderIncome(),
     click: async (a, b) => {
       if (await cxAbrClick(a, b, () => window.renderIncome())) return;
-      if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; CX.undo = null; if (e) await _cxIncSave(e, e.part ? e.part.amount : e.s.soll); window.renderIncome(); }
+      if (a === 'take') { const e = _cxIncIndex[b.dataset.id]; CX.undo = null; if (e) await _cxIncSave(e, e.part ? e.part.amount : e.s.soll); cxKeepRow(b.dataset.id, () => window.renderIncome()); }
       // #6: ask first, then book, then offer undo
-      if (a === 'all') { CX.bulk = 'income'; return window.renderIncome(); }
+      if (a === 'all') { if (!cxFuture(window._ctrl.year, CX.month)) CX.bulk = 'income'; return window.renderIncome(); }
       if (a === 'allNo') { CX.bulk = null; return window.renderIncome(); }
       if (a === 'allYes') {
+        if (cxFuture(window._ctrl.year, CX.month)) { CX.bulk = null; return window.renderIncome(); }   // CP2 (#4): not due yet
         b.disabled = true;
         const L = _cxIncBulkList(), done = [];
         for (const e of L.list) { await _cxIncSave(e, e.s.soll); if (e.u.id != null) done.push(e.u.id); }
@@ -119,7 +127,9 @@ window.renderIncome = function () {
         return window.renderIncome();
       }
     },
-    input: async (id, val) => { if (await cxAbrInput(id, val, () => window.renderIncome())) return; const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await _cxIncSave(e, val); window.renderIncome(); },
+    input: async (id, val) => { if (await cxAbrInput(id, val, () => window.renderIncome())) return; const e = _cxIncIndex[id]; if (!e) return; CX.undo = null; await _cxIncSave(e, val); cxKeepRow(id, () => window.renderIncome()); },
+    // CP2 (#10): "On purpose" — the mark belongs to the unit's month row (a tenant change: both lines); amounts stay
+    mark: async (id, mark) => { const e = _cxIncIndex[id]; if (!e || e.u.id == null) return; await ctlSetIncomeMark(e.u.id, CX.month, mark); },
   });
 };
 

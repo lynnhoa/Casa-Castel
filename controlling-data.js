@@ -21,13 +21,15 @@ window._ctrl = {
   year: new Date().getFullYear(),
   properties: [], units: [], categories: [],
   income: [], apt_expenses: [], castel_expenses: [],
-  one_time: [], recon: []
+  one_time: [], recon: [],
+  diff: null                   // CP2: { inc, cst, apt } — the "On purpose" columns exist (CONTROLLING-C1.sql)
 };
 
 async function ctlLoadAll(year) {
   const y = year || window._ctrl.year;
   window._ctrl.year = y;
 
+  const probe = ctlDiffProbe();                              // CP2: once per page, next to the first load
   const [p, u, c, inc, apt, cst, ot, rec] = await Promise.all([
     _ctlSupa.from('ctrl_properties').select('*').order('id'),
     _ctlSupa.from('ctrl_units').select('*').order('property_id').order('sort_order'),
@@ -43,6 +45,82 @@ async function ctlLoadAll(year) {
     if (rows[k].error) { console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
     window._ctrl[k] = rows[k].data || [];
   }
+  await probe;
+}
+
+/* ── CP2 (#10) · "On purpose" ─────────────────────────────────
+   A difference between Soll and Ist can be marked as meant (agreed, Kaution, pays later …).
+   Needs CONTROLLING-C1.sql; probed once like MT.d39 — without it everything works as before
+   and no row offers "On purpose".
+     Income, Casa Castel costs  diff_ok + diff_reason on the month row (a tenant change: the whole unit)
+     Apartment costs            diff_marks { line: reason | null } — one month row holds several lines
+   Changing an amount clears its mark in the same save (the difference is new). */
+const CTL_DIFF_REASONS = ['agreed', 'reduction', 'kaution', 'later', 'other'];
+const _ctlNoDiffCol = e => /diff_(ok|reason|marks)/i.test(String((e && (e.message || e.details)) || ''));
+async function ctlDiffProbe() {
+  if (window._ctrl.diff) return window._ctrl.diff;
+  const has = async (t, c) => { try { return !(await _ctlSupa.from(t).select(c).limit(1)).error; } catch (e) { return false; } };
+  const [inc, cst, apt] = await Promise.all([has('ctrl_income_months', 'diff_ok,diff_reason'),
+    has('ctrl_expense_castel', 'diff_ok,diff_reason'), has('ctrl_expense_apartments', 'diff_marks')]);
+  return (window._ctrl.diff = { inc, cst, apt });
+}
+const ctlDiffOn = k => !!(window._ctrl.diff && window._ctrl.diff[k]);
+/* The mark of a saved month row → { ok, reason } · null = not marked */
+function ctlDiffMark(row) { return row && row.diff_ok ? { ok: true, reason: row.diff_reason || null } : null; }
+function ctlAptMark(row, key) {
+  const d = row && row.diff_marks;
+  return d && typeof d === 'object' && Object.prototype.hasOwnProperty.call(d, key) ? { ok: true, reason: d[key] || null } : null;
+}
+const _ctlR2 = v => Math.round((Number(v) || 0) * 100) / 100;
+const _ctlMarkFields = mark => ({ diff_ok: !!(mark && mark.ok), diff_reason: mark && mark.ok && CTL_DIFF_REASONS.includes(mark.reason) ? mark.reason : null });
+/* Income: the amount changed? (the unit's total, or one tenant's part in a change month) */
+function _ctlIncChanged(old, kalt, nk, split) {
+  if (_ctlR2(Number(old.kaltmiete || 0) + Number(old.nebenkosten || 0)) !== _ctlR2(Number(kalt || 0) + Number(nk || 0))) return true;
+  if (!split || !old.split || typeof old.split !== 'object') return false;
+  const ks = new Set(Object.keys(split).concat(Object.keys(old.split)));
+  for (const k of ks) if (_ctlR2(old.split[k]) !== _ctlR2(split[k]) || (k in split) !== (k in old.split)) return true;
+  return false;
+}
+function _ctlIncCache(data) {
+  const y = data.year, m = data.month, u = data.unit_id;
+  const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
+  if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
+  const idx = window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);
+  if (idx >= 0) window._ctrl.income[idx] = data; else window._ctrl.income.push(data);
+}
+/* Set (mark = { ok:true, reason }) or clear (null) the mark. Only the mark changes:
+   the amounts and the split per tenant stay exactly as they are. */
+async function ctlSetIncomeMark(unit_id, month, mark) {
+  const y = window._ctrl.year;
+  const { data, error } = await _ctlSupa.from('ctrl_income_months').update(_ctlMarkFields(mark))
+    .eq('unit_id', unit_id).eq('year', y).eq('month', month).select().single();
+  if (error) throw error;
+  if (!data) throw new Error('not saved – no amount in this month');
+  _ctlIncCache(data);
+  return data;
+}
+async function ctlSetCastelMark(category_id, month, mark) {
+  const y = window._ctrl.year;
+  const { data, error } = await _ctlSupa.from('ctrl_expense_castel').update(_ctlMarkFields(mark))
+    .eq('category_id', category_id).eq('year', y).eq('month', month).select().single();
+  if (error) throw error;
+  if (!data) throw new Error('not saved – no amount in this month');
+  const idx = window._ctrl.castel_expenses.findIndex(r => r.category_id === category_id && r.year === y && r.month === month);
+  if (idx >= 0) window._ctrl.castel_expenses[idx] = data; else window._ctrl.castel_expenses.push(data);
+  return data;
+}
+async function ctlSetAptMark(property_id, month, key, mark) {
+  const y = window._ctrl.year;
+  const row = window._ctrl.apt_expenses.find(r => r.property_id === property_id && r.year === y && r.month === month);
+  const marks = Object.assign({}, (row && row.diff_marks && typeof row.diff_marks === 'object') ? row.diff_marks : {});
+  if (mark && mark.ok) marks[key] = CTL_DIFF_REASONS.includes(mark.reason) ? mark.reason : null; else delete marks[key];
+  const { data, error } = await _ctlSupa.from('ctrl_expense_apartments').update({ diff_marks: Object.keys(marks).length ? marks : null })
+    .eq('property_id', property_id).eq('year', y).eq('month', month).select().single();
+  if (error) throw error;
+  if (!data) throw new Error('not saved – no amount in this month');
+  const idx = window._ctrl.apt_expenses.findIndex(r => r.property_id === property_id && r.year === y && r.month === month);
+  if (idx >= 0) window._ctrl.apt_expenses[idx] = data; else window._ctrl.apt_expenses.push(data);
+  return data;
 }
 
 /* ── Lookup helpers ─────────────────────────────────────────── */
@@ -123,27 +201,39 @@ async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
   const y = window._ctrl.year;
   const payload = { unit_id, year: y, month, kaltmiete, nebenkosten };
   if (split !== undefined) payload.split = split;                    // per tenant in change months (G1)
+  // CP2: a marked difference whose amount changes is new → the mark goes in the same save
+  const old = window._ctrl.income.find(r => r.unit_id === unit_id && r.year === y && r.month === month);
+  if (ctlDiffOn('inc') && old && old.diff_ok && _ctlIncChanged(old, kaltmiete, nebenkosten, split)) Object.assign(payload, _ctlMarkFields(null));
   const up = pl => _ctlSupa.from('ctrl_income_months').upsert(pl, { onConflict: 'unit_id,year,month' }).select().single();
   let { data, error } = await up(payload);
+  if (error && 'diff_ok' in payload && _ctlNoDiffCol(error)) {      // C1 SQL gone again → save without the mark
+    delete payload.diff_ok; delete payload.diff_reason; window._ctrl.diff.inc = false;
+    ({ data, error } = await up(payload));
+  }
   if (error && 'split' in payload && /split/.test(String(error.message || '')) ) {   // SQL not run yet
     delete payload.split;
     ({ data, error } = await up(payload));
     if (!error && typeof ctlToast === 'function') ctlToast('Gespeichert – Aufteilung pro Mieter erst nach dem SQL-Update');
   }
   if (error) throw error;
-  const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
-  if (all) { const j = all.findIndex(r => r.unit_id === unit_id && r.year === y && r.month === month); if (j >= 0) all[j] = data; else all.push(data); }
-  const idx = window._ctrl.income.findIndex(r => r.unit_id === unit_id && r.year === y && r.month === month);
-  if (idx >= 0) window._ctrl.income[idx] = data;
-  else window._ctrl.income.push(data);
+  _ctlIncCache(data);
   return data;
 }
 
 async function ctlUpsertApt(property_id, month, fields) {
   const y = window._ctrl.year;
   const payload = { property_id, year: y, month, ...fields };
-  const { data, error } = await _ctlSupa.from('ctrl_expense_apartments')
-    .upsert(payload, { onConflict: 'property_id,year,month' }).select().single();
+  // CP2: a line whose amount changes loses its "On purpose" mark (the other lines keep theirs)
+  const old = window._ctrl.apt_expenses.find(r => r.property_id === property_id && r.year === y && r.month === month);
+  if (ctlDiffOn('apt') && old && old.diff_marks && typeof old.diff_marks === 'object' && !('diff_marks' in fields)) {
+    const marks = Object.assign({}, old.diff_marks);
+    const num = v => v === null || v === undefined ? null : _ctlR2(v);
+    for (const k of Object.keys(fields)) if (k in marks && num(fields[k]) !== num(old[k])) delete marks[k];
+    if (Object.keys(marks).length !== Object.keys(old.diff_marks).length) payload.diff_marks = Object.keys(marks).length ? marks : null;
+  }
+  const up = pl => _ctlSupa.from('ctrl_expense_apartments').upsert(pl, { onConflict: 'property_id,year,month' }).select().single();
+  let { data, error } = await up(payload);
+  if (error && 'diff_marks' in payload && _ctlNoDiffCol(error)) { delete payload.diff_marks; window._ctrl.diff.apt = false; ({ data, error } = await up(payload)); }
   if (error) throw error;
   const idx = window._ctrl.apt_expenses.findIndex(r => r.property_id === property_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.apt_expenses[idx] = data;
@@ -154,8 +244,12 @@ async function ctlUpsertApt(property_id, month, fields) {
 async function ctlUpsertCastel(category_id, month, amount) {
   const y = window._ctrl.year;
   const payload = { category_id, year: y, month, amount };
-  const { data, error } = await _ctlSupa.from('ctrl_expense_castel')
-    .upsert(payload, { onConflict: 'category_id,year,month' }).select().single();
+  // CP2: a marked difference whose amount changes is new → the mark goes in the same save
+  const old = window._ctrl.castel_expenses.find(r => r.category_id === category_id && r.year === y && r.month === month);
+  if (ctlDiffOn('cst') && old && old.diff_ok && _ctlR2(old.amount) !== _ctlR2(amount)) Object.assign(payload, _ctlMarkFields(null));
+  const up = pl => _ctlSupa.from('ctrl_expense_castel').upsert(pl, { onConflict: 'category_id,year,month' }).select().single();
+  let { data, error } = await up(payload);
+  if (error && 'diff_ok' in payload && _ctlNoDiffCol(error)) { delete payload.diff_ok; delete payload.diff_reason; window._ctrl.diff.cst = false; ({ data, error } = await up(payload)); }
   if (error) throw error;
   const idx = window._ctrl.castel_expenses.findIndex(r => r.category_id === category_id && r.year === y && r.month === month);
   if (idx >= 0) window._ctrl.castel_expenses[idx] = data;
