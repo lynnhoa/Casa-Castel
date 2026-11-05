@@ -101,3 +101,15 @@ NK repayment: in Warm (the main cashflow) a tenant's NK result is already counte
 - A skipped NK ("nicht durchgeführt") books nothing, which is correct because no money moved.
 
 Only the Kalt view does not add it back, and the owner keeps Kalt as it is.
+
+## Packages (build one at a time; one PR each; the owner tests and merges before the next)
+
+| Package | Content | SQL | Effort |
+|---|---|---|---|
+| 1 · Look and contrast | 20/21, 18, 28, German toast | none | ~1.5 h |
+| 2 · Income and Expenses correct | 10 (On purpose), 4, 3 | `CONTROLLING-C1.sql`: diff_ok / diff_reason | ~2.5 h |
+| 3 · One-off and Abrechnungen | 1, 16, 27 | `CONTROLLING-C2.sql`: unique index on source_ref for NK-/Hausgeldabrechnung, check duplicates first | ~1.5–2 h |
+| 4 · Dashboard, export and properties | 2, 13, 15, 6, 30 | `CONTROLLING-C3.sql`: per-property first-month setting | ~2.5 h |
+| 5 · Speed | 31, 32, 33, 34 | none | ~2 h |
+
+Package 5 must give the same numbers before and after: compare with the real-data replay (`scratchpad/nkcheck`), or with stub screenshots.
