@@ -44,7 +44,8 @@ alter table public.maint_costs           add column if not exists ctrl_dup_ok   
 -- 3 · Before Maintenance takes over: the NK switches you set in Controlling on Casa Castel receipts
 --     become "Who pays › NK" with the same cost type (their returns follow them from now on).
 --     A line you typed by hand and linked to a receipt also remembers its NK switch, so it comes back
---     exactly as you typed it when the receipt is deleted or not booked any more.
+--     exactly as you typed it when the receipt is deleted or not booked any more
+--     (not booked and Who pays Kleinreparatur / Schaden: its NK switch off, the tenants pay it in Teil B or directly).
 update public.maint_costs m
    set pay_type = 'nk', pay_cat = o.nk_category_id
   from public.ctrl_expense_one_time o, public.maint_cases c
@@ -130,6 +131,15 @@ begin
        and o.property_id is distinct from 7 and (o.nk_umlage or o.nk_category_id is not null)
        and m.nk_keep is distinct from jsonb_build_object('p', o.property_id, 'u', o.nk_umlage, 'c', o.nk_category_id);
     perform public.maint_unbook(r.id);
+    -- Casa Castel Kleinreparatur / Schaden: the tenants pay it from Maintenance even when it is not booked
+    -- (Teil B, or paid to you directly), so the line you typed for it (the link) has its NK switch off;
+    -- otherwise Settlements would bill it in Teil A as well
+    if casa and h.pay_type in ('klein', 'schaden') and r.link_ot is not null then
+      update public.ctrl_expense_one_time o
+         set nk_umlage = false, nk_category_id = null
+       where o.id::text = r.link_ot and o.maint_cost_id is null and o.property_id = 7
+         and (o.nk_umlage or o.nk_category_id is not null);
+    end if;
     return;
   end if;
 

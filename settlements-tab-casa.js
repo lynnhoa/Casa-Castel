@@ -81,6 +81,21 @@ function scLoadYear(y) {
 }
 async function _scLoadYearNow(y) {
   if (SC.data[y]) return SC.data[y];
+  return (SC.data[y] = await _scFetchYear(y));
+}
+/* D39: the app is back in front → every loaded year is fetched again; each old copy stays until its fresh one is in
+   (an open pop-up keeps its numbers, nothing shows "Loading"). A year that fails keeps its old copy, and a Teil B that
+   fails this time keeps the one already loaded. */
+async function scReloadYears() {
+  SC._jaLd = {};
+  await Promise.all(Object.keys(SC.data).map(async y => {
+    let d; try { d = await _scFetchYear(Number(y)); } catch (e) { return; }
+    const old = SC.data[y];
+    if (d.mt && d.mt.error && old && 'mt' in old && !(old.mt && old.mt.error)) d.mt = old.mt;
+    SC.data[y] = d;
+  }));
+}
+async function _scFetchYear(y) {
   const per = scPeriod(y), y0 = Number(per.from.slice(0, 4)), y1 = Number(per.to.slice(0, 4));
   const [c, o, mt] = await Promise.all([
     _ctlSupa.from('ctrl_expense_castel').select('*').gte('year', y0).lte('year', y1),
@@ -89,7 +104,7 @@ async function _scLoadYearNow(y) {
   ]);
   if (c.error) throw c.error;
   if (o.error) throw o.error;
-  return (SC.data[y] = { castel_expenses: c.data || [], one_time: o.data || [], per, mt });
+  return { castel_expenses: c.data || [], one_time: o.data || [], per, mt };
 }
 /* Nov 2026 (D39) · Teil B: the Casa receipts that Maintenance › "Who pays?" gives to the tenants
    (Kleinreparatur · Schaden) with the returns that lower them, and their entries (title).
@@ -754,10 +769,12 @@ function scTbSub(p) {
   const ret = p.gross - p.net > 0.004 ? ' · ' + scE(p.gross) + ' − return ' + scE(p.gross - p.net) : '';
   return where + ret;
 }
+/* B1 as the Teil B view sums it: the positions plus the § 7 cap rows (minus) · one number on the card and in the view */
+const scTbB1 = M => cxR(M.teilB.b1 + M.ten.reduce((a, t) => a + (((t.teilB || []).find(r => r.cap) || {}).share || 0), 0));
 function scTbCard(M) {
   if (!scTbHas(M)) return '';
   const B = M.teilB, nW = B.warn.length, pay = cxR(M.ten.reduce((a, t) => a + (t.b1 || 0) + (t.b2 || 0), 0));
-  const parts = [B.pos.some(p => p.b === 1) ? 'B1 Kleinreparaturen ' + scE(B.b1) : '', B.pos.some(p => p.b === 2) ? 'B2 Schäden ' + scE(B.b2) : ''].filter(Boolean);
+  const parts = [B.pos.some(p => p.b === 1) ? 'B1 Kleinreparaturen ' + scE(scTbB1(M)) : '', B.pos.some(p => p.b === 2) ? 'B2 Schäden ' + scE(B.b2) : ''].filter(Boolean);
   return '<button type="button" class="sc-tb-card" data-sc="teilB"><span class="sc-tb-card__m"><b>Teil B · from Maintenance</b>' +
     '<span>' + stEsc(parts.join(' · ') || 'no positions') + '</span><small>' + stEsc((M.locked ? '' : M.pv ? 'preview · ' : '') + 'tenants pay ' + scE(pay)) +
     (nW ? ' · <em>' + nW + ' to check</em>' : '') + '</small></span><i class="ti ti-chevron-right sc-chev" aria-hidden="true"></i></button>';
@@ -772,7 +789,7 @@ function scTbView(M) {
     const caps = capRows.map(([t, c]) =>
       '<div class="sc-tb__r is-cap"><span class="sc-tb__m"><b>' + stEsc('§ 7 cap · ' + t.room + ' · ' + t.name) + '</b><small>' + stEsc('at most 8 % of the yearly rent ' + scE(c.rent12) + ' = ' + scE(c.limit)) + '</small></span>' +
         '<span class="sc-tb__v">' + scTbNum(c.share) + '\u202f€</span></div>').join('');
-    const total = b === 1 ? cxR(B.b1 + capRows.reduce((a, x) => a + x[1].share, 0)) : B.b2;   // the sum of the card's rows (§ 7 cap rows included)
+    const total = b === 1 ? scTbB1(M) : B.b2;   // the sum of the rows (§ 7 cap rows included) · as on the overview card
     return '<div class="sc-tb sc-tb--' + b + '"><div class="sc-tb__h"><span><b>' + title + '</b><small>' + note + '</small></span><span class="sc-tb__t">' + scE(total) + '</span></div>' +
       L.map(row).join('') + caps + '</div>';
   };
@@ -924,6 +941,7 @@ function scRenderModal() {
   const h = document.getElementById('scModal'); if (!h) return;
   const m = SC.modal, M = SC.model;
   if (!m || !M) { h.innerHTML = ''; h._scViewKey = null; document.body.classList.remove('st-panel-open'); return; }
+  if (M.loading) return;                                    // D39: the year is loading again → the pop-up stays as shown until it is back
   let inner = '';
   if (m.view === 'costs') inner = scCostsView(M);
   else if (m.view === 'ten') inner = scTenView(M, m);
@@ -2279,17 +2297,20 @@ function scLetterTeilB(D, M, t, beleg) {
   const eur = v => { const n = Number(v) || 0; return (n < -0.004 ? '\u2212\u00a0' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };
   const R = t.teilB || [], dein = D.du ? 'Dein' : 'Ihr';
   let nA = 0;                                                // Anlage n = the invoice of the n-th position (B1 first, then B2)
+  // "Rechnung" = the invoice (Anlage) · a return is taken off before the split: Rechnung − Rückgabe (÷ n) = Anteil
+  const bill = r => Number(r.gross) - r.net > 0.004 ? cxR(r.gross) : r.net;
   const sub = r => {
     if (r.cap) return '8\u00a0% von ' + eur(r.rent12) + ' Jahresmiete';
+    const ret = bill(r) - r.net > 0.004 ? eur(bill(r) - r.net) : '', split = r.where !== 'zimmer' && r.n > 1;
     const where = r.where === 'zimmer' ? dein + ' Zimmer'
       : 'Gemeinschaftsfläche · ' + (r.n === 1 ? (r.b === 2 ? 'verursacht durch ' + dein.toLowerCase() + ' Zimmer' : 'einziges vermietetes Zimmer')
-                                              : '÷ ' + r.n + (r.b === 2 ? ' verursachende Zimmer' : ' vermietete Zimmer'));
-    return where + (r.gross - r.net > 0.004 ? ' · abzüglich Rückgabe ' + eur(r.gross - r.net) : '') + ' · Anlage ' + (++nA);
+                                              : (ret ? '(' + eur(bill(r)) + ' − ' + ret + ' Rückgabe) ' : '') + '÷ ' + r.n + (r.b === 2 ? ' verursachende Zimmer' : ' vermietete Zimmer'));
+    return where + (ret && !split ? ' · abzüglich Rückgabe ' + ret : '') + ' · Anlage ' + (++nA);
   };
   const block = (k, title, note) => {
     const L = R.filter(r => r.b === k); if (!L.length) return null;
     return { k, title, note, sumLabel: 'Summe B' + k, sum: t['b' + k],
-             rows: L.map(r => ({ date: r.cap ? '' : r.date, label: r.label, sub: sub(r), bill: r.cap ? null : r.net, share: r.share })) };
+             rows: L.map(r => ({ date: r.cap ? '' : r.date, label: r.label, sub: sub(r), bill: r.cap ? null : bill(r), share: r.share })) };
   };
   const blocks = [block(1, 'B1 · Kleinreparaturen', '§ 7 Mietvertrag · bis 150 € je Fall'), block(2, 'B2 · Schäden', 'Schadensersatz')].filter(Boolean);
   const has1 = blocks.some(b => b.k === 1), has2 = blocks.some(b => b.k === 2), A = t.saldoA;
@@ -2487,18 +2508,27 @@ async function scLock(btn) {
   const gaps = M.running ? [] : (M.jaGaps || []);           // Nov 2026: every day of the year covered by a Jahresabrechnung (or "no bill")
   if (gaps.length) { stSay('Jahresabrechnung missing: ' + gaps.map(g => g.l + ' ' + scJaSpan(g.from, g.to)).join(' · ') + ' – add it or mark \u201cno bill\u201d under Jahresabrechnungen'); return; }
   // D39: Teil B (Maintenance) did not load → try once more; a year is never locked without it (the snapshot would
-  // keep "no Teil B" for good)
-  const d = SC.data[M.y];
-  if (d && d.mt && d.mt.error) {
+  // keep "no Teil B" for good). Checked again after "Lock anyway?": the year can load again meanwhile (app back in front)
+  const ready = async () => {
+    const d = SC.data[M.y];
+    if (!d) { stSay(M.y + ' is still loading – try again in a moment'); return false; }
+    if (!(d.mt && d.mt.error)) return true;
     const mt = await scLoadTeilB(d.per || scPeriod(M.y));
-    if (mt && mt.error) { stSay('Teil B (Maintenance) could not be loaded – reload the page, then lock'); return; }
-    d.mt = mt; stRenderCasaQuiet(); stSay('Teil B is loaded now – check it, then lock'); return;
-  }
+    if (mt && mt.error) { stSay('Teil B (Maintenance) could not be loaded – reload the page, then lock'); return false; }
+    d.mt = mt; stRenderCasaQuiet(); stSay('Teil B is loaded now – check it, then lock'); return false;
+  };
+  if (!(await ready())) return;
   if (M.warn.length && !(await stConfirm({ title: 'Lock the house costs anyway?', text: M.warn.length + ' point(s) to check:\n' + M.warn.join('\n'), ok: 'Lock anyway' }))) return;
+  if (!(await ready())) return;
+  // the snapshot is what is on screen now: a point to check that came in meanwhile (fresh data) is shown first
+  const M2 = scModel(M.y);
+  if (!M2 || M2.loading || M2.error || !M2.R) { stSay(M.y + ' is still loading – try again in a moment'); return; }
+  if (M2.locked) { stRenderCasaQuiet(); stSay('Costs locked'); return; }
+  if ((M2.warn || []).some(w => !M.warn.includes(w))) { stRenderCasaQuiet(); stSay('The numbers changed meanwhile – check them, then lock'); return; }
   const r = scRecEnsure(M.y);
   const input = scInputFor(M.y);
   input.tenancies = (input.tenancies || []).map(t => { const c = Object.assign({}, t); delete c._exp; return c; });   // the snapshot keeps data only
-  r.snapshot = { input, total: M.R.check.total, at: new Date().toISOString() };
+  r.snapshot = { input, total: M2.R.check.total, at: new Date().toISOString() };
   r.locked_at = new Date().toISOString();
   if (btn) btn.disabled = true;
   try { await scSaveRec(r); stSay('Costs locked'); }

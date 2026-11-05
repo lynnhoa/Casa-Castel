@@ -3557,13 +3557,14 @@ function mtWhoRender() {
   const m = mtModal('mtWhoModal', { cls: 'mt-modal--who mt-modal--fit', close: 'whoCancel', label: 'mtWhoT' });
   const q = k => m.querySelector(':scope > .mt-modal__s > .mt-modal__' + k);
   if (fresh) {
-    // Nov 2026 (D39 fix): one height for the whole open — that of its tallest layout (Schaden · Caused by · Direct, or
-    // NK), measured once here. Phones keep it, laptops place the sheet by it (top fixed), so a tap that shows or hides a
-    // part below never moves the button under the finger. Locked: nothing changes, its own height.
+    // Nov 2026 (D39 fix): the height of its tallest layout (Schaden · Caused by · Direct, or NK), measured once here —
+    // the sheet is placed by it (top fixed, CSS), so a tap that shows or hides a part below never moves the button
+    // under the finger. Locked: nothing changes, its own height.
+    // D39 fix 2: with its longest result (every rented Zimmer · paid), so nothing is cut ("more …" may scroll the body).
     const sh = m.querySelector(':scope > .mt-modal__s'), hd = mtWhoHead(W), ft = mtWhoFoot(W);
     let hh = 0;
     sh.style.setProperty('max-height', 'none', 'important'); // its own height (the visible part, e.g. a closing keyboard, still caps it in CSS)
-    (W.lock ? [] : [{ t: 'schaden', w: 'gemein', r: [], v: 'direct', p: null }, { t: 'nk' }]).concat([{}]).forEach(x => {
+    (W.lock ? [] : [{ t: 'schaden', w: 'gemein', r: mtWhoRooms(W.day).rented, v: 'direct', p: W.day }, { t: 'nk' }]).concat([{}]).forEach(x => {
       mtModalFill(m, { h: hd, b: mtWhoBody(Object.assign({}, W, x)), f: ft }, false);
       hh = Math.max(hh, sh.offsetHeight);
     });
@@ -3607,6 +3608,10 @@ function mtWhoSet(what, v) {
   else if (what === 'via') { if (v !== 'direct' && mtWhoViaOff(W)) return; W.v = v === 'direct' ? 'direct' : 'nk'; }
   else if (what === 'paid') W.p = v ? String(v).slice(0, 10) : null;
   else if (what === 'reset') Object.assign(W, { t: null, cat: null, w: null, r: [], v: 'nk', p: null });
+  // D39 fix 2: Reset is in the footer — the sheet keeps its height until the next tap, so the footer stays under the
+  // finger (a second tap there is Reset again, never the backdrop); any other tap is above the parts it changes
+  const sh = document.querySelector('#mtWhoModal > .mt-modal__s');
+  if (sh) sh.style.minHeight = what === 'reset' ? sh.offsetHeight + 'px' : '';
   mtWhoRender();
 }
 /* "Paid on": the app's calendar (over the sheet) — it writes the date field, its change comes back here */

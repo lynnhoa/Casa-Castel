@@ -107,9 +107,12 @@ document.addEventListener('visibilitychange', async () => {
     // letters) — fetch them again too, or a change made meanwhile in Controlling is not seen. SC.loaded stays true and
     // the year on screen stays until its fresh data is in (no "Loading" flash, the Dashboard keeps its Casa part).
     // While a Casa pop-up is open its records are not reloaded: a save queued there still holds the old row.
+    // The years are fetched into fresh copies and swapped in (SC.data is never empty meanwhile: a tap in an open
+    // pop-up or on Lock still finds its year).
     if (typeof SC !== 'undefined' && SC.loaded && typeof scLoadRows === 'function') {
       if (!SC.modal) await scLoadRows();
-      SC.data = {}; SC._jaLd = {};
+      if (typeof scReloadYears === 'function') await scReloadYears();
+      else { SC.data = {}; SC._jaLd = {}; }
     }
     stRender();
   } catch (e) {}

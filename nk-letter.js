@@ -224,10 +224,10 @@ function nkLetterHtml(d) {
 
   // D39: with a Teil B page, a "Belegliste (Seite n)" reference follows where that page really lands (nkLetterPdf)
   const pgB = s => TB ? s.replace(/(Belegliste (?:auf )?\(?Seite )(\d+)/g, '$1<span data-pgref="beleg">$2</span>') : s;
-  const pgTB = `<span data-pgref="tb">2</span>`;
+  const pgTB = `<span data-pgref="tb">2</span>`, pgTG = `<span data-pgref="tbg">2</span>`;   // Teil B starts · Gesamtverrechnung (can be a later page)
   const TS = TB ? Number(TB.saldo) || 0 : 0;
   const TB0 = !!TB && Math.abs(TS) < 0.005 && !(E > 0);    // total exactly 0 and no Kaution kept back: nothing to pay or to pay back
-  const pay1B = TB ? `<p class="p">Zusammen mit Teil B (${esc(TB.what || 'Sonstige Forderungen')}) ergibt sich insgesamt ${TS > 0.004 ? `eine Nachzahlung von <strong>${eur(TS)}</strong>` : TS < -0.004 ? `ein Guthaben von <strong>${eur(-TS)}</strong>` : 'ein ausgeglichenes Ergebnis'}. ${TB0 ? (du ? 'Die Verrechnung mit Teil A findest du' : 'Die Verrechnung mit Teil A steht') : du ? 'Die Verrechnung mit Teil A und die Zahlung findest du' : 'Die Verrechnung mit Teil A und die Zahlung stehen'} auf Seite ${pgTB}.</p>` : '';
+  const pay1B = TB ? `<p class="p">Zusammen mit Teil B (${esc(TB.what || 'Sonstige Forderungen')}, ab Seite ${pgTB}) ergibt sich insgesamt ${TS > 0.004 ? `eine Nachzahlung von <strong>${eur(TS)}</strong>` : TS < -0.004 ? `ein Guthaben von <strong>${eur(-TS)}</strong>` : 'ein ausgeglichenes Ergebnis'}. ${TB0 ? (du ? 'Die Verrechnung beider Teile findest du' : 'Die Verrechnung beider Teile steht') : du ? 'Die Verrechnung beider Teile und die Zahlung findest du' : 'Die Verrechnung beider Teile und die Zahlung stehen'} auf Seite ${pgTG}.</p>` : '';
 
   const page1 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
     <div class="addr"><div class="addr__l">
@@ -274,7 +274,7 @@ function nkLetterHtml(d) {
     <div class="doc-title tb-h" data-pg="tb"><div class="tb-h__l"><span class="tb-k">${esc(TB.kicker || '')} \u00b7 Seite ${pgTB}</span><span class="tb-t">${esc(TB.title || 'Teil B')}</span>${TB.sub ? `<span class="tb-s">${esc(TB.sub)}</span>` : ''}</div>
       <div class="tb-h__r">${(TB.who || []).map(w => `<div>${esc(w)}</div>`).join('')}</div></div>
     ${TB.blocks.map(blockB).join('')}
-    <div class="tb-g"><div class="tb-g__k">${esc(TB.gesamt || 'Gesamtverrechnung')}</div>
+    <div class="tb-g" data-pg="tbg"><div class="tb-g__k">${esc(TB.gesamt || 'Gesamtverrechnung')}</div>
       ${(TB.rows || []).map(r => `<div class="tb-g__r"><span>${esc(r[0])}</span><span>${eur(r[1])}</span></div>`).join('')}
       <div class="tb-g__l"></div>
       <div class="tb-g__t"><span>${TS > 0.004 ? 'Nachzahlung' : TS < -0.004 ? 'Guthaben' : 'Ausgeglichen'}</span><span>${eur(Math.abs(TS))}</span></div>
