@@ -16,7 +16,7 @@ function _cxAptLabel(a) { return [a && a.name, a && a.wohnungsnummer].filter(Boo
 
 'use strict';
 
-const _CX_MS = ['J','F','M','A','M','J','J','A','S','O','N','D'];
+const _CX_MS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];   // CP1 (#28): words, not single letters (6 × 2 on the phone)
 const _CX_FREQ = ['monatlich', 'vierteljährlich', 'jährlich', 'sporadisch'];   // stored values (German) · shown via _cxFreqLbl
 
 function _cxSetupSuggestions() {

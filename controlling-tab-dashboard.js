@@ -240,7 +240,8 @@ function _cxdCss() {
     /* ── Dashboard (Oct 2026): Total · Rentals · Casa Castel, Kalt | Warm ───────── */
     .cxn { font-family:'Inter',system-ui,sans-serif; color:#3A3530; }
     .cxn .cxn-f { font-family:'Cormorant Garamond',Georgia,serif; font-weight:600; font-variant-numeric:lining-nums tabular-nums; letter-spacing:-.01em; }
-    .cxn .pos { color:#4F7A2C; } .cxn .neg { color:#A0533A; }
+    .cxn .pos { color:var(--cx-in,#16801F); } .cxn .neg { color:var(--cx-out,#C42B14); }   /* CP1: the Settlements tokens */
+    .cxn-tbl .pos, .cxn-tbl .neg { font-weight:600; }
     .cxn-chipw { text-align:center; margin-top:12px; }
     .cxn-chip { display:inline-flex; align-items:center; gap:6px; font:400 12px 'Inter',system-ui,sans-serif; color:#8C5A30; background:#FAEEDA; border:.5px solid #EFC98B; border-radius:14px; padding:5px 11px; cursor:pointer; }
     .cxn-chip u { text-underline-offset:2px; }
@@ -382,7 +383,7 @@ window.renderDashboard = function () {
     const inc = t.warm, cf = tv.w, outW = cxR(inc - cf);
     const scale = Math.max(inc, outW, 1);
     const flow = '<div class="cx2-fl">' +
-      '<div class="cx2-fr"><span>Income</span><span class="cx2-bar"><i style="width:' + (inc / scale * 100).toFixed(1) + '%;background:#D9C6AE"></i></span><b>' + cxW(inc) + '</b></div>' +
+      '<div class="cx2-fr"><span>Income</span><span class="cx2-bar"><i style="width:' + (inc / scale * 100).toFixed(1) + '%;background:#9DBF7A"></i></span><b class="' + (Math.round(inc) > 0 ? 'pos' : '') + '">' + cxWS(inc) + '</b></div>' +
       '<div class="cx2-fr"><span>Expenses</span><span class="cx2-bar"><i style="width:' + (outW / scale * 100).toFixed(1) + '%;background:#E3A895"></i></span><b class="' + (Math.round(outW) > 0 ? 'neg' : '') + '">' + cxW(-outW) + '</b></div></div>';
     const stays = inc > 0 && cf >= 0 ? Math.round(cf / inc * 100) : null;
 
@@ -400,7 +401,7 @@ window.renderDashboard = function () {
              row('\u00b1 Abrechnungen', D, '<span class="' + cls(r.abr) + '">' + cxWS(r.abr) + '</span>', 'cxn-g2');
       }
       h += row('= Cashflow', '<span class="' + cls(v.k) + '">' + cxWS(v.k) + '</span>', '<span class="' + cls(v.w) + '">' + cxWS(v.w) + '</span>', 'cxn-rs');
-      if (!isYear && (r.einmalig || r.abr)) h += row('One-offs \u00b7 Abrechnungen', 'info only', (r.einmalig ? cxW(-r.einmalig) : '') + (r.einmalig && r.abr ? ' \u00b7 ' : '') + (r.abr ? cxWS(r.abr) : ''), 'cxn-inf');
+      if (!isYear && (r.einmalig || r.abr)) h += row('One-offs \u00b7 Abrechnungen', 'info only', (r.einmalig ? cxWS(-r.einmalig) : '') + (r.einmalig && r.abr ? ' \u00b7 ' : '') + (r.abr ? cxWS(r.abr) : ''), 'cxn-inf');
       return '<div class="cxn-tbl">' + h + '</div>';
     };
 
@@ -428,7 +429,7 @@ window.renderDashboard = function () {
           '<span class="cx2-pn"><b>' + name + '</b><small>' + count + ' \u00b7 ' + (v.w < 0 ? 'out > in' : st + ' % stays') + '</small></span>' +
           '<span class="cx2-net"><small>warm</small><b class="cxn-f ' + cls(v.w) + '">' + cxWS(v.w) + '</b></span>' +
           '<i class="ti ti-chevron-' + (sec === key ? 'up' : 'down') + ' cx2-chv" aria-hidden="true"></i></span>' +
-        '<span class="cx2-kv"><span><em>Kalt</em><b class="' + cls(v.k) + '">' + cxWS(v.k) + '</b></span><span><em>Income</em><b>' + cxW(r.warm) + '</b></span></span>' +
+        '<span class="cx2-kv"><span><em>Kalt</em><b class="' + cls(v.k) + '">' + cxWS(v.k) + '</b></span><span><em>Income</em><b class="' + cls(r.warm) + '">' + cxWS(r.warm) + '</b></span></span>' +
         '<span class="cx2-thin"><i style="width:' + Math.min(100, st) + '%;background:' + color + '"></i></span></button>';
     };
     const tiles = (renList.length ? rowOf('r', 'Rentals', 'building', ren, renList.length + (renList.length === 1 ? ' property' : ' properties'), '#8FA88F') : '') +
@@ -556,7 +557,8 @@ window.renderDashboard = function () {
 .cx2-kv > span { display:flex; justify-content:space-between; align-items:baseline; gap:6px; border-radius:10px; background:#F7F3EC; padding:6px 9px; min-width:0; }
 .cx2-kv em { font-style:normal; font-size:10.5px; color:#8C8072; } .cx2-kv b { font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .cx2-thin { height:5px; border-radius:3px; background:#F0EBE3; overflow:hidden; display:block; } .cx2-thin i { display:block; height:100%; }
-.cx2-big b.pos, .cx2-v.pos, .cx2-net b.pos, .cx2-kv b.pos { color:#3B6D11; } .cx2-big b.neg, .cx2-v.neg, .cx2-net b.neg, .cx2-kv b.neg, .cx2-fr b.neg { color:#8A3B22; }
+.cx2-big b.pos, .cx2-v.pos, .cx2-net b.pos, .cx2-kv b.pos, .cx2-fr b.pos { color:var(--cx-in,#16801F); } .cx2-big b.neg, .cx2-v.neg, .cx2-net b.neg, .cx2-kv b.neg, .cx2-fr b.neg { color:var(--cx-out,#C42B14); }
+.cx2-kv b.pos, .cx2-kv b.neg, .cx2-fr b.pos, .cx2-fr b.neg { font-weight:700; }   /* CP1: green in · red out · bold, as in Settlements */
 `;
   document.head.appendChild(st);
 })();

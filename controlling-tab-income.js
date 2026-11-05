@@ -90,7 +90,7 @@ window.renderIncome = function () {
   }).join('');
 
   cxPaint(host, '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Rent received', done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
+    cxSummary({ label: 'Rent received', dir: 1, done, plan, open, bulk: open - partialOpen, partial: partialOpen, split: _cxIncSplitHTML(model),
                 confirm: CX.bulk === 'income' ? _cxIncBulkList() : null, undo: cxUndoFor('income'), note: _cxAbrNote(1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · from the tenant tabs</span><span class="cx-lbl">Ist</span></div>' +
     cards + '</div>');   // B18: only what changed

@@ -97,6 +97,7 @@
 
   /* paid ✓ back: booking (or clearing) the cost in Controlling is the confirmation */
   function note(msg) {
+    if (typeof ctlToast === 'function' && document.getElementById('ctToast')) { ctlToast(msg); return; }   // CP1: the page's own toast
     let el = document.getElementById('pv-ctrl-note');
     if (!el) {
       el = document.createElement('div');
@@ -119,7 +120,7 @@
       } catch (e) { failed = true; continue; }
       j.paid_at = on ? new Date().toISOString() : null; j.changed = false;
     }
-    if (failed) { note('Paid \u2713 kam nicht in Providers an \u2014 bitte noch einmal best\u00e4tigen.'); return; }
+    if (failed) { note('Paid \u2713 did not reach Providers \u2013 try again'); return; }
     pv.paid = on; pv.changed = false;
   }
   const _ups = ctlUpsertCastel;

@@ -23,6 +23,12 @@ const _CX_CSS = `
     :root { --cx-ink:#3D3027; --cx-txt:var(--cc-charcoal,#3A3530); --cx-amt:#3D3027; --cx-mut:var(--cc-taupe,#9A8E7E);
             --cx-sub:var(--cc-stone,#C8BFB0); --cx-acc:var(--cc-gold,#B8956A); --cx-neg:#A0533A; --cx-line:#EDE8E0;
             --cx-rule:var(--cc-rule,#E0DAD0); --cx-card:var(--cc-white,#FDFCFA); --cx-bg:var(--cc-bg,#F5F2ED); }   /* = Rentals */
+    /* Nov 2026 (CP1): money to you green, money from you red — the Settlements tokens */
+    :root { --cx-in:#16801F; --cx-in-s:#11691A; --cx-in-bg:#DDEFD3; --cx-out:#C42B14; --cx-out-s:#A3230E; --cx-out-bg:#F9DCD3; }
+    .cx-m--in { color:var(--cx-in); font-weight:700; } .cx-m--out { color:var(--cx-out); font-weight:700; }
+    .cx-ot-mt__kv .cx-m--in { color:var(--cx-in); } .cx-ot-mt__kv .cx-m--out { color:var(--cx-out); }   /* beats maint-link's ".cx-ot-mt__kv span" */
+    .cx-pill--in  { background:var(--cx-in-bg); color:var(--cx-in-s); border-color:#9AC87A; }
+    .cx-pill--out { background:var(--cx-out-bg); color:var(--cx-out-s); border-color:#E7A797; }
     body.is-landlord { color:var(--cx-ink); }
     .cx-page { max-width:560px; margin:0 auto; padding:4px 0 48px; display:flex; flex-direction:column; gap:8px;
                font-family:'Inter',system-ui,sans-serif; color:var(--cx-ink); }
@@ -132,7 +138,8 @@ const _CX_CSS = `
     /* summary + hero */
     .cx-sum { padding:14px 16px; }
     .cx-sum__v { display:flex; align-items:baseline; gap:6px; margin-top:6px; font-variant-numeric:tabular-nums; }
-    .cx-sum__big { font-family:'Cormorant Garamond',Georgia,serif; font-size:28px; font-weight:400; color:var(--cx-ink); }   /* = .rp-summary__total */
+    .cx-sum__big { font-family:'Cormorant Garamond',Georgia,serif; font-size:28px; font-weight:600; color:var(--cx-ink); }   /* CP1: bold, signed, green in / red out */
+    .cx-sum__big .cx-m--in, .cx-sum__big .cx-m--out { font-weight:600; }
     .cx-sum__of { font-size:12px; color:var(--cx-mut); }
     .cx-sum__hint { font-size:10.5px; color:var(--cx-mut); text-align:center; margin-top:8px; }
     .cx-bar { height:10px; border-radius:5px; background:#E3D5BF; overflow:hidden; }
@@ -187,7 +194,7 @@ const _CX_CSS = `
                font-variant-numeric:tabular-nums; cursor:pointer; -webkit-tap-highlight-color:transparent; }
     .cx-soll i { font-size:13px; color:var(--cx-acc); }
     .cx-soll.on { background:#EAF3DE; border-color:#9AC87A; } .cx-soll.on i { color:#27500A; }
-    .cx-r__info { font-size:10px; color:var(--cx-mut); margin-top:2px; }
+    .cx-r__info { font-size:12px; color:#6E6357; margin-top:2px; }
     .cx-r--set { padding:10px 0; }
     .cx-r--set .cx-link { color:var(--cx-acc); font-weight:500; font-size:12px; padding:6px 0 2px; }
     .cx-set-grp { border-top:.5px solid var(--cx-rule); margin-top:6px; }
@@ -197,11 +204,11 @@ const _CX_CSS = `
     .cx-bulk__s { color:var(--cx-mut); font-size:11px; }
     .cx-undo { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; font-size:12px; color:var(--cx-txt); }
     .cx-views { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-    .cx-r__u { font-size:11px; color:var(--cx-mut); }
+    .cx-r__u { font-size:13px; color:#5F5649; }   /* CP1: 13 px · 7.0:1 (was 11 px #9A8E7E · 3.1:1) */
     .cx-r__s { font-size:14px; font-weight:600; color:var(--cx-ink); font-variant-numeric:tabular-nums; margin-top:1px; }
-    .cx-r__sub { font-size:10px; color:var(--cx-mut); margin-top:1px; }
-    .cx-from { color:var(--cx-sub); }
-    .cx-r__note { font-size:10px; color:var(--cx-acc); margin-top:2px; }
+    .cx-r__sub { font-size:12px; color:#6E6357; margin-top:1px; }   /* CP1: 12 px · 5.7:1 (was 10 px · 3.1:1) */
+    .cx-from { color:#786D60; }   /* CP1: the source stays a shade lighter, but readable (4.9:1) */
+    .cx-r__note { font-size:12px; color:var(--cx-acc); margin-top:2px; }
     .cx-r__warn { font-size:10px; color:#633806; background:#FDF0D8; border:.5px solid #E8C97A; border-radius:6px; padding:3px 6px; margin-top:4px; line-height:1.35; }
     .cx-r__p { display:flex; justify-content:flex-end; gap:5px; flex-shrink:0; }
     .cx-take { width:30px; height:30px; border-radius:50%; border:.5px solid #D4B896; background:#F5EFE6; color:var(--cx-acc); padding:0;
@@ -220,7 +227,7 @@ const _CX_CSS = `
     .cx-f > i { color:var(--cx-mut); font-size:13px; margin-left:4px; pointer-events:none; }
     .cx-f--s { width:120px; flex-shrink:0; }
     .cx-f--off { opacity:.6; }
-    .cx-nd { display:flex; align-items:center; gap:8px; padding:10px 16px; border-top:.5px solid var(--cx-line); font-size:10.5px; color:var(--cx-mut); }
+    .cx-nd { display:flex; align-items:center; gap:8px; padding:10px 16px; border-top:.5px solid var(--cx-line); font-size:12px; color:#6E6357; }   /* CP1: as the sub lines */
     /* Einmalig */
     .cx-form { display:flex; flex-direction:column; gap:8px; margin-top:12px; padding-top:12px; border-top:.5px solid var(--cx-line); }
     .cx-grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
@@ -251,8 +258,9 @@ const _CX_CSS = `
     .cx-set__row { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:4px; }
     .cx-set__k { font-size:11px; color:var(--cx-mut); }
     .cx-set__sub { font-size:9px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--cx-mut); margin-top:10px; padding-top:10px; border-top:.5px solid var(--cx-line); }
-    .cx-mchips { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:3px; }
-    .cx-mchip { height:28px; border-radius:6px; border:.5px solid var(--cx-rule); background:transparent; font-family:inherit; font-size:11px; color:var(--cx-mut); cursor:pointer; padding:0; }
+    .cx-mchips { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; }   /* CP1: Jan … Dec, 6 × 2 on the phone */
+    @media (min-width:600px) { .cx-mchips { grid-template-columns:repeat(12,minmax(0,1fr)); gap:3px; } }
+    .cx-mchip { height:30px; border-radius:6px; border:.5px solid var(--cx-rule); background:transparent; font-family:inherit; font-size:12px; color:#6E6357; cursor:pointer; padding:0; }
     .cx-mchip.on { background:#F3EADC; border-color:#D4B896; color:var(--cx-acc); font-weight:600; }
     .cx-cat { padding:12px 16px; border-top:.5px solid var(--cx-line); display:flex; flex-direction:column; gap:6px; }
     .cx-cat:first-child { border-top:none; }
@@ -282,7 +290,7 @@ const _CX_CSS = `
                      color:inherit; -webkit-tap-highlight-color:transparent; }
     .cx-ot-r .cx-r__u { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .cx-ot-r .cx-r__s { margin-top:4px; }
-    .cx-ot-r .cx-r__s.pos { color:var(--cx-acc); }
+    .cx-ot-r .cx-r__s.pos { color:var(--cx-in); font-weight:700; }
     .cx-ot-r .cx-chev { font-size:13px; }
     .cx-ot-edit { padding:0 16px 12px; border-top:.5px solid var(--cx-line); }
     .cx-ot-edit--top { border-top:none; }
@@ -339,6 +347,13 @@ const cxE2   = v => cxR(v).toLocaleString('de-DE', { minimumFractionDigits: 2, m
 const cxEur  = v => cxE2(v) + '\u202f€';
 const cxW    = v => { const n = Math.round(Number(v) || 0); return (n < 0 ? '\u2212\u202f' : '') + Math.abs(n).toLocaleString('de-DE') + '\u202f€'; };
 const cxWS   = v => { const n = Math.round(Number(v) || 0); return (n < 0 ? '\u2212\u202f' : n > 0 ? '+\u202f' : '') + Math.abs(n).toLocaleString('de-DE') + '\u202f€'; };
+/* CP1: a signed amount for money that moves — v > 0 in (green "+ 100 €"), v < 0 out (red "− 80 €"), 0 plain.
+   fmt = cxW (whole euros, default) or cxEur (cents) */
+function cxIO(v, fmt) {
+  const f = fmt || cxW, n = cxR(v);
+  if (!(f === cxW ? Math.round(n) : n)) return f(0);
+  return '<span class="cx-m cx-m--' + (n > 0 ? 'in' : 'out') + '">' + (n > 0 ? '+' : '\u2212') + '\u202f' + f(Math.abs(n)) + '</span>';
+}
 const cxEsc  = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 function cxParse(s) {
   if (typeof ccParseEUR === 'function') { const n = ccParseEUR(s); return (n === null || n === undefined || isNaN(n)) ? null : n; }
@@ -417,7 +432,7 @@ function cxSummary(o) {
     : '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="all"' + (canBulk ? '' : ' disabled') + '><i class="ti ti-checks" aria-hidden="true"></i>Book all open as planned</button>';
   return '<div class="cx-card cx-sum">' +
     '<div class="cx-row-sb"><span class="cx-lbl">' + cxEsc(o.label) + '</span>' + (o.open ? cxPill('open', o.open + ' open') : cxPill('ok', 'all done')) + '</div>' +
-    '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(o.done) + '</span><span class="cx-sum__of">of ' + cxW(o.plan) + ' planned</span></div>' +
+    '<div class="cx-sum__v"><span class="cx-sum__big">' + (o.dir ? cxIO(o.dir * o.done) : cxW(o.done)) + '</span><span class="cx-sum__of">of ' + cxW(o.plan) + ' planned</span></div>' +
     '<div class="cx-bar cx-bar--thin"><div style="width:' + pct + '%"></div></div>' +
     (o.split || '') +                                       // e.g. Kalt / NK / Warm table (Income)
     undo + action + (o.note ? '<div class="cx-sum__hint">' + o.note + '</div>' : '') +
@@ -435,10 +450,14 @@ function cxCard(o) {
   const g = o.status;
   const isOpen = CX.open[o.key] !== undefined ? CX.open[o.key]
     : (o.defaultOpen !== undefined ? o.defaultOpen : !!g && (g[0] === 'open' || g[0] === 'diff'));   // only what needs you
+  // CP1 (#18): drawn open because something is open → remembered, so it does not fold up by itself once the
+  // last amount is typed (the page would jump); it closes only when you tap its header (month change resets)
+  if (isOpen && o.defaultOpen === undefined && CX.open[o.key] === undefined) CX.open[o.key] = true;   // = CX.open[key] ??= isOpen
   return '<div class="cx-card">' +
     '<button class="cx-ph" data-cx="fold" data-k="' + cxEsc(o.key) + '" aria-expanded="' + isOpen + '">' +
       '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(o.title) + '</span><span class="cx-src">' +
-        cxEsc([o.sub || '', o.sum !== undefined ? 'done ' + cxW(o.sum) + (o.plan ? ' of ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · ')) + '</span></span>' +
+        (o.subHTML !== undefined ? o.subHTML :                  // CP1: a sub with a coloured amount (One-off "Income + 407 €")
+        cxEsc([o.sub || '', o.sum !== undefined ? 'done ' + cxW(o.sum) + (o.plan ? ' of ' + cxW(o.plan) : '') : ''].filter(Boolean).join(' · '))) + '</span></span>' +
       '<span class="cx-ph__r">' + (o.extraPill || '') +
         (g ? cxPill(g[0], g[1]) : '') + '<i class="ti ti-chevron-' + (isOpen ? 'up' : 'down') + ' cx-chev" aria-hidden="true"></i></span>' +
     '</button>' + (isOpen ? o.body : '') + '</div>';

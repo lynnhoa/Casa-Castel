@@ -85,7 +85,7 @@ window.renderExpenses = function () {
   }).join('');
 
   cxPaint(host, '<div class="cx-page">' + cxMonthBar() +
-    cxSummary({ label: 'Running costs paid', done, plan, open,
+    cxSummary({ label: 'Running costs paid', dir: -1, done, plan, open,
                 confirm: CX.bulk === 'expenses' ? _cxExpBulkList() : null, undo: cxUndoFor('expenses'), note: _cxAbrNote(-1) }) +
     '<div class="cx-head"><span class="cx-lbl">Soll · from Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
     cards +
