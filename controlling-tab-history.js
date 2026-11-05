@@ -53,9 +53,12 @@ function _cxHTenancyHTML(u, pid, w) {
   const iss = _cxHIssues(w);
   const status = w.t.status === 'active' ? cxPill('ok', 'active') : cxPill('grey', 'former');
   const bal = w.balance || { saldo: 0, months: 0 };
-  const balTxt = (!bal.months ? 'no payments entered yet'
-    : bal.saldo > 0.005 ? 'in arrears ' + cxEur(bal.saldo) : bal.saldo < -0.005 ? 'overpaid ' + cxEur(-bal.saldo) : 'balanced') +
-    (bal.missing ? ' · not entered: ' + cxEur(bal.missingSum) : '');
+  // CP1 (#28): "balanced for the 1 month entered · 9 months not entered (5.400,00 €)" — the part not entered in amber
+  // (#9E5A17 = 5.2:1 on the card; the lighter #B0661E was 4.3:1)
+  const nMo = n => n + (n === 1 ? ' month' : ' months');
+  const balTxt = cxEsc(!bal.months ? 'no payments entered yet'
+    : (bal.saldo > 0.005 ? 'in arrears ' + cxEur(bal.saldo) : bal.saldo < -0.005 ? 'overpaid ' + cxEur(-bal.saldo) : 'balanced') + ' for the ' + nMo(bal.months) + ' entered') +
+    (bal.missing ? ' · <span class="cx-h-miss" style="display:inline-block;color:#9E5A17;font-weight:500">' + cxEsc(nMo(bal.missing) + ' not entered (' + cxEur(bal.missingSum) + ')') + '</span>' : '');
   const dateIn = (field, val) => '<label class="cx-f cx-f--l"><input type="text" placeholder="TT.MM.JJJJ" data-h-date="' + cxEsc(key + '|' + field) + '" value="' + cxEsc(val ? cxFmtDate(val) : '') + '" aria-label="' + (field === 'mietbeginn' ? 'Move-in' : 'Move-out') + '"></label>';
 
   const periods = w.periods.map(p =>
@@ -103,7 +106,7 @@ function _cxHTenancyHTML(u, pid, w) {
     '<div class="cx-set__row"><span class="cx-set__k">Move-out</span>' + dateIn('mietende', w.t.mietende ? ccRpIso(w.t.mietende) : '') + '</div>' +
     '<div class="cx-set__sub" style="margin-top:8px">Rent</div>' + (periods || legacy || '<div class="cx-r__sub">no rent saved</div>') + add +
     (steps.length ? '<div class="cx-set__sub" style="margin-top:8px">Staffel / NK of this tenant</div>' + steps.map(t => '<div class="cx-r__sub">' + cxEsc(t) + '</div>').join('') : '') +
-    '<div class="cx-kv" style="margin-top:8px"><span>Balance' + (bal.months ? ' · ' + bal.months + (bal.months === 1 ? ' month' : ' months') + ' entered' : '') + '</span><span>' + cxEsc(balTxt) + '</span></div>' +
+    '<div class="cx-kv" style="margin-top:8px"><span>Balance</span><span style="text-align:right">' + balTxt + '</span></div>' +
   '</div>';
 }
 

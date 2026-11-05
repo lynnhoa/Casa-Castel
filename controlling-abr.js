@@ -137,8 +137,8 @@ function cxAbrSection(p, y, m, dir) {
     if (r.ja) {                                                            // Fix 3: Versorger Jahresabrechnung · read-only
       const inn = Number(r.ja.direction) === 1;
       h += '<div class="cx-r"><div class="cx-r__top"><span class="cx-r__u">' + cxEsc(r.ja.item || 'Jahresabrechnung') + '</span>' +
-        cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung') + '</div>' +
-        '<div class="cx-r__sub">' + cxEsc(cxEur(r.ja.amount) + ' · ' + (inn ? 'received ' : 'paid ') + cxFmtDate(r.ja.invoice_date) + ' · from Settlements') + '</div>' +
+        cxPill(inn ? 'in' : 'out', inn ? 'Guthaben' : 'Nachzahlung') + '</div>' +   // CP1: green money to you · red money from you
+        '<div class="cx-r__sub">' + cxIO((inn ? 1 : -1) * r.ja.amount, cxEur) + cxEsc(' · ' + (inn ? 'received ' : 'paid ') + cxFmtDate(r.ja.invoice_date) + ' · from Settlements') + '</div>' +
         (r.ja.nk_from && r.ja.nk_to ? '<div class="cx-r__sub">' + cxEsc('Abrechnungszeitraum ' + cxFmtDate(r.ja.nk_from) + '–' + cxFmtDate(r.ja.nk_to) + ' · split by days into the NK years') + '</div>' : '') + '</div>';   // Nov 2026
       continue;
     }
@@ -154,7 +154,7 @@ function cxAbrSection(p, y, m, dir) {
       : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date));
     h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true,
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
-                 sub: cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
+                 sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
   }
   return '<div class="cx-abr' + (!rows.length ? ' cx-abr--empty' : '') + '">' + h + '</div>';
 }
@@ -240,5 +240,5 @@ function _cxAbrNote(dir) {
     if (r.ist === null) { open++; openSum += r.soll; } else done += r.ist;
   }
   if (!open && !done) return '';
-  return 'Abrechnungen · ' + [open ? open + ' open (' + (dir > 0 ? '+' : '\u2212') + '\u202f' + cxEur(openSum) + ')' : '', done ? 'done ' + cxEur(done) : ''].filter(Boolean).join(' · ');
+  return 'Abrechnungen · ' + [open ? open + ' open (' + cxIO(dir * openSum, cxEur) + ')' : '', done ? 'done ' + cxIO(dir * done, cxEur) : ''].filter(Boolean).join(' · ');   // CP1: signed, green / red
 }

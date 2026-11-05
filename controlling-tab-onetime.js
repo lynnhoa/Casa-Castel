@@ -163,15 +163,15 @@ function _cxOtMaintFormHTML(o) {
   const inn = Number(o.direction) === 1, refund = _cxOtIsRefund(o);
   const fixed = _cxOtNkFixed(o);                             // D39: Casa Castel follows Maintenance › Who pays · refunds too
   const nk = o._nk !== undefined ? o._nk : !!o.nk_umlage;
-  const kv = (k, v) => (v ? '<div class="cx-ot-mt__kv"><span>' + k + '</span><b>' + cxEsc(v) + '</b></div>' : '');
+  const kv = (k, v, html) => (v ? '<div class="cx-ot-mt__kv"><span>' + k + '</span><b>' + (html ? v : cxEsc(v)) + '</b></div>' : '');
   return '<div class="cx-form cx-ot-form cx-ot-form--mt" data-edit="' + cxEsc(o.id) + '">' +
-    '<div class="cx-ot-mt"><span class="cx-ot-mt__p"><span class="cx-pill cx-pill--maint">Maintenance</span>' + (refund ? cxPill('ok', 'Tenant refund') : '') + '</span>' +
+    '<div class="cx-ot-mt"><span class="cx-ot-mt__p"><span class="cx-pill cx-pill--maint">Maintenance</span>' + (refund ? cxPill('in', 'Tenant refund') : '') + '</span>' +   // CP1: green as on its row
       '<span class="cx-ot-mt__t">' + (refund ? 'A tenant paid this receipt back to you directly. It is booked and changed in Maintenance.'
         : fixed ? 'Amount, date, text and Who pays are changed in Maintenance.'
         : 'Amount, date and text are changed in Maintenance · the NK switch here.') + '</span></div>' +
     '<div class="cx-ot-mt__ro">' +
       kv('Objekt', p ? p.name : '') + kv('Description', o.item) + kv(refund ? 'From' : 'Company', o.company) +
-      kv(inn ? (refund ? 'Received' : 'Income') : 'Expense', (inn ? '+\u202f' : '') + cxEur(o.amount)) + kv(refund ? 'Paid on' : 'Date', cxFmtDate(o.invoice_date)) +
+      kv(inn ? (refund ? 'Received' : 'Income') : 'Expense', inn ? cxIO(o.amount, cxEur) : cxEur(o.amount), inn) + kv(refund ? 'Paid on' : 'Date', cxFmtDate(o.invoice_date)) +   // CP1: income green "+ \u2026", as on its row
     '</div>' +
     '<input type="hidden" id="cxOtProp" value="' + pid + '">' +
     (!fixed ? '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +   // Nov 2026: every property · D39: other properties only
@@ -299,12 +299,12 @@ function _cxOtRowHTML(o) {
   // (also next to the NK pill; and "Income" of a Maintenance return, whose green "+ €" already says so) → one pill
   const tp = !!ten && !ten.warn;
   const pills = (mt ? '<span class="cx-pill cx-pill--maint' + (tp || refund || o.nk_umlage ? ' cx-pill--mtx' : '') + '">Maintenance</span>' : '') +
-                (_cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (o.knk_type ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('ok', 'Refund') : '') :
-                refund ? cxPill('ok', 'Tenant refund') :                                                       // D39: a tenant paid you directly
+                (_cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (o.knk_type ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('in', 'Refund') : '') :
+                refund ? cxPill('in', 'Tenant refund') :                                                       // D39: a tenant paid you directly
                 (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK' + (nkCat ? ' · ' + cxEsc(nkCat.name) : '') + '</span>' : '') +
                 (tp ? '<span class="cx-pill cx-pill--tp">Tenants pay</span>' : '') +
-                (o.kind === 'Versorger' ? cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung
-                  : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill(mt ? 'ok cx-pill--mtx' : 'ok', 'Income') : '')));
+                (o.kind === 'Versorger' ? cxPill(inn ? 'in' : 'out', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung · CP1: green in / red out
+                  : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill(mt ? 'in cx-pill--mtx' : 'in', 'Income') : '')));
   const aria = mt ? 'From Maintenance: ' + (o.item || 'invoice') + ' · open' : 'Edit ' + (o.item || 'entry');
   return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" data-mt-tag="' + (mt ? '1' : '0') + '" aria-label="' + cxEsc(aria) + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +
@@ -430,7 +430,7 @@ function _cxOtListHTML() {
         // D39 (bug 35): same basis as the card — spent without a sign, income apart with "+" (was the unsigned net)
         const mOut = ml.filter(o => Number(o.direction) !== 1).reduce((s2, o) => s2 + (Number(o.amount) || 0), 0);
         const mIn = ml.filter(o => Number(o.direction) === 1).reduce((s2, o) => s2 + (Number(o.amount) || 0), 0);
-        const mSum = (mOut || !mIn ? cxW(mOut) : '') + (mIn ? (mOut ? ' · ' : '') + cxWS(mIn) : '');
+        const mSum = (mOut || !mIn ? cxIO(-mOut) : '') + (mIn ? (mOut ? ' · ' : '') + cxIO(mIn) : '');   // CP1: signed, red out · green in
         body += '<button class="cx-ot-m" data-cx="otMonth" data-k="' + k + '" aria-expanded="' + open + '">' +
           '<span>' + CX_MONTHS[mm - 1] + '</span><span class="cx-ot-ms">' + mSum + ' · ' + ml.length +
           ' <i class="ti ti-chevron-' + (open ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
@@ -446,9 +446,9 @@ function _cxOtListHTML() {
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
-      sub: [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', inn ? 'Income ' + cxW(inn) : '', knk.length ? 'Kaufnebenkosten ' + cxW(knkSum) : ''].filter(Boolean).join(' · '),
+      subHTML: [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', inn ? 'Income ' + cxIO(inn) : '', knk.length ? 'Kaufnebenkosten ' + cxW(knkSum) : ''].filter(Boolean).join(' · '),   // CP1: income green, as in the summary
       status: null,
-      extraPill: '<span class="cx-ot-tot">' + cxW(out) + '</span>',
+      extraPill: '<span class="cx-ot-tot">' + cxIO(-out) + '</span>',   // CP1: what went out, red
       defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || all.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
       body,
     });
@@ -467,7 +467,7 @@ window.renderOneTime = function () {
   if (!document.getElementById('cx-ot-d39-css')) {                    // D39: Who pays (Tenants pay · Tenant refund · Casa summary)
     const st = document.createElement('style'); st.id = 'cx-ot-d39-css';
     st.textContent = '.cx-pill--tp{background:#F3EADC;color:#7A5527;border-color:#D4B896}' +
-      '.cx-ot-r .cx-ot-tp{color:#6F6457}.cx-ot-tp__a{color:#3F6B35;font-weight:500}.cx-ot-r .cx-ot-tp.is-warn{color:#B0661E}' +
+      '.cx-ot-r .cx-ot-tp{color:#6F6457}.cx-ot-tp__a{color:var(--cx-in,#16801F);font-weight:700}.cx-ot-r .cx-ot-tp.is-warn{color:#B0661E}' +
       '.cx-ot-nk--ro{cursor:default}.cx-ot-nk--ro .cx-ot-nk__t small.cx-ot-nk__set{margin-top:2px;color:var(--cx-acc)}' +
       '.cx-ot-mt__p{display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex-shrink:0}' +
       '@media (max-width:700px){.cx-ot-r .cx-pill--mtx{display:none}' +                   // phones: the receipt's text keeps its room
@@ -479,15 +479,15 @@ window.renderOneTime = function () {
         '.cx-ot-mtw__r>.cx-head{padding-top:0}}' +
       '.cx-ot-mts{padding:12px 14px;display:flex;flex-direction:column;gap:6px}' +
       '.cx-ot-mts__r{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#3A3530;font-variant-numeric:tabular-nums}' +
-      '.cx-ot-mts__r--t{color:#3F6B35}.cx-ot-mts__rule{height:.5px;background:var(--cx-rule)}' +
+      '.cx-ot-mts__r--t{color:var(--cx-in,#16801F)}.cx-ot-mts__rule{height:.5px;background:var(--cx-rule)}' +
       '.cx-ot-mts__r--y{font-size:15px;font-weight:600;color:#1E1B18}' +
       '.cx-ot-chg__r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 14px;border-top:.5px solid var(--cx-rule)}' +
       '.cx-ot-chg__r:first-child{border-top:none}' +
       '.cx-ot-chg__l{font-size:13.5px;font-weight:500;color:#1E1B18;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       '.cx-ot-chg__v{font-size:13px;text-align:right;color:#3A3530;font-variant-numeric:tabular-nums;white-space:nowrap}' +
       '.cx-ot-chg__s{font-size:11.5px;color:#6F6457;min-width:0}.cx-ot-chg__s.is-warn{color:#B0661E}' +
-      '.cx-ot-chg__a{font-size:12px;text-align:right;color:#3F6B35;font-variant-numeric:tabular-nums;white-space:nowrap}' +
-      '.cx-ot-chg__a.is-open{color:#B0661E}' +
+      '.cx-ot-chg__a{font-size:12px;font-weight:700;text-align:right;color:var(--cx-in,#16801F);font-variant-numeric:tabular-nums;white-space:nowrap}' +
+      '.cx-ot-chg__a.is-open{color:#B0661E;font-weight:400}' +
       '.cx-ot-chg__n{margin:2px 4px 4px;font-size:11.5px;line-height:1.45;color:#6F6457}';
     document.head.appendChild(st);
   }
@@ -510,7 +510,7 @@ window.renderOneTime = function () {
     (_cxOt.view === 'y' ? _cxOtYearBar() : cxMonthBar()) +
     '<div class="cx-card cx-sum">' +
       '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', nInv + (nInv === 1 ? ' invoice' : ' invoices')) + '</div>' +
-      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxW(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
+      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxIO(-raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxIO(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
       (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '') +
       '<div class="cx-grid2" style="margin-top:4px">' +
         '<button class="cx-btn cx-btn--s" data-cx="otToMaint"><i class="ti ti-plus" aria-hidden="true"></i>Add in Maintenance</button>' +
@@ -669,7 +669,7 @@ function _cxOtBonusHTML() {
     const head = '<div class="cx-row-sb" style="gap:10px;padding:9px 0;border-top:.5px solid var(--cx-rule)"><span style="min-width:0">' +
       '<span style="display:block;font-size:13.5px;font-weight:500;color:var(--cx-ink)">' + cxEsc(b.kind || 'Bonus') + '</span>' +
       '<span class="cx-r__sub" style="display:block;margin:1px 0 0">' + cxEsc(sub) + '</span></span>' +
-      '<span style="display:flex;align-items:center;gap:8px;flex-shrink:0"><b style="font-weight:600;color:var(--cx-ink)">' + cxEur(b.amount) + '</b>' +
+      '<span style="display:flex;align-items:center;gap:8px;flex-shrink:0"><b style="font-weight:600">' + cxIO(b.amount, cxEur) + '</b>' +
       (open ? '' : '<button class="cx-btn cx-btn--s" data-cx="otBoOpen" data-id="' + cxEsc(b.id) + '">Received</button>') + '</span></div>';
     if (!open) return head;
     const nk = _cxOt.bonusNk !== null ? _cxOt.bonusNk : !!b.in_nk;
