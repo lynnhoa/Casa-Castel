@@ -152,7 +152,7 @@ function cxAbrSection(p, y, m, dir) {
     const sub = r.legacy ? 'booked ' + cxFmtDate(r.legacy.invoice_date) + ' · without Abrechnung'
       : r.booking ? 'paid ' + cxFmtDate(r.booking.invoice_date)
       : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date));
-    h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true,
+    h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true, dir,   // CP2: differences from your view (no "On purpose" here)
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
                  sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
   }
@@ -234,7 +234,8 @@ async function cxAbrInput(id, val, rerender) {
 function _cxAbrNote(dir) {
   const y = window._ctrl.year, m = CX.month;
   let open = 0, openSum = 0, done = 0;
-  for (const p of window._ctrl.properties.filter(x => x.active && ctlPropOwned(x, y, m))) for (const r of ctlAbrRows(p.id, y, m, dir)) {
+  // CP2: only the area shown (Rentals or Casa Castel), as the cards below it
+  for (const p of window._ctrl.properties.filter(x => x.active && cxAreaOk(x) && ctlPropOwned(x, y, m))) for (const r of ctlAbrRows(p.id, y, m, dir)) {
     if (r.ja) { done += cxR(r.ja.amount); continue; }                    // Fix 3: Jahresabrechnung, already paid
     if (r.info) continue;
     if (r.ist === null) { open++; openSum += r.soll; } else done += r.ist;

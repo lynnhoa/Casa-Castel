@@ -1143,6 +1143,11 @@ function ctlContractCovers(catId, y, m) {
 
 function ctlCasaCostRows(p, y, m) {
   const pl = ctlPropLinks(p), rows = [], notDue = [], bedarf = [], checks = [];
+  // CP2 (#3): the Kreditrate as apartments have it (ctlCostRows) — the terms valid in THIS month
+  // (loan_terms_history), so a past month keeps the rate it had. One cost type = one amount:
+  // 'split' (Zinsen + Tilgung debited separately) is their sum, Zinsen / Tilgung are named below it.
+  const L = pl.loan ? ctlLoanTerms(pl.loan, y, m) : null, lm = L ? ctlLoanMonth(L, y, m) : null;
+  const lmSplit = lm && lm.debit === 'split';
   for (const c of (window._ctrl.categories || [])) {
     if (c.active === false) continue;
     if (ctlCatProvidersOwns(c, y, m)) continue;                       // Fix 2: its Soll comes only from Providers (pv-ctrl.js)
@@ -1155,7 +1160,7 @@ function ctlCasaCostRows(p, y, m) {
     const freq = c.frequency || 'monatlich';
     const dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
     const at = isRate && pl.loan ? null : ctlCastelAmountAt(c, y, m);
-    const amount = at ? at.amount : _cxN0(pl.loan.rate);
+    const amount = at ? at.amount : _cxN0(lm.rate);
     const note = _cxPerNote(at, y, m);
     if (_cxBedarf(freq)) {                                            // "Selected months" — Fix 2: no "As needed" line any more
       if (!dm.length) { if (amount && !off) checks.push(label); continue; }
@@ -1170,9 +1175,10 @@ function ctlCasaCostRows(p, y, m) {
     const due = freq === 'monatlich' ? (!dm.length || dm.includes(m)) : dm.includes(m);
     if (due && off) { if (amount) noCon(); continue; }                // only when something would really be due
     if (due) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount),
-      sub: isRate && pl.loan ? 'Zinsen ~' + _cxEurS(_cxN0(pl.loan.zinsen)) + ' · Tilgung ~' + _cxEurS(_cxN0(pl.loan.tilgung)) : _cxFreqLbl(freq),
+      sub: isRate && pl.loan ? (lmSplit ? 'Zinsen ' + _cxEurS(lm.zinsen) + ' + Tilgung ' + _cxEurS(lm.tilgung) + ' · debited separately'
+                                        : 'Zinsen ~' + _cxEurS(lm.zinsen) + ' · Tilgung ~' + _cxEurS(lm.tilgung)) : _cxFreqLbl(freq),
       src: isRate && pl.loan ? 'Properties' : srcName, note,
-      split: isRate && pl.loan ? { zinsen: _cxN0(pl.loan.zinsen), tilgung: _cxN0(pl.loan.tilgung) } : null });
+      split: isRate && pl.loan ? { zinsen: lm.zinsen, tilgung: lm.tilgung } : null });
     else if (dm.length && !off) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }
   }
   return { rows, notDue, bedarf, checks };
