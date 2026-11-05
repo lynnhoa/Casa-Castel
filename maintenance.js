@@ -1891,7 +1891,7 @@ async function mtCostSave(opts) {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
   if (!f || !c || MT.costHold || MT.who || MT_CAM.open) return false;   // D39: not while Who pays / the camera is open on top (its choice / parts would be lost)
   if (MT.busy) { mtBusySay(); return false; }                // D39 (bug 19): say why nothing happens
-  if (MT.d39 && !f.return_of && mtIsCasa(c.property_id)) {   // D39 fix 2: the locks as Settlements has them now (one read; a second tap waits)
+  if (MT.d39 && !f.return_of && mtIsCasa(c.property_id) && mtWhoLockOld()) {   // D39 fix 2: the locks as Settlements has them now (one read; a second tap waits)
     if (mtLockChk === f) return false;
     mtLockChk = f;
     try { await mtWhoLockLoad(); } finally { if (mtLockChk === f) mtLockChk = null; }
@@ -3323,9 +3323,11 @@ const MT_WHO_LOCKQ = 'year,period_from,period_to,locked_at,tb:snapshot->input->t
 const mtWhoLockRows = rows => rows.filter(x => x && x.locked_at).map(x => ({ year: x.year, from: mtWhoD(x.period_from), to: mtWhoD(x.period_to),
   ids: new Set((Array.isArray(x.tb) ? x.tb : []).map(p => String(p && p.id))) }));
 /* D39 fix 2 · Settlements may lock a year while Maintenance is open (another tab or device): the locks are read again
-   before a Who pays choice or a receipt is stored, when the sheet opens and when the app comes back (at most once a
-   minute) · one read at a time · a failed read keeps what was known */
+   when the sheet opens, before a Who pays choice or a receipt is stored (unless read in the last 30 s, e.g. as its
+   sheet opened) and when the app comes back (at most once a minute) · one read at a time · a failed read keeps what
+   was known */
 let mtWhoLockP = null, mtWhoLockAt = 0;
+const mtWhoLockOld = () => !!mtWhoLockP || Date.now() - mtWhoLockAt > 30000;   // being read, or read over 30 s ago (else no wait on Save)
 function mtWhoLockLoad() {
   if (!MT.d39) return Promise.resolve();
   if (!mtWhoLockP) mtWhoLockP = (async () => {
@@ -3677,10 +3679,10 @@ function mtWhoSet(what, v) {
     if (W.w === 'zimmer') W.r = W.r[0] === n ? [] : [n];
     else W.r = W.r.includes(n) ? W.r.filter(x => x !== n) : mtRoomSort(W.r.concat([n]));
   } else if (what === 'cat') {
-    if (W.moreAt && Date.now() - W.moreAt < 450) return;     // D39 fix 2: a cost type now sits where "more …" was — a quick second tap is not a choice
+    if (String(v) === W.moreCat && Date.now() - W.moreAt < 450) return;   // D39 fix 2: it sits where "more …" was — a quick second tap is not a choice
     const c = mtWhoCatAll().find(x => String(x.id) === String(v));
     W.cat = !c || String(W.cat) === String(c.id) ? null : c.id;   // the chosen one again → Allgemeine Hauskosten
-  } else if (what === 'more') { W.more = true; W.moreAt = Date.now(); }
+  } else if (what === 'more') { W.more = true; W.moreAt = Date.now(); W.moreCat = mtWhoCatAll().map(c => String(c.id)).find(i => !W.cats.includes(i)) || null; }
   else if (what === 'via') { if (v !== 'direct' && mtWhoViaOff(W)) return; W.v = v === 'direct' ? 'direct' : 'nk'; }
   else if (what === 'paid') W.p = v ? String(v).slice(0, 10) : null;
   else if (what === 'reset') Object.assign(W, { t: null, cat: null, w: null, r: [], v: 'nk', p: null });
@@ -3709,7 +3711,7 @@ function mtWhoClose() {
 async function mtWhoSave() {
   const W = MT.who;
   if (!W || mtWhoProblem(W) || W.saving) return;
-  if (!W.nest) {                                             // D39 fix 2: stored at once → the locks as Settlements has them now
+  if (!W.nest && mtWhoLockOld()) {                           // D39 fix 2: stored at once → the locks as Settlements has them now
     W.saving = true;
     await mtWhoLockLoad();
     W.saving = false;
