@@ -75,24 +75,63 @@ const _CX_SRC = [
   ['hContracts', 'house_contracts'], ['hBonus', 'house_contract_bonuses'],   // Providers › Utilities (Oct 2026)
 ];
 
+/* Supabase gives at most "Max rows" rows per request (1000 by default) and leaves the rest out WITHOUT an error
+   (Nov 2026). A read stays ONE request as before; only when its result is full (1000 rows, or more where the API
+   allows more) the same query is read again in pages of that size, ordered by id (.range), until a page is short.
+   Anything odd on the way (an error, a page with no new rows, fewer rows than the first time) → the first result
+   is kept, exactly as before. first = the result of query() · query = () => a fresh builder of the same read. */
+const CTL_MAX_ROWS = 1000;
+async function ctlReadAll(first, query, label) {
+  const rows = first && !first.error && Array.isArray(first.data) ? first.data : null;
+  if (!rows || rows.length < CTL_MAX_ROWS) return first;
+  const size = rows.length;                              // the page size the API gave
+  try {
+    const all = [], seen = new Set();
+    for (let from = 0; ; from += size) {
+      if (from >= 200 * size) throw new Error('too many pages');
+      const r = await query().order('id', { ascending: true }).range(from, from + size - 1);
+      if (r.error) throw r.error;
+      const d = Array.isArray(r.data) ? r.data : [];
+      let added = 0;
+      for (const x of d) {
+        const k = x && x.id !== null && x.id !== undefined ? String(x.id) : null;
+        if (k !== null && seen.has(k)) continue;           // a row that moved between two pages
+        if (k !== null) seen.add(k);
+        all.push(x); added++;
+      }
+      if (d.length < size) break;
+      if (!added) throw new Error('a page gave no new rows');
+    }
+    if (all.length < rows.length) throw new Error('paged read gave ' + all.length + ' rows, the first request ' + rows.length);
+    return Object.assign({}, first, { data: all });
+  } catch (e) {
+    console.warn('[controlling] ' + (label || 'read') + ': only the first ' + rows.length + ' rows (paged read failed):', (e && e.message) || e);
+    return first;
+  }
+}
+
 /* Load every source once. A missing table never blocks Controlling —
    that part simply falls back to the plan values. */
 async function ctlSollLoad() {
-  const res = await Promise.all(_CX_SRC.map(([, t]) =>
-    _ctlSupa.from(t).select('*').then(r => r, e => ({ data: null, error: e }))));
+  const res = await Promise.all(_CX_SRC.map(([, t]) => {
+    const q = () => _ctlSupa.from(t).select('*');
+    return q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
+  }));
   _CX_SRC.forEach(([k, t], i) => {
     if (res[i].error) console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
     window._src[k] = res[i].data || [];
   });
   // NK / Hausgeld bookings of every year (a 2025 Abrechnung is often paid in 2026)
   try {
-    const r = await _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
+    const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
+    const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Abrechnungen)');
     if (r.error) throw r.error;
     window._src.abrPay = r.data || [];
   } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); window._src.abrPay = []; }
   // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
   try {
-    const r = await _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
+    const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
+    const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Kaufnebenkosten)');
     if (r.error) throw r.error;
     window._src.knkAll = r.data || [];
   } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); window._src.knkAll = []; }

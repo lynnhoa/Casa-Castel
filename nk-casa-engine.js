@@ -334,6 +334,33 @@ const NkCasa = (() => {
      Each tenant's amount is split over the cost lines in proportion to the line totals,
      so the letter can still list every cost type (the lines add up exactly to rate × months).
      Input: the result of calc() → same shape back, with .method = 'quota' and .quota{…}. */
+
+  /* One share over the cost lines in proportion to the line totals, by largest remainder (Nov 2026), in whole cents:
+     every line first gets the FLOOR of its exact part, then the cents still missing go one by one to the lines with
+     the largest remainders (equal remainders: the earlier line first). The lines add up exactly to the share.
+     Mixed signs (Guthaben lines < 0) work because the floor is taken toward −∞ for every line, negative ones too
+     (−3.0043 → −3.01): each remainder then lies in [0, 1 ct), the cents left are always 0 … n−1 and are only ever
+     added, never taken away. (Rounding to the nearest cent, or cutting toward 0, can leave a negative rest.)
+     Integer cents throughout; all line totals 0 → the share (0 in practice) on the first line, as before. */
+  function splitCents(share, totals) {
+    const n = totals.length, out = new Array(n).fill(0);
+    if (!n) return out;
+    const S = Math.round(r2(share) * 100), tc = totals.map(v => Math.round(r2(v) * 100));
+    const T0 = tc.reduce((a, v) => a + v, 0);
+    if (!T0) { out[0] = S / 100; return out; }
+    const sg = T0 < 0 ? -1 : 1, T = Math.abs(T0);           // exact part of line k = S × tc[k] ÷ T0 = (S × tc[k] × sg) ÷ T
+    const fl = [], rem = [];
+    tc.forEach(c => {
+      const num = S * c * sg;
+      let f = Math.floor(num / T), r = num - f * T;        // floor toward −∞, remainder in [0, T)
+      if (r < 0) { f--; r += T; } else if (r >= T) { f++; r -= T; }
+      fl.push(f); rem.push(r);
+    });
+    let left = S - fl.reduce((a, v) => a + v, 0);           // = Σ remainders ÷ T → 0 … n−1
+    tc.map((c, k) => k).sort((a, b) => rem[b] - rem[a] || a - b).forEach(k => { if (left > 0) { fl[k]++; left--; } });
+    return fl.map(v => v / 100);
+  }
+
   function quota(R) {
     // Nov 2026 · short-term (Pauschal) stays carry only the NK inside their Pauschale ("Anteil Kurzzeitvermietung");
     // everything else is shared by the Kalt + NK tenants by their months — like empty days. The landlord carries 0
@@ -365,13 +392,7 @@ const NkCasa = (() => {
       }
       const share = shareOf.get(t.key) || 0;
       // split the share over the lines (largest remainder → exact sum)
-      const base = Math.abs(total) > 0.004 ? lines.map(l => share * l.total / total) : lines.map(() => 0);
-      const amts = base.map(v => r2(v));
-      let diff = r2(share - amts.reduce((s, v) => s + v, 0));
-      if (Math.abs(diff) >= 0.005 && amts.length) {
-        const i = base.reduce((bi, v, k) => Math.abs(v) > Math.abs(base[bi]) ? k : bi, 0);
-        amts[i] = r2(amts[i] + diff); diff = 0;
-      }
+      const amts = splitCents(share, lines.map(l => l.total));
       const tl = [];
       lines.forEach((l, k) => {
         if (!amts[k] && !l.total) return;

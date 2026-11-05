@@ -243,13 +243,46 @@ async function mtTry(fn) {
 }
 
 /* ── Data ─────────────────────────────────────────────────── */
+/* Supabase gives at most 1000 rows per request and leaves the rest out WITHOUT an error (Nov 2026). A read stays one
+   request; only a full result (1000 rows or more) is read again in pages of that size ordered by id (.range).
+   Anything odd (an error, a page with no new rows, fewer rows than the first time) → the first result, as before.
+   The same as ctlReadAll in controlling-soll.js, which this page does not load. */
+async function mtReadAll(first, query, label) {
+  const rows = first && !first.error && Array.isArray(first.data) ? first.data : null;
+  if (!rows || rows.length < 1000) return first;
+  const size = rows.length;
+  try {
+    const all = [], seen = new Set();
+    for (let from = 0; ; from += size) {
+      if (from >= 200 * size) throw new Error('too many pages');
+      const r = await query().order('id', { ascending: true }).range(from, from + size - 1);
+      if (r.error) throw r.error;
+      const d = Array.isArray(r.data) ? r.data : [];
+      let added = 0;
+      for (const x of d) {
+        const k = x && x.id !== null && x.id !== undefined ? String(x.id) : null;
+        if (k !== null && seen.has(k)) continue;
+        if (k !== null) seen.add(k);
+        all.push(x); added++;
+      }
+      if (d.length < size) break;
+      if (!added) throw new Error('a page gave no new rows');
+    }
+    if (all.length < rows.length) throw new Error('paged read gave ' + all.length + ' rows, the first request ' + rows.length);
+    return Object.assign({}, first, { data: all });
+  } catch (e) {
+    console.warn('[maintenance] ' + (label || 'read') + ': only the first ' + rows.length + ' rows (paged read failed):', (e && e.message) || e);
+    return first;
+  }
+}
 async function mtLoad() {
   const sb = _ctlSupa;
+  const all = t => { const q = () => sb.from(t).select('*'); return q().then(r => mtReadAll(r, q, t).catch(() => r)); };
   const once = () => Promise.all([
     sb.from('ctrl_properties').select('*'),
-    sb.from('maint_cases').select('*'),
-    sb.from('maint_docs').select('*'),
-    sb.from('maint_costs').select('*'),
+    all('maint_cases'),
+    all('maint_docs'),
+    all('maint_costs'),
   ]);
   let res = await once();
   if (res.some(r => r.error)) {

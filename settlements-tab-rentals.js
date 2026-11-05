@@ -114,12 +114,15 @@ async function _srLoadRowsNow() {
     } catch (e) { SR.letters = []; }
     SR.cols = !!(SR.rows[0] ? Object.prototype.hasOwnProperty.call(SR.rows[0], 'received_on') : true);
     try {                                               // #11: Hausgeld Ist per month (Controlling) — read only, for the hint
-      let h = await _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld,grundsteuer');
-      if (h.error) h = await _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld');
+      // every year of every apartment: past Supabase's 1000 rows per request it is read in pages (ctlReadAll, controlling-soll.js)
+      const rd = async q => { const r = await q(); return typeof ctlReadAll === 'function' ? ctlReadAll(r, q, 'ctrl_expense_apartments') : r; };
+      let h = await rd(() => _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld,grundsteuer'));
+      if (h.error) h = await rd(() => _ctlSupa.from('ctrl_expense_apartments').select('property_id,year,month,hausgeld'));
       SR.hgIst = h.error ? [] : (h.data || []);
     } catch (e) { SR.hgIst = []; }
     try {                                               // Nov 2026: one-off costs marked for the NK (Controlling › One-off, Maintenance) — any year
-      const o = await _ctlSupa.from('ctrl_expense_one_time').select('*').eq('nk_umlage', true);
+      const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('nk_umlage', true);
+      const o0 = await q(), o = typeof ctlReadAll === 'function' ? await ctlReadAll(o0, q, 'ctrl_expense_one_time (NK)') : o0;   // past 1000 rows: in pages
       SR.nkOt = o.error ? [] : (o.data || []);
     } catch (e) { SR.nkOt = []; }
     try {                                               // Kaution-Einbehalt (Rentals › Tenants) — read only here
