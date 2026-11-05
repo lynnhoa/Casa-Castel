@@ -2290,8 +2290,8 @@ function scLetterLayout(D, M, t, o) {
   return D;
 }
 /* D39 · the letter's Teil B page (German, drawn by nk-letter.js) — only for a tenant with Teil B rows.
-   Page 1 keeps the Teil A result (D.saldo = t.saldoA) and says the netting is on Seite 2; the payment text moves
-   there and is for the total (t.saldo = A + B1 + B2 — the amount that is sent and booked). B1 and B2 are separate
+   Page 1 keeps the Teil A result (D.saldo = t.saldoA) and says where the netting is (the Gesamtverrechnung); the payment
+   text moves there and is for the total (t.saldo = A + B1 + B2 — the amount that is sent and booked). B1 and B2 are separate
    blocks; a row says only "Dein Zimmer" or "Gemeinschaftsfläche · ÷ n …" — never other rooms or tenants. */
 function scLetterTeilB(D, M, t, beleg) {
   const eur = v => { const n = Number(v) || 0; return (n < -0.004 ? '\u2212\u00a0' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };

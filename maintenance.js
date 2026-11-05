@@ -1808,7 +1808,7 @@ const mtAddDays = (iso, n) => { const d = new Date(String(iso).slice(0, 10) + 'T
 async function mtCtrlMatches(pid, amount, day, isRet) {
   try {
     const r = await _ctlSupa.from('ctrl_expense_one_time')
-      .select('id,item,company,amount,invoice_date,direction,kind,source_ref,maint_cost_id')
+      .select('id,item,company,amount,invoice_date,direction,kind,source_ref,maint_cost_id' + (MT.d39 ? ',nk_umlage,nk_category_id' : ''))   // D39 fix 2: its NK switch
       .eq('property_id', pid).is('maint_cost_id', null)
       .gte('invoice_date', mtAddDays(day, -7)).lte('invoice_date', mtAddDays(day, 7));
     if (r.error) return [];
@@ -1884,12 +1884,20 @@ function mtCostHoldShow() {
   if (n) n.innerHTML = on ? '<span class="mt-spin" aria-hidden="true"></span>Saving …' : 'Save + next';
 }
 let mtChkFor = null;                                          // D39 (bug 12): the receipt whose Controlling check runs — not on the form, so a draft never keeps it
+let mtLockChk = null;                                         // D39 fix 2: the receipt whose save reads the Settlements locks first
 /* Save the open receipt / return. opts.next (Save + next): a function that gives the next form → it opens in the same
    pop-up once the row is stored. Returns true when the row is stored. */
 async function mtCostSave(opts) {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
   if (!f || !c || MT.costHold || MT.who || MT_CAM.open) return false;   // D39: not while Who pays / the camera is open on top (its choice / parts would be lost)
   if (MT.busy) { mtBusySay(); return false; }                // D39 (bug 19): say why nothing happens
+  if (MT.d39 && !f.return_of && mtIsCasa(c.property_id)) {   // D39 fix 2: the locks as Settlements has them now (one read; a second tap waits)
+    if (mtLockChk === f) return false;
+    mtLockChk = f;
+    try { await mtWhoLockLoad(); } finally { if (mtLockChk === f) mtLockChk = null; }
+    if (MT.sel !== s || s.cost !== f || MT.costHold || MT.who || MT_CAM.open) return false;
+    if (MT.busy) { mtBusySay(); return false; }
+  }
   mtCostCapture();
   const g = id => document.getElementById(id);
   const fail = (id, msg) => { const el = g(id); if (el) { el.setAttribute('aria-invalid', 'true'); if (!el.classList.contains('cc-cal')) el.focus(); } mtSay(msg); return false; };
@@ -1911,8 +1919,16 @@ async function mtCostSave(opts) {
     if (first && first.cost_date < f.cost_date) return fail('mtC-date', `The receipt can't be after its return (${mtDate(first.cost_date)}).`);
   }
   if (MT.d39 && !ret && mtIsCasa(c.property_id)) {            // D39 fix: Who pays can't move into a locked NK year (as its sheet)
-    const was = f.isNew ? null : mtCostById(f.id), L = mtWhoYrBar(mtWhoNorm(mtWhoFrom(f), null, true), f.id, f.cost_date);
+    const was = f.isNew ? null : mtCostById(f.id), lk = was ? mtWhoLockOf(was) : '', L = mtWhoYrBar(mtWhoNorm(mtWhoFrom(f), null, true), f.id, f.cost_date);
+    // D39 fix 2: billed in a locked Settlements year → its date and amount stay as billed (moved, it would be billed twice)
+    const d0 = lk ? String(was.cost_date || '').slice(0, 10) : '';
+    if (lk && f.cost_date !== d0) return fail('mtC-date', `${lk} – the date stays ${mtDate(d0)}.`);
+    if (lk && Math.abs(amount - mtNum(was.amount)) > 0.004) return fail('mtC-amount', `${lk} – the amount stays ${mtEur(mtNum(was.amount))}.`);
     if (L && !(was && mtWhoYrBar(was, was.id, was.cost_date) === L)) return fail('mtC-date', `NK ${L.year} is locked in Settlements – change Who pays or the date.`);
+    // D39 fix 2: the Zimmer that pay are rented on the receipt date (as in its sheet) — a Kleinreparatur on the
+    // Gemeinschaftsfläche takes the ones rented that day anyway
+    const p = lk ? null : mtWhoNorm(mtWhoFrom(f), f.cost_date), vac = !p || (p.pay_type === 'klein' && p.pay_where === 'gemein') ? [] : mtWhoVacOn(p.pay_rooms, f.cost_date);
+    if (vac.length) return fail('mtC-date', `${vac.join(', ')} ${vac.length === 1 ? 'is' : 'are'} vacant on ${mtDate(f.cost_date)} – change Who pays or the date.`);
   }
   const hold = !!(opts && opts.next);                          // Save + next: this pop-up waits ("Saving …") until the row is stored
   if (hold) mtCostHold(f);
@@ -1933,13 +1949,16 @@ async function mtCostSave(opts) {
   if (willBook && !(prev && (prev.link_ot || prev.ctrl_dup_ok))) {
     if (mtChkFor === f) return stop();
     mtChkFor = f;
-    let v;
+    let v, cands = [];
+    // D39 fix 2: a Casa receipt with Who pays not set, linked to a line typed with NK on → it stays in the NK (Teil A)
+    const nkTake = MT.d39 && !ret && mtIsCasa(c.property_id) && !mtWhoFrom(f).t;
     try {
-      const cands = await mtCtrlMatches(c.property_id, amount, f.cost_date, ret);
+      cands = await mtCtrlMatches(c.property_id, amount, f.cost_date, ret);
       if (!MT.sel || MT.sel.cost !== f) return stop();
       if (!cands.length) v = 'none';
       else {
-        const line = o => [o.item, o.company, (Number(o.direction) === 1 ? '+' : '−') + mtEur(o.amount), mtDate(String(o.invoice_date).slice(0, 10))].filter(Boolean).join(' · ');
+        const line = o => [o.item, o.company, (Number(o.direction) === 1 ? '+' : '−') + mtEur(o.amount), mtDate(String(o.invoice_date).slice(0, 10)),
+          nkTake && o.nk_umlage ? 'NK · ' + (mtWhoCatName(o.nk_category_id) || 'its cost type') : ''].filter(Boolean).join(' · ');
         v = await mtAsk({
           title: 'Already in Controlling?',
           text: `You may have typed this ${ret ? 'return' : 'receipt'} in Controlling already. Link it, so it counts once.`,
@@ -1957,7 +1976,11 @@ async function mtCostSave(opts) {
     if (!MT.sel || MT.sel.cost !== f) return stop();
     if (v === 'sep') pick = { ctrl_dup_ok: true };
     else if (v === 'off') pick = { book_ctrl: false };
-    else if (v !== 'none') pick = { link_ot: v.slice(1) };
+    else if (v !== 'none') {
+      pick = { link_ot: v.slice(1) };
+      const o = cands.find(x => String(x.id) === pick.link_ot);   // its NK cost type becomes Who pays › NK (as MAINTENANCE-D39.sql § 3)
+      if (nkTake && o && o.nk_umlage) { Object.assign(f, mtWhoNorm({ t: 'nk', cat: o.nk_category_id ?? null })); mtCostWhoSync(); }
+    }
   }
   if (MT.busy) { stop(); mtBusySay(); return false; }         // something else began saving while it asked
 
@@ -2635,7 +2658,7 @@ function mtWire() {
     if (!t) return;
     if (t.closest && t.closest('#mtSbModal')) { mtSbChange(t); return; }
     if (t.id === 'mtW-paid') { mtWhoSet('paid', t.value); return; }   // D39: the calendar wrote "Paid on"
-    if (t.id === 'mtC-book' && document.getElementById('mtC-whobox')) mtCostWhoSync();   // D39 fix: Who pays follows "Book in Controlling"
+    if ((t.id === 'mtC-book' || t.id === 'mtC-date') && document.getElementById('mtC-whobox')) mtCostWhoSync();   // D39 fix: Who pays follows "Book in Controlling" (fix 2: and the date)
     if (t.id === 'mtF-kind') mtKindChanged();
     else if (t.id === 'mtF-prop' || t.id === 'mtF-art') mtSbVis();
     else if (t.id === 'mtF-end') mtEndChanged();
@@ -3289,13 +3312,31 @@ async function mtWhoLoad() {
   const [cats, ten, locks] = await Promise.all([
     rows(() => sb.from('ctrl_castel_categories').select('*').order('sort_order')),
     rows(() => sb.from('tenant_records').select('room,status,mietbeginn,mietende')),
-    rows(() => sb.from('nk_abrechnung_casa').select('year,period_from,period_to,locked_at,tb:snapshot->input->teilB').not('locked_at', 'is', null)),
+    rows(() => sb.from('nk_abrechnung_casa').select(MT_WHO_LOCKQ).not('locked_at', 'is', null)),
   ]);
   MT.whoCats = cats ? cats.slice().sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999)) : null;
   MT.whoTen = ten;
-  MT.whoLock = locks ? locks.filter(x => x && x.locked_at).map(x => ({ year: x.year, from: mtWhoD(x.period_from), to: mtWhoD(x.period_to),
-    ids: new Set((Array.isArray(x.tb) ? x.tb : []).map(p => String(p && p.id))) })) : null;
+  MT.whoLock = locks ? mtWhoLockRows(locks) : null;
+  mtWhoLockAt = Date.now();
 }
+const MT_WHO_LOCKQ = 'year,period_from,period_to,locked_at,tb:snapshot->input->teilB';
+const mtWhoLockRows = rows => rows.filter(x => x && x.locked_at).map(x => ({ year: x.year, from: mtWhoD(x.period_from), to: mtWhoD(x.period_to),
+  ids: new Set((Array.isArray(x.tb) ? x.tb : []).map(p => String(p && p.id))) }));
+/* D39 fix 2 · Settlements may lock a year while Maintenance is open (another tab or device): the locks are read again
+   before a Who pays choice or a receipt is stored, when the sheet opens and when the app comes back (at most once a
+   minute) · one read at a time · a failed read keeps what was known */
+let mtWhoLockP = null, mtWhoLockAt = 0;
+function mtWhoLockLoad() {
+  if (!MT.d39) return Promise.resolve();
+  if (!mtWhoLockP) mtWhoLockP = (async () => {
+    try {
+      const r = await _ctlSupa.from('nk_abrechnung_casa').select(MT_WHO_LOCKQ).not('locked_at', 'is', null);
+      if (r && !r.error && Array.isArray(r.data)) { MT.whoLock = mtWhoLockRows(r.data); mtWhoLockAt = Date.now(); }
+    } catch (e) {}
+  })().finally(() => { mtWhoLockP = null; });
+  return mtWhoLockP;
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && MT.d39 && Date.now() - mtWhoLockAt > 60000) mtWhoLockLoad().then(() => { if (MT.who) mtWhoLockCheck(MT.who); }); });
 /* the pay_* fields of a row / form (missing = null) */
 function mtWhoPick(r) {
   r = r || {};
@@ -3405,25 +3446,29 @@ function mtWhoCatIds(sel) {
    and a tenant's direct payment is deducted nowhere (MAINTENANCE-D39.sql books neither); Teil B reads the receipt itself */
 const mtWhoOff = (c, r) => !!((c && c.book_ctrl === false) || (r && r.book_ctrl === false));
 /* the tag: { t: text, k: unset · nk · set · bad } — bad = a Kleinreparatur over 150 € (NET), no Zimmer, or NK while the
-   receipt is not in Controlling (it has no effect then) */
-function mtWhoTag(s, net, off) {
+   receipt is not in Controlling (it has no effect then) · D39 fix 2: or a chosen Zimmer is vacant on the receipt date (day) */
+function mtWhoTag(s, net, off, day) {
   if (!s.t) return { t: '+ Who pays', k: 'unset' };
   if (s.t === 'nk') { const n = mtWhoCatName(s.cat); return { t: n ? 'NK · ' + n : 'NK', k: off ? 'bad' : 'nk' }; }
   if (s.t === 'klein' && net > MT_WHO_MAX + 0.004) return { t: 'Kleinrep. >150 €', k: 'bad' };
   const head = s.t === 'klein' ? 'Kleinrep.' : 'Schaden';
   if (!s.r.length) return { t: head + ' · no Zimmer', k: 'bad' };
-  const where = s.t === 'klein' && s.w !== 'zimmer' ? 'Gemeinschaft' : s.r.length >= 3 ? s.r.length + ' Zimmer' : s.r.join(', ');
-  return { t: head + ' · ' + where + (s.v === 'direct' ? (s.p ? ' · paid' : ' · open') : ''), k: 'set' };
+  const gem = s.t === 'klein' && s.w !== 'zimmer', where = gem ? 'Gemeinschaft' : s.r.length >= 3 ? s.r.length + ' Zimmer' : s.r.join(', ');
+  const vac = day && !gem ? mtWhoVacOn(s.w === 'zimmer' ? s.r.slice(0, 1) : s.r, day) : [];
+  return { t: head + ' · ' + where + (s.v === 'direct' ? (s.p ? ' · paid' : ' · open') : ''), k: vac.length ? 'bad' : 'set', vac };
 }
-const mtWhoAria = (k, off) => 'Who pays: ' + (k.k === 'unset' ? 'not set (you pay)' : k.t) + (off && k.k === 'bad' && /^NK/.test(k.t) ? ' · not in Controlling' : '');
+/* D39 fix 2 · of these Zimmer, the ones nobody rents on that day (tenants not loaded: none) */
+function mtWhoVacOn(rooms, day) { const R = mtWhoRooms(day); return R.known ? (rooms || []).map(mtRoomCanon).filter(n => !R.rented.includes(n)) : []; }
+const mtWhoAria = (k, off) => 'Who pays: ' + (k.k === 'unset' ? 'not set (you pay)' : k.t) + (off && k.k === 'bad' && /^NK/.test(k.t) ? ' · not in Controlling' : '')
+  + (k.vac && k.vac.length ? ' · ' + k.vac.join(', ') + ' vacant that day' : '');
 function mtWhoTagHTML(r, tap) {
-  const off = mtWhoOff(mtCase(r.case_id), r), k = mtWhoTag(mtWhoFrom(r), mtNet(r), off), id = mtEsc(r.id);
+  const off = mtWhoOff(mtCase(r.case_id), r), k = mtWhoTag(mtWhoFrom(r), mtNet(r), off, r.cost_date), id = mtEsc(r.id);
   return tap ? `<button type="button" class="mt-who mt-who--${k.k}" data-mt="whoPays" data-id="${id}" aria-label="${mtEsc(mtWhoAria(k, off))}">${mtEsc(k.t)}</button>`
              : `<span class="mt-who mt-who--${k.k}" data-id="${id}">${mtEsc(k.t)}</span>`;   // rows are inert (another form is open)
 }
 /* the quiet row in the receipt pop-up: Who pays  <tag>  › */
 function mtCostWhoRowHTML(f) {
-  const off = mtWhoOff(MT.sel ? mtCase(MT.sel.id) : null, f), k = mtWhoTag(mtWhoFrom(f), mtNet(f, f.amount), off);
+  const off = mtWhoOff(MT.sel ? mtCase(MT.sel.id) : null, f), k = mtWhoTag(mtWhoFrom(f), mtNet(f, f.amount), off, f.cost_date);
   return `<button type="button" class="mt-wrow" id="mtC-whorow" data-mt="whoNest" aria-label="${mtEsc(mtWhoAria(k, off))}"><span>Who pays</span><span class="mt-wrow__r"><span class="mt-who mt-who--${k.k}">${mtEsc(k.k === 'unset' ? 'You pay' : k.t)}</span><span class="mt-wrow__c" aria-hidden="true">›</span></span></button>`;
 }
 function mtCostWhoSync() {                                    // the row follows the form in place (amount typed, sheet saved)
@@ -3443,6 +3488,7 @@ function mtWhoOpen(id) {
   MT.who = mtWhoState(r, c, { id: String(r.id), nest: false, day: String(r.cost_date || ccTodayISO()).slice(0, 10), net: mtNet(r),
     what: String(r.description || '').trim() || c.title, lock: mtWhoLockOf(r), off: mtWhoOff(c, r) });
   mtWhoRender();                                             // no panel redraw: the page behind stays exactly as it is
+  const W = MT.who; mtWhoLockLoad().then(() => mtWhoLockCheck(W));   // D39 fix 2: locked in Settlements meanwhile?
 }
 /* from the receipt pop-up: its Save fills the form (stored with the receipt's Save) */
 function mtWhoNest() {
@@ -3453,6 +3499,15 @@ function mtWhoNest() {
   MT.who = mtWhoState(f, c, { id: String(f.id), nest: true, f, day: String(f.cost_date || ccTodayISO()).slice(0, 10), net: mtNet(f, f.amount),
     what: String(f.description || '').trim() || c.title, lock: stored ? mtWhoLockOf(stored) : '', off: mtWhoOff(c, f) });
   mtWhoRender();
+  const W = MT.who; mtWhoLockLoad().then(() => mtWhoLockCheck(W));   // D39 fix 2: locked in Settlements meanwhile?
+}
+/* D39 fix 2 · the locks were read again: an open sheet follows them in place — billed meanwhile → locked, as stored */
+function mtWhoLockCheck(W) {
+  if (!W || MT.who !== W) return;
+  const st = W.f && W.f.isNew ? null : mtCostById(W.id), lock = st ? mtWhoLockOf(st) : '';
+  if (lock !== W.lock) { MT.who = mtWhoState(st || W.f, mtCase(W.caseId), Object.assign({}, W, { lock })); mtWhoRender(); return; }
+  const yr = W.lock ? null : mtWhoYrOf(W.day), key = y => (y ? y.year + ':' + [...y.ids].join(',') : '');
+  if (key(yr) !== key(W.yr)) { W.yr = yr; mtWhoRender(); } else W.yr = yr;
 }
 function mtWhoState(src, c, o) {
   const W = Object.assign({ caseId: c.id, room0: c.report_room || null, more: false }, o, mtWhoFrom(src));
@@ -3653,7 +3708,15 @@ function mtWhoClose() {
 }
 async function mtWhoSave() {
   const W = MT.who;
-  if (!W || mtWhoProblem(W)) return;
+  if (!W || mtWhoProblem(W) || W.saving) return;
+  if (!W.nest) {                                             // D39 fix 2: stored at once → the locks as Settlements has them now
+    W.saving = true;
+    await mtWhoLockLoad();
+    W.saving = false;
+    if (MT.who !== W) return;
+    mtWhoLockCheck(W);
+    if (MT.who !== W || mtWhoProblem(W)) { const X = MT.who; if (X && (X.lock || X.yr)) mtSay((X.lock || `NK ${X.yr.year} is locked in Settlements`) + ' – nothing was changed.'); return; }
+  }
   if (W.nest) {                                              // into the receipt form — stored with the receipt's own Save
     const f = MT.sel && MT.sel.cost;
     if (f && f === W.f) {

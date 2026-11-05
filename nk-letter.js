@@ -199,7 +199,8 @@ function nkLetterHtml(d) {
     else pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>`;
     return pay;
   };
-  // Teil B (D39): page 1 keeps the Teil A result and points to Seite 2, where the total is netted and paid
+  // Teil B (D39): page 1 keeps the Teil A result and points to Teil B (Seite 2) and to the page of the Gesamtverrechnung,
+  // where the total is netted and paid (a long Teil B pushes it to Seite 3 or later)
   const TB = d.teilB && Array.isArray(d.teilB.blocks) && d.teilB.blocks.length ? d.teilB : null;
   const pay = TB ? '' : payFor(d.saldo, amt);
 
