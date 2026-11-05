@@ -7,6 +7,9 @@
    · Controlling: they carry a "Maintenance" tag; a tap opens the normal One-off
      form read-only (amount, date, text belong to Maintenance) — only the NK switch
      of a Casa Castel cost works there (D8) · "Open in Maintenance" (that receipt)
+   · Nov 2026 (D39): Casa Castel lines follow Maintenance › Who pays, so their NK switch is
+     read-only too; a tenant's direct payment is a line of its own (maint_refund_of,
+     source_ref "maint:erst:<id>") and counts as a Maintenance line as well
    · Settlements: they are never taken by the automatic payment matching
      (NK payment of a tenant, WEG Hausgeld) — same amount ≠ same payment
    Nothing else in Controlling changes: they count in the Dashboard, the
@@ -16,7 +19,7 @@
 'use strict';
 
 (function () {
-  const isMaint = o => !!o && (!!o.maint_cost_id || /^maint:/.test(String(o.source_ref || '')));
+  const isMaint = o => !!o && (!!o.maint_cost_id || !!o.maint_refund_of || /^maint:/.test(String(o.source_ref || '')));   // D39: + tenant refund
   window.mtIsMaintLine = isMaint;
   const lines = () => (window._ctrl && Array.isArray(window._ctrl.one_time) ? window._ctrl.one_time : []);
   const byId = id => lines().find(o => String(o.id) === String(id)) || null;
@@ -56,6 +59,7 @@
   (document.head || document.documentElement).appendChild(st);
 
   // the "Maintenance" tag on its rows (rows are redrawn often → tag whatever is new)
+  // D39: One-off now writes the tag (and data-mt-tag) into its rows itself, so a redraw keeps it; this stays as a fallback
   function tag() {
     document.querySelectorAll('[data-cx="otEdit"][data-id]:not([data-mt-tag])').forEach(b => {
       const o = byId(b.dataset.id);

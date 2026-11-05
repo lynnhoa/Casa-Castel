@@ -146,7 +146,7 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-cr { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"a amt" "b f"; column-gap:12px; row-gap:1px;
   width:100%; margin:0; padding:9px 0; border:none; border-top:var(--cc-border); border-radius:0; background:none;
   font:inherit; color:inherit; text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-.mt-cr:active { background:#F7F3EC; }
+.mt-cr:has(> .mt-cr__hit:active) { background:#F7F3EC; }   /* D39: the row's own button (not its Who pays tag) */
 .mt-cr__a { grid-area:a; display:flex; gap:6px; min-width:0; font-size:13px; line-height:1.35; color:var(--cc-charcoal); }
 .mt-cr__no { flex-shrink:0; font-weight:500; color:var(--cc-ink); }
 .mt-cr__desc { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -227,7 +227,9 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
   font-size:10px; font-weight:500; color:var(--cc-taupe); background:var(--cc-surface); white-space:nowrap; }
 .mt-chk { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--cc-charcoal); cursor:pointer; }
 .mt-chk input { width:18px; height:18px; margin:0; accent-color:var(--cc-ink); }
-.mt-cr.is-flash { background:#FBF3E4; transition:background 1.2s; }
+.mt-cr.is-flash { animation:mtFlash 1.8s ease-out; }        /* D39: on at once, then a soft fade (a transition snapped off) */
+@keyframes mtFlash { 0%, 30% { background-color:#FBF3E4; } 100% { background-color:transparent; } }
+@media (prefers-reduced-motion: reduce) { .mt-cr.is-flash { animation-duration:.01s; } }
 
 
 /* ── D4 · The entry opens in place (inside its property card) ── */
@@ -365,7 +367,14 @@ select.mt-in { padding-right:28px; text-overflow:ellipsis;
 .mt-modal__b { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:16px 20px; }
 .mt-modal__f { flex-shrink:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px 10px; padding:12px 16px;
   padding-bottom:max(16px, env(safe-area-inset-bottom, 16px)); border-top:var(--cc-border); }
-html.mt-modal-open, html.mt-modal-open body { overflow:hidden; }
+html.mt-modal-open { overflow:hidden; }   /* D39: the body itself is held by mtLockSync (position:fixed, the scrollbar's width kept) — no overflow on it, the pinned bars stay */
+.mt-modal { overscroll-behavior:contain; }
+.mt-modal__bg { touch-action:none; }       /* a drag on the dimmed part moves nothing behind it */
+.mt-modal.is-shown .mt-modal__s { animation:none; }   /* D39: slides in once — never again while it is open */
+.mt-modal__f:empty { display:none; }
+.mt-modal.is-saving .mt-modal__b { pointer-events:none; opacity:.55; transition:opacity .15s; }   /* D39: Save + next stores the row */
+.mt-modal.is-saving .mt-modal__x { opacity:.4; pointer-events:none; }
+@media (min-width:701px) { #mtSbModal .mt-modal__s { height:86vh; height:86dvh; } }   /* D39: the Bericht has its final height from "Loading" on */
 #mtSbModal textarea.mt-ta { resize:none; overflow:hidden; min-height:44px; }
 #mtSbModal .mt-seg { margin:2px 0 10px; }
 .mt-sbp-add { margin-top:2px; }
@@ -529,11 +538,17 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 .mt-modal__f .cc-foot-right .cc-foot-btn.mt-save { background:var(--cc-ink) !important; border-color:var(--cc-ink) !important; color:var(--cc-white) !important; }
 .mt-modal__f .mt-sb__status { flex:1 1 100%; margin:0; }
 
-/* ── D34 (Nov 2026) · Editing mode: once you tap a field the pop-up is full height and stays there
-      (the keyboard closing, switching apps and coming back move nothing) · the field you were in: gold ── */
+/* ── D34 (Nov 2026) · Editing mode: the pop-up is full height and stays there
+      (the keyboard closing, switching apps and coming back move nothing) · the field you were in: gold ──
+   D39 (bug 1): full height from the moment it opens (was: from the first tap → the sheet and the tapped field jumped
+   up to 321px). On phones the pop-up follows the visible part of the screen (--mt-vvh / --mt-vvt from
+   visualViewport, set while one is open): with the keyboard up the sheet ends above it and only its body scrolls.
+   .mt-modal--fit = a short sheet that keeps its own height (e.g. a chooser stacked on the receipt). */
 @media (max-width:700px) {
-  .mt-modal.is-editing .mt-modal__s { height:calc(100dvh - env(safe-area-inset-top, 0px) - 8px); max-height:calc(100dvh - env(safe-area-inset-top, 0px) - 8px);
-    animation:none; }
+  .mt-modal { top:var(--mt-vvt, 0px); bottom:auto; height:var(--mt-vvh, 100%); }
+  .mt-modal .mt-modal__s { height:calc(var(--mt-vvh, 100dvh) - env(safe-area-inset-top, 0px) - 8px);
+    max-height:calc(var(--mt-vvh, 100dvh) - env(safe-area-inset-top, 0px) - 8px); }
+  .mt-modal.mt-modal--fit .mt-modal__s { height:auto; }
 }
 .mt-modal .mt-resume { border-color:var(--cc-gold) !important; box-shadow:0 0 0 2px var(--cc-gold) !important; }
 
@@ -543,6 +558,7 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
 /* D36 · "Save + next" in a new receipt: between Cancel and Save, outlined */
 .mt-modal__f .cc-foot-right .cc-foot-btn.mt-save-next { flex:0 0 auto; border-color:var(--cc-ink) !important; color:var(--cc-ink) !important; font-weight:500 !important; }
 .mt-modal__f .cc-foot-right .cc-foot-btn.mt-save-next:disabled { opacity:.55; }
+.mt-modal__f .cc-foot-btn.mt-save-next .mt-spin { border-color:rgba(30,27,24,.22); border-top-color:var(--cc-ink); }   /* D39: "Saving …" */
 #appMain { overflow-anchor:none; }   /* D36: the app keeps your place itself (no second correction by the browser) */
 
 /* ── D37 (Nov 2026) · one year for the whole page: ‹ 2026 › on top (arrows · tap the year · swipe the list);
@@ -652,7 +668,7 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
   font-family:inherit; font-size:12.5px; color:var(--cc-taupe); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mt-stseg__b.is-on { background:var(--cc-white); color:var(--cc-ink); font-weight:500; box-shadow:0 0 0 .5px var(--cc-rule); }
 /* Edit pop-up: full height on phones · Delete / Move to quietly under Cancel · Save */
-@media (max-width:700px) { .mt-modal--edit .mt-modal__s { height:calc(100dvh - env(safe-area-inset-top, 0px) - 12px); max-height:none; } }
+/* (D39: its phone height is the one of every pop-up — D34 above; it was 4px lower and moved on the first tap) */
 .mt-modal--edit .mt-sec--edit { margin:0; padding:0; border:0; background:none; }
 .mt-modal--edit .mt-sec--edit .mt-in { background-color:var(--cc-bg); }
 .mt-modal--edit .mt-modal__f .cc-sec-foot { flex-direction:column-reverse; align-items:stretch; }
@@ -665,3 +681,92 @@ input.mt-in.mt-time::-webkit-calendar-picker-indicator { position:absolute; righ
   font-size:12px !important; color:var(--cc-taupe) !important; }
 /* while a pop-up is open the entry gets a bit shorter (add buttons hide) → room at the end, so the page can't snap up */
 html.mt-modal-open .cc-main { padding-bottom:calc(20px + 60vh); }
+
+/* ── D39 (Nov 2026) · "Who pays?" ─────────────────────────────────────────────────────────────────
+   A receipt row = an invisible button over the whole row (edit the receipt, as before) + its own Who pays tag
+   (Casa Castel receipts). Phone: the tag sits right under the amount (the files go to the end of the second line);
+   ≥ 520px table: under the amount column. The sheet #mtWhoModal follows the mockups Sheet / SheetKR / SheetDirekt /
+   SheetNK; it stacks on the receipt pop-up (450) and the calendar (800) still opens above it. */
+.mt-cr { position:relative; }
+.mt-cr__hit { position:absolute; inset:0; z-index:0; width:100%; margin:0; padding:0; border:0; border-radius:0; background:transparent;
+  cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-cr__hit:focus-visible { outline:2px solid var(--cc-gold); outline-offset:-2px; }
+.mt-cr > :not(.mt-cr__hit):not(.mt-who) { pointer-events:none; }
+.mt-cr.has-who { grid-template-areas:"a amt" "b w"; row-gap:3px; }
+.mt-cr.has-who > .mt-cr__b { align-self:start; }
+.mt-cr__b > .mt-cr__f { flex-shrink:0; }
+.mt-cr__b > .mt-cr__f::before { content:'\00a0·\00a0'; }
+.mt-who { position:relative; z-index:1; grid-area:w; justify-self:end; align-self:start; display:inline-flex; align-items:center;
+  height:22px; margin:0; padding:0 9px; box-sizing:border-box; border:0; border-radius:11px; background:#F3EADC;
+  font-family:inherit; font-size:11px; font-weight:500; line-height:1; color:#7A5527; white-space:nowrap; }
+.mt-who--nk { background:#EDE8E0; color:#3A3530; }                              /* NK = like all Betriebskosten (mockup) */
+.mt-who--unset { background:none; border:.5px dashed #C8BFB0; color:#6F6457; font-weight:400; }
+.mt-who--bad { color:#B0661E; }                                                  /* Kleinrep. > 150 € · no Zimmer */
+button.mt-who { cursor:pointer; -webkit-tap-highlight-color:transparent; }
+button.mt-who::after { content:''; position:absolute; inset:-3px -6px -8px; }   /* a bigger tap area, inside the row */
+button.mt-who:active { filter:brightness(.95); }
+button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1px; }
+@container (min-width: 520px) {
+  .mt-cr.has-who { grid-template-areas:none; }
+  .mt-cr > .mt-who { grid-area:2 / 2 / 3 / 5; }
+  .mt-cr__b > .mt-cr__f::before { content:none; }
+}
+/* the quiet row in the receipt pop-up: Who pays  <tag>  › */
+.mt-wrow { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; margin:0; padding:10px 0 0;
+  border:0; border-top:.5px solid var(--cc-rule); border-radius:0; background:none; font-family:inherit; font-size:13px;
+  color:var(--cc-charcoal); text-align:left; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-wrow__r { display:inline-flex; align-items:center; gap:6px; min-width:0; }
+.mt-wrow__c { font-size:16px; line-height:1; color:#A89E90; }
+.mt-wrow:focus-visible { outline:2px solid var(--cc-gold); outline-offset:2px; }
+/* the sheet */
+.mt-modal--who { z-index:450; }
+.mt-modal--who [hidden] { display:none !important; }
+.mt-modal--who .mt-modal__s { max-width:420px; gap:14px; padding:14px 16px 18px; padding-bottom:max(18px, env(safe-area-inset-bottom, 0px));
+  border-radius:16px 16px 0 0; background:#FDFCFA; color:#3A3530; }
+@media (min-width:701px) { .mt-modal--who .mt-modal__s { border-radius:16px; } }
+.mt-modal--who .mt-modal__h { padding:0; border:0; gap:12px; }
+.mt-modal--who .mt-modal__b { padding:0; display:flex; flex-direction:column; gap:14px; overflow-x:hidden; }
+.mt-modal--who .mt-modal__f { padding:4px 0 0; border:0; gap:10px; flex-wrap:nowrap; justify-content:flex-start; }
+.mt-modal--who .mt-modal__x { background:#F5F2ED; color:#6F6457; font-size:15px; }
+.mt-modal--who button:focus-visible { outline:2px solid var(--cc-gold); outline-offset:2px; }
+.mt-w__hd { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.mt-w__t { margin:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:500; line-height:normal; color:#1E1B18; }
+.mt-w__sub { margin:0; font-size:12px; line-height:normal; color:#6F6457; overflow-wrap:anywhere; }
+.mt-w__sec { display:flex; flex-direction:column; gap:6px; }
+.mt-w__k { font-size:11px; line-height:normal; color:#6F6457; }
+.mt-w__h { font-size:11.5px; line-height:normal; color:#6F6457; }
+.mt-w__seg { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:2px; padding:2px; background:#EDE8E0; border:.5px solid #E0DAD0; border-radius:17px; }
+.mt-w__seg--3 { grid-template-columns:repeat(3, minmax(0,1fr)); }
+.mt-w__sb { min-width:0; height:32px; margin:0; padding:0 4px; border:0; border-radius:15px; background:none; font-family:inherit; font-size:13px;
+  color:#6F6457; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-w__sb.is-on { background:#FDFCFA; color:#1E1B18; font-weight:500; box-shadow:0 0 0 .5px #E0DAD0; }
+.mt-w__seg--ink .mt-w__sb.is-on { background:#1E1B18; color:#FDFCFA; box-shadow:none; }
+.mt-w__sb:disabled { font-size:12px; color:#A89E90; cursor:default; }
+.mt-w__sb.is-over { font-size:12px; }
+.mt-w__seg--ink .mt-w__sb.is-on.is-over { background:#FBEBDD; color:#B0661E; }   /* a Kleinreparatur that is over 150 € now */
+.mt-w__seg .mt-w__sb.is-on:disabled { opacity:.6; }                               /* locked: what it is, not changeable */
+.mt-w__chips { display:flex; flex-wrap:wrap; gap:6px; }
+.mt-w__ch { height:32px; margin:0; padding:0 12px; border:.5px solid #C8BFB0; border-radius:16px; background:#FDFCFA; font-family:inherit;
+  font-size:12.5px; color:#3A3530; white-space:nowrap; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-w__ch.is-on { border:0; background:#1E1B18; color:#FDFCFA; font-weight:500; }
+.mt-w__ch:disabled { border-style:dashed; background:none; font-size:12px; color:#A89E90; cursor:default; }
+.mt-w__ch.is-on:disabled { border:0; background:#1E1B18; color:#FDFCFA; font-size:12.5px; opacity:.6; }
+.mt-w__ch--more { border-style:dashed; background:none; font-size:12px; color:#6F6457; }
+.mt-w__paid { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; height:40px; margin:0; padding:0 12px;
+  border:.5px solid #E0DAD0; border-radius:10px; background:none; font-family:inherit; font-size:13px; color:#3A3530; text-align:left; cursor:pointer; }
+.mt-w__pv { display:inline-flex; align-items:center; justify-content:flex-end; width:110px; height:30px; padding:0 8px; box-sizing:border-box;
+  border:.5px solid #E0DAD0; border-radius:6px; background:#F5F2ED; font-size:13px; color:#1E1B18; font-variant-numeric:tabular-nums; }
+.mt-w__pv.is-empty { color:#A89E90; }
+.mt-w__res { margin:0; padding:10px 12px; background:#F5F2ED; border-radius:8px; font-size:12.5px; line-height:1.5; color:#1E1B18; }
+.mt-w__res b { font-weight:600; }
+.mt-w__res span { font-size:11.5px; color:#6F6457; }
+.mt-w__lock { display:flex; align-items:center; gap:6px; margin:0; padding:8px 12px; border:.5px solid #E8B98A; border-radius:8px;
+  background:#FBEBDD; font-size:12px; color:#8A4B12; }
+.mt-w__lock i { font-size:14px; }
+.mt-w__reset { height:42px; margin:0; padding:0 4px; border:0; background:none; font-family:inherit; font-size:12.5px; color:#6F6457;
+  text-decoration:underline; cursor:pointer; }
+.mt-w__cancel { height:42px; margin:0 0 0 auto; padding:0 18px; border:.5px solid #C8BFB0; border-radius:21px; background:#FDFCFA;
+  font-family:inherit; font-size:13px; color:#6F6457; cursor:pointer; }
+.mt-w__save { height:42px; margin:0; padding:0 30px; border:0; border-radius:21px; background:#1E1B18; font-family:inherit; font-size:13px;
+  font-weight:600; color:#FDFCFA; cursor:pointer; }
+.mt-w__save:disabled { opacity:.35; cursor:default; }

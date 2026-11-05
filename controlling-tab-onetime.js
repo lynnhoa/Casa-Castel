@@ -19,6 +19,9 @@
      Casa Castel's Versorger Jahresabrechnungen too (ctlIsCasaJa)
    · Bonuses to confirm (Oct 2026): bonuses from Providers › Utilities that are paid to
      your account wait here; "Received" books them as income of that property (Other · Income)
+   · Nov 2026 (D39) "Who pays?": Casa Castel Maintenance lines follow Maintenance › Who pays
+     (read-only here) · "Tenants pay" / "Tenant refund" rows · Casa summary "Maintenance <year>"
+     (Expenses - paid by tenants = Your cost) · invoice counts leave income lines out
    ───────────────────────────────────────────────────────────── */
 
 'use strict';
@@ -78,29 +81,102 @@ function _cxOtYearBar() {
 
 /* Add / edit form (inline) */
 /* D8 · A line from Maintenance: amount, date and text are kept there (shown here, not editable);
-   the NK switch of a Casa Castel cost works exactly like on every other cost */
+   the NK switch works exactly like on every other cost — since D39 only for other properties (see below) */
 const _cxOtIsMaint = o => !!o && typeof window.mtIsMaintLine === 'function' && window.mtIsMaintLine(o);
+
+/* Nov 2026 (D39) · "Who pays?" of a Casa Castel receipt is chosen in Maintenance (MAINTENANCE-D39.sql):
+   · its line carries the snapshot maint_pay {t: nk|klein|schaden, c: NK cost type, w: gemein|zimmer,
+     r: [Zimmer], v: nk|direct, p: paid on, n: net} and its NK switch follows it (NK = Teil A) → read-only here
+   · a tenant who paid you directly gets an income line of its own (maint_refund_of = that receipt)
+   Before that SQL has run (no maint_pay column) the D8 rules stay: the NK switch works here as before. */
+const _cxOtD39 = o => !!o && Object.prototype.hasOwnProperty.call(o, 'maint_pay');
+const _cxOtIsRefund = o => !!o && (!!o.maint_refund_of || /^maint:erst:/.test(String(o.source_ref || '')));
+const _cxOtNkFixed = o => _cxOtIsMaint(o) && (_cxOtIsRefund(o) || (Number(o.property_id) === CASA_PROP_ID && _cxOtD39(o)));
+const _CX_OT_PAY_T = { nk: 'NK', klein: 'Kleinreparatur', schaden: 'Schaden' };
+function _cxOtPay(o) {
+  let p = o && o.maint_pay;
+  if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = null; } }
+  return p && typeof p === 'object' ? p : null;
+}
+/* The NK year of a Casa Castel date: the year its NK period ends in (same rule as Settlements: "NK 2026") */
+function _cxOtNkYear(iso) {
+  const p = (window._ctrl.properties || []).find(x => Number(x.id) === CASA_PROP_ID) || {};
+  const per = typeof ctlPeriodOf === 'function' ? ctlPeriodOf(p, iso) : null;
+  return per ? per.to.slice(0, 4) : String(iso || '').slice(0, 4);
+}
+/* What tenants pay of a Casa receipt line (Kleinreparatur / Schaden) — null for NK, landlord and income lines.
+   who: the Zimmer or Gemeinschaftsfläche · how: via NK 2026 · paid direct 05.11. · Direct · open
+   amt: what comes off your cost (net) — 0 while a direct one is open or a Kleinreparatur over 150 € is not billed */
+function _cxOtTenants(o) {
+  if (!o || Number(o.direction) === 1 || _cxOtIsRefund(o)) return null;
+  const p = _cxOtPay(o); if (!p || (p.t !== 'klein' && p.t !== 'schaden')) return null;
+  const n = Math.max(0, cxR(p.n !== undefined && p.n !== null ? p.n : o.amount));
+  const rooms = (Array.isArray(p.r) ? p.r : []).filter(Boolean);
+  const who = p.t === 'klein' && p.w === 'gemein' ? 'Gemeinschaftsfläche'
+    : rooms.length > 3 ? rooms.length + ' Zimmer' : rooms.length ? rooms.join(', ') : (p.w === 'gemein' ? 'Gemeinschaftsfläche' : 'no Zimmer');
+  const r = { t: p.t, who, how: '', amt: n, n, open: false, warn: false };
+  if (p.v === 'direct') {
+    const d = _cxD(p.p);
+    if (d) r.how = 'paid direct ' + d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + (d.slice(0, 4) !== String(o.invoice_date).slice(0, 4) ? d.slice(0, 4) : '');
+    else { r.how = 'Direct · open'; r.amt = 0; r.open = true; }
+  } else if (p.t === 'klein' && n > 150) { r.how = 'Kleinrep. >150 € · not billed'; r.amt = 0; r.warn = true; }   // § 7: Settlements does not bill it
+  else r.how = 'via NK ' + _cxOtNkYear(o.invoice_date);
+  return r;
+}
+const _cxOtTenantsTxt = t => t.who + ' · ' + t.how + (t.amt ? ' · \u2212' + cxEur(t.amt) : '');
+/* D39 · read-only "Who pays" block of a Casa Castel Maintenance line (in place of the NK switch) */
+function _cxOtWhoHTML(o) {
+  const p = _cxOtPay(o), ten = _cxOtTenants(o), inn = Number(o.direction) === 1, refund = _cxOtIsRefund(o);
+  const nk = !refund && (p ? p.t === 'nk' : !!o.nk_umlage);
+  const cat = nk ? (window._ctrl.categories || []).find(c => Number(c.id) === Number(p ? p.c : o.nk_category_id)) : null;
+  const nkName = 'NK · ' + (cat ? cat.name : 'Allgemeine Hauskosten');
+  let head, sub;
+  if (refund) {
+    head = 'Tenant refund' + (p && _CX_OT_PAY_T[p.t] ? ' · ' + _CX_OT_PAY_T[p.t] : '');
+    sub = (o.company || 'The tenant') + ' paid you directly · not in Teil B';
+  } else if (inn) {                                                    // a return: its receipt decides
+    head = o.nk_umlage ? nkName : 'Return · follows its receipt';
+    sub = o.nk_umlage ? 'lowers NK ' + _cxOtNkYear(o.invoice_date) + ' · Teil A' : 'Who pays is set on the receipt';
+  } else if (ten) {
+    head = 'Tenants pay · ' + _CX_OT_PAY_T[ten.t];
+    sub = _cxOtTenantsTxt(ten);
+  } else if (nk) {
+    head = nkName;
+    sub = 'NK ' + _cxOtNkYear(o.invoice_date) + ' · Teil A · shared like all Betriebskosten';
+  } else {
+    head = 'You pay';
+    sub = 'not charged to tenants';
+  }
+  return '<div class="cx-ot-nk cx-ot-nk--ro' + (nk ? ' on' : '') + '" id="cxOtWho">' +
+    '<span class="cx-ot-nk__t"><b>' + cxEsc(head) + '</b><small>' + cxEsc(sub) + '</small>' +
+    '<small class="cx-ot-nk__set">Set in Maintenance › Who pays</small></span></div>';
+}
+
 function _cxOtMaintFormHTML(o) {
   const pid = Number(o.property_id), p = (window._ctrl.properties || []).find(x => Number(x.id) === pid);
-  const inn = Number(o.direction) === 1, casa = pid === CASA_PROP_ID;
+  const inn = Number(o.direction) === 1, refund = _cxOtIsRefund(o);
+  const fixed = _cxOtNkFixed(o);                             // D39: Casa Castel follows Maintenance › Who pays · refunds too
   const nk = o._nk !== undefined ? o._nk : !!o.nk_umlage;
   const kv = (k, v) => (v ? '<div class="cx-ot-mt__kv"><span>' + k + '</span><b>' + cxEsc(v) + '</b></div>' : '');
   return '<div class="cx-form cx-ot-form cx-ot-form--mt" data-edit="' + cxEsc(o.id) + '">' +
-    '<div class="cx-ot-mt"><span class="cx-pill cx-pill--maint">Maintenance</span>' +
-      '<span class="cx-ot-mt__t">Amount, date and text are changed in Maintenance · the NK switch here.</span></div>' +
+    '<div class="cx-ot-mt"><span class="cx-ot-mt__p"><span class="cx-pill cx-pill--maint">Maintenance</span>' + (refund ? cxPill('ok', 'Tenant refund') : '') + '</span>' +
+      '<span class="cx-ot-mt__t">' + (refund ? 'A tenant paid this receipt back to you directly. It is booked and changed in Maintenance.'
+        : fixed ? 'Amount, date, text and Who pays are changed in Maintenance.'
+        : 'Amount, date and text are changed in Maintenance · the NK switch here.') + '</span></div>' +
     '<div class="cx-ot-mt__ro">' +
-      kv('Objekt', p ? p.name : '') + kv('Description', o.item) + kv('Company', o.company) +
-      kv(inn ? 'Income' : 'Expense', (inn ? '+\u202f' : '') + cxEur(o.amount)) + kv('Date', cxFmtDate(o.invoice_date)) +
+      kv('Objekt', p ? p.name : '') + kv('Description', o.item) + kv(refund ? 'From' : 'Company', o.company) +
+      kv(inn ? (refund ? 'Received' : 'Income') : 'Expense', (inn ? '+\u202f' : '') + cxEur(o.amount)) + kv(refund ? 'Paid on' : 'Date', cxFmtDate(o.invoice_date)) +
     '</div>' +
     '<input type="hidden" id="cxOtProp" value="' + pid + '">' +
-    (true ? '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +   // Nov 2026: every property
+    (!fixed ? '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '">' +   // Nov 2026: every property · D39: other properties only
         '<span class="cx-ot-nk__sw" aria-hidden="true"></span>' +
         '<span class="cx-ot-nk__t"><b>Show in Settlements</b><small>for the NK-Abrechnung · still a normal cost for you</small></span></button>' +
       _cxOtNkCatHTML(o, nk, pid) +
       '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
         '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
       '<button class="cx-link cx-ot-mtlink" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button>'
-    : '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
+    : _cxOtWhoHTML(o) +
+      '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
         '<button class="cx-btn cx-btn--p" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button></div>') +
   '</div>';
 }
@@ -141,6 +217,7 @@ function _cxOtKnkFormHTML(o) {
 }
 async function _cxOtSaveMaint(o, b) {
   const say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
+  if (_cxOtNkFixed(o)) return;                               // D39: Casa Castel's NK is set in Maintenance › Who pays (no Save there)
   const pid = Number(o.property_id);
   const nkOn = o._nk !== undefined ? o._nk : !!o.nk_umlage;
   const nk_umlage = !!nkOn;                                  // Nov 2026: every property can mark a cost for its NK
@@ -206,16 +283,26 @@ function _cxOtFormHTML(o) {
 function _cxOtRowHTML(o) {
   if (_cxOt.form !== null && String(_cxOt.form) === String(o.id)) return '<div class="cx-ot-edit">' + _cxOtFormHTML(o) + '</div>';
   const inn = Number(o.direction) === 1;
+  const mt = _cxOtIsMaint(o), refund = mt && _cxOtIsRefund(o);
+  const ten = mt ? _cxOtTenants(o) : null;                           // D39: Kleinreparatur / Schaden that tenants pay
   const nkCat = o.nk_umlage && o.nk_category_id ? (window._ctrl.categories || []).find(c => Number(c.id) === Number(o.nk_category_id)) : null;
-  const pills = _cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (o.knk_type ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('ok', 'Refund') : '') :
+  // D39 (bug 33): the "Maintenance" tag is part of the row itself (maint-link.js only tags rows without data-mt-tag),
+  // so a redraw no longer drops it for a moment — rows keep their height and a folded month keeps its place
+  const pills = (mt ? '<span class="cx-pill cx-pill--maint">Maintenance</span>' : '') +
+                (_cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (o.knk_type ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('ok', 'Refund') : '') :
+                refund ? cxPill('ok', 'Tenant refund') :                                                       // D39: a tenant paid you directly
                 (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK' + (nkCat ? ' · ' + cxEsc(nkCat.name) : '') + '</span>' : '') +
+                (ten ? '<span class="cx-pill cx-pill--tp">Tenants pay</span>' : '') +
                 (o.kind === 'Versorger' ? cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung
-                  : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill('ok', 'Income') : ''));
-  return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" aria-label="' + cxEsc('Edit ' + (o.item || 'entry')) + '">' +
+                  : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill('ok', 'Income') : '')));
+  const aria = mt ? 'From Maintenance: ' + (o.item || 'invoice') + ' · open' : 'Edit ' + (o.item || 'entry');
+  return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" data-mt-tag="' + (mt ? '1' : '0') + '" aria-label="' + cxEsc(aria) + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +
       '<span class="cx-r__p">' + pills + '<i class="ti ti-chevron-right cx-chev" aria-hidden="true"></i></span></div>' +
-    '<div class="cx-r__s' + (inn ? ' pos' : '') + '">' + (inn ? '+\u202f' : '') + cxEur(o.amount) + '</div>' +
+    '<div class="cx-r__s' + (inn ? ' pos' : '') + '">' + (inn ? '+\u202f' : '') + cxEur(o.amount) + '</div>' +   // always the stored (gross) amount
     '<div class="cx-r__sub">' + cxEsc([cxFmtDate(o.invoice_date), o.company].filter(Boolean).join(' · ')) + '</div>' +
+    (ten ? '<div class="cx-r__sub cx-ot-tp' + (ten.warn ? ' is-warn' : '') + '">' + cxEsc(ten.who + ' · ' + ten.how) +
+      (ten.amt ? ' · <span class="cx-ot-tp__a">\u2212' + cxEur(ten.amt) + '</span>' : '') + '</div>' : '') +
   '</button>';
 }
 
@@ -254,6 +341,44 @@ function _cxOtExportHTML() {
   '</div>';
 }
 
+/* Nov 2026 (D39) · Casa Castel: Maintenance <year> after "Who pays?" (Year view, only once a receipt is charged to tenants)
+   Expenses (as in Maintenance) = its receipts minus their returns · paid by tenants = Kleinreparatur / Schaden via the
+   NK letter (Teil B) or paid to you directly (net) · Your cost = the rest. NK receipts (Teil A) are Betriebskosten and
+   not counted as "paid by tenants". The lines themselves keep their full amount (taxes, export). */
+function _cxOtMtSumHTML() {
+  if (_cxOt.view !== 'y' || !cxAreaPid(CASA_PROP_ID)) return '';
+  const L = _cxOtAll().filter(o => Number(o.property_id) === CASA_PROP_ID && _cxOtIsMaint(o) && !_cxOtIsRefund(o));
+  const rc = L.filter(o => Number(o.direction) !== 1);
+  const ten = rc.map(o => ({ o, t: _cxOtTenants(o) })).filter(x => x.t);
+  if (!ten.length) return '';
+  const sum = list => list.reduce((s, o) => s + (Number(o.amount) || 0), 0);
+  const exp = cxR(sum(rc) - sum(L.filter(o => Number(o.direction) === 1)));
+  const paid = cxR(ten.reduce((s, x) => s + x.t.amt, 0));
+  const row = (k, v, cls) => '<div class="cx-ot-mts__r' + (cls || '') + '"><span>' + k + '</span><span>' + v + '</span></div>';
+  const isNk = o => { const p = _cxOtPay(o); return p ? p.t === 'nk' : !!o.nk_umlage; };
+  const own = [...new Set(rc.filter(o => !_cxOtTenants(o) && !isNk(o)).map(o => String(o.item || '').split(' · ')[0].trim()).filter(Boolean))];
+  const nNk = rc.filter(isNk).length;
+  const list = ten.slice().sort((a, b) => (Number(b.o.amount) || 0) - (Number(a.o.amount) || 0) || String(b.o.invoice_date).localeCompare(String(a.o.invoice_date)))
+    .map(({ o, t }) => '<div class="cx-ot-chg__r">' +
+      '<span class="cx-ot-chg__l">' + cxEsc(o.item || 'Receipt') + '</span><span class="cx-ot-chg__v">' + cxEur(o.amount) + '</span>' +
+      '<span class="cx-ot-chg__s' + (t.warn ? ' is-warn' : '') + '">' + cxEsc(t.who + ' · ' + (t.open ? 'Direct' : t.warn ? 'Kleinrep. >150 €' : t.how)) + '</span>' +
+      '<span class="cx-ot-chg__a' + (t.amt ? '' : ' is-open') + '">' + (t.amt ? '\u2212' + cxEur(t.amt) : t.open ? 'open' : t.warn ? 'not billed' : '\u2014') + '</span></div>').join('');
+  const note = (own.length ? 'You pay the other receipts (' + own.slice(0, 4).join(', ') + (own.length > 4 ? ' and ' + (own.length - 4) + ' more' : '') + '). ' : '') +
+    (nNk ? (nNk === 1 ? '1 NK receipt is' : nNk + ' NK receipts are') + ' Betriebskosten in Teil A, not counted here. ' : '') +
+    'Maintenance keeps every receipt at its full amount for taxes.';
+  // one wrapper (full width on desktop, where the property cards go 2 per row): summary left · Charged on right
+  return '<div class="cx-ot-mtw"><div class="cx-card cx-ot-mts">' +
+      '<div class="cx-row-sb"><span class="cx-lbl">Maintenance ' + window._ctrl.year + (CX.area === 'casa' ? '' : ' · Casa Castel') + '</span></div>' +
+      row('Expenses (as in Maintenance)', cxEur(exp)) +
+      row('\u2212 paid by tenants', paid ? '\u2212' + cxEur(paid) : cxEur(0), ' cx-ot-mts__r--t') +
+      '<div class="cx-ot-mts__rule"></div>' +
+      row('Your cost', cxEur(exp - paid), ' cx-ot-mts__r--y') +
+    '</div>' +
+    '<div class="cx-ot-mtw__r"><div class="cx-head"><span class="cx-lbl">Charged on</span></div>' +
+      '<div class="cx-card cx-ot-chg">' + list + '</div>' +
+      '<p class="cx-ot-chg__n">' + cxEsc(note) + '</p></div></div>';
+}
+
 function _cxOtListHTML() {
   const rows = _cxOtVisible();
   if (!rows.length) return '<div class="cx-card"><div class="cx-empty">' + (_cxOt.q ? 'Nothing found for "' + cxEsc(_cxOt.q) + '".' :
@@ -278,9 +403,12 @@ function _cxOtListHTML() {
         const k = p.id + '|' + window._ctrl.year + '|' + mm;
         const hasFocus = ml.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash));
         const open = _cxOt.q || hasFocus ? true : (_cxOt.mfold[k] !== undefined ? _cxOt.mfold[k] : (!many || i === 0));
-        const mt = ml.reduce((s2, o) => s2 + _cxOtSigned(o), 0);
+        // D39 (bug 35): same basis as the card — spent without a sign, income apart with "+" (was the unsigned net)
+        const mOut = ml.filter(o => Number(o.direction) !== 1).reduce((s2, o) => s2 + (Number(o.amount) || 0), 0);
+        const mIn = ml.filter(o => Number(o.direction) === 1).reduce((s2, o) => s2 + (Number(o.amount) || 0), 0);
+        const mSum = (mOut || !mIn ? cxW(mOut) : '') + (mIn ? (mOut ? ' · ' : '') + cxWS(mIn) : '');
         body += '<button class="cx-ot-m" data-cx="otMonth" data-k="' + k + '" aria-expanded="' + open + '">' +
-          '<span>' + CX_MONTHS[mm - 1] + '</span><span class="cx-ot-ms">' + cxW(Math.abs(mt)) + ' · ' + ml.length +
+          '<span>' + CX_MONTHS[mm - 1] + '</span><span class="cx-ot-ms">' + mSum + ' · ' + ml.length +
           ' <i class="ti ti-chevron-' + (open ? 'up' : 'down') + '" aria-hidden="true"></i></span></button>' +
           (open ? _cxOtRowsLimited(ml, k) : '');
       });
@@ -290,7 +418,7 @@ function _cxOtListHTML() {
         '<span class="cx-ot-ms">' + cxW(knkSum) + ' · ' + knk.length + '</span></div>' +
         knk.slice().sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date))).map(_cxOtRowHTML).join('') +
         _cxOtKnkYearsHTML(p.id) + '</div>';
-    const n = list.length;
+    const n = list.filter(o => Number(o.direction) !== 1).length;          // D39: invoices only (income lines are not invoices)
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
@@ -312,6 +440,29 @@ window.renderOneTime = function () {
       '.cx-ot-knk>.cx-row-sb{padding:2px 0 4px}.cx-ot-knk .cx-r{background:transparent}';
     document.head.appendChild(st);
   }
+  if (!document.getElementById('cx-ot-d39-css')) {                    // D39: Who pays (Tenants pay · Tenant refund · Casa summary)
+    const st = document.createElement('style'); st.id = 'cx-ot-d39-css';
+    st.textContent = '.cx-pill--tp{background:#F3EADC;color:#7A5527;border-color:#D4B896}' +
+      '.cx-ot-r .cx-ot-tp{color:#6F6457}.cx-ot-tp__a{color:#3F6B35;font-weight:500}.cx-ot-r .cx-ot-tp.is-warn{color:#B0661E}' +
+      '.cx-ot-nk--ro{cursor:default}.cx-ot-nk--ro .cx-ot-nk__t small.cx-ot-nk__set{margin-top:2px;color:var(--cx-acc)}' +
+      '.cx-ot-mt__p{display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex-shrink:0}' +
+      '.cx-ot-mtw,.cx-ot-mtw__r{display:flex;flex-direction:column;gap:8px;min-width:0}' +
+      '@media (min-width:1000px){.cx-ot-mtw{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 16px;align-items:start}' +
+        '.cx-ot-mtw__r>.cx-head{padding-top:0}}' +
+      '.cx-ot-mts{padding:12px 14px;display:flex;flex-direction:column;gap:6px}' +
+      '.cx-ot-mts__r{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#3A3530;font-variant-numeric:tabular-nums}' +
+      '.cx-ot-mts__r--t{color:#3F6B35}.cx-ot-mts__rule{height:.5px;background:var(--cx-rule)}' +
+      '.cx-ot-mts__r--y{font-size:15px;font-weight:600;color:#1E1B18}' +
+      '.cx-ot-chg__r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 14px;border-top:.5px solid var(--cx-rule)}' +
+      '.cx-ot-chg__r:first-child{border-top:none}' +
+      '.cx-ot-chg__l{font-size:13.5px;font-weight:500;color:#1E1B18;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '.cx-ot-chg__v{font-size:13px;text-align:right;color:#3A3530;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+      '.cx-ot-chg__s{font-size:11.5px;color:#6F6457;min-width:0}.cx-ot-chg__s.is-warn{color:#B0661E}' +
+      '.cx-ot-chg__a{font-size:12px;text-align:right;color:#3F6B35;font-variant-numeric:tabular-nums;white-space:nowrap}' +
+      '.cx-ot-chg__a.is-open{color:#B0661E}' +
+      '.cx-ot-chg__n{margin:2px 4px 4px;font-size:11.5px;line-height:1.45;color:#6F6457}';
+    document.head.appendChild(st);
+  }
   const at = _cxOt.view + '|' + window._ctrl.year + '|' + CX.month;
   if (CX.tab !== 'onetime' || (_cxOt.formAt && _cxOt.formAt !== at)) { _cxOt.form = null; _cxOt.formAt = null; }
   CX.tab = 'onetime';
@@ -321,6 +472,7 @@ window.renderOneTime = function () {
   const knkTot = knkAll.reduce((s, o) => s - _cxOtSigned(o), 0);
   const raus = all.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
   const rein = all.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+  const nInv = all.filter(o => Number(o.direction) !== 1).length;      // D39: income lines are not invoices
   const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
 
   cxPaint(host, '<div class="cx-page">' +
@@ -329,7 +481,7 @@ window.renderOneTime = function () {
       '<button class="' + (_cxOt.view === 'm' ? 'on' : '') + '" data-cx="otView" data-v="m">Month</button></div>' +
     (_cxOt.view === 'y' ? _cxOtYearBar() : cxMonthBar()) +
     '<div class="cx-card cx-sum">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', all.length + (all.length === 1 ? ' invoice' : ' invoices')) + '</div>' +
+      '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', nInv + (nInv === 1 ? ' invoice' : ' invoices')) + '</div>' +
       '<div class="cx-sum__v"><span class="cx-sum__big">' + cxW(raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxW(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
       (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '') +
       '<div class="cx-grid2" style="margin-top:4px">' +
@@ -338,13 +490,15 @@ window.renderOneTime = function () {
       '</div>' + (_cxOt.exp.open ? _cxOtExportHTML() : '') +
     '</div>' +
     _cxOtBonusHTML() +
+    _cxOtMtSumHTML() +                                                  // D39: Casa Castel · Maintenance <year> after Who pays
     '<div class="cx-head"><span class="cx-lbl">Invoices per property</span><span class="cx-lbl">Amount</span></div>' +
     '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Search · description or company" aria-label="Search" value="' + cxEsc(_cxOt.q) + '"></label>' +
     '<div id="cxOtList">' + _cxOtListHTML() + '</div>' +
     '<div class="cx-r__sub" style="text-align:center;margin-top:8px">New receipts go in Maintenance. Jahresabrechnungen, NK and Hausgeld results are in Income and Expenses.</div>' +
   '</div>');   // B18: only what changed
 
-  if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60); }
+  // D39 (bug 33): 'nearest' — a saved row that is on screen stays where it is (was: always glided to the centre)
+  if (flash) { _cxOt.flash = null; setTimeout(() => host.querySelector('.cx-ot-flash')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60); }
   const q = document.getElementById('cxOtQ');
   if (q && !q._w) {
     q._w = true;
@@ -388,12 +542,16 @@ window.renderOneTime = function () {
         return _cxOt.exp.fmt === 'pdf' ? cxExportInvoicesPdf(window._ctrl.year, pid || null, b) : cxExportInvoices(window._ctrl.year, pid || null);
       }
       if (a === 'otMore') { const k = b.dataset.k; _cxOt.more[k] = (_cxOt.more[k] || 20) + 20; return window.renderOneTime(); }
-      if (a === 'otMonth') { const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true'; return window.renderOneTime(); }
+      if (a === 'otMonth') {                                                      // D39 (bug 33): the month header stays put, like a card fold
+        const k = b.dataset.k; _cxOt.mfold[k] = b.getAttribute('aria-expanded') !== 'true';
+        return cxKeepPlace(b, () => window.renderOneTime(), () => [...document.querySelectorAll('#tab-onetime [data-cx="otMonth"]')].find(x => x.dataset.k === k));
+      }
       if (a === 'otEdit') { if (!(await _cxOtClose())) return; _cxOtOpen(b.dataset.id, null); return window.renderOneTime(); }
       if (a === 'otMaint') {                                                      // D8: that entry, at that receipt
         const o = (window._ctrl.one_time || []).find(x => String(x.id) === String(b.dataset.id));
         if (!o || !(await _cxOtClose())) return;
-        location.href = 'maintenance.html#cost=' + encodeURIComponent(o.maint_cost_id || String(o.source_ref || '').replace(/^maint:/, ''));
+        // D39: a tenant refund line opens its receipt (maint_refund_of · source_ref 'maint:erst:<id>')
+        location.href = 'maintenance.html#cost=' + encodeURIComponent(o.maint_cost_id || o.maint_refund_of || String(o.source_ref || '').replace(/^maint:(erst:)?/, ''));
         return;
       }
       if (a === 'otProps') {                                                     // Oct 2026: that property's Kauf card in Properties

@@ -101,7 +101,18 @@ document.getElementById('appTabs')?.addEventListener('click', e => {
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible' || Date.now() - ST.loadedAt < 60000) return;
   if (document.getElementById('appShell')?.style.display === 'none') return;
-  try { await stLoad(); stRender(); } catch (e) {}
+  try {
+    await stLoad();
+    // Nov 2026 (D39): Casa Castel keeps its own copies (the year's costs and one-offs, Jahresabrechnungen, Kaution,
+    // letters) — fetch them again too, or a change made meanwhile in Controlling is not seen. SC.loaded stays true and
+    // the year on screen stays until its fresh data is in (no "Loading" flash, the Dashboard keeps its Casa part).
+    // While a Casa pop-up is open its records are not reloaded: a save queued there still holds the old row.
+    if (typeof SC !== 'undefined' && SC.loaded && typeof scLoadRows === 'function') {
+      if (!SC.modal) await scLoadRows();
+      SC.data = {}; SC._jaLd = {};
+    }
+    stRender();
+  } catch (e) {}
 });
 
 /* ── Entry panel (Tracking) ───────────────────────────────── */
