@@ -732,14 +732,13 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
 .mt-modal--who { z-index:450; }
 .mt-modal--who [hidden] { display:none !important; }
 .mt-modal--who .mt-modal__s { max-width:420px; gap:14px; padding:14px 16px 18px; padding-bottom:max(18px, env(safe-area-inset-bottom, 0px));
-  border-radius:16px 16px 0 0; background:#FDFCFA; color:#3A3530; }
+  border-radius:16px; background:#FDFCFA; color:#3A3530; }
 /* Nov 2026 (D39 fix 2): the sheet fits what it shows (as the mockups: no empty band) and its top never moves while it
    is open — it is placed where its tallest layout (--mt-who-h, measured on open by mtWhoRender) would sit: on phones
    that layout ends at the bottom of the screen, on laptops it would be centred. A tap only changes what is below it,
    so only the lower edge moves, never the button under the finger; Reset keeps the height until the next tap
    (mtWhoSet). Rounded on all corners (a shorter layout ends above the bottom). The body scrolls if ever more. */
 .mt-modal--who { align-items:flex-start; padding-top:var(--mt-who-top); box-sizing:border-box; }
-.mt-modal--who .mt-modal__s { border-radius:16px; }
 .mt-modal.mt-modal--who .mt-modal__s { height:auto; max-height:calc(var(--mt-who-vh) - var(--mt-who-top) - var(--mt-who-gap)) !important; }
 @media (max-width:700px) {
   .mt-modal--who { --mt-who-vh:var(--mt-vvh, 100dvh); --mt-who-gap:0px;
