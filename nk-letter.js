@@ -16,8 +16,14 @@
      sum, vz, saldo (> 0 Nachzahlung · < 0 Guthaben), via ('zahlung'|'kaution'|'miete'), einbehalt,
      due, bank{inhaber, iban}, verwendung, tenantIban, tenantHolder, former,
      extraHtml, hints[], anlagen,
-     extra{ title, intro, rows:[[date, desc, company, amount]], sum } | null (Belegliste, page 2), listOnly
+     extra{ title, intro, rows:[[date, desc, company, amount]], sum } | null (Belegliste, page 2), listOnly,
+     teilB{ … } | null (Nov 2026 · D39, Casa Castel: Kleinreparaturen · Schäden from Maintenance) — see below
    }
+   Teil B (D39): only when d.teilB has blocks — an extra page after page 1 ("Seite 2"), the Belegliste moves one on.
+     d.saldo stays the Teil A result (page 1 shows it and says the netting is on Seite 2); the payment text moves
+     to Seite 2 and is based on the total d.teilB.saldo (Teil A + B1 + B2). Without d.teilB the letter is exactly as before.
+     teilB = { kicker, title, sub, who[], cols[4], blocks:[{ k: 1|2, title, note, rows:[{ date, label, sub, bill, share }],
+               sumLabel, sum }], gesamt, rows:[[label, amount]], saldo, what, legal, anlagen }
    */
 
 'use strict';
@@ -103,6 +109,45 @@ const NK_LETTER_CSS = `
     .calc { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#8c8379; margin-left:10px; }
     .note2 { font-family:'Lato',sans-serif; font-size:9.5px; font-weight:400; color:#6f675e; line-height:1.55; margin-top:14px; }
   `;
+/* Nov 2026 (D39) · Teil B page ("Seite 2"), colours of the agreed mockup: B1 beige · B2 blue · Gesamtverrechnung.
+   Added to the letter's CSS only when there is a Teil B page — every other letter keeps exactly its old HTML. */
+const NK_LETTER_CSS_B = `
+    .tb-c { display:flex; flex-direction:column; }
+    .tb-c > * { flex-shrink:0; }
+    .doc-title.tb-h { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; margin:0; padding-bottom:10px; border-bottom:0.5px solid #c8bfb0; font-family:'Lato',sans-serif; font-size:12px; line-height:1.3; color:#3a3530; }
+    .tb-h__l { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .tb-k { font-family:'Lato',sans-serif; font-size:11px; font-weight:400; letter-spacing:0.14em; text-transform:uppercase; color:#8a6535; line-height:1.2; }
+    .tb-t { font-family:'Playfair Display',serif; font-size:24px; font-weight:400; color:#1e1b18; line-height:1.2; }
+    .tb-s { font-family:'Lato',sans-serif; font-size:12px; color:#6f6457; line-height:1.3; }
+    .tb-h__r { text-align:right; font-family:'Lato',sans-serif; font-size:12px; line-height:1.55; color:#3a3530; white-space:nowrap; }
+    .tb-b { margin-top:12px; border:0.5px solid #d9cbb4; border-radius:8px; overflow:hidden; }
+    .tb-b--2 { border-color:#bfcbd6; }
+    .tb-b__h { display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:9px 16px; background:#f3eadc; font-family:'Lato',sans-serif; }
+    .tb-b--2 .tb-b__h { background:#e6ecf2; }
+    .tb-b__h b { font-size:13px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:#7a5527; }
+    .tb-b__h span { font-size:11.5px; color:#6f5a3e; }
+    .tb-b--2 .tb-b__h b { color:#2f4a63; } .tb-b--2 .tb-b__h span { color:#3f5568; }
+    .tb-b__b { padding:0 16px; }
+    .tb-tab { width:100%; border-collapse:collapse; table-layout:fixed; font-family:'Lato',sans-serif; }
+    .tb-tab th { font-size:10.5px; font-weight:400; color:#6f6457; text-align:left; padding:5px 0; border-bottom:0.5px solid #e0dad0; }
+    .tb-tab td { font-size:12px; color:#2a2622; padding:7px 0; border-bottom:0.5px solid #e0dad0; vertical-align:top; line-height:1.35; }
+    .tb-tab th + th, .tb-tab td + td { padding-left:12px; }
+    .tb-tab .r { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .tb-tab td b { display:block; font-weight:700; color:#1e1b18; }
+    .tb-tab td .sub { display:block; margin-top:1px; font-size:10.5px; line-height:1.3; color:#6f6457; }
+    .tb-tab td.a { font-weight:700; }
+    .tb-tab tr.s td { border-bottom:0; padding:7px 0 8px; font-size:13px; font-weight:700; color:#1e1b18; }
+    .tb-g { margin-top:12px; background:#f5f2ed; border-radius:8px; padding:12px 20px 14px; font-family:'Lato',sans-serif; }
+    .tb-g__k { font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8a6535; margin-bottom:2px; }
+    .tb-g__r { display:flex; justify-content:space-between; gap:12px; font-size:12.5px; color:#2a2622; padding:2px 0; }
+    .tb-g__r span:last-child, .tb-g__t span:last-child { font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .tb-g__l { height:0; border-top:0.5px solid #c8bfb0; margin:5px 0 4px; }
+    .tb-g__t { display:flex; justify-content:space-between; font-size:15px; font-weight:700; color:#1e1b18; padding:2px 0; }
+    .tb-g .p { font-size:11.5px; color:#6f6457; line-height:1.5; margin-top:4px; }
+    .tb-g .bank { background:#ffffff; padding:4px 12px; } .tb-g .kv { padding:1px 0; font-size:10.5px; }
+    .tb-n { font-family:'Lato',sans-serif; font-size:10.5px; line-height:1.55; color:#3a3530; margin:12px 0 10px; }
+    .tb-f { margin-top:auto; border-top:0.5px solid #e0dad0; padding-top:8px; font-family:'Lato',sans-serif; font-size:10.5px; color:#6f6457; }
+  `;
 
 function nkLetterHtml(d) {
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -110,7 +155,7 @@ function nkLetterHtml(d) {
   const dt = iso => { const s = String(iso || '').slice(0, 10); return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; };
   const nb = s => String(s).replace(/§ /g, '§\u00a0').replace(/Abs\. /g, 'Abs.\u00a0').replace(/Satz /g, 'Satz\u00a0');
   const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300&display=swap');`;
-  const CSS = NK_LETTER_CSS;
+  const CSS = NK_LETTER_CSS + (d.teilB && Array.isArray(d.teilB.blocks) && d.teilB.blocks.length ? NK_LETTER_CSS_B : '');   // D39: + the Teil B page
   const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand || '')}</span>${d.unitName ? `<div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel || '')}</span><span class="hdr__room-name">${esc(d.unitName)}</span></div>` : ''}</div>`;
   const ftr = () => `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer || '')}</span><span>Seite <span class="pgn">1</span> von <span class="pgt">1</span></span></div></div>`;
   const kv = (k, v) => `<div class="kv"><span class="kv__k">${k}</span><span class="kv__v">${v}</span></div>`;
@@ -132,23 +177,32 @@ function nkLetterHtml(d) {
   const payTo = () => du ? `<p class="p">Bitte überweise uns den Betrag bis zum ${due} auf folgendes Bankkonto:</p>${ourBank()}`
                          : `<p class="p">Der Betrag ist bis zum ${due} auf folgendes Konto zu überweisen:</p>${ourBank()}`;
   const kau = du ? 'deiner Mietkaution' : 'der Mietkaution';
-  let pay;
-  if (d.saldo > 0 && d.via === 'kaution' && E > 0) {
-    const rest = Math.round((E - amt) * 100) / 100;
-    const head = `Die Nachzahlung wird mit dem einbehaltenen Teil ${kau} (${eur(E)}) verrechnet.`;
-    pay = rest > 0 ? `<p class="p">${head}</p>` + back(`Der Restbetrag von <strong>${eur(rest)}</strong> wird${du ? ' dir' : ''}`)
-      : rest === 0 ? `<p class="p">${head} Damit ist die Kaution vollständig abgerechnet.</p>`
-      : `<p class="p">${head} ${du ? `Bitte überweise uns den Restbetrag von <strong>${eur(-rest)}</strong> bis zum ${due} auf folgendes Bankkonto:` : `Der Restbetrag von <strong>${eur(-rest)}</strong> ist bis zum ${due} auf folgendes Konto zu überweisen:`}</p>${ourBank()}`;
-  }
-  else if (d.saldo < 0 && E > 0) pay = back(`Das Guthaben und der einbehaltene Teil ${kau} (${eur(E)}), zusammen <strong>${eur(amt + E)}</strong>, werden${du ? ' dir' : ''}`);
-  else if (!d.saldo && E > 0) pay = back(`Der einbehaltene Teil ${kau} von <strong>${eur(E)}</strong> wird${du ? ' dir' : ''}`);
-  else if (d.saldo > 0 && d.via === 'kaution') pay = `<p class="p">Die Nachzahlung wird mit ${kau} verrechnet${du ? ' – du musst nichts überweisen' : ' – eine Überweisung ist nicht nötig'}.</p>`;
-  else if (d.saldo > 0 && d.via === 'miete') pay = `<p class="p">${du ? `Bitte überweise uns den Betrag zusammen mit der nächsten Miete, spätestens bis zum ${due}` : `Der Betrag ist zusammen mit der nächsten Miete zu zahlen, spätestens bis zum ${due}`} (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
-  else if (d.saldo > 0) pay = payTo();
-  else if (d.saldo < 0 && d.via === 'miete') pay = `<p class="p">${du ? 'Du kannst das Guthaben mit der nächsten Miete verrechnen: Überweise die nächste Miete einfach um diesen Betrag gekürzt.' : 'Das Guthaben kann mit der nächsten Mietzahlung verrechnet werden: Die nächste Miete wird um diesen Betrag gekürzt überwiesen.'}</p>`;
-  else if (d.saldo < 0 && d.via === 'kaution') pay = `<p class="p">Das Guthaben wird bei der Abrechnung ${kau} berücksichtigt.</p>`;
-  else if (d.saldo < 0) pay = back(du ? 'Dein Guthaben wird dir' : 'Das Guthaben wird');
-  else pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>`;
+  // the payment text for a result S (> 0 Nachzahlung · < 0 Guthaben) and its amount A — on page 1, or (D39) on the
+  // Teil B page for the total (Teil A + B1 + B2)
+  const payFor = (S, A) => {
+    let pay;
+    if (S > 0 && d.via === 'kaution' && E > 0) {
+      const rest = Math.round((E - A) * 100) / 100;
+      const head = `Die Nachzahlung wird mit dem einbehaltenen Teil ${kau} (${eur(E)}) verrechnet.`;
+      pay = rest > 0 ? `<p class="p">${head}</p>` + back(`Der Restbetrag von <strong>${eur(rest)}</strong> wird${du ? ' dir' : ''}`)
+        : rest === 0 ? `<p class="p">${head} Damit ist die Kaution vollständig abgerechnet.</p>`
+        : `<p class="p">${head} ${du ? `Bitte überweise uns den Restbetrag von <strong>${eur(-rest)}</strong> bis zum ${due} auf folgendes Bankkonto:` : `Der Restbetrag von <strong>${eur(-rest)}</strong> ist bis zum ${due} auf folgendes Konto zu überweisen:`}</p>${ourBank()}`;
+    }
+    else if (S < 0 && E > 0) pay = back(`Das Guthaben und der einbehaltene Teil ${kau} (${eur(E)}), zusammen <strong>${eur(A + E)}</strong>, werden${du ? ' dir' : ''}`);
+    else if (!S && E > 0) pay = back(`Der einbehaltene Teil ${kau} von <strong>${eur(E)}</strong> wird${du ? ' dir' : ''}`);
+    else if (S > 0 && d.via === 'kaution') pay = `<p class="p">Die Nachzahlung wird mit ${kau} verrechnet${du ? ' – du musst nichts überweisen' : ' – eine Überweisung ist nicht nötig'}.</p>`;
+    else if (S > 0 && d.via === 'miete') pay = `<p class="p">${du ? `Bitte überweise uns den Betrag zusammen mit der nächsten Miete, spätestens bis zum ${due}` : `Der Betrag ist zusammen mit der nächsten Miete zu zahlen, spätestens bis zum ${due}`} (Verwendungszweck: ${esc(d.verwendung)}).</p>`;
+    else if (S > 0) pay = payTo();
+    else if (S < 0 && d.via === 'miete') pay = `<p class="p">${du ? 'Du kannst das Guthaben mit der nächsten Miete verrechnen: Überweise die nächste Miete einfach um diesen Betrag gekürzt.' : 'Das Guthaben kann mit der nächsten Mietzahlung verrechnet werden: Die nächste Miete wird um diesen Betrag gekürzt überwiesen.'}</p>`;
+    else if (S < 0 && d.via === 'kaution') pay = `<p class="p">Das Guthaben wird bei der Abrechnung ${kau} berücksichtigt.</p>`;
+    else if (S < 0) pay = back(du ? 'Dein Guthaben wird dir' : 'Das Guthaben wird');
+    else pay = `<p class="p">Die Vorauszahlungen decken den Kostenanteil genau – es entsteht weder eine Nachzahlung noch ein Guthaben.</p>`;
+    return pay;
+  };
+  // Teil B (D39): page 1 keeps the Teil A result and points to Teil B (Seite 2) and to the page of the Gesamtverrechnung,
+  // where the total is netted and paid (a long Teil B pushes it to Seite 3 or later)
+  const TB = d.teilB && Array.isArray(d.teilB.blocks) && d.teilB.blocks.length ? d.teilB : null;
+  const pay = TB ? '' : payFor(d.saldo, amt);
 
   // ── Costs (left) · monthly Vorauszahlungen (right)
   const C = d.costs || { cols: [{ label: 'Kostenart', w: '70%' }, { label: 'Betrag', w: '30%', cls: 'r' }], rows: [] };
@@ -169,6 +223,13 @@ function nkLetterHtml(d) {
   const facts = (d.facts1 || []).length ? `<div class="facts">${d.facts1.map(f => `<div class="fact"><div class="fact__k">${esc(f[0])}</div><div class="fact__v">${esc(f[1])}</div>${f[2] ? `<div class="fact__s">${esc(f[2])}</div>` : ''}</div>`).join('')}</div>` : '';
   const calc = `<span class="calc">${eur(d.vz)} Vorauszahlungen \u2212 ${eur(d.sum)} Kosten</span>`;
 
+  // D39: with a Teil B page, a "Belegliste (Seite n)" reference follows where that page really lands (nkLetterPdf)
+  const pgB = s => TB ? s.replace(/(Belegliste (?:auf )?\(?Seite )(\d+)/g, '$1<span data-pgref="beleg">$2</span>') : s;
+  const pgTB = `<span data-pgref="tb">2</span>`, pgTG = `<span data-pgref="tbg">2</span>`;   // Teil B starts · Gesamtverrechnung (can be a later page)
+  const TS = TB ? Number(TB.saldo) || 0 : 0;
+  const TB0 = !!TB && Math.abs(TS) < 0.005 && !(E > 0);    // total exactly 0 and no Kaution kept back: nothing to pay or to pay back
+  const pay1B = TB ? `<p class="p">Zusammen mit Teil B (${esc(TB.what || 'Sonstige Forderungen')}, ab Seite ${pgTB}) ergibt sich insgesamt ${TS > 0.004 ? `eine Nachzahlung von <strong>${eur(TS)}</strong>` : TS < -0.004 ? `ein Guthaben von <strong>${eur(-TS)}</strong>` : 'ein ausgeglichenes Ergebnis'}. ${TB0 ? (du ? 'Die Verrechnung beider Teile findest du' : 'Die Verrechnung beider Teile steht') : du ? 'Die Verrechnung beider Teile und die Zahlung findest du' : 'Die Verrechnung beider Teile und die Zahlung stehen'} auf Seite ${pgTG}.</p>` : '';
+
   const page1 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
     <div class="addr"><div class="addr__l">
       <div class="addr__ret">${esc((d.sender || []).join(' \u00b7 '))}</div>
@@ -179,19 +240,19 @@ function nkLetterHtml(d) {
     <p class="p" style="margin-top:0">${esc(d.greeting)}</p>
     <p class="p" style="margin-top:6px">${d.introHtml || ''}</p>
     <div class="two"><div class="two__l">${costTable}</div><div class="two__r">${vzTable}</div></div>
-    <div class="total-box"><span>${resLabel}${d.saldo ? calc : ''}</span><span>${d.saldo ? eur(amt) : eur(0)}</span></div>
-    ${pay}
+    <div class="total-box"><span>${TB ? 'Teil A \u00b7 ' : ''}${resLabel}${d.saldo ? calc : ''}</span><span>${d.saldo ? eur(amt) : eur(0)}</span></div>
+    ${TB ? pay1B : pay}
     ${d.extraHtml || ''}
-    ${(d.hints || []).length ? `<div class="hints">${d.hints.map(h => `<div class="hint hint--s"><span>${esc(nb(h))}</span></div>`).join('')}</div>` : ''}
+    ${(d.hints || []).length ? `<div class="hints">${d.hints.map(h => `<div class="hint hint--s"><span>${pgB(esc(nb(h)))}</span></div>`).join('')}</div>` : ''}
     <p class="greet">${esc(d.closing || 'Mit freundlichen Grüßen')}</p>
     <p class="greet__name">${esc(d.vermieter)}</p>
-    ${d.anlagen ? `<p class="anl">Anlage: ${esc(d.anlagen)}</p>` : ''}
+    ${d.anlagen ? `<p class="anl">Anlage: ${pgB(esc(d.anlagen))}</p>` : ''}
   </div></div>`;
 
   // Belegliste (optional, own page)
   const X = d.extra;
   const pageX = X && X.rows && X.rows.length ? `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
-    <div class="doc-title doc-title--s">${esc(X.title)}</div>
+    <div class="doc-title doc-title--s"${TB ? ' data-pg="beleg"' : ''}>${esc(X.title)}</div>
     <div class="doc-subtitle">${esc(X.intro || '')}</div>
     <table class="nk"><colgroup><col style="width:15%"/><col style="width:41%"/><col style="width:24%"/><col style="width:20%"/></colgroup>
       <thead><tr><th>Datum</th><th>Beschreibung</th><th>Firma</th><th class="r">Betrag</th></tr></thead>
@@ -200,8 +261,31 @@ function nkLetterHtml(d) {
       </tbody></table>
   </div></div>` : '';
 
+  // Teil B (D39, own page after page 1): B1 Kleinreparaturen · B2 Schäden · Gesamtverrechnung with the payment
+  // text for the total · the legal note · the Anlagen (the invoices). Never other rooms' or tenants' names.
+  // The legal note moves on with the Anlagen line (data-keep-next), so that line never stands alone on a page;
+  // a B1/B2 table that continues on the next page repeats its title bar there (data-cc-repeat, pdf-open.js).
+  const cols = TB ? (TB.cols || ['Datum', 'Position', 'Rechnung', 'Anteil']) : [];
+  const blockB = B => `<div class="tb-b tb-b--${B.k === 2 ? 2 : 1}"><div class="tb-b__h" data-cc-repeat="1"><b>${esc(B.title)}</b><span>${esc(B.note || '')}</span></div><div class="tb-b__b">
+      <table class="tb-tab"><colgroup><col style="width:94px"/><col/><col style="width:96px"/><col style="width:96px"/></colgroup>
+        <thead><tr><th>${esc(cols[0])}</th><th>${esc(cols[1])}</th><th class="r">${esc(cols[2])}</th><th class="r">${esc(cols[3])}</th></tr></thead>
+        <tbody>${(B.rows || []).map(r => `<tr><td>${esc(r.date ? dt(r.date) : '')}</td><td><b>${esc(r.label)}</b>${r.sub ? `<span class="sub">${esc(nb(r.sub))}</span>` : ''}</td><td class="r">${r.bill === null || r.bill === undefined ? '' : eur(r.bill)}</td><td class="r a">${eur(r.share)}</td></tr>`).join('')}
+          <tr class="s"><td colspan="3">${esc(B.sumLabel || 'Summe')}</td><td class="r">${eur(B.sum)}</td></tr></tbody></table></div></div>`;
+  const pageB = TB ? `<div class="pdf-page page">${hdr}${ftr()}<div class="content tb-c">
+    <div class="doc-title tb-h" data-pg="tb"><div class="tb-h__l"><span class="tb-k">${esc(TB.kicker || '')} \u00b7 Seite ${pgTB}</span><span class="tb-t">${esc(TB.title || 'Teil B')}</span>${TB.sub ? `<span class="tb-s">${esc(TB.sub)}</span>` : ''}</div>
+      <div class="tb-h__r">${(TB.who || []).map(w => `<div>${esc(w)}</div>`).join('')}</div></div>
+    ${TB.blocks.map(blockB).join('')}
+    <div class="tb-g" data-pg="tbg"><div class="tb-g__k">${esc(TB.gesamt || 'Gesamtverrechnung')}</div>
+      ${(TB.rows || []).map(r => `<div class="tb-g__r"><span>${esc(r[0])}</span><span>${eur(r[1])}</span></div>`).join('')}
+      <div class="tb-g__l"></div>
+      <div class="tb-g__t"><span>${TS > 0.004 ? 'Nachzahlung' : TS < -0.004 ? 'Guthaben' : 'Ausgeglichen'}</span><span>${eur(Math.abs(TS))}</span></div>
+      ${TB0 ? `<p class="p">Teil A und Teil B gleichen sich aus – es ist nichts zu zahlen und nichts zu erstatten.</p>` : payFor(TS, Math.abs(TS))}</div>
+    ${TB.legal ? `<p class="tb-n" data-keep-next>${esc(nb(TB.legal))}</p>` : ''}
+    ${TB.anlagen ? `<div class="tb-f">${esc(TB.anlagen)}</div>` : ''}
+  </div></div>` : '';
+
   const scoped = CSS.replace(/([^{}]+)\{/g, (m, sel) => sel.split(',').map(x => '.nk-letter ' + x.trim()).join(', ') + ' {');
-  return `<div class="nk-letter"><style>${FONTS}</style><style>${scoped}</style>${d.listOnly ? pageX : page1 + pageX}</div>`;
+  return `<div class="nk-letter"><style>${FONTS}</style><style>${scoped}</style>${d.listOnly ? pageX : page1 + pageB + pageX}</div>`;
 }
 
 /* Render the letter → { blob, name } (does not open it). Same pipeline as the Rentals letters. */
@@ -218,6 +302,8 @@ async function nkLetterPdf(d, fileName) {
     try { await ccFlowPages(box); } catch (e) {}
     const pages = box.querySelectorAll('.pdf-page');
     pages.forEach((pg, i) => { const a = pg.querySelector('.pgn'), b = pg.querySelector('.pgt'); if (a) a.textContent = String(i + 1); if (b) b.textContent = String(pages.length); });
+    // D39: "Seite 2" (Teil B) / "Belegliste (Seite 3)" → the page it really landed on after the flow (only Teil B letters have these)
+    box.querySelectorAll('[data-pgref]').forEach(el => { const t = box.querySelector('[data-pg="' + el.dataset.pgref + '"]'), i = t ? [...pages].indexOf(t.closest('.pdf-page')) : -1; if (i >= 0) el.textContent = String(i + 1); });
     const pdf = await ccRenderPagesToPdf(box);
     return { blob: pdf.output('blob'), name: ccPdfSafeName(fileName) };
   } finally { box.remove(); }

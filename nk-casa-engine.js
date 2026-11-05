@@ -199,10 +199,16 @@ const NkCasa = (() => {
     const plain = v => String(v || '').toLowerCase().replace(/[^a-zäöüß0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
     const lev = (a, b) => { const m = a.length, n = b.length; if (Math.abs(m - n) > 2) return 3; let p = Array.from({ length: n + 1 }, (_, j) => j);
       for (let i = 1; i <= m; i++) { const q = [i]; for (let j = 1; j <= n; j++) q[j] = Math.min(p[j] + 1, q[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); p = q; } return p[n]; };
+    // Nov 2026 (D39): a supplier cost type (Strom · Gas · Wasser · Entsorgung) needs the whole word or a payment
+    // word after it — "Gastherme Reparatur" / "Wasserschaden" are repairs, not money paid to the supplier
+    // ("Stromrechnung", "Entsorgungskosten" and "Müllabfuhr" → Müll still match)
+    const VERS = /^(strom|gas|wasser|entsorg)/;
+    const VERS_PAY = /^s?(rechnung|abschlag|abschläge|kosten|gebühr|geld|nachzahlung|abrechnung|verbrauch|lieferung|zahlung)/;
+    const nameHit = (t, n) => n.startsWith(t) || (t.startsWith(n) && (!VERS.test(n) || t.length === n.length || t[n.length] === ' ' || VERS_PAY.test(t.slice(n.length))));
     const catByName = text => {
       const t = plain(text); if (!t) return null;
       const w = t.split(' ')[0];
-      return cats.find(c => inNk(c) && plain(c.name) && (t.startsWith(plain(c.name)) || plain(c.name).startsWith(t))) ||
+      return cats.find(c => inNk(c) && plain(c.name) && nameHit(t, plain(c.name))) ||
              cats.find(c => inNk(c) && w.length >= 6 && lev(w, plain(c.name).split(' ')[0]) <= 2) || null;
     };
     const lines = [];
@@ -241,21 +247,28 @@ const NkCasa = (() => {
     // one-offs with the NK switch (Casa Castel only, settlement results excluded)
     const ABR = typeof CX_ABR_KINDS !== 'undefined' ? CX_ABR_KINDS : ['NK-Abrechnung', 'Hausgeldabrechnung'];
     const jaIn = src && Array.isArray(src.ja) ? src.ja : null;   // Nov 2026: the Jahresabrechnungen with their share of this period
+    // Nov 2026 (D39): src.jaOwn = the bookings Settlements really counts as a Jahresabrechnung (all years) —
+    // only those are skipped here (whatever their kind); any other row counts by its payment day
+    const jaOwn = src && src.jaOwn && typeof src.jaOwn.has === 'function' ? src.jaOwn : null;
+    const isMt = o => typeof W.mtIsMaintLine === 'function' ? !!W.mtIsMaintLine(o) : !!(o.maint_cost_id || /^maint:/.test(String(o.source_ref || '')));
     for (const o of (C.one_time || [])) {
       if (Number(o.property_id) !== CASA || !o.nk_umlage || ABR.includes(o.kind)) continue;
       const d = D(o.invoice_date);
       const hg = o.kind === 'Versorger' || /jahresabrechnung/i.test(String(o.item || ''));   // Strom · Gas · Wasser yearly result
-      if (hg && jaIn) continue;                                  // … counted below by their Abrechnungszeitraum, not by the payment day
+      if (jaIn && (jaOwn ? jaOwn.has(String(o.id)) : hg)) continue;   // … counted below by their Abrechnungszeitraum, not by the payment day
       // Abflussprinzip (Oct 2026): everything counts in the NK year it was paid – Abschläge, yearly costs,
       // single invoices and the Versorger-Jahresabrechnungen (Nachzahlung +, Guthaben −) alike
       if (d < period.from || d > period.to) continue;
       // cost type: the one chosen in Controlling, else an NK cost type whose name the invoice carries
       // (e.g. "Gärtner Mai" → Gärtner) — so official sporadic costs keep their own line in the letter
-      const c = catOf(o.nk_category_id) || (hg ? null : catByName(o.item || o.company));
+      // D39: never guess the type of a Maintenance line — there an empty choice means "General house costs"
+      const c = catOf(o.nk_category_id) || ((hg || isMt(o)) ? null : catByName(o.item || o.company));
       const amt = (Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0);      // Guthaben / refund lowers the costs
+      // a Jahresabrechnung Settlements does not handle (no Strom / Gas / Wasser / Entsorgung supplier) counts here,
+      // in full like any paid one-off (D39) — it stays a 'hausgeld' line, so it can still be switched off
       lines.push({ id: 'ot:' + o.id, label: [hg ? (c ? c.name + ' · Jahresabrechnung' : 'Jahresabrechnung') : (o.item || 'Rechnung')].join(''),
                    group: hg ? 'hausgeld' : 'oneoff', key: keyOf(c),
-                   parts: [hg ? { amount: r2(amt * shareYear), spread: 'year' } : { amount: r2(amt), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',   // Nov 2026: a paid one-off counts in full
+                   parts: [hg ? { amount: r2(jaIn ? amt : amt * shareYear), spread: 'year' } : { amount: r2(amt), spread: 'from', date: d }], catId: c ? c.id : null, catName: c ? c.name : '',   // Nov 2026: a paid one-off counts in full
                    info: { date: d, company: o.company || '', item: o.item || '', amount: amt } });
       if (hg && !c) warn.push('Hausgeld entry ' + d + ' has no cost type – split by person');
     }

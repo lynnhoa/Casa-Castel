@@ -262,11 +262,12 @@ function _ccSplitTable(el, limit) {
   if (r <= 0) return null;
   const clone = el.cloneNode(true);
   const cTable = clone.tagName === 'TABLE' ? clone : clone.querySelector('table');
-  // continuation keeps only the table (no repeated title text around it)
+  // continuation keeps only the table (no repeated title text around it) — except a title marked
+  // [data-cc-repeat] (Nov 2026: the Teil B "B1 · Kleinreparaturen" / "B2 · Schäden" bar of the NK letter)
   if (clone !== cTable) {
     let n = cTable;
     while (n && n !== clone) {
-      [...n.parentElement.children].forEach(sib => { if (sib !== n && !sib.contains(cTable)) sib.remove(); });
+      [...n.parentElement.children].forEach(sib => { if (sib !== n && !sib.contains(cTable) && !sib.hasAttribute('data-cc-repeat')) sib.remove(); });
       n = n.parentElement;
     }
   }

@@ -116,6 +116,14 @@ const MT = {
   d17: false,       // MAINTENANCE-D17.sql has been run (Renovierungsbericht, Besichtigung date/time, points/text)
   d16: false,       // MAINTENANCE-D16.sql has been run (own Schadensbild field)
   d30: false,       // MAINTENANCE-D30.sql has been run (Sonstiges: Art · Ort · Uhrzeit · Teilnehmer)
+  costHold: null,   // D39: the receipt form that "Save + next" is storing (its pop-up waits, "Saving …")
+  lost: {},         // D39: receipt id → photos / PDFs whose upload failed (they come back when the receipt opens)
+  bg: 0,            // D39: > 0 while a save / upload redraws in the background (an open pop-up keeps its form)
+  d39: false,       // D39: MAINTENANCE-D39.sql has been run ("Who pays?" per receipt: pay_type …)
+  who: null,        // D39: the open "Who pays?" sheet (mtWhoOpen / mtWhoNest)
+  whoCats: null,    // D39: Casa cost types (ctrl_castel_categories) · null = could not be loaded
+  whoTen: null,     // D39: tenant_records (room, status, mietbeginn, mietende) · null = could not be loaded
+  whoLock: null,    // D39: locked Settlements years [{ year, from, to, ids }] · null = could not be loaded
 };
 /* D12 · the year of the summary (and of its PDF): your choice, else this year */
 function mtSumYear() {                                     // D22: one year for both tabs · D37: also the list
@@ -127,10 +135,12 @@ function mtListYears() {
   const ys = mtCostYears().concat(MT.cases.map(c => mtCaseYear(c)).filter(y => /^\d{4}$/.test(y)));
   return [...new Set(ys)].sort().reverse();
 }
-/* D37 · is an entry shown in year Y? its own year · still open from an earlier year (in this year) · the open entry */
+/* D37 · is an entry shown in year Y? its own year · still open from an earlier year (in this year) · the open entry
+   D39 · also when it has receipts dated in Y — the same rule as the bar and the year PDF, so bar = Σ cards = Σ rows */
 function mtInYear(c, Y) {
   const cy = mtCaseYear(c);
   if (cy === Y) return true;
+  if (mtHasCosts([String(c.id)], Y)) return true;
   if (Y === mtYear() && c.status !== 'done' && cy < Y) return true;
   return !!(MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id));
 }
@@ -142,7 +152,7 @@ async function mtYearGo(v) {
   if (MT.sel && !(await mtClose())) { mtRender(); return; }
   MT.sumYear.all = to;
   mtRender();
-  window.scrollTo({ top: 0, behavior: 'instant' });
+  mtPageTo(0);
 }
 function mtCostYears() {
   const ys = MT.costs.map(r => String(r.cost_date || '').slice(0, 4)).filter(y => /^\d{4}$/.test(y));
@@ -264,6 +274,9 @@ async function mtLoad() {
   catch (e) { MT.d17 = false; }
   try { MT.d30 = !(await sb.from('maint_cases').select('so_art').limit(1)).error; }      // D30: Sonstiges › Bericht
   catch (e) { MT.d30 = false; }
+  try { MT.d39 = !(await sb.from('maint_costs').select('pay_type').limit(1)).error; }    // D39: Who pays? (MAINTENANCE-D39.sql)
+  catch (e) { MT.d39 = false; }
+  if (MT.d39) await mtWhoLoad();                             // cost types, tenants, locked years — each may fail (then less is shown)
   try {                                                   // D9: Casa Castel rooms for Details › Zimmer
     const rr = await sb.from('rooms').select('*');
     MT.rooms = rr.error ? [] : (rr.data || []).filter(r => r.active !== false)
@@ -303,7 +316,7 @@ async function mtTabClick(kind) {
   if (kind === MT.tab) return;
   if (MT.sel && !(await mtClose())) return;
   mtSwitchTab(kind);
-  window.scrollTo(0, 0);
+  mtPageTo(0);
 }
 
 /* ── List ─────────────────────────────────────────────────── */
@@ -344,7 +357,7 @@ function mtSpan(c) {
 
 function mtRowHTML(c, since) {
   const sub = [mtWhere(c), mtSpan(c), since ? 'since ' + since : ''].filter(Boolean).map(mtEsc).join(' · ');
-  const cost = mtCost([c.id]);
+  const cost = mtCost([c.id], mtSumYear());                 // D39: the year on top, like the card sum and the bar
   const sel = MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id) ? ' is-sel' : '';
   return `<div class="mt-ent ${mtStCls(c.status)}">
       <div class="mt-row${sel}">
@@ -359,6 +372,7 @@ function mtRender() {
   const a = mtAnchor();                                      // D36: the list redraw keeps your place
   mtRenderList();
   mtRestore(a);
+  mtLockStick();                                             // D39: a new year bar behind a pop-up keeps its place too
 }
 function mtRenderList() {
   const kind = MT.tab;
@@ -393,7 +407,7 @@ function mtRenderList() {
     if (!cs.length) return '';                                        // D37: nothing in this year → the property is not shown
     const total = mtCost(cs.map(c => c.id), yy);
     const rows = cs.map(c => (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) ? '<div class="mt-slot"></div>'
-      : mtRowHTML(c, mtCaseYear(c) !== yy && /^\d{4}$/.test(mtCaseYear(c)) ? mtCaseYear(c) : '')).join('');
+      : mtRowHTML(c, mtCaseYear(c) < yy && /^\d{4}$/.test(mtCaseYear(c)) ? mtCaseYear(c) : '')).join('');
     return `
       <section class="mt-card" aria-label="${mtEsc(g.name)}">
         <div class="mt-card__hd"><h2 class="mt-card__name">${mtEsc(g.name)}</h2><span class="mt-card__sum${total ? '' : ' mt-mu'}">${mtAmt(total)}</span></div>
@@ -432,7 +446,7 @@ function mtPanelHTML() {
   const head = `
     <div class="mt-oh__h">
       <button type="button" class="mt-oh__t" data-mt="close" aria-label="Close ${mtEsc(title)}" aria-expanded="true"><span id="mtPanelTitle">${mtEsc(title)}</span></button>
-      ${!s.isNew && c && !mtActive(c) ? `<button type="button" class="mt-oh__e" data-mt="edit" aria-label="Edit ${mtEsc(title)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>` : ''}
+      ${!s.isNew && c && !mtBusyIn(c) ? `<button type="button" class="mt-oh__e" data-mt="edit" aria-label="Edit ${mtEsc(title)}"><i class="ti ti-pencil" aria-hidden="true"></i></button>` : ''}
       <button type="button" class="mt-oh__x" data-mt="close" aria-label="Close ${mtEsc(title)}" tabindex="-1"><i class="ti ti-chevron-up" aria-hidden="true"></i></button>
     </div>`;
   if (s.isNew) {
@@ -517,15 +531,21 @@ function mtRenderPanel() {
     mtPanelStatus(p);
     mtParkPanel();
     mtEditModalSync();
+    mtCostModalSync();
     return;
   }
   mtCostCapture();                                           // an open cost form keeps what is typed
+  if (mtPop(MT.sel)) mtLockSync(true);                       // D39 (bug 0): the page is held before the entry behind is drawn again
   p.innerHTML = html;
   mtPanelStatus(p);
-  // the date field becomes a German field right after it is drawn → note the form after that
-  if (MT.sel.edit) { const sel = MT.sel; delete sel.snap; setTimeout(() => { if (MT.sel === sel && sel.edit) sel.snap = mtFormSnap(); }, 0); }
+  // the date field becomes a German field right after it is drawn → note the form after that.
+  // D39 (bug 16): only once per form (each Edit / new entry is a new MT.sel) — a redraw must not take what you typed as "saved"
+  if (MT.sel.edit && MT.sel.snap === undefined) { const sel = MT.sel; setTimeout(() => { if (MT.sel === sel && sel.edit && sel.snap === undefined) sel.snap = mtFormSnap(); }, 0); }
   mtAfterPanel();
 }
+/* D39 · a pop-up form is open (a receipt, or Edit of a saved entry). Behind it the entry is drawn as it is
+   (nothing hides, so nothing behind the pop-up moves); the page behind is locked and inert (mtLockSync). */
+const mtPop = s => !!(s && (s.cost || (s.edit && !s.isNew)));
 /* The open entry is one element that moves into its place in the list (so a redraw of
    the list never loses what is typed) and back to its hidden home when nothing is open */
 function mtParkPanel() {
@@ -536,7 +556,8 @@ function mtPlacePanel(root) {
   const p = document.getElementById('mtPanel'), slot = root && root.querySelector('.mt-slot');
   if (!p) return;
   mtPanelStatus(p);
-  if (slot && MT.sel) slot.replaceWith(p); else mtParkPanel();
+  if (slot && MT.sel) { slot.replaceWith(p); mtMoreCheck(); }   // D39: "More" is measured where the entry really is (not in its hidden home)
+  else mtParkPanel();
 }
 /* L1 · the open entry keeps its status line (a new entry has none yet) */
 function mtPanelStatus(p) {
@@ -677,7 +698,9 @@ async function mtNew() {
 }
 
 function mtEdit() {
-  if (!MT.sel || MT.sel.isNew || mtActive(mtCase(MT.sel.id))) return;
+  if (!MT.sel || MT.sel.isNew) return;
+  if (MT.busy) { mtBusySay(); return; }                      // D39 (bugs 15/19): a save is running → wait (and say so)
+  if (mtActive(mtCase(MT.sel.id))) return;
   MT.sel = { id: MT.sel.id, isNew: false, edit: true };
   mtRenderPanel();
 }
@@ -710,10 +733,12 @@ async function mtClose(force) {
 
 async function mtSave() {
   const s = MT.sel;
-  if (!s || !s.edit || MT.busy) return;
+  if (!s || !s.edit) return;
+  if (MT.busy) { mtBusySay(); return; }                      // D39 (bug 19): never a silent "nothing happens"
   const f = mtReadForm();
   if (!f) return;
   MT.busy = true;
+  const snap0 = s.snap;                                      // D39 (bug 16): the form as it was opened — a failed save still counts as changed
   const isNew = !!s.isNew, id = isNew ? mtUuid() : s.id;
   const oldRow = isNew ? null : { ...mtCase(id) };
   const now = new Date().toISOString();
@@ -744,7 +769,14 @@ async function mtSave() {
   const sqlMissing = /book_ctrl|maint_cost_id|schadensart|festgestellt|report_no|report_room|in_report|taken_at|caption|besichtigung|bitte_hv|report_ort|report_dringend/i.test(String((r.error && (r.error.message || r.error.details)) || ''));
   if (isNew) MT.cases = MT.cases.filter(c => c.id !== id);
   else Object.assign(mtCase(id), oldRow);
-  MT.sel = { id: isNew ? null : id, isNew, edit: true, draft: { ...flat } };
+  // D39 (bug 15): the form comes back only where nothing else was opened meanwhile (never on top of another form)
+  const p = MT.sel, free = !p || (!p.edit && !p.cost && !p.add && !p.fix && !p.docEdit);
+  if (!free || MT.sb) {
+    mtRender();
+    mtSay(`Not saved: “${f.title}”. Check the connection and change it again.`);
+    return;
+  }
+  MT.sel = { id: isNew ? null : id, isNew, edit: true, draft: { ...flat }, snap: snap0 };
   const backTo = isNew ? MT.tab : oldRow.kind;
   if (backTo !== MT.tab) mtSwitchTab(backTo); else mtRender();
   mtRenderPanel();
@@ -753,8 +785,8 @@ async function mtSave() {
 
 async function mtDelete() {
   const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
-  if (!c || MT.busy) return;
-  if (MT.up && String(MT.up.caseId) === String(c.id)) { mtSay('Wait until the upload is finished.'); return; }
+  if (!c) return;
+  if (MT.busy || (MT.up && String(MT.up.caseId) === String(c.id))) { mtBusySay(); return; }   // D39 (bug 19)
   const n = MT.docs.filter(d => String(d.case_id) === String(c.id)).length;
   const k = MT.costs.filter(r => String(r.case_id) === String(c.id) && !r.return_of).length;
   const parts = [k ? `${k} receipt${k === 1 ? '' : 's'}` : '', n ? `${n} file${n === 1 ? '' : 's'}` : ''].filter(Boolean);
@@ -809,6 +841,11 @@ const mtLinkNow = p => { const l = MT.links[p]; return l && l.exp > Date.now() +
 /* Something in the panel is open or running (an edit, a form, an upload) → the other buttons wait */
 const mtUpFor = c => (c && MT.up && String(MT.up.caseId) === String(c.id) ? MT.up : null);
 const mtActive = c => !!(MT.sel && (MT.sel.edit || MT.sel.docEdit || MT.sel.add || MT.sel.fix || MT.sel.cost || mtUpFor(c)));
+/* D39 · what changes the entry itself: a form inside it or an upload. A pop-up form (a receipt, Edit) does not —
+   behind it the entry keeps every button (it is inert while the pop-up is open), so the page behind never moves. */
+const mtBusyIn = c => !!(MT.sel && ((MT.sel.edit && MT.sel.isNew) || MT.sel.docEdit || MT.sel.add || MT.sel.fix || mtUpFor(c)));
+/* D39 (bug 19) · a save / upload is running → say so (it used to do nothing at all) */
+function mtBusySay() { mtSay(MT.up ? 'Wait until the upload is finished.' : 'Wait a moment – the last change is being saved.'); }
 /* Documents of the Documents section (files of cost rows live in Costs) */
 const mtCaseDocs = caseId => MT.docs.filter(d => String(d.case_id) === String(caseId) && !d.cost_id);
 
@@ -875,9 +912,10 @@ function mtMoreCheck() {
   if (d && b) b.hidden = d.scrollHeight <= d.clientHeight + 1;
 }
 function mtAfterPanel() {
-  mtMoreCheck();
   mtEditModalSync();                                         // D38: Edit as a pop-up
   mtCostModalRender();
+  mtLockSync();                                              // D39 (bug 0): the pop-ups (and the page lock) first …
+  mtMoreCheck();                                             // … then anything that reads the layout
   document.querySelectorAll('#mtPanel textarea.mt-ta').forEach(mtGrow);
   const c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
   if (!c) return;
@@ -921,7 +959,7 @@ function mtDocsHTML(c) {
   const photos = docs.filter(d => d.doc_type === 'photo').sort(byDate);
   const files = docs.filter(d => d.doc_type !== 'photo')
     .sort((a, b) => MT_DOC_ORDER.indexOf(a.doc_type) - MT_DOC_ORDER.indexOf(b.doc_type) || byDate(a, b));
-  const locked = !!(s.edit || s.cost);                     // Details / a cost row in edit → documents only to look at
+  const locked = false;                                    // D39: Edit and receipts are pop-ups — the documents behind stay as they are
   const ed = !!s.docEdit && !locked;
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'docs' ? upAny : null;
 
@@ -960,14 +998,16 @@ function mtDocRowHTML(d, ed) {
         ${d.doc_type === 'rechnung' ? `<span class="mt-da">${mtEur(d.amount)}</span>` : ''}
       </button>
       ${ed ? `<button type="button" class="mt-x" data-mt="delDoc" data-id="${mtEsc(d.id)}" aria-label="Delete ${t.label}"><i class="ti ti-x" aria-hidden="true"></i></button>`
-        : (d.doc_type === 'rechnung' && !d.cost_id && !mtActive(mtCase(d.case_id)) ? `<button type="button" class="mt-link mt-tocost" data-mt="docToCost" data-id="${mtEsc(d.id)}">Move to Kosten</button>` : '')}
+        : (d.doc_type === 'rechnung' && !d.cost_id && !mtBusyIn(mtCase(d.case_id)) ? `<button type="button" class="mt-link mt-tocost" data-mt="docToCost" data-id="${mtEsc(d.id)}">Move to Kosten</button>` : '')}
     </div>`;
 }
 /* D11 · An invoice saved as a document (first version) → a receipt row in Kosten: the form opens
    filled in (amount, date, file); Save books it (with the Controlling check) and the file moves along */
 function mtDocToCost(id) {
   const c = mtOpenCase(), d = MT.docs.find(x => String(x.id) === String(id));
-  if (!c || !d || mtActive(c)) return;
+  if (!c || !d) return;
+  if (MT.busy) { mtBusySay(); return; }
+  if (mtActive(c)) return;
   mtCostNew('provider');
   const f = MT.sel && MT.sel.cost; if (!f) return;
   Object.assign(f, {
@@ -977,7 +1017,6 @@ function mtDocToCost(id) {
   });
   f.snap = '';                                                 // filled in → counts as typed
   mtCostModalRender();                                         // D22: show the filled-in form (no re-read of the empty one)
-  document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
 }
 
 /* One form for a new file (pre = mtA) and for fixing one (pre = mtX) */
@@ -1090,8 +1129,10 @@ function mtRestore(a) {
   const el = mtAnchorEl(a.key);
   if (!el || !el.getClientRects().length) return;
   const d = el.getBoundingClientRect().top - a.top;
-  if (Math.abs(d) > 1) window.scrollTo({ top: window.scrollY + d, left: 0, behavior: 'instant' });
+  if (Math.abs(d) > 1) mtPageTo(mtPageY() + d);              // D39: also while a pop-up holds the page
 }
+/* D39 · a redraw during a save / upload (in the background): an open pop-up keeps its form as it is */
+function mtRefreshBg(caseId) { MT.bg++; try { mtRefresh(caseId); } finally { MT.bg--; } }
 /* D36 · the receipt you just saved lights up where it is (no scrolling) */
 function mtFlashRow(id) {
   setTimeout(() => {
@@ -1100,12 +1141,17 @@ function mtFlashRow(id) {
     const cs = !row && MT.sel && !MT.sel.isNew ? mtCostById(id) : null;   // D38: saved into the hidden part → "Show all"
     if (cs && String(cs.case_id) === String(MT.sel.id)) {
       MT.cAll = MT.cAll || {}; MT.cAll[MT.sel.id] = true; MT.cgrp = 'all';
-      mtRefresh(MT.sel.id);
+      mtRefreshBg(MT.sel.id);
       row = document.querySelector(`#mtPanel .mt-cr[data-id="${sel}"]`);
     }
     if (!row) return;
-    row.classList.add('is-flash'); clearTimeout(row._fl); row._fl = setTimeout(() => row.classList.remove('is-flash'), 1800);
+    mtFlashOn(row);
   }, 60);
+}
+/* D39 (bug 10) · one-shot highlight (CSS mtFlash: on at once, fades out) — the class goes when it has run */
+function mtFlashOn(row) {
+  row.classList.remove('is-flash'); void row.offsetWidth;    // the same row again → it lights up again
+  row.classList.add('is-flash'); clearTimeout(row._fl); row._fl = setTimeout(() => row.classList.remove('is-flash'), 1800);
 }
 
 /* Photos: camera or library, several at once → saved as photos right away */
@@ -1115,7 +1161,7 @@ function mtFlashRow(id) {
    documentation photos go through "Photos". */
 function mtPickFile() {
   if (!mtOpenCase()) return;
-  if (MT.up) { mtSay('Wait until the upload is finished.'); return; }
+  if (MT.up || MT.busy) { mtBusySay(); return; }
   mtFileInput('mtDocInput', 'application/pdf,image/*,video/*', true, async files => {
     const c = mtOpenCase();
     if (!c) return;
@@ -1300,7 +1346,8 @@ async function mtDelDoc(id) {
   if (!ok) return;
   const idx = MT.docs.indexOf(d);
   MT.docs.splice(idx, 1);
-  if (MT.sel && !mtDocsOf(d.case_id).length) MT.sel.docEdit = false;    // nothing left to edit
+  // nothing left to edit (D39, bug 23: the same list edit mode shows — receipt files and photos don't count)
+  if (MT.sel && String(MT.sel.id) === String(d.case_id) && !mtCaseDocs(d.case_id).some(x => x.doc_type !== 'photo')) { MT.sel.docEdit = false; MT.sel.fix = null; }
   mtRefresh(d.case_id);
   const sb = _ctlSupa;
   const r = await mtTry(() => sb.from('maint_docs').delete().eq('id', d.id));
@@ -1392,11 +1439,11 @@ const mtNum = n => Math.round((Number(n) || 0) * 100) / 100;
 const mtNeg = n => '\u2212' + mtEur(n);                      // −30,00 €
 
 function mtCostsHTML(c) {
-  const s = MT.sel, f = s.cost;
+  const s = MT.sel;
   const rows = mtCostsOf(c.id);
-  const busy = !!(s.edit || s.docEdit || s.add || s.fix);  // another part of the panel is being changed
+  const busy = !!(s.docEdit || s.add || s.fix);            // another part of the panel is being changed
   const upAny = mtUpFor(c), up = upAny && upAny.where === 'costs' ? upAny : null;
-  const tap = !busy && !f && !upAny;
+  const tap = !busy && !upAny;                             // D39: a receipt / Edit pop-up leaves the list as it is (behind it, inert)
   // D38 · Kosten + its sum · "+ Receipt" · a switch All / Self-bought / Provider · 6 lines, then "Show all"
   let h = `<section class="mt-costs" id="mtCosts">
     <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b><em>${mtEur(mtCost([c.id]))}</em></span>
@@ -1433,12 +1480,19 @@ function mtCostRowHTML(r, tap) {
   const no = (ret ? '<i class="ti ti-corner-down-right" aria-hidden="true"></i>' : '') + (own ? `<b>${mtEsc(own)}</b>` : '');
   const desc = ret ? (r.description ? 'Return · ' + r.description : 'Return')
                    : (r.description || r.receipt_no || '—');      // no description → its receipt / order no., never an empty row
-  return `<button type="button" class="mt-cr${ret ? ' mt-cr--ret' : ''}" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}"${tap ? '' : ' tabindex="-1"'}>
+  // D39 · two taps per receipt: the row (an invisible button over it, like the list rows) = edit the receipt · the
+  // "Who pays" tag under the amount (Casa Castel receipts) = its own button. The tag sits beside the row button, not in it.
+  const who = !ret && mtWhoOn(mtCase(r.case_id));
+  const amt = ret ? mtNeg(r.amount) : mtEur(r.amount);
+  const name = [ret ? 'Return' : 'Receipt', own, desc, amt, ret ? '' : r.brand, mtDate(r.cost_date)].filter(Boolean).join(' · ');
+  const files = `<span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ret ? '' : '<span class="mt-nofile">no file</span>'}</span>`;
+  return `<div class="mt-cr${ret ? ' mt-cr--ret' : ''}${who ? ' has-who' : ''}" data-mt="${tap ? 'costEdit' : 'none'}" data-id="${mtEsc(r.id)}">
+      <button type="button" class="mt-cr__hit" aria-label="${mtEsc(name)}"${tap ? '' : ' tabindex="-1" aria-disabled="true"'}></button>
       <span class="mt-cr__a"><span class="mt-cr__no"${no ? '' : ' style="margin-right:-6px"'}>${no}</span><span class="mt-cr__desc">${mtEsc(desc)}${off ? '<span class="mt-off">not in Controlling</span>' : ''}</span></span>
-      <span class="mt-cr__amt">${ret ? mtNeg(r.amount) : mtEur(r.amount)}</span>
-      <span class="mt-cr__b"><span class="mt-cr__who">${ret ? '' : mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span></span>
-      <span class="mt-cr__f">${n ? `<i class="ti ti-paperclip" aria-hidden="true"></i>${n}` : ret ? '' : '<span class="mt-nofile">no file</span>'}</span>
-    </button>`;
+      <span class="mt-cr__amt">${amt}</span>
+      <span class="mt-cr__b"><span class="mt-cr__who">${ret ? '' : mtEsc(r.brand || '')}</span><span class="mt-cr__date">${mtEsc(mtDate(r.cost_date))}</span>${who ? files : ''}</span>
+      ${who ? mtWhoTagHTML(r, tap) : files}
+    </div>`;
 }
 
 function mtCostFormHTML(f) {
@@ -1481,6 +1535,7 @@ function mtCostFormHTML(f) {
         ${ret ? '' : `<div class="mt-f mt-f--full">${caseOff
           ? '<p class="mt-hint">Run MAINTENANCE-D14.sql once, then each receipt has its own switch.</p>'
           : `<label class="mt-chk mt-sw"><span>Book in Controlling</span><input type="checkbox" role="switch" id="mtC-book"${f.book_ctrl === false ? '' : ' checked'}/></label>`}</div>`}
+        ${!ret && mtWhoOn(cs) ? `<div class="mt-f mt-f--full" id="mtC-whobox">${mtCostWhoRowHTML(f)}</div>` : ''}
         ${!f.isNew && mtCostById(f.id) && mtCostById(f.id).link_ot && !caseOff ? '<p class="mt-hint mt-f--full">Linked to the line you typed in Controlling — it counts once.</p>' : ''}
       </div>
       <div class="cc-sec-foot">
@@ -1499,7 +1554,6 @@ function mtCostCapture() {
   const f = MT.sel && MT.sel.cost, el = document.getElementById('mtC-form');
   if (!f || !el || el.dataset.fid !== String(f.id)) return;   // only the form that is showing (not a new return's)
   const g = id => document.getElementById(id);
-  if (g('mtC-own')) f.own_no = g('mtC-own').value;
   f.receipt_no = g('mtC-no').value;
   f.description = g('mtC-desc').value;
   if (g('mtC-who')) f.brand = g('mtC-who').value;
@@ -1507,8 +1561,10 @@ function mtCostCapture() {
   f.cost_date = g('mtC-date').value || '';
   if (g('mtC-book')) f.book_ctrl = g('mtC-book').checked;
 }
-const mtCostSnapOf = f => JSON.stringify([f.kind, f.own_no || '', f.receipt_no || '', f.description || '', f.brand || '', String(f.amount ?? ''), f.cost_date || '',
-  f.book_ctrl !== false, f.files.map(x => x.id || x.name).join('|')]);
+const mtCostSnapOf = f => JSON.stringify([f.kind, f.own_no || '', f.receipt_no || '', f.description || '', f.brand || '', mtAmtKey(f.amount), f.cost_date || '',
+  f.book_ctrl !== false, f.files.map(x => x.id || x.name).join('|'), mtWhoKey(f)]);   // D39: + Who pays (set in its sheet, stored with Save)
+/* D39 · 12.50 (stored) = "12.5" (the field) — Cancel now asks when something changed, so an untouched receipt must count as unchanged */
+const mtAmtKey = v => (v === null || v === undefined || v === '' ? '' : isFinite(Number(v)) ? String(Math.round(Number(v) * 100) / 100) : String(v));
 function mtCostChanged() {
   const f = MT.sel && MT.sel.cost;
   if (!f) return false;
@@ -1523,22 +1579,35 @@ function mtLastBook(c) {
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))[0];
   return last ? last.book_ctrl !== false : true;
 }
+/* An empty new receipt of this entry (its snapshot = "nothing typed yet") */
+function mtCostBlank(c, kind) {
+  const f = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', return_of: null, own_no: '', receipt_no: '', description: '', brand: '',
+    amount: '', cost_date: ccTodayISO(), book_ctrl: mtLastBook(c), files: [], delIds: [], ...mtWhoPick({}) };   // D39: Who pays empty (= you pay; Save + next never carries it)
+  f.snap = mtCostSnapOf(f);
+  return f;
+}
+/* D39 (bug 11) · on a laptop the first field of the form gets the cursor (the old own-No. field is gone since D29) */
+const mtCostFocus = () => { if (mtFine()) document.getElementById('mtC-amount')?.focus({ preventScroll: true }); };
 function mtCostNew(kind) {
   const c = mtOpenCase();
-  if (!c || mtActive(c)) return;
-  MT.sel.cost = { isNew: true, id: mtUuid(), kind: MT_COST[kind] ? kind : 'self', return_of: null, own_no: '', receipt_no: '', description: '', brand: '',
-    amount: '', cost_date: ccTodayISO(), book_ctrl: mtLastBook(c), files: [], delIds: [] };
-  MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
+  if (!c) return;
+  if (MT.busy) { mtBusySay(); return; }                      // D39 (bugs 15/19)
+  if (mtActive(c)) return;
+  MT.sel.cost = mtCostBlank(c, kind);
   mtRenderPanel();
-  document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
-  if (mtFine()) document.getElementById('mtC-own')?.focus();
+  mtCostFocus();
 }
 function mtCostEdit(id) {
   const c = mtOpenCase(), r = mtCostById(id);
-  if (!c || !r || mtActive(c)) return;
+  if (!c || !r) return;
+  if (MT.busy) { mtBusySay(); return; }                      // D39 (bugs 15/19)
+  if (mtActive(c)) return;
   MT.sel.cost = { isNew: false, id: r.id, kind: r.kind, return_of: r.return_of || null, own_no: r.own_no || '', receipt_no: r.receipt_no || '', description: r.description || '',
-    brand: r.brand || '', amount: r.amount ?? '', cost_date: r.cost_date || '', book_ctrl: r.book_ctrl !== false, delIds: [], files: mtCostFilesOf(r.id) };
+    brand: r.brand || '', amount: r.amount ?? '', cost_date: r.cost_date || '', book_ctrl: r.book_ctrl !== false, delIds: [], files: mtCostFilesOf(r.id),
+    ...(r.return_of ? {} : mtWhoPick(r)) };                  // D39: Who pays (a return has none — it follows its receipt)
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
+  const lost = MT.lost[r.id];                                // D39 (bug 14): photos whose upload failed come back here
+  if (lost && lost.length) { MT.sel.cost.files.push(...lost); delete MT.lost[r.id]; }   // after the snapshot → Save stores them, Cancel asks
   mtRenderPanel();
 }
 /* "+ Return" in a receipt's form → a new return under that receipt */
@@ -1554,9 +1623,8 @@ async function mtCostNewReturn() {
   MT.sel.cost = { isNew: true, id: mtUuid(), kind: r.kind, return_of: r.id, own_no: '', receipt_no: '', description: '', brand: '',
     amount: '', cost_date: ccTodayISO() < String(r.cost_date || '') ? r.cost_date : ccTodayISO(), files: [], delIds: [] };
   MT.sel.cost.snap = mtCostSnapOf(MT.sel.cost);
-  mtRenderPanel();
-  document.getElementById('mtC-form')?.scrollIntoView({ block: 'nearest' });
-  if (mtFine()) document.getElementById('mtC-own')?.focus();
+  mtRenderPanel();                                            // the same pop-up shows the return (D39: no new slide-in)
+  mtCostFocus();
 }
 function mtCostKind(kind) {
   const f = MT.sel && MT.sel.cost;
@@ -1631,7 +1699,8 @@ async function mtCamOpen() {
       <button type="button" class="mt-cam__done" data-cam="done" disabled>Done</button>
     </div>`;
   document.body.appendChild(el);
-  document.documentElement.classList.add('mt-modal-open');
+  mtLockSync();                                           // D39: the page behind stays where it is
+  if (mtFine()) try { el.querySelector('[data-cam="snap"]').focus({ preventScroll: true }); } catch (e) {}   // D39 fix 2: the keys start in the camera
   el.addEventListener('click', e => {
     const b = e.target.closest('[data-cam]'); if (!b) return;
     const a = b.dataset.cam;
@@ -1700,7 +1769,7 @@ function mtCamClose(keep) {
   MT_CAM.open = false; MT_CAM.shots = [];
   mtCamStop();
   if (el) { (el.querySelector('.mt-cam__strip')._urls || []).forEach(u => URL.revokeObjectURL(u)); el.remove(); }
-  if (!document.querySelector('.mt-modal')) document.documentElement.classList.remove('mt-modal-open');
+  mtLockSync();                                           // D39: the receipt pop-up below still holds the page
   const g = MT.sel && MT.sel.cost;
   if (!keep || !g || !shots.length) return;
   shots.forEach(x => g.files.push({ id: null, file: x, name: x.name, img: true }));
@@ -1715,10 +1784,21 @@ function mtCostFileDel(i) {
   if (x.id && !x.adopt) f.delIds.push(x.id);                 // a moved document stays a document when taken off
   mtRenderPanel();
 }
-function mtCostCancel() {
-  if (!MT.sel) return;
+/* D39 (bugs 6/18) · ×, a tap beside the pop-up, Escape and Cancel ask before typed data (and photos) go — like Edit.
+   "Keep editing" leaves the form and its device draft alone. */
+async function mtCostCancel() {
+  const f = MT.sel && MT.sel.cost;
+  if (!f || MT.costHold === f || MT.who || MT_CAM.open) return;   // being saved ("Save + next") · D39: Who pays / the camera is open on top
+  if (document.querySelector('#mtCostModal .mt-askv')) return;   // it is asking already (a second tap beside it)
+  if (mtCostChanged()) {
+    const ok = await mtConfirm({
+      title: f.isNew ? (f.return_of ? 'Discard this return?' : 'Discard this receipt?') : 'Discard your changes?',
+      text: f.isNew ? (f.files.length ? 'What you typed and the photos are not saved.' : 'What you typed is not saved.') : 'What you changed in this receipt is not saved.',
+      ok: 'Discard', cancel: 'Keep editing', danger: true });
+    if (!ok || !MT.sel || MT.sel.cost !== f) return;
+  }
   MT.sel.cost = null;
-  mtRenderPanel();
+  mtRefresh(MT.sel.id);                                      // the entry where it was (place kept)
 }
 
 /* D8 · Controlling lines you typed by hand that may be this receipt / return:
@@ -1728,7 +1808,7 @@ const mtAddDays = (iso, n) => { const d = new Date(String(iso).slice(0, 10) + 'T
 async function mtCtrlMatches(pid, amount, day, isRet) {
   try {
     const r = await _ctlSupa.from('ctrl_expense_one_time')
-      .select('id,item,company,amount,invoice_date,direction,kind,source_ref,maint_cost_id')
+      .select('id,item,company,amount,invoice_date,direction,kind,source_ref,maint_cost_id' + (MT.d39 ? ',nk_umlage,nk_category_id' : ''))   // D39 fix 2: its NK switch
       .eq('property_id', pid).is('maint_cost_id', null)
       .gte('invoice_date', mtAddDays(day, -7)).lte('invoice_date', mtAddDays(day, 7));
     if (r.error) return [];
@@ -1775,38 +1855,54 @@ function mtDupOf(no, selfId) {
 }
 
 /* D36 · "Save + next": saves this receipt, then the next empty one opens for the same entry —
-   Shop, Date, Self-bought / Provider and "Book in Controlling" carried over (often the same for a batch) */
+   Shop, Date, Self-bought / Provider and "Book in Controlling" carried over (often the same for a batch)
+   D39 (bugs 2/13) · the pop-up stays: "Saving …" while the row is stored, then the next form appears in the same
+   sheet (no close, no new slide-in, full height kept); its photos upload in the background. */
 async function mtCostSaveNext() {
-  const f = MT.sel && MT.sel.cost;
-  if (!f || !f.isNew || f.return_of || MT.busy) return;
+  const f = MT.sel && MT.sel.cost, c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
+  if (!f || !c || !f.isNew || f.return_of || MT.costHold || MT.who || MT_CAM.open) return;   // D39: not while Who pays / the camera is open on top
   mtCostCapture();
-  const keep = { kind: f.kind, brand: f.brand || '', cost_date: f.cost_date || '', book_ctrl: f.book_ctrl }, id = f.id, caseId = MT.sel.id;
-  const btn = document.querySelector('#mtCostModal [data-mt="costSaveNext"]');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving …'; }
-  await mtCostSave();
-  if (!MT.sel || String(MT.sel.id) !== String(caseId) || MT.sel.cost || !mtCostById(id)) {   // not saved: the form stays / came back
-    const b2 = document.querySelector('#mtCostModal [data-mt="costSaveNext"]');
-    if (b2) { b2.disabled = false; b2.textContent = 'Save + next'; }
-    return;
-  }
-  mtCostNew(keep.kind);
-  const g = MT.sel && MT.sel.cost;
-  if (!g) return;
-  g.brand = keep.brand;
-  if (keep.cost_date) g.cost_date = keep.cost_date;
-  if (keep.book_ctrl !== undefined) g.book_ctrl = keep.book_ctrl;
-  g.snap = mtCostSnapOf(g);                                   // carried-over values don't count as a change (Cancel asks nothing)
-  mtCostModalRender();                                        // draw from g (mtRenderPanel would first read the empty fields back)
-  mtSay('Saved · next receipt');
+  const keep = { kind: f.kind, brand: f.brand || '', cost_date: f.cost_date || '', book_ctrl: f.book_ctrl };
+  await mtCostSave({ next: () => {
+    const g = mtCostBlank(c, keep.kind);
+    g.brand = keep.brand;
+    if (keep.cost_date) g.cost_date = keep.cost_date;
+    if (keep.book_ctrl !== undefined) g.book_ctrl = keep.book_ctrl;
+    g.snap = mtCostSnapOf(g);                                 // carried-over values don't count as a change (Cancel asks nothing)
+    return g;
+  } });
 }
-async function mtCostSave() {
+/* D39 · "Save + next" holds its form while the row is stored: the form can't be changed, the buttons wait */
+function mtCostHold(f) { MT.costHold = f || null; mtCostHoldShow(); }
+function mtCostHoldShow() {
+  const m = document.getElementById('mtCostModal');
+  if (!m) return;
+  const on = !!(MT.costHold && MT.sel && MT.sel.cost === MT.costHold);
+  m.classList.toggle('is-saving', on);
+  m.querySelectorAll('.mt-modal__f .cc-foot-btn, .mt-modal__x').forEach(x => { x.disabled = on; });
+  const n = m.querySelector('[data-mt="costSaveNext"]');
+  if (n) n.innerHTML = on ? '<span class="mt-spin" aria-hidden="true"></span>Saving …' : 'Save + next';
+}
+let mtChkFor = null;                                          // D39 (bug 12): the receipt whose Controlling check runs — not on the form, so a draft never keeps it
+let mtLockChk = null;                                         // D39 fix 2: the receipt whose save reads the Settlements locks first
+/* Save the open receipt / return. opts.next (Save + next): a function that gives the next form → it opens in the same
+   pop-up once the row is stored. Returns true when the row is stored. */
+async function mtCostSave(opts) {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
-  if (!f || !c || MT.busy) return;
+  if (!f || !c || MT.costHold || MT.who || MT_CAM.open) return false;   // D39: not while Who pays / the camera is open on top (its choice / parts would be lost)
+  if (MT.busy) { mtBusySay(); return false; }                // D39 (bug 19): say why nothing happens
+  if (MT.d39 && !f.return_of && mtIsCasa(c.property_id) && mtWhoLockOld()) {   // D39 fix 2: the locks as Settlements has them now (one read; a second tap waits)
+    if (mtLockChk === f) return false;
+    mtLockChk = f;
+    try { await mtWhoLockLoad(); } finally { if (mtLockChk === f) mtLockChk = null; }
+    if (MT.sel !== s || s.cost !== f || MT.costHold || MT.who || MT_CAM.open) return false;
+    if (MT.busy) { mtBusySay(); return false; }
+  }
   mtCostCapture();
   const g = id => document.getElementById(id);
-  const fail = (id, msg) => { const el = g(id); if (el) { el.setAttribute('aria-invalid', 'true'); if (!el.classList.contains('cc-cal')) el.focus(); } mtSay(msg); };
+  const fail = (id, msg) => { const el = g(id); if (el) { el.setAttribute('aria-invalid', 'true'); if (!el.classList.contains('cc-cal')) el.focus(); } mtSay(msg); return false; };
   const ret = !!f.return_of, parent = ret ? mtCostById(f.return_of) : null;
-  if (ret && !parent) { mtSay('The receipt of this return was deleted.'); f.return_of = null; return; }
+  if (ret && !parent) { mtSay('The receipt of this return was deleted.'); f.return_of = null; return false; }
   const amount = f.amount === '' || !isFinite(Number(f.amount)) ? null : mtNum(f.amount);
   if (!ret && !String(f.receipt_no).trim() && !String(f.description).trim()) return fail('mtC-no', 'Enter the receipt no. or a description.');
   if (amount === null || amount < 0 || (ret && amount <= 0)) return fail('mtC-amount', 'Enter the amount.');
@@ -1822,12 +1918,27 @@ async function mtCostSave() {
     const first = mtReturnsOf(f.id)[0];
     if (first && first.cost_date < f.cost_date) return fail('mtC-date', `The receipt can't be after its return (${mtDate(first.cost_date)}).`);
   }
+  if (MT.d39 && !ret && mtIsCasa(c.property_id)) {            // D39 fix: Who pays can't move into a locked NK year (as its sheet)
+    const was = f.isNew ? null : mtCostById(f.id), lk = was ? mtWhoLockOf(was) : '', L = mtWhoYrBar(mtWhoNorm(mtWhoFrom(f), null, true), f.id, f.cost_date);
+    // D39 fix 2: billed in a locked Settlements year → its date and amount stay as billed (moved, it would be billed twice)
+    const d0 = lk ? String(was.cost_date || '').slice(0, 10) : '';
+    if (lk && f.cost_date !== d0) return fail('mtC-date', `${lk} – the date stays ${mtDate(d0)}.`);
+    if (lk && Math.abs(amount - mtNum(was.amount)) > 0.004) return fail('mtC-amount', `${lk} – the amount stays ${mtEur(mtNum(was.amount))}.`);
+    if (L && !(was && mtWhoYrBar(was, was.id, was.cost_date) === L)) return fail('mtC-date', `NK ${L.year} is locked in Settlements – change Who pays or the date.`);
+    // D39 fix 2: the Zimmer that pay are rented on the receipt date (as in its sheet) — a Kleinreparatur on the
+    // Gemeinschaftsfläche takes the ones rented that day anyway
+    const p = lk ? null : mtWhoNorm(mtWhoFrom(f), f.cost_date), vac = !p || (p.pay_type === 'klein' && p.pay_where === 'gemein') ? [] : mtWhoVacOn(p.pay_rooms, f.cost_date);
+    if (vac.length) return fail('mtC-date', `${vac.join(', ')} ${vac.length === 1 ? 'is' : 'are'} vacant on ${mtDate(f.cost_date)} – change Who pays or the date.`);
+  }
+  const hold = !!(opts && opts.next);                          // Save + next: this pop-up waits ("Saving …") until the row is stored
+  if (hold) mtCostHold(f);
+  const stop = () => { if (hold && MT.costHold === f) mtCostHold(null); return false; };
   const dup = mtDupOf(f.receipt_no, f.id);
   if (dup) {
     const what = (ret ? 'Slip ' : 'Receipt ') + String(f.receipt_no).trim();
     const ok = await mtConfirm({ title: `${what} already exists`, text: dup.same ? 'It is already in this entry. Save it anyway?' : `It is already in ${dup.where}. Save it anyway?`, ok: 'Save anyway' });
-    if (!ok) return;
-    if (!MT.sel || MT.sel.cost !== f) return;                  // the panel changed meanwhile
+    if (!ok) return stop();
+    if (!MT.sel || MT.sel.cost !== f) return stop();          // the panel changed meanwhile
   }
 
 
@@ -1836,15 +1947,18 @@ async function mtCostSave() {
   const prev = f.isNew ? null : mtCostById(f.id);
   const willBook = c.book_ctrl !== false && (ret ? parent.book_ctrl !== false : f.book_ctrl !== false) && amount > 0 && !!mtProp(c.property_id);
   if (willBook && !(prev && (prev.link_ot || prev.ctrl_dup_ok))) {
-    if (f._chk) return;
-    f._chk = true;
-    let v;
+    if (mtChkFor === f) return stop();
+    mtChkFor = f;
+    let v, cands = [];
+    // D39 fix 2: a Casa receipt with Who pays not set, linked to a line typed with NK on → it stays in the NK (Teil A)
+    const nkTake = MT.d39 && !ret && mtIsCasa(c.property_id) && !mtWhoFrom(f).t;
     try {
-      const cands = await mtCtrlMatches(c.property_id, amount, f.cost_date, ret);
-      if (!MT.sel || MT.sel.cost !== f) return;
+      cands = await mtCtrlMatches(c.property_id, amount, f.cost_date, ret);
+      if (!MT.sel || MT.sel.cost !== f) return stop();
       if (!cands.length) v = 'none';
       else {
-        const line = o => [o.item, o.company, (Number(o.direction) === 1 ? '+' : '\u2212') + mtEur(o.amount), mtDate(String(o.invoice_date).slice(0, 10))].filter(Boolean).join(' · ');
+        const line = o => [o.item, o.company, (Number(o.direction) === 1 ? '+' : '−') + mtEur(o.amount), mtDate(String(o.invoice_date).slice(0, 10)),
+          nkTake && o.nk_umlage ? 'NK · ' + (mtWhoCatName(o.nk_category_id) || 'its cost type') : ''].filter(Boolean).join(' · ');
         v = await mtAsk({
           title: 'Already in Controlling?',
           text: `You may have typed this ${ret ? 'return' : 'receipt'} in Controlling already. Link it, so it counts once.`,
@@ -1857,13 +1971,18 @@ async function mtCostSave() {
           ],
         });
       }
-    } finally { f._chk = false; }
-    if (!v || v === 'cancel') return;
-    if (!MT.sel || MT.sel.cost !== f) return;
+    } finally { if (mtChkFor === f) mtChkFor = null; }
+    if (!v || v === 'cancel') return stop();
+    if (!MT.sel || MT.sel.cost !== f) return stop();
     if (v === 'sep') pick = { ctrl_dup_ok: true };
     else if (v === 'off') pick = { book_ctrl: false };
-    else if (v !== 'none') pick = { link_ot: v.slice(1) };
+    else if (v !== 'none') {
+      pick = { link_ot: v.slice(1) };
+      const o = cands.find(x => String(x.id) === pick.link_ot);   // its NK cost type becomes Who pays › NK (as MAINTENANCE-D39.sql § 3)
+      if (nkTake && o && o.nk_umlage) { Object.assign(f, mtWhoNorm({ t: 'nk', cat: o.nk_category_id ?? null })); mtCostWhoSync(); }
+    }
   }
+  if (MT.busy) { stop(); mtBusySay(); return false; }         // something else began saving while it asked
 
   MT.busy = true;
   const isNew = f.isNew, id = f.id;
@@ -1874,43 +1993,65 @@ async function mtCostSave() {
     brand: ret ? null : String(f.brand).trim() || null, amount, cost_date: f.cost_date, return_of: ret ? parent.id : null,
     book_ctrl: ret ? true : f.book_ctrl !== false,                 // a return follows its receipt
     ...(pick || {}),
+    // D39 · Who pays (Casa Castel receipts only, only once MAINTENANCE-D39.sql has run): the normal form — and a
+    // Kleinreparatur on the Gemeinschaftsfläche is shared by the Zimmer rented on the (maybe new) receipt date
+    // D39 fix: a receipt already billed in a locked Settlements year keeps its stored choice (its Zimmer as billed)
+    ...(MT.d39 && !ret && mtIsCasa(c.property_id) ? (prev && mtWhoLockOf(prev) ? mtWhoPick(prev) : mtWhoNorm(mtWhoFrom(f), f.cost_date)) : {}),
   };
   const kindChanged = !ret && old && old.kind !== row.kind;
   const rets = kindChanged ? mtReturnsOf(id) : [];
   const pending = f.files.filter(x => x.file), dels = f.delIds.slice(), adopt = f.files.filter(x => x.adopt).map(x => x.id);
 
-  // 1 · show it at once (a receipt's returns follow its type)
+  // 1 · show it at once (a receipt's returns follow its type). D39: the device draft stays until the row is stored (bug 14/15)
   if (isNew) MT.costs.push({ ...row, created_at: now, updated_at: now });
   else Object.assign(mtCostById(id), row, { updated_at: now });
   rets.forEach(t => { t.kind = row.kind; });
-  s.cost = null;
-  if (pending.length) MT.up = { caseId: c.id, total: 1, done: 0, where: 'costs' };
-  mtRefresh(c.id);
-  mtFlashRow(id);
+  if (!hold) { mtDraftNow(); MT_ED.hold = true; s.cost = null; }   // Save: the pop-up closes · Save + next: it stays on this form
+  if (pending.length) MT.up = { caseId: c.id, total: 1, done: 0, where: 'costs', costId: id };
+  if (hold) mtRefreshBg(c.id); else mtRefresh(c.id);
+  if (!hold) mtFlashRow(id);
 
   // 2 · store the row (one retry)
   const sb = _ctlSupa;
   const { id: _id, ...fields } = row;
   let r = await mtTry(() => (isNew ? sb.from('maint_costs').insert(row) : sb.from('maint_costs').update(fields).eq('id', id)));
   if (!r.error && rets.length) r = await mtTry(() => sb.from('maint_costs').update({ kind: row.kind }).eq('return_of', id));
+  MT_ED.hold = false;
   if (r.error) {
     console.error('[maintenance] cost save failed:', r.error);
     const emsg = String((r.error && (r.error.message || r.error.details)) || '');
     const d27Missing = /own_no/i.test(emsg);
     const d8Missing = /link_ot|ctrl_dup_ok|maint_before|maint_unbook/i.test(emsg);
-    const sqlMissing = d27Missing || d8Missing || /book_ctrl|maint_cost_id/i.test(emsg);
+    const d39Missing = MT_WHO_SQL.test(emsg);                   // D39: Who pays (or its booking) not in the database yet
+    const sqlMissing = d27Missing || d8Missing || d39Missing || /book_ctrl|maint_cost_id/i.test(emsg);
     if (isNew) MT.costs = MT.costs.filter(x => String(x.id) !== String(id));
     else Object.assign(mtCostById(id), old);
     rets.forEach(t => { t.kind = old.kind; });
     MT.up = null;
     MT.busy = false;
-    if (MT.sel && String(MT.sel.id) === String(c.id)) MT.sel.cost = f;          // the form comes back with what you typed
+    const msg = sqlMissing ? `Not saved: run ${d39Missing ? 'MAINTENANCE-D39.sql' : d27Missing ? 'MAINTENANCE-D27.sql' : d8Missing ? 'MAINTENANCE-D8.sql' : 'MAINTENANCE-D3.sql'} in Supabase first.` : 'Not saved. Check the connection and save again.';
+    // D39 (bug 15): the form comes back only into the same state — Save + next never left it; after Save only when
+    // nothing else was opened meanwhile. Otherwise the receipt waits in the device draft ("Unsaved receipt").
+    const p = MT.sel;
+    if (hold) mtCostHold(null);
+    else if (p && !p.isNew && String(p.id) === String(c.id) && !p.edit && !p.cost && !p.add && !p.fix && !p.docEdit && !MT.sb) p.cost = f;   // the form comes back with what you typed
+    else { mtRender(); mtSay(msg + ' The receipt is kept on this device.'); setTimeout(mtDraftOffer, 1200); return false; }
     mtRefresh(c.id);
-    mtSay(sqlMissing ? `Not saved: run ${d27Missing ? 'MAINTENANCE-D27.sql' : d8Missing ? 'MAINTENANCE-D8.sql' : 'MAINTENANCE-D3.sql'} in Supabase first.` : 'Not saved. Check the connection and save again.');
-    return;
+    mtSay(msg);
+    return false;
   }
+  // stored → the draft goes (Save + next: the next form is the draft from now on)
+  if (hold) {
+    const next = opts.next();
+    if (MT.sel === s && s.cost === f) s.cost = next;
+    mtCostHold(null);
+    mtRefresh(c.id);                                            // the next form, in the same pop-up (D39)
+    mtFlashRow(id);
+    mtCostFocus();
+    mtSay('Saved · next receipt');
+  } else if (!MT_ED.active) mtDraftIO('del');
 
-  // 3 · files: removed ones go, new ones are stored with the row
+  // 3 · files: removed ones go, new ones are stored with the row (in the background — D39: a form open now stays as it is)
   for (const docId of dels) {
     const d = MT.docs.find(x => String(x.id) === String(docId));
     if (!d) continue;
@@ -1927,26 +2068,30 @@ async function mtCostSave() {
   }
   // D15 · photos → one PDF (one page each, like "Document"); a PDF stays as it is
   // D32: the photos as they are, each a page of its own size (the original) — the A4 page with the band is the copy below
-  const imgs = pending.filter(x => mtIsImage(x.file)).map(x => x.file);
-  let uploads = pending.filter(x => !mtIsImage(x.file)).map(x => x.file);
-  if (imgs.length) {
+  // D39 (bug 14): src = which of your photos / PDFs each upload carries (a failed one comes back to the receipt)
+  const pImgs = pending.filter(x => mtIsImage(x.file)), src = new Map();
+  let uploads = pending.filter(x => !mtIsImage(x.file)).map(x => { src.set(x.file, [x]); return x.file; });
+  if (pImgs.length) {
+    const imgs = pImgs.map(x => x.file);
     let pdf = null;
     try { pdf = imgs.length > 1 ? await mtPhotoStackPdf(imgs) : await mtPhotoOrigPdf(imgs); }   // D33: parts of one receipt = one page
     catch (e) { console.warn('[maintenance] photo PDF not possible, A4 one instead:', e); }
     if (!pdf) pdf = await mtPhotosToPdf(imgs);
     const nm = ('Beleg ' + (String(row.receipt_no || '').trim() || mtDate(row.cost_date) || mtDate(ccTodayISO())) + '.pdf').replace(/[\\/:*?"<>|]/g, '-');
-    uploads = (pdf ? [new File([pdf], nm, { type: 'application/pdf' })] : imgs).concat(uploads);   // PDF not possible → the photos as before
+    if (pdf) { const pf = new File([pdf], nm, { type: 'application/pdf' }); src.set(pf, pImgs); uploads = [pf].concat(uploads); }
+    else { pImgs.forEach(x => src.set(x.file, [x])); uploads = imgs.concat(uploads); }   // PDF not possible → the photos as before
   }
   if (MT.up) MT.up.total = uploads.length;
   let failed = 0;
+  const lost = [];
   const fresh = new Map();                                    // D27: just uploaded → no download for the No.
   for (const file of uploads) {
     const n0 = MT.docs.length;
     const ok = await mtUploadOne(c, file, { type: 'receipt', amount: null, date: row.cost_date }, { cost_id: id });
-    if (!ok) failed++;
+    if (!ok) { failed++; lost.push(...(src.get(file) || [])); }
     else if (mtIsPdf(file) && MT.docs.length > n0) { try { fresh.set(MT.docs[MT.docs.length - 1].file_path, await file.arrayBuffer()); } catch (e) {} }
     if (MT.up) MT.up.done++;
-    mtRefresh(c.id);
+    mtRefreshBg(c.id);
   }
   MT.up = null;
   // D27/D29/D32 · the receipt's files as A4 pages with the band (new, moved-in and earlier ones)
@@ -1954,19 +2099,31 @@ async function mtCostSave() {
   const own = mtFrameKey(id);
   const todo = mtStampTodo(id, own);
   if (todo.length) {
-    MT.up = { caseId: c.id, total: todo.length, done: 0, where: 'costs', what: 'Adding your No.' };
-    mtRefresh(c.id);
+    MT.up = { caseId: c.id, total: todo.length, done: 0, where: 'costs', what: 'Adding your No.', costId: id };
+    mtRefreshBg(c.id);
     try { st = await mtStampSync(c, todo, own, fresh); }
     catch (e) { console.warn('[maintenance] No. not written:', e); st = { failed: 1, locked: 0 }; }
     MT.up = null;
   }
   MT.busy = false;
-  mtRefresh(c.id);
+  mtRefreshBg(c.id);
+  if (lost.length) { mtCostLost(c, id, lost); return true; }   // D39 (bug 14): the photos are not thrown away
   if (pending.length || todo.length) mtFlashRow(id);
   if (failed) mtSay(`${uploads.length - failed} of ${uploads.length} files saved. Add the others again.`);
   else if (st && st.failed) mtSay('The No. could not be written on the PDF. Check the connection and save the receipt again.');
   else if (st && st.locked) mtSay(st.locked === 1 ? 'The No. can\'t be written on this PDF (it is locked) — it stays unchanged.'
                                                    : `The No. can't be written on ${st.locked} PDFs (they are locked) — they stay unchanged.`);
+  return true;
+}
+/* D39 (bug 14) · photos / PDFs whose upload failed stay with the receipt: it opens again with them when nothing else is
+   open (Save = try again), else they wait until you open that receipt */
+function mtCostLost(c, id, lost) {
+  MT.lost[id] = (MT.lost[id] || []).concat(lost.map(x => ({ id: null, file: x.file, name: x.name, img: !!x.img })));
+  const p = MT.sel;
+  if (p && !p.isNew && String(p.id) === String(c.id) && !mtActive(c) && !MT.sb && mtCostById(id)) {
+    mtCostEdit(id);
+    mtSay('Photos not uploaded. Check the connection and tap Save again.');
+  } else mtSay('Photos of a receipt were not uploaded. Open that receipt and tap Save again.');
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -2040,12 +2197,13 @@ async function mtStampSync(c, docs, own, fresh) {
   }
   return res;
 }
-function mtStampStep(c) { if (MT.up) { MT.up.done++; mtRefresh(c.id); } }
+function mtStampStep(c) { if (MT.up) { MT.up.done++; mtRefreshBg(c.id); } }
 
 async function mtCostDelete() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
   const r0 = f && !f.isNew ? mtCostById(f.id) : null;
-  if (!r0 || !c || MT.busy) return;
+  if (!r0 || !c) return;
+  if (MT.busy) { mtBusySay(); return; }                      // D39 (bug 19)
   const ret = !!r0.return_of;
   const rows = MT.costs.filter(x => String(x.id) === String(r0.id) || String(x.return_of) === String(r0.id));   // with its returns
   const docs = MT.docs.filter(d => rows.some(x => String(x.id) === String(d.cost_id)));
@@ -2078,8 +2236,26 @@ async function mtCostDelete() {
 /* ── In-app sheets (instead of confirm()) ───────────────────
    mtConfirm({ title, text, ok, cancel, danger }) → Promise<boolean>
    mtAsk({ title, text, buttons: [{ v, label, kind: 'p' | 's' | 'd' }] }) → Promise<v | null> (null = closed) */
+const mtSelOf = el => { try { return el && typeof el.selectionStart === 'number' ? [el.selectionStart, el.selectionEnd, el.selectionDirection || 'none'] : null; } catch (_) { return null; } };
+/* D39 fix · where the focus goes back when a question is answered "stay" (Keep editing · Cancel · Escape): the field
+   you are in, or the one you just left for the tap that asked (× · a tap beside it · Cancel) — with its cursor */
+function mtAskBack() {
+  const a = document.activeElement, open = [...document.querySelectorAll('.mt-modal')].filter(x => !x.inert);
+  const m = (a && a.closest && a.closest('.mt-modal')) || open[open.length - 1];
+  if (!m) return null;
+  if (a && m.contains(a) && a.matches(MT_ED_FIELD)) return { el: a, sel: mtSelOf(a) };
+  const f = m._fld, el = f && (f.el.isConnected ? f.el : f.id ? document.getElementById(f.id) : null);
+  if (el && m.contains(el) && f.out && Date.now() - f.out < 2000) return { el, sel: f.sel };
+  return a && a !== document.body && m.contains(a) ? { el: a, sel: null } : null;
+}
+function mtAskReturn(back, val) {                            // only for "stay" — Discard / OK never bring the keyboard up
+  if (!back || !(val === null || val === false || val === 'cancel')) return;
+  const el = back.el;
+  if (!el.isConnected || !el.closest('.mt-modal') || el.closest('[inert]')) return;
+  try { el.focus({ preventScroll: true }); if (back.sel) el.setSelectionRange(back.sel[0], back.sel[1], back.sel[2]); } catch (_) {}
+}
 function mtAsk(o) {
-  const host = document.querySelector('#mtCostModal .mt-modal__s');
+  const host = document.querySelector('#mtCostModal .mt-modal__s'), back = mtAskBack();
   if (host) return new Promise(resolve => {                  // D22: inside the receipt pop-up
     host.querySelector('.mt-askv')?.remove();
     const v = document.createElement('div');
@@ -2088,7 +2264,10 @@ function mtAsk(o) {
     v.innerHTML = `<p class="mt-cf__t">${mtEsc(o.title || 'Are you sure?')}</p>${o.text ? `<p class="mt-cf__x">${mtEsc(o.text)}</p>` : ''}${o.html || ''}
       <div class="mt-cf__b">${(o.buttons || []).map((b, i) => `<button type="button" class="mt-btn mt-btn--${b.kind || 's'}" data-i="${i}">${mtEsc(b.label)}</button>`).join('')}</div>`;
     host.appendChild(v);
-    const done = val => { document.removeEventListener('keydown', key, true); v.remove(); resolve(val); };
+    // D39 fix 2: while it asks, the form behind it takes no focus and no keys (Tab stays in the question)
+    const behind = [...host.querySelectorAll(':scope > .mt-modal__h, :scope > .mt-modal__b, :scope > .mt-modal__f')];
+    behind.forEach(x => { x.inert = true; });
+    const done = val => { document.removeEventListener('keydown', key, true); v.remove(); behind.forEach(x => { x.inert = false; }); mtAskReturn(back, val); resolve(val); };
     const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
     document.addEventListener('keydown', key, true);
     v.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; e.stopPropagation(); done(o.buttons[Number(b.dataset.i)].v); });
@@ -2109,7 +2288,11 @@ function mtAsk(o) {
         <div class="mt-cf__b">${btns}</div>
       </div>`;
     document.body.appendChild(h);
-    const done = v => { document.removeEventListener('keydown', key, true); h.remove(); resolve(v); };
+    // D39 fix 2: the pop-ups (and the page) behind it take no focus while it asks (mtLockSync: it is the top layer)
+    const shell = document.getElementById('appShell'), own = !!shell && !shell.inert;
+    if (own) shell.inert = true;
+    mtLockSync();
+    const done = v => { document.removeEventListener('keydown', key, true); h.remove(); mtLockSync(); if (own && !MT_LOCK.on) shell.inert = false; mtAskReturn(back, v); resolve(v); };
     const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
     document.addEventListener('keydown', key, true);
     h.addEventListener('click', e => {
@@ -2422,7 +2605,7 @@ function mtWire() {
     else if (a === 'pdfEntry') mtPdfEntry(b.dataset.id, b);
     else if (a === 'invYear') mtPdfInvYear(b);                // D29
     else if (a === 'invEntry') mtPdfInvEntry(b.dataset.id, b);
-    else if (a === 'docsEdit') { if (MT.sel) { MT.sel.docEdit = true; MT.sel.fix = null; mtRenderPanel(); } }
+    else if (a === 'docsEdit') { if (MT.sel) { if (MT.busy) mtBusySay(); else { MT.sel.docEdit = true; MT.sel.fix = null; mtRenderPanel(); } } }
     else if (a === 'docsDone') { if (MT.sel) { MT.sel.docEdit = false; MT.sel.fix = null; mtRenderPanel(); } }
     else if (a === 'fixDoc') { if (MT.sel) { MT.sel.fix = String(b.dataset.id); mtRenderPanel(); } }
     else if (a === 'fixCancel') { if (MT.sel) { MT.sel.fix = null; mtRenderPanel(); } }
@@ -2441,6 +2624,18 @@ function mtWire() {
     else if (a === 'costSaveNext') mtCostSaveNext();
     else if (a === 'costDel') mtCostDelete();
     else if (a === 'costReturn') mtCostNewReturn();
+    else if (a === 'whoPays') mtWhoOpen(b.dataset.id);        // D39 · Who pays? — the tag of a receipt row
+    else if (a === 'whoNest') mtWhoNest();                    //       … or its row inside the receipt pop-up
+    else if (a === 'whoType') mtWhoSet('type', b.dataset.v);
+    else if (a === 'whoWhere') mtWhoSet('where', b.dataset.v);
+    else if (a === 'whoRoom') mtWhoSet('room', b.dataset.v);
+    else if (a === 'whoCat') mtWhoSet('cat', b.dataset.v);
+    else if (a === 'whoMore') mtWhoSet('more');
+    else if (a === 'whoVia') mtWhoSet('via', b.dataset.v);
+    else if (a === 'whoPaid') mtWhoPaidOpen();
+    else if (a === 'whoReset') mtWhoSet('reset');
+    else if (a === 'whoCancel') mtWhoClose();
+    else if (a === 'whoSave') mtWhoSave();
     else if (a === 'sbOpen') mtSbOpen(b.dataset.id || (MT.sel && MT.sel.id));
     else if (a === 'sbClose') mtSbClose();
     else if (a === 'sty') mtSbStyle(b.dataset.col, b.dataset.v);
@@ -2462,6 +2657,8 @@ function mtWire() {
     const t = e.target;
     if (!t) return;
     if (t.closest && t.closest('#mtSbModal')) { mtSbChange(t); return; }
+    if (t.id === 'mtW-paid') { mtWhoSet('paid', t.value); return; }   // D39: the calendar wrote "Paid on"
+    if ((t.id === 'mtC-book' || t.id === 'mtC-date') && document.getElementById('mtC-whobox')) mtCostWhoSync();   // D39 fix: Who pays follows "Book in Controlling" (fix 2: and the date)
     if (t.id === 'mtF-kind') mtKindChanged();
     else if (t.id === 'mtF-prop' || t.id === 'mtF-art') mtSbVis();
     else if (t.id === 'mtF-end') mtEndChanged();
@@ -2476,12 +2673,19 @@ function mtWire() {
     if (mtIsBulletTa(e.target)) mtBulletFix(e.target);             // the Mieter typed by hand is kept when the Zimmer changes
     if (e.target && e.target.id === 'mtS-mieter' && MT.sb) MT.sb.mieterAuto = false;
     if (e.target && e.target.matches && e.target.matches('#mtPanel textarea.mt-ta, #mtSbModal textarea.mt-ta, #mtEditModal textarea.mt-ta')) mtGrow(e.target);
+    if (e.target && e.target.id === 'mtC-amount' && document.getElementById('mtC-whobox')) mtCostWhoSync();   // D39: "Kleinrep. >150 €" follows the amount
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && MT.sel && MT.sel.cost && document.getElementById('mtCostModal') && !document.querySelector('.mt-askv') && !document.getElementById('ccCal')) { mtCostCancel(); return; }
-    if (e.key === 'Escape' && MT.sb && !document.getElementById('mtConfirm') && !document.getElementById('ccCal') && !document.getElementById('ccPdfSheet')) { mtSbClose(); return; }
-    if (e.key === 'Escape' && MT.sel && !document.getElementById('mtConfirm') && !document.getElementById('ccCal')
-        && !document.getElementById('mtSbSheet') && !document.getElementById('ccPdfSheet')) mtClose();
+    if (e.key !== 'Escape') return;
+    const cal = document.getElementById('ccCal'), cf = document.getElementById('mtConfirm'), pdf = document.getElementById('ccPdfSheet');
+    if (document.getElementById('mtCam')) { if (!cal) mtCamClose(false); return; }           // D39: the camera on top closes first
+    if (document.getElementById('mtWhoModal')) { if (!cal && !cf) mtWhoClose(); return; }     // D39: Who pays? on top — only that sheet
+    if (MT.sel && MT.sel.cost && document.getElementById('mtCostModal') && !document.querySelector('.mt-askv') && !cal) { mtCostCancel(); return; }
+    if (MT.sb && !cf && !cal && !pdf) { mtSbClose(); return; }
+    if (MT.sel && !cf && !cal && !document.getElementById('mtSbSheet') && !pdf) {
+      // D39 (bug 8): in the Edit pop-up Escape = × / Cancel (back to the entry, asks if changed) — not "close the entry"
+      if (MT.sel.edit && !MT.sel.isNew && document.getElementById('mtEditModal')) mtCancel(); else mtClose();
+    }
   });
 }
 
@@ -2636,26 +2840,25 @@ function mtSoTeil(b) {
   b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on));
   mtSbFlush();
 }
+/* D39 · the pop-up's parts { h: header, b: body, f: footer } — mtSbRender fills them into the sheet that is built once */
 function mtSbFormHTML(c, f) {
   const kl = mtBerichtLbl(c), no = mtCaseLabel(c) || f.reportNo || c.report_no;   // D29: the case number
-  const head = `<div class="mt-modal__h">
-      <div><p class="mt-modal__k">${kl}${no ? ' · ' + mtEsc(no) : ''}</p>
+  const h = `<div><p class="mt-modal__k">${kl}${no ? ' · ' + mtEsc(no) : ''}</p>
         <p class="mt-modal__t" id="mtSbT">${mtEsc(c.title)}</p>
         <p class="mt-modal__sub">${mtEsc([mtPropName(c), mtWhere(c)].filter(Boolean).join(' · '))}</p></div>
-      <button type="button" class="mt-modal__x" data-mt="sbClose" aria-label="Close"${f.busy ? ' disabled' : ''}><i class="ti ti-x" aria-hidden="true"></i></button>
-    </div>`;
-  if (!f.ready) return head + '<div class="mt-modal__b"><p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Loading</p></div>';
-  if (f.view === 'ready') return head + `<div class="mt-modal__b"><div class="mt-ready">
+      <button type="button" class="mt-modal__x" data-mt="sbClose" aria-label="Close"${f.busy ? ' disabled' : ''}><i class="ti ti-x" aria-hidden="true"></i></button>`;
+  if (!f.ready) return { h, b: '<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>Loading</p>', f: '' };
+  if (f.view === 'ready') return { h, b: `<div class="mt-ready">
         <span class="mt-ready__ic"><i class="ti ti-file-check" aria-hidden="true"></i></span>
         <p class="mt-ready__t">${kl} is ready</p>
         <p class="mt-ready__s">${mtEsc([no, 'Stand ' + f.done].filter(Boolean).join(' · '))}</p>
         <p class="mt-ready__s">Saved in Documents</p>
         <button type="button" class="mt-ready__open" data-mt="sbOpenPdf"><i class="ti ti-file-text" aria-hidden="true"></i>Open PDF</button>
-      </div></div>
-      <div class="mt-modal__f"><span class="cc-foot-right">
+      </div>`,
+    f: `<span class="cc-foot-right">
         <button type="button" class="cc-foot-btn" data-mt="sbBack">Back to the report</button>
         <button type="button" class="cc-foot-btn" data-mt="sbClose">Close</button>
-      </span></div>`;
+      </span>` };
   const casa = mtIsCasa(c.property_id);
   const up = (() => { const u = mtUpFor(c); return u && u.where === 'sb' ? u : null; })();
   const att = mtSbAttachDocs(c);
@@ -2665,7 +2868,7 @@ function mtSbFormHTML(c, f) {
       <span class="mt-sba__t">${mtEsc(MT_DOC[d.doc_type] ? MT_DOC[d.doc_type].label : 'Document')}<small>${mtEsc([d.file_name, mtDate(d.doc_date)].filter(Boolean).join(' · '))}</small></span>
       <em>${vid ? 'sent separately' : 'added to the PDF'}</em></label>`;
   }).join('');
-  return head + `<div class="mt-modal__b"><div class="mt-grid">
+  return { h, b: `<div class="mt-grid">
       ${!MT.d17 ? '<p class="mt-hint mt-f--full">Run MAINTENANCE-D17.sql in Supabase to get all fields of this report.</p>' : ''}
       ${casa && c.kind !== 'sonstiges' ? `<p class="mt-sb__room mt-f--full">${f.room ? `Zimmer <b>${mtEsc(mtRoomLabel(f.room))}</b>` : 'No Zimmer yet'} · set in Edit</p>` : ''}
       ${c.kind === 'renovierung' ? mtRbFieldsBody(c) : c.kind === 'sonstiges' ? mtSoFieldsBody(c, f) : mtSbFieldsBody(c, f)}
@@ -2679,14 +2882,12 @@ function mtSbFormHTML(c, f) {
         <input class="mt-in" id="mtS-ort" type="text" maxlength="60" autocomplete="off" placeholder="z. B. Mainz" value="${mtEsc(f.ort || '')}"/></div>
       <div class="mt-f"><label class="mt-k" for="mtS-sdate">Unterzeichnungsdatum</label>
         <input class="mt-in" id="mtS-sdate" type="date" value="${mtEsc(f.signDate || ccTodayISO())}"/></div>
-    </div></div>
-    <div class="mt-modal__f">
-      <p class="mt-sb__status" id="mtSb-status" role="status" hidden></p>
+    </div>`,
+    f: `<p class="mt-sb__status" id="mtSb-status" role="status" hidden></p>
       <span class="cc-foot-right">
         <button type="button" class="cc-foot-btn" data-mt="sbClose"${f.busy ? ' disabled' : ''}>Close</button>
         <button type="button" class="cc-foot-btn mt-save${f.busy ? ' is-busy' : ''}" id="mtSb-make" data-mt="sbMake" data-cc-pdf="1"${f.busy || up ? ' disabled' : ''}>${f.busy ? '<span class="mt-spin" aria-hidden="true"></span>' : ''}${up ? 'Uploading photos' : 'Create PDF'}</button>
-      </span>
-    </div>`;
+      </span>` };
 }
 /* Photos: one row each — thumbnail (number in the report) · Beschreibung · (Vorher / Nachher) · in the report · × */
 async function mtSbStyle(col, v) {
@@ -2902,38 +3103,674 @@ function mtMetaHTML(tabYear, tabTotal) {
   return `<div class="mt-meta"><span>All tabs <em>${mtEur(mtCost(ids, yy))}</em>${Math.abs(tabTotal - tabYear) > 0.004 ? ` · Total <em>${mtEur(tabTotal)}</em>` : ''}</span>
       <span class="mt-meta__chips">${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}${mtInvChip(mtHasInvoiceFiles(ids.map(String), yy))}</span></div>`;
 }
-/* ── D22 · The receipt form as a pop-up (new receipt, a receipt row, a return) ── */
+/* ── D39 (Nov 2026) · Pop-ups: one shell each, built once ──────────────────────────────────────────────
+   mtModal(id, o) builds a pop-up the first time (backdrop · sheet with header, body, footer) and returns it;
+   later renders fill only the inner parts (mtModalFill), so the sheet stays the same element: its slide-in plays
+   once, the field you are in keeps the focus (and the cursor) and the body keeps its scroll.
+   o = { cls, close: data-mt of the backdrop, label: id of the title }. A pop-up stacked on another one (a sheet with
+   its own z-index over the receipt) uses the same helpers; .mt-modal--fit keeps a sheet at its own height on phones. */
+function mtModal(id, o) {
+  let m = document.getElementById(id);
+  if (m) return m;
+  m = document.createElement('div');
+  m.id = id; m.className = 'mt-modal' + (o.cls ? ' ' + o.cls : '');
+  m.innerHTML = `<div class="mt-modal__bg" data-mt="${mtEsc(o.close || '')}"></div>
+    <div class="mt-modal__s" role="dialog" aria-modal="true"${o.label ? ` aria-labelledby="${mtEsc(o.label)}"` : ''}><div class="mt-modal__h"></div><div class="mt-modal__b"></div><div class="mt-modal__f"></div></div>`;
+  const sh = m.querySelector('.mt-modal__s');
+  sh.addEventListener('animationend', e => { if (e.target === sh) m.classList.add('is-shown'); });   // it never slides in twice
+  // D39 fix: the field you type in (and when it lost the focus, with its cursor) — "Keep editing" in a question gives it back
+  m.addEventListener('focusin', e => { const t = e.target; if (t.matches && t.matches(MT_ED_FIELD)) m._fld = { el: t, id: t.id, out: 0, sel: null }; });
+  m.addEventListener('focusout', e => { const f = m._fld; if (f && f.el === e.target) { f.out = Date.now(); f.sel = mtSelOf(e.target); } });
+  document.body.appendChild(m);
+  mtLockSync();
+  return m;
+}
+function mtModalDrop(id) { const m = document.getElementById(id); if (m) { m.remove(); mtLockSync(); } }
+/* Fill a pop-up's parts { h, b, f } (HTML; a part left out stays). keep = the same form as before → the body's scroll
+   and the focused field (with its selection) come back. after(m) runs before that (e.g. to move the footer). */
+function mtModalFill(m, parts, keep, after) {
+  const q = k => m.querySelector(':scope > .mt-modal__s > .mt-modal__' + k);
+  const b = q('b'), top = keep && b ? b.scrollTop : 0;
+  const ae = document.activeElement, fid = keep && ae && ae.id && m.contains(ae) ? ae.id : '';
+  let sel = null;
+  try { if (fid && typeof ae.selectionStart === 'number') sel = [ae.selectionStart, ae.selectionEnd, ae.selectionDirection || 'none']; } catch (_) {}
+  if (parts.h !== undefined && m._h !== parts.h) { q('h').innerHTML = parts.h; m._h = parts.h; }
+  if (parts.b !== undefined && b) b.innerHTML = parts.b;
+  if (parts.f !== undefined) q('f').innerHTML = parts.f;
+  if (after) after(m);
+  if (b) b.scrollTop = top;
+  const el = fid ? document.getElementById(fid) : null;
+  if (el && el !== document.activeElement && m.contains(el)) {
+    try { el.focus({ preventScroll: true }); if (sel) el.setSelectionRange(sel[0], sel[1], sel[2]); } catch (_) {}
+  }
+}
+
+/* ── D39 · The page behind a pop-up is locked, like the calendar does it (cc-german-format.js B24) ───────────
+   While a pop-up (.mt-modal) or the camera is open the body is position:fixed at −scrollY: nothing can move the
+   page (the iPhone keyboard, a redraw behind the pop-up) and it comes back exactly where it was on the last close.
+   The pinned header and year bar keep their place (moved back by what they moved, if the browser lets them go).
+   A classic scrollbar's width stays taken by the body (bug 9: no sideways shift; the dimmed backdrop still covers
+   the whole window — with scrollbar-gutter a strip beside it stayed un-dimmed and short pages sat off-centre).
+   mtPageY / mtPageTo read and set the page position in both states (mtAnchor / mtRestore work while locked).
+   On phones the open sheet follows window.visualViewport (the keyboard): it sits in the visible part and its body
+   scrolls the field into view, so iOS has no reason to pan the page ("jumps up, then returns"). */
+const MT_LOCK = { on: false, y: 0, prev: null, stick: [], back: null };
+const MT_STICKY = '.cc-header, .mt-ybar';
+const mtStickEls = () => [...document.querySelectorAll(MT_STICKY)].filter(el => el.getClientRects().length);
+const mtPageY = () => (MT_LOCK.on ? MT_LOCK.y : window.scrollY);
+function mtPageTo(y) {
+  y = Math.max(0, y);
+  if (MT_LOCK.on) { MT_LOCK.y = y; document.body.style.top = -y + 'px'; mtLockStick(); return; }
+  if (MT_LOCK.back) MT_LOCK.back.y = y;                     // just closed: the place to come back to moves along
+  window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+}
+function mtLockStick() {
+  if (!MT_LOCK.on) return;
+  MT_LOCK.stick.forEach(s => {
+    const el = mtStickEls().find(x => x.matches(s.k));
+    if (!el) return;
+    el.style.transform = '';
+    const d = s.top - el.getBoundingClientRect().top;
+    if (Math.abs(d) > 0.5) el.style.transform = `translateY(${d}px)`;
+  });
+}
+function mtLockSync(force) {
+  const want = !!(force || document.querySelector('.mt-modal, #mtCam'));
+  const html = document.documentElement, bd = document.body, shell = document.getElementById('appShell');
+  // Nov 2026 (D39 fix): pop-ups stacked on another (Who pays over the receipt) → only the top one takes the focus and
+  // the keys; the one below waits, as the page behind does (no Tab into a Save you can't see)
+  const ms = [...document.querySelectorAll('.mt-modal')], zOf = x => Number(getComputedStyle(x).zIndex) || 0;
+  const top = ms.reduce((a, x) => (!a || zOf(x) >= zOf(a) ? x : a), null);
+  const over = !!document.querySelector('#mtCam, #mtConfirm');   // D39 fix 2: the camera / a question is above them all
+  ms.forEach(x => { const v = over || x !== top; if (x.inert !== v) x.inert = v; });
+  if (want && !MT_LOCK.on) {
+    const y = window.scrollY;
+    const tops = mtStickEls().map(el => ({ k: el.matches('.mt-ybar') ? '.mt-ybar' : '.cc-header', top: el.getBoundingClientRect().top }));
+    const sbw = Math.max(0, window.innerWidth - html.clientWidth);   // bug 9: a classic scrollbar (laptop) — its width stays taken
+    html.classList.add('mt-modal-open');
+    if (getComputedStyle(bd).position === 'fixed') return;  // someone else holds the page already
+    MT_LOCK.prev = { position: bd.style.position, top: bd.style.top, left: bd.style.left, right: bd.style.right, width: bd.style.width };
+    Object.assign(bd.style, { position: 'fixed', top: -y + 'px', left: '0', right: '0', width: sbw ? `calc(100% - ${sbw}px)` : '100%' });
+    Object.assign(MT_LOCK, { on: true, y, back: null, stick: tops });
+    mtLockStick();
+    if (shell) shell.inert = true;                           // nothing behind the pop-up takes the focus
+    mtVV(true);
+  } else if (!want && (MT_LOCK.on || html.classList.contains('mt-modal-open'))) {
+    html.classList.remove('mt-modal-open');
+    if (!MT_LOCK.on) return;
+    const y = MT_LOCK.y;
+    Object.assign(MT_LOCK, { on: false, stick: [] });
+    document.querySelectorAll(MT_STICKY).forEach(el => { el.style.transform = ''; });
+    Object.assign(bd.style, MT_LOCK.prev || {});
+    if (shell) shell.inert = false;
+    mtVV(false);
+    window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+    // the iPhone may still move the page while its keyboard closes → back to the place (unless you scroll yourself)
+    const back = MT_LOCK.back = { y };
+    [80, 400].forEach(ms => setTimeout(() => {
+      if (MT_LOCK.back === back && !MT_LOCK.on && Math.abs(window.scrollY - back.y) > 2) window.scrollTo({ top: back.y, left: 0, behavior: 'instant' });
+    }, ms));
+    setTimeout(() => { if (MT_LOCK.back === back) MT_LOCK.back = null; }, 600);
+  } else if (want) html.classList.add('mt-modal-open');
+}
+['touchstart', 'wheel', 'keydown'].forEach(t => document.addEventListener(t, () => { if (!MT_LOCK.on) MT_LOCK.back = null; }, { capture: true, passive: true }));
+/* The calendar opened on top of a pop-up: the page is held here, so the calendar must not move it on close (it noted
+   scrollY 0 under the fixed body, and its late retries would send the page to the top after the pop-up closed) */
+new MutationObserver(ms => { if (MT_LOCK.on) ms.forEach(m => m.addedNodes.forEach(n => { if (n.id === 'ccCal') n._sy = undefined; })); })
+  .observe(document.body, { childList: true });
+/* visualViewport → --mt-vvh / --mt-vvt (used by the phone CSS): the sheet stays in the part you see */
+function mtVV(on) {
+  const vv = window.visualViewport, st = document.documentElement.style;
+  if (!vv) return;
+  if (on) { vv.addEventListener('resize', mtVVResize); vv.addEventListener('scroll', mtVVMove); mtVVMove(); return; }
+  vv.removeEventListener('resize', mtVVResize); vv.removeEventListener('scroll', mtVVMove);
+  st.removeProperty('--mt-vvh'); st.removeProperty('--mt-vvt');
+}
+function mtVVMove() {
+  const vv = window.visualViewport, st = document.documentElement.style;
+  if (!vv || !MT_LOCK.on) return;
+  st.setProperty('--mt-vvh', vv.height + 'px');
+  st.setProperty('--mt-vvt', vv.offsetTop + 'px');
+}
+function mtVVResize() { mtVVMove(); requestAnimationFrame(mtVVField); }
+function mtVVField() {                                       // the field you type in stays in view — its sheet scrolls, not the page
+  const a = document.activeElement, b = a && a.closest && a.closest('.mt-modal__b');
+  if (!b) return;
+  const r = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+  if (r.bottom > rb.bottom - 8) b.scrollTop += r.bottom - rb.bottom + 12;
+  else if (r.top < rb.top + 8) b.scrollTop -= rb.top - r.top + 12;
+}
+
+/* ── D22 · The receipt form as a pop-up (new receipt, a receipt row, a return) ──
+   D39: built once — later renders fill its header / body / footer in place (no new slide-in; focus and scroll stay).
+   A redraw in the background (MT.bg: a save or an upload) leaves a form that is showing exactly as it is. */
 function mtCostModalSync() {
   const s = MT.sel;
   if (s && s.cost) return;
-  const m = document.getElementById('mtCostModal');
-  if (m) { m.remove(); if (!document.querySelector('.mt-modal')) document.documentElement.classList.remove('mt-modal-open'); }
+  mtWhoNestDrop(null);                                       // D39 fix: a Who pays sheet of that receipt never stays alone
+  mtModalDrop('mtCostModal');
 }
+function mtWhoNestDrop(f) { if (MT.who && MT.who.nest && MT.who.f !== f) { MT.who = null; mtModalDrop('mtWhoModal'); } }
 function mtCostModalRender() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
+  mtWhoNestDrop(f);                                          // D39 fix: another form in the pop-up → its Who pays sheet goes
   if (!f || !c) { mtCostModalSync(); mtDraftClosed(); return; }
   mtDraftSoon();
-  let m = document.getElementById('mtCostModal');
-  if (!m) {
-    m = document.createElement('div');
-    m.id = 'mtCostModal'; m.className = 'mt-modal';
-    document.body.appendChild(m);
-    document.documentElement.classList.add('mt-modal-open');
-  }
-  const ret = !!f.return_of;
-  const kk = ret ? (f.isNew ? 'New return' : 'Return') : (f.isNew ? 'New receipt' : 'Receipt');
-  m.innerHTML = `<div class="mt-modal__bg" data-mt="costCancel"></div>
-    <div class="mt-modal__s" role="dialog" aria-modal="true" aria-labelledby="mtCostT">
-      <div class="mt-modal__h">
-        <div><p class="mt-modal__k">${kk}</p><p class="mt-modal__t" id="mtCostT">${mtEsc(c.title)}</p>
+  const m = mtModal('mtCostModal', { close: 'costCancel', label: 'mtCostT' });
+  const same = m.dataset.fid === String(f.id);
+  if (!(MT.bg && same)) {
+    const ret = !!f.return_of;
+    const kk = ret ? (f.isNew ? 'New return' : 'Return') : (f.isNew ? 'New receipt' : 'Receipt');
+    const h = `<div><p class="mt-modal__k">${kk}</p><p class="mt-modal__t" id="mtCostT">${mtEsc(c.title)}</p>
           <p class="mt-modal__sub">${mtEsc([mtPropName(c), mtWhere(c)].filter(Boolean).join(' · '))}</p></div>
-        <button type="button" class="mt-modal__x" data-mt="costCancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
-      </div>
-      <div class="mt-modal__b">${mtCostFormHTML(f)}</div>
-      <div class="mt-modal__f"></div>
-    </div>`;
-  const foot = m.querySelector('#mtC-form > .cc-sec-foot'), mf = m.querySelector('.mt-modal__f');
-  if (foot && mf) mf.appendChild(foot);                     // Cancel · Save (· Delete · Return) at the bottom of the pop-up
+        <button type="button" class="mt-modal__x" data-mt="costCancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>`;
+    const body = mtCostFormHTML(f);
+    if (same && m._b === body) mtModalFill(m, { h }, true);  // nothing changed (the fields already show it)
+    else mtModalFill(m, { h, b: body }, same, mm => {
+      const foot = mm.querySelector('#mtC-form > .cc-sec-foot'), mf = mm.querySelector(':scope > .mt-modal__s > .mt-modal__f');
+      const st = document.createElement('p'); st.className = 'mt-sb__status'; st.id = 'mtC-stat'; st.setAttribute('role', 'status'); st.hidden = true;
+      if (mf) mf.replaceChildren(...[st, foot].filter(Boolean));   // Cancel · Save (· Delete · Return) at the bottom of the pop-up
+    });
+    m._b = body;
+    m.dataset.fid = String(f.id);
+  }
+  mtCostStat(m, f, c);
+  mtCostHoldShow();
+}
+/* D39 · "Save + next": while the last receipt's photos still upload, the next form says so in its footer */
+function mtCostStat(m, f, c) {
+  const p = m.querySelector('#mtC-stat');
+  if (!p) return;
+  const u = MT.up && MT.up.where === 'costs' && MT.up.costId && String(MT.up.costId) !== String(f.id) && String(MT.up.caseId) === String(c.id) ? MT.up : null;
+  const t = u ? `The last receipt: ${u.what || 'uploading'} · ${Math.min(u.done + 1, u.total)} of ${u.total}` : '';
+  if (p.textContent !== t) p.textContent = t;
+  p.hidden = !t;
+}
+
+/* ── D39 (Nov 2026) · "Who pays?" per receipt (Casa Castel receipts only · MAINTENANCE-D39.sql) ─────────────────────
+   Each receipt row has a small tag under its amount — its own tap (the row itself still edits the receipt):
+     NK              → in the NK-Abrechnung (Teil A) under a cost type (none = Allgemeine Hauskosten)
+     Kleinreparatur  → Teil B1 · Mietvertrag § 7: only up to 150 € per case, on the NET (receipt − its returns)
+     Schaden         → Teil B2
+     Where           Gemeinschaftsfläche (Kleinreparatur: every Zimmer rented on the receipt date · Schaden: the Zimmer
+                     that caused it) or one Zimmer · Payment: with the NK-Abrechnung, or Direct (Paid on … / open)
+     no tag          → you pay
+   The sheet #mtWhoModal is a small pop-up of its own (z-index 450: over the receipt pop-up, under the calendar).
+   From the tag its Save stores at once (the row shows it first, back on an error); from the receipt pop-up ("nested")
+   its Save only fills the receipt form, stored with the receipt's own Save. Opening it never redraws the entry behind
+   (nothing moves); it is built once per open and later only its buttons change in place (mtMorph: no blink, the
+   focus stays). No typing in it: "Paid on" is the app's date field, set with the calendar. */
+const MT_WHO_KEYS = ['pay_type', 'pay_cat', 'pay_where', 'pay_rooms', 'pay_via', 'pay_paid_on'];
+const MT_WHO_MAX = 150;                                      // § 7: a Kleinreparatur is at most 150 € (NET) per case
+const MT_WHO_SQL = /pay_(type|cat|where|rooms|via|paid_on)|maint_refund_of|maint_pay|nk_keep/i;   // "run MAINTENANCE-D39.sql"
+const mtWhoOn = c => !!(MT.d39 && c && mtIsCasa(c.property_id));
+const mtWhoD = v => (typeof ccParseDate === 'function' && ccParseDate(v)) || mtIso(v);   // TT.MM.JJJJ, ISO, timestamps
+/* Cost types, tenants and the locked Settlements years — loaded once; what fails is simply left out */
+async function mtWhoLoad() {
+  const sb = _ctlSupa;
+  const rows = q => { try { return Promise.resolve(q()).then(r => (r && !r.error && Array.isArray(r.data) ? r.data : null), () => null); } catch (e) { return Promise.resolve(null); } };
+  const [cats, ten, locks] = await Promise.all([
+    rows(() => sb.from('ctrl_castel_categories').select('*').order('sort_order')),
+    rows(() => sb.from('tenant_records').select('room,status,mietbeginn,mietende')),
+    rows(() => sb.from('nk_abrechnung_casa').select(MT_WHO_LOCKQ).not('locked_at', 'is', null)),
+  ]);
+  MT.whoCats = cats ? cats.slice().sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999)) : null;
+  MT.whoTen = ten;
+  MT.whoLock = locks ? mtWhoLockRows(locks) : null;
+  mtWhoLockAt = Date.now();
+}
+const MT_WHO_LOCKQ = 'year,period_from,period_to,locked_at,tb:snapshot->input->teilB';
+const mtWhoLockRows = rows => rows.filter(x => x && x.locked_at).map(x => ({ year: x.year, from: mtWhoD(x.period_from), to: mtWhoD(x.period_to),
+  ids: new Set((Array.isArray(x.tb) ? x.tb : []).map(p => String(p && p.id))) }));
+/* D39 fix 2 · Settlements may lock a year while Maintenance is open (another tab or device): the locks are read again
+   when the sheet opens, before a Who pays choice or a receipt is stored (unless read in the last 30 s, e.g. as its
+   sheet opened) and when the app comes back (at most once a minute) · one read at a time · a failed read keeps what
+   was known */
+let mtWhoLockP = null, mtWhoLockAt = 0;
+const mtWhoLockOld = () => !!mtWhoLockP || Date.now() - mtWhoLockAt > 30000;   // being read, or read over 30 s ago (else no wait on Save)
+function mtWhoLockLoad() {
+  if (!MT.d39) return Promise.resolve();
+  if (!mtWhoLockP) mtWhoLockP = (async () => {
+    try {
+      const r = await _ctlSupa.from('nk_abrechnung_casa').select(MT_WHO_LOCKQ).not('locked_at', 'is', null);
+      if (r && !r.error && Array.isArray(r.data)) { MT.whoLock = mtWhoLockRows(r.data); mtWhoLockAt = Date.now(); }
+    } catch (e) {}
+  })().finally(() => { mtWhoLockP = null; });
+  return mtWhoLockP;
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && MT.d39 && Date.now() - mtWhoLockAt > 60000) mtWhoLockLoad().then(() => { if (MT.who) mtWhoLockCheck(MT.who); }); });
+/* the pay_* fields of a row / form (missing = null) */
+function mtWhoPick(r) {
+  r = r || {};
+  return { pay_type: r.pay_type ?? null, pay_cat: r.pay_cat ?? null, pay_where: r.pay_where ?? null,
+    pay_rooms: Array.isArray(r.pay_rooms) ? r.pay_rooms.slice() : null, pay_via: r.pay_via ?? null, pay_paid_on: r.pay_paid_on ?? null };
+}
+/* NET = the receipt (amount = what is typed in its form) − its returns, never below 0 */
+function mtNet(r, amount) {
+  const back = r && r.id ? mtReturnsOf(r.id).reduce((a, t) => a + mtNum(t.amount), 0) : 0;
+  return Math.max(0, mtNum(mtNum(amount === undefined ? r.amount : amount) - back));
+}
+/* room names: as in Casa Castel › Rooms ("New york" = "New York"), once each, in the rooms' order */
+const mtRoomCanon = n => MT.rooms.find(x => mtNorm(x) === mtNorm(n)) || String(n || '').trim();
+function mtRoomSort(list) {
+  const at = n => { const i = MT.rooms.indexOf(n); return i < 0 ? 1e6 : i; };
+  return [...new Set((list || []).map(mtRoomCanon).filter(Boolean))].sort((a, b) => at(a) - at(b));
+}
+/* a row / form → the choice { t, cat, w, r, v, p } (the sheet works on this) */
+function mtWhoFrom(src) {
+  const p = mtWhoPick(src), t = ['nk', 'klein', 'schaden'].includes(p.pay_type) ? p.pay_type : null;
+  const r = mtRoomSort(p.pay_rooms), tb = t === 'klein' || t === 'schaden';
+  const w = p.pay_where === 'zimmer' || p.pay_where === 'gemein' ? p.pay_where : tb ? (r.length === 1 ? 'zimmer' : 'gemein') : null;   // as Settlements reads it
+  return { t, cat: t === 'nk' ? p.pay_cat : null, w, r, v: p.pay_via === 'direct' ? 'direct' : 'nk', p: p.pay_paid_on ? String(p.pay_paid_on).slice(0, 10) : null };
+}
+/* Who lives in a Zimmer when — the tenancy rule of Controlling (_cxTenancies): tenant_records.room (matched normalised),
+   from = Mietbeginn, to = Mietende, else active → open end, else (former) the day before the next move-in there or today */
+function mtWhoWins(room) {
+  const today = ccTodayISO();
+  const ws = (MT.whoTen || []).filter(t => mtNorm(t.room) === mtNorm(room))
+    .map(t => ({ t, from: mtWhoD(t.mietbeginn), to: mtWhoD(t.mietende) })).filter(w => w.from)
+    .sort((a, b) => a.from.localeCompare(b.from));
+  ws.forEach((w, i) => {
+    if (w.to) return;
+    if (w.t.status === 'active') { w.to = '9999-12-31'; return; }
+    const next = ws.slice(i + 1).find(x => x.from > w.from);
+    w.to = next ? mtAddDays(next.from, -1) : today;
+  });
+  return ws;
+}
+/* the Zimmer on a day: rented (anyone living there) · vacant · known = false when the tenants could not be loaded */
+function mtWhoRooms(day) {
+  const all = MT.rooms.slice(), d = String(day || ccTodayISO()).slice(0, 10);
+  if (!MT.whoTen) return { all, rented: all.slice(), vacant: [], known: false };
+  const rented = all.filter(n => mtWhoWins(n).some(w => w.from <= d && d <= w.to));
+  return { all, rented, vacant: all.filter(n => !rented.includes(n)), known: true };
+}
+/* the choice → the 6 pay_* fields in the normal form of the data contract: nk → type + cat · klein / schaden → type,
+   where, rooms, via ('nk' | 'direct'), paid on (Direct only) · you pay → all null. day = the receipt date: a
+   Kleinreparatur on the Gemeinschaftsfläche is shared by the Zimmer rented that day. key = only to compare (that list out). */
+function mtWhoNorm(s, day, key) {
+  const out = { pay_type: null, pay_cat: null, pay_where: null, pay_rooms: null, pay_via: null, pay_paid_on: null };
+  if (s.t === 'nk') return Object.assign(out, { pay_type: 'nk', pay_cat: s.cat ?? null });
+  if (s.t !== 'klein' && s.t !== 'schaden') return out;
+  const w = s.w === 'zimmer' ? 'zimmer' : 'gemein', direct = s.v === 'direct';
+  let rooms;
+  if (s.t === 'klein' && w === 'gemein') rooms = key ? null : mtWhoKleinRooms(s.had || s.r, day);   // the sheet: the rooms it had (never its picks)
+  else rooms = w === 'zimmer' ? s.r.slice(0, 1) : s.r.slice();
+  return Object.assign(out, { pay_type: s.t, pay_where: w, pay_rooms: rooms, pay_via: direct ? 'direct' : 'nk', pay_paid_on: direct ? (s.p || null) : null });
+}
+const mtWhoKey = f => JSON.stringify(mtWhoNorm(mtWhoFrom(f), null, true));
+/* Kleinreparatur on the Gemeinschaftsfläche: the Zimmer rented that day (tenants not loaded: the ones it had, else all) */
+function mtWhoKleinRooms(had, day) { const R = mtWhoRooms(day); return R.known || !had.length ? R.rented : had.slice(); }
+/* "NK 2026": the Casa Castel NK period with this date (its start from Controlling, like ctlPeriodOf) → the year it ends */
+function mtWhoYear(day) {
+  const p = mtProp(MT_CASA_ID) || MT.props.find(x => mtIsCasa(x.id)) || {};
+  const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
+  const d = String(day || ccTodayISO()).slice(0, 10);
+  let y = Number(d.slice(0, 4)); if (d < y + '-' + st) y--;
+  return st === '01-01' ? y : y + 1;
+}
+/* already billed? a locked NK year in Settlements: its Teil B holds this receipt · or (NK) the receipt's date is in it */
+function mtWhoLockOf(r) {
+  if (!r || !MT.whoLock) return '';
+  const t = r.pay_type, d = String(r.cost_date || '').slice(0, 10);
+  const L = MT.whoLock.find(x => (t === 'klein' || t === 'schaden') ? x.ids.has(String(r.id)) : t === 'nk' && !!x.from && x.from <= d && d <= x.to);
+  return L ? `Billed in NK ${L.year} · locked in Settlements` : '';
+}
+/* D39 fix · a locked NK year can't take anything new: the locked period of a date (or null) · and the one a choice
+   would need although it can't bill it any more — NK (Teil A) on a date in it, or a Kleinreparatur / Schaden with
+   the NK-Abrechnung that is not in its snapshot. p = the pay_* fields (normal form). */
+function mtWhoYrOf(day) {
+  const d = String(day || '').slice(0, 10);
+  return (d && MT.whoLock && MT.whoLock.find(x => !!x.from && x.from <= d && d <= x.to)) || null;
+}
+function mtWhoYrBar(p, id, day) {
+  const L = mtWhoYrOf(day);
+  if (!L || !p) return null;
+  if (p.pay_type === 'nk') return L;
+  return (p.pay_type === 'klein' || p.pay_type === 'schaden') && p.pay_via !== 'direct' && !L.ids.has(String(id)) ? L : null;
+}
+const mtWhoCatAll = () => (MT.whoCats || []).filter(c => c.code !== 'RATE' && c.nk_key !== 'none');   // like Controlling's NK cost types
+function mtWhoCatName(id) {
+  if (id === null || id === undefined || id === '') return 'Allgemeine Hauskosten';
+  const c = (MT.whoCats || []).find(x => String(x.id) === String(id));
+  return c ? c.name : '';
+}
+/* the cost types shown first: the 4 used most (else the first by order) + the chosen one; "more …" adds the rest */
+function mtWhoCatIds(sel) {
+  const cats = mtWhoCatAll(), use = {};
+  MT.costs.forEach(r => { if (!r.return_of && r.pay_type === 'nk' && r.pay_cat !== null && r.pay_cat !== undefined) use[r.pay_cat] = (use[r.pay_cat] || 0) + 1; });
+  const top = cats.slice().sort((a, b) => (use[b.id] || 0) - (use[a.id] || 0)).slice(0, 4);   // stable: ties keep the order
+  const cur = sel === null || sel === undefined ? null : cats.find(c => String(c.id) === String(sel));
+  if (cur && !top.includes(cur)) top.push(cur);
+  return top.map(c => String(c.id));
+}
+/* D39 fix · "Book in Controlling" off (the receipt's or the entry's switch): no Controlling line → NK never reaches Teil A
+   and a tenant's direct payment is deducted nowhere (MAINTENANCE-D39.sql books neither); Teil B reads the receipt itself */
+const mtWhoOff = (c, r) => !!((c && c.book_ctrl === false) || (r && r.book_ctrl === false));
+/* the tag: { t: text, k: unset · nk · set · bad } — bad = a Kleinreparatur over 150 € (NET), no Zimmer, or NK while the
+   receipt is not in Controlling (it has no effect then) · D39 fix 2: or a chosen Zimmer is vacant on the receipt date (day) */
+function mtWhoTag(s, net, off, day) {
+  if (!s.t) return { t: '+ Who pays', k: 'unset' };
+  if (s.t === 'nk') { const n = mtWhoCatName(s.cat); return { t: n ? 'NK · ' + n : 'NK', k: off ? 'bad' : 'nk' }; }
+  if (s.t === 'klein' && net > MT_WHO_MAX + 0.004) return { t: 'Kleinrep. >150 €', k: 'bad' };
+  const head = s.t === 'klein' ? 'Kleinrep.' : 'Schaden';
+  if (!s.r.length) return { t: head + ' · no Zimmer', k: 'bad' };
+  const gem = s.t === 'klein' && s.w !== 'zimmer', where = gem ? 'Gemeinschaft' : s.r.length >= 3 ? s.r.length + ' Zimmer' : s.r.join(', ');
+  const vac = day && !gem ? mtWhoVacOn(s.w === 'zimmer' ? s.r.slice(0, 1) : s.r, day) : [];
+  return { t: head + ' · ' + where + (s.v === 'direct' ? (s.p ? ' · paid' : ' · open') : ''), k: vac.length ? 'bad' : 'set', vac };
+}
+/* D39 fix 2 · of these Zimmer, the ones nobody rents on that day (tenants not loaded: none) */
+function mtWhoVacOn(rooms, day) { const R = mtWhoRooms(day); return R.known ? (rooms || []).map(mtRoomCanon).filter(n => !R.rented.includes(n)) : []; }
+const mtWhoAria = (k, off) => 'Who pays: ' + (k.k === 'unset' ? 'not set (you pay)' : k.t) + (off && k.k === 'bad' && /^NK/.test(k.t) ? ' · not in Controlling' : '')
+  + (k.vac && k.vac.length ? ' · ' + k.vac.join(', ') + ' vacant that day' : '');
+function mtWhoTagHTML(r, tap) {
+  const off = mtWhoOff(mtCase(r.case_id), r), k = mtWhoTag(mtWhoFrom(r), mtNet(r), off, r.cost_date), id = mtEsc(r.id);
+  return tap ? `<button type="button" class="mt-who mt-who--${k.k}" data-mt="whoPays" data-id="${id}" aria-label="${mtEsc(mtWhoAria(k, off))}">${mtEsc(k.t)}</button>`
+             : `<span class="mt-who mt-who--${k.k}" data-id="${id}">${mtEsc(k.t)}</span>`;   // rows are inert (another form is open)
+}
+/* the quiet row in the receipt pop-up: Who pays  <tag>  › */
+function mtCostWhoRowHTML(f) {
+  const off = mtWhoOff(MT.sel ? mtCase(MT.sel.id) : null, f), k = mtWhoTag(mtWhoFrom(f), mtNet(f, f.amount), off, f.cost_date);
+  return `<button type="button" class="mt-wrow" id="mtC-whorow" data-mt="whoNest" aria-label="${mtEsc(mtWhoAria(k, off))}"><span>Who pays</span><span class="mt-wrow__r"><span class="mt-who mt-who--${k.k}">${mtEsc(k.k === 'unset' ? 'You pay' : k.t)}</span><span class="mt-wrow__c" aria-hidden="true">›</span></span></button>`;
+}
+function mtCostWhoSync() {                                    // the row follows the form in place (amount typed, sheet saved)
+  const box = document.getElementById('mtC-whobox'), f = MT.sel && MT.sel.cost;
+  if (!box || !f) return;
+  mtCostCapture();
+  mtMorph(box, mtCostWhoRowHTML(f));
+}
+
+/* ── the sheet ── */
+/* from the tag of a stored receipt: its Save stores at once */
+function mtWhoOpen(id) {
+  const c = mtOpenCase(), r = mtCostById(id);
+  if (!c || !r || r.return_of || String(r.case_id) !== String(c.id) || !mtWhoOn(c) || MT.who) return;
+  if (MT.busy) { mtBusySay(); return; }                      // a save / upload is running → wait (and say so)
+  if (mtActive(c)) return;                                   // another form is open (its rows are inert anyway)
+  MT.who = mtWhoState(r, c, { id: String(r.id), nest: false, day: String(r.cost_date || ccTodayISO()).slice(0, 10), net: mtNet(r),
+    what: String(r.description || '').trim() || c.title, lock: mtWhoLockOf(r), off: mtWhoOff(c, r) });
+  mtWhoRender();                                             // no panel redraw: the page behind stays exactly as it is
+  const W = MT.who; mtWhoLockLoad().then(() => mtWhoLockCheck(W));   // D39 fix 2: locked in Settlements meanwhile?
+}
+/* from the receipt pop-up: its Save fills the form (stored with the receipt's Save) */
+function mtWhoNest() {
+  const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
+  if (!f || !c || f.return_of || !mtWhoOn(c) || MT.costHold === f || MT.who) return;
+  mtCostCapture();                                           // the amount / date / What as typed right now
+  const stored = f.isNew ? null : mtCostById(f.id);
+  MT.who = mtWhoState(f, c, { id: String(f.id), nest: true, f, day: String(f.cost_date || ccTodayISO()).slice(0, 10), net: mtNet(f, f.amount),
+    what: String(f.description || '').trim() || c.title, lock: stored ? mtWhoLockOf(stored) : '', off: mtWhoOff(c, f) });
+  mtWhoRender();
+  const W = MT.who; mtWhoLockLoad().then(() => mtWhoLockCheck(W));   // D39 fix 2: locked in Settlements meanwhile?
+}
+/* D39 fix 2 · the locks were read again: an open sheet follows them in place — billed meanwhile → locked, as stored */
+function mtWhoLockCheck(W) {
+  if (!W || MT.who !== W) return;
+  const st = W.f && W.f.isNew ? null : mtCostById(W.id), lock = st ? mtWhoLockOf(st) : '';
+  if (lock !== W.lock) { MT.who = mtWhoState(st || W.f, mtCase(W.caseId), Object.assign({}, W, { lock })); mtWhoRender(); return; }
+  const yr = W.lock ? null : mtWhoYrOf(W.day), key = y => (y ? y.year + ':' + [...y.ids].join(',') : '');
+  if (key(yr) !== key(W.yr)) { W.yr = yr; mtWhoRender(); } else W.yr = yr;
+}
+function mtWhoState(src, c, o) {
+  const W = Object.assign({ caseId: c.id, room0: c.report_room || null, more: false }, o, mtWhoFrom(src));
+  // D39 fix: a stored Kleinreparatur on the Gemeinschaftsfläche keeps its Zimmer apart (had): they follow the tenants, so they
+  // are never picks (e.g. for "Caused by") — and earlier picks ("Caused by") never become its Zimmer
+  W.had = W.t === 'klein' && W.w === 'gemein' ? W.r.slice() : [];
+  if (W.t === 'klein' && W.w === 'gemein') W.r = [];
+  W.cats = mtWhoCatIds(W.cat);
+  W.yr = W.lock ? null : mtWhoYrOf(W.day);                    // D39 fix: its NK year is locked → no NK, no "With NK-Abrechnung"
+  return W;
+}
+const mtWhoViaOff = W => !!W.yr && !W.yr.ids.has(String(W.id));   // that year's NK-Abrechnung can't bill it any more
+/* Kleinreparatur / Schaden chosen: Where from the entry's Ort (a Zimmer → that Zimmer · Gemeinschaftsfläche) */
+function mtWhoPrefill(W) {
+  const v = W.room0;
+  if (v && v !== MT_SB_ALL) { W.w = 'zimmer'; const o = mtWhoOrt(W); W.r = o ? [o] : []; } else W.w = 'gemein';
+}
+/* D39 fix: the entry's Zimmer is chosen for you only when someone lives there on the receipt date (or the tenants could
+   not be loaded) — a vacant Zimmer is never picked (its chip is off: "Choose the Zimmer") */
+function mtWhoOrt(W) {
+  const v = W.room0;
+  if (!v || v === MT_SB_ALL) return null;
+  const n = mtRoomCanon(v), R = mtWhoRooms(W.day);
+  return !R.known || R.rented.includes(n) ? n : null;
+}
+const mtWhoOver = W => W.net > MT_WHO_MAX + 0.004;
+const mtWhoPayRooms = W => (W.t === 'klein' && W.w !== 'zimmer' ? (W.lock && W.had.length ? W.had.slice() : mtWhoKleinRooms(W.had, W.day))   // locked: as billed
+  : W.w === 'zimmer' ? W.r.slice(0, 1) : W.r.slice());
+const mtWhoVac = W => { const R = mtWhoRooms(W.day); return R.known ? mtWhoPayRooms(W).filter(n => !R.rented.includes(n)) : []; };   // chosen, but vacant that day
+/* what keeps Save off: '' · lock · over (Kleinreparatur > 150 €) · room (no Zimmer chosen) · vacant (a chosen Zimmer is
+   vacant that day, e.g. a stored choice after the date changed) · norent (nobody lives there) */
+function mtWhoProblem(W, noLock) {
+  if (W.lock && !noLock) return 'lock';
+  if (W.t === 'klein' && mtWhoOver(W)) return 'over';
+  if (W.yr && (W.t === 'nk' || ((W.t === 'klein' || W.t === 'schaden') && W.v !== 'direct' && mtWhoViaOff(W)))) return 'yrlock';
+  if (W.t !== 'klein' && W.t !== 'schaden') return '';
+  if (W.w === 'zimmer' || W.t === 'schaden') return !W.r.length ? 'room' : mtWhoVac(W).length ? 'vacant' : '';
+  const R = mtWhoRooms(W.day);
+  return R.known && !R.rented.length ? 'norent' : '';
+}
+/* the sentence in the beige box */
+function mtWhoResHTML(W) {
+  const E = mtEur, net = W.net, yr = 'NK ' + mtWhoYear(W.day);
+  const two = (a, b) => a + (b ? `<br><span>${b}</span>` : '');
+  if (!W.t) return `You pay <b>${E(net)}</b>`;
+  if (mtWhoProblem(W, true) === 'yrlock') return two(`NK ${W.yr.year} is locked in Settlements`,
+    W.t === 'nk' ? 'tap NK again: you pay — or choose Kleinreparatur / Schaden' : 'choose Direct — or tap the type again: you pay');
+  if (W.t === 'nk') return two(`<b>${E(net)}</b> to NK · ${mtEsc(mtWhoCatName(W.cat) || 'its cost type')}`, W.off ? `Not in Controlling · so not in the NK (${yr} · Teil A)` : `${yr} · Teil A`);
+  const pb = mtWhoProblem(W, true);
+  if (pb === 'over') return two(`<b>${E(net)}</b> is over 150,00 € · not a Kleinreparatur`, `Mietvertrag § 7 · choose Schaden${W.yr ? '' : ' or NK'} — or tap it again: you pay`);
+  if (pb === 'room') return two(W.w === 'zimmer' ? 'Choose the Zimmer' : 'Choose who caused it', `${E(net)} · nothing is charged yet`);
+  if (pb === 'vacant') { const v = mtWhoVac(W);
+    return two(`${mtEsc(v.join(', '))} ${v.length === 1 ? 'is' : 'are'} vacant on ${mtDate(W.day)} · tap ${v.length === 1 ? 'it' : 'them'} off`, `${E(net)} · nothing is charged yet`); }
+  if (pb === 'norent') return two(`No Zimmer rented on ${mtDate(W.day)}`, `You pay ${E(net)}`);
+  const rooms = mtWhoPayRooms(W), n = rooms.length, gem = W.t === 'klein' && W.w !== 'zimmer';
+  const cents = Math.round(net * 100), even = cents % n === 0;   // D39 fix: ≈ the share to the cent = what most Zimmer pay in Settlements
+  const main = n > 1 || gem ? `${E(net)} ÷ ${n} ${even ? '=' : '≈'} <b>${E(Math.round(cents / n) / 100)}</b> ${gem ? 'per Zimmer' : mtEsc(rooms.join(', '))}`
+                            : `<b>${E(net)}</b> from ${mtEsc(rooms[0])}`;
+  if (W.v === 'direct') return two(main + (W.p ? ' · paid' : ' · open'), W.p && !W.off ? `Controlling deducts ${E(net)} · not in Teil B` : W.p ? 'Not in Controlling · nothing deducted · not in Teil B' : 'not in Teil B');
+  return two(main, `${yr} · ${W.t === 'klein' ? 'Teil B1 Kleinreparaturen · § 7' : 'Teil B2 Schäden'}`);
+}
+function mtWhoHead(W) {
+  return `<div class="mt-w__hd"><p class="mt-w__t" id="mtWhoT">Who pays?</p><p class="mt-w__sub">${mtEsc(W.what)} · ${mtEur(W.net)}</p></div>
+    <button type="button" class="mt-modal__x" data-mt="whoCancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>`;
+}
+/* the body: every part is always there (hidden when it does not apply) → a change only flips attributes and texts */
+function mtWhoBody(W) {
+  const L = !!W.lock, tb = W.t === 'klein' || W.t === 'schaden', over = mtWhoOver(W);
+  const on = b => (b ? ' is-on' : ''), pr = b => ` aria-pressed="${!!b}"`, hid = b => (b ? '' : ' hidden');
+  const seg = (k, v, label, cur, off) => `<button type="button" class="mt-w__sb${on(cur === v)}" data-mt="${k}" data-v="${v}"${pr(cur === v)}${L || off ? ' disabled' : ''}>${label}</button>`;
+  const yr = W.yr, viaOff = mtWhoViaOff(W);                  // D39 fix: a locked NK year takes no NK / NK-Abrechnung (what is set stays tappable off)
+  const type = `<div class="mt-w__sec"><span class="mt-w__k" id="mtW-typeL">Type</span>
+      <div class="mt-w__seg mt-w__seg--3 mt-w__seg--ink" role="group" aria-labelledby="mtW-typeL">${seg('whoType', 'nk', 'NK', W.t, !!yr && W.t !== 'nk')}<button type="button" class="mt-w__sb${on(W.t === 'klein')}${over ? ' is-over' : ''}" data-mt="whoType" data-v="klein"${pr(W.t === 'klein')}${L || (over && W.t !== 'klein') ? ' disabled' : ''}>${over ? 'Kleinrep. &gt;150 €' : 'Kleinreparatur'}</button>${seg('whoType', 'schaden', 'Schaden', W.t)}</div>
+      <span class="mt-w__h"${hid(W.t === 'nk' && !yr)}>NK is always shared by all · like all Betriebskosten</span>
+      <span class="mt-w__h"${hid(!!yr)}>NK ${yr ? yr.year : ''} · locked in Settlements · NK${viaOff ? ' and NK-Abrechnung' : ''} off</span></div>`;
+  const all = mtWhoCatAll(), ids = W.more ? W.cats.concat(all.map(c => String(c.id)).filter(i => !W.cats.includes(i))) : W.cats;
+  const cats = ids.map(i => all.find(c => String(c.id) === i)).filter(Boolean), isCat = c => String(W.cat) === String(c.id);
+  const catSec = `<div class="mt-w__sec"${hid(W.t === 'nk' && !!MT.whoCats)}><span class="mt-w__k" id="mtW-catL">Cost type</span>
+      <div class="mt-w__chips" role="group" aria-labelledby="mtW-catL">${cats.map(c => `<button type="button" class="mt-w__ch${on(isCat(c))}" data-mt="whoCat" data-v="${mtEsc(c.id)}" data-l="${mtEsc(c.name)}"${pr(isCat(c))}${L ? ' disabled' : ''}>${mtEsc(c.name)}</button>`).join('')}${!W.more && all.length > W.cats.length ? `<button type="button" class="mt-w__ch mt-w__ch--more" data-mt="whoMore"${L ? ' disabled' : ''}>more …</button>` : ''}</div></div>`;
+  const R = mtWhoRooms(W.day), zim = tb && W.w === 'zimmer', kgem = W.t === 'klein' && !zim, sgem = W.t === 'schaden' && !zim;
+  const list = MT.rooms.concat(W.r.filter(n => !MT.rooms.includes(n)));            // a Zimmer no longer in Rooms still shows when chosen
+  const chip = (n, sel) => { const vac = R.known && !R.rented.includes(n), l = mtEsc(n) + (vac ? ' · vacant' : '');   // data-l: its width when chosen (CSS)
+    return `<button type="button" class="mt-w__ch${on(sel)}${vac ? ' is-vac' : ''}" data-mt="whoRoom" data-v="${mtEsc(n)}" data-l="${l}"${pr(sel)}${L || (vac && !sel) ? ' disabled' : ''}>${l}</button>`; };
+  const nv = R.vacant.length, hint = !R.known ? '' : !R.rented.length ? `No Zimmer rented on ${mtDate(W.day)}`
+    : `${R.rented.length} rented Zimmer${nv ? ` · ${R.vacant.join(', ')} vacant, ${nv === 1 ? 'pays' : 'pay'} nothing` : ''}`;
+  const whereSec = `<div class="mt-w__sec"${hid(tb)}><span class="mt-w__k" id="mtW-whereL">Where</span>
+      <div class="mt-w__seg" role="group" aria-labelledby="mtW-whereL">${seg('whoWhere', 'gemein', W.t === 'klein' ? 'Gemeinschaft<span class="mt-w__lg">sfläche</span> · all' : 'Gemeinschaftsfläche', tb ? W.w : '')}${seg('whoWhere', 'zimmer', 'Zimmer', tb ? W.w : '')}</div>
+      <span class="mt-w__h"${hid(kgem && !!hint)}>${mtEsc(hint)}</span>
+      <div class="mt-w__chips" role="group" aria-label="Zimmer"${hid(zim)}>${list.map(n => chip(n, zim && W.r[0] === n)).join('')}</div></div>`;
+  const bySec = `<div class="mt-w__sec"${hid(sgem)}><span class="mt-w__k" id="mtW-byL">Caused by · several possible</span>
+      <div class="mt-w__chips" role="group" aria-labelledby="mtW-byL">${list.map(n => chip(n, sgem && W.r.includes(n))).join('')}</div></div>`;
+  const dir = W.v === 'direct';
+  const paySec = `<div class="mt-w__sec"${hid(tb)}><span class="mt-w__k" id="mtW-payL">Payment</span>
+      <div class="mt-w__seg" role="group" aria-labelledby="mtW-payL">${seg('whoVia', 'nk', 'With NK-Abrechnung', W.v, viaOff)}${seg('whoVia', 'direct', 'Direct', W.v)}</div>
+      <button type="button" class="mt-w__paid" data-mt="whoPaid" aria-label="Paid on ${W.p ? mtDate(W.p) : '· empty'} · choose in the calendar"${hid(dir)}${L ? ' disabled' : ''}><span>Paid on</span><span class="mt-w__pv${W.p ? '' : ' is-empty'}">${W.p ? mtDate(W.p) : 'TT.MM.JJJJ'}</span></button>
+      <input type="date" id="mtW-paid" aria-label="Paid on" value="${mtEsc(W.p || '')}" hidden data-keep="1"/>
+      <span class="mt-w__h"${hid(dir)}>leave empty until paid</span></div>`;
+  const lock = `<p class="mt-w__lock"${hid(L)}><i class="ti ti-lock" aria-hidden="true"></i>${mtEsc(W.lock)}</p>`;
+  return lock + type + catSec + whereSec + bySec + paySec + `<p class="mt-w__res" aria-live="polite">${mtWhoResHTML(W)}</p>`;
+}
+function mtWhoFoot(W) {
+  return `<button type="button" class="mt-w__reset" data-mt="whoReset"${W.lock ? ' hidden' : ''}>Reset</button>
+    <button type="button" class="mt-w__cancel" data-mt="whoCancel">${W.lock ? 'Close' : 'Cancel'}</button>
+    <button type="button" class="mt-w__save" data-mt="whoSave"${mtWhoProblem(W) ? ' disabled' : ''}${W.lock ? ' hidden' : ''}>Save</button>`;
+}
+/* built once per open (one slide-in); afterwards only what changed changes, in place */
+function mtWhoRender() {
+  const W = MT.who;
+  if (!W) { mtModalDrop('mtWhoModal'); return; }
+  const fresh = !document.getElementById('mtWhoModal');
+  const m = mtModal('mtWhoModal', { cls: 'mt-modal--who mt-modal--fit', close: 'whoCancel', label: 'mtWhoT' });
+  const q = k => m.querySelector(':scope > .mt-modal__s > .mt-modal__' + k);
+  if (fresh) {
+    // Nov 2026 (D39 fix): the height of its tallest layout (Schaden · Caused by · Direct, or NK), measured once here —
+    // the sheet is placed by it (top fixed, CSS), so a tap that shows or hides a part below never moves the button
+    // under the finger. Locked: nothing changes, its own height.
+    // D39 fix 2: with its longest result (every rented Zimmer · paid), so nothing is cut ("more …" may scroll the body).
+    const sh = m.querySelector(':scope > .mt-modal__s'), hd = mtWhoHead(W), ft = mtWhoFoot(W);
+    let hh = 0;
+    sh.style.setProperty('max-height', 'none', 'important'); // its own height (the visible part, e.g. a closing keyboard, still caps it in CSS)
+    (W.lock ? [] : [{ t: 'schaden', w: 'gemein', r: mtWhoRooms(W.day).rented, v: 'direct', p: W.day }, { t: 'nk' }]).concat([{}]).forEach(x => {
+      mtModalFill(m, { h: hd, b: mtWhoBody(Object.assign({}, W, x)), f: ft }, false);
+      hh = Math.max(hh, sh.offsetHeight);
+    });
+    sh.style.removeProperty('max-height');
+    m.style.setProperty('--mt-who-h', Math.ceil(hh) + 'px');
+    if (mtFine()) {                                          // laptop: the chosen type (else the first one) — the other parts may be hidden
+      const ty = '[aria-labelledby="mtW-typeL"] .mt-w__sb';
+      const b = m.querySelector(ty + '.is-on:not(:disabled)') || m.querySelector(ty + ':not(:disabled)') || m.querySelector('.mt-w__cancel');
+      if (b) b.focus({ preventScroll: true });
+    }
+  } else {
+    const a = document.activeElement, had = a && m.contains(a) ? a : null, box = had && had.parentNode, at = box ? [...box.children].indexOf(had) : -1;
+    mtMorph(q('b'), mtWhoBody(W)); mtMorph(q('f'), mtWhoFoot(W));
+    if (had && !had.isConnected && had.dataset.mt === 'whoMore' && box.isConnected && box.children[at]) try { box.children[at].focus({ preventScroll: true }); } catch (e) {}   // "more …" → the first one it shows
+    // D39 fix 2: the pressed button is off now ("Kleinrep. >150 €" or "X · vacant" tapped off) → the focus stays in the
+    // sheet: the next button on in its group (else the last one on), else Cancel
+    if (had && had.isConnected && had.disabled) {
+      const g = had.closest('[role="group"]'), en = g ? [...g.querySelectorAll('button:not(:disabled)')] : [];
+      const n = en.find(x => had.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING) || en[en.length - 1] || m.querySelector('.mt-w__cancel');
+      if (n) try { n.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
+  const pi = document.getElementById('mtW-paid');            // the date field is the calendar's (left alone by mtMorph)
+  if (pi && (pi.value || '') !== (W.p || '')) pi.value = W.p || '';
+}
+/* a tap in the sheet → the choice changes → the sheet follows in place */
+function mtWhoSet(what, v) {
+  const W = MT.who;
+  if (!W || W.lock) return;
+  if (what === 'type') {
+    if (W.t === v) W.t = null;                               // the active one again → you pay
+    else if (v === 'klein' && mtWhoOver(W)) return;          // § 7: over 150 € is not a Kleinreparatur
+    else if (v === 'nk' && W.yr) return;                     // D39 fix: its NK year is locked in Settlements
+    else {
+      W.t = v; if ((v === 'klein' || v === 'schaden') && !W.w) mtWhoPrefill(W);
+      if ((v === 'klein' || v === 'schaden') && mtWhoViaOff(W)) W.v = 'direct';   // that year's NK-Abrechnung is done: Direct
+    }
+  } else if (what === 'where') {
+    if (W.w === v) return;
+    W.w = v === 'zimmer' ? 'zimmer' : 'gemein';
+    if (W.w === 'zimmer' && W.r.length > 1) W.r = W.r.slice(0, 1);                       // one Zimmer
+    const o = W.w === 'zimmer' && !W.r.length ? mtWhoOrt(W) : null;
+    if (o) W.r = [o];                                        // the entry's Zimmer (if rented that day)
+  } else if (what === 'room') {
+    const n = mtRoomCanon(v);
+    if (W.w === 'zimmer') W.r = W.r[0] === n ? [] : [n];
+    else W.r = W.r.includes(n) ? W.r.filter(x => x !== n) : mtRoomSort(W.r.concat([n]));
+  } else if (what === 'cat') {
+    if (String(v) === W.moreCat && Date.now() - W.moreAt < 450) return;   // D39 fix 2: it sits where "more …" was — a quick second tap is not a choice
+    const c = mtWhoCatAll().find(x => String(x.id) === String(v));
+    W.cat = !c || String(W.cat) === String(c.id) ? null : c.id;   // the chosen one again → Allgemeine Hauskosten
+  } else if (what === 'more') { W.more = true; W.moreAt = Date.now(); W.moreCat = mtWhoCatAll().map(c => String(c.id)).find(i => !W.cats.includes(i)) || null; }
+  else if (what === 'via') { if (v !== 'direct' && mtWhoViaOff(W)) return; W.v = v === 'direct' ? 'direct' : 'nk'; }
+  else if (what === 'paid') W.p = v ? String(v).slice(0, 10) : null;
+  else if (what === 'reset') Object.assign(W, { t: null, cat: null, w: null, r: [], v: 'nk', p: null });
+  // D39 fix 2: Reset is in the footer — the sheet keeps its height until the next tap, so the footer stays under the
+  // finger (a second tap there is Reset again, never the backdrop); any other tap is above the parts it changes
+  const sh = document.querySelector('#mtWhoModal > .mt-modal__s');
+  if (sh) sh.style.minHeight = what === 'reset' ? sh.getBoundingClientRect().height + 'px' : '';
+  mtWhoRender();
+}
+/* "Paid on": the app's calendar (over the sheet) — it writes the date field, its change comes back here */
+function mtWhoPaidOpen() {
+  const W = MT.who, el = document.getElementById('mtW-paid');
+  if (!W || W.lock || !el || typeof window.ccOpenCalendar !== 'function') return;
+  window.ccOpenCalendar(el);
+}
+/* ×, Cancel, a tap beside it, Escape: only this sheet closes (the receipt pop-up below stays as it is) */
+function mtWhoClose() {
+  const W = MT.who;
+  MT.who = null;
+  mtModalDrop('mtWhoModal');                                 // the page lock follows (a receipt pop-up below keeps it)
+  if (!W || !mtFine()) return;
+  const id = window.CSS && CSS.escape ? CSS.escape(W.id) : W.id;
+  const el = W.nest ? document.getElementById('mtC-whorow') : document.querySelector(`#mtPanel .mt-who[data-id="${id}"]`);
+  if (el) try { el.focus({ preventScroll: true }); } catch (e) {}
+}
+async function mtWhoSave() {
+  const W = MT.who;
+  if (!W || mtWhoProblem(W) || W.saving) return;
+  if (!W.nest && mtWhoLockOld()) {                           // D39 fix 2: stored at once → the locks as Settlements has them now
+    W.saving = true;
+    await mtWhoLockLoad();
+    W.saving = false;
+    if (MT.who !== W) return;
+    mtWhoLockCheck(W);
+    if (MT.who !== W || mtWhoProblem(W)) { const X = MT.who; if (X && (X.lock || X.yr)) mtSay((X.lock || `NK ${X.yr.year} is locked in Settlements`) + ' – nothing was changed.'); return; }
+  }
+  if (W.nest) {                                              // into the receipt form — stored with the receipt's own Save
+    const f = MT.sel && MT.sel.cost;
+    if (f && f === W.f) {
+      Object.assign(f, mtWhoNorm(W, W.day));
+      mtCostWhoSync();
+      const m = document.getElementById('mtCostModal');
+      if (m && m.dataset.fid === String(f.id)) m._b = mtCostFormHTML(f);   // the form already shows it (no redraw needed)
+      mtDraftSoon();
+    }
+    mtWhoClose();
+    return;
+  }
+  const r = mtCostById(W.id), c = r && mtCase(r.case_id);
+  if (!r || !c) { mtWhoClose(); return; }
+  if (MT.busy) { mtBusySay(); return; }
+  const pay = mtWhoNorm(W, r.cost_date), old = mtWhoPick(r);
+  if (JSON.stringify(pay) === JSON.stringify(old)) { mtWhoClose(); return; }
+  // 1 · show it at once: the row behind (drawn while the page is still held — its place kept), then the sheet goes
+  MT.busy = true;
+  Object.assign(r, pay);
+  mtRefresh(c.id);
+  mtWhoClose();
+  mtFlashRow(r.id);
+  // 2 · store it (one retry) · not stored → back as it was
+  const res = await mtTry(() => _ctlSupa.from('maint_costs').update(pay).eq('id', r.id));
+  MT.busy = false;
+  if (!res.error) return;
+  console.error('[maintenance] who pays not saved:', res.error);
+  const cur = mtCostById(r.id);
+  if (cur) Object.assign(cur, old);
+  mtRefreshBg(c.id);
+  mtSay(MT_WHO_SQL.test(String((res.error && (res.error.message || res.error.details)) || '')) ? 'Not saved: run MAINTENANCE-D39.sql in Supabase first.'
+    : 'Not saved. Check the connection and try again.');
+}
+/* bring an element's content to new HTML in place: the same structure → only attributes and texts change (the buttons
+   stay the same elements: no blink, the focus stays); a part that differs is replaced. [data-keep] is left alone. */
+function mtMorph(el, html) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  mtMorphKids(el, t.content);
+}
+function mtMorphKids(a, b) {
+  const x = [...a.childNodes], y = [...b.childNodes];
+  if (x.length !== y.length || x.some((n, i) => n.nodeType !== y[i].nodeType || (n.nodeType === 1 && n.tagName !== y[i].tagName))) { a.replaceChildren(...y); return; }
+  x.forEach((n, i) => {
+    const m = y[i];
+    if (n.nodeType === 3) { if (n.data !== m.data) n.data = m.data; return; }
+    if (n.nodeType !== 1 || n.hasAttribute('data-keep')) return;
+    [...n.attributes].forEach(at => { if (!m.hasAttribute(at.name)) n.removeAttribute(at.name); });
+    [...m.attributes].forEach(at => { if (n.getAttribute(at.name) !== at.value) n.setAttribute(at.name, at.value); });
+    mtMorphKids(n, m);
+  });
 }
 /* ── D22 · "Move to Schäden / Renovierungen" in Edit (instead of the type switch) ── */
 function mtMoveKind(to) {                                   // D30: three tabs → one link per other tab; tapping it again = undo
@@ -3152,8 +3989,7 @@ async function mtSbMake() {
     if (url && !inApp && typeof ccOpenUrl === 'function') ccOpenUrl(url, f.pdfName);   // browser: the tab opened at the tap shows it
     else if (typeof ccCancelPdf === 'function') ccCancelPdf();
     mtSbRender();                                              // the ready view, same pop-up
-    if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) mtRenderPanel();
-    mtRender();
+    mtRefresh(c.id);                                           // D39: the entry behind (new report in Documents), place kept
   } catch (e) {
     console.error('[maintenance] Bericht:', step, e);
     f.busy = false;
@@ -3176,24 +4012,16 @@ async function mtSbMake() {
 }
 
 
+/* D39 (bugs 5/22) · the Bericht pop-up is built once (Loading → form → ready → back: the same sheet, one slide-in,
+   the final height from the start); only its parts are filled again. Other pop-ups keep the page locked (bug 4). */
 function mtSbRender() {
   const f = MT.sb, c = mtSbCase();
-  let m = document.getElementById('mtSbModal');
-  if (!f || !c) {
-    if (m) m.remove();
-    document.documentElement.classList.remove('mt-modal-open');
-    return;
-  }
-  if (!m) {
-    m = document.createElement('div');
-    m.id = 'mtSbModal'; m.className = 'mt-modal';
-    document.body.appendChild(m);
-    document.documentElement.classList.add('mt-modal-open');
-  }
-  m.innerHTML = `<div class="mt-modal__bg" data-mt="sbClose"></div>
-    <div class="mt-modal__s" role="dialog" aria-modal="true" aria-labelledby="mtSbT">${mtSbFormHTML(c, f)}</div>`;
+  if (!f || !c) { mtModalDrop('mtSbModal'); return; }
+  const m = mtModal('mtSbModal', { close: 'sbClose', label: 'mtSbT' });
+  const view = f.ready ? f.view : 'load';
+  mtModalFill(m, mtSbFormHTML(c, f), m.dataset.view === view, mm => mm.querySelectorAll('textarea.mt-ta').forEach(mtGrow));
+  m.dataset.view = view;
   mtSbThumbs();
-  m.querySelectorAll('textarea.mt-ta').forEach(mtGrow);
 }
 function mtSbThumbs() {
   const imgs = [...document.querySelectorAll('#mtSbModal img[data-path]')];
@@ -3211,7 +4039,19 @@ function mtSbThumbs() {
 function mtSbPhotosRender() {
   const c = mtSbCase(), f = MT.sb, el = document.getElementById('mtSb-photos');
   if (!c || !f || !el) return;
+  // D39 (bug 3): what you type in a Beschreibung (also while photos upload) is kept — saved first, shown again
+  // exactly as typed, and the box you are in keeps the focus, the cursor and the pop-up its scroll
+  const a = document.activeElement, cap = a && el.contains(a) && a.dataset && a.dataset.cap !== undefined ? a.id : null;
+  let s0 = 0, s1 = 0; try { if (cap) { s0 = a.selectionStart; s1 = a.selectionEnd; } } catch (e) {}
+  const typed = {}; el.querySelectorAll('textarea[data-cap]').forEach(t => { typed[t.id] = t.value; });
+  const body = el.closest('.mt-modal__b'), top = body ? body.scrollTop : 0;
+  mtSbCapsFlush();                                           // mtSbCap sets the caption at once (then stores it)
   el.outerHTML = mtSbPhotosHTML(c, f);
+  document.querySelectorAll('#mtSb-photos textarea[data-cap]').forEach(t => { if (typed[t.id] !== undefined) t.value = typed[t.id]; });
+  document.querySelectorAll('#mtSb-photos textarea.mt-ta').forEach(mtGrow);
+  if (body) body.scrollTop = top;
+  const t = cap && document.getElementById(cap);
+  if (t) { try { t.focus({ preventScroll: true }); t.setSelectionRange(s0, s1); } catch (e) {} }
   mtSbThumbs();
   const u = mtUpFor(c), mk = document.getElementById('mtSb-make');
   if (mk && !f.busy) { mk.disabled = !!(u && u.where === 'sb'); mk.textContent = mk.disabled ? 'Uploading photos' : 'Create PDF'; }
@@ -3241,9 +4081,11 @@ async function mtSbClose() {
   if (!f || f.busy) return;
   mtSbCapsFlush();
   if (!(await mtSbFlush())) return;                        // not saved → stays open, nothing lost
+  if (MT.sel && !MT.sel.isNew) {                           // new photos / reports show in Documents —
+    const a = mtAnchor(); mtRenderPanel(); mtRestore(a);   // D39: drawn while the page is still held, the place kept
+  }
   MT.sb = null;
   mtSbRender();
-  if (MT.sel && !MT.sel.isNew) mtRenderPanel();            // new photos / reports show in Documents
 }
 function mtSbAddPhoto() {
   const c = mtSbCase(), f = MT.sb;
@@ -3265,7 +4107,7 @@ function mtSbAddPhoto() {
     }
     MT.up = null;
     mtSbPhotosRender();
-    if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) mtRenderPanel();
+    if (MT.sel && !MT.sel.isNew && String(MT.sel.id) === String(c.id)) { const a = mtAnchor(); mtRenderPanel(); mtRestore(a); }
     if (ok < imgs.length) mtSay(`${ok} of ${imgs.length} photos saved. Add the others again.`);
   });
 }
@@ -3283,11 +4125,12 @@ function mtOpenLink() {
   const c = mtCase(r ? r.case_id : q.c);
   if (!c) { mtSay('This entry is no longer in Maintenance.'); return; }
   mtSwitchTab(c.kind);
+  if (r) { MT.cAll = MT.cAll || {}; MT.cAll[c.id] = true; MT.cgrp = 'all'; }   // D39 (bug 20): the linked receipt is in the list, also an older one
   mtOpen(c.id).then(() => setTimeout(() => {
     const sel = r && (window.CSS && CSS.escape ? CSS.escape(String(r.id)) : String(r.id));
     const row = sel ? document.querySelector(`#mtCosts .mt-cr[data-id="${sel}"]`) : null;
     (row || document.getElementById('mtCosts'))?.scrollIntoView({ block: 'center' });
-    if (row) { row.classList.add('is-flash'); setTimeout(() => row.classList.remove('is-flash'), 1600); }
+    if (row) mtFlashOn(row);
   }, 60));
 }
 
@@ -3322,12 +4165,12 @@ async function mtBoot() {
        typing (the iPhone only opens the keyboard after a tap).
    3 · Draft on the device: the open receipt (photos too) is kept in this phone's storage with every change.
        If the phone restarted the app meanwhile: "Unsaved receipt · Continue?". Save / Cancel deletes it. */
-const MT_ED = { last: null, scroll: 0, active: false, t: null };
+const MT_ED = { last: null, scroll: 0, active: false, t: null, hold: false };   // D39: hold = a receipt is being saved (its draft stays)
 const MT_ED_FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), textarea, select';
 document.addEventListener('focusin', e => {
   const t = e.target, m = t && t.closest && t.closest('.mt-modal');
   if (!m || !t.matches(MT_ED_FIELD)) return;
-  m.classList.add('is-editing');                         // 1 · full height from now on
+  m.classList.add('is-editing');                         // 1 · (D39: phone pop-ups are full height from the start — nothing moves on the first tap)
   MT_ED.last = { modal: m.id, field: t.id || null };
   t.classList.remove('mt-resume');
 }, true);
@@ -3346,7 +4189,10 @@ function mtResumeMark(fieldId, scroll) {
   if (!f || document.activeElement === f) return;
   m.classList.add('is-editing');
   f.classList.add('mt-resume');
-  try { f.scrollIntoView({ block: 'center' }); } catch (_) {}
+  if (b && b.contains(f)) {                              // D39: only the pop-up's body scrolls (the page behind is held)
+    const r = f.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    b.scrollTop += (r.top + r.height / 2) - (rb.top + rb.height / 2);
+  }
   clearTimeout(f._mtRes); f._mtRes = setTimeout(() => f.classList.remove('mt-resume'), 12000);
 }
 document.addEventListener('visibilitychange', () => {
@@ -3383,14 +4229,15 @@ function mtDraftNow() {
   mtCostCapture();
   MT_ED.active = true;
   const files = f.files.map(x => ({ id: x.id || null, file: x.file || null, name: x.name, img: !!x.img, adopt: x.adopt || null }));
+  const { _chk, ...keep } = f;                               // D39 (bug 12): never a temporary "being checked" flag in the draft
   mtDraftIO('put', { v: 1, at: Date.now(), caseId: c.id, caseTitle: c.title || '', last: MT_ED.last, scroll: MT_ED.scroll,
-    f: { ...f, files } });
+    f: { ...keep, files } });
 }
 function mtDraftClosed() {                                 // Save / Cancel / × → the draft goes
   if (!MT_ED.active) return;
   MT_ED.active = false; MT_ED.last = null; MT_ED.scroll = 0;
   clearTimeout(MT_ED.t);
-  mtDraftIO('del');
+  if (!MT_ED.hold) mtDraftIO('del');                       // D39: a receipt being saved keeps its draft until its row is stored
 }
 async function mtDraftOffer() {
   if (MT.sel && MT.sel.cost) return;
@@ -3399,6 +4246,11 @@ async function mtDraftOffer() {
   const c = mtCase(d.caseId);
   const old = Date.now() - (d.at || 0) > 14 * 864e5;
   if (!c || old || (!d.f.isNew && !mtCostById(d.f.id))) { mtDraftIO('del'); return; }
+  delete d.f._chk;                                           // D39 (bug 12): drafts stored before kept it → Save did nothing
+  if (d.f.isNew && mtCostById(d.f.id)) d.f.isNew = false;    // its row was stored meanwhile → it goes on as that receipt
+  // D39 · a draft from before "Who pays?" has none of its keys: empty — or, for a stored receipt, what that receipt has
+  // (an empty value would clear its choice on Save)
+  if (!d.f.return_of && !('pay_type' in d.f)) Object.assign(d.f, mtWhoPick(d.f.isNew ? {} : mtCostById(d.f.id) || {}));
   const what = [d.f.receipt_no, d.f.description, d.f.amount !== '' && d.f.amount != null ? ccFmtNum(Number(d.f.amount), 2) + ' €' : ''].filter(Boolean).join(' · ');
   const ok = await mtConfirm({ title: 'Unsaved receipt', text: (c.title || 'Receipt') + (what ? ' — ' + what : '') + '. Continue where you left off?',
     ok: 'Continue', cancel: 'Discard' });
@@ -3435,29 +4287,21 @@ async function mtDraftOffer() {
       Delete / Move to quietly underneath. The form is drawn once when Edit opens (what you type stays). ── */
 function mtEditModalSync() {
   const s = MT.sel, c = s && !s.isNew && s.edit ? mtCase(s.id) : null;
-  let m = document.getElementById('mtEditModal');
-  if (!c) {
-    if (m) { m.remove(); if (!document.querySelector('.mt-modal')) document.documentElement.classList.remove('mt-modal-open'); }
-    return;
-  }
-  if (m && m.dataset.id === String(c.id)) return;            // already open: keep what is typed
-  if (m) m.remove();
-  m = document.createElement('div');
-  m.id = 'mtEditModal'; m.className = 'mt-modal mt-modal--edit'; m.dataset.id = String(c.id);
-  m.innerHTML = `<div class="mt-modal__bg" data-mt="cancel"></div>
-    <div class="mt-modal__s" role="dialog" aria-modal="true" aria-labelledby="mtEditT">
-      <div class="mt-modal__h">
-        <div><p class="mt-modal__k">Edit ${mtEsc(MT_KIND[c.kind].one)}</p><p class="mt-modal__t" id="mtEditT">${mtEsc(c.title)}</p></div>
-        <button type="button" class="mt-modal__x" data-mt="cancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
-      </div>
-      <div class="mt-modal__b">${mtEditHTML(c, s)}</div>
-      <div class="mt-modal__f"></div>
-    </div>`;
-  document.body.appendChild(m);
-  document.documentElement.classList.add('mt-modal-open');
-  const foot = m.querySelector('.mt-sec--edit > .cc-sec-foot'), mf = m.querySelector('.mt-modal__f');
-  if (foot && mf) mf.appendChild(foot);
-  m.querySelectorAll('textarea.mt-ta').forEach(mtGrow);
+  const m0 = document.getElementById('mtEditModal');
+  if (!c) { mtModalDrop('mtEditModal'); return; }            // D39: the page stays locked while another pop-up is open
+  if (m0 && m0.dataset.id === String(c.id)) return;          // already open: keep what is typed
+  if (m0) m0.remove();
+  const m = mtModal('mtEditModal', { cls: 'mt-modal--edit', close: 'cancel', label: 'mtEditT' });
+  m.dataset.id = String(c.id);
+  mtModalFill(m, {
+    h: `<div><p class="mt-modal__k">Edit ${mtEsc(MT_KIND[c.kind].one)}</p><p class="mt-modal__t" id="mtEditT">${mtEsc(c.title)}</p></div>
+        <button type="button" class="mt-modal__x" data-mt="cancel" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>`,
+    b: mtEditHTML(c, s),
+  }, false, mm => {
+    const foot = mm.querySelector('.mt-sec--edit > .cc-sec-foot'), mf = mm.querySelector(':scope > .mt-modal__s > .mt-modal__f');
+    if (foot && mf) mf.replaceChildren(foot);
+    mm.querySelectorAll('textarea.mt-ta').forEach(mtGrow);
+  });
   mtSbVis();
 }
 /* Status buttons → the (hidden) select, so the existing change logic runs */
