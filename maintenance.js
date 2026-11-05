@@ -3526,7 +3526,7 @@ function mtWhoNest() {
 function mtWhoLockCheck(W) {
   if (!W || MT.who !== W) return;
   const st = W.f && W.f.isNew ? null : mtCostById(W.id), lock = st ? mtWhoLockOf(st) : '';
-  if (lock !== W.lock) { MT.who = mtWhoState(st || W.f, mtCase(W.caseId), Object.assign({}, W, { lock })); mtWhoRender(); return; }
+  if (lock !== W.lock) { MT.who = mtWhoState(st || W.f, mtCase(W.caseId), Object.assign({}, W, { lock, saving: false })); mtWhoRender(); return; }
   const yr = W.lock ? null : mtWhoYrOf(W.day), key = y => (y ? y.year + ':' + [...y.ids].join(',') : '');
   if (key(yr) !== key(W.yr)) { W.yr = yr; mtWhoRender(); } else W.yr = yr;
 }
@@ -3737,7 +3737,7 @@ async function mtWhoSave() {
     W.saving = true; mtWhoRender();                          // it shows it is saving (Save · spinner) · at most 2.5 s (then the locks known)
     await Promise.race([mtWhoLockLoad(), new Promise(r => setTimeout(r, 2500))]);
     W.saving = false;
-    if (MT.who !== W) return;
+    if (MT.who !== W) { const X = MT.who; if (X && X.id === W.id && X.lock) mtSay(X.lock + ' – nothing was changed.'); return; }   // closed · or billed meanwhile (the sheet shows it)
     mtWhoRender();
     mtWhoLockCheck(W);
     if (MT.who !== W || mtWhoProblem(W)) { const X = MT.who; if (X && (X.lock || X.yr)) mtSay((X.lock || `NK ${X.yr.year} is locked in Settlements`) + ' – nothing was changed.'); return; }
