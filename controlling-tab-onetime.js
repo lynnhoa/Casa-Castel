@@ -358,9 +358,11 @@ function _cxOtExportHTML() {
    Via NK is what Maintenance charges (planned): the letter can bill less (§ 7 cap, a Zimmer without an NK letter) and
    Controlling cannot see that → its own row "charged via NK (planned)", apart from what was paid to you directly,
    and "Your cost (planned)" (it can only grow). */
-// the receipt's What of a Maintenance line "<entry>[ · Beleg n][ · <What>]" (MAINTENANCE-D39.sql) · else the entry title
-const _cxOtWhat = item => { const s = String(item || '').replace(/ · (?:Beleg|Rechnung) [^·]*?(?= · |$)/, ''), i = s.indexOf(' · ');
-  return (i < 0 ? s : s.slice(i + 3)).trim() || 'Receipt'; };
+// the receipt's What of a Maintenance line "<entry>[ · Beleg n][ · <What>]" (MAINTENANCE-D39.sql) · else the entry title.
+// With a receipt no. the What is what follows it; without one the What is always there (it is required then): the part
+// after the last " · " (an entry title can have one itself, e.g. "Küche · Bad")
+const _cxOtWhat = item => { const s = String(item || ''), m = s.match(/^(.*?) · (?:Beleg|Rechnung) [^·]*?(?: · (.+))?$/), i = s.lastIndexOf(' · ');
+  return (m ? m[2] || m[1] : i < 0 ? s : s.slice(i + 3)).trim() || 'Receipt'; };
 function _cxOtMtSumHTML() {
   if (_cxOt.view !== 'y' || !cxAreaPid(CASA_PROP_ID)) return '';
   const L = _cxOtAll().filter(o => Number(o.property_id) === CASA_PROP_ID && _cxOtIsMaint(o) && !_cxOtIsRefund(o));

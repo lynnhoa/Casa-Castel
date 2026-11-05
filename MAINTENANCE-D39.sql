@@ -26,6 +26,7 @@ alter table public.maint_costs drop constraint if exists maint_costs_pay_via_che
 alter table public.maint_costs add constraint maint_costs_pay_via_check check (pay_via in ('nk','direct'));
 --     nk_keep: other properties only · your NK switch from Controlling, kept while the receipt is not booked
 --     (book switch off, amount 0 …) so it comes back with the line. Used only by the booking below.
+--     Casa Castel ("p": 7): the NK switch of the line you typed and linked, while it is off (§ 3, § 5).
 alter table public.maint_costs add column if not exists nk_keep jsonb;
 
 -- 2 · Controlling: the "tenant paid me" income line of a receipt (one per receipt, goes when the receipt goes),
@@ -45,7 +46,8 @@ alter table public.maint_costs           add column if not exists ctrl_dup_ok   
 --     become "Who pays › NK" with the same cost type (their returns follow them from now on).
 --     A line you typed by hand and linked to a receipt also remembers its NK switch, so it comes back
 --     exactly as you typed it when the receipt is deleted or not booked any more
---     (not booked and Who pays Kleinreparatur / Schaden: its NK switch off, the tenants pay it in Teil B or directly).
+--     (not booked and Who pays Kleinreparatur / Schaden: its NK switch off, the tenants pay it in Teil B or directly;
+--     your switch comes back when Who pays changes, or the receipt is booked again or deleted).
 update public.maint_costs m
    set pay_type = 'nk', pay_cat = o.nk_category_id
   from public.ctrl_expense_one_time o, public.maint_cases c
@@ -133,12 +135,24 @@ begin
     perform public.maint_unbook(r.id);
     -- Casa Castel Kleinreparatur / Schaden: the tenants pay it from Maintenance even when it is not booked
     -- (Teil B, or paid to you directly), so the line you typed for it (the link) has its NK switch off;
-    -- otherwise Settlements would bill it in Teil A as well
+    -- otherwise Settlements would bill it in Teil A as well. Your switch is kept first (nk_keep, "p": 7) and comes
+    -- back when Who pays changes to something else, when the receipt is booked again (the link takes it) or deleted.
     if casa and h.pay_type in ('klein', 'schaden') and r.link_ot is not null then
+      update public.maint_costs m
+         set nk_keep = jsonb_build_object('p', 7, 'u', o.nk_umlage, 'c', o.nk_category_id)
+        from public.ctrl_expense_one_time o
+       where m.id = r.id and o.id::text = r.link_ot and o.maint_cost_id is null and o.property_id = 7
+         and (o.nk_umlage or o.nk_category_id is not null)
+         and m.nk_keep is distinct from jsonb_build_object('p', 7, 'u', o.nk_umlage, 'c', o.nk_category_id);
       update public.ctrl_expense_one_time o
          set nk_umlage = false, nk_category_id = null
        where o.id::text = r.link_ot and o.maint_cost_id is null and o.property_id = 7
          and (o.nk_umlage or o.nk_category_id is not null);
+    elsif r.link_ot is not null and (r.nk_keep->>'p')::bigint = 7 then
+      update public.ctrl_expense_one_time o
+         set nk_umlage = coalesce((r.nk_keep->>'u')::boolean, false), nk_category_id = (r.nk_keep->>'c')::bigint
+       where o.id::text = r.link_ot and o.maint_cost_id is null and o.property_id = 7;
+      update public.maint_costs set nk_keep = null where id = r.id and nk_keep is not null;
     end if;
     return;
   end if;
@@ -151,7 +165,9 @@ begin
        set maint_before  = jsonb_build_object('property_id', o.property_id, 'invoice_date', o.invoice_date, 'item', o.item,
                                               'amount', o.amount, 'company', o.company, 'kind', o.kind,
                                               'direction', o.direction, 'source_ref', o.source_ref,
-                                              'nk_umlage', o.nk_umlage, 'nk_category_id', o.nk_category_id),
+                                              -- Casa Castel: the switch you typed, if it was kept while not booked
+                                              'nk_umlage', case when (r.nk_keep->>'p')::bigint = 7 then coalesce((r.nk_keep->>'u')::boolean, false) else o.nk_umlage end,
+                                              'nk_category_id', case when (r.nk_keep->>'p')::bigint = 7 then (r.nk_keep->>'c')::bigint else o.nk_category_id end),
            maint_cost_id = r.id
      where o.id::text = r.link_ot and o.maint_cost_id is null;
   end if;
@@ -275,6 +291,12 @@ create or replace function public.maint_costs_unbook() returns trigger
 language plpgsql set search_path = public as $$
 begin
   perform public.maint_unbook(old.id);
+  -- Casa Castel: the line you typed, switched off while the receipt was not booked (§ 5) → its NK switch comes back
+  if old.link_ot is not null and (old.nk_keep->>'p')::bigint = 7 then
+    update public.ctrl_expense_one_time o
+       set nk_umlage = coalesce((old.nk_keep->>'u')::boolean, false), nk_category_id = (old.nk_keep->>'c')::bigint
+     where o.id::text = old.link_ot and o.maint_cost_id is null and o.property_id = 7;
+  end if;
   return old;
 end $$;
 drop trigger if exists maint_costs_unbook on public.maint_costs;

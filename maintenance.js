@@ -1686,6 +1686,7 @@ async function mtCamOpen() {
   mtCostCapture();
   mtCamCss();
   MT_CAM.open = true; MT_CAM.shots = []; MT_CAM.base = f.files.filter(x => x.file && x.img).length;
+  MT_CAM.back = document.activeElement;                    // D39: the focus comes back here when it closes ("Next part")
   const el = document.createElement('div');
   el.className = 'mt-cam'; el.id = 'mtCam'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Receipt camera');
   el.innerHTML = `<div class="mt-cam__top"><span class="mt-cam__ttl">Receipt · next parts</span>
@@ -1771,9 +1772,17 @@ function mtCamClose(keep) {
   if (el) { (el.querySelector('.mt-cam__strip')._urls || []).forEach(u => URL.revokeObjectURL(u)); el.remove(); }
   mtLockSync();                                           // D39: the receipt pop-up below still holds the page
   const g = MT.sel && MT.sel.cost;
-  if (!keep || !g || !shots.length) return;
-  shots.forEach(x => g.files.push({ id: null, file: x, name: x.name, img: true }));
-  mtRenderPanel();
+  if (keep && g && shots.length) {
+    shots.forEach(x => g.files.push({ id: null, file: x, name: x.name, img: true }));
+    mtRenderPanel();
+  }
+  // D39: the keys go on where they were before the camera ("Next part"; redrawn: the new one, else Save)
+  const back = MT_CAM.back; MT_CAM.back = null;
+  if (!mtFine()) return;
+  const m = document.getElementById('mtCostModal');
+  const to = [back, m && m.querySelector('[data-mt="costCam"]'), m && m.querySelector('[data-mt="costSave"]')]
+    .find(x => x && x.isConnected && x !== document.body && !x.closest('[inert]') && !x.disabled);
+  if (to) try { to.focus({ preventScroll: true }); } catch (e) {}
 }
 
 function mtCostFileDel(i) {
@@ -1878,13 +1887,17 @@ function mtCostHoldShow() {
   const m = document.getElementById('mtCostModal');
   if (!m) return;
   const on = !!(MT.costHold && MT.sel && MT.sel.cost === MT.costHold);
-  m.classList.toggle('is-saving', on);
+  // D39: its Save reads the Settlements locks first → it shows it is saving too (the buttons still answer: "Wait a moment")
+  const chk = !on && !!(mtLockChk && MT.sel && MT.sel.cost === mtLockChk), spin = '<span class="mt-spin" aria-hidden="true"></span>';
+  m.classList.toggle('is-saving', on || chk);
   m.querySelectorAll('.mt-modal__f .cc-foot-btn, .mt-modal__x').forEach(x => { x.disabled = on; });
   const n = m.querySelector('[data-mt="costSaveNext"]');
-  if (n) n.innerHTML = on ? '<span class="mt-spin" aria-hidden="true"></span>Saving …' : 'Save + next';
+  if (n) n.innerHTML = on || (chk && mtLockNext) ? spin + 'Saving …' : 'Save + next';
+  const sv = m.querySelector('[data-mt="costSave"]'), sh = (chk && !mtLockNext ? spin : '') + 'Save';
+  if (sv && sv.innerHTML !== sh) sv.innerHTML = sh;
 }
 let mtChkFor = null;                                          // D39 (bug 12): the receipt whose Controlling check runs — not on the form, so a draft never keeps it
-let mtLockChk = null;                                         // D39 fix 2: the receipt whose save reads the Settlements locks first
+let mtLockChk = null, mtLockNext = false;                     // D39 fix 2: the receipt whose save reads the Settlements locks first (· by Save + next)
 /* Save the open receipt / return. opts.next (Save + next): a function that gives the next form → it opens in the same
    pop-up once the row is stored. Returns true when the row is stored. */
 async function mtCostSave(opts) {
@@ -1892,9 +1905,9 @@ async function mtCostSave(opts) {
   if (!f || !c || MT.costHold || MT.who || MT_CAM.open) return false;   // D39: not while Who pays / the camera is open on top (its choice / parts would be lost)
   if (MT.busy) { mtBusySay(); return false; }                // D39 (bug 19): say why nothing happens
   if (MT.d39 && !f.return_of && mtIsCasa(c.property_id) && mtWhoLockOld()) {   // D39 fix 2: the locks as Settlements has them now (one read; a second tap waits)
-    if (mtLockChk === f) return false;
-    mtLockChk = f;
-    try { await mtWhoLockLoad(); } finally { if (mtLockChk === f) mtLockChk = null; }
+    if (mtLockChk === f) { mtBusySay(); return false; }      // tapped again meanwhile: say why nothing happens
+    mtLockChk = f; mtLockNext = !!(opts && opts.next); mtCostHoldShow();   // it shows it is saving · at most 2.5 s (then the locks known)
+    try { await Promise.race([mtWhoLockLoad(), new Promise(r => setTimeout(r, 2500))]); } finally { if (mtLockChk === f) mtLockChk = null; mtCostHoldShow(); }
     if (MT.sel !== s || s.cost !== f || MT.costHold || MT.who || MT_CAM.open) return false;
     if (MT.busy) { mtBusySay(); return false; }
   }
@@ -1924,6 +1937,8 @@ async function mtCostSave(opts) {
     const d0 = lk ? String(was.cost_date || '').slice(0, 10) : '';
     if (lk && f.cost_date !== d0) return fail('mtC-date', `${lk} – the date stays ${mtDate(d0)}.`);
     if (lk && Math.abs(amount - mtNum(was.amount)) > 0.004) return fail('mtC-amount', `${lk} – the amount stays ${mtEur(mtNum(was.amount))}.`);
+    // … and its Who pays (billed meanwhile, after its sheet was saved): the row shows it as billed again, and says so
+    if (lk && mtWhoKey(f) !== mtWhoKey(was)) { Object.assign(f, mtWhoPick(was)); mtCostWhoSync(); return fail('mtC-whorow', `${lk} – Who pays stays as billed.`); }
     if (L && !(was && mtWhoYrBar(was, was.id, was.cost_date) === L)) return fail('mtC-date', `NK ${L.year} is locked in Settlements – change Who pays or the date.`);
     // D39 fix 2: the Zimmer that pay are rented on the receipt date (as in its sheet) — a Kleinreparatur on the
     // Gemeinschaftsfläche takes the ones rented that day anyway
@@ -1943,7 +1958,7 @@ async function mtCostSave(opts) {
 
 
   // D8 · typed by hand in Controlling already? → link it (one line), book separately, or don't book
-  let pick = null;
+  let pick = null, preset = null;                              // preset: Who pays › NK of the line it links to (into f once stored)
   const prev = f.isNew ? null : mtCostById(f.id);
   const willBook = c.book_ctrl !== false && (ret ? parent.book_ctrl !== false : f.book_ctrl !== false) && amount > 0 && !!mtProp(c.property_id);
   if (willBook && !(prev && (prev.link_ot || prev.ctrl_dup_ok))) {
@@ -1979,7 +1994,7 @@ async function mtCostSave(opts) {
     else if (v !== 'none') {
       pick = { link_ot: v.slice(1) };
       const o = cands.find(x => String(x.id) === pick.link_ot);   // its NK cost type becomes Who pays › NK (as MAINTENANCE-D39.sql § 3)
-      if (nkTake && o && o.nk_umlage) { Object.assign(f, mtWhoNorm({ t: 'nk', cat: o.nk_category_id ?? null })); mtCostWhoSync(); }
+      if (nkTake && o && o.nk_umlage) preset = mtWhoNorm({ t: 'nk', cat: o.nk_category_id ?? null });   // the form keeps your choice until the row is stored
     }
   }
   if (MT.busy) { stop(); mtBusySay(); return false; }         // something else began saving while it asked
@@ -1996,7 +2011,7 @@ async function mtCostSave(opts) {
     // D39 · Who pays (Casa Castel receipts only, only once MAINTENANCE-D39.sql has run): the normal form — and a
     // Kleinreparatur on the Gemeinschaftsfläche is shared by the Zimmer rented on the (maybe new) receipt date
     // D39 fix: a receipt already billed in a locked Settlements year keeps its stored choice (its Zimmer as billed)
-    ...(MT.d39 && !ret && mtIsCasa(c.property_id) ? (prev && mtWhoLockOf(prev) ? mtWhoPick(prev) : mtWhoNorm(mtWhoFrom(f), f.cost_date)) : {}),
+    ...(MT.d39 && !ret && mtIsCasa(c.property_id) ? (prev && mtWhoLockOf(prev) ? mtWhoPick(prev) : preset || mtWhoNorm(mtWhoFrom(f), f.cost_date)) : {}),
   };
   const kindChanged = !ret && old && old.kind !== row.kind;
   const rets = kindChanged ? mtReturnsOf(id) : [];
@@ -2041,6 +2056,7 @@ async function mtCostSave(opts) {
     return false;
   }
   // stored → the draft goes (Save + next: the next form is the draft from now on)
+  if (preset) Object.assign(f, preset);                       // linked: Who pays › NK as stored
   if (hold) {
     const next = opts.next();
     if (MT.sel === s && s.cost === f) s.cost = next;
@@ -2633,6 +2649,9 @@ function mtWire() {
     else if (a === 'whoMore') mtWhoSet('more');
     else if (a === 'whoVia') mtWhoSet('via', b.dataset.v);
     else if (a === 'whoPaid') mtWhoPaidOpen();
+    // D39: the sheet fits what it shows — a quick second tap of the one that opened it (double tap) may land on the
+    // backdrop or its footer: not a choice (a click from the keys, detail 0, always counts)
+    else if (/^who(Reset|Cancel|Save)$/.test(a) && e.detail && MT.who && Date.now() - (MT.who.openAt || 0) < 450) {}
     else if (a === 'whoReset') mtWhoSet('reset');
     else if (a === 'whoCancel') mtWhoClose();
     else if (a === 'whoSave') mtWhoSave();
@@ -3512,7 +3531,7 @@ function mtWhoLockCheck(W) {
   if (key(yr) !== key(W.yr)) { W.yr = yr; mtWhoRender(); } else W.yr = yr;
 }
 function mtWhoState(src, c, o) {
-  const W = Object.assign({ caseId: c.id, room0: c.report_room || null, more: false }, o, mtWhoFrom(src));
+  const W = Object.assign({ caseId: c.id, room0: c.report_room || null, more: false, openAt: Date.now() }, o, mtWhoFrom(src));
   // D39 fix: a stored Kleinreparatur on the Gemeinschaftsfläche keeps its Zimmer apart (had): they follow the tenants, so they
   // are never picks (e.g. for "Caused by") — and earlier picks ("Caused by") never become its Zimmer
   W.had = W.t === 'klein' && W.w === 'gemein' ? W.r.slice() : [];
@@ -3613,7 +3632,7 @@ function mtWhoBody(W) {
 function mtWhoFoot(W) {
   return `<button type="button" class="mt-w__reset" data-mt="whoReset"${W.lock ? ' hidden' : ''}>Reset</button>
     <button type="button" class="mt-w__cancel" data-mt="whoCancel">${W.lock ? 'Close' : 'Cancel'}</button>
-    <button type="button" class="mt-w__save" data-mt="whoSave"${mtWhoProblem(W) ? ' disabled' : ''}${W.lock ? ' hidden' : ''}>Save</button>`;
+    <button type="button" class="mt-w__save${W.saving ? ' is-busy' : ''}" data-mt="whoSave"${mtWhoProblem(W) ? ' disabled' : ''}${W.lock ? ' hidden' : ''}>${W.saving ? '<span class="mt-spin" aria-hidden="true"></span>' : ''}Save</button>`;
 }
 /* built once per open (one slide-in); afterwards only what changed changes, in place */
 function mtWhoRender() {
@@ -3622,6 +3641,7 @@ function mtWhoRender() {
   const fresh = !document.getElementById('mtWhoModal');
   const m = mtModal('mtWhoModal', { cls: 'mt-modal--who mt-modal--fit', close: 'whoCancel', label: 'mtWhoT' });
   const q = k => m.querySelector(':scope > .mt-modal__s > .mt-modal__' + k);
+  m.classList.toggle('is-saving', !!W.saving);              // Save reads the locks: the choices wait (CSS)
   if (fresh) {
     // Nov 2026 (D39 fix): the height of its tallest layout (Schaden · Caused by · Direct, or NK), measured once here —
     // the sheet is placed by it (top fixed, CSS), so a tap that shows or hides a part below never moves the button
@@ -3660,6 +3680,7 @@ function mtWhoRender() {
 function mtWhoSet(what, v) {
   const W = MT.who;
   if (!W || W.lock) return;
+  if (W.saving) { mtBusySay(); return; }                     // its Save reads the locks (keys: the body takes no taps then)
   if (what === 'type') {
     if (W.t === v) W.t = null;                               // the active one again → you pay
     else if (v === 'klein' && mtWhoOver(W)) return;          // § 7: over 150 € is not a Kleinreparatur
@@ -3710,12 +3731,14 @@ function mtWhoClose() {
 }
 async function mtWhoSave() {
   const W = MT.who;
-  if (!W || mtWhoProblem(W) || W.saving) return;
+  if (W && W.saving) { mtBusySay(); return; }                // tapped again while it reads the locks: say why nothing happens
+  if (!W || mtWhoProblem(W)) return;
   if (!W.nest && mtWhoLockOld()) {                           // D39 fix 2: stored at once → the locks as Settlements has them now
-    W.saving = true;
-    await mtWhoLockLoad();
+    W.saving = true; mtWhoRender();                          // it shows it is saving (Save · spinner) · at most 2.5 s (then the locks known)
+    await Promise.race([mtWhoLockLoad(), new Promise(r => setTimeout(r, 2500))]);
     W.saving = false;
     if (MT.who !== W) return;
+    mtWhoRender();
     mtWhoLockCheck(W);
     if (MT.who !== W || mtWhoProblem(W)) { const X = MT.who; if (X && (X.lock || X.yr)) mtSay((X.lock || `NK ${X.yr.year} is locked in Settlements`) + ' – nothing was changed.'); return; }
   }
