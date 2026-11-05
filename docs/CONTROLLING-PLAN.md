@@ -26,28 +26,61 @@ Amounts are bold (Cormorant 600/700).
 | 6 | New non-Casa property never gets its apartment unit (rent missing everywhere) | controlling-tab-setup.js:166-168 (only parking), controlling-soll.js:1525ff `ctlCreateUnit` | "+ Apartment" in Setup creates the `rentals_apartment` unit for the linked apartment; `ctlSetupLinkState` flags "linked, but no living unit" | S–M |
 | 20/21 | Contrast | controlling-ui.js:285 (income in gold `#B8956A`), `.cx-r__u` 11 px `#9A8E7E` (3.1:1), sub lines 10 px | the green/red tokens above for every in/out amount, Abrechnung Guthaben/Nachzahlung, month sums ("+ 100 €" green, costs "− 80 €" red); row label 13 px `#5F5649`, sub 12 px `#6E6357`; the room name stays the label (owner: room is right) | S |
 | 27 | One-off list | controlling-tab-onetime.js:534 (search), :419-451 (Kaufnebenkosten-only card) | the summary follows the search ("matching · n · €") and search matches amounts; a card with only Kaufnebenkosten shows its KNK total instead of "0 €" with no empty "By month"; drop the duplicate "Kaufnebenkosten" pill so the description is not cut at 390 px | S |
-| 28 | Small display fixes | history: controlling-tab-history.js:51-53 · Grundsteuer chips: controlling-tab-setup.js:42-45 · pv-ctrl.js:122 · Dashboard:373 | history: "balanced for 1 month entered · 9 months not entered (5.400 €)" in amber · chips: Jan Feb Mar … in a 6×2 grid · toast in English ("Paid ✓ did not reach Providers – try again") via `ctlToast` · January compares with December: load the previous December once (cached) | S |
+| 28 | Small display fixes | history: controlling-tab-history.js:51-53 · Grundsteuer chips: controlling-tab-setup.js:42-45 · pv-ctrl.js:122 · Dashboard:373 | history: "balanced for 1 month entered · 9 months not entered (5.400 €)" in amber · chips: Jan Feb Mar … in a 6×2 grid · toast in English ("Paid ✓ did not reach Providers – try again") via `ctlToast` | S |
 | 30 | Purchase month | controlling-soll.js:233-236 `ctlPropOwned`, :1007 · `_cxUnitSollV2`, `ctlCostRows` | per property in Setup: "First month: [Full month · From handover day]" (default Full = as today); "From handover" prorates rent, Hausgeld and Kreditrate from `kaufdatum` | M |
 | 31 | Return to the app reloads about 28 tables (mobile data, flicker) | controlling-soll.js:174-187 (`visibilitychange`, every ≥ 20 s, `select *` with paging) | reload only what changes from outside (tenant_records, rent_periods, rooms, current-year income/one-offs, loans); the rest on a full reload or every 10 min; same result | M |
 | 32 | Recalculation on every tap | controlling-tab-dashboard.js:95-122, :461-466, :375 · controlling-data.js:63-117 · controlling-tab-history.js:117-122 | index rows by property × month once per data version; year/chart = sum of cached months; history balance cached per tenancy, invalidated per unit; same output | M |
 | 34 | Dead code (~150 lines) | controlling-tab-setup.js:367-509 (`_cxSuProvCatHTML`, `_cxSuContractCatHTML`, `_cxPerHTML`, `_cxMoneyF`, `_cxInContracts`, `_cxPerCorrectNow`) · onetime new-entry/KNK form paths, `_cxOtDefaultDate` | remove | S |
 
-## B · Waiting for the owner's answer (explained in chat)
+## A2 · Also decided: build
+
+| # | What | Where | How | Effort |
+|---|---|---|---|---|
+| 10 | Differences: an overpayment hides open rows, and wanted vs unwanted differences can't be told apart | controlling-ui.js:360-374 (`cxStatus`: "difference" beats "open"), :419 · income/expense rows | see "Design for 10" below | M |
+| 13 | Export "Dashboard YEAR": the column "Income" holds running cashflow (Casa −8.500 €) | controlling-report.js:108, :609 | rename it to "Cashflow (running)"; add a real "Rent in" column next to it | S |
+| 15 | Setup shows old base values for Hausgeld (`verw.hausgeld_mtl`) and the loan rate (raw loan record) | controlling-tab-setup.js:148, :159 | Setup = links and checks only; show today's values read-only (`ctlCostRows` for the current month: "Hausgeld 350 € since 01.07.2026 · change in Rentals"), no second editable copy | S |
+| 16 | One-off: the screen shows gross, the export shows net | controlling-tab-onetime.js:451, :513 vs controlling-export.js:59-63 | the same three figures in both places: "Paid 400 € · back 150 € · net 250 €" (back = income lines: returns, refunds, bonuses) | S |
+| 18 | An Income card closes by itself after the last amount, so the page jumps | controlling-ui.js:436-437 | remember the open state when a card is first drawn open (`CX.open[key] ??= isOpen`); a card closes only when you tap it | S |
+| 33 | Wasted work in Year view | controlling-tab-dashboard.js:330-337 (open loop, result unused) · controlling-abr.js:93, :126 (`ctlAbrResults` rebuilt about 78× per render) | skip the loop in Year view; build `ctlAbrResults` once per data version and index `abrPay` by `source_ref` (together with 31/32) | S |
+| msg | German toast in the English UI | pv-ctrl.js:122 | "Paid ✓ did not reach Providers – try again", via `ctlToast` | S |
+
+### Design for 10 (intentional vs unintentional differences)
+Most differences are on purpose (agreed reduction, paid with Kaution, pays the rest next month); some are mistakes. So:
+- **Row with Ist ≠ Soll and no mark:**
+  - red "− 80 € missing" or green "+ 20 € extra";
+  - next to it one small button **"On purpose"**.
+- **Tapping "On purpose"** opens a mini sheet:
+  - reason chips: **Agreed · Rent reduction · Kaution · Pays later · Other**, optional and one tap;
+  - **Save**.
+- **After saving,** the row is neutral grey: "− 80 € · Agreed". It no longer counts as a difference. Tap it to undo.
+- **Card header** shows only what is still unclear, e.g. "1 open · 1 difference":
+  - unpaid rows and unmarked differences both count;
+  - an overpayment can never hide open rows again;
+  - "less" is red, "more" is green, marked ones are not counted.
+- **The month summary** stays as it is ("ALL DONE" is fine for you); it gets one line, "2 differences · 1 on purpose".
+- **Expenses** use the same pattern: a cost row with Ist ≠ Soll gets "On purpose" too, e.g. "Hausgeld changed".
+- **Data** (new SQL file `CONTROLLING-C1.sql`, run before upload, safe to run twice):
+
+  | Column | Type | Meaning |
+  |---|---|---|
+  | `ctrl_income_months.diff_ok` | boolean, default false | the difference is on purpose |
+  | `ctrl_income_months.diff_reason` | text | `agreed` / `reduction` / `kaution` / `later` / `other` |
+
+  The same two columns go on the expense month tables. For a split row (tenant change), the mark belongs to the row as a whole.
+- **Safety:** changing the amount again clears the mark, because the difference is new.
+- Old rows have no mark, so their differences show once as unclear, until you mark them.
+
+## B · Leave as is (owner)
 
 | # | Item |
 |---|---|
-| 13 | Rename the export "Income" column (it holds running cashflow) |
-| 14 | Pauschal shown as Kalt 0 / NK 0 / Pauschal 650 in Income vs Kalt 550 / NK 100 on the Dashboard |
-| 15 | Setup: keep it as "links and checks" only; Hausgeld and rate shown read-only with today's values from Rentals / Properties |
-| 16 | One-off gross vs net: show "paid · back · net" on the screen and in the export |
-| 17 | 1-cent / 1-€ rounding · "2 partial months" label |
-| 18 | Income cards close by themselves while typing |
-| 23 | Per-property line "6/8 let · 2.300 of 2.500 € received" |
-| 24 | Chart: amounts, zero line, legend for negative months |
-| 29 | Strom row for apartments |
-| 33 | Unused open-items loop in Year view, `ctlAbrResults` rebuilt about 78× per render (speed only) |
-| 10 | Not answered yet: an overpayment hides open rows on the card header |
-| 11 | Not answered yet: the Year chart uses cashflow incl. one-offs, the Month view without them |
+| 11 | Chart vs Month view |
+| 14 | Pauschal sorted differently |
+| 17 | Rounding |
+| 23 | Per-property line |
+| 24 | Chart labels |
+| 29 | Strom for apartments |
+| Jan/Dec | January vs December comparison |
 
 ## C · Decided: no change
 
