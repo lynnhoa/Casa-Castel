@@ -766,14 +766,21 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
 .mt-w__sb:disabled { font-size:12px; color:#A89E90; cursor:default; }
 .mt-w__sb.is-over { font-size:12px; }
 @media (max-width:369px) { .mt-w__lg { display:none; } }   /* D39 fix: narrow phones say "Gemeinschaft · all" (the long word is cut there) */
+@media (max-width:345px) { .mt-w__seg--3 { grid-template-columns:minmax(0,.7fr) minmax(0,1.4fr) minmax(0,.9fr); } }   /* D39 fix 2: 320px — "Kleinrep. >150 €" in full (NK is short) */
 .mt-w__seg--ink .mt-w__sb.is-on.is-over { background:#FBEBDD; color:#B0661E; }   /* a Kleinreparatur that is over 150 € now */
 .mt-w__seg .mt-w__sb.is-on:disabled { opacity:.6; }                               /* locked: what it is, not changeable */
 .mt-w__chips { display:flex; flex-wrap:wrap; gap:6px; }
 .mt-w__ch { height:32px; margin:0; padding:0 12px; border:.5px solid #C8BFB0; border-radius:16px; background:#FDFCFA; font-family:inherit;
   font-size:12.5px; color:#3A3530; white-space:nowrap; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-.mt-w__ch.is-on { border:0; background:#1E1B18; color:#FDFCFA; font-weight:500; }
-.mt-w__ch:disabled { border-style:dashed; background:none; font-size:12px; color:#A89E90; cursor:default; }
-.mt-w__ch.is-on:disabled { border:0; background:#1E1B18; color:#FDFCFA; font-size:12.5px; opacity:.6; }
+/* D39 fix 2: a chip is as wide chosen as not (a tap never rewraps the chips after it): the border stays (ink when
+   chosen) and the width of the bold label is kept free (data-l · ::after) · a vacant Zimmer is always 12px */
+.mt-w__ch:not(.mt-w__ch--more) { display:inline-flex; flex-direction:column; align-items:center; justify-content:center; }
+.mt-w__ch[data-l]::after { content:attr(data-l); height:0; overflow:hidden; visibility:hidden; font-weight:500; pointer-events:none; }
+.mt-w__ch.is-on { border-color:#1E1B18; background:#1E1B18; color:#FDFCFA; font-weight:500; }
+.mt-w__ch.is-vac { font-size:12px; }
+.mt-w__ch:disabled { background:none; border-color:#E0DAD0; color:#A89E90; cursor:default; }   /* locked: solid, faded */
+.mt-w__ch.is-vac:disabled { border-color:#C8BFB0; border-style:dashed; }                     /* vacant: dashed */
+.mt-w__ch.is-on:disabled { border-color:#1E1B18; background:#1E1B18; color:#FDFCFA; opacity:.6; }
 .mt-w__ch--more { border-style:dashed; background:none; font-size:12px; color:#6F6457; }
 .mt-w__paid { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; height:40px; margin:0; padding:0 12px;
   border:.5px solid #E0DAD0; border-radius:10px; background:none; font-family:inherit; font-size:13px; color:#3A3530; text-align:left; cursor:pointer; }

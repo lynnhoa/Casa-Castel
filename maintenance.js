@@ -2241,7 +2241,10 @@ function mtAsk(o) {
     v.innerHTML = `<p class="mt-cf__t">${mtEsc(o.title || 'Are you sure?')}</p>${o.text ? `<p class="mt-cf__x">${mtEsc(o.text)}</p>` : ''}${o.html || ''}
       <div class="mt-cf__b">${(o.buttons || []).map((b, i) => `<button type="button" class="mt-btn mt-btn--${b.kind || 's'}" data-i="${i}">${mtEsc(b.label)}</button>`).join('')}</div>`;
     host.appendChild(v);
-    const done = val => { document.removeEventListener('keydown', key, true); v.remove(); mtAskReturn(back, val); resolve(val); };
+    // D39 fix 2: while it asks, the form behind it takes no focus and no keys (Tab stays in the question)
+    const behind = [...host.querySelectorAll(':scope > .mt-modal__h, :scope > .mt-modal__b, :scope > .mt-modal__f')];
+    behind.forEach(x => { x.inert = true; });
+    const done = val => { document.removeEventListener('keydown', key, true); v.remove(); behind.forEach(x => { x.inert = false; }); mtAskReturn(back, val); resolve(val); };
     const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
     document.addEventListener('keydown', key, true);
     v.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; e.stopPropagation(); done(o.buttons[Number(b.dataset.i)].v); });
@@ -2262,7 +2265,11 @@ function mtAsk(o) {
         <div class="mt-cf__b">${btns}</div>
       </div>`;
     document.body.appendChild(h);
-    const done = v => { document.removeEventListener('keydown', key, true); h.remove(); mtAskReturn(back, v); resolve(v); };
+    // D39 fix 2: the pop-ups (and the page) behind it take no focus while it asks (mtLockSync: it is the top layer)
+    const shell = document.getElementById('appShell'), own = !!shell && !shell.inert;
+    if (own) shell.inert = true;
+    mtLockSync();
+    const done = v => { document.removeEventListener('keydown', key, true); h.remove(); mtLockSync(); if (own && !MT_LOCK.on) shell.inert = false; mtAskReturn(back, v); resolve(v); };
     const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
     document.addEventListener('keydown', key, true);
     h.addEventListener('click', e => {
@@ -3151,8 +3158,8 @@ function mtLockSync(force) {
   // the keys; the one below waits, as the page behind does (no Tab into a Save you can't see)
   const ms = [...document.querySelectorAll('.mt-modal')], zOf = x => Number(getComputedStyle(x).zIndex) || 0;
   const top = ms.reduce((a, x) => (!a || zOf(x) >= zOf(a) ? x : a), null);
-  const cam = !!document.getElementById('mtCam');           // D39 fix 2: the camera is above them all (its Done fills the receipt)
-  ms.forEach(x => { const v = cam || x !== top; if (x.inert !== v) x.inert = v; });
+  const over = !!document.querySelector('#mtCam, #mtConfirm');   // D39 fix 2: the camera / a question is above them all
+  ms.forEach(x => { const v = over || x !== top; if (x.inert !== v) x.inert = v; });
   if (want && !MT_LOCK.on) {
     const y = window.scrollY;
     const tops = mtStickEls().map(el => ({ k: el.matches('.mt-ybar') ? '.mt-ybar' : '.cc-header', top: el.getBoundingClientRect().top }));
@@ -3417,7 +3424,7 @@ function mtWhoTagHTML(r, tap) {
 /* the quiet row in the receipt pop-up: Who pays  <tag>  › */
 function mtCostWhoRowHTML(f) {
   const off = mtWhoOff(MT.sel ? mtCase(MT.sel.id) : null, f), k = mtWhoTag(mtWhoFrom(f), mtNet(f, f.amount), off);
-  return `<button type="button" class="mt-wrow" id="mtC-whorow" data-mt="whoNest" aria-label="${mtEsc(mtWhoAria(k, off))}"><span>Who pays</span><span class="mt-wrow__r"><span class="mt-who mt-who--${k.k}">${mtEsc(k.t)}</span><span class="mt-wrow__c" aria-hidden="true">›</span></span></button>`;
+  return `<button type="button" class="mt-wrow" id="mtC-whorow" data-mt="whoNest" aria-label="${mtEsc(mtWhoAria(k, off))}"><span>Who pays</span><span class="mt-wrow__r"><span class="mt-who mt-who--${k.k}">${mtEsc(k.k === 'unset' ? 'You pay' : k.t)}</span><span class="mt-wrow__c" aria-hidden="true">›</span></span></button>`;
 }
 function mtCostWhoSync() {                                    // the row follows the form in place (amount typed, sheet saved)
   const box = document.getElementById('mtC-whobox'), f = MT.sel && MT.sel.cost;
@@ -3524,11 +3531,11 @@ function mtWhoBody(W) {
   const all = mtWhoCatAll(), ids = W.more ? W.cats.concat(all.map(c => String(c.id)).filter(i => !W.cats.includes(i))) : W.cats;
   const cats = ids.map(i => all.find(c => String(c.id) === i)).filter(Boolean), isCat = c => String(W.cat) === String(c.id);
   const catSec = `<div class="mt-w__sec"${hid(W.t === 'nk' && !!MT.whoCats)}><span class="mt-w__k" id="mtW-catL">Cost type</span>
-      <div class="mt-w__chips" role="group" aria-labelledby="mtW-catL">${cats.map(c => `<button type="button" class="mt-w__ch${on(isCat(c))}" data-mt="whoCat" data-v="${mtEsc(c.id)}"${pr(isCat(c))}${L ? ' disabled' : ''}>${mtEsc(c.name)}</button>`).join('')}${!W.more && all.length > W.cats.length ? `<button type="button" class="mt-w__ch mt-w__ch--more" data-mt="whoMore"${L ? ' disabled' : ''}>more …</button>` : ''}</div></div>`;
+      <div class="mt-w__chips" role="group" aria-labelledby="mtW-catL">${cats.map(c => `<button type="button" class="mt-w__ch${on(isCat(c))}" data-mt="whoCat" data-v="${mtEsc(c.id)}" data-l="${mtEsc(c.name)}"${pr(isCat(c))}${L ? ' disabled' : ''}>${mtEsc(c.name)}</button>`).join('')}${!W.more && all.length > W.cats.length ? `<button type="button" class="mt-w__ch mt-w__ch--more" data-mt="whoMore"${L ? ' disabled' : ''}>more …</button>` : ''}</div></div>`;
   const R = mtWhoRooms(W.day), zim = tb && W.w === 'zimmer', kgem = W.t === 'klein' && !zim, sgem = W.t === 'schaden' && !zim;
   const list = MT.rooms.concat(W.r.filter(n => !MT.rooms.includes(n)));            // a Zimmer no longer in Rooms still shows when chosen
-  const chip = (n, sel) => { const vac = R.known && !R.rented.includes(n);
-    return `<button type="button" class="mt-w__ch${on(sel)}${vac ? ' is-vac' : ''}" data-mt="whoRoom" data-v="${mtEsc(n)}"${pr(sel)}${L || (vac && !sel) ? ' disabled' : ''}>${mtEsc(n)}${vac ? ' · vacant' : ''}</button>`; };
+  const chip = (n, sel) => { const vac = R.known && !R.rented.includes(n), l = mtEsc(n) + (vac ? ' · vacant' : '');   // data-l: its width when chosen (CSS)
+    return `<button type="button" class="mt-w__ch${on(sel)}${vac ? ' is-vac' : ''}" data-mt="whoRoom" data-v="${mtEsc(n)}" data-l="${l}"${pr(sel)}${L || (vac && !sel) ? ' disabled' : ''}>${l}</button>`; };
   const nv = R.vacant.length, hint = !R.known ? '' : !R.rented.length ? `No Zimmer rented on ${mtDate(W.day)}`
     : `${R.rented.length} rented Zimmer${nv ? ` · ${R.vacant.join(', ')} vacant, ${nv === 1 ? 'pays' : 'pay'} nothing` : ''}`;
   const whereSec = `<div class="mt-w__sec"${hid(tb)}><span class="mt-w__k" id="mtW-whereL">Where</span>
@@ -3577,7 +3584,18 @@ function mtWhoRender() {
       const b = m.querySelector(ty + '.is-on:not(:disabled)') || m.querySelector(ty + ':not(:disabled)') || m.querySelector('.mt-w__cancel');
       if (b) b.focus({ preventScroll: true });
     }
-  } else { mtMorph(q('b'), mtWhoBody(W)); mtMorph(q('f'), mtWhoFoot(W)); }
+  } else {
+    const a = document.activeElement, had = a && m.contains(a) ? a : null, box = had && had.parentNode, at = box ? [...box.children].indexOf(had) : -1;
+    mtMorph(q('b'), mtWhoBody(W)); mtMorph(q('f'), mtWhoFoot(W));
+    if (had && !had.isConnected && had.dataset.mt === 'whoMore' && box.isConnected && box.children[at]) try { box.children[at].focus({ preventScroll: true }); } catch (e) {}   // "more …" → the first one it shows
+    // D39 fix 2: the pressed button is off now ("Kleinrep. >150 €" or "X · vacant" tapped off) → the focus stays in the
+    // sheet: the next button on in its group (else the last one on), else Cancel
+    if (had && had.isConnected && had.disabled) {
+      const g = had.closest('[role="group"]'), en = g ? [...g.querySelectorAll('button:not(:disabled)')] : [];
+      const n = en.find(x => had.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING) || en[en.length - 1] || m.querySelector('.mt-w__cancel');
+      if (n) try { n.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
   const pi = document.getElementById('mtW-paid');            // the date field is the calendar's (left alone by mtMorph)
   if (pi && (pi.value || '') !== (W.p || '')) pi.value = W.p || '';
 }
@@ -3604,16 +3622,17 @@ function mtWhoSet(what, v) {
     if (W.w === 'zimmer') W.r = W.r[0] === n ? [] : [n];
     else W.r = W.r.includes(n) ? W.r.filter(x => x !== n) : mtRoomSort(W.r.concat([n]));
   } else if (what === 'cat') {
+    if (W.moreAt && Date.now() - W.moreAt < 450) return;     // D39 fix 2: a cost type now sits where "more …" was — a quick second tap is not a choice
     const c = mtWhoCatAll().find(x => String(x.id) === String(v));
     W.cat = !c || String(W.cat) === String(c.id) ? null : c.id;   // the chosen one again → Allgemeine Hauskosten
-  } else if (what === 'more') W.more = true;
+  } else if (what === 'more') { W.more = true; W.moreAt = Date.now(); }
   else if (what === 'via') { if (v !== 'direct' && mtWhoViaOff(W)) return; W.v = v === 'direct' ? 'direct' : 'nk'; }
   else if (what === 'paid') W.p = v ? String(v).slice(0, 10) : null;
   else if (what === 'reset') Object.assign(W, { t: null, cat: null, w: null, r: [], v: 'nk', p: null });
   // D39 fix 2: Reset is in the footer — the sheet keeps its height until the next tap, so the footer stays under the
   // finger (a second tap there is Reset again, never the backdrop); any other tap is above the parts it changes
   const sh = document.querySelector('#mtWhoModal > .mt-modal__s');
-  if (sh) sh.style.minHeight = what === 'reset' ? sh.offsetHeight + 'px' : '';
+  if (sh) sh.style.minHeight = what === 'reset' ? sh.getBoundingClientRect().height + 'px' : '';
   mtWhoRender();
 }
 /* "Paid on": the app's calendar (over the sheet) — it writes the date field, its change comes back here */
