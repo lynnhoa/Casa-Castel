@@ -711,6 +711,16 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
   .mt-cr > .mt-who { grid-area:2 / 2 / 3 / 5; }
   .mt-cr__b > .mt-cr__f::before { content:none; }
 }
+/* Nov 2026 (D39 fix) · phone rows with a tag (Eintrag mockup): the tag sits beside line 2 only — line 1 (no. · What)
+   keeps the full width beside the amount (the amount's column never grows with the tag), and line 2 (shop · date ·
+   files) wraps after a "·" instead of cutting the shop */
+@container not (min-width: 520px) {
+  .mt-cr.has-who { grid-template-columns:minmax(0,1fr) auto fit-content(1px); grid-template-areas:"a a amt" "b w w"; }
+  .mt-cr.has-who > .mt-cr__b { display:block; }
+  .mt-cr.has-who .mt-cr__who { white-space:normal; overflow-wrap:anywhere; }
+  .mt-cr.has-who .mt-cr__date::before, .mt-cr.has-who .mt-cr__b > .mt-cr__f::before { content:none; }
+  .mt-cr.has-who .mt-cr__who:not(:empty)::after, .mt-cr.has-who .mt-cr__date::after { content:'\00a0· '; white-space:normal; }
+}
 /* the quiet row in the receipt pop-up: Who pays  <tag>  › */
 .mt-wrow { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; margin:0; padding:10px 0 0;
   border:0; border-top:.5px solid var(--cc-rule); border-radius:0; background:none; font-family:inherit; font-size:13px;
@@ -724,6 +734,14 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
 .mt-modal--who .mt-modal__s { max-width:420px; gap:14px; padding:14px 16px 18px; padding-bottom:max(18px, env(safe-area-inset-bottom, 0px));
   border-radius:16px 16px 0 0; background:#FDFCFA; color:#3A3530; }
 @media (min-width:701px) { .mt-modal--who .mt-modal__s { border-radius:16px; } }
+/* Nov 2026 (D39 fix): the sheet never moves its top while open (a tap shows / hides parts below it) — --mt-who-h = the
+   height of its tallest layout, measured on open (mtWhoRender). Phones: that height from the start (the body scrolls
+   if ever more). Laptops: placed so that layout would sit centred; a shorter one ends higher up, the top stays. */
+@media (max-width:700px) { .mt-modal.mt-modal--who .mt-modal__s { height:var(--mt-who-h, auto); } }
+@media (min-width:701px) {
+  .mt-modal--who { --mt-who-top:max(24px, calc(50vh - var(--mt-who-h, 600px) / 2)); align-items:flex-start; padding-top:var(--mt-who-top); box-sizing:border-box; }
+  .mt-modal--who .mt-modal__s { max-height:calc(100vh - var(--mt-who-top) - 24px) !important; }   /* over cc-mgmt's 86dvh: it ends in the window */
+}
 .mt-modal--who .mt-modal__h { padding:0; border:0; gap:12px; }
 .mt-modal--who .mt-modal__b { padding:0; display:flex; flex-direction:column; gap:14px; overflow-x:hidden; }
 .mt-modal--who .mt-modal__f { padding:4px 0 0; border:0; gap:10px; flex-wrap:nowrap; justify-content:flex-start; }
@@ -743,6 +761,7 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
 .mt-w__seg--ink .mt-w__sb.is-on { background:#1E1B18; color:#FDFCFA; box-shadow:none; }
 .mt-w__sb:disabled { font-size:12px; color:#A89E90; cursor:default; }
 .mt-w__sb.is-over { font-size:12px; }
+@media (max-width:369px) { .mt-w__lg { display:none; } }   /* D39 fix: narrow phones say "Gemeinschaft · all" (the long word is cut there) */
 .mt-w__seg--ink .mt-w__sb.is-on.is-over { background:#FBEBDD; color:#B0661E; }   /* a Kleinreparatur that is over 150 € now */
 .mt-w__seg .mt-w__sb.is-on:disabled { opacity:.6; }                               /* locked: what it is, not changeable */
 .mt-w__chips { display:flex; flex-wrap:wrap; gap:6px; }

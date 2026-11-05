@@ -226,7 +226,8 @@ function nkLetterHtml(d) {
   const pgB = s => TB ? s.replace(/(Belegliste (?:auf )?\(?Seite )(\d+)/g, '$1<span data-pgref="beleg">$2</span>') : s;
   const pgTB = `<span data-pgref="tb">2</span>`;
   const TS = TB ? Number(TB.saldo) || 0 : 0;
-  const pay1B = TB ? `<p class="p">Zusammen mit Teil B (${esc(TB.what || 'Sonstige Forderungen')}) ergibt sich insgesamt ${TS > 0.004 ? `eine Nachzahlung von <strong>${eur(TS)}</strong>` : TS < -0.004 ? `ein Guthaben von <strong>${eur(-TS)}</strong>` : 'ein ausgeglichenes Ergebnis'}. ${du ? 'Die Verrechnung mit Teil A und die Zahlung findest du' : 'Die Verrechnung mit Teil A und die Zahlung stehen'} auf Seite ${pgTB}.</p>` : '';
+  const TB0 = !!TB && Math.abs(TS) < 0.005 && !(E > 0);    // total exactly 0 and no Kaution kept back: nothing to pay or to pay back
+  const pay1B = TB ? `<p class="p">Zusammen mit Teil B (${esc(TB.what || 'Sonstige Forderungen')}) ergibt sich insgesamt ${TS > 0.004 ? `eine Nachzahlung von <strong>${eur(TS)}</strong>` : TS < -0.004 ? `ein Guthaben von <strong>${eur(-TS)}</strong>` : 'ein ausgeglichenes Ergebnis'}. ${TB0 ? (du ? 'Die Verrechnung mit Teil A findest du' : 'Die Verrechnung mit Teil A steht') : du ? 'Die Verrechnung mit Teil A und die Zahlung findest du' : 'Die Verrechnung mit Teil A und die Zahlung stehen'} auf Seite ${pgTB}.</p>` : '';
 
   const page1 = `<div class="pdf-page page">${hdr}${ftr()}<div class="content">
     <div class="addr"><div class="addr__l">
@@ -261,8 +262,10 @@ function nkLetterHtml(d) {
 
   // Teil B (D39, own page after page 1): B1 Kleinreparaturen · B2 Schäden · Gesamtverrechnung with the payment
   // text for the total · the legal note · the Anlagen (the invoices). Never other rooms' or tenants' names.
+  // The legal note moves on with the Anlagen line (data-keep-next), so that line never stands alone on a page;
+  // a B1/B2 table that continues on the next page repeats its title bar there (data-cc-repeat, pdf-open.js).
   const cols = TB ? (TB.cols || ['Datum', 'Position', 'Rechnung', 'Anteil']) : [];
-  const blockB = B => `<div class="tb-b tb-b--${B.k === 2 ? 2 : 1}"><div class="tb-b__h"><b>${esc(B.title)}</b><span>${esc(B.note || '')}</span></div><div class="tb-b__b">
+  const blockB = B => `<div class="tb-b tb-b--${B.k === 2 ? 2 : 1}"><div class="tb-b__h" data-cc-repeat="1"><b>${esc(B.title)}</b><span>${esc(B.note || '')}</span></div><div class="tb-b__b">
       <table class="tb-tab"><colgroup><col style="width:94px"/><col/><col style="width:96px"/><col style="width:96px"/></colgroup>
         <thead><tr><th>${esc(cols[0])}</th><th>${esc(cols[1])}</th><th class="r">${esc(cols[2])}</th><th class="r">${esc(cols[3])}</th></tr></thead>
         <tbody>${(B.rows || []).map(r => `<tr><td>${esc(r.date ? dt(r.date) : '')}</td><td><b>${esc(r.label)}</b>${r.sub ? `<span class="sub">${esc(nb(r.sub))}</span>` : ''}</td><td class="r">${r.bill === null || r.bill === undefined ? '' : eur(r.bill)}</td><td class="r a">${eur(r.share)}</td></tr>`).join('')}
@@ -275,8 +278,8 @@ function nkLetterHtml(d) {
       ${(TB.rows || []).map(r => `<div class="tb-g__r"><span>${esc(r[0])}</span><span>${eur(r[1])}</span></div>`).join('')}
       <div class="tb-g__l"></div>
       <div class="tb-g__t"><span>${TS > 0.004 ? 'Nachzahlung' : TS < -0.004 ? 'Guthaben' : 'Ausgeglichen'}</span><span>${eur(Math.abs(TS))}</span></div>
-      ${payFor(TS, Math.abs(TS))}</div>
-    ${TB.legal ? `<p class="tb-n">${esc(nb(TB.legal))}</p>` : ''}
+      ${TB0 ? `<p class="p">Teil A und Teil B gleichen sich aus – es ist nichts zu zahlen und nichts zu erstatten.</p>` : payFor(TS, Math.abs(TS))}</div>
+    ${TB.legal ? `<p class="tb-n" data-keep-next>${esc(nb(TB.legal))}</p>` : ''}
     ${TB.anlagen ? `<div class="tb-f">${esc(TB.anlagen)}</div>` : ''}
   </div></div>` : '';
 

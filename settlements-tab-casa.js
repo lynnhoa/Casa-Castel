@@ -93,23 +93,27 @@ async function _scLoadYearNow(y) {
 }
 /* Nov 2026 (D39) · Teil B: the Casa receipts that Maintenance › "Who pays?" gives to the tenants
    (Kleinreparatur · Schaden) with the returns that lower them, and their entries (title).
-   Only receipts carry pay_* (returns inherit) · fail-soft: MAINTENANCE-D39.sql not run yet (no pay_* columns),
-   no Maintenance tables or any other error → null = no Teil B, the year loads as before. */
+   Only receipts carry pay_* (returns inherit) · fail-soft: MAINTENANCE-D39.sql not run yet (no pay_* columns) or
+   no Maintenance tables → null = no Teil B, the year loads as before. Any other error (network, timeout …) →
+   { error } = Teil B unknown: a warning, and the year is not locked without it (scLock loads it again). */
+const scTbMissing = e => !!e && (['42703', '42P01', 'PGRST204', 'PGRST205'].includes(String(e.code || ''))
+  || /(pay_(type|where|rooms|via|paid_on)|maint_c(osts|ases)).*(does not exist|schema cache)|(does not exist|could not find).*(pay_|maint_c)/i.test(String(e.message || '')));
 async function scLoadTeilB(per) {
+  const fail = e => scTbMissing(e) ? null : { error: true, message: String((e && e.message) || e || 'error') };
   try {
     const cols = 'id,case_id,amount,cost_date,return_of,description,receipt_no,pay_type,pay_where,pay_rooms,pay_via,pay_paid_on';
     const r = await _ctlSupa.from('maint_costs').select(cols).in('pay_type', ['klein', 'schaden']).gte('cost_date', per.from).lte('cost_date', per.to);
-    if (r.error) return null;
+    if (r.error) return fail(r.error);
     const rec = (r.data || []).filter(x => !x.return_of);
     if (!rec.length) return { cases: [], costs: [] };
     const [ret, cs] = await Promise.all([
       _ctlSupa.from('maint_costs').select('id,amount,return_of').in('return_of', rec.map(x => x.id)),            // returns of any date lower the NET
       _ctlSupa.from('maint_cases').select('id,title,kind,property_id').in('id', [...new Set(rec.map(x => x.case_id))]),
     ]);
-    if (ret.error || cs.error) return null;
+    if (ret.error || cs.error) return fail(ret.error || cs.error);
     const cases = (cs.data || []).filter(x => Number(x.property_id) === CASA_PROP_ID);   // Casa Castel only
     return { cases, costs: rec.concat((ret.data || []).filter(x => x.return_of)) };
-  } catch (e) { return null; }
+  } catch (e) { return fail(e); }
 }
 const scRec = y => SC.rows.find(r => Number(r.year) === Number(y)) || null;
 function scRecEnsure(y) {
@@ -283,6 +287,7 @@ function scInputFor(y) {
   // D39 · Teil B (Kleinreparaturen · Schäden from Maintenance) — kept apart from the house costs (never a line, never
   // pooled); the positions go into the snapshot with the rest of the input when the costs are locked
   const tb = scTeilBPos(d, input);
+  if (d.mt && d.mt.error) input.warn.push('Teil B could not be loaded from Maintenance – reload the page before locking');
   if (tb) {
     input.teilB = tb.pos; input.teilBSkip = tb.skip; input.teilBLater = tb.later;
     if (tb.pos.length) for (const t of input.tenancies) {   // § 7 cap: the yearly rent (Kaltmiete × 12 from the tenant record) — frozen with the snapshot
@@ -299,7 +304,7 @@ function scInputFor(y) {
    not a Kleinreparatur (Mietvertrag § 7) → listed as a warning (skip), not billed. Label = receipt text || entry title.
    → { pos, skip, later } · null when there is no Maintenance data (D39 not run, load failed) */
 function scTeilBPos(d, input) {
-  const mt = d && d.mt; if (!mt) return null;
+  const mt = d && d.mt; if (!mt || mt.error) return null;
   const per = input.period, cases = {}, back = {}, pos = [], skip = [];
   let later = 0;
   for (const c of (mt.cases || [])) cases[String(c.id)] = c;
@@ -318,15 +323,18 @@ function scTeilBPos(d, input) {
   const ord = (a, b) => a.b - b.b || a.date.localeCompare(b.date) || a.label.localeCompare(b.label);
   return { pos: pos.sort(ord), skip: skip.sort(ord), later };
 }
+/* D39 · Teil B room match: the key Controlling links a unit to its room with (_cxNorm) and Maintenance counts rented
+   rooms with (mtNorm) — "New York" = "new york" = "New-York" = "New  York" */
+const scRoomKey = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
 /* the rooms of a position: canonical names (Casa Castel › Rooms), once each, in the rooms' order (a stable cent split) */
 function scTbRooms(list) {
   const rooms = (window._src.rooms || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   const out = [];
   for (const n of (Array.isArray(list) ? list : [])) {
-    const r = rooms.find(x => scNorm(x.name) === scNorm(n)), name = r ? String(r.name) : String(n || '').trim();
-    if (name && !out.some(o => scNorm(o) === scNorm(name))) out.push(name);
+    const r = rooms.find(x => scRoomKey(x.name) === scRoomKey(n)), name = r ? String(r.name) : String(n || '').trim();
+    if (name && !out.some(o => scRoomKey(o) === scRoomKey(name))) out.push(name);
   }
-  const at = n => { const i = rooms.findIndex(x => scNorm(x.name) === scNorm(n)); return i < 0 ? 1e6 : i; };
+  const at = n => { const i = rooms.findIndex(x => scRoomKey(x.name) === scRoomKey(n)); return i < 0 ? 1e6 : i; };
   return out.map((n, i) => [n, i]).sort((a, b) => at(a[0]) - at(b[0]) || a[1] - b[1]).map(x => x[0]);
 }
 /* D39 · Teil B per tenant (after Teil A): each position's NET in equal cent shares over its rooms (largest remainder:
@@ -346,7 +354,7 @@ function scTeilB(input, ten) {
     const cents = Math.round(p0.net * 100), base = Math.floor(cents / n), rest = cents - base * n;
     const shares = rooms.map((room, i) => {
       const amount = (base + (i < rest ? 1 : 0)) / 100;
-      const t = ten.find(x => x.mode === 'nk' && !x.skipped && scNorm(x.room) === scNorm(room) && x.from <= p0.date && p0.date <= x.to);
+      const t = ten.find(x => x.mode === 'nk' && !x.skipped && scRoomKey(x.room) === scRoomKey(room) && x.from <= p0.date && p0.date <= x.to);
       if (t) t.teilB.push({ id: p0.id, b: p0.b, date: p0.date, label: p0.label, net: p0.net, gross: p0.gross, where: p0.where, n, share: amount });
       else warn.push({ p: p0, room, amount, t: room + ' · no NK letter on ' + stDate(p0.date) + ' · stays with you' });
       return { room, amount, key: t ? t.key : null };
@@ -739,7 +747,7 @@ const scTbNum = v => { const n = cxR(v); return (n < -0.004 ? '−' : '') + Math
 /* where / how it is split, e.g. "Gemeinschaftsfläche · ÷ 6 rented = 20,00 €" · "London + New York · ÷ 2 = 120,00 €" · "New York" */
 function scTbSub(p) {
   const sh = (p.shares || []).map(s => s.amount), lo = Math.min(...sh), hi = Math.max(...sh);
-  const each = !sh.length ? '' : ' = ' + (hi - lo < 0.005 ? scE(lo) : scTbNum(lo) + '–' + scE(hi));
+  const each = !sh.length ? '' : ' = ' + (hi - lo < 0.005 ? scE(lo) : scTbNum(lo) + '–\u2060' + scE(hi));   // word joiner: "16,66–16,67 €" stays on one line
   const n = (p.rooms || []).length;
   const where = p.where === 'zimmer' ? (p.rooms[0] || 'no Zimmer set')
     : 'Gemeinschaftsfläche · ' + (p.b === 2 ? p.rooms.join(' + ') + ' · ' : '') + (n ? '÷ ' + n + (p.b === 1 ? ' rented' : '') + each : 'no Zimmer set');
@@ -760,20 +768,22 @@ function scTbView(M) {
     '<span class="sc-tb__v">' + scE(p.net) + '<small>' + stEsc(stDate(p.date)) + '</small></span></a>';
   const block = (b, title, note) => {
     const L = B.pos.filter(p => p.b === b); if (!L.length) return '';
-    const caps = b !== 1 ? '' : M.ten.map(t => { const c = (t.teilB || []).find(r => r.cap); if (!c) return '';
-      return '<div class="sc-tb__r is-cap"><span class="sc-tb__m"><b>' + stEsc('§ 7 cap · ' + t.room + ' · ' + t.name) + '</b><small>' + stEsc('at most 8 % of the yearly rent ' + scE(c.rent12) + ' = ' + scE(c.limit)) + '</small></span>' +
-        '<span class="sc-tb__v">' + scTbNum(c.share) + '\u202f€</span></div>'; }).join('');
-    return '<div class="sc-tb sc-tb--' + b + '"><div class="sc-tb__h"><span><b>' + title + '</b><small>' + note + '</small></span><span class="sc-tb__t">' + scE(b === 1 ? B.b1 : B.b2) + '</span></div>' +
+    const capRows = b !== 1 ? [] : M.ten.map(t => [t, (t.teilB || []).find(r => r.cap)]).filter(x => x[1]);
+    const caps = capRows.map(([t, c]) =>
+      '<div class="sc-tb__r is-cap"><span class="sc-tb__m"><b>' + stEsc('§ 7 cap · ' + t.room + ' · ' + t.name) + '</b><small>' + stEsc('at most 8 % of the yearly rent ' + scE(c.rent12) + ' = ' + scE(c.limit)) + '</small></span>' +
+        '<span class="sc-tb__v">' + scTbNum(c.share) + '\u202f€</span></div>').join('');
+    const total = b === 1 ? cxR(B.b1 + capRows.reduce((a, x) => a + x[1].share, 0)) : B.b2;   // the sum of the card's rows (§ 7 cap rows included)
+    return '<div class="sc-tb sc-tb--' + b + '"><div class="sc-tb__h"><span><b>' + title + '</b><small>' + note + '</small></span><span class="sc-tb__t">' + scE(total) + '</span></div>' +
       L.map(row).join('') + caps + '</div>';
   };
   const warn = B.warn.length ? '<div class="sc-tb-w"><div class="sc-tb-w__h">To check</div>' + B.warn.map(w => '<a class="sc-tb__r" href="' + stEsc(scTbLink(w.p.id)) + '"><span class="sc-tb__m"><b>' + stEsc(w.t) + '</b>' +
-    '<small>' + stEsc(w.skip ? 'over 150 € is not a Kleinreparatur (§ 7) · choose Schaden or You pay in Maintenance' : w.room ? w.p.label + ' · ' + scE(w.amount) : 'set the Zimmer in Maintenance') + '</small></span></a>').join('') + '</div>' : '';
+    '<small>' + stEsc(w.skip ? 'over 150 € is not a Kleinreparatur (§ 7) · in Maintenance › Who pays choose Schaden or NK, or tap Kleinrep. again (you pay)' : w.room ? w.p.label + ' · ' + scE(w.amount) : 'set the Zimmer in Maintenance') + '</small></span></a>').join('') + '</div>' : '';
   // Gesamtverrechnung per Zimmer: every room in order · a room with two NK tenants this year gets two rows
   const rooms = (window._src.rooms || []).filter(r => r.active !== false).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(r => String(r.name));
-  for (const t of M.ten) if (!rooms.some(r => scNorm(r) === scNorm(t.room))) rooms.push(t.room || 'Room');
+  for (const t of M.ten) if (!rooms.some(r => scRoomKey(r) === scRoomKey(t.room))) rooms.push(t.room || 'Room');
   const cell = (v, cls) => Math.abs(v || 0) < 0.005 && cls !== 'is-tot' && cls !== 'is-a' ? '<span class="is-nil">–</span>' : '<span class="' + (cls || '') + '">' + scTbNum(v) + '</span>';
   const gRows = rooms.map(room => {
-    const L = M.ten.filter(t => scNorm(t.room) === scNorm(room)), nk = L.filter(t => t.mode === 'nk' && !t.skipped).sort((a, b) => a.from.localeCompare(b.from));
+    const L = M.ten.filter(t => scRoomKey(t.room) === scRoomKey(room)), nk = L.filter(t => t.mode === 'nk' && !t.skipped).sort((a, b) => a.from.localeCompare(b.from));
     if (!nk.length) return '<div class="sc-tb-g__r is-none"><span>' + stEsc(room) + '</span><span>' + (L.some(t => t.mode !== 'nk') ? 'Pauschal · no NK letter' : L.length ? 'skipped · no settlement' : 'vacant · no settlement') + '</span></div>';
     return nk.map(t => '<button type="button" class="sc-tb-g__r" data-sc="ten" data-k="' + stEsc(t.key) + '"><span>' + stEsc(room) + (nk.length > 1 ? '<small>' + stEsc(scFirst(t.name)) + '</small>' : '') + '</span>' +
       cell(t.saldoA, 'is-a') + cell(t.b1) + cell(t.b2) + cell(t.saldo, 'is-tot') + '</button>').join('');
@@ -801,7 +811,8 @@ function scTbTenRows(t) {
         stEsc(r.cap ? 'at most 8 % of ' + scE(r.rent12) + ' yearly rent' : stDate(r.date) + ' · ' + (r.where === 'zimmer' ? 'own Zimmer' : 'Gemeinschaftsfläche ÷ ' + r.n) + (r.n > 1 ? ' of ' + scE(r.net) : '')) +
         '</small></span><span>' + scTbNum(r.share) + '\u202f€</span></div>').join('') + '</div>' : '');
   };
-  return stTpRow({ title: '= Teil A · ' + (A > 0.004 ? 'Nachzahlung' : A < -0.004 ? 'Guthaben' : 'balanced'), sub: 'Betriebskosten', value: scE(Math.abs(A)), tone: A > 0.004 ? 'pos' : A < -0.004 ? 'neg' : '' }) +
+  // Teil A signed (a Guthaben is −), so "= Teil A + B1 + B2" adds up to the total below — as Gesamtverrechnung and Seite 2
+  return stTpRow({ title: '= Teil A · ' + (A > 0.004 ? 'Nachzahlung' : A < -0.004 ? 'Guthaben' : 'balanced'), sub: 'Betriebskosten', value: scTbNum(A) + '\u202f€', tone: A > 0.004 ? 'pos' : A < -0.004 ? 'neg' : '' }) +
     bRow(1, '+ B1 · Kleinreparaturen') + bRow(2, '+ B2 · Schäden');
 }
 const SC_HG_TYPES = [['strom', 'Strom'], ['gas', 'Gas'], ['wasser', 'Wasser'], ['entsorg', 'Entsorgung']];   // Versorger with a Jahresabrechnung
@@ -2475,6 +2486,14 @@ async function scLock(btn) {
   const M = SC.model; if (!M || M.locked) return;
   const gaps = M.running ? [] : (M.jaGaps || []);           // Nov 2026: every day of the year covered by a Jahresabrechnung (or "no bill")
   if (gaps.length) { stSay('Jahresabrechnung missing: ' + gaps.map(g => g.l + ' ' + scJaSpan(g.from, g.to)).join(' · ') + ' – add it or mark \u201cno bill\u201d under Jahresabrechnungen'); return; }
+  // D39: Teil B (Maintenance) did not load → try once more; a year is never locked without it (the snapshot would
+  // keep "no Teil B" for good)
+  const d = SC.data[M.y];
+  if (d && d.mt && d.mt.error) {
+    const mt = await scLoadTeilB(d.per || scPeriod(M.y));
+    if (mt && mt.error) { stSay('Teil B (Maintenance) could not be loaded – reload the page, then lock'); return; }
+    d.mt = mt; stRenderCasaQuiet(); stSay('Teil B is loaded now – check it, then lock'); return;
+  }
   if (M.warn.length && !(await stConfirm({ title: 'Lock the house costs anyway?', text: M.warn.length + ' point(s) to check:\n' + M.warn.join('\n'), ok: 'Lock anyway' }))) return;
   const r = scRecEnsure(M.y);
   const input = scInputFor(M.y);

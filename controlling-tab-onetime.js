@@ -106,7 +106,8 @@ function _cxOtNkYear(iso) {
 }
 /* What tenants pay of a Casa receipt line (Kleinreparatur / Schaden) — null for NK, landlord and income lines.
    who: the Zimmer or Gemeinschaftsfläche · how: via NK 2026 · paid direct 05.11. · Direct · open
-   amt: what comes off your cost (net) — 0 while a direct one is open or a Kleinreparatur over 150 € is not billed */
+   amt: what comes off your cost (net) — 0 while a direct one is open or Settlements bills nobody (warn: a
+   Kleinreparatur over 150 € · no Zimmer set; short: its Charged on text · you: its "You pay · …" head) */
 function _cxOtTenants(o) {
   if (!o || Number(o.direction) === 1 || _cxOtIsRefund(o)) return null;
   const p = _cxOtPay(o); if (!p || (p.t !== 'klein' && p.t !== 'schaden')) return null;
@@ -114,13 +115,18 @@ function _cxOtTenants(o) {
   const rooms = (Array.isArray(p.r) ? p.r : []).filter(Boolean);
   const who = p.t === 'klein' && p.w === 'gemein' ? 'Gemeinschaftsfläche'
     : rooms.length > 3 ? rooms.length + ' Zimmer' : rooms.length ? rooms.join(', ') : (p.w === 'gemein' ? 'Gemeinschaftsfläche' : 'no Zimmer');
-  const r = { t: p.t, who, how: '', amt: n, n, open: false, warn: false };
-  if (p.v === 'direct') {
+  const r = { t: p.t, v: p.v === 'direct' ? 'direct' : 'nk', who, how: '', amt: n, n, open: false, warn: false };
+  if (p.v === 'direct') {                                            // SQL books the refund line even without a Zimmer
     const d = _cxD(p.p);
     if (d) r.how = 'paid direct ' + d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + (d.slice(0, 4) !== String(o.invoice_date).slice(0, 4) ? d.slice(0, 4) : '');
     else { r.how = 'Direct · open'; r.amt = 0; r.open = true; }
-  } else if (p.t === 'klein' && n > 150) { r.how = 'Kleinrep. >150 € · not billed'; r.amt = 0; r.warn = true; }   // § 7: Settlements does not bill it
-  else r.how = 'via NK ' + _cxOtNkYear(o.invoice_date);
+  } else if (p.t === 'klein' && n > 150) {                           // § 7: Settlements does not bill it
+    Object.assign(r, { how: 'Kleinrep. >150 € · not billed', short: 'Kleinrep. >150 €', you: 'Kleinreparatur over 150 €', amt: 0, warn: true });
+  } else if (!rooms.length) {                                        // as Settlements › Teil B: no Zimmer → nobody is billed
+    const g = who !== 'no Zimmer';                                   // Gemeinschaftsfläche
+    Object.assign(r, { how: (g ? 'no Zimmer set · ' : '') + 'stays with you', short: g ? 'no Zimmer set' : 'stays with you',
+      you: _CX_OT_PAY_T[p.t] + ' without Zimmer', amt: 0, warn: true });
+  } else r.how = 'via\u00a0NK\u00a0' + _cxOtNkYear(o.invoice_date);   // "via NK 2026" never breaks inside
   return r;
 }
 const _cxOtTenantsTxt = t => t.who + ' · ' + t.how + (t.amt ? ' · \u2212' + cxEur(t.amt) : '');
@@ -138,7 +144,7 @@ function _cxOtWhoHTML(o) {
     head = o.nk_umlage ? nkName : 'Return · follows its receipt';
     sub = o.nk_umlage ? 'lowers NK ' + _cxOtNkYear(o.invoice_date) + ' · Teil A' : 'Who pays is set on the receipt';
   } else if (ten) {
-    head = 'Tenants pay · ' + _CX_OT_PAY_T[ten.t];
+    head = ten.warn ? 'You pay · ' + ten.you : 'Tenants pay · ' + _CX_OT_PAY_T[ten.t];   // warn: Settlements bills nobody
     sub = _cxOtTenantsTxt(ten);
   } else if (nk) {
     head = nkName;
@@ -175,8 +181,8 @@ function _cxOtMaintFormHTML(o) {
       '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Cancel</button>' +
         '<button class="cx-btn cx-btn--p" data-cx="otSave">Save</button></div>' +
       '<button class="cx-link cx-ot-mtlink" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button>'
-    : _cxOtWhoHTML(o) +
-      '<div class="cx-grid2"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
+    : _cxOtWhoHTML(o) +                                      // cx-ot-mtbtns: "Open in Maintenance" gets the room (one line on phones)
+      '<div class="cx-grid2 cx-ot-mtbtns"><button class="cx-btn cx-btn--s" data-cx="otCancel">Close</button>' +
         '<button class="cx-btn cx-btn--p" data-cx="otMaint" data-id="' + cxEsc(o.id) + '">Open in Maintenance</button></div>') +
   '</div>';
 }
@@ -288,11 +294,14 @@ function _cxOtRowHTML(o) {
   const nkCat = o.nk_umlage && o.nk_category_id ? (window._ctrl.categories || []).find(c => Number(c.id) === Number(o.nk_category_id)) : null;
   // D39 (bug 33): the "Maintenance" tag is part of the row itself (maint-link.js only tags rows without data-mt-tag),
   // so a redraw no longer drops it for a moment — rows keep their height and a folded month keeps its place
-  const pills = (mt ? '<span class="cx-pill cx-pill--maint">Maintenance</span>' : '') +
+  // D39: "Tenants pay" only when Settlements bills it (not a warn line) · next to it or "Tenant refund" the
+  // "Maintenance" tag says nothing new → cx-pill--mtx hides it on phones, so the receipt's text keeps its room
+  const tp = !!ten && !ten.warn;
+  const pills = (mt ? '<span class="cx-pill cx-pill--maint' + (tp || refund ? ' cx-pill--mtx' : '') + '">Maintenance</span>' : '') +
                 (_cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (o.knk_type ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('ok', 'Refund') : '') :
                 refund ? cxPill('ok', 'Tenant refund') :                                                       // D39: a tenant paid you directly
                 (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK' + (nkCat ? ' · ' + cxEsc(nkCat.name) : '') + '</span>' : '') +
-                (ten ? '<span class="cx-pill cx-pill--tp">Tenants pay</span>' : '') +
+                (tp ? '<span class="cx-pill cx-pill--tp">Tenants pay</span>' : '') +
                 (o.kind === 'Versorger' ? cxPill(inn ? 'ok' : 'grey', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung
                   : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill('ok', 'Income') : '')));
   const aria = mt ? 'From Maintenance: ' + (o.item || 'invoice') + ' · open' : 'Edit ' + (o.item || 'entry');
@@ -344,7 +353,12 @@ function _cxOtExportHTML() {
 /* Nov 2026 (D39) · Casa Castel: Maintenance <year> after "Who pays?" (Year view, only once a receipt is charged to tenants)
    Expenses (as in Maintenance) = its receipts minus their returns · paid by tenants = Kleinreparatur / Schaden via the
    NK letter (Teil B) or paid to you directly (net) · Your cost = the rest. NK receipts (Teil A) are Betriebskosten and
-   not counted as "paid by tenants". The lines themselves keep their full amount (taxes, export). */
+   not counted as "paid by tenants". The lines themselves keep their full amount (taxes, export).
+   Via NK is what Maintenance charges (planned): the letter can bill less (§ 7 cap, a Zimmer without an NK letter) and
+   Controlling cannot see that → its own row "charged via NK (planned)", apart from what was paid to you directly. */
+// the receipt's What of a Maintenance line "<entry> · Beleg n · <What>" (MAINTENANCE-D39.sql) · else the entry title
+const _cxOtWhat = item => { const s = String(item || ''), m = s.match(/ · (?:Beleg|Rechnung) [^·]*? · (.+)$/);
+  return (m ? m[1] : s.replace(/ · (?:Beleg|Rechnung) [^·]*$/, '')).trim() || 'Receipt'; };
 function _cxOtMtSumHTML() {
   if (_cxOt.view !== 'y' || !cxAreaPid(CASA_PROP_ID)) return '';
   const L = _cxOtAll().filter(o => Number(o.property_id) === CASA_PROP_ID && _cxOtIsMaint(o) && !_cxOtIsRefund(o));
@@ -353,27 +367,34 @@ function _cxOtMtSumHTML() {
   if (!ten.length) return '';
   const sum = list => list.reduce((s, o) => s + (Number(o.amount) || 0), 0);
   const exp = cxR(sum(rc) - sum(L.filter(o => Number(o.direction) === 1)));
-  const paid = cxR(ten.reduce((s, x) => s + x.t.amt, 0));
+  const by = v => ten.filter(x => x.t.v === v), add = l => cxR(l.reduce((s, x) => s + x.t.amt, 0));
+  const dir = by('direct'), viaNk = by('nk'), paidDir = add(dir), paidNk = add(viaNk), paid = cxR(paidDir + paidNk);
   const row = (k, v, cls) => '<div class="cx-ot-mts__r' + (cls || '') + '"><span>' + k + '</span><span>' + v + '</span></div>';
   const isNk = o => { const p = _cxOtPay(o); return p ? p.t === 'nk' : !!o.nk_umlage; };
   const own = [...new Set(rc.filter(o => !_cxOtTenants(o) && !isNk(o)).map(o => String(o.item || '').split(' · ')[0].trim()).filter(Boolean))];
   const nNk = rc.filter(isNk).length;
   const list = ten.slice().sort((a, b) => (Number(b.o.amount) || 0) - (Number(a.o.amount) || 0) || String(b.o.invoice_date).localeCompare(String(a.o.invoice_date)))
     .map(({ o, t }) => '<div class="cx-ot-chg__r">' +
-      '<span class="cx-ot-chg__l">' + cxEsc(o.item || 'Receipt') + '</span><span class="cx-ot-chg__v">' + cxEur(o.amount) + '</span>' +
-      '<span class="cx-ot-chg__s' + (t.warn ? ' is-warn' : '') + '">' + cxEsc(t.who + ' · ' + (t.open ? 'Direct' : t.warn ? 'Kleinrep. >150 €' : t.how)) + '</span>' +
+      '<span class="cx-ot-chg__l" title="' + cxEsc(o.item || '') + '">' + cxEsc(_cxOtWhat(o.item)) + '</span><span class="cx-ot-chg__v">' + cxEur(o.amount) + '</span>' +
+      '<span class="cx-ot-chg__s' + (t.warn ? ' is-warn' : '') + '">' + cxEsc(t.who + ' · ' + (t.open ? 'Direct' : t.warn ? (t.short || 'Kleinrep. >150 €') : t.how)) + '</span>' +
       '<span class="cx-ot-chg__a' + (t.amt ? '' : ' is-open') + '">' + (t.amt ? '\u2212' + cxEur(t.amt) : t.open ? 'open' : t.warn ? 'not billed' : '\u2014') + '</span></div>').join('');
   const note = (own.length ? 'You pay the other receipts (' + own.slice(0, 4).join(', ') + (own.length > 4 ? ' and ' + (own.length - 4) + ' more' : '') + '). ' : '') +
     (nNk ? (nNk === 1 ? '1 NK receipt is' : nNk + ' NK receipts are') + ' Betriebskosten in Teil A, not counted here. ' : '') +
+    (paidNk ? 'Via NK = what Maintenance charges; the NK letter (Settlements › Teil B) can bill less: Kleinreparaturen at most ' +
+      '8 % of a tenant\'s yearly rent (§ 7), and the share of a Zimmer without an NK letter that day (vacant, Pauschal) stays with you. ' : '') +
     'Maintenance keeps every receipt at its full amount for taxes.';
-  // one wrapper (full width on desktop, where the property cards go 2 per row): summary left · Charged on right
-  return '<div class="cx-ot-mtw"><div class="cx-card cx-ot-mts">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Maintenance ' + window._ctrl.year + (CX.area === 'casa' ? '' : ' · Casa Castel') + '</span></div>' +
+  const minus = v => v ? '\u2212' + cxEur(v) : cxEur(0);
+  // one wrapper (full width on desktop, where the property cards go 2 per row): summary left · Charged on right,
+  // each column a label above its card (as the mockup), so both cards start on one line
+  return '<div class="cx-ot-mtw"><div class="cx-ot-mtw__r">' +
+      '<div class="cx-head"><span class="cx-lbl">Maintenance ' + window._ctrl.year + (CX.area === 'casa' ? '' : ' · Casa Castel') + '</span></div>' +
+      '<div class="cx-card cx-ot-mts">' +
       row('Expenses (as in Maintenance)', cxEur(exp)) +
-      row('\u2212 paid by tenants', paid ? '\u2212' + cxEur(paid) : cxEur(0), ' cx-ot-mts__r--t') +
+      (dir.length ? row('\u2212 paid to you directly', minus(paidDir), ' cx-ot-mts__r--t') : '') +
+      (viaNk.length ? row('\u2212 charged via NK (planned)', minus(paidNk), ' cx-ot-mts__r--t') : '') +
       '<div class="cx-ot-mts__rule"></div>' +
       row('Your cost', cxEur(exp - paid), ' cx-ot-mts__r--y') +
-    '</div>' +
+    '</div></div>' +
     '<div class="cx-ot-mtw__r"><div class="cx-head"><span class="cx-lbl">Charged on</span></div>' +
       '<div class="cx-card cx-ot-chg">' + list + '</div>' +
       '<p class="cx-ot-chg__n">' + cxEsc(note) + '</p></div></div>';
@@ -446,6 +467,9 @@ window.renderOneTime = function () {
       '.cx-ot-r .cx-ot-tp{color:#6F6457}.cx-ot-tp__a{color:#3F6B35;font-weight:500}.cx-ot-r .cx-ot-tp.is-warn{color:#B0661E}' +
       '.cx-ot-nk--ro{cursor:default}.cx-ot-nk--ro .cx-ot-nk__t small.cx-ot-nk__set{margin-top:2px;color:var(--cx-acc)}' +
       '.cx-ot-mt__p{display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex-shrink:0}' +
+      '@media (max-width:700px){.cx-ot-r .cx-pill--mtx{display:none}}' +                  // phones: the receipt's text keeps its room
+      '.cx-grid2.cx-ot-mtbtns{grid-template-columns:repeat(2,minmax(max-content,1fr))}' +   // halves, but never narrower than a label
+      '@media (max-width:339px){.cx-grid2.cx-ot-mtbtns{grid-template-columns:minmax(0,1fr)}.cx-ot-mtbtns .cx-btn--p{order:-1}}' +
       '.cx-ot-mtw,.cx-ot-mtw__r{display:flex;flex-direction:column;gap:8px;min-width:0}' +
       '@media (min-width:1000px){.cx-ot-mtw{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 16px;align-items:start}' +
         '.cx-ot-mtw__r>.cx-head{padding-top:0}}' +

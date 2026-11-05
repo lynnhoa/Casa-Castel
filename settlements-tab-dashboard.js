@@ -27,6 +27,13 @@ const sdD = iso => String(iso || '').slice(0, 10);
 const sdE = v => stEur(cxR(v));
 const sdDays = (a, b) => Math.round((new Date(sdD(b) + 'T12:00:00Z') - new Date(sdD(a) + 'T12:00:00Z')) / 864e5) + 1;
 const sdNum = v => { if (v === null || v === undefined || v === '') return null; const n = typeof v === 'number' ? v : cxParse(String(v)); return n === null || isNaN(n) ? null : n; };
+/* D39 (bug 29): the years also follow the Casa period ("beginnt am", scYearBounds) — opens on the later of last
+   calendar year and the last ended Casa period, the arrows reach the later running one. 01.01 start: last year / this year as before */
+function sdYearBounds() {
+  const ty = Number(cxToday().slice(0, 4));
+  const B = typeof scYearBounds === 'function' ? scYearBounds() : { maxY: ty, lastEnded: ty - 1 };
+  return { def: Math.max(ty - 1, B.lastEnded), max: Math.max(ty, B.maxY) };
+}
 
 /* ── Load ─────────────────────────────────────────────────── */
 /* B18: one load at a time — a second caller waits for the running one */
@@ -42,7 +49,7 @@ async function _sdLoadNow() {
       if (r.error) { SD.missing = true; SD.drafts = []; } else { SD.missing = false; SD.drafts = r.data || []; }
     })());
     await Promise.all(tasks);
-    const y = Number(cxToday().slice(0, 4)) - 1, rec = typeof scRec === 'function' ? scRec(y) : null;
+    const y = SD.year || sdYearBounds().def, rec = typeof scRec === 'function' ? scRec(y) : null;
     if (!(rec && rec.locked_at) && typeof scLoadYear === 'function') { try { await scLoadYear(y); } catch (e) {} }
   } finally { SD.loaded = true; SD.loading = false; }
 }
@@ -83,8 +90,8 @@ const sdLeft = iso => iso ? Math.round((new Date(sdD(iso) + 'T12:00:00Z') - new 
 function stRenderDashboard() {
   const el = document.getElementById('tab-dashboard'); if (!el) return;
   sdEnsureHost();
-  const ty = Number(cxToday().slice(0, 4));
-  if (!SD.year) SD.year = ty - 1;
+  const YB = sdYearBounds();
+  if (!SD.year) SD.year = YB.def;
   const Y = SD.year;
   const needYear = () => typeof scLoadYear === 'function' && typeof SC !== 'undefined' && !SC.data[Y] && !((scRec(Y) || {}).locked_at);
   if (!SD.loaded || needYear()) {
@@ -101,11 +108,12 @@ function stRenderDashboard() {
   const casaLabel = casa ? stNkLabel(casa.M.per.from, casa.M.per.to) : '';
   // ── Read-only overview (Oct 2026): no reminders or to-dos here — those live in the tabs
   const O = sdOverview(Y, casa);
-  const fr = [ren && ren.frist, casa && casa.frist].filter(Boolean).sort()[0] || null;
+  const frs = [ren && ren.frist, casa && casa.frist].filter(Boolean).sort();
+  const fr = frs.find(f => f >= cxToday()) || frs[0] || null;   // D39: a Frist still ahead before one that has passed
   const yearNav = '<div class="sc-yr">' +
     '<button class="cx-arw" data-sd="year" data-d="-1" aria-label="Previous year"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>' +
     '<div class="sc-yr__t"><div class="sc-yr__m">' + Y + '</div><div class="sc-yr__s">NK periods ending in ' + Y + (fr ? ' · Frist ' + stDe(fr) : '') + '</div></div>' +
-    '<button class="cx-arw" data-sd="year" data-d="1" aria-label="Next year"' + (Y >= ty ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
+    '<button class="cx-arw" data-sd="year" data-d="1" aria-label="Next year"' + (Y >= YB.max ? ' disabled' : '') + '><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>';
   // the cute one stays as it was: manual NK-Abrechnung (older years or anything not in the app)
   const create = '<button class="sd-c4" data-sd="new"><span class="sd-c4__i" aria-hidden="true">🏡<span class="sd-c4__s">✨</span></span>' +
     '<span class="sd-c4__t"><b>NK-Abrechnung erstellen</b><small>manual · older years</small></span><span class="sd-c4__p" aria-hidden="true"><i class="ti ti-plus"></i></span></button>';
@@ -747,7 +755,7 @@ async function sdClick(e) {
   if (a === 'new') { fresh(); SD.d = sdNew(); SD.modal = 'calc'; SD.dirty = false; return sdRenderModal(); }
   if (a === 'openDraft') { const r = SD.drafts.find(x => String(x.id) === String(b.dataset.id)); if (r) { fresh(); SD.d = JSON.parse(JSON.stringify(r)); SD.d.lines = SD.d.lines || []; SD.d.vz = SD.d.vz || []; SD.modal = 'calc'; SD.dirty = false; sdRenderModal(); } return; }
   if (a === 'go') return sdGo((SD.steps || [])[Number(b.dataset.i)] && SD.steps[Number(b.dataset.i)].go);
-  if (a === 'year') { SD.year = (SD.year || Number(cxToday().slice(0, 4)) - 1) + Number(b.dataset.d); return stRenderDashboard(); }
+  if (a === 'year') { SD.year = (SD.year || sdYearBounds().def) + Number(b.dataset.d); return stRenderDashboard(); }
   if (a === 'tab') return stSwitchTab(b.dataset.t);
   if (a === 'sec') { SD.sec = SD.sec === b.dataset.k ? '' : b.dataset.k; return stRenderDashboard(); }
   if (a === 'drafts') { SD.showDrafts = !SD.showDrafts; return stRenderDashboard(); }

@@ -1787,7 +1787,7 @@ function mtCostFileDel(i) {
    "Keep editing" leaves the form and its device draft alone. */
 async function mtCostCancel() {
   const f = MT.sel && MT.sel.cost;
-  if (!f || MT.costHold === f) return;                       // being saved ("Save + next")
+  if (!f || MT.costHold === f || MT.who) return;             // being saved ("Save + next") · D39: Who pays is open on top
   if (document.querySelector('#mtCostModal .mt-askv')) return;   // it is asking already (a second tap beside it)
   if (mtCostChanged()) {
     const ok = await mtConfirm({
@@ -1859,7 +1859,7 @@ function mtDupOf(no, selfId) {
    sheet (no close, no new slide-in, full height kept); its photos upload in the background. */
 async function mtCostSaveNext() {
   const f = MT.sel && MT.sel.cost, c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
-  if (!f || !c || !f.isNew || f.return_of || MT.costHold) return;
+  if (!f || !c || !f.isNew || f.return_of || MT.costHold || MT.who) return;   // D39: not while Who pays is open on top
   mtCostCapture();
   const keep = { kind: f.kind, brand: f.brand || '', cost_date: f.cost_date || '', book_ctrl: f.book_ctrl };
   await mtCostSave({ next: () => {
@@ -1887,7 +1887,7 @@ let mtChkFor = null;                                          // D39 (bug 12): t
    pop-up once the row is stored. Returns true when the row is stored. */
 async function mtCostSave(opts) {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
-  if (!f || !c || MT.costHold) return false;
+  if (!f || !c || MT.costHold || MT.who) return false;       // D39: not while Who pays is open on top (its choice would be lost)
   if (MT.busy) { mtBusySay(); return false; }                // D39 (bug 19): say why nothing happens
   mtCostCapture();
   const g = id => document.getElementById(id);
@@ -1908,6 +1908,10 @@ async function mtCostSave(opts) {
     if (amount < back) return fail('mtC-amount', `The receipt can't be less than its returns (${mtEur(back)}).`);
     const first = mtReturnsOf(f.id)[0];
     if (first && first.cost_date < f.cost_date) return fail('mtC-date', `The receipt can't be after its return (${mtDate(first.cost_date)}).`);
+  }
+  if (MT.d39 && !ret && mtIsCasa(c.property_id)) {            // D39 fix: Who pays can't move into a locked NK year (as its sheet)
+    const was = f.isNew ? null : mtCostById(f.id), L = mtWhoYrBar(mtWhoNorm(mtWhoFrom(f), null, true), f.id, f.cost_date);
+    if (L && !(was && mtWhoYrBar(was, was.id, was.cost_date) === L)) return fail('mtC-date', `NK ${L.year} is locked in Settlements – change Who pays or the date.`);
   }
   const hold = !!(opts && opts.next);                          // Save + next: this pop-up waits ("Saving …") until the row is stored
   if (hold) mtCostHold(f);
@@ -1967,7 +1971,8 @@ async function mtCostSave(opts) {
     ...(pick || {}),
     // D39 · Who pays (Casa Castel receipts only, only once MAINTENANCE-D39.sql has run): the normal form — and a
     // Kleinreparatur on the Gemeinschaftsfläche is shared by the Zimmer rented on the (maybe new) receipt date
-    ...(MT.d39 && !ret && mtIsCasa(c.property_id) ? mtWhoNorm(mtWhoFrom(f), f.cost_date) : {}),
+    // D39 fix: a receipt already billed in a locked Settlements year keeps its stored choice (its Zimmer as billed)
+    ...(MT.d39 && !ret && mtIsCasa(c.property_id) ? (prev && mtWhoLockOf(prev) ? mtWhoPick(prev) : mtWhoNorm(mtWhoFrom(f), f.cost_date)) : {}),
   };
   const kindChanged = !ret && old && old.kind !== row.kind;
   const rets = kindChanged ? mtReturnsOf(id) : [];
@@ -2207,8 +2212,26 @@ async function mtCostDelete() {
 /* ── In-app sheets (instead of confirm()) ───────────────────
    mtConfirm({ title, text, ok, cancel, danger }) → Promise<boolean>
    mtAsk({ title, text, buttons: [{ v, label, kind: 'p' | 's' | 'd' }] }) → Promise<v | null> (null = closed) */
+const mtSelOf = el => { try { return el && typeof el.selectionStart === 'number' ? [el.selectionStart, el.selectionEnd, el.selectionDirection || 'none'] : null; } catch (_) { return null; } };
+/* D39 fix · where the focus goes back when a question is answered "stay" (Keep editing · Cancel · Escape): the field
+   you are in, or the one you just left for the tap that asked (× · a tap beside it · Cancel) — with its cursor */
+function mtAskBack() {
+  const a = document.activeElement, open = [...document.querySelectorAll('.mt-modal')].filter(x => !x.inert);
+  const m = (a && a.closest && a.closest('.mt-modal')) || open[open.length - 1];
+  if (!m) return null;
+  if (a && m.contains(a) && a.matches(MT_ED_FIELD)) return { el: a, sel: mtSelOf(a) };
+  const f = m._fld, el = f && (f.el.isConnected ? f.el : f.id ? document.getElementById(f.id) : null);
+  if (el && m.contains(el) && f.out && Date.now() - f.out < 2000) return { el, sel: f.sel };
+  return a && a !== document.body && m.contains(a) ? { el: a, sel: null } : null;
+}
+function mtAskReturn(back, val) {                            // only for "stay" — Discard / OK never bring the keyboard up
+  if (!back || !(val === null || val === false || val === 'cancel')) return;
+  const el = back.el;
+  if (!el.isConnected || !el.closest('.mt-modal') || el.closest('[inert]')) return;
+  try { el.focus({ preventScroll: true }); if (back.sel) el.setSelectionRange(back.sel[0], back.sel[1], back.sel[2]); } catch (_) {}
+}
 function mtAsk(o) {
-  const host = document.querySelector('#mtCostModal .mt-modal__s');
+  const host = document.querySelector('#mtCostModal .mt-modal__s'), back = mtAskBack();
   if (host) return new Promise(resolve => {                  // D22: inside the receipt pop-up
     host.querySelector('.mt-askv')?.remove();
     const v = document.createElement('div');
@@ -2217,7 +2240,7 @@ function mtAsk(o) {
     v.innerHTML = `<p class="mt-cf__t">${mtEsc(o.title || 'Are you sure?')}</p>${o.text ? `<p class="mt-cf__x">${mtEsc(o.text)}</p>` : ''}${o.html || ''}
       <div class="mt-cf__b">${(o.buttons || []).map((b, i) => `<button type="button" class="mt-btn mt-btn--${b.kind || 's'}" data-i="${i}">${mtEsc(b.label)}</button>`).join('')}</div>`;
     host.appendChild(v);
-    const done = val => { document.removeEventListener('keydown', key, true); v.remove(); resolve(val); };
+    const done = val => { document.removeEventListener('keydown', key, true); v.remove(); mtAskReturn(back, val); resolve(val); };
     const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
     document.addEventListener('keydown', key, true);
     v.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; e.stopPropagation(); done(o.buttons[Number(b.dataset.i)].v); });
@@ -2238,7 +2261,7 @@ function mtAsk(o) {
         <div class="mt-cf__b">${btns}</div>
       </div>`;
     document.body.appendChild(h);
-    const done = v => { document.removeEventListener('keydown', key, true); h.remove(); resolve(v); };
+    const done = v => { document.removeEventListener('keydown', key, true); h.remove(); mtAskReturn(back, v); resolve(v); };
     const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); done(null); } };
     document.addEventListener('keydown', key, true);
     h.addEventListener('click', e => {
@@ -2604,6 +2627,7 @@ function mtWire() {
     if (!t) return;
     if (t.closest && t.closest('#mtSbModal')) { mtSbChange(t); return; }
     if (t.id === 'mtW-paid') { mtWhoSet('paid', t.value); return; }   // D39: the calendar wrote "Paid on"
+    if (t.id === 'mtC-book' && document.getElementById('mtC-whobox')) mtCostWhoSync();   // D39 fix: Who pays follows "Book in Controlling"
     if (t.id === 'mtF-kind') mtKindChanged();
     else if (t.id === 'mtF-prop' || t.id === 'mtF-art') mtSbVis();
     else if (t.id === 'mtF-end') mtEndChanged();
@@ -3063,6 +3087,9 @@ function mtModal(id, o) {
     <div class="mt-modal__s" role="dialog" aria-modal="true"${o.label ? ` aria-labelledby="${mtEsc(o.label)}"` : ''}><div class="mt-modal__h"></div><div class="mt-modal__b"></div><div class="mt-modal__f"></div></div>`;
   const sh = m.querySelector('.mt-modal__s');
   sh.addEventListener('animationend', e => { if (e.target === sh) m.classList.add('is-shown'); });   // it never slides in twice
+  // D39 fix: the field you type in (and when it lost the focus, with its cursor) — "Keep editing" in a question gives it back
+  m.addEventListener('focusin', e => { const t = e.target; if (t.matches && t.matches(MT_ED_FIELD)) m._fld = { el: t, id: t.id, out: 0, sel: null }; });
+  m.addEventListener('focusout', e => { const f = m._fld; if (f && f.el === e.target) { f.out = Date.now(); f.sel = mtSelOf(e.target); } });
   document.body.appendChild(m);
   mtLockSync();
   return m;
@@ -3119,6 +3146,11 @@ function mtLockStick() {
 function mtLockSync(force) {
   const want = !!(force || document.querySelector('.mt-modal, #mtCam'));
   const html = document.documentElement, bd = document.body, shell = document.getElementById('appShell');
+  // Nov 2026 (D39 fix): pop-ups stacked on another (Who pays over the receipt) → only the top one takes the focus and
+  // the keys; the one below waits, as the page behind does (no Tab into a Save you can't see)
+  const ms = [...document.querySelectorAll('.mt-modal')], zOf = x => Number(getComputedStyle(x).zIndex) || 0;
+  const top = ms.reduce((a, x) => (!a || zOf(x) >= zOf(a) ? x : a), null);
+  ms.forEach(x => { const v = x !== top; if (x.inert !== v) x.inert = v; });
   if (want && !MT_LOCK.on) {
     const y = window.scrollY;
     const tops = mtStickEls().map(el => ({ k: el.matches('.mt-ybar') ? '.mt-ybar' : '.cc-header', top: el.getBoundingClientRect().top }));
@@ -3183,10 +3215,13 @@ function mtVVField() {                                       // the field you ty
 function mtCostModalSync() {
   const s = MT.sel;
   if (s && s.cost) return;
+  mtWhoNestDrop(null);                                       // D39 fix: a Who pays sheet of that receipt never stays alone
   mtModalDrop('mtCostModal');
 }
+function mtWhoNestDrop(f) { if (MT.who && MT.who.nest && MT.who.f !== f) { MT.who = null; mtModalDrop('mtWhoModal'); } }
 function mtCostModalRender() {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
+  mtWhoNestDrop(f);                                          // D39 fix: another form in the pop-up → its Who pays sheet goes
   if (!f || !c) { mtCostModalSync(); mtDraftClosed(); return; }
   mtDraftSoon();
   const m = mtModal('mtCostModal', { close: 'costCancel', label: 'mtCostT' });
@@ -3307,7 +3342,7 @@ function mtWhoNorm(s, day, key) {
   if (s.t !== 'klein' && s.t !== 'schaden') return out;
   const w = s.w === 'zimmer' ? 'zimmer' : 'gemein', direct = s.v === 'direct';
   let rooms;
-  if (s.t === 'klein' && w === 'gemein') rooms = key ? null : mtWhoKleinRooms(s.r, day);
+  if (s.t === 'klein' && w === 'gemein') rooms = key ? null : mtWhoKleinRooms(s.had || s.r, day);   // the sheet: the rooms it had (never its picks)
   else rooms = w === 'zimmer' ? s.r.slice(0, 1) : s.r.slice();
   return Object.assign(out, { pay_type: s.t, pay_where: w, pay_rooms: rooms, pay_via: direct ? 'direct' : 'nk', pay_paid_on: direct ? (s.p || null) : null });
 }
@@ -3329,6 +3364,19 @@ function mtWhoLockOf(r) {
   const L = MT.whoLock.find(x => (t === 'klein' || t === 'schaden') ? x.ids.has(String(r.id)) : t === 'nk' && !!x.from && x.from <= d && d <= x.to);
   return L ? `Billed in NK ${L.year} · locked in Settlements` : '';
 }
+/* D39 fix · a locked NK year can't take anything new: the locked period of a date (or null) · and the one a choice
+   would need although it can't bill it any more — NK (Teil A) on a date in it, or a Kleinreparatur / Schaden with
+   the NK-Abrechnung that is not in its snapshot. p = the pay_* fields (normal form). */
+function mtWhoYrOf(day) {
+  const d = String(day || '').slice(0, 10);
+  return (d && MT.whoLock && MT.whoLock.find(x => !!x.from && x.from <= d && d <= x.to)) || null;
+}
+function mtWhoYrBar(p, id, day) {
+  const L = mtWhoYrOf(day);
+  if (!L || !p) return null;
+  if (p.pay_type === 'nk') return L;
+  return (p.pay_type === 'klein' || p.pay_type === 'schaden') && p.pay_via !== 'direct' && !L.ids.has(String(id)) ? L : null;
+}
 const mtWhoCatAll = () => (MT.whoCats || []).filter(c => c.code !== 'RATE' && c.nk_key !== 'none');   // like Controlling's NK cost types
 function mtWhoCatName(id) {
   if (id === null || id === undefined || id === '') return 'Allgemeine Hauskosten';
@@ -3344,26 +3392,30 @@ function mtWhoCatIds(sel) {
   if (cur && !top.includes(cur)) top.push(cur);
   return top.map(c => String(c.id));
 }
-/* the tag: { t: text, k: unset · nk · set · bad } — bad = a Kleinreparatur over 150 € (NET) or no Zimmer */
-function mtWhoTag(s, net) {
+/* D39 fix · "Book in Controlling" off (the receipt's or the entry's switch): no Controlling line → NK never reaches Teil A
+   and a tenant's direct payment is deducted nowhere (MAINTENANCE-D39.sql books neither); Teil B reads the receipt itself */
+const mtWhoOff = (c, r) => !!((c && c.book_ctrl === false) || (r && r.book_ctrl === false));
+/* the tag: { t: text, k: unset · nk · set · bad } — bad = a Kleinreparatur over 150 € (NET), no Zimmer, or NK while the
+   receipt is not in Controlling (it has no effect then) */
+function mtWhoTag(s, net, off) {
   if (!s.t) return { t: '+ Who pays', k: 'unset' };
-  if (s.t === 'nk') { const n = mtWhoCatName(s.cat); return { t: n ? 'NK · ' + n : 'NK', k: 'nk' }; }
+  if (s.t === 'nk') { const n = mtWhoCatName(s.cat); return { t: n ? 'NK · ' + n : 'NK', k: off ? 'bad' : 'nk' }; }
   if (s.t === 'klein' && net > MT_WHO_MAX + 0.004) return { t: 'Kleinrep. >150 €', k: 'bad' };
   const head = s.t === 'klein' ? 'Kleinrep.' : 'Schaden';
   if (!s.r.length) return { t: head + ' · no Zimmer', k: 'bad' };
   const where = s.t === 'klein' && s.w !== 'zimmer' ? 'Gemeinschaft' : s.r.length >= 3 ? s.r.length + ' Zimmer' : s.r.join(', ');
   return { t: head + ' · ' + where + (s.v === 'direct' ? (s.p ? ' · paid' : ' · open') : ''), k: 'set' };
 }
-const mtWhoAria = k => 'Who pays: ' + (k.k === 'unset' ? 'not set (you pay)' : k.t);
+const mtWhoAria = (k, off) => 'Who pays: ' + (k.k === 'unset' ? 'not set (you pay)' : k.t) + (off && k.k === 'bad' && /^NK/.test(k.t) ? ' · not in Controlling' : '');
 function mtWhoTagHTML(r, tap) {
-  const k = mtWhoTag(mtWhoFrom(r), mtNet(r)), id = mtEsc(r.id);
-  return tap ? `<button type="button" class="mt-who mt-who--${k.k}" data-mt="whoPays" data-id="${id}" aria-label="${mtEsc(mtWhoAria(k))}">${mtEsc(k.t)}</button>`
+  const off = mtWhoOff(mtCase(r.case_id), r), k = mtWhoTag(mtWhoFrom(r), mtNet(r), off), id = mtEsc(r.id);
+  return tap ? `<button type="button" class="mt-who mt-who--${k.k}" data-mt="whoPays" data-id="${id}" aria-label="${mtEsc(mtWhoAria(k, off))}">${mtEsc(k.t)}</button>`
              : `<span class="mt-who mt-who--${k.k}" data-id="${id}">${mtEsc(k.t)}</span>`;   // rows are inert (another form is open)
 }
 /* the quiet row in the receipt pop-up: Who pays  <tag>  › */
 function mtCostWhoRowHTML(f) {
-  const k = mtWhoTag(mtWhoFrom(f), mtNet(f, f.amount));
-  return `<button type="button" class="mt-wrow" id="mtC-whorow" data-mt="whoNest" aria-label="${mtEsc(mtWhoAria(k))}"><span>Who pays</span><span class="mt-wrow__r"><span class="mt-who mt-who--${k.k}">${mtEsc(k.t)}</span><span class="mt-wrow__c" aria-hidden="true">›</span></span></button>`;
+  const off = mtWhoOff(MT.sel ? mtCase(MT.sel.id) : null, f), k = mtWhoTag(mtWhoFrom(f), mtNet(f, f.amount), off);
+  return `<button type="button" class="mt-wrow" id="mtC-whorow" data-mt="whoNest" aria-label="${mtEsc(mtWhoAria(k, off))}"><span>Who pays</span><span class="mt-wrow__r"><span class="mt-who mt-who--${k.k}">${mtEsc(k.t)}</span><span class="mt-wrow__c" aria-hidden="true">›</span></span></button>`;
 }
 function mtCostWhoSync() {                                    // the row follows the form in place (amount typed, sheet saved)
   const box = document.getElementById('mtC-whobox'), f = MT.sel && MT.sel.cost;
@@ -3380,7 +3432,7 @@ function mtWhoOpen(id) {
   if (MT.busy) { mtBusySay(); return; }                      // a save / upload is running → wait (and say so)
   if (mtActive(c)) return;                                   // another form is open (its rows are inert anyway)
   MT.who = mtWhoState(r, c, { id: String(r.id), nest: false, day: String(r.cost_date || ccTodayISO()).slice(0, 10), net: mtNet(r),
-    what: String(r.description || '').trim() || c.title, lock: mtWhoLockOf(r) });
+    what: String(r.description || '').trim() || c.title, lock: mtWhoLockOf(r), off: mtWhoOff(c, r) });
   mtWhoRender();                                             // no panel redraw: the page behind stays exactly as it is
 }
 /* from the receipt pop-up: its Save fills the form (stored with the receipt's Save) */
@@ -3390,29 +3442,45 @@ function mtWhoNest() {
   mtCostCapture();                                           // the amount / date / What as typed right now
   const stored = f.isNew ? null : mtCostById(f.id);
   MT.who = mtWhoState(f, c, { id: String(f.id), nest: true, f, day: String(f.cost_date || ccTodayISO()).slice(0, 10), net: mtNet(f, f.amount),
-    what: String(f.description || '').trim() || c.title, lock: stored ? mtWhoLockOf(stored) : '' });
+    what: String(f.description || '').trim() || c.title, lock: stored ? mtWhoLockOf(stored) : '', off: mtWhoOff(c, f) });
   mtWhoRender();
 }
 function mtWhoState(src, c, o) {
   const W = Object.assign({ caseId: c.id, room0: c.report_room || null, more: false }, o, mtWhoFrom(src));
-  if (W.t === 'klein' && W.w === 'gemein') W.r = [];         // those Zimmer follow the tenants — never picks (e.g. for "Caused by")
+  // D39 fix: a stored Kleinreparatur on the Gemeinschaftsfläche keeps its Zimmer apart (had): they follow the tenants, so they
+  // are never picks (e.g. for "Caused by") — and earlier picks ("Caused by") never become its Zimmer
+  W.had = W.t === 'klein' && W.w === 'gemein' ? W.r.slice() : [];
+  if (W.t === 'klein' && W.w === 'gemein') W.r = [];
   W.cats = mtWhoCatIds(W.cat);
+  W.yr = W.lock ? null : mtWhoYrOf(W.day);                    // D39 fix: its NK year is locked → no NK, no "With NK-Abrechnung"
   return W;
 }
+const mtWhoViaOff = W => !!W.yr && !W.yr.ids.has(String(W.id));   // that year's NK-Abrechnung can't bill it any more
 /* Kleinreparatur / Schaden chosen: Where from the entry's Ort (a Zimmer → that Zimmer · Gemeinschaftsfläche) */
 function mtWhoPrefill(W) {
   const v = W.room0;
-  if (v && v !== MT_SB_ALL) { W.w = 'zimmer'; W.r = [mtRoomCanon(v)]; } else W.w = 'gemein';
+  if (v && v !== MT_SB_ALL) { W.w = 'zimmer'; const o = mtWhoOrt(W); W.r = o ? [o] : []; } else W.w = 'gemein';
+}
+/* D39 fix: the entry's Zimmer is chosen for you only when someone lives there on the receipt date (or the tenants could
+   not be loaded) — a vacant Zimmer is never picked (its chip is off: "Choose the Zimmer") */
+function mtWhoOrt(W) {
+  const v = W.room0;
+  if (!v || v === MT_SB_ALL) return null;
+  const n = mtRoomCanon(v), R = mtWhoRooms(W.day);
+  return !R.known || R.rented.includes(n) ? n : null;
 }
 const mtWhoOver = W => W.net > MT_WHO_MAX + 0.004;
-const mtWhoPayRooms = W => (W.t === 'klein' && W.w !== 'zimmer' ? mtWhoKleinRooms(W.r, W.day) : W.w === 'zimmer' ? W.r.slice(0, 1) : W.r.slice());
-/* what keeps Save off: '' · lock · over (Kleinreparatur > 150 €) · room (no Zimmer chosen) · norent (nobody lives there) */
+const mtWhoPayRooms = W => (W.t === 'klein' && W.w !== 'zimmer' ? (W.lock && W.had.length ? W.had.slice() : mtWhoKleinRooms(W.had, W.day))   // locked: as billed
+  : W.w === 'zimmer' ? W.r.slice(0, 1) : W.r.slice());
+const mtWhoVac = W => { const R = mtWhoRooms(W.day); return R.known ? mtWhoPayRooms(W).filter(n => !R.rented.includes(n)) : []; };   // chosen, but vacant that day
+/* what keeps Save off: '' · lock · over (Kleinreparatur > 150 €) · room (no Zimmer chosen) · vacant (a chosen Zimmer is
+   vacant that day, e.g. a stored choice after the date changed) · norent (nobody lives there) */
 function mtWhoProblem(W, noLock) {
   if (W.lock && !noLock) return 'lock';
   if (W.t === 'klein' && mtWhoOver(W)) return 'over';
+  if (W.yr && (W.t === 'nk' || ((W.t === 'klein' || W.t === 'schaden') && W.v !== 'direct' && mtWhoViaOff(W)))) return 'yrlock';
   if (W.t !== 'klein' && W.t !== 'schaden') return '';
-  if (W.w === 'zimmer') return W.r.length ? '' : 'room';
-  if (W.t === 'schaden') return W.r.length ? '' : 'room';
+  if (W.w === 'zimmer' || W.t === 'schaden') return !W.r.length ? 'room' : mtWhoVac(W).length ? 'vacant' : '';
   const R = mtWhoRooms(W.day);
   return R.known && !R.rented.length ? 'norent' : '';
 }
@@ -3421,16 +3489,20 @@ function mtWhoResHTML(W) {
   const E = mtEur, net = W.net, yr = 'NK ' + mtWhoYear(W.day);
   const two = (a, b) => a + (b ? `<br><span>${b}</span>` : '');
   if (!W.t) return `You pay <b>${E(net)}</b>`;
-  if (W.t === 'nk') return two(`<b>${E(net)}</b> to NK · ${mtEsc(mtWhoCatName(W.cat) || 'its cost type')}`, `${yr} · Teil A`);
+  if (mtWhoProblem(W, true) === 'yrlock') return two(`NK ${W.yr.year} is locked in Settlements`,
+    W.t === 'nk' ? 'tap NK again: you pay — or choose Kleinreparatur / Schaden' : 'choose Direct — or tap the type again: you pay');
+  if (W.t === 'nk') return two(`<b>${E(net)}</b> to NK · ${mtEsc(mtWhoCatName(W.cat) || 'its cost type')}`, W.off ? `Not in Controlling · so not in the NK (${yr} · Teil A)` : `${yr} · Teil A`);
   const pb = mtWhoProblem(W, true);
-  if (pb === 'over') return two(`<b>${E(net)}</b> is over 150,00 € · not a Kleinreparatur`, 'Mietvertrag § 7 · choose Schaden or NK — or tap it again: you pay');
+  if (pb === 'over') return two(`<b>${E(net)}</b> is over 150,00 € · not a Kleinreparatur`, `Mietvertrag § 7 · choose Schaden${W.yr ? '' : ' or NK'} — or tap it again: you pay`);
   if (pb === 'room') return two(W.w === 'zimmer' ? 'Choose the Zimmer' : 'Choose who caused it', `${E(net)} · nothing is charged yet`);
+  if (pb === 'vacant') { const v = mtWhoVac(W);
+    return two(`${mtEsc(v.join(', '))} ${v.length === 1 ? 'is' : 'are'} vacant on ${mtDate(W.day)} · tap ${v.length === 1 ? 'it' : 'them'} off`, `${E(net)} · nothing is charged yet`); }
   if (pb === 'norent') return two(`No Zimmer rented on ${mtDate(W.day)}`, `You pay ${E(net)}`);
   const rooms = mtWhoPayRooms(W), n = rooms.length, gem = W.t === 'klein' && W.w !== 'zimmer';
-  const cents = Math.round(net * 100), even = cents % n === 0;
-  const main = n > 1 || gem ? `${E(net)} ÷ ${n} ${even ? '=' : '≈'} <b>${E(Math.floor(cents / n) / 100)}</b> ${gem ? 'per Zimmer' : mtEsc(rooms.join(', '))}`
+  const cents = Math.round(net * 100), even = cents % n === 0;   // D39 fix: ≈ the share to the cent = what most Zimmer pay in Settlements
+  const main = n > 1 || gem ? `${E(net)} ÷ ${n} ${even ? '=' : '≈'} <b>${E(Math.round(cents / n) / 100)}</b> ${gem ? 'per Zimmer' : mtEsc(rooms.join(', '))}`
                             : `<b>${E(net)}</b> from ${mtEsc(rooms[0])}`;
-  if (W.v === 'direct') return two(main + (W.p ? ' · paid' : ' · open'), W.p ? `Controlling deducts ${E(net)} · not in Teil B` : 'not in Teil B');
+  if (W.v === 'direct') return two(main + (W.p ? ' · paid' : ' · open'), W.p && !W.off ? `Controlling deducts ${E(net)} · not in Teil B` : W.p ? 'Not in Controlling · nothing deducted · not in Teil B' : 'not in Teil B');
   return two(main, `${yr} · ${W.t === 'klein' ? 'Teil B1 Kleinreparaturen · § 7' : 'Teil B2 Schäden'}`);
 }
 function mtWhoHead(W) {
@@ -3441,10 +3513,12 @@ function mtWhoHead(W) {
 function mtWhoBody(W) {
   const L = !!W.lock, tb = W.t === 'klein' || W.t === 'schaden', over = mtWhoOver(W);
   const on = b => (b ? ' is-on' : ''), pr = b => ` aria-pressed="${!!b}"`, hid = b => (b ? '' : ' hidden');
-  const seg = (k, v, label, cur) => `<button type="button" class="mt-w__sb${on(cur === v)}" data-mt="${k}" data-v="${v}"${pr(cur === v)}${L ? ' disabled' : ''}>${label}</button>`;
+  const seg = (k, v, label, cur, off) => `<button type="button" class="mt-w__sb${on(cur === v)}" data-mt="${k}" data-v="${v}"${pr(cur === v)}${L || off ? ' disabled' : ''}>${label}</button>`;
+  const yr = W.yr, viaOff = mtWhoViaOff(W);                  // D39 fix: a locked NK year takes no NK / NK-Abrechnung (what is set stays tappable off)
   const type = `<div class="mt-w__sec"><span class="mt-w__k" id="mtW-typeL">Type</span>
-      <div class="mt-w__seg mt-w__seg--3 mt-w__seg--ink" role="group" aria-labelledby="mtW-typeL">${seg('whoType', 'nk', 'NK', W.t)}<button type="button" class="mt-w__sb${on(W.t === 'klein')}${over ? ' is-over' : ''}" data-mt="whoType" data-v="klein"${pr(W.t === 'klein')}${L || (over && W.t !== 'klein') ? ' disabled' : ''}>${over ? 'Kleinrep. &gt;150 €' : 'Kleinreparatur'}</button>${seg('whoType', 'schaden', 'Schaden', W.t)}</div>
-      <span class="mt-w__h"${hid(W.t === 'nk')}>NK is always shared by all · like all Betriebskosten</span></div>`;
+      <div class="mt-w__seg mt-w__seg--3 mt-w__seg--ink" role="group" aria-labelledby="mtW-typeL">${seg('whoType', 'nk', 'NK', W.t, !!yr && W.t !== 'nk')}<button type="button" class="mt-w__sb${on(W.t === 'klein')}${over ? ' is-over' : ''}" data-mt="whoType" data-v="klein"${pr(W.t === 'klein')}${L || (over && W.t !== 'klein') ? ' disabled' : ''}>${over ? 'Kleinrep. &gt;150 €' : 'Kleinreparatur'}</button>${seg('whoType', 'schaden', 'Schaden', W.t)}</div>
+      <span class="mt-w__h"${hid(W.t === 'nk' && !yr)}>NK is always shared by all · like all Betriebskosten</span>
+      <span class="mt-w__h"${hid(!!yr)}>NK ${yr ? yr.year : ''} · locked in Settlements · NK${viaOff ? ' and NK-Abrechnung' : ''} off</span></div>`;
   const all = mtWhoCatAll(), ids = W.more ? W.cats.concat(all.map(c => String(c.id)).filter(i => !W.cats.includes(i))) : W.cats;
   const cats = ids.map(i => all.find(c => String(c.id) === i)).filter(Boolean), isCat = c => String(W.cat) === String(c.id);
   const catSec = `<div class="mt-w__sec"${hid(W.t === 'nk' && !!MT.whoCats)}><span class="mt-w__k" id="mtW-catL">Cost type</span>
@@ -3456,14 +3530,14 @@ function mtWhoBody(W) {
   const nv = R.vacant.length, hint = !R.known ? '' : !R.rented.length ? `No Zimmer rented on ${mtDate(W.day)}`
     : `${R.rented.length} rented Zimmer${nv ? ` · ${R.vacant.join(', ')} vacant, ${nv === 1 ? 'pays' : 'pay'} nothing` : ''}`;
   const whereSec = `<div class="mt-w__sec"${hid(tb)}><span class="mt-w__k" id="mtW-whereL">Where</span>
-      <div class="mt-w__seg" role="group" aria-labelledby="mtW-whereL">${seg('whoWhere', 'gemein', W.t === 'klein' ? 'Gemeinschaftsfläche · all' : 'Gemeinschaftsfläche', tb ? W.w : '')}${seg('whoWhere', 'zimmer', 'Zimmer', tb ? W.w : '')}</div>
+      <div class="mt-w__seg" role="group" aria-labelledby="mtW-whereL">${seg('whoWhere', 'gemein', W.t === 'klein' ? 'Gemeinschaft<span class="mt-w__lg">sfläche</span> · all' : 'Gemeinschaftsfläche', tb ? W.w : '')}${seg('whoWhere', 'zimmer', 'Zimmer', tb ? W.w : '')}</div>
       <span class="mt-w__h"${hid(kgem && !!hint)}>${mtEsc(hint)}</span>
       <div class="mt-w__chips" role="group" aria-label="Zimmer"${hid(zim)}>${list.map(n => chip(n, zim && W.r[0] === n)).join('')}</div></div>`;
   const bySec = `<div class="mt-w__sec"${hid(sgem)}><span class="mt-w__k" id="mtW-byL">Caused by · several possible</span>
       <div class="mt-w__chips" role="group" aria-labelledby="mtW-byL">${list.map(n => chip(n, sgem && W.r.includes(n))).join('')}</div></div>`;
   const dir = W.v === 'direct';
   const paySec = `<div class="mt-w__sec"${hid(tb)}><span class="mt-w__k" id="mtW-payL">Payment</span>
-      <div class="mt-w__seg" role="group" aria-labelledby="mtW-payL">${seg('whoVia', 'nk', 'With NK-Abrechnung', W.v)}${seg('whoVia', 'direct', 'Direct', W.v)}</div>
+      <div class="mt-w__seg" role="group" aria-labelledby="mtW-payL">${seg('whoVia', 'nk', 'With NK-Abrechnung', W.v, viaOff)}${seg('whoVia', 'direct', 'Direct', W.v)}</div>
       <button type="button" class="mt-w__paid" data-mt="whoPaid" aria-label="Paid on ${W.p ? mtDate(W.p) : '· empty'} · choose in the calendar"${hid(dir)}${L ? ' disabled' : ''}><span>Paid on</span><span class="mt-w__pv${W.p ? '' : ' is-empty'}">${W.p ? mtDate(W.p) : 'TT.MM.JJJJ'}</span></button>
       <input type="date" id="mtW-paid" aria-label="Paid on" value="${mtEsc(W.p || '')}" hidden data-keep="1"/>
       <span class="mt-w__h"${hid(dir)}>leave empty until paid</span></div>`;
@@ -3483,7 +3557,18 @@ function mtWhoRender() {
   const m = mtModal('mtWhoModal', { cls: 'mt-modal--who mt-modal--fit', close: 'whoCancel', label: 'mtWhoT' });
   const q = k => m.querySelector(':scope > .mt-modal__s > .mt-modal__' + k);
   if (fresh) {
-    mtModalFill(m, { h: mtWhoHead(W), b: mtWhoBody(W), f: mtWhoFoot(W) }, false);
+    // Nov 2026 (D39 fix): one height for the whole open — that of its tallest layout (Schaden · Caused by · Direct, or
+    // NK), measured once here. Phones keep it, laptops place the sheet by it (top fixed), so a tap that shows or hides a
+    // part below never moves the button under the finger. Locked: nothing changes, its own height.
+    const sh = m.querySelector(':scope > .mt-modal__s'), hd = mtWhoHead(W), ft = mtWhoFoot(W);
+    let hh = 0;
+    sh.style.setProperty('max-height', 'none', 'important'); // its own height (the visible part, e.g. a closing keyboard, still caps it in CSS)
+    (W.lock ? [] : [{ t: 'schaden', w: 'gemein', r: [], v: 'direct', p: null }, { t: 'nk' }]).concat([{}]).forEach(x => {
+      mtModalFill(m, { h: hd, b: mtWhoBody(Object.assign({}, W, x)), f: ft }, false);
+      hh = Math.max(hh, sh.offsetHeight);
+    });
+    sh.style.removeProperty('max-height');
+    m.style.setProperty('--mt-who-h', Math.ceil(hh) + 'px');
     if (mtFine()) {                                          // laptop: the chosen type (else the first one) — the other parts may be hidden
       const ty = '[aria-labelledby="mtW-typeL"] .mt-w__sb';
       const b = m.querySelector(ty + '.is-on:not(:disabled)') || m.querySelector(ty + ':not(:disabled)') || m.querySelector('.mt-w__cancel');
@@ -3500,12 +3585,17 @@ function mtWhoSet(what, v) {
   if (what === 'type') {
     if (W.t === v) W.t = null;                               // the active one again → you pay
     else if (v === 'klein' && mtWhoOver(W)) return;          // § 7: over 150 € is not a Kleinreparatur
-    else { W.t = v; if ((v === 'klein' || v === 'schaden') && !W.w) mtWhoPrefill(W); }
+    else if (v === 'nk' && W.yr) return;                     // D39 fix: its NK year is locked in Settlements
+    else {
+      W.t = v; if ((v === 'klein' || v === 'schaden') && !W.w) mtWhoPrefill(W);
+      if ((v === 'klein' || v === 'schaden') && mtWhoViaOff(W)) W.v = 'direct';   // that year's NK-Abrechnung is done: Direct
+    }
   } else if (what === 'where') {
     if (W.w === v) return;
     W.w = v === 'zimmer' ? 'zimmer' : 'gemein';
     if (W.w === 'zimmer' && W.r.length > 1) W.r = W.r.slice(0, 1);                       // one Zimmer
-    if (W.w === 'zimmer' && !W.r.length && W.room0 && W.room0 !== MT_SB_ALL) W.r = [mtRoomCanon(W.room0)];   // the entry's Zimmer
+    const o = W.w === 'zimmer' && !W.r.length ? mtWhoOrt(W) : null;
+    if (o) W.r = [o];                                        // the entry's Zimmer (if rented that day)
   } else if (what === 'room') {
     const n = mtRoomCanon(v);
     if (W.w === 'zimmer') W.r = W.r[0] === n ? [] : [n];
@@ -3514,7 +3604,7 @@ function mtWhoSet(what, v) {
     const c = mtWhoCatAll().find(x => String(x.id) === String(v));
     W.cat = !c || String(W.cat) === String(c.id) ? null : c.id;   // the chosen one again → Allgemeine Hauskosten
   } else if (what === 'more') W.more = true;
-  else if (what === 'via') W.v = v === 'direct' ? 'direct' : 'nk';
+  else if (what === 'via') { if (v !== 'direct' && mtWhoViaOff(W)) return; W.v = v === 'direct' ? 'direct' : 'nk'; }
   else if (what === 'paid') W.p = v ? String(v).slice(0, 10) : null;
   else if (what === 'reset') Object.assign(W, { t: null, cat: null, w: null, r: [], v: 'nk', p: null });
   mtWhoRender();

@@ -209,7 +209,8 @@ begin
                           when o.property_id = excluded.property_id then o.nk_category_id end;
 
   -- Casa Castel receipt a tenant paid you directly (Kleinreparatur / Schaden · Direct · paid on):
-  -- one income line on the day it was paid, amount = net. Anything else: that line goes.
+  -- one income line on the day it was paid, amount = net. Anything else: that line goes
+  -- (also on a return: a receipt that became a return loses its line; its new receipt is booked again with the new net).
   if r.return_of is null then
     if casa and r.pay_type in ('klein', 'schaden') and via = 'direct' and r.pay_paid_on is not null and net > 0 then
       who := nullif(array_to_string(r.pay_rooms, ', '), '');
@@ -226,6 +227,8 @@ begin
     else
       delete from public.ctrl_expense_one_time where maint_refund_of = r.id;
     end if;
+  else
+    delete from public.ctrl_expense_one_time where maint_refund_of = r.id;   -- a return has no such line
   end if;
 
   -- Booked again: a kept NK switch is used up (the line holds it now)
@@ -294,7 +297,7 @@ notify pgrst, 'reload schema';
 --   nk_receipts      = your Casa Castel receipts that go into the NK (the NK switches you had in Controlling)
 --   nk_wrong         = 0  (Casa Castel lines in Controlling whose NK switch does not follow "Who pays")
 --   tenant_refunds   = receipts a tenant paid you directly (0 right after the first run)
---   refunds_wrong    = 0  (an "Erstattung Mieter" line whose amount or date does not match its receipt)
+--   refunds_wrong    = 0  (an "Erstattung Mieter" line whose amount or date does not match its receipt, or on a return)
 --   refunds_missing  = 0  (a booked receipt paid directly that has no "Erstattung Mieter" line)
 select
   (select count(*) from public.maint_costs m join public.maint_cases c on c.id = m.case_id
@@ -308,7 +311,7 @@ select
            or o.nk_category_id is distinct from (case when h.pay_type = 'nk' then h.pay_cat end))) as nk_wrong,
   (select count(*) from public.ctrl_expense_one_time where maint_refund_of is not null) as tenant_refunds,
   (select count(*) from public.ctrl_expense_one_time o join public.maint_costs m on m.id = o.maint_refund_of
-    where coalesce(m.pay_type, '') not in ('klein', 'schaden') or coalesce(m.pay_via, 'nk') <> 'direct'
+    where m.return_of is not null or coalesce(m.pay_type, '') not in ('klein', 'schaden') or coalesce(m.pay_via, 'nk') <> 'direct'
        or o.invoice_date is distinct from m.pay_paid_on
        or o.amount is distinct from greatest(m.amount - coalesce((select sum(x.amount) from public.maint_costs x
                                                                    where x.return_of = m.id), 0), 0)) as refunds_wrong,
