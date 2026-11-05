@@ -799,3 +799,6 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
 .mt-w__save { height:42px; margin:0; padding:0 30px; border:0; border-radius:21px; background:#1E1B18; font-family:inherit; font-size:13px;
   font-weight:600; color:#FDFCFA; cursor:pointer; }
 .mt-w__save:disabled { opacity:.35; cursor:default; }
+.mt-w__save.is-busy { padding:0 21px; }   /* D39: Save reads the locks first — spinner, same width */
+.mt-w__save .mt-spin { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-2px; box-sizing:border-box;
+  border-color:rgba(253,252,250,.35); border-top-color:#FDFCFA; }
