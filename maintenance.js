@@ -1700,6 +1700,7 @@ async function mtCamOpen() {
     </div>`;
   document.body.appendChild(el);
   mtLockSync();                                           // D39: the page behind stays where it is
+  if (mtFine()) try { el.querySelector('[data-cam="snap"]').focus({ preventScroll: true }); } catch (e) {}   // D39 fix 2: the keys start in the camera
   el.addEventListener('click', e => {
     const b = e.target.closest('[data-cam]'); if (!b) return;
     const a = b.dataset.cam;
@@ -1787,7 +1788,7 @@ function mtCostFileDel(i) {
    "Keep editing" leaves the form and its device draft alone. */
 async function mtCostCancel() {
   const f = MT.sel && MT.sel.cost;
-  if (!f || MT.costHold === f || MT.who) return;             // being saved ("Save + next") · D39: Who pays is open on top
+  if (!f || MT.costHold === f || MT.who || MT_CAM.open) return;   // being saved ("Save + next") · D39: Who pays / the camera is open on top
   if (document.querySelector('#mtCostModal .mt-askv')) return;   // it is asking already (a second tap beside it)
   if (mtCostChanged()) {
     const ok = await mtConfirm({
@@ -1859,7 +1860,7 @@ function mtDupOf(no, selfId) {
    sheet (no close, no new slide-in, full height kept); its photos upload in the background. */
 async function mtCostSaveNext() {
   const f = MT.sel && MT.sel.cost, c = MT.sel && !MT.sel.isNew ? mtCase(MT.sel.id) : null;
-  if (!f || !c || !f.isNew || f.return_of || MT.costHold || MT.who) return;   // D39: not while Who pays is open on top
+  if (!f || !c || !f.isNew || f.return_of || MT.costHold || MT.who || MT_CAM.open) return;   // D39: not while Who pays / the camera is open on top
   mtCostCapture();
   const keep = { kind: f.kind, brand: f.brand || '', cost_date: f.cost_date || '', book_ctrl: f.book_ctrl };
   await mtCostSave({ next: () => {
@@ -1887,7 +1888,7 @@ let mtChkFor = null;                                          // D39 (bug 12): t
    pop-up once the row is stored. Returns true when the row is stored. */
 async function mtCostSave(opts) {
   const s = MT.sel, f = s && s.cost, c = s && !s.isNew ? mtCase(s.id) : null;
-  if (!f || !c || MT.costHold || MT.who) return false;       // D39: not while Who pays is open on top (its choice would be lost)
+  if (!f || !c || MT.costHold || MT.who || MT_CAM.open) return false;   // D39: not while Who pays / the camera is open on top (its choice / parts would be lost)
   if (MT.busy) { mtBusySay(); return false; }                // D39 (bug 19): say why nothing happens
   mtCostCapture();
   const g = id => document.getElementById(id);
@@ -3150,7 +3151,8 @@ function mtLockSync(force) {
   // the keys; the one below waits, as the page behind does (no Tab into a Save you can't see)
   const ms = [...document.querySelectorAll('.mt-modal')], zOf = x => Number(getComputedStyle(x).zIndex) || 0;
   const top = ms.reduce((a, x) => (!a || zOf(x) >= zOf(a) ? x : a), null);
-  ms.forEach(x => { const v = x !== top; if (x.inert !== v) x.inert = v; });
+  const cam = !!document.getElementById('mtCam');           // D39 fix 2: the camera is above them all (its Done fills the receipt)
+  ms.forEach(x => { const v = cam || x !== top; if (x.inert !== v) x.inert = v; });
   if (want && !MT_LOCK.on) {
     const y = window.scrollY;
     const tops = mtStickEls().map(el => ({ k: el.matches('.mt-ybar') ? '.mt-ybar' : '.cc-header', top: el.getBoundingClientRect().top }));
