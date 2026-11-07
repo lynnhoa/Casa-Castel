@@ -243,7 +243,9 @@ const _ctrNextPrice = s => { const first = _ctrT().slice(0, 7) + '-01', list = _
 /* ── contract dates ────────────────────────────────────────── */
 function _ctrTerm(k) {
   const t = _ctrT();
-  const minEnd = k.starts_on && k.min_months ? _ctrAddM(_ctrD(k.starts_on), _ctrN(k.min_months)) : null;
+  // Nov 2026 fix: the minimum term ends the day before (12 months from 01.01.2026 → 31.12.2026, was 01.01.2027:
+  // one day late for "cancel by", and Controlling gave the cost a Soll in January 2027) — same rule there (ctlContractEnd)
+  const minEnd = k.starts_on && k.min_months ? _ctrAddD(_ctrAddM(_ctrD(k.starts_on), _ctrN(k.min_months)), -1) : null;
   let until = _ctrD(k.runs_until) || null;
   if (!until && minEnd && (k.then_rule !== 'monthly' || minEnd > t)) until = minEnd;
   if (until && k.then_rule === 'renew' && _ctrN(k.renew_months) > 0 && _ctrCancellable(k.notice)) {

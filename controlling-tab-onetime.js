@@ -305,6 +305,10 @@ function _cxOtRowHTML(o) {
                 (tp ? '<span class="cx-pill cx-pill--tp">Tenants pay</span>' : '') +
                 (o.kind === 'Versorger' ? cxPill(inn ? 'in' : 'out', inn ? 'Guthaben' : 'Nachzahlung')            // Versorgerabrechnung · CP1: green in / red out
                   : (o.kind === 'Sonstiges' ? cxPill('grey', 'Other') : '') + (inn ? cxPill(mt ? 'in cx-pill--mtx' : 'in', 'Income') : '')));
+  // Nov 2026 fix: a line dated before the purchase month is listed here and in the export, but the Dashboard and the
+  // cashflow start at the purchase month — it counted nowhere, silently. Now it says so (Kaufnebenkosten never count).
+  const prop = _cxOtKnk(o) ? null : ctlProp(Number(o.property_id)), od = ctlParseDate(o.invoice_date);
+  const beforeBuy = !!prop && od.year > 0 && !ctlPropOwned(prop, od.year, od.month) ? ctlPropSince(prop) : '';
   const aria = mt ? 'From Maintenance: ' + (o.item || 'invoice') + ' · open' : 'Edit ' + (o.item || 'entry');
   return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" data-mt-tag="' + (mt ? '1' : '0') + '" aria-label="' + cxEsc(aria) + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +
@@ -313,6 +317,7 @@ function _cxOtRowHTML(o) {
     '<div class="cx-r__sub">' + cxEsc([cxFmtDate(o.invoice_date), o.company].filter(Boolean).join(' · ')) + '</div>' +
     (ten ? '<div class="cx-r__sub cx-ot-tp' + (ten.warn ? ' is-warn' : '') + '">' + cxEsc(ten.who + ' · ' + ten.how) +
       (ten.amt ? ' · <span class="cx-ot-tp__a">\u2212' + cxEur(ten.amt) + '</span>' : '') + '</div>' : '') +
+    (beforeBuy ? '<div class="cx-r__sub cx-ot-tp is-warn">' + cxEsc('Before the purchase (' + cxFmtDate(beforeBuy) + ') – not in the cashflow · a purchase cost belongs in Properties › Kaufnebenkosten, otherwise check the date') + '</div>' : '') +
   '</button>';
 }
 

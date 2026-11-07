@@ -1949,14 +1949,18 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
       await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung';
       await _stUpsertSettlement(x.l, { settled_via: 'zahlung' });
     }
+    const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
+                      : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
     if (b) {
-      const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
+      // Nov 2026 fix: the result changed direction since it was paid → its booking turns too (it kept the old one:
+      // Controlling counted the money the wrong way and showed it on both sides)
+      const f = { amount: amt, invoice_date: date };
+      if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: label });
+      const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     } else if (!weg && amt && (linkedManual = _stFindManualNk(x.c.p.id, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
       await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);
     } else {
-      const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
-                        : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
       const d = await ctlAddOneTime({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
         kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
       window._src.abrPay = (window._src.abrPay || []).concat([d]);

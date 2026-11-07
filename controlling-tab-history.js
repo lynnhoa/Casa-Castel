@@ -30,7 +30,23 @@ const _cxHKind = k => ({ contract: 'contract', renewal: 'renewal', manual: 'manu
 function _cxHAmt(p) {
   const a = typeof ccRpAmount === 'function' ? ccRpAmount(p) : null;
   if (!a) return '—';
-  return a.mode === 'pauschal' ? cxEur(a.total) + ' Pauschal' : cxEur(a.kalt) + ' Kalt + ' + cxEur(a.nk) + ' NK';
+  const nkIn = a.mode === 'pauschal' ? Number(p.nebenkosten) || 0 : 0;   // the NK part inside the Pauschale
+  return a.mode === 'pauschal' ? cxEur(a.total) + ' Pauschal' + (nkIn > 0 ? ' · davon NK ' + cxEur(nkIn) : '') : cxEur(a.kalt) + ' Kalt + ' + cxEur(a.nk) + ' NK';
+}
+/* Nov 2026 fix: the NK part inside a Pauschale saved with the tenant (kaltmiete + nebenkosten, the room's
+   Pauschal baseline) — what Controlling counts as NK until the rent is confirmed. "Confirm" and
+   "Add rent from a date" used to drop it: the Soll turned all Kalt and Settlements counted that NK as your cost. */
+function _cxHLegacyNkIncl(t) {
+  const n = Number(t.nebenkosten) || 0;
+  return n > 0 ? n : null;
+}
+/* The rent saved with the tenant → their first rent entry (from the move-in), as Controlling shows it */
+function _cxHConfirmLegacy(db, app, t) {
+  const pa = _cxHModeOf(app, t) === 'pauschal';
+  return ccRpSetRent(db, { app, rec: { ...t, kaltmiete: null, nebenkosten: null }, validFrom: t.mietbeginn, mode: pa ? 'pauschal' : 'kalt_nk',
+    kalt: pa ? (Number(t.kaltmiete) || 0) + (Number(t.nebenkosten) || 0) : t.kaltmiete,
+    nk: pa ? null : t.nebenkosten, nkIncl: pa ? _cxHLegacyNkIncl(t) : undefined,
+    kind: 'migrated', source: 'migration', note: 'confirmed in tenant history' });
 }
 
 /* Problems of one tenancy (shown on the unit card and in the summary) */
@@ -68,7 +84,8 @@ function _cxHTenancyHTML(u, pid, w) {
 
   const legacy = !w.periods.length && (w.t.kaltmiete != null || w.t.nebenkosten != null)
     ? '<div class="cx-kv" style="margin-top:4px"><span>saved with the tenant · ' + (w.legacyMode === 'pauschal' ? 'Pauschal' : 'Kalt + NK') + '</span><span>' +
-        (w.legacyMode === 'pauschal' ? cxEur((Number(w.t.kaltmiete) || 0) + (Number(w.t.nebenkosten) || 0)) + ' Pauschal'
+        (w.legacyMode === 'pauschal' ? cxEur((Number(w.t.kaltmiete) || 0) + (Number(w.t.nebenkosten) || 0)) + ' Pauschal' +
+                                         (_cxHLegacyNkIncl(w.t) ? ' · davon NK ' + cxEur(_cxHLegacyNkIncl(w.t)) : '')
                                       : cxEur(w.t.kaltmiete || 0) + ' Kalt + ' + cxEur(w.t.nebenkosten || 0) + ' NK') + '</span></div>' +
       (w.from ? '<button class="cx-btn cx-btn--full" style="margin-top:6px" data-h="confirm" data-k="' + cxEsc(key) + '"><i class="ti ti-check" aria-hidden="true"></i>Confirm as rent from move-in</button>' : '')
     : '';
@@ -92,7 +109,7 @@ function _cxHTenancyHTML(u, pid, w) {
           '<option value="kalt_nk"' + (w.legacyMode !== 'pauschal' ? ' selected' : '') + '>Kalt + NK</option>' +
           '<option value="pauschal"' + (w.legacyMode === 'pauschal' ? ' selected' : '') + '>Pauschal</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
         '<div class="cx-set__row"><span class="cx-set__k">Kaltmiete / Pauschale</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="h-k-' + cxEsc(key) + '"><span>€</span></label></div>' +
-        '<div class="cx-set__row"><span class="cx-set__k">Nebenkosten</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="h-nk-' + cxEsc(key) + '"><span>€</span></label></div>' +
+        '<div class="cx-set__row"><span class="cx-set__k">Nebenkosten / davon NK</span><label class="cx-f cx-f--s"><input type="text" inputmode="decimal" placeholder="0,00" id="h-nk-' + cxEsc(key) + '"><span>€</span></label></div>' +
         '<div class="cx-set__row"><span class="cx-set__k">First month</span><label class="cx-f cx-f--l"><select id="h-fm-' + cxEsc(key) + '"><option value="anteilig">partial</option><option value="voll">in full</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
         '<div class="cx-set__row"><span class="cx-set__k">Last month</span><label class="cx-f cx-f--l"><select id="h-lm-' + cxEsc(key) + '"><option value="anteilig">partial</option><option value="voll">in full</option></select><i class="ti ti-chevron-down" aria-hidden="true"></i></label></div>' +
         '<div style="display:flex;gap:8px;margin-top:8px"><button class="cx-btn" style="flex:1" data-h="addToggle" data-k="' + cxEsc(key) + '">Cancel</button>' +
@@ -171,10 +188,7 @@ async function _cxHClick(ev, host) {
     }
     if (a === 'confirm') {
       const t = _cxHTenant(app, tid); if (!t) return;
-      const unitMode = _cxHModeOf(app, t);
-      await ccRpSetRent(db, { app, rec: { ...t, kaltmiete: null, nebenkosten: null }, validFrom: t.mietbeginn, mode: unitMode,
-        kalt: unitMode === 'pauschal' ? (Number(t.kaltmiete) || 0) + (Number(t.nebenkosten) || 0) : t.kaltmiete,
-        nk: unitMode === 'pauschal' ? null : t.nebenkosten, kind: 'migrated', source: 'migration', note: 'confirmed in tenant history' });
+      await _cxHConfirmLegacy(db, app, t);                    // Pauschal keeps its NK part (Nov 2026 fix)
     }
     if (a === 'addSave') {
       const t = _cxHTenant(app, tid); if (!t) return;
@@ -185,7 +199,13 @@ async function _cxHClick(ev, host) {
       const k = typeof ccParseEUR === 'function' ? ccParseEUR(v('h-k-').value) : cxParse(v('h-k-').value);
       const nk = typeof ccParseEUR === 'function' ? ccParseEUR(v('h-nk-').value) : cxParse(v('h-nk-').value);
       if (k === null || k === undefined || isNaN(k)) { ctlToast('Please enter an amount'); return; }
-      await ccRpSetRent(db, { app, rec: t, validFrom: from, mode, kalt: k, nk: mode === 'pauschal' ? null : nk, pauschale: k,
+      const nkIn = mode === 'pauschal' && nk !== null && nk !== undefined && !isNaN(nk) && nk > 0 ? nk : null;   // Pauschal: the NK part inside it
+      if (nkIn !== null && nkIn > k) { ctlToast('The NK part can’t be more than the Pauschale'); return; }
+      // the rent saved with the tenant becomes their first entry first — with its NK part (the engine's own
+      // carry-over would drop it for a Pauschale); then the new rent from its date
+      const ein = ccRpIso(t.mietbeginn);
+      if ((t.kaltmiete != null || t.nebenkosten != null) && ein && from > ein && !ccRpFor(app, t.id).length) await _cxHConfirmLegacy(db, app, t);
+      await ccRpSetRent(db, { app, rec: t, validFrom: from, mode, kalt: k, nk: mode === 'pauschal' ? null : nk, pauschale: k, nkIncl: nkIn ?? undefined,
         kind: ccRpIso(t.mietbeginn) && from > ccRpIso(t.mietbeginn) ? 'manual' : 'contract', source: 'history_screen',
         legacyMode: _cxHModeOf(app, t), first_month: v('h-fm-').value, last_month: v('h-lm-').value });
       _cxH.add[key] = false;

@@ -225,7 +225,12 @@ async function _cxIncSavePart(e, ist) {
     const keys = Object.keys(split);
     if (!keys.length) { await ctlDeleteIncome(e.u.id, m); return; }
     const total = cxR(keys.reduce((a, k) => a + split[k], 0));
-    const nk = _cxIncNkShare(e.s, total);
+    // Nov 2026 fix: each tenant's payment is split in the ratio of THEIR Soll (Kalt : NK, Pauschal: rent : davon NK) —
+    // the whole unit's ratio mixed them (Ana's 300 = 250 + 50 NK was saved as 276,92 + 23,08 while Ben, Pauschal, was open)
+    const nk = Math.min(total, cxR(keys.reduce((a, k) => {
+      const pt = (e.s.parts || []).find(p => p.tid === k);
+      return a + (pt && pt.amount ? Math.max(0, split[k] * (pt.nk || 0) / pt.amount) : _cxIncNkShare(e.s, split[k]));   // no Soll part: the unit's ratio, as before
+    }, 0)));
     await ctlUpsertIncome(e.u.id, m, cxR(total - nk), nk, split);
   } catch (err) { cxToastErr(err); }
 }

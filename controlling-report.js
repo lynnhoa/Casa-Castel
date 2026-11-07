@@ -172,7 +172,16 @@ function cxRepData(scope) {
     const booked = c => (C.castel_expenses || []).some(e => e.category_id === c.id && e.year === y);
     castel = (C.categories || []).filter(c => c.active !== false || booked(c)).map(c => {   // switched off in Setup, but booked this year → still listed, so the totals match
       const isRate = c.code === 'RATE';
-      const base = isRate && loan ? r2(loan.rate) : r2(ctlCastelAmountAt(c, y, ref).amount);
+      // Nov 2026 fix: the Soll of THIS cost type at the Stand — its row of that month when there is one (the Kreditrate
+      // from the loan terms valid then, a Providers price), else its price valid then. It showed today's raw loan
+      // rate (a 2025 export: 1.520 € next to twelve months of 1.450 €; 0 € for a split Bausparvertrag) and the
+      // Setup amount for a cost type Providers runs.
+      let at = (castelRows[ref] || []).find(r => r.catId === c.id) || null;
+      if (!at && ctlCatProvidersOwns(c, y, ref))                        // Providers: its latest month up to the Stand
+        for (let m = ref - 1; m >= 1 && !at; m--) at = (castelRows[m] || []).find(r => r.catId === c.id) || null;
+      const base = at ? r2(at.soll)
+        : isRate && loan ? r2(ctlLoanMonth(ctlLoanTerms(loan, y, ref), y, ref).rate)
+        : r2(ctlCastelAmountAt(c, y, ref).amount);
       const mon = {};
       for (const m of M12) {
         if (!castelRows[m]) { mon[m] = null; continue; }
