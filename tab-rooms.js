@@ -968,11 +968,13 @@ async function _rpPlCheck() {
     console.warn('[rooms] Preisliste:', (e && e.message) || e);
     if (RP_PL.has === null) RP_PL.has = false;
     RP_PL.at = Date.now();
+    if (!RP_PL._said && typeof ccToast === 'function') { RP_PL._said = true; ccToast('Preisliste could not be loaded — ' + ((e && e.message) || e), true); }   // say why, once
   }
 }
 function _rpPlChip() {
   if (RP_PL.has === null) return '';                                  // still looking (drawn again when known)
-  if (!RP_PL.has) return '<span class="rp-plw"><button type="button" class="rp-pl" data-rpl="up"><i class="ti ti-plus" aria-hidden="true"></i>Preisliste</button></span>';
+  // nothing saved yet: say what the tap does — your phone's file picker opens to save the PDF once
+  if (!RP_PL.has) return '<span class="rp-plw"><button type="button" class="rp-pl" data-rpl="up" aria-label="Upload Preisliste (PDF)"><i class="ti ti-upload" aria-hidden="true"></i>Upload Preisliste</button></span>';
   return '<span class="rp-plw"><button type="button" class="rp-pl" data-rpl="open" aria-label="Open Preisliste"><i class="ti ti-file-text" aria-hidden="true"></i>Preisliste</button>' +
     '<button type="button" class="rp-pl-x" data-rpl="up" aria-label="Replace Preisliste"><i class="ti ti-refresh" aria-hidden="true"></i></button></span>';
 }
@@ -1006,7 +1008,11 @@ function _rpPlClick(e) {
   const b = e.target && e.target.closest ? e.target.closest('[data-rpl]') : null;
   if (!b) return;
   if (b.dataset.rpl === 'up') { _rpPlPick(); return; }
-  if (!RP_PL.url) { if (typeof ccToast === 'function') ccToast('The Preisliste is still loading — try again in a moment', true); return; }
+  if (!RP_PL.url) {                                                            // the link is not there (yet): fetch it, then tap again
+    if (typeof ccToast === 'function') ccToast('Preisliste is loading — tap again in a moment', true);
+    if (!RP_PL._looking) { RP_PL._looking = true; _rpPlCheck().finally(() => { RP_PL._looking = false; _updateRoomsSummary(appRooms); }); }
+    return;
+  }
   if (typeof ccOpenUrl === 'function') ccOpenUrl(RP_PL.url, 'Preisliste'); else window.open(RP_PL.url, '_blank');
   if (Date.now() - RP_PL.at > 6 * 3600 * 1000) _rpPlCheck();                    // a fresh link for the next tap
 }
@@ -1029,9 +1035,13 @@ function _updateRoomsSummary(rooms) {
   bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span class="rp-metar"><span>${occ} / ${list.length} occupied</span>${_rpPlChip()}</span></div>
     <div class="cc-sum2__vals"><span><i>Kalt</i>${fmtEUR(kalt)}</span><span><i>NK</i>${fmtEUR(nk)}</span><span><i>Kaution</i>${fmtEUR(kau)}</span></div>`;
   if (!bar._rpPl) { bar._rpPl = true; bar.addEventListener('click', _rpPlClick); }          // Nov 2026: Preisliste chip
-  if (RP_PL.has === null && !RP_PL._looking) {
+  // look (again): first time, and while nothing was found — at most every 20 s, so a PDF saved meanwhile (or a first
+  // look that ran before the login was ready) shows up by itself
+  const again = RP_PL.has === null || (!RP_PL.has && Date.now() - RP_PL.at > 20000);
+  if (again && !RP_PL._looking) {
+    const before = RP_PL.has;
     RP_PL._looking = true;
-    _rpPlCheck().finally(() => { RP_PL._looking = false; _updateRoomsSummary(appRooms); });
+    _rpPlCheck().finally(() => { RP_PL._looking = false; if (RP_PL.has !== before) _updateRoomsSummary(appRooms); });
   }
 }
 
