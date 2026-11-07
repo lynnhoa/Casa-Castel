@@ -11,7 +11,10 @@
      edit  → the full form for corrections (worked-out values are shown, not typed) · Delete.
    Worked out:
      · market value = the price at the start · Restschuld = the Darlehen at the start
-     · Paid off = Darlehen − Restschuld (with a Bausparvertrag you type it — the loan isn't repaid directly)
+       (in Edit both follow their source while untouched — Nov 2026: also a price typed later)
+     · Grunderwerbsteuer / Makler "% of the price" follow a changed Kaufpreis (properties-knk.js, Nov 2026)
+     · Paid off = Darlehen − Restschuld — Nov 2026: also with a Bausparvertrag (its savings are not paid off until they
+       are transferred to the loan; then the Restschuld drops) · paidOff() in properties.html
      · Zinsen = Rate − Tilgung · Equity € = price + Kaufnebenkosten − Darlehen (only while it is empty)
      · rate status from "Fixed rate until": within 6 months amber, within 3 months or passed red —
        also checked on every app start, so the dashboard alert stays current
@@ -58,6 +61,7 @@ function psZbStatus(zb) {
 const psZbText = p => { const iso = psIso(p.zb); return iso ? ccFmtDate(iso) : (psDash(p.zb) || '—'); };
 const psCity = p => { const m = psDash(p.addr).match(/\b\d{5}\s+([^,]+)/); return m ? m[1].trim() : ''; };
 const psRestUntouched = p => !(psNum(p.restschuld) > 0) || (!psIso(p.restschuld_date) && psR2(p.restschuld) === psR2(p.darlehen));
+const psMwUntouched = p => !(psNum(p.marktwert) > 0) || psR2(p.marktwert) === psR2(p.kaufpreis);   // still "the price at the start" (or none)
 const psMonthStart = iso => String(iso || psToday()).slice(0, 8) + '01';
 function psFirstRateDefault(p) {                       // the month after the Übergabe (else this month)
   const k = psIso(p.kaufdatum);
@@ -217,7 +221,7 @@ function psRender() {
   if (PS.mode === 'edit') {
     edit.innerHTML = psEditHTML(p); edit.classList.add('show');
     view.classList.remove('show');
-    PS.snap = psSnap(edit); PS.restFollow = null;
+    PS.snap = psSnap(edit); PS.restFollow = null; PS.mwFollow = null;
     psFoot('<button type="button" class="ps-pb" data-ps="cancelEdit">Cancel</button><button type="button" class="ps-pb ps-pb--p" data-ps="saveEdit">Save</button>');
     return;
   }
@@ -313,7 +317,7 @@ function psFinHTML(p) {
       '<div class="ps-c__s">No loan yet · add it when the bank contract is there</div>' +
       '<button type="button" class="ps-btn" data-ps="open" data-v="loan"><i class="ti ti-plus" aria-hidden="true"></i>Add loan</button></div>';
   }
-  const dar = psNum(p.darlehen), paid = psNum(p.abbezahlt), pct = dar > 0 ? psR2(paid / dar * 100) : 0;
+  const dar = psNum(p.darlehen), paid = paidOff(p), pct = dar > 0 ? psR2(paid / dar * 100) : 0;
   const st = p.zb_status === 'red' ? '<span class="ps-pill ps-pill--red">urgent</span>' : p.zb_status === 'amber' ? '<span class="ps-pill ps-pill--amber">within 6 months</span>' : '';
   const nr = psDash(p.darlehensnr);
   return psLabel('ti-building-bank', 'Finanzierung', '<button type="button" class="ps-lk" data-ps="open" data-v="year">Yearly update</button>') +
@@ -339,7 +343,6 @@ function psLoanFormHTML(p) {
 function psYearFormHTML(p) {
   return '<div class="ps-d" data-psform="year"><p class="ps-sm ps-sm--top">Once a year · from the bank statement</p>' +
     '<div class="ps-g">' + psField('psY-rest', 'Restschuld €', 'num', p.restschuld) + psField('psY-date', 'Stand', 'date', psIso(p.restschuld_date) || psToday()) + '</div>' +
-    (p.sparv ? psField('psY-paid', 'Paid off € (Bausparvertrag)', 'num', p.abbezahlt) : '') +
     psField('psY-mw', 'Market value €', 'num', p.marktwert) +
     '<p class="ps-sm" id="psY-calc"></p>' + psBtns('saveYear') + '</div>';
 }
@@ -357,6 +360,18 @@ function psObjHTML(p) {
          : psEsc(line2 || p.name) + '<br><small class="ps-warn">' + (psDash(p.cat) ? 'm² missing' : psNum(p.m2) > 0 ? 'Type missing' : 'm² and type missing') + ' · tap to add</small>') +
     '<i class="ti ti-chevron-right ps-tap__c" aria-hidden="true"></i></button>';
 }
+/* Edit: a worked-out field follows its source while it is untouched (Restschuld ← Darlehen, market value ← Kaufpreis).
+   Nov 2026 fix: the source changed back to what it was → so does the field (it kept the value typed on the way and
+   saved it, e.g. Restschuld 150.000 on a Darlehen of 140.000). Typed by hand (flag false) → it no longer follows. */
+function psFollow(srcId, dstId, untouched, flag) {
+  const src = document.getElementById(srcId), dst = document.getElementById(dstId);
+  if (!src || !dst || !untouched || PS[flag] === false) return;
+  let to = null;
+  if (psChanged(srcId)) { to = src.value; PS[flag] = true; }           // empty → empty: both are saved as 0
+  else if (PS[flag]) { to = PS.snap ? PS.snap[dstId] : null; PS[flag] = null; }
+  if (to === null || to === undefined || String(dst.value) === String(to)) return;
+  PS.setting = true; try { dst.value = to; } finally { PS.setting = false; }
+}
 /* Live "worked out" lines in the open form */
 function psCalc() {
   const p = psProp(_pid), g = id => { const el = document.getElementById(id); return el ? parseFloat(el.value) : NaN; };
@@ -367,13 +382,14 @@ function psCalc() {
     if (rate > 0 && isFinite(tilg)) bits.push('Zinsen ' + eur(psR2(rate - tilg)) + ' / Mo');
     if (dar > 0 && (!psHasLoan(p) || (psChanged('psL-dar') && psRestUntouched(p)))) bits.push('Restschuld = ' + eur(dar));
     lc.textContent = bits.length ? bits.join(' · ') + ' · worked out' : 'Zinsen = Monatsrate − Tilgung · worked out';
-    lc.classList.toggle('ps-warn', rate > 0 && tilg > rate);
-    if (rate > 0 && tilg > rate) lc.textContent = 'The Tilgung is more than the Monatsrate';
+    const over = tilg > (isFinite(rate) ? rate : 0);          // Nov 2026: an empty Monatsrate counts as 0 (it saved Zinsen = −Tilgung)
+    lc.classList.toggle('ps-warn', over);
+    if (over) lc.textContent = 'The Tilgung is more than the Monatsrate';
   }
   const yc = document.getElementById('psY-calc');
   if (yc && p) {
     const rest = g('psY-rest'), mw = g('psY-mw');
-    const paid = p.sparv ? g('psY-paid') : psNum(p.darlehen) - rest;
+    const paid = psNum(p.darlehen) - rest;                     // Bausparvertrag too (Nov 2026)
     const bits = [];
     if (isFinite(paid)) bits.push('Paid off ' + eur(psR2(Math.max(0, paid))));
     if (isFinite(mw) && isFinite(rest)) bits.push('Equity ' + eur(psR2(mw - rest)));
@@ -381,19 +397,15 @@ function psCalc() {
   }
   if (PS.mode === 'edit' && p) {
     const ez = document.getElementById('e-zinsen-ro');
-    if (ez) { const r = g('e-rate'), t = g('e-tilgung'); ez.textContent = eur((psChanged('e-rate') || psChanged('e-tilgung')) && isFinite(r) && isFinite(t) ? psR2(r - t) : p.zinsen); }
-    const re = document.getElementById('e-restschuld'), d = g('e-darlehen');
-    if (re && psChanged('e-darlehen') && psRestUntouched(p) && PS.restFollow !== false && isFinite(d)) {   // Restschuld follows the Darlehen
-      PS.setting = true; try { re.value = String(d); } finally { PS.setting = false; }
-      PS.restFollow = true;
-    }
-    const sp = psSwitchVal('e-sparv'), auto = document.getElementById('e-paid-ro-box'), typed = document.getElementById('e-paid-typed');
-    if (auto && typed) { auto.hidden = sp; typed.hidden = !sp; }
+    if (ez) { const r = g('e-rate'), t = g('e-tilgung');                 // an empty field counts as 0, as when it is saved
+      ez.textContent = eur(psChanged('e-rate') || psChanged('e-tilgung') ? psR2((isFinite(r) ? r : 0) - (isFinite(t) ? t : 0)) : p.zinsen); }
+    psFollow('e-darlehen', 'e-restschuld', psRestUntouched(p), 'restFollow');   // Restschuld follows the Darlehen
+    psFollow('e-kaufpreis', 'e-marktwert', psMwUntouched(p), 'mwFollow');       // market value = the price, until it has its own
     const ep = document.getElementById('e-paid-ro');
-    if (ep && !sp) {
+    if (ep) {                                                   // Bausparvertrag too (Nov 2026): no typed "Paid off" any more
       const dd = g('e-darlehen'), rr = g('e-restschuld');
       const ch = psChanged('e-darlehen') || psChanged('e-restschuld') || psChanged('e-sparv');
-      ep.textContent = eur(ch && isFinite(dd) && isFinite(rr) && (rr > 0 || dd === 0) ? psR2(Math.max(0, dd - rr)) : p.abbezahlt);
+      ep.textContent = eur(ch && isFinite(dd) && isFinite(rr) && (rr > 0 || dd === 0) ? psR2(Math.max(0, dd - rr)) : paidOff(p));
     }
   }
 }
@@ -426,8 +438,9 @@ async function psSaveLoan() {
   const num = id => { const x = parseFloat(val(id)); return isFinite(x) ? psR2(x) : 0; };
   const dar = num('psL-dar'), rate = num('psL-rate'), tilg = num('psL-tilg');
   if (!(dar > 0)) { knkSay('Add the Darlehen first'); return; }
-  if (rate > 0 && tilg > rate) { knkSay('The Tilgung can’t be more than the Monatsrate'); return; }
   const first = !psHasLoan(p), zbIso = val('psL-zb'), sparv = psSwitchVal('psL-sparv');
+  // Nov 2026: also with no Monatsrate — Zinsen (= Monatsrate − Tilgung) was saved negative. Checked when the two are typed.
+  if (tilg > rate && (rate > 0 || first || psChanged('psL-rate') || psChanged('psL-tilg'))) { knkSay('The Tilgung can’t be more than the Monatsrate'); return; }
   const f = {}, put = (key, id, v) => { if (first || psChanged(id)) f[key] = v; };
   put('bank', 'psL-bank', val('psL-bank').trim() || '—');
   put('darlehensnr', 'psL-nr', val('psL-nr').trim() || '—');
@@ -440,7 +453,7 @@ async function psSaveLoan() {
   if ('rate' in f || 'tilgung' in f) f.zinsen = psR2(rate - tilg);
   if (first || ('darlehen' in f && psRestUntouched(p))) f.restschuld = dar;
   const rest = 'restschuld' in f ? f.restschuld : psNum(p.restschuld);
-  if (!sparv && (first || 'darlehen' in f || 'restschuld' in f || 'sparv' in f)) f.abbezahlt = psR2(Math.max(0, dar - rest));
+  if (first || 'darlehen' in f || 'restschuld' in f || 'sparv' in f) f.abbezahlt = psR2(Math.max(0, dar - rest));   // Bausparvertrag too (Nov 2026)
   if ((first || 'darlehen' in f) && !(psNum(p.ek) > 0)) {
     const knk = typeof knkHas === 'function' && knkHas(p) ? knkSum(p).total : psNum(p.nebenkosten);
     f.ek = psR2(Math.max(0, psNum(p.kaufpreis) + knk - dar));
@@ -457,8 +470,7 @@ async function psSaveYear() {
   const rest = parseFloat(val('psY-rest')), mw = parseFloat(val('psY-mw'));
   if (!isFinite(rest) || rest < 0) { knkSay('Enter the Restschuld'); return; }
   const f = { restschuld: psR2(rest), restschuld_date: val('psY-date') || null, marktwert: isFinite(mw) && mw > 0 ? psR2(mw) : psNum(p.marktwert) };
-  if (p.sparv) { const pd = parseFloat(val('psY-paid')); f.abbezahlt = isFinite(pd) ? psR2(pd) : psNum(p.abbezahlt); }
-  else f.abbezahlt = psR2(Math.max(0, psNum(p.darlehen) - f.restschuld));
+  f.abbezahlt = psR2(Math.max(0, psNum(p.darlehen) - f.restschuld));   // Bausparvertrag too (Nov 2026): paid off once the savings are transferred
   await psSaveProp(p, f, 'Updated');
 }
 async function psSaveObj() {
@@ -494,9 +506,7 @@ function psEditHTML(p) {
       '<div class="ps-g">' +
       psField('e-rate', 'Monatsrate €', 'num', p.rate) + psField('e-tilgung', 'Tilgung €/Mo', 'num', p.tilgung) + '</div><div class="ps-g">' +
       psRO('Zinsen €/Mo', eur(p.zinsen), 'worked out', 'e-zinsen-ro') +
-      psRO('Paid off €', eur(p.abbezahlt), 'worked out', 'e-paid-ro', !!p.sparv) +
-      '<div class="ps-f" id="e-paid-typed"' + (p.sparv ? '' : ' hidden') + '><label for="e-abbezahlt">Paid off €</label>' +
-        '<input class="cc-input" id="e-abbezahlt" type="number" data-cc-num="2" inputmode="decimal" value="' + psEsc(p.abbezahlt) + '"/></div></div>' +
+      psRO('Paid off €', eur(paidOff(p)), 'worked out', 'e-paid-ro') + '</div>' +
       psSwitch('e-sparv', 'Bausparvertrag', 'the Tilgung goes into a savings contract', !!p.sparv) +
       '<div class="ps-g">' + psField('e-valid-from', 'Rate changes valid from', 'date', psMonthStart(psToday())) +
         '<p class="ps-sm ps-sm--side">Earlier months in Controlling keep the old rate</p></div></div>' +
@@ -510,7 +520,8 @@ async function saveEdit() {
   const name = String(g('e-name') || '').trim();
   if (!name) { knkSay('Add a name first'); return; }
   const rate = nz('e-rate'), tilg = nz('e-tilgung');
-  if (rate > 0 && tilg > rate) { knkSay('The Tilgung can’t be more than the Monatsrate'); return; }
+  // Nov 2026: also with no Monatsrate — Zinsen (= Monatsrate − Tilgung) was saved negative. Checked when the two are typed.
+  if (tilg > rate && (rate > 0 || psChanged('e-rate') || psChanged('e-tilgung'))) { knkSay('The Tilgung can’t be more than the Monatsrate'); return; }
   const f = {}, put = (key, id, v) => { if (psChanged(id)) f[key] = typeof v === 'function' ? v() : v; };
   put('name', 'e-name', name);
   put('cat', 'e-cat', () => g('e-cat') || '');
@@ -533,21 +544,25 @@ async function saveEdit() {
   put('tilgung', 'e-tilgung', tilg);
   put('sparv', 'e-sparv', () => psSwitchVal('e-sparv'));
   if ('rate' in f || 'tilgung' in f) f.zinsen = psR2(psNum('rate' in f ? f.rate : p.rate) - psNum('tilgung' in f ? f.tilgung : p.tilgung));
-  if ('darlehen' in f && !('restschuld' in f) && psRestUntouched(p)) f.restschuld = f.darlehen;     // follows until the first Yearly update
-  const sparv = 'sparv' in f ? f.sparv : !!p.sparv;
-  if (sparv) { if (psChanged('e-abbezahlt') || 'sparv' in f) f.abbezahlt = nz('e-abbezahlt'); }
-  else if ('darlehen' in f || 'restschuld' in f || 'sparv' in f) {
-    const dar = 'darlehen' in f ? f.darlehen : psNum(p.darlehen), rest = 'restschuld' in f ? f.restschuld : psNum(p.restschuld);
-    f.abbezahlt = rest > 0 || dar === 0 ? psR2(Math.max(0, dar - rest)) : psNum(p.abbezahlt);
+  if ('darlehen' in f && !('restschuld' in f) && psRestUntouched(p) && PS.restFollow !== false) f.restschuld = f.darlehen;     // follows until the first Yearly update (not when typed back by hand)
+  if ('kaufpreis' in f && !('marktwert' in f) && psMwUntouched(p) && PS.mwFollow !== false) f.marktwert = f.kaufpreis;          // market value = the price, until it has its own
+  if ('darlehen' in f || 'restschuld' in f || 'sparv' in f) {           // Paid off = Darlehen − Restschuld, Bausparvertrag too (Nov 2026)
+    const m0 = Object.assign({}, p, f), dar = psNum(m0.darlehen), rest = psNum(m0.restschuld);
+    f.abbezahlt = rest > 0 || dar === 0 ? psR2(Math.max(0, dar - rest)) : m0.sparv ? paidOff(m0) : psNum(p.abbezahlt);   // Restschuld 0: maybe not entered yet
   }
   const m = Object.assign({}, p, f);
   if ('zb' in f || 'darlehen' in f || 'rate' in f) f.zb_status = psHasLoan(m) ? (psZbStatus(m.zb) || (m.zb === '—' ? 'ok' : p.zb_status || 'ok')) : 'ok';
   if (psChanged('e-zb-status') && !psZbIso(m.zb)) f.zb_status = g('e-zb-status');
   if (!Object.keys(f).length) { PS.mode = 'view'; _editing = false; PS.dirty = false; PS.snap = null; psRender(); return; }   // nothing changed
   const from = psMonthStart(g('e-valid-from') || psToday());
+  const oldPrice = p.kaufpreis;                                    // before the save (p may be updated in place)
   PS.mode = 'view'; _editing = false;
   const ok = await psSaveProp(p, f, 'Saved', psTermsChanged(p, Object.assign({}, p, f)) ? from : null);
-  if (!ok) { PS.mode = 'edit'; _editing = true; }
+  if (!ok) { PS.mode = 'edit'; _editing = true; return; }
+  if ('kaufpreis' in f && typeof knkPriceChanged === 'function') {  // Nov 2026: Grunderwerbsteuer / Makler "% of the price" follow
+    try { if (await knkPriceChanged(psProp(p.id), oldPrice)) knkRender(); }
+    catch (e) { knkSay('Saved — but the Kaufnebenkosten could not follow the new price (' + (e.message || e) + ')', 7000); }
+  }
 }
 
 /* ── Wiring ── */
@@ -595,6 +610,7 @@ function psTyped(e) {
   const el = e.target;
   if (!el || !el.closest || !el.isConnected || !el.closest('#detailOverlay')) return;
   if (el.id === 'e-restschuld') PS.restFollow = false;     // typed by hand → it no longer follows the Darlehen
+  if (el.id === 'e-marktwert') PS.mwFollow = false;        // … the Kaufpreis
   if (el.dataset && el.dataset.psn !== undefined) { if (PS.mode === 'new') { PS.dirty = true; psNewSync(); } return; }
   if ((el.closest('[data-psform]') && PS.open && PS.mode === 'view') || (el.closest('#editMode') && PS.mode === 'edit')) { PS.dirty = true; psCalc(); }
 }

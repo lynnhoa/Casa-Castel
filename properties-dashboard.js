@@ -14,7 +14,7 @@ function renderDashboard() {
   const tTilg = props.reduce((s,p) => s + n(p.tilgung), 0);
   const tZins = props.reduce((s,p) => s + n(p.zinsen), 0);
   const tRest = props.reduce((s,p) => s + n(p.restschuld), 0);
-  const tAbb  = props.reduce((s,p) => s + n(p.abbezahlt), 0);
+  const tAbb  = props.reduce((s,p) => s + paidOff(p), 0);         // Bausparvertrag: Darlehen − Restschuld, not the savings
   const tDar  = props.reduce((s,p) => s + n(p.darlehen), 0);
   const tMw   = props.reduce((s,p) => s + n(p.marktwert), 0);
   const tKP   = props.reduce((s,p) => s + n(p.kaufpreis), 0);
@@ -25,6 +25,18 @@ function renderDashboard() {
   const pct   = tDar > 0 ? p2(tAbb / tDar * 100) : 0;
   const tPct  = tRate > 0 ? p2(tTilg / tRate * 100) : 0;
   const zPct  = tRate > 0 ? p2(100 - tPct) : 0;
+  // Nov 2026 fix: loans = properties with a loan ("3 loans combined" counted every property, also those without one)
+  const nLoans = props.filter(p => n(p.darlehen) > 0 || n(p.rate) > 0).length;
+  const loansTxt = nLoans + (nLoans === 1 ? ' loan' : ' loans');
+  // … and the purchase period from the purchase dates (it was the fixed text "2020–2026")
+  const yearOf = v => {
+    const iso = typeof ccParseDate === 'function' ? ccParseDate(v) : null;
+    const m = iso ? null : String(v || '').match(/\b((?:19|20)\d{2})\b/);
+    return iso ? Number(iso.slice(0, 4)) : m ? Number(m[1]) : null;
+  };
+  const yrs = props.map(p => yearOf(p.kaufdatum)).filter(y => y !== null);
+  const y0 = yrs.length ? Math.min(...yrs) : null, y1 = yrs.length ? Math.max(...yrs) : null;
+  const period = y0 === null ? '' : ' · ' + (y0 === y1 ? 'Purchased ' + y0 : 'Purchase period ' + y0 + '–' + y1);
 
   /* ── Alerts ── */
   const urgent = props
@@ -44,7 +56,7 @@ function renderDashboard() {
           </span>
           <div class="ac-body">
             <div class="ac-name">${p.name}</div>
-            <div class="ac-desc">${p.bank} · ${p.zinssatz.toFixed(2).replace('.', ',')} % · ${p.zb_status === 'red' ? 'Negotiate refinancing immediately' : 'Request new terms'}</div>
+            <div class="ac-desc">${p.bank} · ${n(p.zinssatz).toFixed(2).replace('.', ',')} % · ${p.zb_status === 'red' ? 'Negotiate refinancing immediately' : 'Request new terms'}</div>
           </div>
           <span class="ac-tag">${p.zb} →</span>
         </div>`).join('')}
@@ -52,7 +64,7 @@ function renderDashboard() {
 
   /* ── Object line ── */
   document.getElementById('dash-obj-line').innerHTML =
-    `<strong>${props.length} properties</strong> · ${de(tM2)} m² · Purchase period 2020–2026`;
+    `<strong>${props.length} properties</strong> · ${de(tM2)} m²${period}`;
 
   /* ── KPI Cards ── */
   document.getElementById('dash-kpis').innerHTML = `
@@ -83,7 +95,7 @@ function renderDashboard() {
     <div class="rate-card">
       <div class="rate-card__lbl">Total monthly payment</div>
       <div class="rate-card__total">${eur(tRate)}</div>
-      <div class="rate-card__sub">${props.length} loans combined</div>
+      <div class="rate-card__sub">${loansTxt} combined</div>
       <div class="rate-split">
         <div class="rate-part rate-part--t">
           <div class="rate-part__lbl">Tilgung</div>
@@ -123,7 +135,7 @@ function renderDashboard() {
         </div>
         <span class="prog-bar-pct">${ccFmtPct(pct)}</span>
       </div>
-      <div class="prog-summary"><strong>${mio(tAbb)}</strong> repaid across ${props.length} loans</div>
+      <div class="prog-summary"><strong>${mio(tAbb)}</strong> repaid across ${loansTxt}</div>
     </div>`;
 
   /* ── Market Value Card ── */

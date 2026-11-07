@@ -989,13 +989,21 @@ function ctlLoanMonth(L, y, m) {
   const z = Math.min(_cxR(Math.max(R, 0) * i), rate);
   return { debit, rate, zinsen: z, tilgung: _cxR(rate - z), est: true, rest: _cxR(R) };
 }
-/* "bis 2030" → from 6 months before the end: a reminder to enter the new rate */
+/* "Fixed rate until" (Properties) → from 6 months before the end: a reminder to enter the new rate.
+   Nov 2026 fix: Properties saves the full date ("15.02.2027"), but only the year was read, as if every Zinsbindung
+   ended in December — the reminder came up to 11 months late (15.02.2027: shown from 06/2027, "ended" from 2028).
+   Now: the date's month · "06/2030" its month · a year alone ("bis 2030") December, as before. */
 function ctlZinsbindungNote(L, y, m) {
-  const yr = Number((String(L.zb || '').match(/(20\d\d)/) || [])[1]);
-  if (!yr) return null;
-  const k = (yr - y) * 12 + (12 - m);
+  const s = String(L.zb || '').trim(), day = v => (typeof ccParseDate === 'function' ? ccParseDate(v) : null);
+  const iso = day(s) || day((s.match(/\d{1,2}\.\d{1,2}\.\d{4}/) || [])[0]);
+  const mm = iso ? null : s.match(/\b(0?[1-9]|1[0-2])[./](20\d\d)\b/);
+  const yr = iso || mm ? null : s.match(/(20\d\d)/);
+  if (!iso && !mm && !yr) return null;
+  const ey = iso ? +iso.slice(0, 4) : mm ? +mm[2] : +yr[1], em = iso ? +iso.slice(5, 7) : mm ? +mm[1] : 12;
+  const txt = iso ? _cxFmtD(iso) : mm ? mm[1].padStart(2, '0') + '/' + mm[2] : yr[1];
+  const k = (ey - y) * 12 + (em - m);
   if (k > 6) return null;
-  return k >= 0 ? 'Zinsbindung ends ' + yr + ' – enter the new rate in Properties once you have it' : 'Zinsbindung ended ' + yr + ' – check the rate in Properties';
+  return k >= 0 ? 'Zinsbindung ends ' + txt + ' – enter the new rate in Properties once you have it' : 'Zinsbindung ended ' + txt + ' – check the rate in Properties';
 }
 
 /* Apartments: Kreditrate · Hausgeld · Grundsteuer · Strom
