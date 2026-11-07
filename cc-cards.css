@@ -385,13 +385,9 @@ button.cc-nks-row:active { background: var(--cc-surface); }
 .cc-sum2__vals > span { white-space:nowrap; font-size:13px; font-weight:600; color:var(--cc-charcoal); }
 .cc-sum2__vals i, .cc-sum2__open > i { font-style:normal; font-size:9px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:#A89C8C; margin-right:4px; }
 .cc-sum2__open { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:3px; }
-/* Nov 2026 · Rooms › Soll line: the Preisliste chip next to "occupied" (landlord only, tab-rooms.js) */
-.cc-sum2__meta .rp-metar { display:inline-flex; align-items:center; gap:8px; }
-.cc-sum2__meta .rp-plw { display:inline-flex; align-items:center; gap:2px; }
+/* Nov 2026 · Rooms › Soll line: the Preisliste button on the right (landlord only, tab-rooms.js) */
+#roomsSummary .cc-sum2__meta { align-items:center; }
 .rp-pl { display:inline-flex; align-items:center; gap:4px; height:24px; margin:0; padding:0 10px; border:.5px solid var(--cc-rule, #E3DCD1);
   border-radius:12px; background:transparent; font:inherit; font-size:11px; font-weight:500; letter-spacing:.02em; color:var(--cc-charcoal, #3D3027);
   white-space:nowrap; cursor:pointer; -webkit-tap-highlight-color:transparent; }
 .rp-pl i { font-size:12px; color:#8A6535; }
-.rp-pl-x { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; margin:0; padding:0; border:0;
-  border-radius:50%; background:transparent; color:#A89C8C; cursor:pointer; -webkit-tap-highlight-color:transparent; }
-.rp-pl-x i { font-size:13px; }
