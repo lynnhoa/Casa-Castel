@@ -270,7 +270,7 @@ function _renderAnn(data) {
     <div class="ann-actions"><button class="ann-edit" onclick="editAnn()">Edit</button><button class="ann-del" onclick="deleteAnn('${data.id}')">Delete announcement</button></div>
   </div>`;
   // Phone strip: slim — the date sits in the header next to "Announcement", one "Edit ›" up there
-  // (Edit and Delete are in its pop-up), the text in 2 lines with "More". Desktop keeps the full card.
+  // (Edit and Delete are in its pop-up), the text in up to 4 lines with "More". Desktop keeps the full card.
   const mobHtml = !data ? emptyHtml : `<div class="ann-card ann-card--slim${data.pinned ? ' ann-card--pinned' : ''}">
     ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
     <p class="ann-body-text ann-clamp">${esc(data.body)}</p>
@@ -286,7 +286,7 @@ function _renderAnn(data) {
   if (document.getElementById('lounge-modal-ann')?.classList.contains('open')) _populateAnnModal();
 }
 
-/* "More" only when the text is longer than 2 lines */
+/* "More" only when the text is longer than 4 lines (the clamp in casa-castel.css) */
 function annMoreCheck() {
   requestAnimationFrame(() => document.querySelectorAll('.l-ann-strip .ann-clamp').forEach(p => {
     const b = p.parentElement.querySelector('.ann-more');

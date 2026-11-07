@@ -78,7 +78,7 @@ let _annSeq = 0, _noticeSeq = 0;
 let _loungeDelTimer = null;   // one reload after a burst of live deletes
 
 /* ── ANNOUNCEMENTS ──────────────────────────────────────── */
-/* "More" only when the text is longer than 2 lines */
+/* "More" only when the text is longer than 4 lines (the clamp in casa-castel.css) */
 function annMoreCheck() {
   requestAnimationFrame(() => document.querySelectorAll('.l-ann-strip .ann-clamp').forEach(p => {
     const b = p.parentElement.querySelector('.ann-more');
@@ -116,7 +116,7 @@ function _renderAnn(data) {
       ${data.title ? `<p class="ann-title-text">${esc(data.title)}</p>` : ''}
       <p class="ann-body-text">${esc(data.body)}</p>
     </div>`;
-  // Phone strip: slim — "ANNOUNCEMENT · 07.10." in one line (no extra "Casa Castel" line), text in 2 lines with "More"
+  // Phone strip: slim — "ANNOUNCEMENT · 07.10." in one line (no extra "Casa Castel" line), text in up to 4 lines with "More"
   const mobHtml = !data ? emptyHtml : `
     <div class="ann-card ann-card--slim${data.pinned ? ' ann-card--pinned' : ''}">
       <div class="ann-slimtop">
