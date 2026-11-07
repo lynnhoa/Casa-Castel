@@ -953,7 +953,7 @@ async function loadRooms() {
    iPhone the viewer opens on top of the app and "Done" brings you back (the app's own file would replace the app,
    with no way back). The link is made in advance (12 h), so the tap opens it at once — phones open a PDF only from a tap.
    A new price list = a new Casa-Castel-Preisliste.pdf + a new RP_PL.ver (its Stand): the copy follows by itself. */
-const RP_PL = { bucket: 'maintenance-docs', dir: 'preisliste', file: 'Casa-Castel-Preisliste.pdf', ver: '2026-11-07', url: null, at: 0, busy: false, said: false };
+const RP_PL = { bucket: 'maintenance-docs', dir: 'preisliste', file: 'Casa-Castel-Preisliste.pdf', ver: '2026-11-07b', url: null, at: 0, busy: false, said: false };
 async function _rpPlPrep() {
   if (RP_PL.busy) return;
   RP_PL.busy = true;
