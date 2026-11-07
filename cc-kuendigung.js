@@ -114,11 +114,26 @@ function kbOpen(tid) {
   // noRefresh: a card redraw never rebuilds this sheet (what you typed, "Open PDF") — kbRefresh does it when needed
   ccSheetOpen({ title: 'Kündigung', kicker: (rec.room || '') + ' · ' + _kbName(rec), build: () => kbHTML(tid), kb: String(tid), noRefresh: true });
 }
-/* redraw only this sheet (after an upload / a switch) — the fields keep what you typed (_kbState) */
+/* after an upload: only the tenant's-Kündigung line is redrawn — a date you are typing right now stays as it is */
 function kbRefresh(tid) {
   if (typeof _ccSheetCur === 'undefined' || !_ccSheetCur || _ccSheetCur.kb !== String(tid)) return;
+  const row = document.querySelector('#ccSheetBody [data-kb-own]');
+  if (row) { row.innerHTML = _kbOwnHTML(tid); return; }
+  _kbRebuild(tid);
+}
+/* the whole sheet again (a switch of the letter) — the fields keep what you typed (_kbState) */
+function _kbRebuild(tid) {
   const body = document.getElementById('ccSheetBody'); if (!body) return;
   const y = body.scrollTop; body.innerHTML = kbHTML(tid); body.scrollTop = y;
+}
+function _kbOwnHTML(tid) {
+  const T = _kbEsc(tid), own = _kbDocOf(tid, 'kuendigung', 'signed');
+  if (typeof ccfPrepareLinks === 'function' && own && own.file_url) setTimeout(() => ccfPrepareLinks([own.file_url]), 0);
+  const fmt = d => (typeof ccfFmtShort === 'function' ? ccfFmtShort(d.uploaded_at) : '');
+  return own
+    ? `<button type="button" class="kb-doc" onclick="ccfDocTap('${T}','kuendigung','signed')"><i class="ti ti-file-text" aria-hidden="true"></i> Kündigung (Mieter) · ${_kbEsc(fmt(own))}</button>
+       <button type="button" class="kb-btn kb-btn--s" onclick="ccfDocUpload('${T}','kuendigung','signed')">Replace</button>`
+    : `<button type="button" class="kb-btn" onclick="ccfDocUpload('${T}','kuendigung','signed')"><i class="ti ti-upload" aria-hidden="true"></i> Upload</button>`;
 }
 function _kbDateField(tid, key, label, value, sub) {
   return `<label class="kb-f"><span class="kb-l">${label}</span>
@@ -147,10 +162,7 @@ function kbHTML(tid) {
   return `<div class="kb">
     <div class="kb-step"><span class="kb-n">1</span><div class="kb-b">
       <b class="kb-t">Tenant's Kündigung</b><span class="kb-s">their e-mail as PDF, screenshot or photo · saved in Documents</span>
-      <div class="kb-row">${own
-        ? `<button type="button" class="kb-doc" onclick="ccfDocTap('${T}','kuendigung','signed')"><i class="ti ti-file-text" aria-hidden="true"></i> Kündigung (Mieter) · ${_kbEsc(fmt(own))}</button>
-           <button type="button" class="kb-btn kb-btn--s" onclick="ccfDocUpload('${T}','kuendigung','signed')">Replace</button>`
-        : `<button type="button" class="kb-btn" onclick="ccfDocUpload('${T}','kuendigung','signed')"><i class="ti ti-upload" aria-hidden="true"></i> Upload</button>`}</div>
+      <div class="kb-row" data-kb-own>${_kbOwnHTML(tid)}</div>
     </div></div>
     <div class="kb-step"><span class="kb-n">2</span><div class="kb-b">
       <b class="kb-t">Letter</b><span class="kb-s">${fixed ? 'befristet (Kurzzeit · Jahresvertrag): the tenant asks to leave early — you agree' : 'Mietvertrag unbefristet: 3 months to the month end'}</span>
@@ -184,7 +196,7 @@ const _kbSum = st => st.end ? 'Saves the letter in Documents and sets the Contra
 function kbSet(tid, key, value) {
   const rec = _kbRec(tid); if (!rec) return;
   const st = _kbSt(rec);
-  if (key === 'v') { if (st.v !== value) { st.v = value; st.endAuto = value !== 'befristet'; st.end = value === 'befristet' ? '' : kbEndUnbefristet(st.eingang); st.done = null; } kbRefresh(tid); return; }
+  if (key === 'v') { if (st.v !== value) { st.v = value; st.endAuto = value !== 'befristet'; st.end = value === 'befristet' ? '' : kbEndUnbefristet(st.eingang); st.done = null; } _kbRebuild(tid); return; }
   const iso = _kbToIso(value);
   if (key === 'vom') {
     st.vom = iso;
@@ -210,6 +222,7 @@ function _kbReadFields(tid) {
   const rec = _kbRec(tid), st = _kbSt(rec);
   document.querySelectorAll('#ccSheetBody [data-kb]').forEach(inp => {
     const iso = _kbToIso(inp.value), k = inp.dataset.kb;
+    if (!iso) return;                                        // a field that reads empty right now never wipes a date you set (clearing goes through kbSet)
     if (k === 'vom') st.vom = iso; else if (k === 'eingang') { if (iso !== st.eingang) { st.eingang = iso; st.eingangAuto = false; } } else if (k === 'agreed') st.agreed = iso;
     else if (k === 'end' && iso !== st.end) { st.end = iso; st.endAuto = !iso; }
   });
