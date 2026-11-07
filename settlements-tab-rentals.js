@@ -998,7 +998,7 @@ function _srCardInfo4(c) {
 /* Nov 2026 · what comes into "NK only" by itself (you can untick each):
    Grundsteuer — booked in Controlling for the months of the NK period, else the Rentals amount per quarter due then;
    every one-off of the apartment marked "Show in Settlements" (Controlling › One-off, also from Maintenance) dated in the period */
-function _srAutoNkItems(c) {
+function _srAutoNkItems(c, zero) {
   const out = [], since = _srBought(c.p), per = c.per;
   let gs = 0, nBk = 0, nSoll = 0;
   const ist = (SR.hgIst || []).filter(x => String(x.property_id) === String(c.p.id));
@@ -1011,18 +1011,38 @@ function _srAutoNkItems(c) {
   }
   if (gs > 0.004) out.push({ auto: 'gs', kind: 'grundsteuer', label: 'Grundsteuer', amount: cxR(gs),
     src: nBk && nSoll ? 'booked in Controlling + from Rentals' : nBk ? 'booked in Controlling' : 'from Rentals · ' + nSoll + (nSoll === 1 ? ' quarter' : ' quarters') });
-  for (const o of (SR.nkOt || [])) {
+  // Nov 2026 · a Maintenance return is never an NK line of its own: its receipt counts at the net price (receipt −
+  // its counted returns, settlements-returns.js) — also when only the receipt is marked for the NK
+  // a receipt returned in full is in no line — into `zero` when asked (your screen lists it with its returns' switches)
+  const z0 = [], mine = o => {
     const d = _srD(o.invoice_date);
-    if (Number(o.property_id) !== Number(c.p.id) || !o.nk_umlage || !d || d < per.from || d > per.to || (since && d < since)) continue;
-    if (['NK-Abrechnung', 'Hausgeldabrechnung', 'Kaufnebenkosten'].includes(o.kind)) continue;
+    return !(Number(o.property_id) !== Number(c.p.id) || !o.nk_umlage || !d || d < per.from || d > per.to || (since && d < since)
+      || ['NK-Abrechnung', 'Hausgeldabrechnung', 'Kaufnebenkosten'].includes(o.kind));
+  };
+  for (const o of (typeof stRetNetLines === 'function' ? stRetNetLines(SR.nkOt || [], z0) : (SR.nkOt || []))) {
+    if (!mine(o)) continue;
+    const d = _srD(o.invoice_date);
     out.push({ auto: 'ot:' + o.id, kind: 'sonst', label: o.item || o.company || 'Cost', amount: cxR((Number(o.direction) === 1 ? -1 : 1) * (Number(o.amount) || 0)),
                src: 'marked for the NK · ' + stDe(d) });
   }
+  if (Array.isArray(zero)) z0.filter(mine).forEach(o => zero.push(o));
   return out;
+}
+/* Nov 2026 · a return switched while this NK is not saved yet (the sync skips a draft you are typing in): its
+   receipt's amount follows in the draft, which then saves by itself */
+function _srRetPatchDraft() {
+  const d = SR.draft, c = d && _srCards[d._ck]; if (!c) return;
+  try { if ((_srCardInfo4(c).rows || []).some(r => r.kind === 'ten' && r.st && r.st.res)) return; } catch (e) { return; }   // a letter went out
+  const want = _srAutoNkItems(c).filter(w => /^ot:/.test(String(w.auto)));
+  d.positions = (d.positions || []).filter(p => !/^ot:/.test(String(p.auto || '')) || want.some(w => w.auto === p.auto))
+    .map(p => { const w = /^ot:/.test(String(p.auto || '')) && want.find(x => x.auto === p.auto); return w ? Object.assign({}, p, { label: w.label, amount: w.amount, src: w.src }) : p; });
+  for (const w of want) if (!d.positions.some(p => p.auto === w.auto)) d.positions.push({ id: _srUid(), kind: w.kind, origin: 'nk', u: true, auto: w.auto, label: w.label, amount: w.amount, src: w.src, key: 'direkt' });
+  _srAutoQueue();
 }
 let _srNkAutoBusy = false;
 function _srNkAutoSync(infos) {
   if (_srNkAutoBusy) return;
+  if (typeof ST_RET !== 'undefined' && ST_RET.error) return;                                 // Nov 2026: returns not loaded → nothing is saved (a receipt would come in at gross)
   const jobs = [];
   for (const i of infos) {
     const c = i.c, rec = i.rec;
@@ -1628,12 +1648,25 @@ function _srNkView(c) {
       return '<div class="ct-r ct-r--nk' + (on ? '' : ' is-off') + '"><label class="ct-l"><input type="checkbox" class="ct-cb" data-src="innk" data-i="' + i + '"' + (on ? ' checked' : '') + (a === null ? ' disabled' : '') + '/><span class="ct-lab">' + stEsc(p.label || k.l) + '</span>' + chip + '</label>' +
         '<span class="ct-ro">' + (a === null ? '—' : stEur(_srSigned(p, a))) + '</span></div>';
     }).join('');
+    // Nov 2026 · the returns of a Maintenance receipt, under it (your screen only) — no switch once a letter went out
+    const sentNk = (() => { try { return (_srCardInfo4(c).rows || []).some(r => r.kind === 'ten' && r.st && r.st.res); } catch (e) { return false; } })();
+    const retRows = p => {
+      if (typeof stRetRowsHtml !== 'function' || !/^ot:/.test(String(p.auto || ''))) return '';
+      const o = (SR.nkOt || []).find(x => 'ot:' + x.id === String(p.auto));
+      return o && o.maint_cost_id ? stRetRowsHtml(o.maint_cost_id, { locked: sentNk ? 'sent' : '', gross: Math.abs(Number(o.amount) || 0), frozen: Math.abs(_srNum(p.amount) || 0) }) : '';
+    };
+    // a receipt returned in full: in no line, never in a letter — here (0,00 €) with its returns and switches
+    const zero = [];
+    if (typeof stRetZeroHtml === 'function') _srAutoNkItems(c, zero);
+    const zRows = zero.filter(o => !(d.positions || []).some(p => p.auto === 'ot:' + o.id))
+      .map(o => stRetZeroHtml(o.item || o.company || 'Cost', 'returned in full · not in the NK · ' + stDe(_srD(o.invoice_date)), o.maint_cost_id, { locked: sentNk ? 'sent' : '', gross: Math.abs(Number(o.amount) || 0), frozen: 0 })).join('');
+    const retWarn = typeof ST_RET !== 'undefined' && ST_RET.error && !sentNk ? '<p class="st-ret__warn">' + stEsc(stRetFailTxt + ' – the costs marked for the NK wait until then.') + '</p>' : '';
     const xRows = X.map(([p, i]) => {
       if (p.auto) {                                            // Nov 2026: came in by itself (Grundsteuer, a cost marked for the NK) — untick to leave it out
         const on = p.nk !== false;
         return '<div class="ct-r ct-r--nk ct-r--auto' + (on ? '' : ' is-off') + '"><label class="ct-l"><input type="checkbox" class="ct-cb" data-src="innk" data-i="' + i + '"' + (on ? ' checked' : '') + '/>' +
           '<span class="ct-lab">' + stEsc(p.label || 'Cost') + ' <small class="ct-src">' + stEsc(p.src || '') + '</small></span></label>' +
-          '<span class="ct-ro">' + stEur(_srSigned(p, _srNum(p.amount) || 0)) + '</span></div>';
+          '<span class="ct-ro">' + stEur(_srSigned(p, _srNum(p.amount) || 0)) + '</span></div>' + retRows(p);
       }
       const k = _srKind(p.kind), named = p.kind !== 'grundsteuer' || p.label;
       const lab = named ? '<input class="ct-name" list="srKindList" data-srf="pos.' + i + '.label" placeholder="Name" value="' + stEsc(p.label || (p.kind === 'sonst' ? '' : k.l)) + '"/>' : '<span class="ct-lab">' + stEsc(k.l) + ' <small class="ct-src">from Rentals</small></span>';
@@ -1649,9 +1682,9 @@ function _srNkView(c) {
       '<details class="mx-fold"' + (SR.nkOpenU ? ' open' : '') + ' data-fold="U"><summary><span class="mx-fold__i" style="background:#E6EEF6;color:#2F5470"><i class="ti ti-receipt" aria-hidden="true"></i></span>' +
         '<span class="mx-fold__m"><b>From the Jahresabrechnung</b><small>umlagefähig · ' + nOn + ' of ' + HV.length + ' in the NK</small></span><b class="mx-fold__v" data-sr-tot="hvnk">' + stEur(tHv) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
         '<div class="ct">' + hvRows + '<button class="ct-add" data-sr="toHv"><i class="ti ti-pencil" aria-hidden="true"></i> Amounts are in the Jahresabrechnung</button></div></details>' +
-      '<details class="mx-fold"' + (SR.nkOpenX || X.length ? ' open' : '') + ' data-fold="X"><summary><span class="mx-fold__i" style="background:#FAF0DC;color:#854F0B"><i class="ti ti-plus" aria-hidden="true"></i></span>' +
+      '<details class="mx-fold"' + (SR.nkOpenX || X.length || zRows ? ' open' : '') + ' data-fold="X"><summary><span class="mx-fold__i" style="background:#FAF0DC;color:#854F0B"><i class="ti ti-plus" aria-hidden="true"></i></span>' +
         '<span class="mx-fold__m"><b>NK only</b><small>' + (X.length ? X.filter(([p]) => p.nk !== false).length + ' of ' + X.length + ' in the NK · Grundsteuer, costs marked for the NK' : 'not in the Hausgeld, e.g. Grundsteuer') + '</small></span><b class="mx-fold__v" data-sr-tot="x">' + stEur(tX) + '</b><i class="ti ti-chevron-down mx-fold__c" aria-hidden="true"></i></summary>' +
-        '<div class="ct">' + xRows +
+        '<div class="ct">' + retWarn + xRows + zRows +
         '<div class="ct-adds">' + (void hasGs, void gsQ, '') +   // Nov 2026: Grundsteuer comes in by itself
         '<button class="ct-add" data-sr="nkAdd"><i class="ti ti-plus" aria-hidden="true"></i> Add a cost</button></div></div></details>' +
       '<div class="ct-tot"><span>Total for the NK</span><b data-sr-tot="nk">' + stEur(cxR(tHv + tX)) + '</b></div>' +

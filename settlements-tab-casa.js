@@ -101,6 +101,7 @@ async function _scFetchYear(y) {
     _ctlSupa.from('ctrl_expense_castel').select('*').gte('year', y0).lte('year', y1),
     _ctlSupa.from('ctrl_expense_one_time').select('*').eq('property_id', CASA_PROP_ID).gte('invoice_date', per.from).lte('invoice_date', per.to),
     scLoadTeilB(per),                                        // D39: Teil B from Maintenance (null = none, never an error)
+    typeof stLoadReturns === 'function' ? stLoadReturns() : null,   // Nov 2026: the returns map, never older than these one-offs
   ]);
   if (c.error) throw c.error;
   if (o.error) throw o.error;
@@ -267,7 +268,11 @@ function scInputFor(y) {
   // Controlling line still says "in the NK" (MAINTENANCE-D39.sql books it with nk_umlage false; this only guards)
   const tbIds = new Set(((d.mt && d.mt.costs) || []).map(x => String(x.id)));
   const tbDup = (d.one_time || []).filter(o => o.nk_umlage && o.maint_cost_id && tbIds.has(String(o.maint_cost_id)));
-  const oneTime = (d.one_time || []).filter(o => ownBk[String(o.id)] === undefined && !tbDup.includes(o));
+  // Nov 2026 · a Maintenance return is never a house-cost line of its own: its receipt counts at the net price
+  // (receipt − its counted returns, settlements-returns.js) — so the letter's Belegliste never shows a return
+  const oneTime0 = (d.one_time || []).filter(o => ownBk[String(o.id)] === undefined && !tbDup.includes(o));
+  const retZero = [];
+  const oneTime = typeof stRetNetLines === 'function' ? stRetNetLines(oneTime0, retZero) : oneTime0;
   const jaOwn = ja ? new Set(scJaAll().filter(b => String(b.id).indexOf('ot:') === 0).map(b => String(b.id).slice(3))) : undefined;
   const input = NkCasa.fromControlling(y, { castel_expenses: d.castel_expenses, one_time: oneTime, income: window._src.incAll || [], period: per0, tenancies, cutoff, ja, jaOwn, planMonth });
   if (input.error) return input;
@@ -295,6 +300,9 @@ function scInputFor(y) {
     input.tenancies.push({ key: 'x:' + x.id, tenantId: 'x:' + x.id, extra: true, name: x.name || 'Tenant', room: x.room || '', m2: room ? Number(room.flaeche_m2) || 0 : 0,
                            from, to, mode: 'nk', unitId: (units.find(u => scNorm(u.name) === scNorm(x.room)) || {}).id ?? null, contractNk: Number(x.nk) || 0, addr: x.addr || '' });
   }
+  // Nov 2026 · a receipt returned in full counts nowhere — kept here for your screen only (its returns and switches)
+  input.retZero = retZero.filter(o => Number(o.property_id) === CASA_PROP_ID && o.nk_umlage && scD(o.invoice_date) >= per0.from && scD(o.invoice_date) <= per0.to)
+    .map(o => ({ ot: o.id, mc: o.maint_cost_id, label: o.item || 'Rechnung', date: scD(o.invoice_date), gross: cxR(Math.abs(Number(o.amount) || 0)) }));
   scPauschalNk(input);                                     // first: the "davon NK" of Pauschal stays (scVzMonths keeps it apart)
   scVzMonths(input, y);
   input.warn = (input.warn || []).filter(w => !/NK paid missing/.test(w));
@@ -303,8 +311,9 @@ function scInputFor(y) {
   // pooled); the positions go into the snapshot with the rest of the input when the costs are locked
   const tb = scTeilBPos(d, input);
   if (d.mt && d.mt.error) input.warn.push('Teil B could not be loaded from Maintenance – reload the page before locking');
+  if (typeof ST_RET !== 'undefined' && ST_RET.error) input.warn.push(stRetFailTxt + ' before locking');
   if (tb) {
-    input.teilB = tb.pos; input.teilBSkip = tb.skip; input.teilBLater = tb.later;
+    input.teilB = tb.pos; input.teilBSkip = tb.skip; input.teilBLater = tb.later; input.teilBZero = tb.zero;
     if (tb.pos.length) for (const t of input.tenancies) {   // § 7 cap: the yearly rent (Kaltmiete × 12 from the tenant record) — frozen with the snapshot
       const tr = t.extra ? null : (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId));
       const k = tr ? Number(tr.kaltmiete) || 0 : 0;
@@ -320,23 +329,34 @@ function scInputFor(y) {
    → { pos, skip, later } · null when there is no Maintenance data (D39 not run, load failed) */
 function scTeilBPos(d, input) {
   const mt = d && d.mt; if (!mt || mt.error) return null;
-  const per = input.period, cases = {}, back = {}, pos = [], skip = [];
+  const per = input.period, cases = {}, back = {}, backOn = {}, pos = [], skip = [], zero = [];
   let later = 0;
   for (const c of (mt.cases || [])) cases[String(c.id)] = c;
-  for (const x of (mt.costs || [])) if (x.return_of) back[String(x.return_of)] = (back[String(x.return_of)] || 0) + (Number(x.amount) || 0);
+  for (const x of (mt.costs || [])) if (x.return_of) {
+    const k = String(x.return_of), a = Number(x.amount) || 0;
+    back[k] = (back[k] || 0) + a;
+    if (typeof stRetOn !== 'function' || stRetOn((typeof ST_RET !== 'undefined' && ST_RET.byId[String(x.id)]) || x)) backOn[k] = (backOn[k] || 0) + a;
+  }
   for (const x of (mt.costs || [])) {
     const c = cases[String(x.case_id)];
     if (x.return_of || !c || (x.pay_type !== 'klein' && x.pay_type !== 'schaden') || (x.pay_via || 'nk') !== 'nk') continue;
-    const date = scD(x.cost_date), gross = cxR(Number(x.amount) || 0), net = cxR(Math.max(0, gross - (back[String(x.id)] || 0)));
-    if (!date || date < per.from || net < 0.005) continue;
+    // Nov 2026: Kleinreparatur — every return counts (the lower price; § 7 is on the net) · Schaden — only the returns
+    // switched on in Settlements (settlements-returns.js); off = the tenant pays that part too
+    const all = back[String(x.id)] || 0, minus = x.pay_type === 'klein' ? all : (backOn[String(x.id)] || 0);
+    const date = scD(x.cost_date), gross = cxR(Number(x.amount) || 0), net = cxR(Math.max(0, gross - minus)), off = cxR(all - minus);
+    if (!date || date < per.from) continue;
+    if (net < 0.005) {                                       // returned in full: no position · a Schaden stays on your screen (its switch)
+      if (x.pay_type === 'schaden' && gross > 0.004 && date <= per.to) zero.push({ id: String(x.id), label: String(x.description || '').trim() || String(c.title || '').trim() || 'Receipt', date, gross });
+      continue;
+    }
     if (date > per.to) { if (date <= (input.fullPeriod || per).to) later++; continue; }
     const rooms = scTbRooms(x.pay_rooms);
     const p = { id: String(x.id), b: x.pay_type === 'klein' ? 1 : 2, label: String(x.description || '').trim() || String(c.title || '').trim() || 'Receipt',
-                date, gross, net, where: x.pay_where === 'zimmer' || (!x.pay_where && rooms.length === 1) ? 'zimmer' : 'gemein', rooms, no: x.receipt_no || '' };
+                date, gross, net, off, where: x.pay_where === 'zimmer' || (!x.pay_where && rooms.length === 1) ? 'zimmer' : 'gemein', rooms, no: x.receipt_no || '' };
     (p.b === 1 && net > 150.004 ? skip : pos).push(p);
   }
   const ord = (a, b) => a.b - b.b || a.date.localeCompare(b.date) || a.label.localeCompare(b.label);
-  return { pos: pos.sort(ord), skip: skip.sort(ord), later };
+  return { pos: pos.sort(ord), skip: skip.sort(ord), later, zero: zero.sort((a, b) => a.date.localeCompare(b.date)) };
 }
 /* D39 · Teil B room match: the key Controlling links a unit to its room with (_cxNorm) and Maintenance counts rented
    rooms with (mtNorm) — "New York" = "new york" = "New-York" = "New  York" */
@@ -756,7 +776,7 @@ button.sc-tb-g__r { cursor:pointer; -webkit-tap-highlight-color:transparent; }
   const st = document.createElement('style'); st.id = 'scTbCss'; st.textContent = SC_TB_CSS;
   (document.head || document.documentElement).appendChild(st);
 })();
-const scTbHas = M => !!(M && M.teilB && (M.teilB.pos.length || M.teilB.warn.length));
+const scTbHas = M => !!(M && M.teilB && (M.teilB.pos.length || M.teilB.warn.length || ((M.input && M.input.teilBZero) || []).length));   // Nov 2026: + a Schaden returned in full (its switch)
 const scTbLink = id => 'maintenance.html#cost=' + encodeURIComponent(id);       // the receipt in Maintenance (deep link)
 const scTbNum = v => { const n = cxR(v); return (n < -0.004 ? '−' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 /* where / how it is split, e.g. "Gemeinschaftsfläche · ÷ 6 rented = 20,00 €" · "London + New York · ÷ 2 = 120,00 €" · "New York" */
@@ -767,7 +787,8 @@ function scTbSub(p) {
   const where = p.where === 'zimmer' ? (p.rooms[0] || 'no Zimmer set')
     : 'Gemeinschaftsfläche · ' + (p.b === 2 ? p.rooms.join(' + ') + ' · ' : '') + (n ? '÷ ' + n + (p.b === 1 ? ' rented' : '') + each : 'no Zimmer set');
   const ret = p.gross - p.net > 0.004 ? ' · ' + scE(p.gross) + ' − return ' + scE(p.gross - p.net) : '';
-  return where + ret;
+  const off = (p.off || 0) > 0.004 ? ' · return ' + scE(p.off) + ' not counted' : '';   // Nov 2026: Schaden, switched off (your screen only)
+  return where + ret + off;
 }
 /* B1 as the Teil B view sums it: the positions plus the § 7 cap rows (minus) · one number on the card and in the view */
 const scTbB1 = M => cxR(M.teilB.b1 + M.ten.reduce((a, t) => a + (((t.teilB || []).find(r => r.cap) || {}).share || 0), 0));
@@ -782,17 +803,21 @@ function scTbCard(M) {
 function scTbView(M) {
   const B = M.teilB || { pos: [], warn: [], b1: 0, b2: 0, later: 0 };
   const row = p => '<a class="sc-tb__r" href="' + stEsc(scTbLink(p.id)) + '"><span class="sc-tb__m"><b>' + stEsc(p.label) + '</b><small>' + stEsc(scTbSub(p)) + '</small></span>' +
-    '<span class="sc-tb__v">' + scE(p.net) + '<small>' + stEsc(stDate(p.date)) + '</small></span></a>';
+    '<span class="sc-tb__v">' + scE(p.net) + '<small>' + stEsc(stDate(p.date)) + '</small></span></a>' +
+    (typeof stRetRowsHtml === 'function' ? stRetRowsHtml(p.id, { fixed: p.b === 1, locked: M.locked ? 'locked' : '', gross: p.gross, frozen: p.net }) : '');   // Nov 2026: your screen only
   const block = (b, title, note) => {
-    const L = B.pos.filter(p => p.b === b); if (!L.length) return '';
+    const L = B.pos.filter(p => p.b === b); if (!L.length && !(b === 2 && zeroRows)) return '';
     const capRows = b !== 1 ? [] : M.ten.map(t => [t, (t.teilB || []).find(r => r.cap)]).filter(x => x[1]);
     const caps = capRows.map(([t, c]) =>
       '<div class="sc-tb__r is-cap"><span class="sc-tb__m"><b>' + stEsc('§ 7 cap · ' + t.room + ' · ' + t.name) + '</b><small>' + stEsc('at most 8 % of the yearly rent ' + scE(c.rent12) + ' = ' + scE(c.limit)) + '</small></span>' +
         '<span class="sc-tb__v">' + scTbNum(c.share) + '\u202f€</span></div>').join('');
     const total = b === 1 ? scTbB1(M) : B.b2;   // the sum of the rows (§ 7 cap rows included) · as on the overview card
     return '<div class="sc-tb sc-tb--' + b + '"><div class="sc-tb__h"><span><b>' + title + '</b><small>' + note + '</small></span><span class="sc-tb__t">' + scE(total) + '</span></div>' +
-      L.map(row).join('') + caps + '</div>';
+      L.map(row).join('') + caps + (b === 2 ? zeroRows : '') + '</div>';
   };
+  // Nov 2026 · a Schaden returned in full: in no position, the letters never see it — here with its returns (switch)
+  const Z = typeof stRetZeroHtml === 'function' ? ((M.input && M.input.teilBZero) || []) : [];
+  const zeroRows = Z.map(p => stRetZeroHtml(p.label, stDate(p.date) + ' · returned in full · not in Teil B', p.id, { locked: M.locked ? 'locked' : '', gross: p.gross, frozen: 0 })).join('');
   const warn = B.warn.length ? '<div class="sc-tb-w"><div class="sc-tb-w__h">To check</div>' + B.warn.map(w => '<a class="sc-tb__r" href="' + stEsc(scTbLink(w.p.id)) + '"><span class="sc-tb__m"><b>' + stEsc(w.t) + '</b>' +
     '<small>' + stEsc(w.skip ? 'over 150 € is not a Kleinreparatur (§ 7) · in Maintenance › Who pays choose Schaden or NK, or tap Kleinrep. again (you pay)' : w.room ? w.p.label + ' · ' + scE(w.amount) : 'set the Zimmer in Maintenance') + '</small></span></a>').join('') + '</div>' : '';
   // Gesamtverrechnung per Zimmer: every room in order · a room with two NK tenants this year gets two rows
@@ -1209,7 +1234,10 @@ function scJaAll() {
     for (const k of Object.keys(ja)) for (const b of (ja[k] || [])) {
       if (!b) continue;
       const paid = b.ot !== null && b.ot !== undefined, o = paid ? bk(b.ot) : null;
-      const dir = Number(b.dir) === 1 ? 1 : Number(b.dir) === -1 ? -1 : 0, amt = cxR(Number(b.amt) || (o ? Number(o.amount) || 0 : 0));
+      // Nov 2026: paid by a Maintenance receipt with returns → its counted returns lower the bill (a return counts with
+      // its receipt, and the receipt counts only through this bill)
+      const back = o && typeof stRetNetAmt === 'function' ? cxR(Math.abs(Number(o.amount) || 0) - stRetNetAmt(o)) : 0;
+      const dir = Number(b.dir) === 1 ? 1 : Number(b.dir) === -1 ? -1 : 0, amt = cxR(Math.max(0, (Number(b.amt) || (o ? Number(o.amount) || 0 : 0)) - back));
       if (scJaZero(b)) {                                   // Nov 2026: balanced (0,00 €) — nothing to pay, but it covers its Zeitraum
         if (!b.recv || paid) continue;
         const z0 = scJaZr(k, b, null); if (!z0) continue;
@@ -1762,7 +1790,7 @@ function scCtLines(M) {                                    // the NK lines, spli
     const jaL = lines.filter(ln => ln.group === 'hausgeld' && mine(ln));
     paidL.concat(jaL).forEach(ln => used.add(ln.id));
     const paid = cxR(paidL.reduce((a, x) => a + x.total, 0)), ja = cxR(jaL.reduce((a, x) => a + x.total, 0));
-    types.push({ k, l, c, paid, ja, total: cxR(paid + ja), hasJa: jaL.length > 0,
+    types.push({ k, l, c, paid, ja, total: cxR(paid + ja), hasJa: jaL.length > 0, paidL,
                  hg: (M.money.hgAll || []).filter(h => (h.info || {}).k ? h.info.k === k : mine(h)) });
   }
   types.sort((a, b) => scCatOrd(a.c.id) - scCatOrd(b.c.id));      // Nov 2026: Wasser · Entsorgung · Strom · Gas (the one order)
@@ -1784,7 +1812,8 @@ function scCostsView(M) {
       : gaps.length ? (gaps.length === 1 ? 'waiting for the ' + gaps[0].l + ' bill' : 'waiting for ' + gaps.length + ' bills') + ' · see below' : 'all bills in · then the letters can be sent',
     right: hasList ? '<button type="button" class="mx-pill" data-sc="listPdf">' + stIc('doc', 15) + 'Belegliste</button>' : '',
     switchAttrs: M.locked ? 'data-sc="unlock"' : 'data-sc="lock"' });
-  const warn = can && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '';
+  const warn = (can && M.warn.length ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Please check</p><p class="srm__banner-s">' + M.warn.map(stEsc).join('<br/>') + '</p></div></div>' : '') +
+    (scRetOld(M) ? '<div class="srm__banner is-warn"><div><p class="srm__banner-t">Locked before the returns rule</p><p class="srm__banner-s">' + stEsc(SC_RET_OLD) + '</p></div></div>' : '');
   const planned = !M.locked && M.input.planned ? M.input.planned : [];
   const plTag = catId => { const p = planned.find(x => Number(x.catId) === Number(catId)); return p ? '<span class="sc-ja__sg">incl. planned ' + stEsc(SC_MONTHS[Number(p.month.slice(5, 7)) - 1]) + '</span>' : ''; };
   const paidLbl = M.pv ? 'Paid until ' + stDate(M.pv.cutoff) : 'Paid in ' + M.y;
@@ -1792,6 +1821,15 @@ function scCostsView(M) {
   const J = scJaModel(M), own = scJaOwnerYears(), since = scJaSince(), zeros = scJaAll().filter(b => b.zero);
   const nb = ((M.rec && M.rec.tenants) || {}).__noBill || {}, gapsAll = M.jaGaps || [];
   const val = v => '<em class="sc-ct__v ' + (v < -0.004 ? 'pos' : v > 0.004 ? 'neg' : 'mut') + '">' + (v < -0.004 ? '−' : v > 0.004 ? '+' : '') + scE(Math.abs(v)) + '</em>';   // − Guthaben · + Nachzahlung
+  // Nov 2026 · a Maintenance receipt counts at its net price; its returns show under it with the switch (your screen only).
+  // Locked: no switch, and each return says whether the snapshot holds it (gross today − the frozen line)
+  const otOf = ln => String(ln.id || '').indexOf('ot:') === 0 ? (((SC.data[M.y] || {}).one_time) || []).find(o => 'ot:' + o.id === String(ln.id)) || null : null;
+  const retRows = ln => {
+    const o = otOf(ln); if (!o || !o.maint_cost_id || typeof stRetRowsHtml !== 'function') return '';
+    return stRetRowsHtml(o.maint_cost_id, { locked: M.locked ? 'locked' : '', gross: Math.abs(Number(o.amount) || 0), frozen: Math.abs(Number((ln.info || {}).amount ?? ln.total) || 0) });
+  };
+  // a Versorger cost type (Strom · Gas · Wasser · Entsorgung): its Maintenance receipts with returns, under "Paid in …"
+  const typeRet = t => (t.paidL || []).map(ln => { const r = retRows(ln); return r ? '<div class="sc-ct__rr"><div class="sc-ct__l"><span>' + stEsc(ln.label) + '</span><span>' + scE(ln.total) + '</span></div>' + r + '</div>' : ''; }).join('');
   // ── one card per Versorger cost type
   const typeCard = t => {
     const S = J.S.find(x => x.k === t.k) || { k: t.k, l: t.l, icon: SC_JA_ICON[t.k] || 'receipt', bills: [], real: [], st: 'none', exp: null };
@@ -1836,7 +1874,7 @@ function scCostsView(M) {
     const head = '<button type="button" class="sc-ct__h" data-sc="fold" data-k="ct:' + t.k + '" aria-expanded="' + open + '"><span class="mx-ic sc-ct__ic" style="background:' + (ST_TINT[S.icon] || '#F3EEE6') + '">' + stIc(S.icon, 20) + '</span>' +
       '<span class="sc-ct__n">' + stEsc(t.l + (co ? ' · ' + co : '')) + '</span><span class="sc-ct__t">' + scE(t.total) + '</span><i class="ti ti-chevron-' + (open ? 'up' : 'down') + '" aria-hidden="true"></i></button>';
     const sum = '<div class="sc-ct__l"><span>' + stEsc(paidLbl) + plTag(t.c.id) + '</span><span>' + scE(t.paid) + '</span></div>' +
-      '<div class="sc-ct__l"><span>Jahresabrechnungen</span><span class="' + (t.ja < -0.004 ? 'pos' : t.ja > 0.004 ? 'neg' : '') + '">' + (t.hasJa ? (t.ja < -0.004 ? '−' : t.ja > 0.004 ? '+' : '') + scE(Math.abs(t.ja)) : '\u2014') + '</span></div>';
+      '<div class="sc-ct__l"><span>Jahresabrechnungen</span><span class="' + (t.ja < -0.004 ? 'pos' : t.ja > 0.004 ? 'neg' : '') + '">' + (t.hasJa ? (t.ja < -0.004 ? '−' : t.ja > 0.004 ? '+' : '') + scE(Math.abs(t.ja)) : '\u2014') + '</span></div>' + typeRet(t);
     const body = open ? '<div class="sc-ct__b">' + rows.sort((a, b) => a[0].localeCompare(b[0])).map(x => x[1]).join('') +
       (can ? '<button type="button" class="cx-link sc-ct__add" data-sc="jaAdd" data-k="' + t.k + '"><i class="ti ti-plus" aria-hidden="true"></i> Jahresabrechnung</button>' : '') + '</div>' : '';
     return '<div class="sc-ct">' + head + sum + body + '</div>';
@@ -1846,12 +1884,15 @@ function scCostsView(M) {
   const oRow = ln => {
     const i = ln.info || {}, tag = ln.group === 'oneoff' ? '<span class="sc-ct__tg">one-off</span>' : ln.group === 'typed' ? '<span class="sc-ct__tg">typed</span>' : ln.group === 'hausgeld' ? '<span class="sc-ct__tg">Jahresabrechnung</span>' : plTag(ln.catId);
     const sub = ln.group === 'oneoff' && i.date ? 'paid ' + stDate(i.date) : '';
-    return '<div class="sc-ct__o"><span class="sc-ct__m"><b>' + stEsc(ln.label) + tag + '</b>' + (sub ? '<small>' + stEsc(sub) + '</small>' : '') + '</span><span>' + scE(ln.total) + '</span></div>';
+    return '<div class="sc-ct__o"><span class="sc-ct__m"><b>' + stEsc(ln.label) + tag + '</b>' + (sub ? '<small>' + stEsc(sub) + '</small>' : '') + '</span><span>' + scE(ln.total) + '</span></div>' + retRows(ln);
   };
   const oSum = cxR(other.reduce((a, x) => a + x.total, 0)), editOpen = !!SC.open['ct:typed'];
-  const otherCard = other.length || can ? '<p class="mx-lbl">Other house costs</p><div class="sc-ct sc-ct--o">' +
+  // Nov 2026 · a receipt returned in full: in no line, never in a letter — here (0,00 €) with its returns and switches
+  const zRows = typeof stRetZeroHtml === 'function' ? ((M.input && M.input.retZero) || []).map(z =>
+    stRetZeroHtml(z.label, 'paid ' + stDate(z.date) + ' · returned in full · not in the NK', z.mc, { locked: M.locked ? 'locked' : '', gross: z.gross, frozen: 0 })).join('') : '';
+  const otherCard = other.length || can || zRows ? '<p class="mx-lbl">Other house costs</p><div class="sc-ct sc-ct--o">' +
     other.slice().sort((a, b) => scCatOrd(a.catId) - scCatOrd(b.catId) || (a.group === 'running' ? 0 : 1) - (b.group === 'running' ? 0 : 1) || b.total - a.total).map(oRow).join('') +   // Nov 2026: the one order
-    (other.length ? '<div class="sc-ct__o is-sum"><span>Other house costs</span><span>' + scE(oSum) + '</span></div>' : '<p class="sc-ct__none">Nothing else booked yet.</p>') +
+    zRows + (other.length ? '<div class="sc-ct__o is-sum"><span>Other house costs</span><span>' + scE(oSum) + '</span></div>' : '<p class="sc-ct__none">Nothing else booked yet.</p>') +
     (can ? '<button type="button" class="cx-link sc-ct__add" data-sc="fold" data-k="ct:typed"><i class="ti ti-' + (editOpen ? 'minus' : 'plus') + '" aria-hidden="true"></i> ' + (editOpen ? 'Done' : pos.length ? 'Add or change a cost' : 'Add a cost') + '</button>' : '') +
     '</div>' + (can && editOpen ? scTypedHtml(M) : '') : '';
   // ── who carries it
@@ -2301,15 +2342,15 @@ function scLetterTeilB(D, M, t, beleg) {
   const eur = v => { const n = Number(v) || 0; return (n < -0.004 ? '\u2212\u00a0' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac'; };
   const R = t.teilB || [], dein = D.du ? 'Dein' : 'Ihr';
   let nA = 0;                                                // Anlage n = the invoice of the n-th position (B1 first, then B2)
-  // "Rechnung" = the invoice (Anlage) · a return is taken off before the split: Rechnung − Rückgabe (÷ n) = Anteil
-  const bill = r => Number(r.gross) - r.net > 0.004 ? cxR(r.gross) : r.net;
+  // "Rechnung" = the amount billed for the invoice (Anlage). Nov 2026 (owner): returns are never mentioned in a letter —
+  // the amount is the one after returns (net), with no "Rückgabe" line or note; only Settlements on your screen shows them
+  const bill = r => r.net;
   const sub = r => {
     if (r.cap) return '8\u00a0% von ' + eur(r.rent12) + ' Jahresmiete';
-    const ret = bill(r) - r.net > 0.004 ? eur(bill(r) - r.net) : '', split = r.where !== 'zimmer' && r.n > 1;
     const where = r.where === 'zimmer' ? dein + ' Zimmer'
       : 'Gemeinschaftsfläche · ' + (r.n === 1 ? (r.b === 2 ? 'verursacht durch ' + dein.toLowerCase() + ' Zimmer' : 'einziges vermietetes Zimmer')
-                                              : (ret ? '(' + eur(bill(r)) + ' − ' + ret + ' Rückgabe) ' : '') + '÷ ' + r.n + (r.b === 2 ? ' verursachende Zimmer' : ' vermietete Zimmer'));
-    return where + (ret && !split ? ' · abzüglich Rückgabe ' + ret : '') + ' · Anlage ' + (++nA);
+                                              : '÷ ' + r.n + (r.b === 2 ? ' verursachende Zimmer' : ' vermietete Zimmer'));
+    return where + ' · Anlage ' + (++nA);
   };
   const block = (k, title, note) => {
     const L = R.filter(r => r.b === k); if (!L.length) return null;
@@ -2507,6 +2548,17 @@ function scFlowNext() {
   m.i = m.flow.indexOf(left[0]); m.key = left[0]; scRenderModal();
 }
 
+/* Nov 2026 · a year locked before the returns rule (settlements-returns.js): its snapshot still holds a Maintenance
+   return as a line of its own — the letters would show it. Unlock and lock again (the numbers then follow the rule). */
+const SC_RET_OLD = 'This year was locked with Maintenance returns as lines of their own. Unlock and lock it again, then the letters and the Belegliste can be made.';
+function scRetOld(M) {
+  if (!M || !M.locked || !M.input || typeof stRetIsLine !== 'function') return false;
+  return (M.input.lines || []).some(l => {
+    const id = String(l.id || ''); if (l.group !== 'oneoff' || id.indexOf('ot:') !== 0) return false;
+    const o = scJaFindBk(id.slice(3));
+    return o ? stRetIsLine(o) : /R\u00fcckgabe zu Beleg/.test(String(l.label || '') + ' ' + String((l.info || {}).item || ''));
+  });
+}
 async function scLock(btn) {
   const M = SC.model; if (!M || M.locked) return;
   const gaps = M.running ? [] : (M.jaGaps || []);           // Nov 2026: every day of the year covered by a Jahresabrechnung (or "no bill")
@@ -2516,6 +2568,12 @@ async function scLock(btn) {
   const ready = async () => {
     const d = SC.data[M.y];
     if (!d) { stSay(M.y + ' is still loading – try again in a moment'); return false; }
+    // Nov 2026: the Maintenance returns did not load → once more; never locked without them (a receipt would freeze at gross)
+    if (typeof ST_RET !== 'undefined' && ST_RET.error) {
+      await stLoadReturns();
+      if (ST_RET.error) { stSay(stRetFailTxt + ', then lock'); return false; }
+      SC.model = scModel(M.y); stRenderCasaQuiet(); stSay('The returns are loaded now – check the numbers, then lock'); return false;
+    }
     if (!(d.mt && d.mt.error)) return true;
     const mt = await scLoadTeilB(d.per || scPeriod(M.y));
     if (mt && mt.error) { stSay('Teil B (Maintenance) could not be loaded – reload the page, then lock'); return false; }
@@ -2552,6 +2610,7 @@ async function scUnlock() {
 
 async function scPdf(key, btn) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
+  if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
   const reset = btn ? btn.innerHTML : '';
   if (btn) { btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; btn.disabled = true; }
   try {
@@ -2562,6 +2621,7 @@ async function scPdf(key, btn) {
 }
 async function scListPdf(btn) {
   const M = SC.model; if (!M) return;
+  if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
   if (typeof loadSettings === 'function') { try { await loadSettings(); } catch (e) {} }
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const house = scHouse();
@@ -2579,6 +2639,7 @@ async function scListPdf(btn) {
 async function scSend(key, btn) {
   const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
   if (!M.locked) { stSay('Lock the house costs first'); return; }
+  if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
   if (t.extra) return scSendExtra(M, t, btn);
   if (!t.line) { stSay('This tenant is not in the settlement list – check move-in / move-out in Casa Castel'); return; }
   const s = t.set || {};

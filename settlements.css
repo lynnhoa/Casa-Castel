@@ -1859,3 +1859,37 @@ button.tp-r { cursor: pointer; }
 .sc-res.is-pos .sc-res__v, .sc-res.is-neg .sc-res__v, .sc-hgr__v.pos, .sc-hgr__v.neg,
 .sr-row__res.is-minus, .sr-tl--res > b, .sr-tenrow__r b, .srm__cs.pos, .srm__cs.neg,
 .sd-ml b.pos, .sd-ml b.neg, .sr-sum__a, .st-hero--in b, .st-hero--out b, .sc-money__t span { font-weight: 700; }
+
+/* Nov 2026 · Maintenance returns under their receipt (settlements-returns.js) — your screen only, never in a letter.
+   "Rückgabe 20.03.2026 · 50,00 €" + Counted / Not counted (NK, Teil B Schaden) · "always counted" (Kleinreparatur) */
+.st-ret { display:flex; flex-direction:column; gap:2px; margin:0 0 6px; }
+.st-ret__r { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:30px; padding:2px 0 2px 16px;
+  font-size:12px; color:#6F6457; font-variant-numeric:tabular-nums; }
+.st-ret__l { min-width:0; overflow-wrap:anywhere; }
+.st-ret__l i { font-size:13px; margin-right:4px; vertical-align:-2px; color:#9A8E7E; }
+.st-ret__r.is-off .st-ret__l { text-decoration:line-through; text-decoration-color:#B4A890; }
+.st-ret__st { flex-shrink:0; font-size:11px; color:#9A8E7E; }
+.st-ret__sw { flex-shrink:0; display:inline-flex; align-items:center; gap:7px; height:28px; margin:0; padding:0 5px 0 11px;
+  border:.5px solid var(--cc-rule, #E3DCD1); border-radius:14px; background:#fff; font:inherit; font-size:11px; font-weight:500;
+  color:#3D3027; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.st-ret__sw i { position:relative; display:block; width:28px; height:16px; border-radius:8px; background:#D8D0C4; transition:background .15s; }
+.st-ret__sw i::after { content:''; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#fff; transition:left .15s; }
+.st-ret__sw.is-on i { background:#5B8C51; }
+.st-ret__sw.is-on i::after { left:14px; }
+.st-ret__sw:disabled { opacity:.6; }
+.sc-tb .st-ret { padding:0 14px; }
+.sc-ct--o .st-ret, .ct-r + .st-ret { padding-right:2px; }
+/* a receipt returned in full: in no line — a muted 0,00 € row with its returns (so their switch stays in reach) */
+.st-ret0 { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 0 2px; border-top:.5px solid #EDE8E0;
+  font-size:12.5px; color:#9A8E7E; font-variant-numeric:tabular-nums; }
+.st-ret0__m { display:flex; flex-direction:column; min-width:0; }
+.st-ret0__m b { font-weight:400; color:#6F6457; overflow-wrap:anywhere; }
+.st-ret0__m small { font-size:11px; }
+.st-ret0__v { white-space:nowrap; }
+.sc-tb .st-ret0 { padding-left:14px; padding-right:14px; }
+.ct .st-ret0 { padding-left:2px; padding-right:2px; }
+/* a Versorger cost type: its Maintenance receipts with returns, under "Paid in …" */
+.sc-ct__rr { padding:4px 0 0 44px; }
+.sc-ct__rr .sc-ct__l { padding-left:0; }
+.sc-ct__rr .st-ret__r { padding-left:8px; }
+.st-ret__warn { margin:0 0 10px; padding:8px 10px; border-radius:10px; background:#FBEFE2; color:#8A4B12; font-size:12px; }

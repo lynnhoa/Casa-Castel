@@ -61,7 +61,8 @@ async function stBoot() {
 
 /* All data (same sources as Controlling) */
 async function stLoad() {
-  await Promise.all([ctlLoadAll(), ctlSollLoad(), typeof srLoadRows === 'function' ? srLoadRows() : null]);
+  await Promise.all([ctlLoadAll(), ctlSollLoad(), typeof srLoadRows === 'function' ? srLoadRows() : null,
+                     typeof stLoadReturns === 'function' ? stLoadReturns() : null]);   // Nov 2026: Maintenance returns (settlements-returns.js)
   if (typeof ctlSollReset === 'function') ctlSollReset();
   if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
   ST.loadedAt = Date.now();
