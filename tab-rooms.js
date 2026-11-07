@@ -946,6 +946,71 @@ async function loadRooms() {
 }
 
 
+/* ── PREISLISTE (Nov 2026) · landlord only ──────────────────
+   Your internal price list (PDF) as one small chip at the end of the Soll line. It lives in the private storage
+   (maintenance-docs/preisliste/ — the store of the Maintenance receipts: opens only when you are logged in), never
+   in the app's public files; tab-rooms.js is in the landlord app only.
+   No PDF yet → "+ Preisliste" picks it from your phone · ↻ replaces it (the new file is saved first, then the old
+   one goes). The link is made in advance (valid 12 h), so a tap opens it at once — phones open a PDF only from a tap. */
+const RP_PL = { bucket: 'maintenance-docs', dir: 'preisliste', has: null, url: null, path: null, at: 0, busy: false };
+async function _rpPlCheck() {
+  if (typeof sbL === 'undefined' || !sbL || !sbL.storage) { RP_PL.has = false; return; }
+  try {
+    const st = sbL.storage.from(RP_PL.bucket);
+    const { data, error } = await st.list(RP_PL.dir, { limit: 50 });
+    if (error) throw error;
+    const f = (data || []).filter(x => /\.pdf$/i.test(x.name || '')).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0];
+    if (!f) { Object.assign(RP_PL, { has: false, url: null, path: null, at: Date.now() }); return; }
+    const path = RP_PL.dir + '/' + f.name, s = await st.createSignedUrl(path, 12 * 3600);
+    if (s.error) throw s.error;
+    Object.assign(RP_PL, { has: true, url: s.data && s.data.signedUrl, path, at: Date.now() });
+  } catch (e) {
+    console.warn('[rooms] Preisliste:', (e && e.message) || e);
+    if (RP_PL.has === null) RP_PL.has = false;
+    RP_PL.at = Date.now();
+  }
+}
+function _rpPlChip() {
+  if (RP_PL.has === null) return '';                                  // still looking (drawn again when known)
+  if (!RP_PL.has) return '<span class="rp-plw"><button type="button" class="rp-pl" data-rpl="up"><i class="ti ti-plus" aria-hidden="true"></i>Preisliste</button></span>';
+  return '<span class="rp-plw"><button type="button" class="rp-pl" data-rpl="open" aria-label="Open Preisliste"><i class="ti ti-file-text" aria-hidden="true"></i>Preisliste</button>' +
+    '<button type="button" class="rp-pl-x" data-rpl="up" aria-label="Replace Preisliste"><i class="ti ti-refresh" aria-hidden="true"></i></button></span>';
+}
+function _rpPlPick() {
+  if (RP_PL.busy) return;
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'application/pdf,.pdf';
+  inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) _rpPlUpload(f); };
+  inp.click();
+}
+async function _rpPlUpload(file) {
+  const say = (t, bad) => { if (typeof ccToast === 'function') ccToast(t, !!bad); };
+  if (!/pdf/i.test(file.type || '') && !/\.pdf$/i.test(file.name || '')) { say('Please choose a PDF', true); return; }
+  if (typeof sbL === 'undefined' || !sbL || !sbL.storage) { say('Not connected — please try again', true); return; }
+  RP_PL.busy = true;
+  try {
+    const st = sbL.storage.from(RP_PL.bucket);
+    const d = new Date(), p2 = n => String(n).padStart(2, '0');
+    const path = RP_PL.dir + '/Preisliste-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.pdf';
+    const up = await st.upload(path, file, { contentType: 'application/pdf', upsert: false });
+    if (up.error) throw up.error;
+    const { data } = await st.list(RP_PL.dir, { limit: 50 });                    // the new one is in → the older ones go
+    const old = (data || []).map(x => RP_PL.dir + '/' + x.name).filter(x => x !== path);
+    if (old.length) await st.remove(old);
+    await _rpPlCheck();
+    if (typeof ccSavedToast === 'function') ccSavedToast('Preisliste saved'); else say('Preisliste saved');
+  } catch (e) { say('Preisliste not saved — ' + ((e && e.message) || e), true); }
+  finally { RP_PL.busy = false; _updateRoomsSummary(appRooms); }
+}
+function _rpPlClick(e) {
+  const b = e.target && e.target.closest ? e.target.closest('[data-rpl]') : null;
+  if (!b) return;
+  if (b.dataset.rpl === 'up') { _rpPlPick(); return; }
+  if (!RP_PL.url) { if (typeof ccToast === 'function') ccToast('The Preisliste is still loading — try again in a moment', true); return; }
+  if (typeof ccOpenUrl === 'function') ccOpenUrl(RP_PL.url, 'Preisliste'); else window.open(RP_PL.url, '_blank');
+  if (Date.now() - RP_PL.at > 6 * 3600 * 1000) _rpPlCheck();                    // a fresh link for the next tap
+}
+
 /* ── RENDER LIST ─────────────────────────────────────────── */
 function _updateRoomsSummary(rooms) {
   const bar = document.getElementById('roomsSummary');
@@ -961,8 +1026,13 @@ function _updateRoomsSummary(rooms) {
     kau  += b.kaution || 0;
   });
   bar.style.display = '';
-  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span>${occ} / ${list.length} occupied</span></div>
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span class="rp-metar"><span>${occ} / ${list.length} occupied</span>${_rpPlChip()}</span></div>
     <div class="cc-sum2__vals"><span><i>Kalt</i>${fmtEUR(kalt)}</span><span><i>NK</i>${fmtEUR(nk)}</span><span><i>Kaution</i>${fmtEUR(kau)}</span></div>`;
+  if (!bar._rpPl) { bar._rpPl = true; bar.addEventListener('click', _rpPlClick); }          // Nov 2026: Preisliste chip
+  if (RP_PL.has === null && !RP_PL._looking) {
+    RP_PL._looking = true;
+    _rpPlCheck().finally(() => { RP_PL._looking = false; _updateRoomsSummary(appRooms); });
+  }
 }
 
 function _renderRoomsList() {
