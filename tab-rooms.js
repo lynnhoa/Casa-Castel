@@ -947,74 +947,50 @@ async function loadRooms() {
 
 
 /* ── PREISLISTE (Nov 2026) · landlord only ──────────────────
-   Your internal price list (PDF) as one small chip at the end of the Soll line. It lives in the private storage
-   (maintenance-docs/preisliste/ — the store of the Maintenance receipts: opens only when you are logged in), never
-   in the app's public files; tab-rooms.js is in the landlord app only.
-   No PDF yet → "+ Preisliste" picks it from your phone · ↻ replaces it (the new file is saved first, then the old
-   one goes). The link is made in advance (valid 12 h), so a tap opens it at once — phones open a PDF only from a tap. */
-const RP_PL = { bucket: 'maintenance-docs', dir: 'preisliste', has: null, url: null, path: null, at: 0, busy: false };
-async function _rpPlCheck() {
-  if (typeof sbL === 'undefined' || !sbL || !sbL.storage) { RP_PL.has = false; return; }
-  try {
-    const st = sbL.storage.from(RP_PL.bucket);
-    const { data, error } = await st.list(RP_PL.dir, { limit: 50 });
-    if (error) throw error;
-    const f = (data || []).filter(x => /\.pdf$/i.test(x.name || '')).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0];
-    if (!f) { Object.assign(RP_PL, { has: false, url: null, path: null, at: Date.now() }); return; }
-    const path = RP_PL.dir + '/' + f.name, s = await st.createSignedUrl(path, 12 * 3600);
-    if (s.error) throw s.error;
-    Object.assign(RP_PL, { has: true, url: s.data && s.data.signedUrl, path, at: Date.now() });
-  } catch (e) {
-    console.warn('[rooms] Preisliste:', (e && e.message) || e);
-    if (RP_PL.has === null) RP_PL.has = false;
-    RP_PL.at = Date.now();
-    if (!RP_PL._said && typeof ccToast === 'function') { RP_PL._said = true; ccToast('Preisliste could not be loaded — ' + ((e && e.message) || e), true); }   // say why, once
-  }
-}
-function _rpPlChip() {
-  if (RP_PL.has === null) return '';                                  // still looking (drawn again when known)
-  // nothing saved yet: say what the tap does — your phone's file picker opens to save the PDF once
-  if (!RP_PL.has) return '<span class="rp-plw"><button type="button" class="rp-pl" data-rpl="up" aria-label="Upload Preisliste (PDF)"><i class="ti ti-upload" aria-hidden="true"></i>Upload Preisliste</button></span>';
-  return '<span class="rp-plw"><button type="button" class="rp-pl" data-rpl="open" aria-label="Open Preisliste"><i class="ti ti-file-text" aria-hidden="true"></i>Preisliste</button>' +
-    '<button type="button" class="rp-pl-x" data-rpl="up" aria-label="Replace Preisliste"><i class="ti ti-refresh" aria-hidden="true"></i></button></span>';
-}
-function _rpPlPick() {
+   One button "Preisliste" in the Soll line opens your internal price list (PDF). tab-rooms.js is in the landlord app
+   only, so tenants never see it. The PDF ships with the app (Casa-Castel-Preisliste.pdf); the landlord app copies it
+   once into the private storage (maintenance-docs/preisliste/) and the tap opens that copy: another address, so on the
+   iPhone the viewer opens on top of the app and "Done" brings you back (the app's own file would replace the app,
+   with no way back). The link is made in advance (12 h), so the tap opens it at once — phones open a PDF only from a tap.
+   A new price list = a new Casa-Castel-Preisliste.pdf + a new RP_PL.ver (its Stand): the copy follows by itself. */
+const RP_PL = { bucket: 'maintenance-docs', dir: 'preisliste', file: 'Casa-Castel-Preisliste.pdf', ver: '2026-11-07', url: null, at: 0, busy: false, said: false };
+async function _rpPlPrep() {
   if (RP_PL.busy) return;
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = 'application/pdf,.pdf';
-  inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) _rpPlUpload(f); };
-  inp.click();
-}
-async function _rpPlUpload(file) {
-  const say = (t, bad) => { if (typeof ccToast === 'function') ccToast(t, !!bad); };
-  if (!/pdf/i.test(file.type || '') && !/\.pdf$/i.test(file.name || '')) { say('Please choose a PDF', true); return; }
-  if (typeof sbL === 'undefined' || !sbL || !sbL.storage) { say('Not connected — please try again', true); return; }
   RP_PL.busy = true;
   try {
-    const st = sbL.storage.from(RP_PL.bucket);
-    const d = new Date(), p2 = n => String(n).padStart(2, '0');
-    const path = RP_PL.dir + '/Preisliste-' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + '.pdf';
-    const up = await st.upload(path, file, { contentType: 'application/pdf', upsert: false });
-    if (up.error) throw up.error;
-    const { data } = await st.list(RP_PL.dir, { limit: 50 });                    // the new one is in → the older ones go
-    const old = (data || []).map(x => RP_PL.dir + '/' + x.name).filter(x => x !== path);
-    if (old.length) await st.remove(old);
-    await _rpPlCheck();
-    if (typeof ccSavedToast === 'function') ccSavedToast('Preisliste saved'); else say('Preisliste saved');
-  } catch (e) { say('Preisliste not saved — ' + ((e && e.message) || e), true); }
-  finally { RP_PL.busy = false; _updateRoomsSummary(appRooms); }
+    if (typeof sbL === 'undefined' || !sbL || !sbL.storage) throw new Error('not connected');
+    const st = sbL.storage.from(RP_PL.bucket), name = 'Preisliste-' + RP_PL.ver + '.pdf', path = RP_PL.dir + '/' + name;
+    const { data, error } = await st.list(RP_PL.dir, { limit: 50 });
+    if (error) throw error;
+    const names = (data || []).map(x => x.name).filter(n => /\.pdf$/i.test(n || ''));
+    if (!names.includes(name)) {                                                  // first time, or a new Stand: copy the app's PDF in
+      const r = await fetch(RP_PL.file + '?v=' + RP_PL.ver, { cache: 'no-store' });
+      if (!r.ok) throw new Error('the PDF is missing in the app (' + r.status + ')');
+      const up = await st.upload(path, await r.blob(), { contentType: 'application/pdf', upsert: false });
+      if (up.error && !/exist|duplicate/i.test(String(up.error.message || ''))) throw up.error;
+      const old = names.filter(n => n !== name).map(n => RP_PL.dir + '/' + n);   // an older Stand goes
+      if (old.length) await st.remove(old);
+    }
+    const sg = await st.createSignedUrl(path, 12 * 3600);
+    if (sg.error) throw sg.error;
+    RP_PL.url = sg.data && sg.data.signedUrl; RP_PL.at = Date.now();
+  } catch (e) {
+    console.warn('[rooms] Preisliste:', (e && e.message) || e);
+    RP_PL.at = Date.now();
+    if (!RP_PL.said && typeof ccToast === 'function') { RP_PL.said = true; ccToast('Preisliste could not be loaded — ' + ((e && e.message) || e), true); }
+  } finally { RP_PL.busy = false; }
 }
+const _rpPlChip = () => '<button type="button" class="rp-pl" data-rpl="open" aria-label="Open Preisliste (PDF)"><i class="ti ti-file-text" aria-hidden="true"></i>Preisliste</button>';
 function _rpPlClick(e) {
   const b = e.target && e.target.closest ? e.target.closest('[data-rpl]') : null;
   if (!b) return;
-  if (b.dataset.rpl === 'up') { _rpPlPick(); return; }
-  if (!RP_PL.url) {                                                            // the link is not there (yet): fetch it, then tap again
+  if (!RP_PL.url) {                                                              // not ready yet (first copy, connection): fetch it, tap again
     if (typeof ccToast === 'function') ccToast('Preisliste is loading — tap again in a moment', true);
-    if (!RP_PL._looking) { RP_PL._looking = true; _rpPlCheck().finally(() => { RP_PL._looking = false; _updateRoomsSummary(appRooms); }); }
+    RP_PL.said = false; _rpPlPrep();
     return;
   }
   if (typeof ccOpenUrl === 'function') ccOpenUrl(RP_PL.url, 'Preisliste'); else window.open(RP_PL.url, '_blank');
-  if (Date.now() - RP_PL.at > 6 * 3600 * 1000) _rpPlCheck();                    // a fresh link for the next tap
+  if (Date.now() - RP_PL.at > 6 * 3600 * 1000) _rpPlPrep();                       // a fresh link for the next tap
 }
 
 /* ── RENDER LIST ─────────────────────────────────────────── */
@@ -1023,26 +999,19 @@ function _updateRoomsSummary(rooms) {
   if (!bar) return;
   const list = (rooms || []).filter(r => r && r.id && r.active !== false);
   if (!list.length) { bar.style.display = 'none'; return; }
-  let kalt = 0, nk = 0, kau = 0, occ = 0;
+  let kalt = 0, nk = 0, kau = 0;
   list.forEach(r => {
-    if (r.vacant === false) occ++;
     const b = ccRoomSoll(r);          // the baseline of the room's current contract type (vacant → Jahresvertrag)
     kalt += b.kalt || 0;               // Pauschal: the part without NK
     nk   += b.nk || 0;
     kau  += b.kaution || 0;
   });
   bar.style.display = '';
-  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b><span class="rp-metar"><span>${occ} / ${list.length} occupied</span>${_rpPlChip()}</span></div>
+  bar.innerHTML = `<div class="cc-sum2__meta"><b>Soll</b>${_rpPlChip()}</div>
     <div class="cc-sum2__vals"><span><i>Kalt</i>${fmtEUR(kalt)}</span><span><i>NK</i>${fmtEUR(nk)}</span><span><i>Kaution</i>${fmtEUR(kau)}</span></div>`;
-  if (!bar._rpPl) { bar._rpPl = true; bar.addEventListener('click', _rpPlClick); }          // Nov 2026: Preisliste chip
-  // look (again): first time, and while nothing was found — at most every 20 s, so a PDF saved meanwhile (or a first
-  // look that ran before the login was ready) shows up by itself
-  const again = RP_PL.has === null || (!RP_PL.has && Date.now() - RP_PL.at > 20000);
-  if (again && !RP_PL._looking) {
-    const before = RP_PL.has;
-    RP_PL._looking = true;
-    _rpPlCheck().finally(() => { RP_PL._looking = false; if (RP_PL.has !== before) _updateRoomsSummary(appRooms); });
-  }
+  if (!bar._rpPl) { bar._rpPl = true; bar.addEventListener('click', _rpPlClick); }          // Nov 2026: the Preisliste button
+  // the PDF's private link, made in advance (first time and every 6 h)
+  if (!RP_PL.busy && (!RP_PL.url ? Date.now() - RP_PL.at > 20000 || !RP_PL.at : Date.now() - RP_PL.at > 6 * 3600 * 1000)) _rpPlPrep();
 }
 
 function _renderRoomsList() {
