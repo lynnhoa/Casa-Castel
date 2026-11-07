@@ -26,11 +26,14 @@ const _kbDim = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 const _kbIsIso = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));
 function _kbAddDays(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 function _kbDe(iso) { return _kbIsIso(iso) ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : ''; }
-function _kbToIso(v) {                                       // what a date field gives → ISO or ''
+function _kbToIso(v) {                                       // what a date field gives → ISO or '' (complete dates only)
   const s = String(v || '').trim();
-  if (_kbIsIso(s.slice(0, 10))) return s.slice(0, 10);
-  const r = typeof ccParseDate === 'function' ? ccParseDate(s) : null;
-  return r && _kbIsIso(r) ? r : '';
+  if (_kbIsIso(s)) return s;
+  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);         // 2.11.2026 / 02.11.2026 — never a half-typed "02.11.20"
+  if (!m) return '';
+  const iso = m[3] + '-' + _kbPad(m[2]) + '-' + _kbPad(m[1]);
+  const d = new Date(iso + 'T12:00:00Z');
+  return !isNaN(d) && d.toISOString().slice(0, 10) === iso ? iso : '';
 }
 /* Easter Sunday (Gregorian, Meeus / Jones / Butcher) */
 function kbEaster(y) {
@@ -87,7 +90,9 @@ const _kbDocOf = (tid, type, variant) => (typeof ccfDocOf === 'function' ? ccfDo
 const _kbState = {};
 function _kbSt(rec) {
   const k = String(rec.id);
-  return _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', end: '', endAuto: true, agreed: _kbAgreedEnd(rec), done: null });
+  // an earlier letter already set the Contract end to its early end → the agreed end is no longer stored: type it
+  const again = !!(_kbDocOf(k, 'kuendigungsbestaetigung', 'unsigned') || _kbDocOf(k, 'kuendigungsbestaetigung', 'signed'));
+  return _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', eingangAuto: true, end: '', endAuto: true, agreed: again ? '' : _kbAgreedEnd(rec), again, done: null });
 }
 
 /* ── More row on the tenant card ───────────────────────────── */
@@ -105,7 +110,9 @@ function kbRowHTML(rec) {
 function kbOpen(tid) {
   const rec = _kbRec(tid); if (!rec || typeof ccSheetOpen !== 'function') return;
   _kbSt(rec);
-  ccSheetOpen({ title: 'Kündigung', kicker: (rec.room || '') + ' · ' + _kbName(rec), build: () => kbHTML(tid), kb: String(tid) });
+  if (typeof _ccfDocEdit !== 'undefined') delete _ccfDocEdit[tid];                 // a tap on the Kündigung opens it
+  // noRefresh: a card redraw never rebuilds this sheet (what you typed, "Open PDF") — kbRefresh does it when needed
+  ccSheetOpen({ title: 'Kündigung', kicker: (rec.room || '') + ' · ' + _kbName(rec), build: () => kbHTML(tid), kb: String(tid), noRefresh: true });
 }
 /* redraw only this sheet (after an upload / a switch) — the fields keep what you typed (_kbState) */
 function kbRefresh(tid) {
@@ -116,7 +123,7 @@ function kbRefresh(tid) {
 function _kbDateField(tid, key, label, value, sub) {
   return `<label class="kb-f"><span class="kb-l">${label}</span>
     <input type="date" class="kb-in" data-kb="${key}" value="${_kbEsc(value || '')}"
-      oninput="kbSet('${_kbEsc(tid)}','${key}',this.value)" onchange="kbSet('${_kbEsc(tid)}','${key}',this.value)"/>
+      onchange="kbSet('${_kbEsc(tid)}','${key}',this.value)"/>
     ${sub ? `<span class="kb-s" data-kb-sub="${key}">${sub}</span>` : ''}</label>`;
 }
 function _kbEndSub(rec, st) {
@@ -136,7 +143,8 @@ function kbHTML(tid) {
   const moveHint = rec.rent_until === 'move' ? '<p class="kb-hint">This tenant pays rent until the Move-out (Tenant › Edit › Rent until), not until the contract end.</p>' : '';
   const cs = typeof _tnContractState === 'function' ? _tnContractState(rec) : null;
   const nextHint = cs && cs.next && cs.next.start > _kbToday() ? `<p class="kb-hint kb-hint--warn">A renewal from ${_kbDe(cs.next.start)} is planned. Remove it first (Documents › Edit › Remove renewal), then create the letter.</p>` : '';
-  return `<div class="cc-dlg kb">
+  if (typeof ccfPrepareLinks === 'function' && typeof ccfDocsOf === 'function') setTimeout(() => ccfPrepareLinks(ccfDocsOf(tid).map(d => d.file_url)), 0);
+  return `<div class="kb">
     <div class="kb-step"><span class="kb-n">1</span><div class="kb-b">
       <b class="kb-t">Tenant's Kündigung</b><span class="kb-s">their e-mail as PDF, screenshot or photo · saved in Documents</span>
       <div class="kb-row">${own
@@ -149,8 +157,8 @@ function kbHTML(tid) {
       <div class="cc-seg kb-seg" role="radiogroup" aria-label="Letter">${seg('unbefristet', 'Kündigung')}${seg('befristet', 'Vorzeitiges Ende')}</div>
       <div class="kb-grid">
         ${fixed ? '' : _kbDateField(tid, 'vom', 'Kündigung vom', st.vom)}
-        ${_kbDateField(tid, 'eingang', fixed ? 'Wunsch vom (Eingang am)' : 'Eingang am', st.eingang)}
-        ${fixed ? _kbDateField(tid, 'agreed', 'Befristet bis', st.agreed, 'the agreed end of the contract') : ''}
+        ${_kbDateField(tid, 'eingang', fixed ? 'Wunsch vom' : 'Eingang am', st.eingang)}
+        ${fixed ? _kbDateField(tid, 'agreed', 'Befristet bis', st.agreed, st.again && !st.agreed ? 'type the agreed end from the contract — the earlier letter changed the Contract end' : 'the agreed end of the contract') : ''}
         ${_kbDateField(tid, 'end', fixed ? 'Vorzeitig zum' : 'Kündigung zum', st.end, _kbEndSub(rec, st))}
       </div>
       ${fixed ? '' : '<p class="kb-hint">A Kündigungsverzicht in the contract? Then check the date.</p>'}
@@ -160,13 +168,13 @@ function kbHTML(tid) {
       <b class="kb-t">Create</b>
       <span class="kb-s" data-kb-sum>${_kbSum(st)}</span>
       ${nextHint}
-      <div class="kb-act">
-        <button type="button" class="kb-btn kb-btn--ghost" data-cc-pdf onclick="kbPdf('${T}',false,this)">Draft PDF</button>
-        <button type="button" class="kb-btn kb-btn--go" data-cc-pdf onclick="kbPdf('${T}',true,this)"><i class="ti ti-check" aria-hidden="true"></i> Create</button>
-      </div>
       ${st.done ? `<p class="kb-ok"><i class="ti ti-circle-check" aria-hidden="true"></i> Saved in Documents · Contract end ${_kbDe(st.done.end)}</p>`
         : letter ? `<p class="kb-hint">A letter from ${_kbEsc(fmt(letter))} is in Documents — Create replaces it.</p>` : ''}
     </div></div>
+    <div class="kb-act">
+      <button type="button" class="kb-btn kb-btn--ghost" data-cc-pdf onclick="kbPdf('${T}',false,this)">Draft PDF</button>
+      <button type="button" class="kb-btn kb-btn--go" data-cc-pdf onclick="kbPdf('${T}',true,this)"><i class="ti ti-check" aria-hidden="true"></i> Create</button>
+    </div>
   </div>`;
 }
 const _kbToday = () => (typeof _ccTodayIso === 'function' ? _ccTodayIso() : new Date().toISOString().slice(0, 10));
@@ -178,8 +186,15 @@ function kbSet(tid, key, value) {
   const st = _kbSt(rec);
   if (key === 'v') { if (st.v !== value) { st.v = value; st.endAuto = value !== 'befristet'; st.end = value === 'befristet' ? '' : kbEndUnbefristet(st.eingang); st.done = null; } kbRefresh(tid); return; }
   const iso = _kbToIso(value);
-  if (key === 'vom') { st.vom = iso; if (iso && !st.eingang) { st.eingang = iso; const e = document.querySelector('#ccSheetBody [data-kb="eingang"]'); if (e) e.value = iso; key = 'eingang'; } }
-  else if (key === 'eingang') st.eingang = iso;
+  if (key === 'vom') {
+    st.vom = iso;
+    if (iso && (st.eingangAuto || !st.eingang)) {            // Eingang am follows until you type your own
+      st.eingang = iso; st.eingangAuto = true;
+      const e = document.querySelector('#ccSheetBody [data-kb="eingang"]'); if (e) e.value = iso;
+      key = 'eingang';
+    }
+  }
+  else if (key === 'eingang') { if (iso !== st.eingang) { st.eingang = iso; st.eingangAuto = !iso || iso === st.vom; } }
   else if (key === 'agreed') st.agreed = iso;
   else if (key === 'end') { if (iso !== st.end) { st.end = iso; st.endAuto = !iso; } }
   if (key === 'eingang' && st.v !== 'befristet' && st.endAuto) {
@@ -195,7 +210,7 @@ function _kbReadFields(tid) {
   const rec = _kbRec(tid), st = _kbSt(rec);
   document.querySelectorAll('#ccSheetBody [data-kb]').forEach(inp => {
     const iso = _kbToIso(inp.value), k = inp.dataset.kb;
-    if (k === 'vom') st.vom = iso; else if (k === 'eingang') st.eingang = iso; else if (k === 'agreed') st.agreed = iso;
+    if (k === 'vom') st.vom = iso; else if (k === 'eingang') { if (iso !== st.eingang) { st.eingang = iso; st.eingangAuto = false; } } else if (k === 'agreed') st.agreed = iso;
     else if (k === 'end' && iso !== st.end) { st.end = iso; st.endAuto = !iso; }
   });
   return st;
@@ -294,7 +309,7 @@ function _kbCheck(rec, st, save) {
   if (fixed && !st.agreed) return 'Enter "Befristet bis" (the agreed end).';
   if (!st.end) return fixed ? 'Enter "Vorzeitig zum".' : 'Enter "Kündigung zum".';
   if (rec.mietbeginn && typeof _ccIso === 'function' && st.end < _ccIso(rec.mietbeginn)) return 'The end is before the move-in (' + _kbDe(_ccIso(rec.mietbeginn)) + ').';
-  if (fixed && st.agreed && st.end > st.agreed) return 'The early end is after the agreed end (' + _kbDe(st.agreed) + ').';
+  if (fixed && st.agreed && st.end >= st.agreed) return 'The early end must be before the agreed end (' + _kbDe(st.agreed) + ').';
   if (save) {
     const cs = typeof _tnContractState === 'function' ? _tnContractState(rec) : null;
     if (cs && cs.next && cs.next.start > _kbToday()) return 'A renewal from ' + _kbDe(cs.next.start) + ' is planned — remove it first (Documents › Edit › Remove renewal).';
@@ -324,6 +339,7 @@ async function kbPdf(tid, save, btn) {
     return;
   }
   _kbBusy[tid] = true;
+  let saved = false;
   const label = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; }
   try {
@@ -331,6 +347,7 @@ async function kbPdf(tid, save, btn) {
     const out = await kbLetterPdf(d, ccPdfFileName('Kuendigungsbestaetigung', rec.room, _kbName(rec)));
     if (save) {
       await ccfSaveDoc({ tid: rec.id, room: typeof ccfA === 'function' ? ccfA().prefix(rec) : rec.room, type: 'kuendigungsbestaetigung', variant: 'unsigned', blob: out.blob });
+      saved = true;
       await _kbSetEnd(rec, st.end);
       st.done = { end: st.end };
     }
@@ -344,8 +361,14 @@ async function kbPdf(tid, save, btn) {
     }
   } catch (e) {
     console.error('[kuendigung]', e);
+    if (typeof ccCancelPdf === 'function') ccCancelPdf();   // the "Creating PDF…" tab closes → you see the message in the app
     if (btn) { btn.disabled = false; btn.innerHTML = label; }
-    if (typeof ccToast === 'function') ccToast((save ? 'Not saved — ' : 'The PDF could not be created — ') + ((e && e.message) || 'please try again') + '.', true);
+    const why = (e && e.message) || 'connection problem';
+    const msg = saved ? 'Letter saved in Documents, but the Contract end was not set (' + why + '). Tap Create again.'
+      : save ? 'Not saved — ' + why + '. Please try again.' : 'The PDF could not be created — ' + why + '.';
+    const sum = document.querySelector('#ccSheetBody [data-kb-sum]'); if (sum && save) sum.innerHTML = '<span class="kb-err">' + _kbEsc(msg) + '</span>';
+    if (typeof ccToast === 'function') ccToast(msg, true);
+    if (saved) setTimeout(() => { if (typeof _tnRender === 'function') _tnRender(); }, 0);
   } finally { delete _kbBusy[tid]; }
 }
 
@@ -377,9 +400,10 @@ async function kbPdf(tid, save, btn) {
 .kb-f .kb-s { font-size:11.5px; }
 .kb-hint { margin:0; font-size:12.5px; line-height:1.5; color:#7A6F62; }
 .kb-hint--warn { color:#8A4B12; background:#FBEFE2; border-radius:10px; padding:8px 10px; }
-.kb-act { display:flex; gap:8px; flex-wrap:wrap; }
+.kb-act { display:flex; gap:8px; flex-wrap:wrap; padding:2px 0 0 36px; }
 .kb-act > div { flex-basis:100%; }
 .kb-ok { margin:0; font-size:13px; color:#11691A; display:inline-flex; align-items:center; gap:6px; }
+.kb-err { color:#A32D2D; }
 @media (max-width:360px) { .kb-grid { grid-template-columns:minmax(0,1fr); } }
 `;
   document.head.appendChild(st);

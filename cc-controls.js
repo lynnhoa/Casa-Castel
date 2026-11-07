@@ -336,7 +336,7 @@ function ccSheetClose() {
 }
 /* After a card redraw: the open sheet shows the fresh data too — unless you are typing in it */
 function ccSheetRefresh() {
-  if (!_ccSheetCur) return;
+  if (!_ccSheetCur || _ccSheetCur.noRefresh) return;   // Nov 2026: e.g. Kündigung — it redraws itself (kbRefresh)
   const body = document.getElementById('ccSheetBody'); if (!body) return;
   if (body.querySelector('input:focus, textarea:focus, select:focus, [data-cc-save="dirty"], .ccf-medit, .tn-nkv-add-form, .tn-nk-add-form, .cc-inline-panel, .cc-dlg')) return;
   const html = _ccSheetCur.build();
