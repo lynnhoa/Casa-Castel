@@ -808,3 +808,15 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
   white-space:nowrap; font-variant-numeric:tabular-nums; text-align:right; letter-spacing:0; text-transform:none; }
 .mt-ret--in { display:inline; margin:0 0 0 6px; text-align:left; }
 .mt-ybar__r .mt-ret, .mt-meta .mt-ret { color:#C42B14; font-size:10.5px; font-weight:400; }   /* their own span styles are grey */
+
+/* Nov 2026 · PDF "mit Rückgaben" · "ohne Rückgaben": the choice in place of the button (only where returns exist) */
+.mt-rp { flex-wrap:wrap; gap:6px; }
+.mt-rp .mt-rp__b { font-weight:600; }
+.mt-rp .mt-rp__w { font-weight:400; opacity:.7; }                        /* the PDF's name: "PDF mit Rückgaben" */
+.mt-acts .mt-rp .mt-rp__b { flex-direction:column; justify-content:center; gap:1px; line-height:1.15; height:auto; min-height:32px; padding-top:5px; padding-bottom:5px; }
+.mt-acts .mt-rp .mt-rp__w { display:block; font-size:10px; letter-spacing:.02em; }
+.mt-rp__x { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; margin:0; padding:0;
+  border:0; border-radius:50%; background:transparent; color:var(--cc-taupe); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.mt-rp__x i { font-size:13px; }
+.mt-acts .mt-rp__x { width:32px; height:32px; }
+
