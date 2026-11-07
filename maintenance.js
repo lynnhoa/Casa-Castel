@@ -233,6 +233,20 @@ function mtCost(caseIds, year, kind) {
   return Math.round(sum * 100) / 100;
 }
 const mtAmt = n => (n ? mtEur(n) : '—');
+/* Nov 2026 · the Kosten before returns — the receipts alone, each in the year of its own date. Shown small and red
+   under / next to a total that returns lower ("150,00 € ohne Rückgaben" under 100,00 €) — only here in the app,
+   for you; no PDF, Excel or Settlements letter ever says that returns exist. */
+function mtCostGross(caseIds, year) {
+  const ids = new Set(caseIds.map(String));
+  const sum = MT.costs.reduce((a, r) => {
+    if (r.return_of || !ids.has(String(r.case_id))) return a;
+    if (year && String(r.cost_date || '').slice(0, 4) !== year) return a;
+    return a + (Number(r.amount) || 0);
+  }, 0);
+  return Math.round(sum * 100) / 100;
+}
+const mtRetHTML = (net, gross, inline) => Math.abs((Number(gross) || 0) - (Number(net) || 0)) > 0.004
+  ? `<span class="mt-ret${inline ? ' mt-ret--in' : ''}">${mtEur(gross)} ohne Rückgaben</span>` : '';
 
 /* A save/delete: one automatic retry (a connection hiccup is not an error) */
 async function mtTry(fn) {
@@ -396,7 +410,7 @@ function mtRowHTML(c, since) {
       <div class="mt-row${sel}">
         <button type="button" class="mt-row__hit" data-mt="open" data-id="${mtEsc(c.id)}" aria-label="Open ${mtEsc(c.title)}"></button>
         <span class="mt-row__l"><span class="mt-row__t">${mtEsc(c.title)}</span>${sub ? `<span class="mt-row__s">${sub}</span>` : ''}</span>
-        <span class="mt-row__r"><span class="mt-row__a${cost ? '' : ' mt-mu'}">${mtAmt(cost)}</span>${mtPill(c.kind, c.status)}</span>
+        <span class="mt-row__r"><span class="mt-row__a${cost ? '' : ' mt-mu'}">${mtAmt(cost)}${mtRetHTML(cost, mtCostGross([c.id], mtSumYear()))}</span>${mtPill(c.kind, c.status)}</span>
       </div>
     </div>`;
 }
@@ -443,7 +457,7 @@ function mtRenderList() {
       : mtRowHTML(c, mtCaseYear(c) < yy && /^\d{4}$/.test(mtCaseYear(c)) ? mtCaseYear(c) : '')).join('');
     return `
       <section class="mt-card" aria-label="${mtEsc(g.name)}">
-        <div class="mt-card__hd"><h2 class="mt-card__name">${mtEsc(g.name)}</h2><span class="mt-card__sum${total ? '' : ' mt-mu'}">${mtAmt(total)}</span></div>
+        <div class="mt-card__hd"><h2 class="mt-card__name">${mtEsc(g.name)}</h2><span class="mt-card__sum${total ? '' : ' mt-mu'}">${mtAmt(total)}${mtRetHTML(total, mtCostGross(cs.map(c => c.id), yy))}</span></div>
         <div class="mt-card__rows">${rows}</div>
       </section>`;
   }).join('');
@@ -451,7 +465,7 @@ function mtRenderList() {
   const empty = cards ? '' : `<div class="mt-yempty"><p class="mt-empty">No ${MT_KIND[kind].title} in ${mtEsc(yy)}.</p>
       ${older ? `<button type="button" class="mt-link" data-mt="yrGo" data-v="${older}"><i class="ti ti-chevron-left" aria-hidden="true"></i> ${older}</button>` : ''}</div>`;
 
-  el.innerHTML = mtBarHTML(mtCost(ids, yy), counts) + head + sum + `<div class="mt-list">${newTop}${cards}</div>` + empty;
+  el.innerHTML = mtBarHTML(mtCost(ids, yy), counts, mtCostGross(ids, yy)) + head + sum + `<div class="mt-list">${newTop}${cards}</div>` + empty;
   mtPlacePanel(el);
 }
 
@@ -1479,7 +1493,7 @@ function mtCostsHTML(c) {
   const tap = !busy && !upAny;                             // D39: a receipt / Edit pop-up leaves the list as it is (behind it, inert)
   // D38 · Kosten + its sum · "+ Receipt" · a switch All / Self-bought / Provider · 6 lines, then "Show all"
   let h = `<section class="mt-costs" id="mtCosts">
-    <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b><em>${mtEur(mtCost([c.id]))}</em></span>
+    <div class="mt-ks"><span class="mt-ks__l"><b>Kosten</b><em>${mtEur(mtCost([c.id]))}</em>${mtRetHTML(mtCost([c.id]), mtCostGross([c.id]), true)}</span>
       ${tap ? '<button type="button" class="mt-ks__new" data-mt="costNew" data-k="self"><i class="ti ti-plus" aria-hidden="true"></i>Receipt</button>' : ''}</div>`;
   if (up) h += `<p class="mt-up" role="status"><span class="mt-spin" aria-hidden="true"></span>${up.what ? mtEsc(up.what) + ' · ' : 'Uploading '}${Math.min(up.done + 1, up.total)} of ${up.total}</p>`;
   if (!rows.length) return h + '<p class="mt-docs-empty">No receipts yet.</p></section>';
@@ -3138,7 +3152,7 @@ function mtSbRenumber() {
 
 /* ── D22 · Both tabs together: a slim white strip under the tabs, the same in both tabs ── */
 /* D38 · the slim bar under the tabs (pinned): year pill ‹ 2026 › · this tab's sum for the year + what is open */
-function mtBarHTML(sum, counts) {
+function mtBarHTML(sum, counts, gross) {
   const yy = mtSumYear(), yrs = mtListYears(), yi = yrs.indexOf(yy);
   return `<div class="mt-ybar">
       <div class="mt-ypill" role="group" aria-label="Year">
@@ -3146,13 +3160,13 @@ function mtBarHTML(sum, counts) {
         <label class="mt-ypill__y"><select data-mt-year aria-label="Year">${yrs.map(v => `<option value="${v}"${v === yy ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
         <button type="button" class="mt-ypill__a" data-mt="yrGo" data-v="next" aria-label="Next year"${yi > 0 ? '' : ' disabled'}><i class="ti ti-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <span class="mt-ybar__r"><b>${mtEur(sum)}</b><span>${mtEsc(counts)}</span></span>
+      <span class="mt-ybar__r"><b>${mtEur(sum)}</b>${gross === undefined ? '' : mtRetHTML(sum, gross)}<span>${mtEsc(counts)}</span></span>
     </div>`;
 }
 /* D38 · under the title: all tabs of the year (· the tab's all-time total when it differs) + PDF / Invoices */
 function mtMetaHTML(tabYear, tabTotal) {
   const ids = MT.cases.map(c => c.id), yy = mtSumYear();
-  return `<div class="mt-meta"><span>All tabs <em>${mtEur(mtCost(ids, yy))}</em>${Math.abs(tabTotal - tabYear) > 0.004 ? ` · Total <em>${mtEur(tabTotal)}</em>` : ''}</span>
+  return `<div class="mt-meta"><span>All tabs <em>${mtEur(mtCost(ids, yy))}</em>${mtRetHTML(mtCost(ids, yy), mtCostGross(ids, yy), true)}${Math.abs(tabTotal - tabYear) > 0.004 ? ` · Total <em>${mtEur(tabTotal)}</em>` : ''}</span>
       <span class="mt-meta__chips">${mtPdfChip('pdfYear', '', mtHasCosts(ids.map(String), yy))}${mtInvChip(mtHasInvoiceFiles(ids.map(String), yy))}</span></div>`;
 }
 /* ── D39 (Nov 2026) · Pop-ups: one shell each, built once ──────────────────────────────────────────────

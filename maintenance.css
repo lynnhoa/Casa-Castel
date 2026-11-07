@@ -802,3 +802,9 @@ button.mt-who:focus-visible { outline:2px solid var(--cc-gold); outline-offset:1
 .mt-w__save.is-busy { padding:0 21px; }   /* D39: Save reads the locks first — spinner, same width */
 .mt-w__save .mt-spin { display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-2px; box-sizing:border-box;
   border-color:rgba(253,252,250,.35); border-top-color:#FDFCFA; }
+
+/* Nov 2026 · Kosten before returns: small and red under (or next to) a total that returns lower — app only */
+.mt-ret { display:block; margin-top:1px; font-size:10.5px; line-height:1.25; font-weight:400; color:#C42B14;
+  white-space:nowrap; font-variant-numeric:tabular-nums; text-align:right; letter-spacing:0; text-transform:none; }
+.mt-ret--in { display:inline; margin:0 0 0 6px; text-align:left; }
+.mt-ybar__r .mt-ret, .mt-meta .mt-ret { color:#C42B14; font-size:10.5px; font-weight:400; }   /* their own span styles are grey */
