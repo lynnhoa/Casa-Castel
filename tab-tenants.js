@@ -2024,6 +2024,7 @@ function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
       : nx === rec ? '' : ccRowHTML({ icon: 'user-plus', title: 'Next tenant', meta: 'add', onclick: `_tnNextSheet('${esc(room.name)}')` }));
   }
   // Übergabe: its own button below More (above Former tenants) — see _tnUebergHTML
+  if (rec && typeof kbRowHTML === 'function') rows.push(kbRowHTML(rec));   // Nov 2026: Kündigung (cc-kuendigung.js)
   if (rec && typeof ccfDocsSectionHTML === 'function') {
     rows.push(ccRowHTML({ icon: 'file-text', title: 'Documents', meta: esc(ccfDocsSummary(rec)), onclick: `_tnSheet('docs','${rid}','${rec.id}')` }));
     rows.push(ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: esc(ccfMetersSummary(rec)), onclick: `_tnSheet('meters','${rid}','${rec.id}')` }));

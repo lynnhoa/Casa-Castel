@@ -1377,6 +1377,8 @@ function ccfDocLabel(type, rec) {
   if (type === 'uebergabeprotokoll') return 'Übergabeprotokoll';
   if (type === 'einzug') return 'Übergabe Einzug';
   if (type === 'auszug') return 'Übergabe Auszug';
+  if (type === 'kuendigung') return 'Kündigung (Mieter)';                 // Nov 2026: the tenant's own Kündigung (cc-kuendigung.js)
+  if (type === 'kuendigungsbestaetigung') return 'Kündigungsbestätigung';  // … and the landlord's letter
   const m = /^verlaengerung_(\d{4}-\d{2}-\d{2})$/.exec(type || '');
   if (m) {
     const row = rec ? ccfA().renewalRows(rec).find(x => x.key === type) : null;
@@ -1394,6 +1396,10 @@ function _ccfDocRows(rec) {
   const ren = ccfA().renewalRows(rec);
   ren.forEach(x => add(x.key, x.n + '. Verlängerung', 'ab ' + ccfFmt(x.p.valid_from), { renewal: x }));
   add('einzug', 'Übergabe Einzug');
+  if (docs.some(d => d.type === 'kuendigung' || d.type === 'kuendigungsbestaetigung')) {   // Nov 2026: Kündigung — only once there is one
+    add('kuendigung', 'Kündigung (Mieter)');
+    add('kuendigungsbestaetigung', 'Kündigungsbestätigung');
+  }
   add('auszug', 'Übergabe Auszug', '', { notYet: !rec.mietende });
   docs.forEach(d => add(d.type, ccfDocLabel(d.type, rec)));   // anything else that exists stays visible
   return rows;
@@ -1595,6 +1601,7 @@ function ccfRefreshTenant(tid) {
   });
   // the card's "Details" row shows a summary of both → redraw the card too
   if (typeof ccfA().redraw === 'function') { try { ccfA().redraw(); } catch (e) {} }
+  if (typeof kbRefresh === 'function') { try { kbRefresh(tid); } catch (e) {} }   // Nov 2026: the open Kündigung sheet shows the upload
 }
 
 /* ── RENEW: opens the generator, prefilled ─────────────────── */
