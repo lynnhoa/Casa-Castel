@@ -17,7 +17,7 @@
      and as a "Kauf · n open" pill in the Portfolio list.
 ══════════════════════════════════════════════════════ */
 
-const KNK = { rows: [], ctrl: [], ot: [], loaded: false, missing: false, open: null, show: {}, draft: {}, ids: {} };
+const KNK = { rows: [], ctrl: [], ot: [], loaded: false, missing: false, open: null, show: {}, draft: {}, ids: {}, busy: false };
 const KNK_ARTEN = ['Grunderwerbsteuer', 'Notar', 'Grundbuch', 'Makler', 'Sonstiges'];
 const KNK_ICON = {
   Grunderwerbsteuer: ['ti-building-bank', '#E6EEF6', '#2F5470'],
@@ -139,14 +139,22 @@ async function knkAutoBook() {
   for (const r of KNK.rows.filter(x => x.paid_on && knkNil(x.ot_id) && !x.not_needed)) {
     const p = (window._props || []).find(x => Number(x.id) === Number(r.property_id)), ctrl = knkCtrlOf(p);
     if (!p || !ctrl) continue;
+    let b = null;
     try {
-      const { data: b, error } = await _supa.from('ctrl_expense_one_time').insert(knkBooking(r, ctrl)).select().single();
-      if (error) throw error;
-      KNK.ot.push(b);
+      const ins = await _supa.from('ctrl_expense_one_time').insert(knkBooking(r, ctrl)).select().single();
+      if (ins.error) throw ins.error;
+      b = ins.data;
       const u = await _supa.from('prop_knk').update({ ot_id: String(b.id) }).eq('id', r.id).select().single();
-      if (!u.error && u.data) knkPut(u.data);
+      if (u.error || !u.data) throw u.error || new Error('row not linked');
+      KNK.ot.push(b);
+      knkPut(u.data);
       n++;
-    } catch (e) { console.warn('[properties] Kaufnebenkosten booking', e); }
+    } catch (e) {
+      // Nov 2026 fix: never half-saved (as knkPay). A booking whose row could not be linked stayed in Controlling:
+      // the list counted it twice (row + "typed in Controlling") and the next start booked the row again.
+      if (b) { try { await _supa.from('ctrl_expense_one_time').delete().eq('id', b.id); } catch (x) {} }
+      console.warn('[properties] Kaufnebenkosten booking', e);
+    }
   }
   return n;
 }
@@ -158,6 +166,30 @@ async function knkSyncTotal(p) {
     const d = await updateProperty(p.id, { nebenkosten: S.total });
     window._props = (window._props || []).map(x => (x.id === p.id ? Object.assign({}, x, d || { nebenkosten: S.total }) : x));
   } catch (e) { console.warn('[properties] acquisition costs', e); }
+}
+
+/* Nov 2026 fix: the Kaufpreis changed (Edit) → the "% of the price" rows still waiting for their invoice (Grunderwerbsteuer,
+   Makler) follow it, and so does "Acquisition costs". They kept the amount of the old price ("6 % of 200.000 €" showed
+   10.800 €); a price typed later never gave them an amount. An expected amount typed by hand (not the % of the old
+   price) stays as it is. → true when something changed */
+async function knkPriceChanged(p, oldPrice) {
+  if (!p || !KNK.loaded || KNK.missing) return false;
+  const price = Number(p.kaufpreis) || 0, old = Number(oldPrice) || 0;
+  const rows = KNK.rows.filter(r => Number(r.property_id) === Number(p.id) && knkHasPct(r.art) && !knkNil(r.pct) &&
+    !r.paid_on && knkNil(r.inv_amount) && !r.inv_date);
+  let n = 0;
+  for (const r of rows) {
+    const pct = Number(r.pct), was = old > 0 ? knkR2(old * pct / 100) : null;
+    const cur = knkNil(r.expected) ? null : knkR2(r.expected);
+    if (cur !== null && cur !== was) continue;                         // typed by hand
+    const want = price > 0 ? knkR2(price * pct / 100) : null;
+    if (want === cur) continue;
+    const { data, error } = await _supa.from('prop_knk').update({ expected: want, updated_at: new Date().toISOString() }).eq('id', r.id).select().single();
+    if (error) throw error;
+    knkPut(data); n++;
+  }
+  if (n) await knkSyncTotal(p);
+  return n > 0;
 }
 
 /* The row of a cost — a Controlling booking from before becomes a row on its first change (same booking) */
@@ -476,17 +508,24 @@ document.addEventListener('click', e => {
     return typeof psCloseInline === 'function' ? psCloseInline().then(ok => { if (ok) go(); }) : go();
   }
   if (a === 'show') { KNK.show[p.id] = !KNK.show[p.id]; return knkRender(); }
-  if (a === 'start') return knkStart(p);
-  if (a === 'add') return knkAdd(p);
+  // Nov 2026 fix: one change at a time — a double tap made two checklists (the costs counted twice) or two bookings
+  // in Controlling ("Paid"), because the second tap came before the first had saved and redrawn
+  const once = fn => {
+    if (KNK.busy) return;
+    KNK.busy = true;
+    Promise.resolve().then(fn).catch(err => console.warn('[properties] Kauf', err)).finally(() => { KNK.busy = false; });
+  };
+  if (a === 'start') return once(() => knkStart(p));
+  if (a === 'add') return once(() => knkAdd(p));
   const it = key ? knkItems(p).find(x => x.key === key) : null;
   if (!it) return;
-  if (a === 'art') return knkSetArt(p, it, b.dataset.v);
-  if (a === 'part') return b.dataset.v === it.part ? null : knkSave(p, it, { part: b.dataset.v });
-  if (a === 'pay') return knkPay(p, it);
-  if (a === 'no') return it.paid_on ? knkSay('Switch off “Paid” first') : knkSave(p, it, { not_needed: !it.not_needed });
-  if (a === 'del') return knkDel(p, it);
+  if (a === 'art') return once(() => knkSetArt(p, it, b.dataset.v));
+  if (a === 'part') return b.dataset.v === it.part ? null : once(() => knkSave(p, it, { part: b.dataset.v }));
+  if (a === 'pay') return once(() => knkPay(p, it));
+  if (a === 'no') return it.paid_on ? knkSay('Switch off “Paid” first') : once(() => knkSave(p, it, { not_needed: !it.not_needed }));
+  if (a === 'del') return once(() => knkDel(p, it));
   if (a === 'file') return knkOpenFile(it);
-  if (a === 'fileDel') return knkFileDel(p, it);
+  if (a === 'fileDel') return once(() => knkFileDel(p, it));
 });
 document.addEventListener('change', e => {
   const el = e.target;

@@ -50,7 +50,7 @@ function renderPortfolio() {
         <div class="port-row__no">${String(p.sort_order).padStart(2, '0')}</div>
         <div class="port-row__main">
           <div class="port-row__name">${p.name} ${zp} ${sp} ${typeof knkPill === 'function' ? knkPill(p) : ''}</div>
-          <div class="port-row__sub">${p.cat} · ${ccM2(p.m2)} m² · ${p.bank} · ${p.zinssatz.toFixed(2).replace('.', ',')} %</div>
+          <div class="port-row__sub">${p.cat} · ${ccM2(p.m2)} m² · ${p.bank} · ${n(p.zinssatz).toFixed(2).replace('.', ',')} %</div>
         </div>
         <div class="port-row__nums">
           <div class="port-row__rate">${rd}</div>
@@ -384,17 +384,30 @@ async function _propSaveLoanHistory(pid, before, after, validFrom) {
   const same = ok(await db.from(T).select('id').eq('property_id', pid).eq('valid_from', validFrom).limit(1));
   if (same.length) ok(await db.from(T).update(row).eq('id', same[0].id));                // changed twice in one month
   else ok(await db.from(T).insert(row));
+  // Nov 2026 fix: these are the terms from validFrom ON. A change saved before with a later month (e.g. from 01.11.,
+  // now corrected to "from 01.10.") would win from its month again — Controlling showed the old rate there while
+  // Properties showed the new one. Later rows go; the property row always holds the newest terms.
+  if (ok(await db.from(T).select('id').eq('property_id', pid).gt('valid_from', validFrom).limit(1)).length)
+    ok(await db.from(T).delete().eq('property_id', pid).gt('valid_from', validFrom));
 }
 
 /* ── DELETE ── */
 let _delId = null;
 
-function confirmDelete() {
+/* Nov 2026 fix: asked with the pop-up's own question (propConfirm). The box used to keep the title and button
+   of the question before it ("Discard the changes?" · "Discard"), and that question had removed the Cancel
+   handler — Cancel did nothing, the only way out was Delete or a reload. */
+async function confirmDelete() {
   const p = (window._props || []).find(x => x.id === _pid);
   if (!p) return;
-  _delId = _pid;
-  document.getElementById('confirmDesc').textContent =
-    `"${p.name}" will be permanently deleted.`;
+  const id = p.id, desc = `"${p.name}" will be permanently deleted.`;
+  if (typeof propConfirm === 'function') {
+    if (!(await propConfirm('Delete property?', desc, 'Delete', true))) return;
+    _delId = id;
+    return doDelete();
+  }
+  _delId = id;
+  document.getElementById('confirmDesc').textContent = desc;
   document.getElementById('confirmOkBtn').onclick = doDelete;
   document.getElementById('confirmOverlay').classList.add('open');
 }
@@ -413,6 +426,7 @@ async function doDelete() {
     if (typeof knkDeleteFor === 'function') await knkDeleteFor(id);   // its Kaufnebenkosten rows + files (Controlling bookings stay)
     await deleteProperty(id);
     window._props = await fetchAll();
+    if (typeof PS !== 'undefined') PS.dirty = false;            // Nov 2026: the property is gone — no "Discard the changes?" for it
     closeDetail();
     renderAll();
   } catch(err) {
