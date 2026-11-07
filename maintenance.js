@@ -162,8 +162,26 @@ const mtHasCosts = (ids, year) => MT.costs.some(r => ids.includes(String(r.case_
 /* D29 · any invoice file among these cases' receipts (of that year) → the Invoices button is on */
 const mtHasInvoiceFiles = (ids, year) => MT.costs.some(r => ids.includes(String(r.case_id)) && (!year || String(r.cost_date || '').slice(0, 4) === String(year))
   && MT.docs.some(d => String(d.cost_id) === String(r.id)));
-const mtInvChip = on => `<span class="mt-pdfw"><button type="button" class="mt-pdf${on ? '' : ' off'}" data-mt="invYear" data-cc-pdf="1" data-label="INVOICES" aria-label="Invoices PDF"${on ? '' : ' aria-disabled="true"'}><i class="ti ti-files" aria-hidden="true"></i>INVOICES</button></span>`;
-const mtPdfChip = (a, id, on) => `<span class="mt-pdfw"><button type="button" class="mt-pdf${on ? '' : ' off'}" data-mt="${a}"${id ? ` data-id="${mtEsc(id)}"` : ''} data-cc-pdf="1" aria-label="PDF overview"${on ? '' : ' aria-disabled="true"'}><i class="ti ti-file-text" aria-hidden="true"></i>PDF</button></span>`;
+/* Nov 2026 · PDF with or without returns. A list with returns in it: the button first shows the choice
+   "mit Rückgaben" · "ohne Rückgaben" in its place (MT.retPick = that button), and the PDF starts from that tap —
+   data-cc-pdf: the iPhone opens a PDF only from a tap, and the installed app shows "Open PDF" right there.
+   No return in it → the button works as before. "ohne Rückgaben" leaves no trace in the PDF (maint-cost-pdf.js). */
+function mtPdfBtn(o) {                                         // o = { a, id, cls, label, icon, on, aria, ret }
+  const k = o.a + (o.id ? ':' + o.id : ''), idA = o.id ? ` data-id="${mtEsc(o.id)}"` : '';
+  if (o.on && o.ret && MT.retPick === k) {
+    const one = (v, t) => `<button type="button" class="${o.cls} mt-rp__b" data-mt="${o.a}"${idA} data-ret="${v}" data-cc-pdf="1" data-label="${t}" aria-label="${mtEsc(o.label + ' ' + t)}">` +
+      `<span class="mt-rp__w">${mtEsc(o.label)}</span> ${t}</button>`;   // which PDF it is + mit / ohne
+    return `<span class="mt-pdfw mt-rp" role="group" aria-label="${mtEsc(o.aria)}">${one('mit', 'mit Rückgaben')}${one('ohne', 'ohne Rückgaben')}` +
+      `<button type="button" class="mt-rp__x" data-mt="retPick" data-k="" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button></span>`;
+  }
+  const pick = !!(o.on && o.ret);
+  return `<span class="mt-pdfw"><button type="button" class="${o.cls}${o.on ? '' : ' off'}" data-mt="${pick ? 'retPick' : o.a}"${pick ? ` data-k="${mtEsc(k)}"` : ''}${idA}` +
+    `${pick ? '' : ' data-cc-pdf="1"'} data-label="${mtEsc(o.label)}" aria-label="${mtEsc(o.aria)}"${o.on ? '' : ' aria-disabled="true"'}>` +
+    `<i class="ti ${o.icon}" aria-hidden="true"></i>${mtEsc(o.label)}</button></span>`;
+}
+const mtInvChip = on => mtPdfBtn({ a: 'invYear', cls: 'mt-pdf', label: 'INVOICES', icon: 'ti-files', on, aria: 'Invoices PDF', ret: mtCpYearHasRet(mtSumYear()) });
+const mtPdfChip = (a, id, on) => mtPdfBtn({ a, id, cls: 'mt-pdf', label: 'PDF', icon: 'ti-file-text', on, aria: 'PDF overview',
+  ret: a === 'pdfYear' ? mtCpYearHasRet(mtSumYear()) : !!id && mtCpEntryHasRet(id) });
 
 const MT_KIND = {
   renovierung: { title: 'Renovierungen', one: 'Renovierung', empty: 'No Renovierungen yet.', open: 'Planned', openCount: 'planned' },
@@ -2660,14 +2678,15 @@ function mtWire() {
     else if (a === 'upload') mtPickFile();
     else if (a === 'openDoc') mtOpenDoc(b.dataset.id);
     else if (a === 'docToCost') mtDocToCost(b.dataset.id);
-    else if (a === 'pdfYear') mtPdfYear(b);
+    else if (a === 'pdfYear') mtPdfYear(b, b.dataset.ret === 'ohne');
+    else if (a === 'retPick') { MT.retPick = b.dataset.k || null; mtRefresh(MT.sel && MT.sel.id); }   // Nov 2026: mit / ohne Rückgaben
     else if (a === 'yrGo') mtYearGo(b.dataset.v);
     else if (a === 'cgrp') { MT.cgrp = b.dataset.v; mtRefresh(MT.sel && MT.sel.id); }
     else if (a === 'cAll') { MT.cAll = MT.cAll || {}; MT.cAll[b.dataset.id] = !MT.cAll[b.dataset.id]; mtRefresh(b.dataset.id); }
     else if (a === 'stSet') mtStatusSet(b.dataset.v);
-    else if (a === 'pdfEntry') mtPdfEntry(b.dataset.id, b);
-    else if (a === 'invYear') mtPdfInvYear(b);                // D29
-    else if (a === 'invEntry') mtPdfInvEntry(b.dataset.id, b);
+    else if (a === 'pdfEntry') mtPdfEntry(b.dataset.id, b, b.dataset.ret === 'ohne');
+    else if (a === 'invYear') mtPdfInvYear(b, b.dataset.ret === 'ohne');                // D29
+    else if (a === 'invEntry') mtPdfInvEntry(b.dataset.id, b, b.dataset.ret === 'ohne');
     else if (a === 'docsEdit') { if (MT.sel) { if (MT.busy) mtBusySay(); else { MT.sel.docEdit = true; MT.sel.fix = null; mtRenderPanel(); } } }
     else if (a === 'docsDone') { if (MT.sel) { MT.sel.docEdit = false; MT.sel.fix = null; mtRenderPanel(); } }
     else if (a === 'fixDoc') { if (MT.sel) { MT.sel.fix = String(b.dataset.id); mtRenderPanel(); } }
@@ -3866,8 +3885,8 @@ function mtSbOpenPdf() {
 function mtActsHTML(c, inPanel) {
   const has = mtHasCosts([String(c.id)]), id = mtEsc(c.id), inv = mtHasInvoiceFiles([String(c.id)]);
   return `<div class="mt-acts${inPanel ? ' mt-acts--in' : ''}">
-      <span class="mt-pdfw"><button type="button" class="mt-act${has ? '' : ' off'}" data-mt="pdfEntry" data-id="${id}" data-cc-pdf="1" data-label="Kostenübersicht"${has ? '' : ' aria-disabled="true"'}><i class="ti ti-file-text" aria-hidden="true"></i>Kostenübersicht</button></span>
-      <span class="mt-pdfw"><button type="button" class="mt-act${inv ? '' : ' off'}" data-mt="invEntry" data-id="${id}" data-cc-pdf="1" data-label="Invoices"${inv ? '' : ' aria-disabled="true"'}><i class="ti ti-files" aria-hidden="true"></i>Invoices</button></span>
+      ${mtPdfBtn({ a: 'pdfEntry', id: c.id, cls: 'mt-act', label: 'Kostenübersicht', icon: 'ti-file-text', on: has, aria: 'Kostenübersicht PDF', ret: mtCpEntryHasRet(c.id) })}
+      ${mtPdfBtn({ a: 'invEntry', id: c.id, cls: 'mt-act', label: 'Invoices', icon: 'ti-files', on: inv, aria: 'Invoices PDF', ret: mtCpEntryHasRet(c.id) })}
       <button type="button" class="mt-act" data-mt="sbOpen" data-id="${id}"><i class="ti ti-file-description" aria-hidden="true"></i>${inPanel ? 'Bericht' : mtBerichtLbl(c)}</button>
     </div>`;
 }

@@ -59,12 +59,33 @@ function mtCpTotals(rows) {
   ].filter(Boolean);
 }
 
+/* Nov 2026 · "ohne Rückgaben": the PDF as if the returns never existed — each receipt at its net price (the receipt
+   minus all its returns, whatever their date), the returns themselves left out, a receipt returned in full left out
+   too. Nothing in the PDF says so (same title, header, totals, file name; no "Netto", no "Rückgaben"); only the app
+   shows returns. "mit Rückgaben" = the PDFs as before. o = { net: true } for "ohne". */
+function mtCpNetRows(rows) {
+  return rows.filter(r => !r.return_of).map(r => {
+    const back = mtReturnsOf(r.id).reduce((s, x) => s + Math.abs(Number(x.amount) || 0), 0);
+    return Object.assign({}, r, { amount: Math.round((Math.abs(Number(r.amount) || 0) - back) * 100) / 100 });
+  }).filter(r => r.amount > 0.004);
+}
+const mtCpOfYear = (rows, y) => rows.filter(r => String(r.cost_date || '').slice(0, 4) === y);
+/* Do the lists of this year / this entry have returns in them? → their PDF buttons offer "mit / ohne Rückgaben".
+   A year: a return dated in it, or a receipt of the year with a return (a return in January for a December receipt). */
+function mtCpYearHasRet(year) {
+  const y = String(year);
+  return MT.costs.some(r => r.return_of && MT.cases.some(c => String(c.id) === String(r.case_id)) &&
+    (String(r.cost_date || '').slice(0, 4) === y || String((mtCostById(r.return_of) || {}).cost_date || '').slice(0, 4) === y));
+}
+const mtCpEntryHasRet = caseId => MT.costs.some(r => r.return_of && String(r.case_id) === String(caseId));
+
 /* Rechnungsübersicht: one tab, one year */
-function mtCpYearData(kind, year) {
+function mtCpYearData(kind, year, o) {
   const S = (typeof appSettings !== 'undefined' && appSettings) || {};
   const stand = mtDate(ccTodayISO()), y = String(year);
   const cases = MT.cases.filter(c => c.kind === kind);
-  const all = MT.costs.filter(r => cases.some(c => String(c.id) === String(r.case_id)) && String(r.cost_date || '').slice(0, 4) === y);
+  const mine = MT.costs.filter(r => cases.some(c => String(c.id) === String(r.case_id)));
+  const all = mtCpOfYear(o && o.net ? mtCpNetRows(mine) : mine, y);
   const groups = mtGroups(kind).map(g => {
     const ents = g.cases.slice().sort(mtCaseCmp).map(c => {             // D29: R1, R2 … in number order
       const rows = all.filter(r => String(r.case_id) === String(c.id)).sort(mtNoCmp);
@@ -82,11 +103,12 @@ function mtCpYearData(kind, year) {
 }
 
 /* Kostenübersicht: one entry, all years */
-function mtCpEntryData(c) {
+function mtCpEntryData(c, o) {
   const S = (typeof appSettings !== 'undefined' && appSettings) || {};
   const stand = mtDate(ccTodayISO());
   const casa = mtIsCasa(c.property_id), apt = casa ? null : mtSbApt(c);
-  const rows = MT.costs.filter(r => String(r.case_id) === String(c.id));
+  const mine = MT.costs.filter(r => String(r.case_id) === String(c.id));
+  const rows = o && o.net ? mtCpNetRows(mine) : mine;                // "ohne Rückgaben": receipts at net, no returns, no Netto
   // D29: one list in number order (= the order of the Invoices PDF); returns under their receipt, then Netto
   const lines = [];
   rows.filter(r => !r.return_of).sort(mtNoCmp).forEach(r => {
@@ -232,17 +254,18 @@ async function mtCpMake(btn, build) {
     if (btn && btn.classList.contains('is-busy')) { btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); btn.innerHTML = keep; }
   }
 }
-function mtPdfYear(btn) {                                 // D22: one overview for both tabs
+function mtPdfYear(btn, net) {                            // D22: one overview for both tabs · net = "ohne Rückgaben"
   const y = mtSumYear();
   if (btn && btn.classList.contains('off')) { mtSay(`No receipts in ${y} yet.`); return; }
-  return mtCpMake(btn, () => mtCpYearDataAll(y));
+  return mtCpMake(btn, () => mtCpYearDataAll(y, { net: !!net }));
 }
-function mtCpYearDataAll(year) {
+function mtCpYearDataAll(year, o) {
   const S = (typeof appSettings !== 'undefined' && appSettings) || {};
   const stand = mtDate(ccTodayISO()), y = String(year);
-  const all = MT.costs.filter(r => String(r.cost_date || '').slice(0, 4) === y && MT.cases.some(c => String(c.id) === String(r.case_id)));
+  const mine = MT.costs.filter(r => MT.cases.some(c => String(c.id) === String(r.case_id)));
+  const all = mtCpOfYear(o && o.net ? mtCpNetRows(mine) : mine, y);
   const sumOf = k => mtCpSum(all.filter(r => (mtCase(r.case_id) || {}).kind === k));
-  const parts = Object.keys(MT_KIND).map(k => ({ k, d: mtCpYearData(k, year) })).filter(x => x.d.groups.length)   // D30: + Sonstiges
+  const parts = Object.keys(MT_KIND).map(k => ({ k, d: mtCpYearData(k, year, o) })).filter(x => x.d.groups.length)   // D30: + Sonstiges
     .map(x => ({ title: MT_KIND[x.k].title, sum: x.d.groups.reduce((s2, g) => s2 + g.sum, 0), groups: x.d.groups }));
   const nm = parts.map(x => x.title), what = nm.length > 1 ? nm.slice(0, -1).join(', ') + ' und ' + nm[nm.length - 1] : (nm[0] || 'Renovierungen und Schäden');
   return {
@@ -254,11 +277,11 @@ function mtCpYearDataAll(year) {
     fileName: ccPdfFileName('Rechnungsuebersicht', y, 'Stand ' + stand),
   };
 }
-function mtPdfEntry(id, btn) {
+function mtPdfEntry(id, btn, net) {
   const c = mtCase(id);
   if (!c) return;
   if (btn && btn.classList.contains('off')) { mtSay('No receipts in this entry yet.'); return; }
-  return mtCpMake(btn, () => mtCpEntryData(c));
+  return mtCpMake(btn, () => mtCpEntryData(c, { net: !!net }));
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -324,16 +347,16 @@ async function mtInvMake(btn, build) {
     if (btn && btn.classList.contains('is-busy')) { btn.classList.remove('is-busy'); btn.removeAttribute('aria-busy'); btn.innerHTML = keep; }
   }
 }
-function mtPdfInvYear(btn) {                               // the strip: both tabs, the chosen year
+function mtPdfInvYear(btn, net) {                         // the strip: both tabs, the chosen year · net: no return slips
   const y = mtSumYear();
   if (btn && btn.classList.contains('off')) { mtSay(`No invoice files in ${y} yet.`); return; }
-  return mtInvMake(btn, () => Object.assign(mtCpYearDataAll(y), { invName: ccPdfFileName('Invoices', y, 'Stand ' + mtDate(ccTodayISO())) }));
+  return mtInvMake(btn, () => Object.assign(mtCpYearDataAll(y, { net: !!net }), { invName: ccPdfFileName('Invoices', y, 'Stand ' + mtDate(ccTodayISO())) }));
 }
-function mtPdfInvEntry(id, btn) {                          // one case
+function mtPdfInvEntry(id, btn, net) {                    // one case
   const c = mtCase(id);
   if (!c) return;
   if (btn && btn.classList.contains('off')) { mtSay('No invoice files in this entry yet.'); return; }
-  return mtInvMake(btn, () => Object.assign(mtCpEntryData(c), { invName: ccPdfFileName('Invoices', c.title, 'Stand ' + mtDate(ccTodayISO())) }));
+  return mtInvMake(btn, () => Object.assign(mtCpEntryData(c, { net: !!net }), { invName: ccPdfFileName('Invoices', c.title, 'Stand ' + mtDate(ccTodayISO())) }));
 }
 
 /* ─────────────────────────────────────────────────────────────
