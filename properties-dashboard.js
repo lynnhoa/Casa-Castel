@@ -14,7 +14,7 @@ function renderDashboard() {
   const tTilg = props.reduce((s,p) => s + n(p.tilgung), 0);
   const tZins = props.reduce((s,p) => s + n(p.zinsen), 0);
   const tRest = props.reduce((s,p) => s + n(p.restschuld), 0);
-  const tAbb  = props.reduce((s,p) => s + n(p.abbezahlt), 0);
+  const tAbb  = props.reduce((s,p) => s + paidOff(p), 0);         // Bausparvertrag: Darlehen − Restschuld, not the savings
   const tDar  = props.reduce((s,p) => s + n(p.darlehen), 0);
   const tMw   = props.reduce((s,p) => s + n(p.marktwert), 0);
   const tKP   = props.reduce((s,p) => s + n(p.kaufpreis), 0);

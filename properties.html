@@ -179,6 +179,15 @@ function mio(v) {
   if (v >= 1000)    return (Math.round(v/100)/10).toFixed(1).replace('.',',') + '\u202fk\u202f€';
   return eur(v);
 }
+/* Paid off = Darlehen − Restschuld, also with a Bausparvertrag (Nov 2026, owner): its savings are not paid off until
+   they are transferred to the loan — then the bank's Restschuld drops (Yearly update, with its date). Bausparvertrag
+   entries saved before kept the typed savings in "abbezahlt", so for them it is worked out here. */
+function paidOff(p) {
+  if (!p) return 0;
+  if (!(p.sparv === true || p.sparv === 'true')) return n(p.abbezahlt);
+  const d = n(p.darlehen), r = n(p.restschuld);
+  return r > 0 || p.restschuld_date || d === 0 ? Math.max(0, Math.round((d - r) * 100) / 100) : 0;   // no Restschuld yet: nothing paid off
+}
 function showLoading(on) { document.getElementById('loadingOverlay').classList.toggle('show', on); }
 function renderAll() { renderDashboard(); renderPortfolio(); }
 
@@ -261,10 +270,10 @@ if (document.readyState !== 'loading') boot(); else document.addEventListener('D
 </script>
 
 <script src="cc-german-format.js?v=2026-11-04-DT2"></script>
-<script src="properties-dashboard.js?v=2026-11-07-PB1"></script>
+<script src="properties-dashboard.js?v=2026-11-07-PB2"></script>
 <script src="properties-portfolio.js?v=2026-11-07-PB1"></script>
 <script src="properties-knk.js?v=2026-11-07-PB1"></script>
-<script src="properties-sheet.js?v=2026-11-07-PB1"></script>
+<script src="properties-sheet.js?v=2026-11-07-PB2"></script>
 <!-- Profile panel (same one as Rentals). Reuses this page's Supabase client
      instead of creating a second one, so the login session is shared safely. -->
 <script>var sbL = _supa;</script>

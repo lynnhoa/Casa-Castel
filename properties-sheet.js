@@ -13,7 +13,8 @@
      · market value = the price at the start · Restschuld = the Darlehen at the start
        (in Edit both follow their source while untouched — Nov 2026: also a price typed later)
      · Grunderwerbsteuer / Makler "% of the price" follow a changed Kaufpreis (properties-knk.js, Nov 2026)
-     · Paid off = Darlehen − Restschuld (with a Bausparvertrag you type it — the loan isn't repaid directly)
+     · Paid off = Darlehen − Restschuld — Nov 2026: also with a Bausparvertrag (its savings are not paid off until they
+       are transferred to the loan; then the Restschuld drops) · paidOff() in properties.html
      · Zinsen = Rate − Tilgung · Equity € = price + Kaufnebenkosten − Darlehen (only while it is empty)
      · rate status from "Fixed rate until": within 6 months amber, within 3 months or passed red —
        also checked on every app start, so the dashboard alert stays current
@@ -316,7 +317,7 @@ function psFinHTML(p) {
       '<div class="ps-c__s">No loan yet · add it when the bank contract is there</div>' +
       '<button type="button" class="ps-btn" data-ps="open" data-v="loan"><i class="ti ti-plus" aria-hidden="true"></i>Add loan</button></div>';
   }
-  const dar = psNum(p.darlehen), paid = psNum(p.abbezahlt), pct = dar > 0 ? psR2(paid / dar * 100) : 0;
+  const dar = psNum(p.darlehen), paid = paidOff(p), pct = dar > 0 ? psR2(paid / dar * 100) : 0;
   const st = p.zb_status === 'red' ? '<span class="ps-pill ps-pill--red">urgent</span>' : p.zb_status === 'amber' ? '<span class="ps-pill ps-pill--amber">within 6 months</span>' : '';
   const nr = psDash(p.darlehensnr);
   return psLabel('ti-building-bank', 'Finanzierung', '<button type="button" class="ps-lk" data-ps="open" data-v="year">Yearly update</button>') +
@@ -342,7 +343,6 @@ function psLoanFormHTML(p) {
 function psYearFormHTML(p) {
   return '<div class="ps-d" data-psform="year"><p class="ps-sm ps-sm--top">Once a year · from the bank statement</p>' +
     '<div class="ps-g">' + psField('psY-rest', 'Restschuld €', 'num', p.restschuld) + psField('psY-date', 'Stand', 'date', psIso(p.restschuld_date) || psToday()) + '</div>' +
-    (p.sparv ? psField('psY-paid', 'Paid off € (Bausparvertrag)', 'num', p.abbezahlt) : '') +
     psField('psY-mw', 'Market value €', 'num', p.marktwert) +
     '<p class="ps-sm" id="psY-calc"></p>' + psBtns('saveYear') + '</div>';
 }
@@ -389,7 +389,7 @@ function psCalc() {
   const yc = document.getElementById('psY-calc');
   if (yc && p) {
     const rest = g('psY-rest'), mw = g('psY-mw');
-    const paid = p.sparv ? g('psY-paid') : psNum(p.darlehen) - rest;
+    const paid = psNum(p.darlehen) - rest;                     // Bausparvertrag too (Nov 2026)
     const bits = [];
     if (isFinite(paid)) bits.push('Paid off ' + eur(psR2(Math.max(0, paid))));
     if (isFinite(mw) && isFinite(rest)) bits.push('Equity ' + eur(psR2(mw - rest)));
@@ -401,13 +401,11 @@ function psCalc() {
       ez.textContent = eur(psChanged('e-rate') || psChanged('e-tilgung') ? psR2((isFinite(r) ? r : 0) - (isFinite(t) ? t : 0)) : p.zinsen); }
     psFollow('e-darlehen', 'e-restschuld', psRestUntouched(p), 'restFollow');   // Restschuld follows the Darlehen
     psFollow('e-kaufpreis', 'e-marktwert', psMwUntouched(p), 'mwFollow');       // market value = the price, until it has its own
-    const sp = psSwitchVal('e-sparv'), auto = document.getElementById('e-paid-ro-box'), typed = document.getElementById('e-paid-typed');
-    if (auto && typed) { auto.hidden = sp; typed.hidden = !sp; }
     const ep = document.getElementById('e-paid-ro');
-    if (ep && !sp) {
+    if (ep) {                                                   // Bausparvertrag too (Nov 2026): no typed "Paid off" any more
       const dd = g('e-darlehen'), rr = g('e-restschuld');
       const ch = psChanged('e-darlehen') || psChanged('e-restschuld') || psChanged('e-sparv');
-      ep.textContent = eur(ch && isFinite(dd) && isFinite(rr) && (rr > 0 || dd === 0) ? psR2(Math.max(0, dd - rr)) : p.abbezahlt);
+      ep.textContent = eur(ch && isFinite(dd) && isFinite(rr) && (rr > 0 || dd === 0) ? psR2(Math.max(0, dd - rr)) : paidOff(p));
     }
   }
 }
@@ -455,7 +453,7 @@ async function psSaveLoan() {
   if ('rate' in f || 'tilgung' in f) f.zinsen = psR2(rate - tilg);
   if (first || ('darlehen' in f && psRestUntouched(p))) f.restschuld = dar;
   const rest = 'restschuld' in f ? f.restschuld : psNum(p.restschuld);
-  if (!sparv && (first || 'darlehen' in f || 'restschuld' in f || 'sparv' in f)) f.abbezahlt = psR2(Math.max(0, dar - rest));
+  if (first || 'darlehen' in f || 'restschuld' in f || 'sparv' in f) f.abbezahlt = psR2(Math.max(0, dar - rest));   // Bausparvertrag too (Nov 2026)
   if ((first || 'darlehen' in f) && !(psNum(p.ek) > 0)) {
     const knk = typeof knkHas === 'function' && knkHas(p) ? knkSum(p).total : psNum(p.nebenkosten);
     f.ek = psR2(Math.max(0, psNum(p.kaufpreis) + knk - dar));
@@ -472,8 +470,7 @@ async function psSaveYear() {
   const rest = parseFloat(val('psY-rest')), mw = parseFloat(val('psY-mw'));
   if (!isFinite(rest) || rest < 0) { knkSay('Enter the Restschuld'); return; }
   const f = { restschuld: psR2(rest), restschuld_date: val('psY-date') || null, marktwert: isFinite(mw) && mw > 0 ? psR2(mw) : psNum(p.marktwert) };
-  if (p.sparv) { const pd = parseFloat(val('psY-paid')); f.abbezahlt = isFinite(pd) ? psR2(pd) : psNum(p.abbezahlt); }
-  else f.abbezahlt = psR2(Math.max(0, psNum(p.darlehen) - f.restschuld));
+  f.abbezahlt = psR2(Math.max(0, psNum(p.darlehen) - f.restschuld));   // Bausparvertrag too (Nov 2026): paid off once the savings are transferred
   await psSaveProp(p, f, 'Updated');
 }
 async function psSaveObj() {
@@ -509,9 +506,7 @@ function psEditHTML(p) {
       '<div class="ps-g">' +
       psField('e-rate', 'Monatsrate €', 'num', p.rate) + psField('e-tilgung', 'Tilgung €/Mo', 'num', p.tilgung) + '</div><div class="ps-g">' +
       psRO('Zinsen €/Mo', eur(p.zinsen), 'worked out', 'e-zinsen-ro') +
-      psRO('Paid off €', eur(p.abbezahlt), 'worked out', 'e-paid-ro', !!p.sparv) +
-      '<div class="ps-f" id="e-paid-typed"' + (p.sparv ? '' : ' hidden') + '><label for="e-abbezahlt">Paid off €</label>' +
-        '<input class="cc-input" id="e-abbezahlt" type="number" data-cc-num="2" inputmode="decimal" value="' + psEsc(p.abbezahlt) + '"/></div></div>' +
+      psRO('Paid off €', eur(paidOff(p)), 'worked out', 'e-paid-ro') + '</div>' +
       psSwitch('e-sparv', 'Bausparvertrag', 'the Tilgung goes into a savings contract', !!p.sparv) +
       '<div class="ps-g">' + psField('e-valid-from', 'Rate changes valid from', 'date', psMonthStart(psToday())) +
         '<p class="ps-sm ps-sm--side">Earlier months in Controlling keep the old rate</p></div></div>' +
@@ -551,11 +546,9 @@ async function saveEdit() {
   if ('rate' in f || 'tilgung' in f) f.zinsen = psR2(psNum('rate' in f ? f.rate : p.rate) - psNum('tilgung' in f ? f.tilgung : p.tilgung));
   if ('darlehen' in f && !('restschuld' in f) && psRestUntouched(p) && PS.restFollow !== false) f.restschuld = f.darlehen;     // follows until the first Yearly update (not when typed back by hand)
   if ('kaufpreis' in f && !('marktwert' in f) && psMwUntouched(p) && PS.mwFollow !== false) f.marktwert = f.kaufpreis;          // market value = the price, until it has its own
-  const sparv = 'sparv' in f ? f.sparv : !!p.sparv;
-  if (sparv) { if (psChanged('e-abbezahlt') || 'sparv' in f) f.abbezahlt = nz('e-abbezahlt'); }
-  else if ('darlehen' in f || 'restschuld' in f || 'sparv' in f) {
-    const dar = 'darlehen' in f ? f.darlehen : psNum(p.darlehen), rest = 'restschuld' in f ? f.restschuld : psNum(p.restschuld);
-    f.abbezahlt = rest > 0 || dar === 0 ? psR2(Math.max(0, dar - rest)) : psNum(p.abbezahlt);
+  if ('darlehen' in f || 'restschuld' in f || 'sparv' in f) {           // Paid off = Darlehen − Restschuld, Bausparvertrag too (Nov 2026)
+    const m0 = Object.assign({}, p, f), dar = psNum(m0.darlehen), rest = psNum(m0.restschuld);
+    f.abbezahlt = rest > 0 || dar === 0 ? psR2(Math.max(0, dar - rest)) : m0.sparv ? paidOff(m0) : psNum(p.abbezahlt);   // Restschuld 0: maybe not entered yet
   }
   const m = Object.assign({}, p, f);
   if ('zb' in f || 'darlehen' in f || 'rate' in f) f.zb_status = psHasLoan(m) ? (psZbStatus(m.zb) || (m.zb === '—' ? 'ok' : p.zb_status || 'ok')) : 'ok';

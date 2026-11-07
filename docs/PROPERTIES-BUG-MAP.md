@@ -5,7 +5,8 @@ and what they write for Controlling (loan_terms_history, Kaufnebenkosten booking
 Only behaviour that is meant to work; nothing that is "not built yet".
 Every bug was reproduced first in a headless browser (properties.html with an in-memory database) and checked
 again after the fix, together with 16 regression runs of the flows around it (first loan, rate change, yearly update,
-Edit, Kauf list paid / unpaid, Controlling bookings from before, delete).
+Edit, Kauf list paid / unpaid, Controlling bookings from before, delete), and 5 more for the owner's answers (the real
+10-property portfolio with the shared loan, Bausparvertrag before and after the savings are transferred).
 
 ## Fixed
 
@@ -20,13 +21,14 @@ Edit, Kauf list paid / unpaid, Controlling bookings from before, delete).
 | 7 | **Market value stayed 0 when the price was typed later.** "Market value = the price at the start" only worked in the New form | New property without a price → Edit: Kaufpreis 250.000 → market value 0 → Equity and "Market value today" too low | properties-sheet.js `psCalc` / `saveEdit` | while untouched (0 or = the old price) the market value follows the Kaufpreis in Edit, visible before Save; a value of its own is never changed |
 | 8 | **Double tap on the Kauf card → everything twice.** No guard while saving | "Start checklist" ×2 → 12 rows, Acquisition costs 21.600 instead of 10.800 €. "Paid" ×2 → two bookings in Controlling › One-off, Kauf list total doubled | properties-knk.js click handler | one Kauf change at a time; a second tap while it saves is ignored |
 | 9 | **Half-saved automatic booking.** A paid cost whose property was set up in Controlling later is booked on the next start; when the row could not be linked to the booking, the booking stayed | list total counted twice (row + "typed in Controlling"), and every next start booked it again | properties-knk.js `knkAutoBook` | as "Paid" already did: the booking is removed again when the row can't be linked |
-| 10 | **Dashboard counted every property as a loan** | 3 properties, 2 with a loan → "3 loans combined", "repaid across 3 loans" | properties-dashboard.js | counts properties with a Darlehen or Monatsrate ("2 loans", "1 loan") |
+| 10 | **Dashboard counted every property as a loan** | the portfolio: 10 properties, 9 loans — WHG 08 and WHG 10 share one loan, entered on one of the two → "10 loans combined", "repaid across 10 loans" | properties-dashboard.js | counts the loans: properties with a Darlehen or Monatsrate → "9 loans". A shared loan entered once counts once, in the totals too |
 | 11 | **"Purchase period 2020–2026" was fixed text** | wrong as soon as a purchase is before 2020 or after 2026 | properties-dashboard.js | from the purchase dates: "Purchase period 2020–2024" · one year: "Purchased 2024" · none: left out |
 | 12 | **One loan without an interest rate blanked Dashboard and Portfolio** (`null.toFixed`) | the whole page empty; after a save the toast said "Not saved" although it was saved | properties-dashboard.js alerts, properties-portfolio.js rows | no rate → 0,00 % |
 | 13 | **Controlling's Zinsbindung reminder read only the year** of "Fixed rate until", but Properties saves the full date | 15.02.2027: no reminder in Nov 2026 (Properties already amber); "ends 2027 – enter the new rate" from Jun 2027, months after the end; "ended" only from 2028 | controlling-soll.js `ctlZinsbindungNote` | the date's month (6 months before it: "ends 15.02.2027", after it "ended …"); "06/2030" its month; a year alone ("bis 2030") December as before |
+| 14 | **Bausparvertrag: the savings counted as "Paid off"** (owner, 07.11.2026: a Bausparvertrag loan is not paid off until the Sparbetrag is transferred to pay it) | Darlehen 140.000, Restschuld 140.000, 25.000 € saved → "17,86 % paid off", Dashboard "Paid off" 25.000 € too high, and Restschuld + Paid off > Darlehen | `paidOff()` in properties.html · properties-dashboard.js · properties-sheet.js | Paid off = Darlehen − Restschuld for every loan. The typed "Paid off (Bausparvertrag)" fields are gone; the savings count once the bank's Restschuld drops (Yearly update with its date). Older entries: worked out at once — the savings typed before are no longer shown and are replaced on the next save |
 
-Cache versions bumped: properties-*.js `?v=2026-11-07-PB1` (properties.html), controlling-soll.js `?v=2026-11-07-PB1`
-(controlling.html, settlements.html). No SQL needed.
+Cache versions bumped: properties-*.js `?v=2026-11-07-PB1` / `PB2` (properties.html), controlling-soll.js
+`?v=2026-11-07-PB1` (controlling.html, settlements.html). No SQL needed.
 
 ## Checked, correct (no change)
 
@@ -36,20 +38,16 @@ Cache versions bumped: properties-*.js `?v=2026-11-07-PB1` (properties.html), co
   free text that is no date keeps the status set by hand.
 - First loan: Restschuld = Darlehen, Paid off = Darlehen − Restschuld, Eigenkapital = price + Kaufnebenkosten − Darlehen
   (only while empty), first rate default = the month after the Übergabe, history from that month (earlier months 0).
-- Yearly update: Paid off = Darlehen − Restschuld (Bausparvertrag: typed), equity line, "Stand" date for Controlling's
+- Yearly update: Paid off = Darlehen − Restschuld (Bausparvertrag too, #14), equity line, "Stand" date for Controlling's
   Zinsen estimate.
 - Kauf list: status (Expected → Invoice → Paid / Not needed), sums, open amount, pill, booking direction (cost −1,
   refund +1, as Controlling reads it), Controlling bookings from before shown once and turned into a row on change,
   unpay deletes the booking, Grunderwerbsteuer 6 % Hessen incl. Kastel / Kostheim / Amöneburg, 5 % Rheinland-Pfalz.
 - Purchase date (= Übergabe) as read by Controlling and Settlements (ISO and TT.MM.JJJJ).
 
-## Noted, not changed (decisions for the owner)
+## Owner decisions (07.11.2026)
 
-- **Bausparvertrag in the totals.** "Paid off" counts the savings you type, "Restschuld" stays the bank's figure (the
-  Darlehen is not repaid directly). So on the Dashboard Restschuld + Paid off is more than the Darlehen, and "Equity"
-  (market value − Restschuld) does not include the savings. Correct for each definition; netting the savings against the
-  debt would be a change of model.
-- **Zinssatz has 2 decimals** in the forms: 3,875 % is saved as 3,88 %. Only display and Controlling's "≈ Zinsen"
-  estimate use it (a few cents a month); the Kreditrate itself is typed in €.
-- **"Stand" of the Yearly update** opens with the last date: a new Restschuld saved with the old date anchors
-  Controlling's Zinsen estimate a year early. Change the date with the new statement.
+- **Bausparvertrag:** not paid off until the Sparbetrag is transferred to pay the loan → built as #14.
+- **Zinssatz stays at 2 decimals** (as in the forms and everywhere it is shown).
+- **Restschuld:** entered once a year with its date (Yearly update · Stand) → no change.
+- **Shared loan WHG 08 + WHG 10:** entered on one of the two properties → counted once (#10).
