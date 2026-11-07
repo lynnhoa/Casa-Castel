@@ -90,11 +90,14 @@ function ctlAbrBooking(res) {
 /* Rows of one property card in a month, for one direction (+1 Income, −1 Expenses) */
 function ctlAbrRows(pid, y, m, dir) {
   const rows = [], ym = y * 12 + m, t = cxToday(), cur = _cxYm(t);
-  const results = ctlAbrResults().filter(r => r.pid === pid && r.dir === dir);
+  const allRes = ctlAbrResults(), results = allRes.filter(r => r.pid === pid && r.dir === dir);
   const usedRefs = new Set();
   for (const r of results) {
-    const b = ctlAbrBooking(r);
-    if (b) usedRefs.add(b.source_ref);
+    // Nov 2026 fix: a booking in the OTHER direction is no payment of this result — the result was changed in
+    // Settlements after it was paid (Nachzahlung → Guthaben). It counted as paid here and showed a second time,
+    // as "without Abrechnung", on the other side. Now: the result is open, the booking stays where its money went (flagged).
+    const b0 = ctlAbrBooking(r), b = b0 && (Number(b0.direction) === 1 ? 1 : -1) === r.dir ? b0 : null;
+    if (b0) usedRefs.add(b0.source_ref);
     const rym = _cxYm(r.date) || cur;
     if (r.via !== 'zahlung' || !r.amount) {                                // information only
       if (rym === ym) rows.push({ id: 'abrI:' + r.key, res: r, info: true });
@@ -102,14 +105,15 @@ function ctlAbrRows(pid, y, m, dir) {
     }
     if (b) { if (_cxYm(b.invoice_date) === ym) rows.push({ id: 'abr:' + r.key, res: r, booking: b, soll: r.amount, ist: cxR(b.amount) }); continue; }
     const showIn = rym >= cur ? rym : cur;                                 // overdue → moves along to the current month
-    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null });
+    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null, stale: b0 || null });
   }
   // bookings without a result (older manual NK / Hausgeld entries) — shown in the month paid
   for (const o of (window._src.abrPay || [])) {
     if (Number(o.property_id) !== pid || usedRefs.has(o.source_ref) || _cxYm(o.invoice_date) !== ym) continue;
     if ((Number(o.direction) === 1 ? 1 : -1) !== dir) continue;
     if (results.some(r => r.refs.includes(o.source_ref))) continue;
-    rows.push({ id: 'abrL:' + o.id, legacy: o, soll: cxR(o.amount), ist: cxR(o.amount) });
+    const moved = allRes.find(r => r.pid === pid && r.dir !== dir && r.refs.includes(o.source_ref)) || null;   // its result changed direction
+    rows.push({ id: 'abrL:' + o.id, legacy: o, soll: cxR(o.amount), ist: cxR(o.amount), moved });
   }
   // Fix 3: Casa Castel's Versorger Jahresabrechnungen — typed and paid in Settlements, shown read-only in the month paid
   if (Number(pid) === CASA_PROP_ID) {
@@ -149,9 +153,12 @@ function cxAbrSection(p, y, m, dir) {
       continue;
     }
     const label = r.legacy ? (r.legacy.item || r.legacy.kind) : r.res.label;
-    const sub = r.legacy ? 'booked ' + cxFmtDate(r.legacy.invoice_date) + ' · without Abrechnung'
+    const flip = d => (d > 0 ? 'Nachzahlung' : 'Guthaben');
+    const sub = r.legacy ? 'booked ' + cxFmtDate(r.legacy.invoice_date) +
+        (r.moved ? ' · the Abrechnung is now a ' + flip(r.moved.dir) + ' of ' + cxEur(r.moved.amount) + ' – settle it again in Settlements' : ' · without Abrechnung')
       : r.booking ? 'paid ' + cxFmtDate(r.booking.invoice_date)
-      : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date));
+      : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date)) +
+        (r.stale ? ' · booked before as ' + flip(Number(r.stale.direction) === 1 ? 1 : -1) + ' ' + cxEur(r.stale.amount) + ' – settle it again in Settlements' : '');
     h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true, dir,   // CP2: differences from your view (no "On purpose" here)
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
                  sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
@@ -183,15 +190,18 @@ async function _cxAbrBook(e, amount) {
     }
     return;
   }
-  const b = ctlAbrBooking(r);
+  const b = ctlAbrBooking(r), same = !!b && (Number(b.direction) === 1 ? 1 : -1) === r.dir;
   if (amount === null) {
-    if (!b) return;
+    if (!same) return;                                                     // a booking of the other direction is not this payment
     await ctlDeleteOneTime(b.id);
     window._src.abrPay = window._src.abrPay.filter(o => o.id !== b.id);
     return;
   }
   if (b) {
-    const d = await ctlUpdateOneTime(b.id, { amount: cxR(amount) });
+    // Nov 2026 fix: settling again after the result changed direction (Nachzahlung ↔ Guthaben) turns its booking
+    // around too — it kept the old direction, so the Dashboard counted the money the wrong way (as Settlements does now)
+    const f = same ? { amount: cxR(amount) } : { amount: cxR(amount), direction: r.dir, item: r.label, invoice_date: _cxAbrPayDate(r, y, m) };
+    const d = await ctlUpdateOneTime(b.id, f);
     const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     return;
   }

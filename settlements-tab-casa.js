@@ -2081,7 +2081,11 @@ async function scSetAmount(key, raw, btn, when) {
   try {
     if (res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
     if (b) {
-      const d = await ctlUpdateOneTime(b.id, { amount: amt, invoice_date: date });
+      // Nov 2026 fix: the result changed direction since it was paid (Nachzahlung ↔ Guthaben) → its booking turns too
+      // (it kept the old direction: Controlling counted the money the wrong way and showed it on both sides)
+      const f = { amount: amt, invoice_date: date };
+      if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben') });
+      const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     } else if (amt && (linkedManual = _stFindManualNk(CASA_PROP_ID, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
       await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);

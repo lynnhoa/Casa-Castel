@@ -61,9 +61,13 @@ function _cxOpenOf(p, y, m) {
   let inc = 0, exp = 0;
   for (const u of ctlUnitsFor(p.id)) {
     const s = ctlUnitSoll(u, p.id, y, m);
+    const row = u.id != null ? window._ctrl.income.find(r => r.unit_id === u.id && r.year === y && r.month === m) : null;
+    // Nov 2026 fix: a tenant change in the month = one line per tenant, as the Income tab counts them —
+    // the room counted as done once anybody's amount was in, so "preliminary" could go while a tenant was open
+    const tparts = (s.parts || []).filter(pt => pt.tid !== 'room');
+    if (tparts.length > 1) { for (const pt of tparts) if (pt.amount && ctlIstFor(row, s, pt.tid) === null) inc++; continue; }
     if (!s.soll) continue;
-    const has = u.id != null && window._ctrl.income.some(r => r.unit_id === u.id && r.year === y && r.month === m);
-    if (!has) inc++;
+    if (!row) inc++;
   }
   if (p.id === CASA_PROP_ID) {
     for (const r of ctlCasaCostRows(p, y, m).rows)

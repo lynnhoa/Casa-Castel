@@ -887,13 +887,18 @@ function ctlTenancyBalance(u, pid, tid) {
   }
   // Fix 5: finished months since Controlling started (first entry anywhere) with a Soll for this
   // tenant but nothing entered for them → "nicht erfasst" (maybe unpaid, maybe just not entered)
+  // Nov 2026 fix: only from the purchase month on (the rent before went to the seller — Income, Expenses and
+  // the Dashboard start there too), and also for a Casa Castel room that has no unit row yet (nothing ever
+  // booked: every month is missing, as the Income tab shows it open)
   let missing = 0, missingSum = 0;
   const start = all.reduce((a, r) => Math.min(a, r.year * 12 + r.month), Infinity);
   const t = _cxToday(), cur = Number(t.slice(0, 4)) * 12 + Number(t.slice(5, 7));
-  if (isFinite(start) && u.id != null) {
+  const prop = ctlProp(pid);
+  if (isFinite(start)) {
     for (let k = start; k < cur; k++) {
       if (entered.has(k)) continue;
       const y = Math.floor((k - 1) / 12), m = k - y * 12;
+      if (prop && !ctlPropOwned(prop, y, m)) continue;
       const part = (ctlUnitSoll(u, pid, y, m).parts || []).find(p => p.tid === String(tid));
       if (part && part.amount) { missing++; missingSum += part.amount; }
     }
@@ -973,6 +978,12 @@ function ctlLoanTerms(L, y, m) {
   if (!h) return L;
   const out = Object.assign({}, L);
   ['rate', 'tilgung', 'zinsen', 'bank_debit'].forEach(k => { if (h[k] !== null && h[k] !== undefined) out[k] = h[k]; });
+  // Nov 2026 fix: an older history row (a later change exists) = older terms. The Zinssatz and Restschuld in
+  // Properties belong to the newest terms, so they can't estimate these months (after a new rate from 3,5 %
+  // the months before showed ≈ 524 € Zinsen instead of 187,50 €) — ctlLoanMonth uses the row's own split.
+  const newest = (window._src.loanHist || []).filter(x => String(x.property_id) === String(L.id) && _cxD(x.valid_from))
+    .reduce((a, x) => (_cxD(x.valid_from) > a ? _cxD(x.valid_from) : a), '');
+  if (_cxD(h.valid_from) < newest) out._older = true;
   return out;
 }
 /* Zinsen + Tilgung of one month. 'split': the fixed debits. 'rate': estimate from the Restschuld
@@ -980,9 +991,15 @@ function ctlLoanTerms(L, y, m) {
 function ctlLoanMonth(L, y, m) {
   const rate = _cxN0(L.rate), z0 = _cxN0(L.zinsen), t0 = _cxN0(L.tilgung), debit = ctlLoanDebit(L);
   if (debit === 'split') return { debit, rate: _cxR(z0 + t0), zinsen: _cxR(z0), tilgung: _cxR(t0), est: false };
+  // older terms (ctlLoanTerms): the Zinsen / Tilgung saved with them — today's Zinssatz may not have applied then
+  if (L._older && z0 > 0 && rate > 0) { const z = Math.min(_cxR(z0), rate); return { debit, rate, zinsen: z, tilgung: _cxR(rate - z), est: true }; }
   const i = (Number(L.zinssatz) || 0) / 100 / 12, R0 = Number(L.restschuld) || 0, d0 = _cxD(L.restschuld_date);
   if (!(rate > 0) || !(i > 0) || !(R0 > 0) || !d0) return { debit, rate, zinsen: _cxR(z0), tilgung: _cxR(t0), est: true };
-  const k = (y - Number(d0.slice(0, 4))) * 12 + (m - Number(d0.slice(5, 7)));
+  // Nov 2026 fix: a Restschuld dated on a month's last day (the bank's "per 31.12.") is the balance after that
+  // month's debit = the balance the NEXT month's Zinsen are charged on (January showed February's Zinsen)
+  let by = Number(d0.slice(0, 4)), bm = Number(d0.slice(5, 7));
+  if (Number(d0.slice(8, 10)) === new Date(by, bm, 0).getDate()) { bm++; if (bm > 12) { bm = 1; by++; } }
+  const k = (y - by) * 12 + (m - bm);
   let R = R0;
   if (k > 0) for (let j = 0; j < k && R > 0; j++) R = R - (rate - _cxR(R * i));
   else for (let j = 0; j < -k; j++) R = (R + rate) / (1 + i);
@@ -1132,7 +1149,9 @@ function _cxAddMonths(iso, n) {
 }
 function ctlContractEnd(k) {
   if (k.cancelled_on) return _cxD(k.ends_on) || null;
-  if (k.then_rule === 'ends') return _cxD(k.runs_until) || (k.starts_on && Number(k.min_months) > 0 ? _cxAddMonths(_cxD(k.starts_on), Number(k.min_months)) : null);
+  // Nov 2026 fix: N months from the start end the day before (12 months from 01.01.2026 → 31.12.2026, not
+  // 01.01.2027 — that gave the cost a Soll in January 2027 too). Providers counts the same way (_ctrTerm).
+  if (k.then_rule === 'ends') return _cxD(k.runs_until) || (k.starts_on && Number(k.min_months) > 0 ? _cxAddDays(_cxAddMonths(_cxD(k.starts_on), Number(k.min_months)), -1) : null);
   return null;
 }
 function ctlContractsOf(catId) {

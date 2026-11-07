@@ -62,9 +62,11 @@ function cxInvoiceData(year, pid) {
         total += price;
         return { nr: ++nr, item: o.item || '', company: o.company || '', price, date: String(o.invoice_date).slice(0, 10) };
       });
-      return { items, total: Math.round(total * 100) / 100 }; };
+      // Nov 2026 fix: "Rechnungen" counts invoices only — refunds, bonuses and "paid to you directly" lines are listed
+      // (they lower the Summe) but are no Rechnung; the count said 12 where the One-off tab says 10 invoices
+      return { items, total: Math.round(total * 100) / 100, nInv: arr.filter(o => Number(o.direction) !== 1).length }; };
     const reg = mk(list.filter(o => o.kind !== 'Kaufnebenkosten')), knk = mk(list.filter(o => o.kind === 'Kaufnebenkosten'));
-    groups.push({ p, items: reg.items, total: reg.total, knk: knk.items, knkTotal: knk.total });
+    groups.push({ p, items: reg.items, total: reg.total, nInv: reg.nInv, knk: knk.items, knkTotal: knk.total });
   }
   return groups;
 }
@@ -92,7 +94,7 @@ function cxBuildInvoiceWorkbook(year, pid) {
   const groups = cxInvoiceData(year, pid);
   let count = 0;
   for (const g of groups) {
-    count += g.items.length + g.knk.length;
+    count += g.nInv + g.knk.length;
     const dt = d => new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
     const aoa = [['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum']];
     for (const it of g.items) aoa.push([it.nr, it.item, it.company, it.price, dt(it.date)]);
@@ -182,14 +184,14 @@ function cxBuildInvoicePdf(year, pid) {
   // Page 1 · overview (all properties) — a single-property export starts with its table
   if (!single) {
     pageTitle('Rechnungen ' + year, 'Alle Objekte · Stand ' + stand);
-    const tot = groups.reduce((s, g) => s + g.total, 0), n = groups.reduce((s, g) => s + g.items.length, 0);
+    const tot = groups.reduce((s, g) => s + g.total, 0), n = groups.reduce((s, g) => s + g.nInv, 0);
     const kTot = groups.reduce((s, g) => s + g.knkTotal, 0), hasK = groups.some(g => g.knk.length);
     if (hasK) table(50, ['Objekt', 'Rechnungen', 'Summe', 'Kaufnebenkosten'],
-      groups.map(g => [_cxPdfTxt(g.p.name), String(g.items.length), _cxPdfEur(g.total), g.knk.length ? _cxPdfEur(g.knkTotal) : '–']),
+      groups.map(g => [_cxPdfTxt(g.p.name), String(g.nInv), _cxPdfEur(g.total), g.knk.length ? _cxPdfEur(g.knkTotal) : '–']),
       ['Gesamt', String(n), _cxPdfEur(tot), _cxPdfEur(kTot)],
       { 1: { halign: 'right', cellWidth: 26 }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'right', cellWidth: 36 } });
     else table(50, ['Objekt', 'Rechnungen', 'Summe'],
-      groups.map(g => [_cxPdfTxt(g.p.name), String(g.items.length), _cxPdfEur(g.total)]),
+      groups.map(g => [_cxPdfTxt(g.p.name), String(g.nInv), _cxPdfEur(g.total)]),
       ['Gesamt', String(n), _cxPdfEur(tot)],
       { 1: { halign: 'right', cellWidth: 30 }, 2: { halign: 'right', cellWidth: 38 } });
     if (hasK) {
@@ -202,7 +204,7 @@ function cxBuildInvoicePdf(year, pid) {
   groups.forEach((g, i) => {
     if (!single || i > 0) doc.addPage();
     const first = doc.getNumberOfPages();
-    pageTitle(g.p.name, [g.items.length ? g.items.length + (g.items.length === 1 ? ' Rechnung' : ' Rechnungen') : '',
+    pageTitle(g.p.name, [g.nInv ? g.nInv + (g.nInv === 1 ? ' Rechnung' : ' Rechnungen') : '',
       g.knk.length ? g.knk.length + ' Kaufnebenkosten' : '', String(year), 'Stand ' + stand].filter(Boolean).join(' · '));
     const cols = { 0: { cellWidth: 11, textColor: C.mut }, 2: { cellWidth: 42 }, 3: { halign: 'right', cellWidth: 27 }, 4: { halign: 'right', cellWidth: 29 } };
     let y = 50;
@@ -236,7 +238,7 @@ function cxBuildInvoicePdf(year, pid) {
     doc.setDrawColor(...C.line); doc.setLineWidth(0.2); doc.line(M, 17, W - M, 17);
     doc.text(_cxPdfTxt(titleOf()) + ' · Seite ' + i + ' von ' + pages, W / 2, 287, { align: 'center' });
   }
-  return { doc, count: groups.reduce((s, g) => s + g.items.length + g.knk.length, 0), name: _cxExportName(year, pid, 'pdf') };
+  return { doc, count: groups.reduce((s, g) => s + g.nInv + g.knk.length, 0), name: _cxExportName(year, pid, 'pdf') };
 }
 
 /* Tap on "PDF erstellen" (btn = the tapped button; its parent gets "Open PDF" + "Save / Share" in the installed app) */
