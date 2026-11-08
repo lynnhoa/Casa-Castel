@@ -1014,6 +1014,10 @@ function _updateRoomsSummary(rooms) {
   if (!RP_PL.busy && (!RP_PL.url ? Date.now() - RP_PL.at > 20000 || !RP_PL.at : Date.now() - RP_PL.at > 6 * 3600 * 1000)) _rpPlPrep();
 }
 
+async function _roomsRetry(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try { await loadRooms(); } finally { _renderRoomsList(); }
+}
 function _renderRoomsList() {
   const list = document.getElementById('roomsList');
   if (!list) return;
@@ -1021,7 +1025,10 @@ function _renderRoomsList() {
   const rooms = appRooms.slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
   if (!rooms.length) {
-    list.innerHTML = `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0;">No rooms yet. Add your first room.</p>`;
+    // #16: a failed load is never "no rooms" — say so and offer a retry (Add room waits for a good load)
+    list.innerHTML = loadRoomsData.lastOk === false
+      ? `<p style="font-size:13px;color:var(--cc-stone);padding:20px 0;">Rooms could not be loaded. <button type="button" class="rm-btn" style="margin-left:6px" onclick="_roomsRetry(this)">Try again</button></p>`
+      : `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0;">No rooms yet. Add your first room.</p>`;
     _updateRoomsSummary([]);
     return;
   }
@@ -1288,7 +1295,10 @@ function _roomCardHTML(r) {
     }
     if (b.total) {
       if (type === 'kurzzeit') sub2 = 'Kaution 1× · 3× over 3 months';
-      else { const k = ccRoomBaselineKaution(r, type); sub2 = `Kaution ${fmtEUR(k.amount)} ${b.kautionFixed ? '· individual' : '(3× Kalt)'}`; }
+      else {   // #13: the rule follows the mode — Pauschal → 3× Pauschal (the amount already did)
+        const k = ccRoomBaselineKaution(r, type);
+        sub2 = `Kaution ${fmtEUR(k.amount)} ${b.kautionFixed ? '· individual' : '(' + (typeof ccKautionRuleText === 'function' ? ccKautionRuleText('mietvertrag', b.mode) : (b.mode === 'pauschal' ? '3× Pauschal' : '3× Kalt')) + ')'}`;
+      }
     }
     if (type === 'jahres' && b.total && !b.own) sub2 = (sub2 ? sub2 + ' · ' : '') + 'as Mietvertrag';
     return `<div class="rc-brow">
@@ -1579,6 +1589,11 @@ async function _roomAddSave(btn) {
   const scope = document.getElementById('roomSheetBody'); if (!scope) return;
   const data = _roomCollectFields(scope);
   data.name = String(data.name || '').trim();
+  // #16: the duplicate-name check needs the real list — after a failed load, load it first
+  if (loadRoomsData.lastOk === false) {
+    await loadRoomsData();
+    if (loadRoomsData.lastOk === false) { ccToast('Rooms could not be loaded — try again in a moment.', true); return; }
+  }
   const problem = _roomNameProblem(data.name, null);
   if (problem !== '') { _roomNameError(scope, problem); return; }
   if (!Array.isArray(data.badezimmer)) data.badezimmer = [];
@@ -4547,7 +4562,12 @@ function _roomBaseCalc() {
   const on = !!document.getElementById('rb-kon')?.checked;
   const wrap = document.getElementById('rb-kwrap'); if (wrap) wrap.style.display = on ? '' : 'none';
   const hint = document.getElementById('rb-khint');
-  if (hint) hint.textContent = on ? 'This amount is used for new contracts of this type.' : 'Kaution: 3× Kalt' + (k != null ? ' = ' + fmtEUR(3 * k) : '') + '.';
+  // #13: the same rule as the card and the contract (kaution.js) — Pauschal: 3× the Pauschalmiete
+  const mode = document.getElementById('rb-mode')?.dataset.mode === 'pauschal' ? 'pauschal' : 'kalt_nk';
+  const kAmt = k == null ? null : typeof ccKaution === 'function' ? ccKaution({ contract: 'mietvertrag', mode, kalt: k, nk: nk || 0 }).amount
+    : 3 * (mode === 'pauschal' ? k + (nk || 0) : k);
+  const kLbl = typeof ccKautionRuleText === 'function' ? ccKautionRuleText('mietvertrag', mode) : (mode === 'pauschal' ? '3× Pauschal' : '3× Kalt');
+  if (hint) hint.textContent = on ? 'This amount is used for new contracts of this type.' : 'Kaution: ' + kLbl + (kAmt != null ? ' = ' + fmtEUR(kAmt) : '') + '.';
 }
 function _roomBaseSave() {
   const cur = _roomBaseCur; if (!cur) return;

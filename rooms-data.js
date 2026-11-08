@@ -36,10 +36,10 @@ function _notifyRoomsListeners(event, room) {
 async function loadRoomsData() {
   if (!sbL) return appRooms;
 
-  const { data, error } = await sbL
-    .from('rooms')
-    .select('*')
-    .order('sort_order', { ascending: true });
+  const read = () => sbL.from('rooms').select('*').order('sort_order', { ascending: true });
+  let { data, error } = await read();
+  // #16: a cold connection often fails the first read — one more try before "could not be loaded"
+  if (error) { await new Promise(r => setTimeout(r, 800)); ({ data, error } = await read()); }
 
   if (error) {
     console.warn('[rooms-data] fetch error:', error.message);
