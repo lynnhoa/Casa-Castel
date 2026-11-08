@@ -766,6 +766,9 @@ async function loadLoungeAll() {
 })();
 
 function _setEmailHref(id) {
-  const el = document.getElementById(id);
-  if (el) el.href = buildMailto(allTenantEmails(), 'Message from Casa Castel', '');
+  const el = document.getElementById(id); if (!el) return;
+  const set = () => { el.href = buildMailto(allTenantEmails(), 'Message from Casa Castel', ''); };
+  set();
+  // #21: the tenants load after this script — the link is built again on every tap, with every room's tenant
+  if (!el.dataset.mailLive) { el.dataset.mailLive = '1'; el.addEventListener('click', set); }
 }

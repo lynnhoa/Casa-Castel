@@ -63,11 +63,19 @@ function initNavProfile() {
 }
 
 /* ── PREVIEW TENANT (landlord only) ─────────────────────── */
+function _ccFillRoomPicker() {
+  const box = document.querySelector('#roomPickerOverlay .room-picker'); if (!box || typeof ccRoomNames !== 'function') return;
+  const names = ccRoomNames(); if (!names.length) return;
+  box.querySelectorAll('.room-picker__item').forEach(b => b.remove());
+  const cancel = document.getElementById('cancelPickerBtn');
+  names.forEach(n => { const b = document.createElement('button'); b.className = 'room-picker__item'; b.dataset.room = n; b.textContent = n; box.insertBefore(b, cancel); });
+}
 function initPreviewTenant() {
   const previewBtn = document.getElementById('previewBtn');
   if (!previewBtn) return;
 
   previewBtn.addEventListener('click', () => {
+    _ccFillRoomPicker();   // #21: the rooms from the Rooms tab (Berlin, new and renamed rooms)
     document.getElementById('roomPickerOverlay')?.classList.add('visible');
   });
 
@@ -81,8 +89,9 @@ function initPreviewTenant() {
     }
   });
 
-  document.querySelectorAll('.room-picker__item').forEach(item => {
-    item.addEventListener('click', () => {
+  document.getElementById('roomPickerOverlay')?.addEventListener('click', e => {
+    const item = e.target.closest('.room-picker__item'); if (!item) return;
+    {
       const room = item.dataset.room;
       document.getElementById('roomPickerOverlay')?.classList.remove('visible');
       const label = document.getElementById('tenantPreviewLabel');
@@ -90,7 +99,7 @@ function initPreviewTenant() {
       const frame = document.getElementById('tenantPreviewFrame');
       if (frame) frame.src = 'tenant.html?preview=' + encodeURIComponent(room);
       document.getElementById('tenantPreviewOverlay')?.classList.add('visible');
-    });
+    }
   });
 
   document.getElementById('tenantPreviewClose')?.addEventListener('click', () => {

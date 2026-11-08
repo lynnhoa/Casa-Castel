@@ -207,8 +207,18 @@ function tenantEmail(room) {
   } catch { return ''; }
 }
 
+/* The rooms of the house (Nov 2026, #21): the Rooms tab's active rooms — Berlin and any new or renamed room included.
+   The built-in list (+ the kitchen list, which has Berlin) only while Rooms isn't loaded (e.g. offline). */
+function ccRoomNames() {
+  const live = typeof appRooms !== 'undefined' && Array.isArray(appRooms)
+    ? appRooms.filter(r => r && r.name && r.active !== false && r.name !== 'Casa Castel').map(r => r.name) : [];
+  if (live.length) return live;
+  const base = typeof ALL_ROOMS !== 'undefined' ? ALL_ROOMS : [], kit = typeof KITCHEN_ROOMS !== 'undefined' ? KITCHEN_ROOMS : [];
+  return [...new Set(base.concat(kit))];
+}
+
 function allTenantEmails() {
-  return ALL_ROOMS.map(r => tenantEmail(r)).filter(Boolean).join(',');
+  return ccRoomNames().map(r => tenantEmail(r)).filter(Boolean).join(',');
 }
 
 function buildMailto(to, subject, body) {
@@ -218,7 +228,7 @@ function buildMailto(to, subject, body) {
 /* ── MENTION PARSER ─────────────────────────────────────── */
 function parseMsg(text, currentRoom) {
   let s = esc(text);
-  ALL_ROOMS.concat(['Casa Castel']).forEach(r => {
+  ccRoomNames().concat(['Casa Castel']).sort((a, b) => b.length - a.length).forEach(r => {   // #21: every room, longest first
     const tag = '@' + r;
     const isSelf = currentRoom && r === currentRoom;
     s = s.replace(
