@@ -12,8 +12,9 @@
    Letter 1 · Mietvertrag (unbefristet): 3 months to the month end — received by the 3rd working day of a month
               (Mon–Fri, not a public holiday in Hessen) → end of the month after next, else one month later.
               A Kündigungsverzicht in the contract is not known here: check the date.
-   Letter 2 · Kurzzeit / Jahresvertrag (befristet): no ordinary Kündigung — you type the early end; it applies once
-              the tenant signs the letter and sends it back (their signed copy → Documents, Signed).
+   Letter 2 · Kurzzeit / Jahresvertrag (befristet): no ordinary Kündigung — you type the early end; the letter confirms it.
+   Nov 2026 (owner): the letter follows the contract type (no switch) · Ort of the signature: Wiesbaden or Mainz ·
+              final texts (KUENDIGUNG-TEXTE.md) · Ort, Datum above the title, only the landlord signs.
    Nothing else is tracked: the dates are only printed in the letter.
    ───────────────────────────────────────────────────────────── */
 
@@ -73,7 +74,7 @@ function kbEndUnbefristet(eingang) {
 const _kbRec = tid => (typeof _tnRecords !== 'undefined' ? _tnRecords : []).find(r => String(r.id) === String(tid)) || null;
 const _kbName = r => [r.first_name, r.last_name].filter(Boolean).join(' ').trim();
 const _kbEsc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-/* Letter 2 for a fixed-term contract (Kurzzeit · Jahresvertrag), letter 1 otherwise — you can switch in the sheet */
+/* Letter 2 for a fixed-term contract (Kurzzeit · Jahresvertrag), letter 1 for a Mietvertrag — always by the contract type */
 function kbVersionOf(rec) {
   const ct = typeof tnContractType === 'function' ? tnContractType(rec) : rec && rec.contract_type;
   return ct === 'kurzzeit' || ct === 'jahres' ? 'befristet' : 'unbefristet';
@@ -88,11 +89,22 @@ const _kbDocOf = (tid, type, variant) => (typeof ccfDocOf === 'function' ? ccfDo
 
 /* ── State of the open sheet (kept while you type; nothing of it is stored) ── */
 const _kbState = {};
+const KB_ORTE = ['Wiesbaden', 'Mainz'];
+function _kbOrt0() {
+  let o = ''; try { o = localStorage.getItem('kb_ort') || ''; } catch (e) {}
+  if (KB_ORTE.includes(o)) return o;
+  const s = (typeof appSettings !== 'undefined' && appSettings) || {};
+  const set = String(s.unterschrift_ort || '').trim();
+  return KB_ORTE.includes(set) ? set : 'Wiesbaden';
+}
 function _kbSt(rec) {
   const k = String(rec.id);
   // an earlier letter already set the Contract end to its early end → the agreed end is no longer stored: type it
   const again = !!(_kbDocOf(k, 'kuendigungsbestaetigung', 'unsigned') || _kbDocOf(k, 'kuendigungsbestaetigung', 'signed'));
-  return _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', eingangAuto: true, end: '', endAuto: true, agreed: again ? '' : _kbAgreedEnd(rec), again, done: null });
+  const st = _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', eingangAuto: true, end: '', endAuto: true, agreed: again ? '' : _kbAgreedEnd(rec), again, done: null, ort: _kbOrt0() });
+  const v = kbVersionOf(rec);                               // the contract type decides the letter (also after a change)
+  if (st.v !== v) { st.v = v; st.endAuto = v !== 'befristet'; st.end = v === 'befristet' ? '' : kbEndUnbefristet(st.eingang); st.done = null; }
+  return st;
 }
 
 /* ── More row on the tenant card ───────────────────────────── */
@@ -154,7 +166,10 @@ function kbHTML(tid) {
   const own = _kbDocOf(tid, 'kuendigung', 'signed');
   const letter = _kbDocOf(tid, 'kuendigungsbestaetigung', 'unsigned');
   const fmt = d => (typeof ccfFmtShort === 'function' ? ccfFmtShort(d.uploaded_at) : '');
-  const seg = (v, l) => `<button type="button" class="cc-seg__opt${st.v === v ? ' is-on' : ''}" role="radio" aria-checked="${st.v === v}" onclick="kbSet('${T}','v','${v}')">${l}</button>`;
+  const ct = typeof tnContractType === 'function' ? tnContractType(rec) : rec.contract_type;
+  const ctWord = ct === 'kurzzeit' ? 'Kurzzeit' : ct === 'jahres' ? 'Jahresvertrag' : 'Mietvertrag';
+  const ortSel = `<label class="kb-f"><span class="kb-l">Ort (Unterschrift)</span>
+          <select class="kb-in" data-kb-ort onchange="kbSet('${T}','ort',this.value)">${KB_ORTE.map(o => `<option${st.ort === o ? ' selected' : ''}>${o}</option>`).join('')}</select></label>`;
   const moveHint = rec.rent_until === 'move' ? '<p class="kb-hint">This tenant pays rent until the Move-out (Tenant › Edit › Rent until), not until the contract end.</p>' : '';
   const cs = typeof _tnContractState === 'function' ? _tnContractState(rec) : null;
   const nextHint = cs && cs.next && cs.next.start > _kbToday() ? `<p class="kb-hint kb-hint--warn">A renewal from ${_kbDe(cs.next.start)} is planned. Remove it first (Documents › Edit › Remove renewal), then create the letter.</p>` : '';
@@ -165,14 +180,16 @@ function kbHTML(tid) {
       <div class="kb-row" data-kb-own>${_kbOwnHTML(tid)}</div>
     </div></div>
     <div class="kb-step"><span class="kb-n">2</span><div class="kb-b">
-      <b class="kb-t">Letter</b><span class="kb-s">${fixed ? 'befristet (Kurzzeit · Jahresvertrag): the tenant asks to leave early — you agree' : 'Mietvertrag unbefristet: 3 months to the month end'}</span>
-      <div class="cc-seg kb-seg" role="radiogroup" aria-label="Letter">${seg('unbefristet', 'Kündigung')}${seg('befristet', 'Vorzeitiges Ende')}</div>
+      <b class="kb-t">Letter</b><span class="kb-s" data-kb-letter>${fixed
+        ? ctWord + ' (befristet) → <b>Vorzeitiges Ende des Mietvertrags</b> · the tenant asks to leave early — you agree'
+        : ctWord + ' (unbefristet) → <b>Bestätigung der Kündigung</b> · 3 months to the month end'}</span>
       <div class="kb-grid">
         ${fixed ? '' : _kbDateField(tid, 'vom', 'Kündigung vom', st.vom)}
-        ${_kbDateField(tid, 'eingang', fixed ? 'Wunsch vom' : 'Eingang am', st.eingang)}
+        ${_kbDateField(tid, 'eingang', fixed ? 'Schreiben vom' : 'Eingang am', st.eingang)}
         ${fixed ? _kbDateField(tid, 'agreed', 'Befristet bis', st.agreed, st.again && !st.agreed ? 'type the agreed end from the contract — the earlier letter changed the Contract end' : 'the agreed end of the contract') : ''}
         ${_kbDateField(tid, 'end', fixed ? 'Vorzeitig zum' : 'Kündigung zum', st.end, _kbEndSub(rec, st))}
       </div>
+      <div class="kb-grid">${ortSel}</div>
       ${fixed ? '' : '<p class="kb-hint">A Kündigungsverzicht in the contract? Then check the date.</p>'}
       ${moveHint}
     </div></div>
@@ -196,7 +213,7 @@ const _kbSum = st => st.end ? 'Saves the letter in Documents and sets the Contra
 function kbSet(tid, key, value) {
   const rec = _kbRec(tid); if (!rec) return;
   const st = _kbSt(rec);
-  if (key === 'v') { if (st.v !== value) { st.v = value; st.endAuto = value !== 'befristet'; st.end = value === 'befristet' ? '' : kbEndUnbefristet(st.eingang); st.done = null; } _kbRebuild(tid); return; }
+  if (key === 'ort') { if (KB_ORTE.includes(value)) { st.ort = value; try { localStorage.setItem('kb_ort', value); } catch (e) {} } return; }
   const iso = _kbToIso(value);
   if (key === 'vom') {
     st.vom = iso;
@@ -241,34 +258,36 @@ async function _kbLetterData(rec, st) {
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const house = _kbHouse(s), fixed = st.v === 'befristet';
   const vorname = String(rec.first_name || '').trim() || _kbName(rec);
-  const nk = typeof _tnAllPauschal === 'function' ? !_tnAllPauschal(rec) : true;     // a Pauschal tenant gets no NK-Abrechnung
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   const room = String(rec.room || '').trim(), end = '<strong>' + _kbDe(st.end) + '</strong>';
-  const bank = 'Bitte schick uns bis dahin deine neue Adresse und deine Bankverbindung für die Kaution' + (nk ? ' und die Nebenkostenabrechnung' : '') + '.';
+  const where = `das Zimmer ${_kbEsc(room)}, ${_kbEsc(house.join(', '))},`;
+  const hand = 'Für Besichtigungen mit möglichen Nachmietern und die Übergabe des Zimmers mit allen Schlüsseln melden wir uns rechtzeitig.';
   const paras = fixed ? [
-    `dein Mietvertrag ist bis zum ${_kbDe(st.agreed)} befristet; eine ordentliche Kündigung ist darin ausgeschlossen. Auf deinen Wunsch vom ${_kbDe(st.eingang)} sind wir einverstanden, das Mietverhältnis vorzeitig zum ${end} zu beenden. Das gilt, sobald du diese Bestätigung unterschrieben an uns zurückschickst.`,
-    `Bis dahin zahlst du die Miete wie gewohnt. Die Übergabe mit allen Schlüsseln vereinbaren wir rechtzeitig vorher mit dir. ${bank}`,
+    `hiermit bestätigen wir den Eingang des Schreibens vom ${_kbDe(st.eingang)}. Der Mietvertrag ist bis zum ${_kbDe(st.agreed)} befristet. Wir sind jedoch einverstanden, dass das Mietverhältnis für ${where} vorzeitig zum ${end} endet.`,
+    hand,
   ] : [
-    `vielen Dank für deine Kündigung vom ${_kbDe(st.vom)}, bei uns eingegangen am ${_kbDe(st.eingang)}. Wir bestätigen die fristgerechte Kündigung zum ${end} für das Zimmer ${_kbEsc(room)}, ${_kbEsc(house.join(', '))}.`,
-    `Bis dahin zahlst du die Miete wie gewohnt. Die Übergabe des Zimmers mit allen Schlüsseln vereinbaren wir rechtzeitig vorher mit dir. ${bank}`,
+    `hiermit bestätigen wir den Eingang der Kündigung vom ${_kbDe(st.vom)}. Das Mietverhältnis für ${where} endet fristgerecht zum ${end}.`,
+    hand,
   ];
   return {
     brand: 'Casa Castel', unitLabel: 'Zimmer', unitName: room, footer: house.join(' · '),
     sender, names: [_kbName(rec)], addr: house,
-    ort: String(s.unterschrift_ort || '').trim() || 'Wiesbaden', date: _kbToday(),
-    title: fixed ? 'Vorzeitiges Ende deines Mietvertrags – Zimmer ' + room : 'Bestätigung deiner Kündigung – Zimmer ' + room,
+    ort: KB_ORTE.includes(st.ort) ? st.ort : _kbOrt0(), date: _kbToday(),
+    title: fixed ? 'Vorzeitiges Ende des Mietvertrags – Zimmer ' + room : 'Bestätigung der Kündigung – Zimmer ' + room,
     greeting: 'Hallo ' + vorname + ',', paras, vermieter: String(s.vermieter_name || '').trim(), fixed, tenant: _kbName(rec),
   };
 }
 const KB_LETTER_CSS = `
-    .kb-p { font-family:'Lato',sans-serif; font-size:11.5px; font-weight:400; color:#4a433c; line-height:1.65; margin-top:12px; }
+    .content { display:flex; flex-direction:column; }
+    .kb-sp1 { flex:1 1 0; } .kb-sp2 { flex:4 1 0; }
+    .kb-date { font-family:'Lato',sans-serif; font-size:11.5px; color:#4a433c; text-align:right; margin-bottom:26px; }
+    .kb-p { font-family:'Lato',sans-serif; font-size:11.5px; font-weight:400; color:#4a433c; line-height:1.7; margin:0 0 12px; }
     .kb-p strong { font-weight:700; color:#2b2520; }
-    .kb-sig { display:flex; gap:40px; margin-top:22px; }
-    .kb-sig__c { flex:0 0 calc(50% - 20px); min-width:0; }
-    .kb-sig__gap { height:46px; border-bottom:0.6px solid #c9bfb1; margin-top:6px; }
+    .kb-hi { margin-top:52px; }
+    .kb-sig { margin-top:54px; }
     .kb-sig__k { font-family:'Lato',sans-serif; font-size:11.5px; color:#4a433c; }
-    .kb-sig__n { font-family:'Lato',sans-serif; font-size:11.5px; font-weight:700; color:#2b2520; margin-top:6px; }
-    .kb-sig__d { font-family:'Lato',sans-serif; font-size:10.5px; color:#8c8379; margin-top:3px; }
+    .kb-sig__gap { height:74px; }
+    .kb-sig__n { font-family:'Lato',sans-serif; font-size:11.5px; font-weight:700; color:#2b2520; }
   `;
 function kbLetterHtml(d) {
   const esc = _kbEsc;
@@ -278,20 +297,21 @@ function kbLetterHtml(d) {
   const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand)}</span><div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel)}</span><span class="hdr__room-name">${esc(d.unitName)}</span></div></div>`;
   const ftr = `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer)}</span><span>Seite <span class="pgn">1</span> von <span class="pgt">1</span></span></div></div>`;
   const place = esc(d.ort + ', ' + _kbDe(d.date));
-  const landlord = `<div class="kb-sig__c"><div class="kb-sig__k">Mit freundlichen Grüßen</div><div class="kb-sig__gap"></div>
-      <div class="kb-sig__n">${esc(d.vermieter)}</div><div class="kb-sig__d">${place}</div></div>`;
-  const tenant = d.fixed ? `<div class="kb-sig__c"><div class="kb-sig__k">Einverstanden:</div><div class="kb-sig__gap"></div>
-      <div class="kb-sig__n">${esc(d.tenant)}</div><div class="kb-sig__d">Ort, Datum</div></div>` : '';
   return `<div class="kb-letter"><style>${FONTS}</style><style>${scoped}</style>
     <div class="pdf-page page">${hdr}${ftr}<div class="content">
       <div class="addr"><div class="addr__l">
         <div class="addr__ret">${esc((d.sender || []).join(' · '))}</div>
         ${(d.names || []).map(n => `<div class="addr__line">${esc(n)}</div>`).join('')}${(d.addr || []).map(n => `<div class="addr__line">${esc(n)}</div>`).join('')}
-      </div><div class="meta"><div class="meta__k">Datum</div><div class="meta__v">${place}</div></div></div>
-      <div class="doc-title doc-title--s">${esc(d.title)}</div>
-      <p class="kb-p" style="margin-top:18px">${esc(d.greeting)}</p>
-      ${d.paras.map(p => `<p class="kb-p">${p}</p>`).join('')}
-      <div class="kb-sig">${landlord}${tenant}</div>
+      </div></div>
+      <div class="kb-sp1"></div>
+      <div class="kb-mid">
+        <div class="kb-date">${place}</div>
+        <div class="doc-title doc-title--s">${esc(d.title)}</div>
+        <p class="kb-p kb-hi">${esc(d.greeting)}</p>
+        ${d.paras.map(p => `<p class="kb-p">${p}</p>`).join('')}
+        <div class="kb-sig"><div class="kb-sig__k">Mit freundlichen Grüßen</div><div class="kb-sig__gap"></div><div class="kb-sig__n">${esc(d.vermieter)}</div></div>
+      </div>
+      <div class="kb-sp2"></div>
     </div></div></div>`;
 }
 /* Render → { blob, name } — the same pipeline as the NK letters (pdf-open.js) */
@@ -318,7 +338,7 @@ function _kbCheck(rec, st, save) {
   const fixed = st.v === 'befristet';
   if (!_kbName(rec)) return 'The tenant has no name yet.';
   if (!fixed && !st.vom) return 'Enter "Kündigung vom".';
-  if (!st.eingang) return fixed ? 'Enter the date of the tenant\'s wish (Eingang am).' : 'Enter "Eingang am".';
+  if (!st.eingang) return fixed ? 'Enter "Schreiben vom" (the date of the tenant\'s letter).' : 'Enter "Eingang am".';
   if (fixed && !st.agreed) return 'Enter "Befristet bis" (the agreed end).';
   if (!st.end) return fixed ? 'Enter "Vorzeitig zum".' : 'Enter "Kündigung zum".';
   if (rec.mietbeginn && typeof _ccIso === 'function' && st.end < _ccIso(rec.mietbeginn)) return 'The end is before the move-in (' + _kbDe(_ccIso(rec.mietbeginn)) + ').';
@@ -404,8 +424,6 @@ async function kbPdf(tid, save, btn) {
 .kb-btn--ghost { border-color:var(--cc-stone, #C8BFB0); font-weight:400; }
 .kb-btn--go { background:var(--cc-ink, #2B2520); color:#fff; border-color:var(--cc-ink, #2B2520); flex:1 1 auto; }
 .kb-btn:disabled { opacity:.6; }
-.kb-seg { margin:2px 0 4px; }
-.kb-seg .cc-seg__opt { font-size:12.5px; }
 .kb-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px 12px; }
 .kb-f { display:flex; flex-direction:column; gap:5px; min-width:0; }
 .kb-l { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--cc-charcoal, #3D3027); }
