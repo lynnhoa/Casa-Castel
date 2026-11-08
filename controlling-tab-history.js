@@ -58,7 +58,9 @@ function _cxHIssues(w) {
   if (!w.periods.length && !legacy) out.push('no rent saved');
   else if (!w.periods.length) out.push(w.app === 'casa' ? 'rent unconfirmed (Pauschal / Kalt + NK from today\'s room setting)' : 'rent unconfirmed');   // fix 6
   const per = w.periods.length ? w.periods[w.periods.length - 1] : null;                     // fix 4
-  const ce = per && per.contract_end ? ccRpIso(per.contract_end) : '';
+  // Nov 2026: the Contract end the tenant card shows first (same as the Soll tab), else the last entry's own end
+  const ceCard = typeof _cxContractEnd === 'function' ? _cxContractEnd({ type: w.app === 'casa' ? 'casa_room' : 'rentals' }, w.t) : '';
+  const ce = ceCard || (per && per.contract_end ? ccRpIso(per.contract_end) : '');
   if (ce && ce < cxToday() && !w.t.mietende && w.t.status === 'active') out.push('contract ended on ' + cxFmtDate(ce) + ' – move-out or renewal missing');
   if (w.balance && w.balance.missing) out.push(w.balance.missing + (w.balance.missing === 1 ? ' month' : ' months') + ' without a payment entry (' + cxEur(w.balance.missingSum) + ')');   // fix 5
   return out;
