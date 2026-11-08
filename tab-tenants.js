@@ -90,7 +90,7 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-cr-seg button.on, .tn-cr-mode[data-mode="kalt_nk"] button[data-v="kalt_nk"], .tn-cr-mode[data-mode="pauschal"] button[data-v="pauschal"] { background:var(--cc-ink); color:var(--cc-white); }
 .tn-cr-hint { margin:-4px 0 0; font-size:12.5px; line-height:1.5; color:#7A6F62; }
 /* Nov 2026 (#19): Korrektur while a change runs — today's amounts (default) or the rent before */
-.tn-cr[data-korrbase="1"] .tn-cr-hint--now, .tn-cr:not([data-korrbase="1"]) .tn-cr-hint--base { display:none !important; }
+.tn-cr-src { display:block; margin-top:3px; font-size:11.5px; line-height:1.35; color:#7A6F62; }
 .tn-cr-link { display:inline; margin:0 0 0 4px; padding:0; border:none; background:none; font:inherit; color:var(--cc-ink); text-decoration:underline; cursor:pointer; }
 .tn-cr-two { display:flex; gap:10px; }
 .tn-cr-two > .tn-cr-f { flex:1 1 0; min-width:0; }
@@ -2348,8 +2348,8 @@ function _tnCrNum(id) {   // #1 (Oct 2026): the app's German reader — 1.050 ·
   return n === null || !isFinite(n) ? null : Math.round(n * 100) / 100;
 }
 function _tnCrDe(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }); }
-function _tnCrNow(rec) {
-  const cur = _tnCurrentRent(rec, rec.room);
+function _tnCrNow(rec, day) {
+  const cur = _tnCurrentRent(rec, rec.room, day);
   if (!cur) return null;
   // Nov 2026 (#19): the rent entry itself, before a running Mieterhöhung / NK-Anpassung — "the rent before …"
   const per = cur.period || null;
@@ -2374,18 +2374,55 @@ function _tnCrStepFrom(now) {
   const ds = [now && now.step && now.step.effective_date, now && now.nkStep && now.nkStep.effective_date].filter(Boolean).map(d => String(d).slice(0, 10)).sort();
   return ds[0] || '';
 }
-/* Korrektur: today's rent (default) ↔ the rent before the running change — the fields follow */
+/* Korrektur (Nov 2026, #19 · owner: "old is old, a new increase starts from its day forward"): an amount is fixed
+   WHERE IT WAS ENTERED — the Mieterhöhung / NK-Anpassung in force on the day shown, else the rent entry — and the
+   line under each field says which. The day shown: today, or ("Correct the rent before …") the day before the
+   running change. Nothing else moves. */
+function _tnCrView(rec, before) {
+  const now = _tnCrNow(rec); if (!now) return null;
+  const sf = _tnCrStepFrom(now);
+  if (!before || !sf) return { ...now, day: '', sf };
+  const day = _ccAddDaysIso(sf, -1), b = _tnCrNow(rec, day);
+  return b ? { ...b, day, sf } : { ...now, day: '', sf };
+}
+/* Where each field of a view was entered → { k: { step, label }, n: { step, label } } */
+function _tnCrSrc(rec, v) {
+  const fd = d => _ccFmtD(String(d).slice(0, 10));
+  const since = v.per ? ccRpIso(v.per.valid_from) : _ccIso(rec.mietbeginn);
+  const entry = { step: null, label: since ? 'since ' + fd(since) + ' (rent entry)' : 'rent entry' };
+  const k = v.step ? { step: v.step, label: 'Mieterhöhung from ' + fd(v.step.effective_date) } : entry;
+  const n = v.mode !== 'pauschal' && v.nkStep ? { step: v.nkStep, label: 'NK-Anpassung from ' + fd(v.nkStep.effective_date) } : entry;
+  return { k, n };
+}
+/* Pauschal ↔ Kalt + NK would change what every Mieterhöhung / NK-Anpassung of this contract means → not while one exists */
+function _tnCrStepsOn(rec, now) {
+  if (!rec || !now) return false;
+  const from = now.per ? ccRpIso(now.per.valid_from) : ccRpIso(rec.mietbeginn);
+  return _tnOwnMh(rec.room, rec).some(e => !e.ignored && (!from || ccRpIso(e.effective_date) >= from))
+      || !!_tnNkStepAt(rec, rec.room, '9999-12-31', from);
+}
+function _tnCrKorrHint(tid, v) {
+  const rec = _tnRecords.find(r => String(r.id) === String(tid));
+  const lock = rec && _tnCrStepsOn(rec, _tnCrNow(rec)) ? ' Pauschal ↔ Kalt + NK: not while a Mieterhöhung or NK-Anpassung exists.' : '';
+  if (!v || !v.sf) return 'Fixes the current rent if it was entered wrong. No date — the old amount is replaced.' + lock;
+  return 'Fixes an amount that was entered wrong — where it was entered (under each field). Nothing else moves.' + lock
+    + (_tnCR[tid] && _tnCR[tid].korrBase
+      ? ` Shown: the rent on ${_ccFmtD(v.day)}. <button type="button" class="tn-cr-link" onclick="_tnCrBase('${tid}',false)">Back to today's rent</button>`
+      : ` <button type="button" class="tn-cr-link" onclick="_tnCrBase('${tid}',true)">Correct the rent before ${_ccFmtD(v.sf)}</button>`);
+}
+/* Korrektur: today's rent (default) ↔ the rent before the running change — fields, labels and sources follow */
 function _tnCrBase(tid, on) {
   const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec || !_tnCR[tid]) return;
   _tnCR[tid].korrBase = !!on;
-  const now = _tnCrNow(rec); if (!now) return;
-  const src = on ? now.base : now, pa = src.mode === 'pauschal';
+  const v = _tnCrView(rec, !!on); if (!v) return;
+  const pa = v.mode === 'pauschal', src = _tnCrSrc(rec, v);
   const kI = document.getElementById('tn-cr-kalt-' + tid), nI = document.getElementById('tn-cr-nk-' + tid);
-  if (kI) kI.value = _tnCrDe(pa ? src.total : src.kalt);
-  if (nI) nI.value = _tnCrDe(src.nk);
-  const box = document.getElementById('tn-cr-' + tid); if (box) box.dataset.korrbase = on ? '1' : '0';
-  if (on) _tnCrMode(tid, src.mode); else { _tnCR[tid].mode = now.mode; const m = document.getElementById('tn-cr-mode-' + tid); if (m) m.dataset.mode = now.mode; }
-  _tnCrRefresh(tid);
+  if (kI) kI.value = _tnCrDe(pa ? v.total : v.kalt);
+  if (nI) nI.value = _tnCrDe(v.nk);
+  const ks = document.getElementById('tn-cr-ks-' + tid), ns = document.getElementById('tn-cr-ns-' + tid);
+  if (ks) ks.textContent = src.k.label; if (ns) ns.textContent = src.n.label;
+  const h = document.getElementById('tn-cr-kh-' + tid); if (h) h.innerHTML = _tnCrKorrHint(tid, v);
+  _tnCrMode(tid, v.mode);   // labels follow the mode (also "Back to today's rent")
 }
 function _tnChangeRentOpen(rid, tid, reason) {
   const rec = _tnRecords.find(r => String(r.id) === String(tid)); if (!rec) return;
@@ -2403,6 +2440,11 @@ function _tnChangeRentHTML(rid, tid) {
   const st = _tnCR[tid] || (_tnCR[tid] = { reason: 'mieterhoehung', mode: 'kalt_nk', rid });
   const now = _tnCrNow(rec);
   const pa = now ? now.mode === 'pauschal' : st.mode === 'pauschal';
+  // Korrektur: the fields show the view in use (also after a redraw of the sheet) and where each amount was entered
+  const kv = now ? _tnCrView(rec, !!st.korrBase) : null, kSrc = kv ? _tnCrSrc(rec, kv) : null;
+  const fv = kv && st.reason === 'korrektur' ? kv : now, fpa = fv ? fv.mode === 'pauschal' : pa;
+  if (fv && st.reason === 'korrektur') st.mode = fv.mode;
+  const lockMode = _tnCrStepsOn(rec, now);
   if (pa && st.reason === 'nk') st.reason = 'mieterhoehung';
   const ctLbl = _tnContractLabel(tnContractType(rec)) || '';
   const seg = (v, l) => `<button type="button" data-v="${v}"${v === st.reason ? ' class="on"' : ''} onclick="_tnCrReason('${tid}','${v}')">${l}</button>`;
@@ -2418,33 +2460,27 @@ function _tnChangeRentHTML(rid, tid) {
   <div class="tn-cr-seg" id="tn-cr-seg-${tid}">${seg('mieterhoehung', 'Mieterhöhung')}${pa ? '' : seg('nk', 'NK-Anpassung')}${seg('korrektur', 'Korrektur')}</div>
   <p class="tn-cr-hint" data-only="mieterhoehung"${_v('mieterhoehung')}>New ${pa ? 'Pauschalmiete' : 'Kaltmiete'} from a date. Controlling counts it from that day; mark it “Adjusted” once the tenant pays it.</p>
   <p class="tn-cr-hint" data-only="nk"${_v('nk')}>New NK-Vorauszahlung from a date. Tell the tenant in Textform before it takes effect.</p>
-  ${(() => {   // Nov 2026 (#19): while a Mieterhöhung / NK-Anpassung runs, Korrektur fixes the amount you see; months before never move
-    const sf = _tnCrStepFrom(now);
-    if (!sf) return `<p class="tn-cr-hint" data-only="korrektur"${_v('korrektur')}>Fixes the current rent entry if it was entered wrong. No date — the old amount is replaced.</p>`;
-    const parts = [now.step ? (pa ? 'Pauschalmiete' : 'Kaltmiete') + ' corrects the Mieterhöhung from ' + _ccFmtD(String(now.step.effective_date).slice(0, 10)) : '',
-                   now.nkStep ? 'Nebenkosten corrects the NK-Anpassung from ' + _ccFmtD(String(now.nkStep.effective_date).slice(0, 10)) : ''].filter(Boolean).join(' \u00b7 ');
-    return `<p class="tn-cr-hint tn-cr-hint--now" data-only="korrektur"${_v('korrektur')}>Corrects the amounts you see${parts ? ': ' + parts : ''}. The rent before ${_ccFmtD(sf)} stays as it is.
-        <button type="button" class="tn-cr-link" onclick="_tnCrBase('${tid}',true)">Correct the rent before ${_ccFmtD(sf)}</button></p>
-      <p class="tn-cr-hint tn-cr-hint--base" data-only="korrektur"${_v('korrektur')}>Corrects the rent until ${_ccFmtD(_ccAddDaysIso(sf, -1))} (the entry since its start). From ${_ccFmtD(sf)} the change stays as it is.
-        <button type="button" class="tn-cr-link" onclick="_tnCrBase('${tid}',false)">Back to today's rent</button></p>`;
-  })()}
+  <p class="tn-cr-hint" id="tn-cr-kh-${tid}" data-only="korrektur"${_v('korrektur')}>${_tnCrKorrHint(tid, kv)}</p>
   ${pa ? `<p class="tn-cr-hint" data-only="mieterhoehung nk"${_v('mieterhoehung nk')}>Pauschal: the NK are inside the Pauschalmiete — change the NK part with Korrektur.</p>` : ''}
 
   <div class="tn-cr-f" data-only="mieterhoehung nk"${_v('mieterhoehung nk')}><label class="tn-cr-lbl" for="tn-cr-from-${tid}">Gilt ab</label>
     <input class="tn-cr-in" id="tn-cr-from-${tid}" type="text" inputmode="numeric" placeholder="TT.MM.JJJJ" autocomplete="off" oninput="_tnCrRefresh('${tid}')"/></div>
 
-  <div class="tn-cr-f" data-only="korrektur"${_v('korrektur')}><span class="tn-cr-lbl">Rent</span>
-    <div class="tn-cr-seg tn-cr-mode" id="tn-cr-mode-${tid}" data-mode="${pa ? 'pauschal' : 'kalt_nk'}">
+  ${lockMode ? `<input type="hidden" id="tn-cr-mode-${tid}" data-mode="${fpa ? 'pauschal' : 'kalt_nk'}"/>`
+    : `<div class="tn-cr-f" data-only="korrektur"${_v('korrektur')}><span class="tn-cr-lbl">Rent</span>
+    <div class="tn-cr-seg tn-cr-mode" id="tn-cr-mode-${tid}" data-mode="${fpa ? 'pauschal' : 'kalt_nk'}">
       <button type="button" data-v="kalt_nk" onclick="_tnCrMode('${tid}','kalt_nk')">Kalt + NK</button>
-      <button type="button" data-v="pauschal" onclick="_tnCrMode('${tid}','pauschal')">Pauschal</button></div></div>
+      <button type="button" data-v="pauschal" onclick="_tnCrMode('${tid}','pauschal')">Pauschal</button></div></div>`}
 
   <div class="tn-cr-two">
-    <div class="tn-cr-f" data-only="mieterhoehung korrektur"${_v('mieterhoehung korrektur')}><label class="tn-cr-lbl" for="tn-cr-kalt-${tid}" id="tn-cr-kl-${tid}">${pa ? 'Pauschalmiete €' : 'Kaltmiete €'}</label>
+    <div class="tn-cr-f" data-only="mieterhoehung korrektur"${_v('mieterhoehung korrektur')}><label class="tn-cr-lbl" for="tn-cr-kalt-${tid}" id="tn-cr-kl-${tid}">${fpa ? 'Pauschalmiete €' : 'Kaltmiete €'}</label>
       <input class="tn-cr-in tn-cr-num" id="tn-cr-kalt-${tid}" type="text" inputmode="decimal" autocomplete="off"
-        value="${now ? _tnCrDe(pa ? now.total : now.kalt) : ''}" oninput="_tnCrRefresh('${tid}')"/></div>
-    <div class="tn-cr-f" data-only="nk korrektur"${_v('nk korrektur')}><label class="tn-cr-lbl" for="tn-cr-nk-${tid}" id="tn-cr-nl-${tid}">${pa ? 'davon NK €' : 'Nebenkosten €'}</label>
+        value="${fv ? _tnCrDe(fpa ? fv.total : fv.kalt) : ''}" oninput="_tnCrRefresh('${tid}')"/>
+      ${kSrc ? `<small class="tn-cr-src" id="tn-cr-ks-${tid}" data-only="korrektur"${_v('korrektur')}>${esc(kSrc.k.label)}</small>` : ''}</div>
+    <div class="tn-cr-f" data-only="nk korrektur"${_v('nk korrektur')}><label class="tn-cr-lbl" for="tn-cr-nk-${tid}" id="tn-cr-nl-${tid}">${fpa ? 'davon NK €' : 'Nebenkosten €'}</label>
       <input class="tn-cr-in tn-cr-num" id="tn-cr-nk-${tid}" type="text" inputmode="decimal" autocomplete="off"
-        value="${now ? _tnCrDe(now.nk) : ''}" oninput="_tnCrRefresh('${tid}')"/></div>
+        value="${fv ? _tnCrDe(fv.nk) : ''}" oninput="_tnCrRefresh('${tid}')"/>
+      ${kSrc ? `<small class="tn-cr-src" id="tn-cr-ns-${tid}" data-only="korrektur"${_v('korrektur')}>${esc(kSrc.n.label)}</small>` : ''}</div>
   </div>
 
   <div class="tn-cr-calc"><span id="tn-cr-calc-l-${tid}">New</span><b id="tn-cr-calc-${tid}">—</b></div>
@@ -2500,7 +2536,16 @@ function _tnCrListHTML(rid, rec) {
   }).join('');
   return `<div class="tn-cr-list"><div class="tn-cr-lbl" style="margin-top:6px">Changes</div>${rows}</div>`;
 }
-function _tnCrReason(tid, reason) { if (_tnCR[tid]) _tnCR[tid].reason = reason; _tnCrRefresh(tid); }
+function _tnCrReason(tid, reason) {
+  const st = _tnCR[tid]; if (!st) return;
+  const was = st.reason; st.reason = reason;
+  if (was === 'korrektur' && reason !== 'korrektur') {   // the Mieterhöhung / NK fields start from today's rent and mode
+    const rec = _tnRecords.find(r => String(r.id) === String(tid)), now = rec && _tnCrNow(rec);
+    if (st.korrBase) _tnCrBase(tid, false);
+    else if (now && st.mode !== now.mode) _tnCrMode(tid, now.mode);
+  }
+  _tnCrRefresh(tid);
+}
 function _tnCrMode(tid, mode) {
   if (_tnCR[tid]) _tnCR[tid].mode = mode;
   const box = document.getElementById('tn-cr-mode-' + tid); if (box) box.dataset.mode = mode;
@@ -2570,51 +2615,49 @@ async function _tnCrSave(tid) {
       if (typeof ccSavedToast === 'function') ccSavedToast('NK-Anpassung saved');
     }
   } else {
-    // Korrektur (Nov 2026, #19 · owner: "old is old, the new increase starts from its day forward"):
-    // · while a Mieterhöhung / NK-Anpassung runs, each amount you see goes back to the row it came from —
-    //   Kalt / Pauschale → the running Mieterhöhung, Nebenkosten → the running NK-Anpassung, anything else → the
-    //   rent entry. The entry (the months before the change) is written only with its own amounts.
-    // · "Correct the rent before …" (korrBase) or no change running: the rent entry itself, as before.
-    const mode = (st.mode || (now && now.mode)) === 'pauschal' ? 'pauschal' : 'kalt_nk';
+    // Korrektur (Nov 2026, #19 · owner: "old is old, a new increase starts from its day forward"): each amount goes
+    // back to the row it was entered in, on the day shown (today, or the day before the running change):
+    // Kalt / Pauschale → the Mieterhöhung in force, else the rent entry · Nebenkosten → the NK-Anpassung in force, else
+    // the rent entry · Pauschal "davon NK" → the rent entry. Only a changed amount is written; nothing else moves.
+    const v = _tnCrView(rec, !!st.korrBase);
+    const lock = _tnCrStepsOn(rec, now);
+    if (lock && v && (st.mode || v.mode) !== v.mode) { ccToast('Pauschal ↔ Kalt + NK can’t be switched while a Mieterhöhung or NK-Anpassung exists', true); return; }
+    const mode = lock && v ? v.mode : ((st.mode || (v && v.mode)) === 'pauschal' ? 'pauschal' : 'kalt_nk');
     if (k == null || (mode !== 'pauschal' && n == null)) { ccToast('Enter the rent', true); return; }
     if (mode === 'pauschal' && n != null && n > k) { ccToast('The NK part can’t be more than the Pauschalmiete', true); return; }
-    const running = !!(now && (now.step || now.nkStep)) && !st.korrBase;
-    if (running && now && mode !== now.mode) { ccToast('Switch Pauschal / Kalt + NK under “Correct the rent before …”', true); return; }
-    const base = (now && now.base) || { mode, kalt: 0, nk: 0, total: 0 };
-    let bK, bN;                                                    // the rent entry's own amounts after this save
+    const src = v ? _tnCrSrc(rec, v) : null;
+    const base = (v && v.base) || { mode, kalt: 0, nk: 0, total: 0 };
+    const pa = mode === 'pauschal';
+    let bK = base.mode === 'pauschal' ? base.total : base.kalt, bN = Number(base.nk) || 0;   // the entry's own amounts
     const done = [];
     try {
-      if (running) {
-        const pa = mode === 'pauschal';
-        bK = pa ? base.total : base.kalt; bN = base.nk;
-        if (now.step) {                                            // Kalt / Pauschale → the Mieterhöhung in effect
-          if (Number(now.step.amount) !== k) {
-            const { error } = await sbL.from('casa_mieterhoehung_history').update({ amount: k }).eq('id', now.step.id);
-            if (error) throw error;
-            now.step.amount = k; done.push('Mieterhöhung from ' + _ccFmtD(String(now.step.effective_date).slice(0, 10)));
-          }
+      const kOld = v ? (v.mode === 'pauschal' ? v.total : v.kalt) : null;
+      if (k !== kOld || mode !== (v && v.mode)) {
+        if (src && src.k.step && mode === v.mode) {                // Kalt / Pauschale → the Mieterhöhung it came from
+          const { error } = await sbL.from('casa_mieterhoehung_history').update({ amount: k }).eq('id', src.k.step.id);
+          if (error) throw error;
+          src.k.step.amount = k; done.push(src.k.label);
         } else bK = k;
-        if (pa) bN = n || 0;                                       // davon NK: always the entry's (inside the Pauschale)
-        else if (now.nkStep) {                                     // Nebenkosten → the NK-Anpassung in effect
-          if (Number(now.nkStep.amount) !== n) {
-            const { error } = await sbL.from('nk_vorauszahlung_history').update({ amount: n }).eq('id', now.nkStep.id);
-            if (error) throw error;
-            now.nkStep.amount = n; done.push('NK-Anpassung from ' + _ccFmtD(String(now.nkStep.effective_date).slice(0, 10)));
-          }
-        } else bN = n;
-      } else { bK = k; bN = mode === 'pauschal' ? (n || 0) : n; }
-      const baseMode = running ? base.mode : mode;
-      const changed = baseMode !== base.mode || bK !== (baseMode === 'pauschal' ? base.total : base.kalt) || (Number(bN) || 0) !== (Number(base.nk) || 0);
-      if (changed || !now || !now.per) {
-        const fields = baseMode === 'pauschal' ? { mode: 'pauschal', pauschale: bK, kaltmiete: null, nebenkosten: bN || null }
-                                               : { mode: 'kalt_nk', kaltmiete: bK, nebenkosten: bN, pauschale: null };
-        if (now && now.per) await ccRpUpdate(sbL, now.per.id, fields);
+      }
+      const nOld = v ? Number(v.nk) || 0 : 0;
+      if ((Number(n) || 0) !== nOld || mode !== (v && v.mode)) {
+        if (src && src.n.step && !pa && mode === v.mode) {          // Nebenkosten → the NK-Anpassung it came from
+          const { error } = await sbL.from('nk_vorauszahlung_history').update({ amount: n }).eq('id', src.n.step.id);
+          if (error) throw error;
+          src.n.step.amount = n; done.push(src.n.label);
+        } else bN = pa ? (n || 0) : n;
+      }
+      const changed = mode !== base.mode || bK !== (base.mode === 'pauschal' ? base.total : base.kalt) || (Number(bN) || 0) !== (Number(base.nk) || 0);
+      if (changed || !v || !v.per) {
+        const fields = pa ? { mode: 'pauschal', pauschale: bK, kaltmiete: null, nebenkosten: bN || null }
+                          : { mode: 'kalt_nk', kaltmiete: bK, nebenkosten: bN, pauschale: null };
+        if (v && v.per) await ccRpUpdate(sbL, v.per.id, fields);
         else {
           const cst = _tnContractState(rec), cc = cst && cst.cur;
-          await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: (cc && cc.start) || _ccIso(rec.mietbeginn), mode: baseMode, kalt: bK, nk: bN || 0,
-                                   pauschale: bK, nkIncl: baseMode === 'pauschal' ? (bN || null) : undefined, kind: 'migrated', source: 'tenant_form', legacyMode: _tnLegacyMode(room, rec) });
+          await ccRpSetRent(sbL, { app: 'casa', rec, validFrom: (cc && cc.start) || _ccIso(rec.mietbeginn), mode, kalt: bK, nk: bN || 0,
+                                   pauschale: bK, nkIncl: pa ? (bN || null) : undefined, kind: 'migrated', source: 'tenant_form', legacyMode: _tnLegacyMode(room, rec) });
         }
-        done.push(running ? 'rent before ' + _ccFmtD(_tnCrStepFrom(now)) : 'rent');
+        done.push(v && v.per ? 'rent ' + _tnCrSrc(rec, { ...v, step: null }).k.label.replace(' (rent entry)', '') : 'rent');
       }
     } catch (e) { ccSaveFailed(e, 'rent'); _tnRender(); return; }
     // the tenant record: the rent in force today (as Controlling shows it)
