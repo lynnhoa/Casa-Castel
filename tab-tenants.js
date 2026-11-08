@@ -886,7 +886,7 @@ function _tnCurrentRent(rec, roomName, iso) {
   if (!rec) return null;
   // Nov 2026 (#3): any day — Renew reads its first day. Default (#37): today, or the move-in day for a tenant who moves
   // in later, so a signed next tenant shows their own contract (Pauschal / Kalt + NK), not the room's default
-  const day = iso || _tnTypeDay(rec);
+  const day = iso || _tnReadDay(rec);
   const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('casa', rec.id), day) : null;
   let out = null;
   if (per) out = { ...ccRpAmount(per), src: 'history', period: per };
@@ -994,6 +994,16 @@ function _tnContractLabel(type) {
 function _tnTypedPeriods(rec) {
   if (!rec || !rec.id || typeof ccRpFor !== 'function') return [];
   return ccRpFor('casa', rec.id).filter(p => p.contract_type === 'mietvertrag' || p.contract_type === 'kurzzeit' || p.contract_type === 'jahres');
+}
+/* The day a tenancy's rent is read by default: today · a later move-in → that day, or the first rent entry of the
+   tenancy when it starts after the move-in (keys handed over before the Contract start) — Nov 2026, review of #37 */
+function _tnReadDay(rec) {
+  const d = _tnTypeDay(rec);
+  if (!rec || !rec.id || typeof ccRpFor !== 'function' || d <= (typeof ccRpToday === 'function' ? ccRpToday() : _ccTodayIso())) return d;
+  const per = ccRpFor('casa', rec.id);
+  if (!per.length || ccRpAt(per, d)) return d;
+  const first = per.map(p => ccRpIso(p.valid_from)).filter(Boolean).sort()[0];
+  return first && first > d ? first : d;
 }
 function _tnTypeDay(rec) {
   const today = typeof ccRpToday === 'function' ? ccRpToday() : _ccTodayIso();
@@ -1287,7 +1297,7 @@ function _tnNkInclAt(rec, iso) {
 function _tnPopRent(rec) {
   const today = ccRpToday(), mb = _ccIso(rec.mietbeginn) || '';
   let day = [_ccIso(rec.mietende) || today, today].sort()[0];
-  if (mb && day < mb) day = mb;
+  if (mb && day < mb) day = _tnReadDay(rec) > mb ? _tnReadDay(rec) : mb;   // keys before the Contract start → its first entry
   const per = rec.id && typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('casa', rec.id), day) : null;
   if (per) {
     const a = ccRpAmount(per), pa = a.mode === 'pauschal';
@@ -2744,7 +2754,7 @@ function _tnRentBarHTML(rid, room, rec) {
   const c  = st ? st.cur : null;
   // a rent change inside the running contract (e.g. NK-Anpassung) — the next contract has its own line
   const nextP = rec && typeof ccRpFor === 'function'
-    ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > _tnTypeDay(rec) && p.kind !== 'renewal'   // #37: not the contract's own first entry
+    ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > _tnReadDay(rec) && p.kind !== 'renewal'   // #37: not the contract's own first entry
         && (!st || !st.next || ccRpIso(p.valid_from) < st.next.start)) : null;
   const pausch = cur && cur.mode === 'pauschal';
   const _nkIn = pausch ? Number(cur.period && cur.period.nebenkosten) || 0 : 0;   // NK part inside a Pauschale
@@ -3617,14 +3627,14 @@ function _tnModalBodyHTML(rec) {
   ${typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(rec, 'modal') + ccfDocsSectionHTML(rec, 'modal') : ''}
 
   <!-- KAUTION (Nov 2026, #25: a new former tenant → greyed until saved; entered in the pop-up that opens after Save) -->
-  ${rec.id ? '' : '<p class="tn-cr-hint" style="margin:10px 4px -2px">Kaution: save the tenant first — then enter it in the pop-up that opens.</p>'}
+  ${rec.id ? '' : `<p class="tn-cr-hint" style="margin:10px 4px -2px">${rec.returnTo ? 'Kaution: enter it later in Tenants › this tenant.' : 'Kaution: save the tenant first — then enter it in the pop-up that opens.'}</p>`}
   ${_tnKautionHTML('m', rec.id || null, 'modal')}
 
   <!-- NK -->
   ${_tnAllPauschal(rec) ? '' : _tnNKHTML('m', rec.id || null, 'modal')}
 
   <!-- NK VORAUSZAHLUNG (the room's current tenant only — never in a former tenant's pop-up) -->
-  ${rec.status === 'active' && _tnIsKaltNK(rec, rec.room) ? _tnNKVorausHTML('m', rec.room, 'modal') : ''}
+  ${rec.status === 'active' && String((_tnNKVorausWho(rec.room) || {}).id) === String(rec.id) && _tnIsKaltNK(rec, rec.room) ? _tnNKVorausHTML('m', rec.room, 'modal') : ''}
   `;
 }
 
@@ -3664,6 +3674,7 @@ let _tnModalAsking = false;
 function _tnCloseModal() {
   // Nov 2026 (#29): "Add former tenant" with something typed → ask instead of throwing it away
   { const modal = document.getElementById('tnModal');
+    if (!_tnModalTid && modal && modal._draft && modal._draft._saving) return;   // saving right now → it closes by itself
     const ed = !_tnModalTid && modal && modal._draft ? document.querySelector('#tnModalBody [id^="mprof-edit-"]') : null;
     if (ed && ed.dataset.snap && ed.dataset.snap !== _ccModalSnap(ed)) {
       if (_tnModalAsking) return;
@@ -4631,10 +4642,12 @@ async function _tnModalSaveDraft() {
     if (el && el.value.trim() && !real) { el.style.borderColor = '#C4705A'; el.focus(); ccToast(lbl + ': TT.MM.JJJJ', true); return false; }
   }
   const back = draft.returnTo || null;                      // #14
+  if (draft._saving) return false;                          // a save is running — never a second insert
+  draft._saving = true;
 
   const btn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
-  if (!(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === draft.room), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return false;
+  if (!(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === draft.room), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) { draft._saving = false; return false; }
 
   // The Rent choice (Kalt + NK | Pauschal) is saved with the tenant's contract — never taken from the room's offer later
   const modeSel = body.querySelector('[data-mf="rent_mode"]')?.value;
@@ -4660,6 +4673,7 @@ async function _tnModalSaveDraft() {
   if (error) {
     ccSaveFailed(error, 'former tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
+    draft._saving = false;
     return false;
   }
 
