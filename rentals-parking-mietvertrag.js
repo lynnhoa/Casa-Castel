@@ -96,6 +96,9 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     mietbeginn:  startVal ? fmt(new Date(startVal)) : '',
     befristet,
     mietende:    befristet && endVal ? fmt(new Date(endVal)) : '',
+    // #27: the standard Mindestlaufzeit as a date (01.12.2025 → 30.11.2026), like the Casa contract prints it
+    mindestBis:  (() => { const d = startVal ? new Date(startVal + 'T12:00:00') : null;
+                          return d && !isNaN(d) ? fmt(new Date(d.getFullYear() + 1, d.getMonth(), d.getDate() - 1)) : ''; })(),
     kennzeichen: kennzeichen || '',
     fahrzeug:    fahrzeug    || '',
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
@@ -311,8 +314,7 @@ function _renderPkMietvertragHTML(d) {
 
     ${sec('Mietzeit', false, false)}
     ${kv('Mietbeginn', d.mietbeginn || '\u2014')}
-    ${kv('Mindestlaufzeit', '1\u00a0Jahr ab Mietbeginn \u00b7 keine Kündigung vor Ende')}
-    ${d.mietende ? kv('Festes Mietende', d.mietende) : ''}
+    ${kv('Mindestlaufzeit', (d.mietende ? 'bis ' + d.mietende : '1\u00a0Jahr ab Mietbeginn (bis ' + (d.mindestBis || (typeof CC_BLANK_DATE !== 'undefined' ? CC_BLANK_DATE : '__.__.____')) + ')') + ' \u00b7 keine Kündigung vor Ende')}
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
     ${mieteOnPage2 ? '' : mieteBlock}
@@ -340,7 +342,7 @@ function _renderPkMietvertragHTML(d) {
   /* ── PAGE 3 (Klauseln + Unterschriften) ── */
   const mietbeginnText = d.mietbeginn ? ` am ${d.mietbeginn}` : '';
 
-  const mindestEnd = d.mietende || '(1\u00a0Jahr nach Mietbeginn)';
+  const mindestEnd = d.mietende || d.mindestBis || (typeof CC_BLANK_DATE !== 'undefined' ? CC_BLANK_DATE : '__.__.____');   // #27: a date, never "(1 Jahr nach Mietbeginn)"
   const laufzeitClause = `Das Mietverhältnis beginnt${mietbeginnText} und ist fest abgeschlossen bis zum ${mindestEnd} (Mindestlaufzeit). Eine Kündigung während der Mindestlaufzeit ist ausgeschlossen. Nach Ablauf der Mindestlaufzeit l\u00e4uft der Vertrag auf unbestimmte Zeit weiter und kann von beiden Parteien ohne Angabe von Gr\u00fcnden mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gek\u00fcndigt werden (§\u00a0580a BGB).`;
 
   // Clause numbering (staffel-aware) — shared across the two clause pages
@@ -505,7 +507,8 @@ function _wirePkMvPdfBtn() {
     const sigVal      = document.getElementById('pk-mv-sig')?.value          || '';
     const befristet   = document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet';
     const endVal      = befristet ? (document.getElementById('pk-mv-end')?.value || '') : '';
-    if (!(await ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende']))) return;
+    if (!(await ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mindestlaufzeit bis']))) return;
+    if (startVal && endVal && endVal < startVal) { alert('Mindestlaufzeit bis liegt vor Mietbeginn — bitte das Datum prüfen.'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return; }
     const kennzeichen = document.getElementById('pk-mv-kennzeichen')?.value.trim() || '';
     const fahrzeug    = document.getElementById('pk-mv-fahrzeug')?.value.trim()    || '';
     const kautionVal  = document.getElementById('pk-mv-kaution')?.value || null;

@@ -6,7 +6,7 @@
    - Card list with expand/collapse, drag-to-sort (SortableJS)
    - Per-section inline edit (Identity, Miete, Schlüssel)
    - Vacant / occupied toggle
-   - Contract modal: Mietvertrag (befristet + unbefristet)
+   - Contract modal: Mietvertrag (unbefristet · Mindestlaufzeit 1 Jahr or an own date — #27: never a Contract end)
    - Delete with confirmation
 
    Types: Tiefgarage · Stellplatz · Einzelgarage · Duplex-Anlage
@@ -967,6 +967,7 @@ function _pkSetupFlow(type, spot) {
     fields: _PK_MV_FIELDS,
     read: () => {
       const sp = appParking.find(p => p.id === _pkContractId) || spot;
+      const minOn = document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet';   // own Mindestlaufzeit
       const staffelOn = document.getElementById('pk-mv-staffel-btn')?.dataset.mode === 'ja';
       const staffel = !staffelOn ? [] : [...document.querySelectorAll('.pk-mv-staffel-row')].map(row => ({
         betrag: ccfNum(row.querySelector('.pk-mv-staffel-betrag')?.value),
@@ -975,10 +976,11 @@ function _pkSetupFlow(type, spot) {
       const miete = staffelOn && anf > 0 ? anf : (Number((sp.pricing || {}).miete) || 0);
       return { kind: 'contract', ctype: 'mietvertrag', room: unit, forId: ccfForValue(),
         tenant: ccfReadTenant(_PK_MV_FIELDS), coTenants: ccfReadCoTenants(_PK_MV_FIELDS),
-        start: v('pk-mv-start'), end: document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet' ? v('pk-mv-end') : null,
+        // #27: the parking contract runs on after its Mindestlaufzeit (§ Mietzeit) — that date is printed, never saved as the Contract end
+        start: v('pk-mv-start'), end: null,
         rent: { mode: 'kalt_nk', kalt: miete, nk: 0, total: miete }, staffel, staffelTable: 'rnt_staffelmiete_history',
         first_month: 'anteilig', last_month: 'anteilig', docLabel: 'Parkplatz-Mietvertrag',
-        needsEnd: document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet' };   // #37
+        needsMin: minOn, minEnd: minOn ? v('pk-mv-end') : null };   // Approve needs the date while the switch is on
     } });
 }
 
@@ -1136,8 +1138,8 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     <div class="rm-field--toggle">
       <div class="rm-toggle-row">
         <div>
-          <div class="rm-toggle-label">Befristet</div>
-          <div class="rm-toggle-sub" id="pk-mv-befristung-sub">Unbefristet</div>
+          <div class="rm-toggle-label">Andere Mindestlaufzeit</div>
+          <div class="rm-toggle-sub" id="pk-mv-befristung-sub">1 Jahr ab Mietbeginn</div>
         </div>
         <button type="button" class="rm-pill-toggle" id="pk-mv-befristung-btn" data-mode="unbefristet">
           <span class="rm-pill-toggle__track"><span class="rm-pill-toggle__knob"></span></span>
@@ -1147,7 +1149,7 @@ function _pkBodyMietvertrag(spot, pr, sk, profile = {}) {
     </div>
 
     <div id="pk-mv-befristung-details" style="display:none">
-      <div class="rm-field"><label>Mietende *</label><input class="rm-input" id="pk-mv-end" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
+      <div class="rm-field"><label>Mindestlaufzeit bis *</label><input class="rm-input" id="pk-mv-end" type="date" onclick="try{this.showPicker()}catch(e){}"/></div>
     </div>
 
     <div class="rm-field" style="margin-top:4px">
@@ -1219,7 +1221,7 @@ function _pkToggleMvBefristung() {
   const on = btn.dataset.mode === 'unbefristet';
   btn.dataset.mode      = on ? 'befristet'  : 'unbefristet';
   lbl.textContent       = on ? 'Ja'         : 'Nein';
-  sub.textContent       = on ? 'Befristet'  : 'Unbefristet';
+  sub.textContent       = on ? 'Bis zum Datum · danach unbefristet' : '1 Jahr ab Mietbeginn';
   details.style.display = on ? ''           : 'none';
 }
 
