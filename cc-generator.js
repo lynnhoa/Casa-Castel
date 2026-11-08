@@ -188,10 +188,11 @@ function ccgInit() {
   const st = _cgIn('cg-start'), en = _cgIn('cg-end');
   st?.addEventListener('input', () => { _cgAutoEnd(); ccgUpdate(); });
   st?.addEventListener('change', () => { _cgAutoEnd(); ccgUpdate(); });
-  // #22: any change the app did not make itself (typed, or picked in the calendar) = your own Mietende — it stays
-  const own = () => { if (!_cgAutoWriting) en.removeAttribute('data-auto'); };
-  en?.addEventListener('input', () => { own(); ccgUpdate(); });
-  en?.addEventListener('change', () => { own(); ccgUpdate(); });
+  // #22: a Mietende YOU set (typed, or picked in the calendar) stays; what the app fills in (rule, Renew, a tenant's
+  // contract — those set data-auto themselves) does not count as yours
+  const own = ev => { if (!_cgAutoWriting && ev && (ev.isTrusted || ev.ccPick)) en.removeAttribute('data-auto'); };
+  en?.addEventListener('input', ev => { own(ev); ccgUpdate(); });
+  en?.addEventListener('change', ev => { own(ev); ccgUpdate(); });
   ccgUpdate();
 }
 /* Jahresvertrag: Mietende follows Mietbeginn (31.08. of the following year) until you set your own */
@@ -207,6 +208,7 @@ function _cgAutoEnd() {
     try { en.value = nx; en.dispatchEvent(new Event('change', { bubbles: true })); } finally { _cgAutoWriting = false; }
   }
 }
+function _cgSameMonth(a, b) { return !!(a && b && String(a).slice(0, 7) === String(b).slice(0, 7)); }
 function _cgIso(id) {
   const v = _cgV(id); if (!v) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
@@ -267,7 +269,7 @@ function ccgUpdate() {
   // Summary line above the buttons
   const sum = _cgIn('cg-summary');
   if (sum) {
-    const dates = start ? (_cgDe(S) + (end ? ' – ' + _cgDe(E) : (type === 'mietvertrag' ? (term === 'min' ? ' · unbefristet, Verzicht ' + (_cgOpt('years') || 1) + ' J.' : ' · unbefristet') : ' – Mietende?'))) : 'Mietbeginn?';
+    const dates = start ? (_cgDe(S) + (end ? ' – ' + _cgDe(E) : (type === 'mietvertrag' && term !== 'bef' ? (term === 'min' ? ' · unbefristet, Verzicht ' + (_cgOpt('years') || 1) + ' J.' : ' · unbefristet') : ' – Mietende?'))) : 'Mietbeginn?';
     const warm = m ? _cgEur(m.total) + (m.mode === 'pauschal' ? ' pauschal' : ' warm') : '';
     // #40: a renewal with a new amount typed shows that amount (the PDF and Approve use it too)
     const kNew = kIn && kIn.value !== '' ? ccKautionManual(kIn.value) : null;
@@ -290,8 +292,7 @@ async function ccgBuild(type, forApprove) {
   if (term === 'bef' && grund === 'eigenbedarf' && !person) { alert('Bitte angeben, für wen der Eigenbedarf besteht (gesetzliche Pflicht).'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return null; }
   // #23: never a contract that ends before it starts (Draft and Approve)
   if (start && end && end < start) { alert('Mietende liegt vor Mietbeginn — bitte das Datum prüfen.'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return null; }
-  // #37: Kurzzeit / Jahresvertrag / Befristet — Approve needs the Mietende (the Draft PDF may keep a line for it)
-  if (forApprove && hasEnd && !end) { alert('Approve needs a Mietende.'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return null; }
+  // #37: Approve needs the Mietende — checked on the Approve path (payload.needsEnd → ccfApproveCheck)
   if (!forApprove && !(await ccConfirmMissingDates([!start && 'Mietbeginn', hasEnd && !end && 'Mietende']))) return null;
 
   const m = ccfMieteGet() || { mode: 'kalt_nk', kalt: 0, nk: 0, total: 0 };
@@ -337,7 +338,10 @@ async function ccgBuild(type, forApprove) {
     payload: { kind: 'contract', ctype: type, room: room0.name, forId: ccfForValue(), renew: rn,
       tenant: { name, address: _cgV('cg-adr'), birthday: _cgV('cg-dob'), email: _cgV('cg-email'), phone: _cgV('cg-tel') },
       start, end: end || null, rent: m, kaution: existing ? null : (Number(kautionAmount) || 0),
-      first_month: _cgOpt('first') === 'voll' ? 'voll' : 'anteilig', last_month: _cgOpt('last') === 'voll' ? 'voll' : 'anteilig',
+      // a stay inside one month: that month is first AND last — Controlling reads it from either side (#24)
+      first_month: _cgOpt('first') === 'voll' ? 'voll' : 'anteilig',
+      last_month: (_cgSameMonth(start, end) ? _cgOpt('first') : _cgOpt('last')) === 'voll' ? 'voll' : 'anteilig',
+      needsEnd: hasEnd,   // #37: Approve (ccfApproveCheck) refuses without a Mietende
       docLabel: type === 'kurzzeit' ? 'Kurzzeitmietvertrag' : 'Mietvertrag' },
   };
 }
