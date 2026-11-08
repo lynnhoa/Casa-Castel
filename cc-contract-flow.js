@@ -1385,6 +1385,7 @@ function ccfDocLabel(type, rec) {
   if (type === 'auszug') return 'Übergabe Auszug';
   if (type === 'kuendigung') return 'Kündigung (Mieter)';                 // Nov 2026: the tenant's own Kündigung (cc-kuendigung.js)
   if (type === 'kuendigungsbestaetigung') return 'Kündigungsbestätigung';  // … and the landlord's letter
+  { const n = /^nk_(\d{4})-\d{2}-\d{2}$/.exec(type || ''); if (n) return 'NK-Abrechnung ' + n[1]; }   // Nov 2026: own copy (cc-nk-settle.js)
   const m = /^verlaengerung_(\d{4}-\d{2}-\d{2})$/.exec(type || '');
   if (m) {
     const row = rec ? ccfA().renewalRows(rec).find(x => x.key === type) : null;
@@ -1407,7 +1408,7 @@ function _ccfDocRows(rec) {
     add('kuendigungsbestaetigung', 'Kündigungsbestätigung');
   }
   add('auszug', 'Übergabe Auszug', '', { notYet: !rec.mietende });
-  docs.forEach(d => add(d.type, ccfDocLabel(d.type, rec)));   // anything else that exists stays visible
+  docs.forEach(d => { if (!/^nk_\d{4}-\d{2}-\d{2}$/.test(d.type || '')) add(d.type, ccfDocLabel(d.type, rec)); });   // anything else stays visible (NK copies: their own block)
   return rows;
 }
 function _ccfCell(rec, row, variant, edit) {
@@ -1441,6 +1442,7 @@ function ccfDocsSectionHTML(rec, ctx) {
       <div style="margin-bottom:10px"><span class="${Lbl}">Documents</span></div>
       <div class="ccf-dhead"><span>Document</span><span>Unsigned</span><span>Signed</span></div>
       ${body}
+      ${typeof ccNkDocsHTML === 'function' ? ccNkDocsHTML(rec) : ''}
       <p class="ccf-hint" style="margin-top:8px">${edit ? 'Edit: tap a document to replace it, the × deletes it.' : 'Tap a PDF to open it. Unsigned arrives by itself when you approve in the generator.'}</p>
     </div>
     <div class="tn-sec-footer ccf-foot">
