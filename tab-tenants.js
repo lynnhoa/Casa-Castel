@@ -3200,6 +3200,10 @@ ccKautionRegister('tn', {
     _tnRefreshFormerBadges(tid);
     const r = _tnRecords.find(x => x.id === tid);
     if (r) _tnRefreshCardPills(r.room);
+    // #11: the pop-up footer follows the Kaution at once (Archive / Delete active once it is settled)
+    const foot = document.getElementById('tnModalFooter');
+    if (r && foot && String(_tnModalTid) === String(tid) && document.getElementById('tnModal')?.classList.contains('open'))
+      foot.innerHTML = _tnModalFooterHTML(r, _tnIsAllDone(tid));
   },
 });
 
@@ -3408,8 +3412,8 @@ async function _tnNKVorausConfirmAdd__run(room, rid) {
     return;
   }
   if (!sbL) return;
-  const actT = (_tnRecords || []).filter(r => r.room === room && r.status === 'active')
-    .sort((a, b) => String(b.mietbeginn || '').localeCompare(String(a.mietbeginn || '')))[0];
+  // the tenant this section belongs to (the room's current one) — never the next tenant who moves in later
+  const actT = _tnNKVorausWho(room);
   const nkRow = { room, effective_date: date, amount, tenant_notified: false, tenant_adjusted: false };
   const { data, error } = typeof ccRpInsertWithTenant === 'function'
     ? await ccRpInsertWithTenant(sbL, 'nk_vorauszahlung_history', nkRow, actT ? actT.id : null)
@@ -4848,6 +4852,7 @@ async function _tnConfirmDelete() {
   if (btn) btn.disabled = true;
   const gone = _tnRecords.find(r => r.id === _tnDeleteId) || null;
   const ok = await _tnDeleteCascade(_tnDeleteId);
+  if (ok && gone) { const ed = document.getElementById('mprof-edit-' + gone.id); if (ed) ed.dataset.snap = ''; }   // deleted → no "Save changes?"
   document.getElementById('tnConfirm').classList.remove('open');
   _tnDeleteId = null;
   if (btn) btn.disabled = false;
