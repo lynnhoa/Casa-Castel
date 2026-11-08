@@ -2119,8 +2119,10 @@ function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
     rows.push(ccRowHTML({ icon: 'file-text', title: 'Documents', meta: esc(ccfDocsSummary(rec)), onclick: `_tnSheet('docs','${rid}','${rec.id}')` }));
     rows.push(ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: esc(ccfMetersSummary(rec)), onclick: `_tnSheet('meters','${rid}','${rec.id}')` }));
   }
-  if (rec && !_tnAllPauschal(rec)) {   // Nov 2026 (owner): no reminder pill here — the row only opens the NK-Abrechnungen
-    rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen', meta: '',
+  if (rec && !_tnAllPauschal(rec)) {
+    const open = _tnNkHasOpen(rec.id);
+    rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen',
+      meta: open ? `<span class="tnp tnp-amber">${esc(_tnNkOpenLabel(rec))}</span>` : 'none due',
       onclick: `_tnSheet('nk','${rid}','${rec.id}')` }));
   }
   // Earlier contracts (renewed) — open inline
