@@ -360,7 +360,8 @@ document.getElementById('tab-rooms').innerHTML = `
   background:var(--cc-bg); color:var(--cc-taupe); cursor:pointer; transition:all .15s;
 }
 .rc-chip.on { background:var(--cc-ink); color:var(--cc-white); border-color:var(--cc-ink); }
-.rc-chip--orphan { opacity:.45; border-style:dashed; }
+.rc-chip--orphan { border-style:dashed; }
+.rc-chip--orphan:not(.on) { opacity:.45; }
 .rc-pricing-toggle {
   display:flex; border:var(--cc-border); border-radius:var(--cc-r-pill);
   overflow:hidden; background:var(--cc-surface); width:fit-content; margin-bottom:10px;
@@ -1151,10 +1152,10 @@ function _roomCardHTML(r) {
     const on = selSpaces.includes(sp) ? 'on' : '';
     return `<span class="rc-chip ${on}" data-space="${esc(sp)}" onclick="this.classList.toggle('on')">${esc(sp)}</span>`;
   }).join('');
-  // Orphaned spaces (removed from settings but still on room)
-  selSpaces.filter(s => !allSpaces.includes(s)).forEach(sp => {
-    // already handled below if none
-  });
+  // #12 (Nov 2026): a space this room has but the Profile list no longer has stays ON (dashed) — Save keeps it
+  // unless you tap it off. Before, it had no chip and every Save dropped it silently.
+  const spaceOrphans = selSpaces.filter(s => !allSpaces.includes(s)).map(sp =>
+    `<span class="rc-chip rc-chip--orphan on" data-space="${esc(sp)}" title="Not in Profile any more — tap to remove" onclick="this.classList.toggle('on')">${esc(sp)}</span>`).join('');
 
   // Bathroom chips (edit)
   const allBads = _parseArr(appSettings.badezimmer);
@@ -1162,7 +1163,8 @@ function _roomCardHTML(r) {
   const badChips = allBads.map(b => {
     const on = selBads.includes(b) ? 'on' : '';
     return `<span class="rc-chip ${on}" data-bad="${esc(b)}" onclick="this.classList.toggle('on')">${esc(b)}</span>`;
-  }).join('');
+  }).join('') + selBads.filter(b => !allBads.includes(b)).map(b =>   // #12: same for bathrooms
+    `<span class="rc-chip rc-chip--orphan on" data-bad="${esc(b)}" title="Not in Profile any more — tap to remove" onclick="this.classList.toggle('on')">${esc(b)}</span>`).join('');
 
   // Pricing toggles
   const mvIsPauschal = r.mietvertrag_pricing === 'pauschal';
@@ -1201,7 +1203,7 @@ function _roomCardHTML(r) {
         </div>
         <div class="rc-field">
           <label class="rc-field__label">Shared spaces</label>
-          <div class="rc-chips" data-chipgroup="gemeinschaftsraeume">${spaceChips || '<span style="font-size:12px;color:var(--cc-stone);">Add shared spaces in Profile first</span>'}</div>
+          <div class="rc-chips" data-chipgroup="gemeinschaftsraeume">${(spaceChips + spaceOrphans) || '<span style="font-size:12px;color:var(--cc-stone);">Add shared spaces in Profile first</span>'}</div>
         </div>`;
   const editPricing = `
         <div class="rc-edit-stitle">Kurzzeit baseline</div>
@@ -1791,6 +1793,9 @@ document.getElementById('inventarSave')?.addEventListener('click', async () => {
     _inventarRoomId = null;
     _roomAnchorRestore();
     if (typeof ccSavedToast === 'function') ccSavedToast();
+  } else {
+    // #17: never silent — the sheet stays open with what you typed
+    ccToast('Inventar not saved — connection problem. Please try again.', true);
   }
 });
 
