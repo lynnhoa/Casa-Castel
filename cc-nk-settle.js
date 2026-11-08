@@ -124,13 +124,15 @@ function ccNksOpenLabel(tid, legacy, due) {
   const rows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant')
     && !['erledigt', 'bezahlt', 'nicht durchgeführt'].includes(r.status))
     .sort((a, b) => String(a.period_from).localeCompare(String(b.period_from)));
-  // full dates: "NK 01.01.2025–31.12.2025 open" (oldest open first)
+  // Nov 2026 (owner: shorter): the year only — "NK 2025 open", a period over two years "NK 2025/26 open" (oldest open first)
+  const yr = (a, b) => { a = String(a || '').slice(0, 4); b = String(b || '').slice(0, 4); return !b || a === b ? a : a + '/' + b.slice(2); };
   let lbl = '', from = '';
-  if (rows.length && rows[0].period_from && rows[0].period_to) { lbl = _ccNksPerLabel(String(rows[0].period_from).slice(0, 10), String(rows[0].period_to).slice(0, 10)); from = String(rows[0].period_from).slice(0, 10); }
-  if (dOpen.length && (!from || dOpen[0].spanFrom < from)) lbl = _ccNksPerLabel(dOpen[0].spanFrom, dOpen[0].spanTo);
+  if (rows.length && rows[0].period_from && rows[0].period_to) { lbl = yr(rows[0].period_from, rows[0].period_to); from = String(rows[0].period_from).slice(0, 10); }
+  if (dOpen.length && (!from || dOpen[0].spanFrom < from)) lbl = yr(dOpen[0].from, dOpen[0].to);
   if (!lbl) {
     const o = (legacy || []).filter(e => !e.paid).sort((a, b) => String(a.period || '').localeCompare(String(b.period || '')))[0];
-    lbl = o ? String(o.period || '') : '';
+    const ys = o ? String(o.period || '').match(/20\d\d/g) : null;
+    lbl = ys ? (ys.length > 1 && ys[0] !== ys[ys.length - 1] ? ys[0] + '/' + ys[ys.length - 1].slice(2) : ys[ys.length - 1]) : (o ? String(o.period || '') : '');
   }
   return lbl ? 'NK ' + lbl + ' open' : 'NK open';
 }
