@@ -258,6 +258,8 @@ async function loadLounge(room) {
     if (feedDsk) feedDsk.innerHTML = empty;
     return;
   }
+  // #21: the rooms first, so every room's @mention is known on the first render
+  if (typeof appRooms !== 'undefined' && !appRooms.length && typeof loadRoomsData === 'function') { try { await loadRoomsData(); } catch (e) {} }
   const { data } = await sbL.from('lounge_data').select('*')
     .eq('type','message').order('created_at',{ascending:true}).limit(100);
   const html = (!data || !data.length) ? empty : data.map(m => _msgHtml(m, room)).join('');

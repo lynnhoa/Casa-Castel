@@ -228,15 +228,16 @@ function buildMailto(to, subject, body) {
 /* ── MENTION PARSER ─────────────────────────────────────── */
 function parseMsg(text, currentRoom) {
   let s = esc(text);
-  ccRoomNames().concat(['Casa Castel']).sort((a, b) => b.length - a.length).forEach(r => {   // #21: every room, longest first
-    const tag = '@' + r;
+  // #21: every room of the Rooms tab, in ONE pass (longest name first) — "@Zimmer 10" is never also "@Zimmer 1"
+  const names = ccRoomNames().concat(['Casa Castel']).sort((a, b) => b.length - a.length);
+  const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!names.length) return s;
+  const re = new RegExp('@(' + names.map(n => reEsc(esc(n))).join('|') + ')', 'gi');
+  return s.replace(re, (m, g) => {
+    const r = names.find(n => esc(n).toLowerCase() === String(g).toLowerCase()) || g;
     const isSelf = currentRoom && r === currentRoom;
-    s = s.replace(
-      new RegExp(tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
-      `<span class="msg-mention${isSelf ? ' msg-mention--me' : ''}">${tag}</span>`
-    );
+    return `<span class="msg-mention${isSelf ? ' msg-mention--me' : ''}">@${esc(r)}</span>`;
   });
-  return s;
 }
 
 /* ── SCROLL TO BOTTOM ───────────────────────────────────── */
