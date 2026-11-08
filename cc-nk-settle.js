@@ -9,7 +9,7 @@
    below, read-only, so nothing disappears.
    ───────────────────────────────────────────────────────────── */
 
-const CC_NKS = { rows: null, res: null, loading: null, casaProp: null };
+const CC_NKS = { rows: null, res: null, loading: null, casaProp: null, letters: [] };
 
 function _ccNksDb() { return (typeof sbL !== 'undefined' && sbL) ? sbL : null; }
 function _ccNksEsc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -24,14 +24,18 @@ async function ccNksLoad() {
     db.from('abr_results').select('*'),
     db.from('ctrl_properties').select('*'),                            // NK period start of every property
     db.from('properties').select('id,name,kaufdatum'),                 // purchase date (Properties) — the only source
-  ]).then(([a, b, c, d]) => {
+    // Nov 2026: the letters Settlements keeps when a letter is marked as sent (archive · Documents › NK-Abrechnungen)
+    db.from('nk_letters').select('id,app,year,period_from,period_to,tenant_id,file_path,file_name,sent_at').order('sent_at', { ascending: false }),
+  ]).then(([a, b, c, d, e]) => {
     const app = _ccNksApp();                                             // clean split: only this app's lines
     CC_NKS.rows = (a.error ? [] : (a.data || [])).filter(r => !r.app || r.app === app);
     CC_NKS.res  = b.error ? [] : (b.data || []);
     CC_NKS.props = c && !c.error ? (c.data || []) : [];
     CC_NKS.buys  = d && !d.error ? (d.data || []) : [];
     CC_NKS.casaProp = CC_NKS.props.find(p => Number(p.id) === 7) || {};
+    CC_NKS.letters = e && !e.error ? (e.data || []) : [];
     document.querySelectorAll('.cc-nks').forEach(el => { el.innerHTML = _ccNksInner(el.dataset.tid, el._legacy || [], el._due || []); });
+    document.querySelectorAll('[data-nkdocs]').forEach(el => { const rec = typeof ccfRec === 'function' ? ccfRec(el.dataset.nkdocs) : null; if (rec) el.innerHTML = _ccNkDocsInner(rec); });
   }).catch(() => { CC_NKS.rows = []; CC_NKS.res = []; })
     .finally(() => { CC_NKS.loading = null; });
   return CC_NKS.loading;
@@ -350,3 +354,98 @@ function _ccNksStyle() {
   document.head.appendChild(s);
 }
 
+
+
+/* ── NK-ABRECHNUNGEN IN THE TENANT'S DOCUMENTS (Casa Castel · Nov 2026) ─────────────────────────────
+   Owner: "an NK-Abrechnung marked as sent is in Documents — each year until they move out; either it comes from
+   Settlements (marked sent) or I can upload it." One line per NK period of the tenancy (move-in → move-out, the
+   running period last), skipping periods that ended before the purchase (the seller settles them) and Pauschal-only
+   spans (no NK-Abrechnung). Two cells:
+     Settlements — the exact letter Settlements saved when it was marked as sent (nk_letters + bucket nk-letters);
+                   set back to open there → no longer shown here (the archive keeps it)
+     Upload      — your own copy (tenant_documents, type nk_<period start>) — e.g. a year before the app       */
+const NKD_SENT = ['verschickt', 'erledigt', 'bezahlt'];
+const _nkdType = from => 'nk_' + from;
+function ccNkDocLines(rec) {
+  if (!rec || !rec.id || _ccNksApp() !== 'casa' || CC_NKS.rows === null) return [];
+  const mb = String(rec.mietbeginn || '').slice(0, 10); if (!mb) return [];
+  const today = _ccNksToday(), me = String(rec.mietende || '').slice(0, 10);
+  const last = me && me < today ? me : today;
+  const p = CC_NKS.casaProp || {}, since = _ccNksSince(p);
+  const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
+  const tid = String(rec.id), out = [];
+  for (let y = Number(mb.slice(0, 4)) - 1; y <= Number(last.slice(0, 4)); y++) {
+    const from = y + '-' + st, to = _nkAdd((y + 1) + '-' + st, -1);
+    if (to < mb || from > last) continue;                                       // not part of this tenancy
+    if (since && to < since) continue;                                          // before the purchase → the seller settles it
+    const spanFrom = mb > from ? mb : from, spanTo = me && me < to ? me : to;
+    if (typeof _tnHasKaltNKBetween === 'function' && !_tnHasKaltNKBetween(rec, spanFrom, spanTo)) continue;   // Pauschal only
+    const inP = d => { const x = String(d || '').slice(0, 10); return x >= from && x <= to; };
+    const row = (CC_NKS.rows || []).find(r => String(r.tenant_id) === tid && (!r.kind || r.kind === 'nk_tenant')
+                  && (Number(r.covers_year) === Number(to.slice(0, 4)) || inP(r.period_from))) || null;
+    const letters = (CC_NKS.letters || []).filter(l => String(l.tenant_id) === tid && inP(l.period_from) && (l.app === 'casa' || l.app === 'manual'));
+    const sentRow = !!(row && NKD_SENT.includes(row.status));
+    // a Settlements letter counts while its line is sent (set back to open → hidden); a hand-made one always
+    const letter = letters.find(l => l.app === 'casa' && sentRow) || letters.find(l => l.app === 'manual') || null;
+    const res = row && row.result_id ? (CC_NKS.res || []).find(r => String(r.id) === String(row.result_id)) : null;
+    const doc = typeof ccfDocOf === 'function' ? ccfDocOf(tid, _nkdType(from), 'signed') : null;
+    const due = to < today;
+    const state = letter ? 'sent' : sentRow ? 'sent-nocopy' : doc ? 'uploaded' : row && row.status === 'nicht durchgeführt' ? 'notdone' : due ? 'open' : 'notdue';
+    const sentOn = letter ? String((res && res.result_date) || letter.sent_at || '').slice(0, 10) : '';
+    out.push({ from, to, spanFrom, spanTo, year: from.slice(0, 4) === to.slice(0, 4) ? from.slice(0, 4) : from.slice(0, 4) + '/' + to.slice(2, 4),
+               row, letter, doc, due, state, sentOn });
+  }
+  return out;
+}
+function ccNkDocsHTML(rec) {
+  if (!rec || !rec.id || _ccNksApp() !== 'casa') return '';
+  return `<div class="ccf-nkdocs" data-nkdocs="${_ccNksEsc(String(rec.id))}">${_ccNkDocsInner(rec)}</div>`;
+}
+function _ccNkDocsInner(rec) {
+  const lines = ccNkDocLines(rec); if (!lines.length) return '';
+  const tid = String(rec.id), edit = typeof _ccfDocEdit !== 'undefined' && !!_ccfDocEdit[tid];
+  const T = _ccNksEsc(tid);
+  const words = { sent: 'sent', 'sent-nocopy': 'sent · no copy kept', uploaded: 'uploaded', notdone: 'not done', open: 'not sent yet', notdue: 'not due yet' };
+  const rows = lines.map(L => {
+    const sub = _ccNksPerLabel(L.spanFrom, L.spanTo) + ' · ' + (L.state === 'sent' ? 'sent ' + _ccNksD(L.sentOn) : words[L.state]);
+    const left = L.letter
+      ? `<button type="button" class="ccf-cell ccf-cell--s" onclick="ccNkLetterOpen('${_ccNksEsc(String(L.letter.id))}')" aria-label="Open the NK-Abrechnung ${_ccNksEsc(L.year)}"><i class="ti ti-file-text"></i> ${(typeof ccfFmtShort === 'function' ? ccfFmtShort(L.sentOn) : _ccNksD(L.sentOn)) || 'PDF'}</button>`
+      : `<span class="ccf-cell ccf-cell--none" aria-label="none">${L.state === 'sent-nocopy' ? 'sent' : '—'}</span>`;
+    const a = `'${T}','${_ccNksEsc(_nkdType(L.from))}','signed'`;
+    let right;
+    if (L.doc) {
+      const x = edit ? `<span class="ccf-cell-x" role="button" tabindex="0" aria-label="Delete" onclick="event.stopPropagation();ccfDeleteDoc(${a})"><i class="ti ti-x"></i></span>` : '';
+      right = `<button type="button" class="ccf-cell ccf-cell--s" onclick="ccfDocTap(${a})" aria-label="Uploaded NK-Abrechnung ${_ccNksEsc(L.year)}${edit ? ' — replace' : ''}"><i class="ti ti-file-text"></i> ${typeof ccfFmtShort === 'function' ? ccfFmtShort(L.doc.uploaded_at) : 'PDF'}${x}</button>`;
+    } else if ((L.due || L.state === 'sent-nocopy') && (!L.letter || edit)) {
+      right = `<button type="button" class="ccf-cell ccf-cell--empty" onclick="ccfDocUpload(${a})"><i class="ti ti-upload"></i> Upload</button>`;
+    } else right = `<span class="ccf-cell ccf-cell--none" aria-label="none">—</span>`;
+    return `<div class="ccf-drow"><div class="ccf-dname"><div>NK-Abrechnung ${_ccNksEsc(L.year)}</div><div class="ccf-dsub">${_ccNksEsc(sub)}</div></div>${left}${right}</div>`;
+  }).join('');
+  _ccNkPrepare(lines.filter(L => L.letter).map(L => L.letter.file_path));
+  return `<div class="ccf-dhead" style="margin-top:14px"><span>NK-Abrechnungen</span><span>Settlements</span><span>Upload</span></div>${rows}`;
+}
+/* Prepared links: a tap opens the iPhone viewer straight away (same as the Documents links) */
+const _ccNkLinks = {};
+function _ccNkPrepare(paths) {
+  const db = _ccNksDb(); const need = [...new Set(paths.filter(p => p && !(_ccNkLinks[p] && _ccNkLinks[p].exp - Date.now() > 5 * 60 * 1000)))];
+  if (!db || !need.length) return;
+  setTimeout(async () => {
+    try {
+      const { data } = await db.storage.from('nk-letters').createSignedUrls(need, 3600);
+      (data || []).forEach(d => { if (d && d.signedUrl && d.path) _ccNkLinks[d.path] = { url: d.signedUrl, exp: Date.now() + 3600 * 1000 }; });
+    } catch (e) { console.warn('[nk letters] links', e); }
+  }, 0);
+}
+async function ccNkLetterOpen(id) {
+  const L = (CC_NKS.letters || []).find(l => String(l.id) === String(id)); if (!L) return;
+  const rec = typeof ccfRec === 'function' ? ccfRec(L.tenant_id) : null;
+  const label = 'NK-Abrechnung ' + (L.year || '') + (rec && rec.room ? ' – ' + rec.room : '');
+  const ready = _ccNkLinks[L.file_path];
+  if (ready && ready.exp - Date.now() > 5 * 60 * 1000 && typeof ccOpenUrl === 'function') { ccOpenUrl(ready.url, label); return; }
+  try {
+    const { data, error } = await _ccNksDb().storage.from('nk-letters').createSignedUrl(L.file_path, 3600);
+    if (error || !data) throw error || new Error('no link');
+    _ccNkLinks[L.file_path] = { url: data.signedUrl, exp: Date.now() + 3600 * 1000 };
+    if (typeof ccOpenUrl === 'function') ccOpenUrl(data.signedUrl, label); else window.open(data.signedUrl, '_blank');
+  } catch (e) { if (typeof ccToast === 'function') ccToast('The letter could not be opened — ' + ((e && e.message) || e), true); }
+}
