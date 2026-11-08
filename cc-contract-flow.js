@@ -39,14 +39,17 @@ const CCF_CASA = {
   unitLabel: u => u,
   prefix: r => r.room || 'unknown',
   renewalRows: r => (typeof _tnRenewalRows === 'function' ? _tnRenewalRows(r) : []),
-  currentRent: r => (typeof _tnCurrentRent === 'function' ? _tnCurrentRent(r, r.room) : null),
+  currentRent: (r, day) => (typeof _tnCurrentRent === 'function' ? _tnCurrentRent(r, r.room, day) : null),   // Nov 2026: any day (Renew)
   redraw: () => { if (typeof _tnRender === 'function') _tnRender(); },
   // A (non-renewal) contract for an existing tenant replaces their first contract → fill the form from it
   contractPrefill(r) {
     const c = typeof _tnContracts === 'function' ? _tnContracts(r)[0] : null;
     if (!c) return null;
+    // Nov 2026 (#2): a Pauschal tenancy brings its own "davon NK" — Approve then keeps it (was 0 → deleted)
+    const nkIncl = c.amt && c.amt.mode === 'pauschal' && typeof _tnNkInclAt === 'function'
+      ? (_tnNkInclAt(r, c.start || undefined) || (c.period && c.period.mode === 'pauschal' ? Math.min(Number(c.period.nebenkosten) || 0, Number(c.amt.total) || 0) : 0)) : 0;
     return { mode: c.amt ? c.amt.mode : null, kalt: c.amt ? c.amt.kalt : null, nk: c.amt ? c.amt.nk : null,
-             total: c.amt ? c.amt.total : null, start: c.start || null, end: c.end || null, name: c.name };
+             total: c.amt ? c.amt.total : null, start: c.start || null, end: c.end || null, name: c.name, nkIncl };
   },
   ensureKaution: id => (typeof _tnEnsureKaution === 'function' ? _tnEnsureKaution(id) : null),
   reload: async () => {
@@ -1612,13 +1615,17 @@ function ccfRenewOpen(tid) {
   const start = endNow ? ccfAddDays(endNow, 1) : '';
   // Casa: a renewal is a Jahresvertrag to the next 31.08. (also when a Kurzzeit tenant stays on)
   const end = !start ? '' : casa && typeof ccNext3108 === 'function' ? ccNext3108(start) : ccfAddDays(ccfAddYears(start, 1), -1);
-  const cur = ccfA().currentRent(rec) || {};
+  // Nov 2026 (#3): the rent in force the day before the new contract starts (a Mieterhöhung typed ahead included),
+  // and — Casa Pauschal — the tenancy's own "davon NK" of that day (never the room's)
+  const day = start ? ccfAddDays(start, -1) : undefined;
+  const cur = ccfA().currentRent(rec, day) || {};
+  const nkIncl = casa && cur.mode === 'pauschal' && typeof _tnNkInclAt === 'function' ? _tnNkInclAt(rec, day) : 0;
   const n = ccfA().renewalRows(rec).length + 1;
   const ct = (ccfA().app === 'casa' ? (typeof tnContractType === 'function' ? tnContractType(rec) : rec.contract_type)
                                     : (typeof rntContractType === 'function' ? rntContractType(rec) : rec.contract_type)) || 'kurzzeit';
   ccfA().openRenew(rec, {
     ct: casa ? 'jahres' : ct, tid: rec.id, label: n + '. Verlängerung', start, end,
-    mode: cur.mode, kalt: cur.kalt, nk: cur.nk, total: cur.total,
+    mode: cur.mode, kalt: cur.kalt, nk: cur.nk, total: cur.total, nkIncl,
     kautionSoll: Number(rec.kaution_soll) > 0 ? Number(rec.kaution_soll) : null,
   });
 }

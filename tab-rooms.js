@@ -1787,11 +1787,11 @@ function _rcContractRoom(room) {
   if (!room || !rn || rn.roomId !== room.id) return room;
   const pausch = rn.mode === 'pauschal';
   if (_contractType === 'kurzzeit') {
-    const nk = pausch ? (Number(room.kurzzeit_nk) || 0) : (Number(rn.nk) || 0);
+    const nk = pausch ? (Number(rn.nkIncl) || 0) : (Number(rn.nk) || 0);   // Nov 2026 (#3): the tenant's own NK part, never the room's
     return { ...room, kurzzeit_kaltmiete: pausch ? Math.max(0, (Number(rn.total) || 0) - nk) : Number(rn.kalt) || 0,
       kurzzeit_nk: nk, kurzzeit_pricing: pausch ? 'pauschal' : 'kalt_nk' };
   }
-  const nk = pausch ? (Number(room.nk_pauschale) || 0) : (Number(rn.nk) || 0);
+  const nk = pausch ? (Number(rn.nkIncl) || 0) : (Number(rn.nk) || 0);   // Nov 2026 (#3): the tenant's own NK part, never the room's
   return { ...room, kaltmiete: pausch ? Math.max(0, (Number(rn.total) || 0) - nk) : Number(rn.kalt) || 0,
     nk_pauschale: nk, mietvertrag_pricing: pausch ? 'pauschal' : 'kalt_nk' };
 }
@@ -1851,7 +1851,7 @@ function _rcSetupFlow(type, room) {
               kalt: Number(base.kurzzeit_kaltmiete) || 0, nk: Number(base.kurzzeit_nk) || 0 }
           : _roomMvPricing(base))
       : ccRoomBaseline(room, type);        // the baseline row of this contract type
-    const note = rn ? 'Prefilled with the current rent — type the new one if it changes.'
+    const note = rn ? 'Prefilled with the current rent — type the new one if it changes.' + (rn.mode === 'pauschal' && !(Number(rn.nkIncl) > 0) ? ' No NK part stored — type it if the contract has one.' : '')
                     : 'From the ' + (_RC_BASE_LBL[type] || 'Mietvertrag') + ' baseline — change it for this tenant.';
     const html = ccfMieteHTML({ mode: m.mode, kalt: m.kalt, nk: m.nk, note });
     const mSlot = document.getElementById('cg-miete-slot');

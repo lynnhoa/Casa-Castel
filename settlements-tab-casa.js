@@ -314,9 +314,13 @@ function scInputFor(y) {
   if (typeof ST_RET !== 'undefined' && ST_RET.error) input.warn.push(stRetFailTxt + ' before locking');
   if (tb) {
     input.teilB = tb.pos; input.teilBSkip = tb.skip; input.teilBLater = tb.later; input.teilBZero = tb.zero;
-    if (tb.pos.length) for (const t of input.tenancies) {   // § 7 cap: the yearly rent (Kaltmiete × 12 from the tenant record) — frozen with the snapshot
+    if (tb.pos.length) for (const t of input.tenancies) {   // § 7 cap: the yearly rent — frozen with the snapshot
+      // Nov 2026 (#16): the rent owed at the end of this tenancy's part of the period (rent history + Mieterhöhungen,
+      // as in Controlling); the tenant record's Kaltmiete only when Controlling has no line for it
       const tr = t.extra ? null : (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId));
-      const k = tr ? Number(tr.kaltmiete) || 0 : 0;
+      const day = t.to || (input.period || {}).to;
+      const at = !t.extra && t._exp && day && typeof ctlKaltSollAt === 'function' ? ctlKaltSollAt(t._exp, day) : null;
+      const k = Number(at) > 0 ? Number(at) : (tr ? Number(tr.kaltmiete) || 0 : 0);
       if (k > 0) t.rent12 = cxR(k * 12);
     }
   }

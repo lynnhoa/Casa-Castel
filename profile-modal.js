@@ -290,11 +290,15 @@ function _bindCard(card, section) {
     _addListItem(e.currentTarget.dataset.add);
   });
 
-  /* Remove buttons (delegation for dynamically added rows) */
-  card.addEventListener('click', e => {
-    const rb = e.target.closest('.prf-list-remove');
-    if (rb) _removeListItem(rb.dataset.list, parseInt(rb.dataset.idx, 10));
-  });
+  /* Remove buttons (delegation for dynamically added rows) — bound ONCE per card: _bindCard runs again
+     after every Edit / Cancel / add, and a second listener deleted the next item too (#28, Nov 2026) */
+  if (!card.dataset.removeBound) {
+    card.dataset.removeBound = '1';
+    card.addEventListener('click', e => {
+      const rb = e.target.closest('.prf-list-remove');
+      if (rb) _removeListItem(rb.dataset.list, parseInt(rb.dataset.idx, 10));
+    });
+  }
 
   /* Enter in add inputs */
   const addSections = section === 'zaehler'

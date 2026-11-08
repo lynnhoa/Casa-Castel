@@ -1328,6 +1328,15 @@ function ctlNkSollAt(e, iso) {
   catch (err) { return null; }
 }
 
+/* Monthly rent of an expected line on a day for the § 7 cap (Settlements Teil B) — rent history + Mieterhöhungen,
+   the same rule as Controlling: Kalt + NK → the Kaltmiete · Pauschal → the whole Pauschalmiete (Nov 2026, #16) */
+function ctlKaltSollAt(e, iso) {
+  const s = e && e._src; if (!s) return null;
+  try { const r = _cxRentDay(s.link, s.w, s.u, Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), iso, s.all, s.memo);
+        return r.mode === 'pauschal' ? _cxR(_cxN0(r.k) + _cxN0(r.nk)) : _cxN0(r.k); }
+  catch (err) { return null; }
+}
+
 const _cxDays = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5) + 1;
 const _cxPlusYear = iso => { const e = new Date(iso + 'T12:00:00'); e.setFullYear(e.getFullYear() + 1); return _cxIso(e.getFullYear(), e.getMonth() + 1, e.getDate()); };
 
