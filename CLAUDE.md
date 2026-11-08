@@ -7,6 +7,10 @@
 - **No extra messages:** don't add warnings / toasts / hints for small input slips (e.g. a mistyped Kaution
   that falls back to the rule amount). The owner does not want messages everywhere.
 
+## Owner facts
+
+- **London is 16 m²** (not 26, not 25). PREISLISTE-ROOMS.sql has the same value.
+
 ## What counts as a real bug (owner)
 
 - Cosmetic errors that show wrong or sloppy output (wrong text, wrong format, layout) — important.
