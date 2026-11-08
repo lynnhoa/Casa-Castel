@@ -97,10 +97,12 @@ async function saveRoom(roomData) {
 
 /* Follow-up after a vacancy change was saved: kitchen reset (when occupied) + tell the other tabs */
 
-// Update sort order after drag — #33: new order in memory first (= the dragged cards), only changed rows written,
-// one at a time per drag (queued), one retry; still failing → old order back (database + memory), { ok:false }
-const _roomOrderHold = new Map();            // id → the order this device holds while a save runs (+2 s for late echoes)
-let _roomOrderQ = Promise.resolve();
+// Update sort order after drag (#33, Nov 2026, after review): the WHOLE dragged order is written (every room's place —
+// a phone that missed another device's change never saves a mixed order); drags queue, and a newer drag replaces a
+// waiting older one (it writes everything anyway). Still failing after one retry → the order the database really
+// has comes back (reloaded; offline: the order from before the unsaved drags) and { ok:false } → "Not saved".
+const _roomOrderHold = new Map();            // id → the place this device shows while its order is saved (+2 s for late echoes)
+let _roomOrderQ = Promise.resolve(), _roomOrderTick = 0, _roomOrderPending = 0, _roomOrderBase = null;
 function _roomOrderApplyHold(rows) {
   if (!_roomOrderHold.size) return rows;
   rows.forEach(r => { const o = _roomOrderHold.get(String(r.id)); if (o !== undefined) r.sort_order = o; });
@@ -108,27 +110,38 @@ function _roomOrderApplyHold(rows) {
 }
 function saveRoomOrder(orderedIds) {
   const k = id => String(id);
-  const was = new Map(appRooms.map(r => [k(r.id), r.sort_order]));
-  const changed = orderedIds.map((id, i) => ({ id, i })).filter(x => was.has(k(x.id)) && was.get(k(x.id)) !== x.i);
+  if (!_roomOrderPending) _roomOrderBase = new Map(appRooms.map(r => [k(r.id), r.sort_order]));   // before the unsaved drags
   orderedIds.forEach((id, i) => { const r = appRooms.find(x => k(x.id) === k(id)); if (r) r.sort_order = i; });
   appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-  if (!sbL || !changed.length) return Promise.resolve({ ok: true });
-  changed.forEach(x => _roomOrderHold.set(k(x.id), x.i));
+  if (!sbL || !orderedIds.length) return Promise.resolve({ ok: true });
+  _roomOrderHold.clear(); orderedIds.forEach((id, i) => _roomOrderHold.set(k(id), i));
+  const want = orderedIds.slice(), tick = ++_roomOrderTick;
+  _roomOrderPending++;
   const run = async () => {
-    const done = new Set();
-    const res = await ccPersist(async () => {
-      const rs = await Promise.all(changed.filter(x => !done.has(k(x.id))).map(x =>
-        sbL.from('rooms').update({ sort_order: x.i }).eq('id', x.id).then(r => { if (r && !r.error) done.add(k(x.id)); return r || {}; }, e => ({ error: e }))));
-      return { error: (rs.find(r => r.error) || {}).error || null };
-    });
-    if (res.error) {                                     // old order back: the rows that did save, then memory
-      changed.forEach(x => _roomOrderHold.set(k(x.id), was.get(k(x.id))));   // memory + hold in one step (no mixed order)
-      appRooms.forEach(r => { if (was.has(k(r.id)) && changed.some(x => k(x.id) === k(r.id))) r.sort_order = was.get(k(r.id)); });
-      appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-      await Promise.all([...done].map(id => ccPersist(() => sbL.from('rooms').update({ sort_order: was.get(id) }).eq('id', id))));
-    }
-    setTimeout(() => changed.forEach(x => { if (_roomOrderHold.get(k(x.id)) === (res.error ? was.get(k(x.id)) : x.i)) _roomOrderHold.delete(k(x.id)); }), 2000);
-    return res.error ? { ok: false, error: res.error } : { ok: true };
+    try {
+      if (tick !== _roomOrderTick) return { ok: true, superseded: true };        // a newer drag writes the whole order
+      const wrote = new Set();                                                    // rows this run has saved
+      const res = await ccPersist(async () => {
+        const rs = await Promise.all(want.map((id, i) => wrote.has(k(id)) ? {} : sbL.from('rooms').update({ sort_order: i }).eq('id', id)
+          .then(r => { if (r && !r.error) wrote.add(k(id)); return r || {}; }, e => ({ error: e }))));
+        return { error: (rs.find(r => r.error) || {}).error || null };
+      });
+      if (tick !== _roomOrderTick) return { ok: true, superseded: true };        // a newer drag came meanwhile — it writes everything
+      if (res.error) {
+        _roomOrderHold.clear();
+        // the rows this run did save go back to their place from before (never a half-saved order in the database)
+        if (_roomOrderBase && wrote.size) await Promise.all([...wrote].filter(id => _roomOrderBase.has(id)).map(id =>
+          ccPersist(() => sbL.from('rooms').update({ sort_order: _roomOrderBase.get(id) }).eq('id', id))));
+        await loadRoomsData();                                                    // the order the database really has
+        if (loadRoomsData.lastOk === false && _roomOrderBase) {                   // offline: the order before the unsaved drags
+          appRooms.forEach(r => { if (_roomOrderBase.has(k(r.id))) r.sort_order = _roomOrderBase.get(k(r.id)); });
+          appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        }
+        return { ok: false, error: res.error };
+      }
+      setTimeout(() => { if (tick === _roomOrderTick) _roomOrderHold.clear(); }, 2000);
+      return { ok: true };
+    } finally { _roomOrderPending--; }
   };
   const p = _roomOrderQ.then(run, run);
   _roomOrderQ = p.catch(() => {});
@@ -252,13 +265,16 @@ async function deleteRoom(roomId) {
   if (_tc.error) return { ok: false, error: _tc.error.message || String(_tc.error) };
   if (_tc.active + _tc.former > 0) return { ok: false, blocked: true, active: _tc.active, former: _tc.former, error: 'Room still has tenant records.' };
 
-  const { error } = await sbL.from('rooms').delete().eq('id', roomId);
+  const { data: gone, error } = await sbL.from('rooms').delete().eq('id', roomId).select('id,name');
   if (error) return { ok: false, error: error.message };
 
   const room = getRoomById(roomId);
   appRooms = appRooms.filter(r => r.id !== roomId);
   _notifyRoomsListeners('DELETE', room);
-  if (room && room.name) _roomDeleteLeftovers(room).catch(() => {});   // #20/#34 (Nov 2026): in the background — the confirm closes at once
+  // #20/#34 (Nov 2026): in the background (the confirm closes at once) — only when the database really deleted THIS room,
+  // with the name the database had (a phone showing an old card never clears a newer room that has that name)
+  const dbRoom = Array.isArray(gone) && gone.find(x => String(x.id) === String(roomId));
+  if (dbRoom && dbRoom.name) _roomDeleteLeftovers({ ...room, id: dbRoom.id, name: dbRoom.name }).catch(() => {});
   return { ok: true };
 }
 
