@@ -361,6 +361,7 @@ document.getElementById('tab-rooms').innerHTML = `
 }
 .rc-chip.on { background:var(--cc-ink); color:var(--cc-white); border-color:var(--cc-ink); }
 .rc-chip--orphan { border-style:dashed; }
+.rc-chip--orphan.on { outline:1px dashed var(--cc-ink); outline-offset:2px; }   /* kept, but no longer in Profile */
 .rc-chip--orphan:not(.on) { opacity:.45; }
 .rc-pricing-toggle {
   display:flex; border:var(--cc-border); border-radius:var(--cc-r-pill);
@@ -1504,7 +1505,7 @@ function _roomSaveSection(sec, id) {
       if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', room);
       // Renamed: move tenant records, login, NK and Kitchen data to the new name
       if (renamed && typeof renameRoomLinks === 'function') {
-        ccQueueWrite('room-' + id, () => renameRoomLinks(oldName, room.name)).then(r => {
+        ccQueueWrite('room-links', () => renameRoomLinks(oldName, room.name)).then(r => {   // one queue: renames never overlap
           if (r && r.error) ccToast(`Room renamed, but some linked data is still under "${oldName}". Rename it once more to finish.`, true);
           if (typeof loadTenants === 'function') loadTenants();   // Tenants tab shows the tenants under the new name
         });
@@ -1713,6 +1714,8 @@ let _inventarRoomId = null;
 
 function _openInventar(roomId) {
   _inventarRoomId = roomId;
+  _openInventar._sess = (_openInventar._sess || 0) + 1;   // a save still running for an earlier sheet won't close this one
+  { const b = document.getElementById('inventarSave'); if (b) { b.disabled = false; b.textContent = t('rooms_save'); } }
   if (!document.getElementById('inventarOverlay')?.classList.contains('open')) _roomAnchorSet(roomId);
   const room = getRoomById(roomId);
   document.getElementById('inventarSubtitle').textContent = (room?.name || '') + ' · Anlage A';
@@ -1772,30 +1775,39 @@ document.getElementById('inventarSave')?.addEventListener('click', async () => {
   btn.textContent = 'Saving…';
   btn.disabled = true;
 
-  const result = await saveRoomInventar(_inventarRoomId, inventar);
-  btn.disabled = false;
-  btn.setAttribute('data-i18n', 'rooms_save');
-  btn.textContent = t('rooms_save');
+  const id = _inventarRoomId, sess = (_openInventar._sess = (_openInventar._sess || 0) + 1);   // this sheet, this save
+  const result = await saveRoomInventar(id, inventar);
+  const still = _inventarRoomId === id && _openInventar._sess === sess && document.getElementById('inventarOverlay')?.classList.contains('open');
+  if (still || !document.getElementById('inventarOverlay')?.classList.contains('open')) {
+    btn.disabled = false;
+    btn.setAttribute('data-i18n', 'rooms_save');
+    btn.textContent = t('rooms_save');
+  }
 
   if (result.ok) {
-    document.getElementById('inventarOverlay').classList.remove('open');
-    // Re-render card to update count
-    const room = getRoomById(_inventarRoomId);
-    const card = document.querySelector(`.rc[data-id="${_inventarRoomId}"]`);
+    document.getElementById('cc-save-toast')?.remove();       // an earlier "not saved" never stays on top of "Saved"
+    // Re-render that room's card (count) — whatever sheet is open now
+    const room = getRoomById(id);
+    const card = document.querySelector(`.rc[data-id="${id}"]`);
     if (card && room) {
       const wasExpanded = card.classList.contains('rc--expanded');
       card.outerHTML = _roomCardHTML(room);
-      const newCard = document.querySelector(`.rc[data-id="${_inventarRoomId}"]`);
+      const newCard = document.querySelector(`.rc[data-id="${id}"]`);
       if (wasExpanded && newCard) newCard.classList.add('rc--expanded');
       _bindAllCards();
       _initSortable();
     }
-    _inventarRoomId = null;
-    _roomAnchorRestore();
+    if (still) {                                               // only close the sheet this save belongs to
+      document.getElementById('inventarOverlay').classList.remove('open');
+      _inventarRoomId = null;
+      _roomAnchorRestore();
+    }
     if (typeof ccSavedToast === 'function') ccSavedToast();
-  } else {
+  } else if (still) {
     // #17: never silent — the sheet stays open with what you typed
     ccToast('Inventar not saved — connection problem. Please try again.', true);
+  } else {
+    ccToast('Inventar of ' + (getRoomById(id)?.name || 'a room') + ' not saved — connection problem. Please try again.', true);
   }
 });
 
@@ -4470,7 +4482,7 @@ function _roomSheetSave() {
       if (error) { Object.assign(room, before); _roomRerenderCard(cur.id); _updateRoomsSummary(appRooms); ccSaveFailed(error, 'room'); return; }
       if (typeof _notifyRoomsListeners === 'function') _notifyRoomsListeners('UPDATE', room);
       if (renamed && typeof renameRoomLinks === 'function') {
-        ccQueueWrite('room-' + cur.id, () => renameRoomLinks(oldName, room.name)).then(r => {
+        ccQueueWrite('room-links', () => renameRoomLinks(oldName, room.name)).then(r => {   // one queue: renames never overlap
           if (r && r.error) ccToast(`Room renamed, but some linked data is still under "${oldName}". Rename it once more to finish.`, true);
           if (typeof loadTenants === 'function') loadTenants();
         });

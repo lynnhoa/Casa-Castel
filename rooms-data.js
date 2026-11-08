@@ -197,6 +197,14 @@ async function renameRoomLinks(oldName, newName) {
       if (real(e2)) { failed.push('nk_abrechnung_casa.tenants'); break; }
     }
   } catch (e) { failed.push('nk_abrechnung_casa.tenants'); }
+  try {   // Settlements › Tracking "War leer" confirmations (note 'leer:<room>', Casa property 7)
+    const r = await sbL.from('ctrl_settlements').update({ note: 'leer:' + newName }).eq('property_id', 7).is('tenant_id', null).ilike('note', 'leer:' + pat);
+    if (real(r && r.error)) failed.push('ctrl_settlements.note');
+  } catch (e) { failed.push('ctrl_settlements.note'); }
+  try {   // manual NK-Abrechnung drafts of Casa not sent yet (a sent letter stays as it was sent)
+    const r = await sbL.from('nk_abrechnung_manual').update({ unit_label: newName }).eq('property_id', 7).neq('status', 'sent').ilike('unit_label', pat);
+    if (real(r && r.error)) failed.push('nk_abrechnung_manual.unit_label');
+  } catch (e) { failed.push('nk_abrechnung_manual.unit_label'); }
   if (failed.length) console.error('[rooms] rename links failed:', failed, results.filter(r => r.error));
   return failed.length ? { error: { message: 'not moved: ' + failed.join(', ') }, failed } : { error: null };
 }
@@ -234,7 +242,7 @@ async function saveRoomInventar(roomId, inventar) {
   if (!sbL) return { ok: false };
   // #17 (Nov 2026): the same safety net as every other room save — queued per room, one retry
   const write = () => sbL.from('rooms').update({ inventar, updated_at: new Date().toISOString() }).eq('id', roomId);
-  const { error } = typeof ccQueueWrite === 'function' ? await ccQueueWrite('room-' + roomId, write) : await write();
+  const { error } = typeof ccQueueWrite === 'function' ? await ccQueueWrite('room-inv-' + roomId, write) : await write();
 
   if (error) return { ok: false, error: error.message };
 

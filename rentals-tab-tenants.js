@@ -380,6 +380,7 @@ button.tn-nkv-pill.done:active { opacity:.7; }
   -webkit-tap-highlight-color:transparent; }
 .tn-nkv-pill.pending:active { opacity:.7; }
 .tn-nkv-pill i { font-size:10px; }
+.tn-cr-hint { margin:-4px 0 0; font-size:12.5px; line-height:1.5; color:#7A6F62; }
 .tn-nkv-add-form { display:flex; align-items:center; gap:6px;
   padding-top:8px; border-top:var(--cc-border); margin-top:4px; flex-wrap:wrap; }
 .tn-nkv-add-form input { font-size:12px; padding:5px 8px;
@@ -3025,14 +3026,15 @@ function _rntModalBodyHTML(rec, isApt) {
   <!-- ZÄHLERSTÄNDE + DOCUMENTS (Unsigned | Signed) — same sections as the card -->
   ${typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(rec, 'modal') + ccfDocsSectionHTML(rec, 'modal') : ''}
 
-  <!-- KAUTION -->
-  ${_rntKautionHTML('m', tid, 'modal', rec)}
+  <!-- KAUTION (#28/#8: a new former tenant → greyed until saved; entered in the pop-up that opens after Save) -->
+  ${rec.id ? '' : `<p class="tn-cr-hint" style="margin:10px 4px -2px">${rec.returnTo ? 'Kaution: enter it later in Tenants › this tenant.' : 'Kaution: save the tenant first — then enter it in the pop-up that opens.'}</p>`}
+  ${_rntKautionHTML('m', rec.id || null, 'modal', rec)}
 
   <!-- NK (apartments only) -->
-  ${isApt && !_rntAllPauschal(tid) ? _rntNKHTML('m', tid, 'modal') : ''}
+  ${isApt && !_rntAllPauschal(tid) ? _rntNKHTML('m', rec.id || null, 'modal') : ''}
 
-  <!-- NK VORAUSZAHLUNG (apartments only) -->
-  ${isApt && rec.apartment_id ? _rntNKVorausHTML('m', rec.apartment_id, 'modal') : ''}
+  <!-- NK VORAUSZAHLUNG (apartments only · the unit's current tenant only — never a former tenant's pop-up) -->
+  ${isApt && rec.apartment_id && rec.id && rec.status === 'active' && String(_rntActiveTenantId('apartment_id', rec.apartment_id)) === String(rec.id) ? _rntNKVorausHTML('m', rec.apartment_id, 'modal') : ''}
   `;
 }
 
@@ -3066,6 +3068,28 @@ function _rntToggleModalProfile(tid) {
 
 let _rntModalAsking = false;
 function _rntCloseModal() {
+  // #28/#9 (as Casa): "Add former tenant" with something typed → ask instead of throwing it away
+  { const modal = document.getElementById('rntModal');
+    if (!_rntModalTid && modal && modal._draft && modal._draft._saving) return;   // saving right now → it closes by itself
+    const ed = !_rntModalTid && modal && modal._draft ? document.querySelector('#rntModalBody [id^="mprof-edit-"]') : null;
+    if (ed && ed.dataset.snap && ed.dataset.snap !== _rntModalSnap(ed)) {
+      if (_rntModalAsking) return;
+      _rntModalAsking = true;
+      const draft = modal._draft;
+      ccDialog({ icon: 'ti-help-circle', title: 'Save this tenant?', body: 'You typed something in this form.',
+        actions: [{ label: 'Discard', value: 'discard' }, { label: 'Save', value: 'save', primary: true }] })
+        .then(async v => {
+          _rntModalAsking = false;
+          if (modal._draft !== draft) return;              // already closed or replaced
+          if (v === 'save') {
+            const snap0 = ed.dataset.snap; ed.dataset.snap = '';
+            const ok = await _rntModalSaveDraft();
+            if (!ok && modal._draft === draft) ed.dataset.snap = snap0;   // not saved (e.g. a date is wrong) → stay; × asks again
+          } else if (v === 'discard') { ed.dataset.snap = ''; _rntCloseModal(); }
+        });                                               // tap outside the question → stay and keep typing
+      return;
+    }
+  }
   // Unsaved changes in the edit view → ask (instead of silently dropping them)
   if (_rntModalTid) {
     const ed = document.getElementById('mprof-edit-' + _rntModalTid);
@@ -3734,6 +3758,7 @@ function _rntAddFormer(unitType, unitId, pre) {
     birthday: null, address: null,
     mietbeginn: (pre && pre.from) || null, mietende: (pre && pre.to) || null,
     kaltmiete: null, nebenkosten: null, kaution_soll: null,
+    returnTo: (pre && pre.back) || null,   // #28/#10: only this form goes back to Settlements (never a later one)
   };
   _rntOpenModalDraft(draft);
 }
@@ -3760,7 +3785,7 @@ function _rntOpenModalDraft(draft) {
   }
   document.getElementById('rntModalFooter').innerHTML = `
     <div class="tn-sheet-spacer"></div>
-    <button class="tn-btn tn-btn-sm" onclick="_rntCloseModal()">Cancel</button>
+    <button class="tn-btn tn-btn-sm" onclick="_rntDraftCancel()">Cancel</button>
     <button class="tn-btn tn-btn-primary cc-save cc-save--create" onclick="_rntModalSaveDraft()">
       <i class="ti ti-check"></i> Save</button>`;
 
@@ -3775,23 +3800,40 @@ function _rntOpenModalDraft(draft) {
   if (edit)  edit.style.display  = '';
   if (fread) fread.style.display = 'none';
   if (fedit) fedit.style.display = 'none';
+  if (edit) edit.dataset.snap = _rntModalSnap(edit);   // #28/#9: closing with something typed asks first
 
   if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('rntModal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
+/* Cancel = throw the typed form away on purpose (no question) */
+function _rntDraftCancel() {
+  const ed = document.querySelector('#rntModalBody [id^="mprof-edit-"]');
+  if (ed) ed.dataset.snap = '';
+  _rntCloseModal();
+}
 
 async function _rntModalSaveDraft() {
-  if (!sbL) return;
+  if (!sbL) return false;
   const modal = document.getElementById('rntModal');
   const draft = modal._draft;
-  if (!draft) return;
+  if (!draft) return false;
 
   const body = document.getElementById('rntModalBody');
   const p    = _rntCollectProfile(body, 'data-mf');
+  // #28 (as Casa #26): a mistyped / impossible Contract start or end (e.g. 31.13.) is shown, never saved as empty
+  for (const [f, lbl] of [['vertragsbeginn', 'Contract start'], ['vertragsende', 'Contract end']]) {
+    const el = body.querySelector(`[data-mf="${f}"]`);
+    const iso = el && el.value.trim() ? _rntParseDate(el.value) : null;
+    const real = iso && !isNaN(new Date(iso + 'T12:00:00Z')) && new Date(iso + 'T12:00:00Z').toISOString().slice(0, 10) === iso;
+    if (el && el.value.trim() && !real) { el.style.borderColor = '#C4705A'; el.focus(); ccToast(lbl + ': TT.MM.JJJJ', true); return false; }
+  }
+  if (draft._saving) return false;                          // one save at a time (Save + "Save this tenant?")
+  draft._saving = true;
+  const back = draft.returnTo || null;                      // #10: this form's own way back
   const btn  = document.getElementById('rntModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
-  if (!(await _ccTenancyOk(body, 'data-mf', p, _rntRecords.filter(r => draft.apartment_id ? r.apartment_id === draft.apartment_id : r.parking_id === draft.parking_id), null, btn, r => _rntFullTenantNames(r)))) return;
+  if (!(await _ccTenancyOk(body, 'data-mf', p, _rntRecords.filter(r => draft.apartment_id ? r.apartment_id === draft.apartment_id : r.parking_id === draft.parking_id), null, btn, r => _rntFullTenantNames(r)))) { draft._saving = false; return false; }
 
   const isApt = !!draft.apartment_id;
 
@@ -3807,13 +3849,18 @@ async function _rntModalSaveDraft() {
       kaltmiete:   p.kaltmiete   ?? (isApt ? _rntAptPricing(draft.apartment_id).kaltmiete : _rntPkPricing(draft.parking_id).miete) ?? null,
       nebenkosten: isApt ? (p.nebenkosten ?? _rntAptPricing(draft.apartment_id).nebenkosten ?? null) : null,
       kaution_soll: p.kaution_soll ?? null,
+      // #28/#7: Contract start / end (and the rent window) typed in the form are saved too
+      ...(p.vertragsende !== undefined ? { vertragsende: p.vertragsende || null } : {}),
+      ...(p.vertragsbeginn !== undefined ? { vertragsbeginn: p.vertragsbeginn || p.mietbeginn || null,
+          rent_from: p.rent_from || 'contract', rent_until: p.rent_until || 'contract' } : {}),
     })
     .select().single();
 
   if (error) {
+    draft._saving = false;
     ccSaveFailed(error, 'former tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
-    return;
+    return false;
   }
 
   await _rntEnsureKaution(data.id);
@@ -3824,10 +3871,11 @@ async function _rntModalSaveDraft() {
   modal._draft = null;
 
   _rntCloseModal();
-  if (window._ccReturnTo) { location.href = window._ccReturnTo; return; }  // came from Settlements → straight back
+  if (back) { location.href = back; return true; }                          // came from Settlements (this form) → straight back
   _rntOpenModal(data.id);                                                    // the new tenant in read view
   _rntRender();
   if (typeof ccSavedToast === 'function') ccSavedToast('Saved: ' + ([data.first_name, data.last_name].filter(Boolean).join(' ') || 'former tenant'));
+  return true;
 }
 
 async function _rntMarkDone(tid) {
