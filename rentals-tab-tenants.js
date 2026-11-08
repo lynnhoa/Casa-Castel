@@ -3027,7 +3027,7 @@ function _rntModalBodyHTML(rec, isApt) {
   ${typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(rec, 'modal') + ccfDocsSectionHTML(rec, 'modal') : ''}
 
   <!-- KAUTION (#28/#8: a new former tenant → greyed until saved; entered in the pop-up that opens after Save) -->
-  ${rec.id ? '' : `<p class="tn-cr-hint" style="margin:10px 4px -2px">${rec.returnTo ? 'Kaution: enter it later in Tenants › this tenant.' : 'Kaution: save the tenant first — then enter it in the pop-up that opens.'}</p>`}
+  ${rec.id ? '' : `<p class="tn-cr-hint" style="margin:10px 16px -2px">${rec.returnTo ? 'Kaution: enter it later in Tenants › this tenant.' : 'Kaution: save the tenant first — then enter it in the pop-up that opens.'}</p>`}
   ${_rntKautionHTML('m', rec.id || null, 'modal', rec)}
 
   <!-- NK (apartments only) -->
@@ -3800,11 +3800,33 @@ function _rntOpenModalDraft(draft) {
   if (edit)  edit.style.display  = '';
   if (fread) fread.style.display = 'none';
   if (fedit) fedit.style.display = 'none';
+  // Kaution Soll follows the dates typed here (Kurzzeit ≤ 3 months 1×, else 3×) until you type your own amount
+  { const ks = body.querySelector('[data-mf="kaution_soll"]');
+    if (ks) {
+      ks.addEventListener('input', ev => { if (ev.isTrusted) ks.dataset.touched = '1'; });
+      body.querySelectorAll('[data-mf="mietbeginn"], [data-mf="mietende"]').forEach(el => {
+        el.addEventListener('input', _rntDraftSollUpdate); el.addEventListener('change', _rntDraftSollUpdate); });
+      _rntDraftSollUpdate();
+    } }
   if (edit) edit.dataset.snap = _rntModalSnap(edit);   // #28/#9: closing with something typed asks first
 
   if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('rntModal').classList.add('open');
   document.body.style.overflow = 'hidden';
+}
+/* The draft's Kaution Soll from the unit's rule and the dates typed (same rule as a new tenant) */
+function _rntDraftSollAmount(draft, from, to) {
+  const s = _rntKautionSollInfo({ apartment_id: draft.apartment_id, parking_id: draft.parking_id, mietbeginn: from || null, mietende: to || null });
+  return s && s.amount != null ? s.amount : null;
+}
+function _rntDraftSollUpdate() {
+  const modal = document.getElementById('rntModal'), body = document.getElementById('rntModalBody');
+  if (!modal || !modal._draft || !body) return;
+  const inp = body.querySelector('[data-mf="kaution_soll"]'); if (!inp || inp.dataset.touched) return;
+  const val = f => body.querySelector(`[data-mf="${f}"]`)?.value || '';
+  const soll = _rntDraftSollAmount(modal._draft, _rntParseDate(val('mietbeginn')), _rntParseDate(val('mietende')));
+  inp.value = soll != null ? soll : '';
+  inp.placeholder = soll != null ? soll : '';
 }
 /* Cancel = throw the typed form away on purpose (no question) */
 function _rntDraftCancel() {
@@ -3848,7 +3870,9 @@ async function _rntModalSaveDraft() {
       // Starting rent = the unit's price (Soll) unless you typed another amount
       kaltmiete:   p.kaltmiete   ?? (isApt ? _rntAptPricing(draft.apartment_id).kaltmiete : _rntPkPricing(draft.parking_id).miete) ?? null,
       nebenkosten: isApt ? (p.nebenkosten ?? _rntAptPricing(draft.apartment_id).nebenkosten ?? null) : null,
-      kaution_soll: p.kaution_soll ?? null,
+      // the Kaution Soll you typed — else the rule for THESE dates (a stale amount from opening the form is never saved)
+      kaution_soll: (body.querySelector('[data-mf="kaution_soll"]')?.dataset.touched ? p.kaution_soll : null)
+        ?? _rntDraftSollAmount(draft, p.mietbeginn, p.mietende) ?? p.kaution_soll ?? null,
       // #28/#7: Contract start / end (and the rent window) typed in the form are saved too
       ...(p.vertragsende !== undefined ? { vertragsende: p.vertragsende || null } : {}),
       ...(p.vertragsbeginn !== undefined ? { vertragsbeginn: p.vertragsbeginn || p.mietbeginn || null,
