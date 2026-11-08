@@ -315,12 +315,22 @@ function scInputFor(y) {
   if (tb) {
     input.teilB = tb.pos; input.teilBSkip = tb.skip; input.teilBLater = tb.later; input.teilBZero = tb.zero;
     if (tb.pos.length) for (const t of input.tenancies) {   // § 7 cap: the yearly rent — frozen with the snapshot
-      // Nov 2026 (#16): the rent owed at the end of this tenancy's part of the period (rent history + Mieterhöhungen,
-      // as in Controlling); the tenant record's Kaltmiete only when Controlling has no line for it
+      // Nov 2026 (#16): the rent owed in this tenancy's part of the period (rent history + Mieterhöhungen, as in
+      // Controlling) as a monthly average × 12 — a rise inside the year counts only for its months (each day weighs
+      // 1 / days of its month); a running year only up to the preview date. The tenant record's Kaltmiete only when
+      // Controlling has no line for it.
       const tr = t.extra ? null : (window._src.casaTen || []).find(x => String(x.id) === String(t.tenantId));
-      const day = t.to || (input.period || {}).to;
-      const at = !t.extra && t._exp && day && typeof ctlKaltSollAt === 'function' ? ctlKaltSollAt(t._exp, day) : null;
-      const k = Number(at) > 0 ? Number(at) : (tr ? Number(tr.kaltmiete) || 0 : 0);
+      const P = input.period || {};
+      const a = [t.from, P.from].filter(Boolean).sort().pop(), z = [t.to, P.to].filter(Boolean).sort()[0];
+      let owed = 0, months = 0;
+      if (!t.extra && t._exp && a && z && a <= z && typeof ctlKaltSollAt === 'function') {
+        for (let dd = a; dd <= z; dd = NkCasa.addDays(dd, 1)) {
+          const v = ctlKaltSollAt(t._exp, dd); if (v === null) { months = 0; break; }
+          const dim = new Date(Number(dd.slice(0, 4)), Number(dd.slice(5, 7)), 0).getDate();
+          owed += (Number(v) || 0) / dim; months += 1 / dim;
+        }
+      }
+      const k = months > 0 && owed > 0 ? owed / months : (tr ? Number(tr.kaltmiete) || 0 : 0);
       if (k > 0) t.rent12 = cxR(k * 12);
     }
   }
