@@ -814,7 +814,8 @@ function _cxUnitSollV2(u, pid, y, m) {
       continue;
     }
     const per = _cxPerAt(_cxTenancyData(link, w, all, memo).per, today);
-    const ce = per && _cxD(per.contract_end);
+    // Nov 2026: the date the tenant card shows (Contract end) first — the entry's own end only when the card has none
+    const ce = (w.t && _cxContractEnd(link, w.t)) || (per && _cxD(per.contract_end));
     if (ce && ce < today && ce <= last) checks.push(w.name + ': contract ended on ' + _cxFmtD(ce) + ' – no move-out and no renewal entered');
   }
   if (roomGap && !checks.some(c => /Move-out/.test(c))) checks.push('Room marked as occupied, but no tenant entered for these days – please check the tenant or the room status');

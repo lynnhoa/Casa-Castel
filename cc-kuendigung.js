@@ -367,7 +367,9 @@ async function _kbSetEnd(rec, end) {
   rec.vertragsende = end;
   const res = await ccQueueWrite('tn-' + rec.id, () => sbL.from('tenant_records').update({ vertragsende: end }).eq('id', rec.id));
   if (res && res.error) { rec.vertragsende = before; throw res.error; }
-  if (last && last.renewal && typeof ccRpUpdate === 'function') { try { await ccRpUpdate(sbL, last.renewal.id, { contract_end: end }); } catch (e) { console.warn('[kuendigung] renewal end', e); } }
+  // the latest contract's own entry follows (renewal or first contract) — the same helper as every Tenants save
+  if (typeof _tnSyncContractEnd === 'function') await _tnSyncContractEnd(rec, end);
+  else if (last && last.renewal && typeof ccRpUpdate === 'function') { try { await ccRpUpdate(sbL, last.renewal.id, { contract_end: end }); } catch (e) { console.warn('[kuendigung] renewal end', e); } }
 }
 const _kbBusy = {};
 async function kbPdf(tid, save, btn) {

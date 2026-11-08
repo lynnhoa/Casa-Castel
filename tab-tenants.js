@@ -1069,6 +1069,24 @@ function _tnContractState(rec) {
   if (r === -1) r = 0;
   return { all, cur: all[r], next: all[r + 1] || null, earlier: all.slice(0, r).reverse() };
 }
+/* Nov 2026: the tenant card's Contract end and the latest contract's own rent entry always say the same — every save of a
+   Contract end writes both (Controlling and the data check read the entry; the card reads the card). Safe to repeat. */
+/* The Contract end the tenant's bar shows (card's Contract end, else the latest renewal's) — what the edit fields start with */
+function _tnShownEnd(rec) {
+  if (!rec) return '';
+  const all = _tnContracts(rec), last = all[all.length - 1];
+  return (last && last.end) || _ccIso(rec.vertragsende) || '';
+}
+function _tnSyncContractEnd(rec, end) {
+  if (!rec || !rec.id || !sbL || typeof ccRpUpdate !== 'function') return Promise.resolve();
+  const all = _tnContracts(rec), last = all[all.length - 1];
+  const ent = last && (last.renewal || last.period);         // the entry that starts the latest contract
+  if (!ent || !ent.id) return Promise.resolve();
+  const want = _ccIso(end) || null;
+  if ((_ccIso(ent.contract_end) || null) === want) return Promise.resolve();
+  return ccQueueWrite('rp-' + ent.id, () => ccRpUpdate(sbL, ent.id, { contract_end: want }).then(() => ({}), e => ({ error: e })))
+    .then(r => { if (r && r.error) ccSaveFailed(r.error, 'contract end'); });
+}
 function _tnTypeWord(t) { return t === 'kurzzeit' ? 'Kurzzeit' : t === 'jahres' ? 'Jahresvertrag' : t === 'mietvertrag' ? 'Mietvertrag' : ''; }
 function _tnTypePill(t) { const w = _tnTypeWord(t); return w ? `<span class="tn-ctp tn-ctp--${t}">${w}</span>` : ''; }
 function _tnContractDates(c) {
@@ -1223,6 +1241,7 @@ function _tnContractEdit(rid, tid, i, secId) {
       Object.assign(rec, upd);
       ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(upd).eq('id', tid));
     }
+    if (c.last && endNew !== undefined) _tnSyncContractEnd(rec, endNew);   // the entry too (also without a renewal)
     setTimeout(_tnRender, 0);
     return true;
   });
@@ -2162,7 +2181,7 @@ async function _tnSaveNext(roomName) {
       await ccRpSetRent(sbL, { app: 'casa', rec: data, validFrom: _ccIso(data.mietbeginn), mode: pa ? 'pauschal' : 'kalt_nk',
         kalt: pa ? b.total : b.kalt, nk: pa ? null : b.nk, pauschale: pa ? b.total : null,
         nkIncl: pa && b.nk > 0 ? Math.min(b.nk, b.total) : undefined,
-        contract_type: type, kind: 'migrated', source: 'tenant_form', legacyMode: pa ? 'pauschal' : 'kalt_nk' });
+        contract_type: type, contract_end: data.vertragsende || undefined, kind: 'migrated', source: 'tenant_form', legacyMode: pa ? 'pauschal' : 'kalt_nk' });
     } catch (e) { ccSaveFailed(e, 'rent history'); }
   }
   // #22: the current tenant without a move-out leaves the day before — or at the contract end when that comes first
@@ -3133,7 +3152,7 @@ function _tnProfileSectionHTML(rid, room, rec) {
         ${_ccHasRW(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
           <input data-f="vertragsbeginn" type="text" value="${_tnFmtDate(rec ? rec.vertragsbeginn : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
         ${veInForm ? `<div class="tn-field"><span class="tn-flbl">Contract end</span>
-          <input data-f="vertragsende" type="text" value="${_tnFmtDate(rec ? rec.vertragsende : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
+          <input data-f="vertragsende" type="text" value="${_tnFmtDate(rec ? _tnShownEnd(rec) : '')}" placeholder="TT.MM.JJJJ"/></div>` : ''}
         ${_ccHasRW(_tnRecords) ? _ccRentEditHTML('data-f', rec) : ''}
       </div>
     </div>
@@ -3661,7 +3680,7 @@ function _tnModalBodyHTML(rec) {
         ${_ccHasRW(_tnRecords) ? `<div class="tn-field"><span class="tn-flbl">Contract start</span>
           <input data-mf="vertragsbeginn" type="text" value="${_tnFmtDate(rec.vertragsbeginn)}" placeholder="TT.MM.JJJJ"/></div>` : ''}
         <div class="tn-field"><span class="tn-flbl">Contract end</span>
-          <input data-mf="vertragsende" type="text" value="${_tnFmtDate(rec.vertragsende)}" placeholder="TT.MM.JJJJ"/></div>
+          <input data-mf="vertragsende" type="text" value="${_tnFmtDate(_tnShownEnd(rec))}" placeholder="TT.MM.JJJJ"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-in</span>
           <input data-mf="mietbeginn" type="text" value="${_tnFmtDate(rec.mietbeginn)}"/></div>
         <div class="tn-field"><span class="tn-flbl">Move-out</span>
@@ -4033,7 +4052,7 @@ async function _tnSaveNewTenant(rid, roomName) {
     try {
       await ccRpSetRent(sbL, { app: 'casa', rec: data, validFrom: _ccIso(data.mietbeginn), mode: p._mode,
         kalt: Number(data.kaltmiete) || 0, nk: p._mode === 'pauschal' ? null : (Number(data.nebenkosten) || 0),
-        pauschale: Number(data.kaltmiete) || 0, contract_type: ctype || undefined,
+        pauschale: Number(data.kaltmiete) || 0, contract_type: ctype || undefined, contract_end: data.vertragsende || undefined,
         kind: 'migrated', source: 'tenant_form', legacyMode: p._mode });
     } catch (e) { ccSaveFailed(e, 'rent history'); }
   }
@@ -4073,7 +4092,7 @@ async function _tnRenewDelete(tid, pid) {
   rec.vertragsende = prevEnd;
   _tnRender();
   ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update({ vertragsende: prevEnd }).eq('id', tid))
-    .then(({ error }) => { if (error) { rec.vertragsende = before; _tnRender(); ccSaveFailed(error, 'contract end'); } });
+    .then(({ error }) => { if (error) { rec.vertragsende = before; _tnRender(); ccSaveFailed(error, 'contract end'); } else _tnSyncContractEnd(rec, prevEnd); });
 }
 
 
@@ -4086,6 +4105,7 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     if (ve && ve.value.trim() && !_tnParseDate(ve.value)) { ve.style.borderColor = '#C4705A'; ve.focus(); ccToast('Contract end: TT.MM.JJJJ', true); return; } }
   const p   = _tnCollectProfile(sec, 'data-f');
   const rec = _tnRecords.find(r => r.id === tid);
+  const shownEnd = _tnShownEnd(rec);                        // the end the bar showed before this save
   if (!p.first_name && !p.last_name && !p.email) {
     // Name and email cleared → the tenant should go: ask, never delete silently
     if (rec) { await _tnDeleteTenant(tid); return; }
@@ -4155,6 +4175,8 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(update).eq('id', tid))
     .then(async ({ error }) => {
       tOk(!error);
+      // the entry follows the card — an untouched empty field never clears a renewal's end (only a date, or a shown date cleared)
+      if (!error && update.vertragsende !== undefined && rec && (update.vertragsende || shownEnd)) _tnSyncContractEnd(rec, update.vertragsende);
       if (error) {
         if (rec && before) { Object.keys(update).forEach(k => { rec[k] = before[k]; }); }
         if (ctChanged && ctBefore) _tnSyncTypePeriod(rec, ctBefore);
@@ -4273,10 +4295,8 @@ async function _tnSaveRent(rid, tid, roomName) {
     if (cc.last) upd.contract_type = ctNew;
   }
   // Contract end of the latest contract
-  if (endNew !== undefined && cc && cc.last && (endNew || null) !== (_ccIso(rec.vertragsende) || null)) {
-    upd.vertragsende = endNew;
-    if (cc.renewal && typeof ccRpUpdate === 'function') ccRpUpdate(sbL, cc.renewal.id, { contract_end: endNew }).catch(() => {});
-  }
+  if (endNew !== undefined && cc && cc.last && (endNew || null) !== (_ccIso(rec.vertragsende) || null)) upd.vertragsende = endNew;
+  if (endNew !== undefined && cc && cc.last) _tnSyncContractEnd(rec, endNew);   // the entry follows (even when the card had it)
   Object.assign(rec, upd);
   ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(upd).eq('id', tid))
     .then(({ error }) => {
@@ -4310,7 +4330,11 @@ async function _tnModalSaveProfile(tid) {
     return;
   }
 
+  { const ve = body.querySelector('[data-mf="vertragsende"]');   // a mistyped contract end never clears the saved one (as the card form)
+    if (ve && typeof ccDateSettle === 'function') ccDateSettle(ve);  // tidy "30.09.27" → 30.09.2027 first (as leaving the field does)
+    if (ve && ve.value.trim() && !_tnParseDate(ve.value)) { ve.style.borderColor = '#C4705A'; ve.focus(); ccToast('Contract end: TT.MM.JJJJ', true); return; } }
   const p     = _tnCollectProfile(body, 'data-mf');
+  const shownEnd = _tnShownEnd(_tnRecords.find(r => r.id === tid));   // the end the pop-up showed before this save
   const nkInc = _tnNkInclOf(body, p);                       // D4: Pauschal → "davon NK"
   if (nkInc === false) return;
   let prevMove = {};                                        // #3 (Nov 2026): the move-out of the tenant before
@@ -4421,7 +4445,7 @@ async function _tnModalSaveProfile(tid) {
   // Fire to Supabase in background
   const tw = ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(update).eq('id', tid))
     .then(({ error }) => {
-      if (!error) return true;
+      if (!error) { if (update.vertragsende !== undefined && rec && (update.vertragsende || shownEnd)) _tnSyncContractEnd(rec, update.vertragsende); return true; }   // the entry follows the card (an untouched empty field clears nothing)
       if (rec && beforeRec) Object.keys(update).forEach(k => { rec[k] = beforeRec[k]; });
       _tnRender();
       if (_tnModalTid === tid && document.getElementById('tnModal')?.classList.contains('open')) _tnOpenModal(tid);   // old values back in the pop-up
@@ -4778,7 +4802,7 @@ async function _tnModalSaveDraft() {
       await ccRpSetRent(sbL, { app: 'casa', rec: data, validFrom: _ccIso(data.mietbeginn), mode: modeSel,
         kalt: modeSel === 'pauschal' ? k + n : k, nk: modeSel === 'pauschal' ? null : n, pauschale: k + n,
         nkIncl: modeSel === 'pauschal' && nkInc ? Math.min(nkInc, k + n) : undefined,   // D4
-        contract_type: ctype || undefined, kind: 'migrated', source: 'tenant_form', legacyMode: modeSel });
+        contract_type: ctype || undefined, contract_end: data.vertragsende || undefined, kind: 'migrated', source: 'tenant_form', legacyMode: modeSel });
       if (modeSel === 'pauschal' && n) { data.kaltmiete = k + n; data.nebenkosten = null;
         sbL.from('tenant_records').update({ kaltmiete: k + n, nebenkosten: null }).eq('id', data.id).then(() => {}); }
     } catch (e) { ccSaveFailed(e, 'rent history'); }

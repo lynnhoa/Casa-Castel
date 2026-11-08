@@ -716,7 +716,8 @@ function ccIsNumInput(el) {
       if (iso) shown = ccFmtDate(iso);
     }
     if (shown === null) {                                 // not a date → back to the last one, red for a moment
-      const last = el._ccLast !== undefined ? el._ccLast : '';
+      // Nov 2026: never touched yet → the date the field opened with (a typo never empties a prefilled date)
+      const last = el._ccLast !== undefined ? el._ccLast : (el.defaultValue && ccParseDate(ccDateComplete(String(el.defaultValue).trim())) ? String(el.defaultValue).trim() : '');
       nset(el, last);
       el.setAttribute('aria-invalid', 'true');
       clearTimeout(el._ccRed); el._ccRed = setTimeout(() => el.removeAttribute('aria-invalid'), 2500);
