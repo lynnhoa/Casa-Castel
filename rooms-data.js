@@ -48,7 +48,7 @@ async function loadRoomsData() {
   }
 
   loadRoomsData.lastOk = true;
-  appRooms = data || [];
+  appRooms = _roomOrderApplyHold(data || []);   // #33
   return appRooms;
 }
 
@@ -97,22 +97,55 @@ async function saveRoom(roomData) {
 
 /* Follow-up after a vacancy change was saved: kitchen reset (when occupied) + tell the other tabs */
 
-// Update sort order after drag
-async function saveRoomOrder(orderedIds) {
-  if (!sbL) return;
-
-  const updates = orderedIds.map((id, i) =>
-    sbL.from('rooms').update({ sort_order: i }).eq('id', id)
-  );
-
-  await Promise.all(updates);
-
-  // Update cache order
-  orderedIds.forEach((id, i) => {
-    const r = getRoomById(id);
-    if (r) r.sort_order = i;
-  });
+// Update sort order after drag (#33, Nov 2026, after review): the WHOLE dragged order is written (every room's place —
+// a phone that missed another device's change never saves a mixed order); drags queue, and a newer drag replaces a
+// waiting older one (it writes everything anyway). Still failing after one retry → the order the database really
+// has comes back (reloaded; offline: the order from before the unsaved drags) and { ok:false } → "Not saved".
+const _roomOrderHold = new Map();            // id → the place this device shows while its order is saved (+2 s for late echoes)
+let _roomOrderQ = Promise.resolve(), _roomOrderTick = 0, _roomOrderPending = 0, _roomOrderBase = null;
+function _roomOrderApplyHold(rows) {
+  if (!_roomOrderHold.size) return rows;
+  rows.forEach(r => { const o = _roomOrderHold.get(String(r.id)); if (o !== undefined) r.sort_order = o; });
+  return rows.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+}
+function saveRoomOrder(orderedIds) {
+  const k = id => String(id);
+  if (!_roomOrderPending) _roomOrderBase = new Map(appRooms.map(r => [k(r.id), r.sort_order]));   // before the unsaved drags
+  orderedIds.forEach((id, i) => { const r = appRooms.find(x => k(x.id) === k(id)); if (r) r.sort_order = i; });
   appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  if (!sbL || !orderedIds.length) return Promise.resolve({ ok: true });
+  _roomOrderHold.clear(); orderedIds.forEach((id, i) => _roomOrderHold.set(k(id), i));
+  const want = orderedIds.slice(), tick = ++_roomOrderTick;
+  _roomOrderPending++;
+  const run = async () => {
+    try {
+      if (tick !== _roomOrderTick) return { ok: true, superseded: true };        // a newer drag writes the whole order
+      const wrote = new Set();                                                    // rows this run has saved
+      const res = await ccPersist(async () => {
+        const rs = await Promise.all(want.map((id, i) => wrote.has(k(id)) ? {} : sbL.from('rooms').update({ sort_order: i }).eq('id', id)
+          .then(r => { if (r && !r.error) wrote.add(k(id)); return r || {}; }, e => ({ error: e }))));
+        return { error: (rs.find(r => r.error) || {}).error || null };
+      });
+      if (tick !== _roomOrderTick) return { ok: true, superseded: true };        // a newer drag came meanwhile — it writes everything
+      if (res.error) {
+        _roomOrderHold.clear();
+        // the rows this run did save go back to their place from before (never a half-saved order in the database)
+        if (_roomOrderBase && wrote.size) await Promise.all([...wrote].filter(id => _roomOrderBase.has(id)).map(id =>
+          ccPersist(() => sbL.from('rooms').update({ sort_order: _roomOrderBase.get(id) }).eq('id', id))));
+        await loadRoomsData();                                                    // the order the database really has
+        if (loadRoomsData.lastOk === false && _roomOrderBase) {                   // offline: the order before the unsaved drags
+          appRooms.forEach(r => { if (_roomOrderBase.has(k(r.id))) r.sort_order = _roomOrderBase.get(k(r.id)); });
+          appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        }
+        return { ok: false, error: res.error };
+      }
+      setTimeout(() => { if (tick === _roomOrderTick) _roomOrderHold.clear(); }, 2000);
+      return { ok: true };
+    } finally { _roomOrderPending--; }
+  };
+  const p = _roomOrderQ.then(run, run);
+  _roomOrderQ = p.catch(() => {});
+  return p;
 }
 
 /* ── ROOM NAME = LINK KEY ─────────────────────────────────────
@@ -149,6 +182,10 @@ async function renameRoomLinks(oldName, newName) {
     sbL.from('ctrl_units').update({ name: newName }).eq('property_id', 7).ilike('name', pat),
   ].map(q => q.then(r => r, e => ({ error: e }))));
   units.forEach((r, i) => { if (r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '')) results.push({ table: 'ctrl_units', col: i ? 'name' : 'source_ref', error: r.error }); });
+  try {   // #19b: the tenant-app login status (room_logins.room_key = lower-case name) — written by SQL (ROOMS-LOGINS.sql)
+    const r = await sbL.rpc('room_logins_rename', { p_old: oldName, p_new: newName });
+    if (r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '')) results.push({ table: 'room_logins', col: 'room_key', error: r.error });
+  } catch (e) { results.push({ table: 'room_logins', col: 'room_key', error: e }); }
   const failed = results.filter(r => r.error).map(r => r.table + '.' + r.col);
   // Kitchen rotation list (kept as a list of names)
   try {
@@ -212,7 +249,7 @@ async function renameRoomLinks(oldName, newName) {
 /* Tenant records still stored under this room (active + former) */
 async function roomTenantCount(roomName) {
   if (!sbL || !roomName) return { active: 0, former: 0, error: null };
-  const { data, error } = await sbL.from('tenant_records').select('id,status').eq('room', roomName);
+  const { data, error } = await sbL.from('tenant_records').select('id,status').ilike('room', _ccIlikeExact(roomName));   // #34
   if (error) return { active: 0, former: 0, error };
   const rows = data || [];
   const active = rows.filter(r => r.status === 'active').length;
@@ -228,13 +265,41 @@ async function deleteRoom(roomId) {
   if (_tc.error) return { ok: false, error: _tc.error.message || String(_tc.error) };
   if (_tc.active + _tc.former > 0) return { ok: false, blocked: true, active: _tc.active, former: _tc.former, error: 'Room still has tenant records.' };
 
-  const { error } = await sbL.from('rooms').delete().eq('id', roomId);
+  const { data: gone, error } = await sbL.from('rooms').delete().eq('id', roomId).select('id,name');
   if (error) return { ok: false, error: error.message };
 
   const room = getRoomById(roomId);
   appRooms = appRooms.filter(r => r.id !== roomId);
   _notifyRoomsListeners('DELETE', room);
+  // #20/#34 (Nov 2026): in the background (the confirm closes at once) — only when the database really deleted THIS room,
+  // with the name the database had (a phone showing an old card never clears a newer room that has that name)
+  const dbRoom = Array.isArray(gone) && gone.find(x => String(x.id) === String(roomId));
+  if (dbRoom && dbRoom.name) _roomDeleteLeftovers({ ...room, id: dbRoom.id, name: dbRoom.name }).catch(() => {});
   return { ok: true };
+}
+
+/* #20/#34: what only this room used — never history (tenancies, kitchen/cleaning weeks, messages, receipts, letters).
+   Each step on its own; a failure only leaves that leftover (console), never blocks the delete. */
+async function _roomDeleteLeftovers(room) {
+  const pat = _ccIlikeExact(room.name), today = new Date().toLocaleDateString('sv-SE');
+  const soft = async (what, f) => { try { const r = await f(); if (r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '')) console.warn('[rooms] delete leftovers ' + what + ':', r.error.message); } catch (e) { console.warn('[rooms] delete leftovers ' + what + ':', e); } };
+  await soft('kitchen list', async () => {
+    const kr = typeof getKitchenRooms === 'function' ? getKitchenRooms() : [];
+    if (typeof syncKitchenRoomsToSupabase === 'function' && kr.some(n => _ccRoomNorm(n) === _ccRoomNorm(room.name)))
+      await syncKitchenRoomsToSupabase(kr.filter(n => _ccRoomNorm(n) !== _ccRoomNorm(room.name)));
+  });
+  await soft('password', () => sbL.from('lounge_data').delete().eq('type', 'password').ilike('room', pat));
+  await soft('absences', () => sbL.from('kitchen_absences').delete().ilike('room', pat).gte('to_date', today));
+  await soft('login status', () => sbL.rpc('room_logins_rename', { p_old: room.name, p_new: null }));
+  await soft('Controlling unit', async () => {
+    const { data: us, error } = await sbL.from('ctrl_units').select('id').eq('property_id', 7).eq('source_type', 'casa_room').eq('source_ref', String(room.id));
+    if (error) return { error };
+    for (const u of (us || [])) {
+      const { data: inc, error: e2 } = await sbL.from('ctrl_income_months').select('id').eq('unit_id', u.id).limit(1);
+      if (e2) return { error: e2 };
+      if (!(inc || []).length) { const d = await sbL.from('ctrl_units').delete().eq('id', u.id); if (d.error) return d; }   // bookings → the unit stays (history)
+    }
+  });
 }
 
 // Save inventar only
@@ -274,6 +339,7 @@ function initRoomsRealtime() {
           _notifyRoomsListeners('INSERT', newRow);
 
         } else if (eventType === 'UPDATE') {
+          _roomOrderApplyHold([newRow]);                               // #33: an echo never moves a card while its order is saved
           const idx = appRooms.findIndex(r => r.id === newRow.id);
           if (idx !== -1) appRooms[idx] = newRow;
           else appRooms.push(newRow);
