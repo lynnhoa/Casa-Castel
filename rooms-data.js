@@ -157,6 +157,46 @@ async function renameRoomLinks(oldName, newName) {
       await syncKitchenRoomsToSupabase(kr.map(n => (_ccRoomNorm(n) === _ccRoomNorm(oldName) ? newName : n)));
     }
   } catch (e) { failed.push('kitchen list'); }
+  // #19 (Nov 2026): Maintenance and Settlements keep room names too — "Who pays" (receipts), the reported room,
+  // Controlling's snapshot of who pays, and Settlements' tenants not in the app. Safe to repeat (old name only).
+  const same = n => _ccRoomNorm(n) === _ccRoomNorm(oldName);
+  const swap = arr => Array.isArray(arr) && arr.some(same) ? arr.map(n => (same(n) ? newName : n)) : null;
+  const real = e => !!(e && !/does not exist|schema cache|Could not find/i.test(e.message || ''));
+  const parse = v => { if (typeof v !== 'string') return v; try { return JSON.parse(v); } catch (e) { return null; } };
+  try {
+    const r = await sbL.from('maint_cases').update({ report_room: newName }).ilike('report_room', pat);
+    if (real(r && r.error)) failed.push('maint_cases.report_room');
+  } catch (e) { failed.push('maint_cases.report_room'); }
+  try {
+    const { data, error } = await sbL.from('maint_costs').select('id,pay_rooms').not('pay_rooms', 'is', null);
+    if (real(error)) failed.push('maint_costs.pay_rooms');
+    else for (const row of (data || [])) {
+      const nx = swap(row.pay_rooms); if (!nx) continue;
+      const { error: e2 } = await sbL.from('maint_costs').update({ pay_rooms: nx }).eq('id', row.id);
+      if (real(e2)) { failed.push('maint_costs.pay_rooms'); break; }
+    }
+  } catch (e) { failed.push('maint_costs.pay_rooms'); }
+  try {
+    const { data, error } = await sbL.from('ctrl_expense_one_time').select('id,maint_pay').not('maint_pay', 'is', null);
+    if (real(error)) failed.push('ctrl_expense_one_time.maint_pay');
+    else for (const row of (data || [])) {
+      const p = parse(row.maint_pay); const nx = p && typeof p === 'object' ? swap(p.r) : null; if (!nx) continue;
+      const v = { ...p, r: nx };
+      const { error: e2 } = await sbL.from('ctrl_expense_one_time').update({ maint_pay: typeof row.maint_pay === 'string' ? JSON.stringify(v) : v }).eq('id', row.id);
+      if (real(e2)) { failed.push('ctrl_expense_one_time.maint_pay'); break; }
+    }
+  } catch (e) { failed.push('ctrl_expense_one_time.maint_pay'); }
+  try {
+    const { data, error } = await sbL.from('nk_abrechnung_casa').select('id,tenants');
+    if (real(error)) failed.push('nk_abrechnung_casa.tenants');
+    else for (const row of (data || [])) {
+      const ts = parse(row.tenants); const ex = ts && Array.isArray(ts.__extra) ? ts.__extra : null;
+      if (!ex || !ex.some(x => x && same(x.room))) continue;
+      const v = { ...ts, __extra: ex.map(x => (x && same(x.room) ? { ...x, room: newName } : x)) };
+      const { error: e2 } = await sbL.from('nk_abrechnung_casa').update({ tenants: typeof row.tenants === 'string' ? JSON.stringify(v) : v }).eq('id', row.id);
+      if (real(e2)) { failed.push('nk_abrechnung_casa.tenants'); break; }
+    }
+  } catch (e) { failed.push('nk_abrechnung_casa.tenants'); }
   if (failed.length) console.error('[rooms] rename links failed:', failed, results.filter(r => r.error));
   return failed.length ? { error: { message: 'not moved: ' + failed.join(', ') }, failed } : { error: null };
 }
@@ -192,10 +232,9 @@ async function deleteRoom(roomId) {
 // Save inventar only
 async function saveRoomInventar(roomId, inventar) {
   if (!sbL) return { ok: false };
-  const { error } = await sbL
-    .from('rooms')
-    .update({ inventar, updated_at: new Date().toISOString() })
-    .eq('id', roomId);
+  // #17 (Nov 2026): the same safety net as every other room save — queued per room, one retry
+  const write = () => sbL.from('rooms').update({ inventar, updated_at: new Date().toISOString() }).eq('id', roomId);
+  const { error } = typeof ccQueueWrite === 'function' ? await ccQueueWrite('room-' + roomId, write) : await write();
 
   if (error) return { ok: false, error: error.message };
 
