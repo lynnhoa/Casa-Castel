@@ -2,7 +2,8 @@
 --     All 16 sections of DATA-CHECK-NOV.sql (A, B, C, C2, D, E, F, G, G2, H1 … H7) in ONE statement with ONE result
 --     table — for the Supabase SQL Editor, which shows only the last result. Nothing is changed: it is one SELECT.
 --
--- HOW TO RUN (Supabase › SQL Editor): paste this whole file and press Run (nothing to select).
+-- HOW TO RUN (Supabase › SQL Editor): paste this whole file and press Run (nothing to select). The result shown
+--     is the check's table (STEP 2).
 --     One row = one thing to look at in the app — the same rows the sections give when run one by one.
 --     section   A … H7 = the section of DATA-CHECK-NOV.sql; its header there explains the problem and the fix
 --     what      the problem in a few words
@@ -15,11 +16,28 @@
 --     tenant_records, rooms, nk_vorauszahlung_history (the app) · rent_periods (UPDATE.sql § 1) ·
 --     casa_mieterhoehung_history (Mieterhöhungen, Oct 2026) · ctrl_units, ctrl_income_months, ctrl_expense_one_time
 --     (Controlling) · maint_cases, maint_costs (MAINTENANCE.sql) · nk_abrechnung_casa (SETTLEMENTS-CASA.sql)
---     If ONE of them is missing, the whole statement stops with: relation "…" does not exist. Then run the sections
---     of DATA-CHECK-NOV.sql one by one instead (there a missing table stops only its own section).
+--     A table your project does not have (e.g. casa_mieterhoehung_history when no Mieterhöhung was ever saved) is
+--     replaced for this run by an empty stand-in (STEP 1 below) — its sections then find nothing; the rest runs.
+--     tenant_records and rooms must exist (they always do).
 --
 -- The 16 section queries below are copied UNCHANGED from DATA-CHECK-NOV.sql (each from its "-- ── X" / "-- Hn" line
 -- to ") x"). When a section there changes, copy it here again.
+-- STEP 1 (runs with the check — changes NOTHING in your data): a table your project does not have yet is replaced
+--     by an EMPTY stand-in that exists only for this one run (a temporary table, gone when the editor closes),
+--     so the check never stops at 'relation … does not exist'. Its sections then simply find nothing.
+do $stub$ begin
+  if to_regclass('public.casa_mieterhoehung_history') is null then create temp table if not exists casa_mieterhoehung_history (id uuid, room text, tenant_id text, effective_date date, amount numeric, kind text, tenant_adjusted boolean, ignored boolean, created_at timestamptz); end if;
+  if to_regclass('public.ctrl_expense_one_time') is null then create temp table if not exists ctrl_expense_one_time (id bigint, property_id bigint, invoice_date date, item text, amount numeric, company text, kind text, direction integer, source_ref text, nk_umlage boolean, nk_category_id bigint, maint_cost_id uuid, maint_refund_of uuid, maint_pay jsonb, maint_before jsonb); end if;
+  if to_regclass('public.ctrl_income_months') is null then create temp table if not exists ctrl_income_months (id bigint, unit_id bigint, year integer, month integer, kaltmiete numeric, nebenkosten numeric, split jsonb, diff_ok boolean, diff_reason text); end if;
+  if to_regclass('public.ctrl_units') is null then create temp table if not exists ctrl_units (id bigint, property_id bigint, name text, unit_type text, source_type text, source_ref text, sort_order integer); end if;
+  if to_regclass('public.maint_cases') is null then create temp table if not exists maint_cases (id uuid, kind text, property_id bigint, property_name text, area text, title text, case_date date, status text, paid_by text, description text, report_room text, created_at timestamptz, updated_at timestamptz); end if;
+  if to_regclass('public.maint_costs') is null then create temp table if not exists maint_costs (id uuid, case_id uuid, kind text, receipt_no text, description text, brand text, amount numeric, cost_date date, return_of uuid, pay_type text, pay_cat bigint, pay_where text, pay_rooms text[], pay_via text, pay_paid_on date, created_at timestamptz, updated_at timestamptz); end if;
+  if to_regclass('public.nk_abrechnung_casa') is null then create temp table if not exists nk_abrechnung_casa (id uuid, year integer, period_from date, period_to date, locked_at timestamptz, snapshot jsonb, tenants jsonb, created_at timestamptz, updated_at timestamptz); end if;
+  if to_regclass('public.nk_vorauszahlung_history') is null then create temp table if not exists nk_vorauszahlung_history (id uuid, room text, effective_date date, amount numeric, tenant_notified boolean, notified_date date, tenant_adjusted boolean, ignored boolean, tenant_id text, created_at timestamptz); end if;
+  if to_regclass('public.rent_periods') is null then create temp table if not exists rent_periods (id uuid, app text, tenant_id text, valid_from date, kind text, mode text, pauschale numeric, kaltmiete numeric, nebenkosten numeric, first_month text, last_month text, contract_type text, contract_end date, source text, note text, created_at timestamptz, updated_at timestamptz); end if;
+end $stub$;
+
+-- STEP 2 · the check
 with
 all_rows (section, sec_no, row_no, r) as (
   select 'A', 1, row_number() over (), to_jsonb(x) from (
