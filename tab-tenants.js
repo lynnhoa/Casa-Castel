@@ -3704,7 +3704,7 @@ function _tnModalBodyHTML(rec) {
   ${typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(rec, 'modal') + ccfDocsSectionHTML(rec, 'modal') : ''}
 
   <!-- KAUTION (Nov 2026, #25: a new former tenant → greyed until saved; entered in the pop-up that opens after Save) -->
-  ${rec.id ? '' : `<p class="tn-cr-hint" style="margin:10px 4px -2px">${rec.returnTo ? 'Kaution: enter it later in Tenants › this tenant.' : 'Kaution: save the tenant first — then enter it in the pop-up that opens.'}</p>`}
+  ${rec.id ? '' : `<p class="tn-cr-hint" style="margin:10px 16px -2px">${rec.returnTo ? 'Kaution: enter it later in Tenants › this tenant.' : 'Kaution: save the tenant first — then enter it in the pop-up that opens.'}</p>`}
   ${_tnKautionHTML('m', rec.id || null, 'modal')}
 
   <!-- NK -->
