@@ -344,12 +344,30 @@ function ccfForApply(val, fill) {
     set('email', t.rec.email); set('tel', t.rec.phone);
     ccfFillCoTenants(o.fields, t.rec);
     if (o.mode === 'contract' && o.fields.kaution && Number(t.rec.kaution_soll) > 0) ccfSetKaution(o.fields.kaution, Number(t.rec.kaution_soll), 'Kaution Soll of ' + ccfName(t.rec));
+    else if (o.mode === 'contract' && o.fields.kaution && !(o.renew && o.renew.tid)) ccfKautionBack(o.fields.kaution);   // #36: no own amount → the rule again
     if (o.mode === 'contract' && !(o.renew && o.renew.tid)) ccfPrefillFromTenancy(o, t.rec);
   } else if (o.mode === 'contract') {
     ['name', 'adr', 'dob', 'email', 'tel'].forEach(k => set(k, ''));
     ccfFillCoTenants(o.fields, null);
     ccfPrefillFromTenancy(o, null);
+    if (o.fields.kaution && !(o.renew && o.renew.tid)) ccfKautionBack(o.fields.kaution);   // #36: never the last tenant's Kaution
   }
+  if (o.mode === 'contract' && typeof ccgUpdate === 'function') { try { ccgUpdate(); } catch (e) {} }   // summary line follows (dates cleared)
+}
+/* #36: the Kaution field back to what it had before a tenant's amount was filled in (the rule follows the rent again) */
+function ccfKautionBack(id) {
+  const el = document.getElementById(id); if (!el || !el.dataset.ccfKOrig) return;
+  let o0 = null; try { o0 = JSON.parse(el.dataset.ccfKOrig); } catch (e) {}
+  const typed = el.dataset.ccfKSet !== undefined && el.value !== el.dataset.ccfKSet;
+  delete el.dataset.ccfKOrig; delete el.dataset.ccfKSet;
+  if (typed) return;                                        // an amount you typed yourself stays
+  el.value = o0 ? o0.v : '';
+  if (!o0 || o0.auto) el.setAttribute('data-auto', '1'); else el.removeAttribute('data-auto');
+  const box = el.closest('.rm-kaution-row') || el.parentElement;
+  const h = box && box.parentElement && box.parentElement.querySelector('.ccf-kaution-hint');
+  if (h) h.textContent = '';
+  el.dispatchEvent(new Event('change', { bubbles: true }));   // not "input" — that marks the amount as typed
+  if (!o0 || o0.auto) { if (typeof _ccfMieteOnChange === 'function') { try { _ccfMieteOnChange(); } catch (e) {} } }
 }
 /* Miete block + dates of an existing tenancy (Casa). null = back to what the form had (the room's asking rent). */
 function ccfPrefillFromTenancy(o, rec) {
@@ -402,8 +420,11 @@ function ccfFillCoTenants(f, rec) {
 }
 function ccfSetKaution(id, amount, hintText) {
   const el = document.getElementById(id); if (!el) return;
+  // #36: remember what the field had before a tenant's amount came in (once) — "New tenancy" puts it back
+  if (!el.dataset.ccfKOrig) el.dataset.ccfKOrig = JSON.stringify({ v: el.value, auto: el.hasAttribute('data-auto') });
   el.removeAttribute('data-auto');
   el.value = String(amount);
+  el.dataset.ccfKSet = el.value;                            // the amount put in here (typed over → yours, kept)
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.removeAttribute('data-auto');
   const box = el.closest('.rm-kaution-row') || el.parentElement;

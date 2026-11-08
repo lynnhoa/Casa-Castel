@@ -257,7 +257,8 @@ function partOne(d) {
   b.push(sec('Mieter'), K('Name', esc(d.mieterName)), K('Adresse', esc(d.mieterAdresse)), K('Geburtsdatum', esc(d.mieterGeburtsdatum)), K('E-Mail', esc(d.mieterEmail)));
   if (d.mieterTelefon) b.push(K('Telefon', esc(d.mieterTelefon)));
   b.push(sec('Mietobjekt'), K('Adresse', esc([d.objektAdresse, d.objektPLZOrt].filter(Boolean).join(', '))), K('Bezeichnung', esc(d.zimmerName)),
-    K('Zimmergröße', 'ca.\u00a0' + esc(d.zimmerFlaeche) + '\u00a0m²'), K('Mitgenutzte Räume', esc(d.gemeinschaftsraeume) || '—'),
+    K('Zimmergröße', d.zimmerFlaeche !== '' && d.zimmerFlaeche != null && Number(d.zimmerFlaeche) > 0   // #25: 13,5 m² · no size → —
+      ? 'ca.\u00a0' + esc(typeof ccM2 === 'function' ? ccM2(d.zimmerFlaeche) : String(d.zimmerFlaeche).replace('.', ',')) + '\u00a0m²' : '—'), K('Mitgenutzte Räume', esc(d.gemeinschaftsraeume) || '—'),
     K('Möblierung', d.inventar.length ? 'Möbliert\u2002·\u2002Inventar siehe Anlage\u00a0A' : 'Möbliert'));   // Oct 2026: Anlage A only when it is attached (Inventar entered)
   b.push(sec('Mietzeit'), K('Mietbeginn', esc(d.mietbeginn)));
   if (d.type === 'mietvertrag' && !d.befristet) {
