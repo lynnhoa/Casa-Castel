@@ -835,9 +835,10 @@ function _rntNKVorausCurFor(aptId, who) {
   return null;
 }
 
-function _rntCurrentRent(rec) {
+function _rntCurrentRent(rec, iso) {
   if (!rec) return null;
-  const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('rentals', rec.id), ccRpToday()) : null;
+  const day = iso || ccRpToday();                       // Nov 2026: any day (default today) — Renew reads its first day
+  const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('rentals', rec.id), day) : null;
   let out = null;
   if (per) out = { ...ccRpAmount(per), src: 'history', period: per };
   else if (rec.kaltmiete != null || rec.nebenkosten != null) {
@@ -845,7 +846,7 @@ function _rntCurrentRent(rec) {
     out = { mode: 'kalt_nk', kalt: k, nk: n, total: k + n, src: 'tenant' };
   }
   // a Mieterhöhung that has started (not skipped) is today's Kaltmiete — the same as Controlling
-  const st = out && out.mode !== 'pauschal' ? _rntMhAt(rec, ccRpToday(), per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn)) : null;
+  const st = out && out.mode !== 'pauschal' ? _rntMhAt(rec, day, per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn)) : null;
   if (st) out = { ...out, kalt: Number(st.amount), total: Number(st.amount) + (Number(out.nk) || 0), src: 'mh', step: st };
   return out;
 }

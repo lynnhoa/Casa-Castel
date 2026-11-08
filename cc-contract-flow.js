@@ -112,7 +112,7 @@ const CCF_RENTALS = {
   unitLabel(u) { const x = this.unit(u); return x ? x.name + (String(u).startsWith('pk:') && x.parking_type ? ' ' + x.parking_type : '') : ''; },
   prefix: r => r.apartment_id || r.parking_id || 'unknown',
   renewalRows: r => (typeof _rntRenewalRows === 'function' ? _rntRenewalRows(r) : []),
-  currentRent: r => (typeof _rntCurrentRent === 'function' ? _rntCurrentRent(r) : null),
+  currentRent: (r, day) => (typeof _rntCurrentRent === 'function' ? _rntCurrentRent(r, day) : null),   // Nov 2026: any day (Renew)
   redraw: () => { if (typeof _rntRender === 'function') _rntRender(); },
   ensureKaution: id => (typeof _rntEnsureKaution === 'function' ? _rntEnsureKaution(id) : null),
   reload: () => (typeof _rntLoad === 'function' ? _rntLoad() : null),
