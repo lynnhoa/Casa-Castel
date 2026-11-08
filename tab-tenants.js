@@ -884,7 +884,9 @@ function _tnLegacyMode(roomName, rec) {
    → { mode, kalt, nk, total, src } or null (nothing stored — never the room price) */
 function _tnCurrentRent(rec, roomName, iso) {
   if (!rec) return null;
-  const day = iso || ccRpToday();                       // Nov 2026 (#3): any day (default today) — Renew reads the day before it starts
+  // Nov 2026 (#3): any day — Renew reads its first day. Default (#37): today, or the move-in day for a tenant who moves
+  // in later, so a signed next tenant shows their own contract (Pauschal / Kalt + NK), not the room's default
+  const day = iso || _tnTypeDay(rec);
   const per = typeof ccRpFor === 'function' ? ccRpAt(ccRpFor('casa', rec.id), day) : null;
   let out = null;
   if (per) out = { ...ccRpAmount(per), src: 'history', period: per };
@@ -1030,7 +1032,6 @@ function _tnContracts(rec) {
     .concat(ren.map(p => ({ start: _ccIso(p.valid_from), renewal: p })));
   return list.map((c, i) => {
     const last = i === list.length - 1;
-    const type = tnContractType(rec, c.start || undefined);
     const end  = !last ? _ccAddDaysIso(list[i + 1].start, -1)
                : (_ccIso(rec.vertragsende) || (c.renewal && c.renewal.contract_end ? _ccIso(c.renewal.contract_end) : ''));
     const pAt  = c.start && typeof ccRpAt === 'function' ? ccRpAt(per, c.start) : null;
@@ -1039,6 +1040,9 @@ function _tnContracts(rec) {
       const nextStart = list[1] ? list[1].start : '9999-12-31';
       own = per.find(p => p.kind !== 'renewal' && _ccIso(p.valid_from) < nextStart) || null;
     }
+    // Nov 2026 (#36): a first contract that starts before its first rent entry (Contract start < Move-in) is read on
+    // that entry's day — else the type of the latest contract (a renewal as Jahresvertrag) would show and be saved
+    const type = tnContractType(rec, own && c.start && _ccIso(own.valid_from) > c.start ? _ccIso(own.valid_from) : (c.start || undefined));
     const amt  = pAt ? ccRpAmount(pAt) : own ? ccRpAmount(own) : (i === 0 ? _tnCurrentRent(rec, rec.room) : null);
     const name = i === 0 ? (list.length > 1 || _tnIsFixed(type) ? 'Erstvertrag' : 'Mietvertrag') : i + '. Verlängerung';
     return { i, name, start: c.start, end, type, amt, period: own, renewal: c.renewal, last };
@@ -2740,7 +2744,7 @@ function _tnRentBarHTML(rid, room, rec) {
   const c  = st ? st.cur : null;
   // a rent change inside the running contract (e.g. NK-Anpassung) — the next contract has its own line
   const nextP = rec && typeof ccRpFor === 'function'
-    ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > ccRpToday() && p.kind !== 'renewal'
+    ? ccRpFor('casa', rec.id).find(p => ccRpIso(p.valid_from) > _tnTypeDay(rec) && p.kind !== 'renewal'   // #37: not the contract's own first entry
         && (!st || !st.next || ccRpIso(p.valid_from) < st.next.start)) : null;
   const pausch = cur && cur.mode === 'pauschal';
   const _nkIn = pausch ? Number(cur.period && cur.period.nebenkosten) || 0 : 0;   // NK part inside a Pauschale
@@ -3612,11 +3616,12 @@ function _tnModalBodyHTML(rec) {
   <!-- ZÄHLERSTÄNDE + DOCUMENTS (Unsigned | Signed) — same sections as the card -->
   ${typeof ccfDocsSectionHTML === 'function' ? ccfMetersSectionHTML(rec, 'modal') + ccfDocsSectionHTML(rec, 'modal') : ''}
 
-  <!-- KAUTION -->
-  ${_tnKautionHTML('m', tid, 'modal')}
+  <!-- KAUTION (Nov 2026, #25: a new former tenant → greyed until saved; entered in the pop-up that opens after Save) -->
+  ${rec.id ? '' : '<p class="tn-cr-hint" style="margin:10px 4px -2px">Kaution: save the tenant first — then enter it in the pop-up that opens.</p>'}
+  ${_tnKautionHTML('m', rec.id || null, 'modal')}
 
   <!-- NK -->
-  ${_tnAllPauschal(rec) ? '' : _tnNKHTML('m', tid, 'modal')}
+  ${_tnAllPauschal(rec) ? '' : _tnNKHTML('m', rec.id || null, 'modal')}
 
   <!-- NK VORAUSZAHLUNG (the room's current tenant only — never in a former tenant's pop-up) -->
   ${rec.status === 'active' && _tnIsKaltNK(rec, rec.room) ? _tnNKVorausHTML('m', rec.room, 'modal') : ''}
@@ -3657,6 +3662,27 @@ function _tnToggleModalProfile(tid) {
 
 let _tnModalAsking = false;
 function _tnCloseModal() {
+  // Nov 2026 (#29): "Add former tenant" with something typed → ask instead of throwing it away
+  { const modal = document.getElementById('tnModal');
+    const ed = !_tnModalTid && modal && modal._draft ? document.querySelector('#tnModalBody [id^="mprof-edit-"]') : null;
+    if (ed && ed.dataset.snap && ed.dataset.snap !== _ccModalSnap(ed)) {
+      if (_tnModalAsking) return;
+      _tnModalAsking = true;
+      const draft = modal._draft;
+      ccDialog({ icon: 'ti-help-circle', title: 'Save this tenant?', body: 'You typed something in this form.',
+        actions: [{ label: 'Discard', value: 'discard' }, { label: 'Save', value: 'save', primary: true }] })
+        .then(async v => {
+          _tnModalAsking = false;
+          if (modal._draft !== draft) return;              // already closed or replaced
+          if (v === 'save') {
+            const snap0 = ed.dataset.snap; ed.dataset.snap = '';
+            const ok = await _tnModalSaveDraft();
+            if (!ok && modal._draft === draft) ed.dataset.snap = snap0;   // not saved (e.g. a date is wrong) → stay; × asks again
+          } else if (v === 'discard') { ed.dataset.snap = ''; _tnCloseModal(); }
+        });                                               // tap outside the question → stay and keep typing
+      return;
+    }
+  }
   // Unsaved changes in the edit view → ask (instead of silently dropping them)
   if (_tnModalTid) {
     const ed = document.getElementById('mprof-edit-' + _tnModalTid);
@@ -4497,6 +4523,7 @@ function _tnAddFormer(roomName, pre) {
     birthday: null, address: null,
     mietbeginn: (pre && pre.from) || null, mietende: (pre && pre.to) || null,
     kaltmiete: null, nebenkosten: null, kaution_soll: null,
+    returnTo: (pre && pre.back) || null,   // Nov 2026 (#14): only the form from Settlements › Mieter nachtragen goes back there
   };
   _tnOpenModalDraft(draft);
 }
@@ -4514,7 +4541,7 @@ function _tnDraftSollUpdate() {
   let soll = null;
   if (!isNaN(k) && k > 0 && typeof ccKaution === 'function') {
     soll = ccKaution({ contract: ct === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', mode, kalt: k, nk: mode === 'pauschal' ? 0 : (n || 0),
-                       start: _tnParseDate(val('mietbeginn')), end: _tnParseDate(val('mietende')) }).amount;
+                       start: _tnParseDate(val('mietbeginn')), end: _tnParseDate(val('mietende')) || _tnParseDate(val('vertragsende')) }).amount;
   }
   inp.value = soll != null ? soll : '';
   inp.placeholder = soll != null ? soll : '';
@@ -4551,7 +4578,7 @@ function _tnOpenModalDraft(draft) {
   // Footer: just Save + Cancel for draft
   document.getElementById('tnModalFooter').innerHTML = `
     <div class="tn-sheet-spacer"></div>
-    <button class="tn-btn tn-btn-sm" onclick="_tnCloseModal()">Cancel</button>
+    <button class="tn-btn tn-btn-sm" onclick="_tnDraftCancel()">Cancel</button>
     <button class="tn-btn tn-btn-primary cc-save cc-save--create" onclick="_tnModalSaveDraft()">
       <i class="ti ti-check"></i> Save</button>`;
 
@@ -4561,7 +4588,7 @@ function _tnOpenModalDraft(draft) {
     const ks = b.querySelector('[data-mf="kaution_soll"]'); if (ks) { ks.value = ''; ks.placeholder = ''; }
     _tnDraftNkInclUpdate();
     b.oninput = e => { if (e.target.matches('[data-mf="kaution_soll"],[data-mf="nk_incl"]')) { e.target.dataset.touched = '1'; delete e.target.dataset.auto; }
-                       else if (e.target.matches('[data-mf="kaltmiete"],[data-mf="nebenkosten"],[data-mf="mietbeginn"],[data-mf="mietende"]')) _tnDraftSollUpdate(); }; }
+                       else if (e.target.matches('[data-mf="kaltmiete"],[data-mf="nebenkosten"],[data-mf="mietbeginn"],[data-mf="mietende"],[data-mf="vertragsende"]')) _tnDraftSollUpdate(); }; }
 
   // Open in edit mode immediately
   const body = document.getElementById('tnModalBody');
@@ -4573,27 +4600,39 @@ function _tnOpenModalDraft(draft) {
   if (edit)  edit.style.display  = '';
   if (fread) fread.style.display = 'none';
   if (fedit) fedit.style.display = 'none';
+  if (edit) edit.dataset.snap = _ccModalSnap(edit);   // Nov 2026 (#29): × / tap outside ask when something was typed
 
   if (typeof ccAnchorSet === 'function') ccAnchorSet();
   document.getElementById('tnModal').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
+/* The form's own Cancel: throw it away without asking (× and a tap outside ask) */
+function _tnDraftCancel() {
+  const ed = document.querySelector('#tnModalBody [id^="mprof-edit-"]'); if (ed) ed.dataset.snap = '';
+  _tnCloseModal();
+}
 
 async function _tnModalSaveDraft() {
-  if (!sbL) return;
+  if (!sbL) return false;
   const modal = document.getElementById('tnModal');
   const draft = modal._draft;
-  if (!draft) return;
+  if (!draft) return false;
 
   const body = document.getElementById('tnModalBody');
   const p    = _tnCollectProfile(body, 'data-mf');
   const ctype = p.contract_type || draft.contract_type || null;
   const nkInc = _tnNkInclOf(body, p);                       // D4: Pauschal → "davon NK"
-  if (nkInc === false) return;
+  if (nkInc === false) return false;
+  // Nov 2026 (#26): a mistyped Contract start / end is shown, never saved as empty
+  for (const [f, lbl] of [['vertragsbeginn', 'Contract start'], ['vertragsende', 'Contract end']]) {
+    const el = body.querySelector(`[data-mf="${f}"]`);
+    if (el && el.value.trim() && !_tnParseDate(el.value)) { el.style.borderColor = '#C4705A'; el.focus(); ccToast(lbl + ': TT.MM.JJJJ', true); return false; }
+  }
+  const back = draft.returnTo || null;                      // #14
 
   const btn = document.getElementById('tnModalFooter')?.querySelector('.tn-btn-primary');
   if (btn) { btn.textContent = '…'; btn.disabled = true; }
-  if (!(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === draft.room), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return;
+  if (!(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === draft.room), null, btn, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return false;
 
   // The Rent choice (Kalt + NK | Pauschal) is saved with the tenant's contract — never taken from the room's offer later
   const modeSel = body.querySelector('[data-mf="rent_mode"]')?.value;
@@ -4609,13 +4648,17 @@ async function _tnModalSaveDraft() {
       kaltmiete: p.kaltmiete ?? _tnRoomPricing(draft.room, ctype).kaltmiete ?? null,
       nebenkosten: typedPau ? null : (p.nebenkosten ?? _tnRoomPricing(draft.room, ctype).nebenkosten ?? null),
       kaution_soll: p.kaution_soll ?? null,
+      // Nov 2026 (#26): the contract dates typed in the form are saved too (as in the new-tenant form)
+      ...(p.vertragsende !== undefined ? { vertragsende: p.vertragsende || null } : {}),
+      ...(p.vertragsbeginn !== undefined ? { vertragsbeginn: p.vertragsbeginn || p.mietbeginn || null,
+            rent_from: p.rent_from || 'contract', rent_until: p.rent_until || 'contract' } : {}),
     })
     .select().single();
 
   if (error) {
     ccSaveFailed(error, 'former tenant');
     if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Save'; btn.disabled = false; }
-    return;
+    return false;
   }
 
   if (modeSel && data.mietbeginn && typeof ccRpSetRent === 'function') {
@@ -4638,10 +4681,11 @@ async function _tnModalSaveDraft() {
   modal._draft = null;
 
   _tnCloseModal();
-  if (window._ccReturnTo) { location.href = window._ccReturnTo; return; }   // came from Settlements → straight back
+  if (back) { location.href = back; return true; }   // came from Settlements → straight back (#14: this form only)
   _tnOpenModal(data.id);                                                      // the new tenant in read view
   _tnRender();
   if (typeof ccSavedToast === 'function') ccSavedToast('Saved: ' + ([data.first_name, data.last_name].filter(Boolean).join(' ') || 'former tenant'));
+  return true;
 }
 
 async function _tnMarkDone(tid) {
