@@ -314,7 +314,7 @@ function _renderPkMietvertragHTML(d) {
 
     ${sec('Mietzeit', false, false)}
     ${kv('Mietbeginn', d.mietbeginn || '\u2014')}
-    ${kv('Mindestlaufzeit', (d.mietende ? 'bis ' + d.mietende : '1\u00a0Jahr ab Mietbeginn' + (d.mindestBis ? ' (bis ' + d.mindestBis + ')' : '')) + ' \u00b7 keine Kündigung vor Ende')}
+    ${kv('Mindestlaufzeit', (d.mietende ? 'bis ' + d.mietende : '1\u00a0Jahr ab Mietbeginn (bis ' + (d.mindestBis || (typeof CC_BLANK_DATE !== 'undefined' ? CC_BLANK_DATE : '__.__.____')) + ')') + ' \u00b7 keine Kündigung vor Ende')}
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
     ${mieteOnPage2 ? '' : mieteBlock}
