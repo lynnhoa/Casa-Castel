@@ -611,6 +611,8 @@ function ccfApproveCheck(p) {
   if (p.kind === 'contract' && !String(p.tenant?.name || '').trim()) { alert('Approve needs the Mieter name.'); return false; }
   // #37: Kurzzeit / Jahresvertrag / Befristet — a contract with an end is approved only with that end (Draft may keep a line)
   if (p.kind === 'contract' && p.needsEnd && !ccfIso(p.end)) { alert('Approve needs a Mietende.'); return false; }
+  // #27: parking — an own Mindestlaufzeit is printed in the contract (never the Contract end); Approve needs its date
+  if (p.kind === 'contract' && p.needsMin && !ccfIso(p.minEnd)) { alert('Approve needs the Mindestlaufzeit date.'); return false; }
   if (p.kind === 'ueberg' && !p.forId) { alert('There is no tenant here yet — approve the contract first.'); return false; }
   if (p.kind === 'ueberg' && !ccfIso(p.date)) { alert('Approve needs the Übergabedatum.'); return false; }
   return true;
@@ -987,6 +989,7 @@ function _ccfSummaryRender() {
       ${!pl.renewal ? (pl.moveInKept
         ? _ccfRow('Move-in', ccfFmt(pl.moveInKept), 'stays as it is')
         : _ccfRow('Move-in', ccfFmt(pl.start), pl.moveInChange ? 'was ' + ccfFmt(pl.moveInChange) + ' · the rent history moves with it' : '')) : ''}
+      ${ccfIso(p.minEnd) ? _ccfRow('Mindestlaufzeit', 'bis ' + ccfFmt(ccfIso(p.minEnd)), 'in the contract only · rent runs on after it') : ''}
       ${pl.end || pl.endBefore ? _ccfRow('Contract end', pl.end ? ccfFmt(pl.end) : 'none (unbefristet)', pl.endBefore && pl.endBefore !== pl.end ? 'was ' + ccfFmt(pl.endBefore) : '') : ''}
       ${pl.moveOutRemoved ? _ccfRow('Move-out', 'removed', ccfFmt(pl.moveOutRemoved) + ' · the tenant stays') : (!rec ? _ccfRow('Move-out', 'not set', 'set it when you know it') : '')}
     </div>`;

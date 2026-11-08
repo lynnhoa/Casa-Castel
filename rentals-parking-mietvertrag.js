@@ -311,8 +311,7 @@ function _renderPkMietvertragHTML(d) {
 
     ${sec('Mietzeit', false, false)}
     ${kv('Mietbeginn', d.mietbeginn || '\u2014')}
-    ${kv('Mindestlaufzeit', '1\u00a0Jahr ab Mietbeginn \u00b7 keine Kündigung vor Ende')}
-    ${d.mietende ? kv('Festes Mietende', d.mietende) : ''}
+    ${kv('Mindestlaufzeit', (d.mietende ? 'bis ' + d.mietende : '1\u00a0Jahr ab Mietbeginn') + ' \u00b7 keine Kündigung vor Ende')}
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
     ${mieteOnPage2 ? '' : mieteBlock}
@@ -505,7 +504,8 @@ function _wirePkMvPdfBtn() {
     const sigVal      = document.getElementById('pk-mv-sig')?.value          || '';
     const befristet   = document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet';
     const endVal      = befristet ? (document.getElementById('pk-mv-end')?.value || '') : '';
-    if (!(await ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mietende']))) return;
+    if (!(await ccConfirmMissingDates([!startVal && 'Mietbeginn', befristet && !endVal && 'Mindestlaufzeit bis']))) return;
+    if (startVal && endVal && endVal < startVal) { alert('Mindestlaufzeit bis liegt vor Mietbeginn — bitte das Datum prüfen.'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return; }
     const kennzeichen = document.getElementById('pk-mv-kennzeichen')?.value.trim() || '';
     const fahrzeug    = document.getElementById('pk-mv-fahrzeug')?.value.trim()    || '';
     const kautionVal  = document.getElementById('pk-mv-kaution')?.value || null;
