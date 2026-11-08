@@ -4,8 +4,10 @@
 -- the parking rent there and the card said "Contract ended". From now on Approve saves no Contract end for parking.
 -- This list shows the parking tenants that still carry such a date and stayed past it (still renting with no
 -- move-out, or a move-out after the date — current and former tenants). It changes nothing.
---   what = 'standard 1 year' → the date is Mietbeginn + 1 year (the contract's normal Mindestlaufzeit) → cleared by the fix
---   what = 'other date'      → longer / shorter, typed by hand (e.g. a Kündigung), or unreadable → only cleared if you say so
+--   what = 'standard 1 year' → the date is Mietbeginn + 1 year (the contract's normal Mindestlaufzeit; for a renewal its own
+--                              start + 1 year) → cleared by the fix
+--   what = 'other date'      → longer / shorter, typed by hand (e.g. a Kündigung), moved out the day after it, or unreadable
+--                              → only cleared if you say so
 --   what = 'another tenant on this spot' → someone else is on the spot after the date (a next tenant, or an earlier one
 --                                          never moved out) → clearing could double the rent → kept
 
@@ -41,12 +43,17 @@ with raw as (                                 -- every parking tenancy, read thr
   group by a.tid
 ), rp as (                                    -- the rent history: its rows and the contract ends in it
   select r.tenant_id::text as tid, max(r.contract_end) as rp_end, count(*) as rp_rows,
-         array_agg(r.contract_end) filter (where r.contract_end is not null) as rp_ends
+         array_agg(r.contract_end) filter (where r.contract_end is not null) as rp_ends,
+         max(r.contract_end) filter (where r.kind is distinct from 'renewal') as rp_end0,           -- the first contract's end
+         array_agg(r.contract_end) filter (where r.kind = 'renewal' and r.contract_end is not null) as ren_ends,
+         bool_and(r.kind is distinct from 'renewal' or r.contract_end is null                       -- every renewal end =
+                  or r.contract_end between (r.valid_from + interval '1 year' - interval '1 day')::date   -- its own start + 1 year
+                                        and (r.valid_from + interval '1 year')::date) as ren_std
   from rent_periods r
   where r.app = 'rentals'
   group by r.tenant_id
 ), c as (
-  select pk.*, rp.rp_end, rp.rp_rows, rp.rp_ends, nx.next_start,
+  select pk.*, rp.rp_end, rp.rp_rows, rp.rp_ends, rp.rp_end0, rp.ren_ends, rp.ren_std, nx.next_start,
          (pk.start + interval '1 year' - interval '1 day')::date as std_lo, (pk.start + interval '1 year')::date as std_hi
   from pk left join rp on rp.tid = pk.tid left join nx on nx.tid = pk.tid
   where (pk.contract_end is not null or rp.rp_end is not null)
@@ -56,8 +63,9 @@ with raw as (                                 -- every parking tenancy, read thr
   select c.*, case
            when c.next_start is not null and c.next_start <= coalesce(c.move_out, date '9999-12-31') then 'another tenant on this spot'
            when c.start is not null and c.unreadable = 0
-            and (c.contract_end is null or c.contract_end between c.std_lo and c.std_hi)
-            and (c.rp_end is null or c.rp_end between c.std_lo and c.std_hi)
+            and (c.move_out is null or c.move_out > greatest(c.contract_end, c.rp_end) + 1)   -- out the day after → it ended there
+            and (c.contract_end is null or c.contract_end between c.std_lo and c.std_hi or c.contract_end = any(c.ren_ends))
+            and (c.rp_end0 is null or c.rp_end0 between c.std_lo and c.std_hi) and coalesce(c.ren_std, true)
             -- Approve wrote the date on the card AND in the rent history; a card date the rent history doesn't have
             -- was typed by hand (e.g. a Kündigung) → 'other date'
             and (c.contract_end is null or c.rp_rows is null or c.contract_end = any(c.rp_ends)) then 'standard 1 year'
