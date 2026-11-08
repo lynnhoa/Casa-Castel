@@ -101,9 +101,13 @@ function _kbSt(rec) {
   const k = String(rec.id);
   // an earlier letter already set the Contract end to its early end → the agreed end is no longer stored: type it
   const again = !!(_kbDocOf(k, 'kuendigungsbestaetigung', 'unsigned') || _kbDocOf(k, 'kuendigungsbestaetigung', 'signed'));
-  const st = _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', eingangAuto: true, end: '', endAuto: true, agreed: again ? '' : _kbAgreedEnd(rec), again, done: null, ort: _kbOrt0() });
-  const v = kbVersionOf(rec);                               // the contract type decides the letter (also after a change)
-  if (st.v !== v) { st.v = v; st.endAuto = v !== 'befristet'; st.end = v === 'befristet' ? '' : kbEndUnbefristet(st.eingang); st.done = null; }
+  // the contract type decides the letter: after a change of the type the sheet starts fresh (its dates mean other things)
+  if (_kbState[k] && _kbState[k].v !== kbVersionOf(rec)) {
+    const o = _kbState[k]; delete _kbState[k];
+    if (o.ortPicked) { _kbSt(rec); Object.assign(_kbState[k], { ort: o.ort, ortPicked: true }); }
+  }
+  const st = _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', eingangAuto: true, end: '', endAuto: true, agreed: again ? '' : _kbAgreedEnd(rec), again, done: null, ort: _kbOrt0(), ortPicked: false });
+  if (!st.ortPicked) st.ort = _kbOrt0();                    // not picked for this tenant → the place remembered on this device
   return st;
 }
 
@@ -213,7 +217,13 @@ const _kbSum = st => st.end ? 'Saves the letter in Documents and sets the Contra
 function kbSet(tid, key, value) {
   const rec = _kbRec(tid); if (!rec) return;
   const st = _kbSt(rec);
-  if (key === 'ort') { if (KB_ORTE.includes(value)) { st.ort = value; try { localStorage.setItem('kb_ort', value); } catch (e) {} } return; }
+  if (key === 'ort') {
+    if (!KB_ORTE.includes(value)) return;
+    st.ort = value; st.ortPicked = true; try { localStorage.setItem('kb_ort', value); } catch (e) {}
+    st.done = null;                                         // a letter already created still has the old place → Create again
+    const sum = document.querySelector('#ccSheetBody [data-kb-sum]'); if (sum) sum.innerHTML = _kbSum(st);
+    return;
+  }
   const iso = _kbToIso(value);
   if (key === 'vom') {
     st.vom = iso;
