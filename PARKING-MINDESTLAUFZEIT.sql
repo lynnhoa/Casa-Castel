@@ -45,8 +45,9 @@ with raw as (                                 -- every parking tenancy, read thr
   select r.tenant_id::text as tid, max(r.contract_end) as rp_end, count(*) as rp_rows,
          array_agg(r.contract_end) filter (where r.contract_end is not null) as rp_ends,
          max(r.contract_end) filter (where r.kind is distinct from 'renewal') as rp_end0,           -- the first contract's end
-         array_agg(r.contract_end) filter (where r.kind = 'renewal' and r.contract_end is not null) as ren_ends,
+         array_agg(r.contract_end) filter (where r.kind = 'renewal' and r.contract_end >= r.valid_from) as ren_ends,
          bool_and(r.kind is distinct from 'renewal' or r.contract_end is null                       -- every renewal end =
+                  or r.contract_end = r.valid_from - 1                                              -- the old end typed again, or
                   or r.contract_end between (r.valid_from + interval '1 year' - interval '1 day')::date   -- its own start + 1 year
                                         and (r.valid_from + interval '1 year')::date) as ren_std
   from rent_periods r
