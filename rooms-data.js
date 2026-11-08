@@ -48,7 +48,7 @@ async function loadRoomsData() {
   }
 
   loadRoomsData.lastOk = true;
-  appRooms = data || [];
+  appRooms = _roomOrderApplyHold(data || []);   // #33
   return appRooms;
 }
 
@@ -97,22 +97,42 @@ async function saveRoom(roomData) {
 
 /* Follow-up after a vacancy change was saved: kitchen reset (when occupied) + tell the other tabs */
 
-// Update sort order after drag
-async function saveRoomOrder(orderedIds) {
-  if (!sbL) return;
-
-  const updates = orderedIds.map((id, i) =>
-    sbL.from('rooms').update({ sort_order: i }).eq('id', id)
-  );
-
-  await Promise.all(updates);
-
-  // Update cache order
-  orderedIds.forEach((id, i) => {
-    const r = getRoomById(id);
-    if (r) r.sort_order = i;
-  });
+// Update sort order after drag — #33: new order in memory first (= the dragged cards), only changed rows written,
+// one at a time per drag (queued), one retry; still failing → old order back (database + memory), { ok:false }
+const _roomOrderHold = new Map();            // id → the order this device holds while a save runs (+2 s for late echoes)
+let _roomOrderQ = Promise.resolve();
+function _roomOrderApplyHold(rows) {
+  if (!_roomOrderHold.size) return rows;
+  rows.forEach(r => { const o = _roomOrderHold.get(String(r.id)); if (o !== undefined) r.sort_order = o; });
+  return rows.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+}
+function saveRoomOrder(orderedIds) {
+  const k = id => String(id);
+  const was = new Map(appRooms.map(r => [k(r.id), r.sort_order]));
+  const changed = orderedIds.map((id, i) => ({ id, i })).filter(x => was.has(k(x.id)) && was.get(k(x.id)) !== x.i);
+  orderedIds.forEach((id, i) => { const r = appRooms.find(x => k(x.id) === k(id)); if (r) r.sort_order = i; });
   appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  if (!sbL || !changed.length) return Promise.resolve({ ok: true });
+  changed.forEach(x => _roomOrderHold.set(k(x.id), x.i));
+  const run = async () => {
+    const done = new Set();
+    const res = await ccPersist(async () => {
+      const rs = await Promise.all(changed.filter(x => !done.has(k(x.id))).map(x =>
+        sbL.from('rooms').update({ sort_order: x.i }).eq('id', x.id).then(r => { if (r && !r.error) done.add(k(x.id)); return r || {}; }, e => ({ error: e }))));
+      return { error: (rs.find(r => r.error) || {}).error || null };
+    });
+    if (res.error) {                                     // old order back: the rows that did save, then memory
+      changed.forEach(x => _roomOrderHold.set(k(x.id), was.get(k(x.id))));   // memory + hold in one step (no mixed order)
+      appRooms.forEach(r => { if (was.has(k(r.id)) && changed.some(x => k(x.id) === k(r.id))) r.sort_order = was.get(k(r.id)); });
+      appRooms.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+      await Promise.all([...done].map(id => ccPersist(() => sbL.from('rooms').update({ sort_order: was.get(id) }).eq('id', id))));
+    }
+    setTimeout(() => changed.forEach(x => { if (_roomOrderHold.get(k(x.id)) === (res.error ? was.get(k(x.id)) : x.i)) _roomOrderHold.delete(k(x.id)); }), 2000);
+    return res.error ? { ok: false, error: res.error } : { ok: true };
+  };
+  const p = _roomOrderQ.then(run, run);
+  _roomOrderQ = p.catch(() => {});
+  return p;
 }
 
 /* ── ROOM NAME = LINK KEY ─────────────────────────────────────
@@ -149,6 +169,10 @@ async function renameRoomLinks(oldName, newName) {
     sbL.from('ctrl_units').update({ name: newName }).eq('property_id', 7).ilike('name', pat),
   ].map(q => q.then(r => r, e => ({ error: e }))));
   units.forEach((r, i) => { if (r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '')) results.push({ table: 'ctrl_units', col: i ? 'name' : 'source_ref', error: r.error }); });
+  try {   // #19b: the tenant-app login status (room_logins.room_key = lower-case name) — written by SQL (ROOMS-LOGINS.sql)
+    const r = await sbL.rpc('room_logins_rename', { p_old: oldName, p_new: newName });
+    if (r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '')) results.push({ table: 'room_logins', col: 'room_key', error: r.error });
+  } catch (e) { results.push({ table: 'room_logins', col: 'room_key', error: e }); }
   const failed = results.filter(r => r.error).map(r => r.table + '.' + r.col);
   // Kitchen rotation list (kept as a list of names)
   try {
@@ -212,7 +236,7 @@ async function renameRoomLinks(oldName, newName) {
 /* Tenant records still stored under this room (active + former) */
 async function roomTenantCount(roomName) {
   if (!sbL || !roomName) return { active: 0, former: 0, error: null };
-  const { data, error } = await sbL.from('tenant_records').select('id,status').eq('room', roomName);
+  const { data, error } = await sbL.from('tenant_records').select('id,status').ilike('room', _ccIlikeExact(roomName));   // #34
   if (error) return { active: 0, former: 0, error };
   const rows = data || [];
   const active = rows.filter(r => r.status === 'active').length;
@@ -234,7 +258,32 @@ async function deleteRoom(roomId) {
   const room = getRoomById(roomId);
   appRooms = appRooms.filter(r => r.id !== roomId);
   _notifyRoomsListeners('DELETE', room);
+  if (room && room.name) _roomDeleteLeftovers(room).catch(() => {});   // #20/#34 (Nov 2026): in the background — the confirm closes at once
   return { ok: true };
+}
+
+/* #20/#34: what only this room used — never history (tenancies, kitchen/cleaning weeks, messages, receipts, letters).
+   Each step on its own; a failure only leaves that leftover (console), never blocks the delete. */
+async function _roomDeleteLeftovers(room) {
+  const pat = _ccIlikeExact(room.name), today = new Date().toLocaleDateString('sv-SE');
+  const soft = async (what, f) => { try { const r = await f(); if (r && r.error && !/does not exist|schema cache|Could not find/i.test(r.error.message || '')) console.warn('[rooms] delete leftovers ' + what + ':', r.error.message); } catch (e) { console.warn('[rooms] delete leftovers ' + what + ':', e); } };
+  await soft('kitchen list', async () => {
+    const kr = typeof getKitchenRooms === 'function' ? getKitchenRooms() : [];
+    if (typeof syncKitchenRoomsToSupabase === 'function' && kr.some(n => _ccRoomNorm(n) === _ccRoomNorm(room.name)))
+      await syncKitchenRoomsToSupabase(kr.filter(n => _ccRoomNorm(n) !== _ccRoomNorm(room.name)));
+  });
+  await soft('password', () => sbL.from('lounge_data').delete().eq('type', 'password').ilike('room', pat));
+  await soft('absences', () => sbL.from('kitchen_absences').delete().ilike('room', pat).gte('to_date', today));
+  await soft('login status', () => sbL.rpc('room_logins_rename', { p_old: room.name, p_new: null }));
+  await soft('Controlling unit', async () => {
+    const { data: us, error } = await sbL.from('ctrl_units').select('id').eq('property_id', 7).eq('source_type', 'casa_room').eq('source_ref', String(room.id));
+    if (error) return { error };
+    for (const u of (us || [])) {
+      const { data: inc, error: e2 } = await sbL.from('ctrl_income_months').select('id').eq('unit_id', u.id).limit(1);
+      if (e2) return { error: e2 };
+      if (!(inc || []).length) { const d = await sbL.from('ctrl_units').delete().eq('id', u.id); if (d.error) return d; }   // bookings → the unit stays (history)
+    }
+  });
 }
 
 // Save inventar only
@@ -274,6 +323,7 @@ function initRoomsRealtime() {
           _notifyRoomsListeners('INSERT', newRow);
 
         } else if (eventType === 'UPDATE') {
+          _roomOrderApplyHold([newRow]);                               // #33: an echo never moves a card while its order is saved
           const idx = appRooms.findIndex(r => r.id === newRow.id);
           if (idx !== -1) appRooms[idx] = newRow;
           else appRooms.push(newRow);

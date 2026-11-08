@@ -768,7 +768,6 @@ document.getElementById('tab-rooms').innerHTML = `
 .rm-field-row > .rm-field { min-width:0; }
 .rm-field-row .rm-input, .rm-input[type=date], .rm-input.cc-date { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
 /* Name + Floor: one per row (long floor texts were cut) */
-.rc-field-row:has(input[data-f="floor"]) { grid-template-columns:minmax(0,1fr); }
 .rc-field-row, .rc-field { min-width:0; }
   `;
   document.head.appendChild(s);
@@ -957,45 +956,61 @@ async function loadRooms() {
    iPhone the viewer opens on top of the app and "Done" brings you back (the app's own file would replace the app,
    with no way back). The link is made in advance (12 h), so the tap opens it at once — phones open a PDF only from a tap.
    A new price list = a new Casa-Castel-Preisliste.pdf + a new RP_PL.ver (its Stand): the copy follows by itself. */
-const RP_PL = { bucket: 'maintenance-docs', dir: 'preisliste', file: 'Casa-Castel-Preisliste.pdf', ver: '2026-11-07b', url: null, at: 0, busy: false, said: false };
-async function _rpPlPrep() {
-  if (RP_PL.busy) return;
-  RP_PL.busy = true;
-  try {
-    if (typeof sbL === 'undefined' || !sbL || !sbL.storage) throw new Error('not connected');
-    const st = sbL.storage.from(RP_PL.bucket), name = 'Preisliste-' + RP_PL.ver + '.pdf', path = RP_PL.dir + '/' + name;
-    const { data, error } = await st.list(RP_PL.dir, { limit: 50 });
-    if (error) throw error;
-    const names = (data || []).map(x => x.name).filter(n => /\.pdf$/i.test(n || ''));
-    if (!names.includes(name)) {                                                  // first time, or a new Stand: copy the app's PDF in
-      const r = await fetch(RP_PL.file + '?v=' + RP_PL.ver, { cache: 'no-store' });
-      if (!r.ok) throw new Error('the PDF is missing in the app (' + r.status + ')');
-      const up = await st.upload(path, await r.blob(), { contentType: 'application/pdf', upsert: false });
-      if (up.error && !/exist|duplicate/i.test(String(up.error.message || ''))) throw up.error;
-      const old = names.filter(n => n !== name).map(n => RP_PL.dir + '/' + n);   // an older Stand goes
-      if (old.length) await st.remove(old);
-    }
-    const sg = await st.createSignedUrl(path, 12 * 3600);
-    if (sg.error) throw sg.error;
-    RP_PL.url = sg.data && sg.data.signedUrl; RP_PL.at = Date.now();
-  } catch (e) {
-    console.warn('[rooms] Preisliste:', (e && e.message) || e);
-    RP_PL.at = Date.now();
-    if (!RP_PL.said && typeof ccToast === 'function') { RP_PL.said = true; ccToast('Preisliste could not be loaded — ' + ((e && e.message) || e), true); }
-  } finally { RP_PL.busy = false; }
+const RP_PL = { bucket: 'maintenance-docs', dir: 'preisliste', file: 'Casa-Castel-Preisliste.pdf', ver: '2026-11-07b', url: null, exp: 0, path: null, tried: 0, busy: null, said: false };
+const RP_PL_LIFE = 12 * 3600, RP_PL_MIN = 3600 * 1000, RP_PL_RENEW = 6 * 3600 * 1000;   // link 12 h · open only with ≥ 1 h left · renew below 6 h
+const _rpPlLeft = () => RP_PL.url ? RP_PL.exp - Date.now() : -1;
+const _rpPlVer = n => (/^Preisliste-(.+)\.pdf$/i.exec(n || '') || [])[1] || '0';      // unknown names count as the oldest
+async function _rpPlSign(st, path) {
+  const sg = await st.createSignedUrl(path, RP_PL_LIFE);
+  if (sg.error || !sg.data || !sg.data.signedUrl) throw sg.error || new Error('no link');
+  RP_PL.url = sg.data.signedUrl; RP_PL.exp = Date.now() + RP_PL_LIFE * 1000; RP_PL.path = path;
+}
+function _rpPlPrep(loud) {
+  if (RP_PL.busy) return RP_PL.busy;
+  RP_PL.tried = Date.now();
+  return (RP_PL.busy = (async () => {
+    try {
+      if (typeof sbL === 'undefined' || !sbL || !sbL.storage) throw new Error('not connected');
+      const st = sbL.storage.from(RP_PL.bucket), name = 'Preisliste-' + RP_PL.ver + '.pdf', path = RP_PL.dir + '/' + name;
+      const { data, error } = await st.list(RP_PL.dir, { limit: 50 });
+      if (error) throw error;
+      const names = (data || []).map(x => x.name).filter(n => /\.pdf$/i.test(n || ''));
+      if (!names.includes(name)) {
+        const r = await fetch(RP_PL.file + '?v=' + RP_PL.ver, { cache: 'no-store' });
+        if (!r.ok) throw new Error('the PDF is missing in the app (' + r.status + ')');
+        const up = await st.upload(path, await r.blob(), { contentType: 'application/pdf', upsert: false });
+        if (up.error && !/exist|duplicate/i.test(String(up.error.message || ''))) throw up.error;
+        const older = names.filter(n => n !== name && _rpPlVer(n) < RP_PL.ver).sort((a, b) => _rpPlVer(a) < _rpPlVer(b) ? -1 : 1);
+        const old = older.slice(0, -1).map(n => RP_PL.dir + '/' + n);                // never a newer Stand; the one just before stays
+        if (old.length) await st.remove(old);
+      }
+      await _rpPlSign(st, path);
+      return true;
+    } catch (e) {
+      console.warn('[rooms] Preisliste:', (e && e.message) || e);
+      if (loud && !RP_PL.said && typeof ccToast === 'function') { RP_PL.said = true; ccToast('Preisliste could not be loaded — ' + ((e && e.message) || e), true); }
+      return false;
+    } finally { RP_PL.busy = null; }
+  })());
 }
 const _rpPlChip = () => '<button type="button" class="rp-pl" data-rpl="open" aria-label="Open Preisliste (PDF)"><i class="ti ti-file-text" aria-hidden="true"></i>Preisliste</button>';
-function _rpPlClick(e) {
+const _rpPlOpen = () => { if (typeof ccOpenUrl === 'function') ccOpenUrl(RP_PL.url, 'Preisliste'); else window.open(RP_PL.url, '_blank'); };
+async function _rpPlClick(e) {
   const b = e.target && e.target.closest ? e.target.closest('[data-rpl]') : null;
   if (!b) return;
-  if (!RP_PL.url) {                                                              // not ready yet (first copy, connection): fetch it, tap again
-    if (typeof ccToast === 'function') ccToast('Preisliste is loading — tap again in a moment', true);
-    RP_PL.said = false; _rpPlPrep();
-    return;
+  if (_rpPlLeft() > RP_PL_MIN) { _rpPlOpen(); if (_rpPlLeft() < RP_PL_RENEW) _rpPlPrep(); return; }
+  if (RP_PL.path && !RP_PL.busy) {                                                  // old link, file known: one quick new link, same tap
+    try { await _rpPlSign(sbL.storage.from(RP_PL.bucket), RP_PL.path); _rpPlOpen(); return; } catch (err) { /* copy missing / offline → below */ }
   }
-  if (typeof ccOpenUrl === 'function') ccOpenUrl(RP_PL.url, 'Preisliste'); else window.open(RP_PL.url, '_blank');
-  if (Date.now() - RP_PL.at > 6 * 3600 * 1000) _rpPlPrep();                       // a fresh link for the next tap
+  if (typeof ccToast === 'function') ccToast('Preisliste is loading — tap again in a moment', true);
+  RP_PL.said = false; _rpPlPrep(true);
 }
+function _rpPlWake() {
+  if (document.visibilityState !== 'visible' || !document.querySelector('#roomsSummary [data-rpl]')) return;
+  if (!RP_PL.busy && _rpPlLeft() < RP_PL_RENEW && Date.now() - RP_PL.tried > 20000) _rpPlPrep();
+}
+document.addEventListener('visibilitychange', _rpPlWake);
+window.addEventListener('pageshow', _rpPlWake);
 
 /* ── RENDER LIST ─────────────────────────────────────────── */
 function _updateRoomsSummary(rooms) {
@@ -1015,7 +1030,7 @@ function _updateRoomsSummary(rooms) {
     <div class="cc-sum2__vals"><span><i>Kalt</i>${fmtEUR(kalt)}</span><span><i>NK</i>${fmtEUR(nk)}</span><span><i>Kaution</i>${fmtEUR(kau)}</span></div>`;
   if (!bar._rpPl) { bar._rpPl = true; bar.addEventListener('click', _rpPlClick); }          // Nov 2026: the Preisliste button
   // the PDF's private link, made in advance (first time and every 6 h)
-  if (!RP_PL.busy && (!RP_PL.url ? Date.now() - RP_PL.at > 20000 || !RP_PL.at : Date.now() - RP_PL.at > 6 * 3600 * 1000)) _rpPlPrep();
+  if (!RP_PL.busy && _rpPlLeft() < RP_PL_RENEW && Date.now() - RP_PL.tried > 20000) _rpPlPrep();
 }
 
 async function _roomsRetry(btn) {
@@ -1173,12 +1188,10 @@ function _roomCardHTML(r) {
 
   // ── Edit fragments — reused by the per-section editors and the new-room form
   const isNew = !r.id;
+  // #18 (Nov 2026): one field per line — a long Floor / Type is never cut on the iPhone; Floor wraps (no line breaks)
   const editIdentity = `
-        <div class="rc-field-row">
           <div class="rc-field"><label class="rc-field__label">Name</label><input class="rc-input" data-f="name" value="${esc(r.name)}"/></div>
-          <div class="rc-field"><label class="rc-field__label">Floor</label><input class="rc-input" data-f="floor" value="${esc(r.floor||'')}"/></div>
-        </div>
-        <div class="rc-field-row">
+          <div class="rc-field"><label class="rc-field__label">Floor</label><textarea class="rc-input rc-input--wrap" data-f="floor" rows="1" enterkeyhint="done" oninput="_rsGrow(this)" onkeydown="if(event.key==='Enter')event.preventDefault()">${esc(r.floor||'')}</textarea></div>
           <div class="rc-field"><label class="rc-field__label">Size m²</label><input class="rc-input" type="number" data-cc-num="auto" data-f="flaeche_m2" value="${r.flaeche_m2||''}"/></div>
           <div class="rc-field"><label class="rc-field__label">Type</label>
             <select class="rc-input" data-f="room_type">
@@ -1187,7 +1200,6 @@ function _roomCardHTML(r) {
               <option ${r.room_type==='2-Zimmer mit eigener Küche'?'selected':''}>2-Zimmer mit eigener Küche</option>
             </select>
           </div>
-        </div>
         `;
   const editMietobjekt = `
         <div class="rc-field">
@@ -1244,16 +1256,16 @@ function _roomCardHTML(r) {
         <div class="rc-field-row">
           <div class="rc-field">
             <label class="rc-field__label">Haustür</label>
-            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="haustuerschluessel">${r.haustuerschluessel||1}</span><button onclick="_step(this,1)">+</button></div>
+            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="haustuerschluessel">${r.haustuerschluessel ?? 1}</span><button onclick="_step(this,1)">+</button></div>
           </div>
           <div class="rc-field">
             <label class="rc-field__label">Zimmer</label>
-            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="zimmerschluessel">${r.zimmerschluessel||1}</span><button onclick="_step(this,1)">+</button></div>
+            <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="zimmerschluessel">${r.zimmerschluessel ?? 1}</span><button onclick="_step(this,1)">+</button></div>
           </div>
         </div>
         <div class="rc-field">
           <label class="rc-field__label">Briefkasten</label>
-          <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="briefkastenschluessel">${r.briefkastenschluessel||0}</span><button onclick="_step(this,1)">+</button></div>
+          <div class="rc-stepper"><button onclick="_step(this,-1)">−</button><span class="rc-stepper__v" data-f="briefkastenschluessel">${r.briefkastenschluessel ?? 0}</span><button onclick="_step(this,1)">+</button></div>
         </div>`;
   if (r.id) _roomFrags[r.id] = { editIdentity, editMietobjekt, editPricing, editKeys, hasKitchen };
   // Per-section Edit button + editor (existing rooms only)
@@ -1316,7 +1328,7 @@ function _roomCardHTML(r) {
         <button type="button" class="rc-brow__edit" onclick="_roomBaseOpen('${type}','${r.id}')">Edit</button></div>`}
     </div>`;
   };
-  const keysTxt = `Haustür ${r.haustuerschluessel || 1} · Zimmer ${r.zimmerschluessel || 1} · Briefkasten ${r.briefkastenschluessel || 0}`;
+  const keysTxt = `Haustür ${r.haustuerschluessel ?? 1} · Zimmer ${r.zimmerschluessel ?? 1} · Briefkasten ${r.briefkastenschluessel ?? 0}`;   // #14: 0 stays 0
   const roomRow = (k, v) => `<div class="rc-row"><span class="rc-row__k">${k}</span><span class="rc-row__v">${v}</span></div>`;
 
   return `
@@ -1586,7 +1598,7 @@ function _roomAddOpen() {
     `<button type="button" class="rm-btn--cancel" onclick="_roomSheetClose()">${t('rooms_cancel')}</button>
      <button type="button" class="rm-btn rm-btn--primary cc-save cc-save--create" style="flex:0 0 140px" onclick="_roomAddSave(this)">${t('rooms_save')}</button>`;
   if (typeof ccGermanFormatScan === 'function') ccGermanFormatScan(ov);
-  ov.classList.add('open');
+  ov.classList.add('open'); _rsGrowAll();
 }
 
 async function _roomAddSave(btn) {
@@ -1594,6 +1606,7 @@ async function _roomAddSave(btn) {
   if (btn && btn.disabled) return;                           // a second tap while saving does nothing
   const scope = document.getElementById('roomSheetBody'); if (!scope) return;
   const data = _roomCollectFields(scope);
+  if (typeof data.floor === 'string') data.floor = data.floor.replace(/\s+/g, ' ').trim();   // #18: one line
   data.name = String(data.name || '').trim();
   // #16: the duplicate-name check needs the real list — after a failed load, load it first (button busy meanwhile:
   // a second tap never saves twice; Cancel during the load saves nothing)
@@ -1641,7 +1654,9 @@ async function _roomAddSave(btn) {
   _updateRoomsSummary(appRooms);
   if (sbL) await ccSetNewRoomPassword(room.name, 'Login password');   // shown once, as before
   if (typeof ccSavedToast === 'function') ccSavedToast('Room added');
-  if (kOn) _roomSetKitchen(room.name, true, room.id).then(ok => { if (ok) _roomRerenderCard(room.id); });
+  // #20: the switch decides — also when an old entry with this name is still in the kitchen list
+  const kListed = (typeof getKitchenRooms === 'function' ? getKitchenRooms() : []).some(n => _ccRoomNorm(n) === _ccRoomNorm(room.name));
+  if (kOn || kListed) _roomSetKitchen(room.name, kOn, room.id).then(ok => { if (ok) _roomRerenderCard(room.id); });
 }
 
 
@@ -2255,7 +2270,8 @@ function _contractBodyUeberg(room, isEinzug) {
     <div class="cg-row">${f('ub-wasser', 'Wasser' + nr(wasser), 'type="text" inputmode="decimal" placeholder="Stand"')}<div class="cg-f"></div></div>
   </section>
   <section class="cg-sec"><h3 class="cg-h">Schlüssel</h3>
-    <div class="cg-row">${f('ub-haustur', 'Haustür', `type="number" min="0" value="${room.haustuerschluessel || 1}"`)}${f('ub-zimmertur', 'Zimmertür', `type="number" min="0" value="${room.zimmerschluessel || 1}"`)}</div>
+    <div class="cg-row">${f('ub-haustur', 'Haustür', `type="number" min="0" value="${room.haustuerschluessel ?? 1}"`)}${f('ub-zimmertur', 'Zimmertür', `type="number" min="0" value="${room.zimmerschluessel ?? 1}"`)}</div>
+    <div class="cg-row">${f('ub-briefkasten', 'Briefkasten', `type="number" min="0" value="${room.briefkastenschluessel ?? 0}"`)}<div class="cg-f"></div></div>
   </section>
   <section class="cg-sec"><h3 class="cg-h">Notizen &amp; Fotos</h3>
     ${ta('ub-bemerkungen', 'Allgemeine Bemerkungen', 'Sonstige Anmerkungen …')}
@@ -2273,7 +2289,7 @@ function _ubSummary() {
   const v = id => (document.getElementById(id)?.value || '').trim();
   const eu = typeof _rcEULabel === 'function' && typeof _contractRoomId !== 'undefined' ? _rcEULabel(_contractRoomId) : 'Übergabe';
   const meters = ['ub-strom', 'ub-gas', 'ub-wasser'].filter(id => v(id)).length;
-  const keys = (Number(v('ub-haustur')) || 0) + (Number(v('ub-zimmertur')) || 0);
+  const keys = (Number(v('ub-haustur')) || 0) + (Number(v('ub-zimmertur')) || 0) + (Number(v('ub-briefkasten')) || 0);
   el.textContent = [eu + (v('ub-datum') ? ' ' + v('ub-datum') : ' · Datum fehlt'), meters + ' / 3 Zählerstände', keys + ' Schlüssel', v('ub-mieter-name') || 'Name fehlt'].join(' · ');
 }
 function _ubWire() {
@@ -3177,9 +3193,14 @@ function _buildUebergData(isEinzug) {
   const stromStand  = document.getElementById('ub-strom')?.value.trim() || '';
   const gasStand    = document.getElementById('ub-gas')?.value.trim() || '';
   const wasserStand = document.getElementById('ub-wasser')?.value.trim() || '';
-  const haustur     = document.getElementById('ub-haustur')?.value || '1';
-  const zimmertur   = document.getElementById('ub-zimmertur')?.value || '1';
+  // #14/#32: an empty field takes the room's count (0 stays 0); Briefkasten printed only when > 0
+  const keyOf = (id, dflt) => { const v = document.getElementById(id)?.value; return v === '' || v == null ? dflt : (parseInt(v, 10) || 0); };
+  const haustur     = keyOf('ub-haustur', room.haustuerschluessel ?? 1);
+  const zimmertur   = keyOf('ub-zimmertur', room.zimmerschluessel ?? 1);
+  const briefkasten = keyOf('ub-briefkasten', room.briefkastenschluessel ?? 0);
 
+  const adr = String(s.objekt_adresse || '').trim(), plz = String(s.objekt_plz_ort || '').trim();
+  const k = x => x.toLowerCase().replace(/[\s,]+/g, ''), plzIn = plz && k(adr).includes(k(plz));   // never the PLZ twice
   const zaehler = _parseArr(s.zaehler);
   const strom   = zaehler.find(z => z.type === 'Strom');
   const gas     = zaehler.find(z => z.type === 'Gas');
@@ -3196,7 +3217,7 @@ function _buildUebergData(isEinzug) {
   return {
     isEinzug,
     datum:         fmtDate(datum),
-    objekt:        s.objekt_adresse || '',
+    objekt:        plzIn ? adr : [adr, plz].filter(Boolean).join(', '),          // as the contract's Mietobjekt · Adresse
     zimmer:        room.name,
     flaeche:       room.flaeche_m2 || '',
     floor:         room.floor || '',
@@ -3209,9 +3230,8 @@ function _buildUebergData(isEinzug) {
     strom:         { nummer: strom?.nummer || '', stand: stromStand },
     gas:           { nummer: gas?.nummer || '', stand: gasStand },
     wasser:        { nummer: wasser?.nummer || '', stand: wasserStand },
-    haustur:       parseInt(haustur),
-    zimmertur:     parseInt(zimmertur),
-    footerAdresse: s.footer_adresse || s.objekt_adresse || '',
+    haustur, zimmertur, briefkasten,
+    footerAdresse: plzIn ? adr : [adr, plz].filter(Boolean).join(' \u00b7 '),  // as the contract footer
     unterschriftOrt:      s.unterschrift_ort || 'Wiesbaden',
     unterzeichnungsDatum: fmtDate(sigVal),
   };
@@ -3441,7 +3461,7 @@ function _renderUebergHTML(d) {
     <div class="ftr">
       <hr class="ftr__rule"/>
       <div class="ftr__row">
-        <span>${d.footerAdresse}</span>
+        <span>${esc(d.footerAdresse)}</span>
         <span>${n}</span>
       </div>
     </div>`;
@@ -3464,7 +3484,7 @@ function _renderUebergHTML(d) {
   ${ftr(1)}
   <div class="content">
     <div class="doc-title">Übergabeprotokoll</div>
-    <div class="doc-subtitle">Zimmervermietung · ${d.objekt}</div>
+    <div class="doc-subtitle">Zimmervermietung · ${esc(d.objekt)}</div>
 
     <div class="type-toggle">
       <div class="type-option">
@@ -3481,7 +3501,7 @@ function _renderUebergHTML(d) {
     </div>
 
     <div class="sec sec--first">Objekt &amp; Parteien</div>
-    ${kv('Objekt / Adresse', d.objekt)}
+    ${kv('Objekt / Adresse', esc(d.objekt))}
     ${kv('Zimmer', d.zimmer + (d.flaeche ? ' · ca. ' + ccM2(d.flaeche) + ' m²' : '') + (d.floor ? ' · ' + d.floor : ''))}
     ${kv('Vermieter', d.vermieter)}
     ${kv('Mieter', d.mieterName)}
@@ -3530,6 +3550,10 @@ function _renderUebergHTML(d) {
         <span class="schluessel-item__label">Zimmertür</span>
         <span class="schluessel-item__val">${d.zimmertur}</span>
       </div>
+      ${Number(d.briefkasten) > 0 ? `<div class="schluessel-item">
+        <span class="schluessel-item__label">Briefkasten</span>
+        <span class="schluessel-item__val">${d.briefkasten}</span>
+      </div>` : ''}
     </div>
 
     <div class="sig-block">
@@ -3571,7 +3595,9 @@ function _initSortable() {
       const ids = [...evt.to.querySelectorAll('.rc[data-id]')]
         .map(c => c.dataset.id)
         .filter(Boolean);
-      saveRoomOrder(ids);
+      saveRoomOrder(ids).then(r => {                          // #33: not saved → old order back + the usual message
+        if (r && r.ok === false) { _notifyRoomsListeners('UPDATE', null); ccSaveFailed(r.error, 'room order'); }
+      });
     }
   });
 }
@@ -4368,6 +4394,9 @@ function _roomAnchorRestore() {
   }
   setTimeout(() => { window.removeEventListener('touchstart', stop); window.removeEventListener('wheel', stop); }, 1300);
 }
+/* #18: the Floor field grows with its text (no scrolling sideways, no line breaks) */
+function _rsGrow(el) { if (!el) return; el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+function _rsGrowAll() { requestAnimationFrame(() => document.querySelectorAll('#roomSheetBody textarea.rc-input--wrap').forEach(_rsGrow)); }
 function _roomSheetOpen(kind, id) {
   const r = getRoomById(id); if (!r) return;
   if (!_roomFrags[id]) _roomCardHTML(r);
@@ -4391,7 +4420,7 @@ function _roomSheetOpen(kind, id) {
     `<button type="button" class="rm-btn--cancel" onclick="_roomSheetClose()">${t('rooms_cancel')}</button>
      <button type="button" class="rm-btn rm-btn--primary cc-save cc-save--create" style="flex:${kind === 'room' ? '0 0 140px' : '1'}" onclick="_roomSheetSave()">${t('rooms_save')}</button>`;
   if (typeof ccGermanFormatScan === 'function') ccGermanFormatScan(ov);
-  ov.classList.add('open');
+  ov.classList.add('open'); _rsGrowAll();
 }
 function _roomSheetDelete() {
   const cur = _roomSheetCur; if (!cur) return;
@@ -4404,9 +4433,12 @@ function _roomSheetDelete() {
    so list and flag never disagree. Fails → old list, old flag, card redrawn, "Not saved". */
 function _roomSetKitchen(roomName, on, roomId) {
   const rooms = typeof getKitchenRooms === 'function' ? getKitchenRooms().slice() : [];
-  const has = rooms.includes(roomName);
-  if (on === has) return Promise.resolve(true);
-  if (on) rooms.push(roomName); else rooms.splice(rooms.indexOf(roomName), 1);
+  // #20: "on" = exactly this name once; "off" = no entry in any spelling (an old "zimmer 3" counts too)
+  const same = n => _ccRoomNorm(n) === _ccRoomNorm(roomName);
+  const has = rooms.includes(roomName), variants = rooms.some(n => same(n) && n !== roomName);
+  if (on === has && !variants) return Promise.resolve(true);
+  for (let i = rooms.length - 1; i >= 0; i--) if (same(rooms[i]) && (!on || rooms[i] !== roomName)) rooms.splice(i, 1);
+  if (on && !has) rooms.push(roomName);
   const roomObj = roomId != null ? getRoomById(roomId) : appRooms.find(r => r.name === roomName);
   const flagWas = roomObj ? roomObj.kitchen_enabled : undefined;
   if (roomObj) roomObj.kitchen_enabled = on;
@@ -4460,6 +4492,7 @@ function _roomSheetSave() {
   const scope = document.getElementById('roomSheetBody');
   const room = getRoomById(cur.id); if (!scope || !room) return;
   const data = _roomCollectFields(scope);
+  if (typeof data.floor === 'string') data.floor = data.floor.replace(/\s+/g, ' ').trim();   // #18: one line
   const oldName = room.name;
   if (cur.kind === 'room') {
     data.name = String(data.name || '').trim();
@@ -4718,6 +4751,7 @@ html .cc-sumline__foot { display:flex; justify-content:center; align-items:cente
 .rs-sec { padding:0 0 18px; margin:0 0 18px; border-bottom:var(--cc-border); }
 #roomSheetBody .rc-field-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; margin-bottom:12px; }
 #roomSheetBody .rc-input { font-size:16px; min-height:44px; font-weight:400; color:var(--cc-ink); }
+#roomSheetBody textarea.rc-input--wrap { display:block; width:100%; box-sizing:border-box; resize:none; overflow:hidden; line-height:1.35; font-family:inherit; padding-top:11px; padding-bottom:11px; }
 #roomSheetBody .rc-field__label { color:var(--cc-charcoal); }
 .rs-name-err { margin:-4px 0 12px; font-size:12.5px; line-height:1.4; color:#A3402A; }
 `;

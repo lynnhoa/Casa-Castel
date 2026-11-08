@@ -151,7 +151,7 @@ function ccgBodyHTML(type, room, renew) {
     ['Zimmer', [room.name, room.flaeche_m2 ? 'ca. ' + ccM2(room.flaeche_m2) + ' m²' : '', room.floor].filter(Boolean).join(' · ')],
     ['Mitgenutzt', arr(room.gemeinschaftsraeume).join(', ') || '—'],
     ['Bank', s.iban ? 'IBAN ' + s.iban : '—'],
-    ['Schlüssel', `Haustür ×${room.haustuerschluessel || 1} · Zimmer ×${room.zimmerschluessel || 1}`],
+    ['Schlüssel', `Haustür ×${room.haustuerschluessel ?? 1} · Zimmer ×${room.zimmerschluessel ?? 1}` + (Number(room.briefkastenschluessel) > 0 ? ` · Briefkasten ×${room.briefkastenschluessel}` : '')],   // #14/#32
     ['Inventar', inv ? `Anlage A · ${inv} ${inv === 1 ? 'Gegenstand' : 'Gegenstände'}` : 'none — no Anlage A page'],
   ].map(([k, v]) => `<div class="rm-pre-row"><span>${k}</span><span>${_cgEsc(v)}</span></div>`).join('');
 
@@ -308,7 +308,7 @@ async function ccgBuild(type, forApprove) {
   const d = ccContractData({
     type, settings: s,
     room: { name: room0.name, flaeche_m2: room0.flaeche_m2, gemeinschaftsraeume: _parseArr(room0.gemeinschaftsraeume),
-            haustuerschluessel: room0.haustuerschluessel, zimmerschluessel: room0.zimmerschluessel,
+            haustuerschluessel: room0.haustuerschluessel, zimmerschluessel: room0.zimmerschluessel, briefkastenschluessel: room0.briefkastenschluessel,
             inventar: Array.isArray(room0.inventar) ? room0.inventar : [] },
     tenant: { name, address: _cgV('cg-adr'), birthday: _cgV('cg-dob'), email: _cgV('cg-email'), phone: _cgV('cg-tel') },
     start, end,

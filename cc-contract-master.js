@@ -55,7 +55,7 @@ const GRUND = {
      settings: { vermieter_name, vermieter_adresse, vermieter_email, objekt_adresse,
                  objekt_plz_ort, kontoinhaber, bankname, iban, bic, gerichtsstand,
                  unterschrift_ort, energieklasse, endenergiebedarf, energieausweisart },
-     room:   { name, flaeche_m2, gemeinschaftsraeume[], haustuerschluessel, zimmerschluessel, inventar[] },
+     room:   { name, flaeche_m2, gemeinschaftsraeume[], haustuerschluessel, zimmerschluessel, briefkastenschluessel, inventar[] },
      tenant: { name, address, birthday, email, phone },
      start, end,                         // ISO or TT.MM.JJJJ · end: kurzzeit/jahres always, mietvertrag only if befristet
      rent:   { mode: 'pauschal'|'kalt_nk', kalt, nk },   // pauschal: kalt = rent without NK, nk = NK share
@@ -65,6 +65,16 @@ const GRUND = {
      sigDate,                            // optional
      buergschaft: bool,
    }                                                          */
+/* #14/#32 (Nov 2026): § 5 lists only the keys the tenant gets — "1 Haustürschlüssel und 1 Zimmerschlüssel sowie 2 Briefkastenschlüssel";
+   a 0 is left out, none at all → "keine Schlüssel" */
+function ccKeysSentence(d) {
+  const n = v => Number(v) || 0, nb = '\u00a0';
+  const main = [[n(d.hausstuerschluessel), 'Haustürschlüssel'], [n(d.zimmerschluessel), 'Zimmerschlüssel']].filter(x => x[0] > 0).map(x => x[0] + nb + x[1]);
+  const bk = n(d.briefkastenschluessel);
+  if (!main.length && !bk) return 'keine Schlüssel';
+  const s = main.join(' und ');
+  return bk > 0 ? (s ? s + ' sowie ' : '') + bk + nb + 'Briefkastenschlüssel' : s;
+}
 function ccContractData(inp) {
   const type  = inp.type;
   const s     = inp.settings || {};
@@ -145,7 +155,8 @@ function ccContractData(inp) {
     mieterEmail: t.email || '', mieterTelefon: t.phone || '',
     zimmerName: room.name || '', zimmerFlaeche: room.flaeche_m2 || '',
     gemeinschaftsraeume: (room.gemeinschaftsraeume || []).join(', '),
-    hausstuerschluessel: room.haustuerschluessel || 1, zimmerschluessel: room.zimmerschluessel || 1,
+    hausstuerschluessel: room.haustuerschluessel ?? 1, zimmerschluessel: room.zimmerschluessel ?? 1,   // #14: 0 stays 0
+    briefkastenschluessel: Number(room.briefkastenschluessel) || 0,                                    // #32
     inventar: (room.inventar || []).filter(i => i && i.gegenstand),
     start, end, mietbeginn: start ? de(start) : BLANK, mietende: end ? de(end) : (hasEnd ? BLANK : ''),
     pausch, kalt, nk, rent, first, last, plan,
@@ -336,7 +347,7 @@ function partThree(d) {
       : `Die monatliche Kaltmiete beträgt ${eur(d.kalt)}, zuzüglich einer NK-Vorauszahlung von ${eur(d.nk)}.`)
     + pro + ' Die Miete ist jeweils spätestens bis zum dritten Werktag des Monats zu überweisen (§\u00a0556b BGB); bei Zahlungsverzug kann der Vermieter Verzugszinsen gemäß §\u00a0288 BGB geltend machen.');
   C('4', 'Untervermietung', 'Untervermietung oder sonstige Überlassung an Dritte ist nur mit vorheriger Erlaubnis des Vermieters (Textform) gestattet. Ferienvermietung (z.\u202fB. über Online-Portale) ist nicht gestattet.');
-  C('5', 'Schlüsselübergabe', `Der Mieter erhält bei Einzug ${d.hausstuerschluessel}\u00a0Haustürschlüssel und ${d.zimmerschluessel}\u00a0Zimmerschlüssel. Weitere Schlüssel bedürfen der vorherigen Zustimmung des Vermieters (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`);
+  C('5', 'Schlüsselübergabe', `Der Mieter erhält bei Einzug ${ccKeysSentence(d)}. Weitere Schlüssel bedürfen der vorherigen Zustimmung des Vermieters (Textform). Bei Verlust trägt der Mieter die vollständigen Kosten des Schlossaustauschs. Alle Schlüssel sind bei Auszug zurückzugeben.`);
   C('6', 'Kaution', (d.kautionBestehend
       ? `Die vom Mieter bereits geleistete Kaution${d.kaution ? ' von ' + eur(d.kaution) : ''} bleibt bestehen und sichert auch dieses Mietverhältnis; eine erneute Zahlung ist nicht erforderlich.`
       : `Der Mieter überweist die Kaution von ${eur(d.kaution)} ${d.kfLong} auf das oben genannte Konto.`)
