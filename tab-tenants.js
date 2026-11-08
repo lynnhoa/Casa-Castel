@@ -4626,9 +4626,7 @@ async function _tnModalSaveDraft() {
   // Nov 2026 (#26): a mistyped Contract start / end is shown, never saved as empty
   for (const [f, lbl] of [['vertragsbeginn', 'Contract start'], ['vertragsende', 'Contract end']]) {
     const el = body.querySelector(`[data-mf="${f}"]`);
-    const iso = el && el.value.trim() ? _tnParseDate(el.value) : null;
-    const real = iso && !isNaN(new Date(iso + 'T12:00:00Z')) && new Date(iso + 'T12:00:00Z').toISOString().slice(0, 10) === iso;   // never 31.13.
-    if (el && el.value.trim() && !real) { el.style.borderColor = '#C4705A'; el.focus(); ccToast(lbl + ': TT.MM.JJJJ', true); return false; }
+    if (el && el.value.trim() && !_tnParseDate(el.value)) { el.style.borderColor = '#C4705A'; el.focus(); ccToast(lbl + ': TT.MM.JJJJ', true); return false; }
   }
   const back = draft.returnTo || null;                      // #14
 
