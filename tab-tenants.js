@@ -2406,10 +2406,13 @@ function _tnCrView(rec, before) {
     if (now.step) { kDay = _ccAddDaysIso(ccRpIso(now.step.effective_date), -1); kr = _tnCrAt(rec, kDay, now); }
     if (now.mode !== 'pauschal' && now.nkStep) { nDay = _ccAddDaysIso(ccRpIso(now.nkStep.effective_date), -1); nr = _tnCrAt(rec, nDay, now); }
     const samePer = (a, b) => (a && a.per && a.per.id) === (b && b.per && b.per.id);
-    if (now.mode === 'pauschal' || kr.mode !== now.mode) nr = kr;   // one rent for both fields (Pauschal · an earlier contract's mode)
-    else if (nr.mode !== now.mode) kr = nr;
-    else if (kDay && !nDay && !samePer(kr, now)) nr = kr;            // the day before falls in an earlier entry → that day's whole rent
-    else if (nDay && !kDay && !samePer(nr, now)) kr = nr;
+    // one form = one mode: when the two days give different modes (an earlier contract), keep the day in the running
+    // contract; a field's day in an earlier entry → that day's whole rent (both fields from it)
+    if (now.mode === 'pauschal') { nr = kr; nDay = kDay; }
+    else if (kr.mode !== now.mode) { if (nDay && nr.mode === now.mode) { kr = nr; kDay = nDay; } else { nr = kr; nDay = kDay; } }
+    else if (nr.mode !== now.mode) { if (kDay) { nr = kr; nDay = kDay; } else { kr = nr; kDay = nDay; } }
+    else if (kDay && !nDay && !samePer(kr, now)) { nr = kr; nDay = kDay; }
+    else if (nDay && !kDay && !samePer(nr, now)) { kr = nr; kDay = nDay; }
   }
   const pa = kr.mode === 'pauschal';
   return { now, mode: kr.mode, sf, before: !!(before && sf), kDay, nDay,
@@ -2431,7 +2434,7 @@ function _tnCrKorrHint(tid, v) {
   const linkTxt = d1 && d2 && d1 !== d2 ? 'Correct the rent before these changes' : 'Correct the rent before ' + _ccFmtD(d1 || d2);
   let shown = '';
   if (v.before) shown = v.kDay && v.nDay && v.kDay !== v.nDay
-    ? `Shown: Kaltmiete on ${_ccFmtD(v.kDay)} · Nebenkosten on ${_ccFmtD(v.nDay)}.`
+    ? `Shown: ${v.mode === 'pauschal' ? 'Pauschalmiete' : 'Kaltmiete'} on ${_ccFmtD(v.kDay)} · Nebenkosten on ${_ccFmtD(v.nDay)}.`
     : `Shown: the rent on ${_ccFmtD(v.kDay || v.nDay)}.`;
   return 'Fixes an amount that was entered wrong — where it was entered (under each field). Nothing else moves.' + lock
     + (v.before
@@ -2661,6 +2664,8 @@ async function _tnCrSave(tid) {
       if (k !== v.k || modeChg) { if (v.kRow.step && !modeChg) steps.push({ row: v.kRow, amount: k }); else toEntry(v.kRow, 'k', k); }
       if ((Number(n) || 0) !== (Number(v.n) || 0) || modeChg) { if (v.nRow.step && !modeChg) steps.push({ row: v.nRow, amount: n }); else toEntry(v.nRow, 'n', pa ? (n || 0) : n); }
     }
+    // no rent entry yet (rent only on the tenant record): store the base first — the record then holds today's rent
+    if (v && !v.now.per && !entries.has('')) entries.set('', { row: { per: null, base: v.now.base, label: 'rent' } });
     const writes = [];
     for (const e of entries.values()) {
       const b = e.row.base || { mode, kalt: 0, nk: 0, total: 0 };

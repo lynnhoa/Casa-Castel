@@ -845,10 +845,24 @@ function _rntCurrentRent(rec, iso) {
     const k = Number(rec.kaltmiete) || 0, n = Number(rec.nebenkosten) || 0;
     out = { mode: 'kalt_nk', kalt: k, nk: n, total: k + n, src: 'tenant' };
   }
+  // Renew (a day given): an NK-Anpassung in force that day is the contract's NK — the same as Controlling and Casa
+  if (iso && out && out.mode !== 'pauschal') {
+    const nkSt = _rntNkStepAt(rec, day, per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn));
+    if (nkSt) out = { ...out, nk: Number(nkSt.amount) || 0, total: (Number(out.kalt) || 0) + (Number(nkSt.amount) || 0), nkStep: nkSt };
+  }
   // a Mieterhöhung that has started (not skipped) is today's Kaltmiete — the same as Controlling
   const st = out && out.mode !== 'pauschal' ? _rntMhAt(rec, day, per ? ccRpIso(per.valid_from) : ccRpIso(rec.mietbeginn)) : null;
   if (st) out = { ...out, kalt: Number(st.amount), total: Number(st.amount) + (Number(out.nk) || 0), src: 'mh', step: st };
   return out;
+}
+/* The tenant's NK-Anpassung in force on a day (latest date ≤ day, ≥ base, not skipped) — as _tnNkStepAt */
+function _rntNkStepAt(rec, iso, base) {
+  const aptId = rec && rec.apartment_id; if (!aptId || typeof _rntNKVoraus === 'undefined' || !_rntNKVoraus) return null;
+  const mb = rec.mietbeginn ? _ccIso(rec.mietbeginn) : '';
+  return (_rntNKVoraus[aptId] || [])
+    .filter(x => !x.ignored && (x.tenant_id ? String(x.tenant_id) === String(rec.id) : (!mb || String(x.effective_date).slice(0, 10) >= mb)))
+    .filter(x => { const d = String(x.effective_date).slice(0, 10); return d <= iso && (!base || d >= base); })
+    .sort((a, b) => String(b.effective_date).localeCompare(String(a.effective_date)))[0] || null;
 }
 /* The tenant's latest Mieterhöhung on/before iso (and not before base) · the next one after today */
 function _rntMhAt(rec, iso, base) {

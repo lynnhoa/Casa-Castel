@@ -1620,7 +1620,9 @@ function ccfRenewOpen(tid) {
   // Pauschal — the tenancy's own "davon NK" of that day (never the room's)
   const day = start || undefined;
   const cur = ccfA().currentRent(rec, day) || {};
-  const nkIncl = casa && cur.mode === 'pauschal' && typeof _tnNkInclAt === 'function' ? _tnNkInclAt(rec, day) : 0;
+  const nkIncl = cur.mode !== 'pauschal' ? 0
+    : casa ? (typeof _tnNkInclAt === 'function' ? _tnNkInclAt(rec, day) : 0)
+    : Math.min(Number(cur.period && cur.period.nebenkosten) || 0, Number(cur.total) || 0);   // Rentals: the entry's own "davon NK"
   const n = ccfA().renewalRows(rec).length + 1;
   const ct = (ccfA().app === 'casa' ? (typeof tnContractType === 'function' ? tnContractType(rec) : rec.contract_type)
                                     : (typeof rntContractType === 'function' ? rntContractType(rec) : rec.contract_type)) || 'kurzzeit';
