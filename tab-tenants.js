@@ -798,7 +798,10 @@ function _tnKautionSollInfo(rec) {
   const amount = _tnKautionSoll(rec.room, rec.mietbeginn, _tnKautionEnd(rec), ctype);
   if (amount == null) return null;
   const r = typeof appRooms !== 'undefined' ? appRooms.find(x => x.name === rec.room) : null;
-  const isPauschal = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk' : r?.mietvertrag_pricing !== 'kalt_nk';
+  // #13: the label's mode exactly as _tnKautionSoll picks the amount (a Jahresvertrag may have its own price)
+  const isPauschal = ctype === 'kurzzeit' ? (r?.kurzzeit_pricing || 'pauschal') !== 'kalt_nk'
+    : ctype === 'jahres' && typeof ccRoomJahresOwn === 'function' && ccRoomJahresOwn(r) ? r.jahres_pricing === 'pauschal'
+    : r?.mietvertrag_pricing !== 'kalt_nk';
   const rule = typeof ccKautionRuleText === 'function'
     ? ccKautionRuleText(ctype === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', isPauschal ? 'pauschal' : 'kalt_nk', rec.mietbeginn, _tnKautionEnd(rec)) : '';
   return { amount, text: 'Standard' + (rule ? ' \u00b7 ' + rule : '') };

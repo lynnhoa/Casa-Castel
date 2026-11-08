@@ -926,6 +926,8 @@ async function loadRooms() {
   if (!loadRooms._roomsChangeWired) {
     loadRooms._roomsChangeWired = true;
     onRoomsChange(() => {
+      // #16: after a failed load one realtime row is not the whole house — load the full list instead
+      if (loadRoomsData.lastOk === false) { if (!loadRooms._rtReload) loadRooms._rtReload = loadRooms().finally(() => { loadRooms._rtReload = null; }); return; }
       _renderRoomsList();
     });
   }
@@ -1027,7 +1029,8 @@ function _renderRoomsList() {
   if (!rooms.length) {
     // #16: a failed load is never "no rooms" — say so and offer a retry (Add room waits for a good load)
     list.innerHTML = loadRoomsData.lastOk === false
-      ? `<p style="font-size:13px;color:var(--cc-stone);padding:20px 0;">Rooms could not be loaded. <button type="button" class="rm-btn" style="margin-left:6px" onclick="_roomsRetry(this)">Try again</button></p>`
+      ? `<p style="font-size:13px;color:var(--cc-stone);padding:20px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">Rooms could not be loaded.
+           <button type="button" onclick="_roomsRetry(this)" style="height:34px;padding:0 14px;border:.5px solid var(--cc-rule, #d9d2c5);border-radius:8px;background:var(--cc-white, #fff);font:inherit;font-size:12.5px;font-weight:500;color:var(--cc-charcoal);cursor:pointer">Try again</button></p>`
       : `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0;">No rooms yet. Add your first room.</p>`;
     _updateRoomsSummary([]);
     return;
@@ -1589,10 +1592,16 @@ async function _roomAddSave(btn) {
   const scope = document.getElementById('roomSheetBody'); if (!scope) return;
   const data = _roomCollectFields(scope);
   data.name = String(data.name || '').trim();
-  // #16: the duplicate-name check needs the real list — after a failed load, load it first
+  // #16: the duplicate-name check needs the real list — after a failed load, load it first (button busy meanwhile:
+  // a second tap never saves twice; Cancel during the load saves nothing)
   if (loadRoomsData.lastOk === false) {
+    const idle = () => { if (btn) { btn.disabled = false; btn.textContent = t('rooms_save'); } };
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     await loadRoomsData();
-    if (loadRoomsData.lastOk === false) { ccToast('Rooms could not be loaded — try again in a moment.', true); return; }
+    if (_roomSheetCur !== cur) return;                         // closed while loading → nothing saved
+    if (loadRoomsData.lastOk === false) { idle(); ccToast('Rooms could not be loaded — try again in a moment.', true); return; }
+    _renderRoomsList(); _initSortable();                       // the list behind the sheet shows the loaded rooms
+    idle();
   }
   const problem = _roomNameProblem(data.name, null);
   if (problem !== '') { _roomNameError(scope, problem); return; }
@@ -2158,6 +2167,7 @@ let _roomDraftRestoreTried = false;
    - Any other start / login → a small "Continue unfinished contract" bar. */
 async function _roomRestoreContractDraft() {
   if (_roomDraftRestoreTried || typeof ccDraftGet !== 'function') return;
+  if (loadRoomsData.lastOk === false) return;   // #16: rooms not loaded ≠ room gone — keep the draft for the next good load
   _roomDraftRestoreTried = true;
   const d = ccDraftGet(_ROOM_DRAFT_KEY);
   if (!d || !d.meta) return;
