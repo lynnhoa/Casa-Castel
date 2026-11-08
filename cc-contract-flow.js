@@ -872,12 +872,17 @@ function ccfPlan(p) {
   // #3 (Nov 2026): this tenancy's own Move-in moves → the tenant before, whose move-out was the day before the old
   // Move-in (set when this one was added), moves along — the same checkbox (on), only while they still live there
   const mi0 = rec && !renewal && start && miFollows ? ccfIso(rec.mietbeginn) : '';
-  if (mi0 && mi0 !== start) {
+  if (mi0 && mi0 !== start && ccfA().app === 'casa' && typeof _tnPrevLinked === 'function' && typeof _tnNextMoDay === 'function') {
+    // Casa: exactly the Tenants rule (day before the move-in, or the contract end when that comes first)
+    const prev = _tnPrevLinked(rec, mi0), to = prev ? _tnNextMoDay(prev, start) : null;
+    if (prev && to && to !== ccfIso(prev.mietende) && (!ccfIso(prev.mietbeginn) || ccfIso(prev.mietbeginn) <= to))
+      endPrev.push({ rec: prev, was: ccfIso(prev.mietende), to, moved: true });
+  } else if (mi0 && mi0 !== start) {
     const linked = ccfAddDays(mi0, -1), to = ccfAddDays(start, -1);
     ccfRoomTenancies(p.room).filter(x => x.role !== 'former' && String(x.rec.id) !== String(rec.id)
         && ccfIso(x.rec.mietende) === linked && linked >= ccfToday()
         && ccfIso(x.rec.mietbeginn) && ccfIso(x.rec.mietbeginn) <= to)
-      .forEach(x => endPrev.push({ rec: x.rec, was: linked, to }));
+      .forEach(x => endPrev.push({ rec: x.rec, was: linked, to, moved: true }));
   }
   // B3: this tenancy's own Staffel steps that the new contract replaces (Rentals)
   const staffelOld = rec && !renewal && p.staffelTable && typeof _rntStaffel !== 'undefined'
@@ -937,7 +942,7 @@ function _ccfSummaryRender() {
       ${(p.coTenants || []).map((c, i) => c && c.name ? _ccfRow('Mieter ' + (i + 2), e(c.name), [c.email, c.phone].filter(Boolean).map(e).join(' · ')) : '').join('')}
       ${pl.endPrev.map(x => `<label class="ccf-srow ccf-check"><input type="checkbox" class="ccf-endprev"${pl.endPrevOn ? ' checked' : ''}/>
         <span class="ccf-sl">Move-out of ${e(ccfName(x.rec))}</span>
-        <span class="ccf-sv"><span>${ccfFmt(x.to)}</span><span class="ccf-ss">day before · ${x.was ? 'was ' + ccfFmt(x.was) : 'was empty'}</span></span></label>`).join('')}
+        <span class="ccf-sv"><span>${ccfFmt(x.to)}</span><span class="ccf-ss">${x.to === ccfAddDays(pl.start, -1) ? 'day before' : 'contract end'} · ${x.was ? 'was ' + ccfFmt(x.was) : 'was empty'}</span></span></label>`).join('')}
       ${pl.overlaps.length ? `<p class="ccf-warn">${pl.overlaps.map(r => e(ccfName(r)) + ' moves in ' + ccfFmt(r.mietbeginn)).join(' · ')} — the same time as this tenancy. Check the dates in Tenants.</p>` : ''}
     </div>`;
     const ctRow = pl.renewal
@@ -1031,9 +1036,13 @@ async function ccfApproveRun() {
       const pdf = await ccRenderPagesToPdf(p.container, { strict: /^(apt|pk):/.test(String(p.room || p.unit || '')) });
       A.blob = pdf.output('blob');
     }
+    // #3: a move-out that moves with an existing tenancy's Move-in is written only after that tenancy is saved
+    const prevLate = !!(pl.rec && !pl.created && (pl.endPrev || []).some(x => x.moved));
     step = 'previous tenant';
-    if (!A.done.prev && pl.kind === 'contract' && pl.endPrevOn && (pl.endPrev || []).length) { await _ccfStepEndPrev(A); A.done.prev = true; }
+    if (!prevLate && !A.done.prev && pl.kind === 'contract' && pl.endPrevOn && (pl.endPrev || []).length) { await _ccfStepEndPrev(A); A.done.prev = true; }
     step = 'tenant';     if (!A.done.tenant)   { await _ccfStepTenant(A);   A.done.tenant = true; }
+    step = 'previous tenant';
+    if (prevLate && !A.done.prev && pl.endPrevOn) { await _ccfStepEndPrev(A); A.done.prev = true; }
     if (pl.kind === 'contract') {
       step = 'rent history'; if (!A.done.rent) { await _ccfStepRent(A);     A.done.rent = true; }
     } else {
