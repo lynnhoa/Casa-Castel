@@ -1615,9 +1615,10 @@ function ccfRenewOpen(tid) {
   const start = endNow ? ccfAddDays(endNow, 1) : '';
   // Casa: a renewal is a Jahresvertrag to the next 31.08. (also when a Kurzzeit tenant stays on)
   const end = !start ? '' : casa && typeof ccNext3108 === 'function' ? ccNext3108(start) : ccfAddDays(ccfAddYears(start, 1), -1);
-  // Nov 2026 (#3): the rent in force the day before the new contract starts (a Mieterhöhung typed ahead included),
-  // and — Casa Pauschal — the tenancy's own "davon NK" of that day (never the room's)
-  const day = start ? ccfAddDays(start, -1) : undefined;
+  // Nov 2026 (#3): the rent in force on the renewal's first day (a Mieterhöhung / Staffel / NK-Anpassung typed ahead
+  // for that day included — no renewal entry exists yet, so this is still the running contract's rent), and — Casa
+  // Pauschal — the tenancy's own "davon NK" of that day (never the room's)
+  const day = start || undefined;
   const cur = ccfA().currentRent(rec, day) || {};
   const nkIncl = casa && cur.mode === 'pauschal' && typeof _tnNkInclAt === 'function' ? _tnNkInclAt(rec, day) : 0;
   const n = ccfA().renewalRows(rec).length + 1;

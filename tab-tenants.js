@@ -762,6 +762,13 @@ function _tnKautionEnd(rec) {
   if (!rec) return null;
   return _ccIso(rec.mietende) || _ccIso(rec.vertragsende) || (rec.id ? (_tnContracts(rec)[0] || {}).end : null) || null;
 }
+/* #23: no fixed Kaution Soll yet — a planned tenancy gets it from its contract (Approve), a Kurzzeit stay only once
+   its end is known (1× up to 3 months, 3× above). Until then the Soll is shown, never stored (load or pop-up save). */
+function _tnSollWaits(rec) {
+  if (!rec || !rec.id || rec.status !== 'active' || (rec.kaution_soll != null && rec.kaution_soll !== '')) return false;
+  if (_tnIsPlanned(rec)) return true;
+  return (_tnBaseContractType(rec) || _tnRoomContractType(rec.room)) === 'kurzzeit' && !_tnKautionEnd(rec);
+}
 function _tnKautionSollInfo(rec) {
   if (!rec) return null;
   if (rec.kaution_soll != null && rec.kaution_soll !== '') return { amount: Number(rec.kaution_soll), text: 'Fest seit Einzug' };
@@ -798,9 +805,7 @@ function _tnFreezeKautionSoll() {
   if (!sbL || typeof ccKautionStartSoll !== 'function') return;
   _tnRecords.forEach(rec => {
     if (rec.status !== 'active' || (rec.kaution_soll != null && rec.kaution_soll !== '') || _tnSollFilling.has(rec.id)) return;
-    // #23: a planned tenancy gets its Soll from the contract (Approve); a Kurzzeit stay only once its end is known (1× / 3×)
-    if (_tnIsPlanned(rec)) return;
-    if ((_tnBaseContractType(rec) || _tnRoomContractType(rec.room)) === 'kurzzeit' && !_tnKautionEnd(rec)) return;
+    if (_tnSollWaits(rec)) return;   // #23
     const amount = ccKautionStartSoll({ current: _tnKautionSollInfo(rec), staffelSoll: null,
       mietbeginn: rec.mietbeginn, received: _tnKaution[rec.id]?.received });
     if (!(amount > 0)) return;
@@ -2011,10 +2016,20 @@ function _tnNextSheet(roomName) {
   });
 }
 /* #22 (Nov 2026): the current tenant without a move-out gets it on Save — the day before the new move-in */
+/* The move-out it gets: the day before the new move-in — or the contract end when that comes first (room empty between) */
+function _tnNextMoDay(cur, from) {
+  if (!cur || !from) return null;
+  const st = _tnContractState(cur), last = st.all[st.all.length - 1];
+  const end = (last && last.end) || _ccIso(cur.vertragsende) || null;
+  const before = _ccAddDaysIso(from, -1);
+  // a contract end already passed (still living there) is not a move-out — then the day before the new move-in
+  return end && end >= _ccTodayIso() && end < before ? end : before;
+}
 function _tnNextMoText(cur, from) {
   const nm = [cur.first_name, cur.last_name].filter(Boolean).join(' ') || 'The current tenant';
-  return from ? `${nm} moves out on ${_ccFmtD(_ccAddDaysIso(from, -1))} — saved with this.`
-              : `${nm} has no move-out yet — it is set to the day before this move-in.`;
+  const mo = _tnNextMoDay(cur, from);
+  return mo ? `${nm} moves out on ${_ccFmtD(mo)} — saved with this.`
+            : `${nm} has no move-out yet — it is set with this move-in (contract end, else the day before).`;
 }
 function _tnNextMoHint(roomName) {
   const el = document.getElementById('tn-next-mo'); if (!el) return;
@@ -2066,9 +2081,10 @@ async function _tnSaveNext(roomName) {
         contract_type: type, kind: 'migrated', source: 'tenant_form', legacyMode: pa ? 'pauschal' : 'kalt_nk' });
     } catch (e) { ccSaveFailed(e, 'rent history'); }
   }
-  // #22: the current tenant without a move-out leaves the day before (from is after today, so they stay active until then)
+  // #22: the current tenant without a move-out leaves the day before — or at the contract end when that comes first
+  // (both are today or later, so they stay active until then)
   if (cur && !_ccIso(cur.mietende) && from) {
-    const mo = _ccAddDaysIso(from, -1);
+    const mo = _tnNextMoDay(cur, from);
     cur.mietende = mo;
     ccQueueWrite('tn-' + cur.id, () => sbL.from('tenant_records').update({ mietende: mo }).eq('id', cur.id))
       .then(({ error }) => { if (error) { cur.mietende = null; ccSaveFailed(error, 'move-out'); _tnRender(); } });
@@ -3488,8 +3504,8 @@ function _tnModalBodyHTML(rec) {
         <div class="tn-field" style="flex-direction:column;align-items:stretch;gap:4px">
           <span class="tn-flbl">Kaution Soll</span>
           <input id="mkaut-inp-${tid}" data-mf="kaution_soll" type="number" data-cc-num="2"
-            value="${dKS ?? _tnKautionSoll(rec.room, rec.mietbeginn, _tnKautionEnd(rec), ctK) ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, _tnKautionEnd(rec), ctK) ?? ''}"/>
-          <span class="cck-soll-hint">Fest seit Einzug · ändert sich nicht mit der Miete</span>
+            value="${dKS ?? (_tnSollWaits(rec) ? '' : _tnKautionSoll(rec.room, rec.mietbeginn, _tnKautionEnd(rec), ctK)) ?? ''}" placeholder="${_tnKautionSoll(rec.room, rec.mietbeginn, _tnKautionEnd(rec), ctK) ?? ''}"/>
+          <span class="cck-soll-hint">${_tnSollWaits(rec) ? 'Wird mit dem Vertrag festgelegt' : 'Fest seit Einzug · ändert sich nicht mit der Miete'}</span>
         </div>
         <div class="tn-field tn-field-full">
           <span class="tn-flbl">Contract</span>
