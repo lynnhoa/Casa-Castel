@@ -135,7 +135,10 @@ const CCF_RENTALS = {
   openRenew(rec, renew) {
     if (!rec.apartment_id || typeof _aptOpenContract !== 'function') return;
     if (typeof switchTab === 'function') switchTab('apartments');
-    setTimeout(() => _aptOpenContract(renew.ct, rec.apartment_id, { ...renew, aptId: rec.apartment_id, mode: renew.ct === 'kurzzeit' ? (renew.mode || 'kalt_nk') : 'kalt_nk' }), 80);
+    // Nov 2026: a Pauschal tenancy renewed as a Mietvertrag keeps its mode here → the generator splits it into
+    // Kaltmiete = Pauschale − davon NK + NK = davon NK (_aptContractApt), never the whole Pauschale as Kaltmiete
+    setTimeout(() => _aptOpenContract(renew.ct, rec.apartment_id, { ...renew, aptId: rec.apartment_id,
+      mode: renew.ct === 'kurzzeit' ? (renew.mode || 'kalt_nk') : (renew.mode === 'pauschal' ? 'pauschal' : 'kalt_nk') }), 80);
   },
   renewSwitch(type) {
     if (typeof _aptContractRenew === 'undefined' || !_aptContractRenew || typeof _aptOpenContract !== 'function') return;
