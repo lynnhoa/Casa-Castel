@@ -2354,8 +2354,14 @@ function _tnCrNum(id) {   // #1 (Oct 2026): the app's German reader — 1.050 ·
   return n === null || !isFinite(n) ? null : Math.round(n * 100) / 100;
 }
 function _tnCrDe(n) { return n == null || n === '' ? '' : Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: false }); }
+/* The first day a tenancy has a rent entry when none covers today (moves in later) — its rent starts there */
+function _tnCrFirstDay(rec) {
+  const ps = typeof ccRpFor === 'function' ? ccRpFor('casa', rec.id) : [];
+  const d = ps.map(p => ccRpIso(p.valid_from)).filter(Boolean).sort()[0] || '';
+  return d && d > ccRpToday() ? d : '';
+}
 function _tnCrNow(rec, day) {
-  const cur = _tnCurrentRent(rec, rec.room, day);
+  const cur = _tnCurrentRent(rec, rec.room, day || _tnCrFirstDay(rec) || undefined);   // moves in later: the rent it starts with
   if (!cur) return null;
   // Nov 2026 (#19): the rent entry itself, before a running Mieterhöhung / NK-Anpassung — "the rent before …"
   const per = cur.period || null;
@@ -2664,8 +2670,9 @@ async function _tnCrSave(tid) {
       if (k !== v.k || modeChg) { if (v.kRow.step && !modeChg) steps.push({ row: v.kRow, amount: k }); else toEntry(v.kRow, 'k', k); }
       if ((Number(n) || 0) !== (Number(v.n) || 0) || modeChg) { if (v.nRow.step && !modeChg) steps.push({ row: v.nRow, amount: n }); else toEntry(v.nRow, 'n', pa ? (n || 0) : n); }
     }
-    // no rent entry yet (rent only on the tenant record): store the base first — the record then holds today's rent
-    if (v && !v.now.per && !entries.has('')) entries.set('', { row: { per: null, base: v.now.base, label: 'rent' } });
+    // no rent entry at all (rent only on the tenant record): store the base first — the record then holds today's rent
+    if (v && !v.now.per && !entries.has('') && !(typeof ccRpFor === 'function' && ccRpFor('casa', rec.id).length))
+      entries.set('', { row: { per: null, base: v.now.base, label: 'rent' } });
     const writes = [];
     for (const e of entries.values()) {
       const b = e.row.base || { mode, kalt: 0, nk: 0, total: 0 };
@@ -2693,8 +2700,8 @@ async function _tnCrSave(tid) {
         done.push(w.row.per ? 'rent ' + String(w.row.label).replace(' (rent entry)', '') : 'rent');
       }
     } catch (e) { ccSaveFailed(e, 'rent'); _tnRender(); return; }
-    // the tenant record: the rent in force today (as Controlling shows it)
-    const cur2 = _tnCurrentRent(rec, room);
+    // the tenant record: the rent in force today (as Controlling shows it) — moves in later: the rent it starts with
+    const cur2 = _tnCurrentRent(rec, room, _tnCrFirstDay(rec) || undefined);
     const upd = !cur2 ? {} : cur2.mode === 'pauschal' ? { kaltmiete: cur2.total, nebenkosten: null } : { kaltmiete: cur2.kalt, nebenkosten: cur2.nk };
     if (Object.keys(upd).length) {
       Object.assign(rec, upd);

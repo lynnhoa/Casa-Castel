@@ -2342,7 +2342,12 @@ function _aptContractApt(apt) {
   if (_aptContractType === 'kurzzeit') {
     if (rn.mode === 'pauschal') { p.kurzzeit_pricing = 'pauschal'; p.kurzzeit_kaltmiete = Number(rn.total) || Number(rn.kalt) || 0; p.kurzzeit_nk = 0;
       if (rn.nkIncl != null) p._kzNkIncl = Number(rn.nkIncl) || 0; }   // Nov 2026: the tenancy's own "davon NK", never the apartment's price
-    else { p.kurzzeit_pricing = 'kalt_nk'; p.kurzzeit_kaltmiete = Number(rn.kalt) || 0; p.kurzzeit_nk = Number(rn.nk) || 0; }
+    else { p.kurzzeit_pricing = 'kalt_nk'; p.kurzzeit_kaltmiete = Number(rn.kalt) || 0; p.kurzzeit_nk = Number(rn.nk) || 0;
+      p._kzNkIncl = Number(rn.nk) || 0; }   // switched to Pauschal: "davon NK" = the tenancy's NK
+  }
+  else if (rn.mode === 'pauschal') {   // Pauschal renewal as a Mietvertrag: Kaltmiete = Pauschale − davon NK, NK = davon NK
+    const t = Number(rn.total) || Number(rn.kalt) || 0, i = Math.min(Number(rn.nkIncl) || 0, t);
+    p.kaltmiete = Math.round((t - i) * 100) / 100; p.nk_pauschale = i;
   }
   else { p.kaltmiete = Number(rn.kalt) || 0; p.nk_pauschale = Number(rn.nk) || 0; }
   return { ...apt, pricing: p };
@@ -2757,10 +2762,13 @@ function _aptSetupFlow(type, apt) {
   const kzTot = kz.mode === 'pauschal' ? kz.total : _aptR2(kz.kalt + kz.nk);
   // "davon NK": a renewal's own NK part (Nov 2026) — else from the apartment's Kaltmiete as before
   const kzInc = pr._kzNkIncl != null ? Math.min(Number(pr._kzNkIncl) || 0, kzTot) : _aptKzNkIncl(pr, kzTot);
+  const own = rn && pr._kzNkIncl != null;   // a renewal: both options start from the tenancy's own rent, never the apartment's
   const kzOther = { pauschal: { a: kzTot, b: kzInc },
-                    kalt_nk:  { a: kz.mode === 'kalt_nk' ? kz.kalt : (Number(pr.kaltmiete) || kz.total), b: kz.mode === 'kalt_nk' ? kz.nk : (Number(pr.nk_pauschale) || 0) } };
+                    kalt_nk:  { a: kz.mode === 'kalt_nk' ? kz.kalt : own ? _aptR2(kzTot - kzInc) : (Number(pr.kaltmiete) || kz.total),
+                                b: kz.mode === 'kalt_nk' ? kz.nk : own ? kzInc : (Number(pr.nk_pauschale) || 0) } };
   const miete = isGw ? null : type === 'kurzzeit' ? {
-    anchor: '.rm-kaution-row', mode: kz.mode, fixedMode: false, pauschTotal: true, nkRef: Number(pr.kaltmiete) || 0, pre: kzOther,
+    // a renewal's "davon NK" never follows the apartment's Kaltmiete (no auto fill) — a new contract's does, as before
+    anchor: '.rm-kaution-row', mode: kz.mode, fixedMode: false, pauschTotal: true, nkRef: rn ? null : (Number(pr.kaltmiete) || 0), pre: kzOther,
     kalt: kzOther[kz.mode].a, nk: kzOther[kz.mode].b,
     note: rn ? 'Prefilled with the current rent — type the new one if it changes.' : 'Prefilled from the apartment’s Kurzzeit price — type the price agreed for this stay.',
     onChange: () => { if (typeof _aptKzUpdateKaution === 'function') _aptKzUpdateKaution(); },
