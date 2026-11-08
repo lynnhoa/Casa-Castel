@@ -97,7 +97,8 @@ function ccContractData(inp) {
     const stay = E.getDate() - S.getDate() + 1;
     last.partial = false;
     if (stay === dim(S)) { first.partial = false; first.amount = rent; }
-    else { first.partial = true; first.days = stay; first.amount = first.full ? rent : r2(rent / dim(S) * stay); }
+    else { first.partial = true; first.days = stay; first.amount = first.full ? rent : r2(rent / dim(S) * stay);
+           first.outEarly = S.getDate() === 1; }    // moves in on the 1st, out before the month ends (§ 3 wording)
   }
 
   // ── Zahlungsplan (Kurzzeit only) ──
@@ -257,7 +258,8 @@ function partOne(d) {
   b.push(sec('Mieter'), K('Name', esc(d.mieterName)), K('Adresse', esc(d.mieterAdresse)), K('Geburtsdatum', esc(d.mieterGeburtsdatum)), K('E-Mail', esc(d.mieterEmail)));
   if (d.mieterTelefon) b.push(K('Telefon', esc(d.mieterTelefon)));
   b.push(sec('Mietobjekt'), K('Adresse', esc([d.objektAdresse, d.objektPLZOrt].filter(Boolean).join(', '))), K('Bezeichnung', esc(d.zimmerName)),
-    K('Zimmergröße', 'ca.\u00a0' + esc(d.zimmerFlaeche) + '\u00a0m²'), K('Mitgenutzte Räume', esc(d.gemeinschaftsraeume) || '—'),
+    K('Zimmergröße', d.zimmerFlaeche !== '' && d.zimmerFlaeche != null && Number(d.zimmerFlaeche) > 0   // #25: 13,5 m² · no size → —
+      ? 'ca.\u00a0' + esc(typeof ccM2 === 'function' ? ccM2(d.zimmerFlaeche) : String(d.zimmerFlaeche).replace('.', ',')) + '\u00a0m²' : '—'), K('Mitgenutzte Räume', esc(d.gemeinschaftsraeume) || '—'),
     K('Möblierung', d.inventar.length ? 'Möbliert\u2002·\u2002Inventar siehe Anlage\u00a0A' : 'Möbliert'));   // Oct 2026: Anlage A only when it is attached (Inventar entered)
   b.push(sec('Mietzeit'), K('Mietbeginn', esc(d.mietbeginn)));
   if (d.type === 'mietvertrag' && !d.befristet) {
@@ -324,7 +326,8 @@ function partThree(d) {
     const vollParts = [fi && d.first.full ? 'erste Monat' : null, la && d.last.full ? 'letzte Monat' : null].filter(Boolean);
     if (vollParts.length) pro += ` Der ${vollParts.join(' und der ')} ${vollParts.length > 1 ? 'werden' : 'wird'} als voller Monat berechnet.`;
     if ((fi && !d.first.full) || (la && !d.last.full)) {
-      const when = [fi && !d.first.full ? 'nicht zum ersten eines Monats ein' : null, la && !d.last.full ? 'nicht zum letzten eines Monats aus' : null].filter(Boolean).join(' oder ');
+      const when = [fi && !d.first.full ? (d.first.outEarly ? 'nicht zum letzten eines Monats aus' : 'nicht zum ersten eines Monats ein') : null,
+                    la && !d.last.full ? 'nicht zum letzten eines Monats aus' : null].filter(Boolean).join(' oder ');
       pro += ` Zieht der Mieter ${when}, werden die Tage anteilig berechnet. Der Tagespreis ergibt sich aus der Gesamtmiete (${eur(d.rent)}) geteilt durch die tatsächliche Anzahl der Kalendertage des jeweiligen Monats.`;
     }
   }

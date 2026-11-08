@@ -2817,6 +2817,7 @@ function _aptSetupFlow(type, apt) {
       return { kind: 'contract', ctype: type === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', room: unit, forId: ccfForValue(), renew: rn,
         tenant: ccfReadTenant(f), coTenants: ccfReadCoTenants(f), start, end, rent, staffel, staffelTable: 'rnt_staffelmiete_history',
         first_month: 'anteilig', last_month: 'anteilig',
+        needsEnd: !isGw && (type === 'kurzzeit' || document.getElementById('apt-mv-befristung-btn')?.dataset.mode === 'befristet'),   // #37
         docLabel: isGw ? 'Gewerbemietvertrag' : type === 'kurzzeit' ? 'Mietvertrag befristet' : 'Mietvertrag' };
     } });
 }

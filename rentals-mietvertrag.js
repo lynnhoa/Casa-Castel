@@ -501,7 +501,7 @@ function _renderRentalMietvertragHTML(d) {
     ${sec('Mietobjekt',false,false)}
     ${kv('Adresse',d.objektAdresse)}${d.wohnungsnummer ? kv('Wohnungsnummer',d.wohnungsnummer) : ''}${kv('PLZ / Ort',d.objektPLZOrt)}${kv('Bezeichnung',d.zimmerName)}
     ${d.etage ? kv('Etage',d.etage) : ''}
-    ${kv('Wohnungsgr\u00f6\u00dfe','ca.\u00a0'+d.zimmerFlaeche+'\u00a0m\u00b2')}
+    ${kv('Wohnungsgr\u00f6\u00dfe',(Number(d.zimmerFlaeche) > 0 ? 'ca.\u00a0'+(typeof ccM2 === 'function' ? ccM2(d.zimmerFlaeche) : String(d.zimmerFlaeche).replace('.', ','))+'\u00a0m\u00b2' : '\u2014'))}
     ${d.gemeinschaftsraeume ? kv('Mitgenutzte R\u00e4ume',d.gemeinschaftsraeume) : ''}
     ${d.inventar.length ? kv('M\u00f6blierung','M\u00f6bliert\u2002\u00b7\u2002Inventar siehe Anlage\u00a0A') : ''}
     ${sec('Mietzeit',false,false)}

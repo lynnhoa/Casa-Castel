@@ -92,12 +92,12 @@ const _cgEur = n => (typeof ccFmtEUR === 'function' ? ccFmtEUR(Number(n) || 0) :
 const _cgIn  = id => document.getElementById(id);
 const _cgV   = id => (_cgIn(id)?.value || '').trim();
 let _cgType = null;   // the generator open right now
-/* The next 31.08. on or after a date (ISO in, ISO out) — Jahresvertrag end */
+/* Jahresvertrag end (ISO in, ISO out): 31.08. of the FOLLOWING year — start 2026 → 31.08.2027, whatever the
+   start month (#38, owner Nov 2026). Only a prefill: the Mietende stays editable. */
 function ccNext3108(iso) {
   const s = String(iso || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
-  const y = Number(s.slice(0, 4));
-  return s <= y + '-08-31' ? y + '-08-31' : (y + 1) + '-08-31';
+  return (Number(s.slice(0, 4)) + 1) + '-08-31';
 }
 
 function _cgSeg(group, opts, cur, label) {
@@ -138,7 +138,7 @@ function ccgBodyHTML(type, room, renew) {
         <div id="cg-person-wrap">${_cgField('cg-person', 'Für wen (Eigenbedarf)', 'type="text" placeholder="z. B. Tochter des Vermieters"', 'Required by law for Eigenbedarf.')}</div>
       </div>`;
   } else {
-    const endHint = type === 'jahres' ? 'Mietende is prefilled with the next 31.08. — change it only for an exception.' : '';
+    const endHint = type === 'jahres' ? 'Mietende is prefilled with 31.08. of the following year — change it only for an exception.' : '';
     term = `<div class="cg-row">${_cgField('cg-start', 'Mietbeginn', 'type="date"')}${_cgField('cg-end', 'Mietende', 'type="date"' + (type === 'jahres' ? ' data-auto="1"' : ''))}</div>
       <p class="cg-hint" id="cg-stay">${endHint}</p>`;
   }
@@ -188,19 +188,27 @@ function ccgInit() {
   const st = _cgIn('cg-start'), en = _cgIn('cg-end');
   st?.addEventListener('input', () => { _cgAutoEnd(); ccgUpdate(); });
   st?.addEventListener('change', () => { _cgAutoEnd(); ccgUpdate(); });
-  en?.addEventListener('input', ev => { if (ev.isTrusted) en.removeAttribute('data-auto'); ccgUpdate(); });
-  en?.addEventListener('change', () => ccgUpdate());
+  // #22: a Mietende YOU set (typed, or picked in the calendar) stays; what the app fills in (rule, Renew, a tenant's
+  // contract — those set data-auto themselves) does not count as yours
+  const own = ev => { if (!_cgAutoWriting && ev && (ev.isTrusted || ev.ccPick)) en.removeAttribute('data-auto'); };
+  en?.addEventListener('input', ev => { own(ev); ccgUpdate(); });
+  en?.addEventListener('change', ev => { own(ev); ccgUpdate(); });
   ccgUpdate();
 }
-/* Jahresvertrag: Mietende follows Mietbeginn (next 31.08.) until you type your own */
+/* Jahresvertrag: Mietende follows Mietbeginn (31.08. of the following year) until you set your own */
+let _cgAutoWriting = false;
 function _cgAutoEnd() {
   if (_cgType !== 'jahres') return;
   const en = _cgIn('cg-end'), s = _cgV('cg-start');
   if (!en || !en.hasAttribute('data-auto')) return;
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : (typeof ccParseDate === 'function' ? ccParseDate(s) : null);
   const nx = iso ? ccNext3108(iso) : '';
-  if (nx && en.value !== nx) { en.value = nx; en.dispatchEvent(new Event('change', { bubbles: true })); }
+  if (nx && en.value !== nx) {
+    _cgAutoWriting = true;
+    try { en.value = nx; en.dispatchEvent(new Event('change', { bubbles: true })); } finally { _cgAutoWriting = false; }
+  }
 }
+function _cgSameMonth(a, b) { return !!(a && b && String(a).slice(0, 7) === String(b).slice(0, 7)); }
 function _cgIso(id) {
   const v = _cgV(id); if (!v) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
@@ -227,7 +235,9 @@ function ccgUpdate() {
   }
   // First / last month only when they matter
   const fw = _cgIn('cg-first-wrap'), lw = _cgIn('cg-last-wrap');
-  const firstPartial = !!S && S.getDate() !== 1 && !(same && E && E.getDate() - S.getDate() + 1 === _cgDim(S));
+  // #24: the same part-month rule as the PDF — a stay inside one month that is shorter than the month is a part
+  // month even when it starts on the 1st (e.g. 01.03.–20.03.)
+  const firstPartial = !!S && (same ? (E.getDate() - S.getDate() + 1) < _cgDim(S) : S.getDate() !== 1);
   if (fw) { fw.style.display = firstPartial ? '' : 'none';
     if (firstPartial) _cgIn('cg-first-lbl').textContent = 'Erster Monat · Einzug ' + _cgDeShort(S) + ' (' + ((same ? E.getDate() : _cgDim(S)) - S.getDate() + 1) + ' Tage)'; }
   const lastPartial = !!E && !same && E.getDate() !== _cgDim(E);
@@ -259,9 +269,11 @@ function ccgUpdate() {
   // Summary line above the buttons
   const sum = _cgIn('cg-summary');
   if (sum) {
-    const dates = start ? (_cgDe(S) + (end ? ' – ' + _cgDe(E) : (type === 'mietvertrag' ? (term === 'min' ? ' · unbefristet, Verzicht ' + (_cgOpt('years') || 1) + ' J.' : ' · unbefristet') : ' – Mietende?'))) : 'Mietbeginn?';
+    const dates = start ? (_cgDe(S) + (end ? ' – ' + _cgDe(E) : (type === 'mietvertrag' && term !== 'bef' ? (term === 'min' ? ' · unbefristet, Verzicht ' + (_cgOpt('years') || 1) + ' J.' : ' · unbefristet') : ' – Mietende?'))) : 'Mietbeginn?';
     const warm = m ? _cgEur(m.total) + (m.mode === 'pauschal' ? ' pauschal' : ' warm') : '';
-    const kv = renewK ? 'Kaution bereits geleistet' : (kIn && kIn.value !== '' ? 'Kaution ' + _cgEur(ccKautionManual(kIn.value)) : 'Kaution —');
+    // #40: a renewal with a new amount typed shows that amount (the PDF and Approve use it too)
+    const kNew = kIn && kIn.value !== '' ? ccKautionManual(kIn.value) : null;
+    const kv = renewK && !(kNew > 0) ? 'Kaution bereits geleistet' : (kNew != null ? 'Kaution ' + _cgEur(kNew) : 'Kaution —');
     sum.textContent = [dates, warm, kv].filter(Boolean).join(' · ');
   }
 }
@@ -278,6 +290,9 @@ async function ccgBuild(type, forApprove) {
   const grund = term === 'bef' ? _cgV('cg-grund') : '';
   const person = grund === 'eigenbedarf' ? _cgV('cg-person') : '';
   if (term === 'bef' && grund === 'eigenbedarf' && !person) { alert('Bitte angeben, für wen der Eigenbedarf besteht (gesetzliche Pflicht).'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return null; }
+  // #23: never a contract that ends before it starts (Draft and Approve)
+  if (start && end && end < start) { alert('Mietende liegt vor Mietbeginn — bitte das Datum prüfen.'); if (typeof ccCancelPdf === 'function') ccCancelPdf(); return null; }
+  // #37: Approve needs the Mietende — checked on the Approve path (payload.needsEnd → ccfApproveCheck)
   if (!forApprove && !(await ccConfirmMissingDates([!start && 'Mietbeginn', hasEnd && !end && 'Mietende']))) return null;
 
   const m = ccfMieteGet() || { mode: 'kalt_nk', kalt: 0, nk: 0, total: 0 };
@@ -323,7 +338,10 @@ async function ccgBuild(type, forApprove) {
     payload: { kind: 'contract', ctype: type, room: room0.name, forId: ccfForValue(), renew: rn,
       tenant: { name, address: _cgV('cg-adr'), birthday: _cgV('cg-dob'), email: _cgV('cg-email'), phone: _cgV('cg-tel') },
       start, end: end || null, rent: m, kaution: existing ? null : (Number(kautionAmount) || 0),
-      first_month: _cgOpt('first') === 'voll' ? 'voll' : 'anteilig', last_month: _cgOpt('last') === 'voll' ? 'voll' : 'anteilig',
+      // a stay inside one month: that month is first AND last — Controlling reads it from either side (#24)
+      first_month: _cgOpt('first') === 'voll' ? 'voll' : 'anteilig',
+      last_month: (_cgSameMonth(start, end) ? _cgOpt('first') : _cgOpt('last')) === 'voll' ? 'voll' : 'anteilig',
+      needsEnd: hasEnd,   // #37: Approve (ccfApproveCheck) refuses without a Mietende
       docLabel: type === 'kurzzeit' ? 'Kurzzeitmietvertrag' : 'Mietvertrag' },
   };
 }

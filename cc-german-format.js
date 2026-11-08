@@ -389,8 +389,10 @@ function ccIsNumInput(el) {
     else if (el._ccCal === 'daymonth') nset(el, m ? `${p(d)}.${p(m)}.` : '');
     else                               nset(el, y ? `${p(d)}.${p(m)}.${y}` : '');
     el.removeAttribute('aria-invalid');
-    el.dispatchEvent(new Event('input',  { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    // Nov 2026: marked as a pick by the user (a field the app fills itself stays "auto" — see cc-generator.js)
+    const ev = t => { const e = new Event(t, { bubbles: true }); e.ccPick = true; return e; };
+    el.dispatchEvent(ev('input'));
+    el.dispatchEvent(ev('change'));
   }
 
   function labelOf(el) {

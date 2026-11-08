@@ -977,7 +977,8 @@ function _pkSetupFlow(type, spot) {
         tenant: ccfReadTenant(_PK_MV_FIELDS), coTenants: ccfReadCoTenants(_PK_MV_FIELDS),
         start: v('pk-mv-start'), end: document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet' ? v('pk-mv-end') : null,
         rent: { mode: 'kalt_nk', kalt: miete, nk: 0, total: miete }, staffel, staffelTable: 'rnt_staffelmiete_history',
-        first_month: 'anteilig', last_month: 'anteilig', docLabel: 'Parkplatz-Mietvertrag' };
+        first_month: 'anteilig', last_month: 'anteilig', docLabel: 'Parkplatz-Mietvertrag',
+        needsEnd: document.getElementById('pk-mv-befristung-btn')?.dataset.mode === 'befristet' };   // #37
     } });
 }
 

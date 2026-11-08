@@ -344,11 +344,31 @@ function ccfForApply(val, fill) {
     set('email', t.rec.email); set('tel', t.rec.phone);
     ccfFillCoTenants(o.fields, t.rec);
     if (o.mode === 'contract' && o.fields.kaution && Number(t.rec.kaution_soll) > 0) ccfSetKaution(o.fields.kaution, Number(t.rec.kaution_soll), 'Kaution Soll of ' + ccfName(t.rec));
+    else if (o.mode === 'contract' && o.fields.kaution && !(o.renew && o.renew.tid)) ccfKautionBack(o.fields.kaution);   // #36: no own amount → the rule again
     if (o.mode === 'contract' && !(o.renew && o.renew.tid)) ccfPrefillFromTenancy(o, t.rec);
   } else if (o.mode === 'contract') {
     ['name', 'adr', 'dob', 'email', 'tel'].forEach(k => set(k, ''));
     ccfFillCoTenants(o.fields, null);
     ccfPrefillFromTenancy(o, null);
+    if (o.fields.kaution && !(o.renew && o.renew.tid)) ccfKautionBack(o.fields.kaution);   // #36: never the last tenant's Kaution
+  }
+  if (o.mode === 'contract' && typeof ccgUpdate === 'function') { try { ccgUpdate(); } catch (e) {} }   // summary line follows (dates cleared)
+}
+/* #36: the Kaution field back to what it had before a tenant's amount was filled in (the rule follows the rent again) */
+function ccfKautionBack(id) {
+  const el = document.getElementById(id); if (!el || !el.dataset.ccfKOrig) return;
+  let o0 = null; try { o0 = JSON.parse(el.dataset.ccfKOrig); } catch (e) {}
+  const typed = el.dataset.ccfKSet !== undefined && el.value !== el.dataset.ccfKSet;
+  delete el.dataset.ccfKOrig; delete el.dataset.ccfKSet;
+  const box = el.closest('.rm-kaution-row') || el.parentElement;
+  const h = box && box.parentElement && box.parentElement.querySelector('.ccf-kaution-hint');
+  if (h) h.textContent = '';                                // "Kaution Soll of …" no longer applies
+  if (typed) return;                                        // an amount you typed yourself stays
+  el.value = o0 ? o0.v : '';
+  if (!o0 || o0.auto) el.setAttribute('data-auto', '1'); else el.removeAttribute('data-auto');
+  el.dispatchEvent(new Event('change', { bubbles: true }));   // not "input" — that marks the amount as typed
+  if (!o0 || o0.auto) {                                     // the rule of the rent typed NOW (each acts on its own open generator)
+    ['ccgUpdate', '_aptKzUpdateKaution', '_aptGwUpdateKaution'].forEach(fn => { try { if (typeof window[fn] === 'function') window[fn](); } catch (e) {} });
   }
 }
 /* Miete block + dates of an existing tenancy (Casa). null = back to what the form had (the room's asking rent). */
@@ -369,7 +389,11 @@ function ccfPrefillFromTenancy(o, rec) {
       delete box.dataset.filled; changed();
     }
     if (sEl && sEl.dataset.ccfFilled) { sEl.value = ''; delete sEl.dataset.ccfFilled; }
-    if (eEl && eEl.dataset.ccfFilled) { eEl.value = ''; delete eEl.dataset.ccfFilled; }
+    if (eEl && eEl.dataset.ccfFilled) {
+      eEl.value = ''; delete eEl.dataset.ccfFilled;
+      if (eEl.dataset.ccfAuto0 === '1') eEl.setAttribute('data-auto', '1');   // Jahresvertrag: the 31.08. rule again
+      delete eEl.dataset.ccfAuto0;
+    }
     return;
   }
   const c = fx(rec); if (!c) return;
@@ -382,6 +406,11 @@ function ccfPrefillFromTenancy(o, rec) {
     if (hint) hint.textContent = 'Prefilled from ' + ccfName(rec) + '’s ' + (c.name || 'contract') + ' — change it only if this contract differs.';
     box.dataset.filled = '1'; changed();
   }
+  if (eEl && c.end && eEl.dataset.ccfAuto0 === undefined) eEl.dataset.ccfAuto0 = eEl.hasAttribute('data-auto') ? '1' : '0';
+  // the tenancy's own end stays when Mietbeginn moves — unless it is just the 31.08. rule for its start (Add next
+  // tenant sets that), then it keeps following the rule like a fresh Jahresvertrag
+  const ruleEnd = c.start && typeof ccNext3108 === 'function' ? ccNext3108(c.start) : null;
+  if (eEl && c.end && !(eEl.dataset.ccfAuto0 === '1' && ruleEnd && c.end === ruleEnd)) eEl.removeAttribute('data-auto');
   if (sEl && c.start) { sEl.value = c.start; sEl.dataset.ccfFilled = '1'; sEl.dispatchEvent(new Event('input', { bubbles: true })); }
   if (eEl && c.end)   { eEl.value = c.end;   eEl.dataset.ccfFilled = '1'; eEl.dispatchEvent(new Event('input', { bubbles: true })); }
 }
@@ -402,8 +431,11 @@ function ccfFillCoTenants(f, rec) {
 }
 function ccfSetKaution(id, amount, hintText) {
   const el = document.getElementById(id); if (!el) return;
+  // #36: remember what the field had before a tenant's amount came in (once) — "New tenancy" puts it back
+  if (!el.dataset.ccfKOrig) el.dataset.ccfKOrig = JSON.stringify({ v: el.value, auto: el.hasAttribute('data-auto') });
   el.removeAttribute('data-auto');
   el.value = String(amount);
+  el.dataset.ccfKSet = el.value;                            // the amount put in here (typed over → yours, kept)
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.removeAttribute('data-auto');
   const box = el.closest('.rm-kaution-row') || el.parentElement;
@@ -577,6 +609,8 @@ function ccfSetupGenerator(cfg) {
 function ccfApproveCheck(p) {
   if (p.kind === 'contract' && !ccfIso(p.start)) { alert('Approve needs a Mietbeginn — it becomes the Move-in.'); return false; }
   if (p.kind === 'contract' && !String(p.tenant?.name || '').trim()) { alert('Approve needs the Mieter name.'); return false; }
+  // #37: Kurzzeit / Jahresvertrag / Befristet — a contract with an end is approved only with that end (Draft may keep a line)
+  if (p.kind === 'contract' && p.needsEnd && !ccfIso(p.end)) { alert('Approve needs a Mietende.'); return false; }
   if (p.kind === 'ueberg' && !p.forId) { alert('There is no tenant here yet — approve the contract first.'); return false; }
   if (p.kind === 'ueberg' && !ccfIso(p.date)) { alert('Approve needs the Übergabedatum.'); return false; }
   return true;
