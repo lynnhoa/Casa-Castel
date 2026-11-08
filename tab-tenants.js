@@ -1406,7 +1406,8 @@ function _tnOpenCounts() {
   const act = _tnRecords.filter(r => r.status === 'active' || r.status === 'former');
   return {
     nk: act.filter(r => _tnNkHasOpen(r.id)).length,
-    kaution: act.filter(r => r.status === 'former' && _tnKautionOpen(r.id)).length,
+    // #11: also one archived before the rule (Kaution still held) — the refund never drops off Open items
+    kaution: _tnRecords.filter(r => (r.status === 'former' || r.status === 'archived') && _tnKautionOpen(r.id)).length,
   };
 }
 /* IST today: the rent of every tenant living in the house now (rent history first).
@@ -1840,7 +1841,8 @@ function _tnRenderIfChanged() {
   const shown = !!(list && list.querySelector('.tn-card'));
   if (shown && sig === _tnRenderedSig) return;
   const tab = document.getElementById('tab-tenants');
-  if (shown && tab && tab.querySelector('.cc-save[data-cc-save="dirty"], .tn-nk-add-form, .tn-nkv-add-form')) return;
+  if (shown && tab && [...tab.querySelectorAll('.cc-save[data-cc-save="dirty"], .tn-nk-add-form, .tn-nkv-add-form')]
+        .some(el => !el.closest('.tn-overlay:not(.open)'))) return;   // #2 (Nov 2026): a form in the closed pop-up doesn't count
   _tnRender();
   _tnRenderedSig = sig;
 }
@@ -1941,8 +1943,8 @@ function _tnCardHTML(room) {
 
   const isOpen = false;
 
-  // Collapsed nudge: former tenants with unsettled kaution
-  const formerNudges = formerRecs
+  // Collapsed nudge: former tenants with unsettled kaution (#11: also one archived while the Kaution was still held)
+  const formerNudges = formerRecs.concat(archivedRecs.filter(r => _tnKautionOpen(r.id)))
     .map(r => ({ r, pills: _tnFormerOpenPills(r) }))
     .filter(x => x.pills)
     .map(({ r, pills }) => {
@@ -2057,6 +2059,65 @@ function _tnNextMoHint(roomName) {
   if (!cur) return;
   el.textContent = _tnNextMoText(cur, _tnParseDate((document.getElementById('tn-next-from')?.value || '').trim()));
 }
+/* #3 (Nov 2026): the tenant before `rec` whose move-out came from rec's move-in — "Add next tenant" set it to the day
+   before, or to their contract end when that came first (_tnNextMoDay). Only while they still live there:
+   a former tenant stays as they are. */
+function _tnPrevLinked(rec, fromIso) {
+  fromIso = _ccIso(fromIso);
+  if (!rec || !fromIso) return null;
+  const today = _ccTodayIso(), before = _ccAddDaysIso(fromIso, -1);
+  return (_tnRecords || []).find(r => r && r.room === rec.room && r.status === 'active' && String(r.id) !== String(rec.id)
+    && _ccIso(r.mietende) && _ccIso(r.mietende) >= today && (!r.mietbeginn || _ccIso(r.mietbeginn) < fromIso)
+    && (_ccIso(r.mietende) === before || _ccIso(r.mietende) === _tnNextMoDay(r, fromIso))) || null;
+}
+function _tnNm(r, first) {
+  if (!r) return '';
+  return (first ? r.first_name || r.last_name : [r.first_name, r.last_name].filter(Boolean).join(' ')) || 'the tenant';
+}
+/* #3: the next tenant's move-in moves → ask whether the move-out of the tenant before moves along.
+   → null: stay in the form (tapped outside) · {}: nothing to do / keep · { rec, to }: move it */
+async function _tnAskPrevMove(rec, newFrom) {
+  const oldFrom = rec ? _ccIso(rec.mietbeginn) : '';
+  newFrom = _ccIso(newFrom);
+  if (!oldFrom || !newFrom || oldFrom === newFrom) return {};
+  const prev = _tnPrevLinked(rec, oldFrom); if (!prev) return {};
+  const was = _ccIso(prev.mietende), to = _tnNextMoDay(prev, newFrom);
+  if (!to || to === was || (prev.mietbeginn && to < _ccIso(prev.mietbeginn))) return {};
+  const v = await ccDialog({ icon: 'ti-calendar', title: 'Move ' + esc(_tnNm(prev, true)) + '’s move-out too?',
+    body: `<strong>${esc(_tnNm(prev))}</strong> moves out on ${_ccFmtD(was)} — set for ${esc(_tnNm(rec))}’s move-in. New move-in: ${_ccFmtD(newFrom)}.`,
+    actions: [{ label: 'Keep ' + _ccFmtD(was), value: 'keep' }, { label: 'Move to ' + _ccFmtD(to), value: 'move', primary: true }] });
+  if (v === 'move') return { rec: prev, to };
+  return v === 'keep' ? {} : null;
+}
+/* Write the moved move-out — after the next tenant's own save (`after` resolves false = that failed → undo) */
+function _tnApplyPrevMove(m, after) {
+  if (!m || !m.rec || !m.to || !sbL) return Promise.resolve();
+  const prev = m.rec, was = { mietende: prev.mietende, status: prev.status };
+  const upd = { mietende: m.to };
+  if (m.to < _ccTodayIso()) upd.status = 'former';          // the day already passed (as the contract flow does)
+  Object.assign(prev, upd);
+  return Promise.resolve(after).then(ok => {
+    if (ok === false) { Object.assign(prev, was); _tnRender(); return; }
+    return ccQueueWrite('tn-' + prev.id, () => sbL.from('tenant_records').update(upd).eq('id', prev.id))
+      .then(res => { if (res && res.error) { Object.assign(prev, was); ccSaveFailed(res.error, 'move-out'); _tnRender(); } });
+  });
+}
+/* #3: the next tenant was deleted → the move-out set for their move-in: keep it, or remove it (the tenant stays) */
+async function _tnAskPrevAfterDelete(rec) {
+  const prev = rec && sbL ? _tnPrevLinked(rec, rec.mietbeginn) : null;
+  if (!prev) return;
+  const was = _ccIso(prev.mietende);
+  const v = await ccDialog({ icon: 'ti-calendar', title: 'Keep ' + esc(_tnNm(prev, true)) + '’s move-out?',
+    body: `<strong>${esc(_tnNm(prev))}</strong> moves out on ${_ccFmtD(was)} — set for ${esc(_tnNm(rec))}’s move-in. Remove it if ${esc(_tnNm(prev, true))} stays.`,
+    actions: [{ label: 'Remove move-out', value: 'remove' }, { label: 'Keep ' + _ccFmtD(was), value: 'keep', primary: true }] });
+  if (v !== 'remove') return;
+  const before = prev.mietende;
+  prev.mietende = null;
+  const res = await ccQueueWrite('tn-' + prev.id, () => sbL.from('tenant_records').update({ mietende: null }).eq('id', prev.id));
+  if (res && res.error) { prev.mietende = before; ccSaveFailed(res.error, 'move-out'); }
+  else if (typeof ccSavedToast === 'function') ccSavedToast('Move-out removed: ' + _tnNm(prev));
+  _tnRender();
+}
 async function _tnSaveNext(roomName) {
   if (!sbL) return;
   const nameInp = document.getElementById('tn-next-name');
@@ -2151,7 +2212,7 @@ function _tnMoreHTML(rid, room, rec, formerRecs, archivedRecs) {
   let fhtml = '';
   {
     const k = rid + ':former', open = !!_tnMoreOpen[k];
-    const nOpen = formerRecs.filter(r => _tnFormerOpenPills(r)).length;
+    const nOpen = formerRecs.filter(r => _tnFormerOpenPills(r)).length + archivedRecs.filter(r => _tnKautionOpen(r.id)).length;   // #11
     const meta = !formerRecs.length && !archivedRecs.length ? 'none'
       : nOpen ? `<span class="tnp tnp-amber">${nOpen} open</span>` : String(formerRecs.length + archivedRecs.length);
     fhtml += ccRowHTML({ icon: 'users', title: 'Former tenants', meta, onclick: `_tnMoreToggle('${k}')` }).replace('cc-grow"', `cc-grow${open ? ' is-open' : ''}"`);
@@ -3342,7 +3403,8 @@ async function _tnNKVorausConfirmAdd__run(room, rid) {
   const date   = dateInp?.value?.trim();
   const amount = parseFloat(amountInp?.value);
   if (!date || isNaN(amount) || amount <= 0) {
-    dateInp?.focus();
+    if (!date) dateInp?.focus(); else amountInp?.focus();
+    if (typeof ccToast === 'function') ccToast(!date ? 'Gültig ab: pick a date' : 'Enter the NK-Vorauszahlung', true);
     return;
   }
   if (!sbL) return;
@@ -3356,6 +3418,13 @@ async function _tnNKVorausConfirmAdd__run(room, rid) {
   if (!_tnNKVoraus[room]) _tnNKVoraus[room] = [];
   _tnNKVoraus[room].unshift(data);
   _tnNKVoraus[room].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+  // #2 (Nov 2026): saved → the form closes (as Cancel does) and the pop-up shows the new change at once
+  (dateInp || amountInp)?.closest('.tn-nkv-add-form')?.remove();
+  if (rid === 'm' && _tnModalTid) {
+    const sec = document.getElementById('nkv-sec-m');
+    if (sec) sec.outerHTML = _tnNKVorausHTML('m', room, 'modal');
+  }
+  if (typeof ccSavedToast === 'function') ccSavedToast('NK-Vorauszahlung saved');
   _tnRender();
 }
 
@@ -3448,10 +3517,11 @@ function _tnFormerSectionHTML(rid, roomName, formerRecs, archivedRecs, bare) {
     const name   = [rec.first_name, rec.last_name].filter(Boolean).join(' ') || '\u2014';
     const period = [_tnFmtDate(rec.mietbeginn), _tnFmtDate(rec.mietende)].filter(Boolean).join(' \u2013 ');
     return `<div class="tn-arc-row">
-      <div class="tn-arc-info">
+      <div class="tn-arc-info"${_tnKautionOpen(rec.id) ? ` onclick="_tnOpenModal('${rec.id}')" style="cursor:pointer"` : ''}>
         <div class="tn-arc-name">${esc(name)}</div>
         <div class="tn-arc-period">${esc(period)}</div>
       </div>
+      ${_tnKautionOpen(rec.id) ? `<div class="tn-former-pills">${ccTnFormerKautionPill(_tnKaution[rec.id], _tnFmtEUR, _tnFmtDate)}</div>` : ''}
       <button class="tn-btn tn-btn-sm" onclick="_tnReopen('${rec.id}')">Reopen</button>
       <button class="tn-btn tn-btn-sm" onclick="_tnHideFormer('${rec.id}')" title="Keep archived">
         <i class="ti ti-eye-off" style="font-size:11px"></i></button>
@@ -3639,9 +3709,13 @@ function _tnModalBodyHTML(rec) {
 }
 
 function _tnModalFooterHTML(rec, allDone) {
+  // #11 (Nov 2026): Archive only for a former tenant, and only once the Kaution is settled (same rule as the
+  // eye in the list) — greyed until then; a tap says why. A current / next tenant has no Archive.
+  const kOpen = _tnKautionOpen(rec.id);
   return `
-    <button class="tn-btn tn-btn-ghost" onclick="_tnMarkDone('${rec.id}')">
-      <i class="ti ti-archive"></i> Archive</button>
+    ${rec.status === 'former' ? `<button class="tn-btn tn-btn-ghost tn-arc-btn" style="${kOpen ? 'opacity:.35' : ''}"
+      onclick="_tnMarkDone('${rec.id}')" aria-disabled="${kOpen ? 'true' : 'false'}">
+      <i class="ti ti-archive"></i> Archive</button>` : ''}
     <div class="tn-sheet-spacer"></div>
     <button class="tn-btn tn-btn-danger${allDone ? '' : ''}"
       style="${allDone ? '' : 'opacity:.35;pointer-events:none'}"
@@ -3739,6 +3813,7 @@ function _tnCloseModal() {
   }
   const modal = document.getElementById('tnModal');
   modal._draft = null;
+  document.querySelectorAll('#tnModalBody .tn-nkv-add-form, #tnModalBody .tn-nk-add-form').forEach(f => f.remove());   // #2
   modal.classList.remove('open');
   document.body.style.overflow = '';
   _tnModalTid = null;
@@ -4011,7 +4086,9 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
     if (inp) { inp.style.borderColor = '#C4705A'; inp.focus(); }
     return;
   }
-  if (!(await _ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return;
+  let prevMove = {};                                        // #3 (Nov 2026): the move-out of the tenant before
+  if (rec && p.mietbeginn) { prevMove = await _tnAskPrevMove(rec, p.mietbeginn); if (prevMove === null) return; }
+  if (!(await _ccTenancyOk(sec, 'data-f', p, _tnRecords.filter(r => r.room === roomName).map(r => r === prevMove.rec ? { ...r, mietende: prevMove.to } : r), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return;
 
   // Fix 7: "To former" needs a move-out date (default today, editable) — a former tenant
   // without Auszug would otherwise keep a Soll until the next tenant moves in
@@ -4066,8 +4143,11 @@ async function _tnSaveProfile(rid, tid, roomName, forceFormer) {
   _tnRebuildProfileCache();
   _tnRender();
 
+  let tOk; const tDone = new Promise(r => { tOk = r; });
+  if (prevMove.rec) _tnApplyPrevMove(prevMove, tDone);     // #3: only once this save went through
   ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(update).eq('id', tid))
     .then(async ({ error }) => {
+      tOk(!error);
       if (error) {
         if (rec && before) { Object.keys(update).forEach(k => { rec[k] = before[k]; }); }
         if (ctChanged && ctBefore) _tnSyncTypePeriod(rec, ctBefore);
@@ -4226,8 +4306,11 @@ async function _tnModalSaveProfile(tid) {
   const p     = _tnCollectProfile(body, 'data-mf');
   const nkInc = _tnNkInclOf(body, p);                       // D4: Pauschal → "davon NK"
   if (nkInc === false) return;
+  let prevMove = {};                                        // #3 (Nov 2026): the move-out of the tenant before
   { const _r = _tnRecords.find(r => r.id === tid);
-    if (_r && !(await _ccTenancyOk(body, 'data-mf', p, _tnRecords.filter(r => r.room === _r.room), tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return; }
+    if (_r && p.mietbeginn) { prevMove = await _tnAskPrevMove(_r, p.mietbeginn); if (prevMove === null) return; }
+    const same = _r ? _tnRecords.filter(r => r.room === _r.room).map(r => r === prevMove.rec ? { ...r, mietende: prevMove.to } : r) : [];
+    if (_r && !(await _ccTenancyOk(body, 'data-mf', p, same, tid, null, r => [r.first_name, r.last_name].filter(Boolean).join(' ')))) return; }
   const rec = _tnRecords.find(r => r.id === tid);
   const ctBefore  = rec ? tnContractType(rec) : null;
   const ctype     = p.contract_type || rec?.contract_type || null;
@@ -4329,14 +4412,16 @@ async function _tnModalSaveProfile(tid) {
   if (el) el.textContent = newName;
 
   // Fire to Supabase in background
-  ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(update).eq('id', tid))
+  const tw = ccQueueWrite('tn-' + tid, () => sbL.from('tenant_records').update(update).eq('id', tid))
     .then(({ error }) => {
-      if (!error) return;
+      if (!error) return true;
       if (rec && beforeRec) Object.keys(update).forEach(k => { rec[k] = beforeRec[k]; });
       _tnRender();
       if (_tnModalTid === tid && document.getElementById('tnModal')?.classList.contains('open')) _tnOpenModal(tid);   // old values back in the pop-up
       ccSaveFailed(error, 'tenant');
+      return false;
     });
+  if (prevMove.rec) _tnApplyPrevMove(prevMove, tw);         // #3: only once this save went through
 
   // Oct 2026: Save → the same pop-up shows the saved values in read view (closes only via X / outside).
   // Moved back in (no move-out any more) → the tenant lives on the card again, the pop-up closes.
@@ -4365,6 +4450,8 @@ async function _tnSaveKaution(tid, received, returned) {
       delBtn.style.opacity        = done ? '1' : '.35';
       delBtn.style.pointerEvents  = done ? 'auto' : 'none';
     }
+    const arcBtn = document.getElementById('tnModalFooter')?.querySelector('.tn-arc-btn');   // #11
+    if (arcBtn) { const ko = _tnKautionOpen(tid); arcBtn.style.opacity = ko ? '.35' : ''; arcBtn.setAttribute('aria-disabled', ko ? 'true' : 'false'); }
   }
   // Then the database (row created first if this tenant has none yet)
   if (!_tnKaution[tid]) await _tnEnsureKaution(tid);
@@ -4422,6 +4509,7 @@ async function _tnConfirmAddNk__run(tid, inp, wrap, addBtn) {
   if (error) { ccSaveFailed(error, 'NK period'); return; }
   if (!_tnNK[tid]) _tnNK[tid] = [];
   _tnNK[tid].push(data);
+  wrap.remove(); if (addBtn) addBtn.style.display = '';   // #2 (Nov 2026): saved → the form closes
   if (_tnModalTid === tid) { _tnOpenModal(tid); } else { _tnRender(); }
 }
 
@@ -4707,6 +4795,12 @@ async function _tnModalSaveDraft() {
 async function _tnMarkDone(tid) {
   if (!sbL) return;
   const rec = _tnRecords.find(r => r.id === tid);
+  if (!rec || rec.status !== 'former') return;              // #11: only a former tenant is archived
+  if (_tnKautionOpen(tid)) {                                // #11: the Kaution is settled first
+    const held = _tnKautionKept(tid);
+    if (typeof ccToast === 'function') ccToast('Settle the Kaution first' + (held > 0 ? ' — ' + _tnFmtEUR(held) + ' still held' : ''), true);
+    return;
+  }
   if (rec) { rec.done = true; rec.status = 'archived'; }
   _tnCloseModal();
   _tnRender();
@@ -4752,12 +4846,15 @@ async function _tnConfirmDelete() {
   if (!_tnDeleteId || !sbL) return;
   const btn = document.getElementById('tnConfirmOk');
   if (btn) btn.disabled = true;
+  const gone = _tnRecords.find(r => r.id === _tnDeleteId) || null;
   const ok = await _tnDeleteCascade(_tnDeleteId);
   document.getElementById('tnConfirm').classList.remove('open');
   _tnDeleteId = null;
   if (btn) btn.disabled = false;
   _tnCloseModal();
-  if (ok) await _tnLoad(); else _tnRender();
+  if (ok && gone) { _tnRender(); await _tnAskPrevAfterDelete(gone); }   // #3 (Nov 2026): keep or remove the move-out set for this move-in
+  if (ok) await _tnLoad();
+  _tnRender();                             // always redraw: a deleted tenant never stays on screen (the reload may see "no change")
 }
 
 /* Delete a tenant from the card (Edit → Delete, or Save with name + email cleared).
@@ -4770,6 +4867,8 @@ async function _tnDeleteTenant(tid) {
     'Delete', true);
   if (!yes) return;
   if (await _tnDeleteCascade(tid)) {
+    _tnRender();                           // gone from the screen at once
+    await _tnAskPrevAfterDelete(rec);      // #3 (Nov 2026): the move-out set for this move-in — keep or remove
     // nobody left who lives there → Vacant (the dates rule only knows rooms that still have a tenant record)
     const room = typeof appRooms !== 'undefined' ? appRooms.find(r => r.name === rec.room) : null;
     const today = _ccTodayIso();

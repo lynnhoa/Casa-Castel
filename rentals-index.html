@@ -119,7 +119,7 @@
   <script src="cc-controls.js?v=2026-11-07-KB2"></script>
   <script src="cc-tenant-status.js?v=2026-10-11-B22"></script>
   <script src="cc-kaution-card.js?v=2026-10-11-B25"></script>
-  <script src="cc-contract-flow.js?v=2026-11-08-ND1"></script>
+  <script src="cc-contract-flow.js?v=2026-11-08-T3"></script>
 
   <!-- Nav helpers -->
   <script>
@@ -149,7 +149,7 @@
 
   <script src="rentals-tab-apartments.js?v=2026-11-08-CF4"></script>
   <script src="rentals-tab-parking.js?v=2026-10-12-KP1"></script>
-  <script src="rentals-tab-tenants.js?v=2026-11-08-CF3"></script>
+  <script src="rentals-tab-tenants.js?v=2026-11-08-T3"></script>
   <script src="rentals-parking-mietvertrag.js?v=2026-10-16-P4B"></script>
   <!-- PDF libs loaded after app shell — don't block apartment cards rendering -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -180,7 +180,9 @@
     // "Busy" = something unsaved or an editor / add form is open in that tab
     function _rtBusy(tab) {
       const el = document.getElementById('tab-' + tab);
-      return !!(el && el.querySelector('.cc-save[data-cc-save="dirty"], .apt-edit-active, .tn-nk-add-form, .tn-nkv-add-form, .apt-hg-add-form'));
+      // Nov 2026: what sits in a closed pop-up (.tn-overlay without .open) is not "open" — it never blocks a reload
+      return !!(el && [...el.querySelectorAll('.cc-save[data-cc-save="dirty"], .apt-edit-active, .tn-nk-add-form, .tn-nkv-add-form, .apt-hg-add-form')]
+        .some(x => !x.closest('.tn-overlay:not(.open)')));
     }
     function _rtLoad(tab) {
       if (!_rtLoaders[tab]) return Promise.resolve();

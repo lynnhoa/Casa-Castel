@@ -869,6 +869,16 @@ function ccfPlan(p) {
   const endPrev = overlapAll.filter(r => ccfIso(r.mietbeginn) && ccfIso(r.mietbeginn) < start)
     .map(r => ({ rec: r, was: ccfIso(r.mietende), to: ccfAddDays(start, -1) }));
   const overlaps = overlapAll.filter(r => !endPrev.some(x => x.rec === r));
+  // #3 (Nov 2026): this tenancy's own Move-in moves → the tenant before, whose move-out was the day before the old
+  // Move-in (set when this one was added), moves along — the same checkbox (on), only while they still live there
+  const mi0 = rec && !renewal && start && miFollows ? ccfIso(rec.mietbeginn) : '';
+  if (mi0 && mi0 !== start) {
+    const linked = ccfAddDays(mi0, -1), to = ccfAddDays(start, -1);
+    ccfRoomTenancies(p.room).filter(x => x.role !== 'former' && String(x.rec.id) !== String(rec.id)
+        && ccfIso(x.rec.mietende) === linked && linked >= ccfToday()
+        && ccfIso(x.rec.mietbeginn) && ccfIso(x.rec.mietbeginn) <= to)
+      .forEach(x => endPrev.push({ rec: x.rec, was: linked, to }));
+  }
   // B3: this tenancy's own Staffel steps that the new contract replaces (Rentals)
   const staffelOld = rec && !renewal && p.staffelTable && typeof _rntStaffel !== 'undefined'
     ? (_rntStaffel[String(p.room).slice(String(p.room).indexOf(':') + 1)] || []).filter(h => String(h.tenant_id || '') === String(rec.id)
