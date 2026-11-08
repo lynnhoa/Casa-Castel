@@ -2247,9 +2247,14 @@ function _rntNKVorausAdd(aptId, rid, ctx) {
 }
 
 async function _rntNKVorausConfirmAdd__run(aptId, rid) {
-  const date   = document.getElementById(`nkv-add-date-${rid}`)?.value?.trim();
-  const amount = parseFloat(document.getElementById(`nkv-add-amount-${rid}`)?.value);
-  if (!date || isNaN(amount) || amount <= 0) return;
+  const dateInp = document.getElementById(`nkv-add-date-${rid}`), amountInp = document.getElementById(`nkv-add-amount-${rid}`);
+  const date   = dateInp?.value?.trim();
+  const amount = parseFloat(amountInp?.value);
+  if (!date || isNaN(amount) || amount <= 0) {
+    if (!date) dateInp?.focus(); else amountInp?.focus();
+    if (typeof ccToast === 'function') ccToast(!date ? 'Gültig ab: pick a date' : 'Enter the NK-Vorauszahlung', true);
+    return;
+  }
   if (!sbL) return;
   const { data, error } = await ccRpInsertWithTenant(sbL, 'rnt_nk_vorauszahlung_history',
     { apartment_id: aptId, effective_date: date, amount, tenant_notified: false, tenant_adjusted: false },
@@ -2258,6 +2263,13 @@ async function _rntNKVorausConfirmAdd__run(aptId, rid) {
   if (!_rntNKVoraus[aptId]) _rntNKVoraus[aptId] = [];
   _rntNKVoraus[aptId].unshift(data);
   _rntNKVoraus[aptId].sort((a,b) => b.effective_date.localeCompare(a.effective_date));
+  // Nov 2026: saved → the form closes (as Cancel does); the pop-up / sheet shows the new change at once
+  (dateInp || amountInp)?.closest('.tn-nkv-add-form')?.remove();
+  if (rid === 'm' && _rntModalTid) {
+    const sec = document.getElementById('nkv-sec-m');
+    if (sec) sec.outerHTML = _rntNKVorausHTML('m', aptId, 'modal');
+  }
+  if (typeof ccSavedToast === 'function') ccSavedToast('NK-Vorauszahlung saved');
   _rntRender();
 }
 
@@ -3096,6 +3108,7 @@ function _rntCloseModal() {
     }
   }
   const modal = document.getElementById('rntModal');
+  document.querySelectorAll('#rntModalBody .tn-nkv-add-form, #rntModalBody .tn-nk-add-form').forEach(f => f.remove());   // never left hidden
   if (modal) { modal._draft = null; modal.classList.remove('open'); }
   document.body.style.overflow = '';
   _rntModalTid = null;
@@ -3621,6 +3634,7 @@ async function _rntConfirmAddNk__run(tid, inp, wrap, addBtn) {
   if (error) { ccSaveFailed(error, 'NK period'); return; }
   if (!_rntNK[tid]) _rntNK[tid] = [];
   _rntNK[tid].push(data);
+  wrap.remove(); if (addBtn) addBtn.style.display = '';   // Nov 2026: saved → the form closes
   if (_rntModalTid === tid) { _rntOpenModal(tid); } else { _rntRender(); }
 }
 
