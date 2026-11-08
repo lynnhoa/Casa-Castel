@@ -96,6 +96,9 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     mietbeginn:  startVal ? fmt(new Date(startVal)) : '',
     befristet,
     mietende:    befristet && endVal ? fmt(new Date(endVal)) : '',
+    // #27: the standard Mindestlaufzeit as a date (01.12.2025 → 30.11.2026), like the Casa contract prints it
+    mindestBis:  (() => { const d = startVal ? new Date(startVal + 'T12:00:00') : null;
+                          return d && !isNaN(d) ? fmt(new Date(d.getFullYear() + 1, d.getMonth(), d.getDate() - 1)) : ''; })(),
     kennzeichen: kennzeichen || '',
     fahrzeug:    fahrzeug    || '',
     unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
@@ -311,7 +314,7 @@ function _renderPkMietvertragHTML(d) {
 
     ${sec('Mietzeit', false, false)}
     ${kv('Mietbeginn', d.mietbeginn || '\u2014')}
-    ${kv('Mindestlaufzeit', (d.mietende ? 'bis ' + d.mietende : '1\u00a0Jahr ab Mietbeginn') + ' \u00b7 keine Kündigung vor Ende')}
+    ${kv('Mindestlaufzeit', (d.mietende ? 'bis ' + d.mietende : '1\u00a0Jahr ab Mietbeginn' + (d.mindestBis ? ' (bis ' + d.mindestBis + ')' : '')) + ' \u00b7 keine Kündigung vor Ende')}
     ${kv('Kündigung danach', '3\u00a0Monate zum Quartalsende \u00b7 §\u00a0580a BGB')}
 
     ${mieteOnPage2 ? '' : mieteBlock}
@@ -339,7 +342,7 @@ function _renderPkMietvertragHTML(d) {
   /* ── PAGE 3 (Klauseln + Unterschriften) ── */
   const mietbeginnText = d.mietbeginn ? ` am ${d.mietbeginn}` : '';
 
-  const mindestEnd = d.mietende || '(1\u00a0Jahr nach Mietbeginn)';
+  const mindestEnd = d.mietende || d.mindestBis || (typeof CC_BLANK_DATE !== 'undefined' ? CC_BLANK_DATE : '__.__.____');   // #27: a date, never "(1 Jahr nach Mietbeginn)"
   const laufzeitClause = `Das Mietverhältnis beginnt${mietbeginnText} und ist fest abgeschlossen bis zum ${mindestEnd} (Mindestlaufzeit). Eine Kündigung während der Mindestlaufzeit ist ausgeschlossen. Nach Ablauf der Mindestlaufzeit l\u00e4uft der Vertrag auf unbestimmte Zeit weiter und kann von beiden Parteien ohne Angabe von Gr\u00fcnden mit einer Frist von 3\u00a0Monaten zum Quartalsende schriftlich gek\u00fcndigt werden (§\u00a0580a BGB).`;
 
   // Clause numbering (staffel-aware) — shared across the two clause pages

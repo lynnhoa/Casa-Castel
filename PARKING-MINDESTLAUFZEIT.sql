@@ -2,7 +2,8 @@
 -- The parking contract says: "fest abgeschlossen bis zum … (Mindestlaufzeit) … danach läuft der Vertrag auf
 -- unbestimmte Zeit weiter". Approve still saved that date as the Contract end, so Controlling stopped expecting
 -- the parking rent there and the card said "Contract ended". From now on Approve saves no Contract end for parking.
--- This list shows the parking tenants that still carry such a date. It changes nothing.
+-- This list shows the parking tenants that still carry such a date and stayed past it (no move-out yet, or a
+-- move-out after the date — current and former tenants). It changes nothing.
 --   what = 'standard 1 year' → the date is Mietbeginn + 1 year (the contract's normal Mindestlaufzeit) → cleared by the fix
 --   what = 'other date'      → longer / shorter, or typed by hand (e.g. after a Kündigung) → only cleared if you say so
 
@@ -36,6 +37,6 @@ select pk.tenant, pk.parking, pk.status,
        pk.tid as id
 from pk
 left join rp on rp.tid = pk.tid
-where pk.status = 'active' and pk.move_out is null
-  and (pk.contract_end is not null or rp.rp_end is not null)
+where (pk.contract_end is not null or rp.rp_end is not null)
+  and (pk.move_out is null or greatest(pk.contract_end, rp.rp_end) < pk.move_out)   -- a tenant who left on / before it ended there
 order by what desc, pk.parking, pk.tenant;
