@@ -527,6 +527,7 @@ function _wirePkMvPdfBtn() {
 
     // Load latest settings if available
     if (typeof loadSettings === 'function') await loadSettings();
+    if (typeof settingsMissing === 'function' && settingsMissing()) return;   // never a PDF with blank Vermieter / bank
 
     const resetHtml = '<i class="ti ti-file-text"></i> Draft PDF';
     btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026';

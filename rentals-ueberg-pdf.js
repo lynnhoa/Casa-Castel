@@ -39,6 +39,7 @@ async function aptGenerateUebergPDF(isEinzug) {
   try {
     // Ensure profile data is loaded before building PDF
     if (typeof loadSettings === 'function') await loadSettings();
+    if (typeof settingsMissing === 'function' && settingsMissing()) { if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; } return; }   // never a PDF with blank Vermieter / bank
     const d = _aptCollectUebergData(apt, isEinzug);
     const html = _aptRenderUebergHTML(d);
 

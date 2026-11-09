@@ -2231,6 +2231,7 @@ function _aptSaveContractDraft() {
     localStorage.setItem(_APT_DRAFT_KEY, JSON.stringify({
       ts: Date.now(), aptId: _aptContractId, type: _aptContractType,
       ...snap, euLabel,
+      renew: _aptContractRenew ? { ..._aptContractRenew } : null,   // a renewal comes back as that renewal
     }));
   } catch (e) { console.warn('[apt draft] save skipped:', e); }
 }
@@ -2275,7 +2276,7 @@ async function _aptReopenContractDraft(d) {
     if (d.type === 'ueberg' && d.euLabel) _aptSetEU(d.aptId, d.euLabel === 'Auszug' ? 1 : 0);
 
     window._ccfSkipFormRestoreOnce = true;   // this path fills the form — the 30-day memory stays out
-    await _aptOpenContract(d.type, d.aptId);
+    await _aptOpenContract(d.type, d.aptId, d.renew || undefined);   // renewal: title, locked For line, first Kaution
     await new Promise(r => setTimeout(r, 80));   // let setTimeout(0) wiring inside _aptOpenContract run
 
     // 0) Gewerbe Szenario first — it decides which Gewerbe fields are shown
@@ -2351,6 +2352,13 @@ async function _aptReopenContractDraft(d) {
     if (typeof ccUbRevealFilled === 'function') ccUbRevealFilled('apt-ub');   // Übergabe: show restored Mieter 2/3
     if (typeof _aptUpdateMvGrundDetail === 'function') _aptUpdateMvGrundDetail();
     if (typeof _aptMvCalcStaffelDates  === 'function') _aptMvCalcStaffelDates();
+    // Gewerbe: Endet am, Staffel dates and the S3 dates (the values above were set without events)
+    if (typeof _aptGwCalcDates === 'function' && document.getElementById('apt-gw-start')) _aptGwCalcDates();
+    // Warmmiete / Gesamtmiete lines follow the restored rent (a restored Anfangsmiete stays as it was)
+    if (typeof ccfMieteRefresh === 'function' && document.getElementById('ccf-miete')) ccfMieteRefresh();
+    const gwAnf = document.getElementById('apt-gw-staffel-anfang'), gwAnfV = gwAnf?.value;
+    if (typeof _aptGwCalcGesamt === 'function' && document.getElementById('apt-gw-kalt')) { _aptGwCalcGesamt(); if (gwAnf) gwAnf.value = gwAnfV; }
+    if (typeof _aptGwCalcVerl === 'function' && document.getElementById('apt-gw-neue-kalt')?.value) _aptGwCalcVerl('kalt');
   } catch (e) {
     console.warn('[apt draft] restore failed, discarding:', e);
     _aptClearContractDraft();
@@ -2469,6 +2477,7 @@ async function _aptOpenContract(type, aptId, renew) {
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
           if (typeof loadSettings === 'function') await loadSettings();
+          if (typeof settingsMissing === 'function' && settingsMissing()) { if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; } return; }   // never a PDF with blank Vermieter / bank
           const data = _buildRentalKurzzeitData(apt2, appSettings, {
             mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
             mieterName2: t2cm.name, mieterAdr2: t2cm.adr, mieterDob2: t2cm.dob, mieterEmail2: t2cm.email, mieterTel2: t2cm.tel,
@@ -2592,6 +2601,7 @@ async function _aptOpenContract(type, aptId, renew) {
           if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
           try {
             if (typeof loadSettings === 'function') await loadSettings();
+            if (typeof settingsMissing === 'function' && settingsMissing()) { if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; } return; }   // never a PDF with blank Vermieter / bank
             const data = _buildGewerbeMietvertragData(apt2, appSettings, {
               szenario, nutzungszweck, etage, moebliert,
               mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel,
@@ -2655,6 +2665,7 @@ async function _aptOpenContract(type, aptId, renew) {
         if (btn) { btn.innerHTML = '<i class="ti ti-loader"></i> Generating\u2026'; btn.disabled = true; }
         try {
           if (typeof loadSettings === 'function') await loadSettings();
+          if (typeof settingsMissing === 'function' && settingsMissing()) { if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; } return; }   // never a PDF with blank Vermieter / bank
           const aptRoom = {
             ...apt2,
             name:               apt2.name,
@@ -2837,10 +2848,15 @@ function _aptSetupFlow(type, apt) {
     read: () => {
       const v = id => document.getElementById(id)?.value || '';
       let rent, start, end, staffel = [];
+      const gwSz = isGw ? document.querySelector('.apt-gw-szenario-btn.active')?.dataset.s : null;
       if (isGw) {
         const k = ccfNum(v('apt-gw-kalt')) || 0, n = ccfNum(v('apt-gw-nk')) || 0;
         rent = { mode: 'kalt_nk', kalt: k, nk: n, total: k + n };
-        start = v('apt-gw-start'); end = v('apt-gw-enddatum-val') || null; staffel = _aptStaffelRows('gw');
+        start = v('apt-gw-start');
+        // S2 ends on its own: Mietbeginn + Festlaufzeit − 1 day (the same maths as the PDF and "Endet am").
+        // S1 / S3 run on after that date (it is only the Mindestlaufzeit) → no Contract end.
+        end = gwSz === 'S2' ? _aptGwEndIso(start, parseInt(v('apt-gw-fest-num')) || 0, v('apt-gw-fest-unit') || 'Jahre') : null;
+        staffel = gwSz === 'S1' || gwSz === 'S3' ? _aptStaffelRows('gw') : [];   // S2 has no Staffel in the contract
       } else {
         rent = ccfMieteGet() || { mode: 'kalt_nk', kalt: 0, nk: 0, total: 0 };
         start = v(`apt-${pfx}-start`);
@@ -2855,7 +2871,8 @@ function _aptSetupFlow(type, apt) {
       return { kind: 'contract', ctype: type === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', room: unit, forId: ccfForValue(), renew: rn,
         tenant: ccfReadTenant(f), coTenants: ccfReadCoTenants(f), start, end, rent, staffel, staffelTable: 'rnt_staffelmiete_history',
         first_month: 'anteilig', last_month: 'anteilig',
-        needsEnd: !isGw && (type === 'kurzzeit' || document.getElementById('apt-mv-befristung-btn')?.dataset.mode === 'befristet'),   // #37
+        endLabel: isGw ? 'the Festlaufzeit' : undefined,   // Gewerbe has no Mietende field — its end comes from the Festlaufzeit
+        needsEnd: isGw ? gwSz === 'S2' : (type === 'kurzzeit' || document.getElementById('apt-mv-befristung-btn')?.dataset.mode === 'befristet'),   // #37
         docLabel: isGw ? 'Gewerbemietvertrag' : type === 'kurzzeit' ? 'Mietvertrag befristet' : 'Mietvertrag' };
     } });
 }
@@ -3397,6 +3414,16 @@ function _aptGwToggleStaffel() {
 }
 
 /* ── GEWERBE: Date calculations ───────────────────────── */
+/* End of the Festlaufzeit as YYYY-MM-DD (Mietbeginn + Festlaufzeit − 1 day) — the PDF builder's maths */
+function _aptGwEndIso(startVal, festNum, festUnit) {
+  if (!startVal || !festNum) return null;
+  const d = new Date(startVal);
+  if (isNaN(d)) return null;
+  if (festUnit === 'Jahre') d.setFullYear(d.getFullYear() + festNum);
+  else d.setMonth(d.getMonth() + festNum);
+  d.setDate(d.getDate() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 function _aptGwCalcDates() {
   const startVal  = document.getElementById('apt-gw-start')?.value;
   const festNum   = parseInt(document.getElementById('apt-gw-fest-num')?.value) || 0;
@@ -3419,6 +3446,9 @@ function _aptGwCalcDates() {
     const endDisp = document.getElementById('apt-gw-enddatum-display');
     const endVal  = document.getElementById('apt-gw-enddatum-val');
     if (endDisp && endVal) { endDisp.style.display = ''; endVal.textContent = fmtDt(d); }
+  } else {
+    const endDisp = document.getElementById('apt-gw-enddatum-display');
+    if (endDisp) endDisp.style.display = 'none';   // no Mietbeginn / Festlaufzeit → no "Endet am"
   }
 
   // Gate "+ Staffel" button until Mietbeginn & Festlaufzeit are known

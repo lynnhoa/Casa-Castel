@@ -6,6 +6,8 @@
    Exposes:
      - appSettings         global cache object
      - loadSettings()      fetch once, populate cache
+     - settingsLoaded      true once the row was read (a failed read leaves the empty cache)
+     - settingsMissing()   generators: short message + true when nothing was read
      - updateSettings()    partial update, re-cache
      - onSettingsChange()  register a callback for realtime updates
      - initSettingsRealtime() start realtime subscription
@@ -64,6 +66,10 @@ function _notifyListeners(changedFields) {
 
 
 /* ── FETCH ───────────────────────────────────────────────── */
+// true once the settings row has been read at least once (a failed read leaves the empty cache above,
+// and a Save or a PDF from that cache would write / print blank Vermieter and bank details)
+let settingsLoaded = false;
+
 async function loadSettings() {
   if (!sbL) return appSettings;
 
@@ -79,7 +85,15 @@ async function loadSettings() {
   }
 
   _applyToCache(data);
+  if (data) settingsLoaded = true;
   return appSettings;
+}
+
+// Generators: stop before a PDF with blank Vermieter / bank details — true (after a short message) when nothing was read
+function settingsMissing() {
+  if (settingsLoaded) return false;
+  alert('Vermieter / Bank konnten nicht geladen werden \u2013 bitte nochmal versuchen.');
+  return true;
 }
 
 
@@ -130,6 +144,7 @@ function initSettingsRealtime() {
         };
 
         _applyToCache(payload.new);
+        if (payload.new) settingsLoaded = true;
 
         // Only notify if building-level lists changed
         // (avoids unnecessary room card re-renders on e.g. bank detail saves)

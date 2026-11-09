@@ -52,6 +52,7 @@ async function pkGenerateUebergPDF(isEinzug) {
 
   try {
     if (typeof loadSettings === 'function') await loadSettings();
+    if (typeof settingsMissing === 'function' && settingsMissing()) { if (btn) { btn.innerHTML = '<i class="ti ti-file-text"></i> Draft PDF'; btn.disabled = false; } return; }   // never a PDF with blank Vermieter / bank
     const d   = _pkCollectUebergData(spot, isEinzug);
     const html = _pkRenderUebergHTML(d);
 

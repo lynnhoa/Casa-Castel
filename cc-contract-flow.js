@@ -610,7 +610,7 @@ function ccfApproveCheck(p) {
   if (p.kind === 'contract' && !ccfIso(p.start)) { alert('Approve needs a Mietbeginn — it becomes the Move-in.'); return false; }
   if (p.kind === 'contract' && !String(p.tenant?.name || '').trim()) { alert('Approve needs the Mieter name.'); return false; }
   // #37: Kurzzeit / Jahresvertrag / Befristet — a contract with an end is approved only with that end (Draft may keep a line)
-  if (p.kind === 'contract' && p.needsEnd && !ccfIso(p.end)) { alert('Approve needs a Mietende.'); return false; }
+  if (p.kind === 'contract' && p.needsEnd && !ccfIso(p.end)) { alert('Approve needs ' + (p.endLabel || 'a Mietende') + '.'); return false; }
   // #27: parking — an own Mindestlaufzeit is printed in the contract (never the Contract end); Approve needs its date
   if (p.kind === 'contract' && p.needsMin && !ccfIso(p.minEnd)) { alert('Approve needs the Mindestlaufzeit date.'); return false; }
   if (p.kind === 'ueberg' && !p.forId) { alert('There is no tenant here yet — approve the contract first.'); return false; }
@@ -920,10 +920,10 @@ function ccfPlan(p) {
         && ccfIso(x.rec.mietbeginn) && ccfIso(x.rec.mietbeginn) <= to)
       .forEach(x => endPrev.push({ rec: x.rec, was: linked, to, moved: true }));
   }
-  // B3: this tenancy's own Staffel steps that the new contract replaces (Rentals)
-  const staffelOld = rec && !renewal && p.staffelTable && typeof _rntStaffel !== 'undefined'
+  // B3: this tenancy's own Staffel steps that the new contract replaces (Rentals) — a renewal only when it has steps
+  const staffelOld = rec && (!renewal || (p.staffel || []).length) && p.staffelTable && typeof _rntStaffel !== 'undefined'
     ? (_rntStaffel[String(p.room).slice(String(p.room).indexOf(':') + 1)] || []).filter(h => String(h.tenant_id || '') === String(rec.id)
-        && !h.tenant_adjusted && !h.ignored && ccfIso(h.effective_date) >= start
+        && !h.tenant_adjusted && !h.ignored && _ccfIsStaffelStep(h) && ccfIso(h.effective_date) >= start
         && !(p.staffel || []).some(x => ccfIso(x.datum || x.date) === ccfIso(h.effective_date))) : [];
   return {
     kind: 'contract', rec, t, renewal, renewPid, renewN, start, end, soll, kautionNew, overlaps, endPrev, endPrevOn: true, staffelOld,
@@ -1217,6 +1217,7 @@ async function _ccfStepRent(A) {
       const saved = await ccRpSetRent(sbL, { app: ccfA().app, rec, validFrom: pl.start, kind: 'renewal', source: 'renew', ...common });
       if (saved && saved.id) pl.renewPid = saved.id;
     }
+    if ((p.staffel || []).length) await _ccfStepStaffel(A);   // Rentals: a renewal's Staffel steps (from the renewal start)
     return;
   }
   await _ccfStepStaffel(A);
@@ -1230,6 +1231,8 @@ async function _ccfStepRent(A) {
     await ccRpSetRent(sbL, { app: ccfA().app, rec, validFrom: pl.start, kind: 'contract', source: 'generator', ...common });
   }
 }
+/* A Staffel step of the history (kind 'staffel', or an old row without a kind) — never a Mieterhöhung typed by hand */
+function _ccfIsStaffelStep(h) { return !h.kind || h.kind === 'staffel'; }
 /* Rentals: the contract's Staffel steps → this tenancy's Staffel history (same date = updated) */
 async function _ccfStepStaffel(A) {
   const p = A.p, rec = A.plan.rec;
@@ -1238,13 +1241,14 @@ async function _ccfStepStaffel(A) {
   const col = String(p.room).startsWith('pk:') ? 'parking_id' : 'apartment_id';
   const unitId = String(p.room).slice(String(p.room).indexOf(':') + 1);
   // B3: this tenancy's own steps from the contract start that the new contract no longer has
-  //     (Adjusted / Ignored steps and old steps without a tenant link are never touched)
+  //     (Adjusted / Ignored steps, old steps without a tenant link and a Mieterhöhung / Index / Korrektur
+  //     typed by hand are never touched — only Staffel steps)
   if (A.plan.start) {
     const { data: own, error: e0 } = await sbL.from(p.staffelTable).select('*').eq(col, unitId).eq('tenant_id', String(rec.id));
     if (e0) throw e0;
     for (const h of own || []) {
       const d = ccfIso(h.effective_date);
-      if (!d || d < A.plan.start || h.tenant_adjusted || h.ignored || steps.some(s2 => s2.date === d)) continue;
+      if (!d || d < A.plan.start || h.tenant_adjusted || h.ignored || !_ccfIsStaffelStep(h) || steps.some(s2 => s2.date === d)) continue;
       const { error } = await sbL.from(p.staffelTable).delete().eq('id', h.id);
       if (error) throw error;
     }
