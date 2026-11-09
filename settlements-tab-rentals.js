@@ -1103,7 +1103,13 @@ function _srFindBooking(c, res, rec) {
 }
 async function _srLinkBooking(b, res) {
   const f = { source_ref: 'abr:' + res.id, kind: 'Hausgeldabrechnung', before_link: _stBeforeLink(b) };   // #12: remember your type
-  const d = await _stUpdOT(b.id, f);
+  let d;
+  try { d = await _stUpdOT(b.id, f); }
+  catch (e) {                                  // #1 (CONTROLLING-C2.sql): booked meanwhile → that booking is the payment, yours stays as it is
+    if (!ctlIsDupErr(e)) throw e;
+    if (!(await ctlAbrExisting(f.source_ref))) throw e;
+    return;
+  }
   const row = d || Object.assign({}, b, f);
   window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id).concat([row]);
   const k = (window._ctrl.one_time || []).findIndex(o => o.id === b.id); if (k >= 0) window._ctrl.one_time[k] = row;
@@ -1997,11 +2003,12 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     } else if (!weg && amt && (linkedManual = _stFindManualNk(x.c.p.id, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
-      await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);
+      const row = await _stLinkManualNk(linkedManual, res); date = String((row || linkedManual).invoice_date || date).slice(0, 10);
+      if (row && row.id !== linkedManual.id) linkedManual = null;            // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
-      const d = await ctlAddOneTime({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
-        kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
-      window._src.abrPay = (window._src.abrPay || []).concat([d]);
+      const d = await ctlAbrAdd({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
+        kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
+      date = String(d.invoice_date || date).slice(0, 10);
     }
     await _stConfirmSettled(x.l, 'zahlung', date);
   } catch (err) { stSay('Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }

@@ -424,7 +424,14 @@ function _stBeforeLink(o) {
 }
 async function _stLinkManualNk(o, res) {
   const f = { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir, before_link: _stBeforeLink(o) };
-  const d = await _stUpdOT(o.id, f);
+  let d;
+  try { d = await _stUpdOT(o.id, f); }
+  catch (e) {                                  // #1 (CONTROLLING-C2.sql): booked meanwhile → that booking is the payment, your entry stays unlinked
+    if (!ctlIsDupErr(e)) throw e;
+    const x = await ctlAbrExisting(f.source_ref);
+    if (!x) throw e;
+    return x;
+  }
   const row = d || Object.assign({}, o, f);
   window._src.abrPay = (window._src.abrPay || []).filter(x => x.id !== o.id).concat([row]);
   const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;

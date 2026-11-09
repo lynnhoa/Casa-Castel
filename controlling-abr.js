@@ -82,9 +82,44 @@ function ctlAbrResults() {
   return out;
 }
 
-/* The booking of a result (any year) */
+/* The booking of a result (any year) — #1 (Nov 2026): booked twice → the one in the result's direction */
+const _cxAbrDir = o => (Number(o.direction) === 1 ? 1 : -1);
+function ctlAbrBookings(res) { return (window._src.abrPay || []).filter(o => res.refs.includes(o.source_ref)); }
 function ctlAbrBooking(res) {
-  return (window._src.abrPay || []).find(o => res.refs.includes(o.source_ref)) || null;
+  const all = ctlAbrBookings(res);
+  return all.find(o => _cxAbrDir(o) === res.dir) || all[0] || null;
+}
+
+/* ── ONE BOOKING PER RESULT (#1, Nov 2026) ──────────────────────────────────────────────────
+   A double tap on the Soll wrote two lines for one result: Income / Expenses showed one, the Dashboard and the
+   year export counted both. Now: one save per result at a time (_cxAbrRun), and CONTROLLING-C2.sql lets the
+   database refuse a second line (unique index ctrl_ot_abr_once → error 23505). When another device or Settlements
+   booked the result meanwhile, that booking is read back and taken as the payment — no message.
+   Settlements uses ctlAbrAdd / ctlAbrExisting too (it loads this file). */
+const ctlIsDupErr = e => /23505|duplicate key/i.test(String((e && e.code) || '') + ' ' + String((e && (e.message || e.details)) || e || ''));
+function _ctlAbrKeep(d) {                                 // the booking → abrPay (and One-off's list when its year is loaded)
+  window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== d.id).concat([d]);
+  const ot = window._ctrl && window._ctrl.one_time;
+  if (Array.isArray(ot) && Number(String(d.invoice_date || '').slice(0, 4)) === Number(window._ctrl.year) && !ot.some(o => o.id === d.id)) ot.push(d);
+  return d;
+}
+/* The booking another device / Settlements made for this source_ref (read from the database) → kept, or null */
+async function ctlAbrExisting(ref) {
+  const { data, error } = await _ctlSupa.from('ctrl_expense_one_time').select('*').eq('source_ref', ref).in('kind', CX_ABR_KINDS).order('id', { ascending: true }).limit(1);
+  if (error || !data || !data.length) return null;
+  return _ctlAbrKeep(data[0]);
+}
+/* Book a result: a new line, or — the database says it is booked already (23505) — that booking */
+async function ctlAbrAdd(f) {
+  let d;
+  try { d = await ctlAddOneTime(f); }
+  catch (err) {
+    if (!f.source_ref || !ctlIsDupErr(err)) throw err;
+    d = await ctlAbrExisting(f.source_ref);
+    if (!d) throw err;
+    return d;
+  }
+  return _ctlAbrKeep(d);
 }
 
 /* ── BACK TO OPEN — one rule for Settlements and Controlling (C1 #4, Nov 2026) ──────────────
@@ -193,9 +228,11 @@ function ctlAbrRows(pid, y, m, dir) {
       if (rym === ym) rows.push({ id: 'abrI:' + r.key, res: r, info: true });
       continue;
     }
-    if (b) { if (_cxYm(b.invoice_date) === ym) rows.push({ id: 'abr:' + r.key, res: r, booking: b, soll: r.amount, ist: cxR(b.amount) }); continue; }
+    // #1: booked twice (a double tap before Nov 2026) → the row says so and offers "delete one"
+    const twice = b0 ? ctlAbrBookings(r).filter(o => o !== b0) : [];
+    if (b) { if (_cxYm(b.invoice_date) === ym) rows.push({ id: 'abr:' + r.key, res: r, booking: b, soll: r.amount, ist: cxR(b.amount), twice }); continue; }
     const showIn = rym >= cur ? rym : cur;                                 // overdue → moves along to the current month
-    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null, stale: b0 || null });
+    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null, stale: b0 || null, twice });
   }
   // bookings without a result (older manual NK / Hausgeld entries) — shown in the month paid
   for (const o of (window._src.abrPay || [])) {
@@ -246,12 +283,13 @@ function cxAbrSection(p, y, m, dir) {
     const flip = d => (d > 0 ? 'Nachzahlung' : 'Guthaben');
     const sub = r.legacy ? 'booked ' + cxFmtDate(r.legacy.invoice_date) +
         (r.moved ? ' · the Abrechnung is now a ' + flip(r.moved.dir) + ' of ' + cxEur(r.moved.amount) + ' – settle it again in Settlements' : ' · without Abrechnung')
-      : r.booking ? 'paid ' + cxFmtDate(r.booking.invoice_date)
+      : r.booking ? 'paid ' + [r.booking].concat(r.twice || []).map(o => cxFmtDate(o.invoice_date)).join(', ').replace(/, ([^,]*)$/, ' and $1')   // #1: booked twice → both dates
       : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date)) +
         (r.stale ? ' · booked before as ' + flip(Number(r.stale.direction) === 1 ? 1 : -1) + ' ' + cxEur(r.stale.amount) + ' – settle it again in Settlements' : '');
+    const dup = r.twice && r.twice.length ? ' · <b style="color:#B0661E;font-weight:600;white-space:nowrap">booked twice</b> · <button class="cx-link cx-link--a cx-link--in" data-cx="abrDup" data-id="' + cxEsc(r.id) + '">delete one</button>' : '';   // #1
     h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true, dir,   // CP2: differences from your view (no "On purpose" here)
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
-                 sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
+                 sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + dup + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
   }
   return '<div class="cx-abr' + (!rows.length ? ' cx-abr--empty' : '') + '">' + h + '</div>';
 }
@@ -267,8 +305,8 @@ function _cxAbrPayDate(res, y, m) {
   return y + '-' + String(m).padStart(2, '0') + '-' + String(ym < cur ? last : 1).padStart(2, '0');
 }
 
-async function _cxAbrBook(e, amount) {
-  const r = e.res, y = window._ctrl.year, m = CX.month;
+async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
+  const r = e.res;
   if (e.legacy) {                                                          // booking without result: edit / delete only
     if (amount === null) {
       if (!(await ccConfirm('Delete this booking?', ccEscHtml(e.legacy.item || ''), 'Delete', true))) return;
@@ -283,8 +321,7 @@ async function _cxAbrBook(e, amount) {
   const b = ctlAbrBooking(r), same = !!b && (Number(b.direction) === 1 ? 1 : -1) === r.dir;
   if (amount === null) {
     if (!same) return;                                                     // a booking of the other direction is not this payment
-    await ctlDeleteOneTime(b.id);
-    window._src.abrPay = window._src.abrPay.filter(o => o.id !== b.id);
+    await _stUndoBooking(b);                                               // x1: as 'cancel' / Back to open — your own entry is only unlinked
     return;
   }
   if (b) {
@@ -295,16 +332,44 @@ async function _cxAbrBook(e, amount) {
     const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     return;
   }
-  const d = await ctlAddOneTime({ property_id: r.pid, invoice_date: _cxAbrPayDate(r, y, m), item: r.label, amount: cxR(amount),
+  await ctlAbrAdd({ property_id: r.pid, invoice_date: _cxAbrPayDate(r, y, m), item: r.label, amount: cxR(amount),   // #1: booked meanwhile → that booking
     kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: r.dir, source_ref: r.key });
-  window._src.abrPay = (window._src.abrPay || []).concat([d]);
+}
+
+/* #1 · one save per result at a time: a 2nd tap (or Enter, then a tap) waits for the first save and then finds its
+   booking — a tap books nothing more, a typed amount changes that booking. The month is the one you tapped in. */
+const _cxAbrQ = {};
+async function _cxAbrRun(e, amount, take) {
+  const k = e.legacy ? 'L:' + e.legacy.id : e.res.key, y = window._ctrl.year, m = CX.month;
+  const job = (_cxAbrQ[k] || Promise.resolve()).then(() => {
+    if (take && !e.legacy) { const bk = ctlAbrBooking(e.res); if (bk && _cxAbrDir(bk) === e.res.dir) return; }   // booked meanwhile
+    return _cxAbrBook(e, amount, y, m);
+  });
+  const tail = _cxAbrQ[k] = job.catch(() => {});
+  try { await job; } finally { if (_cxAbrQ[k] === tail) delete _cxAbrQ[k]; }
 }
 
 /* Handles every Abrechnungen action of a tab. Returns true when it was one. */
 async function cxAbrClick(a, b, rerender) {
   if (a === 'take' && /^abr/.test(b.dataset.id || '')) {
     const e = _cxAbrIndex[b.dataset.id];
-    if (e && !e.info && e.ist === null) { try { await _cxAbrBook(e, e.soll); } catch (err) { cxToastErr(err); } }
+    if (e && !e.info && e.ist === null) { b.disabled = true; try { await _cxAbrRun(e, e.soll, true); } catch (err) { cxToastErr(err); } }
+    rerender(); return true;
+  }
+  if (a === 'abrDup') {                                  // #1: booked twice → one goes; an entry you typed yourself is never deleted (only unlinked)
+    const e = _cxAbrIndex[b.dataset.id];
+    const all = e && e.res ? ctlAbrBookings(e.res) : [];
+    if (all.length < 2) { rerender(); return true; }
+    // keep the payment in the result's direction (your own entry first, else the oldest); of the rest, the newest the apps made goes
+    const own = o => !_stIsOwnBooking(o), num = o => Number(o.id) || 0, byId = (p, q) => num(p) - num(q) || String(p.id).localeCompare(String(q.id));
+    const keep = all.slice().sort((p, q) => (_cxAbrDir(q) === e.res.dir) - (_cxAbrDir(p) === e.res.dir) || own(q) - own(p) || byId(p, q))[0];
+    const x = all.filter(o => o !== keep).sort((p, q) => own(p) - own(q) || byId(q, p))[0];
+    const del = _stIsOwnBooking(x);
+    const body = ccEscHtml(e.res.label) + '<br>' + ccEscHtml(cxFmtDate(x.invoice_date) + ' · ' + cxEur(x.amount)) +
+      (del ? '' : '<br><br>' + ccEscHtml('Your own entry stays in One-off – it is only unlinked.'));
+    if (!(await ccConfirm(del ? 'Delete one booking?' : 'Unlink one booking?', body, del ? 'Delete' : 'Unlink', true))) return true;
+    b.disabled = true;
+    try { await _stUndoBooking(x); } catch (err) { cxToastErr(err); }
     rerender(); return true;
   }
   if (a === 'abrStorno') {                               // C1 #4: = Settlements' "Back to open" (see BACK TO OPEN above)
@@ -326,7 +391,7 @@ async function cxAbrClick(a, b, rerender) {
 async function cxAbrInput(id, val, rerender) {
   if (!/^abr/.test(id)) return false;
   const e = _cxAbrIndex[id];
-  if (e && !e.info) { try { await _cxAbrBook(e, val === null ? null : val); } catch (err) { cxToastErr(err); } }
+  if (e && !e.info) { try { await _cxAbrRun(e, val === null ? null : val, false); } catch (err) { cxToastErr(err); } }   // #1: after a save on its way
   rerender();
   return true;
 }

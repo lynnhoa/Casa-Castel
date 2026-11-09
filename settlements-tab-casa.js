@@ -2143,11 +2143,12 @@ async function scSetAmount(key, raw, btn, when) {
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     } else if (amt && (linkedManual = _stFindManualNk(CASA_PROP_ID, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
-      await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);
+      const row = await _stLinkManualNk(linkedManual, res); date = String((row || linkedManual).invoice_date || date).slice(0, 10);
+      if (row && row.id !== linkedManual.id) linkedManual = null;            // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
-      const d = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
-                                      amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
-      window._src.abrPay = (window._src.abrPay || []).concat([d]);
+      const d = await ctlAbrAdd({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
+                                  amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
+      date = String(d.invoice_date || date).slice(0, 10);
     }
     await _stConfirmSettled(t.line, 'zahlung', date);
   } catch (e) { stSay('Could not save — ' + (e.message || e)); if (btn) btn.disabled = false; return; }
