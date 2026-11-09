@@ -759,20 +759,23 @@ function _rntUebergHTML(type, unit) {
   </div>
 </div>`;
 }
-/* The Übergabe generator lives in the Apartments / Parking tab: that tab shows while it is open
-   (like Renew), and Tenants comes back as soon as it closes. */
+/* A generator started in Tenants (Übergabe, Renew) lives in the Apartments / Parking tab: that tab
+   shows while it is open, and window._rntUbReturn (the tab to go back to) comes back as soon as it
+   closes — ✕, Cancel, a tap outside or Approve all remove 'open'. */
+function _rntReturnOnClose(ov) {
+  if (!ov || ov._rntBack) return;
+  ov._rntBack = true;
+  new MutationObserver(() => {
+    if (!ov.classList.contains('open') && window._rntUbReturn) {
+      const t = window._rntUbReturn; window._rntUbReturn = null;
+      if (typeof switchTab === 'function') switchTab(t);
+    }
+  }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+}
 function _rntUbOpen(pre, unitId) {
   const isApt = pre === 'apt';
   const ov = document.getElementById(isApt ? 'aptContractOverlay' : 'pkContractOverlay');
-  if (ov && !ov._rntBack) {
-    ov._rntBack = true;
-    new MutationObserver(() => {
-      if (!ov.classList.contains('open') && window._rntUbReturn) {
-        const t = window._rntUbReturn; window._rntUbReturn = null;
-        if (typeof switchTab === 'function') switchTab(t);
-      }
-    }).observe(ov, { attributes: true, attributeFilter: ['class'] });
-  }
+  _rntReturnOnClose(ov);
   if (typeof switchTab === 'function') switchTab(isApt ? 'apartments' : 'parking');
   setTimeout(async () => {
     window._rntUbReturn = 'tenants';
@@ -1073,9 +1076,18 @@ async function _rntLoad(unitsReady) {
   if (recAll && recAll.error) {
     console.warn('[tenants] load:', recAll.error.message || recAll.error);
     if (!document.querySelector('#rntTenantsList .tn-card')) _rntRender();
-    return;
+    return false;   // → the next visit loads again at once (_rtLoad)
   }
-  if (!appApartments?.length && !appParking?.length) { _rntRender(); return; }
+  // Its flats or parking spaces could not be loaded (connection) and none are known yet: keep what is on
+  // screen (the phone's copy, the last list) — never a list without them or wrong IST sums
+  const _never = (list, okFlag) => !list?.length && !okFlag;
+  if (unitsReady && _rntUnitsFailed && (_never(appApartments, typeof _aptLoadedOk !== 'undefined' && _aptLoadedOk)
+                                     || _never(appParking,    typeof _pkLoadedOk  !== 'undefined' && _pkLoadedOk))) {
+    const l = document.getElementById('rntTenantsList');
+    if (l && !l.querySelector('.tn-card')) l.innerHTML = '';   // nothing loaded: blank, as when no units load at all
+    return false;   // → the next visit loads again at once (_rtLoad)
+  }
+  if (!appApartments?.length && !appParking?.length) { _rntRender(); return _rntUnitsOk() ? undefined : false; }
 
   const aptSet = new Set((appApartments || []).map(a => String(a.id)));
   const pkSet  = new Set((appParking    || []).map(p => String(p.id)));
@@ -1087,7 +1099,7 @@ async function _rntLoad(unitsReady) {
     (e.apartment_id != null && aptSet.has(String(e.apartment_id))) || (e.parking_id != null && pkSet.has(String(e.parking_id)))) };
 
   const tids = _rntRecords.map(r => r.id);
-  if (!tids.length) { _rntProfileCache = {}; _rntLoadedOnce = true; _rntRender(); _rntSaveCopy([]); return; }
+  if (!tids.length) { _rntProfileCache = {}; _rntLoadedOnce = true; _rntRender(); if (!_rntUnitsFailed) _rntSaveCopy([]); return; }
   const tidSet = new Set(tids.map(String));
   const forTenants = res => ((res && res.data) || []).filter(x => tidSet.has(String(x.tenant_id)));
   const kRes = { data: forTenants(kAll) }, nkRes = { data: forTenants(nkAll) }, docRes = { data: forTenants(docAll) };
@@ -1156,7 +1168,7 @@ async function _rntLoad(unitsReady) {
   _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _rntFreezeRent();          // existing active tenants: fix their rent once
   _rntRenderIfChanged();
-  _rntSaveCopy(readings);    // B30: the next start draws from this at once
+  if (!_rntUnitsFailed) _rntSaveCopy(readings);   // B30: the next start draws from this at once (never a copy without its flats / spots)
 }
 
 /* After a (background) load: repaint only if the data really changed and you
@@ -1191,6 +1203,10 @@ function _rntGetParkingProfile(pkId) {
 /* ══════════════════════════════════════════════════════════════
    9. RENDER
 ══════════════════════════════════════════════════════════════ */
+/* Apartments or Parking loaded at least once (a failed load leaves both false) */
+function _rntUnitsOk() {
+  return (typeof _aptLoadedOk !== 'undefined' && _aptLoadedOk) || (typeof _pkLoadedOk !== 'undefined' && _pkLoadedOk);
+}
 function _rntRender() {
   const list = document.getElementById('rntTenantsList');
   if (!list) return;
@@ -1201,7 +1217,8 @@ function _rntRender() {
   const parking = [...(appParking    || [])].sort((a,b) => (a.sort_order||0) - (b.sort_order||0));
 
   if (!apts.length && !parking.length) {
-    list.innerHTML = `<p class="tn-empty">No units configured.</p>`;
+    // only after the units really loaded — a failed load (no signal) never says there are none
+    list.innerHTML = _rntUnitsOk() ? `<p class="tn-empty">No units configured.</p>` : '';
     return;
   }
 
@@ -4268,6 +4285,7 @@ let _rntLoadedOnce  = false;   // full Tenants-tab load done (_rntRecords is cur
 const RNT_COPY_KEY = 'rnt_copy_v1';
 let _rntCopyShown = false;       // the list on screen came from the copy (until the fresh load)
 let _rntUnitsFromCopy = false;   // apartments / parking came from the copy → always loaded fresh
+let _rntUnitsFailed = false;     // the last Tenants load ran without its apartments / parking (connection)
 function _rntSaveCopy(readings) {
   try {
     const nks = typeof CC_NKS !== 'undefined'
@@ -4365,13 +4383,14 @@ async function loadRntTenants() {
   const needApt = !appApartments?.length || _rntUnitsFromCopy;
   const needPk  = !appParking?.length    || _rntUnitsFromCopy;
   const unitsReady = Promise.all([needApt ? viaTab('apartments') : null, needPk ? viaTab('parking') : null])
-    .then(() => { _rntUnitsFromCopy = false; });
-  await _rntLoad(unitsReady);
+    .then(r => { _rntUnitsFailed = r.includes(false); if (!_rntUnitsFailed) _rntUnitsFromCopy = false; });   // units not loaded → still from the copy
+  const ok = await _rntLoad(unitsReady);
   const h = _ccTakeFormerHandoff('rentals');
   if (h && h.aptId != null) {
     const apt = (appApartments || []).find(a => String(a.id) === String(h.aptId));
     if (apt) { _ccReturnBanner(document.getElementById('tab-tenants')); _rntAddFormer('apt', apt.id, h); }
   }
+  return _rntUnitsFailed ? false : ok;   // false → the next visit loads again at once (_rtLoad)
 }
 
 /* ── "Mieter nachtragen" from Settlements ─────────────────────

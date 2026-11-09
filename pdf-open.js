@@ -457,7 +457,9 @@ function _ccShowReady(url, blob, name) {
     open.addEventListener('click', () => {
       // Seen → back in the app the footer shows Draft PDF again (+ Approve for contracts)
       setTimeout(() => { _ccClearReady(footer); _ccPdfOpened(); }, 400);
-      try { sessionStorage.setItem(CC_PDF_RETURN_KEY, String(Date.now())); } catch (e) {}
+      // time | the generator that made this PDF (its overlay) → only that generator reopens on return
+      const who = (footer.closest && footer.closest('.rm-overlay') || {}).id || '';
+      try { sessionStorage.setItem(CC_PDF_RETURN_KEY, Date.now() + '|' + who); } catch (e) {}
       const back = () => {
         if (document.visibilityState !== 'visible') return;
         document.removeEventListener('visibilitychange', back);
@@ -796,9 +798,15 @@ function ccCapturePdf(run, ms) {
 }
 
 // True once, right after the PDF viewer was closed (installed app).
-function ccCameBackFromPdf() {
-  let ts = 0;
-  try { ts = +sessionStorage.getItem(CC_PDF_RETURN_KEY) || 0; sessionStorage.removeItem(CC_PDF_RETURN_KEY); } catch (e) {}
+// src = the caller's generator overlay: a PDF made by another generator is left for that one's
+// loader (Rentals loads Apartments and Parking at the same time — the faster one must not take it).
+function ccCameBackFromPdf(src) {
+  let v = '';
+  try { v = sessionStorage.getItem(CC_PDF_RETURN_KEY) || ''; } catch (e) {}
+  const [t, who] = String(v).split('|');
+  if (src && who && who !== src) return false;
+  try { sessionStorage.removeItem(CC_PDF_RETURN_KEY); } catch (e) {}
+  const ts = +t || 0;
   return ts > 0 && Date.now() - ts < CC_PDF_RETURN_MS;
 }
 

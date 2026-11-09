@@ -287,6 +287,7 @@ function _pkTypeTagClass(type) {
 /* ── DATA STORE ──────────────────────────────────────────── */
 let appParking    = [];   // array of parking objects (joined from all tables)
 let _pkSbClient   = null;
+let _pkLoadedOk   = false;   // "No parking spaces yet" only after a load that worked (not after a failed one)
 
 
 /* ── LOAD ────────────────────────────────────────────────── */
@@ -298,30 +299,42 @@ async function loadParking() {
   // real rent (no "Asking rent" first and a second redraw a moment later = the blink)
   const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
 
+  let ok = true;
+  const _tick0 = _pkOrderTick;    // a drag after this load was sent keeps its order (the load may answer late)
   try {
-    const [
-      { data: spots },
-      { data: pricing },
-      { data: schlussel },
-    ] = await Promise.all([
+    const res = await Promise.all([
       _pkSbClient.from('rentals_parking').select('*').order('sort_order'),
       _pkSbClient.from('rentals_parking_pricing').select('*'),
       _pkSbClient.from('rentals_parking_schlussel').select('*'),
     ]);
+    // A query that failed (weak signal) → keep what is on screen: never an empty list or empty prices
+    const bad = res.find(r => r && r.error);
+    if (bad) throw bad.error;
+    const [
+      { data: spots },
+      { data: pricing },
+      { data: schlussel },
+    ] = res;
 
     appParking = (spots || []).map(p => ({
       ...p,
       pricing:   (pricing   || []).find(r => r.parking_id === p.id) || {},
       schlussel: (schlussel || []).find(r => r.parking_id === p.id) || {},
     }));
+    _pkOrderKeep(_tick0);   // a drag being saved right now, or made while this load was on its way, keeps its order
+    _pkLoadedOk = true;
   } catch(e) {
+    ok = false;
     console.error('[parking] Load failed:', e);
   }
 
   if (_warm) await Promise.race([Promise.resolve(_warm).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
   _pkRenderIfChanged();
   _pkInitSortable();
-  _pkRestoreContractDraft();   // Phase 1: reopen an unfinished generator after a restart
+  // Phase 1: reopen an unfinished generator after a restart — after a load that worked
+  // (spots not loaded ≠ spot gone: the draft is kept for the next good load)
+  if (ok) _pkRestoreContractDraft();
+  return ok;   // false → the tab loads again on its next visit (_rtLoad)
 }
 
 
@@ -347,7 +360,7 @@ function _renderPkList() {
   const list = document.getElementById('pkList');
   if (!list) return;
   if (!appParking.length) {
-    list.innerHTML = `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0">No parking spaces yet. Add your first space.</p>`;
+    list.innerHTML = _pkLoadedOk ? `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0">No parking spaces yet. Add your first space.</p>` : '';
     _updatePkSummary();
     return;
   }
@@ -996,8 +1009,9 @@ async function _pkRestoreContractDraft() {
   if (!d || !d.meta) return;
   const pk = appParking.find(p => p.id === d.meta.pkId);
   if (!pk) { ccDraftClear(_PK_DRAFT_KEY); return; }
-  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf()) return _pkReopenContractDraft(d);
+  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf('pkContractOverlay')) return _pkReopenContractDraft(d);
   if (typeof ccOfferDraft !== 'function') return;
+  if (document.querySelector('#aptContractOverlay.open, #pkContractOverlay.open')) return;   // a generator is open: no bar over it (the draft stays for the next start)
   ccOfferDraft({
     label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + (pk.name || 'Parking'),
     ts: d.ts,
@@ -1358,6 +1372,9 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
 
   // Open identity for editing immediately
   const identitySection = card.querySelector(`#pk-identity-${tempId}`);
+  // The spot exists only after this Property Save: until then the card has only this section
+  // (Asking rent, Keys, Mietvertrag and Delete come with the saved card)
+  card.querySelectorAll('.pk-body > *').forEach(e => { if (e !== identitySection) e.remove(); });
   if (identitySection) {
     identitySection.querySelector('.pk-sec-read').style.display = 'none';
     identitySection.querySelector('.pk-sec-edit').style.display = '';
@@ -1391,6 +1408,8 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
 
       card.remove();
       _renderPkList();
+      // the saved spot stays open: its Asking rent and Keys are there to fill in now
+      if (_pkSbClient) list.querySelector(`.pk-card[data-id="${appParking[appParking.length - 1].id}"]`)?.classList.add('pk--open');
       _pkInitSortable();
     };
   }
@@ -1425,17 +1444,28 @@ document.getElementById('pkConfirmCancel')?.addEventListener('click', () => {
 document.getElementById('pkConfirmOk')?.addEventListener('click', async () => {
   if (!_pkPendingDeleteId) return;
   const btn = document.getElementById('pkConfirmOk');
+  const id  = _pkPendingDeleteId;
   btn.disabled = true;
 
   if (_pkSbClient) {
-    await _pkSbClient.from('rentals_parking').delete().eq('id', _pkPendingDeleteId);
+    // one retry; still refused → the spot and its card stay
+    const { error } = await ccPersist(() => _pkSbClient.from('rentals_parking').delete().eq('id', id));
+    if (error) {
+      document.getElementById('pkConfirmOverlay').classList.remove('open');
+      _pkPendingDeleteId = null;
+      btn.disabled = false;
+      console.error('[parking] delete failed:', error);
+      ccToast('Not deleted — connection problem. Please try again.', true);
+      return;
+    }
   }
 
-  appParking = appParking.filter(p => p.id !== _pkPendingDeleteId);
+  appParking = appParking.filter(p => p.id !== id);
   document.getElementById('pkConfirmOverlay').classList.remove('open');
   _pkPendingDeleteId = null;
   btn.disabled = false;
   _renderPkList();
+  _pkRenderedSig = ccStableJSON(appParking);   // the next load must not see "nothing changed"
   _pkInitSortable();
 });
 
@@ -1455,17 +1485,49 @@ function _pkInitSortable() {
     ghostClass: 'sortable-ghost',
     chosenClass: 'sortable-chosen',
     onEnd(evt) {
-      const ids = [...evt.to.querySelectorAll('.pk-card[data-id]')]
-        .map(c => c.dataset.id).filter(Boolean);
-      if (_pkSbClient) {
-        ids.forEach((id, i) => {
-          _pkSbClient.from('rentals_parking').update({ sort_order: i }).eq('id', id);
-          const p = appParking.find(x => x.id === id);
-          if (p) p.sort_order = i;
-        });
-      }
+      _pkSaveOrder([...evt.to.querySelectorAll('.pk-card[data-id]')].map(c => c.dataset.id).filter(Boolean));
     }
   });
+}
+
+/* Drag order (Nov 2026): the new order is really saved (each write awaited, one retry) and kept in
+   appParking, so no redraw brings the old one back. Not saved → the order from before the drag
+   comes back (screen and database) with the usual "Not saved". An unsaved new card is not counted. */
+let _pkOrderTick = 0, _pkOrderPending = 0, _pkOrderBase = null, _pkOrderWant = null;
+function _pkOrderSort() { appParking.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)); }
+function _pkOrderKeep(tick0) {      // a load while a drag is being saved (or sent before it) keeps the dragged order
+  if (!(_pkOrderPending || tick0 !== _pkOrderTick) || !_pkOrderWant) return;
+  appParking.forEach(p => { const o = _pkOrderWant.get(String(p.id)); if (o !== undefined) p.sort_order = o; });
+  _pkOrderSort();
+}
+async function _pkSaveOrder(domIds) {
+  const k = String;
+  const ids = domIds.filter(id => appParking.some(p => k(p.id) === k(id)));
+  if (!ids.length || !_pkSbClient) return;
+  if (!_pkOrderPending) _pkOrderBase = new Map(appParking.map(p => [k(p.id), p.sort_order]));
+  _pkOrderWant = new Map(ids.map((id, i) => [k(id), i]));
+  appParking.forEach(p => { const o = _pkOrderWant.get(k(p.id)); if (o !== undefined) p.sort_order = o; });
+  _pkOrderSort();
+  _pkRenderedSig = ccStableJSON(appParking);          // the screen already shows this order
+  const tick = ++_pkOrderTick;
+  _pkOrderPending++;
+  let res = [];
+  try {
+    res = await Promise.all(ids.map((id, i) => ccQueueWrite('pk-' + id,
+      () => _pkSbClient.from('rentals_parking').update({ sort_order: i }).eq('id', id))));
+  } finally { _pkOrderPending--; }
+  const bad = res.find(r => r && r.error);
+  if (!bad || tick !== _pkOrderTick) return;          // saved — or a newer drag saves the whole order itself
+  _pkOrderWant = null;                                // not saved: never put back by a later load
+  const base = _pkOrderBase || new Map();
+  appParking.forEach(p => { const o = base.get(k(p.id)); if (o !== undefined) p.sort_order = o; });
+  _pkOrderSort();
+  ids.forEach(id => { const o = base.get(k(id)); if (o !== undefined)   // rows that did save go back too
+    ccQueueWrite('pk-' + id, () => _pkSbClient.from('rentals_parking').update({ sort_order: o }).eq('id', id)); });
+  _renderPkList();
+  _pkRenderedSig = ccStableJSON(appParking);
+  _pkInitSortable();
+  ccSaveFailed(bad.error, 'parking order');
 }
 
 

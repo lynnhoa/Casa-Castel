@@ -224,8 +224,10 @@ function _aptRenderUebergHTML(d) {
       flex:1; line-height:1.55; }
 
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
+    /* pre-line (not pre-wrap): typed line breaks stay, and the space where a long line wraps does not hang past
+       the right edge — the strict page check would refuse the PDF for it ("Some text did not fit") */
     .write-area { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
-      color:#1a1a1a; line-height:1.55; padding-top:3px; white-space:pre-wrap; word-break:break-word; }
+      color:#1a1a1a; line-height:1.55; padding-top:3px; white-space:pre-line; word-break:break-word; }
 
     .zaehler-table { width:100%; border-collapse:collapse; margin-top:16px; }
     .zaehler-table th { font-family:'Lato',sans-serif; font-size:7.5px; font-weight:700;
