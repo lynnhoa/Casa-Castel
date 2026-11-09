@@ -866,8 +866,9 @@ function _cxUnitSollV2(u, pid, y, m) {
       ? 'No rent after the contract end ' + _cxFmtD(prev.payTo) + ' · ' + prev.name
       : 'Last tenant until ' + _cxFmtD(prev.to) + (prev.payTo > prev.to ? ' · rent until the contract end ' + _cxFmtD(prev.payTo) : ''));
   }
-  const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)
-    .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR(_cxR(pt.sk / N) + _cxR(pt.snk / N)), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
+  const nT = [...parts.keys()].filter(pk => pk !== 'room').length;   // one tenant: 'take' / Book all write soll = k + nk, so the part is k + nk too ·
+  const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)   // a tenant-change month is booked per tenant with the part amount as it always was
+    .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: nT > 1 ? _cxR((pt.sk + pt.snk) / N) : _cxR(_cxR(pt.sk / N) + _cxR(pt.snk / N)), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
                            tid: pk, name: pt.w ? pt.w.name : 'Room', mode: pt.r0 ? pt.r0.mode : 'kalt_nk', days: pt.days, live: pt.live }));
   const free = occ > 0 && !noPrice && !roomOnly && _cxR(k + nk) === 0;
   if (free) notes.push('Free of charge' + (partList[0] && partList[0].name && partList[0].name !== 'Room' ? ' · ' + partList[0].name : ''));

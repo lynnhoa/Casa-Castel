@@ -410,7 +410,8 @@ window.renderDashboard = function () {
     const ren = _cxDashSum(renList.map(x => x.r)), casa = _cxDashSum(casaList.map(x => x.r));
     // #2: a switched-off (sold) flat is listed only in its months with rent or costs, or with a one-off / Abrechnung
     // (its "info only" part) — the lines add up to the sums; a month without any booking shows no empty line
-    const renShow = isYear ? renList : renList.filter(x => ctlPropSollIn(x.p, y, m) || x.r.einmalig || x.r.abr);
+    const renShow = isYear ? renList : renList.filter(x => x.p.active ? ctlPropSollIn(x.p, y, m)
+      : !!(x.r.kalt || x.r.nk || x.r.kosten || x.r.rate || x.r.einmalig || x.r.abr));   // a sold flat: only in a month with something booked (no empty line)
     const val = r => isYear ? { k: r.freiKalt, w: r.freiWarm } : { k: r.lfKalt, w: r.lfWarm };
     const cls = v => { const n = Math.round(Number(v) || 0); return n < 0 ? 'neg' : n > 0 ? 'pos' : ''; };   // 0 € (as shown, whole euros) = normal colour
     const tv = val(t);

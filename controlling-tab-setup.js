@@ -79,7 +79,7 @@ const _cxSU = { edit: {} };
    "Accept all", or with "+ Apartment" (properties made before). One per property: a second tap / change while it is
    being saved waits for the same save; a failed save makes nothing (ctlCreateUnit retries a taken id once).
    An apartment whose rent another unit already takes gets no second unit (its rent would count twice). */
-const _cxSuLiving = {}, _cxSuMade = {};                    // _cxSuMade: pid → the unit made here (follows a corrected choice)
+const _cxSuLiving = {}, _cxSuMade = {}, _cxSuAptQ = {};   // _cxSuAptQ: pid → the last apartment change (the next one waits for it)                    // _cxSuMade: pid → the unit made here (follows a corrected choice)
 function _cxSuEnsureLiving(pid) {
   if (_cxSuLiving[pid]) return _cxSuLiving[pid];
   const p = ctlProp(pid), l = p ? ctlPropLinks(p) : null;
@@ -462,7 +462,10 @@ window.renderSetup = function () {
       } catch (e) { cxToastErr(e); }
       if (saved && t === 'ctrl_properties' && field === 'rentals_apartment_ref') {   // #6: choosing the apartment adds its living unit, unlinking removes the one made here
         const pid = Number(id);
+        const prev = _cxSuAptQ[pid];
+        let done; const mine = _cxSuAptQ[pid] = new Promise(r => { done = r; });
         try {
+          if (prev) await prev;                                    // a change a moment ago (e.g. its unit delete) lands first
           if (_cxSuLiving[pid]) await _cxSuLiving[pid].catch(() => null);   // the unit of a choice a moment ago is still being saved
           const mu = ctlUnit(_cxSuMade[pid]);                      // made here for an earlier choice, nothing booked on it → it follows
           if (mu && mu.property_id === pid && !_cxUnitHasEntries(mu.id) && String(mu.source_ref) !== String(v)) {
@@ -475,6 +478,7 @@ window.renderSetup = function () {
             } else await ctlUpdateRow('ctrl_units', mu.id, { source_type: 'rentals_apartment', source_ref: String(v) });
           } else if (v) await _cxSuEnsureLiving(pid);
         } catch (e) { cxToastErr(e); }
+        finally { done(); if (_cxSuAptQ[pid] === mine) delete _cxSuAptQ[pid]; }
       }
       window.renderSetup();
     });
