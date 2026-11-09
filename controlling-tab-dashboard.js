@@ -408,6 +408,9 @@ window.renderDashboard = function () {
     const isCasa = x => x.p.id === CASA_PROP_ID;
     const renList = per.filter(x => !isCasa(x)), casaList = per.filter(isCasa);
     const ren = _cxDashSum(renList.map(x => x.r)), casa = _cxDashSum(casaList.map(x => x.r));
+    // #2: the Month view counts rent and costs only → a switched-off (sold) flat is listed (and counted) only in its months
+    // with rent or costs; a later Abrechnung of it stays in the sums as "info only", without an "in 0 € · out 0 €" line
+    const renShow = isYear ? renList : renList.filter(x => ctlPropSollIn(x.p, y, m));
     const val = r => isYear ? { k: r.freiKalt, w: r.freiWarm } : { k: r.lfKalt, w: r.lfWarm };
     const cls = v => { const n = Math.round(Number(v) || 0); return n < 0 ? 'neg' : n > 0 ? 'pos' : ''; };   // 0 € (as shown, whole euros) = normal colour
     const tv = val(t);
@@ -475,14 +478,14 @@ window.renderDashboard = function () {
         '<span class="cx2-kv"><span><em>Kalt</em><b class="' + cls(v.k) + '">' + cxWS(v.k) + '</b></span><span><em>Income</em><b class="' + cls(r.warm) + '">' + cxWS(r.warm) + '</b></span></span>' +
         '<span class="cx2-thin"><i style="width:' + Math.min(100, st) + '%;background:' + color + '"></i></span></button>';
     };
-    const tiles = (renList.length ? rowOf('r', 'Rentals', 'building', ren, renList.length + (renList.length === 1 ? ' property' : ' properties'), '#8FA88F') : '') +
+    const tiles = (renList.length ? rowOf('r', 'Rentals', 'building', ren, renShow.length + (renShow.length === 1 ? ' property' : ' properties'), '#8FA88F') : '') +
       (casaList.length ? rowOf('c', 'Casa Castel', 'home-heart', casa, roomsN ? roomsN + ' rooms' : 'one house', '#D9B46A') : '');
 
     // ── Section panel (one at a time)
     let panel = '';
     if (sec === 'r' && renList.length) {
       const pos = p => (p.sort_order !== null && p.sort_order !== undefined && Number.isFinite(Number(p.sort_order))) ? Number(p.sort_order) : 999;
-      const order = renList.slice().sort((a, b) => pos(a.p) - pos(b.p) || a.p.id - b.p.id);
+      const order = renShow.slice().sort((a, b) => pos(a.p) - pos(b.p) || a.p.id - b.p.id);
       const rows = order.map(({ p, r }) => {
         const v = val(r), k = 'dash:p:' + p.id, isOpen = !!CX.open[k];
         return '<button class="cxn-pr' + (isOpen ? ' open' : '') + '" data-cx="fold" data-k="' + k + '" aria-expanded="' + isOpen + '">' +

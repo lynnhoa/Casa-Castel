@@ -382,9 +382,10 @@ function ctlSollDropUnit(unitId) {
      3 today's room / apartment price — flagged if the tenant is no longer there   */
 function _cxLearned(u, t, y, m) {
   if (u.id == null) return null;
-  const count = new Map();
+  const count = new Map(), P = ctlProp(u.property_id);
   for (const r of (window._ctrl.income || [])) {
     if (r.unit_id !== u.id || (r.year === y && r.month === m)) continue;
+    if (ctlHandoverDay(P, r.year, r.month) > 1) continue;   // #30: a purchase month "From handover day" holds only part of the rent
     const n = new Date(r.year, r.month, 0).getDate();
     if (!_cxActiveOn(t, _cxIso(r.year, r.month, 1)) || !_cxActiveOn(t, _cxIso(r.year, r.month, n))) continue;   // full months only
     const k = _cxR(r.kaltmiete), nk = _cxR(r.nebenkosten);
@@ -1083,7 +1084,7 @@ function ctlCostRows(p, y, m) {
     if (lm.zinsen) rows.push({ key: 'zinsen', label: 'Zinsen', soll: pr(lm.zinsen), bank: true, src: 'Properties', note: hdNote || zbNote,
       sub: (_cxN0(L.darlehen) ? 'on ' + _cxE2(L.darlehen) + ' · ' : '') + 'fixed' });
     if (lm.tilgung) rows.push({ key: 'tilgung', label: 'Tilgung · Bausparvertrag', soll: pr(lm.tilgung), bank: true, src: 'Properties', note: hdNote,
-      sub: 'into the Bausparvertrag · Kreditrate together ' + _cxE2(lm.zinsen + lm.tilgung) });
+      sub: 'into the Bausparvertrag · Kreditrate together ' + _cxE2(pr(lm.zinsen) + pr(lm.tilgung)) });   // #30: the two rows above
   } else {
     const rate = L ? _cxN0(L.rate) : _cxN0(p.def_rate);
     const lm = L ? ctlLoanMonth(L, y, m) : null;
@@ -1649,8 +1650,9 @@ function ctlSetupLinkState() {
   for (const p of props) {
     const pl = ctlPropLinks(p);
     if (p.id !== CASA_PROP_ID && !pl.apt) issues.push({ kind: 'prop', pid: p.id, text: p.name + ': no Rentals apartment – Hausgeld and Grundsteuer are missing in the Soll' });
-    if (p.id !== CASA_PROP_ID && pl.apt && !ctlUnitsOf(p.id).some(u => !_cxIsParking(u)))   // #6 (Nov 2026): its rent was missing everywhere, silently
-      issues.push({ kind: 'noUnit', pid: p.id, text: p.name + ': linked, but no living unit – its rent is missing' });
+    // #6 (Nov 2026): its rent was missing everywhere, silently (not when another property's unit already takes this apartment's rent)
+    if (p.id !== CASA_PROP_ID && pl.apt && !ctlUnitsOf(p.id).some(u => !_cxIsParking(u)) && !used.has('rentals_apartment|' + String(pl.apt.id)))
+      issues.push({ kind: 'noUnit', pid: p.id, text: p.name + ': no living unit – its rent is missing' });
     if (!pl.loan) issues.push({ kind: 'loan', pid: p.id, text: p.name + ': no loan linked' + (p.id === CASA_PROP_ID ? ' – Kreditrate from the cost type' : (_cxN0(p.def_rate) ? ' – Kreditrate from plan value' : ' – no Kreditrate in the Soll')) });
   }
   const freeParking = S.parking.filter(pk => !used.has('rentals_parking|' + String(pk.id)));

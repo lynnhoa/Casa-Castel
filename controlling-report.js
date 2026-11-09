@@ -102,7 +102,7 @@ function cxRepData(scope) {
   const dash = props.map(x => {
     const mon = {};
     for (const m of M12) {
-      if (!counted.has(m) || !owned(x, m)) { mon[m] = null; continue; }
+      if (!counted.has(m) || !sollIn(x, m)) { mon[m] = null; continue; }   // #2: rent and costs only — a sold flat's later Abrechnung is in YEAR
       const r = _cxDashProp(x.p, [m]);
       mon[m] = { inc: r.warm, exp: r2(r.kosten + r.rate), ges: r.lfWarm };
     }
@@ -115,7 +115,9 @@ function cxRepData(scope) {
     ren: dash.some(d => !d.x.casa) ? area(dash.filter(d => !d.x.casa)) : null,
     casa: dash.some(d => d.x.casa) ? area(dash.filter(d => d.x.casa)) : null,
   };
-  const general = dash.map(d => ({ x: d.x, kalt: d.R.kalt, rate: d.R.rate, cfK: d.R.lfKalt, nk: d.R.nk, hk: d.R.kosten, cfW: d.R.lfWarm }));
+  // MONTHS and General are "laufend" (no one-offs, no Abrechnungen): a sold flat with only an Abrechnung this year has no line there
+  const months = dash.filter(d => d.x.p.active || M12.some(m => d.mon[m]));
+  const general = months.map(d => ({ x: d.x, kalt: d.R.kalt, rate: d.R.rate, cfK: d.R.lfKalt, nk: d.R.nk, hk: d.R.kosten, cfW: d.R.lfWarm }));
 
   // Income — one row per unit (rooms and parking too)
   const income = [], who = CX.rep.dbl === 'new' ? 'new' : 'old';
@@ -200,7 +202,7 @@ function cxRepData(scope) {
   const groups = typeof cxInvoiceData === 'function' ? cxInvoiceData(y, null) : [];
   const oneoff = props.map(x => ({ x, g: groups.find(g => g.p.id === x.p.id) })).filter(o => o.g);
 
-  return { y, scope, today: cxToday(), stand: cxFmtDate(cxToday()), counted, ym, props, dash, kw, general, income, expense, castel, oneoff, dblDays, who,
+  return { y, scope, today: cxToday(), stand: cxFmtDate(cxToday()), counted, ym, props, dash, months, kw, general, income, expense, castel, oneoff, dblDays, who,
            sheets: cxRepSheets(scope).filter(s => (s !== 'Expense Castel' || castel) && (s !== 'Expense' || props.some(x => !x.casa))) };
 }
 
@@ -281,7 +283,7 @@ function _xSheetMonths(wb, d) {
     ['Gesamt', 'Income', 'Expenses'].forEach((t, k) => _xHead(ws, 5, c + k, t));
   }
   let r = 6;
-  for (const x of d.dash) {
+  for (const x of d.months) {
     _xNo(ws, r, x.x.no); _xName(ws, r, x.x);
     for (let m = 1; m <= 12; m++) {
       const c = 4 + (m - 1) * 3, v = x.mon[m];
@@ -296,7 +298,7 @@ function _xSheetMonths(wb, d) {
     if (!d.counted.has(m)) continue;
     const c = 4 + (m - 1) * 3;
     ['ges', 'inc', 'exp'].forEach((k, j) => _xNum(ws, r, c + j,
-      _xF('SUM(' + _xA(6, c + j) + ':' + _xA(last, c + j) + ')', d.dash.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0)), { b: 1, bd: false }));
+      _xF('SUM(' + _xA(6, c + j) + ':' + _xA(last, c + j) + ')', d.months.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0)), { b: 1, bd: false }));
   }
   _xWidths(ws, [5, 6.1, 22].concat(Array(36).fill(12)));
 }
@@ -640,12 +642,12 @@ function _pMonths(doc, d, a, b, y) {
   const f = i => (i % 2 ? CXP.alt : null), L = ['Gesamt', 'Income', 'Expenses'];
   const head = [[_pH('Immobilie', { cs: 2, rs: 2, left: 1 })].concat(ms.map((m, i) => _pH(CXP_MF[m - 1], { cs: 3, month: 1, fill: f(i) }))),
                 [].concat(...ms.map((m, i) => L.map(t => _pH(t, { fill: f(i) }))))];
-  const body = d.dash.map(x => [_pNo(x.x.no), _pT(x.x.p.name)].concat(...ms.map((m, i) => {
+  const body = d.months.map(x => [_pNo(x.x.no), _pT(x.x.p.name)].concat(...ms.map((m, i) => {
     const v = x.mon[m];
     return [_pN(v ? v.ges : null, { b: 1, fill: f(i) }), _pN(v ? v.inc : null, { fill: f(i) }), _pN(v ? v.exp : null, { fill: f(i) })];
   })));
   body.push(_pRow([_pT('Gesamt', { cs: 2 })].concat(...ms.map((m, i) => {
-    const on = d.counted.has(m), S = k => d.dash.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0);
+    const on = d.counted.has(m), S = k => d.months.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0);
     return ['ges', 'inc', 'exp'].map(k => _pN(on ? S(k) : null, { fill: f(i) }));
   })), 'cxTot'));
   const labels = []; ms.forEach((m, i) => L.forEach((t, k) => labels.push([2 + i * 3 + k, t])));
