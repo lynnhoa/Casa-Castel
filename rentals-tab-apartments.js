@@ -2608,12 +2608,11 @@ async function _aptOpenContract(type, aptId, renew) {
           }
 
           // S3 fields
-          let verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0, verlaengerungBis = '';
+          let verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0;
           if (szenario === 'S3') {
             verlaengerungJahre  = parseInt(document.getElementById('apt-gw-verl-jahre')?.value) || 0;
             ankuendigungMonate  = parseInt(document.getElementById('apt-gw-ankuend')?.value) || 6;
             neueKaltmiete       = parseFloat(document.getElementById('apt-gw-neue-kalt')?.value) || 0;
-            verlaengerungBis    = document.getElementById('apt-gw-verl-bis-display')?.textContent?.replace('Verlängerung bis: ','').trim();
           }
 
           const btn = document.getElementById('aptGwPdfBtn');
@@ -2630,7 +2629,7 @@ async function _aptOpenContract(type, aptId, renew) {
               kautionVal, kautionFael, sigVal,
               sonderkAn, sonderkEnde,
               kuendigungsfrist, staffelAn, staffeln,
-              verlaengerungJahre, ankuendigungMonate, neueKaltmiete, verlaengerungBis,
+              verlaengerungJahre, ankuendigungMonate, neueKaltmiete,
             });
             if (typeof ccfContractData === 'function') ccfContractData(data, document.getElementById('apt-gw-kaution')?.value);
             ccBlankFill(data, ['mietbeginn'].concat(szenario === 'S2' ? ['mietende'] : [], szenario === 'S3' ? ['ankuendigungBis'] : []));
@@ -3110,7 +3109,7 @@ function _aptMvCalcStaffelDates() {
       const dateLbl = row.querySelector('.apt-mv-staffel-datum');
       if (dateLbl) dateLbl.textContent = ccfFmt(dates[i]);
     });
-  }
+  } else document.querySelectorAll('.apt-mv-staffel-datum').forEach(l => { l.textContent = '\u2014'; });   // no Mietbeginn → no old dates
 }
 
 function _aptMvAddStaffel(force) {
@@ -3485,7 +3484,7 @@ function _aptGwCalcDates() {
       const dateLbl = row.querySelector('.apt-gw-staffel-datum');
       if (dateLbl) dateLbl.textContent = ccfFmt(dates[i]);
     });
-  }
+  } else document.querySelectorAll('.apt-gw-staffel-datum').forEach(l => { l.textContent = '\u2014'; });   // no end date → no old dates
 
   // S3 dates
   const szenario = document.querySelector('.apt-gw-szenario-btn.active')?.dataset.s;
@@ -3501,6 +3500,9 @@ function _aptGwCalcDates() {
     } else if (s3disp) {
       s3disp.style.display = 'none';
     }
+  } else {
+    const s3disp = document.getElementById('apt-gw-s3-dates-display');
+    if (s3disp) s3disp.style.display = 'none';   // no Mietbeginn / Festlaufzeit → no old option dates on screen
   }
 }
 

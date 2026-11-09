@@ -533,6 +533,8 @@ button.tn-nkv-pill.done:active { opacity:.7; }
 #tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-rc:last-child { grid-column:1 / -1; border-right:none; border-top:var(--cc-border); justify-content:flex-end; padding:8px 12px 10px; }
 #tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-edit-rent-btn { min-height:36px; padding:0 14px; }
 #tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-rsub { white-space:normal; }   /* a very narrow phone: the date goes to a 2nd line, never cut */
+/* Mieterhöhung row: the date / next step goes to a 2nd line instead of being cut */
+.rnt-mh-meta, .rnt-mh-meta .tnp { white-space:normal; }
 /* Header: status pills wrap under each other instead of running out of the card */
 .tn-hdr-top { min-width:0; }
 .tn-room-lbl { flex-shrink:0; }
@@ -691,10 +693,10 @@ function _rntStaffelRowHTML(rid, isApt, unit, rec) {
   const own = _rntOwnSteps(unit.id, rec.id);
   const st  = typeof ccTnStepState === 'function' ? ccTnStepState(own) : null;
   const staffel = own.some(e => (e.kind || 'staffel') === 'staffel');
-  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">Mieterhöhung overdue</span>`
-    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">Mieterhöhung from ${_rntFmtDate(st.entry.effective_date)}</span>`
+  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">overdue</span>`   // the row title already says Mieterhöhung
+    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">from ${_rntFmtDate(st.entry.effective_date)}</span>`
     : (typeof ccTnStepNext === 'function' ? ccTnStepNext(own, _rntFmtEUR, _rntFmtDate) : '');
-  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Mieterhöhung' + (staffel ? ' <span class="tnp tnp-blue">Staffel</span>' : ''), meta,
+  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Mieterhöhung' + (staffel ? ' <span class="tnp tnp-blue">Staffel</span>' : ''), meta: `<span class="rnt-mh-meta">${meta}</span>`,
     onclick: `_rntSheet('staffel','${rid}','${rec.id}','${isApt ? 'apt' : 'pk'}','${unit.id}')` }));
 }
 /* ── Casa Castel layout (Oct 2026): Kaution line · More list · Übergabe button · Former tenants row ── */

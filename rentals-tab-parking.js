@@ -781,7 +781,7 @@ function _pkCalcStaffelDates() {
       const dateLbl = row.querySelector('.pk-mv-staffel-datum');
       if (dateLbl) dateLbl.textContent = ccfFmt(dates[i]);
     });
-  }
+  } else document.querySelectorAll('.pk-mv-staffel-datum').forEach(l => { l.textContent = '\u2014'; });   // no Mietbeginn → no old dates
 }
 
 

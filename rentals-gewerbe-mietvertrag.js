@@ -56,7 +56,7 @@ function _buildGewerbeMietvertragData(apt, s, {
   // S1
   kuendigungsfrist = 6, staffelAn = false, staffeln = [],
   // S3
-  verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0, verlaengerungBis = '',
+  verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0,
 }) {
   const fmtDt = raw => {
     const d = ccfDay(raw);   // a YYYY-MM-DD field → that day on every phone
@@ -82,10 +82,10 @@ function _buildGewerbeMietvertragData(apt, s, {
   }
 
   // S3 dates
-  let ankuendigungBis = '', verlBis = verlaengerungBis || '';
+  let ankuendigungBis = '', verlBis = '';   // from the fields only — never an old date left on the screen
   if (szenario === 'S3' && mietendeRaw) {
     ankuendigungBis = ccfFmt(term.ank);
-    if (!verlBis && verlaengerungJahre) verlBis = ccfFmt(term.verlBis);
+    if (verlaengerungJahre) verlBis = ccfFmt(term.verlBis);
   }
 
   const kautionFaelText = 'sofort nach Vertragsunterzeichnung';   // Oct 2026: always sofort
