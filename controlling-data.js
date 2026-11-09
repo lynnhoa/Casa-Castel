@@ -27,9 +27,13 @@ window._ctrl = {
 
 /* Nov 2026 (C1 #17): every read is checked first — one failed read changes nothing (it switched the year anyway,
    without its bookings, and 'Book all' then overwrote real amounts). All parts are taken over together and the
-   year is set last, so a failed year change leaves you exactly where you were. */
-async function ctlLoadAll(year) {
-  const y = year || window._ctrl.year;
+   year is set last, so a failed year change leaves you exactly where you were.
+   C5 (#31): opt (only the reload when the app comes back, controlling-soll.js) = { ok(seq), quiet } — its rows are taken
+   over only if ok() still says so (no newer load, the same year, no save on its way or made meanwhile); quiet = a
+   failed read is no error message (the screen simply keeps what it has). Every other load works exactly as before. */
+let _ctlLoadSeq = 0;
+async function ctlLoadAll(year, opt) {
+  const y = year || window._ctrl.year, seq = ++_ctlLoadSeq;
 
   const probe = ctlDiffProbe();                              // CP2: once per page, next to the first load
   const [p, u, c, inc, apt, cst, ot, rec] = await Promise.all([
@@ -43,7 +47,8 @@ async function ctlLoadAll(year) {
     _ctlSupa.from('ctrl_reconciliation').select('*').eq('year', y),
   ]);
   const rows = { properties: p, units: u, categories: c, income: inc, apt_expenses: apt, castel_expenses: cst, one_time: ot, recon: rec };
-  for (const k in rows) if (rows[k].error) { console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
+  for (const k in rows) if (rows[k].error) { if (!(opt && opt.quiet)) console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
+  if (opt && typeof opt.ok === 'function' && !opt.ok(seq)) throw new Error('not taken over');
   for (const k in rows) window._ctrl[k] = rows[k].data || [];
   window._ctrl.year = y;
   ctlDataChanged();                                          // C5: new rows → the Tenant history works its balances out again
@@ -323,6 +328,13 @@ async function ctlCreateUnit(fields) {
   return data;
 }
 
+/* Setup: remove a unit (nothing booked on it — Setup checks that first) */
+async function ctlDeleteUnit(id) {
+  const { error } = await _ctlSupa.from('ctrl_units').delete().eq('id', id);
+  if (error) throw error;
+  window._ctrl.units = window._ctrl.units.filter(x => x.id !== id);
+}
+
 /* Setup: update one row of ctrl_properties / ctrl_units / ctrl_castel_categories */
 const _CTL_MEM = { ctrl_properties: 'properties', ctrl_units: 'units', ctrl_castel_categories: 'categories' };
 async function ctlUpdateRow(table, id, fields) {
@@ -395,6 +407,29 @@ async function ctlDeleteOneTime(id) {
   window._ctrl.one_time = window._ctrl.one_time.filter(r => r.id !== id);
 }
 
+
+/* ── C5 (Nov 2026, #31) · saves on their way ───────────────────────────────────
+   Every save of Controlling's own data counts here while it runs (_ctlBusy) and when it starts and ends
+   (_ctlWriteSeq). The reload when the app comes back takes the year's rows over only if no save ran meanwhile —
+   rows read before a save never hide it (and 'Book all' never books it again). Each save also tells the
+   Tenant history that the data changed (ctlDataChanged). */
+window._ctlBusy = 0; window._ctlWriteSeq = 0;
+function ctlWriting(fn) {
+  if (typeof fn !== 'function' || fn._ctlWrite) return fn;
+  const w = async function () {
+    window._ctlBusy++; window._ctlWriteSeq++;
+    try { return await fn.apply(this, arguments); }
+    finally { window._ctlBusy--; window._ctlWriteSeq++; ctlDataChanged(); }
+  };
+  w._ctlWrite = true;
+  return w;
+}
+ctlUpsertIncome = ctlWriting(ctlUpsertIncome);   ctlUpsertApt = ctlWriting(ctlUpsertApt);       ctlUpsertCastel = ctlWriting(ctlUpsertCastel);
+ctlDeleteIncome = ctlWriting(ctlDeleteIncome);   ctlDeleteCastel = ctlWriting(ctlDeleteCastel);
+ctlSetIncomeMark = ctlWriting(ctlSetIncomeMark); ctlSetCastelMark = ctlWriting(ctlSetCastelMark); ctlSetAptMark = ctlWriting(ctlSetAptMark);
+ctlAddOneTime = ctlWriting(ctlAddOneTime);       ctlUpdateOneTime = ctlWriting(ctlUpdateOneTime); ctlDeleteOneTime = ctlWriting(ctlDeleteOneTime);
+ctlCreateUnit = ctlWriting(ctlCreateUnit);       ctlDeleteUnit = ctlWriting(ctlDeleteUnit);     ctlCreateProperty = ctlWriting(ctlCreateProperty);
+ctlUpdateRow = ctlWriting(ctlUpdateRow);
 
 /* ── Setup history ──────────────────────────────────────────── */
 async function ctlLogHistory(entity_type, entity_id, field, oldV, newV) {

@@ -114,14 +114,19 @@ async function ctlReadAll(first, query, label) {
    that part simply falls back to the plan values.
    Nov 2026 (C1 #16): a read that fails on a LATER load (the app comes back in front on a weak connection) keeps
    the rows already loaded — it emptied them: Kreditrate lines vanished, Hausgeld fell back to an old amount and
-   'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before. */
-async function ctlSollLoad() {
+   'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before.
+   C5 (Nov 2026, #31): only = a Set of keys → just those sources (+ the Abrechnungen bookings if 'abrPay' is in it):
+   what the other apps change while Controlling is in the background (_CX_LIVE). Without it: everything, as before. */
+const _CX_LIVE = new Set(['rntTen', 'casaTen', 'rentP', 'rooms', 'loans', 'loanHist', 'abr', 'settle', 'abrPay']);
+const CTL_FULL_EVERY = 10 * 60 * 1000;                   // a full read at least every 10 minutes (and at start, in Setup)
+async function ctlSollLoad(only) {
   const had = !!window._src.loaded;
-  const res = await Promise.all(_CX_SRC.map(([, t]) => {
+  const SRC = only ? _CX_SRC.filter(([k]) => only.has(k)) : _CX_SRC;
+  const res = await Promise.all(SRC.map(([, t]) => {
     const q = () => _ctlSupa.from(t).select('*');
     return q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
   }));
-  _CX_SRC.forEach(([k, t], i) => {
+  SRC.forEach(([k, t], i) => {
     if (res[i].error) {
       console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
       if (had) return;                                   // keep what was loaded before
@@ -129,14 +134,14 @@ async function ctlSollLoad() {
     window._src[k] = res[i].data || [];
   });
   // NK / Hausgeld bookings of every year (a 2025 Abrechnung is often paid in 2026)
-  try {
+  if (!only || only.has('abrPay')) try {
     const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
     const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Abrechnungen)');
     if (r.error) throw r.error;
     window._src.abrPay = r.data || [];
   } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (!had) window._src.abrPay = []; }
   // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
-  try {
+  if (!only) try {
     const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
     const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Kaufnebenkosten)');
     if (r.error) throw r.error;
@@ -144,6 +149,7 @@ async function ctlSollLoad() {
   } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); if (!had) window._src.knkAll = []; }
   window._src.loaded = true;
   window._src.loadedAt = Date.now();
+  if (!only) window._src.fullAt = window._src.loadedAt;
   if (typeof ccRpSetRows === 'function') ccRpSetRows(window._src.rentP);   // shared store for the history screen
 }
 
@@ -176,21 +182,73 @@ function ctlVisibleCheck(propName, unitName, check) {
   const left = String(check).split(' · ').filter(t => !d[ctlCheckKey(propName, unitName, t)]);
   return left.length ? left.join(' · ') : null;
 }
-/* Reload the other apps' data (tenants, rooms, parking, loans, settlements) */
+/* Reload the other apps' data (tenants, rooms, parking, loans, settlements) — at most every 20 s.
+   C5 (Nov 2026, #31) · full = everything (Setup, the first time, or the last full read is 10 minutes old): as before,
+   then the screen is worked out anew. Otherwise only what the other apps change (_CX_LIVE) — and, with year, the year
+   on screen (another device or Settlements may have booked meanwhile, ctlLoadAll). Nothing changed → the rows you
+   had stay (the very same ones), nothing is worked out or drawn again → false. A failed read keeps what was there.
+   The year's rows are taken over only if no newer load, no other year and no save came meanwhile (ctlLoadAll opt). */
 let _cxRefreshing = null;
-async function ctlRefreshSources(force) {
+async function ctlRefreshSources(force, full, year) {
   if (_cxRefreshing) return _cxRefreshing;
-  if (!force && window._src.loadedAt && Date.now() - window._src.loadedAt < 20000) return false;
+  const now = Date.now(), S = window._src;
+  if (!force && S.loadedAt && now - S.loadedAt < 20000) return false;
+  const all = !!(force || full || !S.fullAt || now - S.fullAt >= CTL_FULL_EVERY);
   _cxRefreshing = (async () => {
-    try { await ctlSollLoad(); if (typeof ctlSollReset === 'function') ctlSollReset(); return true; }
+    try {
+      if (all) {
+        await Promise.all([ctlSollLoad(), year ? _ctlReloadYear() : null]);
+        if (typeof ctlSollReset === 'function') ctlSollReset();
+        return true;
+      }
+      return await _ctlReloadLive(year);
+    }
     catch (e) { console.warn('[controlling] refresh', e); return false; }
     finally { _cxRefreshing = null; }
   })();
   return _cxRefreshing;
 }
+/* The year on screen again (through the global ctlLoadAll: Providers' months come with it) → true if taken over */
+async function _ctlReloadYear() {
+  const C = window._ctrl, y = C.year, ws = window._ctlWriteSeq;
+  const calm = () => !(window._ctlBusy > 0) && window._ctlWriteSeq === ws &&
+    !(typeof _cxOt !== 'undefined' && _cxOt.form !== null);              // a One-off being edited keeps its rows
+  let mine = null;
+  const ok = seq => { if (seq !== undefined) mine = seq; return mine === _ctlLoadSeq && C.year === y && calm(); };
+  if (!calm()) return false;
+  const inc0 = window._src.incAll;
+  try { await ctlLoadAll(y, { ok, quiet: true }); } catch (e) { return false; }
+  // the all-years copy (balances): this year's rows as just read — the others stay where they are
+  if (Array.isArray(inc0) && window._src.incAll === inc0 && C.year === y) {
+    const key = r => r.unit_id + '|' + r.month, fresh = new Map(C.income.filter(r => r.year === y).map(r => [key(r), r]));
+    const out = [];
+    for (const r of inc0) { if (r.year !== y) out.push(r); else if (fresh.has(key(r))) { out.push(fresh.get(key(r))); fresh.delete(key(r)); } }
+    window._src.incAll = out.concat([...fresh.values()]);
+  }
+  return true;
+}
+async function _ctlReloadLive(year) {
+  const S = window._src, C = window._ctrl, pv = window._pvCtl || null;
+  const sk = [..._CX_LIVE], ck = ['properties', 'units', 'categories', 'income', 'apt_expenses', 'castel_expenses', 'one_time', 'recon'];
+  const keep = { s: sk.map(k => S[k]), c: ck.map(k => C[k]), inc: S.incAll, pv: pv && [pv.y, pv.rows, pv.claimed] };
+  const sig = () => JSON.stringify([sk.map(k => S[k]), ck.map(k => C[k]), pv && [pv.y, pv.rows, pv.claimed]]);
+  const before = sig(), ws = window._ctlWriteSeq;
+  await Promise.all([ctlSollLoad(_CX_LIVE), year ? _ctlReloadYear() : null]);
+  const saved = window._ctlWriteSeq !== ws || window._ctlBusy > 0;      // a save meanwhile: its rows stay as they are now
+  if (saved || sig() !== before) { if (typeof ctlSollReset === 'function') ctlSollReset(); return true; }
+  // nothing changed: the rows you had stay — an open pop-up, a fold or a line being booked keeps its own rows
+  sk.forEach((k, i) => { S[k] = keep.s[i]; });
+  ck.forEach((k, i) => { C[k] = keep.c[i]; });
+  S.incAll = keep.inc;
+  if (pv && keep.pv) { pv.y = keep.pv[0]; pv.rows = keep.pv[1]; pv.claimed = keep.pv[2]; }
+  if (typeof ccRpSetRows === 'function') ccRpSetRows(S.rentP);
+  return false;
+}
+/* Back to the app: Controlling only (its boot sets _ctlLiveReload) — Settlements loads this file too but has its own
+   rule (settlements-app.js, once a minute); it read everything twice (C5 x5) */
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState !== 'visible' || !window._src.loaded) return;
-  if (await ctlRefreshSources(false) && typeof cxRenderActive === 'function') cxRenderActive();
+  if (document.visibilityState !== 'visible' || !window._src.loaded || !window._ctlLiveReload) return;
+  if (await ctlRefreshSources(false, false, true) && typeof cxRenderActive === 'function') cxRenderActive();
 });
 
 /* ── small helpers ── */

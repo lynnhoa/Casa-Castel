@@ -543,3 +543,8 @@ function _cxAbrNote(dir) {
   if (!open && !done) return '';
   return 'Abrechnungen · ' + [open ? open + ' open (' + cxIO(dir * openSum, cxEur) + ')' : '', done ? 'done ' + cxIO(dir * done, cxEur) : ''].filter(Boolean).join(' · ');   // CP1: signed, green / red
 }
+
+/* C5 (#31): booking, cancelling and reopening an Abrechnung count as saves on their way (controlling-data.js ctlWriting) */
+if (typeof ctlWriting === 'function') {
+  ctlAbrAdd = ctlWriting(ctlAbrAdd); _cxAbrRun = ctlWriting(_cxAbrRun); ctlAbrStorno = ctlWriting(ctlAbrStorno); ctlSettleOpen = ctlWriting(ctlSettleOpen);
+}

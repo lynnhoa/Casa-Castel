@@ -168,7 +168,7 @@ window.renderSetup = function () {
   // fixes made in Rentals / Casa Castel: reload their data when Setup is opened (at most every 20 s)
   if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - window._src.loadedAt > 20000) {
     _cxSU.refreshing = true;
-    ctlRefreshSources(false).then(ch => { _cxSU.refreshing = false; if (ch && CX.tab === 'setup' && !CX.hist) window.renderSetup(); });
+    ctlRefreshSources(false, true).then(ch => { _cxSU.refreshing = false; if (ch && CX.tab === 'setup' && !CX.hist) window.renderSetup(); });
   }
 
   /* ── Objekte ── */
@@ -361,9 +361,7 @@ window.renderSetup = function () {
         if (!u || _cxUnitHasEntries(id)) { if (typeof ctlToast === 'function') ctlToast('Unit has entries – it can\'t be removed'); return; }
         if (!(await ccConfirm('Remove from Controlling?', ccEscHtml(u.name), 'Remove', true))) return;
         try {
-          const { error } = await _ctlSupa.from('ctrl_units').delete().eq('id', id);
-          if (error) throw error;
-          window._ctrl.units = window._ctrl.units.filter(x => x.id !== id);
+          await ctlDeleteUnit(id);
           ctlSollReset();
         } catch (e) { cxToastErr(e); }
         return window.renderSetup();
@@ -430,9 +428,7 @@ window.renderSetup = function () {
           const mu = ctlUnit(_cxSuMade[pid]);                      // made here for an earlier choice, nothing booked on it → it follows
           if (mu && mu.property_id === pid && !_cxUnitHasEntries(mu.id) && String(mu.source_ref) !== String(v)) {
             if (!v || ctlSetupLinkState().used.has('rentals_apartment|' + String(v))) {   // set back to "not linked", or another unit takes this apartment's rent → no unit
-              const { error } = await _ctlSupa.from('ctrl_units').delete().eq('id', mu.id);
-              if (error) throw error;
-              window._ctrl.units = window._ctrl.units.filter(x => x.id !== mu.id);
+              await ctlDeleteUnit(mu.id);
               delete _cxSuMade[pid];
               ctlSollReset();
             } else await ctlUpdateRow('ctrl_units', mu.id, { source_type: 'rentals_apartment', source_ref: String(v) });
