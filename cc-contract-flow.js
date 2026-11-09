@@ -195,6 +195,28 @@ function ccfAddDays(iso, n) {
 function ccfAddYears(iso, n) {
   const d = new Date(iso + 'T12:00:00Z'); d.setUTCFullYear(d.getUTCFullYear() + n); return d.toISOString().slice(0, 10);
 }
+/* n months later (n < 0: earlier). clamp: a day the month does not have becomes its last day (31.08 − 6 → 28.02);
+   without clamp it runs over like Date.setMonth (31.01 + 1 → 03.03) */
+function ccfAddMonths(iso, n, clamp) {
+  const d = new Date(iso + 'T12:00:00Z'), day = d.getUTCDate();
+  d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n);
+  const dim = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(clamp ? Math.min(day, dim) : day);
+  return d.toISOString().slice(0, 10);
+}
+/* A date field (YYYY-MM-DD) as a local Date at noon: getDate()/getMonth() give that same day on a phone in any time zone
+   (new Date('2027-01-01') is UTC midnight = 31.12.2026 on a phone set west of UTC) */
+function ccfDay(v) {
+  const m = typeof v === 'string' && v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], 12) : new Date(v);
+}
+/* Staffel: n step dates, each `every` years after the one before (first = firstIso). A 29.02 the year does
+   not have becomes 01.03 and every later step stays on 01.03 — never one short step back on a later 29.02 */
+function ccfStaffelDates(firstIso, every, n) {
+  const out = []; let d = ccfIso(firstIso);
+  for (let i = 0; i < n && d; i++) { out.push(d); d = ccfAddYears(d, every); }
+  return out;
+}
 function ccfNum(v) {
   if (v === '' || v == null) return null;
   if (typeof ccParseEUR === 'function') return ccParseEUR(v);

@@ -26,7 +26,7 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
 }) {
   const fmt = d => {
     if (!d) return '';
-    const dt = new Date(d);
+    const dt = ccfDay(d);   // a YYYY-MM-DD field → that day on every phone (not UTC midnight)
     if (isNaN(dt)) return d;
     return String(dt.getDate()).padStart(2,'0') + '.' +
            String(dt.getMonth()+1).padStart(2,'0') + '.' +
@@ -92,15 +92,15 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     waschText,
     anlageText,
     isTG,
-    mietbeginn:  startVal ? fmt(new Date(startVal)) : '',
+    mietbeginn:  startVal ? fmt(startVal) : '',
     befristet,
-    mietende:    befristet && endVal ? fmt(new Date(endVal)) : '',
+    mietende:    befristet && endVal ? fmt(endVal) : '',
     // #27: the standard Mindestlaufzeit as a date (01.12.2025 → 30.11.2026), like the Casa contract prints it
     mindestBis:  (() => { const d = startVal ? new Date(startVal + 'T12:00:00') : null;
                           return d && !isNaN(d) ? fmt(new Date(d.getFullYear() + 1, d.getMonth(), d.getDate() - 1)) : ''; })(),
     kennzeichen: kennzeichen || '',
     fahrzeug:    fahrzeug    || '',
-    unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
+    unterzeichnungsDatum: sigVal ? fmt(sigVal) : '',
     kaution:         ccKaution({ contract: 'parking', kalt: miete, rec: pr, manual: kautionVal }).amount,
     kautionFaelText: 'sofort nach Vertragsunterzeichnung',   // Oct 2026: always sofort
     staffelAn,

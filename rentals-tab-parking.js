@@ -752,12 +752,8 @@ function _pkCalcStaffelDates() {
   const startVal  = document.getElementById('pk-mv-start')?.value;
   const intervall = parseInt(document.getElementById('pk-mv-staffel-intervall')?.value) || 1;
 
-  const fmtDt = dt =>
-    String(dt.getDate()).padStart(2,'0') + '.' +
-    String(dt.getMonth()+1).padStart(2,'0') + '.' + dt.getFullYear();
-
-  // Staffel steps count every <intervall> years from Mietbeginn (first staffel = Mietbeginn + intervall)
-  let staffelStart = startVal ? new Date(startVal) : null;
+  // Staffel steps: first = Mietbeginn + intervall, then every <intervall> years after the step before (YYYY-MM-DD, any time zone)
+  const staffelStart = startVal ? ccfIso(startVal) : null;
 
   // Gate + Staffel button
   const addBtn  = document.getElementById('pk-mv-staffel-add-btn');
@@ -779,14 +775,11 @@ function _pkCalcStaffelDates() {
 
   // Update row date labels
   if (staffelStart) {
-    const rows = document.querySelectorAll('.pk-mv-staffel-row');
+    const rows  = document.querySelectorAll('.pk-mv-staffel-row');
+    const dates = ccfStaffelDates(ccfAddYears(staffelStart, intervall), intervall, rows.length);
     rows.forEach((row, i) => {
       const dateLbl = row.querySelector('.pk-mv-staffel-datum');
-      if (dateLbl) {
-        const d2 = new Date(staffelStart);
-        d2.setFullYear(d2.getFullYear() + (i + 1) * intervall);
-        dateLbl.textContent = fmtDt(d2);
-      }
+      if (dateLbl) dateLbl.textContent = ccfFmt(dates[i]);
     });
   }
 }
