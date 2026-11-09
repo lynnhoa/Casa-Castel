@@ -116,19 +116,22 @@ async function ctlReadAll(first, query, label) {
    the rows already loaded — it emptied them: Kreditrate lines vanished, Hausgeld fell back to an old amount and
    'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before.
    C5 (Nov 2026, #31): only = a Set of keys → just those sources (+ the Abrechnungen bookings if 'abrPay' is in it):
-   what the other apps change while Controlling is in the background (_CX_LIVE). Without it: everything, as before.
+   every source the other apps change while Controlling is in the background (_CX_LIVE) — all but the income of
+   every year (large; the year on screen comes with the return, the rest with a full read) and the meter readings
+   (Settlements only). Without it: everything, as before.
    A read that failed with nothing loaded before (_cxLost) is read again on every return until it works (C5 review).
-   An Abrechnung booked, cancelled or reopened while the return reads (_CX_ABR_OWN): the answer was asked for before
-   that save and would hide it (the row showed open again) → its rows stay as they are; the next return reads them. */
-const _CX_ABR_OWN = new Set(['abr', 'settle', 'abrPay']);
-const _CX_LIVE = new Set(['rntTen', 'casaTen', 'rentP', 'rooms', 'loans', 'loanHist', 'abr', 'settle', 'abrPay']);
+   An Abrechnung booked, cancelled or reopened, or a tenancy / rent entry changed in Tenant history, while a later
+   read runs (_CX_ABR_OWN): the answer was asked for before that save and would hide it (the row showed open again,
+   the move-out went blank) → its rows stay as they are; the next return reads them. */
+const _CX_ABR_OWN = new Set(['abr', 'settle', 'abrPay', 'rntTen', 'casaTen', 'rentP']);
+const _CX_LIVE = new Set(_CX_SRC.map(([k]) => k).filter(k => k !== 'incAll' && k !== 'readings').concat('abrPay', 'knkAll'));
 const CTL_FULL_EVERY = 10 * 60 * 1000;                   // a full read at least every 10 minutes (and at start, in Setup)
 const _cxLost = new Set();
 async function ctlSollLoad(only) {
   const had = !!window._src.loaded, lost = k => !had || _cxLost.has(k);
   const SRC = only ? _CX_SRC.filter(([k]) => only.has(k)) : _CX_SRC;
   const ws = window._ctlWriteSeq, busy = window._ctlBusy > 0;     // a save on its way / made before the answer comes
-  const keepOwn = k => !!only && _CX_ABR_OWN.has(k) && (busy || window._ctlBusy > 0 || window._ctlWriteSeq !== ws);
+  const keepOwn = k => had && _CX_ABR_OWN.has(k) && (busy || window._ctlBusy > 0 || window._ctlWriteSeq !== ws);
   const res = await Promise.all(SRC.map(([, t]) => {
     const q = () => _ctlSupa.from(t).select('*');
     return q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
@@ -208,12 +211,13 @@ async function ctlRefreshSources(force, full, year) {
   _cxRefreshing = (async () => {
     try {
       if (all) {
-        const ws = window._ctlWriteSeq, busy = window._ctlBusy > 0;
-        await Promise.all([ctlSollLoad(), year ? _ctlReloadYear() : null]);
-        // a save meanwhile ('Book all' …): the all-years rows were read before it — the loaded year's rows as they are now
-        if (busy || window._ctlBusy > 0 || window._ctlWriteSeq !== ws) {
-          const C = window._ctrl, y = C.year;
-          S.incAll = (S.incAll || []).filter(r => r.year !== y).concat((C.income || []).filter(r => r.year === y));
+        const log = window._ctlIncLog = [];
+        try { await Promise.all([ctlSollLoad(), year ? _ctlReloadYear() : null]); } finally { window._ctlIncLog = null; }
+        // income saved or deleted meanwhile ('Book all' …) may have been read before it: those months as saved —
+        // the other rows as just read (money booked on another device stays)
+        for (const [u, y, m, row] of log) {
+          S.incAll = (S.incAll || []).filter(r => !(r.unit_id === u && r.year === y && r.month === m));
+          if (row) S.incAll.push(row);
         }
         if (typeof ctlSollReset === 'function') ctlSollReset();
         return true;
@@ -264,10 +268,12 @@ async function _ctlReloadLive(year) {
   return false;
 }
 /* Back to the app: Controlling only (its boot sets _ctlLiveReload) — Settlements loads this file too but has its own
-   rule (settlements-app.js, once a minute); it read everything twice (C5 x5) */
+   rule (settlements-app.js, once a minute); it read everything twice (C5 x5). Setup and Tenant history read
+   everything, as before: the income of every year (balances) and what was just fixed in Rentals / Casa Castel. */
 if (typeof document !== 'undefined') document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible' || !window._src.loaded || !window._ctlLiveReload) return;
-  if (await ctlRefreshSources(false, false, true) && typeof cxRenderActive === 'function') cxRenderActive();
+  const setup = typeof CX !== 'undefined' && CX.tab === 'setup';
+  if (await ctlRefreshSources(false, setup, true) && typeof cxRenderActive === 'function') cxRenderActive();
 });
 
 /* ── small helpers ── */

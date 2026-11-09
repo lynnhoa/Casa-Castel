@@ -256,7 +256,7 @@ async function _cxHChange(ev, host) {
   const before = t[field];
   t[field] = iso;
   try {
-    const { error } = await _ctlSupa.from(_cxHTable(app)).update({ [field]: iso }).eq('id', t.id);
+    const { error } = await ctlWriting(() => _ctlSupa.from(_cxHTable(app)).update({ [field]: iso }).eq('id', t.id))();
     if (error) throw error;
     ctlSollReset();
     ctlToast('Saved');
@@ -266,3 +266,5 @@ async function _cxHChange(ev, host) {
 
 /* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
 window.renderHistory = ctlScope(window.renderHistory);
+/* C5: a rent entry saved or deleted here counts as a save — a return read running meanwhile keeps it (_CX_ABR_OWN) */
+if (typeof ccRpInsert === 'function') { ccRpInsert = ctlWriting(ccRpInsert); ccRpUpdate = ctlWriting(ccRpUpdate); ccRpDelete = ctlWriting(ccRpDelete); }

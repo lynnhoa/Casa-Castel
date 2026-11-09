@@ -49,8 +49,11 @@ async function ctlLoadAll(year, opt) {
   const rows = { properties: p, units: u, categories: c, income: inc, apt_expenses: apt, castel_expenses: cst, one_time: ot, recon: rec };
   for (const k in rows) if (rows[k].error) { if (!(opt && opt.quiet)) console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
   if (opt && typeof opt.ok === 'function' && !opt.ok(seq)) throw new Error('not taken over');
+  const yearChanged = window._ctrl.year !== y;
   for (const k in rows) window._ctrl[k] = rows[k].data || [];
   window._ctrl.year = y;
+  // C5: a tenant without a saved rent learns it from the loaded year's entries — another year, Soll worked out anew
+  if (yearChanged && typeof ctlSollReset === 'function') ctlSollReset();
   ctlDataChanged();                                          // C5: new rows → the Tenant history works its balances out again
   await probe;
 }
@@ -88,9 +91,12 @@ function _ctlIncChanged(old, kalt, nk, split) {
   for (const k of ks) if (_ctlR2(old.split[k]) !== _ctlR2(split[k]) || (k in split) !== (k in old.split)) return true;
   return false;
 }
+/* C5: income saved or deleted while a full read runs — laid over the rows it read (ctlRefreshSources) */
+function _ctlIncNote(u, y, m, row) { if (window._ctlIncLog) window._ctlIncLog.push([u, y, m, row]); }
 function _ctlIncCache(data) {
   ctlDataChanged();                                                // C5: the Tenant history balances follow
   const y = data.year, m = data.month, u = data.unit_id;
+  _ctlIncNote(u, y, m, data);
   const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
   if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
   const idx = window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);
@@ -300,6 +306,7 @@ async function ctlDeleteIncome(unit_id, month) {
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
   if (window._src && window._src.incAll) window._src.incAll = window._src.incAll.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+  _ctlIncNote(unit_id, y, month, null);
   ctlDataChanged();                                                  // C5: the Tenant history balances follow
   if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(unit_id);   // x6
 }
