@@ -1,3 +1,4 @@
+-- NOT USED — Casa Castel has no Mieterhöhung (owner decision 09.11.2026). Do not run this file.
 -- ═══ Casa Castel · Mieterhöhungen (Nov 2026 · safe to run twice · nothing is deleted) ═══
 -- Tenants › Change rent › Mieterhöhung saves into this table, and Controlling applies the new rent from its date.
 -- It was missing in the project, so saving a Mieterhöhung failed with "Not saved". Run this once in
