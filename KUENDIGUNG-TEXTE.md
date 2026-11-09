@@ -1,7 +1,7 @@
 # Kündigungsbestätigung – final texts (owner, Nov 2026)
 
-Built in the app: **1** and **2** (Casa Castel rooms, `cc-kuendigung.js`).
-Saved for the Rentals Kündigung (not built yet): **2 for an apartment**, **3**, **4**, **5**.
+Built in the app (`cc-kuendigung.js`): **1** and **2** for Casa Castel rooms; **2 for an apartment**, **3**, **4**
+and **5** for the Rentals Kündigung (Nov 2026 · #26: flats, Gewerbe, parking).
 
 ## Same for every version
 - **Greeting:** "Hallo {Vorname}," – with two tenants "Hallo {Vorname} und {Vorname2},".
