@@ -118,13 +118,13 @@ function _stBL(o) {                                                   // remembe
 const ST_AUTO_ITEM = /^(NK|Hausgeld) (\d{2}\.\d{2}\.\d{4}|\d{4} · )/;
 const _stIsOwnBooking = b => !_stBL(b) && ST_AUTO_ITEM.test(String((b && b.item) || ''));
 async function _stUndoBooking(b) {
-  window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
-  if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); return 'deleted'; }
+  const drop = () => { window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id); };   // only once saved: a failed delete / unlink keeps the row paid
+  if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); drop(); return 'deleted'; }
   const cur = (window._ctrl.one_time || []).find(x => x.id === b.id);
   const bl = _stBL(b) || _stBL(cur);                                  // #12: back to the type you gave it
   const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges', before_link: null };
   if (bl && bl.kind && bl.direction !== undefined) f.direction = bl.direction;
-  const d = await _stUpdOT(b.id, f);
+  const d = await _stUpdOT(b.id, f); drop();
   const k = (window._ctrl.one_time || []).findIndex(x => x.id === b.id); if (k >= 0 && d) window._ctrl.one_time[k] = d;
   return 'unlinked';
 }
