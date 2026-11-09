@@ -115,7 +115,12 @@ window.renderIncome = function () {
         b.disabled = true;
         const area = CX.area, y = window._ctrl.year, m = CX.month;   // C1 #2: the Undo belongs to where you booked
         const L = _cxIncBulkList(), done = [];
-        for (const e of L.list) { await _cxIncSave(e, e.s.soll); if (e.u.id != null) done.push(e.u.id); }
+        for (const e of L.list) {
+          // x8: each item goes into the month you booked, also when the month arrow is tapped meanwhile;
+          // another year opened meanwhile → stop (the rest stays open in its own month)
+          if (window._ctrl.year !== y) break;
+          await _cxIncSave(e, e.s.soll, y, m); if (e.u.id != null) done.push(e.u.id);
+        }
         // switched area / month / year while saving: that screen keeps its own state, no Undo appears there
         if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = { tab: 'income', y, m, items: done, n: done.length }; }
         return window.renderIncome();
@@ -123,7 +128,10 @@ window.renderIncome = function () {
       if (a === 'undo') {
         const u = cxUndoFor('income'); if (!u) return;
         b.disabled = true;
-        for (const uid of u.items) { try { await ctlDeleteIncome(uid, u.m); } catch (err) { cxToastErr(err); } }
+        for (const uid of u.items) {
+          if (window._ctrl.year !== u.y) break;                // x8: never clear a month of another year
+          try { await ctlDeleteIncome(uid, u.m); } catch (err) { cxToastErr(err); }
+        }
         CX.undo = null;
         return window.renderIncome();
       }
@@ -196,13 +204,16 @@ async function _cxIncUnit(e) {
   if (typeof ctlSollReset === 'function') ctlSollReset();
 }
 
-/* Save one unit's income (null = delete → "offen") */
-async function _cxIncSave(e, ist) {
-  if (e.part) return _cxIncSavePart(e, ist);
-  const m = CX.month;
+/* Save one unit's income (null = delete → "offen").
+   x8: y / m = the month the amount belongs to (Book all passes them: the month arrow can be tapped while it saves).
+   The data layer writes into the year on screen → nothing is written once another year is open. */
+async function _cxIncSave(e, ist, y = window._ctrl.year, m = CX.month) {
+  if (e.part) return _cxIncSavePart(e, ist, y, m);
   try {
+    if (window._ctrl.year !== y) return;
     if (ist === null || ist === undefined) { if (e.u.id != null) await ctlDeleteIncome(e.u.id, m); return; }
     await _cxIncUnit(e);
+    if (window._ctrl.year !== y) return;
     const nk = _cxIncNkShare(e.s, ist);
     // real Ist: the amount belongs to the one tenant of this month (no tenant → nothing to attach)
     const tp = (e.s.parts || []).filter(pt => pt.tid !== 'room');
@@ -217,11 +228,23 @@ function _cxIncNkShare(s, ist) {
   return Math.max(0, cxR(ist * s.nk / s.soll));
 }
 
-/* One tenant's line in a change month (G1): stored as split[tenant] + the unit total */
-async function _cxIncSavePart(e, ist) {
-  const m = CX.month, y = window._ctrl.year;
+/* One tenant's line in a change month (G1): stored as split[tenant] + the unit total.
+   x9: one save at a time per unit and month — the next tenant's line waits for the save on its way and then
+   reads the row it wrote (two quick taps lost the first tenant's payment: both read the row before either landed) */
+const _cxIncPartQ = {};                                 // unit|year|month → the save on its way
+async function _cxIncSavePart(e, ist, y = window._ctrl.year, m = CX.month) {
   try {
+    if (window._ctrl.year !== y) return;
     await _cxIncUnit(e);
+  } catch (err) { cxToastErr(err); return; }
+  const k = e.u.id + '|' + y + '|' + m;
+  const job = (_cxIncPartQ[k] || Promise.resolve()).then(() => _cxIncSavePartNow(e, ist, y, m));
+  _cxIncPartQ[k] = job;
+  try { await job; } finally { if (_cxIncPartQ[k] === job) delete _cxIncPartQ[k]; }
+}
+async function _cxIncSavePartNow(e, ist, y, m) {
+  try {
+    if (window._ctrl.year !== y) return;                     // another year is open now: nothing is written
     const inc = window._ctrl.income.find(r => r.unit_id === e.u.id && r.year === y && r.month === m);
     const split = {};
     if (inc) for (const pt of (e.s.parts || [])) {           // keep what the other tenants paid
