@@ -274,8 +274,8 @@ function _cxdCss() {
     .cxn-th { font-size:9.5px; font-weight:600; letter-spacing:.14em; color:#9A8E7E; }
     .cxn-g1 { font-weight:600; color:#3D3027; } .cxn-g2 > span:first-child { padding-left:12px; color:#7A6F62; }
     .cxn-rs { border-top:.5px solid #E2DBD0; margin-top:4px; padding-top:8px; font-weight:600; color:#3D3027; }
-    .cxn-rs > span:nth-child(2), .cxn-rs > span:nth-child(3) { font-family:'Cormorant Garamond',Georgia,serif; font-size:19px; }
-    .cxn-inf { font-size:11px; color:#B0A596; }
+    .cxn-rs > span:nth-child(2), .cxn-rs > span:nth-child(3) { font-family:'Cormorant Garamond',Georgia,serif; font-size:17px; }
+    .cxn-inf { font-size:11px; color:#B0A596; } .cxn-inf > span:nth-child(3) { white-space:normal; }
     .cxn-two { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; } .cxn-two.cxn-one { grid-template-columns:1fr; }
     .cxn-tile { display:flex; flex-direction:column; align-items:stretch; text-align:left; background:#FDFCFA; border:.5px solid #E0DAD0; border-radius:18px; padding:13px 13px 12px; margin:0; font-family:'Inter',system-ui,sans-serif; color:#3A3530; cursor:pointer; -webkit-appearance:none; appearance:none; transition:border-color .15s, box-shadow .15s; min-width:0; }
     .cxn-tile.on { border-color:#3D3027; box-shadow:0 0 0 1px #3D3027 inset; }
@@ -296,7 +296,7 @@ function _cxdCss() {
     .cxn-pr { display:grid; grid-template-columns:1fr 70px 70px 14px; gap:4px; align-items:center; width:100%; padding:10px 0; margin:0; border:0; border-bottom:.5px solid #EDE8E0; background:none; text-align:left; font-family:'Inter',system-ui,sans-serif; cursor:pointer; -webkit-appearance:none; appearance:none; }
     .cxn-pl { display:flex; flex-direction:column; min-width:0; }
     .cxn-pn { font-size:13.5px; font-weight:500; color:#3D3027; } .cxn-ps { font-size:11px; color:#9A8E7E; margin-top:2px; }
-    .cxn-pv { font-size:18px; text-align:right; white-space:nowrap; }
+    .cxn-pv { font-size:16px; text-align:right; white-space:nowrap; }
     .cxn-ch { color:#C8BFB0; font-size:12px; transition:transform .2s; } .cxn-pr.open .cxn-ch { transform:rotate(90deg); }
     .cxn-pd { padding:0 0 10px; border-bottom:.5px solid #EDE8E0; }
     .cxn-chart { display:flex; align-items:flex-start; gap:7px; margin-top:14px; }
