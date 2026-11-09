@@ -117,18 +117,24 @@ async function ctlReadAll(first, query, label) {
    'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before.
    C5 (Nov 2026, #31): only = a Set of keys → just those sources (+ the Abrechnungen bookings if 'abrPay' is in it):
    what the other apps change while Controlling is in the background (_CX_LIVE). Without it: everything, as before.
-   A read that failed with nothing loaded before (_cxLost) is read again on every return until it works (C5 review). */
+   A read that failed with nothing loaded before (_cxLost) is read again on every return until it works (C5 review).
+   An Abrechnung booked, cancelled or reopened while the return reads (_CX_ABR_OWN): the answer was asked for before
+   that save and would hide it (the row showed open again) → its rows stay as they are; the next return reads them. */
+const _CX_ABR_OWN = new Set(['abr', 'settle', 'abrPay']);
 const _CX_LIVE = new Set(['rntTen', 'casaTen', 'rentP', 'rooms', 'loans', 'loanHist', 'abr', 'settle', 'abrPay']);
 const CTL_FULL_EVERY = 10 * 60 * 1000;                   // a full read at least every 10 minutes (and at start, in Setup)
 const _cxLost = new Set();
 async function ctlSollLoad(only) {
   const had = !!window._src.loaded, lost = k => !had || _cxLost.has(k);
   const SRC = only ? _CX_SRC.filter(([k]) => only.has(k)) : _CX_SRC;
+  const ws = window._ctlWriteSeq, busy = window._ctlBusy > 0;     // a save on its way / made before the answer comes
+  const keepOwn = k => !!only && _CX_ABR_OWN.has(k) && (busy || window._ctlBusy > 0 || window._ctlWriteSeq !== ws);
   const res = await Promise.all(SRC.map(([, t]) => {
     const q = () => _ctlSupa.from(t).select('*');
     return q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
   }));
   SRC.forEach(([k, t], i) => {
+    if (keepOwn(k)) return;                              // a save came meanwhile: the rows you have stay
     if (res[i].error) {
       console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
       if (!lost(k)) return;                              // keep what was loaded before
@@ -141,8 +147,8 @@ async function ctlSollLoad(only) {
     const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
     const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Abrechnungen)');
     if (r.error) throw r.error;
-    window._src.abrPay = r.data || []; _cxLost.delete('abrPay');
-  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (lost('abrPay')) { window._src.abrPay = []; _cxLost.add('abrPay'); } }
+    if (!keepOwn('abrPay')) { window._src.abrPay = r.data || []; _cxLost.delete('abrPay'); }
+  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (!keepOwn('abrPay') && lost('abrPay')) { window._src.abrPay = []; _cxLost.add('abrPay'); } }
   // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
   if (!only || only.has('knkAll')) try {
     const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
@@ -202,7 +208,13 @@ async function ctlRefreshSources(force, full, year) {
   _cxRefreshing = (async () => {
     try {
       if (all) {
+        const ws = window._ctlWriteSeq, busy = window._ctlBusy > 0;
         await Promise.all([ctlSollLoad(), year ? _ctlReloadYear() : null]);
+        // a save meanwhile ('Book all' …): the all-years rows were read before it — the loaded year's rows as they are now
+        if (busy || window._ctlBusy > 0 || window._ctlWriteSeq !== ws) {
+          const C = window._ctrl, y = C.year;
+          S.incAll = (S.incAll || []).filter(r => r.year !== y).concat((C.income || []).filter(r => r.year === y));
+        }
         if (typeof ctlSollReset === 'function') ctlSollReset();
         return true;
       }
