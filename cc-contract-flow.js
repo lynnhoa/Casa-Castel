@@ -1367,7 +1367,7 @@ function _ccfPagesSheet() {
   if (!ov) { ov = document.createElement('div'); ov.id = 'ccfPagesOv'; ov.className = 'ccf-ov'; document.body.appendChild(ov); }
   const n = up.pages.length;
   ov.innerHTML = `<div class="ccf-sheet ccf-sheet--small" role="dialog" aria-modal="true">
-    <div class="ccf-shd"><div><div class="ccf-eyebrow">${ccfEsc(ccfDocLabel(up.type, ccfRec(up.tid)))} · ${up.variant === 'signed' ? 'Signed' : 'Unsigned'}</div>
+    <div class="ccf-shd"><div><div class="ccf-eyebrow">${ccfEsc(ccfDocLabel(up.type, ccfRec(up.tid)))}${/^nk_\d{4}-\d{2}-\d{2}$/.test(up.type || '') ? '' : ' · ' + (up.variant === 'signed' ? 'Signed' : 'Unsigned')}</div>
       <div class="ccf-title">${n} ${n === 1 ? 'page' : 'pages'} ready</div>
       <div class="ccf-sub">The photos become one PDF, one page each.</div></div></div>
     <div class="ccf-sft">
@@ -1454,7 +1454,8 @@ function ccfDocLabel(type, rec) {
   if (type === 'auszug') return 'Übergabe Auszug';
   if (type === 'kuendigung') return 'Kündigung (Mieter)';                 // Nov 2026: the tenant's own Kündigung (cc-kuendigung.js)
   if (type === 'kuendigungsbestaetigung') return 'Kündigungsbestätigung';  // … and the landlord's letter
-  { const n = /^nk_(\d{4})-\d{2}-\d{2}$/.exec(type || ''); if (n) return 'NK-Abrechnung ' + n[1]; }   // Nov 2026: own copy (cc-nk-settle.js)
+  { const n = /^nk_(\d{4}-\d{2}-\d{2})$/.exec(type || '');   // Nov 2026: own NK copy (cc-nk-settle.js) — "2024/25" for a period over the year end
+    if (n) return 'NK-Abrechnung ' + (rec && typeof ccNkDocYearLabel === 'function' ? ccNkDocYearLabel(rec, n[1]) : n[1].slice(0, 4)); }
   const m = /^verlaengerung_(\d{4}-\d{2}-\d{2})$/.exec(type || '');
   if (m) {
     const row = rec ? ccfA().renewalRows(rec).find(x => x.key === type) : null;

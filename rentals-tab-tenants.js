@@ -1077,6 +1077,10 @@ async function _rntLoad(unitsReady) {
      rows) — the rows are matched to the units afterwards, exactly as the filtered queries did.
      Was: units → 4 tables → 6 tables, one after another, before anything was drawn. */
   const rdApp = (typeof ccfA === 'function' && ccfA() && ccfA().app) || 'rentals';
+  // NK parts this load cannot fetch keep the phone's copy, also when Tenants was not the first tab
+  if (typeof CC_NKS !== 'undefined' && CC_NKS.rows === null) {
+    try { const c = JSON.parse(localStorage.getItem(RNT_COPY_KEY) || 'null'); if (c && c.v === 1 && c.nks) Object.assign(CC_NKS, c.nks); } catch (e) {}
+  }
   const [, recAll, vorausAll, staffelAll, kAll, nkAll, docAll, , , readAll] = await Promise.all([
     unitsReady || null,
     sbL.from('rnt_tenant_records').select('*').order('mietbeginn', { ascending: false }),
@@ -4350,7 +4354,8 @@ let _rntUnitsFailed = false;     // the last Tenants load ran without its apartm
 function _rntSaveCopy(readings) {
   try {
     const nks = typeof CC_NKS !== 'undefined'
-      ? { rows: CC_NKS.rows, res: CC_NKS.res, props: CC_NKS.props, buys: CC_NKS.buys, casaProp: CC_NKS.casaProp } : null;
+      ? { rows: CC_NKS.rows, res: CC_NKS.res, props: CC_NKS.props, buys: CC_NKS.buys, casaProp: CC_NKS.casaProp,
+          letters: CC_NKS.letters, units: CC_NKS.units } : null;   // Documents › NK-Abrechnungen drawn from the copy: kept letters + unit links
     const rp  = typeof CC_RP !== 'undefined' ? (CC_RP.rows || []).filter(r => r.app === 'rentals') : [];
     localStorage.setItem(RNT_COPY_KEY, JSON.stringify({ v: 1, at: Date.now(),
       apts: appApartments || [], pks: appParking || [], records: _rntRecords, kaution: _rntKaution, nk: _rntNK,
