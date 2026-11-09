@@ -113,10 +113,11 @@ window.renderIncome = function () {
       if (a === 'allYes') {
         if (cxFuture(window._ctrl.year, CX.month)) { CX.bulk = null; return window.renderIncome(); }   // CP2 (#4): not due yet
         b.disabled = true;
+        const area = CX.area, y = window._ctrl.year, m = CX.month;   // C1 #2: the Undo belongs to where you booked
         const L = _cxIncBulkList(), done = [];
         for (const e of L.list) { await _cxIncSave(e, e.s.soll); if (e.u.id != null) done.push(e.u.id); }
-        CX.bulk = null;
-        CX.undo = { tab: 'income', y: window._ctrl.year, m: CX.month, items: done, n: done.length };
+        // switched area / month / year while saving: that screen keeps its own state, no Undo appears there
+        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = { tab: 'income', y, m, items: done, n: done.length }; }
         return window.renderIncome();
       }
       if (a === 'undo') {

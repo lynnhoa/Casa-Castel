@@ -113,10 +113,11 @@ window.renderExpenses = function () {
       if (a === 'allYes') {
         if (cxFuture(window._ctrl.year, CX.month)) { CX.bulk = null; return window.renderExpenses(); }   // CP2 (#4): not due yet
         b.disabled = true;
+        const area = CX.area, y = window._ctrl.year, m = CX.month;   // C1 #2: the Undo belongs to where you booked
         const L = _cxExpBulkList(), done = [];
         for (const e of L.list) { await _cxExpSave(e, e.row.soll); if (e.row.ist !== null && e.row.ist !== undefined) done.push({ pid: e.p.id, catId: e.row.catId || null, key: e.row.key }); }
-        CX.bulk = null;
-        CX.undo = { tab: 'expenses', y: window._ctrl.year, m: CX.month, items: done, n: done.length };
+        // switched area / month / year while saving: that screen keeps its own state, no Undo appears there
+        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = { tab: 'expenses', y, m, items: done, n: done.length }; }
         return window.renderExpenses();
       }
       if (a === 'undo') {
