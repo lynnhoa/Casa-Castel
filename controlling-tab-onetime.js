@@ -488,17 +488,23 @@ function _cxOtListHTML() {
 
 /* The summary card's figures (label · net amount big · paid / back · Kaufnebenkosten) — #16: the net amount, as the export.
    #27: of the same lines as the cards below — while you search, of the matching lines ('Matching "…"'). The search
-   redraws only this part (#cxOtSumF), never the search field (the iPhone keyboard stays open). */
+   redraws only this part (#cxOtSumF), never the search field (the iPhone keyboard stays open). While you search, the
+   figures without the search lie hidden underneath: the card keeps its height and the search field below never jumps.
+   (A one-cell grid, searching or not — margins don't collapse there: the Kaufnebenkosten line keeps 2px + the buttons' 4px.) */
 function _cxOtSumFigHTML() {
-  const inPer = _cxOtVisible();                                        // the period (Year / Month) and the search
+  const q = _cxOt.q.trim(), L = '<div style="grid-area:1/1;min-width:0';
+  const inPer = q ? _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month) : null;
+  return '<div style="display:grid">' + L + '">' + _cxOtSumFigs(_cxOtVisible(), q) + '</div>' +
+    (q ? L + ';visibility:hidden" aria-hidden="true">' + _cxOtSumFigs(inPer, '') + '</div>' : '') + '</div>';
+}
+function _cxOtSumFigs(inPer, q) {                                     // inPer: the period (Year / Month) and the search
   const all = inPer.filter(o => !_cxOtKnk(o)), knkAll = inPer.filter(_cxOtKnk);
   const knkTot = knkAll.reduce((s, o) => s - _cxOtSigned(o), 0);
   const fig = _cxOtFig(all), nInv = fig.nInv;                          // D39: income lines are not invoices
   const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
-  const q = _cxOt.q.trim();
   return '<div class="cx-row-sb"><span class="cx-lbl cx-ot-sumlbl">' + (q ? cxEsc('Matching "' + q + '"') : 'Invoices · ' + cxEsc(period)) + '</span>' + cxPill('beige', nInv + (nInv === 1 ? ' invoice' : ' invoices')) + '</div>' +
     '<div class="cx-sum__v"><span class="cx-sum__big">' + cxIO(-fig.net) + '</span><span class="cx-sum__of">' + (_cxOtPaidBack(fig) || 'in ' + period) + '</span></div>' +
-    (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '');
+    (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 2px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '');
 }
 
 window.renderOneTime = function () {
