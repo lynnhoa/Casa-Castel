@@ -10,8 +10,8 @@
    · Nov 2026 (D39): Casa Castel lines follow Maintenance › Who pays, so their NK switch is
      read-only too; a tenant's direct payment is a line of its own (maint_refund_of,
      source_ref "maint:erst:<id>") and counts as a Maintenance line as well
-   · Settlements: they are never taken by the automatic payment matching
-     (NK payment of a tenant, WEG Hausgeld) — same amount ≠ same payment
+   · Settlements (and Controlling's Soll, C3): they are never taken by the automatic payment
+     matching (NK payment of a tenant, WEG Hausgeld) — same amount ≠ same payment
    Nothing else in Controlling changes: they count in the Dashboard, the
    month result and the invoice export like every invoice.
    ───────────────────────────────────────────────────────────── */
@@ -38,7 +38,7 @@
     wrapped._mtShielded = true;
     window[name] = wrapped;
   }
-  ['_stFindManualNk', '_srFindBooking'].forEach(shield);
+  ['_stFindManualNk', '_stFindOwnWeg', '_srFindBooking'].forEach(shield);   // C3: the first two are in controlling-abr.js (Controlling's Soll uses them too)
 
   /* ── 2 · Controlling One-off: the "Maintenance" tag · D8: a tap opens the normal form,
         read-only except the NK switch (controlling-tab-onetime.js, _cxOtMaintFormHTML) ── */

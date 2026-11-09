@@ -2131,23 +2131,31 @@ async function scSetAmount(key, raw, btn, when) {
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
   const amt = cxR(Math.abs(parsed));
-  let date = scD(when) || cxToday(), linkedManual = null;               // Oct 2026: the day the money moved (default today)
+  let date = scD(when) || cxToday(), linkedManual = null, took = null;   // Oct 2026: the day the money moved (default today)
   if (btn) btn.disabled = true;
   try {
     if (res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
-    if (b) {
+    let mine = null;
+    if (b && amt && (Number(b.direction) === 1 ? 1 : -1) === res.dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(CASA_PROP_ID, res, amt, false))) {
+      // C3c (as in Controlling): a typo corrected — the apps' booking gets the amount of your own unlinked entry → that
+      // booking goes and your entry is the payment again (it counted twice: the corrected booking and your entry)
+      await ctlDeleteOneTime(b.id);
+      window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
+    }
+    if (b && !mine) {
       // Nov 2026 fix: the result changed direction since it was paid (Nachzahlung ↔ Guthaben) → its booking turns too
       // (it kept the old direction: Controlling counted the money the wrong way and showed it on both sides)
       const f = { amount: amt, invoice_date: date };
       if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben') });
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    } else if (amt && (linkedManual = _stFindManualNk(CASA_PROP_ID, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
-      await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);
+    } else if (amt && (took = await _stTakeOwnEntry(CASA_PROP_ID, res, amt, false, mine))) {   // #6: already typed in Controlling → link it, no 2nd booking (C3c: other years too)
+      linkedManual = took.o; date = String((took.row || linkedManual).invoice_date || date).slice(0, 10);
+      if (took.row.id !== linkedManual.id) linkedManual = null;             // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
-      const d = await ctlAddOneTime({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
-                                      amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
-      window._src.abrPay = (window._src.abrPay || []).concat([d]);
+      const d = await ctlAbrAdd({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
+                                  amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
+      date = String(d.invoice_date || date).slice(0, 10);
     }
     await _stConfirmSettled(t.line, 'zahlung', date);
   } catch (e) { stSay('Could not save — ' + (e.message || e)); if (btn) btn.disabled = false; return; }

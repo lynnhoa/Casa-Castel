@@ -1099,11 +1099,18 @@ function _srFindBooking(c, res, rec) {
   const all = (window._ctrl.one_time || []).concat(window._src.abrPay || []);
   return all.find(o => Number(o.property_id) === Number(c.p.id) && Math.abs(Math.abs(Number(o.amount)) - res.amount) < 0.005 &&
     _srD(o.invoice_date) >= from && !/^abr:/.test(String(o.source_ref || '')) &&
+    _stBLOff(o) !== 'abr:' + res.id &&                       // C3: an entry you unlinked from this result stays unlinked
     (o.direction === undefined || o.direction === null || Number(o.direction) === res.dir)) || null;
 }
 async function _srLinkBooking(b, res) {
   const f = { source_ref: 'abr:' + res.id, kind: 'Hausgeldabrechnung', before_link: _stBeforeLink(b) };   // #12: remember your type
-  const d = await _stUpdOT(b.id, f);
+  let d;
+  try { d = await _stUpdOT(b.id, f); }
+  catch (e) {                                  // #1 (CONTROLLING-C2.sql): booked meanwhile → that booking is the payment, yours stays as it is
+    if (!ctlIsDupErr(e)) throw e;
+    if (!(await ctlAbrExisting(f.source_ref))) throw e;
+    return;
+  }
   const row = d || Object.assign({}, b, f);
   window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id).concat([row]);
   const k = (window._ctrl.one_time || []).findIndex(o => o.id === b.id); if (k >= 0) window._ctrl.one_time[k] = row;
@@ -1980,7 +1987,7 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
   const amt = cxR(Math.abs(parsed)), b = x.st.booking;
-  let date = _srD(when) || cxToday(), linkedManual = null;
+  let date = _srD(when) || cxToday(), linkedManual = null, took = null;
   if (btn) btn.disabled = true;
   try {
     if (res.via !== 'zahlung') {
@@ -1989,23 +1996,32 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
     }
     const label = weg ? 'Hausgeld ' + x.c.per.label + ' · ' + (res.dir > 0 ? 'Guthaben from WEG' : 'Nachzahlung to WEG')
                       : 'NK ' + x.c.per.label + ' · ' + (x.ti ? _srTName(x.ti.t) : '') + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben');
-    if (b) {
+    let mine = null;
+    if (b && amt && (Number(b.direction) === 1 ? 1 : -1) === res.dir && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(x.c.p.id, res, amt, weg))) {
+      // C3c (as in Controlling): a typo corrected — the apps' booking gets the amount of your own unlinked entry → that
+      // booking goes and your entry is the payment again (it counted twice: the corrected booking and your entry)
+      await ctlDeleteOneTime(b.id);
+      window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
+    }
+    if (b && !mine) {
       // Nov 2026 fix: the result changed direction since it was paid → its booking turns too (it kept the old one:
       // Controlling counted the money the wrong way and showed it on both sides)
       const f = { amount: amt, invoice_date: date };
       if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: label });
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    } else if (!weg && amt && (linkedManual = _stFindManualNk(x.c.p.id, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
-      await _stLinkManualNk(linkedManual, res); date = String(linkedManual.invoice_date || date).slice(0, 10);
+    } else if (amt && (took = await _stTakeOwnEntry(x.c.p.id, res, amt, weg, mine))) {   // #6: already typed in Controlling → link it, no 2nd booking
+      // C3c: the WEG line too — your own entry (also one you unlinked before, as Controlling's Soll does) · other years too
+      linkedManual = took.o; date = String((took.row || linkedManual).invoice_date || date).slice(0, 10);
+      if (took.row.id !== linkedManual.id) linkedManual = null;             // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
-      const d = await ctlAddOneTime({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
-        kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });
-      window._src.abrPay = (window._src.abrPay || []).concat([d]);
+      const d = await ctlAbrAdd({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
+        kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
+      date = String(d.invoice_date || date).slice(0, 10);
     }
     await _stConfirmSettled(x.l, 'zahlung', date);
   } catch (err) { stSay('Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
-  SR.setEdit = null; ctlSettlementInvalidate(); stSay(linkedManual ? 'Settled · linked to your entry in Controlling from ' + stDate(date) : 'Settled');
+  SR.setEdit = null; ctlSettlementInvalidate(); stSay(linkedManual && !weg ? 'Settled · linked to your entry in Controlling from ' + stDate(date) : 'Settled');
   _srAfterSettle(x);
 }
 /* Back to open: the booking in Controlling goes too (a skipped NK comes back as open) */

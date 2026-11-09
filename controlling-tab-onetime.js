@@ -58,10 +58,18 @@ function _cxOtAll() {
   return (window._ctrl.one_time || []).filter(o => !CX_ABR_KINDS.includes(o.kind) && !ctlIsCasaJa(o) &&   // Fix 3: Casa Jahresabrechnungen are in Abrechnungen
     Number(String(o.invoice_date || '').slice(0, 4)) === y && cxAreaPid(o.property_id));
 }
+/* #27 (Nov 2026): the search also finds amounts — "900", "900,00", "1.500", "250.55" (as typed, without the
+   thousands dots, or with a decimal point) */
+function _cxOtAmtHit(o, q) {
+  const a = String(q).replace(/[\s €+−-]/g, '');
+  if (!/^[\d.,]+$/.test(a) || !/\d/.test(a)) return false;
+  const de = cxE2(o.amount), plain = de.replace(/\./g, '');
+  return [de, plain, plain.replace(',', '.')].some(s => s.includes(a));
+}
 function _cxOtVisible() {
   const q = _cxOt.q.trim().toLowerCase();
   return _cxOtAll().filter(o => (_cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month) &&
-    (!q || [o.item, o.company].some(x => String(x || '').toLowerCase().includes(q))))
+    (!q || [o.item, o.company].some(x => String(x || '').toLowerCase().includes(q)) || _cxOtAmtHit(o, q)))
     .sort((a, b) => String(b.invoice_date).localeCompare(String(a.invoice_date)) || (Number(b.id) || 0) - (Number(a.id) || 0));
 }
 function _cxOtDefaultDate() {
@@ -70,6 +78,28 @@ function _cxOtDefaultDate() {
   return (Number(t.slice(0, 4)) === y && Number(t.slice(5, 7)) === m) ? t : y + '-' + String(m).padStart(2, '0') + '-01';
 }
 const _cxOtSigned = o => (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);
+/* #16 (Nov 2026) · the figures of One-off lines — the same on the screen and in the export (cxInvoiceData):
+   paid = what went out (invoices) · back = what came back (refunds, Maintenance returns, tenant refunds, bonuses,
+   Guthaben) · net = paid − back · nInv = invoices (an income line is no invoice). Kaufnebenkosten are never in it. */
+function _cxOtFig(lines) {
+  let paid = 0, back = 0, nInv = 0;
+  for (const o of lines || []) {
+    const a = Number(o.amount) || 0;
+    if (Number(o.direction) === 1) back += a; else { paid += a; nInv++; }
+  }
+  return { paid: cxR(paid), back: cxR(back), net: cxR(paid - back), nInv };
+}
+/* "paid 1.151 € · back + 100 €" — only when something came back (else the one amount says it all).
+   C3: in whole euros the three figures add up: the net (the big figure, cxIO(-f.net)) is the true net rounded, as on the
+   Dashboard and in the export's Summe; back is rounded and paid = net + back (each rounded on its own, paid − back was
+   1 € off now and then). The export keeps its cents. No-break spaces keep each label with its amount on the iPhone, and
+   the '·' with the figure before it (a line never starts with it). */
+function _cxOtPaidBack(f) {
+  if (!f.back) return '';
+  const v = cxR(-f.net), net = Math.round(v) ? -Math.sign(v) * Math.round(Math.abs(v)) : 0;   // as cxIO(-f.net) shows it
+  const back = Math.round(f.back);
+  return [f.paid ? 'paid\u00a0' + cxW(net + back) : '', 'back\u00a0' + cxIO(back)].filter(Boolean).join('\u00a0· ');
+}
 
 /* Year bar for the Jahr view (the month bar is used in the Monat view) */
 function _cxOtYearBar() {
@@ -299,7 +329,9 @@ function _cxOtRowHTML(o) {
   // (also next to the NK pill; and "Income" of a Maintenance return, whose green "+ €" already says so) → one pill
   const tp = !!ten && !ten.warn;
   const pills = (mt ? '<span class="cx-pill cx-pill--maint' + (tp || refund || o.nk_umlage ? ' cx-pill--mtx' : '') + '">Maintenance</span>' : '') +
-                (_cxOtKnk(o) ? cxPill('beige', 'Kaufnebenkosten') + (o.knk_type ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('in', 'Refund') : '') :
+                // #27: a Kaufnebenkosten line stands in its own block ("Kaufnebenkosten · not in cashflow") → no second
+                // "Kaufnebenkosten" pill, and no type pill when its text already starts with it ("Notar · Kauf" from Properties)
+                (_cxOtKnk(o) ? (o.knk_type && !String(o.item || '').startsWith(_cxKnkLbl(o)) ? cxPill('grey', _cxKnkLbl(o)) : '') + (inn ? cxPill('in', 'Refund') : '') :
                 refund ? cxPill('in', 'Tenant refund') :                                                       // D39: a tenant paid you directly
                 (o.nk_umlage ? '<span class="cx-pill cx-pill--nk">NK' + (nkCat ? ' · ' + cxEsc(nkCat.name) : '') + '</span>' : '') +
                 (tp ? '<span class="cx-pill cx-pill--tp">Tenants pay</span>' : '') +
@@ -310,7 +342,9 @@ function _cxOtRowHTML(o) {
   const prop = _cxOtKnk(o) ? null : ctlProp(Number(o.property_id)), od = ctlParseDate(o.invoice_date);
   const beforeBuy = !!prop && od.year > 0 && !ctlPropOwned(prop, od.year, od.month) ? ctlPropSince(prop) : '';
   const aria = mt ? 'From Maintenance: ' + (o.item || 'invoice') + ' · open' : 'Edit ' + (o.item || 'entry');
-  return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" data-mt-tag="' + (mt ? '1' : '0') + '" aria-label="' + cxEsc(aria) + '">' +
+  // C3: only a Kaufnebenkosten row WITH a pill may wrap (pill + chevron under a long text) — without one the chevron
+  // stays beside the text (a class, not :has(), so older iPhones do the same)
+  return '<button class="cx-r cx-ot-r' + (_cxOtKnk(o) && pills ? ' cx-ot-r--pill' : '') + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" data-mt-tag="' + (mt ? '1' : '0') + '" aria-label="' + cxEsc(aria) + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +
       '<span class="cx-r__p">' + pills + '<i class="ti ti-chevron-right cx-chev" aria-hidden="true"></i></span></div>' +
     '<div class="cx-r__s' + (inn ? ' pos' : '') + '">' + (inn ? '+\u202f' : '') + cxEur(o.amount) + '</div>' +   // always the stored (gross) amount
@@ -418,12 +452,12 @@ function _cxOtListHTML() {
     if (!all.length) return '';                                          // a property shows only once it has an entry
     const list = all.filter(o => !_cxOtKnk(o)), knk = all.filter(_cxOtKnk);
     const knkSum = knk.reduce((s, o) => s - _cxOtSigned(o), 0);
-    const out = list.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-    const inn = list.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
+    const fig = _cxOtFig(list);                                          // #16: paid · back · net, as the export
     const here = false;                                                  // Fix 1: nothing is typed in One-off any more
-    let body = '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'By month' : CX_MONTHS[CX.month - 1]) + '</span></div>';
-    if (_cxOt.view === 'm') body += _cxOtRowsLimited(list, p.id + '|m|' + window._ctrl.year + '|' + CX.month);
-    else {
+    // #27: the "By month" head only above invoices — a card with only Kaufnebenkosten has no empty month list
+    let body = list.length ? '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'By month' : CX_MONTHS[CX.month - 1]) + '</span></div>' : '';
+    if (list.length && _cxOt.view === 'm') body += _cxOtRowsLimited(list, p.id + '|m|' + window._ctrl.year + '|' + CX.month);
+    else if (list.length) {
       // Jahr view: one foldable block per month. Many invoices → only the newest month open at first
       const months = [...new Set(list.map(o => Number(String(o.invoice_date).slice(5, 7))))];   // newest first
       const many = list.length > 15;
@@ -447,17 +481,41 @@ function _cxOtListHTML() {
         '<span class="cx-ot-ms">' + cxW(knkSum) + ' · ' + knk.length + '</span></div>' +
         knk.slice().sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date))).map(_cxOtRowHTML).join('') +
         _cxOtKnkYearsHTML(p.id) + '</div>';
-    const n = list.filter(o => Number(o.direction) !== 1).length;          // D39: invoices only (income lines are not invoices)
+    const n = fig.nInv;                                                  // D39: invoices only (income lines are not invoices)
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
-      subHTML: [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', inn ? 'Income ' + cxIO(inn) : '', knk.length ? 'Kaufnebenkosten ' + cxW(knkSum) : ''].filter(Boolean).join(' · '),   // CP1: income green, as in the summary
+      // #16: what went out and what came back under the name, the net amount on the right — as the export's Summe (netto)
+      subHTML: list.length ? [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', _cxOtPaidBack(fig), knk.length ? 'Kaufnebenkosten\u00a0' + cxW(knkSum) : ''].filter(Boolean).join('\u00a0· ')   // C3: label and amount stay together, a line never starts with '·'
+                           : cxEsc(knk.length + ' Kaufnebenkosten · not in cashflow'),          // #27: only Kaufnebenkosten
       status: null,
-      extraPill: '<span class="cx-ot-tot">' + cxIO(-out) + '</span>',   // CP1: what went out, red
+      extraPill: list.length ? '<span class="cx-ot-tot">' + cxIO(-fig.net) + '</span>'   // CP1: red when more went out, green "+" when more came back
+                             : '<span class="cx-ot-tot cx-ot-tot--knk">' + cxW(knkSum) + '</span>',   // #27: their total in grey (part of the purchase), not "0 €"
       defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || all.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
       body,
     });
   }).join('');
+}
+
+/* The summary card's figures (label · net amount big · paid / back · Kaufnebenkosten) — #16: the net amount, as the export.
+   #27: of the same lines as the cards below — while you search, of the matching lines ('Matching "…"'). The search
+   redraws only this part (#cxOtSumF), never the search field (the iPhone keyboard stays open). While you search, the
+   figures without the search lie hidden underneath: the card keeps its height and the search field below never jumps.
+   (A one-cell grid, searching or not — margins don't collapse there: the Kaufnebenkosten line keeps 2px + the buttons' 4px.) */
+function _cxOtSumFigHTML() {
+  const q = _cxOt.q.trim(), L = '<div style="grid-area:1/1;min-width:0';
+  const inPer = q ? _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month) : null;
+  return '<div style="display:grid">' + L + '">' + _cxOtSumFigs(_cxOtVisible(), q) + '</div>' +
+    (q ? L + ';visibility:hidden" aria-hidden="true">' + _cxOtSumFigs(inPer, '') + '</div>' : '') + '</div>';
+}
+function _cxOtSumFigs(inPer, q) {                                     // inPer: the period (Year / Month) and the search
+  const all = inPer.filter(o => !_cxOtKnk(o)), knkAll = inPer.filter(_cxOtKnk);
+  const knkTot = knkAll.reduce((s, o) => s - _cxOtSigned(o), 0);
+  const fig = _cxOtFig(all), nInv = fig.nInv;                          // D39: income lines are not invoices
+  const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
+  return '<div class="cx-row-sb"><span class="cx-lbl cx-ot-sumlbl">' + (q ? cxEsc('Matching "' + q + '"') : 'Invoices · ' + cxEsc(period)) + '</span>' + cxPill('beige', nInv + (nInv === 1 ? ' invoice' : ' invoices')) + '</div>' +
+    '<div class="cx-sum__v"><span class="cx-sum__big">' + cxIO(-fig.net) + '</span><span class="cx-sum__of">' + (_cxOtPaidBack(fig) || 'in ' + period) + '</span></div>' +
+    (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 2px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '');
 }
 
 window.renderOneTime = function () {
@@ -466,7 +524,13 @@ window.renderOneTime = function () {
   if (!document.getElementById('cx-ot-knk-css')) {                    // Kaufnebenkosten block (own look, set apart from the invoices)
     const st = document.createElement('style'); st.id = 'cx-ot-knk-css';
     st.textContent = '.cx-ot-knk{margin:10px 0 6px;padding:8px 10px 2px;border-radius:10px;background:#F5F2ED;border:.5px dashed #D9CFC0}' +
-      '.cx-ot-knk>.cx-row-sb{padding:2px 0 4px}.cx-ot-knk .cx-r{background:transparent}';
+      '.cx-ot-knk>.cx-row-sb{padding:2px 0 4px}.cx-ot-knk .cx-r{background:transparent}' +
+      // #27: a long Kaufnebenkosten text shows on up to two lines (was cut to "N…" next to two pills) · a card with only
+      // Kaufnebenkosten shows their total in grey (part of the purchase, not cashflow) · a long search ends in "…"
+      '.cx-ot-knk .cx-ot-r--pill .cx-r__top{flex-wrap:wrap;row-gap:3px}.cx-ot-knk .cx-ot-r .cx-r__p{margin-left:auto}' +   // the type pill moves under a long text (C3: only rows with a pill)
+      '.cx-ot-knk .cx-ot-r .cx-r__u{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}' +
+      '.cx-ot-tot.cx-ot-tot--knk{color:#6E6357}' +
+      '.cx-ot-sumlbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';
     document.head.appendChild(st);
   }
   if (!document.getElementById('cx-ot-d39-css')) {                    // D39: Who pays (Tenants pay · Tenant refund · Casa summary)
@@ -500,23 +564,12 @@ window.renderOneTime = function () {
   if (CX.tab !== 'onetime' || (_cxOt.formAt && _cxOt.formAt !== at)) { _cxOt.form = null; _cxOt.formAt = null; }
   CX.tab = 'onetime';
   const flash = _cxOt.flash;
-  const inPer = _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month);
-  const all = inPer.filter(o => !_cxOtKnk(o)), knkAll = inPer.filter(_cxOtKnk);
-  const knkTot = knkAll.reduce((s, o) => s - _cxOtSigned(o), 0);
-  const raus = all.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-  const rein = all.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-  const nInv = all.filter(o => Number(o.direction) !== 1).length;      // D39: income lines are not invoices
-  const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
-
   cxPaint(host, '<div class="cx-page">' +
     '<div class="cx-seg cx-seg--view" role="group" aria-label="Ansicht">' +
       '<button class="' + (_cxOt.view === 'y' ? 'on' : '') + '" data-cx="otView" data-v="y">Year</button>' +
       '<button class="' + (_cxOt.view === 'm' ? 'on' : '') + '" data-cx="otView" data-v="m">Month</button></div>' +
     (_cxOt.view === 'y' ? _cxOtYearBar() : cxMonthBar()) +
-    '<div class="cx-card cx-sum">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', nInv + (nInv === 1 ? ' invoice' : ' invoices')) + '</div>' +
-      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxIO(-raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxIO(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
-      (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '') +
+    '<div class="cx-card cx-sum"><div id="cxOtSumF">' + _cxOtSumFigHTML() + '</div>' +
       '<div class="cx-grid2" style="margin-top:4px">' +
         '<button class="cx-btn cx-btn--s" data-cx="otToMaint"><i class="ti ti-plus" aria-hidden="true"></i>Add in Maintenance</button>' +
         '<button class="cx-btn cx-btn--s" data-cx="otExp">' + (_cxOt.exp.open ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-download" aria-hidden="true"></i>Export') + '</button>' +
@@ -525,7 +578,7 @@ window.renderOneTime = function () {
     _cxOtBonusHTML() +
     _cxOtMtSumHTML() +                                                  // D39: Casa Castel · Maintenance <year> after Who pays
     '<div class="cx-head"><span class="cx-lbl">Invoices per property</span><span class="cx-lbl">Amount</span></div>' +
-    '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Search · description or company" aria-label="Search" value="' + cxEsc(_cxOt.q) + '"></label>' +
+    '<label class="cx-f cx-f--l cx-ot-q"><i class="ti ti-search" aria-hidden="true" style="margin:0 6px 0 0"></i><input type="search" id="cxOtQ" placeholder="Search · description, company or amount" aria-label="Search" value="' + cxEsc(_cxOt.q) + '"></label>' +
     '<div id="cxOtList">' + _cxOtListHTML() + '</div>' +
     '<div class="cx-r__sub" style="text-align:center;margin-top:8px">New receipts go in Maintenance. Jahresabrechnungen, NK and Hausgeld results are in Income and Expenses.</div>' +
   '</div>');   // B18: only what changed
@@ -536,7 +589,10 @@ window.renderOneTime = function () {
   if (q && !q._w) {
     q._w = true;
     let t = null;
-    q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { _cxOt.q = q.value; const L = document.getElementById('cxOtList'); if (L) L.innerHTML = _cxOtListHTML(); }, 150); });
+    q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => {
+      _cxOt.q = q.value; const L = document.getElementById('cxOtList'); if (L) L.innerHTML = _cxOtListHTML();
+      const F = document.getElementById('cxOtSumF'); if (F) F.innerHTML = _cxOtSumFigHTML();   // #27: the summary follows the search
+    }, 150); });
   }
 
   cxWire(host, {

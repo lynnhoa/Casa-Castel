@@ -82,9 +82,44 @@ function ctlAbrResults() {
   return out;
 }
 
-/* The booking of a result (any year) */
+/* The booking of a result (any year) — #1 (Nov 2026): booked twice → the one in the result's direction */
+const _cxAbrDir = o => (Number(o.direction) === 1 ? 1 : -1);
+function ctlAbrBookings(res) { return (window._src.abrPay || []).filter(o => res.refs.includes(o.source_ref)); }
 function ctlAbrBooking(res) {
-  return (window._src.abrPay || []).find(o => res.refs.includes(o.source_ref)) || null;
+  const all = ctlAbrBookings(res);
+  return all.find(o => _cxAbrDir(o) === res.dir) || all[0] || null;
+}
+
+/* ── ONE BOOKING PER RESULT (#1, Nov 2026) ──────────────────────────────────────────────────
+   A double tap on the Soll wrote two lines for one result: Income / Expenses showed one, the Dashboard and the
+   year export counted both. Now: one save per result at a time (_cxAbrRun), and CONTROLLING-C2.sql lets the
+   database refuse a second line (unique index ctrl_ot_abr_once → error 23505). When another device or Settlements
+   booked the result meanwhile, that booking is read back and taken as the payment — no message.
+   Settlements uses ctlAbrAdd / ctlAbrExisting too (it loads this file). */
+const ctlIsDupErr = e => /23505|duplicate key/i.test(String((e && e.code) || '') + ' ' + String((e && (e.message || e.details)) || e || ''));
+function _ctlAbrKeep(d) {                                 // the booking → abrPay (and One-off's list when its year is loaded)
+  window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== d.id).concat([d]);
+  const ot = window._ctrl && window._ctrl.one_time;
+  if (Array.isArray(ot) && Number(String(d.invoice_date || '').slice(0, 4)) === Number(window._ctrl.year) && !ot.some(o => o.id === d.id)) ot.push(d);
+  return d;
+}
+/* The booking another device / Settlements made for this source_ref (read from the database) → kept, or null */
+async function ctlAbrExisting(ref) {
+  const { data, error } = await _ctlSupa.from('ctrl_expense_one_time').select('*').eq('source_ref', ref).in('kind', CX_ABR_KINDS).order('id', { ascending: true }).limit(1);
+  if (error || !data || !data.length) return null;
+  return _ctlAbrKeep(data[0]);
+}
+/* Book a result: a new line, or — the database says it is booked already (23505) — that booking */
+async function ctlAbrAdd(f) {
+  let d;
+  try { d = await ctlAddOneTime(f); }
+  catch (err) {
+    if (!f.source_ref || !ctlIsDupErr(err)) throw err;
+    d = await ctlAbrExisting(f.source_ref);
+    if (!d) throw err;
+    return d;
+  }
+  return _ctlAbrKeep(d);
 }
 
 /* ── BACK TO OPEN — one rule for Settlements and Controlling (C1 #4, Nov 2026) ──────────────
@@ -106,11 +141,19 @@ async function _stUpdOT(id, fields) {
     return ctlUpdateOneTime(id, f);
   }
 }
-function _stBL(o) {                                                   // remembered type → { kind, direction } or null
+function _stBLRaw(o) {
   let v = o && o.before_link;
   if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
   return v && typeof v === 'object' ? v : null;
 }
+/* C3 (Nov 2026): before_link holds either the type you gave an entry ({ kind, direction }, while it is linked) or — once
+   it was unlinked from a result — only the marker { off: 'abr:<id>' }: the automatic WEG match leaves it unlinked from
+   that result (_srFindBooking). A marker is no remembered type. */
+function _stBL(o) {                                                   // remembered type → { kind, direction } or null
+  const v = _stBLRaw(o);
+  return v && !('off' in v) ? v : null;
+}
+const _stBLOff = o => { const v = _stBLRaw(o); return v && v.off ? String(v.off) : null; };   // the result it was unlinked from
 /* Switching a payment off: a booking Settlements made is removed · an entry you typed yourself in
    Controlling (linked by #6 or the WEG match) is only unlinked — it stays in Controlling as you typed it.
    C1 #4: also a booking Controlling made for a result without its period ("NK 2025 · …", the label it writes
@@ -122,7 +165,8 @@ async function _stUndoBooking(b) {
   if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); drop(); return 'deleted'; }
   const cur = (window._ctrl.one_time || []).find(x => x.id === b.id);
   const bl = _stBL(b) || _stBL(cur);                                  // #12: back to the type you gave it
-  const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges', before_link: null };
+  const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges',
+              before_link: b.source_ref ? { off: b.source_ref } : null };   // C3: the WEG match does not link it back to this result
   if (bl && bl.kind && bl.direction !== undefined) f.direction = bl.direction;
   const d = await _stUpdOT(b.id, f); drop();
   const k = (window._ctrl.one_time || []).findIndex(x => x.id === b.id); if (k >= 0 && d) window._ctrl.one_time[k] = d;
@@ -131,6 +175,103 @@ async function _stUndoBooking(b) {
 const _stUndoText = (b, fmtDate, fmtEur) => !b ? '' : _stIsOwnBooking(b)
   ? 'The booking of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') in Controlling is removed too.'
   : 'Your own entry of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') stays in Controlling – it is only unlinked.';
+
+/* ── YOUR OWN ENTRY IS THE PAYMENT — Settlements #6 and Controlling's Soll (C3, Nov 2026) ─────────────────────────
+   Moved here from settlements-tab-tracking.js: Controlling uses them too. Clearing the Ist of a result paid by your
+   own entry only unlinks it (x1) — a Soll tap or a typed amount afterwards links that entry again instead of booking
+   the money a second time (_cxAbrBook). maint-link.js keeps Maintenance lines out of both finders (page end). */
+/* #6 (Oct 2026): a tenant's NK payment you already typed by hand in Controlling › One-off
+   (same property, same direction, same amount to the cent, on/after the letter date, not linked yet)
+   is LINKED to the result instead of booking the money a second time. */
+function _stFindManualNk(pid, res, amt) {
+  const from = String(res.date || '').slice(0, 10);
+  const linked = new Set((window._src.abrPay || []).map(o => o.id));
+  return (window._ctrl.one_time || []).find(o =>
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    !['Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung'].includes(o.kind) && !o.nk_umlage &&
+    (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
+    Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
+}
+/* C3: the same for a WEG Hausgeld result, as the WEG match (same property, amount to the cent, same direction or none,
+   on/after the result date, not linked yet) — never a Kaufnebenkosten line or a cost marked for the NK */
+function _stFindOwnWeg(pid, res, amt) {
+  const from = String(res.date || '').slice(0, 10);
+  const linked = new Set((window._src.abrPay || []).map(o => o.id));
+  return (window._ctrl.one_time || []).find(o =>
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    o.kind !== 'Kaufnebenkosten' && !o.nk_umlage &&
+    (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
+    Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
+}
+/* #12: the type (and direction) you gave an entry is remembered in before_link when it gets linked,
+   and restored when it is unlinked. Without the before_link column (SQL not run) it works as before. */
+function _stBeforeLink(o) {
+  if (ST_ABR_KINDS.includes(o.kind)) return _stBL(o);                 // already an Abrechnung type: keep what was remembered
+  return { kind: o.kind || null, direction: o.direction === undefined ? null : o.direction };
+}
+/* kind: 'NK-Abrechnung' (#6) · C3: 'Hausgeldabrechnung' for a WEG result linked from Controlling */
+async function _stLinkManualNk(o, res, kind) {
+  const f = { source_ref: 'abr:' + res.id, kind: kind || 'NK-Abrechnung', direction: res.dir, before_link: _stBeforeLink(o) };
+  let d;
+  try { d = await _stUpdOT(o.id, f); }
+  catch (e) {                                  // #1 (CONTROLLING-C2.sql): booked meanwhile → that booking is the payment, your entry stays unlinked
+    if (!ctlIsDupErr(e)) throw e;
+    const x = await ctlAbrExisting(f.source_ref);
+    if (!x) throw e;
+    return x;
+  }
+  const row = d || Object.assign({}, o, f);
+  window._src.abrPay = (window._src.abrPay || []).filter(x => x.id !== o.id).concat([row]);
+  const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;
+  return row;
+}
+/* C3c (Nov 2026): the page holds the entries of ONE year (window._ctrl.one_time). Your entry of 20.12.2026, unlinked by
+   clearing the Ist and booked again in January 2027, was not found there → the money was booked a second time. Not found
+   in the year loaded → your entries of this property on/after the result date in the other years are read and the same
+   rules apply (a Maintenance line or a linked entry is never taken). A failed read → none, the result is booked as before. */
+const _stFindOwnIn = (pid, res, amt, weg) => weg ? _stFindOwnWeg(pid, res, amt) : _stFindManualNk(pid, res, amt);
+async function _stFindOwnEntry(pid, res, amt, weg) {
+  const ct = window._ctrl;
+  const mine = _stFindOwnIn(pid, res, amt, weg);
+  if (mine || !ct || !Array.isArray(ct.one_time)) return mine;
+  const from = String(res.date || '').slice(0, 10);
+  let more;
+  try {
+    const q = () => { const s = _ctlSupa.from('ctrl_expense_one_time').select('*').eq('property_id', pid); return from ? s.gte('invoice_date', from) : s; };
+    let r = await q();
+    if (r && !r.error && typeof ctlReadAll === 'function') r = await ctlReadAll(r, q, 'ctrl_expense_one_time (your entry)');   // past 1000 rows: in pages
+    if (!r || r.error || !Array.isArray(r.data)) return null;
+    const y = String(ct.year);                                        // the year loaded is searched above
+    more = r.data.filter(o => String(o.invoice_date || '').slice(0, 4) !== y);
+  } catch (e) { return null; }
+  if (!more.length) return null;
+  const keep = ct.one_time;
+  ct.one_time = keep.concat(more);
+  try { return _stFindOwnIn(pid, res, amt, weg); } finally { ct.one_time = keep; }
+}
+/* C3c: the link changed nothing — your entry was deleted on another device and this page still showed it (PGRST116:
+   "JSON object requested, multiple (or no) rows returned") → it is gone here too, and → null: not linked */
+const _stGoneErr = e => String((e && e.code) || '') === 'PGRST116' ||
+  /multiple \(or no\) rows|contains 0 rows|^entry \S+ not found$/i.test(String((e && (e.message || e.details)) || ''));
+async function _stLinkOwnEntry(o, res, kind) {
+  try { return await _stLinkManualNk(o, res, kind); }
+  catch (e) {
+    if (!_stGoneErr(e)) throw e;
+    if (window._ctrl && Array.isArray(window._ctrl.one_time)) window._ctrl.one_time = window._ctrl.one_time.filter(x => x.id !== o.id);
+    return null;
+  }
+}
+/* Your own entry of this amount is the payment (found as above, or `o` found already) → linked:
+   { o: your entry, row: the linked line — or the booking made meanwhile (#1) } · null: none of yours → book the result */
+async function _stTakeOwnEntry(pid, res, amt, weg, o) {
+  for (let n = 0; n < 3; n++) {                                       // a gone entry is dropped → look once more
+    if (n || !o) o = await _stFindOwnEntry(pid, res, amt, weg);
+    if (!o) return null;
+    const row = await _stLinkOwnEntry(o, res, weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung');
+    if (row) return { o, row };
+  }
+  return null;
+}
 
 /* The result a Settlements line stands for (Settlements' rule, _stResultOf): its result_id, else the same
    property · kind · year · tenant (· period). → the abr_results row, or null */
@@ -193,9 +334,11 @@ function ctlAbrRows(pid, y, m, dir) {
       if (rym === ym) rows.push({ id: 'abrI:' + r.key, res: r, info: true });
       continue;
     }
-    if (b) { if (_cxYm(b.invoice_date) === ym) rows.push({ id: 'abr:' + r.key, res: r, booking: b, soll: r.amount, ist: cxR(b.amount) }); continue; }
+    // #1: booked twice (a double tap before Nov 2026) → the row says so and offers "delete one"
+    const twice = b0 ? ctlAbrBookings(r).filter(o => o !== b0) : [];
+    if (b) { if (_cxYm(b.invoice_date) === ym) rows.push({ id: 'abr:' + r.key, res: r, booking: b, soll: r.amount, ist: cxR(b.amount), twice }); continue; }
     const showIn = rym >= cur ? rym : cur;                                 // overdue → moves along to the current month
-    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null, stale: b0 || null });
+    if (showIn === ym) rows.push({ id: 'abr:' + r.key, res: r, soll: r.amount, ist: null, overdue: rym < cur ? rym : null, stale: b0 || null, twice });
   }
   // bookings without a result (older manual NK / Hausgeld entries) — shown in the month paid
   for (const o of (window._src.abrPay || [])) {
@@ -246,12 +389,13 @@ function cxAbrSection(p, y, m, dir) {
     const flip = d => (d > 0 ? 'Nachzahlung' : 'Guthaben');
     const sub = r.legacy ? 'booked ' + cxFmtDate(r.legacy.invoice_date) +
         (r.moved ? ' · the Abrechnung is now a ' + flip(r.moved.dir) + ' of ' + cxEur(r.moved.amount) + ' – settle it again in Settlements' : ' · without Abrechnung')
-      : r.booking ? 'paid ' + cxFmtDate(r.booking.invoice_date)
+      : r.booking ? 'paid ' + cxFmtDate(r.booking.invoice_date)                        // #1: the payment kept (the extra ones: "booked twice" below)
       : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date)) +
         (r.stale ? ' · booked before as ' + flip(Number(r.stale.direction) === 1 ? 1 : -1) + ' ' + cxEur(r.stale.amount) + ' – settle it again in Settlements' : '');
+    const dup = r.twice && r.twice.length ? ' · <b style="color:#B0661E;font-weight:600;white-space:nowrap">' + (r.twice.length === 1 ? 'booked twice' : 'booked ' + (r.twice.length + 1) + ' times') + '</b> · <button class="cx-link cx-link--a cx-link--in" data-cx="abrDup" data-id="' + cxEsc(r.id) + '">delete one</button>' : '';   // #1
     h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true, dir,   // CP2: differences from your view (no "On purpose" here)
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
-                 sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
+                 sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + dup + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
   }
   return '<div class="cx-abr' + (!rows.length ? ' cx-abr--empty' : '') + '">' + h + '</div>';
 }
@@ -267,8 +411,8 @@ function _cxAbrPayDate(res, y, m) {
   return y + '-' + String(m).padStart(2, '0') + '-' + String(ym < cur ? last : 1).padStart(2, '0');
 }
 
-async function _cxAbrBook(e, amount) {
-  const r = e.res, y = window._ctrl.year, m = CX.month;
+async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
+  const r = e.res;
   if (e.legacy) {                                                          // booking without result: edit / delete only
     if (amount === null) {
       if (!(await ccConfirm('Delete this booking?', ccEscHtml(e.legacy.item || ''), 'Delete', true))) return;
@@ -283,28 +427,69 @@ async function _cxAbrBook(e, amount) {
   const b = ctlAbrBooking(r), same = !!b && (Number(b.direction) === 1 ? 1 : -1) === r.dir;
   if (amount === null) {
     if (!same) return;                                                     // a booking of the other direction is not this payment
-    await ctlDeleteOneTime(b.id);
-    window._src.abrPay = window._src.abrPay.filter(o => o.id !== b.id);
+    await _stUndoBooking(b);                                               // x1: as 'cancel' / Back to open — your own entry is only unlinked
     return;
   }
+  // C3: your own entry of this amount (e.g. unlinked by clearing the Ist) is the payment → linked, not booked a second
+  // time (NK: Settlements' #6 rule · WEG Hausgeld: the WEG match). Another amount → a new booking, as before.
+  // C3c: also when your entry lies in another year · deleted meanwhile on another device → booked as usual
+  const amt = cxR(amount), weg = r.kind === 'weg_hausgeld';
+  const at = r.db && amt > 0 ? { id: r.db.id, dir: r.dir, date: String(r.db.result_date || '').slice(0, 10) } : null;
+  let mine = null;
   if (b) {
-    // Nov 2026 fix: settling again after the result changed direction (Nachzahlung ↔ Guthaben) turns its booking
-    // around too — it kept the old direction, so the Dashboard counted the money the wrong way (as Settlements does now)
-    const f = same ? { amount: cxR(amount) } : { amount: cxR(amount), direction: r.dir, item: r.label, invoice_date: _cxAbrPayDate(r, y, m) };
-    const d = await ctlUpdateOneTime(b.id, f);
-    const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    return;
+    // C3c: the apps' booking now gets the amount of your own unlinked entry (a typo corrected) → that booking goes and
+    // your entry is the payment again (it counted twice: the corrected booking and your entry)
+    if (same && at && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(r.pid, at, amt, weg))) {
+      await ctlDeleteOneTime(b.id);
+      window._src.abrPay = window._src.abrPay.filter(o => o.id !== b.id);
+    } else {
+      // Nov 2026 fix: settling again after the result changed direction (Nachzahlung ↔ Guthaben) turns its booking
+      // around too — it kept the old direction, so the Dashboard counted the money the wrong way (as Settlements does now)
+      const f = same ? { amount: cxR(amount) } : { amount: cxR(amount), direction: r.dir, item: r.label, invoice_date: _cxAbrPayDate(r, y, m) };
+      const d = await ctlUpdateOneTime(b.id, f);
+      const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
+      return;
+    }
   }
-  const d = await ctlAddOneTime({ property_id: r.pid, invoice_date: _cxAbrPayDate(r, y, m), item: r.label, amount: cxR(amount),
+  if (at && await _stTakeOwnEntry(r.pid, at, amt, weg, mine)) return;     // booked meanwhile (23505) → that booking
+  await ctlAbrAdd({ property_id: r.pid, invoice_date: _cxAbrPayDate(r, y, m), item: r.label, amount: cxR(amount),   // #1: booked meanwhile → that booking
     kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: r.dir, source_ref: r.key });
-  window._src.abrPay = (window._src.abrPay || []).concat([d]);
+}
+
+/* #1 · one save per result at a time: a 2nd tap (or Enter, then a tap) waits for the first save and then finds its
+   booking — a tap books nothing more, a typed amount changes that booking. The month is the one you tapped in. */
+const _cxAbrQ = {};
+async function _cxAbrRun(e, amount, take) {
+  const k = e.legacy ? 'L:' + e.legacy.id : e.res.key, y = window._ctrl.year, m = CX.month;
+  const job = (_cxAbrQ[k] || Promise.resolve()).then(() => {
+    if (take && !e.legacy) { const bk = ctlAbrBooking(e.res); if (bk && _cxAbrDir(bk) === e.res.dir) return; }   // booked meanwhile
+    return _cxAbrBook(e, amount, y, m);
+  });
+  const tail = _cxAbrQ[k] = job.catch(() => {});
+  try { await job; } finally { if (_cxAbrQ[k] === tail) delete _cxAbrQ[k]; }
 }
 
 /* Handles every Abrechnungen action of a tab. Returns true when it was one. */
 async function cxAbrClick(a, b, rerender) {
   if (a === 'take' && /^abr/.test(b.dataset.id || '')) {
     const e = _cxAbrIndex[b.dataset.id];
-    if (e && !e.info && e.ist === null) { try { await _cxAbrBook(e, e.soll); } catch (err) { cxToastErr(err); } }
+    if (e && !e.info && e.ist === null) { b.disabled = true; try { await _cxAbrRun(e, e.soll, true); } catch (err) { cxToastErr(err); } }
+    rerender(); return true;
+  }
+  if (a === 'abrDup') {                                  // #1: booked twice → one goes; an entry you typed yourself is never deleted (only unlinked)
+    const e = _cxAbrIndex[b.dataset.id];
+    const all = e && e.res ? ctlAbrBookings(e.res) : [];
+    if (all.length < 2) { rerender(); return true; }
+    // keep the payment in the result's direction (your own entry first, else the oldest); of the rest, the newest the apps made goes
+    const own = o => !_stIsOwnBooking(o), num = o => Number(o.id) || 0, byId = (p, q) => num(p) - num(q) || String(p.id).localeCompare(String(q.id));
+    const keep = all.slice().sort((p, q) => (_cxAbrDir(q) === e.res.dir) - (_cxAbrDir(p) === e.res.dir) || own(q) - own(p) || byId(p, q))[0];
+    const x = all.filter(o => o !== keep).sort((p, q) => own(p) - own(q) || byId(q, p))[0];
+    const del = _stIsOwnBooking(x);
+    const body = ccEscHtml(e.res.label) + '<br>' + ccEscHtml(cxFmtDate(x.invoice_date) + ' · ' + cxEur(x.amount)) +
+      (del ? '' : '<br><br>' + ccEscHtml('Your own entry stays in One-off – it is only unlinked.'));
+    if (!(await ccConfirm(del ? 'Delete one booking?' : 'Unlink one booking?', body, del ? 'Delete' : 'Unlink', true))) return true;
+    b.disabled = true;
+    try { await _stUndoBooking(x); } catch (err) { cxToastErr(err); }
     rerender(); return true;
   }
   if (a === 'abrStorno') {                               // C1 #4: = Settlements' "Back to open" (see BACK TO OPEN above)
@@ -326,7 +511,7 @@ async function cxAbrClick(a, b, rerender) {
 async function cxAbrInput(id, val, rerender) {
   if (!/^abr/.test(id)) return false;
   const e = _cxAbrIndex[id];
-  if (e && !e.info) { try { await _cxAbrBook(e, val === null ? null : val); } catch (err) { cxToastErr(err); } }
+  if (e && !e.info) { try { await _cxAbrRun(e, val === null ? null : val, false); } catch (err) { cxToastErr(err); } }   // #1: after a save on its way
   rerender();
   return true;
 }

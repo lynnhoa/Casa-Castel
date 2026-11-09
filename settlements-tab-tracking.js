@@ -403,33 +403,8 @@ async function _stSyncStatus() {
   }
 }
 
-/* #6 (Oct 2026): a tenant's NK payment you already typed by hand in Controlling › One-off
-   (same property, same direction, same amount to the cent, on/after the letter date, not linked yet)
-   is LINKED to the result instead of booking the money a second time. */
-function _stFindManualNk(pid, res, amt) {
-  const from = String(res.date || '').slice(0, 10);
-  const linked = new Set((window._src.abrPay || []).map(o => o.id));
-  return (window._ctrl.one_time || []).find(o =>
-    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
-    !['Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung'].includes(o.kind) && !o.nk_umlage &&
-    (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
-    Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
-}
-/* #12: the type (and direction) you gave an entry is remembered in before_link when it gets linked,
-   and restored when it is unlinked. Without the before_link column (SQL not run) it works as before.
-   ST_ABR_KINDS · _stUpdOT · _stBL live in controlling-abr.js since C1 #4 (shared with Controlling's 'cancel'). */
-function _stBeforeLink(o) {
-  if (ST_ABR_KINDS.includes(o.kind)) return _stBL(o);                 // already an Abrechnung type: keep what was remembered
-  return { kind: o.kind || null, direction: o.direction === undefined ? null : o.direction };
-}
-async function _stLinkManualNk(o, res) {
-  const f = { source_ref: 'abr:' + res.id, kind: 'NK-Abrechnung', direction: res.dir, before_link: _stBeforeLink(o) };
-  const d = await _stUpdOT(o.id, f);
-  const row = d || Object.assign({}, o, f);
-  window._src.abrPay = (window._src.abrPay || []).filter(x => x.id !== o.id).concat([row]);
-  const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;
-  return row;
-}
+/* #6 (Oct 2026) · #12: _stFindManualNk · _stBeforeLink · _stLinkManualNk live in controlling-abr.js since C3 (Nov 2026) —
+   Controlling's Soll links your own entry the same way (settlements.html loads that file before its tabs). */
 
 /* Switching a payment off (_stUndoBooking · _stUndoText) and "Back to open" (ctlAbrStorno · ctlSettleOpen):
    one rule for Settlements and Controlling — in controlling-abr.js since C1 #4 (Nov 2026). */
