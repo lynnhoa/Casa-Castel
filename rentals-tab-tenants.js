@@ -1150,6 +1150,9 @@ async function _rntLoad(unitsReady) {
 
   _rntSyncOccupancy();       // occupied / vacant from the dates (and former after the move-out)
   try { if (typeof _updateAptSummary === 'function') _updateAptSummary(); } catch (e) {}   // Soll: contract types now known
+  // Apartments / Parking cards were drawn from the preload: now the steps and rent history are here (B18: only changed cards)
+  try { if (typeof _aptRefreshCards === 'function') _aptRefreshCards(); } catch (e) {}
+  try { if (typeof _pkRefreshCards  === 'function') _pkRefreshCards();  } catch (e) {}
   _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _rntFreezeRent();          // existing active tenants: fix their rent once
   _rntRenderIfChanged();
@@ -1487,11 +1490,11 @@ function _rntRentBarHTML(rid, type, unit, rec) {
 /* ── RENT FORM ──
    Value = the tenant's own rent; the unit's price is only a grey hint (B3).
    "Gilt ab" empty = correct the current rent · a date = new rent from that day. */
-function _rntRentFormHTML(rid, type, unit, rec) {
+function _rntRentFormHTML(rid, type, unit, rec, day) {
   const isApt = type === 'apt';
   const tid   = rec ? rec.id : '';
   const ksoll = _rntKautionSoll(rec) ?? '';
-  const cur   = _rntCurrentRent(rec);
+  const cur   = _rntCurrentRent(rec, day);                 // day: the Gilt ab of a form drawn in another mode
   const fromRow = `
   <div class="tn-rf">
     <span class="tn-flbl">Gilt ab</span>
@@ -2176,7 +2179,7 @@ function _rntNKVorausHTML(rid, aptId, ctx) {
   const mb  = who && who.mietbeginn ? _ccIso(who.mietbeginn) : '';
   // this tenancy's Änderungen only (linked to the tenant, or dated from the move-in)
   const entries = (_rntNKVoraus[aptId] || []).filter(x => !who || (x.tenant_id ? String(x.tenant_id) === String(who.id) : (!mb || String(x.effective_date).slice(0, 10) >= mb)));
-  return ccNkvSheetHTML({ sec: ctx === 'modal' ? 'tn-msec' : 'tn-sec', rid, entries, cur: _rntNKVorausCurFor(aptId), fmtEUR: _rntFmtEUR,
+  return ccNkvSheetHTML({ sec: ctx === 'modal' ? 'tn-msec' : 'tn-sec', rid, entries, cur: _rntNKVorausCurFor(aptId, who), fmtEUR: _rntFmtEUR,
     onAdd: `_rntNKVorausAdd('${aptId}','${rid}','${ctx}')`,
     onNotified: `_rntNKVorausMarkNotified('$ID','${aptId}','${rid}')`,
     onAdjusted: `_rntNKVorausMarkAdjusted('$ID','${aptId}','${rid}')`,
@@ -2456,13 +2459,12 @@ function _rntStaffelOpenAdd__sheet(aptId, rid) {
   setTimeout(() => document.getElementById('sf-add-date')?.focus(), 80);
 }
 
-/* The unit's current tenant — Staffel / NK steps belong to them (B6). Nov 2026 (as Casa's _tnNKVorausWho): the
-   tenant who has moved in, never a signed next tenant; only an empty unit gives the earliest signed tenant */
+/* The unit's current tenant — Staffel / NK steps belong to them (B6). Nov 2026: the tenant the card shows
+   (_ccPickTenancy): the latest who has moved in, never a signed next tenant; only an empty unit gives the
+   earliest signed tenant. Two tenants overlapping → the one on the card, so a step goes where it was typed */
 function _rntUnitWho(recs) {
-  const a = (recs || []).filter(r => r.status === 'active')
-    .sort((x, y) => String(ccRpIso(x.mietbeginn) || '').localeCompare(String(ccRpIso(y.mietbeginn) || '')));
-  const today = ccRpToday();
-  return a.find(r => !r.mietbeginn || ccRpIso(r.mietbeginn) <= today) || a[0] || null;
+  const p = _ccPickTenancy((recs || []).filter(r => r.status === 'active'));
+  return p.current || p.next || null;
 }
 function _rntActiveTenantId(col, unitId) {
   const t = _rntUnitWho((_rntRecords || []).filter(r => String(r[col]) === String(unitId)));
@@ -3219,17 +3221,34 @@ function _rntUpdateWarm(rid) {
 }
 
 /* Gilt ab = the first day of an entry (Erstvertrag, Verlängerung …): the form shows THAT entry's amounts, so a
-   correction starts from them (n31). Fields the owner typed stay; another day → back to the amounts shown first. */
+   correction starts from them (n31). Another day: the amounts in force that day (a Mieterhöhung or NK-Anpassung
+   already entered for an earlier day is kept in the new rent). Empty: today's. The form follows that rent's mode
+   (Pauschal ↔ Kalt + NK), so Save never turns one into the other. Fields the owner typed stay. */
+let _rntRfSwapping = false;
 function _rntRentFromPrefill(rid, tid) {
-  const form = document.getElementById('rform-' + rid); if (!form) return;
+  if (_rntRfSwapping) return;                                            // the old field's events while the form is swapped
+  let form = document.getElementById('rform-' + rid); if (!form) return;
   const raw  = String(document.getElementById('rf-from-' + rid)?.value || '').trim();
   const from = /^\d{1,2}\.\d{1,2}\.\d{4}$|^\d{4}-\d{2}-\d{2}$/.test(raw) ? ccRpIso(raw) : '';
+  if (raw && !from) return;                                              // still typing: the form stays as it is
   const rec  = (_rntRecords || []).find(r => String(r.id) === String(tid));
-  const pa   = form.dataset.pausch === '1';
   const p    = from && rec && typeof ccRpFor === 'function' ? ccRpFor('rentals', rec.id).find(x => ccRpIso(x.valid_from) === from) : null;
-  const use  = p && (p.mode === 'pauschal') === pa ? p : null;           // one form = one mode
-  const a    = use ? ccRpAmount(use) : null;
-  [['kalt', a ? (pa ? a.total : a.kalt) : null], ['nk', a ? (pa ? (Number(use.nebenkosten) || '') : a.nk) : null]].forEach(([f, v]) => {
+  const c    = !rec ? null : p ? { ...ccRpAmount(p), period: p } : _rntCurrentRent(rec, from || undefined);
+  if (c && rec.apartment_id && (c.mode === 'pauschal') !== (form.dataset.pausch === '1')) {
+    const unit = (typeof appApartments !== 'undefined' ? appApartments : []).find(a => String(a.id) === String(rec.apartment_id));
+    if (unit) {                                                          // that rent is in the other mode → its own form
+      const t = document.createElement('div'); t.innerHTML = _rntRentFormHTML(rid, 'apt', unit, rec, from || undefined);
+      const nf = t.firstElementChild; nf.style.display = form.style.display;
+      _rntRfSwapping = true;
+      try { form.replaceWith(nf); } finally { _rntRfSwapping = false; }
+      form = nf;
+      const fi = document.getElementById('rf-from-' + rid);
+      if (fi) { fi.value = raw; fi.focus(); if (typeof ccSaveMarkDirtyFrom === 'function') ccSaveMarkDirtyFrom(fi); }
+    }
+  }
+  const pa = form.dataset.pausch === '1';
+  const a  = c && (c.mode === 'pauschal') === pa ? c : null;             // one form = one mode
+  [['kalt', a ? (pa ? a.total : a.kalt) : null], ['nk', a ? (pa ? (Number((a.period || {}).nebenkosten) || '') : a.nk) : null]].forEach(([f, v]) => {
     const i = document.getElementById('rf-' + f + '-' + rid); if (!i || i.dataset.typed) return;
     i.value = a ? v : i.defaultValue;
   });
@@ -3525,14 +3544,16 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   if (pausch && kalt != null && nk != null && nk > kalt) { ccToast('davon NK can’t be more than the Pauschalmiete', true); return; }
 
   // Rent history (rent_periods). Table missing → only the tenant record is saved.
-  let histOk = true;
+  let histOk = true, base = null;
   try {
     const sameDay = from ? ccRpFor('rentals', rec.id).find(p => ccRpIso(p.valid_from) === from) : null;
     if (sameDay) {
-      // that day already starts an entry (Erstvertrag, Verlängerung …): correct it, keep what it is (kind, type, end) — as Casa
-      await ccRpUpdate(sbL, sameDay.id, pausch
-        ? { mode: 'pauschal', pauschale: kalt, kaltmiete: null, nebenkosten: nk || null }
-        : { mode: 'kalt_nk', kaltmiete: kalt, nebenkosten: isApt ? nk : sameDay.nebenkosten, pauschale: null });
+      // that day already starts an entry (Erstvertrag, Verlängerung …): correct it, keep what it is (kind, type, end,
+      // Pauschal or Kalt + NK) — as Casa. The form shows that entry's mode; a form in the other mode is converted.
+      const pm = isApt && sameDay.mode === 'pauschal', sum = kalt == null ? null : kalt + (Number(nk) || 0);
+      await ccRpUpdate(sbL, sameDay.id, pm
+        ? { mode: 'pauschal', pauschale: pausch ? kalt : sum, kaltmiete: null, nebenkosten: nk || null }
+        : { mode: 'kalt_nk', kaltmiete: pausch && kalt != null ? Math.max(0, kalt - (Number(nk) || 0)) : kalt, nebenkosten: isApt ? nk : sameDay.nebenkosten, pauschale: null });
     } else if (from) {
       await ccRpSetRent(sbL, pausch
         ? { app: 'rentals', rec, validFrom: from, mode: 'pauschal', pauschale: kalt, nkIncl: nk, kind: 'manual', source: 'tenant_form', legacyMode: 'pauschal' }
@@ -3555,6 +3576,9 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
         if (error) { ccSaveFailed(error, 'NK-Vorauszahlung'); return; }
         nkStep.amount = nk;
       }
+      // no rent entry: the tenant record is the original rent (Controlling reads it from the move-in) → it keeps its own
+      // Kaltmiete under a Mieterhöhung and its own NK under an NK-Anpassung, as an entry does
+      if (!per) base = { k: step ? rec.kaltmiete : kalt, n: nkStep ? rec.nebenkosten : nk };
       if (per) {
         const a = ccRpAmount(per);
         if (pausch) {
@@ -3569,6 +3593,8 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
       }
     }
   } catch (e) {
+    // only a missing table means "SQL not run yet"; any other failure (connection …): not saved, nothing changed
+    if (!/does not exist|schema cache|Could not find/i.test(e && e.message || '')) { ccSaveFailed(e, 'rent history'); return; }
     histOk = false;
     if (from) ccToast('Miethistorie nicht verfügbar (SQL noch nicht ausgeführt) – Miete nur beim Mieter gespeichert', true);
     console.warn('[rnt-tenants] rent history:', e && e.message || e);
@@ -3577,23 +3603,14 @@ async function _rntSaveRent(rid, tid, unitType, unitId) {
   // The tenant record keeps the rent in effect today (a future rent waits in the history)
   const upd = { kaution_soll: ksoll };
   if (!from || from <= today || !histOk) { upd.kaltmiete = kalt; upd.nebenkosten = pausch ? 0 : nk; }   // Pauschal: the tenant keeps one amount, like Approve
+  if (base) { upd.kaltmiete = base.k; upd.nebenkosten = pausch ? 0 : base.n; }
   Object.assign(rec, upd);
   _rntRefreshKautionSoll(tid);
   _rntRefreshCardPills(rec.apartment_id || rec.parking_id);
 
-  // Rent bar + form of this card redrawn in place (card stays open)
-  const bar  = document.getElementById('rbar-' + rid);
-  const form = document.getElementById('rform-' + rid);
-  const unit = isApt ? (typeof appApartments !== 'undefined' ? appApartments.find(a => String(a.id) === String(unitId)) : null)
-                     : (typeof appParking !== 'undefined' ? appParking.find(p => String(p.id) === String(unitId)) : null);
-  if (bar && form && unit) {
-    const tmp = document.createElement('div');
-    tmp.innerHTML = _rntRentBarHTML(rid, isApt ? 'apt' : 'parking', unit, rec) + _rntRentFormHTML(rid, isApt ? 'apt' : 'parking', unit, rec);
-    bar.replaceWith(tmp.children[0]);
-    form.replaceWith(tmp.children[0]);
-  } else {
-    _rntToggleRentEdit(rid);
-  }
+  // Whole card redrawn (card stays open), as Casa: header, rent bar, Ist line and More rows stay in step; the form closes
+  delete _rntCardCache['tc-' + rid];
+  _rntRender();
 
   ccQueueWrite('rnt-' + tid, () => sbL.from('rnt_tenant_records').update(upd).eq('id', tid))
     .then(({ error }) => {
