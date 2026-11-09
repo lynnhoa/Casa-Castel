@@ -9,7 +9,7 @@
    below, read-only, so nothing disappears.
    ───────────────────────────────────────────────────────────── */
 
-const CC_NKS = { rows: null, res: null, loading: null, casaProp: null, letters: [] };
+const CC_NKS = { rows: null, res: null, loading: null, casaProp: null, letters: [], units: [] };
 
 function _ccNksDb() { return (typeof sbL !== 'undefined' && sbL) ? sbL : null; }
 function _ccNksEsc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -25,18 +25,23 @@ async function ccNksLoad() {
     db.from('ctrl_properties').select('*'),                            // NK period start of every property
     db.from('properties').select('id,name,kaufdatum'),                 // purchase date (Properties) — the only source
     // Nov 2026: the letters Settlements keeps when a letter is marked as sent (archive · Documents › NK-Abrechnungen)
-    db.from('nk_letters').select('id,app,year,period_from,period_to,tenant_id,file_path,file_name,sent_at').order('sent_at', { ascending: false }),
-  ]).then(([a, b, c, d, e]) => {
+    db.from('nk_letters').select('id,app,property_id,year,period_from,period_to,tenant_id,file_path,file_name,sent_at').order('sent_at', { ascending: false }),
+    // Rentals: the Controlling units a flat is linked to (Settlements links flats this way · ctlUnitLink)
+    _ccNksApp() === 'rentals' ? db.from('ctrl_units').select('id,property_id,source_type,source_ref').eq('source_type', 'rentals_apartment') : null,
+  ]).then(([a, b, c, d, e, f]) => {
     const app = _ccNksApp();                                             // clean split: only this app's lines
-    CC_NKS.rows = (a.error ? [] : (a.data || [])).filter(r => !r.app || r.app === app);
-    CC_NKS.res  = b.error ? [] : (b.data || []);
-    CC_NKS.props = c && !c.error ? (c.data || []) : [];
-    CC_NKS.buys  = d && !d.error ? (d.data || []) : [];
+    // a part that could not be loaded (connection) keeps what was there (e.g. the phone's copy) — never "not sent yet"
+    const got = (x, prev) => x && !x.error ? (x.data || []) : (prev || []);
+    CC_NKS.rows = got(a, CC_NKS.rows).filter(r => !r.app || r.app === app);
+    CC_NKS.res  = got(b, CC_NKS.res);
+    CC_NKS.props = got(c, CC_NKS.props);
+    CC_NKS.buys  = got(d, CC_NKS.buys);
     CC_NKS.casaProp = CC_NKS.props.find(p => Number(p.id) === 7) || {};
-    CC_NKS.letters = e && !e.error ? (e.data || []) : [];
+    CC_NKS.letters = got(e, CC_NKS.letters);
+    CC_NKS.units = got(f, CC_NKS.units);
     document.querySelectorAll('.cc-nks').forEach(el => { el.innerHTML = _ccNksInner(el.dataset.tid, el._legacy || [], el._due || []); });
     _ccNkDocsRedraw();
-  }).catch(() => { CC_NKS.rows = []; CC_NKS.res = []; })
+  }).catch(() => { if (!CC_NKS.rows) CC_NKS.rows = []; if (!CC_NKS.res) CC_NKS.res = []; })
     .finally(() => { CC_NKS.loading = null; });
   return CC_NKS.loading;
 }
@@ -74,8 +79,9 @@ function ccNksPeriods(prop) {
   return out;
 }
 /* Purchase date of a Controlling property = Properties › Purchase date (linked by loan_ref, else by name) */
+const _ccNksNorm = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');   // as Controlling's _cxNorm
 function _ccNksSince(p) {
-  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '');
+  const norm = _ccNksNorm;
   const L = CC_NKS.buys || [];
   const l = p && p.loan_ref ? L.find(x => String(x.id) === String(p.loan_ref)) : L.find(x => p && norm(x.name) === norm(p.name));
   const s = String((l && l.kaufdatum) || '').trim(); let m;
@@ -87,11 +93,31 @@ function _ccNksSince(p) {
 function _ccNksPerLabel(from, to) { return _ccNksD(from) + '–' + _ccNksD(to); }   // always dd.mm.yyyy–dd.mm.yyyy
 /* Which app this page is: Rentals or Casa Castel (each page has only one tenants tab) */
 function _ccNksApp() { return typeof _rntRecords !== 'undefined' ? 'rentals' : 'casa'; }
+/* Rentals: the Controlling property of a flat — found by id first: the property linked to the flat
+   (ctrl_properties.rentals_apartment_ref), then a Controlling unit linked to the flat (ctrl_units, the way Settlements
+   links flats), then the property of the tenant's own Settlements line. The name (Controlling's normalisation) is the
+   last fallback only — never Casa Castel (7), never a property linked to another flat, and never for a name two flats
+   share (sister flats such as "Adam-K-S. 1-3" 1 Zi / 2 Zi each have their own property). */
+function _ccNksPropForApt(apt, tid) {
+  if (!apt || apt.id == null) return null;
+  const P = CC_NKS.props || [], U = (CC_NKS.units || []).filter(u => u.source_type === 'rentals_apartment'), id = String(apt.id);
+  const byId = pid => (pid != null && Number(pid) !== 7 && P.find(x => String(x.id) === String(pid))) || null;
+  const ref = P.find(x => x.rentals_apartment_ref != null && String(x.rentals_apartment_ref) === id);
+  if (ref) return ref;
+  for (const u of U) if (String(u.source_ref) === id && byId(u.property_id)) return byId(u.property_id);
+  if (tid != null) {
+    const own = (CC_NKS.rows || []).find(r => String(r.tenant_id) === String(tid) && (!r.kind || r.kind === 'nk_tenant') && byId(r.property_id));
+    if (own) return byId(own.property_id);
+  }
+  const n = _ccNksNorm(apt.name); if (!n) return null;
+  const apts = typeof appApartments !== 'undefined' && Array.isArray(appApartments) ? appApartments : [];
+  if (apts.some(a => String(a.id) !== id && _ccNksNorm(a.name) === n)) return null;
+  const linked = x => (x.rentals_apartment_ref != null && String(x.rentals_apartment_ref) !== '') || U.some(u => String(u.property_id) === String(x.id));
+  return P.find(x => Number(x.id) !== 7 && !linked(x) && _ccNksNorm(x.name) === n) || null;
+}
 /* Rentals: the due periods come from the apartment's own Abrechnungszeitraum (Controlling property) */
 function ccNksDueFor(rec, apt, hasKaltNK) {   // hasKaltNK(from, to): as ccNksDue — a Pauschal-only period is not due (Rentals n40)
-  const norm = s => String(s || '').trim().toLowerCase();
-  const p = (CC_NKS.props || []).find(x => x.rentals_apartment_ref != null && String(x.rentals_apartment_ref) === String(apt.id))
-         || (CC_NKS.props || []).find(x => Number(x.id) !== 7 && norm(x.name) === norm(apt.name));
+  const p = _ccNksPropForApt(apt, rec && rec.id);
   return p ? ccNksDue(rec, hasKaltNK || null, p).map(x => ({ ...x, pid: p.id })) : [];
 }
 /* hasKaltNK(from, to) → true when the tenant paid Kalt + NK on any day of that span */
@@ -362,17 +388,59 @@ function _ccNksStyle() {
 
 
 
-/* ── NK-ABRECHNUNGEN IN THE TENANT'S DOCUMENTS (Casa Castel · Nov 2026) ─────────────────────────────
+/* ── NK-ABRECHNUNGEN IN THE TENANT'S DOCUMENTS (Casa Castel + Rentals · Nov 2026) ───────────────────
    Owner: "an NK-Abrechnung marked as sent is in Documents — each year until they move out; either it comes from
    Settlements (marked sent) or I can upload it." One line per NK period of the tenancy (move-in → move-out, the
    running period last), skipping periods that ended before the purchase (the seller settles them) and Pauschal-only
    spans (no NK-Abrechnung). Two cells:
      Settlements — the exact letter Settlements saved when it was marked as sent (nk_letters + bucket nk-letters);
                    set back to open there → no longer shown here (the archive keeps it)
-     Upload      — your own copy (tenant_documents, type nk_<period start>) — e.g. a year before the app       */
+     Upload      — your own copy (tenant_documents / rnt_tenant_documents, type nk_<period start>) — e.g. a year
+                   before the app
+   Casa Castel: the periods of property 7. Rentals: flats and Gewerbe (parking has no NK) — the periods of the flat's
+   own Controlling property (_ccNksPropForApt); a flat with no property lists only own copies that exist.          */
 const NKD_SENT = ['verschickt', 'erledigt', 'bezahlt'];
 const _nkdType = from => 'nk_' + from;
 const _nkdD = v => String(v || '').slice(0, 10);
+/* The letters each app shows: its own + hand-made letters from the Settlements Dashboard (Rentals: not Casa's 7) */
+const NKD_APPS = { casa: ['casa', 'manual'], rentals: ['rentals', 'manual'] };
+function _nkdLetterOk(l, app) {
+  return NKD_APPS[app].includes(l.app) && !(app === 'rentals' && l.app === 'manual' && Number(l.property_id) === _NK_CASA_PROP);
+}
+/* The property whose NK periods the tenancy follows: Casa → property 7 · Rentals → the flat's (null: none / parking) */
+function _nkdProp(rec) {
+  if (_ccNksApp() === 'casa') return CC_NKS.casaProp || {};
+  if (!rec || !rec.apartment_id) return null;
+  const apts = typeof appApartments !== 'undefined' && Array.isArray(appApartments) ? appApartments : [];
+  const apt = apts.find(a => String(a.id) === String(rec.apartment_id)) || { id: rec.apartment_id, name: '' };
+  return _ccNksPropForApt(apt, rec.id);
+}
+/* The NK period of property p that contains the day iso */
+function _nkdPeriodOf(p, iso) {
+  const st = /^\d{2}-\d{2}$/.test(String((p && p.nk_period_start) || '')) ? p.nk_period_start : '01-01';
+  let y = Number(iso.slice(0, 4)); if (iso < y + '-' + st) y--;
+  return { from: y + '-' + st, to: _nkAdd((y + 1) + '-' + st, -1) };
+}
+/* The year name of an NK copy / letter starting on key: "2025", or "2024/25" for a period over the year end */
+function ccNkDocYearLabel(rec, key) {
+  key = _nkdD(key);
+  const p = /^\d{4}-\d{2}-\d{2}$/.test(key) ? _nkdProp(rec) : null;
+  if (!p) return key.slice(0, 4);
+  const P = _nkdPeriodOf(p, key);
+  return _ccNksYr(P.from, P.to);
+}
+/* Old NK tracking (nk_entries / rnt_nk_entries, free text "2025", "2024/25", "2024/2025") that names the period from → to */
+function _nkdOldOf(legacy, from, to) {
+  const fy = Number(from.slice(0, 4)), ty = Number(to.slice(0, 4));
+  return (legacy || []).filter(e => {
+    const s = String(e.period || ''), ys = (s.match(/20\d\d/g) || []).map(Number);
+    const short = s.match(/(20\d\d)\s*\/\s*(\d\d)(?![\d.])/);
+    if (short) ys.push(Number(short[1].slice(0, 2) + short[2]));
+    if (!ys.length) return false;
+    const a = Math.min(...ys), b = Math.max(...ys);
+    return a === b ? b === ty : a === fy && b === ty;
+  });
+}
 /* A kept letter belongs to the send that is valid now — not to one undone by "Back to open" (the archive keeps
    every letter): sent after the line's current result was written (created_at), else not long before its date */
 function _nkdFresh(l, res, row) {
@@ -385,42 +453,50 @@ function _nkdFresh(l, res, row) {
   return !res.result_date || _nkdD(l.sent_at) >= _nkAdd(_nkdD(res.result_date), -30);
 }
 function ccNkDocLines(rec) {
-  if (!rec || !rec.id || _ccNksApp() !== 'casa' || CC_NKS.rows === null) return [];
-  const mb = _nkdD(rec.mietbeginn); if (!mb) return [];
-  const today = _ccNksToday(), me = _nkdD(rec.mietende);
-  const last = me && me < today ? me : today;
-  const p = CC_NKS.casaProp || {}, since = _ccNksSince(p);
-  const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
-  const tid = String(rec.id), out = [];
-  const myRows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === tid && (!r.kind || r.kind === 'nk_tenant'));
-  const myLetters = (CC_NKS.letters || []).filter(l => String(l.tenant_id) === tid && (l.app === 'casa' || l.app === 'manual'));
-  const resOf = r => r && r.result_id ? (CC_NKS.res || []).find(x => String(x.id) === String(r.result_id)) || null : null;
-  for (let y = Number(mb.slice(0, 4)) - 1; y <= Number(last.slice(0, 4)); y++) {
-    const from = y + '-' + st, to = _nkAdd((y + 1) + '-' + st, -1);
-    if (to < mb || from > last) continue;                                       // not part of this tenancy
-    if (since && to < since) continue;                                          // before the purchase → the seller settles it
-    const spanFrom = mb > from ? mb : from, spanTo = me && me < to ? me : to;
-    if (typeof _tnHasKaltNKBetween === 'function' && !_tnHasKaltNKBetween(rec, spanFrom, spanTo)) continue;   // Pauschal only
-    const inP = d => { const x = _nkdD(d); return x >= from && x <= to; };
-    const year = from.slice(0, 4) === to.slice(0, 4) ? from.slice(0, 4) : from.slice(0, 4) + '/' + to.slice(2, 4);
-    const due = to < today;
-    // Settlements has one line per span of the same rent type: the Kalt + NK lines of this period each get a line
-    // here (a Pauschal part has no NK-Abrechnung); no line in Settlements yet → one line for the tenancy's span
-    const rowsP = myRows.filter(r => Number(r.covers_year) === Number(to.slice(0, 4)) || inP(r.period_from));
-    const kRows = rowsP.filter(r => String(r.note || '') !== 'Pauschal').sort((x, z) => _nkdD(x.period_from).localeCompare(_nkdD(z.period_from)));
-    const parts = kRows.length ? kRows.map(r => ({ row: r, a: _nkdD(r.period_from) || spanFrom, b: _nkdD(r.period_to) || spanTo, key: kRows.length > 1 ? _nkdD(r.period_from) || from : from }))
-                               : [{ row: null, a: spanFrom, b: spanTo, key: from }];
-    for (const pt of parts) {
-      const row = pt.row, res = resOf(row), sentRow = !!(row && NKD_SENT.includes(row.status));
-      // the letter of THIS line: same start as the line (Settlements pairs them the same way), its line sent now,
-      // and written by the send that is valid now; no Settlements line at all → a kept letter of the period counts
-      const cand = row ? myLetters.filter(l => _nkdD(l.period_from) === _nkdD(row.period_from) || (!_nkdD(row.period_from) && inP(l.period_from)))
-                       : myLetters.filter(l => inP(l.period_from) && !rowsP.some(r => _nkdD(r.period_from) === _nkdD(l.period_from)));
-      const letter = (row ? (sentRow ? cand.find(l => _nkdFresh(l, res, row)) : null) : cand[0]) || null;   // newest first
-      const doc = typeof ccfDocOf === 'function' ? ccfDocOf(tid, _nkdType(pt.key), 'signed') : null;
-      const state = letter ? 'sent' : sentRow ? 'sent-nocopy' : doc ? 'uploaded' : row && row.status === 'nicht durchgeführt' ? 'notdone' : due ? 'open' : 'notdue';
-      const sentOn = letter ? _nkdD((res && res.result_date) || letter.sent_at) : '';
-      out.push({ from, to, spanFrom: pt.a, spanTo: pt.b, key: pt.key, year, row, letter, doc, due, state, sentOn });
+  if (!rec || !rec.id || CC_NKS.rows === null) return [];
+  const app = _ccNksApp(), tid = String(rec.id), out = [];
+  const p = _nkdProp(rec), mb = _nkdD(rec.mietbeginn);
+  if (p && mb) {                                                                // no property (Rentals) → only own copies below
+    const today = _ccNksToday(), me = _nkdD(rec.mietende);
+    const last = me && me < today ? me : today;
+    const since = _ccNksSince(p);
+    const st = /^\d{2}-\d{2}$/.test(String(p.nk_period_start || '')) ? p.nk_period_start : '01-01';
+    const hasKN = app === 'casa' ? (typeof _tnHasKaltNKBetween === 'function' ? _tnHasKaltNKBetween : null)
+                                 : (typeof _rntHasKaltNKBetween === 'function' ? _rntHasKaltNKBetween : null);
+    const legacy = app === 'casa' ? (typeof _tnNK !== 'undefined' && _tnNK ? _tnNK[tid] || _tnNK[rec.id] : null)
+                                  : (typeof _rntNK !== 'undefined' && _rntNK ? _rntNK[tid] || _rntNK[rec.id] : null);
+    const myRows = (CC_NKS.rows || []).filter(r => String(r.tenant_id) === tid && (!r.kind || r.kind === 'nk_tenant'));
+    const myLetters = (CC_NKS.letters || []).filter(l => String(l.tenant_id) === tid && _nkdLetterOk(l, app));
+    const resOf = r => r && r.result_id ? (CC_NKS.res || []).find(x => String(x.id) === String(r.result_id)) || null : null;
+    for (let y = Number(mb.slice(0, 4)) - 1; y <= Number(last.slice(0, 4)); y++) {
+      const from = y + '-' + st, to = _nkAdd((y + 1) + '-' + st, -1);
+      if (to < mb || from > last) continue;                                       // not part of this tenancy
+      if (since && to < since) continue;                                          // before the purchase → the seller settles it
+      const spanFrom = mb > from ? mb : from, spanTo = me && me < to ? me : to;
+      if (hasKN && !hasKN(rec, spanFrom, spanTo)) continue;                       // Pauschal only
+      const inP = d => { const x = _nkdD(d); return x >= from && x <= to; };
+      const year = _ccNksYr(from, to);
+      const due = to < today;
+      // marked sent / paid in the old NK tracking (before Settlements) — counts when Settlements has no line for it
+      const oldSent = due && _nkdOldOf(legacy, from, to).some(e => e.sent || e.paid);
+      // Settlements has one line per span of the same rent type: the Kalt + NK lines of this period each get a line
+      // here (a Pauschal part has no NK-Abrechnung); no line in Settlements yet → one line for the tenancy's span
+      const rowsP = myRows.filter(r => Number(r.covers_year) === Number(to.slice(0, 4)) || inP(r.period_from));
+      const kRows = rowsP.filter(r => String(r.note || '') !== 'Pauschal').sort((x, z) => _nkdD(x.period_from).localeCompare(_nkdD(z.period_from)));
+      const parts = kRows.length ? kRows.map(r => ({ row: r, a: _nkdD(r.period_from) || spanFrom, b: _nkdD(r.period_to) || spanTo, key: kRows.length > 1 ? _nkdD(r.period_from) || from : from }))
+                                 : [{ row: null, a: spanFrom, b: spanTo, key: from }];
+      for (const pt of parts) {
+        const row = pt.row, res = resOf(row), sentRow = !!(row && NKD_SENT.includes(row.status));
+        // the letter of THIS line: same start as the line (Settlements pairs them the same way), its line sent now,
+        // and written by the send that is valid now; no Settlements line at all → a kept letter of the period counts
+        const cand = row ? myLetters.filter(l => _nkdD(l.period_from) === _nkdD(row.period_from) || (!_nkdD(row.period_from) && inP(l.period_from)))
+                         : myLetters.filter(l => inP(l.period_from) && !rowsP.some(r => _nkdD(r.period_from) === _nkdD(l.period_from)));
+        const letter = (row ? (sentRow ? cand.find(l => _nkdFresh(l, res, row)) : null) : cand[0]) || null;   // newest first
+        const doc = typeof ccfDocOf === 'function' ? ccfDocOf(tid, _nkdType(pt.key), 'signed') : null;
+        const state = letter ? 'sent' : sentRow || (!row && oldSent) ? 'sent-nocopy' : doc ? 'uploaded' : row && row.status === 'nicht durchgeführt' ? 'notdone' : due ? 'open' : 'notdue';
+        const sentOn = letter ? _nkdD((res && res.result_date) || letter.sent_at) : '';
+        out.push({ from, to, spanFrom: pt.a, spanTo: pt.b, key: pt.key, year, row, letter, doc, due, state, sentOn });
+      }
     }
   }
   // an own copy whose period is no longer in the list (purchase date, period start or move-in corrected) stays reachable
@@ -428,7 +504,7 @@ function ccNkDocLines(rec) {
   (typeof ccfDocsOf === 'function' ? ccfDocsOf(tid) : []).filter(d => /^nk_\d{4}-\d{2}-\d{2}$/.test(d.type || '') && !used.has(d.type)
       && (d.variant || 'signed') === 'signed').forEach(d => {
     const k = d.type.slice(3);
-    out.push({ from: k, to: k, spanFrom: k, spanTo: k, key: k, year: k.slice(0, 4), row: null, letter: null, doc: d, due: true, state: 'uploaded', sentOn: '', orphan: true });
+    out.push({ from: k, to: k, spanFrom: k, spanTo: k, key: k, year: ccNkDocYearLabel(rec, k), row: null, letter: null, doc: d, due: true, state: 'uploaded', sentOn: '', orphan: true });
   });
   return out;
 }
@@ -436,7 +512,7 @@ function _ccNkDocsRedraw() {
   document.querySelectorAll('[data-nkdocs]').forEach(el => { const rec = typeof ccfRec === 'function' ? ccfRec(el.dataset.nkdocs) : null; if (rec) el.innerHTML = _ccNkDocsInner(rec); });
 }
 function ccNkDocsHTML(rec) {
-  if (!rec || !rec.id || _ccNksApp() !== 'casa') return '';
+  if (!rec || !rec.id || (_ccNksApp() === 'rentals' && !rec.apartment_id)) return '';   // Rentals: flats + Gewerbe, never parking
   return `<div class="ccf-nkdocs" data-nkdocs="${_ccNksEsc(String(rec.id))}">${_ccNkDocsInner(rec)}</div>`;
 }
 function _ccNkDocsInner(rec) {
@@ -477,7 +553,9 @@ function _ccNkPrepare(paths) {
 async function ccNkLetterOpen(id) {
   const L = (CC_NKS.letters || []).find(l => String(l.id) === String(id)); if (!L) return;
   const rec = typeof ccfRec === 'function' ? ccfRec(L.tenant_id) : null;
-  const label = 'NK-Abrechnung ' + (L.year || '') + (rec && rec.room ? ' – ' + rec.room : '');
+  // the row's year name ("2024/25" for a period over the year end) and the room / flat: "NK-Abrechnung 2024/25 – WHG 07"
+  const unit = !rec ? '' : _ccNksApp() === 'casa' ? rec.room : (typeof ccfA === 'function' ? ccfA().unitLabel(ccfA().unitOf(rec)) : '');
+  const label = 'NK-Abrechnung ' + (rec && _nkdD(L.period_from) ? ccNkDocYearLabel(rec, L.period_from) : (L.year || '')) + (unit ? ' – ' + unit : '');
   const ready = _ccNkLinks[L.file_path];
   if (ready && ready.exp - Date.now() > 5 * 60 * 1000 && typeof ccOpenUrl === 'function') { ccOpenUrl(ready.url, label); return; }
   try {

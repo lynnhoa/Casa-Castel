@@ -4350,7 +4350,8 @@ let _rntUnitsFailed = false;     // the last Tenants load ran without its apartm
 function _rntSaveCopy(readings) {
   try {
     const nks = typeof CC_NKS !== 'undefined'
-      ? { rows: CC_NKS.rows, res: CC_NKS.res, props: CC_NKS.props, buys: CC_NKS.buys, casaProp: CC_NKS.casaProp } : null;
+      ? { rows: CC_NKS.rows, res: CC_NKS.res, props: CC_NKS.props, buys: CC_NKS.buys, casaProp: CC_NKS.casaProp,
+          letters: CC_NKS.letters, units: CC_NKS.units } : null;   // Documents › NK-Abrechnungen drawn from the copy: kept letters + unit links
     const rp  = typeof CC_RP !== 'undefined' ? (CC_RP.rows || []).filter(r => r.app === 'rentals') : [];
     localStorage.setItem(RNT_COPY_KEY, JSON.stringify({ v: 1, at: Date.now(),
       apts: appApartments || [], pks: appParking || [], records: _rntRecords, kaution: _rntKaution, nk: _rntNK,
