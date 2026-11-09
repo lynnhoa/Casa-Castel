@@ -16,7 +16,8 @@
 /* ── DATA BUILDER ─────────────────────────────────────────────────────────── */
 
 /* Term dates as YYYY-MM-DD — the screen ("Endet am", Staffel, S3) and the PDF use this one rule, the same on every phone.
-   end     = Mietbeginn + Festlaufzeit − 1 day (months run over as before: 31.01 + 1 Monat → 02.03)
+   end     = Mietbeginn + Festlaufzeit − 1 day; a start day the end month does not have → that month's last day
+             (§ 188 Abs. 3 BGB: 31.01 + 1 Monat → 28.02 · 31.08.2026 + 18 Monate → 29.02.2028)
    next    = the day after the end (first Staffel step, start of the extension)
    ank     = last day to declare the option: the same day ankMon months before the end; a contract that ends on
              a month's last day → that month's last day (31.12 → 30.06 · 31.08 → 28.02 · 28.02 → 31.08)
@@ -24,7 +25,8 @@
 function _gwTermDates(startVal, festNum, festUnit, ankMon, verlJahre) {
   const start = startVal ? ccfIso(startVal) : null;
   if (!start || !festNum) return null;
-  const end  = ccfAddDays(festUnit === 'Jahre' ? ccfAddYears(start, festNum) : ccfAddMonths(start, festNum), -1);
+  const t    = festUnit === 'Jahre' ? ccfAddYears(start, festNum) : ccfAddMonths(start, festNum, true);
+  const end  = festUnit !== 'Jahre' && t.slice(8) !== start.slice(8) ? t : ccfAddDays(t, -1);
   const next = ccfAddDays(end, 1);
   const ank  = !ankMon ? '' : next.slice(8) === '01' ? ccfAddDays(ccfAddMonths(next, -ankMon), -1) : ccfAddMonths(end, -ankMon, true);
   const verlBis = verlJahre ? ccfAddDays(ccfAddYears(next, verlJahre), -1) : '';

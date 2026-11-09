@@ -72,7 +72,7 @@ function _aptCollectUebergData(apt, isEinzug) {
   const fmtDate = v => {
     if (!v) return '';
     if (/^\d{2}\.\d{2}\.\d{4}$/.test(v)) return v;
-    const d = new Date(v);
+    const d = ccfDay(v);   // a YYYY-MM-DD field → that day on every phone
     if (isNaN(d)) return v;
     return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
   };
