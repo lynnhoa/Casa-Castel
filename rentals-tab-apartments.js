@@ -2100,9 +2100,13 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
 
   let saved = inventar;
   if (_aptSbClient) {
-    // The new list is written first; the old items are removed only after that worked (queued per flat,
-    // one retry). A failed Save leaves the saved Inventar as it was and the sheet open with what you typed.
+    // The whole list is written in one go by id (queued per flat, one retry); the sheet stays open with
+    // what you typed if that fails. The first items take the old rows' ids (changed in place), extra items
+    // get their id here — once, so a retry or a lost answer can't double them. (Only a table with number
+    // ids would have to number new rows itself.)
     const oldIds = (appApartments.find(a => a.id === aptId)?.inventar || []).map(i => i.id).filter(id => id != null);
+    const numIds = appApartments.some(a => (a.inventar || []).some(r => /^\d+$/.test(String(r.id))));
+    inventar.forEach((r, i) => { if (i < oldIds.length) r.id = oldIds[i]; else if (!numIds) r.id = _aptNewId(); });
     const res = await ccQueueWrite('apt-inv-' + aptId, () => _aptInventarSync(aptId, inventar, oldIds));
     if (res.error) {
       console.error('[apartments] Save inventar failed:', res.error, inventar);
@@ -2126,33 +2130,41 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
     _aptInventarId = null;
   }
   _aptRerenderCard(aptId);
+  document.getElementById('cc-save-toast')?.remove();       // an earlier "not saved" never stays on top of "Saved"
   if (typeof ccSavedToast === 'function') ccSavedToast();
 });
-/* One Inventar save → the database, without a moment where the flat has no Inventar.
-   1 · insert the new list  2 · remove the flat's other items (the old list, and copies of an insert
-   whose answer got lost — safe to run twice)  3 · if removing fails, take the new rows out again,
-   so the list is never doubled. Returns { data: new rows } or { error }. */
+/* One Inventar save → the database, never empty and never doubled: the list is ONE upsert by id (all or
+   nothing, safe to repeat), then the flat's other rows (items taken off the list, leftovers of an earlier
+   try) are deleted. If that delete fails, at worst removed items are still there. Returns { data } or { error }. */
+function _aptNewId() {
+  if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = new Uint8Array(16); crypto.getRandomValues(b);
+  b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+  const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
 async function _aptInventarSync(aptId, inventar, oldIds) {
   const db = _aptSbClient, T = 'rentals_inventar';
-  let fresh = [];
-  if (inventar.length) {
-    const ins = await db.from(T).insert(inventar).select();
+  const withId = inventar.filter(r => r.id != null), noId = inventar.filter(r => r.id == null);
+  if (withId.length) {
+    const up = await db.from(T).upsert(withId).select();
+    if (up.error) return up;
+  }
+  let added = [];
+  if (noId.length) {                           // number ids only: the database numbers the extra rows
+    const ins = await db.from(T).insert(noId).select();
     if (ins.error) return ins;
-    fresh = ins.data || [];
+    added = ins.data || [];
   }
-  const keep = new Set(fresh.map(r => String(r.id)));
-  const undo = () => keep.size ? db.from(T).delete().in('id', [...keep]) : null;
-  let gone = oldIds;
-  if (keep.size === inventar.length) {         // the new rows are known → everything else of this flat goes
-    const cur = await db.from(T).select('id').eq('apartment_id', aptId);
-    if (cur.error) { await undo(); return cur; }
-    gone = (cur.data || []).map(r => r.id).filter(id => !keep.has(String(id)));
-  }
+  const keep = new Set([...withId, ...added].map(r => String(r.id)));
+  // the flat's other rows: read from the database when every new row's id is known, else the old list
+  const cur = added.length === noId.length ? await db.from(T).select('id').eq('apartment_id', aptId) : { error: 'ids unknown' };
+  const gone = (cur.error ? oldIds : (cur.data || []).map(r => r.id)).filter(id => !keep.has(String(id)));
   if (gone.length) {
     const del = await db.from(T).delete().in('id', gone);
-    if (del.error) { await undo(); return del; }
+    if (del.error) return del;
   }
-  return { data: fresh, error: null };
+  return { data: [...withId, ...added].sort((a, b) => a.sort_order - b.sort_order), error: null };
 }
 
 
