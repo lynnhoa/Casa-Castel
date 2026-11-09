@@ -321,7 +321,7 @@ function _renderRentalKurzzeitHTML(d) {
     'Winterdienst',
   ];
   const nkRows = NK_ITEMS.map(i => `<div class="nk-item">${i}</div>`).join('') +
-    `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fs.\u202fd. \u00a7\u00a72 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Enthärtungsanlage, sonstige Anlagen)</div>`;
+    `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fS.\u202fd. \u00a7\u00a02 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Enthärtungsanlage, sonstige Anlagen)</div>`;
 
   const invRows = d.inventar.length
     ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')

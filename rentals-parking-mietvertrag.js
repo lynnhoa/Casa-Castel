@@ -50,11 +50,9 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     : 'Das Waschen des PKWs auf dem Stellplatz ist untersagt.';
   const anlageText = isTG ? 'Garagenordnung' : 'Stellplatzordnung';
 
-  // Schlüssel sentence
-  let schlusselText = `Es wird/werden ${pkSk}\u00a0Parkplatzschlüssel ausgehändigt.`;
-  if (isTG && hbSk > 0) {
-    schlusselText = `Es wird/werden ${pkSk}\u00a0Parkplatzschlüssel sowie ${hbSk}\u00a0Hebeböhnenschlüssel ausgehändigt.`;
-  }
+  // Schlüssel sentence — n22: the card's Haustür keys for every type, "wird" / "werden" by the number of keys
+  const hk = hbSk > 0 ? ` sowie ${hbSk}\u00a0Haustürschlüssel` : '';
+  const schlusselText = `Es ${Number(pkSk) + Number(hbSk) === 1 ? 'wird' : 'werden'} ${pkSk}\u00a0Parkplatzschlüssel${hk} ausgehändigt.`;
 
   return {
     vermieterName:    s.vermieter_name    || '',
@@ -367,7 +365,7 @@ function _renderPkMietvertragHTML(d) {
       'Der Vermieter kann das Mietverh\u00e4ltnis fristlos k\u00fcndigen, wenn der Mieter mit 2\u00a0Monatsmieten im R\u00fcckstand ist (\u00a7\u00a0543 Abs.\u00a02 Nr.\u00a03 BGB).')}
 
     ${cl('3', 'Nutzung des Stellplatzes',
-      `Der ${d.stellplatzLabel} darf ausschlie\u00dflich zum Abstellen eines privaten Kraftfahrzeugs genutzt werden. Eine Untervermietung oder \u00dcberlassung an Dritte ist nicht gestattet. ${d.waschText}`)}
+      `${/(garage|anlage)$/i.test(d.stellplatzLabel) ? 'Die' : 'Der'} ${d.stellplatzLabel} darf ausschlie\u00dflich zum Abstellen eines privaten Kraftfahrzeugs genutzt werden. Eine Untervermietung oder \u00dcberlassung an Dritte ist nicht gestattet. ${d.waschText}`)}
 
     ${cl('4', 'Schl\u00fcssel\u00fcbergabe',
       `${d.schlusselText} Die Schl\u00fcssel sind bei Mietende zur\u00fcckzugeben. Bei Verlust tr\u00e4gt der Mieter die vollst\u00e4ndigen Kosten des Schlossaustauschs.`)}

@@ -560,9 +560,10 @@ html .cc-sumline__vals b { display:block; font-size:15px; font-weight:600; line-
 /* Name and PLZ / Ort: one per row (long names / places were cut) */
 .apt-field-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 .apt-field-row > .apt-field { min-width:0; }
-.apt-field-row:has(input[data-f="name"]), .apt-field-row:has(input[data-f="plz_ort"]) { grid-template-columns:minmax(0,1fr); }
+/* n10: #tab-apartments + !important, or cc-cards.css (two halves, !important) wins */
+#tab-apartments .apt-field-row:has(input[data-f="name"]), #tab-apartments .apt-field-row:has(input[data-f="plz_ort"]) { grid-template-columns:minmax(0,1fr) !important; }
 /* Zähler: meter number uses the full width, delete button beside it */
-.apt-field-row[data-zaehler-id] { grid-template-columns:minmax(0,1fr) 38px; }
+#tab-apartments .apt-field-row[data-zaehler-id] { grid-template-columns:minmax(0,1fr) 38px !important; }
 .apt-field-row[data-zaehler-id] > .apt-field:last-child { padding-top:0 !important; justify-content:flex-end; }
   `;
   document.head.appendChild(s);
@@ -1031,7 +1032,9 @@ function _aptCardHTML(a) {
   // Occupied: the tenant's real rent · vacant: the asking rent (labelled)
   const _cur = typeof rntCurrentRentOf === 'function' ? rntCurrentRentOf('apt', a.id) : null;
   const rentHTML = _cur
-    ? `<strong>${aptFmtEURCompact(_cur.total)}</strong> warm · ${aptFmtEURCompact(_cur.kalt)} + ${aptFmtEURCompact(_cur.nk)} NK`
+    ? _cur.mode === 'pauschal'
+      ? `<strong>${aptFmtEURCompact(_cur.total)}</strong> pauschal`   // n9: as the Tenants card (no Kalt + 0 € NK)
+      : `<strong>${aptFmtEURCompact(_cur.total)}</strong> warm · ${aptFmtEURCompact(_cur.kalt)} + ${aptFmtEURCompact(_cur.nk)} NK`
     : (kalt || nk)
       ? `Asking rent <strong>${aptFmtEURCompact(warm)}</strong> warm`
       : `<span class="apt-hdr__rent--vacant">No asking rent set</span>`;
@@ -1207,7 +1210,7 @@ function _aptCardHTML(a) {
         ${v.hv_telefon ? `<div class="apt-row"><span class="apt-row__k">Telefon</span><span class="apt-row__v">${aptEsc(v.hv_telefon)}</span></div>` : ''}
         ${v.grundsteuer_mtl ? `<div class="apt-row"><span class="apt-row__k">Grundsteuer</span><span class="apt-row__v">${aptFmtEURCompact(v.grundsteuer_mtl)} / Quartal</span></div>` : ''}
         ${v.strom_provider ? `<div class="apt-row"><span class="apt-row__k">Strom Provider</span><span class="apt-row__v">${aptEsc(v.strom_provider)}</span></div>` : ''}
-        ${!v.hausverwaltung && !v.grundsteuer_mtl && !v.strom_provider ? `<div class="apt-row"><span class="apt-row__v apt-row__v--muted">—</span></div>` : ''}
+        ${!v.hausverwaltung && !v.hv_email && !v.hv_telefon && !v.grundsteuer_mtl && !v.strom_provider ? `<div class="apt-row"><span class="apt-row__v apt-row__v--muted">—</span></div>` : ''}
         <div class="apt-section-edit">
           <button class="apt-sec-edit-btn" onclick="_aptEnterSection('verwaltung','${a.id}')">
             <i class="ti ti-pencil" style="font-size:10px"></i> Edit
@@ -2370,6 +2373,8 @@ async function _aptReopenContractDraft(d) {
     if (typeof _aptGwCalcDates === 'function' && document.getElementById('apt-gw-start')) _aptGwCalcDates();
     // Warmmiete / Gesamtmiete lines follow the restored rent (a restored Anfangsmiete stays as it was)
     if (typeof ccfMieteRefresh === 'function' && document.getElementById('ccf-miete')) ccfMieteRefresh();
+    { const mvAnf = document.getElementById('apt-mv-staffel-anfang'), mvM = typeof ccfMieteGet === 'function' ? ccfMieteGet() : null;   // n14: follows from the restored Kaltmiete on
+      if (mvAnf && mvM) mvAnf.dataset.kref = String(mvM.kalt || 0); }
     const gwAnf = document.getElementById('apt-gw-staffel-anfang'), gwAnfV = gwAnf?.value;
     if (typeof _aptGwCalcGesamt === 'function' && document.getElementById('apt-gw-kalt')) { _aptGwCalcGesamt(); if (gwAnf) gwAnf.value = gwAnfV; }
     if (typeof _aptGwCalcVerl === 'function' && document.getElementById('apt-gw-neue-kalt')?.value) _aptGwCalcVerl('kalt');
@@ -2696,7 +2701,6 @@ async function _aptOpenContract(type, aptId, renew) {
             inventar:            apt2.inventar || [],
           };
           const staffelAn = document.getElementById('apt-mv-staffel-btn')?.dataset.mode === 'ja';
-          const anfangsmiete = parseFloat(document.getElementById('apt-mv-staffel-anfang')?.value) || null;
           const staffeln = [];
           if (staffelAn) {
             document.querySelectorAll('.apt-mv-staffel-row').forEach(row => {
@@ -2705,6 +2709,8 @@ async function _aptOpenContract(type, aptId, renew) {
               if (betrag && datum && datum !== '—') staffeln.push({ datum, betrag });
             });
           }
+          // n14: the Anfangsmiete only counts for a Staffelmiete with steps (as § 4 and Approve) — else the Miete block's Kaltmiete
+          const anfangsmiete = staffeln.length ? (parseFloat(document.getElementById('apt-mv-staffel-anfang')?.value) || null) : null;
           const data = _buildRentalMietvertragData(aptRoom, appSettings, {
             mieterName, mieterAdr, mieterDob, mieterEmail, mieterTel, startVal, sigVal,
             mieterName2: t2.name, mieterAdr2: t2.adr, mieterDob2: t2.dob, mieterEmail2: t2.email, mieterTel2: t2.tel,
@@ -2846,6 +2852,14 @@ function _aptSetupFlow(type, apt) {
       if (inp && inp.hasAttribute('data-auto') && m) {
         const a2 = _aptContractApt(appApartments.find(a => a.id === _aptContractId));
         inp.value = ccKaution({ contract: 'mietvertrag', mode: 'kalt_nk', kalt: m.kalt, nk: m.nk, rec: a2.pricing }).amount;
+      }
+      // n14: the Staffel Anfangsmiete follows the Kaltmiete typed here while it still says the one before (as Gewerbe) —
+      // an Anfangsmiete of your own stays
+      const anf = document.getElementById('apt-mv-staffel-anfang');
+      if (anf && m) {
+        const ref = anf.dataset.kref !== undefined ? Number(anf.dataset.kref) : (Number(pr.kaltmiete) || 0);
+        if (Math.abs((ccfNum(anf.value) || 0) - ref) < 0.005) anf.value = m.kalt || '';
+        anf.dataset.kref = String(m.kalt || 0);
       }
     } };
   // Oct 2026: a new contract — the Kaution follows the Kaltmiete typed here (3× Kalt or the card's individual Kaution);

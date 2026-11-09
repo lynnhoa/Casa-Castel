@@ -751,6 +751,7 @@ function _srLetterData(c, it, rec, x, ts) {
   const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
   return {
     aptName: apt.name || c.p.name, wohnungsnummer: apt.wohnungsnummer || '',
+    isGewerbe: apt.zimmer_type === 'Gewerbefläche',   // n47: a Gewerbe unit's letter says Gewerbefläche (amounts unchanged)
     objekt: [[apt.adresse, stWhg(apt.wohnungsnummer)].filter(Boolean).join(', '), apt.plz_ort].filter(Boolean).join(', '),
     footer: apt.adresse ? apt.adresse + (apt.plz_ort ? ' \u00b7 ' + apt.plz_ort : '') : (apt.plz_ort || ''),
     ort: apt.unterschrift_ort || (typeof ccPlaceOf === 'function' ? ccPlaceOf(apt.plz_ort) : ''),   // the city of the property
@@ -779,13 +780,14 @@ function srLetterHtml(d) {
   const parts = String(d.objekt || '').split(/\s*,\s*/).filter(Boolean);
   const plz = parts.length > 1 && /^\d{5}\b/.test(parts[parts.length - 1]) ? parts.pop() : '';
   const year = String(d.perTo || '').slice(0, 4);
+  const unitWord = d.isGewerbe ? 'Gewerbefläche' : 'Wohnung';
   const vzNew = d.newVz !== null && d.newVz !== undefined
-    ? `<p class="p">Auf Grundlage dieser Abrechnung wird die monatliche Betriebskostenvorauszahlung nach §\u00a0560 Abs.\u00a04 BGB ${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> angepasst.</p>` : '';
+    ? `<p class="p">Auf Grundlage dieser Abrechnung wird die monatliche Betriebskostenvorauszahlung ${d.isGewerbe ? '' : 'nach §\u00a0560 Abs.\u00a04 BGB '}${d.newVzFrom ? 'ab dem <strong>' + dt(d.newVzFrom) + '</strong> ' : ''}auf <strong>${eur(d.newVz)}</strong> angepasst.</p>` : '';
   return nkLetterHtml({
-    brand: d.aptName, unitLabel: 'Wohnung', unitName: d.wohnungsnummer || '',   // name left · Wohnung + number right
+    brand: d.aptName, unitLabel: unitWord, unitName: d.wohnungsnummer || '',   // name left · Wohnung (Gewerbefläche) + number right
     footer: d.footer, sender: d.sender, vermieter: d.vermieter, ort: d.ort, date: d.date, names: d.names, addr: d.addr,
     title: 'Betriebskostenabrechnung ' + dt(d.useFrom) + ' \u2013 ' + dt(d.useTo),
-    facts1: [['Wohnung', parts.join(', ') || d.aptName, plz],
+    facts1: [[unitWord, parts.join(', ') || d.aptName, plz],
              ['Zeitraum', dt(d.useFrom) + ' \u2013 ' + dt(d.useTo), d.partial ? d.tDays + ' von ' + d.perDays + ' Tagen \u00b7 Abrechnungsjahr ' + year : d.perDays + ' Tage'],
              ['Grundlage', 'Hausgeldabrechnung', [d.hvName, d.hvDate ? 'vom ' + dt(d.hvDate) : ''].filter(Boolean).join(' ')]],
     greeting: d.names.length ? 'Guten Tag ' + _srJoin(d.names) + ',' : 'Sehr geehrte Damen und Herren,',
@@ -795,8 +797,11 @@ function srLetterHtml(d) {
     sum: d.sum, vz: d.vz, vzMonths: d.vzMonths || [], saldo: d.saldo, via: d.via, einbehalt: d.einbehalt, due: d.due,
     bank: d.bank, verwendung: d.verwendung, tenantIban: d.tenantIban, former: d.former, du: false,
     extraHtml: vzNew,
-    hints: [(d.hasVerbrauch ? 'Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung (siehe Anlage). ' : '') + 'Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.',
-            'Die Belege können nach Terminabsprache eingesehen werden. Einwendungen sind bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).'],
+    // n47: §§ 556 / 560 BGB are Wohnraum law, and a Gewerbe contract makes Verwaltung umlagefähig — the Gewerbe letter
+    // neither cites them nor calls Verwaltung "nicht umlagefähig" (whether Verwaltung is billed: owner decision, amounts unchanged)
+    hints: [(d.hasVerbrauch ? 'Heizung und Warmwasser nach Verbrauch gemäß Heizkostenverordnung (siehe Anlage). ' : '')
+              + (d.isGewerbe ? 'Verwaltungskosten und Rücklage sind nicht enthalten.' : 'Nicht umlagefähige Kosten wie Verwaltung und Rücklage sind nicht enthalten.'),
+            'Die Belege können nach Terminabsprache eingesehen werden.' + (d.isGewerbe ? '' : ' Einwendungen sind bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 Satz 5 BGB).')],
     closing: 'Mit freundlichen Grüßen', anlagen: d.anlagen, extra: null,
   });
 }

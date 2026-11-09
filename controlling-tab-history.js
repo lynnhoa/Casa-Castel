@@ -94,7 +94,7 @@ function _cxHTenancyHTML(u, pid, w) {
 
   // Casa Castel has no Staffel — its steps are Mieterhöhungen (Pauschal or Kalt, by the rent valid on that day)
   const _stLine = h => {
-    if (w.app !== 'casa') return 'Staffel from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount) + ' Kalt';
+    if (w.app !== 'casa') return _cxMhLabel(h) + ' from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount) + (u && u.source_type === 'rentals_parking' ? '' : ' Kalt');   // n44: the type picked; parking has no Kalt
     const d = ccRpIso(h.effective_date);
     const at = w.periods.filter(p => ccRpIso(p.valid_from) && ccRpIso(p.valid_from) <= d).pop();
     const pau = (at ? at.mode : w.legacyMode) === 'pauschal';
@@ -146,7 +146,7 @@ window.renderHistory = function (host) {
         cxEsc(h.istNoTenant.length > 6 ? h.istNoTenant.slice(0, 6).join(', ') + ' …' : h.istNoTenant.join(', ')) +
         ' – check the move-in (maybe overwritten by a renewal)</div>' : '') +
       h.orphans.map(o => '<div class="cx-r__warn" style="margin-top:6px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' +
-        (o.kind === 'staffel' ? (h.link.type === 'casa_room' ? 'Mieterhöhung' : 'Staffel step') : 'NK change') + ' from ' + cxFmtDate(ccRpIso(o.h.effective_date)) + ' (' + cxEur(o.h.amount) + ') belongs to no tenant – not used</div>').join('') +
+        (o.kind === 'staffel' ? (h.link.type === 'casa_room' ? 'Mieterhöhung' : _cxMhLabel(o.h)) : 'NK change') + ' from ' + cxFmtDate(ccRpIso(o.h.effective_date)) + ' (' + cxEur(o.h.amount) + ') belongs to no tenant – not used</div>').join('') +
       '</div>';
     return '<div class="cx-card"><button class="cx-ph" data-h="fold" data-k="' + cxEsc(k) + '" aria-expanded="' + isOpen + '">' +
       '<span class="cx-ph__l"><span class="cx-pn">' + cxEsc(u.name) + '</span><span class="cx-src">' + cxEsc(p.name) + ' · ' + h.tenancies.length + (h.tenancies.length === 1 ? ' tenant' : ' tenants') + '</span></span>' +

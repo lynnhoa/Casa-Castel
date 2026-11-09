@@ -106,8 +106,8 @@ function _pkCollectUebergData(spot, isEinzug) {
     // Vermieter
     vermieter:        s.vermieter_name || '',
     vermieterAdresse: s.vermieter_adresse || '',
-    // Unterzeichnungsort — reuse gerichtsstand as signing city
-    unterschriftOrt:  spot.gerichtsstand || '',
+    // Unterzeichnungsort — reuse gerichtsstand as signing city, else the spot's city (n25, as the apartment Übergabe)
+    unterschriftOrt:  spot.gerichtsstand || (typeof ccPlaceOf === 'function' ? ccPlaceOf(spot.plz_ort) : ''),
     unterzeichnungsDatum: fmtDate(sigVal),
     // Mieter
     mieterName:  document.getElementById('pk-ub-mieter-name')?.value?.trim() || '',
@@ -282,8 +282,8 @@ function _pkRenderUebergHTML(d) {
 
   const objektLine = [d.adresse, d.plzOrt].filter(Boolean).join(', ');
 
-  const sigDate = d.unterzeichnungsDatum && d.unterschriftOrt
-    ? `<div class="sig-prefill">${esc(d.unterschriftOrt)}, ${esc(d.unterzeichnungsDatum)}</div><div class="sig-write-gap"></div>`
+  const sigDate = d.unterzeichnungsDatum   // n25: the date typed is always printed (place first when known)
+    ? `<div class="sig-prefill">${esc([d.unterschriftOrt, d.unterzeichnungsDatum].filter(Boolean).join(', '))}</div><div class="sig-write-gap"></div>`
     : `<div class="sig-ort-gap"></div><hr class="sig-ort-line"/><div class="sig-date-label">Ort, Datum</div><div class="sig-write-gap sig-write-gap--short"></div>`;
 
   /* ── Schlüssel section — parking has Parkschlüssel instead of Wohnungstür ── */
@@ -330,7 +330,7 @@ function _pkRenderUebergHTML(d) {
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Adresse', objektLine)}
     ${d.levelPosition  ? kv('Ebene / Position',   d.levelPosition)  : ''}
-    ${d.propertyRef    ? kv('Property',            d.propertyRef)    : ''}
+    ${d.propertyRef    ? kv('Objekt',              d.propertyRef)    : ''}
     ${kv('Art des Stellplatzes', d.parkingType)}
     ${kv('Vermieter',            d.vermieter)}
     ${kv(pkHasExtra ? 'Mieter 1' : 'Mieter', d.mieterName)}
