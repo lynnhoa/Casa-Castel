@@ -514,7 +514,8 @@ function _wirePkMvPdfBtn() {
     const kautionVal  = document.getElementById('pk-mv-kaution')?.value || null;
     const kautionFael = typeof _pkReadKautionFael === 'function' ? _pkReadKautionFael() : '5';
     const staffelAn   = document.getElementById('pk-mv-staffel-btn')?.dataset.mode === 'ja';
-    const anfangsmiete = parseFloat(document.getElementById('pk-mv-staffel-anfang')?.value) || null;
+    // Staffel off → the card rent (pricing.miete), the same amount Approve saves (_pkSetupFlow); a hidden Anfangsmiete is not used
+    const anfangsmiete = staffelAn ? (parseFloat(document.getElementById('pk-mv-staffel-anfang')?.value) || null) : null;
     const staffeln = [];
     if (staffelAn) {
       document.querySelectorAll('.pk-mv-staffel-row').forEach(row => {
