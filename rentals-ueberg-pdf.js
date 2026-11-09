@@ -361,7 +361,7 @@ function _aptRenderUebergHTML(d) {
   const parteienBlock = `
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Adresse', objektLine)}
-    ${d.wohnungsnummer ? kv('Wohnungsnummer', d.wohnungsnummer) : ''}
+    ${d.wohnungsnummer ? kv(isGewerbe ? 'Einheit' : 'Wohnungsnummer', d.wohnungsnummer) : ''}
     ${d.flaeche ? kv(isGewerbe ? 'Nutzfläche' : 'Wohnfläche', d.flaeche) : ''}
     ${kv('Vermieter', d.vermieter)}
     ${kv(mieter1Lbl, d.mieterName)}
