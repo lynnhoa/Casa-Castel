@@ -719,6 +719,7 @@ function rntCurrentRecOf(kind, id) {
 /* One "More" list = the former Nebenkosten + Details groups (same rows, same sheets) */
 function _rntMoreHTML(rid, type, unit, rec) {
   const isApt = type === 'apt', kind = isApt ? 'apt' : 'pk', rows = [];
+  if (typeof kbRowHTML === 'function') rows.push(kbRowHTML(rec));   // Nov 2026 (#26): Kündigung (cc-kuendigung.js) — first, as in Casa
   if (typeof ccfDocsSectionHTML === 'function') {
     rows.push(ccRowHTML({ icon: 'file-text', title: 'Documents', meta: _rntEsc(ccfDocsSummary(rec)), onclick: `_rntSheet('docs','${rid}','${rec.id}','${kind}','${unit.id}')` }));
     if (isApt) rows.push(ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: _rntEsc(ccfMetersSummary(rec)), onclick: `_rntSheet('meters','${rid}','${rec.id}','${kind}','${unit.id}')` }));   // parking has no Zähler
@@ -2142,10 +2143,13 @@ function _rntContractEntry(rec) {
 /* Nov 2026 (n35, as Casa _tnSyncContractEnd): the card's Contract end → that entry's contract_end, so Controlling never
    reads an old end the card no longer has. An empty end clears it. A date is written only into an entry that is a
    fixed-term contract already (has an end, or is Kurzzeit) — an open-ended Mietvertrag never gets one — unless
-   opts.force (the Kündigung #26 for a befristet contract). Safe to repeat; resolves once written (errors are shown).
+   opts.force (the Kündigung #26 calls this without it: a letter-3 Contract end stays off the open-ended entry).
+   Safe to repeat; resolves once written (errors are shown).
    opts.prev (a card / pop-up save): the Contract end before that save — if the entry can't be written, the card's
    Contract end goes back to it (screen and tenant row), so the toast's "previous values are back" is true and the
-   next Save runs this sync again. */
+   next Save runs this sync again.
+   opts.quiet (the Kündigung): a failed write shows nothing and rejects — the caller puts the card back and says
+   "… Tap Create again". */
 function _rntSyncContractEnd(rec, end, opts) {
   if (!rec || !rec.id || !sbL || typeof ccRpUpdate !== 'function') return Promise.resolve(false);
   const ent = _rntContractEntry(rec);
@@ -2156,6 +2160,7 @@ function _rntSyncContractEnd(rec, end, opts) {
   return ccQueueWrite('rp-' + ent.id, () => ccRpUpdate(sbL, ent.id, { contract_end: want }).then(() => ({}), e => ({ error: e })))
     .then(r => {
       if (!(r && r.error)) return true;
+      if (opts && opts.quiet) throw r.error;
       if (opts && 'prev' in opts && (_ccIso(rec.vertragsende) || null) === want) {   // not changed again meanwhile
         const prev = opts.prev ?? null;
         rec.vertragsende = prev;

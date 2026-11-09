@@ -1,7 +1,8 @@
 /* ─────────────────────────────────────────────────────────────
-   KÜNDIGUNG · Casa Castel (Nov 2026 · owner: "simple — store the tenant's Kündigung, create the
+   KÜNDIGUNG · Casa Castel + Rentals (Nov 2026 · owner: "simple — store the tenant's Kündigung, create the
    Kündigungsbestätigung and store it, that's all")
-   cc-kuendigung.js   (landlord.html, after tab-tenants.js · needs cc-contract-flow.js, nk-letter.js, pdf-open.js)
+   cc-kuendigung.js   (landlord.html after tab-tenants.js · rentals-index.html after rentals-tab-tenants.js ·
+                       needs cc-contract-flow.js, nk-letter.js, pdf-open.js) · kbA() picks the app, as ccfA()
 
    Tenants › tenant card › More › Kündigung — one sheet, three steps:
      1 · Tenant's Kündigung   their e-mail as PDF, screenshot or photo → Documents "Kündigung (Mieter)" (Signed)
@@ -15,6 +16,15 @@
    Letter 2 · Kurzzeit / Jahresvertrag (befristet): no ordinary Kündigung — you type the early end; the letter confirms it.
    Nov 2026 (owner): the letter follows the contract type (no switch) · Ort of the signature: Wiesbaden or Mainz ·
               final texts (KUENDIGUNG-TEXTE.md) · Ort, Datum above the title, only the landlord signs.
+   Rentals (Nov 2026 · #26) — flats, Gewerbe, parking · texts 2 (flat), 3, 4, 5 of KUENDIGUNG-TEXTE.md · 1–3 tenants:
+     Stellplatz → 5 · 3 months to the quarter end, never before its 1st year ends (Mietbeginn + 1 year − 1 day)
+     Gewerbe    → 4 · 6 months to the quarter end
+              (both: received by the 3rd working day of a quarter → counted from the quarter before, § 580a)
+     Kurzzeit, or a Mietvertrag approved with an end (its rent entry has one) → 2 · Vorzeitiges Ende
+     Mietvertrag → 3 · 3 months to the month end. Mainz flats: Rheinland-Pfalz holidays (+ 01.11.), else Hessen.
+     Ort = the unit's Unterzeichnungsort / place (Casa's remembered Ort is never read or written here).
+     Create: Contract end on the card (rnt_tenant_records) and, as every card save, the running contract's rent
+     entry when it is fixed-term already (_rntSyncContractEnd) — an open-ended Mietvertrag entry stays empty.
    Nothing else is tracked: the dates are only printed in the letter.
    ───────────────────────────────────────────────────────────── */
 
@@ -52,45 +62,111 @@ function kbHolidaysHE(y) {
   return (_kbHol[y] = new Set([_kbYmd(y, 1, 1), _kbAddDays(e, -2), _kbAddDays(e, 1), _kbYmd(y, 5, 1), _kbAddDays(e, 39),
                                _kbAddDays(e, 50), _kbAddDays(e, 60), _kbYmd(y, 10, 3), _kbYmd(y, 12, 25), _kbYmd(y, 12, 26)]));
 }
-function kbIsWorkday(iso) {
-  const wd = new Date(iso + 'T12:00:00Z').getUTCDay();
-  return wd >= 1 && wd <= 5 && !kbHolidaysHE(Number(iso.slice(0, 4))).has(iso);
+/* Rheinland-Pfalz (Mainz flats, Rentals): Hessen + Allerheiligen 01.11. — cached per Land (land omitted = Hessen, Casa) */
+function kbHolidays(y, land) {
+  if (land !== 'RP') return kbHolidaysHE(y);
+  const k = 'RP' + y; if (_kbHol[k]) return _kbHol[k];
+  return (_kbHol[k] = new Set([...kbHolidaysHE(y), _kbYmd(y, 11, 1)]));
 }
-function kbThirdWorkday(y, m) {
+function kbIsWorkday(iso, land) {
+  const wd = new Date(iso + 'T12:00:00Z').getUTCDay();
+  return wd >= 1 && wd <= 5 && !kbHolidays(Number(iso.slice(0, 4)), land).has(iso);
+}
+function kbThirdWorkday(y, m, land) {
   let n = 0;
-  for (let d = 1; d <= _kbDim(y, m); d++) { const iso = _kbYmd(y, m, d); if (kbIsWorkday(iso) && ++n === 3) return iso; }
+  for (let d = 1; d <= _kbDim(y, m); d++) { const iso = _kbYmd(y, m, d); if (kbIsWorkday(iso, land) && ++n === 3) return iso; }
   return null;
 }
+/* Gewerbe (6 months) · Parkplatz (3 months) to the quarter end: received by the 3rd working day of a quarter → counted
+   from the end of the quarter before; never before minEnd (parking: 1 year) */
+function kbQuarterStart(iso) { const y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7)); return _kbYmd(y, m - (m - 1) % 3, 1); }
+function kbEndQuarter(eingang, months, minEnd, land) {
+  if (!_kbIsIso(eingang)) return '';
+  const qs = kbQuarterStart(eingang), q3 = kbThirdWorkday(Number(qs.slice(0, 4)), Number(qs.slice(5, 7)), land);
+  const from = q3 && eingang <= q3 ? _kbAddDays(qs, -1) : eingang;
+  let ty = Number(from.slice(0, 4)), tm = Number(from.slice(5, 7)) + months; while (tm > 12) { tm -= 12; ty++; }
+  let e = _kbYmd(ty, tm, Math.min(Number(from.slice(8, 10)), _kbDim(ty, tm)));
+  if (_kbIsIso(minEnd) && e < minEnd) e = minEnd;
+  const ey = Number(e.slice(0, 4)), eq = Math.ceil(Number(e.slice(5, 7)) / 3) * 3;
+  return _kbYmd(ey, eq, _kbDim(ey, eq));
+}
+/* start + 1 year − 1 day (01.04.2026 → 31.03.2027 · 29.02.2028 → 28.02.2029) */
+function kbYearMinEnd(start) {
+  if (!_kbIsIso(start)) return '';
+  const y = Number(start.slice(0, 4)), m = Number(start.slice(5, 7)), d = Number(start.slice(8, 10));
+  return new Date(Date.UTC(y + 1, m - 1, d - 1, 12)).toISOString().slice(0, 10);
+}
 /* Mietvertrag unbefristet (§ 573c BGB): received by the 3rd working day → end of the month after next */
-function kbEndUnbefristet(eingang) {
+function kbEndUnbefristet(eingang, land) {
   if (!_kbIsIso(eingang)) return '';
   const y = Number(eingang.slice(0, 4)), m = Number(eingang.slice(5, 7));
-  const third = kbThirdWorkday(y, m), add = third && eingang <= third ? 2 : 3;
+  const third = kbThirdWorkday(y, m, land), add = third && eingang <= third ? 2 : 3;
   let ty = y, tm = m + add; while (tm > 12) { tm -= 12; ty++; }
   return _kbYmd(ty, tm, _kbDim(ty, tm));
 }
 
 /* ── The tenancy ───────────────────────────────────────────── */
-const _kbRec = tid => (typeof _tnRecords !== 'undefined' ? _tnRecords : []).find(r => String(r.id) === String(tid)) || null;
+const _kbRec = tid => kbA().rec(tid);
 const _kbName = r => [r.first_name, r.last_name].filter(Boolean).join(' ').trim();
 const _kbEsc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /* Letter 2 for a fixed-term contract (Kurzzeit · Jahresvertrag), letter 1 for a Mietvertrag — always by the contract type */
-function kbVersionOf(rec) {
+function kbVersionOf(rec) { return kbA().version(rec); }   // 'unbefristet' · 'befristet' · Rentals also 'gewerbe' · 'parkplatz'
+function _kbVersionCasa(rec) {
   const ct = typeof tnContractType === 'function' ? tnContractType(rec) : rec && rec.contract_type;
   return ct === 'kurzzeit' || ct === 'jahres' ? 'befristet' : 'unbefristet';
 }
 /* the end the running (latest) contract has today — "befristet bis …" in letter 2 */
-function _kbAgreedEnd(rec) {
+function _kbAgreedEnd(rec) { return kbA().agreedEnd(rec); }
+function _kbAgreedEndCasa(rec) {
   const cs = typeof _tnContractState === 'function' ? _tnContractState(rec) : null;
   const last = cs && cs.all.length ? cs.all[cs.all.length - 1] : null;
   return (last && last.end) || (typeof _ccIso === 'function' ? _ccIso(rec.vertragsende) : '') || '';
 }
 const _kbDocOf = (tid, type, variant) => (typeof ccfDocOf === 'function' ? ccfDocOf(tid, type, variant) : null);
 
+/* ── App adapter (Nov 2026 · #26): Casa Castel rooms (landlord.html) · Rentals flats, Gewerbe, parking (rentals-index.html)
+   Same pattern as cc-contract-flow.js (CCF_CASA / CCF_RENTALS). Casa keeps exactly its old code paths. */
+const KB_CASA = {
+  app: 'casa', rememberOrt: true,
+  rec: tid => (typeof _tnRecords !== 'undefined' ? _tnRecords : []).find(r => String(r.id) === String(tid)) || null,
+  version: rec => _kbVersionCasa(rec),
+  agreedEnd: rec => _kbAgreedEndCasa(rec),
+  planned: rec => { const cs = typeof _tnContractState === 'function' ? _tnContractState(rec) : null; return cs && cs.next && cs.next.start > _kbToday() ? cs.next.start : ''; },
+  kicker: rec => (rec.room || '') + ' · ' + _kbName(rec),
+  ctWord: rec => { const ct = typeof tnContractType === 'function' ? tnContractType(rec) : rec.contract_type; return ct === 'kurzzeit' ? 'Kurzzeit' : ct === 'jahres' ? 'Jahresvertrag' : 'Mietvertrag'; },
+  land: () => undefined,                                     // Hessen
+  ort0: () => _kbOrt0Casa(),
+  fileUnit: rec => rec.room,
+  letterData: (rec, st) => _kbLetterDataCasa(rec, st),
+  setEnd: (rec, end) => _kbSetEnd(rec, end),
+  redraw: () => { if (typeof _tnRender === 'function') _tnRender(); },
+  pdfOpts: undefined,
+};
+const KB_RENTALS = {
+  app: 'rentals', rememberOrt: false,                        // the Ort follows the unit (kb_ort stays Casa's)
+  rec: tid => (typeof _rntRecords !== 'undefined' ? _rntRecords : []).find(r => String(r.id) === String(tid)) || null,
+  version: rec => _kbRntVersion(rec),
+  agreedEnd: rec => _kbIsoOf(rec.vertragsende) || _kbIsoOf((_rntContractEntry(rec) || {}).contract_end),
+  planned: rec => (typeof _rntRenewalRows === 'function' ? _rntRenewalRows(rec) : []).map(x => _kbIsoOf(x.p.valid_from)).find(d => d > _kbToday()) || '',
+  kicker: rec => [_kbRntUnitLabel(rec), typeof _rntFullTenantNames === 'function' ? _rntFullTenantNames(rec) : _kbName(rec)].filter(Boolean).join(' · '),
+  ctWord: rec => (rec.parking_id ? 'Stellplatz' : _kbRntVersion(rec) === 'gewerbe' ? 'Gewerbe' : typeof rntContractType === 'function' && rntContractType(rec) === 'kurzzeit' ? 'Kurzzeit' : 'Mietvertrag'),
+  land: rec => _kbRntLand(rec),
+  ort0: rec => _kbRntOrt(rec),
+  fileUnit: rec => (_kbRntUnit(rec) || {}).name || '',
+  letterData: (rec, st) => _kbLetterDataRnt(rec, st),
+  setEnd: (rec, end) => _kbSetEndRnt(rec, end),
+  redraw: () => { if (typeof _rntRender === 'function') _rntRender(); },
+  pdfOpts: { strict: true },                                 // never a letter with text outside the page (as the Rentals contracts)
+};
+function kbA() { return typeof _rntRecords !== 'undefined' ? KB_RENTALS : KB_CASA; }
+const _kbIsoOf = v => _kbToIso(v) || (typeof ccRpIso === 'function' ? ccRpIso(v) : '') || '';
+const KB_GW_MONTHS = 6;                                      // Gewerbe Frist (the generator's default · not stored)
+
 /* ── State of the open sheet (kept while you type; nothing of it is stored) ── */
 const _kbState = {};
 const KB_ORTE = ['Wiesbaden', 'Mainz'];
-function _kbOrt0() {
+function _kbOrt0(rec) { return kbA().ort0(rec); }
+function _kbOrt0Casa() {
   let o = ''; try { o = localStorage.getItem('kb_ort') || ''; } catch (e) {}
   if (KB_ORTE.includes(o)) return o;
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
@@ -106,8 +182,8 @@ function _kbSt(rec) {
     const o = _kbState[k]; delete _kbState[k];
     if (o.ortPicked) { _kbSt(rec); Object.assign(_kbState[k], { ort: o.ort, ortPicked: true }); }
   }
-  const st = _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', eingangAuto: true, end: '', endAuto: true, agreed: again ? '' : _kbAgreedEnd(rec), again, done: null, ort: _kbOrt0(), ortPicked: false });
-  if (!st.ortPicked) st.ort = _kbOrt0();                    // not picked for this tenant → the place remembered on this device
+  const st = _kbState[k] || (_kbState[k] = { v: kbVersionOf(rec), vom: '', eingang: '', eingangAuto: true, end: '', endAuto: true, agreed: again ? '' : _kbAgreedEnd(rec), again, done: null, ort: _kbOrt0(rec), ortPicked: false });
+  if (!st.ortPicked) st.ort = _kbOrt0(rec);                 // not picked for this tenant → Casa: the place remembered on this device · Rentals: the unit's place
   return st;
 }
 
@@ -128,7 +204,7 @@ function kbOpen(tid) {
   _kbSt(rec);
   if (typeof _ccfDocEdit !== 'undefined') delete _ccfDocEdit[tid];                 // a tap on the Kündigung opens it
   // noRefresh: a card redraw never rebuilds this sheet (what you typed, "Open PDF") — kbRefresh does it when needed
-  ccSheetOpen({ title: 'Kündigung', kicker: (rec.room || '') + ' · ' + _kbName(rec), build: () => kbHTML(tid), kb: String(tid), noRefresh: true });
+  ccSheetOpen({ title: 'Kündigung', kicker: kbA().kicker(rec), build: () => kbHTML(tid), kb: String(tid), noRefresh: true });
 }
 /* after an upload: only the tenant's-Kündigung line is redrawn — a date you are typing right now stays as it is */
 function kbRefresh(tid) {
@@ -159,10 +235,25 @@ function _kbDateField(tid, key, label, value, sub) {
 }
 function _kbEndSub(rec, st) {
   if (st.v === 'befristet') return st.end ? 'your date · the early end' : 'type the early end you agreed';
-  if (!st.end) return 'from Eingang am: 3 months to the month end';
+  const q = st.v === 'gewerbe' || st.v === 'parkplatz';
+  if (!st.end) return 'from Eingang am: ' + (st.v === 'gewerbe' ? KB_GW_MONTHS + ' months to the quarter end' : st.v === 'parkplatz' ? '3 months to the quarter end' : '3 months to the month end');
   if (!st.endAuto) return 'your date';
-  const y = Number(st.eingang.slice(0, 4)), m = Number(st.eingang.slice(5, 7)), third = kbThirdWorkday(y, m);
+  const land = kbA().land(rec);
+  if (q) {
+    const min = st.v === 'parkplatz' ? _kbPkMin(rec) : '';
+    if (min && st.end !== kbEndQuarter(st.eingang, 3, '', land)) return 'not before the end of the 1st year (' + _kbDe(min) + ') · you can change it';
+    const qs = kbQuarterStart(st.eingang), q3 = kbThirdWorkday(Number(qs.slice(0, 4)), Number(qs.slice(5, 7)), land);
+    return 'received ' + (st.eingang <= q3 ? 'by' : 'after') + ' the 3rd working day of the quarter (' + _kbDe(q3) + ') · you can change it';
+  }
+  const y = Number(st.eingang.slice(0, 4)), m = Number(st.eingang.slice(5, 7)), third = kbThirdWorkday(y, m, land);
   return 'received ' + (st.eingang <= third ? 'by' : 'after') + ' the 3rd working day (' + _kbDe(third) + ') · you can change it';
+}
+/* the end you would get from Eingang am (the rule of the letter) */
+function kbSuggestEnd(rec, st) {
+  const land = kbA().land(rec);
+  if (st.v === 'gewerbe') return kbEndQuarter(st.eingang, KB_GW_MONTHS, '', land);
+  if (st.v === 'parkplatz') return kbEndQuarter(st.eingang, 3, _kbPkMin(rec), land);
+  return kbEndUnbefristet(st.eingang, land);
 }
 function kbHTML(tid) {
   const rec = _kbRec(tid); if (!rec) return '';
@@ -170,13 +261,12 @@ function kbHTML(tid) {
   const own = _kbDocOf(tid, 'kuendigung', 'signed');
   const letter = _kbDocOf(tid, 'kuendigungsbestaetigung', 'unsigned');
   const fmt = d => (typeof ccfFmtShort === 'function' ? ccfFmtShort(d.uploaded_at) : '');
-  const ct = typeof tnContractType === 'function' ? tnContractType(rec) : rec.contract_type;
-  const ctWord = ct === 'kurzzeit' ? 'Kurzzeit' : ct === 'jahres' ? 'Jahresvertrag' : 'Mietvertrag';
+  const ctWord = kbA().ctWord(rec), q = st.v === 'gewerbe' || st.v === 'parkplatz';
   const ortSel = `<label class="kb-f"><span class="kb-l">Ort (Unterschrift)</span>
           <select class="kb-in" data-kb-ort onchange="kbSet('${T}','ort',this.value)">${KB_ORTE.map(o => `<option${st.ort === o ? ' selected' : ''}>${o}</option>`).join('')}</select></label>`;
   const moveHint = rec.rent_until === 'move' ? '<p class="kb-hint">This tenant pays rent until the Move-out (Tenant › Edit › Rent until), not until the contract end.</p>' : '';
-  const cs = typeof _tnContractState === 'function' ? _tnContractState(rec) : null;
-  const nextHint = cs && cs.next && cs.next.start > _kbToday() ? `<p class="kb-hint kb-hint--warn">A renewal from ${_kbDe(cs.next.start)} is planned. Remove it first (Documents › Edit › Remove renewal), then create the letter.</p>` : '';
+  const planned = kbA().planned(rec);
+  const nextHint = planned ? `<p class="kb-hint kb-hint--warn">A renewal from ${_kbDe(planned)} is planned. Remove it first (Documents › Edit › Remove renewal), then create the letter.</p>` : '';
   if (typeof ccfPrepareLinks === 'function' && typeof ccfDocsOf === 'function') setTimeout(() => ccfPrepareLinks(ccfDocsOf(tid).map(d => d.file_url)), 0);
   return `<div class="kb">
     <div class="kb-step"><span class="kb-n">1</span><div class="kb-b">
@@ -186,6 +276,7 @@ function kbHTML(tid) {
     <div class="kb-step"><span class="kb-n">2</span><div class="kb-b">
       <b class="kb-t">Letter</b><span class="kb-s" data-kb-letter>${fixed
         ? ctWord + ' (befristet) → <b>Vorzeitiges Ende des Mietvertrags</b> · the tenant asks to leave early — you agree'
+        : q ? ctWord + ' → <b>Bestätigung der Kündigung</b> · ' + _kbQuarterRule(rec, st)
         : ctWord + ' (unbefristet) → <b>Bestätigung der Kündigung</b> · 3 months to the month end'}</span>
       <div class="kb-grid">
         ${fixed ? '' : _kbDateField(tid, 'vom', 'Kündigung vom', st.vom)}
@@ -194,7 +285,7 @@ function kbHTML(tid) {
         ${_kbDateField(tid, 'end', fixed ? 'Vorzeitig zum' : 'Kündigung zum', st.end, _kbEndSub(rec, st))}
       </div>
       <div class="kb-grid">${ortSel}</div>
-      ${fixed ? '' : '<p class="kb-hint">A Kündigungsverzicht in the contract? Then check the date.</p>'}
+      ${_kbRuleHint(st)}
       ${moveHint}
     </div></div>
     <div class="kb-step"><span class="kb-n">3</span><div class="kb-b">
@@ -219,7 +310,7 @@ function kbSet(tid, key, value) {
   const st = _kbSt(rec);
   if (key === 'ort') {
     if (!KB_ORTE.includes(value)) return;
-    st.ort = value; st.ortPicked = true; try { localStorage.setItem('kb_ort', value); } catch (e) {}
+    st.ort = value; st.ortPicked = true; if (kbA().rememberOrt) { try { localStorage.setItem('kb_ort', value); } catch (e) {} }
     st.done = null;                                         // a letter already created still has the old place → Create again
     const sum = document.querySelector('#ccSheetBody [data-kb-sum]'); if (sum) sum.innerHTML = _kbSum(st);
     return;
@@ -237,7 +328,7 @@ function kbSet(tid, key, value) {
   else if (key === 'agreed') st.agreed = iso;
   else if (key === 'end') { if (iso !== st.end) { st.end = iso; st.endAuto = !iso; } }
   if (key === 'eingang' && st.v !== 'befristet' && st.endAuto) {
-    st.end = kbEndUnbefristet(st.eingang);
+    st.end = kbSuggestEnd(rec, st);
     const e = document.querySelector('#ccSheetBody [data-kb="end"]'); if (e && e !== document.activeElement) e.value = st.end;
   }
   st.done = null;
@@ -263,7 +354,8 @@ function _kbHouse(s) {
     : String(typeof ADDRESS !== 'undefined' ? ADDRESS : '').split(/\s*,\s*/);
   return lines.map(x => x.trim()).filter(Boolean);
 }
-async function _kbLetterData(rec, st) {
+async function _kbLetterData(rec, st) { return kbA().letterData(rec, st); }
+async function _kbLetterDataCasa(rec, st) {
   if (typeof loadSettings === 'function') { try { await loadSettings(); } catch (e) {} }
   const s = (typeof appSettings !== 'undefined' && appSettings) || {};
   const house = _kbHouse(s), fixed = st.v === 'befristet';
@@ -282,7 +374,7 @@ async function _kbLetterData(rec, st) {
   return {
     brand: 'Casa Castel', unitLabel: 'Zimmer', unitName: room, footer: house.join(' · '),
     sender, names: [_kbName(rec)], addr: house,
-    ort: KB_ORTE.includes(st.ort) ? st.ort : _kbOrt0(), date: _kbToday(),
+    ort: KB_ORTE.includes(st.ort) ? st.ort : _kbOrt0(rec), date: _kbToday(),
     title: fixed ? 'Vorzeitiges Ende des Mietvertrags – Zimmer ' + room : 'Bestätigung der Kündigung – Zimmer ' + room,
     greeting: 'Hallo ' + vorname + ',', paras, vermieter: String(s.vermieter_name || '').trim(), fixed, tenant: _kbName(rec),
   };
@@ -304,7 +396,7 @@ function kbLetterHtml(d) {
   const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Lato:ital,wght@0,300;0,400;0,700;1,300&display=swap');`;
   const base = typeof NK_LETTER_CSS === 'string' ? NK_LETTER_CSS : '';
   const scoped = (base + KB_LETTER_CSS).replace(/([^{}]+)\{/g, (m, sel) => sel.split(',').map(x => '.kb-letter ' + x.trim()).join(', ') + ' {');
-  const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand)}</span><div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel)}</span><span class="hdr__room-name">${esc(d.unitName)}</span></div></div>`;
+  const hdr = `<div class="hdr"><span class="hdr__wordmark">${esc(d.brand)}</span>${d.unitName ? `<div class="hdr__room"><span class="hdr__room-label">${esc(d.unitLabel)}</span><span class="hdr__room-name">${esc(d.unitName)}</span></div>` : ''}</div>`;
   const ftr = `<div class="ftr"><hr class="ftr__rule"/><div class="ftr__row"><span>${esc(d.footer)}</span><span>Seite <span class="pgn">1</span> von <span class="pgt">1</span></span></div></div>`;
   const place = esc(d.ort + ', ' + _kbDe(d.date));
   return `<div class="kb-letter"><style>${FONTS}</style><style>${scoped}</style>
@@ -338,7 +430,7 @@ async function kbLetterPdf(d, fileName) {
     try { if (typeof ccFlowPages === 'function') await ccFlowPages(box); } catch (e) {}
     const pages = box.querySelectorAll('.pdf-page');
     pages.forEach((pg, i) => { const a = pg.querySelector('.pgn'), b = pg.querySelector('.pgt'); if (a) a.textContent = String(i + 1); if (b) b.textContent = String(pages.length); });
-    const pdf = await ccRenderPagesToPdf(box);
+    const pdf = await ccRenderPagesToPdf(box, kbA().pdfOpts);   // Rentals: strict, as its contracts · Casa: as before
     return { blob: pdf.output('blob'), name: ccPdfSafeName(fileName) };
   } finally { box.remove(); }
 }
@@ -354,8 +446,8 @@ function _kbCheck(rec, st, save) {
   if (rec.mietbeginn && typeof _ccIso === 'function' && st.end < _ccIso(rec.mietbeginn)) return 'The end is before the move-in (' + _kbDe(_ccIso(rec.mietbeginn)) + ').';
   if (fixed && st.agreed && st.end >= st.agreed) return 'The early end must be before the agreed end (' + _kbDe(st.agreed) + ').';
   if (save) {
-    const cs = typeof _tnContractState === 'function' ? _tnContractState(rec) : null;
-    if (cs && cs.next && cs.next.start > _kbToday()) return 'A renewal from ' + _kbDe(cs.next.start) + ' is planned — remove it first (Documents › Edit › Remove renewal).';
+    const planned = kbA().planned(rec);
+    if (planned) return 'A renewal from ' + _kbDe(planned) + ' is planned — remove it first (Documents › Edit › Remove renewal).';
   }
   return null;
 }
@@ -389,11 +481,11 @@ async function kbPdf(tid, save, btn) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Creating PDF'; }
   try {
     const d = await _kbLetterData(rec, st);
-    const out = await kbLetterPdf(d, ccPdfFileName('Kuendigungsbestaetigung', rec.room, _kbName(rec)));
+    const out = await kbLetterPdf(d, ccPdfFileName('Kuendigungsbestaetigung', kbA().fileUnit(rec), _kbName(rec)));
     if (save) {
       await ccfSaveDoc({ tid: rec.id, room: typeof ccfA === 'function' ? ccfA().prefix(rec) : rec.room, type: 'kuendigungsbestaetigung', variant: 'unsigned', blob: out.blob });
       saved = true;
-      await _kbSetEnd(rec, st.end);
+      await kbA().setEnd(rec, st.end);
       st.done = { end: st.end };
     }
     if (btn) { btn.disabled = false; btn.innerHTML = label; }
@@ -402,7 +494,7 @@ async function kbPdf(tid, save, btn) {
       const ok = document.querySelector('#ccSheetBody [data-kb-sum]');
       if (ok) ok.innerHTML = '<span class="kb-ok"><i class="ti ti-circle-check" aria-hidden="true"></i> Saved in Documents · Contract end ' + _kbDe(st.end) + '</span>';
       if (typeof ccSavedToast === 'function') ccSavedToast('Saved in Documents ✓');
-      setTimeout(() => { if (typeof _tnRender === 'function') _tnRender(); }, 0);   // card: Contract end + the More row
+      setTimeout(() => kbA().redraw(), 0);                     // card: Contract end + the More row
     }
   } catch (e) {
     console.error('[kuendigung]', e);
@@ -413,8 +505,109 @@ async function kbPdf(tid, save, btn) {
       : save ? 'Not saved — ' + why + '. Please try again.' : 'The PDF could not be created — ' + why + '.';
     const sum = document.querySelector('#ccSheetBody [data-kb-sum]'); if (sum && save) sum.innerHTML = '<span class="kb-err">' + _kbEsc(msg) + '</span>';
     if (typeof ccToast === 'function') ccToast(msg, true);
-    if (saved) setTimeout(() => { if (typeof _tnRender === 'function') _tnRender(); }, 0);
+    if (saved) setTimeout(() => kbA().redraw(), 0);
   } finally { delete _kbBusy[tid]; }
+}
+
+/* ── Rentals (Nov 2026 · #26) ──────────────────────────────── */
+const _kbRntUnit = rec => (typeof CCF_RENTALS !== 'undefined' && rec ? CCF_RENTALS.unit(CCF_RENTALS.unitOf(rec)) : null);
+const _kbWhg = v => { const s = String(v || '').trim(); return !s ? '' : /^\d/.test(s) ? 'Whg. ' + s : s; };   // as stWhg (settlements-ui.js)
+/* the unit as the card names it: two flats can share a name (Kaiserstr. 36) — the Wohnungsnummer tells them apart */
+function _kbRntUnitLabel(rec) {
+  const u = _kbRntUnit(rec); if (!u) return '';
+  if (rec.parking_id) return [u.name, u.parking_type].map(x => String(x || '').trim()).filter(Boolean).join(' · ');
+  const w = String(u.wohnungsnummer || '').trim();
+  return [String(u.name || '').trim(), /^\d/.test(w) ? 'WHG ' + w : w].filter(Boolean).join(' · ');
+}
+/* the letter: Parkplatz · Gewerbe · Kurzzeit or a Mietvertrag whose contract has an end (§ 575, set by Approve) → befristet · else
+   unbefristet. A Contract end typed on the card (or set by an earlier letter 3) never switches it: that entry stays empty. */
+function _kbRntVersion(rec) {
+  if (!rec) return 'unbefristet';
+  if (rec.parking_id) return 'parkplatz';
+  const u = _kbRntUnit(rec);
+  if (u && u.zimmer_type === 'Gewerbefläche') return 'gewerbe';
+  if ((typeof rntContractType === 'function' ? rntContractType(rec) : rec.contract_type) === 'kurzzeit') return 'befristet';
+  const ent = _rntContractEntry(rec);                       // the running contract's entry (rentals-tab-tenants.js, n35)
+  return ent && _kbIsoOf(ent.contract_end) ? 'befristet' : 'unbefristet';
+}
+/* the property's place: Mainz → Rheinland-Pfalz · Wiesbaden (Kostheim, Kastel, Amöneburg too) → Hessen */
+function _kbRntPlace(rec) { const u = _kbRntUnit(rec) || {}; return (typeof ccPlaceOf === 'function' ? ccPlaceOf(u.plz_ort) : '') || String(u.unterschrift_ort || '').trim(); }
+function _kbRntLand(rec) { return /^mainz$/i.test(_kbRntPlace(rec)) ? 'RP' : 'HE'; }
+function _kbRntOrt(rec) {
+  const u = _kbRntUnit(rec) || {}, own = String(u.unterschrift_ort || '').trim();
+  if (KB_ORTE.includes(own)) return own;
+  const place = typeof ccPlaceOf === 'function' ? ccPlaceOf(u.plz_ort) : '';
+  return KB_ORTE.includes(place) ? place : 'Wiesbaden';
+}
+/* parking: the contract runs at least 1 year from its Mietbeginn (the Contract start, else the Move-in) */
+const _kbPkStart = rec => _kbIsoOf(rec.vertragsbeginn) || _kbIsoOf(rec.mietbeginn);
+const _kbPkMin = rec => kbYearMinEnd(_kbPkStart(rec));
+/* the rule in the "Letter" line: Gewerbe · Stellplatz (with the end of its 1st year while that is still ahead) */
+function _kbQuarterRule(rec, st) {
+  if (st.v === 'gewerbe') return KB_GW_MONTHS + ' months to the quarter end';
+  const min = _kbPkMin(rec);
+  if (min && min < _kbToday()) return '3 months to the quarter end';   // the 1st year is over
+  return '3 months to the quarter end, not before ' + (min ? _kbDe(min) + ' (1 year from ' + _kbDe(_kbPkStart(rec)) + ')' : 'the end of the 1st year');
+}
+/* the quiet line under the dates: Casa's Verzicht line (Rentals contracts have none — no extra line there) */
+function _kbRuleHint(st) {
+  return kbA().app === 'casa' && st.v !== 'befristet' ? '<p class="kb-hint">A Kündigungsverzicht in the contract? Then check the date.</p>' : '';
+}
+/* letters 2 (flat) · 3 · 4 · 5 — KUENDIGUNG-TEXTE.md · 1–3 tenants */
+async function _kbLetterDataRnt(rec, st) {
+  if (typeof loadSettings === 'function') { try { await loadSettings(); } catch (e) {} }
+  const s = (typeof appSettings !== 'undefined' && appSettings) || {}, u = _kbRntUnit(rec) || {}, E = _kbEsc;
+  const pk = st.v === 'parkplatz', gw = st.v === 'gewerbe', fixed = st.v === 'befristet';
+  const street = [String(u.adresse || '').trim(), pk ? '' : _kbWhg(u.wohnungsnummer)].filter(Boolean).join(', ');
+  const plz = String(u.plz_ort || '').trim(), full = [street, plz].filter(Boolean).join(', ');
+  const people = [[rec.first_name, rec.last_name], [rec.first_name_2, rec.last_name_2], [rec.first_name_3, rec.last_name_3]]
+    .map(([f, l]) => ({ first: String(f || '').trim(), full: [f, l].map(x => String(x || '').trim()).filter(Boolean).join(' ') })).filter(p => p.full);
+  const firsts = people.map(p => p.first || p.full);
+  const and = a => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' und ' + a[a.length - 1];
+  const sender = [s.vermieter_name, ...String(s.vermieter_adresse || '').split(/\s*,\s*|\n/)].map(z => String(z || '').trim()).filter(Boolean);
+  const end = '<strong>' + _kbDe(st.end) + '</strong>';
+  const at = full ? ', ' + E(full) + ',' : '';                // "für die Wohnung, {Adresse}, endet …" — no stray commas without an address
+  const obj = pk ? `den Stellplatz ${E(u.name || '')}${at}` : (gw ? 'die Gewerbefläche' : 'die Wohnung') + at;
+  const hand = pk ? 'Für die Rückgabe aller Schlüssel bzw. Sender melden wir uns rechtzeitig.'
+    : gw ? 'Für die Übergabe der Fläche mit allen Schlüsseln melden wir uns rechtzeitig.'
+    : 'Für Besichtigungen mit möglichen Nachmietern und die Übergabe der Wohnung mit allen Schlüsseln melden wir uns rechtzeitig.';
+  const paras = fixed ? [
+    `hiermit bestätigen wir den Eingang des Schreibens vom ${_kbDe(st.eingang)}. Der Mietvertrag ist bis zum ${_kbDe(st.agreed)} befristet. Wir sind jedoch einverstanden, dass das Mietverhältnis für ${obj} vorzeitig zum ${end} endet.`, hand,
+  ] : [
+    `hiermit bestätigen wir den Eingang der Kündigung vom ${_kbDe(st.vom)}. Das Mietverhältnis für ${obj} endet fristgerecht zum ${end}.`, hand,
+  ];
+  const short = pk ? 'Stellplatz ' + (u.name || '') : gw ? 'Gewerbefläche ' + (street || u.name || '') : (street || u.name || '');
+  const own = String(rec.address || '').trim();
+  return {
+    brand: u.name || '', unitLabel: pk ? 'Stellplatz' : gw ? 'Gewerbefläche' : 'Wohnung',
+    unitName: pk ? (t => t === 'Stellplatz' ? 'Außenstellplatz' : t)(String(u.parking_type || '').trim()) : String(u.wohnungsnummer || '').trim(),   // as the parking contract: no "STELLPLATZ / Stellplatz"
+    footer: [u.adresse, u.plz_ort].map(x => String(x || '').trim()).filter(Boolean).join(' · '),
+    sender, names: people.map(p => p.full),
+    addr: pk ? own.replace(/,\s*(\d{5})/, '\n$1').split('\n').map(x => x.trim()).filter(Boolean) : [street, plz].filter(Boolean),
+    ort: KB_ORTE.includes(st.ort) ? st.ort : _kbOrt0(rec), date: _kbToday(),
+    title: (fixed ? 'Vorzeitiges Ende des Mietvertrags – ' : 'Bestätigung der Kündigung – ') + short,
+    greeting: 'Hallo ' + and(firsts) + ',', paras, vermieter: String(s.vermieter_name || '').trim(), fixed, tenant: _kbName(rec),
+  };
+}
+/* Contract end on the card (the same queue as Tenant › Edit) · a failed write goes back and throws, so the sheet says
+   "Letter saved in Documents, but the Contract end was not set … Tap Create again". Then the running contract's rent
+   entry follows, as every card save does (n35): only an entry that is fixed-term already (an end from Approve, or
+   Kurzzeit) gets the date — an open-ended Mietvertrag entry stays empty, so the letter stays the same next time.
+   If that entry can't be written, the card's Contract end goes back too (screen and tenant row) and the sheet says
+   "… Tap Create again" — no "previous values are back" toast next to "Saved". */
+async function _kbSetEndRnt(rec, end) {
+  const before = rec.vertragsende;
+  rec.vertragsende = end;
+  const res = await ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ vertragsende: end }).eq('id', rec.id));
+  if (res && res.error) { rec.vertragsende = before; throw res.error; }
+  if (typeof _rntSyncContractEnd !== 'function') return;
+  try { await _rntSyncContractEnd(rec, end, { quiet: true }); }
+  catch (e) {
+    rec.vertragsende = before;
+    const back = await ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ vertragsende: before ?? null }).eq('id', rec.id));
+    if (back && back.error) rec.vertragsende = end;          // the tenant row kept the new end → the card shows what is saved
+    throw e;
+  }
 }
 
 /* ── Look of the sheet ─────────────────────────────────────── */
