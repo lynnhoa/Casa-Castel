@@ -771,14 +771,23 @@ function _cxUnitSollV2(u, pid, y, m) {
     const before = iso => { const dd = _cxAddDays(iso, -1); return dd >= w.payFrom ? _cxRentDay(link, w, u, y, m, dd, all, memo) : null; };
     for (const pr of c.per) {
       const d = _cxD(pr.valid_from);
-      if (!inM(d) || d === w.from || d === w.payFrom) continue;
+      if (!inM(d) || d === w.from || d <= w.payFrom) continue;   // x6: an entry dated before the rent starts is the first rent ('Newly let')
       const a = _cxAmount(pr), b = before(d);
       const same = !!b && _cxR(b.k + b.nk) === _cxR(a.total);
       if (same && pr.kind !== 'renewal') continue;            // same amount: no "New rent" note, no change
       notes.push((pr.kind === 'renewal' ? 'Renewal' : 'New rent') + ' · ' + (b && !same ? _cxEurS(b.k + b.nk) + ' → ' : '') + _cxEurS(a.total) + (a.mode === 'pauschal' ? ' Pauschal' : '') + ' from ' + _cxFmtD(d));
       if (!same) changed = true;                               // a renewal at the same rent is info, not a change
     }
-    for (const h of c.st) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
+    // Nov 2026 (#5): a step note + change mark only when the rent really changes that day: inside this tenant's
+    // rent window, not its first day, a different amount than the day before (NK steps never count in Pauschal)
+    const stepLive = (d, nk) => {
+      if (d < w.payFrom || d > w.payTo) return false;
+      const b = before(d); if (!b) return false;
+      const r = _cxRentDay(link, w, u, y, m, d, all, memo);
+      if (nk) return r.mode !== 'pauschal' && _cxR(r.nk) !== _cxR(b.nk);
+      return r.mode === 'pauschal' ? _cxR(r.k + r.nk) !== _cxR(b.k + b.nk) : _cxR(r.k) !== _cxR(b.k);
+    };
+    for (const h of c.st) { const d = _cxD(h.effective_date); if (!inM(d) || !stepLive(d, false)) continue; const b = before(d);
       if (link.type === 'casa_room') {
         // Casa Castel has no Staffel: it is a Mieterhöhung. Pauschal → the whole Pauschalmiete before → after;
         // Kalt + NK → the Kaltmiete before → after (text only — the amounts are calculated as before)
@@ -789,7 +798,7 @@ function _cxUnitSollV2(u, pid, y, m) {
         notes.push(_cxMhLabel(h) + ' · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d));
       }
       changed = true; }
-    for (const h of c.nk) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);
+    for (const h of c.nk) { const d = _cxD(h.effective_date); if (!inM(d) || !stepLive(d, true)) continue; const b = before(d);
       notes.push('NK changed · ' + (b && b.nk !== _cxNum(h.amount) ? _cxEurS(b.nk) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d)); changed = true; }
   }
   for (const pt of parts.values()) if (pt.src === 'learned') { notes.push('Rent from your earlier entries (not saved with the tenant)'); break; }
