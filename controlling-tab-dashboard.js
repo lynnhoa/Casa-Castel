@@ -26,11 +26,7 @@
 
 'use strict';
 
-let _cxDash = { openInc: 0, openMonth: 0 };           // for the jump targets
 if (!CX.dashView) CX.dashView = 'm';                    // default: Monat
-if (CX.dashMode !== 'konto' && CX.dashMode !== 'tats') CX.dashMode = 'konto';   // Konto | Tatsächlich (D18)
-
-/* Konto / Tatsächlich of several properties over several months (change round 3) */
 
 function _cxIsFuture(y, m) {
   const t = cxToday(), ty = Number(t.slice(0, 4)), tm = Number(t.slice(5, 7));
@@ -131,8 +127,6 @@ function _cxOpenOf(p, y, m) {
    Kreditraten come from Properties (rate, Zinsen, Tilgung) — not entered.
    ══════════════════════════════════════════════════════════════ */
 
-/* How many one-off bills / refunds and Abrechnungen results fall in the period (dashboard tiles) */
-
 /* One property over some months (all Ist values; loans from Properties) */
 function _cxDashProp(p, months) {
   const y = window._ctrl.year, casa = p.id === CASA_PROP_ID;
@@ -191,8 +185,6 @@ function _cxDashSum(list) {
   for (const k in t) if (k !== 'noSplit') t[k] = cxR(t[k]);
   return t;
 }
-
-/* The calculation: Kalt | Warm, three results */
 
 /* ── Calculation sheet (tap on the Cashflow number) ─────────────
    Full-screen drawer: Rentals · Casa Castel · Total. Month: one-offs and
@@ -369,18 +361,13 @@ window.renderDashboard = function () {
   const D = '\u2014';
 
   // open items (to enter / confirm) in the period
-  let open = 0, openInc = 0, openCasa = 0;
-  const openMonths = new Set();
+  let open = 0;
   for (const p of props) for (const mm of months) {
     if (_cxIsFuture(y, mm)) continue;                       // DB1: a later month is not due yet → nothing open
     if (!p.active || !ctlPropOwned(p, y, mm)) continue;     // before the purchase / switched off (sold): nothing is open
-    const o = _cxOpenOf(p, y, mm), k = o.inc + o.exp;
-    if (k) openMonths.add(mm);
-    open += k; openInc += o.inc;
-    if (p.id === CASA_PROP_ID) openCasa += k;
+    const o = _cxOpenOf(p, y, mm);
+    open += o.inc + o.exp;
   }
-  _cxDash.openInc = openInc; _cxDash.openCasa = openCasa; _cxDash.open = open;
-  _cxDash.openMonth = openMonths.size ? Math.max(...openMonths) : 0;
 
   const periodTitle = isYear ? String(y) : EN_M[m - 1] + ' ' + y;
   const lastM = months.length ? months[months.length - 1] : 0;
@@ -546,12 +533,6 @@ window.renderDashboard = function () {
         CX.month = Number(b.dataset.m); CX.dashView = 'm';
         try { localStorage.setItem('cx_month', String(CX.month)); } catch (e) {}
         return window.renderDashboard();
-      }
-      if (a === 'gotoOpen') {
-        // wired once → read the live view (CX.dashView), not this render's
-        if (CX.dashView === 'y' && _cxDash.openMonth) { CX.month = _cxDash.openMonth; try { localStorage.setItem('cx_month', String(CX.month)); } catch (e) {} }
-        CX.sub = _cxDash.openInc ? 'income' : 'expenses';
-        return cxGoto(_cxDash.openCasa && _cxDash.openCasa === _cxDash.open ? 'casa' : 'rentals');
       }
       if (a === 'toProps') { location.href = 'properties.html'; return; }
       if (a === 'yprev' || a === 'ynext') {

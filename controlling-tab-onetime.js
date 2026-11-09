@@ -31,8 +31,6 @@ const _CX_KIND_LBL = { Rechnung: 'Invoice', Versorger: 'Jahresabrechnung', Sonst
 // Kaufnebenkosten (Notar, Grundbuch, Grunderwerbsteuer, Makler): listed and exported for the tax return,
 // but part of the purchase — never in the cashflow, the dashboard or a property's month result
 const _cxOtKnk = o => !!o && o.kind === 'Kaufnebenkosten';
-const _CX_KNK_TYPES = ['Makler', 'Notar', 'Grundbuch', 'Grunderwerbsteuer', 'Sonstiges'];
-const _CX_KNK_PARTS = ['Kauf', 'Grundschuld'];                     // Notar / Grundbuch: purchase or the loan's Grundschuld
 const _cxKnkHasPart = t => t === 'Notar' || t === 'Grundbuch';
 const _cxKnkLbl = o => o && o.knk_type ? o.knk_type + (_cxKnkHasPart(o.knk_type) && o.knk_part ? ' · ' + o.knk_part : '') : '';
 // Casa Castel: the yearly Strom/Gas/Wasser results are your "Hausgeld" (no WEG there) → chip "Hausgeld"
@@ -71,11 +69,6 @@ function _cxOtVisible() {
   return _cxOtAll().filter(o => (_cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month) &&
     (!q || [o.item, o.company].some(x => String(x || '').toLowerCase().includes(q)) || _cxOtAmtHit(o, q)))
     .sort((a, b) => String(b.invoice_date).localeCompare(String(a.invoice_date)) || (Number(b.id) || 0) - (Number(a.id) || 0));
-}
-function _cxOtDefaultDate() {
-  const t = cxToday(), y = window._ctrl.year, m = CX.month;
-  if (_cxOt.view === 'y') return Number(t.slice(0, 4)) === y ? t : y + '-12-31';
-  return (Number(t.slice(0, 4)) === y && Number(t.slice(5, 7)) === m) ? t : y + '-' + String(m).padStart(2, '0') + '-01';
 }
 const _cxOtSigned = o => (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);
 /* #16 (Nov 2026) · the figures of One-off lines — the same on the screen and in the export (cxInvoiceData):
@@ -291,7 +284,6 @@ function _cxOtFormHTML(o) {
   return '<div class="cx-form cx-ot-form" data-edit="' + (o ? cxEsc(o.id) : '') + '">' +
     '<div class="cx-chips">' + _CX_KINDS.map(k => '<button class="cx-chip' + (kind === k ? ' on' : '') + '" data-cx="otKind" data-v="' + k + '"' +
       ((k === 'Versorger' && pid === CASA_PROP_ID) || k === 'Kaufnebenkosten' ? ' style="display:none"' : '') + '>' + _cxOtKindLbl(k, pid) + '</button>').join('') + '</div>' +
-    (kind === 'Kaufnebenkosten' ? _cxOtKnkChipsHTML(o) : '') +
     '<div class="cx-grid2">' +
       '<div class="cx-seg"><button class="' + (dir < 0 ? 'on' : '') + '" data-cx="otDir" data-v="-1">' + _cxOtDirLbl(kind)[0] + '</button><button class="' + (dir > 0 ? 'on' : '') + '" data-cx="otDir" data-v="1">' + _cxOtDirLbl(kind)[1] + '</button></div>' +
       '<label class="cx-f"><input type="text" inputmode="decimal" id="cxOtAmt" placeholder="Amount" aria-label="Amount" value="' + (o ? cxE2(o.amount) : '') + '"><span>€</span></label>' +
@@ -301,7 +293,7 @@ function _cxOtFormHTML(o) {
     '<label class="cx-f cx-f--l"><input type="text" id="cxOtCompany" list="cxOtCompanies" placeholder="Company (optional)" aria-label="Company" value="' + cxEsc(o ? o.company || '' : '') + '"></label>' +
     '<datalist id="cxOtTexts">' + uniq('item').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
     '<datalist id="cxOtCompanies">' + uniq('company').map(v => '<option value="' + cxEsc(v) + '">').join('') + '</datalist>' +
-    '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + (o ? String(o.invoice_date).slice(0, 10) : _cxOtDefaultDate()) + '" aria-label="Date"></label>' +
+    '<label class="cx-f cx-f--l"><input type="date" id="cxOtDate" value="' + String(o.invoice_date).slice(0, 10) + '" aria-label="Date"></label>' +
     // Casa Castel costs that tenants pay via the NK-Abrechnung — for you still a normal cost (tax export unchanged)
     '<button type="button" class="cx-ot-nk' + (nk ? ' on' : '') + '" id="cxOtNkRow" data-cx="otNk" aria-pressed="' + (nk ? 'true' : 'false') + '"' +
       (kind !== 'Kaufnebenkosten' ? '' : ' style="display:none"') + '>' +
@@ -670,14 +662,6 @@ window.renderOneTime = function () {
           if (b.dataset.v === 'Kaufnebenkosten') { if (o) o._nk = false; else _cxOt.nk = false; }
         });
       }
-      if (a === 'otKnkType' || a === 'otKnkPart') {
-        const f = a === 'otKnkType' ? 'knkType' : 'knkPart', v = b.dataset.v;
-        return _cxOtKeep(() => {
-          const o = _cxOtEditing();
-          if (o) o['_' + f] = v; else _cxOt[f] = v;
-          if (f === 'knkType' && !_cxKnkHasPart(v)) { if (o) o._knkPart = ''; else _cxOt.knkPart = ''; }
-        });
-      }
       if (a === 'otDir') { _cxOt.dir = Number(b.dataset.v); return _cxOtKeep(() => { const o = _cxOtEditing(); if (o) o._dir = Number(b.dataset.v); }); }
       if (a === 'otNk') {
         const o = _cxOtEditing();
@@ -926,22 +910,6 @@ function _cxOtNkShow() {
   }
 }
 
-
-/* Kaufnebenkosten: what it is (Makler · Notar · Grundbuch · Grunderwerbsteuer · Sonstiges) and,
-   for Notar and Grundbuch, whether it belongs to the purchase or to the loan's Grundschuld
-   (the Grundschuld part is usually deductible right away — the Steuerberater decides) */
-function _cxOtKnkChipsHTML(o) {
-  const t = o ? (o._knkType !== undefined ? o._knkType : o.knk_type || '') : _cxOt.knkType;
-  const pt = o ? (o._knkPart !== undefined ? o._knkPart : o.knk_part || '') : _cxOt.knkPart;
-  return '<div class="cx-set__k" style="margin-top:2px">What is it?</div>' +
-    '<div class="cx-chips">' + _CX_KNK_TYPES.map(k => '<button class="cx-chip' + (t === k ? ' on' : '') + '" data-cx="otKnkType" data-v="' + k + '">' + k + '</button>').join('') + '</div>' +
-    (_cxKnkHasPart(t)
-      ? '<div class="cx-set__k" style="margin-top:2px">For</div>' +
-        '<div class="cx-chips">' + _CX_KNK_PARTS.map(k => '<button class="cx-chip' + (pt === k ? ' on' : '') + '" data-cx="otKnkPart" data-v="' + k + '">' +
-          (k === 'Kauf' ? 'Kauf (purchase)' : 'Grundschuld (loan)') + '</button>').join('') +
-          '<button class="cx-chip' + (!pt ? ' on' : '') + '" data-cx="otKnkPart" data-v="">not sure yet</button></div>'
-      : '');
-}
 
 /* All Kaufnebenkosten of a property, every year: other years from the all-years list, this year as it is now */
 function cxKnkRows(pid) {
