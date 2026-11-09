@@ -547,7 +547,7 @@ window.renderOneTime = function () {
         if (!(await _cxOtClose())) return;
         const y = window._ctrl.year + Number(b.dataset.v);
         if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
-        try { await ctlLoadAll(y); } catch (e) { cxToastErr(e); }
+        try { await ctlLoadAll(y); } catch (e) { cxToastLoad(y, e); }    // C1 #17: a failed load keeps the year shown
         if (typeof ctlShowLoading === 'function') ctlShowLoading(false);
         _cxOt.form = null;
         return window.renderOneTime();

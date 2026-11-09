@@ -514,7 +514,7 @@ window.renderDashboard = function () {
       if (a === 'yprev' || a === 'ynext') {
         const ny = window._ctrl.year + (a === 'yprev' ? -1 : 1);
         if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
-        try { await ctlLoadAll(ny); } catch (e) { cxToastErr(e); }
+        try { await ctlLoadAll(ny); } catch (e) { cxToastLoad(ny, e); }   // C1 #17: a failed load keeps the year shown
         if (typeof ctlShowLoading === 'function') ctlShowLoading(false);
         return window.renderDashboard();
       }

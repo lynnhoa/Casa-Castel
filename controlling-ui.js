@@ -475,13 +475,15 @@ async function cxStepMonth(delta) {
   let m = CX.month + delta, y = window._ctrl.year;
   if (m < 1) { m = 12; y--; }
   if (m > 12) { m = 1; y++; }
+  if (y !== window._ctrl.year) {                          // C1 #17: the other year loads first — if it fails, you stay where you were
+    if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
+    let ok = true;
+    try { await ctlLoadAll(y); } catch (e) { ok = false; cxToastLoad(y, e); }
+    if (typeof ctlShowLoading === 'function') ctlShowLoading(false);
+    if (!ok) return;
+  }
   CX.month = m; CX.open = {}; CX.undo = null; CX.bulk = null; CX.dif = null;
   try { localStorage.setItem('cx_month', String(m)); } catch (e) {}
-  if (y !== window._ctrl.year) {
-    if (typeof ctlShowLoading === 'function') ctlShowLoading(true);
-    try { await ctlLoadAll(y); } catch (e) { cxToastErr(e); }
-    if (typeof ctlShowLoading === 'function') ctlShowLoading(false);
-  }
   cxRenderActive();
 }
 function cxRenderActive() {
@@ -607,6 +609,11 @@ function cxToastErr(e) {
   // Short reason in the message, so a problem can be named from a screenshot
   const why = String((e && (e.message || e.details)) || e || '').replace(/\s+/g, ' ').slice(0, 70);
   if (typeof ctlToast === 'function') ctlToast('Saving failed – please try again' + (why ? ' · ' + why : ''));
+}
+/* C1 #17: another year could not be loaded (month / year arrows) — nothing was saved, so not "Saving failed" */
+function cxToastLoad(y, e) {
+  console.error('[controlling] load ' + y, e);
+  if (typeof ctlToast === 'function') ctlToast('Could not load ' + y + ' – please try again');
 }
 
 /* ── Wire a tab host once: month arrows, fold, take-over, inputs ── */
