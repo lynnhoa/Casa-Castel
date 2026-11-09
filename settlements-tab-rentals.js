@@ -1987,7 +1987,7 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
   const amt = cxR(Math.abs(parsed)), b = x.st.booking;
-  let date = _srD(when) || cxToday(), linkedManual = null;
+  let date = _srD(when) || cxToday(), linkedManual = null, took = null;
   if (btn) btn.disabled = true;
   try {
     if (res.via !== 'zahlung') {
@@ -2003,9 +2003,10 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
       if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: label });
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    } else if (!weg && amt && (linkedManual = _stFindManualNk(x.c.p.id, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
-      const row = await _stLinkManualNk(linkedManual, res); date = String((row || linkedManual).invoice_date || date).slice(0, 10);
-      if (row && row.id !== linkedManual.id) linkedManual = null;            // #1: booked meanwhile elsewhere → that booking is the payment
+    } else if (amt && (took = await _stTakeOwnEntry(x.c.p.id, res, amt, weg))) {   // #6: already typed in Controlling → link it, no 2nd booking
+      // C3c: the WEG line too — your own entry (also one you unlinked before, as Controlling's Soll does) · other years too
+      linkedManual = took.o; date = String((took.row || linkedManual).invoice_date || date).slice(0, 10);
+      if (took.row.id !== linkedManual.id) linkedManual = null;             // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
       const d = await ctlAbrAdd({ property_id: x.c.p.id, invoice_date: date, item: label, amount: amt,
         kind: weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
@@ -2013,7 +2014,7 @@ async function _srSetAmount(ck, tid, weg, raw, btn, when) {
     }
     await _stConfirmSettled(x.l, 'zahlung', date);
   } catch (err) { stSay('Could not save — ' + (err.message || err)); if (btn) btn.disabled = false; return; }
-  SR.setEdit = null; ctlSettlementInvalidate(); stSay(linkedManual ? 'Settled · linked to your entry in Controlling from ' + stDate(date) : 'Settled');
+  SR.setEdit = null; ctlSettlementInvalidate(); stSay(linkedManual && !weg ? 'Settled · linked to your entry in Controlling from ' + stDate(date) : 'Settled');
   _srAfterSettle(x);
 }
 /* Back to open: the booking in Controlling goes too (a skipped NK comes back as open) */

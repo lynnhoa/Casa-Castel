@@ -225,6 +225,53 @@ async function _stLinkManualNk(o, res, kind) {
   const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;
   return row;
 }
+/* C3c (Nov 2026): the page holds the entries of ONE year (window._ctrl.one_time). Your entry of 20.12.2026, unlinked by
+   clearing the Ist and booked again in January 2027, was not found there → the money was booked a second time. Not found
+   in the year loaded → your entries of this property on/after the result date in the other years are read and the same
+   rules apply (a Maintenance line or a linked entry is never taken). A failed read → none, the result is booked as before. */
+const _stFindOwnIn = (pid, res, amt, weg) => weg ? _stFindOwnWeg(pid, res, amt) : _stFindManualNk(pid, res, amt);
+async function _stFindOwnEntry(pid, res, amt, weg) {
+  const ct = window._ctrl;
+  const mine = _stFindOwnIn(pid, res, amt, weg);
+  if (mine || !ct || !Array.isArray(ct.one_time)) return mine;
+  const from = String(res.date || '').slice(0, 10);
+  let more;
+  try {
+    const q = () => { const s = _ctlSupa.from('ctrl_expense_one_time').select('*').eq('property_id', pid); return from ? s.gte('invoice_date', from) : s; };
+    let r = await q();
+    if (r && !r.error && typeof ctlReadAll === 'function') r = await ctlReadAll(r, q, 'ctrl_expense_one_time (your entry)');   // past 1000 rows: in pages
+    if (!r || r.error || !Array.isArray(r.data)) return null;
+    const y = String(ct.year);                                        // the year loaded is searched above
+    more = r.data.filter(o => String(o.invoice_date || '').slice(0, 4) !== y);
+  } catch (e) { return null; }
+  if (!more.length) return null;
+  const keep = ct.one_time;
+  ct.one_time = keep.concat(more);
+  try { return _stFindOwnIn(pid, res, amt, weg); } finally { ct.one_time = keep; }
+}
+/* C3c: the link changed nothing — your entry was deleted on another device and this page still showed it (PGRST116:
+   "JSON object requested, multiple (or no) rows returned") → it is gone here too, and → null: not linked */
+const _stGoneErr = e => String((e && e.code) || '') === 'PGRST116' ||
+  /multiple \(or no\) rows|contains 0 rows|^entry \S+ not found$/i.test(String((e && (e.message || e.details)) || ''));
+async function _stLinkOwnEntry(o, res, kind) {
+  try { return await _stLinkManualNk(o, res, kind); }
+  catch (e) {
+    if (!_stGoneErr(e)) throw e;
+    if (window._ctrl && Array.isArray(window._ctrl.one_time)) window._ctrl.one_time = window._ctrl.one_time.filter(x => x.id !== o.id);
+    return null;
+  }
+}
+/* Your own entry of this amount is the payment (found as above, or `o` found already) → linked:
+   { o: your entry, row: the linked line — or the booking made meanwhile (#1) } · null: none of yours → book the result */
+async function _stTakeOwnEntry(pid, res, amt, weg, o) {
+  for (let n = 0; n < 3; n++) {                                       // a gone entry is dropped → look once more
+    if (n || !o) o = await _stFindOwnEntry(pid, res, amt, weg);
+    if (!o) return null;
+    const row = await _stLinkOwnEntry(o, res, weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung');
+    if (row) return { o, row };
+  }
+  return null;
+}
 
 /* The result a Settlements line stands for (Settlements' rule, _stResultOf): its result_id, else the same
    property · kind · year · tenant (· period). → the abr_results row, or null */
@@ -383,20 +430,28 @@ async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
     await _stUndoBooking(b);                                               // x1: as 'cancel' / Back to open — your own entry is only unlinked
     return;
   }
-  if (b) {
-    // Nov 2026 fix: settling again after the result changed direction (Nachzahlung ↔ Guthaben) turns its booking
-    // around too — it kept the old direction, so the Dashboard counted the money the wrong way (as Settlements does now)
-    const f = same ? { amount: cxR(amount) } : { amount: cxR(amount), direction: r.dir, item: r.label, invoice_date: _cxAbrPayDate(r, y, m) };
-    const d = await ctlUpdateOneTime(b.id, f);
-    const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    return;
-  }
   // C3: your own entry of this amount (e.g. unlinked by clearing the Ist) is the payment → linked, not booked a second
   // time (NK: Settlements' #6 rule · WEG Hausgeld: the WEG match). Another amount → a new booking, as before.
+  // C3c: also when your entry lies in another year · deleted meanwhile on another device → booked as usual
   const amt = cxR(amount), weg = r.kind === 'weg_hausgeld';
   const at = r.db && amt > 0 ? { id: r.db.id, dir: r.dir, date: String(r.db.result_date || '').slice(0, 10) } : null;
-  const mine = at ? (weg ? _stFindOwnWeg(r.pid, at, amt) : _stFindManualNk(r.pid, at, amt)) : null;
-  if (mine) { await _stLinkManualNk(mine, at, weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung'); return; }   // booked meanwhile (23505) → that booking
+  let mine = null;
+  if (b) {
+    // C3c: the apps' booking now gets the amount of your own unlinked entry (a typo corrected) → that booking goes and
+    // your entry is the payment again (it counted twice: the corrected booking and your entry)
+    if (same && at && _stIsOwnBooking(b) && (mine = await _stFindOwnEntry(r.pid, at, amt, weg))) {
+      await ctlDeleteOneTime(b.id);
+      window._src.abrPay = window._src.abrPay.filter(o => o.id !== b.id);
+    } else {
+      // Nov 2026 fix: settling again after the result changed direction (Nachzahlung ↔ Guthaben) turns its booking
+      // around too — it kept the old direction, so the Dashboard counted the money the wrong way (as Settlements does now)
+      const f = same ? { amount: cxR(amount) } : { amount: cxR(amount), direction: r.dir, item: r.label, invoice_date: _cxAbrPayDate(r, y, m) };
+      const d = await ctlUpdateOneTime(b.id, f);
+      const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
+      return;
+    }
+  }
+  if (at && await _stTakeOwnEntry(r.pid, at, amt, weg, mine)) return;     // booked meanwhile (23505) → that booking
   await ctlAbrAdd({ property_id: r.pid, invoice_date: _cxAbrPayDate(r, y, m), item: r.label, amount: cxR(amount),   // #1: booked meanwhile → that booking
     kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: r.dir, source_ref: r.key });
 }

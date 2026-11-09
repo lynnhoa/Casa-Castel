@@ -2131,7 +2131,7 @@ async function scSetAmount(key, raw, btn, when) {
   const parsed = cxParse(s);
   if (parsed === null || isNaN(parsed)) { stSay('That amount is not a number'); return; }
   const amt = cxR(Math.abs(parsed));
-  let date = scD(when) || cxToday(), linkedManual = null;               // Oct 2026: the day the money moved (default today)
+  let date = scD(when) || cxToday(), linkedManual = null, took = null;   // Oct 2026: the day the money moved (default today)
   if (btn) btn.disabled = true;
   try {
     if (res.via !== 'zahlung') { await _ctlSupa.from('abr_results').update({ settle_via: 'zahlung' }).eq('id', res.id); res.db.settle_via = 'zahlung'; await _stUpsertSettlement(t.line, { settled_via: 'zahlung' }); }
@@ -2142,9 +2142,9 @@ async function scSetAmount(key, raw, btn, when) {
       if ((Number(b.direction) === 1 ? 1 : -1) !== res.dir) Object.assign(f, { direction: res.dir, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben') });
       const d = await ctlUpdateOneTime(b.id, f);
       const i = (window._src.abrPay || []).findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
-    } else if (amt && (linkedManual = _stFindManualNk(CASA_PROP_ID, res, amt))) {   // #6: already typed in Controlling → link it, no 2nd booking
-      const row = await _stLinkManualNk(linkedManual, res); date = String((row || linkedManual).invoice_date || date).slice(0, 10);
-      if (row && row.id !== linkedManual.id) linkedManual = null;            // #1: booked meanwhile elsewhere → that booking is the payment
+    } else if (amt && (took = await _stTakeOwnEntry(CASA_PROP_ID, res, amt, false))) {   // #6: already typed in Controlling → link it, no 2nd booking (C3c: other years too)
+      linkedManual = took.o; date = String((took.row || linkedManual).invoice_date || date).slice(0, 10);
+      if (took.row.id !== linkedManual.id) linkedManual = null;             // #1: booked meanwhile elsewhere → that booking is the payment
     } else {
       const d = await ctlAbrAdd({ property_id: CASA_PROP_ID, invoice_date: date, item: stNkLabel(t.from, t.to) + ' · ' + t.name + ' · ' + (res.dir > 0 ? 'Nachzahlung' : 'Guthaben'),
                                   amount: amt, kind: 'NK-Abrechnung', direction: res.dir, source_ref: 'abr:' + res.id });   // #1: booked meanwhile → that booking
