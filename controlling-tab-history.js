@@ -121,8 +121,10 @@ function _cxHTenancyHTML(u, pid, w) {
   return '<div style="padding:12px 0;border-top:.5px solid var(--cc-rule)">' +
     '<div class="cx-row-sb"><span class="cx-pn cx-pn--s">' + cxEsc(w.name) + '</span><span>' + status + (iss.length ? ' ' + cxPill('open', 'check') : '') + '</span></div>' +
     (iss.length ? '<div class="cx-r__warn" style="margin-top:4px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(iss.join(' · ')) + '</div>' : '') +
-    '<div class="cx-set__row" style="margin-top:6px"><span class="cx-set__k">Move-in</span>' + dateIn('mietbeginn', w.t.mietbeginn ? ccRpIso(w.t.mietbeginn) : '') + '</div>' +
-    '<div class="cx-set__row"><span class="cx-set__k">Move-out</span>' + dateIn('mietende', w.t.mietende ? ccRpIso(w.t.mietende) : '') + '</div>' +
+    '<div class="cx-set__row" style="margin-top:6px"><span class="cx-set__k" style="white-space:nowrap">Move-in</span>' + dateIn('mietbeginn', w.t.mietbeginn ? ccRpIso(w.t.mietbeginn) : '') + '</div>' +
+    (_cxHCs(w.t) ? '<div class="cx-kv" style="border-top:none;padding:2px 0"><span>Contract start</span><span>' + cxFmtDate(_cxHCs(w.t)) +
+      (w.t.rent_from === 'move' ? ' · rent from the move-in' : '') + '</span></div>' : '') +   // #10: the date the rent follows (changed in Tenants)
+    '<div class="cx-set__row"><span class="cx-set__k" style="white-space:nowrap">Move-out</span>' + dateIn('mietende', w.t.mietende ? ccRpIso(w.t.mietende) : '') + '</div>' +
     '<div class="cx-set__sub" style="margin-top:8px">Rent</div>' + (periods || legacy || '<div class="cx-r__sub">no rent saved</div>') + add +
     (steps.length ? '<div class="cx-set__sub" style="margin-top:8px">Staffel / NK of this tenant</div>' + steps.map(t => '<div class="cx-r__sub">' + cxEsc(t) + '</div>').join('') : '') +
     '<div class="cx-kv" style="margin-top:8px"><span>Balance</span><span style="text-align:right">' + balTxt + '</span></div>' +
@@ -221,6 +223,11 @@ async function _cxHClick(ev, host) {
   rerender();
 }
 
+/* #10: the tenant's Contract start, read the same way as the Soll (controlling-soll.js _cxContractStart) */
+function _cxHCs(t) {
+  return typeof _cxContractStart === 'function' ? _cxContractStart(t) : (ccRpIso(t.vertragsbeginn) || '');
+}
+
 function _cxHModeOf(app, t) {
   if (app !== 'casa') return 'kalt_nk';
   const room = (window._src.rooms || []).find(r => String(r.name).toLowerCase() === String(t.room || '').toLowerCase());
@@ -237,7 +244,14 @@ async function _cxHChange(ev, host) {
   const t = _cxHTenant(app, tid); if (!t) return;
   const iso = ccRpIso(el.value) || null;
   if (field === 'mietbeginn' && !iso) { ctlToast('Move-in can\'t be empty'); return window.renderHistory(host); }
-  if (field === 'mietbeginn' && t.mietbeginn && !(await ccConfirm('Change the move-in?', 'This moves the whole rent history of this tenant.', 'Change'))) return window.renderHistory(host);
+  // #10: say what really happens — the rent follows the Contract start (default) or, with "Rent from: Move-in"
+  // or no Contract start, the move-in. The rent entries keep their dates either way.
+  if (field === 'mietbeginn' && t.mietbeginn) {
+    const cs = t.rent_from === 'move' ? '' : _cxHCs(t);
+    const what = cs ? 'The rent follows the contract start (' + cxFmtDate(cs) + ') – change it in Tenants.'
+                    : 'The rent then starts on the new move-in, ' + cxFmtDate(iso) + '.';
+    if (!(await ccConfirm('Change the move-in?', what, 'Change'))) return window.renderHistory(host);
+  }
   const before = t[field];
   t[field] = iso;
   try {
