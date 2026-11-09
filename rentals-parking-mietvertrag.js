@@ -50,9 +50,10 @@ function _buildPkMietvertragData(spot, pr, sk, s, {
     : 'Das Waschen des PKWs auf dem Stellplatz ist untersagt.';
   const anlageText = isTG ? 'Garagenordnung' : 'Stellplatzordnung';
 
-  // Schlüssel sentence — n22: the card's Haustür keys for every type, "wird" / "werden" by the number of keys
-  const hk = hbSk > 0 ? ` sowie ${hbSk}\u00a0Haustürschlüssel` : '';
-  const schlusselText = `Es ${Number(pkSk) + Number(hbSk) === 1 ? 'wird' : 'werden'} ${pkSk}\u00a0Parkplatzschlüssel${hk} ausgehändigt.`;
+  // Schlüssel sentence — n22: the card's Haustür keys for every type, "wird" / "werden" by the number of keys;
+  // a kind with 0 keys is not listed, no keys at all → '' (§ 4 then says "keine Schlüssel")
+  const keys = [[pkSk, 'Parkplatzschlüssel'], [hbSk, 'Haustürschlüssel']].filter(([n]) => Number(n) > 0).map(([n, w]) => `${n}\u00a0${w}`);
+  const schlusselText = keys.length ? `Es ${Number(pkSk) + Number(hbSk) === 1 ? 'wird' : 'werden'} ${keys.join(' sowie ')} ausgehändigt.` : '';
 
   return {
     vermieterName:    s.vermieter_name    || '',
@@ -368,7 +369,8 @@ function _renderPkMietvertragHTML(d) {
       `${/(garage|anlage)$/i.test(d.stellplatzLabel) ? 'Die' : 'Der'} ${d.stellplatzLabel} darf ausschlie\u00dflich zum Abstellen eines privaten Kraftfahrzeugs genutzt werden. Eine Untervermietung oder \u00dcberlassung an Dritte ist nicht gestattet. ${d.waschText}`)}
 
     ${cl('4', 'Schl\u00fcssel\u00fcbergabe',
-      `${d.schlusselText} Die Schl\u00fcssel sind bei Mietende zur\u00fcckzugeben. Bei Verlust tr\u00e4gt der Mieter die vollst\u00e4ndigen Kosten des Schlossaustauschs.`)}
+      d.schlusselText ? `${d.schlusselText} Die Schl\u00fcssel sind bei Mietende zur\u00fcckzugeben. Bei Verlust tr\u00e4gt der Mieter die vollst\u00e4ndigen Kosten des Schlossaustauschs.`
+                      : 'Es werden keine Schl\u00fcssel ausgeh\u00e4ndigt.')}
 
     ${cl('5', 'Haftung',
       'Vom Vermieter wird f\u00fcr eventuelle Besch\u00e4digungen an dem abgestellten PKW oder Diebstahl keine Haftung \u00fcbernommen.')}

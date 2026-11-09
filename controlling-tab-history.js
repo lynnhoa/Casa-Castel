@@ -94,7 +94,7 @@ function _cxHTenancyHTML(u, pid, w) {
 
   // Casa Castel has no Staffel — its steps are Mieterhöhungen (Pauschal or Kalt, by the rent valid on that day)
   const _stLine = h => {
-    if (w.app !== 'casa') return _cxMhLabel(h) + ' from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount) + (u && u.source_type === 'rentals_parking' ? '' : ' Kalt');   // n44: the type picked; parking has no Kalt
+    if (w.app !== 'casa') return _cxMhLabel(h) + ' from ' + cxFmtDate(ccRpIso(h.effective_date)) + ' · ' + cxEur(h.amount) + (((u && ctlUnitLink(u, ctlProp(pid))) || {}).type === 'rentals_parking' ? '' : ' Kalt');   // n44: the type picked; parking (also linked by name) has no Kalt
     const d = ccRpIso(h.effective_date);
     const at = w.periods.filter(p => ccRpIso(p.valid_from) && ccRpIso(p.valid_from) <= d).pop();
     const pau = (at ? at.mode : w.legacyMode) === 'pauschal';
