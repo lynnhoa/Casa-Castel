@@ -837,6 +837,7 @@ function aptFmtEURCompact(n) {
 let appApartments = [];     // array of apartment objects (joined from all tables)
 let _aptSbClient  = null;   // set below after Supabase is confirmed
 let _aptHausgeld  = {};     // apt_id → [{id, apt_id, effective_date, amount, weg_notified, notified_date, hv_adjusted, adjusted_date}]
+let _aptLoadedOk  = false;  // "No apartments yet" only after a load that worked (not after a failed one)
 
 
 /* ── LOAD ────────────────────────────────────────────────── */
@@ -847,16 +848,9 @@ async function loadApartments() {
   // B18: tenant rents load at the same time → cards drawn ONCE with the real rent
   const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
 
+  let ok = true;
   try {
-    const [
-      { data: apts },
-      { data: pricing },
-      { data: verwaltung },
-      { data: zaehler },
-      { data: schlussel },
-      { data: inventar },
-      { data: hausgeld },
-    ] = await Promise.all([
+    const res = await Promise.all([
       _aptSbClient.from('rentals_apartments').select('*').order('sort_order'),
       _aptSbClient.from('rentals_pricing').select('*'),
       _aptSbClient.from('rentals_verwaltung').select('*'),
@@ -865,6 +859,18 @@ async function loadApartments() {
       _aptSbClient.from('rentals_inventar').select('*').order('sort_order'),
       _aptSbClient.from('rentals_hausgeld_history').select('*').order('effective_date', { ascending: false }),
     ]);
+    // A query that failed (weak signal) → keep what is on screen: never an empty list or empty prices
+    const bad = res.find(r => r && r.error);
+    if (bad) throw bad.error;
+    const [
+      { data: apts },
+      { data: pricing },
+      { data: verwaltung },
+      { data: zaehler },
+      { data: schlussel },
+      { data: inventar },
+      { data: hausgeld },
+    ] = res;
 
     // Join all tables by apartment_id
     appApartments = (apts || []).map(a => ({
@@ -875,6 +881,7 @@ async function loadApartments() {
       schlussel:  (schlussel  || []).find(s => s.apartment_id === a.id) || {},
       inventar:   (inventar   || []).filter(i => i.apartment_id === a.id),
     }));
+    _aptOrderKeep();   // a drag being saved right now keeps its order
 
     // Build hausgeld store keyed by apt_id, already DESC from DB
     _aptHausgeld = {};
@@ -882,14 +889,17 @@ async function loadApartments() {
       if (!_aptHausgeld[e.apt_id]) _aptHausgeld[e.apt_id] = [];
       _aptHausgeld[e.apt_id].push(e);
     });
+    _aptLoadedOk = true;
   } catch(e) {
+    ok = false;
     console.error('[apartments] Load failed:', e);
   }
 
   if (_warm) await Promise.race([Promise.resolve(_warm).catch(() => {}), new Promise(r => setTimeout(r, 2500))]);
   _aptRenderIfChanged();
   _aptInitSortable();
-  _aptRestoreContractDraft();
+  if (ok) _aptRestoreContractDraft();   // after a load that worked (a failed one keeps the draft for the next)
+  return ok;   // false → the tab loads again on its next visit (_rtLoad)
 }
 
 
@@ -926,7 +936,7 @@ function _renderAptList() {
   const list = document.getElementById('aptList');
   if (!list) return;
   if (!appApartments.length) {
-    list.innerHTML = `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0">No apartments yet. Add your first apartment.</p>`;
+    list.innerHTML = _aptLoadedOk ? `<p style="font-size:13px;color:var(--cc-stone);font-style:italic;padding:20px 0">No apartments yet. Add your first apartment.</p>` : '';
     _updateAptSummary();
     return;
   }
@@ -1942,12 +1952,14 @@ async function _aptHGConfirmAdd__run(aptId) {
   const nuV = parseFloat(document.getElementById(`apt-hg-nu-${aptId}`)?.value);
   const row = { apt_id: aptId, effective_date: date, amount, weg_notified: false, hv_adjusted: false };
   if (!isNaN(nuV)) row.nicht_umlagefaehig = nuV;   // D1: from the Wirtschaftsplan
-  let { data, error } = await _aptSbClient.from('rentals_hausgeld_history').insert(row).select().single();
+  // one retry like every other save (a cold iPhone connection often fails only the first attempt)
+  const ins = () => ccPersist(() => _aptSbClient.from('rentals_hausgeld_history').insert(row).select().single());
+  let { data, error } = await ins();
   if (error && 'nicht_umlagefaehig' in row && /nicht_umlagefaehig/.test(String(error.message || ''))) {   // SQL not run yet
     delete row.nicht_umlagefaehig;
-    ({ data, error } = await _aptSbClient.from('rentals_hausgeld_history').insert(row).select().single());
+    ({ data, error } = await ins());
   }
-  if (error) { console.warn('[apartments] hg add:', error.message); return; }
+  if (error || !data) { ccSaveFailed(error, 'Hausgeld'); return; }   // the form stays open with what was typed
 
   if (!_aptHausgeld[aptId]) _aptHausgeld[aptId] = [];
   _aptHausgeld[aptId].unshift(data);
@@ -2249,7 +2261,7 @@ async function _aptRestoreContractDraft() {
   const d = _aptReadContractDraft();
   if (!d) return;
   const apt = appApartments.find(a => a.id === d.aptId);
-  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf()) return _aptReopenContractDraft(d);
+  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf('aptContractOverlay')) return _aptReopenContractDraft(d);
   if (typeof ccOfferDraft !== 'function') return;
   ccOfferDraft({
     label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.type] || 'Contract') + ' · ' + (apt?.name || 'Apartment'),
@@ -3746,7 +3758,7 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
   const blank = {
     id: tempId, name: '', adresse: '', zimmer_type: '1 Zimmer', heizungsart: 'Zentralheizung',
     floor: '', flaeche_m2: null, wohnungsnummer: '', energieklasse: '', endenergiebedarf: '', energieausweisart: '',
-    vacant: false, active: true,
+    vacant: true, active: true,
     pricing: {}, verwaltung: {}, zaehler: [], schlussel: {}, inventar: [],
   };
 
@@ -3759,6 +3771,9 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
 
   // Open identity section for editing immediately
   const identitySection = card.querySelector(`#apt-identity-${tempId}`);
+  // The flat exists only after this Property Save: until then the card has only this section
+  // (Asking rent, Costs, Hausgeld, Meters, Keys, Inventar, contracts and Delete come with the saved card)
+  card.querySelectorAll('.apt-body > *').forEach(e => { if (e !== identitySection) e.remove(); });
   if (identitySection) {
     identitySection.querySelector('.apt-sec-read').style.display = 'none';
     identitySection.querySelector('.apt-sec-edit').style.display = '';
@@ -3774,7 +3789,7 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
       const name = identitySection.querySelector('[data-f="name"]')?.value.trim();
       if (!name) { alert('Name is required.'); return; }
 
-      const data = { vacant: false, active: true, sort_order: appApartments.length };
+      const data = { vacant: true, active: true, sort_order: appApartments.length };   // new = vacant (like Rooms / Parking)
       identitySection.querySelectorAll('[data-f]').forEach(inp => {
         const k = inp.dataset.f;
         data[k] = ccIsNumInput(inp) ? (inp.value !== '' ? parseFloat(inp.value) : null) : inp.value;
@@ -3792,6 +3807,8 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
 
       card.remove();
       _renderAptList();
+      // the saved flat stays open: its other sections (Asking rent, Costs, Keys …) are there to fill in now
+      if (_aptSbClient) list.querySelector(`.apt-card[data-id="${appApartments[appApartments.length - 1].id}"]`)?.classList.add('apt--open');
       _aptInitSortable();
     };
   }
@@ -3813,6 +3830,9 @@ let _aptPendingDeleteId = null;
 
 function _aptConfirmDelete(aptId, name) {
   _aptPendingDeleteId = aptId;
+  const a = appApartments.find(x => String(x.id) === String(aptId));
+  const title = document.querySelector('#aptConfirmOverlay .rm-confirm-title');
+  if (title) title.textContent = a && a.zimmer_type === 'Gewerbefläche' ? 'Delete Gewerbefläche' : 'Delete apartment';
   document.getElementById('aptConfirmBody').innerHTML =
     `This will permanently delete <strong>${aptEsc(name)}</strong> and all linked data. This cannot be undone.`;
   document.getElementById('aptConfirmOverlay').classList.add('open');
@@ -3826,19 +3846,30 @@ document.getElementById('aptConfirmCancel')?.addEventListener('click', () => {
 document.getElementById('aptConfirmOk')?.addEventListener('click', async () => {
   if (!_aptPendingDeleteId) return;
   const btn = document.getElementById('aptConfirmOk');
+  const id  = _aptPendingDeleteId;
   btn.disabled = true;
 
   if (_aptSbClient) {
-    // Cascade deletes via FK on delete cascade
-    await _aptSbClient.from('rentals_apartments').delete().eq('id', _aptPendingDeleteId);
+    // Cascade deletes via FK on delete cascade · one retry; still refused → the flat and its card stay
+    const { error } = await ccPersist(() => _aptSbClient.from('rentals_apartments').delete().eq('id', id));
+    if (error) {
+      document.getElementById('aptConfirmOverlay').classList.remove('open');
+      _aptPendingDeleteId = null;
+      btn.disabled = false;
+      console.error('[apartments] delete failed:', error);
+      ccToast('Not deleted — connection problem. Please try again.', true);
+      return;
+    }
   }
 
-  appApartments = appApartments.filter(a => a.id !== _aptPendingDeleteId);
+  appApartments = appApartments.filter(a => a.id !== id);
+  delete _aptHausgeld[id];
   document.getElementById('aptConfirmOverlay').classList.remove('open');
   _aptPendingDeleteId = null;
   btn.disabled = false;
 
   _renderAptList();
+  _aptRenderedSig = ccStableJSON([appApartments, _aptHausgeld]);   // the next load must not see "nothing changed"
   _aptInitSortable();
 });
 
@@ -3889,17 +3920,48 @@ function _aptInitSortable() {
     ghostClass: 'sortable-ghost',
     chosenClass: 'sortable-chosen',
     onEnd(evt) {
-      const ids = [...evt.to.querySelectorAll('.apt-card[data-id]')]
-        .map(c => c.dataset.id).filter(Boolean);
-      if (_aptSbClient) {
-        ids.forEach((id, i) => {
-          _aptSbClient.from('rentals_apartments').update({ sort_order: i }).eq('id', id);
-          const a = appApartments.find(x => x.id === id);
-          if (a) a.sort_order = i;
-        });
-      }
+      _aptSaveOrder([...evt.to.querySelectorAll('.apt-card[data-id]')].map(c => c.dataset.id).filter(Boolean));
     }
   });
+}
+
+/* Drag order (Nov 2026): the new order is really saved (each write awaited, one retry) and kept in
+   appApartments, so no redraw brings the old one back. Not saved → the order from before the drag
+   comes back (screen and database) with the usual "Not saved". An unsaved new card is not counted. */
+let _aptOrderTick = 0, _aptOrderPending = 0, _aptOrderBase = null, _aptOrderWant = null;
+function _aptOrderSort() { appApartments.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)); }
+function _aptOrderKeep() {          // a load while a drag is being saved keeps the dragged order
+  if (!_aptOrderPending || !_aptOrderWant) return;
+  appApartments.forEach(a => { const o = _aptOrderWant.get(String(a.id)); if (o !== undefined) a.sort_order = o; });
+  _aptOrderSort();
+}
+async function _aptSaveOrder(domIds) {
+  const k = String;
+  const ids = domIds.filter(id => appApartments.some(a => k(a.id) === k(id)));
+  if (!ids.length || !_aptSbClient) return;
+  if (!_aptOrderPending) _aptOrderBase = new Map(appApartments.map(a => [k(a.id), a.sort_order]));
+  _aptOrderWant = new Map(ids.map((id, i) => [k(id), i]));
+  appApartments.forEach(a => { const o = _aptOrderWant.get(k(a.id)); if (o !== undefined) a.sort_order = o; });
+  _aptOrderSort();
+  _aptRenderedSig = ccStableJSON([appApartments, _aptHausgeld]);   // the screen already shows this order
+  const tick = ++_aptOrderTick;
+  _aptOrderPending++;
+  let res = [];
+  try {
+    res = await Promise.all(ids.map((id, i) => ccQueueWrite('apt-' + id,
+      () => _aptSbClient.from('rentals_apartments').update({ sort_order: i }).eq('id', id))));
+  } finally { _aptOrderPending--; }
+  const bad = res.find(r => r && r.error);
+  if (!bad || tick !== _aptOrderTick) return;        // saved — or a newer drag saves the whole order itself
+  const base = _aptOrderBase || new Map();
+  appApartments.forEach(a => { const o = base.get(k(a.id)); if (o !== undefined) a.sort_order = o; });
+  _aptOrderSort();
+  ids.forEach(id => { const o = base.get(k(id)); if (o !== undefined)   // rows that did save go back too
+    ccQueueWrite('apt-' + id, () => _aptSbClient.from('rentals_apartments').update({ sort_order: o }).eq('id', id)); });
+  _renderAptList();
+  _aptRenderedSig = ccStableJSON([appApartments, _aptHausgeld]);
+  _aptInitSortable();
+  ccSaveFailed(bad.error, 'apartment order');
 }
 
 

@@ -759,20 +759,23 @@ function _rntUebergHTML(type, unit) {
   </div>
 </div>`;
 }
-/* The Übergabe generator lives in the Apartments / Parking tab: that tab shows while it is open
-   (like Renew), and Tenants comes back as soon as it closes. */
+/* A generator started in Tenants (Übergabe, Renew) lives in the Apartments / Parking tab: that tab
+   shows while it is open, and window._rntUbReturn (the tab to go back to) comes back as soon as it
+   closes — ✕, Cancel, a tap outside or Approve all remove 'open'. */
+function _rntReturnOnClose(ov) {
+  if (!ov || ov._rntBack) return;
+  ov._rntBack = true;
+  new MutationObserver(() => {
+    if (!ov.classList.contains('open') && window._rntUbReturn) {
+      const t = window._rntUbReturn; window._rntUbReturn = null;
+      if (typeof switchTab === 'function') switchTab(t);
+    }
+  }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+}
 function _rntUbOpen(pre, unitId) {
   const isApt = pre === 'apt';
   const ov = document.getElementById(isApt ? 'aptContractOverlay' : 'pkContractOverlay');
-  if (ov && !ov._rntBack) {
-    ov._rntBack = true;
-    new MutationObserver(() => {
-      if (!ov.classList.contains('open') && window._rntUbReturn) {
-        const t = window._rntUbReturn; window._rntUbReturn = null;
-        if (typeof switchTab === 'function') switchTab(t);
-      }
-    }).observe(ov, { attributes: true, attributeFilter: ['class'] });
-  }
+  _rntReturnOnClose(ov);
   if (typeof switchTab === 'function') switchTab(isApt ? 'apartments' : 'parking');
   setTimeout(async () => {
     window._rntUbReturn = 'tenants';
@@ -1073,9 +1076,9 @@ async function _rntLoad(unitsReady) {
   if (recAll && recAll.error) {
     console.warn('[tenants] load:', recAll.error.message || recAll.error);
     if (!document.querySelector('#rntTenantsList .tn-card')) _rntRender();
-    return;
+    return false;   // → the next visit loads again at once (_rtLoad)
   }
-  if (!appApartments?.length && !appParking?.length) { _rntRender(); return; }
+  if (!appApartments?.length && !appParking?.length) { _rntRender(); return _rntUnitsOk() ? undefined : false; }
 
   const aptSet = new Set((appApartments || []).map(a => String(a.id)));
   const pkSet  = new Set((appParking    || []).map(p => String(p.id)));
@@ -1191,6 +1194,10 @@ function _rntGetParkingProfile(pkId) {
 /* ══════════════════════════════════════════════════════════════
    9. RENDER
 ══════════════════════════════════════════════════════════════ */
+/* Apartments or Parking loaded at least once (a failed load leaves both false) */
+function _rntUnitsOk() {
+  return (typeof _aptLoadedOk !== 'undefined' && _aptLoadedOk) || (typeof _pkLoadedOk !== 'undefined' && _pkLoadedOk);
+}
 function _rntRender() {
   const list = document.getElementById('rntTenantsList');
   if (!list) return;
@@ -1201,7 +1208,8 @@ function _rntRender() {
   const parking = [...(appParking    || [])].sort((a,b) => (a.sort_order||0) - (b.sort_order||0));
 
   if (!apts.length && !parking.length) {
-    list.innerHTML = `<p class="tn-empty">No units configured.</p>`;
+    // only after the units really loaded — a failed load (no signal) never says there are none
+    list.innerHTML = _rntUnitsOk() ? `<p class="tn-empty">No units configured.</p>` : '';
     return;
   }
 
@@ -4365,13 +4373,14 @@ async function loadRntTenants() {
   const needApt = !appApartments?.length || _rntUnitsFromCopy;
   const needPk  = !appParking?.length    || _rntUnitsFromCopy;
   const unitsReady = Promise.all([needApt ? viaTab('apartments') : null, needPk ? viaTab('parking') : null])
-    .then(() => { _rntUnitsFromCopy = false; });
-  await _rntLoad(unitsReady);
+    .then(r => { if (!r.includes(false)) _rntUnitsFromCopy = false; });   // units not loaded → still from the copy
+  const ok = await _rntLoad(unitsReady);
   const h = _ccTakeFormerHandoff('rentals');
   if (h && h.aptId != null) {
     const apt = (appApartments || []).find(a => String(a.id) === String(h.aptId));
     if (apt) { _ccReturnBanner(document.getElementById('tab-tenants')); _rntAddFormer('apt', apt.id, h); }
   }
+  return ok;   // false → the next visit loads again at once (_rtLoad)
 }
 
 /* ── "Mieter nachtragen" from Settlements ─────────────────────

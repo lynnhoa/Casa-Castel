@@ -2205,7 +2205,7 @@ async function _roomRestoreContractDraft() {
   if (!d || !d.meta) return;
   const room = getRoomById(d.meta.roomId);
   if (!room) { ccDraftClear(_ROOM_DRAFT_KEY); return; }
-  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf()) return _roomReopenContractDraft(d);
+  if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf('contractOverlay')) return _roomReopenContractDraft(d);
   if (typeof ccOfferDraft !== 'function') return;
   ccOfferDraft({
     label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', jahres:'Jahresvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + room.name,

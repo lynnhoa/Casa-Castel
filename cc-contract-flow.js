@@ -134,11 +134,20 @@ const CCF_RENTALS = {
   },
   openRenew(rec, renew) {
     if (!rec.apartment_id || typeof _aptOpenContract !== 'function') return;
+    // Started in Tenants → Tenants (card still open) comes back when the generator closes (✕ / Approve), like Übergabe
+    const from = typeof _rtCurrent !== 'undefined' ? _rtCurrent : null;
+    const ov = document.getElementById('aptContractOverlay');
+    if (typeof _rntReturnOnClose === 'function') _rntReturnOnClose(ov);
     if (typeof switchTab === 'function') switchTab('apartments');
     // Nov 2026: a Pauschal tenancy renewed as a Mietvertrag keeps its mode here → the generator splits it into
     // Kaltmiete = Pauschale − davon NK + NK = davon NK (_aptContractApt), never the whole Pauschale as Kaltmiete
-    setTimeout(() => _aptOpenContract(renew.ct, rec.apartment_id, { ...renew, aptId: rec.apartment_id,
-      mode: renew.ct === 'kurzzeit' ? (renew.mode || 'kalt_nk') : (renew.mode === 'pauschal' ? 'pauschal' : 'kalt_nk') }), 80);
+    setTimeout(async () => {
+      window._rntUbReturn = from && from !== 'apartments' ? from : null;
+      try {
+        await _aptOpenContract(renew.ct, rec.apartment_id, { ...renew, aptId: rec.apartment_id,
+          mode: renew.ct === 'kurzzeit' ? (renew.mode || 'kalt_nk') : (renew.mode === 'pauschal' ? 'pauschal' : 'kalt_nk') });
+      } finally { if (!ov || !ov.classList.contains('open')) window._rntUbReturn = null; }   // did not open → no jump later
+    }, 80);
   },
   renewSwitch(type) {
     if (typeof _aptContractRenew === 'undefined' || !_aptContractRenew || typeof _aptOpenContract !== 'function') return;
