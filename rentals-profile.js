@@ -357,12 +357,19 @@ async function openRentalsProfile() {
   // Close nav dropdown if open
   document.getElementById('navProfileMenu')?.classList.remove('open');
 
-  // Load settings from Supabase (shared table)
+  // Load settings from Supabase (shared table) — one more try when the read failed (weak signal, iOS resume)
   if (typeof loadSettings === 'function') {
     await loadSettings();
+    if (!_rpLoaded()) {
+      await new Promise(r => setTimeout(r, 500));
+      await loadSettings();
+    }
   }
   _rpRenderAll();
 }
+
+/* Nothing read yet → the cards show no Edit (an edit from the empty cache would save blanks) */
+function _rpLoaded() { return typeof settingsLoaded === 'undefined' || settingsLoaded; }
 
 function closeRentalsProfile() {
   document.getElementById('rpPrfOverlay')?.classList.remove('open');
@@ -392,8 +399,9 @@ function _rpRenderCard(sectionKey, editing) {
   if (!sec || !card) return;
 
   const s = (typeof appSettings !== 'undefined') ? appSettings : {};
+  if (!_rpLoaded()) editing = false;
 
-  const actionsHTML = editing
+  const actionsHTML = !_rpLoaded() ? '' : editing
     ? `<div class="rp-prf-save-cancel">
          <button class="rp-prf-btn-cancel" data-cancel="${sectionKey}">Cancel</button>
          <button class="rp-prf-btn-save"   data-save="${sectionKey}">Save</button>
@@ -477,11 +485,13 @@ async function _rpDoSave(sectionKey, card) {
   const saveBtn = card.querySelector(`[data-save="${sectionKey}"]`);
   if (saveBtn) saveBtn.disabled = true;
 
-  const sec    = _RP_SECTIONS.find(s => s.key === sectionKey);
+  // only the fields you changed — the others (IBAN, Kontoinhaber …) are never written from this card
   const fields = {};
   card.querySelectorAll('.rp-prf-input[data-key]').forEach(inp => {
-    fields[inp.dataset.key] = inp.value.trim();
+    const v = inp.value.trim();
+    if (v !== (inp.defaultValue || '').trim()) fields[inp.dataset.key] = v;
   });
+  if (!Object.keys(fields).length) { _rpRenderCard(sectionKey, false); return; }   // nothing changed
 
   const result = (typeof updateSettings === 'function')
     ? await updateSettings(fields)

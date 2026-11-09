@@ -156,6 +156,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     nkVZ:         Number(nkVZ),
     gesamtmiete,
     kautionVal:   Number(kautionVal),
+    kaution:      Number(kautionVal),   // Approve saves this as Kaution Soll (the contract flow reads data.kaution)
     kautionFaelText,
     // Meta
     unterzeichnungsDatum: sigVal ? fmtDt(new Date(sigVal)) : '',

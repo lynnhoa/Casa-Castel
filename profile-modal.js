@@ -45,9 +45,16 @@ async function openProfile() {
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
   await loadSettings();
+  if (!_prfLoaded()) {   // one more try when the read failed (weak signal, iOS resume)
+    await new Promise(r => setTimeout(r, 500));
+    await loadSettings();
+  }
   if (!appSettings.vermieter_email) appSettings.vermieter_email = 'mgmt.tenant.mainz@gmail.com';
   _renderAll();
 }
+
+/* Nothing read yet → the cards show no Edit (an edit from the empty cache would save blanks / empty lists) */
+function _prfLoaded() { return typeof settingsLoaded === 'undefined' || settingsLoaded; }
 
 function closeProfile() {
   document.getElementById('profileOverlay')?.classList.remove('open');
@@ -90,13 +97,14 @@ function _renderCard(section, title, editing) {
   if (!card) return;
 
   const s = appSettings;
+  if (!_prfLoaded()) editing = false;
   card.className = 'prf-card' + (editing ? ' prf-card--editing' : '');
 
   const header = `
     <div class="prf-card__hdr">
       <span class="prf-card__title">${title || section}</span>
       <div class="prf-card__actions">
-        ${editing
+        ${!_prfLoaded() ? '' : editing
           ? `<div class="prf-save-cancel">
                <button class="prf-btn-cancel" data-cancel="${section}">Cancel</button>
                <button class="prf-btn-save"   data-save="${section}">Save</button>
@@ -326,9 +334,12 @@ async function _doSave(section) {
   let fields = {};
 
   if (['vermieter', 'objekt', 'bank', 'energieausweis'].includes(section)) {
+    // only the fields you changed — the others (IBAN, Kontoinhaber …) are never written from this card
     card.querySelectorAll('.prf-inline[data-key]').forEach(inp => {
-      fields[inp.dataset.key] = inp.value.trim();
+      const v = inp.value.trim();
+      if (v !== (inp.defaultValue || '').trim()) fields[inp.dataset.key] = v;
     });
+    if (!Object.keys(fields).length) { _renderCard(section, _TITLES[section], false); return; }   // nothing changed
 
   } else if (section === 'gemeinschaft') {
     fields.gemeinschaftsraeume = _collectList(card, 'gemeinschaft');
