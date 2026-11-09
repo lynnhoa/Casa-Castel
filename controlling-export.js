@@ -64,9 +64,11 @@ function cxInvoiceData(year, pid) {
       });
       // Nov 2026 fix: "Rechnungen" counts invoices only — refunds, bonuses and "paid to you directly" lines are listed
       // (they lower the Summe) but are no Rechnung; the count said 12 where the One-off tab says 10 invoices
-      return { items, total: Math.round(total * 100) / 100, nInv: arr.filter(o => Number(o.direction) !== 1).length }; };
+      // #16 (Nov 2026): paid (Bezahlt) and back (Zurück) apart too — the One-off cards show the same three figures
+      const f = _cxOtFig(arr);
+      return { items, total: Math.round(total * 100) / 100, nInv: f.nInv, paid: f.paid, back: f.back }; };
     const reg = mk(list.filter(o => o.kind !== 'Kaufnebenkosten')), knk = mk(list.filter(o => o.kind === 'Kaufnebenkosten'));
-    groups.push({ p, items: reg.items, total: reg.total, nInv: reg.nInv, knk: knk.items, knkTotal: knk.total });
+    groups.push({ p, items: reg.items, total: reg.total, nInv: reg.nInv, paid: reg.paid, back: reg.back, knk: knk.items, knkTotal: knk.total });
   }
   return groups;
 }
@@ -101,7 +103,11 @@ function cxBuildInvoiceWorkbook(year, pid) {
     for (const it of g.items) aoa.push([it.nr, it.item, it.company, it.price, dt(it.date)]);
     const last = aoa.length;
     aoa.push([]);
-    aoa.push(['', 'Summe', '', null, '']);
+    // #16: something came back (refund, return, bonus) → Bezahlt and Zurück above the Summe (netto), as the One-off card
+    const split = g.back > 0 && g.items.length > 0;
+    if (split) { aoa.push(['', 'Bezahlt', '', null, '']); aoa.push(['', 'Zurück', '', null, '']); }
+    aoa.push(['', split ? 'Summe (netto)' : 'Summe', '', null, '']);
+    const sumRow = aoa.length - 1;                                   // 0-based row of the Summe
     let kFirst = 0, kLast = 0;
     if (g.knk.length) {                                              // Kaufnebenkosten: own block, own sum (not in the Summe above)
       aoa.push([]);
@@ -112,7 +118,11 @@ function cxBuildInvoiceWorkbook(year, pid) {
       aoa.push(['', 'Summe Kaufnebenkosten', '', null, '']);
     }
     const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true });
-    ws[X.utils.encode_cell({ r: last + 1, c: 3 })] = { t: 'n', f: g.items.length ? 'SUM(D2:D' + last + ')' : '0', v: g.total };
+    if (split) {
+      ws[X.utils.encode_cell({ r: sumRow - 2, c: 3 })] = { t: 'n', f: 'SUMIF(D2:D' + last + ',">0")', v: g.paid };
+      ws[X.utils.encode_cell({ r: sumRow - 1, c: 3 })] = { t: 'n', f: 'SUMIF(D2:D' + last + ',"<0")', v: -g.back };
+    }
+    ws[X.utils.encode_cell({ r: sumRow, c: 3 })] = { t: 'n', f: g.items.length ? 'SUM(D2:D' + last + ')' : '0', v: g.total };
     if (g.knk.length) ws[X.utils.encode_cell({ r: kLast, c: 3 })] = { t: 'n', f: 'SUM(D' + kFirst + ':D' + kLast + ')', v: g.knkTotal };
     for (let r = 1; r < aoa.length; r++) {
       const c = ws[X.utils.encode_cell({ r, c: 3 })]; if (c && c.t === 'n') c.z = '#,##0.00 "€";-#,##0.00 "€"';
@@ -171,27 +181,48 @@ function cxBuildInvoicePdf(year, pid) {
     doc.text(_cxPdfTxt(t), M, 34);
     if (sub) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...C.mut); doc.text(_cxPdfTxt(sub), M, 41); }
   };
-  const table = (startY, head, body, foot, colStyles) => doc.autoTable({
-    startY, head: [head], body, foot: foot ? [foot] : undefined, showFoot: 'lastPage',
-    margin: { left: M, right: M, top: 26, bottom: 20 },
-    theme: 'plain',
-    styles: { font: 'helvetica', fontSize: 9, textColor: C.txt, cellPadding: { top: 2.2, bottom: 2.2, left: 2, right: 2 }, lineColor: C.line, lineWidth: { bottom: 0.2 }, overflow: 'linebreak' },
-    headStyles: { fillColor: C.head, textColor: C.mut, fontStyle: 'bold', fontSize: 7.5, lineWidth: 0 },
-    footStyles: { fontStyle: 'bold', textColor: C.ink, fontSize: 9.5, lineWidth: { top: 0.4 }, lineColor: C.acc },
-    columnStyles: colStyles,
-    didParseCell: d => {
-      const cs = colStyles[d.column.index];
-      if (cs && cs.halign && d.section !== 'body') d.cell.styles.halign = cs.halign;          // heads + Summe line up with their column
-      if (d.section === 'body' && d.column.index === (head.length === 5 ? 3 : 2) && String(d.cell.raw).startsWith('-')) d.cell.styles.textColor = C.neg;
-    },
-  });
+  // foot: one row, or several (#16: Bezahlt · Zurück · Summe (netto) — the rule above the first, the last one bold)
+  // negCols: the amount columns whose negative values are shown in the refund colour (default: the price / Summe column)
+  const table = (startY, head, body, foot, colStyles, negCols) => {
+    const feet = foot ? (Array.isArray(foot[0]) ? foot : [foot]) : null, neg = negCols || [head.length === 5 ? 3 : 2];
+    return doc.autoTable({
+      startY, head: [head], body, foot: feet || undefined, showFoot: 'lastPage',
+      margin: { left: M, right: M, top: 26, bottom: 20 },
+      theme: 'plain',
+      styles: { font: 'helvetica', fontSize: 9, textColor: C.txt, cellPadding: { top: 2.2, bottom: 2.2, left: 2, right: 2 }, lineColor: C.line, lineWidth: { bottom: 0.2 }, overflow: 'linebreak' },
+      headStyles: { fillColor: C.head, textColor: C.mut, fontStyle: 'bold', fontSize: 7.5, lineWidth: 0 },
+      footStyles: { fontStyle: 'bold', textColor: C.ink, fontSize: 9.5, lineWidth: { top: 0.4 }, lineColor: C.acc },
+      columnStyles: colStyles,
+      didParseCell: d => {
+        const cs = colStyles[d.column.index];
+        if (cs && cs.halign && d.section !== 'body') d.cell.styles.halign = cs.halign;          // heads + Summe line up with their column
+        if (d.section === 'body' && neg.includes(d.column.index) && String(d.cell.raw).startsWith('-')) d.cell.styles.textColor = C.neg;
+        if (d.section === 'foot' && feet.length > 1) {                                          // #16: Bezahlt / Zurück plain, Summe (netto) bold
+          const lastRow = d.row.index === feet.length - 1;
+          if (!lastRow) { d.cell.styles.fontStyle = 'normal'; d.cell.styles.fontSize = 9; d.cell.styles.textColor = C.txt; }
+          if (d.row.index > 0) d.cell.styles.lineWidth = 0;
+          if (neg.includes(d.column.index) && String(d.cell.raw).startsWith('-')) d.cell.styles.textColor = C.neg;
+        }
+      },
+    });
+  };
 
   // Page 1 · overview (all properties) — a single-property export starts with its table
   if (!single) {
     pageTitle('Rechnungen ' + year, 'Alle Objekte · Stand ' + stand);
     const tot = groups.reduce((s, g) => s + g.total, 0), n = groups.reduce((s, g) => s + g.nInv, 0);
     const kTot = groups.reduce((s, g) => s + g.knkTotal, 0), hasK = groups.some(g => g.knk.length);
-    if (hasK) table(50, ['Objekt', 'Rechnungen', 'Summe', 'Kaufnebenkosten'],
+    // #16: something came back somewhere → Bezahlt · Zurück · Netto per property (as the One-off cards); else as before
+    const hasB = groups.some(g => g.back > 0);
+    const paid = groups.reduce((s, g) => s + g.paid, 0), back = groups.reduce((s, g) => s + g.back, 0);
+    const zur = v => v > 0 ? _cxPdfEur(-v) : '–';
+    if (hasB) table(50, ['Objekt', 'Rechnungen', 'Bezahlt', 'Zurück', 'Netto'].concat(hasK ? ['Kaufnebenkosten'] : []),
+      groups.map(g => [_cxPdfTxt(g.p.name), String(g.nInv), _cxPdfEur(g.paid), zur(g.back), _cxPdfEur(g.total)].concat(hasK ? [g.knk.length ? _cxPdfEur(g.knkTotal) : '–'] : [])),
+      ['Gesamt', String(n), _cxPdfEur(paid), zur(back), _cxPdfEur(tot)].concat(hasK ? [_cxPdfEur(kTot)] : []),
+      hasK ? { 1: { halign: 'right', cellWidth: 21 }, 2: { halign: 'right', cellWidth: 27 }, 3: { halign: 'right', cellWidth: 25 }, 4: { halign: 'right', cellWidth: 27 }, 5: { halign: 'right', cellWidth: 29 } }
+           : { 1: { halign: 'right', cellWidth: 24 }, 2: { halign: 'right', cellWidth: 31 }, 3: { halign: 'right', cellWidth: 29 }, 4: { halign: 'right', cellWidth: 31 } },
+      [3, 4]);
+    else if (hasK) table(50, ['Objekt', 'Rechnungen', 'Summe', 'Kaufnebenkosten'],
       groups.map(g => [_cxPdfTxt(g.p.name), String(g.nInv), _cxPdfEur(g.total), g.knk.length ? _cxPdfEur(g.knkTotal) : '–']),
       ['Gesamt', String(n), _cxPdfEur(tot), _cxPdfEur(kTot)],
       { 1: { halign: 'right', cellWidth: 26 }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'right', cellWidth: 36 } });
@@ -201,7 +232,7 @@ function cxBuildInvoicePdf(year, pid) {
       { 1: { halign: 'right', cellWidth: 30 }, 2: { halign: 'right', cellWidth: 38 } });
     if (hasK) {
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.mut);
-      doc.text(_cxPdfTxt('Kaufnebenkosten (Notar, Grundbuch, Grunderwerbsteuer, Makler) sind Anschaffungsnebenkosten und in der Summe nicht enthalten.'),
+      doc.text(_cxPdfTxt('Kaufnebenkosten (Notar, Grundbuch, Grunderwerbsteuer, Makler) sind Anschaffungsnebenkosten und ' + (hasB ? 'in Bezahlt, Zurück und Netto' : 'in der Summe') + ' nicht enthalten.'),
         M, doc.lastAutoTable.finalY + 8, { maxWidth: W - 2 * M });
     }
   }
@@ -216,7 +247,8 @@ function cxBuildInvoicePdf(year, pid) {
     if (g.items.length) {
       table(y, ['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum'],
         g.items.map(it => [String(it.nr), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
-        ['', 'Summe', '', _cxPdfEur(g.total), ''], cols);
+        g.back > 0 ? [['', 'Bezahlt', '', _cxPdfEur(g.paid), ''], ['', 'Zurück', '', _cxPdfEur(-g.back), ''], ['', 'Summe (netto)', '', _cxPdfEur(g.total), '']]   // #16
+                   : ['', 'Summe', '', _cxPdfEur(g.total), ''], cols);
       y = doc.lastAutoTable.finalY + 14;
     }
     if (g.knk.length) {                                    // Kaufnebenkosten: own table, own sum, clearly labelled

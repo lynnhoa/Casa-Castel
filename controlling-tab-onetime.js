@@ -70,6 +70,19 @@ function _cxOtDefaultDate() {
   return (Number(t.slice(0, 4)) === y && Number(t.slice(5, 7)) === m) ? t : y + '-' + String(m).padStart(2, '0') + '-01';
 }
 const _cxOtSigned = o => (Number(o.direction) === 1 ? 1 : -1) * (Number(o.amount) || 0);
+/* #16 (Nov 2026) · the figures of One-off lines — the same on the screen and in the export (cxInvoiceData):
+   paid = what went out (invoices) · back = what came back (refunds, Maintenance returns, tenant refunds, bonuses,
+   Guthaben) · net = paid − back · nInv = invoices (an income line is no invoice). Kaufnebenkosten are never in it. */
+function _cxOtFig(lines) {
+  let paid = 0, back = 0, nInv = 0;
+  for (const o of lines || []) {
+    const a = Number(o.amount) || 0;
+    if (Number(o.direction) === 1) back += a; else { paid += a; nInv++; }
+  }
+  return { paid: cxR(paid), back: cxR(back), net: cxR(paid - back), nInv };
+}
+/* "paid 1.151 € · back + 100 €" — only when something came back (else the one amount says it all) */
+const _cxOtPaidBack = f => f.back ? [f.paid ? 'paid ' + cxW(f.paid) : '', 'back ' + cxIO(f.back)].filter(Boolean).join(' · ') : '';
 
 /* Year bar for the Jahr view (the month bar is used in the Monat view) */
 function _cxOtYearBar() {
@@ -418,9 +431,8 @@ function _cxOtListHTML() {
     if (!all.length) return '';                                          // a property shows only once it has an entry
     const list = all.filter(o => !_cxOtKnk(o)), knk = all.filter(_cxOtKnk);
     const knkSum = knk.reduce((s, o) => s - _cxOtSigned(o), 0);
-    const out = list.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-    const inn = list.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-    const here = false;                                                  // Fix 1: nothing is typed in One-off any more
+    const fig = _cxOtFig(list);                                          // #16: paid · back · net, as the export
+    const here = false;                                               // Fix 1: nothing is typed in One-off any more
     let body = '<div class="cx-ot-top"><span class="cx-lbl">' + (_cxOt.view === 'y' ? 'By month' : CX_MONTHS[CX.month - 1]) + '</span></div>';
     if (_cxOt.view === 'm') body += _cxOtRowsLimited(list, p.id + '|m|' + window._ctrl.year + '|' + CX.month);
     else {
@@ -447,17 +459,30 @@ function _cxOtListHTML() {
         '<span class="cx-ot-ms">' + cxW(knkSum) + ' · ' + knk.length + '</span></div>' +
         knk.slice().sort((a, b) => String(a.invoice_date).localeCompare(String(b.invoice_date))).map(_cxOtRowHTML).join('') +
         _cxOtKnkYearsHTML(p.id) + '</div>';
-    const n = list.filter(o => Number(o.direction) !== 1).length;          // D39: invoices only (income lines are not invoices)
+    const n = fig.nInv;                                                  // D39: invoices only (income lines are not invoices)
     return cxCard({
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
-      subHTML: [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', inn ? 'Income ' + cxIO(inn) : '', knk.length ? 'Kaufnebenkosten ' + cxW(knkSum) : ''].filter(Boolean).join(' · '),   // CP1: income green, as in the summary
+      // #16: what went out and what came back under the name, the net amount on the right — as the export's Summe (netto)
+      subHTML: [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', _cxOtPaidBack(fig), knk.length ? 'Kaufnebenkosten ' + cxW(knkSum) : ''].filter(Boolean).join(' · '),
       status: null,
-      extraPill: '<span class="cx-ot-tot">' + cxIO(-out) + '</span>',   // CP1: what went out, red
+      extraPill: '<span class="cx-ot-tot">' + cxIO(-fig.net) + '</span>',   // CP1: red when more went out, green "+" when more came back
       defaultOpen: !!_cxOt.q || _cxOt.view === 'm' || here || all.some(o => String(o.id) === String(_cxOt.form) || String(o.id) === String(_cxOt.flash)),
       body,
     });
   }).join('');
+}
+
+/* The summary card's figures (label · net amount big · paid / back · Kaufnebenkosten) — #16: the net amount, as the export */
+function _cxOtSumFigHTML() {
+  const inPer = _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month);
+  const all = inPer.filter(o => !_cxOtKnk(o)), knkAll = inPer.filter(_cxOtKnk);
+  const knkTot = knkAll.reduce((s, o) => s - _cxOtSigned(o), 0);
+  const fig = _cxOtFig(all), nInv = fig.nInv;                          // D39: income lines are not invoices
+  const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
+  return '<div class="cx-row-sb"><span class="cx-lbl">Invoices · ' + cxEsc(period) + '</span>' + cxPill('beige', nInv + (nInv === 1 ? ' invoice' : ' invoices')) + '</div>' +
+    '<div class="cx-sum__v"><span class="cx-sum__big">' + cxIO(-fig.net) + '</span><span class="cx-sum__of">' + (_cxOtPaidBack(fig) || 'in ' + period) + '</span></div>' +
+    (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '');
 }
 
 window.renderOneTime = function () {
@@ -500,23 +525,12 @@ window.renderOneTime = function () {
   if (CX.tab !== 'onetime' || (_cxOt.formAt && _cxOt.formAt !== at)) { _cxOt.form = null; _cxOt.formAt = null; }
   CX.tab = 'onetime';
   const flash = _cxOt.flash;
-  const inPer = _cxOtAll().filter(o => _cxOt.view === 'y' || Number(String(o.invoice_date).slice(5, 7)) === CX.month);
-  const all = inPer.filter(o => !_cxOtKnk(o)), knkAll = inPer.filter(_cxOtKnk);
-  const knkTot = knkAll.reduce((s, o) => s - _cxOtSigned(o), 0);
-  const raus = all.filter(o => Number(o.direction) !== 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-  const rein = all.filter(o => Number(o.direction) === 1).reduce((s, o) => s + (Number(o.amount) || 0), 0);
-  const nInv = all.filter(o => Number(o.direction) !== 1).length;      // D39: income lines are not invoices
-  const period = _cxOt.view === 'y' ? String(window._ctrl.year) : CX_MONTHS[CX.month - 1];
-
   cxPaint(host, '<div class="cx-page">' +
     '<div class="cx-seg cx-seg--view" role="group" aria-label="Ansicht">' +
       '<button class="' + (_cxOt.view === 'y' ? 'on' : '') + '" data-cx="otView" data-v="y">Year</button>' +
       '<button class="' + (_cxOt.view === 'm' ? 'on' : '') + '" data-cx="otView" data-v="m">Month</button></div>' +
     (_cxOt.view === 'y' ? _cxOtYearBar() : cxMonthBar()) +
-    '<div class="cx-card cx-sum">' +
-      '<div class="cx-row-sb"><span class="cx-lbl">Invoices paid · ' + cxEsc(period) + '</span>' + cxPill('beige', nInv + (nInv === 1 ? ' invoice' : ' invoices')) + '</div>' +
-      '<div class="cx-sum__v"><span class="cx-sum__big">' + cxIO(-raus) + '</span><span class="cx-sum__of">' + (rein ? 'Income ' + cxIO(rein) : (_cxOt.view === 'y' ? 'in ' + window._ctrl.year : 'in ' + CX_MONTHS[CX.month - 1])) + '</span></div>' +
-      (knkAll.length ? '<div class="cx-r__sub" style="margin:-2px 0 6px">+ Kaufnebenkosten ' + cxW(knkTot) + ' · part of the purchase, not in cashflow</div>' : '') +
+    '<div class="cx-card cx-sum">' + _cxOtSumFigHTML() +
       '<div class="cx-grid2" style="margin-top:4px">' +
         '<button class="cx-btn cx-btn--s" data-cx="otToMaint"><i class="ti ti-plus" aria-hidden="true"></i>Add in Maintenance</button>' +
         '<button class="cx-btn cx-btn--s" data-cx="otExp">' + (_cxOt.exp.open ? '<i class="ti ti-x" aria-hidden="true"></i>Close' : '<i class="ti ti-download" aria-hidden="true"></i>Export') + '</button>' +
