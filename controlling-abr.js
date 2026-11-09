@@ -283,10 +283,10 @@ function cxAbrSection(p, y, m, dir) {
     const flip = d => (d > 0 ? 'Nachzahlung' : 'Guthaben');
     const sub = r.legacy ? 'booked ' + cxFmtDate(r.legacy.invoice_date) +
         (r.moved ? ' · the Abrechnung is now a ' + flip(r.moved.dir) + ' of ' + cxEur(r.moved.amount) + ' – settle it again in Settlements' : ' · without Abrechnung')
-      : r.booking ? 'paid ' + [r.booking].concat(r.twice || []).map(o => cxFmtDate(o.invoice_date)).join(', ').replace(/, ([^,]*)$/, ' and $1')   // #1: booked twice → both dates
+      : r.booking ? 'paid ' + cxFmtDate(r.booking.invoice_date)                        // #1: the payment kept (the extra ones: "booked twice" below)
       : (r.res.tenantTab ? 'from the tenant tab' : 'Abrechnung of ' + cxFmtDate(r.res.db.result_date)) +
         (r.stale ? ' · booked before as ' + flip(Number(r.stale.direction) === 1 ? 1 : -1) + ' ' + cxEur(r.stale.amount) + ' – settle it again in Settlements' : '');
-    const dup = r.twice && r.twice.length ? ' · <b style="color:#B0661E;font-weight:600;white-space:nowrap">booked twice</b> · <button class="cx-link cx-link--a cx-link--in" data-cx="abrDup" data-id="' + cxEsc(r.id) + '">delete one</button>' : '';   // #1
+    const dup = r.twice && r.twice.length ? ' · <b style="color:#B0661E;font-weight:600;white-space:nowrap">' + (r.twice.length === 1 ? 'booked twice' : 'booked ' + (r.twice.length + 1) + ' times') + '</b> · <button class="cx-link cx-link--a cx-link--in" data-cx="abrDup" data-id="' + cxEsc(r.id) + '">delete one</button>' : '';   // #1
     h += cxRow({ id: r.id, label, soll: r.soll, ist: r.ist, allowEmpty: true, dir,   // CP2: differences from your view (no "On purpose" here)
                  pills: r.overdue ? cxPill('open', 'due since ' + mon(r.overdue)) : '',
                  sub: cxIO(dir * r.soll, cxEur) + ' · ' + cxEsc(sub) + dup + (r.res && r.res.manual ? ' · <button class="cx-link cx-link--a cx-link--in" data-cx="abrStorno" data-id="' + cxEsc(r.id) + '">cancel</button>' : '') });
