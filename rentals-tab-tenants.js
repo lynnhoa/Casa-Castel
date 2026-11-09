@@ -2147,7 +2147,9 @@ function _rntContractEntry(rec) {
    Safe to repeat; resolves once written (errors are shown).
    opts.prev (a card / pop-up save): the Contract end before that save — if the entry can't be written, the card's
    Contract end goes back to it (screen and tenant row), so the toast's "previous values are back" is true and the
-   next Save runs this sync again. */
+   next Save runs this sync again.
+   opts.quiet (the Kündigung): a failed write shows nothing and rejects — the caller puts the card back and says
+   "… Tap Create again". */
 function _rntSyncContractEnd(rec, end, opts) {
   if (!rec || !rec.id || !sbL || typeof ccRpUpdate !== 'function') return Promise.resolve(false);
   const ent = _rntContractEntry(rec);
@@ -2158,6 +2160,7 @@ function _rntSyncContractEnd(rec, end, opts) {
   return ccQueueWrite('rp-' + ent.id, () => ccRpUpdate(sbL, ent.id, { contract_end: want }).then(() => ({}), e => ({ error: e })))
     .then(r => {
       if (!(r && r.error)) return true;
+      if (opts && opts.quiet) throw r.error;
       if (opts && 'prev' in opts && (_ccIso(rec.vertragsende) || null) === want) {   // not changed again meanwhile
         const prev = opts.prev ?? null;
         rec.vertragsende = prev;

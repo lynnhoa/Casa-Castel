@@ -542,10 +542,11 @@ function _kbRntOrt(rec) {
 /* parking: the contract runs at least 1 year from its Mietbeginn (the Contract start, else the Move-in) */
 const _kbPkStart = rec => _kbIsoOf(rec.vertragsbeginn) || _kbIsoOf(rec.mietbeginn);
 const _kbPkMin = rec => kbYearMinEnd(_kbPkStart(rec));
-/* the rule in the "Letter" line: Gewerbe · Stellplatz (with the end of its 1st year) */
+/* the rule in the "Letter" line: Gewerbe · Stellplatz (with the end of its 1st year while that is still ahead) */
 function _kbQuarterRule(rec, st) {
   if (st.v === 'gewerbe') return KB_GW_MONTHS + ' months to the quarter end';
   const min = _kbPkMin(rec);
+  if (min && min < _kbToday()) return '3 months to the quarter end';   // the 1st year is over
   return '3 months to the quarter end, not before ' + (min ? _kbDe(min) + ' (1 year from ' + _kbDe(_kbPkStart(rec)) + ')' : 'the end of the 1st year');
 }
 /* the quiet line under the dates: Casa's Verzicht line (Rentals contracts have none — no extra line there) */
@@ -579,7 +580,7 @@ async function _kbLetterDataRnt(rec, st) {
   const own = String(rec.address || '').trim();
   return {
     brand: u.name || '', unitLabel: pk ? 'Stellplatz' : gw ? 'Gewerbefläche' : 'Wohnung',
-    unitName: pk ? String(u.parking_type || '').trim() : String(u.wohnungsnummer || '').trim(),
+    unitName: pk ? (t => t === 'Stellplatz' ? 'Außenstellplatz' : t)(String(u.parking_type || '').trim()) : String(u.wohnungsnummer || '').trim(),   // as the parking contract: no "STELLPLATZ / Stellplatz"
     footer: [u.adresse, u.plz_ort].map(x => String(x || '').trim()).filter(Boolean).join(' · '),
     sender, names: people.map(p => p.full),
     addr: pk ? own.replace(/,\s*(\d{5})/, '\n$1').split('\n').map(x => x.trim()).filter(Boolean) : [street, plz].filter(Boolean),
@@ -591,13 +592,22 @@ async function _kbLetterDataRnt(rec, st) {
 /* Contract end on the card (the same queue as Tenant › Edit) · a failed write goes back and throws, so the sheet says
    "Letter saved in Documents, but the Contract end was not set … Tap Create again". Then the running contract's rent
    entry follows, as every card save does (n35): only an entry that is fixed-term already (an end from Approve, or
-   Kurzzeit) gets the date — an open-ended Mietvertrag entry stays empty, so the letter stays the same next time. */
+   Kurzzeit) gets the date — an open-ended Mietvertrag entry stays empty, so the letter stays the same next time.
+   If that entry can't be written, the card's Contract end goes back too (screen and tenant row) and the sheet says
+   "… Tap Create again" — no "previous values are back" toast next to "Saved". */
 async function _kbSetEndRnt(rec, end) {
   const before = rec.vertragsende;
   rec.vertragsende = end;
   const res = await ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ vertragsende: end }).eq('id', rec.id));
   if (res && res.error) { rec.vertragsende = before; throw res.error; }
-  if (typeof _rntSyncContractEnd === 'function') await _rntSyncContractEnd(rec, end);
+  if (typeof _rntSyncContractEnd !== 'function') return;
+  try { await _rntSyncContractEnd(rec, end, { quiet: true }); }
+  catch (e) {
+    rec.vertragsende = before;
+    const back = await ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ vertragsende: before ?? null }).eq('id', rec.id));
+    if (back && back.error) rec.vertragsende = end;          // the tenant row kept the new end → the card shows what is saved
+    throw e;
+  }
 }
 
 /* ── Look of the sheet ─────────────────────────────────────── */
