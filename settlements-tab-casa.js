@@ -2734,12 +2734,8 @@ async function scReopen(key) {
   if (!(await stConfirm({ title: 'Set ' + t.name + ' back to open?', ok: 'Back to open', danger: true,
     text: b ? _stUndoText(b, scDate, scE) : res ? 'The result disappears from Controlling.' : '' }))) return;
   try {
-    if (b) await _stUndoBooking(b);                             // own booking removed · your own entry only unlinked
-    if (res) { const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.id); if (error) throw error; res.db.status = 'storniert'; }
-    if (!(t.it.r._virtual || String(t.it.r.id).startsWith('v:'))) {
-      try { await _stUpsertSettlement(t.line, { status: 'offen', amount: null, direction: null, settled_via: null, result_id: null }); }
-      catch (e) { await _stUpsertSettlement(t.line, { status: 'offen', amount: null, direction: null, settled_via: null }); }
-    }
+    if (res) await ctlAbrStorno(res);                           // own booking removed · your own entry only unlinked · result cancelled
+    if (!(t.it.r._virtual || String(t.it.r.id).startsWith('v:'))) await ctlSettleOpen(t.it.r);   // shared with Controlling's 'cancel' (C1 #4)
   } catch (e) { stSay('Failed — ' + (e.message || e)); return; }
   ctlSettlementInvalidate(); stSay('Back to open');
   SC.model = scModel(M.y); stRenderCasa();

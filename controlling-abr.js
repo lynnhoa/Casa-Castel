@@ -87,6 +87,96 @@ function ctlAbrBooking(res) {
   return (window._src.abrPay || []).find(o => res.refs.includes(o.source_ref)) || null;
 }
 
+/* ── BACK TO OPEN — one rule for Settlements and Controlling (C1 #4, Nov 2026) ──────────────
+   Settlements' "Back to open" (Rentals / manual lines: _stReopen · Casa Castel: scReopen) and the 'cancel'
+   of an Abrechnung in Controlling Income / Expenses do exactly the same, with the code below:
+     1 the booking in Controlling: one that Settlements / Controlling made is removed · an entry you typed
+       yourself (linked by Settlements) is only unlinked — it stays in Controlling as you typed it
+     2 the result is cancelled (abr_results 'storniert')
+     3 its stored Settlements line(s) are open again — no amount, no direction, no date — so Settlements
+       and the tenant card's NK pill follow (cancelling in Controlling left them saying 'settled')
+   The booking rules (#12: the type you gave an entry comes back when it is unlinked) moved here from
+   settlements-tab-tracking.js; Settlements loads this file before its tabs. */
+const ST_ABR_KINDS = ['NK-Abrechnung', 'Hausgeldabrechnung'];
+async function _stUpdOT(id, fields) {
+  try { return await ctlUpdateOneTime(id, fields); }
+  catch (e) {
+    if (!('before_link' in fields) || !/before_link/i.test(String((e && (e.message || e.details)) || e))) throw e;
+    const f = Object.assign({}, fields); delete f.before_link;
+    return ctlUpdateOneTime(id, f);
+  }
+}
+function _stBL(o) {                                                   // remembered type → { kind, direction } or null
+  let v = o && o.before_link;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+  return v && typeof v === 'object' ? v : null;
+}
+/* Switching a payment off: a booking Settlements made is removed · an entry you typed yourself in
+   Controlling (linked by #6 or the WEG match) is only unlinked — it stays in Controlling as you typed it.
+   C1 #4: also a booking Controlling made for a result without its period ("NK 2025 · …", the label it writes
+   then) counts as made by the apps · an entry that remembers your own type (before_link) is always yours. */
+const ST_AUTO_ITEM = /^(NK|Hausgeld) (\d{2}\.\d{2}\.\d{4}|\d{4} · )/;
+const _stIsOwnBooking = b => !_stBL(b) && ST_AUTO_ITEM.test(String((b && b.item) || ''));
+async function _stUndoBooking(b) {
+  window._src.abrPay = (window._src.abrPay || []).filter(o => o.id !== b.id);
+  if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); return 'deleted'; }
+  const cur = (window._ctrl.one_time || []).find(x => x.id === b.id);
+  const bl = _stBL(b) || _stBL(cur);                                  // #12: back to the type you gave it
+  const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges', before_link: null };
+  if (bl && bl.kind && bl.direction !== undefined) f.direction = bl.direction;
+  const d = await _stUpdOT(b.id, f);
+  const k = (window._ctrl.one_time || []).findIndex(x => x.id === b.id); if (k >= 0 && d) window._ctrl.one_time[k] = d;
+  return 'unlinked';
+}
+const _stUndoText = (b, fmtDate, fmtEur) => !b ? '' : _stIsOwnBooking(b)
+  ? 'The booking of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') in Controlling is removed too.'
+  : 'Your own entry of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') stays in Controlling – it is only unlinked.';
+
+/* The result a Settlements line stands for (Settlements' rule, _stResultOf): its result_id, else the same
+   property · kind · year · tenant (· period). → the abr_results row, or null */
+function ctlSettleResult(pid, r) {
+  const d10 = v => String(v || '').slice(0, 10);
+  const list = (window._src.abr || []).filter(x => x.status !== 'storniert');
+  let x = r.result_id ? list.find(a => String(a.id) === String(r.result_id)) : null;
+  if (!x) x = list.find(a => Number(a.property_id) === Number(pid) && a.kind === r.kind && Number(a.year) === Number(r.covers_year) &&
+    String(a.tenant_id || '') === String(r.tenant_id || '') && (!a.period_from || d10(a.period_from) === d10(r.period_from)));
+  return x || null;
+}
+/* The stored Settlements lines that show this result (read BEFORE it is cancelled) — as Settlements sees them:
+   a confirmed Leerstand and a skipped NK never show a result, so they are never touched */
+function ctlAbrSettleLines(res) {
+  const id = res && res.db ? String(res.db.id) : null;
+  if (id === null) return [];
+  const leer = r => typeof ctlSettlementIsLeer === 'function' && ctlSettlementIsLeer(r);
+  return (window._src.settle || []).filter(r => {
+    if (leer(r) || r.status === 'nicht durchgeführt') return false;
+    const x = ctlSettleResult(r.property_id, r);
+    return !!x && String(x.id) === id;
+  });
+}
+/* 1 + 2: the booking goes (your own entry is only unlinked), the result is cancelled */
+async function ctlAbrStorno(res) {
+  const b = ctlAbrBooking(res);
+  if (b) await _stUndoBooking(b);
+  const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.db.id);
+  if (error) throw error;
+  res.db.status = 'storniert';
+}
+/* 3: one stored Settlements line back to open (a line Settlements only shows has nothing stored) */
+async function ctlSettleOpen(r) {
+  if (!r || r._virtual || String(r.id).startsWith('v:')) return null;
+  const up = async f => {
+    const { data, error } = await _ctlSupa.from('ctrl_settlements').update(f).eq('id', r.id).select().single();
+    if (error) throw error;
+    const i = (window._src.settle || []).findIndex(x => x.id === r.id);
+    if (i >= 0) window._src.settle[i] = data;
+    return data;
+  };
+  const f = { paid_date: null, status: 'offen', amount: null, direction: null, settled_via: null, result_id: null };
+  try { return await up(f); }
+  catch (e) { const g = Object.assign({}, f); delete g.result_id; return up(g); }      // without the result_id column (older SQL)
+}
+
 /* Rows of one property card in a month, for one direction (+1 Income, −1 Expenses) */
 function ctlAbrRows(pid, y, m, dir) {
   const rows = [], ym = y * 12 + m, t = cxToday(), cur = _cxYm(t);
@@ -217,17 +307,18 @@ async function cxAbrClick(a, b, rerender) {
     if (e && !e.info && e.ist === null) { try { await _cxAbrBook(e, e.soll); } catch (err) { cxToastErr(err); } }
     rerender(); return true;
   }
-  if (a === 'abrStorno') {
+  if (a === 'abrStorno') {                               // C1 #4: = Settlements' "Back to open" (see BACK TO OPEN above)
     const e = _cxAbrIndex[b.dataset.id];
-    if (!e || !e.res || !e.res.manual) return true;
-    const bk = ctlAbrBooking(e.res);
-    if ((await ccDialog({ icon: 'ti-alert-triangle', tone: 'danger', title: 'Cancel this Abrechnung?', body: ccEscHtml(e.res.label) + (bk ? '<br><br>The booking of ' + cxFmtDate(bk.invoice_date) + ' (' + cxEur(bk.amount) + ') will be deleted too.' : ''), actions: [{ label: 'Keep', value: false }, { label: 'Cancel Abrechnung', value: true, danger: true }] })) !== true) return true;
+    if (!e || !e.res || !e.res.manual || !e.res.db) return true;
+    const bk = ctlAbrBooking(e.res), lines = ctlAbrSettleLines(e.res);
+    const what = !bk ? '' : _stIsOwnBooking(bk) ? 'The booking of ' + cxFmtDate(bk.invoice_date) + ' (' + cxEur(bk.amount) + ') will be deleted too.'
+      : 'Your own entry of ' + cxFmtDate(bk.invoice_date) + ' (' + cxEur(bk.amount) + ') stays in One-off – it is only unlinked.';
+    if ((await ccDialog({ icon: 'ti-alert-triangle', tone: 'danger', title: 'Cancel this Abrechnung?', body: ccEscHtml(e.res.label) + (what ? '<br><br>' + ccEscHtml(what) : ''), actions: [{ label: 'Keep', value: false }, { label: 'Cancel Abrechnung', value: true, danger: true }] })) !== true) return true;
     try {
-      if (bk) { await ctlDeleteOneTime(bk.id); window._src.abrPay = window._src.abrPay.filter(o => o.id !== bk.id); }
-      const { error } = await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', e.res.db.id);
-      if (error) throw error;
-      e.res.db.status = 'storniert';
+      await ctlAbrStorno(e.res);
+      for (const r of lines) await ctlSettleOpen(r);
     } catch (err) { cxToastErr(err); }
+    if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate();
     rerender(); return true;
   }
   return false;
