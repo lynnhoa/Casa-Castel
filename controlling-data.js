@@ -214,7 +214,7 @@ async function ctlUpsertIncome(unit_id, month, kaltmiete, nebenkosten, split) {
   if (error && 'split' in payload && /split/.test(String(error.message || '')) ) {   // SQL not run yet
     delete payload.split;
     ({ data, error } = await up(payload));
-    if (!error && typeof ctlToast === 'function') ctlToast('Gespeichert – Aufteilung pro Mieter erst nach dem SQL-Update');
+    if (!error && typeof ctlToast === 'function') ctlToast('Saved – the split per tenant only after the SQL update');
   }
   if (error) throw error;
   _ctlIncCache(data);
@@ -295,7 +295,7 @@ const _CTL_MEM = { ctrl_properties: 'properties', ctrl_units: 'units', ctrl_cast
 async function ctlUpdateRow(table, id, fields) {
   const { data, error } = await _ctlSupa.from(table).update(fields).eq('id', id).select().single();
   if (error) throw error;
-  if (!data) throw new Error('nicht gespeichert – Zeile ' + id + ' nicht gefunden');   // never replace the row with nothing
+  if (!data) throw new Error('row ' + id + ' not found');   // never replace the row with nothing
   const list = window._ctrl[_CTL_MEM[table]] || [];
   const i = list.findIndex(r => r.id === id);
   if (i >= 0) list[i] = data;
@@ -350,7 +350,7 @@ async function ctlUpdateOneTime(id, fields) {
   let { data, error } = await upd(fields);
   if (error && _ctlNoKnkCol(error)) ({ data, error } = await upd(_ctlStripKnk(fields)));
   if (error) throw error;
-  if (!data) throw new Error('nicht gespeichert – Eintrag ' + id + ' nicht gefunden');
+  if (!data) throw new Error('entry ' + id + ' not found');
   const i = window._ctrl.one_time.findIndex(r => r.id === id);
   if (i >= 0) window._ctrl.one_time[i] = data;
   return data;

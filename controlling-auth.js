@@ -64,7 +64,7 @@ function _ctlLoadScript(src) {
     const s = document.createElement('script');
     s.src = src + '?v=' + CTL_BUILD;
     s.onload = resolve;
-    s.onerror = () => reject(new Error('Datei fehlt: ' + src));
+    s.onerror = () => reject(new Error('File missing: ' + src));
     document.head.appendChild(s);
   });
 }
@@ -95,9 +95,15 @@ async function boot() {
   } catch (e) {
     console.error('[controlling] boot failed:', e);
     document.getElementById('appShell').style.display = 'block';
+    // x7: without its data the other tabs would look loaded but empty ('Book all' could book the plan over real
+    // amounts) – the tab bar goes, Setup in the menu does nothing and coming back to the app draws no screen over
+    // this one: only 'Try again' leads on
+    const tabs = document.getElementById('appTabs'); if (tabs) tabs.style.display = 'none';
+    window.switchTab = () => {};
+    window.cxRenderActive = () => {};
     document.getElementById('tab-dashboard').innerHTML =
-      '<div class="ct-page" style="padding:20px 16px"><p class="cc-note">Daten konnten nicht geladen werden. ' +
-      '<a href="#" onclick="location.reload();return false;" style="color:#8A6535;text-decoration:underline;">Erneut versuchen</a></p>' +
+      '<div class="ct-page" style="padding:20px 16px"><p class="cc-note">Could not load the data. ' +
+      '<a href="#" onclick="location.reload();return false;" style="color:#8A6535;text-decoration:underline;">Try again</a></p>' +
       '<p style="font-size:11px;color:#A89A86;margin-top:6px">' + String((e && e.message) || e).replace(/</g, '&lt;') + '</p></div>';
   } finally {
     ctlShowLoading(false);

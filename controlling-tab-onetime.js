@@ -692,6 +692,13 @@ function _cxOtBonusHTML() {
     cxPill('beige', list.length + (list.length === 1 ? ' bonus' : ' bonuses')) + '</div>' +
     '<div class="cx-r__sub" style="margin:4px 0 6px">From Providers › Utilities · confirm once the money is in your account.</div>' + rows + '</div>';
 }
+/* #9: after a save the card that holds the saved line stays open (and its month), until you tap its own header */
+function _cxOtKeepOpen(pid, saved) {
+  const d = String((saved && saved.invoice_date) || ''), y = window._ctrl.year;
+  if (Number(d.slice(0, 4)) !== y) return;                           // saved into another year: the cards here stay as they are
+  CX.open['ot:' + pid + ':' + _cxOt.view + (_cxOt.q ? ':q' : '')] = true;
+  _cxOt.mfold[pid + '|' + y + '|' + Number(d.slice(5, 7))] = true;
+}
 async function _cxOtBonusSave(btn) {
   const x = _cxOtBonuses().find(r => String(r.b.id) === String(btn.dataset.id)); if (!x) return;
   const { b, k } = x, g = i => document.getElementById(i), say = t => { if (typeof ctlToast === 'function') ctlToast(t); };
@@ -717,7 +724,7 @@ async function _cxOtBonusSave(btn) {
     cxToastErr(e); btn.disabled = false; return;
   }
   _cxOt.bonus = null; _cxOt.bonusNk = null;
-  if (saved) { _cxOt.flash = saved.id; delete CX.open['ot:' + pid + ':' + _cxOt.view]; }
+  if (saved) { _cxOt.flash = saved.id; _cxOtKeepOpen(pid, saved); }
   say(Number(date.slice(0, 4)) !== window._ctrl.year ? 'Saved in ' + date.slice(0, 4) : 'Bonus booked · ' + cxEur(amt));
   window.renderOneTime();
 }
@@ -815,7 +822,7 @@ async function _cxOtSave(b) {
       const L = window._src.knkAll || (window._src.knkAll = []), j = L.findIndex(x => String(x.id) === String(saved.id));
       if (j >= 0) L[j] = saved; else L.push(saved);
     }
-    if (saved) { _cxOt.flash = saved.id; delete CX.open['ot:' + pid + ':' + _cxOt.view]; }
+    if (saved) { _cxOt.flash = saved.id; _cxOtKeepOpen(pid, saved); }
     try { localStorage.setItem('cx_ot_prop', String(pid)); } catch (e) {}
     _cxOt.form = null; _cxOt.formAt = null;
     const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7));
