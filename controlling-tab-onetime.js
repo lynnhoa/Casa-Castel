@@ -89,8 +89,17 @@ function _cxOtFig(lines) {
   }
   return { paid: cxR(paid), back: cxR(back), net: cxR(paid - back), nInv };
 }
-/* "paid 1.151 € · back + 100 €" — only when something came back (else the one amount says it all) */
-const _cxOtPaidBack = f => f.back ? [f.paid ? 'paid ' + cxW(f.paid) : '', 'back ' + cxIO(f.back)].filter(Boolean).join(' · ') : '';
+/* "paid 1.151 € · back + 100 €" — only when something came back (else the one amount says it all).
+   C3: in whole euros the three figures add up: the net (the big figure, cxIO(-f.net)) is the true net rounded, as on the
+   Dashboard and in the export's Summe; back is rounded and paid = net + back (each rounded on its own, paid − back was
+   1 € off now and then). The export keeps its cents. No-break spaces keep each label with its amount on the iPhone, and
+   the '·' with the figure before it (a line never starts with it). */
+function _cxOtPaidBack(f) {
+  if (!f.back) return '';
+  const v = cxR(-f.net), net = Math.round(v) ? -Math.sign(v) * Math.round(Math.abs(v)) : 0;   // as cxIO(-f.net) shows it
+  const back = Math.round(f.back);
+  return [f.paid ? 'paid\u00a0' + cxW(net + back) : '', 'back\u00a0' + cxIO(back)].filter(Boolean).join('\u00a0· ');
+}
 
 /* Year bar for the Jahr view (the month bar is used in the Monat view) */
 function _cxOtYearBar() {
@@ -333,7 +342,9 @@ function _cxOtRowHTML(o) {
   const prop = _cxOtKnk(o) ? null : ctlProp(Number(o.property_id)), od = ctlParseDate(o.invoice_date);
   const beforeBuy = !!prop && od.year > 0 && !ctlPropOwned(prop, od.year, od.month) ? ctlPropSince(prop) : '';
   const aria = mt ? 'From Maintenance: ' + (o.item || 'invoice') + ' · open' : 'Edit ' + (o.item || 'entry');
-  return '<button class="cx-r cx-ot-r' + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" data-mt-tag="' + (mt ? '1' : '0') + '" aria-label="' + cxEsc(aria) + '">' +
+  // C3: only a Kaufnebenkosten row WITH a pill may wrap (pill + chevron under a long text) — without one the chevron
+  // stays beside the text (a class, not :has(), so older iPhones do the same)
+  return '<button class="cx-r cx-ot-r' + (_cxOtKnk(o) && pills ? ' cx-ot-r--pill' : '') + (String(o.id) === String(_cxOt.flash) ? ' cx-ot-flash' : '') + '" data-cx="otEdit" data-id="' + cxEsc(o.id) + '" data-mt-tag="' + (mt ? '1' : '0') + '" aria-label="' + cxEsc(aria) + '">' +
     '<div class="cx-r__top"><span class="cx-r__u">' + cxEsc(o.item || 'Entry') + '</span>' +
       '<span class="cx-r__p">' + pills + '<i class="ti ti-chevron-right cx-chev" aria-hidden="true"></i></span></div>' +
     '<div class="cx-r__s' + (inn ? ' pos' : '') + '">' + (inn ? '+\u202f' : '') + cxEur(o.amount) + '</div>' +   // always the stored (gross) amount
@@ -475,7 +486,7 @@ function _cxOtListHTML() {
       key: 'ot:' + p.id + ':' + _cxOt.view + (_cxOt.q ? ':q' : ''),
       title: p.name,
       // #16: what went out and what came back under the name, the net amount on the right — as the export's Summe (netto)
-      subHTML: list.length ? [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', _cxOtPaidBack(fig), knk.length ? 'Kaufnebenkosten ' + cxW(knkSum) : ''].filter(Boolean).join(' · ')
+      subHTML: list.length ? [n ? n + (n === 1 ? ' invoice' : ' invoices') : '', _cxOtPaidBack(fig), knk.length ? 'Kaufnebenkosten\u00a0' + cxW(knkSum) : ''].filter(Boolean).join('\u00a0· ')   // C3: label and amount stay together, a line never starts with '·'
                            : cxEsc(knk.length + ' Kaufnebenkosten · not in cashflow'),          // #27: only Kaufnebenkosten
       status: null,
       extraPill: list.length ? '<span class="cx-ot-tot">' + cxIO(-fig.net) + '</span>'   // CP1: red when more went out, green "+" when more came back
@@ -516,7 +527,7 @@ window.renderOneTime = function () {
       '.cx-ot-knk>.cx-row-sb{padding:2px 0 4px}.cx-ot-knk .cx-r{background:transparent}' +
       // #27: a long Kaufnebenkosten text shows on up to two lines (was cut to "N…" next to two pills) · a card with only
       // Kaufnebenkosten shows their total in grey (part of the purchase, not cashflow) · a long search ends in "…"
-      '.cx-ot-knk .cx-ot-r .cx-r__top{flex-wrap:wrap;row-gap:3px}.cx-ot-knk .cx-ot-r .cx-r__p{margin-left:auto}' +   // the type pill moves under a long text
+      '.cx-ot-knk .cx-ot-r--pill .cx-r__top{flex-wrap:wrap;row-gap:3px}.cx-ot-knk .cx-ot-r .cx-r__p{margin-left:auto}' +   // the type pill moves under a long text (C3: only rows with a pill)
       '.cx-ot-knk .cx-ot-r .cx-r__u{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}' +
       '.cx-ot-tot.cx-ot-tot--knk{color:#6E6357}' +
       '.cx-ot-sumlbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}';

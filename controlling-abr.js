@@ -141,11 +141,19 @@ async function _stUpdOT(id, fields) {
     return ctlUpdateOneTime(id, f);
   }
 }
-function _stBL(o) {                                                   // remembered type → { kind, direction } or null
+function _stBLRaw(o) {
   let v = o && o.before_link;
   if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
   return v && typeof v === 'object' ? v : null;
 }
+/* C3 (Nov 2026): before_link holds either the type you gave an entry ({ kind, direction }, while it is linked) or — once
+   it was unlinked from a result — only the marker { off: 'abr:<id>' }: the automatic WEG match leaves it unlinked from
+   that result (_srFindBooking). A marker is no remembered type. */
+function _stBL(o) {                                                   // remembered type → { kind, direction } or null
+  const v = _stBLRaw(o);
+  return v && !('off' in v) ? v : null;
+}
+const _stBLOff = o => { const v = _stBLRaw(o); return v && v.off ? String(v.off) : null; };   // the result it was unlinked from
 /* Switching a payment off: a booking Settlements made is removed · an entry you typed yourself in
    Controlling (linked by #6 or the WEG match) is only unlinked — it stays in Controlling as you typed it.
    C1 #4: also a booking Controlling made for a result without its period ("NK 2025 · …", the label it writes
@@ -157,7 +165,8 @@ async function _stUndoBooking(b) {
   if (_stIsOwnBooking(b)) { await ctlDeleteOneTime(b.id); drop(); return 'deleted'; }
   const cur = (window._ctrl.one_time || []).find(x => x.id === b.id);
   const bl = _stBL(b) || _stBL(cur);                                  // #12: back to the type you gave it
-  const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges', before_link: null };
+  const f = { source_ref: null, kind: bl && bl.kind && !ST_ABR_KINDS.includes(bl.kind) ? bl.kind : 'Sonstiges',
+              before_link: b.source_ref ? { off: b.source_ref } : null };   // C3: the WEG match does not link it back to this result
   if (bl && bl.kind && bl.direction !== undefined) f.direction = bl.direction;
   const d = await _stUpdOT(b.id, f); drop();
   const k = (window._ctrl.one_time || []).findIndex(x => x.id === b.id); if (k >= 0 && d) window._ctrl.one_time[k] = d;
@@ -166,6 +175,56 @@ async function _stUndoBooking(b) {
 const _stUndoText = (b, fmtDate, fmtEur) => !b ? '' : _stIsOwnBooking(b)
   ? 'The booking of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') in Controlling is removed too.'
   : 'Your own entry of ' + fmtDate(b.invoice_date) + ' (' + fmtEur(b.amount) + ') stays in Controlling – it is only unlinked.';
+
+/* ── YOUR OWN ENTRY IS THE PAYMENT — Settlements #6 and Controlling's Soll (C3, Nov 2026) ─────────────────────────
+   Moved here from settlements-tab-tracking.js: Controlling uses them too. Clearing the Ist of a result paid by your
+   own entry only unlinks it (x1) — a Soll tap or a typed amount afterwards links that entry again instead of booking
+   the money a second time (_cxAbrBook). maint-link.js keeps Maintenance lines out of both finders (page end). */
+/* #6 (Oct 2026): a tenant's NK payment you already typed by hand in Controlling › One-off
+   (same property, same direction, same amount to the cent, on/after the letter date, not linked yet)
+   is LINKED to the result instead of booking the money a second time. */
+function _stFindManualNk(pid, res, amt) {
+  const from = String(res.date || '').slice(0, 10);
+  const linked = new Set((window._src.abrPay || []).map(o => o.id));
+  return (window._ctrl.one_time || []).find(o =>
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    !['Versorger', 'Kaufnebenkosten', 'Hausgeldabrechnung'].includes(o.kind) && !o.nk_umlage &&
+    (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
+    Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
+}
+/* C3: the same for a WEG Hausgeld result, as the WEG match (same property, amount to the cent, same direction or none,
+   on/after the result date, not linked yet) — never a Kaufnebenkosten line or a cost marked for the NK */
+function _stFindOwnWeg(pid, res, amt) {
+  const from = String(res.date || '').slice(0, 10);
+  const linked = new Set((window._src.abrPay || []).map(o => o.id));
+  return (window._ctrl.one_time || []).find(o =>
+    Number(o.property_id) === Number(pid) && !linked.has(o.id) && !/^abr:/.test(String(o.source_ref || '')) &&
+    o.kind !== 'Kaufnebenkosten' && !o.nk_umlage &&
+    (o.direction === undefined || o.direction === null || Number(o.direction) === Number(res.dir)) &&
+    Math.abs(Math.abs(Number(o.amount) || 0) - amt) < 0.005 && (!from || String(o.invoice_date || '').slice(0, 10) >= from)) || null;
+}
+/* #12: the type (and direction) you gave an entry is remembered in before_link when it gets linked,
+   and restored when it is unlinked. Without the before_link column (SQL not run) it works as before. */
+function _stBeforeLink(o) {
+  if (ST_ABR_KINDS.includes(o.kind)) return _stBL(o);                 // already an Abrechnung type: keep what was remembered
+  return { kind: o.kind || null, direction: o.direction === undefined ? null : o.direction };
+}
+/* kind: 'NK-Abrechnung' (#6) · C3: 'Hausgeldabrechnung' for a WEG result linked from Controlling */
+async function _stLinkManualNk(o, res, kind) {
+  const f = { source_ref: 'abr:' + res.id, kind: kind || 'NK-Abrechnung', direction: res.dir, before_link: _stBeforeLink(o) };
+  let d;
+  try { d = await _stUpdOT(o.id, f); }
+  catch (e) {                                  // #1 (CONTROLLING-C2.sql): booked meanwhile → that booking is the payment, your entry stays unlinked
+    if (!ctlIsDupErr(e)) throw e;
+    const x = await ctlAbrExisting(f.source_ref);
+    if (!x) throw e;
+    return x;
+  }
+  const row = d || Object.assign({}, o, f);
+  window._src.abrPay = (window._src.abrPay || []).filter(x => x.id !== o.id).concat([row]);
+  const k = (window._ctrl.one_time || []).findIndex(x => x.id === o.id); if (k >= 0) window._ctrl.one_time[k] = row;
+  return row;
+}
 
 /* The result a Settlements line stands for (Settlements' rule, _stResultOf): its result_id, else the same
    property · kind · year · tenant (· period). → the abr_results row, or null */
@@ -332,6 +391,12 @@ async function _cxAbrBook(e, amount, y = window._ctrl.year, m = CX.month) {
     const i = window._src.abrPay.findIndex(o => o.id === b.id); if (i >= 0) window._src.abrPay[i] = d;
     return;
   }
+  // C3: your own entry of this amount (e.g. unlinked by clearing the Ist) is the payment → linked, not booked a second
+  // time (NK: Settlements' #6 rule · WEG Hausgeld: the WEG match). Another amount → a new booking, as before.
+  const amt = cxR(amount), weg = r.kind === 'weg_hausgeld';
+  const at = r.db && amt > 0 ? { id: r.db.id, dir: r.dir, date: String(r.db.result_date || '').slice(0, 10) } : null;
+  const mine = at ? (weg ? _stFindOwnWeg(r.pid, at, amt) : _stFindManualNk(r.pid, at, amt)) : null;
+  if (mine) { await _stLinkManualNk(mine, at, weg ? 'Hausgeldabrechnung' : 'NK-Abrechnung'); return; }   // booked meanwhile (23505) → that booking
   await ctlAbrAdd({ property_id: r.pid, invoice_date: _cxAbrPayDate(r, y, m), item: r.label, amount: cxR(amount),   // #1: booked meanwhile → that booking
     kind: r.kind === 'weg_hausgeld' ? 'Hausgeldabrechnung' : 'NK-Abrechnung', direction: r.dir, source_ref: r.key });
 }

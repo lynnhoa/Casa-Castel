@@ -102,11 +102,13 @@ function cxBuildInvoiceWorkbook(year, pid) {
     const aoa = [['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum']];
     for (const it of g.items) aoa.push([it.nr, it.item, it.company, it.price, dt(it.date)]);
     const last = aoa.length;
-    aoa.push([]);
     // #16: something came back (refund, return, bonus) → Bezahlt and Zurück above the Summe (netto), as the One-off card
     const split = g.back > 0 && g.items.length > 0;
-    if (split) { aoa.push(['', 'Bezahlt', '', null, '']); aoa.push(['', 'Zurück', '', null, '']); }
-    aoa.push(['', split ? 'Summe (netto)' : 'Summe', '', null, '']);
+    if (g.items.length) {                                            // C3: only Kaufnebenkosten → no empty table, no 'Summe 0,00 €'
+      aoa.push([]);
+      if (split) { aoa.push(['', 'Bezahlt', '', null, '']); aoa.push(['', 'Zurück', '', null, '']); }
+      aoa.push(['', split ? 'Summe (netto)' : 'Summe', '', null, '']);
+    }
     const sumRow = aoa.length - 1;                                   // 0-based row of the Summe
     let kFirst = 0, kLast = 0;
     if (g.knk.length) {                                              // Kaufnebenkosten: own block, own sum (not in the Summe above)
@@ -122,14 +124,14 @@ function cxBuildInvoiceWorkbook(year, pid) {
       ws[X.utils.encode_cell({ r: sumRow - 2, c: 3 })] = { t: 'n', f: 'SUMIF(D2:D' + last + ',">0")', v: g.paid };
       ws[X.utils.encode_cell({ r: sumRow - 1, c: 3 })] = { t: 'n', f: 'SUMIF(D2:D' + last + ',"<0")', v: -g.back };
     }
-    ws[X.utils.encode_cell({ r: sumRow, c: 3 })] = { t: 'n', f: g.items.length ? 'SUM(D2:D' + last + ')' : '0', v: g.total };
+    if (g.items.length) ws[X.utils.encode_cell({ r: sumRow, c: 3 })] = { t: 'n', f: 'SUM(D2:D' + last + ')', v: g.total };
     if (g.knk.length) ws[X.utils.encode_cell({ r: kLast, c: 3 })] = { t: 'n', f: 'SUM(D' + kFirst + ':D' + kLast + ')', v: g.knkTotal };
     for (let r = 1; r < aoa.length; r++) {
       const c = ws[X.utils.encode_cell({ r, c: 3 })]; if (c && c.t === 'n') c.z = '#,##0.00 "€";-#,##0.00 "€"';
       const d = ws[X.utils.encode_cell({ r, c: 4 })]; if (d && (d.t === 'd' || d.t === 'n')) d.z = 'dd.mm.yyyy';
     }
     ws['!cols'] = [{ wch: 5 }, { wch: 36 }, { wch: 24 }, { wch: 12 }, { wch: 15 }];
-    ws['!autofilter'] = { ref: 'A1:E' + last };
+    if (g.items.length) ws['!autofilter'] = { ref: 'A1:E' + last };   // C3: no filter over the Kaufnebenkosten alone
     X.utils.book_append_sheet(wb, ws, _cxSheetName(g.p.name, used));
   }
   return { wb, lines, name: _cxExportName(year, pid, 'xlsx') };
@@ -256,7 +258,7 @@ function cxBuildInvoicePdf(year, pid) {
       doc.setFont('times', 'normal'); doc.setFontSize(14); doc.setTextColor(...C.ink);
       doc.text('Kaufnebenkosten', M, y);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...C.mut);
-      doc.text(_cxPdfTxt('Anschaffungsnebenkosten · nicht im Cashflow, nicht in der Summe oben'), M, y + 5);
+      doc.text(_cxPdfTxt('Anschaffungsnebenkosten · nicht im Cashflow' + (g.items.length ? ', nicht in der Summe oben' : '')), M, y + 5);   // C3: no Summe above → not mentioned
       table(y + 9, ['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum'],
         g.knk.map(it => [String(it.nr), _cxPdfTxt(it.item), _cxPdfTxt(it.company), _cxPdfEur(it.price), _cxPdfDate(it.date)]),
         ['', 'Summe Kaufnebenkosten', '', _cxPdfEur(g.knkTotal), ''], cols);
