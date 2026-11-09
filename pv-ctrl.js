@@ -108,8 +108,7 @@
     el.textContent = msg;
     clearTimeout(el._t); el._t = setTimeout(() => el.remove(), 3200);
   }
-  async function paid(catId, m, on) {
-    const pv = find(catId, window._ctrl.year, m);
+  async function paid(pv, on) {                       // pv: looked up before the save (the month arrow can change the year meanwhile)
     if (!pv) return;
     let failed = false;
     for (const j of (pv.jobs || [])) {
@@ -125,14 +124,16 @@
   }
   const _ups = ctlUpsertCastel;
   ctlUpsertCastel = async function (category_id, month) {
+    const pv = find(category_id, window._ctrl.year, month);
     const res = await _ups.apply(this, arguments);
-    await paid(category_id, month, true);
+    await paid(pv, true);
     return res;
   };
   const _del = ctlDeleteCastel;
   ctlDeleteCastel = async function (category_id, month) {
+    const pv = find(category_id, window._ctrl.year, month);
     const res = await _del.apply(this, arguments);
-    await paid(category_id, month, false);
+    await paid(pv, false);
     return res;
   };
 
