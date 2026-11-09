@@ -1367,7 +1367,7 @@ function _ccfPagesSheet() {
   if (!ov) { ov = document.createElement('div'); ov.id = 'ccfPagesOv'; ov.className = 'ccf-ov'; document.body.appendChild(ov); }
   const n = up.pages.length;
   ov.innerHTML = `<div class="ccf-sheet ccf-sheet--small" role="dialog" aria-modal="true">
-    <div class="ccf-shd"><div><div class="ccf-eyebrow">${ccfEsc(ccfDocLabel(up.type, ccfRec(up.tid)))} · ${up.variant === 'signed' ? 'Signed' : 'Unsigned'}</div>
+    <div class="ccf-shd"><div><div class="ccf-eyebrow">${ccfEsc(ccfDocLabel(up.type, ccfRec(up.tid)))}${/^nk_\d{4}-\d{2}-\d{2}$/.test(up.type || '') ? '' : ' · ' + (up.variant === 'signed' ? 'Signed' : 'Unsigned')}</div>
       <div class="ccf-title">${n} ${n === 1 ? 'page' : 'pages'} ready</div>
       <div class="ccf-sub">The photos become one PDF, one page each.</div></div></div>
     <div class="ccf-sft">

@@ -493,7 +493,7 @@ function ccNkDocLines(rec) {
                          : myLetters.filter(l => inP(l.period_from) && !rowsP.some(r => _nkdD(r.period_from) === _nkdD(l.period_from)));
         const letter = (row ? (sentRow ? cand.find(l => _nkdFresh(l, res, row)) : null) : cand[0]) || null;   // newest first
         const doc = typeof ccfDocOf === 'function' ? ccfDocOf(tid, _nkdType(pt.key), 'signed') : null;
-        const state = letter ? 'sent' : sentRow || (!row && oldSent) ? 'sent-nocopy' : doc ? 'uploaded' : row && row.status === 'nicht durchgeführt' ? 'notdone' : due ? 'open' : 'notdue';
+        const state = letter ? 'sent' : sentRow || (!row && oldSent && !doc) ? 'sent-nocopy' : doc ? 'uploaded' : row && row.status === 'nicht durchgeführt' ? 'notdone' : due ? 'open' : 'notdue';
         const sentOn = letter ? _nkdD((res && res.result_date) || letter.sent_at) : '';
         out.push({ from, to, spanFrom: pt.a, spanTo: pt.b, key: pt.key, year, row, letter, doc, due, state, sentOn });
       }

@@ -1077,6 +1077,10 @@ async function _rntLoad(unitsReady) {
      rows) — the rows are matched to the units afterwards, exactly as the filtered queries did.
      Was: units → 4 tables → 6 tables, one after another, before anything was drawn. */
   const rdApp = (typeof ccfA === 'function' && ccfA() && ccfA().app) || 'rentals';
+  // NK parts this load cannot fetch keep the phone's copy, also when Tenants was not the first tab
+  if (typeof CC_NKS !== 'undefined' && CC_NKS.rows === null) {
+    try { const c = JSON.parse(localStorage.getItem(RNT_COPY_KEY) || 'null'); if (c && c.v === 1 && c.nks) Object.assign(CC_NKS, c.nks); } catch (e) {}
+  }
   const [, recAll, vorausAll, staffelAll, kAll, nkAll, docAll, , , readAll] = await Promise.all([
     unitsReady || null,
     sbL.from('rnt_tenant_records').select('*').order('mietbeginn', { ascending: false }),
