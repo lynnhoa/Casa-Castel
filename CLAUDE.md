@@ -6,6 +6,11 @@
   even when the switch is hidden (e.g. Mietbeginn moved to the 1st). Deliberate — keep it, no warning.
 - **No extra messages:** don't add warnings / toasts / hints for small input slips (e.g. a mistyped Kaution
   that falls back to the rule amount). The owner does not want messages everywhere.
+- **Casa Castel has no Mieterhöhung — deliberate, permanent.** Never ask the owner to run CASA-MIETERHOEHUNG.sql,
+  never report the missing `casa_mieterhoehung_history` table or a "Not saved" on a Casa Mieterhöhung as a bug,
+  and never build, repair or suggest Casa Mieterhöhungen. (Rentals keeps its Mieterhöhung / Index / Korrektur.)
+- **Rentals data checks are done (09.11.2026):** RENTALS-CHECK.sql and PARKING-MINDESTLAUFZEIT.sql came back clean —
+  no repair SQL, and PARKING-MINDESTLAUFZEIT-FIX.sql is not to be run.
 
 ## Owner facts
 
