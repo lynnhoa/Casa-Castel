@@ -85,7 +85,7 @@
       const fy = +String(c.from).slice(0, 4), fm = +String(c.from).slice(5, 7);
       if (y < fy || (y === fy && m < fm)) return;
       if (st.rows.some(pv => same(pv.category_id, c.category_id) && pv.month === m)) return;
-      const i = plan.rows.findIndex(x => same(x.catId, cat.id) && x.src !== 'Providers');
+      const i = plan.rows.findIndex(x => same(x.catId, cat.id) && !x.pv);   // not a closed Providers month (src can say 'Providers' too)
       if (i !== -1) plan.rows.splice(i, 1);
       /* Fix 2 (Oct 2026): a Providers-owned type has no Setup row any more — the note shows either way */
       plan.notDue = (plan.notDue || []).filter(nd => nd.label !== cat.name);

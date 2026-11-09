@@ -5,8 +5,8 @@
    Same pattern as Einnahmen. Per property:
      Apartments   Kreditrate (Properties) · Hausgeld (Rentals) ·
                   Grundsteuer (Rentals, only in its months) · Strom
-     Casa Castel  cost types by frequency / due months (Setup);
-                  Kreditrate from the Properties loan
+     Casa Castel  cost types by frequency / due months (Providers › Utilities,
+                  Providers); Kreditrate from the Properties loan
    · Costs not due this month: one grey "nicht fällig" line.
    · Kreditrate: one field; Zins and Tilgung are stored from the loan.
    · One-time costs live only in the Einmalig tab.
@@ -34,7 +34,7 @@ function _cxExpModel() {
       for (const x of window._ctrl.castel_expenses.filter(e => e.year === y && e.month === m)) {
         if (rows.some(r => r.catId === x.category_id)) continue;
         const c = ctlCat(x.category_id);
-        rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Cost', soll: 0, sub: typeof _cxFreqLbl === 'function' ? _cxFreqLbl((c && c.frequency) || '') : ((c && c.frequency) || ''), src: 'Setup', ist: cxR(x.amount), mark: ctlDiffMark(x) });
+        rows.push({ key: 'cat:' + x.category_id, catId: x.category_id, label: (c && c.name) || 'Cost', soll: 0, sub: typeof _cxFreqLbl === 'function' ? _cxFreqLbl((c && c.frequency) || '') : ((c && c.frequency) || ''), src: c ? ctlCatSrc(c) : '', ist: cxR(x.amount), mark: ctlDiffMark(x) });
       }
       // sporadic costs without a plan this month: always enterable, no Soll (B18)
       for (const bd of (plan.bedarf || [])) {
@@ -76,7 +76,7 @@ window.renderExpenses = function () {
   const cards = model.map(g => {
     const regular = g.rows.filter(r => !r.bedarf), bedarf = g.rows.filter(r => r.bedarf);
     const row = r => cxRow({ id: r.id, label: r.label, soll: r.soll, ist: r.ist, badge: r.bank ? 'bank' : null, dir: -1, mark: r.mark,
-        sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">from ' + cxEsc(r.src) + '</span>' : ''),
+        sub: cxEsc(r.sub || '') + (r.src ? ' · <span class="cx-from">from\u00a0' + cxEsc(r.src).replace(/ /g, '\u00a0') + '</span>' : ''),   // x2: 'from Providers' never splits
         notes: r.note ? [r.note] : [], info: r.info || null, emptyText: r.bedarf ? 'as needed' : 'not planned', allowEmpty: true });
     const bk = 'expb:' + g.p.id + ':' + CX.month, bOpen = !!CX.open[bk];
     const body = (g.warn ? '<div class="cx-r"><div class="cx-r__l"><div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ' + cxEsc(g.warn) + '</div></div></div>' : '') +
@@ -96,7 +96,7 @@ window.renderExpenses = function () {
   cxPaint(host, '<div class="cx-page">' + cxMonthBar() +
     cxSummary({ label: 'Running costs paid', dir: -1, done, plan, open, future, diffs: cxDiffCount(difRows),
                 confirm: CX.bulk === 'expenses' ? _cxExpBulkList() : null, undo: cxUndoFor('expenses'), note: _cxAbrNote(-1) }) +
-    '<div class="cx-head"><span class="cx-lbl">Soll · from Rentals, Properties, Setup</span><span class="cx-lbl">Ist</span></div>' +
+    '<div class="cx-head"><span class="cx-lbl">Soll · from ' + (CX.area === 'casa' ? 'Properties, Utilities, Providers' : 'Rentals, Properties, Setup') + '</span><span class="cx-lbl">Ist</span></div>' +
     cards +
     '<button class="cx-link" data-cx="gotoOt"><i class="ti ti-receipt" aria-hidden="true"></i> Invoices: in the One-off tab</button>' +
     '</div>');   // B18: only what changed

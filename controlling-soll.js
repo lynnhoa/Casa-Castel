@@ -1056,11 +1056,14 @@ function ctlCostRows(p, y, m) {
   } else {
     const rate = L ? _cxN0(L.rate) : _cxN0(p.def_rate);
     const lm = L ? ctlLoanMonth(L, y, m) : null;
-    const z = lm ? lm.zinsen : _cxN0(p.def_zinsen), t = lm ? lm.tilgung : _cxN0(p.def_tilgung);
-    const splitKnown = !!L || !!(z || t);                   // #7: no loan link and no split → don't invent Zins 0
+    // plan value (Setup: Kreditrate + "of which Zinsen") → Tilgung = the rest, as _cxExpSave books it
+    const dz = lm ? 0 : _cxN0(p.def_zinsen), dt = lm ? 0 : _cxN0(p.def_tilgung);   // def_tilgung: older rows only
+    const z = lm ? lm.zinsen : dz > 0 ? Math.min(_cxR(dz), _cxR(rate)) : dt > 0 ? _cxR(Math.max(rate - dt, 0)) : 0;
+    const t = lm ? lm.tilgung : dz > 0 || dt > 0 ? _cxR(rate - z) : 0;
+    const splitKnown = !!L || dz > 0 || dt > 0;             // #7: no loan link and no split → don't invent Zins 0
     if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate), bank: !!L, note: zbNote,
       // Soll = the debit, to the cent. Zins / Tilgung = information only (≈ the loan plan for this month)
-      sub: splitKnown ? '≈ Zinsen ' + _cxE2(z) + ' · ≈ Tilgung ' + _cxE2(t) : 'Zinsen / Tilgung unknown', src: L ? 'Properties' : 'plan value',
+      sub: splitKnown ? '≈\u00a0Zinsen\u00a0' + _cxE2(z) + ' · ≈\u00a0Tilgung\u00a0' + _cxE2(t) : 'Zinsen / Tilgung unknown', src: L ? 'Properties' : 'plan value',
       split: splitKnown ? { zinsen: z, tilgung: t } : null,
       info: L ? null : 'Loan not linked with Properties – plan value from Setup › Properties › Loan' });
   }
@@ -1079,13 +1082,13 @@ function ctlCostRows(p, y, m) {
       hgNote = 'New Hausgeld · ' + (pv ? _cxEurS(pv.amount) + ' → ' : '') + _cxEurS(ch.amount) + ' from ' + _cxFmtD(ch.effective_date);
     }
   }
-  if (hg === null) hg = _cxNum(p.def_hausgeld);
+  if (hg === null && !pl.apt) hg = _cxNum(p.def_hausgeld);       // linked: only what Rentals has (def_* = unlinked only)
   if (hg) rows.push({ key: 'hausgeld', label: 'Hausgeld', soll: _cxR(hg), sub: 'to the Hausverwaltung', src: pl.apt ? 'Rentals' : 'plan value', note: hgNote });
 
   const months = Array.isArray(p.grundsteuer_months) && p.grundsteuer_months.length ? p.grundsteuer_months.map(Number) : _CX_Q;
   let gs = null;
   if (pl.apt) { const v = S.verw.find(x => String(x.apartment_id) === String(pl.apt.id)); gs = v ? _cxNum(v.grundsteuer_mtl) : null; }
-  if (gs === null) gs = _cxNum(p.def_grundsteuer);
+  if (gs === null && !pl.apt) gs = _cxNum(p.def_grundsteuer);
   if (gs) {
     if (months.includes(m)) rows.push({ key: 'grundsteuer', label: 'Grundsteuer', soll: _cxR(gs), sub: 'due 15.' + String(m).padStart(2, '0') + '.', src: pl.apt ? 'Rentals' : 'plan value' });
     else { const nx = _cxNextDue(months, m); notDue.push({ label: 'Grundsteuer', next: nx ? _cxMonthShort(nx) : '' }); }
@@ -1114,6 +1117,11 @@ function ctlCatOwner(c) {
   if (code === 'RATE') return 'properties';
   if (code === 'PUTZDIENST' || code === 'WINTERDIENST') return 'providers';
   return 'utilities';
+}
+/* where a Casa cost type's Soll is set (Setup has no Casa cost types since Build A) */
+function ctlCatSrc(c) {
+  const o = ctlCatOwner(c);
+  return o === 'utilities' ? 'Utilities' : o === 'providers' ? 'Providers' : 'plan value';
 }
 /* Providers owns this cost type in month y/m → no Soll from Setup / Utilities (months before keep theirs) */
 function ctlCatProvidersOwns(c, y, m) {
@@ -1194,7 +1202,7 @@ function ctlCasaCostRows(p, y, m) {
     const cov = isRate ? null : ctlContractCovers(c.id, y, m);
     const off = cov === false || cov === 'off';                      // no contract covers this month
     const noCon = () => { if (cov === false) notDue.push({ label: label + ' — no contract this month', next: '' }); };
-    const srcName = cov === true || ctlCatOwner(c) === 'utilities' ? 'Utilities' : 'Setup';   // where its price is set
+    const srcName = cov === true ? 'Utilities' : ctlCatSrc(c);            // where its price is set
     const freq = c.frequency || 'monatlich';
     const dm = Array.isArray(c.due_months) ? c.due_months.map(Number) : [];
     const at = isRate && pl.loan ? null : ctlCastelAmountAt(c, y, m);
@@ -1214,7 +1222,7 @@ function ctlCasaCostRows(p, y, m) {
     if (due && off) { if (amount) noCon(); continue; }                // only when something would really be due
     if (due) rows.push({ key: 'cat:' + c.id, catId: c.id, label, soll: _cxR(amount),
       sub: isRate && pl.loan ? (lmSplit ? 'Zinsen ' + _cxEurS(lm.zinsen) + ' + Tilgung ' + _cxEurS(lm.tilgung) + ' · debited separately'
-                                        : 'Zinsen ~' + _cxEurS(lm.zinsen) + ' · Tilgung ~' + _cxEurS(lm.tilgung)) : _cxFreqLbl(freq),
+                                        : '≈\u00a0Zinsen\u00a0' + _cxEurS(lm.zinsen) + ' · ≈\u00a0Tilgung\u00a0' + _cxEurS(lm.tilgung)) : _cxFreqLbl(freq),   // x3: same wording as the apartments
       src: isRate && pl.loan ? 'Properties' : srcName, note,
       split: isRate && pl.loan ? { zinsen: lm.zinsen, tilgung: lm.tilgung } : null });
     else if (dm.length && !off) { const nx = _cxNextDue(dm, m); notDue.push({ label, next: nx ? _cxMonthShort(nx) : '' }); }
