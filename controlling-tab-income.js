@@ -113,10 +113,11 @@ window.renderIncome = function () {
       if (a === 'allYes') {
         if (cxFuture(window._ctrl.year, CX.month)) { CX.bulk = null; return window.renderIncome(); }   // CP2 (#4): not due yet
         b.disabled = true;
+        const area = CX.area, y = window._ctrl.year, m = CX.month;   // C1 #2: the Undo belongs to where you booked
         const L = _cxIncBulkList(), done = [];
         for (const e of L.list) { await _cxIncSave(e, e.s.soll); if (e.u.id != null) done.push(e.u.id); }
-        CX.bulk = null;
-        CX.undo = { tab: 'income', y: window._ctrl.year, m: CX.month, items: done, n: done.length };
+        // switched area / month / year while saving: that screen keeps its own state, no Undo appears there
+        if (CX.area === area && window._ctrl.year === y && CX.month === m) { CX.bulk = null; CX.undo = { tab: 'income', y, m, items: done, n: done.length }; }
         return window.renderIncome();
       }
       if (a === 'undo') {
@@ -178,18 +179,30 @@ function _cxIncBulkList() {
   return { list, n: list.length, sum: cxR(list.reduce((a, e) => a + e.s.soll, 0)), skipped };
 }
 
+/* C1 #3: a room without a Controlling unit yet (e.g. Berlin) gets its unit on the first save — ONCE.
+   A second tap while the first save is still on its way (mobile data) waits for that same unit; it created a
+   second one (Berlin listed twice every month, planned rent too high, 'Book all' booked it twice). */
+const _cxIncNew = {};                                   // property|source_type|source_ref → the pending create
+async function _cxIncUnit(e) {
+  if (e.u.id != null) return;
+  const st = e.u.source_type || null, ref = e.u.source_ref || null;
+  const have = ref !== null && window._ctrl.units.find(u => u.property_id === e.p.id && (u.source_type || null) === st && String(u.source_ref) === String(ref));
+  if (have) { e.u = have; return; }                      // made meanwhile (an earlier tap)
+  const k = e.p.id + '|' + (st || '') + '|' + (ref !== null ? ref : 'name:' + e.u.name);
+  const p = _cxIncNew[k] || (_cxIncNew[k] = ctlCreateUnit({ property_id: e.p.id, name: e.u.name, unit_type: e.u.unit_type || 'Zimmer',
+                                                               source_type: st, source_ref: ref })
+    .finally(() => { delete _cxIncNew[k]; }));
+  e.u = await p;
+  if (typeof ctlSollReset === 'function') ctlSollReset();
+}
+
 /* Save one unit's income (null = delete → "offen") */
 async function _cxIncSave(e, ist) {
   if (e.part) return _cxIncSavePart(e, ist);
   const m = CX.month;
   try {
     if (ist === null || ist === undefined) { if (e.u.id != null) await ctlDeleteIncome(e.u.id, m); return; }
-    if (e.u.id == null) {
-      const nu = await ctlCreateUnit({ property_id: e.p.id, name: e.u.name, unit_type: e.u.unit_type || 'Zimmer',
-                                       source_type: e.u.source_type || null, source_ref: e.u.source_ref || null });
-      e.u = nu;
-      if (typeof ctlSollReset === 'function') ctlSollReset();
-    }
+    await _cxIncUnit(e);
     const nk = _cxIncNkShare(e.s, ist);
     // real Ist: the amount belongs to the one tenant of this month (no tenant → nothing to attach)
     const tp = (e.s.parts || []).filter(pt => pt.tid !== 'room');
@@ -208,12 +221,7 @@ function _cxIncNkShare(s, ist) {
 async function _cxIncSavePart(e, ist) {
   const m = CX.month, y = window._ctrl.year;
   try {
-    if (e.u.id == null) {
-      const nu = await ctlCreateUnit({ property_id: e.p.id, name: e.u.name, unit_type: e.u.unit_type || 'Zimmer',
-                                       source_type: e.u.source_type || null, source_ref: e.u.source_ref || null });
-      e.u = nu;
-      if (typeof ctlSollReset === 'function') ctlSollReset();
-    }
+    await _cxIncUnit(e);
     const inc = window._ctrl.income.find(r => r.unit_id === e.u.id && r.year === y && r.month === m);
     const split = {};
     if (inc) for (const pt of (e.s.parts || [])) {           // keep what the other tenants paid

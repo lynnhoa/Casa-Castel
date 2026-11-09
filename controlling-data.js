@@ -25,9 +25,11 @@ window._ctrl = {
   diff: null                   // CP2: { inc, cst, apt } — the "On purpose" columns exist (CONTROLLING-C1.sql)
 };
 
+/* Nov 2026 (C1 #17): every read is checked first — one failed read changes nothing (it switched the year anyway,
+   without its bookings, and 'Book all' then overwrote real amounts). All parts are taken over together and the
+   year is set last, so a failed year change leaves you exactly where you were. */
 async function ctlLoadAll(year) {
   const y = year || window._ctrl.year;
-  window._ctrl.year = y;
 
   const probe = ctlDiffProbe();                              // CP2: once per page, next to the first load
   const [p, u, c, inc, apt, cst, ot, rec] = await Promise.all([
@@ -41,10 +43,9 @@ async function ctlLoadAll(year) {
     _ctlSupa.from('ctrl_reconciliation').select('*').eq('year', y),
   ]);
   const rows = { properties: p, units: u, categories: c, income: inc, apt_expenses: apt, castel_expenses: cst, one_time: ot, recon: rec };
-  for (const k in rows) {
-    if (rows[k].error) { console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
-    window._ctrl[k] = rows[k].data || [];
-  }
+  for (const k in rows) if (rows[k].error) { console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
+  for (const k in rows) window._ctrl[k] = rows[k].data || [];
+  window._ctrl.year = y;
   await probe;
 }
 

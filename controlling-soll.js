@@ -111,14 +111,21 @@ async function ctlReadAll(first, query, label) {
 }
 
 /* Load every source once. A missing table never blocks Controlling —
-   that part simply falls back to the plan values. */
+   that part simply falls back to the plan values.
+   Nov 2026 (C1 #16): a read that fails on a LATER load (the app comes back in front on a weak connection) keeps
+   the rows already loaded — it emptied them: Kreditrate lines vanished, Hausgeld fell back to an old amount and
+   'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before. */
 async function ctlSollLoad() {
+  const had = !!window._src.loaded;
   const res = await Promise.all(_CX_SRC.map(([, t]) => {
     const q = () => _ctlSupa.from(t).select('*');
     return q().then(r => ctlReadAll(r, q, t).catch(() => r), e => ({ data: null, error: e }));
   }));
   _CX_SRC.forEach(([k, t], i) => {
-    if (res[i].error) console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
+    if (res[i].error) {
+      console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
+      if (had) return;                                   // keep what was loaded before
+    }
     window._src[k] = res[i].data || [];
   });
   // NK / Hausgeld bookings of every year (a 2025 Abrechnung is often paid in 2026)
@@ -127,14 +134,14 @@ async function ctlSollLoad() {
     const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Abrechnungen)');
     if (r.error) throw r.error;
     window._src.abrPay = r.data || [];
-  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); window._src.abrPay = []; }
+  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (!had) window._src.abrPay = []; }
   // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
   try {
     const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
     const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Kaufnebenkosten)');
     if (r.error) throw r.error;
     window._src.knkAll = r.data || [];
-  } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); window._src.knkAll = []; }
+  } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); if (!had) window._src.knkAll = []; }
   window._src.loaded = true;
   window._src.loadedAt = Date.now();
   if (typeof ccRpSetRows === 'function') ccRpSetRows(window._src.rentP);   // shared store for the history screen
