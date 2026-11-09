@@ -116,11 +116,13 @@ async function ctlReadAll(first, query, label) {
    the rows already loaded — it emptied them: Kreditrate lines vanished, Hausgeld fell back to an old amount and
    'Book all' saved that wrong Soll. Only the first load (nothing there yet) falls back to nothing, as before.
    C5 (Nov 2026, #31): only = a Set of keys → just those sources (+ the Abrechnungen bookings if 'abrPay' is in it):
-   what the other apps change while Controlling is in the background (_CX_LIVE). Without it: everything, as before. */
+   what the other apps change while Controlling is in the background (_CX_LIVE). Without it: everything, as before.
+   A read that failed with nothing loaded before (_cxLost) is read again on every return until it works (C5 review). */
 const _CX_LIVE = new Set(['rntTen', 'casaTen', 'rentP', 'rooms', 'loans', 'loanHist', 'abr', 'settle', 'abrPay']);
 const CTL_FULL_EVERY = 10 * 60 * 1000;                   // a full read at least every 10 minutes (and at start, in Setup)
+const _cxLost = new Set();
 async function ctlSollLoad(only) {
-  const had = !!window._src.loaded;
+  const had = !!window._src.loaded, lost = k => !had || _cxLost.has(k);
   const SRC = only ? _CX_SRC.filter(([k]) => only.has(k)) : _CX_SRC;
   const res = await Promise.all(SRC.map(([, t]) => {
     const q = () => _ctlSupa.from(t).select('*');
@@ -129,8 +131,9 @@ async function ctlSollLoad(only) {
   SRC.forEach(([k, t], i) => {
     if (res[i].error) {
       console.warn('[controlling] source ' + t + ':', res[i].error.message || res[i].error);
-      if (had) return;                                   // keep what was loaded before
-    }
+      if (!lost(k)) return;                              // keep what was loaded before
+      _cxLost.add(k);
+    } else _cxLost.delete(k);
     window._src[k] = res[i].data || [];
   });
   // NK / Hausgeld bookings of every year (a 2025 Abrechnung is often paid in 2026)
@@ -138,15 +141,15 @@ async function ctlSollLoad(only) {
     const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').in('kind', ['NK-Abrechnung', 'Hausgeldabrechnung']);
     const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Abrechnungen)');
     if (r.error) throw r.error;
-    window._src.abrPay = r.data || [];
-  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (!had) window._src.abrPay = []; }
+    window._src.abrPay = r.data || []; _cxLost.delete('abrPay');
+  } catch (e) { console.warn('[controlling] Abrechnungen bookings:', e.message || e); if (lost('abrPay')) { window._src.abrPay = []; _cxLost.add('abrPay'); } }
   // Kaufnebenkosten of every year: a purchase usually spans the turn of the year (Makler in December, the rest later)
-  if (!only) try {
+  if (!only || only.has('knkAll')) try {
     const q = () => _ctlSupa.from('ctrl_expense_one_time').select('*').eq('kind', 'Kaufnebenkosten');
     const r = await ctlReadAll(await q(), q, 'ctrl_expense_one_time (Kaufnebenkosten)');
     if (r.error) throw r.error;
-    window._src.knkAll = r.data || [];
-  } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); if (!had) window._src.knkAll = []; }
+    window._src.knkAll = r.data || []; _cxLost.delete('knkAll');
+  } catch (e) { console.warn('[controlling] Kaufnebenkosten:', e.message || e); if (lost('knkAll')) { window._src.knkAll = []; _cxLost.add('knkAll'); } }
   window._src.loaded = true;
   window._src.loadedAt = Date.now();
   if (!only) window._src.fullAt = window._src.loadedAt;
@@ -190,9 +193,11 @@ function ctlVisibleCheck(propName, unitName, check) {
    The year's rows are taken over only if no newer load, no other year and no save came meanwhile (ctlLoadAll opt). */
 let _cxRefreshing = null;
 async function ctlRefreshSources(force, full, year) {
-  if (_cxRefreshing) return _cxRefreshing;
-  const now = Date.now(), S = window._src;
-  if (!force && S.loadedAt && now - S.loadedAt < 20000) return false;
+  // a full read asked for (Setup) while a return reads only the live part: the full read follows it (C5 review)
+  if (_cxRefreshing) return (full || force) && !_cxRefreshing.all
+    ? _cxRefreshing.then(a => ctlRefreshSources(force, full, year).then(b => a || b)) : _cxRefreshing;
+  const now = Date.now(), S = window._src, last = full ? S.fullAt : S.loadedAt;
+  if (!force && last && now - last < 20000) return false;
   const all = !!(force || full || !S.fullAt || now - S.fullAt >= CTL_FULL_EVERY);
   _cxRefreshing = (async () => {
     try {
@@ -206,13 +211,14 @@ async function ctlRefreshSources(force, full, year) {
     catch (e) { console.warn('[controlling] refresh', e); return false; }
     finally { _cxRefreshing = null; }
   })();
+  _cxRefreshing.all = all;
   return _cxRefreshing;
 }
 /* The year on screen again (through the global ctlLoadAll: Providers' months come with it) → true if taken over */
 async function _ctlReloadYear() {
   const C = window._ctrl, y = C.year, ws = window._ctlWriteSeq;
   const calm = () => !(window._ctlBusy > 0) && window._ctlWriteSeq === ws &&
-    !(typeof _cxOt !== 'undefined' && _cxOt.form !== null);              // a One-off being edited keeps its rows
+    !(typeof _cxOt !== 'undefined' && CX.tab === 'onetime' && _cxOt.form !== null);   // a One-off being edited keeps its rows
   let mine = null;
   const ok = seq => { if (seq !== undefined) mine = seq; return mine === _ctlLoadSeq && C.year === y && calm(); };
   if (!calm()) return false;
@@ -229,11 +235,12 @@ async function _ctlReloadYear() {
 }
 async function _ctlReloadLive(year) {
   const S = window._src, C = window._ctrl, pv = window._pvCtl || null;
-  const sk = [..._CX_LIVE], ck = ['properties', 'units', 'categories', 'income', 'apt_expenses', 'castel_expenses', 'one_time', 'recon'];
+  const only = new Set([..._CX_LIVE, ..._cxLost]);       // + what failed at start with nothing to keep
+  const sk = [...only], ck = ['properties', 'units', 'categories', 'income', 'apt_expenses', 'castel_expenses', 'one_time', 'recon'];
   const keep = { s: sk.map(k => S[k]), c: ck.map(k => C[k]), inc: S.incAll, pv: pv && [pv.y, pv.rows, pv.claimed] };
   const sig = () => JSON.stringify([sk.map(k => S[k]), ck.map(k => C[k]), pv && [pv.y, pv.rows, pv.claimed]]);
   const before = sig(), ws = window._ctlWriteSeq;
-  await Promise.all([ctlSollLoad(_CX_LIVE), year ? _ctlReloadYear() : null]);
+  await Promise.all([ctlSollLoad(only), year ? _ctlReloadYear() : null]);
   const saved = window._ctlWriteSeq !== ws || window._ctlBusy > 0;      // a save meanwhile: its rows stay as they are now
   if (saved || sig() !== before) { if (typeof ctlSollReset === 'function') ctlSollReset(); return true; }
   // nothing changed: the rows you had stay — an open pop-up, a fold or a line being booked keeps its own rows

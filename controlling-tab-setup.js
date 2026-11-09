@@ -165,8 +165,8 @@ window.renderSetup = function () {
   // × on the suggestions hides exactly this set — a new suggestion brings the card back
   const suggKey = 'sug:' + sugg.map(([t, id, f]) => t + '#' + id + '#' + JSON.stringify(f)).sort().join(';');
   ctlPruneDismissed('sug:', sugg.length ? [suggKey] : []);
-  // fixes made in Rentals / Casa Castel: reload their data when Setup is opened (at most every 20 s)
-  if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - window._src.loadedAt > 20000) {
+  // fixes made in Rentals / Casa Castel: reload their data when Setup is opened (a full read at most every 20 s)
+  if (!_cxSU.refreshing && window._src.loadedAt && Date.now() - (window._src.fullAt || 0) > 20000) {
     _cxSU.refreshing = true;
     ctlRefreshSources(false, true).then(ch => { _cxSU.refreshing = false; if (ch && CX.tab === 'setup' && !CX.hist) window.renderSetup(); });
   }
