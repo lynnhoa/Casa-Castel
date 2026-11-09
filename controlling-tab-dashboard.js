@@ -56,7 +56,8 @@ function _cxYearMonths(y) {                             // 1 … current month (
    Its Soll (export Income / Expense) only from its first to its last rent or cost booking — a late Abrechnung paid after
    the sale brings no Soll back. Active properties: as before, from the purchase month on. No sale date exists anywhere,
    so the bookings are the rule. Only the loaded year has its bookings here (another year → null). */
-function _cxPropSpan(p, y, regular) {
+function _cxPropSpan(p, y, regular) { return ctlMemo('span|' + p.id + '|' + y + '|' + window._ctrl.year + '|' + !!regular, () => _cxPropSpanRaw(p, y, regular)); }   // C5: once per drawing
+function _cxPropSpanRaw(p, y, regular) {
   const C = window._ctrl, has = v => v !== null && v !== undefined && v !== '';
   if (y !== C.year) return null;
   const uids = new Set(ctlUnitsOf(p.id).map(u => u.id));
@@ -127,8 +128,10 @@ function _cxOpenOf(p, y, m) {
    Kreditraten come from Properties (rate, Zinsen, Tilgung) — not entered.
    ══════════════════════════════════════════════════════════════ */
 
-/* One property over some months (all Ist values; loans from Properties) */
-function _cxDashProp(p, months) {
+/* One property over some months (all Ist values; loans from Properties) · C5: once per drawing (the year stays the
+   year's own sum — the Kreditrate split is decided on the year's totals, never a sum of the month results) */
+function _cxDashProp(p, months) { return ctlMemo('dp|' + p.id + '|' + window._ctrl.year + '|' + months.join(','), () => _cxDashPropRaw(p, months)); }
+function _cxDashPropRaw(p, months) {
   const y = window._ctrl.year, casa = p.id === CASA_PROP_ID;
   const rateCat = (window._ctrl.categories || []).find(c => c.code === 'RATE');
   const r = { kalt: 0, nk: 0, kosten: 0, einmalig: 0, abr: 0, rate: 0, zins: 0, tilg: 0, unknown: 0, split: true, loan: null };
@@ -360,9 +363,9 @@ window.renderDashboard = function () {
   const t = _cxDashSum(per.map(x => x.r));
   const D = '\u2014';
 
-  // open items (to enter / confirm) in the period
+  // open items (to enter / confirm) in the period — C5 (#33): only Month view shows them ("preliminary")
   let open = 0;
-  for (const p of props) for (const mm of months) {
+  if (!isYear) for (const p of props) for (const mm of months) {
     if (_cxIsFuture(y, mm)) continue;                       // DB1: a later month is not due yet → nothing open
     if (!p.active || !ctlPropOwned(p, y, mm)) continue;     // before the purchase / switched off (sold): nothing is open
     const o = _cxOpenOf(p, y, mm);
@@ -590,3 +593,6 @@ window.renderDashboard = function () {
 `;
   document.head.appendChild(st);
 })();
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderDashboard = ctlScope(window.renderDashboard);

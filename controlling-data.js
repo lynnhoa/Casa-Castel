@@ -46,6 +46,7 @@ async function ctlLoadAll(year) {
   for (const k in rows) if (rows[k].error) { console.error('[controlling] load', k, rows[k].error); throw rows[k].error; }
   for (const k in rows) window._ctrl[k] = rows[k].data || [];
   window._ctrl.year = y;
+  ctlDataChanged();                                          // C5: new rows → the Tenant history works its balances out again
   await probe;
 }
 
@@ -83,6 +84,7 @@ function _ctlIncChanged(old, kalt, nk, split) {
   return false;
 }
 function _ctlIncCache(data) {
+  ctlDataChanged();                                                // C5: the Tenant history balances follow
   const y = data.year, m = data.month, u = data.unit_id;
   const all = window._src && window._src.incAll;                   // keep the all-years copy (balances) in step
   if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
@@ -130,6 +132,34 @@ function ctlProp(pid)   { return window._ctrl.properties.find(p => p.id === pid)
 function ctlUnit(uid)   { return window._ctrl.units.find(u => u.id === uid); }
 function ctlCat(cid)    { return window._ctrl.categories.find(c => c.id === cid); }
 function ctlUnitsOf(pid){ return window._ctrl.units.filter(u => u.property_id === pid); }
+
+/* ── C5 (Nov 2026, #32 · #33) · one screen = one snapshot ───────────────────────
+   A screen is drawn in one go (synchronously): nothing can be saved or loaded while it is drawn. So inside one
+   drawing a figure asked for again (a property's month, its links, its Abrechnungen …) is worked out once and
+   reused (ctlMemo). The memo starts with the drawing and is thrown away when it ends (ctlScope, try/finally),
+   also after an error. Outside a drawing nothing is kept: Settlements, every save and 'Book all' work exactly as
+   before. ctlDataChanged() (after any change of the data) also empties a memo that is running.
+   _ctlGen counts the changes: the Tenant history keeps its balances until the next one (controlling-soll.js). */
+let _ctlMemo = null;
+window._ctlGen = 0;
+function ctlScope(fn) {
+  if (typeof fn !== 'function' || fn._ctlScoped) return fn;
+  const w = function () {
+    if (_ctlMemo) return fn.apply(this, arguments);                 // drawn inside another drawing (Setup → History)
+    _ctlMemo = new Map();
+    try { return fn.apply(this, arguments); } finally { _ctlMemo = null; }
+  };
+  w._ctlScoped = true;
+  return w;
+}
+function ctlMemo(key, make) {
+  if (!_ctlMemo) return make();
+  if (_ctlMemo.has(key)) return _ctlMemo.get(key);
+  const v = make();
+  if (_ctlMemo) _ctlMemo.set(key, v);
+  return v;
+}
+function ctlDataChanged() { window._ctlGen++; if (_ctlMemo) _ctlMemo.clear(); }
 
 /* Timezone-safe date parser for invoice_date strings.
    Splits "YYYY-MM-DD..." directly — avoids new Date() shifting the day
@@ -265,6 +295,7 @@ async function ctlDeleteIncome(unit_id, month) {
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
   if (window._src && window._src.incAll) window._src.incAll = window._src.incAll.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+  ctlDataChanged();                                                  // C5: the Tenant history balances follow
   if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(unit_id);   // x6
 }
 

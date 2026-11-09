@@ -43,8 +43,9 @@ function _cxAbrLabel(kind, year, dir, unit, name, from, to) {
     (dir > 0 ? 'Nachzahlung from tenant' : dir < 0 ? 'Guthaben to tenant' : 'balanced');
 }
 
-/* Every result (all years), newest first */
-function ctlAbrResults() {
+/* Every result (all years), newest first · C5 (#33): built once per drawing (ctlMemo, controlling-data.js) */
+function ctlAbrResults() { return typeof ctlMemo === 'function' ? ctlMemo('abr:res', _ctlAbrResults) : _ctlAbrResults(); }
+function _ctlAbrResults() {
   const S = window._src, out = [];
   const props = window._ctrl.properties;
   for (const r of (S.abr || [])) {
@@ -84,7 +85,17 @@ function ctlAbrResults() {
 
 /* The booking of a result (any year) — #1 (Nov 2026): booked twice → the one in the result's direction */
 const _cxAbrDir = o => (Number(o.direction) === 1 ? 1 : -1);
-function ctlAbrBookings(res) { return (window._src.abrPay || []).filter(o => res.refs.includes(o.source_ref)); }
+function ctlAbrBookings(res) {
+  const pay = window._src.abrPay || [];
+  if (typeof _ctlMemo === 'undefined' || !_ctlMemo) return pay.filter(o => res.refs.includes(o.source_ref));
+  // C5 (#33): while a screen is drawn, an index source_ref → positions — the same rows in the same (list) order
+  const ix = ctlMemo('abr:pay', () => ({ pay, at: new Map() }));
+  if (ix.pay !== pay) return pay.filter(o => res.refs.includes(o.source_ref));
+  if (!ix.at.size) pay.forEach((o, i) => { const k = o.source_ref; if (!ix.at.has(k)) ix.at.set(k, []); ix.at.get(k).push(i); });
+  const pos = new Set();
+  for (const r of res.refs) for (const i of (ix.at.get(r) || [])) pos.add(i);
+  return [...pos].sort((a, b) => a - b).map(i => pay[i]);
+}
 function ctlAbrBooking(res) {
   const all = ctlAbrBookings(res);
   return all.find(o => _cxAbrDir(o) === res.dir) || all[0] || null;
@@ -318,8 +329,11 @@ async function ctlSettleOpen(r) {
   catch (e) { const g = Object.assign({}, f); delete g.result_id; return up(g); }      // without the result_id column (older SQL)
 }
 
-/* Rows of one property card in a month, for one direction (+1 Income, −1 Expenses) */
+/* Rows of one property card in a month, for one direction (+1 Income, −1 Expenses) · C5 (#33): once per drawing */
 function ctlAbrRows(pid, y, m, dir) {
+  return typeof ctlMemo === 'function' ? ctlMemo('abr:rows|' + pid + '|' + y + '|' + m + '|' + dir, () => _ctlAbrRows(pid, y, m, dir)) : _ctlAbrRows(pid, y, m, dir);
+}
+function _ctlAbrRows(pid, y, m, dir) {
   const rows = [], ym = y * 12 + m, t = cxToday(), cur = _cxYm(t);
   const allRes = ctlAbrResults(), results = allRes.filter(r => r.pid === pid && r.dir === dir);
   const usedRefs = new Set();

@@ -201,3 +201,6 @@ async function _cxExpSave(e, v, y = window._ctrl.year, m = CX.month) {
     r.ist = v === null || v === undefined ? null : cxR(v);
   } catch (err) { cxToastErr(err); }
 }
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderExpenses = ctlScope(window.renderExpenses);

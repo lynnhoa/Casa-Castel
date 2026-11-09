@@ -461,3 +461,6 @@ function _cxSuNewPropHTML() {
       '<button class="cx-btn cx-btn--p" data-cx="propAdd">Add property</button></div>' +
   '</div></div>';
 }
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderSetup = ctlScope(window.renderSetup);

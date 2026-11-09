@@ -218,7 +218,12 @@ const _cxEurS = v => { const n = Number(v) || 0, whole = Math.abs(n - Math.round
 const _cxIsParking = u => /garage|stellplatz|\btg\b/i.test(String(u.unit_type || '') + ' ' + String(u.name || ''));
 
 /* ── Links ─────────────────────────────────────────────────── */
+/* C5 (#32): asked thousands of times per screen → once per property and drawing (ctlMemo, controlling-data.js) */
 function ctlPropLinks(p) {
+  return typeof ctlMemo === 'function' && p && p.id != null
+    ? ctlMemo('pl|' + p.id + '|' + (p.rentals_apartment_ref ?? '') + '|' + (p.loan_ref ?? '') + '|' + p.name, () => _ctlPropLinks(p)) : _ctlPropLinks(p);
+}
+function _ctlPropLinks(p) {
   const S = window._src;
   let apt = null, aptAuto = false, loan = null, loanAuto = false;
   if (p.rentals_apartment_ref) apt = S.apts.find(a => String(a.id) === String(p.rentals_apartment_ref)) || null;
@@ -365,7 +370,7 @@ const _cxUnitCache = new Map();
 /* Year export only (bucket 3, Oct 2026): '' = every tenant whose rent window covers a day pays (the app) ·
    'old' | 'new' = one rent per day and unit on double-rent days (the previous / the new tenant) */
 let _cxOneRent = '';
-function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
+function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlDataChanged === 'function') ctlDataChanged(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
 /* x6 (Nov 2026) · an Income entry was saved or deleted: forget the Soll of that ONE unit — a tenant without a saved rent
    learns it from these entries (_cxLearned reads only this unit's rows), so its other months follow at once, as after a
    reload. Keys: v2 'v2|pid|unit|y|m|…' · v1 'pid|unit|y|m|…' */
@@ -946,8 +951,20 @@ function ctlTenancyBalance(u, pid, tid) {
   return { soll: _cxR(soll), ist: _cxR(ist), saldo: _cxR(soll - ist), months, missing, missingSum: _cxR(missingSum) };
 }
 
-/* Everything the history screen needs for one unit (Phase 3) */
+/* Everything the history screen needs for one unit (Phase 3)
+   C5 (#32): kept until the data changes (_ctlGen: ctlSollReset, an Income entry saved or deleted, a year or the
+   other apps' data loaded, a Tenant history edit) — folding a unit draws the screen again without working out
+   every tenancy and balance anew. Only the Tenant history reads it. */
+const _cxHistCache = new Map();
+let _cxHistGen = null;
 function ctlUnitHistory(u, pid) {
+  const gen = (window._ctlGen || 0) + '|' + _cxToday() + '|' + (window.CC_RENT_ENGINE || '');
+  if (gen !== _cxHistGen) { _cxHistCache.clear(); _cxHistGen = gen; }
+  const k = pid + '|' + (u.id ?? 'v:' + u.name) + '|' + (u.source_type || '') + '|' + (u.source_ref || '');
+  if (!_cxHistCache.has(k)) _cxHistCache.set(k, _ctlUnitHistory(u, pid));
+  return _cxHistCache.get(k);
+}
+function _ctlUnitHistory(u, pid) {
   const p = ctlProp(pid), link = ctlUnitLink(u, p);
   if (!link) return { link: null, tenancies: [], orphans: [] };
   const all = _cxTenancies(link), memo = new Map();

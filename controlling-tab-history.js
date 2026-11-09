@@ -220,6 +220,7 @@ async function _cxHClick(ev, host) {
     if (typeof ccRpIsMissing === 'function' && ccRpIsMissing(e)) ctlToast('Please run the SQL update first');
     else cxToastErr(e);
   }
+  if (typeof ctlDataChanged === 'function') ctlDataChanged();   // C5: saved or not — the balances are worked out again
   rerender();
 }
 
@@ -259,6 +260,9 @@ async function _cxHChange(ev, host) {
     if (error) throw error;
     ctlSollReset();
     ctlToast('Saved');
-  } catch (e) { t[field] = before; cxToastErr(e); }
+  } catch (e) { t[field] = before; if (typeof ctlDataChanged === 'function') ctlDataChanged(); cxToastErr(e); }   // C5: back to the date before
   window.renderHistory(host);
 }
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderHistory = ctlScope(window.renderHistory);

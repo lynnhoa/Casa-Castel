@@ -932,3 +932,6 @@ function _cxOtKnkYearsHTML(pid) {
     '<span class="cx-r__sub" style="margin:0">Total for this purchase · ' + ys.map(y => y + ': ' + cxW(byY[y])).join(' · ') + '</span>' +
     '<span class="cx-ot-tot">' + cxW(tot) + '</span></div>';
 }
+
+/* C5 (#32): one drawing = one snapshot — a figure asked for again while it is drawn is worked out once (controlling-data.js ctlScope) */
+window.renderOneTime = ctlScope(window.renderOneTime);
