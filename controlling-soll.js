@@ -245,6 +245,14 @@ function ctlPropOwnedYear(p, y) {                       // bought in that year o
   const s = ctlPropSince(p);
   return !s || Number(s.slice(0, 4)) <= y;
 }
+/* #30 (Nov 2026) · Purchase month "From handover day" (Setup › Properties › First month · ctrl_properties.first_month,
+   CONTROLLING-C3.sql): the first day of month y/m that is yours — the purchase day in the purchase month, else 1.
+   Column missing or 'full' (default) → 1: the whole purchase month counts, exactly as before. Never Casa Castel. */
+function ctlHandoverDay(p, y, m) {
+  if (!p || p.first_month !== 'handover' || p.id === CASA_PROP_ID) return 1;
+  const s = ctlPropSince(p);
+  return s && s.slice(0, 7) === _cxIso(y, m, 1).slice(0, 7) ? Number(s.slice(8, 10)) || 1 : 1;
+}
 
 function ctlUnitLink(u, p) {
   const S = window._src;
@@ -358,6 +366,14 @@ const _cxUnitCache = new Map();
    'old' | 'new' = one rent per day and unit on double-rent days (the previous / the new tenant) */
 let _cxOneRent = '';
 function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlSettlementInvalidate === 'function') ctlSettlementInvalidate(); }
+/* x6 (Nov 2026) · an Income entry was saved or deleted: forget the Soll of that ONE unit — a tenant without a saved rent
+   learns it from these entries (_cxLearned reads only this unit's rows), so its other months follow at once, as after a
+   reload. Keys: v2 'v2|pid|unit|y|m|…' · v1 'pid|unit|y|m|…' */
+function ctlSollDropUnit(unitId) {
+  if (unitId === null || unitId === undefined) return;
+  const id = String(unitId);
+  for (const k of [..._cxUnitCache.keys()]) { const s = k.split('|'); if ((s[0] === 'v2' ? s[2] : s[1]) === id) _cxUnitCache.delete(k); }
+}
 
 /* → { k, nk, soll, empty, link, notes:[..], badge, partial, src } */
 /* The rent a tenant agreed, in this order:
@@ -366,9 +382,10 @@ function ctlSollReset() { _cxUnitCache.clear(); if (typeof ctlSettlementInvalida
      3 today's room / apartment price — flagged if the tenant is no longer there   */
 function _cxLearned(u, t, y, m) {
   if (u.id == null) return null;
-  const count = new Map();
+  const count = new Map(), P = ctlProp(u.property_id);
   for (const r of (window._ctrl.income || [])) {
     if (r.unit_id !== u.id || (r.year === y && r.month === m)) continue;
+    if (ctlHandoverDay(P, r.year, r.month) > 1) continue;   // #30: a purchase month "From handover day" holds only part of the rent
     const n = new Date(r.year, r.month, 0).getDate();
     if (!_cxActiveOn(t, _cxIso(r.year, r.month, 1)) || !_cxActiveOn(t, _cxIso(r.year, r.month, n))) continue;   // full months only
     const k = _cxR(r.kaltmiete), nk = _cxR(r.nebenkosten);
@@ -661,9 +678,9 @@ function _cxRentDay(link, w, u, y, m, iso, all, memo) {
 
 /* → { k, nk, soll, empty, link, notes, badge, partial, days, N, parts:[{from,to,amount,tid,name}], check, src } */
 function _cxUnitSollV2(u, pid, y, m) {
-  const key = 'v2|' + [pid, u.id ?? 'v:' + u.name, y, m, u.source_type || '', u.source_ref || ''].join('|') + (_cxOneRent ? '|1r:' + _cxOneRent : '');
+  const p = ctlProp(pid), hd = ctlHandoverDay(p, y, m);      // #30: 1, or the handover day in the purchase month
+  const key = 'v2|' + [pid, u.id ?? 'v:' + u.name, y, m, u.source_type || '', u.source_ref || ''].join('|') + (_cxOneRent ? '|1r:' + _cxOneRent : '') + (hd > 1 ? '|h' + hd : '');
   if (_cxUnitCache.has(key)) return _cxUnitCache.get(key);
-  const p = ctlProp(pid);
   const link = ctlUnitLink(u, p);
   let out;
   if (!link) {
@@ -689,7 +706,7 @@ function _cxUnitSollV2(u, pid, y, m) {
     pt.to = d; pt.sk += dk; pt.snk += dnk; pt.days++; if (live) pt.live++;
     parts.set(pk, pt);
   };
-  for (let d = 1; d <= N; d++) {
+  for (let d = hd; d <= N; d++) {                          // #30: from the handover day — the days before are the seller's
     const iso = _cxIso(y, m, d);
     // Oct 2026: everyone whose rent window covers the day pays for it (Contract or Move dates per tenant) —
     // two at once = double rent, one part each (replaces "newest wins" and the overlap warning)
@@ -720,6 +737,7 @@ function _cxUnitSollV2(u, pid, y, m) {
 
   // First / last month "voll" from the contract (B7, D3) → that tenant pays the full month
   const notes = [];
+  if (hd > 1 && occ) notes.push('Bought ' + _cxFmtD(_cxIso(y, m, hd)) + ' · rent from the handover');   // #30
   let fullNote = false;
   for (const pt of parts.values()) {
     const w = pt.w; if (!w) continue;
@@ -730,7 +748,8 @@ function _cxUnitSollV2(u, pid, y, m) {
     const fullIn = inAt && inAt.first_month === 'voll', fullOut = outAt && outAt.last_month === 'voll';
     if ((fullIn || fullOut) && !(_cxOneRent && dbl)) {      // export, double-rent month: day by day, one rent per day
       const r = _cxRentDay(link, w, u, y, m, fullIn ? w.payFrom : w.payTo, all, memo);
-      pt.sk = r.k * N; pt.snk = r.nk * N;
+      const nd = hd > 1 && !(fullIn && w.payFrom >= _cxIso(y, m, hd)) ? N - hd + 1 : N;   // #30: never the seller's days (a tenant moving in after the handover pays the full month)
+      pt.sk = r.k * nd; pt.snk = r.nk * nd;
       notes.push((fullIn ? 'First' : 'Last') + ' month in full per contract · ' + w.name);
       fullNote = true;
     }
@@ -847,8 +866,9 @@ function _cxUnitSollV2(u, pid, y, m) {
       ? 'No rent after the contract end ' + _cxFmtD(prev.payTo) + ' · ' + prev.name
       : 'Last tenant until ' + _cxFmtD(prev.to) + (prev.payTo > prev.to ? ' · rent until the contract end ' + _cxFmtD(prev.payTo) : ''));
   }
-  const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)
-    .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR((pt.sk + pt.snk) / N), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
+  const nT = [...parts.keys()].filter(pk => pk !== 'room').length;   // one tenant: 'take' / Book all write soll = k + nk, so the part is k + nk too ·
+  const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)   // a tenant-change month is booked per tenant with the part amount as it always was
+    .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: nT > 1 ? _cxR((pt.sk + pt.snk) / N) : _cxR(_cxR(pt.sk / N) + _cxR(pt.snk / N)), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
                            tid: pk, name: pt.w ? pt.w.name : 'Room', mode: pt.r0 ? pt.r0.mode : 'kalt_nk', days: pt.days, live: pt.live }));
   const free = occ > 0 && !noPrice && !roomOnly && _cxR(k + nk) === 0;
   if (free) notes.push('Free of charge' + (partList[0] && partList[0].name && partList[0].name !== 'Room' ? ' · ' + partList[0].name : ''));
@@ -1004,6 +1024,7 @@ function ctlLoanTerms(L, y, m) {
   const newest = (window._src.loanHist || []).filter(x => String(x.property_id) === String(L.id) && _cxD(x.valid_from))
     .reduce((a, x) => (_cxD(x.valid_from) > a ? _cxD(x.valid_from) : a), '');
   if (_cxD(h.valid_from) < newest) out._older = true;
+  out._from = _cxD(h.valid_from) > CX_PER_START ? _cxD(h.valid_from) : '';   // #15 (Nov 2026): "since" in Setup (info only)
   return out;
 }
 /* Zinsen + Tilgung of one month. 'split': the fixed debits. 'rate': estimate from the Restschuld
@@ -1050,6 +1071,9 @@ function ctlCostRows(p, y, m) {
   const N = new Date(y, m, 0).getDate(), last = _cxIso(y, m, N);
   const rows = [], notDue = [];
   { const since = ctlPropSince(p); if (since && last < since) return { rows, notDue }; }   // not bought yet (Properties › Purchase date)
+  // #30: purchase month "From handover day" → Kreditrate and Hausgeld only for the days that are yours (Grundsteuer stays)
+  const hd = ctlHandoverDay(p, y, m), pr = v => hd > 1 ? _cxR(v * (N - hd + 1) / N) : v;
+  const hdNote = hd > 1 ? (N - hd + 1) + ' of ' + N + ' days · bought ' + _cxFmtD(_cxIso(y, m, hd)) : null;
 
   // Kreditrate = exactly what the bank debits (Properties · "Bank debits"), to the cent, valid from its month on:
   //   'rate'  one debit → one row; Zinsen / Tilgung shown as a monthly estimate (Restschuld × Zinssatz ÷ 12)
@@ -1058,32 +1082,35 @@ function ctlCostRows(p, y, m) {
   const zbNote = L0 ? ctlZinsbindungNote(L0, y, m) : null;
   if (L && ctlLoanDebit(L) === 'split') {
     const lm = ctlLoanMonth(L, y, m);
-    if (lm.zinsen) rows.push({ key: 'zinsen', label: 'Zinsen', soll: lm.zinsen, bank: true, src: 'Properties', note: zbNote,
+    if (lm.zinsen) rows.push({ key: 'zinsen', label: 'Zinsen', soll: pr(lm.zinsen), bank: true, src: 'Properties', note: hdNote || zbNote,
       sub: (_cxN0(L.darlehen) ? 'on ' + _cxE2(L.darlehen) + ' · ' : '') + 'fixed' });
-    if (lm.tilgung) rows.push({ key: 'tilgung', label: 'Tilgung · Bausparvertrag', soll: lm.tilgung, bank: true, src: 'Properties',
-      sub: 'into the Bausparvertrag · Kreditrate together ' + _cxE2(lm.zinsen + lm.tilgung) });
+    if (lm.tilgung) rows.push({ key: 'tilgung', label: 'Tilgung · Bausparvertrag', soll: pr(lm.tilgung), bank: true, src: 'Properties', note: hdNote,
+      sub: 'into the Bausparvertrag · Kreditrate together ' + _cxE2(pr(lm.zinsen) + pr(lm.tilgung)) });   // #30: the two rows above
   } else {
     const rate = L ? _cxN0(L.rate) : _cxN0(p.def_rate);
     const lm = L ? ctlLoanMonth(L, y, m) : null;
     // plan value (Setup: Kreditrate + "of which Zinsen") → Tilgung = the rest, as _cxExpSave books it
     const dz = lm ? 0 : _cxN0(p.def_zinsen), dt = lm ? 0 : _cxN0(p.def_tilgung);   // def_tilgung: older rows only
-    const z = lm ? lm.zinsen : dz > 0 ? Math.min(_cxR(dz), _cxR(rate)) : dt > 0 ? _cxR(Math.max(rate - dt, 0)) : 0;
-    const t = lm ? lm.tilgung : dz > 0 || dt > 0 ? _cxR(rate - z) : 0;
+    const z0 = lm ? lm.zinsen : dz > 0 ? Math.min(_cxR(dz), _cxR(rate)) : dt > 0 ? _cxR(Math.max(rate - dt, 0)) : 0;
+    // #30: in a handover month Zinsen and Tilgung shrink with the debit and still add up to it (Book all splits it so)
+    const z = hd > 1 ? Math.min(pr(z0), pr(_cxR(rate))) : z0;
+    const t = hd > 1 ? _cxR(pr(_cxR(rate)) - z) : lm ? lm.tilgung : dz > 0 || dt > 0 ? _cxR(rate - z) : 0;
     const splitKnown = !!L || dz > 0 || dt > 0;             // #7: no loan link and no split → don't invent Zins 0
-    if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: _cxR(rate), bank: !!L, note: zbNote,
+    if (rate) rows.push({ key: 'rate', label: 'Kreditrate', soll: pr(_cxR(rate)), bank: !!L, note: hdNote || zbNote,
       // Soll = the debit, to the cent. Zins / Tilgung = information only (≈ the loan plan for this month)
       sub: splitKnown ? '≈\u00a0Zinsen\u00a0' + _cxE2(z) + ' · ≈\u00a0Tilgung\u00a0' + _cxE2(t) : 'Zinsen / Tilgung unknown', src: L ? 'Properties' : 'plan value',
       split: splitKnown ? { zinsen: z, tilgung: t } : null,
       info: L ? null : 'Loan not linked with Properties – plan value from Setup › Properties › Loan' });
   }
 
-  let hg = null, hgNote = null;
+  let hg = null, hgNote = null, hgFrom = null;
   if (pl.apt) {
     const hist = S.hgHist.filter(h => String(h.apt_id ?? h.apartment_id) === String(pl.apt.id));   // B21: Rentals column is apt_id
     let cur = null;
     for (const h of hist) { const d = _cxD(h.effective_date); if (d && d.slice(0, 7) <= first.slice(0, 7) && (!cur || d > _cxD(cur.effective_date))) cur = h; }   // Build A: a change counts from the month of its date
     const v = S.verw.find(x => String(x.apartment_id) === String(pl.apt.id));
     hg = cur ? _cxNum(cur.amount) : (v ? _cxNum(v.hausgeld_mtl) : null);
+    hgFrom = cur && _cxD(cur.effective_date) > CX_PER_START ? _cxD(cur.effective_date) : null;   // #15: "since" in Setup (info only)
     const ch = hist.find(h => { const d = _cxD(h.effective_date); return d >= first && d <= last; });
     if (ch) {
       let pv = null;
@@ -1092,7 +1119,7 @@ function ctlCostRows(p, y, m) {
     }
   }
   if (hg === null && !pl.apt) hg = _cxNum(p.def_hausgeld);       // linked: only what Rentals has (def_* = unlinked only)
-  if (hg) rows.push({ key: 'hausgeld', label: 'Hausgeld', soll: _cxR(hg), sub: 'to the Hausverwaltung', src: pl.apt ? 'Rentals' : 'plan value', note: hgNote });
+  if (hg) rows.push({ key: 'hausgeld', label: 'Hausgeld', soll: pr(_cxR(hg)), sub: 'to the Hausverwaltung', src: pl.apt ? 'Rentals' : 'plan value', note: hdNote || hgNote, from: hgFrom });
 
   const months = Array.isArray(p.grundsteuer_months) && p.grundsteuer_months.length ? p.grundsteuer_months.map(Number) : _CX_Q;
   let gs = null;
@@ -1100,7 +1127,7 @@ function ctlCostRows(p, y, m) {
   if (gs === null && !pl.apt) gs = _cxNum(p.def_grundsteuer);
   if (gs) {
     if (months.includes(m)) rows.push({ key: 'grundsteuer', label: 'Grundsteuer', soll: _cxR(gs), sub: 'due 15.' + String(m).padStart(2, '0') + '.', src: pl.apt ? 'Rentals' : 'plan value' });
-    else { const nx = _cxNextDue(months, m); notDue.push({ label: 'Grundsteuer', next: nx ? _cxMonthShort(nx) : '' }); }
+    else { const nx = _cxNextDue(months, m); notDue.push({ label: 'Grundsteuer', next: nx ? _cxMonthShort(nx) : '', soll: _cxR(gs) }); }   // #15: amount = info for Setup
   }
 
   return { rows, notDue };
@@ -1526,9 +1553,10 @@ function ctlSettlementFigures(r) {
       if (i === null || !part || !part.amount) continue;
       // one tenant in the month, no split: the NK booked in Controlling is exactly what was paid as NK
       const sp = row.split && typeof row.split === 'object' && Object.keys(row.split).length;
+      const cap = ctlHandoverDay(p, y, m) > 1;         // #30: handover month — a full month booked before counts only for your days
       const nkPaid = !sp && (s.parts || []).length <= 1 && part.nk > 0 && row.nebenkosten !== null && row.nebenkosten !== undefined && row.nebenkosten !== ''
-        ? _cxN0(row.nebenkosten) * nkPart / part.nk
-        : i * nkPart / part.amount;                    // else: the NK share of what this tenant paid
+        ? (cap ? Math.min(_cxN0(row.nebenkosten), part.nk) : _cxN0(row.nebenkosten)) * nkPart / part.nk
+        : (cap ? Math.min(i, part.amount) : i) * nkPart / part.amount;   // else: the NK share of what this tenant paid
       mo.ist = _cxR(nkPaid);
       ist += nkPaid; istKnown = true;
     }
@@ -1592,6 +1620,18 @@ function ctlParkingInfo(pk) {
     .sort((a, b) => _cxD(b.mietbeginn).localeCompare(_cxD(a.mietbeginn)))[0] || null;
   return { price, tenant: t, tenantName: t ? _cxTName(t) : null, rent: t ? _cxNum(t.kaltmiete) : null };
 }
+/* x4 (Nov 2026) · a tenant's monthly rent (Kalt + NK) on one day, by the same rule as the Income Soll (rent history,
+   steps) — Setup › Parking showed the raw tenant record. null = not known (no link, tenant not in this unit) */
+function ctlTenantRentOn(u, p, tid, iso) {
+  const link = ctlUnitLink(u, p); if (!link || !iso) return null;
+  const all = _cxTenancies(link), w = all.find(x => x.id === String(tid));
+  if (!w || !w.from) return null;
+  try {                                                    // 0 € only when saved so on purpose (free of charge) — nothing saved = not known
+    const r = _cxRentDay(link, w, u, Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), iso, all, new Map()), v = _cxR(_cxN0(r.k) + _cxN0(r.nk));
+    return v || _cxFreeSet(link, r) ? v : null;
+  }
+  catch (e) { return null; }
+}
 function ctlSetupLinkState() {
   const S = window._src, props = window._ctrl.properties.filter(p => p.active);
   const used = new Map();                                  // 'type|ref' → [{p,u}]
@@ -1614,6 +1654,9 @@ function ctlSetupLinkState() {
   for (const p of props) {
     const pl = ctlPropLinks(p);
     if (p.id !== CASA_PROP_ID && !pl.apt) issues.push({ kind: 'prop', pid: p.id, text: p.name + ': no Rentals apartment – Hausgeld and Grundsteuer are missing in the Soll' });
+    // #6 (Nov 2026): its rent was missing everywhere, silently (not when another property's unit already takes this apartment's rent)
+    if (p.id !== CASA_PROP_ID && pl.apt && !ctlUnitsOf(p.id).some(u => !_cxIsParking(u)) && !used.has('rentals_apartment|' + String(pl.apt.id)))
+      issues.push({ kind: 'noUnit', pid: p.id, text: p.name + ': no living unit – its rent is missing' });
     if (!pl.loan) issues.push({ kind: 'loan', pid: p.id, text: p.name + ': no loan linked' + (p.id === CASA_PROP_ID ? ' – Kreditrate from the cost type' : (_cxN0(p.def_rate) ? ' – Kreditrate from plan value' : ' – no Kreditrate in the Soll')) });
   }
   const freeParking = S.parking.filter(pk => !used.has('rentals_parking|' + String(pk.id)));

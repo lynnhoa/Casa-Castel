@@ -58,10 +58,10 @@ function cxRepFileName(y, scope, ext) {
    which sheets the file will really have, how many double-rent days — same rules as cxRepData */
 function cxRepQuick(scope) {
   const C = window._ctrl, y = C.year;
-  const props = C.properties.filter(p => p.active && ctlPropOwnedYear(p, y) && (scope === 'all' || (scope === 'c') === (p.id === CASA_PROP_ID)));
+  const props = C.properties.filter(p => ctlPropInYear(p, y) && (scope === 'all' || (scope === 'c') === (p.id === CASA_PROP_ID)));   // #2
   let dblDays = 0;
   for (const p of props) for (const u of ctlUnitsFor(p.id)) for (let m = 1; m <= 12; m++) {
-    if (!ctlPropOwned(p, y, m)) continue;
+    if (!ctlPropSollIn(p, y, m)) continue;
     const s = ctlUnitSoll(u, p.id, y, m);
     if (s && s.dbl) dblDays += s.dbl;
   }
@@ -76,10 +76,12 @@ function cxRepData(scope) {
   const counted = new Set(ym);                              // months with Ist (= the Dashboard's months)
   const M12 = Array.from({ length: 12 }, (_, i) => i + 1);
   const pos = p => (p.sort_order !== null && p.sort_order !== undefined && Number.isFinite(Number(p.sort_order))) ? Number(p.sort_order) : 999;
-  const all = C.properties.filter(p => p.active).slice().sort((a, b) => pos(a) - pos(b) || a.id - b.id);
+  // #2 (Nov 2026): a switched-off (sold) property is in the export of a year in which it has bookings — only in those
+  // months (owned), its Soll only from its first to its last rent / cost booking (sollIn); numbering follows that year
+  const all = C.properties.filter(p => p.active || ctlPropInYear(p, y)).slice().sort((a, b) => pos(a) - pos(b) || a.id - b.id);
   const props = all.map((p, i) => ({ p, no: i + 1, color: CXR_COLORS[i % CXR_COLORS.length], casa: p.id === CASA_PROP_ID }))
-    .filter(x => ctlPropOwnedYear(x.p, y) && (scope === 'all' || (scope === 'c') === x.casa));
-  const owned = (x, m) => ctlPropOwned(x.p, y, m);
+    .filter(x => ctlPropInYear(x.p, y) && (scope === 'all' || (scope === 'c') === x.casa));
+  const owned = (x, m) => ctlPropIn(x.p, y, m), sollIn = (x, m) => ctlPropSollIn(x.p, y, m);
   const sum = (a, f) => a.reduce((s, v) => s + (Number(f ? f(v) : v) || 0), 0);
   const valOrNull = v => (v === null || v === undefined || v === '' ? null : r2(v));
 
@@ -100,19 +102,22 @@ function cxRepData(scope) {
   const dash = props.map(x => {
     const mon = {};
     for (const m of M12) {
-      if (!counted.has(m) || !owned(x, m)) { mon[m] = null; continue; }
+      if (!counted.has(m) || !sollIn(x, m)) { mon[m] = null; continue; }   // #2: rent and costs only — a sold flat's later Abrechnung is in YEAR
       const r = _cxDashProp(x.p, [m]);
       mon[m] = { inc: r.warm, exp: r2(r.kosten + r.rate), ges: r.lfWarm };
     }
     const R = _cxDashProp(x.p, ym), a = abr(x);
-    return { x, mon, R, year: { income: R.lfWarm, oneoff: R.einmalig, hg: a.hg, nk: a.nk, ges: R.freiWarm } };
+    // #13 (Nov 2026): rent = the warm rent that came in (as Dashboard › Income), run = the running cashflow
+    return { x, mon, R, year: { rent: R.warm, run: R.lfWarm, oneoff: R.einmalig, hg: a.hg, nk: a.nk, ges: R.freiWarm } };
   });
   const area = list => ({ k: r2(sum(list, d => d.R.freiKalt)), w: r2(sum(list, d => d.R.freiWarm)) });
   const kw = {
     ren: dash.some(d => !d.x.casa) ? area(dash.filter(d => !d.x.casa)) : null,
     casa: dash.some(d => d.x.casa) ? area(dash.filter(d => d.x.casa)) : null,
   };
-  const general = dash.map(d => ({ x: d.x, kalt: d.R.kalt, rate: d.R.rate, cfK: d.R.lfKalt, nk: d.R.nk, hk: d.R.kosten, cfW: d.R.lfWarm }));
+  // MONTHS and General are "laufend" (no one-offs, no Abrechnungen): a sold flat with only an Abrechnung this year has no line there
+  const months = dash.filter(d => d.x.p.active || M12.some(m => d.mon[m]));
+  const general = months.map(d => ({ x: d.x, kalt: d.R.kalt, rate: d.R.rate, cfK: d.R.lfKalt, nk: d.R.nk, hk: d.R.kosten, cfW: d.R.lfWarm }));
 
   // Income — one row per unit (rooms and parking too)
   const income = [], who = CX.rep.dbl === 'new' ? 'new' : 'old';
@@ -121,7 +126,7 @@ function cxRepData(scope) {
     for (const u of ctlUnitsFor(x.p.id)) {
       const mon = {};
       for (const m of M12) {
-        if (!owned(x, m)) { mon[m] = null; continue; }
+        if (!sollIn(x, m)) { mon[m] = null; continue; }
         let s = ctlUnitSoll(u, x.p.id, y, m) || {};
         if (s.dbl && typeof ctlUnitSollOneRent === 'function') { dblDays += s.dbl; s = ctlUnitSollOneRent(u, x.p.id, y, m, who) || s; }
         const rows = counted.has(m) && u.id != null ? C.income.filter(r => r.unit_id === u.id && r.year === y && r.month === m) : [];
@@ -129,6 +134,7 @@ function cxRepData(scope) {
                    k: rows.length ? r2(sum(rows, r => r.kaltmiete)) : null,
                    nk: rows.length ? r2(sum(rows, r => r.nebenkosten)) : null };
       }
+      if (!x.p.active && M12.every(m => mon[m] === null)) continue;   // #2: sold, only an Abrechnung this year → no empty line
       income.push({ x, name: u.name || '', mon });
     }
   }
@@ -145,7 +151,7 @@ function cxRepData(scope) {
   const expense = props.map(x => {
     const mon = {};
     for (const m of M12) {
-      if (!owned(x, m)) { mon[m] = null; continue; }
+      if (!sollIn(x, m)) { mon[m] = null; continue; }
       if (x.casa) {
         const rows = (C.castel_expenses || []).filter(e => e.year === y && e.month === m);
         const any = counted.has(m) && rows.length > 0;
@@ -162,7 +168,7 @@ function cxRepData(scope) {
                  rate: v('rate'), zins: v('zinsen'), tilg: v('tilgung'), hg: v('hausgeld'), grst: v('grundsteuer'), strom: v('strom') };
     }
     return { x, mon };
-  });
+  }).filter(e => e.x.p.active || M12.some(m => e.mon[m] !== null));   // #2: sold, only an Abrechnung this year → no empty line
 
   // Expense Castel — every Casa Castel cost type
   let castel = null;
@@ -196,7 +202,7 @@ function cxRepData(scope) {
   const groups = typeof cxInvoiceData === 'function' ? cxInvoiceData(y, null) : [];
   const oneoff = props.map(x => ({ x, g: groups.find(g => g.p.id === x.p.id) })).filter(o => o.g);
 
-  return { y, scope, today: cxToday(), stand: cxFmtDate(cxToday()), counted, ym, props, dash, kw, general, income, expense, castel, oneoff, dblDays, who,
+  return { y, scope, today: cxToday(), stand: cxFmtDate(cxToday()), counted, ym, props, dash, months, kw, general, income, expense, castel, oneoff, dblDays, who,
            sheets: cxRepSheets(scope).filter(s => (s !== 'Expense Castel' || castel) && (s !== 'Expense' || props.some(x => !x.casa))) };
 }
 
@@ -236,20 +242,22 @@ function _xWidths(ws, list) { list.forEach((w, i) => { if (w) ws.getColumn(i + 1
 function _xSheetYear(wb, d) {
   const ws = wb.addWorksheet('Dashboard YEAR', { views: [{ showGridLines: false }] });
   _xTitle(ws, d, 'Dashboard ' + d.y);
-  for (let c = 4; c <= 8; c++) _xSet(ws, 4, c, c === 4 ? d.y : null, { fill: 'CC99FF', w: 1, b: 1, fmt: '0' });
-  ws.mergeCells(4, 4, 4, 8);
-  ['No.', 'Immobilie', 'Gesamt', 'Income', 'Expenses One Time', 'Hausgeldausgleich', 'Nebenkostenausgleich'].forEach((t, i) => _xHead(ws, 5, i + 2, t));
+  for (let c = 4; c <= 9; c++) _xSet(ws, 4, c, c === 4 ? d.y : null, { fill: 'CC99FF', w: 1, b: 1, fmt: '0' });
+  ws.mergeCells(4, 4, 4, 9);
+  // #13 (Nov 2026): "Income" held the running cashflow — now Rent in (as Dashboard › Income) and Cashflow (running)
+  ['No.', 'Immobilie', 'Gesamt', 'Rent in', 'Cashflow (running)', 'Expenses One Time', 'Hausgeldausgleich', 'Nebenkostenausgleich'].forEach((t, i) => _xHead(ws, 5, i + 2, t));
   let r = 6;
   for (const x of d.dash) {
     const Y = x.year;
     _xNo(ws, r, x.x.no); _xName(ws, r, x.x);
-    _xNum(ws, r, 4, _xF('E' + r + '-F' + r + '+G' + r + '+H' + r, Y.income - Y.oneoff + Y.hg + Y.nk), { b: 1, fill: 'F2F2F2' });
-    _xNum(ws, r, 5, Y.income, { fill: 'F2F2F2' });
-    _xNum(ws, r, 6, Y.oneoff); _xNum(ws, r, 7, Y.hg); _xNum(ws, r, 8, Y.nk);
+    _xNum(ws, r, 4, _xF('F' + r + '-G' + r + '+H' + r + '+I' + r, Y.run - Y.oneoff + Y.hg + Y.nk), { b: 1, fill: 'F2F2F2' });   // Gesamt = running cashflow − one-offs ± Abrechnungen
+    _xNum(ws, r, 5, Y.rent);
+    _xNum(ws, r, 6, Y.run, { fill: 'F2F2F2' });
+    _xNum(ws, r, 7, Y.oneoff); _xNum(ws, r, 8, Y.hg); _xNum(ws, r, 9, Y.nk);
     r++;
   }
   const last = r - 1, tot = k => d.dash.reduce((s, x) => s + (x.year[k] || 0), 0);
-  [[4, tot('income') - tot('oneoff') + tot('hg') + tot('nk')], [5, tot('income')], [6, tot('oneoff')], [7, tot('hg')], [8, tot('nk')]]
+  [[4, tot('run') - tot('oneoff') + tot('hg') + tot('nk')], [5, tot('rent')], [6, tot('run')], [7, tot('oneoff')], [8, tot('hg')], [9, tot('nk')]]
     .forEach(([c, v]) => _xNum(ws, r, c, _xF('SUM(' + _xA(6, c) + ':' + _xA(last, c) + ')', v), { b: 1, bd: false }));
   // Cashflow Kalt | Warm — the Dashboard's Year view (after one-offs; warm also after Abrechnungen)
   r += 2;
@@ -262,7 +270,7 @@ function _xSheetYear(wb, d) {
   _xSet(ws, r, 3, 'Total', { b: 1, al: 'left' });
   _xNum(ws, r, 4, _xF('SUM(D' + first + ':D' + (r - 1) + ')', rows.reduce((s, x) => s + x[1].k, 0)), { b: 1 });
   _xNum(ws, r, 5, _xF('SUM(E' + first + ':E' + (r - 1) + ')', rows.reduce((s, x) => s + x[1].w, 0)), { b: 1 });
-  _xWidths(ws, [5, 4.7, 22, 13.6, 13.6, 18.2, 18, 21]);
+  _xWidths(ws, [5, 4.7, 22, 13.6, 13.6, 18.2, 18.2, 18, 21]);
 }
 
 function _xSheetMonths(wb, d) {
@@ -275,7 +283,7 @@ function _xSheetMonths(wb, d) {
     ['Gesamt', 'Income', 'Expenses'].forEach((t, k) => _xHead(ws, 5, c + k, t));
   }
   let r = 6;
-  for (const x of d.dash) {
+  for (const x of d.months) {
     _xNo(ws, r, x.x.no); _xName(ws, r, x.x);
     for (let m = 1; m <= 12; m++) {
       const c = 4 + (m - 1) * 3, v = x.mon[m];
@@ -290,7 +298,7 @@ function _xSheetMonths(wb, d) {
     if (!d.counted.has(m)) continue;
     const c = 4 + (m - 1) * 3;
     ['ges', 'inc', 'exp'].forEach((k, j) => _xNum(ws, r, c + j,
-      _xF('SUM(' + _xA(6, c + j) + ':' + _xA(last, c + j) + ')', d.dash.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0)), { b: 1, bd: false }));
+      _xF('SUM(' + _xA(6, c + j) + ':' + _xA(last, c + j) + ')', d.months.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0)), { b: 1, bd: false }));
   }
   _xWidths(ws, [5, 6.1, 22].concat(Array(36).fill(12)));
 }
@@ -609,17 +617,18 @@ const _pRange = (a, b) => CXP_MF[a - 1] + (a === b ? '' : ' – ' + CXP_MF[b - 1
 
 /* the pages */
 function _pYear(doc, d, y) {
-  const fixed = 254.66 - 6.35 - 50.27, eq = { cellWidth: fixed / 5 };
+  const fixed = 254.66 - 6.35 - 50.27, eq = { cellWidth: fixed / 6 };
   y = _pSec(doc, y, '01', 'Ergebnis je Objekt');
-  const head = [[_pH('Immobilie', { cs: 2, left: 1 }), _pH('Gesamt'), _pH('Income'), _pH('Expenses One Time'), _pH('Hausgeldausgleich'), _pH('Nebenkostenausgleich')]];
-  const t = { inc: 0, one: 0, hg: 0, nk: 0 };
+  // #13 (Nov 2026): Rent in (as Dashboard › Income) and Cashflow (running) — "Income" held the running cashflow
+  const head = [[_pH('Immobilie', { cs: 2, left: 1 }), _pH('Gesamt'), _pH('Rent in'), _pH('Cashflow (running)'), _pH('Expenses One Time'), _pH('Hausgeldausgleich'), _pH('Nebenkostenausgleich')]];
+  const t = { rent: 0, run: 0, one: 0, hg: 0, nk: 0 };
   const body = d.dash.map(x => {
-    const Y = x.year, g = Y.income - Y.oneoff + Y.hg + Y.nk;
-    t.inc += Y.income; t.one += Y.oneoff; t.hg += Y.hg; t.nk += Y.nk;
-    return [_pNo(x.x.no), _pT(x.x.p.name), _pN(g, { b: 1 }), _pN(Y.income), _pN(Y.oneoff), _pN(Y.hg), _pN(Y.nk)];
+    const Y = x.year, g = Y.run - Y.oneoff + Y.hg + Y.nk;
+    t.rent += Y.rent; t.run += Y.run; t.one += Y.oneoff; t.hg += Y.hg; t.nk += Y.nk;
+    return [_pNo(x.x.no), _pT(x.x.p.name), _pN(g, { b: 1 }), _pN(Y.rent), _pN(Y.run), _pN(Y.oneoff), _pN(Y.hg), _pN(Y.nk)];
   });
-  body.push(_pRow([_pT('Gesamt', { cs: 2 }), _pN(t.inc - t.one + t.hg + t.nk), _pN(t.inc), _pN(t.one), _pN(t.hg), _pN(t.nk)], 'cxTot'));
-  y = _pTable(doc, y, head, body, { cols: { 0: { cellWidth: 6.35 }, 1: { cellWidth: 50.27 }, 2: eq, 3: eq, 4: eq, 5: eq, 6: eq } });
+  body.push(_pRow([_pT('Gesamt', { cs: 2 }), _pN(t.run - t.one + t.hg + t.nk), _pN(t.rent), _pN(t.run), _pN(t.one), _pN(t.hg), _pN(t.nk)], 'cxTot'));
+  y = _pTable(doc, y, head, body, { cols: { 0: { cellWidth: 6.35 }, 1: { cellWidth: 50.27 }, 2: eq, 3: eq, 4: eq, 5: eq, 6: eq, 7: eq } });
   y = _pSec(doc, y + 7.41, '02', 'Cashflow · Kalt und Warm');
   const rows = [];
   if (d.kw.ren) rows.push(['Rentals', d.kw.ren]);
@@ -633,12 +642,12 @@ function _pMonths(doc, d, a, b, y) {
   const f = i => (i % 2 ? CXP.alt : null), L = ['Gesamt', 'Income', 'Expenses'];
   const head = [[_pH('Immobilie', { cs: 2, rs: 2, left: 1 })].concat(ms.map((m, i) => _pH(CXP_MF[m - 1], { cs: 3, month: 1, fill: f(i) }))),
                 [].concat(...ms.map((m, i) => L.map(t => _pH(t, { fill: f(i) }))))];
-  const body = d.dash.map(x => [_pNo(x.x.no), _pT(x.x.p.name)].concat(...ms.map((m, i) => {
+  const body = d.months.map(x => [_pNo(x.x.no), _pT(x.x.p.name)].concat(...ms.map((m, i) => {
     const v = x.mon[m];
     return [_pN(v ? v.ges : null, { b: 1, fill: f(i) }), _pN(v ? v.inc : null, { fill: f(i) }), _pN(v ? v.exp : null, { fill: f(i) })];
   })));
   body.push(_pRow([_pT('Gesamt', { cs: 2 })].concat(...ms.map((m, i) => {
-    const on = d.counted.has(m), S = k => d.dash.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0);
+    const on = d.counted.has(m), S = k => d.months.reduce((s, x) => s + (x.mon[m] ? x.mon[m][k] : 0), 0);
     return ['ges', 'inc', 'exp'].map(k => _pN(on ? S(k) : null, { fill: f(i) }));
   })), 'cxTot'));
   const labels = []; ms.forEach((m, i) => L.forEach((t, k) => labels.push([2 + i * 3 + k, t])));

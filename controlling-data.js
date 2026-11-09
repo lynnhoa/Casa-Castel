@@ -88,6 +88,7 @@ function _ctlIncCache(data) {
   if (all) { const j = all.findIndex(r => r.unit_id === u && r.year === y && r.month === m); if (j >= 0) all[j] = data; else all.push(data); }
   const idx = window._ctrl.income.findIndex(r => r.unit_id === u && r.year === y && r.month === m);
   if (idx >= 0) window._ctrl.income[idx] = data; else window._ctrl.income.push(data);
+  if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(u);   // x6: a learned rent follows the new entry at once
 }
 /* Set (mark = { ok:true, reason }) or clear (null) the mark. Only the mark changes:
    the amounts and the split per tenant stay exactly as they are. */
@@ -264,6 +265,7 @@ async function ctlDeleteIncome(unit_id, month) {
   if (error) throw error;
   window._ctrl.income = window._ctrl.income.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
   if (window._src && window._src.incAll) window._src.incAll = window._src.incAll.filter(r => !(r.unit_id === unit_id && r.year === y && r.month === month));
+  if (typeof ctlSollDropUnit === 'function') ctlSollDropUnit(unit_id);   // x6
 }
 
 async function ctlDeleteCastel(category_id, month) {
