@@ -454,18 +454,19 @@ window.renderSetup = function () {
       if (field === 'source') { const [st, ...ref] = v.split('|'); f = v ? { source_type: st, source_ref: ref.join('|') } : { source_type: null, source_ref: null }; }
       else f = { [field]: v || null };
       let saved = false;
+      // #6: apartment changes of one property run one after the other, save AND unit step together, in tap order
+      // (a slow first answer never lands after a quick re-pick)
+      const aptQ = t === 'ctrl_properties' && field === 'rentals_apartment_ref', pid = Number(id);
+      let done = null, mine = null;
+      if (aptQ) { const prev = _cxSuAptQ[pid]; mine = _cxSuAptQ[pid] = new Promise(r => { done = r; }); if (prev) await prev; }
       try {
         await ctlUpdateRow(t, Number(id), f);
         saved = true;
         if (field === 'source') _cxSU.edit[Number(id)] = false;
         if (typeof ctlToast === 'function') ctlToast('Saved');
       } catch (e) { cxToastErr(e); }
-      if (saved && t === 'ctrl_properties' && field === 'rentals_apartment_ref') {   // #6: choosing the apartment adds its living unit, unlinking removes the one made here
-        const pid = Number(id);
-        const prev = _cxSuAptQ[pid];
-        let done; const mine = _cxSuAptQ[pid] = new Promise(r => { done = r; });
+      if (saved && aptQ) {   // #6: choosing the apartment adds its living unit, unlinking removes the one made here
         try {
-          if (prev) await prev;                                    // a change a moment ago (e.g. its unit delete) lands first
           if (_cxSuLiving[pid]) await _cxSuLiving[pid].catch(() => null);   // the unit of a choice a moment ago is still being saved
           const mu = ctlUnit(_cxSuMade[pid]);                      // made here for an earlier choice, nothing booked on it → it follows
           if (mu && mu.property_id === pid && !_cxUnitHasEntries(mu.id) && String(mu.source_ref) !== String(v)) {
@@ -478,8 +479,8 @@ window.renderSetup = function () {
             } else await ctlUpdateRow('ctrl_units', mu.id, { source_type: 'rentals_apartment', source_ref: String(v) });
           } else if (v) await _cxSuEnsureLiving(pid);
         } catch (e) { cxToastErr(e); }
-        finally { done(); if (_cxSuAptQ[pid] === mine) delete _cxSuAptQ[pid]; }
       }
+      if (aptQ) { done(); if (_cxSuAptQ[pid] === mine) delete _cxSuAptQ[pid]; }
       window.renderSetup();
     });
   }
