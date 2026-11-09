@@ -76,10 +76,11 @@ function cxInvoiceProps(year) { return cxInvoiceData(year, null).map(g => g.p); 
 function _cxExportName(year, pid, ext) {
   const p = pid ? ctlProp(Number(pid)) : null;
   const base = ['Rechnungen', year, p ? p.name : ''].filter(Boolean).join('_');
-  return base.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss')
+  return base.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss').replace(/[^\x00-\x7F]/g, c => _CX_TR[c] || c)   // x4: Ł → L, ı → i in file names too
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '') + '.' + ext;
 }
 const _cxSay = t => { if (typeof ctlToast === 'function') ctlToast(t); };
+const _CX_OFFLINE = 'Could not load – check the internet connection';   // #13: messages in English, like the year export
 
 /* ── EXCEL ─────────────────────────────────────────────────── */
 function _cxSheetName(name, used) {
@@ -92,9 +93,9 @@ function _cxSheetName(name, used) {
 function cxBuildInvoiceWorkbook(year, pid) {
   const X = window.XLSX, wb = X.utils.book_new(), used = new Set();
   const groups = cxInvoiceData(year, pid);
-  let count = 0;
+  let lines = 0;
   for (const g of groups) {
-    count += g.nInv + g.knk.length;
+    lines += g.items.length + g.knk.length;                        // #11: income lines (bonus, refund) are exported too
     const dt = d => new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)));
     const aoa = [['Nr.', 'Produkt', 'Geschäft', 'Preis', 'Rechnungsdatum']];
     for (const it of g.items) aoa.push([it.nr, it.item, it.company, it.price, dt(it.date)]);
@@ -121,16 +122,16 @@ function cxBuildInvoiceWorkbook(year, pid) {
     ws['!autofilter'] = { ref: 'A1:E' + last };
     X.utils.book_append_sheet(wb, ws, _cxSheetName(g.p.name, used));
   }
-  return { wb, count, name: _cxExportName(year, pid, 'xlsx') };
+  return { wb, lines, name: _cxExportName(year, pid, 'xlsx') };
 }
 async function cxExportInvoices(year, pid) {
   if (!window.XLSX) {
-    _cxSay('Excel wird vorbereitet …');
-    try { await cxXlsxPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
+    _cxSay('Preparing the Excel …');
+    try { await cxXlsxPreload(); _cxSay('Ready – tap again'); } catch (e) { _cxSay(_CX_OFFLINE); }
     return;
   }
-  const { wb, count, name } = cxBuildInvoiceWorkbook(year, pid);
-  if (!count) { _cxSay('Keine Rechnungen in ' + year); return; }
+  const { wb, lines, name } = cxBuildInvoiceWorkbook(year, pid);
+  if (!lines) { _cxSay('No invoices in ' + year); return; }
   const data = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellDates: true });
   const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const file = typeof File === 'function' ? new File([data], name, { type }) : null;
@@ -142,13 +143,17 @@ async function cxExportInvoices(year, pid) {
   const a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  _cxSay(count + (count === 1 ? ' Rechnung' : ' Rechnungen') + ' exportiert');
+  _cxSay(name + ' exported');
 }
 
 /* ── PDF (A4 portrait, real text) ─────────────────────────── */
 const _CX_PDF = { ink: [61, 48, 39], txt: [58, 53, 48], mut: [154, 142, 126], line: [232, 226, 216], head: [243, 238, 230], acc: [184, 151, 106], neg: [165, 80, 56] };
 // standard PDF fonts only know Latin-1 (+ €): no narrow spaces, typographic quotes are replaced
-const _cxPdfTxt = s => String(s == null ? '' : s).replace(/[\u202f\u00a0]/g, ' ').replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'").replace(/[^\x20-\x7E\u00A0-\u00FF€–—•…]/g, '');
+// #12: letters outside Latin-1 are written without their accent (Şahin → Sahin, Łukasz → Lukasz), not dropped
+const _CX_TR = { 'ł': 'l', 'Ł': 'L', 'ı': 'i', 'İ': 'I', 'đ': 'd', 'Đ': 'D', 'ħ': 'h', 'Ħ': 'H', 'ŧ': 't', 'Ŧ': 'T', 'ŋ': 'n', 'Ŋ': 'N', 'ĸ': 'k', 'ſ': 's', 'œ': 'oe', 'Œ': 'OE', 'ƒ': 'f' };
+const _cxPdfTxt = s => String(s == null ? '' : s).replace(/[\u202f\u00a0]/g, ' ').replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'")
+  .replace(/[^\x20-\x7E\u00A0-\u00FF€–—•…]/g, c => _CX_TR[c] || c.normalize('NFKD').replace(/[\u0300-\u036f]/g, ''))
+  .replace(/[^\x20-\x7E\u00A0-\u00FF€–—•…]/g, '');
 const _cxPdfEur = n => (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 const _cxPdfDate = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
 
@@ -245,12 +250,12 @@ function cxBuildInvoicePdf(year, pid) {
 async function cxExportInvoicesPdf(year, pid, btn) {
   if (typeof window.sbL === 'undefined' && typeof _ctlSupa !== 'undefined') window.sbL = _ctlSupa;   // pdf-open.js uses sbL (temp storage)
   if (!_cxPdfReady()) {
-    _cxSay('PDF wird vorbereitet …');
-    try { await cxPdfPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
+    _cxSay('Preparing the PDF …');
+    try { await cxPdfPreload(); _cxSay('Ready – tap again'); } catch (e) { _cxSay(_CX_OFFLINE); }
     return;
   }
   const pre = cxInvoiceData(year, pid);
-  if (!pre.length) { _cxSay('Keine Rechnungen in ' + year); return; }
+  if (!pre.length) { _cxSay('No invoices in ' + year); return; }
   const viaViewer = typeof ccOpenPdf === 'function';
   if (viaViewer) {                                        // same behaviour as the contracts
     try { _ccLastTrigger = btn || null; } catch (e) {}
@@ -258,7 +263,7 @@ async function cxExportInvoicesPdf(year, pid, btn) {
   }
   let out;
   try { out = cxBuildInvoicePdf(year, pid); }
-  catch (e) { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); _cxSay('PDF fehlgeschlagen: ' + (e.message || e)); return; }
+  catch (e) { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); _cxSay('PDF failed – ' + String(e.message || e).slice(0, 80)); return; }
   if (viaViewer) { await ccOpenPdf(out.doc, out.name); return; }
   const blob = out.doc.output('blob');                    // without pdf-open.js: share sheet / download
   const file = typeof File === 'function' ? new File([blob], out.name, { type: 'application/pdf' }) : null;
@@ -297,7 +302,7 @@ const _cxKnkPartLbl = i => i.part === 'Grundschuld' ? 'Grundschuld' : i.part ===
 function _cxKnkName(pid, ext) {
   const p = pid ? ctlProp(Number(pid)) : null;
   const base = 'Kaufnebenkosten_' + (p ? p.name : 'alle_Objekte');
-  return base.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss')
+  return base.replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue').replace(/ß/g, 'ss').replace(/[^\x00-\x7F]/g, c => _CX_TR[c] || c)   // x4: Ł → L, ı → i in file names too
     .normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_{2,}/g, '_').replace(/^_+|_+$/g, '') + '.' + ext;
 }
 
@@ -397,12 +402,12 @@ function cxBuildKnkWorkbook(pid) {
 
 async function cxExportKnk(pid) {
   if (!window.XLSX) {
-    _cxSay('Excel wird vorbereitet …');
-    try { await cxXlsxPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
+    _cxSay('Preparing the Excel …');
+    try { await cxXlsxPreload(); _cxSay('Ready – tap again'); } catch (e) { _cxSay(_CX_OFFLINE); }
     return;
   }
   const { wb, count, name } = cxBuildKnkWorkbook(pid);
-  if (!count) { _cxSay('Keine Kaufnebenkosten'); return; }
+  if (!count) { _cxSay('No Kaufnebenkosten'); return; }
   const data = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellDates: true });
   const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const file = typeof File === 'function' ? new File([data], name, { type }) : null;
@@ -412,18 +417,18 @@ async function cxExportKnk(pid) {
   const url = URL.createObjectURL(new Blob([data], { type })), a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  _cxSay(count + ' Kaufnebenkosten exportiert');
+  _cxSay(name + ' exported');
 }
 
 /* Tap on "Create PDF" with Kaufnebenkosten chosen — same delivery as the invoice PDF */
 async function cxExportKnkPdf(pid, btn) {
   if (typeof window.sbL === 'undefined' && typeof _ctlSupa !== 'undefined') window.sbL = _ctlSupa;
   if (!_cxPdfReady()) {
-    _cxSay('PDF wird vorbereitet …');
-    try { await cxPdfPreload(); _cxSay('Bereit – bitte noch einmal tippen'); } catch (e) { _cxSay(e.message + ' – Internet prüfen'); }
+    _cxSay('Preparing the PDF …');
+    try { await cxPdfPreload(); _cxSay('Ready – tap again'); } catch (e) { _cxSay(_CX_OFFLINE); }
     return;
   }
-  if (!cxKnkData(pid).length) { _cxSay('Keine Kaufnebenkosten'); return; }
+  if (!cxKnkData(pid).length) { _cxSay('No Kaufnebenkosten'); return; }
   const viaViewer = typeof ccOpenPdf === 'function';
   if (viaViewer) {
     try { _ccLastTrigger = btn || null; } catch (e) {}
@@ -431,7 +436,7 @@ async function cxExportKnkPdf(pid, btn) {
   }
   let out;
   try { out = cxBuildKnkPdf(pid); }
-  catch (e) { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); _cxSay('PDF fehlgeschlagen: ' + (e.message || e)); return; }
+  catch (e) { if (typeof _ccCloseWaitingTab === 'function') _ccCloseWaitingTab(); _cxSay('PDF failed – ' + String(e.message || e).slice(0, 80)); return; }
   if (viaViewer) { await ccOpenPdf(out.doc, out.name); return; }
   const blob = out.doc.output('blob');
   const file = typeof File === 'function' ? new File([blob], out.name, { type: 'application/pdf' }) : null;
