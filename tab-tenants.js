@@ -96,8 +96,10 @@ document.getElementById('tab-tenants').innerHTML = `
 .tn-cr-two > .tn-cr-f { flex:1 1 0; min-width:0; }
 .tn-cr-in { width:100%; box-sizing:border-box; min-height:44px; padding:0 14px; border:.5px solid var(--cc-rule); border-radius:8px; background:var(--cc-bg); font-family:inherit; font-size:16px; color:var(--cc-ink); }
 .tn-cr-num { text-align:right; }
-.tn-cr-calc { display:flex; justify-content:space-between; align-items:center; min-height:44px; padding:0 14px; border-radius:8px; background:#F2E9DA; color:#7A5A22; font-size:14px; }
-.tn-cr-calc b { color:var(--cc-ink); font-size:16px; }
+.tn-cr-calc { display:flex; justify-content:space-between; align-items:center; gap:12px; min-height:44px; padding:6px 14px; border-radius:8px; background:#F2E9DA; color:#7A5A22; font-size:14px; }
+.tn-cr-calc b { color:var(--cc-ink); font-size:16px; display:flex; flex-direction:column; align-items:flex-end; text-align:right; }
+.tn-cr-calc-sub { font-size:12px; font-weight:500; color:#7A5A22; }
+.tn-cr-nw { white-space:nowrap; }   /* the Now line breaks only between its parts (never a lone "NK") */
 .tn-cr-sw { display:flex; align-items:center; gap:12px; cursor:pointer; }
 .tn-cr-sw input { position:absolute; opacity:0; width:1px; height:1px; }
 .tn-cr-sw__t { flex:0 0 44px; height:26px; border-radius:13px; background:var(--cc-stone); position:relative; transition:background .15s; }
@@ -2592,7 +2594,7 @@ function _tnChangeRentHTML(rid, tid) {
          : `${_tnFmtEUR(now.total)} warm \u00b7 ${_tnFmtEUR(now.kalt)} Kalt + ${_tnFmtEUR(now.nk)} NK`;
   return `
 <div class="tn-cr" id="tn-cr-${tid}" data-reason="${st.reason}" data-pa="${pa ? 1 : 0}" data-korrbase="${st.korrBase ? 1 : 0}">
-  <div class="tn-cr-now"><span class="tn-flbl">Now${ctLbl ? ' \u00b7 ' + esc(ctLbl) : ''}</span><b>${nowTxt}</b></div>
+  <div class="tn-cr-now"><span class="tn-flbl">Now${ctLbl ? ' \u00b7 ' + esc(ctLbl) : ''}</span><b>${nowTxt.split(' \u00b7 ').map(x => '<span class="tn-cr-nw">' + x + '</span>').join(' \u00b7 ')}</b></div>
   ${reasons.length > 1 ? `<div class="tn-cr-lbl">Reason</div>
   <div class="tn-cr-seg" id="tn-cr-seg-${tid}">${seg('nk', 'NK-Anpassung')}${seg('korrektur', 'Korrektur')}</div>` : ''}
   <p class="tn-cr-hint" data-only="nk"${_v('nk')}>New NK-Vorauszahlung from a date. Tell the tenant in Textform before it takes effect.</p>
@@ -2699,17 +2701,18 @@ function _tnCrRefresh(tid) {
   const now = _tnCrNow(rec) || { mode: st.mode, kalt: 0, nk: 0, total: 0 };
   const k = _tnCrNum('tn-cr-kalt-' + tid), n = _tnCrNum('tn-cr-nk-' + tid);
   const from = _tnParseDate(document.getElementById('tn-cr-from-' + tid)?.value || '');
-  let txt = '—', lbl = 'New';
+  let txt = '—', sub = '', lbl = 'New';
   if (reason === 'nk') {
     if (n != null) txt = _tnFmtEUR((now.kalt || 0) + n) + ' warm';
     lbl = from ? 'From ' + _ccFmtD(from) : 'New';
   } else {
     const pa = (st.mode || now.mode) === 'pauschal';
-    if (k != null) txt = pa ? _tnFmtEUR(k) + ' pauschal' + (n ? ' \u00b7 ohne NK ' + _tnFmtEUR(Math.max(0, k - n)) : '') : _tnFmtEUR(k + (n || 0)) + ' warm';
+    if (k != null) { txt = pa ? _tnFmtEUR(k) + ' pauschal' : _tnFmtEUR(k + (n || 0)) + ' warm'; if (pa && n) sub = 'ohne NK ' + _tnFmtEUR(Math.max(0, k - n)); }
     lbl = 'Corrected';
   }
   const c = document.getElementById('tn-cr-calc-' + tid), cl = document.getElementById('tn-cr-calc-l-' + tid);
-  if (c) c.textContent = txt; if (cl) cl.textContent = lbl;
+  // Pauschal: "ohne NK …" on its own small line under the amount — never split across two lines at 390 px
+  if (c) c.innerHTML = esc(txt) + (sub ? '<small class="tn-cr-calc-sub">' + esc(sub) + '</small>' : ''); if (cl) cl.textContent = lbl;
   const inf = document.getElementById('tn-cr-inf-' + tid)?.checked;
   const w = document.getElementById('tn-cr-infd-wrap-' + tid); if (w) w.style.display = inf ? '' : 'none';
 }
