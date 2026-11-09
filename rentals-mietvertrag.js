@@ -75,7 +75,7 @@ function _buildRentalMietvertragData(room, s, {
       const kaltM = gesamtmiete - nkVorauszahlung;
       const anteil = r2(gesamtmiete / dim * tage), kaltA = r2(kaltM / dim * tage), nkA = r2(anteil - kaltA);
       const e = v => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '\u00a0\u20ac';
-      ersterMonatNote = `Erster Monat anteilig: ${tage} von ${dim} Tagen = ${e(anteil)}` +
+      ersterMonatNote = `anteilig: ${tage} von ${dim} Tagen = ${e(anteil)}` +   // n19: the row label already says "Erster Monat"
         (pricingMode === 'kalt_nk' ? ` (${e(kaltA)} Kaltmiete + ${e(nkA)} NK).` : ' (pauschal inkl. NK).');
     }
   }
@@ -435,7 +435,7 @@ function _renderRentalMietvertragHTML(d) {
     'Winterdienst',
   ];
   const nkRows = NK_ITEMS.map(i => `<div class="nk-item">${i}</div>`).join('') +
-    `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fs.\u202fd. \u00a7\u00a72 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Enthärtungsanlage, sonstige Anlagen)</div>`;
+    `<div class="nk-item nk-item--full">Sonstige Betriebskosten i.\u202fS.\u202fd. \u00a7\u00a02 Nr.\u00a017 BetrKV (insbes. Wartung Heizung, Enthärtungsanlage, sonstige Anlagen)</div>`;
 
   const invRows = d.inventar.length
     ? d.inventar.map(i => `<tr><td>${i.gegenstand}</td><td>${i.anzahl}</td></tr>`).join('')
@@ -452,7 +452,7 @@ function _renderRentalMietvertragHTML(d) {
   const mieteBlock = (first) => `
     ${sec('Miete',true,first)}
     ${d.pricingMode==='kalt_nk'
-      ? kv('Kaltmiete',eur(d.anfangsmiete||d.kaltmiete)+'\u2002/ Monat'+(hasStaffel?' (Staffelmiete \u2014 siehe \u00a7\u00a04)':''))
+      ? kv('Kaltmiete',eur(hasStaffel && d.anfangsmiete ? d.anfangsmiete : d.kaltmiete)+'\u2002/ Monat'+(hasStaffel?' (Staffelmiete \u2014 siehe \u00a7\u00a04)':''))
         + kv('Nebenkosten VZ',eur(d.nkVorauszahlung)+'\u2002/ Monat (Vorauszahlung)')
       : kv('Pauschalmiete',eur(d.gesamtmiete)+'\u2002/ Monat (inkl. NK)')
     }

@@ -567,6 +567,9 @@ function _cxLegacyMode(link, t) {
   return isP ? 'pauschal' : 'kalt_nk';
 }
 
+/* n44: a Rentals rent step by the type picked in Tenants (controlling.html has no cc-tenant-status.js) — no type = Staffel */
+const _CX_MH = { staffel: 'Staffel', mieterhoehung: 'Mieterhöhung', index: 'Index', korrektur: 'Korrektur' };
+function _cxMhLabel(h) { return _CX_MH[(h && h.kind) || 'staffel'] || 'Mieterhöhung'; }
 /* Does a Staffel / NK step belong to this tenancy? (B6)
    · linked to a tenant → only that tenant
    · old rows without link → by date within the tenancy, but NOT when the step was
@@ -776,7 +779,7 @@ function _cxUnitSollV2(u, pid, y, m) {
         const old = b ? (pau ? _cxR(b.k + b.nk) : b.k) : null;
         notes.push('Mieterhöhung · ' + (old !== null && old !== _cxNum(h.amount) ? _cxEurS(old) + ' → ' : '') + _cxEurS(h.amount) + (pau ? ' Pauschal' : ' Kalt') + ' from ' + _cxFmtD(d));
       } else {
-        notes.push('Staffel · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d));
+        notes.push(_cxMhLabel(h) + ' · ' + (b && b.k !== _cxNum(h.amount) ? _cxEurS(b.k) + ' → ' : '') + _cxEurS(h.amount) + ' from ' + _cxFmtD(d));
       }
       changed = true; }
     for (const h of c.nk) { const d = _cxD(h.effective_date); if (!inM(d)) continue; const b = before(d);

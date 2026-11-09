@@ -362,7 +362,7 @@ function _aptRenderUebergHTML(d) {
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Adresse', objektLine)}
     ${d.wohnungsnummer ? kv('Wohnungsnummer', d.wohnungsnummer) : ''}
-    ${d.flaeche ? kv('Wohnfläche', d.flaeche) : ''}
+    ${d.flaeche ? kv(isGewerbe ? 'Nutzfläche' : 'Wohnfläche', d.flaeche) : ''}
     ${kv('Vermieter', d.vermieter)}
     ${kv(mieter1Lbl, d.mieterName)}
     ${kv(hasExtra ? 'Adresse Mieter 1' : 'Adresse Mieter', d.mieterAdr)}
@@ -402,7 +402,7 @@ function _aptRenderUebergHTML(d) {
         <span class="schluessel-item__label">${isGewerbe ? 'Mietfläche' : 'Wohnungstür'}</span>
         <span class="schluessel-item__val">${d.wohnungtur}</span>
       </div>
-      ${(!isGewerbe && Number(d.briefkasten) > 0) ? `
+      ${Number(d.briefkasten) > 0 ? `
       <div class="schluessel-item">
         <span class="schluessel-item__label">Briefkasten</span>
         <span class="schluessel-item__val">${d.briefkasten}</span>

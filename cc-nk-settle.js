@@ -88,11 +88,11 @@ function _ccNksPerLabel(from, to) { return _ccNksD(from) + '–' + _ccNksD(to); 
 /* Which app this page is: Rentals or Casa Castel (each page has only one tenants tab) */
 function _ccNksApp() { return typeof _rntRecords !== 'undefined' ? 'rentals' : 'casa'; }
 /* Rentals: the due periods come from the apartment's own Abrechnungszeitraum (Controlling property) */
-function ccNksDueFor(rec, apt) {
+function ccNksDueFor(rec, apt, hasKaltNK) {   // hasKaltNK(from, to): as ccNksDue — a Pauschal-only period is not due (Rentals n40)
   const norm = s => String(s || '').trim().toLowerCase();
   const p = (CC_NKS.props || []).find(x => x.rentals_apartment_ref != null && String(x.rentals_apartment_ref) === String(apt.id))
          || (CC_NKS.props || []).find(x => Number(x.id) !== 7 && norm(x.name) === norm(apt.name));
-  return p ? ccNksDue(rec, null, p).map(x => ({ ...x, pid: p.id })) : [];
+  return p ? ccNksDue(rec, hasKaltNK || null, p).map(x => ({ ...x, pid: p.id })) : [];
 }
 /* hasKaltNK(from, to) → true when the tenant paid Kalt + NK on any day of that span */
 function ccNksDue(rec, hasKaltNK, prop) {
@@ -118,6 +118,8 @@ function ccNksDueOpen(tid, legacy, due) {
   });
 }
 
+/* A period's year: "2025", or "2025/26" for a period over two years */
+function _ccNksYr(a, b) { a = String(a || '').slice(0, 4); b = String(b || '').slice(0, 4); return !b || a === b ? a : a + '/' + b.slice(2); }
 /* Which NK-Abrechnung is open, for the card pill: "NK 2025 open" (oldest open first) */
 function ccNksOpenLabel(tid, legacy, due) {
   const dOpen = ccNksDueOpen(tid, legacy, due).sort((a, b) => a.from.localeCompare(b.from));
@@ -125,7 +127,7 @@ function ccNksOpenLabel(tid, legacy, due) {
     && !['erledigt', 'bezahlt', 'nicht durchgeführt'].includes(r.status))
     .sort((a, b) => String(a.period_from).localeCompare(String(b.period_from)));
   // Nov 2026 (owner: shorter): the year only — "NK 2025 open", a period over two years "NK 2025/26 open" (oldest open first)
-  const yr = (a, b) => { a = String(a || '').slice(0, 4); b = String(b || '').slice(0, 4); return !b || a === b ? a : a + '/' + b.slice(2); };
+  const yr = _ccNksYr;
   let lbl = '', from = '';
   if (rows.length && rows[0].period_from && rows[0].period_to) { lbl = yr(rows[0].period_from, rows[0].period_to); from = String(rows[0].period_from).slice(0, 10); }
   if (dOpen.length && (!from || dOpen[0].spanFrom < from)) lbl = yr(dOpen[0].from, dOpen[0].to);
@@ -175,8 +177,9 @@ async function ccNksOldAction(id, tid) {
    "nicht durchgeführt". Pill and count disappear; the line stays, greyed,
    and can be reopened. Casa only: skip one year for every Casa tenant.      */
 const _NK_CASA_PROP = 7;
-function _ccNksName(tid) {
-  const r = typeof _tnRecords !== 'undefined' ? _tnRecords.find(x => String(x.id) === String(tid)) : null;
+function _ccNksName(tid) {   // n41: ccfRec serves both apps (Rentals had no name here)
+  const r = typeof ccfRec === 'function' ? ccfRec(tid)
+          : typeof _tnRecords !== 'undefined' ? _tnRecords.find(x => String(x.id) === String(tid)) : null;
   return r ? ([r.first_name, r.last_name].filter(Boolean).join(' ') || r.room || '') : '';
 }
 function _ccNksRefresh() {
@@ -257,8 +260,8 @@ async function ccNksRowAction(tid, id) {
     return;
   }
   const casa = Number(row.property_id) === _NK_CASA_PROP;
-  const year = Number(row.covers_year) || Number(String(row.period_to || '').slice(0, 4));
-  const label = String(year);
+  const year = Number(row.covers_year) || Number(String(row.period_to || '').slice(0, 4));   // Skip all (Casa) goes by the year
+  const label = row.period_from && row.period_to ? _ccNksYr(row.period_from, row.period_to) : String(year);   // n41: the row's own period
   const v = await _ccNksAskSkip('NK ' + label + ' · ' + _ccNksEsc(_ccNksName(tid)),
     per + '<br>Not doing this one? It is saved as "nicht durchgeführt", the same as in Settlements. You can reopen it any time.', casa ? year : null, label);
   if (v === 'all') return _ccNksSkipAll(year, label);

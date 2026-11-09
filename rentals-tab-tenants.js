@@ -421,6 +421,7 @@ button.tn-nkv-pill.done:active { opacity:.7; }
   background:#FAEEDA55; border-top:0.5px solid #EF9F2760; cursor:pointer; }
 .tn-kaution-nudge i { color:#BA7517; }
 .tn-nudge-name   { font-size:10px; color:#854F0B; flex:1; }
+.tn-nudge-amt    { display:flex; flex-direction:column; align-items:flex-end; text-align:right; }
 .tn-nudge-kept   { font-size:10px; font-weight:600; color:#633806; }
 .tn-nudge-status { font-size:9px; font-weight:600; letter-spacing:.05em;
   text-transform:uppercase; color:#BA7517; }
@@ -723,10 +724,8 @@ function _rntMoreHTML(rid, type, unit, rec) {
     if (isApt) rows.push(ccRowHTML({ icon: 'gauge', title: 'Zählerstände', meta: _rntEsc(ccfMetersSummary(rec)), onclick: `_rntSheet('meters','${rid}','${rec.id}','${kind}','${unit.id}')` }));   // parking has no Zähler
   }
   if (isApt) {
-    if (!_rntAllPauschal(rec.id)) {
-      const open = _rntNkHasOpen(rec.id);
-      rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen',
-        meta: open ? `<span class="tnp tnp-amber">${_rntEsc(typeof ccNksOpenLabel === 'function' ? ccNksOpenLabel(rec.id, _rntNK[rec.id], _rntNkDue(rec)) : 'NK open')}</span>` : 'none due',
+    if (!_rntAllPauschal(rec.id)) {   // n40 (as Casa): no reminder pill here — the row only opens the NK-Abrechnungen
+      rows.push(ccRowHTML({ icon: 'receipt', title: 'NK-Abrechnungen', meta: '',
         onclick: `_rntSheet('nk','${rid}','${rec.id}','apt','${unit.id}')` }));
     }
     const c = _rntNKVorausCurFor(unit.id, rec);
@@ -963,11 +962,21 @@ function _rntAllPauschal(tid) {
   const per = typeof ccRpFor === 'function' ? ccRpFor('rentals', tid) : [];
   return per.length > 0 && per.every(p => p.mode === 'pauschal');
 }
+/* n40 (as Casa _tnHasKaltNKBetween): did the tenant pay Kalt + NK on any day from → to? A Pauschal-only span has no
+   NK-Abrechnung. No rent history → Kalt + NK (Rentals is kalt_nk in Controlling). */
+function _rntHasKaltNKBetween(rec, from, to) {
+  const per = typeof ccRpFor === 'function' ? ccRpFor('rentals', rec.id) : [];
+  if (!per.length) return true;
+  const first = ccRpAt(per, from);
+  const modes = (first ? [first] : [{ mode: 'kalt_nk' }])
+    .concat(per.filter(p => ccRpIso(p.valid_from) > from && ccRpIso(p.valid_from) <= to));
+  return modes.some(p => p.mode !== 'pauschal');
+}
 /* NK periods that are due for this tenant — from the apartment's own Abrechnungszeitraum (Controlling) */
 function _rntNkDue(rec) {
   if (!rec || typeof ccNksDueFor !== 'function') return [];
   const apt = rec.apartment_id ? (appApartments || []).find(a => String(a.id) === String(rec.apartment_id)) : null;
-  return apt ? ccNksDueFor(rec, apt) : [];
+  return apt ? ccNksDueFor(rec, apt, (f, t) => _rntHasKaltNKBetween(rec, f, t)) : [];
 }
 function _rntNkHasOpen(tid) {
   if (_rntAllPauschal(tid)) return false;                                           // pauschal → no NK-Abrechnung
@@ -985,6 +994,13 @@ function _rntKautionKept(tid) {
   const k = _rntKaution[tid];
   if (!k) return 0;
   return Math.max(0, (k.received || 0) - (k.returned || 0));
+}
+/* Former tenant's Kaution line on the card — n37: the money still held is "open" (the Former list's words), never "kept" */
+function _rntNudgeText(tid) {
+  const kk = _rntKaution[tid], held = _rntKautionKept(tid);
+  const allReturned = !!(kk && kk.returned >= kk.received);
+  return { keptStr: held > 0 ? 'Kaution ' + _rntFmtEUR(held) + ' open' : allReturned ? 'fully returned' : 'full refund',
+           statusStr: allReturned ? 'Mark settled' : 'Refund pending' };
 }
 
 function _rntIsAllDone(tid) {
@@ -1068,7 +1084,7 @@ async function _rntLoad(unitsReady) {
     sbL.from('rnt_kaution').select('*'),
     sbL.from('rnt_nk_entries').select('*').order('period', { ascending: false }),
     sbL.from('rnt_tenant_documents').select('*'),
-    typeof ccRpLoad === 'function' ? ccRpLoad(sbL, 'rentals') : null,    // rent history (rent_periods)
+    typeof ccRpLoad === 'function' ? (_rntRpWarm || ccRpLoad(sbL, 'rentals')) : null,    // rent history (rent_periods; the preload's when on its way)
     typeof ccNksLoad === 'function' ? ccNksLoad() : null,                // NK-Abrechnungen (Settlements)
     sbL.from('meter_readings').select('*').eq('app', rdApp),             // Zählerstände
   ]);
@@ -1304,16 +1320,11 @@ function _rntCardHTML({ type, unit }) {
     .filter(r => { const k = _rntKaution[r.id]; return k && k.received > 0 && !k.settled; })
     .map(r => {
       const name = _rntFullTenantNames(r) || '\u2014';
-      const kk   = _rntKaution[r.id];
-      const kept = _rntKautionKept(r.id);
-      const allReturned = kk && kk.returned >= kk.received;
-      const keptStr   = kept > 0 ? _rntFmtEUR(kept) + ' kept' : allReturned ? 'fully returned' : 'full refund';
-      const statusStr = allReturned ? 'Mark settled' : 'Refund pending';
+      const { keptStr, statusStr } = _rntNudgeText(r.id);
       return `<div class="tn-kaution-nudge" onclick="_rntOpenModal('${r.id}')">
         <i class="ti ti-user" style="font-size:11px"></i>
         <span class="tn-nudge-name">${_rntEsc(name)} · former</span>
-        <span class="tn-nudge-kept">${keptStr}</span>
-        <span class="tn-nudge-status">${statusStr}</span>
+        <span class="tn-nudge-amt"><span class="tn-nudge-kept">${keptStr}</span><span class="tn-nudge-status">${statusStr}</span></span>
         <i class="ti ti-chevron-right" style="font-size:11px"></i>
       </div>`;
     }).join('');
@@ -1732,7 +1743,7 @@ function _ccRentTimelineHTML(app, rec, fmtEUR) {
   if (list.length < 2) return '';
   const today = _ccTodayIso();
   let curIdx = -1; list.forEach((p, i) => { if (_ccIso(p.valid_from) <= today) curIdx = i; });
-  const kind = { migrated: 'Start', manual: 'Korrektur', renewal: 'Verlängerung', staffel: 'Staffel', index: 'Index', nk: 'NK-Anpassung' };
+  const kind = { contract: 'Mietvertrag', migrated: 'Start', manual: 'Korrektur', renewal: 'Verlängerung', staffel: 'Staffel', index: 'Index', nk: 'NK-Anpassung' };
   const rows = list.slice().reverse().map((p, ri) => {
     const i = list.length - 1 - ri, fut = _ccIso(p.valid_from) > today;
     const amt = p.mode === 'pauschal' ? fmtEUR(p.pauschale) + ' pauschal'
@@ -1740,7 +1751,7 @@ function _ccRentTimelineHTML(app, rec, fmtEUR) {
     return `<div class="cc-tl-row${i === curIdx ? ' is-cur' : ''}${fut ? ' is-fut' : ''}">
       <span class="cc-tl-date">ab ${_ccFmtD(p.valid_from)}</span>
       <span class="cc-tl-amt">${amt}</span>
-      <span class="cc-tl-kind">${fut ? 'geplant · ' : ''}${kind[p.kind] || p.kind || ''}</span></div>`;
+      <span class="cc-tl-kind">${fut ? 'geplant · ' : ''}${(p.kind === 'contract' && _rntContractLabel(p.contract_type)) || kind[p.kind] || p.kind || ''}</span></div>`;
   }).join('');
   return `<details class="cc-tl"><summary>Rent history · ${list.length} entries</summary>${rows}</details>`;
 }
@@ -2117,6 +2128,45 @@ function _rntSyncTypePeriod(rec, type) {
   const before = per.contract_type;
   per.contract_type = type;
   ccRpUpdate(sbL, per.id, { contract_type: type }).catch(err => { per.contract_type = before; _rntRender(); ccSaveFailed(err, 'contract type'); });
+}
+/* Nov 2026 (n35): the rent entry that starts the tenancy's latest contract — the latest renewal, else the first
+   contract entry (the one from the contract start / Move-in). Controlling and the Kündigung (#26) read its contract_end. */
+function _rntContractEntry(rec) {
+  if (!rec || !rec.id || typeof ccRpFor !== 'function') return null;
+  const per = ccRpFor('rentals', rec.id);
+  const cs = _ccIso(rec.vertragsbeginn) || _ccIso(rec.mietbeginn);
+  const ren = per.filter(p => p.kind === 'renewal' && (!cs || _ccIso(p.valid_from) > cs));
+  if (ren.length) return ren[ren.length - 1];
+  return per.find(p => p.kind !== 'renewal' && _ccIso(p.valid_from) === cs) || per.find(p => p.kind !== 'renewal') || null;
+}
+/* Nov 2026 (n35, as Casa _tnSyncContractEnd): the card's Contract end → that entry's contract_end, so Controlling never
+   reads an old end the card no longer has. An empty end clears it. A date is written only into an entry that is a
+   fixed-term contract already (has an end, or is Kurzzeit) — an open-ended Mietvertrag never gets one — unless
+   opts.force (the Kündigung #26 for a befristet contract). Safe to repeat; resolves once written (errors are shown).
+   opts.prev (a card / pop-up save): the Contract end before that save — if the entry can't be written, the card's
+   Contract end goes back to it (screen and tenant row), so the toast's "previous values are back" is true and the
+   next Save runs this sync again. */
+function _rntSyncContractEnd(rec, end, opts) {
+  if (!rec || !rec.id || !sbL || typeof ccRpUpdate !== 'function') return Promise.resolve(false);
+  const ent = _rntContractEntry(rec);
+  if (!ent || !ent.id) return Promise.resolve(false);
+  const want = _ccIso(end) || null, has = _ccIso(ent.contract_end) || null;
+  if (has === want) return Promise.resolve(false);
+  if (want && !has && !(opts && opts.force) && (ent.contract_type || rntContractType(rec)) !== 'kurzzeit') return Promise.resolve(false);
+  return ccQueueWrite('rp-' + ent.id, () => ccRpUpdate(sbL, ent.id, { contract_end: want }).then(() => ({}), e => ({ error: e })))
+    .then(r => {
+      if (!(r && r.error)) return true;
+      if (opts && 'prev' in opts && (_ccIso(rec.vertragsende) || null) === want) {   // not changed again meanwhile
+        const prev = opts.prev ?? null;
+        rec.vertragsende = prev;
+        _rntRender();
+        if (_rntModalTid === rec.id && document.getElementById('rntModal')?.classList.contains('open')) _rntOpenModal(rec.id);
+        ccQueueWrite('rnt-' + rec.id, () => sbL.from('rnt_tenant_records').update({ vertragsende: prev }).eq('id', rec.id))
+          .then(w => { if (w && w.error) console.warn('[tenants] contract end back:', w.error.message || w.error); });
+      }
+      ccSaveFailed(r.error, 'contract end');
+      return false;
+    });
 }
 function _rntCtSegHTML(attr, value) {
   const v = value === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag';
@@ -2507,7 +2557,7 @@ async function _rntStaffelConfirmAdd__run(aptId, rid) {
   _rntStaffel[aptId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
   _rntStaffelModalClose();
   _rntRender();
-  if (typeof ccSavedToast === 'function') ccSavedToast('Staffel saved');
+  if (typeof ccSavedToast === 'function') ccSavedToast(((typeof CC_MH_KINDS !== 'undefined' && CC_MH_KINDS[kind]) || 'Mieterhöhung') + ' saved');   // n44: the type you picked
 }
 
 async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
@@ -2527,7 +2577,7 @@ async function _rntPkStaffelConfirmAdd__run(pkId, rid) {
   _rntStaffel[pkId].sort((a, b) => b.effective_date.localeCompare(a.effective_date));
   _rntStaffelModalClose();
   _rntRender();
-  if (typeof ccSavedToast === 'function') ccSavedToast('Staffel saved');
+  if (typeof ccSavedToast === 'function') ccSavedToast(((typeof CC_MH_KINDS !== 'undefined' && CC_MH_KINDS[kind]) || 'Mieterhöhung') + ' saved');   // n44: the type you picked
 }
 
 
@@ -3012,7 +3062,7 @@ function _rntModalBodyHTML(rec, isApt) {
         `}
         <div class="tn-field"><span class="tn-flbl">Kaution soll</span>
           <span class="tn-fval">${dKS != null
-            ? _rntFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(override)</span>'
+            ? _rntFmtEUR(dKS) + ' <span style="font-size:10px;color:var(--cc-stone)">(fixed)</span>'
             : soll != null ? _rntFmtEUR(soll) + ' <span style="font-size:10px;color:var(--cc-stone)">(auto)</span>'
             : '<span class="muted">—</span>'}</span></div>
       </div>
@@ -3532,9 +3582,11 @@ async function _rntSaveProfile(rid, tid, unitType, unitId, forceFormer) {
   _rntEnsureKaution(tid);   // background; no-op when the tenant already has a kaution row
   _rntRender();
 
+  // n35: a Contract end changed or cleared here → the contract's rent entry follows (an untouched field writes nothing)
+  const ceChanged = !!(rec && before && update.vertragsende !== undefined && (_ccIso(update.vertragsende) || '') !== (_ccIso(before.vertragsende) || ''));
   ccQueueWrite('rnt-' + tid, () => sbL.from('rnt_tenant_records').update(update).eq('id', tid))
     .then(({ error }) => {
-      if (!error) return;
+      if (!error) { if (ceChanged) _rntSyncContractEnd(rec, update.vertragsende, { prev: before.vertragsende ?? null }); return; }
       if (rec && before) Object.keys(update).forEach(k => { rec[k] = before[k]; });
       if (ctChanged && ctBefore) _rntSyncTypePeriod(rec, ctBefore);
       _rntRender();
@@ -3754,12 +3806,14 @@ async function _rntModalSaveProfile(tid) {
   if (toActive) { update.status = 'active'; update.done = false; }   // the contract type stays with the tenancy
 
   const beforeRec = rec ? { ...rec } : null;
+  // n35: a Contract end changed or cleared here → the contract's rent entry follows (an untouched field writes nothing)
+  const ceChanged = !!(beforeRec && update.vertragsende !== undefined && (_ccIso(update.vertragsende) || '') !== (_ccIso(beforeRec.vertragsende) || ''));
   if (rec) Object.assign(rec, update);
   _rntSyncOccupancy();
 
   const tw = ccQueueWrite('rnt-' + tid, () => sbL.from('rnt_tenant_records').update(update).eq('id', tid))
     .then(({ error }) => {
-      if (!error) return true;
+      if (!error) { if (ceChanged) _rntSyncContractEnd(rec, update.vertragsende, { prev: beforeRec.vertragsende ?? null }); return true; }
       if (rec && beforeRec) Object.keys(update).forEach(k => { rec[k] = beforeRec[k]; });
       _rntRender();
       if (_rntModalTid === tid && document.getElementById('rntModal')?.classList.contains('open')) _rntOpenModal(tid);   // old values back in the pop-up
@@ -4148,6 +4202,7 @@ async function _rntConfirmDelete() {
   document.getElementById('rntConfirm').classList.remove('open');
   _rntDeleteId = null;
   if (btn) btn.disabled = false;
+  if (ok) { const ed = document.getElementById('mprof-edit-' + tid); if (ed) ed.dataset.snap = ''; }   // n36: deleted → no "Save changes?" (as Casa)
   _rntCloseModal();
   if (ok && rec) await _rntAfterDelete(rec); else _rntRender();
 }
@@ -4244,14 +4299,15 @@ function _rntRefreshFormerBadges(tid) {
     }
   });
 
-  const kept = _rntKautionKept(tid);
   document.querySelectorAll('.tn-kaution-nudge').forEach(el => {
     if (el.getAttribute('onclick')?.includes(tid)) {
       if (settled || !hasK) { el.remove(); }
       else {
-        const keptStr = kept > 0 ? _rntFmtEUR(kept) + ' kept' : 'full refund';
+        const { keptStr, statusStr } = _rntNudgeText(tid);   // n37: the same words as the card
         const keptEl  = el.querySelector('.tn-nudge-kept');
         if (keptEl) keptEl.textContent = keptStr;
+        const stEl = el.querySelector('.tn-nudge-status');
+        if (stEl) stEl.textContent = statusStr;
       }
     }
   });
@@ -4318,13 +4374,17 @@ function rntDrawFromCopy() {
 }
 let _rntActiveRecs  = null;    // preloaded active records (until the full load)
 let _rntWarmPromise = null;
+let _rntRpWarm      = null;    // the rent history loading with the preload (the full load reuses it)
 function rntWarmTenants() {
   if (_rntLoadedOnce || _rntActiveRecs) return Promise.resolve();
   if (typeof sbL === 'undefined' || !sbL) return Promise.resolve();
   if (!_rntWarmPromise) {
-    _rntWarmPromise = sbL.from('rnt_tenant_records')
-      .select('id,contract_type,apartment_id,parking_id,status,mietbeginn,mietende,kaltmiete,nebenkosten,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll')
-      .then(({ data, error }) => {
+    // n9: the rent history comes with it — a Pauschal header is drawn "… pauschal" at once, never "warm · … + 0,00 € NK" first
+    if (!_rntRpWarm && typeof ccRpLoad === 'function' && typeof CC_RP !== 'undefined' && !(CC_RP.loaded && CC_RP.loaded.rentals))
+      _rntRpWarm = ccRpLoad(sbL, 'rentals').finally(() => { _rntRpWarm = null; });
+    _rntWarmPromise = Promise.all([sbL.from('rnt_tenant_records')
+      .select('id,contract_type,apartment_id,parking_id,status,mietbeginn,mietende,kaltmiete,nebenkosten,first_name,last_name,email,phone,birthday,address,first_name_2,last_name_2,email_2,phone_2,birthday_2,address_2,first_name_3,last_name_3,email_3,phone_3,birthday_3,address_3,kaution_soll'), _rntRpWarm])
+      .then(([{ data, error }]) => {
         if (error) { console.warn('[rentals tenants] preload:', error.message); return; }
         if (!_rntLoadedOnce) { _rntActiveRecs = data || []; _rntSyncOccupancy(); }   // all statuses; readers filter 'active'
         // headers + totals in Apartments / Parking show the tenants' real rent once known
@@ -4348,7 +4408,7 @@ function rntCurrentRentOf(kind, id) {
   const cur = _ccPickTenancy(src.filter(r => r[col] === id && r.status === 'active')).current;
   if (!cur) return null;
   const r = _rntCurrentRent(cur);
-  return r ? { kalt: r.kalt, nk: r.nk, total: r.total, name: [cur.first_name, cur.last_name].filter(Boolean).join(' ') } : null;
+  return r ? { mode: r.mode, kalt: r.kalt, nk: r.nk, total: r.total, name: [cur.first_name, cur.last_name].filter(Boolean).join(' ') } : null;
 }
 
 /* Active tenant of a unit, read from the loaded records — the same record the
