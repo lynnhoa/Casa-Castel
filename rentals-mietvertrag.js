@@ -35,7 +35,7 @@ function _buildRentalMietvertragData(room, s, {
   staffelAn = false, staffeln = [], anfangsmiete = null,
 }) {
   const fmt = d => {
-    const dt = new Date(d);
+    const dt = ccfDay(d);   // a YYYY-MM-DD field → that day on every phone (not UTC midnight)
     return String(dt.getDate()).padStart(2,'0') + '.' +
            String(dt.getMonth()+1).padStart(2,'0') + '.' +
            dt.getFullYear();
@@ -67,7 +67,7 @@ function _buildRentalMietvertragData(room, s, {
   // First partial month (move-in not on the 1st): share of the full Miete + NK
   let ersterMonatNote = '';
   if (startVal) {
-    const st = new Date(startVal);
+    const st = ccfDay(startVal);
     if (!isNaN(st) && st.getDate() !== 1) {
       const dim  = new Date(st.getFullYear(), st.getMonth() + 1, 0).getDate();
       const tage = dim - st.getDate() + 1;
@@ -118,9 +118,9 @@ function _buildRentalMietvertragData(room, s, {
     zimmerFlaeche:       room.flaeche_m2 || 0,
     etage:               room.floor || '',
     gemeinschaftsraeume: gemStr,
-    mietbeginn: startVal ? fmt(new Date(startVal)) : '',
+    mietbeginn: startVal ? fmt(startVal) : '',
     befristet,
-    mietende:         befristet && endVal ? fmt(new Date(endVal)) : '',
+    mietende:         befristet && endVal ? fmt(endVal) : '',
     grundLabel:       grundLabels[grundVal] || '',
     eigenbedarfPerson: eigenbedarfPerson || '',
     pricingMode,
@@ -139,7 +139,7 @@ function _buildRentalMietvertragData(room, s, {
         anzahl:     Number(i.anzahl) > 0 ? Number(i.anzahl) : 1,
       }))
       .filter(i => i.gegenstand),
-    unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
+    unterzeichnungsDatum: sigVal ? fmt(sigVal) : '',
     hasMieter2: !!(mieterName2 && mieterName2.trim()),
     mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2, mieterEmail2, mieterTel2,
     hasMieter3: !!(mieterName3 && mieterName3.trim()),

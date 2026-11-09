@@ -525,6 +525,16 @@ button.tn-nkv-pill.done:active { opacity:.7; }
 /* The contract-type pill is already in the card header — not repeated in the rent bar (it squeezed the columns) */
 .tn-rent-bar .tn-rc:last-child .tnp { display:none; }
 .tn-rc .tn-rlbl, .tn-rc .tn-rval, .tn-rc .tn-rsub { overflow:hidden; text-overflow:clip; }
+/* Rent bar (Nov 2026, as Casa): three equal value columns · Edit in its own row — dates and amounts never cut */
+#tab-tenants .tn-rent-wrap .tn-rent-bar--3 { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); width:100%; }
+#tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-rc { padding:8px 10px; border-right:var(--cc-border); }
+#tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-rc:first-child { padding-left:14px; }
+#tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-rc:nth-child(3) { border-right:none; }
+#tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-rc:last-child { grid-column:1 / -1; border-right:none; border-top:var(--cc-border); justify-content:flex-end; padding:8px 12px 10px; }
+#tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-edit-rent-btn { min-height:36px; padding:0 14px; }
+#tab-tenants .tn-rent-wrap .tn-rent-bar--3 .tn-rsub { white-space:normal; }   /* a very narrow phone: the date goes to a 2nd line, never cut */
+/* Mieterhöhung row: the date / next step goes to a 2nd line instead of being cut */
+.rnt-mh-meta, .rnt-mh-meta .tnp { white-space:normal; }
 /* Header: status pills wrap under each other instead of running out of the card */
 .tn-hdr-top { min-width:0; }
 .tn-room-lbl { flex-shrink:0; }
@@ -683,10 +693,10 @@ function _rntStaffelRowHTML(rid, isApt, unit, rec) {
   const own = _rntOwnSteps(unit.id, rec.id);
   const st  = typeof ccTnStepState === 'function' ? ccTnStepState(own) : null;
   const staffel = own.some(e => (e.kind || 'staffel') === 'staffel');
-  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">Mieterhöhung overdue</span>`
-    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">Mieterhöhung from ${_rntFmtDate(st.entry.effective_date)}</span>`
+  const meta = st && st.state === 'overdue' ? `<span class="tnp tnp-red">overdue</span>`   // the row title already says Mieterhöhung
+    : st && st.state === 'reminder' ? `<span class="tnp tnp-amber">from ${_rntFmtDate(st.entry.effective_date)}</span>`
     : (typeof ccTnStepNext === 'function' ? ccTnStepNext(own, _rntFmtEUR, _rntFmtDate) : '');
-  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Mieterhöhung' + (staffel ? ' <span class="tnp tnp-blue">Staffel</span>' : ''), meta,
+  return ccGroupHTML('', ccRowHTML({ icon: 'trending-up', title: 'Mieterhöhung' + (staffel ? ' <span class="tnp tnp-blue">Staffel</span>' : ''), meta: `<span class="rnt-mh-meta">${meta}</span>`,
     onclick: `_rntSheet('staffel','${rid}','${rec.id}','${isApt ? 'apt' : 'pk'}','${unit.id}')` }));
 }
 /* ── Casa Castel layout (Oct 2026): Kaution line · More list · Übergabe button · Former tenants row ── */
@@ -1455,7 +1465,7 @@ function _rntRentBarHTML(rid, type, unit, rec) {
   if (isApt && cur && cur.mode === 'pauschal') {
     const inc = Number(cur.period && cur.period.nebenkosten) || 0;
     return `
-<div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar">
+<div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar tn-rent-bar--3">
   <div class="tn-rc">
     <div class="tn-rlbl">Pauschalmiete</div>
     <div class="tn-rval">${_rntFmtEUR(cur.total)}</div>
@@ -1480,7 +1490,7 @@ function _rntRentBarHTML(rid, type, unit, rec) {
   }
   if (isApt) {
     return `
-<div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar">
+<div class="tn-rent-wrap" id="rbar-${rid}">${rTitle}<div class="tn-rent-bar tn-rent-bar--3">
   <div class="tn-rc">
     <div class="tn-rlbl">Kaltmiete</div>
     <div class="tn-rval">${cur ? _rntFmtEUR(cur.kalt) : '\u2014'}</div>

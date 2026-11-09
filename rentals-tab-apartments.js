@@ -2608,12 +2608,11 @@ async function _aptOpenContract(type, aptId, renew) {
           }
 
           // S3 fields
-          let verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0, verlaengerungBis = '';
+          let verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0;
           if (szenario === 'S3') {
             verlaengerungJahre  = parseInt(document.getElementById('apt-gw-verl-jahre')?.value) || 0;
             ankuendigungMonate  = parseInt(document.getElementById('apt-gw-ankuend')?.value) || 6;
             neueKaltmiete       = parseFloat(document.getElementById('apt-gw-neue-kalt')?.value) || 0;
-            verlaengerungBis    = document.getElementById('apt-gw-verl-bis-display')?.textContent?.replace('Verlängerung bis: ','').trim();
           }
 
           const btn = document.getElementById('aptGwPdfBtn');
@@ -2630,7 +2629,7 @@ async function _aptOpenContract(type, aptId, renew) {
               kautionVal, kautionFael, sigVal,
               sonderkAn, sonderkEnde,
               kuendigungsfrist, staffelAn, staffeln,
-              verlaengerungJahre, ankuendigungMonate, neueKaltmiete, verlaengerungBis,
+              verlaengerungJahre, ankuendigungMonate, neueKaltmiete,
             });
             if (typeof ccfContractData === 'function') ccfContractData(data, document.getElementById('apt-gw-kaution')?.value);
             ccBlankFill(data, ['mietbeginn'].concat(szenario === 'S2' ? ['mietende'] : [], szenario === 'S3' ? ['ankuendigungBis'] : []));
@@ -3084,15 +3083,9 @@ function _aptMvToggleStaffel() {
 function _aptMvCalcStaffelDates() {
   const startVal  = document.getElementById('apt-mv-start')?.value;
   const intervall = parseInt(document.getElementById('apt-mv-staffel-intervall')?.value) || 1;
-  const fmtDt = dt =>
-    String(dt.getDate()).padStart(2,'0') + '.' +
-    String(dt.getMonth()+1).padStart(2,'0') + '.' + dt.getFullYear();
-  let staffelStart = null;
-  if (startVal) {
-    const d = new Date(startVal);
-    d.setFullYear(d.getFullYear() + intervall);
-    staffelStart = d;
-  }
+  // first step = Mietbeginn + intervall, then every <intervall> years after the step before (YYYY-MM-DD, any time zone)
+  const startIso     = startVal ? ccfIso(startVal) : null;
+  const staffelStart = startIso ? ccfAddYears(startIso, intervall) : null;
   const addBtn  = document.getElementById('apt-mv-staffel-add-btn');
   const addHint = document.getElementById('apt-mv-staffel-add-hint');
   if (addBtn) {
@@ -3110,15 +3103,13 @@ function _aptMvCalcStaffelDates() {
     remBtn.style.opacity = canRemove ? '1'                  : '.5';
   }
   if (staffelStart) {
-    document.querySelectorAll('.apt-mv-staffel-row').forEach((row, i) => {
+    const rows  = document.querySelectorAll('.apt-mv-staffel-row');
+    const dates = ccfStaffelDates(staffelStart, intervall, rows.length);
+    rows.forEach((row, i) => {
       const dateLbl = row.querySelector('.apt-mv-staffel-datum');
-      if (dateLbl) {
-        const d2 = new Date(staffelStart);
-        d2.setFullYear(d2.getFullYear() + i * intervall);
-        dateLbl.textContent = fmtDt(d2);
-      }
+      if (dateLbl) dateLbl.textContent = ccfFmt(dates[i]);
     });
-  }
+  } else document.querySelectorAll('.apt-mv-staffel-datum').forEach(l => { l.textContent = '\u2014'; });   // no Mietbeginn → no old dates
 }
 
 function _aptMvAddStaffel(force) {
@@ -3442,15 +3433,10 @@ function _aptGwToggleStaffel() {
 }
 
 /* ── GEWERBE: Date calculations ───────────────────────── */
-/* End of the Festlaufzeit as YYYY-MM-DD (Mietbeginn + Festlaufzeit − 1 day) — the PDF builder's maths */
+/* End of the Festlaufzeit as YYYY-MM-DD (Mietbeginn + Festlaufzeit − 1 day) — the PDF builder's maths (_gwTermDates) */
 function _aptGwEndIso(startVal, festNum, festUnit) {
-  if (!startVal || !festNum) return null;
-  const d = new Date(startVal);
-  if (isNaN(d)) return null;
-  if (festUnit === 'Jahre') d.setFullYear(d.getFullYear() + festNum);
-  else d.setMonth(d.getMonth() + festNum);
-  d.setDate(d.getDate() - 1);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const t = _gwTermDates(startVal, festNum, festUnit);
+  return t ? t.end : null;
 }
 function _aptGwCalcDates() {
   const startVal  = document.getElementById('apt-gw-start')?.value;
@@ -3458,22 +3444,15 @@ function _aptGwCalcDates() {
   const festUnit  = document.getElementById('apt-gw-fest-unit')?.value || 'Jahre';
   const intervall = parseInt(document.getElementById('apt-gw-staffel-intervall')?.value) || 1;
 
-  const fmtDt = dt => {
-    return String(dt.getDate()).padStart(2,'0') + '.' +
-           String(dt.getMonth()+1).padStart(2,'0') + '.' + dt.getFullYear();
-  };
-
-  // Calculate Mietende
-  let mietende = null;
-  if (startVal && festNum) {
-    const d = new Date(startVal);
-    if (festUnit === 'Jahre') d.setFullYear(d.getFullYear() + festNum);
-    else d.setMonth(d.getMonth() + festNum);
-    d.setDate(d.getDate() - 1); // last day before new period
-    mietende = d;
+  // Calculate Mietende (YYYY-MM-DD, the same rule as the PDF)
+  const verlJahre  = parseInt(document.getElementById('apt-gw-verl-jahre')?.value) || 0;
+  const ankuendMon = parseInt(document.getElementById('apt-gw-ankuend')?.value) || 0;
+  const term = _gwTermDates(startVal, festNum, festUnit, ankuendMon, verlJahre);
+  const mietende = term ? term.end : null;
+  if (mietende) {
     const endDisp = document.getElementById('apt-gw-enddatum-display');
     const endVal  = document.getElementById('apt-gw-enddatum-val');
-    if (endDisp && endVal) { endDisp.style.display = ''; endVal.textContent = fmtDt(d); }
+    if (endDisp && endVal) { endDisp.style.display = ''; endVal.textContent = ccfFmt(mietende); }
   } else {
     const endDisp = document.getElementById('apt-gw-enddatum-display');
     if (endDisp) endDisp.style.display = 'none';   // no Mietbeginn / Festlaufzeit → no "Endet am"
@@ -3500,45 +3479,30 @@ function _aptGwCalcDates() {
   // Staffel dates — start from mietende + 1 day
   if (mietende) {
     const rows = document.querySelectorAll('.apt-gw-staffel-row');
+    const dates = ccfStaffelDates(term.next, intervall, rows.length);   // day after mietende, then every intervall years after the step before
     rows.forEach((row, i) => {
       const dateLbl = row.querySelector('.apt-gw-staffel-datum');
-      if (dateLbl) {
-        const d2 = new Date(mietende);
-        d2.setDate(d2.getDate() + 1); // day after mietende
-        d2.setFullYear(d2.getFullYear() + i * intervall);
-        if (i > 0) {
-          // each staffel is intervall years after the previous
-          const base = new Date(mietende);
-          base.setDate(base.getDate() + 1);
-          base.setFullYear(base.getFullYear() + i * intervall);
-          dateLbl.textContent = fmtDt(base);
-        } else {
-          dateLbl.textContent = fmtDt(d2);
-        }
-      }
+      if (dateLbl) dateLbl.textContent = ccfFmt(dates[i]);
     });
-  }
+  } else document.querySelectorAll('.apt-gw-staffel-datum').forEach(l => { l.textContent = '\u2014'; });   // no end date → no old dates
 
   // S3 dates
   const szenario = document.querySelector('.apt-gw-szenario-btn.active')?.dataset.s;
   if (szenario === 'S3' && mietende) {
-    const verlJahre   = parseInt(document.getElementById('apt-gw-verl-jahre')?.value) || 0;
-    const ankuendMon  = parseInt(document.getElementById('apt-gw-ankuend')?.value) || 0;
     const s3disp      = document.getElementById('apt-gw-s3-dates-display');
     const ankuendDisp = document.getElementById('apt-gw-ankuend-display');
     const verlBisDisp = document.getElementById('apt-gw-verl-bis-display');
 
     if (verlJahre && ankuendMon && s3disp) {
-      const ankuendDt = new Date(mietende);
-      ankuendDt.setMonth(ankuendDt.getMonth() - ankuendMon);
-      const verlBisDt = new Date(mietende);
-      verlBisDt.setFullYear(verlBisDt.getFullYear() + verlJahre);
       s3disp.style.display = '';
-      if (ankuendDisp) ankuendDisp.textContent = fmtDt(ankuendDt);
-      if (verlBisDisp) verlBisDisp.textContent = fmtDt(verlBisDt);
+      if (ankuendDisp) ankuendDisp.textContent = ccfFmt(term.ank);
+      if (verlBisDisp) verlBisDisp.textContent = ccfFmt(term.verlBis);
     } else if (s3disp) {
       s3disp.style.display = 'none';
     }
+  } else {
+    const s3disp = document.getElementById('apt-gw-s3-dates-display');
+    if (s3disp) s3disp.style.display = 'none';   // no Mietbeginn / Festlaufzeit → no old option dates on screen
   }
 }
 

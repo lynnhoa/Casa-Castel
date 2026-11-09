@@ -28,7 +28,7 @@ function _buildRentalKurzzeitData(apt, s, {
   kautionVal, kautionFael = '5',
 }) {
   const fmt = d => {
-    const dt = new Date(d);
+    const dt = ccfDay(d);   // a YYYY-MM-DD field → that day on every phone (not UTC midnight)
     return String(dt.getDate()).padStart(2,'0') + '.' +
            String(dt.getMonth()+1).padStart(2,'0') + '.' +
            dt.getFullYear();
@@ -48,8 +48,8 @@ function _buildRentalKurzzeitData(apt, s, {
   const monatlMiete = r2(kz.total);
 
   // Date maths
-  const start   = new Date(startVal);
-  const end     = new Date(endVal);
+  const start   = ccfDay(startVal);   // local noon: the same days and month shares on every phone
+  const end     = ccfDay(endVal);
   const dimOf   = d => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   const daysInFirstMonth = dimOf(start);
   const daysInLastMonth  = dimOf(end);
@@ -151,8 +151,8 @@ function _buildRentalKurzzeitData(apt, s, {
     wohnungFlaeche:     apt.flaeche_m2 || 0,
     etage:              apt.floor || '',
     gemeinschaftsraeume: '',   // apartments don't have shared-room lists
-    mietbeginn:  startVal ? fmt(new Date(startVal)) : '',
-    mietende:    endVal   ? fmt(new Date(endVal))   : '',
+    mietbeginn:  startVal ? fmt(startVal) : '',
+    mietende:    endVal   ? fmt(endVal)   : '',
     monatlMiete,
     kzKaltmiete: kzKalt,
     kzNk,
@@ -187,7 +187,7 @@ function _buildRentalKurzzeitData(apt, s, {
     endenergiebedarf:     apt.endenergiebedarf   || '',
     energieausweisart:    apt.energieausweisart  || '',
     inventar,
-    unterzeichnungsDatum: sigVal ? fmt(new Date(sigVal)) : '',
+    unterzeichnungsDatum: sigVal ? fmt(sigVal) : '',
     hasMieter2: !!(mieterName2 && mieterName2.trim()),
     mieterName2, mieterAdresse2: mieterAdr2, mieterGeburtsdatum2: mieterDob2, mieterEmail2, mieterTel2,
     hasMieter3: !!(mieterName3 && mieterName3.trim()),

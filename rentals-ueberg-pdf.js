@@ -72,7 +72,7 @@ function _aptCollectUebergData(apt, isEinzug) {
   const fmtDate = v => {
     if (!v) return '';
     if (/^\d{2}\.\d{2}\.\d{4}$/.test(v)) return v;
-    const d = new Date(v);
+    const d = ccfDay(v);   // a YYYY-MM-DD field → that day on every phone
     if (isNaN(d)) return v;
     return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
   };
@@ -361,7 +361,7 @@ function _aptRenderUebergHTML(d) {
   const parteienBlock = `
     <div class="sec sec--first">Objekt &amp; Parteien</div>
     ${kv('Adresse', objektLine)}
-    ${d.wohnungsnummer ? kv('Wohnungsnummer', d.wohnungsnummer) : ''}
+    ${d.wohnungsnummer ? kv(isGewerbe ? 'Einheit' : 'Wohnungsnummer', d.wohnungsnummer) : ''}
     ${d.flaeche ? kv(isGewerbe ? 'Nutzfläche' : 'Wohnfläche', d.flaeche) : ''}
     ${kv('Vermieter', d.vermieter)}
     ${kv(mieter1Lbl, d.mieterName)}

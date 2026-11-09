@@ -15,6 +15,24 @@
 
 /* ── DATA BUILDER ─────────────────────────────────────────────────────────── */
 
+/* Term dates as YYYY-MM-DD — the screen ("Endet am", Staffel, S3) and the PDF use this one rule, the same on every phone.
+   end     = Mietbeginn + Festlaufzeit − 1 day; a start day the end month does not have → that month's last day
+             (§ 188 Abs. 3 BGB: 31.01 + 1 Monat → 28.02 · 31.08.2026 + 18 Monate → 29.02.2028)
+   next    = the day after the end (first Staffel step, start of the extension)
+   ank     = last day to declare the option: the same day ankMon months before the end; a contract that ends on
+             a month's last day → that month's last day (31.12 → 30.06 · 31.08 → 28.02 · 28.02 → 31.08)
+   verlBis = end of the extension: next + verlJahre years − 1 day (28.02.2029 + 3 → 29.02.2032) */
+function _gwTermDates(startVal, festNum, festUnit, ankMon, verlJahre) {
+  const start = startVal ? ccfIso(startVal) : null;
+  if (!start || !festNum) return null;
+  const t    = festUnit === 'Jahre' ? ccfAddYears(start, festNum) : ccfAddMonths(start, festNum, true);
+  const end  = festUnit !== 'Jahre' && t.slice(8) !== start.slice(8) ? t : ccfAddDays(t, -1);
+  const next = ccfAddDays(end, 1);
+  const ank  = !ankMon ? '' : next.slice(8) === '01' ? ccfAddDays(ccfAddMonths(next, -ankMon), -1) : ccfAddMonths(end, -ankMon, true);
+  const verlBis = verlJahre ? ccfAddDays(ccfAddYears(next, verlJahre), -1) : '';
+  return { end, next, ank, verlBis };
+}
+
 /* n18: "1 Jahr" / "3 Jahre" — after "von": "1 Jahr" / "3 Jahren" (Monate the same way) */
 function _gwFestWord(unit, n, dat) {
   const y = unit !== 'Monate';
@@ -38,27 +56,20 @@ function _buildGewerbeMietvertragData(apt, s, {
   // S1
   kuendigungsfrist = 6, staffelAn = false, staffeln = [],
   // S3
-  verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0, verlaengerungBis = '',
+  verlaengerungJahre = 0, ankuendigungMonate = 6, neueKaltmiete = 0,
 }) {
   const fmtDt = raw => {
-    const d = new Date(raw);
+    const d = ccfDay(raw);   // a YYYY-MM-DD field → that day on every phone
     return String(d.getDate()).padStart(2,'0') + '.' +
            String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
   };
   const fmtN = n => Number(n).toLocaleString('de-DE', { minimumFractionDigits:2, maximumFractionDigits:2 });
   const eur  = n => fmtN(n) + '\u00a0\u20ac';
 
-  // Calculate Mietende from Mietbeginn + Festlaufzeit
-  let mietende = '';
-  let mietendeRaw = null;
-  if (startVal && festNum) {
-    const d = new Date(startVal);
-    if (festUnit === 'Jahre') d.setFullYear(d.getFullYear() + festNum);
-    else d.setMonth(d.getMonth() + festNum);
-    d.setDate(d.getDate() - 1);
-    mietendeRaw = d;
-    mietende = fmtDt(d);
-  }
+  // Calculate Mietende from Mietbeginn + Festlaufzeit (the same rule as "Endet am" on the screen)
+  const term = _gwTermDates(startVal, festNum, festUnit, ankuendigungMonate, verlaengerungJahre);
+  const mietendeRaw = term ? term.end : null;
+  const mietende = term ? ccfFmt(term.end) : '';
 
   // Staffel dates (S1 + S3)
   const staffelnBuilt = [];
@@ -71,16 +82,10 @@ function _buildGewerbeMietvertragData(apt, s, {
   }
 
   // S3 dates
-  let ankuendigungBis = '', verlBis = verlaengerungBis || '';
+  let ankuendigungBis = '', verlBis = '';   // from the fields only — never an old date left on the screen
   if (szenario === 'S3' && mietendeRaw) {
-    const ankDt = new Date(mietendeRaw);
-    ankDt.setMonth(ankDt.getMonth() - ankuendigungMonate);
-    ankuendigungBis = fmtDt(ankDt);
-    if (!verlBis && verlaengerungJahre) {
-      const verlDt = new Date(mietendeRaw);
-      verlDt.setFullYear(verlDt.getFullYear() + verlaengerungJahre);
-      verlBis = fmtDt(verlDt);
-    }
+    ankuendigungBis = ccfFmt(term.ank);
+    if (verlaengerungJahre) verlBis = ccfFmt(term.verlBis);
   }
 
   const kautionFaelText = 'sofort nach Vertragsunterzeichnung';   // Oct 2026: always sofort
@@ -88,7 +93,7 @@ function _buildGewerbeMietvertragData(apt, s, {
   const gesamtmiete = Number(kaltmiete) + Number(nkVZ);
 
   // §2 Abs. 7 — vorzeitiges Vertragsende + Stichtag (ein Monat davor, tagesgenau geklemmt)
-  const skDt = sonderkEnde ? new Date(sonderkEnde) : null;
+  const skDt = sonderkEnde ? ccfDay(sonderkEnde) : null;
   const sonderkOn = !!(sonderkAn && skDt && !isNaN(skDt));
   let sonderkEndeFmt = '', sonderkStichtagFmt = '';
   if (sonderkOn) {
@@ -145,7 +150,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     mieterEmail3, mieterTel3,
     // Mietzeit
     szenario,
-    mietbeginn:   startVal ? fmtDt(new Date(startVal)) : '',
+    mietbeginn:   startVal ? fmtDt(startVal) : '',
     mietende,
     festlaufzeit: festNum ? `${festNum}\u00a0${_gwFestWord(festUnit, festNum)}` : `____\u00a0${festUnit}`,   // empty → fill in by hand
     festlaufzeitDat: `${festNum || '____'}\u00a0${_gwFestWord(festUnit, festNum, true)}`,   // n18: after "von" (3 Jahren / 1 Jahr)
@@ -167,7 +172,7 @@ function _buildGewerbeMietvertragData(apt, s, {
     kaution:      Number(kautionVal),   // Approve saves this as Kaution Soll (the contract flow reads data.kaution)
     kautionFaelText,
     // Meta
-    unterzeichnungsDatum: sigVal ? fmtDt(new Date(sigVal)) : '',
+    unterzeichnungsDatum: sigVal ? fmtDt(sigVal) : '',
     // §2 Abs. 7 — Sonderkündigungsrecht Nutzungserweiterung
     sonderkAn: sonderkOn,
     sonderkEnde: sonderkEndeFmt,
