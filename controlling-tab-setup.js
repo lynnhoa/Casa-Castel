@@ -75,6 +75,24 @@ const _cxMoney = (table, id, field, val, label) =>
    Kostenarten · Casa Castel cost types — removed in Build A (Oct 2026)
    The separate "Planwerte" card and the Strom field are gone (no Strom in the apartments).  */
 const _cxSU = { edit: {} };
+/* #6 (Nov 2026) · the living unit "Wohnung" of a property's Rentals apartment — made when the apartment is chosen, by
+   "Accept all", or with "+ Apartment" (properties made before). One per property: a second tap / change while it is
+   being saved waits for the same save; a failed save makes nothing (ctlCreateUnit retries a taken id once). */
+const _cxSuLiving = {};
+function _cxSuEnsureLiving(pid) {
+  if (_cxSuLiving[pid]) return _cxSuLiving[pid];
+  const p = ctlProp(pid), l = p ? ctlPropLinks(p) : null;
+  if (!p || p.id === CASA_PROP_ID || !l.apt || ctlUnitsOf(pid).some(u => !_cxIsParking(u))) return Promise.resolve(null);
+  const run = (async () => {
+    try {
+      const u = await ctlCreateUnit({ property_id: pid, name: 'Wohnung', unit_type: 'Wohnung', source_type: 'rentals_apartment', source_ref: String(l.apt.id) });
+      ctlSollReset();
+      return u;
+    } finally { delete _cxSuLiving[pid]; }
+  })();
+  _cxSuLiving[pid] = run;
+  return run;
+}
 const _cxUnitHasEntries = uid => (window._src.incAll || []).concat(window._ctrl.income || []).some(r => r.unit_id === uid);
 function _cxSuSelect(u, opts, cur) {
   return '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_units|' + u.id + '|source" aria-label="Source ' + cxEsc(u.name) + '">' +
@@ -93,8 +111,10 @@ function _cxSuUnit(u, p, st, kind) {
   let info = '';
   if (kind === 'parking' && l) {
     const i = ctlParkingInfo(l.obj);
+    // x4 (Nov 2026): the tenant's rent as Income plans it today (rent history) — not the raw tenant record
+    const now = i.tenant ? ctlTenantRentOn(u, p, i.tenant.id, _cxSuNow(p).later || cxToday()) : null, rent = now !== null ? now : i.rent;
     info = [i.price !== null ? cxEur(i.price) + ' / month' : 'no price in Rentals',
-            i.tenantName ? 'Tenant: ' + i.tenantName + (i.rent !== null ? ' · ' + cxEur(i.rent) : '') : 'no tenant'].join(' · ');
+            i.tenantName ? 'Tenant: ' + i.tenantName + (rent !== null ? ' · ' + cxEur(rent) : '') : 'no tenant'].join(' · ');
   }
   const pill = l ? (l.auto ? cxPill('beige', 'suggested') : cxPill('ok', 'linked')) : cxPill('open', 'not linked');
   const canDel = !l && u.id != null && !_cxUnitHasEntries(u.id);
@@ -114,6 +134,23 @@ function _cxSuUnit(u, p, st, kind) {
 const _cxMoneyF = (table, id, field, val, label) =>
   '<label class="cx-f"><input type="text" inputmode="decimal" data-cx-in="' + table + '|' + id + '|' + field + '" value="' + (val === null || val === undefined || val === '' ? '' : cxE2(val)) + '" placeholder="' + cxEsc(label) + '" aria-label="' + cxEsc(label) + '"><span>€</span></label>';
 const _cxSuSub = t => '<div class="cx-set__sub">' + cxEsc(t) + '</div>';
+/* #15 (Nov 2026) · Setup shows the values Expenses and Book all use (read only): this month's — or, for a property bought
+   later, its first month's (later = the purchase date). It showed old base values (Rentals' first Hausgeld, the newest
+   loan terms even when they start later). */
+function _cxSuNow(p) {
+  const t = cxToday(), s = ctlPropSince(p);
+  const at = s && s.slice(0, 7) > t.slice(0, 7) ? s : t;
+  let y = Number(at.slice(0, 4)), m = Number(at.slice(5, 7));
+  if (ctlHandoverDay(p, y, m) > 1) { m++; if (m > 12) { m = 1; y++; } }   // #30: a purchase month "From handover day" is partial → the monthly amounts of the next month
+  return { y, m, later: s && s > t ? s : '' };
+}
+const _cxSuNb = t => String(t).replace(/ /g, '\u00a0');   // "≈ Tilgung 353,52 €" never breaks inside (390 px)
+function _cxSuLoanNow(L, y, m) {                            // the Kreditrate of month y/m (same source as ctlCostRows)
+  const T = ctlLoanTerms(L, y, m), lm = ctlLoanMonth(T, y, m), since = T._from ? ' since ' + _cxFmtD(T._from) : '';
+  return lm.debit === 'split'
+    ? _cxSuNb('Zinsen ' + cxEur(lm.zinsen)) + ' + ' + _cxSuNb('Tilgung ' + cxEur(lm.tilgung)) + ' = ' + cxEur(lm.rate) + since + ' · debited separately'
+    : 'Kreditrate ' + cxEur(lm.rate) + since + ' · ' + _cxSuNb('≈ Zinsen ' + cxEur(lm.zinsen)) + ' · ' + _cxSuNb('≈ Tilgung ' + cxEur(lm.tilgung));
+}
 
 window.renderSetup = function () {
   const host = document.getElementById('tab-setup');
@@ -138,14 +175,17 @@ window.renderSetup = function () {
     const l = ctlPropLinks(p), casa = p.id === CASA_PROP_ID, k = 'set:' + p.id;
     const pIssues = st.issues.filter(i => i.pid === p.id && i.kind !== 'parking');
     let body = '<div class="cx-set">';
+    const now = _cxSuNow(p);                                       // #15: today's values (a later purchase: its first month)
     if (!casa) {
-      const v = l.apt ? S.verw.find(x => String(x.apartment_id) === String(l.apt.id)) : null;
+      const cost = l.apt ? ctlCostRows(p, now.y, now.m) : null;
+      const hg = cost && cost.rows.find(r => r.key === 'hausgeld'), gs = cost && (cost.rows.find(r => r.key === 'grundsteuer') || cost.notDue.find(r => r.label === 'Grundsteuer'));
       body += _cxSuSub('Rentals apartment') +
         '<div class="cx-set__row"><span class="cx-set__k">Hausgeld, Grundsteuer, tenant</span>' + _cxLinkPill(l.apt, l.aptAuto) + '</div>' +
         '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|rentals_apartment_ref" aria-label="Rentals apartment">' +
           _cxOpt('', '— not linked —', !l.apt) + S.apts.map(a => _cxOpt(a.id, _cxAptLabel(a), l.apt && String(l.apt.id) === String(a.id))).join('') +
         '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-        (l.apt ? '<div class="cx-r__sub">' + cxEsc('Hausgeld ' + (v && v.hausgeld_mtl != null ? cxEur(v.hausgeld_mtl) : '—') + ' · Grundsteuer ' + (v && v.grundsteuer_mtl != null ? cxEur(v.grundsteuer_mtl) + ' / quarter' : '—') + ' · from Rentals') + '</div>'
+        (l.apt ? '<div class="cx-r__sub">' + cxEsc('Hausgeld ' + (hg ? cxEur(hg.soll) + (hg.from ? ' since ' + _cxFmtD(hg.from) : '') : '—') + ' · Grundsteuer ' + (gs && gs.soll ? cxEur(gs.soll) + ' / quarter' : '—') +
+                   (now.later ? ' · from ' + _cxFmtD(now.later) : '') + ' · change in Rentals') + '</div>'
                : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Hausgeld and Grundsteuer from these values</div>' +
                  _cxMoney('ctrl_properties', p.id, 'def_hausgeld', p.def_hausgeld, 'Hausgeld') + _cxMoney('ctrl_properties', p.id, 'def_grundsteuer', p.def_grundsteuer, 'Grundsteuer/Q')) +
         _cxSuSub('Grundsteuer due') +
@@ -154,18 +194,33 @@ window.renderSetup = function () {
     body += _cxSuSub('Loan · Properties') +
       '<div class="cx-set__row"><span class="cx-set__k">Kreditrate, Zinsen, Tilgung</span>' + _cxLinkPill(l.loan, l.loanAuto) + '</div>' +
       '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|loan_ref" aria-label="Loan">' +
-        _cxOpt('', '— not linked —', !l.loan) + S.loans.map(x => _cxOpt(x.id, (x.name || 'Loan') + (x.rate ? ' · ' + cxEur(x.rate) : ''), l.loan && String(l.loan.id) === String(x.id))).join('') +
+        _cxOpt('', '— not linked —', !l.loan) + S.loans.map(x => { const r = ctlLoanMonth(ctlLoanTerms(x, now.y, now.m), now.y, now.m).rate;   // #15: the rate debited now
+          return _cxOpt(x.id, (x.name || 'Loan') + (r ? ' · ' + cxEur(r) : ''), l.loan && String(l.loan.id) === String(x.id)); }).join('') +
       '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-      (l.loan ? '<div class="cx-r__sub">' + cxEsc('Rate ' + cxEur(l.loan.rate || 0) + ' · Zinsen ' + cxEur(l.loan.zinsen || 0) + ' · Tilgung ' + cxEur(l.loan.tilgung || 0)) + '</div>'
+      (l.loan ? '<div class="cx-r__sub">' + cxEsc(_cxSuLoanNow(l.loan, now.y, now.m) + (now.later ? ' · from ' + _cxFmtD(now.later) : '') + ' · change in Properties') + '</div>'
         : casa ? '<div class="cx-r__sub">Kreditrate: comes from the Properties loan once it is linked here — until then the amount saved for it stays</div>'
         : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Kreditrate from these values</div>' +
           _cxMoney('ctrl_properties', p.id, 'def_rate', p.def_rate, 'Kreditrate') + _cxMoney('ctrl_properties', p.id, 'def_zinsen', p.def_zinsen, 'of which Zinsen'));
+    // #30 (Nov 2026): purchase month — the whole month (as before) or from the handover day. Only once CONTROLLING-C3.sql
+    // has added the setting, and only for a property bought after the 1st of a month (never Casa Castel)
+    const since = ctlPropSince(p);
+    if (!casa && 'first_month' in p && since && since.slice(8, 10) !== '01') {
+      const ho = p.first_month === 'handover';
+      body += _cxSuSub('First month · bought ' + _cxFmtD(since)) +
+        '<div class="cx-seg" role="group" aria-label="First month"><button class="' + (ho ? '' : 'on') + '" data-cx="firstMonth" data-p="' + p.id + '" data-v="full" aria-pressed="' + !ho + '">Full month</button>' +
+        '<button class="' + (ho ? 'on' : '') + '" data-cx="firstMonth" data-p="' + p.id + '" data-v="handover" aria-pressed="' + ho + '">From handover day</button></div>';
+    }
     // Abrechnungszeitraum: set later in the Abrechnungen app (placeholder until then, stored value untouched)
     body += _cxSuSub('Abrechnungszeitraum · ' + (casa ? 'NK' : 'WEG + NK')) +
       '<div class="cx-r__sub">Set per property in Settlements · otherwise the calendar year.</div>';
     const living = ctlUnitsOf(p.id).filter(u => !_cxIsParking(u));
-    body += _cxSuSub(casa ? 'Rooms · from Casa Castel' : (living.length === 1 ? 'Apartment' : 'Apartments')) +
-      (living.length ? living.map(u => _cxSuUnit(u, p, st, 'living')).join('') : '<div class="cx-r__sub">' + (casa ? 'All rooms are taken over from Casa Castel automatically.' : 'No unit set up.') + '</div>');
+    body += _cxSuSub(casa ? 'Rooms · from Casa Castel' : (living.length > 1 ? 'Apartments' : 'Apartment')) +
+      (living.length ? living.map(u => _cxSuUnit(u, p, st, 'living')).join('')
+        : casa ? '<div class="cx-r__sub">All rooms are taken over from Casa Castel automatically.</div>'
+        // #6 (Nov 2026): without its living unit the rent was missing everywhere and nothing could add it
+        : l.apt ? '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> No living unit – the rent of ' + cxEsc(_cxAptLabel(l.apt)) + ' is missing</div>' +
+                  '<button class="cx-btn cx-btn--s cx-btn--full" data-cx="aptAdd" data-p="' + p.id + '"><i class="ti ti-plus" aria-hidden="true"></i>Apartment</button>'
+        : '<div class="cx-r__sub">Link the Rentals apartment first – then add its unit here.</div>');
     const nPk = ctlUnitsOf(p.id).filter(u => _cxIsParking(u)).length;
     if (nPk) body += '<div class="cx-r__sub" style="margin-top:6px">' + nPk + (nPk === 1 ? ' parking space' : ' parking spaces') + ' · see Parking below</div>';
     body += '</div>';
@@ -204,6 +259,7 @@ window.renderSetup = function () {
   by('mismatch').forEach(i => lines.push(i.text));
   if (by('prop').length) lines.push('Without Rentals apartment (Hausgeld, Grundsteuer missing): ' + nm(by('prop')) + ' › Properties');
   if (by('unit').length) lines.push('Not linked: ' + nm(by('unit')) + ' › Properties');
+  if (by('noUnit').length) lines.push('Linked, but no living unit (rent missing): ' + nm(by('noUnit')) + ' › Properties');   // #6
   if (by('loan').length) lines.push('Without loan: ' + nm(by('loan')) + ' › Properties');
   const nPkU = by('parking').length, nPkF = by('freePk').length;
   if (nPkU || nPkF) lines.push('Parking: ' + [nPkU ? nPkU + ' not linked' : '', nPkF ? nPkF + ' from Rentals in no property' : ''].filter(Boolean).join(', ') + ' › Parking');
@@ -271,11 +327,30 @@ window.renderSetup = function () {
         b.disabled = false;
         return window.renderSetup();
       }
+      if (a === 'firstMonth') {                                      // #30: Full month · From handover day
+        const id = Number(b.dataset.p), v = b.dataset.v === 'handover' ? 'handover' : 'full', p = ctlProp(id);
+        if (!p || (p.first_month || 'full') === v) return;
+        b.disabled = true;
+        try { await ctlUpdateRow('ctrl_properties', id, { first_month: v }); } catch (e) { cxToastErr(e); }   // ctlUpdateRow resets the Soll
+        b.disabled = false;
+        return window.renderSetup();
+      }
+      if (a === 'aptAdd') {                                          // #6: the living unit of the linked Rentals apartment
+        b.disabled = true;
+        try { await _cxSuEnsureLiving(Number(b.dataset.p)); } catch (e) { cxToastErr(e); }   // failed → nothing made, the button stays
+        b.disabled = false;
+        return window.renderSetup();
+      }
       if (a === 'acceptAll') {
         b.disabled = true;
         const list = _cxSetupSuggestions();
         let ok = 0, err = null;
-        for (const [t, id, f] of list) { try { await ctlUpdateRow(t, id, f); ok++; } catch (e) { err = e; console.error('[controlling] Vorschlag', t, id, e); } }
+        for (const [t, id, f] of list) {
+          try {
+            await ctlUpdateRow(t, id, f); ok++;
+            if (t === 'ctrl_properties' && f.rentals_apartment_ref) await _cxSuEnsureLiving(id);   // #6: its living unit comes with it
+          } catch (e) { err = e; console.error('[controlling] Vorschlag', t, id, e); }
+        }
         if (typeof ctlToast === 'function') ctlToast(err ? ok + ' of ' + list.length + ' saved · ' + String(err.message || err).slice(0, 60) : 'Links saved');
         return window.renderSetup();
       }
@@ -353,11 +428,16 @@ window.renderSetup = function () {
       let f;
       if (field === 'source') { const [st, ...ref] = v.split('|'); f = v ? { source_type: st, source_ref: ref.join('|') } : { source_type: null, source_ref: null }; }
       else f = { [field]: v || null };
+      let saved = false;
       try {
         await ctlUpdateRow(t, Number(id), f);
+        saved = true;
         if (field === 'source') _cxSU.edit[Number(id)] = false;
         if (typeof ctlToast === 'function') ctlToast('Saved');
       } catch (e) { cxToastErr(e); }
+      if (saved && t === 'ctrl_properties' && field === 'rentals_apartment_ref' && v) {   // #6: choosing the apartment adds its living unit
+        try { await _cxSuEnsureLiving(Number(id)); } catch (e) { cxToastErr(e); }
+      }
       window.renderSetup();
     });
   }
@@ -518,7 +598,7 @@ function _cxSuNewPropHTML() {
   return '<div class="cx-card" style="padding:12px 14px"><div class="cx-set">' +
     '<div class="cx-set__k">New property · e.g. after a purchase</div>' +
     '<label class="cx-f cx-f--l"><input type="text" id="cxSuNewProp" placeholder="Name · e.g. Musterstr. 5, WHG 3" aria-label="Name of the new property" autocomplete="off"></label>' +
-    '<div class="cx-r__sub">Added at the end of the list. Link the Rentals apartment, units and loan in its card afterwards. ' +
+    '<div class="cx-r__sub">Added at the end of the list. Link the Rentals apartment (its unit is added with it) and the loan in its card afterwards. ' +
       'Kaufnebenkosten can be booked right away in One-off.</div>' +
     '<div class="cx-grid2" style="margin-top:8px"><button class="cx-btn cx-btn--s" data-cx="propNew">Cancel</button>' +
       '<button class="cx-btn cx-btn--p" data-cx="propAdd">Add property</button></div>' +

@@ -55,6 +55,44 @@ function _cxYearMonths(y) {                             // 1 … current month (
   const last = y < ty ? 12 : Math.max(y > ty ? 0 : tm, _cxLastBooked(y));
   return Array.from({ length: last }, (_, i) => i + 1);
 }
+/* #2 (Nov 2026) · a switched-off (sold) property still counts where it has bookings: the months from its first to its
+   last booking of that year (rent, costs, one-offs, Abrechnungen — Kaufnebenkosten never, they are not in the cashflow).
+   Its Soll (export Income / Expense) only from its first to its last rent or cost booking — a late Abrechnung paid after
+   the sale brings no Soll back. Active properties: as before, from the purchase month on. No sale date exists anywhere,
+   so the bookings are the rule. Only the loaded year has its bookings here (another year → null). */
+function _cxPropSpan(p, y, regular) {
+  const C = window._ctrl, has = v => v !== null && v !== undefined && v !== '';
+  if (y !== C.year) return null;
+  const uids = new Set(ctlUnitsOf(p.id).map(u => u.id));
+  let lo = 13, hi = 0;
+  const at = m => { if (m >= 1 && m <= 12) { lo = Math.min(lo, m); hi = Math.max(hi, m); } };
+  for (const r of C.income || []) if (r.year === y && uids.has(r.unit_id)) at(r.month);
+  for (const e of C.apt_expenses || []) if (e.year === y && e.property_id === p.id && _CX_APT_KEYS.some(k => has(e[k]))) at(e.month);   // a cleared row is no booking (as _cxBooked)
+  if (p.id === CASA_PROP_ID) for (const e of C.castel_expenses || []) if (e.year === y) at(e.month);
+  if (!regular) for (const o of C.one_time || []) {
+    if (Number(o.property_id) !== p.id || o.kind === 'Kaufnebenkosten') continue;
+    const d = ctlParseDate(o.invoice_date);
+    if (d.year === y) at(d.month);
+  }
+  return hi ? [lo, hi] : null;
+}
+function ctlPropIn(p, y, m) {                                  // counts in this month (Dashboard, export)
+  if (!ctlPropOwned(p, y, m)) return false;
+  if (p.active) return true;
+  const s = _cxPropSpan(p, y);
+  return !!s && m >= s[0] && m <= s[1];
+}
+function ctlPropInYear(p, y) {                                  // counts in this year (Dashboard Year, export)
+  if (p.active) return ctlPropOwnedYear(p, y);
+  const s = _cxPropSpan(p, y);
+  return !!s && ctlPropOwned(p, y, s[1]);                       // a booking dated before the purchase alone does not count
+}
+function ctlPropSollIn(p, y, m) {                               // has a Soll in this month (export Income, Expense)
+  if (!ctlPropOwned(p, y, m)) return false;
+  if (p.active) return true;
+  const s = _cxPropSpan(p, y, true);
+  return !!s && m >= s[0] && m <= s[1];
+}
 
 /* Open items of one property in a month: { inc, exp } */
 function _cxOpenOf(p, y, m) {
@@ -323,8 +361,9 @@ window.renderDashboard = function () {
   const future = !months.length;
   const shortM = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const EN_M = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  // a property appears from its purchase month (Month) / purchase year (Year) — Properties › Purchase date
-  const props = window._ctrl.properties.filter(p => p.active && (isYear ? ctlPropOwnedYear(p, y) : ctlPropOwned(p, y, m)));
+  // a property appears from its purchase month (Month) / purchase year (Year) — Properties › Purchase date;
+  // #2: a switched-off (sold) one only in its months with bookings
+  const props = window._ctrl.properties.filter(p => isYear ? ctlPropInYear(p, y) : ctlPropIn(p, y, m));
   const per = props.map(p => ({ p, r: _cxDashProp(p, months) }));
   const t = _cxDashSum(per.map(x => x.r));
   const D = '\u2014';
@@ -334,7 +373,7 @@ window.renderDashboard = function () {
   const openMonths = new Set();
   for (const p of props) for (const mm of months) {
     if (_cxIsFuture(y, mm)) continue;                       // DB1: a later month is not due yet → nothing open
-    if (!ctlPropOwned(p, y, mm)) continue;                  // before the purchase: nothing is open
+    if (!p.active || !ctlPropOwned(p, y, mm)) continue;     // before the purchase / switched off (sold): nothing is open
     const o = _cxOpenOf(p, y, mm), k = o.inc + o.exp;
     if (k) openMonths.add(mm);
     open += k; openInc += o.inc;
@@ -376,7 +415,7 @@ window.renderDashboard = function () {
     // ── vs last month (Month view; January has no loaded December)
     let dK = null, dW = null;
     if (!isYear && m > 1) {
-      const pp = window._ctrl.properties.filter(p => p.active && ctlPropOwned(p, y, m - 1));
+      const pp = window._ctrl.properties.filter(p => ctlPropIn(p, y, m - 1));
       const tp = _cxDashSum(pp.map(p => _cxDashProp(p, [m - 1])));
       dK = cxR(tv.k - tp.lfKalt); dW = cxR(tv.w - tp.lfWarm);
     }
@@ -464,7 +503,7 @@ window.renderDashboard = function () {
     let chart = '';
     if (isYear && months.length > 1) {
       const ms = months.map(mm => {
-        const pp = window._ctrl.properties.filter(p => p.active && ctlPropOwned(p, y, mm));
+        const pp = window._ctrl.properties.filter(p => ctlPropIn(p, y, mm));
         let r0 = 0, c0 = 0;
         for (const p of pp) { const rr = _cxDashProp(p, [mm]); if (p.id === CASA_PROP_ID) c0 += rr.freiWarm; else r0 += rr.freiWarm; }
         return { mm, r: cxR(r0), c: cxR(c0), t: cxR(r0 + c0) };
