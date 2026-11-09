@@ -610,7 +610,7 @@ function ccfApproveCheck(p) {
   if (p.kind === 'contract' && !ccfIso(p.start)) { alert('Approve needs a Mietbeginn — it becomes the Move-in.'); return false; }
   if (p.kind === 'contract' && !String(p.tenant?.name || '').trim()) { alert('Approve needs the Mieter name.'); return false; }
   // #37: Kurzzeit / Jahresvertrag / Befristet — a contract with an end is approved only with that end (Draft may keep a line)
-  if (p.kind === 'contract' && p.needsEnd && !ccfIso(p.end)) { alert('Approve needs a Mietende.'); return false; }
+  if (p.kind === 'contract' && p.needsEnd && !ccfIso(p.end)) { alert('Approve needs ' + (p.endLabel || 'a Mietende') + '.'); return false; }
   // #27: parking — an own Mindestlaufzeit is printed in the contract (never the Contract end); Approve needs its date
   if (p.kind === 'contract' && p.needsMin && !ccfIso(p.minEnd)) { alert('Approve needs the Mindestlaufzeit date.'); return false; }
   if (p.kind === 'ueberg' && !p.forId) { alert('There is no tenant here yet — approve the contract first.'); return false; }

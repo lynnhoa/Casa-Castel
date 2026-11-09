@@ -2354,6 +2354,11 @@ async function _aptReopenContractDraft(d) {
     if (typeof _aptMvCalcStaffelDates  === 'function') _aptMvCalcStaffelDates();
     // Gewerbe: Endet am, Staffel dates and the S3 dates (the values above were set without events)
     if (typeof _aptGwCalcDates === 'function' && document.getElementById('apt-gw-start')) _aptGwCalcDates();
+    // Warmmiete / Gesamtmiete lines follow the restored rent (a restored Anfangsmiete stays as it was)
+    if (typeof ccfMieteRefresh === 'function' && document.getElementById('ccf-miete')) ccfMieteRefresh();
+    const gwAnf = document.getElementById('apt-gw-staffel-anfang'), gwAnfV = gwAnf?.value;
+    if (typeof _aptGwCalcGesamt === 'function' && document.getElementById('apt-gw-kalt')) { _aptGwCalcGesamt(); if (gwAnf) gwAnf.value = gwAnfV; }
+    if (typeof _aptGwCalcVerl === 'function' && document.getElementById('apt-gw-neue-kalt')?.value) _aptGwCalcVerl('kalt');
   } catch (e) {
     console.warn('[apt draft] restore failed, discarding:', e);
     _aptClearContractDraft();
@@ -2866,6 +2871,7 @@ function _aptSetupFlow(type, apt) {
       return { kind: 'contract', ctype: type === 'kurzzeit' ? 'kurzzeit' : 'mietvertrag', room: unit, forId: ccfForValue(), renew: rn,
         tenant: ccfReadTenant(f), coTenants: ccfReadCoTenants(f), start, end, rent, staffel, staffelTable: 'rnt_staffelmiete_history',
         first_month: 'anteilig', last_month: 'anteilig',
+        endLabel: isGw ? 'the Festlaufzeit' : undefined,   // Gewerbe has no Mietende field — its end comes from the Festlaufzeit
         needsEnd: isGw ? gwSz === 'S2' : (type === 'kurzzeit' || document.getElementById('apt-mv-befristung-btn')?.dataset.mode === 'befristet'),   // #37
         docLabel: isGw ? 'Gewerbemietvertrag' : type === 'kurzzeit' ? 'Mietvertrag befristet' : 'Mietvertrag' };
     } });
@@ -3440,6 +3446,9 @@ function _aptGwCalcDates() {
     const endDisp = document.getElementById('apt-gw-enddatum-display');
     const endVal  = document.getElementById('apt-gw-enddatum-val');
     if (endDisp && endVal) { endDisp.style.display = ''; endVal.textContent = fmtDt(d); }
+  } else {
+    const endDisp = document.getElementById('apt-gw-enddatum-display');
+    if (endDisp) endDisp.style.display = 'none';   // no Mietbeginn / Festlaufzeit → no "Endet am"
   }
 
   // Gate "+ Staffel" button until Mietbeginn & Festlaufzeit are known
