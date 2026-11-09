@@ -867,7 +867,7 @@ function _cxUnitSollV2(u, pid, y, m) {
       : 'Last tenant until ' + _cxFmtD(prev.to) + (prev.payTo > prev.to ? ' · rent until the contract end ' + _cxFmtD(prev.payTo) : ''));
   }
   const partList = [...parts.entries()].sort((a, b) => a[1].from - b[1].from)
-    .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR((pt.sk + pt.snk) / N), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
+    .map(([pk, pt]) => ({ from: pt.from, to: pt.to, amount: _cxR(_cxR(pt.sk / N) + _cxR(pt.snk / N)), k: _cxR(pt.sk / N), nk: _cxR(pt.snk / N),
                            tid: pk, name: pt.w ? pt.w.name : 'Room', mode: pt.r0 ? pt.r0.mode : 'kalt_nk', days: pt.days, live: pt.live }));
   const free = occ > 0 && !noPrice && !roomOnly && _cxR(k + nk) === 0;
   if (free) notes.push('Free of charge' + (partList[0] && partList[0].name && partList[0].name !== 'Room' ? ' · ' + partList[0].name : ''));
@@ -1625,7 +1625,10 @@ function ctlTenantRentOn(u, p, tid, iso) {
   const link = ctlUnitLink(u, p); if (!link || !iso) return null;
   const all = _cxTenancies(link), w = all.find(x => x.id === String(tid));
   if (!w || !w.from) return null;
-  try { const r = _cxRentDay(link, w, u, Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), iso, all, new Map()); return _cxR(_cxN0(r.k) + _cxN0(r.nk)); }
+  try {                                                    // 0 € only when saved so on purpose (free of charge) — nothing saved = not known
+    const r = _cxRentDay(link, w, u, Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), iso, all, new Map()), v = _cxR(_cxN0(r.k) + _cxN0(r.nk));
+    return v || _cxFreeSet(link, r) ? v : null;
+  }
   catch (e) { return null; }
 }
 function ctlSetupLinkState() {

@@ -408,9 +408,9 @@ window.renderDashboard = function () {
     const isCasa = x => x.p.id === CASA_PROP_ID;
     const renList = per.filter(x => !isCasa(x)), casaList = per.filter(isCasa);
     const ren = _cxDashSum(renList.map(x => x.r)), casa = _cxDashSum(casaList.map(x => x.r));
-    // #2: the Month view counts rent and costs only → a switched-off (sold) flat is listed (and counted) only in its months
-    // with rent or costs; a later Abrechnung of it stays in the sums as "info only", without an "in 0 € · out 0 €" line
-    const renShow = isYear ? renList : renList.filter(x => ctlPropSollIn(x.p, y, m));
+    // #2: a switched-off (sold) flat is listed only in its months with rent or costs, or with a one-off / Abrechnung
+    // (its "info only" part) — the lines add up to the sums; a month without any booking shows no empty line
+    const renShow = isYear ? renList : renList.filter(x => ctlPropSollIn(x.p, y, m) || x.r.einmalig || x.r.abr);
     const val = r => isYear ? { k: r.freiKalt, w: r.freiWarm } : { k: r.lfKalt, w: r.lfWarm };
     const cls = v => { const n = Math.round(Number(v) || 0); return n < 0 ? 'neg' : n > 0 ? 'pos' : ''; };   // 0 € (as shown, whole euros) = normal colour
     const tv = val(t);

@@ -161,9 +161,14 @@ function _cxSuLoanYM(L, y, m) {
   }
   return { y, m, first: false };
 }
-function _cxSuLoanNow(L, y0, m0) {                          // the Kreditrate of month y/m (same source as ctlCostRows)
+/* The date of an amount Setup shows: "from" a date still to come, "since" one that has come */
+const _cxSuWhen = d => d ? (d > cxToday() ? ' from ' : ' since ') + _cxFmtD(d) : '';
+function _cxSuLoanNow(L, y0, m0, later) {                   // the Kreditrate of month y/m (same source as ctlCostRows)
   const a = _cxSuLoanYM(L, y0, m0), y = a.y, m = a.m;
-  const T = ctlLoanTerms(L, y, m), lm = ctlLoanMonth(T, y, m), since = T._from ? (a.first ? ' from ' : ' since ') + _cxFmtD(T._from) : '';
+  const T = ctlLoanTerms(L, y, m), lm = ctlLoanMonth(T, y, m);
+  if (!lm.rate) return 'Kreditrate —';                      // no loan entered in Properties (Expenses plans none), as "Hausgeld —"
+  // a property bought later (later = its purchase date): that date, unless these terms start after it (a first rate the month after)
+  const since = _cxSuWhen(later && !(T._from > later) ? later : T._from);
   return lm.debit === 'split'
     ? _cxSuNb('Zinsen ' + cxEur(lm.zinsen)) + ' + ' + _cxSuNb('Tilgung ' + cxEur(lm.tilgung)) + ' = ' + cxEur(lm.rate) + since + ' · debited separately'
     : 'Kreditrate ' + cxEur(lm.rate) + since + ' · ' + _cxSuNb('≈ Zinsen ' + cxEur(lm.zinsen)) + ' · ' + _cxSuNb('≈ Tilgung ' + cxEur(lm.tilgung));
@@ -196,13 +201,15 @@ window.renderSetup = function () {
     if (!casa) {
       const cost = l.apt ? ctlCostRows(p, now.y, now.m) : null;
       const hg = cost && cost.rows.find(r => r.key === 'hausgeld'), gs = cost && (cost.rows.find(r => r.key === 'grundsteuer') || cost.notDue.find(r => r.label === 'Grundsteuer'));
+      // a property bought later: its purchase date at the end of the line (Hausgeld and Grundsteuer), unless the Hausgeld changes after it
+      const hgD = hg && hg.from && !(now.later && hg.from <= now.later) ? hg.from : '';
       body += _cxSuSub('Rentals apartment') +
         '<div class="cx-set__row"><span class="cx-set__k">Hausgeld, Grundsteuer, tenant</span>' + _cxLinkPill(l.apt, l.aptAuto) + '</div>' +
         '<label class="cx-f cx-f--l"><select data-cx-sel="ctrl_properties|' + p.id + '|rentals_apartment_ref" aria-label="Rentals apartment">' +
           _cxOpt('', '— not linked —', !l.apt) + S.apts.map(a => _cxOpt(a.id, _cxAptLabel(a), l.apt && String(l.apt.id) === String(a.id))).join('') +
         '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-        (l.apt ? '<div class="cx-r__sub">' + cxEsc('Hausgeld ' + (hg ? cxEur(hg.soll) + (hg.from ? ' since ' + _cxFmtD(hg.from) : '') : '—') + ' · Grundsteuer ' + (gs && gs.soll ? cxEur(gs.soll) + ' / quarter' : '—') +
-                   (now.later ? ' · from ' + _cxFmtD(now.later) : '') + ' · change in Rentals') + '</div>'
+        (l.apt ? '<div class="cx-r__sub">' + cxEsc('Hausgeld ' + (hg ? cxEur(hg.soll) + _cxSuWhen(hgD) : '—') + ' · Grundsteuer ' + (gs && gs.soll ? cxEur(gs.soll) + ' / quarter' : '—') +
+                   (now.later && !hgD ? ' · from ' + _cxFmtD(now.later) : '') + ' · change in Rentals') + '</div>'
                : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Hausgeld and Grundsteuer from these values</div>' +
                  _cxMoney('ctrl_properties', p.id, 'def_hausgeld', p.def_hausgeld, 'Hausgeld') + _cxMoney('ctrl_properties', p.id, 'def_grundsteuer', p.def_grundsteuer, 'Grundsteuer/Q')) +
         _cxSuSub('Grundsteuer due') +
@@ -214,7 +221,7 @@ window.renderSetup = function () {
         _cxOpt('', '— not linked —', !l.loan) + S.loans.map(x => { const a = _cxSuLoanYM(x, now.y, now.m), r = ctlLoanMonth(ctlLoanTerms(x, a.y, a.m), a.y, a.m).rate;   // #15: the rate debited now (a new loan: its first rate)
           return _cxOpt(x.id, (x.name || 'Loan') + (r ? ' · ' + cxEur(r) : ''), l.loan && String(l.loan.id) === String(x.id)); }).join('') +
       '</select><i class="ti ti-chevron-down" aria-hidden="true"></i></label>' +
-      (l.loan ? '<div class="cx-r__sub">' + cxEsc(_cxSuLoanNow(l.loan, now.y, now.m) + (now.later && !_cxSuLoanYM(l.loan, now.y, now.m).first ? ' · from ' + _cxFmtD(now.later) : '') + ' · change in Properties') + '</div>'
+      (l.loan ? '<div class="cx-r__sub">' + cxEsc(_cxSuLoanNow(l.loan, now.y, now.m, now.later) + ' · change in Properties') + '</div>'
         : casa ? '<div class="cx-r__sub">Kreditrate: comes from the Properties loan once it is linked here — until then the amount saved for it stays</div>'
         : '<div class="cx-r__warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Only while not linked: Kreditrate from these values</div>' +
           _cxMoney('ctrl_properties', p.id, 'def_rate', p.def_rate, 'Kreditrate') + _cxMoney('ctrl_properties', p.id, 'def_zinsen', p.def_zinsen, 'of which Zinsen'));
@@ -453,20 +460,20 @@ window.renderSetup = function () {
         if (field === 'source') _cxSU.edit[Number(id)] = false;
         if (typeof ctlToast === 'function') ctlToast('Saved');
       } catch (e) { cxToastErr(e); }
-      if (saved && t === 'ctrl_properties' && field === 'rentals_apartment_ref' && v) {   // #6: choosing the apartment adds its living unit
+      if (saved && t === 'ctrl_properties' && field === 'rentals_apartment_ref') {   // #6: choosing the apartment adds its living unit, unlinking removes the one made here
         const pid = Number(id);
         try {
           if (_cxSuLiving[pid]) await _cxSuLiving[pid].catch(() => null);   // the unit of a choice a moment ago is still being saved
           const mu = ctlUnit(_cxSuMade[pid]);                      // made here for an earlier choice, nothing booked on it → it follows
           if (mu && mu.property_id === pid && !_cxUnitHasEntries(mu.id) && String(mu.source_ref) !== String(v)) {
-            if (ctlSetupLinkState().used.has('rentals_apartment|' + String(v))) {   // another unit takes this apartment's rent → no second one
+            if (!v || ctlSetupLinkState().used.has('rentals_apartment|' + String(v))) {   // set back to "not linked", or another unit takes this apartment's rent → no unit
               const { error } = await _ctlSupa.from('ctrl_units').delete().eq('id', mu.id);
               if (error) throw error;
               window._ctrl.units = window._ctrl.units.filter(x => x.id !== mu.id);
               delete _cxSuMade[pid];
               ctlSollReset();
             } else await ctlUpdateRow('ctrl_units', mu.id, { source_type: 'rentals_apartment', source_ref: String(v) });
-          } else await _cxSuEnsureLiving(pid);
+          } else if (v) await _cxSuEnsureLiving(pid);
         } catch (e) { cxToastErr(e); }
       }
       window.renderSetup();
