@@ -849,6 +849,7 @@ async function loadApartments() {
   const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
 
   let ok = true;
+  const _tick0 = _aptOrderTick;   // a drag after this load was sent keeps its order (the load may answer late)
   try {
     const res = await Promise.all([
       _aptSbClient.from('rentals_apartments').select('*').order('sort_order'),
@@ -881,7 +882,7 @@ async function loadApartments() {
       schlussel:  (schlussel  || []).find(s => s.apartment_id === a.id) || {},
       inventar:   (inventar   || []).filter(i => i.apartment_id === a.id),
     }));
-    _aptOrderKeep();   // a drag being saved right now keeps its order
+    _aptOrderKeep(_tick0);   // a drag being saved right now, or made while this load was on its way, keeps its order
 
     // Build hausgeld store keyed by apt_id, already DESC from DB
     _aptHausgeld = {};
@@ -2263,6 +2264,7 @@ async function _aptRestoreContractDraft() {
   const apt = appApartments.find(a => a.id === d.aptId);
   if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf('aptContractOverlay')) return _aptReopenContractDraft(d);
   if (typeof ccOfferDraft !== 'function') return;
+  if (document.querySelector('#aptContractOverlay.open, #pkContractOverlay.open')) return;   // a generator is open: no bar over it (the draft stays for the next start)
   ccOfferDraft({
     label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.type] || 'Contract') + ' · ' + (apt?.name || 'Apartment'),
     ts: d.ts,
@@ -3930,8 +3932,8 @@ function _aptInitSortable() {
    comes back (screen and database) with the usual "Not saved". An unsaved new card is not counted. */
 let _aptOrderTick = 0, _aptOrderPending = 0, _aptOrderBase = null, _aptOrderWant = null;
 function _aptOrderSort() { appApartments.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)); }
-function _aptOrderKeep() {          // a load while a drag is being saved keeps the dragged order
-  if (!_aptOrderPending || !_aptOrderWant) return;
+function _aptOrderKeep(tick0) {     // a load while a drag is being saved (or sent before it) keeps the dragged order
+  if (!(_aptOrderPending || tick0 !== _aptOrderTick) || !_aptOrderWant) return;
   appApartments.forEach(a => { const o = _aptOrderWant.get(String(a.id)); if (o !== undefined) a.sort_order = o; });
   _aptOrderSort();
 }
@@ -3953,6 +3955,7 @@ async function _aptSaveOrder(domIds) {
   } finally { _aptOrderPending--; }
   const bad = res.find(r => r && r.error);
   if (!bad || tick !== _aptOrderTick) return;        // saved — or a newer drag saves the whole order itself
+  _aptOrderWant = null;                              // not saved: never put back by a later load
   const base = _aptOrderBase || new Map();
   appApartments.forEach(a => { const o = base.get(k(a.id)); if (o !== undefined) a.sort_order = o; });
   _aptOrderSort();

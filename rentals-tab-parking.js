@@ -300,6 +300,7 @@ async function loadParking() {
   const _warm = typeof rntWarmTenants === 'function' ? rntWarmTenants() : null;
 
   let ok = true;
+  const _tick0 = _pkOrderTick;    // a drag after this load was sent keeps its order (the load may answer late)
   try {
     const res = await Promise.all([
       _pkSbClient.from('rentals_parking').select('*').order('sort_order'),
@@ -320,7 +321,7 @@ async function loadParking() {
       pricing:   (pricing   || []).find(r => r.parking_id === p.id) || {},
       schlussel: (schlussel || []).find(r => r.parking_id === p.id) || {},
     }));
-    _pkOrderKeep();   // a drag being saved right now keeps its order
+    _pkOrderKeep(_tick0);   // a drag being saved right now, or made while this load was on its way, keeps its order
     _pkLoadedOk = true;
   } catch(e) {
     ok = false;
@@ -1010,6 +1011,7 @@ async function _pkRestoreContractDraft() {
   if (!pk) { ccDraftClear(_PK_DRAFT_KEY); return; }
   if (typeof ccCameBackFromPdf === 'function' && ccCameBackFromPdf('pkContractOverlay')) return _pkReopenContractDraft(d);
   if (typeof ccOfferDraft !== 'function') return;
+  if (document.querySelector('#aptContractOverlay.open, #pkContractOverlay.open')) return;   // a generator is open: no bar over it (the draft stays for the next start)
   ccOfferDraft({
     label: ({ mietvertrag:'Mietvertrag', kurzzeit:'Kurzzeitmietvertrag', ueberg:'Übergabeprotokoll', gewerbe:'Gewerbemietvertrag' }[d.meta.type] || 'Contract') + ' · ' + (pk.name || 'Parking'),
     ts: d.ts,
@@ -1493,8 +1495,8 @@ function _pkInitSortable() {
    comes back (screen and database) with the usual "Not saved". An unsaved new card is not counted. */
 let _pkOrderTick = 0, _pkOrderPending = 0, _pkOrderBase = null, _pkOrderWant = null;
 function _pkOrderSort() { appParking.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)); }
-function _pkOrderKeep() {           // a load while a drag is being saved keeps the dragged order
-  if (!_pkOrderPending || !_pkOrderWant) return;
+function _pkOrderKeep(tick0) {      // a load while a drag is being saved (or sent before it) keeps the dragged order
+  if (!(_pkOrderPending || tick0 !== _pkOrderTick) || !_pkOrderWant) return;
   appParking.forEach(p => { const o = _pkOrderWant.get(String(p.id)); if (o !== undefined) p.sort_order = o; });
   _pkOrderSort();
 }
@@ -1516,6 +1518,7 @@ async function _pkSaveOrder(domIds) {
   } finally { _pkOrderPending--; }
   const bad = res.find(r => r && r.error);
   if (!bad || tick !== _pkOrderTick) return;          // saved — or a newer drag saves the whole order itself
+  _pkOrderWant = null;                                // not saved: never put back by a later load
   const base = _pkOrderBase || new Map();
   appParking.forEach(p => { const o = base.get(k(p.id)); if (o !== undefined) p.sort_order = o; });
   _pkOrderSort();

@@ -191,7 +191,9 @@
       const p = Promise.resolve().then(_rtLoaders[tab])
         .then(r => { if (r === false) ok = false; return r; })
         .catch(e => { ok = false; console.warn('[rentals] load ' + tab + ':', e); return false; })
-        .finally(() => { delete _rtInflight[tab]; _rtLoadedAt[tab] = ok ? Date.now() : 0; });
+        .finally(() => { delete _rtInflight[tab]; _rtLoadedAt[tab] = ok ? Date.now() : 0;
+          // units loaded after a Tenants load that ran without them → Tenants catches up (list, header rents)
+          if (ok && tab !== 'tenants' && typeof _rntUnitsFailed !== 'undefined' && _rntUnitsFailed && !_rtInflight.tenants) _rtLoad('tenants'); });
       _rtInflight[tab] = p;
       return p;
     }

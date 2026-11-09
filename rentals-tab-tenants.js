@@ -1078,6 +1078,15 @@ async function _rntLoad(unitsReady) {
     if (!document.querySelector('#rntTenantsList .tn-card')) _rntRender();
     return false;   // → the next visit loads again at once (_rtLoad)
   }
+  // Its flats or parking spaces could not be loaded (connection) and none are known yet: keep what is on
+  // screen (the phone's copy, the last list) — never a list without them or wrong IST sums
+  const _never = (list, okFlag) => !list?.length && !okFlag;
+  if (unitsReady && _rntUnitsFailed && (_never(appApartments, typeof _aptLoadedOk !== 'undefined' && _aptLoadedOk)
+                                     || _never(appParking,    typeof _pkLoadedOk  !== 'undefined' && _pkLoadedOk))) {
+    const l = document.getElementById('rntTenantsList');
+    if (l && !l.querySelector('.tn-card')) l.innerHTML = '';   // nothing loaded: blank, as when no units load at all
+    return false;   // → the next visit loads again at once (_rtLoad)
+  }
   if (!appApartments?.length && !appParking?.length) { _rntRender(); return _rntUnitsOk() ? undefined : false; }
 
   const aptSet = new Set((appApartments || []).map(a => String(a.id)));
@@ -1090,7 +1099,7 @@ async function _rntLoad(unitsReady) {
     (e.apartment_id != null && aptSet.has(String(e.apartment_id))) || (e.parking_id != null && pkSet.has(String(e.parking_id)))) };
 
   const tids = _rntRecords.map(r => r.id);
-  if (!tids.length) { _rntProfileCache = {}; _rntLoadedOnce = true; _rntRender(); _rntSaveCopy([]); return; }
+  if (!tids.length) { _rntProfileCache = {}; _rntLoadedOnce = true; _rntRender(); if (!_rntUnitsFailed) _rntSaveCopy([]); return; }
   const tidSet = new Set(tids.map(String));
   const forTenants = res => ((res && res.data) || []).filter(x => tidSet.has(String(x.tenant_id)));
   const kRes = { data: forTenants(kAll) }, nkRes = { data: forTenants(nkAll) }, docRes = { data: forTenants(docAll) };
@@ -1159,7 +1168,7 @@ async function _rntLoad(unitsReady) {
   _rntFreezeKautionSoll();   // existing tenants: fix the Kaution Soll once
   _rntFreezeRent();          // existing active tenants: fix their rent once
   _rntRenderIfChanged();
-  _rntSaveCopy(readings);    // B30: the next start draws from this at once
+  if (!_rntUnitsFailed) _rntSaveCopy(readings);   // B30: the next start draws from this at once (never a copy without its flats / spots)
 }
 
 /* After a (background) load: repaint only if the data really changed and you
@@ -4276,6 +4285,7 @@ let _rntLoadedOnce  = false;   // full Tenants-tab load done (_rntRecords is cur
 const RNT_COPY_KEY = 'rnt_copy_v1';
 let _rntCopyShown = false;       // the list on screen came from the copy (until the fresh load)
 let _rntUnitsFromCopy = false;   // apartments / parking came from the copy → always loaded fresh
+let _rntUnitsFailed = false;     // the last Tenants load ran without its apartments / parking (connection)
 function _rntSaveCopy(readings) {
   try {
     const nks = typeof CC_NKS !== 'undefined'
@@ -4373,14 +4383,14 @@ async function loadRntTenants() {
   const needApt = !appApartments?.length || _rntUnitsFromCopy;
   const needPk  = !appParking?.length    || _rntUnitsFromCopy;
   const unitsReady = Promise.all([needApt ? viaTab('apartments') : null, needPk ? viaTab('parking') : null])
-    .then(r => { if (!r.includes(false)) _rntUnitsFromCopy = false; });   // units not loaded → still from the copy
+    .then(r => { _rntUnitsFailed = r.includes(false); if (!_rntUnitsFailed) _rntUnitsFromCopy = false; });   // units not loaded → still from the copy
   const ok = await _rntLoad(unitsReady);
   const h = _ccTakeFormerHandoff('rentals');
   if (h && h.aptId != null) {
     const apt = (appApartments || []).find(a => String(a.id) === String(h.aptId));
     if (apt) { _ccReturnBanner(document.getElementById('tab-tenants')); _rntAddFormer('apt', apt.id, h); }
   }
-  return ok;   // false → the next visit loads again at once (_rtLoad)
+  return _rntUnitsFailed ? false : ok;   // false → the next visit loads again at once (_rtLoad)
 }
 
 /* ── "Mieter nachtragen" from Settlements ─────────────────────
