@@ -1155,15 +1155,15 @@ function _aptCardHTML(a) {
       <div class="apt-sec-edit" style="display:none">
         <div class="apt-stitle" style="margin-top:2px">Mietvertrag</div>
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaltmiete" value="${p.kaltmiete||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="nk_pauschale" value="${p.nk_pauschale||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaltmiete" value="${p.kaltmiete ?? ''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="nk_pauschale" value="${p.nk_pauschale ?? ''}"/></div>
         </div>
         <div class="apt-toggle-row">
           <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${p.kaution_override?'checked':''} onchange="_aptToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${p.kaution_override?'':'display:none'}">
-          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${p.kaution_default||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${p.kaution_default ?? ''}"/></div>
         </div>
         ${a.zimmer_type !== 'Gewerbefläche' ? `
         <div class="apt-stitle" style="margin-top:10px">Kurzzeit</div>
@@ -1212,7 +1212,7 @@ function _aptCardHTML(a) {
         </div>
         <!-- Hausgeld: only in the Hausgeld timeline below · Abrechnungszeitraum: set in Settlements -->
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl ?? ''}"/></div>
           <div class="apt-field"><div class="apt-field__label">Strom Provider</div><input class="apt-input" data-vf="strom_provider" value="${aptEsc(v.strom_provider||'')}"/></div>
         </div>
         <div class="apt-save-row">
