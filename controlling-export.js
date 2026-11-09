@@ -149,10 +149,10 @@ async function cxExportInvoices(year, pid) {
 /* ── PDF (A4 portrait, real text) ─────────────────────────── */
 const _CX_PDF = { ink: [61, 48, 39], txt: [58, 53, 48], mut: [154, 142, 126], line: [232, 226, 216], head: [243, 238, 230], acc: [184, 151, 106], neg: [165, 80, 56] };
 // standard PDF fonts only know Latin-1 (+ €): no narrow spaces, typographic quotes are replaced
-// #12: letters outside Latin-1 are written without their accent (Şahin → Sahin, Łukasz → Lukasz), not dropped
+// #12: letters outside Latin-1 are written without their accent (Şahin → Sahin, Łukasz → Lukasz), not dropped; ⅓ → 1/3
 const _CX_TR = { 'ł': 'l', 'Ł': 'L', 'ı': 'i', 'İ': 'I', 'đ': 'd', 'Đ': 'D', 'ħ': 'h', 'Ħ': 'H', 'ŧ': 't', 'Ŧ': 'T', 'ŋ': 'n', 'Ŋ': 'N', 'ĸ': 'k', 'ſ': 's', 'œ': 'oe', 'Œ': 'OE', 'ƒ': 'f' };
 const _cxPdfTxt = s => String(s == null ? '' : s).replace(/[\u202f\u00a0]/g, ' ').replace(/[„“”]/g, '"').replace(/[‚‘’]/g, "'")
-  .replace(/[^\x20-\x7E\u00A0-\u00FF€–—•…]/g, c => _CX_TR[c] || c.normalize('NFKD').replace(/[\u0300-\u036f]/g, ''))
+  .replace(/[^\x20-\x7E\u00A0-\u00FF€–—•…]/g, c => _CX_TR[c] || c.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\u2044/g, '/'))
   .replace(/[^\x20-\x7E\u00A0-\u00FF€–—•…]/g, '');
 const _cxPdfEur = n => (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 const _cxPdfDate = iso => iso ? iso.slice(8, 10) + '.' + iso.slice(5, 7) + '.' + iso.slice(0, 4) : '';
