@@ -526,13 +526,13 @@ function _pkCardHTML(p) {
       </div>
       <!-- EDIT -->
       <div class="pk-sec-edit" style="display:none">
-        <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-cc-num="2" data-f="miete" value="${pr.miete||''}"/></div>
+        <div class="apt-field"><div class="apt-field__label">Miete (€/mo)</div><input class="apt-input" type="number" data-cc-num="2" data-f="miete" value="${pr.miete ?? ''}"/></div>
         <div class="apt-toggle-row">
           <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${pr.kaution_override?'checked':''} onchange="_pkToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${pr.kaution_override?'':'display:none'}">
-          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${pr.kaution_default||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${pr.kaution_default ?? ''}"/></div>
         </div>
         <div class="apt-save-row">
           <button class="apt-btn--cancel" onclick="_pkCancelSection('miete','${p.id}')">Cancel</button>
@@ -1384,10 +1384,8 @@ document.getElementById('pkAddBtn')?.addEventListener('click', () => {
       if (_pkSbClient) {
         const { data: newSpot, error } = await _pkSbClient.from('rentals_parking').insert(data).select().single();
         if (error || !newSpot) { saveBtn.textContent = 'Error'; saveBtn.disabled = false; return; }
-        await Promise.all([
-          _pkSbClient.from('rentals_parking_pricing').insert({ parking_id: newSpot.id }),
-          _pkSbClient.from('rentals_parking_schlussel').insert({ parking_id: newSpot.id }),
-        ]);
+        // No empty price / keys rows here: the first Save of each section inserts its row and keeps its id
+        // (_pkDirectSaveRow). Empty rows made here were a second row that every later load read instead.
         appParking.push({ ...newSpot, pricing: {}, schlussel: {} });
       }
 

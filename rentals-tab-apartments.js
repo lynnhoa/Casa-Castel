@@ -1155,15 +1155,15 @@ function _aptCardHTML(a) {
       <div class="apt-sec-edit" style="display:none">
         <div class="apt-stitle" style="margin-top:2px">Mietvertrag</div>
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaltmiete" value="${p.kaltmiete||''}"/></div>
-          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="nk_pauschale" value="${p.nk_pauschale||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaltmiete" value="${p.kaltmiete ?? ''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Nebenkosten (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="nk_pauschale" value="${p.nk_pauschale ?? ''}"/></div>
         </div>
         <div class="apt-toggle-row">
           <span class="apt-tlabel">Individuelle Kaution</span>
           <label class="cc-sw"><input type="checkbox" data-f="kaution_override" ${p.kaution_override?'checked':''} onchange="_aptToggleKautionOverride(this)"/><span class="cc-sw__t"></span></label>
         </div>
         <div data-kautionfield style="${p.kaution_override?'':'display:none'}">
-          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${p.kaution_default||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Kaution (€)</div><input class="apt-input" type="number" data-cc-num="2" data-f="kaution_default" value="${p.kaution_default ?? ''}"/></div>
         </div>
         ${a.zimmer_type !== 'Gewerbefläche' ? `
         <div class="apt-stitle" style="margin-top:10px">Kurzzeit</div>
@@ -1171,11 +1171,11 @@ function _aptCardHTML(a) {
           <button type="button" class="cc-seg__opt${kzP.mode === 'pauschal' ? ' is-on' : ''}" role="radio" onclick="_aptKzMode(this,'pauschal')">Pauschal</button>
           <button type="button" class="cc-seg__opt${kzP.mode === 'kalt_nk' ? ' is-on' : ''}" role="radio" onclick="_aptKzMode(this,'kalt_nk')">Kalt + NK</button>
         </div>
-        <div class="apt-field-row" data-kzgroup="pauschal"${kzP.mode === 'pauschal' ? '' : ' style="display:none"'}>
+        <div class="apt-field-row" data-kzgroup="pauschal"${kzP.mode === 'pauschal' ? '' : ' style="display:none !important"'}>
           <div class="apt-field"><div class="apt-field__label">Pauschalmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="pauschale" value="${kzP.set && kzP.mode === 'pauschal' ? kzP.total : ''}"/></div>
           <div class="apt-field"><div class="apt-field__label">&nbsp;</div><div class="apt-kz-hint">no NK-Abrechnung · price can change per contract</div></div>
         </div>
-        <div class="apt-field-row" data-kzgroup="kalt_nk"${kzP.mode === 'kalt_nk' ? '' : ' style="display:none"'}>
+        <div class="apt-field-row" data-kzgroup="kalt_nk"${kzP.mode === 'kalt_nk' ? '' : ' style="display:none !important"'}>
           <div class="apt-field"><div class="apt-field__label">Kaltmiete (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="kalt" value="${kzP.set && kzP.mode === 'kalt_nk' ? kzP.kalt : ''}"/></div>
           <div class="apt-field"><div class="apt-field__label">NK-Vorauszahlung (€)</div><input class="apt-input" type="number" data-cc-num="2" data-kz="nk" value="${kzP.set && kzP.mode === 'kalt_nk' ? kzP.nk : ''}"/></div>
         </div>` : ''}
@@ -1212,7 +1212,7 @@ function _aptCardHTML(a) {
         </div>
         <!-- Hausgeld: only in the Hausgeld timeline below · Abrechnungszeitraum: set in Settlements -->
         <div class="apt-field-row">
-          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl||''}"/></div>
+          <div class="apt-field"><div class="apt-field__label">Grundsteuer (€/Quartal)</div><input class="apt-input" type="number" data-cc-num="2" data-vf="grundsteuer_mtl" value="${v.grundsteuer_mtl ?? ''}"/></div>
           <div class="apt-field"><div class="apt-field__label">Strom Provider</div><input class="apt-input" data-vf="strom_provider" value="${aptEsc(v.strom_provider||'')}"/></div>
         </div>
         <div class="apt-save-row">
@@ -1545,7 +1545,10 @@ function _aptKzMode(btn, mode) {
   seg.dataset.kzmode = mode;
   seg.querySelectorAll('.cc-seg__opt').forEach(o => { const on = o === btn; o.classList.toggle('is-on', on); o.setAttribute('aria-checked', on ? 'true' : 'false'); });
   const wrap = seg.parentElement;
-  wrap.querySelectorAll('[data-kzgroup]').forEach(g => { g.style.display = g.dataset.kzgroup === mode ? '' : 'none'; });
+  // !important: the card CSS shows every .apt-field-row as a grid with !important — a plain display:none lost to it
+  wrap.querySelectorAll('[data-kzgroup]').forEach(g => {
+    if (g.dataset.kzgroup === mode) g.style.removeProperty('display'); else g.style.setProperty('display', 'none', 'important');
+  });
 }
 
 
@@ -2097,37 +2100,72 @@ document.getElementById('aptInventarSave')?.addEventListener('click', async () =
 
   let saved = inventar;
   if (_aptSbClient) {
-    // Delete + reinsert (same pattern as zaehler). Guard both writes:
-    // if the DB rejects the write, keep the modal open and surface the error
-    // instead of silently dropping the data.
-    const { error: delErr } = await _aptSbClient.from('rentals_inventar').delete().eq('apartment_id', aptId);
-    if (delErr) {
-      console.error('[apartments] Save inventar delete failed:', delErr);
-      _aptToast('Save failed: ' + (delErr.message || delErr.code || 'Unknown error'), true);
+    // The whole list is written in one go by id (queued per flat, one retry); the sheet stays open with
+    // what you typed if that fails. The first items take the old rows' ids (changed in place), extra items
+    // get their id here — once, so a retry or a lost answer can't double them. (Only a table with number
+    // ids would have to number new rows itself.)
+    const oldIds = (appApartments.find(a => a.id === aptId)?.inventar || []).map(i => i.id).filter(id => id != null);
+    const numIds = appApartments.some(a => (a.inventar || []).some(r => /^\d+$/.test(String(r.id))));
+    inventar.forEach((r, i) => { if (i < oldIds.length) r.id = oldIds[i]; else if (!numIds) r.id = _aptNewId(); });
+    const res = await ccQueueWrite('apt-inv-' + aptId, () => _aptInventarSync(aptId, inventar, oldIds));
+    if (res.error) {
+      console.error('[apartments] Save inventar failed:', res.error, inventar);
+      // the card shows what is really saved (e.g. a write that got through although its answer was lost)
+      const back = await _aptSbClient.from('rentals_inventar').select('*').eq('apartment_id', aptId).order('sort_order');
+      const a = appApartments.find(x => x.id === aptId);
+      if (!back.error && a) { a.inventar = back.data || []; _aptRerenderCard(aptId); }
+      ccToast('Inventar not saved — connection problem. Please try again.', true);
       btn.textContent = 'Save'; btn.disabled = false;
       return;
     }
-    if (inventar.length) {
-      const { data, error: insErr } = await _aptSbClient.from('rentals_inventar').insert(inventar).select();
-      if (insErr) {
-        console.error('[apartments] Save inventar insert failed:', insErr, inventar);
-        _aptToast('Save failed: ' + (insErr.message || insErr.code || 'Unknown error'), true);
-        btn.textContent = 'Save'; btn.disabled = false;
-        return;
-      }
-      if (data) saved = data;
-    }
+    if (res.data && res.data.length) saved = res.data;
   }
 
   const apt = appApartments.find(a => a.id === aptId);
   if (apt) apt.inventar = saved;
 
   btn.textContent = 'Save'; btn.disabled = false;
-  document.getElementById('aptInventarOverlay').classList.remove('open');
+  if (_aptInventarId === aptId) {             // only close the sheet this save belongs to
+    document.getElementById('aptInventarOverlay').classList.remove('open');
+    _aptInventarId = null;
+  }
   _aptRerenderCard(aptId);
-  _aptInventarId = null;
+  document.getElementById('cc-save-toast')?.remove();       // an earlier "not saved" never stays on top of "Saved"
   if (typeof ccSavedToast === 'function') ccSavedToast();
 });
+/* One Inventar save → the database, never empty and never doubled: the list is ONE upsert by id (all or
+   nothing, safe to repeat), then the flat's other rows (items taken off the list, leftovers of an earlier
+   try) are deleted. If that delete fails, at worst removed items are still there. Returns { data } or { error }. */
+function _aptNewId() {
+  if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = new Uint8Array(16); crypto.getRandomValues(b);
+  b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+  const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+async function _aptInventarSync(aptId, inventar, oldIds) {
+  const db = _aptSbClient, T = 'rentals_inventar';
+  const withId = inventar.filter(r => r.id != null), noId = inventar.filter(r => r.id == null);
+  if (withId.length) {
+    const up = await db.from(T).upsert(withId).select();
+    if (up.error) return up;
+  }
+  let added = [];
+  if (noId.length) {                           // number ids only: the database numbers the extra rows
+    const ins = await db.from(T).insert(noId).select();
+    if (ins.error) return ins;
+    added = ins.data || [];
+  }
+  const keep = new Set([...withId, ...added].map(r => String(r.id)));
+  // the flat's other rows: read from the database when every new row's id is known, else the old list
+  const cur = added.length === noId.length ? await db.from(T).select('id').eq('apartment_id', aptId) : { error: 'ids unknown' };
+  const gone = (cur.error ? oldIds : (cur.data || []).map(r => r.id)).filter(id => !keep.has(String(id)));
+  if (gone.length) {
+    const del = await db.from(T).delete().in('id', gone);
+    if (del.error) return del;
+  }
+  return { data: [...withId, ...added].sort((a, b) => a.sort_order - b.sort_order), error: null };
+}
 
 
 /* ── CONTRACT MODAL ──────────────────────────────────────── */
@@ -3717,12 +3755,8 @@ document.getElementById('aptAddBtn')?.addEventListener('click', () => {
       if (_aptSbClient) {
         const { data: newApt, error } = await _aptSbClient.from('rentals_apartments').insert(data).select().single();
         if (error || !newApt) { saveBtn.textContent = 'Error'; saveBtn.disabled = false; return; }
-        // Create linked rows
-        await Promise.all([
-          _aptSbClient.from('rentals_pricing').insert({ apartment_id: newApt.id }),
-          _aptSbClient.from('rentals_verwaltung').insert({ apartment_id: newApt.id }),
-          _aptSbClient.from('rentals_schlussel').insert({ apartment_id: newApt.id }),
-        ]);
+        // No empty price / costs / keys rows here: the first Save of each section inserts its row and keeps
+        // its id (_aptDirectSaveRow). Empty rows made here were a second row that every later load read instead.
         appApartments.push({ ...newApt, pricing: {}, verwaltung: {}, zaehler: [], schlussel: {}, inventar: [] });
       }
 

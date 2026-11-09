@@ -116,7 +116,7 @@ function _pkCollectUebergData(spot, isEinzug) {
     mieterName3: document.getElementById('pk-ub-mieter-name3')?.value?.trim() || '',
     mieterAdr3:  document.getElementById('pk-ub-mieter-adr3')?.value?.trim()  || '',
     neueAdr:     document.getElementById('pk-ub-neue-adr')?.value?.trim()    || '',
-    // Zustand removed — not on one-pager
+    zustand:     document.getElementById('pk-ub-zustand')?.value?.trim()     || '',   // own block, only when filled
     bemerkungen: document.getElementById('pk-ub-bemerkungen')?.value?.trim() || '',
     // Schlüssel — parking-specific
     parkingSchluessel: parseInt(document.getElementById('pk-ub-pkschluessel')?.value  || sk.parking_schluessel  || 1),
@@ -229,7 +229,7 @@ function _pkRenderUebergHTML(d) {
 
     .write-line { border-bottom:0.5px solid #b8b3ac; height:24px; margin-top:3px; }
     .write-area { font-family:'Lato',sans-serif; font-size:12px; font-weight:400;
-      color:#1a1a1a; line-height:1.55; padding-top:3px; white-space:pre-wrap; word-break:break-word; }
+      color:#1a1a1a; line-height:1.55; padding-top:3px; white-space:pre-line; word-break:break-word; }
 
     .schluessel-row { display:flex; gap:36px; margin-top:22px; }
     .schluessel-item { display:flex; align-items:flex-end; gap:8px; }
@@ -340,8 +340,12 @@ function _pkRenderUebergHTML(d) {
     ${d.mieterName3 && d.mieterAdr3 ? kv('Adresse Mieter 3', d.mieterAdr3) : ''}
     ${!d.isEinzug && d.neueAdr ? kv('Neue Adresse', d.neueAdr) : ''}
 
-    <div class="sec">Allgemeine Anmerkungen</div>
-    <div style="margin-top:4px;">${writeField(d.bemerkungen, 5)}</div>
+    ${d.zustand ? `
+    <div class="sec">Zustand bei Übergabe</div>
+    <div style="margin-top:4px;">${writeField(d.zustand, 3)}</div>` : ''}
+
+    <div class="sec"${d.zustand ? ' style="margin-top:28px;"' : ''}>Allgemeine Anmerkungen</div>
+    <div style="margin-top:4px;">${writeField(d.bemerkungen, d.zustand ? 3 : 5)}</div>
 
     <div class="sec" style="margin-top:28px;">Schlüsselübergabe</div>
     ${schluesselHTML}

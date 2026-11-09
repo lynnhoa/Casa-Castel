@@ -41,7 +41,7 @@ function ccToast(msg, isError) {
   t.style.cssText = 'position:fixed;bottom:max(28px,env(safe-area-inset-bottom,28px));left:50%;transform:translateX(-50%);' +
     `background:${isError ? '#A32D2D' : 'var(--cc-ink)'};color:var(--cc-white);font-family:inherit;font-size:12px;` +
     'font-weight:500;letter-spacing:.02em;padding:8px 18px;border-radius:var(--cc-r-pill);z-index:9500;' +
-    'max-width:calc(100% - 32px);text-align:center;pointer-events:none;transition:opacity .3s';
+    'width:max-content;max-width:calc(100% - 32px);text-align:center;pointer-events:none;transition:opacity .3s';
   document.body.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, isError ? 4000 : 2200);
 }

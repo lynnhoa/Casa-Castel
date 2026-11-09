@@ -8,6 +8,8 @@
 --   5 · the document types the Documents table accepts (needed for Kündigung and NK letters)
 --   6 · which Controlling property each flat's NK years come from
 --   7 · NK entries from the old tracking (they will read "sent · no copy kept" in Documents)
+--   8 · how the Inventar table (Anlage A) is set up: its id type and who may change rows (Inventar Save
+--       now changes the rows in place instead of writing a new list next to the old one)
 
 with
 dup as (
@@ -80,5 +82,21 @@ rows as (
          'NK ' || e.period::text || ' · sent ' || coalesce(e.sent::text, '—') || ' · paid ' || coalesce(e.paid::text, '—')
   from rnt_nk_entries e join ten t on t.tid = e.tenant_id::text
   left join unit u on u.uid = coalesce(t.aid, t.pid)
+  -- 8
+  union all
+  select 8, 'Inventar table', 'rentals_inventar', 'id column',
+         format_type(a.atttypid, a.atttypmod) || coalesce(' · default ' || pg_get_expr(d.adbin, d.adrelid), '')
+  from pg_attribute a left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+  where a.attrelid = 'public.rentals_inventar'::regclass and a.attname = 'id'
+  union all
+  select 8, 'Inventar table', 'rentals_inventar', 'row level security',
+         case when c.relrowsecurity then 'on' else 'off' end ||
+         ' · update allowed: anon ' || case when has_table_privilege('anon', c.oid, 'UPDATE') then 'yes' else 'no' end ||
+         ', authenticated ' || case when has_table_privilege('authenticated', c.oid, 'UPDATE') then 'yes' else 'no' end
+  from pg_class c where c.oid = 'public.rentals_inventar'::regclass
+  union all
+  select 8, 'Inventar table', 'rentals_inventar', 'policy ' || p.policyname::text,
+         p.cmd::text || ' · for ' || array_to_string(p.roles, ', ')
+  from pg_policies p where p.schemaname = 'public' and p.tablename = 'rentals_inventar'
 )
 select nr, "check", unit, tenant, detail from rows order by nr, unit, tenant, detail;
