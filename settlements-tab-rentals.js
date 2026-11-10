@@ -135,7 +135,22 @@ async function _srLoadRowsNow() {
     console.warn('[settlements] ' + SR_TABLE + ':', e && (e.message || e));
   } finally { SR.loaded = true; SR.loading = false; }
 }
-async function srSaveRow(rec) {
+/* C6: one save per Wohnung at a time — two on their way at once could land in the wrong order (the older one stayed),
+   and a 2nd one sent before the 1st had made the record inserted it again (duplicate key: that change was lost).
+   from: the pop-up's draft the record was copied from — a save that waited updates the record the one before made */
+function srSaveRow(rec, from) {
+  SR._wq = SR._wq || {}; const k = String(rec.property_id);
+  const p = Promise.resolve(SR._wq[k]).catch(() => {}).then(async () => {
+    if (!rec.id && from && from.id) rec.id = from.id;
+    if (!rec.id) { const ex = SR.rows.find(x => Number(x.property_id) === Number(rec.property_id) && _srD(x.period_from) === _srD(rec.period_from)); if (ex) rec.id = ex.id; }
+    const data = await _srSaveRowNow(rec);
+    if (from && !from.id) from.id = data.id;
+    return data;
+  });
+  SR._wq[k] = p; p.catch(() => {}).then(() => { if (SR._wq[k] === p) delete SR._wq[k]; });   // none on its way any more
+  return p;
+}
+async function _srSaveRowNow(rec) {
   const row = {
     property_id: rec.property_id, apartment_id: rec.apartment_id || null,
     period_from: rec.period_from, period_to: rec.period_to,
@@ -557,9 +572,18 @@ function _srNewPos(kind, d) {
   const k = _srKind(kind);
   return { id: _srUid(), kind: k.k, label: null, u: k.u, total: null, key: 'direkt', ku: null, kt: null, amount: null, split: 'tage' };
 }
-/* The WEG result → Tracking + Controlling (same records Tracking writes) */
-async function _srWriteWeg(c, rec) {
+/* The WEG result → Tracking + Controlling (same records Tracking writes).
+   C6: one write per Wohnung at a time (the autosave, the next autosave, the tab's WEG sync), each on the line as it is
+   stored by then — the card was drawn before the first write, so a 2nd write added a 2nd line */
+function _srWriteWeg(c, rec) {
+  const Q = SR._wegQ || (SR._wegQ = {}), k = c && c.ck;
+  const p = Promise.resolve(Q[k]).catch(() => {}).then(() => _srWriteWegNow(c, rec));
+  Q[k] = p; return p;
+}
+async function _srWriteWegNow(c, rec) {
   if (!c || !c.weg || rec.weg_direction === null || rec.weg_direction === undefined) return;
+  const now = (window._src.settle || []).find(x => !ctlSettlementIsLeer(x) && ctlSettlementSame(x, c.weg.e));   // as _srItemsFor finds it
+  if (now) c = Object.assign({}, c, { weg: Object.assign({}, c.weg, { r: now, virtual: false }) });
   const l = _srLine(c, c.weg), st = l.state, existing = st.res || null;
   const dir = Number(rec.weg_direction), amount = dir ? cxR(_srNum(rec.weg_amount) || 0) : 0;
   const via = rec.weg_via === 'hausgeld' ? 'hausgeld' : 'zahlung';
@@ -636,7 +660,8 @@ function _srRefreshTenant() {
   const sumEl = document.querySelector('#srPanel [data-sr-sum]'); if (sumEl) sumEl.textContent = stEur(x.sum);
   const resEl = document.querySelector('#srPanel [data-sr-res]'); if (resEl) resEl.textContent = x.missing ? '\u2014' : stEur(Math.abs(x.saldo));   // Nov 2026: the amount in the right-hand column
   const chk = document.querySelector('#srPanel [data-sr-check]'); if (chk) chk.innerHTML = _srCheckHtml(got.c, got.it, got.rec, x);
-  document.querySelectorAll('#srPanel [data-sr="pdf"], #srPanel [data-sr="send"]').forEach(b => { b.disabled = !!x.missing; });
+  const sending = _srBusy.get(_srLineKey(got.c, got.it)) === 'send';   // C6: stays off while its letter is being marked sent
+  document.querySelectorAll('#srPanel [data-sr="pdf"], #srPanel [data-sr="send"]').forEach(b => { b.disabled = !!x.missing || (sending && b.dataset.sr === 'send'); });
   return { got, x };
 }
 function _srDefaultAddr(c, it, x) {
@@ -806,9 +831,26 @@ function srLetterHtml(d) {
   });
 }
 
+/* C6: one save per tenant line at a time (Mark as sent, Skip, Period Save …) — a 2nd tap while it runs does nothing, and
+   every drawing meanwhile keeps its 'Mark as sent' off. The key stays the same when the line gets its stored id. */
+const _srBusy = new Map();                                    // line key → 'send' | 'skip' | 'per' | 'nd'
+const _srLineKey = (c, it) => [c.ck, it.e ? it.e.unit_name : '', it.e ? it.e.tenant_id : it.r.tenant_id, _srD(it.e ? it.e.period_from : it.r.period_from)].join('|');
+/* C6: the tenant pop-up on screen shows this line (by its shown-only or its stored id) — not one opened meanwhile */
+function _srShowsTen(ck, ...ids) {
+  const m = SR.modal;
+  return !!(m && m.view === 'tenant' && m.ck === ck && ids.some(id => id !== null && id !== undefined && String(id) === String(m.tid)));
+}
+
 /* 5 · Verschickt → Tracking + Controlling (same path as Tracking) */
 async function _srSend(btn) {
   const got = _srCollectTenant(); if (!got) return;
+  const key = _srLineKey(got.c, got.it);
+  if (_srBusy.has(key)) return;
+  _srBusy.set(key, 'send');
+  try { return await _srSendNow(btn, got, key); }
+  finally { if (_srBusy.delete(key)) _srRefreshTenant(); }   // ended without drawing: the button on screen follows
+}
+async function _srSendNow(btn, got, key) {
   const { c, it, rec, ts } = got;
   const x = _srCalc(c, it, rec);
   if (x.missing) { stSay('Please enter all amounts first'); return; }
@@ -838,14 +880,17 @@ async function _srSend(btn) {
     await _ctlSupa.from('ctrl_settlements').update(before).eq('id', row.id);
     Object.assign(row, before);
     stSay('Speichern fehlgeschlagen — ' + (err.message || err));
-    if (btn) btn.disabled = false; ctlSettlementInvalidate(); stRenderRentals(); return;
+    _srBusy.delete(key); if (btn) btn.disabled = false; ctlSettlementInvalidate(); stRenderRentals(); return;
   }
   ctlSettlementInvalidate();
   await _srArchive(c, it, rec, ts, x, dir, cxR(amountRec));
-  SR.sel = { kind: 'ten', ck: c.ck, tid: String(row.id) };
-  if (SR.modal && SR.modal.view === 'tenant') SR.modal.tid = String(row.id);
-  SR.briefOpen = false;
+  if (!SR.modal || SR.modal.view !== 'tenant' || _srShowsTen(c.ck, it.r.id, row.id)) {   // C6: not over another tenant's pop-up opened meanwhile
+    SR.sel = { kind: 'ten', ck: c.ck, tid: String(row.id) };
+    if (SR.modal && SR.modal.view === 'tenant') SR.modal.tid = String(row.id);
+    SR.briefOpen = false;
+  }
   stSay('Marked sent');
+  _srBusy.delete(key);
   stRenderRentals();
 }
 
@@ -1054,18 +1099,17 @@ function _srNkAutoSync(infos) {
     if (c.before || !rec || !rec.id) continue;
     if ((i.rows || []).some(r => r.kind === 'ten' && r.st && r.st.res)) continue;            // a letter went out: the NK stays as it was sent
     if (SR.draft && SR.draft._ck === c.ck && SR.dirty) continue;                             // you are typing in it right now
-    const pos = rec.positions || [], want = _srAutoNkItems(c);
-    const manualGs = pos.some(p => !p.auto && p.kind === 'grundsteuer' && _srIsNkOnly(p));
-    const list = want.filter(w => !(w.auto === 'gs' && manualGs));
-    const next = pos.filter(p => !p.auto || list.some(w => w.auto === p.auto)).map(p => {
-      if (!p.auto) return p;
-      const w = list.find(x => x.auto === p.auto);
-      return Object.assign({}, p, { label: w.label, amount: w.amount, src: w.src });
+    const next = _srNkAutoNext(c, rec); if (!next) continue;
+    jobs.push(async () => {
+      let cur = rec, nx = next;
+      const q = SR._wq && SR._wq[String(rec.property_id)];
+      if (q) {                                                  // C6: a save of this Wohnung is on its way: after it, from the record it saved
+        await q.catch(() => {});                                // (was: this older copy was written over it — a correction just typed was lost)
+        if (SR.draft && SR.draft._ck === c.ck && SR.dirty) return;
+        cur = SR.rows.find(x => x.id === rec.id) || rec; nx = _srNkAutoNext(c, cur); if (!nx) return;
+      }
+      cur.positions = nx; await srSaveRow(cur); if (SR.draft && SR.draft._ck === c.ck && !SR.dirty) SR.draft = null;
     });
-    for (const w of list) if (!pos.some(p => p.auto === w.auto)) next.push({ id: _srUid(), kind: w.kind, origin: 'nk', u: true, auto: w.auto, label: w.label, amount: w.amount, src: w.src, key: 'direkt' });
-    const sig = x => JSON.stringify((x || []).filter(p => p.auto).map(p => [p.auto, p.label, p.amount, p.src, p.nk !== false]));
-    if (sig(next) === sig(pos)) continue;
-    jobs.push(async () => { rec.positions = next; await srSaveRow(rec); if (SR.draft && SR.draft._ck === c.ck && !SR.dirty) SR.draft = null; });
   }
   if (!jobs.length) return;
   _srNkAutoBusy = true;
@@ -1073,6 +1117,20 @@ function _srNkAutoSync(infos) {
     for (const j of jobs) { try { await j(); } catch (e) { console.warn('[settlements] NK auto', e); } }
     _srNkAutoBusy = false; stRenderRentals();
   })();
+}
+/* The positions with the NK auto items (Grundsteuer, costs marked for the NK) brought up to date · null = nothing to change */
+function _srNkAutoNext(c, rec) {
+  const pos = rec.positions || [], want = _srAutoNkItems(c);
+  const manualGs = pos.some(p => !p.auto && p.kind === 'grundsteuer' && _srIsNkOnly(p));
+  const list = want.filter(w => !(w.auto === 'gs' && manualGs));
+  const next = pos.filter(p => !p.auto || list.some(w => w.auto === p.auto)).map(p => {
+    if (!p.auto) return p;
+    const w = list.find(x => x.auto === p.auto);
+    return Object.assign({}, p, { label: w.label, amount: w.amount, src: w.src });
+  });
+  for (const w of list) if (!pos.some(p => p.auto === w.auto)) next.push({ id: _srUid(), kind: w.kind, origin: 'nk', u: true, auto: w.auto, label: w.label, amount: w.amount, src: w.src, key: 'direkt' });
+  const sig = x => JSON.stringify((x || []).filter(p => p.auto).map(p => [p.auto, p.label, p.amount, p.src, p.nk !== false]));
+  return sig(next) === sig(pos) ? null : next;
 }
 function _srWegSync(infos) {
   SR._wegSync = SR._wegSync || {};
@@ -1614,7 +1672,7 @@ async function _srAutoSave() {
       if (ready && !wasDone && !clean.keys.ja_done) { clean.keys.ja_v = 2; clean.keys.ja_done = cxToday(); }
     }
     if (wasDone && !clean.keys.ja_done) clean.keys.ja_done = (d.keys || {}).ja_done || cxToday();   // an older complete record stays complete
-    const saved = await srSaveRow(clean);
+    const saved = await srSaveRow(clean, d);
     d.id = saved.id; d.keys = Object.assign({}, d.keys, { ja_v: 2, ja_done: saved.keys && saved.keys.ja_done || null });
     if (_srJaDone(saved, _srRecSummary(saved, c.apt))) await _srWriteWeg(c, saved);    // after "complete": the WEG result follows your edits
     SR.dirty = false; _srSavedTxt('✓ saved');
@@ -1870,7 +1928,7 @@ function _srTenView(c) {
     sub: sent ? 'sent ' + stDate(ti.st.res.date) : x.missing ? '<span class="neg">some costs are still missing</span>'
       : 'not sent yet · Frist ' + stDate(perC.frist) + (late ? ' · <span class="neg">Frist passed</span>' : ''),
     undo: sent && !settledT ? '<button type="button" class="tp-undo" data-sr="reopen">undo</button>' : '',
-    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sr="send"', 'check', 'Mark as sent', true, !!x.missing) + '</div>' };
+    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sr="send"', 'check', 'Mark as sent', true, !!x.missing || _srBusy.get(_srLineKey(c, it)) === 'send') + '</div>' };
   let s2 = null;
   if (hasMoney) {
     const resVia = sent ? (ti.st.res.via || 'zahlung') : via, b = ti.st.booking;
@@ -2042,7 +2100,7 @@ async function _srSetUndo(ck, tid, weg) {
     }
   } catch (err) { stSay('Could not undo — ' + (err.message || err)); return; }
   SR.setEdit = null; ctlSettlementInvalidate(); stSay('Back to open');
-  if (SR.modal && SR.modal.view === 'tenant' && x.it && x.it.r) {
+  if (SR.modal && SR.modal.view === 'tenant' && x.it && x.it.r && _srShowsTen(ck, tid, x.it.r.id)) {   // C6: not another tenant's pop-up opened meanwhile
     const again = _srYearModel(SR.year).find(y => y.ck === ck);
     const nit = again && again.items.find(y => y.r.tenant_id && x.it.r.tenant_id && String(y.r.tenant_id) === String(x.it.r.tenant_id) && _srD(y.r.period_from) === _srD(x.it.r.period_from));
     if (nit) SR.modal.tid = String(nit.r.id);
@@ -2052,14 +2110,20 @@ async function _srSetUndo(ck, tid, weg) {
 /* Skip this NK (no letter, no result) — counts as done, undo brings it back */
 async function _srSkipNk(ck, tid) {
   const x = _srSetCtx(ck, tid, false); if (!x) return;
+  const key = _srLineKey(x.c, x.it); if (_srBusy.has(key)) return;                  // C6: a save of this line is on its way
   if (!(await stConfirm({ title: 'Skip this NK?', ok: 'Skip', text: 'No letter and no result – it counts as done. You can undo it later.' }))) return;
+  if (_srBusy.has(key)) return;
+  _srBusy.set(key, 'skip');
+  let row;
   try {
     const res = x.st.res, b = x.st.booking;
     if (b) await _stUndoBooking(b);                             // own booking removed · your own entry only unlinked
     if (res) { await _ctlSupa.from('abr_results').update({ status: 'storniert' }).eq('id', res.id); res.db.status = 'storniert'; }
-    await _stUpsertSettlement(x.l, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null, result_id: null });
+    row = await _stUpsertSettlement(x.l, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null, result_id: null });
   } catch (err) { stSay('Could not save — ' + (err.message || err)); return; }
+  finally { _srBusy.delete(key); }
   ctlSettlementInvalidate(); stSay('Skipped');
+  if (_srShowsTen(ck, tid)) SR.modal.tid = String(row.id);    // C6: the line got its stored id — its pop-up stays on it (was: 'Not found')
   stRenderRentals();
 }
 /* After Settled: a settle window goes back to where it came from; a sheet stays open */
@@ -2097,7 +2161,7 @@ async function _srHvSave4(btn, thenView) {
   try {
     const clean = Object.assign({}, d); delete clean._ck;
     clean.keys = Object.assign({}, clean.keys || {}, { ja_v: 2 });
-    const saved = await srSaveRow(clean);
+    const saved = await srSaveRow(clean, d);
     if (_srJaDone(saved, _srRecSummary(saved, c.apt))) await _srWriteWeg(c, saved);
     SR.draft = null; SR.costsOpen = false;
     if (thenView && SR.modal) SR.modal.view = thenView;
@@ -2277,22 +2341,31 @@ function srIsRentalsLine() { return false; }
     }
     if (a === 'nd') {
       const it = c.items.find(x => String(x.r.id) === String(b.dataset.id)); if (!it) return;
-      await _stNotDone(_srLine(c, it)); ctlSettlementInvalidate(); stRenderRentals(); return;
+      const key = _srLineKey(c, it); if (_srBusy.has(key)) return;   // C6: its save is on its way
+      _srBusy.set(key, 'nd');
+      try { await _stNotDone(_srLine(c, it)); } finally { _srBusy.delete(key); }
+      ctlSettlementInvalidate(); stRenderRentals(); return;
     }
     // tenant view
     if (a === 'tenPerEdit') { SR.perEdit = true; _srRerenderPanel(); return; }
     if (a === 'tenPerCancel') { SR.perEdit = false; _srRerenderPanel(); return; }
     if (a === 'tenPerSave') {
       const it = c.items.find(x => String(x.r.id) === String(SR.modal.tid)); if (!it) return;
+      const key = _srLineKey(c, it); if (_srBusy.has(key)) return;   // C6: its save is on its way
       const pf = _srD(document.getElementById('srTpF')?.value), pt = _srD(document.getElementById('srTpT')?.value);
       if (!pf || !pt || pt < pf) { stSay('Period: “to” is before “from”'); return; }
       let row;
-      try { row = await _stUpsertSettlement(_srLine(c, it), { period_from: pf, period_to: pt, period_custom: true }); }
-      catch (err) {
-        if (/period_custom/.test(err.message || '')) { try { row = await _stUpsertSettlement(_srLine(c, it), { period_from: pf, period_to: pt }); } catch (e2) { stSay('Failed — ' + (e2.message || e2)); return; } }
-        else { stSay('Failed — ' + (err.message || err)); return; }
-      }
-      ctlSettlementInvalidate(); SR.perEdit = false; SR.modal.tid = String(row.id); stSay('Period saved'); stRenderRentals(); return;
+      _srBusy.set(key, 'per');
+      try {
+        try { row = await _stUpsertSettlement(_srLine(c, it), { period_from: pf, period_to: pt, period_custom: true }); }
+        catch (err) {
+          if (/period_custom/.test(err.message || '')) { try { row = await _stUpsertSettlement(_srLine(c, it), { period_from: pf, period_to: pt }); } catch (e2) { stSay('Failed — ' + (e2.message || e2)); return; } }
+          else { stSay('Failed — ' + (err.message || err)); return; }
+        }
+      } finally { _srBusy.delete(key); }
+      ctlSettlementInvalidate();
+      if (_srShowsTen(c.ck, it.r.id, row.id)) { SR.perEdit = false; SR.modal.tid = String(row.id); }   // C6: the pop-up may be closed or show another tenant by now
+      stSay('Period saved'); stRenderRentals(); return;
     }
     if (a === 'vzUse') {
       const got = _srCollectTenant(); if (!got) return;
@@ -2355,3 +2428,9 @@ function srIsRentalsLine() { return false; }
     const i = all.indexOf(inp); if (all[i + 1]) all[i + 1].focus(); else inp.blur();
   });
 })();
+
+/* C6: each of these is one save from its first write to its last (settlements-tab-tracking.js) */
+if (typeof ctlWriting === 'function') {
+  _srSend = ctlWriting(_srSend); _srWriteWeg = ctlWriting(_srWriteWeg); _srSetAmount = ctlWriting(_srSetAmount);
+  _srSetUndo = ctlWriting(_srSetUndo); _srSkipNk = ctlWriting(_srSkipNk);
+}

@@ -138,7 +138,13 @@ function scRecEnsure(y) {
   r.tenants = r.tenants || {};
   return r;
 }
-async function scSaveRec(r) {
+/* C6: one save of the record at a time — two on their way at once could land in the wrong order (the older one stayed
+   in the database). A save asked for meanwhile waits and sends what is there when it starts */
+function scSaveRec(r) {
+  const p = Promise.resolve(SC._saveP).catch(() => {}).then(() => _scSaveRecNow(r));
+  SC._saveP = p; return p;
+}
+async function _scSaveRecNow(r) {
   const payload = { year: r.year, period_from: r.period_from, period_to: r.period_to, locked_at: r.locked_at || null,
                     snapshot: r.snapshot || null, tenants: r.tenants || {}, updated_at: new Date().toISOString() };
   const { data, error } = await _ctlSupa.from(SC_TABLE).upsert(payload, { onConflict: 'year' }).select().single();
@@ -1116,7 +1122,7 @@ function scExtraView(M, m) {
       f('NK / month', '<span class="st-amt"><input class="st-in" inputmode="decimal" id="scxNk" placeholder="per contract"/><span>€</span></span>') +
       f('Address', '<input class="st-in" id="scxAddr" placeholder="Street, PLZ City (if moved out)"/>') +
     '</div><p class="sc-hint2" style="margin-top:6px">The tenant counts in the split day by day, like everyone else.</p></div></div>' +
-    '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sc="close">Cancel</button><button class="cx-btn cx-btn--p" data-sc="extraSave">Add tenant</button></div>';
+    '<div class="srm__bar srm__bar--2"><button class="cx-btn cx-btn--s" data-sc="close">Cancel</button><button class="cx-btn cx-btn--p" data-sc="extraSave"' + (SC._xSaving ? ' disabled' : '') + '>Add tenant</button></div>';
 }
 function scSpreadTxt(M, id) {
   const ln = M.input.lines.find(l => l.id === id); if (!ln || !ln.parts.length) return '';
@@ -1487,14 +1493,14 @@ function scJaBodyHtml(M, s, b, can, o) {
     const payDis = paid ? (lockedIn(b.pd) || pab || mtBk ? ' disabled' : '') : (ready ? '' : ' disabled');
     const fields = '<div class="jb-pay">' + f(dir > 0 ? 'Received on' : 'Paid on', '<input type="date" data-scja="pd"' + at + ' value="' + stEsc(pdV) + '"' + payDis + '/>') +
       f('Amount', '<span class="jb-amt"><input inputmode="decimal" autocomplete="off" data-scja="pa"' + at + ' value="' + (paV ? cxE2(paV) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span>') +
-      (paid ? '' : '<button type="button" class="jb-go" data-sc="jaPay"' + at + (ready && can ? '' : ' disabled') + '><i class="ti ti-check" aria-hidden="true"></i> ' + (dir > 0 ? 'Received' : 'Paid') + '</button>') + '</div>';
+      (paid ? '' : '<button type="button" class="jb-go" data-sc="jaPay"' + at + (ready && can && !scJaBusy(b.id) ? '' : ' disabled') + '><i class="ti ti-check" aria-hidden="true"></i> ' + (dir > 0 ? 'Received' : 'Paid') + '</button>') + '</div>';
     const pabF = (pab || opn('jaPab:')) ? '<div class="jb-g2 jb-pab">' + f(dir > 0 ? 'Abschlag kept from it' : 'Abschlag in the same payment',
       '<span class="jb-amt"><input inputmode="decimal" autocomplete="off" data-scja="pab"' + at + ' value="' + (pab ? cxE2(pab) : '') + '" placeholder="0,00"' + payDis + '/><em>\u20ac</em></span>') + '</div>' + absHint : '';
     if (paid) {
       const lk = opn('jaPayOpen:');
       money = '<div class="jb-money"><i class="ti ti-circle-check" aria-hidden="true"></i><span>' + stEsc((dir > 0 ? 'Received ' : 'Paid ') + stDate(b.pd) + ' · ' + scE(b.pa ?? amt) + absTxt) + '</span>' +
         tg('jaPayOpen:', lk ? 'done' : 'change', 'cx-link jb-ch') + '</div>' +
-        (lk ? fields + pabF + (mtBk ? '<p class="jb-split">Paid with a Maintenance receipt \u2013 change its date or amount in Maintenance</p>' : '') + (lockedIn(b.pd) ? '' : '<button type="button" class="cx-link jb-undo" data-sc="jaPay"' + at + '>undo the payment</button>') : '');
+        (lk ? fields + pabF + (mtBk ? '<p class="jb-split">Paid with a Maintenance receipt \u2013 change its date or amount in Maintenance</p>' : '') + (lockedIn(b.pd) ? '' : '<button type="button" class="cx-link jb-undo" data-sc="jaPay"' + at + (scJaBusy(b.id) ? ' disabled' : '') + '>undo the payment</button>') : '');
     } else money = ready ? fields + pabF + (pab || opn('jaPab:') ? '' : tg('jaPab:', '+ Abschlag in the same payment', 'cx-link jb-add'))
       : '<p class="jb-split">first add: ' + stEsc([!recv ? 'received on' : '', !dir ? 'result' : '', !(amt > 0) ? 'amount' : ''].filter(Boolean).join(' · ')) + '</p>';
   }
@@ -1528,6 +1534,11 @@ function scJaOwn(k, bid) {
   (SC.jaIds = SC.jaIds || {})[bid] = id;
   if (SC.open['ja:' + bid]) SC.open['ja:' + id] = true;
   return e;
+}
+/* C6: this bill's money is being booked / taken off right now (under the id tapped, or the own id it got meanwhile) */
+function scJaBusy(bid) {
+  const B = SC.jaBusy || {}, m = SC.jaIds || {};
+  return !!(B[bid] || (m[bid] && B[m[bid]]) || Object.keys(B).some(x => m[x] === bid));
 }
 /* redraw the tab + pop-up (after the field change has moved the focus: keep it on the same field) */
 function scJaRefresh() {
@@ -1582,7 +1593,13 @@ function scJaAdd(k) {
 async function scJaAct(a, btn) {
   const M = SC.model, k = btn.dataset.k, bid = btn.dataset.b;
   const cur = scJaBills(SC.year, k).find(x => x.id === bid) || { id: bid, blank: true };
-  if (a === 'jaPay') return cur.paid ? scJaUnpay(k, bid, cur) : scJaPay(k, bid, cur, btn);
+  if (a === 'jaPay') {                                     // C6: one booking / undo per bill at a time — a redraw meanwhile
+    if (scJaBusy(bid)) return;                             // (a field left, ⋯, the Abschlag read) must not give the button back
+    const busy = SC.jaBusy || (SC.jaBusy = {});
+    busy[bid] = true; btn.disabled = true;
+    try { return await (cur.paid ? scJaUnpay(k, bid, cur) : scJaPay(k, bid, cur, btn)); }
+    finally { delete busy[bid]; scJaRefresh(); }
+  }
   if (!scJaCan(M)) return;
   if (a === 'jaRecv') {
     if (cur.recv && cur.paid) { stSay('Switch off \u201c' + (Number(cur.dir) === 1 ? 'Money received' : 'Money paid') + '\u201d first'); return; }
@@ -1983,7 +2000,7 @@ function scTenView(M, m) {
   const s1 = { n: 1, state: sent ? 'done' : canSend ? 'open' : 'wait', title: 'Letter',
     sub: sent ? 'sent ' + stDate(res.date) : !M.sendable ? 'Frist passed' : !M.locked ? 'lock the house costs first' : 'not sent yet · Frist ' + stDate(M.frist),
     undo: sent && !done ? '<button type="button" class="tp-undo" data-sc="reopen" ' + kAttr + '>undo</button>' : '',
-    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sc="send" ' + kAttr, 'check', 'Mark as sent', true, !canSend) + '</div>' };
+    body: sent ? '<div class="tp-acts">' + pdf + '</div>' : ways + '<div class="tp-acts">' + pdf + stTpBtn('data-sc="send" ' + kAttr, SC.sending === t.key ? 'loader' : 'check', SC.sending === t.key ? 'Saving' : 'Mark as sent', true, !canSend || !!SC.sending) + '</div>' };   // C6: as it is while a letter saves
   let s2 = null;
   if (hasMoney) {
     const bk = t.st && t.st.booking;
@@ -2165,13 +2182,18 @@ async function scSetAmount(key, raw, btn, when) {
   SC.modal = m && m.view === 'settle' ? (m.back || { view: 'ten', key }) : m; scRenderModal();
 }
 /* Skip this NK (no letter, no result) – counts as done; "Undo skip" brings it back */
+const _scSkipBusy = new Set();                               // C6: a 2nd Skip of the same line while its save runs does nothing
 async function scSkip(key) {
-  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
+  if (_scSkipBusy.has(key)) return;
+  const M = SC.model, t = M && M.ten.find(x => x.key === key), m0 = SC.modal; if (!t || !t.line) return;
   if (!(await stConfirm({ title: 'Skip this NK?', ok: 'Skip', text: 'No letter and no result for ' + t.name + ' – it counts as done. You can undo it later.' }))) return;
+  if (_scSkipBusy.has(key)) return;
+  _scSkipBusy.add(key);
   try { await _stUpsertSettlement(t.line, { status: 'nicht durchgeführt', amount: null, direction: null, settled_via: null }); }
   catch (e) { stSay('Could not save — ' + (e.message || e)); return; }
+  finally { _scSkipBusy.delete(key); }
   ctlSettlementInvalidate(); stSay('Skipped');
-  const m = SC.modal; SC.model = scModel(M.y); stRenderCasa(); SC.modal = m && m.flow ? m : { view: 'ten', key }; scRenderModal();
+  scSaveEnd(M.y, key, m0, 'keep');
 }
 /* Back to open (sent, waiting): the booking in Controlling goes too; a skipped NK comes back as open */
 async function scSetUndo(key) {
@@ -2470,14 +2492,20 @@ async function scClick(e) {
   if (a === 'vzReset') { const s = scSet(b.dataset.k); delete s.vzMonths; delete s.vz; scQueueSave(scRecEnsure(SC.year)); SC.model = scModel(SC.year); return scRenderModal(); }
   if (a === 'extraNew') { SC.modal = { view: 'extra', room: b.dataset.room }; return scRenderModal(); }
   if (a === 'extraSave') {
+    if (SC._xSaving) return;                                  // C6: a 2nd tap while it saves adds nothing (the tenant counted twice)
     const v = id => (document.getElementById(id) || {}).value || '';
     const name = v('scxName').trim(), from = scD(v('scxFrom')), to = scD(v('scxTo'));
     if (!name || !from) { stSay('Please enter the name and the move-in'); return; }
-    const r = scRecEnsure(SC.year), nk = cxParse(v('scxNk'));
-    (r.tenants.__extra = r.tenants.__extra || []).push({ id: Date.now().toString(36), name, room: v('scxRoom'), from, to: to || null, nk: nk === null ? 0 : cxR(nk),
-      addr: v('scxAddr').split(/\s*,\s*/).filter(Boolean).join('\n') });
-    try { await scSaveRec(r); } catch (err) { stSay('Saving failed — ' + (err.message || err)); return; }
-    SC.modal = null; SC.model = scModel(SC.year); stRenderCasa(); stSay(name + ' added for ' + SC.year); return;
+    const y = SC.year, r = scRecEnsure(y), nk = cxParse(v('scxNk'));
+    const x = { id: Date.now().toString(36), name, room: v('scxRoom'), from, to: to || null, nk: nk === null ? 0 : cxR(nk),
+      addr: v('scxAddr').split(/\s*,\s*/).filter(Boolean).join('\n') };
+    (r.tenants.__extra = r.tenants.__extra || []).push(x);
+    SC._xSaving = true; b.disabled = true;                    // drawn disabled too (scExtraView): a redraw keeps it
+    try { await scSaveRec(r); }
+    catch (err) { r.tenants.__extra = r.tenants.__extra.filter(e => e !== x); stSay('Saving failed — ' + (err.message || err)); return; }   // not saved → not kept (a retry adds it once)
+    finally { SC._xSaving = false; document.querySelectorAll('[data-sc="extraSave"]').forEach(e => { e.disabled = false; }); }
+    if (SC.modal && SC.modal.view === 'extra') SC.modal = null;   // a pop-up opened meanwhile stays
+    SC.model = scModel(SC.year); stRenderCasa(); stSay(name + ' added for ' + y); return;
   }
   if (a === 'extraDel') {
     if (!(await stConfirm({ title: 'Remove this tenant?', text: 'Only from ' + stNkLabel(M.per.from, M.per.to) + ' – nothing changes in Casa Castel › Tenants.', ok: 'Remove', danger: true }))) return;
@@ -2494,16 +2522,17 @@ async function scClick(e) {
   if (a === 'settle') {
     const t = M && M.ten.find(x => x.key === b.dataset.k);
     if (t && t.extra) {                                           // added tenant: no booking in Controlling – just mark it
+      const y = SC.year, m0 = SC.modal;
       if (!(await stConfirm({ title: 'Mark ' + t.name + '\'s NK-Abrechnung as settled?', ok: 'Settled' }))) return;
       const s = scSet(t.key); if (s.sent) s.sent.settled = cxToday();
-      try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {}
-      SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal();
+      try { await scSaveRec(scRecEnsure(y)); } catch (err) {}
+      return scSaveEnd(y, t.key, m0);
     }
     SC.modal = { view: 'ten', key: b.dataset.k }; return scRenderModal();   // Oct 2026: no separate settle level
   }
   if (a === 'payOn') {                                              // the money switch: full amount today (change it under "Payment details")
     const t = M && M.ten.find(x => x.key === b.dataset.k); if (!t) return;
-    if (t.extra) { const s2 = scSet(t.key); if (s2.sent) s2.sent.settled = cxToday(); try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {} SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal(); }
+    if (t.extra) { const y = SC.year, m0 = SC.modal, s2 = scSet(t.key); if (s2.sent) s2.sent.settled = cxToday(); try { await scSaveRec(scRecEnsure(y)); } catch (err) {} return scSaveEnd(y, t.key, m0); }
     const res = t.st && t.st.res; if (!res) { stSay('Send the letter first'); return; }
     const date = scD(scPayVal('date')) || cxToday();
     if (res.via && res.via !== 'zahlung') {
@@ -2521,7 +2550,7 @@ async function scClick(e) {
   if (a === 'skip') return scSkip(b.dataset.k);
   if (a === 'reopen') {
     const t = M && M.ten.find(x => x.key === b.dataset.k);
-    if (t && t.extra) { if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return; delete scSet(t.key).sent; try { await scSaveRec(scRecEnsure(SC.year)); } catch (err) {} SC.model = scModel(SC.year); stRenderCasa(); SC.modal = { view: 'ten', key: t.key }; return scRenderModal(); }
+    if (t && t.extra) { const y = SC.year, m0 = SC.modal; if (!(await stConfirm({ title: 'Back to open?', ok: 'Back to open' }))) return; delete scSet(t.key).sent; try { await scSaveRec(scRecEnsure(y)); } catch (err) {} return scSaveEnd(y, t.key, m0); }
     return scReopen(b.dataset.k);
   }
 }
@@ -2563,6 +2592,19 @@ function scInput(e) {
   if (f === 'vz' || f === 'via') { SC.model = scModel(SC.year); scRenderModal(); stRenderCasaQuiet(); }
 }
 function stRenderCasaQuiet() { const m = SC.modal; stRenderCasa(); SC.modal = m; scRenderModal(); }
+/* C6: the end of a save started in a Casa pop-up (or on the Casa page): back to that tenant, or on in 'Send letters',
+   only while the owner is still where it started (Casa tab, that year, that pop-up or none). Moved on meanwhile (other
+   tab or year, another tenant, X, next ›): only what is on screen now is drawn again.
+   how: 'next' = on to the next letter in 'Send letters' · 'keep' = stay in 'Send letters' · else the tenant's pop-up */
+function scSaveEnd(y, key, m0, how) {
+  const here = ST.tab === 'casa' && SC.year === y && SC.modal === m0 && (!m0 || m0.key === key);
+  if (SC.year === y) SC.model = scModel(y);
+  stRenderCasa();
+  if (!here) return;
+  const flow = m0 && m0.flow ? m0 : null;
+  if (flow && how === 'next') return scFlowNext();
+  SC.modal = flow && how === 'keep' ? flow : { view: 'ten', key }; scRenderModal();
+}
 function scFlowNext() {
   const m = SC.modal; if (!m || !m.flow) return;
   const left = m.flow.filter((k, i) => i > m.i && (SC.model.ten.find(t => t.key === k) || {}).k === 'open');
@@ -2657,12 +2699,21 @@ async function scListPdf(btn) {
   finally { if (btn) { btn.disabled = false; btn.innerHTML = reset; } }
 }
 
-/* Mark as sent: letter → archive, result → Controlling (same path as Rentals) */
+/* Mark as sent: letter → archive, result → Controlling (same path as Rentals)
+   C6: one letter at a time — while it saves every 'Mark as sent' is drawn off (this one 'Saving'), so a redraw of the
+   pop-up meanwhile (Letter details, a fold) does not give the button back for a 2nd letter and result. Once done the
+   pop-up is drawn again (its end drew it while the letter still counted as saving) */
 async function scSend(key, btn) {
-  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t) return;
+  if (SC.sending) return;
+  SC.sending = key;
+  try { return await _scSendNow(key, btn); }
+  finally { SC.sending = null; if (SC.modal) scRenderModal(); }
+}
+async function _scSendNow(key, btn) {
+  const M = SC.model, t = M && M.ten.find(x => x.key === key), m0 = SC.modal; if (!t) return;
   if (!M.locked) { stSay('Lock the house costs first'); return; }
   if (scRetOld(M)) { stSay(SC_RET_OLD); return; }
-  if (t.extra) return scSendExtra(M, t, btn);
+  if (t.extra) return scSendExtra(M, t, btn, m0);
   if (!t.line) { stSay('This tenant is not in the settlement list – check move-in / move-out in Casa Castel'); return; }
   const s = t.set || {};
   const amount = Math.abs(t.saldo), dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0;
@@ -2696,12 +2747,9 @@ async function scSend(key, btn) {
   if (pdf) await scArchive(M, t, pdf, { dir, amount: cxR(amountRec), addr: String(s.addr !== undefined ? s.addr : scAddrDefault(t).join('\n')) });
   ctlSettlementInvalidate();
   stSay('Marked as sent');
-  const flow = SC.modal && SC.modal.flow ? SC.modal : null;
-  SC.model = scModel(M.y);
-  stRenderCasa();
-  if (flow) { SC.modal = flow; scFlowNext(); } else { SC.modal = { view: 'ten', key }; scRenderModal(); }
+  scSaveEnd(M.y, key, m0, 'next');
 }
-async function scSendExtra(M, t, btn) {
+async function scSendExtra(M, t, btn, m0) {
   const s = scSet(t.key), dir = t.saldo > 0 ? 1 : t.saldo < 0 ? -1 : 0, date = s.date || cxToday();
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader" aria-hidden="true"></i> Saving'; }
   let pdf = null;
@@ -2710,9 +2758,7 @@ async function scSendExtra(M, t, btn) {
   try { await scSaveRec(scRecEnsure(M.y)); } catch (e) { stSay('Saving failed — ' + (e.message || e)); return; }
   if (pdf) await scArchive(M, t, pdf, { dir, amount: s.sent.amount, addr: String(s.addr !== undefined ? s.addr : scAddrDefault(t).join('\n')) });
   stSay('Marked as sent');
-  const flow = SC.modal && SC.modal.flow ? SC.modal : null;
-  SC.model = scModel(M.y); stRenderCasa();
-  if (flow) { SC.modal = flow; scFlowNext(); } else { SC.modal = { view: 'ten', key: t.key }; scRenderModal(); }
+  scSaveEnd(M.y, t.key, m0, 'next');
 }
 async function scArchive(M, t, pdf, x) {
   if (SC.lettersMissing) { stSay('Marked as sent · run the archive SQL to keep a copy of the letter'); return; }
@@ -2737,7 +2783,7 @@ async function scOpenLetter(id) {
 }
 
 async function scReopen(key) {
-  const M = SC.model, t = M && M.ten.find(x => x.key === key); if (!t || !t.line) return;
+  const M = SC.model, t = M && M.ten.find(x => x.key === key), m0 = SC.modal; if (!t || !t.line) return;
   const res = t.st && t.st.res, b = res ? ctlAbrBooking(res) : null;
   if (!(await stConfirm({ title: 'Set ' + t.name + ' back to open?', ok: 'Back to open', danger: true,
     text: b ? _stUndoText(b, scDate, scE) : res ? 'The result disappears from Controlling.' : '' }))) return;
@@ -2746,8 +2792,10 @@ async function scReopen(key) {
     if (!(t.it.r._virtual || String(t.it.r.id).startsWith('v:'))) await ctlSettleOpen(t.it.r);   // shared with Controlling's 'cancel' (C1 #4)
   } catch (e) { stSay('Failed — ' + (e.message || e)); return; }
   ctlSettlementInvalidate(); stSay('Back to open');
-  SC.model = scModel(M.y); stRenderCasa();
-  SC.modal = { view: 'ten', key }; scRenderModal();
+  scSaveEnd(M.y, key, m0);
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && SC.modal) { SC.modal = null; scRenderModal(); } });
+
+/* C6: each of these is one save from its first write to its last (settlements-tab-tracking.js) */
+if (typeof ctlWriting === 'function') { scSend = ctlWriting(scSend); scSetAmount = ctlWriting(scSetAmount); scSetUndo = ctlWriting(scSetUndo); scSkip = ctlWriting(scSkip); }
